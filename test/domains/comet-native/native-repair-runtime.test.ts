@@ -188,7 +188,6 @@ describe('Native repair runtime integration', () => {
       contractHash: input.envelope.contractHash,
       implementationScopeHash: nativeRepairScopeHash(input.implementationScope),
       artifactSnapshotHash: input.implementationScope.scope.currentProjectionHash,
-      categories: ['verification-failed'],
       failedCheckIds: [],
     });
     expect(signature.signatureHash).toMatch(/^[a-f0-9]{64}$/u);
@@ -631,7 +630,6 @@ describe('Native repair runtime integration', () => {
       nativeRepairFailureFacts({
         envelope: evidence.envelope,
         implementationScope: different.implementationScope,
-        categories: ['verification-failed'],
       }),
     ).toThrow('does not match');
 

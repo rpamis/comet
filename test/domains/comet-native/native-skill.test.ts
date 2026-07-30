@@ -236,7 +236,6 @@ describe('Comet Native Skills', () => {
         'new',
         'spec remove',
         'spec rebase',
-        'list',
         'show',
         'status',
         'select',
@@ -259,6 +258,11 @@ describe('Comet Native Skills', () => {
       expect(commands).not.toContain('receipt waive');
       expect(commands).not.toContain('--independent-review-receipt');
       expect(commands).not.toContain('--waiver');
+      expect(commands).not.toContain('comet native list');
+      expect(commands).not.toContain('--receipt <required-receipt-ref>');
+      expect(commands).not.toContain('--evidence-receipt');
+      expect(commands).not.toContain('--failure-category');
+      expect(commands).not.toContain('--failed-check');
 
       for (const provisioningDetail of [
         'trust keygen',
@@ -292,7 +296,7 @@ describe('Comet Native Skills', () => {
     expect(commands).toContain('不要按本节顺序逐条执行');
     expect(commands).toContain('`init` 不迁移已有 artifact root');
     expect(commands).toContain('`root move` 是事务性写操作');
-    expect(commands).toContain('无 change 名称的 `status` 与 `list` 都返回分页候选');
+    expect(commands).toContain('无 change 名称的 `status` 返回分页候选');
     expect(commands).toContain('`show` 返回 state、brief 和 proposed specs');
     expect(commands).toContain('`select` 只更新当前 Native selection，不改变 phase');
     expect(commands).toContain('只有确认没有对应 active change 时才运行 `new`');
@@ -317,7 +321,7 @@ describe('Comet Native Skills', () => {
     expect(englishCommands).toContain('`init` does not migrate an existing artifact root');
     expect(englishCommands).toContain('`root move` is a transactional write operation');
     expect(englishCommands).toContain(
-      'Both `status` and `list` without a change name return paginated candidates',
+      '`status` without a change name returns paginated candidates',
     );
     expect(englishCommands).toContain('`show` returns state, the brief, and proposed specs');
     expect(englishCommands).toContain(
@@ -340,6 +344,7 @@ describe('Comet Native Skills', () => {
 
     for (const content of [zhSkill, enSkill, zhCommands, enCommands]) {
       expect(content).not.toMatch(/waiver|independent.review|attestation|签名私钥|独立审核/iu);
+      expect(content).not.toMatch(/external.role|外部角色/iu);
     }
   });
 
@@ -347,6 +352,7 @@ describe('Comet Native Skills', () => {
     for (const language of ['en', 'zh'] as const) {
       const commands = await read(language, 'reference/commands.md');
       expect(commands).not.toContain('--responsible');
+      expect(commands).not.toMatch(/receipt manual[\s\S]{0,180}--confirmed/iu);
       expect(commands).not.toMatch(/\bresponsible\b|观察者标签|身份凭据/iu);
     }
   });

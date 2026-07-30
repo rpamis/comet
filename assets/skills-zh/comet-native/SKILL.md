@@ -40,7 +40,7 @@ comet native new <change-name> \
 确认当前 change 和 phase 后，再按需读取一份对应 reference：
 
 - 进入 Shape 时，必须先读取并执行[澄清参考](reference/clarification.md)。不得以“需求看起来明确”为由跳过；完成共享理解确认前，不得修改项目实现或推进到 Build。
-- 需要高级参数、receipt、partial scope 或外部角色交接命令时，读取[命令参考](reference/commands.md)。
+- 需要高级参数、receipt 或 partial scope 命令时，读取[命令参考](reference/commands.md)。
 - 需要编辑 brief、规格或 verification 时，读取[产物参考](reference/artifacts.md)。
 - 出现中断、失效证据、repair stop、冲突、锁或迁移问题时，读取[恢复参考](reference/recovery.md)。
 
@@ -118,7 +118,7 @@ comet native archive <change-name> --dry-run
 Shape、Build 和 Verify 的 transition 都会返回 `next: auto | manual`、`continuation.disposition: continue | await-user | blocked | done`、所需输入与下一步动作；Archive 不通过 `next` 推进，归档成功才返回 `done`。每次 transition 后按该 Runtime continuation 行动：
 
 - `continue`：重新读取 phase 和当前所需产物后继续；
-- `await-user`：等待确实属于用户或外部角色的输入；
+- `await-user`：等待确实需要用户决定或补充的输入；
 - `blocked`：处理 findings，必要时读取恢复参考；
 - `done`：change 已完成。
 

@@ -40,7 +40,7 @@ Use only the Native artifact root selected by project configuration.
 After confirming the current change and phase, read one corresponding reference on demand:
 
 - When entering Shape, you must first read and execute the [clarification reference](reference/clarification.md). Do not skip it because “the requirements look clear.” Do not modify project implementation or advance to Build until shared understanding is confirmed.
-- If you need advanced options, receipts, partial scope, or an external-role handoff command, read the [command reference](reference/commands.md).
+- If you need advanced options, receipts, or partial-scope commands, read the [command reference](reference/commands.md).
 - If you need to edit the brief, specifications, or verification report, read the [artifact reference](reference/artifacts.md).
 - If interruption, stale evidence, a repair stop, conflict, lock, or migration occurs, read the [recovery reference](reference/recovery.md).
 
@@ -118,7 +118,7 @@ Do not reuse an old preflight. If facts drift or a canonical conflict or unfinis
 Shape, Build, and Verify transitions return `next: auto | manual` together with `continuation.disposition: continue | await-user | blocked | done`, required inputs, and the next action. Archive does not advance through `next`; a successful archive returns `done`. After every transition, act on that Runtime continuation:
 
 - `continue`: reread the phase and currently required artifacts, then continue;
-- `await-user`: wait for input that genuinely belongs to the user or an external role;
+- `await-user`: wait for a decision or missing input that genuinely requires the user;
 - `blocked`: handle the findings and read the recovery reference when needed;
 - `done`: the change is complete.
 

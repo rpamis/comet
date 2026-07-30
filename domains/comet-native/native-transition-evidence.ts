@@ -11,15 +11,8 @@ export function nativeAdvanceEvidenceHash(evidence: NativeAdvanceEvidence): stri
       noCodeReason: evidence.noCodeReason ?? null,
       verificationResult: evidence.verificationResult ?? null,
       verificationReport: evidence.verificationReport ?? null,
-      verificationReceipt: evidence.verificationReceipt ?? null,
-      verificationReceiptRefs:
-        evidence.verificationReceiptRefs === undefined
-          ? null
-          : [...evidence.verificationReceiptRefs].sort(),
       allowPartialScopeHash: evidence.allowPartialScopeHash ?? null,
       partialReason: evidence.partialReason ?? null,
-      repairFailureCategories: [...(evidence.repairFailureCategories ?? [])].sort(),
-      repairFailedCheckIds: [...(evidence.repairFailedCheckIds ?? [])].sort(),
       repairOverrideSignature: evidence.repairOverrideSignature ?? null,
       repairOverrideSummary: evidence.repairOverrideSummary ?? null,
     }),

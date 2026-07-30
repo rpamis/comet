@@ -563,7 +563,7 @@ ${NATIVE_ACCEPTANCE_EVIDENCE_END_MARKER}`;
     ).toThrow('unknown field');
   });
 
-  it('requires either evidence refs or a skipped reason, but never both', () => {
+  it('requires passed evidence and lets failed entries use receipts, a reason, or both', () => {
     expect(() =>
       serializeNativeVerificationMachineBlock([
         {
@@ -574,16 +574,26 @@ ${NATIVE_ACCEPTANCE_EVIDENCE_END_MARKER}`;
       ]),
     ).toThrow('passed status requires evidence_refs');
 
-    expect(() =>
+    expect(
       serializeNativeVerificationMachineBlock([
         {
           acceptance_id: `acceptance-${'3'.repeat(64)}`,
           status: 'failed',
           evidence_refs: [receiptRef('f')],
-          skipped_reason: 'Not run.',
+          skipped_reason: 'The automated check failed.',
         },
       ]),
-    ).toThrow('failed status requires a skipped_reason and no evidence');
+    ).toContain(receiptRef('f'));
+
+    expect(() =>
+      serializeNativeVerificationMachineBlock([
+        {
+          acceptance_id: `acceptance-${'3'.repeat(64)}`,
+          status: 'failed',
+          evidence_refs: [],
+        },
+      ]),
+    ).toThrow('failed status requires evidence_refs or a skipped_reason');
   });
 
   it('rejects removed waived entries and waiver refs', () => {

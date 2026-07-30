@@ -1,6 +1,6 @@
 # Native Command Reference
 
-Read this file only when you need options not listed by the main Skill, receipts, partial scope, an external-role handoff, or recovery commands.
+Read this file only when you need options not listed by the main Skill, receipts, partial scope, or recovery commands.
 
 ## Project and change
 
@@ -34,12 +34,11 @@ An unfinished migration blocks other Native writes. Run read-only `doctor` first
 
 ```text
 comet native status [--cursor <token>]
-comet native list [--cursor <token>]
 comet native status <change-name> [--details [--acceptance-cursor <token>]]
 comet native show <change-name>
 ```
 
-Both `status` and `list` without a change name return paginated candidates; the entry flow prefers `status`. When multiple reasonable candidates remain, show the candidates and their phases to the user and ask them to choose. Do not guess.
+`status` without a change name returns paginated candidates. When multiple reasonable candidates remain, show the candidates and their phases to the user and ask them to choose. Do not guess.
 
 - `status <change-name>` returns the phase, revision, check summary, next command, and continuation. Add `--details` when findings, checkpoint details, or acceptance items are needed.
 - `show` returns state, the brief, and proposed specs. Use it only after identifying the target change to read requirements and specifications; it does not replace the phase and continuation check.
@@ -116,8 +115,7 @@ Manual observation:
 comet native receipt manual <change-name> \
   --acceptance <id> \
   --step <text> \
-  --observation <text> \
-  --confirmed
+  --observation <text>
 ```
 
 Create receipts only for commands or manual observations that actually occurred. Failed, skipped, blocked, or timed-out results cannot support pass.
@@ -132,10 +130,6 @@ comet native next <change-name> --summary <text> \
   [--allow-partial-scope <sha256> --partial-reason <text> --confirmed] \
   [--result pass|fail] \
   [--report <change-relative-path>] \
-  [--receipt <required-receipt-ref>] \
-  [--evidence-receipt <acceptance-receipt-ref>]... \
-  [--failure-category <token>]... \
-  [--failed-check <token>]... \
   [--override-repair <sha256> --override-summary <text>]
 
 comet native archive <change-name> --dry-run
@@ -145,7 +139,7 @@ comet native archive <change-name> --expect-preflight <sha256> [--confirmed]
 - Shape: pass `--confirmed` only after the user confirms the final shared understanding.
 - Build: provide a real `--artifact`; use `--no-code-reason` only when no project file changed.
 - Partial scope: explain the exact gaps and risks returned by the Runtime. Changes beyond the returned detail budget are summarized by a `scope-detail-overflow` count and content hash; use the matching scope hash, reason, and `--confirmed` only after the user accepts them.
-- Verify: provide `--result` and a complete report. For the standard report path, submit `comet native next <change-name> --summary <summary> --result pass|fail --report verification.md`; pass requires current receipts requested by the Runtime, and fail uses stable, non-sensitive failure categories and check IDs.
+- Verify: provide `--result` and a complete report. For the standard report path, submit `comet native next <change-name> --summary <summary> --result pass|fail --report verification.md`. On pass, the Runtime runs the built-in required check automatically. Acceptance entries in the report reference automated/manual receipts directly. Executed failures reference their failed receipts, while checks that were not run include a `skipped_reason`. The Runtime derives failed acceptance and check identifiers from the report and receipts.
 - Repair override: use only the signature returned by status and only for one explicit new repair hypothesis.
 - Archive: dry-run first, then use the exact preflight hash returned by that preview. `required` mode also requires explicit user confirmation.
 

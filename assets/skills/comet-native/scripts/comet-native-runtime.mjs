@@ -16418,7 +16418,7 @@ function portableEvidenceRef(value, label, nativeRootRef3) {
 function typedReceiptRef(value) {
   const reference = portableRef(value, "Verification typed receipt ref");
   if (!/^runtime\/evidence\/receipts\/[a-f0-9]{64}\.json$/u.test(reference)) {
-    throw new Error("Verification receipt ref must identify a typed v2 receipt");
+    throw new Error("Verification receipt ref must identify a typed v3 receipt");
   }
   return reference;
 }
@@ -16480,8 +16480,8 @@ function buildNativeAcceptanceEvidenceTrace(criteria, evidence, options) {
     }
     const rawSkippedReason = entry2.skipped_reason?.trim() || null;
     const skippedReason = rawSkippedReason === null ? null : requiredText(rawSkippedReason, `Skipped reason for ${criterion2.id}`);
-    if (status === "passed" && (evidenceRefs.length === 0 || skippedReason !== null) || status === "failed" && (evidenceRefs.length !== 0 || skippedReason === null)) {
-      throw new Error(`Acceptance ${criterion2.id} has an invalid v2 evidence state`);
+    if (status === "passed" && (evidenceRefs.length === 0 || skippedReason !== null) || status === "failed" && evidenceRefs.length === 0 && skippedReason === null) {
+      throw new Error(`Acceptance ${criterion2.id} has an invalid evidence state`);
     }
     return {
       acceptanceId: criterion2.id,
@@ -16671,7 +16671,7 @@ function parseNativeAcceptanceEvidenceTrace(value) {
       (reference) => typedReceiptRef(reference)
     );
     const status = entry2.status;
-    if (JSON.stringify(evidenceRefs) !== JSON.stringify([...new Set(evidenceRefs)].sort(compareText4)) || status === "passed" && (evidenceRefs.length === 0 || entry2.skippedReason !== null) || status === "failed" && (evidenceRefs.length > 0 || entry2.skippedReason === null) || status === "missing" && (evidenceRefs.length > 0 || entry2.skippedReason !== null)) {
+    if (JSON.stringify(evidenceRefs) !== JSON.stringify([...new Set(evidenceRefs)].sort(compareText4)) || status === "passed" && (evidenceRefs.length === 0 || entry2.skippedReason !== null) || status === "failed" && evidenceRefs.length === 0 && entry2.skippedReason === null || status === "missing" && (evidenceRefs.length > 0 || entry2.skippedReason !== null)) {
       throw new Error(`Native acceptance trace entry ${index} evidence state is invalid`);
     }
     return {
@@ -17489,8 +17489,18 @@ function nativeArtifactBindingHash(declaredArtifacts) {
     )
   );
 }
-function nativeBlockedCheckId(receipt) {
-  return `receipt:${hash4(receipt.receiptHash, "Native blocked receipt hash")}`;
+function nativeFailedCheckId(receipt) {
+  if (receipt.kind === "static-inspection") return `static:${receipt.evidence.rule}`;
+  if (receipt.kind === "automated-check") {
+    return `automated:${canonicalHash("comet.native.failed-check.v1", {
+      executable: receipt.evidence.executable,
+      args: receipt.evidence.args,
+      acceptanceIds: receipt.acceptanceIds
+    })}`;
+  }
+  return `manual:${canonicalHash("comet.native.failed-check.v1", {
+    acceptanceIds: receipt.acceptanceIds
+  })}`;
 }
 
 // domains/comet-native/native-evidence-storage.ts
@@ -17936,7 +17946,6 @@ var NATIVE_REPAIR_STAGNATION_LIMITS = {
   warningAtConsecutiveFailures: 2,
   manualStopAtConsecutiveFailures: 3,
   maxHistoryRecords: 64,
-  maxCategories: 16,
   maxFailedAcceptanceIds: 1024,
   maxFailedCheckIds: 128,
   maxOverrideSummaryCharacters: 2e3
@@ -17974,39 +17983,27 @@ function normalizedTokens(values, label, max, allowEmpty) {
   });
   return [...new Set(tokens)].sort(compareText5);
 }
-function normalizeNativeRepairFailureTokens(options) {
-  const categories = options.categories && options.categories.length > 0 ? options.categories : ["verification-failed"];
-  return {
-    categories: normalizedTokens(
-      categories,
-      "Native repair categories",
-      NATIVE_REPAIR_STAGNATION_LIMITS.maxCategories,
-      false
-    ),
-    failedCheckIds: normalizedTokens(
-      options.failedCheckIds ?? [],
-      "Native repair failed check IDs",
-      NATIVE_REPAIR_STAGNATION_LIMITS.maxFailedCheckIds,
-      true
-    )
-  };
+function normalizeNativeRepairFailedCheckIds(values = []) {
+  return normalizedTokens(
+    values,
+    "Native repair failed check IDs",
+    NATIVE_REPAIR_STAGNATION_LIMITS.maxFailedCheckIds,
+    true
+  );
 }
 function buildNativeRepairSignature(facts) {
-  const tokens = normalizeNativeRepairFailureTokens(facts);
+  const failedCheckIds = normalizeNativeRepairFailedCheckIds(facts.failedCheckIds);
   const failedAcceptanceIds2 = normalizedTokens(
     facts.failedAcceptanceIds,
     "Native repair failed acceptance IDs",
     NATIVE_REPAIR_STAGNATION_LIMITS.maxFailedAcceptanceIds,
     true
   );
-  if (failedAcceptanceIds2.length === 0 && tokens.failedCheckIds.length === 0) {
-    throw new Error("Native repair failure must identify an acceptance or check gap");
-  }
   const content = {
     schema: NATIVE_REPAIR_SIGNATURE_SCHEMA,
     contractHash: hash5(facts.contractHash, "Native repair contract hash"),
     failedAcceptanceIds: failedAcceptanceIds2,
-    failedCheckIds: tokens.failedCheckIds
+    failedCheckIds
   };
   return {
     ...content,
@@ -18422,9 +18419,7 @@ function parseNativeRepairTrajectoryProjection(value) {
   }
   const contractHash = hash6(projection.contractHash, "Native repair trajectory contract hash");
   const normalizedFailedAcceptanceIds = failedAcceptanceIds(projection.failedAcceptanceIds);
-  const failedCheckIds = normalizeNativeRepairFailureTokens({
-    failedCheckIds: projection.failedCheckIds
-  }).failedCheckIds;
+  const failedCheckIds = normalizeNativeRepairFailedCheckIds(projection.failedCheckIds);
   if (!Number.isSafeInteger(projection.maxVerifyFailures) || projection.maxVerifyFailures < 1) {
     throw new Error("Native repair trajectory maximum Verify failures is invalid");
   }
@@ -18631,17 +18626,12 @@ function nativeRepairFailureFacts(input) {
   if (envelope.contractHash !== bundle.scope.contractHash || envelope.implementationScopeHash !== bundle.scope.scopeHash) {
     throw new Error("Native repair evidence does not match the implementation scope authority");
   }
-  const tokens = normalizeNativeRepairFailureTokens({
-    categories: input.categories,
-    failedCheckIds: input.failedCheckIds
-  });
   return {
     contractHash: bundle.scope.contractHash,
     implementationScopeHash: nativeRepairScopeHash(bundle),
     artifactSnapshotHash: bundle.scope.currentProjectionHash,
-    categories: tokens.categories,
     failedAcceptanceIds: envelope.acceptanceTrace.entries.filter((entry2) => entry2.status === "failed" || entry2.status === "missing").map((entry2) => entry2.acceptanceId).sort(compareText6),
-    failedCheckIds: tokens.failedCheckIds
+    failedCheckIds: normalizeNativeRepairFailedCheckIds(input.failedCheckIds)
   };
 }
 function projectionForDecision(decision, overrideSummaryHash) {
@@ -18782,12 +18772,8 @@ function nativeAdvanceEvidenceHash(evidence) {
       noCodeReason: evidence.noCodeReason ?? null,
       verificationResult: evidence.verificationResult ?? null,
       verificationReport: evidence.verificationReport ?? null,
-      verificationReceipt: evidence.verificationReceipt ?? null,
-      verificationReceiptRefs: evidence.verificationReceiptRefs === void 0 ? null : [...evidence.verificationReceiptRefs].sort(),
       allowPartialScopeHash: evidence.allowPartialScopeHash ?? null,
       partialReason: evidence.partialReason ?? null,
-      repairFailureCategories: [...evidence.repairFailureCategories ?? []].sort(),
-      repairFailedCheckIds: [...evidence.repairFailedCheckIds ?? []].sort(),
       repairOverrideSignature: evidence.repairOverrideSignature ?? null,
       repairOverrideSummary: evidence.repairOverrideSummary ?? null
     })
@@ -20025,9 +20011,9 @@ function validateEvidenceEntries(value) {
     if (status === "passed" && evidenceRefs.length === 0) {
       throw new Error(`Acceptance evidence ${acceptanceId2} passed status requires evidence_refs`);
     }
-    if (status === "failed" && (evidenceRefs.length > 0 || skippedReason === void 0)) {
+    if (status === "failed" && evidenceRefs.length === 0 && skippedReason === void 0) {
       throw new Error(
-        `Acceptance evidence ${acceptanceId2} failed status requires a skipped_reason and no evidence`
+        `Acceptance evidence ${acceptanceId2} failed status requires evidence_refs or a skipped_reason`
       );
     }
     if (status === "passed" && skippedReason !== void 0) {
@@ -20290,6 +20276,7 @@ async function collectNativeContractFiles(options) {
 // domains/comet-native/native-verification-receipt-runtime.ts
 import { execFile, spawn as spawn3 } from "node:child_process";
 import { createHash as createHash14 } from "node:crypto";
+import { existsSync } from "node:fs";
 import path32 from "node:path";
 import { promisify } from "node:util";
 
@@ -21092,6 +21079,102 @@ var MAX_NATIVE_AUTOMATED_COMMAND_TIMEOUT_MS = 60 * 60 * 1e3;
 var AUTOMATED_COMMAND_TERMINATION_WAIT_MS = 4e3;
 var NATIVE_MANUAL_EVIDENCE_ACTOR = "native-runtime:manual-evidence";
 var execFileAsync = promisify(execFile);
+var WINDOWS_SHIM_EXTENSIONS = /* @__PURE__ */ new Set([".bat", ".cmd", ".ps1"]);
+var WINDOWS_POWERSHELL_SCRIPT = [
+  "$ProgressPreference = 'SilentlyContinue'",
+  "$encoded = $env:COMET_NATIVE_COMMAND_PAYLOAD",
+  "Remove-Item Env:COMET_NATIVE_COMMAND_PAYLOAD -ErrorAction SilentlyContinue",
+  "$json = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($encoded))",
+  "$payload = ConvertFrom-Json $json",
+  "$commandArgs = @($payload.arguments)",
+  "& $payload.command @commandArgs",
+  "if ($null -eq $LASTEXITCODE) { if ($?) { exit 0 } else { exit 1 } }",
+  "exit $LASTEXITCODE"
+].join("; ");
+function windowsExecutableExtensions(env) {
+  const configured = (env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").map((extension) => extension.trim().toLowerCase()).filter(Boolean);
+  return [.../* @__PURE__ */ new Set([...configured, ".ps1"])];
+}
+function windowsCommandCandidates(command, env, cwd) {
+  const hasPath = path32.win32.isAbsolute(command) || /[\\/]/u.test(command);
+  const directories = hasPath ? [""] : (env.PATH ?? "").split(path32.delimiter).map((directory) => directory.trim().replace(/^"(.*)"$/u, "$1")).filter(Boolean);
+  const extension = path32.win32.extname(command);
+  const names = extension ? [command] : windowsExecutableExtensions(env).map((candidate) => `${command}${candidate}`);
+  return directories.flatMap(
+    (directory) => names.map((name) => directory ? path32.join(directory, name) : path32.resolve(cwd, name))
+  );
+}
+function resolveWindowsCommand(command, env, cwd) {
+  return windowsCommandCandidates(command, env, cwd).find((candidate) => existsSync(candidate)) ?? command;
+}
+function powershellExecutable(env) {
+  const systemRoot = env.SYSTEMROOT ?? env.SystemRoot;
+  if (systemRoot) {
+    const bundled = path32.join(
+      systemRoot,
+      "System32",
+      "WindowsPowerShell",
+      "v1.0",
+      "powershell.exe"
+    );
+    if (existsSync(bundled)) return bundled;
+  }
+  return "powershell.exe";
+}
+function spawnWindowsShim(command, args, options) {
+  const payload = Buffer.from(JSON.stringify({ command, arguments: [...args] }), "utf8").toString(
+    "base64"
+  );
+  const encodedScript = Buffer.from(WINDOWS_POWERSHELL_SCRIPT, "utf16le").toString("base64");
+  return spawn3(
+    powershellExecutable(options.env),
+    [
+      "-NoLogo",
+      "-NoProfile",
+      "-NonInteractive",
+      "-InputFormat",
+      "None",
+      "-OutputFormat",
+      "Text",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-EncodedCommand",
+      encodedScript
+    ],
+    {
+      cwd: options.cwd,
+      env: { ...options.env, COMET_NATIVE_COMMAND_PAYLOAD: payload },
+      shell: false,
+      windowsHide: true,
+      detached: false,
+      stdio: ["ignore", "pipe", "pipe"]
+    }
+  );
+}
+function spawnNativeVerificationCommand(command, args, options) {
+  if (process.platform !== "win32") {
+    return spawn3(command, [...args], {
+      cwd: options.cwd,
+      env: options.env,
+      shell: false,
+      windowsHide: true,
+      detached: true,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+  }
+  const resolved = resolveWindowsCommand(command, options.env, options.cwd);
+  if (WINDOWS_SHIM_EXTENSIONS.has(path32.win32.extname(resolved).toLowerCase())) {
+    return spawnWindowsShim(resolved, args, options);
+  }
+  return spawn3(resolved, [...args], {
+    cwd: options.cwd,
+    env: options.env,
+    shell: false,
+    windowsHide: true,
+    detached: false,
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+}
 async function withNativeReceiptIssuanceLock(options) {
   return withNativeMutationLock(
     options.paths,
@@ -21191,9 +21274,6 @@ async function issueNativeManualEvidenceReceipt(options) {
   });
 }
 async function issueNativeManualEvidenceReceiptLocked(options) {
-  if (!options.confirmed) {
-    throw new Error("Native manual evidence issuance requires explicit confirmation");
-  }
   const context = await loadNativeVerificationReceiptContext(options.paths, options.state);
   const receipt = buildNativeVerificationReceipt({
     kind: "manual-evidence",
@@ -21276,42 +21356,6 @@ async function gitWorktreeIdentity(projectRoot) {
     return { provider: "none", root: ".", commit: null };
   }
 }
-function sanitizedAutomatedCommandEnvironment() {
-  const allowed = /* @__PURE__ */ new Set([
-    "APPDATA",
-    "CI",
-    "COMSPEC",
-    "COMMONPROGRAMFILES",
-    "COMMONPROGRAMFILES(X86)",
-    "HOME",
-    "HOMEDRIVE",
-    "HOMEPATH",
-    "LANG",
-    "LC_ALL",
-    "LC_CTYPE",
-    "LOCALAPPDATA",
-    "NUMBER_OF_PROCESSORS",
-    "PATH",
-    "PATHEXT",
-    "PROCESSOR_ARCHITECTURE",
-    "PROGRAMDATA",
-    "PROGRAMFILES",
-    "PROGRAMFILES(X86)",
-    "SYSTEMDRIVE",
-    "SYSTEMROOT",
-    "TEMP",
-    "TERM",
-    "TMP",
-    "TMPDIR",
-    "USERPROFILE",
-    "WINDIR"
-  ]);
-  return Object.fromEntries(
-    Object.entries(process.env).filter(
-      ([name, value]) => value !== void 0 && allowed.has(name.toUpperCase())
-    )
-  );
-}
 async function issueNativeAutomatedCheckReceipt(options) {
   return withNativeReceiptIssuanceLock({
     paths: options.paths,
@@ -21335,13 +21379,9 @@ async function issueNativeAutomatedCheckReceiptLocked(options) {
   let totalOutputBytes = 0;
   const outputHasher = createHash14("sha256");
   let timedOut = false;
-  const child = spawn3(options.command, [...options.args], {
+  const child = spawnNativeVerificationCommand(options.command, options.args, {
     cwd: options.paths.projectRoot,
-    env: sanitizedAutomatedCommandEnvironment(),
-    shell: false,
-    windowsHide: true,
-    detached: process.platform !== "win32",
-    stdio: ["ignore", "pipe", "pipe"]
+    env: { ...process.env }
   });
   const collect = (chunk) => {
     outputHasher.update(chunk);
@@ -21446,7 +21486,7 @@ async function issueNativeAutomatedCheckReceiptLocked(options) {
       },
       outputHash: outputHasher.digest("hex"),
       outputSummary: boundedText2(
-        summary || `(exit ${outcome.exitCode})`,
+        redactNativeCredentialText(summary || `(exit ${outcome.exitCode})`),
         "Native command output summary"
       ),
       outputTruncated: totalOutputBytes > outputBytes
@@ -21645,18 +21685,11 @@ async function validateCurrentReceiptGraph(options) {
     }
   }
   for (const entry2 of options.trace.entries) {
-    if (entry2.status === "failed" || entry2.status === "missing") {
-      if (options.result === "pass") {
-        throw new Error(
-          "Native passing verification cannot include failed or missing acceptance criteria"
-        );
-      }
-      continue;
-    }
+    if (entry2.status === "missing") continue;
     for (const ref of entry2.evidenceRefs) {
       const receipt = await validateTypedReceipt({
         ...options,
-        result: "pass",
+        result: entry2.status === "passed" ? "pass" : "fail",
         ref,
         expectedBindings,
         acceptanceId: entry2.acceptanceId,
@@ -21665,11 +21698,11 @@ async function validateCurrentReceiptGraph(options) {
       if (receipt.kind !== "automated-check" && receipt.kind !== "manual-evidence") {
         throw new Error("Native acceptance evidence must be automated-check or manual-evidence");
       }
+      if (entry2.status === "failed" && receipt.status === "passed") {
+        throw new Error("Native failed acceptance evidence must reference a non-passing receipt");
+      }
     }
   }
-}
-function sortedRefs(refs) {
-  return [...refs ?? []].sort();
 }
 async function inspectNativeVerificationEvidence(options) {
   if (options.state.phase !== "verify") {
@@ -21730,9 +21763,6 @@ async function inspectNativeVerificationEvidence(options) {
     partialAllowance: options.state.partial_allowance && allowance ? { ref: options.state.partial_allowance, allowance } : null,
     now: options.now
   });
-  if (options.receiptRefs !== void 0 && JSON.stringify(sortedRefs(options.receiptRefs)) !== JSON.stringify(envelope.receiptRefs)) {
-    throw new Error("Native verification receipt refs do not exactly match the report");
-  }
   const evidenceRef = nativeEvidenceRef("verifications", envelope.envelopeHash);
   return {
     ready: true,
@@ -24564,19 +24594,19 @@ function projectNativeRepairDecision(result2) {
     overrideAccepted: result2.decision.overrideAccepted
   };
 }
-function nativeRepairFailedCheckIdsFromReceipts(receipts, supplied = []) {
-  return normalizeNativeRepairFailureTokens({
-    failedCheckIds: [
-      ...supplied,
-      ...receipts.filter((receipt) => receipt.role === "required-check" && receipt.status !== "passed").map((receipt) => nativeBlockedCheckId(receipt))
-    ]
-  }).failedCheckIds;
+function nativeRepairFailedCheckIdsFromReceipts(receipts) {
+  return normalizeNativeRepairFailedCheckIds(
+    receipts.filter((receipt) => receipt.status !== "passed").map((receipt) => nativeFailedCheckId(receipt))
+  );
 }
 async function inspectNativeRepairFailureForTransition(options) {
   if (!options.state.implementation_scope) {
     throw new Error("Native repair failure has no implementation scope");
   }
-  const [committed, implementationScope, requiredReceipts] = await Promise.all([
+  const receiptRefs = [
+    .../* @__PURE__ */ new Set([...options.envelope.requiredReceiptRefs, ...options.envelope.receiptRefs])
+  ];
+  const [committed, implementationScope, receipts] = await Promise.all([
     readNativeCommittedRepairTrajectory(options.paths, options.state),
     readNativeImplementationScopeBundle(
       options.paths,
@@ -24584,21 +24614,17 @@ async function inspectNativeRepairFailureForTransition(options) {
       options.state.implementation_scope
     ),
     Promise.all(
-      options.envelope.requiredReceiptRefs.map(
+      receiptRefs.map(
         (ref) => readNativeVerificationReceipt(options.paths, options.state.name, ref)
       )
     )
   ]);
-  const failedCheckIds = nativeRepairFailedCheckIdsFromReceipts(
-    requiredReceipts,
-    options.failedCheckIds
-  );
+  const failedCheckIds = nativeRepairFailedCheckIdsFromReceipts(receipts);
   return inspectNativeRepairFailure({
     ...committed,
     envelope: options.envelope,
     implementationScope,
     maxVerifyFailures: options.maxVerifyFailures,
-    ...options.categories ? { categories: options.categories } : {},
     ...failedCheckIds.length > 0 ? { failedCheckIds } : {}
   });
 }
@@ -29614,7 +29640,7 @@ async function persistNativeBuildEvidence(options) {
 
 // domains/comet-native/native-transitions.ts
 function hasEvidenceRetreatExtras(evidence) {
-  return evidence.confirmed !== void 0 || evidence.artifacts !== void 0 || evidence.noCodeReason !== void 0 || evidence.allowPartialScopeHash !== void 0 || evidence.partialReason !== void 0 || evidence.verificationResult !== void 0 || evidence.verificationReport !== void 0 || evidence.verificationReceipt !== void 0 || evidence.verificationReceiptRefs !== void 0 || evidence.repairFailureCategories !== void 0 || evidence.repairFailedCheckIds !== void 0 || evidence.repairOverrideSignature !== void 0 || evidence.repairOverrideSummary !== void 0;
+  return evidence.confirmed !== void 0 || evidence.artifacts !== void 0 || evidence.noCodeReason !== void 0 || evidence.allowPartialScopeHash !== void 0 || evidence.partialReason !== void 0 || evidence.verificationResult !== void 0 || evidence.verificationReport !== void 0 || evidence.repairOverrideSignature !== void 0 || evidence.repairOverrideSummary !== void 0;
 }
 function repairFinding(decision) {
   if (decision.reasonCode === "override-already-used") {
@@ -29645,12 +29671,6 @@ function validateNativeAdvanceEvidence(evidence) {
   if (evidence.noCodeReason !== void 0) {
     assertNativeTrajectoryText(evidence.noCodeReason, "Native transition no-code reason");
   }
-  if (evidence.repairFailureCategories !== void 0 || evidence.repairFailedCheckIds !== void 0) {
-    normalizeNativeRepairFailureTokens({
-      categories: evidence.repairFailureCategories,
-      failedCheckIds: evidence.repairFailedCheckIds
-    });
-  }
   if (evidence.repairOverrideSignature !== void 0 && !/^[a-f0-9]{64}$/u.test(evidence.repairOverrideSignature)) {
     throw new Error("Native repair override signature must be a SHA-256 hash");
   }
@@ -29668,10 +29688,6 @@ function normalizeNativeAdvanceEvidence(evidence) {
   };
 }
 function validateRepairEvidence(state, evidence) {
-  const hasFailureFacts = evidence.repairFailureCategories !== void 0 || evidence.repairFailedCheckIds !== void 0;
-  if (hasFailureFacts && (state.phase !== "verify" || evidence.verificationResult !== "fail")) {
-    throw new Error("Native repair failure facts are only valid for a failed Verify outcome");
-  }
   const hasOverrideSignature = evidence.repairOverrideSignature !== void 0;
   const hasOverrideSummary = evidence.repairOverrideSummary !== void 0;
   if (hasOverrideSignature !== hasOverrideSummary) {
@@ -30035,14 +30051,13 @@ async function advanceNativeChangeLocked(options) {
     }
     repairEventProjection = repairGuard.eventProjection;
   }
-  const verificationReceipt = state.phase === "verify" && options.evidence.verificationResult === "pass" && !options.evidence.verificationReceipt ? (await checkNativeChangeLocked({ paths: options.paths, name: state.name })).ref : options.evidence.verificationReceipt ?? null;
+  const verificationReceipt = state.phase === "verify" && options.evidence.verificationResult === "pass" ? (await checkNativeChangeLocked({ paths: options.paths, name: state.name })).ref : null;
   const verificationEvidence = state.phase === "verify" ? await inspectNativeVerificationEvidence({
     paths: options.paths,
     state: candidate,
     result: options.evidence.verificationResult,
     reportRef: options.evidence.verificationReport,
     receiptRef: verificationReceipt,
-    receiptRefs: options.evidence.verificationReceiptRefs,
     now: options.now
   }) : null;
   if (verificationEvidence && !verificationEvidence.ready) {
@@ -30073,9 +30088,7 @@ async function advanceNativeChangeLocked(options) {
       paths: options.paths,
       state,
       envelope: verificationEvidence.envelope,
-      maxVerifyFailures: options.maxVerifyFailures,
-      ...options.evidence.repairFailureCategories ? { categories: options.evidence.repairFailureCategories } : {},
-      ...options.evidence.repairFailedCheckIds ? { failedCheckIds: options.evidence.repairFailedCheckIds } : {}
+      maxVerifyFailures: options.maxVerifyFailures
     });
     repairEventProjection = repairResult.eventProjection;
     repairScopeHashForEvent = repairResult.facts.implementationScopeHash;
@@ -30486,16 +30499,15 @@ Commands:
   new <change-name> [--language en|zh-CN]
   spec remove <change-name> <capability>
   spec rebase <change-name> --summary <text>
-  list [--cursor <token>]
   show <change-name>
   status [<change-name>] [--cursor <token>] [--details [--acceptance-cursor <token>]]
   select <change-name>
   checkpoint <change-name> --summary <text> --next-action <text> [--artifact <project-relative>] [--expect-revision <n>]
   check <change-name>
   evidence format [--entries <path>]
-  receipt manual <change-name> --acceptance <id> --step <text> --observation <text> --confirmed
+  receipt manual <change-name> --acceptance <id> --step <text> --observation <text>
   receipt automated <change-name> --acceptance <id> [--timeout-ms <n>] -- <executable> [args...]
-  next <change-name> --summary <text> [--confirmed] [--artifact <path>] [--no-code-reason <text>] [--allow-partial-scope <sha256> --partial-reason <text>] [--result pass|fail] [--report <path>] [--receipt <required-ref>] [--evidence-receipt <ref>] [--failure-category <token>] [--failed-check <token>] [--override-repair <sha256> --override-summary <text>]
+  next <change-name> --summary <text> [--confirmed] [--artifact <path>] [--no-code-reason <text>] [--allow-partial-scope <sha256> --partial-reason <text>] [--result pass|fail] [--report <path>] [--override-repair <sha256> --override-summary <text>]
   archive <change-name> --dry-run
   archive <change-name> --expect-preflight <sha256> [--confirmed]
   doctor [<change-name>] [--repair] [--strategy continue|rollback]
@@ -30772,17 +30784,6 @@ async function dispatch(rawArgs, explicitProjectRoot) {
     }
     throw new NativeUsageError(`Unknown spec command: ${subcommand}`);
   }
-  if (command === "list") {
-    const cursor = takeOption(rawArgs, "--cursor");
-    assertNoArguments(rawArgs);
-    const { config, paths } = await configuredPaths(projectRoot);
-    const page = await listNativeStatusPage(paths, {
-      ...cursor ? { cursor } : {},
-      clarificationMode: config.native.clarification_mode,
-      maxVerifyFailures: config.native.max_verify_failures
-    });
-    return success("list", page);
-  }
   if (command === "show") {
     const name = requiredPositional(rawArgs, "change name");
     assertNoArguments(rawArgs);
@@ -30970,15 +30971,13 @@ async function dispatch(rawArgs, explicitProjectRoot) {
       const acceptanceIds = takeMany(rawArgs, "--acceptance");
       const steps = takeMany(rawArgs, "--step");
       const observations = takeMany(rawArgs, "--observation");
-      const confirmed = takeFlag(rawArgs, "--confirmed");
       assertNoArguments(rawArgs);
       const issued = await issueNativeManualEvidenceReceipt({
         paths,
         name,
         acceptanceIds,
         steps,
-        observations,
-        confirmed
+        observations
       });
       return success("receipt manual", issued, `Native manual receipt: ${issued.ref}
 `);
@@ -31028,11 +31027,6 @@ async function dispatch(rawArgs, explicitProjectRoot) {
     const partialReason = takeOption(rawArgs, "--partial-reason");
     const verificationResult = takeOption(rawArgs, "--result");
     const verificationReport = takeOption(rawArgs, "--report");
-    const verificationReceipt = takeOption(rawArgs, "--receipt");
-    const hasVerificationReceiptRefs = rawArgs.includes("--evidence-receipt");
-    const verificationReceiptRefs = takeMany(rawArgs, "--evidence-receipt");
-    const repairFailureCategories = takeMany(rawArgs, "--failure-category");
-    const repairFailedCheckIds = takeMany(rawArgs, "--failed-check");
     const repairOverrideSignature = takeOption(rawArgs, "--override-repair");
     const repairOverrideSummary = takeOption(rawArgs, "--override-summary");
     if (verificationResult !== void 0 && verificationResult !== "pass" && verificationResult !== "fail") {
@@ -31048,15 +31042,6 @@ async function dispatch(rawArgs, explicitProjectRoot) {
     }
     if (allowPartialScopeHash && !confirmed) {
       throw new NativeUsageError("--allow-partial-scope requires --confirmed");
-    }
-    if ((repairFailureCategories.length > 0 || repairFailedCheckIds.length > 0) && verificationResult !== "fail") {
-      throw new NativeUsageError("--failure-category and --failed-check require --result fail");
-    }
-    if (verificationReceipt && verificationResult === void 0) {
-      throw new NativeUsageError("--receipt requires --result");
-    }
-    if (verificationReceiptRefs.length > 0 && verificationResult === void 0) {
-      throw new NativeUsageError("--evidence-receipt requires --result");
     }
     if (repairOverrideSignature === void 0 !== (repairOverrideSummary === void 0)) {
       throw new NativeUsageError(
@@ -31080,12 +31065,6 @@ async function dispatch(rawArgs, explicitProjectRoot) {
       ...partialReason ? { partialReason } : {},
       ...verificationResult ? { verificationResult } : {},
       ...verificationReport ? { verificationReport } : {},
-      ...verificationReceipt ? { verificationReceipt } : {},
-      ...verificationResult && hasVerificationReceiptRefs ? {
-        verificationReceiptRefs
-      } : {},
-      ...repairFailureCategories.length > 0 ? { repairFailureCategories } : {},
-      ...repairFailedCheckIds.length > 0 ? { repairFailedCheckIds } : {},
       ...repairOverrideSignature ? { repairOverrideSignature } : {},
       ...repairOverrideSummary ? { repairOverrideSummary } : {}
     };
@@ -31256,7 +31235,7 @@ function errorResult(command, error) {
         policyHash: error.policyHash,
         configPath: ".comet/config.yaml",
         supportedFixes: [
-          "increase native.snapshot.max_total_bytes or native.snapshot.max_duration_ms",
+          "increase native.snapshot.max_files, native.snapshot.max_total_bytes, or native.snapshot.max_duration_ms",
           "add an explicit native.snapshot.exclude pattern for data outside implementation scope"
         ],
         requiredAction: "resolve-native-baseline"

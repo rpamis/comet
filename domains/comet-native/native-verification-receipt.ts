@@ -467,8 +467,16 @@ export function nativeVerificationReceiptRef(hashValue: string): string {
   return `runtime/evidence/receipts/${hash(hashValue, 'Native verification receipt hash')}.json`;
 }
 
-export function nativeBlockedCheckId(
-  receipt: Pick<NativeVerificationReceipt, 'receiptHash'>,
-): string {
-  return `receipt:${hash(receipt.receiptHash, 'Native blocked receipt hash')}`;
+export function nativeFailedCheckId(receipt: NativeVerificationReceipt): string {
+  if (receipt.kind === 'static-inspection') return `static:${receipt.evidence.rule}`;
+  if (receipt.kind === 'automated-check') {
+    return `automated:${canonicalHash('comet.native.failed-check.v1', {
+      executable: receipt.evidence.executable,
+      args: receipt.evidence.args,
+      acceptanceIds: receipt.acceptanceIds,
+    })}`;
+  }
+  return `manual:${canonicalHash('comet.native.failed-check.v1', {
+    acceptanceIds: receipt.acceptanceIds,
+  })}`;
 }

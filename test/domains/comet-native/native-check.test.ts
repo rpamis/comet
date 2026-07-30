@@ -182,11 +182,8 @@ describe('Native check public seam', () => {
     );
   });
 
-  it('binds a fresh public check receipt into the Verify envelope', async () => {
+  it('runs and binds a fresh required check when Verify passes', async () => {
     const { paths, changeDir } = await prepareVerifyChange();
-    const checked = json(await runNativeCli(['check', name, '--json', ...projectArgs()]));
-    expect(checked.exitCode).toBe(0);
-    const receiptRef = checked.data!.ref as string;
     await fs.writeFile(
       path.join(changeDir, 'verification.md'),
       await nativeVerificationFixtureReport({ paths, name }),
@@ -202,8 +199,6 @@ describe('Native check public seam', () => {
         'pass',
         '--report',
         'verification.md',
-        '--receipt',
-        receiptRef,
         '--json',
         ...projectArgs(),
       ]),
@@ -215,7 +210,9 @@ describe('Native check public seam', () => {
       name,
       state.verification_evidence!,
     );
-    expect(envelope.requiredReceiptRefs).toContain(receiptRef);
+    expect(envelope.requiredReceiptRefs).toEqual([
+      expect.stringMatching(/^runtime\/evidence\/receipts\/[a-f0-9]{64}\.json$/u),
+    ]);
   });
 
   it('returns CLI exit 1 and persists bounded text issues without changing workflow state', async () => {

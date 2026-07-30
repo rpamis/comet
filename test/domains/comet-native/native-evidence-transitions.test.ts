@@ -21,10 +21,7 @@ import {
 import { NATIVE_LEGACY_RUNTIME_IDENTITIES } from '../../../domains/comet-native/native-runtime-package.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
 import { inspectNativeVerificationFreshness } from '../../../domains/comet-native/native-verification-runtime.js';
-import {
-  nativeVerificationFixtureReceipt,
-  nativeVerificationFixtureReport,
-} from '../../helpers/native-verification.js';
+import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
 import { advanceNativeChange } from '../../helpers/native-confirmed-transition.js';
 
 const brief = `# Outcome
@@ -138,10 +135,6 @@ describe('Native evidence-bound phase transitions', () => {
         summary: 'The focused evidence passed.',
         verificationResult: 'pass',
         verificationReport: 'verification.md',
-        verificationReceipt: await nativeVerificationFixtureReceipt({
-          paths,
-          name: 'evidence-change',
-        }),
       },
     });
     expect(verified.change).toMatchObject({
@@ -316,10 +309,6 @@ describe('Native evidence-bound phase transitions', () => {
         summary: 'This transition must fail before evidence persistence.',
         verificationResult: 'pass',
         verificationReport: 'verification.md',
-        verificationReceipt: await nativeVerificationFixtureReceipt({
-          paths,
-          name: 'evidence-change',
-        }),
       },
     });
     expect(blocked).toMatchObject({
@@ -373,10 +362,6 @@ describe('Native evidence-bound phase transitions', () => {
           summary: 'This transition must stop on the invalid trajectory.',
           verificationResult: 'pass',
           verificationReport: 'verification.md',
-          verificationReceipt: await nativeVerificationFixtureReceipt({
-            paths,
-            name: 'evidence-change',
-          }),
         },
       }),
     ).rejects.toThrow('Native trajectory is invalid');
@@ -403,10 +388,6 @@ describe('Native evidence-bound phase transitions', () => {
         summary: 'Verification passed.',
         verificationResult: 'pass',
         verificationReport: 'verification.md',
-        verificationReceipt: await nativeVerificationFixtureReceipt({
-          paths,
-          name: 'evidence-change',
-        }),
       },
     });
 
@@ -520,10 +501,6 @@ describe('Native evidence-bound phase transitions', () => {
           summary: 'The accepted partial scope passed.',
           verificationResult: 'pass',
           verificationReport: 'verification.md',
-          verificationReceipt: await nativeVerificationFixtureReceipt({
-            paths,
-            name: 'evidence-change',
-          }),
         },
       }),
     ).resolves.toMatchObject({

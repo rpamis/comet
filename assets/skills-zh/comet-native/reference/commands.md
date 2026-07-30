@@ -1,6 +1,6 @@
 # Native 命令参考
 
-只在需要主 Skill 未列出的参数、receipt、partial scope、外部角色交接或恢复命令时读取本文件。
+只在需要主 Skill 未列出的参数、receipt、partial scope 或恢复命令时读取本文件。
 
 ## 项目与 change
 
@@ -34,12 +34,11 @@ comet native root move <artifact-root>
 
 ```text
 comet native status [--cursor <token>]
-comet native list [--cursor <token>]
 comet native status <change-name> [--details [--acceptance-cursor <token>]]
 comet native show <change-name>
 ```
 
-无 change 名称的 `status` 与 `list` 都返回分页候选；入口流程优先使用 `status`。存在多个合理候选时，把候选及 phase 展示给用户选择，不要猜测。
+无 change 名称的 `status` 返回分页候选。存在多个合理候选时，把候选及 phase 展示给用户选择，不要猜测。
 
 - `status <change-name>` 返回 phase、revision、检查摘要、下一条命令和 continuation；需要 findings、checkpoint 细节或 acceptance 时加 `--details`。
 - `show` 返回 state、brief 和 proposed specs；只在已经确定目标 change 后使用它读取需求与规格，不用它代替 phase/continuation 检查。
@@ -116,8 +115,7 @@ comet native receipt automated <change-name> \
 comet native receipt manual <change-name> \
   --acceptance <id> \
   --step <text> \
-  --observation <text> \
-  --confirmed
+  --observation <text>
 ```
 
 只为真实执行的命令或人工观察生成 receipt。失败、跳过、阻塞或超时结果不能作为 pass。
@@ -132,10 +130,6 @@ comet native next <change-name> --summary <text> \
   [--allow-partial-scope <sha256> --partial-reason <text> --confirmed] \
   [--result pass|fail] \
   [--report <change-relative-path>] \
-  [--receipt <required-receipt-ref>] \
-  [--evidence-receipt <acceptance-receipt-ref>]... \
-  [--failure-category <token>]... \
-  [--failed-check <token>]... \
   [--override-repair <sha256> --override-summary <text>]
 
 comet native archive <change-name> --dry-run
@@ -145,7 +139,7 @@ comet native archive <change-name> --expect-preflight <sha256> [--confirmed]
 - Shape：只有用户确认最终共享理解后才传 `--confirmed`。
 - Build：提供真实 `--artifact`；确实没有项目文件变化时使用 `--no-code-reason`。
 - Partial scope：先向用户说明 Runtime 返回的具体缺口和风险。超出已返回明细预算的变化由 `scope-detail-overflow` 数量和内容 hash 汇总；只有用户接受后才使用完全匹配的 scope hash、理由和 `--confirmed`。
-- Verify：提供 `--result` 和完整报告。标准报告路径提交为 `comet native next <change-name> --summary <摘要> --result pass|fail --report verification.md`；pass 需要 Runtime 要求的当前 receipts，fail 使用稳定、非敏感的失败分类和检查 ID。
+- Verify：提供 `--result` 和完整报告。标准报告路径提交为 `comet native next <change-name> --summary <摘要> --result pass|fail --report verification.md`。Runtime 在 pass 时自动执行内置 required check；报告中的 acceptance 条目直接引用 automated/manual receipt。已执行但失败的条目引用对应失败 receipt，未执行的条目写明 `skipped_reason`。repair 的失败 acceptance 和检查标识由 Runtime 从报告与 receipt 自动推导。
 - Repair override：只使用 status 返回的 signature，并且只在有一个明确新修复假设时执行。
 - Archive：先 dry-run，再使用本次预演返回的精确 preflight hash；`required` 模式还需要用户明确确认。
 

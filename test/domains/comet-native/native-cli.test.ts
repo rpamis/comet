@@ -59,6 +59,7 @@ describe('Comet Native CLI dispatcher', () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
@@ -102,6 +103,10 @@ describe('Comet Native CLI dispatcher', () => {
         omittedByReason: { 'file-size': 1 },
         samplePaths: ['oversized-baseline.bin'],
         sampleTruncated: false,
+        supportedFixes: [
+          expect.stringContaining('native.snapshot.max_files'),
+          expect.stringContaining('native.snapshot.exclude'),
+        ],
         requiredAction: 'resolve-native-baseline',
       },
       error: { code: 'baseline-incomplete' },
@@ -159,6 +164,18 @@ describe('Comet Native CLI dispatcher', () => {
     });
     execFileSync('git', ['config', 'user.email', 'native@example.test'], { cwd: projectRoot });
     execFileSync('git', ['config', 'user.name', 'Native Test'], { cwd: projectRoot });
+    if (process.platform === 'win32') {
+      await fs.writeFile(
+        path.join(projectRoot, 'receipt-probe.cmd'),
+        [
+          '@echo off',
+          'if not "%COMET_NATIVE_RECEIPT_ENV_TEST%"=="available" exit /b 8',
+          'if not "%~1"=="value & with spaces" exit /b 9',
+          'echo shim-ok',
+        ].join('\r\n'),
+      );
+      execFileSync('git', ['add', 'receipt-probe.cmd'], { cwd: projectRoot });
+    }
     execFileSync('git', ['commit', '--allow-empty', '-m', 'initial'], {
       cwd: projectRoot,
       stdio: 'ignore',
@@ -179,7 +196,7 @@ describe('Comet Native CLI dispatcher', () => {
       '# Sentence counting\nCount sentences by punctuation.\n',
     );
 
-    expect(json(await runNativeCli(['list', '--json', ...projectArgs()])).data).toMatchObject({
+    expect(json(await runNativeCli(['status', '--json', ...projectArgs()])).data).toMatchObject({
       schema: 'comet.native.status-page.v1',
       total: 1,
       items: [expect.objectContaining({ name: 'sentence-counting', phase: 'shape' })],
@@ -257,6 +274,7 @@ describe('Comet Native CLI dispatcher', () => {
     const resumedCriteria = (resumed.data as { acceptancePage: { items: Array<{ id: string }> } })
       .acceptancePage.items;
     expect(resumedCriteria).toEqual(builtCriteria);
+    vi.stubEnv('COMET_NATIVE_RECEIPT_ENV_TEST', 'available');
     const argvProbe = json(
       await runNativeCli([
         'receipt',
@@ -270,25 +288,52 @@ describe('Comet Native CLI dispatcher', () => {
         '--',
         process.execPath,
         '-e',
-        "const expected=['--json','--project-root','child-root']; if(JSON.stringify(process.argv.slice(1))!==JSON.stringify(expected)) process.exit(2); process.stdout.write('argv preserved')",
+        "const expected=['--json','--project-root','child-root']; if(JSON.stringify(process.argv.slice(1))!==JSON.stringify(expected)||process.env.COMET_NATIVE_RECEIPT_ENV_TEST!=='available') process.exit(2); process.stdout.write('argv and environment preserved; to'+'ken=secret-value')",
         '--',
         '--json',
         '--project-root',
         'child-root',
       ]),
     );
-    expect(argvProbe).toMatchObject({
+    expect(argvProbe, JSON.stringify(argvProbe)).toMatchObject({
       exitCode: 0,
       data: {
         receipt: {
           status: 'passed',
           evidence: {
             args: expect.arrayContaining(['--json', '--project-root', 'child-root']),
-            outputSummary: 'argv preserved',
+            outputSummary: 'argv and environment preserved; token=[REDACTED]',
           },
         },
       },
     });
+    if (process.platform === 'win32') {
+      const shimProbe = json(
+        await runNativeCli([
+          'receipt',
+          'automated',
+          'sentence-counting',
+          ...resumedCriteria.flatMap((criterion) => ['--acceptance', criterion.id]),
+          '--json',
+          ...projectArgs(),
+          '--',
+          '.\\receipt-probe',
+          'value & with spaces',
+        ]),
+      );
+      expect(shimProbe, JSON.stringify(shimProbe)).toMatchObject({
+        exitCode: 0,
+        data: {
+          receipt: {
+            status: 'passed',
+            evidence: {
+              args: ['value & with spaces'],
+              outputSummary: 'shim-ok',
+            },
+          },
+        },
+      });
+    }
     const manualReceiptResult = json(
       await runNativeCli([
         'receipt',
@@ -299,7 +344,6 @@ describe('Comet Native CLI dispatcher', () => {
         'Execute the sentence-counting acceptance contract.',
         '--observation',
         'Every acceptance criterion produced the expected result.',
-        '--confirmed',
         '--json',
         ...projectArgs(),
       ]),
@@ -343,11 +387,6 @@ None.
 Pass.
 `,
     );
-    const checked = json(
-      await runNativeCli(['check', 'sentence-counting', '--json', ...projectArgs()]),
-    );
-    const checkedReceiptRef = (checked.data as { ref: string }).ref;
-    expect(checkedReceiptRef).toMatch(/^runtime\/evidence\/receipts\/[a-f0-9]{64}\.json$/u);
     const verified = json(
       await runNativeCli([
         'next',
@@ -358,10 +397,6 @@ Pass.
         'pass',
         '--report',
         'verification.md',
-        '--receipt',
-        checkedReceiptRef,
-        '--evidence-receipt',
-        manualReceiptRef,
         '--json',
         ...projectArgs(),
       ]),
@@ -596,9 +631,14 @@ Pass.
     expect(help.stdout).not.toContain('receipt review');
     expect(help.stdout).not.toContain('receipt waive');
     expect(help.stdout).not.toContain('--waiver');
+    expect(help.stdout).not.toContain('\n  list ');
+    expect(help.stdout).not.toContain('--receipt <');
+    expect(help.stdout).not.toContain('--evidence-receipt');
+    expect(help.stdout).not.toContain('--failure-category');
+    expect(help.stdout).not.toContain('--failed-check');
     expect(help.stdout).not.toContain('--independent-review-receipt');
 
-    const missing = await runNativeCli(['list', '--json', ...projectArgs()]);
+    const missing = await runNativeCli(['status', '--json', ...projectArgs()]);
     expect(missing.exitCode).toBe(65);
     expect(json(missing)).toMatchObject({ error: { code: 'invalid-data' } });
 

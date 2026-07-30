@@ -2,36 +2,32 @@ import { describe, expect, it } from 'vitest';
 
 import { nativeAdvanceEvidenceHash } from '../../../domains/comet-native/native-transition-evidence.js';
 
-const receipt = (character: string) => `runtime/evidence/receipts/${character.repeat(64)}.json`;
-
 describe('Native transition evidence hashing', () => {
-  it('binds every current verification receipt ref', () => {
+  it('binds the Runtime-owned verification report input without duplicate receipt refs', () => {
     const baseline = {
-      summary: 'Verify with v2 evidence.',
+      summary: 'Verify with report-owned evidence.',
       verificationResult: 'pass' as const,
       verificationReport: 'verification.md',
-      verificationReceipt: receipt('1'),
-      verificationReceiptRefs: [receipt('2')],
     };
 
     expect(
       nativeAdvanceEvidenceHash({
         ...baseline,
-        verificationReceiptRefs: [receipt('5')],
+        verificationReport: 'verification-retry.md',
       }),
     ).not.toBe(nativeAdvanceEvidenceHash(baseline));
   });
 
-  it('distinguishes omitted ref lists from an explicit empty ref graph', () => {
+  it('binds a repair override independently from verification evidence', () => {
     const evidence = {
-      summary: 'Verify with runtime-derived refs.',
-      verificationResult: 'fail' as const,
-      verificationReport: 'verification.md',
+      summary: 'Retry with a new repair hypothesis.',
+      artifacts: ['src/repair.ts'],
     };
     expect(nativeAdvanceEvidenceHash(evidence)).not.toBe(
       nativeAdvanceEvidenceHash({
         ...evidence,
-        verificationReceiptRefs: [],
+        repairOverrideSignature: 'a'.repeat(64),
+        repairOverrideSummary: 'Try the alternate parser boundary.',
       }),
     );
   });

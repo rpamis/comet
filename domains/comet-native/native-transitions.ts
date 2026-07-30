@@ -23,10 +23,7 @@ import {
   nativeRepairScopeHash,
   type NativeRepairTrajectoryProjection,
 } from './native-repair-runtime.js';
-import {
-  hashNativeRepairOverrideSummary,
-  normalizeNativeRepairFailureTokens,
-} from './native-repair-stagnation.js';
+import { hashNativeRepairOverrideSummary } from './native-repair-stagnation.js';
 import {
   NATIVE_RUNTIME_HASH,
   NATIVE_RUNTIME_PACKAGE,
@@ -79,10 +76,6 @@ function hasEvidenceRetreatExtras(evidence: NativeAdvanceEvidence): boolean {
     evidence.partialReason !== undefined ||
     evidence.verificationResult !== undefined ||
     evidence.verificationReport !== undefined ||
-    evidence.verificationReceipt !== undefined ||
-    evidence.verificationReceiptRefs !== undefined ||
-    evidence.repairFailureCategories !== undefined ||
-    evidence.repairFailedCheckIds !== undefined ||
     evidence.repairOverrideSignature !== undefined ||
     evidence.repairOverrideSummary !== undefined
   );
@@ -121,15 +114,6 @@ function validateNativeAdvanceEvidence(evidence: NativeAdvanceEvidence): void {
     assertNativeTrajectoryText(evidence.noCodeReason, 'Native transition no-code reason');
   }
   if (
-    evidence.repairFailureCategories !== undefined ||
-    evidence.repairFailedCheckIds !== undefined
-  ) {
-    normalizeNativeRepairFailureTokens({
-      categories: evidence.repairFailureCategories,
-      failedCheckIds: evidence.repairFailedCheckIds,
-    });
-  }
-  if (
     evidence.repairOverrideSignature !== undefined &&
     !/^[a-f0-9]{64}$/u.test(evidence.repairOverrideSignature)
   ) {
@@ -157,11 +141,6 @@ function normalizeNativeAdvanceEvidence(evidence: NativeAdvanceEvidence): Native
 }
 
 function validateRepairEvidence(state: NativeChangeState, evidence: NativeAdvanceEvidence): void {
-  const hasFailureFacts =
-    evidence.repairFailureCategories !== undefined || evidence.repairFailedCheckIds !== undefined;
-  if (hasFailureFacts && (state.phase !== 'verify' || evidence.verificationResult !== 'fail')) {
-    throw new Error('Native repair failure facts are only valid for a failed Verify outcome');
-  }
   const hasOverrideSignature = evidence.repairOverrideSignature !== undefined;
   const hasOverrideSummary = evidence.repairOverrideSummary !== undefined;
   if (hasOverrideSignature !== hasOverrideSummary) {
@@ -604,11 +583,9 @@ async function advanceNativeChangeLocked(
   }
 
   const verificationReceipt =
-    state.phase === 'verify' &&
-    options.evidence.verificationResult === 'pass' &&
-    !options.evidence.verificationReceipt
+    state.phase === 'verify' && options.evidence.verificationResult === 'pass'
       ? (await checkNativeChangeLocked({ paths: options.paths, name: state.name })).ref
-      : (options.evidence.verificationReceipt ?? null);
+      : null;
   const verificationEvidence =
     state.phase === 'verify'
       ? await inspectNativeVerificationEvidence({
@@ -617,7 +594,6 @@ async function advanceNativeChangeLocked(
           result: options.evidence.verificationResult!,
           reportRef: options.evidence.verificationReport!,
           receiptRef: verificationReceipt,
-          receiptRefs: options.evidence.verificationReceiptRefs,
           now: options.now,
         })
       : null;
@@ -656,12 +632,6 @@ async function advanceNativeChangeLocked(
       state,
       envelope: verificationEvidence.envelope,
       maxVerifyFailures: options.maxVerifyFailures,
-      ...(options.evidence.repairFailureCategories
-        ? { categories: options.evidence.repairFailureCategories }
-        : {}),
-      ...(options.evidence.repairFailedCheckIds
-        ? { failedCheckIds: options.evidence.repairFailedCheckIds }
-        : {}),
     });
     repairEventProjection = repairResult.eventProjection;
     repairScopeHashForEvent = repairResult.facts.implementationScopeHash;

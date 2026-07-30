@@ -94,7 +94,7 @@ describe('Native acceptance evidence trace', () => {
     expect(() => buildTrace([first, first])).toThrow('repeats acceptance ID');
     expect(() =>
       buildTrace([{ ...first, skipped_reason: 'not run' }, evidenceForAll()[1]]),
-    ).toThrow('invalid v2 evidence state');
+    ).toThrow('invalid evidence state');
   });
 
   it('projects omitted evidence as a validated missing gap for failed verification', () => {
@@ -147,10 +147,29 @@ describe('Native acceptance evidence trace', () => {
     expect(trace).toMatchObject({ total: 2, evidenced: 1, skipped: 1 });
   });
 
+  it('binds a failed typed receipt instead of discarding executed failure evidence', () => {
+    const entries = evidenceForAll();
+    entries[0] = {
+      ...entries[0],
+      status: 'failed',
+      skipped_reason: 'The automated check returned a non-zero exit code.',
+    };
+    const trace = buildTrace(entries);
+
+    expect(trace).toMatchObject({ total: 2, evidenced: 2, skipped: 1 });
+    expect(trace.entries).toContainEqual(
+      expect.objectContaining({
+        acceptanceId: entries[0].acceptance_id,
+        status: 'failed',
+        evidenceRefs: entries[0].evidence_refs,
+      }),
+    );
+  });
+
   it('rejects sensitive refs and deeply invalid traces even when their self-hash is refreshed', () => {
     const sensitive = evidenceForAll();
     sensitive[0] = { ...sensitive[0], evidence_refs: ['runtime/forged-receipt.json'] };
-    expect(() => buildTrace(sensitive)).toThrow('typed v2 receipt');
+    expect(() => buildTrace(sensitive)).toThrow('typed v3 receipt');
 
     const trace = buildTrace();
     const malformed = structuredClone(trace) as typeof trace & {
@@ -172,7 +191,7 @@ describe('Native acceptance evidence trace', () => {
         buildNativeAcceptanceEvidenceTrace(contract.acceptance, evidence, {
           nativeRootRef: 'docs/comet',
         }),
-      ).toThrow('typed v2 receipt');
+      ).toThrow('typed v3 receipt');
     },
   );
 });

@@ -5,7 +5,6 @@ export const NATIVE_REPAIR_STAGNATION_LIMITS = {
   warningAtConsecutiveFailures: 2,
   manualStopAtConsecutiveFailures: 3,
   maxHistoryRecords: 64,
-  maxCategories: 16,
   maxFailedAcceptanceIds: 1_024,
   maxFailedCheckIds: 128,
   maxOverrideSummaryCharacters: 2_000,
@@ -20,7 +19,6 @@ export interface NativeRepairFailureFacts {
   contractHash: string;
   implementationScopeHash: string;
   artifactSnapshotHash: string;
-  categories: readonly string[];
   failedAcceptanceIds: readonly string[];
   failedCheckIds: readonly string[];
 }
@@ -111,46 +109,28 @@ function normalizedTokens(
   return [...new Set(tokens)].sort(compareText);
 }
 
-export function normalizeNativeRepairFailureTokens(options: {
-  categories?: readonly string[];
-  failedCheckIds?: readonly string[];
-}): { categories: string[]; failedCheckIds: string[] } {
-  const categories =
-    options.categories && options.categories.length > 0
-      ? options.categories
-      : ['verification-failed'];
-  return {
-    categories: normalizedTokens(
-      categories,
-      'Native repair categories',
-      NATIVE_REPAIR_STAGNATION_LIMITS.maxCategories,
-      false,
-    ),
-    failedCheckIds: normalizedTokens(
-      options.failedCheckIds ?? [],
-      'Native repair failed check IDs',
-      NATIVE_REPAIR_STAGNATION_LIMITS.maxFailedCheckIds,
-      true,
-    ),
-  };
+export function normalizeNativeRepairFailedCheckIds(values: readonly string[] = []): string[] {
+  return normalizedTokens(
+    values,
+    'Native repair failed check IDs',
+    NATIVE_REPAIR_STAGNATION_LIMITS.maxFailedCheckIds,
+    true,
+  );
 }
 
 export function buildNativeRepairSignature(facts: NativeRepairFailureFacts): NativeRepairSignature {
-  const tokens = normalizeNativeRepairFailureTokens(facts);
+  const failedCheckIds = normalizeNativeRepairFailedCheckIds(facts.failedCheckIds);
   const failedAcceptanceIds = normalizedTokens(
     facts.failedAcceptanceIds,
     'Native repair failed acceptance IDs',
     NATIVE_REPAIR_STAGNATION_LIMITS.maxFailedAcceptanceIds,
     true,
   );
-  if (failedAcceptanceIds.length === 0 && tokens.failedCheckIds.length === 0) {
-    throw new Error('Native repair failure must identify an acceptance or check gap');
-  }
   const content = {
     schema: NATIVE_REPAIR_SIGNATURE_SCHEMA,
     contractHash: hash(facts.contractHash, 'Native repair contract hash'),
     failedAcceptanceIds,
-    failedCheckIds: tokens.failedCheckIds,
+    failedCheckIds,
   };
   return {
     ...content,

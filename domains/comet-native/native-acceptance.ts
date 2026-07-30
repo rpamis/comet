@@ -681,9 +681,9 @@ function validateEvidenceEntries(value: unknown): NativeAcceptanceEvidenceEntry[
     if (status === 'passed' && evidenceRefs.length === 0) {
       throw new Error(`Acceptance evidence ${acceptanceId} passed status requires evidence_refs`);
     }
-    if (status === 'failed' && (evidenceRefs.length > 0 || skippedReason === undefined)) {
+    if (status === 'failed' && evidenceRefs.length === 0 && skippedReason === undefined) {
       throw new Error(
-        `Acceptance evidence ${acceptanceId} failed status requires a skipped_reason and no evidence`,
+        `Acceptance evidence ${acceptanceId} failed status requires evidence_refs or a skipped_reason`,
       );
     }
     if (status === 'passed' && skippedReason !== undefined) {

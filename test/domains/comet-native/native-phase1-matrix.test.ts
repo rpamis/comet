@@ -177,8 +177,6 @@ async function prepareChange(options: {
       evidenceRefs: [implementation],
     }),
   );
-  const check = json(await runNativeCli(['check', options.name, '--json', ...rootArgs]));
-  const receipt = (check.data as { ref: string }).ref;
   const passed = await runNativeCli([
     'next',
     options.name,
@@ -188,8 +186,6 @@ async function prepareChange(options: {
     'pass',
     '--report',
     'verification.md',
-    '--receipt',
-    receipt,
     ...rootArgs,
   ]);
   expect(passed.exitCode, passed.stderr).toBe(0);
@@ -519,7 +515,7 @@ describe('Comet Native Phase 1 behavior matrix', () => {
 
     await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
     await fs.writeFile(path.join(projectRoot, '.comet', 'config.yaml'), 'native: [broken\n');
-    const configResult = await runNativeCli(['list', '--json', '--project-root', projectRoot]);
+    const configResult = await runNativeCli(['status', '--json', '--project-root', projectRoot]);
     expect(configResult.exitCode).toBe(65);
     expect(json(configResult).error?.code).toBe('invalid-data');
   });

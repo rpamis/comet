@@ -199,8 +199,6 @@ describe('skills', () => {
           'comet native check <change-name>',
           '--result pass|fail',
           '--report verification.md',
-          '--failure-category',
-          '--failed-check',
           '--override-repair',
           'comet native archive <change-name> --dry-run',
           '--expect-preflight',
@@ -233,6 +231,12 @@ describe('skills', () => {
           'Schema 升级',
           '旧 schema',
           '早期 v2',
+          'comet native list',
+          '--evidence-receipt',
+          '--failure-category',
+          '--failed-check',
+          'external-role handoff',
+          '外部角色交接',
         ]) {
           expect(allContent, `${languageDir}: ${unwanted}`).not.toContain(unwanted);
         }

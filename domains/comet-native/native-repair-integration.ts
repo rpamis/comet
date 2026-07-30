@@ -16,7 +16,7 @@ import {
 } from './native-repair-runtime.js';
 import {
   nativeRepairConsecutiveFailures,
-  normalizeNativeRepairFailureTokens,
+  normalizeNativeRepairFailedCheckIds,
   type NativeRepairHistoryRecord,
 } from './native-repair-stagnation.js';
 import {
@@ -32,7 +32,7 @@ import type {
 } from './native-types.js';
 import type { NativeVerificationEvidenceEnvelope } from './native-verification-evidence.js';
 import {
-  nativeBlockedCheckId,
+  nativeFailedCheckId,
   type NativeVerificationReceipt,
 } from './native-verification-receipt.js';
 import {
@@ -172,16 +172,12 @@ export function projectNativeRepairDecision(
 
 export function nativeRepairFailedCheckIdsFromReceipts(
   receipts: readonly NativeVerificationReceipt[],
-  supplied: readonly string[] = [],
 ): string[] {
-  return normalizeNativeRepairFailureTokens({
-    failedCheckIds: [
-      ...supplied,
-      ...receipts
-        .filter((receipt) => receipt.role === 'required-check' && receipt.status !== 'passed')
-        .map((receipt) => nativeBlockedCheckId(receipt)),
-    ],
-  }).failedCheckIds;
+  return normalizeNativeRepairFailedCheckIds(
+    receipts
+      .filter((receipt) => receipt.status !== 'passed')
+      .map((receipt) => nativeFailedCheckId(receipt)),
+  );
 }
 
 export async function inspectNativeRepairFailureForTransition(options: {
@@ -189,13 +185,14 @@ export async function inspectNativeRepairFailureForTransition(options: {
   state: NativeChangeState;
   envelope: NativeVerificationEvidenceEnvelope;
   maxVerifyFailures: number;
-  categories?: readonly string[];
-  failedCheckIds?: readonly string[];
 }): Promise<NativeRepairRuntimeResult> {
   if (!options.state.implementation_scope) {
     throw new Error('Native repair failure has no implementation scope');
   }
-  const [committed, implementationScope, requiredReceipts] = await Promise.all([
+  const receiptRefs = [
+    ...new Set([...options.envelope.requiredReceiptRefs, ...options.envelope.receiptRefs]),
+  ];
+  const [committed, implementationScope, receipts] = await Promise.all([
     readNativeCommittedRepairTrajectory(options.paths, options.state),
     readNativeImplementationScopeBundle(
       options.paths,
@@ -203,21 +200,17 @@ export async function inspectNativeRepairFailureForTransition(options: {
       options.state.implementation_scope,
     ),
     Promise.all(
-      options.envelope.requiredReceiptRefs.map((ref) =>
+      receiptRefs.map((ref) =>
         readNativeVerificationReceipt(options.paths, options.state.name, ref),
       ),
     ),
   ]);
-  const failedCheckIds = nativeRepairFailedCheckIdsFromReceipts(
-    requiredReceipts,
-    options.failedCheckIds,
-  );
+  const failedCheckIds = nativeRepairFailedCheckIdsFromReceipts(receipts);
   return inspectNativeRepairFailure({
     ...committed,
     envelope: options.envelope,
     implementationScope,
     maxVerifyFailures: options.maxVerifyFailures,
-    ...(options.categories ? { categories: options.categories } : {}),
     ...(failedCheckIds.length > 0 ? { failedCheckIds } : {}),
   });
 }

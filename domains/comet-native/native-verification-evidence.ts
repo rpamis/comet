@@ -151,7 +151,7 @@ function portableEvidenceRef(value: string, label: string, nativeRootRef?: strin
 function typedReceiptRef(value: string): string {
   const reference = portableRef(value, 'Verification typed receipt ref');
   if (!/^runtime\/evidence\/receipts\/[a-f0-9]{64}\.json$/u.test(reference)) {
-    throw new Error('Verification receipt ref must identify a typed v2 receipt');
+    throw new Error('Verification receipt ref must identify a typed v3 receipt');
   }
   return reference;
 }
@@ -232,9 +232,9 @@ export function buildNativeAcceptanceEvidenceTrace(
           : requiredText(rawSkippedReason, `Skipped reason for ${criterion.id}`);
       if (
         (status === 'passed' && (evidenceRefs.length === 0 || skippedReason !== null)) ||
-        (status === 'failed' && (evidenceRefs.length !== 0 || skippedReason === null))
+        (status === 'failed' && evidenceRefs.length === 0 && skippedReason === null)
       ) {
-        throw new Error(`Acceptance ${criterion.id} has an invalid v2 evidence state`);
+        throw new Error(`Acceptance ${criterion.id} has an invalid evidence state`);
       }
       return {
         acceptanceId: criterion.id,
@@ -496,7 +496,7 @@ export function parseNativeAcceptanceEvidenceTrace(value: unknown): NativeAccept
       JSON.stringify(evidenceRefs) !==
         JSON.stringify([...new Set(evidenceRefs)].sort(compareText)) ||
       (status === 'passed' && (evidenceRefs.length === 0 || entry.skippedReason !== null)) ||
-      (status === 'failed' && (evidenceRefs.length > 0 || entry.skippedReason === null)) ||
+      (status === 'failed' && evidenceRefs.length === 0 && entry.skippedReason === null) ||
       (status === 'missing' && (evidenceRefs.length > 0 || entry.skippedReason !== null))
     ) {
       throw new Error(`Native acceptance trace entry ${index} evidence state is invalid`);

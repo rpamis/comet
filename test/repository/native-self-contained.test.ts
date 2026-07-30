@@ -40,8 +40,11 @@ describe('Native self-contained runtime boundary', () => {
     expect(receiptRuntime).toBeDefined();
     expect(snapshot).toContain("import { spawn, type ChildProcess } from 'node:child_process';");
     expect(snapshot).not.toMatch(/\b(?:execFile|execSync|execFileSync|fork|spawnSync)\s*\(/u);
-    expect(receiptRuntime).toContain('env: sanitizedAutomatedCommandEnvironment()');
+    expect(receiptRuntime).toContain('env: { ...process.env }');
     expect(receiptRuntime).toContain('shell: false');
+    expect(receiptRuntime).toContain('COMET_NATIVE_COMMAND_PAYLOAD');
+    expect(receiptRuntime).toContain('resolveWindowsCommand');
+    expect(receiptRuntime).not.toContain('sanitizedAutomatedCommandEnvironment');
     expect(receiptRuntime).toContain('terminateProcessTree(child)');
 
     const sourcesOutsideProcessProviders = [...sources]

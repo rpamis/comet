@@ -9,6 +9,7 @@ import { collectNativeContractFiles } from '../../domains/comet-native/native-co
 import type { NativeProjectPaths } from '../../domains/comet-native/native-types.js';
 import { readNativeImplementationScopeBundle } from '../../domains/comet-native/native-evidence-storage.js';
 import {
+  issueNativeAutomatedCheckReceipt,
   issueNativeManualEvidenceReceipt,
   persistNativeStaticInspectionReceipt,
 } from '../../domains/comet-native/native-verification-receipt-runtime.js';
@@ -39,7 +40,6 @@ export async function nativeVerificationFixtureReport(options: {
       acceptanceIds: collected.contract.acceptance.map((criterion) => criterion.id),
       steps: ['Exercise every acceptance criterion in the lifecycle fixture.'],
       observations: ['Every acceptance criterion produced the expected fixture outcome.'],
-      confirmed: true,
       now: new Date('2026-07-28T00:00:00.000Z'),
     });
     evidenceRefs = [issued.ref];
@@ -51,8 +51,13 @@ export async function nativeVerificationFixtureReport(options: {
         ? { status: 'passed' as const, evidence_refs: evidenceRefs }
         : {
             status: 'failed' as const,
-            evidence_refs: [],
-            skipped_reason: 'Lifecycle fixture records the requested failed verification outcome.',
+            evidence_refs: evidenceRefs,
+            ...(evidenceRefs.length === 0
+              ? {
+                  skipped_reason:
+                    'Lifecycle fixture records the requested failed verification outcome.',
+                }
+              : {}),
           }),
     })),
   );
@@ -69,6 +74,33 @@ This report is test fixture evidence only.
 # Conclusion
 ${conclusion}.
 `;
+}
+
+/** Create a current, failed automated receipt for repair-loop lifecycle tests. */
+export async function nativeVerificationFixtureFailedReceipt(options: {
+  paths: NativeProjectPaths;
+  name: string;
+  checkIdentity?: string;
+}): Promise<{
+  receipt: Awaited<ReturnType<typeof issueNativeAutomatedCheckReceipt>>['receipt'];
+  ref: string;
+}> {
+  const state = await readNativeChange(options.paths, options.name);
+  const collected = await collectNativeContractFiles({
+    changeDir: nativeChangeDir(options.paths, options.name),
+    briefRef: state.brief,
+    specChanges: state.spec_changes,
+  });
+  return issueNativeAutomatedCheckReceipt({
+    paths: options.paths,
+    name: options.name,
+    acceptanceIds: collected.contract.acceptance.map((criterion) => criterion.id),
+    command: process.execPath,
+    args: [
+      '-e',
+      `process.stdout.write(${JSON.stringify(options.checkIdentity ?? 'focused-check')}); process.exit(1);`,
+    ],
+  });
 }
 
 /** Create a current, passed Runtime receipt for lifecycle tests that do not test check policy. */

@@ -9,16 +9,19 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Classic root migration**: `comet classic root move docs --dry-run` now reports the current state without exposing a plan ID, prints each conflict or blocker on its own line, and `--apply` migrates the complete `openspec/` tree—including active and incompletely archived changes—without requiring a plan ID. Migration output and errors follow `classic.language`, projects already using `docs/openspec/` receive a clear no-op result, and completed migrations keep the final result at the end of the detailed report.
 - **Native workflow guidance**: Native now identifies the current change and phase before loading a phase-specific reference, always performs Shape classification, silent-assumption checks, and shared-understanding confirmation before implementation, and explains project and change commands as a task-oriented runbook instead of an undifferentiated command list.
 - **Native repair continuation**: Repeated failures with one available override now remain Agent-owned and require a concrete new repair hypothesis, while exhausted overrides and verification budgets return one explicit user decision to continue with a larger budget, change the confirmed contract, or stop.
+- **Native verification execution**: Passing Verify now runs and binds the built-in required check automatically, while failed acceptance entries can reference failed automated receipts and let Runtime derive repair gaps without caller-supplied classifications. Automated receipts run project commands—including Windows command shims—with the current project environment and redact credential-like command output before storing the summary.
 
 ### Fixed
 
 - **Classic Dashboard discovery**: Dashboard now discovers the repository root when launched from a nested directory, reads Classic changes from the configured legacy or docs layout through the built CLI, and shows collection errors instead of presenting them as an empty workspace.
 - **Explicit Comet Skill routing**: Once a host loads `/comet`, the root Skill now treats the entry as selected, immediately resolves the project-configured workflow, loads exactly the returned Native or Classic entry Skill, and passes the original request through instead of re-evaluating task relevance or selecting a workflow by task size.
+- **Native baseline recovery guidance**: Incomplete baseline diagnostics now include `native.snapshot.max_files` alongside the byte and duration budgets, so file-count truncation points users to the configuration that can resolve it.
 
 ### Removed
 
 - **Native cryptographic review**: Removed controller trust, signing identities, implementation attestations, independent-review and waiver receipts, and their CLI and Eval handoff paths. Native verification now depends only on complete, current acceptance and required-check evidence bound to the active revision, contract, scope, snapshot, and artifacts.
 - **Native manual evidence identity label**: `comet native receipt manual` no longer accepts or requires `--responsible`. Verification receipt schema v3 records fixed Runtime provenance for manual observations while retaining the acceptance, contract, scope, snapshot, and artifact bindings that affect verification; active changes holding v2 receipts must record fresh evidence before passing Verify or running Archive.
+- **Redundant Native CLI inputs**: Removed the `comet native list` alias, the manual-receipt `--confirmed` flag, and caller-supplied `next --receipt`, `--evidence-receipt`, `--failure-category`, and `--failed-check` options. Use unnamed `status` for discovery and record acceptance receipt references in `verification.md`; Runtime owns required checks and repair fact derivation.
 
 ## What's Changed [0.4.0-beta.11] - 2026-07-29
 

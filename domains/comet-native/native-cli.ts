@@ -91,16 +91,15 @@ Commands:
   new <change-name> [--language en|zh-CN]
   spec remove <change-name> <capability>
   spec rebase <change-name> --summary <text>
-  list [--cursor <token>]
   show <change-name>
   status [<change-name>] [--cursor <token>] [--details [--acceptance-cursor <token>]]
   select <change-name>
   checkpoint <change-name> --summary <text> --next-action <text> [--artifact <project-relative>] [--expect-revision <n>]
   check <change-name>
   evidence format [--entries <path>]
-  receipt manual <change-name> --acceptance <id> --step <text> --observation <text> --confirmed
+  receipt manual <change-name> --acceptance <id> --step <text> --observation <text>
   receipt automated <change-name> --acceptance <id> [--timeout-ms <n>] -- <executable> [args...]
-  next <change-name> --summary <text> [--confirmed] [--artifact <path>] [--no-code-reason <text>] [--allow-partial-scope <sha256> --partial-reason <text>] [--result pass|fail] [--report <path>] [--receipt <required-ref>] [--evidence-receipt <ref>] [--failure-category <token>] [--failed-check <token>] [--override-repair <sha256> --override-summary <text>]
+  next <change-name> --summary <text> [--confirmed] [--artifact <path>] [--no-code-reason <text>] [--allow-partial-scope <sha256> --partial-reason <text>] [--result pass|fail] [--report <path>] [--override-repair <sha256> --override-summary <text>]
   archive <change-name> --dry-run
   archive <change-name> --expect-preflight <sha256> [--confirmed]
   doctor [<change-name>] [--repair] [--strategy continue|rollback]
@@ -397,17 +396,6 @@ async function dispatch(
     }
     throw new NativeUsageError(`Unknown spec command: ${subcommand}`);
   }
-  if (command === 'list') {
-    const cursor = takeOption(rawArgs, '--cursor');
-    assertNoArguments(rawArgs);
-    const { config, paths } = await configuredPaths(projectRoot);
-    const page = await listNativeStatusPage(paths, {
-      ...(cursor ? { cursor } : {}),
-      clarificationMode: config.native.clarification_mode,
-      maxVerifyFailures: config.native.max_verify_failures,
-    });
-    return success('list', page);
-  }
   if (command === 'show') {
     const name = requiredPositional(rawArgs, 'change name');
     assertNoArguments(rawArgs);
@@ -596,7 +584,6 @@ async function dispatch(
       const acceptanceIds = takeMany(rawArgs, '--acceptance');
       const steps = takeMany(rawArgs, '--step');
       const observations = takeMany(rawArgs, '--observation');
-      const confirmed = takeFlag(rawArgs, '--confirmed');
       assertNoArguments(rawArgs);
       const issued = await issueNativeManualEvidenceReceipt({
         paths,
@@ -604,7 +591,6 @@ async function dispatch(
         acceptanceIds,
         steps,
         observations,
-        confirmed,
       });
       return success('receipt manual', issued, `Native manual receipt: ${issued.ref}\n`);
     }
@@ -659,11 +645,6 @@ async function dispatch(
     const partialReason = takeOption(rawArgs, '--partial-reason');
     const verificationResult = takeOption(rawArgs, '--result');
     const verificationReport = takeOption(rawArgs, '--report');
-    const verificationReceipt = takeOption(rawArgs, '--receipt');
-    const hasVerificationReceiptRefs = rawArgs.includes('--evidence-receipt');
-    const verificationReceiptRefs = takeMany(rawArgs, '--evidence-receipt');
-    const repairFailureCategories = takeMany(rawArgs, '--failure-category');
-    const repairFailedCheckIds = takeMany(rawArgs, '--failed-check');
     const repairOverrideSignature = takeOption(rawArgs, '--override-repair');
     const repairOverrideSummary = takeOption(rawArgs, '--override-summary');
     if (
@@ -683,18 +664,6 @@ async function dispatch(
     }
     if (allowPartialScopeHash && !confirmed) {
       throw new NativeUsageError('--allow-partial-scope requires --confirmed');
-    }
-    if (
-      (repairFailureCategories.length > 0 || repairFailedCheckIds.length > 0) &&
-      verificationResult !== 'fail'
-    ) {
-      throw new NativeUsageError('--failure-category and --failed-check require --result fail');
-    }
-    if (verificationReceipt && verificationResult === undefined) {
-      throw new NativeUsageError('--receipt requires --result');
-    }
-    if (verificationReceiptRefs.length > 0 && verificationResult === undefined) {
-      throw new NativeUsageError('--evidence-receipt requires --result');
     }
     if ((repairOverrideSignature === undefined) !== (repairOverrideSummary === undefined)) {
       throw new NativeUsageError(
@@ -718,14 +687,6 @@ async function dispatch(
       ...(partialReason ? { partialReason } : {}),
       ...(verificationResult ? { verificationResult } : {}),
       ...(verificationReport ? { verificationReport } : {}),
-      ...(verificationReceipt ? { verificationReceipt } : {}),
-      ...(verificationResult && hasVerificationReceiptRefs
-        ? {
-            verificationReceiptRefs,
-          }
-        : {}),
-      ...(repairFailureCategories.length > 0 ? { repairFailureCategories } : {}),
-      ...(repairFailedCheckIds.length > 0 ? { repairFailedCheckIds } : {}),
       ...(repairOverrideSignature ? { repairOverrideSignature } : {}),
       ...(repairOverrideSummary ? { repairOverrideSummary } : {}),
     };
@@ -904,7 +865,7 @@ function errorResult(command: string | null, error: unknown): DispatchResult {
         policyHash: error.policyHash,
         configPath: '.comet/config.yaml',
         supportedFixes: [
-          'increase native.snapshot.max_total_bytes or native.snapshot.max_duration_ms',
+          'increase native.snapshot.max_files, native.snapshot.max_total_bytes, or native.snapshot.max_duration_ms',
           'add an explicit native.snapshot.exclude pattern for data outside implementation scope',
         ],
         requiredAction: 'resolve-native-baseline',

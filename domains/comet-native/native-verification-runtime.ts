@@ -340,18 +340,11 @@ async function validateCurrentReceiptGraph(options: {
     }
   }
   for (const entry of options.trace.entries) {
-    if (entry.status === 'failed' || entry.status === 'missing') {
-      if (options.result === 'pass') {
-        throw new Error(
-          'Native passing verification cannot include failed or missing acceptance criteria',
-        );
-      }
-      continue;
-    }
+    if (entry.status === 'missing') continue;
     for (const ref of entry.evidenceRefs) {
       const receipt = await validateTypedReceipt({
         ...options,
-        result: 'pass',
+        result: entry.status === 'passed' ? 'pass' : 'fail',
         ref,
         expectedBindings,
         acceptanceId: entry.acceptanceId,
@@ -359,6 +352,9 @@ async function validateCurrentReceiptGraph(options: {
       });
       if (receipt.kind !== 'automated-check' && receipt.kind !== 'manual-evidence') {
         throw new Error('Native acceptance evidence must be automated-check or manual-evidence');
+      }
+      if (entry.status === 'failed' && receipt.status === 'passed') {
+        throw new Error('Native failed acceptance evidence must reference a non-passing receipt');
       }
     }
   }
@@ -370,12 +366,7 @@ export interface NativeVerificationEvidenceOptions {
   result: 'pass' | 'fail';
   reportRef: string;
   receiptRef?: string | null;
-  receiptRefs?: readonly string[];
   now?: Date;
-}
-
-function sortedRefs(refs: readonly string[] | undefined): string[] {
-  return [...(refs ?? [])].sort();
 }
 
 /** Build and validate an envelope without mutating the Native evidence store. */
@@ -448,12 +439,6 @@ export async function inspectNativeVerificationEvidence(
         : null,
     now: options.now,
   });
-  if (
-    options.receiptRefs !== undefined &&
-    JSON.stringify(sortedRefs(options.receiptRefs)) !== JSON.stringify(envelope.receiptRefs)
-  ) {
-    throw new Error('Native verification receipt refs do not exactly match the report');
-  }
   const evidenceRef = nativeEvidenceRef('verifications', envelope.envelopeHash);
   return {
     ready: true,

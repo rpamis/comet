@@ -7,7 +7,7 @@ import {
   hashNativeRepairOverrideSummary,
   nativeRepairConsecutiveFailures,
   NATIVE_REPAIR_STAGNATION_LIMITS,
-  normalizeNativeRepairFailureTokens,
+  normalizeNativeRepairFailedCheckIds,
   type NativeRepairFailureFacts,
   type NativeRepairHistoryRecord,
   type NativeRepairOverrideRequest,
@@ -83,7 +83,6 @@ export interface NativeCommittedRepairTrajectory {
 export interface NativeRepairEvidenceInput {
   envelope: NativeVerificationEvidenceEnvelope;
   implementationScope: NativeImplementationScopeBundle;
-  categories?: readonly string[];
   failedCheckIds?: readonly string[];
 }
 
@@ -357,9 +356,7 @@ export function parseNativeRepairTrajectoryProjection(
   }
   const contractHash = hash(projection.contractHash, 'Native repair trajectory contract hash');
   const normalizedFailedAcceptanceIds = failedAcceptanceIds(projection.failedAcceptanceIds);
-  const failedCheckIds = normalizeNativeRepairFailureTokens({
-    failedCheckIds: projection.failedCheckIds as string[],
-  }).failedCheckIds;
+  const failedCheckIds = normalizeNativeRepairFailedCheckIds(projection.failedCheckIds as string[]);
   if (
     !Number.isSafeInteger(projection.maxVerifyFailures) ||
     (projection.maxVerifyFailures as number) < 1
@@ -673,20 +670,15 @@ export function nativeRepairFailureFacts(
   ) {
     throw new Error('Native repair evidence does not match the implementation scope authority');
   }
-  const tokens = normalizeNativeRepairFailureTokens({
-    categories: input.categories,
-    failedCheckIds: input.failedCheckIds,
-  });
   return {
     contractHash: bundle.scope.contractHash,
     implementationScopeHash: nativeRepairScopeHash(bundle),
     artifactSnapshotHash: bundle.scope.currentProjectionHash,
-    categories: tokens.categories,
     failedAcceptanceIds: envelope.acceptanceTrace.entries
       .filter((entry) => entry.status === 'failed' || entry.status === 'missing')
       .map((entry) => entry.acceptanceId)
       .sort(compareText),
-    failedCheckIds: tokens.failedCheckIds,
+    failedCheckIds: normalizeNativeRepairFailedCheckIds(input.failedCheckIds),
   };
 }
 
