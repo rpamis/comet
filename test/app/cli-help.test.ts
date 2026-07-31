@@ -29,7 +29,7 @@ describe('CLI help text', () => {
     expect(help.status, help.stderr).toBe(0);
     expect(help.stdout).toContain(tagline);
     expect(packageJson.description).toBe(tagline);
-    expect(packageJson.version).toBe('0.4.0-beta.12');
+    expect(packageJson.version).toBe('0.4.0-beta.13');
   });
 
   it('marks bundle as the advanced backend and skill Engine runs as advanced', () => {

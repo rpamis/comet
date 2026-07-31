@@ -8706,11 +8706,14 @@ async function readClassicArtifactLayout(projectRoot) {
   }
   return document.classic?.artifact_layout ?? "legacy";
 }
-async function resolveClassicLayout(projectRoot) {
-  return classicLayoutPaths(projectRoot, await readClassicArtifactLayout(projectRoot));
+async function resolveClassicLayout(projectRoot, artifactLayout) {
+  return classicLayoutPaths(
+    projectRoot,
+    artifactLayout ?? await readClassicArtifactLayout(projectRoot)
+  );
 }
-async function inspectClassicLayout(projectRoot) {
-  const paths = await resolveClassicLayout(projectRoot);
+async function inspectClassicLayout(projectRoot, artifactLayout) {
+  const paths = await resolveClassicLayout(projectRoot, artifactLayout);
   const alternateLayout = paths.artifactLayout === "legacy" ? "docs" : "legacy";
   const alternateRoot = classicLayoutPaths(projectRoot, alternateLayout).openSpecRoot;
   const [configuredRoot, alternate] = await Promise.all([
@@ -8761,8 +8764,8 @@ async function assertClassicManagedRootsPhysical(paths, alternateRoot) {
     });
   }
 }
-async function assertClassicLayoutReadable(projectRoot) {
-  const inspection = await inspectClassicLayout(projectRoot);
+async function assertClassicLayoutReadable(projectRoot, artifactLayout) {
+  const inspection = await inspectClassicLayout(projectRoot, artifactLayout);
   await assertClassicManagedRootsPhysical(inspection.paths, inspection.alternateRoot);
   if (inspection.dualRoots) {
     throw new ClassicLayoutConflictError(
@@ -8786,14 +8789,14 @@ async function assertClassicLayoutReadable(projectRoot) {
   }
   return inspection.paths;
 }
-async function assertClassicLayoutWritable(projectRoot) {
+async function assertClassicLayoutWritable(projectRoot, artifactLayout) {
   const pendingMove = path5.join(path5.resolve(projectRoot), ".comet", "classic-root-move.json");
   if (await fileExists(pendingMove)) {
     throw new Error(
       "Classic root move transaction is incomplete; inspect it with comet doctor and recover it explicitly before writing"
     );
   }
-  const paths = await assertClassicLayoutReadable(projectRoot);
+  const paths = await assertClassicLayoutReadable(projectRoot, artifactLayout);
   if (!await fileExists(paths.openSpecRoot)) {
     throw new Error(
       `Configured Classic OpenSpec root is missing: ${classicProjectRelative(

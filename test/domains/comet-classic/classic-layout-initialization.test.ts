@@ -252,6 +252,18 @@ describe('Classic layout initialization safety', () => {
     );
   });
 
+  it('preserves a legacy root when a pre-layout Classic config omits artifact_layout', async () => {
+    await writeClassicConfig();
+    await fs.mkdir(path.join(projectRoot, 'openspec'), { recursive: true });
+
+    await expect(
+      assertClassicLayoutInitializationSafe(projectRoot, 'legacy'),
+    ).resolves.toMatchObject({
+      artifactLayout: 'legacy',
+      openSpecRoot: path.join(projectRoot, 'openspec'),
+    });
+  });
+
   it('allows a configured Classic project to initialize its missing root when both roots are absent', async () => {
     await writeClassicConfig('docs');
 
@@ -397,7 +409,7 @@ describe('Classic layout initialization safety', () => {
     }
   });
 
-  async function writeClassicConfig(artifactLayout: 'legacy' | 'docs'): Promise<void> {
+  async function writeClassicConfig(artifactLayout?: 'legacy' | 'docs'): Promise<void> {
     await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
     await fs.writeFile(
       path.join(projectRoot, '.comet', 'config.yaml'),
@@ -407,7 +419,7 @@ describe('Classic layout initialization safety', () => {
         'workflows:',
         '  - classic',
         'classic:',
-        `  artifact_layout: ${artifactLayout}`,
+        ...(artifactLayout ? [`  artifact_layout: ${artifactLayout}`] : ['  language: en']),
         '',
       ].join('\n'),
       'utf8',

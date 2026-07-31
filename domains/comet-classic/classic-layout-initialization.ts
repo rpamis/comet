@@ -4,6 +4,7 @@ import type { BigIntStats } from 'fs';
 import path from 'path';
 
 import { atomicWriteContainedJson } from '../workflow-contract/contained-atomic-write.js';
+import { hasExplicitClassicArtifactLayout } from '../workflow-contract/project-config.js';
 import {
   readWorkflowProjectConfigIdentity,
   readWorkflowProjectConfigSnapshot,
@@ -1086,7 +1087,9 @@ export async function assertClassicLayoutInitializationSafe(
       configIdentity,
       ownership.configIdentity,
     );
-    const configuredLayout = config?.classic?.artifact_layout ?? desiredLayout;
+    const configuredLayout = hasExplicitClassicArtifactLayout(config?.value.classic)
+      ? (config?.classic?.artifact_layout ?? desiredLayout)
+      : desiredLayout;
     const committedConfigurationMatches =
       Boolean(config && classicEnabled && configuredLayout === desiredLayout) &&
       ownership.rootIdentity !== null &&
@@ -1111,7 +1114,9 @@ export async function assertClassicLayoutInitializationSafe(
   }
 
   if (config && classicEnabled) {
-    const configuredLayout = config.classic?.artifact_layout ?? desiredLayout;
+    const configuredLayout = hasExplicitClassicArtifactLayout(config.value.classic)
+      ? (config.classic?.artifact_layout ?? desiredLayout)
+      : desiredLayout;
     if (configuredLayout !== desiredLayout) {
       throw new Error(
         `Configured Classic layout is ${configuredLayout}, but OpenSpec initialization requested ${desiredLayout}`,
@@ -1143,7 +1148,7 @@ export async function assertClassicLayoutInitializationSafe(
         `Configured Classic OpenSpec root is missing for ${desiredLayout} layout while the alternate root exists`,
       );
     }
-    const configured = await assertClassicLayoutWritable(root);
+    const configured = await assertClassicLayoutWritable(root, desiredLayout);
     return {
       ...configured,
       initializationPermit: permitsDesiredRoot(permit, root, desiredLayout)

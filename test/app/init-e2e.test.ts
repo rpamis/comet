@@ -489,6 +489,51 @@ describe('comet init E2E', () => {
     });
   });
 
+  it('preserves a legacy Classic root when a pre-layout config omits artifact_layout', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+    await fs.mkdir(path.join(tmpDir, 'openspec', 'changes', 'archive'), { recursive: true });
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: classic',
+        'workflows:',
+        '  - classic',
+        'classic:',
+        '  language: en',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    const { initCommand } = await import('../../app/commands/init.js');
+
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, {
+        yes: true,
+        json: true,
+        workflow: 'classic',
+        language: 'en',
+        overwrite: true,
+      }),
+    );
+    const config = parse(await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8')) as {
+      classic?: { artifact_layout?: string };
+    };
+
+    expect(result).toMatchObject({
+      status: 'complete',
+      classicArtifactLayout: 'legacy',
+      projectConfigUpdated: true,
+    });
+    expect(config.classic?.artifact_layout).toBe('legacy');
+    await expect(fs.stat(path.join(tmpDir, 'openspec', 'config.yaml'))).resolves.toBeDefined();
+    await expect(fs.access(path.join(tmpDir, 'docs', 'openspec'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
   it('preserves both configured workflows when non-interactive init is repeated without --workflow', async () => {
     mockExternalSuccess();
     await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });

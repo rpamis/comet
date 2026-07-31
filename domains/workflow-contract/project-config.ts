@@ -223,6 +223,15 @@ export function normalizeClassicArtifactLayout(
   return resolved;
 }
 
+export function hasExplicitClassicArtifactLayout(value: unknown): boolean {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    (value as Record<string, unknown>).artifact_layout !== undefined
+  );
+}
+
 export function normalizeWorkflowRelativePath(
   value: unknown,
   label: string,

@@ -3,7 +3,10 @@ import path from 'path';
 
 import { fileExists } from '../../platform/fs/file-system.js';
 import type { ClassicArtifactLayout } from '../comet-classic/classic-layout.js';
-import { normalizeWorkflowArtifactRoot } from '../workflow-contract/project-config.js';
+import {
+  hasExplicitClassicArtifactLayout,
+  normalizeWorkflowArtifactRoot,
+} from '../workflow-contract/project-config.js';
 import {
   readWorkflowProjectConfigSnapshot,
   type WorkflowProjectConfigSnapshot,
@@ -127,11 +130,7 @@ export async function resolveInitWorkflow(
     const configuredWorkflows = existing.workflows ?? [existing.default_workflow];
     const classicAlreadyEnabled = configuredWorkflows.includes('classic');
     const rawClassic = snapshot.document?.value.classic;
-    const hasExplicitClassicLayout =
-      rawClassic !== null &&
-      typeof rawClassic === 'object' &&
-      !Array.isArray(rawClassic) &&
-      (rawClassic as Record<string, unknown>).artifact_layout !== undefined;
+    const hasExplicitClassicLayout = hasExplicitClassicArtifactLayout(rawClassic);
     const inferredClassicLayout: ClassicArtifactLayout = hasExplicitClassicLayout
       ? (existing.classic?.artifact_layout ?? 'docs')
       : classicAlreadyEnabled && (await fileExists(path.join(projectRoot, 'openspec')))
