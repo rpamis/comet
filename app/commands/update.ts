@@ -67,6 +67,7 @@ const OFFICIAL_REGISTRY = 'https://registry.npmjs.org';
 interface UpdateOptions {
   json?: boolean;
   language?: string;
+  classicLayout?: 'legacy' | 'docs';
   scope?: InstallScope;
   skipNpm?: boolean;
   skipSelfUpdate?: boolean;
@@ -279,6 +280,32 @@ function languageToSkillsDir(languageId: SkillLanguage): string {
 
 function languageToArtifactLanguage(languageId: SkillLanguage): 'en' | 'zh-CN' {
   return LANGUAGES.find((entry) => entry.id === languageId)!.artifactLanguage;
+}
+
+async function resolveClassicArtifactLayout(
+  projectPath: string,
+  explicitLayout: 'legacy' | 'docs' | null,
+  options: UpdateOptions,
+  lang: string,
+): Promise<'legacy' | 'docs'> {
+  if (explicitLayout) return explicitLayout;
+  if (options.classicLayout) return options.classicLayout;
+
+  const hasLegacyRoot = await fileExists(path.join(projectPath, 'openspec'));
+  const hasDocsRoot = await fileExists(path.join(projectPath, 'docs', 'openspec'));
+  if (hasLegacyRoot && hasDocsRoot) {
+    if (options.json) {
+      throw new Error(t(lang, 'classicLayoutChoiceRequired'));
+    }
+    return select({
+      message: t(lang, 'classicLayoutChoice'),
+      choices: [
+        { name: t(lang, 'classicLayoutLegacy'), value: 'legacy' as const },
+        { name: t(lang, 'classicLayoutDocs'), value: 'docs' as const },
+      ],
+    });
+  }
+  return hasLegacyRoot ? 'legacy' : 'docs';
 }
 
 function getScopedBaseDir(
@@ -1296,7 +1323,38 @@ async function updateSingleProject(
         respectDetectionPaths: options.scope === undefined,
       });
 
+  const rawClassic = projectConfigDocument?.value.classic;
+  const explicitClassicArtifactLayout =
+    rawClassic !== null &&
+    typeof rawClassic === 'object' &&
+    !Array.isArray(rawClassic) &&
+    ((rawClassic as Record<string, unknown>).artifact_layout === 'legacy' ||
+      (rawClassic as Record<string, unknown>).artifact_layout === 'docs')
+      ? ((rawClassic as Record<string, unknown>).artifact_layout as 'legacy' | 'docs')
+      : null;
+  const hasProjectTarget = targets.some((target) => target.scope === 'project');
+  const shouldRefreshExistingProjectConfig =
+    includesProjectScope && projectConfigDocument !== null && !hasProjectTarget;
+  const needsClassicLayout =
+    includesProjectScope && classicProject && (projectConfigDocument !== null || hasProjectTarget);
+  const classicArtifactLayout = needsClassicLayout
+    ? await resolveClassicArtifactLayout(projectPath, explicitClassicArtifactLayout, options, lang)
+    : 'docs';
+  const mergeExistingProjectConfig = async (): Promise<void> => {
+    if (!shouldRefreshExistingProjectConfig) return;
+    const languageId = options.language ? resolveTargetLanguage(options.language, 'en') : null;
+    await mergeProjectConfig(
+      projectPath,
+      languageId ? languageToArtifactLanguage(languageId) : null,
+      classicArtifactLayout,
+      true,
+      classicProject,
+    );
+    log(`  ${t(lang, 'configMerged')}`);
+  };
+
   if (targets.length === 0) {
+    await mergeExistingProjectConfig();
     return {
       projectPath,
       npm: {
@@ -1340,21 +1398,6 @@ async function updateSingleProject(
   const reportedInstallMode = targets.every((target) => nativeProject && target.scope === 'project')
     ? 'copy'
     : selectedInstallMode;
-  const rawClassic = projectConfigDocument?.value.classic;
-  const explicitClassicArtifactLayout =
-    rawClassic !== null &&
-    typeof rawClassic === 'object' &&
-    !Array.isArray(rawClassic) &&
-    ((rawClassic as Record<string, unknown>).artifact_layout === 'legacy' ||
-      (rawClassic as Record<string, unknown>).artifact_layout === 'docs')
-      ? ((rawClassic as Record<string, unknown>).artifact_layout as 'legacy' | 'docs')
-      : null;
-  const classicArtifactLayout =
-    explicitClassicArtifactLayout ??
-    ((await fileExists(path.join(projectPath, 'openspec'))) &&
-    !(await fileExists(path.join(projectPath, 'docs', 'openspec')))
-      ? 'legacy'
-      : 'docs');
   const refreshClassicArtifactRoot =
     includesProjectScope && classicProject && targets.some((target) => target.scope === 'project');
   let classicLayoutInitializationPermit: ClassicLayoutInitializationPermit | undefined;
@@ -1800,6 +1843,7 @@ async function updateSingleProject(
     }
     log(`  ${t(lang, 'configMerged')}`);
   }
+  await mergeExistingProjectConfig();
 
   let codegraphStatus: CodegraphStatus = 'skipped';
   const primaryScope = targets[0]?.scope ?? 'project';

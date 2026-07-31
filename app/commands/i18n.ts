@@ -81,6 +81,10 @@ export type TranslationKey =
   | 'updateAllProjectsYes'
   | 'updateAllProjectsNo'
   | 'configMerged'
+  | 'classicLayoutChoice'
+  | 'classicLayoutLegacy'
+  | 'classicLayoutDocs'
+  | 'classicLayoutChoiceRequired'
   | 'cancelled'
   | 'installMode'
   | 'installModeCopy'
@@ -171,6 +175,12 @@ const TRANSLATIONS: Record<Language, Record<TranslationKey, string>> = {
     updateAllProjectsNo: 'No, cancel',
     configMerged:
       'Project config merged (.comet/config.yaml): preserved your values, added any missing fields',
+    classicLayoutChoice:
+      'Both Classic roots exist. Choose the root Comet should record for this project:',
+    classicLayoutLegacy: 'Legacy layout — openspec/',
+    classicLayoutDocs: 'Docs layout — docs/openspec/',
+    classicLayoutChoiceRequired:
+      'Both Classic roots exist. Run `comet update` interactively, or pass --classic-layout legacy|docs.',
     cancelled: 'Cancelled.',
     installMode: 'Installation mode:',
     installModeCopy: 'Copy (traditional, independent copies per platform)',
@@ -259,6 +269,11 @@ const TRANSLATIONS: Record<Language, Record<TranslationKey, string>> = {
     updateAllProjectsYes: '是，更新所有已索引项目',
     updateAllProjectsNo: '否，取消',
     configMerged: '项目配置已合并 (.comet/config.yaml)：已保留你的设置，补齐缺失字段',
+    classicLayoutChoice: '检测到两个 Classic 产物根目录。请选择要写入项目配置的根目录：',
+    classicLayoutLegacy: '旧布局 — openspec/',
+    classicLayoutDocs: '文档布局 — docs/openspec/',
+    classicLayoutChoiceRequired:
+      '检测到两个 Classic 产物根目录。请交互式运行 `comet update`，或传入 --classic-layout legacy|docs。',
     cancelled: '已取消。',
     installMode: '安装模式：',
     installModeCopy: 'Copy（传统方式，每个平台独立副本）',

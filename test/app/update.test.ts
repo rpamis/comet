@@ -2211,7 +2211,7 @@ describe('update command helpers', () => {
     );
   });
 
-  it('fails closed without invoking OpenSpec or mutating either artifact root when both roots exist', async () => {
+  it('updates the configured Classic root when both roots exist', async () => {
     const fakeHome = path.join(tmpDir, 'classic-dual-root-update-home');
     await arrangeClassicDocsOpenSpecUpdate(tmpDir);
     await fs.mkdir(path.join(tmpDir, 'openspec'), { recursive: true });
@@ -2219,9 +2219,6 @@ describe('update command helpers', () => {
     await fs.writeFile(path.join(tmpDir, 'docs', 'openspec', 'docs-marker.txt'), 'docs\n', 'utf8');
     const configPath = path.join(tmpDir, '.comet', 'config.yaml');
     const managedSkillPath = path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md');
-    const configBefore = await fs.readFile(configPath);
-    const managedSkillBefore = await fs.readFile(managedSkillPath);
-
     const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     let json: string;
@@ -2239,22 +2236,29 @@ describe('update command helpers', () => {
     }
 
     expect(JSON.parse(json)).toMatchObject({
-      status: 'incomplete',
-      openspec: {
-        status: 'failed',
-        reason: expect.stringContaining('Classic layout conflict'),
-      },
-      failures: [expect.objectContaining({ component: 'OpenSpec' })],
+      status: 'complete',
+      openspec: { status: 'installed' },
+      failures: [],
     });
-    expect(mockedInstallOpenSpec).not.toHaveBeenCalled();
+    expect(mockedInstallOpenSpec).toHaveBeenCalledWith(
+      tmpDir,
+      ['claude'],
+      'project',
+      false,
+      [],
+      'docs',
+      expect.any(Function),
+    );
     await expect(
       fs.readFile(path.join(tmpDir, 'openspec', 'legacy-marker.txt'), 'utf8'),
     ).resolves.toBe('legacy\n');
     await expect(
       fs.readFile(path.join(tmpDir, 'docs', 'openspec', 'docs-marker.txt'), 'utf8'),
     ).resolves.toBe('docs\n');
-    await expect(fs.readFile(configPath)).resolves.toEqual(configBefore);
-    await expect(fs.readFile(managedSkillPath)).resolves.toEqual(managedSkillBefore);
+    expect(parse(await fs.readFile(configPath, 'utf8'))).toMatchObject({
+      classic: { artifact_layout: 'docs' },
+    });
+    await expect(fs.readFile(managedSkillPath, 'utf8')).resolves.toContain('# Comet');
   });
 
   it('rejects a project .comet junction without touching the external config or OpenSpec', async () => {
@@ -2593,6 +2597,54 @@ describe('update command helpers', () => {
         updated: 0,
       },
       codegraph: 'skipped',
+    });
+  });
+
+  it('backfills a current project config through a global-only installation and asks before choosing an ambiguous Classic root', async () => {
+    const fakeHome = path.join(tmpDir, 'global-config-refresh-home');
+    await fs.mkdir(path.join(fakeHome, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(fakeHome, '.claude', 'skills', 'comet', 'SKILL.md'),
+      '# Comet\n',
+      'utf8',
+    );
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      ['default_workflow: classic', 'language: zh-CN', 'context_compression: beta', ''].join('\n'),
+      'utf8',
+    );
+    await fs.mkdir(path.join(tmpDir, 'openspec'), { recursive: true });
+    await fs.mkdir(path.join(tmpDir, 'docs', 'openspec'), { recursive: true });
+
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    mockedSelect.mockResolvedValueOnce('legacy' as never);
+    try {
+      await updateCommand(tmpDir, { installMode: 'copy', skipNpm: true });
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    expect(mockedSelect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Both Classic roots exist. Choose the root Comet should record for this project:',
+      }),
+    );
+    expect(
+      parse(await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8')),
+    ).toMatchObject({
+      schema: 'comet.project.v1',
+      default_workflow: 'classic',
+      workflows: ['classic'],
+      classic: {
+        artifact_layout: 'legacy',
+        language: 'zh-CN',
+        context_compression: 'beta',
+        review_mode: 'standard',
+        auto_transition: true,
+      },
     });
   });
 

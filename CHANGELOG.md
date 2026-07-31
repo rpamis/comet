@@ -8,6 +8,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 - **Classic layout upgrade**: `comet init` now preserves a legacy `openspec/` workspace when an existing Classic configuration predates `classic.artifact_layout`, preventing setup failures after updating from beta.9 ([#256](https://github.com/rpamis/comet/issues/256)).
 - **Classic setup coexistence**: `comet init` now completes when both `openspec/` and `docs/openspec/` exist, using the configured Classic root while preserving the alternate root ([#257](https://github.com/rpamis/comet/issues/257)).
+- **Project configuration refresh**: `comet update` now also backfills the current project's missing managed configuration fields when Comet is installed globally. When an older Classic project contains both possible artifact roots and has no recorded layout, the update asks which root to retain; non-interactive use can pass `--classic-layout legacy|docs`.
 
 ## What's Changed [0.4.0-beta.12] - 2026-07-30
 

@@ -167,6 +167,11 @@ program
   .option('--json', 'Output as JSON')
   .option('--platform <platform>', 'Platform target to update')
   .addOption(new Option('--language <lang>', 'Language for skills').choices(['en', 'zh']))
+  .addOption(
+    new Option('--classic-layout <layout>', 'Classic root to record when both roots exist').choices(
+      ['legacy', 'docs'],
+    ),
+  )
   .addOption(new Option('--scope <scope>', 'Install scope').choices(['global', 'project']))
   .option('--all-projects', 'Update all indexed project-scope Comet installs')
   .option('--current-project', 'Update only the current project')
