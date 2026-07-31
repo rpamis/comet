@@ -392,6 +392,43 @@ describe('comet init E2E', () => {
     expect(mockedExecFileSync.mock.calls.some((call) => String(call[0]) === 'openspec')).toBe(true);
   });
 
+  it('upgrades an incompatible OpenSpec CLI before non-interactive Classic setup', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+    const externalSuccess = mockedExecFileSync.getMockImplementation();
+    let openSpecVersion = '1.3.1';
+    mockedExecFileSync.mockImplementation((command, args, options) => {
+      const cmd = String(command);
+      const cmdArgs = Array.isArray(args) ? args.map(String) : [];
+      if (cmd === 'openspec' && cmdArgs[0] === '--version') {
+        return Buffer.from(openSpecVersion);
+      }
+      if (
+        (cmd === 'npm' || cmd === 'npm.cmd') &&
+        cmdArgs.join(' ') === 'install -g @fission-ai/openspec@latest'
+      ) {
+        openSpecVersion = '1.5.0';
+        return Buffer.from('upgraded');
+      }
+      return externalSuccess?.(command, args, options) ?? Buffer.from('');
+    });
+
+    const { initCommand } = await import('../../app/commands/init.js');
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, { yes: true, json: true, workflow: 'classic', language: 'en' }),
+    );
+
+    expect(result).toMatchObject({ status: 'complete' });
+    expect(
+      mockedExecFileSync.mock.calls.some(
+        ([command, args]) =>
+          (String(command) === 'npm' || String(command) === 'npm.cmd') &&
+          Array.isArray(args) &&
+          args.map(String).join(' ') === 'install -g @fission-ai/openspec@latest',
+      ),
+    ).toBe(true);
+  });
+
   it('supports an explicit Native artifact root through the main init command', async () => {
     mockExternalSuccess();
     await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
@@ -489,24 +526,10 @@ describe('comet init E2E', () => {
     });
   });
 
-  it('preserves a legacy Classic root when a pre-layout config omits artifact_layout', async () => {
+  it('adopts a legacy Classic root when the project configuration is missing', async () => {
     mockExternalSuccess();
     await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
     await fs.mkdir(path.join(tmpDir, 'openspec', 'changes', 'archive'), { recursive: true });
-    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
-    await fs.writeFile(
-      path.join(tmpDir, '.comet', 'config.yaml'),
-      [
-        'schema: comet.project.v1',
-        'default_workflow: classic',
-        'workflows:',
-        '  - classic',
-        'classic:',
-        '  language: en',
-        '',
-      ].join('\n'),
-      'utf8',
-    );
     const { initCommand } = await import('../../app/commands/init.js');
 
     const result = await captureJsonOutput(() =>
@@ -518,15 +541,15 @@ describe('comet init E2E', () => {
         overwrite: true,
       }),
     );
-    const config = parse(await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8')) as {
-      classic?: { artifact_layout?: string };
-    };
 
     expect(result).toMatchObject({
       status: 'complete',
       classicArtifactLayout: 'legacy',
-      projectConfigUpdated: true,
+      projectConfigCreated: true,
     });
+    const config = parse(await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8')) as {
+      classic?: { artifact_layout?: string };
+    };
     expect(config.classic?.artifact_layout).toBe('legacy');
     await expect(fs.stat(path.join(tmpDir, 'openspec', 'config.yaml'))).resolves.toBeDefined();
     await expect(fs.access(path.join(tmpDir, 'docs', 'openspec'))).rejects.toMatchObject({

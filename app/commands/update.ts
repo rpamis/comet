@@ -5,7 +5,13 @@ import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import { select } from '@inquirer/prompts';
 import { fileExists, readJson } from '../../platform/fs/file-system.js';
-import { getBaseDir, hasSkills } from '../../platform/install/detect.js';
+import {
+  getBaseDir,
+  hasCodexPluginSuperpowers,
+  hasOpenCodePluginSuperpowers,
+  hasPluginSuperpowers,
+  hasSkills,
+} from '../../platform/install/detect.js';
 import {
   copyCometSkillsForPlatform,
   copyCometRulesForPlatform,
@@ -42,6 +48,7 @@ import {
   installOpenSpec,
   isProjectMutationGuardError,
 } from '../../domains/integrations/openspec.js';
+import { installSuperpowersForPlatforms } from '../../domains/integrations/superpowers.js';
 import {
   assertClassicLayoutInitializationSafe,
   beginClassicLayoutInitialization,
@@ -87,6 +94,16 @@ type SkillLanguage = SkillLanguageId;
 type NpmStatus = 'updated' | 'failed' | 'skipped';
 type CodegraphStatus = 'installed' | 'failed' | 'skipped';
 type OpenSpecStatus = 'installed' | 'failed' | 'skipped';
+type SuperpowersStatus = 'installed' | 'failed' | 'skipped';
+
+interface SuperpowersTargetResult {
+  scope: InstallScope;
+  platform: string;
+  platformName: string;
+  source: 'skills-cli' | 'plugin';
+  status: 'installed' | 'failed' | 'skipped';
+  reason?: string;
+}
 
 interface NpmUpdateFailure extends Error {
   npmScope: InstallScope;
@@ -220,6 +237,11 @@ interface SingleProjectUpdateResult {
     status: OpenSpecStatus;
     reason?: string;
   };
+  superpowers: {
+    status: SuperpowersStatus;
+    reason?: string;
+    targets: SuperpowersTargetResult[];
+  };
   codegraph: CodegraphStatus;
 }
 
@@ -234,7 +256,7 @@ interface ComponentFailureDetail {
 }
 
 interface CommandFailureDetail {
-  component: 'npm' | 'OpenSpec' | 'CodeGraph' | 'Skill' | 'Rule' | 'Hook';
+  component: 'npm' | 'OpenSpec' | 'Superpowers' | 'CodeGraph' | 'Skill' | 'Rule' | 'Hook';
   reason: string;
   scope?: InstallScope;
   platform?: string;
@@ -415,6 +437,13 @@ async function detectInstalledCometTargets(
   }
 
   return targets;
+}
+
+async function hasPluginManagedSuperpowers(platform: Platform): Promise<boolean> {
+  if (platform.id === 'claude') return hasPluginSuperpowers();
+  if (platform.id === 'codex') return hasCodexPluginSuperpowers();
+  if (platform.id === 'opencode') return hasOpenCodePluginSuperpowers();
+  return false;
 }
 
 function isSameOrInside(childPath: string, parentPath: string): boolean {
@@ -1068,6 +1097,7 @@ function currentProjectJson(result: SingleProjectUpdateResult): Record<string, u
     hooks: result.hooks,
     projectInstructions: result.projectInstructions,
     openspec: result.openspec,
+    superpowers: result.superpowers,
     codegraph: result.codegraph,
   };
 }
@@ -1085,6 +1115,7 @@ function hasUpdateFailures(result: SingleProjectUpdateResult): boolean {
   return (
     result.npm.status === 'failed' ||
     result.openspec.status === 'failed' ||
+    result.superpowers.status === 'failed' ||
     result.codegraph === 'failed' ||
     hasComponentFailures(result)
   );
@@ -1150,6 +1181,12 @@ function collectCommandFailures(result: SingleProjectUpdateResult): CommandFailu
     failures.push({
       component: 'OpenSpec',
       reason: result.openspec.reason ?? 'OpenSpec update failed',
+    });
+  }
+  if (result.superpowers.status === 'failed') {
+    failures.push({
+      component: 'Superpowers',
+      reason: result.superpowers.reason ?? 'Superpowers update failed',
     });
   }
   failures.push(...collectComponentFailures(result));
@@ -1228,6 +1265,7 @@ async function updateSingleProject(
   let npmReason: string | undefined = options.npmSkipReason;
   let npmCommand: string | null = null;
   const skipPackageSelfUpdate = options.skipPackageSelfUpdate ?? options.skipNpm === true;
+  const updateClassicDependencies = options.selfUpdate === true && !skipPackageSelfUpdate;
   const skipRepeatedGlobalNpm =
     !skipPackageSelfUpdate && packageScope === 'global' && options.skipGlobalNpmUpdate === true;
   if (skipRepeatedGlobalNpm) {
@@ -1369,21 +1407,37 @@ async function updateSingleProject(
       hooks: { totalInstalled: 0, totalFailed: 0, targets: [] },
       projectInstructions: { updated: 0 },
       openspec: { status: 'skipped' },
+      superpowers: { status: 'skipped', targets: [] },
       codegraph: 'skipped',
     };
   }
 
   const targetPlatforms = targets.map((target) => target.platform);
   const openSpecTargets: InstalledCometTarget[] = [];
-  for (const target of targets) {
-    if (target.scope === 'project' && !classicProject) continue;
-    const baseDir = getBaseDir(target.scope, projectPath);
-    if (
-      await hasSkills(baseDir, target.platform, 'openspec', targetPlatforms, target.scope, {
-        includeGlobalFallback: false,
-      })
-    ) {
-      openSpecTargets.push(target);
+  const superpowersTargets: InstalledCometTarget[] = [];
+  const pluginManagedSuperpowersTargets: InstalledCometTarget[] = [];
+  if (updateClassicDependencies) {
+    for (const target of targets) {
+      if (target.scope === 'project' && !classicProject) continue;
+      const baseDir = getBaseDir(target.scope, projectPath);
+      if (
+        await hasSkills(baseDir, target.platform, 'openspec', targetPlatforms, target.scope, {
+          includeGlobalFallback: false,
+          includePluginFallback: false,
+        })
+      ) {
+        openSpecTargets.push(target);
+      }
+      if (
+        await hasSkills(baseDir, target.platform, 'superpowers', targetPlatforms, target.scope, {
+          includeGlobalFallback: false,
+          includePluginFallback: false,
+        })
+      ) {
+        superpowersTargets.push(target);
+      } else if (await hasPluginManagedSuperpowers(target.platform)) {
+        pluginManagedSuperpowersTargets.push(target);
+      }
     }
   }
 
@@ -1399,7 +1453,10 @@ async function updateSingleProject(
     ? 'copy'
     : selectedInstallMode;
   const refreshClassicArtifactRoot =
-    includesProjectScope && classicProject && targets.some((target) => target.scope === 'project');
+    updateClassicDependencies &&
+    includesProjectScope &&
+    classicProject &&
+    targets.some((target) => target.scope === 'project');
   let classicLayoutInitializationPermit: ClassicLayoutInitializationPermit | undefined;
   if (refreshClassicArtifactRoot) {
     try {
@@ -1454,6 +1511,7 @@ async function updateSingleProject(
         hooks: { totalInstalled: 0, totalFailed: 0, targets: [] },
         projectInstructions: { updated: 0 },
         openspec: { status: 'failed', reason },
+        superpowers: { status: 'skipped', targets: [] },
         codegraph: 'skipped',
       };
     }
@@ -1716,7 +1774,10 @@ async function updateSingleProject(
   for (const scope of ['project', 'global'] as const) {
     const scopeTargets = openSpecTargets.filter((target) => target.scope === scope);
     const requiresArtifactOnlyRefresh =
-      scope === 'project' && refreshClassicArtifactRoot && scopeTargets.length === 0;
+      updateClassicDependencies &&
+      scope === 'project' &&
+      refreshClassicArtifactRoot &&
+      scopeTargets.length === 0;
     if (scopeTargets.length === 0 && !requiresArtifactOnlyRefresh) continue;
     const toolIds = [...new Set(scopeTargets.map((target) => target.platform.openspecToolId))];
     const mirrorOpenCodePlatformIds = scopeTargets
@@ -1781,6 +1842,75 @@ async function updateSingleProject(
         projectConfigCommitBlocked = true;
       }
       log(`  ${openSpecReason}`);
+    }
+  }
+
+  let superpowersStatus: SuperpowersStatus = 'skipped';
+  let superpowersReason: string | undefined;
+  const superpowersTargetResults: SuperpowersTargetResult[] = [];
+  for (const scope of ['project', 'global'] as const) {
+    const scopeTargets = superpowersTargets.filter((target) => target.scope === scope);
+    const scopePluginTargets = pluginManagedSuperpowersTargets.filter(
+      (target) => target.scope === scope,
+    );
+    if (scopeTargets.length === 0) {
+      if (scopePluginTargets.length > 0) {
+        superpowersReason = 'plugin-managed Superpowers installation skipped';
+        superpowersTargetResults.push(
+          ...scopePluginTargets.map((target) => ({
+            scope: target.scope,
+            platform: target.platform.id,
+            platformName: target.platform.name,
+            source: 'plugin' as const,
+            status: 'skipped' as const,
+            reason: 'plugin-managed installation',
+          })),
+        );
+        log(`  Superpowers (${scope}): skipped (plugin-managed installation)`);
+      }
+      continue;
+    }
+    try {
+      const status = await installSuperpowersForPlatforms(
+        projectPath,
+        scope,
+        [...new Set(scopeTargets.map((target) => target.platform.id))],
+        true,
+      );
+      if (status === 'failed') {
+        superpowersStatus = 'failed';
+        superpowersReason = `Superpowers ${scope} update failed`;
+      } else if (status === 'installed' && superpowersStatus !== 'failed') {
+        superpowersStatus = 'installed';
+        if (scopePluginTargets.length > 0) {
+          superpowersReason = 'plugin-managed Superpowers installation skipped';
+        }
+      }
+      log(`  Superpowers (${scope}): ${status}`);
+      superpowersTargetResults.push(
+        ...scopeTargets.map((target) => ({
+          scope: target.scope,
+          platform: target.platform.id,
+          platformName: target.platform.name,
+          source: 'skills-cli' as const,
+          status,
+          ...(status === 'failed' ? { reason: superpowersReason } : {}),
+        })),
+      );
+    } catch (error) {
+      superpowersStatus = 'failed';
+      superpowersReason = `Superpowers ${scope} update failed: ${(error as Error).message}`;
+      superpowersTargetResults.push(
+        ...scopeTargets.map((target) => ({
+          scope: target.scope,
+          platform: target.platform.id,
+          platformName: target.platform.name,
+          source: 'skills-cli' as const,
+          status: 'failed' as const,
+          reason: superpowersReason,
+        })),
+      );
+      log(`  ${superpowersReason}`);
     }
   }
 
@@ -1899,6 +2029,11 @@ async function updateSingleProject(
     openspec: {
       status: openSpecStatus,
       ...(openSpecReason ? { reason: openSpecReason } : {}),
+    },
+    superpowers: {
+      status: superpowersStatus,
+      ...(superpowersReason ? { reason: superpowersReason } : {}),
+      targets: superpowersTargetResults,
     },
     codegraph: codegraphStatus,
   };
@@ -2158,12 +2293,13 @@ function resolveSelfUpdateOptions(
         : 'self-update disabled by --skip-npm',
     };
   }
-  if (refreshesOnlyCurrentProject && !options.selfUpdate) {
+  if (!options.selfUpdate) {
     return {
       ...options,
       skipPackageSelfUpdate: true,
-      npmSkipReason:
-        'self-update disabled for current-project updates; pass --self-update to opt in',
+      npmSkipReason: refreshesOnlyCurrentProject
+        ? 'self-update disabled for current-project updates; pass --self-update to opt in'
+        : 'self-update disabled; pass --self-update to opt in',
     };
   }
   return { ...options, skipPackageSelfUpdate: false };

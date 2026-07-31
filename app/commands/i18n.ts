@@ -48,6 +48,7 @@ export type TranslationKey =
   | 'selectNpmDeps'
   | 'npmDepOpenSpec'
   | 'npmDepOpenSpecInstalled'
+  | 'npmDepOpenSpecRequired'
   | 'npmDepSuperpowers'
   | 'npmDepSuperpowersInstalled'
   | 'npmDepSuperpowersHint'
@@ -141,6 +142,7 @@ const TRANSLATIONS: Record<Language, Record<TranslationKey, string>> = {
     selectNpmDeps: 'Select npm dependencies to install/upgrade:',
     npmDepOpenSpec: 'OpenSpec CLI (global, @fission-ai/openspec@latest)',
     npmDepOpenSpecInstalled: 'OpenSpec CLI (already installed globally — upgrade to latest)',
+    npmDepOpenSpecRequired: 'Classic setup requires a compatible OpenSpec CLI.',
     npmDepSuperpowers: 'Superpowers (npx skills add obra/superpowers)',
     npmDepSuperpowersInstalled: 'Superpowers (already installed — re-run install)',
     npmDepSuperpowersHint: 'v6.0.0+ recommended — ~2× faster, ~50% fewer tokens',
@@ -236,6 +238,7 @@ const TRANSLATIONS: Record<Language, Record<TranslationKey, string>> = {
     selectNpmDeps: '选择要安装/升级的 npm 依赖：',
     npmDepOpenSpec: 'OpenSpec CLI（全局安装，@fission-ai/openspec@latest）',
     npmDepOpenSpecInstalled: 'OpenSpec CLI（已全局安装 — 升级到最新版本）',
+    npmDepOpenSpecRequired: 'Classic 初始化需要兼容版本的 OpenSpec CLI。',
     npmDepSuperpowers: 'Superpowers (npx skills add obra/superpowers)',
     npmDepSuperpowersInstalled: 'Superpowers（已安装 — 重新运行安装）',
     npmDepSuperpowersHint: '推荐 v6.0.0+ — 速度快约 2 倍，节省约 50% token',

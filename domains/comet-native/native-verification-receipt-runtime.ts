@@ -247,11 +247,51 @@ export async function loadNativeVerificationReceiptContext(
   };
 }
 
+const NATIVE_RECEIPT_BINDING_FIELDS = [
+  'change',
+  'sourceRevision',
+  'contractHash',
+  'scopeHash',
+  'snapshotHash',
+  'artifactHash',
+] as const satisfies readonly (keyof NativeVerificationReceiptBindings)[];
+
+export interface NativeReceiptBindingComparison {
+  ok: boolean;
+  mismatches: string[];
+}
+
+/**
+ * Compare a receipt's bindings against the expected bindings field-by-field.
+ *
+ * Unlike a coarse {@link nativeReceiptBindingsMatch} boolean check, this returns
+ * a per-field mismatch description so callers can surface exactly which binding
+ * diverged (e.g. "sourceRevision: expected 6, got 5") instead of an opaque
+ * "invalid" error. This is the diagnostic foundation that lets an Agent recover
+ * from a stale receipt without user intervention.
+ */
+export function compareNativeReceiptBindings(
+  receipt: Pick<NativeVerificationReceipt, 'bindings'>,
+  expected: NativeVerificationReceiptBindings,
+): NativeReceiptBindingComparison {
+  const mismatches: string[] = [];
+  for (const field of NATIVE_RECEIPT_BINDING_FIELDS) {
+    const actual = receipt.bindings[field];
+    const wanted = expected[field];
+    if (actual !== wanted) {
+      mismatches.push(
+        `${field}: expected ${JSON.stringify(wanted)}, got ${JSON.stringify(actual)}`,
+      );
+    }
+  }
+  return { ok: mismatches.length === 0, mismatches };
+}
+
 export function nativeReceiptBindingsMatch(
   receipt: Pick<NativeVerificationReceipt, 'bindings'>,
   expected: NativeVerificationReceiptBindings,
 ): boolean {
-  return JSON.stringify(receipt.bindings) === JSON.stringify(expected);
+  return compareNativeReceiptBindings(receipt, expected).ok;
 }
 
 export async function persistNativeStaticInspectionReceipt(options: {

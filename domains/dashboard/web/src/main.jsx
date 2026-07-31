@@ -40,6 +40,7 @@ import {
   runMermaid,
 } from './markdown-preview.js';
 import { NativeWorkflowPanel } from './native-workflow-panel.jsx';
+import { useAnimatedNumber } from './use-animated-number.js';
 import './styles.css';
 
 const AUTO_REFRESH_MS = 30_000;
@@ -889,41 +890,6 @@ function ArtifactRow({ artifact, preview, onPreview }) {
   );
 }
 
-function useAnimatedNumber(target, duration = 800, resetKey = target) {
-  const [value, setValue] = useState(0);
-
-  useEffect(() => {
-    const reduceMotion = window.matchMedia?.('(pref-reduced-motion: reduce)').matches;
-    if (reduceMotion) {
-      setValue(target);
-      return undefined;
-    }
-
-    const from = 0;
-    const diff = target;
-    const startedAt = performance.now();
-    let frame = 0;
-
-    setValue(0);
-
-    const tick = (now) => {
-      const t = Math.min(1, (now - startedAt) / duration);
-      const eased = 1 - Math.pow(1 - t, 3);
-      setValue(from + diff * eased);
-      if (t < 1) {
-        frame = requestAnimationFrame(tick);
-      }
-    };
-
-    frame = requestAnimationFrame(tick);
-    return () => {
-      cancelAnimationFrame(frame);
-    };
-  }, [duration, resetKey, target]);
-
-  return value;
-}
-
 function TaskProgress({ change }) {
   const total = change.tasks.total;
   const completed = change.tasks.completed;
@@ -1568,9 +1534,10 @@ function ClassicErrorState({ error }) {
 
 function EmptyState() {
   return (
-    <div className="rounded-lg bg-bg p-10 text-center text-sm text-muted shadow-raised">
-      当前无 Comet 迭代。
-    </div>
+    <section className="rounded-lg bg-bg p-12 text-center shadow-raised">
+      <h3 className="text-lg font-semibold tracking-tight">当前没有 Classic change</h3>
+      <p className="mt-2 text-sm text-muted">Classic 变更出现后会在这里展示。</p>
+    </section>
   );
 }
 
@@ -1801,29 +1768,46 @@ function AntSummaryCards({ snapshot }) {
   return (
     <section className="dashboard-summary-strip dashboard-overview-summary-strip">
       {cards.map(([title, value, note, status, Icon], index) => (
-        <button
-          type="button"
+        <AntSummaryCard
           key={title}
-          aria-pressed={selectedIndex === index}
-          className={`dashboard-overview-summary-card dashboard-summary-card dashboard-summary-metric-cell dashboard-summary-tone-${index + 1} ${selectedIndex === index ? 'dashboard-summary-primary' : ''}`}
+          title={title}
+          value={value}
+          note={note}
+          status={status}
+          icon={Icon}
+          tone={`dashboard-summary-tone-${index + 1}`}
+          selected={selectedIndex === index}
           onClick={() => setSelectedIndex(index)}
-        >
-          <div className="dashboard-summary-card-top">
-            <div className="min-w-0">
-              <div className="text-[13px] font-medium text-muted">{title}</div>
-              <div className="dashboard-summary-metric mt-1 text-[28px] font-semibold leading-none tabular-nums">
-                {value}
-              </div>
-            </div>
-            <span className="dashboard-summary-icon" aria-hidden="true">
-              <Icon />
-            </span>
-          </div>
-          <span className="dashboard-summary-status">{status}</span>
-          <div className="mt-2 truncate text-[11px] text-meta">{note}</div>
-        </button>
+        />
       ))}
     </section>
+  );
+}
+
+function AntSummaryCard({ title, value, note, status, icon: Icon, tone, selected, onClick }) {
+  // 进入页面或数值变化时，从 0 滚动到目标值；数值不变则保持，避免每次自动刷新都重滚。
+  const animatedValue = useAnimatedNumber(value, 850, value);
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      className={`dashboard-overview-summary-card dashboard-summary-card dashboard-summary-metric-cell ${tone} ${selected ? 'dashboard-summary-primary' : ''}`}
+      onClick={onClick}
+    >
+      <div className="dashboard-summary-card-top">
+        <div className="min-w-0">
+          <div className="text-[13px] font-medium text-muted">{title}</div>
+          <div className="dashboard-summary-metric mt-1 text-[28px] font-semibold leading-none tabular-nums">
+            {Math.round(animatedValue)}
+          </div>
+        </div>
+        <span className="dashboard-summary-icon" aria-hidden="true">
+          <Icon />
+        </span>
+      </div>
+      <span className="dashboard-summary-status">{status}</span>
+      <div className="mt-2 truncate text-[11px] text-meta">{note}</div>
+    </button>
   );
 }
 

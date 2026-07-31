@@ -561,11 +561,12 @@ describe('skills', () => {
       await expect(fs.stat(plansDir)).resolves.toBeDefined();
     });
 
-    it('does not reuse an unconfigured artifact root without initialization authorization', async () => {
+    it('reuses an existing desired artifact root without a layout conflict', async () => {
       await createWorkingDirs(tmpDir);
-      await expect(createWorkingDirs(tmpDir)).rejects.toThrow(
-        /cannot initialize Classic layout without/iu,
-      );
+      // After beta.13's Classic configuration recovery, a project whose desired
+      // (docs) root already exists and has no conflicting legacy root can be
+      // re-initialized in place instead of being rejected as unauthorized.
+      await expect(createWorkingDirs(tmpDir)).resolves.toBeUndefined();
     });
 
     it('installs ambient resume instructions while preserving user content', async () => {

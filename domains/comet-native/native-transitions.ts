@@ -601,10 +601,33 @@ async function advanceNativeChangeLocked(
     const findings = structureNativeFindings({
       paths: options.paths,
       state,
-      findings: verificationEvidence.findingCodes.map((code) => ({
-        code,
-        message: `Native verification evidence is not current: ${code}`,
-      })),
+      findings: verificationEvidence.findingCodes.map((code) => {
+        // For binding mismatches, fold the per-receipt diagnostics into the
+        // finding message so the Agent sees exactly which receipts diverged
+        // and on which fields, without a second round-trip to status.
+        if (
+          code === 'verification-receipt-binding-mismatch' &&
+          verificationEvidence.receiptBindingFailures &&
+          verificationEvidence.receiptBindingFailures.length > 0
+        ) {
+          const detail = verificationEvidence.receiptBindingFailures
+            .map((failure) => {
+              const target = failure.acceptanceId
+                ? `${failure.ref}[${failure.acceptanceId}]`
+                : failure.ref;
+              return `${target} -> ${failure.mismatches.join('; ')}`;
+            })
+            .join(' | ');
+          return {
+            code,
+            message: `Native verification receipt binding is invalid: ${detail}. Re-issue the affected receipts with \`comet native receipt refresh <change> --apply\`.`,
+          };
+        }
+        return {
+          code,
+          message: `Native verification evidence is not current: ${code}`,
+        };
+      }),
     });
     return {
       change: state,

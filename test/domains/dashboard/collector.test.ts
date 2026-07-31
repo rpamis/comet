@@ -69,7 +69,7 @@ describe('collectDashboardSnapshot', () => {
     expect(snap.classicError).toBeUndefined();
   });
 
-  it('does not report a Classic error for a Native-only project', async () => {
+  it('collects Classic changes for a Native-only project', async () => {
     await fs.mkdir(path.join(root, '.comet'), { recursive: true });
     await fs.writeFile(
       path.join(root, '.comet', 'config.yaml'),
@@ -85,13 +85,15 @@ describe('collectDashboardSnapshot', () => {
       'utf8',
     );
     await writeChange(root, {
-      name: 'classic-should-not-appear',
+      name: 'classic-discovered-alongside-native',
       yaml: { phase: 'build', workflow: 'classic' },
     });
 
     const snap = await collectDashboardSnapshot(root);
 
-    expect(snap.changes.active).toEqual([]);
+    expect(snap.changes.active.map((change) => change.name)).toEqual([
+      'classic-discovered-alongside-native',
+    ]);
     expect(snap.changes.archived).toEqual([]);
     expect(snap.classicError).toBeUndefined();
   });

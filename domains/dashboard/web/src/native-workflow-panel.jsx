@@ -10,6 +10,7 @@ import {
   UserOutlined,
 } from '@ant-design/icons';
 import { Button, Tooltip } from 'antd';
+import { useAnimatedNumber } from './use-animated-number.js';
 
 const PHASES = [
   ['shape', 'Shape'],
@@ -204,29 +205,46 @@ function NativeSummaryCards({ native }) {
   return (
     <section className="dashboard-summary-strip dashboard-overview-summary-strip">
       {cards.map(([label, value, note, tag, Icon], index) => (
-        <button
-          type="button"
+        <NativeSummaryCard
           key={label}
-          aria-pressed={selectedIndex === index}
-          className={`dashboard-overview-summary-card dashboard-summary-card dashboard-summary-metric-cell dashboard-summary-tone-${index + 1} ${selectedIndex === index ? 'dashboard-summary-primary' : ''}`}
+          label={label}
+          value={value}
+          note={note}
+          tag={tag}
+          icon={Icon}
+          tone={`dashboard-summary-tone-${index + 1}`}
+          selected={selectedIndex === index}
           onClick={() => setSelectedIndex(index)}
-        >
-          <div className="dashboard-summary-card-top">
-            <div className="min-w-0">
-              <div className="text-[13px] font-medium text-muted">{label}</div>
-              <div className="dashboard-summary-metric mt-1 text-[28px] font-semibold leading-none tabular-nums">
-                {value}
-              </div>
-            </div>
-            <span className="dashboard-summary-icon" aria-hidden="true">
-              <Icon />
-            </span>
-          </div>
-          <span className="dashboard-summary-status">{tag}</span>
-          <div className="mt-2 truncate text-[11px] text-meta">{note}</div>
-        </button>
+        />
       ))}
     </section>
+  );
+}
+
+function NativeSummaryCard({ label, value, note, tag, icon: Icon, tone, selected, onClick }) {
+  // 进入页面或数值变化时，从 0 滚动到目标值；数值不变则保持，避免每次自动刷新都重滚。
+  const animatedValue = useAnimatedNumber(value, 850, value);
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      className={`dashboard-overview-summary-card dashboard-summary-card dashboard-summary-metric-cell ${tone} ${selected ? 'dashboard-summary-primary' : ''}`}
+      onClick={onClick}
+    >
+      <div className="dashboard-summary-card-top">
+        <div className="min-w-0">
+          <div className="text-[13px] font-medium text-muted">{label}</div>
+          <div className="dashboard-summary-metric mt-1 text-[28px] font-semibold leading-none tabular-nums">
+            {Math.round(animatedValue)}
+          </div>
+        </div>
+        <span className="dashboard-summary-icon" aria-hidden="true">
+          <Icon />
+        </span>
+      </div>
+      <span className="dashboard-summary-status">{tag}</span>
+      <div className="mt-2 truncate text-[11px] text-meta">{note}</div>
+    </button>
   );
 }
 

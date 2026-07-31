@@ -1155,12 +1155,13 @@ export async function assertClassicLayoutInitializationSafe(
   }
 
   if (legacyRoot.exists || docsRoot.exists) {
-    if (
-      permitsDesiredRoot(permit, root, desiredLayout) &&
-      desiredRoot.exists &&
-      !alternateRoot.exists
-    ) {
-      return { ...desired, initializationPermit: permit };
+    if (desiredRoot.exists && !alternateRoot.exists) {
+      return {
+        ...desired,
+        initializationPermit: permitsDesiredRoot(permit, root, desiredLayout)
+          ? permit
+          : initializationPermit(root, desiredLayout, configIdentity),
+      };
     }
     throw new Error(
       'Cannot initialize Classic layout without .comet/config.yaml when openspec/ or docs/openspec/ already exists',

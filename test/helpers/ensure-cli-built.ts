@@ -49,7 +49,12 @@ async function cliBuildIsFresh(repositoryRoot: string): Promise<boolean> {
 
 export async function ensureCliBuilt(repositoryRoot: string): Promise<void> {
   const lockPath = path.join(repositoryRoot, '.comet-test-build.lock');
-  while (true) {
+  // Wait for up to ~3 minutes for a concurrent build (test suites fan out across
+  // many files, all racing through this helper). Only the holder of the lock
+  // performs the build; everyone else polls for freshness instead of stacking
+  // redundant `build.js` invocations that can corrupt `dist` under contention.
+  const maxWaitAttempts = 1_800;
+  for (let attempt = 0; attempt < maxWaitAttempts; attempt += 1) {
     await removeStaleLock(lockPath);
     let handle: Awaited<ReturnType<typeof fs.open>> | null = null;
     try {
@@ -63,12 +68,16 @@ export async function ensureCliBuilt(repositoryRoot: string): Promise<void> {
       return;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-      await sleep(100);
     } finally {
       await handle?.close();
       if (handle) await fs.rm(lockPath, { force: true });
     }
 
+    // Did not hold the lock: a peer is building (or just released it). Wait for
+    // the build to land rather than immediately re-claiming the lock, which
+    // avoids redundant builds and the mtime races they create on Windows.
     if (await cliBuildIsFresh(repositoryRoot)) return;
+    await sleep(100);
   }
+  throw new Error(`Timed out waiting for CLI build to complete: ${lockPath}`);
 }

@@ -138,6 +138,39 @@ describe('dashboard markdown-preview', () => {
     expect(html).not.toContain('"files":');
   });
 
+  it('summarizes Native acceptance evidence instead of rendering its machine JSON', async () => {
+    const acceptanceId =
+      'acceptance-1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef';
+    const receiptRef =
+      'runtime/evidence/check-receipts/3a9b3d39167b483ca6888768db44034ed5e4a559fef89a92587029689a32fa68.json';
+    const html = await renderMarkdown(
+      [
+        '# Acceptance evidence',
+        '',
+        '<!-- comet-native:acceptance-evidence:start -->',
+        JSON.stringify([
+          { acceptance_id: acceptanceId, status: 'passed', evidence_refs: [receiptRef] },
+          { acceptance_id: `${acceptanceId}-two`, status: 'failed', evidence_refs: [] },
+        ]),
+        '<!-- comet-native:acceptance-evidence:end -->',
+        '',
+        '# Commands and results',
+        '',
+        'Focused checks completed.',
+      ].join('\n'),
+    );
+
+    expect(html).toContain('class="acceptance-evidence-summary"');
+    expect(html).toContain('验收项');
+    expect(html).toContain('已通过');
+    expect(html).toContain('需关注');
+    expect(html).toContain('证据引用');
+    expect(html).toContain('自动化检查回执');
+    expect(html).toContain(receiptRef);
+    expect(html).not.toContain(acceptanceId);
+    expect(html).toContain('Focused checks completed.');
+  });
+
   it('escapes quotes in structured keys used as HTML attributes', async () => {
     const maliciousKey = 'x" onmouseover="alert(1)';
     const html = await renderJsonPreview(

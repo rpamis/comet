@@ -114,17 +114,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path52) {
-      const ctrl = callVisitor(key, node, visitor, path52);
+    function visit_(key, node, visitor, path53) {
+      const ctrl = callVisitor(key, node, visitor, path53);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path52, ctrl);
-        return visit_(key, ctrl, visitor, path52);
+        replaceNode(key, path53, ctrl);
+        return visit_(key, ctrl, visitor, path53);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path52 = Object.freeze(path52.concat(node));
+          path53 = Object.freeze(path53.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = visit_(i, node.items[i], visitor, path52);
+            const ci = visit_(i, node.items[i], visitor, path53);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -135,13 +135,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path52 = Object.freeze(path52.concat(node));
-          const ck = visit_("key", node.key, visitor, path52);
+          path53 = Object.freeze(path53.concat(node));
+          const ck = visit_("key", node.key, visitor, path53);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path52);
+          const cv = visit_("value", node.value, visitor, path53);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -162,17 +162,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path52) {
-      const ctrl = await callVisitor(key, node, visitor, path52);
+    async function visitAsync_(key, node, visitor, path53) {
+      const ctrl = await callVisitor(key, node, visitor, path53);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path52, ctrl);
-        return visitAsync_(key, ctrl, visitor, path52);
+        replaceNode(key, path53, ctrl);
+        return visitAsync_(key, ctrl, visitor, path53);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path52 = Object.freeze(path52.concat(node));
+          path53 = Object.freeze(path53.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = await visitAsync_(i, node.items[i], visitor, path52);
+            const ci = await visitAsync_(i, node.items[i], visitor, path53);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -183,13 +183,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path52 = Object.freeze(path52.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path52);
+          path53 = Object.freeze(path53.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path53);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path52);
+          const cv = await visitAsync_("value", node.value, visitor, path53);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -216,23 +216,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path52) {
+    function callVisitor(key, node, visitor, path53) {
       if (typeof visitor === "function")
-        return visitor(key, node, path52);
+        return visitor(key, node, path53);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path52);
+        return visitor.Map?.(key, node, path53);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path52);
+        return visitor.Seq?.(key, node, path53);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path52);
+        return visitor.Pair?.(key, node, path53);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path52);
+        return visitor.Scalar?.(key, node, path53);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path52);
+        return visitor.Alias?.(key, node, path53);
       return void 0;
     }
-    function replaceNode(key, path52, node) {
-      const parent = path52[path52.length - 1];
+    function replaceNode(key, path53, node) {
+      const parent = path53[path53.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity.isPair(parent)) {
@@ -842,10 +842,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path52, value) {
+    function collectionFromPath(schema, path53, value) {
       let v = value;
-      for (let i = path52.length - 1; i >= 0; --i) {
-        const k = path52[i];
+      for (let i = path53.length - 1; i >= 0; --i) {
+        const k = path53[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -864,7 +864,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path52) => path52 == null || typeof path52 === "object" && !!path52[Symbol.iterator]().next().done;
+    var isEmptyPath = (path53) => path53 == null || typeof path53 === "object" && !!path53[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -894,11 +894,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path52, value) {
-        if (isEmptyPath(path52))
+      addIn(path53, value) {
+        if (isEmptyPath(path53))
           this.add(value);
         else {
-          const [key, ...rest] = path52;
+          const [key, ...rest] = path53;
           const node = this.get(key, true);
           if (identity.isCollection(node))
             node.addIn(rest, value);
@@ -912,8 +912,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path52) {
-        const [key, ...rest] = path52;
+      deleteIn(path53) {
+        const [key, ...rest] = path53;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -927,8 +927,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path52, keepScalar) {
-        const [key, ...rest] = path52;
+      getIn(path53, keepScalar) {
+        const [key, ...rest] = path53;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -946,8 +946,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path52) {
-        const [key, ...rest] = path52;
+      hasIn(path53) {
+        const [key, ...rest] = path53;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -957,8 +957,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path52, value) {
-        const [key, ...rest] = path52;
+      setIn(path53, value) {
+        const [key, ...rest] = path53;
         if (rest.length === 0) {
           this.set(key, value);
         } else {
@@ -3473,9 +3473,9 @@ var require_Document = __commonJS({
           this.contents.add(value);
       }
       /** Adds a value to the document. */
-      addIn(path52, value) {
+      addIn(path53, value) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path52, value);
+          this.contents.addIn(path53, value);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -3550,14 +3550,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path52) {
-        if (Collection.isEmptyPath(path52)) {
+      deleteIn(path53) {
+        if (Collection.isEmptyPath(path53)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path52) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path53) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -3572,10 +3572,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path52, keepScalar) {
-        if (Collection.isEmptyPath(path52))
+      getIn(path53, keepScalar) {
+        if (Collection.isEmptyPath(path53))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path52, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path53, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -3586,10 +3586,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path52) {
-        if (Collection.isEmptyPath(path52))
+      hasIn(path53) {
+        if (Collection.isEmptyPath(path53))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path52) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path53) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -3606,13 +3606,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path52, value) {
-        if (Collection.isEmptyPath(path52)) {
+      setIn(path53, value) {
+        if (Collection.isEmptyPath(path53)) {
           this.contents = value;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path52), value);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path53), value);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path52, value);
+          this.contents.setIn(path53, value);
         }
       }
       /**
@@ -5572,9 +5572,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path52) => {
+    visit.itemAtPath = (cst, path53) => {
       let item = cst;
-      for (const [field2, index] of path52) {
+      for (const [field2, index] of path53) {
         const tok = item?.[field2];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -5583,23 +5583,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path52) => {
-      const parent = visit.itemAtPath(cst, path52.slice(0, -1));
-      const field2 = path52[path52.length - 1][0];
+    visit.parentCollection = (cst, path53) => {
+      const parent = visit.itemAtPath(cst, path53.slice(0, -1));
+      const field2 = path53[path53.length - 1][0];
       const coll = parent?.[field2];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path52, item, visitor) {
-      let ctrl = visitor(item, path52);
+    function _visit(path53, item, visitor) {
+      let ctrl = visitor(item, path53);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field2 of ["key", "value"]) {
         const token = item[field2];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci = _visit(Object.freeze(path52.concat([[field2, i]])), token.items[i], visitor);
+            const ci = _visit(Object.freeze(path53.concat([[field2, i]])), token.items[i], visitor);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -5610,10 +5610,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field2 === "key")
-            ctrl = ctrl(item, path52);
+            ctrl = ctrl(item, path53);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path52) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path53) : ctrl;
     }
     exports.visit = visit;
   }
@@ -7368,7 +7368,7 @@ var require_dist = __commonJS({
 import { pathToFileURL } from "url";
 
 // domains/comet-native/native-cli.ts
-import path51 from "path";
+import path52 from "path";
 
 // platform/fs/race-safe-read.ts
 import { constants as fsConstants, promises as fs } from "fs";
@@ -21262,8 +21262,26 @@ async function loadNativeVerificationReceiptContext(paths, state) {
     scope
   };
 }
-function nativeReceiptBindingsMatch(receipt, expected) {
-  return JSON.stringify(receipt.bindings) === JSON.stringify(expected);
+var NATIVE_RECEIPT_BINDING_FIELDS = [
+  "change",
+  "sourceRevision",
+  "contractHash",
+  "scopeHash",
+  "snapshotHash",
+  "artifactHash"
+];
+function compareNativeReceiptBindings(receipt, expected) {
+  const mismatches = [];
+  for (const field2 of NATIVE_RECEIPT_BINDING_FIELDS) {
+    const actual = receipt.bindings[field2];
+    const wanted = expected[field2];
+    if (actual !== wanted) {
+      mismatches.push(
+        `${field2}: expected ${JSON.stringify(wanted)}, got ${JSON.stringify(actual)}`
+      );
+    }
+  }
+  return { ok: mismatches.length === 0, mismatches };
 }
 async function persistNativeStaticInspectionReceipt(options) {
   const context = await loadNativeVerificationReceiptContext(options.paths, options.state);
@@ -21544,6 +21562,17 @@ async function validateNativeStaticReceiptDependency(options) {
 }
 
 // domains/comet-native/native-verification-runtime.ts
+var NativeVerificationReceiptBindingError = class extends Error {
+  details;
+  constructor(details) {
+    const summary = details.length === 0 ? "Native verification receipt binding is invalid" : `Native verification receipt binding is invalid (${details.length} receipt(s)): ${details.map(
+      (d) => `${d.ref}${d.acceptanceId ? `[${d.acceptanceId}]` : ""} -> ${d.mismatches.join("; ")}`
+    ).join(" | ")}`;
+    super(summary);
+    this.name = "NativeVerificationReceiptBindingError";
+    this.details = details;
+  }
+};
 function projectionManifest2(projection) {
   return {
     schema: "comet.native.content-snapshot.v1",
@@ -21670,8 +21699,26 @@ async function validateTypedReceipt(options) {
     options.state.name,
     options.ref
   );
-  if (receipt.role !== options.role || !nativeReceiptBindingsMatch(receipt, options.expectedBindings) || options.acceptanceId !== void 0 && !receipt.acceptanceIds.includes(options.acceptanceId)) {
-    throw new Error("Native verification receipt coverage or binding is invalid");
+  const mismatches = [];
+  if (receipt.role !== options.role) {
+    mismatches.push(`role: expected ${options.role}, got ${receipt.role}`);
+  }
+  const bindingComparison = compareNativeReceiptBindings(receipt, options.expectedBindings);
+  mismatches.push(...bindingComparison.mismatches);
+  if (options.acceptanceId !== void 0 && !receipt.acceptanceIds.includes(options.acceptanceId)) {
+    mismatches.push(
+      `acceptanceId: expected ${options.acceptanceId} in [${receipt.acceptanceIds.join(", ")}]`
+    );
+  }
+  if (mismatches.length > 0) {
+    throw new NativeVerificationReceiptBindingError([
+      {
+        ref: options.ref,
+        role: options.role,
+        ...options.acceptanceId !== void 0 ? { acceptanceId: options.acceptanceId } : {},
+        mismatches
+      }
+    ]);
   }
   if (options.result === "pass" && receipt.status !== "passed") {
     throw new Error(`Native verification receipt is ${receipt.status}`);
@@ -21702,13 +21749,21 @@ async function validateCurrentReceiptGraph(options) {
     implementationScope: options.implementationScope,
     sourceRevision: options.sourceRevision
   });
+  const collectedFailures = [];
   for (const ref of options.requiredReceiptRefs) {
     const receipt = await validateTypedReceipt({
       ...options,
       ref,
       expectedBindings,
       role: "required-check"
+    }).catch((error) => {
+      if (error instanceof NativeVerificationReceiptBindingError) {
+        collectedFailures.push(...error.details);
+        return null;
+      }
+      throw error;
     });
+    if (receipt === null) continue;
     if (receipt.kind !== "static-inspection") {
       throw new Error("Native required-check evidence must be a static-inspection receipt");
     }
@@ -21723,7 +21778,14 @@ async function validateCurrentReceiptGraph(options) {
         expectedBindings,
         acceptanceId: entry2.acceptanceId,
         role: "acceptance-evidence"
+      }).catch((error) => {
+        if (error instanceof NativeVerificationReceiptBindingError) {
+          collectedFailures.push(...error.details);
+          return null;
+        }
+        throw error;
       });
+      if (receipt === null) continue;
       if (receipt.kind !== "automated-check" && receipt.kind !== "manual-evidence") {
         throw new Error("Native acceptance evidence must be automated-check or manual-evidence");
       }
@@ -21731,6 +21793,9 @@ async function validateCurrentReceiptGraph(options) {
         throw new Error("Native failed acceptance evidence must reference a non-passing receipt");
       }
     }
+  }
+  if (collectedFailures.length > 0) {
+    throw new NativeVerificationReceiptBindingError(collectedFailures);
   }
 }
 async function inspectNativeVerificationEvidence(options) {
@@ -21761,15 +21826,29 @@ async function inspectNativeVerificationEvidence(options) {
       "Native passing verification cannot include failed or missing acceptance criteria"
     );
   }
-  await validateCurrentReceiptGraph({
-    paths: options.paths,
-    state: options.state,
-    result: options.result,
-    trace,
-    requiredReceiptRefs,
-    contractHash: facts.contractHash,
-    implementationScope: facts.bundle
-  });
+  try {
+    await validateCurrentReceiptGraph({
+      paths: options.paths,
+      state: options.state,
+      result: options.result,
+      trace,
+      requiredReceiptRefs,
+      contractHash: facts.contractHash,
+      implementationScope: facts.bundle
+    });
+  } catch (error) {
+    if (error instanceof NativeVerificationReceiptBindingError) {
+      return {
+        ready: false,
+        findingCodes: ["verification-receipt-binding-mismatch"],
+        envelope: null,
+        evidenceRef: null,
+        reportSnapshot: null,
+        ...error.details.length > 0 ? { receiptBindingFailures: error.details } : {}
+      };
+    }
+    throw error;
+  }
   const allowance = options.state.partial_allowance ? await readNativePartialAllowance(
     options.paths,
     options.state.name,
@@ -24132,6 +24211,20 @@ function nativeContinuation(options) {
     };
   }
   if (actionableFindings.length > 0) {
+    if (requiredInputs.includes("refresh-verification-receipts")) {
+      return {
+        schema: "comet.native.continuation.v1",
+        skill: "comet-native",
+        change: options.state.name,
+        phase: options.state.phase,
+        revision: options.state.revision,
+        disposition: "continue",
+        action: "work-phase",
+        command: `comet native receipt refresh ${options.state.name} --apply`,
+        requiresUserDecision: false,
+        requiredInputs
+      };
+    }
     if (options.state.phase === "archive") {
       return {
         schema: "comet.native.continuation.v1",
@@ -24274,6 +24367,24 @@ var EXACT_METADATA = {
   "verification-scope-partial": {
     severity: "error",
     requiredAction: "confirm-partial-verification-scope",
+    retry: "next",
+    repair: "none"
+  },
+  "verification-receipt-binding-mismatch": {
+    severity: "error",
+    requiredAction: "refresh-verification-receipts",
+    retry: "next",
+    repair: "none"
+  },
+  "verification-receipt-stale": {
+    severity: "error",
+    requiredAction: "refresh-verification-receipts",
+    retry: "next",
+    repair: "none"
+  },
+  "verification-receipt-invalid": {
+    severity: "error",
+    requiredAction: "refresh-verification-receipts",
     retry: "next",
     repair: "none"
   },
@@ -30093,10 +30204,22 @@ async function advanceNativeChangeLocked(options) {
     const findings = structureNativeFindings({
       paths: options.paths,
       state,
-      findings: verificationEvidence.findingCodes.map((code) => ({
-        code,
-        message: `Native verification evidence is not current: ${code}`
-      }))
+      findings: verificationEvidence.findingCodes.map((code) => {
+        if (code === "verification-receipt-binding-mismatch" && verificationEvidence.receiptBindingFailures && verificationEvidence.receiptBindingFailures.length > 0) {
+          const detail = verificationEvidence.receiptBindingFailures.map((failure) => {
+            const target = failure.acceptanceId ? `${failure.ref}[${failure.acceptanceId}]` : failure.ref;
+            return `${target} -> ${failure.mismatches.join("; ")}`;
+          }).join(" | ");
+          return {
+            code,
+            message: `Native verification receipt binding is invalid: ${detail}. Re-issue the affected receipts with \`comet native receipt refresh <change> --apply\`.`
+          };
+        }
+        return {
+          code,
+          message: `Native verification evidence is not current: ${code}`
+        };
+      })
     });
     return {
       change: state,
@@ -30247,9 +30370,181 @@ async function advanceNativeChangeLocked(options) {
   };
 }
 
+// domains/comet-native/native-receipt-refresh.ts
+import path50 from "node:path";
+var NATIVE_RECEIPT_REFRESH_STEP_PREFIX = "Native receipt re-issued after revision bump";
+function formatAutomatedCommand(receipt) {
+  if (receipt.kind !== "automated-check") return "<unknown automated receipt>";
+  const parts = [receipt.evidence.executable, ...receipt.evidence.args];
+  return parts.map((part) => /\s/u.test(part) ? JSON.stringify(part) : part).join(" ");
+}
+function describeManualStep(revision) {
+  return `${NATIVE_RECEIPT_REFRESH_STEP_PREFIX} to revision ${revision}`;
+}
+function describeManualObservation() {
+  return "Manual evidence re-issued via `comet native receipt refresh` to restore revision binding.";
+}
+async function refreshNativeVerificationReceipts(options) {
+  const state = await readNativeChange(options.paths, options.name);
+  if (state.phase !== "verify") {
+    throw new Error(
+      `Native receipt refresh requires Verify, got ${state.phase} for ${options.name}`
+    );
+  }
+  if (!state.verification_evidence) {
+    return {
+      refreshed: [],
+      requiresRerun: [],
+      requiresCheck: [],
+      applied: false,
+      verificationReport: null
+    };
+  }
+  const context = await loadNativeVerificationReceiptContext(options.paths, state);
+  const envelope = await readNativeVerificationEvidence(
+    options.paths,
+    options.name,
+    state.verification_evidence
+  );
+  const manualItems = [];
+  const rerunItems = [];
+  const checkItems = [];
+  const staleRefs = /* @__PURE__ */ new Set();
+  const allRefs = [.../* @__PURE__ */ new Set([...envelope.requiredReceiptRefs, ...envelope.receiptRefs])];
+  for (const ref of allRefs) {
+    const receipt = await readNativeVerificationReceipt(options.paths, options.name, ref);
+    const comparison = compareNativeReceiptBindings(receipt, context.bindings);
+    if (comparison.ok) continue;
+    staleRefs.add(ref);
+    if (receipt.kind === "manual-evidence") {
+      manualItems.push({ oldRef: ref, acceptanceIds: [...receipt.acceptanceIds] });
+    } else if (receipt.kind === "automated-check") {
+      rerunItems.push({
+        oldRef: ref,
+        acceptanceIds: [...receipt.acceptanceIds],
+        command: formatAutomatedCommand(receipt),
+        timeoutMs: receipt.evidence.timeoutMs
+      });
+    } else if (receipt.kind === "static-inspection") {
+      checkItems.push({ oldRef: ref });
+    }
+  }
+  const canAutoApply = options.apply && rerunItems.length === 0 && manualItems.length > 0;
+  if (!canAutoApply) {
+    return {
+      refreshed: [],
+      requiresRerun: rerunItems,
+      requiresCheck: checkItems,
+      applied: false,
+      verificationReport: state.verification_report
+    };
+  }
+  const refreshed = [];
+  const newRefByAcceptance = /* @__PURE__ */ new Map();
+  const groupsByKey = /* @__PURE__ */ new Map();
+  for (const item of manualItems) {
+    const key = [...item.acceptanceIds].sort().join("\n");
+    const bucket = groupsByKey.get(key);
+    if (bucket) {
+      bucket.push(item.oldRef);
+    } else {
+      groupsByKey.set(key, [item.oldRef]);
+    }
+  }
+  for (const [acceptanceKey, oldRefs] of groupsByKey) {
+    const acceptanceIds = acceptanceKey.split("\n");
+    const issued = await issueNativeManualEvidenceReceipt({
+      paths: options.paths,
+      name: options.name,
+      acceptanceIds,
+      steps: [describeManualStep(state.revision)],
+      observations: [describeManualObservation()]
+    });
+    for (const acceptanceId2 of acceptanceIds) {
+      newRefByAcceptance.set(acceptanceId2, issued.ref);
+    }
+    for (const oldRef of oldRefs) {
+      const primaryAcceptanceId = manualItems.find((item) => item.oldRef === oldRef)?.acceptanceIds[0];
+      if (primaryAcceptanceId) {
+        refreshed.push({ acceptanceId: primaryAcceptanceId, oldRef, newRef: issued.ref });
+      }
+    }
+  }
+  const reportRef = state.verification_report;
+  if (!reportRef) {
+    throw new Error(
+      `Native receipt refresh cannot rewrite verification report: ${options.name} has no report ref`
+    );
+  }
+  const changeDir = nativeChangeDir(options.paths, options.name);
+  const report = await readNativeBoundedTextFile({ root: changeDir, ref: reportRef });
+  const existingEntries = parseNativeVerificationMachineBlock(report.text);
+  const newEntries = rebuildAcceptanceEvidenceEntries(
+    envelope.acceptanceTrace.entries,
+    existingEntries,
+    staleRefs,
+    newRefByAcceptance
+  );
+  const block = serializeNativeVerificationMachineBlock(newEntries);
+  const updatedReport = replaceAcceptanceEvidenceBlock(report.text, block);
+  await atomicWriteText(path50.join(changeDir, ...reportRef.split("/")), updatedReport);
+  return {
+    refreshed,
+    requiresRerun: [],
+    requiresCheck: checkItems,
+    applied: true,
+    verificationReport: reportRef
+  };
+}
+function rebuildAcceptanceEvidenceEntries(traceEntries, existingEntries, staleRefs, newRefByAcceptance) {
+  const entriesByAcceptance = /* @__PURE__ */ new Map();
+  for (const entry2 of existingEntries) {
+    entriesByAcceptance.set(entry2.acceptance_id, entry2);
+  }
+  const rebuilt = [];
+  for (const trace of traceEntries) {
+    const existing = entriesByAcceptance.get(trace.acceptanceId);
+    if (!existing) continue;
+    if (trace.status === "failed") {
+      rebuilt.push(existing);
+      continue;
+    }
+    const preservedRefs = existing.evidence_refs.filter((ref) => !staleRefs.has(ref));
+    const newRef = newRefByAcceptance.get(trace.acceptanceId);
+    const evidenceRefs = newRef !== void 0 ? [...preservedRefs, newRef] : preservedRefs;
+    if (evidenceRefs.length === 0) {
+      rebuilt.push(existing);
+      continue;
+    }
+    const entry2 = {
+      acceptance_id: existing.acceptance_id,
+      status: existing.status,
+      evidence_refs: [...new Set(evidenceRefs)].sort()
+    };
+    if (existing.skipped_reason !== void 0) {
+      entry2.skipped_reason = existing.skipped_reason;
+    }
+    rebuilt.push(entry2);
+  }
+  return rebuilt;
+}
+function replaceAcceptanceEvidenceBlock(markdown, newBlock) {
+  const startIndex = markdown.indexOf(NATIVE_ACCEPTANCE_EVIDENCE_START_MARKER);
+  if (startIndex < 0) {
+    throw new Error("Native verification report is missing the acceptance-evidence start marker");
+  }
+  const endIndex = markdown.indexOf(NATIVE_ACCEPTANCE_EVIDENCE_END_MARKER, startIndex);
+  if (endIndex < 0) {
+    throw new Error("Native verification report is missing the acceptance-evidence end marker");
+  }
+  const before = markdown.slice(0, startIndex);
+  const after = markdown.slice(endIndex + NATIVE_ACCEPTANCE_EVIDENCE_END_MARKER.length);
+  return `${before}${newBlock}${after}`;
+}
+
 // domains/comet-native/native-hook-guard.ts
 import { promises as fs33 } from "fs";
-import path50 from "path";
+import path51 from "path";
 
 // domains/comet-entry/hook-adapter.ts
 import { readFileSync } from "fs";
@@ -30396,14 +30691,14 @@ function readCometHookRequest() {
 
 // domains/comet-native/native-hook-guard.ts
 function isWithin(parent, target) {
-  const relative = path50.relative(parent, target);
-  return relative === "" || !relative.startsWith("..") && !path50.isAbsolute(relative);
+  const relative = path51.relative(parent, target);
+  return relative === "" || !relative.startsWith("..") && !path51.isAbsolute(relative);
 }
 function requestTargetsAreControlOnly(projectRoot, nativeRoot, request) {
   return request.targets.length > 0 && request.targets.every((targetPath) => {
-    const target = path50.resolve(projectRoot, targetPath);
+    const target = path51.resolve(projectRoot, targetPath);
     if (!isWithin(projectRoot, target)) return true;
-    const relative = path50.relative(projectRoot, target).replaceAll("\\", "/");
+    const relative = path51.relative(projectRoot, target).replaceAll("\\", "/");
     return relative === ".comet/config.yaml" || isWithin(nativeRoot, target);
   });
 }
@@ -30487,12 +30782,12 @@ async function inspectNativeHookGuard(projectRoot, request, selectedChangeName) 
   let controlTarget = false;
   let externalTarget = false;
   for (const targetPath of request.targets) {
-    const target = path50.resolve(projectRoot, targetPath);
+    const target = path51.resolve(projectRoot, targetPath);
     if (!isWithin(projectRoot, target)) {
       externalTarget = true;
       continue;
     }
-    const relative = path50.relative(projectRoot, target).replaceAll("\\", "/");
+    const relative = path51.relative(projectRoot, target).replaceAll("\\", "/");
     if (relative === ".comet/config.yaml" || isWithin(context.paths.nativeRoot, target)) {
       controlTarget = true;
       continue;
@@ -30600,7 +30895,7 @@ function revisionOption(args) {
   return Number(value);
 }
 async function projectRootFrom(explicit) {
-  return explicit ? path51.resolve(explicit) : discoverNativeProject(process.cwd());
+  return explicit ? path52.resolve(explicit) : discoverNativeProject(process.cwd());
 }
 async function configuredPaths(projectRoot) {
   const resolved = await resolveNativeProject({
@@ -30917,9 +31212,9 @@ async function dispatch(rawArgs, explicitProjectRoot) {
       clarificationMode: config.native.clarification_mode,
       maxVerifyFailures: config.native.max_verify_failures
     });
-    const manifestRef = path51.relative(
+    const manifestRef = path52.relative(
       paths.projectRoot,
-      path51.join(nativeChangeDir(paths, name), ...result2.checkpoint.manifestRef.split("/"))
+      path52.join(nativeChangeDir(paths, name), ...result2.checkpoint.manifestRef.split("/"))
     ).replaceAll("\\", "/");
     return success("checkpoint", {
       ...result2,
@@ -30963,7 +31258,7 @@ async function dispatch(rawArgs, explicitProjectRoot) {
       let raw;
       if (entriesPath) {
         raw = await readBoundedEvidenceFile(
-          path51.resolve(entriesPath),
+          path52.resolve(entriesPath),
           MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES
         );
       } else {
@@ -31042,6 +31337,47 @@ async function dispatch(rawArgs, explicitProjectRoot) {
         text: `Native automated receipt ${issued.receipt.status}: ${issued.ref}
 `
       };
+    }
+    if (subcommand === "refresh") {
+      const apply = takeFlag(rawArgs, "--apply");
+      const dryRun = takeFlag(rawArgs, "--dry-run");
+      assertNoArguments(rawArgs);
+      if (apply && dryRun) {
+        throw new NativeUsageError("receipt refresh --apply and --dry-run cannot be combined");
+      }
+      const result2 = await refreshNativeVerificationReceipts({ paths, name, apply });
+      const lines = [];
+      if (result2.refreshed.length > 0) {
+        lines.push(
+          `Re-issued ${result2.refreshed.length} manual receipt(s) at the current revision:`
+        );
+        for (const item of result2.refreshed) {
+          lines.push(`  ${item.acceptanceId}: ${item.oldRef} -> ${item.newRef}`);
+        }
+      }
+      if (result2.requiresRerun.length > 0) {
+        lines.push(
+          `Re-run ${result2.requiresRerun.length} stale automated receipt(s) (they cannot be re-issued without a real execution):`
+        );
+        for (const item of result2.requiresRerun) {
+          const acceptances = item.acceptanceIds.join(", ");
+          lines.push(`  [${acceptances}] ${item.command}`);
+        }
+      }
+      if (result2.requiresCheck.length > 0) {
+        lines.push(
+          `Re-run \`comet native check ${name}\` to refresh ${result2.requiresCheck.length} required-check receipt(s).`
+        );
+      }
+      if (result2.applied) {
+        lines.push(`Updated acceptance evidence in ${result2.verificationReport}.`);
+      } else if (result2.refreshed.length === 0 && result2.requiresRerun.length === 0 && result2.requiresCheck.length === 0) {
+        lines.push("No stale receipts found.");
+      } else if (!apply) {
+        lines.push("Dry run only. Re-run with --apply to re-issue manual receipts.");
+      }
+      return success("receipt refresh", result2, `${lines.join("\n")}
+`);
     }
     throw new NativeUsageError(`Unknown receipt command: ${subcommand}`);
   }
@@ -31270,6 +31606,14 @@ function errorResult(command, error) {
         requiredAction: "resolve-native-baseline"
       },
       error: { code: "baseline-incomplete", message: error.message }
+    };
+  }
+  if (error instanceof NativeVerificationReceiptBindingError) {
+    return {
+      command,
+      exitCode: 65,
+      data: { receiptBindingFailures: error.details },
+      error: { code: "invalid-data", message: error.message }
     };
   }
   if (error instanceof Error) {

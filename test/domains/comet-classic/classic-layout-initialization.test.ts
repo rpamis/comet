@@ -35,22 +35,14 @@ describe('Classic layout initialization safety', () => {
     );
   });
 
-  it('revalidates the desired root created by the same initialization without weakening later calls', async () => {
-    const initialization = await assertClassicLayoutInitializationSafe(projectRoot, 'docs');
-    await fs.mkdir(initialization.openSpecRoot, { recursive: true });
+  it('allows a unique desired existing root without a project configuration', async () => {
+    await fs.mkdir(path.join(projectRoot, 'docs', 'openspec'), { recursive: true });
 
-    await expect(
-      assertClassicLayoutInitializationSafe(
-        projectRoot,
-        'docs',
-        initialization.initializationPermit,
-      ),
-    ).resolves.toMatchObject({
-      artifactLayout: 'docs',
-      openSpecRoot: path.join(projectRoot, 'docs', 'openspec'),
-    });
-    await expect(assertClassicLayoutInitializationSafe(projectRoot, 'docs')).rejects.toThrow(
-      /cannot initialize Classic layout without.*config/iu,
+    await expect(assertClassicLayoutInitializationSafe(projectRoot, 'docs')).resolves.toMatchObject(
+      {
+        artifactLayout: 'docs',
+        openSpecRoot: path.join(projectRoot, 'docs', 'openspec'),
+      },
     );
   });
 
@@ -340,7 +332,7 @@ describe('Classic layout initialization safety', () => {
     );
   });
 
-  it('rejects a fresh project when either unmanaged OpenSpec root already exists', async () => {
+  it('rejects a fresh project when the requested docs layout conflicts with a legacy root', async () => {
     await fs.mkdir(path.join(projectRoot, 'openspec'), { recursive: true });
 
     await expect(assertClassicLayoutInitializationSafe(projectRoot, 'docs')).rejects.toThrow(

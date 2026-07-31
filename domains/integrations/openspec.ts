@@ -434,6 +434,12 @@ function getOpenSpecVersion(): string | null {
   }
 }
 
+export function isOpenSpecCliCompatible(): boolean {
+  if (!isCommandAvailable('openspec')) return false;
+  const version = getOpenSpecVersion();
+  return version !== null && isOpenSpecVersionCompatible(version);
+}
+
 async function ensureOpenSpecCli(
   projectPath: string,
   shouldInstall = true,

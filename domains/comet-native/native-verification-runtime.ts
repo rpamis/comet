@@ -39,7 +39,7 @@ import {
   type NativeVerificationEvidenceEnvelope,
 } from './native-verification-evidence.js';
 import {
-  nativeReceiptBindingsMatch,
+  compareNativeReceiptBindings,
   validateNativeStaticReceiptDependency,
 } from './native-verification-receipt-runtime.js';
 import {
@@ -55,6 +55,7 @@ export type NativeVerificationFreshnessFindingCode =
   | 'verification-receipt-stale'
   | 'verification-receipt-invalid'
   | 'verification-receipt-outcome-mismatch'
+  | 'verification-receipt-binding-mismatch'
   | 'verification-protocol-legacy'
   | 'verification-state-mismatch'
   | 'verification-evidence-missing'
@@ -66,6 +67,48 @@ export interface NativeVerificationPreparation {
   envelope: NativeVerificationEvidenceEnvelope | null;
   evidenceRef: string | null;
   reportSnapshot: { hash: string; text: string } | null;
+  /**
+   * Per-receipt diagnostics populated when {@link findingCodes} includes
+   * `verification-receipt-binding-mismatch`. Lets an Agent see exactly which
+   * receipts/acceptances diverged and recover via `receipt refresh`.
+   */
+  receiptBindingFailures?: NativeReceiptBindingFailureDetail[];
+}
+
+/**
+ * A single receipt that failed binding/role/coverage validation, with the
+ * precise per-field diagnostics an Agent needs to recover without user help.
+ */
+export interface NativeReceiptBindingFailureDetail {
+  ref: string;
+  role: 'required-check' | 'acceptance-evidence';
+  acceptanceId?: string;
+  /** Per-field mismatches like "sourceRevision: expected 6, got 5". */
+  mismatches: string[];
+}
+
+/**
+ * Aggregated receipt-graph validation failure. Carries every offending receipt
+ * at once (rather than the first one) so a single `next` attempt surfaces the
+ * full set of stale receipts to the Agent.
+ */
+export class NativeVerificationReceiptBindingError extends Error {
+  readonly details: NativeReceiptBindingFailureDetail[];
+
+  constructor(details: NativeReceiptBindingFailureDetail[]) {
+    const summary =
+      details.length === 0
+        ? 'Native verification receipt binding is invalid'
+        : `Native verification receipt binding is invalid (${details.length} receipt(s)): ${details
+            .map(
+              (d) =>
+                `${d.ref}${d.acceptanceId ? `[${d.acceptanceId}]` : ''} -> ${d.mismatches.join('; ')}`,
+            )
+            .join(' | ')}`;
+    super(summary);
+    this.name = 'NativeVerificationReceiptBindingError';
+    this.details = details;
+  }
 }
 
 export interface NativeVerificationFreshnessInspection {
@@ -282,12 +325,29 @@ async function validateTypedReceipt(options: {
     options.state.name,
     options.ref,
   );
-  if (
-    receipt.role !== options.role ||
-    !nativeReceiptBindingsMatch(receipt, options.expectedBindings) ||
-    (options.acceptanceId !== undefined && !receipt.acceptanceIds.includes(options.acceptanceId))
-  ) {
-    throw new Error('Native verification receipt coverage or binding is invalid');
+  // Collect every reason this receipt is invalid before failing, so the caller
+  // can aggregate across the whole receipt graph and surface the full picture
+  // (which receipts, which fields, which acceptance) in one diagnostic pass.
+  const mismatches: string[] = [];
+  if (receipt.role !== options.role) {
+    mismatches.push(`role: expected ${options.role}, got ${receipt.role}`);
+  }
+  const bindingComparison = compareNativeReceiptBindings(receipt, options.expectedBindings);
+  mismatches.push(...bindingComparison.mismatches);
+  if (options.acceptanceId !== undefined && !receipt.acceptanceIds.includes(options.acceptanceId)) {
+    mismatches.push(
+      `acceptanceId: expected ${options.acceptanceId} in [${receipt.acceptanceIds.join(', ')}]`,
+    );
+  }
+  if (mismatches.length > 0) {
+    throw new NativeVerificationReceiptBindingError([
+      {
+        ref: options.ref,
+        role: options.role,
+        ...(options.acceptanceId !== undefined ? { acceptanceId: options.acceptanceId } : {}),
+        mismatches,
+      },
+    ]);
   }
   if (options.result === 'pass' && receipt.status !== 'passed') {
     throw new Error(`Native verification receipt is ${receipt.status}`);
@@ -328,13 +388,26 @@ async function validateCurrentReceiptGraph(options: {
     implementationScope: options.implementationScope,
     sourceRevision: options.sourceRevision,
   });
+  // Accumulate every binding/role/coverage failure across the whole graph so a
+  // single `next` attempt reports all stale receipts at once, rather than
+  // failing on the first and hiding the rest. Non-binding errors (wrong kind,
+  // failed-evidence-passed-receipt) still throw immediately because they are a
+  // different class of problem that masking would obscure.
+  const collectedFailures: NativeReceiptBindingFailureDetail[] = [];
   for (const ref of options.requiredReceiptRefs) {
     const receipt = await validateTypedReceipt({
       ...options,
       ref,
       expectedBindings,
       role: 'required-check',
+    }).catch((error: unknown) => {
+      if (error instanceof NativeVerificationReceiptBindingError) {
+        collectedFailures.push(...error.details);
+        return null;
+      }
+      throw error;
     });
+    if (receipt === null) continue;
     if (receipt.kind !== 'static-inspection') {
       throw new Error('Native required-check evidence must be a static-inspection receipt');
     }
@@ -349,7 +422,14 @@ async function validateCurrentReceiptGraph(options: {
         expectedBindings,
         acceptanceId: entry.acceptanceId,
         role: 'acceptance-evidence',
+      }).catch((error: unknown) => {
+        if (error instanceof NativeVerificationReceiptBindingError) {
+          collectedFailures.push(...error.details);
+          return null;
+        }
+        throw error;
       });
+      if (receipt === null) continue;
       if (receipt.kind !== 'automated-check' && receipt.kind !== 'manual-evidence') {
         throw new Error('Native acceptance evidence must be automated-check or manual-evidence');
       }
@@ -357,6 +437,9 @@ async function validateCurrentReceiptGraph(options: {
         throw new Error('Native failed acceptance evidence must reference a non-passing receipt');
       }
     }
+  }
+  if (collectedFailures.length > 0) {
+    throw new NativeVerificationReceiptBindingError(collectedFailures);
   }
 }
 
@@ -403,15 +486,32 @@ export async function inspectNativeVerificationEvidence(
       'Native passing verification cannot include failed or missing acceptance criteria',
     );
   }
-  await validateCurrentReceiptGraph({
-    paths: options.paths,
-    state: options.state,
-    result: options.result,
-    trace,
-    requiredReceiptRefs,
-    contractHash: facts.contractHash,
-    implementationScope: facts.bundle,
-  });
+  try {
+    await validateCurrentReceiptGraph({
+      paths: options.paths,
+      state: options.state,
+      result: options.result,
+      trace,
+      requiredReceiptRefs,
+      contractHash: facts.contractHash,
+      implementationScope: facts.bundle,
+    });
+  } catch (error: unknown) {
+    // Surface receipt binding failures as structured findings so the Agent gets
+    // machine-readable diagnostics and a recovery path (refresh-verification-
+    // receipts) instead of an opaque exit-65 throw that forces user triage.
+    if (error instanceof NativeVerificationReceiptBindingError) {
+      return {
+        ready: false,
+        findingCodes: ['verification-receipt-binding-mismatch'],
+        envelope: null,
+        evidenceRef: null,
+        reportSnapshot: null,
+        ...(error.details.length > 0 ? { receiptBindingFailures: error.details } : {}),
+      };
+    }
+    throw error;
+  }
   const allowance = options.state.partial_allowance
     ? await readNativePartialAllowance(
         options.paths,

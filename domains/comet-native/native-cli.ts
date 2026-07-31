@@ -51,6 +51,8 @@ import {
   MAX_NATIVE_AUTOMATED_COMMAND_TIMEOUT_MS,
 } from './native-verification-receipt-runtime.js';
 import { advanceNativeChange } from './native-transitions.js';
+import { NativeVerificationReceiptBindingError } from './native-verification-runtime.js';
+import { refreshNativeVerificationReceipts } from './native-receipt-refresh.js';
 import { inspectNativeHookGuard, readNativeHookRequest } from './native-hook-guard.js';
 import type {
   CometProjectConfig,
@@ -632,6 +634,50 @@ async function dispatch(
         text: `Native automated receipt ${issued.receipt.status}: ${issued.ref}\n`,
       };
     }
+    if (subcommand === 'refresh') {
+      const apply = takeFlag(rawArgs, '--apply');
+      const dryRun = takeFlag(rawArgs, '--dry-run');
+      assertNoArguments(rawArgs);
+      if (apply && dryRun) {
+        throw new NativeUsageError('receipt refresh --apply and --dry-run cannot be combined');
+      }
+      const result = await refreshNativeVerificationReceipts({ paths, name, apply });
+      const lines: string[] = [];
+      if (result.refreshed.length > 0) {
+        lines.push(
+          `Re-issued ${result.refreshed.length} manual receipt(s) at the current revision:`,
+        );
+        for (const item of result.refreshed) {
+          lines.push(`  ${item.acceptanceId}: ${item.oldRef} -> ${item.newRef}`);
+        }
+      }
+      if (result.requiresRerun.length > 0) {
+        lines.push(
+          `Re-run ${result.requiresRerun.length} stale automated receipt(s) (they cannot be re-issued without a real execution):`,
+        );
+        for (const item of result.requiresRerun) {
+          const acceptances = item.acceptanceIds.join(', ');
+          lines.push(`  [${acceptances}] ${item.command}`);
+        }
+      }
+      if (result.requiresCheck.length > 0) {
+        lines.push(
+          `Re-run \`comet native check ${name}\` to refresh ${result.requiresCheck.length} required-check receipt(s).`,
+        );
+      }
+      if (result.applied) {
+        lines.push(`Updated acceptance evidence in ${result.verificationReport}.`);
+      } else if (
+        result.refreshed.length === 0 &&
+        result.requiresRerun.length === 0 &&
+        result.requiresCheck.length === 0
+      ) {
+        lines.push('No stale receipts found.');
+      } else if (!apply) {
+        lines.push('Dry run only. Re-run with --apply to re-issue manual receipts.');
+      }
+      return success('receipt refresh', result, `${lines.join('\n')}\n`);
+    }
     throw new NativeUsageError(`Unknown receipt command: ${subcommand}`);
   }
   if (command === 'next') {
@@ -871,6 +917,18 @@ function errorResult(command: string | null, error: unknown): DispatchResult {
         requiredAction: 'resolve-native-baseline',
       },
       error: { code: 'baseline-incomplete', message: error.message },
+    };
+  }
+  if (error instanceof NativeVerificationReceiptBindingError) {
+    // Insurance branch: the verify path normally converts binding failures into
+    // structured findings, but if one ever escapes (e.g. a direct caller), keep
+    // exit code 65 / invalid-data and surface the per-receipt diagnostics in
+    // `data` so the Agent still gets an actionable payload.
+    return {
+      command,
+      exitCode: 65,
+      data: { receiptBindingFailures: error.details },
+      error: { code: 'invalid-data', message: error.message },
     };
   }
   if (error instanceof Error) {

@@ -174,6 +174,9 @@ function normalizeOutput(value: string, root: string): string {
   const normalizedValue = value
     .replaceAll(root, '<ROOT>')
     .replaceAll(toBashPath(root), '<ROOT>')
+    // Normalize Windows backslash path separators so the differential contract
+    // is stable across platforms (the frozen 0.3.9 reference uses POSIX paths).
+    .replaceAll('\\', '/')
     // The active runtime records an absolute handoff_context while the frozen
     // launcher recorded the project-relative path. Both point to the same
     // handoff artifact, so compare the path form used by the frozen contract.

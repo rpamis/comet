@@ -148,11 +148,13 @@ export async function resolveInitWorkflow(
   }
 
   const legacyEvidence = await findLegacyEvidence(projectRoot, snapshot.identity.exists);
+  const [legacyOpenSpecRootExists, docsOpenSpecRootExists] = await Promise.all([
+    fileExists(path.join(projectRoot, 'openspec')),
+    fileExists(path.join(projectRoot, 'docs', 'openspec')),
+  ]);
   const legacyArtifactLayout =
     legacyEvidence.some((item) => item.startsWith('openspec/')) ||
-    (snapshot.identity.exists &&
-      (await fileExists(path.join(projectRoot, 'openspec'))) &&
-      !(await fileExists(path.join(projectRoot, 'docs', 'openspec'))));
+    (legacyOpenSpecRootExists && !docsOpenSpecRootExists);
   if (requestedWorkflow) {
     return {
       workflow: requestedWorkflow,

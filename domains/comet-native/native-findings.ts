@@ -76,6 +76,24 @@ const EXACT_METADATA: Record<string, FindingMetadata> = {
     retry: 'next',
     repair: 'none',
   },
+  'verification-receipt-binding-mismatch': {
+    severity: 'error',
+    requiredAction: 'refresh-verification-receipts',
+    retry: 'next',
+    repair: 'none',
+  },
+  'verification-receipt-stale': {
+    severity: 'error',
+    requiredAction: 'refresh-verification-receipts',
+    retry: 'next',
+    repair: 'none',
+  },
+  'verification-receipt-invalid': {
+    severity: 'error',
+    requiredAction: 'refresh-verification-receipts',
+    retry: 'next',
+    repair: 'none',
+  },
   'native-change-conflict': {
     severity: 'error',
     requiredAction: 'resolve-native-change-conflict',

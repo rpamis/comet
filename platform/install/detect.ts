@@ -147,7 +147,7 @@ async function hasSkills(
   component: 'openspec' | 'superpowers' | 'comet',
   _selectedPlatforms: Platform[] = [],
   scope: InstallScope = 'project',
-  options: { includeGlobalFallback?: boolean } = {},
+  options: { includeGlobalFallback?: boolean; includePluginFallback?: boolean } = {},
 ): Promise<boolean> {
   const skillDirEntries = await Promise.all(
     getPlatformSkillsDirs(platform, scope).map(async (skillsDir) => {
@@ -214,6 +214,8 @@ async function hasSkills(
         break;
     }
   }
+
+  if (options.includePluginFallback === false) return false;
 
   // Check Claude Code plugin cache for plugin-installed superpowers
   if (component === 'superpowers' && platform.id === 'claude') {

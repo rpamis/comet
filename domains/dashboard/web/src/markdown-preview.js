@@ -11,6 +11,9 @@ const PURIFY_CONFIG = {
   ALLOWED_URI_REGEXP,
 };
 
+const NATIVE_ACCEPTANCE_EVIDENCE_BLOCK =
+  /<!--\s*comet-native:acceptance-evidence:start\s*-->\s*([\s\S]*?)\s*<!--\s*comet-native:acceptance-evidence:end\s*-->/gu;
+
 function escapeHtml(value) {
   return String(value)
     .replace(/&/g, '&amp;')
@@ -74,6 +77,56 @@ function formatPrettyJson(value) {
   } catch {
     return String(value);
   }
+}
+
+function acceptanceEvidenceReferenceLabel(reference) {
+  if (reference.includes('/check-receipts/')) return '自动化检查回执';
+  if (reference.includes('/manual-evidence/')) return '人工验证回执';
+  return '证据文件';
+}
+
+function renderNativeAcceptanceEvidenceSummary(entries) {
+  if (!Array.isArray(entries) || !entries.every(isPlainObject)) return null;
+
+  const total = entries.length;
+  const passed = entries.filter(({ status }) => status === 'passed').length;
+  const failed = entries.filter(({ status }) => status === 'failed').length;
+  const evidenceRefs = new Set(
+    entries.flatMap(({ evidence_refs: refs }) =>
+      Array.isArray(refs) ? refs.filter((ref) => typeof ref === 'string' && ref.trim()) : [],
+    ),
+  );
+  const summary = failed > 0 ? '有未通过的验收项，需要继续处理。' : '全部验收项已通过。';
+  const referenceList = [...evidenceRefs]
+    .map(
+      (reference) =>
+        `<li><span>${acceptanceEvidenceReferenceLabel(reference)}</span><code>${escapeHtml(reference)}</code></li>`,
+    )
+    .join('');
+
+  return [
+    '<section class="acceptance-evidence-summary" aria-label="验收证据摘要">',
+    `<div class="acceptance-evidence-stat"><strong>${total}</strong><span>验收项</span></div>`,
+    `<div class="acceptance-evidence-stat acceptance-evidence-stat-pass"><strong>${passed}</strong><span>已通过</span></div>`,
+    `<div class="acceptance-evidence-stat acceptance-evidence-stat-failed"><strong>${failed}</strong><span>需关注</span></div>`,
+    `<div class="acceptance-evidence-stat"><strong>${evidenceRefs.size}</strong><span>证据引用</span></div>`,
+    '</section>',
+    `<p class="acceptance-evidence-note">${summary} 原始证据已保留在验证文件中。</p>`,
+    referenceList
+      ? `<section class="acceptance-evidence-references"><h3>引用证据</h3><ul>${referenceList}</ul></section>`
+      : '',
+  ].join('');
+}
+
+function summarizeNativeAcceptanceEvidence(content) {
+  return String(content ?? '').replace(NATIVE_ACCEPTANCE_EVIDENCE_BLOCK, (block, payload) => {
+    try {
+      const summary = renderNativeAcceptanceEvidenceSummary(JSON.parse(payload));
+      return summary ?? block;
+    } catch {
+      return block;
+    }
+  });
 }
 
 function renderKvTable(entries, { className = 'yaml-kv-table' } = {}) {
@@ -248,7 +301,7 @@ export async function renderMarkdown(content) {
       },
     });
 
-    const result = marked.parse(content);
+    const result = marked.parse(summarizeNativeAcceptanceEvidence(content));
     const html = typeof result === 'string' ? result : String(result);
     return sanitizePreviewHtml(html);
   } catch {

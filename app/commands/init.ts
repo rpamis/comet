@@ -40,7 +40,11 @@ import {
   ensureNativeDirectories,
   nativeProjectPaths,
 } from '../../domains/comet-native/native-paths.js';
-import { installOpenSpec, isCommandAvailable } from '../../domains/integrations/openspec.js';
+import {
+  installOpenSpec,
+  isCommandAvailable,
+  isOpenSpecCliCompatible,
+} from '../../domains/integrations/openspec.js';
 import {
   assertClassicLayoutInitializationSafe,
   beginClassicLayoutInitialization,
@@ -298,6 +302,7 @@ type NpmDepId = 'openspec' | 'superpowers' | 'codegraph';
 interface NpmDepState {
   id: NpmDepId;
   installed: boolean;
+  required?: boolean;
 }
 
 async function selectNpmDeps(
@@ -310,12 +315,13 @@ async function selectNpmDeps(
   if (workflow === 'native') return new Set();
 
   const openSpecInstalled = isCommandAvailable('openspec');
+  const openSpecRequired = workflow === 'classic' && !isOpenSpecCliCompatible();
   const codegraphInstalled =
     hasCodegraphProjectIndex(projectPath) || resolveCodegraphCommand() !== null;
   const superpowersInstalled = spPlatformIds.length === 0 ? true : undefined;
 
   const states: NpmDepState[] = [
-    { id: 'openspec', installed: openSpecInstalled },
+    { id: 'openspec', installed: openSpecInstalled, required: openSpecRequired },
     { id: 'superpowers', installed: Boolean(superpowersInstalled) },
     { id: 'codegraph', installed: codegraphInstalled },
   ];
@@ -333,7 +339,7 @@ async function selectNpmDeps(
     superpowers: t(lang, 'npmDepSuperpowersHint'),
   };
 
-  const choices = states.map(({ id, installed }) => {
+  const choices = states.map(({ id, installed, required }) => {
     const choice: {
       name: string;
       value: NpmDepId;
@@ -342,7 +348,7 @@ async function selectNpmDeps(
     } = {
       name: depLabel[id](installed),
       value: id,
-      checked: !installed,
+      checked: id === 'openspec' ? Boolean(required) : !installed,
     };
     if (depHint[id]) {
       choice.description = depHint[id];
@@ -351,12 +357,18 @@ async function selectNpmDeps(
   });
 
   if (options.yes || options.json) {
-    return new Set(states.filter((s) => !s.installed).map((s) => s.id));
+    return new Set(
+      states.filter((state) => !state.installed || state.required).map((state) => state.id),
+    );
   }
 
   const selected = await checkbox({
     message: t(lang, 'selectNpmDeps'),
     choices,
+    validate: (values) =>
+      openSpecRequired && !values.some((value) => value.value === 'openspec')
+        ? t(lang, 'npmDepOpenSpecRequired')
+        : true,
   });
   return new Set(selected as NpmDepId[]);
 }

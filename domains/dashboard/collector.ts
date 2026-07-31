@@ -7,7 +7,6 @@ import { buildChangeRisks, buildProjectRisks } from './risk.js';
 import { parseTasksMarkdown } from './task-parser.js';
 import { parseCometYaml, type CometYaml } from './yaml.js';
 import { resolveVerify } from './verify-parser.js';
-import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
 import {
   inspectProtectedProjectPath,
   protectedProjectFileExists,
@@ -52,7 +51,7 @@ export async function collectDashboardSnapshot(
 ): Promise<DashboardSnapshot> {
   const resolvedRoot = path.resolve(projectPath);
   const [classic, git, nativeResult] = await Promise.all([
-    collectClassicChangesIfEnabled(resolvedRoot),
+    collectClassicChanges(resolvedRoot),
     collectGitSnapshot(resolvedRoot),
     collectNativeDashboardProjection(resolvedRoot, { now: options.now })
       .then((projection) => ({ projection, failed: false as const }))
@@ -111,20 +110,6 @@ interface ClassicCollection {
   active: ChangeDashboardItem[];
   archived: ChangeDashboardItem[];
   errors: string[];
-}
-
-async function collectClassicChangesIfEnabled(projectRoot: string): Promise<ClassicCollection> {
-  try {
-    const config = await readWorkflowProjectConfig(projectRoot);
-    const workflows = config?.workflows ?? (config ? [config.default_workflow] : ['classic']);
-    if (!workflows.includes('classic')) {
-      return { active: [], archived: [], errors: [] };
-    }
-  } catch {
-    // Classic discovery remains configuration-independent when a config is invalid.
-  }
-
-  return collectClassicChanges(projectRoot);
 }
 
 async function collectClassicChanges(projectRoot: string): Promise<ClassicCollection> {

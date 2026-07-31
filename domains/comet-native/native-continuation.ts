@@ -151,6 +151,22 @@ export function nativeContinuation(options: {
     };
   }
   if (actionableFindings.length > 0) {
+    // Receipt binding failures carry a concrete recovery command, so route the
+    // Agent straight to `receipt refresh` instead of a generic work-phase nudge.
+    if (requiredInputs.includes('refresh-verification-receipts')) {
+      return {
+        schema: 'comet.native.continuation.v1',
+        skill: 'comet-native',
+        change: options.state.name,
+        phase: options.state.phase,
+        revision: options.state.revision,
+        disposition: 'continue',
+        action: 'work-phase',
+        command: `comet native receipt refresh ${options.state.name} --apply`,
+        requiresUserDecision: false,
+        requiredInputs,
+      };
+    }
     if (options.state.phase === 'archive') {
       return {
         schema: 'comet.native.continuation.v1',

@@ -114,4 +114,12 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain('<ClassicWarning error={snapshot.classicError} />');
     expect(source).toContain('function ClassicWarning({ error })');
   });
+
+  it('uses the Native-aligned informative treatment for an empty Classic workspace', async () => {
+    const source = await readDashboardSource();
+
+    expect(source).toContain('当前没有 Classic change');
+    expect(source).toContain('Classic 变更出现后会在这里展示。');
+    expect(source).not.toContain('当前无 Comet 迭代。');
+  });
 });

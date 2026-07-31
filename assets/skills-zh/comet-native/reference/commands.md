@@ -120,6 +120,18 @@ comet native receipt manual <change-name> \
 
 只为真实执行的命令或人工观察生成 receipt。失败、跳过、阻塞或超时结果不能作为 pass。
 
+批量刷新过期 receipt：
+
+```text
+comet native receipt refresh <change-name> [--apply]
+```
+
+receipt 绑定生成时的 revision、contract、scope、snapshot 与 artifact。任何一次状态写入（checkpoint、规格刷新、阶段推进）都会让 revision 递增，导致此前签发的 receipt 绑定过期。`next --result` 会因此报 `verification-receipt-binding-mismatch` 并列出每个过期 receipt 及其不一致字段。
+
+不带 `--apply`（默认）为预览：只报告哪些 manual receipt 过期、哪些 automated receipt 需重跑、哪些 required-check receipt 需用 `comet native check` 重生成，不改动任何文件。
+
+带 `--apply` 时：以当前 revision 重新签发所有过期的 manual receipt，并把规范证据块写回 verification.md 的 `# Acceptance evidence` 段；automated receipt 不会被静默重签（它证明一次真实命令执行），refresh 只报告需重跑的命令让你用 `receipt automated` 重新执行。
+
 ## 阶段推进
 
 ```text

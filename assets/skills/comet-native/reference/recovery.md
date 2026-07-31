@@ -39,6 +39,8 @@ The only safe options are:
 
 Changes to the brief, specifications, implementation, report, or receipts may stale the old scope or Verify pass. Follow the continuation back to Build, reconfirm changed user-visible behavior, generate a new scope, and verify again. Do not reuse an old pass or preflight.
 
+Receipts are bound to revision: every state write (checkpoint, spec refresh, phase advance) bumps the revision, which invalidates receipts issued before that bump. When `next --result` reports `verification-receipt-binding-mismatch`, the finding lists each stale receipt and the diverging field (e.g. `sourceRevision: expected 6, got 5`) and gives the recovery command. This does not require returning to Build: for manual evidence only, run `comet native receipt refresh <change> --apply` to re-issue at the current revision and rewrite verification.md; automated receipts must be re-executed with `receipt automated` and are never silently re-issued.
+
 ## Verify fail and repair stop
 
 After Verify fail returns to Build:

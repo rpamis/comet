@@ -9,6 +9,7 @@ import { parse } from 'yaml';
 import { getLatestVersion } from '../../platform/version/version.js';
 import { PLATFORMS, type Platform } from '../../platform/install/platforms.js';
 import { installOpenSpec } from '../../domains/integrations/openspec.js';
+import { installSuperpowersForPlatforms } from '../../domains/integrations/superpowers.js';
 import {
   buildNpmUpdateArgs,
   detectCometPackageScope,
@@ -63,10 +64,15 @@ vi.mock('../../domains/integrations/openspec.js', () => ({
   ),
 }));
 
+vi.mock('../../domains/integrations/superpowers.js', () => ({
+  installSuperpowersForPlatforms: vi.fn(async () => 'installed'),
+}));
+
 const mockedSelect = vi.mocked(select);
 const mockedSpawn = vi.mocked(spawn);
 const mockedGetLatestVersion = vi.mocked(getLatestVersion);
 const mockedInstallOpenSpec = vi.mocked(installOpenSpec);
+const mockedInstallSuperpowers = vi.mocked(installSuperpowersForPlatforms);
 
 const claudePlatform: Platform = {
   id: 'claude',
@@ -232,6 +238,8 @@ describe('update command helpers', () => {
         return 'installed';
       },
     );
+    mockedInstallSuperpowers.mockReset();
+    mockedInstallSuperpowers.mockResolvedValue('installed');
     mockedSpawn.mockImplementation((_command, args, options) => {
       const child = new EventEmitter() as EventEmitter & {
         stdout: EventEmitter;
@@ -1588,7 +1596,7 @@ describe('update command helpers', () => {
     expect(registry.projects.every((project) => project.lastSource === 'update')).toBe(true);
   });
 
-  it('does not run local npm installs for all-projects entries without project package dependencies', async () => {
+  it('does not run npm installs for all-projects entries without explicit self-update', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home-global-npm-once');
     const projectA = path.join(tmpDir, 'project-a-global-package');
     const projectB = path.join(tmpDir, 'project-b-global-package');
@@ -1614,16 +1622,8 @@ describe('update command helpers', () => {
       const npmArgs = call[1]?.slice(1) ?? [];
       return npmArgs[0] === 'install' && !npmArgs.includes('--prefix');
     });
-    expect(mockedSpawn).toHaveBeenCalledTimes(6);
-    expect(installCalls).toHaveLength(1);
-    expect(installCalls[0][1]?.slice(1)).toEqual([
-      'install',
-      '-g',
-      '@rpamis/comet@0.4.0-beta.8',
-      '--registry',
-      'https://registry.npmjs.org',
-    ]);
-    expect(installCalls.some((call) => !(call[1]?.slice(1) ?? []).includes('-g'))).toBe(false);
+    expect(mockedSpawn).not.toHaveBeenCalled();
+    expect(installCalls).toHaveLength(0);
   });
 
   it('reports global npm update failure before updating all indexed projects', async () => {
@@ -1645,7 +1645,7 @@ describe('update command helpers', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     let json: string;
     try {
-      await updateCommand(projectA, { json: true, allProjects: true });
+      await updateCommand(projectA, { json: true, allProjects: true, selfUpdate: true });
       json = log.mock.calls.map((call) => call.join(' ')).join('\n');
     } finally {
       log.mockRestore();
@@ -1958,7 +1958,7 @@ describe('update command helpers', () => {
         currentProject: true,
         installMode: 'copy',
         json: true,
-        skipNpm: true,
+        selfUpdate: true,
       });
     } finally {
       log.mockRestore();
@@ -1969,7 +1969,7 @@ describe('update command helpers', () => {
       tmpDir,
       ['claude'],
       'project',
-      false,
+      true,
       [],
       'docs',
       expect.any(Function),
@@ -1977,6 +1977,77 @@ describe('update command helpers', () => {
     await expect(fs.access(path.join(tmpDir, 'openspec'))).rejects.toMatchObject({
       code: 'ENOENT',
     });
+  });
+
+  it('does not update Classic dependencies during a regular Comet update', async () => {
+    const fakeHome = path.join(tmpDir, 'classic-dependencies-regular-update-home');
+    await arrangeClassicDocsOpenSpecUpdate(tmpDir);
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'brainstorming'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.claude', 'skills', 'brainstorming', 'SKILL.md'),
+      '# Brainstorming\n',
+      'utf8',
+    );
+
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let json: string;
+    try {
+      await updateCommand(tmpDir, {
+        currentProject: true,
+        installMode: 'copy',
+        json: true,
+        skipNpm: true,
+      });
+      json = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    expect(mockedInstallOpenSpec).not.toHaveBeenCalled();
+    expect(mockedInstallSuperpowers).not.toHaveBeenCalled();
+    expect(JSON.parse(json)).toMatchObject({
+      status: 'complete',
+      openspec: { status: 'skipped' },
+      superpowers: { status: 'skipped' },
+    });
+  });
+
+  it('updates installed Classic dependencies with explicit self-update', async () => {
+    const fakeHome = path.join(tmpDir, 'classic-dependencies-self-update-home');
+    await arrangeClassicDocsOpenSpecUpdate(tmpDir);
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'brainstorming'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.claude', 'skills', 'brainstorming', 'SKILL.md'),
+      '# Brainstorming\n',
+      'utf8',
+    );
+
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(tmpDir, {
+        currentProject: true,
+        installMode: 'copy',
+        json: true,
+        selfUpdate: true,
+      });
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    expect(mockedInstallOpenSpec).toHaveBeenCalledWith(
+      tmpDir,
+      ['claude'],
+      'project',
+      true,
+      [],
+      'docs',
+      expect.any(Function),
+    );
+    expect(mockedInstallSuperpowers).toHaveBeenCalledWith(tmpDir, 'project', ['claude'], true);
   });
 
   it.each(['missing', 'corrupt'] as const)(
@@ -2011,7 +2082,7 @@ describe('update command helpers', () => {
           installMode: 'copy',
           language: 'zh',
           json: true,
-          skipNpm: true,
+          selfUpdate: true,
         });
         json = log.mock.calls.map((call) => call.join(' ')).join('\n');
       } finally {
@@ -2074,7 +2145,7 @@ describe('update command helpers', () => {
         installMode: 'copy',
         language: 'zh',
         json: true,
-        skipNpm: true,
+        selfUpdate: true,
       });
       json = log.mock.calls.map((call) => call.join(' ')).join('\n');
     } finally {
@@ -2109,7 +2180,7 @@ describe('update command helpers', () => {
       tmpDir,
       ['claude'],
       'project',
-      false,
+      true,
       [],
       'legacy',
       expect.any(Function),
@@ -2158,7 +2229,7 @@ describe('update command helpers', () => {
         installMode: 'copy',
         language: 'en',
         json: true,
-        skipNpm: true,
+        selfUpdate: true,
       });
       json = log.mock.calls.map((call) => call.join(' ')).join('\n');
     } finally {
@@ -2204,7 +2275,7 @@ describe('update command helpers', () => {
       tmpDir,
       ['claude'],
       'project',
-      false,
+      true,
       [],
       'docs',
       expect.any(Function),
@@ -2227,7 +2298,7 @@ describe('update command helpers', () => {
         currentProject: true,
         installMode: 'copy',
         json: true,
-        skipNpm: true,
+        selfUpdate: true,
       });
       json = log.mock.calls.map((call) => call.join(' ')).join('\n');
     } finally {
@@ -2244,7 +2315,7 @@ describe('update command helpers', () => {
       tmpDir,
       ['claude'],
       'project',
-      false,
+      true,
       [],
       'docs',
       expect.any(Function),
@@ -2356,7 +2427,7 @@ describe('update command helpers', () => {
         currentProject: true,
         installMode: 'copy',
         json: true,
-        skipNpm: true,
+        selfUpdate: true,
       });
     } finally {
       log.mockRestore();
@@ -2367,7 +2438,7 @@ describe('update command helpers', () => {
       tmpDir,
       [],
       'project',
-      false,
+      true,
       [],
       'docs',
       expect.any(Function),
@@ -2394,7 +2465,7 @@ describe('update command helpers', () => {
         installMode: 'copy',
         language: 'zh',
         json: true,
-        skipNpm: true,
+        selfUpdate: true,
       });
       json = log.mock.calls.map((call) => call.join(' ')).join('\n');
     } finally {
@@ -2413,7 +2484,7 @@ describe('update command helpers', () => {
       tmpDir,
       [],
       'project',
-      false,
+      true,
       [],
       'docs',
       expect.any(Function),
@@ -2434,7 +2505,7 @@ describe('update command helpers', () => {
         currentProject: true,
         installMode: 'copy',
         json: true,
-        skipNpm: true,
+        selfUpdate: true,
       });
       json = log.mock.calls.map((call) => call.join(' ')).join('\n');
     } finally {
@@ -2465,7 +2536,7 @@ describe('update command helpers', () => {
         currentProject: true,
         installMode: 'copy',
         json: true,
-        skipNpm: true,
+        selfUpdate: true,
       });
       json = log.mock.calls.map((call) => call.join(' ')).join('\n');
     } finally {
@@ -2493,7 +2564,7 @@ describe('update command helpers', () => {
         currentProject: true,
         installMode: 'copy',
         json: true,
-        skipNpm: true,
+        selfUpdate: true,
       });
       json = log.mock.calls.map((call) => call.join(' ')).join('\n');
     } finally {
@@ -2532,7 +2603,7 @@ describe('update command helpers', () => {
         scope: 'global',
         platform: 'claude',
         json: true,
-        skipNpm: true,
+        selfUpdate: true,
       });
     } finally {
       log.mockRestore();
@@ -2543,7 +2614,7 @@ describe('update command helpers', () => {
       tmpDir,
       ['claude'],
       'global',
-      false,
+      true,
       [],
       'legacy',
       undefined,

@@ -832,6 +832,100 @@ input {
   line-height: 1.55;
 }
 
+.md-github .acceptance-evidence-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 14px 0 10px;
+  border-block: 1px solid #d0d7de;
+}
+
+.md-github .acceptance-evidence-stat {
+  min-width: 0;
+  padding: 12px 16px;
+  border-right: 1px solid #d8dee4;
+}
+
+.md-github .acceptance-evidence-stat:first-child {
+  padding-left: 0;
+}
+
+.md-github .acceptance-evidence-stat:last-child {
+  border-right: 0;
+}
+
+.md-github .acceptance-evidence-stat strong {
+  display: block;
+  color: #1f2328;
+  font-size: 1.25em;
+  line-height: 1.1;
+}
+
+.md-github .acceptance-evidence-stat span {
+  display: block;
+  margin-top: 3px;
+  color: #57606a;
+  font-size: 0.8em;
+  line-height: 1.2;
+}
+
+.md-github .acceptance-evidence-stat-pass strong {
+  color: #1a7f37;
+}
+
+.md-github .acceptance-evidence-stat-failed strong {
+  color: #cf222e;
+}
+
+.md-github .acceptance-evidence-note {
+  margin: 0;
+  color: #57606a;
+  font-size: 0.86em;
+}
+
+.md-github .acceptance-evidence-references {
+  margin: 20px 0;
+}
+
+.md-github .acceptance-evidence-references h3 {
+  margin: 0 0 8px;
+  color: #1f2328;
+  font-size: 0.95em;
+}
+
+.md-github .acceptance-evidence-references ul {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.md-github .acceptance-evidence-references li {
+  display: grid;
+  grid-template-columns: minmax(112px, max-content) minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  margin: 0;
+  padding: 8px 0;
+  border-top: 1px solid #d8dee4;
+}
+
+.md-github .acceptance-evidence-references li span {
+  color: #57606a;
+  font-size: 0.84em;
+  font-weight: 500;
+}
+
+.md-github .acceptance-evidence-references li code {
+  overflow-wrap: anywhere;
+  color: #32383f;
+  font-size: 0.8em;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+}
+
 .md-github input[type='checkbox'] {
   margin-right: 6px;
   accent-color: #0969da;
@@ -948,6 +1042,60 @@ input {
 :root[data-theme='dark'] .md-github tr:nth-child(even) td,
 :host[data-theme='dark'] .md-github tr:nth-child(even) td {
   background: var(--color-surface);
+}
+
+:root[data-theme='dark'] .md-github .acceptance-evidence-summary,
+:host[data-theme='dark'] .md-github .acceptance-evidence-summary {
+  border-color: var(--color-border);
+}
+
+:root[data-theme='dark'] .md-github .acceptance-evidence-stat strong,
+:host[data-theme='dark'] .md-github .acceptance-evidence-stat strong {
+  color: var(--color-accent);
+}
+
+:root[data-theme='dark'] .md-github .acceptance-evidence-stat-pass strong,
+:host[data-theme='dark'] .md-github .acceptance-evidence-stat-pass strong {
+  color: #56d364;
+}
+
+:root[data-theme='dark'] .md-github .acceptance-evidence-stat-failed strong,
+:host[data-theme='dark'] .md-github .acceptance-evidence-stat-failed strong {
+  color: #ff7b72;
+}
+
+:root[data-theme='dark'] .md-github .acceptance-evidence-stat span,
+:root[data-theme='dark'] .md-github .acceptance-evidence-note,
+:host[data-theme='dark'] .md-github .acceptance-evidence-stat span,
+:host[data-theme='dark'] .md-github .acceptance-evidence-note {
+  color: var(--color-muted);
+}
+
+:root[data-theme='dark'] .md-github .acceptance-evidence-references,
+:host[data-theme='dark'] .md-github .acceptance-evidence-references {
+  background: transparent;
+}
+
+:root[data-theme='dark'] .md-github .acceptance-evidence-references h3,
+:host[data-theme='dark'] .md-github .acceptance-evidence-references h3 {
+  color: var(--color-fg);
+}
+
+:root[data-theme='dark'] .md-github .acceptance-evidence-references li span,
+:host[data-theme='dark'] .md-github .acceptance-evidence-references li span {
+  color: var(--color-accent);
+}
+
+:root[data-theme='dark'] .md-github .acceptance-evidence-references li code,
+:host[data-theme='dark'] .md-github .acceptance-evidence-references li code {
+  color: var(--color-fg-2);
+}
+
+:root[data-theme='dark'] .md-github .acceptance-evidence-stat,
+:root[data-theme='dark'] .md-github .acceptance-evidence-references li,
+:host[data-theme='dark'] .md-github .acceptance-evidence-stat,
+:host[data-theme='dark'] .md-github .acceptance-evidence-references li {
+  border-color: var(--color-border);
 }
 
 :root[data-theme='dark'] .md-github input[type='checkbox'],
@@ -1350,6 +1498,12 @@ body {
   cursor: pointer;
   font: inherit;
   text-align: left;
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    background 180ms ease,
+    color 180ms ease;
 }
 
 .dashboard-overview-summary-card.dashboard-summary-metric-cell:last-child {
@@ -1846,6 +2000,15 @@ body {
   .dashboard-content-shell {
     min-height: calc(100vh - 110px);
     padding: 20px 14px 38px;
+  }
+
+  .md-github .acceptance-evidence-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .md-github .acceptance-evidence-references li {
+    grid-template-columns: 1fr;
+    gap: 2px;
   }
 }
 
