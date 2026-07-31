@@ -17,9 +17,10 @@ Classic Dashboard 不再依赖 `.comet/config.yaml` 或其
 
 ### Dashboard 项目根
 
-Dashboard 使用独立的只读项目根发现：从目标路径向上查找最近包含 `.git`、`openspec/`
-或 `docs/openspec/` 的目录。该发现不读取 `.comet/config.yaml`，因此没有配置的既有
-Classic 项目也能从项目根或任意子目录启动 Dashboard。
+Dashboard 使用独立的只读项目根发现：从目标路径向上查找最近包含 `.git`、
+`.comet/config.yaml`、`openspec/` 或 `docs/openspec/` 的目录。`.comet/config.yaml` 仅作为
+Native 项目的现有边界标记，不读取 `classic.artifact_layout`；因此没有配置的既有 Classic
+项目也能从项目根或任意子目录启动 Dashboard，同时保留 Native 项目的配置根发现行为。
 
 ### Classic 双布局采集
 
@@ -43,8 +44,9 @@ Classic 项目也能从项目根或任意子目录启动 Dashboard。
 
 ### Native 隔离
 
-`collectNativeDashboardProjection` 及 Native 的项目配置读取保持原样。Classic 双布局
-扫描不能作为 Native 路径、workflow 或项目根的后备来源。
+`collectNativeDashboardProjection` 及 Native 的项目配置读取保持原样。有效的 Native-only
+workflow 会跳过 Classic 采集；Classic 双布局扫描不能作为 Native 路径、workflow 或项目根的
+后备来源。
 
 ## 备选方案
 
@@ -55,7 +57,8 @@ Classic 项目也能从项目根或任意子目录启动 Dashboard。
 
 ## 代码边界
 
-- `app/commands/dashboard.ts` 或 Dashboard 专用领域模块：配置无关的 Dashboard 项目根发现。
+- `app/commands/dashboard.ts` 或 Dashboard 专用领域模块：不读取 Classic 布局配置、但保留
+  Native 配置边界的 Dashboard 项目根发现。
 - `domains/dashboard/collector.ts`：Classic 候选根枚举、合并和有来源的稳定 ID；不再调用
   Classic 的配置布局断言。
 - `domains/dashboard/web/src/main.jsx`：有 Classic 数据时以非阻塞提示展示单根读取诊断。
@@ -69,7 +72,7 @@ Classic 项目也能从项目根或任意子目录启动 Dashboard。
 
 1. `collectDashboardSnapshot` 与构建后的 `bin/comet.js dashboard <fixture> --json` 都返回两个来源的 change；
 2. 单根存在时正常、双根同名时 ID 不冲突、一个根读取失败时保留另一个根的数据并在页面显示非阻塞诊断；
-3. Native 仍只通过项目配置识别其 Dashboard 数据。
+3. Native 仍只通过项目配置识别其 Dashboard 数据，且 Native-only 项目从嵌套目录启动时根路径不丢失。
 
 完成后运行受影响 Dashboard 测试、Dashboard 构建与必要的 CLI 回归。
 

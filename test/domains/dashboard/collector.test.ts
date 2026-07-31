@@ -13,14 +13,16 @@ interface ChangeFixture {
   plan?: boolean;
   verifyReport?: string | null; // body or null to skip the file
   status?: 'active' | 'archived';
+  changesPath?: 'openspec/changes' | 'docs/openspec/changes';
 }
 
 async function writeChange(root: string, fixture: ChangeFixture): Promise<void> {
   const status = fixture.status ?? 'active';
+  const changesPath = fixture.changesPath ?? 'openspec/changes';
   const baseDir =
     status === 'archived'
-      ? path.join(root, 'openspec', 'changes', 'archive', fixture.name)
-      : path.join(root, 'openspec', 'changes', fixture.name);
+      ? path.join(root, ...changesPath.split('/'), 'archive', fixture.name)
+      : path.join(root, ...changesPath.split('/'), fixture.name);
   await fs.mkdir(baseDir, { recursive: true });
 
   if (fixture.yaml) {
@@ -51,41 +53,24 @@ describe('collectDashboardSnapshot', () => {
 
   beforeEach(async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-collector-'));
-    await fs.mkdir(path.join(root, '.comet'), { recursive: true });
-    await fs.writeFile(
-      path.join(root, '.comet', 'config.yaml'),
-      [
-        'schema: comet.project.v1',
-        'default_workflow: classic',
-        'workflows: [classic]',
-        'classic:',
-        '  artifact_layout: legacy',
-        '',
-      ].join('\n'),
-      'utf8',
-    );
   });
 
   afterEach(async () => {
     await fs.rm(root, { recursive: true, force: true });
   });
 
-  it('reports Classic unavailable when the configured root is missing', async () => {
+  it('treats missing Classic roots as an empty state without configuration', async () => {
     const snap = await collectDashboardSnapshot(root);
 
     expect(snap.changes.active).toEqual([]);
     expect(snap.changes.archived).toEqual([]);
     expect(snap.summary.activeChanges).toBe(0);
     expect(snap.summary.archivedChanges).toBe(0);
-    expect(snap.classicError).toMatchObject({
-      code: 'classic-dashboard-unavailable',
-      message: expect.stringContaining(
-        'Configured Classic OpenSpec root is missing: openspec (alternate docs/openspec is missing)',
-      ),
-    });
+    expect(snap.classicError).toBeUndefined();
   });
 
   it('does not report a Classic error for a Native-only project', async () => {
+    await fs.mkdir(path.join(root, '.comet'), { recursive: true });
     await fs.writeFile(
       path.join(root, '.comet', 'config.yaml'),
       [
@@ -99,6 +84,10 @@ describe('collectDashboardSnapshot', () => {
       ].join('\n'),
       'utf8',
     );
+    await writeChange(root, {
+      name: 'classic-should-not-appear',
+      yaml: { phase: 'build', workflow: 'classic' },
+    });
 
     const snap = await collectDashboardSnapshot(root);
 
@@ -136,7 +125,7 @@ describe('collectDashboardSnapshot', () => {
     expect(snap.classicError).toBeUndefined();
   });
 
-  it('reports Classic unavailable without scanning legacy paths when config is invalid', async () => {
+  it('scans Classic roots despite invalid project config', async () => {
     await fs.mkdir(path.join(root, '.comet'), { recursive: true });
     await fs.writeFile(path.join(root, '.comet', 'config.yaml'), 'classic: invalid\n');
     await writeChange(root, {
@@ -147,15 +136,11 @@ describe('collectDashboardSnapshot', () => {
 
     const snap = await collectDashboardSnapshot(root);
 
-    expect(snap.changes.active).toEqual([]);
-    expect(snap.changes.archived).toEqual([]);
-    expect(snap.classicError).toEqual({
-      code: 'classic-dashboard-unavailable',
-      message: expect.stringContaining('classic must be a mapping'),
-    });
+    expect(snap.changes.active.map((change) => change.name)).toEqual(['must-not-be-guessed']);
+    expect(snap.classicError).toBeUndefined();
   });
 
-  it('does not guess a Classic root when the full project config is malformed', async () => {
+  it('scans Classic roots despite malformed project config', async () => {
     await fs.mkdir(path.join(root, '.comet'), { recursive: true });
     await fs.writeFile(path.join(root, '.comet', 'config.yaml'), 'schema: [broken\n');
     await writeChange(root, {
@@ -166,14 +151,11 @@ describe('collectDashboardSnapshot', () => {
 
     const snap = await collectDashboardSnapshot(root);
 
-    expect(snap.changes.active).toEqual([]);
-    expect(snap.classicError).toMatchObject({
-      code: 'classic-dashboard-unavailable',
-      message: expect.stringContaining('Invalid'),
-    });
+    expect(snap.changes.active.map((change) => change.name)).toEqual(['must-not-be-scanned']);
+    expect(snap.classicError).toBeUndefined();
   });
 
-  it('reports Classic unavailable instead of scanning either root during a dual-root conflict', async () => {
+  it('merges both Classic roots and keeps duplicate names distinct by relative path', async () => {
     await fs.mkdir(path.join(root, '.comet'), { recursive: true });
     await fs.writeFile(
       path.join(root, '.comet', 'config.yaml'),
@@ -186,19 +168,46 @@ describe('collectDashboardSnapshot', () => {
         '',
       ].join('\n'),
     );
-    await fs.mkdir(path.join(root, 'openspec', 'changes', 'legacy'), { recursive: true });
-    await fs.mkdir(path.join(root, 'docs', 'openspec', 'changes', 'configured'), {
-      recursive: true,
+    await writeChange(root, {
+      name: 'shared-change',
+      changesPath: 'openspec/changes',
+      yaml: { phase: 'build', workflow: 'legacy' },
+    });
+    await writeChange(root, {
+      name: 'shared-change',
+      changesPath: 'docs/openspec/changes',
+      yaml: { phase: 'build', workflow: 'docs' },
+    });
+    await writeChange(root, {
+      name: '2026-07-01-shared-archive',
+      changesPath: 'openspec/changes',
+      status: 'archived',
+      yaml: { phase: 'archive', archived: 'true' },
+    });
+    await writeChange(root, {
+      name: '2026-07-01-shared-archive',
+      changesPath: 'docs/openspec/changes',
+      status: 'archived',
+      yaml: { phase: 'archive', archived: 'true' },
     });
 
     const snap = await collectDashboardSnapshot(root);
 
-    expect(snap.changes.active).toEqual([]);
-    expect(snap.changes.archived).toEqual([]);
-    expect(snap.classicError).toMatchObject({
-      code: 'classic-dashboard-unavailable',
-      message: expect.stringContaining('Classic layout conflict'),
-    });
+    expect(snap.changes.active).toHaveLength(2);
+    expect(snap.changes.active.map((change) => change.id)).toEqual(
+      expect.arrayContaining([
+        'openspec/changes/shared-change',
+        'docs/openspec/changes/shared-change',
+      ]),
+    );
+    expect(snap.changes.archived).toHaveLength(2);
+    expect(snap.changes.archived.map((change) => change.id)).toEqual(
+      expect.arrayContaining([
+        'openspec/changes/archive/2026-07-01-shared-archive',
+        'docs/openspec/changes/archive/2026-07-01-shared-archive',
+      ]),
+    );
+    expect(snap.classicError).toBeUndefined();
   });
 
   it('collects active changes and ignores the archive directory entry', async () => {
@@ -268,7 +277,7 @@ describe('collectDashboardSnapshot', () => {
 
     expect(snap.changes.archived).toHaveLength(1);
     const archived = snap.changes.archived[0];
-    expect(archived.id).toBe('archive/2026-06-20-context-graph-notes');
+    expect(archived.id).toBe('openspec/changes/archive/2026-06-20-context-graph-notes');
     expect(archived.status).toBe('archived');
     expect(archived.displayName).toBe('context-graph-notes');
     expect(archived.archive).toMatchObject({
@@ -497,6 +506,42 @@ describe('collectDashboardSnapshot', () => {
       }
     },
   );
+
+  it('keeps the readable docs root when the legacy changes root is a junction', async () => {
+    const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-dashboard-root-outside-'));
+    const openSpecRoot = path.join(root, 'openspec');
+    const linkedChanges = path.join(openSpecRoot, 'changes');
+    try {
+      await fs.mkdir(openSpecRoot, { recursive: true });
+      await writeChange(root, {
+        name: 'docs-survivor',
+        changesPath: 'docs/openspec/changes',
+        yaml: { phase: 'build', workflow: 'docs' },
+      });
+      try {
+        await fs.symlink(
+          outsideRoot,
+          linkedChanges,
+          process.platform === 'win32' ? 'junction' : 'dir',
+        );
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+        throw error;
+      }
+
+      const snap = await collectDashboardSnapshot(root);
+
+      expect(snap.changes.active.map((change) => change.id)).toEqual([
+        'docs/openspec/changes/docs-survivor',
+      ]);
+      expect(snap.classicError).toMatchObject({
+        code: 'classic-dashboard-unavailable',
+        message: expect.stringMatching(/symbolic link or junction/iu),
+      });
+    } finally {
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
 
   it('sorts active changes by risk, then updatedAt, then name', async () => {
     await writeChange(root, {

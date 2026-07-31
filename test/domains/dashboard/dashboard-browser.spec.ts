@@ -58,3 +58,24 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
 
   expect(consoleErrors).toEqual([]);
 });
+
+test('keeps Classic task progress inside the change detail column', async ({ page }) => {
+  await page.setViewportSize({ width: 1580, height: 900 });
+  await page.goto('/?demo');
+
+  const taskProgress = page
+    .getByRole('heading', { name: '任务进度' })
+    .locator('xpath=ancestor::article[1]');
+  const changeDetail = taskProgress.locator('xpath=ancestor::section[1]');
+
+  await expect(taskProgress).toBeVisible();
+  const taskProgressBox = await taskProgress.boundingBox();
+  const changeDetailBox = await changeDetail.boundingBox();
+  if (!taskProgressBox || !changeDetailBox) {
+    throw new Error('Expected task progress and change detail to have measurable bounds');
+  }
+
+  expect(taskProgressBox.x + taskProgressBox.width).toBeLessThanOrEqual(
+    changeDetailBox.x + changeDetailBox.width,
+  );
+});

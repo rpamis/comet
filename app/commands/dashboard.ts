@@ -3,7 +3,7 @@ import { collectDashboardSnapshot } from '../../domains/dashboard/collector.js';
 import { openInBrowser } from '../../domains/dashboard/open-browser.js';
 import { startDashboardServer } from '../../domains/dashboard/server.js';
 
-import { discoverClassicProject } from '../../domains/comet-classic/classic-layout.js';
+import { discoverDashboardProjectRoot } from '../../domains/dashboard/project-root.js';
 export interface DashboardOptions {
   port?: number;
   open?: boolean;
@@ -23,7 +23,7 @@ export async function dashboardCommand(
   targetPath: string,
   options: DashboardOptions = {},
 ): Promise<void> {
-  const projectPath = await discoverClassicProject(path.resolve(targetPath));
+  const projectPath = await discoverDashboardProjectRoot(path.resolve(targetPath));
 
   if (options.json) {
     const snapshot = await collectDashboardSnapshot(projectPath);

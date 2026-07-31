@@ -6,6 +6,10 @@ async function readDashboardSource(): Promise<string> {
   return fs.readFile(path.resolve('domains', 'dashboard', 'web', 'src', 'main.jsx'), 'utf8');
 }
 
+async function readDashboardStyles(): Promise<string> {
+  return fs.readFile(path.resolve('domains', 'dashboard', 'web', 'src', 'styles.css'), 'utf8');
+}
+
 describe('dashboard web source contracts', () => {
   it('keeps the change workspace grid responsive inside the left navigation rail', async () => {
     const source = await readDashboardSource();
@@ -15,6 +19,21 @@ describe('dashboard web source contracts', () => {
     );
     expect(source).toContain('xl:col-start-2 2xl:col-start-auto');
     expect(source).not.toContain('xl:grid-cols-[320px_minmax(620px,940px)_320px]');
+  });
+
+  it('uses the change-detail width to switch between stacked and two-column panels', async () => {
+    const [source, styles] = await Promise.all([readDashboardSource(), readDashboardStyles()]);
+
+    expect(source).toContain('className="change-detail min-w-0 rounded-lg bg-bg shadow-raised"');
+    expect(source).toContain('className="change-detail-panels grid min-w-0 gap-4"');
+    expect(source).not.toContain('md:grid-cols-[minmax(0,1fr)_minmax(0,340px)]');
+    expect(source).toContain('flex min-w-0 flex-col gap-4');
+    expect(source).toMatch(
+      /function TaskProgress\(\{ change \}\) \{[\s\S]*?<article className="min-w-0 rounded-xl border border-border-soft bg-bg px-5 py-4">/,
+    );
+    expect(styles).toContain('container-type: inline-size;');
+    expect(styles).toContain('@container (min-width: 700px)');
+    expect(styles).toContain('grid-template-columns: minmax(0, 1fr) minmax(0, 340px);');
   });
 
   it('preserves page scroll position while the artifact preview drawer is open', async () => {
@@ -82,9 +101,17 @@ describe('dashboard web source contracts', () => {
   it('shows Classic collection failures instead of an empty workspace', async () => {
     const source = await readDashboardSource();
 
-    expect(source).toContain('snapshot.classicError ?');
+    expect(source).toContain('snapshot.classicError && !hasClassicChanges');
     expect(source).toContain('<ClassicErrorState error={snapshot.classicError} />');
     expect(source).toContain('Classic 数据读取失败');
     expect(source).toContain('{error.message}');
+  });
+
+  it('keeps available Classic data visible while warning about partial collection failures', async () => {
+    const source = await readDashboardSource();
+
+    expect(source).toContain('snapshot.classicError && hasClassicChanges');
+    expect(source).toContain('<ClassicWarning error={snapshot.classicError} />');
+    expect(source).toContain('function ClassicWarning({ error })');
   });
 });

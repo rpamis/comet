@@ -3,10 +3,6 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { dashboardCommand } from '../../app/commands/dashboard.js';
-import {
-  defaultProjectConfig,
-  writeProjectConfig,
-} from '../../domains/comet-native/native-config.js';
 
 describe('dashboardCommand --json', () => {
   let tmpDir: string;
@@ -20,17 +16,6 @@ describe('dashboardCommand --json', () => {
   });
 
   it('prints a single dashboard snapshot and returns', async () => {
-    const config = defaultProjectConfig('docs', 'en');
-    config.default_workflow = 'classic';
-    config.workflows = ['classic'];
-    config.classic = {
-      artifact_layout: 'docs',
-      language: 'en',
-      context_compression: 'off',
-      review_mode: 'standard',
-      auto_transition: true,
-    };
-    await writeProjectConfig(tmpDir, config);
     const openSpecRoot = path.join(tmpDir, 'docs', 'openspec');
     await fs.mkdir(path.join(openSpecRoot, 'changes', 'archive'), { recursive: true });
     await fs.mkdir(path.join(openSpecRoot, 'specs'), { recursive: true });
@@ -46,7 +31,7 @@ describe('dashboardCommand --json', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     let captured = '';
     try {
-      await dashboardCommand(tmpDir, { json: true });
+      await dashboardCommand(changeDir, { json: true });
       captured = log.mock.calls.map((call) => call.join(' ')).join('\n');
     } finally {
       log.mockRestore();
@@ -64,6 +49,42 @@ describe('dashboardCommand --json', () => {
       phase: 'build',
       tasks: { total: 2 },
     });
+  });
+
+  it('keeps a nested Native dashboard rooted at its project config', async () => {
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'workflows: [native]',
+        'native:',
+        '  artifact_root: docs',
+        '  language: en',
+        '',
+      ].join('\n'),
+    );
+    const nested = path.join(tmpDir, 'packages', 'app', 'src');
+    await fs.mkdir(nested, { recursive: true });
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let captured = '';
+    try {
+      await dashboardCommand(nested, { json: true });
+      captured = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+    }
+
+    const snap = JSON.parse(captured) as {
+      project: { path: string };
+      changes: { active: unknown[]; archived: unknown[] };
+    };
+
+    expect(snap.project.path).toBe(tmpDir);
+    expect(snap.changes.active).toEqual([]);
+    expect(snap.changes.archived).toEqual([]);
   });
 
   it('rejects invalid port values', async () => {

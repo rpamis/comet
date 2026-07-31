@@ -46,26 +46,10 @@ describe('built CLI smoke', () => {
     expect(result.stdout).toContain('No active changes.');
   });
 
-  it.each([
-    ['legacy', 'openspec/changes'],
-    ['docs', 'docs/openspec/changes'],
-  ] as const)(
-    'shows Classic %s changes through the built dashboard CLI',
-    async (artifactLayout, changesPath) => {
-      await fs.mkdir(path.join(projectRoot, '.git'));
-      await fs.mkdir(path.join(projectRoot, '.comet'));
-      await fs.writeFile(
-        path.join(projectRoot, '.comet', 'config.yaml'),
-        [
-          'schema: comet.project.v1',
-          'default_workflow: classic',
-          'workflows: [classic]',
-          'classic:',
-          `  artifact_layout: ${artifactLayout}`,
-          '  language: en',
-          '',
-        ].join('\n'),
-      );
+  it('shows both Classic roots through the built dashboard CLI without config', async () => {
+    await fs.mkdir(path.join(projectRoot, '.git'));
+    const changesPaths = ['openspec/changes', 'docs/openspec/changes'] as const;
+    for (const changesPath of changesPaths) {
       const changesRoot = path.join(projectRoot, ...changesPath.split('/'));
       await fs.mkdir(path.join(changesRoot, 'archive'), { recursive: true });
       const changeRoot = path.join(changesRoot, 'dashboard-visible');
@@ -74,18 +58,22 @@ describe('built CLI smoke', () => {
         path.join(changeRoot, '.comet.yaml'),
         ['workflow: full', 'phase: build', 'archived: false', ''].join('\n'),
       );
+    }
 
-      const result = runCli('dashboard', changeRoot, '--json');
+    const nestedChange = path.join(projectRoot, 'docs', 'openspec', 'changes', 'dashboard-visible');
+    const result = runCli('dashboard', nestedChange, '--json');
 
-      expect(result.status, result.stderr).toBe(0);
-      expect(JSON.parse(result.stdout).changes.active).toEqual([
-        expect.objectContaining({
-          name: 'dashboard-visible',
-          relativePath: `${changesPath}/dashboard-visible`,
-        }),
-      ]);
-    },
-  );
+    expect(result.status, result.stderr).toBe(0);
+    const snapshot = JSON.parse(result.stdout);
+    expect(snapshot.project.path).toBe(projectRoot);
+    expect(snapshot.changes.active.map((change: { id: string }) => change.id)).toEqual(
+      expect.arrayContaining([
+        'openspec/changes/dashboard-visible',
+        'docs/openspec/changes/dashboard-visible',
+      ]),
+    );
+    expect(snapshot.classicError).toBeUndefined();
+  });
 
   it('resolves the configured workflow through bin/comet.js from a nested directory', async () => {
     const initialized = runCli(

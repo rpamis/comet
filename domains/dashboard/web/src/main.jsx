@@ -371,7 +371,8 @@ function SearchIcon({ className }) {
 }
 
 function Dashboard({ snapshot, visible, selected, selectedId, tab, onTab, onSelect, onPreview }) {
-  const isEmpty = snapshot.changes.active.length + snapshot.changes.archived.length === 0;
+  const hasClassicChanges = snapshot.changes.active.length + snapshot.changes.archived.length > 0;
+  const classicWarning = snapshot.classicError && hasClassicChanges;
   return (
     <div className="mx-auto min-w-0 max-w-dashboard">
       <SectionHead
@@ -380,22 +381,25 @@ function Dashboard({ snapshot, visible, selected, selectedId, tab, onTab, onSele
       />
       <SummaryCards snapshot={snapshot} />
       <SectionHead title="变更工作区" hint="查看文件产物与项目进度" />
-      {snapshot.classicError ? (
+      {snapshot.classicError && !hasClassicChanges ? (
         <ClassicErrorState error={snapshot.classicError} />
-      ) : isEmpty ? (
+      ) : !hasClassicChanges ? (
         <EmptyState />
       ) : (
-        <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)_minmax(260px,320px)]">
-          <ChangesExplorer
-            visible={visible}
-            selectedId={selectedId}
-            tab={tab}
-            onTab={onTab}
-            onSelect={onSelect}
-          />
-          {selected && <ChangeDetail change={selected} onPreview={onPreview} />}
-          {selected && <SidePanel change={selected} git={snapshot.git} onPreview={onPreview} />}
-        </div>
+        <>
+          {classicWarning ? <ClassicWarning error={snapshot.classicError} /> : null}
+          <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)_minmax(260px,320px)]">
+            <ChangesExplorer
+              visible={visible}
+              selectedId={selectedId}
+              tab={tab}
+              onTab={onTab}
+              onSelect={onSelect}
+            />
+            {selected && <ChangeDetail change={selected} onPreview={onPreview} />}
+            {selected && <SidePanel change={selected} git={snapshot.git} onPreview={onPreview} />}
+          </div>
+        </>
       )}
     </div>
   );
@@ -552,7 +556,7 @@ function ChangeCard({ change, active, onClick }) {
 
 function ChangeDetail({ change, onPreview }) {
   return (
-    <section className="min-w-0 rounded-lg bg-bg shadow-raised">
+    <section className="change-detail min-w-0 rounded-lg bg-bg shadow-raised">
       <div className="flex items-start gap-4 border-b border-border-soft px-5 py-4">
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-base font-semibold">{change.displayName}</h3>
@@ -572,9 +576,9 @@ function ChangeDetail({ change, onPreview }) {
           archived={change.status === 'archived'}
           next={change.next}
         />
-        <div className="grid gap-4 md:grid-cols-[1fr_340px]">
+        <div className="change-detail-panels grid min-w-0 gap-4">
           <ArtifactList change={change} onPreview={onPreview} />
-          <div className="flex flex-col gap-4">
+          <div className="flex min-w-0 flex-col gap-4">
             <TaskProgress change={change} />
           </div>
         </div>
@@ -647,7 +651,7 @@ function ArtifactList({ change, onPreview }) {
   const cometArtifacts = grouped.filter((a) => a.source === 'comet');
 
   return (
-    <article className="rounded-xl border border-border-soft bg-bg px-5 py-4">
+    <article className="min-w-0 rounded-xl border border-border-soft bg-bg px-5 py-4">
       <div className="mb-4 flex items-baseline justify-between">
         <h4 className="text-sm font-semibold tracking-tight">关键产物</h4>
         <span className="font-mono text-[12px] text-meta">
@@ -798,7 +802,7 @@ function TaskProgress({ change }) {
         }`;
 
   return (
-    <article className="rounded-xl border border-border-soft bg-bg px-5 py-4">
+    <article className="min-w-0 rounded-xl border border-border-soft bg-bg px-5 py-4">
       <div className="mb-4 flex items-baseline justify-between">
         <h4 className="text-sm font-semibold tracking-tight">任务进度</h4>
         <span
@@ -1382,6 +1386,20 @@ function Pill({ tone = 'neutral', children }) {
     >
       {children}
     </span>
+  );
+}
+
+function ClassicWarning({ error }) {
+  return (
+    <div
+      role="status"
+      className="mb-4 rounded-lg border border-warn/30 bg-warn-soft p-4 shadow-card"
+    >
+      <h3 className="font-semibold text-warn">Classic 数据部分读取失败</h3>
+      <p className="mt-1 break-words text-sm text-fg-2">
+        已展示可读取的变更；请检查其余 Classic 产物目录后刷新。{error.message}
+      </p>
+    </div>
   );
 }
 

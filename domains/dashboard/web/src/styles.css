@@ -116,6 +116,16 @@ input {
   max-width: var(--spacing-dashboard);
 }
 
+.change-detail {
+  container-type: inline-size;
+}
+
+@container (min-width: 700px) {
+  .change-detail-panels {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 340px);
+  }
+}
+
 .artifact-markdown,
 .md-github {
   font-size: 16px;
