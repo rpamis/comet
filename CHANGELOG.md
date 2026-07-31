@@ -19,17 +19,15 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
-- **Classic dependency updates**: `comet update` now refreshes only Comet-managed assets, while `comet update --self-update` explicitly upgrades the Comet package and existing Classic dependencies such as OpenSpec and Skills CLI-managed Superpowers without duplicating plugin-managed installations ([#259](https://github.com/rpamis/comet/issues/259)).
+- **Dashboard port validation**: `comet dashboard --port` now rejects out-of-range values at parse time with the correct range message, instead of accepting them and failing later with a misleading error.
 - **Classic layout upgrade**: `comet init` now preserves a legacy `openspec/` workspace when an existing Classic configuration predates `classic.artifact_layout`, preventing setup failures after updating from beta.9 ([#256](https://github.com/rpamis/comet/issues/256)).
 - **Classic setup coexistence**: `comet init` now completes when both `openspec/` and `docs/openspec/` exist, using the configured Classic root while preserving the alternate root ([#257](https://github.com/rpamis/comet/issues/257)).
 - **Classic configuration recovery**: `comet init` now adopts a single existing `openspec/` or `docs/openspec/` root when an older project has no `.comet/config.yaml`, then records the matching Classic layout instead of stopping before setup.
-- **Classic OpenSpec upgrades**: Classic setup now requires a compatible OpenSpec CLI before continuing. Non-interactive initialization selects a needed upgrade automatically, while the interactive dependency prompt keeps a required upgrade selected.
+- **Classic OpenSpec requirement**: Classic setup now requires a compatible OpenSpec CLI before continuing. Non-interactive initialization selects a needed upgrade automatically, while the interactive dependency prompt keeps a required upgrade selected.
 - **Project configuration refresh**: `comet update` now also backfills the current project's missing managed configuration fields when Comet is installed globally. When an older Classic project contains both possible artifact roots and has no recorded layout, the update asks which root to retain; non-interactive use can pass `--classic-layout legacy|docs`.
-- **Dashboard discovery and panel layout**: Classic Dashboard now discovers and merges both `openspec/` and `docs/openspec/` roots without requiring Classic layout configuration, keeps same-named changes distinct by relative path, and switches artifact and task-progress panels by the detail column's actual width to prevent overlap.
-- **Dashboard workflow discovery**: Dashboard now shows Classic changes found on disk even when the project currently enables only Native, and presents an aligned, informative Classic empty state when no Classic changes exist.
-- **Verification evidence previews**: Dashboard now summarizes Native acceptance-evidence machine blocks into readable status counts while listing the referenced receipts by type and relative path.
-- **Native archived acceptance coverage**: Dashboard now preserves the recorded acceptance counts for archived Native changes, including historical v1 verification evidence, instead of showing completed criteria as missing.
-- **Native Dashboard empty state**: When the active Native filter has no changes, Dashboard now keeps the center workspace informative and links directly to archived records when available.
+- **Dashboard Classic discovery**: Classic Dashboard now discovers and merges both `openspec/` and `docs/openspec/` roots without requiring Classic layout configuration, keeps same-named changes distinct by relative path, and shows Classic changes found on disk even when the project currently enables only Native, with an informative empty state when none exist.
+- **Dashboard panel layout**: Artifact and task-progress panels now switch layout by the detail column's actual width to prevent overlap.
+- **Native evidence previews**: Dashboard now summarizes Native acceptance-evidence machine blocks into readable status counts, lists referenced receipts by type and relative path, and preserves the recorded acceptance counts for archived Native changes (including historical v1 evidence) instead of showing completed criteria as missing.
 
 ### Security
 
