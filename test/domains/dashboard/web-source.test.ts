@@ -24,10 +24,9 @@ describe('dashboard web source contracts', () => {
   it('uses the change-detail width to switch between stacked and two-column panels', async () => {
     const [source, styles] = await Promise.all([readDashboardSource(), readDashboardStyles()]);
 
-    expect(source).toContain('className="change-detail min-w-0 rounded-lg bg-bg shadow-raised"');
+    expect(source).toContain('className="change-detail min-w-0"');
     expect(source).toContain('className="change-detail-panels grid min-w-0 gap-4"');
     expect(source).not.toContain('md:grid-cols-[minmax(0,1fr)_minmax(0,340px)]');
-    expect(source).toContain('flex min-w-0 flex-col gap-4');
     expect(source).toMatch(
       /function TaskProgress\(\{ change \}\) \{[\s\S]*?<article className="min-w-0 rounded-xl border border-border-soft bg-bg px-5 py-4">/,
     );

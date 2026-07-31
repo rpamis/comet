@@ -121,7 +121,7 @@ async function acceptanceSummary(
       );
       return {
         ...counts,
-        missing: counts.total - counts.evidenced - counts.skipped,
+        missing: Math.max(0, counts.total - counts.evidenced - counts.skipped),
       };
     }
     const evidence = await readNativeVerificationEvidence(

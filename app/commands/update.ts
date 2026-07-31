@@ -1855,7 +1855,12 @@ async function updateSingleProject(
     );
     if (scopeTargets.length === 0) {
       if (scopePluginTargets.length > 0) {
-        superpowersReason = 'plugin-managed Superpowers installation skipped';
+        // Only attribute the overall reason to a plugin-managed skip when no
+        // earlier scope actually installed Superpowers; otherwise an
+        // 'installed' status would carry a misleading '...skipped' reason.
+        if (superpowersStatus === 'skipped') {
+          superpowersReason = 'plugin-managed Superpowers installation skipped';
+        }
         superpowersTargetResults.push(
           ...scopePluginTargets.map((target) => ({
             scope: target.scope,
@@ -1882,9 +1887,8 @@ async function updateSingleProject(
         superpowersReason = `Superpowers ${scope} update failed`;
       } else if (status === 'installed' && superpowersStatus !== 'failed') {
         superpowersStatus = 'installed';
-        if (scopePluginTargets.length > 0) {
-          superpowersReason = 'plugin-managed Superpowers installation skipped';
-        }
+        // A successful install is the truth; do not overwrite the reason with a
+        // plugin-managed skip note from this scope's leftover plugin targets.
       }
       log(`  Superpowers (${scope}): ${status}`);
       superpowersTargetResults.push(
@@ -2293,13 +2297,16 @@ function resolveSelfUpdateOptions(
         : 'self-update disabled by --skip-npm',
     };
   }
-  if (!options.selfUpdate) {
+  // A current-project refresh touches one project only, so it must not upgrade
+  // the shared npm package by default; an explicit --self-update opts back in.
+  // The default project/global `comet update` keeps upgrading the package and
+  // refreshing assets together, matching the documented update contract.
+  if (refreshesOnlyCurrentProject && !options.selfUpdate) {
     return {
       ...options,
       skipPackageSelfUpdate: true,
-      npmSkipReason: refreshesOnlyCurrentProject
-        ? 'self-update disabled for current-project updates; pass --self-update to opt in'
-        : 'self-update disabled; pass --self-update to opt in',
+      npmSkipReason:
+        'self-update disabled for current-project updates; pass --self-update to opt in',
     };
   }
   return { ...options, skipPackageSelfUpdate: false };

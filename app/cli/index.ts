@@ -130,7 +130,11 @@ program
     if (!/^\d+$/u.test(value)) {
       throw new Error(`Invalid --port value: "${value}". Use an integer between 0 and 65535.`);
     }
-    return Number.parseInt(value, 10);
+    const port = Number.parseInt(value, 10);
+    if (port < 0 || port > 65535) {
+      throw new Error(`Invalid --port value: "${value}". Use an integer between 0 and 65535.`);
+    }
+    return port;
   })
   .option('--no-open', "Don't open the dashboard URL in the browser automatically")
   .option('--json', 'Print a single dashboard snapshot to stdout and exit')

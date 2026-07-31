@@ -21,10 +21,7 @@ import {
   loadNativeVerificationReceiptContext,
 } from './native-verification-receipt-runtime.js';
 import type { NativeVerificationReceipt } from './native-verification-receipt.js';
-import type {
-  NativeAcceptanceTraceEntry,
-  NativeReadableVerificationEvidenceEnvelope,
-} from './native-verification-evidence.js';
+import type { NativeAcceptanceTraceEntry } from './native-verification-evidence.js';
 
 /**
  * A manual-evidence receipt whose bindings diverge from the current revision

@@ -1596,7 +1596,7 @@ describe('update command helpers', () => {
     expect(registry.projects.every((project) => project.lastSource === 'update')).toBe(true);
   });
 
-  it('does not run npm installs for all-projects entries without explicit self-update', async () => {
+  it('does not run local npm installs for all-projects entries without project package dependencies', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home-global-npm-once');
     const projectA = path.join(tmpDir, 'project-a-global-package');
     const projectB = path.join(tmpDir, 'project-b-global-package');
@@ -1622,8 +1622,16 @@ describe('update command helpers', () => {
       const npmArgs = call[1]?.slice(1) ?? [];
       return npmArgs[0] === 'install' && !npmArgs.includes('--prefix');
     });
-    expect(mockedSpawn).not.toHaveBeenCalled();
-    expect(installCalls).toHaveLength(0);
+    expect(mockedSpawn).toHaveBeenCalledTimes(6);
+    expect(installCalls).toHaveLength(1);
+    expect(installCalls[0][1]?.slice(1)).toEqual([
+      'install',
+      '-g',
+      '@rpamis/comet@0.4.0-beta.8',
+      '--registry',
+      'https://registry.npmjs.org',
+    ]);
+    expect(installCalls.some((call) => !(call[1]?.slice(1) ?? []).includes('-g'))).toBe(false);
   });
 
   it('reports global npm update failure before updating all indexed projects', async () => {

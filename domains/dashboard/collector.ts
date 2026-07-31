@@ -154,10 +154,6 @@ async function collectActiveChanges(
   );
   if (!inspection.exists) return [];
   const entries = await fs.readdir(inspection.target);
-  await inspectProtectedProjectPath(projectRoot, projectRelative(projectRoot, changesRoot), {
-    label: 'Classic changes root',
-    expected: 'directory',
-  });
   const items: ChangeDashboardItem[] = [];
 
   for (const entry of entries) {
@@ -195,10 +191,6 @@ async function collectArchivedChanges(
   );
   if (!inspection.exists) return [];
   const entries = await fs.readdir(inspection.target);
-  await inspectProtectedProjectPath(projectRoot, projectRelative(projectRoot, archiveRoot), {
-    label: 'Classic archive root',
-    expected: 'directory',
-  });
   const items: ChangeDashboardItem[] = [];
 
   for (const entry of entries) {
