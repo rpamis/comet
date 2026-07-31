@@ -4,6 +4,7 @@ import net from 'net';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { collectDashboardSnapshot } from './collector.js';
+import { collectDashboardProjectDirectory, findDashboardProject } from './project-directory.js';
 
 export interface DashboardServerOptions {
   projectPath: string;
@@ -95,17 +96,68 @@ async function handleRequest(
 
   if (pathname === '/api/dashboard') {
     const snapshot = await collectDashboardSnapshot(projectPath);
-    const body = JSON.stringify(snapshot);
-    res.writeHead(200, {
-      'Content-Type': 'application/json; charset=utf-8',
-      'Content-Length': Buffer.byteLength(body),
-      'Cache-Control': 'no-store',
-    });
-    res.end(req.method === 'HEAD' ? undefined : body);
+    respondJson(res, req.method, 200, snapshot);
+    return;
+  }
+
+  if (pathname === '/api/dashboard/projects') {
+    const directory = await collectDashboardProjectDirectory(projectPath);
+    respondJson(res, req.method, 200, directory);
+    return;
+  }
+
+  if (pathname.startsWith('/api/dashboard/projects/')) {
+    let projectId: string;
+    try {
+      projectId = decodeURIComponent(pathname.slice('/api/dashboard/projects/'.length));
+    } catch {
+      respondJson(res, req.method, 400, { error: 'Invalid dashboard project id' });
+      return;
+    }
+
+    const directory = await collectDashboardProjectDirectory(projectPath);
+    const project = findDashboardProject(directory, projectId);
+    if (!project) {
+      respondJson(res, req.method, 404, { error: 'Unknown dashboard project id' });
+      return;
+    }
+    if (project.availability !== 'available') {
+      respondJson(res, req.method, 409, {
+        error: 'Dashboard project is unavailable',
+        availability: project.availability,
+      });
+      return;
+    }
+
+    const snapshot = await collectDashboardSnapshot(project.path, { projectName: project.name });
+    respondJson(res, req.method, 200, snapshot);
     return;
   }
 
   await serveStatic(res, req.method ?? 'GET', webRoot, pathname);
+}
+
+function respondJson(
+  res: http.ServerResponse,
+  method: string,
+  status: number,
+  payload: unknown,
+): void {
+  const body = JSON.stringify(payload);
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Content-Length': Buffer.byteLength(body),
+    'Cache-Control': 'no-store',
+  });
+  res.end(method === 'HEAD' ? undefined : body);
+}
+
+export function resolveDashboardStaticPath(webRoot: string, pathname: string): string | null {
+  const resolvedRoot = path.resolve(webRoot);
+  const requested = pathname === '/' ? '/index.html' : pathname;
+  const targetPath = path.resolve(resolvedRoot, '.' + requested);
+  if (!targetPath.startsWith(resolvedRoot + path.sep) && targetPath !== resolvedRoot) return null;
+  return targetPath;
 }
 
 async function serveStatic(
@@ -114,12 +166,8 @@ async function serveStatic(
   webRoot: string,
   pathname: string,
 ): Promise<void> {
-  const resolvedRoot = path.resolve(webRoot);
-  const requested = pathname === '/' ? '/index.html' : pathname;
-  const targetPath = path.resolve(resolvedRoot, '.' + requested);
-
-  // Defence in depth against `..` path traversal.
-  if (!targetPath.startsWith(resolvedRoot + path.sep) && targetPath !== resolvedRoot) {
+  const targetPath = resolveDashboardStaticPath(webRoot, pathname);
+  if (!targetPath) {
     respondError(res, 403, 'Forbidden');
     return;
   }

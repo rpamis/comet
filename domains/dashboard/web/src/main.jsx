@@ -1,4 +1,28 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Button, ConfigProvider, Input, Segmented, Select, Spin, Tooltip } from 'antd';
+import {
+  Alert,
+  Badge,
+  Card as AntCard,
+  Drawer,
+  Empty,
+  Layout,
+  List,
+  Menu,
+  Progress,
+  Statistic,
+  Steps,
+  Tabs,
+  Tag,
+} from 'antd';
+import {
+  CopyOutlined,
+  MenuOutlined,
+  MoonOutlined,
+  ReloadOutlined,
+  SunOutlined,
+} from '@ant-design/icons';
+import 'antd/dist/reset.css';
 import { createRoot } from 'react-dom/client';
 import {
   extractToc,
@@ -75,7 +99,9 @@ const VERIFY_TONE = {
 
 function App() {
   const [snapshot, setSnapshot] = useState(null);
+  const [activeProjectId, setActiveProjectId] = useState(null);
   const [workflow, setWorkflow] = useState('classic');
+  const [projects, setProjects] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [tab, setTab] = useState('active');
   const [query, setQuery] = useState('');
@@ -94,7 +120,7 @@ function App() {
       refreshingRef.current = true;
       if (manual) setLoading(true);
       try {
-        const next = useDemo ? await loadDemoSnapshot() : await fetchSnapshot();
+        const next = useDemo ? await loadDemoSnapshot() : await fetchSnapshot(activeProjectId);
         setSnapshot(next);
         setSelectedId((previous) => pickSelected(next, previous));
         if (manual) toast('状态已刷新');
@@ -105,7 +131,7 @@ function App() {
         if (manual) setLoading(false);
       }
     },
-    [useDemo],
+    [activeProjectId, useDemo],
   );
 
   useEffect(() => {
@@ -118,62 +144,104 @@ function App() {
     return () => window.clearInterval(timer);
   }, [refresh]);
 
+  useEffect(() => {
+    if (useDemo) return undefined;
+    let cancelled = false;
+    void fetchDashboardProjects()
+      .then((directory) => {
+        if (cancelled) return;
+        setProjects(directory.projects ?? []);
+        const available = (directory.projects ?? []).filter(
+          (project) => project.availability === 'available',
+        );
+        const remembered = localStorage.getItem('comet-dashboard-project');
+        const next =
+          available.find((project) => project.id === remembered)?.id ?? directory.currentProjectId;
+        setActiveProjectId((previous) => previous ?? next);
+      })
+      .catch((error) => toast(`项目列表加载失败：${error.message}`));
+    return () => {
+      cancelled = true;
+    };
+  }, [useDemo]);
+
   const selected = useMemo(() => findChange(snapshot, selectedId), [snapshot, selectedId]);
   const visible = useMemo(() => filterChanges(snapshot, tab, query), [snapshot, tab, query]);
 
   return (
-    <main className="min-h-screen bg-surface text-fg antialiased lg:grid lg:grid-cols-[var(--rail-w)_1fr]">
-      <Sidebar open={railOpen} onClose={() => setRailOpen(false)} />
-      {railOpen && (
-        <button
-          className="fixed inset-0 z-40 bg-black/30 lg:hidden"
-          aria-label="关闭导航"
-          onClick={() => setRailOpen(false)}
-        />
-      )}
-      <section className="min-w-0">
-        <Topbar
-          project={snapshot?.project}
-          workflow={workflow}
-          onWorkflow={(nextWorkflow) => {
-            setWorkflow(nextWorkflow);
-            setQuery('');
-          }}
-          loading={loading}
-          query={query}
-          onQuery={setQuery}
-          onMenu={() => setRailOpen(true)}
-          onRefresh={() => refresh(true)}
-          autoRefreshMs={AUTO_REFRESH_MS}
-          theme={theme}
-          onToggleTheme={toggleTheme}
-        />
-        <div className="px-4 pb-12 pt-5 sm:px-6 lg:px-8">
-          {!snapshot ? (
-            <LoadingState />
-          ) : workflow === 'native' ? (
-            <NativeWorkflowPanel
-              native={snapshot.native}
-              git={snapshot.git}
-              query={query}
-              onPreview={setArtifact}
-            />
-          ) : (
-            <Dashboard
-              snapshot={snapshot}
-              visible={visible}
-              selected={selected}
-              selectedId={selectedId}
-              tab={tab}
-              onTab={setTab}
-              onSelect={setSelectedId}
-              onPreview={setArtifact}
-            />
-          )}
-        </div>
-      </section>
-      <ArtifactDrawer artifact={artifact} onClose={() => setArtifact(null)} />
-    </main>
+    <ConfigProvider
+      theme={{
+        token: {
+          colorPrimary: theme === 'dark' ? '#6e9fff' : '#0063f8',
+          colorBgContainer: theme === 'dark' ? '#181b1f' : '#ffffff',
+          colorText: theme === 'dark' ? '#d8dee9' : '#1d1d1f',
+          colorBorder: theme === 'dark' ? '#343740' : '#d2d2d7',
+          borderRadius: 10,
+        },
+      }}
+    >
+      <main className="min-h-screen bg-surface text-fg antialiased lg:grid lg:grid-cols-[var(--rail-w)_1fr]">
+        <AntSidebar open={railOpen} onClose={() => setRailOpen(false)} />
+        {railOpen && (
+          <button
+            className="fixed inset-0 z-40 bg-black/30 lg:hidden"
+            aria-label="关闭导航"
+            onClick={() => setRailOpen(false)}
+          />
+        )}
+        <section className="min-w-0">
+          <Topbar
+            project={snapshot?.project}
+            projects={projects}
+            activeProjectId={activeProjectId}
+            onProjectSelect={(nextProjectId) => {
+              localStorage.setItem('comet-dashboard-project', nextProjectId);
+              setActiveProjectId(nextProjectId);
+              setSelectedId(null);
+              setQuery('');
+              setRailOpen(false);
+            }}
+            workflow={workflow}
+            onWorkflow={(nextWorkflow) => {
+              setWorkflow(nextWorkflow);
+              setQuery('');
+            }}
+            loading={loading}
+            query={query}
+            onQuery={setQuery}
+            onMenu={() => setRailOpen(true)}
+            onRefresh={() => refresh(true)}
+            autoRefreshMs={AUTO_REFRESH_MS}
+            theme={theme}
+            onToggleTheme={toggleTheme}
+          />
+          <div className="px-4 pb-12 pt-5 sm:px-6 lg:px-8">
+            {!snapshot ? (
+              <LoadingState />
+            ) : workflow === 'native' ? (
+              <NativeWorkflowPanel
+                native={snapshot.native}
+                git={snapshot.git}
+                query={query}
+                onPreview={setArtifact}
+              />
+            ) : (
+              <Dashboard
+                snapshot={snapshot}
+                visible={visible}
+                selected={selected}
+                selectedId={selectedId}
+                tab={tab}
+                onTab={setTab}
+                onSelect={setSelectedId}
+                onPreview={setArtifact}
+              />
+            )}
+          </div>
+        </section>
+        <ArtifactDrawer artifact={artifact} onClose={() => setArtifact(null)} />
+      </main>
+    </ConfigProvider>
   );
 }
 
@@ -218,6 +286,9 @@ function Topbar({
   loading,
   query,
   onQuery,
+  projects,
+  activeProjectId,
+  onProjectSelect,
   onMenu,
   onRefresh,
   autoRefreshMs,
@@ -227,49 +298,67 @@ function Topbar({
   const refreshSeconds = Math.round(autoRefreshMs / 1000);
 
   return (
-    <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-border-soft bg-surface/80 px-4 py-3 backdrop-blur-xl sm:px-6 lg:px-8">
-      <button
-        className="grid size-10 place-items-center rounded-xl text-fg-2 hover:bg-bg lg:hidden"
+    <header className="comet-workbench-header sticky top-0 z-30 flex flex-wrap items-center gap-3 border-b border-border-soft bg-surface/90 px-4 py-3 backdrop-blur-xl sm:px-6 lg:flex-nowrap lg:px-8">
+      <Button
+        className="lg:hidden"
+        type="text"
+        icon={<MenuOutlined />}
         onClick={onMenu}
         aria-label="打开导航"
-      >
-        ☰
-      </button>
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="min-w-0 leading-tight">
-          <div className="truncate text-base font-semibold">项目仪表盘</div>
-          <div className="truncate text-xs text-meta">{project?.path ?? '—'}</div>
-        </div>
-        <WorkflowSwitch workflow={workflow} onWorkflow={onWorkflow} />
-      </div>
-      <label className="relative ml-auto w-[clamp(180px,24vw,300px)] max-sm:hidden">
-        <SearchIcon className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-meta" />
-        <input
-          value={query}
-          onChange={(event) => onQuery(event.target.value)}
-          className="h-10 w-full rounded-full border border-border bg-bg pl-10 pr-4 text-sm outline-none focus:border-accent focus:ring-4 focus:ring-accent/20"
-          placeholder="搜索变更..."
-          type="search"
+      />
+      <div className="flex min-w-0 flex-1 items-center gap-2 lg:flex-none">
+        <img src="/favicon.png" alt="Comet" className="size-7 rounded-[7px]" />
+        <Select
+          className="comet-project-select min-w-0 flex-1 lg:w-[280px]"
+          value={activeProjectId ?? undefined}
+          placeholder={project?.name ?? '选择项目'}
+          showSearch
+          optionFilterProp="labelText"
+          onChange={onProjectSelect}
+          options={projects.map((entry) => ({
+            value: entry.id,
+            disabled: entry.availability !== 'available',
+            labelText: `${entry.name} ${entry.path}`,
+            label: (
+              <span>
+                <strong>{entry.name}</strong>
+                <small>{entry.path}</small>
+              </span>
+            ),
+          }))}
         />
-      </label>
-      <span className="hidden rounded-full bg-bg px-3 py-2 text-xs font-medium text-meta md:inline-flex">
+        <Segmented
+          size="middle"
+          value={workflow}
+          onChange={onWorkflow}
+          options={[
+            { label: 'Classic', value: 'classic' },
+            { label: 'Native', value: 'native' },
+          ]}
+        />
+      </div>
+      <Input
+        className="order-3 w-full lg:order-none lg:ml-auto lg:w-[min(28vw,360px)]"
+        value={query}
+        onChange={(event) => onQuery(event.target.value)}
+        prefix={<SearchIcon className="size-4" />}
+        placeholder="搜索变更…"
+        allowClear
+      />
+      <span className="hidden whitespace-nowrap text-xs text-meta xl:inline">
         自动刷新 · {refreshSeconds} 秒
       </span>
-      <button
-        className="rounded-full border border-border bg-bg px-4 py-2 text-sm font-medium text-fg-2 hover:bg-surface"
-        disabled={loading}
-        onClick={onRefresh}
-      >
-        {loading ? '刷新中' : '立即刷新'}
-      </button>
-      <button
-        className="grid size-10 place-items-center rounded-xl text-fg-2 transition-colors hover:bg-bg hover:text-fg"
-        onClick={onToggleTheme}
-        aria-label={theme === 'dark' ? '切换到亮色模式' : '切换到暗色模式'}
-        title={theme === 'dark' ? '切换到亮色模式' : '切换到暗色模式'}
-      >
-        {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
-      </button>
+      <Button icon={<ReloadOutlined />} loading={loading} onClick={onRefresh}>
+        立即刷新
+      </Button>
+      <Tooltip title={theme === 'dark' ? '切换到亮色模式' : '切换到暗色模式'}>
+        <Button
+          type="text"
+          icon={theme === 'dark' ? <SunOutlined /> : <MoonOutlined />}
+          onClick={onToggleTheme}
+          aria-label={theme === 'dark' ? '切换到亮色模式' : '切换到暗色模式'}
+        />
+      </Tooltip>
     </header>
   );
 }
@@ -379,7 +468,7 @@ function Dashboard({ snapshot, visible, selected, selectedId, tab, onTab, onSele
         title="项目概览"
         hint={`生成于 ${formatTimestamp(snapshot.project.generatedAt)}`}
       />
-      <SummaryCards snapshot={snapshot} />
+      <AntSummaryCards snapshot={snapshot} />
       <SectionHead title="变更工作区" hint="查看文件产物与项目进度" />
       {snapshot.classicError && !hasClassicChanges ? (
         <ClassicErrorState error={snapshot.classicError} />
@@ -389,14 +478,14 @@ function Dashboard({ snapshot, visible, selected, selectedId, tab, onTab, onSele
         <>
           {classicWarning ? <ClassicWarning error={snapshot.classicError} /> : null}
           <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)_minmax(260px,320px)]">
-            <ChangesExplorer
+            <AntChangesExplorer
               visible={visible}
               selectedId={selectedId}
               tab={tab}
               onTab={onTab}
               onSelect={onSelect}
             />
-            {selected && <ChangeDetail change={selected} onPreview={onPreview} />}
+            {selected && <AntChangeDetail change={selected} onPreview={onPreview} />}
             {selected && <SidePanel change={selected} git={snapshot.git} onPreview={onPreview} />}
           </div>
         </>
@@ -562,6 +651,20 @@ function ChangeDetail({ change, onPreview }) {
           <h3 className="truncate text-base font-semibold">{change.displayName}</h3>
           <div className="mt-1 flex flex-wrap gap-3 text-xs text-meta">
             <span>{change.workflow ?? '—'}</span>
+            <Tooltip title="复制 Change 名称">
+              <Button
+                type="text"
+                size="small"
+                icon={<CopyOutlined />}
+                aria-label="复制 Change 名称"
+                onClick={() =>
+                  navigator.clipboard
+                    .writeText(change.name)
+                    .then(() => toast('Change 名称已复制'))
+                    .catch(() => toast('复制 Change 名称失败'))
+                }
+              />
+            </Tooltip>
             <span>更新于 {formatTimestamp(change.updatedAt)}</span>
             <span className="min-w-0 truncate font-mono">{relativeChangePath(change)}</span>
           </div>
@@ -1431,8 +1534,17 @@ function LoadingState() {
   );
 }
 
-async function fetchSnapshot() {
-  const res = await fetch('/api/dashboard', { cache: 'no-store' });
+async function fetchDashboardProjects() {
+  const res = await fetch('/api/dashboard/projects', { cache: 'no-store' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+async function fetchSnapshot(projectId) {
+  const endpoint = projectId
+    ? `/api/dashboard/projects/${encodeURIComponent(projectId)}`
+    : '/api/dashboard';
+  const res = await fetch(endpoint, { cache: 'no-store' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
@@ -1535,3 +1647,174 @@ function toast(message) {
 }
 
 createRoot(document.getElementById('root')).render(<App />);
+function AntSidebar({ open, onClose }) {
+  const navigation = (
+    <Menu
+      mode="inline"
+      selectedKeys={['changes']}
+      items={[{ key: 'changes', label: '变更工作区' }]}
+      onClick={onClose}
+    />
+  );
+  return (
+    <>
+      <Layout.Sider className="!hidden !bg-bg lg:!block" width={248} theme="light">
+        <div className="flex h-full flex-col px-3 py-5">
+          <div className="mb-6 flex items-center gap-2 px-2">
+            <img src="/favicon.png" alt="Comet" className="size-7 rounded-[7px]" />
+            <div>
+              <strong>Comet</strong>
+              <div className="text-xs text-meta">只读工作台</div>
+            </div>
+          </div>
+          {navigation}
+          <div className="mt-auto px-2 text-xs text-meta">基于 Comet 流程产物</div>
+        </div>
+      </Layout.Sider>
+      <Drawer title="Comet 工作台" placement="left" open={open} onClose={onClose} width={280}>
+        {navigation}
+      </Drawer>
+    </>
+  );
+}
+
+function AntSummaryCards({ snapshot }) {
+  const cards = [
+    ['活跃变更', snapshot.summary.activeChanges, '进行中'],
+    ['已归档变更', snapshot.summary.archivedChanges, '已完成'],
+    ['Verify 失败', snapshot.summary.verifyFailed, snapshot.summary.verifyFailed ? '阻塞' : '健康'],
+    [
+      '未完成任务',
+      snapshot.summary.tasksIncomplete,
+      snapshot.summary.tasksIncomplete ? '待办' : '清零',
+    ],
+    ['Git 未提交', snapshot.summary.dirtyFiles, snapshot.summary.dirtyFiles ? '未提交' : '干净'],
+  ];
+  return (
+    <section className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
+      {cards.map(([title, value, status]) => (
+        <AntCard key={title} size="small">
+          <Statistic title={title} value={value} valueStyle={{ fontWeight: 700 }} />
+          <Tag className="mt-3">{status}</Tag>
+        </AntCard>
+      ))}
+    </section>
+  );
+}
+
+function AntChangesExplorer({ visible, selectedId, tab, onTab, onSelect }) {
+  const items = [
+    ['active', '活跃'],
+    ['archived', '已归档'],
+    ['all', '全部'],
+  ].map(([key, label]) => ({ key, label }));
+  return (
+    <AntCard
+      className="min-w-0"
+      title={
+        <span>
+          Changes Explorer <Badge count={visible.length} showZero className="ml-2" />
+        </span>
+      }
+    >
+      <Tabs
+        activeKey={tab}
+        onChange={onTab}
+        items={items.map((item) => ({
+          ...item,
+          children: (
+            <List
+              size="small"
+              locale={{
+                emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无变更" />,
+              }}
+              dataSource={visible}
+              renderItem={(change) => (
+                <List.Item
+                  className={change.id === selectedId ? 'rounded-lg bg-accent-softer px-2' : 'px-2'}
+                >
+                  <Button type="text" block onClick={() => onSelect(change.id)}>
+                    <div className="flex w-full items-center gap-2 text-left">
+                      <div className="min-w-0 flex-1">
+                        <strong className="block truncate">{change.displayName}</strong>
+                        <span className="text-xs text-meta">
+                          {phaseLabel(change.phase)} · {change.tasks.completed}/{change.tasks.total}
+                        </span>
+                        <Progress
+                          percent={
+                            change.tasks.total
+                              ? Math.round((change.tasks.completed / change.tasks.total) * 100)
+                              : 0
+                          }
+                          size="small"
+                          showInfo={false}
+                        />
+                      </div>
+                      <Tag>{VERIFY_LABEL[change.verify.result] ?? '未知'}</Tag>
+                    </div>
+                  </Button>
+                </List.Item>
+              )}
+            />
+          ),
+        }))}
+      />
+    </AntCard>
+  );
+}
+
+function AntChangeDetail({ change, onPreview }) {
+  const current = change.status === 'archived' ? 'archive' : change.phase;
+  const currentIndex = Math.max(
+    0,
+    PHASES.findIndex(([key]) => key === current),
+  );
+  return (
+    <AntCard
+      className="change-detail min-w-0"
+      title={
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="truncate">{change.displayName}</span>
+          <Tooltip title="复制 Change 名称">
+            <Button
+              type="text"
+              size="small"
+              icon={<CopyOutlined />}
+              aria-label="复制 Change 名称"
+              onClick={() =>
+                navigator.clipboard
+                  .writeText(change.name)
+                  .then(() => toast('Change 名称已复制'))
+                  .catch(() => toast('复制 Change 名称失败'))
+              }
+            />
+          </Tooltip>
+        </div>
+      }
+      extra={
+        <Tag>{change.status === 'archived' ? '已归档' : VERIFY_LABEL[change.verify.result]}</Tag>
+      }
+    >
+      <div className="mb-4 text-xs text-meta">
+        {change.workflow ?? '—'} · 更新于 {formatTimestamp(change.updatedAt)} ·{' '}
+        {relativeChangePath(change)}
+      </div>
+      <Steps size="small" current={currentIndex} items={PHASES.map(([, title]) => ({ title }))} />
+      <Alert
+        className="my-5"
+        type="info"
+        showIcon
+        message={
+          change.next?.command ? `下一步：${change.next.command}` : '该变更没有待执行的下一步'
+        }
+        description={change.next?.description}
+      />
+      <div className="change-detail-panels grid min-w-0 gap-4">
+        <AntCard size="small" title="关键产物">
+          <ArtifactList change={change} onPreview={onPreview} />
+        </AntCard>
+        <TaskProgress change={change} />
+      </div>
+    </AntCard>
+  );
+}

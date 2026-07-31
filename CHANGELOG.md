@@ -4,6 +4,10 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ## What's Changed [0.4.0-beta.13] - 2026-07-31
 
+### Changed
+
+- **Dashboard workbench**: Dashboard now uses an Ant Design-based workspace with a responsive project context header, searchable switching among Comet-initialized projects, retained sidebar navigation, and one-click copying of Change names. Project switching loads the selected project's read-only data in place and clearly preserves unavailable indexed projects.
+
 ### Fixed
 
 - **Classic layout upgrade**: `comet init` now preserves a legacy `openspec/` workspace when an existing Classic configuration predates `classic.artifact_layout`, preventing setup failures after updating from beta.9 ([#256](https://github.com/rpamis/comet/issues/256)).

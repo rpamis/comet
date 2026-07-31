@@ -5,6 +5,7 @@ import net from 'net';
 import os from 'os';
 import path from 'path';
 import { startDashboardServer } from '../../../domains/dashboard/server.js';
+import { resolveDashboardStaticPath } from '../../../domains/dashboard/server.js';
 
 interface HttpResult {
   status: number;
@@ -30,6 +31,26 @@ function request(port: number, urlPath: string): Promise<HttpResult> {
     });
     req.on('error', reject);
     req.end();
+  });
+}
+
+function rawRequest(port: number, urlPath: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const socket = net.createConnection({ host: '127.0.0.1', port });
+    const chunks: Buffer[] = [];
+    socket.on('data', (chunk: Buffer) => chunks.push(chunk));
+    socket.once('error', reject);
+    socket.once('end', () => {
+      const status = Number(
+        Buffer.concat(chunks)
+          .toString('utf8')
+          .match(/^HTTP\/1\.1 (\d{3})/u)?.[1],
+      );
+      resolve(status);
+    });
+    socket.once('connect', () =>
+      socket.end(`GET ${urlPath} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n`),
+    );
   });
 }
 
@@ -77,6 +98,37 @@ describe('startDashboardServer', () => {
     });
   });
 
+  it('lists the current project and only resolves snapshot requests by registered project id', async () => {
+    const handle = await startDashboardServer({
+      projectPath: projectDir,
+      port: 0,
+      webRoot: webDir,
+    });
+    handles.push(handle);
+
+    const directoryResponse = await request(handle.port, '/api/dashboard/projects');
+    expect(directoryResponse.status).toBe(200);
+    const directory = JSON.parse(directoryResponse.body) as {
+      currentProjectId: string;
+      projects: Array<{ id: string; path: string }>;
+    };
+    expect(directory.projects).toEqual(
+      expect.arrayContaining([expect.objectContaining({ path: projectDir })]),
+    );
+
+    const snapshotResponse = await request(
+      handle.port,
+      `/api/dashboard/projects/${directory.currentProjectId}`,
+    );
+    expect(snapshotResponse.status).toBe(200);
+    expect(JSON.parse(snapshotResponse.body)).toMatchObject({
+      project: expect.objectContaining({ path: projectDir }),
+    });
+
+    const unknownResponse = await request(handle.port, '/api/dashboard/projects/not-a-project-id');
+    expect(unknownResponse.status).toBe(404);
+    expect(JSON.parse(unknownResponse.body)).toEqual({ error: 'Unknown dashboard project id' });
+  });
   it('serves the static index for the root path', async () => {
     const handle = await startDashboardServer({
       projectPath: projectDir,
@@ -105,7 +157,12 @@ describe('startDashboardServer', () => {
     expect(res.body).toContain('console.log');
   });
 
+  it('rejects static paths that escape its web root', () => {
+    expect(resolveDashboardStaticPath(webDir, '/../etc/passwd')).toBeNull();
+  });
+
   it('rejects path traversal attempts', async () => {
+    if (process.platform === 'win32') return;
     const handle = await startDashboardServer({
       projectPath: projectDir,
       port: 0,
@@ -113,10 +170,9 @@ describe('startDashboardServer', () => {
     });
     handles.push(handle);
 
-    const res = await request(handle.port, '/../etc/passwd');
-    // Node's http client normalises `..` before sending, so we expect 404
-    // (file not found) or 403 (traversal guard) — either is acceptable.
-    expect([403, 404]).toContain(res.status);
+    const status = await rawRequest(handle.port, '/../etc/passwd');
+    // The raw socket keeps the traversal payload intact, unlike Node's URL normalisation.
+    expect([403, 404]).toContain(status);
   });
 
   it('falls back to the next available port when the requested one is taken', async () => {

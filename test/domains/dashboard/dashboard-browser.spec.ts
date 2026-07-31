@@ -12,11 +12,8 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
   await expect(page.getByText('Comet Dashboard').first()).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Native 变更工作区' })).toBeHidden();
 
-  await page.getByRole('button', { name: 'Native', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Native', exact: true })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
+  await page.getByText('Native', { exact: true }).click();
+  await expect(page.getByRole('radio', { name: 'Native', exact: true })).toBeChecked();
   await expect(page.getByRole('heading', { name: 'Native 变更工作区' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '最近进展' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '变更范围' })).toBeVisible();
@@ -39,11 +36,8 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
   await expect(page.getByText('已完成 · 已归档', { exact: true })).toBeVisible();
   await expect(page.getByText('已完成 · 无需后续操作', { exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Classic', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Classic', exact: true })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
+  await page.getByText('Classic', { exact: true }).click();
+  await expect(page.getByRole('radio', { name: 'Classic', exact: true })).toBeChecked();
   await expect(page.getByRole('heading', { name: 'Native 变更工作区' })).toBeHidden();
 
   const proposal = page.getByRole('button').filter({ hasText: 'proposal' }).first();
