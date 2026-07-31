@@ -12,6 +12,7 @@ import { inspectNativeConflictRadar } from '../comet-native/native-conflict-insp
 import { collectNativeContractFiles } from '../comet-native/native-contract-files.js';
 import { listNativeStatusPage } from '../comet-native/native-diagnostics.js';
 import {
+  readArchivedNativeVerificationAcceptanceCounts,
   readNativeImplementationScope,
   readNativeVerificationEvidence,
 } from '../comet-native/native-evidence-storage.js';
@@ -111,10 +112,24 @@ async function acceptanceSummary(
     if (!includeRuntimeEvidence || !state.verification_evidence) {
       return { total, evidenced: 0, skipped: 0, missing: total };
     }
+    if (state.archived) {
+      const counts = await readArchivedNativeVerificationAcceptanceCounts(
+        paths,
+        state.name,
+        state.verification_evidence,
+        changeDir,
+      );
+      return {
+        ...counts,
+        missing: counts.total - counts.evidenced - counts.skipped,
+      };
+    }
     const evidence = await readNativeVerificationEvidence(
       paths,
       state.name,
       state.verification_evidence,
+      undefined,
+      changeDir,
     );
     return {
       total: evidence.acceptanceTrace.total,
@@ -202,7 +217,10 @@ async function collectArchivedChanges(
     try {
       const state = await readNativeChangeFile(path.join(changeDir, NATIVE_CHANGE_STATE_FILE));
       if (!state.archived || entry.name !== `${match[1]}-${state.name}`) continue;
-      const facts = await collectChangeFacts(paths, changeDir, state, false);
+      // Archived changes retain their immutable verification evidence. Read it so the
+      // Dashboard reports the completed acceptance trace instead of treating every
+      // criterion as missing merely because the change is no longer active.
+      const facts = await collectChangeFacts(paths, changeDir, state, true);
       archived.push({
         workflow: 'native',
         name: state.name,

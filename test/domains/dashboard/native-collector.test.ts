@@ -15,6 +15,7 @@ import {
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import { collectNativeDashboardProjection } from '../../../domains/dashboard/native-collector.js';
 import { collectDashboardSnapshot } from '../../../domains/dashboard/collector.js';
+import { prepareNativeArchiveFixture } from '../../helpers/native-archive.js';
 
 const brief = `# Outcome
 Show Native safely.
@@ -118,15 +119,10 @@ describe('Native Dashboard collector', () => {
   it('collects archived Native changes and their user-facing Markdown artifacts', async () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('docs'));
     const paths = await nativeProjectPaths(projectRoot, 'docs');
-    const state = await createNativeChange({ paths, name: 'archived-dashboard', language: 'en' });
-    const activeDir = nativeChangeDir(paths, state.name);
-    await fs.writeFile(path.join(activeDir, 'brief.md'), brief);
-    await fs.writeFile(path.join(activeDir, 'verification.md'), '# Conclusion\nPassed.\n');
+    const fixture = await prepareNativeArchiveFixture({ paths, name: 'archived-dashboard' });
+    const activeDir = fixture.changeDir;
     await writeNativeChangeFile(path.join(activeDir, 'comet-state.yaml'), {
-      ...state,
-      phase: 'archive',
-      verification_result: 'pass',
-      verification_report: 'verification.md',
+      ...fixture.state,
       archived: true,
     });
     const archiveDir = path.join(paths.archiveDir, '2026-07-18-archived-dashboard');
@@ -151,17 +147,60 @@ describe('Native Dashboard collector', () => {
             summary: 'Native change 已完成并归档。',
           },
           specs: { total: 0, capabilities: [] },
-          acceptance: { total: 1, evidenced: 0, skipped: 0, missing: 1 },
+          acceptance: { total: 1, evidenced: 1, skipped: 0, missing: 0 },
           artifacts: expect.arrayContaining([
-            expect.objectContaining({ key: 'brief', exists: true, content: brief }),
+            expect.objectContaining({
+              key: 'brief',
+              exists: true,
+              content: expect.stringContaining('# Outcome\nShip the capability.'),
+            }),
             expect.objectContaining({
               key: 'verification',
               exists: true,
-              content: '# Conclusion\nPassed.\n',
+              content: expect.stringContaining('# Conclusion\nPass.'),
             }),
           ]),
         },
       ],
+    });
+  });
+
+  it('keeps the acceptance coverage from a legacy archived Native evidence envelope', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('docs'));
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    const fixture = await prepareNativeArchiveFixture({ paths, name: 'legacy-archived-dashboard' });
+    const evidenceHash = 'a'.repeat(64);
+    const legacyEvidenceRef = `runtime/evidence/verifications/${evidenceHash}.json`;
+    await fs.writeFile(
+      path.join(fixture.changeDir, ...legacyEvidenceRef.split('/')),
+      JSON.stringify({
+        schema: 'comet.native.verification-evidence.v1',
+        change: fixture.state.name,
+        envelopeHash: evidenceHash,
+        acceptanceTrace: {
+          schema: 'comet.native.acceptance-trace.v1',
+          total: 3,
+          evidenced: 3,
+          skipped: 0,
+        },
+      }),
+    );
+    await writeNativeChangeFile(path.join(fixture.changeDir, 'comet-state.yaml'), {
+      ...fixture.state,
+      verification_evidence: legacyEvidenceRef,
+      archived: true,
+    });
+    const archiveDir = path.join(paths.archiveDir, '2026-07-18-legacy-archived-dashboard');
+    await fs.mkdir(paths.archiveDir, { recursive: true });
+    await fs.rename(fixture.changeDir, archiveDir);
+
+    const projection = await collectNativeDashboardProjection(projectRoot, {
+      now: new Date('2026-07-19T10:00:00.000Z'),
+    });
+
+    expect(projection?.changes[0]).toMatchObject({
+      name: 'legacy-archived-dashboard',
+      acceptance: { total: 3, evidenced: 3, skipped: 0, missing: 0 },
     });
   });
 

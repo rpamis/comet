@@ -6,7 +6,11 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
-- **Dashboard workbench**: Dashboard now uses an Ant Design-based workspace with a responsive project context header, searchable switching among Comet-initialized projects, retained sidebar navigation, and one-click copying of Change names. Project switching loads the selected project's read-only data in place and clearly preserves unavailable indexed projects.
+- **Dashboard workbench**: Dashboard now uses an Ant Design-based workspace with a responsive project context header, searchable switching among Comet-initialized projects, retained sidebar navigation, and one-click copying of Classic and Native Change names. Project switching loads the selected project's read-only data in place and clearly preserves unavailable indexed projects.
+- **Workflow overview metrics**: Classic and Native Dashboard now present workflow status through a blue primary metric card and four compact icon-led companion cards. Clicking a metric moves the visual focus to that status, while the next-step context remains clear.
+- **Header controls**: The project selector and global search now use restrained corners for a more precise dashboard toolbar appearance, and the project selector keeps a readable, high-contrast surface in dark mode.
+- **Workbench readability**: Classic and Native change workspaces now use more legible secondary text while keeping the Header and overview compact.
+- **Dark theme**: Dashboard now applies complete dark surfaces to workflow cards, inputs, Header dividers, project menus, step rails, and selected changes. Theme changes bypass page-wide color transitions to avoid visible switching jank.
 
 ### Fixed
 
@@ -14,6 +18,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Classic setup coexistence**: `comet init` now completes when both `openspec/` and `docs/openspec/` exist, using the configured Classic root while preserving the alternate root ([#257](https://github.com/rpamis/comet/issues/257)).
 - **Project configuration refresh**: `comet update` now also backfills the current project's missing managed configuration fields when Comet is installed globally. When an older Classic project contains both possible artifact roots and has no recorded layout, the update asks which root to retain; non-interactive use can pass `--classic-layout legacy|docs`.
 - **Dashboard discovery and panel layout**: Classic Dashboard now discovers and merges both `openspec/` and `docs/openspec/` roots without requiring Classic layout configuration, keeps same-named changes distinct by relative path, and switches artifact and task-progress panels by the detail column's actual width to prevent overlap.
+- **Native archived acceptance coverage**: Dashboard now preserves the recorded acceptance counts for archived Native changes, including historical v1 verification evidence, instead of showing completed criteria as missing.
+- **Native Dashboard empty state**: When the active Native filter has no changes, Dashboard now keeps the center workspace informative and links directly to archived records when available.
 
 ## What's Changed [0.4.0-beta.12] - 2026-07-30
 

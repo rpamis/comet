@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, ConfigProvider, Input, message, Segmented, Select, Spin, Tooltip } from 'antd';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Button, ConfigProvider, Input, message, Select, Spin, Tooltip } from 'antd';
 import {
   Alert,
   Badge,
@@ -10,17 +10,24 @@ import {
   List,
   Menu,
   Progress,
-  Statistic,
   Steps,
   Tabs,
   Tag,
 } from 'antd';
 import {
+  AppstoreOutlined,
+  BranchesOutlined,
+  BulbOutlined,
+  CheckCircleOutlined,
   CheckOutlined,
   CopyOutlined,
+  FileTextOutlined,
+  FlagOutlined,
   MenuOutlined,
   MoonOutlined,
   ReloadOutlined,
+  SafetyCertificateOutlined,
+  SearchOutlined,
   SunOutlined,
 } from '@ant-design/icons';
 import 'antd/dist/reset.css';
@@ -54,9 +61,16 @@ function useTheme() {
     return initial;
   });
 
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    root.classList.add('theme-switching');
+    root.setAttribute('data-theme', theme);
     localStorage.setItem('comet-theme', theme);
+
+    const frame = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => root.classList.remove('theme-switching'));
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [theme]);
 
   const toggle = useCallback(() => setTheme((t) => (t === 'dark' ? 'light' : 'dark')), []);
@@ -184,18 +198,18 @@ function App() {
     <ConfigProvider
       theme={{
         token: {
-          colorPrimary: theme === 'dark' ? '#6e9fff' : '#0063f8',
+          colorPrimary: theme === 'dark' ? '#7fa8ff' : '#255ed8',
           colorBgContainer: theme === 'dark' ? '#151923' : '#ffffff',
           colorBgElevated: theme === 'dark' ? '#1a202b' : '#ffffff',
-          colorBgLayout: theme === 'dark' ? '#10141c' : '#f6f8fb',
-          colorText: theme === 'dark' ? '#e4e8ef' : '#1b2430',
-          colorTextSecondary: theme === 'dark' ? '#b7c0ce' : '#4f5b6b',
-          colorBorder: theme === 'dark' ? '#303846' : '#dde2e8',
-          colorSplit: theme === 'dark' ? '#303846' : '#e9edf2',
-          colorFillAlter: theme === 'dark' ? '#1a202b' : '#f6f8fb',
+          colorBgLayout: theme === 'dark' ? '#0e1420' : '#eef1f5',
+          colorText: theme === 'dark' ? '#edf2fb' : '#101827',
+          colorTextSecondary: theme === 'dark' ? '#aab5c8' : '#5f6979',
+          colorBorder: theme === 'dark' ? '#293345' : '#e3e8ef',
+          colorSplit: theme === 'dark' ? '#293345' : '#edf0f4',
+          colorFillAlter: theme === 'dark' ? '#182131' : '#f6f8fb',
           colorInfoBg: theme === 'dark' ? '#1a202b' : '#e6f4ff',
           colorInfoBorder: theme === 'dark' ? '#34597f' : '#91caff',
-          borderRadius: 8,
+          borderRadius: 12,
           fontFamily: DASHBOARD_FONT_FAMILY,
           fontFamilyCode: DASHBOARD_MONO_FONT_FAMILY,
           fontSize: 14,
@@ -206,7 +220,12 @@ function App() {
       }}
     >
       <main className="dashboard-workbench min-h-screen bg-surface text-fg antialiased lg:grid lg:grid-cols-[var(--rail-w)_1fr]">
-        <AntSidebar open={railOpen} onClose={() => setRailOpen(false)} />
+        <AntSidebar
+          open={railOpen}
+          workflow={workflow}
+          onWorkflow={setWorkflow}
+          onClose={() => setRailOpen(false)}
+        />
         {railOpen && (
           <button
             className="fixed inset-0 z-40 bg-black/30 lg:hidden"
@@ -226,11 +245,6 @@ function App() {
               setQuery('');
               setRailOpen(false);
             }}
-            workflow={workflow}
-            onWorkflow={(nextWorkflow) => {
-              setWorkflow(nextWorkflow);
-              setQuery('');
-            }}
             loading={loading}
             query={query}
             onQuery={setQuery}
@@ -239,28 +253,35 @@ function App() {
             theme={theme}
             onToggleTheme={toggleTheme}
           />
-          <div className="px-4 pb-12 pt-5 sm:px-6 lg:px-8">
-            {!snapshot ? (
-              <LoadingState />
-            ) : workflow === 'native' ? (
-              <NativeWorkflowPanel
-                native={snapshot.native}
-                git={snapshot.git}
-                query={query}
-                onPreview={setArtifact}
-              />
-            ) : (
-              <Dashboard
-                snapshot={snapshot}
-                visible={visible}
-                selected={selected}
-                selectedId={selectedId}
-                tab={tab}
-                onTab={setTab}
-                onSelect={setSelectedId}
-                onPreview={setArtifact}
-              />
-            )}
+          <div className="dashboard-content-shell">
+            <div className="dashboard-content-inner">
+              {!snapshot ? (
+                <LoadingState />
+              ) : workflow === 'native' ? (
+                <NativeWorkflowPanel
+                  native={snapshot.native}
+                  git={snapshot.git}
+                  query={query}
+                  onPreview={setArtifact}
+                  onCopyChangeName={(name) =>
+                    copyText(name)
+                      .then(() => toast('Change 名称已复制'))
+                      .catch(() => toast('复制 Change 名称失败', 'error'))
+                  }
+                />
+              ) : (
+                <Dashboard
+                  snapshot={snapshot}
+                  visible={visible}
+                  selected={selected}
+                  selectedId={selectedId}
+                  tab={tab}
+                  onTab={setTab}
+                  onSelect={setSelectedId}
+                  onPreview={setArtifact}
+                />
+              )}
+            </div>
           </div>
         </section>
         <ArtifactDrawer artifact={artifact} onClose={() => setArtifact(null)} />
@@ -305,8 +326,6 @@ function Sidebar({ open, onClose }) {
 
 function Topbar({
   project,
-  workflow,
-  onWorkflow,
   loading,
   query,
   onQuery,
@@ -333,38 +352,29 @@ function Topbar({
           value={activeProjectId ?? undefined}
           placeholder={project?.name ?? '选择项目'}
           showSearch
-          optionFilterProp="labelText"
+          optionFilterProp="searchText"
+          optionLabelProp="selectedLabel"
+          popupClassName="comet-project-select-dropdown"
           onChange={onProjectSelect}
           options={projects.map((entry) => ({
             value: entry.id,
             disabled: entry.availability !== 'available',
-            labelText: `${entry.name} ${entry.path}`,
+            searchText: `${entry.name} ${entry.path}`,
+            selectedLabel: entry.name,
             label: (
-              <span>
-                <strong>{entry.name}</strong>
-                <small>{entry.path}</small>
+              <span className="comet-project-option">
+                <strong className="comet-project-option-name">{entry.name}</strong>
+                <small className="comet-project-option-path">{entry.path}</small>
               </span>
             ),
           }))}
-        />
-      </div>
-      <div className="comet-header-workflow">
-        <Segmented
-          className="comet-workflow-segmented"
-          size="middle"
-          value={workflow}
-          onChange={onWorkflow}
-          options={[
-            { label: 'Classic', value: 'classic' },
-            { label: 'Native', value: 'native' },
-          ]}
         />
       </div>
       <div className="comet-header-search">
         <Input
           value={query}
           onChange={(event) => onQuery(event.target.value)}
-          prefix={<SearchIcon className="size-4" />}
+          prefix={<SearchOutlined className="text-meta" />}
           placeholder="搜索变更、产物或文件…"
           allowClear
         />
@@ -471,24 +481,6 @@ function MoonIcon() {
   );
 }
 
-function SearchIcon({ className }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.25"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <circle cx="11" cy="11" r="7" />
-      <path d="m16.5 16.5 4 4" />
-    </svg>
-  );
-}
-
 function Dashboard({ snapshot, visible, selected, selectedId, tab, onTab, onSelect, onPreview }) {
   const hasClassicChanges = snapshot.changes.active.length + snapshot.changes.archived.length > 0;
   const classicWarning = snapshot.classicError && hasClassicChanges;
@@ -497,6 +489,10 @@ function Dashboard({ snapshot, visible, selected, selectedId, tab, onTab, onSele
       <SectionHead
         title="项目概览"
         hint={`生成于 ${formatTimestamp(snapshot.project.generatedAt)}`}
+      />
+      <WorkflowSuggestion
+        command={selected?.next?.command}
+        description={selected?.next?.description}
       />
       <AntSummaryCards snapshot={snapshot} />
       <SectionHead title="变更工作区" hint="查看文件产物与项目进度" />
@@ -507,7 +503,7 @@ function Dashboard({ snapshot, visible, selected, selectedId, tab, onTab, onSele
       ) : (
         <>
           {classicWarning ? <ClassicWarning error={snapshot.classicError} /> : null}
-          <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)_minmax(260px,320px)]">
+          <div className="dashboard-workspace-region grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)_minmax(260px,320px)]">
             <AntChangesExplorer
               visible={visible}
               selectedId={selectedId}
@@ -521,6 +517,27 @@ function Dashboard({ snapshot, visible, selected, selectedId, tab, onTab, onSele
         </>
       )}
     </div>
+  );
+}
+
+function WorkflowSuggestion({ command, description }) {
+  return (
+    <section className="dashboard-priority-banner" role="status" aria-label="工作流建议">
+      <div className="dashboard-priority-title">
+        <BulbOutlined aria-hidden="true" />
+        <span>下一步建议</span>
+      </div>
+      <p>
+        {command ? (
+          <>
+            优先执行 <code>{command}</code>
+            {description ? `，${description}` : '，完成当前工作流阶段。'}
+          </>
+        ) : (
+          '当前变更没有待执行动作，可以继续检查产物与验证结果。'
+        )}
+      </p>
+    </section>
   );
 }
 
@@ -1694,28 +1711,51 @@ async function copyText(text) {
 }
 
 createRoot(document.getElementById('root')).render(<App />);
-function AntSidebar({ open, onClose }) {
+function AntSidebar({ open, workflow, onWorkflow, onClose }) {
   const navigation = (
     <Menu
       mode="inline"
-      selectedKeys={['changes']}
-      items={[{ key: 'changes', label: '变更工作区' }]}
-      onClick={onClose}
+      selectedKeys={[workflow]}
+      items={[
+        { key: 'classic', icon: <BranchesOutlined />, label: 'Classic 工作流' },
+        { key: 'native', icon: <FileTextOutlined />, label: 'Native 工作流' },
+      ]}
+      onClick={({ key }) => {
+        onWorkflow(key);
+        onClose();
+      }}
     />
   );
   return (
     <>
-      <Layout.Sider className="!hidden !bg-bg lg:!block" width={248} theme="light">
-        <div className="flex h-full flex-col px-3 py-5">
-          <div className="mb-6 flex items-center gap-2 px-2">
+      <Layout.Sider
+        className="dashboard-sidebar !hidden !bg-bg lg:!block"
+        width={228}
+        theme="light"
+      >
+        <div className="flex h-full flex-col">
+          <div className="dashboard-sidebar-brand flex items-center gap-2">
             <img src="/favicon.png" alt="Comet" className="size-7 rounded-[7px]" />
             <div>
-              <strong>Comet</strong>
+              <strong>Comet Dashboard</strong>
               <div className="text-xs text-meta">只读工作台</div>
             </div>
           </div>
-          {navigation}
-          <div className="mt-auto px-2 text-xs text-meta">基于 Comet 流程产物</div>
+          <div className="dashboard-sidebar-navigation">
+            <div className="dashboard-sidebar-feature">
+              <AppstoreOutlined aria-hidden="true" />
+              <span>变更工作区</span>
+            </div>
+            <div className="dashboard-sidebar-label">工作流</div>
+            {navigation}
+          </div>
+          <div className="dashboard-sidebar-status">
+            <div className="flex items-center gap-2 font-medium text-fg">
+              <BulbOutlined aria-hidden="true" />
+              工作台状态
+            </div>
+            <div className="mt-2 text-xs text-meta">只读连接 · 自动同步</div>
+          </div>
         </div>
       </Layout.Sider>
       <Drawer title="Comet 工作台" placement="left" open={open} onClose={onClose} width={280}>
@@ -1726,28 +1766,62 @@ function AntSidebar({ open, onClose }) {
 }
 
 function AntSummaryCards({ snapshot }) {
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const cards = [
-    ['活跃变更', snapshot.summary.activeChanges, '进行中'],
-    ['已归档变更', snapshot.summary.archivedChanges, '已完成'],
-    ['Verify 失败', snapshot.summary.verifyFailed, snapshot.summary.verifyFailed ? '阻塞' : '健康'],
+    ['活跃变更', snapshot.summary.activeChanges, '当前 Classic workflow', '进行中', FlagOutlined],
+    [
+      '已归档变更',
+      snapshot.summary.archivedChanges,
+      '历史变更已归档',
+      '已完成',
+      CheckCircleOutlined,
+    ],
+    [
+      'Verify 失败',
+      snapshot.summary.verifyFailed,
+      '验证结果',
+      snapshot.summary.verifyFailed ? '阻塞' : '健康',
+      SafetyCertificateOutlined,
+    ],
     [
       '未完成任务',
       snapshot.summary.tasksIncomplete,
+      '任务推进情况',
       snapshot.summary.tasksIncomplete ? '待办' : '清零',
+      CheckOutlined,
     ],
-    ['Git 未提交', snapshot.summary.dirtyFiles, snapshot.summary.dirtyFiles ? '未提交' : '干净'],
+    [
+      'Git 未提交',
+      snapshot.summary.dirtyFiles,
+      '工作区状态',
+      snapshot.summary.dirtyFiles ? '未提交' : '干净',
+      BranchesOutlined,
+    ],
   ];
   return (
-    <section className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-5">
-      {cards.map(([title, value, status]) => (
-        <AntCard
+    <section className="dashboard-summary-strip dashboard-overview-summary-strip">
+      {cards.map(([title, value, note, status, Icon], index) => (
+        <button
+          type="button"
           key={title}
-          className="dashboard-summary-card last:col-span-2 md:last:col-span-1"
-          size="small"
+          aria-pressed={selectedIndex === index}
+          className={`dashboard-overview-summary-card dashboard-summary-card dashboard-summary-metric-cell dashboard-summary-tone-${index + 1} ${selectedIndex === index ? 'dashboard-summary-primary' : ''}`}
+          onClick={() => setSelectedIndex(index)}
         >
-          <Statistic title={title} value={value} valueStyle={{ fontWeight: 700 }} />
-          <Tag className="mt-3">{status}</Tag>
-        </AntCard>
+          <div className="dashboard-summary-card-top">
+            <div className="min-w-0">
+              <div className="text-[13px] font-medium text-muted">{title}</div>
+              <div className="dashboard-summary-metric mt-1 text-[28px] font-semibold leading-none tabular-nums">
+                {value}
+              </div>
+            </div>
+            <span className="dashboard-summary-icon" aria-hidden="true">
+              <Icon />
+            </span>
+          </div>
+          <span className="dashboard-summary-status">{status}</span>
+          <div className="mt-2 truncate text-[11px] text-meta">{note}</div>
+        </button>
       ))}
     </section>
   );

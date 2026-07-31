@@ -226,6 +226,10 @@ Changelog写英文
 
 先写中文，再写英文，当feature更新后，更新README应该保持克制，确定是否是必要的需要列在READMD的内容，这部分要用户阅读友好，必要的亮点特性应该以文档引用的形式存在docs目录下
 
+## Comet Dashboard规范
+
+Comet Dashboard实现时尽量采用使用AntD React组件
+
 <comet-ambient-resume>
 <!-- Managed by Comet. Edits inside this block may be replaced by comet init/update. -->
 <!-- Contract: comet.resume_probe.v2 -->

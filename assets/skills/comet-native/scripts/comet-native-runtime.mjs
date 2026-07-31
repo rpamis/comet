@@ -17649,9 +17649,16 @@ async function writeNativeVerificationReportSnapshot(options) {
     }
   });
 }
-async function readNativeVerificationReportSnapshot(paths, name, hash7) {
+async function readNativeVerificationReportSnapshot(paths, name, hash7, hooks, changeDir) {
   if (!HASH_PATTERN9.test(hash7)) throw new Error("Native report evidence hash is invalid");
-  const value = await readEvidenceDocument({ paths, name, kind: "reports", hash: hash7 });
+  const value = await readEvidenceDocument({
+    paths,
+    name,
+    kind: "reports",
+    hash: hash7,
+    hooks,
+    changeDir
+  });
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Native report evidence must be an object");
   }
@@ -17670,13 +17677,17 @@ function parseEvidenceRef(ref, expectedKind) {
   }
   return match[2];
 }
-function evidenceFile(paths, name, kind, hash7) {
-  return path25.join(nativeChangeDir(paths, name), ...nativeEvidenceRef(kind, hash7).split("/"));
+function evidenceFile(paths, name, kind, hash7, changeDir) {
+  return path25.join(
+    changeDir ?? nativeChangeDir(paths, name),
+    ...nativeEvidenceRef(kind, hash7).split("/")
+  );
 }
 async function readEvidenceDocument(options) {
-  const file = evidenceFile(options.paths, options.name, options.kind, options.hash);
+  const changeDir = options.changeDir ?? nativeChangeDir(options.paths, options.name);
+  const file = evidenceFile(options.paths, options.name, options.kind, options.hash, changeDir);
   await resolveContainedNativePath(options.paths.nativeRoot, file);
-  return readBoundedEvidenceJson(file, nativeChangeDir(options.paths, options.name), options.hooks);
+  return readBoundedEvidenceJson(file, changeDir, options.hooks);
 }
 async function writeEvidenceDocument(options) {
   assertEvidenceDocumentBudget(options.value);
@@ -17730,16 +17741,34 @@ function parseEnvelope(value, expectedName, expectedHash) {
   }
   return evidence;
 }
-async function assertEnvelopeDependencies(paths, name, evidence, requireReportSnapshot = false) {
-  const scope = await readNativeImplementationScope(paths, name, evidence.implementationScopeRef);
+async function assertEnvelopeDependencies(paths, name, evidence, requireReportSnapshot = false, changeDir) {
+  const scope = await readNativeImplementationScope(
+    paths,
+    name,
+    evidence.implementationScopeRef,
+    void 0,
+    changeDir
+  );
   if (requireReportSnapshot) {
-    await readNativeVerificationReportSnapshot(paths, name, evidence.reportHash);
+    await readNativeVerificationReportSnapshot(
+      paths,
+      name,
+      evidence.reportHash,
+      void 0,
+      changeDir
+    );
   }
   if (scope.scopeHash !== evidence.implementationScopeHash || scope.contractHash !== evidence.contractHash || (scope.complete ? "complete" : "partial") !== evidence.freshness) {
     throw new Error("Native verification evidence does not match its implementation scope");
   }
   if (evidence.partialAllowanceRef === null) return;
-  const allowance = await readNativePartialAllowance(paths, name, evidence.partialAllowanceRef);
+  const allowance = await readNativePartialAllowance(
+    paths,
+    name,
+    evidence.partialAllowanceRef,
+    void 0,
+    changeDir
+  );
   if (allowance.allowanceHash !== evidence.partialAllowanceHash || allowance.scopeHash !== scope.scopeHash || JSON.stringify(allowance.scopeIds) !== JSON.stringify(scope.unresolvedScopes.map((entry2) => entry2.id).sort()) || allowance.sourceRevision >= evidence.sourceRevision) {
     throw new Error("Native verification evidence does not match its partial allowance");
   }
@@ -17772,26 +17801,26 @@ async function writeNativeImplementationScope(options) {
     value: scope
   });
 }
-async function readNativeImplementationScopeBundle(paths, name, ref, hooks) {
+async function readNativeImplementationScopeBundle(paths, name, ref, hooks, changeDir) {
   const hash7 = parseEvidenceRef(ref, "scopes");
   const scope = parseScope(
-    await readEvidenceDocument({ paths, name, kind: "scopes", hash: hash7, hooks }),
+    await readEvidenceDocument({ paths, name, kind: "scopes", hash: hash7, hooks, changeDir }),
     hash7
   );
   const baselineHash = parseEvidenceRef(scope.baselineProjectionRef, "snapshots");
   const currentHash = parseEvidenceRef(scope.currentProjectionRef, "snapshots");
   const [baseline, current] = await Promise.all([
-    readEvidenceDocument({ paths, name, kind: "snapshots", hash: baselineHash }).then(
+    readEvidenceDocument({ paths, name, kind: "snapshots", hash: baselineHash, changeDir }).then(
       (value) => parseSnapshot(value, baselineHash)
     ),
-    readEvidenceDocument({ paths, name, kind: "snapshots", hash: currentHash }).then(
+    readEvidenceDocument({ paths, name, kind: "snapshots", hash: currentHash, changeDir }).then(
       (value) => parseSnapshot(value, currentHash)
     )
   ]);
   return rebuildNativeImplementationScopeBundle({ baseline, current, scope });
 }
-async function readNativeImplementationScope(paths, name, ref, hooks) {
-  return (await readNativeImplementationScopeBundle(paths, name, ref, hooks)).scope;
+async function readNativeImplementationScope(paths, name, ref, hooks, changeDir) {
+  return (await readNativeImplementationScopeBundle(paths, name, ref, hooks, changeDir)).scope;
 }
 async function writeNativePartialAllowance(options) {
   const allowance = parseAllowance(
@@ -17815,10 +17844,10 @@ async function writeNativePartialAllowance(options) {
     value: allowance
   });
 }
-async function readNativePartialAllowance(paths, name, ref, hooks) {
+async function readNativePartialAllowance(paths, name, ref, hooks, changeDir) {
   const hash7 = parseEvidenceRef(ref, "allowances");
   return parseAllowance(
-    await readEvidenceDocument({ paths, name, kind: "allowances", hash: hash7, hooks }),
+    await readEvidenceDocument({ paths, name, kind: "allowances", hash: hash7, hooks, changeDir }),
     name,
     hash7
   );
@@ -17836,10 +17865,10 @@ async function writeNativeVerificationReceipt(options) {
     value: receipt
   });
 }
-async function readNativeVerificationReceipt(paths, name, ref, hooks) {
+async function readNativeVerificationReceipt(paths, name, ref, hooks, changeDir) {
   const hash7 = parseEvidenceRef(ref, "receipts");
   const receipt = parseNativeVerificationReceipt(
-    await readEvidenceDocument({ paths, name, kind: "receipts", hash: hash7, hooks })
+    await readEvidenceDocument({ paths, name, kind: "receipts", hash: hash7, hooks, changeDir })
   );
   if (receipt.bindings.change !== name || receipt.receiptHash !== hash7) {
     throw new Error("Native verification receipt ref/hash/change mismatch");
@@ -17859,14 +17888,14 @@ async function writeNativeVerificationEvidence(options) {
     value: evidence
   });
 }
-async function readNativeVerificationEvidence(paths, name, ref, hooks) {
+async function readNativeVerificationEvidence(paths, name, ref, hooks, changeDir) {
   const hash7 = parseEvidenceRef(ref, "verifications");
   const evidence = parseEnvelope(
-    await readEvidenceDocument({ paths, name, kind: "verifications", hash: hash7, hooks }),
+    await readEvidenceDocument({ paths, name, kind: "verifications", hash: hash7, hooks, changeDir }),
     name,
     hash7
   );
-  await assertEnvelopeDependencies(paths, name, evidence);
+  await assertEnvelopeDependencies(paths, name, evidence, false, changeDir);
   return evidence;
 }
 
