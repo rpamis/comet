@@ -1821,7 +1821,7 @@ describe('comet init E2E', () => {
   );
 
   it(
-    'repeated init fails closed without invoking OpenSpec or mutating either artifact root when both roots exist',
+    'repeated init preserves both artifact roots and uses the configured Classic layout when both roots exist',
     async () => {
       mockExternalSuccess();
       await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
@@ -1837,8 +1837,6 @@ describe('comet init E2E', () => {
         'docs\n',
         'utf8',
       );
-      const configBefore = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8');
-
       mockedExecFileSync.mockClear();
       mockExternalSuccess();
       const result = await captureJsonOutput(() =>
@@ -1846,28 +1844,26 @@ describe('comet init E2E', () => {
       );
 
       expect(result).toMatchObject({
-        status: 'incomplete',
-        failures: expect.arrayContaining([
-          expect.objectContaining({
-            component: 'OpenSpec',
-            reason: expect.stringContaining('Classic layout conflict'),
-          }),
-        ]),
+        status: 'complete',
+        classicArtifactLayout: 'docs',
       });
       expect(
         mockedExecFileSync.mock.calls.some(
           ([command, args]) => command === 'openspec' && Array.isArray(args) && args[0] === 'init',
         ),
-      ).toBe(false);
+      ).toBe(true);
       await expect(
         fs.readFile(path.join(tmpDir, 'openspec', 'legacy-marker.txt'), 'utf8'),
       ).resolves.toBe('legacy\n');
       await expect(
         fs.readFile(path.join(tmpDir, 'docs', 'openspec', 'docs-marker.txt'), 'utf8'),
       ).resolves.toBe('docs\n');
-      await expect(fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8')).resolves.toBe(
-        configBefore,
-      );
+      const config = parse(
+        await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8'),
+      ) as {
+        classic?: { artifact_layout?: string };
+      };
+      expect(config.classic?.artifact_layout).toBe('docs');
     },
     INIT_E2E_TIMEOUT_MS,
   );

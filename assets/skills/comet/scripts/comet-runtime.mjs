@@ -9262,10 +9262,10 @@ async function assertClassicManagedRootsPhysical(paths, alternateRoot) {
     });
   }
 }
-async function assertClassicLayoutReadable(projectRoot, artifactLayout) {
+async function assertClassicLayoutReadable(projectRoot, artifactLayout, options = {}) {
   const inspection = await inspectClassicLayout(projectRoot, artifactLayout);
   await assertClassicManagedRootsPhysical(inspection.paths, inspection.alternateRoot);
-  if (inspection.dualRoots) {
+  if (inspection.dualRoots && !options.allowAlternateRoot) {
     throw new ClassicLayoutConflictError(
       inspection.paths.openSpecRoot,
       inspection.alternateRoot,
@@ -9287,14 +9287,14 @@ async function assertClassicLayoutReadable(projectRoot, artifactLayout) {
   }
   return inspection.paths;
 }
-async function assertClassicLayoutWritable(projectRoot, artifactLayout) {
+async function assertClassicLayoutWritable(projectRoot, artifactLayout, options = {}) {
   const pendingMove = path5.join(path5.resolve(projectRoot), ".comet", "classic-root-move.json");
   if (await fileExists(pendingMove)) {
     throw new Error(
       "Classic root move transaction is incomplete; inspect it with comet doctor and recover it explicitly before writing"
     );
   }
-  const paths = await assertClassicLayoutReadable(projectRoot, artifactLayout);
+  const paths = await assertClassicLayoutReadable(projectRoot, artifactLayout, options);
   if (!await fileExists(paths.openSpecRoot)) {
     throw new Error(
       `Configured Classic OpenSpec root is missing: ${classicProjectRelative(

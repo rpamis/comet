@@ -1131,7 +1131,7 @@ export async function assertClassicLayoutInitializationSafe(
       };
     }
     if (!config.config) {
-      if (desiredRoot.exists && !alternateRoot.exists) {
+      if (desiredRoot.exists) {
         return {
           ...desired,
           initializationPermit: permitsDesiredRoot(permit, root, desiredLayout)
@@ -1139,16 +1139,13 @@ export async function assertClassicLayoutInitializationSafe(
             : initializationPermit(root, desiredLayout, configIdentity),
         };
       }
-      if (desiredRoot.exists && alternateRoot.exists) {
-        throw new Error(
-          'Classic layout conflict: both openspec/ and docs/openspec/ exist; resolve the conflict before writing',
-        );
-      }
       throw new Error(
         `Configured Classic OpenSpec root is missing for ${desiredLayout} layout while the alternate root exists`,
       );
     }
-    const configured = await assertClassicLayoutWritable(root, desiredLayout);
+    const configured = await assertClassicLayoutWritable(root, desiredLayout, {
+      allowAlternateRoot: true,
+    });
     return {
       ...configured,
       initializationPermit: permitsDesiredRoot(permit, root, desiredLayout)

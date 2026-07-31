@@ -39,6 +39,10 @@ export interface ClassicLayoutInspection {
   dualRoots: boolean;
 }
 
+interface ClassicLayoutAccessOptions {
+  allowAlternateRoot?: boolean;
+}
+
 export class ClassicLayoutUnavailableError extends Error {
   readonly code = 'classic-layout-unavailable';
 
@@ -243,10 +247,11 @@ async function assertClassicManagedRootsPhysical(
 export async function assertClassicLayoutReadable(
   projectRoot: string,
   artifactLayout?: ClassicArtifactLayout,
+  options: ClassicLayoutAccessOptions = {},
 ): Promise<ClassicLayoutPaths> {
   const inspection = await inspectClassicLayout(projectRoot, artifactLayout);
   await assertClassicManagedRootsPhysical(inspection.paths, inspection.alternateRoot);
-  if (inspection.dualRoots) {
+  if (inspection.dualRoots && !options.allowAlternateRoot) {
     throw new ClassicLayoutConflictError(
       inspection.paths.openSpecRoot,
       inspection.alternateRoot,
@@ -274,6 +279,7 @@ export async function assertClassicLayoutReadable(
 export async function assertClassicLayoutWritable(
   projectRoot: string,
   artifactLayout?: ClassicArtifactLayout,
+  options: ClassicLayoutAccessOptions = {},
 ): Promise<ClassicLayoutPaths> {
   const pendingMove = path.join(path.resolve(projectRoot), '.comet', 'classic-root-move.json');
   if (await fileExists(pendingMove)) {
@@ -281,7 +287,7 @@ export async function assertClassicLayoutWritable(
       'Classic root move transaction is incomplete; inspect it with comet doctor and recover it explicitly before writing',
     );
   }
-  const paths = await assertClassicLayoutReadable(projectRoot, artifactLayout);
+  const paths = await assertClassicLayoutReadable(projectRoot, artifactLayout, options);
   if (!(await fileExists(paths.openSpecRoot))) {
     throw new Error(
       `Configured Classic OpenSpec root is missing: ${classicProjectRelative(

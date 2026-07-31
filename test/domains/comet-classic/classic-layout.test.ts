@@ -119,6 +119,20 @@ describe('Classic artifact layout', () => {
     await expect(assertClassicLayoutWritable(root)).rejects.toThrow('Classic layout conflict');
   });
 
+  it('allows initialization to use its selected root without mutating an alternate root', async () => {
+    const root = await project();
+    await config(root, '  artifact_layout: docs\n');
+    await fs.mkdir(path.join(root, 'openspec'), { recursive: true });
+    await fs.mkdir(path.join(root, 'docs', 'openspec'), { recursive: true });
+
+    await expect(
+      assertClassicLayoutWritable(root, 'docs', { allowAlternateRoot: true }),
+    ).resolves.toMatchObject({
+      artifactLayout: 'docs',
+      openSpecRoot: path.join(root, 'docs', 'openspec'),
+    });
+  });
+
   it('reports a structured dual-root error from the read-only layout boundary', async () => {
     const root = await project();
     await config(root, '  artifact_layout: docs\n');
