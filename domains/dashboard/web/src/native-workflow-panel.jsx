@@ -95,8 +95,10 @@ export function NativeWorkflowPanel({ native, git, query, onPreview }) {
 function SectionHead({ title, hint }) {
   return (
     <div className="mb-4 mt-6 flex flex-wrap items-baseline gap-3 first:mt-2">
-      <h2 className="text-[28px] font-bold leading-tight">{title}</h2>
-      <span className="text-sm text-muted">{hint}</span>
+      <h2 className="dashboard-section-heading text-[20px] font-semibold leading-[1.3] tracking-[-0.018em]">
+        {title}
+      </h2>
+      <span className="dashboard-section-hint text-[13px] leading-5 text-muted">{hint}</span>
     </div>
   );
 }
@@ -130,10 +132,12 @@ function NativeSummaryCards({ native }) {
       {cards.map(([label, value, note, tag]) => (
         <article
           key={label}
-          className="summary-card-glow relative overflow-hidden rounded-lg bg-bg p-5 shadow-raised transition-shadow duration-200 hover:shadow-lg"
+          className="dashboard-native-summary-card summary-card-glow relative overflow-hidden rounded-lg bg-bg p-5 shadow-raised transition-shadow duration-200 hover:shadow-lg"
         >
-          <div className="text-sm font-medium text-muted">{label}</div>
-          <div className="mt-1 text-[40px] font-bold leading-none tabular-nums">{value}</div>
+          <div className="text-[13px] font-medium text-muted">{label}</div>
+          <div className="dashboard-summary-metric mt-1 text-[28px] font-semibold leading-none tabular-nums">
+            {value}
+          </div>
           <div className="mt-2 truncate text-xs text-meta">{note}</div>
           <span className="absolute right-5 top-5 rounded-full bg-surface px-2.5 py-1 text-[11px] font-semibold text-fg-2">
             {tag}

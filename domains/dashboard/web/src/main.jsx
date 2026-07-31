@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, ConfigProvider, Input, Segmented, Select, Spin, Tooltip } from 'antd';
+import { Button, ConfigProvider, Input, message, Segmented, Select, Spin, Tooltip } from 'antd';
 import {
   Alert,
   Badge,
@@ -16,6 +16,7 @@ import {
   Tag,
 } from 'antd';
 import {
+  CheckOutlined,
   CopyOutlined,
   MenuOutlined,
   MoonOutlined,
@@ -35,6 +36,9 @@ import { NativeWorkflowPanel } from './native-workflow-panel.jsx';
 import './styles.css';
 
 const AUTO_REFRESH_MS = 30_000;
+const DASHBOARD_FONT_FAMILY =
+  "'Segoe UI Variable', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif";
+const DASHBOARD_MONO_FONT_FAMILY = "Bahnschrift, 'Cascadia Mono', Consolas, monospace";
 
 function useTheme() {
   const [theme, setTheme] = useState(() => {
@@ -108,27 +112,33 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [railOpen, setRailOpen] = useState(false);
   const [artifact, setArtifact] = useState(null);
-  const refreshingRef = useRef(false);
+  const snapshotRequestRef = useRef(null);
   const { theme, toggle: toggleTheme } = useTheme();
 
   const useDemo = new URLSearchParams(window.location.search).has('demo');
 
   const refresh = useCallback(
     async (manual = false) => {
-      if (refreshingRef.current) return;
-
-      refreshingRef.current = true;
+      snapshotRequestRef.current?.abort();
+      const controller = new AbortController();
+      snapshotRequestRef.current = controller;
       if (manual) setLoading(true);
       try {
-        const next = useDemo ? await loadDemoSnapshot() : await fetchSnapshot(activeProjectId);
+        const next = useDemo
+          ? await loadDemoSnapshot()
+          : await fetchSnapshot(activeProjectId, controller.signal);
+        if (snapshotRequestRef.current !== controller || controller.signal.aborted) return;
         setSnapshot(next);
         setSelectedId((previous) => pickSelected(next, previous));
         if (manual) toast('状态已刷新');
       } catch (error) {
-        toast(`刷新失败：${error.message}`);
+        if (controller.signal.aborted) return;
+        toast(`刷新失败：${error.message}`, 'error');
       } finally {
-        refreshingRef.current = false;
-        if (manual) setLoading(false);
+        if (snapshotRequestRef.current === controller) {
+          snapshotRequestRef.current = null;
+          if (manual) setLoading(false);
+        }
       }
     },
     [activeProjectId, useDemo],
@@ -143,6 +153,8 @@ function App() {
 
     return () => window.clearInterval(timer);
   }, [refresh]);
+
+  useEffect(() => () => snapshotRequestRef.current?.abort(), []);
 
   useEffect(() => {
     if (useDemo) return undefined;
@@ -159,7 +171,7 @@ function App() {
           available.find((project) => project.id === remembered)?.id ?? directory.currentProjectId;
         setActiveProjectId((previous) => previous ?? next);
       })
-      .catch((error) => toast(`项目列表加载失败：${error.message}`));
+      .catch((error) => toast(`项目列表加载失败：${error.message}`, 'error'));
     return () => {
       cancelled = true;
     };
@@ -173,14 +185,27 @@ function App() {
       theme={{
         token: {
           colorPrimary: theme === 'dark' ? '#6e9fff' : '#0063f8',
-          colorBgContainer: theme === 'dark' ? '#181b1f' : '#ffffff',
-          colorText: theme === 'dark' ? '#d8dee9' : '#1d1d1f',
-          colorBorder: theme === 'dark' ? '#343740' : '#d2d2d7',
-          borderRadius: 10,
+          colorBgContainer: theme === 'dark' ? '#151923' : '#ffffff',
+          colorBgElevated: theme === 'dark' ? '#1a202b' : '#ffffff',
+          colorBgLayout: theme === 'dark' ? '#10141c' : '#f6f8fb',
+          colorText: theme === 'dark' ? '#e4e8ef' : '#1b2430',
+          colorTextSecondary: theme === 'dark' ? '#b7c0ce' : '#4f5b6b',
+          colorBorder: theme === 'dark' ? '#303846' : '#dde2e8',
+          colorSplit: theme === 'dark' ? '#303846' : '#e9edf2',
+          colorFillAlter: theme === 'dark' ? '#1a202b' : '#f6f8fb',
+          colorInfoBg: theme === 'dark' ? '#1a202b' : '#e6f4ff',
+          colorInfoBorder: theme === 'dark' ? '#34597f' : '#91caff',
+          borderRadius: 8,
+          fontFamily: DASHBOARD_FONT_FAMILY,
+          fontFamilyCode: DASHBOARD_MONO_FONT_FAMILY,
+          fontSize: 14,
+          fontSizeHeading2: 26,
+          fontSizeHeading3: 18,
+          fontSizeHeading4: 15,
         },
       }}
     >
-      <main className="min-h-screen bg-surface text-fg antialiased lg:grid lg:grid-cols-[var(--rail-w)_1fr]">
+      <main className="dashboard-workbench min-h-screen bg-surface text-fg antialiased lg:grid lg:grid-cols-[var(--rail-w)_1fr]">
         <AntSidebar open={railOpen} onClose={() => setRailOpen(false)} />
         {railOpen && (
           <button
@@ -211,7 +236,6 @@ function App() {
             onQuery={setQuery}
             onMenu={() => setRailOpen(true)}
             onRefresh={() => refresh(true)}
-            autoRefreshMs={AUTO_REFRESH_MS}
             theme={theme}
             onToggleTheme={toggleTheme}
           />
@@ -291,25 +315,21 @@ function Topbar({
   onProjectSelect,
   onMenu,
   onRefresh,
-  autoRefreshMs,
   theme,
   onToggleTheme,
 }) {
-  const refreshSeconds = Math.round(autoRefreshMs / 1000);
-
   return (
-    <header className="comet-workbench-header sticky top-0 z-30 flex flex-wrap items-center gap-3 border-b border-border-soft bg-surface/90 px-4 py-3 backdrop-blur-xl sm:px-6 lg:flex-nowrap lg:px-8">
+    <header className="comet-workbench-header sticky top-0 z-30 border-b border-border-soft bg-surface/90 backdrop-blur-xl">
       <Button
-        className="lg:hidden"
+        className="comet-header-menu lg:hidden"
         type="text"
         icon={<MenuOutlined />}
         onClick={onMenu}
         aria-label="打开导航"
       />
-      <div className="flex min-w-0 flex-1 items-center gap-2 lg:flex-none">
-        <img src="/favicon.png" alt="Comet" className="size-7 rounded-[7px]" />
+      <div className="comet-header-context">
         <Select
-          className="comet-project-select min-w-0 flex-1 lg:w-[280px]"
+          className="comet-project-select"
           value={activeProjectId ?? undefined}
           placeholder={project?.name ?? '选择项目'}
           showSearch
@@ -327,7 +347,10 @@ function Topbar({
             ),
           }))}
         />
+      </div>
+      <div className="comet-header-workflow">
         <Segmented
+          className="comet-workflow-segmented"
           size="middle"
           value={workflow}
           onChange={onWorkflow}
@@ -337,28 +360,35 @@ function Topbar({
           ]}
         />
       </div>
-      <Input
-        className="order-3 w-full lg:order-none lg:ml-auto lg:w-[min(28vw,360px)]"
-        value={query}
-        onChange={(event) => onQuery(event.target.value)}
-        prefix={<SearchIcon className="size-4" />}
-        placeholder="搜索变更…"
-        allowClear
-      />
-      <span className="hidden whitespace-nowrap text-xs text-meta xl:inline">
-        自动刷新 · {refreshSeconds} 秒
-      </span>
-      <Button icon={<ReloadOutlined />} loading={loading} onClick={onRefresh}>
-        立即刷新
-      </Button>
-      <Tooltip title={theme === 'dark' ? '切换到亮色模式' : '切换到暗色模式'}>
-        <Button
-          type="text"
-          icon={theme === 'dark' ? <SunOutlined /> : <MoonOutlined />}
-          onClick={onToggleTheme}
-          aria-label={theme === 'dark' ? '切换到亮色模式' : '切换到暗色模式'}
+      <div className="comet-header-search">
+        <Input
+          value={query}
+          onChange={(event) => onQuery(event.target.value)}
+          prefix={<SearchIcon className="size-4" />}
+          placeholder="搜索变更、产物或文件…"
+          allowClear
         />
-      </Tooltip>
+      </div>
+      <div className="comet-header-actions">
+        <Tooltip title="立即刷新">
+          <Button
+            className="comet-refresh-button"
+            icon={<ReloadOutlined />}
+            loading={loading}
+            onClick={onRefresh}
+            aria-label="立即刷新"
+          />
+        </Tooltip>
+        <Tooltip title={theme === 'dark' ? '切换到亮色模式' : '切换到暗色模式'}>
+          <Button
+            className="hidden sm:inline-flex"
+            type="text"
+            icon={theme === 'dark' ? <SunOutlined /> : <MoonOutlined />}
+            onClick={onToggleTheme}
+            aria-label={theme === 'dark' ? '切换到亮色模式' : '切换到暗色模式'}
+          />
+        </Tooltip>
+      </div>
     </header>
   );
 }
@@ -497,8 +527,10 @@ function Dashboard({ snapshot, visible, selected, selectedId, tab, onTab, onSele
 function SectionHead({ title, hint }) {
   return (
     <div className="mb-4 mt-6 flex flex-wrap items-baseline gap-3 first:mt-2">
-      <h2 className="text-[28px] font-bold leading-tight">{title}</h2>
-      <span className="text-sm text-muted">{hint}</span>
+      <h2 className="dashboard-section-heading text-[20px] font-semibold leading-[1.3] tracking-[-0.018em]">
+        {title}
+      </h2>
+      <span className="dashboard-section-hint text-[13px] leading-5 text-muted">{hint}</span>
     </div>
   );
 }
@@ -548,7 +580,7 @@ function SummaryCard({ label, value, note, tag, animationKey }) {
   return (
     <article className="summary-card-glow relative overflow-hidden rounded-lg bg-bg p-5 shadow-raised transition-shadow duration-200 hover:shadow-lg">
       <div className="text-sm font-medium text-muted">{label}</div>
-      <div className="mt-1 text-[40px] font-bold leading-none tabular-nums">
+      <div className="mt-1 text-[30px] font-semibold leading-[1.05] tracking-[-0.03em] tabular-nums">
         {Math.round(animatedValue)}
       </div>
       <div className="mt-2 truncate text-xs text-meta">{note}</div>
@@ -658,10 +690,9 @@ function ChangeDetail({ change, onPreview }) {
                 icon={<CopyOutlined />}
                 aria-label="复制 Change 名称"
                 onClick={() =>
-                  navigator.clipboard
-                    .writeText(change.name)
+                  copyText(change.name)
                     .then(() => toast('Change 名称已复制'))
-                    .catch(() => toast('复制 Change 名称失败'))
+                    .catch(() => toast('复制 Change 名称失败', 'error'))
                 }
               />
             </Tooltip>
@@ -1312,7 +1343,7 @@ function ArtifactDrawer({ artifact, onClose }) {
                       await navigator.clipboard.writeText(preview.path);
                       toast('路径已复制');
                     } catch {
-                      toast('复制失败');
+                      toast('复制失败', 'error');
                     }
                   }}
                 >
@@ -1540,11 +1571,11 @@ async function fetchDashboardProjects() {
   return res.json();
 }
 
-async function fetchSnapshot(projectId) {
+async function fetchSnapshot(projectId, signal) {
   const endpoint = projectId
     ? `/api/dashboard/projects/${encodeURIComponent(projectId)}`
     : '/api/dashboard';
-  const res = await fetch(endpoint, { cache: 'no-store' });
+  const res = await fetch(endpoint, { cache: 'no-store', signal });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
@@ -1637,13 +1668,29 @@ function formatFileSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function toast(message) {
-  const el = document.getElementById('toast');
-  if (!el) return;
-  el.textContent = message;
-  el.classList.add('show');
-  window.clearTimeout(toast.timer);
-  toast.timer = window.setTimeout(() => el.classList.remove('show'), 2200);
+function toast(content, type = 'success') {
+  message[type](content);
+}
+
+async function copyText(text) {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+      // 非安全上下文（例如本地预览）没有 Clipboard API 时，保留可用的复制能力。
+    }
+  }
+
+  const input = document.createElement('textarea');
+  input.value = text;
+  input.setAttribute('readonly', '');
+  input.style.cssText = 'position:fixed;opacity:0;pointer-events:none';
+  document.body.append(input);
+  input.select();
+  const copied = document.execCommand('copy');
+  input.remove();
+  if (!copied) throw new Error('当前浏览器不支持复制');
 }
 
 createRoot(document.getElementById('root')).render(<App />);
@@ -1691,9 +1738,13 @@ function AntSummaryCards({ snapshot }) {
     ['Git 未提交', snapshot.summary.dirtyFiles, snapshot.summary.dirtyFiles ? '未提交' : '干净'],
   ];
   return (
-    <section className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
+    <section className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-5">
       {cards.map(([title, value, status]) => (
-        <AntCard key={title} size="small">
+        <AntCard
+          key={title}
+          className="dashboard-summary-card last:col-span-2 md:last:col-span-1"
+          size="small"
+        >
           <Statistic title={title} value={value} valueStyle={{ fontWeight: 700 }} />
           <Tag className="mt-3">{status}</Tag>
         </AntCard>
@@ -1724,6 +1775,7 @@ function AntChangesExplorer({ visible, selectedId, tab, onTab, onSelect }) {
           ...item,
           children: (
             <List
+              className="dashboard-change-list"
               size="small"
               locale={{
                 emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无变更" />,
@@ -1731,13 +1783,20 @@ function AntChangesExplorer({ visible, selectedId, tab, onTab, onSelect }) {
               dataSource={visible}
               renderItem={(change) => (
                 <List.Item
-                  className={change.id === selectedId ? 'rounded-lg bg-accent-softer px-2' : 'px-2'}
+                  className={`dashboard-change-list-item ${
+                    change.id === selectedId ? 'rounded-lg bg-accent-softer px-2' : 'px-2'
+                  }`}
                 >
-                  <Button type="text" block onClick={() => onSelect(change.id)}>
-                    <div className="flex w-full items-center gap-2 text-left">
+                  <Button
+                    className="dashboard-change-row"
+                    type="text"
+                    block
+                    onClick={() => onSelect(change.id)}
+                  >
+                    <div className="flex w-full items-center gap-2.5 text-left">
                       <div className="min-w-0 flex-1">
                         <strong className="block truncate">{change.displayName}</strong>
-                        <span className="text-xs text-meta">
+                        <span className="mt-0.5 block text-xs text-meta">
                           {phaseLabel(change.phase)} · {change.tasks.completed}/{change.tasks.total}
                         </span>
                         <Progress
@@ -1746,6 +1805,7 @@ function AntChangesExplorer({ visible, selectedId, tab, onTab, onSelect }) {
                               ? Math.round((change.tasks.completed / change.tasks.total) * 100)
                               : 0
                           }
+                          className="mt-1"
                           size="small"
                           showInfo={false}
                         />
@@ -1764,6 +1824,7 @@ function AntChangesExplorer({ visible, selectedId, tab, onTab, onSelect }) {
 }
 
 function AntChangeDetail({ change, onPreview }) {
+  const [copied, setCopied] = useState(false);
   const current = change.status === 'archived' ? 'archive' : change.phase;
   const currentIndex = Math.max(
     0,
@@ -1779,13 +1840,16 @@ function AntChangeDetail({ change, onPreview }) {
             <Button
               type="text"
               size="small"
-              icon={<CopyOutlined />}
-              aria-label="复制 Change 名称"
+              icon={copied ? <CheckOutlined /> : <CopyOutlined />}
+              aria-label={copied ? '已复制 Change 名称' : '复制 Change 名称'}
               onClick={() =>
-                navigator.clipboard
-                  .writeText(change.name)
-                  .then(() => toast('Change 名称已复制'))
-                  .catch(() => toast('复制 Change 名称失败'))
+                copyText(change.name)
+                  .then(() => {
+                    setCopied(true);
+                    toast('Change 名称已复制');
+                    window.setTimeout(() => setCopied(false), 1600);
+                  })
+                  .catch(() => toast('复制 Change 名称失败', 'error'))
               }
             />
           </Tooltip>
@@ -1801,7 +1865,7 @@ function AntChangeDetail({ change, onPreview }) {
       </div>
       <Steps size="small" current={currentIndex} items={PHASES.map(([, title]) => ({ title }))} />
       <Alert
-        className="my-5"
+        className="dashboard-next-step-alert"
         type="info"
         showIcon
         message={
