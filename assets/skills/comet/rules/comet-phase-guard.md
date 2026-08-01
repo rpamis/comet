@@ -28,7 +28,7 @@ comet state select <change-name>
 | `verify` | 验证、记录验证报告 | 跳过失败处理、提前处理分支 |
 | `archive` | 确认归档、运行归档脚本、提交归档改动、分支处理 | 写源代码 |
 
-Hook 硬拦截仅豁免 Classic layout resolver 返回的当前阶段合法产物，以及 Comet 自有的 `.comet/*`、`.superpowers/*` 控制工作区和根目录 Markdown。宿主配置目录及其中的 worktree/source 文件不属于通用豁免范围，必须服从当前 change 的阶段约束。
+Hook 硬拦截仅豁免 Classic layout resolver 返回的当前阶段合法产物，以及 Comet 自有的 `.comet/*`、`.superpowers/*` 控制工作区和根目录 Markdown。配置目录及其中的 worktree/source 文件不属于通用豁免范围，必须服从当前 change 的阶段约束。
 
 ### 阶段进入自洽性校验（写源代码前必查）
 
@@ -86,7 +86,7 @@ Hook 硬拦截仅豁免 Classic layout resolver 返回的当前阶段合法产�
 
 ## Build 阶段专项
 
-1. plan 创建后先过滤不可执行选项，再只发起一个联合决策：暂停，或一次性提交工作区/执行/TDD/审查配置及条件性的分支名
+1. plan 创建后，展示本工作流支持的全部选择并只发起一个联合决策：暂停，或一次性提交工作区/执行/TDD/审查配置及条件性的分支名
 2. 每个 task 验收后必须: tasks.md 打勾 → git commit（不得积攒）。`subagent-driven-development` 必须按当前 `review_mode` 完成验收，再由协调者按任务唯一文本定向勾选和验证；不得用未完成任务总表代替当前任务验证
 3. 遇到失败必须加载 **systematic-debugging** skill，根因未定位前不得提出源码修复
 4. spec 变更分级: 小改直接编辑 | 中改加载 brainstorming | 大改暂停等用户确认拆分

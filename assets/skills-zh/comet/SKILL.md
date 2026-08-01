@@ -7,7 +7,7 @@ description: "当用户明确调用 /comet，或明确要求使用 Comet 但未�
 
 `/comet` 只负责选择入口，不包含任何一种工作流的执行方法。
 
-一旦宿主加载本 Skill，就视为已经选定 `/comet` 入口。必须立即执行下方入口解析，不得重新判断任务是否适合 Comet，也不得只解释为什么不使用它。
+一旦加载本 Skill，就视为已经选定 `/comet` 入口。必须立即执行下方入口解析，不得重新判断任务是否适合 Comet，也不得只解释为什么不使用它。
 
 1. 在当前项目运行 PATH 中安装的 Comet CLI：
 
@@ -15,7 +15,7 @@ description: "当用户明确调用 /comet，或明确要求使用 Comet 但未�
    comet workflow resolve . --json
    ```
 
-   若宿主报告 `command not found`、`executable not found` 或 `ENOENT`，停止并说明 Comet CLI 安装不完整。不得搜索 Skill 文件、扫描平台配置目录或直接调用内部 bundle。CLI 已启动但返回非零、配置解析失败、输出不是 JSON 或字段无效时，同样停止并原样说明错误，不要回退或猜测。
+   若命令返回 `command not found`、`executable not found` 或 `ENOENT`，停止并说明 Comet CLI 安装不完整。不得搜索 Skill 文件、扫描平台配置目录或直接调用内部 bundle。CLI 已启动但返回非零、配置解析失败、输出不是 JSON 或字段无效时，同样停止并原样说明错误，不要回退或猜测。
 2. 解析 JSON。只接受 `schema: comet.workflow-resolution.v1`，且 `skill` 必须是下列两个值之一。
 3. 只按返回的 `skill` 选择下列一个入口。必须立即使用 Skill 工具加载且只加载该入口：
     - `/comet-native` → **立即执行：** 使用 Skill 工具加载 `comet-native` 技能。禁止跳过此步骤。

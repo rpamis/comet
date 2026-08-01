@@ -193,7 +193,7 @@ describe('check --recover', () => {
     expect(result.stdout).toContain(
       'inspect the first unchecked task against recent git history/diff',
     );
-    expect(result.stdout).toContain('dispatch a real background subagent');
+    expect(result.stdout).toContain('dispatch a subagent');
     expect(result.stdout).toContain('Do not execute the pending task directly in the main window');
   });
 

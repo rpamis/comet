@@ -6,7 +6,7 @@
 
 ## CLI 引导
 
-进入 workflow 时先确认 `comet` CLI 可执行，再直接使用下方公开命令。若宿主报告 `command not found`、`executable not found` 或 `ENOENT`，停止并说明 Comet CLI 安装不完整；不得搜索 Skill 文件、枚举平台目录或直接调用内部 bundle。CLI 已启动但返回非零时，报告原错误，不得通过内部脚本重试。
+进入 workflow 时直接运行下方所需的公开 `comet` 命令。若命令返回 `command not found`、`executable not found` 或 `ENOENT`，停止并说明 Comet CLI 安装不完整；不得搜索 Skill 文件、枚举平台目录或直接调用内部 bundle。CLI 已启动但返回非零时，报告原错误，不得通过内部脚本重试。
 
 ## 公开工作流协议
 

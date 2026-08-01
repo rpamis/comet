@@ -30,7 +30,7 @@ Use the configured Comet artifact language as the output language for every Open
 
 **Step 0: Active Change Discovery and Intent Resolution**
 
-1. First follow `comet/reference/scripts.md` and confirm that the public `comet` CLI is available.
+1. First follow `comet/reference/scripts.md` and run the public `comet` CLI command directly.
 2. Run `comet classic openspec -- list --json` to collect active changes.
 3. Fill a `CometIntentFrame` from the user request, active change list, and necessary repository state.
 4. Prefer `comet classic intent route --stdin` to pass the frame JSON and get the runtime-normalized route. `CometIntentFrame + runtime scorer` is the source of truth; this prose is only for intent recognition slot extraction.
@@ -184,7 +184,7 @@ A single `/comet-classic` invocation starts from the detected phase and advances
 
 Flow chain: open → design → build → verify → archive
 
-**Continuous execution requirement**: starting from the detected phase, the agent automatically continues through all later phases. But **auto-advancing only applies at transition points without user decisions**. When encountering user decision points, **must use the current platform's available user input/confirmation mechanism to pause and wait for the user's explicit response**. Must not use recommendation rules, defaults, or historical preferences to substitute for user confirmation, and must not just output a text prompt and then continue executing.
+**Continuous execution requirement**: starting from the detected phase, the agent automatically continues through all later phases. But **auto-advancing only applies at transition points without user decisions**. When encountering user decision points, pause, present clear options, and wait for the user's explicit response. Must not use recommendation rules, defaults, or historical preferences to substitute for user confirmation, and must not just output a text prompt and then continue executing.
 
 **Distinguish phase advancement vs automatic handoff**: each sub-skill runs phase guard `--apply` before exit to advance the `.comet.yaml` `phase` field. This step **always happens** and is not controlled by `auto_transition`. After that, the sub-skill runs `comet state next <name>` to resolve the next action: when `auto_transition` is not `false`, output is `NEXT: auto` (auto-invoke next skill); when `auto_transition` is `false`, output is `NEXT: manual` (do not invoke next skill; return control with `HINT`). `NEXT: manual` is not a user decision point and must not ask whether to continue. Therefore `auto_transition` **only controls next skill invocation, not phase advancement**. Regardless of `auto_transition`, genuine user decision points below remain blocking.
 
@@ -194,7 +194,7 @@ Nodes requiring user participation (pause only at these nodes):
 1. Workflow target selection: multiple active changes, continue an existing change versus create a new one, or choose which completed batch item starts first
 2. Open-phase final proposal/design/tasks review, including the change name and scope; clear requests have no pre-artifact summary/name confirmation
 3. Confirm the design approach during brainstorming
-4. One joint build decision: plan-ready pause or all available workflow settings (workspace isolation + execution method + TDD mode + code review mode, plus branch name when branch is selected)
+4. One joint build decision: plan-ready pause or all workflow settings (workspace isolation + execution method + TDD mode + code review mode, plus branch name when branch is selected)
 5. Verify-phase acceptance of WARNING/SUGGESTION deviations, Spec drift handling, or continue/stop after the 4th failure; the first 3 clearly repairable failures close automatically
 6. Archive phase final confirmation before running the archive script
 7. Choose finishing-branch handling after exact archive changes are committed
@@ -202,13 +202,13 @@ Nodes requiring user participation (pause only at these nodes):
 9. Build phase scope expansion requiring redesign or new change split
 10. Open phase large PRD split confirmation
 
-Agents should not skip these decision points; other unambiguous phase transitions must proceed automatically, must not exit midway. At decision points, **must not skip user confirmation or choose automatically — must explicitly obtain the user's choice through the current platform's available user input/confirmation mechanism before continuing**.
+Agents should not skip these decision points; other unambiguous phase transitions must proceed automatically, must not exit midway. At decision points, **must not skip user confirmation or choose automatically — ask clear options and wait for the user's explicit choice before continuing**.
 
 **Red Flags** — when these thoughts appear, STOP and check:
 
 | Agent Thought | Actual Risk |
 |--------------|-------------|
-| "The user would probably agree with this approach" | Cannot decide for the user — use the current platform's user input/confirmation mechanism |
+| "The user would probably agree with this approach" | Cannot decide for the user — present the choice and wait for the reply |
 | "This is a small change, confirmation isn't needed" | Decision points have no size exception — blocking points must wait |
 | "The user chose A last time, so A again" | Historical preference cannot substitute for current confirmation |
 | "I explained the plan and the user didn't object" | No objection ≠ consent — must use tool to get explicit choice |

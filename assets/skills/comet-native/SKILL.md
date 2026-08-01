@@ -21,7 +21,7 @@ The Native main workflow does not depend on any external Skill.
 
 ## CLI bootstrap
 
-The Native Skill uses only the public `comet native <cmd>` CLI on PATH. Packaged command bundles are internal installation and Runtime assets; the Skill does not search for or invoke them directly. If the host reports `command not found`, `executable not found`, or `ENOENT`, stop and explain that the Comet CLI installation is incomplete. Do not search for Skill files, enumerate platform directories, or invoke an internal bundle directly.
+The Native Skill uses only the public `comet native <cmd>` CLI on PATH. Packaged command bundles are internal installation and Runtime assets; the Skill does not search for or invoke them directly. If a command returns `command not found`, `executable not found`, or `ENOENT`, stop and explain that the Comet CLI installation is incomplete. Do not search for Skill files, enumerate platform directories, or invoke an internal bundle directly.
 
 Common commands:
 

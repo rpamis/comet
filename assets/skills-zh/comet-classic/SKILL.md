@@ -30,7 +30,7 @@ agent 做决策只需读本节，参考附录按需查阅。
 
 **Step 0: 活跃 Change 发现与意图判定**
 
-1. 先按 `comet/reference/scripts.md` 确认公开 Comet CLI 可用。
+1. 先按 `comet/reference/scripts.md` 直接运行公开 Comet CLI 命令。
 2. 运行 `comet classic openspec -- list --json` 获取所有活跃 change。
 3. 根据用户请求、active change 列表和必要仓库状态填写 `CometIntentFrame`。
 4. 优先用 `comet classic intent route --stdin` 传入 frame JSON，获取 runtime 规范化路由。`CometIntentFrame + runtime scorer` 是事实源；本节自然语言规则只用于意图识别槽位提取。
@@ -184,7 +184,7 @@ hotfix/tweak 的范围判定采用三层分工，避免「用纯文件数当硬�
 
 流转链：open → design → build → verify → archive
 
-**连续执行要求**：从检测到的阶段开始，agent 自动推进后续阶段。但**自动推进仅适用于没有用户决策的衔接点**。遇到用户决策点时，**必须使用当前平台可用的用户输入/确认机制暂停并等待用户明确回复**，不得用推荐规则、默认值或历史偏好代替用户确认，也不得仅输出文字提示后继续执行。
+**连续执行要求**：从检测到的阶段开始，agent 自动推进后续阶段。但**自动推进仅适用于没有用户决策的衔接点**。遇到用户决策点时，必须提出明确选项并暂停等待用户回复，不得用推荐规则、默认值或历史偏好代替用户确认，也不得仅输出文字提示后继续执行。
 
 **阶段推进与自动衔接的区分**：每个子 skill 退出前都会运行阶段守卫 `--apply` 推进 `.comet.yaml` 的 `phase` 字段——这一步**始终发生**，与 `auto_transition` 无关。之后子 skill 运行 `comet state next <name>` 解析下一步：`auto_transition` 不为 `false` 时输出 `NEXT: auto`（自动调用下一 skill），为 `false` 时输出 `NEXT: manual`（不调用下一 skill，按 `HINT` 交还控制权）。`NEXT: manual` 不是用户决策点，不得再询问“是否继续”。因此 `auto_transition` **只控制是否自动调用下一个 skill，不影响 phase 推进**。无论 `auto_transition` 取何值，下方真正的用户决策点都必须阻塞等待。
 
@@ -194,7 +194,7 @@ hotfix/tweak 的范围判定采用三层分工，避免「用纯文件数当硬�
 1. workflow 目标选择：多个 active changes、继续现有 change/创建新 change、或批量拆分完成后选择先启动哪一个
 2. open 阶段 proposal/design/tasks 最终审视确认（同时确认 change 名称与范围；清晰请求不做前置摘要/命名确认）
 3. brainstorming 确认设计方案
-4. build 阶段一次性联合选择 plan-ready 暂停或完整工作方式（可用的工作区隔离 + 执行方式 + TDD 模式 + 代码审查模式；选择 branch 时同时确认分支名）
+4. build 阶段一次性联合选择 plan-ready 暂停或完整工作方式（工作区隔离 + 执行方式 + TDD 模式 + 代码审查模式；选择 branch 时同时确认分支名）
 5. verify 阶段接受 WARNING/SUGGESTION 偏差、处理 Spec 漂移，或第 4 次失败后选择继续修复/停止；前 3 次明确可修复失败自动闭环
 6. archive 阶段执行归档脚本前的最终确认
 7. 归档改动精确提交后选择 finishing-branch 分支处理方式
@@ -202,7 +202,7 @@ hotfix/tweak 的范围判定采用三层分工，避免「用纯文件数当硬�
 9. build 阶段范围扩张需重新设计或拆分新 change
 10. open 阶段大型 PRD 是否拆分为多个 changes
 
-agent 不应跳过这些决策点；其他明确无歧义的阶段衔接必须自动继续推进，不得中途退出。到达决策点时，**禁止跳过用户确认或自动选择——必须通过当前平台可用的用户输入/确认机制明确获取用户选择后才能继续**。
+agent 不应跳过这些决策点；其他明确无歧义的阶段衔接必须自动继续推进，不得中途退出。到达决策点时，**禁止跳过用户确认或自动选择——必须提出明确选项并获取用户选择后才能继续**。
 
 **红旗清单** — 以下想法出现时立即停止并检查：
 
@@ -269,7 +269,7 @@ agent 不应跳过这些决策点；其他明确无歧义的阶段衔接必须�
 
 ### 脚本定位
 
-每个会话按 `comet/reference/scripts.md` 确认一次公开 CLI 可用。关键入口：
+每个会话按 `comet/reference/scripts.md` 直接运行公开 CLI 命令。关键入口：
 
 ```bash
 comet guard <change-name> <phase> --apply             # 阶段守卫 + 自动状态更新

@@ -596,7 +596,7 @@ async function subagentDispatchConfirmed(changeDir: string, change: string): Pro
   if (buildMode !== 'subagent-driven-development') return pass();
   if (subagentDispatch === 'confirmed') return pass();
   return fail(
-    `subagent_dispatch must be confirmed before using build_mode=subagent-driven-development\nNext: confirm the current platform has a real background subagent/Task/multi-agent dispatcher, then run:\n  comet state set ${change} subagent_dispatch confirmed\nIf dispatch is unavailable, return to /comet-build Step 2 with subagent-driven-development removed. When executing-plans is the only valid mode, run:\n  comet state set ${change} build_mode executing-plans`,
+    `subagent_dispatch must be confirmed before using build_mode=subagent-driven-development\nNext: record the selected subagent-driven execution, then run:\n  comet state set ${change} subagent_dispatch confirmed`,
   );
 }
 

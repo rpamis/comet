@@ -26,7 +26,7 @@ Streamlined OpenSpec artifacts must use the configured Comet artifact language. 
 
 Execution chain: open → build → root cause check → verify → archive. Hotfix provides default decisions for each phase: streamlined open, direct build, root cause confirmation, scale-based verification, and final archive confirmation after verification passes.
 
-Before starting, use `comet/reference/scripts.md` to confirm that the public Comet CLI is available. When resuming from any entry point, first use `comet/reference/context-recovery.md` to confirm phase/workflow.
+Before starting, use `comet/reference/scripts.md` to run the public Comet CLI command. When resuming from any entry point, first use `comet/reference/context-recovery.md` to check phase/workflow.
 
 When resuming an existing hotfix change, the first state operation must be `comet state select <change-name>`. For a new change, run the command immediately after `.comet.yaml` initialization and before source writes.
 
@@ -161,7 +161,7 @@ Exception: when `.comet.yaml` has `auto_transition: false`, end the current invo
 
 The following genuine user decisions still pause:
 
-1. Encountering an upgrade-assessment signal (see "Upgrade Assessment" section). **Must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly choose**: continue the hotfix flow, or upgrade to the full `/comet-classic` workflow
+1. Encountering an upgrade-assessment signal (see "Upgrade Assessment" section). **Pause, present the choices, and wait for the user to explicitly choose**: continue the hotfix flow, or upgrade to the full `/comet-classic` workflow
 2. Verify-phase acceptance of WARNING/SUGGESTION deviations, Spec drift handling, or strategy after the automatic repair limit; the first 3 clearly repairable failures close automatically
 3. Final archive confirmation and the branch-handling decision after the archive commit
 

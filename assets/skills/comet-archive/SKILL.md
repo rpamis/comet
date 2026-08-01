@@ -122,7 +122,7 @@ Stop if the commit fails or the staged diff contains unrelated paths.
 After the archive commit succeeds, perform only the remote delivery method the user confirmed in Step 1:
 
 - "Confirm archive and push now": push the current bound branch once.
-- "Confirm archive, push now, and create a PR": push the current bound branch once, then create a PR using the current platform's available GitHub capability. The explicit Step 1 choice authorizes PR creation; do not substitute another branch disposition.
+- "Confirm archive, push now, and create a PR": push the current bound branch once, then create a PR through the configured GitHub integration. The explicit Step 1 choice authorizes PR creation; do not substitute another branch disposition.
 
 If push fails, report the error and retain the current selection record; do not clear selection or report completion. Within the current task, retry only that same push. If PR creation fails, the branch already contains the complete archive commit; report the error and retain the current selection record. Within the current task, retry only PR creation. Do not automatically switch, delete, rebase, or rewrite branches after failure.
 

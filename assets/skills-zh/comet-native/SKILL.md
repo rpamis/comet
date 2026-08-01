@@ -21,7 +21,7 @@ Native 主流程不依赖任何外部 Skill。
 
 ## CLI 引导
 
-Native Skill 只使用 PATH 中的公开 `comet native <cmd>` CLI；随 Skill 发布的命令 bundle 属于内部安装与 Runtime 资产，不由 Skill 搜索或直接调用。若宿主报告 `command not found`、`executable not found` 或 `ENOENT`，停止并说明 Comet CLI 安装不完整；不得搜索 Skill 文件、枚举平台目录或直接调用内部 bundle。
+Native Skill 只使用 PATH 中的公开 `comet native <cmd>` CLI；随 Skill 发布的命令 bundle 属于内部安装与 Runtime 资产，不由 Skill 搜索或直接调用。若命令返回 `command not found`、`executable not found` 或 `ENOENT`，停止并说明 Comet CLI 安装不完整；不得搜索 Skill 文件、枚举平台目录或直接调用内部 bundle。
 
 常用命令：
 

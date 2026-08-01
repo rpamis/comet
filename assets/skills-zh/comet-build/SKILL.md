@@ -63,7 +63,7 @@ git rev-parse HEAD
 
 将计划写入文件后，返回文件路径。
 
-**执行 subagent**：使用当前平台的 subagent 调度机制派发上述任务。
+**执行 subagent**：将上述任务派发给 subagent。
 
 Subagent 完成后：
 - 若返回有效文件路径且文件存在，记录为 plan
@@ -79,9 +79,9 @@ comet state set <name> plan docs/superpowers/plans/YYYY-MM-DD-feature.md
 
 无需手动更新 phase，阶段守卫（guard `--apply`）会在退出条件满足后推进 `phase` 字段。
 
-展示联合决策前先检查当前平台能力：确认宿主能够实际调用所需 Skill、`using-git-worktrees` 是否可用、当前仓库能否安全创建分支，以及后台调度是否同时具备真实异步派发、独立上下文、结果回收和所需交接能力。模型选择也属于预检：宿主支持显式选模时必须可用；不支持时必须能明确记录 `platform-default`。只展示当前真实可执行的隔离与执行选项；某个字段只剩一个合法值时说明原因并直接采用，不为单选项制造额外停顿。
+展示联合决策时，提供本工作流支持的全部工作区隔离和执行方式。不得预检、推断或筛除其他 Skill、分支、worktree、子代理派发或 model 选择能否使用。用户选择后直接执行对应动作；若动作实际失败，停止并报告原错误。某个字段只剩一个工作流合法值时说明原因并直接采用，不为单选项制造额外停顿。
 
-计划写入后只提供**一个联合决策点**，一次收集：是否现在继续、可用的工作区隔离、可用的执行方式、TDD 模式和代码审查模式。选择 `branch` 时，分支名也必须在 Step 2 的同一个联合决策中确认或由用户覆盖。不得先询问“继续/暂停”，继续后又创建第二个配置或命名阻塞点。
+计划写入后只提供**一个联合决策点**，一次收集：是否现在继续、工作区隔离、执行方式、TDD 模式和代码审查模式。选择 `branch` 时，分支名也必须在 Step 2 的同一个联合决策中确认或由用户覆盖。不得先询问“继续/暂停”，继续后又创建第二个配置或命名阻塞点。
 
 | 选项 | 行为 | 说明 |
 |------|------|------|
@@ -141,7 +141,7 @@ comet state set <name> build_pause null
 - 任务数 ≤ 2 且无跨模块依赖 → 推荐 B
 - 来自 hotfix 路径 → 推荐 B
 
-这些表格是 Step 2 联合决策的一部分，不再单独暂停。先移除能力预检判定为不可执行的选项；在剩余多个合法选项时，不得根据推荐规则自行选择 `current`、`branch` 或 `worktree`，也不得自行选择执行方式、TDD 模式或代码审查模式。推荐规则只能用于说明建议，不能替代用户确认。
+这些表格是 Step 2 联合决策的一部分，不再单独暂停。始终展示本工作流支持的隔离和执行选项，不得因预判某个动作会失败而移除选项。在多个合法选项时，不得根据推荐规则自行选择 `current`、`branch` 或 `worktree`，也不得自行选择执行方式、TDD 模式或代码审查模式。推荐规则只能用于说明建议，不能替代用户确认。
 
 用户选择后，更新 `isolation`、执行方式、TDD 模式和代码审查模式相关字段：
 
@@ -150,8 +150,7 @@ comet state set <name> isolation <current|branch|worktree>
 ```
 
 - 若用户选择 `executing-plans`：运行 `comet state set <name> subagent_dispatch null`，再运行 `comet state set <name> build_mode executing-plans`
-- 若用户选择 `subagent-driven-development`：先确认当前平台具备上述完整后台派发契约，而不只是存在一个名为 agent/Task 的入口；确认后先运行 `comet state set <name> subagent_dispatch confirmed`，再运行 `comet state set <name> build_mode subagent-driven-development`
-- 若无法确认完整后台派发契约，不得展示或写入 `build_mode: subagent-driven-development`。恢复状态若已记录该模式但能力不可用，回到 Step 2 的同一个联合决策并只展示可执行模式；不得另设“改选 executing-plans”停顿点
+- 若用户选择 `subagent-driven-development`：先运行 `comet state set <name> subagent_dispatch confirmed` 记录已选择子代理执行，再运行 `comet state set <name> build_mode subagent-driven-development`
 
 **TDD 模式**：
 
@@ -174,7 +173,7 @@ comet state set <name> isolation <current|branch|worktree>
 
 `isolation` 是脚本级硬约束。full workflow 初始化时可以为 `null`，但只允许存在到本步骤之前。若保持 `null`，`build → verify` 的 guard 和 `comet state transition build-complete` 都会失败。full workflow 允许 `current`、`branch` 或 `worktree`，但 `current` 必须通过用户在 Step 2 显式选择后写入，不得静默默认。
 
-`subagent_dispatch` 是脚本级硬约束。`build_mode: subagent-driven-development` 离开 build 阶段前必须同时满足 `subagent_dispatch: confirmed`，否则 `comet guard build --apply` 和 `comet state transition build-complete` 都会失败。
+`subagent_dispatch` 是脚本级硬约束，用于记录用户已选择子代理执行。`build_mode: subagent-driven-development` 离开 build 阶段前必须同时满足 `subagent_dispatch: confirmed`，否则 `comet guard build --apply` 和 `comet state transition build-complete` 都会失败；它不是能力检查。
 
 `tdd_mode` 是脚本级硬约束。full workflow 离开 build 阶段前 `tdd_mode` 必须已选择为 `tdd` 或 `direct`，否则 `comet guard build --apply` 和 `comet state transition build-complete` 都会失败。
 
@@ -206,7 +205,7 @@ comet state set <name> build_mode direct
 
   分支名由 Step 2 确认后，立即执行 `git checkout -b <branch-name>`，然后运行 `comet state set <name> isolation branch`，把新分支写入 `bound_branch`。后续工作在新分支上进行。
 
-- **worktree**：必须使用 Skill 工具加载 Superpowers `using-git-worktrees` 技能创建隔离工作区。禁止用普通 shell 命令或原生工具绕过该技能；如该技能不可用，停止流程并提示安装或启用 Superpowers 技能。
+- **worktree**：**立即执行：** 使用 Skill 工具加载 Superpowers `using-git-worktrees` 技能创建隔离工作区。禁止用普通 shell 命令或原生工具绕过该技能；若加载时因不可用而失败，停止并报告该错误。
 
 创建隔离后，确认计划文件可访问（分支方式天然可访问；worktree 方式需确认计划已提交）。若 worktree 模式下计划文件尚未提交，先提交计划文件再创建 worktree：
 
@@ -225,9 +224,9 @@ comet state select <change-name>
 
 **执行计划**：必须按 `build_mode` 的真实运行位置处理。
 
-- `build_mode: executing-plans`：**立即执行：** 使用 Skill 工具加载 Superpowers `executing-plans` 技能。禁止跳过此步骤。若该技能不可用，停止流程并提示安装或启用对应技能，不要用普通对话替代该步骤。技能加载后，ARGUMENTS 必须包含与 Step 1 相同的 Language 约束：`Language: 使用 comet state get <name> language 读取到的 Comet 配置产物语言输出`。按计划执行。
-- `build_mode: subagent-driven-development`：主会话只负责协调，禁止直接编写实现代码。**立即执行：** 使用 Skill 工具加载 Superpowers `subagent-driven-development` 技能。技能加载后，读取 `comet/reference/subagent-dispatch.md` 获取 Comet 专属扩展（真实后台调度、任务隔离、勾选验证、TDD 约束、连续执行、上下文恢复），与技能工作流配合应用。若两者发生冲突，以更具体的 Comet 扩展为准。
-- 如果执行前复检发现后台调度能力已失效，不得直接在主窗口执行，也不得创建新的二次决策；返回 Step 2 的同一个联合决策，移除不可用模式。用户在该联合决策中选择主窗口执行后，先运行 `comet state set <name> build_mode executing-plans`，再按对应分支继续。
+- `build_mode: executing-plans`：**立即执行：** 使用 Skill 工具加载 Superpowers `executing-plans` 技能。禁止跳过此步骤。若加载失败，停止并报告错误，不要用普通对话替代该步骤。技能加载后，ARGUMENTS 必须包含与 Step 1 相同的 Language 约束：`Language: 使用 comet state get <name> language 读取到的 Comet 配置产物语言输出`。按计划执行。
+- `build_mode: subagent-driven-development`：主会话只负责协调，禁止直接编写实现代码。**立即执行：** 使用 Skill 工具加载 Superpowers `subagent-driven-development` 技能。技能加载后，读取 `comet/reference/subagent-dispatch.md` 获取 Comet 专属扩展（子代理派发、任务隔离、勾选验证、TDD 约束、连续执行、上下文恢复），与技能工作流配合应用。若两者发生冲突，以更具体的 Comet 扩展为准。
+- 若子代理派发操作失败，按 `comet/reference/subagent-dispatch.md` 将当前任务记录为 `BLOCKED` 并带上失败原因；主会话不得接管实现。
 
 **TDD 模式执行约束**：
 
@@ -247,7 +246,7 @@ comet state select <change-name>
 
 要求（适用于 `standard` 和 `thorough`）：
 - `requesting-code-review` 技能必须在 `comet guard <change-name> build --apply` 之前加载
-- 若 `requesting-code-review` 技能不可用且当前为 `standard` 或 `thorough`，必须停止并请用户选择：安装/启用后重试，或明确切换为 `review_mode: off` 并记录原因。用户未明确切换前不得跳过 review gate 或继续 guard
+- 若当前为 `standard` 或 `thorough` 且加载 `requesting-code-review` 失败，必须停止并请用户选择：解决错误后重试，或明确切换为 `review_mode: off` 并记录原因。用户未明确切换前不得跳过 review gate 或继续 guard
 - CRITICAL review 发现（安全漏洞、数据丢失风险、构建/测试失败）必须先修复，不得带入 verify
 - 非 CRITICAL review 发现如选择接受，必须在 tasks.md、commit body、验证报告草稿或其他持久产物中记录接受原因和影响范围
 
@@ -264,8 +263,8 @@ comet state select <change-name>
 | 规模 | 触发条件 | 做法 |
 |------|---------|------|
 | 小 | 遗漏验收场景、边界条件 | 直接编辑 delta spec + design.md，追加 tasks.md 任务 |
-| 中 | 接口变更、新增组件、数据流变化 | **使用当前平台可用的用户输入/确认机制暂停并等待用户确认后**，必须使用 Skill 工具加载 Superpowers `brainstorming` 更新 Design Doc + delta spec |
-| 大 | 全新 capability 需求 | **必须使用当前平台可用的用户输入/确认机制暂停并等待用户确认拆分**；用户确认后，通过 `/comet-open` 创建独立 change |
+| 中 | 接口变更、新增组件、数据流变化 | **暂停、展示选择并等待用户明确确认后**，必须使用 Skill 工具加载 Superpowers `brainstorming` 更新 Design Doc + delta spec |
+| 大 | 全新 capability 需求 | **暂停、展示拆分选择并等待用户明确确认**；用户确认后，通过 `/comet-open` 创建独立 change |
 
 **50% 阈值判定**：以 tasks.md 初始任务总数为基准，若新增任务数超过该总数的一半，视为超出原计划范围，**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户决定是否拆分为新 change**。
 

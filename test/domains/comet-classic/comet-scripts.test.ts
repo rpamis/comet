@@ -2934,8 +2934,8 @@ describe('comet scripts', () => {
     expect(guard.status).not.toBe(0);
     expect(guard.stderr).toContain('[FAIL] subagent dispatch confirmed');
     expect(guard.stderr).toContain('subagent_dispatch must be confirmed');
-    expect(guard.stderr).toContain('return to /comet-build Step 2');
-    expect(guard.stderr).not.toContain('ask the user to switch');
+    expect(guard.stderr).toContain('record the selected subagent-driven execution');
+    expect(guard.stderr).not.toContain('real background subagent');
     expect(transition.status).not.toBe(0);
     expect(transition.stderr).toContain('subagent_dispatch must be confirmed');
   }, 20_000);
@@ -4668,7 +4668,7 @@ describe('comet scripts', () => {
       expect(result.stdout).toContain(
         'inspect the first unchecked task against recent git history/diff',
       );
-      expect(result.stdout).toContain('dispatch a real background subagent');
+      expect(result.stdout).toContain('dispatch a subagent');
       expect(result.stdout).toContain(
         'Do not execute the pending task directly in the main window',
       );
@@ -4720,7 +4720,7 @@ describe('comet scripts', () => {
       expect(result.stdout).toContain('Tasks: 2/2 done, 0 pending');
       expect(result.stdout).toContain('Plan tasks: 2/3 done, 1 pending');
       expect(result.stdout).toContain('first unchecked Superpowers plan task');
-      expect(result.stdout).toContain('dispatch a real background subagent');
+      expect(result.stdout).toContain('dispatch a subagent');
     });
 
     it('requires subagent dispatch confirmation when recovering subagent build mode', async () => {
@@ -4755,9 +4755,9 @@ describe('comet scripts', () => {
 
       expect(result.status).toBe(0);
       expect(result.stdout).toContain('subagent_dispatch: PENDING');
-      expect(result.stdout).toContain('Subagent dispatch is not confirmed');
-      expect(result.stdout).toContain('set subagent_dispatch to confirmed');
-      expect(result.stdout).toContain('set build_mode to executing-plans');
+      expect(result.stdout).toContain('Selected subagent execution is not recorded');
+      expect(result.stdout).toContain('comet state set <change-name> subagent_dispatch confirmed');
+      expect(result.stdout).toContain('through subagent execution');
     });
 
     it('keeps subagent dispatch guidance when plan-ready pause is stale', async () => {
@@ -4796,7 +4796,7 @@ describe('comet scripts', () => {
 
       expect(result.status).toBe(0);
       expect(result.stdout).toContain('Plan-ready pause is stale');
-      expect(result.stdout).toContain('dispatch a real background subagent');
+      expect(result.stdout).toContain('dispatch a subagent');
       expect(result.stdout).toContain(
         'Do not execute the pending task directly in the main window',
       );

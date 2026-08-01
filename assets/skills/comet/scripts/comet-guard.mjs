@@ -185,10 +185,8 @@ Next: choose a valid workspace mode, prepare it when needed, then run:
 Next: ask the user to choose an execution mode, then run:
   comet state set ${e} build_mode <subagent-driven-development|executing-plans>`)}async function Xy(t){let e=await O(t,"workflow"),n=await O(t,"build_mode"),i=await O(t,"direct_override");return n!=="direct"||e==="hotfix"||e==="tweak"||i==="true"?_():S(`build_mode=direct is only allowed for hotfix/tweak unless direct_override: true is recorded
 Next: choose executing-plans or subagent-driven-development, or stop and ask the user for an explicit direct override.`)}async function Zy(t,e){let n=await O(t,"build_mode"),i=await O(t,"subagent_dispatch");return n!=="subagent-driven-development"||i==="confirmed"?_():S(`subagent_dispatch must be confirmed before using build_mode=subagent-driven-development
-Next: confirm the current platform has a real background subagent/Task/multi-agent dispatcher, then run:
-  comet state set ${e} subagent_dispatch confirmed
-If dispatch is unavailable, return to /comet-build Step 2 with subagent-driven-development removed. When executing-plans is the only valid mode, run:
-  comet state set ${e} build_mode executing-plans`)}async function ev(t,e){let n=await O(t,"workflow");if(n==="hotfix"||n==="tweak")return _();let i=await O(t,"tdd_mode");return i==="tdd"||i==="direct"?_():S(`tdd_mode must be tdd or direct for full workflow, got '${i||"null"}'
+Next: record the selected subagent-driven execution, then run:
+  comet state set ${e} subagent_dispatch confirmed`)}async function ev(t,e){let n=await O(t,"workflow");if(n==="hotfix"||n==="tweak")return _();let i=await O(t,"tdd_mode");return i==="tdd"||i==="direct"?_():S(`tdd_mode must be tdd or direct for full workflow, got '${i||"null"}'
 Next: ask the user to choose TDD enforcement level, then run:
   comet state set ${e} tdd_mode <tdd|direct>`)}async function tv(t,e){let n=await O(t,"workflow");if(n==="hotfix"||n==="tweak")return _();let i=await O(t,"review_mode");return i==="off"||i==="standard"||i==="thorough"?_():S(`review_mode must be off, standard, or thorough before leaving build, got '${i||"null"}'
 Next: ask the user to choose review strength, then run:

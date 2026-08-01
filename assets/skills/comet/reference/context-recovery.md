@@ -6,7 +6,7 @@ This protocol is shared by all comet sub-skills that may trigger context compres
 
 ## Any-Entry Recovery Principle
 
-The user may resume the workflow directly from `/comet-open`, `/comet-design`, `/comet-build`, `/comet-verify`, `/comet-archive`, `/comet-hotfix`, or `/comet-tweak`. On entry to any sub-skill, first use `comet/reference/scripts.md` to confirm that the public CLI is available, then run the entry check or recovery check for that sub-skill's phase. Do not infer phase from conversation history.
+The user may resume the workflow directly from `/comet-open`, `/comet-design`, `/comet-build`, `/comet-verify`, `/comet-archive`, `/comet-hotfix`, or `/comet-tweak`. On entry to any sub-skill, use `comet/reference/scripts.md` to run the public CLI command, then run the entry check or recovery check for that sub-skill's phase. Do not infer phase from conversation history.
 
 ```bash
 comet state check <change-name> <phase> --recover
@@ -16,7 +16,7 @@ If the check shows the actual phase, workflow, or evidence belongs to another sk
 
 ## Recovery Without Explicit `/comet-classic`
 
-If the user did not mention `/comet-classic`, but this repository may have an active change, run the Ambient Resume probe before starting work that may need code changes or investigation. First use `comet/reference/scripts.md` to confirm that the public CLI is available, then pass the current user request on stdin:
+If the user did not mention `/comet-classic`, but this repository may have an active change, run the Ambient Resume probe before starting work that may need code changes or investigation. Use `comet/reference/scripts.md` to run the public CLI command, then pass the current user request on stdin:
 
 ```bash
 comet resume-probe . --stdin --json

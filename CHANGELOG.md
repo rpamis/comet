@@ -20,8 +20,8 @@ Beta 13 makes everyday workflow operations faster and makes uninstalling and rea
 ### Fixed
 
 - **Classic configuration compatibility**: Setup and update retain an existing Classic project’s directory choice and more reliably recognize a usable directory when an older project configuration is incomplete.
-- **Portable workflow execution**: Native and Classic Skills now call the public `comet` CLI instead of searching host-specific Skill directories or invoking internal bundles. Missing CLI installations stop with a clear error, while workflow routing still immediately loads the selected Skill through the host’s Skill tool.
-- **Background execution checks**: Classic offers subagent-driven execution only when the host can provide asynchronous dispatch, isolated context, result collection, handoff, and appropriate model selection or an explicit platform default.
+- **Portable workflow execution**: Native and Classic Skills now call the public `comet` CLI instead of searching platform-specific Skill directories or invoking internal bundles. Missing CLI installations stop with a clear error, while workflow routing still immediately loads the selected Skill through the Skill tool.
+- **Classic execution choices**: Classic now presents every workflow-supported isolation and execution choice, then runs the user’s selection and reports any error instead of pre-screening options.
 - **Dashboard status feedback**: Classic change verification uses green, red, amber, and neutral status colors for pass, fail, pending, and unknown states; invalid Dashboard ports now fail with a clear error before startup.
 
 ### Security

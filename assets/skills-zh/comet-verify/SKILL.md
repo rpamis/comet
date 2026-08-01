@@ -63,7 +63,7 @@ comet state get <change-name> plan
 git diff --stat <从 plan frontmatter 读取的 base-ref>...HEAD
 ```
 
-第一条命令返回 plan 路径；使用当前平台的文件读取能力解析其 frontmatter 中唯一的 `base-ref`，确认它是有效提交后再代入第二条命令。不得依赖 POSIX 文本管道。
+第一条命令返回 plan 路径；使用文件读取工具解析其 frontmatter 中唯一的 `base-ref`，确认它是有效提交后再代入第二条命令。不得依赖 POSIX 文本管道。
 
 若提交区间显示改动超过轻量阈值（> 8 个文件、跨模块协调、或 delta spec 超过 1 个 capability），手动设置为完整验证：
 
@@ -173,7 +173,7 @@ comet state transition <change-name> verify-fail
 ```
 
 **Spec 漂移处理**（用户决策点）：
-- 若检查项 6 发现矛盾（delta spec 有内容但 design doc 未体现），**必须使用当前平台可用的用户输入/确认机制以单选题形式暂停并等待用户选择处理方式**，不得自动选择。选项：
+- 若检查项 6 发现矛盾（delta spec 有内容但 design doc 未体现），**必须以单选题形式暂停、展示处理方式并等待用户选择**，不得自动选择。选项：
   - 选项 A：在 design doc 追加 "Implementation Divergence" 节记录偏差原因。选项 A 属于 verify 阶段允许产物；写入后不得因该 design doc 变更再次触发 Step 1b dirty-worktree 决策
   - 选项 B：用户选择 B 后，运行 `comet state transition <change-name> verify-fail`，然后调用 `/comet-build`；由 `/comet-build` 的 Spec 增量更新规则加载 Superpowers `brainstorming` 更新 Design Doc + delta spec
   - 选项 C：确认偏差可接受，继续验证（归档时 design doc 将标记为 `superseded-by-main-spec`）
@@ -186,7 +186,7 @@ comet state transition <change-name> verify-fail
 comet state set <change-name> verification_report docs/superpowers/reports/YYYY-MM-DD-<change-name>-verify.md
 ```
 
-使用当前平台的文件能力创建 `docs/superpowers/reports/` 和报告文件，不依赖 POSIX 专用目录命令。
+使用文件工具创建 `docs/superpowers/reports/` 和报告文件，不依赖 POSIX 专用目录命令。
 
 ## 退出条件
 

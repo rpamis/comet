@@ -6,7 +6,7 @@ This file is the single source of truth for Classic Skill calls into the Comet R
 
 ## CLI bootstrap
 
-When entering a workflow, first confirm that the `comet` CLI is executable, then use the public commands below directly. If the host reports `command not found`, `executable not found`, or `ENOENT`, stop and explain that the Comet CLI installation is incomplete. Do not search for Skill files, enumerate platform directories, or invoke an internal bundle directly. If the CLI starts but exits nonzero, report the original error and do not retry through an internal script.
+When entering a workflow, run the required public `comet` command below directly. If it returns `command not found`, `executable not found`, or `ENOENT`, stop and explain that the Comet CLI installation is incomplete. Do not search for Skill files, enumerate platform directories, or invoke an internal bundle directly. If the CLI starts but exits nonzero, report the original error and do not retry through an internal script.
 
 ## Public workflow contract
 

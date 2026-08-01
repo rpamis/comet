@@ -148,7 +148,7 @@ Only after the user explicitly confirms, proceed to Step 2. If the user requests
 
 After the user confirms the design proposal, before creating the Design Doc, create or update the incrementally maintained checkpoint file and finalize it as the confirmed design summary:
 
-Use the current platform's file API to ensure `<classic-change-dir>/.comet/handoff/` exists; do not rely on a POSIX-only directory command.
+Use the file tool to ensure `<classic-change-dir>/.comet/handoff/` exists; do not rely on a POSIX-only directory command.
 
 `<classic-change-dir>/.comet/handoff/brainstorm-summary.md` structure:
 
@@ -224,9 +224,9 @@ If there are no delta spec changes, skip the handoff regeneration step. The stat
 
 Consider active compaction only **after the Design Doc and state evidence are persisted** and before Build. First confirm `design_doc`, the latest handoff, `handoff_hash`, and the design guard are durable so recovery never depends on an unwritten design judgment.
 
-- If the host exposes a programmatically callable native compaction mechanism and the context window is under pressure, invoke it once and include the change, next step, Design Doc, and handoff files in the resume prompt
-- If only the user can trigger compaction, give one non-blocking suggestion and continue; it **must not block when programmatic compaction is unavailable** and must not create another confirmation point
-- Never fake host compaction with a shell command or an agent summary
+- When a programmatically callable compaction mechanism is present and the context window is under pressure, invoke it once and include the change, next step, Design Doc, and handoff files in the resume prompt
+- If compaction requires user action, give one non-blocking suggestion and continue; it **must not block** and must not create another confirmation point
+- Never fake compaction with a shell command or an agent summary
 
 ## Exit Conditions
 

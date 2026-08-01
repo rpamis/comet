@@ -6,7 +6,7 @@
 
 ## 任意入口恢复原则
 
-用户可能直接从 `/comet-open`、`/comet-design`、`/comet-build`、`/comet-verify`、`/comet-archive`、`/comet-hotfix` 或 `/comet-tweak` 回到流程。进入任意子 Skill 时，都先按 `comet/reference/scripts.md` 确认公开 CLI 可用，再用当前子 Skill 对应 phase 运行入口检查或恢复检查。不得依赖对话历史判断阶段。
+用户可能直接从 `/comet-open`、`/comet-design`、`/comet-build`、`/comet-verify`、`/comet-archive`、`/comet-hotfix` 或 `/comet-tweak` 回到流程。进入任意子 Skill 时，都先按 `comet/reference/scripts.md` 运行公开 CLI 命令，再用当前子 Skill 对应 phase 运行入口检查或恢复检查。不得依赖对话历史判断阶段。
 
 ```bash
 comet state check <change-name> <phase> --recover
@@ -16,7 +16,7 @@ comet state check <change-name> <phase> --recover
 
 ## 未显式 `/comet-classic` 的恢复
 
-如果用户没有提 `/comet-classic`，但本仓库可能有 active Classic change，开始处理需要改动或调查的任务前先运行 Ambient Resume 探针。先按 `comet/reference/scripts.md` 确认公开 CLI 可用，然后把当前用户请求从 stdin 传入：
+如果用户没有提 `/comet-classic`，但本仓库可能有 active Classic change，开始处理需要改动或调查的任务前先运行 Ambient Resume 探针。按 `comet/reference/scripts.md` 运行公开 CLI 命令，然后把当前用户请求从 stdin 传入：
 
 ```bash
 comet resume-probe . --stdin --json

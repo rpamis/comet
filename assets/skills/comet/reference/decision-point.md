@@ -13,14 +13,13 @@ Distinguish user decisions, automatic handling, and stop conditions:
 - **Stop condition**: a missing dependency, corrupt state, path escape, or unavailable external command leaves no valid next action; report the blocker and recovery condition without inventing choices
 - **Manual handoff**: `NEXT: manual` returns control; it is not a new user decision point. Print `HINT`, end the current invocation, and do not ask whether to continue
 
-Only the first category uses this protocol. Merge adjacent choices that can be answered together, and do not re-ask persisted choices that remain valid. Preflight platform capabilities and state before presenting options, and show only executable choices. If a field has only one valid value, explain why and apply it without creating a separate pause.
+Only the first category uses this protocol. Merge adjacent choices that can be answered together, and do not re-ask persisted choices that remain valid. Do not preflight, infer, or filter an option based on whether a later tool or operation may succeed. Present every workflow-supported choice; after the user selects one, run the requested action and stop with its original error if it fails. If a field has only one workflow-valid value, explain why and apply it without creating a separate pause.
 
 ## Core Rules
 
 - Decision points are blocking points. Pause and wait for an explicit user choice before continuing
-- Use the current platform's available user input or confirmation mechanism to collect the choice; when platforms such as Claude Code provide `AskUserQuestion`, prefer `AskUserQuestion` to present single-select or multi-select options
-- If the current tool list does not include `AskUserQuestion`, or the first `AskUserQuestion` call fails, treat structured questions as unavailable for this session; do not repeatedly retry `AskUserQuestion` for later decision points in the same session, and use the text-options fallback directly
-- If the current platform has no structured question tool, ask clear options in the conversation and stop until the user replies
+- Use `AskUserQuestion` for single-select or multi-select choices when it is present; otherwise ask clear options in the conversation and wait for the reply
+- When `AskUserQuestion` cannot be used, treat structured questions as unavailable for this session; do not repeatedly retry it for later decision points, and use the text-options fallback directly
 - Never substitute recommendation rules, defaults, historical preferences, or “the user would probably agree” for current confirmation
 - Do not write state fields, execute the chosen branch, or auto-continue before the user explicitly chooses
 
@@ -31,7 +30,7 @@ When using structured questions:
 - Use a single-select `AskUserQuestion` question for single-choice decision points, and a multi-select question for multi-choice decision points
 - Each option must include a short label and impact description; recommendations may explain tradeoffs but must not auto-select
 - If the tool call succeeds, wait for the user to answer through that question; do not also print a duplicate text option list
-- If the tool is missing, the call fails, or the host reports an error, record that structured questions are unavailable for this session, then use the text-options fallback
+- If the tool is missing or the call fails, record that structured questions are unavailable for this session, then use the text-options fallback
 
 ## Minimum Presentation Requirements
 

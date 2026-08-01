@@ -63,7 +63,7 @@ comet state get <change-name> plan
 git diff --stat <base-ref read from plan frontmatter>...HEAD
 ```
 
-The first command returns the plan path. Use the host's file reader to parse the single `base-ref` frontmatter field, validate it as a commit, then substitute it into the second command. Do not depend on POSIX text pipelines.
+The first command returns the plan path. Use the file-reading tool to parse the single `base-ref` frontmatter field, validate it as a commit, then substitute it into the second command. Do not depend on POSIX text pipelines.
 
 If commit range shows changes exceed lightweight threshold (> 8 files, cross-module coordination, or delta spec spans more than 1 capability), manually set to full verification:
 
@@ -173,7 +173,7 @@ comet state transition <change-name> verify-fail
 ```
 
 **Spec Drift Handling** (user decision point):
-- If check item 6 finds contradictions (delta spec has content but design doc does not reflect it), **must use the current platform's available user input/confirmation mechanism as a single-select question to pause and wait for the user to choose the handling method**; must not select automatically. Options:
+- If check item 6 finds contradictions (delta spec has content but design doc does not reflect it), **pause, present the handling methods as a single-select question, and wait for the user to choose**; must not select automatically. Options:
   - Option A: Append "Implementation Divergence" section to design doc recording deviation reason. Option A is a verify phase allowed artifact; after writing, must not re-trigger Step 1b dirty-worktree decision due to that design doc change
   - Option B: After user selects B, run `comet state transition <change-name> verify-fail`, then invoke `/comet-build`; `/comet-build`'s Spec Incremental Update rules will load the Superpowers `brainstorming` skill to update Design Doc + delta spec
   - Option C: Confirm deviation is acceptable, continue verification (design doc will be marked as `superseded-by-main-spec` during archiving)
@@ -186,7 +186,7 @@ Save the verification report and record it in `.comet.yaml`. Do not handle, merg
 comet state set <change-name> verification_report docs/superpowers/reports/YYYY-MM-DD-<change-name>-verify.md
 ```
 
-Use the host's file API to create `docs/superpowers/reports/` and the report file; do not depend on a POSIX-only directory command.
+Use the file tool to create `docs/superpowers/reports/` and the report file; do not depend on a POSIX-only directory command.
 
 ## Exit Conditions
 

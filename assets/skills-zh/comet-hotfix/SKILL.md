@@ -26,7 +26,7 @@ description: "仅在用户明确调用 /comet-hotfix，或由 Comet 根 Skill/ru
 
 执行链路：open → build → verify → archive。Hotfix 为每个阶段提供默认决策：精简开启、直接构建、按规模验证、验证通过后进入归档前最终确认。
 
-开始前按 `comet/reference/scripts.md` 确认公开 Comet CLI 可用；从任意入口恢复时先按 `comet/reference/context-recovery.md` 确认 phase/workflow。
+开始前按 `comet/reference/scripts.md` 运行公开 Comet CLI 命令；从任意入口恢复时先按 `comet/reference/context-recovery.md` 检查 phase/workflow。
 
 恢复已有 hotfix change 时，第一项状态操作必须是 `comet state select <change-name>`；创建新 change 时，在 `.comet.yaml` 初始化成功后立即运行该命令，再进入源码写入步骤。
 
@@ -157,7 +157,7 @@ comet guard <change-name> build --apply
 <IMPORTANT>
 Hotfix 流程默认 **一次性连续执行**。调用 `/comet-hotfix` 后，agent 在 hotfix 自有步骤间自动推进，不主动停顿。**例外**：若 `auto_transition: false`，则在每个 phase 边界（build/verify/archive 之间）结束当前调用并按 `HINT` 交还控制权，由用户稍后手动运行下一阶段命令；这是手动衔接，不是新的确认点。无论 `auto_transition` 取何值，以下真正的用户决策仍需暂停：
 
-1. 遇到升级判定信号（见「升级判定」章节），**必须使用当前平台可用的用户输入/确认机制暂停并等待用户明确选择**：继续 hotfix 流程，还是升级为完整 `/comet-classic` 流程
+1. 遇到升级判定信号（见「升级判定」章节），**必须暂停、展示选择并等待用户明确选择**：继续 hotfix 流程，还是升级为完整 `/comet-classic` 流程
 2. 验证阶段（comet-verify）接受 WARNING/SUGGESTION 偏差、处理 Spec 漂移或超过自动修复上限后的策略决策；前 3 次明确可修复失败自动闭环
 3. 归档前最终确认，以及归档提交后的分支处理决策
 

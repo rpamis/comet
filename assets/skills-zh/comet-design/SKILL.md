@@ -18,7 +18,7 @@ description: "仅在用户明确调用 /comet-design，或由 Comet 根 Skill/ru
 
 ### 0. 入口状态验证（Entry Check）
 
-按 `comet/reference/scripts.md` 确认公开 Comet CLI 可用，然后执行入口验证；从任意入口恢复时先按 `comet/reference/context-recovery.md` 运行恢复检查：
+按 `comet/reference/scripts.md` 运行公开 Comet CLI 命令，然后执行入口验证；从任意入口恢复时先按 `comet/reference/context-recovery.md` 运行恢复检查：
 
 ```bash
 comet state select <change-name>
@@ -149,7 +149,7 @@ brainstorming 产出设计方案后，**必须按 `comet/reference/decision-poin
 
 用户确认设计方案后，在创建 Design Doc 前，创建或更新已增量维护的检查点文件，将其定稿为确认后的设计方案摘要：
 
-使用当前平台的文件能力确保 `<classic-change-dir>/.comet/handoff/` 存在；不要依赖 POSIX 专用目录命令。
+使用文件工具确保 `<classic-change-dir>/.comet/handoff/` 存在；不要依赖 POSIX 专用目录命令。
 
 `<classic-change-dir>/.comet/handoff/brainstorm-summary.md` 结构：
 
@@ -225,9 +225,9 @@ comet guard <change-name> design --apply
 
 只在 **Design Doc 和状态证据落盘后**、进入 Build 前考虑主动式压缩。先确认 `design_doc`、最新 handoff、`handoff_hash` 和 design guard 均已成功持久化；这样压缩后可从文件恢复，不会丢失尚未写入的设计判断。
 
-- 当前平台提供可由 agent 调用的原生压缩机制，且上下文窗口确有压力时，可以触发一次，并在恢复提示中列出 change、下一步和需重新加载的 Design Doc/handoff 文件
-- 当前平台只能由用户手动压缩时，给出一次非阻塞建议并继续；**无法程序化触发时不得阻塞**、不得额外制造确认点
-- 不得用 shell 命令或摘要替代宿主平台的真实压缩机制
+- 上下文窗口确有压力且存在可调用的原生压缩机制时，可以触发一次，并在恢复提示中列出 change、下一步和需重新加载的 Design Doc/handoff 文件
+- 压缩只能由用户手动触发时，给出一次非阻塞建议并继续；**不得阻塞**、不得额外制造确认点
+- 不得用 shell 命令或摘要伪造上下文压缩
 
 ## 退出条件
 

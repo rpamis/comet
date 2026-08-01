@@ -28,7 +28,7 @@ Ordinary source writes are governed only by the selected change phase. With mult
 | `verify` | Verification, record verification report | Skip failure handling, handle the branch early |
 | `archive` | Confirm archive, run archive script, commit archive changes, handle the branch | Write source code |
 
-The hook hard-interception allowlist exempts only artifacts legal in the current phase as returned by the Classic layout resolver, plus Comet-owned `.comet/*` and `.superpowers/*` control workspaces and root-level Markdown files. Host configuration directories and any worktree/source files inside them are not generally exempt and must obey the current change's phase restrictions.
+The hook hard-interception allowlist exempts only artifacts legal in the current phase as returned by the Classic layout resolver, plus Comet-owned `.comet/*` and `.superpowers/*` control workspaces and root-level Markdown files. Configuration directories and any worktree/source files inside them are not generally exempt and must obey the current change's phase restrictions.
 
 ### Phase-Entry Self-Consistency Check (Before Writing Source Code)
 
@@ -86,7 +86,7 @@ The following decision points must pause to wait for explicit user selection; do
 
 ## Build Phase Specifics
 
-1. After plan creation, filter unavailable options, then ask one joint question: pause, or submit workspace/execution/TDD/review settings and any conditional branch name together
+1. After plan creation, ask one joint question with every workflow-supported choice: pause, or submit workspace/execution/TDD/review settings and any conditional branch name together
 2. After each task acceptance, must: tasks.md checkmark → git commit (do not accumulate). `subagent-driven-development` must complete acceptance according to the current `review_mode`, then the coordinator performs targeted verification by unique task text; do not use an incomplete task summary table to replace current task verification
 3. When encountering failures, must load **systematic-debugging** skill; do not propose source code fixes before root cause is located
 4. spec change grading: small changes edit directly | medium changes load brainstorming | large changes pause and wait for user confirmation to split
