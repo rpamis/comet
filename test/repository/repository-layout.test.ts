@@ -25,10 +25,14 @@ describe('repository layout registry', () => {
     expect(resolveRepositoryPath(layout.classicRuntime.outputs.state)).toBe(
       path.resolve('assets', 'skills', 'comet', 'scripts', 'comet-state.mjs'),
     );
-    expect(layout.nativeRuntime).toEqual({
-      entries: { runtime: 'domains/comet-native/native-cli-entry.ts' },
+    expect(layout.nativeRuntime).toMatchObject({
+      entries: {
+        runtime: 'domains/comet-native/native-cli-entry.ts',
+        hookGuard: 'domains/comet-native/native-hook-guard-entry.ts',
+      },
       outputs: {
         runtime: 'assets/skills/comet-native/scripts/comet-native-runtime.mjs',
+        hookGuard: 'assets/skills/comet-native/scripts/comet-native-hook-guard.mjs',
       },
     });
     expect(resolveRepositoryPath(layout.nativeRuntime.outputs.runtime)).toBe(

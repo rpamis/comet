@@ -29,6 +29,7 @@ async function bundledRuntime(entry) {
     legalComments: 'none',
     charset: 'utf8',
     treeShaking: true,
+    minify: true,
     banner: {
       js: [
         '#!/usr/bin/env node',

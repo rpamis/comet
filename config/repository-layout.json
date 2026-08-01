@@ -31,10 +31,40 @@
   },
   "nativeRuntime": {
     "entries": {
-      "runtime": "domains/comet-native/native-cli-entry.ts"
+      "runtime": "domains/comet-native/native-cli-entry.ts",
+      "hookGuard": "domains/comet-native/native-hook-guard-entry.ts",
+      "init": "domains/comet-native/native-init-entry.ts",
+      "root": "domains/comet-native/native-root-entry.ts",
+      "new": "domains/comet-native/native-new-entry.ts",
+      "spec": "domains/comet-native/native-spec-entry.ts",
+      "show": "domains/comet-native/native-show-entry.ts",
+      "status": "domains/comet-native/native-status-entry.ts",
+      "select": "domains/comet-native/native-select-entry.ts",
+      "checkpoint": "domains/comet-native/native-checkpoint-entry.ts",
+      "check": "domains/comet-native/native-check-entry.ts",
+      "evidence": "domains/comet-native/native-evidence-entry.ts",
+      "receipt": "domains/comet-native/native-receipt-entry.ts",
+      "next": "domains/comet-native/native-next-entry.ts",
+      "archive": "domains/comet-native/native-archive-entry.ts",
+      "doctor": "domains/comet-native/native-doctor-entry.ts"
     },
     "outputs": {
-      "runtime": "assets/skills/comet-native/scripts/comet-native-runtime.mjs"
+      "runtime": "assets/skills/comet-native/scripts/comet-native-runtime.mjs",
+      "hookGuard": "assets/skills/comet-native/scripts/comet-native-hook-guard.mjs",
+      "init": "assets/skills/comet-native/scripts/comet-native-init.mjs",
+      "root": "assets/skills/comet-native/scripts/comet-native-root.mjs",
+      "new": "assets/skills/comet-native/scripts/comet-native-new.mjs",
+      "spec": "assets/skills/comet-native/scripts/comet-native-spec.mjs",
+      "show": "assets/skills/comet-native/scripts/comet-native-show.mjs",
+      "status": "assets/skills/comet-native/scripts/comet-native-status.mjs",
+      "select": "assets/skills/comet-native/scripts/comet-native-select.mjs",
+      "checkpoint": "assets/skills/comet-native/scripts/comet-native-checkpoint.mjs",
+      "check": "assets/skills/comet-native/scripts/comet-native-check.mjs",
+      "evidence": "assets/skills/comet-native/scripts/comet-native-evidence.mjs",
+      "receipt": "assets/skills/comet-native/scripts/comet-native-receipt.mjs",
+      "next": "assets/skills/comet-native/scripts/comet-native-next.mjs",
+      "archive": "assets/skills/comet-native/scripts/comet-native-archive.mjs",
+      "doctor": "assets/skills/comet-native/scripts/comet-native-doctor.mjs"
     }
   },
   "entryRuntime": {

@@ -41,6 +41,7 @@ const esbuildOptions = {
   legalComments: 'none',
   charset: 'utf8',
   treeShaking: true,
+  minify: true,
   banner,
 };
 

@@ -69,6 +69,12 @@ const TARGETS = [
     script: path.join(NATIVE_SCRIPTS, 'comet-native-runtime.mjs'),
     args: ['--help'],
   },
+  // Per-command Native launchers (self-contained bundles).
+  {
+    name: 'native-hook-guard',
+    script: path.join(NATIVE_SCRIPTS, 'comet-native-hook-guard.mjs'),
+    args: ['--hook-output', 'copilot'],
+  },
   // CLI entry (npm bin).
   { name: 'cli-version', script: BIN, args: ['--version'] },
   { name: 'cli-help', script: BIN, args: ['--help'] },

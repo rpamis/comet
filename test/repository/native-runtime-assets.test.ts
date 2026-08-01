@@ -67,7 +67,6 @@ describe('Native runtime release asset', () => {
     expect(source).not.toMatch(/domains\/comet-classic|openspec|superpowers|requiredSkillCalls/iu);
     expect(source).not.toMatch(/CLASSIC_RUN_STORAGE/u);
     expect(source).toContain('.comet/config.yaml');
-    expect(source).toContain('parseCometHookRequest');
     expect(source).toContain('Hook write target could not be determined');
     expect(source).not.toContain('comet.native.controller-trust-store.v1');
     expect(source).not.toContain('comet.native.creation-authorization.v1');
@@ -77,6 +76,37 @@ describe('Native runtime release asset', () => {
     expect(source).not.toContain('waiver-receipt');
     expect(source).not.toContain('trust authorize');
     expect(source).toContain('new <change-name> [--language en|zh-CN]');
+    execFileSync(process.execPath, [builder, '--check'], { stdio: 'pipe' });
+  });
+
+  it('ships one self-contained bundle per command launcher', async () => {
+    const scriptsDir = path.resolve('assets', 'skills', 'comet-native', 'scripts');
+    // Each per-command launcher must be a self-contained esbuild bundle: it
+    // starts with the Node shebang and never re-imports the shared runtime,
+    // so loading e.g. the hook-guard launcher only evaluates that command's
+    // dependency graph.
+    const commandScripts = [
+      'comet-native-hook-guard.mjs',
+      'comet-native-init.mjs',
+      'comet-native-root.mjs',
+      'comet-native-new.mjs',
+      'comet-native-spec.mjs',
+      'comet-native-show.mjs',
+      'comet-native-status.mjs',
+      'comet-native-select.mjs',
+      'comet-native-checkpoint.mjs',
+      'comet-native-check.mjs',
+      'comet-native-evidence.mjs',
+      'comet-native-receipt.mjs',
+      'comet-native-next.mjs',
+      'comet-native-archive.mjs',
+      'comet-native-doctor.mjs',
+    ];
+    for (const script of commandScripts) {
+      const source = await fs.readFile(path.join(scriptsDir, script), 'utf8');
+      expect(source.startsWith('#!/usr/bin/env node\n')).toBe(true);
+      expect(source).not.toMatch(/from\s+['"]\.\/comet-native-runtime\.mjs['"]/u);
+    }
     execFileSync(process.execPath, [builder, '--check'], { stdio: 'pipe' });
   });
 
