@@ -16,20 +16,20 @@ Before starting or recovering, read and follow `comet/reference/classic-layout.m
 
 ### 0a. Output Language Constraint
 
-Verification reports must use the configured Comet artifact language from `node "$COMET_STATE" get <name> language`.
+Verification reports must use the configured Comet artifact language from `node "<comet-state-script>" get <name> language`.
 
 ### 0b. Entry State Verification (Entry Check)
 
 Use the stable `comet` CLI described in `comet/reference/scripts.md`, then run entry verification. When resuming from any entry point, first run the recovery check in `comet/reference/context-recovery.md`:
 
 ```bash
-node "$COMET_STATE" select <change-name>
-node "$COMET_STATE" check <change-name> verify
+node "<comet-state-script>" select <change-name>
+node "<comet-state-script>" check <change-name> verify
 ```
 
 Proceed to Step 1 after verification passes. The script outputs specific failure reasons when verification fails.
 
-If the `select` / `check` output is `BLOCKED` because `bound_branch` does not match the current branch, immediately pause under `comet/reference/decision-point.md` and let the user choose one option: switch back to the bound branch and rerun entry verification, or run `node "$COMET_STATE" rebind <change-name>` after the user explicitly confirms the current branch should take over this change, then rerun entry verification. Do not switch branches or rebind on your own.
+If the `select` / `check` output is `BLOCKED` because `bound_branch` does not match the current branch, immediately pause under `comet/reference/decision-point.md` and let the user choose one option: switch back to the bound branch and rerun entry verification, or run `node "<comet-state-script>" rebind <change-name>` after the user explicitly confirms the current branch should take over this change, then rerun entry verification. Do not switch branches or rebind on your own.
 
 **Idempotency**: All verify checks are safe to repeat. If `verify_result` is already `pass`, verification is complete and archive should continue; keep `branch_status: pending` until archive changes are committed and final branch handling finishes. If `verify_result` is `pending`, start verification from the beginning.
 
@@ -38,7 +38,7 @@ If the `select` / `check` output is `BLOCKED` because `bound_branch` does not ma
 Execute scale assessment:
 
 ```bash
-node "$COMET_STATE" scale <change-name>
+node "<comet-state-script>" scale <change-name>
 ```
 
 The script automatically counts tasks, delta spec count, changed file count, determines light or full verification mode, and sets the verify_mode field. Decision rule (any condition triggers full): tasks > 3, delta spec capabilities > 1, changed files > 8.
@@ -53,13 +53,13 @@ Before verification begins, handle uncommitted changes through `comet/reference/
 When repair or state reconciliation must return to build, run:
 
 ```bash
-node "$COMET_STATE" transition <change-name> verify-fail
+node "<comet-state-script>" transition <change-name> verify-fail
 ```
 
 Note: If every task in build phase was committed, the script's file count based on working tree diff may underestimate change scale. In this case, must read plan file header `base-ref` and verify with commit range:
 
 ```bash
-node "$COMET_STATE" get <change-name> plan
+node "<comet-state-script>" get <change-name> plan
 git diff --stat <base-ref read from plan frontmatter>...HEAD
 ```
 
@@ -68,14 +68,14 @@ The first command returns the plan path. Use the host's file reader to parse the
 If commit range shows changes exceed lightweight threshold (> 8 files, cross-module coordination, or delta spec spans more than 1 capability), manually set to full verification:
 
 ```bash
-node "$COMET_STATE" set <change-name> verify_mode full
+node "<comet-state-script>" set <change-name> verify_mode full
 ```
 
-**Override mechanism**: If the agent or user believes the automated assessment is inappropriate, override at any time with `node "$COMET_STATE" set <change-name> verify_mode <light|full>`.
+**Override mechanism**: If the agent or user believes the automated assessment is inappropriate, override at any time with `node "<comet-state-script>" set <change-name> verify_mode <light|full>`.
 
 ### 1b. Automatic Verification Repair and Exception Decisions
 
-Run `node "$COMET_STATE" get <change-name> verify_failures` first to read the persisted consecutive failure count. Automatically return to build for the first 3 repairable failures: report the failures, run `node "$COMET_STATE" transition <change-name> verify-fail`, then invoke `/comet-build` without asking for confirmation.
+Run `node "<comet-state-script>" get <change-name> verify_failures` first to read the persisted consecutive failure count. Automatically return to build for the first 3 repairable failures: report the failures, run `node "<comet-state-script>" transition <change-name> verify-fail`, then invoke `/comet-build` without asking for confirmation.
 
 The report must list:
 - Failed items
@@ -96,8 +96,8 @@ Only accepting WARNING/SUGGESTION deviations or choosing a strategy after the 4t
 When verification needs to read OpenSpec artifacts, first check whether they have changed since the design phase:
 
 ```bash
-node "$COMET_STATE" get <change-name> handoff_hash
-node "$COMET_HANDOFF" <change-name> --hash-only
+node "<comet-state-script>" get <change-name> handoff_hash
+node "<comet-handoff-script>" <change-name> --hash-only
 ```
 
 - Read the two standard outputs separately. If they match and both are non-empty and non-`null`, OpenSpec artifacts are unchanged. **tasks.md does not need to be re-read in full**; parse its checkboxes to confirm none remain unchecked. proposal.md, design.md, and delta specs must still be read for comparison checks.
@@ -125,7 +125,7 @@ The lightweight code review input should be limited to this change's diff, tasks
 If the project has no automatically inferred verification command, the user or Agent must run the real verification command first, then record its evidence separately:
 
 ```bash
-node "$COMET_STATE" record-check <change-name> verify --command "<actual verification command>" --exit-code 0
+node "<comet-state-script>" record-check <change-name> verify --command "<actual verification command>" --exit-code 0
 ```
 
 `--command` records command text only; Comet **never executes it**. Verify and build evidence are separate and cannot substitute for each other. Even when a compatibility workflow uses `COMET_SKIP_BUILD=1`, that bypass cannot be treated as auditable verification or build evidence.
@@ -137,7 +137,7 @@ node "$COMET_STATE" record-check <change-name> verify --command "<actual verific
 **When not passing**: Report failures and classify them under Step 1b. Below the automatic retry limit, when an issue must or should be repaired, run the following command directly and invoke `/comet-build`:
 
 ```bash
-node "$COMET_STATE" transition <change-name> verify-fail
+node "<comet-state-script>" transition <change-name> verify-fail
 ```
 
 **Report format**: Brief table listing 6 check results + PASS/FAIL.
@@ -169,13 +169,13 @@ After the skill loads, follow its guidance to verify. Check items:
 When verification does not pass, report missing items and classify them under Step 1b. Below the automatic retry limit, when the current change can supply the missing evidence, run the following command directly and invoke `/comet-build`:
 
 ```bash
-node "$COMET_STATE" transition <change-name> verify-fail
+node "<comet-state-script>" transition <change-name> verify-fail
 ```
 
 **Spec Drift Handling** (user decision point):
 - If check item 6 finds contradictions (delta spec has content but design doc does not reflect it), **must use the current platform's available user input/confirmation mechanism as a single-select question to pause and wait for the user to choose the handling method**; must not select automatically. Options:
   - Option A: Append "Implementation Divergence" section to design doc recording deviation reason. Option A is a verify phase allowed artifact; after writing, must not re-trigger Step 1b dirty-worktree decision due to that design doc change
-  - Option B: After user selects B, run `node "$COMET_STATE" transition <change-name> verify-fail`, then invoke `/comet-build`; `/comet-build`'s Spec Incremental Update rules will load the Superpowers `brainstorming` skill to update Design Doc + delta spec
+  - Option B: After user selects B, run `node "<comet-state-script>" transition <change-name> verify-fail`, then invoke `/comet-build`; `/comet-build`'s Spec Incremental Update rules will load the Superpowers `brainstorming` skill to update Design Doc + delta spec
   - Option C: Confirm deviation is acceptable, continue verification (design doc will be marked as `superseded-by-main-spec` during archiving)
 
 ### 3. Record Verification Evidence
@@ -183,7 +183,7 @@ node "$COMET_STATE" transition <change-name> verify-fail
 Save the verification report and record it in `.comet.yaml`. Do not handle, merge, or discard branches in verify and do not write `branch_status: handled`: archive creates spec and metadata changes that belong in the final commit, so `/comet-archive` owns branch finishing after that commit. Do not set `verify_result: pass` manually; use the phase guard.
 
 ```bash
-node "$COMET_STATE" set <change-name> verification_report docs/superpowers/reports/YYYY-MM-DD-<change-name>-verify.md
+node "<comet-state-script>" set <change-name> verification_report docs/superpowers/reports/YYYY-MM-DD-<change-name>-verify.md
 ```
 
 Use the host's file API to create `docs/superpowers/reports/` and the report file; do not depend on a POSIX-only directory command.
@@ -193,12 +193,12 @@ Use the host's file API to create `docs/superpowers/reports/` and the report fil
 - Verification report passed
 - `verification_report` in `.comet.yaml` points to an existing verification report file
 - `branch_status` remains `pending`
-- **Phase guard**: Run `node "$COMET_GUARD" <change-name> verify --apply`; after all PASS, auto-transitions to `phase: archive` through `node "$COMET_STATE" transition verify-pass`
+- **Phase guard**: Run `node "<comet-guard-script>" <change-name> verify --apply`; after all PASS, auto-transitions to `phase: archive` through `node "<comet-state-script>" transition verify-pass`
 
 After verification evidence is complete, run guard for auto-transition:
 
 ```bash
-node "$COMET_GUARD" <change-name> verify --apply
+node "<comet-guard-script>" <change-name> verify --apply
 ```
 
 State file auto-updates to `phase: archive`, `verify_result: pass`, `verified_at: YYYY-MM-DD`.
@@ -212,7 +212,7 @@ Follow `comet/reference/context-recovery.md` with phase set to `verify`.
 Follow `comet/reference/auto-transition.md`. Key command:
 
 ```bash
-node "$COMET_STATE" next <change-name>
+node "<comet-state-script>" next <change-name>
 ```
 
 - `NEXT: auto` → invoke the skill pointed to by `SKILL` to enter the next phase

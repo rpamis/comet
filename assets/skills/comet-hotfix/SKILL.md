@@ -22,13 +22,13 @@ Quick bug fix workflow: open → build → verify → archive. Skip brainstormin
 
 ### 0. Output Language Constraint
 
-Streamlined OpenSpec artifacts must use the configured Comet artifact language. Before `.comet.yaml` exists, read `classic.language` from project `.comet/config.yaml`, then fall back to global `~/.comet/config.yaml`; after initialization, use `node "$COMET_STATE" get <name> language`.
+Streamlined OpenSpec artifacts must use the configured Comet artifact language. Before `.comet.yaml` exists, read `classic.language` from project `.comet/config.yaml`, then fall back to global `~/.comet/config.yaml`; after initialization, use `node "<comet-state-script>" get <name> language`.
 
 Execution chain: open → build → root cause check → verify → archive. Hotfix provides default decisions for each phase: streamlined open, direct build, root cause confirmation, scale-based verification, and final archive confirmation after verification passes.
 
 Before starting, locate Comet scripts via `comet/reference/scripts.md`. When resuming from any entry point, first use `comet/reference/context-recovery.md` to confirm phase/workflow.
 
-When resuming an existing hotfix change, the first state operation must be `node "$COMET_STATE" select <change-name>`. For a new change, run the command immediately after `.comet.yaml` initialization and before source writes.
+When resuming an existing hotfix change, the first state operation must be `node "<comet-state-script>" select <change-name>`. For a new change, run the command immediately after `.comet.yaml` initialization and before source writes.
 
 ### 1. Quick Open (preset open)
 
@@ -42,23 +42,23 @@ Reuse Comet open capability to create change, but use hotfix defaults: do not ex
 After the skill loads, create the change skeleton first, then immediately initialize recoverable state and bind the current change:
 
 ```bash
-node "$COMET_STATE" init <name> hotfix
-node "$COMET_STATE" select <name>
-node "$COMET_STATE" check <name> open
+node "<comet-state-script>" init <name> hotfix
+node "<comet-state-script>" select <name>
+node "<comet-state-script>" check <name> open
 ```
 
-If the `select` / `check` output is `BLOCKED` because `bound_branch` does not match the current branch, immediately pause under `comet/reference/decision-point.md` and let the user choose one option: switch back to the bound branch and rerun entry verification, or run `node "$COMET_STATE" rebind <change-name>` after the user explicitly confirms the current branch should take over this change, then rerun entry verification. Do not switch branches or rebind on your own.
+If the `select` / `check` output is `BLOCKED` because `bound_branch` does not match the current branch, immediately pause under `comet/reference/decision-point.md` and let the user choose one option: switch back to the bound branch and rerun entry verification, or run `node "<comet-state-script>" rebind <change-name>` after the user explicitly confirms the current branch should take over this change, then rerun entry verification. Do not switch branches or rebind on your own.
 
 Entry workspace isolation is a user decision point; do not use `current` as the default isolation mode. Pause under `comet/reference/decision-point.md` and let the user choose one option:
 
-- A. Work directly on the current branch: run `node "$COMET_STATE" set <name> isolation current` to truthfully bind the current branch
-- B. Create a branch: create and switch to `hotfix/YYYYMMDD/<change-name>`, then run `node "$COMET_STATE" set <name> isolation branch`
-- C. Create a worktree: first use the Skill tool to load Superpowers `using-git-worktrees`; let that skill create the isolated workspace, then run `node "$COMET_STATE" set <name> isolation worktree` inside the worktree
+- A. Work directly on the current branch: run `node "<comet-state-script>" set <name> isolation current` to truthfully bind the current branch
+- B. Create a branch: create and switch to `hotfix/YYYYMMDD/<change-name>`, then run `node "<comet-state-script>" set <name> isolation branch`
+- C. Create a worktree: first use the Skill tool to load Superpowers `using-git-worktrees`; let that skill create the isolated workspace, then run `node "<comet-state-script>" set <name> isolation worktree` inside the worktree
 
 After B/C, rerun this in the actual execution branch or worktree:
 
 ```bash
-node "$COMET_STATE" select <name>
+node "<comet-state-script>" select <name>
 ```
 
 Then create the streamlined artifacts:
@@ -70,13 +70,13 @@ Then create the streamlined artifacts:
 Run phase guard to transition open → build:
 
 ```bash
-node "$COMET_GUARD" <change-name> open --apply
+node "<comet-guard-script>" <change-name> open --apply
 ```
 
 Check `auto_transition` to decide whether to continue:
 
 ```bash
-node "$COMET_STATE" next <name>
+node "<comet-state-script>" next <name>
 ```
 
 - `NEXT: auto` → continue to Step 2
@@ -128,7 +128,7 @@ For specific investigation, minimal failing test, fix verification, and keeping 
 After root cause is confirmed eliminated, run phase guard to transition build → verify:
 
 ```bash
-node "$COMET_GUARD" <change-name> build --apply
+node "<comet-guard-script>" <change-name> build --apply
 ```
 
 State automatically updates to `phase: verify`, `verify_result: pending`, then enter verification.
@@ -139,7 +139,7 @@ Reuse `/comet-verify`, with comet-verify's scale assessment deciding lightweight
 
 **Immediately execute:** Use the Skill tool to load the `comet-verify` skill. Skipping this step is prohibited.
 
-Small-scale hotfixes without delta spec usually meet lightweight verification conditions (≤ 3 tasks, changed files below the scale threshold), comet-verify's scale assessment will select the lightweight verification path (6 quick checks; default `review_mode: off` does not dispatch automatic code review). If the user wants to increase review, they can run `node "$COMET_STATE" set <name> review_mode standard` or `thorough` before verification. If hotfix created delta spec, enter full verification path according to comet-verify's scale assessment rules.
+Small-scale hotfixes without delta spec usually meet lightweight verification conditions (≤ 3 tasks, changed files below the scale threshold), comet-verify's scale assessment will select the lightweight verification path (6 quick checks; default `review_mode: off` does not dispatch automatic code review). If the user wants to increase review, they can run `node "<comet-state-script>" set <name> review_mode standard` or `thorough` before verification. If hotfix created delta spec, enter full verification path according to comet-verify's scale assessment rules.
 
 After verification passes, record `.comet.yaml` `verify_result` as `pass` according to `/comet-verify` rules, must not skip this status before archiving. After verification passes, still enter `/comet-archive`'s final archive confirmation; do not automatically run the archive script.
 
@@ -174,7 +174,7 @@ After each step completes, immediately enter next step. Within each phase, must 
 
 ## Upgrade Assessment
 
-Hotfix upgrade assessment only decides whether to move from the preset workflow to full; file count never upgrades automatically, and `node "$COMET_STATE" scale` only decides verification weight.
+Hotfix upgrade assessment only decides whether to move from the preset workflow to full; file count never upgrades automatically, and `node "<comet-state-script>" scale` only decides verification weight.
 
 If `/comet-classic` passes an intent frame from the entry, hotfix must recheck `risk_signal` and escalation signals only before build: new capability, public API, schema change, cross-module coordination, or deep architecture work. When any signal matches, enter the existing escalation decision point; do not reimplement entry intent recognition.
 
@@ -187,7 +187,7 @@ When a qualitative-change signal or file-count tripwire is hit, **must pause und
 After the user chooses upgrade (option B), use the legal state-machine upgrade channel, a single command that converts the preset workflow to full and rolls back to design:
 
 ```bash
-node "$COMET_STATE" transition <name> preset-escalate
+node "<comet-state-script>" transition <name> preset-escalate
 ```
 
 This command atomically sets `workflow`/`classic_profile` to `full`, rolls `phase` back to `design`, clears `design_doc`, and clears preset-only `build_mode`, `tdd_mode`, `review_mode`, `isolation`, and `verify_mode`. Then add the Design Doc on the current change: **immediately use the Skill tool to load the `comet-design` skill**. On entering build, run the full joint workflow-configuration decision again.
@@ -201,14 +201,14 @@ When the user chooses continue (option A), continue the hotfix workflow and reco
 - Bug fixed, tests pass
 - Change archived
 - If spec changes, synced to main spec
-- **Phase guard**: Before build → verify run `node "$COMET_GUARD" <change-name> build --apply`; before verify → archive follow `/comet-verify` and run `node "$COMET_GUARD" <change-name> verify --apply`
+- **Phase guard**: Before build → verify run `node "<comet-guard-script>" <change-name> build --apply`; before verify → archive follow `/comet-verify` and run `node "<comet-guard-script>" <change-name> verify --apply`
 
 ## Automatic Handoff to Next Phase
 
 Follow `comet/reference/auto-transition.md`. Key command:
 
 ```bash
-node "$COMET_STATE" next <name>
+node "<comet-state-script>" next <name>
 ```
 
 - `NEXT: auto` → invoke the skill pointed to by `SKILL` to continue hotfix workflow (`phase: build` returns `comet-hotfix`, `verify` returns `comet-verify`, `archive` returns `comet-archive`)

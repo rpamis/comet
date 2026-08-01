@@ -17,24 +17,24 @@ Before starting or recovering, read and follow `comet/reference/classic-layout.m
 
 ### 0. Output Language Constraint
 
-Archive summaries and lifecycle closure notes must use the configured Comet artifact language from `node "$COMET_STATE" get <name> language`.
+Archive summaries and lifecycle closure notes must use the configured Comet artifact language from `node "<comet-state-script>" get <name> language`.
 
 ### 0. Entry State Verification (Entry Check)
 
 Use the stable `comet` CLI described in `comet/reference/scripts.md`, then run entry verification. When resuming from any entry point, first run the recovery check in `comet/reference/context-recovery.md`:
 
 ```bash
-node "$COMET_STATE" select <change-name>
-node "$COMET_STATE" check <name> archive
+node "<comet-state-script>" select <change-name>
+node "<comet-state-script>" check <name> archive
 ```
 
 Proceed to Step 1 after verification passes. The script outputs specific failure reasons when verification fails.
 
-If the `select` / `check` output is `BLOCKED` because `bound_branch` does not match the current branch, immediately pause under `comet/reference/decision-point.md` and let the user choose one option: switch back to the bound branch and rerun entry verification, or run `node "$COMET_STATE" rebind <change-name>` after the user explicitly confirms the current branch should take over this change, then rerun entry verification. Do not switch branches or rebind on your own.
+If the `select` / `check` output is `BLOCKED` because `bound_branch` does not match the current branch, immediately pause under `comet/reference/decision-point.md` and let the user choose one option: switch back to the bound branch and rerun entry verification, or run `node "<comet-state-script>" rebind <change-name>` after the user explicitly confirms the current branch should take over this change, then rerun entry verification. Do not switch branches or rebind on your own.
 
 ### 1. Final Archive and Delivery Confirmation (Blocking Point)
 
-After entry verification passes, first read `node "$COMET_STATE" get <change-name> isolation`, then **follow the `comet/reference/decision-point.md` protocol to pause and wait for the user to confirm whether to archive and deliver remotely now**. Must not run `node "$COMET_STATE" transition <change-name> archive-confirm` or `node "$COMET_ARCHIVE" "<change-name>"` before user confirmation.
+After entry verification passes, first read `node "<comet-state-script>" get <change-name> isolation`, then **follow the `comet/reference/decision-point.md` protocol to pause and wait for the user to confirm whether to archive and deliver remotely now**. Must not run `node "<comet-state-script>" transition <change-name> archive-confirm` or `node "<comet-archive-script>" "<change-name>"` before user confirmation.
 
 Before confirmation, show the user a brief summary:
 - Change name
@@ -46,13 +46,13 @@ Before confirmation, show the user a brief summary:
 The user confirmation question must be presented as a single-select question with these options:
 - "Confirm archive and push now" — complete archive, create the only archive commit, and push the current bound branch
 - "Confirm archive, push now, and create a PR" — complete archive, create the only archive commit, push the current bound branch, and create a PR
-- "Needs adjustment or re-verification" — do not archive; run `node "$COMET_STATE" transition <change-name> archive-reopen` to return to `phase: verify`, then invoke `/comet-verify`. If verification confirms fixes are needed, follow `/comet-verify`'s verification-failure decision flow back to `/comet-build`
+- "Needs adjustment or re-verification" — do not archive; run `node "<comet-state-script>" transition <change-name> archive-reopen` to return to `phase: verify`, then invoke `/comet-verify`. If verification confirms fixes are needed, follow `/comet-verify`'s verification-failure decision flow back to `/comet-build`
 - "Do not archive yet" — do not run `archive-confirm` or the archive command; keep the active change, `phase: archive`, and `branch_status: pending`, then wait for the user to invoke `/comet-archive` again later
 
 Only after the user selects one of the first two immediate-delivery choices, record that choice and immediately run:
 
 ```bash
-node "$COMET_STATE" transition <change-name> archive-confirm
+node "<comet-state-script>" transition <change-name> archive-confirm
 ```
 
 If the transition returns a non-zero exit code, report the error and stop. Only after the transition succeeds may Step 2 continue. After the user selects "Needs adjustment or re-verification", must first run the `archive-reopen` state transition; do not edit `.comet.yaml` manually. After the user selects "Do not archive yet", stop immediately; do not archive, commit, push, or set `branch_status` to `handled`.
@@ -62,7 +62,7 @@ If the transition returns a non-zero exit code, report the error and stop. Only 
 Run the archive script:
 
 ```bash
-node "$COMET_ARCHIVE" "<change-name>"
+node "<comet-archive-script>" "<change-name>"
 ```
 
 The script automatically executes:
@@ -99,8 +99,8 @@ The archive script only moves files and merges the spec; it does not commit. Aft
 First persist the confirmed delivery choice into archived state, then run the final archive guard:
 
 ```bash
-node "$COMET_STATE" set <change-name> branch_status handled
-node "$COMET_GUARD" <change-name> archive
+node "<comet-state-script>" set <change-name> branch_status handled
+node "<comet-guard-script>" <change-name> archive
 ```
 
 Here, `handled` means only that the user confirmed how to deliver this complete archive commit remotely. It does not mean that push or PR creation has succeeded. Stop without committing or performing remote operations if the state write or guard fails.
@@ -126,7 +126,7 @@ After the archive commit succeeds, perform only the remote delivery method the u
 
 If push fails, report the error and retain the current selection record; do not clear selection or report completion. Within the current task, retry only that same push. If PR creation fails, the branch already contains the complete archive commit; report the error and retain the current selection record. Within the current task, retry only PR creation. Do not automatically switch, delete, rebase, or rewrite branches after failure.
 
-Only after every remote delivery operation selected by the user succeeds may you run `node "$COMET_STATE" clear-selection` and report the Classic workflow complete.
+Only after every remote delivery operation selected by the user succeeds may you run `node "<comet-state-script>" clear-selection` and report the Classic workflow complete.
 
 Archive no longer invokes Superpowers `finishing-a-development-branch`. Local merge, keeping a branch for later, or postponing push does not immediately produce final remote state, so the user must choose "Do not archive yet" in Step 1 rather than choosing it after archive.
 
@@ -136,13 +136,13 @@ Archive no longer invokes Superpowers `finishing-a-development-branch`. Local me
 - Archive directory `<classic-archive-root>/YYYY-MM-DD-<change-name>/` exists
 - Archived `.comet.yaml` contains `archived: true`
 - Archived `branch_status: handled` is included in the only archive commit
-- `node "$COMET_GUARD" <change-name> archive` passes
+- `node "<comet-guard-script>" <change-name> archive` passes
 - The only archive commit was pushed successfully using the delivery method confirmed before archive; if the user selected PR creation, the PR was created successfully
 - Current selection was cleared after remote delivery succeeded
 
 The archive script moves `<classic-change-dir>/` to `<classic-archive-root>/YYYY-MM-DD-<name>/`.
 
-`node "$COMET_GUARD" <change-name> archive` resolves the actual archive directory from the original change name; do not construct a dated archive path manually.
+`node "<comet-guard-script>" <change-name> archive` resolves the actual archive directory from the original change name; do not construct a dated archive path manually.
 
 ## Complete
 

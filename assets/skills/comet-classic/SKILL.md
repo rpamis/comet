@@ -24,16 +24,16 @@ Agents need only read this section for decision-making. Refer to the Reference A
 
 ### Output Language Rule
 
-Use the configured Comet artifact language as the output language for every OpenSpec and Superpowers artifact. The configured value is a normalized language id, `en` or `zh-CN`. For an existing change, read `language` from `<classic-change-dir>/.comet.yaml` using `node "$COMET_STATE" get <name> language`. Before `.comet.yaml` exists, read `classic.language` from project `.comet/config.yaml`, then fall back to global `~/.comet/config.yaml`; if neither exists, fall back to the current user request language. Include the resolved language explicitly in every prompt or ARGUMENTS passed to external OpenSpec/Superpowers skills.
+Use the configured Comet artifact language as the output language for every OpenSpec and Superpowers artifact. The configured value is a normalized language id, `en` or `zh-CN`. For an existing change, read `language` from `<classic-change-dir>/.comet.yaml` using `node "<comet-state-script>" get <name> language`. Before `.comet.yaml` exists, read `classic.language` from project `.comet/config.yaml`, then fall back to global `~/.comet/config.yaml`; if neither exists, fall back to the current user request language. Include the resolved language explicitly in every prompt or ARGUMENTS passed to external OpenSpec/Superpowers skills.
 
 ### Automatic Phase Detection
 
 **Step 0: Active Change Discovery and Intent Resolution**
 
-1. First load script locations through `comet/reference/scripts.md` and ensure `$COMET_INTENT` is available.
+1. First load script locations through `comet/reference/scripts.md` and ensure `<comet-intent-script>` is available.
 2. Run `comet classic openspec -- list --json` to collect active changes.
 3. Fill a `CometIntentFrame` from the user request, active change list, and necessary repository state.
-4. Prefer `node "$COMET_INTENT" route --stdin` to pass the frame JSON and get the runtime-normalized route. `CometIntentFrame + runtime scorer` is the source of truth; this prose is only for intent recognition slot extraction.
+4. Prefer `node "<comet-intent-script>" route --stdin` to pass the frame JSON and get the runtime-normalized route. `CometIntentFrame + runtime scorer` is the source of truth; this prose is only for intent recognition slot extraction.
 5. Handle the runtime route:
    - `hotfix` → invoke `/comet-hotfix`
    - `tweak` → invoke `/comet-tweak`
@@ -45,7 +45,7 @@ Use the configured Comet artifact language as the output language for every Open
 After the runtime route, Ambient Resume, or user choice resolves one explicit change, bind the current execution context before entering its phase Skill:
 
 ```bash
-node "$COMET_STATE" select <change-name>
+node "<comet-state-script>" select <change-name>
 ```
 
 When multiple active changes exist and the user has not selected one, do not bind early; keep the existing `ask_user` decision point.
@@ -55,7 +55,7 @@ When multiple active changes exist and the user has not selected one, do not bin
 When the user did not explicitly invoke `/comet-classic`, but this repository may already have an active Comet change, run the read-only probe before starting work that may need code changes or investigation:
 
 ```bash
-node "$COMET_RESUME_PROBE" probe --stdin
+node "<comet-resume-probe-script>" probe --stdin
 ```
 
 The probe only reads repository state. Follow the returned action:
@@ -128,7 +128,7 @@ Prefer reading `<classic-change-dir>/.comet.yaml`. If not available, fall back t
 - On every context resume, rerun Step 0 and Step 1; do not trust conversation history for phase detection
 - If there is an active change and the worktree has uncommitted changes, handle them through `comet/reference/dirty-worktree.md`. That protocol defines checks, attribution, and prohibitions; this file does not repeat them
 - If `phase: build`, first check `build_pause`, `plan`, `isolation`, `build_mode`, `tdd_mode`, and `review_mode` (see details below):
-  - If `build_pause: plan-ready` but `isolation`, `build_mode`, `tdd_mode`, and `review_mode` are all already set, treat as stale pause: first output `[COMET] Detected stale pause (build_pause=plan-ready but isolation/build_mode/tdd_mode/review_mode are set), auto-clearing and continuing`, then run `node "$COMET_STATE" set <name> build_pause null`, then read the next unchecked task from tasks.md and resume execution per `build_mode`
+  - If `build_pause: plan-ready` but `isolation`, `build_mode`, `tdd_mode`, and `review_mode` are all already set, treat as stale pause: first output `[COMET] Detected stale pause (build_pause=plan-ready but isolation/build_mode/tdd_mode/review_mode are set), auto-clearing and continuing`, then run `node "<comet-state-script>" set <name> build_pause null`, then read the next unchecked task from tasks.md and resume execution per `build_mode`
   - If `build_pause: plan-ready` and the plan file exists, but `isolation`, `build_mode`, `tdd_mode`, or `review_mode` is not yet set, return to the `/comet-build` plan-ready resume point, prompt the user to complete/confirm workspace isolation, execution method, TDD mode, and code review mode, and do not regenerate the plan
   - If `build_pause: plan-ready` but the plan file is missing, return to `/comet-build` to handle corrupted state or regenerate the plan
   - If `isolation`, `build_mode`, `tdd_mode`, or `review_mode` is unset, return to the corresponding `/comet-build` step to supplement before executing
@@ -136,7 +136,7 @@ Prefer reading `<classic-change-dir>/.comet.yaml`. If not available, fall back t
     - If `build_mode: subagent-driven-development`, do not execute tasks directly in the main window; return to `/comet-build`'s background subagent dispatch rules, main window only coordinates
     - Other execution modes follow `/comet-build`'s corresponding rules
 - If `verify_result: fail`, read `verify_failures`. At 3 or fewer failures, invoke `/comet-build` directly to continue the recorded repair loop without re-asking. Above the automatic limit, return to `/comet-verify` for the exception decision. User input is required only to accept a WARNING/SUGGESTION deviation or choose a strategy after the retry limit
-- If `phase: open` but OpenSpec `applyRequires` is complete, run `node "$COMET_GUARD" <change-name> open --apply` to repair state, then continue detection
+- If `phase: open` but OpenSpec `applyRequires` is complete, run `node "<comet-guard-script>" <change-name> open --apply` to repair state, then continue detection
 - If `phase: archive`, only invoke `/comet-archive`; confirm first, archive, commit exact archive paths, then handle the branch and run the archive guard
 
 **Step 2: Phase Determination** (check in order, first match wins)
@@ -158,11 +158,11 @@ hotfix/tweak scope assessment uses a three-layer division of labor, avoiding "us
 
 1. **Qualitative-change signals** (agent semantic recognition; hitting any one pauses and delegates a two-choice decision to the user): cross-module coordinated change, new capability needed, database schema change, introduces new public API, hits deep architecture issues (each preset reuses this core signal set and may add its own context-specific signal, such as tweak's "needing to split into multiple OpenSpec changes")
 2. **File-count tripwire** (user decides; not an automatic upgrade): when changed files exceed a hint threshold, pause and let the user decide whether to continue the preset or upgrade to full; do not auto-kick
-3. **Verification weight** (scale script decides): `node "$COMET_STATE" scale` only decides `verify_mode` (verification weight); it does not block the flow or trigger an upgrade
+3. **Verification weight** (scale script decides): `node "<comet-state-script>" scale` only decides `verify_mode` (verification weight); it does not block the flow or trigger an upgrade
 
 **Upgrade decision point (user chooses one of two)**:
 - Continue the preset lightweight flow (user confirms scope is manageable)
-- Upgrade to full `/comet-classic` (use `node "$COMET_STATE" transition <name> preset-escalate` to legally rewind to design and clear preset-only build settings; after the Design Doc, choose the full workflow configuration again in one joint decision)
+- Upgrade to full `/comet-classic` (use `node "<comet-state-script>" transition <name> preset-escalate` to legally rewind to design and clear preset-only build settings; after the Design Doc, choose the full workflow configuration again in one joint decision)
 
 See the "Upgrade Assessment" section of each `comet-hotfix` / `comet-tweak` for detailed rules.
 
@@ -172,8 +172,8 @@ See the "Upgrade Assessment" section of each `comet-hotfix` / `comet-tweak` for 
 |----------|----------|
 | `comet classic openspec -- list --json` fails | Check whether OpenSpec is installed; if the artifact root is missing or damaged, prompt the user to run `comet update --scope project` or rerun `comet init --scope project` |
 | Sub-skill unavailable | Stop workflow, prompt to install or enable the corresponding skill |
-| `.comet.yaml` missing | Enter the relevant preset's `/comet-open` initialization, then run `node "$COMET_STATE" select`; never skip initialization |
-| `.comet.yaml` malformed | Stop and report the parse error; repair from version control, backup, or verifiable artifacts, never overwrite it with `node "$COMET_STATE" set` |
+| `.comet.yaml` missing | Enter the relevant preset's `/comet-open` initialization, then run `node "<comet-state-script>" select`; never skip initialization |
+| `.comet.yaml` malformed | Stop and report the parse error; repair from version control, backup, or verifiable artifacts, never overwrite it with `node "<comet-state-script>" set` |
 | Build/test fails | Return to build phase for fixes, do not enter verify |
 | Incomplete change directory structure | Fill missing files according to `comet-open` artifact requirements |
 
@@ -186,7 +186,7 @@ Flow chain: open → design → build → verify → archive
 
 **Continuous execution requirement**: starting from the detected phase, the agent automatically continues through all later phases. But **auto-advancing only applies at transition points without user decisions**. When encountering user decision points, **must use the current platform's available user input/confirmation mechanism to pause and wait for the user's explicit response**. Must not use recommendation rules, defaults, or historical preferences to substitute for user confirmation, and must not just output a text prompt and then continue executing.
 
-**Distinguish phase advancement vs automatic handoff**: each sub-skill runs phase guard `--apply` before exit to advance the `.comet.yaml` `phase` field. This step **always happens** and is not controlled by `auto_transition`. After that, the sub-skill runs `node "$COMET_STATE" next <name>` to resolve the next action: when `auto_transition` is not `false`, output is `NEXT: auto` (auto-invoke next skill); when `auto_transition` is `false`, output is `NEXT: manual` (do not invoke next skill; return control with `HINT`). `NEXT: manual` is not a user decision point and must not ask whether to continue. Therefore `auto_transition` **only controls next skill invocation, not phase advancement**. Regardless of `auto_transition`, genuine user decision points below remain blocking.
+**Distinguish phase advancement vs automatic handoff**: each sub-skill runs phase guard `--apply` before exit to advance the `.comet.yaml` `phase` field. This step **always happens** and is not controlled by `auto_transition`. After that, the sub-skill runs `node "<comet-state-script>" next <name>` to resolve the next action: when `auto_transition` is not `false`, output is `NEXT: auto` (auto-invoke next skill); when `auto_transition` is `false`, output is `NEXT: manual` (do not invoke next skill; return control with `HINT`). `NEXT: manual` is not a user decision point and must not ask whether to continue. Therefore `auto_transition` **only controls next skill invocation, not phase advancement**. Regardless of `auto_transition`, genuine user decision points below remain blocking.
 
 **Decision points are blocking points**: whenever reaching any of the following nodes, the current `/comet-classic` invocation must stop, and follow the `comet/reference/decision-point.md` protocol to obtain the user's explicit choice. Only after the user explicitly chooses can the corresponding state fields be written and operations executed, then auto-advance resumes.
 
@@ -257,7 +257,7 @@ Agents should not skip these decision points; other unambiguous phase transition
 - Before full workflow leaves build phase, `review_mode` must be selected as `off`, `standard`, or `thorough`
 - `build_mode: direct` is allowed by default only for `hotfix` / `tweak`; full workflow requires `direct_override: true`
 - `build_pause` is not an execution method and must not be written to `build_mode`
-- These constraints are enforced by both `node "$COMET_GUARD" <name> build --apply` and `node "$COMET_STATE" transition <name> build-complete`
+- These constraints are enforced by both `node "<comet-guard-script>" <name> build --apply` and `node "<comet-state-script>" transition <name> build-complete`
 
 ### .comet.yaml Field Reference
 
@@ -285,11 +285,11 @@ See `comet/reference/debug-gate.md` for the complete debug gate protocol.
 
 ### Script Location
 
-Load script locations through `comet/reference/scripts.md` once per session. The bootstrap caches `$COMET_STATE`, `$COMET_GUARD`, `$COMET_HANDOFF`, and `$COMET_ARCHIVE` (plus `$COMET_INTENT` and `$COMET_RESUME_PROBE` for entry routing). Direct bundle invocations are faster than the `comet` CLI shell. Key entry points:
+Load script locations through `comet/reference/scripts.md` once per session. The bootstrap caches `<comet-state-script>`, `<comet-guard-script>`, `<comet-handoff-script>`, and `<comet-archive-script>` (plus `<comet-intent-script>` and `<comet-resume-probe-script>` for entry routing). Direct bundle invocations are faster than the `comet` CLI shell. Key entry points:
 
 ```bash
-node "$COMET_GUARD" <change-name> <phase> --apply             # phase guard + state update
-node "$COMET_STATE" transition <change-name> <event>          # open-complete | design-complete | build-complete | verify-pass | verify-fail
-node "$COMET_STATE" next <change-name>                        # NEXT: auto|manual|done + SKILL: <skill-name>
-node "$COMET_ARCHIVE" <change-name>                           # full archive in one command
+node "<comet-guard-script>" <change-name> <phase> --apply             # phase guard + state update
+node "<comet-state-script>" transition <change-name> <event>          # open-complete | design-complete | build-complete | verify-pass | verify-fail
+node "<comet-state-script>" next <change-name>                        # NEXT: auto|manual|done + SKILL: <skill-name>
+node "<comet-archive-script>" <change-name>                           # full archive in one command
 ```

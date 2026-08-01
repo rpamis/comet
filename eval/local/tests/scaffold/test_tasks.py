@@ -226,12 +226,16 @@ def test_native_task_uses_its_own_skill_contract():
     assert task.config.evaluation.profile == "generic"
     assert task.config.evaluation.required_skills == ["comet-native"]
     assert task.config.evaluation.require_skill_invocation is True
-    assert task.config.interaction.mode == "none"
+    assert task.config.interaction.mode == "auto_user"
+    assert task.config.interaction.max_turns == 4
+    assert task.config.interaction.decision_reply.startswith("I confirm")
+    assert "continue the same change" in task.config.interaction.continue_prompt
     prompt = task.render_prompt()
     assert prompt.startswith("You are working on a Python project")
     assert "Begin by invoking the `/comet-native` Skill" in prompt
     assert "/comet` Skill/slash command" not in prompt
     assert "current typed acceptance and required-check receipts" in prompt
+    assert "required final shared-understanding confirmation" in prompt
 
 
 def test_native_clarification_task_requires_one_decision_and_confirmed_resume():

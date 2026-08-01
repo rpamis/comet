@@ -1,10 +1,18 @@
-import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
+import type {
+  ClassicCommandHandler,
+  ClassicCommandName,
+  ClassicCommandResult,
+} from './classic-cli.js';
 
-function jsonResult(result: ClassicCommandResult): ClassicCommandResult {
+function jsonResult(
+  command: ClassicCommandName,
+  result: ClassicCommandResult,
+): ClassicCommandResult {
   return {
     exitCode: result.exitCode,
     stdout:
       JSON.stringify({
+        command,
         exitCode: result.exitCode,
         ...(result.stdout === undefined ? {} : { stdout: result.stdout }),
         ...(result.stderr === undefined ? {} : { stderr: result.stderr }),
@@ -13,6 +21,7 @@ function jsonResult(result: ClassicCommandResult): ClassicCommandResult {
 }
 
 export async function runClassicScript(
+  command: ClassicCommandName,
   handler: ClassicCommandHandler,
   argv: readonly string[] = process.argv.slice(2),
 ): Promise<number> {
@@ -28,7 +37,7 @@ export async function runClassicScript(
     };
   }
 
-  const output = json ? jsonResult(result) : result;
+  const output = json ? jsonResult(command, result) : result;
   if (output.stdout) process.stdout.write(output.stdout);
   if (output.stderr)
     process.stderr.write(output.stderr + (output.stderr.endsWith('\n') ? '' : '\n'));

@@ -2796,43 +2796,46 @@ export async function createNativeContentSnapshot(
     }
   } else {
     await options.gitSelectionHooks?.afterInitialSelection?.();
-    // Incremental path: build a baseline index keyed by (path, gitObjectId) so
-    // the loop below can reuse baseline hashes for unchanged files. Only
-    // enabled when every baseline entry carries a gitObjectId (legacy
-    // manifests without it degrade to the full-capture path).
+    // Incremental path: index only baseline entries that carry a trustworthy
+    // Git object id. Other entries (untracked files, links, legacy manifests,
+    // or files captured from dirty working-tree content) fall back to normal
+    // capture individually instead of disabling reuse for the whole project.
     const incrementalBaseline = options.incrementalBaseline;
     const baselineByPath = new Map<string, NativeSnapshotEntry>();
     let incrementalEnabled = false;
     if (incrementalBaseline) {
       const parsedBaseline = parseNativeContentSnapshotManifest(incrementalBaseline);
-      incrementalEnabled = parsedBaseline.entries.every((entry) => entry.gitObjectId !== undefined);
-      if (incrementalEnabled) {
-        for (const entry of parsedBaseline.entries) baselineByPath.set(entry.path, entry);
+      for (const entry of parsedBaseline.entries) {
+        if (entry.gitObjectId !== undefined) baselineByPath.set(entry.path, entry);
       }
+      incrementalEnabled = baselineByPath.size > 0;
     }
     // Detect files modified in the working tree but not yet staged. Git index
     // object ids do not reflect unstaged edits, so such files must be
-    // re-captured even when their staged object id matches baseline.
+    // re-captured even when their staged object id matches baseline. This
+    // probe also protects newly-created baselines from binding a working-tree
+    // hash to an unrelated index object id.
     const workingTreeModified = new Set<string>();
-    if (incrementalEnabled) {
-      try {
-        const modifiedOutput = await runGitBoundedOutput(
-          execution,
-          projectRoot,
-          ['ls-files', '--modified', '-z'],
-          GIT_TEXT_STDOUT_LIMIT,
-        );
-        for (const raw of modifiedOutput.toString('utf8').split('\0')) {
-          const modifiedPath = safeGitProjectPath(raw);
-          if (modifiedPath !== null) workingTreeModified.add(modifiedPath);
-        }
-      } catch {
-        // If --modified fails, conservatively disable incremental reuse so
-        // every file is captured from disk.
-        incrementalEnabled = false;
-        baselineByPath.clear();
+    let gitObjectIdsTrusted = true;
+    try {
+      const modifiedOutput = await runGitBoundedOutput(
+        execution,
+        projectRoot,
+        ['ls-files', '--modified', '-z'],
+        GIT_TEXT_STDOUT_LIMIT,
+      );
+      for (const raw of modifiedOutput.toString('utf8').split('\0')) {
+        const modifiedPath = safeGitProjectPath(raw);
+        if (modifiedPath !== null) workingTreeModified.add(modifiedPath);
       }
+    } catch {
+      // The snapshot can still be captured safely from disk, but neither
+      // baseline reuse nor new object-id bindings are trustworthy.
+      incrementalEnabled = false;
+      gitObjectIdsTrusted = false;
+      baselineByPath.clear();
     }
+    const reusedTrackedPaths = new Set<string>();
     for (const relative of selectionPaths(gitSelection)) {
       if (capturedEntryValidations.has(relative)) continue;
       if (!isSnapshotProjectRef(paths, relative)) continue;
@@ -2973,9 +2976,15 @@ export async function createNativeContentSnapshot(
         // TOCTOU window and revalidateCapturedEntries correctly skips it.
         entries.push({ ...baselineEntry });
         totalBytes += baselineEntry.size;
+        reusedTrackedPaths.add(relative);
         continue;
       }
-      await captureFile(target, relative, before, currentObjectId);
+      await captureFile(
+        target,
+        relative,
+        before,
+        gitObjectIdsTrusted && !workingTreeModified.has(relative) ? currentObjectId : undefined,
+      );
     }
     await revalidateCapturedEntries();
     await finalizeNativeGitSnapshotSelection(
@@ -2985,6 +2994,29 @@ export async function createNativeContentSnapshot(
       gitSelection,
       options.gitSelectionHooks?.outputChunkBytes,
     );
+    if (reusedTrackedPaths.size > 0) {
+      const modifiedAfter = await runGitBoundedOutput(
+        execution,
+        projectRoot,
+        ['ls-files', '--modified', '-z'],
+        GIT_TEXT_STDOUT_LIMIT,
+      );
+      const finalWorkingTreeModified = new Set<string>();
+      for (const raw of modifiedAfter.toString('utf8').split('\0')) {
+        const modifiedPath = safeGitProjectPath(raw);
+        if (modifiedPath !== null) finalWorkingTreeModified.add(modifiedPath);
+      }
+      for (const relative of reusedTrackedPaths) {
+        if (!finalWorkingTreeModified.has(relative)) continue;
+        const entry = entries.find((candidate) => candidate.path === relative);
+        invalidateCapturedEntry(relative, {
+          path: relative,
+          size: entry?.size ?? null,
+          type: 'file',
+          reason: 'changed-during-read',
+        });
+      }
+    }
     for (const omission of gitSelection.omissions) omit(omission);
     if (gitSelection.overflow) foldGitSelectionOverflow(gitSelection.overflow);
   }

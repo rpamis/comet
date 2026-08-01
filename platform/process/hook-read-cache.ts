@@ -19,7 +19,7 @@
  */
 
 interface CacheEntry {
-  promise: Promise<unknown>;
+  value: unknown;
 }
 
 interface HookReadCacheScope {
@@ -75,10 +75,10 @@ export function memoizedHookRead<TArgs extends unknown[], TResult>(
     if (scope === null) {
       return factory(...args);
     }
-    const key = cacheKey(factoryName, args);
+    const key = cacheKey(`async:${factoryName}`, args);
     const existing = scope.entries.get(key);
     if (existing) {
-      return existing.promise as Promise<TResult>;
+      return existing.value as Promise<TResult>;
     }
     const promise = factory(...args).catch((error) => {
       // Do not cache failures; a later caller in the same Hook may succeed
@@ -87,7 +87,7 @@ export function memoizedHookRead<TArgs extends unknown[], TResult>(
       scope.entries.delete(key);
       throw error;
     });
-    scope.entries.set(key, { promise });
+    scope.entries.set(key, { value: promise });
     return promise as Promise<TResult>;
   };
 }
@@ -107,18 +107,13 @@ export function memoizedHookReadSync<TArgs extends unknown[], TResult>(
     if (scope === null) {
       return factory(...args);
     }
-    const key = cacheKey(factoryName, args);
+    const key = cacheKey(`sync:${factoryName}`, args);
     const existing = scope.entries.get(key);
     if (existing) {
-      return existing.promise as TResult;
+      return existing.value as TResult;
     }
-    let result: TResult;
-    try {
-      result = factory(...args);
-    } catch (error) {
-      throw error;
-    }
-    scope.entries.set(key, { promise: Promise.resolve(result as unknown) });
+    const result = factory(...args);
+    scope.entries.set(key, { value: result });
     return result;
   };
 }

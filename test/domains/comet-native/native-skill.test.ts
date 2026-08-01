@@ -30,9 +30,9 @@ describe('Comet Native Skills', () => {
           'native.clarification_mode',
           'native.archive_confirmation',
           'native.max_verify_failures',
-          'comet native select <change-name>',
-          'comet native next <change-name>',
-          'comet native archive <change-name> --dry-run',
+          'node "<comet-native-select-script>" <change-name>',
+          'node "<comet-native-next-script>" <change-name>',
+          'node "<comet-native-archive-script>" <change-name> --dry-run',
           '持续执行 Build → Verify',
           '`await-user`',
           '`blocked`',
@@ -54,9 +54,9 @@ describe('Comet Native Skills', () => {
           'native.clarification_mode',
           'native.archive_confirmation',
           'native.max_verify_failures',
-          'comet native select <change-name>',
-          'comet native next <change-name>',
-          'comet native archive <change-name> --dry-run',
+          'node "<comet-native-select-script>" <change-name>',
+          'node "<comet-native-next-script>" <change-name>',
+          'node "<comet-native-archive-script>" <change-name> --dry-run',
           'Continue Build → Verify',
           '`await-user`',
           '`blocked`',
@@ -88,12 +88,23 @@ describe('Comet Native Skills', () => {
     }
   });
 
+  it('finds installed scripts from the host-provided base directory or Claude workspace roots', async () => {
+    for (const language of ['en', 'zh'] as const) {
+      const source = await read(language, 'SKILL.md');
+      expect(source).toContain('Base directory');
+      expect(source).toContain('"$PWD/../.claude/skills"');
+      expect(source).toContain('"$HOME/.claude/skills"');
+      expect(source).toContain('[ -d "$root" ] || continue');
+      expect(source).toContain('"$PWD/../.claude/skills", "$HOME/.claude/skills"');
+    }
+  });
+
   it('makes the acceptance-gap completion loop explicit', async () => {
     const variants = [
       {
         language: 'zh' as const,
         terms: [
-          'status <change-name> --details',
+          'node "<comet-native-status-script>" <change-name> --details',
           'failed/missing acceptance',
           'checkpoint 不是完成证据',
           '执行一次完整审查',
@@ -106,7 +117,7 @@ describe('Comet Native Skills', () => {
       {
         language: 'en' as const,
         terms: [
-          'status <change-name> --details',
+          'node "<comet-native-status-script>" <change-name> --details',
           'failed or missing acceptance items',
           'a checkpoint is not completion evidence',
           'perform one complete review',
@@ -250,7 +261,7 @@ describe('Comet Native Skills', () => {
       expect(artifacts).toContain('# Acceptance examples');
       expect(artifacts).toContain('# Verification expectations');
       expect(artifacts).toContain('# Acceptance evidence');
-      expect(artifacts).toContain('comet native evidence format');
+      expect(artifacts).toContain('node "<comet-native-evidence-script>" format');
       expect(artifacts).toContain('"status": "passed"');
       expect(artifacts).toContain('"status": "failed"');
       expect(artifacts).not.toContain('"status": "waived"');
@@ -274,23 +285,23 @@ describe('Comet Native Skills', () => {
     for (const language of ['en', 'zh'] as const) {
       const commands = await read(language, 'reference/commands.md');
       for (const command of [
-        'init',
-        'root show',
-        'root move',
-        'new',
-        'spec remove',
-        'spec rebase',
-        'show',
-        'status',
-        'select',
-        'checkpoint',
-        'check',
-        'evidence format',
-        'receipt manual',
-        'receipt automated',
-        'next',
-        'archive',
-        'doctor',
+        '<comet-native-init-script>',
+        '<comet-native-root-script>" show',
+        '<comet-native-root-script>" move',
+        '<comet-native-new-script>',
+        '<comet-native-spec-script>" remove',
+        '<comet-native-spec-script>" rebase',
+        '<comet-native-show-script>',
+        '<comet-native-status-script>',
+        '<comet-native-select-script>',
+        '<comet-native-checkpoint-script>',
+        '<comet-native-check-script>',
+        '<comet-native-evidence-script>" format',
+        '<comet-native-receipt-script>" manual',
+        '<comet-native-receipt-script>" automated',
+        '<comet-native-next-script>',
+        '<comet-native-archive-script>',
+        '<comet-native-doctor-script>',
       ]) {
         expect(commands, `${language}: ${command}`).toContain(command);
       }
@@ -436,9 +447,9 @@ describe('Comet Native Skills', () => {
   it('uses recovery as an actionable runbook rather than a Runtime design document', async () => {
     for (const language of ['en', 'zh'] as const) {
       const recovery = await read(language, 'reference/recovery.md');
-      expect(recovery).toContain('comet native doctor [<change-name>]');
+      expect(recovery).toContain('node "<comet-native-doctor-script>" [<change-name>]');
       expect(recovery).toContain('baseline-snapshot-missing');
-      expect(recovery).toContain('comet native spec rebase <change-name>');
+      expect(recovery).toContain('node "<comet-native-spec-script>" rebase <change-name>');
       expect(recovery).toContain('--strategy continue');
       expect(recovery).toContain('--strategy rollback');
       expect(recovery).toContain('pending_root_move');

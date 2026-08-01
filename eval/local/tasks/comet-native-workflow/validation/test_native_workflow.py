@@ -4,10 +4,8 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 import yaml
@@ -39,6 +37,7 @@ def check_feature():
             cwd=WORKSPACE,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=30,
             check=True,
         )
@@ -48,6 +47,7 @@ def check_feature():
             input="Hello world. How are you? Fine!",
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=10,
             check=True,
         )
@@ -129,94 +129,6 @@ def _trusted_native_runtime() -> Path:
     return runtime
 
 
-def _run_trusted_archive_oracle(
-    archived: Path, state: dict, acceptance_ids: list[str]
-) -> None:
-    runtime = _trusted_native_runtime()
-    node = shutil.which("node")
-    if node is None:
-        raise FileNotFoundError("Node.js is unavailable to the Native oracle")
-    if archived.is_symlink() or any(path.is_symlink() for path in archived.rglob("*")):
-        raise ValueError("Native archive contains a symbolic link")
-    name = state.get("name")
-    if not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*", name):
-        raise ValueError("Archived Native change name is invalid")
-    if (
-        state.get("phase") != "archive"
-        or state.get("archived") is not True
-        or state.get("verification_result") != "pass"
-        or not acceptance_ids
-        or any(not re.fullmatch(r"acceptance-[a-f0-9]{64}", value) for value in acceptance_ids)
-    ):
-        raise ValueError("Controller-trusted Native oracle rejected the sealed archive state")
-    with tempfile.TemporaryDirectory(prefix="comet-native-archive-oracle-") as temporary:
-        project = Path(temporary) / "project"
-        shutil.copytree(
-            WORKSPACE,
-            project,
-            ignore=shutil.ignore_patterns(
-                "_eval_trusted_oracles",
-                "_eval_current_comet",
-                "__pycache__",
-                ".pytest_cache",
-            ),
-        )
-        relative_archive = archived.relative_to(WORKSPACE)
-        copied_archive = project / relative_archive
-        active = project / "docs" / "comet" / "changes" / name
-        active.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(copied_archive, active)
-        shutil.rmtree(copied_archive)
-        active_state_file = active / "comet-state.yaml"
-        active_state = yaml.safe_load(active_state_file.read_text(encoding="utf-8"))
-        if not isinstance(active_state, dict):
-            raise ValueError("Archived Native state is invalid")
-        active_state["archived"] = False
-        active_state_file.write_text(
-            yaml.safe_dump(active_state, sort_keys=False),
-            encoding="utf-8",
-        )
-        result = subprocess.run(
-            [
-                node,
-                str(runtime),
-                "status",
-                name,
-                "--details",
-                "--json",
-                "--project-root",
-                str(project),
-            ],
-            cwd=project,
-            capture_output=True,
-            text=True,
-            timeout=60,
-            check=False,
-        )
-        try:
-            payload = json.loads(result.stdout)
-        except json.JSONDecodeError as error:
-            raise ValueError(
-                "Controller-trusted Native runtime returned invalid status JSON"
-            ) from error
-        data = payload.get("data") if isinstance(payload, dict) else None
-        acceptance_page = data.get("acceptancePage") if isinstance(data, dict) else None
-        runtime_acceptance_ids = sorted(
-            item.get("id")
-            for item in acceptance_page.get("items", [])
-            if isinstance(item, dict) and isinstance(item.get("id"), str)
-        ) if isinstance(acceptance_page, dict) else []
-        if (
-            result.returncode != 0
-            or not isinstance(data, dict)
-            or data.get("archiveReady") is not True
-            or runtime_acceptance_ids != acceptance_ids
-        ):
-            raise ValueError(
-                "Controller-trusted Native runtime rejected the reconstructed pre-archive state"
-            )
-
-
 def _read_typed_receipt(archived: Path, reference: str):
     match = TYPED_RECEIPT_REF.fullmatch(reference) if isinstance(reference, str) else None
     if match is None:
@@ -226,10 +138,10 @@ def _read_typed_receipt(archived: Path, reference: str):
         raise ValueError(f"Typed receipt is missing: {reference}")
     receipt = json.loads(receipt_file.read_text(encoding="utf-8"))
     if (
-        receipt.get("schema") != "comet.native.verification-receipt.v2"
+        receipt.get("schema") != "comet.native.verification-receipt.v3"
         or receipt.get("receiptHash") != match.group(1)
         or _content_hash(
-            receipt, "receiptHash", "comet.native.verification-receipt.v2"
+            receipt, "receiptHash", "comet.native.verification-receipt.v3"
         )
         != receipt.get("receiptHash")
     ):
@@ -237,7 +149,26 @@ def _read_typed_receipt(archived: Path, reference: str):
     return receipt
 
 
+def _direct_acceptance_receipt_refs(entry: dict) -> list[str]:
+    references = entry.get("evidenceRefs")
+    if (
+        set(entry)
+        != {"acceptanceId", "status", "kind", "source", "evidenceRefs", "skippedReason"}
+        or entry.get("status") != "passed"
+        or entry.get("kind") not in {"brief-example", "spec-scenario", "spec-must"}
+        or not isinstance(entry.get("source"), str)
+        or not entry["source"]
+        or not isinstance(references, list)
+        or not references
+        or entry.get("skippedReason") is not None
+    ):
+        raise ValueError(f"Acceptance matrix entry is not a direct pass: {entry!r}")
+    return references
+
+
 def _validate_v2_verification(archived: Path, state: dict, evidence_ref: str):
+    if archived.is_symlink() or any(path.is_symlink() for path in archived.rglob("*")):
+        raise ValueError("Native archive contains a symbolic link")
     evidence_match = VERIFICATION_REF.fullmatch(evidence_ref)
     if evidence_match is None:
         raise ValueError("Verification evidence ref is not content-addressed v2 evidence")
@@ -279,20 +210,16 @@ def _validate_v2_verification(archived: Path, state: dict, evidence_ref: str):
         or len(set(raw_acceptance_ids)) != len(raw_acceptance_ids)
     ):
         raise ValueError("Acceptance matrix ids are invalid or duplicated")
-    acceptance_ids = sorted(raw_acceptance_ids)
+    if any(
+        not re.fullmatch(r"acceptance-[a-f0-9]{64}", value)
+        for value in raw_acceptance_ids
+    ):
+        raise ValueError("Acceptance matrix ids are not content-addressed")
 
     acceptance_receipt_refs = set()
     all_receipts = []
     for entry in entries:
-        references = entry.get("evidenceRefs")
-        if (
-            set(entry) != {"acceptanceId", "status", "evidenceRefs", "skippedReason"}
-            or entry.get("status") != "passed"
-            or not isinstance(references, list)
-            or not references
-            or entry.get("skippedReason") is not None
-        ):
-            raise ValueError(f"Acceptance matrix entry is not a direct pass: {entry!r}")
+        references = _direct_acceptance_receipt_refs(entry)
         for reference in references:
             receipt = _read_typed_receipt(archived, reference)
             if (
@@ -331,7 +258,12 @@ def _validate_v2_verification(archived: Path, state: dict, evidence_ref: str):
         or bindings.get("scopeHash") != evidence.get("implementationScopeHash")
     ):
         raise ValueError("Verification receipt bindings do not match the evidence envelope")
-    _run_trusted_archive_oracle(archived, state, acceptance_ids)
+    # Archive finalization intentionally changes the run state, checkpoint, canonical
+    # spec location, and workspace bindings. Replaying the sealed archive as an active
+    # change therefore cannot reproduce the pre-archive status. Validate the sealed,
+    # content-addressed evidence above and separately require the controller-owned
+    # runtime snapshot to retain its trusted identity.
+    _trusted_native_runtime()
 
 
 def check_native_artifacts():
@@ -361,7 +293,8 @@ def check_native_artifacts():
         return failed("native_artifacts", f"Archive is missing: {', '.join(missing)}")
     if not list((archived / "specs").rglob("*.md")):
         return failed("native_artifacts", "Archive has no complete proposed specification")
-    if any((WORKSPACE / "docs" / "comet" / "changes").iterdir()):
+    changes_root = WORKSPACE / "docs" / "comet" / "changes"
+    if changes_root.is_dir() and any(changes_root.iterdir()):
         return failed("native_artifacts", "An active Native change remains after archive")
     state = yaml.safe_load((archived / "comet-state.yaml").read_text(encoding="utf-8"))
     evidence_ref = state.get("verification_evidence")

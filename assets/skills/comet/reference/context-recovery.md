@@ -9,17 +9,17 @@ This protocol is shared by all comet sub-skills that may trigger context compres
 The user may resume the workflow directly from `/comet-open`, `/comet-design`, `/comet-build`, `/comet-verify`, `/comet-archive`, `/comet-hotfix`, or `/comet-tweak`. On entry to any sub-skill, first locate scripts via `comet/reference/scripts.md`, then run the entry check or recovery check for that sub-skill's phase. Do not infer phase from conversation history.
 
 ```bash
-node "$COMET_STATE" check <change-name> <phase> --recover
+node "<comet-state-script>" check <change-name> <phase> --recover
 ```
 
 If the check shows the actual phase, workflow, or evidence belongs to another skill, switch according to script output and `/comet-classic` routing rules; do not keep writing state in the wrong phase. If the worktree has uncommitted changes, attribute them first via `comet/reference/dirty-worktree.md`.
 
 ## Recovery Without Explicit `/comet-classic`
 
-If the user did not mention `/comet-classic`, but this repository may have an active change, run the Ambient Resume probe before starting work that may need code changes or investigation. First locate scripts via `comet/reference/scripts.md` and ensure `$COMET_RESUME_PROBE` is available, then pass the current user request on stdin:
+If the user did not mention `/comet-classic`, but this repository may have an active change, run the Ambient Resume probe before starting work that may need code changes or investigation. First locate scripts via `comet/reference/scripts.md` and ensure `<comet-resume-probe-script>` is available, then pass the current user request on stdin:
 
 ```bash
-node "$COMET_RESUME_PROBE" probe --stdin
+node "<comet-resume-probe-script>" probe --stdin
 ```
 
 Only `auto_resume` should resume automatically; `ask_user` must ask one short question; `out_of_scope` and `none` do not enter the workflow.
@@ -27,7 +27,7 @@ Only `auto_resume` should resume automatically; `ask_user` must ask one short qu
 ## Recovery Steps
 
 ```bash
-node "$COMET_STATE" check <change-name> <phase> --recover
+node "<comet-state-script>" check <change-name> <phase> --recover
 ```
 
 The script outputs structured recovery context (phase, completed fields, pending fields, recovery action). Follow the **Recovery action** output for next steps.

@@ -37,7 +37,7 @@ describe('Chinese Comet entry Skills', () => {
     expect(source).toContain('name: comet-classic');
     expect(source).toContain('OpenSpec');
     expect(source).toContain('Superpowers');
-    expect(source).toContain('comet state select <change-name>');
+    expect(source).toContain('node "<comet-state-script>" select <change-name>');
     expect(source).toContain('/comet-open');
     expect(source).toContain('/comet-build');
     expect(source).toContain('comet/reference/scripts.md');
@@ -109,7 +109,7 @@ describe('English Comet entry Skills', () => {
     expect(source).toContain('name: comet-classic');
     expect(source).toContain('OpenSpec');
     expect(source).toContain('Superpowers');
-    expect(source).toContain('comet state select <change-name>');
+    expect(source).toContain('node "<comet-state-script>" select <change-name>');
     expect(source).toContain('/comet-open');
     expect(source).toContain('/comet-build');
     expect(source).toContain('comet/reference/scripts.md');

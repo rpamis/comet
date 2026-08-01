@@ -24,6 +24,7 @@ function jsonResult(result: DispatchResult): NativeCommandResult {
  * own dependency graph instead of the full Native runtime.
  */
 export async function runNativeScript(
+  command: string,
   handler: NativeScriptHandler,
   argv: readonly string[] = process.argv.slice(2),
 ): Promise<number> {
@@ -40,7 +41,7 @@ export async function runNativeScript(
     const projectRoot = await projectRootFrom(explicitProjectRoot);
     result = await handler(dispatchArgs, projectRoot);
   } catch (error) {
-    result = errorResult(null, error);
+    result = errorResult(command, error);
   }
   const output = json ? jsonResult(result) : render(result, false);
   if (output.stdout) process.stdout.write(output.stdout);

@@ -15,18 +15,18 @@ Before starting or recovering, read and follow `comet/reference/classic-layout.m
 
 ### 0. Output Language Constraint
 
-Every prompt and artifact request passed to OpenSpec must include the resolved Comet artifact language, using normalized ids such as `en` or `zh-CN`. Before `.comet.yaml` exists, read `classic.language` from project `.comet/config.yaml`, then fall back to global `~/.comet/config.yaml`; after the change is initialized, use `node "$COMET_STATE" get <name> language`. If no configured language exists, fall back to the current user request language. The generated `proposal.md`, `design.md`, and `tasks.md` must use that language as their main language.
+Every prompt and artifact request passed to OpenSpec must include the resolved Comet artifact language, using normalized ids such as `en` or `zh-CN`. Before `.comet.yaml` exists, read `classic.language` from project `.comet/config.yaml`, then fall back to global `~/.comet/config.yaml`; after the change is initialized, use `node "<comet-state-script>" get <name> language`. If no configured language exists, fall back to the current user request language. The generated `proposal.md`, `design.md`, and `tasks.md` must use that language as their main language.
 
 ### 0a. Current Change Binding
 
 When resuming an existing change, inspect `<classic-change-dir>/.comet.yaml` first:
 
 - If it exists and parses, select the change as the first state operation
-- If it is missing but the change directory is valid, run `node "$COMET_STATE" init <change-name> full`, then select the change
+- If it is missing but the change directory is valid, run `node "<comet-state-script>" init <change-name> full`, then select the change
 - If it is malformed, stop and report the parse error; repair it manually from version control, a backup, or verifiable artifacts before continuing, and never overwrite a damaged file with `state set`
 
 ```bash
-node "$COMET_STATE" select <change-name>
+node "<comet-state-script>" select <change-name>
 ```
 
 When creating a new change, initialize `.comet.yaml` first, then immediately run the same command; never fabricate a selection before state exists.
@@ -96,7 +96,7 @@ In batch split mode, a single split item must not auto-advance to `/comet-design
 
 ```bash
 comet classic openspec -- status --change "<name>" --json
-node "$COMET_STATE" check <name> design
+node "<comet-state-script>" check <name> design
 ```
 
 The OpenSpec JSON must satisfy all of these conditions:
@@ -144,9 +144,9 @@ Use the Step 1b resolved brief directly to populate artifact content. Fall back 
 Immediately after creating the change skeleton, initialize recoverable state instead of waiting until every artifact is generated:
 
 ```bash
-node "$COMET_STATE" init <name> full
-node "$COMET_STATE" select <name>
-node "$COMET_STATE" check <name> open
+node "<comet-state-script>" init <name> full
+node "<comet-state-script>" select <name>
+node "<comet-state-script>" check <name> open
 ```
 
 Stop if any command fails. Then run `comet classic openspec -- status --change "<name>" --json` once and perform compatibility preflight:
@@ -198,14 +198,14 @@ Confirm the following artifacts have been created:
 Verify state machine has been correctly initialized:
 
 ```bash
-node "$COMET_STATE" check <name> open
+node "<comet-state-script>" check <name> open
 ```
 
 Proceed to Step 4 after verification passes. The script outputs specific failure reasons when verification fails.
 
 **Idempotent recovery algorithm**: all open phase operations can be safely re-executed. On recovery, process the status in this order:
 
-1. If state is missing, run `node "$COMET_STATE" init <name> full`; if malformed, stop and repair it instead of overwriting it. Then select the change and run `node "$COMET_STATE" check <name> open`.
+1. If state is missing, run `node "<comet-state-script>" init <name> full`; if malformed, stop and repair it instead of overwriting it. Then select the change and run `node "<comet-state-script>" check <name> open`.
 2. Run status and revalidate `changeRoot`, core ids, `applyRequires`, `artifacts`, and `missingDeps`.
 3. `done`: keep the artifact unchanged and do not regenerate it.
 4. `ready`: fetch its instructions, write the returned output, and immediately rerun status.
@@ -245,12 +245,12 @@ After user selects "Confirm", proceed to exit conditions. When user selects "Nee
 
 - OpenSpec compatibility preflight passes, every `applyRequires` item is `done`, and required outputs are non-empty
 - **User has confirmed** all OpenSpec artifact content meets expectations
-- **Phase guard**: Run `node "$COMET_GUARD" <change-name> open --apply`; after all PASS, auto-transitions to next phase
+- **Phase guard**: Run `node "<comet-guard-script>" <change-name> open --apply`; after all PASS, auto-transitions to next phase
 
 Must use `--apply` before exit, otherwise `.comet.yaml` remains at `phase: open` and the next phase entry check will fail.
 
 ```bash
-node "$COMET_GUARD" <change-name> open --apply
+node "<comet-guard-script>" <change-name> open --apply
 ```
 
 Full workflow auto-transitions to `phase: design`; hotfix/tweak presets auto-transition to `phase: build`.
@@ -260,7 +260,7 @@ Full workflow auto-transitions to `phase: design`; hotfix/tweak presets auto-tra
 Follow `comet/reference/auto-transition.md`. Key command:
 
 ```bash
-node "$COMET_STATE" next <change-name>
+node "<comet-state-script>" next <change-name>
 ```
 
 - `NEXT: auto` → invoke the skill pointed to by `SKILL` to enter the next phase

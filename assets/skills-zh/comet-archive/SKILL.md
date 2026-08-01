@@ -17,24 +17,24 @@ description: "仅在用户明确调用 /comet-archive，或由 Comet 根 Skill/r
 
 ### 0. 输出语言约束
 
-归档摘要和生命周期闭环说明必须使用 `node "$COMET_STATE" get <name> language` 读取到的 Comet 配置产物语言。
+归档摘要和生命周期闭环说明必须使用 `node "<comet-state-script>" get <name> language` 读取到的 Comet 配置产物语言。
 
 ### 0b. 入口状态验证（Entry Check）
 
 按 `comet/reference/scripts.md` 使用稳定 `comet` CLI，然后执行入口验证；从任意入口恢复时先按 `comet/reference/context-recovery.md` 运行恢复检查：
 
 ```bash
-node "$COMET_STATE" select <change-name>
-node "$COMET_STATE" check <name> archive
+node "<comet-state-script>" select <change-name>
+node "<comet-state-script>" check <name> archive
 ```
 
 验证通过后继续 Step 1。验证失败时脚本会输出具体失败原因。
 
-若上述 `select` / `check` 输出 `BLOCKED`，且原因是 `bound_branch` 与当前分支不一致，立即按 `comet/reference/decision-point.md` 暂停，让用户单选：切回绑定分支后重新运行入口验证，或在用户明确确认当前分支应接管该 change 后运行 `node "$COMET_STATE" rebind <change-name>` 并重新入口验证。不得自行切换分支，不得自行换绑。
+若上述 `select` / `check` 输出 `BLOCKED`，且原因是 `bound_branch` 与当前分支不一致，立即按 `comet/reference/decision-point.md` 暂停，让用户单选：切回绑定分支后重新运行入口验证，或在用户明确确认当前分支应接管该 change 后运行 `node "<comet-state-script>" rebind <change-name>` 并重新入口验证。不得自行切换分支，不得自行换绑。
 
 ### 1. 归档与交付前最终确认（阻塞点）
 
-入口验证通过后，先读取 `node "$COMET_STATE" get <change-name> isolation`，再**按 `comet/reference/decision-point.md` 的协议暂停并等待用户确认是否立即归档和远端交付**。不得在用户确认前运行 `node "$COMET_STATE" transition <change-name> archive-confirm` 或 `node "$COMET_ARCHIVE" "<change-name>"`。
+入口验证通过后，先读取 `node "<comet-state-script>" get <change-name> isolation`，再**按 `comet/reference/decision-point.md` 的协议暂停并等待用户确认是否立即归档和远端交付**。不得在用户确认前运行 `node "<comet-state-script>" transition <change-name> archive-confirm` 或 `node "<comet-archive-script>" "<change-name>"`。
 
 确认前必须向用户展示简短摘要：
 - change 名称
@@ -46,13 +46,13 @@ node "$COMET_STATE" check <name> archive
 用户确认问题必须以单选题形式呈现，包含以下选项：
 - 「确认归档并立即推送」— 完成归档、创建唯一归档提交并推送当前绑定分支
 - 「确认归档、立即推送并创建 PR」— 完成归档、创建唯一归档提交、推送当前绑定分支并创建 PR
-- 「需要调整或重新验证」— 不执行归档；运行 `node "$COMET_STATE" transition <change-name> archive-reopen` 回到 `phase: verify`，再调用 `/comet-verify`。若验证阶段确认需要修复，再按 `/comet-verify` 的验证失败决策回到 `/comet-build`
+- 「需要调整或重新验证」— 不执行归档；运行 `node "<comet-state-script>" transition <change-name> archive-reopen` 回到 `phase: verify`，再调用 `/comet-verify`。若验证阶段确认需要修复，再按 `/comet-verify` 的验证失败决策回到 `/comet-build`
 - 「暂不归档」— 不执行 `archive-confirm` 或归档命令，保留 active change、`phase: archive` 和 `branch_status: pending`，等待用户稍后再次调用 `/comet-archive`
 
 只有用户选择前两个立即交付选项之一后，才记录其选择并立即执行：
 
 ```bash
-node "$COMET_STATE" transition <change-name> archive-confirm
+node "<comet-state-script>" transition <change-name> archive-confirm
 ```
 
 如 transition 返回非零退出码，报告错误并停止。只有 transition 成功后，才允许继续 Step 2。用户选择「需要调整或重新验证」后，必须先执行 `archive-reopen` 状态回退，不得手动编辑 `.comet.yaml`。用户选择「暂不归档」后直接停止，不得归档、提交、推送或把 `branch_status` 设为 `handled`。
@@ -62,7 +62,7 @@ node "$COMET_STATE" transition <change-name> archive-confirm
 运行归档脚本：
 
 ```bash
-node "$COMET_ARCHIVE" "<change-name>"
+node "<comet-archive-script>" "<change-name>"
 ```
 
 脚本自动执行：
@@ -99,8 +99,8 @@ brainstorming → delta spec → 实施 → 验证 → 主 spec 合并 → desig
 先把已确认的交付方式持久化到归档状态，再运行最终 archive guard：
 
 ```bash
-node "$COMET_STATE" set <change-name> branch_status handled
-node "$COMET_GUARD" <change-name> archive
+node "<comet-state-script>" set <change-name> branch_status handled
+node "<comet-guard-script>" <change-name> archive
 ```
 
 这里的 `handled` 只表示用户已经确认如何远端交付这次完整归档提交，不表示 push 或 PR 创建已经成功。状态写入或 guard 失败时停止，不得提交或执行远端操作。
@@ -126,7 +126,7 @@ git commit -m "chore: archive <change-name>"
 
 push 失败时报告错误，保留 current selection 记录，不得清除选择或宣告完成；当前任务中只重试同一个 push。PR 创建失败时分支已经包含完整归档提交，报告错误并保留 current selection 记录；当前任务中只重试创建 PR。不得在失败后自动切换、删除、变基或改写分支。
 
-只有用户选择的远端交付操作全部成功后，才运行 `node "$COMET_STATE" clear-selection` 并宣告 Classic workflow 完成。
+只有用户选择的远端交付操作全部成功后，才运行 `node "<comet-state-script>" clear-selection` 并宣告 Classic workflow 完成。
 
 归档阶段不再调用 Superpowers `finishing-a-development-branch`。本地合并、保留分支稍后处理或暂不推送都不会立即形成远端最终状态，必须在 Step 1 选择「暂不归档」，不能在归档后再选择。
 
@@ -136,13 +136,13 @@ push 失败时报告错误，保留 current selection 记录，不得清除选�
 - 归档目录 `<classic-archive-root>/YYYY-MM-DD-<change-name>/` 存在
 - 归档后的 `.comet.yaml` 中 `archived: true`
 - 归档状态中的 `branch_status: handled` 已包含在唯一归档提交中
-- `node "$COMET_GUARD" <change-name> archive` 通过
+- `node "<comet-guard-script>" <change-name> archive` 通过
 - 唯一归档提交已按用户在归档前确认的方式成功推送；若用户选择创建 PR，PR 已成功创建
 - current selection 已在远端交付成功后清除
 
 归档脚本会把 `<classic-change-dir>/` 移动到 `<classic-archive-root>/YYYY-MM-DD-<name>/`。
 
-`node "$COMET_GUARD" <change-name> archive` 会按原 change 名解析实际归档目录；不要手工拼接日期目录名。
+`node "<comet-guard-script>" <change-name> archive` 会按原 change 名解析实际归档目录；不要手工拼接日期目录名。
 
 ## 完成
 

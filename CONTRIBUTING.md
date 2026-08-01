@@ -369,16 +369,17 @@ Skill design guidance:
 
 ## Workflow Runtimes and Hook Routing
 
-Workflow scripts are **Node.js launchers or generated bundles** (`.mjs`). They
+Workflow scripts are **generated Node.js bundles** (`.mjs`). They
 depend only on Node.js and **never on Bash / Git Bash / WSL**, so behavior is
 identical on macOS, Linux, and Windows.
 
-- Classic thin launchers live in `assets/skills/comet/scripts/`; real logic
-  lives in `domains/comet-classic/` and `pnpm build:classic-runtime` generates
-  `comet-runtime.mjs`.
+- Classic logic and per-command entries live in `domains/comet-classic/`;
+  `pnpm build:classic-runtime` generates the aggregate CLI runtime and one
+  self-contained bundle per command in `assets/skills/comet/scripts/`.
 - Native logic lives in `domains/comet-native/`; `pnpm build:native-runtime`
-  generates `assets/skills/comet-native/scripts/comet-native-runtime.mjs`.
-  The Native core workflow and Guard must not depend on external Skills.
+  generates the aggregate CLI runtime and one self-contained bundle per Native
+  command. The Native core workflow and Guard must not depend on external
+  Skills.
 - Shared entry resolution, selection, and Hook routing live in
   `domains/comet-entry/`; `pnpm build:entry-runtime` generates
   `comet-entry-runtime.mjs` and `comet-hook-router.mjs`.
@@ -386,29 +387,31 @@ identical on macOS, Linux, and Windows.
   support install only `comet-hook-router.mjs`. The Router uses
   `.comet/current-change.json` to invoke exactly one Native or Classic Guard per
   write. Their phases, directories, schemas, and Guard logic remain separate.
-- `comet-hook-guard.mjs` and `comet-native-hook-guard.mjs` are thin launchers
-  for their workflow Guards; neither is installed directly as a platform Hook.
+- `comet-hook-guard.mjs` and `comet-native-hook-guard.mjs` are self-contained
+  workflow Guard command bundles; neither is installed directly as a platform
+  Hook.
 - Cross-platform concerns are handled by Node: hashing via `node:crypto`, YAML
   via the `yaml` package, subprocesses via `child_process`
   (build/validate commands go through `spawnSync(cmd, { shell: true })`). There
   are no `sed -i` / `sha256sum` vs `shasum` / `pipefail` portability hazards.
-- `comet-env.mjs` prints its own directory so skill boilerplate can resolve
-  sibling launcher paths via `node "$COMET_ENV"`. Commands use the unified form
-  `node "$COMET_STATE" ...`.
+- `comet-env.mjs` prints its own directory so Skill instructions can resolve
+  sibling bundle paths once. Instructions record literal absolute paths in task
+  context and must not rely on shell-local variables persisting across tool
+  calls.
 - When adding or renaming an entry or generated output, sync
   `assets/manifest.json`, the matching runtime mapping in
   `config/repository-layout.json`, and the corresponding
-  `test/repository/*-runtime-assets.test.ts`. Classic launchers also require an
+  `test/repository/*-runtime-assets.test.ts`. Classic command bundles also require an
   update to the fixture list in
   `test/domains/comet-classic/comet-scripts.test.ts`.
 
 Runtime dispatch:
 
 ```text
-comet-runtime.mjs        <- domains/comet-classic/*
-comet-native-runtime.mjs <- domains/comet-native/*
-comet-entry-runtime.mjs  <- domains/comet-entry/*
-comet-hook-router.mjs    <- only installed Hook entry -> one Guard selected by current ownership
+comet-runtime.mjs + comet-<command>.mjs               <- domains/comet-classic/*
+comet-native-runtime.mjs + comet-native-<command>.mjs <- domains/comet-native/*
+comet-entry-runtime.mjs                                <- domains/comet-entry/*
+comet-hook-router.mjs                                  <- only installed Hook entry -> one Guard selected by current ownership
 ```
 
 ## `.comet.yaml` State Changes

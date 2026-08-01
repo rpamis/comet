@@ -13,7 +13,7 @@
 当存在多个 active change 时，必须先明确当前 change，再运行：
 
 ```bash
-node "$COMET_STATE" select <change-name>
+node "<comet-state-script>" select <change-name>
 ```
 
 普通源码写入只受已选择 change 的阶段约束。多个 active change 且没有有效选择时，Hook 必须阻塞并提示选择；不得按字母序猜测，也不得让无关 change 的 `open`、`design` 或 `archive` 阶段全局封锁合法 build。单 active change 无选择时可保持自动归属。
@@ -44,7 +44,7 @@ Hook 硬拦截白名单包括 Classic layout resolver 返回的 OpenSpec 与 Sup
 
 预设例外：`workflow: hotfix/tweak` 本就跳过 design，`design_doc` 为空属正常，不算非法。
 
-升级态说明：预设（hotfix/tweak）命中升级信号并经用户确认升级后，通过 `node "$COMET_STATE" transition <name> preset-escalate` 合法地变为 `workflow: full` + `phase: design` + `design_doc: null`，同时清除预设专属 build 配置。此时 `phase: design` + `design_doc` 为空**属正常升级前置态**，不是非法空跳——agent 应进入 `/comet-design` 补 Design Doc，并在 build 重新完成联合工作方式选择。该终态不命中上表「绕过 design 空跳」行（该行仅检测 `phase: build`）。
+升级态说明：预设（hotfix/tweak）命中升级信号并经用户确认升级后，通过 `node "<comet-state-script>" transition <name> preset-escalate` 合法地变为 `workflow: full` + `phase: design` + `design_doc: null`，同时清除预设专属 build 配置。此时 `phase: design` + `design_doc` 为空**属正常升级前置态**，不是非法空跳——agent 应进入 `/comet-design` 补 Design Doc，并在 build 重新完成联合工作方式选择。该终态不命中上表「绕过 design 空跳」行（该行仅检测 `phase: build`）。
 
 ### Skill 调用（不可用普通对话替代）
 
@@ -60,11 +60,11 @@ Hook 硬拦截白名单包括 Classic layout resolver 返回的 OpenSpec 与 Sup
 
 ### 脚本执行（不可跳过）
 
-- **阶段退出**: `node "$COMET_GUARD" <name> <phase> --apply`（必须看到 ALL CHECKS PASSED）
-- **压缩恢复**: `node "$COMET_STATE" check <name> <phase> --recover`
-- **状态更新**: 关键操作后通过 `node "$COMET_STATE" set` 更新字段，禁止手工编辑 .comet.yaml
-- **阶段推进只能经 guard/transition**: 禁止用 `node "$COMET_STATE" set <name> phase <值>` 手动跳阶段；预设升级到 full 必须用 `node "$COMET_STATE" transition <name> preset-escalate`
-- **handoff 生成**: `node "$COMET_HANDOFF" <name> design --write`（禁止手写摘要）
+- **阶段退出**: `node "<comet-guard-script>" <name> <phase> --apply`（必须看到 ALL CHECKS PASSED）
+- **压缩恢复**: `node "<comet-state-script>" check <name> <phase> --recover`
+- **状态更新**: 关键操作后通过 `node "<comet-state-script>" set` 更新字段，禁止手工编辑 .comet.yaml
+- **阶段推进只能经 guard/transition**: 禁止用 `node "<comet-state-script>" set <name> phase <值>` 手动跳阶段；预设升级到 full 必须用 `node "<comet-state-script>" transition <name> preset-escalate`
+- **handoff 生成**: `node "<comet-handoff-script>" <name> design --write`（禁止手写摘要）
 
 ### 用户确认（不可自动跳过）
 
@@ -78,7 +78,7 @@ Hook 硬拦截白名单包括 Classic layout resolver 返回的 OpenSpec 与 Sup
 
 ## Design 阶段专项
 
-1. 第一个脚本操作 = `node "$COMET_HANDOFF" <name> design --write`（未生成 handoff 禁止加载 brainstorming）
+1. 第一个脚本操作 = `node "<comet-handoff-script>" <name> design --write`（未生成 handoff 禁止加载 brainstorming）
 2. brainstorming in progress: incrementally update brainstorm-summary.md（每轮澄清或方案迭代后增量更新恢复检查点，未确认内容标注为待确认/候选）
 3. brainstorming 完成后下一步 = brainstorm-summary.md 定稿 → Design Doc → guard
 4. 主动式上下文压缩只能在 Design Doc、状态和最新 handoff 落盘后按需执行；无法程序化触发时给出非阻塞建议并继续
@@ -93,8 +93,8 @@ Hook 硬拦截白名单包括 Classic layout resolver 返回的 OpenSpec 与 Sup
 
 ## Verify 阶段专项
 
-1. 第一步运行 `node "$COMET_STATE" scale <name>` 确定验证级别
-2. 前 3 次明确可修复失败自动运行 `node "$COMET_STATE" transition <name> verify-fail` 回到 build，并进入 `/comet-build`；CRITICAL/IMPORTANT 不得接受偏差
+1. 第一步运行 `node "<comet-state-script>" scale <name>` 确定验证级别
+2. 前 3 次明确可修复失败自动运行 `node "<comet-state-script>" transition <name> verify-fail` 回到 build，并进入 `/comet-build`；CRITICAL/IMPORTANT 不得接受偏差
 3. `verify_failures` 由状态机维护。达到 `3` 后的下一次失败必须让用户选择继续修复或停止 workflow 寻求外部决策
 4. WARNING/SUGGESTION 只有在修复涉及行为、范围或风险取舍时才询问修复/接受；安全、局部、无取舍的修复自动闭环
 
@@ -103,7 +103,7 @@ Hook 硬拦截白名单包括 Classic layout resolver 返回的 OpenSpec 与 Sup
 如果怀疑发生上下文压缩（之前对话被摘要、找不到之前讨论的内容），立即运行：
 
 ```bash
-node "$COMET_STATE" check <name> <phase> --recover
+node "<comet-state-script>" check <name> <phase> --recover
 ```
 
 按脚本输出的 **Recovery action** 决定下一步。
@@ -124,7 +124,7 @@ node "$COMET_STATE" check <name> <phase> --recover
 guard `--apply` 成功后，不得在本规则中硬编码下一阶段 skill。必须先运行：
 
 ```bash
-node "$COMET_STATE" next <change-name>
+node "<comet-state-script>" next <change-name>
 ```
 
 按脚本输出决定下一步：

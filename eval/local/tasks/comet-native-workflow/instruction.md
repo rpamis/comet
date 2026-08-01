@@ -18,6 +18,6 @@ Begin by invoking the `/comet-native` Skill. Use its bundled Native runtime and 
 - issue current typed acceptance and required-check receipts before archiving the change;
 - implement, verify, and archive the change.
 
-Continue automatically while the requirements are unambiguous. Do not create `openspec/` or any
-hidden `.comet/` workflow artifact beyond `config.yaml`. Do not use Classic, OpenSpec,
-Superpowers, or any external Skill.
+Request the required final shared-understanding confirmation, then continue automatically while the
+remaining requirements are unambiguous. Do not create `openspec/` or any hidden `.comet/` workflow
+artifact beyond `config.yaml`. Do not use Classic, OpenSpec, Superpowers, or any external Skill.

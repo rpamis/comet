@@ -35,10 +35,10 @@ describe('internal Skill assets', () => {
         ),
       );
       expect(chinese, `${name} Chinese selection protocol`).toContain(
-        'comet state select <change-name>',
+        'node "<comet-state-script>" select <change-name>',
       );
       expect(english, `${name} English selection protocol`).toContain(
-        'comet state select <change-name>',
+        'node "<comet-state-script>" select <change-name>',
       );
     }
 
@@ -53,8 +53,12 @@ describe('internal Skill assets', () => {
       fs.readFile(path.resolve('assets/skills-zh/comet-build/SKILL.md'), 'utf8'),
       fs.readFile(path.resolve('assets/skills/comet-build/SKILL.md'), 'utf8'),
     ]);
-    expect(chineseBuild.match(/comet state select <change-name>/gu)).toHaveLength(2);
-    expect(englishBuild.match(/comet state select <change-name>/gu)).toHaveLength(2);
+    expect(chineseBuild.match(/node "<comet-state-script>" select <change-name>/gu)).toHaveLength(
+      2,
+    );
+    expect(englishBuild.match(/node "<comet-state-script>" select <change-name>/gu)).toHaveLength(
+      2,
+    );
   });
 
   it('includes internal Skills in managed lifecycle paths', () => {

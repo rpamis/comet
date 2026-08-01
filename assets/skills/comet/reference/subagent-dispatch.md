@@ -42,7 +42,7 @@ The main session is the **coordinator only** and must NOT execute tasks directly
 Every implementer or fix-agent prompt must include:
 
 - The full text of the single current task, architecture background, and dependency context
-- `Language: Use the configured Comet artifact language from node "$COMET_STATE" get <name> language`
+- `Language: Use the configured Comet artifact language from node "<comet-state-script>" get <name> language`
 - The allowed file scope and prohibited modification scope
 - The required test commands and commit requirements
 - For a fix agent, the corresponding reviewer's complete feedback
@@ -143,8 +143,8 @@ When a reviewer returns an item that cannot be verified from review material alo
 4. Runs targeted verification:
 
 ```bash
-node "$COMET_STATE" task-checkoff <plan-file> <plan-task-text>
-node "$COMET_STATE" task-checkoff <classic-change-dir>/tasks.md <openspec-task-text>
+node "<comet-state-script>" task-checkoff <plan-file> <plan-task-text>
+node "<comet-state-script>" task-checkoff <classic-change-dir>/tasks.md <openspec-task-text>
 ```
 
 Run the second command only when the corresponding mapping exists. The script requires the task text to appear exactly once and be checked; verification failure blocks moving to the next task.

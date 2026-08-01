@@ -32,5 +32,7 @@ rubric_criteria = [
 ]
 
 [interaction]
-mode = "none"
-max_turns = 1
+mode = "auto_user"
+max_turns = 4
+decision_reply = "I confirm the shared understanding. Continue through Build, Verify, and Archive."
+continue_prompt = "Inspect the Native status from disk and continue the same change until it is verified and archived with its canonical specification."

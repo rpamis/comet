@@ -1798,4 +1798,87 @@ describe('Native incremental content snapshots', () => {
     const result = await createNativeCurrentContentSnapshot(paths, legacyBaseline);
     expect(projectionHashOf(result)).toBe(projectionHashOf(full));
   });
+
+  it('does not bind a working-tree hash to the index object id', async () => {
+    await initGitRepo();
+    await fs.writeFile(path.join(projectRoot, 'a.ts'), 'base\n');
+    await execFileAsync('git', ['add', '-A'], { cwd: projectRoot });
+    await execFileAsync('git', ['commit', '-m', 'init'], { cwd: projectRoot });
+
+    await fs.writeFile(path.join(projectRoot, 'a.ts'), 'modified\n');
+    const dirtyBaseline = await createNativeContentSnapshot(paths);
+    expect(dirtyBaseline.entries[0]!.gitObjectId).toBeUndefined();
+
+    await execFileAsync('git', ['restore', 'a.ts'], { cwd: projectRoot });
+    const incremental = await createNativeContentSnapshot(paths, {
+      policy: dirtyBaseline.policy,
+      incrementalBaseline: dirtyBaseline,
+    });
+    const full = await createNativeContentSnapshot(paths, { policy: dirtyBaseline.policy });
+
+    expect(incremental.entries).toEqual(full.entries);
+    expect(projectionHashOf(incremental)).toBe(projectionHashOf(full));
+  });
+
+  it('reuses eligible tracked entries when another baseline entry has no gitObjectId', async () => {
+    await initGitRepo();
+    await fs.writeFile(path.join(projectRoot, 'a.ts'), 'tracked\n');
+    await execFileAsync('git', ['add', '-A'], { cwd: projectRoot });
+    await execFileAsync('git', ['commit', '-m', 'init'], { cwd: projectRoot });
+    await fs.writeFile(path.join(projectRoot, 'z-untracked.txt'), 'untracked\n');
+
+    const baseline = await createNativeContentSnapshot(paths);
+    expect(baseline.entries.find((entry) => entry.path === 'a.ts')?.gitObjectId).toBeDefined();
+    expect(
+      baseline.entries.find((entry) => entry.path === 'z-untracked.txt')?.gitObjectId,
+    ).toBeUndefined();
+
+    const captured: string[] = [];
+    const incremental = await createNativeContentSnapshot(paths, {
+      policy: baseline.policy,
+      incrementalBaseline: baseline,
+      gitSelectionHooks: {
+        afterFirstEntryCaptured: (relative) => {
+          captured.push(relative);
+        },
+      },
+    });
+
+    expect(captured).toEqual(['z-untracked.txt']);
+    expect(projectionHashOf(incremental)).toBe(projectionHashOf(baseline));
+  });
+
+  it('invalidates a reused entry modified after the initial worktree fence', async () => {
+    await initGitRepo();
+    await fs.writeFile(path.join(projectRoot, 'a.ts'), 'a0\n');
+    await fs.writeFile(path.join(projectRoot, 'b.ts'), 'b0\n');
+    await execFileAsync('git', ['add', '-A'], { cwd: projectRoot });
+    await execFileAsync('git', ['commit', '-m', 'init'], { cwd: projectRoot });
+
+    const baseline = await createNativeContentSnapshot(paths);
+    await fs.writeFile(path.join(projectRoot, 'a.ts'), 'a1\n');
+    let changed = false;
+    const incremental = await createNativeContentSnapshot(paths, {
+      policy: baseline.policy,
+      incrementalBaseline: baseline,
+      gitSelectionHooks: {
+        afterFirstEntryCaptured: async (relative) => {
+          if (relative === 'a.ts') {
+            changed = true;
+            await fs.writeFile(path.join(projectRoot, 'b.ts'), 'b1\n');
+          }
+        },
+      },
+    });
+
+    expect(changed).toBe(true);
+    expect(incremental.entries.some((entry) => entry.path === 'b.ts')).toBe(false);
+    expect(incremental.omitted).toContainEqual({
+      path: 'b.ts',
+      size: 3,
+      type: 'file',
+      reason: 'changed-during-read',
+    });
+    expect(incremental.complete).toBe(false);
+  });
 });

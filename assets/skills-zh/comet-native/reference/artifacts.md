@@ -83,7 +83,7 @@ changes/<change-name>/specs/<capability>/spec.md
 
 - 新 capability：创建完整规格。
 - 已有 capability：写出替换后的完整规格。
-- 删除 capability：运行 `node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-spec.mjs" remove`，不要只删除文件。
+- 删除 capability：运行 `node "<comet-native-spec-script>" remove`，不要只删除文件。
 
 Runtime 负责记录 create、replace、remove 和 canonical 基线。发生 canonical 冲突时，先重读并改写完整目标规格，再使用 `spec rebase`；不要手改 Runtime 状态或 hash。
 
@@ -107,7 +107,7 @@ Runtime 负责记录 create、replace、remove 和 canonical 基线。发生 can
 使用 Runtime 返回的 acceptance ID，不要自行计算。先准备条目数组，再运行：
 
 ```text
-node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-evidence.mjs" format [--entries <path>]
+node "<comet-native-evidence-script>" format [--entries <path>]
 ```
 
 把命令输出原样放入 `# Acceptance evidence`。输入条目的基本形式：

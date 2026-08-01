@@ -70,18 +70,18 @@ pnpm test           # 高风险修改或最终交付前需要本地全量验证�
 
 ## Classic runtime 脚本规范
 
-脚本位于 `assets/skills/comet/scripts/`，当前发布形态是薄 `.mjs` launcher + 生成的 `comet-runtime.mjs`：
+脚本位于 `assets/skills/comet/scripts/`，当前发布形态是 CLI 聚合 runtime + 每命令独立的自包含 `.mjs` bundle：
 
-- 运行时源码位于 `domains/comet-classic/`，修改后必须运行 `pnpm build:classic-runtime` 同步 `assets/skills/comet/scripts/comet-runtime.mjs`
-- launcher 必须保持薄封装，只 import `./comet-runtime.mjs` 并调用对应命令；不要把业务逻辑写回 launcher
+- 运行时源码与每命令 entry 位于 `domains/comet-classic/`，修改后必须运行 `pnpm build:classic-runtime` 同步 `comet-runtime.mjs` 和所有 `comet-*.mjs` 命令 bundle
+- 命令 bundle 必须由对应 entry 构建为自包含产物；不要在生成物中直接编写业务逻辑，也不要恢复对 `comet-runtime.mjs` 的运行时 import
 - 不再新增 `.sh` runtime；测试 fixture `test/fixtures/classic-0.3.9/` 是冻结参考实现，只用于差分兼容
-- 新增 launcher 或 runtime 文件必须加入 `test/domains/comet-classic/comet-scripts.test.ts` 的 `beforeEach` 拷贝列表和 `assets/manifest.json`
-- `comet-hook-guard.mjs` 是 Classic Guard launcher，不再作为平台 Hook 直接安装；平台统一安装的 Hook 入口是 `comet-hook-router.mjs`
+- 新增命令 bundle 或 runtime 文件必须加入 `test/domains/comet-classic/comet-scripts.test.ts` 的 `beforeEach` 拷贝列表、`config/repository-layout.json` 和 `assets/manifest.json`
+- `comet-hook-guard.mjs` 是 Classic Guard 的自包含命令 bundle，不作为平台 Hook 直接安装；平台统一安装的 Hook 入口是 `comet-hook-router.mjs`
 
 ## Native 与 Entry runtime 规范
 
-- Native 运行时源码位于 `domains/comet-native/`，修改后必须运行 `pnpm build:native-runtime` 同步 `assets/skills/comet-native/scripts/comet-native-runtime.mjs`
-- `comet-native-hook-guard.mjs` 是调用 Native runtime 的薄 Guard launcher，不作为平台 Hook 直接安装；Native 主流程与 Guard 都不得依赖外部 Skill
+- Native 运行时源码与每命令 entry 位于 `domains/comet-native/`，修改后必须运行 `pnpm build:native-runtime` 同步 `comet-native-runtime.mjs` 和所有 `comet-native-*.mjs` 命令 bundle
+- `comet-native-hook-guard.mjs` 是 Native Guard 的自包含命令 bundle，不作为平台 Hook 直接安装；Native 主流程与 Guard 都不得依赖外部 Skill
 - 共享入口与 Hook Router 源码位于 `domains/comet-entry/`，修改后必须运行 `pnpm build:entry-runtime`，同步 `comet-entry-runtime.mjs` 与 `comet-hook-router.mjs`
 - 每个平台只安装一份 `comet-workflow-guard` Rule；支持 Hook 的平台只安装一个 `comet-hook-router.mjs`
 - Router 通过 `.comet/current-change.json` 的 `workflow + change` 确定当前需求归属，一次写入最多调用一个 workflow Guard；Native 与 Classic 的 phase、目录、schema 和 Guard 逻辑保持独立
@@ -91,19 +91,20 @@ pnpm test           # 高风险修改或最终交付前需要本地全量验证�
 
 ```
 comet-runtime.mjs ← domains/comet-classic/*
-comet-state.mjs ← comet-runtime.mjs
-comet-guard.mjs ← comet-runtime.mjs
-comet-handoff.mjs ← comet-runtime.mjs (写入 handoff_context/handoff_hash)
-comet-archive.mjs ← comet-runtime.mjs
-comet-yaml-validate.mjs ← comet-runtime.mjs
-comet-hook-guard.mjs ← comet-runtime.mjs (Classic Guard launcher，不直接安装为平台 Hook)
+comet-state.mjs ← domains/comet-classic/classic-state-entry.ts
+comet-guard.mjs ← domains/comet-classic/classic-guard-entry.ts
+comet-handoff.mjs ← domains/comet-classic/classic-handoff-entry.ts (写入 handoff_context/handoff_hash)
+comet-archive.mjs ← domains/comet-classic/classic-archive-entry.ts
+comet-yaml-validate.mjs ← domains/comet-classic/classic-validate-entry.ts
+comet-hook-guard.mjs ← domains/comet-classic/classic-hook-guard-entry.ts (不直接安装为平台 Hook)
 comet-native-runtime.mjs ← domains/comet-native/*
-comet-native-hook-guard.mjs ← comet-native-runtime.mjs (Native Guard launcher，不直接安装为平台 Hook)
+comet-native-<command>.mjs ← domains/comet-native/native-<command>-entry.ts
+comet-native-hook-guard.mjs ← domains/comet-native/native-hook-guard-entry.ts (不直接安装为平台 Hook)
 comet-entry-runtime.mjs ← domains/comet-entry/*
 comet-hook-router.mjs ← domains/comet-entry/* (平台唯一 Hook 入口，路由一个 workflow Guard)
 ```
 
-Classic launcher 之间新增共享工具函数时（如 archive 目录解析、change name 校验、hash、yaml 解析），优先放在 `domains/comet-classic/` 的共享模块中，再重新生成 runtime，避免多个命令漂移。跨 workflow 的稳定契约放在 `domains/workflow-contract/`，入口归属与路由放在 `domains/comet-entry/`；不要为了复用而合并 Native 与 Classic 的状态机或 Guard。
+Classic 命令之间新增共享工具函数时（如 archive 目录解析、change name 校验、hash、yaml 解析），优先放在 `domains/comet-classic/` 的共享模块中，再重新生成全部 bundle，避免多个命令漂移。跨 workflow 的稳定契约放在 `domains/workflow-contract/`，入口归属与路由放在 `domains/comet-entry/`；不要为了复用而合并 Native 与 Classic 的状态机或 Guard。
 
 ## .comet.yaml 状态机
 
@@ -247,4 +248,4 @@ Comet Dashboard实现时尽量采用使用AntD React组件
 - 如果当前请求未明确调用 Comet Skill，且 probe 返回 `out_of_scope` 或 `none`，不要进入 Comet workflow。
 - 如果配置或状态无效且没有 `nextCommand`，停止并报告原因；不要猜测另一个 workflow。
 - 不能只因为存在 active change 就把无关任务挂到该 change。Native 的未提交改动由 Native 入口检查，不由探针自动归因。
-</comet-ambient-resume>
+  </comet-ambient-resume>
