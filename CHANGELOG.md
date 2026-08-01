@@ -2,7 +2,7 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.4.0-beta.13] - 2026-08-01
+## What's Changed [0.4.0-beta.13] - 2026-08-02
 
 Beta 13 makes everyday workflow operations faster and makes uninstalling and reading Dashboard status easier.
 
@@ -15,7 +15,7 @@ Beta 13 makes everyday workflow operations faster and makes uninstalling and rea
 - **Selective workflow removal**: Interactive `comet uninstall` now lets you remove Native, Classic, or both from each installed target. Removing one retains the other workflow and shared configuration; when removing Classic, OpenSpec and Superpowers Skills are optional and remain selected off by default.
 - **Everyday responsiveness**: CLI startup, Classic and Native workflow commands, write checks, and Native snapshot updates are faster. Native reuses results for unchanged files while continuing to inspect real changes.
 - **Fast public workflow commands**: High-frequency Native, Classic, and workflow-resolution commands keep the stable `comet` CLI interface while dispatching internally to package-owned runtime bundles, reducing cold-start overhead without relying on host-specific Skill paths.
-- **Dashboard workspace**: Dashboard offers clearer project switching, search, and change-detail views while keeping the Classic and Native workspaces separate and read-only.
+- **Dashboard workspace**: Dashboard offers clearer project switching, search, and change-detail views, discovers projects launched from nested directories, and presents Classic changes from legacy and docs layouts alongside the separate read-only Native workspace.
 
 ### Fixed
 
