@@ -1,0 +1,140 @@
+{
+  "schema": "comet.native.implementation-scope.v2",
+  "contractHash": "df0e097041c7cb13d2dde47493ac6931e7c59d44c731f77aac920f63bc5f098f",
+  "baselineProjectionRef": "runtime/evidence/snapshots/1f41909df7486b6abc5ae2a9c37116cdde9e45d2480a6564109e81b10e4edfdc.json",
+  "baselineProjectionHash": "1f41909df7486b6abc5ae2a9c37116cdde9e45d2480a6564109e81b10e4edfdc",
+  "currentProjectionRef": "runtime/evidence/snapshots/11ec31d22e98174067e98c1cd8e1b5e96c962eb8b3ee47d3d5c971fe208da741.json",
+  "currentProjectionHash": "11ec31d22e98174067e98c1cd8e1b5e96c962eb8b3ee47d3d5c971fe208da741",
+  "complete": false,
+  "declaredArtifacts": [
+    {
+      "path": "app/commands/uninstall.ts",
+      "kind": "file"
+    }
+  ],
+  "changes": [
+    {
+      "path": "CHANGELOG.md",
+      "kind": "modified",
+      "before": {
+        "hash": "1eb3515626312044453b13d8d02145666628bd21812096db03172f0852c73d34",
+        "size": 151652
+      },
+      "after": {
+        "hash": "65b999c63f2526630617550e02e8a6850a3cea55d3ab183126966a0fcb5f99c3",
+        "size": 152160
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "app/commands/uninstall.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "28c234de8a54b77cbc33bb88fd811000cc3cceb5180825bcf222e7288ffe05f8",
+        "size": 15155
+      },
+      "after": {
+        "hash": "628151de2d61f16692d061db23acb4eb36d9a7fd883fde4fbd1005b31c077453",
+        "size": 21745
+      },
+      "attributedTo": [
+        {
+          "path": "app/commands/uninstall.ts",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "domains/skill/uninstall.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "4e3f052d11d78d92e124438bde2db53bd9b038258f422f94a54b9253f8721c04",
+        "size": 39702
+      },
+      "after": {
+        "hash": "b287e93ab1b0bc1889f27adf8c3c517c19c182e7041396d83892a109ab857db0",
+        "size": 44596
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "test/app/uninstall.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "07b8af9f80cee42f04096eaba62aca4908d7b5a5ba0c0b78c9c326153b12a456",
+        "size": 97477
+      },
+      "after": {
+        "hash": "64a9b3e6e5392f0a55196c9d71aa5e02ac5172818d2aac0264f18f5add48d108",
+        "size": 106417
+      },
+      "attributedTo": []
+    }
+  ],
+  "unattributed": [
+    {
+      "path": "CHANGELOG.md",
+      "kind": "modified",
+      "before": {
+        "hash": "1eb3515626312044453b13d8d02145666628bd21812096db03172f0852c73d34",
+        "size": 151652
+      },
+      "after": {
+        "hash": "65b999c63f2526630617550e02e8a6850a3cea55d3ab183126966a0fcb5f99c3",
+        "size": 152160
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/skill/uninstall.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "4e3f052d11d78d92e124438bde2db53bd9b038258f422f94a54b9253f8721c04",
+        "size": 39702
+      },
+      "after": {
+        "hash": "b287e93ab1b0bc1889f27adf8c3c517c19c182e7041396d83892a109ab857db0",
+        "size": 44596
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "test/app/uninstall.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "07b8af9f80cee42f04096eaba62aca4908d7b5a5ba0c0b78c9c326153b12a456",
+        "size": 97477
+      },
+      "after": {
+        "hash": "64a9b3e6e5392f0a55196c9d71aa5e02ac5172818d2aac0264f18f5add48d108",
+        "size": 106417
+      },
+      "attributedTo": []
+    }
+  ],
+  "unresolvedScopes": [
+    {
+      "id": "scope:1db39fdd3a123d0beaaca6f1710adcb805f1564ec9412df0ba5b432d2c98b9a9",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "CHANGELOG.md",
+      "reason": "Changed path is not covered by a declared artifact: CHANGELOG.md"
+    },
+    {
+      "id": "scope:29515330a9fd1a6e23a0a1f07d7d06f8e3c37d77fb6aa6318db0a8fa21225110",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/skill/uninstall.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/skill/uninstall.ts"
+    },
+    {
+      "id": "scope:d66caa8da0dd4c9048f94392d8be70419db917573e84b3c3621678fd09480e46",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "test/app/uninstall.test.ts",
+      "reason": "Changed path is not covered by a declared artifact: test/app/uninstall.test.ts"
+    }
+  ],
+  "noCodeReason": null,
+  "scopeHash": "26abe58c02de8029298fd6917e1d3d442e7827a3dde2d54260da093bf0b37c81"
+}

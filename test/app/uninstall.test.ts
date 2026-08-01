@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
 import { promises as fs } from 'fs';
+import { execFileSync } from 'child_process';
 import path from 'path';
 import os from 'os';
 
@@ -15,12 +16,19 @@ vi.mock('fs/promises', async (importOriginal) => {
   return { ...actual, rmdir: rmdirMock, writeFile: writeFileMock };
 });
 
+vi.mock('child_process', () => ({
+  execFileSync: vi.fn(),
+}));
+
+const mockedExecFileSync = vi.mocked(execFileSync);
+
 import { PLATFORMS, type Platform } from '../../platform/install/platforms.js';
 import {
   removeLegacyCometSkillsForPlatform,
   removeCometSkillsForPlatform,
   removeCometRulesForPlatform,
   removeCometHooksForPlatform,
+  removeSuperpowersSkillsForPlatform,
   removeWorkingDirs,
 } from '../../domains/skill/uninstall.js';
 import {
@@ -42,6 +50,7 @@ describe('uninstall', () => {
     rmdirMock.mockImplementation(fs.rmdir);
     writeFileMock.mockReset();
     writeFileMock.mockImplementation(fs.writeFile);
+    mockedExecFileSync.mockReset();
     tmpDir = path.join(
       os.tmpdir(),
       `comet-uninstall-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -402,6 +411,32 @@ describe('uninstall', () => {
       expect(result.failed).toBe(0);
     });
 
+    it('removes only the selected workflow Skills and keeps their shared entry', async () => {
+      await copyCometSkillsForPlatform(
+        tmpDir,
+        claudePlatform,
+        true,
+        'skills',
+        'project',
+        'copy',
+        'both',
+      );
+      const skillsDir = path.join(tmpDir, '.claude', 'skills');
+
+      const result = await removeCometSkillsForPlatform(
+        tmpDir,
+        claudePlatform,
+        'project',
+        ['classic'],
+        ['native'],
+      );
+
+      expect(result.failed).toBe(0);
+      expect(await fileExists(path.join(skillsDir, 'comet-classic', 'SKILL.md'))).toBe(false);
+      expect(await fileExists(path.join(skillsDir, 'comet-native', 'SKILL.md'))).toBe(true);
+      expect(await fileExists(path.join(skillsDir, 'comet', 'SKILL.md'))).toBe(true);
+    });
+
     it('removes OpenCode commands', async () => {
       const opencodePlatform: Platform = PLATFORMS.find((p) => p.id === 'opencode')!;
 
@@ -446,6 +481,46 @@ describe('uninstall', () => {
 
       expect(result.removed).toBe(1);
       expect(await fileExists(legacySkill)).toBe(false);
+    });
+  });
+
+  describe('removeSuperpowersSkillsForPlatform', () => {
+    it('removes only Superpowers Skills installed for the selected agent', () => {
+      const claudePlatform = PLATFORMS.find((platform) => platform.id === 'claude')!;
+      mockedExecFileSync.mockImplementation((_command, args) => {
+        if (args[1] === 'list') {
+          return JSON.stringify([
+            { name: 'brainstorming', source: 'obra/superpowers', agents: ['claude-code'] },
+            {
+              name: 'writing-plans',
+              source: 'obra/superpowers',
+              agents: ['claude-code', 'cursor'],
+            },
+            { name: 'personal', source: 'me/personal', agents: ['claude-code'] },
+            { name: 'using-superpowers', source: 'obra/superpowers', agents: ['cursor'] },
+          ]) as never;
+        }
+        return '' as never;
+      });
+
+      const result = removeSuperpowersSkillsForPlatform(tmpDir, claudePlatform, 'project');
+
+      expect(result).toEqual({ removed: 2, failed: 0 });
+      expect(mockedExecFileSync).toHaveBeenCalledWith(
+        expect.any(String),
+        ['skills', 'remove', 'brainstorming', '--agent', 'claude-code', '--yes'],
+        expect.objectContaining({ cwd: tmpDir }),
+      );
+      expect(mockedExecFileSync).toHaveBeenCalledWith(
+        expect.any(String),
+        ['skills', 'remove', 'writing-plans', '--agent', 'claude-code', '--yes'],
+        expect.objectContaining({ cwd: tmpDir }),
+      );
+      expect(mockedExecFileSync).not.toHaveBeenCalledWith(
+        expect.any(String),
+        expect.arrayContaining(['using-superpowers']),
+        expect.anything(),
+      );
     });
   });
 
@@ -1979,11 +2054,196 @@ describe('uninstallCommand interactive selection', () => {
     }
 
     expect(mockedSelect).toHaveBeenCalled();
-    expect(mockedCheckbox).not.toHaveBeenCalled();
+    expect(mockedCheckbox).toHaveBeenCalled();
 
     const skillsDir = path.join(tmpDir, '.claude', 'skills');
     const entries = (await fs.readdir(skillsDir)).filter((e) => e.startsWith('comet'));
     expect(entries.length).toBe(0);
+  });
+
+  it('removes only Classic Skills when the user keeps Native', async () => {
+    const claudePlatform = PLATFORMS.find((p) => p.id === 'claude')!;
+    await copyCometSkillsForPlatform(
+      tmpDir,
+      claudePlatform,
+      true,
+      'skills',
+      'project',
+      'copy',
+      'both',
+    );
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: classic',
+        'workflows:',
+        '  - native',
+        '  - classic',
+        'ambient_resume: true',
+        'native:',
+        '  artifact_root: docs',
+        '  language: en',
+        'classic:',
+        '  artifact_layout: docs',
+        '  language: en',
+        '  context_compression: off',
+        '  review_mode: standard',
+        '  auto_transition: true',
+      ].join('\n'),
+      'utf8',
+    );
+    mockedSelect.mockResolvedValue(true as never);
+    mockedCheckbox.mockResolvedValueOnce(['classic'] as never).mockResolvedValueOnce([] as never);
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await uninstallCommand(tmpDir);
+    } finally {
+      log.mockRestore();
+    }
+
+    const skillsDir = path.join(tmpDir, '.claude', 'skills');
+    expect(await fileExists(path.join(skillsDir, 'comet-native', 'SKILL.md'))).toBe(true);
+    expect(await fileExists(path.join(skillsDir, 'comet-classic', 'SKILL.md'))).toBe(false);
+    expect(await fileExists(path.join(skillsDir, 'comet', 'SKILL.md'))).toBe(true);
+    const config = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8');
+    expect(config).toContain('default_workflow: native');
+    expect(config).not.toContain('classic:');
+  });
+
+  it('removes only Native Skills when the user keeps Classic', async () => {
+    const claudePlatform = PLATFORMS.find((p) => p.id === 'claude')!;
+    await copyCometSkillsForPlatform(
+      tmpDir,
+      claudePlatform,
+      true,
+      'skills',
+      'project',
+      'copy',
+      'both',
+    );
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'workflows:',
+        '  - native',
+        '  - classic',
+        'ambient_resume: true',
+        'native:',
+        '  artifact_root: .comet/native',
+        '  language: en',
+        'classic:',
+        '  artifact_layout: docs',
+        '  language: en',
+        '  context_compression: off',
+        '  review_mode: standard',
+        '  auto_transition: true',
+      ].join('\n'),
+      'utf8',
+    );
+    mockedSelect.mockResolvedValue(true as never);
+    mockedCheckbox.mockResolvedValueOnce(['native'] as never);
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await uninstallCommand(tmpDir);
+    } finally {
+      log.mockRestore();
+    }
+
+    const skillsDir = path.join(tmpDir, '.claude', 'skills');
+    expect(await fileExists(path.join(skillsDir, 'comet-native', 'SKILL.md'))).toBe(false);
+    expect(await fileExists(path.join(skillsDir, 'comet-classic', 'SKILL.md'))).toBe(true);
+    expect(await fileExists(path.join(skillsDir, 'comet', 'SKILL.md'))).toBe(true);
+    const config = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8');
+    expect(config).toContain('default_workflow: classic');
+    expect(config).not.toContain('native:');
+  });
+
+  it('keeps OpenSpec Skills unless the Classic companion option is selected', async () => {
+    const claudePlatform = PLATFORMS.find((p) => p.id === 'claude')!;
+    await copyCometSkillsForPlatform(
+      tmpDir,
+      claudePlatform,
+      true,
+      'skills',
+      'project',
+      'copy',
+      'both',
+    );
+    const openSpecSkill = path.join(tmpDir, '.claude', 'skills', 'openspec-propose', 'SKILL.md');
+    await fs.mkdir(path.dirname(openSpecSkill), { recursive: true });
+    await fs.writeFile(openSpecSkill, '# OpenSpec', 'utf8');
+    mockedSelect.mockResolvedValue(true as never);
+    mockedCheckbox.mockResolvedValueOnce(['classic'] as never).mockResolvedValueOnce([] as never);
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await uninstallCommand(tmpDir);
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(await fileExists(openSpecSkill)).toBe(true);
+  });
+
+  it('removes OpenSpec Skills when the Classic companion option is selected', async () => {
+    const claudePlatform = PLATFORMS.find((p) => p.id === 'claude')!;
+    await copyCometSkillsForPlatform(
+      tmpDir,
+      claudePlatform,
+      true,
+      'skills',
+      'project',
+      'copy',
+      'both',
+    );
+    const openSpecSkill = path.join(tmpDir, '.claude', 'skills', 'openspec-propose', 'SKILL.md');
+    await fs.mkdir(path.dirname(openSpecSkill), { recursive: true });
+    await fs.writeFile(openSpecSkill, '# OpenSpec', 'utf8');
+    mockedSelect.mockResolvedValue(true as never);
+    mockedCheckbox
+      .mockResolvedValueOnce(['classic'] as never)
+      .mockResolvedValueOnce(['openspec'] as never);
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await uninstallCommand(tmpDir);
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(await fileExists(openSpecSkill)).toBe(false);
+  });
+
+  it('keeps Classic companion Skills during a non-interactive full uninstall', async () => {
+    const claudePlatform = PLATFORMS.find((p) => p.id === 'claude')!;
+    await copyCometSkillsForPlatform(
+      tmpDir,
+      claudePlatform,
+      true,
+      'skills',
+      'project',
+      'copy',
+      'both',
+    );
+    const openSpecSkill = path.join(tmpDir, '.claude', 'skills', 'openspec-propose', 'SKILL.md');
+    await fs.mkdir(path.dirname(openSpecSkill), { recursive: true });
+    await fs.writeFile(openSpecSkill, '# OpenSpec', 'utf8');
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await uninstallCommand(tmpDir, { force: true });
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(await fileExists(openSpecSkill)).toBe(true);
   });
 
   it('cancels when single target user declines', async () => {

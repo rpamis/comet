@@ -1,0 +1,62 @@
+{
+  "schema": "comet.native.verification-receipt.v3",
+  "kind": "automated-check",
+  "role": "acceptance-evidence",
+  "status": "passed",
+  "bindings": {
+    "change": "workflow-selective-uninstall",
+    "sourceRevision": 3,
+    "contractHash": "df0e097041c7cb13d2dde47493ac6931e7c59d44c731f77aac920f63bc5f098f",
+    "scopeHash": "aa75366fbd9f924286e2ebb9726bb6e6cd0df75ecdfde50dc317969877f1917d",
+    "snapshotHash": "11ec31d22e98174067e98c1cd8e1b5e96c962eb8b3ee47d3d5c971fe208da741",
+    "artifactHash": "edd23156b9e502284280c17895c81f3ea08a7383e9ffa27d6a10bd16800ff4ff"
+  },
+  "acceptanceIds": [
+    "acceptance-12918a0111dcc0ff7875c7e8e63128672300c005c04a251ee5979dc39d78df91",
+    "acceptance-1603cb82f7b33866eed752910821e09fac6b9127bf947443d037ab508a07c0f9",
+    "acceptance-1865abbd8e8c3e046893db4a3fa5816026ab253fda935106c39462a5b720ee4b",
+    "acceptance-3451f2463d18effad2c06aa06a5a33df44f6ff58c68dad57215464aaf47123e2",
+    "acceptance-3daac07dd6df06820d21f0ea2a3a99d9aa2a26e08dbfeff5069b9af17e08b54f",
+    "acceptance-4f56de560dcc6b5860721fdd4a3b962ccc431ca7cd9eaa3535b8b1f708b73d8f",
+    "acceptance-65f4e9e4173457e1d4e219d6194dafff725b36aead7fc56592a42854e68f079e",
+    "acceptance-a9ebdb0fdc75c8fc722dfa4ac8fc8455876d322009e5ba7ec2d02e7a01963b18",
+    "acceptance-b6fc776472a0f1519f9ce6315ada2e88607d47ed6f018d12271cbd34bc41d8fe",
+    "acceptance-c9044839dc3d007b3172ffc714228d23b2d64d41e517c288ca218a75bab731d5",
+    "acceptance-d3337e46bd50fb539da937cdb91ee679d243a8fbb8450a093793b561f60e4954",
+    "acceptance-d5a900129394dbc5ae44aa73934485e2597aed0abc66605036f0e4d6fee9c7d9",
+    "acceptance-e5fcfb659026ec946cd51849b46d3c5f76068c591544f09747440fb0bdcbe9ed",
+    "acceptance-fd9d6669be204721263f89f67bb4621bbe8be7c9f968c36051c9a191b9a162e9"
+  ],
+  "actor": "native-runtime:command:npx.cmd",
+  "issuedAt": "2026-08-01T12:22:44.669Z",
+  "evidence": {
+    "executable": "npx.cmd",
+    "args": [
+      "vitest",
+      "run",
+      "test/app/uninstall.test.ts"
+    ],
+    "cwd": ".",
+    "exitCode": 0,
+    "signal": null,
+    "timedOut": false,
+    "timeoutMs": 120000,
+    "startedAt": "2026-08-01T12:22:26.487Z",
+    "endedAt": "2026-08-01T12:22:44.669Z",
+    "worktree": {
+      "provider": "git",
+      "root": ".",
+      "beforeCommit": "4af87e3ba0c8f9be27dbde611eba62ddceb36e53",
+      "afterCommit": "4af87e3ba0c8f9be27dbde611eba62ddceb36e53"
+    },
+    "afterFence": {
+      "snapshotHash": "11ec31d22e98174067e98c1cd8e1b5e96c962eb8b3ee47d3d5c971fe208da741",
+      "scopeHash": "aa75366fbd9f924286e2ebb9726bb6e6cd0df75ecdfde50dc317969877f1917d",
+      "matched": true
+    },
+    "outputHash": "69a2d880ae2fe66df21bec6cac76580e95dee3ac32ad0f41222ca11d8c879590",
+    "outputSummary": "RUN  v4.1.6 D:/Project/Comet\n\n\n Test Files  1 passed (1)\n      Tests  100 passed (100)\n   Start at  20:22:29\n   Duration  15.22s (transform 757ms, setup 0ms, import 1.39s, tests 13.58s, environment 0ms)",
+    "outputTruncated": false
+  },
+  "receiptHash": "b61de2fb7648d976c2c119f2593e04d93f6e8b2252a37523eb542466f801eab5"
+}

@@ -2,13 +2,20 @@ import path from 'path';
 import { checkbox, select } from '@inquirer/prompts';
 
 import { getBaseDir, type InstallScope } from '../../platform/install/detect.js';
-import { PLATFORMS, getPlatformSkillsDir } from '../../platform/install/platforms.js';
+import {
+  PLATFORMS,
+  getPlatformSkillsDir,
+  getPlatformSkillsDirs,
+} from '../../platform/install/platforms.js';
+import { fileExists } from '../../platform/fs/file-system.js';
 import {
   removeCometSkillsForPlatform,
   removeCometRulesForPlatform,
   removeCometHooksForPlatform,
   removeWorkingDirs,
   removeCometProjectInstructions,
+  removeOpenSpecSkillsForPlatform,
+  removeSuperpowersSkillsForPlatform,
 } from '../../domains/skill/uninstall.js';
 import { detectInstalledCometTargets, type InstalledCometTarget } from './update.js';
 import {
@@ -19,6 +26,9 @@ import {
   type ProjectRegistryTarget,
 } from '../../platform/install/project-registry.js';
 import { assertProjectScopeOptions, resolveProjectScopeMode } from './project-scope-selection.js';
+import type { CometWorkflow } from '../../domains/comet-entry/types.js';
+import { readWorkflowProjectConfigSnapshot } from '../../domains/workflow-contract/project-config-reader.js';
+import { writeWorkflowProjectConfigDocument } from '../../domains/workflow-contract/project-config-writer.js';
 
 interface UninstallOptions {
   json?: boolean;
@@ -41,6 +51,61 @@ interface TargetUninstallResult {
   rulesFailed: number;
   hooksFailed: number;
   workingDirsRemoved: number;
+}
+
+type TargetWorkflowSelection = {
+  target: InstalledCometTarget;
+  installedWorkflows: CometWorkflow[];
+  workflows: CometWorkflow[];
+  companionSkills: Array<'openspec' | 'superpowers'>;
+};
+
+async function detectInstalledWorkflows(target: InstalledCometTarget, projectPath: string) {
+  const baseDir = getBaseDir(target.scope, projectPath);
+  const workflows: CometWorkflow[] = [];
+  for (const workflow of ['native', 'classic'] as const) {
+    const skill = workflow === 'native' ? 'comet-native' : 'comet-classic';
+    if (
+      await Promise.all(
+        getPlatformSkillsDirs(target.platform, target.scope).map((skillsDir) =>
+          fileExists(path.join(baseDir, skillsDir, 'skills', skill, 'SKILL.md')),
+        ),
+      ).then((results) => results.some(Boolean))
+    ) {
+      workflows.push(workflow);
+    }
+  }
+  return workflows;
+}
+
+async function removeSelectedWorkflowsFromProjectConfig(
+  projectPath: string,
+  workflowsToRemove: readonly CometWorkflow[],
+): Promise<boolean> {
+  const snapshot = await readWorkflowProjectConfigSnapshot(projectPath, {
+    allowPartialProject: true,
+  });
+  const config = snapshot.document?.config;
+  if (!config) return false;
+  const configured = config.workflows ?? [config.default_workflow];
+  const remaining = configured.filter((workflow) => !workflowsToRemove.includes(workflow));
+  if (remaining.length === 0) return false;
+
+  const document = { ...(snapshot.document?.value ?? {}) };
+  document.workflows = remaining;
+  document.default_workflow = remaining.includes(config.default_workflow)
+    ? config.default_workflow
+    : remaining[0];
+  for (const workflow of workflowsToRemove) delete document[workflow];
+  const language =
+    (document.native as { language?: unknown } | undefined)?.language === 'zh-CN' ||
+    (document.classic as { language?: unknown } | undefined)?.language === 'zh-CN'
+      ? 'zh-CN'
+      : 'en';
+  await writeWorkflowProjectConfigDocument(projectPath, document, language, {
+    expectedIdentity: snapshot.identity,
+  });
+  return true;
 }
 
 interface SingleProjectUninstallResult {
@@ -187,6 +252,58 @@ async function uninstallSingleProject(
     }
   }
 
+  const targetWorkflowSelections: TargetWorkflowSelection[] = [];
+  for (const target of selectedTargets) {
+    const installedWorkflows = await detectInstalledWorkflows(target, projectPath);
+    const resolvedInstalledWorkflows =
+      options.force || options.json
+        ? (['native', 'classic'] as CometWorkflow[])
+        : installedWorkflows.length > 0
+          ? installedWorkflows
+          : (['native', 'classic'] as CometWorkflow[]);
+    let workflows = resolvedInstalledWorkflows;
+    if (!options.force && !options.json && resolvedInstalledWorkflows.length > 1) {
+      const selected = await checkbox({
+        message: `Select workflows to uninstall from ${target.platform.name} (${target.scope}):`,
+        choices: resolvedInstalledWorkflows.map((workflow) => ({
+          name: workflow === 'native' ? 'Native workflow' : 'Classic workflow',
+          value: workflow,
+          checked: true,
+        })),
+        required: true,
+      });
+      const selectedWorkflows = (selected as CometWorkflow[] | undefined)?.filter((workflow) =>
+        resolvedInstalledWorkflows.includes(workflow),
+      );
+      workflows =
+        selectedWorkflows && selectedWorkflows.length > 0
+          ? selectedWorkflows
+          : resolvedInstalledWorkflows;
+    }
+    let companionSkills: Array<'openspec' | 'superpowers'> = [];
+    if (!options.force && !options.json && workflows.includes('classic')) {
+      const scopeWarning =
+        target.scope === 'global' ? ' This affects global Skills that other projects may use.' : '';
+      companionSkills =
+        ((await checkbox({
+          message: `Also remove Classic companion Skills from ${target.platform.name} (${target.scope})?${scopeWarning}`,
+          choices: [
+            { name: 'OpenSpec Skills', value: 'openspec', checked: false },
+            { name: 'Superpowers Skills', value: 'superpowers', checked: false },
+          ],
+          required: false,
+        })) as Array<'openspec' | 'superpowers'> | undefined) ?? [];
+    }
+    if (workflows.length > 0) {
+      targetWorkflowSelections.push({
+        target,
+        installedWorkflows: resolvedInstalledWorkflows,
+        workflows,
+        companionSkills,
+      });
+    }
+  }
+
   log('');
   const results: TargetUninstallResult[] = [];
   let totalSkills = 0;
@@ -195,12 +312,21 @@ async function uninstallSingleProject(
   let totalFailures = 0;
   let projectInstructionsRemoved = 0;
 
-  for (const target of selectedTargets) {
+  for (const {
+    target,
+    installedWorkflows,
+    workflows,
+    companionSkills,
+  } of targetWorkflowSelections) {
     const baseDir = getBaseDir(target.scope, projectPath);
+    const retainedWorkflows = installedWorkflows.filter(
+      (workflow) => !workflows.includes(workflow),
+    );
+    const removingAllWorkflows = retainedWorkflows.length === 0;
 
     let hooksRemoved = 0;
     let hooksFailed = 0;
-    if (target.platform.supportsHooks) {
+    if (removingAllWorkflows && target.platform.supportsHooks) {
       const hooksResult = await removeCometHooksForPlatform(baseDir, target.platform, target.scope);
       hooksRemoved = hooksResult.removed;
       hooksFailed = hooksResult.failed;
@@ -208,16 +334,39 @@ async function uninstallSingleProject(
       totalFailures += hooksResult.failed;
     }
 
-    const rulesResult = await removeCometRulesForPlatform(baseDir, target.platform, target.scope);
+    const rulesResult = removingAllWorkflows
+      ? await removeCometRulesForPlatform(baseDir, target.platform, target.scope)
+      : { removed: 0, failed: 0 };
     totalRules += rulesResult.removed;
     totalFailures += rulesResult.failed;
 
     const skillsResult =
       hooksFailed === 0 && rulesResult.failed === 0
-        ? await removeCometSkillsForPlatform(baseDir, target.platform, target.scope)
+        ? await removeCometSkillsForPlatform(
+            baseDir,
+            target.platform,
+            target.scope,
+            workflows,
+            retainedWorkflows,
+          )
         : { removed: 0, failed: 0 };
     totalSkills += skillsResult.removed;
     totalFailures += skillsResult.failed;
+
+    if (companionSkills.includes('openspec')) {
+      const result = await removeOpenSpecSkillsForPlatform(baseDir, target.platform, target.scope);
+      totalSkills += result.removed;
+      totalFailures += result.failed;
+      log(`  ${target.platform.name} (${target.scope}): ${result.removed} OpenSpec Skills removed`);
+    }
+    if (companionSkills.includes('superpowers')) {
+      const result = removeSuperpowersSkillsForPlatform(projectPath, target.platform, target.scope);
+      totalSkills += result.removed;
+      totalFailures += result.failed;
+      log(
+        `  ${target.platform.name} (${target.scope}): ${result.removed} Superpowers Skills removed`,
+      );
+    }
 
     log(
       `  ${target.platform.name} (${target.scope}): ${skillsResult.removed} skills, ${rulesResult.removed} rules, ${hooksRemoved} hooks removed`,
@@ -243,9 +392,17 @@ async function uninstallSingleProject(
   }
 
   let workingDirsRemoved = 0;
+  const selectedProjectWorkflows = [
+    ...new Set(
+      targetWorkflowSelections
+        .filter(({ target }) => target.scope === 'project')
+        .flatMap(({ workflows }) => workflows),
+    ),
+  ] as CometWorkflow[];
   const hasProjectScope =
     options.recoverProjectCleanup === true || selectedTargets.some((t) => t.scope === 'project');
-  if (hasProjectScope && totalFailures === 0) {
+  const removingAllProjectWorkflows = selectedProjectWorkflows.length === 2;
+  if (hasProjectScope && removingAllProjectWorkflows && totalFailures === 0) {
     const removeResult = await removeCometProjectInstructions(projectPath);
     projectInstructionsRemoved = removeResult.removed;
     if (projectInstructionsRemoved > 0) {
@@ -254,7 +411,10 @@ async function uninstallSingleProject(
   }
 
   if (hasProjectScope && totalFailures === 0) {
-    const dirsResult = await removeWorkingDirs(projectPath);
+    const dirsResult = await removeWorkingDirs(
+      projectPath,
+      removingAllProjectWorkflows ? {} : { workflows: selectedProjectWorkflows },
+    );
     workingDirsRemoved = dirsResult.removed;
     totalFailures += dirsResult.failed;
     if (workingDirsRemoved > 0) {
@@ -262,6 +422,15 @@ async function uninstallSingleProject(
     }
     if (dirsResult.failed > 0) {
       log(`  Working directories: cleanup failed (${dirsResult.failed})`);
+    }
+  }
+
+  if (hasProjectScope && !removingAllProjectWorkflows && totalFailures === 0) {
+    try {
+      await removeSelectedWorkflowsFromProjectConfig(projectPath, selectedProjectWorkflows);
+    } catch {
+      totalFailures += 1;
+      log('  Project config: cleanup failed; selected workflow remains configured');
     }
   }
 

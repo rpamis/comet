@@ -1,0 +1,185 @@
+{
+  "schema": "comet.native.verification-evidence.v2",
+  "change": "workflow-selective-uninstall",
+  "sourceRevision": 3,
+  "result": "pass",
+  "freshness": "complete",
+  "contractHash": "df0e097041c7cb13d2dde47493ac6931e7c59d44c731f77aac920f63bc5f098f",
+  "acceptanceCriteriaHash": "66a048f38423ea9869da0adc4236960143b22e0ab349aa57f55564eae223db5c",
+  "implementationScopeRef": "runtime/evidence/scopes/aa75366fbd9f924286e2ebb9726bb6e6cd0df75ecdfde50dc317969877f1917d.json",
+  "implementationScopeHash": "aa75366fbd9f924286e2ebb9726bb6e6cd0df75ecdfde50dc317969877f1917d",
+  "reportRef": "verification.md",
+  "reportHash": "9065159fc20b62cf8c5d0bf23e00c83cc84bb30ea75a54fc4e79098b75f42265",
+  "acceptanceTrace": {
+    "schema": "comet.native.acceptance-trace.v2",
+    "nativeRootRef": "docs/comet",
+    "criteriaHash": "66a048f38423ea9869da0adc4236960143b22e0ab349aa57f55564eae223db5c",
+    "total": 15,
+    "evidenced": 15,
+    "skipped": 0,
+    "entries": [
+      {
+        "acceptanceId": "acceptance-0747c64052476b2b2dd9206abac80c0b76b062e03e529f4248c52969e64c1e46",
+        "status": "passed",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/baee05dc5cb674e8a5bf17a4103977890a9c7d7207dbed0fa0e820b4f0386791.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-12918a0111dcc0ff7875c7e8e63128672300c005c04a251ee5979dc39d78df91",
+        "status": "passed",
+        "kind": "spec-scenario",
+        "source": "specs/workflow-uninstall/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/b61de2fb7648d976c2c119f2593e04d93f6e8b2252a37523eb542466f801eab5.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-1603cb82f7b33866eed752910821e09fac6b9127bf947443d037ab508a07c0f9",
+        "status": "passed",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/b61de2fb7648d976c2c119f2593e04d93f6e8b2252a37523eb542466f801eab5.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-1865abbd8e8c3e046893db4a3fa5816026ab253fda935106c39462a5b720ee4b",
+        "status": "passed",
+        "kind": "spec-scenario",
+        "source": "specs/workflow-uninstall/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/b61de2fb7648d976c2c119f2593e04d93f6e8b2252a37523eb542466f801eab5.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-3451f2463d18effad2c06aa06a5a33df44f6ff58c68dad57215464aaf47123e2",
+        "status": "passed",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/b61de2fb7648d976c2c119f2593e04d93f6e8b2252a37523eb542466f801eab5.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-3daac07dd6df06820d21f0ea2a3a99d9aa2a26e08dbfeff5069b9af17e08b54f",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/workflow-uninstall/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/b61de2fb7648d976c2c119f2593e04d93f6e8b2252a37523eb542466f801eab5.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-4f56de560dcc6b5860721fdd4a3b962ccc431ca7cd9eaa3535b8b1f708b73d8f",
+        "status": "passed",
+        "kind": "spec-scenario",
+        "source": "specs/workflow-uninstall/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/b61de2fb7648d976c2c119f2593e04d93f6e8b2252a37523eb542466f801eab5.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-65f4e9e4173457e1d4e219d6194dafff725b36aead7fc56592a42854e68f079e",
+        "status": "passed",
+        "kind": "spec-scenario",
+        "source": "specs/workflow-uninstall/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/b61de2fb7648d976c2c119f2593e04d93f6e8b2252a37523eb542466f801eab5.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-a9ebdb0fdc75c8fc722dfa4ac8fc8455876d322009e5ba7ec2d02e7a01963b18",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/workflow-uninstall/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/b61de2fb7648d976c2c119f2593e04d93f6e8b2252a37523eb542466f801eab5.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-b6fc776472a0f1519f9ce6315ada2e88607d47ed6f018d12271cbd34bc41d8fe",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/workflow-uninstall/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/b61de2fb7648d976c2c119f2593e04d93f6e8b2252a37523eb542466f801eab5.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-c9044839dc3d007b3172ffc714228d23b2d64d41e517c288ca218a75bab731d5",
+        "status": "passed",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/b61de2fb7648d976c2c119f2593e04d93f6e8b2252a37523eb542466f801eab5.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-d3337e46bd50fb539da937cdb91ee679d243a8fbb8450a093793b561f60e4954",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/workflow-uninstall/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/b61de2fb7648d976c2c119f2593e04d93f6e8b2252a37523eb542466f801eab5.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-d5a900129394dbc5ae44aa73934485e2597aed0abc66605036f0e4d6fee9c7d9",
+        "status": "passed",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/b61de2fb7648d976c2c119f2593e04d93f6e8b2252a37523eb542466f801eab5.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-e5fcfb659026ec946cd51849b46d3c5f76068c591544f09747440fb0bdcbe9ed",
+        "status": "passed",
+        "kind": "spec-scenario",
+        "source": "specs/workflow-uninstall/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/b61de2fb7648d976c2c119f2593e04d93f6e8b2252a37523eb542466f801eab5.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-fd9d6669be204721263f89f67bb4621bbe8be7c9f968c36051c9a191b9a162e9",
+        "status": "passed",
+        "kind": "spec-scenario",
+        "source": "specs/workflow-uninstall/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/b61de2fb7648d976c2c119f2593e04d93f6e8b2252a37523eb542466f801eab5.json"
+        ],
+        "skippedReason": null
+      }
+    ],
+    "traceHash": "51fd89c7eabe2adde4a9c6e6a71b08d99b20b132c44bb6bc2125bd129809d856"
+  },
+  "partialAllowanceRef": null,
+  "partialAllowanceHash": null,
+  "requiredReceiptRefs": [
+    "runtime/evidence/receipts/ffb7aaa1cf072b45b4d846efda3651309365174b1e2b7ea403571f60fbe378e4.json"
+  ],
+  "receiptRefs": [
+    "runtime/evidence/receipts/b61de2fb7648d976c2c119f2593e04d93f6e8b2252a37523eb542466f801eab5.json",
+    "runtime/evidence/receipts/baee05dc5cb674e8a5bf17a4103977890a9c7d7207dbed0fa0e820b4f0386791.json"
+  ],
+  "createdAt": "2026-08-01T12:25:53.490Z",
+  "envelopeHash": "6eaf5859928b9b15ebfdb1a9af94253388400976a44cc6ebd7ad088ad1ce404c"
+}

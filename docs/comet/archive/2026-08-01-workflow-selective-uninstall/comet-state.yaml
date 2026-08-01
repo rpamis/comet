@@ -1,0 +1,23 @@
+schema: comet.native.v3
+minimum_runtime_version: 3
+revision: 5
+verification_protocol: legacy-v1
+name: workflow-selective-uninstall
+language: zh-CN
+phase: archive
+brief: brief.md
+approval: confirmed
+approved_contract_hash: df0e097041c7cb13d2dde47493ac6931e7c59d44c731f77aac920f63bc5f098f
+spec_changes:
+  - capability: workflow-uninstall
+    operation: create
+    source: specs/workflow-uninstall/spec.md
+    base_hash: null
+verification_result: pass
+verification_report: verification.md
+implementation_scope: runtime/evidence/scopes/aa75366fbd9f924286e2ebb9726bb6e6cd0df75ecdfde50dc317969877f1917d.json
+verification_evidence: runtime/evidence/verifications/6eaf5859928b9b15ebfdb1a9af94253388400976a44cc6ebd7ad088ad1ce404c.json
+partial_allowance: null
+archived: true
+created_at: 2026-08-01
+run_id: 9a8caeea-fe34-451b-9668-c0c959f799b2

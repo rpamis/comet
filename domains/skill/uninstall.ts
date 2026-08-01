@@ -1,5 +1,6 @@
 import path from 'path';
 import { randomUUID } from 'crypto';
+import { execFileSync } from 'child_process';
 import type { BigIntStats } from 'fs';
 import {
   hasComparableFileObject,
@@ -33,12 +34,15 @@ import type { InstallScope } from '../../platform/install/types.js';
 import {
   readManifest,
   getManagedSkillPaths,
+  getManagedSkillPathsForSelection,
   computeRuleDestPath,
   isManagedHookCommand,
   removeManagedHooksFromJsonFile,
 } from './platform-install.js';
+import type { CometWorkflow, InitWorkflowSelection } from '../comet-entry/types.js';
 import { removeCometProjectInstructions } from './project-instructions.js';
 import { readJsonObjectFile } from './json-object.js';
+import { SKILLS_AGENT_MAP } from '../integrations/superpowers.js';
 
 interface RemovalResult {
   removed: number;
@@ -129,6 +133,7 @@ interface QuarantinedWorkingTree {
 }
 
 interface RemoveWorkingDirsOptions {
+  workflows?: readonly CometWorkflow[];
   testHooks?: {
     afterPlanInspection?: () => void | Promise<void>;
   };
@@ -664,9 +669,22 @@ async function removeCometSkillsForPlatform(
   baseDir: string,
   platform: Platform,
   scope: InstallScope = 'project',
+  workflowsToRemove: readonly CometWorkflow[] = ['native', 'classic'],
+  workflowsToKeep: readonly CometWorkflow[] = [],
 ): Promise<RemovalResult> {
   const manifest = await readManifest();
-  const managedSkills = getManagedSkillPaths(manifest);
+  const selectionFor = (workflows: readonly CometWorkflow[]): InitWorkflowSelection =>
+    workflows.length === 2 ? 'both' : workflows[0]!;
+  const removablePaths = new Set(
+    getManagedSkillPathsForSelection(manifest, selectionFor(workflowsToRemove)),
+  );
+  for (const retainedPath of getManagedSkillPathsForSelection(
+    manifest,
+    workflowsToKeep.length === 0 ? 'both' : selectionFor(workflowsToKeep),
+  )) {
+    if (workflowsToKeep.length > 0) removablePaths.delete(retainedPath);
+  }
+  const managedSkills = [...removablePaths];
   const skillsDir = getPlatformSkillsDir(platform, scope);
   const uniqueSkillsDirs = [
     ...new Set([
@@ -680,7 +698,7 @@ async function removeCometSkillsForPlatform(
 
   if (OPENCODE_STYLE_PLATFORM_IDS.has(platform.id)) {
     const commandsDir = path.join(baseDir, skillsDir, 'commands');
-    for (const skillRelPath of manifest.skills) {
+    for (const skillRelPath of manifest.skills.filter((path) => removablePaths.has(path))) {
       const parts = skillRelPath.split('/');
       if (parts.length !== 2 || parts[1] !== 'SKILL.md') continue;
 
@@ -698,6 +716,9 @@ async function removeCometSkillsForPlatform(
   }
 
   if (platform.id === 'pi') {
+    if (workflowsToKeep.length > 0) {
+      return { removed, failed };
+    }
     const extensionsDir = path.join(baseDir, skillsDir, 'extensions');
     try {
       if (await removeFile(path.join(extensionsDir, 'comet-commands.ts'))) {
@@ -773,6 +794,86 @@ async function removeCometRulesForPlatform(
   }
 
   return { removed, failed };
+}
+
+async function removeOpenSpecSkillsForPlatform(
+  baseDir: string,
+  platform: Platform,
+  scope: InstallScope = 'project',
+): Promise<RemovalResult> {
+  let removed = 0;
+  let failed = 0;
+  for (const skillsDir of getPlatformSkillsDirs(platform, scope)) {
+    const skillsRoot = path.join(baseDir, skillsDir, 'skills');
+    try {
+      for (const entry of await readDir(skillsRoot)) {
+        if (!/^openspec-[a-z0-9-]+$/iu.test(entry)) continue;
+        if (await removeDir(path.join(skillsRoot, entry))) removed++;
+      }
+    } catch {
+      failed++;
+    }
+    const commandsRoot = path.join(baseDir, skillsDir, 'commands');
+    try {
+      for (const entry of await readDir(commandsRoot)) {
+        if (!/^(?:opsx|openspec)-[a-z0-9-]+\.[a-z0-9.]+$/iu.test(entry)) continue;
+        if (await removeFile(path.join(commandsRoot, entry))) removed++;
+      }
+    } catch {
+      failed++;
+    }
+  }
+  return { removed, failed };
+}
+
+function removeSuperpowersSkillsForPlatform(
+  projectPath: string,
+  platform: Platform,
+  scope: InstallScope = 'project',
+): RemovalResult {
+  const agent = SKILLS_AGENT_MAP[platform.id];
+  if (!agent) return { removed: 0, failed: 0 };
+  const command = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+  const scopeArgs = scope === 'global' ? ['--global'] : [];
+  try {
+    const output = execFileSync(command, ['skills', 'list', '--json', ...scopeArgs], {
+      cwd: projectPath,
+      encoding: 'utf8',
+      timeout: 30_000,
+      shell: process.platform === 'win32',
+    });
+    const listed = JSON.parse(output) as Array<{
+      agents?: unknown;
+      name?: unknown;
+      source?: unknown;
+    }>;
+    const names = listed.flatMap((skill) =>
+      skill.source === 'obra/superpowers' &&
+      typeof skill.name === 'string' &&
+      Array.isArray(skill.agents) &&
+      skill.agents.includes(agent)
+        ? [skill.name]
+        : [],
+    );
+    let removed = 0;
+    let failed = 0;
+    for (const name of names) {
+      try {
+        execFileSync(command, ['skills', 'remove', name, '--agent', agent, '--yes', ...scopeArgs], {
+          cwd: projectPath,
+          stdio: 'ignore',
+          timeout: 60_000,
+          shell: process.platform === 'win32',
+        });
+        removed++;
+      } catch {
+        failed++;
+      }
+    }
+    return { removed, failed };
+  } catch {
+    return { removed: 0, failed: 1 };
+  }
 }
 
 async function removeCometHooksForPlatform(
@@ -1090,15 +1191,28 @@ async function removeWorkingDirs(
     const configuredWorkflows = document?.config
       ? (document.config.workflows ?? [document.config.default_workflow])
       : [];
+    const workflowsToRemove = options.workflows;
     const classicEnabled =
-      configuredWorkflows.includes('classic') || document?.classic !== undefined;
-    const nativeEnabled = configuredWorkflows.includes('native') || document?.native !== undefined;
+      (workflowsToRemove === undefined || workflowsToRemove.includes('classic')) &&
+      (configuredWorkflows.includes('classic') || document?.classic !== undefined);
+    const nativeEnabled =
+      (workflowsToRemove === undefined || workflowsToRemove.includes('native')) &&
+      (configuredWorkflows.includes('native') || document?.native !== undefined);
+    const selectiveWorkflowRemoval =
+      workflowsToRemove !== undefined && workflowsToRemove.length < configuredWorkflows.length;
+    const fullWorkflowRemoval =
+      workflowsToRemove === undefined ||
+      (configuredWorkflows.length > 0 && workflowsToRemove.length === configuredWorkflows.length);
+    const classicOnlyRemoval =
+      workflowsToRemove?.includes('classic') === true && !workflowsToRemove.includes('native');
+    const removingClassicWorkingDirs = classicEnabled || fullWorkflowRemoval;
     const artifactLayout = classicEnabled ? (document?.classic?.artifact_layout ?? 'legacy') : null;
     const layout = artifactLayout ? classicLayoutPaths(projectRoot, artifactLayout) : null;
     const preserveOpenSpecRoot =
       layout !== null &&
       (await realWorkingFileExists(path.join(layout.openSpecRoot, 'config.yaml')));
-    const splitDocsWorkingTrees = artifactLayout === 'docs' && preserveOpenSpecRoot;
+    const splitDocsWorkingTrees =
+      artifactLayout === 'docs' && (preserveOpenSpecRoot || classicOnlyRemoval);
 
     if (artifactLayout) {
       const legacyRootExists = await assertWorkingTreeAbsentOrRealDirectory(
@@ -1118,11 +1232,17 @@ async function removeWorkingDirs(
       }
     }
 
-    const cometTree = cloneManagedWorkingTree(COMET_WORKING_TREE);
-    const docsTree: ManagedWorkingTree = {
-      superpowers: cloneManagedWorkingTree(SUPERPOWERS_WORKING_TREE),
-    };
-    const legacyTree = cloneManagedWorkingTree(OPENSPEC_WORKING_TREE);
+    const cometTree = cloneManagedWorkingTree(
+      workflowsToRemove === undefined || workflowsToRemove.length === configuredWorkflows.length
+        ? COMET_WORKING_TREE
+        : EMPTY_MANAGED_WORKING_TREE,
+    );
+    const docsTree: ManagedWorkingTree = removingClassicWorkingDirs
+      ? { superpowers: cloneManagedWorkingTree(SUPERPOWERS_WORKING_TREE) }
+      : {};
+    const legacyTree = removingClassicWorkingDirs
+      ? cloneManagedWorkingTree(OPENSPEC_WORKING_TREE)
+      : {};
     if (artifactLayout === 'docs' && !preserveOpenSpecRoot) {
       mergeManagedWorkingTree(docsTree, ['openspec'], OPENSPEC_WORKING_TREE);
     }
@@ -1132,7 +1252,7 @@ async function removeWorkingDirs(
       if (!document?.native) throw new Error('Native project config is incomplete');
       const nativePaths = await nativeProjectPaths(projectRoot, document.native.artifact_root);
       if (isInsideDirectory(docsDir, nativePaths.nativeRoot)) {
-        if (splitDocsWorkingTrees) {
+        if (splitDocsWorkingTrees || selectiveWorkflowRemoval) {
           separateNativeRoot = nativePaths.nativeRoot;
         } else {
           mergeManagedWorkingTree(
@@ -1142,11 +1262,15 @@ async function removeWorkingDirs(
           );
         }
       } else if (isInsideDirectory(cometDir, nativePaths.nativeRoot)) {
-        mergeManagedWorkingTree(
-          cometTree,
-          path.relative(cometDir, nativePaths.nativeRoot).split(path.sep).filter(Boolean),
-          NATIVE_WORKING_TREE,
-        );
+        if (selectiveWorkflowRemoval) {
+          separateNativeRoot = nativePaths.nativeRoot;
+        } else {
+          mergeManagedWorkingTree(
+            cometTree,
+            path.relative(cometDir, nativePaths.nativeRoot).split(path.sep).filter(Boolean),
+            NATIVE_WORKING_TREE,
+          );
+        }
       } else if (
         artifactLayout === 'legacy' &&
         isInsideDirectory(legacyOpenSpecRoot, nativePaths.nativeRoot)
@@ -1163,16 +1287,22 @@ async function removeWorkingDirs(
 
     const candidates: Array<
       readonly [directory: string, tree: ManagedWorkingTree, countRemoval: boolean]
-    > = splitDocsWorkingTrees
-      ? [[path.join(docsDir, 'superpowers'), SUPERPOWERS_WORKING_TREE, false]]
-      : [[docsDir, docsTree, false]];
+    > = [];
+    if (splitDocsWorkingTrees) {
+      candidates.push([path.join(docsDir, 'superpowers'), SUPERPOWERS_WORKING_TREE, false]);
+      if (artifactLayout === 'docs' && !preserveOpenSpecRoot) {
+        candidates.push([layout!.openSpecRoot, OPENSPEC_WORKING_TREE, false]);
+      }
+    } else if (Object.keys(docsTree).length > 0) {
+      candidates.push([docsDir, docsTree, false]);
+    }
     if (artifactLayout === 'legacy' && !preserveOpenSpecRoot) {
       candidates.push([layout!.openSpecRoot, legacyTree, false]);
     }
     if (separateNativeRoot) {
       candidates.push([separateNativeRoot, NATIVE_WORKING_TREE, false]);
     }
-    candidates.push([cometDir, cometTree, true]);
+    if (Object.keys(cometTree).length > 0) candidates.push([cometDir, cometTree, true]);
 
     plans = [];
     for (const [directory, managedTree, countRemoval] of candidates) {
@@ -1211,6 +1341,8 @@ export {
   removeCometSkillsForPlatform,
   removeCometRulesForPlatform,
   removeCometHooksForPlatform,
+  removeOpenSpecSkillsForPlatform,
+  removeSuperpowersSkillsForPlatform,
   removeWorkingDirs,
   removeCometProjectInstructions,
 };

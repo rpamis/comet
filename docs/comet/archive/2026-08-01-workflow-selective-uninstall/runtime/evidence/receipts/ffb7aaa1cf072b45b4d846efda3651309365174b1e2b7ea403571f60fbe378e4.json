@@ -1,0 +1,30 @@
+{
+  "schema": "comet.native.verification-receipt.v3",
+  "kind": "static-inspection",
+  "role": "required-check",
+  "status": "passed",
+  "bindings": {
+    "change": "workflow-selective-uninstall",
+    "sourceRevision": 3,
+    "contractHash": "df0e097041c7cb13d2dde47493ac6931e7c59d44c731f77aac920f63bc5f098f",
+    "scopeHash": "aa75366fbd9f924286e2ebb9726bb6e6cd0df75ecdfde50dc317969877f1917d",
+    "snapshotHash": "11ec31d22e98174067e98c1cd8e1b5e96c962eb8b3ee47d3d5c971fe208da741",
+    "artifactHash": "edd23156b9e502284280c17895c81f3ea08a7383e9ffa27d6a10bd16800ff4ff"
+  },
+  "acceptanceIds": [],
+  "actor": "native-runtime:scoped-text-safety",
+  "issuedAt": "2026-08-01T12:25:49.436Z",
+  "evidence": {
+    "subjects": [
+      "CHANGELOG.md",
+      "app/commands/uninstall.ts",
+      "domains/skill/uninstall.ts",
+      "test/app/uninstall.test.ts"
+    ],
+    "rule": "scoped-text-safety",
+    "resultSummary": "The built-in scoped inspection passed without skipped or blocking input.",
+    "checkReceiptRef": "runtime/evidence/check-receipts/2fdce886b9476978520951e6c75620570a7922aa11294a98bd947da1dbc70040.json",
+    "checkReceiptHash": "2fdce886b9476978520951e6c75620570a7922aa11294a98bd947da1dbc70040"
+  },
+  "receiptHash": "ffb7aaa1cf072b45b4d846efda3651309365174b1e2b7ea403571f60fbe378e4"
+}
