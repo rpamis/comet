@@ -36,12 +36,17 @@ describe('Comet workflow optimization contracts', () => {
   );
 
   it.each([
-    ['中文', zhSkillRoot, 'Design Doc 和状态证据落盘后', '无法程序化触发时不得阻塞'],
+    [
+      '中文',
+      zhSkillRoot,
+      'Design Doc 和状态证据落盘后',
+      '压缩只能由用户手动触发时，给出一次非阻塞建议并继续；**不得阻塞**、不得额外制造确认点',
+    ],
     [
       'English',
       skillRoot,
       'after the Design Doc and state evidence are persisted',
-      'must not block when programmatic compaction is unavailable',
+      'If compaction requires user action, give one non-blocking suggestion and continue; it **must not block** and must not create another confirmation point',
     ],
   ])(
     '%s design flow makes compaction a post-persistence optimization',
@@ -289,25 +294,26 @@ describe('Comet workflow optimization contracts', () => {
     [
       '中文',
       zhSkillRoot,
-      '展示联合决策前先检查当前平台能力',
+      '提供本工作流支持的全部工作区隔离和执行方式',
       '分支名也必须在 Step 2 的同一个联合决策中确认',
       '使用 Step 2 已确认的分支名，不得再次暂停',
     ],
     [
       'English',
       skillRoot,
-      'Check current platform capabilities before presenting the joint decision',
+      'provide every workspace-isolation and execution choice supported by this workflow',
       'The branch name must be confirmed in the same Step 2 joint decision',
       'Use the branch name already confirmed in Step 2; do not pause again',
     ],
   ])(
     '%s build flow has one executable configuration decision',
-    async (_language, root, preflight, jointBranch, noSecondPause) => {
+    async (_language, root, choices, jointBranch, noSecondPause) => {
       const skill = await readSkill(root, 'comet-build');
 
-      expect(skill).toContain(preflight);
+      expect(skill).toContain(choices);
       expect(skill).toContain(jointBranch);
       expect(skill).toContain(noSecondPause);
+      expect(skill).not.toMatch(/当前平台能力|platform capabilities/u);
       expect(skill).not.toMatch(
         /必须暂停等待用户改选 `executing-plans`|must pause and wait for the user to choose main-window execution/u,
       );
@@ -318,27 +324,27 @@ describe('Comet workflow optimization contracts', () => {
     [
       '中文',
       zhSkillRoot,
-      '返回 `/comet-build` Step 2 的同一个联合决策',
-      '只剩一个合法模式时直接采用',
+      '子代理派发操作失败属于运行停止条件',
+      '不得继续派发或由主会话代写实现',
       '暂停并等待用户改选 `build_mode: executing-plans`',
     ],
     [
       'English',
       skillRoot,
-      'Return to the same `/comet-build` Step 2 joint decision',
-      'apply the only valid mode directly when just one remains',
+      'A subagent-dispatch failure is a runtime stop condition',
+      'stop dispatching and do not let the main session implement the task',
       'pause and wait for the user to choose `build_mode: executing-plans`',
     ],
   ])(
-    '%s dispatch capability loss reuses the build decision instead of adding a pause',
-    async (_language, root, returnMarker, singleModeMarker, stalePause) => {
+    '%s dispatch failure records a blocked task without manufacturing a new choice',
+    async (_language, root, stopMarker, blockedMarker, stalePause) => {
       const dispatch = await fs.readFile(
         path.join(root, 'comet', 'reference', 'subagent-dispatch.md'),
         'utf8',
       );
 
-      expect(dispatch).toContain(returnMarker);
-      expect(dispatch).toContain(singleModeMarker);
+      expect(dispatch).toContain(stopMarker);
+      expect(dispatch).toContain(blockedMarker);
       expect(dispatch).not.toContain(stalePause);
     },
   );

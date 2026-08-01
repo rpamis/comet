@@ -275,7 +275,7 @@ test('balances heading scale and change-row density for dashboard scanning', asy
   await page.goto('/?demo');
 
   await expect(page.getByRole('heading', { name: '项目概览' })).toHaveCSS('font-size', '18px');
-  await expect(page.getByText('生成于 2026-06-25 22:32')).toHaveCSS('font-size', '13px');
+  await expect(page.locator('.dashboard-section-hint').first()).toHaveCSS('font-size', '13px');
   await expect(page.locator('.dashboard-summary-card .dashboard-summary-metric').first()).toHaveCSS(
     'font-size',
     '30px',

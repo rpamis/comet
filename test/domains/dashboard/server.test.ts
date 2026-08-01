@@ -44,7 +44,7 @@ function rawRequest(port: number, urlPath: string): Promise<number> {
       const status = Number(
         Buffer.concat(chunks)
           .toString('utf8')
-          .match(/^HTTP\/1\.1 (\d{3})/u)?.[1],
+          .match(/HTTP\/\d\.\d\s+(\d{3})/u)?.[1],
       );
       resolve(status);
     });
