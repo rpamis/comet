@@ -2,42 +2,28 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.4.0-beta.13] - 2026-07-31
+## What's Changed [0.4.0-beta.13] - 2026-08-01
+
+Beta 13 makes everyday workflow operations faster and makes uninstalling and reading Dashboard status easier.
 
 ### Added
 
-- **Native receipt refresh**: New `comet native receipt refresh <change> [--apply]` command re-issues stale acceptance receipts at the current revision in one step. Any state write (checkpoint, spec refresh, phase advance) bumps the revision and invalidates receipts bound to the previous one; under `--apply` the command re-issues every stale manual receipt and rewrites the acceptance-evidence block in `verification.md`, while reporting automated receipts that must be genuinely re-executed and required-check receipts that need `comet native check`.
+- **Native receipt refresh**: New `comet native receipt refresh <change> [--apply]` checks stale verification receipts and reissues eligible manual receipts. Automated checks that need a real rerun remain clearly identified instead of being marked as passed.
 
 ### Changed
 
-- **Selective workflow uninstall**: Interactive `comet uninstall` now lets you remove Native, Classic, or both workflows from each detected target while retaining the remaining workflow's shared entry, Rule, Hook Router, project configuration, and working files. Selecting Classic also offers independent, default-off cleanup choices for OpenSpec and Superpowers Skills; non-interactive full uninstall continues to leave those companion Skills untouched ([#258](https://github.com/rpamis/comet/issues/258)).
-- **Native receipt binding diagnostics**: When a verification receipt no longer matches the current revision, contract, scope, snapshot, or artifacts, `comet native next` now reports a structured `verification-receipt-binding-mismatch` finding that names each offending receipt, its acceptance, and the exact diverging field (for example `sourceRevision: expected 6, got 5`), and points to `comet native receipt refresh --apply` as the recovery command. Previously the same condition produced a single opaque `Native verification receipt coverage or binding is invalid` error with no indication of which receipt or field was stale.
-- **Dashboard workbench**: Dashboard now uses an Ant Design-based workspace with a responsive project context header, searchable switching among Comet-initialized projects, retained sidebar navigation, and one-click copying of Classic and Native Change names. Project switching loads the selected project's read-only data in place and clearly preserves unavailable indexed projects.
-- **Workflow overview metrics**: Classic and Native Dashboard now present workflow status through a blue primary metric card and four compact icon-led companion cards. Clicking a metric moves the visual focus to that status, while the next-step context remains clear.
-- **Header controls**: The project selector and global search now use restrained corners for a more precise dashboard toolbar appearance, and the project selector keeps a readable, high-contrast surface in dark mode.
-- **Workbench readability**: Classic and Native change workspaces now use more legible secondary text while keeping the Header and overview compact.
-- **Dark theme**: Dashboard now applies complete dark surfaces to workflow cards, inputs, Header dividers, project menus, step rails, and selected changes. Theme changes bypass page-wide color transitions to avoid visible switching jank.
-- **Classic status tags**: Classic change status tags in the Changes Explorer list and detail header now color-code by verify result — pending (amber), failed (red), passed (green), archived/unknown (neutral) — matching the Native panel instead of using a single undifferentiated tag.
-- **Runtime cold-start**: Each Classic command (`comet-state`, `comet-guard`, `comet-hook-guard`, `comet-resume-probe`, …) now ships as a self-contained bundle instead of a thin forwarder to a single 707 KB shared runtime, so running one command no longer loads the entire Classic domain. Within a single Hook decision the router and the delegated Classic/Native Guard now share one read of the project config, current selection, active-change enumeration, and `git` branch probe instead of each re-opening the same files and re-forking `git`. Together these cut the per-write Hook guard and per-command latency (for example `comet-hook-guard` cold start drops ~25%) ([#239](https://github.com/rpamis/comet/issues/239)).
-- **CLI startup**: `comet` now lazy-loads each command's implementation only when that command runs, so `comet --version`, `comet --help`, and single-command invocations no longer pull in the dashboard, eval, creator, bundle, and `@inquirer/prompts` modules. `comet --version` cold start drops from ~435 ms to ~85 ms ([#239](https://github.com/rpamis/comet/issues/239)).
-- **Resume probe reads**: The Ambient Resume probe now reads `.comet/config.yaml` and discovers the project root once per invocation instead of repeating both 2–3 times across entry resolution and per-workflow probing ([#239](https://github.com/rpamis/comet/issues/239)).
-- **Native incremental snapshot**: Native verification no longer re-hashes the entire project source tree on every receipt, check, and archive operation. Each content snapshot records the Git blob object id of clean tracked files alongside their Comet hash; subsequent snapshots reuse the baseline hash only while the object id and working-tree state remain unchanged, re-hashing changed files and excluding files modified during capture. Entries without a reusable object id fall back individually without disabling reuse for other files. The resulting complete snapshot projection is byte-for-byte identical to a full scan (same entries ⇒ same projection hash ⇒ same receipt binding), but a change that touches 3 files out of 10 000 now hashes 3 files instead of 10 000. Legacy baselines and non-Git projects continue to use safe fallback capture ([#239](https://github.com/rpamis/comet/issues/239)).
+- **Selective workflow removal**: Interactive `comet uninstall` now lets you remove Native, Classic, or both from each installed target. Removing one retains the other workflow and shared configuration; when removing Classic, OpenSpec and Superpowers Skills are optional and remain selected off by default.
+- **Everyday responsiveness**: CLI startup, Classic and Native workflow commands, write checks, and Native snapshot updates are faster. Native reuses results for unchanged files while continuing to inspect real changes.
+- **Dashboard workspace**: Dashboard offers clearer project switching, search, and change-detail views while keeping the Classic and Native workspaces separate and read-only.
 
 ### Fixed
 
-- **Dashboard port validation**: `comet dashboard --port` now rejects out-of-range values at parse time with the correct range message, instead of accepting them and failing later with a misleading error.
-- **Classic layout upgrade**: `comet init` now preserves a legacy `openspec/` workspace when an existing Classic configuration predates `classic.artifact_layout`, preventing setup failures after updating from beta.9 ([#256](https://github.com/rpamis/comet/issues/256)).
-- **Classic setup coexistence**: `comet init` now completes when both `openspec/` and `docs/openspec/` exist, using the configured Classic root while preserving the alternate root ([#257](https://github.com/rpamis/comet/issues/257)).
-- **Classic configuration recovery**: `comet init` now adopts a single existing `openspec/` or `docs/openspec/` root when an older project has no `.comet/config.yaml`, then records the matching Classic layout instead of stopping before setup.
-- **Classic OpenSpec requirement**: Classic setup now requires a compatible OpenSpec CLI before continuing. Non-interactive initialization selects a needed upgrade automatically, while the interactive dependency prompt keeps a required upgrade selected.
-- **Project configuration refresh**: `comet update` now also backfills the current project's missing managed configuration fields when Comet is installed globally. When an older Classic project contains both possible artifact roots and has no recorded layout, the update asks which root to retain; non-interactive use can pass `--classic-layout legacy|docs`.
-- **Dashboard Classic discovery**: Classic Dashboard now discovers and merges both `openspec/` and `docs/openspec/` roots without requiring Classic layout configuration, keeps same-named changes distinct by relative path, and shows Classic changes found on disk even when the project currently enables only Native, with an informative empty state when none exist.
-- **Dashboard panel layout**: Artifact and task-progress panels now switch layout by the detail column's actual width to prevent overlap.
-- **Native evidence previews**: Dashboard now summarizes Native acceptance-evidence machine blocks into readable status counts, lists referenced receipts by type and relative path, and preserves the recorded acceptance counts for archived Native changes (including historical v1 evidence) instead of showing completed criteria as missing.
+- **Classic configuration compatibility**: Setup and update retain an existing Classic project’s directory choice and more reliably recognize a usable directory when an older project configuration is incomplete.
+- **Dashboard status feedback**: Classic change verification uses green, red, amber, and neutral status colors for pass, fail, pending, and unknown states; invalid Dashboard ports now fail with a clear error before startup.
 
 ### Security
 
-- **PostCSS source map isolation**: Updated the dashboard build toolchain to PostCSS 8.5.18 so untrusted `sourceMappingURL` annotations cannot traverse outside the CSS file directory and disclose reachable `.map` files.
+- **Dashboard build dependency**: Updated the Dashboard CSS build dependency to prevent untrusted source-map references from reading unintended reachable map files.
 
 ## What's Changed [0.4.0-beta.12] - 2026-07-30
 
