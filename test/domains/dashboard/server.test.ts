@@ -151,6 +151,7 @@ describe('startDashboardServer', () => {
 
     const response = await request(handle.port, '/%2e%2e/etc/passwd');
     expect(response.status).toBe(404);
+    expect(JSON.parse(response.body)).toEqual({ error: 'Not found' });
   });
 
   it('falls back to the next available port when the requested one is taken', async () => {
