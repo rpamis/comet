@@ -34,26 +34,6 @@ function request(port: number, urlPath: string): Promise<HttpResult> {
   });
 }
 
-function rawRequest(port: number, urlPath: string): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const socket = net.createConnection({ host: '127.0.0.1', port });
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk: Buffer) => chunks.push(chunk));
-    socket.once('error', reject);
-    socket.once('end', () => {
-      const status = Number(
-        Buffer.concat(chunks)
-          .toString('utf8')
-          .match(/HTTP\/\d\.\d\s+(\d{3})/u)?.[1],
-      );
-      resolve(status);
-    });
-    socket.once('connect', () =>
-      socket.end(`GET ${urlPath} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n`),
-    );
-  });
-}
-
 describe('startDashboardServer', () => {
   let projectDir: string;
   let webDir: string;
@@ -161,8 +141,7 @@ describe('startDashboardServer', () => {
     expect(resolveDashboardStaticPath(webDir, '/../etc/passwd')).toBeNull();
   });
 
-  it('rejects path traversal attempts', async () => {
-    if (process.platform === 'win32') return;
+  it('rejects encoded path traversal attempts', async () => {
     const handle = await startDashboardServer({
       projectPath: projectDir,
       port: 0,
@@ -170,9 +149,8 @@ describe('startDashboardServer', () => {
     });
     handles.push(handle);
 
-    const status = await rawRequest(handle.port, '/../etc/passwd');
-    // The raw socket keeps the traversal payload intact, unlike Node's URL normalisation.
-    expect([403, 404]).toContain(status);
+    const response = await request(handle.port, '/%2e%2e/etc/passwd');
+    expect(response.status).toBe(404);
   });
 
   it('falls back to the next available port when the requested one is taken', async () => {
