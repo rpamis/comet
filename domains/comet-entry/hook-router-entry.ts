@@ -11,6 +11,7 @@ import {
   readCometHookRequest,
   renderCometHookDecision,
 } from './hook-adapter.js';
+import { runWithHookReadCache } from '../../platform/process/hook-read-cache.js';
 import { inspectCometHook } from './hook-router.js';
 import type { CometHookDecision } from './hook-types.js';
 
@@ -78,8 +79,9 @@ export async function runCometHookRouter(args: readonly string[]): Promise<numbe
   let decision: CometHookDecision;
   try {
     const projectRoot = await projectRootFrom(parsed);
+    const request = readCometHookRequest();
     decision = projectRoot
-      ? await inspectCometHook(projectRoot, readCometHookRequest())
+      ? await runWithHookReadCache(() => inspectCometHook(projectRoot, request))
       : { allowed: true, reason: 'No Comet project discovered' };
   } catch (error) {
     decision = {

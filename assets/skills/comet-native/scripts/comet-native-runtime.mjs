@@ -30546,6 +30546,35 @@ function replaceAcceptanceEvidenceBlock(markdown, newBlock) {
 import { promises as fs33 } from "fs";
 import path51 from "path";
 
+// platform/process/hook-read-cache.ts
+var currentScope = null;
+function cacheKey(factoryName, args) {
+  let key = factoryName;
+  for (const arg of args) {
+    key += "\0" + (typeof arg === "string" ? arg : JSON.stringify(arg));
+  }
+  return key;
+}
+function memoizedHookRead(factoryName, factory) {
+  return (...args) => {
+    const scope = currentScope;
+    if (scope === null) {
+      return factory(...args);
+    }
+    const key = cacheKey(factoryName, args);
+    const existing = scope.entries.get(key);
+    if (existing) {
+      return existing.promise;
+    }
+    const promise = factory(...args).catch((error) => {
+      scope.entries.delete(key);
+      throw error;
+    });
+    scope.entries.set(key, { promise });
+    return promise;
+  };
+}
+
 // domains/comet-entry/hook-adapter.ts
 import { readFileSync } from "fs";
 var WRITE_TOOL_NAMES = /* @__PURE__ */ new Set([
@@ -30702,7 +30731,7 @@ function requestTargetsAreControlOnly(projectRoot, nativeRoot, request) {
     return relative === ".comet/config.yaml" || isWithin(nativeRoot, target);
   });
 }
-async function activeNativeContext(projectRoot) {
+async function activeNativeContextImpl(projectRoot) {
   const config = await readProjectConfig(projectRoot);
   if (!config || !(config.workflows ?? [config.default_workflow]).includes("native")) return null;
   const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
@@ -30721,6 +30750,10 @@ async function activeNativeContext(projectRoot) {
   }
   return { paths, changes };
 }
+var activeNativeContext = memoizedHookRead(
+  "nativeActiveContext",
+  (projectRoot) => activeNativeContextImpl(projectRoot)
+);
 async function readNativeHookRequest() {
   const { intent, targets } = await readCometHookRequest();
   return { intent, targets };

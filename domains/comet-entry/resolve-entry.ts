@@ -1,5 +1,4 @@
-import { discoverNativeProject } from '../comet-native/native-paths.js';
-import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
+import { discoverCachedNativeProject, readCachedProjectConfig } from './entry-reads.js';
 import type { CometEntryResolution, CometWorkflow } from './types.js';
 
 function configuredResolution(workflow: CometWorkflow): CometEntryResolution {
@@ -11,8 +10,8 @@ function configuredResolution(workflow: CometWorkflow): CometEntryResolution {
 }
 
 export async function resolveCometEntry(startPath: string): Promise<CometEntryResolution> {
-  const projectRoot = await discoverNativeProject(startPath);
-  const config = await readWorkflowProjectConfig(projectRoot);
+  const projectRoot = await discoverCachedNativeProject(startPath);
+  const config = await readCachedProjectConfig(projectRoot);
   if (!config) {
     throw new Error('Comet workflow entry is unavailable because .comet/config.yaml is missing');
   }

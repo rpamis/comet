@@ -6,6 +6,7 @@ import {
   writeCometCurrentSelection,
   type CometCurrentSelection,
 } from '../comet-entry/current-selection.js';
+import { memoizedHookRead } from '../../platform/process/hook-read-cache.js';
 import {
   driftStaleReason,
   resolveBranchBinding,
@@ -13,6 +14,14 @@ import {
 } from './classic-branch-binding.js';
 import { assertOpenSpecChangeName, inspectClassicActiveChangeDirectory } from './classic-paths.js';
 import { readClassicState } from './classic-store.js';
+
+// Share the current-selection read with the router layer when both execute
+// inside one Hook decision. The clear/write paths below keep the raw reader
+// because they are not part of the cached Hook-read scope.
+const readCachedCurrentSelection = memoizedHookRead(
+  'readCometCurrentSelection',
+  (projectRoot: string) => readCometCurrentSelection(projectRoot),
+);
 
 export type CurrentChangeSelection = CometCurrentSelection;
 
@@ -70,7 +79,7 @@ export async function selectCurrentChange(
 export async function resolveCurrentChange(projectRoot: string): Promise<CurrentChangeResolution> {
   let current;
   try {
-    current = await readCometCurrentSelection(projectRoot);
+    current = await readCachedCurrentSelection(projectRoot);
   } catch (error) {
     return {
       status: 'stale',

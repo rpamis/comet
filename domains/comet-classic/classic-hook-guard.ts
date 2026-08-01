@@ -1,5 +1,6 @@
 import { promises as fs, readFileSync } from 'fs';
 import path from 'path';
+import { memoizedHookRead } from '../../platform/process/hook-read-cache.js';
 import {
   assertClassicLayoutWritable,
   assertClassicLayoutReadable,
@@ -152,7 +153,7 @@ async function loadGoverningChange(changeDir: string): Promise<GoverningChange |
   }
 }
 
-async function activeChanges(projectRoot: string): Promise<GoverningChange[]> {
+async function activeChangesImpl(projectRoot: string): Promise<GoverningChange[]> {
   const changesDir = (await assertClassicLayoutReadable(projectRoot)).changesDir;
   const governingChanges: GoverningChange[] = [];
   const changesInspection = await inspectClassicProjectTarget(projectRoot, changesDir, {
@@ -173,6 +174,14 @@ async function activeChanges(projectRoot: string): Promise<GoverningChange[]> {
   }
   return governingChanges;
 }
+
+// `activeChanges` is invoked once by the router's `listActiveClassicHookChanges`
+// and again by `inspectClassicHookGuard`. Within a single Hook decision the
+// changes directory is immutable, so memoize the enumeration to avoid a second
+// readdir + per-change state read. CLI commands bypass this cache.
+const activeChanges = memoizedHookRead('classicActiveChanges', (projectRoot: string) =>
+  activeChangesImpl(projectRoot),
+);
 
 export interface ActiveClassicHookChange {
   workflow: 'classic';

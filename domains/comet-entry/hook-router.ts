@@ -7,10 +7,20 @@ import {
   inspectNativeHookGuard,
   listActiveNativeHookChanges,
 } from '../comet-native/native-hook-guard.js';
+import { memoizedHookRead } from '../../platform/process/hook-read-cache.js';
 import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
 import { readCometCurrentSelection } from './current-selection.js';
+import { readCachedProjectConfig } from './entry-reads.js';
 import type { CometHookDecision, CometHookRequest } from './hook-types.js';
 import type { CometWorkflow } from './types.js';
+
+// Wrap the hot reads so that within one Hook decision the router and the
+// delegated Classic/Native Guard share a single config + selection read
+// instead of each re-opening the same files.
+const readCachedCurrentSelection = memoizedHookRead(
+  'readCometCurrentSelection',
+  (projectRoot: string) => readCometCurrentSelection(projectRoot),
+);
 
 export interface ActiveHookChange {
   workflow: CometWorkflow;
@@ -99,11 +109,11 @@ export async function resolveHookWorkflowOwner(
   projectRoot: string,
   dependencies: Pick<HookRouterDependencies, 'listNative' | 'listClassic'> = DEFAULT_DEPENDENCIES,
 ): Promise<HookWorkflowOwnerResolution> {
-  const config = await readWorkflowProjectConfig(projectRoot);
+  const config = await readCachedProjectConfig(projectRoot);
   const enabled = enabledWorkflows(config);
   let current;
   try {
-    current = await readCometCurrentSelection(projectRoot);
+    current = await readCachedCurrentSelection(projectRoot);
   } catch (error) {
     return {
       status: 'stale',

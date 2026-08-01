@@ -9020,6 +9020,68 @@ function renderCometHookDecision(platformId, decision) {
 ` };
 }
 
+// platform/process/hook-read-cache.ts
+var currentScope = null;
+async function runWithHookReadCache(work) {
+  if (currentScope !== null) {
+    return work();
+  }
+  const scope = { entries: /* @__PURE__ */ new Map() };
+  currentScope = scope;
+  try {
+    return await work();
+  } finally {
+    currentScope = null;
+  }
+}
+function cacheKey(factoryName, args) {
+  let key = factoryName;
+  for (const arg of args) {
+    key += "\0" + (typeof arg === "string" ? arg : JSON.stringify(arg));
+  }
+  return key;
+}
+function memoizedHookRead(factoryName, factory) {
+  return (...args) => {
+    const scope = currentScope;
+    if (scope === null) {
+      return factory(...args);
+    }
+    const key = cacheKey(factoryName, args);
+    const existing = scope.entries.get(key);
+    if (existing) {
+      return existing.promise;
+    }
+    const promise = factory(...args).catch((error) => {
+      scope.entries.delete(key);
+      throw error;
+    });
+    scope.entries.set(key, { promise });
+    return promise;
+  };
+}
+function memoizedHookReadSync(factoryName, factory) {
+  return (...args) => {
+    const scope = currentScope;
+    if (scope === null) {
+      return factory(...args);
+    }
+    const key = cacheKey(factoryName, args);
+    const existing = scope.entries.get(key);
+    if (existing) {
+      return existing.promise;
+    }
+    let result2;
+    try {
+      result2 = factory(...args);
+    } catch (error) {
+      throw error;
+    }
+    scope.entries.set(key, { promise: Promise.resolve(result2) });
+    return result2;
+  };
+}
+
 // domains/comet-classic/classic-hook-guard.ts
 import { promises as fs8, readFileSync as readFileSync2 } from "fs";
 import path12 from "path";
@@ -9118,6 +9180,7 @@ function liveGitBranch(cwd) {
     return null;
   }
 }
+var cachedGitBranch = memoizedHookReadSync("liveGitBranch", (cwd) => liveGitBranch(cwd));
 function isGitWorkTree(cwd) {
   try {
     return execFileSync("git", ["rev-parse", "--is-inside-work-tree"], {
@@ -9129,6 +9192,10 @@ function isGitWorkTree(cwd) {
     return false;
   }
 }
+var cachedGitWorkTree = memoizedHookReadSync(
+  "isGitWorkTree",
+  (cwd) => isGitWorkTree(cwd)
+);
 var BOUND_BRANCH_ISOLATIONS = ["current", "branch", "worktree"];
 function requiresBranchBinding(isolation) {
   return BOUND_BRANCH_ISOLATIONS.includes(isolation);
@@ -9154,8 +9221,8 @@ async function resolveBranchBinding(changeDir, options) {
   const isolation = typeof record3.isolation === "string" ? record3.isolation : null;
   const boundBranch = typeof record3.bound_branch === "string" && record3.bound_branch !== "" ? record3.bound_branch : null;
   const bindingRequired = requiresBranchBinding(isolation);
-  const currentBranch = liveGitBranch(options.cwd);
-  const gitWorkTree = bindingRequired && boundBranch === null && currentBranch === null ? isGitWorkTree(options.cwd) : true;
+  const currentBranch = cachedGitBranch(options.cwd);
+  const gitWorkTree = bindingRequired && boundBranch === null && currentBranch === null ? cachedGitWorkTree(options.cwd) : true;
   const verdict = evaluateBranchBinding({ isolation, boundBranch, currentBranch, gitWorkTree });
   if (verdict.status === "needs-heal" && options.heal) {
     await healBoundBranch(changeDir, verdict.branch);
@@ -9564,6 +9631,10 @@ async function readLegacyState(changeDir) {
 }
 
 // domains/comet-classic/classic-current-change.ts
+var readCachedCurrentSelection = memoizedHookRead(
+  "readCometCurrentSelection",
+  (projectRoot) => readCometCurrentSelection(projectRoot)
+);
 async function validateActiveChange(projectRoot, changeName) {
   assertOpenSpecChangeName(changeName);
   const active = await inspectClassicActiveChangeDirectory(changeName, projectRoot);
@@ -9582,7 +9653,7 @@ async function validateActiveChange(projectRoot, changeName) {
 async function resolveCurrentChange(projectRoot) {
   let current;
   try {
-    current = await readCometCurrentSelection(projectRoot);
+    current = await readCachedCurrentSelection(projectRoot);
   } catch (error) {
     return {
       status: "stale",
@@ -9715,7 +9786,7 @@ async function loadGoverningChange(changeDir) {
     };
   }
 }
-async function activeChanges(projectRoot) {
+async function activeChangesImpl(projectRoot) {
   const changesDir = (await assertClassicLayoutReadable(projectRoot)).changesDir;
   const governingChanges = [];
   const changesInspection = await inspectClassicProjectTarget(projectRoot, changesDir, {
@@ -9736,6 +9807,10 @@ async function activeChanges(projectRoot) {
   }
   return governingChanges;
 }
+var activeChanges = memoizedHookRead(
+  "classicActiveChanges",
+  (projectRoot) => activeChangesImpl(projectRoot)
+);
 async function listActiveClassicHookChanges(projectRoot) {
   return (await activeChanges(projectRoot)).map((change) => ({
     workflow: "classic",
@@ -11787,7 +11862,7 @@ function requestTargetsAreControlOnly(projectRoot, nativeRoot, request) {
     return relative === ".comet/config.yaml" || isWithin(nativeRoot, target);
   });
 }
-async function activeNativeContext(projectRoot) {
+async function activeNativeContextImpl(projectRoot) {
   const config = await readProjectConfig(projectRoot);
   if (!config || !(config.workflows ?? [config.default_workflow]).includes("native")) return null;
   const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
@@ -11806,6 +11881,10 @@ async function activeNativeContext(projectRoot) {
   }
   return { paths, changes };
 }
+var activeNativeContext = memoizedHookRead(
+  "nativeActiveContext",
+  (projectRoot) => activeNativeContextImpl(projectRoot)
+);
 async function listActiveNativeHookChanges(projectRoot) {
   const context = await activeNativeContext(projectRoot);
   return (context?.changes ?? []).map((change) => ({
@@ -11898,8 +11977,22 @@ async function inspectNativeHookGuard(projectRoot, request, selectedChangeName) 
   };
 }
 
-// domains/comet-entry/hook-router.ts
+// domains/comet-entry/entry-reads.ts
 init_project_config_reader();
+var readCachedProjectConfig = memoizedHookRead(
+  "readWorkflowProjectConfig",
+  (projectRoot) => readWorkflowProjectConfig(projectRoot)
+);
+var discoverCachedNativeProject = memoizedHookRead(
+  "discoverNativeProject",
+  (startPath) => discoverNativeProject(startPath)
+);
+
+// domains/comet-entry/hook-router.ts
+var readCachedCurrentSelection2 = memoizedHookRead(
+  "readCometCurrentSelection",
+  (projectRoot) => readCometCurrentSelection(projectRoot)
+);
 var DEFAULT_DEPENDENCIES = {
   listNative: listActiveNativeHookChanges,
   listClassic: listActiveClassicHookChanges,
@@ -11925,11 +12018,11 @@ function resolveActiveCandidates(candidates, staleSelection) {
   return { status: "ambiguous", candidates, staleSelection };
 }
 async function resolveHookWorkflowOwner(projectRoot, dependencies = DEFAULT_DEPENDENCIES) {
-  const config = await readWorkflowProjectConfig(projectRoot);
+  const config = await readCachedProjectConfig(projectRoot);
   const enabled = enabledWorkflows(config);
   let current;
   try {
-    current = await readCometCurrentSelection(projectRoot);
+    current = await readCachedCurrentSelection2(projectRoot);
   } catch (error) {
     return {
       status: "stale",
@@ -12088,7 +12181,8 @@ ${USAGE}
   let decision;
   try {
     const projectRoot = await projectRootFrom(parsed);
-    decision = projectRoot ? await inspectCometHook(projectRoot, readCometHookRequest()) : { allowed: true, reason: "No Comet project discovered" };
+    const request = readCometHookRequest();
+    decision = projectRoot ? await runWithHookReadCache(() => inspectCometHook(projectRoot, request)) : { allowed: true, reason: "No Comet project discovered" };
   } catch (error) {
     decision = {
       allowed: false,

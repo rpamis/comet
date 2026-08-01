@@ -4,6 +4,8 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { parseDocument } from 'yaml';
 
+import { memoizedHookReadSync } from '../../platform/process/hook-read-cache.js';
+
 export function liveGitBranch(cwd: string): string | null {
   try {
     const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
@@ -16,6 +18,11 @@ export function liveGitBranch(cwd: string): string | null {
     return null;
   }
 }
+
+// Within one Hook decision the current branch cannot change, so cache the git
+// probe. CLI commands (state rebind, status) keep using the raw function and
+// are unaffected — the cache is only active inside `runWithHookReadCache`.
+const cachedGitBranch = memoizedHookReadSync('liveGitBranch', (cwd: string) => liveGitBranch(cwd));
 
 export function isGitWorkTree(cwd: string): boolean {
   try {
@@ -30,6 +37,10 @@ export function isGitWorkTree(cwd: string): boolean {
     return false;
   }
 }
+
+const cachedGitWorkTree = memoizedHookReadSync('isGitWorkTree', (cwd: string) =>
+  isGitWorkTree(cwd),
+);
 
 export type BranchBindingVerdict =
   | { status: 'not-applicable' }
@@ -95,10 +106,10 @@ export async function resolveBranchBinding(
       ? record.bound_branch
       : null;
   const bindingRequired = requiresBranchBinding(isolation);
-  const currentBranch = liveGitBranch(options.cwd);
+  const currentBranch = cachedGitBranch(options.cwd);
   const gitWorkTree =
     bindingRequired && boundBranch === null && currentBranch === null
-      ? isGitWorkTree(options.cwd)
+      ? cachedGitWorkTree(options.cwd)
       : true;
   const verdict = evaluateBranchBinding({ isolation, boundBranch, currentBranch, gitWorkTree });
   if (verdict.status === 'needs-heal' && options.heal) {

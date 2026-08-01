@@ -16,11 +16,9 @@ import {
   inspectNativeArtifactFindings,
   listNativeStatus,
 } from '../comet-native/native-diagnostics.js';
-import { discoverNativeProject, nativeProjectPaths } from '../comet-native/native-paths.js';
-import {
-  readWorkflowAmbientResumeEnabled,
-  readWorkflowProjectConfig,
-} from '../workflow-contract/project-config-reader.js';
+import { nativeProjectPaths } from '../comet-native/native-paths.js';
+import { runWithHookReadCache } from '../../platform/process/hook-read-cache.js';
+import { discoverCachedNativeProject, readCachedProjectConfig } from './entry-reads.js';
 import { resolveSelectedNativeChange } from '../comet-native/native-selection.js';
 import { readNativeProposedSpecs } from '../comet-native/native-specs.js';
 import type {
@@ -298,7 +296,7 @@ async function resolveNativeResumeProbe(
   input: CometEntryResumeProbeInput,
   entrySource: CometEntryResolutionSource,
 ): Promise<CometEntryResumeProbeResult> {
-  const config = await readWorkflowProjectConfig(projectRoot);
+  const config = await readCachedProjectConfig(projectRoot);
   if (!config?.native) {
     throw new Error('.comet/config.yaml has no Native configuration after resolving Native entry');
   }
@@ -489,6 +487,16 @@ export async function resolveCometEntryResumeProbe(
   startPath: string,
   rawInput: unknown,
 ): Promise<CometEntryResumeProbeResult> {
+  // Activate a per-invocation read cache so the project-root discovery and
+  // config read below are shared with `resolveCometEntry` and the per-workflow
+  // resolvers instead of being repeated 2-3 times.
+  return runWithHookReadCache(() => resolveCometEntryResumeProbeImpl(startPath, rawInput));
+}
+
+async function resolveCometEntryResumeProbeImpl(
+  startPath: string,
+  rawInput: unknown,
+): Promise<CometEntryResumeProbeResult> {
   const input = normalizeInput(rawInput);
   const utterance = input.utterance.trim();
   const lower = utterance.toLowerCase();
@@ -513,8 +521,12 @@ export async function resolveCometEntryResumeProbe(
   let projectRoot: string;
   let entry: Awaited<ReturnType<typeof resolveCometEntry>>;
   try {
-    projectRoot = await discoverNativeProject(startPath);
-    if (!(await readWorkflowAmbientResumeEnabled(projectRoot))) {
+    projectRoot = await discoverCachedNativeProject(startPath);
+    // Read config once here; the cached read is reused by resolveCometEntry
+    // and the per-workflow resolvers below, instead of each re-opening the
+    // file. Check ambient_resume on the same cached config.
+    const ambientConfig = await readCachedProjectConfig(projectRoot);
+    if (ambientConfig !== null && !ambientConfig.ambient_resume) {
       return result({
         action: 'out_of_scope',
         confidence: 'none',

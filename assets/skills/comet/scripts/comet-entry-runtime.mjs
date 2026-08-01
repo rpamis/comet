@@ -7367,6 +7367,35 @@ var require_dist = __commonJS({
 // domains/comet-entry/entry-runtime.ts
 import path4 from "path";
 
+// platform/process/hook-read-cache.ts
+var currentScope = null;
+function cacheKey(factoryName, args) {
+  let key = factoryName;
+  for (const arg of args) {
+    key += "\0" + (typeof arg === "string" ? arg : JSON.stringify(arg));
+  }
+  return key;
+}
+function memoizedHookRead(factoryName, factory) {
+  return (...args) => {
+    const scope = currentScope;
+    if (scope === null) {
+      return factory(...args);
+    }
+    const key = cacheKey(factoryName, args);
+    const existing = scope.entries.get(key);
+    if (existing) {
+      return existing.promise;
+    }
+    const promise = factory(...args).catch((error) => {
+      scope.entries.delete(key);
+      throw error;
+    });
+    scope.entries.set(key, { promise });
+    return promise;
+  };
+}
+
 // domains/comet-native/native-paths.ts
 import { promises as fs } from "fs";
 import path2 from "path";
@@ -7979,6 +8008,16 @@ async function readWorkflowProjectConfig(projectRoot) {
   return (await readWorkflowProjectConfigDocument(projectRoot))?.config ?? null;
 }
 
+// domains/comet-entry/entry-reads.ts
+var readCachedProjectConfig = memoizedHookRead(
+  "readWorkflowProjectConfig",
+  (projectRoot) => readWorkflowProjectConfig(projectRoot)
+);
+var discoverCachedNativeProject = memoizedHookRead(
+  "discoverNativeProject",
+  (startPath) => discoverNativeProject(startPath)
+);
+
 // domains/comet-entry/resolve-entry.ts
 function configuredResolution(workflow) {
   return {
@@ -7988,8 +8027,8 @@ function configuredResolution(workflow) {
   };
 }
 async function resolveCometEntry(startPath) {
-  const projectRoot = await discoverNativeProject(startPath);
-  const config = await readWorkflowProjectConfig(projectRoot);
+  const projectRoot = await discoverCachedNativeProject(startPath);
+  const config = await readCachedProjectConfig(projectRoot);
   if (!config) {
     throw new Error("Comet workflow entry is unavailable because .comet/config.yaml is missing");
   }
