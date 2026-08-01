@@ -46,6 +46,9 @@ npm-cache/
 pnpm-store/
 result
 
+# Local cold-start benchmark baseline (machine-specific timing data)
+scripts/benchmark/runtime-coldstart-baseline.json
+
 # OS files
 .DS_Store
 Thumbs.db
