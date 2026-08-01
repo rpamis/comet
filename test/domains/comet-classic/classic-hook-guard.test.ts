@@ -416,7 +416,6 @@ describe('Classic hook guard command', () => {
   it.each([
     ['.comet config', path.join('.comet', 'config.yaml')],
     ['Superpowers workspace', path.join('.superpowers', 'sdd', 'progress.md')],
-    ['Claude config', path.join('.claude', 'rules', 'custom.md')],
     ['root Markdown', 'README.md'],
   ])('keeps the %s allowlist with multiple unselected changes', async (_label, target) => {
     const dir = await makeProject();
@@ -444,6 +443,20 @@ describe('Classic hook guard command', () => {
 
     expect(result.status).toBe(0);
     expect(result.stderr).toContain('whitelist: superpowers workspace');
+  });
+
+  it.each([
+    ['Claude workspace source', path.join('.claude', 'worktrees', 'change', 'src', 'feature.ts')],
+    ['Codex config', path.join('.codex', 'rules', 'custom.md')],
+  ])('does not bypass phase protection for %s', async (_label, target) => {
+    const dir = await makeProject();
+    await seedChange(dir, 'design-change', 'design');
+
+    const result = run(dir, 'hook-guard', [], hookInput(path.join(dir, target)));
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('Current phase: design');
+    expect(result.stderr).toContain('This phase does not allow source writes');
   });
 
   it.each(['design', 'archive'] as const)(

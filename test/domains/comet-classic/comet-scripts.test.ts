@@ -5863,21 +5863,29 @@ describe('comet scripts', () => {
       expect(result.stderr).not.toMatch(/[一-龥]/);
     }, 20_000);
 
-    it('allows writes to .claude/ rules regardless of phase', async () => {
-      await createChange(
-        tmpDir,
-        'test-hook',
-        ['workflow: full', 'phase: design', 'context_compression: off', ''].join('\n'),
-      );
+    it.each([
+      ['Claude workspace source', path.join('.claude', 'worktrees', 'change', 'src', 'feature.ts')],
+      ['Codex config', path.join('.codex', 'rules', 'custom.md')],
+    ])(
+      'does not bypass phase protection for %s',
+      async (_label, target) => {
+        await createChange(
+          tmpDir,
+          'test-hook',
+          ['workflow: full', 'phase: design', 'context_compression: off', ''].join('\n'),
+        );
 
-      const claudeDir = path.join(tmpDir, '.claude', 'rules');
-      await fs.mkdir(claudeDir, { recursive: true });
-      const targetFile = path.join(claudeDir, 'custom.md');
+        const targetFile = path.join(tmpDir, target);
+        await fs.mkdir(path.dirname(targetFile), { recursive: true });
 
-      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
+        const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
 
-      expect(result.status).toBe(0);
-    }, 20_000);
+        expect(result.status).toBe(2);
+        expect(result.stderr).toContain('Current phase: design');
+        expect(result.stderr).toContain('This phase does not allow source writes');
+      },
+      20_000,
+    );
 
     it('ignores archived changes and allows writes', async () => {
       const archiveDir = path.join(tmpDir, 'openspec', 'changes', 'archive');

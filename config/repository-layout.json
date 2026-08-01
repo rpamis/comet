@@ -146,6 +146,6 @@
   ],
   "platformModules": ["fs", "install", "paths", "process", "version"],
   "scriptModules": ["benchmark", "build", "install", "lib", "lint", "release"],
-  "allowedCodeFiles": [],
+  "allowedCodeFiles": ["bin/fast-runtime-router.js"],
   "testRoots": ["test"]
 }

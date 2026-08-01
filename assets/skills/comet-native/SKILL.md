@@ -19,57 +19,32 @@ Config, selection, change state, and formal artifacts on disk take precedence ov
 
 The Native main workflow does not depend on any external Skill.
 
-## Script bootstrap
+## CLI bootstrap
 
-Native commands run faster as direct bundle invocations (`node comet-native-<cmd>.mjs`) than through the `comet native` CLI shell, because the CLI pays commander registration and module-loading overhead on every call. Resolve the absolute Native scripts directory once when entering the Skill. When the host displays this Skill's Base directory, use its `scripts/` directory directly without searching. Otherwise, locate the status bundle with the host's filesystem search; for example:
+The Native Skill uses only the public `comet native <cmd>` CLI on PATH. Packaged command bundles are internal installation and Runtime assets; the Skill does not search for or invoke them directly. If the host reports `command not found`, `executable not found`, or `ENOENT`, stop and explain that the Comet CLI installation is incomplete. Do not search for Skill files, enumerate platform directories, or invoke an internal bundle directly.
 
-```bash
-for root in "$PWD/../.claude/skills" "$HOME/.claude/skills" "$HOME/.codex/skills" "$HOME/.agents/skills" "$HOME/.config" "$HOME/.gemini" .; do
-  [ -d "$root" ] || continue
-  COMET_NATIVE_STATUS="$(find "$root" -path '*/comet-native/scripts/comet-native-status.mjs' -type f -print -quit 2>/dev/null)"
-  [ -n "$COMET_NATIVE_STATUS" ] && break
-done
-if [ -z "$COMET_NATIVE_STATUS" ]; then
-  echo "ERROR: comet-native scripts not found. Ensure the comet-native skill is installed." >&2
-  return 1
-fi
-dirname "$COMET_NATIVE_STATUS"
-```
-
-```powershell
-$CometNativeStatus = Get-ChildItem -Path "$PWD/../.claude/skills", "$HOME/.claude/skills", "$HOME/.codex/skills", "$HOME/.agents/skills", "$HOME/.config", "$HOME/.gemini", . -Filter comet-native-status.mjs -File -Recurse -ErrorAction SilentlyContinue |
-  Where-Object { $_.FullName -match '[\\/]comet-native[\\/]scripts[\\/]comet-native-status\.mjs$' } |
-  Select-Object -First 1
-if (-not $CometNativeStatus) { throw 'comet-native scripts not found. Ensure the comet-native skill is installed.' }
-$CometNativeStatus.Directory.FullName
-```
-
-Record the resulting absolute directory in task context. For each command, resolve `<comet-native-<cmd>-script>` to the literal absolute path of `comet-native-<cmd>.mjs` in that directory. In every later tool call, replace the quoted placeholder with that absolute path. Never pass the angle-bracket placeholder literally and never depend on a shell-local variable surviving into a later tool call. Stop the workflow if a required bundle is missing.
-
-Each command has a dedicated bundle; arguments are identical to the CLI subcommand (drop only the `native` keyword):
+Common commands:
 
 ```bash
-node "<comet-native-status-script>" [--json]
-node "<comet-native-show-script>" <change-name>
-node "<comet-native-select-script>" <change-name>
-node "<comet-native-new-script>" <change-name> [--language en|zh-CN]
-node "<comet-native-next-script>" <change-name> --summary <text> [--confirmed]
-node "<comet-native-archive-script>" <change-name> --dry-run
+comet native status [--json]
+comet native show <change-name>
+comet native select <change-name>
+comet native new <change-name> [--language en|zh-CN]
+comet native next <change-name> --summary <text> [--confirmed]
+comet native archive <change-name> --dry-run
 ```
-
-The `comet native` CLI remains available as a fallback when the bundle path cannot be resolved.
 
 ## Start or resume
 
-1. Run `node "<comet-native-status-script>"` to identify the current change and phase.
-2. Run `node "<comet-native-show-script>" <change-name>` for the target. In Verify, Archive, or Build after a failure, also run the status bundle with `--details`.
+1. Run `comet native status` to identify the current change and phase.
+2. Run `comet native show <change-name>` for the target. In Verify, Archive, or Build after a failure, also run the status command with `--details`.
 3. When more acceptance items are needed, follow `acceptancePage.nextCursor`. If findings are truncated, handle the returned findings and then read details again.
-4. After confirming the target, run `node "<comet-native-select-script>" <change-name>`.
+4. After confirming the target, run `comet native select <change-name>`.
 
 If multiple reasonable candidates remain, ask the user to select one. Create a change only after confirming that no matching active change exists:
 
 ```text
-node "<comet-native-new-script>" <change-name> \
+comet native new <change-name> \
   --language en
 ```
 
@@ -93,7 +68,7 @@ Follow the clarification reference according to `clarification_mode`. Even when 
 After all user decisions are resolved, check again for silent assumptions. Give the user a shared-understanding summary covering the goal, scope, key decisions, acceptance criteria, and non-goals. Only after explicit confirmation may you remove the final blocker and advance:
 
 ```text
-node "<comet-native-next-script>" <change-name> --summary <summary> --confirmed
+comet native next <change-name> --summary <summary> --confirmed
 ```
 
 If the brief or specifications change confirmed behavior, obtain confirmation again. Do not edit confirmation state manually.
@@ -107,7 +82,7 @@ When requirements change, update the formal artifacts first. If a new user decis
 After the candidate implementation is complete, review it against the complete specifications and every acceptance item for omissions, then advance with real project artifacts:
 
 ```text
-node "<comet-native-next-script>" <change-name> \
+comet native next <change-name> \
   --summary <summary> \
   --artifact <project-path> \
   [--confirmed]
@@ -119,7 +94,7 @@ If no code changed or the Runtime cannot prove complete scope, read the command 
 
 After entering Build, converge through this loop:
 
-1. Run `node "<comet-native-status-script>" <change-name> --details` and read the currently required acceptance pages. After a Verify failure, prioritize failed or missing acceptance items and failed checks.
+1. Run `comet native status <change-name> --details` and read the currently required acceptance pages. After a Verify failure, prioritize failed or missing acceptance items and failed checks.
 2. Complete one related batch of real repairs. You may write a checkpoint before interruption, but a checkpoint is not completion evidence.
 3. When a candidate implementation exists, reread the brief, complete specifications, and every acceptance item, then perform one complete review.
 4. Run real validation and submit the Verify result.
@@ -144,7 +119,7 @@ An intermediate Verify failure never runs Archive or triggers archive confirmati
 Preview only after the final Verify pass:
 
 ```text
-node "<comet-native-archive-script>" <change-name> --dry-run
+comet native archive <change-name> --dry-run
 ```
 
 After a successful preview:

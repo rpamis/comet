@@ -33,7 +33,7 @@ Apply these on every task, in addition to the Superpowers skill's dispatch loop:
 The main session is the **coordinator only** and must NOT execute tasks directly or modify source code. The coordinator may modify only the plan, OpenSpec task, and subagent progress checkpoint for durable tracking. Never bundle multiple tasks into one agent. Dispatch a fresh background implementer agent for every task; when `review_mode` requires review or fixes, the task reviewer, fix agents, and the final reviewer must also each use a fresh background agent:
 
 - **Claude Code**: Use the `Agent` tool with `run_in_background: true` for each implementer, task reviewer, fix agent, and final reviewer. Never execute tasks inline and do not accidentally enter team mode, which requires a pre-created team.
-- **Other platforms**: Use the platform's equivalent background agent / Task / multi-agent dispatch mechanism.
+- **Other platforms**: Use an equivalent background agent / Task / multi-agent dispatch mechanism only when it provides real asynchronous execution, isolated context, result collection, and the required handoff mechanism. A similar tool name does not satisfy the asynchronous dispatch contract.
 - **Never** reuse implementers, reviewers, or fix agents across tasks or roles. Each agent gets a fresh, isolated context containing only the single task and role-specific context it needs.
 - If real background dispatch capability disappears during execution, stop dispatching and do not let the main session implement the task. Return to the same `/comet-build` Step 2 joint decision with the unavailable mode removed. Do not create a separate "switch to executing-plans" pause; apply the only valid mode directly when just one remains.
 
@@ -42,7 +42,7 @@ The main session is the **coordinator only** and must NOT execute tasks directly
 Every implementer or fix-agent prompt must include:
 
 - The full text of the single current task, architecture background, and dependency context
-- `Language: Use the configured Comet artifact language from node "<comet-state-script>" get <name> language`
+- `Language: Use the configured Comet artifact language from comet state get <name> language`
 - The allowed file scope and prohibited modification scope
 - The required test commands and commit requirements
 - For a fix agent, the corresponding reviewer's complete feedback
@@ -69,13 +69,13 @@ Reviewer prompts must stay neutral:
 - Do not pre-judge, suppress, or down-rank findings in the reviewer prompt. If a likely finding conflicts with the plan, let the reviewer report it, then ask the user which requirement governs.
 - Do not paste accumulated prior-task history into later dispatches. Give only the current task, the relevant interfaces/constraints, and the handoff artifacts exposed by the loaded Superpowers `subagent-driven-development` skill.
 
-**Model selection (mandatory)**: Every dispatch must specify the model explicitly. An omitted model silently inherits the session's most expensive model, slowing execution and raising cost. Follow the Superpowers `subagent-driven-development` Model Selection rules:
+**Model selection**: When the host supports explicit model selection, every dispatch must specify the model. When it does not, record `model: platform-default` in both the dispatch record and `<classic-change-dir>/.comet/subagent-progress.md`; do not invent an unsupported model argument. Omitting a supported model silently inherits the session model, slowing execution and raising cost. Follow the Superpowers `subagent-driven-development` Model Selection rules:
 
 - **Implementer / fix agent**: prose-described implementation work uses at least the standard tier; multi-file integration, pattern matching, or debugging → standard tier; requires design judgment or broad codebase understanding → most capable tier. Use the cheapest tier only when the plan text already contains the complete code to write (transcription + testing) or for a single-file mechanical fix.
 - **Reviewer (task-level / final)**: scale to the diff's size, complexity, and risk. A small mechanical diff does not need the most capable model; a subtle concurrency change does.
 - **Final whole-branch review**: use the most capable available model, not the session default.
 
-Omitting the model equals letting it run the session's most expensive model — directly defeating this section's goal.
+On a host that exposes explicit model selection, omitting the model delegates the choice to the session default and violates this contract. `platform-default` is allowed only when the host genuinely does not expose model selection.
 
 ### 2. Implementer Scope Restriction
 
@@ -97,6 +97,7 @@ The coordinator must maintain `<classic-change-dir>/.comet/subagent-progress.md`
 
 - The unique current plan task text and mapped OpenSpec task text
 - Current stage: `implementing | task-review | checkoff | done | blocked | final-review | final-fix`
+- Model used for the current dispatch; record `platform-default` when the host does not support explicit model selection
 - Implementation commit hash, changed files, and RED/GREEN evidence
 - The selected `review_mode`
 - Review stages already passed and unresolved reviewer feedback
@@ -143,8 +144,8 @@ When a reviewer returns an item that cannot be verified from review material alo
 4. Runs targeted verification:
 
 ```bash
-node "<comet-state-script>" task-checkoff <plan-file> <plan-task-text>
-node "<comet-state-script>" task-checkoff <classic-change-dir>/tasks.md <openspec-task-text>
+comet state task-checkoff <plan-file> <plan-task-text>
+comet state task-checkoff <classic-change-dir>/tasks.md <openspec-task-text>
 ```
 
 Run the second command only when the corresponding mapping exists. The script requires the task text to appear exactly once and be checked; verification failure blocks moving to the next task.

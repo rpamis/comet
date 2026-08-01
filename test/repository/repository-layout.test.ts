@@ -86,5 +86,6 @@ describe('repository layout registry', () => {
     expect(layout.allowedTopLevelEntries).toContain('.superpowers');
     expect(layout.allowedTopLevelEntries).toContain('codecov.yml');
     expect(layout.allowedTopLevelEntries).not.toContain('src');
+    expect(layout.allowedCodeFiles).toEqual(['bin/fast-runtime-router.js']);
   });
 });

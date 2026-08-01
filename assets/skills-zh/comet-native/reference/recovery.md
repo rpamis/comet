@@ -7,7 +7,7 @@
 先停止写入并运行只读诊断：
 
 ```text
-node "<comet-native-doctor-script>" [<change-name>]
+comet native doctor [<change-name>]
 ```
 
 只根据 doctor 或 continuation 返回的事实采取动作。不要手改状态、hash、证据、锁或事务文件；Runtime 无法证明自动修复安全时，保留现场并等待用户。
@@ -21,7 +21,7 @@ node "<comet-native-doctor-script>" [<change-name>]
 status 或 doctor 报告未完成 transition 时，优先按 continuation 重试原动作。需要显式修复时：
 
 ```text
-node "<comet-native-doctor-script>" <change-name> --repair --strategy continue
+comet native doctor <change-name> --repair --strategy continue
 ```
 
 普通 Shape、Build、Verify transition 只支持 continue，不支持 rollback。
@@ -39,7 +39,7 @@ node "<comet-native-doctor-script>" <change-name> --repair --strategy continue
 
 brief、规格、实现、报告或 receipt 改变后，旧 scope 或 Verify pass 可能失效。按 continuation 回到 Build，重新确认发生变化的用户行为、生成新 scope 并重新验证。不要复用旧 pass 或旧 preflight。
 
-receipt 与 revision 绑定：每次状态写入（checkpoint、规格刷新、阶段推进）都会让 revision 递增，此前签发的 receipt 会因此绑定过期。`next --result` 报 `verification-receipt-binding-mismatch` 时，finding 会列出每个过期 receipt 及其不一致字段（如 `sourceRevision: expected 6, got 5`），并给出恢复命令。此时不需要回到 Build：对纯 manual evidence，运行 `node "<comet-native-receipt-script>" refresh <change> --apply` 即可按当前 revision 重签并写回 verification.md；automated receipt 必须用 `receipt automated` 重新执行原命令，不能静默重签。
+receipt 与 revision 绑定：每次状态写入（checkpoint、规格刷新、阶段推进）都会让 revision 递增，此前签发的 receipt 会因此绑定过期。`next --result` 报 `verification-receipt-binding-mismatch` 时，finding 会列出每个过期 receipt 及其不一致字段（如 `sourceRevision: expected 6, got 5`），并给出恢复命令。此时不需要回到 Build：对纯 manual evidence，运行 `comet native receipt refresh <change> --apply` 即可按当前 revision 重签并写回 verification.md；automated receipt 必须用 `receipt automated` 重新执行原命令，不能静默重签。
 
 ## Verify fail 与 repair stop
 
@@ -69,7 +69,7 @@ Archive 报告 canonical spec 已变化时：
 3. 运行：
 
 ```text
-node "<comet-native-spec-script>" rebase <change-name> --summary <摘要>
+comet native spec rebase <change-name> --summary <摘要>
 ```
 
 4. 按 Runtime 返回的 phase 重新实现、确认和验证。
@@ -81,9 +81,9 @@ node "<comet-native-spec-script>" rebase <change-name> --summary <摘要>
 先运行 doctor，确认 transaction 和允许的恢复方向：
 
 ```text
-node "<comet-native-doctor-script>" <change-name>
-node "<comet-native-doctor-script>" <change-name> --repair --strategy continue
-node "<comet-native-doctor-script>" <change-name> --repair --strategy rollback
+comet native doctor <change-name>
+comet native doctor <change-name> --repair --strategy continue
+comet native doctor <change-name> --repair --strategy rollback
 ```
 
 - `continue`：继续完成归档；

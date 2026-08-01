@@ -24,16 +24,16 @@ agent 做决策只需读本节，参考附录按需查阅。
 
 ### 输出语言规则
 
-所有 OpenSpec 和 Superpowers 产物都必须使用 Comet 配置的产物语言。配置值是规范化语言 ID，`en` 或 `zh-CN`。已有 change 优先通过 `node "<comet-state-script>" get <name> language` 读取 `<classic-change-dir>/.comet.yaml` 中的 `language`；`.comet.yaml` 尚不存在时依次读取项目 `.comet/config.yaml` 和全局 `~/.comet/config.yaml` 的 `classic.language`；都不存在时才回退到当前用户请求语言。调用外部 OpenSpec/Superpowers skill 时，必须把解析后的语言显式写入 prompt 或 ARGUMENTS。
+所有 OpenSpec 和 Superpowers 产物都必须使用 Comet 配置的产物语言。配置值是规范化语言 ID，`en` 或 `zh-CN`。已有 change 优先通过 `comet state get <name> language` 读取 `<classic-change-dir>/.comet.yaml` 中的 `language`；`.comet.yaml` 尚不存在时依次读取项目 `.comet/config.yaml` 和全局 `~/.comet/config.yaml` 的 `classic.language`；都不存在时才回退到当前用户请求语言。调用外部 OpenSpec/Superpowers skill 时，必须把解析后的语言显式写入 prompt 或 ARGUMENTS。
 
 ### 阶段自动检测
 
 **Step 0: 活跃 Change 发现与意图判定**
 
-1. 先按 `comet/reference/scripts.md` 完成脚本定位，确保 `<comet-intent-script>` 可用。
+1. 先按 `comet/reference/scripts.md` 确认公开 Comet CLI 可用。
 2. 运行 `comet classic openspec -- list --json` 获取所有活跃 change。
 3. 根据用户请求、active change 列表和必要仓库状态填写 `CometIntentFrame`。
-4. 优先用 `node "<comet-intent-script>" route --stdin` 传入 frame JSON，获取 runtime 规范化路由。`CometIntentFrame + runtime scorer` 是事实源；本节自然语言规则只用于意图识别槽位提取。
+4. 优先用 `comet classic intent route --stdin` 传入 frame JSON，获取 runtime 规范化路由。`CometIntentFrame + runtime scorer` 是事实源；本节自然语言规则只用于意图识别槽位提取。
 5. 按 runtime route 处理：
    - `hotfix` → 直接调用 `/comet-hotfix`
    - `tweak` → 直接调用 `/comet-tweak`
@@ -45,7 +45,7 @@ agent 做决策只需读本节，参考附录按需查阅。
 当 runtime route、Ambient Resume 或用户选择已经解析出明确 change 后，进入对应阶段 Skill 前必须先绑定当前执行上下文：
 
 ```bash
-node "<comet-state-script>" select <change-name>
+comet state select <change-name>
 ```
 
 多个 active change 且用户尚未明确选择时，不得提前绑定；继续按 `ask_user` 决策点等待选择。
@@ -55,7 +55,7 @@ node "<comet-state-script>" select <change-name>
 当用户未显式输入 `/comet-classic`，但当前仓库可能已有 active Comet change 时，开始处理需要改动或调查的任务前先运行只读探针：
 
 ```bash
-node "<comet-resume-probe-script>" probe --stdin
+comet resume-probe . --stdin --json
 ```
 
 探针只读仓库状态，不修改文件。按返回值处理：
@@ -128,7 +128,7 @@ node "<comet-resume-probe-script>" probe --stdin
 - 每次恢复上下文时，先重新执行 Step 0 和 Step 1，不依赖对话历史判断阶段
 - 只要存在 active change 且工作区有未提交改动，必须按 `comet/reference/dirty-worktree.md` 协议处理。该协议定义了检查步骤、归因分类和禁令，本文件不重复
 - 若 `phase: build`，先检查 `build_pause`、`plan`、`isolation`、`build_mode`、`tdd_mode` 和 `review_mode`（详见下方）：
-  - 若 `build_pause: plan-ready` 但 `isolation`、`build_mode`、`tdd_mode` 和 `review_mode` 都已经设置，则视为 stale pause：先输出 `[COMET] 检测到 stale pause（build_pause=plan-ready 但 isolation/build_mode/tdd_mode/review_mode 已设置），自动清除并继续`，再运行 `node "<comet-state-script>" set <name> build_pause null`，然后读取 tasks.md 的下一个未勾选任务并按 `build_mode` 恢复执行
+  - 若 `build_pause: plan-ready` 但 `isolation`、`build_mode`、`tdd_mode` 和 `review_mode` 都已经设置，则视为 stale pause：先输出 `[COMET] 检测到 stale pause（build_pause=plan-ready 但 isolation/build_mode/tdd_mode/review_mode 已设置），自动清除并继续`，再运行 `comet state set <name> build_pause null`，然后读取 tasks.md 的下一个未勾选任务并按 `build_mode` 恢复执行
   - 若 `build_pause: plan-ready` 且 plan 文件存在，但 `isolation`、`build_mode`、`tdd_mode` 或 `review_mode` 尚未设置，回到 `/comet-build` 的 plan-ready 恢复点，提示用户继续补齐/确认工作区隔离、执行方式、TDD 模式和代码审查模式，不重新生成 plan
   - 若 `build_pause: plan-ready` 但 plan 文件缺失，回到 `/comet-build` 处理状态损坏或重新生成 plan
   - 若 `isolation`、`build_mode`、`tdd_mode` 或 `review_mode` 未设置，回到 `/comet-build` 对应步骤补充后再执行
@@ -136,7 +136,7 @@ node "<comet-resume-probe-script>" probe --stdin
     - 若 `build_mode: subagent-driven-development`，不得在主窗口直接执行任务；必须回到 `/comet-build` 的后台 subagent 调度规则，由主窗口只做协调
     - 其他执行方式按 `/comet-build` 的对应规则继续
 - 若 `verify_result: fail`，读取 `verify_failures`：未超过 3 次时直接调用 `/comet-build` 继续已记录的修复循环，不重复询问；超过自动修复上限时回到 `/comet-verify` 的例外决策点。只有接受 WARNING/SUGGESTION 偏差或超限后的继续/停止策略需要用户选择
-- 若 `phase: open` 但 OpenSpec `applyRequires` 已完整，先运行 `node "<comet-guard-script>" <change-name> open --apply` 修正状态，再继续判定
+- 若 `phase: open` 但 OpenSpec `applyRequires` 已完整，先运行 `comet guard <change-name> open --apply` 修正状态，再继续判定
 - 若 `phase: archive`，只允许调用 `/comet-archive`；归档前先等待最终确认，归档后精确提交归档改动，再处理分支并运行 archive guard
 
 **Step 2: 阶段判定**（按顺序，命中即停）
@@ -158,11 +158,11 @@ hotfix/tweak 的范围判定采用三层分工，避免「用纯文件数当硬�
 
 1. **质变信号**（agent 语义识别，命中任一即暂停交用户二选一）：跨模块协调修改、需要新增 capability、数据库 schema 变更、引入新的 public API、触及深层架构问题（各预设沿用这套核心信号，并可追加自身语境的特有信号，如 tweak 的「需要拆分为多个 OpenSpec changes」）
 2. **文件数 tripwire**（用户拍板，非自动升级）：改动文件数超提示阈值时，暂停交用户决定继续预设流程还是升级 full，不自动踢
-3. **验证级别**（scale 脚本判定）：`node "<comet-state-script>" scale` 仅决定 `verify_mode`（验证轻重），不卡流程、不触发升级
+3. **验证级别**（scale 脚本判定）：`comet state scale` 仅决定 `verify_mode`（验证轻重），不卡流程、不触发升级
 
 **升级决策点（用户二选一）**：
 - 继续预设轻量流程（用户确认范围可控）
-- 升级为完整 `/comet-classic`（使用 `node "<comet-state-script>" transition <name> preset-escalate` 合法回退到 design 阶段，同时清除预设专属的 build 配置；补 Design Doc 后重新联合选择完整工作方式）
+- 升级为完整 `/comet-classic`（使用 `comet state transition <name> preset-escalate` 合法回退到 design 阶段，同时清除预设专属的 build 配置；补 Design Doc 后重新联合选择完整工作方式）
 
 详细判定规则见 `comet-hotfix` / `comet-tweak` 各自的「升级判定」章节。
 
@@ -172,8 +172,8 @@ hotfix/tweak 的范围判定采用三层分工，避免「用纯文件数当硬�
 |------|---------|
 | `comet classic openspec -- list --json` 失败 | 检查 OpenSpec 是否已安装；若 artifact root 缺失或损坏，提示运行 `comet update --scope project` 或重新运行 `comet init --scope project` |
 | 子 skill 不可用 | 停止流程，提示安装或启用对应 skill |
-| `.comet.yaml` 缺失 | 进入对应 preset 的 `/comet-open` 初始化状态，再运行 `node "<comet-state-script>" select`；不得跳过初始化 |
-| `.comet.yaml` 格式异常 | 停止并报告解析错误；从版本控制、备份或可验证产物人工修复，不能用 `node "<comet-state-script>" set` 覆盖损坏文件 |
+| `.comet.yaml` 缺失 | 进入对应 preset 的 `/comet-open` 初始化状态，再运行 `comet state select`；不得跳过初始化 |
+| `.comet.yaml` 格式异常 | 停止并报告解析错误；从版本控制、备份或可验证产物人工修复，不能用 `comet state set` 覆盖损坏文件 |
 | 构建/测试失败 | 返回 build 阶段修复，不进入 verify |
 | change 目录结构不完整 | 按 `comet-open` 产物要求补齐 |
 
@@ -186,7 +186,7 @@ hotfix/tweak 的范围判定采用三层分工，避免「用纯文件数当硬�
 
 **连续执行要求**：从检测到的阶段开始，agent 自动推进后续阶段。但**自动推进仅适用于没有用户决策的衔接点**。遇到用户决策点时，**必须使用当前平台可用的用户输入/确认机制暂停并等待用户明确回复**，不得用推荐规则、默认值或历史偏好代替用户确认，也不得仅输出文字提示后继续执行。
 
-**阶段推进与自动衔接的区分**：每个子 skill 退出前都会运行阶段守卫 `--apply` 推进 `.comet.yaml` 的 `phase` 字段——这一步**始终发生**，与 `auto_transition` 无关。之后子 skill 运行 `node "<comet-state-script>" next <name>` 解析下一步：`auto_transition` 不为 `false` 时输出 `NEXT: auto`（自动调用下一 skill），为 `false` 时输出 `NEXT: manual`（不调用下一 skill，按 `HINT` 交还控制权）。`NEXT: manual` 不是用户决策点，不得再询问“是否继续”。因此 `auto_transition` **只控制是否自动调用下一个 skill，不影响 phase 推进**。无论 `auto_transition` 取何值，下方真正的用户决策点都必须阻塞等待。
+**阶段推进与自动衔接的区分**：每个子 skill 退出前都会运行阶段守卫 `--apply` 推进 `.comet.yaml` 的 `phase` 字段——这一步**始终发生**，与 `auto_transition` 无关。之后子 skill 运行 `comet state next <name>` 解析下一步：`auto_transition` 不为 `false` 时输出 `NEXT: auto`（自动调用下一 skill），为 `false` 时输出 `NEXT: manual`（不调用下一 skill，按 `HINT` 交还控制权）。`NEXT: manual` 不是用户决策点，不得再询问“是否继续”。因此 `auto_transition` **只控制是否自动调用下一个 skill，不影响 phase 推进**。无论 `auto_transition` 取何值，下方真正的用户决策点都必须阻塞等待。
 
 **决策点是阻塞点**：只要到达下列任一节点，当前 `/comet-classic` 调用必须停住，并按 `comet/reference/decision-point.md` 的协议获取用户明确选择。用户明确选择后才能写入对应状态字段、执行对应操作，随后再继续自动流转。
 
@@ -265,17 +265,17 @@ agent 不应跳过这些决策点；其他明确无歧义的阶段衔接必须�
 - full workflow 离开 build 阶段前 `review_mode` 必须已选择为 `off`、`standard` 或 `thorough`
 - `build_mode: direct` 默认只允许 `hotfix` / `tweak`；full workflow 需要 `direct_override: true`
 - `build_pause` 不是执行方式，不得写入 `build_mode`
-- 这些约束同时由 `node "<comet-guard-script>" <name> build --apply` 和 `node "<comet-state-script>" transition <name> build-complete` 执行
+- 这些约束同时由 `comet guard <name> build --apply` 和 `comet state transition <name> build-complete` 执行
 
 ### 脚本定位
 
-每个会话按 `comet/reference/scripts.md` 完成一次脚本定位，缓存 `<comet-state-script>`、`<comet-guard-script>`、`<comet-handoff-script>`、`<comet-archive-script>`（以及入口路由用的 `<comet-intent-script>` 和 `<comet-resume-probe-script>`）。直连 bundle 调用比 `comet` CLI 外壳更快。关键入口：
+每个会话按 `comet/reference/scripts.md` 确认一次公开 CLI 可用。关键入口：
 
 ```bash
-node "<comet-guard-script>" <change-name> <phase> --apply             # 阶段守卫 + 自动状态更新
-node "<comet-state-script>" transition <change-name> <event>          # open-complete | design-complete | build-complete | verify-pass | verify-fail
-node "<comet-state-script>" next <change-name>                        # NEXT: auto|manual|done + SKILL: <skill-name>
-node "<comet-archive-script>" <change-name>                           # 一键完成归档
+comet guard <change-name> <phase> --apply             # 阶段守卫 + 自动状态更新
+comet state transition <change-name> <event>          # open-complete | design-complete | build-complete | verify-pass | verify-fail
+comet state next <change-name>                        # NEXT: auto|manual|done + SKILL: <skill-name>
+comet archive <change-name>                           # 一键完成归档
 ```
 
 ### 文件结构

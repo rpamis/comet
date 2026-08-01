@@ -17,6 +17,7 @@ const requiredPackageFiles = [
   'assets/skills/comet-native/SKILL.md',
   'assets/skills/comet-native/scripts/comet-native-runtime.mjs',
   'bin/comet.js',
+  'bin/fast-runtime-router.js',
   'dist/app/cli/index.js',
   'scripts/install/postinstall.js',
 ];

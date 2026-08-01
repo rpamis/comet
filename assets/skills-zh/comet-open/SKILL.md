@@ -15,18 +15,18 @@ description: "仅在用户明确调用 /comet-open，或由 Comet 根 Skill/runt
 
 ### 0. 输出语言约束
 
-传递给 OpenSpec 的所有提问和产物要求都必须包含解析后的 Comet 产物语言，并使用 `en`、`zh-CN` 这类规范化 ID。`.comet.yaml` 尚不存在时依次读取项目 `.comet/config.yaml` 和全局 `~/.comet/config.yaml` 的 `classic.language`；change 初始化后使用 `node "<comet-state-script>" get <name> language` 读取。没有配置语言时才回退到当前用户请求语言。生成的 `proposal.md`、`design.md`、`tasks.md` 必须以该语言为主语言。
+传递给 OpenSpec 的所有提问和产物要求都必须包含解析后的 Comet 产物语言，并使用 `en`、`zh-CN` 这类规范化 ID。`.comet.yaml` 尚不存在时依次读取项目 `.comet/config.yaml` 和全局 `~/.comet/config.yaml` 的 `classic.language`；change 初始化后使用 `comet state get <name> language` 读取。没有配置语言时才回退到当前用户请求语言。生成的 `proposal.md`、`design.md`、`tasks.md` 必须以该语言为主语言。
 
 ### 0a. 当前 change 绑定
 
 恢复已有 change 时先检查 `<classic-change-dir>/.comet.yaml`：
 
 - 状态文件存在且可解析：第一项状态操作是选择 change
-- 状态文件缺失但 change 目录有效：先运行 `node "<comet-state-script>" init <change-name> full`，再选择 change
+- 状态文件缺失但 change 目录有效：先运行 `comet state init <change-name> full`，再选择 change
 - 状态文件格式异常：停止并报告解析错误；从版本控制、备份或可验证产物人工修复后再继续，不得用 `state set` 覆盖损坏文件
 
 ```bash
-node "<comet-state-script>" select <change-name>
+comet state select <change-name>
 ```
 
 创建新 change 时，必须先完成 `.comet.yaml` 初始化，再立即运行同一命令；状态文件不存在前不得伪造选择。
@@ -96,7 +96,7 @@ comet classic openspec -- --version
 
 ```bash
 comet classic openspec -- status --change "<name>" --json
-node "<comet-state-script>" check <name> design
+comet state check <name> design
 ```
 
 解析 OpenSpec JSON 时必须同时确认：
@@ -144,9 +144,9 @@ resolved brief 或 change 名称仍不明确时不得运行 `comet classic opens
 change 骨架创建后立即初始化可恢复状态，不能等 artifacts 全部生成后再写 `.comet.yaml`：
 
 ```bash
-node "<comet-state-script>" init <name> full
-node "<comet-state-script>" select <name>
-node "<comet-state-script>" check <name> open
+comet state init <name> full
+comet state select <name>
+comet state check <name> open
 ```
 
 任一命令失败都停止。随后运行一次 `comet classic openspec -- status --change "<name>" --json` 并执行兼容性预检：
@@ -198,14 +198,14 @@ node "<comet-state-script>" check <name> open
 验证状态机已正确初始化：
 
 ```bash
-node "<comet-state-script>" check <name> open
+comet state check <name> open
 ```
 
 验证通过后继续 Step 4。验证失败时脚本会输出具体失败原因。
 
 **幂等恢复算法**：open 阶段所有操作可安全重复执行。恢复时按以下顺序处理：
 
-1. 状态文件缺失时先运行 `node "<comet-state-script>" init <name> full`；格式异常时停止并修复，不得覆盖。随后选择 change 并运行 `node "<comet-state-script>" check <name> open`。
+1. 状态文件缺失时先运行 `comet state init <name> full`；格式异常时停止并修复，不得覆盖。随后选择 change 并运行 `comet state check <name> open`。
 2. 运行 `comet classic openspec -- status --change "<name>" --json`，重新验证 `changeRoot`、核心 ID、`applyRequires`、`artifacts` 和 `missingDeps`。
 3. `done`：该 artifact 已完成，保持原文件不变，不重复生成。
 4. `ready`：依赖已经满足，可以生成。先运行 `comet classic openspec -- instructions <artifact-id> --change "<name>" --json`，按返回内容写入；写完后立刻重新运行 status。
@@ -245,12 +245,12 @@ node "<comet-state-script>" check <name> open
 
 - `comet classic openspec -- status --change "<name>" --json` 的兼容性预检通过，`applyRequires` 全部为 `done` 且必需输出非空
 - **用户已确认** 全部 OpenSpec artifacts 内容符合预期
-- **阶段守卫**：运行 `node "<comet-guard-script>" <change-name> open --apply`，全部 PASS 后由守卫推进到下一阶段（此步骤更新 `phase` 字段，与 `auto_transition` 无关）
+- **阶段守卫**：运行 `comet guard <change-name> open --apply`，全部 PASS 后由守卫推进到下一阶段（此步骤更新 `phase` 字段，与 `auto_transition` 无关）
 
 退出前必须使用 `--apply`，否则 `.comet.yaml` 仍停留在 `phase: open`，下一阶段入口检查会失败。
 
 ```bash
-node "<comet-guard-script>" <change-name> open --apply
+comet guard <change-name> open --apply
 ```
 
 完整流程会自动更新为 `phase: design`；hotfix/tweak 预设会自动更新为 `phase: build`。
@@ -260,7 +260,7 @@ node "<comet-guard-script>" <change-name> open --apply
 按 `comet/reference/auto-transition.md` 执行。关键命令：
 
 ```bash
-node "<comet-state-script>" next <change-name>
+comet state next <change-name>
 ```
 
 - `NEXT: auto` → 调用 `SKILL` 指向的 skill 进入下一阶段

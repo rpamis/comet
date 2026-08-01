@@ -19,7 +19,8 @@ describe('Chinese Comet entry Skills', () => {
     );
     expect(source).not.toContain('存在需要恢复的 active Comet change');
     expect(source).toContain('comet workflow resolve . --json');
-    expect(source).toContain('comet-entry-runtime.mjs . --json');
+    expect(source).not.toContain('comet-entry-runtime.mjs . --json');
+    expect(source).toContain('不得搜索 Skill 文件、扫描平台配置目录或直接调用内部 bundle');
     expect(source).toContain('command not found');
     expect(source).toContain('CLI 已启动但返回非零');
     expect(source).toContain('comet.workflow-resolution.v1');
@@ -37,7 +38,7 @@ describe('Chinese Comet entry Skills', () => {
     expect(source).toContain('name: comet-classic');
     expect(source).toContain('OpenSpec');
     expect(source).toContain('Superpowers');
-    expect(source).toContain('node "<comet-state-script>" select <change-name>');
+    expect(source).toContain('comet state select <change-name>');
     expect(source).toContain('/comet-open');
     expect(source).toContain('/comet-build');
     expect(source).toContain('comet/reference/scripts.md');
@@ -91,7 +92,10 @@ describe('English Comet entry Skills', () => {
     );
     expect(source).not.toContain('an active Comet change needs to be resumed');
     expect(source).toContain('comet workflow resolve . --json');
-    expect(source).toContain('comet-entry-runtime.mjs . --json');
+    expect(source).not.toContain('comet-entry-runtime.mjs . --json');
+    expect(source).toContain(
+      'Do not search for Skill files, scan platform configuration directories, or invoke an internal bundle directly',
+    );
     expect(source).toContain('command not found');
     expect(source).toContain('If the CLI starts but exits nonzero');
     expect(source).toContain('comet.workflow-resolution.v1');
@@ -109,7 +113,7 @@ describe('English Comet entry Skills', () => {
     expect(source).toContain('name: comet-classic');
     expect(source).toContain('OpenSpec');
     expect(source).toContain('Superpowers');
-    expect(source).toContain('node "<comet-state-script>" select <change-name>');
+    expect(source).toContain('comet state select <change-name>');
     expect(source).toContain('/comet-open');
     expect(source).toContain('/comet-build');
     expect(source).toContain('comet/reference/scripts.md');

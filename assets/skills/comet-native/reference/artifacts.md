@@ -83,7 +83,7 @@ Each file describes the complete capability behavior after Archive, not an incre
 
 - New capability: write the complete specification.
 - Existing capability: write the complete replacement specification.
-- Removed capability: run `node "<comet-native-spec-script>" remove`; do not only delete the file.
+- Removed capability: run `comet native spec remove`; do not only delete the file.
 
 The Runtime records create, replace, remove, and the canonical baseline. On a canonical conflict, reread and rewrite the complete target specification before using `spec rebase`. Do not edit Runtime state or hashes manually.
 
@@ -107,7 +107,7 @@ Record real commands, results, and reviewable facts. Put checks that did not run
 Use acceptance IDs returned by the Runtime; do not calculate them. Prepare the entries array, then run:
 
 ```text
-node "<comet-native-evidence-script>" format [--entries <path>]
+comet native evidence format [--entries <path>]
 ```
 
 Place the command output unchanged under `# Acceptance evidence`. The basic input shape is:

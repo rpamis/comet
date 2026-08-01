@@ -30,9 +30,9 @@ describe('Comet Native Skills', () => {
           'native.clarification_mode',
           'native.archive_confirmation',
           'native.max_verify_failures',
-          'node "<comet-native-select-script>" <change-name>',
-          'node "<comet-native-next-script>" <change-name>',
-          'node "<comet-native-archive-script>" <change-name> --dry-run',
+          'comet native select <change-name>',
+          'comet native next <change-name>',
+          'comet native archive <change-name> --dry-run',
           '持续执行 Build → Verify',
           '`await-user`',
           '`blocked`',
@@ -54,9 +54,9 @@ describe('Comet Native Skills', () => {
           'native.clarification_mode',
           'native.archive_confirmation',
           'native.max_verify_failures',
-          'node "<comet-native-select-script>" <change-name>',
-          'node "<comet-native-next-script>" <change-name>',
-          'node "<comet-native-archive-script>" <change-name> --dry-run',
+          'comet native select <change-name>',
+          'comet native next <change-name>',
+          'comet native archive <change-name> --dry-run',
           'Continue Build → Verify',
           '`await-user`',
           '`blocked`',
@@ -88,15 +88,16 @@ describe('Comet Native Skills', () => {
     }
   });
 
-  it('finds installed scripts from the host-provided base directory or Claude workspace roots', async () => {
-    for (const language of ['en', 'zh'] as const) {
-      const source = await read(language, 'SKILL.md');
-      expect(source).toContain('Base directory');
-      expect(source).toContain('"$PWD/../.claude/skills"');
-      expect(source).toContain('"$HOME/.claude/skills"');
-      expect(source).toContain('[ -d "$root" ] || continue');
-      expect(source).toContain('"$PWD/../.claude/skills", "$HOME/.claude/skills"');
-    }
+  it('uses only the public CLI without platform-directory discovery in Chinese', async () => {
+    const source = await read('zh', 'SKILL.md');
+
+    expect(source).toContain('只使用 PATH 中的公开 `comet native <cmd>` CLI');
+    expect(source).toContain('`comet native <cmd>`');
+    expect(source).toContain('不得搜索 Skill 文件、枚举平台目录或直接调用内部 bundle');
+    expect(source).not.toContain('Base directory');
+    expect(source).not.toContain('comet-native-<cmd>.mjs');
+    expect(source).not.toContain('"$PWD/../.claude/skills"');
+    expect(source).not.toContain('"$HOME/.claude/skills"');
   });
 
   it('makes the acceptance-gap completion loop explicit', async () => {
@@ -104,7 +105,7 @@ describe('Comet Native Skills', () => {
       {
         language: 'zh' as const,
         terms: [
-          'node "<comet-native-status-script>" <change-name> --details',
+          'comet native status <change-name> --details',
           'failed/missing acceptance',
           'checkpoint 不是完成证据',
           '执行一次完整审查',
@@ -117,7 +118,7 @@ describe('Comet Native Skills', () => {
       {
         language: 'en' as const,
         terms: [
-          'node "<comet-native-status-script>" <change-name> --details',
+          'comet native status <change-name> --details',
           'failed or missing acceptance items',
           'a checkpoint is not completion evidence',
           'perform one complete review',
@@ -261,7 +262,7 @@ describe('Comet Native Skills', () => {
       expect(artifacts).toContain('# Acceptance examples');
       expect(artifacts).toContain('# Verification expectations');
       expect(artifacts).toContain('# Acceptance evidence');
-      expect(artifacts).toContain('node "<comet-native-evidence-script>" format');
+      expect(artifacts).toContain('comet native evidence format');
       expect(artifacts).toContain('"status": "passed"');
       expect(artifacts).toContain('"status": "failed"');
       expect(artifacts).not.toContain('"status": "waived"');
@@ -284,25 +285,26 @@ describe('Comet Native Skills', () => {
   it('keeps executable commands while excluding trust provisioning internals', async () => {
     for (const language of ['en', 'zh'] as const) {
       const commands = await read(language, 'reference/commands.md');
-      for (const command of [
-        '<comet-native-init-script>',
-        '<comet-native-root-script>" show',
-        '<comet-native-root-script>" move',
-        '<comet-native-new-script>',
-        '<comet-native-spec-script>" remove',
-        '<comet-native-spec-script>" rebase',
-        '<comet-native-show-script>',
-        '<comet-native-status-script>',
-        '<comet-native-select-script>',
-        '<comet-native-checkpoint-script>',
-        '<comet-native-check-script>',
-        '<comet-native-evidence-script>" format',
-        '<comet-native-receipt-script>" manual',
-        '<comet-native-receipt-script>" automated',
-        '<comet-native-next-script>',
-        '<comet-native-archive-script>',
-        '<comet-native-doctor-script>',
-      ]) {
+      const expectedCommands = [
+        'comet native init',
+        'comet native root show',
+        'comet native root move',
+        'comet native new',
+        'comet native spec remove',
+        'comet native spec rebase',
+        'comet native show',
+        'comet native status',
+        'comet native select',
+        'comet native checkpoint',
+        'comet native check',
+        'comet native evidence format',
+        'comet native receipt manual',
+        'comet native receipt automated',
+        'comet native next',
+        'comet native archive',
+        'comet native doctor',
+      ];
+      for (const command of expectedCommands) {
         expect(commands, `${language}: ${command}`).toContain(command);
       }
       expect(commands).not.toContain('--creation-authorization');
@@ -447,9 +449,9 @@ describe('Comet Native Skills', () => {
   it('uses recovery as an actionable runbook rather than a Runtime design document', async () => {
     for (const language of ['en', 'zh'] as const) {
       const recovery = await read(language, 'reference/recovery.md');
-      expect(recovery).toContain('node "<comet-native-doctor-script>" [<change-name>]');
+      expect(recovery).toContain('comet native doctor [<change-name>]');
       expect(recovery).toContain('baseline-snapshot-missing');
-      expect(recovery).toContain('node "<comet-native-spec-script>" rebase <change-name>');
+      expect(recovery).toContain('comet native spec rebase <change-name>');
       expect(recovery).toContain('--strategy continue');
       expect(recovery).toContain('--strategy rollback');
       expect(recovery).toContain('pending_root_move');

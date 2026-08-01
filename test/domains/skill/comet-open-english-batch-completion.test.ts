@@ -27,7 +27,7 @@ describe('comet-open English batch completion protocol', () => {
     expect(skill).toContain('Every artifact listed in `applyRequires` must be `done`');
     expect(skill).toContain('Treat `isComplete` as diagnostic only');
     expect(skill).toContain('If any split item fails these checks');
-    expect(skill).toContain('node "<comet-state-script>" check <name> design');
+    expect(skill).toContain('comet state check <name> design');
   });
 
   it('defines an explicit recovery action for done, ready, and blocked artifacts', async () => {

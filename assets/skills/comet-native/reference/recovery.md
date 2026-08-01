@@ -7,7 +7,7 @@ Read this file only when the Runtime reports interruption, stale evidence, a rep
 Stop writing and run read-only diagnostics first:
 
 ```text
-node "<comet-native-doctor-script>" [<change-name>]
+comet native doctor [<change-name>]
 ```
 
 Act only on facts returned by doctor or the continuation. Do not edit state, hashes, evidence, locks, or transaction files manually. When the Runtime cannot prove an automatic repair is safe, preserve the scene and wait for the user.
@@ -21,7 +21,7 @@ Act only on facts returned by doctor or the continuation. Do not edit state, has
 When status or doctor reports an unfinished transition, first retry the original action as directed by the continuation. When explicit repair is required:
 
 ```text
-node "<comet-native-doctor-script>" <change-name> --repair --strategy continue
+comet native doctor <change-name> --repair --strategy continue
 ```
 
 Ordinary Shape, Build, and Verify transitions support only continue, not rollback.
@@ -39,7 +39,7 @@ The only safe options are:
 
 Changes to the brief, specifications, implementation, report, or receipts may stale the old scope or Verify pass. Follow the continuation back to Build, reconfirm changed user-visible behavior, generate a new scope, and verify again. Do not reuse an old pass or preflight.
 
-Receipts are bound to revision: every state write (checkpoint, spec refresh, phase advance) bumps the revision, which invalidates receipts issued before that bump. When `next --result` reports `verification-receipt-binding-mismatch`, the finding lists each stale receipt and the diverging field (e.g. `sourceRevision: expected 6, got 5`) and gives the recovery command. This does not require returning to Build: for manual evidence only, run `node "<comet-native-receipt-script>" refresh <change> --apply` to re-issue at the current revision and rewrite verification.md; automated receipts must be re-executed with `receipt automated` and are never silently re-issued.
+Receipts are bound to revision: every state write (checkpoint, spec refresh, phase advance) bumps the revision, which invalidates receipts issued before that bump. When `next --result` reports `verification-receipt-binding-mismatch`, the finding lists each stale receipt and the diverging field (e.g. `sourceRevision: expected 6, got 5`) and gives the recovery command. This does not require returning to Build: for manual evidence only, run `comet native receipt refresh <change> --apply` to re-issue at the current revision and rewrite verification.md; automated receipts must be re-executed with `receipt automated` and are never silently re-issued.
 
 ## Verify fail and repair stop
 
@@ -69,7 +69,7 @@ When Archive reports that a canonical specification changed:
 3. run:
 
 ```text
-node "<comet-native-spec-script>" rebase <change-name> --summary <summary>
+comet native spec rebase <change-name> --summary <summary>
 ```
 
 4. implement, confirm, and verify again from the phase returned by the Runtime.
@@ -81,9 +81,9 @@ Do not edit `base_hash` or overwrite concurrent changes.
 Run doctor first to identify the transaction and allowed recovery direction:
 
 ```text
-node "<comet-native-doctor-script>" <change-name>
-node "<comet-native-doctor-script>" <change-name> --repair --strategy continue
-node "<comet-native-doctor-script>" <change-name> --repair --strategy rollback
+comet native doctor <change-name>
+comet native doctor <change-name> --repair --strategy continue
+comet native doctor <change-name> --repair --strategy rollback
 ```
 
 - `continue`: finish Archive;

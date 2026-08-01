@@ -9,21 +9,15 @@ description: "当用户明确调用 /comet，或明确要求使用 Comet 但未�
 
 一旦宿主加载本 Skill，就视为已经选定 `/comet` 入口。必须立即执行下方入口解析，不得重新判断任务是否适合 Comet，也不得只解释为什么不使用它。
 
-1. 先在当前项目尝试 PATH 中安装的 Comet CLI：
+1. 在当前项目运行 PATH 中安装的 Comet CLI：
 
    ```text
    comet workflow resolve . --json
    ```
 
-2. **只有**宿主明确报告 `command not found`、`executable not found` 或 `ENOENT`，能够证明 `comet` 不在 PATH 时，才从当前 `SKILL.md` 所在目录定位 `<comet-skill-root>`，运行自带入口 runtime：
-
-   ```text
-   node <comet-skill-root>/scripts/comet-entry-runtime.mjs . --json
-   ```
-
-   CLI 已启动但返回非零、配置解析失败、输出不是 JSON 或字段无效，都不得使用 bundled runtime 重试；停止并原样说明错误，不要回退或猜测。
-3. 解析 JSON。只接受 `schema: comet.workflow-resolution.v1`，且 `skill` 必须是下列两个值之一。
-4. 只按返回的 `skill` 选择下列一个入口。必须立即使用 Skill 工具加载且只加载该入口：
+   若宿主报告 `command not found`、`executable not found` 或 `ENOENT`，停止并说明 Comet CLI 安装不完整。不得搜索 Skill 文件、扫描平台配置目录或直接调用内部 bundle。CLI 已启动但返回非零、配置解析失败、输出不是 JSON 或字段无效时，同样停止并原样说明错误，不要回退或猜测。
+2. 解析 JSON。只接受 `schema: comet.workflow-resolution.v1`，且 `skill` 必须是下列两个值之一。
+3. 只按返回的 `skill` 选择下列一个入口。必须立即使用 Skill 工具加载且只加载该入口：
     - `/comet-native` → **立即执行：** 使用 Skill 工具加载 `comet-native` 技能。禁止跳过此步骤。
     - `/comet-classic` → **立即执行：** 使用 Skill 工具加载 `comet-classic` 技能。禁止跳过此步骤。
 

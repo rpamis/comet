@@ -33,7 +33,7 @@
 主会话**仅负责协调**，禁止直接执行 task。主会话禁止修改源代码。协调者唯一允许的文件修改是 plan、OpenSpec task 和 subagent 进度检查点的持久化更新。不得把多个 task 打包给同一个 agent。每个 task 派发一个全新的后台 implementer agent；当 `review_mode` 需要审查或修复时，task reviewer、修复 agent 和 final reviewer 也必须分别使用全新的后台 agent：
 
 - **Claude Code**：对每个 implementer，以及 `review_mode` 要求的 task reviewer、修复 agent 和 final reviewer 使用 `Agent` 工具并设置 `run_in_background: true`。禁止内联执行 task，禁止错误进入需要预先创建 team 的团队模式。
-- **其他平台**：使用平台等效的后台 agent / Task / 多 agent 派发机制。
+- **其他平台**：仅当平台等效的后台 agent / Task / 多 agent 派发机制提供真实异步执行、隔离上下文、结果回收和所需交接机制时才可使用；工具名称相似不等于满足异步派发契约。
 - **禁止**跨 task 或角色复用 implementer、reviewer 或修复 agent。每个 agent 拥有全新的隔离上下文，并且只接收当前角色所需的单个 task 上下文。
 - 若真实后台派发能力在执行中失效，不得继续派发或由主会话代写实现；返回 `/comet-build` Step 2 的同一个联合决策并移除不可用模式。不得另设“是否改用 executing-plans”的停顿点；只剩一个合法模式时直接采用。
 
@@ -42,7 +42,7 @@
 每个 implementer 或修复 agent prompt 必须包含：
 
 - 当前单个 task 的完整文本、架构背景和依赖上下文
-- `Language: 使用 node "<comet-state-script>" get <name> language 读取到的 Comet 配置产物语言输出`
+- `Language: 使用 comet state get <name> language 读取到的 Comet 配置产物语言输出`
 - 允许修改的文件范围和禁止修改的范围
 - 必须执行的测试命令和提交要求
 - 修复 agent 还必须收到对应 reviewer 的完整反馈
@@ -69,13 +69,13 @@ reviewer prompt 必须保持中立：
 - 不得在 reviewer prompt 中预判、压低或禁止报告某个发现。若某个可能发现与 plan 冲突，让 reviewer 先报告，再询问用户以哪个要求为准。
 - 不得把之前 task 的累计历史粘贴进后续派发。只提供当前 task、相关接口/约束，以及已加载的 Superpowers `subagent-driven-development` 技能暴露的交接产物。
 
-**Model 选择（强制）**：每次派发必须显式指定 model，省略会静默继承会话最贵 model，拖慢执行并抬高成本。遵循 Superpowers `subagent-driven-development` 的 Model Selection 规则：
+**Model 选择**：宿主支持显式选择 model 时，每次派发必须明确指定；宿主不支持时，在派发记录和 `<classic-change-dir>/.comet/subagent-progress.md` 中写明 `model: platform-default`，不得伪造一个模型参数。支持选模却省略会静默继承会话 model，可能拖慢执行并抬高成本。遵循 Superpowers `subagent-driven-development` 的 Model Selection 规则：
 
 - **implementer / 修复 agent**：用 prose 描述的实现任务至少使用中档；多文件集成、需要模式匹配或调试 → 中档；需要设计判断或广泛理解代码库 → 高档。只有当 plan 文本已含完整待写代码（转写+测试），或只是单文件机械修复时，才用最便宜档。
 - **reviewer（任务级/最终）**：按 diff 大小、复杂度和风险缩放。小机械 diff 不需要最高档；微妙并发改动才上高档。
 - **final whole-branch review**：使用可用的最高档 model，不用会话默认档。
 
-省略 model 等于让它跑会话最贵 model，直接违背本节目标。
+在支持显式选模的宿主上省略 model，等于把选择交给会话默认值，直接违背本节目标；`platform-default` 只允许用于宿主确实不暴露选模能力的情况。
 
 ### 2. Implementer 范围限制
 
@@ -97,6 +97,7 @@ implementer 或修复 agent 回报必须提供 **RED 失败命令与失败摘要
 
 - 当前 plan task 唯一文本及映射的 OpenSpec task 文本
 - 当前阶段：`implementing | task-review | checkoff | done | blocked | final-review | final-fix`
+- 本次派发的 model；宿主不支持显式选模时记录 `platform-default`
 - 实现提交哈希、变更文件和 RED/GREEN 证据
 - 已选择的 `review_mode`
 - 已通过的审查阶段及尚未解决的 reviewer 反馈
@@ -143,8 +144,8 @@ Comet 不读取、不写入、也不要求任何 Superpowers `subagent-driven-de
 4. 运行定向验证：
 
 ```bash
-node "<comet-state-script>" task-checkoff <plan-file> <plan-task-text>
-node "<comet-state-script>" task-checkoff <classic-change-dir>/tasks.md <openspec-task-text>
+comet state task-checkoff <plan-file> <plan-task-text>
+comet state task-checkoff <classic-change-dir>/tasks.md <openspec-task-text>
 ```
 
 仅在对应映射存在时运行第二条。脚本会要求任务文本恰好出现一次且该项已勾选；验证失败时不得进入下一个 task。

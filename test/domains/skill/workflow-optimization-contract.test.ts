@@ -21,7 +21,7 @@ describe('Comet workflow optimization contracts', () => {
     '%s open flow initializes recoverable state before artifact generation',
     async (_language, root, versionMarker, loopMarker) => {
       const skill = await readSkill(root, 'comet-open');
-      const init = skill.indexOf('node "<comet-state-script>" init <name> full');
+      const init = skill.indexOf('comet state init <name> full');
       const loop = skill.indexOf(loopMarker);
 
       expect(skill).toContain(versionMarker);
@@ -108,9 +108,7 @@ describe('Comet workflow optimization contracts', () => {
 
       expect(verify).not.toContain(forbiddenWaiver);
       expect(verify).not.toContain('finishing-a-development-branch');
-      expect(archive).toContain(
-        'node "<comet-state-script>" set <change-name> branch_status handled',
-      );
+      expect(archive).toContain('comet state set <change-name> branch_status handled');
       expect(archive).not.toContain('git add -A');
     },
   );
@@ -164,15 +162,12 @@ describe('Comet workflow optimization contracts', () => {
       const confirmation = archive.indexOf(confirmationHeading);
       const execution = archive.indexOf(executionHeading);
       const handled = archive.indexOf(
-        'node "<comet-state-script>" set <change-name> branch_status handled',
+        'comet state set <change-name> branch_status handled',
         execution,
       );
       const commit = archive.indexOf('git commit -m "chore: archive <change-name>"', handled);
       const delivery = archive.indexOf(deliveryHeading, commit);
-      const clearSelection = archive.indexOf(
-        'node "<comet-state-script>" clear-selection',
-        delivery,
-      );
+      const clearSelection = archive.indexOf('comet state clear-selection', delivery);
 
       expect(confirmation).toBeGreaterThan(-1);
       expect(confirmation).toBeLessThan(execution);

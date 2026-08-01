@@ -14,15 +14,19 @@ Beta 13 makes everyday workflow operations faster and makes uninstalling and rea
 
 - **Selective workflow removal**: Interactive `comet uninstall` now lets you remove Native, Classic, or both from each installed target. Removing one retains the other workflow and shared configuration; when removing Classic, OpenSpec and Superpowers Skills are optional and remain selected off by default.
 - **Everyday responsiveness**: CLI startup, Classic and Native workflow commands, write checks, and Native snapshot updates are faster. Native reuses results for unchanged files while continuing to inspect real changes.
+- **Fast public workflow commands**: High-frequency Native, Classic, and workflow-resolution commands keep the stable `comet` CLI interface while dispatching internally to package-owned runtime bundles, reducing cold-start overhead without relying on host-specific Skill paths.
 - **Dashboard workspace**: Dashboard offers clearer project switching, search, and change-detail views while keeping the Classic and Native workspaces separate and read-only.
 
 ### Fixed
 
 - **Classic configuration compatibility**: Setup and update retain an existing Classic project’s directory choice and more reliably recognize a usable directory when an older project configuration is incomplete.
+- **Portable workflow execution**: Native and Classic Skills now call the public `comet` CLI instead of searching host-specific Skill directories or invoking internal bundles. Missing CLI installations stop with a clear error, while workflow routing still immediately loads the selected Skill through the host’s Skill tool.
+- **Background execution checks**: Classic offers subagent-driven execution only when the host can provide asynchronous dispatch, isolated context, result collection, handoff, and appropriate model selection or an explicit platform default.
 - **Dashboard status feedback**: Classic change verification uses green, red, amber, and neutral status colors for pass, fail, pending, and unknown states; invalid Dashboard ports now fail with a clear error before startup.
 
 ### Security
 
+- **Classic phase protection**: Host configuration directories and worktrees no longer bypass Classic phase restrictions, preventing source writes hidden under paths such as `.claude/` during non-Build phases.
 - **Dashboard build dependency**: Updated the Dashboard CSS build dependency to prevent untrusted source-map references from reading unintended reachable map files.
 
 ## What's Changed [0.4.0-beta.12] - 2026-07-30

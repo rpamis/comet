@@ -46,7 +46,7 @@ const TARGETS = [
   {
     name: 'classic-state',
     script: path.join(RUNTIME_SCRIPTS, 'comet-state.mjs'),
-    args: ['--help'],
+    args: ['current', '--json'],
   },
   {
     name: 'classic-hook-guard',
@@ -69,6 +69,16 @@ const TARGETS = [
     script: path.join(NATIVE_SCRIPTS, 'comet-native-runtime.mjs'),
     args: ['--help'],
   },
+  {
+    name: 'native-status',
+    script: path.join(NATIVE_SCRIPTS, 'comet-native-status.mjs'),
+    args: ['--json'],
+  },
+  {
+    name: 'entry-workflow-resolve',
+    script: path.join(RUNTIME_SCRIPTS, 'comet-entry-runtime.mjs'),
+    args: ['.', '--json'],
+  },
   // Per-command Native launchers (self-contained bundles).
   {
     name: 'native-hook-guard',
@@ -78,6 +88,11 @@ const TARGETS = [
   // CLI entry (npm bin).
   { name: 'cli-version', script: BIN, args: ['--version'] },
   { name: 'cli-help', script: BIN, args: ['--help'] },
+  // Public fast paths must be measured through `comet`, not by leaking the
+  // package-internal bundle paths into Skills or documentation.
+  { name: 'cli-classic-state', script: BIN, args: ['state', 'current', '--json'] },
+  { name: 'cli-native-status', script: BIN, args: ['native', 'status', '--json'] },
+  { name: 'cli-workflow-resolve', script: BIN, args: ['workflow', 'resolve', '.', '--json'] },
 ];
 
 function measureOne(script, args) {

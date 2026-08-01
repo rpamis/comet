@@ -688,9 +688,6 @@ async function inspectClassicHookTarget(
   if (isCometConfig(relativePath)) {
     return allowed(`${relativePath} (whitelist: comet config)`);
   }
-  if (relativePath.startsWith('.claude/')) {
-    return allowed(`${relativePath} (whitelist: claude config)`);
-  }
   if (isSuperpowersWorkspace(relativePath)) {
     return allowed(`${relativePath} (whitelist: superpowers workspace)`);
   }
