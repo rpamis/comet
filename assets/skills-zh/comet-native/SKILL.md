@@ -19,17 +19,42 @@ Native 保存需求、完整目标规格、状态和证据。你负责理解、�
 
 Native 主流程不依赖任何外部 Skill。
 
+## 脚本引导
+
+Native 命令以直连 bundle（`node comet-native-<cmd>.mjs`）执行比走 `comet native` CLI 外壳更快，因为 CLI 每次调用都要承担 commander 注册和模块加载开销。在每个会话开始时定位一次 Native 脚本目录，缓存到环境变量，之后直接调用各命令的自包含 bundle：
+
+```bash
+COMET_NATIVE_SCRIPTS_DIR="${COMET_NATIVE_SCRIPTS_DIR:-$(find . "$HOME"/.*/skills "$HOME/.config" "$HOME/.gemini" -path '*/comet-native/scripts/comet-native-status.mjs' -type f -print -quit 2>/dev/null | sed 's|/comet-native-status.mjs||')}"
+if [ -z "$COMET_NATIVE_SCRIPTS_DIR" ]; then
+  echo "ERROR: comet-native scripts not found. Ensure the comet-native skill is installed." >&2
+  return 1
+fi
+```
+
+每个命令都有专属 bundle，参数与 CLI 子命令完全一致（只需去掉 `native` 关键字）：
+
+```bash
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-status.mjs" [--json]
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-show.mjs" <change-name>
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-select.mjs" <change-name>
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-new.mjs" <change-name> [--language en|zh-CN]
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-next.mjs" <change-name> --summary <text> [--confirmed]
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-archive.mjs" <change-name> --dry-run
+```
+
+进入 Skill 时运行一次此引导，之后所有命令使用缓存的 `$COMET_NATIVE_SCRIPTS_DIR`。当无法解析 bundle 路径时，`comet native` CLI 仍可作为回退方案。
+
 ## 开始或恢复
 
-1. 运行 `comet native status`，确认当前 change 和 phase。
-2. 对目标运行 `comet native show <change-name>`；Verify、Archive 或失败后的 Build 再运行 `status <change-name> --details`。
+1. 运行 `node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-status.mjs"`，确认当前 change 和 phase。
+2. 对目标运行 `node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-show.mjs" <change-name>`；Verify、Archive 或失败后的 Build 再对 status bundle 加 `--details` 运行。
 3. 需要更多 acceptance 时，按 `acceptancePage.nextCursor` 分页；findings 被截断时，先处理已返回项，再重新读取。
-4. 确认目标后运行 `comet native select <change-name>`。
+4. 确认目标后运行 `node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-select.mjs" <change-name>`。
 
 存在多个合理候选时让用户选择。只有确认没有对应 active change 时才创建：
 
 ```text
-comet native new <change-name> \
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-new.mjs" <change-name> \
   --language zh-CN
 ```
 
@@ -53,7 +78,7 @@ comet native new <change-name> \
 所有用户决定处理完后，重新检查是否仍有静默假设，并向用户提供目标、范围、关键决定、验收标准和非目标的共享理解摘要。只有用户明确确认后，才移除最终阻塞项并推进：
 
 ```text
-comet native next <change-name> --summary <摘要> --confirmed
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-next.mjs" <change-name> --summary <摘要> --confirmed
 ```
 
 brief 或规格改变已确认的行为时，重新取得用户确认；不要手工修改确认状态。
@@ -67,7 +92,7 @@ brief 或规格改变已确认的行为时，重新取得用户确认；不要�
 候选实现完成后，对照完整规格和全部 acceptance 复核是否仍有遗漏，再提供真实项目产物推进：
 
 ```text
-comet native next <change-name> \
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-next.mjs" <change-name> \
   --summary <摘要> \
   --artifact <项目内路径> \
   [--confirmed]
@@ -79,7 +104,7 @@ comet native next <change-name> \
 
 进入 Build 后按以下循环收敛：
 
-1. 运行 `status <change-name> --details` 并读取当前需要的 acceptance 页；上一轮 Verify 失败时，优先处理 failed/missing acceptance 和 failed check。
+1. 对 status bundle 加 `--details` 运行，读取当前需要的 acceptance 页；上一轮 Verify 失败时，优先处理 failed/missing acceptance 和 failed check。
 2. 完成一批相关的实际修复。需要中断时可以写 checkpoint，但 checkpoint 不是完成证据。
 3. 形成候选实现后，重新读取 brief、完整规格和全部 acceptance，执行一次完整审查。
 4. 运行真实验证并提交 Verify 结果。
@@ -104,7 +129,7 @@ Verify 失败的中间循环不运行 Archive，也不触发归档确认。持�
 只有最终 Verify pass 后才预演：
 
 ```text
-comet native archive <change-name> --dry-run
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-archive.mjs" <change-name> --dry-run
 ```
 
 预演成功后：

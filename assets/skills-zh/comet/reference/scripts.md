@@ -2,29 +2,11 @@
 
 规范路径：`comet/reference/scripts.md`
 
-本文件是 Comet 公开 CLI 与内部脚本兼容方式的单一事实来源。公开工作流必须优先使用稳定命令面：`comet state`、`comet guard`、`comet handoff`、`comet archive`。
+本文件是 Comet 公开 CLI 与内部脚本兼容方式的单一事实来源。每个 Classic 命令都发布了自包含 bundle（`comet/scripts/comet-*.mjs`）。直接调用 bundle（`node "$COMET_STATE" ...`）比走 `comet` CLI 外壳更快，因为 CLI 每次调用都要承担 commander 注册和模块加载开销。日常工作流优先使用直连 bundle 调用；`comet` CLI 作为回退方案保留。
 
-## 公开工作流协议
+## 脚本引导
 
-正常安装和日常工作流直接使用 `comet` CLI，不需要定位 launcher，也不要向用户暴露内部 `classic` 命名：
-
-```bash
-comet state select <change-name>
-comet state current
-comet state clear-selection
-comet state check <change-name> <phase>
-comet guard <change-name> <phase> --apply
-comet handoff <change-name>
-comet archive <change-name>
-```
-
-当多个 active change 共存时，进入明确的 change 后先运行 `comet state select <change-name>`。普通源码写入只受该选择管辖；尚未选择时 hook 会阻塞并要求选择。单 active change 可继续自动归属。切换 branch/worktree 或选择失效后必须重新运行 `select`。
-
-guard 的 `--apply` 在检查通过后推进状态。需要直接表达状态事件时使用 `comet state transition`；阶段推进后使用 `comet state next` 解析是否自动调用下一 Skill。
-
-## 兼容、恢复与内部命令引导
-
-以下脚本定位只用于旧版兼容、CLI 不可用时的恢复，以及 `/comet-classic` 内部入口命令。正常公开工作流不得优先采用此方式。Comet 脚本随 Skill 包分发在 `comet/scripts/` 下；需要恢复时不要硬编码路径，而应定位一次并缓存环境变量：
+Comet 脚本随 Skill 包分发在 `comet/scripts/` 下。在每个会话开始时定位一次脚本目录，缓存到环境变量，之后直接调用各命令的自包含 bundle：
 
 ```bash
 COMET_ENV="${COMET_ENV:-$(find . "$HOME"/.*/skills "$HOME/.config" "$HOME/.gemini" -path '*/comet/scripts/comet-env.mjs' -type f -print -quit 2>/dev/null)}"
@@ -47,7 +29,25 @@ if [ -z "$COMET_SCRIPTS_DIR" ]; then
 fi
 ```
 
-只有进入上述兼容、恢复或内部命令路径时，Agent 才执行这些变量赋值。`COMET_INTENT` 和 `COMET_RESUME_PROBE` 仍是内部入口引导所需变量，不应全局移除。
+进入 Comet Classic workflow 时运行一次此引导，之后所有命令使用缓存的变量。`COMET_INTENT` 和 `COMET_RESUME_PROBE` 也是内部入口引导和 Ambient Resume 所需变量。
+
+## 公开工作流协议
+
+引导生效后，日常工作流直接调用 bundle。参数与 CLI 子命令完全一致（只需去掉 `comet` 关键字）：
+
+```bash
+node "$COMET_STATE" select <change-name>
+node "$COMET_STATE" current
+node "$COMET_STATE" clear-selection
+node "$COMET_STATE" check <change-name> <phase>
+node "$COMET_GUARD" <change-name> <phase> --apply
+node "$COMET_HANDOFF" <change-name>
+node "$COMET_ARCHIVE" <change-name>
+```
+
+当多个 active change 共存时，进入明确的 change 后先运行 `node "$COMET_STATE" select <change-name>`。普通源码写入只受该选择管辖；尚未选择时 hook 会阻塞并要求选择。单 active change 可继续自动归属。切换 branch/worktree 或选择失效后必须重新运行 `select`。
+
+guard 的 `--apply` 在检查通过后推进状态。需要直接表达状态事件时使用 `node "$COMET_STATE" transition`；阶段推进后使用 `node "$COMET_STATE" next` 解析是否自动调用下一 Skill。
 
 | 变量 | 用途 |
 |------|------|
@@ -63,31 +63,31 @@ fi
 guard 支持 `--apply` 参数，验证通过后自动更新 `.comet.yaml` 状态字段：
 
 ```bash
-comet guard <change-name> <phase> --apply
+node "$COMET_GUARD" <change-name> <phase> --apply
 ```
 
 `--apply` 内部委托给状态机 transition。需要直接表达状态事件时使用：
 
 ```bash
-comet state transition <change-name> open-complete
-comet state transition <change-name> design-complete
-comet state transition <change-name> build-complete
-comet state transition <change-name> verify-pass
-comet state transition <change-name> verify-fail
-comet state transition <change-name> archive-confirm
-comet state transition <change-name> archive-reopen
-comet state transition <change-name> archived
-comet state transition <change-name> preset-escalate
+node "$COMET_STATE" transition <change-name> open-complete
+node "$COMET_STATE" transition <change-name> design-complete
+node "$COMET_STATE" transition <change-name> build-complete
+node "$COMET_STATE" transition <change-name> verify-pass
+node "$COMET_STATE" transition <change-name> verify-fail
+node "$COMET_STATE" transition <change-name> archive-confirm
+node "$COMET_STATE" transition <change-name> archive-reopen
+node "$COMET_STATE" transition <change-name> archived
+node "$COMET_STATE" transition <change-name> preset-escalate
 ```
 
-归档完成由 `comet archive <change-name>` 负责；OpenSpec 会先把 change 移到带日期前缀的归档目录，再由 Comet 完成状态记录。预归档确认使用 `archive-confirm` 或 `archive-reopen`；不要在归档流程之外手动执行 `archived` transition。
+归档完成由 `node "$COMET_ARCHIVE" <change-name>` 负责；OpenSpec 会先把 change 移到带日期前缀的归档目录，再由 Comet 完成状态记录。预归档确认使用 `archive-confirm` 或 `archive-reopen`；不要在归档流程之外手动执行 `archived` transition。
 
 ## 解析下一步
 
 阶段守卫推进 phase 后，用 `next` 子命令解析是否自动调用下一个 skill：
 
 ```bash
-comet state next <change-name>
+node "$COMET_STATE" next <change-name>
 ```
 
 输出 `NEXT: auto|manual|done` + `SKILL: <skill-name>`（`done` 时省略）+ `HINT`（仅 `manual` 时）。`auto_transition: false` 时输出 `manual`，只暂停下一 skill 调用，不影响已发生的 phase 推进。
@@ -97,5 +97,5 @@ comet state next <change-name>
 一键完成归档全部步骤：
 
 ```bash
-comet archive <change-name>
+node "$COMET_ARCHIVE" <change-name>
 ```

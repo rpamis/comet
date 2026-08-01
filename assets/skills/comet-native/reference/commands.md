@@ -9,7 +9,7 @@ Determine the current intent first; do not execute this section from top to bott
 ### Enable Native for the first time
 
 ```text
-comet native init [--root <artifact-root>] [--language en|zh-CN]
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-init.mjs" [--root <artifact-root>] [--language en|zh-CN]
 ```
 
 Use this only when the project has not enabled Native yet or when Native directories and language configuration need to be completed. It creates the required directories and writes `.comet/config.yaml`. Existing configuration keeps its current artifact root but may update the language. `init` does not migrate an existing artifact root; the command fails when an explicit `--root` conflicts with existing configuration.
@@ -19,8 +19,8 @@ Afterward, run `root show` to confirm the effective location. Do not use `init` 
 ### Inspect or migrate the artifact root
 
 ```text
-comet native root show
-comet native root move <artifact-root>
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-root.mjs" show
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-root.mjs" move <artifact-root>
 ```
 
 `artifact-root` is project-relative.
@@ -33,9 +33,9 @@ An unfinished migration blocks other Native writes. Run read-only `doctor` first
 ### Discover and read changes (read-only)
 
 ```text
-comet native status [--cursor <token>]
-comet native status <change-name> [--details [--acceptance-cursor <token>]]
-comet native show <change-name>
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-status.mjs" [--cursor <token>]
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-status.mjs" <change-name> [--details [--acceptance-cursor <token>]]
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-show.mjs" <change-name>
 ```
 
 `status` without a change name returns paginated candidates. When multiple reasonable candidates remain, show the candidates and their phases to the user and ask them to choose. Do not guess.
@@ -51,7 +51,7 @@ These commands do not modify selection, phase, or change content.
 ### Resume an existing change
 
 ```text
-comet native select <change-name>
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-select.mjs" <change-name>
 ```
 
 Run this only after the target change is unique or the user has explicitly selected it. `select` updates only the current Native selection and does not change the phase. A successful result returns that change's continuation.
@@ -61,7 +61,7 @@ After selecting, reread `status <change-name>`, confirm the phase, and then load
 ### Create a new change
 
 ```text
-comet native new <change-name> [--language en|zh-CN]
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-new.mjs" <change-name> [--language en|zh-CN]
 ```
 
 Run `new` only after confirming that no matching active change exists. When configuration is absent, it creates the default Native configuration and `docs/comet/`; it then creates a Shape change, makes it the current selection, and returns a continuation.
@@ -71,8 +71,8 @@ Immediately run `show <change-name>` and `status <change-name>`, then enter Shap
 ### Correct the specification history
 
 ```text
-comet native spec remove <change-name> <capability>
-comet native spec rebase <change-name> --summary <text>
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-spec.mjs" remove <change-name> <capability>
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-spec.mjs" rebase <change-name> --summary <text>
 ```
 
 Neither command is an ordinary file-editing command. `spec remove` records a specification operation that removes a capability; use it only when the target behavior truly requires that capability to be removed. `spec rebase` handles concurrent canonical specification changes only: reread the canonical specification, rewrite the complete target specification, and use the summary to record why the rebase was needed.
@@ -82,14 +82,14 @@ Both `spec remove` and `spec rebase` modify the change's specification history a
 ## Checkpoints and checks
 
 ```text
-comet native checkpoint <change-name> \
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-checkpoint.mjs" <change-name> \
   --summary <text> \
   --next-action <text> \
   [--artifact <project-relative-path>]... \
   [--expect-revision <n>]
 
-comet native check <change-name>
-comet native evidence format [--entries <path>]
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-check.mjs" <change-name>
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-evidence.mjs" format [--entries <path>]
 ```
 
 A checkpoint stores only recovery context and real artifact references. It does not change phase or replace completion evidence.
@@ -103,7 +103,7 @@ A checkpoint stores only recovery context and real artifact references. It does 
 Automated validation:
 
 ```text
-comet native receipt automated <change-name> \
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-receipt.mjs" automated <change-name> \
   [--acceptance <id>]... \
   [--timeout-ms <milliseconds>] \
   -- <executable> [args...]
@@ -112,7 +112,7 @@ comet native receipt automated <change-name> \
 Manual observation:
 
 ```text
-comet native receipt manual <change-name> \
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-receipt.mjs" manual <change-name> \
   --acceptance <id> \
   --step <text> \
   --observation <text>
@@ -123,19 +123,19 @@ Create receipts only for commands or manual observations that actually occurred.
 Refresh stale receipts in bulk:
 
 ```text
-comet native receipt refresh <change-name> [--apply]
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-receipt.mjs" refresh <change-name> [--apply]
 ```
 
 A receipt is bound to the revision, contract, scope, snapshot, and artifacts in effect when it was issued. Any state write (checkpoint, spec refresh, phase advance) bumps the revision, which invalidates receipts issued before that bump. `next --result` then fails with `verification-receipt-binding-mismatch`, listing each stale receipt and the diverging field.
 
-Without `--apply` (default) it is a preview: it reports which manual receipts are stale, which automated receipts must be re-run, and which required-check receipts must be regenerated via `comet native check`, without touching any file.
+Without `--apply` (default) it is a preview: it reports which manual receipts are stale, which automated receipts must be re-run, and which required-check receipts must be regenerated via `node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-check.mjs"`, without touching any file.
 
 With `--apply`: it re-issues every stale manual receipt at the current revision and writes the canonical evidence block back into the `# Acceptance evidence` section of verification.md. Automated receipts are never silently re-issued (they attest to a real command execution); refresh only reports the commands you must re-run via `receipt automated`.
 
 ## Phase progression
 
 ```text
-comet native next <change-name> --summary <text> \
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-next.mjs" <change-name> --summary <text> \
   [--confirmed] \
   [--artifact <project-relative-path>]... \
   [--no-code-reason <text>] \
@@ -144,23 +144,23 @@ comet native next <change-name> --summary <text> \
   [--report <change-relative-path>] \
   [--override-repair <sha256> --override-summary <text>]
 
-comet native archive <change-name> --dry-run
-comet native archive <change-name> --expect-preflight <sha256> [--confirmed]
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-archive.mjs" <change-name> --dry-run
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-archive.mjs" <change-name> --expect-preflight <sha256> [--confirmed]
 ```
 
 - Shape: pass `--confirmed` only after the user confirms the final shared understanding.
 - Build: provide a real `--artifact`; use `--no-code-reason` only when no project file changed. If changed requirements introduce a new user decision, stay in Build and repeat clarification and confirmation first. After confirmation, update the formal artifacts, then run the transition command returned by the Runtime with `--confirmed`.
 - Partial scope: explain the exact gaps and risks returned by the Runtime. Changes beyond the returned detail budget are summarized by a `scope-detail-overflow` count and content hash; use the matching scope hash, reason, and `--confirmed` only after the user accepts them.
-- Verify: provide `--result` and a complete report. For the standard report path, submit `comet native next <change-name> --summary <summary> --result pass|fail --report verification.md`. On pass, the Runtime runs the built-in required check automatically. Acceptance entries in the report reference automated/manual receipts directly. Executed failures reference their failed receipts, while checks that were not run include a `skipped_reason`. The Runtime derives failed acceptance and check identifiers from the report and receipts.
+- Verify: provide `--result` and a complete report. For the standard report path, submit `node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-next.mjs" <change-name> --summary <summary> --result pass|fail --report verification.md`. On pass, the Runtime runs the built-in required check automatically. Acceptance entries in the report reference automated/manual receipts directly. Executed failures reference their failed receipts, while checks that were not run include a `skipped_reason`. The Runtime derives failed acceptance and check identifiers from the report and receipts.
 - Repair override: use only the signature returned by status and only for one explicit new repair hypothesis.
 - Archive: dry-run first, then use the exact preflight hash returned by that preview. `required` mode also requires explicit user confirmation.
 
 ## Diagnostics and recovery
 
 ```text
-comet native doctor [<change-name>]
-comet native doctor [<change-name>] --repair
-comet native doctor [<change-name>] --repair [--strategy continue|rollback]
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-doctor.mjs" [<change-name>]
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-doctor.mjs" [<change-name>] --repair
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-doctor.mjs" [<change-name>] --repair [--strategy continue|rollback]
 ```
 
 Run read-only doctor first. Use `--repair` only when its report offers a repair action. Ordinary phase transitions support only `continue`; whether Archive or root move allows rollback is determined by doctor.

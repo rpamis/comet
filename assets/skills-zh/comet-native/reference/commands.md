@@ -9,7 +9,7 @@
 ### 首次启用 Native
 
 ```text
-comet native init [--root <artifact-root>] [--language en|zh-CN]
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-init.mjs" [--root <artifact-root>] [--language en|zh-CN]
 ```
 
 只在项目尚未启用 Native，或需要补齐 Native 目录与语言配置时使用。它会创建所需目录并写入 `.comet/config.yaml`；已有配置会保留当前 artifact root，但可更新语言。`init` 不迁移已有 artifact root；显式 `--root` 与现有配置冲突时命令会失败。
@@ -19,8 +19,8 @@ comet native init [--root <artifact-root>] [--language en|zh-CN]
 ### 查看或迁移 artifact root
 
 ```text
-comet native root show
-comet native root move <artifact-root>
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-root.mjs" show
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-root.mjs" move <artifact-root>
 ```
 
 `artifact-root` 是项目内相对路径。
@@ -33,9 +33,9 @@ comet native root move <artifact-root>
 ### 发现并读取 change（只读）
 
 ```text
-comet native status [--cursor <token>]
-comet native status <change-name> [--details [--acceptance-cursor <token>]]
-comet native show <change-name>
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-status.mjs" [--cursor <token>]
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-status.mjs" <change-name> [--details [--acceptance-cursor <token>]]
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-show.mjs" <change-name>
 ```
 
 无 change 名称的 `status` 返回分页候选。存在多个合理候选时，把候选及 phase 展示给用户选择，不要猜测。
@@ -51,7 +51,7 @@ comet native show <change-name>
 ### 恢复已有 change
 
 ```text
-comet native select <change-name>
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-select.mjs" <change-name>
 ```
 
 只在目标 change 已唯一确定或由用户明确选择后执行。`select` 只更新当前 Native selection，不改变 phase；成功结果会返回该 change 的 continuation。
@@ -61,7 +61,7 @@ comet native select <change-name>
 ### 创建新 change
 
 ```text
-comet native new <change-name> [--language en|zh-CN]
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-new.mjs" <change-name> [--language en|zh-CN]
 ```
 
 只有确认没有对应 active change 时才运行 `new`。配置缺失时，它会创建默认 Native 配置与 `docs/comet/`；随后创建一个 Shape change、把它设为当前 selection，并返回 continuation。
@@ -71,8 +71,8 @@ comet native new <change-name> [--language en|zh-CN]
 ### 修正规格轨迹
 
 ```text
-comet native spec remove <change-name> <capability>
-comet native spec rebase <change-name> --summary <text>
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-spec.mjs" remove <change-name> <capability>
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-spec.mjs" rebase <change-name> --summary <text>
 ```
 
 这两条都不是普通文件编辑命令。`spec remove` 把 capability 记录为待移除的规格操作；只在目标行为确实要求移除该 capability 时使用。`spec rebase` 只处理 canonical 规格发生并发变化的情况：先重读 canonical 规格并改写完整目标规格，再用摘要记录 rebase 原因。
@@ -82,14 +82,14 @@ comet native spec rebase <change-name> --summary <text>
 ## Checkpoint 与检查
 
 ```text
-comet native checkpoint <change-name> \
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-checkpoint.mjs" <change-name> \
   --summary <text> \
   --next-action <text> \
   [--artifact <project-relative-path>]... \
   [--expect-revision <n>]
 
-comet native check <change-name>
-comet native evidence format [--entries <path>]
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-check.mjs" <change-name>
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-evidence.mjs" format [--entries <path>]
 ```
 
 checkpoint 只保存恢复摘要和真实产物引用，不改变 phase，也不能代替完成证据。
@@ -103,7 +103,7 @@ checkpoint 只保存恢复摘要和真实产物引用，不改变 phase，也不
 自动验证：
 
 ```text
-comet native receipt automated <change-name> \
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-receipt.mjs" automated <change-name> \
   [--acceptance <id>]... \
   [--timeout-ms <milliseconds>] \
   -- <executable> [args...]
@@ -112,7 +112,7 @@ comet native receipt automated <change-name> \
 人工观察：
 
 ```text
-comet native receipt manual <change-name> \
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-receipt.mjs" manual <change-name> \
   --acceptance <id> \
   --step <text> \
   --observation <text>
@@ -123,19 +123,19 @@ comet native receipt manual <change-name> \
 批量刷新过期 receipt：
 
 ```text
-comet native receipt refresh <change-name> [--apply]
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-receipt.mjs" refresh <change-name> [--apply]
 ```
 
 receipt 绑定生成时的 revision、contract、scope、snapshot 与 artifact。任何一次状态写入（checkpoint、规格刷新、阶段推进）都会让 revision 递增，导致此前签发的 receipt 绑定过期。`next --result` 会因此报 `verification-receipt-binding-mismatch` 并列出每个过期 receipt 及其不一致字段。
 
-不带 `--apply`（默认）为预览：只报告哪些 manual receipt 过期、哪些 automated receipt 需重跑、哪些 required-check receipt 需用 `comet native check` 重生成，不改动任何文件。
+不带 `--apply`（默认）为预览：只报告哪些 manual receipt 过期、哪些 automated receipt 需重跑、哪些 required-check receipt 需用 `node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-check.mjs"` 重生成，不改动任何文件。
 
 带 `--apply` 时：以当前 revision 重新签发所有过期的 manual receipt，并把规范证据块写回 verification.md 的 `# Acceptance evidence` 段；automated receipt 不会被静默重签（它证明一次真实命令执行），refresh 只报告需重跑的命令让你用 `receipt automated` 重新执行。
 
 ## 阶段推进
 
 ```text
-comet native next <change-name> --summary <text> \
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-next.mjs" <change-name> --summary <text> \
   [--confirmed] \
   [--artifact <project-relative-path>]... \
   [--no-code-reason <text>] \
@@ -144,23 +144,23 @@ comet native next <change-name> --summary <text> \
   [--report <change-relative-path>] \
   [--override-repair <sha256> --override-summary <text>]
 
-comet native archive <change-name> --dry-run
-comet native archive <change-name> --expect-preflight <sha256> [--confirmed]
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-archive.mjs" <change-name> --dry-run
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-archive.mjs" <change-name> --expect-preflight <sha256> [--confirmed]
 ```
 
 - Shape：只有用户确认最终共享理解后才传 `--confirmed`。
 - Build：提供真实 `--artifact`；确实没有项目文件变化时使用 `--no-code-reason`。如果需求变化引入新的用户决定，先保持在 Build 并重新完成澄清与确认；确认后更新正式产物，再执行 Runtime 返回的 transition 命令并传入 `--confirmed`。
 - Partial scope：先向用户说明 Runtime 返回的具体缺口和风险。超出已返回明细预算的变化由 `scope-detail-overflow` 数量和内容 hash 汇总；只有用户接受后才使用完全匹配的 scope hash、理由和 `--confirmed`。
-- Verify：提供 `--result` 和完整报告。标准报告路径提交为 `comet native next <change-name> --summary <摘要> --result pass|fail --report verification.md`。Runtime 在 pass 时自动执行内置 required check；报告中的 acceptance 条目直接引用 automated/manual receipt。已执行但失败的条目引用对应失败 receipt，未执行的条目写明 `skipped_reason`。repair 的失败 acceptance 和检查标识由 Runtime 从报告与 receipt 自动推导。
+- Verify：提供 `--result` 和完整报告。标准报告路径提交为 `node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-next.mjs" <change-name> --summary <摘要> --result pass|fail --report verification.md`。Runtime 在 pass 时自动执行内置 required check；报告中的 acceptance 条目直接引用 automated/manual receipt。已执行但失败的条目引用对应失败 receipt，未执行的条目写明 `skipped_reason`。repair 的失败 acceptance 和检查标识由 Runtime 从报告与 receipt 自动推导。
 - Repair override：只使用 status 返回的 signature，并且只在有一个明确新修复假设时执行。
 - Archive：先 dry-run，再使用本次预演返回的精确 preflight hash；`required` 模式还需要用户明确确认。
 
 ## 诊断与恢复
 
 ```text
-comet native doctor [<change-name>]
-comet native doctor [<change-name>] --repair
-comet native doctor [<change-name>] --repair [--strategy continue|rollback]
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-doctor.mjs" [<change-name>]
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-doctor.mjs" [<change-name>] --repair
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-doctor.mjs" [<change-name>] --repair [--strategy continue|rollback]
 ```
 
 先运行只读 doctor。只有报告给出可修复动作时才使用 `--repair`。普通阶段 transition 只支持 `continue`；Archive 或 root move 是否允许 rollback 以 doctor 返回为准。

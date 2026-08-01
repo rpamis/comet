@@ -19,17 +19,42 @@ Config, selection, change state, and formal artifacts on disk take precedence ov
 
 The Native main workflow does not depend on any external Skill.
 
+## Script bootstrap
+
+Native commands run faster as direct bundle invocations (`node comet-native-<cmd>.mjs`) than through the `comet native` CLI shell, because the CLI pays commander registration and module-loading overhead on every call. Locate the Native scripts directory once per session, cache it in an environment variable, then invoke each command's self-contained bundle directly:
+
+```bash
+COMET_NATIVE_SCRIPTS_DIR="${COMET_NATIVE_SCRIPTS_DIR:-$(find . "$HOME"/.*/skills "$HOME/.config" "$HOME/.gemini" -path '*/comet-native/scripts/comet-native-status.mjs' -type f -print -quit 2>/dev/null | sed 's|/comet-native-status.mjs||')}"
+if [ -z "$COMET_NATIVE_SCRIPTS_DIR" ]; then
+  echo "ERROR: comet-native scripts not found. Ensure the comet-native skill is installed." >&2
+  return 1
+fi
+```
+
+Each command has a dedicated bundle; arguments are identical to the CLI subcommand (drop only the `native` keyword):
+
+```bash
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-status.mjs" [--json]
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-show.mjs" <change-name>
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-select.mjs" <change-name>
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-new.mjs" <change-name> [--language en|zh-CN]
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-next.mjs" <change-name> --summary <text> [--confirmed]
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-archive.mjs" <change-name> --dry-run
+```
+
+Run this bootstrap once when entering the Skill, then use the cached `$COMET_NATIVE_SCRIPTS_DIR` for every subsequent command. The `comet native` CLI remains available as a fallback when the bundle path cannot be resolved.
+
 ## Start or resume
 
-1. Run `comet native status` to identify the current change and phase.
-2. Run `comet native show <change-name>` for the target. In Verify, Archive, or Build after a failure, also run `status <change-name> --details`.
+1. Run `node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-status.mjs"` to identify the current change and phase.
+2. Run `node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-show.mjs" <change-name>` for the target. In Verify, Archive, or Build after a failure, also run the status bundle with `--details`.
 3. When more acceptance items are needed, follow `acceptancePage.nextCursor`. If findings are truncated, handle the returned findings and then read details again.
-4. After confirming the target, run `comet native select <change-name>`.
+4. After confirming the target, run `node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-select.mjs" <change-name>`.
 
 If multiple reasonable candidates remain, ask the user to select one. Create a change only after confirming that no matching active change exists:
 
 ```text
-comet native new <change-name> \
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-new.mjs" <change-name> \
   --language en
 ```
 
@@ -53,7 +78,7 @@ Follow the clarification reference according to `clarification_mode`. Even when 
 After all user decisions are resolved, check again for silent assumptions. Give the user a shared-understanding summary covering the goal, scope, key decisions, acceptance criteria, and non-goals. Only after explicit confirmation may you remove the final blocker and advance:
 
 ```text
-comet native next <change-name> --summary <summary> --confirmed
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-next.mjs" <change-name> --summary <summary> --confirmed
 ```
 
 If the brief or specifications change confirmed behavior, obtain confirmation again. Do not edit confirmation state manually.
@@ -67,7 +92,7 @@ When requirements change, update the formal artifacts first. If a new user decis
 After the candidate implementation is complete, review it against the complete specifications and every acceptance item for omissions, then advance with real project artifacts:
 
 ```text
-comet native next <change-name> \
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-next.mjs" <change-name> \
   --summary <summary> \
   --artifact <project-path> \
   [--confirmed]
@@ -79,7 +104,7 @@ If no code changed or the Runtime cannot prove complete scope, read the command 
 
 After entering Build, converge through this loop:
 
-1. Run `status <change-name> --details` and read the currently required acceptance pages. After a Verify failure, prioritize failed or missing acceptance items and failed checks.
+1. Run the status bundle with `--details` and read the currently required acceptance pages. After a Verify failure, prioritize failed or missing acceptance items and failed checks.
 2. Complete one related batch of real repairs. You may write a checkpoint before interruption, but a checkpoint is not completion evidence.
 3. When a candidate implementation exists, reread the brief, complete specifications, and every acceptance item, then perform one complete review.
 4. Run real validation and submit the Verify result.
@@ -104,7 +129,7 @@ An intermediate Verify failure never runs Archive or triggers archive confirmati
 Preview only after the final Verify pass:
 
 ```text
-comet native archive <change-name> --dry-run
+node "$COMET_NATIVE_SCRIPTS_DIR/comet-native-archive.mjs" <change-name> --dry-run
 ```
 
 After a successful preview:

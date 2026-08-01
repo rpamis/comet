@@ -120,8 +120,8 @@ describe('Native runtime release asset', () => {
       'utf8',
     );
 
-    expect(english).toContain('comet native new <change-name> [--language en|zh-CN]');
-    expect(chinese).toContain('comet native new <change-name> [--language en|zh-CN]');
+    expect(english).toContain('comet-native-new.mjs" <change-name> [--language en|zh-CN]');
+    expect(chinese).toContain('comet-native-new.mjs" <change-name> [--language en|zh-CN]');
     expect(english).toContain('When configuration is absent');
     expect(english).toContain('`docs/comet/`');
     expect(chinese).toContain('配置缺失时');

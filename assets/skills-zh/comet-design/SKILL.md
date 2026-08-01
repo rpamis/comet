@@ -21,8 +21,8 @@ description: "仅在用户明确调用 /comet-design，或由 Comet 根 Skill/ru
 按 `comet/reference/scripts.md` 定位脚本（定位 `comet-env.mjs`），然后执行入口验证；从任意入口恢复时先按 `comet/reference/context-recovery.md` 运行恢复检查：
 
 ```bash
-comet state select <change-name>
-comet state check <name> design
+node "$COMET_STATE" select <change-name>
+node "$COMET_STATE" check <name> design
 ```
 
 验证通过后继续 Step 1。验证失败时脚本会输出具体失败原因。
@@ -34,7 +34,7 @@ comet state check <name> design
 **必须由脚本生成，不允许 agent 临场手写 summary 代替。**
 
 ```bash
-comet handoff <change-name> design --write
+node "$COMET_HANDOFF" <change-name> design --write
 ```
 
 脚本会根据 change `.comet.yaml` 的 `context_compression` 快照生成并记录交接包。
@@ -73,7 +73,7 @@ beta 交接包是 **结构化 spec projection**，用于减少 OpenSpec 原文 t
 如确实需要全文上下文，可显式运行：
 
 ```bash
-comet handoff <change-name> design --write --full
+node "$COMET_HANDOFF" <change-name> design --write --full
 ```
 
 交接包来源来自 OpenSpec open 阶段产物：
@@ -89,7 +89,7 @@ comet handoff <change-name> design --write --full
 技能加载时，ARGUMENTS 必须包含：
 
 ```text
-Language: 使用 `comet state get <name> language` 读取到的 Comet 配置产物语言输出
+Language: 使用 `node "$COMET_STATE" get <name> language` 读取到的 Comet 配置产物语言输出
 ```
 
 技能加载后，按其指引使用以下上下文：
@@ -210,13 +210,13 @@ canonical_spec: openspec
 
 ```bash
 # 记录 design_doc 路径
-comet state set <name> design_doc docs/superpowers/specs/YYYY-MM-DD-topic-design.md
+node "$COMET_STATE" set <name> design_doc docs/superpowers/specs/YYYY-MM-DD-topic-design.md
 
 # 如有 delta spec 变更，重新生成 handoff（更新 hash）
-comet handoff <change-name> design --write
+node "$COMET_HANDOFF" <change-name> design --write
 
 # 阶段守卫推进 phase 到下一阶段
-comet guard <change-name> design --apply
+node "$COMET_GUARD" <change-name> design --apply
 ```
 
 如果没有 delta spec 变更，跳过 handoff 重新生成步骤。状态文件自动更新，无需手动编辑其他字段。
@@ -239,12 +239,12 @@ comet guard <change-name> design --apply
 - beta 模式下，`spec-context.json` 必须结构合法且引用当前源文件（由 guard 强制校验）
 - 如有新能力或补充验收场景，OpenSpec delta spec 已创建/更新
 - `design_doc` 已写入 `.comet.yaml`
-- **阶段守卫**：运行 `comet guard <change-name> design --apply`，全部 PASS 后由守卫推进到 `phase: build`（此步骤更新 `phase` 字段，与 `auto_transition` 无关）
+- **阶段守卫**：运行 `node "$COMET_GUARD" <change-name> design --apply`，全部 PASS 后由守卫推进到 `phase: build`（此步骤更新 `phase` 字段，与 `auto_transition` 无关）
 
 退出前必须使用 `--apply`：
 
 ```bash
-comet guard <change-name> design --apply
+node "$COMET_GUARD" <change-name> design --apply
 ```
 
 ## 上下文压缩恢复
@@ -256,7 +256,7 @@ comet guard <change-name> design --apply
 按 `comet/reference/auto-transition.md` 执行。关键命令：
 
 ```bash
-comet state next <change-name>
+node "$COMET_STATE" next <change-name>
 ```
 
 - `NEXT: auto` → 调用 `SKILL` 指向的 skill 进入下一阶段

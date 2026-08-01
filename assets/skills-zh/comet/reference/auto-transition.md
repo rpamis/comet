@@ -13,7 +13,7 @@
 退出条件满足且阶段守卫推进 phase 后，运行：
 
 ```bash
-comet state next <change-name>
+node "$COMET_STATE" next <change-name>
 ```
 
 脚本根据 `phase`、`workflow`、`auto_transition` 输出确定性的下一步：

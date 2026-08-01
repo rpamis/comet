@@ -13,7 +13,7 @@ When there is an active comet change (`<classic-change-dir>/.comet.yaml` bound b
 When multiple active changes exist, resolve the current change first, then run:
 
 ```bash
-comet state select <change-name>
+node "$COMET_STATE" select <change-name>
 ```
 
 Ordinary source writes are governed only by the selected change phase. With multiple active changes and no valid selection, the Hook must block and ask for a choice; it must not guess alphabetically or let an unrelated open, design, or archive change globally block a legal build. A single active change may retain automatic routing.
@@ -44,7 +44,7 @@ Reading the `phase` field alone is not enough — you must also confirm **how** 
 
 Exception: `workflow: hotfix/tweak` intentionally skips design, so an empty `design_doc` is normal and not an illegal jump.
 
-Upgrade state note: after a preset (hotfix/tweak) hits an upgrade signal and the user confirms upgrading, `comet state transition <name> preset-escalate` legally converts it to `workflow: full` + `phase: design` + `design_doc: null` and clears preset-only build settings. At this point `phase: design` with an empty `design_doc` **is a normal upgrade pre-state**, not an illegal jump — the agent should enter `/comet-design` to supplement the Design Doc, then choose the full workflow configuration again in build. This terminal state does not match the "skipped design" row above (that row only detects `phase: build`).
+Upgrade state note: after a preset (hotfix/tweak) hits an upgrade signal and the user confirms upgrading, `node "$COMET_STATE" transition <name> preset-escalate` legally converts it to `workflow: full` + `phase: design` + `design_doc: null` and clears preset-only build settings. At this point `phase: design` with an empty `design_doc` **is a normal upgrade pre-state**, not an illegal jump — the agent should enter `/comet-design` to supplement the Design Doc, then choose the full workflow configuration again in build. This terminal state does not match the "skipped design" row above (that row only detects `phase: build`).
 
 ### Skill Invocation (Cannot Replace with Normal Conversation)
 
@@ -60,11 +60,11 @@ The following operations must be loaded through the Skill tool. When Skill is un
 
 ### Script Execution (Cannot Skip)
 
-- **Phase exit**: `comet guard <name> <phase> --apply` (must see ALL CHECKS PASSED)
-- **Compression recovery**: `comet state check <name> <phase> --recover`
-- **State update**: After key operations, update fields through `comet state set`; manually editing .comet.yaml is prohibited
-- **Phase advancement only via guard/transition**: directly running `comet state set <name> phase <value>` to jump phases is prohibited. A preset (hotfix/tweak) upgrade to full must use `comet state transition <name> preset-escalate`
-- **handoff generation**: `comet handoff <name> design --write` (handwriting summaries is prohibited)
+- **Phase exit**: `node "$COMET_GUARD" <name> <phase> --apply` (must see ALL CHECKS PASSED)
+- **Compression recovery**: `node "$COMET_STATE" check <name> <phase> --recover`
+- **State update**: After key operations, update fields through `node "$COMET_STATE" set`; manually editing .comet.yaml is prohibited
+- **Phase advancement only via guard/transition**: directly running `node "$COMET_STATE" set <name> phase <value>` to jump phases is prohibited. A preset (hotfix/tweak) upgrade to full must use `node "$COMET_STATE" transition <name> preset-escalate`
+- **handoff generation**: `node "$COMET_HANDOFF" <name> design --write` (handwriting summaries is prohibited)
 
 ### User Confirmation (Cannot Auto-Skip)
 
@@ -78,7 +78,7 @@ The following decision points must pause to wait for explicit user selection; do
 
 ## Design Phase Specifics
 
-1. First script operation = `comet handoff <name> design --write` (loading brainstorming before generating handoff is prohibited)
+1. First script operation = `node "$COMET_HANDOFF" <name> design --write` (loading brainstorming before generating handoff is prohibited)
 2. brainstorming in progress: incrementally update brainstorm-summary.md (update recovery checkpoint after each clarification round or proposal iteration; unconfirmed content marked as pending/candidate)
 3. After brainstorming completes, next step = brainstorm-summary.md finalization → Design Doc → guard
 4. Active context compaction is optional only after the Design Doc, state evidence, and latest handoff are persisted; when programmatic triggering is unavailable, provide a non-blocking suggestion and continue
@@ -93,8 +93,8 @@ The following decision points must pause to wait for explicit user selection; do
 
 ## Verify Phase Specifics
 
-1. First step run `comet state scale <name>` to determine verification level
-2. For the first 3 clearly repairable failures, automatically run `comet state transition <name> verify-fail`, return to build, and enter `/comet-build`. CRITICAL/IMPORTANT failures cannot be accepted as deviations
+1. First step run `node "$COMET_STATE" scale <name>` to determine verification level
+2. For the first 3 clearly repairable failures, automatically run `node "$COMET_STATE" transition <name> verify-fail`, return to build, and enter `/comet-build`. CRITICAL/IMPORTANT failures cannot be accepted as deviations
 3. The state machine owns `verify_failures`. After it reaches `3`, the next failure must ask whether to continue fixing or stop the workflow for an external decision
 4. Ask whether to fix or accept WARNING/SUGGESTION only when repair introduces a behavior, scope, or risk tradeoff. Safe, local, tradeoff-free repairs close automatically
 
@@ -103,7 +103,7 @@ The following decision points must pause to wait for explicit user selection; do
 If context compression is suspected (previous conversation was summarized, previous discussion cannot be found), immediately run:
 
 ```bash
-comet state check <name> <phase> --recover
+node "$COMET_STATE" check <name> <phase> --recover
 ```
 
 Decide next step according to the script's **Recovery action** output.
@@ -124,7 +124,7 @@ After recovery, first re-run the "Phase-Entry Self-Consistency Check" table: if 
 After guard `--apply` succeeds, do not hardcode the next skill in this rule. First run:
 
 ```bash
-comet state next <change-name>
+node "$COMET_STATE" next <change-name>
 ```
 
 Decide the next step from the script output:

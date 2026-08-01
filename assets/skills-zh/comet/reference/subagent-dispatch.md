@@ -42,7 +42,7 @@
 每个 implementer 或修复 agent prompt 必须包含：
 
 - 当前单个 task 的完整文本、架构背景和依赖上下文
-- `Language: 使用 comet state get <name> language 读取到的 Comet 配置产物语言输出`
+- `Language: 使用 node "$COMET_STATE" get <name> language 读取到的 Comet 配置产物语言输出`
 - 允许修改的文件范围和禁止修改的范围
 - 必须执行的测试命令和提交要求
 - 修复 agent 还必须收到对应 reviewer 的完整反馈
@@ -143,8 +143,8 @@ Comet 不读取、不写入、也不要求任何 Superpowers `subagent-driven-de
 4. 运行定向验证：
 
 ```bash
-comet state task-checkoff <plan-file> <plan-task-text>
-comet state task-checkoff <classic-change-dir>/tasks.md <openspec-task-text>
+node "$COMET_STATE" task-checkoff <plan-file> <plan-task-text>
+node "$COMET_STATE" task-checkoff <classic-change-dir>/tasks.md <openspec-task-text>
 ```
 
 仅在对应映射存在时运行第二条。脚本会要求任务文本恰好出现一次且该项已勾选；验证失败时不得进入下一个 task。
