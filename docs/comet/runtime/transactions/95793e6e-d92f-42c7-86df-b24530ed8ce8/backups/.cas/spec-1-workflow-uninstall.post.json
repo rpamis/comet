@@ -1,0 +1,11 @@
+{
+  "schema": "comet.native.archive-cas.v1",
+  "operationId": "spec-1-workflow-uninstall",
+  "role": "post",
+  "hash": "0c05f652bc770a6496397ad851952b9fd11ae67735477fcc228c073be87a2c9d",
+  "identity": {
+    "dev": 1986195787,
+    "ino": 562949954289612,
+    "birthtimeMs": 1785587181834.597
+  }
+}

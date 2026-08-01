@@ -1,0 +1,8 @@
+{"sequence":1,"timestamp":"2026-08-01T12:26:18.476Z","type":"prepared"}
+{"sequence":2,"timestamp":"2026-08-01T12:26:21.787Z","type":"operation-started","operationId":"spec-1-workflow-uninstall"}
+{"sequence":3,"timestamp":"2026-08-01T12:26:21.946Z","type":"operation-completed","operationId":"spec-1-workflow-uninstall"}
+{"sequence":4,"timestamp":"2026-08-01T12:26:25.119Z","type":"operation-started","operationId":"archive-change"}
+{"sequence":5,"timestamp":"2026-08-01T12:26:25.629Z","type":"operation-completed","operationId":"archive-change"}
+{"sequence":6,"timestamp":"2026-08-01T12:26:25.949Z","type":"archive-finalization-started"}
+{"sequence":7,"timestamp":"2026-08-01T12:26:26.053Z","type":"archive-finalized"}
+{"sequence":8,"timestamp":"2026-08-01T12:26:26.129Z","type":"commit"}

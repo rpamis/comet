@@ -1,0 +1,27 @@
+{
+  "schema": "comet.native.transaction.v2",
+  "id": "95793e6e-d92f-42c7-86df-b24530ed8ce8",
+  "kind": "archive",
+  "status": "committed",
+  "change": "workflow-selective-uninstall",
+  "createdAt": "2026-08-01T12:26:14.303Z",
+  "preflightHash": "21e3fe7a2a26218f665e4d70a45b9564e5a8f801f55566a624250ad88d35d6fd",
+  "operations": [
+    {
+      "id": "spec-1-workflow-uninstall",
+      "type": "write",
+      "target": "specs/workflow-uninstall/spec.md",
+      "staged": "runtime/transactions/95793e6e-d92f-42c7-86df-b24530ed8ce8/staged/specs/workflow-uninstall/spec.md",
+      "expectedTargetHash": null,
+      "stagedHash": "0c05f652bc770a6496397ad851952b9fd11ae67735477fcc228c073be87a2c9d"
+    },
+    {
+      "id": "archive-change",
+      "type": "move",
+      "source": "changes/workflow-selective-uninstall",
+      "target": "archive/2026-08-01-workflow-selective-uninstall",
+      "expectedSourceHash": "fabc94e6caf285ff3d4ec32f2055f40236b790bfe5596b3dff86f7021b4de31a",
+      "expectedTargetHash": null
+    }
+  ]
+}
