@@ -95,12 +95,13 @@ describe('Native self-contained runtime boundary', () => {
     // These counts include each helper declaration. Every actual Git invocation below is
     // therefore accounted for by one of the fixed, read-only argument vectors.
     expect(occurrences(/\brunGitNullRecords\s*\(/gu)).toBe(5);
-    expect(occurrences(/\brunGitBoundedOutput\s*\(/gu)).toBe(3);
+    expect(occurrences(/\brunGitBoundedOutput\s*\(/gu)).toBe(4);
     expect(occurrences(/\brunGitHasOutput\s*\(/gu)).toBe(2);
     expect(literalOccurrences("['ls-files', '--stage', '-z']")).toBe(2);
     expect(
       literalOccurrences("['ls-files', '--cached', '--others', '--exclude-standard', '-z']"),
     ).toBe(1);
+    expect(literalOccurrences("['ls-files', '--modified', '-z']")).toBe(1);
     expect(literalOccurrences("['check-ignore', '--no-index', '-z', '--stdin']")).toBe(1);
     expect(literalOccurrences("['rev-parse', '--is-inside-work-tree']")).toBe(1);
     expect(literalOccurrences("['rev-parse', '--verify', 'HEAD']")).toBe(1);

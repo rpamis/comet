@@ -116,6 +116,14 @@ export interface NativeSnapshotEntry {
   hash: string;
   size: number;
   type: 'file';
+  /**
+   * Git blob object id recorded when the entry was captured from a Git-tracked
+   * file. Used by the incremental snapshot path to decide whether a file's
+   * content is unchanged since baseline (same object id ⇒ same content ⇒ same
+   * Comet hash) without re-reading the file. Absent for non-Git projects,
+   * legacy manifests, and physically-captured entries.
+   */
+  gitObjectId?: string;
 }
 
 export interface NativeSnapshotOmission {

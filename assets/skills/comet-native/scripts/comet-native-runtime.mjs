@@ -10607,7 +10607,7 @@ var PHYSICAL_SELECTION_STREAM_KEYS = /* @__PURE__ */ new Set([
   "overflow",
   "unstable"
 ]);
-var ENTRY_KEYS = /* @__PURE__ */ new Set(["path", "hash", "size", "type"]);
+var ENTRY_KEYS = /* @__PURE__ */ new Set(["path", "hash", "size", "type", "gitObjectId"]);
 var OMISSION_KEYS = /* @__PURE__ */ new Set(["path", "size", "type", "reason"]);
 var OMISSION_OVERFLOW_KEYS = /* @__PURE__ */ new Set(["ref", "hash", "count"]);
 var SNAPSHOT_ORIGINS = /* @__PURE__ */ new Set([
@@ -11073,6 +11073,7 @@ async function nativeGitSnapshotSelection(execution, projectRoot, limits = DEFAU
   }
   const { stagedBefore, combined, stagedAfter } = results;
   const tracked = /* @__PURE__ */ new Set();
+  const trackedObjectIds = /* @__PURE__ */ new Map();
   const gitlinks = /* @__PURE__ */ new Set();
   const addStagedRecords = (records) => {
     for (const encoded of records) {
@@ -11092,6 +11093,7 @@ async function nativeGitSnapshotSelection(execution, projectRoot, limits = DEFAU
         throw new Error("Native Git snapshot provider returned an unsafe staged path");
       }
       tracked.add(relative);
+      if (header.stage === "0") trackedObjectIds.set(relative, header.objectId);
       if (header.mode === "160000" && header.stage === "0") gitlinks.add(relative);
     }
   };
@@ -11108,6 +11110,7 @@ async function nativeGitSnapshotSelection(execution, projectRoot, limits = DEFAU
   for (const gitlink of gitlinks) nestedRepositories.delete(gitlink);
   return {
     tracked,
+    trackedObjectIds,
     untracked,
     gitlinks,
     nestedRepositories,
@@ -11735,12 +11738,19 @@ function parseEntry(value, index) {
     throw new Error(`Native snapshot entry ${index} hash is invalid`);
   }
   if (entry2.type !== "file") throw new Error(`Native snapshot entry ${index} type is invalid`);
-  return {
+  const parsed = {
     path: entryPath,
     hash: entry2.hash,
     size: nonNegativeInteger(entry2.size, `Native snapshot entry ${index} size`),
     type: "file"
   };
+  if (entry2.gitObjectId !== void 0) {
+    if (typeof entry2.gitObjectId !== "string" || !GIT_OBJECT_ID_PATTERN.test(entry2.gitObjectId)) {
+      throw new Error(`Native snapshot entry ${index} gitObjectId is invalid`);
+    }
+    parsed.gitObjectId = entry2.gitObjectId;
+  }
+  return parsed;
 }
 function parseOmission(value, index) {
   const omission = record2(value, `Native snapshot omission ${index}`);
@@ -12322,7 +12332,7 @@ async function createNativeContentSnapshot(paths, options = {}) {
     capturedEntryValidations.delete(relative);
     omit(omission);
   };
-  const captureFile = async (target, relative, before) => {
+  const captureFile = async (target, relative, before, gitObjectId) => {
     if (!before.isFile() || before.isSymbolicLink()) return;
     if (!nativeSnapshotExecutionHasBudget(execution)) return;
     let realTarget;
@@ -12394,7 +12404,13 @@ async function createNativeContentSnapshot(paths, options = {}) {
     }
     if (!nativeSnapshotExecutionHasBudget(execution)) return;
     await recordCapturedEntry(
-      { path: relative, hash: boundedHash.hash, size: after.size, type: "file" },
+      {
+        path: relative,
+        hash: boundedHash.hash,
+        size: after.size,
+        type: "file",
+        ...gitObjectId === void 0 ? {} : { gitObjectId }
+      },
       { kind: "file", target, realTarget, stat: after }
     );
   };
@@ -12660,6 +12676,34 @@ async function createNativeContentSnapshot(paths, options = {}) {
     }
   } else {
     await options.gitSelectionHooks?.afterInitialSelection?.();
+    const incrementalBaseline = options.incrementalBaseline;
+    const baselineByPath = /* @__PURE__ */ new Map();
+    let incrementalEnabled = false;
+    if (incrementalBaseline) {
+      const parsedBaseline = parseNativeContentSnapshotManifest(incrementalBaseline);
+      incrementalEnabled = parsedBaseline.entries.every((entry2) => entry2.gitObjectId !== void 0);
+      if (incrementalEnabled) {
+        for (const entry2 of parsedBaseline.entries) baselineByPath.set(entry2.path, entry2);
+      }
+    }
+    const workingTreeModified = /* @__PURE__ */ new Set();
+    if (incrementalEnabled) {
+      try {
+        const modifiedOutput = await runGitBoundedOutput(
+          execution,
+          projectRoot,
+          ["ls-files", "--modified", "-z"],
+          GIT_TEXT_STDOUT_LIMIT
+        );
+        for (const raw of modifiedOutput.toString("utf8").split("\0")) {
+          const modifiedPath = safeGitProjectPath(raw);
+          if (modifiedPath !== null) workingTreeModified.add(modifiedPath);
+        }
+      } catch {
+        incrementalEnabled = false;
+        baselineByPath.clear();
+      }
+    }
     for (const relative of selectionPaths(gitSelection)) {
       if (capturedEntryValidations.has(relative)) continue;
       if (!isSnapshotProjectRef(paths, relative)) continue;
@@ -12761,7 +12805,26 @@ async function createNativeContentSnapshot(paths, options = {}) {
         }
         continue;
       }
-      await captureFile(target, relative, before);
+      const currentObjectId = gitSelection.trackedObjectIds.get(relative);
+      const baselineEntry = currentObjectId ? baselineByPath.get(relative) : void 0;
+      if (incrementalEnabled && baselineEntry?.gitObjectId !== void 0 && baselineEntry.gitObjectId === currentObjectId && !workingTreeModified.has(relative)) {
+        if (entries.length >= limits.maxFiles) {
+          omit({ path: relative, size: baselineEntry.size, type: "file", reason: "file-count" });
+          continue;
+        }
+        if (baselineEntry.size > limits.maxFileBytes) {
+          omit({ path: relative, size: baselineEntry.size, type: "file", reason: "file-size" });
+          continue;
+        }
+        if (totalBytes + baselineEntry.size > limits.maxTotalBytes) {
+          omit({ path: relative, size: baselineEntry.size, type: "file", reason: "total-size" });
+          continue;
+        }
+        entries.push({ ...baselineEntry });
+        totalBytes += baselineEntry.size;
+        continue;
+      }
+      await captureFile(target, relative, before, currentObjectId);
     }
     await revalidateCapturedEntries();
     await finalizeNativeGitSnapshotSelection(
@@ -12833,6 +12896,7 @@ async function createNativeCurrentContentSnapshot(paths, baseline, options = {})
   return createNativeContentSnapshot(paths, {
     ...options,
     policy: baseline.policy,
+    incrementalBaseline: baseline,
     limits: {
       maxFiles: settings.max_files,
       maxFileBytes: settings.max_total_bytes,

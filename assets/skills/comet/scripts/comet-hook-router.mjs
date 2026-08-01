@@ -10793,7 +10793,7 @@ var PHYSICAL_SELECTION_STREAM_KEYS = /* @__PURE__ */ new Set([
   "overflow",
   "unstable"
 ]);
-var ENTRY_KEYS = /* @__PURE__ */ new Set(["path", "hash", "size", "type"]);
+var ENTRY_KEYS = /* @__PURE__ */ new Set(["path", "hash", "size", "type", "gitObjectId"]);
 var OMISSION_KEYS = /* @__PURE__ */ new Set(["path", "size", "type", "reason"]);
 var OMISSION_OVERFLOW_KEYS = /* @__PURE__ */ new Set(["ref", "hash", "count"]);
 var SNAPSHOT_ORIGINS = /* @__PURE__ */ new Set([
@@ -10819,6 +10819,7 @@ var OMISSION_REASONS = /* @__PURE__ */ new Set([
   "physical-selection-changed"
 ]);
 var HASH_PATTERN = /^[a-f0-9]{64}$/u;
+var GIT_OBJECT_ID_PATTERN = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
 var GIT_LIST_STDERR_LIMIT = 64 * 1024;
 var GIT_TEXT_STDOUT_LIMIT = 64 * 1024;
 var DEFAULT_NATIVE_GIT_SELECTION_LIMITS = {
@@ -10990,12 +10991,19 @@ function parseEntry(value, index) {
     throw new Error(`Native snapshot entry ${index} hash is invalid`);
   }
   if (entry.type !== "file") throw new Error(`Native snapshot entry ${index} type is invalid`);
-  return {
+  const parsed = {
     path: entryPath,
     hash: entry.hash,
     size: nonNegativeInteger2(entry.size, `Native snapshot entry ${index} size`),
     type: "file"
   };
+  if (entry.gitObjectId !== void 0) {
+    if (typeof entry.gitObjectId !== "string" || !GIT_OBJECT_ID_PATTERN.test(entry.gitObjectId)) {
+      throw new Error(`Native snapshot entry ${index} gitObjectId is invalid`);
+    }
+    parsed.gitObjectId = entry.gitObjectId;
+  }
+  return parsed;
 }
 function parseOmission(value, index) {
   const omission = record(value, `Native snapshot omission ${index}`);
