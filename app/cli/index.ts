@@ -1,60 +1,16 @@
 import { Command, Option } from 'commander';
-import { exitCodeForCommandResult } from '../commands/command-result.js';
-import { initCommand } from '../commands/init.js';
-import { workflowResolveCommand } from '../commands/workflow.js';
-import { statusCommand } from '../commands/status.js';
-import { resumeProbeCommand } from '../commands/resume-probe.js';
-import { dashboardCommand } from '../commands/dashboard.js';
-import { doctorCommand } from '../commands/doctor.js';
-import { evalCommand as evalFacadeCommand } from '../commands/eval.js';
-import { updateCommand } from '../commands/update.js';
-import { uninstallCommand } from '../commands/uninstall.js';
-import {
-  PUBLIC_CLASSIC_COMMANDS,
-  runClassicFacade,
-  runClassicGroupFacade,
-  type PublicClassicCommand,
-} from '../commands/classic.js';
-import { runNativeFacade } from '../commands/native.js';
 import { getCurrentVersion } from '../../platform/version/version.js';
 import { COMET_TAGLINE } from './comet-banner.js';
-import {
-  skillCheckCommand,
-  skillInstallCommand,
-  skillResumeCommand,
-  skillRunCommand,
-  skillShowCommand,
-} from '../commands/skill.js';
-import {
-  publishApproveCommand,
-  publishDistributeCommand,
-  publishReviewCommand,
-  publishRunCommand,
-} from '../commands/publish.js';
-import {
-  creatorAuthoringPlanCommand,
-  creatorAuthoringRecordCommand,
-  creatorCandidatesCommand,
-  creatorGenerateCommand,
-  creatorGuideCommand,
-  creatorInitCommand,
-  creatorListCommand,
-  creatorNextCommand,
-  creatorProposeCommand,
-  creatorResolveCommand,
-  creatorStatusCommand,
-} from '../commands/creator.js';
-import {
-  bundleCompileCommand,
-  bundleDistributeCommand,
-  bundleDraftCreateCommand,
-  bundleDraftOptimizeCommand,
-  bundleEvalPlanCommand,
-  bundleEvalRecordCommand,
-  bundlePublishCommand,
-  bundleReviewSummaryCommand,
-  bundleReviewCommand,
-} from '../commands/bundle.js';
+
+// Command handlers are imported lazily inside each `.action()` so that running
+// `comet status` does not load the dashboard/eval/creator/bundle modules (and
+// their transitive dependencies such as @inquirer/prompts). This keeps CLI
+// startup proportional to the command actually being run.
+
+// The public Classic facade commands are stable names inlined here to avoid
+// importing the Classic CLI graph at module load time.
+const PUBLIC_CLASSIC_COMMANDS = ['state', 'guard', 'handoff', 'archive'] as const;
+type PublicClassicCommand = (typeof PUBLIC_CLASSIC_COMMANDS)[number];
 
 const program = new Command();
 const collect = (value: string, previous: string[]): string[] => [...previous, value];
@@ -86,6 +42,8 @@ program
   )
   .option('--root <artifact-root>', 'Native artifact root relative to the project')
   .action(async (targetPath = '.', options) => {
+    const { initCommand } = await import('../commands/init.js');
+    const { exitCodeForCommandResult } = await import('../commands/command-result.js');
     const result = await initCommand(targetPath, { ...options, artifactRoot: options.root });
     process.exitCode = exitCodeForCommandResult(result);
   });
@@ -95,6 +53,7 @@ program
   .description('Show active changes and workflow status')
   .option('--json', 'Output as JSON')
   .action(async (targetPath = '.', options) => {
+    const { statusCommand } = await import('../commands/status.js');
     await statusCommand(targetPath, options);
   });
 
@@ -105,6 +64,7 @@ workflow
   .description('Resolve /comet to its permanent Native or Classic entry')
   .option('--json', 'Output as JSON')
   .action(async (targetPath = '.', options) => {
+    const { workflowResolveCommand } = await import('../commands/workflow.js');
     await workflowResolveCommand(targetPath, options);
   });
 
@@ -120,6 +80,7 @@ program
     'Report out_of_scope when the current turn is already inside Comet',
   )
   .action(async (targetPath = '.', options) => {
+    const { resumeProbeCommand } = await import('../commands/resume-probe.js');
     await resumeProbeCommand(targetPath, options);
   });
 
@@ -139,6 +100,7 @@ program
   .option('--no-open', "Don't open the dashboard URL in the browser automatically")
   .option('--json', 'Print a single dashboard snapshot to stdout and exit')
   .action(async (targetPath = '.', options) => {
+    const { dashboardCommand } = await import('../commands/dashboard.js');
     await dashboardCommand(targetPath, options);
   });
 
@@ -162,6 +124,7 @@ program
     ]),
   )
   .action(async (targetPath = '.', options) => {
+    const { doctorCommand } = await import('../commands/doctor.js');
     await doctorCommand(targetPath, options);
   });
 
@@ -186,6 +149,8 @@ program
   .option('--skip-self-update', 'Skip the Comet npm package self-update')
   .addOption(new Option('--skip-npm', 'Deprecated alias for --skip-self-update').hideHelp())
   .action(async (targetPath = '.', options) => {
+    const { updateCommand } = await import('../commands/update.js');
+    const { exitCodeForCommandResult } = await import('../commands/command-result.js');
     const result = await updateCommand(targetPath, options);
     process.exitCode = exitCodeForCommandResult(result);
   });
@@ -199,6 +164,7 @@ program
   .option('--current-project', 'Uninstall only the current project')
   .option('--force', 'Skip confirmation prompts')
   .action(async (targetPath = '.', options) => {
+    const { uninstallCommand } = await import('../commands/uninstall.js');
     try {
       await uninstallCommand(targetPath, options);
     } catch (error) {
@@ -228,6 +194,7 @@ program
   .option('--quick', 'Use the default quick smoke task where applicable')
   .option('--collect', 'Collect targets without executing Claude or Docker workloads')
   .action(async (target, options) => {
+    const { evalCommand: evalFacadeCommand } = await import('../commands/eval.js');
     await evalFacadeCommand(target, options);
   });
 
@@ -245,7 +212,8 @@ for (const command of PUBLIC_CLASSIC_COMMANDS) {
     .allowUnknownOption()
     .allowExcessArguments()
     .action(async (args: string[]) => {
-      process.exitCode = await runClassicFacade(command, args);
+      const { runClassicFacade } = await import('../commands/classic.js');
+      process.exitCode = await runClassicFacade(command as PublicClassicCommand, args);
     });
 }
 
@@ -256,6 +224,7 @@ program
   .allowExcessArguments()
   .helpOption(false)
   .action(async (args: string[]) => {
+    const { runClassicGroupFacade } = await import('../commands/classic.js');
     process.exitCode = await runClassicGroupFacade(args);
   });
 
@@ -266,6 +235,7 @@ program
   .allowExcessArguments()
   .helpOption(false)
   .action(async (args: string[]) => {
+    const { runNativeFacade } = await import('../commands/native.js');
     process.exitCode = await runNativeFacade(args);
   });
 
@@ -280,6 +250,7 @@ skill
   .option('--overwrite', 'Replace an existing project Skill')
   .option('--json', 'Output as JSON')
   .action(async (source, options) => {
+    const { skillInstallCommand } = await import('../commands/skill.js');
     await skillInstallCommand(source, options);
   });
 
@@ -289,6 +260,7 @@ skill
   .option('--project <dir>', 'Project root used for Skill discovery', '.')
   .option('--json', 'Output as JSON')
   .action(async (selector, options) => {
+    const { skillShowCommand } = await import('../commands/skill.js');
     await skillShowCommand(selector, options);
   });
 
@@ -301,6 +273,7 @@ skill
   .option('--confirm <ref>', 'Confirm a guarded reference', collect, [])
   .option('--json', 'Output as JSON')
   .action(async (selector, options) => {
+    const { skillRunCommand } = await import('../commands/skill.js');
     await skillRunCommand(selector, options);
   });
 
@@ -320,6 +293,7 @@ skill
   .option('--upgrade <skill>', 'Upgrade the Run to a compatible Skill snapshot')
   .option('--json', 'Output as JSON')
   .action(async (options) => {
+    const { skillResumeCommand } = await import('../commands/skill.js');
     await skillResumeCommand(options);
   });
 
@@ -336,6 +310,7 @@ skill
   )
   .option('--json', 'Output as JSON')
   .action(async (options) => {
+    const { skillCheckCommand } = await import('../commands/skill.js');
     await skillCheckCommand(options);
   });
 
@@ -353,6 +328,7 @@ creator
   .option('--project <dir>', 'Project root', '.')
   .option('--json', 'Output as JSON')
   .action(async (options) => {
+    const { creatorListCommand } = await import('../commands/creator.js');
     await creatorListCommand(options);
   });
 
@@ -362,6 +338,7 @@ creator
   .option('--project <dir>', 'Project root', '.')
   .option('--json', 'Output as JSON')
   .action(async (name, options) => {
+    const { creatorStatusCommand } = await import('../commands/creator.js');
     await creatorStatusCommand(name, options);
   });
 
@@ -371,6 +348,7 @@ creator
   .option('--project <dir>', 'Project root', '.')
   .option('--json', 'Output as JSON')
   .action(async (name, options) => {
+    const { creatorNextCommand } = await import('../commands/creator.js');
     await creatorNextCommand(name, options);
   });
 
@@ -380,6 +358,7 @@ creator
   .option('--project <dir>', 'Project root', '.')
   .option('--json', 'Output as JSON')
   .action(async (options) => {
+    const { creatorGuideCommand } = await import('../commands/creator.js');
     await creatorGuideCommand(options);
   });
 
@@ -389,6 +368,7 @@ creator
   .option('--project <dir>', 'Project root', '.')
   .option('--json', 'Output as JSON')
   .action(async (options) => {
+    const { creatorCandidatesCommand } = await import('../commands/creator.js');
     await creatorCandidatesCommand(options);
   });
 
@@ -399,6 +379,7 @@ creator
   .requiredOption('--file <path>', 'Skill Creator plan JSON file')
   .option('--json', 'Output as JSON')
   .action(async (name, options) => {
+    const { creatorProposeCommand } = await import('../commands/creator.js');
     await creatorProposeCommand(name, options);
   });
 
@@ -410,6 +391,7 @@ creator
   .option('--confirmed-proposal', 'Record that the user approved the Skill Creator proposal')
   .option('--json', 'Output as JSON')
   .action(async (name, options) => {
+    const { creatorInitCommand } = await import('../commands/creator.js');
     await creatorInitCommand(name, options);
   });
 
@@ -423,6 +405,7 @@ creator
   .option('--reason <text>', 'Reason for ignoring a missing preference')
   .option('--json', 'Output as JSON')
   .action(async (name, options) => {
+    const { creatorResolveCommand } = await import('../commands/creator.js');
     await creatorResolveCommand(name, options);
   });
 
@@ -435,6 +418,7 @@ creator
   )
   .option('--json', 'Output as JSON')
   .action(async (name, options) => {
+    const { creatorAuthoringPlanCommand } = await import('../commands/creator.js');
     await creatorAuthoringPlanCommand(name, options);
   });
 
@@ -446,6 +430,7 @@ creator
   .requiredOption('--file <path>', 'Lane output JSON file')
   .option('--json', 'Output as JSON')
   .action(async (name, options) => {
+    const { creatorAuthoringRecordCommand } = await import('../commands/creator.js');
     await creatorAuthoringRecordCommand(name, options);
   });
 
@@ -455,6 +440,7 @@ creator
   .option('--project <dir>', 'Project root', '.')
   .option('--json', 'Output as JSON')
   .action(async (name, options) => {
+    const { creatorGenerateCommand } = await import('../commands/creator.js');
     await creatorGenerateCommand(name, options);
   });
 
@@ -467,6 +453,7 @@ publish
   .option('--locale <locale>', 'Locale to compile')
   .option('--json', 'Output as JSON')
   .action(async (name, options) => {
+    const { publishReviewCommand } = await import('../commands/publish.js');
     await publishReviewCommand(name, options);
   });
 
@@ -477,6 +464,7 @@ publish
   .requiredOption('--reviewer <name>', 'Reviewer name')
   .option('--json', 'Output as JSON')
   .action(async (name, options) => {
+    const { publishApproveCommand } = await import('../commands/publish.js');
     await publishApproveCommand(name, options);
   });
 
@@ -488,6 +476,7 @@ publish
   .option('--overwrite', 'Replace an existing published Bundle')
   .option('--json', 'Output as JSON')
   .action(async (name, options) => {
+    const { publishRunCommand } = await import('../commands/publish.js');
     await publishRunCommand(name, options);
   });
 
@@ -509,6 +498,7 @@ publish
   .option('--preview', 'Preview platform writes without installing files')
   .option('--json', 'Output as JSON')
   .action(async (name, options) => {
+    const { publishDistributeCommand } = await import('../commands/publish.js');
     await publishDistributeCommand(name, options);
   });
 
@@ -527,6 +517,7 @@ draft
   .option('--engine', 'Enable optional Engine metadata')
   .option('--json', 'Output as JSON')
   .action(async (name, options) => {
+    const { bundleDraftCreateCommand } = await import('../commands/bundle.js');
     await bundleDraftCreateCommand(name, options);
   });
 
@@ -537,6 +528,7 @@ draft
   .option('--name <name>', 'Override draft name')
   .option('--json', 'Output as JSON')
   .action(async (source, options) => {
+    const { bundleDraftOptimizeCommand } = await import('../commands/bundle.js');
     await bundleDraftOptimizeCommand(source, options);
   });
 
@@ -549,6 +541,7 @@ bundle
   .option('--locale <locale>', 'Locale to compile')
   .option('--json', 'Output as JSON')
   .action(async (name, options) => {
+    const { bundleCompileCommand } = await import('../commands/bundle.js');
     await bundleCompileCommand(name, options);
   });
 
@@ -562,6 +555,7 @@ bundle
   .option('--locale <locale>', 'Locale to compile')
   .option('--json', 'Output as JSON')
   .action(async (name, options) => {
+    const { bundleEvalPlanCommand } = await import('../commands/bundle.js');
     await bundleEvalPlanCommand(name, options);
   });
 
@@ -572,6 +566,7 @@ bundle
   .requiredOption('--result <file>', 'Eval result JSON')
   .option('--json', 'Output as JSON')
   .action(async (name, options) => {
+    const { bundleEvalRecordCommand } = await import('../commands/bundle.js');
     await bundleEvalRecordCommand(name, options);
   });
 
@@ -584,6 +579,7 @@ bundle
   .option('--locale <locale>', 'Locale to compile')
   .option('--json', 'Output as JSON')
   .action(async (name, options) => {
+    const { bundleReviewSummaryCommand } = await import('../commands/bundle.js');
     await bundleReviewSummaryCommand(name, options);
   });
 
@@ -596,6 +592,7 @@ bundle
   .requiredOption('--reviewer <name>', 'Reviewer name')
   .option('--json', 'Output as JSON')
   .action(async (name, options) => {
+    const { bundleReviewCommand } = await import('../commands/bundle.js');
     await bundleReviewCommand(name, options);
   });
 
@@ -607,6 +604,7 @@ bundle
   .option('--overwrite', 'Replace an existing published Bundle')
   .option('--json', 'Output as JSON')
   .action(async (name, options) => {
+    const { bundlePublishCommand } = await import('../commands/bundle.js');
     await bundlePublishCommand(name, options);
   });
 
@@ -628,6 +626,7 @@ bundle
   .option('--preview', 'Preview platform writes without installing files')
   .option('--json', 'Output as JSON')
   .action(async (name, options) => {
+    const { bundleDistributeCommand } = await import('../commands/bundle.js');
     await bundleDistributeCommand(name, options);
   });
 

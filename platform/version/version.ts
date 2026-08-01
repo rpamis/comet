@@ -15,7 +15,11 @@ function readCurrentVersion(): string {
   throw new Error('Unable to locate package.json for current version');
 }
 
-const CURRENT_VERSION = readCurrentVersion();
+// Resolved lazily on first use so that importing this module (which every CLI
+// invocation does via commander's `.version()`) no longer opens and parses
+// package.json at module load. The value is stable for the process lifetime,
+// so a single memoized read is sufficient.
+let cachedVersion: string | null = null;
 
 const PACKAGE_NAME = '@rpamis/comet';
 const REGISTRY_URL = `https://registry.npmjs.org/${PACKAGE_NAME}/latest`;
@@ -60,7 +64,10 @@ export function compareVersions(a: string, b: string): number {
  * Get the current installed Comet version from package.json.
  */
 export function getCurrentVersion(): string {
-  return CURRENT_VERSION;
+  if (cachedVersion === null) {
+    cachedVersion = readCurrentVersion();
+  }
+  return cachedVersion;
 }
 
 /**

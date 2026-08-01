@@ -14,62 +14,51 @@ if (!runtimeOutput || !runtimeEntry) {
   throw new Error('Classic runtime requires entries.runtime and outputs.runtime');
 }
 
-const commandOutputs = Object.entries(layout.classicRuntime.outputs)
-  .filter(([name]) => name !== 'runtime')
-  .map(([name, output]) => ({
-    name,
-    command: name === 'hookGuard' ? 'hook-guard' : name,
-    output,
-    outputFile: resolveRepositoryPath(output),
-  }));
+const commandEntries = Object.entries(layout.classicRuntime.entries).filter(
+  ([name]) => name !== 'runtime',
+);
+const commandOutputByName = new Map(
+  Object.entries(layout.classicRuntime.outputs).filter(([name]) => name !== 'runtime'),
+);
+
+const banner = {
+  js: [
+    '#!/usr/bin/env node',
+    "import { createRequire as __cometCreateRequire } from 'module';",
+    'const require = __cometCreateRequire(import.meta.url);',
+  ].join('\n'),
+};
+
+const esbuildOptions = {
+  absWorkingDir: repoRoot,
+  bundle: true,
+  write: false,
+  platform: 'node',
+  format: 'esm',
+  target: ['node20'],
+  packages: 'bundle',
+  sourcemap: false,
+  legalComments: 'none',
+  charset: 'utf8',
+  treeShaking: true,
+  banner,
+};
 
 async function bundledRuntime(entry) {
-  const result = await build({
-    absWorkingDir: repoRoot,
-    entryPoints: [entry],
-    bundle: true,
-    write: false,
-    platform: 'node',
-    format: 'esm',
-    target: ['node20'],
-    packages: 'bundle',
-    sourcemap: false,
-    legalComments: 'none',
-    charset: 'utf8',
-    treeShaking: true,
-    banner: {
-      js: [
-        '#!/usr/bin/env node',
-        "import { createRequire as __cometCreateRequire } from 'module';",
-        'const require = __cometCreateRequire(import.meta.url);',
-      ].join('\n'),
-    },
-  });
-
+  const result = await build({ ...esbuildOptions, entryPoints: [entry] });
   if (result.outputFiles.length !== 1) {
     throw new Error(`Expected one Classic runtime output, got ${result.outputFiles.length}`);
   }
   return result.outputFiles[0].contents;
 }
 
-function launcher(command) {
-  return Buffer.from(
-    [
-      '#!/usr/bin/env node',
-      "import { main } from './comet-runtime.mjs';",
-      `process.exitCode = await main([${JSON.stringify(command)}, ...process.argv.slice(2)]);`,
-      '',
-    ].join('\n'),
-  );
-}
-
-async function checkFreshness(script, expected) {
+async function checkFreshness(outputRelative, outputFile, expected) {
   let actual;
   try {
-    actual = await fs.readFile(script.outputFile);
+    actual = await fs.readFile(outputFile);
   } catch (error) {
     if (error.code === 'ENOENT') {
-      console.error(`Classic runtime script is missing: ${script.output}`);
+      console.error(`Classic runtime script is missing: ${outputRelative}`);
       process.exitCode = 1;
       return;
     }
@@ -78,34 +67,43 @@ async function checkFreshness(script, expected) {
 
   if (!actual.equals(expected)) {
     console.error(
-      `Classic runtime script is stale: ${script.output}; run node scripts/build/build-classic-runtime.mjs`,
+      `Classic runtime script is stale: ${outputRelative}; run node scripts/build/build-classic-runtime.mjs`,
     );
     process.exitCode = 1;
   }
 }
 
+// Build outputs: the shared runtime (for the in-process CLI facade) plus one
+// self-contained bundle per command entry. Each per-command output replaces
+// the former thin launcher, so running e.g. `comet-state.mjs` only loads the
+// state command's dependency graph instead of the whole Classic domain.
 const outputs = [
   {
-    script: {
-      name: 'runtime',
-      output: runtimeOutput,
-      outputFile: resolveRepositoryPath(runtimeOutput),
-    },
+    outputRelative: runtimeOutput,
+    outputFile: resolveRepositoryPath(runtimeOutput),
     output: Buffer.from(await bundledRuntime(runtimeEntry)),
   },
-  ...commandOutputs.map((script) => ({
-    script,
-    output: launcher(script.command),
-  })),
 ];
 
+for (const [name, entry] of commandEntries) {
+  const outputRelative = commandOutputByName.get(name);
+  if (!outputRelative) {
+    throw new Error(`Classic runtime entry '${name}' has no matching output`);
+  }
+  outputs.push({
+    outputRelative,
+    outputFile: resolveRepositoryPath(outputRelative),
+    output: Buffer.from(await bundledRuntime(entry)),
+  });
+}
+
 if (process.argv.includes('--check')) {
-  for (const { script, output } of outputs) {
-    await checkFreshness(script, output);
+  for (const { outputRelative, outputFile, output } of outputs) {
+    await checkFreshness(outputRelative, outputFile, output);
   }
 } else {
-  for (const { script, output } of outputs) {
-    await fs.mkdir(path.dirname(script.outputFile), { recursive: true });
-    await fs.writeFile(script.outputFile, output);
+  for (const { outputFile, output } of outputs) {
+    await fs.mkdir(path.dirname(outputFile), { recursive: true });
+    await fs.writeFile(outputFile, output);
   }
 }

@@ -23,12 +23,13 @@ describe('Classic command facade', () => {
   it('registers the Classic facade from its single public command source', async () => {
     const source = await fs.readFile(path.resolve('app', 'cli', 'index.ts'), 'utf8');
 
-    expect(source).toMatch(
-      /import \{[\s\S]*PUBLIC_CLASSIC_COMMANDS[\s\S]*\} from '\.\.\/commands\/classic\.js';/u,
-    );
+    // The facade command list is inlined in the CLI entry so that importing
+    // the Classic CLI graph is deferred to the action (lazy load). The four
+    // stable names must still drive the command registration loop.
+    expect(source).toContain("= ['state', 'guard', 'handoff', 'archive'] as const");
     expect(source).toContain('for (const command of PUBLIC_CLASSIC_COMMANDS)');
-    expect(source).not.toContain(
-      "for (const command of ['state', 'guard', 'handoff', 'archive'] as const)",
+    expect(source).toContain(
+      "const { runClassicFacade } = await import('../commands/classic.js');",
     );
   });
 

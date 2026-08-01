@@ -59,8 +59,12 @@ describe('workflow resolve command', () => {
   it('registers the nested workflow resolve command in Commander', async () => {
     const source = await fs.readFile(path.resolve('app', 'cli', 'index.ts'), 'utf8');
 
-    expect(source).toContain("import { workflowResolveCommand } from '../commands/workflow.js';");
+    // Command handlers are lazy-imported inside `.action()`; assert the
+    // registration and the lazy import path instead of a top-level import.
     expect(source).toContain(".command('workflow')");
     expect(source).toContain(".command('resolve [path]')");
+    expect(source).toContain(
+      "const { workflowResolveCommand } = await import('../commands/workflow.js');",
+    );
   });
 });

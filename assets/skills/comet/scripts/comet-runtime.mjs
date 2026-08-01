@@ -11842,6 +11842,56 @@ async function clearCometCurrentSelectionIf(projectRoot, workflow, change) {
   return true;
 }
 
+// platform/process/hook-read-cache.ts
+var currentScope = null;
+function cacheKey(factoryName, args) {
+  let key = factoryName;
+  for (const arg of args) {
+    key += "\0" + (typeof arg === "string" ? arg : JSON.stringify(arg));
+  }
+  return key;
+}
+function memoizedHookRead(factoryName, factory) {
+  return (...args) => {
+    const scope = currentScope;
+    if (scope === null) {
+      return factory(...args);
+    }
+    const key = cacheKey(factoryName, args);
+    const existing = scope.entries.get(key);
+    if (existing) {
+      return existing.promise;
+    }
+    const promise = factory(...args).catch((error) => {
+      scope.entries.delete(key);
+      throw error;
+    });
+    scope.entries.set(key, { promise });
+    return promise;
+  };
+}
+function memoizedHookReadSync(factoryName, factory) {
+  return (...args) => {
+    const scope = currentScope;
+    if (scope === null) {
+      return factory(...args);
+    }
+    const key = cacheKey(factoryName, args);
+    const existing = scope.entries.get(key);
+    if (existing) {
+      return existing.promise;
+    }
+    let result5;
+    try {
+      result5 = factory(...args);
+    } catch (error) {
+      throw error;
+    }
+    scope.entries.set(key, { promise: Promise.resolve(result5) });
+    return result5;
+  };
+}
+
 // domains/comet-classic/classic-branch-binding.ts
 var import_yaml5 = __toESM(require_dist(), 1);
 import { execFileSync } from "child_process";
@@ -11860,6 +11910,7 @@ function liveGitBranch(cwd) {
     return null;
   }
 }
+var cachedGitBranch = memoizedHookReadSync("liveGitBranch", (cwd) => liveGitBranch(cwd));
 function isGitWorkTree(cwd) {
   try {
     return execFileSync("git", ["rev-parse", "--is-inside-work-tree"], {
@@ -11871,6 +11922,10 @@ function isGitWorkTree(cwd) {
     return false;
   }
 }
+var cachedGitWorkTree = memoizedHookReadSync(
+  "isGitWorkTree",
+  (cwd) => isGitWorkTree(cwd)
+);
 var BOUND_BRANCH_ISOLATIONS = ["current", "branch", "worktree"];
 function requiresBranchBinding(isolation) {
   return BOUND_BRANCH_ISOLATIONS.includes(isolation);
@@ -11896,8 +11951,8 @@ async function resolveBranchBinding(changeDir, options) {
   const isolation = typeof record2.isolation === "string" ? record2.isolation : null;
   const boundBranch = typeof record2.bound_branch === "string" && record2.bound_branch !== "" ? record2.bound_branch : null;
   const bindingRequired = requiresBranchBinding(isolation);
-  const currentBranch = liveGitBranch(options.cwd);
-  const gitWorkTree = bindingRequired && boundBranch === null && currentBranch === null ? isGitWorkTree(options.cwd) : true;
+  const currentBranch = cachedGitBranch(options.cwd);
+  const gitWorkTree = bindingRequired && boundBranch === null && currentBranch === null ? cachedGitWorkTree(options.cwd) : true;
   const verdict = evaluateBranchBinding({ isolation, boundBranch, currentBranch, gitWorkTree });
   if (verdict.status === "needs-heal" && options.heal) {
     await healBoundBranch(changeDir, verdict.branch);
@@ -11933,6 +11988,10 @@ function unboundDetachedMessage(change) {
 }
 
 // domains/comet-classic/classic-current-change.ts
+var readCachedCurrentSelection = memoizedHookRead(
+  "readCometCurrentSelection",
+  (projectRoot) => readCometCurrentSelection(projectRoot)
+);
 async function validateActiveChange(projectRoot, changeName) {
   assertOpenSpecChangeName(changeName);
   const active = await inspectClassicActiveChangeDirectory(changeName, projectRoot);
@@ -11972,7 +12031,7 @@ async function selectCurrentChange(projectRoot, changeName) {
 async function resolveCurrentChange(projectRoot) {
   let current;
   try {
-    current = await readCometCurrentSelection(projectRoot);
+    current = await readCachedCurrentSelection(projectRoot);
   } catch (error) {
     return {
       status: "stale",
@@ -14629,7 +14688,7 @@ async function loadGoverningChange(changeDir) {
     };
   }
 }
-async function activeChanges(projectRoot) {
+async function activeChangesImpl(projectRoot) {
   const changesDir = (await assertClassicLayoutReadable(projectRoot)).changesDir;
   const governingChanges = [];
   const changesInspection = await inspectClassicProjectTarget(projectRoot, changesDir, {
@@ -14650,6 +14709,10 @@ async function activeChanges(projectRoot) {
   }
   return governingChanges;
 }
+var activeChanges = memoizedHookRead(
+  "classicActiveChanges",
+  (projectRoot) => activeChangesImpl(projectRoot)
+);
 function superpowersArtifactPrefix(projectRoot, layout) {
   return `${classicProjectRelative(projectRoot, layout.superpowersRoot)}/`;
 }

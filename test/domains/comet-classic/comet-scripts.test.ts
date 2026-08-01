@@ -151,7 +151,7 @@ async function createFakeOpenSpecArchive(
 }
 
 describe('comet script contracts', () => {
-  it('keeps all Classic command scripts as thin launchers for the shared runtime', async () => {
+  it('keeps all Classic command scripts as self-contained bundles', async () => {
     const sources: Record<string, string> = {
       state: await fs.readFile(path.join(scriptsDir, 'comet-state.mjs'), 'utf-8'),
       validate: await fs.readFile(path.join(scriptsDir, 'comet-yaml-validate.mjs'), 'utf-8'),
@@ -163,12 +163,14 @@ describe('comet script contracts', () => {
       'resume-probe': await fs.readFile(path.join(scriptsDir, 'comet-resume-probe.mjs'), 'utf-8'),
     };
 
+    // The shared runtime remains for the in-process CLI facade; each command
+    // script is now its own esbuild bundle instead of a thin launcher that
+    // forwards to the shared runtime.
     await expect(fs.access(path.join(scriptsDir, 'comet-runtime.mjs'))).resolves.toBeUndefined();
-    for (const [command, source] of Object.entries(sources)) {
-      const cliCommand = command === 'hook-guard' ? 'hook-guard' : command;
+    for (const source of Object.values(sources)) {
       expect(source).toContain('#!/usr/bin/env node');
-      expect(source).toContain("import { main } from './comet-runtime.mjs';");
-      expect(source).toContain(`main([${JSON.stringify(cliCommand)}, ...process.argv.slice(2)])`);
+      // Self-contained: no longer imports the shared runtime.
+      expect(source).not.toContain("from './comet-runtime.mjs'");
       expect(source).not.toMatch(/\b(?:grep|awk|sed)\b/u);
     }
   });
