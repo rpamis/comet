@@ -19,9 +19,49 @@ export const WORKFLOW_PROJECT_CONFIG_MAX_BYTES = 64 * 1024;
 export const MAX_WORKFLOW_SNAPSHOT_PATTERN_LENGTH = 1024;
 export const MAX_WORKFLOW_SNAPSHOT_PATTERN_WILDCARDS = 64;
 export const DEFAULT_WORKFLOW_NATIVE_MAX_VERIFY_FAILURES = 5;
+
+// `comet init` installs the built-in Skills into every supported platform's
+// project-local Skill directory. A Native baseline describes the project being
+// changed, not these replicated, tool-managed copies. Keeping them outside the
+// default scope also keeps a newly initialized, non-Git project within the
+// bounded physical snapshot budget.
+const DEFAULT_WORKFLOW_NATIVE_MANAGED_SKILL_EXCLUDES = [
+  '.agents/skills/**',
+  '.amazonq/skills/**',
+  '.augment/skills/**',
+  '.bob/skills/**',
+  '.claude/skills/**',
+  '.cline/skills/**',
+  '.codebuddy/skills/**',
+  '.continue/skills/**',
+  '.cospec/skills/**',
+  '.crush/skills/**',
+  '.cursor/skills/**',
+  '.factory/skills/**',
+  '.forge/skills/**',
+  '.gemini/skills/**',
+  '.github/skills/**',
+  '.iflow/skills/**',
+  '.junie/skills/**',
+  '.kilocode/skills/**',
+  '.kimi-code/skills/**',
+  '.kiro/skills/**',
+  '.lingma/skills/**',
+  '.mimocode/skills/**',
+  '.opencode/skills/**',
+  '.pi/skills/**',
+  '.qoder/skills/**',
+  '.qwen/skills/**',
+  '.roo/skills/**',
+  '.trae-cn/skills/**',
+  '.trae/skills/**',
+  '.windsurf/skills/**',
+  '.zcode/skills/**',
+] as const;
+
 export const DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG: WorkflowNativeSnapshotConfig = {
   include: ['**/*'],
-  exclude: [],
+  exclude: [...DEFAULT_WORKFLOW_NATIVE_MANAGED_SKILL_EXCLUDES],
   max_files: 10_000,
   max_total_bytes: 256 * 1024 * 1024,
   max_duration_ms: 60_000,

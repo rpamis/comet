@@ -2,8 +2,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import { PLATFORMS } from '../../../platform/install/platforms.js';
 
 import {
+  DEFAULT_NATIVE_SNAPSHOT_CONFIG,
   defaultProjectConfig,
   readProjectConfig,
   resolveNativeProject,
@@ -30,11 +32,49 @@ describe('Native project configuration', () => {
     expect(defaultProjectConfig().native.max_verify_failures).toBe(5);
     expect(defaultProjectConfig().native.snapshot).toEqual({
       include: ['**/*'],
-      exclude: [],
+      exclude: [
+        '.agents/skills/**',
+        '.amazonq/skills/**',
+        '.augment/skills/**',
+        '.bob/skills/**',
+        '.claude/skills/**',
+        '.cline/skills/**',
+        '.codebuddy/skills/**',
+        '.continue/skills/**',
+        '.cospec/skills/**',
+        '.crush/skills/**',
+        '.cursor/skills/**',
+        '.factory/skills/**',
+        '.forge/skills/**',
+        '.gemini/skills/**',
+        '.github/skills/**',
+        '.iflow/skills/**',
+        '.junie/skills/**',
+        '.kilocode/skills/**',
+        '.kimi-code/skills/**',
+        '.kiro/skills/**',
+        '.lingma/skills/**',
+        '.mimocode/skills/**',
+        '.opencode/skills/**',
+        '.pi/skills/**',
+        '.qoder/skills/**',
+        '.qwen/skills/**',
+        '.roo/skills/**',
+        '.trae-cn/skills/**',
+        '.trae/skills/**',
+        '.windsurf/skills/**',
+        '.zcode/skills/**',
+      ],
       max_files: 10_000,
       max_total_bytes: 256 * 1024 * 1024,
       max_duration_ms: 60_000,
     });
+  });
+
+  it('keeps every supported platform Skill directory outside the default baseline scope', () => {
+    expect(new Set(DEFAULT_NATIVE_SNAPSHOT_CONFIG.exclude)).toEqual(
+      new Set(PLATFORMS.map((platform) => `${platform.skillsDir}/skills/**`)),
+    );
   });
 
   it('round-trips a custom artifact root with stable YAML fields', async () => {
@@ -53,7 +93,7 @@ describe('Native project configuration', () => {
         max_verify_failures: 5,
         snapshot: {
           include: ['**/*'],
-          exclude: [],
+          exclude: DEFAULT_NATIVE_SNAPSHOT_CONFIG.exclude,
           max_files: 10_000,
           max_total_bytes: 256 * 1024 * 1024,
           max_duration_ms: 60_000,

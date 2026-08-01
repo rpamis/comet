@@ -5,6 +5,7 @@ import path from 'path';
 import { stringify } from 'yaml';
 
 import {
+  DEFAULT_NATIVE_SNAPSHOT_CONFIG,
   defaultProjectConfig,
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
@@ -124,7 +125,7 @@ describe('Native change store', () => {
       policy: {
         schema: 'comet.native.snapshot-policy.v1',
         include: ['**/*'],
-        exclude: [],
+        exclude: DEFAULT_NATIVE_SNAPSHOT_CONFIG.exclude,
       },
       entries: [
         expect.objectContaining({

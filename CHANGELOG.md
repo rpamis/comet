@@ -19,6 +19,7 @@ Beta 13 makes everyday workflow operations faster and makes uninstalling and rea
 
 ### Fixed
 
+- **Native baseline scope**: Newly initialized Native projects no longer spend their bounded baseline budget on Comet's replicated platform Skill directories, so `comet native new` remains usable after installing every supported platform while project source and `.github/workflows` stay in scope.
 - **Classic configuration compatibility**: Setup and update retain an existing Classic project’s directory choice and more reliably recognize a usable directory when an older project configuration is incomplete.
 - **Portable workflow execution**: Native and Classic Skills now call the public `comet` CLI instead of searching platform-specific Skill directories or invoking internal bundles. Missing CLI installations stop with a clear error, while workflow routing still immediately loads the selected Skill through the Skill tool.
 - **Classic execution choices**: Classic now presents every workflow-supported isolation and execution choice, then runs the user’s selection and reports any error instead of pre-screening options.

@@ -21,6 +21,7 @@ import {
   type ClassicLayoutInitializationPermit,
 } from '../comet-classic/classic-layout-initialization.js';
 import {
+  DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG,
   parseWorkflowProjectConfigDocument,
   projectConfigComment,
   renderStructuredProjectConfig,
@@ -1773,11 +1774,9 @@ async function mergeProjectConfig(
     }
     if (nativeBlock.snapshot === undefined) {
       nativeBlock.snapshot = {
-        include: ['**/*'],
-        exclude: [],
-        max_files: 10_000,
-        max_total_bytes: 256 * 1024 * 1024,
-        max_duration_ms: 60_000,
+        ...DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG,
+        include: [...DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.include],
+        exclude: [...DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.exclude],
       };
     }
     root.native = nativeBlock;

@@ -29,6 +29,7 @@ import {
   writeProjectConfig,
 } from '../../domains/comet-native/native-config.js';
 import { assertClassicLayoutReadable } from '../../domains/comet-classic/classic-layout.js';
+import { DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG } from '../../domains/workflow-contract/project-config.js';
 
 // Mock the interactive select prompt so tests don't hang on CI (no TTY).
 vi.mock('@inquirer/prompts', () => ({
@@ -2260,7 +2261,7 @@ describe('update command helpers', () => {
         max_verify_failures: 5,
         snapshot: {
           include: ['**/*'],
-          exclude: [],
+          exclude: DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.exclude,
           max_files: 10_000,
           max_total_bytes: 256 * 1024 * 1024,
           max_duration_ms: 60_000,

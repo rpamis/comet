@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 
 async function readWorkflow(name: string): Promise<string> {
   return (await fs.readFile(`.github/workflows/${name}`, 'utf8')).replace(/\r\n/g, '\n');
@@ -29,6 +30,16 @@ describe('CI workflows', () => {
     expect(workflow).toContain('ci-required:');
     expect(packageJson.engines?.node).toBe('>=22');
     expect(packageJson.scripts?.['test:package-e2e']).toBe('node scripts/release/package-e2e.mjs');
+
+    const ci = parse(workflow) as {
+      jobs?: Record<string, { needs?: string[]; strategy?: { matrix?: { os?: string[] } } }>;
+    };
+    expect(ci.jobs?.['package-e2e']?.strategy?.matrix?.os).toEqual([
+      'ubuntu-latest',
+      'macos-latest',
+      'windows-latest',
+    ]);
+    expect(ci.jobs?.['ci-required']?.needs).toContain('package-e2e');
   });
 
   it('pins third-party actions to immutable commit SHAs', async () => {

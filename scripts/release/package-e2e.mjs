@@ -14,8 +14,11 @@ const requiredPackageFiles = [
   'assets/skills/comet/scripts/comet-entry-runtime.mjs',
   'assets/skills/comet/scripts/comet-hook-router.mjs',
   'assets/skills/comet/scripts/comet-runtime.mjs',
+  'assets/skills/comet/scripts/comet-state.mjs',
   'assets/skills/comet-native/SKILL.md',
   'assets/skills/comet-native/scripts/comet-native-runtime.mjs',
+  'assets/skills/comet-native/scripts/comet-native-new.mjs',
+  'assets/skills/comet-native/scripts/comet-native-status.mjs',
   'bin/comet.js',
   'bin/fast-runtime-router.js',
   'dist/app/cli/index.js',
@@ -27,6 +30,8 @@ const requiredNativeInstallFiles = [
   'comet/scripts/comet-hook-router.mjs',
   'comet-native/SKILL.md',
   'comet-native/scripts/comet-native-runtime.mjs',
+  'comet-native/scripts/comet-native-new.mjs',
+  'comet-native/scripts/comet-native-status.mjs',
 ];
 
 function run(command, args, options = {}) {
@@ -65,16 +70,23 @@ async function assertFile(filePath, description) {
   }
 }
 
+async function disableCliFallback(packageRoot, relativePath) {
+  const source = path.join(packageRoot, ...relativePath.split('/'));
+  const disabled = `${source}.package-e2e-disabled`;
+  await fs.rename(source, disabled);
+}
+
 async function main() {
   const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-package-e2e-'));
   try {
     const packageDir = path.join(temporaryRoot, 'package');
     const consumerDir = path.join(temporaryRoot, 'consumer');
     const projectDir = path.join(temporaryRoot, 'project');
+    const classicProjectDir = path.join(temporaryRoot, 'classic-project');
     const homeDir = path.join(temporaryRoot, 'home');
     const npmCache = path.join(temporaryRoot, 'npm-cache');
     await Promise.all(
-      [packageDir, consumerDir, projectDir, homeDir, npmCache].map((directory) =>
+      [packageDir, consumerDir, projectDir, classicProjectDir, homeDir, npmCache].map((directory) =>
         fs.mkdir(directory, { recursive: true }),
       ),
     );
@@ -176,8 +188,175 @@ async function main() {
       throw new Error(`Packaged doctor reported an unhealthy install: ${JSON.stringify(doctor)}`);
     }
 
+    const installedSkills = path.join(projectDir, '.agents', 'skills');
+    const installedNativeNew = path.join(
+      installedSkills,
+      'comet-native',
+      'scripts',
+      'comet-native-new.mjs',
+    );
+    const installedNativeStatus = path.join(
+      installedSkills,
+      'comet-native',
+      'scripts',
+      'comet-native-status.mjs',
+    );
+    const installedEntryRuntime = path.join(
+      installedSkills,
+      'comet',
+      'scripts',
+      'comet-entry-runtime.mjs',
+    );
+    const installedHookRouter = path.join(
+      installedSkills,
+      'comet',
+      'scripts',
+      'comet-hook-router.mjs',
+    );
+    for (const [script, description] of [
+      [installedNativeNew, 'Installed Native new runtime'],
+      [installedNativeStatus, 'Installed Native status runtime'],
+      [installedEntryRuntime, 'Installed Entry runtime'],
+      [installedHookRouter, 'Installed Hook Router runtime'],
+    ]) {
+      await assertFile(script, description);
+    }
+
+    const createdChange = parseJsonPayload(
+      run(
+        process.execPath,
+        [installedNativeNew, 'package-runtime-change', '--project-root', projectDir, '--json'],
+        { cwd: projectDir, env: environment },
+      ),
+    );
+    if (
+      createdChange.command !== 'new' ||
+      createdChange.exitCode !== 0 ||
+      createdChange.data?.name !== 'package-runtime-change'
+    ) {
+      throw new Error(
+        `Installed Native runtime could not create a change: ${JSON.stringify(createdChange)}`,
+      );
+    }
+
+    const nativeStatus = parseJsonPayload(
+      run(
+        process.execPath,
+        [installedNativeStatus, 'package-runtime-change', '--project-root', projectDir, '--json'],
+        {
+          cwd: projectDir,
+          env: environment,
+        },
+      ),
+    );
+    if (
+      nativeStatus.command !== 'status' ||
+      nativeStatus.exitCode !== 0 ||
+      nativeStatus.data?.name !== 'package-runtime-change' ||
+      nativeStatus.data?.phase !== 'shape'
+    ) {
+      throw new Error(
+        `Installed Native runtime returned an invalid status: ${JSON.stringify(nativeStatus)}`,
+      );
+    }
+
+    const installedResolution = parseJsonPayload(
+      run(process.execPath, [installedEntryRuntime, projectDir, '--json'], {
+        cwd: projectDir,
+        env: environment,
+      }),
+    );
+    if (installedResolution.workflow !== 'native' || installedResolution.skill !== 'comet-native') {
+      throw new Error(
+        `Installed Entry runtime resolution failed: ${JSON.stringify(installedResolution)}`,
+      );
+    }
+
+    const hookDecision = parseJsonPayload(
+      run(
+        process.execPath,
+        [installedHookRouter, '--platform', 'github-copilot', '--project-root', projectDir],
+        {
+          cwd: projectDir,
+          env: { ...environment, FILE_PATH: 'src/index.ts' },
+        },
+      ),
+    );
+    if (
+      hookDecision.permissionDecision !== 'deny' ||
+      !String(hookDecision.permissionDecisionReason).includes('only allowed in build')
+    ) {
+      throw new Error(
+        `Installed Hook Router did not block a Shape write: ${JSON.stringify(hookDecision)}`,
+      );
+    }
+
+    await fs.mkdir(path.join(classicProjectDir, '.comet'), { recursive: true });
+    await fs.mkdir(path.join(classicProjectDir, 'openspec'), { recursive: true });
+    await fs.writeFile(
+      path.join(classicProjectDir, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: classic',
+        'workflows: [classic]',
+        'classic:',
+        '  artifact_layout: legacy',
+        '',
+      ].join('\n'),
+    );
+    await fs.writeFile(
+      path.join(classicProjectDir, 'openspec', 'config.yaml'),
+      'schema: spec-driven\n',
+    );
+
+    await Promise.all([
+      disableCliFallback(packageRoot, 'dist/domains/comet-native/native-cli.js'),
+      disableCliFallback(packageRoot, 'dist/domains/comet-entry/workflow-resolution.js'),
+      disableCliFallback(packageRoot, 'dist/domains/comet-classic/classic-cli.js'),
+    ]);
+
+    const fastNativeStatus = parseJsonPayload(
+      run(
+        process.execPath,
+        [cli, 'native', 'status', 'package-runtime-change', '--project-root', projectDir, '--json'],
+        {
+          cwd: consumerDir,
+          env: environment,
+        },
+      ),
+    );
+    if (fastNativeStatus.command !== 'status' || fastNativeStatus.exitCode !== 0) {
+      throw new Error(
+        `CLI did not use the packaged Native fast runtime: ${JSON.stringify(fastNativeStatus)}`,
+      );
+    }
+
+    const fastResolution = parseJsonPayload(
+      run(process.execPath, [cli, 'workflow', 'resolve', projectDir, '--json'], {
+        cwd: consumerDir,
+        env: environment,
+      }),
+    );
+    if (fastResolution.workflow !== 'native' || fastResolution.skill !== 'comet-native') {
+      throw new Error(
+        `CLI did not use the packaged Entry fast runtime: ${JSON.stringify(fastResolution)}`,
+      );
+    }
+
+    const classicState = parseJsonPayload(
+      run(process.execPath, [cli, 'state', 'init', 'package-classic-change', 'full', '--json'], {
+        cwd: classicProjectDir,
+        env: environment,
+      }),
+    );
+    if (classicState.command !== 'state' || classicState.exitCode !== 0) {
+      throw new Error(
+        `CLI did not use the packaged Classic fast runtime: ${JSON.stringify(classicState)}`,
+      );
+    }
+
     console.log(
-      `Packaged Comet ${version} installed and verified across ${PLATFORMS.length} Native platform targets.`,
+      `Packaged Comet ${version} installed, routed, and verified across ${PLATFORMS.length} Native platform targets.`,
     );
   } finally {
     await fs.rm(temporaryRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });

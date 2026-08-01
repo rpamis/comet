@@ -986,6 +986,7 @@ async function nativePhysicalSnapshotSelection(options: {
   physicalProjectRoot: string;
   physicalNativeRoot: string;
   denylist: readonly string[];
+  policy?: ResolvedSnapshotPolicy;
   limits: NativePhysicalSelectionLimits;
   hooks?: NativePhysicalSelectionHooks;
 }): Promise<NativePhysicalSnapshotSelection> {
@@ -1117,6 +1118,7 @@ async function nativePhysicalSnapshotSelection(options: {
         if (!hasExecutionBudget()) break;
         const type = physicalSelectionRecordType(stat);
         if (type === 'directory') {
+          if (snapshotPolicyExcludesDirectory(options.policy, relative)) continue;
           if (!hasExecutionBudget()) break;
           let realDirectory: string;
           try {
@@ -1382,6 +1384,7 @@ interface ResolvedSnapshotPolicy {
   manifest: NativeSnapshotPolicy;
   includeMatchers: SnapshotPatternMatcher[];
   excludeMatchers: SnapshotPatternMatcher[];
+  excludedDirectoryPrefixes: string[];
 }
 
 function epsilonClosure(
@@ -1499,7 +1502,21 @@ function resolveSnapshotPolicy(
     },
     includeMatchers: include.map(compileNativeSnapshotPattern),
     excludeMatchers: exclude.map(compileNativeSnapshotPattern),
+    excludedDirectoryPrefixes: exclude
+      .flatMap((pattern) => {
+        if (!pattern.endsWith('/**')) return [];
+        const prefix = pattern.slice(0, -3);
+        return /[*?]/u.test(prefix) ? [] : [prefix];
+      })
+      .sort((left, right) => left.localeCompare(right, 'en')),
   };
+}
+
+function snapshotPolicyExcludesDirectory(
+  policy: ResolvedSnapshotPolicy | undefined,
+  relative: string,
+): boolean {
+  return policy?.excludedDirectoryPrefixes.includes(relative) ?? false;
 }
 
 function snapshotPolicyIncludes(
@@ -2730,6 +2747,7 @@ export async function createNativeContentSnapshot(
       physicalProjectRoot,
       physicalNativeRoot,
       denylist,
+      policy,
       limits: physicalSelectionLimits,
       hooks: options.physicalSelectionHooks,
     });
@@ -2780,6 +2798,7 @@ export async function createNativeContentSnapshot(
       physicalProjectRoot,
       physicalNativeRoot,
       denylist,
+      policy,
       limits: physicalSelectionLimits,
     });
     const finalized = finalizeNativePhysicalSelection(before.evidence, after.evidence);

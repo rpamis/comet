@@ -41,6 +41,7 @@ import {
   resolveArtifactLanguage,
 } from '../../../domains/skill/languages.js';
 import { assertClassicLayoutInitializationSafe } from '../../../domains/comet-classic/classic-layout-initialization.js';
+import { DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG } from '../../../domains/workflow-contract/project-config.js';
 
 describe('skills', () => {
   let tmpDir: string;
@@ -3302,7 +3303,7 @@ describe('skills', () => {
           max_verify_failures: 5,
           snapshot: {
             include: ['**/*'],
-            exclude: [],
+            exclude: DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.exclude,
             max_files: 10_000,
             max_total_bytes: 256 * 1024 * 1024,
             max_duration_ms: 60_000,

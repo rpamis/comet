@@ -6,6 +6,7 @@ import path from 'path';
 import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { DEFAULT_NATIVE_SNAPSHOT_CONFIG } from '../../../domains/comet-native/native-config.js';
 import {
   createNativeChange,
   nativeChangeDir,
@@ -110,6 +111,33 @@ describe('Native VCS-independent content snapshots', () => {
     expect(serialized).not.toContain(projectRoot);
     expect(serialized).not.toContain(outsideRoot);
     expect(serialized).not.toContain('TOKEN');
+  });
+
+  it('prunes default platform Skill directories before bounded physical enumeration', async () => {
+    await Promise.all([
+      fs.mkdir(path.join(projectRoot, 'src'), { recursive: true }),
+      fs.mkdir(path.join(projectRoot, '.agents', 'skills', 'comet-native'), { recursive: true }),
+    ]);
+    await fs.writeFile(path.join(projectRoot, 'src', 'app.ts'), 'export const app = true;\n');
+    await Promise.all(
+      Array.from({ length: 32 }, (_, index) =>
+        fs.writeFile(
+          path.join(projectRoot, '.agents', 'skills', 'comet-native', `bundle-${index}.mjs`),
+          'export {};\n',
+        ),
+      ),
+    );
+
+    const manifest = await createNativeContentSnapshot(paths, {
+      policy: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
+      physicalSelectionLimits: { maxNodes: 10 },
+    });
+
+    expect(manifest.complete).toBe(true);
+    expect(manifest.entries).toEqual([
+      expect.objectContaining({ path: 'src/app.ts', type: 'file' }),
+    ]);
+    expect(manifest.capture).toEqual({ provider: 'physical-tree' });
   });
 
   it('fails closed when a discovered worktree .git file cannot be resolved', async () => {
