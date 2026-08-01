@@ -12,7 +12,6 @@ import {
   Progress,
   Steps,
   Tabs,
-  Tag,
 } from 'antd';
 import {
   AppstoreOutlined,
@@ -1570,7 +1569,9 @@ function AntChangesExplorer({ visible, selectedId, tab, onTab, onSelect }) {
                           showInfo={false}
                         />
                       </div>
-                      <Tag>{VERIFY_LABEL[change.verify.result] ?? '未知'}</Tag>
+                      <Pill tone={VERIFY_TONE[change.verify.result] ?? 'neutral'}>
+                        {VERIFY_LABEL[change.verify.result] ?? '未知'}
+                      </Pill>
                     </div>
                   </Button>
                 </List.Item>
@@ -1616,7 +1617,9 @@ function AntChangeDetail({ change, onPreview }) {
         </div>
       }
       extra={
-        <Tag>{change.status === 'archived' ? '已归档' : VERIFY_LABEL[change.verify.result]}</Tag>
+        <Pill tone={change.status === 'archived' ? 'neutral' : VERIFY_TONE[change.verify.result]}>
+          {change.status === 'archived' ? '已归档' : VERIFY_LABEL[change.verify.result]}
+        </Pill>
       }
     >
       <div className="mb-4 text-xs text-meta">
