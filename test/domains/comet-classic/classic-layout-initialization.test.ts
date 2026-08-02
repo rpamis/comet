@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
@@ -136,6 +136,27 @@ describe('Classic layout initialization safety', () => {
           result.value.initializationPermit.ownershipId === persisted.id,
       ),
     ).toBe(true);
+  });
+
+  it('initializes Classic when the project filesystem does not support hard links', async () => {
+    const linkSpy = vi
+      .spyOn(fs, 'link')
+      .mockRejectedValue(Object.assign(new Error('hard links unsupported'), { code: 'ENOTSUP' }));
+    try {
+      const initialization = await assertClassicLayoutInitializationSafe(projectRoot, 'docs');
+      const owned = await beginClassicLayoutInitialization(projectRoot, initialization);
+      await fs.mkdir(path.join(owned.openSpecRoot, 'changes', 'archive'), { recursive: true });
+      await fs.mkdir(path.join(owned.openSpecRoot, 'specs'), { recursive: true });
+      await fs.writeFile(path.join(owned.openSpecRoot, 'config.yaml'), 'schema: spec-driven\n');
+
+      await checkpointClassicLayoutInitialization(projectRoot, owned.initializationPermit);
+
+      await expect(
+        fs.readFile(path.join(projectRoot, '.comet', 'classic-init-ownership.json'), 'utf8'),
+      ).resolves.toContain('"stage": "initializing"');
+    } finally {
+      linkSpy.mockRestore();
+    }
   });
 
   it('does not let a stale checkpoint overwrite a successor journal', async () => {

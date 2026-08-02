@@ -22,13 +22,17 @@ vi.mock('child_process', () => ({
 
 const mockedExecFileSync = vi.mocked(execFileSync);
 
-import { PLATFORMS, type Platform } from '../../platform/install/platforms.js';
+import {
+  PLATFORMS,
+  getPlatformSkillsDir,
+  type Platform,
+} from '../../platform/install/platforms.js';
 import {
   removeLegacyCometSkillsForPlatform,
   removeCometSkillsForPlatform,
   removeCometRulesForPlatform,
   removeCometHooksForPlatform,
-  removeSuperpowersSkillsForPlatform,
+  removeSuperpowersSkillsForPlatforms,
   removeWorkingDirs,
 } from '../../domains/skill/uninstall.js';
 import {
@@ -485,43 +489,84 @@ describe('uninstall', () => {
     });
   });
 
-  describe('removeSuperpowersSkillsForPlatform', () => {
-    it('removes only Superpowers Skills installed for the selected agent', () => {
+  describe('removeSuperpowersSkillsForPlatforms', () => {
+    it('removes listed Superpowers Skills from selected platforms in one CLI call', async () => {
       const claudePlatform = PLATFORMS.find((platform) => platform.id === 'claude')!;
+      const codexPlatform = PLATFORMS.find((platform) => platform.id === 'codex')!;
       mockedExecFileSync.mockImplementation((_command, args) => {
         if (args[1] === 'list') {
           return JSON.stringify([
-            { name: 'brainstorming', source: 'obra/superpowers', agents: ['claude-code'] },
+            { name: 'brainstorming', source: 'obra/superpowers', agents: ['Claude Code'] },
             {
               name: 'writing-plans',
               source: 'obra/superpowers',
-              agents: ['claude-code', 'cursor'],
+              agents: ['Claude Code', 'Cursor'],
             },
-            { name: 'personal', source: 'me/personal', agents: ['claude-code'] },
-            { name: 'using-superpowers', source: 'obra/superpowers', agents: ['cursor'] },
+            { name: 'personal', source: 'me/personal', agents: ['Claude Code'] },
+            { name: 'using-superpowers', source: 'obra/superpowers', agents: ['Cursor'] },
           ]) as never;
         }
         return '' as never;
       });
 
-      const result = removeSuperpowersSkillsForPlatform(tmpDir, claudePlatform, 'project');
+      for (const name of ['brainstorming', 'writing-plans', 'using-superpowers']) {
+        await fs.mkdir(path.join(tmpDir, '.agents', 'skills', name), { recursive: true });
+      }
 
-      expect(result).toEqual({ removed: 2, failed: 0 });
+      const result = await removeSuperpowersSkillsForPlatforms(
+        tmpDir,
+        [claudePlatform, codexPlatform],
+        'project',
+        { removeSharedStorage: true },
+      );
+
+      expect(result).toEqual({ removed: 3, failed: 0 });
       expect(mockedExecFileSync).toHaveBeenCalledWith(
         expect.any(String),
-        ['skills', 'remove', 'brainstorming', '--agent', 'claude-code', '--yes'],
+        ['skills', 'remove', 'brainstorming', '--agent', 'claude-code', 'codex', '--yes'],
         expect.objectContaining({ cwd: tmpDir }),
       );
       expect(mockedExecFileSync).toHaveBeenCalledWith(
         expect.any(String),
-        ['skills', 'remove', 'writing-plans', '--agent', 'claude-code', '--yes'],
+        ['skills', 'remove', 'writing-plans', '--agent', 'claude-code', 'codex', '--yes'],
         expect.objectContaining({ cwd: tmpDir }),
       );
-      expect(mockedExecFileSync).not.toHaveBeenCalledWith(
+      expect(mockedExecFileSync).toHaveBeenCalledWith(
         expect.any(String),
-        expect.arrayContaining(['using-superpowers']),
+        ['skills', 'remove', 'using-superpowers', '--agent', 'claude-code', 'codex', '--yes'],
         expect.anything(),
       );
+      await expect(
+        fs.access(path.join(tmpDir, '.agents', 'skills', 'brainstorming')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+    });
+
+    it('uses the project Skills lock when the CLI has lost Superpowers source metadata', async () => {
+      const codexPlatform = PLATFORMS.find((platform) => platform.id === 'codex')!;
+      await fs.mkdir(path.join(tmpDir, '.agents', 'skills', 'brainstorming'), { recursive: true });
+      await fs.writeFile(
+        path.join(tmpDir, 'skills-lock.json'),
+        JSON.stringify({
+          version: 1,
+          skills: { brainstorming: { source: 'obra/superpowers' } },
+        }),
+        'utf8',
+      );
+      mockedExecFileSync.mockImplementation((_command, args) => {
+        if (args[1] === 'list') {
+          return JSON.stringify([{ name: 'brainstorming', source: null }]) as never;
+        }
+        return '' as never;
+      });
+
+      const result = await removeSuperpowersSkillsForPlatforms(tmpDir, [codexPlatform], 'project', {
+        removeSharedStorage: true,
+      });
+
+      expect(result).toEqual({ removed: 1, failed: 0 });
+      await expect(
+        fs.access(path.join(tmpDir, '.agents', 'skills', 'brainstorming')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
     });
   });
 
@@ -1020,7 +1065,7 @@ describe('uninstall', () => {
     });
 
     it.each(['artifact', 'unknown', 'special'] as const)(
-      'preserves every working directory when the Native tree contains %s content',
+      'preserves Native working directories containing %s content',
       async (contentKind) => {
         const configPath = await writeNativeProjectConfig('docs');
         const nativeRoot = await createNativeWorkingTree('docs');
@@ -1047,8 +1092,22 @@ describe('uninstall', () => {
 
         const result = await removeWorkingDirs(tmpDir);
 
-        expect(result).toEqual({ removed: 0, failed: 1 });
-        await expect(fs.stat(configPath)).resolves.toBeDefined();
+        const configRemoved = contentKind !== 'special';
+        if (configRemoved) {
+          expect(result).toEqual({
+            removed: 1,
+            failed: 0,
+            preserved: [retainedPath],
+          });
+        } else {
+          expect(result).toMatchObject({ removed: 0, failed: 1 });
+          expect(result.reason).toContain('Refusing to remove non-directory working object');
+        }
+        if (configRemoved) {
+          await expect(fs.stat(configPath)).rejects.toMatchObject({ code: 'ENOENT' });
+        } else {
+          await expect(fs.stat(configPath)).resolves.toBeDefined();
+        }
         await expect(fs.lstat(nativeRoot)).resolves.toBeDefined();
         await expect(fs.lstat(retainedPath)).resolves.toBeDefined();
         await expect(fs.readFile(path.join(external, 'marker.txt'), 'utf8')).resolves.toBe(
@@ -1087,7 +1146,7 @@ describe('uninstall', () => {
         });
 
         expect(replaced).toBe(true);
-        expect(result).toEqual({ removed: 0, failed: 1 });
+        expect(result).toMatchObject({ removed: 0, failed: 1 });
         expect(
           readdirSpy.mock.calls
             .slice(callsBeforeReplacement)
@@ -1116,11 +1175,26 @@ describe('uninstall', () => {
 
       const result = await removeWorkingDirs(tmpDir);
 
-      expect(result).toEqual({ removed: 0, failed: 1 });
-      expect(await fileExists(configPath)).toBe(true);
+      expect(result).toEqual({
+        removed: 1,
+        failed: 0,
+        preserved: [path.join(specsDir, 'important.md')],
+      });
+      expect(await fileExists(configPath)).toBe(false);
       expect(await fileExists(legacyRoot)).toBe(true);
       expect(await fileExists(path.join(tmpDir, 'docs'))).toBe(true);
       expect(await fileExists(path.join(specsDir, 'important.md'))).toBe(true);
+    });
+
+    it('completes cleanup when a prior uninstall removed config and existing docs remain', async () => {
+      const preservedDocument = path.join(tmpDir, 'docs', 'ARCHITECTURE.md');
+      await fs.mkdir(path.dirname(preservedDocument), { recursive: true });
+      await fs.writeFile(preservedDocument, 'keep me', 'utf8');
+
+      const result = await removeWorkingDirs(tmpDir);
+
+      expect(result).toEqual({ removed: 0, failed: 0, preserved: [preservedDocument] });
+      await expect(fs.readFile(preservedDocument, 'utf8')).resolves.toBe('keep me');
     });
 
     it('preserves every working directory when legacy and docs OpenSpec roots both exist', async () => {
@@ -1134,7 +1208,7 @@ describe('uninstall', () => {
 
       const result = await removeWorkingDirs(tmpDir);
 
-      expect(result).toEqual({ removed: 0, failed: 1 });
+      expect(result).toMatchObject({ removed: 0, failed: 1 });
       await expect(fs.stat(configPath)).resolves.toBeDefined();
       await expect(fs.stat(legacyRoot)).resolves.toBeDefined();
       await expect(fs.stat(docsRoot)).resolves.toBeDefined();
@@ -1153,7 +1227,7 @@ describe('uninstall', () => {
 
       const result = await removeWorkingDirs(tmpDir);
 
-      expect(result).toEqual({ removed: 0, failed: 1 });
+      expect(result).toMatchObject({ removed: 0, failed: 1 });
       await expect(fs.stat(configPath)).resolves.toBeDefined();
       await expect(fs.stat(journalPath)).resolves.toBeDefined();
       await expect(fs.stat(legacyRoot)).resolves.toBeDefined();
@@ -1172,7 +1246,7 @@ describe('uninstall', () => {
 
       const result = await removeWorkingDirs(tmpDir);
 
-      expect(result).toEqual({ removed: 0, failed: 1 });
+      expect(result).toMatchObject({ removed: 0, failed: 1 });
       await expect(fs.stat(configPath)).resolves.toBeDefined();
       await expect(fs.stat(userFile)).resolves.toBeDefined();
       await expect(fs.stat(legacyRoot)).resolves.toBeDefined();
@@ -1189,7 +1263,7 @@ describe('uninstall', () => {
 
       const result = await removeWorkingDirs(tmpDir);
 
-      expect(result).toEqual({ removed: 0, failed: 1 });
+      expect(result).toMatchObject({ removed: 0, failed: 1 });
       await expect(fs.stat(configPath)).resolves.toBeDefined();
       await expect(fs.stat(legacyRoot)).resolves.toBeDefined();
       await expect(fs.stat(docsRoot)).resolves.toBeDefined();
@@ -1204,7 +1278,7 @@ describe('uninstall', () => {
 
       const result = await removeWorkingDirs(tmpDir);
 
-      expect(result).toEqual({ removed: 0, failed: 1 });
+      expect(result).toMatchObject({ removed: 0, failed: 1 });
       await expect(fs.stat(configPath)).resolves.toBeDefined();
       await expect(fs.stat(legacyRoot)).resolves.toBeDefined();
     });
@@ -1220,7 +1294,7 @@ describe('uninstall', () => {
 
       const result = await removeWorkingDirs(tmpDir);
 
-      expect(result).toEqual({ removed: 0, failed: 1 });
+      expect(result).toMatchObject({ removed: 0, failed: 1 });
       await expect(fs.stat(configPath)).resolves.toBeDefined();
       expect((await fs.lstat(link)).isSymbolicLink()).toBe(true);
       await expect(fs.stat(target)).resolves.toBeDefined();
@@ -1280,11 +1354,17 @@ vi.mock('@inquirer/prompts', () => ({
   checkbox: vi.fn().mockResolvedValue([]),
 }));
 
+vi.mock('../../app/commands/platform-select-prompt.js', () => ({
+  platformSelectPrompt: vi.fn(),
+}));
+
 import { select, checkbox } from '@inquirer/prompts';
+import { platformSelectPrompt } from '../../app/commands/platform-select-prompt.js';
 import { uninstallCommand } from '../../app/commands/uninstall.js';
 
 const mockedSelect = vi.mocked(select);
 const mockedCheckbox = vi.mocked(checkbox);
+const mockedPlatformSelectPrompt = vi.mocked(platformSelectPrompt);
 
 describe('uninstallCommand interactive selection', () => {
   let tmpDir: string;
@@ -1294,7 +1374,11 @@ describe('uninstallCommand interactive selection', () => {
   beforeEach(async () => {
     mockedSelect.mockReset();
     mockedCheckbox.mockReset();
+    mockedPlatformSelectPrompt.mockReset();
     mockedSelect.mockResolvedValue(true as never);
+    mockedPlatformSelectPrompt.mockImplementation(async (config) =>
+      config.choices.filter((choice) => choice.checked === true).map((choice) => choice.value),
+    );
     tmpDir = path.join(
       os.tmpdir(),
       `comet-uninstall-cmd-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -1418,6 +1502,86 @@ describe('uninstallCommand interactive selection', () => {
 
     const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf-8'));
     expect(registry.projects).toEqual([]);
+  });
+
+  it('applies one workflow selection across all indexed projects', async () => {
+    const fakeHome = path.join(tmpDir, 'fake-home-all-workflow-selection');
+    const projectA = path.join(tmpDir, 'project-a-workflow-selection');
+    const projectB = path.join(tmpDir, 'project-b-workflow-selection');
+    const claudePlatform = PLATFORMS.find((p) => p.id === 'claude')!;
+
+    for (const project of [projectA, projectB]) {
+      await copyCometSkillsForPlatform(project, claudePlatform, true, 'skills', 'project');
+      await upsertProjectInstallation(project, [{ platform: 'claude', language: 'en' }], 'init', {
+        homeDir: fakeHome,
+      });
+    }
+
+    homedirSpy.mockRestore();
+    homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    mockedSelect.mockResolvedValue(true as never);
+    mockedCheckbox.mockResolvedValueOnce(['native'] as never);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      await uninstallCommand(projectA, { allProjects: true });
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(mockedCheckbox).toHaveBeenCalledTimes(1);
+    for (const project of [projectA, projectB]) {
+      await expect(
+        fs.access(path.join(project, '.claude', 'skills', 'comet-native', 'SKILL.md')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(
+        fs.access(path.join(project, '.claude', 'skills', 'comet-classic', 'SKILL.md')),
+      ).resolves.toBeUndefined();
+    }
+  });
+
+  it('applies one detected-platform choice across all indexed projects', async () => {
+    const fakeHome = path.join(tmpDir, 'fake-home-all-platform-selection');
+    const projectA = path.join(tmpDir, 'project-a-platform-selection');
+    const projectB = path.join(tmpDir, 'project-b-platform-selection');
+    const claudePlatform = PLATFORMS.find((p) => p.id === 'claude')!;
+    const codexPlatform = PLATFORMS.find((p) => p.id === 'codex')!;
+
+    for (const project of [projectA, projectB]) {
+      await copyCometSkillsForPlatform(project, claudePlatform, true, 'skills', 'project');
+      await copyCometSkillsForPlatform(project, codexPlatform, true, 'skills', 'project');
+      await upsertProjectInstallation(
+        project,
+        [
+          { platform: 'claude', language: 'en' },
+          { platform: 'codex', language: 'en' },
+        ],
+        'init',
+        { homeDir: fakeHome },
+      );
+    }
+
+    homedirSpy.mockRestore();
+    homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    mockedSelect.mockResolvedValue(true as never);
+    mockedPlatformSelectPrompt.mockResolvedValueOnce(['claude']);
+    mockedCheckbox.mockResolvedValueOnce(['native'] as never);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      await uninstallCommand(projectA, { allProjects: true });
+    } finally {
+      log.mockRestore();
+    }
+
+    for (const project of [projectA, projectB]) {
+      await expect(
+        fs.access(path.join(project, '.claude', 'skills', 'comet-native', 'SKILL.md')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(
+        fs.access(path.join(project, '.agents', 'skills', 'comet-native', 'SKILL.md')),
+      ).resolves.toBeUndefined();
+    }
   });
 
   it('removes Hook then Rule but keeps the Skill retry anchor when canonical Hook cleanup fails', async () => {
@@ -1697,7 +1861,7 @@ describe('uninstallCommand interactive selection', () => {
       await expect(
         fs.access(path.join(tmpDir, '.opencode', 'skills', 'comet')),
       ).rejects.toMatchObject({ code: 'ENOENT' });
-      await expect(fs.access(claudeSkillPath)).resolves.toBeUndefined();
+      await expect(fs.access(claudeSkillPath)).rejects.toMatchObject({ code: 'ENOENT' });
       const retainedRegistry = JSON.parse(
         await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8'),
       ) as { projects: unknown[] };
@@ -1713,8 +1877,8 @@ describe('uninstallCommand interactive selection', () => {
           platform: target.platform,
         })),
       ).toEqual([
-        { scope: 'project', platform: 'claude' },
         { scope: 'project', platform: 'opencode' },
+        { scope: 'project', platform: 'claude' },
       ]);
     } finally {
       log.mockRestore();
@@ -1746,24 +1910,21 @@ describe('uninstallCommand interactive selection', () => {
     try {
       await uninstallCommand(tmpDir, { currentProject: true, force: true, json: true });
       const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
-      expect(result.summary).toMatchObject({ targetsProcessed: 2, totalFailures: 0 });
+      expect(result.summary).toMatchObject({ targetsProcessed: 1, totalFailures: 0 });
       expect(
         result.targets.map((target: { scope: string; platform: string }) => ({
           scope: target.scope,
           platform: target.platform,
         })),
-      ).toEqual([
-        { scope: 'global', platform: 'opencode' },
-        { scope: 'project', platform: 'opencode' },
-      ]);
+      ).toEqual([{ scope: 'project', platform: 'opencode' }]);
     } finally {
       log.mockRestore();
     }
 
     await expect(fs.access(projectCommandPath)).rejects.toMatchObject({ code: 'ENOENT' });
     await expect(
-      fs.access(path.join(fakeHome, '.opencode', 'skills', 'comet')),
-    ).rejects.toMatchObject({ code: 'ENOENT' });
+      fs.access(path.join(fakeHome, getPlatformSkillsDir(opencode, 'global'), 'skills', 'comet')),
+    ).resolves.toBeUndefined();
     const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8')) as {
       projects: unknown[];
     };
@@ -2054,7 +2215,7 @@ describe('uninstallCommand interactive selection', () => {
       log.mockRestore();
     }
 
-    expect(mockedSelect).toHaveBeenCalled();
+    expect(mockedSelect).not.toHaveBeenCalled();
     expect(mockedCheckbox).toHaveBeenCalled();
 
     const skillsDir = path.join(tmpDir, '.claude', 'skills');
@@ -2166,7 +2327,7 @@ describe('uninstallCommand interactive selection', () => {
     expect(config).not.toContain('native:');
   });
 
-  it('preserves project-wide state used by an unselected target', async () => {
+  it('applies one full workflow selection to every current-project target', async () => {
     const claudePlatform = PLATFORMS.find((platform) => platform.id === 'claude')!;
     const codexPlatform = PLATFORMS.find((platform) => platform.id === 'codex')!;
     await copyCometSkillsForPlatform(
@@ -2222,14 +2383,16 @@ describe('uninstallCommand interactive selection', () => {
       log.mockRestore();
     }
 
-    await expect(fs.access(path.join(tmpDir, '.comet', 'config.yaml'))).resolves.toBeUndefined();
-    await expect(fs.access(path.join(tmpDir, 'AGENTS.md'))).resolves.toBeUndefined();
+    await expect(fs.access(path.join(tmpDir, '.comet', 'config.yaml'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    await expect(fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8')).resolves.toBe('');
     await expect(
       fs.access(path.join(tmpDir, '.agents', 'skills', 'comet-native', 'SKILL.md')),
-    ).resolves.toBeUndefined();
+    ).rejects.toMatchObject({ code: 'ENOENT' });
     await expect(
       fs.access(path.join(tmpDir, '.agents', 'skills', 'comet-classic', 'SKILL.md')),
-    ).resolves.toBeUndefined();
+    ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('removes project instructions when uninstalling the only installed workflow', async () => {
@@ -2353,11 +2516,11 @@ describe('uninstallCommand interactive selection', () => {
     expect(await fileExists(openSpecSkill)).toBe(true);
   });
 
-  it('cancels when single target user declines', async () => {
+  it('uninstalls every current-project target after the workflow selection', async () => {
     const claudePlatform = PLATFORMS.find((p) => p.id === 'claude')!;
     await copyCometSkillsForPlatform(tmpDir, claudePlatform, true, 'skills', 'project');
 
-    mockedSelect.mockResolvedValue(false as never);
+    mockedCheckbox.mockResolvedValueOnce(['native', 'classic'] as never);
 
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     try {
@@ -2368,19 +2531,17 @@ describe('uninstallCommand interactive selection', () => {
 
     const skillsDir = path.join(tmpDir, '.claude', 'skills');
     const entries = (await fs.readdir(skillsDir)).filter((e) => e.startsWith('comet'));
-    expect(entries.length).toBeGreaterThan(0);
+    expect(entries.length).toBe(0);
+    expect(mockedCheckbox).toHaveBeenCalledTimes(2);
   });
 
-  it('shows checkbox when multiple targets detected', async () => {
+  it('applies one workflow selection to every current-project platform', async () => {
     const claudePlatform = PLATFORMS.find((p) => p.id === 'claude')!;
     await copyCometSkillsForPlatform(tmpDir, claudePlatform, true, 'skills', 'project');
-    // Create a second current platform (Codex) fixture and its detection directory.
-    const codexDir = path.join(tmpDir, '.agents', 'skills', 'comet');
-    await fs.mkdir(codexDir, { recursive: true });
-    await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
-    await fs.writeFile(path.join(codexDir, 'SKILL.md'), '# Comet', 'utf-8');
+    const codexPlatform = PLATFORMS.find((p) => p.id === 'codex')!;
+    await copyCometSkillsForPlatform(tmpDir, codexPlatform, true, 'skills', 'project');
 
-    mockedCheckbox.mockResolvedValue(['claude:project'] as never);
+    mockedCheckbox.mockResolvedValueOnce(['native'] as never);
 
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     try {
@@ -2389,16 +2550,125 @@ describe('uninstallCommand interactive selection', () => {
       log.mockRestore();
     }
 
-    expect(mockedCheckbox).toHaveBeenCalled();
+    expect(mockedCheckbox).toHaveBeenCalledTimes(1);
     expect(mockedSelect).not.toHaveBeenCalled();
 
-    // Claude should be uninstalled
-    const claudeSkillsDir = path.join(tmpDir, '.claude', 'skills');
-    const claudeEntries = (await fs.readdir(claudeSkillsDir)).filter((e) => e.startsWith('comet'));
-    expect(claudeEntries.length).toBe(0);
+    expect(
+      await fileExists(path.join(tmpDir, '.claude', 'skills', 'comet-native', 'SKILL.md')),
+    ).toBe(false);
+    expect(
+      await fileExists(path.join(tmpDir, '.claude', 'skills', 'comet-classic', 'SKILL.md')),
+    ).toBe(true);
+    expect(
+      await fileExists(path.join(tmpDir, '.agents', 'skills', 'comet-native', 'SKILL.md')),
+    ).toBe(false);
+    expect(
+      await fileExists(path.join(tmpDir, '.agents', 'skills', 'comet-classic', 'SKILL.md')),
+    ).toBe(true);
+  });
 
-    // Codex should remain
-    expect(await fileExists(path.join(codexDir, 'SKILL.md'))).toBe(true);
+  it('uses the init-style detected-platform batch selector before uninstalling', async () => {
+    const claudePlatform = PLATFORMS.find((p) => p.id === 'claude')!;
+    const cursorPlatform = PLATFORMS.find((p) => p.id === 'cursor')!;
+    await copyCometSkillsForPlatform(tmpDir, claudePlatform, true, 'skills', 'project');
+    await copyCometSkillsForPlatform(tmpDir, cursorPlatform, true, 'skills', 'project');
+
+    mockedPlatformSelectPrompt.mockResolvedValueOnce(['cursor']);
+    mockedCheckbox.mockResolvedValueOnce(['native'] as never);
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await uninstallCommand(tmpDir, { force: false });
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(mockedPlatformSelectPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Select platforms to uninstall:',
+        selectedLabel: 'Selected platforms:',
+        emptyLabel: 'None',
+        required: true,
+      }),
+    );
+    expect(mockedPlatformSelectPrompt.mock.calls[0]?.[0].choices).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'Claude Code (detected)',
+          value: 'claude',
+          checked: true,
+        }),
+        expect.objectContaining({ name: 'Cursor (detected)', value: 'cursor', checked: true }),
+      ]),
+    );
+    expect(
+      await fileExists(path.join(tmpDir, '.claude', 'skills', 'comet-native', 'SKILL.md')),
+    ).toBe(true);
+    expect(
+      await fileExists(path.join(tmpDir, '.cursor', 'skills', 'comet-native', 'SKILL.md')),
+    ).toBe(false);
+  });
+
+  it('localizes current-project uninstall output from the project config language', async () => {
+    const claudePlatform = PLATFORMS.find((p) => p.id === 'claude')!;
+    await copyCometSkillsForPlatform(tmpDir, claudePlatform, true, 'skills', 'project');
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      'config:\n  default_workflow: native\n  workflows: [native]\nnative:\n  artifact_root: .comet\n  language: zh-CN\n',
+      'utf8',
+    );
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let output: string;
+    try {
+      await uninstallCommand(tmpDir, { force: true });
+      output = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(output).toContain('Comet 卸载');
+    expect(output).toContain('Claude Code (项目):');
+    expect(output).toContain('摘要：');
+    expect(output).toContain('卸载完成。');
+  });
+
+  it('explains preserved working-directory content without marking uninstall incomplete', async () => {
+    const claudePlatform = PLATFORMS.find((p) => p.id === 'claude')!;
+    const retainedFile = path.join(tmpDir, 'docs', 'comet', 'user-notes.md');
+    await copyCometSkillsForPlatform(tmpDir, claudePlatform, true, 'skills', 'project');
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      [
+        'config:',
+        '  default_workflow: native',
+        '  workflows: [native]',
+        'native:',
+        '  artifact_root: docs/comet',
+        '  language: zh-CN',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    await fs.mkdir(path.dirname(retainedFile), { recursive: true });
+    await fs.writeFile(retainedFile, 'keep me', 'utf8');
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let output: string;
+    try {
+      await uninstallCommand(tmpDir, { force: true });
+      output = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(output).toContain('工作目录：已保留已有内容： docs\\comet\\user-notes.md');
+    expect(output).toContain('原因：这些内容不由 Comet 管理，因此未删除。');
+    expect(output).toContain('影响：不影响 Comet 卸载完成，保留内容未被修改。');
+    expect(output).toContain('卸载完成。');
+    expect(output).not.toContain('清理失败：');
   });
 
   it('skips prompt with --force and uninstalls all', async () => {
@@ -2504,7 +2774,7 @@ describe('uninstallCommand interactive selection', () => {
 
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     try {
-      await uninstallCommand(tmpDir, { force: false });
+      await uninstallCommand(tmpDir, { scope: 'global', force: false });
     } finally {
       log.mockRestore();
     }

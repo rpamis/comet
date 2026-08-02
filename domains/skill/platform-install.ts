@@ -1615,6 +1615,16 @@ function managedConfigFields(language: string = 'en'): ManagedConfigFields {
   ];
   const native: ManagedConfigField[] = [
     {
+      key: 'artifact_root',
+      def: 'docs',
+      comment: projectConfigComment('native.artifact_root', commentLanguage),
+    },
+    {
+      key: 'language',
+      def: 'en',
+      comment: projectConfigComment('native.language', commentLanguage),
+    },
+    {
       key: 'clarification_mode',
       def: 'sequential',
       comment: projectConfigComment('native.clarification_mode', commentLanguage),
@@ -1708,6 +1718,7 @@ async function mergeProjectConfig(
   let parsedRoot: Record<string, unknown> = {};
   const snapshot = await readWorkflowProjectConfigSnapshot(projectPath, {
     allowPartialProject: true,
+    allowMissingNativeFields: true,
   });
   const parsed = snapshot.document;
   if (parsed) {
@@ -1778,6 +1789,28 @@ async function mergeProjectConfig(
         include: [...DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.include],
         exclude: [...DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.exclude],
       };
+    } else if (
+      nativeBlock.snapshot &&
+      typeof nativeBlock.snapshot === 'object' &&
+      !Array.isArray(nativeBlock.snapshot)
+    ) {
+      const snapshot = { ...(nativeBlock.snapshot as Record<string, unknown>) };
+      if (snapshot.include === undefined) {
+        snapshot.include = [...DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.include];
+      }
+      if (snapshot.exclude === undefined) {
+        snapshot.exclude = [...DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.exclude];
+      }
+      if (snapshot.max_files === undefined) {
+        snapshot.max_files = DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.max_files;
+      }
+      if (snapshot.max_total_bytes === undefined) {
+        snapshot.max_total_bytes = DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.max_total_bytes;
+      }
+      if (snapshot.max_duration_ms === undefined) {
+        snapshot.max_duration_ms = DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.max_duration_ms;
+      }
+      nativeBlock.snapshot = snapshot;
     }
     root.native = nativeBlock;
   }

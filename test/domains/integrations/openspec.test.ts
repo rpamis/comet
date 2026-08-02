@@ -131,6 +131,46 @@ describe('openspec', () => {
       }
     });
 
+    it('installs Codex OpenSpec Skills from the CLI staging directory into the canonical agent root', async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-codex-tools-'));
+      try {
+        mockedExecFileSync.mockImplementation((command, args) => {
+          if (command === 'where' || command === 'which') return Buffer.from('/usr/bin/openspec');
+          if (command === 'openspec' && Array.isArray(args) && args[0] === '--version') {
+            return Buffer.from('1.5.0');
+          }
+          if (command === 'openspec' && Array.isArray(args) && args[0] === 'init') {
+            const target = String(args[1]);
+            const tools = args[args.indexOf('--tools') + 1];
+            if (tools === 'codex') {
+              const generated = path.join(target, '.codex', 'skills', 'openspec-new-change');
+              fs.mkdirSync(generated, { recursive: true });
+              fs.writeFileSync(path.join(generated, 'SKILL.md'), '# Codex OpenSpec\n');
+            } else {
+              fs.mkdirSync(path.join(target, 'openspec', 'changes', 'archive'), {
+                recursive: true,
+              });
+            }
+            return Buffer.from('ok');
+          }
+          return Buffer.from('ok');
+        });
+
+        const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
+        const result = await installOpenSpec(tmpDir, ['codex'], 'project', false);
+
+        expect(result).toBe('installed');
+        await expect(
+          fs.promises.readFile(
+            path.join(tmpDir, '.agents', 'skills', 'openspec-new-change', 'SKILL.md'),
+            'utf8',
+          ),
+        ).resolves.toBe('# Codex OpenSpec\n');
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
     it('separates project tool generation from the legacy OpenSpec artifact root', async () => {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-legacy-layout-'));
       try {

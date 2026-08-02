@@ -33,7 +33,7 @@ function isMissingProjectConfig(error: unknown): boolean {
 
 export async function readWorkflowProjectConfigDocument(
   projectRoot: string,
-  options: { allowPartialProject?: boolean } = {},
+  options: { allowPartialProject?: boolean; allowMissingNativeFields?: boolean } = {},
 ): Promise<ParsedWorkflowProjectConfigDocument | null> {
   return (await readWorkflowProjectConfigSnapshot(projectRoot, options)).document;
 }
@@ -71,7 +71,7 @@ export async function readWorkflowProjectConfigIdentity(
 
 export async function readWorkflowProjectConfigSnapshot(
   projectRoot: string,
-  options: { allowPartialProject?: boolean } = {},
+  options: { allowPartialProject?: boolean; allowMissingNativeFields?: boolean } = {},
 ): Promise<WorkflowProjectConfigSnapshot> {
   const bytes = await readWorkflowProjectConfigBytes(projectRoot);
   return {

@@ -112,6 +112,7 @@ export async function readClassicArtifactLayout(
   await assertClassicConfigPhysical(projectRoot);
   const document = await readWorkflowProjectConfigDocument(projectRoot, {
     allowPartialProject: true,
+    allowMissingNativeFields: true,
   });
   if (!document?.config) {
     throw new ClassicLayoutUnavailableError();

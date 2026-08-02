@@ -453,9 +453,14 @@ function normalizeWorkflowPendingRootMove(
   };
 }
 
-function normalizeWorkflowNativeProjectConfig(value: unknown): WorkflowNativeProjectConfig {
+function normalizeWorkflowNativeProjectConfig(
+  value: unknown,
+  options: { allowMissingArtifactRoot?: boolean } = {},
+): WorkflowNativeProjectConfig {
   const native = projectConfigRecord(value, 'native');
-  if (typeof native.artifact_root !== 'string') {
+  const artifactRoot =
+    native.artifact_root ?? (options.allowMissingArtifactRoot ? 'docs' : undefined);
+  if (typeof artifactRoot !== 'string') {
     throw new Error('native.artifact_root must be a string');
   }
   const clarificationMode = native.clarification_mode ?? 'sequential';
@@ -473,7 +478,7 @@ function normalizeWorkflowNativeProjectConfig(value: unknown): WorkflowNativePro
   }
   const pending = normalizeWorkflowPendingRootMove(native.pending_root_move);
   return {
-    artifact_root: normalizeWorkflowArtifactRoot(native.artifact_root),
+    artifact_root: normalizeWorkflowArtifactRoot(artifactRoot),
     language: projectConfigLanguage(native.language, 'en', 'native.language'),
     clarification_mode: clarificationMode,
     archive_confirmation: archiveConfirmation,
@@ -567,7 +572,7 @@ function normalizeWorkflowProjectConfig(
  */
 export function parseWorkflowProjectConfigDocument(
   source: string,
-  options: { allowPartialProject?: boolean } = {},
+  options: { allowPartialProject?: boolean; allowMissingNativeFields?: boolean } = {},
 ): ParsedWorkflowProjectConfigDocument {
   const document = parseDocument(source, { uniqueKeys: true });
   if (document.errors.length > 0) {
@@ -583,7 +588,11 @@ export function parseWorkflowProjectConfigDocument(
   const value = parsed as Record<string, unknown>;
   const ambientResume = normalizeAmbientResume(value.ambient_resume);
   const native =
-    value.native === undefined ? undefined : normalizeWorkflowNativeProjectConfig(value.native);
+    value.native === undefined
+      ? undefined
+      : normalizeWorkflowNativeProjectConfig(value.native, {
+          allowMissingArtifactRoot: options.allowMissingNativeFields,
+        });
   const classic =
     value.classic === undefined ? undefined : normalizeWorkflowClassicProjectConfig(value.classic);
   const config = normalizeWorkflowProjectConfig(value, native, classic, ambientResume, {

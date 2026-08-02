@@ -515,6 +515,7 @@ export async function initCommand(
     scope === 'project'
       ? await readWorkflowProjectConfigSnapshot(projectPath, {
           allowPartialProject: true,
+          allowMissingNativeFields: true,
         })
       : null;
   const suggestedWorkflowDecision =
@@ -1163,6 +1164,7 @@ export async function initCommand(
       // partial initialization cannot route later commands into Native.
       const existingDocument = await readWorkflowProjectConfigDocument(projectPath, {
         allowPartialProject: true,
+        allowMissingNativeFields: true,
       });
       const existing = existingDocument?.config ?? null;
       const selectedWorkflows =

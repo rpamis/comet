@@ -1821,6 +1821,55 @@ describe('update command helpers', () => {
     expect(mockedSpawn).not.toHaveBeenCalled();
   });
 
+  it('does not update global targets when the interactive scope selects current project', async () => {
+    const fakeHome = path.join(tmpDir, 'fake-home-interactive-current-project');
+    const projectSkill = path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md');
+    const globalSkill = path.join(fakeHome, '.claude', 'skills', 'comet', 'SKILL.md');
+    await fs.mkdir(path.dirname(projectSkill), { recursive: true });
+    await fs.mkdir(path.dirname(globalSkill), { recursive: true });
+    await fs.writeFile(projectSkill, '# Stale project Comet\n', 'utf8');
+    await fs.writeFile(globalSkill, '# Stale global Comet\n', 'utf8');
+    await upsertProjectInstallation(tmpDir, [{ platform: 'claude', language: 'en' }], 'init', {
+      homeDir: fakeHome,
+    });
+
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    mockedSelect.mockResolvedValueOnce('current-project' as never);
+    try {
+      await updateCommand(tmpDir, { skipNpm: true, installMode: 'copy' });
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    await expect(fs.readFile(projectSkill, 'utf8')).resolves.toContain(
+      'comet workflow resolve . --json',
+    );
+    await expect(fs.readFile(globalSkill, 'utf8')).resolves.toBe('# Stale global Comet\n');
+  });
+
+  it('does not fall back to global targets when bare update has no indexed projects', async () => {
+    const fakeHome = path.join(tmpDir, 'fake-home-no-indexed-projects');
+    const globalSkill = path.join(fakeHome, '.claude', 'skills', 'comet', 'SKILL.md');
+    await fs.mkdir(path.dirname(globalSkill), { recursive: true });
+    await fs.writeFile(globalSkill, '# Stale global Comet\n', 'utf8');
+
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let output: string;
+    try {
+      await updateCommand(tmpDir, { skipNpm: true, installMode: 'copy' });
+      output = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    await expect(fs.readFile(globalSkill, 'utf8')).resolves.toBe('# Stale global Comet\n');
+    expect(output!).toContain('No indexed Comet projects found');
+  });
+
   it('refreshes the project registry after a successful current-project update', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home-current-refresh');
     const projectA = path.join(tmpDir, 'project-current-refresh');
@@ -2204,14 +2253,9 @@ describe('update command helpers', () => {
     await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
     await fs.writeFile(
       path.join(tmpDir, '.comet', 'config.yaml'),
-      [
-        'default_workflow: native',
-        'native:',
-        '  artifact_root: docs',
-        '  language: en',
-        'custom_top: keep',
-        '',
-      ].join('\n'),
+      ['default_workflow: native', 'native:', '  custom_native: keep', 'custom_top: keep', ''].join(
+        '\n',
+      ),
       'utf8',
     );
     await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
@@ -2644,7 +2688,7 @@ describe('update command helpers', () => {
     ).rejects.toThrow('custom --platform targets are only supported with project scope');
   });
 
-  it('returns stable JSON summary when no installed targets are found', async () => {
+  it('reports no indexed projects in JSON when no project installation is found', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home-instructions');
     const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -2659,28 +2703,18 @@ describe('update command helpers', () => {
 
     const result = JSON.parse(json);
     expect(result).toMatchObject({
-      npm: {
-        scope: 'skipped',
-        status: 'skipped',
+      mode: 'all-projects',
+      status: 'complete',
+      registry: {
+        projectsFound: 0,
+        staleRemoved: 0,
       },
-      skills: {
-        totalCopied: 0,
-        targets: [],
-      },
-      rules: {
-        totalCopied: 0,
-      },
-      hooks: {
-        totalInstalled: 0,
-      },
-      projectInstructions: {
-        updated: 0,
-      },
-      codegraph: 'skipped',
+      projects: [],
+      reason: 'no indexed Comet projects found',
     });
   });
 
-  it('backfills a current project config through a global-only installation and asks before choosing an ambiguous Classic root', async () => {
+  it('does not backfill an unindexed project config through a global-only installation', async () => {
     const fakeHome = path.join(tmpDir, 'global-config-refresh-home');
     await fs.mkdir(path.join(fakeHome, '.claude', 'skills', 'comet'), { recursive: true });
     await fs.writeFile(
@@ -2689,17 +2723,18 @@ describe('update command helpers', () => {
       'utf8',
     );
     await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
-    await fs.writeFile(
-      path.join(tmpDir, '.comet', 'config.yaml'),
-      ['default_workflow: classic', 'language: zh-CN', 'context_compression: beta', ''].join('\n'),
-      'utf8',
-    );
+    const originalConfig = [
+      'default_workflow: classic',
+      'language: zh-CN',
+      'context_compression: beta',
+      '',
+    ].join('\n');
+    await fs.writeFile(path.join(tmpDir, '.comet', 'config.yaml'), originalConfig, 'utf8');
     await fs.mkdir(path.join(tmpDir, 'openspec'), { recursive: true });
     await fs.mkdir(path.join(tmpDir, 'docs', 'openspec'), { recursive: true });
 
     const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    mockedSelect.mockResolvedValueOnce('legacy' as never);
     try {
       await updateCommand(tmpDir, { installMode: 'copy', skipNpm: true });
     } finally {
@@ -2707,25 +2742,13 @@ describe('update command helpers', () => {
       homeSpy.mockRestore();
     }
 
-    expect(mockedSelect).toHaveBeenCalledWith(
-      expect.objectContaining({
-        message: 'Both Classic roots exist. Choose the root Comet should record for this project:',
-      }),
+    expect(mockedSelect).not.toHaveBeenCalled();
+    await expect(fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8')).resolves.toBe(
+      originalConfig,
     );
-    expect(
-      parse(await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8')),
-    ).toMatchObject({
-      schema: 'comet.project.v1',
-      default_workflow: 'classic',
-      workflows: ['classic'],
-      classic: {
-        artifact_layout: 'legacy',
-        language: 'zh-CN',
-        context_compression: 'beta',
-        review_mode: 'standard',
-        auto_transition: true,
-      },
-    });
+    await expect(
+      fs.readFile(path.join(fakeHome, '.claude', 'skills', 'comet', 'SKILL.md'), 'utf8'),
+    ).resolves.toBe('# Comet\n');
   });
 
   it('does not create or update root project instructions when only global targets are updated', async () => {

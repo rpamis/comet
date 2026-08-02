@@ -113,6 +113,7 @@ export async function resolveInitWorkflow(
     projectConfigSnapshot ??
     (await readWorkflowProjectConfigSnapshot(projectRoot, {
       allowPartialProject: true,
+      allowMissingNativeFields: true,
     }));
   const existing = snapshot.document?.config ?? null;
   if (existing) {
@@ -127,13 +128,11 @@ export async function resolveInitWorkflow(
     }
     const workflow = requestedWorkflow ?? existing.default_workflow;
     const explicit = requestedWorkflow !== undefined || requestedArtifactRoot !== undefined;
-    const configuredWorkflows = existing.workflows ?? [existing.default_workflow];
-    const classicAlreadyEnabled = configuredWorkflows.includes('classic');
     const rawClassic = snapshot.document?.value.classic;
     const hasExplicitClassicLayout = hasExplicitClassicArtifactLayout(rawClassic);
     const inferredClassicLayout: ClassicArtifactLayout = hasExplicitClassicLayout
       ? (existing.classic?.artifact_layout ?? 'docs')
-      : classicAlreadyEnabled && (await fileExists(path.join(projectRoot, 'openspec')))
+      : (await fileExists(path.join(projectRoot, 'openspec')))
         ? 'legacy'
         : 'docs';
     return {

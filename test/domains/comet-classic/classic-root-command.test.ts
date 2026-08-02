@@ -47,6 +47,32 @@ describe('Classic root show', () => {
     });
   });
 
+  it('reads the Classic root when Native artifact defaults are missing', async () => {
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'workflows: [native, classic]',
+        'native:',
+        '  language: en',
+        'classic:',
+        '  artifact_layout: legacy',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    await fs.mkdir(path.join(projectRoot, 'openspec'), { recursive: true });
+
+    const result = await runClassicCli(['root', 'show']);
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout ?? '{}')).toMatchObject({
+      artifactLayout: 'legacy',
+      openSpecRoot: 'openspec',
+    });
+  });
+
   it('fails when the configured root is missing', async () => {
     const result = await runClassicCli(['root', 'show']);
 

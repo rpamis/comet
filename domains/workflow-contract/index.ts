@@ -3,6 +3,7 @@ export {
   atomicWriteContainedBytes,
   atomicWriteContainedJson,
   atomicWriteContainedText,
+  publishFileExclusively,
   removeContainedFile,
 } from './contained-atomic-write.js';
 export type {

@@ -2,6 +2,7 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 import { execFileSync } from 'child_process';
 import type { BigIntStats } from 'fs';
+import { homedir } from 'os';
 import {
   hasComparableFileObject,
   sameFileObject,
@@ -47,6 +48,8 @@ import { SKILLS_AGENT_MAP } from '../integrations/superpowers.js';
 interface RemovalResult {
   removed: number;
   failed: number;
+  preserved?: string[];
+  reason?: string;
 }
 
 const OPENCODE_STYLE_PLATFORM_IDS = new Set(['opencode', 'mimocode']);
@@ -579,6 +582,44 @@ async function removeManagedWorkingTree(
   return { removed, failed: 0 };
 }
 
+async function removeManagedProjectConfigAfterFailedCleanup(
+  projectRoot: string,
+  expectedIdentity: WorkflowProjectConfigIdentity,
+): Promise<RemovalResult> {
+  if (!expectedIdentity.exists) return { removed: 0, failed: 0 };
+  try {
+    const currentIdentity = await readWorkflowProjectConfigIdentity(projectRoot);
+    if (!workflowProjectConfigIdentityEquals(expectedIdentity, currentIdentity)) {
+      return { removed: 0, failed: 1 };
+    }
+
+    const configPath = path.join(projectRoot, '.comet', 'config.yaml');
+    if (!(await removeFile(configPath))) return { removed: 0, failed: 1 };
+
+    try {
+      await rmdir(path.dirname(configPath));
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== 'ENOENT' && code !== 'ENOTEMPTY' && code !== 'EEXIST') throw error;
+    }
+    return { removed: 1, failed: 0 };
+  } catch (error) {
+    return {
+      removed: 0,
+      failed: 1,
+      reason: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function retainedWorkingDirectoryContent(error: unknown, cometDir: string): string | null {
+  const prefix = 'Refusing to remove unknown working-directory content: ';
+  const message = (error as Error).message;
+  if (!message.startsWith(prefix)) return null;
+  const contentPath = message.slice(prefix.length);
+  return isInsideDirectory(cometDir, contentPath) ? null : contentPath;
+}
+
 async function removeManagedSkillsFromDirs(
   baseDir: string,
   skillsDirs: string[],
@@ -826,13 +867,72 @@ async function removeOpenSpecSkillsForPlatform(
   return { removed, failed };
 }
 
-function removeSuperpowersSkillsForPlatform(
+async function readLockedSuperpowersSkillNames(projectPath: string): Promise<string[]> {
+  const lock = await readJsonObjectFile(path.join(projectPath, 'skills-lock.json'));
+  if (lock.status !== 'present') return [];
+  const skills = lock.value.skills;
+  if (!skills || typeof skills !== 'object' || Array.isArray(skills)) return [];
+  return Object.entries(skills).flatMap(([name, entry]) =>
+    entry &&
+    typeof entry === 'object' &&
+    !Array.isArray(entry) &&
+    (entry as Record<string, unknown>).source === 'obra/superpowers'
+      ? [name]
+      : [],
+  );
+}
+
+async function removeSuperpowersSkillDirs(
+  baseDir: string,
+  platforms: readonly Platform[],
+  scope: InstallScope,
+  names: readonly string[],
+): Promise<RemovalResult> {
+  let removed = 0;
+  let failed = 0;
+  const skillsDirs = [
+    ...new Set(platforms.flatMap((platform) => getPlatformSkillsDirs(platform, scope))),
+  ];
+  for (const skillsDir of skillsDirs) {
+    const platformRoot = path.join(baseDir, skillsDir);
+    const skillsRoot = path.join(platformRoot, 'skills');
+    try {
+      if (
+        (await lstat(platformRoot)).isSymbolicLink() ||
+        (await lstat(skillsRoot)).isSymbolicLink()
+      ) {
+        failed++;
+        continue;
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') failed++;
+      continue;
+    }
+    for (const name of names) {
+      try {
+        if (await removeDir(path.join(skillsRoot, name))) removed++;
+      } catch {
+        failed++;
+      }
+    }
+  }
+  return { removed, failed };
+}
+
+async function removeSuperpowersSkillsForPlatforms(
   projectPath: string,
-  platform: Platform,
+  platforms: readonly Platform[],
   scope: InstallScope = 'project',
-): RemovalResult {
-  const agent = SKILLS_AGENT_MAP[platform.id];
-  if (!agent) return { removed: 0, failed: 0 };
+  options: { removeSharedStorage?: boolean } = {},
+): Promise<RemovalResult> {
+  const agents = [
+    ...new Set(
+      platforms
+        .map((platform) => SKILLS_AGENT_MAP[platform.id])
+        .filter((agent): agent is string => Boolean(agent)),
+    ),
+  ];
+  if (agents.length === 0) return { removed: 0, failed: 0 };
   const command = process.platform === 'win32' ? 'npx.cmd' : 'npx';
   const scopeArgs = scope === 'global' ? ['--global'] : [];
   try {
@@ -843,34 +943,54 @@ function removeSuperpowersSkillsForPlatform(
       shell: process.platform === 'win32',
     });
     const listed = JSON.parse(output) as Array<{
-      agents?: unknown;
       name?: unknown;
       source?: unknown;
     }>;
-    const names = listed.flatMap((skill) =>
-      skill.source === 'obra/superpowers' &&
-      typeof skill.name === 'string' &&
-      Array.isArray(skill.agents) &&
-      skill.agents.includes(agent)
-        ? [skill.name]
-        : [],
-    );
-    let removed = 0;
+    const names = new Set([
+      ...listed.flatMap((skill) =>
+        skill.source === 'obra/superpowers' && typeof skill.name === 'string' ? [skill.name] : [],
+      ),
+      ...(await readLockedSuperpowersSkillNames(projectPath)),
+    ]);
     let failed = 0;
     for (const name of names) {
       try {
-        execFileSync(command, ['skills', 'remove', name, '--agent', agent, '--yes', ...scopeArgs], {
-          cwd: projectPath,
-          stdio: 'ignore',
-          timeout: 60_000,
-          shell: process.platform === 'win32',
-        });
-        removed++;
+        execFileSync(
+          command,
+          ['skills', 'remove', name, '--agent', ...agents, '--yes', ...scopeArgs],
+          {
+            cwd: projectPath,
+            stdio: 'ignore',
+            timeout: 60_000,
+            shell: process.platform === 'win32',
+          },
+        );
       } catch {
         failed++;
       }
     }
-    return { removed, failed };
+    const baseDir = scope === 'global' ? homedir() : projectPath;
+    if (options.removeSharedStorage) {
+      const fallbackResult = await removeSuperpowersSkillDirs(baseDir, platforms, scope, [
+        ...names,
+      ]);
+      failed += fallbackResult.failed;
+    }
+
+    const remaining = (
+      await Promise.all(
+        [...names].map(async (name) => {
+          for (const platform of platforms) {
+            for (const skillsDir of getPlatformSkillsDirs(platform, scope)) {
+              if (await fileExists(path.join(baseDir, skillsDir, 'skills', name))) return true;
+            }
+          }
+          return false;
+        }),
+      )
+    ).filter(Boolean).length;
+    if (remaining > 0) failed++;
+    return { removed: names.size - remaining, failed };
   } catch {
     return { removed: 0, failed: 1 };
   }
@@ -1181,7 +1301,8 @@ async function removeWorkingDirs(
   const docsOpenSpecRoot = path.join(docsDir, 'openspec');
 
   let plans: ManagedWorkingTreePlan[];
-  let configIdentity: WorkflowProjectConfigIdentity;
+  let configIdentity: WorkflowProjectConfigIdentity | undefined;
+  let removeProjectConfigOnFailure = false;
   try {
     const snapshot = await readWorkflowProjectConfigSnapshot(projectRoot, {
       allowPartialProject: true,
@@ -1203,6 +1324,7 @@ async function removeWorkingDirs(
     const fullWorkflowRemoval =
       workflowsToRemove === undefined ||
       (configuredWorkflows.length > 0 && workflowsToRemove.length === configuredWorkflows.length);
+    removeProjectConfigOnFailure = fullWorkflowRemoval;
     const classicOnlyRemoval =
       workflowsToRemove?.includes('classic') === true && !workflowsToRemove.includes('native');
     const removingClassicWorkingDirs = classicEnabled || fullWorkflowRemoval;
@@ -1326,14 +1448,34 @@ async function removeWorkingDirs(
     for (const plan of plans) {
       await validateManagedWorkingTree(projectRoot, plan);
     }
-  } catch {
-    return { removed: 0, failed: 1 };
+  } catch (error) {
+    const preservedContent = retainedWorkingDirectoryContent(error, cometDir);
+    const configResult =
+      removeProjectConfigOnFailure && configIdentity && preservedContent
+        ? await removeManagedProjectConfigAfterFailedCleanup(projectRoot, configIdentity)
+        : { removed: 0, failed: 0 };
+    if (preservedContent) {
+      return {
+        removed: configResult.removed,
+        failed: configResult.failed,
+        preserved: [preservedContent],
+      };
+    }
+    return {
+      removed: configResult.removed,
+      failed: 1 + configResult.failed,
+      reason: error instanceof Error ? error.message : String(error),
+    };
   }
 
   try {
     return await removeManagedWorkingTree(projectRoot, plans);
-  } catch {
-    return { removed: 0, failed: 1 };
+  } catch (error) {
+    return {
+      removed: 0,
+      failed: 1,
+      reason: error instanceof Error ? error.message : String(error),
+    };
   }
 }
 
@@ -1342,7 +1484,7 @@ export {
   removeCometRulesForPlatform,
   removeCometHooksForPlatform,
   removeOpenSpecSkillsForPlatform,
-  removeSuperpowersSkillsForPlatform,
+  removeSuperpowersSkillsForPlatforms,
   removeWorkingDirs,
   removeCometProjectInstructions,
 };

@@ -243,17 +243,21 @@ async function mergeGeneratedToolDirectories(
   const skillDirs = new Set(
     toolIds.flatMap((toolId) => {
       const platform = PLATFORMS.find((candidate) => candidate.openspecToolId === toolId);
-      return platform ? [platform.skillsDir] : [];
+      return platform ? [platform.openspecSkillsDir ?? platform.skillsDir] : [];
     }),
   );
   for (const skillsDir of skillDirs) {
     const source = path.join(stagingProject, skillsDir);
     if (!fs.existsSync(source)) continue;
+    const platform = PLATFORMS.find(
+      (candidate) => (candidate.openspecSkillsDir ?? candidate.skillsDir) === skillsDir,
+    );
+    if (!platform) continue;
     await copyGeneratedToolDirectory(
       stagingProject,
       source,
       projectPath,
-      path.join(projectPath, skillsDir),
+      path.join(projectPath, platform.skillsDir),
       projectMutationGuard,
     );
   }

@@ -3,7 +3,10 @@ import { promises as fs } from 'fs';
 import type { BigIntStats } from 'fs';
 import path from 'path';
 
-import { atomicWriteContainedJson } from '../workflow-contract/contained-atomic-write.js';
+import {
+  atomicWriteContainedJson,
+  publishFileExclusively,
+} from '../workflow-contract/contained-atomic-write.js';
 import { hasExplicitClassicArtifactLayout } from '../workflow-contract/project-config.js';
 import {
   readWorkflowProjectConfigIdentity,
@@ -499,7 +502,7 @@ async function restoreQuarantinedOwnershipPath(
   quarantine: string,
 ): Promise<boolean> {
   try {
-    await fs.link(quarantine, ownershipJournalFile(projectRoot));
+    await publishFileExclusively(quarantine, ownershipJournalFile(projectRoot));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false;
     throw error;
@@ -568,8 +571,10 @@ async function updateOwnershipJournal(
     });
     const temporaryStat = await fs.lstat(temporary, { bigint: true });
     quarantine = await quarantineOwnershipJournal(projectRoot, expected, operation, options);
+    let publishedWithHardLink = false;
     try {
-      await fs.link(temporary, ownershipJournalFile(projectRoot));
+      const published = await publishFileExclusively(temporary, ownershipJournalFile(projectRoot));
+      publishedWithHardLink = published.linked;
     } catch (error) {
       throw new Error('Classic init ownership publish failed; a successor journal was preserved', {
         cause: error,
@@ -583,10 +588,11 @@ async function updateOwnershipJournal(
       persisted.stage !== updated.stage ||
       !persistedClaim ||
       persistedClaim.contentHash !== hashBytes(Buffer.from(serialized)) ||
-      !sameObjectIdentity(
-        objectIdentity(temporaryStat),
-        objectIdentity(persistedClaim.fileIdentity),
-      )
+      (publishedWithHardLink &&
+        !sameObjectIdentity(
+          objectIdentity(temporaryStat),
+          objectIdentity(persistedClaim.fileIdentity),
+        ))
     ) {
       throw new Error('Classic init ownership changed while updating');
     }
@@ -1006,6 +1012,7 @@ export async function assertClassicLayoutInitializationSafe(
   const root = path.resolve(projectRoot);
   const configSnapshot = await readWorkflowProjectConfigSnapshot(root, {
     allowPartialProject: true,
+    allowMissingNativeFields: true,
   });
   const configIdentity = await readWorkflowProjectConfigIdentity(root);
   if (!workflowProjectConfigIdentityEquals(configIdentity, configSnapshot.identity)) {

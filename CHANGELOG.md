@@ -2,6 +2,17 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-beta.14] - 2026-08-02
+
+### Fixed
+
+- **Incomplete project configuration**: `comet update` and Classic root commands now fill missing Native defaults instead of rejecting otherwise usable project configurations.
+- **Indexed update safety**: `comet update` now keeps a selected current-project refresh within that project and reports when no indexed project is available instead of falling back to global installations. Use `--scope global` only when you explicitly intend to refresh global assets.
+- **Classic layout initialization**: Adding Classic to a Native project now preserves an existing root-level `openspec/` layout when no explicit Classic layout is configured, and initialization works on filesystems such as exFAT that do not support hard links.
+- **Codex OpenSpec Skills**: Project initialization now installs OpenSpec Skills generated for Codex into its canonical `.agents/skills/` directory.
+- **Uninstall scope and selection**: Current-project and all-indexed-project uninstall now use the same detected-platform batch selector as setup, retain unselected platforms, select Native/Classic once for the operation, remove selected Superpowers companion Skills even when the Skills CLI reports platform display names, loses source metadata, or stores them in a shared directory, and remove the managed project configuration when user content keeps a working directory in place.
+- **Safe uninstall completion**: When existing working-directory content is preserved, uninstall now completes normally, explains why it was kept and that it is unaffected, clears the project index, and reports actionable reasons for real cleanup failures in the configured Chinese or English language.
+
 ## What's Changed [0.4.0-beta.13] - 2026-08-02
 
 Beta 13 makes everyday workflow operations faster and makes uninstalling and reading Dashboard status easier.

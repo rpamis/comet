@@ -17,6 +17,8 @@ export interface Platform {
   configDir?: string;
   detectionPaths?: string[];
   openspecToolId: string;
+  /** OpenSpec's generated tool root when it differs from Comet's canonical Skill root. */
+  openspecSkillsDir?: string;
   /** Platform's rules/instructions subdirectory relative to rulesBaseDir (defaults to baseDir). Omit if unsupported. */
   rulesDir?: string;
   /** Override base directory for rules. When set, rules go to rulesBaseDir/rulesDir instead of skillsDir/rulesDir. Useful when rules live outside the skills config dir (e.g., Cline's .clinerules/ is at project root, not inside .cline/). */
@@ -94,6 +96,7 @@ export const PLATFORMS: Platform[] = [
     configDir: '.codex',
     detectionPaths: ['.codex'],
     openspecToolId: 'codex',
+    openspecSkillsDir: '.codex',
     rulesBaseDir: '.codex',
     rulesDir: 'rules',
     rulesFormat: 'md',

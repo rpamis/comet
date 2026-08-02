@@ -91,7 +91,52 @@ export type TranslationKey =
   | 'installModeCopy'
   | 'installModeSymlink'
   | 'symlinkCreated'
-  | 'symlinkFailed';
+  | 'symlinkFailed'
+  | 'updateScope'
+  | 'uninstallScope'
+  | 'allIndexedProjects'
+  | 'currentProjectOnly'
+  | 'uninstallTitle'
+  | 'selectPlatformsToUninstall'
+  | 'uninstallSelectedPlatforms'
+  | 'uninstallNoneSelected'
+  | 'uninstallPlatformsRequired'
+  | 'noInstalledPlatformsSelected'
+  | 'selectWorkflowsToUninstall'
+  | 'nativeWorkflow'
+  | 'classicWorkflow'
+  | 'removeClassicCompanionSkills'
+  | 'openSpecSkills'
+  | 'superpowersSkills'
+  | 'foundCometInstallations'
+  | 'foundIndexedProjectCleanup'
+  | 'globalScope'
+  | 'projectScope'
+  | 'pathLabel'
+  | 'openSpecSkillsRemoved'
+  | 'superpowersSkillsRemoved'
+  | 'targetCleanupFailed'
+  | 'projectInstructionsRemoved'
+  | 'workingDirectoriesRemoved'
+  | 'workingDirectoriesPreserved'
+  | 'workingDirectoriesPreservedReason'
+  | 'workingDirectoriesPreservedImpact'
+  | 'workingDirectoriesCleanupFailed'
+  | 'workingDirectoriesFailureReason'
+  | 'projectConfigCleanupFailed'
+  | 'uninstallAllProjectsPrompt'
+  | 'uninstallAllProjectsYes'
+  | 'uninstallAllProjectsNo'
+  | 'uninstalledIndexedProjects'
+  | 'noCometInstallationsFound'
+  | 'summaryTargets'
+  | 'summarySkillsRemoved'
+  | 'summaryRules'
+  | 'summaryHooks'
+  | 'targetAssetsRemoved'
+  | 'cleanupFailures'
+  | 'uninstallIncomplete'
+  | 'uninstallComplete';
 
 const TRANSLATIONS: Record<Language, Record<TranslationKey, string>> = {
   en: {
@@ -189,6 +234,55 @@ const TRANSLATIONS: Record<Language, Record<TranslationKey, string>> = {
     installModeSymlink: 'Symlink (shared central store, saves space)',
     symlinkCreated: 'symlink created',
     symlinkFailed: 'symlink creation failed',
+    updateScope: 'Update scope:',
+    uninstallScope: 'Uninstall scope:',
+    allIndexedProjects: 'All indexed projects',
+    currentProjectOnly: 'Current project only',
+    uninstallTitle: 'Comet Uninstall',
+    selectPlatformsToUninstall: 'Select platforms to uninstall:',
+    uninstallSelectedPlatforms: 'Selected platforms:',
+    uninstallNoneSelected: 'None',
+    uninstallPlatformsRequired: 'Select at least one platform.',
+    noInstalledPlatformsSelected: 'No installed platforms selected. Cancelled.',
+    selectWorkflowsToUninstall: 'Select workflows to uninstall:',
+    nativeWorkflow: 'Native workflow',
+    classicWorkflow: 'Classic workflow',
+    removeClassicCompanionSkills: 'Also remove Classic companion Skills?',
+    openSpecSkills: 'OpenSpec Skills',
+    superpowersSkills: 'Superpowers Skills',
+    foundCometInstallations: 'Found Comet installations on the following targets:',
+    foundIndexedProjectCleanup: 'Found an indexed project with follow-on cleanup still pending.',
+    globalScope: 'global',
+    projectScope: 'project',
+    pathLabel: 'Path:',
+    openSpecSkillsRemoved: 'OpenSpec Skills removed',
+    superpowersSkillsRemoved:
+      'Superpowers companion Skills ({platforms}; {scope}): {count} removed',
+    targetCleanupFailed: 'cleanup failed; uninstall incomplete and follow-on cleanup skipped',
+    projectInstructionsRemoved: 'Project instructions removed: {count}',
+    workingDirectoriesRemoved: 'Working directories: {count} removed',
+    workingDirectoriesPreserved: 'Working directories: existing content preserved:',
+    workingDirectoriesPreservedReason:
+      'Reason: Comet does not manage the listed content, so it was left unchanged.',
+    workingDirectoriesPreservedImpact:
+      'Impact: Comet was uninstalled successfully; the preserved content remains unchanged.',
+    workingDirectoriesCleanupFailed: 'Working directories: cleanup failed ({count})',
+    workingDirectoriesFailureReason: 'Reason:',
+    projectConfigCleanupFailed:
+      'Project config: cleanup failed; selected workflow remains configured',
+    uninstallAllProjectsPrompt: 'Proceed with uninstalling all indexed projects?',
+    uninstallAllProjectsYes: 'Yes, uninstall all indexed projects',
+    uninstallAllProjectsNo: 'No, cancel',
+    uninstalledIndexedProjects: 'Uninstalled indexed projects:',
+    noCometInstallationsFound: 'No Comet installations found. Nothing to uninstall.',
+    summaryTargets: 'Targets:',
+    summarySkillsRemoved: 'Skills removed:',
+    summaryRules: 'Rules removed:',
+    summaryHooks: 'Hooks removed:',
+    targetAssetsRemoved: '{skills} skills, {rules} rules, {hooks} hooks removed',
+    cleanupFailures: 'Cleanup failures:',
+    uninstallIncomplete: 'Uninstall incomplete. Preserved remaining project state.',
+    uninstallComplete: 'Uninstall complete.',
   },
   zh: {
     settingUp: '正在设置 Comet：',
@@ -283,6 +377,51 @@ const TRANSLATIONS: Record<Language, Record<TranslationKey, string>> = {
     installModeSymlink: 'Symlink（共享中央存储，节省空间）',
     symlinkCreated: 'Symlink 已创建',
     symlinkFailed: 'Symlink 创建失败',
+    updateScope: '更新范围：',
+    uninstallScope: '卸载范围：',
+    allIndexedProjects: '所有已索引项目',
+    currentProjectOnly: '仅当前项目',
+    uninstallTitle: 'Comet 卸载',
+    selectPlatformsToUninstall: '选择要卸载的平台：',
+    uninstallSelectedPlatforms: '已选择的平台：',
+    uninstallNoneSelected: '无',
+    uninstallPlatformsRequired: '请至少选择一个平台。',
+    noInstalledPlatformsSelected: '未选择已安装的平台，已取消。',
+    selectWorkflowsToUninstall: '选择要卸载的工作流：',
+    nativeWorkflow: 'Native 工作流',
+    classicWorkflow: 'Classic 工作流',
+    removeClassicCompanionSkills: '同时移除 Classic 配套 Skills？',
+    openSpecSkills: 'OpenSpec Skills',
+    superpowersSkills: 'Superpowers Skills',
+    foundCometInstallations: '检测到以下平台已安装 Comet：',
+    foundIndexedProjectCleanup: '检测到已索引项目仍有后续清理待处理。',
+    globalScope: '全局',
+    projectScope: '项目',
+    pathLabel: '路径：',
+    openSpecSkillsRemoved: '个 OpenSpec Skills 已移除',
+    superpowersSkillsRemoved: '已移除 Superpowers 配套 Skills（{platforms}；{scope}）：{count} 个',
+    targetCleanupFailed: '清理失败；卸载未完成，已跳过后续清理',
+    projectInstructionsRemoved: '已移除项目说明：{count}',
+    workingDirectoriesRemoved: '工作目录：已移除 {count} 个',
+    workingDirectoriesPreserved: '工作目录：已保留已有内容：',
+    workingDirectoriesPreservedReason: '原因：这些内容不由 Comet 管理，因此未删除。',
+    workingDirectoriesPreservedImpact: '影响：不影响 Comet 卸载完成，保留内容未被修改。',
+    workingDirectoriesCleanupFailed: '工作目录：清理失败（{count}）',
+    workingDirectoriesFailureReason: '原因：',
+    projectConfigCleanupFailed: '项目配置清理失败；所选工作流仍保留在配置中',
+    uninstallAllProjectsPrompt: '继续卸载所有已索引项目？',
+    uninstallAllProjectsYes: '是，卸载所有已索引项目',
+    uninstallAllProjectsNo: '否，取消',
+    uninstalledIndexedProjects: '已卸载的已索引项目：',
+    noCometInstallationsFound: '未找到 Comet 安装项，无需卸载。',
+    summaryTargets: '目标：',
+    summarySkillsRemoved: '已移除 Skills：',
+    summaryRules: '已移除 Rules：',
+    summaryHooks: '已移除 Hooks：',
+    targetAssetsRemoved: '已移除 {skills} 个 Skills、{rules} 个 Rules、{hooks} 个 Hooks',
+    cleanupFailures: '清理失败：',
+    uninstallIncomplete: '卸载未完成，已保留剩余项目状态。',
+    uninstallComplete: '卸载完成。',
   },
 };
 

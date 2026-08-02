@@ -1244,7 +1244,10 @@ async function updateSingleProject(
     : options.scope !== 'global';
   const projectPath = includesProjectScope ? await discoverNativeProject(startPath) : startPath;
   const projectConfigSnapshot = includesProjectScope
-    ? await readWorkflowProjectConfigSnapshot(projectPath, { allowPartialProject: true })
+    ? await readWorkflowProjectConfigSnapshot(projectPath, {
+        allowPartialProject: true,
+        allowMissingNativeFields: true,
+      })
     : null;
   const projectConfigDocument = projectConfigSnapshot?.document ?? null;
   const projectConfig = projectConfigDocument?.config ?? null;
@@ -2332,6 +2335,42 @@ export async function updateCommand(
   }
   log('');
 
+  const usesImplicitIndexedProjectUpdate =
+    options.scope === undefined &&
+    options.currentProject !== true &&
+    options.platform === undefined &&
+    options.targetScopes === undefined;
+  if (registryProjects.length === 0 && usesImplicitIndexedProjectUpdate) {
+    const currentProjectPath = await discoverNativeProject(projectPath);
+    const currentProjectTargets = await detectInstalledCometTargets(currentProjectPath, {
+      scopes: ['project'],
+      respectDetectionPaths: true,
+    });
+    if (currentProjectTargets.length > 0) {
+      options = { ...options, targetScopes: ['project'] };
+    } else {
+      if (options.json) {
+        console.log(
+          JSON.stringify(
+            {
+              mode: 'all-projects',
+              status: 'complete',
+              registry: { projectsFound: 0, staleRemoved: 0 },
+              projects: [],
+              reason: 'no indexed Comet projects found',
+            },
+            null,
+            2,
+          ),
+        );
+      } else {
+        log('  No indexed Comet projects found. Nothing to update.');
+        log('  Run `comet init` in a project first, or use `comet update --scope global`.\n');
+      }
+      return { status: 'complete' };
+    }
+  }
+
   const scopeMode = await resolveProjectScopeMode('update', options, registryProjects.length);
   options = resolveSelfUpdateOptions(
     options,
@@ -2339,6 +2378,14 @@ export async function updateCommand(
   );
   if (scopeMode === 'all-projects') {
     return updateAllIndexedProjects(registryProjects, options, log);
+  }
+
+  if (
+    scopeMode === 'current-project' &&
+    options.scope === undefined &&
+    options.targetScopes === undefined
+  ) {
+    options = { ...options, targetScopes: ['project'] };
   }
 
   const result = await updateSingleProject(projectPath, options, log);

@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { promises as fs } from 'fs';
+import { constants as fsConstants, promises as fs } from 'fs';
 import path from 'path';
 
 import {
@@ -23,6 +23,22 @@ export interface ContainedFileRemoveOptions {
 interface DirectoryIdentity extends FileObjectIdentity {
   path: string;
   realPath: string;
+}
+
+export async function publishFileExclusively(
+  source: string,
+  destination: string,
+): Promise<{ linked: boolean }> {
+  try {
+    await fs.link(source, destination);
+    return { linked: true };
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== 'ENOTSUP' && code !== 'EOPNOTSUPP') throw error;
+  }
+
+  await fs.copyFile(source, destination, fsConstants.COPYFILE_EXCL);
+  return { linked: false };
 }
 
 function isInside(parent: string, target: string): boolean {
@@ -208,7 +224,7 @@ async function atomicWriteContained(
       throw new Error('Contained atomic write temporary file changed before commit');
     }
     if (options.exclusive) {
-      await fs.link(temporary, file);
+      await publishFileExclusively(temporary, file);
       await fs.unlink(temporary);
     } else {
       await fs.rename(temporary, file);

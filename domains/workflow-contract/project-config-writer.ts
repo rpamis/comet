@@ -194,6 +194,7 @@ export async function writeWorkflowProjectConfig(
 ): Promise<void> {
   const snapshot = await readWorkflowProjectConfigSnapshot(projectRoot, {
     allowPartialProject: true,
+    allowMissingNativeFields: true,
   });
   const document = mergeWorkflowProjectConfigDocument(snapshot.document?.value ?? {}, config);
   const language =

@@ -1,6 +1,7 @@
 import { select } from '@inquirer/prompts';
 
 import type { InstallScope } from '../../platform/install/types.js';
+import { t, type Language } from './i18n.js';
 
 export type ProjectScopeMode = 'current-project' | 'all-projects';
 export type ProjectScopeCommand = 'update' | 'uninstall';
@@ -22,14 +23,11 @@ export function assertProjectScopeOptions(options: ProjectScopeOptions): void {
   }
 }
 
-function commandLabel(command: ProjectScopeCommand): string {
-  return command === 'update' ? 'Update' : 'Uninstall';
-}
-
 export async function resolveProjectScopeMode(
   command: ProjectScopeCommand,
   options: ProjectScopeOptions,
   indexedProjectCount: number,
+  lang: Language = 'en',
 ): Promise<ProjectScopeMode> {
   assertProjectScopeOptions(options);
 
@@ -41,10 +39,10 @@ export async function resolveProjectScopeMode(
   if (indexedProjectCount === 0) return 'current-project';
 
   return select<ProjectScopeMode>({
-    message: `${commandLabel(command)} scope:`,
+    message: t(lang, command === 'update' ? 'updateScope' : 'uninstallScope'),
     choices: [
-      { name: 'All indexed projects', value: 'all-projects' },
-      { name: 'Current project only', value: 'current-project' },
+      { name: t(lang, 'allIndexedProjects'), value: 'all-projects' },
+      { name: t(lang, 'currentProjectOnly'), value: 'current-project' },
     ],
   });
 }
