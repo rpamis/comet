@@ -36,6 +36,7 @@ import {
   copyCometRulesForPlatform,
   installCometHooksForPlatform,
 } from '../../domains/skill/platform-install.js';
+import { installCometProjectInstructions } from '../../domains/skill/project-instructions.js';
 import { fileExists, removeFile, removeDir, isDirEmpty } from '../../platform/fs/file-system.js';
 import {
   getProjectRegistryPath,
@@ -2163,6 +2164,112 @@ describe('uninstallCommand interactive selection', () => {
     const config = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8');
     expect(config).toContain('default_workflow: classic');
     expect(config).not.toContain('native:');
+  });
+
+  it('preserves project-wide state used by an unselected target', async () => {
+    const claudePlatform = PLATFORMS.find((platform) => platform.id === 'claude')!;
+    const codexPlatform = PLATFORMS.find((platform) => platform.id === 'codex')!;
+    await copyCometSkillsForPlatform(
+      tmpDir,
+      claudePlatform,
+      true,
+      'skills',
+      'project',
+      'copy',
+      'both',
+    );
+    await copyCometSkillsForPlatform(
+      tmpDir,
+      codexPlatform,
+      true,
+      'skills',
+      'project',
+      'copy',
+      'both',
+    );
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'workflows:',
+        '  - native',
+        '  - classic',
+        'ambient_resume: true',
+        'native:',
+        '  artifact_root: docs',
+        '  language: en',
+        'classic:',
+        '  artifact_layout: docs',
+        '  language: en',
+        '  context_compression: off',
+        '  review_mode: standard',
+        '  auto_transition: true',
+      ].join('\n'),
+      'utf8',
+    );
+    await installCometProjectInstructions(tmpDir, 'en');
+    mockedCheckbox
+      .mockResolvedValueOnce(['claude:project'] as never)
+      .mockResolvedValueOnce(['native', 'classic'] as never)
+      .mockResolvedValueOnce([] as never);
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await uninstallCommand(tmpDir);
+    } finally {
+      log.mockRestore();
+    }
+
+    await expect(fs.access(path.join(tmpDir, '.comet', 'config.yaml'))).resolves.toBeUndefined();
+    await expect(fs.access(path.join(tmpDir, 'AGENTS.md'))).resolves.toBeUndefined();
+    await expect(
+      fs.access(path.join(tmpDir, '.agents', 'skills', 'comet-native', 'SKILL.md')),
+    ).resolves.toBeUndefined();
+    await expect(
+      fs.access(path.join(tmpDir, '.agents', 'skills', 'comet-classic', 'SKILL.md')),
+    ).resolves.toBeUndefined();
+  });
+
+  it('removes project instructions when uninstalling the only installed workflow', async () => {
+    const claudePlatform = PLATFORMS.find((platform) => platform.id === 'claude')!;
+    await copyCometSkillsForPlatform(
+      tmpDir,
+      claudePlatform,
+      true,
+      'skills',
+      'project',
+      'copy',
+      'native',
+    );
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'workflows:',
+        '  - native',
+        'ambient_resume: true',
+        'native:',
+        '  artifact_root: docs',
+        '  language: en',
+      ].join('\n'),
+      'utf8',
+    );
+    await installCometProjectInstructions(tmpDir, 'en');
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await uninstallCommand(tmpDir, { force: true });
+    } finally {
+      log.mockRestore();
+    }
+
+    await expect(fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8')).resolves.not.toContain(
+      'comet-ambient-resume',
+    );
   });
 
   it('keeps OpenSpec Skills unless the Classic companion option is selected', async () => {

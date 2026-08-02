@@ -130,7 +130,7 @@ receipt 绑定生成时的 revision、contract、scope、snapshot 与 artifact�
 
 不带 `--apply`（默认）为预览：只报告哪些 manual receipt 过期、哪些 automated receipt 需重跑、哪些 required-check receipt 需用 `comet native check` 重生成，不改动任何文件。
 
-带 `--apply` 时：以当前 revision 重新签发所有过期的 manual receipt，并把规范证据块写回 verification.md 的 `# Acceptance evidence` 段；automated receipt 不会被静默重签（它证明一次真实命令执行），refresh 只报告需重跑的命令让你用 `receipt automated` 重新执行。
+带 `--apply` 时：只对绑定不一致仅限于 `sourceRevision` 的过期 manual receipt 按当前 revision 重新签发，并把规范证据块写回 verification.md 的 `# Acceptance evidence` 段；contract、scope、snapshot 或 artifact 不一致仍会阻塞并要求重新人工验证。automated receipt 不会被静默重签（它证明一次真实命令执行），refresh 只报告需重跑的命令让你用 `receipt automated` 重新执行。
 
 ## 阶段推进
 

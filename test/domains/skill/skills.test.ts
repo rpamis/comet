@@ -2573,7 +2573,10 @@ describe('skills', () => {
       ]) {
         expect(zhDispatch, `zh dispatch should not bind to ${forbidden}`).not.toContain(forbidden);
       }
-      expect(zhDispatch).toContain('comet state task-checkoff <plan-file> <plan-task-text>');
+      expect(zhDispatch).toContain('comet state task-checkoff "<plan-file>" "<plan-task-text>"');
+      expect(zhDispatch).toContain(
+        'comet state task-checkoff "<classic-change-dir>/tasks.md" "<openspec-task-text>"',
+      );
       expect(zhDispatch).not.toContain('PLAN_MATCHES="$(grep -cF');
       expect(zhDispatch).toContain('RED 失败命令与失败摘要');
       expect(zhDispatch).toContain('GREEN 通过命令与通过摘要');
@@ -2650,6 +2653,10 @@ describe('skills', () => {
         'Before dispatching the first task, complete the Superpowers `subagent-driven-development` skill pre-flight plan review',
       );
       expect(enDispatch).toContain('Never bundle multiple tasks into one agent');
+      expect(enDispatch).toContain('comet state task-checkoff "<plan-file>" "<plan-task-text>"');
+      expect(enDispatch).toContain(
+        'comet state task-checkoff "<classic-change-dir>/tasks.md" "<openspec-task-text>"',
+      );
       expect(enDispatch).toContain('fresh background implementer agent for every task');
       expect(enDispatch).toContain('task reviewer, fix agents, and the final reviewer');
       expect(enDispatch).toContain('Use the agent / Task / multi-agent dispatch mechanism');

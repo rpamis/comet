@@ -4,8 +4,10 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import yaml
@@ -127,6 +129,204 @@ def _trusted_native_runtime() -> Path:
     ):
         raise ValueError("The controller-trusted Native runtime does not match its identity")
     return runtime
+
+
+def _validate_native_contract_with_trusted_runtime(
+    archived: Path, state: dict, expected_contract_hash: str
+):
+    """Recompute the archived contract with the controller-owned Native runtime.
+
+    The archive's JSON documents are content-addressed, but that only proves they agree with
+    one another.  Replaying the sealed archive as an active change in a temporary projection
+    lets the trusted runtime derive the contract from the archived brief/spec files instead of
+    trusting the candidate's contract hash.
+    """
+    if not HASH.fullmatch(expected_contract_hash):
+        raise ValueError("Archived contract hash is invalid")
+    name = state.get("name")
+    if not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*", name):
+        raise ValueError("Archived Native change name is invalid")
+
+    runtime = _trusted_native_runtime()
+    with tempfile.TemporaryDirectory(prefix="comet-native-oracle-") as temporary:
+        root = Path(temporary)
+        active = root / "docs" / "comet" / "changes" / name
+        shutil.copytree(archived, active, symlinks=False)
+
+        (root / ".comet").mkdir(parents=True, exist_ok=True)
+        (root / ".comet" / "config.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "schema": "comet.project.v1",
+                    "default_workflow": "native",
+                    "native": {
+                        "artifact_root": "docs",
+                        "max_verify_failures": 5,
+                        "archive_confirmation": "automatic",
+                    },
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+
+        spec_changes = state.get("spec_changes")
+        if not isinstance(spec_changes, list):
+            raise ValueError("Archived Native spec changes are missing")
+        for change in spec_changes:
+            if not isinstance(change, dict) or change.get("operation") == "remove":
+                continue
+            capability = change.get("capability")
+            source = change.get("source")
+            if not isinstance(capability, str) or not isinstance(source, str):
+                raise ValueError("Archived Native spec change is invalid")
+            source_file = active / Path(*source.split("/"))
+            if not source_file.is_file() or source_file.is_symlink():
+                raise ValueError(f"Archived Native spec source is missing: {source}")
+            canonical = root / "docs" / "comet" / "specs" / capability / "spec.md"
+            canonical.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source_file, canonical)
+
+        state_file = active / "comet-state.yaml"
+        candidate_state = yaml.safe_load(state_file.read_text(encoding="utf-8"))
+        if not isinstance(candidate_state, dict):
+            raise ValueError("Archived Native state is invalid")
+        candidate_state.update(
+            {
+                "phase": "build",
+                "approval": "confirmed",
+                "approved_contract_hash": expected_contract_hash,
+                "verification_result": "pending",
+                "verification_report": None,
+                "implementation_scope": None,
+                "verification_evidence": None,
+                "partial_allowance": None,
+                "archived": False,
+            }
+        )
+        state_file.write_text(yaml.safe_dump(candidate_state, sort_keys=False), encoding="utf-8")
+
+        result = subprocess.run(
+            [
+                "node",
+                str(runtime.resolve()),
+                "--json",
+                "--project-root",
+                str(root),
+                "status",
+                name,
+                "--details",
+            ],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=30,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise ValueError(
+                f"Trusted Native runtime could not validate the archived contract: {result.stderr.strip()}"
+            )
+        try:
+            payload = json.loads(result.stdout)
+        except json.JSONDecodeError as error:
+            raise ValueError("Trusted Native runtime returned invalid contract validation JSON") from error
+        data = payload.get("data") if isinstance(payload, dict) else None
+        summary = data.get("findingSummary") if isinstance(data, dict) else None
+        codes = summary.get("codes", []) if isinstance(summary, dict) else []
+        if (
+            not isinstance(data, dict)
+            or data.get("phase") != "build"
+            or not isinstance(summary, dict)
+        ):
+            raise ValueError(
+                "Trusted Native runtime returned an invalid contract validation result"
+            )
+        if "contract-changed-after-approval" in codes:
+            raise ValueError("Trusted Native runtime rejected the archived contract hash")
+
+
+def _validate_native_scope_bindings(archived: Path, bindings: dict):
+    """Bind archived scope evidence to the real workspace files it claims to cover."""
+    scope_hash = bindings.get("scopeHash")
+    if not isinstance(scope_hash, str) or not HASH.fullmatch(scope_hash):
+        raise ValueError("Archived implementation scope hash is invalid")
+    scope_file = archived / f"runtime/evidence/scopes/{scope_hash}.json"
+    if not scope_file.is_file() or scope_file.is_symlink():
+        raise ValueError("Archived implementation scope is missing")
+    scope = json.loads(scope_file.read_text(encoding="utf-8"))
+    if (
+        not isinstance(scope, dict)
+        or scope.get("schema") != "comet.native.implementation-scope.v2"
+        or scope.get("scopeHash") != scope_hash
+        or _content_hash(
+            scope, "scopeHash", "comet.native.implementation-scope.v2"
+        )
+        != scope_hash
+        or scope.get("contractHash") != bindings.get("contractHash")
+        or scope.get("currentProjectionHash") != bindings.get("snapshotHash")
+    ):
+        raise ValueError("Archived implementation scope bindings are invalid")
+
+    declared = scope.get("declaredArtifacts")
+    if not isinstance(declared, list) or any(
+        not isinstance(item, dict)
+        or not isinstance(item.get("path"), str)
+        or item.get("kind") not in {"file", "directory"}
+        for item in declared
+    ):
+        raise ValueError("Archived declared artifacts are missing")
+    expected_artifact_hash = _canonical_hash(
+        "comet.native.declared-artifacts.v1",
+        sorted(declared, key=lambda item: (item.get("path", ""), item.get("kind", ""))),
+    )
+    if expected_artifact_hash != bindings.get("artifactHash"):
+        raise ValueError("Archived declared artifact binding is invalid")
+
+    projection_ref = scope.get("currentProjectionRef")
+    projection_match = re.fullmatch(
+        r"runtime/evidence/snapshots/([a-f0-9]{64})\.json", projection_ref or ""
+    )
+    if projection_match is None:
+        raise ValueError("Archived current snapshot reference is invalid")
+    projection_file = archived / projection_ref
+    if not projection_file.is_file() or projection_file.is_symlink():
+        raise ValueError("Archived current snapshot is missing")
+    projection = json.loads(projection_file.read_text(encoding="utf-8"))
+    if (
+        not isinstance(projection, dict)
+        or projection.get("schema") != "comet.native.content-snapshot-projection.v1"
+        or _canonical_hash("comet.native.content-snapshot-projection.v1", projection)
+        != projection_match.group(1)
+        or projection_match.group(1) != bindings.get("snapshotHash")
+    ):
+        raise ValueError("Archived current snapshot bindings are invalid")
+
+    entries = projection.get("entries")
+    if not isinstance(entries, list):
+        raise ValueError("Archived current snapshot entries are missing")
+    workspace_root = WORKSPACE.resolve()
+    for entry in entries:
+        relative = entry.get("path") if isinstance(entry, dict) else None
+        if (
+            not isinstance(relative, str)
+            or not relative
+            or "\\" in relative
+            or relative.startswith("/")
+            or ":" in relative.split("/")[0]
+            or ".." in relative.split("/")
+        ):
+            raise ValueError("Archived snapshot entry path is unsafe")
+        target = WORKSPACE.joinpath(*relative.split("/"))
+        if target.is_symlink() or not target.is_file() or workspace_root not in target.resolve().parents:
+            raise ValueError(f"Archived snapshot entry is unavailable: {relative}")
+        content = target.read_bytes()
+        if (
+            hashlib.sha256(content).hexdigest() != entry.get("hash")
+            or len(content) != entry.get("size")
+        ):
+            raise ValueError(f"Archived snapshot entry does not match workspace: {relative}")
 
 
 def _read_typed_receipt(archived: Path, reference: str):
@@ -258,6 +458,10 @@ def _validate_v2_verification(archived: Path, state: dict, evidence_ref: str):
         or bindings.get("scopeHash") != evidence.get("implementationScopeHash")
     ):
         raise ValueError("Verification receipt bindings do not match the evidence envelope")
+    _validate_native_contract_with_trusted_runtime(
+        archived, state, bindings["contractHash"]
+    )
+    _validate_native_scope_bindings(archived, bindings)
     # Archive finalization intentionally changes the run state, checkpoint, canonical
     # spec location, and workspace bindings. Replaying the sealed archive as an active
     # change therefore cannot reproduce the pre-archive status. Validate the sealed,

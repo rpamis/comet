@@ -252,9 +252,18 @@ async function uninstallSingleProject(
     }
   }
 
+  const installedWorkflowsByTarget = new Map<string, CometWorkflow[]>();
+  for (const target of targets) {
+    installedWorkflowsByTarget.set(
+      `${target.scope}:${target.platform.id}`,
+      await detectInstalledWorkflows(target, projectPath),
+    );
+  }
+
   const targetWorkflowSelections: TargetWorkflowSelection[] = [];
   for (const target of selectedTargets) {
-    const installedWorkflows = await detectInstalledWorkflows(target, projectPath);
+    const installedWorkflows =
+      installedWorkflowsByTarget.get(`${target.scope}:${target.platform.id}`) ?? [];
     const resolvedInstalledWorkflows =
       options.force || options.json
         ? (['native', 'classic'] as CometWorkflow[])
@@ -353,13 +362,13 @@ async function uninstallSingleProject(
     totalSkills += skillsResult.removed;
     totalFailures += skillsResult.failed;
 
-    if (companionSkills.includes('openspec')) {
+    if (hooksFailed === 0 && rulesResult.failed === 0 && companionSkills.includes('openspec')) {
       const result = await removeOpenSpecSkillsForPlatform(baseDir, target.platform, target.scope);
       totalSkills += result.removed;
       totalFailures += result.failed;
       log(`  ${target.platform.name} (${target.scope}): ${result.removed} OpenSpec Skills removed`);
     }
-    if (companionSkills.includes('superpowers')) {
+    if (hooksFailed === 0 && rulesResult.failed === 0 && companionSkills.includes('superpowers')) {
       const result = removeSuperpowersSkillsForPlatform(projectPath, target.platform, target.scope);
       totalSkills += result.removed;
       totalFailures += result.failed;
@@ -401,7 +410,33 @@ async function uninstallSingleProject(
   ] as CometWorkflow[];
   const hasProjectScope =
     options.recoverProjectCleanup === true || selectedTargets.some((t) => t.scope === 'project');
-  const removingAllProjectWorkflows = selectedProjectWorkflows.length === 2;
+  const selectedTargetKeys = new Set(
+    targetWorkflowSelections.map(({ target }) => `${target.scope}:${target.platform.id}`),
+  );
+  const projectWorkflowsAfterUninstall = new Set<CometWorkflow>();
+  for (const target of targets) {
+    if (target.scope !== 'project') continue;
+    const key = `${target.scope}:${target.platform.id}`;
+    const installed = installedWorkflowsByTarget.get(key) ?? [];
+    const selection = selectedTargetKeys.has(key)
+      ? targetWorkflowSelections.find(
+          ({ target: selectedTarget }) =>
+            `${selectedTarget.scope}:${selectedTarget.platform.id}` === key,
+        )
+      : undefined;
+    for (const workflow of installed) {
+      if (!selection || !selection.workflows.includes(workflow)) {
+        projectWorkflowsAfterUninstall.add(workflow);
+      }
+    }
+  }
+  const projectWorkflowsToRemove = selectedProjectWorkflows.filter(
+    (workflow) => !projectWorkflowsAfterUninstall.has(workflow),
+  );
+  const removingAllProjectWorkflows =
+    hasProjectScope &&
+    selectedProjectWorkflows.length > 0 &&
+    projectWorkflowsAfterUninstall.size === 0;
   if (hasProjectScope && removingAllProjectWorkflows && totalFailures === 0) {
     const removeResult = await removeCometProjectInstructions(projectPath);
     projectInstructionsRemoved = removeResult.removed;
@@ -413,7 +448,7 @@ async function uninstallSingleProject(
   if (hasProjectScope && totalFailures === 0) {
     const dirsResult = await removeWorkingDirs(
       projectPath,
-      removingAllProjectWorkflows ? {} : { workflows: selectedProjectWorkflows },
+      removingAllProjectWorkflows ? {} : { workflows: projectWorkflowsToRemove },
     );
     workingDirsRemoved = dirsResult.removed;
     totalFailures += dirsResult.failed;
@@ -427,7 +462,7 @@ async function uninstallSingleProject(
 
   if (hasProjectScope && !removingAllProjectWorkflows && totalFailures === 0) {
     try {
-      await removeSelectedWorkflowsFromProjectConfig(projectPath, selectedProjectWorkflows);
+      await removeSelectedWorkflowsFromProjectConfig(projectPath, projectWorkflowsToRemove);
     } catch {
       totalFailures += 1;
       log('  Project config: cleanup failed; selected workflow remains configured');

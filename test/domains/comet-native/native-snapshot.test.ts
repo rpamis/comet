@@ -1909,4 +1909,29 @@ describe('Native incremental content snapshots', () => {
     });
     expect(incremental.complete).toBe(false);
   });
+
+  it('drops a newly bound Git object id when the file becomes modified after capture', async () => {
+    await initGitRepo();
+    await fs.writeFile(path.join(projectRoot, 'a.ts'), 'base\n');
+    await execFileAsync('git', ['add', '-A'], { cwd: projectRoot });
+    await execFileAsync('git', ['commit', '-m', 'init'], { cwd: projectRoot });
+
+    const baseline = await createNativeContentSnapshot(paths);
+    await fs.writeFile(path.join(projectRoot, 'a.ts'), 'staged\n');
+    await execFileAsync('git', ['add', 'a.ts'], { cwd: projectRoot });
+
+    const incremental = await createNativeContentSnapshot(paths, {
+      policy: baseline.policy,
+      incrementalBaseline: baseline,
+      gitSelectionHooks: {
+        afterContentRevalidation: async () => {
+          await fs.writeFile(path.join(projectRoot, 'a.ts'), 'modified after capture\n');
+        },
+      },
+    });
+
+    const entry = incremental.entries.find((candidate) => candidate.path === 'a.ts');
+    expect(entry).toEqual(expect.objectContaining({ path: 'a.ts', hash: sha256Text('staged\n') }));
+    expect(entry).not.toHaveProperty('gitObjectId');
+  });
 });

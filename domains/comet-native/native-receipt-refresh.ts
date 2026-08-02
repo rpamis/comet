@@ -46,6 +46,13 @@ export interface NativeReceiptRefreshRerunItem {
   timeoutMs: number;
 }
 
+/** A manual receipt whose contract/scope/artifact binding changed and needs a new observation. */
+export interface NativeReceiptRefreshManualRequiredItem {
+  oldRef: string;
+  acceptanceIds: string[];
+  mismatches: string[];
+}
+
 /**
  * A required-check (static-inspection) receipt that is stale. These are
  * produced by `comet native check` and re-issued automatically by `next
@@ -60,6 +67,8 @@ export interface NativeReceiptRefreshResult {
   refreshed: { acceptanceId: string; oldRef: string; newRef: string }[];
   /** Automated receipts that must be re-run; empty unless stale automated receipts exist. */
   requiresRerun: NativeReceiptRefreshRerunItem[];
+  /** Manual receipts that cannot be re-issued because their non-revision bindings changed. */
+  requiresManual: NativeReceiptRefreshManualRequiredItem[];
   /** Required-check receipts that must be re-produced via `comet native check`. */
   requiresCheck: NativeReceiptRefreshCheckItem[];
   /** True when `--apply` was used and verification.md was rewritten. */
@@ -69,6 +78,17 @@ export interface NativeReceiptRefreshResult {
 }
 
 const NATIVE_RECEIPT_REFRESH_STEP_PREFIX = 'Native receipt re-issued after revision bump';
+
+export function isManualReceiptRefreshSafe(comparison: {
+  ok: boolean;
+  mismatches: readonly string[];
+}): boolean {
+  return (
+    !comparison.ok &&
+    comparison.mismatches.length === 1 &&
+    comparison.mismatches[0]?.startsWith('sourceRevision: ') === true
+  );
+}
 
 function formatAutomatedCommand(receipt: NativeVerificationReceipt): string {
   if (receipt.kind !== 'automated-check') return '<unknown automated receipt>';
@@ -93,9 +113,9 @@ function describeManualObservation(): string {
  * guarantee). But ordinary state writes (checkpoints, spec refresh, advancing
  * phases) bump the revision, which can leave previously-issued receipts stale.
  * This function lets an Agent recover on its own: under `--apply` it re-issues
- * every stale manual-evidence receipt at the current revision and rewrites the
- * acceptance-evidence block in `verification.md`, while reporting automated
- * receipts that must be genuinely re-executed.
+ * manual-evidence receipts whose only mismatch is the source revision at the
+ * current revision and rewrites the acceptance-evidence block in
+ * `verification.md`, while reporting receipts that require fresh evidence.
  *
  * Returns a structured report so the Agent can drive recovery programmatically
  * rather than parsing prose.
@@ -116,6 +136,7 @@ export async function refreshNativeVerificationReceipts(options: {
     return {
       refreshed: [],
       requiresRerun: [],
+      requiresManual: [],
       requiresCheck: [],
       applied: false,
       verificationReport: null,
@@ -129,6 +150,7 @@ export async function refreshNativeVerificationReceipts(options: {
   );
 
   const manualItems: NativeReceiptRefreshManualItem[] = [];
+  const manualRequiredItems: NativeReceiptRefreshManualRequiredItem[] = [];
   const rerunItems: NativeReceiptRefreshRerunItem[] = [];
   const checkItems: NativeReceiptRefreshCheckItem[] = [];
   // Track which refs are fresh so the entry reconstruction can preserve them.
@@ -141,7 +163,12 @@ export async function refreshNativeVerificationReceipts(options: {
     if (comparison.ok) continue;
     staleRefs.add(ref);
     if (receipt.kind === 'manual-evidence') {
-      manualItems.push({ oldRef: ref, acceptanceIds: [...receipt.acceptanceIds] });
+      const item = { oldRef: ref, acceptanceIds: [...receipt.acceptanceIds] };
+      if (isManualReceiptRefreshSafe(comparison)) {
+        manualItems.push(item);
+      } else {
+        manualRequiredItems.push({ ...item, mismatches: comparison.mismatches });
+      }
     } else if (receipt.kind === 'automated-check') {
       rerunItems.push({
         oldRef: ref,
@@ -157,11 +184,16 @@ export async function refreshNativeVerificationReceipts(options: {
   // When there are stale automated receipts, never auto-apply: the Agent must
   // re-run those commands to produce honest evidence. Surface the report so it
   // can do exactly that.
-  const canAutoApply = options.apply && rerunItems.length === 0 && manualItems.length > 0;
+  const canAutoApply =
+    options.apply &&
+    rerunItems.length === 0 &&
+    manualRequiredItems.length === 0 &&
+    manualItems.length > 0;
   if (!canAutoApply) {
     return {
       refreshed: [],
       requiresRerun: rerunItems,
+      requiresManual: manualRequiredItems,
       requiresCheck: checkItems,
       applied: false,
       verificationReport: state.verification_report,
@@ -230,6 +262,7 @@ export async function refreshNativeVerificationReceipts(options: {
   return {
     refreshed,
     requiresRerun: [],
+    requiresManual: [],
     requiresCheck: checkItems,
     applied: true,
     verificationReport: reportRef,

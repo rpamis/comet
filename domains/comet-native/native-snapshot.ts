@@ -174,6 +174,7 @@ interface NativeGitSelectionHooks {
   afterCombined?: () => void | Promise<void>;
   afterInitialSelection?: () => void | Promise<void>;
   afterFirstEntryCaptured?: (relative: string) => void | Promise<void>;
+  afterContentRevalidation?: () => void | Promise<void>;
   outputChunkBytes?: number;
 }
 
@@ -2855,6 +2856,7 @@ export async function createNativeContentSnapshot(
       baselineByPath.clear();
     }
     const reusedTrackedPaths = new Set<string>();
+    const boundObjectIdPaths = new Set<string>();
     for (const relative of selectionPaths(gitSelection)) {
       if (capturedEntryValidations.has(relative)) continue;
       if (!isSnapshotProjectRef(paths, relative)) continue;
@@ -2998,14 +3000,13 @@ export async function createNativeContentSnapshot(
         reusedTrackedPaths.add(relative);
         continue;
       }
-      await captureFile(
-        target,
-        relative,
-        before,
-        gitObjectIdsTrusted && !workingTreeModified.has(relative) ? currentObjectId : undefined,
-      );
+      const boundObjectId =
+        gitObjectIdsTrusted && !workingTreeModified.has(relative) ? currentObjectId : undefined;
+      await captureFile(target, relative, before, boundObjectId);
+      if (boundObjectId !== undefined) boundObjectIdPaths.add(relative);
     }
     await revalidateCapturedEntries();
+    await options.gitSelectionHooks?.afterContentRevalidation?.();
     await finalizeNativeGitSnapshotSelection(
       execution,
       projectRoot,
@@ -3013,7 +3014,11 @@ export async function createNativeContentSnapshot(
       gitSelection,
       options.gitSelectionHooks?.outputChunkBytes,
     );
-    if (reusedTrackedPaths.size > 0) {
+    // Reused entries already require a final worktree fence. Newly captured entries only need
+    // the extra fence when they are being added to an incremental baseline: a full snapshot has
+    // never promised an object-id binding for a file captured during this run, and paying for a
+    // second Git traversal on every full capture regresses the normal snapshot path.
+    if (reusedTrackedPaths.size > 0 || (incrementalEnabled && boundObjectIdPaths.size > 0)) {
       const modifiedAfter = await runGitBoundedOutput(
         execution,
         projectRoot,
@@ -3034,6 +3039,11 @@ export async function createNativeContentSnapshot(
           type: 'file',
           reason: 'changed-during-read',
         });
+      }
+      for (const relative of boundObjectIdPaths) {
+        if (!finalWorkingTreeModified.has(relative)) continue;
+        const entry = entries.find((candidate) => candidate.path === relative);
+        if (entry) delete entry.gitObjectId;
       }
     }
     for (const omission of gitSelection.omissions) omit(omission);

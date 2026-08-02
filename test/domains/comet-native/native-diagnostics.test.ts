@@ -104,6 +104,34 @@ describe('Native status diagnostics', () => {
     });
   });
 
+  it('does not route an Archive binding failure to receipt refresh', () => {
+    const continuation = nativeContinuation({
+      state: {
+        name: 'archived-change',
+        phase: 'archive',
+        revision: 4,
+      } as NativeChangeState,
+      findings: [
+        {
+          code: 'verification-receipt-binding-mismatch',
+          message: 'A verification receipt is stale.',
+          severity: 'error',
+          path: null,
+          requiredAction: 'refresh-verification-receipts',
+          retryCommand: null,
+          repairCommand: null,
+          requiresUserDecision: false,
+        },
+      ],
+    });
+
+    expect(continuation).toMatchObject({
+      disposition: 'blocked',
+      action: 'none',
+      command: null,
+    });
+  });
+
   it('returns policy-aware continuation after a ready Archive preview', () => {
     const state = {
       name: 'ready-change',

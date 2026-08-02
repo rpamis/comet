@@ -19,7 +19,10 @@ import {
   writeNativeBaselineManifest,
 } from '../../../domains/comet-native/native-snapshot.js';
 import { readNativeImplementationScopeBundle } from '../../../domains/comet-native/native-evidence-storage.js';
-import { advanceNativeChange } from '../../../domains/comet-native/native-transitions.js';
+import {
+  advanceNativeChange,
+  formatNativeReceiptBindingMismatchMessage,
+} from '../../../domains/comet-native/native-transitions.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
 import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
 
@@ -61,6 +64,16 @@ describe('Native guarded transitions', () => {
 
   afterEach(async () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
+  });
+
+  it('uses the concrete change name in receipt binding recovery guidance', () => {
+    const message = formatNativeReceiptBindingMismatchMessage({
+      change: 'advance-change',
+      detail: 'verification.json -> sourceRevision: expected 3, got 2',
+    });
+
+    expect(message).toContain('comet native receipt refresh advance-change --apply');
+    expect(message).not.toContain('<change>');
   });
 
   it('does not write Run files when Shape guard fails', async () => {

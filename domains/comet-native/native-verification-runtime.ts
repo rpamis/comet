@@ -70,7 +70,8 @@ export interface NativeVerificationPreparation {
   /**
    * Per-receipt diagnostics populated when {@link findingCodes} includes
    * `verification-receipt-binding-mismatch`. Lets an Agent see exactly which
-   * receipts/acceptances diverged and recover via `receipt refresh`.
+   * receipts/acceptances diverged and recover via `receipt refresh` when the
+   * mismatch is limited to sourceRevision; other binding changes require fresh evidence.
    */
   receiptBindingFailures?: NativeReceiptBindingFailureDetail[];
 }

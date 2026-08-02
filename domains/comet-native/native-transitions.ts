@@ -67,6 +67,13 @@ interface AdvanceNativeChangeOptions {
   hooks?: NativeTransitionHooks;
 }
 
+export function formatNativeReceiptBindingMismatchMessage(options: {
+  change: string;
+  detail: string;
+}): string {
+  return `Native verification receipt binding is invalid: ${options.detail}. Re-issue the affected receipts with \`comet native receipt refresh ${options.change} --apply\`.`;
+}
+
 function hasEvidenceRetreatExtras(evidence: NativeAdvanceEvidence): boolean {
   return (
     evidence.confirmed !== undefined ||
@@ -620,7 +627,7 @@ async function advanceNativeChangeLocked(
             .join(' | ');
           return {
             code,
-            message: `Native verification receipt binding is invalid: ${detail}. Re-issue the affected receipts with \`comet native receipt refresh <change> --apply\`.`,
+            message: formatNativeReceiptBindingMismatchMessage({ change: state.name, detail }),
           };
         }
         return {

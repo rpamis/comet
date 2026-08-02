@@ -143,8 +143,8 @@ When a reviewer returns an item that cannot be verified from review material alo
 4. Runs targeted verification:
 
 ```bash
-comet state task-checkoff <plan-file> <plan-task-text>
-comet state task-checkoff <classic-change-dir>/tasks.md <openspec-task-text>
+comet state task-checkoff "<plan-file>" "<plan-task-text>"
+comet state task-checkoff "<classic-change-dir>/tasks.md" "<openspec-task-text>"
 ```
 
 Run the second command only when the corresponding mapping exists. The script requires the task text to appear exactly once and be checked; verification failure blocks moving to the next task.

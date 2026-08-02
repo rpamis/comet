@@ -26,7 +26,10 @@ import type {
   NativeChangeState,
   NativeProjectPaths,
 } from '../../../domains/comet-native/native-types.js';
-import { refreshNativeVerificationReceipts } from '../../../domains/comet-native/native-receipt-refresh.js';
+import {
+  isManualReceiptRefreshSafe,
+  refreshNativeVerificationReceipts,
+} from '../../../domains/comet-native/native-receipt-refresh.js';
 import {
   inspectNativeVerificationEvidence,
   prepareNativeVerificationEvidence,
@@ -84,7 +87,7 @@ describe('Native receipt refresh', () => {
   let requiredReceiptRef: string;
 
   afterEach(async () => {
-    await fs.rm(projectRoot, { recursive: true, force: true });
+    if (projectRoot) await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
   async function currentBindings(
@@ -352,6 +355,30 @@ describe('Native receipt refresh', () => {
     verifyState = { ...verifyState, revision: verifyState.revision + 1 };
     await writeStateVerbatim(stateFile, verifyState);
   }
+
+  it('only allows automatic manual refresh for a sourceRevision-only mismatch', () => {
+    expect(
+      isManualReceiptRefreshSafe({
+        ok: false,
+        mismatches: ['sourceRevision: expected 3, got 2'],
+      }),
+    ).toBe(true);
+    expect(
+      isManualReceiptRefreshSafe({
+        ok: false,
+        mismatches: [
+          'sourceRevision: expected 3, got 2',
+          'contractHash: expected "new", got "old"',
+        ],
+      }),
+    ).toBe(false);
+    expect(
+      isManualReceiptRefreshSafe({
+        ok: false,
+        mismatches: ['contractHash: expected "new", got "old"'],
+      }),
+    ).toBe(false);
+  });
 
   it('reports no stale receipts when everything is current', async () => {
     await seedFixtureWithAcceptanceRevision(2);

@@ -39,7 +39,7 @@ comet native doctor <change-name> --repair --strategy continue
 
 brief、规格、实现、报告或 receipt 改变后，旧 scope 或 Verify pass 可能失效。按 continuation 回到 Build，重新确认发生变化的用户行为、生成新 scope 并重新验证。不要复用旧 pass 或旧 preflight。
 
-receipt 与 revision 绑定：每次状态写入（checkpoint、规格刷新、阶段推进）都会让 revision 递增，此前签发的 receipt 会因此绑定过期。`next --result` 报 `verification-receipt-binding-mismatch` 时，finding 会列出每个过期 receipt 及其不一致字段（如 `sourceRevision: expected 6, got 5`），并给出恢复命令。此时不需要回到 Build：对纯 manual evidence，运行 `comet native receipt refresh <change> --apply` 即可按当前 revision 重签并写回 verification.md；automated receipt 必须用 `receipt automated` 重新执行原命令，不能静默重签。
+receipt 与 revision 绑定：每次状态写入（checkpoint、规格刷新、阶段推进）都会让 revision 递增，此前签发的 receipt 会因此绑定过期。`next --result` 报 `verification-receipt-binding-mismatch` 时，finding 会列出每个过期 receipt 及其不一致字段（如 `sourceRevision: expected 6, got 5`），并给出恢复命令。只有 manual evidence 仅发生 sourceRevision 不一致时，才可以不回到 Verify，运行 `comet native receipt refresh <change> --apply` 按当前 revision 重签并写回 verification.md；contract、scope、snapshot 或 artifact 不一致都必须重新验证。automated receipt 必须用 `receipt automated` 重新执行原命令，不能静默重签。
 
 ## Verify fail 与 repair stop
 

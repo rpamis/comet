@@ -143,8 +143,8 @@ Comet 不读取、不写入、也不要求任何 Superpowers `subagent-driven-de
 4. 运行定向验证：
 
 ```bash
-comet state task-checkoff <plan-file> <plan-task-text>
-comet state task-checkoff <classic-change-dir>/tasks.md <openspec-task-text>
+comet state task-checkoff "<plan-file>" "<plan-task-text>"
+comet state task-checkoff "<classic-change-dir>/tasks.md" "<openspec-task-text>"
 ```
 
 仅在对应映射存在时运行第二条。脚本会要求任务文本恰好出现一次且该项已勾选；验证失败时不得进入下一个 task。

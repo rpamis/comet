@@ -130,7 +130,7 @@ A receipt is bound to the revision, contract, scope, snapshot, and artifacts in 
 
 Without `--apply` (default) it is a preview: it reports which manual receipts are stale, which automated receipts must be re-run, and which required-check receipts must be regenerated via `comet native check`, without touching any file.
 
-With `--apply`: it re-issues every stale manual receipt at the current revision and writes the canonical evidence block back into the `# Acceptance evidence` section of verification.md. Automated receipts are never silently re-issued (they attest to a real command execution); refresh only reports the commands you must re-run via `receipt automated`.
+With `--apply`: it re-issues only stale manual receipts whose binding mismatch is limited to `sourceRevision`, and writes the canonical evidence block back into the `# Acceptance evidence` section of verification.md. Contract, scope, snapshot, or artifact mismatches remain manual verification blockers. Automated receipts are never silently re-issued (they attest to a real command execution); refresh only reports the commands you must re-run via `receipt automated`.
 
 ## Phase progression
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import hashlib
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -639,6 +640,117 @@ def test_native_workflow_oracle_rejects_forged_runtime_identity(tmp_path: Path):
     oracle.write_text("console.log('{\"forged\":true}');\n", encoding="utf-8")
     with pytest.raises(ValueError, match="does not match"):
         validator._trusted_native_runtime()
+
+
+def test_native_workflow_validator_rejects_contract_not_recomputed_by_oracle(
+    monkeypatch, tmp_path: Path
+):
+    validator = load_validator("comet-native-workflow", "test_native_workflow.py")
+    validator.WORKSPACE = tmp_path
+    oracle = tmp_path / "_eval_trusted_oracles/comet-native-runtime.mjs"
+    oracle.parent.mkdir(parents=True)
+    oracle.write_text("console.log('{}');\n", encoding="utf-8")
+    write_json(
+        oracle.parent / "native-runtime-identity.json",
+        {
+            "schema": "comet.eval.trusted-native-runtime.v1",
+            "runtimeFile": oracle.name,
+            "runtimeHash": hashlib.sha256(oracle.read_bytes()).hexdigest(),
+        },
+    )
+    archived = tmp_path / "archive"
+    (archived / "specs" / "sentence-counting").mkdir(parents=True)
+    (archived / "brief.md").write_text(
+        "# Acceptance examples\n- The feature works.\n", encoding="utf-8"
+    )
+    (archived / "specs" / "sentence-counting" / "spec.md").write_text(
+        "# Sentence counting\n- Counts sentences.\n", encoding="utf-8"
+    )
+    (archived / "comet-state.yaml").write_text(
+        "schema: comet.native.v1\nname: sentence-counting\n", encoding="utf-8"
+    )
+    state = {
+        "name": "sentence-counting",
+        "brief": "brief.md",
+        "spec_changes": [
+            {
+                "capability": "sentence-counting",
+                "operation": "create",
+                "source": "specs/sentence-counting/spec.md",
+                "base_hash": None,
+            }
+        ],
+    }
+
+    def forged_runtime(*args, **kwargs):
+        return subprocess.CompletedProcess(
+            args=args[0],
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "command": "status",
+                    "exitCode": 0,
+                    "data": {
+                        "phase": "build",
+                        "findingSummary": {
+                            "errors": 1,
+                            "codes": ["contract-changed-after-approval"],
+                        },
+                    },
+                }
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(validator.subprocess, "run", forged_runtime)
+    with pytest.raises(ValueError, match="contract"):
+        validator._validate_native_contract_with_trusted_runtime(
+            archived, state, "a" * 64
+        )
+
+
+def test_native_workflow_validator_rejects_scope_snapshot_not_matching_workspace(tmp_path: Path):
+    validator = load_validator("comet-native-workflow", "test_native_workflow.py")
+    validator.WORKSPACE = tmp_path
+    implementation = tmp_path / "wordcount.py"
+    implementation.write_text("print('actual')\n", encoding="utf-8")
+    archived = tmp_path / "archive"
+    archived.mkdir()
+    projection = {
+        "schema": "comet.native.content-snapshot-projection.v1",
+        "entries": [{"path": "wordcount.py", "hash": "0" * 64, "size": 1}],
+    }
+    projection_hash = validator._canonical_hash(
+        "comet.native.content-snapshot-projection.v1", projection
+    )
+    projection_ref = f"runtime/evidence/snapshots/{projection_hash}.json"
+    write_json(archived / projection_ref, projection)
+    declared = [{"path": "wordcount.py", "kind": "file"}]
+    scope_content = {
+        "schema": "comet.native.implementation-scope.v2",
+        "contractHash": "1" * 64,
+        "currentProjectionRef": projection_ref,
+        "currentProjectionHash": projection_hash,
+        "declaredArtifacts": declared,
+    }
+    scope_hash = validator._canonical_hash(
+        "comet.native.implementation-scope.v2", scope_content
+    )
+    write_json(
+        archived / f"runtime/evidence/scopes/{scope_hash}.json",
+        {**scope_content, "scopeHash": scope_hash},
+    )
+    bindings = {
+        "contractHash": "1" * 64,
+        "scopeHash": scope_hash,
+        "snapshotHash": projection_hash,
+        "artifactHash": validator._canonical_hash(
+            "comet.native.declared-artifacts.v1", declared
+        ),
+    }
+
+    with pytest.raises(ValueError, match="snapshot entry"):
+        validator._validate_native_scope_bindings(archived, bindings)
 
 
 def test_controller_source_build_contains_current_native_dashboard_adapter(tmp_path: Path):

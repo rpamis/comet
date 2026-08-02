@@ -99,6 +99,14 @@ export async function nativeReceiptCommand(
         lines.push(`  [${acceptances}] ${item.command}`);
       }
     }
+    if (result.requiresManual.length > 0) {
+      lines.push(
+        `Re-run manual verification for ${result.requiresManual.length} receipt(s); contract, scope, snapshot, or artifact bindings changed:`,
+      );
+      for (const item of result.requiresManual) {
+        lines.push(`  [${item.acceptanceIds.join(', ')}] ${item.mismatches.join('; ')}`);
+      }
+    }
     if (result.requiresCheck.length > 0) {
       lines.push(
         `Re-run \`comet native check ${name}\` to refresh ${result.requiresCheck.length} required-check receipt(s).`,
@@ -109,11 +117,14 @@ export async function nativeReceiptCommand(
     } else if (
       result.refreshed.length === 0 &&
       result.requiresRerun.length === 0 &&
+      result.requiresManual.length === 0 &&
       result.requiresCheck.length === 0
     ) {
       lines.push('No stale receipts found.');
     } else if (!apply) {
       lines.push('Dry run only. Re-run with --apply to re-issue manual receipts.');
+    } else if (result.requiresManual.length > 0) {
+      lines.push('Fresh manual verification is required before these receipts can be refreshed.');
     }
     return success('receipt refresh', result, `${lines.join('\n')}\n`);
   }
