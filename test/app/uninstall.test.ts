@@ -2664,7 +2664,8 @@ describe('uninstallCommand interactive selection', () => {
       log.mockRestore();
     }
 
-    expect(output).toContain('工作目录：已保留已有内容： docs\\comet\\user-notes.md');
+    const retainedRelativePath = path.relative(tmpDir, retainedFile);
+    expect(output).toContain(`工作目录：已保留已有内容： ${retainedRelativePath}`);
     expect(output).toContain('原因：这些内容不由 Comet 管理，因此未删除。');
     expect(output).toContain('影响：不影响 Comet 卸载完成，保留内容未被修改。');
     expect(output).toContain('卸载完成。');
