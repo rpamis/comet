@@ -4,6 +4,7 @@ import { spawnSync } from 'child_process';
 import os from 'os';
 import path from 'path';
 import { pathToFileURL } from 'url';
+import { vi } from 'vitest';
 import {
   assertProjectConfigDocumentValid,
   builtinCometFivePhaseWorkflow,
@@ -283,6 +284,22 @@ describe('workflow contract normalization', () => {
     } finally {
       await fs.rm(projectRoot, { recursive: true, force: true });
       await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('publishes project config when the project filesystem does not support hard links', async () => {
+    const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-config-copy-publish-'));
+    const linkSpy = vi
+      .spyOn(fs, 'link')
+      .mockRejectedValue(Object.assign(new Error('hard links unsupported'), { code: 'ENOTSUP' }));
+    try {
+      await writeWorkflowProjectConfig(projectRoot, defaultWorkflowProjectConfig('docs'));
+      await expect(
+        fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8'),
+      ).resolves.toContain('default_workflow: native');
+    } finally {
+      linkSpy.mockRestore();
+      await fs.rm(projectRoot, { recursive: true, force: true });
     }
   });
 
