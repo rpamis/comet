@@ -2,13 +2,13 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { parseNativeVerificationMachineBlock } from '../../../domains/comet-native/native-acceptance.js';
+import { replaceAcceptanceEvidenceBlock } from '../../../domains/comet-native/native-receipt-refresh.js';
 import { atomicWriteText } from '../../../domains/comet-native/native-atomic-file.js';
 import { prepareNativeBuildEvidence } from '../../../domains/comet-native/native-build-evidence.js';
 import {
-  compareAndSwapNativeChangeFile,
   createNativeChange,
   nativeChangeDir,
   nativeChangeDocument,
@@ -17,7 +17,6 @@ import {
 import { collectNativeContractFiles } from '../../../domains/comet-native/native-contract-files.js';
 import {
   readNativeImplementationScopeBundle,
-  readNativeVerificationEvidence,
   readNativeVerificationReceipt,
   writeNativeVerificationReceipt,
 } from '../../../domains/comet-native/native-evidence-storage.js';
@@ -395,6 +394,41 @@ describe('Native receipt refresh', () => {
     });
   });
 
+  it('returns a no-op when Verify has no evidence envelope yet', async () => {
+    projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-receipt-refresh-empty-'));
+    paths = await nativeProjectPaths(projectRoot, '.');
+    const created = await createNativeChange({
+      paths,
+      name: 'receipt-refresh-empty',
+      language: 'en',
+      now: new Date('2026-07-17T00:00:00.000Z'),
+    });
+    verifyState = { ...created, phase: 'verify' };
+    stateFile = path.join(nativeChangeDir(paths, verifyState.name), NATIVE_CHANGE_STATE_FILE);
+    await writeStateVerbatim(stateFile, verifyState);
+
+    await expect(
+      refreshNativeVerificationReceipts({ paths, name: verifyState.name, apply: true }),
+    ).resolves.toMatchObject({
+      refreshed: [],
+      requiresRerun: [],
+      requiresManual: [],
+      requiresCheck: [],
+      applied: false,
+      verificationReport: null,
+    });
+  });
+
+  it('refuses to rewrite stale receipts when the verification report reference is missing', async () => {
+    await seedFixtureWithAcceptanceRevision(2);
+    await bumpStateRevision();
+    await writeStateVerbatim(stateFile, { ...verifyState, verification_report: null });
+
+    await expect(
+      refreshNativeVerificationReceipts({ paths, name: verifyState.name, apply: true }),
+    ).rejects.toThrow('has no report ref');
+  });
+
   it('reports stale manual receipts on dry-run without touching files', async () => {
     await seedFixtureWithAcceptanceRevision(2);
     await bumpStateRevision();
@@ -481,5 +515,17 @@ describe('Native receipt refresh', () => {
     const failure = preparation.receiptBindingFailures![0];
     expect(failure.mismatches.some((m) => m.includes('sourceRevision'))).toBe(true);
     expect(NativeVerificationReceiptBindingError).toBeDefined();
+  });
+
+  it('rejects reports without both acceptance-evidence markers', () => {
+    expect(() => replaceAcceptanceEvidenceBlock('plain report', 'new block')).toThrow(
+      'missing the acceptance-evidence start marker',
+    );
+    expect(() =>
+      replaceAcceptanceEvidenceBlock(
+        '<!-- comet-native:acceptance-evidence:start -->',
+        'new block',
+      ),
+    ).toThrow('missing the acceptance-evidence end marker');
   });
 });
