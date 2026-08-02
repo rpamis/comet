@@ -3322,6 +3322,41 @@ describe('update command helpers', () => {
     await expect(fs.stat(path.join(fakeHome, 'docs', 'superpowers'))).rejects.toThrow();
   });
 
+  it('syncs Native Skills during a global update', async () => {
+    // Regression for #262: global scope used to hardcode the Skill
+    // workflowSelection to 'classic', which filtered out comet-native/* and
+    // left global Native installs frozen at their first-install version.
+    const fakeHome = path.join(tmpDir, 'fake-home-global-native-sync');
+    await fs.mkdir(path.join(fakeHome, '.codex', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(fakeHome, '.codex', 'skills', 'comet', 'SKILL.md'),
+      '# Comet\n',
+      'utf-8',
+    );
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      await updateCommand(tmpDir, {
+        json: true,
+        skipNpm: true,
+        scope: 'global',
+      });
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    // Native Skills must be copied alongside Classic ones for global installs.
+    // Codex installs land in the canonical `.agents/skills/` directory.
+    await expect(
+      fs.readFile(path.join(fakeHome, '.agents', 'skills', 'comet-native', 'SKILL.md'), 'utf8'),
+    ).resolves.toContain('name: comet-native');
+    await expect(
+      fs.readFile(path.join(fakeHome, '.agents', 'skills', 'comet', 'SKILL.md'), 'utf8'),
+    ).resolves.toContain('comet workflow resolve');
+  });
+
   it('preserves installed language for an explicit global platform update', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home-explicit-global-language');
     await fs.mkdir(path.join(fakeHome, '.codex', 'skills', 'comet'), { recursive: true });

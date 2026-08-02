@@ -1542,8 +1542,15 @@ async function updateSingleProject(
     );
   }
 
+  // Global scope mirrors `comet init`: when a user installs Native Skills
+  // globally (e.g. via `comet init --scope global --workflow native`), later
+  // `comet update --scope global` must keep those Skills in sync. Rules and
+  // hooks stay on the Classic selection because their workflowSelection is
+  // effectively ignored (managedRulesForSelection / managedHooksForSelection
+  // return the full manifest set), and Native write-guarding is routed through
+  // the unified comet-hook-router rather than per-workflow rule/hook files.
   const targetWorkflowSelections = targets.map((target) =>
-    target.scope === 'global' ? 'classic' : projectWorkflowSelection,
+    target.scope === 'global' ? 'both' : projectWorkflowSelection,
   );
   const updateSkillPaths = new Set(
     (
@@ -1571,8 +1578,8 @@ async function updateSingleProject(
     const languageSkillsDir = languageToSkillsDir(languageId);
     const targetInstallMode = installModeFor(target);
     const nativeProjectTarget = nativeProject && target.scope === 'project';
-    const targetWorkflowSelection =
-      target.scope === 'global' ? 'classic' : projectWorkflowSelection;
+    const targetSkillWorkflowSelection =
+      target.scope === 'global' ? 'both' : projectWorkflowSelection;
     if (target.scope === 'project') {
       await assertClassicProjectMutationAllowed?.();
     }
@@ -1581,7 +1588,7 @@ async function updateSingleProject(
         baseDir,
         target.platform,
         target.scope,
-        targetWorkflowSelection,
+        targetSkillWorkflowSelection,
       );
     }
     const { copied, skipped, failed } = await copyCometSkillsForPlatform(
@@ -1591,7 +1598,7 @@ async function updateSingleProject(
       languageSkillsDir,
       target.scope,
       targetInstallMode,
-      targetWorkflowSelection,
+      targetSkillWorkflowSelection,
     );
     const cleanupResult =
       failed === 0
