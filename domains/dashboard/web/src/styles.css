@@ -1741,6 +1741,10 @@ body {
   height: 0;
 }
 
+.native-conflict-list {
+  padding-top: 8px;
+}
+
 .classic-changes-explorer {
   display: flex;
   height: var(--dashboard-center-height, auto);

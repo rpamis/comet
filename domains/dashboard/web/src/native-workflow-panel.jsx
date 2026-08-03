@@ -748,7 +748,7 @@ function NativeSidePanel({ change, git }) {
             未发现冲突变更。
           </p>
         ) : (
-          <ul className="mt-4 space-y-2">
+          <ul className="native-conflict-list space-y-2">
             {conflictPeers.map((peer) => (
               <li
                 key={`${peer.change}-${peer.classification}`}

@@ -565,6 +565,17 @@ test('keeps Classic and Native side panels within the center panel height', asyn
       await expect(nativeExplorer).toHaveCSS('overflow-y', 'hidden');
       await expect(nativeList).toHaveCSS('overflow-y', 'auto');
       await expect(nativeList).toHaveCSS('scrollbar-width', 'none');
+      const conflictSection = rightPanel
+        .getByRole('heading', { name: '关联冲突' })
+        .locator('..')
+        .locator('..');
+      const conflictMetrics = await conflictSection.evaluate((section) => {
+        const countPill = section.querySelector('h3')?.parentElement?.querySelector('span');
+        const firstPeer = section.querySelector('li');
+        if (!countPill || !firstPeer) throw new Error('Expected conflict count and first peer');
+        return firstPeer.getBoundingClientRect().top - countPill.getBoundingClientRect().bottom;
+      });
+      expect(conflictMetrics).toBeGreaterThanOrEqual(8);
     }
 
     const metrics = await workspace.evaluate((element) => {
