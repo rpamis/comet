@@ -261,8 +261,16 @@ describe('uninstall', () => {
     const hooksDir = path.join(tmpDir, '.kiro', 'hooks');
     const managedHook = path.join(hooksDir, 'comet-hook-router.kiro.hook');
     const userHook = path.join(hooksDir, 'personal.kiro.hook');
+    const managedHookContent =
+      JSON.stringify({
+        enabled: true,
+        then: {
+          type: 'runCommand',
+          command: 'node .agents/skills/comet/scripts/comet-hook-router.mjs --platform kiro',
+        },
+      }) + '\n';
     await fs.mkdir(hooksDir, { recursive: true });
-    await fs.writeFile(managedHook, '{}\n');
+    await fs.writeFile(managedHook, managedHookContent);
     await fs.writeFile(userHook, '{}\n');
     const unlink = fs.unlink.bind(fs);
     const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
@@ -280,7 +288,7 @@ describe('uninstall', () => {
       unlinkSpy.mockRestore();
     }
 
-    await expect(fs.readFile(managedHook, 'utf8')).resolves.toBe('{}\n');
+    await expect(fs.readFile(managedHook, 'utf8')).resolves.toBe(managedHookContent);
     await expect(fs.readFile(userHook, 'utf8')).resolves.toBe('{}\n');
   });
 
