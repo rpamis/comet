@@ -65,6 +65,8 @@ describe('Native dashboard web source contracts', () => {
     expect(source).toContain('native={snapshot.native}');
     expect(source).toContain('git={snapshot.git}');
     expect(source).toContain('onPreview={setArtifact}');
+    expect(source).toContain("from './workspace-layout.jsx'");
+    expect(source).toContain('<DashboardWorkspaceRegion');
     expect(source).not.toContain('<NativeWorkflowPanel native={snapshot.native} />');
   });
 });

@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons';
 import { Button, Tooltip } from 'antd';
 import { useAnimatedNumber } from './use-animated-number.js';
+import { DashboardWorkspaceRegion } from './workspace-layout.jsx';
 
 const PHASES = [
   ['shape', 'Shape'],
@@ -89,27 +90,29 @@ export function NativeWorkflowPanel({ native, git, query, onPreview, onCopyChang
       {!native || native.changes.length === 0 ? (
         <EmptyState />
       ) : (
-        <div className="dashboard-workspace-region grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)_minmax(260px,320px)]">
-          <NativeChangesExplorer
-            changes={changes}
-            selectedName={selected?.name ?? null}
-            tab={tab}
-            onTab={setTab}
-            onSelect={setSelectedName}
-          />
-          {selected ? (
-            <>
+        <DashboardWorkspaceRegion
+          left={
+            <NativeChangesExplorer
+              changes={changes}
+              selectedName={selected?.name ?? null}
+              tab={tab}
+              onTab={setTab}
+              onSelect={setSelectedName}
+            />
+          }
+          center={
+            selected ? (
               <NativeChangeDetail
                 change={selected}
                 onPreview={onPreview}
                 onCopyChangeName={onCopyChangeName}
               />
-              <NativeSidePanel change={selected} git={git} />
-            </>
-          ) : (
-            <NativeWorkspaceEmptyState native={native} tab={tab} query={query} onTab={setTab} />
-          )}
-        </div>
+            ) : (
+              <NativeWorkspaceEmptyState native={native} tab={tab} query={query} onTab={setTab} />
+            )
+          }
+          right={selected ? <NativeSidePanel change={selected} git={git} /> : null}
+        />
       )}
     </div>
   );
@@ -645,7 +648,7 @@ function NativeSidePanel({ change, git }) {
   const continuation = change.continuation;
 
   return (
-    <aside className="space-y-5 xl:col-start-2 2xl:col-start-auto">
+    <aside className="space-y-5">
       <section className="rounded-lg bg-bg p-5 shadow-raised">
         <h3 className="text-sm font-semibold">继续与归档</h3>
         <dl className="mt-4 space-y-3 text-sm">

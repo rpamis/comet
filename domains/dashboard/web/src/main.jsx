@@ -39,6 +39,7 @@ import {
 } from './markdown-preview.js';
 import { NativeWorkflowPanel } from './native-workflow-panel.jsx';
 import { useAnimatedNumber } from './use-animated-number.js';
+import { DashboardWorkspaceRegion } from './workspace-layout.jsx';
 import './styles.css';
 
 const AUTO_REFRESH_MS = 30_000;
@@ -613,26 +614,35 @@ function Dashboard({
       ) : (
         <>
           {classicWarning ? <ClassicWarning error={snapshot.classicError} /> : null}
-          <div className="dashboard-workspace-region grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)_minmax(260px,320px)]">
-            <AntChangesExplorer
-              visible={visible}
-              total={visibleTotal}
-              selectedId={selectedId}
-              tab={tab}
-              onTab={onTab}
-              onSelect={onSelect}
-              hasMore={hasMore}
-              pageLoading={pageLoading}
-              onLoadMore={onLoadMore}
-            />
-            {selected && <AntChangeDetail change={selected} onPreview={onPreview} />}
-            {!selected && detailLoading && (
-              <div className="change-detail min-w-0 rounded-lg bg-bg p-10 text-center text-sm text-muted shadow-raised">
-                正在加载变更详情…
-              </div>
-            )}
-            {selected && <SidePanel change={selected} git={snapshot.git} onPreview={onPreview} />}
-          </div>
+          <DashboardWorkspaceRegion
+            left={
+              <AntChangesExplorer
+                visible={visible}
+                total={visibleTotal}
+                selectedId={selectedId}
+                tab={tab}
+                onTab={onTab}
+                onSelect={onSelect}
+                hasMore={hasMore}
+                pageLoading={pageLoading}
+                onLoadMore={onLoadMore}
+              />
+            }
+            center={
+              selected ? (
+                <AntChangeDetail change={selected} onPreview={onPreview} />
+              ) : detailLoading ? (
+                <div className="change-detail min-w-0 rounded-lg bg-bg p-10 text-center text-sm text-muted shadow-raised">
+                  正在加载变更详情…
+                </div>
+              ) : null
+            }
+            right={
+              selected ? (
+                <SidePanel change={selected} git={snapshot.git} onPreview={onPreview} />
+              ) : null
+            }
+          />
         </>
       )}
     </div>
@@ -960,7 +970,7 @@ function TaskProgress({ change }) {
 
 function SidePanel({ change, git, onPreview }) {
   return (
-    <aside className="min-h-[480px] space-y-4 xl:col-start-2 2xl:col-start-auto">
+    <aside className="min-h-[480px] space-y-4">
       {change.status === 'archived' ? (
         <ArchiveSummary change={change} />
       ) : (
@@ -1843,6 +1853,23 @@ function updateSnapshotChangeRows(snapshot, status, items) {
 }
 
 function DashboardChangeList({ visible, selectedId, onSelect, hasMore, pageLoading, onLoadMore }) {
+  const listRef = useRef(null);
+  const sentinelRef = useRef(null);
+
+  useEffect(() => {
+    const root = listRef.current;
+    const target = sentinelRef.current;
+    if (!root || !target || !hasMore || !onLoadMore) return undefined;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && !pageLoading) onLoadMore();
+      },
+      { root },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMore, onLoadMore, pageLoading]);
+
   const handleScroll = useCallback(
     (event) => {
       if (!hasMore || pageLoading || !onLoadMore) return;
@@ -1853,7 +1880,7 @@ function DashboardChangeList({ visible, selectedId, onSelect, hasMore, pageLoadi
   );
 
   return (
-    <div className="dashboard-change-list" onScroll={handleScroll}>
+    <div ref={listRef} className="dashboard-change-list" onScroll={handleScroll}>
       {visible.length === 0 && !pageLoading ? (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无变更" />
       ) : (
@@ -1895,7 +1922,7 @@ function DashboardChangeList({ visible, selectedId, onSelect, hasMore, pageLoadi
           </div>
         ))
       )}
-      <div className="py-2 text-center text-xs text-meta" aria-live="polite">
+      <div ref={sentinelRef} className="py-2 text-center text-xs text-meta" aria-live="polite">
         {pageLoading ? <Spin size="small" /> : hasMore ? '继续下滑加载更多' : null}
       </div>
     </div>

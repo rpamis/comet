@@ -322,7 +322,7 @@ body {
 }
 
 .dashboard-change-list {
-  max-height: 26rem;
+  max-height: max(180px, calc(var(--dashboard-center-height, 26rem) - 8rem));
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
@@ -1668,6 +1668,19 @@ body {
    more presence than the compact overview and Header controls. */
 .dashboard-workspace-region {
   font-size: 13px;
+}
+
+.dashboard-workspace-center,
+.dashboard-workspace-side {
+  min-width: 0;
+  min-height: 0;
+}
+
+.dashboard-workspace-side {
+  max-height: var(--dashboard-center-height, none);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .dashboard-workspace-region .text-xs,

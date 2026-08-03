@@ -392,8 +392,8 @@ test('acknowledges a copied Change name and keeps the workbench within a narrow 
     .toBe(true);
 });
 
-test('keeps the change explorer at five rows until its own list is scrolled', async ({ page }) => {
-  const items = Array.from({ length: 8 }, (_, index) => ({
+test('fills the change explorer from five-row pages and continues on scroll', async ({ page }) => {
+  const items = Array.from({ length: 13 }, (_, index) => ({
     id: `change-${index + 1}`,
     name: `change-${index + 1}`,
     displayName: `change-${index + 1}`,
@@ -461,7 +461,7 @@ test('keeps the change explorer at five rows until its own list is scrolled', as
             status: 'active',
             items: items.slice(0, 5),
             total: items.length,
-            nextCursor: 'active-page-2',
+            nextCursor: '5',
           },
           git: {
             branch: 'main',
@@ -477,13 +477,14 @@ test('keeps the change explorer at five rows until its own list is scrolled', as
     }
     if (url.pathname.endsWith('/changes')) {
       pageRequests.push(url.search);
-      const secondPage = url.searchParams.has('cursor');
+      const status = url.searchParams.get('status') ?? 'active';
+      const offset = Number(url.searchParams.get('cursor') ?? 0);
       await route.fulfill({
         json: {
-          status: 'all',
-          items: secondPage ? items.slice(5) : items.slice(0, 5),
+          status,
+          items: items.slice(offset, offset + 5),
           total: items.length,
-          nextCursor: secondPage ? null : 'all-page-2',
+          nextCursor: offset + 5 < items.length ? String(offset + 5) : null,
         },
       });
       return;
@@ -498,21 +499,59 @@ test('keeps the change explorer at five rows until its own list is scrolled', as
 
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/');
+  await expect(page.locator('.dashboard-workspace-center')).toBeVisible();
   await page.getByRole('tab', { name: '全部' }).click();
 
   const list = page.getByRole('tabpanel', { name: '全部' }).locator('.dashboard-change-list');
-  await expect(list.locator('.dashboard-change-list-item')).toHaveCount(5);
-  await expect.poll(() => pageRequests).toHaveLength(1);
-
-  const listMetrics = await list.evaluate((element) => ({
-    clientHeight: element.clientHeight,
-    scrollHeight: element.scrollHeight,
-  }));
-  expect(listMetrics.scrollHeight).toBeGreaterThan(listMetrics.clientHeight);
+  await expect(list.locator('.dashboard-change-list-item')).toHaveCount(10);
+  await expect
+    .poll(() => pageRequests.filter((request) => request.includes('status=all')))
+    .toHaveLength(2);
 
   await list.evaluate((element) => {
     element.scrollTop = element.scrollHeight;
   });
-  await expect.poll(() => pageRequests).toHaveLength(2);
-  await expect(list.locator('.dashboard-change-list-item')).toHaveCount(8);
+  await expect
+    .poll(() => pageRequests.filter((request) => request.includes('status=all')))
+    .toHaveLength(3);
+  await expect(list.locator('.dashboard-change-list-item')).toHaveCount(13);
+});
+
+test('keeps Classic and Native side panels within the center panel height', async ({ page }) => {
+  await page.setViewportSize({ width: 1680, height: 1005 });
+  await page.goto('/?demo');
+
+  const expectWorkspacePanels = async () => {
+    const workspace = page.locator('.dashboard-workspace-region');
+    const center = workspace.locator('.dashboard-workspace-center');
+    const sides = workspace.locator('.dashboard-workspace-side');
+    await expect(center).toBeVisible();
+    await expect(sides).toHaveCount(2);
+
+    const metrics = await workspace.evaluate((element) => {
+      const centerElement = element.querySelector('.dashboard-workspace-center');
+      if (!(centerElement instanceof HTMLElement)) throw new Error('Missing center panel');
+      const centerBox = centerElement.getBoundingClientRect();
+      return [...element.querySelectorAll('.dashboard-workspace-side')].map((side) => {
+        if (!(side instanceof HTMLElement)) throw new Error('Invalid side panel');
+        const box = side.getBoundingClientRect();
+        return {
+          centerHeight: centerBox.height,
+          sideHeight: box.height,
+          overflowY: getComputedStyle(side).overflowY,
+          maxHeight: getComputedStyle(side).maxHeight,
+        };
+      });
+    });
+
+    for (const metric of metrics) {
+      expect(metric.sideHeight).toBeLessThanOrEqual(metric.centerHeight + 1);
+      expect(metric.overflowY).toBe('auto');
+      expect(metric.maxHeight).not.toBe('none');
+    }
+  };
+
+  await expectWorkspacePanels();
+  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
+  await expectWorkspacePanels();
 });

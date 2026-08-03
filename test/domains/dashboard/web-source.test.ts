@@ -10,14 +10,25 @@ async function readDashboardStyles(): Promise<string> {
   return fs.readFile(path.resolve('domains', 'dashboard', 'web', 'src', 'styles.css'), 'utf8');
 }
 
+async function readWorkspaceLayoutSource(): Promise<string> {
+  return fs.readFile(
+    path.resolve('domains', 'dashboard', 'web', 'src', 'workspace-layout.jsx'),
+    'utf8',
+  );
+}
+
 describe('dashboard web source contracts', () => {
   it('keeps the change workspace grid responsive inside the left navigation rail', async () => {
-    const source = await readDashboardSource();
+    const [source, layout] = await Promise.all([
+      readDashboardSource(),
+      readWorkspaceLayoutSource(),
+    ]);
 
-    expect(source).toContain(
+    expect(source).toContain("from './workspace-layout.jsx'");
+    expect(layout).toContain(
       'xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)_minmax(260px,320px)]',
     );
-    expect(source).toContain('xl:col-start-2 2xl:col-start-auto');
+    expect(layout).toContain('xl:col-start-2 2xl:col-start-auto');
     expect(source).not.toContain('xl:grid-cols-[320px_minmax(620px,940px)_320px]');
   });
 
@@ -133,6 +144,8 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain('正在加载变更详情');
     expect(source).not.toContain('async function fetchSnapshot');
 
-    expect(await readDashboardStyles()).toContain('max-height: 26rem;');
+    expect(await readDashboardStyles()).toContain(
+      'max-height: max(180px, calc(var(--dashboard-center-height, 26rem) - 8rem));',
+    );
   });
 });
