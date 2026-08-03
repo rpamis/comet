@@ -1736,6 +1736,67 @@ body {
   height: 0;
 }
 
+.classic-changes-explorer {
+  display: flex;
+  height: var(--dashboard-center-height, auto);
+  max-height: 100%;
+  flex-direction: column;
+  overflow: hidden;
+  border-color: var(--color-border) !important;
+}
+
+.classic-changes-explorer .ant-card-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.classic-changes-explorer .ant-tabs {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.classic-changes-explorer .ant-tabs-nav {
+  flex: none;
+}
+
+.classic-changes-explorer .ant-tabs-content-holder,
+.classic-changes-explorer .ant-tabs-content,
+.classic-changes-explorer .ant-tabs-tabpane {
+  min-height: 0;
+}
+
+.classic-changes-explorer .ant-tabs-content-holder {
+  flex: 1;
+  overflow: hidden;
+}
+
+.classic-changes-explorer .ant-tabs-body-holder {
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.classic-changes-explorer .ant-tabs-body {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.classic-changes-explorer .ant-tabs-content,
+.classic-changes-explorer .ant-tabs-tabpane {
+  height: 100%;
+}
+
+.classic-changes-explorer .dashboard-change-list {
+  height: 100%;
+  max-height: none;
+}
+
 .dashboard-workspace-region .text-xs,
 .dashboard-workspace-region .text-\[11px\] {
   font-size: 12px !important;

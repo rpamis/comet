@@ -1793,7 +1793,7 @@ function AntChangesExplorer({
   ].map(([key, label]) => ({ key, label }));
   return (
     <AntCard
-      className="min-w-0"
+      className="classic-changes-explorer min-w-0"
       title={
         <span>
           Changes Explorer <Badge count={total} showZero className="ml-2" />

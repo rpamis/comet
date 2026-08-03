@@ -537,6 +537,19 @@ test('keeps Classic and Native side panels within the center panel height', asyn
       'border-top-width',
       '1px',
     );
+    const workspaceFrame = workspace.locator(
+      native ? '.native-changes-explorer' : '.classic-changes-explorer',
+    );
+    await expect(workspaceFrame).toHaveCSS('border-top-width', '1px');
+    await expect(workspaceFrame).toHaveCSS('border-bottom-width', '1px');
+    await expect(workspaceFrame).toHaveCSS('overflow-y', 'hidden');
+    const [centerBox, frameBox] = await Promise.all([
+      center.boundingBox(),
+      workspaceFrame.boundingBox(),
+    ]);
+    if (!centerBox || !frameBox) throw new Error('Expected workspace frame bounds');
+    expect(frameBox.height).toBeLessThanOrEqual(centerBox.height + 1);
+    expect(frameBox.height).toBeGreaterThanOrEqual(centerBox.height - 1);
     if (native) {
       await expect(workspace.locator('.dashboard-workspace-left')).toHaveCSS('overflow-y', 'auto');
       const nativeExplorer = workspace.locator('.native-changes-explorer');

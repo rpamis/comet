@@ -19,12 +19,15 @@ async function readWorkspaceLayoutSource(): Promise<string> {
 
 describe('dashboard web source contracts', () => {
   it('keeps the change workspace grid responsive inside the left navigation rail', async () => {
-    const [source, layout] = await Promise.all([
+    const [source, layout, styles] = await Promise.all([
       readDashboardSource(),
       readWorkspaceLayoutSource(),
+      readDashboardStyles(),
     ]);
 
     expect(source).toContain("from './workspace-layout.jsx'");
+    expect(source).toContain('classic-changes-explorer');
+    expect(styles).toContain('.classic-changes-explorer');
     expect(layout).toContain(
       'xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)_minmax(260px,320px)]',
     );
