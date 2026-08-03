@@ -3333,7 +3333,18 @@ describe('update command helpers', () => {
       '# Comet\n',
       'utf-8',
     );
+    // Seed a stale Native install so the test also proves an existing
+    // comet-native Skill gets overwritten, not merely created.
+    await fs.mkdir(path.join(fakeHome, '.agents', 'skills', 'comet-native'), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(fakeHome, '.agents', 'skills', 'comet-native', 'SKILL.md'),
+      '---\nname: comet-native\n---\n# STALE\n',
+      'utf-8',
+    );
     const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    // Silence update progress logging; this test only asserts file contents.
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
     try {
@@ -3348,10 +3359,14 @@ describe('update command helpers', () => {
     }
 
     // Native Skills must be copied alongside Classic ones for global installs.
-    // Codex installs land in the canonical `.agents/skills/` directory.
-    await expect(
-      fs.readFile(path.join(fakeHome, '.agents', 'skills', 'comet-native', 'SKILL.md'), 'utf8'),
-    ).resolves.toContain('name: comet-native');
+    // Codex installs land in the canonical `.agents/skills/` directory, and a
+    // previously stale Native Skill must be replaced with the current asset.
+    const nativeSkill = await fs.readFile(
+      path.join(fakeHome, '.agents', 'skills', 'comet-native', 'SKILL.md'),
+      'utf8',
+    );
+    expect(nativeSkill).toContain('name: comet-native');
+    expect(nativeSkill).not.toContain('# STALE');
     await expect(
       fs.readFile(path.join(fakeHome, '.agents', 'skills', 'comet', 'SKILL.md'), 'utf8'),
     ).resolves.toContain('comet workflow resolve');

@@ -1549,9 +1549,9 @@ async function updateSingleProject(
   // effectively ignored (managedRulesForSelection / managedHooksForSelection
   // return the full manifest set), and Native write-guarding is routed through
   // the unified comet-hook-router rather than per-workflow rule/hook files.
-  const targetWorkflowSelections = targets.map((target) =>
-    target.scope === 'global' ? 'both' : projectWorkflowSelection,
-  );
+  const skillWorkflowSelectionFor = (target: InstalledCometTarget): InitWorkflowSelection =>
+    target.scope === 'global' ? 'both' : projectWorkflowSelection;
+  const targetWorkflowSelections = targets.map(skillWorkflowSelectionFor);
   const updateSkillPaths = new Set(
     (
       await Promise.all(
@@ -1578,8 +1578,7 @@ async function updateSingleProject(
     const languageSkillsDir = languageToSkillsDir(languageId);
     const targetInstallMode = installModeFor(target);
     const nativeProjectTarget = nativeProject && target.scope === 'project';
-    const targetSkillWorkflowSelection =
-      target.scope === 'global' ? 'both' : projectWorkflowSelection;
+    const targetSkillWorkflowSelection = skillWorkflowSelectionFor(target);
     if (target.scope === 'project') {
       await assertClassicProjectMutationAllowed?.();
     }
