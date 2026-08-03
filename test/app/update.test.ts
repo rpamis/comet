@@ -1844,7 +1844,7 @@ describe('update command helpers', () => {
     }
 
     await expect(fs.readFile(projectSkill, 'utf8')).resolves.toContain(
-      'comet workflow resolve . --json',
+      'comet workflow resolve . --activate --json',
     );
     await expect(fs.readFile(globalSkill, 'utf8')).resolves.toBe('# Stale global Comet\n');
   });
@@ -1929,7 +1929,7 @@ describe('update command helpers', () => {
     ]);
     await expect(
       fs.readFile(path.join(tmpDir, '.agents', 'skills', 'comet', 'SKILL.md'), 'utf8'),
-    ).resolves.toContain('comet workflow resolve . --json');
+    ).resolves.toContain('comet workflow resolve . --activate --json');
     await expect(
       fs.readFile(path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'), 'utf8'),
     ).resolves.toBe('# Stale Claude Comet\n');
@@ -2851,7 +2851,7 @@ describe('update command helpers', () => {
 
     await expect(
       fs.readFile(path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'), 'utf8'),
-    ).resolves.toContain('comet workflow resolve . --json');
+    ).resolves.toContain('comet workflow resolve . --activate --json');
     await expect(
       fs.readFile(path.join(tmpDir, '.claude', 'skills', 'comet-native', 'SKILL.md'), 'utf8'),
     ).resolves.toContain('name: comet-native');
@@ -2994,7 +2994,7 @@ describe('update command helpers', () => {
 
     await expect(
       fs.readFile(path.join(tmpDir, '.agents', 'skills', 'comet', 'SKILL.md'), 'utf8'),
-    ).resolves.toContain('comet workflow resolve . --json');
+    ).resolves.toContain('comet workflow resolve . --activate --json');
     await expect(fs.access(legacyComet)).rejects.toMatchObject({ code: 'ENOENT' });
     await expect(fs.readFile(path.join(legacyPersonal, 'SKILL.md'), 'utf8')).resolves.toBe(
       '# Personal\n',
@@ -3074,7 +3074,7 @@ describe('update command helpers', () => {
       expect((await fs.lstat(path.join(platformSkills, 'comet'))).isSymbolicLink()).toBe(false);
       await expect(
         fs.readFile(path.join(platformSkills, 'comet', 'SKILL.md'), 'utf8'),
-      ).resolves.toContain('comet workflow resolve . --json');
+      ).resolves.toContain('comet workflow resolve . --activate --json');
       await expect(fs.readFile(path.join(centralComet, 'SKILL.md'), 'utf8')).resolves.toBe(
         '# Central stale Comet\n',
       );

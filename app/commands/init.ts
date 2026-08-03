@@ -27,7 +27,6 @@ import {
   copyCometRulesForPlatform,
   installCometHooksForPlatform,
   createWorkingDirs,
-  mergeProjectConfig,
   prepareNativeSkillInstallTarget,
 } from '../../domains/skill/platform-install.js';
 import { installCometProjectInstructions } from '../../domains/skill/project-instructions.js';
@@ -59,7 +58,11 @@ import {
   readWorkflowProjectConfigSnapshot,
 } from '../../domains/workflow-contract/project-config-reader.js';
 import { writeWorkflowProjectConfig } from '../../domains/workflow-contract/project-config-writer.js';
-import type { WorkflowProjectConfig } from '../../domains/workflow-contract/types.js';
+import { writeWorkflowGlobalConfig } from '../../domains/workflow-contract/global-config.js';
+import type {
+  WorkflowGlobalConfig,
+  WorkflowProjectConfig,
+} from '../../domains/workflow-contract/types.js';
 import { installSuperpowersForPlatforms } from '../../domains/integrations/superpowers.js';
 import {
   hasCodegraphProjectIndex,
@@ -502,9 +505,6 @@ export async function initCommand(
 
   const detected = await detectPlatforms(projectPath);
   const scope = await selectScope(options, lang);
-  if (scope === 'global' && options.artifactRoot !== undefined) {
-    throw new Error('--root is only valid for project-scope initialization');
-  }
   if (scope === 'global' && options.codegraph === 'init') {
     throw new Error('--codegraph init is only valid for project-scope initialization');
   }
@@ -535,8 +535,15 @@ export async function initCommand(
     configuredWorkflows.includes('native') &&
     configuredWorkflows.includes('classic')
       ? 'both'
-      : (suggestedWorkflowDecision?.workflow ?? 'classic');
+      : (suggestedWorkflowDecision?.workflow ?? 'native');
   const workflowSelection = await selectWorkflow(options, lang, suggestedWorkflowSelection);
+  if (
+    scope === 'global' &&
+    options.artifactRoot !== undefined &&
+    !includesWorkflow(workflowSelection, 'native')
+  ) {
+    throw new Error('--root is only valid when the Native workflow is enabled');
+  }
   const workflow: CometWorkflow = workflowSelection === 'both' ? 'native' : workflowSelection;
   const workflowDecision =
     scope === 'project'
@@ -1068,6 +1075,10 @@ export async function initCommand(
   const cometInstallComplete =
     results.length > 0 && results.every((result) => result.comet !== 'failed');
   const projectInitializationComplete = cometInstallComplete && classicOpenSpecRootReady;
+  const globalWorkflowConfigReady =
+    scope !== 'global' ||
+    !includesWorkflow(workflowSelection, 'classic') ||
+    osGlobalStatus === 'installed';
 
   if (
     scope === 'project' &&
@@ -1215,8 +1226,32 @@ export async function initCommand(
         projectConfigCreated = initialProjectConfigDocument === null;
         projectConfigUpdated = initialProjectConfigDocument !== null;
       }
-    } else if (scope === 'global') {
-      await mergeProjectConfig(baseDir, language.artifactLanguage);
+    } else if (scope === 'global' && globalWorkflowConfigReady) {
+      const defaults = defaultProjectConfig(
+        options.artifactRoot ?? 'docs',
+        language.artifactLanguage,
+      );
+      const selectedWorkflows =
+        workflowSelection === 'both' ? (['native', 'classic'] as const) : [workflowSelection];
+      const config: WorkflowGlobalConfig = {
+        schema: 'comet.global.v1',
+        default_workflow: workflow,
+        workflows: [...selectedWorkflows],
+        ambient_resume: true,
+        ...(includesWorkflow(workflowSelection, 'native') ? { native: defaults.native } : {}),
+        ...(includesWorkflow(workflowSelection, 'classic')
+          ? {
+              classic: {
+                artifact_layout: 'docs',
+                language: language.artifactLanguage,
+                context_compression: 'off',
+                review_mode: 'standard',
+                auto_transition: true,
+              },
+            }
+          : {}),
+      };
+      await writeWorkflowGlobalConfig(baseDir, config);
     }
   } catch (error) {
     finalizationFailure = (error as Error).message;

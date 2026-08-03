@@ -62,6 +62,7 @@ const workflow = program.command('workflow').description('Resolve the configured
 workflow
   .command('resolve [path]')
   .description('Resolve /comet to its permanent Native or Classic entry')
+  .option('--activate', 'Create project configuration from global defaults when missing')
   .option('--json', 'Output as JSON')
   .action(async (targetPath = '.', options) => {
     const { workflowResolveCommand } = await import('../commands/workflow.js');

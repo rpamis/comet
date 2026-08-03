@@ -7,6 +7,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Changed
 
 - **Dashboard change explorer**: Dashboard now loads the current project overview with lightweight change rows, paginates active, archived, and all changes in batches of five, and fetches full artifact details only when selected so large projects remain responsive.
+- **Global project activation**: A global initialization now stores complete Native or Classic defaults once, and the first explicit `/comet` invocation activates each unconfigured project from those defaults. Artifacts stay inside the project, activated projects keep stable settings when global defaults change, existing Classic projects retain Classic ownership, and project-scoped initialization remains optional for local asset copies or overrides.
 
 ## What's Changed [0.4.0-beta.14] - 2026-08-02
 

@@ -30,6 +30,14 @@ export {
   WORKFLOW_PROJECT_CONFIG_MAX_BYTES,
 } from './project-config.js';
 export {
+  parseWorkflowGlobalConfig,
+  readWorkflowGlobalConfig,
+  workflowGlobalConfigFromProjectConfig,
+  workflowProjectConfigFromGlobalConfig,
+  writeWorkflowGlobalConfig,
+  WORKFLOW_GLOBAL_CONFIG_PATH,
+} from './global-config.js';
+export {
   ensureProtectedProjectDirectory,
   inspectProtectedProjectPath,
   protectedProjectFileExists,
