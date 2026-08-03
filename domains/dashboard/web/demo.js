@@ -1034,12 +1034,38 @@ DEMO_SNAPSHOT.changes.archived.push(
   ),
 );
 
+DEMO_SNAPSHOT.changes.active[0].risks.push(
+  ...Array.from({ length: 9 }, (_, index) => ({
+    level: index % 3 === 0 ? 'info' : 'warning',
+    code: `demo-risk-${String(index + 1).padStart(2, '0')}`,
+    message: `演示风险 ${index + 1}：需要补充工作区证据`,
+    suggestion: '补齐对应产物后重新运行 comet verify',
+  })),
+);
+DEMO_SNAPSHOT.git.recentCommits.push(
+  ...Array.from(
+    { length: 8 },
+    (_, index) => `demo${String(index + 1).padStart(2, '0')} 补充 dashboard 演示数据`,
+  ),
+);
+
 const nativeTemplates = DEMO_SNAPSHOT.native.changes.slice();
 DEMO_SNAPSHOT.native.changes.push(
   ...Array.from({ length: 24 }, (_, index) =>
     createNativeDemoChange(nativeTemplates[index % nativeTemplates.length], index + 1),
   ),
 );
+const nativeSidebarDemoChange = DEMO_SNAPSHOT.native.changes[0];
+nativeSidebarDemoChange.conflicts.peers.push(
+  ...Array.from({ length: 9 }, (_, index) => ({
+    change: `demo-native-overlap-${String(index + 1).padStart(2, '0')}`,
+    classification: 'possible-overlap',
+    workspaceRelationship: 'same',
+    signalCount: index + 2,
+  })),
+);
+nativeSidebarDemoChange.conflicts.visiblePossibleOverlap =
+  nativeSidebarDemoChange.conflicts.peers.length;
 DEMO_SNAPSHOT.summary.activeChanges = DEMO_SNAPSHOT.changes.active.length;
 DEMO_SNAPSHOT.summary.archivedChanges = DEMO_SNAPSHOT.changes.archived.length;
 DEMO_SNAPSHOT.summary.verifyFailed = DEMO_SNAPSHOT.changes.active.filter(

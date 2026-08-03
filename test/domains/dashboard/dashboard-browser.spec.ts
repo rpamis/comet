@@ -533,10 +533,11 @@ test('keeps Classic and Native side panels within the center panel height', asyn
       await expect(changeList).toHaveCSS('scrollbar-width', 'none');
     }
     await expect(contentShell).toHaveCSS('scrollbar-width', 'none');
-    await expect(workspace.locator('.dashboard-workspace-right')).toHaveCSS(
-      'border-top-width',
-      '1px',
-    );
+    const rightPanel = workspace.locator('.dashboard-workspace-right');
+    await expect(rightPanel).toHaveCSS('border-top-width', '1px');
+    await expect
+      .poll(() => rightPanel.evaluate((element) => element.scrollHeight > element.clientHeight))
+      .toBe(true);
     const workspaceFrame = workspace.locator(
       native ? '.native-changes-explorer' : '.classic-changes-explorer',
     );

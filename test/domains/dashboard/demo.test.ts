@@ -42,5 +42,8 @@ describe('dashboard demo data', () => {
     expect(DEMO_SNAPSHOT.changes.active.length).toBeGreaterThanOrEqual(10);
     expect(DEMO_SNAPSHOT.changes.archived.length).toBeGreaterThanOrEqual(8);
     expect(DEMO_SNAPSHOT.native.changes.length).toBeGreaterThanOrEqual(10);
+    expect(DEMO_SNAPSHOT.changes.active[0].risks.length).toBeGreaterThanOrEqual(8);
+    expect(DEMO_SNAPSHOT.git.recentCommits.length).toBeGreaterThanOrEqual(10);
+    expect(DEMO_SNAPSHOT.native.changes[0].conflicts.peers.length).toBeGreaterThanOrEqual(8);
   });
 });
