@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ApartmentOutlined,
   BulbOutlined,
@@ -51,19 +51,52 @@ const CONFLICT_LABELS = {
   'possible-overlap': '可能重叠',
 };
 
+const NATIVE_CHANGE_PAGE_SIZE = 5;
+
 export function NativeWorkflowPanel({ native, git, query, onPreview, onCopyChangeName }) {
   const [tab, setTab] = useState('active');
+  const listRef = useRef(null);
+  const [visibleChangeCount, setVisibleChangeCount] = useState(NATIVE_CHANGE_PAGE_SIZE);
+  const normalizedQuery = query.trim().toLowerCase();
   const changes = useMemo(() => {
     const source = native?.changes ?? [];
-    const normalizedQuery = query.trim().toLowerCase();
     return source.filter((change) => {
       const matchesTab =
         tab === 'all' || (tab === 'active' && change.status === 'active') || change.status === tab;
       const matchesQuery = !normalizedQuery || change.name.toLowerCase().includes(normalizedQuery);
       return matchesTab && matchesQuery;
     });
-  }, [native, query, tab]);
+  }, [native, normalizedQuery, tab]);
   const [selectedName, setSelectedName] = useState(null);
+
+  useEffect(() => {
+    setVisibleChangeCount(NATIVE_CHANGE_PAGE_SIZE);
+  }, [normalizedQuery, tab]);
+
+  const loadMoreChanges = useCallback(() => {
+    setVisibleChangeCount((current) => Math.min(current + NATIVE_CHANGE_PAGE_SIZE, changes.length));
+  }, [changes.length]);
+  const visibleChanges = changes.slice(0, visibleChangeCount);
+  const hasMoreChanges = visibleChanges.length < changes.length;
+
+  useEffect(() => {
+    const element = listRef.current;
+    if (!element || !hasMoreChanges) return undefined;
+
+    const frame = window.requestAnimationFrame(() => {
+      if (element.scrollHeight <= element.clientHeight + 1) loadMoreChanges();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [hasMoreChanges, loadMoreChanges, visibleChangeCount]);
+
+  const handleListScroll = useCallback(
+    (event) => {
+      if (!hasMoreChanges) return;
+      const { scrollTop, clientHeight, scrollHeight } = event.currentTarget;
+      if (scrollTop + clientHeight >= scrollHeight - 32) loadMoreChanges();
+    },
+    [hasMoreChanges, loadMoreChanges],
+  );
 
   useEffect(() => {
     setSelectedName((current) => {
@@ -93,11 +126,15 @@ export function NativeWorkflowPanel({ native, git, query, onPreview, onCopyChang
         <DashboardWorkspaceRegion
           left={
             <NativeChangesExplorer
-              changes={changes}
+              changes={visibleChanges}
+              total={changes.length}
               selectedName={selected?.name ?? null}
               tab={tab}
               onTab={setTab}
               onSelect={setSelectedName}
+              listRef={listRef}
+              hasMore={hasMoreChanges}
+              onScroll={handleListScroll}
             />
           }
           center={
@@ -251,33 +288,49 @@ function NativeSummaryCard({ label, value, note, tag, icon: Icon, tone, selected
   );
 }
 
-function NativeChangesExplorer({ changes, selectedName, tab, onTab, onSelect }) {
+function NativeChangesExplorer({
+  changes,
+  total,
+  selectedName,
+  tab,
+  onTab,
+  onSelect,
+  listRef,
+  hasMore,
+  onScroll,
+}) {
   return (
-    <aside className="native-changes-explorer rounded-lg border border-border bg-bg shadow-raised">
-      <div className="flex items-center border-b border-border-soft px-5 py-4">
+    <aside className="native-changes-explorer flex min-h-0 flex-col rounded-lg border border-border bg-bg shadow-raised">
+      <div className="flex flex-none items-center border-b border-border-soft px-5 py-4">
         <h3 className="font-semibold">Changes Explorer</h3>
         <span className="ml-auto rounded-full bg-surface px-3 py-1 text-xs text-fg-2">
-          {changes.length} 个
+          {total} 个
         </span>
       </div>
-      <div className="p-4">
-        <div className="mb-4 inline-flex rounded-xl bg-surface p-1">
-          {[
-            ['active', '活跃'],
-            ['archived', '已归档'],
-            ['all', '全部'],
-          ].map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              className={`rounded-lg px-3 py-1.5 text-sm ${tab === value ? 'bg-bg text-fg shadow-sm' : 'text-muted'}`}
-              onClick={() => onTab(value)}
-            >
-              {label}
-            </button>
-          ))}
+      <div className="native-changes-explorer-body flex min-h-0 flex-1 flex-col p-4">
+        <div className="mb-4 flex-none">
+          <div className="inline-flex rounded-xl bg-surface p-1">
+            {[
+              ['active', '活跃'],
+              ['archived', '已归档'],
+              ['all', '全部'],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={`rounded-lg px-3 py-1.5 text-sm ${tab === value ? 'bg-bg text-fg shadow-sm' : 'text-muted'}`}
+                onClick={() => onTab(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="space-y-2">
+        <div
+          ref={listRef}
+          className="native-change-list min-h-0 flex-1 space-y-2 overflow-y-auto"
+          onScroll={onScroll}
+        >
           {changes.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted">
               {tab === 'active'
@@ -291,7 +344,7 @@ function NativeChangesExplorer({ changes, selectedName, tab, onTab, onSelect }) 
               <button
                 key={change.name}
                 type="button"
-                className={`w-full rounded-xl border p-3 text-left transition-all duration-200 ${change.name === selectedName ? 'border-accent/30 bg-accent-softer shadow-sm' : 'border-transparent hover:border-border-soft hover:bg-surface'}`}
+                className={`native-change-row w-full rounded-xl border p-3 text-left transition-all duration-200 ${change.name === selectedName ? 'border-accent/30 bg-accent-softer shadow-sm' : 'border-transparent hover:border-border-soft hover:bg-surface'}`}
                 onClick={() => onSelect(change.name)}
               >
                 <div className="flex items-start gap-2">
@@ -308,6 +361,11 @@ function NativeChangesExplorer({ changes, selectedName, tab, onTab, onSelect }) 
                 </div>
               </button>
             ))
+          )}
+          {hasMore && (
+            <div className="py-2 text-center text-xs text-meta" aria-live="polite">
+              继续下滑加载更多
+            </div>
           )}
         </div>
       </div>

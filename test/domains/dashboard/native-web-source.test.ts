@@ -13,6 +13,11 @@ describe('Native dashboard web source contracts', () => {
   it('renders only the bounded Native workflow summaries', async () => {
     const source = await readNativePanelSource();
 
+    expect(source).toContain('NATIVE_CHANGE_PAGE_SIZE = 5');
+    expect(source).toContain('changes.slice(0, visibleChangeCount)');
+    expect(source).toContain('native-change-list');
+    expect(source).toContain('onScroll={handleListScroll}');
+
     for (const field of [
       'native.changes',
       'change.name',

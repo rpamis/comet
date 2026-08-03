@@ -539,10 +539,13 @@ test('keeps Classic and Native side panels within the center panel height', asyn
     );
     if (native) {
       await expect(workspace.locator('.dashboard-workspace-left')).toHaveCSS('overflow-y', 'auto');
-      await expect(workspace.locator('.native-changes-explorer')).toHaveCSS(
-        'border-top-width',
-        '1px',
-      );
+      const nativeExplorer = workspace.locator('.native-changes-explorer');
+      const nativeList = workspace.locator('.native-change-list');
+      await expect(nativeExplorer).toHaveCSS('border-top-width', '1px');
+      await expect(nativeExplorer).toHaveCSS('border-bottom-width', '1px');
+      await expect(nativeExplorer).toHaveCSS('overflow-y', 'hidden');
+      await expect(nativeList).toHaveCSS('overflow-y', 'auto');
+      await expect(nativeList).toHaveCSS('scrollbar-width', 'none');
     }
 
     const metrics = await workspace.evaluate((element) => {
@@ -571,10 +574,26 @@ test('keeps Classic and Native side panels within the center panel height', asyn
       expect(metric.scrollbarWidth).toBe('none');
     }
 
-    expect(metrics.some((metric) => metric.contentHeight > metric.visibleHeight)).toBe(true);
+    const scrollTarget = native
+      ? workspace.locator('.native-change-list')
+      : workspace.locator('.dashboard-change-list');
+    await expect
+      .poll(() => scrollTarget.evaluate((element) => element.scrollHeight > element.clientHeight))
+      .toBe(true);
   };
 
   await expectWorkspacePanels();
   await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
   await expectWorkspacePanels({ native: true });
+
+  const nativeList = page.locator('.native-change-list');
+  const initiallyRendered = await nativeList.locator('.native-change-row').count();
+  expect(initiallyRendered).toBeGreaterThanOrEqual(5);
+  expect(initiallyRendered).toBeLessThan(27);
+  await nativeList.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect
+    .poll(() => nativeList.locator('.native-change-row').count())
+    .toBeGreaterThan(initiallyRendered);
 });

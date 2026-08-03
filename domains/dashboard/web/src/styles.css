@@ -1718,6 +1718,24 @@ body {
   box-shadow: var(--shadow-card);
 }
 
+.native-changes-explorer {
+  height: var(--dashboard-center-height, auto);
+  max-height: 100%;
+  overflow: hidden;
+  border-color: var(--color-border) !important;
+}
+
+.native-change-list {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.native-change-list::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 .dashboard-workspace-region .text-xs,
 .dashboard-workspace-region .text-\[11px\] {
   font-size: 12px !important;
