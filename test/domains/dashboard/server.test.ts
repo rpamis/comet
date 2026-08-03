@@ -109,6 +109,58 @@ describe('startDashboardServer', () => {
     expect(unknownResponse.status).toBe(404);
     expect(JSON.parse(unknownResponse.body)).toEqual({ error: 'Unknown dashboard project id' });
   });
+
+  it('serves paginated change rows and loads a selected change detail on demand', async () => {
+    const changesRoot = path.join(projectDir, 'openspec', 'changes');
+    await fs.mkdir(changesRoot, { recursive: true });
+    for (let index = 0; index < 6; index += 1) {
+      const changeDir = path.join(changesRoot, `server-${index}`);
+      await fs.mkdir(changeDir, { recursive: true });
+      await fs.writeFile(path.join(changeDir, '.comet.yaml'), 'phase: build\n');
+      await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [ ] pending\n');
+      await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\n');
+    }
+
+    const handle = await startDashboardServer({
+      projectPath: projectDir,
+      port: 0,
+      webRoot: webDir,
+    });
+    handles.push(handle);
+
+    const directoryResponse = await request(handle.port, '/api/dashboard/projects');
+    const directory = JSON.parse(directoryResponse.body) as { currentProjectId: string };
+    const base = `/api/dashboard/projects/${directory.currentProjectId}`;
+
+    const overviewResponse = await request(handle.port, `${base}/overview`);
+    expect(overviewResponse.status).toBe(200);
+    expect(JSON.parse(overviewResponse.body)).toMatchObject({
+      summary: { activeChanges: 6 },
+    });
+    expect(JSON.parse(overviewResponse.body)).not.toHaveProperty('changes');
+
+    const pageResponse = await request(handle.port, `${base}/changes?status=active&limit=5`);
+    expect(pageResponse.status).toBe(200);
+    const page = JSON.parse(pageResponse.body) as {
+      items: Array<{ id: string; status: string }>;
+      total: number;
+      nextCursor: string | null;
+    };
+    expect(page.total).toBe(6);
+    expect(page.items).toHaveLength(5);
+    expect(page.nextCursor).toEqual(expect.any(String));
+
+    const detailResponse = await request(
+      handle.port,
+      `${base}/change?changeId=${encodeURIComponent(page.items[0].id)}`,
+    );
+    expect(detailResponse.status).toBe(200);
+    expect(JSON.parse(detailResponse.body)).toMatchObject({
+      id: page.items[0].id,
+      artifacts: expect.any(Object),
+      artifactPreviews: expect.any(Array),
+    });
+  });
   it('serves the static index for the root path', async () => {
     const handle = await startDashboardServer({
       projectPath: projectDir,

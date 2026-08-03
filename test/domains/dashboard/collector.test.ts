@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
-import { collectDashboardSnapshot } from '../../../domains/dashboard/collector.js';
+import {
+  collectDashboardChangeDetail,
+  collectDashboardChangePage,
+  collectDashboardOverview,
+  collectDashboardSnapshot,
+} from '../../../domains/dashboard/collector.js';
 
 interface ChangeFixture {
   name: string;
@@ -754,5 +759,111 @@ describe('collectDashboardSnapshot', () => {
     expect(openspecKeys).toContain('design');
     expect(openspecKeys).toContain('tasks');
     expect(superpowersKeys).toContain('plan');
+  });
+
+  it('returns paginated lightweight change rows without hidden artifact previews', async () => {
+    for (let index = 0; index < 6; index += 1) {
+      await writeChange(root, {
+        name: `active-${index}`,
+        yaml: { phase: 'build', workflow: 'classic' },
+        tasks: '- [ ] pending\n',
+        proposal: true,
+        design: true,
+        plan: true,
+      });
+    }
+
+    const first = await collectDashboardChangePage(root, {
+      status: 'active',
+      limit: 5,
+    });
+
+    expect(first.total).toBe(6);
+    expect(first.items).toHaveLength(5);
+    expect(first.nextCursor).toEqual(expect.any(String));
+    expect(first.items[0]).toMatchObject({
+      status: 'active',
+      phase: 'build',
+      tasks: { completed: 0, total: 1 },
+      verify: { result: 'unknown' },
+    });
+    expect(first.items[0]).not.toHaveProperty('artifactPreviews');
+
+    const second = await collectDashboardChangePage(root, {
+      status: 'active',
+      limit: 5,
+      cursor: first.nextCursor ?? undefined,
+    });
+    expect(second.items).toHaveLength(1);
+    expect(second.nextCursor).toBeNull();
+  });
+
+  it('combines active and archived rows for the all tab with a stable page size', async () => {
+    await writeChange(root, {
+      name: 'active-one',
+      yaml: { phase: 'build' },
+      tasks: '- [ ] todo\n',
+    });
+    await writeChange(root, {
+      name: '2026-06-20-archived-one',
+      status: 'archived',
+      yaml: { phase: 'archive', archived: 'true' },
+      tasks: '- [x] done\n',
+    });
+
+    const page = await collectDashboardChangePage(root, {
+      status: 'all',
+      limit: 1,
+    });
+
+    expect(page.total).toBe(2);
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0].status).toBe('active');
+    expect(page.nextCursor).toEqual(expect.any(String));
+  });
+
+  it('loads full change details only through the detail lookup', async () => {
+    await writeChange(root, {
+      name: 'detail-only',
+      yaml: { phase: 'build' },
+      tasks: '- [ ] todo\n',
+      proposal: true,
+    });
+
+    const detail = await collectDashboardChangeDetail(root, 'openspec/changes/detail-only');
+
+    expect(detail).toMatchObject({
+      id: 'openspec/changes/detail-only',
+      name: 'detail-only',
+      artifacts: { proposal: true },
+    });
+    expect(detail?.artifactPreviews.length).toBeGreaterThan(0);
+    await expect(
+      collectDashboardChangeDetail(root, 'openspec/changes/not-registered'),
+    ).resolves.toBeNull();
+    await expect(
+      collectDashboardChangeDetail(root, 'openspec/changes/..\\outside'),
+    ).resolves.toBeNull();
+  });
+
+  it('builds the dashboard overview without embedding Classic change details', async () => {
+    await writeChange(root, {
+      name: 'overview-active',
+      yaml: { phase: 'build' },
+      tasks: '- [ ] todo\n',
+    });
+    await writeChange(root, {
+      name: '2026-06-20-overview-archived',
+      status: 'archived',
+      yaml: { phase: 'archive', archived: 'true' },
+    });
+
+    const overview = await collectDashboardOverview(root);
+
+    expect(overview).toMatchObject({
+      summary: { activeChanges: 1, archivedChanges: 1, tasksIncomplete: 1 },
+      project: { path: root },
+    });
+    expect(overview).not.toHaveProperty('changes');
   });
 });

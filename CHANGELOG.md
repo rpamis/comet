@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-beta.15] - 2026-08-03
+
+### Changed
+
+- **Dashboard change explorer**: Dashboard now loads the current project overview with lightweight change rows, paginates active, archived, and all changes in batches of five, and fetches full artifact details only when selected so large projects remain responsive.
+
 ## What's Changed [0.4.0-beta.14] - 2026-08-02
 
 ### Fixed

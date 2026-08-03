@@ -132,6 +132,39 @@ export interface DashboardSummary {
   dirtyFiles: number;
 }
 
+export type DashboardChangeTab = 'active' | 'archived' | 'all';
+
+export interface DashboardChangeListItem {
+  id: string;
+  name: string;
+  displayName: string;
+  status: ChangeStatus;
+  relativePath: string;
+  workflow: string | null;
+  phase: ChangePhase;
+  updatedAt?: string;
+  tasks: Pick<TasksSummary, 'completed' | 'total'>;
+  verify: Pick<VerifySummary, 'result'>;
+}
+
+export interface DashboardChangePage {
+  status: DashboardChangeTab;
+  items: DashboardChangeListItem[];
+  total: number;
+  nextCursor: string | null;
+}
+
+export interface DashboardOverview {
+  project: DashboardProject;
+  summary: DashboardSummary;
+  initialChanges: DashboardChangePage;
+  git: GitSnapshot;
+  risks: DashboardRisk[];
+  native?: NativeDashboardProjection;
+  nativeError?: { code: 'native-dashboard-unavailable' };
+  classicError?: { code: 'classic-dashboard-unavailable'; message: string };
+}
+
 export interface DashboardSnapshot {
   project: DashboardProject;
   summary: DashboardSummary;

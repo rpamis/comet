@@ -121,4 +121,16 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain('Classic 变更出现后会在这里展示。');
     expect(source).not.toContain('当前无 Comet 迭代。');
   });
+
+  it('loads change rows in pages and fetches full details on selection', async () => {
+    const source = await readDashboardSource();
+
+    expect(source).toContain('fetchDashboardOverview');
+    expect(source).toContain('fetchDashboardChangePage');
+    expect(source).toContain("const params = new URLSearchParams({ status, limit: '5' });");
+    expect(source).toContain('fetchDashboardChangeDetail');
+    expect(source).toContain('new IntersectionObserver');
+    expect(source).toContain('正在加载变更详情');
+    expect(source).not.toContain('async function fetchSnapshot');
+  });
 });

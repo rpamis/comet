@@ -1,6 +1,7 @@
 import path from 'path';
 import {
   inspectProtectedProjectPath,
+  protectedProjectFileExists,
   readProtectedProjectFile,
 } from '../workflow-contract/protected-project-path.js';
 import type { VerifyResult, VerifySummary } from './types.js';
@@ -15,6 +16,7 @@ export interface VerifyContext {
   changeDir: string;
   yaml: Record<string, string>;
   projectRoot?: string;
+  includeSummary?: boolean;
 }
 
 /**
@@ -41,14 +43,20 @@ export async function resolveVerify(ctx: VerifyContext): Promise<VerifySummary> 
   let reportExists = false;
   let summary: string | undefined;
   try {
-    const result = await readProtectedProjectFile(
-      projectRoot,
-      relativeReport,
-      REPORT_READ_LIMIT_BYTES,
-      { label: 'Classic verification report' },
-    );
-    reportExists = true;
-    summary = summarize(result.bytes.toString('utf-8'));
+    if (ctx.includeSummary === false) {
+      reportExists = await protectedProjectFileExists(projectRoot, relativeReport, {
+        label: 'Classic verification report',
+      });
+    } else {
+      const result = await readProtectedProjectFile(
+        projectRoot,
+        relativeReport,
+        REPORT_READ_LIMIT_BYTES,
+        { label: 'Classic verification report' },
+      );
+      reportExists = true;
+      summary = summarize(result.bytes.toString('utf-8'));
+    }
   } catch {
     // Unsafe, missing, or unreadable reports must not influence dashboard state.
   }

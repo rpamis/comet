@@ -3,8 +3,15 @@ import http from 'http';
 import net from 'net';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { collectDashboardSnapshot } from './collector.js';
+import {
+  collectDashboardChangeDetail,
+  collectDashboardChangePage,
+  collectDashboardOverview,
+  collectDashboardSnapshot,
+  DashboardChangeQueryError,
+} from './collector.js';
 import { collectDashboardProjectDirectory, findDashboardProject } from './project-directory.js';
+import type { DashboardChangeTab } from './types.js';
 
 export interface DashboardServerOptions {
   projectPath: string;
@@ -50,6 +57,10 @@ export async function startDashboardServer(
 
   const server = http.createServer((req, res) => {
     handleRequest(req, res, options.projectPath, webRoot).catch((error) => {
+      if (error instanceof DashboardChangeQueryError) {
+        respondJson(res, req.method ?? 'GET', 400, { error: error.message });
+        return;
+      }
       respondError(res, 500, `Internal server error: ${(error as Error).message}`);
     });
   });
@@ -107,13 +118,17 @@ async function handleRequest(
   }
 
   if (pathname.startsWith('/api/dashboard/projects/')) {
-    let projectId: string;
+    let suffix: string;
     try {
-      projectId = decodeURIComponent(pathname.slice('/api/dashboard/projects/'.length));
+      suffix = decodeURIComponent(pathname.slice('/api/dashboard/projects/'.length));
     } catch {
       respondJson(res, req.method, 400, { error: 'Invalid dashboard project id' });
       return;
     }
+
+    const separator = suffix.indexOf('/');
+    const projectId = separator === -1 ? suffix : suffix.slice(0, separator);
+    const subpath = separator === -1 ? '' : suffix.slice(separator);
 
     const directory = await collectDashboardProjectDirectory(projectPath);
     const project = findDashboardProject(directory, projectId);
@@ -129,12 +144,65 @@ async function handleRequest(
       return;
     }
 
+    if (subpath === '/overview') {
+      const overview = await collectDashboardOverview(project.path, {
+        projectName: project.name,
+        query: url.searchParams.get('q') ?? undefined,
+      });
+      respondJson(res, req.method, 200, overview);
+      return;
+    }
+
+    if (subpath === '/changes') {
+      const page = await collectDashboardChangePage(project.path, {
+        status: parseChangeTab(url.searchParams.get('status')),
+        limit: parseChangeLimit(url.searchParams.get('limit')),
+        cursor: url.searchParams.get('cursor') ?? undefined,
+        query: url.searchParams.get('q') ?? undefined,
+      });
+      respondJson(res, req.method, 200, page);
+      return;
+    }
+
+    if (subpath === '/change') {
+      const changeId = url.searchParams.get('changeId');
+      if (!changeId) {
+        throw new DashboardChangeQueryError('Missing dashboard change id');
+      }
+      const detail = await collectDashboardChangeDetail(project.path, changeId);
+      if (!detail) {
+        respondJson(res, req.method, 404, { error: 'Unknown dashboard change id' });
+        return;
+      }
+      respondJson(res, req.method, 200, detail);
+      return;
+    }
+
+    if (subpath) {
+      respondJson(res, req.method, 404, { error: 'Not found' });
+      return;
+    }
+
     const snapshot = await collectDashboardSnapshot(project.path, { projectName: project.name });
     respondJson(res, req.method, 200, snapshot);
     return;
   }
 
   await serveStatic(res, req.method ?? 'GET', webRoot, pathname);
+}
+
+function parseChangeTab(raw: string | null): DashboardChangeTab {
+  const value = raw ?? 'active';
+  if (value === 'active' || value === 'archived' || value === 'all') return value;
+  throw new DashboardChangeQueryError('Invalid dashboard change status');
+}
+
+function parseChangeLimit(raw: string | null): number | undefined {
+  if (raw === null) return undefined;
+  if (!/^\d+$/u.test(raw)) {
+    throw new DashboardChangeQueryError('Change page limit must be a positive integer');
+  }
+  return Number(raw);
 }
 
 function respondJson(
