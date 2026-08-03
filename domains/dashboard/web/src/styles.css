@@ -1742,16 +1742,20 @@ body {
 
 .native-changes-count {
   display: inline-flex;
+  min-width: 20px;
   min-height: 20px;
   align-items: center;
   margin-left: 8px;
-  padding: 0 6px;
+  padding: 0 8px;
   border-radius: 10px;
   background: #0b1833;
   color: #ffffff;
+  font-family: 'Segoe UI Variable', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
   font-size: 12px;
-  font-weight: 560;
+  font-weight: 400;
+  letter-spacing: -0.182px;
   line-height: 20px;
+  white-space: nowrap;
   vertical-align: middle;
 }
 

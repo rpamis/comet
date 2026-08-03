@@ -561,6 +561,15 @@ test('keeps Classic and Native side panels within the center panel height', asyn
       await expect(nativeCount).toHaveText(/^\d+$/);
       await expect(nativeCount).toHaveCSS('background-color', 'rgb(11, 24, 51)');
       await expect(nativeCount).toHaveCSS('color', 'rgb(255, 255, 255)');
+      await expect(nativeCount).toHaveCSS('min-width', '20px');
+      await expect(nativeCount).toHaveCSS('padding', '0px 8px');
+      await expect(nativeCount).toHaveCSS('font-weight', '400');
+      await expect(nativeCount).toHaveCSS(
+        'font-family',
+        '"Segoe UI Variable", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif',
+      );
+      await expect(nativeCount).toHaveCSS('letter-spacing', '-0.182px');
+      await expect(nativeCount).toHaveCSS('white-space', 'nowrap');
       await expect(nativeExplorer).toHaveCSS('font-size', '14px');
       const nativeHeader = nativeExplorer.locator('.native-changes-explorer-header');
       await expect(nativeHeader).toHaveCSS('min-height', '57px');
@@ -657,6 +666,7 @@ test('keeps Classic and Native side panels within the center panel height', asyn
   await nativeList.evaluate((element) => {
     element.scrollTop = element.scrollHeight;
   });
+  await expect.poll(() => nativeList.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
   await expect
     .poll(() => nativeList.locator('.native-change-row').count())
     .toBeGreaterThan(initiallyRendered);
