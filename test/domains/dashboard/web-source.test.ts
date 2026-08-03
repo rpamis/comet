@@ -129,8 +129,10 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain('fetchDashboardChangePage');
     expect(source).toContain("const params = new URLSearchParams({ status, limit: '5' });");
     expect(source).toContain('fetchDashboardChangeDetail');
-    expect(source).toContain('new IntersectionObserver');
+    expect(source).toContain('onScroll={handleScroll}');
     expect(source).toContain('正在加载变更详情');
     expect(source).not.toContain('async function fetchSnapshot');
+
+    expect(await readDashboardStyles()).toContain('max-height: 26rem;');
   });
 });

@@ -321,6 +321,13 @@ body {
   padding-block: 4px;
 }
 
+.dashboard-change-list {
+  max-height: 26rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
 .dashboard-change-list .dashboard-change-row {
   min-height: 64px;
   padding: 8px;

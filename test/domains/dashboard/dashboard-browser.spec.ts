@@ -391,3 +391,128 @@ test('acknowledges a copied Change name and keeps the workbench within a narrow 
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
     .toBe(true);
 });
+
+test('keeps the change explorer at five rows until its own list is scrolled', async ({ page }) => {
+  const items = Array.from({ length: 8 }, (_, index) => ({
+    id: `change-${index + 1}`,
+    name: `change-${index + 1}`,
+    displayName: `change-${index + 1}`,
+    status: 'active',
+    relativePath: `openspec/changes/change-${index + 1}`,
+    workflow: 'feature',
+    phase: 'build',
+    updatedAt: '2026-08-03T00:00:00.000Z',
+    tasks: { completed: index, total: 10 },
+    verify: { result: 'pending' },
+  }));
+  const detailFor = (item) => ({
+    ...item,
+    dir: item.relativePath,
+    changesRelative: 'openspec/changes',
+    tasks: { ...item.tasks, incomplete: [], sections: [] },
+    artifacts: {
+      proposal: false,
+      design: false,
+      tasks: false,
+      plan: false,
+      verifyReport: false,
+      cometYaml: false,
+      grouped: [],
+    },
+    artifactPreviews: [],
+    verify: { ...item.verify, reportExists: false },
+    next: { command: null, reason: '', description: '' },
+    risks: [],
+  });
+  const pageRequests: string[] = [];
+
+  await page.route('**/api/dashboard/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/dashboard/projects') {
+      await route.fulfill({
+        json: {
+          currentProjectId: 'fixture-project',
+          projects: [
+            {
+              id: 'fixture-project',
+              name: 'Fixture',
+              path: '/fixture',
+              lastSeenAt: null,
+              availability: 'available',
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/overview')) {
+      await route.fulfill({
+        json: {
+          project: { name: 'Fixture', path: '/fixture', generatedAt: '2026-08-03T00:00:00.000Z' },
+          summary: {
+            activeChanges: items.length,
+            archivedChanges: 0,
+            verifyFailed: 0,
+            tasksIncomplete: 36,
+            dirtyFiles: 0,
+          },
+          initialChanges: {
+            status: 'active',
+            items: items.slice(0, 5),
+            total: items.length,
+            nextCursor: 'active-page-2',
+          },
+          git: {
+            branch: 'main',
+            head: 'abc1234',
+            dirtyFiles: 0,
+            dirtyFileList: [],
+            recentCommits: [],
+          },
+          risks: [],
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/changes')) {
+      pageRequests.push(url.search);
+      const secondPage = url.searchParams.has('cursor');
+      await route.fulfill({
+        json: {
+          status: 'all',
+          items: secondPage ? items.slice(5) : items.slice(0, 5),
+          total: items.length,
+          nextCursor: secondPage ? null : 'all-page-2',
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/change')) {
+      const item = items.find((entry) => entry.id === url.searchParams.get('changeId')) ?? items[0];
+      await route.fulfill({ json: detailFor(item) });
+      return;
+    }
+    await route.continue();
+  });
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/');
+  await page.getByRole('tab', { name: '全部' }).click();
+
+  const list = page.getByRole('tabpanel', { name: '全部' }).locator('.dashboard-change-list');
+  await expect(list.locator('.dashboard-change-list-item')).toHaveCount(5);
+  await expect.poll(() => pageRequests).toHaveLength(1);
+
+  const listMetrics = await list.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }));
+  expect(listMetrics.scrollHeight).toBeGreaterThan(listMetrics.clientHeight);
+
+  await list.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect.poll(() => pageRequests).toHaveLength(2);
+  await expect(list.locator('.dashboard-change-list-item')).toHaveCount(8);
+});

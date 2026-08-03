@@ -291,6 +291,7 @@ function DashboardApp({ theme, onToggleTheme }) {
   const loadPage = useCallback(
     async (nextTab, append = false) => {
       if (useDemo || !activeProjectId) return;
+      if (append && pageRequestRef.current) return;
       const existing = pagesRef.current[nextTab];
       if (append && !existing?.nextCursor) return;
       pageRequestRef.current?.abort();
@@ -346,6 +347,7 @@ function DashboardApp({ theme, onToggleTheme }) {
     [pages, query, snapshot, tab, useDemo],
   );
   const activePage = pages[tab];
+  const visibleTotal = useDemo ? visible.length : (activePage?.total ?? visible.length);
 
   const selectChange = useCallback(
     async (id) => {
@@ -475,6 +477,7 @@ function DashboardApp({ theme, onToggleTheme }) {
               <Dashboard
                 snapshot={snapshot}
                 visible={visible}
+                visibleTotal={visibleTotal}
                 selected={selected}
                 selectedId={selectedId}
                 tab={tab}
@@ -577,6 +580,7 @@ function Topbar({
 function Dashboard({
   snapshot,
   visible,
+  visibleTotal,
   selected,
   selectedId,
   tab,
@@ -612,6 +616,7 @@ function Dashboard({
           <div className="dashboard-workspace-region grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)_minmax(260px,320px)]">
             <AntChangesExplorer
               visible={visible}
+              total={visibleTotal}
               selectedId={selectedId}
               tab={tab}
               onTab={onTab}
@@ -1761,6 +1766,7 @@ function AntSummaryCard({ title, value, note, status, icon: Icon, tone, selected
 
 function AntChangesExplorer({
   visible,
+  total,
   selectedId,
   tab,
   onTab,
@@ -1779,7 +1785,7 @@ function AntChangesExplorer({
       className="min-w-0"
       title={
         <span>
-          Changes Explorer <Badge count={visible.length} showZero className="ml-2" />
+          Changes Explorer <Badge count={total} showZero className="ml-2" />
         </span>
       }
     >
@@ -1837,20 +1843,17 @@ function updateSnapshotChangeRows(snapshot, status, items) {
 }
 
 function DashboardChangeList({ visible, selectedId, onSelect, hasMore, pageLoading, onLoadMore }) {
-  const sentinelRef = useRef(null);
-
-  useEffect(() => {
-    const target = sentinelRef.current;
-    if (!target || !hasMore || !onLoadMore) return undefined;
-    const observer = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting && !pageLoading) onLoadMore();
-    });
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [hasMore, onLoadMore, pageLoading]);
+  const handleScroll = useCallback(
+    (event) => {
+      if (!hasMore || pageLoading || !onLoadMore) return;
+      const { scrollTop, clientHeight, scrollHeight } = event.currentTarget;
+      if (scrollTop > 0 && scrollTop + clientHeight >= scrollHeight - 24) onLoadMore();
+    },
+    [hasMore, onLoadMore, pageLoading],
+  );
 
   return (
-    <div className="dashboard-change-list">
+    <div className="dashboard-change-list" onScroll={handleScroll}>
       {visible.length === 0 && !pageLoading ? (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无变更" />
       ) : (
@@ -1892,7 +1895,7 @@ function DashboardChangeList({ visible, selectedId, onSelect, hasMore, pageLoadi
           </div>
         ))
       )}
-      <div ref={sentinelRef} className="py-2 text-center text-xs text-meta" aria-live="polite">
+      <div className="py-2 text-center text-xs text-meta" aria-live="polite">
         {pageLoading ? <Spin size="small" /> : hasMore ? '继续下滑加载更多' : null}
       </div>
     </div>
