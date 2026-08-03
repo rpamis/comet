@@ -15,6 +15,7 @@ import {
 import {
   copyCometSkillsForPlatform,
   copyCometRulesForPlatform,
+  detectInstalledWorkflowSelection,
   installCometHooksForPlatform,
   getManifestSkills,
   mergeProjectConfig,
@@ -1545,12 +1546,9 @@ async function updateSingleProject(
   // Global scope mirrors `comet init`: `comet update --scope global` must keep
   // already-installed Skills in sync without expanding the workflow range the
   // user chose at install time. The selection is derived from what is on disk
-  // by checking the two workflow markers, comet-native/SKILL.md and
-  // comet-classic/SKILL.md:
-  //   neither / classic only -> 'classic'  (no Native added)
-  //   native only            -> 'native'   (no Classic added)
-  //   both                   -> 'both'
-  // Project scope keeps honoring the project workflow configuration.
+  // by checking the two workflow markers (see detectInstalledWorkflowSelection
+  // in domains/skill/platform-install.ts). Project scope keeps honoring the
+  // project workflow configuration.
   const skillWorkflowSelectionFor = async (
     target: InstalledCometTarget,
   ): Promise<InitWorkflowSelection> => {
@@ -1560,13 +1558,7 @@ async function updateSingleProject(
       getPlatformSkillsDir(target.platform, 'global'),
       'skills',
     );
-    const [hasNative, hasClassic] = await Promise.all([
-      fileExists(path.join(skillsRoot, 'comet-native', 'SKILL.md')),
-      fileExists(path.join(skillsRoot, 'comet-classic', 'SKILL.md')),
-    ]);
-    if (hasNative && hasClassic) return 'both';
-    if (hasNative) return 'native';
-    return 'classic';
+    return detectInstalledWorkflowSelection(skillsRoot);
   };
   const targetWorkflowSelections = await Promise.all(targets.map(skillWorkflowSelectionFor));
   const updateSkillPaths = new Set(
