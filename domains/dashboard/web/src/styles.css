@@ -1723,6 +1723,11 @@ body {
   max-height: 100%;
   overflow: hidden;
   border-color: var(--color-border) !important;
+  border-radius: 15px;
+}
+
+.native-change-detail {
+  border-radius: 15px;
 }
 
 .native-change-list {

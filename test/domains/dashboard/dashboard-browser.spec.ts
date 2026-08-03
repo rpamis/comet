@@ -554,6 +554,11 @@ test('keeps Classic and Native side panels within the center panel height', asyn
       await expect(workspace.locator('.dashboard-workspace-left')).toHaveCSS('overflow-y', 'auto');
       const nativeExplorer = workspace.locator('.native-changes-explorer');
       const nativeList = workspace.locator('.native-change-list');
+      const nativeDetail = workspace.locator('.native-change-detail');
+      const rightPanel = workspace.locator('.dashboard-workspace-right');
+      await expect(rightPanel).toHaveCSS('border-radius', '15px');
+      await expect(nativeExplorer).toHaveCSS('border-radius', '15px');
+      await expect(nativeDetail).toHaveCSS('border-radius', '15px');
       await expect(nativeExplorer).toHaveCSS('border-top-width', '1px');
       await expect(nativeExplorer).toHaveCSS('border-bottom-width', '1px');
       await expect(nativeExplorer).toHaveCSS('overflow-y', 'hidden');
