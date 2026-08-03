@@ -224,14 +224,20 @@ describe('hook guard', () => {
       expect(result.status).toBe(0);
     }, 20_000);
 
-    it('allows full-workflow build source writes once design_doc points to a file', async () => {
+    it('blocks full-workflow build source writes until a plan is recorded', async () => {
       await createChange(
         tmpDir,
-        'full-build-with-doc',
+        'full-build-without-plan',
         [
           'workflow: full',
           'phase: build',
+          'build_mode: executing-plans',
+          'isolation: branch',
+          'verify_mode: null',
           'design_doc: docs/superpowers/design.md',
+          'plan: null',
+          'verify_result: pending',
+          'verified_at: null',
           'archived: false',
           '',
         ].join('\n'),
@@ -242,6 +248,45 @@ describe('hook guard', () => {
       await fs.mkdir(srcDir, { recursive: true });
       const targetFile = path.join(srcDir, 'feature.ts');
 
+      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('ERROR_CODE: classic-build-plan-missing');
+      expect(result.stderr).toContain('CHANGE: full-build-without-plan');
+      expect(result.stderr).toContain('TARGET: src/feature.ts');
+      expect(result.stderr).toContain(
+        'comet state set full-build-without-plan plan <repository-relative-plan-path>',
+      );
+      expect(result.stderr).toContain('comet state check full-build-without-plan build --recover');
+      expect(result.stderr).toContain('SUCCESS:');
+      expect(result.stderr).toContain('RETRY:');
+    }, 20_000);
+
+    it('allows full-workflow build source writes once design_doc and plan are ready', async () => {
+      await createChange(
+        tmpDir,
+        'full-build-ready',
+        [
+          'workflow: full',
+          'phase: build',
+          'build_mode: executing-plans',
+          'isolation: branch',
+          'verify_mode: null',
+          'design_doc: docs/superpowers/design.md',
+          'plan: docs/superpowers/plans/ready.md',
+          'verify_result: pending',
+          'verified_at: null',
+          'archived: false',
+          '',
+        ].join('\n'),
+      );
+      await writeFile(path.join(tmpDir, 'docs/superpowers/design.md'), '# Design Doc\n');
+      await writeFile(
+        path.join(tmpDir, 'docs/superpowers/plans/ready.md'),
+        '- [ ] implementation task\n',
+      );
+
+      const targetFile = path.join(tmpDir, 'src', 'feature.ts');
       const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
 
       expect(result.status).toBe(0);

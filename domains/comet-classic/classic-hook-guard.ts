@@ -20,6 +20,10 @@ import {
 import { resolveCurrentChange } from './classic-current-change.js';
 import { readClassicState, readLegacyState } from './classic-store.js';
 import type { ClassicPhase, ClassicState } from './classic-state.js';
+import {
+  inspectClassicPlanReadiness,
+  type ClassicPlanReadiness,
+} from './classic-plan-readiness.js';
 
 function result(exitCode: number, message: string): ClassicCommandResult {
   return { exitCode, stderr: message + '\n' };
@@ -183,6 +187,7 @@ async function activeChangesImpl(projectRoot: string): Promise<GoverningChange[]
 const activeChanges = memoizedHookRead('classicActiveChanges', (projectRoot: string) =>
   activeChangesImpl(projectRoot),
 );
+const hookPlanReadiness = memoizedHookRead('classicPlanReadiness', inspectClassicPlanReadiness);
 
 export interface ActiveClassicHookChange {
   workflow: 'classic';
@@ -586,6 +591,79 @@ function blockedMissingDesignDoc(relativePath: string): ClassicCommandResult {
   );
 }
 
+function blockedPlanNotReady(
+  relativePath: string,
+  governing: GoverningChange,
+  planReadiness: Exclude<ClassicPlanReadiness, { status: 'ready' }>,
+  projectRoot: string,
+  layout: ClassicLayoutPaths,
+): ClassicCommandResult {
+  const name = governingChangeName(governing) ?? '<change-name>';
+  const missing = planReadiness.status === 'missing';
+  const errorCode = missing ? 'classic-build-plan-missing' : 'classic-build-plan-broken';
+  const state = missing
+    ? 'plan is not recorded'
+    : 'the recorded plan path does not resolve to a file';
+  const recorded = missing ? [] : [`RECORDED_PLAN: ${planReadiness.recordedPath}`];
+  const changeDirectory = governing.changeDir
+    ? classicProjectRelative(projectRoot, governing.changeDir)
+    : '<classic-change-dir>';
+  const plansDirectory = classicProjectRelative(projectRoot, layout.superpowersPlansDir);
+  const createCommand = missing
+    ? `comet state set ${name} plan <repository-relative-plan-path>`
+    : `comet state set ${name} plan <new-repository-relative-plan-path>`;
+  const repair = missing
+    ? [
+        '2. Load the Superpowers writing-plans Skill.',
+        `3. Read the Design Doc path from "comet state get ${name} design_doc" and read ${changeDirectory}/tasks.md.`,
+        `4. Create the implementation plan under ${plansDirectory}/.`,
+        '5. Record the plan path:',
+        `   ${createCommand}`,
+      ]
+    : [
+        `2. Restore the plan file at ${planReadiness.recordedPath}, or load the Superpowers writing-plans Skill and create a replacement under ${plansDirectory}/.`,
+        '3. When creating a replacement, record its path:',
+        `   ${createCommand}`,
+      ];
+
+  return result(
+    2,
+    [
+      '',
+      '╔══════════════════════════════════════════╗',
+      '║     COMET PHASE GUARD — WRITE BLOCKED    ║',
+      '╚══════════════════════════════════════════╝',
+      '',
+      `ERROR_CODE: ${errorCode}`,
+      `CHANGE: ${name}`,
+      'WORKFLOW: full',
+      'PHASE: build',
+      `TARGET: ${relativePath}`,
+      `STATE: ${state}`,
+      ...recorded,
+      '',
+      'BLOCKED: project source writes require a ready Superpowers implementation plan.',
+      '',
+      'ALLOWED_RECOVERY_WRITES:',
+      `- ${plansDirectory}/<plan-file>.md`,
+      '- Comet state updates performed by the comet CLI',
+      `- ${changeDirectory} artifacts allowed by the build phase`,
+      '',
+      'RECOVERY:',
+      `1. Invoke /comet-build for ${name} and resume Step 1.`,
+      ...repair,
+      `${missing ? '6' : '4'}. Verify recovery:`,
+      `   comet state check ${name} build --recover`,
+      '',
+      'SUCCESS: plan is reported as DONE and recovery advances beyond plan creation.',
+      `RETRY: retry the original Write/Edit for ${relativePath} only after SUCCESS.`,
+      'PROHIBITED: do not treat tasks.md as the implementation plan or write project source before SUCCESS.',
+      'If writing-plans is unavailable, stop and report the missing Skill instead of bypassing this check.',
+      '',
+    ].join('\n'),
+  );
+}
+
 function blockedUnmatchedSuperpowersArtifact(
   relativePath: string,
   governing: GoverningChange,
@@ -740,6 +818,12 @@ async function inspectClassicHookTarget(
   }
   if (phase === 'build' && governing.classic?.workflow === 'full' && !governing.classic.designDoc) {
     return blockedMissingDesignDoc(relativePath);
+  }
+  if (phase === 'build' && governing.classic?.workflow === 'full') {
+    const planReadiness = await hookPlanReadiness(projectRoot, governing.classic.plan);
+    if (planReadiness.status !== 'ready') {
+      return blockedPlanNotReady(relativePath, governing, planReadiness, projectRoot, layout);
+    }
   }
   if (phase === 'build' || phase === 'verify') {
     return allowed(`${relativePath} (phase: ${phase})`);

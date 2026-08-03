@@ -86,9 +86,10 @@ async function seedChange(
   phase: 'open' | 'design' | 'build' | 'verify' | 'archive',
   options: {
     archived?: boolean;
-    workflow?: 'full' | 'hotfix';
+    workflow?: 'full' | 'hotfix' | 'tweak';
     designDoc?: string | null;
     plan?: string | null;
+    createPlanFile?: boolean;
     verificationReport?: string | null;
     isolation?: string;
     boundBranch?: string;
@@ -121,6 +122,11 @@ async function seedChange(
   if (options.boundBranch) lines.push(`bound_branch: ${options.boundBranch}`);
   lines.push('');
   await fs.writeFile(path.join(changeDir, '.comet.yaml'), lines.join('\n'));
+  if (options.plan && options.createPlanFile !== false) {
+    const planFile = path.join(dir, ...options.plan.split('/'));
+    await fs.mkdir(path.dirname(planFile), { recursive: true });
+    await fs.writeFile(planFile, '- [ ] implementation task\n');
+  }
   return changeDir;
 }
 
@@ -500,7 +506,9 @@ describe('Classic hook guard command', () => {
     'allows selected build source writes while another change is in %s',
     async (phase) => {
       const dir = await makeProject();
-      await seedChange(dir, 'build-ready', 'build');
+      await seedChange(dir, 'build-ready', 'build', {
+        plan: 'docs/superpowers/plans/build-ready.md',
+      });
       await seedChange(dir, 'unrelated-change', phase);
       expect(run(dir, 'state', ['select', 'build-ready']).status).toBe(0);
 
@@ -513,7 +521,9 @@ describe('Classic hook guard command', () => {
 
   it('blocks source writes for the selected open change even when another change can build', async () => {
     const dir = await makeProject();
-    await seedChange(dir, 'build-ready', 'build');
+    await seedChange(dir, 'build-ready', 'build', {
+      plan: 'docs/superpowers/plans/build-ready.md',
+    });
     await seedChange(dir, 'open-change', 'open');
     expect(run(dir, 'state', ['select', 'open-change']).status).toBe(0);
 
@@ -535,7 +545,9 @@ describe('Classic hook guard command', () => {
 
   it('ignores archived changes when deciding whether selection is required', async () => {
     const dir = await makeProject();
-    await seedChange(dir, 'build-ready', 'build');
+    await seedChange(dir, 'build-ready', 'build', {
+      plan: 'docs/superpowers/plans/build-ready.md',
+    });
     await seedChange(dir, 'archived-change', 'archive', { archived: true });
 
     const result = run(dir, 'hook-guard', [], hookInput(path.join(dir, 'src', 'feature.ts')));
@@ -597,6 +609,73 @@ describe('Classic hook guard command', () => {
     expect(result.status).toBe(2);
     expect(result.stderr).toContain('design_doc is empty');
   });
+
+  it.each(['Write', 'Edit'])(
+    'blocks %s source operations until a full build plan is recorded',
+    async (toolName) => {
+      const dir = await makeProject();
+      await seedChange(dir, 'missing-plan', 'build');
+      expect(run(dir, 'state', ['select', 'missing-plan']).status).toBe(0);
+      const target = path.join(dir, 'src', 'feature.ts');
+
+      const decision = await inspectClassicHookGuard(dir, 'missing-plan', {
+        intent: 'write',
+        targets: [target],
+        toolName,
+      });
+
+      expect(decision.allowed).toBe(false);
+      expect(decision.reason).toContain('ERROR_CODE: classic-build-plan-missing');
+      expect(decision.reason).toContain('CHANGE: missing-plan');
+      expect(decision.reason).toContain('TARGET: src/feature.ts');
+      expect(decision.reason).toContain(
+        'comet state set missing-plan plan <repository-relative-plan-path>',
+      );
+      expect(decision.reason).toContain('comet state check missing-plan build --recover');
+      expect(decision.reason).toContain('SUCCESS:');
+      expect(decision.reason).toContain('RETRY:');
+      expect(decision.reason).toContain('PROHIBITED:');
+    },
+  );
+
+  it('reports a recorded but missing full build plan as broken', async () => {
+    const dir = await makeProject();
+    const recordedPlan = 'docs/superpowers/plans/missing-plan.md';
+    await seedChange(dir, 'broken-plan', 'build', {
+      plan: recordedPlan,
+      createPlanFile: false,
+    });
+    expect(run(dir, 'state', ['select', 'broken-plan']).status).toBe(0);
+
+    const decision = await inspectClassicHookGuard(dir, 'broken-plan', {
+      intent: 'write',
+      targets: [path.join(dir, 'src', 'feature.ts')],
+      toolName: 'Write',
+    });
+
+    expect(decision.allowed).toBe(false);
+    expect(decision.reason).toContain('ERROR_CODE: classic-build-plan-broken');
+    expect(decision.reason).toContain(`RECORDED_PLAN: ${recordedPlan}`);
+    expect(decision.reason).toContain(
+      'comet state set broken-plan plan <new-repository-relative-plan-path>',
+    );
+  });
+
+  it.each(['hotfix', 'tweak'] as const)(
+    'keeps %s build source writes independent from a Superpowers plan',
+    async (workflow) => {
+      const dir = await makeProject();
+      await seedChange(dir, `${workflow}-change`, 'build', { workflow, designDoc: null });
+
+      const decision = await inspectClassicHookGuard(dir, `${workflow}-change`, {
+        intent: 'write',
+        targets: [path.join(dir, 'src', 'feature.ts')],
+        toolName: 'Write',
+      });
+
+      expect(decision.allowed).toBe(true);
+    },
+  );
 
   it('selects, reads, and clears the current change through the state launcher', async () => {
     const dir = await makeProject();

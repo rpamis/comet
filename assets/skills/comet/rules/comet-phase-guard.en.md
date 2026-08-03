@@ -37,12 +37,13 @@ Reading the `phase` field alone is not enough — you must also confirm **how** 
 | Detected | Verdict | Action |
 |----------|---------|--------|
 | `phase: build` + `workflow: full` + `design_doc` empty/null | Skipped design | Stop writing source; run `/comet-design` to create the Design Doc and pass guard |
+| `phase: build` + `workflow: full` + `plan` empty/null or its recorded path is invalid | Skipped implementation plan | Stop writing source; return to `/comet-build` Step 1 to create or restore the plan, record its path, and verify with `comet state check <name> build --recover` |
 | `phase: build` + any of proposal/design/tasks missing or empty | Skipped open | Return to `/comet-open` to fill the three artifacts |
 | `phase: archive` + `verify_result` ≠ `pass` | Skipped verify | Return to `/comet-verify` to complete verification |
 
-> Note: the table above only covers what the hook hard-gate actually detects (the `design_doc` empty-jump at the build phase; proposal/design/tasks completeness is validated at the open→build guard exit). The `verify` phase is not covered by this write-source self-consistency gate — if artifacts are found missing during verify, follow the verify-fail rewind handling under "Verify Phase Specifics" below.
+> Note: the table above only covers what the hook hard interception actually detects (`design_doc` and `plan` state during build; proposal/design/tasks completeness is validated at the open→build guard exit). The Hook's `RECOVERY`, `SUCCESS`, and `RETRY` fields define the recovery loop; do not retry the blocked source write before `SUCCESS`. The `verify` phase is not covered by this source-write self-consistency check — if artifacts are found missing during verify, follow the verify-fail rewind handling under "Verify Phase Specifics" below.
 
-Exception: `workflow: hotfix/tweak` intentionally skips design, so an empty `design_doc` is normal and not an illegal jump.
+Exception: `workflow: hotfix/tweak` intentionally skips design and the Superpowers implementation plan, so empty `design_doc` and `plan` values are normal and not illegal jumps.
 
 Upgrade state note: after a preset (hotfix/tweak) hits an upgrade signal and the user confirms upgrading, `comet state transition <name> preset-escalate` legally converts it to `workflow: full` + `phase: design` + `design_doc: null` and clears preset-only build settings. At this point `phase: design` with an empty `design_doc` **is a normal upgrade pre-state**, not an illegal jump — the agent should enter `/comet-design` to supplement the Design Doc, then choose the full workflow configuration again in build. This terminal state does not match the "skipped design" row above (that row only detects `phase: build`).
 
@@ -108,7 +109,7 @@ comet state check <name> <phase> --recover
 
 Decide next step according to the script's **Recovery action** output.
 
-After recovery, first re-run the "Phase-Entry Self-Consistency Check" table: if `phase` is inconsistent with the artifacts (design_doc / three artifacts / verify_result mismatch), treat it as an illegal jump, return to the corresponding phase to fill the gap, and do not trust the `phase` field to keep going.
+After recovery, first re-run the "Phase-Entry Self-Consistency Check" table: if `phase` is inconsistent with the artifacts (design_doc / plan / three artifacts / verify_result mismatch), treat it as an illegal jump, follow the recovery steps emitted by the script or Hook, and retry the original operation only after `SUCCESS`; do not trust the `phase` field to keep going.
 
 **Special attention to `build_mode`**: If recovery script outputs `build_mode: subagent-driven-development`, you are the coordinator, not the executor. Must:
 1. Use the Skill tool to reload the Superpowers `subagent-driven-development` skill

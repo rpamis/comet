@@ -56,6 +56,10 @@ import {
   readClassicProjectFile,
   writeClassicProjectText,
 } from './classic-protected-path.js';
+import {
+  inspectClassicPlanReadiness,
+  type ClassicPlanReadiness,
+} from './classic-plan-readiness.js';
 
 const GREEN = '\u001b[32m';
 const RED = '\u001b[31m';
@@ -1028,6 +1032,7 @@ async function recoverBuild(
   const tdd = await readField(name, 'tdd_mode');
   const review = await readField(name, 'review_mode');
   const plan = await readField(name, 'plan');
+  const planReadiness = await inspectClassicPlanReadiness(classicCommandProjectRoot(), plan);
   const decisions = [
     '  Build decisions:',
     await fieldStatus('isolation', isolation),
@@ -1062,7 +1067,7 @@ async function recoverBuild(
   const pending = total - done;
   let planTotal = 0;
   let planDone = 0;
-  if (plan && plan !== 'null' && (await exists(plan))) {
+  if (planReadiness.status === 'ready') {
     const planLines = (
       await readClassicProjectFile(classicCommandProjectRoot(), plan, {
         label: 'Classic build plan',
@@ -1079,6 +1084,8 @@ async function recoverBuild(
   output.stdout.push('');
 
   const action = resolveBuildRecoveryAction(
+    name,
+    path.relative(classicCommandProjectRoot(), directory).replaceAll('\\', '/'),
     workflow,
     isolation,
     buildMode,
@@ -1086,7 +1093,7 @@ async function recoverBuild(
     subagentDispatch,
     tdd,
     review,
-    plan,
+    planReadiness,
     pending,
     planPending,
   );
@@ -1098,6 +1105,8 @@ function isMissingStateValue(value: string): boolean {
 }
 
 function resolveBuildRecoveryAction(
+  name: string,
+  changeDirectory: string,
   workflow: string,
   isolation: string,
   buildMode: string,
@@ -1105,24 +1114,24 @@ function resolveBuildRecoveryAction(
   subagentDispatch: string,
   tdd: string,
   review: string,
-  plan: string,
+  planReadiness: ClassicPlanReadiness,
   pending: number,
   planPending: number,
 ): string {
-  const planExists = plan && plan !== 'null';
+  const planReady = planReadiness.status === 'ready';
   const missingWorkflowChoices =
     workflow === 'full' && (isMissingStateValue(tdd) || isMissingStateValue(review));
   if (
     pause === 'plan-ready' &&
-    planExists &&
+    planReady &&
     (isMissingStateValue(isolation) || isMissingStateValue(buildMode) || missingWorkflowChoices)
   ) {
     return workflow === 'full'
       ? 'Recovery action: Plan-ready pause detected. Ask the user whether to continue, then choose isolation, build mode, TDD mode, and review mode without regenerating the plan.'
       : 'Recovery action: Plan-ready pause detected. Ask the user whether to continue, then choose isolation and build mode without regenerating the plan.';
   }
-  if (pause === 'plan-ready' && !planExists) {
-    return 'Recovery action: Plan-ready pause is recorded, but the plan file is missing. Restore the plan file or rerun writing-plans before choosing execution.';
+  if (workflow === 'full' && !planReady) {
+    return buildPlanRecoveryAction(name, changeDirectory, planReadiness);
   }
   if (pause === 'plan-ready') {
     if (buildMode === 'subagent-driven-development' && (pending > 0 || planPending > 0)) {
@@ -1164,6 +1173,61 @@ function resolveBuildRecoveryAction(
     return 'Recovery action: Read the Superpowers plan and continue from the first unchecked plan task.';
   }
   return 'Recovery action: All tasks done. Run guard to transition to verify.';
+}
+
+function buildPlanRecoveryAction(
+  name: string,
+  changeDirectory: string,
+  planReadiness: Exclude<ClassicPlanReadiness, { status: 'ready' }>,
+): string {
+  const missing = planReadiness.status === 'missing';
+  const errorCode = missing ? 'classic-build-plan-missing' : 'classic-build-plan-broken';
+  const state = missing
+    ? 'plan is not recorded'
+    : 'the recorded plan path does not resolve to a file';
+  const recorded = missing ? [] : [`RECORDED_PLAN: ${planReadiness.recordedPath}`];
+  const createCommand = missing
+    ? `comet state set ${name} plan <repository-relative-plan-path>`
+    : `comet state set ${name} plan <new-repository-relative-plan-path>`;
+  const repair = missing
+    ? [
+        '2. Load the Superpowers writing-plans Skill.',
+        `3. Read the Design Doc path from "comet state get ${name} design_doc" and read ${changeDirectory}/tasks.md.`,
+        '4. Create the implementation plan under docs/superpowers/plans/.',
+        '5. Record the plan path:',
+        `   ${createCommand}`,
+      ]
+    : [
+        `2. Restore the plan file at ${planReadiness.recordedPath}, or load the Superpowers writing-plans Skill and create a replacement under docs/superpowers/plans/.`,
+        '3. When creating a replacement, record its path:',
+        `   ${createCommand}`,
+      ];
+
+  return [
+    'COMET_RECOVERY: required',
+    `ERROR_CODE: ${errorCode}`,
+    `CHANGE: ${name}`,
+    'WORKFLOW: full',
+    'PHASE: build',
+    `STATE: ${state}`,
+    ...recorded,
+    '',
+    'ALLOWED_RECOVERY_WRITES:',
+    '- docs/superpowers/plans/<plan-file>.md',
+    '- Comet state updates performed by the comet CLI',
+    `- ${changeDirectory} artifacts allowed by the build phase`,
+    '',
+    'RECOVERY:',
+    `1. Resume /comet-build for ${name} and return to Step 1.`,
+    ...repair,
+    `${missing ? '6' : '4'}. Verify recovery:`,
+    `   comet state check ${name} build --recover`,
+    '',
+    'SUCCESS: plan is reported as DONE and recovery no longer returns classic-build-plan-missing or classic-build-plan-broken.',
+    'RETRY: resume build configuration or retry the blocked Write/Edit only after SUCCESS.',
+    'PROHIBITED: do not execute tasks.md or write project source before SUCCESS; tasks.md is not a substitute for the implementation plan.',
+    'If writing-plans is unavailable, stop and report the missing Skill instead of bypassing this recovery.',
+  ].join('\n');
 }
 
 async function recoverVerify(output: CommandOutput, name: string): Promise<void> {

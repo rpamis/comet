@@ -12,6 +12,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Classic build recovery**: Full Classic workflows now return to plan creation after context recovery when no implementation plan is recorded, and block project source writes until the plan is restored and linked.
 - **Ambient Resume cleanup**: Disabling the Ambient Resume probe now removes Comet-managed instructions from `AGENTS.md` and `CLAUDE.md` while preserving user-authored content.
 - **External write compatibility**: Comet Hooks now remain neutral for unknown or project-external write targets, including paths redirected through symlinks or junctions, and evaluate only the in-project targets from mixed write operations so unrelated Hooks such as memory writers can continue independently.
 

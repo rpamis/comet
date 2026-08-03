@@ -4534,6 +4534,10 @@ describe('comet scripts', () => {
     });
 
     it('outputs recovery context for build phase with partial progress', async () => {
+      await writeFile(
+        path.join(tmpDir, 'docs', 'superpowers', 'plans', 'recover-build.md'),
+        'plan\n',
+      );
       await createChange(
         tmpDir,
         'recover-build',
@@ -4546,7 +4550,7 @@ describe('comet scripts', () => {
           'isolation: null',
           'verify_mode: null',
           'design_doc: null',
-          'plan: null',
+          'plan: docs/superpowers/plans/recover-build.md',
           'verify_result: pending',
           'archived: false',
           '',
@@ -4599,6 +4603,10 @@ describe('comet scripts', () => {
     });
 
     it('outputs review mode selection guidance when recovering build phase', async () => {
+      await writeFile(
+        path.join(tmpDir, 'docs', 'superpowers', 'plans', 'review-mode-plan.md'),
+        'plan\n',
+      );
       await createChange(
         tmpDir,
         'recover-review-mode',
@@ -4633,6 +4641,10 @@ describe('comet scripts', () => {
     });
 
     it('outputs subagent dispatch guidance when recovering build phase with pending tasks', async () => {
+      await writeFile(
+        path.join(tmpDir, 'docs', 'superpowers', 'plans', 'subagent-plan.md'),
+        'plan\n',
+      );
       await createChange(
         tmpDir,
         'recover-subagent',
@@ -4724,6 +4736,10 @@ describe('comet scripts', () => {
     });
 
     it('requires subagent dispatch confirmation when recovering subagent build mode', async () => {
+      await writeFile(
+        path.join(tmpDir, 'docs', 'superpowers', 'plans', 'subagent-plan.md'),
+        'plan\n',
+      );
       await createChange(
         tmpDir,
         'recover-subagent-unconfirmed',
@@ -4968,6 +4984,10 @@ describe('comet scripts', () => {
     });
 
     it('outputs recovery context for build phase with all tasks done', async () => {
+      await writeFile(
+        path.join(tmpDir, 'docs', 'superpowers', 'plans', 'recover-build-done.md'),
+        'plan\n',
+      );
       await createChange(
         tmpDir,
         'recover-build-done',
@@ -4981,7 +5001,7 @@ describe('comet scripts', () => {
           'isolation: branch',
           'verify_mode: null',
           'design_doc: null',
-          'plan: null',
+          'plan: docs/superpowers/plans/recover-build-done.md',
           'verify_result: pending',
           'archived: false',
           '',
@@ -5746,6 +5766,7 @@ describe('comet scripts', () => {
     }, 20_000);
 
     it('allows source code writes in build phase', async () => {
+      await writeFile(path.join(tmpDir, 'docs', 'superpowers', 'plans', 'test.md'), 'plan\n');
       await createChange(
         tmpDir,
         'test-hook',
@@ -6148,6 +6169,10 @@ describe('comet scripts', () => {
     }, 20_000);
 
     it('allows selected build source writes while another active change is in design', async () => {
+      await writeFile(
+        path.join(tmpDir, 'docs', 'superpowers', 'plans', 'a-build-ready.md'),
+        'plan\n',
+      );
       await createChange(
         tmpDir,
         'a-build-ready',
@@ -6155,7 +6180,7 @@ describe('comet scripts', () => {
           'workflow: full',
           'phase: build',
           'design_doc: docs/superpowers/specs/a-build-ready.md',
-          'plan: null',
+          'plan: docs/superpowers/plans/a-build-ready.md',
           'build_mode: executing-plans',
           'isolation: branch',
           'verify_mode: null',
