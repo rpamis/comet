@@ -29,6 +29,7 @@ describe('dashboard web source contracts', () => {
       'xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)_minmax(260px,320px)]',
     );
     expect(layout).toContain('xl:col-start-2 2xl:col-start-auto');
+    expect(layout).toContain('leftClassName');
     expect(source).not.toContain('xl:grid-cols-[320px_minmax(620px,940px)_320px]');
   });
 

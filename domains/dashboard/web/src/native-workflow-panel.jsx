@@ -253,7 +253,7 @@ function NativeSummaryCard({ label, value, note, tag, icon: Icon, tone, selected
 
 function NativeChangesExplorer({ changes, selectedName, tab, onTab, onSelect }) {
   return (
-    <aside className="rounded-lg bg-bg shadow-raised">
+    <aside className="native-changes-explorer rounded-lg border border-border bg-bg shadow-raised">
       <div className="flex items-center border-b border-border-soft px-5 py-4">
         <h3 className="font-semibold">Changes Explorer</h3>
         <span className="ml-auto rounded-full bg-surface px-3 py-1 text-xs text-fg-2">
@@ -322,7 +322,7 @@ function NativeChangeDetail({ change, onPreview, onCopyChangeName }) {
   useEffect(() => setCopied(false), [change.name]);
 
   return (
-    <section className="min-w-0 rounded-lg bg-bg shadow-raised">
+    <section className="native-change-detail min-w-0 rounded-lg border border-border bg-bg shadow-raised">
       <div className="flex items-start gap-4 border-b border-border-soft px-5 py-4">
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">

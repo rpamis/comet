@@ -1706,7 +1706,7 @@ body {
   -ms-overflow-style: none;
 }
 
-.dashboard-workspace-left {
+.dashboard-workspace-left-inner-scroll {
   overflow-y: visible;
 }
 

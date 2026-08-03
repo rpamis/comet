@@ -54,10 +54,10 @@ describe('Native dashboard web source contracts', () => {
   });
 
   it('keeps Native as a read-only optional panel in the existing dashboard', async () => {
-    const source = await fs.readFile(
-      path.resolve('domains', 'dashboard', 'web', 'src', 'main.jsx'),
-      'utf8',
-    );
+    const [source, nativeSource] = await Promise.all([
+      fs.readFile(path.resolve('domains', 'dashboard', 'web', 'src', 'main.jsx'), 'utf8'),
+      readNativePanelSource(),
+    ]);
 
     expect(source).toContain("from './native-workflow-panel.jsx'");
     expect(source).toContain("useState('classic')");
@@ -67,6 +67,8 @@ describe('Native dashboard web source contracts', () => {
     expect(source).toContain('onPreview={setArtifact}');
     expect(source).toContain("from './workspace-layout.jsx'");
     expect(source).toContain('<DashboardWorkspaceRegion');
+    expect(nativeSource).toContain('native-changes-explorer');
+    expect(nativeSource).toContain('native-change-detail');
     expect(source).not.toContain('<NativeWorkflowPanel native={snapshot.native} />');
   });
 });

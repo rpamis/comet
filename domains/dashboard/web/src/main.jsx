@@ -615,6 +615,7 @@ function Dashboard({
         <>
           {classicWarning ? <ClassicWarning error={snapshot.classicError} /> : null}
           <DashboardWorkspaceRegion
+            leftClassName="dashboard-workspace-left-inner-scroll"
             left={
               <AntChangesExplorer
                 visible={visible}

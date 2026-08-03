@@ -521,7 +521,7 @@ test('keeps Classic and Native side panels within the center panel height', asyn
   await page.setViewportSize({ width: 1680, height: 1005 });
   await page.goto('/?demo');
 
-  const expectWorkspacePanels = async () => {
+  const expectWorkspacePanels = async ({ native = false } = {}) => {
     const workspace = page.locator('.dashboard-workspace-region');
     const center = workspace.locator('.dashboard-workspace-center');
     const sides = workspace.locator('.dashboard-workspace-side');
@@ -537,6 +537,13 @@ test('keeps Classic and Native side panels within the center panel height', asyn
       'border-top-width',
       '1px',
     );
+    if (native) {
+      await expect(workspace.locator('.dashboard-workspace-left')).toHaveCSS('overflow-y', 'auto');
+      await expect(workspace.locator('.native-changes-explorer')).toHaveCSS(
+        'border-top-width',
+        '1px',
+      );
+    }
 
     const metrics = await workspace.evaluate((element) => {
       const centerElement = element.querySelector('.dashboard-workspace-center');
@@ -569,5 +576,5 @@ test('keeps Classic and Native side panels within the center panel height', asyn
 
   await expectWorkspacePanels();
   await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
-  await expectWorkspacePanels();
+  await expectWorkspacePanels({ native: true });
 });
