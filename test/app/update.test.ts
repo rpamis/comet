@@ -3322,12 +3322,12 @@ describe('update command helpers', () => {
     await expect(fs.stat(path.join(fakeHome, 'docs', 'superpowers'))).rejects.toThrow();
   });
 
-  it('syncs Native Skills during a global update without expanding a Native install', async () => {
+  it('syncs Native Skills during a global update of a Native+Classic install', async () => {
     // Regression for #262: global scope used to hardcode the Skill
     // workflowSelection to 'classic', which filtered out comet-native/* and
-    // left global Native installs frozen at their first-install version. The
-    // selection is now derived from disk: an existing comet-native Skill
-    // selects 'both' so it stays current.
+    // left global Native installs frozen at their first-install version. With
+    // both comet-native and comet-classic on disk the selection is 'both', so
+    // Native Skills stay current.
     const fakeHome = path.join(tmpDir, 'fake-home-global-native-sync');
     await fs.mkdir(path.join(fakeHome, '.codex', 'skills', 'comet'), { recursive: true });
     await fs.writeFile(
@@ -3335,14 +3335,23 @@ describe('update command helpers', () => {
       '# Comet\n',
       'utf-8',
     );
-    // Seed a stale Native install so the test also proves an existing
-    // comet-native Skill gets overwritten, not merely created.
+    // Seed a both-workflow install: stale comet-native plus comet-classic so
+    // the derived selection is 'both', and prove the stale Native Skill is
+    // overwritten rather than merely created.
     await fs.mkdir(path.join(fakeHome, '.agents', 'skills', 'comet-native'), {
       recursive: true,
     });
     await fs.writeFile(
       path.join(fakeHome, '.agents', 'skills', 'comet-native', 'SKILL.md'),
       '---\nname: comet-native\n---\n# STALE\n',
+      'utf-8',
+    );
+    await fs.mkdir(path.join(fakeHome, '.agents', 'skills', 'comet-classic'), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(fakeHome, '.agents', 'skills', 'comet-classic', 'SKILL.md'),
+      '# stale classic\n',
       'utf-8',
     );
     const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
@@ -3420,6 +3429,61 @@ describe('update command helpers', () => {
     ).rejects.toMatchObject({ code: 'ENOENT' });
 
     // The Native manifest entries filtered out by the Classic selection are
+    // reported as skipped rather than hidden.
+    const result = json ? JSON.parse(json) : {};
+    const codexSkills = (result.skills?.targets ?? []).find(
+      (t: { platform: string }) => t.platform === 'codex',
+    );
+    expect(codexSkills?.skipped).toBeGreaterThan(0);
+  });
+
+  it('does not add Classic Skills to a Native-only global install during update', async () => {
+    // A global install created with `comet init --scope global --workflow
+    // native` must not gain comet-classic after `comet update --scope global`.
+    const fakeHome = path.join(tmpDir, 'fake-home-global-native-only');
+    await fs.mkdir(path.join(fakeHome, '.codex', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(fakeHome, '.codex', 'skills', 'comet', 'SKILL.md'),
+      '# Comet\n',
+      'utf-8',
+    );
+    // Native-only install: comet-native present, comet-classic absent.
+    await fs.mkdir(path.join(fakeHome, '.agents', 'skills', 'comet-native'), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(fakeHome, '.agents', 'skills', 'comet-native', 'SKILL.md'),
+      '---\nname: comet-native\n---\n# STALE\n',
+      'utf-8',
+    );
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let json: string | undefined;
+
+    try {
+      await updateCommand(tmpDir, {
+        json: true,
+        skipNpm: true,
+        scope: 'global',
+      });
+      json = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    // Native Skills update, but comet-classic must NOT be introduced.
+    const nativeSkill = await fs.readFile(
+      path.join(fakeHome, '.agents', 'skills', 'comet-native', 'SKILL.md'),
+      'utf8',
+    );
+    expect(nativeSkill).toContain('name: comet-native');
+    expect(nativeSkill).not.toContain('# STALE');
+    await expect(
+      fs.access(path.join(fakeHome, '.agents', 'skills', 'comet-classic', 'SKILL.md')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+
+    // The Classic manifest entries filtered out by the Native selection are
     // reported as skipped rather than hidden.
     const result = json ? JSON.parse(json) : {};
     const codexSkills = (result.skills?.targets ?? []).find(

@@ -1542,26 +1542,31 @@ async function updateSingleProject(
     );
   }
 
-  // Global scope mirrors `comet init`: when a user installs Native Skills
-  // globally (e.g. via `comet init --scope global --workflow native`), later
-  // `comet update --scope global` must keep those Skills in sync without
-  // expanding a Classic-only install. The selection is therefore derived from
-  // what is already on disk: an existing comet-native Skill selects 'both' so
-  // it stays current, while a Classic-only install keeps 'classic' so update
-  // never adds Native Skills the user did not choose. Project scope keeps
-  // honoring the project workflow configuration.
+  // Global scope mirrors `comet init`: `comet update --scope global` must keep
+  // already-installed Skills in sync without expanding the workflow range the
+  // user chose at install time. The selection is derived from what is on disk
+  // by checking the two workflow markers, comet-native/SKILL.md and
+  // comet-classic/SKILL.md:
+  //   neither / classic only -> 'classic'  (no Native added)
+  //   native only            -> 'native'   (no Classic added)
+  //   both                   -> 'both'
+  // Project scope keeps honoring the project workflow configuration.
   const skillWorkflowSelectionFor = async (
     target: InstalledCometTarget,
   ): Promise<InitWorkflowSelection> => {
     if (target.scope !== 'global') return projectWorkflowSelection;
-    const nativeSkillPath = path.join(
+    const skillsRoot = path.join(
       getBaseDir('global', projectPath),
       getPlatformSkillsDir(target.platform, 'global'),
       'skills',
-      'comet-native',
-      'SKILL.md',
     );
-    return (await fileExists(nativeSkillPath)) ? 'both' : 'classic';
+    const [hasNative, hasClassic] = await Promise.all([
+      fileExists(path.join(skillsRoot, 'comet-native', 'SKILL.md')),
+      fileExists(path.join(skillsRoot, 'comet-classic', 'SKILL.md')),
+    ]);
+    if (hasNative && hasClassic) return 'both';
+    if (hasNative) return 'native';
+    return 'classic';
   };
   const targetWorkflowSelections = await Promise.all(targets.map(skillWorkflowSelectionFor));
   const updateSkillPaths = new Set(
