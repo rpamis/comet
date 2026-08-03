@@ -44,6 +44,7 @@ export function resolveFastRuntime(argv) {
   if (classicAsset) return { assetPath: classicAsset, args: argv.slice(1) };
 
   if (group === 'workflow' && command === 'resolve') {
+    if (tail.includes('--activate')) return null;
     return {
       assetPath: 'assets/skills/comet/scripts/comet-entry-runtime.mjs',
       args: tail,

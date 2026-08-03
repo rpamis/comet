@@ -12,6 +12,7 @@ describe('CLI fast runtime router', () => {
       assetPath: 'assets/skills/comet/scripts/comet-entry-runtime.mjs',
       args: ['.', '--json'],
     });
+    expect(resolveFastRuntime(['workflow', 'resolve', '.', '--activate', '--json'])).toBeNull();
     expect(resolveFastRuntime(['native', 'status', '--project-root', 'project', '--json'])).toEqual(
       {
         assetPath: 'assets/skills/comet-native/scripts/comet-native-status.mjs',

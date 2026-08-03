@@ -117,6 +117,18 @@ npm install -g @rpamis/comet
 
 ## 快速开始
 
+一次全局初始化即可让已选宿主中的 `/comet` 在所有项目可用：
+
+```bash
+comet init --scope global
+cd your-project
+# 在宿主中调用 /comet
+```
+
+首次在一个尚未配置的项目中调用 `/comet` 时，Comet 会把 `~/.comet/config.yaml` 中的全局默认值固化为项目的 `.comet/config.yaml`，并只在该项目内创建产物目录。之后修改全局默认值不会改写已经激活的项目。Hook 继续识别这份项目配置与 `.comet/current-change.json`；仅触发 Hook、`comet status` 或普通只读解析不会自动初始化项目。
+
+如需把 Skill、Rule 与 Hook 直接复制到项目，或显式覆盖该项目的工作流设置，仍可执行项目初始化：
+
 ```bash
 cd your-project
 comet init
@@ -204,7 +216,7 @@ Comet Eval的自动化双Agent架构能够在线上与LangSmith/LangFuse环境�
 | `--language <lang>` | 技能语言：`en` 或 `zh`（跳过交互式语言选择）         |
 | `--platform <platform>` | 只初始化指定平台；项目范围内可使用自定义平台 id |
 | `--workflow <mode>` | 初始化工作流：`native`、`classic` 或 `both`          |
-| `--root <path>`     | Native 的项目内产物根目录，例如 `docs`               |
+| `--root <path>`     | Native 的项目内产物根目录；全局范围时保存为项目相对默认值 |
 | `--codegraph <action>` | 非交互式项目索引操作：显式选择 `init` 或 `skip`    |
 | `--skip-existing`   | 跳过已安装的组件                                     |
 | `--overwrite`       | 覆盖已安装的组件                                     |

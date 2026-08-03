@@ -44,6 +44,26 @@ describe('Classic project config', () => {
     ).resolves.toEqual({ value: 'thorough', source: '~/.comet/config.yaml' });
   });
 
+  it('reads Classic settings from the complete global schema', async () => {
+    await writeConfig(
+      homeDir,
+      [
+        'schema: comet.global.v1',
+        'default_workflow: classic',
+        'workflows: [classic]',
+        'ambient_resume: true',
+        'classic:',
+        '  language: zh-CN',
+        '  review_mode: thorough',
+        '',
+      ].join('\n'),
+    );
+
+    await expect(
+      readClassicConfigValue('review_mode', { cwd: projectRoot, homeDir }),
+    ).resolves.toEqual({ value: 'thorough', source: '~/.comet/config.yaml' });
+  });
+
   it('returns null when only a legacy top-level setting exists', async () => {
     await writeConfig(projectRoot, 'auto_transition: false\n');
 

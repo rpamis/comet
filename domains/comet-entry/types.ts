@@ -7,7 +7,12 @@ export type InitWorkflowSelection = CometWorkflow | 'both';
 
 export type CometEntrySkill = 'comet-native' | 'comet-classic';
 
-export type CometEntryResolutionSource = 'project-config' | 'legacy-fallback';
+export type CometEntryResolutionSource =
+  | 'project-config'
+  | 'global-config'
+  | 'built-in-default'
+  | 'legacy-project'
+  | 'legacy-fallback';
 
 export interface CometEntryResolution {
   workflow: CometWorkflow;

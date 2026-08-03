@@ -60,6 +60,10 @@ export interface WorkflowProjectConfig {
   classic?: WorkflowClassicProjectConfig;
 }
 
+export interface WorkflowGlobalConfig extends Omit<WorkflowProjectConfig, 'schema'> {
+  schema: 'comet.global.v1';
+}
+
 export interface WorkflowNativeEnabledProjectConfig extends WorkflowProjectConfig {
   native: WorkflowNativeProjectConfig;
 }

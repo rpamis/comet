@@ -134,6 +134,18 @@ npm install -g @rpamis/comet
 
 ## Quick Start
 
+A single global initialization makes `/comet` available through the selected hosts in every project:
+
+```bash
+comet init --scope global
+cd your-project
+# Invoke /comet in the host
+```
+
+The first `/comet` invocation in an unconfigured project snapshots the defaults from `~/.comet/config.yaml` into the project's `.comet/config.yaml` and creates artifacts only inside that project. Later global-default changes do not rewrite activated projects. Hooks then recognize the project config and `.comet/current-change.json`; Hook events, `comet status`, and ordinary read-only resolution never initialize a project by themselves.
+
+Run project initialization only when you want project-local copies of Skills, Rules, and Hooks, or explicit project overrides:
+
 ```bash
 cd your-project
 comet init
@@ -222,7 +234,7 @@ Initializes Comet for selected AI coding platforms. Interactive setup selects Na
 | `--language <lang>` | Skill language: `en` or `zh` (skips interactive language prompt)               |
 | `--platform <platform>` | Initialize only this platform; project scope accepts custom platform ids    |
 | `--workflow <mode>` | Workflows to initialize: `native`, `classic`, or `both`                        |
-| `--root <path>`     | Project-relative Native artifact root, such as `docs`                          |
+| `--root <path>`     | Project-relative Native artifact root; global scope stores it as a project default |
 | `--codegraph <action>` | Non-interactive project index action: explicitly choose `init` or `skip`    |
 | `--skip-existing`   | Skip already installed components                                              |
 | `--overwrite`       | Overwrite already installed components                                         |

@@ -59,7 +59,12 @@ import {
 import { classicLayoutPaths } from '../../domains/comet-classic/classic-layout.js';
 import { assertClassicOpenSpecRootHealthy } from '../../domains/comet-classic/classic-openspec-root.js';
 import { discoverNativeProject } from '../../domains/comet-native/native-paths.js';
+import { defaultProjectConfig } from '../../domains/comet-native/native-config.js';
 import { readWorkflowProjectConfigSnapshot } from '../../domains/workflow-contract/project-config-reader.js';
+import {
+  readWorkflowGlobalConfig,
+  writeWorkflowGlobalConfig,
+} from '../../domains/workflow-contract/global-config.js';
 import type { InitWorkflowSelection } from '../../domains/comet-entry/types.js';
 import { migrateLegacyClassicSelection } from '../../domains/comet-entry/current-selection.js';
 import type { InstallScope, InstallMode } from '../../platform/install/types.js';
@@ -88,6 +93,18 @@ interface UpdateOptions {
   npmSkipReason?: string;
   skipPackageSelfUpdate?: boolean;
   platform?: string;
+}
+
+async function refreshGlobalWorkflowConfig(
+  homeDir: string,
+  language: 'en' | 'zh-CN' | null,
+): Promise<void> {
+  const existing = await readWorkflowGlobalConfig(homeDir);
+  const defaults = defaultProjectConfig('docs', language ?? 'en');
+  const config = existing ?? { ...defaults, schema: 'comet.global.v1' as const };
+  if (language && config.native) config.native.language = language;
+  if (language && config.classic) config.classic.language = language;
+  await writeWorkflowGlobalConfig(homeDir, config);
 }
 
 type SkillLanguage = SkillLanguageId;
@@ -1968,13 +1985,18 @@ async function updateSingleProject(
         continue;
       }
     }
-    await mergeProjectConfig(
-      configRoot,
-      languageId ? languageToArtifactLanguage(languageId) : null,
-      scope === 'project' ? classicArtifactLayout : 'docs',
-      scope === 'project',
-      scope === 'project' && classicProject,
-    );
+    const artifactLanguage = languageId ? languageToArtifactLanguage(languageId) : null;
+    if (scope === 'global') {
+      await refreshGlobalWorkflowConfig(configRoot, artifactLanguage);
+    } else {
+      await mergeProjectConfig(
+        configRoot,
+        artifactLanguage,
+        classicArtifactLayout,
+        true,
+        classicProject,
+      );
+    }
     if (scope === 'project' && classicLayoutInitializationPermit) {
       await completeClassicLayoutInitialization(projectPath, classicLayoutInitializationPermit);
     }
