@@ -53,6 +53,19 @@ const CONFLICT_LABELS = {
 
 const NATIVE_CHANGE_PAGE_SIZE = 5;
 
+function nativeChangeAcceptanceProgress(change) {
+  const acceptance = change.acceptance;
+  if (!acceptance?.total) return null;
+
+  const covered = acceptance.evidenced + acceptance.skipped;
+  return {
+    covered,
+    total: acceptance.total,
+    percent: Math.round((covered / acceptance.total) * 100),
+    complete: acceptance.missing === 0,
+  };
+}
+
 export function NativeWorkflowPanel({ native, git, query, onPreview, onCopyChangeName }) {
   const [tab, setTab] = useState('active');
   const listRef = useRef(null);
@@ -339,31 +352,45 @@ function NativeChangesExplorer({
                   : '没有匹配的 Native change'}
             </div>
           ) : (
-            changes.map((change) => (
-              <div
-                key={change.name}
-                className={`native-change-list-item ${change.name === selectedName ? 'selected' : ''}`}
-              >
-                <button
-                  type="button"
-                  className="native-change-row"
-                  onClick={() => onSelect(change.name)}
+            changes.map((change) => {
+              const progress = nativeChangeAcceptanceProgress(change);
+              return (
+                <div
+                  key={change.name}
+                  className={`native-change-list-item ${change.name === selectedName ? 'selected' : ''}`}
                 >
-                  <div className="flex w-full items-center gap-2.5 text-left">
-                    <span className="text-xs text-meta">◇</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate font-semibold">{change.name}</div>
-                      <div className="mt-1 text-xs text-meta">
-                        {PHASE_LABELS[change.phase] ?? '状态异常'}
+                  <button
+                    type="button"
+                    className="native-change-row"
+                    onClick={() => onSelect(change.name)}
+                  >
+                    <div className="flex w-full items-center gap-2.5 text-left">
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-semibold">{change.name}</div>
+                        <div className="mt-1 text-xs text-meta">
+                          {PHASE_LABELS[change.phase] ?? '状态异常'}
+                          {progress ? ` · ${progress.covered}/${progress.total}` : ''}
+                        </div>
+                        {progress && (
+                          <div
+                            className={`native-change-progress mt-1 ${progress.complete ? 'complete' : ''}`}
+                            role="progressbar"
+                            aria-valuenow={progress.percent}
+                            aria-valuemin="0"
+                            aria-valuemax="100"
+                          >
+                            <span style={{ width: `${progress.percent}%` }} />
+                          </div>
+                        )}
                       </div>
+                      <Pill tone={freshnessTone(change.verificationFreshness)}>
+                        {FRESHNESS_LABELS[change.verificationFreshness] ?? '状态未知'}
+                      </Pill>
                     </div>
-                    <Pill tone={freshnessTone(change.verificationFreshness)}>
-                      {FRESHNESS_LABELS[change.verificationFreshness] ?? '状态未知'}
-                    </Pill>
-                  </div>
-                </button>
-              </div>
-            ))
+                  </button>
+                </div>
+              );
+            })
           )}
           {hasMore && (
             <div className="py-2 text-center text-xs text-meta" aria-live="polite">

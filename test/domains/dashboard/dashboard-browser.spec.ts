@@ -594,6 +594,11 @@ test('keeps Classic and Native side panels within the center panel height', asyn
       await expect(selectedNativeRow).toHaveCSS('border-color', 'rgba(0, 0, 0, 0)');
       await expect(selectedNativeRow).toHaveCSS('border-radius', '10px');
       await expect(selectedNativeRow.locator('.truncate')).toHaveCSS('font-size', '14px');
+      await expect(selectedNativeRow.getByText('◇', { exact: true })).toHaveCount(0);
+      await expect(selectedNativeRow).toContainText('Build · 2/4');
+      const nativeProgress = selectedNativeRow.getByRole('progressbar');
+      await expect(nativeProgress).toHaveCount(1);
+      await expect(nativeProgress).toHaveAttribute('aria-valuenow', '50');
       const conflictSection = rightPanel
         .getByRole('heading', { name: '关联冲突' })
         .locator('..')
