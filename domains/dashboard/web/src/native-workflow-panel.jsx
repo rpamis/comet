@@ -302,29 +302,28 @@ function NativeChangesExplorer({
   return (
     <aside className="native-changes-explorer flex min-h-0 flex-col rounded-lg border border-border bg-bg shadow-raised">
       <div className="flex flex-none items-center border-b border-border-soft px-5 py-4">
-        <h3 className="font-semibold">Changes Explorer</h3>
-        <span className="ml-auto rounded-full bg-surface px-3 py-1 text-xs text-fg-2">
-          {total} 个
-        </span>
+        <h3 className="font-semibold">
+          Changes Explorer <span className="native-changes-count">{total}</span>
+        </h3>
       </div>
       <div className="native-changes-explorer-body flex min-h-0 flex-1 flex-col p-4">
-        <div className="mb-4 flex-none">
-          <div className="inline-flex rounded-xl bg-surface p-1">
-            {[
-              ['active', '活跃'],
-              ['archived', '已归档'],
-              ['all', '全部'],
-            ].map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                className={`rounded-lg px-3 py-1.5 text-sm ${tab === value ? 'bg-bg text-fg shadow-sm' : 'text-muted'}`}
-                onClick={() => onTab(value)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+        <div className="native-changes-explorer-tabs mb-4 flex flex-none items-end gap-8 border-b border-border-soft">
+          {[
+            ['active', '活跃'],
+            ['archived', '已归档'],
+            ['all', '全部'],
+          ].map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={tab === value}
+              className={`native-change-tab ${tab === value ? 'active' : ''}`}
+              onClick={() => onTab(value)}
+            >
+              {label}
+            </button>
+          ))}
         </div>
         <div
           ref={listRef}

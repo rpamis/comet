@@ -21,9 +21,9 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '验收覆盖' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Repair 状态' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Git 摘要' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '活跃', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: '已归档', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: '全部', exact: true })).toBeVisible();
+  await expect(page.getByRole('tab', { name: '活跃', exact: true })).toBeVisible();
+  await expect(page.getByRole('tab', { name: '已归档', exact: true })).toBeVisible();
+  await expect(page.getByRole('tab', { name: '全部', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'ship-native-dashboard' })).toBeVisible();
   const nativeCopyChangeName = page.getByRole('button', { name: '复制 Change 名称' });
   await expect(nativeCopyChangeName).toHaveCount(1);
@@ -35,7 +35,7 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
   await expect(page.getByText('Ship a dedicated Native dashboard view.')).toBeVisible();
   await page.getByRole('button', { name: '关闭产物预览' }).last().click();
 
-  await page.getByRole('button', { name: '已归档', exact: true }).click();
+  await page.getByRole('tab', { name: '已归档', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'document-native-resume' })).toBeVisible();
   await expect(page.getByLabel('Archive 已完成')).toHaveText('✓');
   await expect(page.getByText('已完成 · 已归档', { exact: true })).toBeVisible();
@@ -557,6 +557,17 @@ test('keeps Classic and Native side panels within the center panel height', asyn
       const nativeList = workspace.locator('.native-change-list');
       const nativeDetail = workspace.locator('.native-change-detail');
       const rightPanel = workspace.locator('.dashboard-workspace-right');
+      const nativeCount = nativeExplorer.locator('.native-changes-count');
+      await expect(nativeCount).toHaveText(/^\d+$/);
+      await expect(nativeCount).toHaveCSS('background-color', 'rgb(11, 24, 51)');
+      await expect(nativeCount).toHaveCSS('color', 'rgb(255, 255, 255)');
+      const nativeTabs = nativeExplorer.locator('.native-changes-explorer-tabs');
+      await expect(nativeTabs).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(nativeTabs).toHaveCSS('border-bottom-width', '1px');
+      await expect(nativeTabs.getByRole('tab')).toHaveCount(3);
+      const activeNativeTab = nativeTabs.locator('[role="tab"][aria-selected="true"]');
+      await expect(activeNativeTab).toHaveCSS('border-bottom-width', '2px');
+      await expect(activeNativeTab).toHaveCSS('border-bottom-color', 'rgb(37, 94, 216)');
       await expect(rightPanel).toHaveCSS('border-radius', '15px');
       await expect(nativeExplorer).toHaveCSS('border-radius', '15px');
       await expect(nativeDetail).toHaveCSS('border-radius', '15px');

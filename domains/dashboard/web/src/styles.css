@@ -1726,6 +1726,38 @@ body {
   border-radius: 15px;
 }
 
+.native-changes-count {
+  display: inline-flex;
+  min-height: 18px;
+  align-items: center;
+  margin-left: 8px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #0b1833;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  vertical-align: middle;
+}
+
+.native-change-tab {
+  padding: 7px 0 9px;
+  border-bottom: 2px solid transparent;
+  color: var(--color-fg-2);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.native-change-tab:hover,
+.native-change-tab.active {
+  color: #255ed8;
+}
+
+.native-change-tab.active {
+  border-bottom-color: #255ed8;
+}
+
 .native-change-detail {
   border-radius: 15px;
 }
