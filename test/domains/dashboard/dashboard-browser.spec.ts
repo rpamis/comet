@@ -197,6 +197,11 @@ test('fully applies dark surfaces without page-wide color-transition jank', asyn
     'rgb(58, 70, 88)',
   );
 
+  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
+  const nativeSelectedItem = page.locator('.native-change-list-item.selected');
+  await expect(nativeSelectedItem).toHaveCSS('background-color', 'rgb(27, 45, 72)');
+  await expect(nativeSelectedItem).toHaveCSS('color', 'rgb(237, 242, 251)');
+
   await page.locator('.comet-project-select').click();
   await expect(page.locator('.comet-project-select-dropdown')).toHaveCSS(
     'background-color',

@@ -2208,6 +2208,12 @@ body {
   background: #1b2d48 !important;
 }
 
+:root[data-theme='dark'] .native-change-list-item.selected,
+:host[data-theme='dark'] .native-change-list-item.selected {
+  background: #1b2d48;
+  color: #edf2fb;
+}
+
 :root[data-theme='dark'] .dashboard-next-step-alert,
 :host[data-theme='dark'] .dashboard-next-step-alert {
   border-color: #2b4d75 !important;
