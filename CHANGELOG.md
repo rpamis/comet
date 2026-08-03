@@ -2,6 +2,16 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-beta.15] - 2026-08-03
+
+### Changed
+
+- **Hook isolation**: Comet now installs its blocking Router only for project-scoped integrations and keeps it in a dedicated matcher group. Setup, update, and Doctor remove historical global Comet Hooks while preserving user-owned Hook entries and configuration.
+
+### Fixed
+
+- **External write compatibility**: Comet Hooks now remain neutral for unknown or project-external write targets, including paths redirected through symlinks or junctions, and evaluate only the in-project targets from mixed write operations so unrelated Hooks such as memory writers can continue independently.
+
 ## What's Changed [0.4.0-beta.14] - 2026-08-02
 
 ### Fixed

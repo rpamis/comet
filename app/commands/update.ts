@@ -15,11 +15,11 @@ import {
 import {
   copyCometSkillsForPlatform,
   copyCometRulesForPlatform,
-  installCometHooksForPlatform,
   getManifestSkills,
   mergeProjectConfig,
   prepareManagedSkillCopyTarget,
 } from '../../domains/skill/platform-install.js';
+import { reconcileCometHooksForPlatform } from '../../domains/skill/hook-lifecycle.js';
 import { removeLegacyCometSkillsForPlatform } from '../../domains/skill/uninstall.js';
 import { installCometProjectInstructions } from '../../domains/skill/project-instructions.js';
 import {
@@ -1711,7 +1711,7 @@ async function updateSingleProject(
         status,
         reason,
         cleanupFailed = 0,
-      } = await installCometHooksForPlatform(
+      } = await reconcileCometHooksForPlatform(
         baseDir,
         target.platform,
         target.scope,

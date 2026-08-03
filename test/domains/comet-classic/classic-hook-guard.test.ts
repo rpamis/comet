@@ -125,6 +125,43 @@ async function seedChange(
 }
 
 describe('Classic hook guard command', () => {
+  it('allows an explicitly external target during a guarded Classic phase', async () => {
+    const dir = await makeProject();
+    await seedChange(dir, 'demo', 'design');
+    const externalTarget = path.join(os.tmpdir(), `comet-memory-${path.basename(dir)}.md`);
+
+    const result = await inspectClassicHookGuard(dir, 'demo', {
+      intent: 'write',
+      targets: [externalTarget],
+      toolName: 'Write',
+    });
+
+    expect(result).toMatchObject({
+      allowed: true,
+      workflow: 'classic',
+      change: 'demo',
+      phase: 'design',
+    });
+  });
+
+  it('stays neutral when a write target cannot be attributed during Classic design', async () => {
+    const dir = await makeProject();
+    await seedChange(dir, 'demo', 'design');
+
+    const result = await inspectClassicHookGuard(dir, 'demo', {
+      intent: 'unknown',
+      targets: [],
+      toolName: 'FutureWriteTool',
+    });
+
+    expect(result).toMatchObject({
+      allowed: true,
+      workflow: 'classic',
+      change: 'demo',
+      phase: 'design',
+    });
+  });
+
   it('blocks a selected active change junction without reading external state', async () => {
     const dir = await makeProject();
     const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-hook-outside-'));

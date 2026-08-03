@@ -25,11 +25,11 @@ import type { InstallMode } from '../../platform/install/types.js';
 import {
   copyCometSkillsForPlatform,
   copyCometRulesForPlatform,
-  installCometHooksForPlatform,
   createWorkingDirs,
   mergeProjectConfig,
   prepareNativeSkillInstallTarget,
 } from '../../domains/skill/platform-install.js';
+import { reconcileCometHooksForPlatform } from '../../domains/skill/hook-lifecycle.js';
 import { installCometProjectInstructions } from '../../domains/skill/project-instructions.js';
 import { LANGUAGES, type LanguageConfig } from '../../domains/skill/languages.js';
 import { resolveInitWorkflow } from '../../domains/comet-entry/init-workflow.js';
@@ -918,7 +918,7 @@ export async function initCommand(
           status,
           reason,
           cleanupFailed = 0,
-        } = await installCometHooksForPlatform(baseDir, platform, scope, workflowSelection);
+        } = await reconcileCometHooksForPlatform(baseDir, platform, scope, workflowSelection);
         cometComponentInstalled ||= status === 'installed';
         if (status === 'installed') {
           if (scope === 'project') projectRouterInstalled = true;

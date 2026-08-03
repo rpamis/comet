@@ -1483,8 +1483,106 @@ describe('doctor command', () => {
       status: 'warn',
     });
     expect(results.find((result) => result.check === 'hooks: Codex (global)')).toMatchObject({
-      status: 'warn',
+      status: 'pass',
+      message: 'no global blocking Hook present',
     });
+  });
+
+  it('reports and repairs a historical global Hook while preserving a user Hook', async () => {
+    const fakeHome = path.join(tmpDir, 'global-hook-home');
+    await installManagedCometSkills(fakeHome, '.agents');
+    const hooksPath = path.join(fakeHome, '.codex', 'hooks.json');
+    const userHook = { type: 'command', command: 'node user-hook.mjs' };
+    await fs.mkdir(path.dirname(hooksPath), { recursive: true });
+    await fs.writeFile(
+      hooksPath,
+      JSON.stringify({
+        hooks: {
+          PreToolUse: [
+            {
+              matcher: 'Write|Edit',
+              hooks: [
+                userHook,
+                {
+                  type: 'command',
+                  command: `node "${path.join(fakeHome, '.legacy', 'skills', 'comet', 'scripts', 'comet-hook-router.mjs').replaceAll('\\', '/')}" --platform "codex"`,
+                },
+              ],
+            },
+          ],
+        },
+      }),
+      'utf8',
+    );
+
+    const before = await collectDoctorResults(fakeHome, 'global');
+    expect(before.find((result) => result.check === 'hooks: Codex (global)')).toMatchObject({
+      status: 'warn',
+      message: expect.stringContaining('global blocking Hook remains'),
+    });
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await doctorCommand(fakeHome, {
+        json: true,
+        repair: true,
+        scope: 'global',
+        homeDir: fakeHome,
+      });
+    } finally {
+      log.mockRestore();
+    }
+
+    const repaired = JSON.parse(await fs.readFile(hooksPath, 'utf8'));
+    expect(repaired.hooks.PreToolUse[0].hooks).toEqual([userHook]);
+  });
+
+  it('reports and repairs a global managed Hook even when its Skill root is missing', async () => {
+    const fakeHome = path.join(tmpDir, 'orphan-global-hook-home');
+    const hooksPath = path.join(fakeHome, '.codex', 'hooks.json');
+    const userHook = { type: 'command', command: 'node user-hook.mjs' };
+    await fs.mkdir(path.dirname(hooksPath), { recursive: true });
+    await fs.writeFile(
+      hooksPath,
+      JSON.stringify({
+        hooks: {
+          PreToolUse: [
+            {
+              matcher: 'Write|Edit',
+              hooks: [
+                userHook,
+                {
+                  type: 'command',
+                  command: `node "${path.join(fakeHome, '.legacy', 'skills', 'comet', 'scripts', 'comet-hook-router.mjs').replaceAll('\\', '/')}" --platform "codex"`,
+                },
+              ],
+            },
+          ],
+        },
+      }),
+      'utf8',
+    );
+
+    const before = await collectDoctorResults(fakeHome, 'global');
+    expect(before.find((result) => result.check === 'hooks: Codex (global)')).toMatchObject({
+      status: 'warn',
+      message: expect.stringContaining('global blocking Hook remains'),
+    });
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await doctorCommand(fakeHome, {
+        json: true,
+        repair: true,
+        scope: 'global',
+        homeDir: fakeHome,
+      });
+    } finally {
+      log.mockRestore();
+    }
+
+    const repaired = JSON.parse(await fs.readFile(hooksPath, 'utf8'));
+    expect(repaired.hooks.PreToolUse[0].hooks).toEqual([userHook]);
   });
 
   it('reports legacy-only Codex skills as requiring update and canonical Codex skills as healthy', async () => {

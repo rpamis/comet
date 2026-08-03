@@ -10,6 +10,7 @@ import {
 import { inspectClassicActiveChangeDirectory, openSpecChangeNameError } from './classic-paths.js';
 import { inspectClassicProjectTarget } from './classic-protected-path.js';
 import type { CometHookDecision, CometHookRequest } from '../comet-entry/hook-types.js';
+import { scopeCometHookTargets } from '../workflow-contract/hook-target-scope.js';
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
 import {
   driftStaleReason,
@@ -674,6 +675,14 @@ async function inspectClassicHookTarget(
   target: string,
   selectedChangeName?: string,
 ): Promise<ClassicCommandResult> {
+  try {
+    const scoped = await scopeCometHookTargets(projectRoot, [target]);
+    if (scoped.projectTargets.length === 0) {
+      return allowed(`${target} (outside guarded project)`);
+    }
+  } catch {
+    return allowed(`${target} (scope could not be attributed to this project)`);
+  }
   const relativePath = await projectRelative(target, projectRoot);
   let layout: ClassicLayoutPaths;
   try {
@@ -779,22 +788,9 @@ export async function inspectClassicHookGuard(
     return { allowed: true, reason: 'Hook event is not a write' };
   }
   if (request.intent === 'unknown' || request.targets.length === 0) {
-    if (
-      selected.phase === 'verify' ||
-      (selected.phase === 'build' &&
-        !(selected.classic?.workflow === 'full' && !selected.classic.designDoc))
-    ) {
-      return {
-        allowed: true,
-        reason: `Classic change is in ${selected.phase}`,
-        workflow: 'classic',
-        change: changeName,
-        phase: selected.phase,
-      };
-    }
     return {
-      allowed: false,
-      reason: `Hook write target could not be determined while Classic change ${changeName} is in ${selected.phase}; resume /comet-classic before retrying`,
+      allowed: true,
+      reason: 'Hook write target was not attributed to the guarded project',
       workflow: 'classic',
       change: changeName,
       phase: selected.phase,

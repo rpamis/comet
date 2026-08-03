@@ -319,6 +319,7 @@ describe('platform component inspection', () => {
 
     await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
       present: false,
+      managedPresent: true,
     });
   });
 

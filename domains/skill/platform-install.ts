@@ -991,6 +991,13 @@ async function installCometHooksForPlatform(
     };
   }
 
+  if (scope === 'global') {
+    return {
+      status: 'skipped',
+      reason: 'blocking Hooks are project-scoped',
+    };
+  }
+
   try {
     const manifest = await readManifest();
     const hooksConfig = managedHooksForSelection(manifest, workflowSelection);
@@ -1173,46 +1180,66 @@ function isManagedHookCommand(command: unknown, scriptRelPaths: string[]): boole
   );
 }
 
+const COPILOT_COMMAND_FIELDS = ['command', 'bash', 'powershell'] as const;
+
+/** Remove Comet-owned command fields without discarding unrelated Copilot metadata. */
+function removeManagedCopilotHookEntries(
+  entries: unknown[],
+  scriptRelPaths: string[],
+): { entries: unknown[]; removed: number } {
+  let removed = 0;
+  const cleaned = entries.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return [entry];
+
+    const record = { ...(entry as Record<string, unknown>) };
+    let changed = false;
+    for (const field of COPILOT_COMMAND_FIELDS) {
+      if (isManagedHookCommand(record[field], scriptRelPaths)) {
+        delete record[field];
+        changed = true;
+      }
+    }
+    if (!changed) return [entry];
+
+    removed++;
+    const hasCommandField = COPILOT_COMMAND_FIELDS.some((field) =>
+      Object.prototype.hasOwnProperty.call(record, field),
+    );
+    const hasUserMetadata = Object.keys(record).some(
+      (key) => key !== 'matcher' && !(COPILOT_COMMAND_FIELDS as readonly string[]).includes(key),
+    );
+    if (!hasCommandField && !hasUserMetadata) return [];
+    return [record];
+  });
+
+  return { entries: cleaned, removed };
+}
+
 function mergeHookGroups<T extends { command: string }>(
   existingGroups: unknown[],
   newGroups: Array<{ matcher: string; hooks: T[] }>,
   scriptRelPaths: string[],
 ): unknown[] {
-  const mergedGroups = existingGroups.map((group) => {
-    if (!group || typeof group !== 'object' || Array.isArray(group)) return group;
+  const mergedGroups = existingGroups.flatMap((group) => {
+    if (!group || typeof group !== 'object' || Array.isArray(group)) return [group];
     const record = group as Record<string, unknown>;
-    if (!Array.isArray(record.hooks)) return record;
+    if (!Array.isArray(record.hooks)) return [record];
 
     const hooks = record.hooks.filter((hook) => {
       const command =
         hook && typeof hook === 'object' ? (hook as Record<string, unknown>).command : undefined;
       return !isManagedHookCommand(command, scriptRelPaths);
     });
+    const removedManagedHook = hooks.length !== record.hooks.length;
+    const isPlainManagedGroup = Object.keys(record).every(
+      (key) => key === 'matcher' || key === 'hooks',
+    );
+    if (removedManagedHook && hooks.length === 0 && isPlainManagedGroup) return [];
 
-    return { ...record, hooks };
+    return [{ ...record, hooks }];
   });
 
-  for (const newGroup of newGroups) {
-    const existingGroupIndex = mergedGroups.findIndex(
-      (group) =>
-        Boolean(group) &&
-        typeof group === 'object' &&
-        !Array.isArray(group) &&
-        (group as Record<string, unknown>).matcher === newGroup.matcher &&
-        Array.isArray((group as Record<string, unknown>).hooks),
-    );
-    if (existingGroupIndex >= 0) {
-      const existingGroup = mergedGroups[existingGroupIndex] as Record<string, unknown>;
-      mergedGroups[existingGroupIndex] = {
-        ...existingGroup,
-        hooks: [...(existingGroup.hooks as unknown[]), ...newGroup.hooks],
-      };
-    } else {
-      mergedGroups.push(newGroup);
-    }
-  }
-
-  return mergedGroups;
+  return [...mergedGroups, ...newGroups];
 }
 
 /**
@@ -1502,15 +1529,23 @@ async function installCopilotHooks(
     scriptEntries.push({ matcher, bash: cmd, powershell: cmd });
   }
 
-  const hookConfig = {
-    version: 1,
-    hooks: {
-      preToolUse: scriptEntries,
-    },
+  const settings = await readSettingsJsonObject(hookFilePath, 'GitHub Copilot');
+  const existingHooks =
+    settings.hooks && typeof settings.hooks === 'object' && !Array.isArray(settings.hooks)
+      ? (settings.hooks as Record<string, unknown>)
+      : {};
+  const existingPreToolUse = asHookGroup(existingHooks.preToolUse);
+  const cleaned = removeManagedCopilotHookEntries(
+    existingPreToolUse,
+    managedHookScriptPaths(hooksConfig),
+  );
+  if (settings.version === undefined) settings.version = 1;
+  settings.hooks = {
+    ...existingHooks,
+    preToolUse: [...cleaned.entries, ...scriptEntries],
   };
-
   await ensureDir(hooksDir);
-  await writeFile(hookFilePath, JSON.stringify(hookConfig, null, 2) + '\n', 'utf-8');
+  await writeFile(hookFilePath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
   return { status: 'installed' };
 }
 
@@ -1895,6 +1930,7 @@ export {
   computeRuleDestPath,
   formatRuleContent,
   isManagedHookCommand,
+  removeManagedCopilotHookEntries,
   buildHookCommand,
   removeManagedHooksFromJsonFile,
   planSkillDirectoryCopy,

@@ -18,6 +18,8 @@ import type { InitWorkflowSelection } from '../comet-entry/types.js';
 
 export interface HookInspectionResult {
   present: boolean;
+  /** A Comet-owned Hook exists even when its command is stale or relocated. */
+  managedPresent?: boolean;
   legacyPresent?: boolean;
   duplicatePresent?: boolean;
   error?: string;
@@ -129,6 +131,18 @@ function collectCopilotCommands(config: Record<string, unknown>): unknown[] {
   });
 }
 
+function collectCopilotCommandFields(config: Record<string, unknown>): unknown[] {
+  const hooks = config.hooks;
+  if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) return [];
+  const entries = (hooks as Record<string, unknown>).preToolUse;
+  if (!Array.isArray(entries)) return [];
+  return entries.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return [];
+    const record = entry as Record<string, unknown>;
+    return [record.command, record.bash, record.powershell];
+  });
+}
+
 function containsAllManagedCommands(commands: unknown[], expectedCommands: string[]): boolean {
   return expectedCommands.every((expected) => commands.some((command) => command === expected));
 }
@@ -151,16 +165,25 @@ function containsLegacyManagedCommand(commands: unknown[]): boolean {
 async function inspectSingleHookJson(
   configPath: string,
   expectedCommands: string[],
+  scriptRelPaths: string[],
   collectCommands: (config: Record<string, unknown>) => unknown[],
+  collectManagedCommands: (config: Record<string, unknown>) => unknown[] = collectCommands,
 ): Promise<HookInspectionResult> {
   const result = await readHookJson(configPath);
   if (result.status === 'missing') return { present: false };
   if (result.status === 'error') return { present: false, error: result.error };
   const commands = collectCommands(result.value);
-  const legacyPresent = containsLegacyManagedCommand(commands);
+  const managedCommands = collectManagedCommands(result.value);
+  const managedScriptPaths = [...new Set([...scriptRelPaths, ...LEGACY_HOOK_SCRIPT_PATHS])];
+  const managedPresent = managedCommands.some((command) =>
+    isManagedHookCommand(command, managedScriptPaths),
+  );
+  const legacyPresent = containsLegacyManagedCommand(managedCommands);
   const duplicatePresent = containsDuplicateManagedCommand(commands, expectedCommands);
+  const present = containsAllManagedCommands(commands, expectedCommands);
   return {
-    present: containsAllManagedCommands(commands, expectedCommands),
+    present,
+    ...(!present && managedPresent ? { managedPresent: true } : {}),
     ...(legacyPresent ? { legacyPresent: true } : {}),
     ...(duplicatePresent ? { duplicatePresent: true } : {}),
   };
@@ -171,11 +194,19 @@ async function inspectKiroHooks(
   scriptRelPaths: string[],
   expectedCommands: string[],
 ): Promise<HookInspectionResult> {
+  const managedScriptPaths = [...new Set([...scriptRelPaths, ...LEGACY_HOOK_SCRIPT_PATHS])];
+  let present = true;
+  let managedPresent = false;
+  let legacyPresent = false;
+
   for (const [index, scriptRelPath] of scriptRelPaths.entries()) {
     const fileName = path.basename(scriptRelPath).replace(/\.mjs$/u, '.kiro.hook');
     const configPath = path.join(platformBase, 'hooks', fileName);
     const result = await readHookJson(configPath);
-    if (result.status === 'missing') return { present: false };
+    if (result.status === 'missing') {
+      present = false;
+      continue;
+    }
     if (result.status === 'error') return { present: false, error: result.error };
 
     const then = result.value.then;
@@ -183,17 +214,39 @@ async function inspectKiroHooks(
       then && typeof then === 'object' && !Array.isArray(then)
         ? (then as Record<string, unknown>).command
         : undefined;
-    if (command !== expectedCommands[index]) return { present: false };
+    if (isManagedHookCommand(command, managedScriptPaths)) {
+      managedPresent = true;
+      if (
+        typeof command === 'string' &&
+        LEGACY_HOOK_SCRIPT_NAMES.some((scriptName) => command.includes(scriptName))
+      ) {
+        legacyPresent = true;
+      }
+    }
+    if (command !== expectedCommands[index]) present = false;
   }
 
-  const legacyPresent = (
-    await Promise.all(
-      LEGACY_HOOK_SCRIPT_NAMES.map((scriptName) =>
-        fileExists(path.join(platformBase, 'hooks', scriptName.replace(/\.mjs$/u, '.kiro.hook'))),
-      ),
-    )
-  ).some(Boolean);
-  return { present: scriptRelPaths.length > 0, ...(legacyPresent ? { legacyPresent: true } : {}) };
+  for (const scriptName of LEGACY_HOOK_SCRIPT_NAMES) {
+    const result = await readHookJson(
+      path.join(platformBase, 'hooks', scriptName.replace(/\.mjs$/u, '.kiro.hook')),
+    );
+    if (result.status !== 'present') continue;
+    const then = result.value.then;
+    const command =
+      then && typeof then === 'object' && !Array.isArray(then)
+        ? (then as Record<string, unknown>).command
+        : undefined;
+    if (isManagedHookCommand(command, managedScriptPaths)) {
+      managedPresent = true;
+      legacyPresent = true;
+    }
+  }
+
+  return {
+    present: present && scriptRelPaths.length > 0,
+    ...(!present && managedPresent ? { managedPresent: true } : {}),
+    ...(legacyPresent ? { legacyPresent: true } : {}),
+  };
 }
 
 export async function inspectCometHooksForPlatform(
@@ -223,6 +276,7 @@ export async function inspectCometHooksForPlatform(
       inspection = await inspectSingleHookJson(
         path.join(platformBase, platform.hookConfigFile ?? 'settings.local.json'),
         expectedCommands,
+        scriptRelPaths,
         (config) => collectGroupedCommands(config, 'PreToolUse'),
       );
       break;
@@ -232,6 +286,7 @@ export async function inspectCometHooksForPlatform(
       inspection = await inspectSingleHookJson(
         path.join(platformBase, 'settings.json'),
         expectedCommands,
+        scriptRelPaths,
         (config) => collectGroupedCommands(config, 'PreToolUse'),
       );
       break;
@@ -239,6 +294,7 @@ export async function inspectCometHooksForPlatform(
       inspection = await inspectSingleHookJson(
         path.join(platformBase, 'settings.json'),
         expectedCommands,
+        scriptRelPaths,
         (config) => collectGroupedCommands(config, 'BeforeTool'),
       );
       break;
@@ -246,6 +302,7 @@ export async function inspectCometHooksForPlatform(
       inspection = await inspectSingleHookJson(
         path.join(platformBase, 'hooks.json'),
         expectedCommands,
+        scriptRelPaths,
         (config) => collectCommandArray(config, 'pre_write_code'),
       );
       break;
@@ -253,7 +310,9 @@ export async function inspectCometHooksForPlatform(
       inspection = await inspectSingleHookJson(
         path.join(platformBase, 'hooks', 'comet-guard.json'),
         expectedCommands,
+        scriptRelPaths,
         collectCopilotCommands,
+        collectCopilotCommandFields,
       );
       break;
     case 'kiro':
@@ -266,11 +325,18 @@ export async function inspectCometHooksForPlatform(
     const scriptPath = path.join(baseDir, skillsDir, 'skills', ...scriptRelPath.split('/'));
     try {
       if (!(await fileExists(scriptPath))) {
-        return { present: false, error: `managed Hook script missing at ${scriptPath}` };
+        return {
+          ...inspection,
+          present: false,
+          managedPresent: true,
+          error: `managed Hook script missing at ${scriptPath}`,
+        };
       }
     } catch (error) {
       return {
+        ...inspection,
         present: false,
+        managedPresent: true,
         error: `Unable to inspect managed Hook script at ${scriptPath}: ${(error as Error).message}`,
       };
     }
