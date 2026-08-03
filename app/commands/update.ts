@@ -1544,14 +1544,26 @@ async function updateSingleProject(
 
   // Global scope mirrors `comet init`: when a user installs Native Skills
   // globally (e.g. via `comet init --scope global --workflow native`), later
-  // `comet update --scope global` must keep those Skills in sync. Rules and
-  // hooks stay on the Classic selection because their workflowSelection is
-  // effectively ignored (managedRulesForSelection / managedHooksForSelection
-  // return the full manifest set), and Native write-guarding is routed through
-  // the unified comet-hook-router rather than per-workflow rule/hook files.
-  const skillWorkflowSelectionFor = (target: InstalledCometTarget): InitWorkflowSelection =>
-    target.scope === 'global' ? 'both' : projectWorkflowSelection;
-  const targetWorkflowSelections = targets.map(skillWorkflowSelectionFor);
+  // `comet update --scope global` must keep those Skills in sync without
+  // expanding a Classic-only install. The selection is therefore derived from
+  // what is already on disk: an existing comet-native Skill selects 'both' so
+  // it stays current, while a Classic-only install keeps 'classic' so update
+  // never adds Native Skills the user did not choose. Project scope keeps
+  // honoring the project workflow configuration.
+  const skillWorkflowSelectionFor = async (
+    target: InstalledCometTarget,
+  ): Promise<InitWorkflowSelection> => {
+    if (target.scope !== 'global') return projectWorkflowSelection;
+    const nativeSkillPath = path.join(
+      getBaseDir('global', projectPath),
+      getPlatformSkillsDir(target.platform, 'global'),
+      'skills',
+      'comet-native',
+      'SKILL.md',
+    );
+    return (await fileExists(nativeSkillPath)) ? 'both' : 'classic';
+  };
+  const targetWorkflowSelections = await Promise.all(targets.map(skillWorkflowSelectionFor));
   const updateSkillPaths = new Set(
     (
       await Promise.all(
@@ -1578,7 +1590,7 @@ async function updateSingleProject(
     const languageSkillsDir = languageToSkillsDir(languageId);
     const targetInstallMode = installModeFor(target);
     const nativeProjectTarget = nativeProject && target.scope === 'project';
-    const targetSkillWorkflowSelection = skillWorkflowSelectionFor(target);
+    const targetSkillWorkflowSelection = await skillWorkflowSelectionFor(target);
     if (target.scope === 'project') {
       await assertClassicProjectMutationAllowed?.();
     }

@@ -3322,10 +3322,12 @@ describe('update command helpers', () => {
     await expect(fs.stat(path.join(fakeHome, 'docs', 'superpowers'))).rejects.toThrow();
   });
 
-  it('syncs Native Skills during a global update', async () => {
+  it('syncs Native Skills during a global update without expanding a Native install', async () => {
     // Regression for #262: global scope used to hardcode the Skill
     // workflowSelection to 'classic', which filtered out comet-native/* and
-    // left global Native installs frozen at their first-install version.
+    // left global Native installs frozen at their first-install version. The
+    // selection is now derived from disk: an existing comet-native Skill
+    // selects 'both' so it stays current.
     const fakeHome = path.join(tmpDir, 'fake-home-global-native-sync');
     await fs.mkdir(path.join(fakeHome, '.codex', 'skills', 'comet'), { recursive: true });
     await fs.writeFile(
@@ -3346,6 +3348,7 @@ describe('update command helpers', () => {
     const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
     // Silence update progress logging; this test only asserts file contents.
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let json: string | undefined;
 
     try {
       await updateCommand(tmpDir, {
@@ -3353,6 +3356,7 @@ describe('update command helpers', () => {
         skipNpm: true,
         scope: 'global',
       });
+      json = log.mock.calls.map((call) => call.join(' ')).join('\n');
     } finally {
       log.mockRestore();
       homeSpy.mockRestore();
@@ -3370,6 +3374,58 @@ describe('update command helpers', () => {
     await expect(
       fs.readFile(path.join(fakeHome, '.agents', 'skills', 'comet', 'SKILL.md'), 'utf8'),
     ).resolves.toContain('comet workflow resolve');
+
+    // With 'both' selected, no manifest entries are filtered out, so the
+    // Codex target reports zero skipped Skills.
+    const result = json ? JSON.parse(json) : {};
+    const codexSkills = (result.skills?.targets ?? []).find(
+      (t: { platform: string }) => t.platform === 'codex',
+    );
+    expect(codexSkills?.skipped).toBe(0);
+  });
+
+  it('does not add Native Skills to a Classic-only global install during update', async () => {
+    // A global install created with `comet init --scope global --workflow
+    // classic` must not gain comet-native after `comet update --scope global`.
+    const fakeHome = path.join(tmpDir, 'fake-home-global-classic-only');
+    await fs.mkdir(path.join(fakeHome, '.codex', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(fakeHome, '.codex', 'skills', 'comet', 'SKILL.md'),
+      '# Comet\n',
+      'utf-8',
+    );
+    // No comet-native directory: this is a Classic-only install.
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let json: string | undefined;
+
+    try {
+      await updateCommand(tmpDir, {
+        json: true,
+        skipNpm: true,
+        scope: 'global',
+      });
+      json = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    // Classic Skills update, but comet-native must NOT be introduced.
+    await expect(
+      fs.readFile(path.join(fakeHome, '.agents', 'skills', 'comet', 'SKILL.md'), 'utf8'),
+    ).resolves.toContain('comet workflow resolve');
+    await expect(
+      fs.access(path.join(fakeHome, '.agents', 'skills', 'comet-native', 'SKILL.md')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+
+    // The Native manifest entries filtered out by the Classic selection are
+    // reported as skipped rather than hidden.
+    const result = json ? JSON.parse(json) : {};
+    const codexSkills = (result.skills?.targets ?? []).find(
+      (t: { platform: string }) => t.platform === 'codex',
+    );
+    expect(codexSkills?.skipped).toBeGreaterThan(0);
   });
 
   it('preserves installed language for an explicit global platform update', async () => {
