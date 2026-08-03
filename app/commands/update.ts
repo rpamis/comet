@@ -21,7 +21,7 @@ import {
 } from '../../domains/skill/platform-install.js';
 import { reconcileCometHooksForPlatform } from '../../domains/skill/hook-lifecycle.js';
 import { removeLegacyCometSkillsForPlatform } from '../../domains/skill/uninstall.js';
-import { installCometProjectInstructions } from '../../domains/skill/project-instructions.js';
+import { syncCometProjectInstructions } from '../../domains/skill/project-instructions.js';
 import {
   artifactLanguageToSkillLanguage,
   LANGUAGES,
@@ -1943,9 +1943,10 @@ async function updateSingleProject(
     try {
       await assertClassicProjectMutationAllowed?.();
       const projectLanguageId = resolveTargetLanguage(options.language, projectTarget.language);
-      const projectInstructionResult = await installCometProjectInstructions(
+      const projectInstructionResult = await syncCometProjectInstructions(
         projectPath,
         projectLanguageId,
+        projectConfigDocument?.ambient_resume ?? true,
       );
       projectInstructionsUpdated = projectInstructionResult.changed;
       if (projectInstructionsUpdated > 0) {

@@ -12,6 +12,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Ambient Resume cleanup**: Disabling the Ambient Resume probe now removes Comet-managed instructions from `AGENTS.md` and `CLAUDE.md` while preserving user-authored content.
 - **External write compatibility**: Comet Hooks now remain neutral for unknown or project-external write targets, including paths redirected through symlinks or junctions, and evaluate only the in-project targets from mixed write operations so unrelated Hooks such as memory writers can continue independently.
 
 ## What's Changed [0.4.0-beta.14] - 2026-08-02

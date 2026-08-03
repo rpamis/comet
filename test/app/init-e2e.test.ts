@@ -803,11 +803,11 @@ describe('comet init E2E', () => {
     );
     const configPath = path.join(tmpDir, '.comet', 'config.yaml');
     const projectInstructions = await import('../../domains/skill/project-instructions.js');
-    const installInstructions = projectInstructions.installCometProjectInstructions;
+    const syncInstructions = projectInstructions.syncCometProjectInstructions;
     let drifted = false;
-    vi.spyOn(projectInstructions, 'installCometProjectInstructions').mockImplementation(
+    vi.spyOn(projectInstructions, 'syncCometProjectInstructions').mockImplementation(
       async (...args) => {
-        await installInstructions(...args);
+        await syncInstructions(...args);
         if (!drifted) {
           const source = await fs.readFile(configPath, 'utf8');
           await fs.writeFile(

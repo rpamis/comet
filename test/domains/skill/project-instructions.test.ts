@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   installCometProjectInstructions,
   removeCometProjectInstructions,
+  syncCometProjectInstructions,
 } from '../../../domains/skill/project-instructions.js';
 
 let tmpDir: string;
@@ -90,5 +91,21 @@ describe('Comet project instructions', () => {
     expect(result.removed).toBeGreaterThan(0);
     expect(await fs.readFile(agents, 'utf8')).toContain('Keep me.');
     expect(await fs.readFile(agents, 'utf8')).not.toContain('<comet-ambient-resume>');
+  });
+
+  it('removes managed blocks when Ambient Resume is disabled', async () => {
+    await fs.writeFile(path.join(tmpDir, 'AGENTS.md'), '# User\n\nKeep AGENTS rules.\n', 'utf8');
+    await fs.writeFile(path.join(tmpDir, 'CLAUDE.md'), '# User\n\nKeep Claude rules.\n', 'utf8');
+    await installCometProjectInstructions(tmpDir, 'en');
+
+    const result = await syncCometProjectInstructions(tmpDir, 'en', false);
+
+    expect(result.changed).toBe(2);
+    await expect(fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8')).resolves.toBe(
+      '# User\n\nKeep AGENTS rules.\n',
+    );
+    await expect(fs.readFile(path.join(tmpDir, 'CLAUDE.md'), 'utf8')).resolves.toBe(
+      '# User\n\nKeep Claude rules.\n',
+    );
   });
 });

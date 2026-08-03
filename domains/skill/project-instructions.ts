@@ -80,6 +80,20 @@ export async function installCometProjectInstructions(
   };
 }
 
+export async function syncCometProjectInstructions(
+  projectPath: string,
+  languageId: SkillLanguageId,
+  ambientResumeEnabled: boolean,
+): Promise<{ changed: number }> {
+  if (!ambientResumeEnabled) {
+    const result = await removeCometProjectInstructions(projectPath);
+    return { changed: result.removed };
+  }
+
+  const result = await installCometProjectInstructions(projectPath, languageId);
+  return { changed: result.changed };
+}
+
 export async function removeCometProjectInstructions(
   projectPath: string,
 ): Promise<ProjectInstructionRemovalResult> {

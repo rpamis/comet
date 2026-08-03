@@ -29,7 +29,7 @@ import {
   prepareNativeSkillInstallTarget,
 } from '../../domains/skill/platform-install.js';
 import { reconcileCometHooksForPlatform } from '../../domains/skill/hook-lifecycle.js';
-import { installCometProjectInstructions } from '../../domains/skill/project-instructions.js';
+import { syncCometProjectInstructions } from '../../domains/skill/project-instructions.js';
 import { LANGUAGES, type LanguageConfig } from '../../domains/skill/languages.js';
 import { resolveInitWorkflow } from '../../domains/comet-entry/init-workflow.js';
 import type { CometWorkflow, InitWorkflowSelection } from '../../domains/comet-entry/types.js';
@@ -1108,8 +1108,15 @@ export async function initCommand(
       }
       workingDirsCreated = true;
 
-      if (includesWorkflow(workflowSelection, 'native')) {
-        await installCometProjectInstructions(projectPath, language.id);
+      if (
+        includesWorkflow(workflowSelection, 'native') ||
+        initialProjectConfigDocument?.ambient_resume === false
+      ) {
+        await syncCometProjectInstructions(
+          projectPath,
+          language.id,
+          initialProjectConfigDocument?.ambient_resume ?? true,
+        );
       }
 
       const successfulCometPlatforms = new Set(
