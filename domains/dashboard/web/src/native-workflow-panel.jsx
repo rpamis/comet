@@ -301,12 +301,12 @@ function NativeChangesExplorer({
 }) {
   return (
     <aside className="native-changes-explorer flex min-h-0 flex-col rounded-lg border border-border bg-bg shadow-raised">
-      <div className="flex flex-none items-center border-b border-border-soft px-5 py-4">
+      <div className="native-changes-explorer-header flex flex-none items-center border-b border-border-soft">
         <h3 className="font-semibold">
           Changes Explorer <span className="native-changes-count">{total}</span>
         </h3>
       </div>
-      <div className="native-changes-explorer-body flex min-h-0 flex-1 flex-col p-4">
+      <div className="native-changes-explorer-body flex min-h-0 flex-1 flex-col">
         <div className="native-changes-explorer-tabs mb-4 flex flex-none items-end gap-8 border-b border-border-soft">
           {[
             ['active', '活跃'],
@@ -340,25 +340,29 @@ function NativeChangesExplorer({
             </div>
           ) : (
             changes.map((change) => (
-              <button
+              <div
                 key={change.name}
-                type="button"
-                className={`native-change-row w-full rounded-xl border p-3 text-left transition-all duration-200 ${change.name === selectedName ? 'border-accent/30 bg-accent-softer shadow-sm' : 'border-transparent hover:border-border-soft hover:bg-surface'}`}
-                onClick={() => onSelect(change.name)}
+                className={`native-change-list-item ${change.name === selectedName ? 'selected' : ''}`}
               >
-                <div className="flex items-start gap-2">
-                  <span className="mt-1 text-xs text-meta">◇</span>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[13px] font-semibold">{change.name}</div>
-                    <div className="mt-1 text-xs text-meta">
-                      {PHASE_LABELS[change.phase] ?? '状态异常'}
+                <button
+                  type="button"
+                  className="native-change-row"
+                  onClick={() => onSelect(change.name)}
+                >
+                  <div className="flex w-full items-center gap-2.5 text-left">
+                    <span className="text-xs text-meta">◇</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-semibold">{change.name}</div>
+                      <div className="mt-1 text-xs text-meta">
+                        {PHASE_LABELS[change.phase] ?? '状态异常'}
+                      </div>
                     </div>
+                    <Pill tone={freshnessTone(change.verificationFreshness)}>
+                      {FRESHNESS_LABELS[change.verificationFreshness] ?? '状态未知'}
+                    </Pill>
                   </div>
-                  <Pill tone={freshnessTone(change.verificationFreshness)}>
-                    {FRESHNESS_LABELS[change.verificationFreshness] ?? '状态未知'}
-                  </Pill>
-                </div>
-              </button>
+                </button>
+              </div>
             ))
           )}
           {hasMore && (

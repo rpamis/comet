@@ -561,9 +561,17 @@ test('keeps Classic and Native side panels within the center panel height', asyn
       await expect(nativeCount).toHaveText(/^\d+$/);
       await expect(nativeCount).toHaveCSS('background-color', 'rgb(11, 24, 51)');
       await expect(nativeCount).toHaveCSS('color', 'rgb(255, 255, 255)');
+      await expect(nativeExplorer).toHaveCSS('font-size', '14px');
+      const nativeHeader = nativeExplorer.locator('.native-changes-explorer-header');
+      await expect(nativeHeader).toHaveCSS('min-height', '57px');
+      await expect(nativeHeader).toHaveCSS('padding-left', '20px');
+      const nativeBody = nativeExplorer.locator('.native-changes-explorer-body');
+      await expect(nativeBody).toHaveCSS('padding', '20px');
       const nativeTabs = nativeExplorer.locator('.native-changes-explorer-tabs');
       await expect(nativeTabs).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await expect(nativeTabs).toHaveCSS('border-bottom-width', '1px');
+      await expect(nativeTabs).toHaveCSS('height', '44px');
+      await expect(nativeTabs).toHaveCSS('margin-bottom', '16px');
       await expect(nativeTabs.getByRole('tab')).toHaveCount(3);
       const activeNativeTab = nativeTabs.locator('[role="tab"][aria-selected="true"]');
       await expect(activeNativeTab).toHaveCSS('border-bottom-width', '2px');
@@ -576,6 +584,16 @@ test('keeps Classic and Native side panels within the center panel height', asyn
       await expect(nativeExplorer).toHaveCSS('overflow-y', 'hidden');
       await expect(nativeList).toHaveCSS('overflow-y', 'auto');
       await expect(nativeList).toHaveCSS('scrollbar-width', 'none');
+      await expect(nativeList).toHaveCSS('font-size', '14px');
+      const selectedNativeItem = nativeList.locator('.native-change-list-item.selected');
+      await expect(selectedNativeItem).toHaveCount(1);
+      await expect(selectedNativeItem).toHaveCSS('background-color', 'rgb(237, 244, 255)');
+      await expect(selectedNativeItem).toHaveCSS('border-radius', '11px');
+      const selectedNativeRow = selectedNativeItem.locator('.native-change-row');
+      await expect(selectedNativeRow).toHaveCSS('min-height', '72px');
+      await expect(selectedNativeRow).toHaveCSS('border-color', 'rgba(0, 0, 0, 0)');
+      await expect(selectedNativeRow).toHaveCSS('border-radius', '10px');
+      await expect(selectedNativeRow.locator('.truncate')).toHaveCSS('font-size', '14px');
       const conflictSection = rightPanel
         .getByRole('heading', { name: '关联冲突' })
         .locator('..')
