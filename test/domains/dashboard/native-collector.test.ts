@@ -13,7 +13,11 @@ import {
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
-import { collectNativeDashboardProjection } from '../../../domains/dashboard/native-collector.js';
+import {
+  collectNativeDashboardChangePage,
+  collectNativeDashboardOverview,
+  collectNativeDashboardProjection,
+} from '../../../domains/dashboard/native-collector.js';
 import { collectDashboardSnapshot } from '../../../domains/dashboard/collector.js';
 import { prepareNativeArchiveFixture } from '../../helpers/native-archive.js';
 
@@ -229,5 +233,41 @@ describe('Native Dashboard collector', () => {
     expect(projection?.changes).toHaveLength(32);
     expect(projection?.changes[0].name).toBe('dashboard-page-00');
     expect(projection?.changes.at(-1)?.name).toBe('dashboard-page-31');
+  });
+
+  it('keeps the Native overview lightweight and pages full change projections', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('docs'));
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    for (let index = 0; index < 6; index += 1) {
+      await fs.mkdir(path.join(paths.changesDir, `dashboard-lazy-${index}`), { recursive: true });
+    }
+
+    const overview = await collectNativeDashboardOverview(projectRoot, {
+      now: new Date('2026-07-17T10:00:00.000Z'),
+    });
+    expect(overview).toMatchObject({
+      totalChangeCount: 6,
+      activeChangeCount: 6,
+      visibleChangeCount: 0,
+      changes: [],
+    });
+
+    const first = await collectNativeDashboardChangePage(projectRoot, {
+      status: 'active',
+      limit: 5,
+      now: new Date('2026-07-17T10:00:00.000Z'),
+    });
+    expect(first).toMatchObject({ total: 6, items: expect.any(Array) });
+    expect(first.items).toHaveLength(5);
+    expect(first.nextCursor).toEqual(expect.any(String));
+
+    const second = await collectNativeDashboardChangePage(projectRoot, {
+      status: 'active',
+      limit: 5,
+      cursor: first.nextCursor ?? undefined,
+      now: new Date('2026-07-17T10:00:00.000Z'),
+    });
+    expect(second.items).toHaveLength(1);
+    expect(second.nextCursor).toBeNull();
   });
 });

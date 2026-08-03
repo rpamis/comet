@@ -10,7 +10,8 @@ import {
 import { inspectNativeArchivePreflight } from '../comet-native/native-archive-inspection.js';
 import { inspectNativeConflictRadar } from '../comet-native/native-conflict-inspection.js';
 import { collectNativeContractFiles } from '../comet-native/native-contract-files.js';
-import { listNativeStatusPage } from '../comet-native/native-diagnostics.js';
+import { inspectNativeStatus, listNativeStatusPage } from '../comet-native/native-diagnostics.js';
+import { canonicalHash } from '../comet-native/native-canonical-hash.js';
 import {
   readArchivedNativeVerificationAcceptanceCounts,
   readNativeImplementationScope,
@@ -18,19 +19,42 @@ import {
 } from '../comet-native/native-evidence-storage.js';
 import { nativeProjectPaths, resolveContainedNativePath } from '../comet-native/native-paths.js';
 import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
-import type { NativeChangeState, NativeProjectPaths } from '../comet-native/native-types.js';
+import type {
+  NativeChangeState,
+  NativeClarificationMode,
+  NativeProjectPaths,
+} from '../comet-native/native-types.js';
 import {
   adaptNativeDashboardProjection,
   NATIVE_DASHBOARD_LIMITS,
   type NativeDashboardArtifactPreview,
   type NativeDashboardAcceptanceSummary,
   type NativeDashboardChangeProjection,
+  type NativeDashboardConflictSummary,
   type NativeDashboardImplementationSummary,
   type NativeDashboardSpecSummary,
   type NativeDashboardProjection,
 } from './native-adapter.js';
+import type { DashboardChangeTab, NativeDashboardChangePage } from './types.js';
 
 const ARCHIVE_NAME_PATTERN = /^(\d{4}-\d{2}-\d{2})-(.+)$/u;
+const DEFAULT_NATIVE_CHANGE_PAGE_SIZE = 5;
+const MAX_NATIVE_CHANGE_PAGE_SIZE = 50;
+const NATIVE_DASHBOARD_CURSOR_PATTERN =
+  /^native-dashboard-v1\.([a-f0-9]{64})\.([0-9a-z]+)\.([a-f0-9]{64})$/u;
+
+interface NativeDashboardEntry {
+  status: 'active' | 'archived';
+  name: string;
+  archiveName?: string;
+}
+
+export class NativeDashboardQueryError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NativeDashboardQueryError';
+  }
+}
 
 function artifactDescriptors(state: NativeChangeState): Array<[string, string, string]> {
   const descriptors: Array<[string, string, string]> = [['brief', '需求简报', state.brief]];
@@ -196,9 +220,23 @@ async function collectChangeFacts(
   };
 }
 
-async function collectArchivedChanges(
+async function listActiveNativeEntries(paths: NativeProjectPaths): Promise<NativeDashboardEntry[]> {
+  let entries: import('node:fs').Dirent[];
+  try {
+    entries = await fs.readdir(paths.changesDir, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw error;
+  }
+  return entries
+    .filter((entry) => entry.isDirectory() && !entry.isSymbolicLink())
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .map((entry) => ({ status: 'active' as const, name: entry.name }));
+}
+
+async function listArchivedNativeEntries(
   paths: NativeProjectPaths,
-): Promise<NativeDashboardChangeProjection[]> {
+): Promise<NativeDashboardEntry[]> {
   let entries: import('node:fs').Dirent[];
   try {
     entries = await fs.readdir(paths.archiveDir, { withFileTypes: true });
@@ -207,9 +245,9 @@ async function collectArchivedChanges(
     throw error;
   }
 
-  const archived: NativeDashboardChangeProjection[] = [];
+  const archived: NativeDashboardEntry[] = [];
   for (const entry of entries.sort((left, right) => right.name.localeCompare(left.name))) {
-    if (!entry.isDirectory()) continue;
+    if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
     const match = ARCHIVE_NAME_PATTERN.exec(entry.name);
     if (!match) continue;
     const changeDir = path.join(paths.archiveDir, entry.name);
@@ -217,6 +255,99 @@ async function collectArchivedChanges(
     try {
       const state = await readNativeChangeFile(path.join(changeDir, NATIVE_CHANGE_STATE_FILE));
       if (!state.archived || entry.name !== `${match[1]}-${state.name}`) continue;
+      archived.push({ status: 'archived', name: state.name, archiveName: entry.name });
+    } catch {
+      // Invalid or unreadable archives are omitted from the read-only Dashboard projection.
+    }
+  }
+  return archived;
+}
+
+function nativeDashboardEntryKey(entry: NativeDashboardEntry): string {
+  return `${entry.status}:${entry.archiveName ?? entry.name}:${entry.name}`;
+}
+
+function nativeDashboardEntriesHash(
+  status: DashboardChangeTab,
+  query: string,
+  entries: readonly NativeDashboardEntry[],
+): string {
+  return canonicalHash('comet.dashboard.native-page-names.v1', {
+    status,
+    query,
+    entries: entries.map(nativeDashboardEntryKey),
+  });
+}
+
+function nativeDashboardCursor(hash: string, offset: number): string {
+  const encodedOffset = offset.toString(36);
+  const integrity = canonicalHash('comet.dashboard.native-page-cursor.v1', { hash, offset });
+  return `native-dashboard-v1.${hash}.${encodedOffset}.${integrity}`;
+}
+
+function nativeDashboardOffset(cursor: string | undefined, hash: string, total: number): number {
+  if (!cursor) return 0;
+  const match = NATIVE_DASHBOARD_CURSOR_PATTERN.exec(cursor);
+  if (!match) throw new NativeDashboardQueryError('Invalid Native Dashboard change cursor');
+  if (match[1] !== hash)
+    throw new NativeDashboardQueryError('Stale Native Dashboard change cursor');
+  const offset = Number.parseInt(match[2], 36);
+  if (
+    !Number.isSafeInteger(offset) ||
+    offset <= 0 ||
+    offset >= total ||
+    offset.toString(36) !== match[2]
+  ) {
+    throw new NativeDashboardQueryError('Invalid Native Dashboard change cursor offset');
+  }
+  const expected = canonicalHash('comet.dashboard.native-page-cursor.v1', { hash, offset });
+  if (match[3] !== expected) {
+    throw new NativeDashboardQueryError('Invalid Native Dashboard change cursor integrity');
+  }
+  return offset;
+}
+
+async function listNativeDashboardEntries(
+  paths: NativeProjectPaths,
+  status: DashboardChangeTab,
+  query = '',
+): Promise<{ entries: NativeDashboardEntry[]; query: string }> {
+  const normalizedQuery = query.trim().toLowerCase();
+  let candidates: NativeDashboardEntry[];
+  if (status === 'active') {
+    candidates = await listActiveNativeEntries(paths);
+  } else if (status === 'archived') {
+    candidates = await listArchivedNativeEntries(paths);
+  } else {
+    const [active, archived] = await Promise.all([
+      listActiveNativeEntries(paths),
+      listArchivedNativeEntries(paths),
+    ]);
+    candidates = [...active, ...archived];
+  }
+  return {
+    entries: candidates.filter(
+      (entry) => !normalizedQuery || entry.name.toLowerCase().includes(normalizedQuery),
+    ),
+    query: normalizedQuery,
+  };
+}
+
+async function collectArchivedChanges(
+  paths: NativeProjectPaths,
+  requestedEntries?: readonly NativeDashboardEntry[],
+): Promise<NativeDashboardChangeProjection[]> {
+  const entries = requestedEntries ?? (await listArchivedNativeEntries(paths));
+  const archived: NativeDashboardChangeProjection[] = [];
+  for (const entry of entries) {
+    if (entry.status !== 'archived' || !entry.archiveName) continue;
+    const match = ARCHIVE_NAME_PATTERN.exec(entry.archiveName);
+    if (!match) continue;
+    const changeDir = path.join(paths.archiveDir, entry.archiveName);
+    await resolveContainedNativePath(paths.nativeRoot, changeDir);
+    try {
+      const state = await readNativeChangeFile(path.join(changeDir, NATIVE_CHANGE_STATE_FILE));
+      if (!state.archived || entry.archiveName !== `${match[1]}-${state.name}`) continue;
       // Archived changes retain their immutable verification evidence. Read it so the
       // Dashboard reports the completed acceptance trace instead of treating every
       // criterion as missing merely because the change is no longer active.
@@ -284,6 +415,174 @@ async function collectArchivedChanges(
     }
   }
   return archived;
+}
+
+function emptyNativeConflictSummary(): NativeDashboardConflictSummary {
+  return {
+    available: false,
+    definiteConflict: 0,
+    possibleOverlap: 0,
+    disjoint: 0,
+    relationshipCount: 0,
+    visibleRelationshipCount: 0,
+    omittedRelationshipCount: 0,
+    relationshipsTruncated: false,
+  };
+}
+
+function nativeDashboardPageLimit(limit?: number): number {
+  if (limit === undefined) return DEFAULT_NATIVE_CHANGE_PAGE_SIZE;
+  if (!Number.isSafeInteger(limit) || limit <= 0) {
+    throw new NativeDashboardQueryError(
+      'Native Dashboard change page limit must be a positive integer',
+    );
+  }
+  return Math.min(limit, MAX_NATIVE_CHANGE_PAGE_SIZE);
+}
+
+async function collectActiveNativeChanges(
+  paths: NativeProjectPaths,
+  entries: readonly NativeDashboardEntry[],
+  options: {
+    clarificationMode?: NativeClarificationMode;
+    maxVerifyFailures?: number;
+    now?: Date;
+  },
+): Promise<NativeDashboardChangeProjection[]> {
+  if (entries.length === 0) return [];
+  const statuses = await Promise.all(
+    entries.map((entry) =>
+      inspectNativeStatus(paths, entry.name, {
+        clarificationMode: options.clarificationMode,
+        maxVerifyFailures: options.maxVerifyFailures,
+      }),
+    ),
+  );
+  const preflightEntries = await Promise.all(
+    statuses.map(async (status) => {
+      if (status.phase === 'invalid' || status.revision === null) {
+        return [status.name, null] as const;
+      }
+      try {
+        return [
+          status.name,
+          await inspectNativeArchivePreflight({ paths, name: status.name, now: options.now }),
+        ] as const;
+      } catch {
+        return [status.name, null] as const;
+      }
+    }),
+  );
+  const conflictRadar = await inspectNativeConflictRadar(paths).catch(() => null);
+  const projection = adaptNativeDashboardProjection({
+    generatedAt: (options.now ?? new Date()).toISOString(),
+    statuses,
+    preflights: Object.fromEntries(preflightEntries),
+    conflictRadar,
+  });
+  return Promise.all(
+    projection.changes.map(async (change) => {
+      try {
+        const state = await readNativeChange(paths, change.name);
+        const facts = await collectChangeFacts(
+          paths,
+          path.join(paths.changesDir, change.name),
+          state,
+          true,
+        );
+        return {
+          ...change,
+          ...facts,
+          progress: { ...change.progress, createdAt: facts.createdAt },
+        };
+      } catch {
+        return change;
+      }
+    }),
+  );
+}
+
+export interface NativeDashboardChangePageOptions {
+  status: DashboardChangeTab;
+  limit?: number;
+  cursor?: string;
+  query?: string;
+  now?: Date;
+}
+
+/** Load one Native change page, keeping full projections behind the page boundary. */
+export async function collectNativeDashboardChangePage(
+  projectRoot: string,
+  options: NativeDashboardChangePageOptions,
+): Promise<NativeDashboardChangePage> {
+  const emptyPage: NativeDashboardChangePage = {
+    status: options.status,
+    items: [],
+    total: 0,
+    nextCursor: null,
+  };
+  const root = path.resolve(projectRoot);
+  const config = await readWorkflowProjectConfig(root);
+  if (!config?.native) return emptyPage;
+  const paths = await nativeProjectPaths(root, config.native.artifact_root);
+  const listed = await listNativeDashboardEntries(paths, options.status, options.query);
+  const hash = nativeDashboardEntriesHash(options.status, listed.query, listed.entries);
+  const offset = nativeDashboardOffset(options.cursor, hash, listed.entries.length);
+  const limit = nativeDashboardPageLimit(options.limit);
+  const pageEntries = listed.entries.slice(offset, offset + limit);
+  const activeEntries = pageEntries.filter((entry) => entry.status === 'active');
+  const archivedEntries = pageEntries.filter((entry) => entry.status === 'archived');
+  const [activeChanges, archivedChanges] = await Promise.all([
+    collectActiveNativeChanges(paths, activeEntries, {
+      clarificationMode: config.native.clarification_mode,
+      maxVerifyFailures: config.native.max_verify_failures,
+      now: options.now,
+    }),
+    collectArchivedChanges(paths, archivedEntries),
+  ]);
+  const changesByKey = new Map(
+    [...activeChanges, ...archivedChanges].map((change) => [
+      `${change.status}:${change.name}`,
+      change,
+    ]),
+  );
+  const nextOffset = offset + pageEntries.length;
+  return {
+    status: options.status,
+    items: pageEntries
+      .map((entry) => changesByKey.get(`${entry.status}:${entry.name}`))
+      .filter((change): change is NativeDashboardChangeProjection => Boolean(change)),
+    total: listed.entries.length,
+    nextCursor: nextOffset < listed.entries.length ? nativeDashboardCursor(hash, nextOffset) : null,
+  };
+}
+
+/** Return only Native list metadata for the initial overview request. */
+export async function collectNativeDashboardOverview(
+  projectRoot: string,
+  options: { now?: Date } = {},
+): Promise<NativeDashboardProjection | null> {
+  const root = path.resolve(projectRoot);
+  const config = await readWorkflowProjectConfig(root);
+  if (!config?.native) return null;
+  const paths = await nativeProjectPaths(root, config.native.artifact_root);
+  const [active, archived] = await Promise.all([
+    listActiveNativeEntries(paths),
+    listArchivedNativeEntries(paths),
+  ]);
+  const totalChangeCount = active.length + archived.length;
+  return {
+    schema: 'comet.dashboard.native.v1',
+    generatedAt: (options.now ?? new Date()).toISOString(),
+    totalChangeCount,
+    activeChangeCount: active.length,
+    archivedChangeCount: archived.length,
+    visibleChangeCount: 0,
+    omittedChangeCount: totalChangeCount,
+    changesTruncated: totalChangeCount > 0,
+    changes: [],
+    conflicts: emptyNativeConflictSummary(),
+  };
 }
 
 /** Collect a fresh, read-only Native Dashboard projection when this project enables Native. */
@@ -360,6 +659,8 @@ export async function collectNativeDashboardProjection(
   const result: NativeDashboardProjection = {
     ...projection,
     totalChangeCount,
+    activeChangeCount: totalStatusCount ?? projection.changes.length,
+    archivedChangeCount: archived.length,
     visibleChangeCount: visible.length,
     omittedChangeCount: totalChangeCount - visible.length,
     changesTruncated: totalChangeCount > visible.length,

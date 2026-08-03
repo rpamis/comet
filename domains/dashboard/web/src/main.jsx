@@ -157,7 +157,9 @@ function DashboardApp({ theme, onToggleTheme }) {
   const [projects, setProjects] = useState([]);
   const [projectsReady, setProjectsReady] = useState(false);
   const [pages, setPages] = useState({ active: null, archived: null, all: null });
+  const [nativePages, setNativePages] = useState({ active: null, archived: null, all: null });
   const [pageLoading, setPageLoading] = useState(null);
+  const [nativePageLoading, setNativePageLoading] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [selectedDetail, setSelectedDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -168,9 +170,11 @@ function DashboardApp({ theme, onToggleTheme }) {
   const [artifact, setArtifact] = useState(null);
   const snapshotRequestRef = useRef(null);
   const pageRequestRef = useRef(null);
+  const nativePageRequestRef = useRef(null);
   const detailRequestRef = useRef(null);
   const selectedIdRef = useRef(null);
   const pagesRef = useRef({ active: null, archived: null, all: null });
+  const nativePagesRef = useRef({ active: null, archived: null, all: null });
   const lastLoadedQueryRef = useRef('');
   const { message: messageApi } = AntApp.useApp();
   const toast = useCallback((content, type = 'success') => messageApi[type](content), [messageApi]);
@@ -220,6 +224,11 @@ function DashboardApp({ theme, onToggleTheme }) {
           setSnapshot(materializeOverview(next, initialPage));
           pagesRef.current = nextPages;
           setPages(nextPages);
+          const nextNativePages = queryChanged
+            ? { active: null, archived: null, all: null }
+            : nativePagesRef.current;
+          nativePagesRef.current = nextNativePages;
+          setNativePages(nextNativePages);
           const nextId = pickSelectedFromPage(
             queryChanged && currentTab !== 'active' ? nextPages[currentTab] : currentPage,
             selectedIdRef.current,
@@ -258,6 +267,7 @@ function DashboardApp({ theme, onToggleTheme }) {
     () => () => {
       snapshotRequestRef.current?.abort();
       pageRequestRef.current?.abort();
+      nativePageRequestRef.current?.abort();
       detailRequestRef.current?.abort();
     },
     [],
@@ -331,8 +341,11 @@ function DashboardApp({ theme, onToggleTheme }) {
       return undefined;
     }
     const timer = window.setTimeout(() => {
+      nativePageRequestRef.current?.abort();
       setPages({ active: null, archived: null, all: null });
       pagesRef.current = { active: null, archived: null, all: null };
+      setNativePages({ active: null, archived: null, all: null });
+      nativePagesRef.current = { active: null, archived: null, all: null };
     }, 250);
     return () => window.clearTimeout(timer);
   }, [activeProjectId, query, snapshot, useDemo]);
@@ -342,6 +355,46 @@ function DashboardApp({ theme, onToggleTheme }) {
     void loadPage(tab);
   }, [activeProjectId, loadPage, pages, snapshot, tab, useDemo]);
 
+  const loadNativePage = useCallback(
+    async (nextTab, append = false) => {
+      if (useDemo || workflow !== 'native' || !activeProjectId || !snapshot?.native) return;
+      if (append && nativePageRequestRef.current) return;
+      const existing = nativePagesRef.current[nextTab];
+      if (append && !existing?.nextCursor) return;
+      nativePageRequestRef.current?.abort();
+      const controller = new AbortController();
+      nativePageRequestRef.current = controller;
+      setNativePageLoading(nextTab);
+      try {
+        const page = await fetchDashboardNativeChangePage(activeProjectId, nextTab, {
+          cursor: append ? existing?.nextCursor : undefined,
+          query,
+          signal: controller.signal,
+        });
+        if (nativePageRequestRef.current !== controller || controller.signal.aborted) return;
+        const merged =
+          append && existing ? { ...page, items: [...existing.items, ...page.items] } : page;
+        const nextPages = { ...nativePagesRef.current, [nextTab]: merged };
+        nativePagesRef.current = nextPages;
+        setNativePages(nextPages);
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        toast(`Native 变更列表加载失败：${error.message}`, 'error');
+      } finally {
+        if (nativePageRequestRef.current === controller) {
+          nativePageRequestRef.current = null;
+          setNativePageLoading(null);
+        }
+      }
+    },
+    [activeProjectId, query, snapshot, toast, useDemo, workflow],
+  );
+
+  useEffect(() => {
+    if (useDemo || workflow !== 'native' || !snapshot?.native || nativePages[tab]) return;
+    void loadNativePage(tab);
+  }, [loadNativePage, nativePages, snapshot, tab, useDemo, workflow]);
+
   const selected = selectedDetail;
   const visible = useMemo(
     () => (useDemo ? filterChanges(snapshot, tab, query) : (pages[tab]?.items ?? [])),
@@ -349,6 +402,10 @@ function DashboardApp({ theme, onToggleTheme }) {
   );
   const activePage = pages[tab];
   const visibleTotal = useDemo ? visible.length : (activePage?.total ?? visible.length);
+  const nativePage = nativePages[tab];
+  const nativeVisibleTotal = useDemo
+    ? (snapshot?.native?.changes?.length ?? 0)
+    : (nativePage?.total ?? nativePage?.items?.length ?? 0);
 
   const selectChange = useCallback(
     async (id) => {
@@ -439,11 +496,14 @@ function DashboardApp({ theme, onToggleTheme }) {
             localStorage.setItem('comet-dashboard-project', nextProjectId);
             snapshotRequestRef.current?.abort();
             pageRequestRef.current?.abort();
+            nativePageRequestRef.current?.abort();
             detailRequestRef.current?.abort();
             setActiveProjectId(nextProjectId);
             setSnapshot(null);
             setPages({ active: null, archived: null, all: null });
             pagesRef.current = { active: null, archived: null, all: null };
+            setNativePages({ active: null, archived: null, all: null });
+            nativePagesRef.current = { active: null, archived: null, all: null };
             setSelectedId(null);
             selectedIdRef.current = null;
             setSelectedDetail(null);
@@ -467,6 +527,13 @@ function DashboardApp({ theme, onToggleTheme }) {
                 native={snapshot.native}
                 git={snapshot.git}
                 query={query}
+                tab={tab}
+                onTab={selectTab}
+                pagedChanges={useDemo ? null : (nativePage?.items ?? [])}
+                total={nativeVisibleTotal}
+                hasMore={Boolean(nativePage?.nextCursor)}
+                pageLoading={nativePageLoading === tab}
+                onLoadMore={() => loadNativePage(tab, true)}
                 onPreview={setArtifact}
                 onCopyChangeName={(name) =>
                   copyText(name)
@@ -1516,6 +1583,18 @@ async function fetchDashboardChangePage(projectId, status, options = {}) {
   if (options.query?.trim()) params.set('q', options.query.trim());
   const res = await fetch(
     `/api/dashboard/projects/${encodeURIComponent(projectId)}/changes?${params.toString()}`,
+    { cache: 'no-store', signal: options.signal },
+  );
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+async function fetchDashboardNativeChangePage(projectId, status, options = {}) {
+  const params = new URLSearchParams({ status, limit: '5' });
+  if (options.cursor) params.set('cursor', options.cursor);
+  if (options.query?.trim()) params.set('q', options.query.trim());
+  const res = await fetch(
+    `/api/dashboard/projects/${encodeURIComponent(projectId)}/native-changes?${params.toString()}`,
     { cache: 'no-store', signal: options.signal },
   );
   if (!res.ok) throw new Error(`HTTP ${res.status}`);

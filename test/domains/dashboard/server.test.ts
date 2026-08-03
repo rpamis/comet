@@ -6,6 +6,11 @@ import os from 'os';
 import path from 'path';
 import { startDashboardServer } from '../../../domains/dashboard/server.js';
 import { resolveDashboardStaticPath } from '../../../domains/dashboard/server.js';
+import {
+  defaultProjectConfig,
+  writeProjectConfig,
+} from '../../../domains/comet-native/native-config.js';
+import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 
 interface HttpResult {
   status: number;
@@ -159,6 +164,62 @@ describe('startDashboardServer', () => {
       id: page.items[0].id,
       artifacts: expect.any(Object),
       artifactPreviews: expect.any(Array),
+    });
+  });
+
+  it('serves Native changes from a paginated endpoint instead of embedding them in overview', async () => {
+    await writeProjectConfig(projectDir, defaultProjectConfig('docs'));
+    const paths = await nativeProjectPaths(projectDir, 'docs');
+    await fs.mkdir(paths.changesDir, { recursive: true });
+    for (let index = 0; index < 6; index += 1) {
+      await fs.mkdir(path.join(paths.changesDir, `native-server-${index}`));
+    }
+
+    const handle = await startDashboardServer({
+      projectPath: projectDir,
+      port: 0,
+      webRoot: webDir,
+    });
+    handles.push(handle);
+
+    const directoryResponse = await request(handle.port, '/api/dashboard/projects');
+    const directory = JSON.parse(directoryResponse.body) as { currentProjectId: string };
+    const base = `/api/dashboard/projects/${directory.currentProjectId}`;
+
+    const overviewResponse = await request(handle.port, `${base}/overview`);
+    expect(overviewResponse.status).toBe(200);
+    expect(JSON.parse(overviewResponse.body)).toMatchObject({
+      native: {
+        totalChangeCount: 6,
+        activeChangeCount: 6,
+        changes: [],
+      },
+    });
+
+    const firstResponse = await request(
+      handle.port,
+      `${base}/native-changes?status=active&limit=5`,
+    );
+    expect(firstResponse.status).toBe(200);
+    const first = JSON.parse(firstResponse.body) as {
+      items: Array<{ name: string; status: string }>;
+      total: number;
+      nextCursor: string | null;
+    };
+    expect(first.total).toBe(6);
+    expect(first.items).toHaveLength(5);
+    expect(first.items.every((item) => item.status === 'active')).toBe(true);
+    expect(first.nextCursor).toEqual(expect.any(String));
+
+    const secondResponse = await request(
+      handle.port,
+      `${base}/native-changes?status=active&limit=5&cursor=${encodeURIComponent(first.nextCursor!)}`,
+    );
+    expect(secondResponse.status).toBe(200);
+    expect(JSON.parse(secondResponse.body)).toMatchObject({
+      total: 6,
+      items: expect.arrayContaining([expect.objectContaining({ name: 'native-server-5' })]),
+      nextCursor: null,
     });
   });
   it('serves the static index for the root path', async () => {

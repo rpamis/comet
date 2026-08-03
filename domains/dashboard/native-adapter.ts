@@ -167,6 +167,8 @@ export interface NativeDashboardProjection {
   schema: typeof NATIVE_DASHBOARD_SCHEMA;
   generatedAt: string;
   totalChangeCount: number;
+  activeChangeCount?: number;
+  archivedChangeCount?: number;
   visibleChangeCount: number;
   omittedChangeCount: number;
   changesTruncated: boolean;

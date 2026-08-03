@@ -66,31 +66,51 @@ function nativeChangeAcceptanceProgress(change) {
   };
 }
 
-export function NativeWorkflowPanel({ native, git, query, onPreview, onCopyChangeName }) {
-  const [tab, setTab] = useState('active');
+export function NativeWorkflowPanel({
+  native,
+  git,
+  query,
+  tab = 'active',
+  onTab,
+  pagedChanges = null,
+  total,
+  hasMore = false,
+  pageLoading = false,
+  onLoadMore,
+  onPreview,
+  onCopyChangeName,
+}) {
+  const serverPaged = Array.isArray(pagedChanges);
   const listRef = useRef(null);
   const [visibleChangeCount, setVisibleChangeCount] = useState(NATIVE_CHANGE_PAGE_SIZE);
   const normalizedQuery = query.trim().toLowerCase();
-  const changes = useMemo(() => {
-    const source = native?.changes ?? [];
+  const sourceChanges = useMemo(() => {
+    const source = serverPaged ? pagedChanges : (native?.changes ?? []);
+    if (serverPaged) return source;
     return source.filter((change) => {
       const matchesTab =
         tab === 'all' || (tab === 'active' && change.status === 'active') || change.status === tab;
       const matchesQuery = !normalizedQuery || change.name.toLowerCase().includes(normalizedQuery);
       return matchesTab && matchesQuery;
     });
-  }, [native, normalizedQuery, tab]);
+  }, [native, normalizedQuery, pagedChanges, serverPaged, tab]);
   const [selectedName, setSelectedName] = useState(null);
 
   useEffect(() => {
     setVisibleChangeCount(NATIVE_CHANGE_PAGE_SIZE);
-  }, [normalizedQuery, tab]);
+  }, [normalizedQuery, serverPaged, tab]);
 
   const loadMoreChanges = useCallback(() => {
-    setVisibleChangeCount((current) => Math.min(current + NATIVE_CHANGE_PAGE_SIZE, changes.length));
-  }, [changes.length]);
-  const visibleChanges = changes.slice(0, visibleChangeCount);
-  const hasMoreChanges = visibleChanges.length < changes.length;
+    if (serverPaged) {
+      if (!pageLoading && hasMore) onLoadMore?.();
+      return;
+    }
+    setVisibleChangeCount((current) =>
+      Math.min(current + NATIVE_CHANGE_PAGE_SIZE, sourceChanges.length),
+    );
+  }, [hasMore, onLoadMore, pageLoading, serverPaged, sourceChanges.length]);
+  const visibleChanges = serverPaged ? sourceChanges : sourceChanges.slice(0, visibleChangeCount);
+  const hasMoreChanges = serverPaged ? hasMore : visibleChanges.length < sourceChanges.length;
 
   useEffect(() => {
     const element = listRef.current;
@@ -104,21 +124,23 @@ export function NativeWorkflowPanel({ native, git, query, onPreview, onCopyChang
 
   const handleListScroll = useCallback(
     (event) => {
-      if (!hasMoreChanges) return;
+      if (!hasMoreChanges || pageLoading) return;
       const { scrollTop, clientHeight, scrollHeight } = event.currentTarget;
       if (scrollTop + clientHeight >= scrollHeight - 32) loadMoreChanges();
     },
-    [hasMoreChanges, loadMoreChanges],
+    [hasMoreChanges, loadMoreChanges, pageLoading],
   );
 
   useEffect(() => {
     setSelectedName((current) => {
-      if (changes.some((change) => change.name === current)) return current;
-      return changes[0]?.name ?? null;
+      if (visibleChanges.some((change) => change.name === current)) return current;
+      return visibleChanges[0]?.name ?? null;
     });
-  }, [changes]);
+  }, [visibleChanges]);
 
-  const selected = changes.find((change) => change.name === selectedName) ?? changes[0] ?? null;
+  const selected =
+    visibleChanges.find((change) => change.name === selectedName) ?? visibleChanges[0] ?? null;
+  const hasNativeChanges = Boolean(native && native.totalChangeCount > 0);
 
   return (
     <div className="mx-auto min-w-0 max-w-dashboard">
@@ -131,19 +153,19 @@ export function NativeWorkflowPanel({ native, git, query, onPreview, onCopyChang
         }
       />
       <NativeWorkflowSuggestion change={selected} />
-      <NativeSummaryCards native={native} />
+      <NativeSummaryCards native={native} loadedChanges={visibleChanges} />
       <SectionHead title="Native 变更工作区" hint="查看轻量状态、验证结果与冲突摘要" />
-      {!native || native.changes.length === 0 ? (
+      {!native || !hasNativeChanges ? (
         <EmptyState />
       ) : (
         <DashboardWorkspaceRegion
           left={
             <NativeChangesExplorer
               changes={visibleChanges}
-              total={changes.length}
+              total={serverPaged ? (total ?? sourceChanges.length) : sourceChanges.length}
               selectedName={selected?.name ?? null}
               tab={tab}
-              onTab={setTab}
+              onTab={onTab}
               onSelect={setSelectedName}
               listRef={listRef}
               hasMore={hasMoreChanges}
@@ -158,7 +180,7 @@ export function NativeWorkflowPanel({ native, git, query, onPreview, onCopyChang
                 onCopyChangeName={onCopyChangeName}
               />
             ) : (
-              <NativeWorkspaceEmptyState native={native} tab={tab} query={query} onTab={setTab} />
+              <NativeWorkspaceEmptyState native={native} tab={tab} query={query} onTab={onTab} />
             )
           }
           right={selected ? <NativeSidePanel change={selected} git={git} /> : null}
@@ -169,7 +191,9 @@ export function NativeWorkflowPanel({ native, git, query, onPreview, onCopyChang
 }
 
 function NativeWorkspaceEmptyState({ native, tab, query, onTab }) {
-  const hasArchivedChanges = (native?.changes ?? []).some((change) => change.status === 'archived');
+  const hasArchivedChanges =
+    (native?.archivedChangeCount ?? 0) > 0 ||
+    (native?.changes ?? []).some((change) => change.status === 'archived');
   const showArchiveShortcut = tab === 'active' && !query.trim() && hasArchivedChanges;
   const title = showArchiveShortcut ? '当前没有活跃的 Native change' : '没有匹配的 Native change';
   const description = showArchiveShortcut
@@ -223,13 +247,16 @@ function SectionHead({ title, hint }) {
   );
 }
 
-function NativeSummaryCards({ native }) {
+function NativeSummaryCards({ native, loadedChanges = [] }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const changes = native?.changes ?? [];
-  const active = changes.filter((change) => change.phase !== 'archive').length;
-  const archiveReady = changes.filter((change) => change.archiveReady).length;
-  const awaitingUser = changes.filter((change) => change.continuation?.requiresUserDecision).length;
-  const verificationAttention = changes.filter((change) =>
+  const active =
+    native?.activeChangeCount ??
+    loadedChanges.filter((change) => change.phase !== 'archive').length;
+  const archiveReady = loadedChanges.filter((change) => change.archiveReady).length;
+  const awaitingUser = loadedChanges.filter(
+    (change) => change.continuation?.requiresUserDecision,
+  ).length;
+  const verificationAttention = loadedChanges.filter((change) =>
     ['invalid', 'stale', 'partial'].includes(change.verificationFreshness),
   ).length;
   const conflicts = native

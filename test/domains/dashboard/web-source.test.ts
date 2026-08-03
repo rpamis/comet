@@ -142,6 +142,8 @@ describe('dashboard web source contracts', () => {
 
     expect(source).toContain('fetchDashboardOverview');
     expect(source).toContain('fetchDashboardChangePage');
+    expect(source).toContain('fetchDashboardNativeChangePage');
+    expect(source).toContain('/native-changes?');
     expect(source).toContain("const params = new URLSearchParams({ status, limit: '5' });");
     expect(source).toContain('fetchDashboardChangeDetail');
     expect(source).toContain('onScroll={handleScroll}');

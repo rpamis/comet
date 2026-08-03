@@ -10,6 +10,7 @@ import {
   collectDashboardSnapshot,
   DashboardChangeQueryError,
 } from './collector.js';
+import { collectNativeDashboardChangePage, NativeDashboardQueryError } from './native-collector.js';
 import { collectDashboardProjectDirectory, findDashboardProject } from './project-directory.js';
 import type { DashboardChangeTab } from './types.js';
 
@@ -57,7 +58,10 @@ export async function startDashboardServer(
 
   const server = http.createServer((req, res) => {
     handleRequest(req, res, options.projectPath, webRoot).catch((error) => {
-      if (error instanceof DashboardChangeQueryError) {
+      if (
+        error instanceof DashboardChangeQueryError ||
+        error instanceof NativeDashboardQueryError
+      ) {
         respondJson(res, req.method ?? 'GET', 400, { error: error.message });
         return;
       }
@@ -155,6 +159,17 @@ async function handleRequest(
 
     if (subpath === '/changes') {
       const page = await collectDashboardChangePage(project.path, {
+        status: parseChangeTab(url.searchParams.get('status')),
+        limit: parseChangeLimit(url.searchParams.get('limit')),
+        cursor: url.searchParams.get('cursor') ?? undefined,
+        query: url.searchParams.get('q') ?? undefined,
+      });
+      respondJson(res, req.method, 200, page);
+      return;
+    }
+
+    if (subpath === '/native-changes') {
+      const page = await collectNativeDashboardChangePage(project.path, {
         status: parseChangeTab(url.searchParams.get('status')),
         limit: parseChangeLimit(url.searchParams.get('limit')),
         cursor: url.searchParams.get('cursor') ?? undefined,

@@ -1,7 +1,10 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { collectGitSnapshot } from './git.js';
-import { collectNativeDashboardProjection } from './native-collector.js';
+import {
+  collectNativeDashboardOverview,
+  collectNativeDashboardProjection,
+} from './native-collector.js';
 import { recommendNextAction } from './next-action.js';
 import { buildChangeRisks, buildProjectRisks } from './risk.js';
 import { parseTasksMarkdown } from './task-parser.js';
@@ -180,7 +183,7 @@ export async function collectDashboardOverview(
   const [classic, git, nativeResult] = await Promise.all([
     collectClassicChangeCandidates(resolvedRoot),
     collectGitSnapshot(resolvedRoot),
-    collectNativeDashboardProjection(resolvedRoot, { now: options.now })
+    collectNativeDashboardOverview(resolvedRoot, { now: options.now })
       .then((projection) => ({ projection, failed: false as const }))
       .catch(() => ({ projection: null, failed: true as const })),
   ]);
