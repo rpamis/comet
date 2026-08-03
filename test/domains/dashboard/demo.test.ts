@@ -17,12 +17,12 @@ describe('dashboard demo data', () => {
 
     expect(DEMO_SNAPSHOT.native).toMatchObject({
       schema: 'comet.dashboard.native.v1',
-      totalChangeCount: 3,
-      visibleChangeCount: 3,
+      totalChangeCount: DEMO_SNAPSHOT.native.changes.length,
+      visibleChangeCount: DEMO_SNAPSHOT.native.changes.length,
       omittedChangeCount: 0,
       changesTruncated: false,
     });
-    expect(DEMO_SNAPSHOT.native.changes.map((change) => change.phase)).toEqual([
+    expect(DEMO_SNAPSHOT.native.changes.slice(0, 3).map((change) => change.phase)).toEqual([
       'build',
       'verify',
       'archive',
@@ -34,5 +34,13 @@ describe('dashboard demo data', () => {
     expect(DEMO_SNAPSHOT.native.changes.some((change) => change.conflicts.peers.length > 0)).toBe(
       true,
     );
+  });
+
+  it('populates enough changes to demonstrate bounded side-panel scrolling', async () => {
+    const { DEMO_SNAPSHOT } = await import('../../../domains/dashboard/web/demo.js');
+
+    expect(DEMO_SNAPSHOT.changes.active.length).toBeGreaterThanOrEqual(10);
+    expect(DEMO_SNAPSHOT.changes.archived.length).toBeGreaterThanOrEqual(8);
+    expect(DEMO_SNAPSHOT.native.changes.length).toBeGreaterThanOrEqual(10);
   });
 });

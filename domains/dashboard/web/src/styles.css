@@ -87,11 +87,17 @@
 }
 
 html {
-  overflow-y: scroll;
-  scrollbar-gutter: stable;
+  overflow-y: auto;
+  scrollbar-gutter: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
-/* 统一滚动条宽度，避免主题切换时布局抖动 */
+html::-webkit-scrollbar {
+  display: none;
+}
+
+/* 统一滚动区域行为，保留滚轮/触控滚动但不显示多条滚动条 */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -325,7 +331,22 @@ body {
   max-height: max(180px, calc(var(--dashboard-center-height, 26rem) - 8rem));
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-gutter: stable;
+  scrollbar-gutter: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.dashboard-content-shell {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.dashboard-change-list::-webkit-scrollbar,
+.dashboard-workspace-side::-webkit-scrollbar,
+.dashboard-content-shell::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .dashboard-change-list .dashboard-change-row {
@@ -1680,7 +1701,21 @@ body {
   max-height: var(--dashboard-center-height, none);
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-gutter: stable;
+  scrollbar-gutter: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.dashboard-workspace-left {
+  overflow-y: visible;
+}
+
+.dashboard-workspace-right {
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 15px;
+  background: var(--color-bg);
+  box-shadow: var(--shadow-card);
 }
 
 .dashboard-workspace-region .text-xs,

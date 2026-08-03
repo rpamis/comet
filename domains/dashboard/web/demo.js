@@ -937,6 +937,140 @@ export const DEMO_SNAPSHOT = {
   },
 };
 
+function cloneDemoValue(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function createClassicDemoChange(template, index, status) {
+  const change = cloneDemoValue(template);
+  const suffix = String(index).padStart(2, '0');
+  const originalName = `demo-${status}-${suffix}`;
+  const date = `2026-07-${String(10 + (index % 20)).padStart(2, '0')}`;
+  const sourcePath = template.path;
+
+  if (status === 'archived') {
+    const archiveName = `${date}-${originalName}`;
+    change.id = `archive/${archiveName}`;
+    change.name = archiveName;
+    change.displayName = originalName;
+    change.status = 'archived';
+    change.phase = 'archive';
+    change.path = `openspec/changes/archive/${archiveName}`;
+    change.updatedAt = date;
+    change.archive = {
+      ...change.archive,
+      archiveName,
+      originalName,
+      archivedAt: date,
+      archivePath: change.path,
+    };
+    change.tasks = {
+      ...change.tasks,
+      completed: change.tasks.total,
+      incomplete: [],
+    };
+    change.verify = { result: 'pass', reportExists: true, summary: '全部断言通过' };
+  } else {
+    change.id = originalName;
+    change.name = originalName;
+    change.displayName = originalName;
+    change.status = 'active';
+    change.path = `openspec/changes/${originalName}`;
+    change.updatedAt = `${index + 1} 小时前`;
+  }
+
+  if (change.artifacts?.grouped) {
+    change.artifacts.grouped = change.artifacts.grouped.map((artifact) => ({
+      ...artifact,
+      path: artifact.path?.replace(sourcePath, change.path),
+    }));
+  }
+  if (change.next?.command) {
+    change.next.command = change.next.command.replace(template.name, change.name);
+  }
+  return change;
+}
+
+function createNativeDemoChange(template, index) {
+  const change = cloneDemoValue(template);
+  const name = `demo-native-${String(index).padStart(2, '0')}`;
+
+  change.name = name;
+  change.selected = false;
+  change.revision += index;
+  if (change.nextCommand) {
+    change.nextCommand = change.nextCommand.replace(template.name, name);
+  }
+  if (change.continuation?.command) {
+    change.continuation.command = change.continuation.command.replace(template.name, name);
+  }
+  if (change.conflicts?.peers) {
+    change.conflicts.peers = change.conflicts.peers.map((peer) => ({
+      ...peer,
+      change: `${peer.change}-demo`,
+    }));
+  }
+  return change;
+}
+
+const classicActiveTemplates = DEMO_SNAPSHOT.changes.active.slice();
+const classicArchivedTemplates = DEMO_SNAPSHOT.changes.archived.slice();
+DEMO_SNAPSHOT.changes.active.push(
+  ...Array.from({ length: 12 }, (_, index) =>
+    createClassicDemoChange(
+      classicActiveTemplates[index % classicActiveTemplates.length],
+      index + 1,
+      'active',
+    ),
+  ),
+);
+DEMO_SNAPSHOT.changes.archived.push(
+  ...Array.from({ length: 6 }, (_, index) =>
+    createClassicDemoChange(
+      classicArchivedTemplates[index % classicArchivedTemplates.length],
+      index + 1,
+      'archived',
+    ),
+  ),
+);
+
+const nativeTemplates = DEMO_SNAPSHOT.native.changes.slice();
+DEMO_SNAPSHOT.native.changes.push(
+  ...Array.from({ length: 24 }, (_, index) =>
+    createNativeDemoChange(nativeTemplates[index % nativeTemplates.length], index + 1),
+  ),
+);
+DEMO_SNAPSHOT.summary.activeChanges = DEMO_SNAPSHOT.changes.active.length;
+DEMO_SNAPSHOT.summary.archivedChanges = DEMO_SNAPSHOT.changes.archived.length;
+DEMO_SNAPSHOT.summary.verifyFailed = DEMO_SNAPSHOT.changes.active.filter(
+  (change) => change.verify?.result === 'fail',
+).length;
+DEMO_SNAPSHOT.summary.tasksIncomplete = DEMO_SNAPSHOT.changes.active.reduce(
+  (total, change) => total + (change.tasks?.incomplete?.length ?? 0),
+  0,
+);
+DEMO_SNAPSHOT.native.totalChangeCount = DEMO_SNAPSHOT.native.changes.length;
+DEMO_SNAPSHOT.native.visibleChangeCount = DEMO_SNAPSHOT.native.changes.length;
+DEMO_SNAPSHOT.native.conflicts = {
+  ...DEMO_SNAPSHOT.native.conflicts,
+  definiteConflict: DEMO_SNAPSHOT.native.changes.reduce(
+    (total, change) => total + (change.conflicts?.visibleDefiniteConflict ?? 0),
+    0,
+  ),
+  possibleOverlap: DEMO_SNAPSHOT.native.changes.reduce(
+    (total, change) => total + (change.conflicts?.visiblePossibleOverlap ?? 0),
+    0,
+  ),
+  relationshipCount: DEMO_SNAPSHOT.native.changes.reduce(
+    (total, change) => total + (change.conflicts?.peers?.length ?? 0),
+    0,
+  ),
+  visibleRelationshipCount: DEMO_SNAPSHOT.native.changes.reduce(
+    (total, change) => total + (change.conflicts?.peers?.length ?? 0),
+    0,
+  ),
+};
+
 // Enrich all changes with comet intermediate artifacts
 DEMO_SNAPSHOT.changes.active.forEach(addCometArtifacts);
 DEMO_SNAPSHOT.changes.archived.forEach(addCometArtifacts);

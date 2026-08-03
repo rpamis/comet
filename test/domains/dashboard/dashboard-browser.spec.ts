@@ -525,8 +525,18 @@ test('keeps Classic and Native side panels within the center panel height', asyn
     const workspace = page.locator('.dashboard-workspace-region');
     const center = workspace.locator('.dashboard-workspace-center');
     const sides = workspace.locator('.dashboard-workspace-side');
+    const changeList = page.locator('.dashboard-change-list');
+    const contentShell = page.locator('.dashboard-content-shell');
     await expect(center).toBeVisible();
     await expect(sides).toHaveCount(2);
+    if (await changeList.count()) {
+      await expect(changeList).toHaveCSS('scrollbar-width', 'none');
+    }
+    await expect(contentShell).toHaveCSS('scrollbar-width', 'none');
+    await expect(workspace.locator('.dashboard-workspace-right')).toHaveCSS(
+      'border-top-width',
+      '1px',
+    );
 
     const metrics = await workspace.evaluate((element) => {
       const centerElement = element.querySelector('.dashboard-workspace-center');
@@ -538,17 +548,23 @@ test('keeps Classic and Native side panels within the center panel height', asyn
         return {
           centerHeight: centerBox.height,
           sideHeight: box.height,
+          contentHeight: side.scrollHeight,
+          visibleHeight: side.clientHeight,
           overflowY: getComputedStyle(side).overflowY,
           maxHeight: getComputedStyle(side).maxHeight,
+          scrollbarWidth: getComputedStyle(side).scrollbarWidth,
         };
       });
     });
 
     for (const metric of metrics) {
       expect(metric.sideHeight).toBeLessThanOrEqual(metric.centerHeight + 1);
-      expect(metric.overflowY).toBe('auto');
+      expect(['auto', 'visible']).toContain(metric.overflowY);
       expect(metric.maxHeight).not.toBe('none');
+      expect(metric.scrollbarWidth).toBe('none');
     }
+
+    expect(metrics.some((metric) => metric.contentHeight > metric.visibleHeight)).toBe(true);
   };
 
   await expectWorkspacePanels();
