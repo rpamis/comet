@@ -30,6 +30,91 @@ describe('Comet Hook Router', () => {
     await writeProjectConfig(root, config);
   }
 
+  it('stays neutral for an unknown write target without reading Comet state', async () => {
+    const listNative = vi.fn(async () => {
+      throw new Error('Native state must not be read');
+    });
+    const listClassic = vi.fn(async () => {
+      throw new Error('Classic state must not be read');
+    });
+    const inspectNative = vi.fn();
+    const inspectClassic = vi.fn();
+
+    const decision = await inspectCometHook(
+      root,
+      { intent: 'unknown', targets: [], toolName: 'FutureWriteTool' },
+      { listNative, listClassic, inspectNative, inspectClassic },
+    );
+
+    expect(decision).toMatchObject({ allowed: true });
+    expect(listNative).not.toHaveBeenCalled();
+    expect(listClassic).not.toHaveBeenCalled();
+    expect(inspectNative).not.toHaveBeenCalled();
+    expect(inspectClassic).not.toHaveBeenCalled();
+  });
+
+  it('stays neutral for project-external targets without reading Comet state', async () => {
+    const externalTarget = path.join(os.tmpdir(), `comet-memory-${path.basename(root)}.md`);
+    const listNative = vi.fn(async () => {
+      throw new Error('Native state must not be read');
+    });
+    const listClassic = vi.fn(async () => {
+      throw new Error('Classic state must not be read');
+    });
+    const inspectNative = vi.fn();
+    const inspectClassic = vi.fn();
+
+    const decision = await inspectCometHook(
+      root,
+      { intent: 'write', targets: [externalTarget], toolName: 'Write' },
+      { listNative, listClassic, inspectNative, inspectClassic },
+    );
+
+    expect(decision).toMatchObject({ allowed: true });
+    expect(listNative).not.toHaveBeenCalled();
+    expect(listClassic).not.toHaveBeenCalled();
+    expect(inspectNative).not.toHaveBeenCalled();
+    expect(inspectClassic).not.toHaveBeenCalled();
+  });
+
+  it('filters external targets before delegating a mixed write to the owning Guard', async () => {
+    await configureBoth();
+    await writeCometCurrentSelection(root, {
+      schema: 'comet.selection.v2',
+      workflow: 'native',
+      change: 'native-change',
+      branch: null,
+    });
+    const externalTarget = path.join(os.tmpdir(), `comet-memory-${path.basename(root)}.md`);
+    const inspectNative = vi.fn(async () => ({ allowed: true, reason: 'native' }));
+    const inspectClassic = vi.fn(async () => ({ allowed: true, reason: 'classic' }));
+
+    const decision = await inspectCometHook(
+      root,
+      {
+        intent: 'write',
+        targets: [externalTarget, 'src/app.ts'],
+        toolName: 'Edit',
+      },
+      {
+        listNative: async () => [
+          { workflow: 'native', name: 'native-change', phase: 'build' as const },
+        ],
+        listClassic: async () => [],
+        inspectNative,
+        inspectClassic,
+      },
+    );
+
+    expect(decision).toEqual({ allowed: true, reason: 'native' });
+    expect(inspectNative).toHaveBeenCalledWith(
+      root,
+      { intent: 'write', targets: ['src/app.ts'], toolName: 'Edit' },
+      'native-change',
+    );
+    expect(inspectClassic).not.toHaveBeenCalled();
+  });
+
   it('routes one event to only the selected Native Guard', async () => {
     await configureBoth();
     await writeCometCurrentSelection(root, {

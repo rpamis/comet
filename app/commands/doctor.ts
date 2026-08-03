@@ -22,8 +22,8 @@ import {
   getAssetsDir,
   getManagedSkillPaths,
   getManagedSkillPathsForSelection,
-  installCometHooksForPlatform,
 } from '../../domains/skill/platform-install.js';
+import { reconcileCometHooksForPlatform } from '../../domains/skill/hook-lifecycle.js';
 import {
   getPlatformRuleDestinations,
   getLegacyPlatformRuleDestinations,
@@ -653,6 +653,24 @@ function getScopeBases(
   return bases;
 }
 
+function globalHookCheckResult(
+  platform: Platform,
+  scope: InstallScope,
+  inspection: Awaited<ReturnType<typeof inspectCometHooksForPlatform>>,
+): CheckResult {
+  const globalHookPresent =
+    inspection.present || inspection.managedPresent === true || inspection.legacyPresent === true;
+  return {
+    check: `hooks: ${platform.name} (${scope})`,
+    status: globalHookPresent || inspection.error ? 'warn' : 'pass',
+    message: inspection.error
+      ? `${inspection.error} — run: comet doctor --repair --scope global`
+      : globalHookPresent
+        ? 'global blocking Hook remains — run: comet doctor --repair --scope global'
+        : 'no global blocking Hook present',
+  };
+}
+
 async function checkPlatformComponents(
   baseDir: string,
   platform: (typeof PLATFORMS)[number],
@@ -740,6 +758,10 @@ async function checkPlatformComponents(
       scope,
       workflowSelection,
     );
+    if (scope === 'global') {
+      results.push(globalHookCheckResult(platform, scope, inspection));
+      return results;
+    }
     results.push({
       check: `hooks: ${platform.name} (${scope})`,
       status:
@@ -775,6 +797,36 @@ async function getPlatformsForSkillInspection(
   }));
 }
 
+async function getGlobalHookOnlyInspections(
+  baseDir: string,
+  knownPlatformIds: ReadonlySet<string>,
+): Promise<
+  Array<{
+    platform: Platform;
+    inspection: Awaited<ReturnType<typeof inspectCometHooksForPlatform>>;
+  }>
+> {
+  const results: Array<{
+    platform: Platform;
+    inspection: Awaited<ReturnType<typeof inspectCometHooksForPlatform>>;
+  }> = [];
+  for (const platform of PLATFORMS) {
+    if (knownPlatformIds.has(platform.id) || !platform.supportsHooks || !platform.hookFormat) {
+      continue;
+    }
+    const inspection = await inspectCometHooksForPlatform(baseDir, platform, 'global');
+    if (
+      inspection.present ||
+      inspection.managedPresent ||
+      inspection.legacyPresent ||
+      inspection.error
+    ) {
+      results.push({ platform, inspection });
+    }
+  }
+  return results;
+}
+
 async function checkSkillCompleteness(
   projectPath: string,
   scope: DoctorScope,
@@ -796,6 +848,7 @@ async function checkSkillCompleteness(
     );
     const total = managedSkills.length;
     const platforms = await getPlatformsForSkillInspection(base.baseDir, base.scope, scope);
+    const detectedPlatformIds = new Set<string>();
     for (const { platform, inspectComponents } of platforms) {
       const skillsDirs = getPlatformSkillsDirs(platform, base.scope);
       const canonicalSkillsDir = skillsDirs[0];
@@ -818,6 +871,7 @@ async function checkSkillCompleteness(
       }
 
       if (!detectedSkillsDir) continue;
+      detectedPlatformIds.add(platform.id);
       anyCometInstall = true;
       scopeState[base.scope].hasInstall = true;
       const isLegacy = detectedSkillsDir !== canonicalSkillsDir;
@@ -853,6 +907,14 @@ async function checkSkillCompleteness(
             base.scope === 'global' ? 'classic' : workflowSelection,
           )),
         );
+      }
+    }
+    if (base.scope === 'global') {
+      for (const { platform, inspection } of await getGlobalHookOnlyInspections(
+        base.baseDir,
+        detectedPlatformIds,
+      )) {
+        results.push(globalHookCheckResult(platform, base.scope, inspection));
       }
     }
   }
@@ -1317,15 +1379,41 @@ async function repairDoctorState(
         ? 'native'
         : 'classic';
   const targets: Array<{ baseDir: string; scope: InstallScope; platform: Platform }> = [];
+  const hookOnlyTargets: Array<{ baseDir: string; scope: InstallScope; platform: Platform }> = [];
 
   for (const base of getScopeBases(projectPath, scope, context)) {
     const platforms = await getPlatformsForSkillInspection(base.baseDir, base.scope, scope);
+    const installedPlatformIds = new Set<string>();
     for (const { platform, inspectComponents } of platforms) {
       if (!inspectComponents || !(await hasManagedInstall(base.baseDir, platform, base.scope))) {
         continue;
       }
+      installedPlatformIds.add(platform.id);
       targets.push({ baseDir: base.baseDir, scope: base.scope, platform });
     }
+    if (base.scope === 'global') {
+      for (const { platform } of await getGlobalHookOnlyInspections(
+        base.baseDir,
+        installedPlatformIds,
+      )) {
+        hookOnlyTargets.push({ baseDir: base.baseDir, scope: base.scope, platform });
+      }
+    }
+  }
+
+  for (const target of hookOnlyTargets) {
+    const hookResult = await reconcileCometHooksForPlatform(
+      target.baseDir,
+      target.platform,
+      target.scope,
+      workflowSelection,
+    );
+    if (hookResult.status === 'failed') {
+      throw new Error(
+        `failed to repair Hook for ${target.platform.name} (${target.scope}): ${hookResult.reason}`,
+      );
+    }
+    repaired.push(`${target.platform.name} (${target.scope}) Hook`);
   }
 
   for (const target of targets) {
@@ -1334,7 +1422,7 @@ async function repairDoctorState(
       const runtime = hookRouterRuntimePaths(baseDir, platform, targetScope);
       await copyFile(runtime.source, runtime.destination);
     }
-    const hookResult = await installCometHooksForPlatform(
+    const hookResult = await reconcileCometHooksForPlatform(
       baseDir,
       platform,
       targetScope,

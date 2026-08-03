@@ -38,6 +38,7 @@ import {
   getManagedSkillPathsForSelection,
   computeRuleDestPath,
   isManagedHookCommand,
+  removeManagedCopilotHookEntries,
   removeManagedHooksFromJsonFile,
 } from './platform-install.js';
 import type { CometWorkflow, InitWorkflowSelection } from '../comet-entry/types.js';
@@ -1047,7 +1048,7 @@ async function removeCometHooksForPlatform(
       case 'windsurf':
         return await removeWindsurfHooks(platformBase, scriptRelPaths);
       case 'copilot':
-        return await removeCopilotHooks(platformBase);
+        return await removeCopilotHooks(platformBase, scriptRelPaths);
       case 'kiro':
         return await removeKiroHooks(platformBase, scriptRelPaths);
       default:
@@ -1208,12 +1209,42 @@ async function removeWindsurfHooks(
   return { removed, failed: 0 };
 }
 
-async function removeCopilotHooks(platformBase: string): Promise<RemovalResult> {
+async function removeCopilotHooks(
+  platformBase: string,
+  scriptRelPaths: string[],
+): Promise<RemovalResult> {
   const hookFilePath = path.join(platformBase, 'hooks', 'comet-guard.json');
   let removed = 0;
   let failed = 0;
   try {
-    if (await removeFile(hookFilePath)) removed++;
+    const readResult = await readJsonObjectFile(hookFilePath);
+    if (readResult.status === 'error') return { removed: 0, failed: 1 };
+    if (readResult.status === 'present') {
+      const settings = readResult.value;
+      const existingHooks = settings.hooks as Record<string, unknown> | undefined;
+      const existingPreToolUse = existingHooks?.preToolUse;
+      if (existingHooks && Array.isArray(existingPreToolUse)) {
+        const cleaned = removeManagedCopilotHookEntries(existingPreToolUse, scriptRelPaths);
+        if (cleaned.removed > 0) {
+          if (cleaned.entries.length === 0) {
+            delete existingHooks.preToolUse;
+          } else {
+            existingHooks.preToolUse = cleaned.entries;
+          }
+          if (Object.keys(existingHooks).length === 0) delete settings.hooks;
+
+          const remainingKeys = Object.keys(settings);
+          const onlyGeneratedVersionRemains =
+            remainingKeys.length === 1 && remainingKeys[0] === 'version';
+          if (remainingKeys.length === 0 || onlyGeneratedVersionRemains) {
+            if (await removeFile(hookFilePath)) removed = cleaned.removed;
+          } else {
+            await writeFile(hookFilePath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
+            removed = cleaned.removed;
+          }
+        }
+      }
+    }
   } catch {
     failed++;
   }
@@ -1261,9 +1292,19 @@ async function removeKiroHooks(
     if (isCometHook) {
       const hookPath = path.join(hooksDir, entry);
       try {
-        if (await removeFile(hookPath)) {
-          removed++;
+        const result = await readJsonObjectFile(hookPath);
+        if (result.status === 'missing') continue;
+        if (result.status === 'error') {
+          failed++;
+          continue;
         }
+        const then = result.value.then;
+        const command =
+          then && typeof then === 'object' && !Array.isArray(then)
+            ? (then as Record<string, unknown>).command
+            : undefined;
+        if (!isManagedHookCommand(command, scriptRelPaths)) continue;
+        if (await removeFile(hookPath)) removed++;
       } catch {
         failed++;
       }

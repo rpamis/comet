@@ -35,6 +35,7 @@ import {
   renderProjectConfig,
   mergeProjectConfig,
 } from '../../../domains/skill/platform-install.js';
+import { reconcileCometHooksForPlatform } from '../../../domains/skill/hook-lifecycle.js';
 import { PLATFORMS, type Platform } from '../../../platform/install/platforms.js';
 import {
   artifactLanguageToSkillLanguage,
@@ -856,6 +857,45 @@ describe('skills', () => {
       expect(config.hooks.preToolUse[0].powershell).toBe(config.hooks.preToolUse[0].bash);
     });
 
+    it('preserves existing Copilot Hook entries and settings when installing', async () => {
+      const copilot = PLATFORMS.find((candidate) => candidate.id === 'github-copilot')!;
+      const hookPath = path.join(tmpDir, '.github', 'hooks', 'comet-guard.json');
+      const userHook = { matcher: '*', bash: 'node user-hook.mjs' };
+      await fs.mkdir(path.dirname(hookPath), { recursive: true });
+      await fs.writeFile(
+        hookPath,
+        JSON.stringify({
+          version: 2,
+          customSetting: true,
+          hooks: {
+            postToolUse: [{ matcher: '*', bash: 'node post-hook.mjs' }],
+            preToolUse: [userHook],
+          },
+        }),
+        'utf8',
+      );
+
+      await expect(
+        installCometHooksForPlatform(tmpDir, copilot, 'project', 'native'),
+      ).resolves.toEqual({ status: 'installed' });
+
+      const updated = JSON.parse(await fs.readFile(hookPath, 'utf8')) as {
+        version: number;
+        customSetting: boolean;
+        hooks: {
+          postToolUse: unknown[];
+          preToolUse: Array<Record<string, unknown>>;
+        };
+      };
+      expect(updated.version).toBe(2);
+      expect(updated.customSetting).toBe(true);
+      expect(updated.hooks.postToolUse).toEqual([{ matcher: '*', bash: 'node post-hook.mjs' }]);
+      expect(updated.hooks.preToolUse).toContainEqual(userHook);
+      expect(
+        updated.hooks.preToolUse.some((entry) => String(entry.bash).includes('comet-hook-router')),
+      ).toBe(true);
+    });
+
     it('returns failed when the Hook manifest cannot be read', async () => {
       const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
       readJsonMock.mockRejectedValueOnce(new Error('manifest unavailable'));
@@ -881,14 +921,11 @@ describe('skills', () => {
       });
     });
 
-    it.each([
-      { scope: 'project' as const, baseDir: () => tmpDir },
-      { scope: 'global' as const, baseDir: () => path.join(tmpDir, 'home') },
-    ])('writes $scope Codex hooks to .codex/hooks.json', async ({ scope, baseDir }) => {
+    it('writes project Codex hooks to .codex/hooks.json', async () => {
       const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
-      const root = baseDir();
+      const root = tmpDir;
 
-      await expect(installCometHooksForPlatform(root, codex, scope)).resolves.toEqual({
+      await expect(installCometHooksForPlatform(root, codex, 'project')).resolves.toEqual({
         status: 'installed',
       });
 
@@ -899,6 +936,45 @@ describe('skills', () => {
       await expect(
         fs.access(path.join(root, '.codex', 'settings.local.json')),
       ).rejects.toMatchObject({ code: 'ENOENT' });
+    });
+
+    it('removes a historical global Codex Hook without changing the user Hook', async () => {
+      const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
+      const homeDir = path.join(tmpDir, 'home');
+      const hooksPath = path.join(homeDir, '.codex', 'hooks.json');
+      const userHook = { type: 'command', command: 'node my-user-hook.mjs' };
+      await fs.mkdir(path.dirname(hooksPath), { recursive: true });
+      await fs.writeFile(
+        hooksPath,
+        JSON.stringify({
+          model: 'gpt-5',
+          hooks: {
+            PreToolUse: [
+              { matcher: 'Write|Edit', hooks: [userHook] },
+              {
+                matcher: 'Write|Edit',
+                hooks: [
+                  {
+                    type: 'command',
+                    command: expectedHookCommand('.agents', 'codex', homeDir, 'global'),
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+        'utf-8',
+      );
+
+      await expect(reconcileCometHooksForPlatform(homeDir, codex, 'global')).resolves.toEqual({
+        status: 'skipped',
+        reason: 'blocking Hooks are project-scoped; removed 1 legacy global Hook',
+      });
+
+      const updated = JSON.parse(await fs.readFile(hooksPath, 'utf-8'));
+      expect(updated.model).toBe('gpt-5');
+      expect(updated.hooks.PreToolUse[0]).toEqual({ matcher: 'Write|Edit', hooks: [userHook] });
+      expect(updated.hooks.PreToolUse[1]).toEqual({ matcher: 'Write|Edit', hooks: [] });
     });
 
     it('reports failure when a legacy Codex Hook config cannot be cleaned up', async () => {
@@ -973,9 +1049,7 @@ describe('skills', () => {
       expect(secondInstall.hooks.PreToolUse[1]).toBe('manual-group');
       expect(secondInstall.hooks.PreToolUse[2].description).toBe('primary group metadata');
       expect(secondInstall.hooks.PreToolUse[2].hooks.slice(0, 2)).toEqual([null, 'manual-handler']);
-      expect(secondInstall.hooks.PreToolUse[2].hooks[2].command.replaceAll('\\', '/')).toContain(
-        '/.agents/skills/comet/scripts/comet-hook-router.mjs',
-      );
+      expect(secondInstall.hooks.PreToolUse[2].hooks).toEqual([null, 'manual-handler']);
       expect(secondInstall.hooks.PreToolUse[3]).toEqual({
         matcher: 'Write|Edit',
         customField: { duplicate: true },
@@ -986,6 +1060,10 @@ describe('skills', () => {
         keepEmpty: true,
         hooks: [],
       });
+      expect(secondInstall.hooks.PreToolUse[5].hooks).toHaveLength(1);
+      expect(secondInstall.hooks.PreToolUse[5].hooks[0].command.replaceAll('\\', '/')).toContain(
+        '/.agents/skills/comet/scripts/comet-hook-router.mjs',
+      );
     });
 
     it('migrates only Comet hooks from the historical Codex settings file', async () => {
@@ -1205,7 +1283,7 @@ describe('skills', () => {
       await expect(fs.readFile(legacyPath, 'utf-8')).resolves.toBe(legacy);
     });
 
-    it('merges Claude-style hooks into an existing matcher group without replacing user hooks', async () => {
+    it('installs a dedicated Claude-style matcher group without replacing user hooks', async () => {
       const platform: Platform = {
         id: 'claude',
         name: 'Claude Code',
@@ -1239,24 +1317,26 @@ describe('skills', () => {
 
       await installCometHooksForPlatform(tmpDir, platform);
       const firstInstall = JSON.parse(await fs.readFile(settingsPath, 'utf-8'));
-      const writeGroup = firstInstall.hooks.PreToolUse.find(
-        (entry: { matcher: string }) => entry.matcher === 'Write|Edit',
+      const cometGroup = firstInstall.hooks.PreToolUse.find(
+        (entry: { hooks?: Array<{ command?: string }> }) =>
+          entry?.hooks?.some((hook) => hook.command?.includes('comet-hook-router.mjs')),
       );
 
       expect(firstInstall.model).toBe('sonnet');
       expect(firstInstall.hooks.PostToolUse).toEqual(initialSettings.hooks.PostToolUse);
-      expect(firstInstall.hooks.PreToolUse).toHaveLength(2);
-      const command = writeGroup.hooks[1].command as string;
+      expect(firstInstall.hooks.PreToolUse).toHaveLength(3);
+      expect(firstInstall.hooks.PreToolUse[0]).toEqual({
+        matcher: 'Write|Edit',
+        hooks: [{ type: 'command', command: 'echo user-write-check' }],
+      });
+      expect(firstInstall.hooks.PreToolUse[1]).toEqual(initialSettings.hooks.PreToolUse[1]);
+      expect(cometGroup.matcher).toBe('Write|Edit');
+      expect(cometGroup.hooks).toHaveLength(1);
+      const command = cometGroup.hooks[0].command as string;
       expect(normalized(command)).toContain(`/.claude/skills/${currentCometScript}`);
       expect(normalized(command)).toContain(`--project-root "${normalized(tmpDir)}"`);
       expect(command).not.toContain('node .claude/');
-      expect(writeGroup.hooks).toEqual([
-        { type: 'command', command: 'echo user-write-check' },
-        {
-          type: 'command',
-          command,
-        },
-      ]);
+      expect(cometGroup.hooks).toEqual([{ type: 'command', command }]);
 
       await installCometHooksForPlatform(tmpDir, platform);
       const secondInstall = JSON.parse(await fs.readFile(settingsPath, 'utf-8'));
@@ -1297,7 +1377,7 @@ describe('skills', () => {
       { id: 'qoder', skillsDir: '.qoder', hookFormat: 'qoder' as const },
       { id: 'codebuddy', skillsDir: '.codebuddy', hookFormat: 'codebuddy' as const },
     ])(
-      'merges $id hooks into the existing matcher group idempotently',
+      'installs a dedicated $id matcher group idempotently',
       async ({ id, skillsDir, hookFormat }) => {
         const platform: Platform = {
           id,
@@ -1339,13 +1419,15 @@ describe('skills', () => {
 
         expect(firstInstall.theme).toBe('dark');
         expect(firstInstall.hooks.AfterTool).toEqual(initialSettings.hooks.AfterTool);
-        expect(firstInstall.hooks.PreToolUse).toHaveLength(1);
+        expect(firstInstall.hooks.PreToolUse).toHaveLength(2);
         expect(firstInstall.hooks.PreToolUse[0].hooks).toEqual([
           {
             type: 'command',
             command: 'echo user-write-check',
             description: 'User write check',
           },
+        ]);
+        expect(firstInstall.hooks.PreToolUse[1].hooks).toEqual([
           {
             type: 'command',
             command: expectedHookCommand(skillsDir, id),
@@ -1359,7 +1441,7 @@ describe('skills', () => {
       },
     );
 
-    it('writes global CodeBuddy hooks to ~/.codebuddy/settings.json without replacing user config', async () => {
+    it('does not add a global CodeBuddy Hook or change unrelated user config', async () => {
       const platform = PLATFORMS.find((candidate) => candidate.id === 'codebuddy')!;
       const homeDir = path.join(tmpDir, 'home');
       const settingsPath = path.join(homeDir, '.codebuddy', 'settings.json');
@@ -1370,15 +1452,12 @@ describe('skills', () => {
       await fs.writeFile(settingsPath, JSON.stringify(initialSettings), 'utf-8');
 
       await expect(installCometHooksForPlatform(homeDir, platform, 'global')).resolves.toEqual({
-        status: 'installed',
+        status: 'skipped',
+        reason: 'blocking Hooks are project-scoped',
       });
 
       const updated = JSON.parse(await fs.readFile(settingsPath, 'utf-8'));
-      expect(updated.enabledPlugins).toEqual(initialSettings.enabledPlugins);
-      expect(updated.hooks.PreToolUse).toHaveLength(1);
-      expect(updated.hooks.PreToolUse[0].hooks[0].command).toBe(
-        expectedHookCommand('.codebuddy', 'codebuddy', homeDir, 'global'),
-      );
+      expect(updated).toEqual(initialSettings);
     });
 
     it('leaves invalid CodeBuddy settings byte-for-byte unchanged', async () => {
@@ -1426,7 +1505,7 @@ describe('skills', () => {
       await expect(fs.readFile(settingsPath, 'utf-8')).resolves.toBe(malformedSettings);
     });
 
-    it('merges Gemini hooks into the existing matcher group idempotently', async () => {
+    it('installs a dedicated Gemini matcher group idempotently', async () => {
       const platform: Platform = {
         id: 'gemini',
         name: 'Gemini CLI',
@@ -1467,13 +1546,15 @@ describe('skills', () => {
 
       expect(firstInstall.selectedAuthType).toBe('oauth');
       expect(firstInstall.hooks.AfterTool).toEqual(initialSettings.hooks.AfterTool);
-      expect(firstInstall.hooks.BeforeTool).toHaveLength(1);
+      expect(firstInstall.hooks.BeforeTool).toHaveLength(2);
       expect(firstInstall.hooks.BeforeTool[0].hooks).toEqual([
         {
           type: 'command',
           command: 'echo user-write-check',
           name: 'User write check',
         },
+      ]);
+      expect(firstInstall.hooks.BeforeTool[1].hooks).toEqual([
         {
           type: 'command',
           command: expectedHookCommand('.gemini', 'gemini'),

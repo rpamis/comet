@@ -131,15 +131,15 @@ describe('Native phase Hook guard', () => {
   });
 
   it.each(['shape', 'verify', 'archive'] as const)(
-    '%s fails closed when a write target cannot be recovered',
+    '%s stays neutral when a write target cannot be attributed',
     async (phase) => {
       await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
       await activeChange(phase, `unknown-${phase}`);
 
       await expect(inspectNativeHookGuard(projectRoot, writeRequest())).resolves.toMatchObject({
-        allowed: false,
+        allowed: true,
         phase,
-        reason: expect.stringContaining('target could not be determined'),
+        reason: expect.stringContaining('not attributed'),
       });
     },
   );

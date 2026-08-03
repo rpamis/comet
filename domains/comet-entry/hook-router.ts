@@ -11,6 +11,7 @@ import { memoizedHookRead } from '../../platform/process/hook-read-cache.js';
 import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
 import { readCometCurrentSelection } from './current-selection.js';
 import { readCachedProjectConfig } from './entry-reads.js';
+import { scopeCometHookTargets } from '../workflow-contract/hook-target-scope.js';
 import type { CometHookDecision, CometHookRequest } from './hook-types.js';
 import type { CometWorkflow } from './types.js';
 
@@ -200,6 +201,20 @@ export async function inspectCometHook(
   if (request.intent === 'non-write') {
     return { allowed: true, reason: 'Hook event is not a write' };
   }
+  if (request.intent === 'unknown' || request.targets.length === 0) {
+    return { allowed: true, reason: 'Hook write target is outside Comet attribution' };
+  }
+
+  let projectRequest: CometHookRequest;
+  try {
+    const scoped = await scopeCometHookTargets(projectRoot, request.targets);
+    if (scoped.projectTargets.length === 0) {
+      return { allowed: true, reason: 'Write targets are outside the guarded project' };
+    }
+    projectRequest = { ...request, targets: scoped.projectTargets };
+  } catch {
+    return { allowed: true, reason: 'Hook write target scope could not be determined' };
+  }
 
   try {
     const resolution = await resolveHookWorkflowOwner(projectRoot, dependencies);
@@ -223,8 +238,8 @@ export async function inspectCometHook(
 
     const owner = resolution.owner;
     return owner.workflow === 'native'
-      ? dependencies.inspectNative(projectRoot, request, owner.name)
-      : dependencies.inspectClassic(projectRoot, owner.name, request);
+      ? dependencies.inspectNative(projectRoot, projectRequest, owner.name)
+      : dependencies.inspectClassic(projectRoot, owner.name, projectRequest);
   } catch (error) {
     return {
       allowed: false,

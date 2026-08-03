@@ -160,8 +160,8 @@ export async function inspectNativeHookGuard(
   }
   if (request.intent === 'unknown' || request.targets.length === 0) {
     return {
-      allowed: false,
-      reason: `Hook write target could not be determined while Native change ${change.name} is in ${change.phase}; resume /comet-native before retrying`,
+      allowed: true,
+      reason: 'Hook write target was not attributed to the guarded project',
       workflow: 'native',
       phase: change.phase,
       change: change.name,
