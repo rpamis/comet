@@ -7,7 +7,7 @@ description: "Use when the user explicitly invokes /comet or asks to use Comet w
 
 `/comet` only selects an entry. It does not contain either workflow's execution method.
 
-Once loaded, immediately resolve the entry below. Do not re-evaluate whether the task suits Comet.
+Once this Skill is loaded, treat the `/comet` entry as selected. Immediately perform the entry resolution below; do not re-evaluate whether the task is suitable for Comet, and do not merely explain why it will not be used.
 
 1. Run the public Comet CLI installed on PATH in the current project:
 
