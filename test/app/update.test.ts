@@ -3235,6 +3235,20 @@ describe('update command helpers', () => {
   });
 
   it('installs ambient resume instructions and preserves existing user AGENTS/CLAUDE rules', async () => {
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'workflows: [native]',
+        'ambient_resume: true',
+        'native:',
+        '  artifact_root: docs',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
     await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
     await fs.writeFile(
       path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'),

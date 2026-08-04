@@ -1111,16 +1111,12 @@ export async function initCommand(
       }
       workingDirsCreated = true;
 
-      if (
-        includesWorkflow(workflowSelection, 'native') ||
-        initialProjectConfigDocument?.ambient_resume === false
-      ) {
-        await syncCometProjectInstructions(
-          projectPath,
-          language.id,
-          initialProjectConfigDocument?.ambient_resume ?? true,
-        );
-      }
+      await syncCometProjectInstructions(
+        projectPath,
+        language.id,
+        includesWorkflow(workflowSelection, 'native') &&
+          (initialProjectConfigDocument?.ambient_resume ?? true),
+      );
 
       const successfulCometPlatforms = new Set(
         results

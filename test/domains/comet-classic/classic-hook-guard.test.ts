@@ -680,6 +680,67 @@ describe('Classic hook guard command', () => {
     );
   });
 
+  it('does not accept an existing source file as a full build plan', async () => {
+    const dir = await makeProject();
+    await fs.mkdir(path.join(dir, 'src'), { recursive: true });
+    await fs.writeFile(path.join(dir, 'src', 'existing.ts'), 'export {}\n');
+    await seedChange(dir, 'invalid-plan', 'build', { plan: 'src/existing.ts' });
+
+    const decision = await inspectClassicHookGuard(dir, 'invalid-plan', {
+      intent: 'write',
+      targets: [path.join(dir, 'src', 'feature.ts')],
+      toolName: 'Write',
+    });
+
+    expect(decision.allowed).toBe(false);
+    expect(decision.reason).toContain('ERROR_CODE: classic-build-plan-broken');
+  });
+
+  it('allows a replacement plan file when the recorded plan is broken', async () => {
+    const dir = await makeProject();
+    await seedChange(dir, 'replace-plan', 'build', {
+      plan: 'docs/superpowers/plans/missing-plan.md',
+      createPlanFile: false,
+    });
+
+    const decision = await inspectClassicHookGuard(dir, 'replace-plan', {
+      intent: 'write',
+      targets: [path.join(dir, 'docs', 'superpowers', 'plans', 'replace-plan.md')],
+      toolName: 'Write',
+    });
+
+    expect(decision.allowed).toBe(true);
+  });
+
+  it('resolves relative hook targets from the explicit project root', async () => {
+    const dir = await makeProject();
+    await seedChange(dir, 'relative-target', 'design');
+
+    const decision = await inspectClassicHookGuard(dir, 'relative-target', {
+      intent: 'write',
+      targets: ['src/feature.ts'],
+      toolName: 'Write',
+    });
+
+    expect(decision.allowed).toBe(false);
+    expect(decision.reason).toContain('Target file: src/feature.ts');
+  });
+
+  it('fails closed for source writes when a build state has unknown fields', async () => {
+    const dir = await makeProject();
+    const changeDir = await seedChange(dir, 'invalid-build', 'build');
+    await fs.appendFile(path.join(changeDir, '.comet.yaml'), 'unknown_root_field: true\n');
+
+    const decision = await inspectClassicHookGuard(dir, 'invalid-build', {
+      intent: 'write',
+      targets: [path.join(dir, 'src', 'feature.ts')],
+      toolName: 'Write',
+    });
+
+    expect(decision.allowed).toBe(false);
+    expect(decision.reason).toContain('active Classic state is invalid');
+  });
+
   it.each(['hotfix', 'tweak'] as const)(
     'keeps %s build source writes independent from a Superpowers plan',
     async (workflow) => {

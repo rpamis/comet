@@ -41,6 +41,7 @@ import { NativeWorkflowPanel } from './native-workflow-panel.jsx';
 import { useAnimatedNumber } from './use-animated-number.js';
 import { DashboardWorkspaceRegion } from './workspace-layout.jsx';
 import {
+  dashboardResponseError,
   isStaleNativeDashboardCursorError,
   refreshDashboardPage,
   shouldAutoLoadDashboardDetail,
@@ -355,6 +356,8 @@ function DashboardApp({ theme, onToggleTheme }) {
       return undefined;
     }
     const timer = window.setTimeout(() => {
+      snapshotRequestRef.current?.abort();
+      pageRequestRef.current?.abort();
       nativePageRequestRef.current?.abort();
       setPages({ active: null, archived: null, all: null });
       pagesRef.current = { active: null, archived: null, all: null };
@@ -1635,7 +1638,7 @@ async function fetchDashboardNativeChangePage(projectId, status, options = {}) {
     `/api/dashboard/projects/${encodeURIComponent(projectId)}/native-changes?${params.toString()}`,
     { cache: 'no-store', signal: options.signal },
   );
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) throw await dashboardResponseError(res);
   return res.json();
 }
 

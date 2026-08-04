@@ -768,7 +768,7 @@ async function issueNativeAutomatedCheckReceiptLocked(options: {
       name: options.state.name,
       receipt,
     }),
-    ...(!afterFence.matched
+    ...(!afterFence.matched || !worktreeMatched
       ? { recovery: nativeReceiptScopeRecovery(options.state.name, afterFence, true) }
       : {}),
   };

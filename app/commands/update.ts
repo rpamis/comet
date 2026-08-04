@@ -1946,7 +1946,7 @@ async function updateSingleProject(
       const projectInstructionResult = await syncCometProjectInstructions(
         projectPath,
         projectLanguageId,
-        projectConfigDocument?.ambient_resume ?? true,
+        nativeProject && (projectConfigDocument?.ambient_resume ?? true),
       );
       projectInstructionsUpdated = projectInstructionResult.changed;
       if (projectInstructionsUpdated > 0) {

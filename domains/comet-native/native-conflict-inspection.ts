@@ -10,13 +10,18 @@ import { readNativeProtectedDirectory } from './native-protected-file.js';
 import type { NativeProjectPaths } from './native-types.js';
 import { readNativeWorkspaceIdentity } from './native-workspace.js';
 
-async function visibleChangeEntries(paths: NativeProjectPaths) {
+const NATIVE_TARGETED_CONFLICT_MAX_CHANGES = 4_096;
+
+async function visibleChangeEntries(
+  paths: NativeProjectPaths,
+  maxEntries: number = NATIVE_CONFLICT_RADAR_LIMITS.maxChanges,
+) {
   try {
     const directory = await readNativeProtectedDirectory({
       root: paths.nativeRoot,
       directory: paths.changesDir,
       label: 'Native conflict changes directory',
-      maxEntries: NATIVE_CONFLICT_RADAR_LIMITS.maxChanges,
+      maxEntries,
     });
     await directory.verify();
     return directory.entries;
@@ -85,16 +90,24 @@ export async function inspectNativeConflictRadar(
 export async function inspectNativeChangeConflicts(
   paths: NativeProjectPaths,
   name: string,
+  options: { tolerateInvalidSiblings?: boolean } = {},
 ): Promise<NativeChangeConflictInspection> {
-  const input = await collectConflictInputs(paths);
-  // Enforce the global count and input budgets before looking at pairs.
-  buildNativeConflictRadar(input);
-  const target = input.find((change) => change.name === name);
-  if (!target) throw new Error(`Native conflict target is not visible: ${name}`);
+  const entries = await visibleChangeEntries(paths, NATIVE_TARGETED_CONFLICT_MAX_CHANGES);
+  const names = entries
+    .filter((entry) => entry.isDirectory() && !entry.isSymbolicLink())
+    .map((entry) => entry.name)
+    .sort();
+  if (!names.includes(name)) throw new Error(`Native conflict target is not visible: ${name}`);
+  const target = await collectConflictInput(paths, name);
   let definiteConflictCount = 0;
   let possibleOverlapCount = 0;
-  for (const other of input) {
-    if (other.name === name) continue;
+  for (const otherName of names) {
+    if (otherName === name) continue;
+    const other = await collectConflictInput(paths, otherName).catch((error: unknown) => {
+      if (options.tolerateInvalidSiblings) return null;
+      throw error;
+    });
+    if (!other) continue;
     const relationship = buildNativeConflictRadar([target, other]).relationships[0];
     if (relationship.classification === 'definite-conflict') definiteConflictCount += 1;
     if (relationship.classification === 'possible-overlap') possibleOverlapCount += 1;

@@ -95,7 +95,7 @@ async function physicalPathForPossiblyMissingTarget(target: string): Promise<str
 }
 
 async function projectRelative(target: string, projectRoot: string): Promise<string> {
-  const rawCandidate = path.isAbsolute(target) ? target : path.resolve(process.cwd(), target);
+  const rawCandidate = path.isAbsolute(target) ? target : path.resolve(projectRoot, target);
   let candidate = normalized(rawCandidate);
   const rootRelative = relativeToProjectRoot(rawCandidate, projectRoot);
   if (rootRelative !== null) return rootRelative;
@@ -119,6 +119,7 @@ interface GoverningChange {
   phase: ClassicPhase;
   classic: ClassicState | null;
   archived: boolean;
+  invalidState?: boolean;
   superpowersArtifact?: 'matched' | 'unmatched';
   superpowersSlot?: SuperpowersArtifactSlot;
 }
@@ -143,7 +144,7 @@ async function loadGoverningChange(changeDir: string): Promise<GoverningChange |
       classic: projection.classic,
       archived: projection.classic.archived,
     };
-  } catch {
+  } catch (error) {
     // Legacy/partial state without the required Classic fields: fall back to a
     // direct yaml read so the guard still respects the recorded phase rather
     // than crashing the way master's lenient shell scripts did not.
@@ -154,6 +155,7 @@ async function loadGoverningChange(changeDir: string): Promise<GoverningChange |
       phase: legacy.phase,
       classic: null,
       archived: legacy.archived,
+      invalidState: error instanceof Error && error.message.includes('unknown field'),
     };
   }
 }
@@ -279,6 +281,18 @@ function allowsFirstSuperpowersArtifactWrite(
     governing.classic !== null &&
     governing.phase === slot.phase &&
     !superpowersArtifactValue(governing, slot)
+  );
+}
+
+async function allowsSuperpowersArtifactWrite(
+  projectRoot: string,
+  governing: GoverningChange,
+  slot: SuperpowersArtifactSlot,
+): Promise<boolean> {
+  if (allowsFirstSuperpowersArtifactWrite(governing, slot)) return true;
+  if (slot.field !== 'plan' || governing.phase !== 'build') return false;
+  return (
+    (await hookPlanReadiness(projectRoot, governing.classic?.plan ?? null)).status === 'broken'
   );
 }
 
@@ -460,7 +474,11 @@ async function governingChange(
       return slot
         ? {
             ...superpowers.governing,
-            superpowersArtifact: allowsFirstSuperpowersArtifactWrite(superpowers.governing, slot)
+            superpowersArtifact: (await allowsSuperpowersArtifactWrite(
+              projectRoot,
+              superpowers.governing,
+              slot,
+            ))
               ? 'matched'
               : 'unmatched',
             superpowersSlot: slot,
@@ -476,7 +494,7 @@ async function governingChange(
       if (!candidate || 'blockedResult' in candidate) return candidate;
       return {
         ...candidate,
-        superpowersArtifact: allowsFirstSuperpowersArtifactWrite(candidate, slot)
+        superpowersArtifact: (await allowsSuperpowersArtifactWrite(projectRoot, candidate, slot))
           ? 'matched'
           : 'unmatched',
         superpowersSlot: slot,
@@ -827,6 +845,12 @@ async function inspectClassicHookTarget(
     if (governing.superpowersArtifact === 'unmatched') {
       return blockedUnmatchedSuperpowersArtifact(relativePath, governing);
     }
+  }
+  if (governing.invalidState) {
+    return result(
+      2,
+      `[COMET-HOOK] blocked: active Classic state is invalid; repair .comet.yaml before writing ${relativePath}`,
+    );
   }
   if (phase === 'build' && governing.classic?.workflow === 'full' && !governing.classic.designDoc) {
     return blockedMissingDesignDoc(relativePath);

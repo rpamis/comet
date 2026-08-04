@@ -52,11 +52,7 @@ export const NATIVE_STATUS_PAGE_LIMITS = Object.freeze({
 });
 
 async function selectedName(paths: NativeProjectPaths): Promise<string | null> {
-  try {
-    return (await readNativeSelectionRecord(paths))?.change ?? null;
-  } catch {
-    return null;
-  }
+  return (await readNativeSelectionRecord(paths))?.change ?? null;
 }
 
 export function nativeNextCommand(
@@ -174,6 +170,7 @@ export async function inspectNativeStatus(
   options?: {
     details?: boolean;
     acceptanceCursor?: string;
+    includeConflictFindings?: boolean;
     clarificationMode?: NativeClarificationMode;
     maxVerifyFailures?: number;
   },
@@ -358,19 +355,23 @@ export async function inspectNativeStatus(
     }
   }
   const conflictFindings: NativeFinding[] = [];
-  try {
-    const conflicts = await inspectNativeChangeConflicts(paths, state.name);
-    conflictFindings.push(
-      ...conflicts.findingCodes.map((code) => ({
-        code,
-        message: `Native change overlap is visible in the current root: ${code}`,
-      })),
-    );
-  } catch {
-    conflictFindings.push({
-      code: 'native-conflict-inspection-invalid',
-      message: 'Native change overlap could not be recomputed safely',
-    });
+  if (options?.includeConflictFindings !== false) {
+    try {
+      const conflicts = await inspectNativeChangeConflicts(paths, state.name, {
+        tolerateInvalidSiblings: true,
+      });
+      conflictFindings.push(
+        ...conflicts.findingCodes.map((code) => ({
+          code,
+          message: `Native change overlap is visible in the current root: ${code}`,
+        })),
+      );
+    } catch {
+      conflictFindings.push({
+        code: 'native-conflict-inspection-invalid',
+        message: 'Native change overlap could not be recomputed safely',
+      });
+    }
   }
   const workspaceFindings: NativeFinding[] = [];
   try {
@@ -596,6 +597,7 @@ export async function listNativeStatusPage(
   const candidates = await Promise.all(
     names.slice(offset, offset + NATIVE_STATUS_PAGE_LIMITS.maxItems).map((name) =>
       inspectNativeStatus(paths, name, {
+        includeConflictFindings: false,
         clarificationMode: options?.clarificationMode,
         maxVerifyFailures: options?.maxVerifyFailures,
       }),

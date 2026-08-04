@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  dashboardResponseError,
   isStaleNativeDashboardCursorError,
   refreshDashboardPage,
   shouldAutoLoadDashboardDetail,
@@ -11,6 +12,17 @@ function page(items: Array<{ id: string; value: string }>, total = items.length)
 }
 
 describe('Dashboard web state helpers', () => {
+  it('preserves a structured server error for stale Native cursor recovery', async () => {
+    const error = await dashboardResponseError(
+      new Response(JSON.stringify({ error: 'Stale Native Dashboard change cursor' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    expect(isStaleNativeDashboardCursorError(error)).toBe(true);
+  });
+
   it('preserves loaded rows when an unchanged overview refreshes', () => {
     const existing = page(
       [

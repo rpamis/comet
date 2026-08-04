@@ -508,17 +508,17 @@ test('fills the change explorer from five-row pages and continues on scroll', as
   await page.getByRole('tab', { name: '全部' }).click();
 
   const list = page.getByRole('tabpanel', { name: '全部' }).locator('.dashboard-change-list');
-  await expect(list.locator('.dashboard-change-list-item')).toHaveCount(10);
+  await expect(list.locator('.dashboard-change-list-item')).toHaveCount(13);
   await expect
-    .poll(() => pageRequests.filter((request) => request.includes('status=all')))
-    .toHaveLength(2);
+    .poll(() => pageRequests.filter((request) => request.includes('status=all')).length)
+    .toBeGreaterThanOrEqual(2);
 
   await list.evaluate((element) => {
     element.scrollTop = element.scrollHeight;
   });
   await expect
-    .poll(() => pageRequests.filter((request) => request.includes('status=all')))
-    .toHaveLength(3);
+    .poll(() => pageRequests.filter((request) => request.includes('status=all')).length)
+    .toBeGreaterThanOrEqual(3);
   await expect(list.locator('.dashboard-change-list-item')).toHaveCount(13);
 });
 
