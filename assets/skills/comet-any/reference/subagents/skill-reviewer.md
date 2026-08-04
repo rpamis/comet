@@ -1,7 +1,5 @@
 # Skill Review Subagent
 
-This file is a portable lane brief, not a platform-native custom agent. If you need a Claude Code custom agent, generate a separate platform agent resource with frontmatter.
-
 ## Responsibilities
 
 Review the other subagents' artifacts and claims, then decide whether the candidate Skill is usable like Comet. The review must give a clear conclusion: `Review passed` or blocking findings.
@@ -19,11 +17,10 @@ Use file handoff: the main session provides paths instead of pasting large bodie
 
 ## Dispatch Template
 
-Use the current platform's subagent mechanism. The shape should include:
+Dispatch a fresh subagent for this role with:
 
 ```text
 description: "Review the Comet-like Skill outputs for <bundle-name>"
-model: <must explicitly specify model>
 prompt:
   You are the Skill review subagent.
   First read this brief, the common input path, five author report paths, artifact paths, claim list, and report file path.

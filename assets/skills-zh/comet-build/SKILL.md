@@ -79,7 +79,7 @@ comet state set <name> plan docs/superpowers/plans/YYYY-MM-DD-feature.md
 
 无需手动更新 phase，阶段守卫（guard `--apply`）会在退出条件满足后推进 `phase` 字段。
 
-展示联合决策时，提供本工作流支持的全部工作区隔离和执行方式。不得预检、推断或筛除其他 Skill、分支、worktree、子代理派发或 model 选择能否使用。用户选择后直接执行对应动作；若动作实际失败，停止并报告原错误。某个字段只剩一个工作流合法值时说明原因并直接采用，不为单选项制造额外停顿。
+展示联合决策时，提供本工作流支持的全部工作区隔离和执行方式。用户选择后直接执行对应动作；若动作实际失败，停止并报告原错误。某个字段只剩一个工作流合法值时说明原因并直接采用，不为单选项制造额外停顿。
 
 计划写入后只提供**一个联合决策点**，一次收集：是否现在继续、工作区隔离、执行方式、TDD 模式和代码审查模式。选择 `branch` 时，分支名也必须在 Step 2 的同一个联合决策中确认或由用户覆盖。不得先询问“继续/暂停”，继续后又创建第二个配置或命名阻塞点。
 
@@ -134,7 +134,7 @@ comet state set <name> build_pause null
 | 选项 | 技能 | 适用场景 |
 |------|------|---------|
 | A | Superpowers `subagent-driven-development` | 任务独立、复杂度高；每个任务在隔离的 implementer subagent 中执行，审查由 `review_mode` 驱动 |
-| B | Superpowers `executing-plans` | 任务简单、无子agent环境、轻量快速 |
+| B | Superpowers `executing-plans` | 由主会话按计划顺序执行，适合任务较少或紧密关联的改动 |
 
 **执行方式推荐规则**：
 - 任务数 ≥ 3 → 推荐 A

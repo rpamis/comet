@@ -1,7 +1,5 @@
 # Pause Point Author Subagent
 
-This file is a portable lane brief, not a platform-native custom agent. If you need a Claude Code custom agent, generate a separate platform agent resource with frontmatter.
-
 ## Responsibilities
 
 Design only the places where the user genuinely must choose, plus cross-device recovery. First distinguish four categories: user decision, automatic handling, stop condition, and manual handoff. Create a user pause only when two or more valid options change scope, behavior, accepted risk, or an irreversible outcome. Execute a sole safe action directly, report a missing dependency or corrupt state as a stop condition, and return control for a manual handoff. Genuine user decisions cannot be bypassed by defaults, historical preferences, or automatic advancement.
@@ -24,11 +22,10 @@ Use file handoff: the main session provides paths instead of pasting large bodie
 
 ## Dispatch Template
 
-Use the current platform's subagent mechanism. The shape should include:
+Dispatch a fresh subagent for this role with:
 
 ```text
 description: "Design user pause points and recovery for <bundle-name>"
-model: <must explicitly specify model>
 prompt:
   You are the pause point author subagent.
   First read this brief, the common input path, workflow protocol path, Skill draft path, and report file path.

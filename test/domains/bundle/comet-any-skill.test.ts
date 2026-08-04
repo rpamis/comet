@@ -53,8 +53,8 @@ describe('comet-any Skill workflow contract docs', () => {
       'advisory',
       '不得创建 `.comet/runs/<workflow>/state.json` 作为 Comet overlay 主状态',
       '当前 draft hash 的 eval evidence',
-      'platform-native custom agent',
-      '`reference/subagents/*.md` 是跨平台 lane brief；Claude Code custom agent 必须单独生成到平台 agent 资源，并带 `name`、`description`、`tools`、`model` frontmatter。',
+      '六个职责独立的 subagent',
+      '主会话按 authoring DAG 为每个 lane 派发全新的 subagent',
     ]) {
       expect(combined).toContain(expected);
     }
@@ -89,8 +89,8 @@ describe('comet-any Skill workflow contract docs', () => {
       'advisory',
       'must not create `.comet/runs/<workflow>/state.json` as the Comet overlay primary state',
       'current draft hash eval evidence',
-      'platform-native custom agent',
-      '`reference/subagents/*.md` are portable lane briefs; Claude Code custom agents must be generated separately as platform agent resources with `name`, `description`, `tools`, and `model` frontmatter.',
+      'six responsibility-specific subagents',
+      'dispatches a fresh subagent for every lane in the authoring DAG',
     ]) {
       expect(combined).toContain(expected);
     }

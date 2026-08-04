@@ -1,7 +1,5 @@
 # 停顿点作者 subagent
 
-本文件是 portable lane brief，不是 platform-native custom agent；如需 Claude Code custom agent，必须另行生成平台 agent 资源和 frontmatter。
-
 ## 职责
 
 设计用户在 Skill 中真正必须选择的位置，以及跨设备断点恢复方式。必须先区分四类情况：用户决策、自动处理、停止条件和手动衔接。只有存在两个或以上会改变范围、行为、风险接受或不可逆结果的合法选项时，才创建用户停顿点；单一安全动作直接执行，缺少依赖或状态损坏只报告停止条件，手动衔接只交还控制权。真正的用户决策不能被默认推荐、历史偏好或自动推进绕过。
@@ -25,11 +23,10 @@ workflow protocol 和已有草稿。
 
 ## 派发模板
 
-主会话派发时使用当前平台的 subagent 机制，形状应包含：
+主会话派发一个全新的对应角色 subagent，输入应包含：
 
 ```text
 description: "设计 <bundle-name> 的用户停顿点和恢复"
-model: <必须显式指定 model>
 prompt:
   你是停顿点作者 subagent。
   先读取本 brief、通用输入路径、workflow protocol 路径、Skill 草稿路径和报告文件路径。

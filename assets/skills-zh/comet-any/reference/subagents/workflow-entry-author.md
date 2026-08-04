@@ -1,7 +1,5 @@
 # Workflow Entry 作者 subagent
 
-本文件是 portable lane brief，不是 platform-native custom agent；如需 Claude Code custom agent，必须另行生成平台 agent 资源和 frontmatter。
-
 ## 职责
 
 编写生成 Skill 的 entry `SKILL.md`。entry 只负责入口、恢复、主路由说明和用户停顿点；不得把阶段路线写成会立即触发多个 Skill 的执行清单。
@@ -40,11 +38,10 @@ Auto 区的 Node 路由表仅供参考——不要复制成执行清单，不要
 
 ## 派发模板
 
-主会话派发时使用当前平台的 subagent 机制，形状应包含：
+主会话派发一个全新的对应角色 subagent，输入应包含：
 
 ```text
 description: "编写 <bundle-name> 的 workflow entry"
-model: <必须显式指定 model>
 prompt:
   你是 workflow entry 作者 subagent。
   先读取本 brief、通用输入路径、脚本契约路径、workflow protocol 路径和报告文件路径。

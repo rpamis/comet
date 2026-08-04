@@ -2,13 +2,9 @@
 
 ## Core Principles
 
-`/comet-any` authoring outputs should be drafted by platform-native subagents, then assembled and recorded by the main session through the backend CLI. Claude Code, Codex, Gemini, Copilot, and other platforms expose subagents differently; this reference defines responsibilities, inputs, and outputs, not a provider-specific dispatch API.
-
-`reference/subagents/*.md` are portable lane briefs; Claude Code custom agents must be generated separately as platform agent resources with `name`, `description`, `tools`, and `model` frontmatter. Do not install these portable lane briefs directly as platform-native custom agent resources.
+`/comet-any` authoring outputs are drafted by six responsibility-specific subagents, then assembled and recorded by the main session through the backend CLI. The main session dispatches a fresh subagent for every lane in the authoring DAG and supplies the matching `reference/subagents/*.md` file as that role's brief.
 
 Read this overview first, then give only the matching role brief to each subagent. Do not merge the six role briefs into one large prompt. The main session keeps global context, aggregates outputs, and calls `comet bundle` and `comet publish`; subagents only produce reviewable drafts.
-
-When the platform supports subagents, dispatch is required. If no platform subagent capability exists, the main session may execute the same briefs inline, but must mark that path as fallback in the user-facing summary and `reference/authoring-lanes.json`.
 
 All subagents only return Markdown outputs and structured review findings. They must not write Bundle state directly, execute candidate Skill scripts, or run publish, install, or distribution commands. CLI state remains owned by the main session.
 
@@ -38,15 +34,13 @@ Subagent outputs first become reviewable drafts, then flow into `reference/autho
 
 The Role Briefs order above is a linearization of the authoring DAG, not a mandate to run strictly sequential. The authoritative DAG lives in `reference/authoring-protocol.json` and `comet creator authoring-plan <name> --depth quick|full --json`:
 
-- **wave1** (`script`, `reference`, `pause-points`): no dependencies on each other. On platforms that expose subagents, dispatch these three concurrently. Each gets only its own role brief, common input, and the protocol/resolved-skills paths (file handoff, no shared history).
+- **wave1** (`script`, `reference`, `pause-points`): no dependencies on each other. Dispatch these three concurrently. Each gets only its own role brief, common input, and the protocol/resolved-skills paths (file handoff, no shared history).
 - **wave2** (`workflow-entry`, `skill-core`): depend on the script contract (`NEXT:`/`SKILL:` outputs). Start only after the script lane is DONE. The two may run concurrently with each other.
 - **barrier** (`skill-review`): the single synchronization point. Run only after wave1 and wave2 are all DONE; the reviewer must read every artifact and claim.
 
-Regardless of platform:
+Dispatch rules:
 
 - Sequencing follows DAG dependencies; only the barrier truly waits for all prior lanes.
-- On platforms without subagent capability, the main session runs the same lanes inline in dependency order — semantics are identical, only latency changes. Record `dispatchMode: "subagent"` or `"inline"` per lane in `reference/authoring-lanes.json`.
-- Claude Code may delegate a wave's fan-out to its `Workflow` tool as an optional accelerator; this is an implementation choice, not part of the contract. The contract is the protocol + schemas + DAG, which every platform can interpret.
 - Every lane output is validated and recorded via `comet creator authoring-record <name> --lane <id> --file <out.json> --json` before the next dependent wave begins.
 
 ## Common Inputs
@@ -92,11 +86,9 @@ Each subagent returns:
 ## Dispatch Notes
 
 - Create a fresh subagent for every dispatch; do not inherit main-session history. The main session provides only the role brief, input paths, and necessary background for that role.
-- Explicitly specify a model. If the platform does not support model selection, record `platform-default` in `reference/authoring-lanes.json`.
 - Use file handoff: provide paths instead of pasting large bodies of text. Common input, resolved Skill summaries, draft artifacts, and reports should move by path.
 - Each subagent receives only its role brief, common input, and necessary artifacts, not every other role's full brief.
 - The Skill review subagent must run after the other five author roles and must read all artifacts and claims.
 - The main session may ask a role to rework its output, but the rework still returns to `reference/authoring-lanes.json` and `reference/skill-review.md`.
 - Subagents cannot call `comet bundle`, `comet publish`, or `comet skill`, and cannot execute candidate Skill scripts.
 - If a status is `BLOCKED` or `NEEDS_CONTEXT`, the main session must add context, split the task, switch to a stronger model, or ask the user; it must not continue assembly.
-- Without platform subagent capability, inline fallback must preserve the same lane, claim, and finding structure.

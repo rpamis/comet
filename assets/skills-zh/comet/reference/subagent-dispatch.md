@@ -30,10 +30,8 @@
 
 ### 0. 派发强制约束（关键）
 
-主会话**仅负责协调**，禁止直接执行 task。主会话禁止修改源代码。协调者唯一允许的文件修改是 plan、OpenSpec task 和 subagent 进度检查点的持久化更新。不得把多个 task 打包给同一个 agent。每个 task 派发一个全新的后台 implementer agent；当 `review_mode` 需要审查或修复时，task reviewer、修复 agent 和 final reviewer 也必须分别使用全新的后台 agent：
+主会话**仅负责协调**，禁止直接执行 task。主会话禁止修改源代码。协调者唯一允许的文件修改是 plan、OpenSpec task 和 subagent 进度检查点的持久化更新。不得把多个 task 打包给同一个 agent。通过已加载的 Superpowers `subagent-driven-development` 技能，为每个 task 派发一个全新的后台 implementer agent；当 `review_mode` 需要审查或修复时，分别派发全新的 task reviewer、修复 agent 和 final reviewer：
 
-- **Claude Code**：对每个 implementer，以及 `review_mode` 要求的 task reviewer、修复 agent 和 final reviewer 使用 `Agent` 工具并设置 `run_in_background: true`。禁止内联执行 task，禁止错误进入需要预先创建 team 的团队模式。
-- **其他平台**：使用 agent / Task / 多 agent 派发机制，并按其调度、上下文和结果返回方式执行。
 - **禁止**跨 task 或角色复用 implementer、reviewer 或修复 agent。每个 agent 拥有全新的隔离上下文，并且只接收当前角色所需的单个 task 上下文。
 - 若子代理派发操作失败，不得继续派发或由主会话代写实现；将当前任务记录为 `BLOCKED` 并写明失败原因，按当前 change 的阻塞与恢复流程处理。
 
@@ -69,7 +67,7 @@ reviewer prompt 必须保持中立：
 - 不得在 reviewer prompt 中预判、压低或禁止报告某个发现。若某个可能发现与 plan 冲突，让 reviewer 先报告，再询问用户以哪个要求为准。
 - 不得把之前 task 的累计历史粘贴进后续派发。只提供当前 task、相关接口/约束，以及已加载的 Superpowers `subagent-driven-development` 技能暴露的交接产物。
 
-**Model 选择**：存在 model 选择参数时，为不同角色选择合适的 model；否则直接使用默认 model。不得伪造 model 参数，也不得把缺少选择参数写成阻塞条件。可选择时，遵循 Superpowers `subagent-driven-development` 的 Model Selection 规则：
+**Model 选择**：遵循 Superpowers `subagent-driven-development` 的 Model Selection 规则，为不同角色选择合适的 model：
 
 - **implementer / 修复 agent**：用 prose 描述的实现任务至少使用中档；多文件集成、需要模式匹配或调试 → 中档；需要设计判断或广泛理解代码库 → 高档。只有当 plan 文本已含完整待写代码（转写+测试），或只是单文件机械修复时，才用最便宜档。
 - **reviewer（任务级/最终）**：按 diff 大小、复杂度和风险缩放。小机械 diff 不需要最高档；微妙并发改动才上高档。

@@ -1988,9 +1988,7 @@ describe('skills', () => {
       );
       expect(zhBuild).toContain('主会话只负责协调，禁止直接编写实现代码');
       expect(zhBuild).toContain('提供本工作流支持的全部工作区隔离和执行方式');
-      expect(zhBuild).toContain(
-        '不得预检、推断或筛除其他 Skill、分支、worktree、子代理派发或 model 选择能否使用',
-      );
+      expect(zhBuild).not.toContain('不得预检、推断或筛除');
       expect(zhBuild).not.toContain('真实异步派发、独立上下文、结果回收和所需交接能力');
       expect(zhBuild).not.toContain('`platform-default`');
       expect(zhBuild).toContain('`comet state set <name> subagent_dispatch confirmed`');
@@ -2580,6 +2578,8 @@ describe('skills', () => {
       expect(zhBuild).toContain('一个联合决策点');
       expect(zhBuild).toContain('工作区隔离、执行方式、TDD 模式和代码审查模式');
       expect(zhBuild).toContain('读取 `comet/reference/subagent-dispatch.md` 获取 Comet 专属扩展');
+      expect(zhBuild).not.toContain('不得预检、推断或筛除');
+      expect(zhBuild).not.toContain('无子agent环境');
       expect(zhBuild).not.toContain('#### Subagent 调度协议');
       expect(zhDispatch).toContain('发生冲突时，以本文档中更具体的 Comet 约束为准');
       expect(zhDispatch).toContain(
@@ -2593,8 +2593,8 @@ describe('skills', () => {
       expect(zhDispatch).toContain('不得把多个 task 打包给同一个 agent');
       expect(zhDispatch).toContain('每个 task 派发一个全新的后台 implementer agent');
       expect(zhDispatch).toContain('task reviewer、修复 agent 和 final reviewer');
-      expect(zhDispatch).toContain('使用 agent / Task / 多 agent 派发机制');
-      expect(zhDispatch).toContain('不得把缺少选择参数写成阻塞条件');
+      expect(zhDispatch).toContain('通过已加载的 Superpowers `subagent-driven-development` 技能');
+      expect(zhDispatch).not.toContain('其他平台');
       expect(zhDispatch).not.toContain('工具名称相似不等于满足异步派发');
       expect(zhDispatch).not.toContain('platform-default');
       expect(zhDispatch).toContain(
@@ -2713,9 +2713,8 @@ describe('skills', () => {
       expect(enBuild).toContain(
         'provide every workspace-isolation and execution choice supported by this workflow',
       );
-      expect(enBuild).toContain(
-        'Do not preflight, infer, or filter whether another Skill, branch, worktree',
-      );
+      expect(enBuild).not.toContain('Do not preflight, infer, or filter');
+      expect(enBuild).not.toContain('no subagent environment');
       expect(enBuild).not.toContain(
         'real asynchronous execution, isolated context, result collection',
       );
@@ -2739,11 +2738,11 @@ describe('skills', () => {
         'comet state task-checkoff "<classic-change-dir>/tasks.md" "<openspec-task-text>"',
       );
       expect(enDispatch).toContain('fresh background implementer agent for every task');
-      expect(enDispatch).toContain('task reviewer, fix agents, and the final reviewer');
-      expect(enDispatch).toContain('Use the agent / Task / multi-agent dispatch mechanism');
+      expect(enDispatch).toContain('task reviewer, fix agent, and final reviewer');
       expect(enDispatch).toContain(
-        'Do not invent a model argument or turn a missing selector into a blocking condition',
+        'Through the loaded Superpowers `subagent-driven-development` skill',
       );
+      expect(enDispatch).not.toContain('Other platforms');
       expect(enDispatch).not.toContain(
         'real asynchronous execution, isolated context, result collection',
       );

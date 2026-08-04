@@ -1,7 +1,5 @@
 # 脚本作者 subagent
 
-本文件是 portable lane brief，不是 platform-native custom agent；如需 Claude Code custom agent，必须另行生成平台 agent 资源和 frontmatter。
-
 ## 职责
 
 设计候选 Skill 的脚本契约，而不是复制 Comet Classic 的脚本。脚本必须根据当前 workflow protocol、
@@ -29,11 +27,10 @@ artifact 的内容。
 
 ## 派发模板
 
-主会话派发时使用当前平台的 subagent 机制，形状应包含：
+主会话派发一个全新的对应角色 subagent，输入应包含：
 
 ```text
 description: "编写 <bundle-name> 的脚本契约"
-model: <必须显式指定 model>
 prompt:
   你是脚本作者 subagent。
   先读取本 brief、通用输入路径、workflow protocol 路径、resolved skills 路径和报告文件路径。

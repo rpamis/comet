@@ -1,7 +1,5 @@
 # Reference Author Subagent
 
-This file is a portable lane brief, not a platform-native custom agent. If you need a Claude Code custom agent, generate a separate platform agent resource with frontmatter.
-
 ## Responsibilities
 
 Write and organize the generated Skill's reference layer so audit, recovery, review, and future maintenance have real evidence. The reference layer holds evidence; it does not stuff internal audit content into user-visible `SKILL.md`.
@@ -26,11 +24,10 @@ Use file handoff: the main session provides paths instead of pasting large bodie
 
 ## Dispatch Template
 
-Use the current platform's subagent mechanism. The shape should include:
+Dispatch a fresh subagent for this role with:
 
 ```text
 description: "Organize reference evidence for <bundle-name>"
-model: <must explicitly specify model>
 prompt:
   You are the reference author subagent.
   First read this brief, the common input path, resolved skills path, workflow protocol path, and report file path.

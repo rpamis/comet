@@ -79,7 +79,7 @@ comet state set <name> plan docs/superpowers/plans/YYYY-MM-DD-feature.md
 
 No manual phase update needed — guard auto-transitions when exit conditions are met.
 
-When presenting the joint decision, provide every workspace-isolation and execution choice supported by this workflow. Do not preflight, infer, or filter whether another Skill, branch, worktree, subagent dispatch, or model selection can be used. After the user chooses, run the corresponding action; if it fails, stop and report the original error. If a field has only one workflow-valid value, explain why and apply it without manufacturing another pause.
+When presenting the joint decision, provide every workspace-isolation and execution choice supported by this workflow. After the user chooses, run the corresponding action; if it fails, stop and report the original error. If a field has only one workflow-valid value, explain why and apply it without manufacturing another pause.
 
 After recording the plan, provide exactly **one joint decision point** that collects whether to continue now, workspace isolation, execution method, TDD mode, and code review mode. The branch name must be confirmed in the same Step 2 joint decision when `branch` is selected. Do not ask continue/pause first and then create another configuration or naming blocker.
 
@@ -134,7 +134,7 @@ The plan is on the current branch. These settings are all part of the single Ste
 | Option | Skill | Applicable Scenario |
 |------|------|-------------------|
 | A | Superpowers `subagent-driven-development` | Independent tasks, high complexity; each task runs in an isolated implementer subagent with review driven by `review_mode` |
-| B | Superpowers `executing-plans` | Simple tasks, no subagent environment, lightweight and fast |
+| B | Superpowers `executing-plans` | The main session executes the plan sequentially; suitable for fewer or tightly coupled tasks |
 
 **Execution method recommendation rules**:
 - Task count ≥ 3 → Recommend A

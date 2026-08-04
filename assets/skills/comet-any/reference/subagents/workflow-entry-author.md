@@ -1,7 +1,5 @@
 # Workflow Entry Author Subagent
 
-This file is a portable lane brief, not a platform-native custom agent. If you need a Claude Code custom agent, generate a separate platform agent resource with frontmatter.
-
 ## Responsibilities
 
 Write the generated Skill's entry `SKILL.md`. The entry owns the entry point, recovery, main router explanation, and user pause points; it must not turn the Node route table into an execution checklist that immediately triggers multiple Skills.
@@ -41,11 +39,10 @@ Use file handoff: the main session provides paths instead of pasting large bodie
 
 ## Dispatch Template
 
-Use the current platform's subagent mechanism. The shape should include:
+Dispatch a fresh subagent for this role with:
 
 ```text
 description: "Write the workflow entry for <bundle-name>"
-model: <must explicitly specify model>
 prompt:
   You are the workflow entry author subagent.
   First read this brief, the common input path, script contract path, workflow protocol path, and report file path.

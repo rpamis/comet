@@ -1,7 +1,5 @@
 # Skill Core Author Subagent
 
-This file is a portable lane brief, not a platform-native custom agent. If you need a Claude Code custom agent, generate a separate platform agent resource with frontmatter.
-
 ## Responsibilities
 
 Write the user-visible core content for internal Node Skills. The entry Skill is owned separately by the workflow entry author. The goal is a Comet-like multi-Node workflow, not a simple chain of source Skills or a copied source Skill body.
@@ -69,11 +67,10 @@ Use file handoff: the main session provides paths instead of pasting large bodie
 
 ## Dispatch Template
 
-Use the current platform's subagent mechanism. The shape should include:
+Dispatch a fresh subagent for this role with:
 
 ```text
 description: "Write Skill core content for <bundle-name>"
-model: <must explicitly specify model>
 prompt:
   You are the Skill core author subagent.
   First read this brief, the common input path, script contract path, reference evidence path, and report file path.

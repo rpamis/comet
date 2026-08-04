@@ -1,7 +1,5 @@
 # Skill 审查 subagent
 
-本文件是 portable lane brief，不是 platform-native custom agent；如需 Claude Code custom agent，必须另行生成平台 agent 资源和 frontmatter。
-
 ## 职责
 
 审查其他 subagent 的 artifacts 和 claims，判断候选 Skill 是否已经像 Comet 一样可用。
@@ -21,11 +19,10 @@ claims。不得读取主会话历史来替代 artifact 证据。
 
 ## 派发模板
 
-主会话派发时使用当前平台的 subagent 机制，形状应包含：
+主会话派发一个全新的对应角色 subagent，输入应包含：
 
 ```text
 description: "审查 <bundle-name> 的 Comet-like Skill 产物"
-model: <必须显式指定 model>
 prompt:
   你是 Skill 审查 subagent。
   先读取本 brief、通用输入路径、五个作者报告路径、artifact 路径、claim 清单和报告文件路径。

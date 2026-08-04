@@ -101,6 +101,34 @@ describe('comet-any skill contract', () => {
     }
   });
 
+  it('dispatches authoring roles directly without platform capability branches (en + zh)', async () => {
+    const localeRoots = ['assets/skills/comet-any', 'assets/skills-zh/comet-any'];
+    const forbidden = [
+      'platform supports subagents',
+      'platform subagent capability',
+      'platform does not support model selection',
+      "current platform's subagent mechanism",
+      '平台支持 subagent',
+      '平台 subagent 能力',
+      '平台不支持 model 选择',
+      '当前平台的 subagent 机制',
+      'platform-native custom agent',
+    ];
+
+    for (const localeRoot of localeRoots) {
+      const docs = await readTree(path.resolve(REPO_ROOT, localeRoot));
+      const combined = Object.values(docs).join('\n');
+      for (const phrase of forbidden) {
+        expect(combined, `${localeRoot} still branches on ${phrase}`).not.toContain(phrase);
+      }
+    }
+
+    const zh = await readText('assets/skills-zh/comet-any/reference/authoring-subagents.md');
+    const en = await readText('assets/skills/comet-any/reference/authoring-subagents.md');
+    expect(zh).toContain('主会话按 authoring DAG 为每个 lane 派发全新的 subagent');
+    expect(en).toContain('dispatches a fresh subagent for every lane in the authoring DAG');
+  });
+
   it('generator source emits honest review evidence, not a fabricated approval', async () => {
     const packageSource = await readText('domains/factory/package.ts');
     expect(packageSource, 'generator must not fabricate review approval').not.toContain(

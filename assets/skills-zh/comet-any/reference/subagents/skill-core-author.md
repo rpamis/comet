@@ -1,7 +1,5 @@
 # Skill 核心作者 subagent
 
-本文件是 portable lane brief，不是 platform-native custom agent；如需 Claude Code custom agent，必须另行生成平台 agent 资源和 frontmatter。
-
 ## 职责
 
 编写 internal Node Skill 的用户可见核心内容。entry Skill 由 workflow entry 作者单独负责。目标是产出 Comet-like 的多 Node workflow，
@@ -70,11 +68,10 @@
 
 ## 派发模板
 
-主会话派发时使用当前平台的 subagent 机制，形状应包含：
+主会话派发一个全新的对应角色 subagent，输入应包含：
 
 ```text
 description: "编写 <bundle-name> 的 Skill 核心内容"
-model: <必须显式指定 model>
 prompt:
   你是 Skill 核心作者 subagent。
   先读取本 brief、通用输入路径、脚本契约路径、reference 证据路径和报告文件路径。

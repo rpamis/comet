@@ -1,7 +1,5 @@
 # reference 作者 subagent
 
-本文件是 portable lane brief，不是 platform-native custom agent；如需 Claude Code custom agent，必须另行生成平台 agent 资源和 frontmatter。
-
 ## 职责
 
 编写和整理候选 Skill 的 reference 层，让审计、恢复、评审和后续维护有真实依据。
@@ -28,11 +26,10 @@ reference。
 
 ## 派发模板
 
-主会话派发时使用当前平台的 subagent 机制，形状应包含：
+主会话派发一个全新的对应角色 subagent，输入应包含：
 
 ```text
 description: "整理 <bundle-name> 的 reference 证据"
-model: <必须显式指定 model>
 prompt:
   你是 reference 作者 subagent。
   先读取本 brief、通用输入路径、resolved skills 路径、workflow protocol 路径和报告文件路径。

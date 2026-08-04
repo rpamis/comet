@@ -30,10 +30,8 @@ Apply these on every task, in addition to the Superpowers skill's dispatch loop:
 
 ### 0. Dispatch Enforcement (Critical)
 
-The main session is the **coordinator only** and must NOT execute tasks directly or modify source code. The coordinator may modify only the plan, OpenSpec task, and subagent progress checkpoint for durable tracking. Never bundle multiple tasks into one agent. Dispatch a fresh background implementer agent for every task; when `review_mode` requires review or fixes, the task reviewer, fix agents, and the final reviewer must also each use a fresh background agent:
+The main session is the **coordinator only** and must NOT execute tasks directly or modify source code. The coordinator may modify only the plan, OpenSpec task, and subagent progress checkpoint for durable tracking. Never bundle multiple tasks into one agent. Through the loaded Superpowers `subagent-driven-development` skill, dispatch a fresh background implementer agent for every task; when `review_mode` requires review or fixes, dispatch a fresh task reviewer, fix agent, and final reviewer for each required role:
 
-- **Claude Code**: Use the `Agent` tool with `run_in_background: true` for each implementer, task reviewer, fix agent, and final reviewer. Never execute tasks inline and do not accidentally enter team mode, which requires a pre-created team.
-- **Other platforms**: Use the agent / Task / multi-agent dispatch mechanism. Follow its scheduling, context, and result-return semantics.
 - **Never** reuse implementers, reviewers, or fix agents across tasks or roles. Each agent gets a fresh, isolated context containing only the single task and role-specific context it needs.
 - If subagent dispatch fails, stop dispatching and do not let the main session implement the task. Record the current task as `BLOCKED` with the failure reason and follow the current change's blocked/recovery flow.
 
@@ -69,7 +67,7 @@ Reviewer prompts must stay neutral:
 - Do not pre-judge, suppress, or down-rank findings in the reviewer prompt. If a likely finding conflicts with the plan, let the reviewer report it, then ask the user which requirement governs.
 - Do not paste accumulated prior-task history into later dispatches. Give only the current task, the relevant interfaces/constraints, and the handoff artifacts exposed by the loaded Superpowers `subagent-driven-development` skill.
 
-**Model selection**: When a model selector is present, choose an appropriate model for each role. Otherwise use the default model. Do not invent a model argument or turn a missing selector into a blocking condition. When selection is available, follow the Superpowers `subagent-driven-development` Model Selection rules:
+**Model selection**: Follow the Superpowers `subagent-driven-development` Model Selection rules and choose an appropriate model for each role:
 
 - **Implementer / fix agent**: prose-described implementation work uses at least the standard tier; multi-file integration, pattern matching, or debugging → standard tier; requires design judgment or broad codebase understanding → most capable tier. Use the cheapest tier only when the plan text already contains the complete code to write (transcription + testing) or for a single-file mechanical fix.
 - **Reviewer (task-level / final)**: scale to the diff's size, complexity, and risk. A small mechanical diff does not need the most capable model; a subtle concurrency change does.
