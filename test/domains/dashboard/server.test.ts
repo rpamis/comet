@@ -11,6 +11,10 @@ import {
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import {
+  createNativeChange,
+  nativeChangeDir,
+} from '../../../domains/comet-native/native-change.js';
 
 interface HttpResult {
   status: number;
@@ -170,9 +174,13 @@ describe('startDashboardServer', () => {
   it('serves Native changes from a paginated endpoint instead of embedding them in overview', async () => {
     await writeProjectConfig(projectDir, defaultProjectConfig('docs'));
     const paths = await nativeProjectPaths(projectDir, 'docs');
-    await fs.mkdir(paths.changesDir, { recursive: true });
     for (let index = 0; index < 6; index += 1) {
-      await fs.mkdir(path.join(paths.changesDir, `native-server-${index}`));
+      const state = await createNativeChange({
+        paths,
+        name: `native-server-${index}`,
+        language: 'en',
+      });
+      await fs.writeFile(path.join(nativeChangeDir(paths, state.name), 'brief.md'), '# Outcome\n');
     }
 
     const handle = await startDashboardServer({
@@ -209,7 +217,18 @@ describe('startDashboardServer', () => {
     expect(first.total).toBe(6);
     expect(first.items).toHaveLength(5);
     expect(first.items.every((item) => item.status === 'active')).toBe(true);
+    expect(first.items[0]).not.toHaveProperty('artifacts');
     expect(first.nextCursor).toEqual(expect.any(String));
+
+    const detailResponse = await request(
+      handle.port,
+      `${base}/native-change?status=active&changeName=${encodeURIComponent(first.items[0].name)}`,
+    );
+    expect(detailResponse.status).toBe(200);
+    expect(JSON.parse(detailResponse.body)).toMatchObject({
+      name: first.items[0].name,
+      artifacts: [expect.objectContaining({ key: 'brief' })],
+    });
 
     const secondResponse = await request(
       handle.port,

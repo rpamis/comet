@@ -10,7 +10,11 @@ import {
   collectDashboardSnapshot,
   DashboardChangeQueryError,
 } from './collector.js';
-import { collectNativeDashboardChangePage, NativeDashboardQueryError } from './native-collector.js';
+import {
+  collectNativeDashboardChangeDetail,
+  collectNativeDashboardChangePage,
+  NativeDashboardQueryError,
+} from './native-collector.js';
 import { collectDashboardProjectDirectory, findDashboardProject } from './project-directory.js';
 import type { DashboardChangeTab } from './types.js';
 
@@ -176,6 +180,28 @@ async function handleRequest(
         query: url.searchParams.get('q') ?? undefined,
       });
       respondJson(res, req.method, 200, page);
+      return;
+    }
+
+    if (subpath === '/native-change') {
+      const changeName = url.searchParams.get('changeName');
+      const status = url.searchParams.get('status');
+      if (!changeName) {
+        throw new NativeDashboardQueryError('Missing Native Dashboard change name');
+      }
+      if (status !== 'active' && status !== 'archived') {
+        throw new NativeDashboardQueryError('Invalid Native Dashboard change status');
+      }
+      const detail = await collectNativeDashboardChangeDetail(project.path, {
+        status,
+        name: changeName,
+        archiveName: url.searchParams.get('archiveName') ?? undefined,
+      });
+      if (!detail) {
+        respondJson(res, req.method, 404, { error: 'Unknown Native Dashboard change' });
+        return;
+      }
+      respondJson(res, req.method, 200, detail);
       return;
     }
 

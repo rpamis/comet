@@ -14,6 +14,7 @@ import {
 } from '../../../domains/comet-native/native-config.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import {
+  collectNativeDashboardChangeDetail,
   collectNativeDashboardChangePage,
   collectNativeDashboardOverview,
   collectNativeDashboardProjection,
@@ -235,11 +236,16 @@ describe('Native Dashboard collector', () => {
     expect(projection?.changes.at(-1)?.name).toBe('dashboard-page-31');
   });
 
-  it('keeps the Native overview lightweight and pages full change projections', async () => {
+  it('keeps Native pages lightweight and loads one full change projection on demand', async () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('docs'));
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     for (let index = 0; index < 6; index += 1) {
-      await fs.mkdir(path.join(paths.changesDir, `dashboard-lazy-${index}`), { recursive: true });
+      const state = await createNativeChange({
+        paths,
+        name: `dashboard-lazy-${index}`,
+        language: 'en',
+      });
+      await fs.writeFile(path.join(nativeChangeDir(paths, state.name), 'brief.md'), brief);
     }
 
     const overview = await collectNativeDashboardOverview(projectRoot, {
@@ -260,6 +266,24 @@ describe('Native Dashboard collector', () => {
     expect(first).toMatchObject({ total: 6, items: expect.any(Array) });
     expect(first.items).toHaveLength(5);
     expect(first.nextCursor).toEqual(expect.any(String));
+    expect(first.items[0]).toMatchObject({
+      name: 'dashboard-lazy-0',
+      status: 'active',
+      phase: 'shape',
+    });
+    expect(first.items[0]).not.toHaveProperty('artifacts');
+    expect(first.items[0]).not.toHaveProperty('continuation');
+
+    const detail = await collectNativeDashboardChangeDetail(projectRoot, {
+      status: 'active',
+      name: first.items[0].name,
+      now: new Date('2026-07-17T10:00:00.000Z'),
+    });
+    expect(detail).toMatchObject({
+      name: 'dashboard-lazy-0',
+      artifacts: [expect.objectContaining({ key: 'brief', content: brief })],
+      continuation: expect.any(Object),
+    });
 
     const second = await collectNativeDashboardChangePage(projectRoot, {
       status: 'active',

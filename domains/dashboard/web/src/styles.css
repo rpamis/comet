@@ -343,6 +343,9 @@ body {
 
 .dashboard-change-list::-webkit-scrollbar,
 .dashboard-workspace-side::-webkit-scrollbar,
+.dashboard-workspace-region-stable .dashboard-workspace-center::-webkit-scrollbar,
+.dashboard-workspace-region-stable .change-detail::-webkit-scrollbar,
+.dashboard-workspace-region-stable .native-change-detail::-webkit-scrollbar,
 .dashboard-content-shell::-webkit-scrollbar {
   display: none;
   width: 0;
@@ -655,6 +658,10 @@ input {
 
 .change-detail {
   container-type: inline-size;
+}
+
+.dashboard-change-detail-loading {
+  min-height: 480px;
 }
 
 @container (min-width: 700px) {
@@ -1706,8 +1713,58 @@ body {
   -ms-overflow-style: none;
 }
 
+@media (min-width: 1280px) {
+  .dashboard-workspace-region-stable {
+    --dashboard-center-height: clamp(560px, 72dvh, 880px);
+  }
+
+  .dashboard-workspace-region-stable .dashboard-workspace-center {
+    height: var(--dashboard-center-height);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .dashboard-workspace-region-stable .native-change-detail {
+    height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .dashboard-workspace-region-stable .change-detail {
+    height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+}
+
 .dashboard-workspace-left-inner-scroll {
   overflow-y: visible;
+}
+
+@media (max-width: 1023px) {
+  .native-workspace-left {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .native-changes-explorer {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .native-changes-explorer-body,
+  .native-change-list {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
 }
 
 .dashboard-workspace-right {
@@ -1933,8 +1990,11 @@ body {
   font-size: 13px;
 }
 
-.dashboard-change-list-item.rounded-lg {
-  border-radius: 11px !important;
+.dashboard-change-list .dashboard-change-row-selected,
+.dashboard-change-list .dashboard-change-row-selected:hover {
+  --ant-btn-bg-color: #edf4ff;
+  --ant-btn-bg-color-hover: #edf4ff;
+  --ant-btn-bg-color-active: #edf4ff;
   background: #edf4ff !important;
 }
 
@@ -2203,8 +2263,13 @@ body {
   box-shadow: none;
 }
 
-:root[data-theme='dark'] .dashboard-change-list-item.rounded-lg,
-:host[data-theme='dark'] .dashboard-change-list-item.rounded-lg {
+:root[data-theme='dark'] .dashboard-change-list .dashboard-change-row-selected,
+:host[data-theme='dark'] .dashboard-change-list .dashboard-change-row-selected,
+:root[data-theme='dark'] .dashboard-change-list .dashboard-change-row-selected:hover,
+:host[data-theme='dark'] .dashboard-change-list .dashboard-change-row-selected:hover {
+  --ant-btn-bg-color: #1b2d48;
+  --ant-btn-bg-color-hover: #1b2d48;
+  --ant-btn-bg-color-active: #1b2d48;
   background: #1b2d48 !important;
 }
 

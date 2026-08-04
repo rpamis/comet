@@ -9,7 +9,7 @@ import {
   SafetyCertificateOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import { Button, Tooltip } from 'antd';
+import { Button, Spin, Tooltip } from 'antd';
 import { useAnimatedNumber } from './use-animated-number.js';
 import { DashboardWorkspaceRegion } from './workspace-layout.jsx';
 
@@ -77,11 +77,17 @@ export function NativeWorkflowPanel({
   hasMore = false,
   pageLoading = false,
   onLoadMore,
+  selectedDetail = null,
+  detailLoading = false,
+  detailError = null,
+  onSelect,
+  onRetryDetail,
   onPreview,
   onCopyChangeName,
 }) {
   const serverPaged = Array.isArray(pagedChanges);
   const listRef = useRef(null);
+  const loadMoreRef = useRef(null);
   const [visibleChangeCount, setVisibleChangeCount] = useState(NATIVE_CHANGE_PAGE_SIZE);
   const normalizedQuery = query.trim().toLowerCase();
   const sourceChanges = useMemo(() => {
@@ -94,7 +100,12 @@ export function NativeWorkflowPanel({
       return matchesTab && matchesQuery;
     });
   }, [native, normalizedQuery, pagedChanges, serverPaged, tab]);
-  const [selectedName, setSelectedName] = useState(null);
+  const [selectedKey, setSelectedKey] = useState(null);
+
+  const changeKey = useCallback(
+    (change) => `${change.status}:${change.archiveName ?? ''}:${change.name}`,
+    [],
+  );
 
   useEffect(() => {
     setVisibleChangeCount(NATIVE_CHANGE_PAGE_SIZE);
@@ -113,14 +124,67 @@ export function NativeWorkflowPanel({
   const hasMoreChanges = serverPaged ? hasMore : visibleChanges.length < sourceChanges.length;
 
   useEffect(() => {
+    if (!serverPaged || !hasMoreChanges) return undefined;
+    const target = loadMoreRef.current;
+    if (!target) return undefined;
+
+    const scrollContainer = listRef.current?.closest('.dashboard-content-shell');
+    const root =
+      scrollContainer && scrollContainer.scrollHeight > scrollContainer.clientHeight
+        ? scrollContainer
+        : null;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && !pageLoading) loadMoreChanges();
+      },
+      { root, rootMargin: '0px 0px 32px' },
+    );
+    observer.observe(target);
+    const frame = window.requestAnimationFrame(() => {
+      const targetRect = target.getBoundingClientRect();
+      const rootRect = root?.getBoundingClientRect();
+      const viewportTop = rootRect?.top ?? 0;
+      const viewportBottom = rootRect?.bottom ?? window.innerHeight;
+      if (
+        targetRect.top <= viewportBottom + 32 &&
+        targetRect.bottom >= viewportTop &&
+        !pageLoading
+      ) {
+        loadMoreChanges();
+      }
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [hasMoreChanges, loadMoreChanges, pageLoading, serverPaged]);
+
+  useEffect(() => {
     const element = listRef.current;
     if (!element || !hasMoreChanges) return undefined;
 
     const frame = window.requestAnimationFrame(() => {
-      if (element.scrollHeight <= element.clientHeight + 1) loadMoreChanges();
+      const fitsInList = element.scrollHeight <= element.clientHeight + 1;
+      const listBottom = element.getBoundingClientRect().bottom;
+      const fitsInViewport = listBottom <= window.innerHeight + 32;
+      if (fitsInList && (window.innerWidth >= 1024 || fitsInViewport)) loadMoreChanges();
     });
     return () => window.cancelAnimationFrame(frame);
   }, [hasMoreChanges, loadMoreChanges, visibleChangeCount]);
+
+  useEffect(() => {
+    if (!hasMoreChanges || window.innerWidth >= 1024) return undefined;
+
+    const handleWindowScroll = () => {
+      const element = listRef.current;
+      if (!element || pageLoading) return;
+      const { bottom } = element.getBoundingClientRect();
+      if (bottom <= window.innerHeight + 32) loadMoreChanges();
+    };
+
+    window.addEventListener('scroll', handleWindowScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleWindowScroll);
+  }, [hasMoreChanges, loadMoreChanges, pageLoading]);
 
   const handleListScroll = useCallback(
     (event) => {
@@ -132,14 +196,18 @@ export function NativeWorkflowPanel({
   );
 
   useEffect(() => {
-    setSelectedName((current) => {
-      if (visibleChanges.some((change) => change.name === current)) return current;
-      return visibleChanges[0]?.name ?? null;
+    setSelectedKey((current) => {
+      if (visibleChanges.some((change) => changeKey(change) === current)) return current;
+      return visibleChanges[0] ? changeKey(visibleChanges[0]) : null;
     });
-  }, [visibleChanges]);
+  }, [changeKey, visibleChanges]);
 
-  const selected =
-    visibleChanges.find((change) => change.name === selectedName) ?? visibleChanges[0] ?? null;
+  const selectedSummary =
+    visibleChanges.find((change) => changeKey(change) === selectedKey) ?? visibleChanges[0] ?? null;
+  useEffect(() => {
+    if (selectedSummary) onSelect?.(selectedSummary);
+  }, [onSelect, selectedSummary]);
+  const selected = serverPaged ? selectedDetail : selectedSummary;
   const hasNativeChanges = Boolean(native && native.totalChangeCount > 0);
 
   return (
@@ -152,23 +220,27 @@ export function NativeWorkflowPanel({
             : '当前项目尚无 Native 状态'
         }
       />
-      <NativeWorkflowSuggestion change={selected} />
+      <NativeWorkflowSuggestion change={selected ?? selectedSummary} />
       <NativeSummaryCards native={native} loadedChanges={visibleChanges} />
       <SectionHead title="Native 变更工作区" hint="查看轻量状态、验证结果与冲突摘要" />
       {!native || !hasNativeChanges ? (
         <EmptyState />
       ) : (
         <DashboardWorkspaceRegion
+          stableFrame
+          leftClassName="native-workspace-left"
           left={
             <NativeChangesExplorer
               changes={visibleChanges}
               total={serverPaged ? (total ?? sourceChanges.length) : sourceChanges.length}
-              selectedName={selected?.name ?? null}
+              selectedName={selectedSummary?.name ?? null}
               tab={tab}
               onTab={onTab}
-              onSelect={setSelectedName}
+              onSelect={(change) => setSelectedKey(changeKey(change))}
               listRef={listRef}
+              loadMoreRef={loadMoreRef}
               hasMore={hasMoreChanges}
+              pageLoading={pageLoading}
               onScroll={handleListScroll}
             />
           }
@@ -179,6 +251,17 @@ export function NativeWorkflowPanel({
                 onPreview={onPreview}
                 onCopyChangeName={onCopyChangeName}
               />
+            ) : selectedSummary && (detailLoading || !detailError) ? (
+              <div className="native-change-detail dashboard-change-detail-loading min-w-0 rounded-lg border border-border bg-bg p-10 text-center text-sm text-muted shadow-raised">
+                正在加载 Native 变更详情…
+              </div>
+            ) : detailError ? (
+              <div className="native-change-detail dashboard-change-detail-loading min-w-0 rounded-lg border border-border bg-bg p-10 text-center text-sm text-danger shadow-raised">
+                <p role="alert">Native 变更详情加载失败：{detailError.reason}</p>
+                <Button className="mt-4" onClick={onRetryDetail}>
+                  重新加载
+                </Button>
+              </div>
             ) : (
               <NativeWorkspaceEmptyState native={native} tab={tab} query={query} onTab={onTab} />
             )
@@ -342,7 +425,9 @@ function NativeChangesExplorer({
   onTab,
   onSelect,
   listRef,
+  loadMoreRef,
   hasMore,
+  pageLoading,
   onScroll,
 }) {
   return (
@@ -377,13 +462,19 @@ function NativeChangesExplorer({
           onScroll={onScroll}
         >
           {changes.length === 0 ? (
-            <div className="py-8 text-center text-sm text-muted">
-              {tab === 'active'
-                ? '暂无活跃变更'
-                : tab === 'archived'
-                  ? '暂无已归档变更'
-                  : '没有匹配的 Native change'}
-            </div>
+            pageLoading ? (
+              <div className="flex justify-center py-8">
+                <Spin aria-label="正在加载 Native 变更列表" />
+              </div>
+            ) : (
+              <div className="py-8 text-center text-sm text-muted">
+                {tab === 'active'
+                  ? '暂无活跃变更'
+                  : tab === 'archived'
+                    ? '暂无已归档变更'
+                    : '没有匹配的 Native change'}
+              </div>
+            )
           ) : (
             changes.map((change) => {
               const progress = nativeChangeAcceptanceProgress(change);
@@ -395,7 +486,7 @@ function NativeChangesExplorer({
                   <button
                     type="button"
                     className="native-change-row"
-                    onClick={() => onSelect(change.name)}
+                    onClick={() => onSelect(change)}
                   >
                     <div className="flex w-full items-center gap-2.5 text-left">
                       <div className="min-w-0 flex-1">
@@ -426,7 +517,11 @@ function NativeChangesExplorer({
             })
           )}
           {hasMore && (
-            <div className="py-2 text-center text-xs text-meta" aria-live="polite">
+            <div
+              ref={loadMoreRef}
+              className="py-2 text-center text-xs text-meta"
+              aria-live="polite"
+            >
               继续下滑加载更多
             </div>
           )}

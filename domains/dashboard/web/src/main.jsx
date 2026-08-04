@@ -45,6 +45,7 @@ import {
   isStaleNativeDashboardCursorError,
   refreshDashboardPage,
   shouldAutoLoadDashboardDetail,
+  shouldShowDashboardDetailLoading,
 } from './dashboard-web-state.js';
 import './styles.css';
 
@@ -166,6 +167,9 @@ function DashboardApp({ theme, onToggleTheme }) {
   const [nativePages, setNativePages] = useState({ active: null, archived: null, all: null });
   const [pageLoading, setPageLoading] = useState(null);
   const [nativePageLoading, setNativePageLoading] = useState(null);
+  const [nativeSelectedDetail, setNativeSelectedDetail] = useState(null);
+  const [nativeDetailLoading, setNativeDetailLoading] = useState(false);
+  const [nativeDetailError, setNativeDetailError] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [selectedDetail, setSelectedDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -178,6 +182,7 @@ function DashboardApp({ theme, onToggleTheme }) {
   const snapshotRequestRef = useRef(null);
   const pageRequestRef = useRef(null);
   const nativePageRequestRef = useRef(null);
+  const nativeDetailRequestRef = useRef(null);
   const detailRequestRef = useRef(null);
   const selectedIdRef = useRef(null);
   const pagesRef = useRef({ active: null, archived: null, all: null });
@@ -283,6 +288,7 @@ function DashboardApp({ theme, onToggleTheme }) {
       snapshotRequestRef.current?.abort();
       pageRequestRef.current?.abort();
       nativePageRequestRef.current?.abort();
+      nativeDetailRequestRef.current?.abort();
       detailRequestRef.current?.abort();
     },
     [],
@@ -414,6 +420,44 @@ function DashboardApp({ theme, onToggleTheme }) {
     [activeProjectId, query, snapshot, toast, useDemo, workflow],
   );
 
+  const selectNativeChange = useCallback(
+    async (change) => {
+      if (!change) return;
+      setNativeDetailError(null);
+      if (useDemo) {
+        setNativeSelectedDetail(change);
+        return;
+      }
+      if (!activeProjectId) return;
+      nativeDetailRequestRef.current?.abort();
+      const controller = new AbortController();
+      nativeDetailRequestRef.current = controller;
+      setNativeDetailLoading(true);
+      try {
+        const detail = await fetchDashboardNativeChangeDetail(
+          activeProjectId,
+          change,
+          controller.signal,
+        );
+        if (nativeDetailRequestRef.current !== controller || controller.signal.aborted) return;
+        setNativeSelectedDetail(detail);
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        setNativeDetailError({
+          change,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+        toast(`Native 变更详情加载失败：${error.message}`, 'error');
+      } finally {
+        if (nativeDetailRequestRef.current === controller) {
+          nativeDetailRequestRef.current = null;
+          setNativeDetailLoading(false);
+        }
+      }
+    },
+    [activeProjectId, toast, useDemo],
+  );
+
   useEffect(() => {
     if (useDemo || workflow !== 'native' || !snapshot?.native || nativePages[tab]) return;
     void loadNativePage(tab);
@@ -427,9 +471,15 @@ function DashboardApp({ theme, onToggleTheme }) {
   const activePage = pages[tab];
   const visibleTotal = useDemo ? visible.length : (activePage?.total ?? visible.length);
   const nativePage = nativePages[tab];
+  const nativeOverviewTotal =
+    tab === 'active'
+      ? (snapshot?.native?.activeChangeCount ?? 0)
+      : tab === 'archived'
+        ? (snapshot?.native?.archivedChangeCount ?? 0)
+        : (snapshot?.native?.totalChangeCount ?? 0);
   const nativeVisibleTotal = useDemo
     ? (snapshot?.native?.changes?.length ?? 0)
-    : (nativePage?.total ?? nativePage?.items?.length ?? 0);
+    : (nativePage?.total ?? nativeOverviewTotal);
 
   const selectChange = useCallback(
     async (id) => {
@@ -444,7 +494,6 @@ function DashboardApp({ theme, onToggleTheme }) {
       detailRequestRef.current?.abort();
       const controller = new AbortController();
       detailRequestRef.current = controller;
-      setSelectedDetail(null);
       setDetailLoading(true);
       try {
         const detail = await fetchDashboardChangeDetail(activeProjectId, id, controller.signal);
@@ -526,6 +575,7 @@ function DashboardApp({ theme, onToggleTheme }) {
             snapshotRequestRef.current?.abort();
             pageRequestRef.current?.abort();
             nativePageRequestRef.current?.abort();
+            nativeDetailRequestRef.current?.abort();
             detailRequestRef.current?.abort();
             setActiveProjectId(nextProjectId);
             setSnapshot(null);
@@ -533,6 +583,8 @@ function DashboardApp({ theme, onToggleTheme }) {
             pagesRef.current = { active: null, archived: null, all: null };
             setNativePages({ active: null, archived: null, all: null });
             nativePagesRef.current = { active: null, archived: null, all: null };
+            setNativeSelectedDetail(null);
+            setNativeDetailError(null);
             setSelectedId(null);
             selectedIdRef.current = null;
             setSelectedDetail(null);
@@ -562,8 +614,15 @@ function DashboardApp({ theme, onToggleTheme }) {
                 pagedChanges={useDemo ? null : (nativePage?.items ?? [])}
                 total={nativeVisibleTotal}
                 hasMore={Boolean(nativePage?.nextCursor)}
-                pageLoading={nativePageLoading === tab}
+                pageLoading={nativePageLoading === tab || (!useDemo && !nativePage)}
                 onLoadMore={() => loadNativePage(tab, true)}
+                selectedDetail={nativeSelectedDetail}
+                detailLoading={nativeDetailLoading}
+                detailError={nativeDetailError}
+                onSelect={selectNativeChange}
+                onRetryDetail={() =>
+                  nativeDetailError?.change && selectNativeChange(nativeDetailError.change)
+                }
                 onPreview={setArtifact}
                 onCopyChangeName={(name) =>
                   copyText(name)
@@ -696,6 +755,12 @@ function Dashboard({
 }) {
   const hasClassicChanges = snapshot.summary.activeChanges + snapshot.summary.archivedChanges > 0;
   const classicWarning = snapshot.classicError && hasClassicChanges;
+  const detailPending = shouldShowDashboardDetailLoading({
+    detailLoading,
+    selectedId,
+    selectedDetailId: selected?.id ?? null,
+    failedDetailId: detailError?.id ?? null,
+  });
   return (
     <div className="mx-auto min-w-0 max-w-dashboard">
       <SectionHead
@@ -717,6 +782,7 @@ function Dashboard({
           {classicWarning ? <ClassicWarning error={snapshot.classicError} /> : null}
           <DashboardWorkspaceRegion
             leftClassName="dashboard-workspace-left-inner-scroll"
+            stableFrame
             left={
               <AntChangesExplorer
                 visible={visible}
@@ -733,8 +799,8 @@ function Dashboard({
             center={
               selected ? (
                 <AntChangeDetail change={selected} onPreview={onPreview} />
-              ) : detailLoading ? (
-                <div className="change-detail min-w-0 rounded-lg bg-bg p-10 text-center text-sm text-muted shadow-raised">
+              ) : detailPending ? (
+                <div className="change-detail dashboard-change-detail-loading min-w-0 rounded-lg bg-bg p-10 text-center text-sm text-muted shadow-raised">
                   正在加载变更详情…
                 </div>
               ) : detailError ? (
@@ -1642,6 +1708,17 @@ async function fetchDashboardNativeChangePage(projectId, status, options = {}) {
   return res.json();
 }
 
+async function fetchDashboardNativeChangeDetail(projectId, change, signal) {
+  const params = new URLSearchParams({ status: change.status, changeName: change.name });
+  if (change.archiveName) params.set('archiveName', change.archiveName);
+  const res = await fetch(
+    `/api/dashboard/projects/${encodeURIComponent(projectId)}/native-change?${params.toString()}`,
+    { cache: 'no-store', signal },
+  );
+  if (!res.ok) throw await dashboardResponseError(res);
+  return res.json();
+}
+
 async function fetchDashboardChangeDetail(projectId, changeId, signal) {
   const params = new URLSearchParams({ changeId });
   const res = await fetch(
@@ -2008,12 +2085,10 @@ function DashboardChangeList({ visible, selectedId, onSelect, hasMore, pageLoadi
         visible.map((change) => (
           <div
             key={change.id}
-            className={`dashboard-change-list-item ${
-              change.id === selectedId ? 'rounded-lg bg-accent-softer px-2' : 'px-2'
-            }`}
+            className={`dashboard-change-list-item ${change.id === selectedId ? 'selected' : ''} px-2`}
           >
             <Button
-              className="dashboard-change-row"
+              className={`dashboard-change-row ${change.id === selectedId ? 'dashboard-change-row-selected' : ''}`}
               type="text"
               block
               onClick={() => onSelect(change.id)}

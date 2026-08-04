@@ -508,7 +508,7 @@ test('fills the change explorer from five-row pages and continues on scroll', as
   await page.getByRole('tab', { name: '全部' }).click();
 
   const list = page.getByRole('tabpanel', { name: '全部' }).locator('.dashboard-change-list');
-  await expect(list.locator('.dashboard-change-list-item')).toHaveCount(13);
+  await expect(list.locator('.dashboard-change-list-item')).toHaveCount(10);
   await expect
     .poll(() => pageRequests.filter((request) => request.includes('status=all')).length)
     .toBeGreaterThanOrEqual(2);
@@ -520,6 +520,360 @@ test('fills the change explorer from five-row pages and continues on scroll', as
     .poll(() => pageRequests.filter((request) => request.includes('status=all')).length)
     .toBeGreaterThanOrEqual(3);
   await expect(list.locator('.dashboard-change-list-item')).toHaveCount(13);
+});
+
+test('keeps the Native change list scrollable on a narrow viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/?demo');
+  await page.getByRole('button', { name: '打开导航' }).click();
+  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
+
+  const list = page.locator('.native-change-list');
+  await expect(list.locator('.native-change-row')).toHaveCount(5);
+  const initialCount = await list.locator('.native-change-row').count();
+
+  const metrics = await list.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+    overflowY: getComputedStyle(element).overflowY,
+  }));
+  expect(metrics.overflowY).toBe('visible');
+  expect(metrics.scrollHeight).toBe(metrics.clientHeight);
+
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollHeight > window.innerHeight))
+    .toBe(true);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect.poll(() => list.locator('.native-change-row').count()).toBeGreaterThan(initialCount);
+});
+
+test('fills a server-paged Native list when its footer is already visible', async ({ page }) => {
+  const nativeItems = Array.from({ length: 8 }, (_, index) => ({
+    workflow: 'native',
+    name: `native-${index + 1}`,
+    status: 'archived',
+    archivedAt: '2026-08-04',
+    phase: 'archive',
+    revision: index + 1,
+    selected: index === 0,
+    approval: 'confirmed',
+    nextCommand: null,
+    verificationResult: 'pass',
+    verificationFreshness: 'complete',
+    archiveReady: true,
+    continuation: {
+      disposition: 'done',
+      action: 'archive',
+      command: null,
+      requiresUserDecision: false,
+      requiredInputs: [],
+      requiredInputsTruncated: false,
+    },
+    findings: { total: 0, errors: 0, warnings: 0, info: 0, requiresUserDecision: false, codes: [] },
+    conflicts: { visibleDefiniteConflict: 0, visiblePossibleOverlap: 0, peers: [] },
+    artifacts: [],
+    progress: {
+      createdAt: '2026-08-04T00:00:00.000Z',
+      checkpointAt: null,
+      checkpointPhase: null,
+      summary: '已完成',
+      nextAction: null,
+      artifactCount: 0,
+    },
+    specs: { total: 0, create: 0, replace: 0, remove: 0, capabilities: [] },
+    acceptance: { total: 1, evidenced: 1, skipped: 0, missing: 0 },
+    implementation: null,
+    repair: null,
+  }));
+
+  const pageRequests: string[] = [];
+  const detailRequests: string[] = [];
+  let releaseFirstPage = () => {};
+  const firstPageGate = new Promise<void>((resolve) => {
+    releaseFirstPage = resolve;
+  });
+  await page.route('**/api/dashboard/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/dashboard/projects') {
+      await route.fulfill({
+        json: {
+          currentProjectId: 'fixture-project',
+          projects: [
+            {
+              id: 'fixture-project',
+              name: 'Fixture',
+              path: '/fixture',
+              lastSeenAt: null,
+              availability: 'available',
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/overview')) {
+      await route.fulfill({
+        json: {
+          project: { name: 'Fixture', path: '/fixture', generatedAt: '2026-08-04T00:00:00.000Z' },
+          summary: {
+            activeChanges: 0,
+            archivedChanges: 0,
+            verifyFailed: 0,
+            tasksIncomplete: 0,
+            dirtyFiles: 0,
+          },
+          initialChanges: { status: 'active', items: [], total: 0, nextCursor: null },
+          native: {
+            schema: 'comet.dashboard.native.v1',
+            generatedAt: '2026-08-04T00:00:00.000Z',
+            totalChangeCount: nativeItems.length,
+            visibleChangeCount: 0,
+            archivedChangeCount: nativeItems.length,
+            changes: [],
+            activeChangeCount: 0,
+            conflicts: {
+              available: true,
+              definiteConflict: 0,
+              possibleOverlap: 0,
+              disjoint: nativeItems.length,
+              relationshipCount: 0,
+              visibleRelationshipCount: 0,
+              omittedRelationshipCount: 0,
+              relationshipsTruncated: false,
+            },
+          },
+          git: {
+            branch: 'main',
+            head: 'abc1234',
+            dirtyFiles: 0,
+            dirtyFileList: [],
+            recentCommits: [],
+          },
+          risks: [],
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/native-changes')) {
+      pageRequests.push(url.search);
+      const offset = Number(url.searchParams.get('cursor') ?? 0);
+      if (offset === 0) await firstPageGate;
+      await route.fulfill({
+        json: {
+          status: 'archived',
+          items: nativeItems.slice(offset, offset + 5).map((change) => ({
+            workflow: 'native',
+            name: change.name,
+            status: change.status,
+            archivedAt: change.archivedAt,
+            phase: change.phase,
+            revision: change.revision,
+            verificationResult: change.verificationResult,
+            verificationFreshness: change.verificationFreshness,
+          })),
+          total: nativeItems.length,
+          nextCursor: offset + 5 < nativeItems.length ? String(offset + 5) : null,
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/native-change')) {
+      const name = url.searchParams.get('changeName');
+      detailRequests.push(name ?? '');
+      await route.fulfill({ json: nativeItems.find((change) => change.name === name) });
+      return;
+    }
+    await route.continue();
+  });
+
+  await page.setViewportSize({ width: 896, height: 2000 });
+  await page.goto('/');
+  await page.getByRole('button', { name: '打开导航' }).click();
+  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
+  await page.getByRole('tab', { name: '已归档' }).click();
+
+  const list = page.locator('.native-change-list');
+  await expect
+    .poll(() => pageRequests.filter((request) => request.includes('status=archived')).length)
+    .toBeGreaterThanOrEqual(1);
+  await expect(page.locator('.native-changes-count')).toHaveText('8');
+  await expect(list.locator('.ant-spin')).toBeVisible();
+  await expect(list.getByText('暂无已归档变更')).toHaveCount(0);
+  releaseFirstPage();
+  await expect.poll(() => pageRequests.length).toBeGreaterThanOrEqual(2);
+  await expect(list.locator('.native-change-row')).toHaveCount(8);
+  await expect.poll(() => detailRequests).toContain('native-1');
+  await list.locator('.native-change-row').nth(1).click();
+  await expect.poll(() => detailRequests).toContain('native-2');
+  await expect(page.locator('.native-change-detail h3')).toHaveText('native-2');
+});
+
+test('keeps the current Classic detail visible while another change loads', async ({ page }) => {
+  const changes = [
+    { id: 'classic-one', displayName: 'classic-one' },
+    { id: 'classic-two', displayName: 'classic-two' },
+  ].map((entry, index) => ({
+    ...entry,
+    name: entry.id,
+    status: 'active',
+    relativePath: `openspec/changes/${entry.id}`,
+    workflow: 'feature',
+    phase: 'build',
+    updatedAt: '2026-08-04T00:00:00.000Z',
+    tasks: { completed: index + 1, total: 2 },
+    verify: { result: 'pending', reportExists: false },
+  }));
+  let firstDetailStarted = false;
+  let secondDetailStarted = false;
+
+  const detailFor = (change) => ({
+    ...change,
+    dir: change.relativePath,
+    changesRelative: 'openspec/changes',
+    tasks: { ...change.tasks, incomplete: [], sections: [] },
+    artifacts: {
+      proposal: false,
+      design: false,
+      tasks: false,
+      plan: false,
+      verifyReport: false,
+      cometYaml: false,
+      grouped: [],
+    },
+    artifactPreviews: [],
+    verify: { ...change.verify, reportExists: false },
+    next: { command: null, reason: '', description: '' },
+    risks: [],
+  });
+
+  await page.route('**/api/dashboard/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/dashboard/projects') {
+      await route.fulfill({
+        json: {
+          currentProjectId: 'fixture-project',
+          projects: [
+            {
+              id: 'fixture-project',
+              name: 'Fixture',
+              path: '/fixture',
+              lastSeenAt: null,
+              availability: 'available',
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/overview')) {
+      await route.fulfill({
+        json: {
+          project: { name: 'Fixture', path: '/fixture', generatedAt: '2026-08-04T00:00:00.000Z' },
+          summary: {
+            activeChanges: changes.length,
+            archivedChanges: 0,
+            verifyFailed: 0,
+            tasksIncomplete: 1,
+            dirtyFiles: 0,
+          },
+          initialChanges: {
+            status: 'active',
+            items: changes,
+            total: changes.length,
+            nextCursor: null,
+          },
+          git: {
+            branch: 'main',
+            head: 'abc1234',
+            dirtyFiles: 0,
+            dirtyFileList: [],
+            recentCommits: [],
+          },
+          risks: [],
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/changes')) {
+      await route.fulfill({
+        json: { status: 'active', items: changes, total: changes.length, nextCursor: null },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/change')) {
+      const change =
+        changes.find((entry) => entry.id === url.searchParams.get('changeId')) ?? changes[0];
+      if (change.id === 'classic-one') {
+        firstDetailStarted = true;
+        await new Promise((resolve) => setTimeout(resolve, 600));
+      } else if (change.id === 'classic-two') {
+        secondDetailStarted = true;
+        await new Promise((resolve) => setTimeout(resolve, 600));
+      }
+      await route.fulfill({ json: detailFor(change) });
+      return;
+    }
+    await route.continue();
+  });
+
+  await page.goto('/');
+  await expect.poll(() => firstDetailStarted).toBe(true);
+  const loadingCenter = await page.locator('.dashboard-workspace-center').boundingBox();
+  const loadingExplorer = await page.locator('.classic-changes-explorer').boundingBox();
+  if (!loadingCenter) throw new Error('Expected loading detail layout bounds');
+  expect(loadingCenter.height).toBeGreaterThanOrEqual(480);
+
+  const detailTitle = page.locator('.change-detail > .ant-card-head .ant-card-head-title');
+  await expect(detailTitle).toHaveText('classic-one');
+  const loadedExplorer = await page.locator('.classic-changes-explorer').boundingBox();
+  if (!loadingExplorer || !loadedExplorer) throw new Error('Expected Classic explorer bounds');
+  expect(Math.abs(loadedExplorer.height - loadingExplorer.height)).toBeLessThanOrEqual(1);
+  const before = await page.locator('.dashboard-workspace-center').boundingBox();
+
+  await page.locator('.dashboard-change-row').filter({ hasText: 'classic-two' }).click();
+  await expect.poll(() => secondDetailStarted).toBe(true);
+  await expect(detailTitle).toHaveText('classic-one');
+  const during = await page.locator('.dashboard-workspace-center').boundingBox();
+  if (!before || !during) throw new Error('Expected detail layout bounds');
+  expect(Math.abs(during.height - before.height)).toBeLessThanOrEqual(1);
+
+  await expect(detailTitle).toHaveText('classic-two');
+});
+
+test('uses one selection surface for the Classic change row', async ({ page }) => {
+  await page.goto('/?demo');
+
+  const row = page.locator('.dashboard-change-row').nth(1);
+  await row.click();
+  await expect(row).toHaveCSS('background-color', 'rgb(237, 244, 255)');
+
+  const layers = await row.evaluate((element) => {
+    const wrapper = element.parentElement;
+    if (!(wrapper instanceof HTMLElement)) throw new Error('Missing change row wrapper');
+    return {
+      wrapperBackground: getComputedStyle(wrapper).backgroundColor,
+      rowBackground: getComputedStyle(element).backgroundColor,
+      rowClassName: element.className,
+    };
+  });
+
+  expect(layers.wrapperBackground).toBe('rgba(0, 0, 0, 0)');
+  expect(layers.rowClassName).toContain('dashboard-change-row-selected');
+  expect(layers.rowBackground).toBe('rgb(237, 244, 255)');
+});
+
+test('keeps the Classic change explorer frame stable when selecting a change', async ({ page }) => {
+  await page.setViewportSize({ width: 1680, height: 1005 });
+  await page.goto('/?demo');
+  const row = page.locator('.dashboard-change-row').nth(1);
+  await expect(row).toBeVisible();
+  const before = await page.locator('.classic-changes-explorer').boundingBox();
+  await row.click({ noWaitAfter: true });
+  const after = await page.locator('.classic-changes-explorer').boundingBox();
+  if (!before || !after) throw new Error('Expected Classic change explorer bounds');
+  expect(Math.abs(after.height - before.height)).toBeLessThanOrEqual(1);
 });
 
 test('keeps Classic and Native side panels within the center panel height', async ({ page }) => {
@@ -556,6 +910,16 @@ test('keeps Classic and Native side panels within the center panel height', asyn
     if (!centerBox || !frameBox) throw new Error('Expected workspace frame bounds');
     expect(frameBox.height).toBeLessThanOrEqual(centerBox.height + 1);
     expect(frameBox.height).toBeGreaterThanOrEqual(centerBox.height - 1);
+    if (!native) {
+      const classicDetail = workspace.locator('.change-detail');
+      const detailBox = await classicDetail.boundingBox();
+      if (!detailBox) throw new Error('Expected Classic detail bounds');
+      expect(Math.abs(detailBox.height - centerBox.height)).toBeLessThanOrEqual(1);
+      expect(
+        Math.abs(detailBox.y + detailBox.height - (centerBox.y + centerBox.height)),
+      ).toBeLessThanOrEqual(1);
+      await expect(classicDetail).toHaveCSS('overflow-y', 'auto');
+    }
     if (native) {
       await expect(workspace.locator('.dashboard-workspace-left')).toHaveCSS('overflow-y', 'auto');
       const nativeExplorer = workspace.locator('.native-changes-explorer');
@@ -593,6 +957,18 @@ test('keeps Classic and Native side panels within the center panel height', asyn
       await expect(rightPanel).toHaveCSS('border-radius', '15px');
       await expect(nativeExplorer).toHaveCSS('border-radius', '15px');
       await expect(nativeDetail).toHaveCSS('border-radius', '15px');
+      const [nativeCenterBox, nativeDetailBox] = await Promise.all([
+        center.boundingBox(),
+        nativeDetail.boundingBox(),
+      ]);
+      if (!nativeCenterBox || !nativeDetailBox) throw new Error('Expected Native detail bounds');
+      expect(Math.abs(nativeDetailBox.height - nativeCenterBox.height)).toBeLessThanOrEqual(1);
+      expect(
+        Math.abs(
+          nativeDetailBox.y + nativeDetailBox.height - (nativeCenterBox.y + nativeCenterBox.height),
+        ),
+      ).toBeLessThanOrEqual(1);
+      await expect(nativeDetail).toHaveCSS('overflow-y', 'auto');
       await expect(nativeExplorer).toHaveCSS('border-top-width', '1px');
       await expect(nativeExplorer).toHaveCSS('border-bottom-width', '1px');
       await expect(nativeExplorer).toHaveCSS('overflow-y', 'hidden');

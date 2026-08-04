@@ -30,6 +30,7 @@ import {
   type NativeDashboardArtifactPreview,
   type NativeDashboardAcceptanceSummary,
   type NativeDashboardChangeProjection,
+  type NativeDashboardChangeListItem,
   type NativeDashboardConflictSummary,
   type NativeDashboardImplementationSummary,
   type NativeDashboardSpecSummary,
@@ -250,17 +251,62 @@ async function listArchivedNativeEntries(
     if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
     const match = ARCHIVE_NAME_PATTERN.exec(entry.name);
     if (!match) continue;
-    const changeDir = path.join(paths.archiveDir, entry.name);
-    await resolveContainedNativePath(paths.nativeRoot, changeDir);
-    try {
-      const state = await readNativeChangeFile(path.join(changeDir, NATIVE_CHANGE_STATE_FILE));
-      if (!state.archived || entry.name !== `${match[1]}-${state.name}`) continue;
-      archived.push({ status: 'archived', name: state.name, archiveName: entry.name });
-    } catch {
-      // Invalid or unreadable archives are omitted from the read-only Dashboard projection.
-    }
+    archived.push({ status: 'archived', name: match[2], archiveName: entry.name });
   }
   return archived;
+}
+
+function nativeListVerificationFreshness(
+  result: NativeChangeState['verification_result'],
+  archived: boolean,
+): NativeDashboardChangeListItem['verificationFreshness'] {
+  if (result === 'fail') return 'invalid';
+  if (result === 'pass') return archived ? 'complete' : 'unknown';
+  return 'missing';
+}
+
+async function collectNativeChangeListItem(
+  paths: NativeProjectPaths,
+  entry: NativeDashboardEntry,
+): Promise<NativeDashboardChangeListItem> {
+  const archivedAt = entry.archiveName ? ARCHIVE_NAME_PATTERN.exec(entry.archiveName)?.[1] : null;
+  try {
+    const state =
+      entry.status === 'active'
+        ? await readNativeChange(paths, entry.name)
+        : await readNativeChangeFile(
+            path.join(paths.archiveDir, entry.archiveName ?? '', NATIVE_CHANGE_STATE_FILE),
+          );
+    if (state.name !== entry.name || state.archived !== (entry.status === 'archived')) {
+      throw new Error('Native change state does not match its Dashboard entry');
+    }
+    return {
+      workflow: 'native',
+      name: entry.name,
+      status: entry.status,
+      ...(entry.archiveName ? { archiveName: entry.archiveName } : {}),
+      archivedAt: archivedAt ?? null,
+      phase: entry.status === 'archived' ? 'archive' : state.phase,
+      revision: state.revision,
+      verificationResult: state.verification_result,
+      verificationFreshness: nativeListVerificationFreshness(
+        state.verification_result,
+        entry.status === 'archived',
+      ),
+    };
+  } catch {
+    return {
+      workflow: 'native',
+      name: entry.name,
+      status: entry.status,
+      ...(entry.archiveName ? { archiveName: entry.archiveName } : {}),
+      archivedAt: archivedAt ?? null,
+      phase: entry.status === 'archived' ? 'archive' : 'invalid',
+      revision: null,
+      verificationResult: 'pending',
+      verificationFreshness: 'invalid',
+    };
+  }
 }
 
 function nativeDashboardEntryKey(entry: NativeDashboardEntry): string {
@@ -512,7 +558,7 @@ export interface NativeDashboardChangePageOptions {
   now?: Date;
 }
 
-/** Load one Native change page, keeping full projections behind the page boundary. */
+/** Load one lightweight Native change page; full projections are loaded by selection. */
 export async function collectNativeDashboardChangePage(
   projectRoot: string,
   options: NativeDashboardChangePageOptions,
@@ -532,32 +578,57 @@ export async function collectNativeDashboardChangePage(
   const offset = nativeDashboardOffset(options.cursor, hash, listed.entries.length);
   const limit = nativeDashboardPageLimit(options.limit);
   const pageEntries = listed.entries.slice(offset, offset + limit);
-  const activeEntries = pageEntries.filter((entry) => entry.status === 'active');
-  const archivedEntries = pageEntries.filter((entry) => entry.status === 'archived');
-  const [activeChanges, archivedChanges] = await Promise.all([
-    collectActiveNativeChanges(paths, activeEntries, {
-      clarificationMode: config.native.clarification_mode,
-      maxVerifyFailures: config.native.max_verify_failures,
-      now: options.now,
-      maxChanges: activeEntries.length,
-    }),
-    collectArchivedChanges(paths, archivedEntries),
-  ]);
-  const changesByKey = new Map(
-    [...activeChanges, ...archivedChanges].map((change) => [
-      `${change.status}:${change.name}`,
-      change,
-    ]),
+  const items = await Promise.all(
+    pageEntries.map((entry) => collectNativeChangeListItem(paths, entry)),
   );
   const nextOffset = offset + pageEntries.length;
   return {
     status: options.status,
-    items: pageEntries
-      .map((entry) => changesByKey.get(`${entry.status}:${entry.name}`))
-      .filter((change): change is NativeDashboardChangeProjection => Boolean(change)),
+    items,
     total: listed.entries.length,
     nextCursor: nextOffset < listed.entries.length ? nativeDashboardCursor(hash, nextOffset) : null,
   };
+}
+
+export interface NativeDashboardChangeDetailOptions {
+  status: 'active' | 'archived';
+  name: string;
+  archiveName?: string;
+  now?: Date;
+}
+
+/** Load one complete Native change projection after the user selects its lightweight row. */
+export async function collectNativeDashboardChangeDetail(
+  projectRoot: string,
+  options: NativeDashboardChangeDetailOptions,
+): Promise<NativeDashboardChangeProjection | null> {
+  const root = path.resolve(projectRoot);
+  const config = await readWorkflowProjectConfig(root);
+  if (!config?.native) return null;
+  const paths = await nativeProjectPaths(root, config.native.artifact_root);
+  const entries =
+    options.status === 'active'
+      ? await listActiveNativeEntries(paths)
+      : await listArchivedNativeEntries(paths);
+  const entry = entries.find(
+    (candidate) =>
+      candidate.name === options.name &&
+      (!options.archiveName || candidate.archiveName === options.archiveName),
+  );
+  if (!entry) return null;
+  if (entry.status === 'archived') {
+    return (await collectArchivedChanges(paths, [entry]))[0] ?? null;
+  }
+  return (
+    (
+      await collectActiveNativeChanges(paths, [entry], {
+        clarificationMode: config.native.clarification_mode,
+        maxVerifyFailures: config.native.max_verify_failures,
+        now: options.now,
+        maxChanges: 1,
+      })
+    )[0] ?? null
+  );
 }
 
 /** Return only Native list metadata for the initial overview request. */

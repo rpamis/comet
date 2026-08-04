@@ -152,6 +152,18 @@ export interface NativeDashboardChangeProjection {
   repair: NativeDashboardRepairSummary | null;
 }
 
+export interface NativeDashboardChangeListItem {
+  workflow: 'native';
+  name: string;
+  status: 'active' | 'archived';
+  archiveName?: string;
+  archivedAt: string | null;
+  phase: NativePhase | 'invalid';
+  revision: number | null;
+  verificationResult: NativeVerificationResult;
+  verificationFreshness: NativeDashboardVerificationFreshness;
+}
+
 export interface NativeDashboardConflictSummary {
   available: boolean;
   definiteConflict: number;

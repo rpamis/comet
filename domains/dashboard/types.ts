@@ -7,10 +7,7 @@
  * reference the JSON payload.
  */
 
-import type {
-  NativeDashboardChangeProjection,
-  NativeDashboardProjection,
-} from './native-adapter.js';
+import type { NativeDashboardChangeListItem, NativeDashboardProjection } from './native-adapter.js';
 
 export type ChangeStatus = 'active' | 'archived';
 
@@ -159,7 +156,7 @@ export interface DashboardChangePage {
 
 export interface NativeDashboardChangePage {
   status: DashboardChangeTab;
-  items: NativeDashboardChangeProjection[];
+  items: NativeDashboardChangeListItem[];
   total: number;
   nextCursor: string | null;
 }

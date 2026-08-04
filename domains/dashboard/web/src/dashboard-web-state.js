@@ -39,3 +39,13 @@ export function shouldAutoLoadDashboardDetail({
   if (detailLoading || !selectedId || failedDetailId === selectedId) return false;
   return !(selectedDetailId === selectedId && visibleIds.includes(selectedId));
 }
+
+export function shouldShowDashboardDetailLoading({
+  detailLoading,
+  selectedId,
+  selectedDetailId,
+  failedDetailId,
+}) {
+  if (failedDetailId && failedDetailId === selectedId) return false;
+  return detailLoading || Boolean(selectedId && !selectedDetailId);
+}

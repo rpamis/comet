@@ -5,6 +5,7 @@ import {
   isStaleNativeDashboardCursorError,
   refreshDashboardPage,
   shouldAutoLoadDashboardDetail,
+  shouldShowDashboardDetailLoading,
 } from '../../../domains/dashboard/web/src/dashboard-web-state.js';
 
 function page(items: Array<{ id: string; value: string }>, total = items.length) {
@@ -89,5 +90,24 @@ describe('Dashboard web state helpers', () => {
         failedDetailId: 'change-a',
       }),
     ).toBe(true);
+  });
+
+  it('keeps the detail surface occupied while the selected change detail is pending', () => {
+    expect(
+      shouldShowDashboardDetailLoading({
+        detailLoading: false,
+        selectedId: 'change-a',
+        selectedDetailId: null,
+        failedDetailId: null,
+      }),
+    ).toBe(true);
+    expect(
+      shouldShowDashboardDetailLoading({
+        detailLoading: false,
+        selectedId: 'change-a',
+        selectedDetailId: null,
+        failedDetailId: 'change-a',
+      }),
+    ).toBe(false);
   });
 });
