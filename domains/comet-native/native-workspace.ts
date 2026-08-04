@@ -430,8 +430,7 @@ export async function inspectNativeWorkspaceIdentity(
     throw new Error('Native workspace finish requires a workspace binding');
   }
   if (options.binding) assertBinding(options.binding);
-  const identity: NativeWorkspaceIdentity = {
-    schema: options.binding ? 'comet.native.workspace.v3' : 'comet.native.workspace.v2',
+  const fields: NativeWorkspaceIdentityFields = {
     capturedAt,
     capturedRevision: options.revision,
     nativeRootRef,
@@ -447,9 +446,15 @@ export async function inspectNativeWorkspaceIdentity(
           ),
         }
       : {}),
-    ...(options.binding ? options.binding : {}),
-    ...(options.binding ? { finish: options.finish ?? null } : {}),
   };
+  const identity: NativeWorkspaceIdentity = options.binding
+    ? {
+        schema: 'comet.native.workspace.v3',
+        ...fields,
+        ...options.binding,
+        finish: options.finish ?? null,
+      }
+    : { schema: 'comet.native.workspace.v2', ...fields };
   assertIdentity(identity);
   return identity;
 }
