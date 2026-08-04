@@ -49,7 +49,9 @@ export function nativeContinuation(options: {
     (finding) => finding.code === 'repair-stagnation-stop',
   );
   const workspaceBindingFailure = actionableFindings.find(
-    (finding) => finding.requiredAction === 'return-to-bound-working-directory',
+    (finding) =>
+      finding.requiredAction === 'return-to-bound-working-directory' ||
+      finding.requiredAction === 'repair-workspace-binding',
   );
   const requiredInputs = [
     ...new Set(actionableFindings.map((finding) => finding.requiredAction)),

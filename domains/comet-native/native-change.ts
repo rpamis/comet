@@ -24,6 +24,7 @@ import { assertNativeTrajectoryHealthy } from './native-trajectory-recovery.js';
 import {
   assertNativeWorkspaceBindingCurrent,
   assertNativeWorkspaceBinding,
+  inspectNativeWorkspaceAdvisory,
   inspectNativeWorkspaceBinding,
   readNativeWorkspaceIdentity,
   writeNativeWorkspaceIdentity,
@@ -966,11 +967,18 @@ async function listActiveNativeChangesOwnedByWorkspace(
   const owned: string[] = [];
   for (const name of await listNativeChangeNames(paths)) {
     const inspection = await inspectNativeChangeStateDocument(paths, name);
-    if (!inspection.state || inspection.state.archived) continue;
+    if (!inspection.state) {
+      owned.push(name);
+      continue;
+    }
+    if (inspection.state.archived) continue;
     const identity = await readNativeWorkspaceIdentity(paths, name);
     if (identity?.schema === 'comet.native.workspace.v3') {
       const binding = await inspectNativeWorkspaceBinding({ paths, identity });
       if (binding.code === 'workspace-binding-root-changed') continue;
+    } else if (identity) {
+      const advisory = await inspectNativeWorkspaceAdvisory({ paths, identity });
+      if (advisory.state === 'drifted') continue;
     }
     owned.push(name);
   }

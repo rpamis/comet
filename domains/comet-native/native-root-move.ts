@@ -128,13 +128,7 @@ async function refreshNativeWorkspaceIdentities(paths: NativeProjectPaths): Prom
     if (inspection.status !== 'current' || !inspection.state || !('revision' in inspection.state)) {
       continue;
     }
-    let previousWorkspace: Awaited<ReturnType<typeof readNativeWorkspaceIdentity>> = null;
-    try {
-      previousWorkspace = await readNativeWorkspaceIdentity(paths, entry.name);
-    } catch {
-      // Preserve the existing root-move guarantee: invalid advisory metadata
-      // cannot strand a successfully copied Native root.
-    }
+    const previousWorkspace = await readNativeWorkspaceIdentity(paths, entry.name);
     await writeNativeWorkspaceIdentity({
       paths,
       name: entry.name,
@@ -150,6 +144,29 @@ async function refreshNativeWorkspaceIdentities(paths: NativeProjectPaths): Prom
           }
         : {}),
     });
+  }
+}
+
+async function validateNativeWorkspaceIdentitiesForRootMove(
+  paths: NativeProjectPaths,
+): Promise<void> {
+  let entries: Dirent[];
+  try {
+    entries = await fs.readdir(paths.changesDir, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+    throw error;
+  }
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+    try {
+      await readNativeWorkspaceIdentity(paths, entry.name);
+    } catch (error) {
+      throw new Error(
+        `Native workspace identity for ${entry.name} must be repaired before moving the root`,
+        { cause: error },
+      );
+    }
   }
 }
 
@@ -917,6 +934,7 @@ export async function moveNativeRoot(options: {
   const staging = stagingDirectory(destinationPaths, id);
   try {
     await assertNoOtherLocks(sourcePaths, lock.file);
+    await validateNativeWorkspaceIdentitiesForRootMove(sourcePaths);
     if (await exists(staging)) throw new Error(`Native move staging path is occupied: ${staging}`);
     await writeProjectConfig(options.projectRoot, pendingConfig(current, pending));
     await createNativeTransaction(sourcePaths, journal);

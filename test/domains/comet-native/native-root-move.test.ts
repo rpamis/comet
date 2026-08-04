@@ -146,6 +146,60 @@ describe('Native artifact root moves', () => {
     });
   });
 
+  it('stops before moving a root that contains an invalid workspace binding', async () => {
+    await seedNativeRoot(projectRoot, 'docs');
+    await fs.rm(path.join(projectRoot, 'docs/comet/changes/active-change'), {
+      recursive: true,
+      force: true,
+    });
+    execFileSync('git', ['config', 'user.email', 'root-move@example.test'], {
+      cwd: projectRoot,
+    });
+    execFileSync('git', ['config', 'user.name', 'Root Move Test'], { cwd: projectRoot });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'initial'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+    const branch = execFileSync('git', ['branch', '--show-current'], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+    }).trim();
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    await createNativeChange({
+      paths,
+      name: 'invalid-binding',
+      language: 'en',
+      workspaceBinding: {
+        isolation: 'branch',
+        changeBranch: branch,
+        targetBranch: branch,
+      },
+    });
+    const workspaceFile = path.join(
+      paths.changesDir,
+      'invalid-binding',
+      'runtime',
+      'workspace.json',
+    );
+    const workspace = JSON.parse(await fs.readFile(workspaceFile, 'utf8')) as Record<
+      string,
+      unknown
+    >;
+    workspace.isolation = 'invalid';
+    await fs.writeFile(workspaceFile, `${JSON.stringify(workspace, null, 2)}\n`);
+
+    await expect(
+      moveNativeRoot({ projectRoot, toArtifactRoot: 'artifacts/native' }),
+    ).rejects.toThrow('must be repaired before moving the root');
+    const config = await readProjectConfig(projectRoot);
+    expect(config?.native.artifact_root).toBe('docs');
+    expect(config?.native.pending_root_move).toBeUndefined();
+    await expect(fs.stat(paths.nativeRoot)).resolves.toBeDefined();
+    await expect(fs.access(path.join(projectRoot, 'artifacts/native/comet'))).rejects.toMatchObject(
+      { code: 'ENOENT' },
+    );
+  });
+
   it('refuses an occupied destination without modifying either tree', async () => {
     const source = await seedNativeRoot(projectRoot, '.');
     const destination = path.join(projectRoot, 'docs', 'comet');

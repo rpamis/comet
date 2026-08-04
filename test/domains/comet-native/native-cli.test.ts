@@ -195,6 +195,31 @@ describe('Comet Native CLI dispatcher', () => {
     });
   });
 
+  it('treats a runtime-incompatible active change as occupying the working directory', async () => {
+    expect(await runNativeCli(['new', 'future-owner', ...projectArgs()])).toMatchObject({
+      exitCode: 0,
+    });
+    const stateFile = path.join(projectRoot, 'docs/comet/changes/future-owner/comet-state.yaml');
+    const source = await fs.readFile(stateFile, 'utf8');
+    await fs.writeFile(
+      stateFile,
+      source
+        .replace('schema: comet.native.v3', 'schema: comet.native.v4')
+        .replace('minimum_runtime_version: 3', 'minimum_runtime_version: 4'),
+    );
+
+    expect(
+      json(await runNativeCli(['new', 'blocked-by-future', '--json', ...projectArgs()])),
+    ).toMatchObject({
+      exitCode: 73,
+      data: {
+        activeChanges: ['future-owner'],
+        requiredAction: 'create-native-worktree',
+      },
+      error: { code: 'workspace-isolation-required' },
+    });
+  });
+
   it('persists branch ownership and blocks a bound change after branch drift', async () => {
     execFileSync('git', ['config', 'user.email', 'native@example.test'], { cwd: projectRoot });
     execFileSync('git', ['config', 'user.name', 'Native Test'], { cwd: projectRoot });
@@ -320,7 +345,10 @@ describe('Comet Native CLI dispatcher', () => {
     ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
-  it('ignores an active change bound to another physical worktree', async () => {
+  it.each([
+    ['workspace v3', false],
+    ['legacy workspace v2', true],
+  ])('ignores an active change bound to another physical worktree (%s)', async (_label, legacy) => {
     expect(await runNativeCli(['init', ...projectArgs()])).toMatchObject({ exitCode: 0 });
     execFileSync('git', ['config', 'user.email', 'native@example.test'], { cwd: projectRoot });
     execFileSync('git', ['config', 'user.name', 'Native Test'], { cwd: projectRoot });
@@ -335,6 +363,22 @@ describe('Comet Native CLI dispatcher', () => {
     expect(await runNativeCli(['new', 'primary-change', ...projectArgs()])).toMatchObject({
       exitCode: 0,
     });
+    if (legacy) {
+      const workspaceFile = path.join(
+        projectRoot,
+        'docs/comet/changes/primary-change/runtime/workspace.json',
+      );
+      const workspace = JSON.parse(await fs.readFile(workspaceFile, 'utf8')) as Record<
+        string,
+        unknown
+      >;
+      workspace.schema = 'comet.native.workspace.v2';
+      delete workspace.isolation;
+      delete workspace.changeBranch;
+      delete workspace.targetBranch;
+      delete workspace.finish;
+      await fs.writeFile(workspaceFile, `${JSON.stringify(workspace, null, 2)}\n`);
+    }
     execFileSync('git', ['add', '.comet/config.yaml', 'docs/comet/changes/primary-change'], {
       cwd: projectRoot,
       stdio: 'ignore',
@@ -367,17 +411,19 @@ describe('Comet Native CLI dispatcher', () => {
           ]),
         ),
       ).toMatchObject({ exitCode: 0 });
-      expect(
-        json(
-          await runNativeCli(['status', 'primary-change', '--json', '--project-root', secondary]),
-        ).data,
-      ).toMatchObject({
-        phase: 'shape',
-        findingSummary: {
-          codes: expect.arrayContaining(['workspace-binding-root-changed']),
-        },
-        continuation: { disposition: 'blocked' },
-      });
+      if (!legacy) {
+        expect(
+          json(
+            await runNativeCli(['status', 'primary-change', '--json', '--project-root', secondary]),
+          ).data,
+        ).toMatchObject({
+          phase: 'shape',
+          findingSummary: {
+            codes: expect.arrayContaining(['workspace-binding-root-changed']),
+          },
+          continuation: { disposition: 'blocked' },
+        });
+      }
     } finally {
       execFileSync('git', ['worktree', 'remove', '--force', secondary], {
         cwd: projectRoot,

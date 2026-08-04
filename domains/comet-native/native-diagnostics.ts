@@ -398,8 +398,8 @@ export async function inspectNativeStatus(
     }
   } catch {
     workspaceFindings.push({
-      code: 'workspace-inspection-unavailable',
-      message: 'Native workspace advisory could not be recomputed safely',
+      code: 'workspace-binding-invalid',
+      message: 'Native workspace binding could not be read or validated safely',
     });
   }
   const verifyScopeFindings: NativeFinding[] = [];
@@ -472,7 +472,8 @@ export async function inspectNativeStatus(
     (finding) =>
       finding.code === 'trajectory-tail-incomplete' ||
       finding.code === 'trajectory-invalid' ||
-      finding.requiredAction === 'return-to-bound-working-directory',
+      finding.requiredAction === 'return-to-bound-working-directory' ||
+      finding.requiredAction === 'repair-workspace-binding',
   );
   const repairBlocked =
     repair?.disposition === 'manual-stop' || repair?.disposition === 'hard-stop';

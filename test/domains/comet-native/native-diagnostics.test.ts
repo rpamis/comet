@@ -104,6 +104,34 @@ describe('Native status diagnostics', () => {
     });
   });
 
+  it('blocks status when a workspace binding cannot be parsed safely', async () => {
+    const state = await createNativeChange({
+      paths,
+      name: 'invalid-workspace',
+      language: 'en',
+      workspaceBinding: { isolation: 'current', changeBranch: null, targetBranch: null },
+    });
+    await fs.writeFile(
+      path.join(nativeChangeDir(paths, state.name), 'runtime', 'workspace.json'),
+      '{"schema":"comet.native.workspace.v3","isolation":"invalid"}\n',
+    );
+
+    await expect(inspectNativeStatus(paths, state.name)).resolves.toMatchObject({
+      name: state.name,
+      phase: 'shape',
+      nextCommand: null,
+      findingSummary: {
+        errors: expect.any(Number),
+        codes: expect.arrayContaining(['workspace-binding-invalid']),
+      },
+      continuation: {
+        disposition: 'blocked',
+        action: 'none',
+        requiredInputs: expect.arrayContaining(['repair-workspace-binding']),
+      },
+    });
+  });
+
   it('does not route an Archive binding failure to receipt refresh', () => {
     const continuation = nativeContinuation({
       state: {

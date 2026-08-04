@@ -142,6 +142,12 @@ const EXACT_METADATA: Record<string, FindingMetadata> = {
     retry: 'status',
     repair: 'none',
   },
+  'workspace-binding-invalid': {
+    severity: 'error',
+    requiredAction: 'repair-workspace-binding',
+    retry: 'status',
+    repair: 'none',
+  },
   'workspace-branch-changed': {
     severity: 'error',
     requiredAction: 'return-to-bound-working-directory',
