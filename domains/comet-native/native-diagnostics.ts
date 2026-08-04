@@ -513,7 +513,7 @@ export async function inspectNativeStatus(
   };
 }
 
-async function boundedNativeChangeNames(paths: NativeProjectPaths): Promise<string[]> {
+export async function listNativeChangeNames(paths: NativeProjectPaths): Promise<string[]> {
   let guard: Awaited<ReturnType<typeof captureNativeProtectedDirectoryGuard>>;
   try {
     guard = await captureNativeProtectedDirectoryGuard({
@@ -586,7 +586,7 @@ export async function listNativeStatusPage(
     maxVerifyFailures?: number;
   },
 ): Promise<NativeStatusPageProjection> {
-  const names = await boundedNativeChangeNames(paths);
+  const names = await listNativeChangeNames(paths);
   const namesHash = canonicalHash('comet.native.status-names.v1', names);
   const offset = nativeStatusOffset({
     namesHash,

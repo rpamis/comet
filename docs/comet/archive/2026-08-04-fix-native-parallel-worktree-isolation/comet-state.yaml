@@ -1,0 +1,23 @@
+schema: comet.native.v3
+minimum_runtime_version: 3
+revision: 5
+verification_protocol: legacy-v1
+name: fix-native-parallel-worktree-isolation
+language: zh-CN
+phase: archive
+brief: brief.md
+approval: confirmed
+approved_contract_hash: 408612b3156c6571503758b4e4166434e56e1636f647c401dcfcb95c78451fc5
+spec_changes:
+  - capability: native-ambient-resume
+    operation: create
+    source: specs/native-ambient-resume/spec.md
+    base_hash: null
+verification_result: pass
+verification_report: verification.md
+implementation_scope: runtime/evidence/scopes/4ea2c51dfa361b726087622cdd3a48a32d80520552bd254a61d4d02f3d6be733.json
+verification_evidence: runtime/evidence/verifications/8dd7a9beb056ee488188b50bd1e502f257d96bd36ccd96551b6f50c5defcd23b.json
+partial_allowance: null
+archived: true
+created_at: 2026-08-04
+run_id: c8b73d4e-2142-4c82-b50f-09ea05566754

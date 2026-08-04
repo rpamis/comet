@@ -10,22 +10,26 @@ import {
   type CometResumeProbeEvidence,
   type CometResumeProbeInput as ClassicResumeProbeInput,
 } from '../comet-classic/classic-resume-probe.js';
-import { nativeChangeDir, readNativeChange } from '../comet-native/native-change.js';
+import {
+  inspectNativeChangeStateDocument,
+  nativeChangeDir,
+  readNativeChange,
+} from '../comet-native/native-change.js';
 import { assertNoPendingNativeRootMove } from '../comet-native/native-config.js';
 import {
   inspectNativeArtifactFindings,
-  listNativeStatus,
+  listNativeChangeNames,
+  NATIVE_STATUS_PAGE_LIMITS,
 } from '../comet-native/native-diagnostics.js';
 import { nativeProjectPaths } from '../comet-native/native-paths.js';
 import { runWithHookReadCache } from '../../platform/process/hook-read-cache.js';
 import { discoverCachedNativeProject, readCachedProjectConfig } from './entry-reads.js';
-import { resolveSelectedNativeChange } from '../comet-native/native-selection.js';
+import { readNativeSelectionRecord } from '../comet-native/native-selection.js';
 import { readNativeProposedSpecs } from '../comet-native/native-specs.js';
 import type {
   NativeChangeState,
   NativeFinding,
   NativeProjectPaths,
-  NativeStatusProjection,
 } from '../comet-native/native-types.js';
 import { resolveCometEntry } from './resolve-entry.js';
 import type { CometEntryResolutionSource, CometEntrySkill, CometWorkflow } from './types.js';
@@ -192,28 +196,52 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
 
-function namesInUtterance(
-  utterance: string,
-  candidates: readonly CometEntryResumeProbeCandidate[],
-): CometEntryResumeProbeCandidate[] {
+function namesInUtterance(utterance: string, names: readonly string[]): string[] {
   const lower = utterance.toLowerCase();
-  return candidates.filter((candidate) => {
+  return names.filter((name) => {
     const pattern = new RegExp(
-      `(?:^|[^a-z0-9_-])${escapeRegExp(candidate.name.toLowerCase())}(?=$|[^a-z0-9_-])`,
+      `(?:^|[^a-z0-9_-])${escapeRegExp(name.toLowerCase())}(?=$|[^a-z0-9_-])`,
       'u',
     );
     return pattern.test(lower);
   });
 }
 
+async function nativeResumeCandidates(
+  paths: NativeProjectPaths,
+  names: readonly string[],
+  selectedName: string | null,
+  targetName: string | null,
+): Promise<CometEntryResumeProbeCandidate[]> {
+  const displayedNames = names.slice(0, NATIVE_STATUS_PAGE_LIMITS.maxItems);
+  if (targetName && !displayedNames.includes(targetName)) {
+    if (displayedNames.length === NATIVE_STATUS_PAGE_LIMITS.maxItems) displayedNames.pop();
+    displayedNames.push(targetName);
+  }
+  return Promise.all(
+    displayedNames.map(async (name) => {
+      try {
+        const inspection = await inspectNativeChangeStateDocument(paths, name);
+        return {
+          name,
+          phase: inspection.state?.phase ?? 'invalid',
+          selected: name === selectedName,
+        };
+      } catch {
+        return { name, phase: 'invalid', selected: name === selectedName };
+      }
+    }),
+  );
+}
+
 async function nativeRelatedEvidence(
   paths: NativeProjectPaths,
-  change: NativeStatusProjection,
+  change: { name: string; phase: string },
+  state: NativeChangeState,
   utterance: string,
 ): Promise<CometResumeProbeEvidence[]> {
   let source: string;
   try {
-    const state = await readNativeChange(paths, change.name);
     const specs = await readNativeProposedSpecs(paths, change.name);
     source = [
       change.name,
@@ -302,23 +330,20 @@ async function resolveNativeResumeProbe(
   }
   await assertNoPendingNativeRootMove(projectRoot);
   const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
-  const statuses = await listNativeStatus(paths, {
-    clarificationMode: config.native.clarification_mode,
-    maxVerifyFailures: config.native.max_verify_failures,
-  });
+  const names = await listNativeChangeNames(paths);
   let selectedName: string | null = null;
   let selectionError: string | null = null;
   try {
-    selectedName = await resolveSelectedNativeChange(paths);
+    const selection = await readNativeSelectionRecord(paths);
+    if (selection && names.includes(selection.change)) {
+      selectedName = selection.change;
+    } else if (selection) {
+      selectionError = `ENOENT: selected Native change ${selection.change} is missing or archived`;
+    }
   } catch (error) {
     selectionError = error instanceof Error ? error.message : String(error);
   }
-  const candidates = statuses.map((change) => ({
-    name: change.name,
-    phase: change.phase,
-    selected: change.name === selectedName,
-  }));
-  if (statuses.length === 0) {
+  if (names.length === 0) {
     return result({
       workflow: 'native',
       skill: 'comet-native',
@@ -327,13 +352,16 @@ async function resolveNativeResumeProbe(
       confidence: 'none',
       reasonCode: 'no-active-native-changes',
       reason: 'no active Native changes',
-      candidates,
+      candidates: [],
     });
   }
 
   const utterance = input.utterance.trim();
   const lower = utterance.toLowerCase();
   const resumeLike = includesAny(lower, RESUME_WORDS);
+  const named = namesInUtterance(utterance, names);
+  const targetName = named[0] ?? selectedName ?? (names.length === 1 ? names[0] : null);
+  const candidates = await nativeResumeCandidates(paths, names, selectedName, targetName);
   if (!input.agent_context.non_trivial_work && !resumeLike) {
     return result({
       workflow: 'native',
@@ -347,7 +375,6 @@ async function resolveNativeResumeProbe(
     });
   }
 
-  const named = namesInUtterance(utterance, candidates);
   if (named.length > 1) {
     return result({
       workflow: 'native',
@@ -357,13 +384,11 @@ async function resolveNativeResumeProbe(
       confidence: 'low',
       reasonCode: 'multiple-native-changes-named',
       reason: 'request names multiple active Native changes',
-      evidence: named.map((change) => ({ source: 'user', quote: change.name })),
+      evidence: named.map((name) => ({ source: 'user', quote: name })),
       candidates,
     });
   }
 
-  const targetName =
-    named[0]?.name ?? selectedName ?? (statuses.length === 1 ? statuses[0].name : null);
   if (!targetName) {
     return result({
       workflow: 'native',
@@ -382,7 +407,7 @@ async function resolveNativeResumeProbe(
     });
   }
 
-  const target = statuses.find((change) => change.name === targetName);
+  const target = candidates.find((change) => change.name === targetName);
   let targetState: NativeChangeState | null = null;
   let targetStateError: string | null = null;
   if (target) {
@@ -420,8 +445,11 @@ async function resolveNativeResumeProbe(
     });
   }
 
-  const exactName = named[0]?.name === target.name;
-  const related = exactName ? [] : await nativeRelatedEvidence(paths, target, utterance);
+  const exactName = named[0] === target.name;
+  const related =
+    !resumeLike && !exactName
+      ? await nativeRelatedEvidence(paths, target, targetState, utterance)
+      : [];
   if (!resumeLike && !exactName && related.length === 0) {
     return result({
       workflow: 'native',

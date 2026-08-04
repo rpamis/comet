@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import { spawnSync } from 'child_process';
 import os from 'os';
 import path from 'path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   COMET_RESUME_PROBE_SCHEMA_VERSION,
@@ -341,6 +341,41 @@ describe('Comet entry resume probe v2', () => {
       changeName: 'cache-controls',
       nextCommand: '/comet-native',
     });
+  });
+
+  it('does not inspect Runtime artifacts for non-target Native changes', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    await createNative(projectRoot, 'cache-controls');
+    await createNative(projectRoot, 'login-flow');
+    const paths = await nativeProjectPaths(projectRoot, '.');
+    await selectNativeChange(paths, 'login-flow');
+    const nonTargetRuntime = path.join(nativeChangeDir(paths, 'cache-controls'), 'runtime');
+    const openedNonTargetRuntimePaths: string[] = [];
+    const originalOpen = fs.open.bind(fs);
+    const openSpy = vi.spyOn(fs, 'open').mockImplementation((...args) => {
+      const openedPath = String(args[0]);
+      if (
+        openedPath === nonTargetRuntime ||
+        openedPath.startsWith(`${nonTargetRuntime}${path.sep}`)
+      ) {
+        openedNonTargetRuntimePaths.push(openedPath);
+      }
+      return originalOpen(...args);
+    });
+
+    try {
+      await expect(resolveCometEntryResumeProbe(projectRoot, input('继续'))).resolves.toMatchObject(
+        {
+          action: 'auto_resume',
+          changeName: 'login-flow',
+          nextCommand: '/comet-native',
+        },
+      );
+    } finally {
+      openSpy.mockRestore();
+    }
+
+    expect(openedNonTargetRuntimePaths).toEqual([]);
   });
 
   it('falls back from a stale selection only when one active Native change is unambiguous', async () => {

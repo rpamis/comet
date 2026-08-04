@@ -1,0 +1,27 @@
+{
+  "schema": "comet.native.transaction.v2",
+  "id": "dc218ac5-dd46-4c11-a81f-02aac403f8cc",
+  "kind": "archive",
+  "status": "committed",
+  "change": "fix-native-parallel-worktree-isolation",
+  "createdAt": "2026-08-04T07:54:26.696Z",
+  "preflightHash": "46ecfcf9f45056d0a1a52013140aac7c154312315658634847c237a90f9a4ac0",
+  "operations": [
+    {
+      "id": "spec-1-native-ambient-resume",
+      "type": "write",
+      "target": "specs/native-ambient-resume/spec.md",
+      "staged": "runtime/transactions/dc218ac5-dd46-4c11-a81f-02aac403f8cc/staged/specs/native-ambient-resume/spec.md",
+      "expectedTargetHash": null,
+      "stagedHash": "aabb7590972d72a1494c353b0bc8613fefa6c68e326b9448d08650206e19e93c"
+    },
+    {
+      "id": "archive-change",
+      "type": "move",
+      "source": "changes/fix-native-parallel-worktree-isolation",
+      "target": "archive/2026-08-04-fix-native-parallel-worktree-isolation",
+      "expectedSourceHash": "85227096f3c92bdeba33337cacb7d0147727f4aea4d746c85dd94ef59033359a",
+      "expectedTargetHash": null
+    }
+  ]
+}

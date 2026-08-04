@@ -1,0 +1,11 @@
+{
+  "schema": "comet.native.archive-cas.v1",
+  "operationId": "spec-1-native-ambient-resume",
+  "role": "post",
+  "hash": "aabb7590972d72a1494c353b0bc8613fefa6c68e326b9448d08650206e19e93c",
+  "identity": {
+    "dev": 1986195787,
+    "ino": 281474977634975,
+    "birthtimeMs": 1785830072106.3193
+  }
+}

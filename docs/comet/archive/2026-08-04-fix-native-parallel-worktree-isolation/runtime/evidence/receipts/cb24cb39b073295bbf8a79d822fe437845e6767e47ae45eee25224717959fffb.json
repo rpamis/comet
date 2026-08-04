@@ -1,0 +1,33 @@
+{
+  "schema": "comet.native.verification-receipt.v3",
+  "kind": "static-inspection",
+  "role": "required-check",
+  "status": "passed",
+  "bindings": {
+    "change": "fix-native-parallel-worktree-isolation",
+    "sourceRevision": 3,
+    "contractHash": "408612b3156c6571503758b4e4166434e56e1636f647c401dcfcb95c78451fc5",
+    "scopeHash": "4ea2c51dfa361b726087622cdd3a48a32d80520552bd254a61d4d02f3d6be733",
+    "snapshotHash": "2b1da7343cc73f599d4cc7f4a38215b3e86a956fa31232816ad7a82d6e8c857f",
+    "artifactHash": "206aab988775d524c8cbe55c3348e9fddcd43204aec3e5d7b3140e17061a1698"
+  },
+  "acceptanceIds": [],
+  "actor": "native-runtime:scoped-text-safety",
+  "issuedAt": "2026-08-04T07:51:27.766Z",
+  "evidence": {
+    "subjects": [
+      "CHANGELOG.md",
+      "assets/skills/comet-native/scripts/comet-native-next.mjs",
+      "assets/skills/comet-native/scripts/comet-native-runtime.mjs",
+      "domains/comet-entry/resume-probe.ts",
+      "domains/comet-native/native-change.ts",
+      "domains/comet-native/native-diagnostics.ts",
+      "test/domains/comet-entry/resume-probe.test.ts"
+    ],
+    "rule": "scoped-text-safety",
+    "resultSummary": "The built-in scoped inspection passed without skipped or blocking input.",
+    "checkReceiptRef": "runtime/evidence/check-receipts/187fbaa11499a161a464487bc3daaf529bd38ad52b2d7af7d630143b38fa9fc4.json",
+    "checkReceiptHash": "187fbaa11499a161a464487bc3daaf529bd38ad52b2d7af7d630143b38fa9fc4"
+  },
+  "receiptHash": "cb24cb39b073295bbf8a79d822fe437845e6767e47ae45eee25224717959fffb"
+}

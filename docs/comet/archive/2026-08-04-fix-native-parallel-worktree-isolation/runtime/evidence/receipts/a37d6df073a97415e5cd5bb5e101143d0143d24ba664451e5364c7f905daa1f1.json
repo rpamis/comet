@@ -1,0 +1,47 @@
+{
+  "schema": "comet.native.verification-receipt.v3",
+  "kind": "manual-evidence",
+  "role": "acceptance-evidence",
+  "status": "passed",
+  "bindings": {
+    "change": "fix-native-parallel-worktree-isolation",
+    "sourceRevision": 3,
+    "contractHash": "408612b3156c6571503758b4e4166434e56e1636f647c401dcfcb95c78451fc5",
+    "scopeHash": "4ea2c51dfa361b726087622cdd3a48a32d80520552bd254a61d4d02f3d6be733",
+    "snapshotHash": "2b1da7343cc73f599d4cc7f4a38215b3e86a956fa31232816ad7a82d6e8c857f",
+    "artifactHash": "206aab988775d524c8cbe55c3348e9fddcd43204aec3e5d7b3140e17061a1698"
+  },
+  "acceptanceIds": [
+    "acceptance-1b0bc9518b7c6c882c79ce03c7b08af287c51bfcad4609d0a7c90d7b0eb796de",
+    "acceptance-242016d2d143807888c1a699632394309636f1a8465ef5900019e4676971d441",
+    "acceptance-38e5b14a2df48a3ca8289d62a6755da1ebc0464e9b5fbf48837d6f406118dc27",
+    "acceptance-43f1431770e3f428599079ca926135d0cab9464d04570ab1d8b7348c1e0cf5a3",
+    "acceptance-4d45fac522aeec6b4c823a318f66ad0e5843c6dd3f3d8101f01b01d9b989c9e5",
+    "acceptance-54142bd28dddbbaaa33768a8f97348ffea5dc0d9bd294972db29e9798f2f53c4",
+    "acceptance-5718f5edd7950012398157528893082557452c7a5e9cfdbecb2a706fb1149fd6",
+    "acceptance-6a8df600fcda55a2dbd72c6ab83a1da7bc4d075324dfe4455d44b3474339d544",
+    "acceptance-739baccc90b564783a2b0109ed10433573e259d7854ef3021730a24af04742b4",
+    "acceptance-7aa56a49fc249934d4cfa6050d5a429f2686afa2d1cee874a227a9d6bb35b606",
+    "acceptance-7c816b580d4fce3b2c10ae0ff7d2466eac8e4bad38142222ebb96c4c3abbc2a8",
+    "acceptance-82b908744bbdb62eda0e6b37681c55856546d29a2d2b0d2f8da8614a2b1ba3c3",
+    "acceptance-849982bdef559f7f9296bcb366b1129be4aad09ad2271491c9d4f62a8fc0966f",
+    "acceptance-9dae052177b956d41bc98c6a48dee7439987be89205dbedc8958905e59a374e1",
+    "acceptance-a56b20a59e1136bc6601334603bca59885085e80d494b3fe6c626faea73fbcc6",
+    "acceptance-d49dab9151c7c9db7c7f6cb9c9f7b6c8b2f074af1e336620b1a5861b596b7bae",
+    "acceptance-d569a92ec4bf8f6666d0efe86f62dc596a886e893b7b9dc1ab94a032b076ff18",
+    "acceptance-e22a3b942f7dcb79fcc57542e7c3b83df6b506e229029adcec3489d2326fc15d",
+    "acceptance-f46be96bf269b3b24a633e3aec460b3d2b44f3ab67b3664ab6646e8ede9627eb",
+    "acceptance-fe3eba420be1572543518d9657fb5a6776f5eb5f991e7f3f17d0790062d961e1"
+  ],
+  "actor": "native-runtime:manual-evidence",
+  "issuedAt": "2026-08-04T07:50:15.298Z",
+  "evidence": {
+    "steps": [
+      "Reviewed the target-only resume implementation, the complete existing resume matrix, and generated Runtime boundaries."
+    ],
+    "observations": [
+      "The focused 60-test suite passed; the regression observed zero non-target Runtime opens while explicit, selected, sole, ambiguous, unrelated, and invalid-target outcomes remained covered."
+    ]
+  },
+  "receiptHash": "a37d6df073a97415e5cd5bb5e101143d0143d24ba664451e5364c7f905daa1f1"
+}

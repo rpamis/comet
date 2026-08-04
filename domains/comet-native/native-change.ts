@@ -740,6 +740,26 @@ export async function inspectNativeChange(
   return inspection;
 }
 
+/**
+ * Read only the change state document for lightweight candidate discovery.
+ *
+ * Unlike `inspectNativeChange`, this deliberately does not inspect schema-migration journals,
+ * baselines, workspace identity, or any other Runtime artifact. Callers must use the full
+ * inspection before resuming or mutating the selected change.
+ */
+export async function inspectNativeChangeStateDocument(
+  paths: NativeProjectPaths,
+  name: string,
+): Promise<NativeChangeSchemaInspection> {
+  const file = path.join(nativeChangeDir(paths, name), NATIVE_CHANGE_STATE_FILE);
+  await resolveContainedNativePath(paths.nativeRoot, file);
+  const inspection = inspectNativeChangeValue(await readChangeDocumentFile(file, paths.nativeRoot));
+  if (inspection.state && inspection.state.name !== name) {
+    throw new Error(`Native change directory/name mismatch: ${name}`);
+  }
+  return inspection;
+}
+
 async function assertNativeVerificationProtocolBinding(
   paths: NativeProjectPaths,
   state: NativeChangeState,
