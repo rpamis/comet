@@ -20,7 +20,11 @@ import {
   writeNativeBaselineManifest,
 } from './native-snapshot.js';
 import { assertNativeTrajectoryHealthy } from './native-trajectory-recovery.js';
-import { writeNativeWorkspaceIdentity } from './native-workspace.js';
+import {
+  assertNativeWorkspaceBinding,
+  writeNativeWorkspaceIdentity,
+  type NativeWorkspaceBinding,
+} from './native-workspace.js';
 import type {
   NativeApproval,
   NativeChangeSchemaInspection,
@@ -119,6 +123,20 @@ export class NativeChangeRevisionConflictError extends Error {
       `Native change ${change} revision conflict: expected ${expectedRevision}, actual ${actualRevision}`,
     );
     this.name = 'NativeChangeRevisionConflictError';
+  }
+}
+
+export class NativeWorkspaceIsolationRequiredError extends Error {
+  readonly code = 'native-workspace-isolation-required';
+
+  constructor(
+    readonly requestedIsolation: NativeWorkspaceBinding['isolation'],
+    readonly activeChanges: string[],
+  ) {
+    super(
+      `Native working directory already contains active change${activeChanges.length === 1 ? '' : 's'} ${activeChanges.join(', ')}; create the new change in a separate worktree`,
+    );
+    this.name = 'NativeWorkspaceIsolationRequiredError';
   }
 }
 
@@ -583,6 +601,7 @@ export async function createNativeChange(options: {
   name: string;
   language: 'en' | 'zh-CN';
   verificationProtocol?: NativeVerificationProtocol;
+  workspaceBinding?: NativeWorkspaceBinding;
   now?: Date;
 }): Promise<NativeChangeState> {
   return withNativeMutationLock(options.paths, `create change ${options.name}`, () =>
@@ -595,9 +614,21 @@ async function createNativeChangeLocked(options: {
   name: string;
   language: 'en' | 'zh-CN';
   verificationProtocol?: NativeVerificationProtocol;
+  workspaceBinding?: NativeWorkspaceBinding;
   now?: Date;
 }): Promise<NativeChangeState> {
   assertNativeName(options.name);
+  if (options.workspaceBinding) {
+    const activeChanges = (await listNativeChanges(options.paths))
+      .filter((change) => !change.archived)
+      .map((change) => change.name);
+    if (activeChanges.length > 0) {
+      throw new NativeWorkspaceIsolationRequiredError(
+        options.workspaceBinding.isolation,
+        activeChanges,
+      );
+    }
+  }
   const verificationProtocol = options.verificationProtocol ?? 'legacy-v1';
   const changeDir = nativeChangeDir(options.paths, options.name);
   await resolveContainedNativePath(options.paths.nativeRoot, changeDir);
@@ -691,6 +722,7 @@ async function createNativeChangeLocked(options: {
       name: state.name,
       revision: state.revision,
       now: options.now,
+      ...(options.workspaceBinding ? { binding: options.workspaceBinding } : {}),
     });
     return state;
   } catch (error) {
@@ -782,6 +814,7 @@ export async function readNativeChange(
   if (inspection.status === 'runtime-incompatible' || !inspection.state) {
     throw new NativeRuntimeCompatibilityError(inspection.schema, inspection.minimumRuntimeVersion);
   }
+  await assertNativeWorkspaceBinding(paths, name);
   return inspection.state as NativeChangeState;
 }
 

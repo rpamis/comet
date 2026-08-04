@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -5,9 +6,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import {
+  inspectNativeWorkspaceBinding,
   inspectNativeWorkspaceAdvisory,
   inspectNativeWorkspaceIdentity,
   readNativeWorkspaceIdentity,
+  setNativeWorkspaceFinish,
   writeNativeWorkspaceIdentity,
 } from '../../../domains/comet-native/native-workspace.js';
 
@@ -65,6 +68,64 @@ describe('Native workspace identity', () => {
       state: 'aligned',
       findingCodes: [],
       driftComponents: [],
+    });
+  });
+
+  it('persists new isolation bindings without migrating legacy identities', async () => {
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    const written = await writeNativeWorkspaceIdentity({
+      paths,
+      name: 'example',
+      revision: 1,
+      binding: { isolation: 'current', changeBranch: null, targetBranch: null },
+    });
+
+    expect(written).toMatchObject({
+      schema: 'comet.native.workspace.v3',
+      isolation: 'current',
+      changeBranch: null,
+      targetBranch: null,
+      finish: null,
+    });
+    await expect(inspectNativeWorkspaceBinding({ paths, identity: written })).resolves.toEqual({
+      state: 'aligned',
+      code: null,
+      message: null,
+    });
+  });
+
+  it('persists the selected finishing action for isolated changes', async () => {
+    execFileSync('git', ['init', '-b', 'main'], { cwd: projectRoot, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.email', 'workspace@example.test'], {
+      cwd: projectRoot,
+    });
+    execFileSync('git', ['config', 'user.name', 'Workspace Test'], { cwd: projectRoot });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'initial'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+    execFileSync('git', ['switch', '-c', 'comet/example'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    await writeNativeWorkspaceIdentity({
+      paths,
+      name: 'example',
+      revision: 1,
+      binding: {
+        isolation: 'branch',
+        changeBranch: 'comet/example',
+        targetBranch: 'main',
+      },
+    });
+
+    await expect(setNativeWorkspaceFinish(paths, 'example', 'merge')).resolves.toMatchObject({
+      schema: 'comet.native.workspace.v3',
+      finish: 'merge',
+    });
+    await expect(readNativeWorkspaceIdentity(paths, 'example')).resolves.toMatchObject({
+      finish: 'merge',
     });
   });
 

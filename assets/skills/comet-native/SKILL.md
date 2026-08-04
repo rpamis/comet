@@ -29,26 +29,62 @@ Common commands:
 comet native status [--json]
 comet native show <change-name>
 comet native select <change-name>
-comet native new <change-name> [--language en|zh-CN]
+comet native new <change-name> [--language en|zh-CN] [--isolation current|branch|worktree]
 comet native next <change-name> --summary <text> [--confirmed]
 comet native archive <change-name> --dry-run
 ```
 
 ## Start or resume
 
-1. Run `comet native status` to identify the current change and phase.
-2. Run `comet native show <change-name>` for the target. In Verify, Archive, or Build after a failure, also run the status command with `--details`.
-3. When more acceptance items are needed, follow `acceptancePage.nextCursor`. If findings are truncated, handle the returned findings and then read details again.
-4. After confirming the target, run `comet native select <change-name>`.
+1. In a Git project, first read the current branch and `git worktree list --porcelain`. Run read-only `comet native status --project-root <path> --json` for every safely accessible working directory. This is default discovery; do not wait for the user to say “parallel.”
+2. Run `comet native status` in the current working directory and combine it with the other working-directory results to identify the target change, its owning working directory, and phase. If a matching active change exists, resume in that working directory instead of creating another one.
+3. Run `comet native show <change-name>` for the target. In Verify, Archive, or Build after a failure, also run the status command with `--details`.
+4. When more acceptance items are needed, follow `acceptancePage.nextCursor`. If findings are truncated, handle the returned findings and then read details again.
+5. Enter the target's actual working directory and run `comet native select <change-name>`. Do not require the user to run `cd` manually.
 
-If multiple reasonable candidates remain, ask the user to select one. Create a change only after confirming that no matching active change exists:
-
-```text
-comet native new <change-name> \
-  --language en
-```
+If multiple reasonable candidates remain, ask the user to select one. Create a change only after confirming that no matching active change exists in any discovered working directory, then follow the workspace protocol below.
 
 Use only the Native artifact root selected by project configuration.
+
+## Workspace protocol for a new change
+
+The parallelism unit is a change: separate changes may progress concurrently in separate working directories. One change is writable only from its bound working directory and current execution context; Native does not create a long-lived session lease.
+
+Before creation, inspect the current branch, uncommitted changes, active Native changes in the current directory, and registered Git worktrees. Keep three workspace modes:
+
+- `current`: keep the current branch and directory;
+- `branch`: create and switch to a change branch in the current directory;
+- `worktree`: create a separate change branch and Git working directory, then continue there.
+
+Selection rules:
+
+- When the current directory is clean and no discovered working directory has another active change, default directly to `current`; do not ask whether the user wants “parallel” work.
+- When uncommitted changes or other facts make isolation materially affect the user's directory, present one joint `current / branch / worktree` choice with the recommendation, branch, and working-directory path. Do not split it into a separate “parallel?” question.
+- When another active Native change owns the current directory, disclose that `current` and `branch` are unavailable because of baseline-drift risk, then use the only safe `worktree` mode. Active changes already in other worktrees do not disable `current` or `branch` here.
+- In the same choice, the user may override the default branch `comet/<change-name>` and directory `.worktrees/<change-name>`. On a path or branch collision, stop; do not add a random suffix or take over a directory that is not already legally bound to this change.
+
+Prepare `branch` or `worktree` before running `new` and before the baseline is captured. The target branch defaults to the starting branch at the moment the branch or worktree is created:
+
+```text
+# current
+comet native new <change-name> --language en --isolation current
+
+# branch: create and switch branches first
+comet native new <change-name> --language en \
+  --isolation branch --change-branch comet/<change-name> --target-branch <starting-branch>
+
+# worktree: create and enter .worktrees/<change-name> first
+comet native new <change-name> --language en \
+  --isolation worktree --change-branch comet/<change-name> --target-branch <starting-branch>
+```
+
+Before creating a worktree, add `.worktrees/` to the repository-local Git exclude in the Git common directory's `info/exclude`; do not modify tracked `.gitignore` for this. The Agent continues automatically in the new working directory instead of handing navigation to the user.
+
+Create the worktree from the resolved commit of a verified local target branch. If the source directory has uncommitted content, attribute it first: leave work proven unrelated to the new change in place; if content may belong to the new change and cannot enter through that commit, wait for the user to decide how to preserve it rather than silently committing, copying, or omitting it. The target directory must receive consistent configuration from the target branch or establish legal configuration through public `comet native init`, then verify artifact-root, language, clarification, archive, verify, and snapshot semantics. Stop when consistency cannot be proven. Never copy the source `.comet/current-change.json`.
+
+Runtime rechecks for a newly active change inside the same mutation lock used by `new`. If a system-default `current` loses this race and returns `workspace-isolation-required`, automatically prepare the default worktree and retry there. If an explicit user choice becomes invalid before execution, stop and reconfirm rather than silently changing modes.
+
+Existing active changes without a workspace v3 binding remain compatible: do not generate worktrees, move files, or refresh their baselines automatically. Continue selecting only one change at a time in a shared legacy directory. Only real baseline or scope drift fails closed and requires the user to decide whether to recover, recreate, or abandon the change.
 
 ## On-demand loading
 
@@ -118,10 +154,26 @@ An intermediate Verify failure never runs Archive or triggers archive confirmati
 
 ## Archive
 
-Preview only after the final Verify pass:
+Prepare Archive only after the final Verify pass. First read the change's workspace binding; treat legacy workspace metadata as `current` for compatibility.
+
+`current` continues to use `native.archive_confirmation` without a separate branch-finishing question. Before Archive, `branch` or `worktree` requires one joint choice:
+
+1. archive and merge locally into the bound target branch;
+2. archive and push the change branch;
+3. archive, push, and open a PR;
+4. archive and keep the current branch/working directory;
+5. do not archive yet.
+
+Show the exact change branch, target branch, and working directory. Recommend one option based on whether the target branch is locally available and its working directory is clean. Execute external Git actions only after the user chooses; preserve the scene and stop on “do not archive.”
+
+Then preview:
 
 ```text
+# current
 comet native archive <change-name> --dry-run
+
+# branch / worktree: persist the joint choice in formal workspace metadata
+comet native archive <change-name> --dry-run --finish merge|push|pull-request|keep
 ```
 
 After a successful preview:
@@ -130,6 +182,15 @@ After a successful preview:
 - `required`: show the implementation, verification, and specification-operation summary, then wait for the user to archive now or keep the change active.
 
 Do not reuse an old preflight. If facts drift or a canonical conflict or unfinished transaction appears, follow the continuation and the recovery reference.
+
+The returned `workspaceFinish` must match the user's choice. Later sessions recover that decision from formal workspace metadata without another routine prompt. After Archive succeeds, stage and commit only confirmed implementation, specification, and Archive paths owned by this change; exclude unrelated user work. The preceding joint choice authorizes this one exact stage/commit and the selected finishing action:
+
+- Local merge: merge the change branch in the bound target branch's working directory and run post-merge validation proportional to the change risk. On success, remove the clean change worktree and the merged local branch. Preserve both on any failure.
+- Push: push the change branch. On success, a clean change worktree may be removed, but retain the local and remote branches.
+- Push and PR: create the PR after pushing, then apply the push cleanup. Native does not continuously monitor the PR.
+- Keep: retain the branch and working directory after committing; do not merge or push.
+
+Archive multiple changes independently. Only local merges that update the same target ref must be serialized. Resolve a conflict automatically only when the resolution mechanically preserves both confirmed contracts, then revalidate. Abort any semantic conflict and ask whether to create a separate integration change; never silently overwrite either side.
 
 ## Continuation and stop points
 
@@ -142,6 +203,6 @@ Shape, Build, and Verify transitions return `next: auto | manual` together with 
 
 `next: auto` means only that the current transition succeeded; later work has not run automatically. If the caller explicitly requests a stop after a transition, update the formal artifacts, run the one allowed transition, make no tool calls after the transition succeeds, then output the agreed marker and end the turn, even when the continuation is `continue`.
 
-`workspace-root-changed` and `workspace-inspection-unavailable` are read-only advisories and do not block progression or Archive by themselves. Unknown workspace-integrity findings, confirmed conflicts, stale evidence, and repair stops must be resolved; when the Runtime requires workspace identity repair, run read-only doctor and then follow its explicit `doctor --repair` report.
+For legacy metadata, `workspace-root-changed` and `workspace-inspection-unavailable` are read-only advisories and do not block progression or Archive by themselves. `workspace-binding-root-changed`, `workspace-branch-changed`, `workspace-kind-changed`, and `workspace-vcs-unavailable` mean a new binding is invalid; return to the bound working directory and branch or stop for recovery. Other unknown workspace-integrity findings, confirmed conflicts, stale evidence, and repair stops must also be resolved. When the Runtime requires workspace identity repair, run read-only doctor and then follow its explicit `doctor --repair` report.
 
 Never place tokens, passwords, private keys, connection strings, or other credentials in summaries, reasons, reports, or artifacts.

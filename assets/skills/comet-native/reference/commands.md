@@ -61,10 +61,17 @@ After selecting, reread `status <change-name>`, confirm the phase, and then load
 ### Create a new change
 
 ```text
-comet native new <change-name> [--language en|zh-CN]
+comet native new <change-name> [--language en|zh-CN] \
+  [--isolation current|branch|worktree] \
+  [--change-branch <branch>] \
+  [--target-branch <branch>]
 ```
 
-Run `new` only after confirming that no matching active change exists. When configuration is absent, it creates the default Native configuration and `docs/comet/`; it then creates a Shape change, makes it the current selection, and returns a continuation.
+Run `new` only after scanning registered working directories and confirming that no matching active change exists. When configuration is absent, it creates the default Native configuration and `docs/comet/`; it then creates a Shape change, makes it current, and returns a continuation plus the workspace binding.
+
+`--isolation` defaults to `current`. For `branch` and `worktree`, the Agent first creates and enters the actual branch or worktree and passes the starting `--target-branch`; Runtime checks `--change-branch` against the current branch. `worktree` creation is accepted only in a linked Git worktree. A new change records its workspace mode, change branch, target branch, and physical working-directory identity; subsequent writes must remain aligned.
+
+Exit code `73` with `error.code: workspace-isolation-required` means another active change appeared in the same working directory under the `new` mutation lock. Retry automatically in a new worktree only when the original mode was the system-default `current`. Reconfirm if an explicit user choice became invalid.
 
 Immediately run `show <change-name>` and `status <change-name>`, then enter Shape clarification and shared-understanding confirmation. Do not create a new change to bypass a blocker, conflict, or recovery problem in an existing change.
 
@@ -146,7 +153,7 @@ comet native next <change-name> --summary <text> \
   [--report <change-relative-path>] \
   [--override-repair <sha256> --override-summary <text>]
 
-comet native archive <change-name> --dry-run
+comet native archive <change-name> --dry-run [--finish merge|push|pull-request|keep]
 comet native archive <change-name> --expect-preflight <sha256> [--confirmed]
 ```
 
@@ -155,7 +162,7 @@ comet native archive <change-name> --expect-preflight <sha256> [--confirmed]
 - Partial scope: explain the exact gaps and risks returned by the Runtime. Changes beyond the returned detail budget are summarized by a `scope-detail-overflow` count and content hash; use the matching scope hash, reason, and `--confirmed` only after the user accepts them.
 - Verify: provide `--result` and a complete report. For the standard report path, submit `comet native next <change-name> --summary <summary> --result pass|fail --report verification.md`. The Runtime validates the report format, complete acceptance matrix, and acceptance receipts before it runs or reuses the built-in required check for the current scope on pass; do not pass `--receipt`. Acceptance entries in the report reference automated/manual receipts directly. Executed failures reference their failed receipts, while checks that were not run include a `skipped_reason`. The Runtime derives failed acceptance and check identifiers from the report and receipts.
 - Repair override: use only the signature returned by status and only for one explicit new repair hypothesis.
-- Archive: dry-run first, then use the exact preflight hash returned by that preview. `required` mode also requires explicit user confirmation.
+- Archive: use a plain dry-run for current isolation. For branch/worktree, after the user makes the joint finishing choice, pass `--finish` to persist it and generate a new preflight. Then use the exact preflight hash returned by that preview. `required` mode also requires explicit user confirmation. Never combine `--finish` with `--expect-preflight`.
 
 ## Diagnostics and recovery
 

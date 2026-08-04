@@ -13,7 +13,9 @@ Agent 主要编辑：
   verification.md
 ```
 
-项目配置、当前 selection 和 change 状态用于读取，不要手工改变 Runtime 管理的 phase、确认、规格操作、scope、evidence、checkpoint、锁或事务字段。
+项目配置、当前 change、change 状态和 `runtime/workspace.json` 用于读取，不要手工改变 Runtime 管理的 phase、确认、规格操作、workspace 绑定、scope、evidence、checkpoint、锁或事务字段。
+
+新建 change 的 `comet.native.workspace.v3` 记录 `isolation`、`changeBranch`、`targetBranch`、Archive 前由 `--finish` 持久化的收尾决定和物理目录身份。它用于跨会话恢复和写入保护，不是会话 lease；旧 v1/v2 元数据保持兼容，不得为了启用隔离而手工迁移。
 
 Native artifact root 只由 `.comet/config.yaml` 指定。不要扫描其他 workflow 的目录，也不要自行创建第二个状态根。
 

@@ -46,7 +46,7 @@ comet native show <change-name>
 - `acceptancePage.nextCursor` 非空时，用 `--acceptance-cursor` 继续读取。
 - change 集合的 `nextCursor` 非空时，用 `--cursor` 继续读取。
 
-这些命令都不修改 selection、phase 或 change 内容。
+这些命令都不修改当前 change、phase 或 change 内容。
 
 ### 恢复已有 change
 
@@ -54,17 +54,24 @@ comet native show <change-name>
 comet native select <change-name>
 ```
 
-只在目标 change 已唯一确定或由用户明确选择后执行。`select` 只更新当前 Native selection，不改变 phase；成功结果会返回该 change 的 continuation。
+只在目标 change 已唯一确定或由用户明确选择后执行。`select` 只更新当前 Native change，不改变 phase；成功结果会返回该 change 的 continuation。
 
 选择后重新读取 `status <change-name>`，确认 phase，再加载该 phase 对应的 reference。不要把 `select` 当作阶段推进命令。
 
 ### 创建新 change
 
 ```text
-comet native new <change-name> [--language en|zh-CN]
+comet native new <change-name> [--language en|zh-CN] \
+  [--isolation current|branch|worktree] \
+  [--change-branch <branch>] \
+  [--target-branch <branch>]
 ```
 
-只有确认没有对应 active change 时才运行 `new`。配置缺失时，它会创建默认 Native 配置与 `docs/comet/`；随后创建一个 Shape change、把它设为当前 selection，并返回 continuation。
+只有扫描当前仓库已登记工作目录并确认没有对应 active change 时才运行 `new`。配置缺失时，它会创建默认 Native 配置与 `docs/comet/`；随后创建一个 Shape change、把它设为当前 change，并返回 continuation 和 workspace 绑定。
+
+`--isolation` 缺省为 `current`。`branch` 和 `worktree` 要求 Agent 先创建/切换实际分支或 worktree，并明确传入创建时所在的 `--target-branch`；Runtime 会核对 `--change-branch` 与当前分支。`worktree` 只能在 linked Git worktree 中创建。新 change 的 workspace 绑定会记录工作方式、change 分支、目标分支和物理工作目录身份，后续写入必须保持一致。
+
+退出码 `73` 且 `error.code: workspace-isolation-required` 表示同一个工作目录已在本次 mutation lock 中发现其他 active change。只有原方式是系统默认 `current` 时才自动改用新 worktree；若用户明确选择的方式失效，重新确认。
 
 创建后立即运行 `show <change-name>` 与 `status <change-name>`，然后进入 Shape 澄清与共享理解确认。不要创建新 change 来绕过旧 change 的阻塞、冲突或恢复问题。
 
@@ -146,7 +153,7 @@ comet native next <change-name> --summary <text> \
   [--report <change-relative-path>] \
   [--override-repair <sha256> --override-summary <text>]
 
-comet native archive <change-name> --dry-run
+comet native archive <change-name> --dry-run [--finish merge|push|pull-request|keep]
 comet native archive <change-name> --expect-preflight <sha256> [--confirmed]
 ```
 
@@ -155,7 +162,7 @@ comet native archive <change-name> --expect-preflight <sha256> [--confirmed]
 - Partial scope：先向用户说明 Runtime 返回的具体缺口和风险。超出已返回明细预算的变化由 `scope-detail-overflow` 数量和内容 hash 汇总；只有用户接受后才使用完全匹配的 scope hash、理由和 `--confirmed`。
 - Verify：提供 `--result` 和完整报告。标准报告路径提交为 `comet native next <change-name> --summary <摘要> --result pass|fail --report verification.md`。Runtime 先校验报告格式、完整验收矩阵和 acceptance receipt，再在 pass 时执行或复用当前 scope 的内置 required check；不要传入 `--receipt`。报告中的 acceptance 条目直接引用 automated/manual receipt。已执行但失败的条目引用对应失败 receipt，未执行的条目写明 `skipped_reason`。repair 的失败 acceptance 和检查标识由 Runtime 从报告与 receipt 自动推导。
 - Repair override：只使用 status 返回的 signature，并且只在有一个明确新修复假设时执行。
-- Archive：先 dry-run，再使用本次预演返回的精确 preflight hash；`required` 模式还需要用户明确确认。
+- Archive：current 直接 dry-run；branch/worktree 在用户完成联合收尾选择后，用 `--finish` 把选择持久化并生成新的 preflight。后续使用本次预演返回的精确 preflight hash；`required` 模式还需要用户明确确认。不得把 `--finish` 与 `--expect-preflight` 同时传入。
 
 ## 诊断与恢复
 

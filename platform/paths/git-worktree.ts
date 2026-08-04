@@ -6,6 +6,7 @@ interface GitWorktreeContext {
   isSecondaryWorktree: boolean;
   currentWorktreeRoot: string | null;
   primaryWorktreeRoot: string | null;
+  currentBranch: string | null;
 }
 
 function runGit(projectPath: string, args: string[]): string {
@@ -33,11 +34,19 @@ function inspectGitWorktree(projectPath: string): GitWorktreeContext {
     const primaryWorktreeRoot = primaryToken
       ? path.resolve(primaryToken.slice('worktree '.length))
       : currentWorktreeRoot;
+    let currentBranch: string | null = null;
+    try {
+      currentBranch = runGit(projectPath, ['symbolic-ref', '--quiet', '--short', 'HEAD']) || null;
+    } catch {
+      // Detached HEAD is a valid Git worktree state, but it cannot satisfy a
+      // Native branch binding.
+    }
     return {
       isGitWorktree: true,
       isSecondaryWorktree: !samePath(currentWorktreeRoot, primaryWorktreeRoot),
       currentWorktreeRoot,
       primaryWorktreeRoot,
+      currentBranch,
     };
   } catch {
     return {
@@ -45,9 +54,20 @@ function inspectGitWorktree(projectPath: string): GitWorktreeContext {
       isSecondaryWorktree: false,
       currentWorktreeRoot: null,
       primaryWorktreeRoot: null,
+      currentBranch: null,
     };
   }
 }
 
-export { inspectGitWorktree };
+function isLocalGitBranch(projectPath: string, branch: string): boolean {
+  try {
+    runGit(projectPath, ['check-ref-format', '--branch', branch]);
+    runGit(projectPath, ['show-ref', '--verify', `refs/heads/${branch}`]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export { inspectGitWorktree, isLocalGitBranch };
 export type { GitWorktreeContext };

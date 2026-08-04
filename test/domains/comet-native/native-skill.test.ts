@@ -355,8 +355,10 @@ describe('Comet Native Skills', () => {
     expect(commands).toContain('`root move` 是事务性写操作');
     expect(commands).toContain('无 change 名称的 `status` 返回分页候选');
     expect(commands).toContain('`show` 返回 state、brief 和 proposed specs');
-    expect(commands).toContain('`select` 只更新当前 Native selection，不改变 phase');
-    expect(commands).toContain('只有确认没有对应 active change 时才运行 `new`');
+    expect(commands).toContain('`select` 只更新当前 Native change，不改变 phase');
+    expect(commands).toContain(
+      '只有扫描当前仓库已登记工作目录并确认没有对应 active change 时才运行 `new`',
+    );
     expect(commands).toContain(
       '`spec remove` 和 `spec rebase` 都会修改 change 的规格轨迹并返回新的 continuation',
     );
@@ -385,12 +387,71 @@ describe('Comet Native Skills', () => {
       '`select` updates only the current Native selection and does not change the phase',
     );
     expect(englishCommands).toContain(
-      'Run `new` only after confirming that no matching active change exists',
+      'Run `new` only after scanning registered working directories and confirming that no matching active change exists',
     );
     expect(englishCommands).toContain(
       "Both `spec remove` and `spec rebase` modify the change's specification history and return a new continuation",
     );
     expect(englishCommands).toContain('After any write command, immediately reread');
+  });
+
+  it('documents automatic change discovery, workspace binding, and finishing in both languages', async () => {
+    const variants = [
+      {
+        language: 'zh' as const,
+        skillTerms: [
+          'git worktree list --porcelain',
+          '不等待用户说“并行”',
+          '并行单位是 change',
+          'current / branch / worktree',
+          'workspace-isolation-required',
+          '不自动生成 worktree、不移动文件、不刷新 baseline',
+          '归档并本地合并到已绑定目标分支',
+          '归档、推送并创建 PR',
+          '任何语义冲突都中止合并',
+        ],
+        commandTerms: [
+          '--isolation current|branch|worktree',
+          '--change-branch <branch>',
+          '--target-branch <branch>',
+          '--finish merge|push|pull-request|keep',
+          'comet.native.workspace.v3',
+        ],
+      },
+      {
+        language: 'en' as const,
+        skillTerms: [
+          'git worktree list --porcelain',
+          'do not wait for the user to say “parallel.”',
+          'parallelism unit is a change',
+          'current / branch / worktree',
+          'workspace-isolation-required',
+          'do not generate worktrees, move files, or refresh their baselines automatically',
+          'archive and merge locally into the bound target branch',
+          'archive, push, and open a PR',
+          'Abort any semantic conflict',
+        ],
+        commandTerms: [
+          '--isolation current|branch|worktree',
+          '--change-branch <branch>',
+          '--target-branch <branch>',
+          '--finish merge|push|pull-request|keep',
+          'comet.native.workspace.v3',
+        ],
+      },
+    ];
+
+    for (const variant of variants) {
+      const skill = await read(variant.language, 'SKILL.md');
+      const commands = await read(variant.language, 'reference/commands.md');
+      const artifacts = await read(variant.language, 'reference/artifacts.md');
+      for (const term of variant.skillTerms) {
+        expect(skill, `${variant.language}: ${term}`).toContain(term);
+      }
+      for (const term of variant.commandTerms) {
+        expect(`${commands}\n${artifacts}`, `${variant.language}: ${term}`).toContain(term);
+      }
+    }
   });
 
   it('removes the external cryptographic review workflow from both languages', async () => {
