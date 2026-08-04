@@ -115,6 +115,30 @@ function isManagedSkillPathForSelection(
   );
 }
 
+/**
+ * Derive the workflow selection from the Skills already on disk by checking
+ * the two workflow markers (comet-native/SKILL.md and comet-classic/SKILL.md).
+ * This lets `comet update` keep already-installed workflows in sync without
+ * expanding the range the user chose at install time:
+ *   neither / classic only -> 'classic'  (no Native added)
+ *   native only            -> 'native'   (no Classic added)
+ *   both                   -> 'both'
+ * The caller is responsible for computing `skillsRoot` (e.g. base dir +
+ * platform skills dir + 'skills'); this function only performs the marker
+ * check and mapping.
+ */
+export async function detectInstalledWorkflowSelection(
+  skillsRoot: string,
+): Promise<InitWorkflowSelection> {
+  const [hasNative, hasClassic] = await Promise.all([
+    fileExists(path.join(skillsRoot, 'comet-native', 'SKILL.md')),
+    fileExists(path.join(skillsRoot, 'comet-classic', 'SKILL.md')),
+  ]);
+  if (hasNative && hasClassic) return 'both';
+  if (hasNative) return 'native';
+  return 'classic';
+}
+
 function getManagedSkillPathsForSelection(
   manifest: Manifest,
   workflowSelection: InitWorkflowSelection,
@@ -458,6 +482,9 @@ async function installSkillsAsSymlink(
   let copied = 0;
   let skippedCount = 0;
   let failedCount = 0;
+  // Count manifest entries filtered out by the workflow selection so the
+  // symlink path reports skipped files consistently with copy mode.
+  skippedCount += getManagedSkillPaths(manifest).length - managedSkillPaths.length;
 
   for (const skillRelPath of managedSkillPaths) {
     const isScript = skillRelPath.includes('/scripts/');
@@ -566,6 +593,11 @@ async function copyCometSkillsForPlatform(
   let failedCount = 0;
   const managedSkillPaths = getManagedSkillPathsForSelection(manifest, workflowSelection);
   const userFacingSkillPaths = getUserFacingSkillPathsForSelection(manifest, workflowSelection);
+  // Count manifest entries that the workflow selection filters out so the
+  // update summary stays honest: a Classic-only update reports the Native
+  // files it intentionally skips instead of pretending they do not exist.
+  const filteredCount = getManagedSkillPaths(manifest).length - managedSkillPaths.length;
+  skippedCount += filteredCount;
 
   for (const skillRelPath of managedSkillPaths) {
     const isScript = skillRelPath.includes('/scripts/');

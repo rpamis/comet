@@ -109,6 +109,11 @@ get_dockerfile_hash() {
     local dockerfile="$dir/Dockerfile"
 
     if [[ ! -f "$dockerfile" ]]; then
+        # Fall back to environment/Dockerfile (same layout as docker_build).
+        dockerfile="$dir/environment/Dockerfile"
+    fi
+
+    if [[ ! -f "$dockerfile" ]]; then
         echo ""
         return 1
     fi
