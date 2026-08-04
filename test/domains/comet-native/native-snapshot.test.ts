@@ -1784,6 +1784,36 @@ describe('Native incremental content snapshots', () => {
     expect(incremental.entries[0]!.hash).not.toBe(baseline.entries[0]!.hash);
   });
 
+  it('re-captures index-hidden files that Git omits from the modified set', async () => {
+    await initGitRepo();
+    await fs.writeFile(path.join(projectRoot, 'a.ts'), 'export const a = 1;\n');
+    await fs.writeFile(path.join(projectRoot, 'b.ts'), 'export const b = 1;\n');
+    await execFileAsync('git', ['add', '-A'], { cwd: projectRoot });
+    await execFileAsync('git', ['commit', '-m', 'init'], { cwd: projectRoot });
+
+    const baseline = await createNativeContentSnapshot(paths);
+    await execFileAsync('git', ['update-index', '--assume-unchanged', 'a.ts'], {
+      cwd: projectRoot,
+    });
+    await execFileAsync('git', ['update-index', '--skip-worktree', 'b.ts'], {
+      cwd: projectRoot,
+    });
+    await fs.writeFile(path.join(projectRoot, 'a.ts'), 'export const a = 2;\n');
+    await fs.writeFile(path.join(projectRoot, 'b.ts'), 'export const b = 2;\n');
+    const { stdout: modified } = await execFileAsync('git', ['ls-files', '--modified'], {
+      cwd: projectRoot,
+    });
+    expect(modified).toBe('');
+
+    const full = await fullCurrentSnapshot(baseline);
+    const incremental = await createNativeCurrentContentSnapshot(paths, baseline);
+    expect(projectionHashOf(incremental)).toBe(projectionHashOf(full));
+    expect(incremental.entries.map((entry) => entry.hash)).not.toEqual(
+      baseline.entries.map((entry) => entry.hash),
+    );
+    expect(incremental.entries.every((entry) => entry.gitObjectId === undefined)).toBe(true);
+  });
+
   it('captures newly added files that were not in baseline', async () => {
     await initGitRepo();
     await fs.writeFile(path.join(projectRoot, 'a.ts'), 'export const a = 1;\n');
