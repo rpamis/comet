@@ -15,6 +15,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Native incremental projection consistency**: Native now re-reads files hidden from Git's modified-file scan by `assume-unchanged` or `skip-worktree` index flags, preventing false Build-to-Verify projection mismatches from blocking verification and archive.
 - **Inactive Hook routing**: Project Hooks now allow ordinary writes when no Comet change is selected and the configured workflow artifact roots have not been created, while continuing to block unreadable or ambiguous active change state.
 - **Native receipt scope recovery**: Automated and manual verification receipts now stop before execution when project files changed after Build, report the changed paths, and return the exact command for returning to Build and refreshing the implementation scope. Receipt refresh uses the same check instead of reporting that no stale receipts exist.
 - **Classic build recovery**: Full Classic workflows now return to plan creation after context recovery when no implementation plan is recorded or the recorded implementation-plan path is invalid, and block project source writes until the plan is restored and linked.

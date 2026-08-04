@@ -2830,13 +2830,46 @@ export async function createNativeContentSnapshot(
       }
       incrementalEnabled = baselineByPath.size > 0;
     }
+    // `git ls-files --modified` intentionally trusts assume-unchanged and
+    // skip-worktree index flags. Those paths can have different bytes on disk
+    // while Git reports a clean working tree, so their object ids cannot prove
+    // that a raw-content snapshot entry is reusable.
+    const unsafeGitObjectIdPaths = new Set<string>();
+    let gitObjectIdsTrusted = true;
+    try {
+      const tagged = await runGitNullRecords(execution, projectRoot, ['ls-files', '-v', '-z'], {
+        ...gitSelectionLimits,
+        ...(options.gitSelectionHooks?.outputChunkBytes === undefined
+          ? {}
+          : { outputChunkBytes: options.gitSelectionHooks.outputChunkBytes }),
+      });
+      if (tagged.overflow) {
+        incrementalEnabled = false;
+        gitObjectIdsTrusted = false;
+        baselineByPath.clear();
+      } else {
+        for (const encoded of tagged.records) {
+          const record = decodeGitRecord(encoded);
+          const separator = record.indexOf(' ');
+          const relative = separator < 0 ? null : safeGitProjectPath(record.slice(separator + 1));
+          if (separator !== 1 || relative === null) {
+            throw new Error('Native Git snapshot provider returned a malformed tagged record');
+          }
+          if (record[0] !== 'H') unsafeGitObjectIdPaths.add(relative);
+        }
+      }
+    } catch (error) {
+      if (isNativeGitSnapshotTimeout(error)) throw error;
+      incrementalEnabled = false;
+      gitObjectIdsTrusted = false;
+      baselineByPath.clear();
+    }
     // Detect files modified in the working tree but not yet staged. Git index
     // object ids do not reflect unstaged edits, so such files must be
     // re-captured even when their staged object id matches baseline. This
     // probe also protects newly-created baselines from binding a working-tree
     // hash to an unrelated index object id.
     const workingTreeModified = new Set<string>();
-    let gitObjectIdsTrusted = true;
     try {
       const modifiedOutput = await runGitBoundedOutput(
         execution,
@@ -2978,6 +3011,7 @@ export async function createNativeContentSnapshot(
         incrementalEnabled &&
         baselineEntry?.gitObjectId !== undefined &&
         baselineEntry.gitObjectId === currentObjectId &&
+        !unsafeGitObjectIdPaths.has(relative) &&
         !workingTreeModified.has(relative)
       ) {
         if (entries.length >= limits.maxFiles) {
@@ -3001,7 +3035,11 @@ export async function createNativeContentSnapshot(
         continue;
       }
       const boundObjectId =
-        gitObjectIdsTrusted && !workingTreeModified.has(relative) ? currentObjectId : undefined;
+        gitObjectIdsTrusted &&
+        !unsafeGitObjectIdPaths.has(relative) &&
+        !workingTreeModified.has(relative)
+          ? currentObjectId
+          : undefined;
       await captureFile(target, relative, before, boundObjectId);
       if (boundObjectId !== undefined) boundObjectIdPaths.add(relative);
     }
