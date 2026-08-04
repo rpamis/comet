@@ -85,7 +85,7 @@ describe('resumeProbe command', () => {
     state(tmpDir, ['set', activeChange, 'phase', 'build'], {
       COMET_FORCE_PHASE: '1',
     });
-  }, 120_000);
+  });
 
   afterEach(async () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
