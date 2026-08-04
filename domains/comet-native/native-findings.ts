@@ -76,6 +76,12 @@ const EXACT_METADATA: Record<string, FindingMetadata> = {
     retry: 'next',
     repair: 'none',
   },
+  'verification-implementation-stale': {
+    severity: 'error',
+    requiredAction: 'return-to-build-and-refresh-implementation-scope',
+    retry: 'next',
+    repair: 'none',
+  },
   'verification-receipt-binding-mismatch': {
     severity: 'error',
     requiredAction: 'refresh-verification-receipts',

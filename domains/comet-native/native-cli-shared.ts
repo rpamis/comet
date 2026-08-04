@@ -9,6 +9,7 @@ import {
 } from './native-change.js';
 import { discoverNativeProject, nativeProjectPaths } from './native-paths.js';
 import { readProjectConfig, resolveNativeProject } from './native-config.js';
+import { NativeReceiptScopeStaleError } from './native-receipt-errors.js';
 import { NativeVerificationReceiptBindingError } from './native-verification-runtime.js';
 import type { CometProjectConfig, NativeProjectPaths } from './native-types.js';
 
@@ -19,7 +20,14 @@ export interface NativeCommandResult {
 }
 
 export interface NativeCliErrorShape {
-  code: 'usage' | 'invalid-data' | 'blocked' | 'conflict' | 'internal' | 'baseline-incomplete';
+  code:
+    | 'usage'
+    | 'invalid-data'
+    | 'blocked'
+    | 'conflict'
+    | 'internal'
+    | 'baseline-incomplete'
+    | 'implementation-scope-stale';
   message: string;
 }
 
@@ -263,6 +271,14 @@ export function errorResult(command: string | null, error: unknown): DispatchRes
       exitCode: 65,
       data: { receiptBindingFailures: error.details },
       error: { code: 'invalid-data', message: error.message },
+    };
+  }
+  if (error instanceof NativeReceiptScopeStaleError) {
+    return {
+      command,
+      exitCode: 65,
+      data: error.recovery,
+      error: { code: 'implementation-scope-stale', message: error.message },
     };
   }
   if (error instanceof Error) {

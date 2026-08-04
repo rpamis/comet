@@ -95,6 +95,26 @@ describe('Native structured findings', () => {
     });
   });
 
+  it('routes stale implementation scope back to Build without a user decision', () => {
+    const [finding] = structureNativeFindings({
+      paths,
+      state: { ...state, phase: 'verify' },
+      findings: [
+        {
+          code: 'verification-implementation-stale',
+          message: 'The implementation changed after Build.',
+        },
+      ],
+    });
+
+    expect(finding).toMatchObject({
+      requiredAction: 'return-to-build-and-refresh-implementation-scope',
+      retryCommand: 'comet native next finding-shape --summary "<summary>"',
+      repairCommand: null,
+      requiresUserDecision: false,
+    });
+  });
+
   it('reserves repair decisions for exhausted overrides and verification budgets', () => {
     const findings = structureNativeFindings({
       paths,

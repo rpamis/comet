@@ -19,6 +19,11 @@ import {
 import type { NativeChangeState, NativeProjectPaths } from './native-types.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
 import { redactNativeCredentialText } from './native-redaction.js';
+import {
+  NativeReceiptScopeStaleError,
+  type NativeReceiptFenceChangedPath,
+  type NativeReceiptScopeRecovery,
+} from './native-receipt-errors.js';
 import { withNativeTransitionLock } from './native-transition-journal.js';
 import type { NativeContentSnapshotManifest } from './native-types.js';
 import { createNativeCurrentContentSnapshot } from './native-snapshot.js';
@@ -185,6 +190,23 @@ export interface NativeVerificationReceiptContext {
   implementationAuthor: string;
   implementationExecutionId: string;
   scope: NativeImplementationScopeBundle;
+}
+
+export interface NativeReceiptFenceInspection {
+  matched: boolean;
+  expectedScopeHash: string;
+  actualScopeHash: string;
+  expectedSnapshotHash: string;
+  actualSnapshotHash: string;
+  changedPaths: NativeReceiptFenceChangedPath[];
+  changedPathCount: number;
+  changedPathsTruncated: boolean;
+}
+
+export interface NativeIssuedVerificationReceipt {
+  receipt: NativeVerificationReceipt;
+  ref: string;
+  recovery?: NativeReceiptScopeRecovery;
 }
 
 function boundedText(value: string, label: string): string {
@@ -360,6 +382,11 @@ async function issueNativeManualEvidenceReceiptLocked(options: {
   now?: Date;
 }): Promise<{ receipt: NativeVerificationReceipt; ref: string }> {
   const context = await loadNativeVerificationReceiptContext(options.paths, options.state);
+  await assertNativeReceiptScopeCurrent({
+    paths: options.paths,
+    state: options.state,
+    context,
+  });
   const receipt = buildNativeVerificationReceipt({
     kind: 'manual-evidence',
     role: 'acceptance-evidence',
@@ -399,11 +426,94 @@ function projectionManifest(projection: NativeSnapshotProjection): NativeContent
   };
 }
 
+const MAX_NATIVE_RECEIPT_FENCE_CHANGED_PATHS = 20;
+
+function inspectNativeReceiptFenceChanges(
+  expected: NativeSnapshotProjection,
+  actual: NativeSnapshotProjection,
+): Pick<
+  NativeReceiptFenceInspection,
+  'changedPaths' | 'changedPathCount' | 'changedPathsTruncated'
+> {
+  const changedPaths: NativeReceiptFenceChangedPath[] = [];
+  let changedPathCount = 0;
+  let expectedIndex = 0;
+  let actualIndex = 0;
+  while (expectedIndex < expected.entries.length || actualIndex < actual.entries.length) {
+    const expectedEntry = expected.entries[expectedIndex];
+    const actualEntry = actual.entries[actualIndex];
+    const order =
+      expectedEntry === undefined
+        ? 1
+        : actualEntry === undefined
+          ? -1
+          : expectedEntry.path < actualEntry.path
+            ? -1
+            : expectedEntry.path > actualEntry.path
+              ? 1
+              : 0;
+    const before = order <= 0 ? expectedEntry : undefined;
+    const after = order >= 0 ? actualEntry : undefined;
+    if (order <= 0) expectedIndex += 1;
+    if (order >= 0) actualIndex += 1;
+    if (before && after && before.hash === after.hash && before.size === after.size) continue;
+    const pathValue = before?.path ?? after?.path;
+    if (!pathValue) continue;
+    changedPathCount += 1;
+    if (changedPaths.length < MAX_NATIVE_RECEIPT_FENCE_CHANGED_PATHS) {
+      changedPaths.push({
+        path: pathValue,
+        kind: before ? (after ? 'modified' : 'removed') : 'added',
+      });
+    }
+  }
+  return {
+    changedPaths,
+    changedPathCount,
+    changedPathsTruncated: changedPaths.length !== changedPathCount,
+  };
+}
+
+function nativeReceiptScopeRecovery(
+  change: string,
+  inspection: NativeReceiptFenceInspection,
+  commandExecuted: boolean,
+): NativeReceiptScopeRecovery {
+  return {
+    reason: commandExecuted
+      ? 'implementation-changed-during-command'
+      : 'implementation-scope-stale',
+    commandExecuted,
+    expectedScopeHash: inspection.expectedScopeHash,
+    actualScopeHash: inspection.actualScopeHash,
+    expectedSnapshotHash: inspection.expectedSnapshotHash,
+    actualSnapshotHash: inspection.actualSnapshotHash,
+    changedPaths: inspection.changedPaths,
+    changedPathCount: inspection.changedPathCount,
+    changedPathsTruncated: inspection.changedPathsTruncated,
+    requiredAction: 'return-to-build-and-refresh-implementation-scope',
+    nextCommand: `comet native next ${change} --summary "Implementation changed after Build; return to Build and refresh scope"`,
+    requiresUserDecision: false,
+  };
+}
+
+function nativeReceiptScopeStaleError(
+  change: string,
+  inspection: NativeReceiptFenceInspection,
+): NativeReceiptScopeStaleError {
+  const recovery = nativeReceiptScopeRecovery(change, inspection, false);
+  const changed = recovery.changedPaths.map((entry) => `${entry.kind}: ${entry.path}`).join(', ');
+  return new NativeReceiptScopeStaleError(
+    `Native receipt stopped before command execution because the implementation scope changed after Build${changed ? ` (${changed}${recovery.changedPathsTruncated ? ', ...' : ''})` : ''}. Return to Build with \`${recovery.nextCommand}\`, re-freeze the implementation scope, and then issue fresh receipts.`,
+    recovery,
+  );
+}
+
 async function currentReceiptFence(options: {
   paths: NativeProjectPaths;
   context: NativeVerificationReceiptContext;
   now?: Date;
-}): Promise<{ snapshotHash: string; scopeHash: string; matched: boolean }> {
+}): Promise<NativeReceiptFenceInspection> {
   const baseline = projectionManifest(options.context.scope.baseline);
   const current = await createNativeCurrentContentSnapshot(options.paths, baseline, {
     origin: 'explicit',
@@ -417,13 +527,31 @@ async function currentReceiptFence(options: {
     noCodeReason: options.context.scope.scope.noCodeReason,
     gitChangedPaths: options.context.scope.authority.gitChangedPaths,
   });
+  const changes = inspectNativeReceiptFenceChanges(options.context.scope.current, bundle.current);
   return {
-    snapshotHash: bundle.scope.currentProjectionHash,
-    scopeHash: bundle.scope.scopeHash,
+    expectedScopeHash: options.context.bindings.scopeHash,
+    actualScopeHash: bundle.scope.scopeHash,
+    expectedSnapshotHash: options.context.bindings.snapshotHash,
+    actualSnapshotHash: bundle.scope.currentProjectionHash,
     matched:
       bundle.scope.currentProjectionHash === options.context.bindings.snapshotHash &&
       bundle.scope.scopeHash === options.context.bindings.scopeHash,
+    ...changes,
   };
+}
+
+export async function assertNativeReceiptScopeCurrent(options: {
+  paths: NativeProjectPaths;
+  state: NativeChangeState;
+  context?: NativeVerificationReceiptContext;
+}): Promise<NativeVerificationReceiptContext> {
+  const context =
+    options.context ?? (await loadNativeVerificationReceiptContext(options.paths, options.state));
+  const inspection = await currentReceiptFence({ paths: options.paths, context });
+  if (!inspection.matched) {
+    throw nativeReceiptScopeStaleError(options.state.name, inspection);
+  }
+  return context;
 }
 
 async function gitWorktreeIdentity(projectRoot: string): Promise<{
@@ -467,7 +595,7 @@ export async function issueNativeAutomatedCheckReceipt(options: {
   args: readonly string[];
   timeoutMs?: number;
   now?: () => Date;
-}): Promise<{ receipt: NativeVerificationReceipt; ref: string }> {
+}): Promise<NativeIssuedVerificationReceipt> {
   return withNativeReceiptIssuanceLock({
     paths: options.paths,
     name: options.name,
@@ -484,8 +612,13 @@ async function issueNativeAutomatedCheckReceiptLocked(options: {
   args: readonly string[];
   timeoutMs?: number;
   now?: () => Date;
-}): Promise<{ receipt: NativeVerificationReceipt; ref: string }> {
+}): Promise<NativeIssuedVerificationReceipt> {
   const context = await loadNativeVerificationReceiptContext(options.paths, options.state);
+  await assertNativeReceiptScopeCurrent({
+    paths: options.paths,
+    state: options.state,
+    context,
+  });
   const beforeWorktree = await gitWorktreeIdentity(options.paths.projectRoot);
   const startedAt = (options.now?.() ?? new Date()).toISOString();
   const timeoutMs = options.timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS;
@@ -616,7 +749,8 @@ async function issueNativeAutomatedCheckReceiptLocked(options: {
         afterCommit: afterWorktree.commit,
       },
       afterFence: {
-        ...afterFence,
+        snapshotHash: afterFence.actualSnapshotHash,
+        scopeHash: afterFence.actualScopeHash,
         matched: afterFence.matched && worktreeMatched,
       },
       outputHash: outputHasher.digest('hex'),
@@ -634,6 +768,9 @@ async function issueNativeAutomatedCheckReceiptLocked(options: {
       name: options.state.name,
       receipt,
     }),
+    ...(!afterFence.matched
+      ? { recovery: nativeReceiptScopeRecovery(options.state.name, afterFence, true) }
+      : {}),
   };
 }
 

@@ -16,6 +16,7 @@ import {
 } from './native-evidence-storage.js';
 import type { NativeProjectPaths } from './native-types.js';
 import {
+  assertNativeReceiptScopeCurrent,
   compareNativeReceiptBindings,
   issueNativeManualEvidenceReceipt,
   loadNativeVerificationReceiptContext,
@@ -116,6 +117,9 @@ function describeManualObservation(): string {
  * manual-evidence receipts whose only mismatch is the source revision at the
  * current revision and rewrites the acceptance-evidence block in
  * `verification.md`, while reporting receipts that require fresh evidence.
+ * An implementation scope that changed after Build is a different recovery
+ * class and fails before receipt inspection with the exact command for
+ * returning to Build and re-freezing the scope.
  *
  * Returns a structured report so the Agent can drive recovery programmatically
  * rather than parsing prose.
@@ -131,6 +135,12 @@ export async function refreshNativeVerificationReceipts(options: {
       `Native receipt refresh requires Verify, got ${state.phase} for ${options.name}`,
     );
   }
+  const context = state.implementation_scope
+    ? await loadNativeVerificationReceiptContext(options.paths, state)
+    : null;
+  if (context) {
+    await assertNativeReceiptScopeCurrent({ paths: options.paths, state, context });
+  }
   if (!state.verification_evidence) {
     // No envelope yet: nothing has been verified, so there is nothing to refresh.
     return {
@@ -142,7 +152,9 @@ export async function refreshNativeVerificationReceipts(options: {
       verificationReport: null,
     };
   }
-  const context = await loadNativeVerificationReceiptContext(options.paths, state);
+  if (!context) {
+    throw new Error('Native receipt refresh requires an implementation scope');
+  }
   const envelope = await readNativeVerificationEvidence(
     options.paths,
     options.name,

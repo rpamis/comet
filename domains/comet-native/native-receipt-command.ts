@@ -68,11 +68,25 @@ export async function nativeReceiptCommand(
       args: commandArgs.slice(1),
       ...(timeoutMs === undefined ? {} : { timeoutMs }),
     });
+    const lines = [`Native automated receipt ${issued.receipt.status}: ${issued.ref}`];
+    if (issued.recovery) {
+      const changed = issued.recovery.changedPaths
+        .map((entry) => `  ${entry.kind}: ${entry.path}`)
+        .join('\n');
+      lines.push('Implementation changed while the verification command was running.');
+      if (changed) lines.push(changed);
+      if (issued.recovery.changedPathsTruncated) {
+        lines.push(
+          `  ... ${issued.recovery.changedPathCount - issued.recovery.changedPaths.length} more path(s)`,
+        );
+      }
+      lines.push(`Recover with: ${issued.recovery.nextCommand}`);
+    }
     return {
       command: 'receipt automated',
       exitCode: issued.receipt.status === 'passed' ? 0 : 1,
       data: issued,
-      text: `Native automated receipt ${issued.receipt.status}: ${issued.ref}\n`,
+      text: `${lines.join('\n')}\n`,
     };
   }
   if (subcommand === 'refresh') {
