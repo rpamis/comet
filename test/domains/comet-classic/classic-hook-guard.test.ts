@@ -2,7 +2,7 @@ import { spawnSync } from 'child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readRunState } from '../../../domains/engine/state.js';
 import { inspectClassicHookGuard } from '../../../domains/comet-classic/classic-hook-guard.js';
 
@@ -166,6 +166,25 @@ describe('Classic hook guard command', () => {
       change: 'demo',
       phase: 'design',
     });
+  });
+
+  it('blocks an explicit target when its project scope cannot be determined', async () => {
+    const dir = await makeProject();
+    await seedChange(dir, 'demo', 'design');
+
+    const result = await inspectClassicHookGuard(
+      dir,
+      'demo',
+      { intent: 'write', targets: [path.join(dir, 'src', 'app.ts')], toolName: 'Write' },
+      {
+        scopeTargets: vi.fn(async () => {
+          throw new Error('project root is unreadable');
+        }),
+      },
+    );
+
+    expect(result).toMatchObject({ allowed: false, workflow: 'classic', change: 'demo' });
+    expect(result.reason).toContain('scope could not be determined safely');
   });
 
   it('blocks a selected active change junction without reading external state', async () => {

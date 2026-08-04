@@ -1548,6 +1548,44 @@ describe('comet init E2E', () => {
     await expect(fs.access(path.join(tmpDir, '.comet', 'config.yaml'))).rejects.toThrow();
   });
 
+  it('preserves an existing global Ambient Resume preference during re-initialization', async () => {
+    mockExternalSuccess();
+    const fakeHome = path.join(tmpDir, 'fake-home-existing-global');
+    await fs.mkdir(path.join(fakeHome, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(fakeHome, '.comet', 'config.yaml'),
+      [
+        'schema: comet.global.v1',
+        'default_workflow: native',
+        'workflows:',
+        '  - native',
+        'ambient_resume: false',
+        'native:',
+        '  artifact_root: docs',
+        '',
+      ].join('\n'),
+    );
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+
+    try {
+      const { initCommand } = await import('../../app/commands/init.js');
+      await captureJsonOutput(() =>
+        initCommand(tmpDir, {
+          yes: true,
+          json: true,
+          scope: 'global',
+          workflow: 'native',
+        }),
+      );
+    } finally {
+      homedirSpy.mockRestore();
+    }
+
+    await expect(
+      fs.readFile(path.join(fakeHome, '.comet', 'config.yaml'), 'utf8'),
+    ).resolves.toContain('ambient_resume: false');
+  });
+
   it('does not publish a global Classic default when OpenSpec initialization fails', async () => {
     mockExternalSuccess();
     await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });

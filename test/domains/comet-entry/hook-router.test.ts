@@ -77,6 +77,27 @@ describe('Comet Hook Router', () => {
     expect(inspectClassic).not.toHaveBeenCalled();
   });
 
+  it('fails closed when the scope of an explicit write target cannot be determined', async () => {
+    const scopeTargets = vi.fn(async () => {
+      throw new Error('project root is unreadable');
+    });
+
+    const decision = await inspectCometHook(
+      root,
+      { intent: 'write', targets: ['src/app.ts'], toolName: 'Write' },
+      {
+        listNative: vi.fn(async () => []),
+        listClassic: vi.fn(async () => []),
+        inspectNative: vi.fn(),
+        inspectClassic: vi.fn(),
+        scopeTargets,
+      },
+    );
+
+    expect(decision).toMatchObject({ allowed: false });
+    expect(decision.reason).toContain('scope could not be determined safely');
+  });
+
   it('filters external targets before delegating a mixed write to the owning Guard', async () => {
     await configureBoth();
     await writeCometCurrentSelection(root, {

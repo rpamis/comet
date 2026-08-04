@@ -265,17 +265,23 @@ function NativeSummaryCards({ native, loadedChanges = [] }) {
   const cards = [
     ['活跃变更', active, '当前 Native workflow', active ? '进行中' : '清零', FlagOutlined],
     [
-      '可归档变更',
+      '已加载可归档',
       archiveReady,
-      '验证证据已就绪',
+      '当前已加载结果',
       archiveReady ? '就绪' : '暂无',
       CheckCircleOutlined,
     ],
-    ['等待用户', awaitingUser, '需要明确决策', awaitingUser ? '待确认' : '无需', UserOutlined],
     [
-      '验证需关注',
+      '已加载等待用户',
+      awaitingUser,
+      '当前已加载结果',
+      awaitingUser ? '待确认' : '无需',
+      UserOutlined,
+    ],
+    [
+      '已加载验证需关注',
       verificationAttention,
-      '过期、无效或部分证据',
+      '当前已加载结果',
       verificationAttention ? '复核' : '健康',
       SafetyCertificateOutlined,
     ],

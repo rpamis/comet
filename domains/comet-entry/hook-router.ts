@@ -58,6 +58,7 @@ interface HookRouterDependencies {
   listClassic: typeof listActiveClassicHookChanges;
   inspectNative: typeof inspectNativeHookGuard;
   inspectClassic: typeof inspectClassicHookGuard;
+  scopeTargets?: typeof scopeCometHookTargets;
 }
 
 const DEFAULT_DEPENDENCIES: HookRouterDependencies = {
@@ -207,13 +208,23 @@ export async function inspectCometHook(
 
   let projectRequest: CometHookRequest;
   try {
-    const scoped = await scopeCometHookTargets(projectRoot, request.targets);
+    const scoped = await (dependencies.scopeTargets ?? scopeCometHookTargets)(
+      projectRoot,
+      request.targets,
+    );
     if (scoped.projectTargets.length === 0) {
       return { allowed: true, reason: 'Write targets are outside the guarded project' };
     }
     projectRequest = { ...request, targets: scoped.projectTargets };
-  } catch {
-    return { allowed: true, reason: 'Hook write target scope could not be determined' };
+  } catch (error) {
+    return {
+      allowed: false,
+      reason: [
+        'Comet Hook Router scope could not be determined safely.',
+        `Reason: ${error instanceof Error ? error.message : String(error)}`,
+        'Next: verify that the project root is accessible, then retry the write.',
+      ].join(' '),
+    };
   }
 
   try {

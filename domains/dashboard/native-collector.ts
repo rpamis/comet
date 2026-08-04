@@ -432,12 +432,12 @@ function emptyNativeConflictSummary(): NativeDashboardConflictSummary {
 
 function nativeDashboardPageLimit(limit?: number): number {
   if (limit === undefined) return DEFAULT_NATIVE_CHANGE_PAGE_SIZE;
-  if (!Number.isSafeInteger(limit) || limit <= 0) {
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_NATIVE_CHANGE_PAGE_SIZE) {
     throw new NativeDashboardQueryError(
-      'Native Dashboard change page limit must be a positive integer',
+      `Native Dashboard change page limit must be an integer between 1 and ${MAX_NATIVE_CHANGE_PAGE_SIZE}`,
     );
   }
-  return Math.min(limit, MAX_NATIVE_CHANGE_PAGE_SIZE);
+  return limit;
 }
 
 async function collectActiveNativeChanges(
@@ -447,6 +447,7 @@ async function collectActiveNativeChanges(
     clarificationMode?: NativeClarificationMode;
     maxVerifyFailures?: number;
     now?: Date;
+    maxChanges?: number;
   },
 ): Promise<NativeDashboardChangeProjection[]> {
   if (entries.length === 0) return [];
@@ -479,6 +480,7 @@ async function collectActiveNativeChanges(
     statuses,
     preflights: Object.fromEntries(preflightEntries),
     conflictRadar,
+    maxChanges: options.maxChanges,
   });
   return Promise.all(
     projection.changes.map(async (change) => {
@@ -537,6 +539,7 @@ export async function collectNativeDashboardChangePage(
       clarificationMode: config.native.clarification_mode,
       maxVerifyFailures: config.native.max_verify_failures,
       now: options.now,
+      maxChanges: activeEntries.length,
     }),
     collectArchivedChanges(paths, archivedEntries),
   ]);

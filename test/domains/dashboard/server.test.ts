@@ -222,6 +222,28 @@ describe('startDashboardServer', () => {
       nextCursor: null,
     });
   });
+
+  it('rejects a Native page limit above the Classic Dashboard maximum', async () => {
+    await writeProjectConfig(projectDir, defaultProjectConfig('docs'));
+
+    const handle = await startDashboardServer({
+      projectPath: projectDir,
+      port: 0,
+      webRoot: webDir,
+    });
+    handles.push(handle);
+
+    const directoryResponse = await request(handle.port, '/api/dashboard/projects');
+    const directory = JSON.parse(directoryResponse.body) as { currentProjectId: string };
+    const response = await request(
+      handle.port,
+      `/api/dashboard/projects/${directory.currentProjectId}/native-changes?status=active&limit=51`,
+    );
+
+    expect(response.status).toBe(400);
+    expect(JSON.parse(response.body).error).toContain('between 1 and 50');
+  });
+
   it('serves the static index for the root path', async () => {
     const handle = await startDashboardServer({
       projectPath: projectDir,

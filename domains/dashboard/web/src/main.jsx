@@ -40,6 +40,11 @@ import {
 import { NativeWorkflowPanel } from './native-workflow-panel.jsx';
 import { useAnimatedNumber } from './use-animated-number.js';
 import { DashboardWorkspaceRegion } from './workspace-layout.jsx';
+import {
+  isStaleNativeDashboardCursorError,
+  refreshDashboardPage,
+  shouldAutoLoadDashboardDetail,
+} from './dashboard-web-state.js';
 import './styles.css';
 
 const AUTO_REFRESH_MS = 30_000;
@@ -163,6 +168,7 @@ function DashboardApp({ theme, onToggleTheme }) {
   const [selectedId, setSelectedId] = useState(null);
   const [selectedDetail, setSelectedDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState(null);
   const [tab, setTab] = useState('active');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -219,8 +225,11 @@ function DashboardApp({ theme, onToggleTheme }) {
           const queryChanged = currentQuery !== lastLoadedQueryRef.current;
           const nextPages = queryChanged
             ? { active: initialPage, archived: null, all: null }
-            : { ...pagesRef.current, active: initialPage };
-          const currentPage = currentTab === 'active' ? initialPage : pagesRef.current[currentTab];
+            : {
+                ...pagesRef.current,
+                active: refreshDashboardPage(pagesRef.current.active, initialPage),
+              };
+          const currentPage = currentTab === 'active' ? nextPages.active : nextPages[currentTab];
           setSnapshot(materializeOverview(next, initialPage));
           pagesRef.current = nextPages;
           setPages(nextPages);
@@ -233,9 +242,14 @@ function DashboardApp({ theme, onToggleTheme }) {
             queryChanged && currentTab !== 'active' ? nextPages[currentTab] : currentPage,
             selectedIdRef.current,
           );
+          const previousSelectedId = selectedIdRef.current;
           setSelectedId(nextId);
-          setSelectedDetail(null);
-          setDetailLoading(false);
+          selectedIdRef.current = nextId;
+          if (nextId !== previousSelectedId) {
+            setSelectedDetail(null);
+            setDetailError(null);
+            setDetailLoading(false);
+          }
           lastLoadedQueryRef.current = currentQuery;
         }
         if (manual) toast('状态已刷新');
@@ -379,6 +393,13 @@ function DashboardApp({ theme, onToggleTheme }) {
         setNativePages(nextPages);
       } catch (error) {
         if (controller.signal.aborted) return;
+        if (append && isStaleNativeDashboardCursorError(error)) {
+          const resetPages = { ...nativePagesRef.current, [nextTab]: null };
+          nativePagesRef.current = resetPages;
+          setNativePages(resetPages);
+          toast('Native 变更列表已更新，正在重新加载第一页。', 'info');
+          return;
+        }
         toast(`Native 变更列表加载失败：${error.message}`, 'error');
       } finally {
         if (nativePageRequestRef.current === controller) {
@@ -411,6 +432,7 @@ function DashboardApp({ theme, onToggleTheme }) {
     async (id) => {
       selectedIdRef.current = id;
       setSelectedId(id);
+      setDetailError(null);
       if (useDemo) {
         setSelectedDetail(findChange(snapshot, id));
         return;
@@ -427,6 +449,7 @@ function DashboardApp({ theme, onToggleTheme }) {
         setSelectedDetail(detail);
       } catch (error) {
         if (controller.signal.aborted) return;
+        setDetailError({ id, message: error instanceof Error ? error.message : String(error) });
         toast(`变更详情加载失败：${error.message}`, 'error');
       } finally {
         if (detailRequestRef.current === controller) {
@@ -440,14 +463,16 @@ function DashboardApp({ theme, onToggleTheme }) {
 
   useEffect(() => {
     if (useDemo || !snapshot || !activeProjectId) return;
-    if (detailLoading) return;
     if (
-      selectedId &&
-      selectedDetail?.id === selectedId &&
-      visible.some((change) => change.id === selectedId)
-    ) {
+      !shouldAutoLoadDashboardDetail({
+        detailLoading,
+        selectedId,
+        selectedDetailId: selectedDetail?.id ?? null,
+        visibleIds: visible.map((change) => change.id),
+        failedDetailId: detailError?.id ?? null,
+      })
+    )
       return;
-    }
 
     const nextId = visible[0]?.id ?? null;
     detailRequestRef.current?.abort();
@@ -462,6 +487,7 @@ function DashboardApp({ theme, onToggleTheme }) {
   }, [
     activeProjectId,
     detailLoading,
+    detailError,
     selectChange,
     selectedDetail,
     selectedId,
@@ -507,6 +533,7 @@ function DashboardApp({ theme, onToggleTheme }) {
             setSelectedId(null);
             selectedIdRef.current = null;
             setSelectedDetail(null);
+            setDetailError(null);
             setQuery('');
             setRailOpen(false);
           }}
@@ -555,6 +582,8 @@ function DashboardApp({ theme, onToggleTheme }) {
                 pageLoading={pageLoading === tab}
                 onLoadMore={() => loadPage(tab, true)}
                 detailLoading={detailLoading}
+                detailError={detailError}
+                onRetryDetail={() => selectedId && selectChange(selectedId)}
                 onPreview={setArtifact}
               />
             )}
@@ -658,6 +687,8 @@ function Dashboard({
   pageLoading,
   onLoadMore,
   detailLoading,
+  detailError,
+  onRetryDetail,
   onPreview,
 }) {
   const hasClassicChanges = snapshot.summary.activeChanges + snapshot.summary.archivedChanges > 0;
@@ -702,6 +733,13 @@ function Dashboard({
               ) : detailLoading ? (
                 <div className="change-detail min-w-0 rounded-lg bg-bg p-10 text-center text-sm text-muted shadow-raised">
                   正在加载变更详情…
+                </div>
+              ) : detailError ? (
+                <div className="change-detail min-w-0 rounded-lg bg-bg p-10 text-center text-sm text-danger shadow-raised">
+                  <p role="alert">变更详情加载失败：{detailError.message}</p>
+                  <Button className="mt-4" onClick={onRetryDetail}>
+                    重试
+                  </Button>
                 </div>
               ) : null
             }

@@ -58,7 +58,10 @@ import {
   readWorkflowProjectConfigSnapshot,
 } from '../../domains/workflow-contract/project-config-reader.js';
 import { writeWorkflowProjectConfig } from '../../domains/workflow-contract/project-config-writer.js';
-import { writeWorkflowGlobalConfig } from '../../domains/workflow-contract/global-config.js';
+import {
+  readWorkflowGlobalConfig,
+  writeWorkflowGlobalConfig,
+} from '../../domains/workflow-contract/global-config.js';
 import type {
   WorkflowGlobalConfig,
   WorkflowProjectConfig,
@@ -1238,13 +1241,14 @@ export async function initCommand(
         options.artifactRoot ?? 'docs',
         language.artifactLanguage,
       );
+      const existingGlobalConfig = await readWorkflowGlobalConfig(baseDir);
       const selectedWorkflows =
         workflowSelection === 'both' ? (['native', 'classic'] as const) : [workflowSelection];
       const config: WorkflowGlobalConfig = {
         schema: 'comet.global.v1',
         default_workflow: workflow,
         workflows: [...selectedWorkflows],
-        ambient_resume: true,
+        ambient_resume: existingGlobalConfig?.ambient_resume ?? true,
         ...(includesWorkflow(workflowSelection, 'native') ? { native: defaults.native } : {}),
         ...(includesWorkflow(workflowSelection, 'classic')
           ? {

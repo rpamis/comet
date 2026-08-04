@@ -43,18 +43,16 @@ export async function resolveVerify(ctx: VerifyContext): Promise<VerifySummary> 
   let reportExists = false;
   let summary: string | undefined;
   try {
-    if (ctx.includeSummary === false) {
-      reportExists = await protectedProjectFileExists(projectRoot, relativeReport, {
-        label: 'Classic verification report',
-      });
-    } else {
+    reportExists = await protectedProjectFileExists(projectRoot, relativeReport, {
+      label: 'Classic verification report',
+    });
+    if (reportExists && ctx.includeSummary !== false) {
       const result = await readProtectedProjectFile(
         projectRoot,
         relativeReport,
         REPORT_READ_LIMIT_BYTES,
         { label: 'Classic verification report' },
       );
-      reportExists = true;
       summary = summarize(result.bytes.toString('utf-8'));
     }
   } catch {

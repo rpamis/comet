@@ -195,6 +195,10 @@ export interface ActiveClassicHookChange {
   phase: ClassicPhase;
 }
 
+export interface ClassicHookGuardDependencies {
+  scopeTargets?: typeof scopeCometHookTargets;
+}
+
 export async function listActiveClassicHookChanges(
   projectRoot: string,
 ): Promise<ActiveClassicHookChange[]> {
@@ -752,14 +756,22 @@ async function inspectClassicHookTarget(
   projectRoot: string,
   target: string,
   selectedChangeName?: string,
+  scopeTargets: typeof scopeCometHookTargets = scopeCometHookTargets,
 ): Promise<ClassicCommandResult> {
   try {
-    const scoped = await scopeCometHookTargets(projectRoot, [target]);
+    const scoped = await scopeTargets(projectRoot, [target]);
     if (scoped.projectTargets.length === 0) {
       return allowed(`${target} (outside guarded project)`);
     }
-  } catch {
-    return allowed(`${target} (scope could not be attributed to this project)`);
+  } catch (error) {
+    return result(
+      2,
+      [
+        `[COMET-HOOK] blocked: scope could not be determined safely for ${target}.`,
+        `REASON: ${error instanceof Error ? error.message : String(error)}`,
+        'NEXT: verify that the project root is accessible, then retry the write.',
+      ].join('\n'),
+    );
   }
   const relativePath = await projectRelative(target, projectRoot);
   let layout: ClassicLayoutPaths;
@@ -835,6 +847,7 @@ export async function inspectClassicHookGuard(
   projectRoot: string,
   changeName: string,
   request: CometHookRequest,
+  dependencies: ClassicHookGuardDependencies = {},
 ): Promise<CometHookDecision> {
   if (request.intent !== 'non-write') {
     try {
@@ -882,7 +895,12 @@ export async function inspectClassicHookGuard(
   }
 
   for (const target of request.targets) {
-    const inspected = await inspectClassicHookTarget(projectRoot, target, changeName);
+    const inspected = await inspectClassicHookTarget(
+      projectRoot,
+      target,
+      changeName,
+      dependencies.scopeTargets,
+    );
     if (inspected.exitCode !== 0) {
       return {
         allowed: false,

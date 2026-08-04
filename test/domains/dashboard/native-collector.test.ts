@@ -270,4 +270,32 @@ describe('Native Dashboard collector', () => {
     expect(second.items).toHaveLength(1);
     expect(second.nextCursor).toBeNull();
   });
+
+  it('does not skip Native changes when the page limit is larger than the overview cap', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('docs'));
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    for (let index = 0; index < 40; index += 1) {
+      await fs.mkdir(path.join(paths.changesDir, `dashboard-full-page-${index}`), {
+        recursive: true,
+      });
+    }
+
+    const page = await collectNativeDashboardChangePage(projectRoot, {
+      status: 'active',
+      limit: 50,
+      now: new Date('2026-07-17T10:00:00.000Z'),
+    });
+
+    expect(page.total).toBe(40);
+    expect(page.items).toHaveLength(40);
+    expect(page.nextCursor).toBeNull();
+  });
+
+  it('rejects a Native page limit above the shared Dashboard maximum', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('docs'));
+
+    await expect(
+      collectNativeDashboardChangePage(projectRoot, { status: 'active', limit: 51 }),
+    ).rejects.toThrow('between 1 and 50');
+  });
 });
