@@ -15,7 +15,7 @@ Native 保存需求、完整目标规格、状态和证据。你负责理解、�
 - `native.archive_confirmation`：默认 `automatic`；
 - `native.max_verify_failures`：默认 `5`。
 
-磁盘中的 config、selection、change 状态和正式产物优先于聊天记忆。不要直接编辑 Runtime 管理的状态、证据、锁或事务文件。
+磁盘中的 config、当前 change 记录、change 状态和正式产物优先于聊天记忆。不要直接编辑 Runtime 管理的状态、证据、锁或事务文件。
 
 Native 主流程不依赖任何外部 Skill。
 
@@ -29,26 +29,64 @@ Native Skill 只使用 PATH 中的公开 `comet native <cmd>` CLI；随 Skill �
 comet native status [--json]
 comet native show <change-name>
 comet native select <change-name>
-comet native new <change-name> [--language en|zh-CN]
+comet native new <change-name> [--language en|zh-CN] [--isolation current|branch|worktree]
 comet native next <change-name> --summary <text> [--confirmed]
 comet native archive <change-name> --dry-run
 ```
 
 ## 开始或恢复
 
-1. 运行 `comet native status`，确认当前 change 和 phase。
-2. 对目标运行 `comet native show <change-name>`；Verify、Archive 或失败后的 Build 再对 status 命令加 `--details` 运行。
-3. 需要更多 acceptance 时，按 `acceptancePage.nextCursor` 分页；findings 被截断时，先处理已返回项，再重新读取。
-4. 确认目标后运行 `comet native select <change-name>`。
+1. 若项目使用 Git，先读取当前分支与 `git worktree list --porcelain`；对每个安全可访问的工作目录运行只读 `comet native status --project-root <path> --json`。这一步是默认发现流程，不等待用户说“并行”。
+2. 运行当前工作目录的 `comet native status`，结合其他工作目录的结果确认目标 change、所属工作目录和 phase。同名 active change 已存在时，进入其工作目录恢复，不再创建。
+3. 对目标运行 `comet native show <change-name>`；Verify、Archive 或失败后的 Build 再对 status 命令加 `--details` 运行。
+4. 需要更多 acceptance 时，按 `acceptancePage.nextCursor` 分页；findings 被截断时，先处理已返回项，再重新读取。
+5. 进入目标实际所属的工作目录后运行 `comet native select <change-name>`；不要要求用户手动 `cd`。
 
-存在多个合理候选时让用户选择。只有确认没有对应 active change 时才创建：
-
-```text
-comet native new <change-name> \
-  --language zh-CN
-```
+存在多个合理候选时让用户选择。只有确认所有已发现工作目录中都没有对应 active change 时才创建，并执行下方工作区协议。
 
 只使用配置指定的 Native artifact root。
+
+## 新 change 的工作区协议
+
+并行单位是 change：不同 change 可以位于不同工作目录并行推进；同一个 change 只能由其绑定工作目录中的当前执行上下文写入，不为会话建立长期 lease。
+
+创建前读取当前分支、未提交改动、当前目录中的 active Native change 和已登记 Git worktree。工作方式保留三种：
+
+- `current`：保留当前分支和目录；
+- `branch`：在当前目录创建并切换到 change 分支；
+- `worktree`：创建独立 change 分支和 Git 工作目录，并在其中继续。
+
+选择规则：
+
+- 当前目录干净且所有已发现工作目录都没有其他 active change 时，默认直接使用 `current`，不询问“是否并行”；
+- 当前目录已有未提交改动或其他事实使隔离方式会明显影响用户目录时，一次联合展示 `current / branch / worktree`，说明推荐项、分支名和工作目录；不要拆成“是否并行”等多轮问题；
+- 当前目录已被另一个 active Native change 占用时，披露 `current` 和 `branch` 因 baseline 漂移风险不可用，并直接使用唯一安全的 `worktree`；其他 worktree 中的 active change 不会让本目录的 `current` 或 `branch` 自动失效；
+- 用户可在同一次选择中覆盖默认分支 `comet/<change-name>` 和默认目录 `.worktrees/<change-name>`；路径或分支冲突时停止，不追加随机后缀、不接管不属于该 change 的现有目录。
+
+`branch` 与 `worktree` 都必须在运行 `new`、建立 baseline 之前准备完成。目标分支默认绑定为创建分支或 worktree 时所在的起始分支：
+
+```text
+# current
+comet native new <change-name> --language zh-CN --isolation current
+
+# branch：先创建并切换分支
+comet native new <change-name> --language zh-CN \
+  --isolation branch --change-branch comet/<change-name> --target-branch <起始分支>
+
+# worktree：先创建并进入 .worktrees/<change-name>
+comet native new <change-name> --language zh-CN \
+  --isolation worktree --change-branch comet/<change-name> --target-branch <起始分支>
+```
+
+创建 worktree 前，把 `.worktrees/` 写入仓库本地 Git exclude（Git common dir 的 `info/exclude`），不得为此修改 tracked `.gitignore`。Agent 必须在新工作目录中自动继续，不把进入目录的操作交给用户。
+
+worktree 必须从已解析的本地目标分支提交创建。源目录有未提交内容时，先归因：可证明与新 change 无关的内容留在原目录；可能属于新 change 且无法从该提交带入时，等待用户决定如何保留，不静默提交、复制或遗漏。目标目录必须从目标分支获得一致配置，或通过公开 `comet native init` 建立合法配置并核对 artifact root、language、clarification、archive、verify 与 snapshot 语义；无法证明一致时停止。不得复制源目录的 `.comet/current-change.json`。
+
+worktree 创建只完成部分步骤时立即停止：报告原始错误、目标分支与目标路径、已明确创建的分支/worktree/exclude/config/change 资源，以及可恢复的下一步。只能清理可证明由本次操作新建且删除安全的资源；无法证明归属时保留现场，绝不删除已有或可能属于用户的 worktree、分支与文件。
+
+Runtime 会在 `new` 的同一个 mutation lock 中重新检查当前目录是否已出现 active change。系统默认的 `current` 因竞态返回 `workspace-isolation-required` 时，自动按默认 `worktree` 重新准备并创建；用户明确选择的方式若在执行前失效，停止并重新确认，不擅自换方式。
+
+没有 workspace v3 绑定的旧 active change 保持兼容：不自动生成 worktree、不移动文件、不刷新 baseline；同一旧目录内仍一次只选择一个 change。只有真实 baseline 或 scope 漂移时才按 Runtime 失败关闭，并让用户决定恢复、重建或放弃。
 
 ## 按需加载
 
@@ -118,10 +156,26 @@ Verify 失败的中间循环不运行 Archive，也不触发归档确认。持�
 
 ## Archive
 
-只有最终 Verify pass 后才预演：
+只有最终 Verify pass 后才准备 Archive。先读取该 change 的 workspace 绑定；旧 workspace 元数据按 `current` 兼容处理。
+
+`current` 沿用 `native.archive_confirmation`，不额外询问分支收尾。`branch` 或 `worktree` 必须在 Archive 前一次联合选择：
+
+1. 归档并本地合并到已绑定目标分支；
+2. 归档并推送 change 分支；
+3. 归档、推送并创建 PR；
+4. 归档并保留当前分支/工作目录；
+5. 暂不归档。
+
+展示精确 change 分支、目标分支和工作目录；结合目标分支是否本地可用、目录是否干净给出一个推荐。只有用户选择后才执行对应外部 Git 动作；选择“暂不归档”时保留现场并停止。
+
+然后预演：
 
 ```text
+# current
 comet native archive <change-name> --dry-run
+
+# branch / worktree：把联合选择写入正式 workspace 元数据
+comet native archive <change-name> --dry-run --finish merge|push|pull-request|keep
 ```
 
 预演成功后：
@@ -130,6 +184,15 @@ comet native archive <change-name> --dry-run
 - `required`：向用户展示实现、验证和规格操作摘要，等待用户选择立即归档或保留 change。
 
 不要复用旧 preflight。发生事实漂移、canonical 冲突或未完成事务时，按 continuation 和恢复参考处理。
+
+Runtime 返回的 `workspaceFinish` 必须与用户选择一致；后续会话从正式 workspace 元数据恢复该决定，不重复例行询问。归档成功后，只暂存并提交已确认 change 归属的实现、规格和 Archive 路径，排除其他用户改动。此前的联合选择授权这一次精确 stage/commit 以及所选收尾动作：
+
+- 本地合并：在已绑定目标分支的工作目录中合并 change 分支，运行与改动风险匹配的合并后验证；成功后删除干净的 change worktree 和已合并本地分支。任何失败都保留分支与工作目录；
+- 推送：推送 change 分支。成功后可删除干净的 change worktree，但保留本地和远端分支；
+- 推送并创建 PR：推送后以 workspace 中持久化的 `targetBranch` 作为 PR base 创建 PR，不使用仓库默认分支推断；成功后按推送方式清理；Native 不持续监控 PR；
+- 保留：提交后保留分支和工作目录，不做合并或推送。
+
+多个 change 独立 Archive；只有更新同一个目标 ref 的本地合并需要串行。合并冲突只有在能机械地保留双方已确认契约时才可解决并重新验证；任何语义冲突都中止合并并询问是否创建新的 integration change，不把某一方静默覆盖。
 
 ## Continuation 与停止条件
 
@@ -142,6 +205,6 @@ Shape、Build 和 Verify 的 transition 都会返回 `next: auto | manual`、`co
 
 `next: auto` 只表示本次 transition 成功，不表示后续步骤已执行。调用方明确要求在某次 transition 后停止时，严格按“更新正式产物 → 执行一次允许的 transition → transition 成功后不再调用工具 → 输出约定标记并结束本轮”执行；即使 continuation 为 `continue` 也不得继续执行后续步骤。
 
-`workspace-root-changed` 与 `workspace-inspection-unavailable` 是只读提示，不单独阻止推进或归档。未知的 workspace 完整性 finding、确定冲突、失效证据和 repair stop 必须处理；Runtime 要求修复工作区身份时，先运行只读 doctor，再按报告执行显式 `doctor --repair`。
+旧元数据的 `workspace-root-changed` 与 `workspace-inspection-unavailable` 是只读提示，不单独阻止推进或归档。`workspace-binding-root-changed`、`workspace-branch-changed`、`workspace-kind-changed` 与 `workspace-vcs-unavailable` 表示新绑定失效，必须回到绑定工作目录/分支或停止并走恢复流程。其他未知 workspace 完整性 finding、确定冲突、失效证据和 repair stop 也必须处理；Runtime 要求修复工作区身份时，先运行只读 doctor，再按报告执行显式 `doctor --repair`。
 
 摘要、理由、报告和产物中不得写入 token、密码、私钥、连接串或其他凭据。

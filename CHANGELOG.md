@@ -2,12 +2,13 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.4.0-beta.15] - 2026-08-03
+## What's Changed [0.4.0-beta.15] - 2026-08-05
 
 ### Added
 
 - **Dashboard change explorer**: Dashboard now loads the current project overview with lightweight change rows, paginates active, archived, and all changes in batches of five, and fetches full artifact details only when selected so large projects remain responsive.
 - **Global project activation**: A global initialization now stores complete Native or Classic defaults once, and the first explicit `/comet` invocation activates each unconfigured project from those defaults. Artifacts stay inside the project, activated projects keep stable settings when global defaults change, existing Classic projects retain Classic ownership, and project-scoped initialization remains optional for local asset copies or overrides.
+- **Native parallel changes**: Native now detects active changes before Shape and can establish an isolated Git worktree without requiring users to request parallelism. Current, branch, and worktree choices remain available when safe, and isolated changes remember their starting target branch for merge, push, or pull-request finishing.
 
 ### Changed
 

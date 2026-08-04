@@ -16,8 +16,10 @@ import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.j
 import { moveNativeRoot } from '../../../domains/comet-native/native-root-move.js';
 import { readNativeTransaction } from '../../../domains/comet-native/native-transaction.js';
 import {
+  assertNativeWorkspaceBinding,
   inspectNativeWorkspaceAdvisory,
   readNativeWorkspaceIdentity,
+  setNativeWorkspaceFinish,
 } from '../../../domains/comet-native/native-workspace.js';
 import { seedNativeRoot } from '../../helpers/native-root.js';
 
@@ -93,6 +95,248 @@ describe('Native artifact root moves', () => {
       kind: 'root-move',
       status: 'committed',
     });
+  });
+
+  it('preserves v3 branch and finishing bindings while refreshing moved root identities', async () => {
+    await seedNativeRoot(projectRoot, 'docs');
+    await fs.rm(path.join(projectRoot, 'docs/comet/changes/active-change'), {
+      recursive: true,
+      force: true,
+    });
+    execFileSync('git', ['config', 'user.email', 'root-move@example.test'], {
+      cwd: projectRoot,
+    });
+    execFileSync('git', ['config', 'user.name', 'Root Move Test'], { cwd: projectRoot });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'initial'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+    const branch = execFileSync('git', ['branch', '--show-current'], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+    }).trim();
+    const sourcePaths = await nativeProjectPaths(projectRoot, 'docs');
+    await createNativeChange({
+      paths: sourcePaths,
+      name: 'bound-change',
+      language: 'en',
+      workspaceBinding: {
+        isolation: 'branch',
+        changeBranch: branch,
+        targetBranch: branch,
+      },
+    });
+    await setNativeWorkspaceFinish(sourcePaths, 'bound-change', 'push');
+
+    await moveNativeRoot({ projectRoot, toArtifactRoot: 'artifacts/native' });
+    const destinationPaths = await nativeProjectPaths(projectRoot, 'artifacts/native');
+    await expect(
+      readNativeWorkspaceIdentity(destinationPaths, 'bound-change'),
+    ).resolves.toMatchObject({
+      schema: 'comet.native.workspace.v3',
+      isolation: 'branch',
+      changeBranch: branch,
+      targetBranch: branch,
+      finish: 'push',
+    });
+    await expect(
+      assertNativeWorkspaceBinding(destinationPaths, 'bound-change'),
+    ).resolves.toMatchObject({
+      schema: 'comet.native.workspace.v3',
+    });
+  });
+
+  it('stops before moving a root that contains an invalid workspace binding', async () => {
+    await seedNativeRoot(projectRoot, 'docs');
+    await fs.rm(path.join(projectRoot, 'docs/comet/changes/active-change'), {
+      recursive: true,
+      force: true,
+    });
+    execFileSync('git', ['config', 'user.email', 'root-move@example.test'], {
+      cwd: projectRoot,
+    });
+    execFileSync('git', ['config', 'user.name', 'Root Move Test'], { cwd: projectRoot });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'initial'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+    const branch = execFileSync('git', ['branch', '--show-current'], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+    }).trim();
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    await createNativeChange({
+      paths,
+      name: 'invalid-binding',
+      language: 'en',
+      workspaceBinding: {
+        isolation: 'branch',
+        changeBranch: branch,
+        targetBranch: branch,
+      },
+    });
+    const workspaceFile = path.join(
+      paths.changesDir,
+      'invalid-binding',
+      'runtime',
+      'workspace.json',
+    );
+    const workspace = JSON.parse(await fs.readFile(workspaceFile, 'utf8')) as Record<
+      string,
+      unknown
+    >;
+    workspace.isolation = 'invalid';
+    await fs.writeFile(workspaceFile, `${JSON.stringify(workspace, null, 2)}\n`);
+
+    await expect(
+      moveNativeRoot({ projectRoot, toArtifactRoot: 'artifacts/native' }),
+    ).rejects.toThrow('must be aligned and repaired before moving the root');
+    const config = await readProjectConfig(projectRoot);
+    expect(config?.native.artifact_root).toBe('docs');
+    expect(config?.native.pending_root_move).toBeUndefined();
+    await expect(fs.stat(paths.nativeRoot)).resolves.toBeDefined();
+    await expect(fs.access(path.join(projectRoot, 'artifacts/native/comet'))).rejects.toMatchObject(
+      { code: 'ENOENT' },
+    );
+  });
+
+  it('refreshes a valid v3 binding even when the change schema needs a newer runtime', async () => {
+    await seedNativeRoot(projectRoot, 'docs');
+    await fs.rm(path.join(projectRoot, 'docs/comet/changes/active-change'), {
+      recursive: true,
+      force: true,
+    });
+    execFileSync('git', ['config', 'user.email', 'root-move@example.test'], {
+      cwd: projectRoot,
+    });
+    execFileSync('git', ['config', 'user.name', 'Root Move Test'], { cwd: projectRoot });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'initial'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+    const branch = execFileSync('git', ['branch', '--show-current'], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+    }).trim();
+    const sourcePaths = await nativeProjectPaths(projectRoot, 'docs');
+    await createNativeChange({
+      paths: sourcePaths,
+      name: 'future-bound-change',
+      language: 'en',
+      workspaceBinding: {
+        isolation: 'branch',
+        changeBranch: branch,
+        targetBranch: branch,
+      },
+    });
+    await setNativeWorkspaceFinish(sourcePaths, 'future-bound-change', 'push');
+    const stateFile = path.join(sourcePaths.changesDir, 'future-bound-change', 'comet-state.yaml');
+    const state = await fs.readFile(stateFile, 'utf8');
+    await fs.writeFile(
+      stateFile,
+      state
+        .replace('schema: comet.native.v3', 'schema: comet.native.v4')
+        .replace('minimum_runtime_version: 3', 'minimum_runtime_version: 4'),
+    );
+
+    await moveNativeRoot({ projectRoot, toArtifactRoot: 'artifacts/native' });
+    const destinationPaths = await nativeProjectPaths(projectRoot, 'artifacts/native');
+    await expect(
+      readNativeWorkspaceIdentity(destinationPaths, 'future-bound-change'),
+    ).resolves.toMatchObject({
+      schema: 'comet.native.workspace.v3',
+      isolation: 'branch',
+      changeBranch: branch,
+      targetBranch: branch,
+      finish: 'push',
+    });
+    await expect(
+      assertNativeWorkspaceBinding(destinationPaths, 'future-bound-change'),
+    ).resolves.toMatchObject({ schema: 'comet.native.workspace.v3' });
+  });
+
+  it.each([
+    ['workspace v3', false],
+    ['legacy workspace v2', true],
+  ])('does not take over a foreign identity during root move (%s)', async (_label, legacy) => {
+    await seedNativeRoot(projectRoot, 'docs');
+    await fs.rm(path.join(projectRoot, 'docs/comet/changes/active-change'), {
+      recursive: true,
+      force: true,
+    });
+    execFileSync('git', ['config', 'user.email', 'root-move@example.test'], {
+      cwd: projectRoot,
+    });
+    execFileSync('git', ['config', 'user.name', 'Root Move Test'], { cwd: projectRoot });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'initial'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+    const branch = execFileSync('git', ['branch', '--show-current'], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+    }).trim();
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    await createNativeChange({
+      paths,
+      name: 'foreign-change',
+      language: 'en',
+      workspaceBinding: {
+        isolation: 'branch',
+        changeBranch: branch,
+        targetBranch: branch,
+      },
+    });
+    if (legacy) {
+      const workspaceFile = path.join(
+        paths.changesDir,
+        'foreign-change',
+        'runtime',
+        'workspace.json',
+      );
+      const workspace = JSON.parse(await fs.readFile(workspaceFile, 'utf8')) as Record<
+        string,
+        unknown
+      >;
+      workspace.schema = 'comet.native.workspace.v2';
+      delete workspace.isolation;
+      delete workspace.changeBranch;
+      delete workspace.targetBranch;
+      delete workspace.finish;
+      await fs.writeFile(workspaceFile, `${JSON.stringify(workspace, null, 2)}\n`);
+    }
+    execFileSync('git', ['add', '.comet/config.yaml', 'docs/comet/changes/foreign-change'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+    execFileSync('git', ['commit', '-m', 'capture foreign workspace fixture'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+    const secondary = path.join(
+      os.tmpdir(),
+      `comet-native-root-move-foreign-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    try {
+      execFileSync(
+        'git',
+        ['worktree', 'add', '-b', `comet/foreign-${legacy ? 'v2' : 'v3'}`, secondary, 'HEAD'],
+        { cwd: projectRoot, stdio: 'ignore' },
+      );
+      await expect(
+        moveNativeRoot({ projectRoot: secondary, toArtifactRoot: 'artifacts/native' }),
+      ).rejects.toThrow('must be aligned and repaired before moving the root');
+      expect((await readProjectConfig(secondary))?.native.artifact_root).toBe('docs');
+      await expect(fs.access(path.join(secondary, 'artifacts/native/comet'))).rejects.toMatchObject(
+        { code: 'ENOENT' },
+      );
+    } finally {
+      execFileSync('git', ['worktree', 'remove', '--force', secondary], {
+        cwd: projectRoot,
+        stdio: 'ignore',
+      });
+      await fs.rm(secondary, { recursive: true, force: true });
+    }
   });
 
   it('refuses an occupied destination without modifying either tree', async () => {

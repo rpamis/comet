@@ -13,7 +13,9 @@ The Agent primarily edits:
   verification.md
 ```
 
-Project configuration, current selection, and change state are read inputs. Do not manually change Runtime-managed phase, confirmation, specification operations, scope, evidence, checkpoints, locks, or transaction fields.
+Project configuration, the current change, change state, and `runtime/workspace.json` are read inputs. Do not manually change Runtime-managed phase, confirmation, specification operations, workspace bindings, scope, evidence, checkpoints, locks, or transaction fields.
+
+For a new change, `comet.native.workspace.v3` records `isolation`, `changeBranch`, `targetBranch`, the finishing choice persisted by `--finish` before Archive, and physical directory identity. It supports cross-session recovery and write protection; it is not a session lease. Legacy v1/v2 metadata remains compatible and must not be manually migrated merely to enable isolation.
 
 The Native artifact root is selected only by `.comet/config.yaml`. Do not scan another workflow's directories or create a second state root.
 

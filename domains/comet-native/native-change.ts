@@ -8,6 +8,7 @@ import {
   assertNoPendingNativeRootMove,
   DEFAULT_NATIVE_SNAPSHOT_CONFIG,
   readProjectConfig,
+  writeProjectConfig,
 } from './native-config.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
 import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
@@ -20,11 +21,20 @@ import {
   writeNativeBaselineManifest,
 } from './native-snapshot.js';
 import { assertNativeTrajectoryHealthy } from './native-trajectory-recovery.js';
-import { writeNativeWorkspaceIdentity } from './native-workspace.js';
+import {
+  assertNativeWorkspaceBindingCurrent,
+  assertNativeWorkspaceBinding,
+  inspectNativeWorkspaceAdvisory,
+  inspectNativeWorkspaceBinding,
+  readNativeWorkspaceIdentity,
+  writeNativeWorkspaceIdentity,
+  type NativeWorkspaceBinding,
+} from './native-workspace.js';
 import type {
   NativeApproval,
   NativeChangeSchemaInspection,
   NativeChangeState,
+  CometProjectConfig,
   NativeContentSnapshotManifest,
   NativeContentAddressedRef,
   NativeLegacyChangeState,
@@ -119,6 +129,20 @@ export class NativeChangeRevisionConflictError extends Error {
       `Native change ${change} revision conflict: expected ${expectedRevision}, actual ${actualRevision}`,
     );
     this.name = 'NativeChangeRevisionConflictError';
+  }
+}
+
+export class NativeWorkspaceIsolationRequiredError extends Error {
+  readonly code = 'native-workspace-isolation-required';
+
+  constructor(
+    readonly requestedIsolation: NativeWorkspaceBinding['isolation'],
+    readonly activeChanges: string[],
+  ) {
+    super(
+      `Native working directory already contains active change${activeChanges.length === 1 ? '' : 's'} ${activeChanges.join(', ')}; create the new change in a separate worktree`,
+    );
+    this.name = 'NativeWorkspaceIsolationRequiredError';
   }
 }
 
@@ -583,6 +607,8 @@ export async function createNativeChange(options: {
   name: string;
   language: 'en' | 'zh-CN';
   verificationProtocol?: NativeVerificationProtocol;
+  workspaceBinding?: NativeWorkspaceBinding;
+  initialProjectConfig?: CometProjectConfig;
   now?: Date;
 }): Promise<NativeChangeState> {
   return withNativeMutationLock(options.paths, `create change ${options.name}`, () =>
@@ -595,9 +621,27 @@ async function createNativeChangeLocked(options: {
   name: string;
   language: 'en' | 'zh-CN';
   verificationProtocol?: NativeVerificationProtocol;
+  workspaceBinding?: NativeWorkspaceBinding;
+  initialProjectConfig?: CometProjectConfig;
   now?: Date;
 }): Promise<NativeChangeState> {
   assertNativeName(options.name);
+  if (
+    options.initialProjectConfig &&
+    (await readProjectConfig(options.paths.projectRoot)) === null
+  ) {
+    await writeProjectConfig(options.paths.projectRoot, options.initialProjectConfig);
+  }
+  if (options.workspaceBinding) {
+    assertNativeWorkspaceBindingCurrent(options.paths.projectRoot, options.workspaceBinding);
+    const activeChanges = await listActiveNativeChangesOwnedByWorkspace(options.paths);
+    if (activeChanges.length > 0) {
+      throw new NativeWorkspaceIsolationRequiredError(
+        options.workspaceBinding.isolation,
+        activeChanges,
+      );
+    }
+  }
   const verificationProtocol = options.verificationProtocol ?? 'legacy-v1';
   const changeDir = nativeChangeDir(options.paths, options.name);
   await resolveContainedNativePath(options.paths.nativeRoot, changeDir);
@@ -691,6 +735,7 @@ async function createNativeChangeLocked(options: {
       name: state.name,
       revision: state.revision,
       now: options.now,
+      ...(options.workspaceBinding ? { binding: options.workspaceBinding } : {}),
     });
     return state;
   } catch (error) {
@@ -782,6 +827,7 @@ export async function readNativeChange(
   if (inspection.status === 'runtime-incompatible' || !inspection.state) {
     throw new NativeRuntimeCompatibilityError(inspection.schema, inspection.minimumRuntimeVersion);
   }
+  await assertNativeWorkspaceBinding(paths, name);
   return inspection.state as NativeChangeState;
 }
 
@@ -889,6 +935,11 @@ export async function readNativeChangeFile(file: string): Promise<NativeChangeSt
 }
 
 export async function listNativeChanges(paths: NativeProjectPaths): Promise<NativeChangeState[]> {
+  const names = await listNativeChangeNames(paths);
+  return Promise.all(names.map((name) => readNativeChange(paths, name)));
+}
+
+async function listNativeChangeNames(paths: NativeProjectPaths): Promise<string[]> {
   let entries;
   try {
     const directory = await readNativeProtectedDirectory({
@@ -907,5 +958,29 @@ export async function listNativeChanges(paths: NativeProjectPaths): Promise<Nati
     .filter((entry) => entry.isDirectory() && !entry.isSymbolicLink())
     .map((entry) => entry.name)
     .sort();
-  return Promise.all(names.map((name) => readNativeChange(paths, name)));
+  return names;
+}
+
+async function listActiveNativeChangesOwnedByWorkspace(
+  paths: NativeProjectPaths,
+): Promise<string[]> {
+  const owned: string[] = [];
+  for (const name of await listNativeChangeNames(paths)) {
+    const inspection = await inspectNativeChangeStateDocument(paths, name);
+    if (!inspection.state) {
+      owned.push(name);
+      continue;
+    }
+    if (inspection.state.archived) continue;
+    const identity = await readNativeWorkspaceIdentity(paths, name);
+    if (identity?.schema === 'comet.native.workspace.v3') {
+      const binding = await inspectNativeWorkspaceBinding({ paths, identity });
+      if (binding.code === 'workspace-binding-root-changed') continue;
+    } else if (identity) {
+      const advisory = await inspectNativeWorkspaceAdvisory({ paths, identity });
+      if (advisory.state === 'drifted') continue;
+    }
+    owned.push(name);
+  }
+  return owned;
 }

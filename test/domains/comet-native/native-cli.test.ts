@@ -116,7 +116,7 @@ describe('Comet Native CLI dispatcher', () => {
     ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
-  it('selects each successfully created change as the current Native owner', async () => {
+  it('binds the first change and requires a worktree before creating another change', async () => {
     expect(await runNativeCli(['new', 'first-change', ...projectArgs()])).toMatchObject({
       exitCode: 0,
     });
@@ -130,9 +130,36 @@ describe('Comet Native CLI dispatcher', () => {
       change: 'first-change',
       branch: null,
     });
+    const workspace = JSON.parse(
+      await fs.readFile(
+        path.join(
+          projectRoot,
+          'docs',
+          'comet',
+          'changes',
+          'first-change',
+          'runtime',
+          'workspace.json',
+        ),
+        'utf8',
+      ),
+    ) as { changeBranch: string; targetBranch: string };
+    expect(workspace).toMatchObject({
+      schema: 'comet.native.workspace.v3',
+      isolation: 'current',
+      changeBranch: expect.any(String),
+    });
+    expect(workspace.targetBranch).toBe(workspace.changeBranch);
 
-    expect(await runNativeCli(['new', 'second-change', ...projectArgs()])).toMatchObject({
-      exitCode: 0,
+    const second = json(await runNativeCli(['new', 'second-change', '--json', ...projectArgs()]));
+    expect(second).toMatchObject({
+      exitCode: 73,
+      data: {
+        requestedIsolation: 'current',
+        activeChanges: ['first-change'],
+        requiredAction: 'create-native-worktree',
+      },
+      error: { code: 'workspace-isolation-required' },
     });
     expect(
       JSON.parse(
@@ -141,9 +168,322 @@ describe('Comet Native CLI dispatcher', () => {
     ).toEqual({
       schema: 'comet.selection.v2',
       workflow: 'native',
-      change: 'second-change',
+      change: 'first-change',
       branch: null,
     });
+  });
+
+  it('atomically allows only one default-current creation when two sessions race', async () => {
+    const results = await Promise.all(
+      ['race-alpha', 'race-beta'].map(async (name) => ({
+        name,
+        result: json(await runNativeCli(['new', name, '--json', ...projectArgs()])),
+      })),
+    );
+    const succeeded = results.filter(({ result }) => result.exitCode === 0);
+    const rejected = results.filter(({ result }) => result.exitCode === 73);
+
+    expect(succeeded, JSON.stringify(results)).toHaveLength(1);
+    expect(rejected, JSON.stringify(results)).toHaveLength(1);
+    expect(rejected[0].result).toMatchObject({
+      data: {
+        requestedIsolation: 'current',
+        activeChanges: [succeeded[0].name],
+        requiredAction: 'create-native-worktree',
+      },
+      error: { code: 'workspace-isolation-required' },
+    });
+  });
+
+  it('treats a runtime-incompatible active change as occupying the working directory', async () => {
+    expect(await runNativeCli(['new', 'future-owner', ...projectArgs()])).toMatchObject({
+      exitCode: 0,
+    });
+    const stateFile = path.join(projectRoot, 'docs/comet/changes/future-owner/comet-state.yaml');
+    const source = await fs.readFile(stateFile, 'utf8');
+    await fs.writeFile(
+      stateFile,
+      source
+        .replace('schema: comet.native.v3', 'schema: comet.native.v4')
+        .replace('minimum_runtime_version: 3', 'minimum_runtime_version: 4'),
+    );
+
+    expect(
+      json(await runNativeCli(['new', 'blocked-by-future', '--json', ...projectArgs()])),
+    ).toMatchObject({
+      exitCode: 73,
+      data: {
+        activeChanges: ['future-owner'],
+        requiredAction: 'create-native-worktree',
+      },
+      error: { code: 'workspace-isolation-required' },
+    });
+  });
+
+  it('persists branch ownership and blocks a bound change after branch drift', async () => {
+    execFileSync('git', ['config', 'user.email', 'native@example.test'], { cwd: projectRoot });
+    execFileSync('git', ['config', 'user.name', 'Native Test'], { cwd: projectRoot });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'initial'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+    const targetBranch = execFileSync('git', ['branch', '--show-current'], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+    }).trim();
+    execFileSync('git', ['switch', '-c', 'comet/branch-owned'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+
+    expect(
+      json(
+        await runNativeCli([
+          'new',
+          'invalid-target',
+          '--isolation',
+          'branch',
+          '--target-branch',
+          'missing-target',
+          '--json',
+          ...projectArgs(),
+        ]),
+      ),
+    ).toMatchObject({
+      exitCode: 65,
+      error: { message: expect.stringContaining('not a verified local branch') },
+    });
+
+    expect(
+      await runNativeCli([
+        'new',
+        'branch-owned',
+        '--isolation',
+        'branch',
+        '--target-branch',
+        targetBranch,
+        ...projectArgs(),
+      ]),
+    ).toMatchObject({ exitCode: 0 });
+    const workspace = JSON.parse(
+      await fs.readFile(
+        path.join(projectRoot, 'docs/comet/changes/branch-owned/runtime/workspace.json'),
+        'utf8',
+      ),
+    );
+    expect(workspace).toMatchObject({
+      schema: 'comet.native.workspace.v3',
+      isolation: 'branch',
+      changeBranch: 'comet/branch-owned',
+      targetBranch,
+    });
+
+    execFileSync('git', ['switch', targetBranch], { cwd: projectRoot, stdio: 'ignore' });
+    const drifted = json(
+      await runNativeCli(['select', 'branch-owned', '--json', ...projectArgs()]),
+    );
+    expect(drifted).toMatchObject({
+      exitCode: 65,
+      error: { code: 'invalid-data', message: expect.stringContaining('workspace-branch-changed') },
+    });
+    expect(
+      json(await runNativeCli(['status', 'branch-owned', '--json', ...projectArgs()])).data,
+    ).toMatchObject({
+      name: 'branch-owned',
+      phase: 'shape',
+      findingSummary: {
+        codes: expect.arrayContaining(['workspace-branch-changed']),
+      },
+      continuation: { disposition: 'blocked' },
+    });
+  });
+
+  it('rechecks an explicit Git binding under the creation lock', async () => {
+    expect(await runNativeCli(['init', ...projectArgs()])).toMatchObject({ exitCode: 0 });
+    execFileSync('git', ['config', 'user.email', 'native@example.test'], { cwd: projectRoot });
+    execFileSync('git', ['config', 'user.name', 'Native Test'], { cwd: projectRoot });
+    execFileSync('git', ['add', '.comet/config.yaml'], { cwd: projectRoot, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', 'initial'], { cwd: projectRoot, stdio: 'ignore' });
+    const targetBranch = execFileSync('git', ['branch', '--show-current'], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+    }).trim();
+    execFileSync('git', ['switch', '-c', 'comet/locked-binding'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    const lock = await acquireNativeLock(paths, 'root-move', 'hold new under test');
+    let pending: ReturnType<typeof runNativeCli>;
+    try {
+      pending = runNativeCli([
+        'new',
+        'locked-binding',
+        '--isolation',
+        'branch',
+        '--change-branch',
+        'comet/locked-binding',
+        '--target-branch',
+        targetBranch,
+        '--json',
+        ...projectArgs(),
+      ]);
+      await new Promise((resolve) => setTimeout(resolve, 75));
+      execFileSync('git', ['switch', targetBranch], { cwd: projectRoot, stdio: 'ignore' });
+    } finally {
+      await releaseNativeLock(lock);
+    }
+    expect(json(await pending!)).toMatchObject({
+      exitCode: 65,
+      error: {
+        code: 'invalid-data',
+        message: expect.stringContaining('does not match the current branch'),
+      },
+    });
+    await expect(
+      fs.access(path.join(projectRoot, 'docs/comet/changes/locked-binding')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it.each([
+    ['workspace v3', false],
+    ['legacy workspace v2', true],
+  ])('ignores an active change bound to another physical worktree (%s)', async (_label, legacy) => {
+    expect(await runNativeCli(['init', ...projectArgs()])).toMatchObject({ exitCode: 0 });
+    execFileSync('git', ['config', 'user.email', 'native@example.test'], { cwd: projectRoot });
+    execFileSync('git', ['config', 'user.name', 'Native Test'], { cwd: projectRoot });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'initial'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+    const targetBranch = execFileSync('git', ['branch', '--show-current'], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+    }).trim();
+    expect(await runNativeCli(['new', 'primary-change', ...projectArgs()])).toMatchObject({
+      exitCode: 0,
+    });
+    if (legacy) {
+      const workspaceFile = path.join(
+        projectRoot,
+        'docs/comet/changes/primary-change/runtime/workspace.json',
+      );
+      const workspace = JSON.parse(await fs.readFile(workspaceFile, 'utf8')) as Record<
+        string,
+        unknown
+      >;
+      workspace.schema = 'comet.native.workspace.v2';
+      delete workspace.isolation;
+      delete workspace.changeBranch;
+      delete workspace.targetBranch;
+      delete workspace.finish;
+      await fs.writeFile(workspaceFile, `${JSON.stringify(workspace, null, 2)}\n`);
+    }
+    execFileSync('git', ['add', '.comet/config.yaml', 'docs/comet/changes/primary-change'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+    execFileSync('git', ['commit', '-m', 'capture active change fixture'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+    const secondary = path.join(
+      os.tmpdir(),
+      `comet-native-independent-worktree-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    try {
+      execFileSync('git', ['worktree', 'add', '-b', 'comet/secondary-change', secondary, 'HEAD'], {
+        cwd: projectRoot,
+        stdio: 'ignore',
+      });
+      expect(
+        json(
+          await runNativeCli([
+            'new',
+            'secondary-change',
+            '--isolation',
+            'worktree',
+            '--target-branch',
+            targetBranch,
+            '--json',
+            '--project-root',
+            secondary,
+          ]),
+        ),
+      ).toMatchObject({ exitCode: 0 });
+      if (!legacy) {
+        expect(
+          json(
+            await runNativeCli(['status', 'primary-change', '--json', '--project-root', secondary]),
+          ).data,
+        ).toMatchObject({
+          phase: 'shape',
+          findingSummary: {
+            codes: expect.arrayContaining(['workspace-binding-root-changed']),
+          },
+          continuation: { disposition: 'blocked' },
+        });
+      }
+    } finally {
+      execFileSync('git', ['worktree', 'remove', '--force', secondary], {
+        cwd: projectRoot,
+        stdio: 'ignore',
+      });
+      await fs.rm(secondary, { recursive: true, force: true });
+    }
+  });
+
+  it('accepts worktree isolation only from a linked Git worktree', async () => {
+    execFileSync('git', ['config', 'user.email', 'native@example.test'], { cwd: projectRoot });
+    execFileSync('git', ['config', 'user.name', 'Native Test'], { cwd: projectRoot });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'initial'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+    const targetBranch = execFileSync('git', ['branch', '--show-current'], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+    }).trim();
+    const secondary = path.join(
+      os.tmpdir(),
+      `comet-native-cli-worktree-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    try {
+      execFileSync('git', ['worktree', 'add', '-b', 'comet/worktree-owned', secondary, 'HEAD'], {
+        cwd: projectRoot,
+        stdio: 'ignore',
+      });
+      const created = json(
+        await runNativeCli([
+          'new',
+          'worktree-owned',
+          '--isolation',
+          'worktree',
+          '--target-branch',
+          targetBranch,
+          '--json',
+          '--project-root',
+          secondary,
+        ]),
+      );
+      expect(created).toMatchObject({
+        exitCode: 0,
+        data: {
+          workspace: {
+            schema: 'comet.native.workspace.v3',
+            isolation: 'worktree',
+            changeBranch: 'comet/worktree-owned',
+            targetBranch,
+          },
+        },
+      });
+    } finally {
+      execFileSync('git', ['worktree', 'remove', '--force', secondary], {
+        cwd: projectRoot,
+        stdio: 'ignore',
+      });
+      await fs.rm(secondary, { recursive: true, force: true });
+    }
   });
 
   it('runs the complete change lifecycle with a custom artifact root', async () => {
@@ -181,10 +521,27 @@ describe('Comet Native CLI dispatcher', () => {
       stdio: 'ignore',
     });
 
+    const targetBranch = execFileSync('git', ['branch', '--show-current'], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+    }).trim();
+    execFileSync('git', ['switch', '-c', 'comet/sentence-counting'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+
     const root = json(await runNativeCli(['root', 'show', '--json', ...projectArgs()]));
     expect(root).toMatchObject({ command: 'root show', data: { artifactRoot: 'docs' } });
 
-    const created = await runNativeCli(['new', 'sentence-counting', ...projectArgs()]);
+    const created = await runNativeCli([
+      'new',
+      'sentence-counting',
+      '--isolation',
+      'branch',
+      '--target-branch',
+      targetBranch,
+      ...projectArgs(),
+    ]);
     expect(created).toMatchObject({ exitCode: 0 });
     expect(created.stdout).toContain('Created Native change sentence-counting');
     const paths = await nativeProjectPaths(projectRoot, 'docs');
@@ -456,11 +813,34 @@ Pass.
     );
     expect(verified).toMatchObject({ data: { change: { phase: 'archive' } } });
 
+    expect(
+      json(
+        await runNativeCli([
+          'archive',
+          'sentence-counting',
+          '--dry-run',
+          '--json',
+          ...projectArgs(),
+        ]),
+      ),
+    ).toMatchObject({
+      exitCode: 64,
+      error: { message: expect.stringContaining('require --finish') },
+    });
     const preview = json(
-      await runNativeCli(['archive', 'sentence-counting', '--dry-run', '--json', ...projectArgs()]),
+      await runNativeCli([
+        'archive',
+        'sentence-counting',
+        '--dry-run',
+        '--finish',
+        'merge',
+        '--json',
+        ...projectArgs(),
+      ]),
     );
     expect(preview.data).toMatchObject({
       archiveConfirmation: 'automatic',
+      workspaceFinish: 'merge',
       continuation: {
         disposition: 'continue',
         action: 'archive',
@@ -468,6 +848,31 @@ Pass.
       },
     });
     const preflightHash = (preview.data as { preflightHash: string }).preflightHash;
+    const pushPreview = json(
+      await runNativeCli([
+        'archive',
+        'sentence-counting',
+        '--dry-run',
+        '--finish',
+        'push',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(pushPreview.data).toMatchObject({ workspaceFinish: 'push' });
+    expect((pushPreview.data as { preflightHash: string }).preflightHash).not.toBe(preflightHash);
+    const restoredPreview = json(
+      await runNativeCli([
+        'archive',
+        'sentence-counting',
+        '--dry-run',
+        '--finish',
+        'merge',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect((restoredPreview.data as { preflightHash: string }).preflightHash).toBe(preflightHash);
     const config = await readProjectConfig(projectRoot);
     expect(config).not.toBeNull();
     config!.native.archive_confirmation = 'required';
@@ -524,7 +929,7 @@ Pass.
 
     const doctor = json(await runNativeCli(['doctor', '--json', ...projectArgs()]));
     expect(doctor).toMatchObject({ command: 'doctor', exitCode: 0, data: { healthy: true } });
-  }, 120_000);
+  }, 240_000);
 
   it('pages every Runtime-derived acceptance ID through the public status command', async () => {
     await runNativeCli(['new', 'paged-acceptance', ...projectArgs()]);

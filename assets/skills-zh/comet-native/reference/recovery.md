@@ -14,7 +14,18 @@ comet native doctor [<change-name>]
 
 ## 工作区提示
 
-`workspace-root-changed` 与 `workspace-inspection-unavailable` 只用于解释当前 root 事实的来源，不单独阻止推进或 Archive。不要把任意 `workspace-*` finding 都当作提示：未知的 workspace 完整性 finding 仍是错误。Runtime 要求修复工作区身份时，先运行只读 doctor，再按报告执行显式 `doctor --repair`。
+先用 `git worktree list --porcelain` 和每个安全可访问目录中的 `comet native status --project-root <path> --json` 查找 change 的实际工作目录。不要复制 active change 目录、不要在另一个 worktree 重建同名 change，也不要通过改 `workspace.json` 接管。
+
+旧元数据的 `workspace-root-changed` 与 `workspace-inspection-unavailable` 只用于解释当前 root 事实的来源，不单独阻止推进或 Archive。新绑定的以下错误会阻止写入：
+
+- `workspace-binding-root-changed`：当前物理工作目录不是创建 change 的目录；
+- `workspace-branch-changed`：当前分支不是绑定的 change 分支；
+- `workspace-kind-changed`：绑定为 worktree，但当前目录不再是 linked worktree；
+- `workspace-vcs-unavailable`：绑定所需的 Git 工作目录不可用。
+
+找到登记中的原工作目录后，在其中恢复并重新 `select`。原目录或分支确实丢失时保留 artifacts，先运行只读 doctor；Runtime 没有证明可修复时停止并让用户决定恢复目录、从可信备份重建，或放弃 change。不要把任意 `workspace-*` finding 都当作提示，也不要自动刷新 baseline。
+
+`workspace-isolation-required` 发生在新建竞态：系统默认 `current` 可自动准备独立 worktree 后重试；显式用户选择失效时重新确认。
 
 ## 未完成的阶段推进
 
@@ -98,9 +109,9 @@ comet native doctor <change-name> --repair --strategy rollback
 
 如果旧 root 与新 root 不一致，不删除任何一棵目录；把 doctor 返回的两条路径交给用户处理。
 
-## 锁、selection 或损坏产物
+## 锁、当前 change 或损坏产物
 
 - 不手动删除锁。只在 doctor 明确判断可安全接管时使用 `--repair`。
-- doctor 可以清理指向不存在 change 的 selection。
+- doctor 可以清理指向不存在 change 的当前 change 记录。
 - 损坏的 config、change 状态、brief、规格或 verification 不会被自动猜测重写。
 - doctor 无法确定 owner、事务或文件身份时，保留现场并停止。

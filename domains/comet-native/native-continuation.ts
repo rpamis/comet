@@ -48,6 +48,11 @@ export function nativeContinuation(options: {
   const stagnationStop = actionableFindings.find(
     (finding) => finding.code === 'repair-stagnation-stop',
   );
+  const workspaceBindingFailure = actionableFindings.find(
+    (finding) =>
+      finding.requiredAction === 'return-to-bound-working-directory' ||
+      finding.requiredAction === 'repair-workspace-binding',
+  );
   const requiredInputs = [
     ...new Set(actionableFindings.map((finding) => finding.requiredAction)),
   ].sort();
@@ -106,6 +111,20 @@ export function nativeContinuation(options: {
       command: null,
       requiresUserDecision: false,
       requiredInputs: ['new-repair-hypothesis'],
+    };
+  }
+  if (workspaceBindingFailure) {
+    return {
+      schema: 'comet.native.continuation.v1',
+      skill: 'comet-native',
+      change: options.state.name,
+      phase: options.state.phase,
+      revision: options.state.revision,
+      disposition: 'blocked',
+      action: 'none',
+      command: null,
+      requiresUserDecision: false,
+      requiredInputs,
     };
   }
   if (repair) {

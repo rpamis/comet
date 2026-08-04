@@ -14,7 +14,18 @@ Act only on facts returned by doctor or the continuation. Do not edit state, has
 
 ## Workspace advisories
 
-`workspace-root-changed` and `workspace-inspection-unavailable` explain where the current root facts came from; they do not independently block progression or Archive. Do not treat every `workspace-*` finding as advisory: unknown workspace-integrity findings remain errors. When the Runtime requires workspace identity repair, run read-only doctor first and follow its report with explicit `doctor --repair`.
+First use `git worktree list --porcelain` and `comet native status --project-root <path> --json` in each safely accessible directory to find the change's actual working directory. Do not copy an active change directory, recreate the same change in another worktree, or take ownership by editing `workspace.json`.
+
+For legacy metadata, `workspace-root-changed` and `workspace-inspection-unavailable` explain where current root facts came from and do not independently block progression or Archive. These new binding errors do block writes:
+
+- `workspace-binding-root-changed`: the physical working directory differs from the one that created the change;
+- `workspace-branch-changed`: the current branch differs from the bound change branch;
+- `workspace-kind-changed`: the change is worktree-bound but the directory is no longer a linked worktree;
+- `workspace-vcs-unavailable`: the bound Git working directory is unavailable.
+
+Resume and `select` from the registered original working directory. If the directory or branch is genuinely lost, preserve artifacts and run read-only doctor. When Runtime cannot prove a repair, stop and ask the user whether to restore the directory, reconstruct from a trusted backup, or abandon the change. Do not treat every `workspace-*` finding as advisory or refresh the baseline automatically.
+
+`workspace-isolation-required` is a creation race. A system-default `current` may automatically retry after preparing a separate worktree; reconfirm when an explicit user choice became invalid.
 
 ## Unfinished phase transition
 

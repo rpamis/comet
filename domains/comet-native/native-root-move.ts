@@ -23,7 +23,12 @@ import {
   readNativeTransaction,
   rollbackNativeTransaction,
 } from './native-transaction.js';
-import { writeNativeWorkspaceIdentity } from './native-workspace.js';
+import {
+  inspectNativeWorkspaceAdvisory,
+  inspectNativeWorkspaceBinding,
+  readNativeWorkspaceIdentity,
+  writeNativeWorkspaceIdentity,
+} from './native-workspace.js';
 import type {
   CometProjectConfig,
   NativePendingRootMove,
@@ -117,6 +122,25 @@ async function refreshNativeWorkspaceIdentities(paths: NativeProjectPaths): Prom
   }
   for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
     if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+    const previousWorkspace = await readNativeWorkspaceIdentity(paths, entry.name);
+    if (previousWorkspace) {
+      await writeNativeWorkspaceIdentity({
+        paths,
+        name: entry.name,
+        revision: previousWorkspace.capturedRevision,
+        ...(previousWorkspace.schema === 'comet.native.workspace.v3'
+          ? {
+              binding: {
+                isolation: previousWorkspace.isolation,
+                changeBranch: previousWorkspace.changeBranch,
+                targetBranch: previousWorkspace.targetBranch,
+              },
+              ...(previousWorkspace.finish ? { finish: previousWorkspace.finish } : {}),
+            }
+          : {}),
+      });
+      continue;
+    }
     let inspection: Awaited<ReturnType<typeof inspectNativeChange>>;
     try {
       inspection = await inspectNativeChange(paths, entry.name);
@@ -133,6 +157,40 @@ async function refreshNativeWorkspaceIdentities(paths: NativeProjectPaths): Prom
       name: entry.name,
       revision: inspection.state.revision,
     });
+  }
+}
+
+async function validateNativeWorkspaceIdentitiesForRootMove(
+  paths: NativeProjectPaths,
+): Promise<void> {
+  let entries: Dirent[];
+  try {
+    entries = await fs.readdir(paths.changesDir, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+    throw error;
+  }
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+    try {
+      const identity = await readNativeWorkspaceIdentity(paths, entry.name);
+      if (identity?.schema === 'comet.native.workspace.v3') {
+        const binding = await inspectNativeWorkspaceBinding({ paths, identity });
+        if (binding.state !== 'aligned') {
+          throw new Error(binding.message ?? 'workspace binding is not aligned');
+        }
+      } else if (identity) {
+        const advisory = await inspectNativeWorkspaceAdvisory({ paths, identity });
+        if (advisory.state !== 'aligned') {
+          throw new Error(`legacy workspace ownership is ${advisory.state}`);
+        }
+      }
+    } catch (error) {
+      throw new Error(
+        `Native workspace identity for ${entry.name} must be aligned and repaired before moving the root`,
+        { cause: error },
+      );
+    }
   }
 }
 
@@ -900,6 +958,7 @@ export async function moveNativeRoot(options: {
   const staging = stagingDirectory(destinationPaths, id);
   try {
     await assertNoOtherLocks(sourcePaths, lock.file);
+    await validateNativeWorkspaceIdentitiesForRootMove(sourcePaths);
     if (await exists(staging)) throw new Error(`Native move staging path is occupied: ${staging}`);
     await writeProjectConfig(options.projectRoot, pendingConfig(current, pending));
     await createNativeTransaction(sourcePaths, journal);

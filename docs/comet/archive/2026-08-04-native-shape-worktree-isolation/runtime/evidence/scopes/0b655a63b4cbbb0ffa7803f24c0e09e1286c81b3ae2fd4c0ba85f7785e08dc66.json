@@ -1,0 +1,815 @@
+{
+  "schema": "comet.native.implementation-scope.v2",
+  "contractHash": "d041d3e45ed5fa4c6ff23e2db4e9024f47253e8125975cccc47ffd958978f82c",
+  "baselineProjectionRef": "runtime/evidence/snapshots/6e08db1756b7d97b7e7fec3cb23ce99e7930c4b63891cc1e852b4198a3abdbd6.json",
+  "baselineProjectionHash": "6e08db1756b7d97b7e7fec3cb23ce99e7930c4b63891cc1e852b4198a3abdbd6",
+  "currentProjectionRef": "runtime/evidence/snapshots/271387ed830a32774db41a87940edbf0caef9b594f01542abff19bc8615094af.json",
+  "currentProjectionHash": "271387ed830a32774db41a87940edbf0caef9b594f01542abff19bc8615094af",
+  "complete": true,
+  "declaredArtifacts": [
+    {
+      "path": "assets/skills-zh/comet-native",
+      "kind": "directory"
+    },
+    {
+      "path": "assets/skills/comet-native",
+      "kind": "directory"
+    },
+    {
+      "path": "domains/comet-native",
+      "kind": "directory"
+    },
+    {
+      "path": "platform/paths/git-worktree.ts",
+      "kind": "file"
+    },
+    {
+      "path": "test/domains/comet-native",
+      "kind": "directory"
+    },
+    {
+      "path": "test/platform/git-worktree.test.ts",
+      "kind": "file"
+    }
+  ],
+  "changes": [
+    {
+      "path": "assets/skills-zh/comet-native/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "df046210d6369808ac79ad1d5db3958fdae2f48a918c457d898ee5ff346d498a",
+        "size": 9052
+      },
+      "after": {
+        "hash": "5f34849603b7cd1c5de7dda3a1fa70c8fb016badce404780bdda6d182451b7a9",
+        "size": 15916
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills-zh/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills-zh/comet-native/reference/artifacts.md",
+      "kind": "modified",
+      "before": {
+        "hash": "71f6dd865e230df36e48a5320705588b385fb728ff1b99514649e5628f46878b",
+        "size": 4133
+      },
+      "after": {
+        "hash": "9574bdf9f1e4863c2c9bd4e4ed4d5f1e058d4d193e26d99c312b6085a797f7dd",
+        "size": 4492
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills-zh/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills-zh/comet-native/reference/commands.md",
+      "kind": "modified",
+      "before": {
+        "hash": "abfcded74acd260a3f39fbf08eb16f8600ce5a022e6626c591ed852856656044",
+        "size": 9520
+      },
+      "after": {
+        "hash": "60356deaf93990b1a6c8394bda8c4e9ce3be56062f3b84a9e87f7c96e8028276",
+        "size": 10618
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills-zh/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills-zh/comet-native/reference/recovery.md",
+      "kind": "modified",
+      "before": {
+        "hash": "9f5d555cfed536e96ae043312be484257e8cdf4396c8a7730326fd8c351909ea",
+        "size": 5178
+      },
+      "after": {
+        "hash": "35cd0ab70f7dc07bbd3733b50d39384e04ef2467acf7e8c3229961dd9b660bf2",
+        "size": 6192
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills-zh/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills/comet-native/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "d05fbf16f207e7019861cf47ed82ca0498b8cc808a0fb7a6124974719627c987",
+        "size": 10442
+      },
+      "after": {
+        "hash": "12200588223f39c8fed0618fb6275c564a0f81b9a234fd5e07bd412380485482",
+        "size": 18296
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills/comet-native/reference/artifacts.md",
+      "kind": "modified",
+      "before": {
+        "hash": "839b2acb1ba965aad3a34d88e041d9dd1b5d0374ba443166552abb4cc63d52f2",
+        "size": 4530
+      },
+      "after": {
+        "hash": "56d28b8532b92be030f710beae45e55b5b4053e3ae4503995a0dcafc337c9f3b",
+        "size": 4958
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills/comet-native/reference/commands.md",
+      "kind": "modified",
+      "before": {
+        "hash": "d1eae995c0e24c884ed53fb85c9092aaede653dab198a2e7d8806b12dc22bf9a",
+        "size": 10603
+      },
+      "after": {
+        "hash": "2a7b2dd4792caf80dcc6c30287df496e1115ff4f07c7dad5b8686e2b44722137",
+        "size": 11779
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills/comet-native/reference/recovery.md",
+      "kind": "modified",
+      "before": {
+        "hash": "f0c2f818320ab7bd9463ce2a587022caa0a7d5337aec42e6f8a924ba31288992",
+        "size": 5787
+      },
+      "after": {
+        "hash": "abbf2580ec101ab079c6ecad8f8e3c862c5f7785019e946d2e0a8eeea21dbe91",
+        "size": 6901
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills/comet-native/scripts/comet-native-archive.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "ba1a34dd59f9b69c09b84da40fc9c199250eb7322e2749a894646ed8c238cd0c",
+        "size": 418413
+      },
+      "after": {
+        "hash": "28b3d53498d77eac70778eca7aabc3a578cb68210fbe7b8bef98d946cbd37d8b",
+        "size": 428625
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills/comet-native/scripts/comet-native-check.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "7066f2cb70c1968a7ae19f85deb26ed52d57e165dd682024156c815f4d3d8a03",
+        "size": 339393
+      },
+      "after": {
+        "hash": "aa9e94caa8107c32f2691f7263a127b385502805a08fd58285171198bfff2b82",
+        "size": 349265
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills/comet-native/scripts/comet-native-checkpoint.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "a5a89a35b10dea8e4922e7e3e6ee039d8a3c8c9b3e8428b3efd09fe09dba20a6",
+        "size": 414289
+      },
+      "after": {
+        "hash": "38394e117a3dfb0bea3a870b6258b7c97306d47096d706760409ebcf3c41c83b",
+        "size": 421352
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills/comet-native/scripts/comet-native-doctor.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "53a2bdab5ca807b35501f018526af8fc5fc149968bd246f15a33223b6e240347",
+        "size": 538913
+      },
+      "after": {
+        "hash": "328ef8022b8d409f4ec408a5411fd61d4d9a3c6f75d883da73f67d89c1ae7de8",
+        "size": 546241
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills/comet-native/scripts/comet-native-evidence.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "ea605dd20756c6c578767807cceb2e6455f5cf1864408089a2b94016e7bb1dc3",
+        "size": 136459
+      },
+      "after": {
+        "hash": "3b5b3682513875fdf420326492019158259390f7c0b494cef1737b57294d8f79",
+        "size": 137070
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills/comet-native/scripts/comet-native-hook-guard.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "a4b536770278e44e6cf7af2e42ca7f685cda9a9caa5a8468b42aec36a35fd2d7",
+        "size": 182893
+      },
+      "after": {
+        "hash": "21864762ff04a507014ce7ca6d84292d1abfc6d1f30798139f1eb3323b4539ff",
+        "size": 192385
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills/comet-native/scripts/comet-native-init.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "292b6733cbbbb0e96c32c080af368f9ea9c0ace04d1a7068d52e1f44146de6c9",
+        "size": 155755
+      },
+      "after": {
+        "hash": "15958897be0ca7e61704535063f1002fb3fe753d815a25b63299196a966432c8",
+        "size": 156366
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills/comet-native/scripts/comet-native-new.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "13bafa6f194b61a5a9d9c9d5b9b50da41b88598c1112e0c3b1644733f2612042",
+        "size": 412298
+      },
+      "after": {
+        "hash": "39db63ec48a930d01625a746b9329bd84023f0c8b2420739bcc495b7eeda4b38",
+        "size": 422485
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills/comet-native/scripts/comet-native-next.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "e7a290c3f6f5d32f6b9c5b7f5f22330ea2c3b21a4c7ed520d138da751f01c7ff",
+        "size": 477904
+      },
+      "after": {
+        "hash": "f26f35ba881b46ddaf3cc453e364939cb08113635836b3f7d33fd303e4639be7",
+        "size": 484967
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills/comet-native/scripts/comet-native-receipt.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "7421cb5c3c86f6e24aed4be7f500ebd419bee47febc1536b35093469b22cb2d3",
+        "size": 343905
+      },
+      "after": {
+        "hash": "41645b95997dd40a4083f7d9874d5e96d9b81a3a7ca3e10fca6da20dc66fd954",
+        "size": 353777
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills/comet-native/scripts/comet-native-root.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "cc50df6f478a54d11e282806cd50a0745b5c944292dd5bf6b0873429e50593c6",
+        "size": 229948
+      },
+      "after": {
+        "hash": "c8189751db1f2c75a8064809f3817c5d2fb1003fd3950ff1461dd7142fed7c7f",
+        "size": 232763
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills/comet-native/scripts/comet-native-runtime.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "500087a5bdc6526fd7249db2fb1a77c7421142faf4aa14f7a1387607d0e5292f",
+        "size": 650262
+      },
+      "after": {
+        "hash": "b1006546258b2ec21c709a1f34b2642f854395ce0fb526b4106e5e3d2a77868d",
+        "size": 662239
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills/comet-native/scripts/comet-native-select.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "f354ab07af6784c88a2f99b07dcbe2d7563b03073c48b01a04eaab4911613c7a",
+        "size": 397356
+      },
+      "after": {
+        "hash": "b7811290d956fe9d9ac29b6a882a5d7806ad1e23932f17d95da4c00b1524a7aa",
+        "size": 404419
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills/comet-native/scripts/comet-native-show.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "94f0035c91e07e13c80dcf54b5b57397b6cb393c8b398a03ee608a8bc2a91ff7",
+        "size": 178231
+      },
+      "after": {
+        "hash": "2b92b8988e7f2a68cb378a6b68b671fe353db0d3b6bddc35025fc6c91978bba8",
+        "size": 178842
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills/comet-native/scripts/comet-native-spec.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "6666068f8c2b21a5999a98971cdde52a74830fcb1305df0a401575104b4afe60",
+        "size": 415661
+      },
+      "after": {
+        "hash": "30bf70b5843d41c57cdaf7c2ab676ea23962d0e035d1d36ba86208e7f2ca5cab",
+        "size": 422724
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills/comet-native/scripts/comet-native-status.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "347f3bb299dc30804ceb487aada85d311194d1bf44feb2ef3c28c6ac6e03200d",
+        "size": 384105
+      },
+      "after": {
+        "hash": "29fdfc6f7793e418bee431cb480249936bafe9fae53f151144e5c6f2b81ed5ce",
+        "size": 391168
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "domains/comet-native/native-archive-command.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "670ff6f48406bf222faaae988a6f346d9f5189c82f368487cdc503f6c110a5e1",
+        "size": 2544
+      },
+      "after": {
+        "hash": "92926ba6d16a592cca2cb3df3cdece469a95e076fd880a3b64ec1419b14208a9",
+        "size": 4479
+      },
+      "attributedTo": [
+        {
+          "path": "domains/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "domains/comet-native/native-archive-inspection.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "24361649b182381791c47bf65dfa56b75b380163d6493d8357dec59bd9491da0",
+        "size": 4562
+      },
+      "after": {
+        "hash": "83e6d0e101af2cf10b710b44d89a9d32563668c12fc02c10d3ce61d6bc34b534",
+        "size": 5046
+      },
+      "attributedTo": [
+        {
+          "path": "domains/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "domains/comet-native/native-archive-preflight.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "87ea3a0aea3579c5a7a677c462a08451d4d5dac60a9ecd2ce34583be13aeb8cb",
+        "size": 11093
+      },
+      "after": {
+        "hash": "5e96a8c322da0a5e437c31b0ed9a001d825c31a20c5d694e7c70a20b5efb653a",
+        "size": 13280
+      },
+      "attributedTo": [
+        {
+          "path": "domains/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "domains/comet-native/native-change.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "e4f5d41725f61b475c2b22ea2e29c63e5fc8700883b14f003684a16a01e1643f",
+        "size": 33229
+      },
+      "after": {
+        "hash": "42abb46f2e68243ca1408b46c186d62ac57aafc2d02a73f23cf3ba954fbfd61c",
+        "size": 35695
+      },
+      "attributedTo": [
+        {
+          "path": "domains/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "domains/comet-native/native-cli-shared.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "81ebcb731ac4bd20207551227e040fa4760b6ec6951148d745da62cf30e26ff5",
+        "size": 11267
+      },
+      "after": {
+        "hash": "6da5aac1e5cb35367d402f0adb8c0f26849e6910242b5f358b234deba7d41b06",
+        "size": 11850
+      },
+      "attributedTo": [
+        {
+          "path": "domains/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "domains/comet-native/native-continuation.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "39afe6ac544cb818762281ce2a04356df7aeb36e5e154db1dc1a9fe0b6085937",
+        "size": 8622
+      },
+      "after": {
+        "hash": "31dffe205ad63f9c17e2ac670f284903d5a2c7b67cbf6405af5361a6263c120f",
+        "size": 9137
+      },
+      "attributedTo": [
+        {
+          "path": "domains/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "domains/comet-native/native-diagnostics.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "c706edda404170262b115822a70b4a39996446c3711bd9e56dfff28c19a592d1",
+        "size": 22518
+      },
+      "after": {
+        "hash": "a59ce492f3bc71a28faec821a8972d8b4030632e4612424197ca8e42b9f83b9f",
+        "size": 23033
+      },
+      "attributedTo": [
+        {
+          "path": "domains/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "domains/comet-native/native-findings.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "d32874b69c8b6a0f794661cc560e313a2fbae144e73ed79df802e863c85889a7",
+        "size": 9430
+      },
+      "after": {
+        "hash": "e17ff9e715f04353dedcbd38c04be72a41b8c96f1a70016ebe4630b7486f3e4f",
+        "size": 10067
+      },
+      "attributedTo": [
+        {
+          "path": "domains/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "domains/comet-native/native-new-command.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "73c879a766695d2de90912f95648298c22e579233d15ade528d1b94f0fbc356f",
+        "size": 1720
+      },
+      "after": {
+        "hash": "cb42bc831d352b0606f0798b6536ad723cc3a9fc374407ace4ee5b0c652eae3e",
+        "size": 2652
+      },
+      "attributedTo": [
+        {
+          "path": "domains/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "domains/comet-native/native-root-move.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "28e44e8467ad3e573dd55b9fbc3b116447c241ddd8c8e5eab82b29a8c2a553c2",
+        "size": 36297
+      },
+      "after": {
+        "hash": "a168a95dcb29f55f8f4ad4af853f43de205e094d1612d66a9706953c5765e599",
+        "size": 37069
+      },
+      "attributedTo": [
+        {
+          "path": "domains/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "domains/comet-native/native-snapshot.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "b2b41beeb8ab89e22d635be95307234b130f7dfe593092cf16265c0ae65997ef",
+        "size": 115908
+      },
+      "after": {
+        "hash": "8c1fe69a859bcabec8f9695dde04b505bebd21d4f409a33a35019239039fc8ea",
+        "size": 116621
+      },
+      "attributedTo": [
+        {
+          "path": "domains/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "domains/comet-native/native-workspace.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "6012f4991493009c082f3d826e430e0ffebd5c2d5fe7f548e9421a4877c3deec",
+        "size": 13309
+      },
+      "after": {
+        "hash": "426e6650ae12bcde36fe29a65947e9a60f18dc8a339141195919beabbef4de24",
+        "size": 23059
+      },
+      "attributedTo": [
+        {
+          "path": "domains/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "platform/paths/git-worktree.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "244216ec7df012cf796ffc612a8ab4d329e74c167d599d6aa03030bbf077688b",
+        "size": 1704
+      },
+      "after": {
+        "hash": "b1fb74e7d28dad29a53baedc444367d9801b7e4b04d420d7ca3e2fc37c18c6f3",
+        "size": 2364
+      },
+      "attributedTo": [
+        {
+          "path": "platform/paths/git-worktree.ts",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "test/domains/comet-native/native-archive-preflight.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "3df298407177070167c93b7597febdce7721c95a0da28d375ed9a9a66fa78efe",
+        "size": 5127
+      },
+      "after": {
+        "hash": "afd1ad8b9fbcbd8aa85f9951544b0cf39326ad72a71f4bb50c4658a878883fe8",
+        "size": 5445
+      },
+      "attributedTo": [
+        {
+          "path": "test/domains/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "test/domains/comet-native/native-cli.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "bff141aa7189624d3ff5ebbe3fb6b230fad2b970a83d59044fe3e245227091a7",
+        "size": 39480
+      },
+      "after": {
+        "hash": "ae054d9ec116ff41c6f72c2db665d0d3dc5df593b6b97cde93c4cd4bba5d9276",
+        "size": 50891
+      },
+      "attributedTo": [
+        {
+          "path": "test/domains/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "test/domains/comet-native/native-root-move.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "17c43721519526e08bee68d0ee6ba0c38ee61090decaa3c4354b01e15dfdfedd",
+        "size": 10372
+      },
+      "after": {
+        "hash": "edfb2c42eb9e09f811145b3998175569a1652a031a093c79637765b560e13307",
+        "size": 12174
+      },
+      "attributedTo": [
+        {
+          "path": "test/domains/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "test/domains/comet-native/native-skill.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "f0cc91ff77d751ff633631cb8f801cd6fff313d874d9c3cbd60cbd441ba5ca53",
+        "size": 18948
+      },
+      "after": {
+        "hash": "bf785e8644bc23e890c8b7b7456e0202b20953fe565805707f3294af8744639f",
+        "size": 21530
+      },
+      "attributedTo": [
+        {
+          "path": "test/domains/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "test/domains/comet-native/native-workspace.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "4d8a78071fccd66f81553b104499b2666f8009230d554fad4bd666c3bc63ac2c",
+        "size": 6925
+      },
+      "after": {
+        "hash": "5ec9f3347590a624e6a6e7be895fe5d3e6d28b851783582580c9dd41dd86f098",
+        "size": 8959
+      },
+      "attributedTo": [
+        {
+          "path": "test/domains/comet-native",
+          "kind": "directory"
+        }
+      ]
+    },
+    {
+      "path": "test/platform/git-worktree.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "f8c2c73eefe323161f008524de7c8c4a302b0c64119102cef9c519eb84f200ce",
+        "size": 2505
+      },
+      "after": {
+        "hash": "de2574188386aa439a28d9192009c47c255e94e08f22b8d523f200a6e48537df",
+        "size": 2818
+      },
+      "attributedTo": [
+        {
+          "path": "test/platform/git-worktree.test.ts",
+          "kind": "file"
+        }
+      ]
+    }
+  ],
+  "unattributed": [],
+  "unresolvedScopes": [],
+  "noCodeReason": null,
+  "scopeHash": "0b655a63b4cbbb0ffa7803f24c0e09e1286c81b3ae2fd4c0ba85f7785e08dc66"
+}
