@@ -173,6 +173,28 @@ describe('Comet Native CLI dispatcher', () => {
     });
   });
 
+  it('atomically allows only one default-current creation when two sessions race', async () => {
+    const results = await Promise.all(
+      ['race-alpha', 'race-beta'].map(async (name) => ({
+        name,
+        result: json(await runNativeCli(['new', name, '--json', ...projectArgs()])),
+      })),
+    );
+    const succeeded = results.filter(({ result }) => result.exitCode === 0);
+    const rejected = results.filter(({ result }) => result.exitCode === 73);
+
+    expect(succeeded, JSON.stringify(results)).toHaveLength(1);
+    expect(rejected, JSON.stringify(results)).toHaveLength(1);
+    expect(rejected[0].result).toMatchObject({
+      data: {
+        requestedIsolation: 'current',
+        activeChanges: [succeeded[0].name],
+        requiredAction: 'create-native-worktree',
+      },
+      error: { code: 'workspace-isolation-required' },
+    });
+  });
+
   it('persists branch ownership and blocks a bound change after branch drift', async () => {
     execFileSync('git', ['config', 'user.email', 'native@example.test'], { cwd: projectRoot });
     execFileSync('git', ['config', 'user.name', 'Native Test'], { cwd: projectRoot });
@@ -239,6 +261,130 @@ describe('Comet Native CLI dispatcher', () => {
       exitCode: 65,
       error: { code: 'invalid-data', message: expect.stringContaining('workspace-branch-changed') },
     });
+    expect(
+      json(await runNativeCli(['status', 'branch-owned', '--json', ...projectArgs()])).data,
+    ).toMatchObject({
+      name: 'branch-owned',
+      phase: 'shape',
+      findingSummary: {
+        codes: expect.arrayContaining(['workspace-branch-changed']),
+      },
+      continuation: { disposition: 'blocked' },
+    });
+  });
+
+  it('rechecks an explicit Git binding under the creation lock', async () => {
+    expect(await runNativeCli(['init', ...projectArgs()])).toMatchObject({ exitCode: 0 });
+    execFileSync('git', ['config', 'user.email', 'native@example.test'], { cwd: projectRoot });
+    execFileSync('git', ['config', 'user.name', 'Native Test'], { cwd: projectRoot });
+    execFileSync('git', ['add', '.comet/config.yaml'], { cwd: projectRoot, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', 'initial'], { cwd: projectRoot, stdio: 'ignore' });
+    const targetBranch = execFileSync('git', ['branch', '--show-current'], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+    }).trim();
+    execFileSync('git', ['switch', '-c', 'comet/locked-binding'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    const lock = await acquireNativeLock(paths, 'root-move', 'hold new under test');
+    let pending: ReturnType<typeof runNativeCli>;
+    try {
+      pending = runNativeCli([
+        'new',
+        'locked-binding',
+        '--isolation',
+        'branch',
+        '--change-branch',
+        'comet/locked-binding',
+        '--target-branch',
+        targetBranch,
+        '--json',
+        ...projectArgs(),
+      ]);
+      await new Promise((resolve) => setTimeout(resolve, 75));
+      execFileSync('git', ['switch', targetBranch], { cwd: projectRoot, stdio: 'ignore' });
+    } finally {
+      await releaseNativeLock(lock);
+    }
+    expect(json(await pending!)).toMatchObject({
+      exitCode: 65,
+      error: {
+        code: 'invalid-data',
+        message: expect.stringContaining('does not match the current branch'),
+      },
+    });
+    await expect(
+      fs.access(path.join(projectRoot, 'docs/comet/changes/locked-binding')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('ignores an active change bound to another physical worktree', async () => {
+    expect(await runNativeCli(['init', ...projectArgs()])).toMatchObject({ exitCode: 0 });
+    execFileSync('git', ['config', 'user.email', 'native@example.test'], { cwd: projectRoot });
+    execFileSync('git', ['config', 'user.name', 'Native Test'], { cwd: projectRoot });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'initial'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+    const targetBranch = execFileSync('git', ['branch', '--show-current'], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+    }).trim();
+    expect(await runNativeCli(['new', 'primary-change', ...projectArgs()])).toMatchObject({
+      exitCode: 0,
+    });
+    execFileSync('git', ['add', '.comet/config.yaml', 'docs/comet/changes/primary-change'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+    execFileSync('git', ['commit', '-m', 'capture active change fixture'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+    const secondary = path.join(
+      os.tmpdir(),
+      `comet-native-independent-worktree-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    try {
+      execFileSync('git', ['worktree', 'add', '-b', 'comet/secondary-change', secondary, 'HEAD'], {
+        cwd: projectRoot,
+        stdio: 'ignore',
+      });
+      expect(
+        json(
+          await runNativeCli([
+            'new',
+            'secondary-change',
+            '--isolation',
+            'worktree',
+            '--target-branch',
+            targetBranch,
+            '--json',
+            '--project-root',
+            secondary,
+          ]),
+        ),
+      ).toMatchObject({ exitCode: 0 });
+      expect(
+        json(
+          await runNativeCli(['status', 'primary-change', '--json', '--project-root', secondary]),
+        ).data,
+      ).toMatchObject({
+        phase: 'shape',
+        findingSummary: {
+          codes: expect.arrayContaining(['workspace-binding-root-changed']),
+        },
+        continuation: { disposition: 'blocked' },
+      });
+    } finally {
+      execFileSync('git', ['worktree', 'remove', '--force', secondary], {
+        cwd: projectRoot,
+        stdio: 'ignore',
+      });
+      await fs.rm(secondary, { recursive: true, force: true });
+    }
   });
 
   it('accepts worktree isolation only from a linked Git worktree', async () => {
@@ -656,6 +802,31 @@ Pass.
       },
     });
     const preflightHash = (preview.data as { preflightHash: string }).preflightHash;
+    const pushPreview = json(
+      await runNativeCli([
+        'archive',
+        'sentence-counting',
+        '--dry-run',
+        '--finish',
+        'push',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(pushPreview.data).toMatchObject({ workspaceFinish: 'push' });
+    expect((pushPreview.data as { preflightHash: string }).preflightHash).not.toBe(preflightHash);
+    const restoredPreview = json(
+      await runNativeCli([
+        'archive',
+        'sentence-counting',
+        '--dry-run',
+        '--finish',
+        'merge',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect((restoredPreview.data as { preflightHash: string }).preflightHash).toBe(preflightHash);
     const config = await readProjectConfig(projectRoot);
     expect(config).not.toBeNull();
     config!.native.archive_confirmation = 'required';

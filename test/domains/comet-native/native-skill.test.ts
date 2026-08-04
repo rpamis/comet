@@ -408,6 +408,8 @@ describe('Comet Native Skills', () => {
           '不自动生成 worktree、不移动文件、不刷新 baseline',
           '归档并本地合并到已绑定目标分支',
           '归档、推送并创建 PR',
+          '持久化的 `targetBranch` 作为 PR base',
+          'worktree 创建只完成部分步骤时立即停止',
           '任何语义冲突都中止合并',
         ],
         commandTerms: [
@@ -429,6 +431,8 @@ describe('Comet Native Skills', () => {
           'do not generate worktrees, move files, or refresh their baselines automatically',
           'archive and merge locally into the bound target branch',
           'archive, push, and open a PR',
+          'persisted `targetBranch` as its base',
+          'worktree creation completes only some steps',
           'Abort any semantic conflict',
         ],
         commandTerms: [

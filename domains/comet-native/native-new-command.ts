@@ -1,5 +1,5 @@
 import { createNativeChange } from './native-change.js';
-import { defaultProjectConfig, readProjectConfig, writeProjectConfig } from './native-config.js';
+import { defaultProjectConfig, readProjectConfig } from './native-config.js';
 import { inspectNativeStatus } from './native-diagnostics.js';
 import { ensureNativeDirectories, nativeProjectPaths } from './native-paths.js';
 import { selectNativeChange } from './native-selection.js';
@@ -32,14 +32,13 @@ export async function nativeNewCommand(
   const changeBranch = takeOption(args, '--change-branch');
   const targetBranch = takeOption(args, '--target-branch');
   assertNoArguments(args);
-  const shouldWriteConfig = config === null;
+  const initialProjectConfig = config === null ? defaultProjectConfig('docs', language) : undefined;
   if (!config) {
-    config = defaultProjectConfig('docs', language);
+    config = initialProjectConfig!;
   }
   if (config.native.pending_root_move) {
     throw new Error(`Native root move ${config.native.pending_root_move.id} is incomplete`);
   }
-  if (shouldWriteConfig) await writeProjectConfig(projectRoot, config);
   const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
   await ensureNativeDirectories(paths);
   const workspaceBinding = resolveNativeWorkspaceBinding({
@@ -53,7 +52,9 @@ export async function nativeNewCommand(
     name,
     language,
     workspaceBinding,
+    ...(initialProjectConfig ? { initialProjectConfig } : {}),
   });
+  config = (await readProjectConfig(projectRoot)) ?? config;
   await selectNativeChange(paths, state.name);
   const workspace = await readNativeWorkspaceIdentity(paths, state.name);
   const status = await inspectNativeStatus(paths, state.name, {

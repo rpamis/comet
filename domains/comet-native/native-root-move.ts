@@ -23,7 +23,7 @@ import {
   readNativeTransaction,
   rollbackNativeTransaction,
 } from './native-transaction.js';
-import { writeNativeWorkspaceIdentity } from './native-workspace.js';
+import { readNativeWorkspaceIdentity, writeNativeWorkspaceIdentity } from './native-workspace.js';
 import type {
   CometProjectConfig,
   NativePendingRootMove,
@@ -128,10 +128,27 @@ async function refreshNativeWorkspaceIdentities(paths: NativeProjectPaths): Prom
     if (inspection.status !== 'current' || !inspection.state || !('revision' in inspection.state)) {
       continue;
     }
+    let previousWorkspace: Awaited<ReturnType<typeof readNativeWorkspaceIdentity>> = null;
+    try {
+      previousWorkspace = await readNativeWorkspaceIdentity(paths, entry.name);
+    } catch {
+      // Preserve the existing root-move guarantee: invalid advisory metadata
+      // cannot strand a successfully copied Native root.
+    }
     await writeNativeWorkspaceIdentity({
       paths,
       name: entry.name,
       revision: inspection.state.revision,
+      ...(previousWorkspace?.schema === 'comet.native.workspace.v3'
+        ? {
+            binding: {
+              isolation: previousWorkspace.isolation,
+              changeBranch: previousWorkspace.changeBranch,
+              targetBranch: previousWorkspace.targetBranch,
+            },
+            ...(previousWorkspace.finish ? { finish: previousWorkspace.finish } : {}),
+          }
+        : {}),
     });
   }
 }

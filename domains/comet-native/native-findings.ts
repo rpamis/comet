@@ -136,6 +136,30 @@ const EXACT_METADATA: Record<string, FindingMetadata> = {
     retry: 'status',
     repair: 'doctor',
   },
+  'workspace-binding-root-changed': {
+    severity: 'error',
+    requiredAction: 'return-to-bound-working-directory',
+    retry: 'status',
+    repair: 'none',
+  },
+  'workspace-branch-changed': {
+    severity: 'error',
+    requiredAction: 'return-to-bound-working-directory',
+    retry: 'status',
+    repair: 'none',
+  },
+  'workspace-kind-changed': {
+    severity: 'error',
+    requiredAction: 'return-to-bound-working-directory',
+    retry: 'status',
+    repair: 'none',
+  },
+  'workspace-vcs-unavailable': {
+    severity: 'error',
+    requiredAction: 'return-to-bound-working-directory',
+    retry: 'status',
+    repair: 'none',
+  },
   'repair-stagnation-warning': {
     severity: 'warning',
     requiredAction: 'change-repair-approach',

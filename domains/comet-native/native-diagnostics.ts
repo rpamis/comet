@@ -29,6 +29,7 @@ import { readNativeVerificationEvidence } from './native-evidence-storage.js';
 import { inspectNativeImplementationScopeFreshness } from './native-verification-runtime.js';
 import {
   inspectNativeWorkspaceAdvisory,
+  inspectNativeWorkspaceBinding,
   isNativeWorkspaceAdvisoryCode,
   readNativeWorkspaceIdentity,
 } from './native-workspace.js';
@@ -377,16 +378,23 @@ export async function inspectNativeStatus(
   try {
     const identity = await readNativeWorkspaceIdentity(paths, state.name);
     if (identity) {
-      const workspace = await inspectNativeWorkspaceAdvisory({
-        paths,
-        identity,
-      });
-      workspaceFindings.push(
-        ...workspace.findingCodes.map((code) => ({
-          code,
-          message: `Native workspace advisory changed: ${code} (${workspace.driftComponents.join(', ') || 'no-component'})`,
-        })),
-      );
+      if (identity.schema === 'comet.native.workspace.v3') {
+        const workspace = await inspectNativeWorkspaceBinding({ paths, identity });
+        if (workspace.state === 'drifted' && workspace.code) {
+          workspaceFindings.push({
+            code: workspace.code,
+            message: workspace.message ?? 'Native workspace binding is no longer valid',
+          });
+        }
+      } else {
+        const workspace = await inspectNativeWorkspaceAdvisory({ paths, identity });
+        workspaceFindings.push(
+          ...workspace.findingCodes.map((code) => ({
+            code,
+            message: `Native workspace advisory changed: ${code} (${workspace.driftComponents.join(', ') || 'no-component'})`,
+          })),
+        );
+      }
     }
   } catch {
     workspaceFindings.push({
@@ -462,7 +470,9 @@ export async function inspectNativeStatus(
       ));
   const mutationBlocked = findings.some(
     (finding) =>
-      finding.code === 'trajectory-tail-incomplete' || finding.code === 'trajectory-invalid',
+      finding.code === 'trajectory-tail-incomplete' ||
+      finding.code === 'trajectory-invalid' ||
+      finding.requiredAction === 'return-to-bound-working-directory',
   );
   const repairBlocked =
     repair?.disposition === 'manual-stop' || repair?.disposition === 'hard-stop';

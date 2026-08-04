@@ -16,8 +16,10 @@ import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.j
 import { moveNativeRoot } from '../../../domains/comet-native/native-root-move.js';
 import { readNativeTransaction } from '../../../domains/comet-native/native-transaction.js';
 import {
+  assertNativeWorkspaceBinding,
   inspectNativeWorkspaceAdvisory,
   readNativeWorkspaceIdentity,
+  setNativeWorkspaceFinish,
 } from '../../../domains/comet-native/native-workspace.js';
 import { seedNativeRoot } from '../../helpers/native-root.js';
 
@@ -92,6 +94,55 @@ describe('Native artifact root moves', () => {
     expect(await readNativeTransaction(destinationPaths, result.transactionId)).toMatchObject({
       kind: 'root-move',
       status: 'committed',
+    });
+  });
+
+  it('preserves v3 branch and finishing bindings while refreshing moved root identities', async () => {
+    await seedNativeRoot(projectRoot, 'docs');
+    await fs.rm(path.join(projectRoot, 'docs/comet/changes/active-change'), {
+      recursive: true,
+      force: true,
+    });
+    execFileSync('git', ['config', 'user.email', 'root-move@example.test'], {
+      cwd: projectRoot,
+    });
+    execFileSync('git', ['config', 'user.name', 'Root Move Test'], { cwd: projectRoot });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'initial'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+    const branch = execFileSync('git', ['branch', '--show-current'], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+    }).trim();
+    const sourcePaths = await nativeProjectPaths(projectRoot, 'docs');
+    await createNativeChange({
+      paths: sourcePaths,
+      name: 'bound-change',
+      language: 'en',
+      workspaceBinding: {
+        isolation: 'branch',
+        changeBranch: branch,
+        targetBranch: branch,
+      },
+    });
+    await setNativeWorkspaceFinish(sourcePaths, 'bound-change', 'push');
+
+    await moveNativeRoot({ projectRoot, toArtifactRoot: 'artifacts/native' });
+    const destinationPaths = await nativeProjectPaths(projectRoot, 'artifacts/native');
+    await expect(
+      readNativeWorkspaceIdentity(destinationPaths, 'bound-change'),
+    ).resolves.toMatchObject({
+      schema: 'comet.native.workspace.v3',
+      isolation: 'branch',
+      changeBranch: branch,
+      targetBranch: branch,
+      finish: 'push',
+    });
+    await expect(
+      assertNativeWorkspaceBinding(destinationPaths, 'bound-change'),
+    ).resolves.toMatchObject({
+      schema: 'comet.native.workspace.v3',
     });
   });
 

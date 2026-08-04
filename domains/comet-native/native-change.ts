@@ -8,6 +8,7 @@ import {
   assertNoPendingNativeRootMove,
   DEFAULT_NATIVE_SNAPSHOT_CONFIG,
   readProjectConfig,
+  writeProjectConfig,
 } from './native-config.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
 import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
@@ -21,7 +22,10 @@ import {
 } from './native-snapshot.js';
 import { assertNativeTrajectoryHealthy } from './native-trajectory-recovery.js';
 import {
+  assertNativeWorkspaceBindingCurrent,
   assertNativeWorkspaceBinding,
+  inspectNativeWorkspaceBinding,
+  readNativeWorkspaceIdentity,
   writeNativeWorkspaceIdentity,
   type NativeWorkspaceBinding,
 } from './native-workspace.js';
@@ -29,6 +33,7 @@ import type {
   NativeApproval,
   NativeChangeSchemaInspection,
   NativeChangeState,
+  CometProjectConfig,
   NativeContentSnapshotManifest,
   NativeContentAddressedRef,
   NativeLegacyChangeState,
@@ -602,6 +607,7 @@ export async function createNativeChange(options: {
   language: 'en' | 'zh-CN';
   verificationProtocol?: NativeVerificationProtocol;
   workspaceBinding?: NativeWorkspaceBinding;
+  initialProjectConfig?: CometProjectConfig;
   now?: Date;
 }): Promise<NativeChangeState> {
   return withNativeMutationLock(options.paths, `create change ${options.name}`, () =>
@@ -615,13 +621,19 @@ async function createNativeChangeLocked(options: {
   language: 'en' | 'zh-CN';
   verificationProtocol?: NativeVerificationProtocol;
   workspaceBinding?: NativeWorkspaceBinding;
+  initialProjectConfig?: CometProjectConfig;
   now?: Date;
 }): Promise<NativeChangeState> {
   assertNativeName(options.name);
+  if (
+    options.initialProjectConfig &&
+    (await readProjectConfig(options.paths.projectRoot)) === null
+  ) {
+    await writeProjectConfig(options.paths.projectRoot, options.initialProjectConfig);
+  }
   if (options.workspaceBinding) {
-    const activeChanges = (await listNativeChanges(options.paths))
-      .filter((change) => !change.archived)
-      .map((change) => change.name);
+    assertNativeWorkspaceBindingCurrent(options.paths.projectRoot, options.workspaceBinding);
+    const activeChanges = await listActiveNativeChangesOwnedByWorkspace(options.paths);
     if (activeChanges.length > 0) {
       throw new NativeWorkspaceIsolationRequiredError(
         options.workspaceBinding.isolation,
@@ -922,6 +934,11 @@ export async function readNativeChangeFile(file: string): Promise<NativeChangeSt
 }
 
 export async function listNativeChanges(paths: NativeProjectPaths): Promise<NativeChangeState[]> {
+  const names = await listNativeChangeNames(paths);
+  return Promise.all(names.map((name) => readNativeChange(paths, name)));
+}
+
+async function listNativeChangeNames(paths: NativeProjectPaths): Promise<string[]> {
   let entries;
   try {
     const directory = await readNativeProtectedDirectory({
@@ -940,5 +957,22 @@ export async function listNativeChanges(paths: NativeProjectPaths): Promise<Nati
     .filter((entry) => entry.isDirectory() && !entry.isSymbolicLink())
     .map((entry) => entry.name)
     .sort();
-  return Promise.all(names.map((name) => readNativeChange(paths, name)));
+  return names;
+}
+
+async function listActiveNativeChangesOwnedByWorkspace(
+  paths: NativeProjectPaths,
+): Promise<string[]> {
+  const owned: string[] = [];
+  for (const name of await listNativeChangeNames(paths)) {
+    const inspection = await inspectNativeChangeStateDocument(paths, name);
+    if (!inspection.state || inspection.state.archived) continue;
+    const identity = await readNativeWorkspaceIdentity(paths, name);
+    if (identity?.schema === 'comet.native.workspace.v3') {
+      const binding = await inspectNativeWorkspaceBinding({ paths, identity });
+      if (binding.code === 'workspace-binding-root-changed') continue;
+    }
+    owned.push(name);
+  }
+  return owned;
 }

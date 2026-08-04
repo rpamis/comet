@@ -748,13 +748,26 @@ interface NativeGitSelectionResults {
 
 async function readNativeGitSelectionResults(
   execution: NativeSnapshotExecution,
-  projectRoot: string,
+  paths: NativeProjectPaths,
   limits: NativeGitSelectionLimits,
   hooks: Pick<
     NativeGitSelectionHooks,
     'afterStageBefore' | 'afterCombined' | 'outputChunkBytes'
   > = {},
 ): Promise<NativeGitSelectionResults> {
+  const projectRoot = path.resolve(paths.projectRoot);
+  const selectionFile = path.join(projectRoot, '.comet', 'current-change.json');
+  const excludedRefs = [paths.nativeRoot, paths.configFile, selectionFile].map((target) => {
+    const relative = path.relative(projectRoot, path.resolve(target)).replaceAll('\\', '/');
+    const safe = safeGitProjectPath(relative);
+    if (safe === null) throw new Error('Native Git snapshot exclusion escaped the project root');
+    return safe;
+  });
+  const pathspecs = [
+    '--',
+    '.',
+    ...excludedRefs.flatMap((relative) => [`:(exclude)${relative}`, `:(exclude)${relative}/**`]),
+  ];
   const options: GitNullRecordOptions = {
     ...limits,
     ...(hooks.outputChunkBytes === undefined ? {} : { outputChunkBytes: hooks.outputChunkBytes }),
@@ -762,21 +775,21 @@ async function readNativeGitSelectionResults(
   const stagedBefore = await runGitNullRecords(
     execution,
     projectRoot,
-    ['ls-files', '--stage', '-z'],
+    ['ls-files', '--stage', '-z', ...pathspecs],
     options,
   );
   await hooks.afterStageBefore?.();
   const combined = await runGitNullRecords(
     execution,
     projectRoot,
-    ['ls-files', '--cached', '--others', '--exclude-standard', '-z'],
+    ['ls-files', '--cached', '--others', '--exclude-standard', '-z', ...pathspecs],
     options,
   );
   await hooks.afterCombined?.();
   const stagedAfter = await runGitNullRecords(
     execution,
     projectRoot,
-    ['ls-files', '--stage', '-z'],
+    ['ls-files', '--stage', '-z', ...pathspecs],
     options,
   );
   return { stagedBefore, combined, stagedAfter };
@@ -792,10 +805,11 @@ function gitSelectionFence(results: NativeGitSelectionResults): NativeGitSelecti
 
 async function nativeGitSnapshotSelection(
   execution: NativeSnapshotExecution,
-  projectRoot: string,
+  paths: NativeProjectPaths,
   limits: NativeGitSelectionLimits = DEFAULT_NATIVE_GIT_SELECTION_LIMITS,
   hooks: NativeGitSelectionHooks = {},
 ): Promise<NativeGitSnapshotSelection | null> {
+  const projectRoot = path.resolve(paths.projectRoot);
   if (!(await hasGitMetadataBoundary(projectRoot))) return null;
   let insideWorktree: Buffer;
   try {
@@ -814,7 +828,7 @@ async function nativeGitSnapshotSelection(
   }
   let results: NativeGitSelectionResults;
   try {
-    results = await readNativeGitSelectionResults(execution, projectRoot, limits, hooks);
+    results = await readNativeGitSelectionResults(execution, paths, limits, hooks);
   } catch (error) {
     if (isNativeGitSnapshotTimeout(error)) throw error;
     throw new Error('Native Git snapshot provider failed after repository detection', {
@@ -905,14 +919,14 @@ function gitSelectionChanged(
 
 async function finalizeNativeGitSnapshotSelection(
   execution: NativeSnapshotExecution,
-  projectRoot: string,
+  paths: NativeProjectPaths,
   limits: NativeGitSelectionLimits,
   selection: NativeGitSnapshotSelection,
   outputChunkBytes?: number,
 ): Promise<void> {
   let finalResults: NativeGitSelectionResults;
   try {
-    finalResults = await readNativeGitSelectionResults(execution, projectRoot, limits, {
+    finalResults = await readNativeGitSelectionResults(execution, paths, limits, {
       ...(outputChunkBytes === undefined ? {} : { outputChunkBytes }),
     });
   } catch (error) {
@@ -2155,7 +2169,7 @@ export async function filterNativeContentSnapshotToProjectScope(
   const gitSelectionLimits = resolveNativeGitSelectionLimits(options.gitSelectionLimits);
   const selection = await nativeGitSnapshotSelection(
     execution,
-    projectRoot,
+    paths,
     gitSelectionLimits,
     options.gitSelectionHooks,
   );
@@ -2193,7 +2207,7 @@ export async function filterNativeContentSnapshotToProjectScope(
 
   await finalizeNativeGitSnapshotSelection(
     execution,
-    projectRoot,
+    paths,
     gitSelectionLimits,
     selection,
     options.gitSelectionHooks?.outputChunkBytes,
@@ -2737,7 +2751,7 @@ export async function createNativeContentSnapshot(
 
   const gitSelection = await nativeGitSnapshotSelection(
     execution,
-    projectRoot,
+    paths,
     gitSelectionLimits,
     options.gitSelectionHooks,
   );
@@ -3047,7 +3061,7 @@ export async function createNativeContentSnapshot(
     await options.gitSelectionHooks?.afterContentRevalidation?.();
     await finalizeNativeGitSnapshotSelection(
       execution,
-      projectRoot,
+      paths,
       gitSelectionLimits,
       gitSelection,
       options.gitSelectionHooks?.outputChunkBytes,

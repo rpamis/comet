@@ -92,6 +92,7 @@ export interface CaptureNativeWorkspaceOptions {
   now?: Date;
   sessionId?: string;
   binding?: NativeWorkspaceBinding;
+  finish?: NativeWorkspaceFinish;
 }
 
 export interface ResolveNativeWorkspaceBindingOptions {
@@ -324,6 +325,27 @@ export function resolveNativeWorkspaceBinding(
   return binding;
 }
 
+export function assertNativeWorkspaceBindingCurrent(
+  projectRoot: string,
+  expected: NativeWorkspaceBinding,
+): void {
+  const current = resolveNativeWorkspaceBinding({
+    projectRoot,
+    isolation: expected.isolation,
+    ...(expected.changeBranch !== null ? { changeBranch: expected.changeBranch } : {}),
+    ...(expected.isolation !== 'current' && expected.targetBranch !== null
+      ? { targetBranch: expected.targetBranch }
+      : {}),
+  });
+  if (
+    current.isolation !== expected.isolation ||
+    current.changeBranch !== expected.changeBranch ||
+    current.targetBranch !== expected.targetBranch
+  ) {
+    throw new Error('Native workspace binding changed before change creation');
+  }
+}
+
 export function nativeWorkspaceFile(paths: NativeProjectPaths, name: string): string {
   return path.join(paths.changesDir, name, 'runtime', 'workspace.json');
 }
@@ -404,6 +426,9 @@ export async function inspectNativeWorkspaceIdentity(
     directoryPathIdentity('comet.native.workspace-native-root-path.v2', options.paths.nativeRoot),
   ]);
   const capturedAt = (options.now ?? new Date()).toISOString();
+  if (options.finish && !options.binding) {
+    throw new Error('Native workspace finish requires a workspace binding');
+  }
   if (options.binding) assertBinding(options.binding);
   const identity: NativeWorkspaceIdentity = {
     schema: options.binding ? 'comet.native.workspace.v3' : 'comet.native.workspace.v2',
@@ -423,7 +448,7 @@ export async function inspectNativeWorkspaceIdentity(
         }
       : {}),
     ...(options.binding ? options.binding : {}),
-    ...(options.binding ? { finish: null } : {}),
+    ...(options.binding ? { finish: options.finish ?? null } : {}),
   };
   assertIdentity(identity);
   return identity;

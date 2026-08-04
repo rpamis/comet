@@ -87,6 +87,18 @@ describe('Native Archive preflight', () => {
     ['scope', (value: NativeArchivePreflightInput) => (value.evidence.implementationScopeHash = D)],
     ['report', (value: NativeArchivePreflightInput) => (value.evidence.reportHash = E)],
     ['envelope', (value: NativeArchivePreflightInput) => (value.evidence.envelopeHash = A)],
+    [
+      'workspace finish',
+      (value: NativeArchivePreflightInput) => {
+        value.workspace = {
+          schema: 'comet.native.workspace.v3',
+          isolation: 'branch',
+          changeBranch: 'comet/secure-login',
+          targetBranch: 'main',
+          finish: 'merge',
+        };
+      },
+    ],
   ])('changes the preflight hash when %s changes', (_label, mutate) => {
     const baseline = buildNativeArchivePreflight(input());
     const changed = input();

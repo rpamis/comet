@@ -82,6 +82,8 @@ Before creating a worktree, add `.worktrees/` to the repository-local Git exclud
 
 Create the worktree from the resolved commit of a verified local target branch. If the source directory has uncommitted content, attribute it first: leave work proven unrelated to the new change in place; if content may belong to the new change and cannot enter through that commit, wait for the user to decide how to preserve it rather than silently committing, copying, or omitting it. The target directory must receive consistent configuration from the target branch or establish legal configuration through public `comet native init`, then verify artifact-root, language, clarification, archive, verify, and snapshot semantics. Stop when consistency cannot be proven. Never copy the source `.comet/current-change.json`.
 
+If worktree creation completes only some steps, stop immediately and report the original error, target branch and path, every branch/worktree/exclude/config/change resource known to have been created, and the recoverable next action. Clean up only resources proven to be newly created by this operation and safe to remove. Preserve the scene when ownership is uncertain; never remove an existing or possibly user-owned worktree, branch, or file.
+
 Runtime rechecks for a newly active change inside the same mutation lock used by `new`. If a system-default `current` loses this race and returns `workspace-isolation-required`, automatically prepare the default worktree and retry there. If an explicit user choice becomes invalid before execution, stop and reconfirm rather than silently changing modes.
 
 Existing active changes without a workspace v3 binding remain compatible: do not generate worktrees, move files, or refresh their baselines automatically. Continue selecting only one change at a time in a shared legacy directory. Only real baseline or scope drift fails closed and requires the user to decide whether to recover, recreate, or abandon the change.
@@ -187,7 +189,7 @@ The returned `workspaceFinish` must match the user's choice. Later sessions reco
 
 - Local merge: merge the change branch in the bound target branch's working directory and run post-merge validation proportional to the change risk. On success, remove the clean change worktree and the merged local branch. Preserve both on any failure.
 - Push: push the change branch. On success, a clean change worktree may be removed, but retain the local and remote branches.
-- Push and PR: create the PR after pushing, then apply the push cleanup. Native does not continuously monitor the PR.
+- Push and PR: after pushing, create the PR with the workspace's persisted `targetBranch` as its base instead of inferring the repository default branch, then apply the push cleanup. Native does not continuously monitor the PR.
 - Keep: retain the branch and working directory after committing; do not merge or push.
 
 Archive multiple changes independently. Only local merges that update the same target ref must be serialized. Resolve a conflict automatically only when the resolution mechanically preserves both confirmed contracts, then revalidate. Abort any semantic conflict and ask whether to create a separate integration change; never silently overwrite either side.

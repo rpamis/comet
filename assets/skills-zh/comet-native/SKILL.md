@@ -82,6 +82,8 @@ comet native new <change-name> --language zh-CN \
 
 worktree 必须从已解析的本地目标分支提交创建。源目录有未提交内容时，先归因：可证明与新 change 无关的内容留在原目录；可能属于新 change 且无法从该提交带入时，等待用户决定如何保留，不静默提交、复制或遗漏。目标目录必须从目标分支获得一致配置，或通过公开 `comet native init` 建立合法配置并核对 artifact root、language、clarification、archive、verify 与 snapshot 语义；无法证明一致时停止。不得复制源目录的 `.comet/current-change.json`。
 
+worktree 创建只完成部分步骤时立即停止：报告原始错误、目标分支与目标路径、已明确创建的分支/worktree/exclude/config/change 资源，以及可恢复的下一步。只能清理可证明由本次操作新建且删除安全的资源；无法证明归属时保留现场，绝不删除已有或可能属于用户的 worktree、分支与文件。
+
 Runtime 会在 `new` 的同一个 mutation lock 中重新检查当前目录是否已出现 active change。系统默认的 `current` 因竞态返回 `workspace-isolation-required` 时，自动按默认 `worktree` 重新准备并创建；用户明确选择的方式若在执行前失效，停止并重新确认，不擅自换方式。
 
 没有 workspace v3 绑定的旧 active change 保持兼容：不自动生成 worktree、不移动文件、不刷新 baseline；同一旧目录内仍一次只选择一个 change。只有真实 baseline 或 scope 漂移时才按 Runtime 失败关闭，并让用户决定恢复、重建或放弃。
@@ -187,7 +189,7 @@ Runtime 返回的 `workspaceFinish` 必须与用户选择一致；后续会话�
 
 - 本地合并：在已绑定目标分支的工作目录中合并 change 分支，运行与改动风险匹配的合并后验证；成功后删除干净的 change worktree 和已合并本地分支。任何失败都保留分支与工作目录；
 - 推送：推送 change 分支。成功后可删除干净的 change worktree，但保留本地和远端分支；
-- 推送并创建 PR：推送后创建 PR，成功后按推送方式清理；Native 不持续监控 PR；
+- 推送并创建 PR：推送后以 workspace 中持久化的 `targetBranch` 作为 PR base 创建 PR，不使用仓库默认分支推断；成功后按推送方式清理；Native 不持续监控 PR；
 - 保留：提交后保留分支和工作目录，不做合并或推送。
 
 多个 change 独立 Archive；只有更新同一个目标 ref 的本地合并需要串行。合并冲突只有在能机械地保留双方已确认契约时才可解决并重新验证；任何语义冲突都中止合并并询问是否创建新的 integration change，不把某一方静默覆盖。
