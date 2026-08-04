@@ -5551,6 +5551,7 @@ describe('comet scripts', () => {
           '',
         ].join('\n'),
       );
+      await writeFile(path.join(tmpDir, ...recorded.split('/')), '- [ ] existing task\n');
       const target = path.join(
         tmpDir,
         'docs',
@@ -5586,6 +5587,7 @@ describe('comet scripts', () => {
           '',
         ].join('\n'),
       );
+      await writeFile(path.join(tmpDir, ...recorded.split('/')), '- [ ] existing task\n');
       const target = path.join(
         tmpDir,
         'docs',
@@ -5623,6 +5625,7 @@ describe('comet scripts', () => {
             '',
           ].join('\n'),
         );
+        await writeFile(path.join(tmpDir, ...recorded.split('/')), '- [ ] existing task\n');
         const target = path.join(
           tmpDir,
           'Docs',
