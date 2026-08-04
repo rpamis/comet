@@ -97,9 +97,11 @@ describe('Native self-contained runtime boundary', () => {
     expect(occurrences(/\brunGitNullRecords\s*\(/gu)).toBe(6);
     expect(occurrences(/\brunGitBoundedOutput\s*\(/gu)).toBe(5);
     expect(occurrences(/\brunGitHasOutput\s*\(/gu)).toBe(2);
-    expect(literalOccurrences("['ls-files', '--stage', '-z']")).toBe(2);
+    expect(literalOccurrences("['ls-files', '--stage', '-z', ...pathspecs]")).toBe(2);
     expect(
-      literalOccurrences("['ls-files', '--cached', '--others', '--exclude-standard', '-z']"),
+      literalOccurrences(
+        "['ls-files', '--cached', '--others', '--exclude-standard', '-z', ...pathspecs]",
+      ),
     ).toBe(1);
     // Snapshot capture checks unstaged modifications before reuse and again at
     // the final fence so a concurrently dirtied reused file is invalidated.

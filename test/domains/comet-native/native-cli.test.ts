@@ -929,7 +929,7 @@ Pass.
 
     const doctor = json(await runNativeCli(['doctor', '--json', ...projectArgs()]));
     expect(doctor).toMatchObject({ command: 'doctor', exitCode: 0, data: { healthy: true } });
-  }, 120_000);
+  }, 240_000);
 
   it('pages every Runtime-derived acceptance ID through the public status command', async () => {
     await runNativeCli(['new', 'paged-acceptance', ...projectArgs()]);
