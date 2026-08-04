@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    testTimeout: 30000,
+    testTimeout: 120_000,
     // Git-heavy fixtures can exceed Vitest's 10s hook default under bounded full-suite concurrency.
     hookTimeout: 120_000,
     // Several test files spawn their own subprocesses and platform-install loops.
