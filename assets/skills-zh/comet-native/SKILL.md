@@ -110,6 +110,8 @@ comet native next <change-name> \
 
 只有 Runtime 接受完整且新鲜的验收矩阵和 required checks 时才能提交 `pass`。相关实现、规格、报告或证据改变后重新验证。
 
+提交 Verify 时只传 `--result` 和 `--report`；`next` 不接受 `--receipt` 或其他调用方提供的 required-check 参数。Runtime 会先校验报告格式、完整验收矩阵和 acceptance receipt，只有这些输入有效后才执行或复用当前 scope 的内置 required check。报告无效时先修正报告，不要反复重试同一个 `next` 命令。
+
 `fail` 会回到 Build。先根据 Runtime 返回的 failed/missing acceptance 和 failed check 修复，再重新验证；不要把再次调用 `next` 当作修复。`repair-stagnation-stop` 由 Agent 按恢复参考提出新假设并使用 Runtime 返回的 override；只有 continuation 要求 `repair-continuation-decision` 时才等待用户选择。
 
 Verify 失败的中间循环不运行 Archive，也不触发归档确认。持续执行 Build → Verify，直到 pass、Runtime 阻塞或需要用户决定。

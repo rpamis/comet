@@ -166,6 +166,25 @@ describe('Native check public seam', () => {
       status: 'passed',
     });
 
+    const checkReceiptDirectory = path.join(changeDir, 'runtime', 'evidence', 'check-receipts');
+    const typedReceiptDirectory = path.join(changeDir, 'runtime', 'evidence', 'receipts');
+    const countFiles = async (directory: string): Promise<number> =>
+      (await fs.readdir(directory)).length;
+    const checkReceiptCount = await countFiles(checkReceiptDirectory);
+    const typedReceiptCount = await countFiles(typedReceiptDirectory);
+    const repeated = json(await runNativeCli(['check', name, '--json', ...projectArgs()]));
+    expect(repeated).toMatchObject({ exitCode: 0, data: { status: 'passed', ref: firstRef } });
+    expect(await countFiles(checkReceiptDirectory)).toBe(checkReceiptCount);
+    expect(await countFiles(typedReceiptDirectory)).toBe(typedReceiptCount);
+
+    await fs.writeFile(path.join(projectRoot, 'feature.ts'), 'export const value = 3;\n');
+    const changed = json(await runNativeCli(['check', name, '--json', ...projectArgs()]));
+    expect(changed).toMatchObject({
+      exitCode: 1,
+      data: { status: 'failed', stale: true },
+    });
+    expect(changed.data!.ref).not.toBe(firstRef);
+
     const serializedProjection = JSON.stringify(checked.data);
     expect(serializedProjection).not.toContain(projectRoot);
     expect(serializedProjection).not.toContain('diff');
@@ -213,6 +232,46 @@ describe('Native check public seam', () => {
     expect(envelope.requiredReceiptRefs).toEqual([
       expect.stringMatching(/^runtime\/evidence\/receipts\/[a-f0-9]{64}\.json$/u),
     ]);
+  });
+
+  it('validates the Verify report before running the automatic required check', async () => {
+    const { paths, changeDir } = await prepareVerifyChange();
+    await fs.writeFile(path.join(changeDir, 'verification.md'), '# Conclusion\nPass.\n');
+    const checkReceiptDirectory = path.join(changeDir, 'runtime', 'evidence', 'check-receipts');
+    const countReceipts = async (): Promise<number> => {
+      try {
+        return (await fs.readdir(checkReceiptDirectory)).length;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return 0;
+        throw error;
+      }
+    };
+    const before = await countReceipts();
+
+    const rejected = json(
+      await runNativeCli([
+        'next',
+        name,
+        '--summary',
+        'Reject malformed verification before checking.',
+        '--result',
+        'pass',
+        '--report',
+        'verification.md',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(rejected).toMatchObject({
+      exitCode: 65,
+      error: { code: 'invalid-data' },
+    });
+    expect(rejected.error?.message).toContain('Missing verification section: Acceptance evidence');
+    expect(await countReceipts()).toBe(before);
+    await expect(readNativeChange(paths, name)).resolves.toMatchObject({
+      phase: 'verify',
+      verification_evidence: null,
+    });
   });
 
   it('returns CLI exit 1 and persists bounded text issues without changing workflow state', async () => {

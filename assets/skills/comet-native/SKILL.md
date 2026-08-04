@@ -110,6 +110,8 @@ Use acceptance IDs and receipts returned by the Runtime. Read the artifact and c
 
 Submit `pass` only when the Runtime accepts the complete, fresh acceptance matrix and required checks. Reverify after relevant implementation, specification, report, or evidence changes.
 
+When submitting Verify, pass only `--result` and `--report`; `next` does not accept `--receipt` or caller-supplied required-check arguments. The Runtime validates the report format, complete acceptance matrix, and acceptance receipts before it runs or reuses the built-in required check for the current scope. If the report is invalid, fix it before retrying instead of submitting the same `next` command repeatedly.
+
 `fail` returns to Build. Fix the failed or missing acceptance items and failed checks reported by the Runtime before verifying again; another `next` call is not itself a repair. For `repair-stagnation-stop`, follow the recovery reference to form a new hypothesis and use the Runtime-provided override. Wait for the user only when the continuation requires `repair-continuation-decision`.
 
 An intermediate Verify failure never runs Archive or triggers archive confirmation. Continue Build → Verify until pass, a Runtime block, or a required user decision.

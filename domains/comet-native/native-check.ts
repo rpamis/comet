@@ -4,7 +4,10 @@ import { executeNativeCheckReceipt, type NativeCheckReceipt } from './native-che
 import { withNativeMutationLock } from './native-mutation-lock.js';
 import { withNativeTransitionLock } from './native-transition-journal.js';
 import type { NativeChangeState, NativeProjectPaths } from './native-types.js';
-import { persistNativeStaticInspectionReceipt } from './native-verification-receipt-runtime.js';
+import {
+  findNativeReusableRequiredCheckReceipt,
+  persistNativeStaticInspectionReceipt,
+} from './native-verification-receipt-runtime.js';
 
 export interface NativeCheckResult {
   change: NativeChangeState;
@@ -39,6 +42,18 @@ export async function checkNativeChangeLocked(options: {
   const state = await readNativeChange(options.paths, options.name);
   if (state.phase !== 'verify') throw new Error(`Native check requires Verify, got ${state.phase}`);
   if (!state.implementation_scope) throw new Error('Native check requires an implementation scope');
+  const reusable = await findNativeReusableRequiredCheckReceipt({
+    paths: options.paths,
+    state,
+  });
+  if (reusable) {
+    return {
+      change: state,
+      receipt: reusable.checkReceipt,
+      checkRef: reusable.checkReceiptRef,
+      ref: reusable.ref,
+    };
+  }
   const executed = await executeNativeCheckReceipt({ paths: options.paths, state });
   const typed = await persistNativeStaticInspectionReceipt({
     paths: options.paths,

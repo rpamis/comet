@@ -13,7 +13,9 @@ import type { NativeCheckReceipt } from './native-check-receipt.js';
 import { readNativeCheckReceipt } from './native-check-receipt-storage.js';
 import { collectNativeContractFiles } from './native-contract-files.js';
 import {
+  listNativeVerificationReceiptRefs,
   readNativeImplementationScopeBundle,
+  readNativeVerificationReceipt,
   writeNativeVerificationReceipt,
 } from './native-evidence-storage.js';
 import type { NativeChangeState, NativeProjectPaths } from './native-types.js';
@@ -355,6 +357,125 @@ export async function persistNativeStaticInspectionReceipt(options: {
     receipt,
   });
   return { receipt, ref };
+}
+
+export interface NativeReusableRequiredCheckReceipt {
+  receipt: NativeVerificationReceipt;
+  ref: string;
+  checkReceipt: NativeCheckReceipt;
+  checkReceiptRef: string;
+}
+
+function isReusableRequiredCheck(options: {
+  receipt: NativeVerificationReceipt;
+  checkReceipt: NativeCheckReceipt;
+  context: NativeVerificationReceiptContext;
+}): boolean {
+  const { receipt, checkReceipt, context } = options;
+  if (
+    receipt.kind !== 'static-inspection' ||
+    receipt.role !== 'required-check' ||
+    receipt.status !== 'passed' ||
+    !nativeReceiptBindingsMatch(receipt, context.bindings) ||
+    checkReceipt.status !== 'passed' ||
+    checkReceipt.stale
+  ) {
+    return false;
+  }
+  const selectedFiles = context.scope.scope.changes.filter((change) => change.after !== null);
+  const selectedBytes = selectedFiles.reduce((total, change) => total + change.after!.size, 0);
+  return (
+    checkReceipt.change === context.bindings.change &&
+    checkReceipt.sourceRevision === context.bindings.sourceRevision &&
+    checkReceipt.contract.expectedHash === context.bindings.contractHash &&
+    checkReceipt.contract.beforeHash === context.bindings.contractHash &&
+    checkReceipt.contract.afterHash === context.bindings.contractHash &&
+    checkReceipt.implementation.scopeHash === context.bindings.scopeHash &&
+    checkReceipt.implementation.expectedSnapshotHash === context.bindings.snapshotHash &&
+    checkReceipt.implementation.beforeSnapshotHash === context.bindings.snapshotHash &&
+    checkReceipt.implementation.afterSnapshotHash === context.bindings.snapshotHash &&
+    checkReceipt.counts.filesSelected === selectedFiles.length &&
+    checkReceipt.counts.filesScanned + checkReceipt.counts.binaryFilesSkipped ===
+      selectedFiles.length &&
+    checkReceipt.counts.bytesScanned === selectedBytes &&
+    checkReceipt.counts.issueCount === 0 &&
+    checkReceipt.counts.recordedIssueCount === 0 &&
+    checkReceipt.issues.length === 0 &&
+    !checkReceipt.issuesTruncated
+  );
+}
+
+/**
+ * Find a passed required-check receipt that still proves the current Verify
+ * scope. The directory scan is deliberately skipped when no typed receipts
+ * exist, keeping the first Verify pass on the existing fast path.
+ */
+export async function findNativeReusableRequiredCheckReceipt(options: {
+  paths: NativeProjectPaths;
+  state: NativeChangeState;
+}): Promise<NativeReusableRequiredCheckReceipt | null> {
+  const refs = await listNativeVerificationReceiptRefs(options.paths, options.state.name);
+  if (refs.length === 0) return null;
+
+  const candidates: Array<{
+    ref: string;
+    receipt: Extract<NativeVerificationReceipt, { kind: 'static-inspection' }>;
+  }> = [];
+  for (const ref of refs) {
+    try {
+      const receipt = await readNativeVerificationReceipt(options.paths, options.state.name, ref);
+      if (
+        receipt.kind === 'static-inspection' &&
+        receipt.role === 'required-check' &&
+        receipt.status === 'passed'
+      ) {
+        candidates.push({ ref, receipt });
+      }
+    } catch {
+      // A stale, deleted, or malformed historical receipt is not reusable.
+    }
+  }
+  if (candidates.length === 0) return null;
+
+  let context: NativeVerificationReceiptContext;
+  try {
+    context = await loadNativeVerificationReceiptContext(options.paths, options.state);
+    const fence = await currentReceiptFence({ paths: options.paths, context });
+    if (!fence.matched) return null;
+  } catch {
+    return null;
+  }
+
+  let reusable: NativeReusableRequiredCheckReceipt | null = null;
+  for (const { ref, receipt } of candidates) {
+    try {
+      const checkReceipt = await validateNativeStaticReceiptDependency({
+        paths: options.paths,
+        state: options.state,
+        receipt,
+      });
+      if (checkReceipt === null || !isReusableRequiredCheck({ receipt, checkReceipt, context })) {
+        continue;
+      }
+      const candidate = {
+        receipt,
+        ref,
+        checkReceipt,
+        checkReceiptRef: receipt.evidence.checkReceiptRef,
+      };
+      if (
+        reusable === null ||
+        candidate.receipt.issuedAt > reusable.receipt.issuedAt ||
+        (candidate.receipt.issuedAt === reusable.receipt.issuedAt && candidate.ref > reusable.ref)
+      ) {
+        reusable = candidate;
+      }
+    } catch {
+      // A stale, deleted, or malformed historical receipt is not reusable;
+      // execute a fresh required check instead.
+    }
+  }
+  return reusable;
 }
 
 export async function issueNativeManualEvidenceReceipt(options: {

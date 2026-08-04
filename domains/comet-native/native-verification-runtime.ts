@@ -67,6 +67,10 @@ export interface NativeVerificationPreparation {
   envelope: NativeVerificationEvidenceEnvelope | null;
   evidenceRef: string | null;
   reportSnapshot: { hash: string; text: string } | null;
+  /** Parsed report and acceptance trace reused after required-check execution. */
+  preflight?: NativeVerificationPreflight;
+  /** True when the preparation was used only to validate input before required-check execution. */
+  preflightOnly?: boolean;
   /**
    * Per-receipt diagnostics populated when {@link findingCodes} includes
    * `verification-receipt-binding-mismatch`. Lets an Agent see exactly which
@@ -74,6 +78,11 @@ export interface NativeVerificationPreparation {
    * mismatch is limited to sourceRevision; other binding changes require fresh evidence.
    */
   receiptBindingFailures?: NativeReceiptBindingFailureDetail[];
+}
+
+export interface NativeVerificationPreflight {
+  report: Awaited<ReturnType<typeof reportEvidence>>;
+  trace: ReturnType<typeof buildNativeAcceptanceEvidenceTrace>;
 }
 
 /**
@@ -450,6 +459,12 @@ export interface NativeVerificationEvidenceOptions {
   result: 'pass' | 'fail';
   reportRef: string;
   receiptRef?: string | null;
+  /** Internal transition option used to validate the report before running the required check. */
+  requireReceipt?: boolean;
+  /** Do not construct a durable pass envelope until the required receipt exists. */
+  preflightOnly?: boolean;
+  /** Reuse the parsed report and acceptance trace across the preflight and final inspection. */
+  preflight?: NativeVerificationPreflight;
   now?: Date;
 }
 
@@ -460,6 +475,9 @@ export async function inspectNativeVerificationEvidence(
   if (options.state.phase !== 'verify') {
     throw new Error(`Native verification evidence requires Verify, got ${options.state.phase}`);
   }
+  // Always refresh scope facts for the final inspection: the workspace may
+  // change between preflight and required-check execution. The preflight
+  // cache only skips re-reading the immutable report and acceptance trace.
   const facts = await inspectCurrentScopeFacts(options);
   if (facts.findingCodes.length > 0) {
     return {
@@ -470,15 +488,17 @@ export async function inspectNativeVerificationEvidence(
       reportSnapshot: null,
     };
   }
-  const report = await reportEvidence(options);
-  if (options.result === 'pass' && !options.receiptRef) {
+  const report = options.preflight?.report ?? (await reportEvidence(options));
+  if (options.result === 'pass' && !options.receiptRef && options.requireReceipt !== false) {
     throw new Error('Native passing verification requires a typed required-check receipt');
   }
   const requiredReceiptRefs = options.receiptRef ? [options.receiptRef] : [];
-  const trace = buildNativeAcceptanceEvidenceTrace(facts.contract.acceptance, report.entries, {
-    nativeRootRef: nativeRootRef(options.paths),
-    allowMissing: options.result === 'fail',
-  });
+  const trace =
+    options.preflight?.trace ??
+    buildNativeAcceptanceEvidenceTrace(facts.contract.acceptance, report.entries, {
+      nativeRootRef: nativeRootRef(options.paths),
+      allowMissing: options.result === 'fail',
+    });
   if (
     options.result === 'pass' &&
     trace.entries.some((entry) => entry.status === 'failed' || entry.status === 'missing')
@@ -520,6 +540,20 @@ export async function inspectNativeVerificationEvidence(
         options.state.partial_allowance,
       )
     : null;
+  if (options.preflightOnly) {
+    return {
+      ready: true,
+      findingCodes: [],
+      envelope: null,
+      evidenceRef: null,
+      reportSnapshot: { hash: report.hash, text: report.text },
+      preflight: {
+        report,
+        trace,
+      },
+      preflightOnly: true,
+    };
+  }
   const envelope = buildNativeVerificationEvidenceEnvelope({
     change: options.state.name,
     sourceRevision: options.state.revision,
@@ -547,6 +581,10 @@ export async function inspectNativeVerificationEvidence(
     envelope,
     evidenceRef,
     reportSnapshot: { hash: report.hash, text: report.text },
+    preflight: {
+      report,
+      trace,
+    },
   };
 }
 
@@ -557,6 +595,7 @@ export async function persistNativeVerificationEvidence(options: {
 }): Promise<void> {
   if (
     !options.preparation.ready ||
+    options.preparation.preflightOnly ||
     options.preparation.envelope === null ||
     options.preparation.evidenceRef === null ||
     options.preparation.reportSnapshot === null

@@ -645,6 +645,32 @@ export async function readNativeVerificationReceipt(
   return receipt;
 }
 
+/**
+ * List persisted typed receipt refs without trusting arbitrary directory names.
+ * Callers still read each document through readNativeVerificationReceipt, which
+ * performs the full bounded and symlink-safe validation.
+ */
+export async function listNativeVerificationReceiptRefs(
+  paths: NativeProjectPaths,
+  name: string,
+): Promise<string[]> {
+  const directory = path.join(nativeChangeDir(paths, name), 'runtime', 'evidence', 'receipts');
+  await resolveContainedNativePath(paths.nativeRoot, directory);
+  let entries: import('node:fs').Dirent[];
+  try {
+    entries = await fs.readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw error;
+  }
+  return entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => /^([a-f0-9]{64})\.json$/u.exec(entry.name)?.[1])
+    .filter((hash): hash is string => hash !== undefined)
+    .sort()
+    .map((hash) => nativeEvidenceRef('receipts', hash));
+}
+
 export async function writeNativeVerificationEvidence(options: {
   paths: NativeProjectPaths;
   name: string;

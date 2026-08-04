@@ -36,6 +36,7 @@ import {
   inspectNativeVerificationEvidence,
   inspectNativeVerificationFreshness,
   persistNativeVerificationEvidence,
+  type NativeVerificationPreparation,
 } from './native-verification-runtime.js';
 import {
   continueNativeTransitionLocked,
@@ -112,6 +113,58 @@ function repairFinding(
   return {
     code: 'repair-iteration-limit',
     message: `Native repair reached its total iteration limit at signature: ${decision.signatureHash}`,
+  };
+}
+
+function nativeVerificationFindingResult(options: {
+  paths: NativeProjectPaths;
+  state: NativeChangeState;
+  previousPhase: NativePhase;
+  clarificationMode: NativeClarificationMode;
+  preparation: NativeVerificationPreparation;
+}): NativeAdvanceResult {
+  const findings = structureNativeFindings({
+    paths: options.paths,
+    state: options.state,
+    findings: options.preparation.findingCodes.map((code) => {
+      if (
+        code === 'verification-receipt-binding-mismatch' &&
+        options.preparation.receiptBindingFailures &&
+        options.preparation.receiptBindingFailures.length > 0
+      ) {
+        const detail = options.preparation.receiptBindingFailures
+          .map((failure) => {
+            const target = failure.acceptanceId
+              ? `${failure.ref}[${failure.acceptanceId}]`
+              : failure.ref;
+            return `${target} -> ${failure.mismatches.join('; ')}`;
+          })
+          .join(' | ');
+        return {
+          code,
+          message: formatNativeReceiptBindingMismatchMessage({
+            change: options.state.name,
+            detail,
+          }),
+        };
+      }
+      return {
+        code,
+        message: `Native verification evidence is not current: ${code}`,
+      };
+    }),
+  });
+  return {
+    change: options.state,
+    previousPhase: options.previousPhase,
+    next: 'manual',
+    nextCommand: null,
+    findings,
+    continuation: nativeContinuation({
+      state: options.state,
+      findings,
+      clarificationMode: options.clarificationMode,
+    }),
   };
 }
 
@@ -589,65 +642,56 @@ async function advanceNativeChangeLocked(
     repairEventProjection = repairGuard.eventProjection;
   }
 
-  const verificationReceipt =
-    state.phase === 'verify' && options.evidence.verificationResult === 'pass'
-      ? (await checkNativeChangeLocked({ paths: options.paths, name: state.name })).ref
-      : null;
-  const verificationEvidence =
+  let verificationEvidence =
     state.phase === 'verify'
       ? await inspectNativeVerificationEvidence({
           paths: options.paths,
           state: candidate,
           result: options.evidence.verificationResult!,
           reportRef: options.evidence.verificationReport!,
-          receiptRef: verificationReceipt,
+          receiptRef: null,
+          requireReceipt: false,
+          preflightOnly: options.evidence.verificationResult === 'pass',
           now: options.now,
         })
       : null;
+
+  // Validate the report, acceptance matrix, and acceptance receipts before
+  // running the required check. Invalid Agent-authored evidence must not
+  // trigger an expensive check that cannot make the report valid.
   if (verificationEvidence && !verificationEvidence.ready) {
-    const findings = structureNativeFindings({
+    return nativeVerificationFindingResult({
       paths: options.paths,
       state,
-      findings: verificationEvidence.findingCodes.map((code) => {
-        // For binding mismatches, fold the per-receipt diagnostics into the
-        // finding message so the Agent sees exactly which receipts diverged
-        // and on which fields, without a second round-trip to status.
-        if (
-          code === 'verification-receipt-binding-mismatch' &&
-          verificationEvidence.receiptBindingFailures &&
-          verificationEvidence.receiptBindingFailures.length > 0
-        ) {
-          const detail = verificationEvidence.receiptBindingFailures
-            .map((failure) => {
-              const target = failure.acceptanceId
-                ? `${failure.ref}[${failure.acceptanceId}]`
-                : failure.ref;
-              return `${target} -> ${failure.mismatches.join('; ')}`;
-            })
-            .join(' | ');
-          return {
-            code,
-            message: formatNativeReceiptBindingMismatchMessage({ change: state.name, detail }),
-          };
-        }
-        return {
-          code,
-          message: `Native verification evidence is not current: ${code}`,
-        };
-      }),
-    });
-    return {
-      change: state,
       previousPhase,
-      next: 'manual',
-      nextCommand: null,
-      findings,
-      continuation: nativeContinuation({
-        state,
-        findings,
-        clarificationMode: options.clarificationMode,
-      }),
-    };
+      clarificationMode: options.clarificationMode,
+      preparation: verificationEvidence,
+    });
+  }
+
+  if (state.phase === 'verify' && options.evidence.verificationResult === 'pass') {
+    const verificationReceipt = (
+      await checkNativeChangeLocked({ paths: options.paths, name: state.name })
+    ).ref;
+    verificationEvidence = await inspectNativeVerificationEvidence({
+      paths: options.paths,
+      state: candidate,
+      result: options.evidence.verificationResult,
+      reportRef: options.evidence.verificationReport!,
+      receiptRef: verificationReceipt,
+      preflight: verificationEvidence?.preflight,
+      now: options.now,
+    });
+  }
+
+  if (verificationEvidence && !verificationEvidence.ready) {
+    return nativeVerificationFindingResult({
+      paths: options.paths,
+      state,
+      previousPhase,
+      clarificationMode: options.clarificationMode,
+      preparation: verificationEvidence,
+    });
   }
 
   let repairDecision: NativeRepairDecisionProjection | null = null;

@@ -98,6 +98,8 @@ A checkpoint stores only recovery context and real artifact references. It does 
 
 `evidence format` reads acceptance entries from stdin or `--entries` and emits the canonical machine block for `verification.md`.
 
+When submitting `pass`, the Runtime validates the report format, complete acceptance matrix, and acceptance receipts before it runs or reuses the built-in required check for the current scope. Fix `verification.md` from the reported error before retrying; do not repeatedly submit the same `next` command. `next` does not accept `--receipt`, and callers do not provide the required-check receipt.
+
 ## Acceptance receipts
 
 Automated validation:
@@ -113,7 +115,7 @@ Manual observation:
 
 ```text
 comet native receipt manual <change-name> \
-  --acceptance <id> \
+  --acceptance <id>... \
   --step <text> \
   --observation <text>
 ```
@@ -151,7 +153,7 @@ comet native archive <change-name> --expect-preflight <sha256> [--confirmed]
 - Shape: pass `--confirmed` only after the user confirms the final shared understanding.
 - Build: provide a real `--artifact`; use `--no-code-reason` only when no project file changed. If changed requirements introduce a new user decision, stay in Build and repeat clarification and confirmation first. After confirmation, update the formal artifacts, then run the transition command returned by the Runtime with `--confirmed`.
 - Partial scope: explain the exact gaps and risks returned by the Runtime. Changes beyond the returned detail budget are summarized by a `scope-detail-overflow` count and content hash; use the matching scope hash, reason, and `--confirmed` only after the user accepts them.
-- Verify: provide `--result` and a complete report. For the standard report path, submit `comet native next <change-name> --summary <summary> --result pass|fail --report verification.md`. On pass, the Runtime runs the built-in required check automatically. Acceptance entries in the report reference automated/manual receipts directly. Executed failures reference their failed receipts, while checks that were not run include a `skipped_reason`. The Runtime derives failed acceptance and check identifiers from the report and receipts.
+- Verify: provide `--result` and a complete report. For the standard report path, submit `comet native next <change-name> --summary <summary> --result pass|fail --report verification.md`. The Runtime validates the report format, complete acceptance matrix, and acceptance receipts before it runs or reuses the built-in required check for the current scope on pass; do not pass `--receipt`. Acceptance entries in the report reference automated/manual receipts directly. Executed failures reference their failed receipts, while checks that were not run include a `skipped_reason`. The Runtime derives failed acceptance and check identifiers from the report and receipts.
 - Repair override: use only the signature returned by status and only for one explicit new repair hypothesis.
 - Archive: dry-run first, then use the exact preflight hash returned by that preview. `required` mode also requires explicit user confirmation.
 

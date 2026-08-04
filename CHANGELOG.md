@@ -15,6 +15,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Native Verify retries**: Invalid verification reports are rejected before the automatic required check runs, and unchanged successful required-check receipts are reused on retry so Agents receive actionable evidence errors without repeating expensive checks.
 - **Native parallel resume**: Ambient Resume now discovers active Native changes without scanning every change's Runtime artifacts and performs full recovery checks only for the explicitly named, selected, or sole target, so unrelated parallel changes no longer add repeated checks or surface irrelevant Runtime errors.
 - **Subagent workflow dispatch**: Classic Build now runs the selected `subagent-driven-development` workflow directly, and Comet Any dispatches each authoring lane to its designated subagent without replacing the requested workflow based on platform-specific Agent labels.
 - **Native incremental projection consistency**: Native now re-reads files hidden from Git's modified-file scan by `assume-unchanged` or `skip-worktree` index flags, preventing false Build-to-Verify projection mismatches from blocking verification and archive.
