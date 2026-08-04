@@ -489,6 +489,18 @@ describe('Comet Hook Router', () => {
     expect(inspectClassic).not.toHaveBeenCalled();
   });
 
+  it('allows ordinary development when configured workflow roots have not been created', async () => {
+    await configureBoth();
+
+    await expect(
+      inspectCometHook(root, {
+        intent: 'write',
+        targets: ['src/app.ts'],
+        toolName: 'Write',
+      }),
+    ).resolves.toEqual({ allowed: true, reason: 'No active Comet change' });
+  });
+
   it('infers the only active change without writing selection', async () => {
     await configureBoth();
     const resolution = await resolveHookWorkflowOwner(root, {

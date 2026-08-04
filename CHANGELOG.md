@@ -15,6 +15,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Inactive Hook routing**: Project Hooks now allow ordinary writes when no Comet change is selected and the configured workflow artifact roots have not been created, while continuing to block unreadable or ambiguous active change state.
 - **Native receipt scope recovery**: Automated and manual verification receipts now stop before execution when project files changed after Build, report the changed paths, and return the exact command for returning to Build and refreshing the implementation scope. Receipt refresh uses the same check instead of reporting that no stale receipts exist.
 - **Classic build recovery**: Full Classic workflows now return to plan creation after context recovery when no implementation plan is recorded or the recorded implementation-plan path is invalid, and block project source writes until the plan is restored and linked.
 - **Ambient Resume cleanup**: Disabling the Ambient Resume probe now removes Comet-managed instructions from `AGENTS.md` and `CLAUDE.md` while preserving user-authored content.

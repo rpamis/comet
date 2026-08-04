@@ -2,6 +2,7 @@ import {
   inspectClassicHookGuard,
   listActiveClassicHookChanges,
 } from '../comet-classic/classic-hook-guard.js';
+import { ClassicLayoutUnavailableError } from '../comet-classic/classic-layout.js';
 import { resolveCurrentChange } from '../comet-classic/classic-current-change.js';
 import {
   inspectNativeHookGuard,
@@ -80,18 +81,27 @@ async function listEnabledActiveChanges(
   enabled: CometWorkflow[],
   dependencies: Pick<HookRouterDependencies, 'listNative' | 'listClassic'>,
   cached?: { workflow: CometWorkflow; candidates: ActiveHookChange[] },
+  options: { tolerateUnavailableClassic?: boolean } = {},
 ): Promise<ActiveHookChange[]> {
+  const listClassic = async (): Promise<ActiveHookChange[]> => {
+    if (!enabled.includes('classic')) return [];
+    if (cached?.workflow === 'classic') return cached.candidates;
+    try {
+      return await dependencies.listClassic(projectRoot);
+    } catch (error) {
+      if (options.tolerateUnavailableClassic && error instanceof ClassicLayoutUnavailableError) {
+        return [];
+      }
+      throw error;
+    }
+  };
   const [native, classic] = await Promise.all([
     enabled.includes('native')
       ? cached?.workflow === 'native'
         ? cached.candidates
         : dependencies.listNative(projectRoot)
       : [],
-    enabled.includes('classic')
-      ? cached?.workflow === 'classic'
-        ? cached.candidates
-        : dependencies.listClassic(projectRoot)
-      : [],
+    listClassic(),
   ]);
   return [...native, ...classic];
 }
@@ -183,7 +193,15 @@ export async function resolveHookWorkflowOwner(
   }
 
   try {
-    const candidates = await listEnabledActiveChanges(projectRoot, enabled, dependencies);
+    const candidates = await listEnabledActiveChanges(
+      projectRoot,
+      enabled,
+      dependencies,
+      undefined,
+      {
+        tolerateUnavailableClassic: true,
+      },
+    );
     return resolveActiveCandidates(candidates);
   } catch (error) {
     return {
