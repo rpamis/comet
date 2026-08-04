@@ -1,0 +1,1092 @@
+{
+  "schema": "comet.native.verification-evidence.v2",
+  "change": "native-shape-worktree-isolation",
+  "sourceRevision": 17,
+  "result": "pass",
+  "freshness": "complete",
+  "contractHash": "d041d3e45ed5fa4c6ff23e2db4e9024f47253e8125975cccc47ffd958978f82c",
+  "acceptanceCriteriaHash": "40490d3d11fb7fc89ff3aa5248bf86f37437d013c5f288ea213b7ce4532ab45e",
+  "implementationScopeRef": "runtime/evidence/scopes/146c549e033188dc4cce5ea742588e0641e710184615c44efafe364ad537bad1.json",
+  "implementationScopeHash": "146c549e033188dc4cce5ea742588e0641e710184615c44efafe364ad537bad1",
+  "reportRef": "verification.md",
+  "reportHash": "a6a21e8483ce7b259e842f5068090ef3faab3edfcb71401c1bae81ba4a17fbb3",
+  "acceptanceTrace": {
+    "schema": "comet.native.acceptance-trace.v2",
+    "nativeRootRef": "docs/comet",
+    "criteriaHash": "40490d3d11fb7fc89ff3aa5248bf86f37437d013c5f288ea213b7ce4532ab45e",
+    "total": 88,
+    "evidenced": 88,
+    "skipped": 0,
+    "entries": [
+      {
+        "acceptanceId": "acceptance-05cd8ed62d81d2dbe966c430f01393f5865b2d9378825b3f12f911cde9f33eb9",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-068022a6cf5c2d2101eef7c5404e2057022e2b9a526d0f5e81f8047a9b737714",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-1120e122f38cbae09708ce6036f9b1848ac797c7556c9d5c796169a5abcbea59",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-11310c2e46456cf91aee80d73cb3a74eb71a99f12da65ec95eca74e333710918",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-11e081b511f0f5616baccdcda5c1f212cf39565422212cd17e48fd628e5277fe",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-13d974e8e9853f766bb7fe319019d7e80f33c81fb650dd16a75a5b8ccc172f07",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-1541225ac60015614511e15e1fd70ad41b65b6f549c6cd6e997608b768a04ee6",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-17d21fa0e5e4f32e9a211c83fec67badb0c6e3a6ded15869f64c13d23cedff5b",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-180c6ab06c53b60ca9c615093e48ae26cfd55855794156bb840b481bc771c114",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-1ef635b5576e7333cf1fdddda578398282c37daa46f6d22d22ef2c468c7c824c",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-1f32be9c85b0bbb252c8882f05558fd573df415644b9753ae941b347c8f5bfb5",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-2075b016965ed40b87cf2232b6261abb1b4dc59e96ff45d964e0e635166cfe6a",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-21736a2a1a0935626c4076d58fe7ae6fd95092a260bbda1dcb02ee394ac0a6a5",
+        "status": "passed",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-22ff91f0a4c2a5672745f9f096889a6ad71ecfde19e5581907452b0c4cc5fe19",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-24b59f6c7e5301b2830660de7778579be4f3286fb249dc3f15b89c571eb70fb1",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-2837b904186d53b7f6603f1e97e9f61502b158b3414758efa987f04515856683",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-2b97423fdb85dda2fca105881ad6d86aea8c3e69468749f161965a08709e37e4",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-2bf710630a7524e9749939e0509222727033d04f5acb48ff6499be1b19ffe15c",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-2cc883e3a3c3550fd2bce008881fc8dde0776d4b49654332e8c29dd0ad612b0c",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-2d6ba773c1c2f2a0e2995a56cb733fffe747b6d26ac81b8392863f908e4b0677",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-2dad8dac5782dea6d1b04f85965803dd92bd90cd951e4ae0fe88d0b8713151d2",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-30cdd208cede915b08aef3adfefed09a8ff0c9bd59a087e7051588031986a42b",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-317f55771cd66aeef8d212a842fb3881cb6d2414026853b8230fdd78690a54ba",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-325863687861ad9fdb107f1c88981881030f4c7a62d8159cd74f93d36b710808",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-32aa00f2ec1b94db7997c75653dc48835be539b933dbb16f150020c5bdf3c0ee",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-331c559b4a984f01b3acb78094a708058845fadc9c94d66f4b2cd5f2fd12f497",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-369089f3034009c7b1a845a46474e5f4c78eb59e04a5739c0985b3df43961229",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-399d928f39ba30880d0155c2b6c7616a2d30d66c145a527fd20fdd6d9d88da7a",
+        "status": "passed",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-3bd54e72d1630e52e53e40399f0c84d71319cf7fc648c6e9a80c21a6fc3295a7",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-3db6e585e7db943e366ccc90bbcb9e13dc7e60cc03802e256d7d27e92c3e0375",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-4d6907d6ea9715a7dadafb1404739b25fd8218bba512752c18d58f4e126f0244",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-4dc3262ac189a646fcdff179eef2f1e7e8bf6b00ff95053e2db703e79b913d4f",
+        "status": "passed",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-5a0de11cc1f704d107a2036249d64c25d92de0cd1b124d625de99122ae1525eb",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-5e2fa5b933916fb0d494934093bb0eb62f7f11710b80bfceacec6e9694dbc05f",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-5e51113a679e35efe6b4eaa697d277dc73fe3ffd75b4983f4d7832afcdd90d7c",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-61833ad9820acd3fe2716faebaabaa0da605aedf67d6a130768e922962415ccd",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-6281a2ff498a0d960f322ada55814d7cb554903d633caf54bf19bf497e74dbfc",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-69b22ab1a3c0554fe05f11c8ab57504f6817755948334228b77f6be3a3e4707f",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-71375852eeef949411576d2e6f7af280c04596e0750679c1a143c588373596c9",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-72d574eda6af069a31ee9161de91a52a86afafca9c251903f1d4c88f78d2ae4e",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-73de1ca393daec9240557586481b31778507e2d2b3007b262471ec41980c7faa",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-78e5e0eb00d1c527b500df151474cb6075d4892a61511228c9dc0a17922eab24",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-7f7835fa95c3f503779363dc950bece46991d21142ab970e5a465da11ecc0bd1",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-82201e661a9ed835ca338422b587e7872b4053d3c4c463897a789b09c828b85e",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-84ac64a4f4e4e587f750f3549bb591223242a6f98a23c74cf093a8be1d1ea3fd",
+        "status": "passed",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-8917356eedc4717acfc1c7f2a8638deb084e45ea515d088db01c4f20894f0cf2",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-8cf14a09ff63351e0527fd348ac4bc2bc33b37b0922300481258c7d606b599e5",
+        "status": "passed",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-8cfa7be576bd23d031fcb69fa739805db74faddf90b196c97c4c87e8c04bfde2",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-917f2d1e1957502f892594a8b6e1e80469b4bcf36320dfd25bc5d0c184a6a7b4",
+        "status": "passed",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-95c07699b3014606838d1d39d375e04c85d2c97da53b74eb6fc7a82f2f8cf19b",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-99e0eea2a8bcd00e3dbf602c13225042c3b9332df33af5a4c4182fa1cec80b31",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-9b29c5066d29fd0770d38ac13acfc6c109c261a2eb744085e66035c0df5701e8",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-9d7a85bec695f24e7452c51f6375ae03dafd92dbbee2aff52d12f002d07ceecd",
+        "status": "passed",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-a0dec1bdab0e97d53f6d655af12a19309a96da756cbf2c8d76c99e60037ea237",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-a1e9c1748959ca29a4db85098b77ddcd96cc5ab4d2f1eda28752c746076f67e2",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-a405aec48033c2ec62fa173c6d075c1caa232272304d3361e18da94381f705dd",
+        "status": "passed",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-af160e29758556d436abe5afe5044bae786e6d135d5d3dabb20a447c7007207f",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-af9ae6d46da124d381ce8d5ae77d5a1ab291587f572f4f1f0a6d3768b8d0b04b",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-b06f3045203b155f026734732c8b68dae67e226e32bf8d875aab69158a7a7682",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-b27ec52551adf9b9aef71fd73dc3bdf8b417c4c273c859bb26f8bd5acf988fac",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-b3122bc1db54d79f33d1ecacb482dd40be90baf69cb33590ff178f328efb1bd4",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-b634fd50bfa1be6dbdc2dd327a0d59f97ea16ff5ce1342367fa3c4ae485d07de",
+        "status": "passed",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-b6d67c507257cde4d11023f3d6ac70105be731ccc0b347c3fee2536403d9de64",
+        "status": "passed",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-ba0519598df49ce5cfcbbc4540dd309c69dc9873698d45a908ce021b1aee9c51",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-bc84c8d22a319a4aeb03293a88591250f470571fa0310c15d29a607a02a0f148",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-bd301d0b2406aa0b4c167c169b8b60498e3e82f5ab75d9563abe9ddf1d7a7569",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-bd63782b440be56877d9e46d38a6c0d23c304c7a2eadeb244499200cb83c7cae",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-c17217dd26e5a1d213b5c228c7ba0339f5bf963d6954161a932851d88c3c8929",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-c1bce334d9173b0d522272c92bf1e41be0fbfde25ba0cbc39b57658cec53f50f",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-c22f416c8c5e7fcc3f10ad12cb1544064adf502ab6dc142c62c17960ec075096",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-c5730bccdeb170bb381deac5242d937b08d3e433fe7c8a1301d34f4e9a0bd70c",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-c5c53208db51998799471db29d8e0a3f41af47ea5a90899587bd181adadb5216",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-cbca9b80bad3caf488ade092c5cb862891f2cf53d4f1c18d9f5e5da159a019a6",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-d9d40be8e3583befbc0ae7c04da28fb9e957147c9b43632ae7f9a68f99749ad0",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-dcdb3973ce9f66e6a5aa93f0d674b6bf445689fa00be2e5be8ff8022641e8424",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-df62b2b0506d49c67e660cb2ec42968fb940bbbb254194e28b1b0e5f331536cf",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-df6b0390dc3f4b58b69be8e78e6cd92d2c384f267df50c19650c72719bd03f50",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-e19ab3dc9d795887be02bda5dfb77ec4b125bf7ae545257d388612d487f2477b",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-e62927cdc2ed8cd995bca4984b0a93fd42cb5a655d35147007c22cbf8177f6d7",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-e957241ad023f9bcd46ef380bac0988bf3f7cae9b30cfb44af9ab800a1697708",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-edf91c6907395a637d214f5f10a314d7ed16acce61b6157e2e44cb83df980545",
+        "status": "passed",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-f14cefb8185f162752a3e72b7de16ed08d2b458d0ba0f58a38edd363d6fcd14c",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-f1b21d33f367c6012a9da7c36cd71209855e05321322dc8fdcbb8e7a2928f507",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-f1f301af8c4625727802e75919f1481858aae9f214b57d3c61fdac0cdea091ea",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-f47f31dc2dbb4d7db2defea1d6bc77f11d320698491029bc1c91e6f196fade58",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-f575a473cc4d47e9349b86b7ef79a694b1de276669a3de7b37a5d4d00b9a1e8f",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-f781865982c2497d43ac86a917c4fa1fc800daead6ea882cf668e97dcaf7e4d8",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-f9d8c6c75686ff272a11513f4c4add910576f5807f3461eabad20b6d93fe89df",
+        "status": "passed",
+        "kind": "spec-must",
+        "source": "specs/native-shape-workspace-isolation/spec.md",
+        "evidenceRefs": [
+          "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+          "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+          "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+        ],
+        "skippedReason": null
+      }
+    ],
+    "traceHash": "1c24ad3cdbb53b7f1ad693eaaade7db5b88f88837c173159f9a84b53a99f7bf7"
+  },
+  "partialAllowanceRef": null,
+  "partialAllowanceHash": null,
+  "requiredReceiptRefs": [
+    "runtime/evidence/receipts/7dffd888eea1e97987b7b5c4e385b9d2596a2197ec9bab75f5b9747cf14c815d.json"
+  ],
+  "receiptRefs": [
+    "runtime/evidence/receipts/323acf3aef6fa13cc5a3cc5ee78b169e91a460fe40b1cad4d4c825db5e1aeab8.json",
+    "runtime/evidence/receipts/7fc2dd29f2d99efc46cbc949739af7fedfc85c06b65b2a47b6656fc8d3a83b72.json",
+    "runtime/evidence/receipts/83c0f8b205621fe94808964731747785196e3d9b85ceb3597dfe2eb0f9b3465a.json"
+  ],
+  "createdAt": "2026-08-04T20:13:57.646Z",
+  "envelopeHash": "5a1e4caec790cc48e05ab8c0247cce40c610809e9583f644511c55eb412e12b2"
+}

@@ -1,0 +1,23 @@
+schema: comet.native.v3
+minimum_runtime_version: 3
+revision: 19
+verification_protocol: legacy-v1
+name: native-shape-worktree-isolation
+language: zh-CN
+phase: archive
+brief: brief.md
+approval: confirmed
+approved_contract_hash: d041d3e45ed5fa4c6ff23e2db4e9024f47253e8125975cccc47ffd958978f82c
+spec_changes:
+  - capability: native-shape-workspace-isolation
+    operation: create
+    source: specs/native-shape-workspace-isolation/spec.md
+    base_hash: null
+verification_result: pass
+verification_report: verification.md
+implementation_scope: runtime/evidence/scopes/146c549e033188dc4cce5ea742588e0641e710184615c44efafe364ad537bad1.json
+verification_evidence: runtime/evidence/verifications/5a1e4caec790cc48e05ab8c0247cce40c610809e9583f644511c55eb412e12b2.json
+partial_allowance: null
+archived: true
+created_at: 2026-08-04
+run_id: 2fbf40c9-735b-4b15-8f33-34efdafd36e4
