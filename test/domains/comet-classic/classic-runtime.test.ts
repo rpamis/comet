@@ -176,7 +176,7 @@ describe('Classic runtime CLI adapter', () => {
     }
   });
 
-  it('rejects state initialization when both Classic roots exist without changing either root', async () => {
+  it('initializes state in the configured root while preserving a standalone OpenSpec root', async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-classic-dual-root-state-'));
     temporaryDirectories.push(directory);
     await fs.mkdir(path.join(directory, '.git'));
@@ -201,20 +201,19 @@ describe('Classic runtime CLI adapter', () => {
       const { runClassicCli } = await import('../../../domains/comet-classic/classic-cli.js');
       const result = await runClassicCli(['state', 'init', 'demo', 'full']);
 
-      expect(result.exitCode).not.toBe(0);
-      expect(result.stderr).toContain('Classic layout conflict');
+      expect(result.exitCode).toBe(0);
       await expect(
-        fs.stat(path.join(directory, 'openspec', 'changes', 'demo')),
-      ).rejects.toMatchObject({ code: 'ENOENT' });
+        fs.stat(path.join(directory, 'openspec', 'changes', 'demo', '.comet.yaml')),
+      ).resolves.toBeDefined();
       await expect(
-        fs.stat(path.join(directory, 'docs', 'openspec', 'changes', 'demo')),
-      ).rejects.toMatchObject({ code: 'ENOENT' });
+        fs.readdir(path.join(directory, 'docs', 'openspec', 'changes')),
+      ).resolves.toEqual([]);
     } finally {
       process.chdir(previous);
     }
   });
 
-  it('blocks Hook Guard writes when both Classic roots exist', async () => {
+  it('allows Hook Guard writes for the configured root when a standalone root exists', async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-classic-dual-root-hook-'));
     temporaryDirectories.push(directory);
     await fs.mkdir(path.join(directory, '.git'));
@@ -246,8 +245,7 @@ describe('Classic runtime CLI adapter', () => {
       toolName: 'Write',
     });
 
-    expect(result).toMatchObject({ allowed: false, workflow: 'classic', change: 'demo' });
-    expect(result.reason).toContain('Classic layout conflict');
+    expect(result).toMatchObject({ allowed: true, workflow: 'classic', change: 'demo' });
   });
 
   it('creates and reads Classic state from a configured docs layout', async () => {

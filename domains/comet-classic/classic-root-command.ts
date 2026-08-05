@@ -8,6 +8,7 @@ import {
   assertClassicLayoutReadable,
   classicProjectRelative,
   discoverClassicProject,
+  inspectClassicLayout,
   type ClassicLayoutPaths,
 } from './classic-layout.js';
 import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
@@ -178,6 +179,7 @@ export const classicRootCommand: ClassicCommandHandler = async (args) => {
   if (action === 'show' && target === undefined) {
     const projectRoot = await discoverClassicProject(process.cwd());
     const layout = await assertClassicLayoutReadable(projectRoot);
+    const inspection = await inspectClassicLayout(projectRoot, layout.artifactLayout);
     return {
       exitCode: 0,
       stdout:
@@ -185,6 +187,10 @@ export const classicRootCommand: ClassicCommandHandler = async (args) => {
           schema: 'comet.classic-layout.v1',
           artifactLayout: layout.artifactLayout,
           openSpecRoot: classicProjectRelative(projectRoot, layout.openSpecRoot),
+          alternateRoot: classicProjectRelative(projectRoot, inspection.alternateRoot),
+          configuredRootExists: inspection.configuredRootExists,
+          alternateRootExists: inspection.alternateRootExists,
+          dualRoots: inspection.dualRoots,
           changesRoot: classicProjectRelative(projectRoot, layout.changesDir),
           archiveRoot: classicProjectRelative(projectRoot, layout.archiveDir),
           specsRoot: classicProjectRelative(projectRoot, layout.specsDir),

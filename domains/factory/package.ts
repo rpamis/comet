@@ -494,7 +494,6 @@ async function workflowPathBaseRoot(pathBase) {
   const config = await readWorkflowProjectPathConfig(runRoot);
   let resolved;
   let configuredClassicRoot = null;
-  let alternateClassicRoot = null;
   if (pathBase === 'classic-openspec-root' || pathBase === 'classic-superpowers-root') {
     if (!config.classicEnabled || config.classicArtifactLayout === null) {
       throw new Error('Classic workflow is not enabled by .comet/config.yaml');
@@ -502,9 +501,6 @@ async function workflowPathBaseRoot(pathBase) {
     configuredClassicRoot = config.classicArtifactLayout === 'docs'
       ? path.join(runRoot, 'docs', 'openspec')
       : path.join(runRoot, 'openspec');
-    alternateClassicRoot = config.classicArtifactLayout === 'docs'
-      ? path.join(runRoot, 'openspec')
-      : path.join(runRoot, 'docs', 'openspec');
   }
   if (pathBase === 'classic-openspec-root') {
     resolved = configuredClassicRoot;
@@ -522,26 +518,15 @@ async function workflowPathBaseRoot(pathBase) {
   } else {
     resolved = runRoot;
   }
-  if (configuredClassicRoot !== null && alternateClassicRoot !== null) {
-    const [configuredInspection, alternateInspection] = await Promise.all([
-      inspectWorkflowProtectedPath(
-        runRoot,
-        configuredClassicRoot,
-        'configured Classic OpenSpec root',
-        'directory',
-      ),
-      inspectWorkflowProtectedPath(
-        runRoot,
-        alternateClassicRoot,
-        'alternate Classic OpenSpec root',
-        'directory',
-      ),
-    ]);
+  if (configuredClassicRoot !== null) {
+    const configuredInspection = await inspectWorkflowProtectedPath(
+      runRoot,
+      configuredClassicRoot,
+      'configured Classic OpenSpec root',
+      'directory',
+    );
     if (!configuredInspection.exists) {
       throw new Error('Configured Classic OpenSpec root does not exist: ' + configuredClassicRoot);
-    }
-    if (alternateInspection.exists) {
-      throw new Error('Classic layout conflict: both configured and alternate OpenSpec roots exist');
     }
   }
   const rootInspection = await inspectWorkflowProtectedPath(

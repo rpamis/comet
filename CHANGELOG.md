@@ -2,11 +2,22 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.4.0-beta.16] - 2026-08-05
+## What's Changed [0.4.0-beta.17] - 2026-08-05
 
 ### Fixed
 
 - **Doctor Superpowers detection**: `comet doctor` now recognizes Claude Code plugin-managed Superpowers installs, so users with Superpowers under the plugin cache no longer receive a misleading install warning.
+
+## What's Changed [0.4.0-beta.16] - 2026-08-05
+
+### Fixed
+
+- **Classic/OpenSpec coexistence**: Classic now uses only the configured artifact root, so a standalone OpenSpec project can keep the other root at the same time; explicit root migration still refuses to overwrite a non-empty destination.
+- **Codex Native Hook parsing**: Raw `apply_patch` input now attributes Add, Update, Delete, and standard `+++ b/...` file headers so Native phase protection is applied consistently.
+
+### Security
+
+- **Dependency security updates**: Updated PostCSS, Undici, and brace-expansion to patched releases to address reported dependency vulnerabilities.
 
 ## What's Changed [0.4.0-beta.15] - 2026-08-05
 

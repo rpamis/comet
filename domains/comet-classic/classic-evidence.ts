@@ -1,7 +1,13 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import type { ClassicStateProjection } from './classic-state.js';
-import { assertClassicLayoutReadable, discoverClassicProject } from './classic-layout.js';
+import {
+  assertClassicLayoutReadable,
+  classicLayoutPaths,
+  classicProjectRelative,
+  discoverClassicProject,
+  type ClassicLayoutPaths,
+} from './classic-layout.js';
 import { readLegacyArchivedHandoffFallback } from './classic-archive-pointer.js';
 import {
   inspectProtectedProjectPath,
@@ -27,10 +33,43 @@ async function linkedFileEvidence(
   projectRoot: string,
   code: string,
   relativePath: string | null,
+  layout?: ClassicLayoutPaths,
+  layoutError?: unknown,
 ): Promise<ClassicEvidence> {
   if (!relativePath) return { code, satisfied: false };
   const source = relativePath.replaceAll('\\', '/');
+  if (layoutError) {
+    return {
+      code,
+      satisfied: false,
+      source,
+      detail: `Classic layout is unsafe or unavailable: ${
+        layoutError instanceof Error ? layoutError.message : String(layoutError)
+      }`,
+    };
+  }
   try {
+    if (layout) {
+      const alternateLayout = layout.artifactLayout === 'legacy' ? 'docs' : 'legacy';
+      const alternateRoot = classicProjectRelative(
+        projectRoot,
+        classicLayoutPaths(projectRoot, alternateLayout).openSpecRoot,
+      );
+      if (source === alternateRoot || source.startsWith(`${alternateRoot}/`)) {
+        const alternate = await inspectProtectedProjectPath(projectRoot, source, {
+          label: `${code} artifact`,
+          expected: 'file',
+        });
+        if (alternate.exists) {
+          return {
+            code,
+            satisfied: false,
+            source,
+            detail: 'standalone OpenSpec root is not a Comet artifact root',
+          };
+        }
+      }
+    }
     const satisfied = await protectedProjectFileExists(projectRoot, source, {
       label: `${code} artifact`,
     });
@@ -56,9 +95,10 @@ async function archivedHandoffEvidence(
   projectRoot: string,
   changeDir: string,
   relativePath: string | null,
+  layout?: ClassicLayoutPaths,
 ): Promise<ClassicEvidence> {
   try {
-    await assertClassicLayoutReadable(projectRoot);
+    layout ??= await assertClassicLayoutReadable(projectRoot);
   } catch (error) {
     return {
       code: 'design.handoff',
@@ -69,7 +109,7 @@ async function archivedHandoffEvidence(
       }`,
     };
   }
-  const evidence = await linkedFileEvidence(projectRoot, 'design.handoff', relativePath);
+  const evidence = await linkedFileEvidence(projectRoot, 'design.handoff', relativePath, layout);
   if (!relativePath || evidence.satisfied || evidence.detail) return evidence;
   try {
     const mapped = await readLegacyArchivedHandoffFallback(
@@ -197,17 +237,38 @@ export async function collectClassicEvidence(
   const checkpoint = projection.run
     ? path.resolve(changeDir, projection.run.checkpointRef)
     : path.join(changeDir, '.comet', 'checkpoint.json');
+  let layout: ClassicLayoutPaths | undefined;
+  let layoutError: unknown;
+  try {
+    layout = await assertClassicLayoutReadable(projectRoot);
+  } catch (error) {
+    layoutError = error;
+    // The individual evidence item keeps reporting the precise unavailable
+    // layout error; pointers are only scoped when a valid layout is known.
+  }
 
   const evidence = await Promise.all([
     directFileEvidence(projectRoot, 'openspec.proposal', proposal),
     directFileEvidence(projectRoot, 'openspec.design', design),
     directFileEvidence(projectRoot, 'openspec.tasks', tasks),
     deltaSpecEvidence(projectRoot, changeDir),
-    linkedFileEvidence(projectRoot, 'design.document', classic?.designDoc ?? null),
-    linkedFileEvidence(projectRoot, 'build.plan', classic?.plan ?? null),
+    linkedFileEvidence(
+      projectRoot,
+      'design.document',
+      classic?.designDoc ?? null,
+      layout,
+      layoutError,
+    ),
+    linkedFileEvidence(projectRoot, 'build.plan', classic?.plan ?? null, layout, layoutError),
     taskEvidence(projectRoot, tasks),
-    linkedFileEvidence(projectRoot, 'verification.report', classic?.verificationReport ?? null),
-    archivedHandoffEvidence(projectRoot, changeDir, classic?.handoffContext ?? null),
+    linkedFileEvidence(
+      projectRoot,
+      'verification.report',
+      classic?.verificationReport ?? null,
+      layout,
+      layoutError,
+    ),
+    archivedHandoffEvidence(projectRoot, changeDir, classic?.handoffContext ?? null, layout),
     directFileEvidence(projectRoot, 'run.checkpoint', checkpoint),
   ]);
 

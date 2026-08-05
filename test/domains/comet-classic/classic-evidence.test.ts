@@ -138,6 +138,20 @@ describe('Classic evidence collection', () => {
     expect(evidenceSatisfied(evidence, 'run.checkpoint')).toBe(false);
   });
 
+  it('does not satisfy linked evidence when the configured layout is unavailable', async () => {
+    await fs.rm(path.join(projectRoot, 'openspec'), { recursive: true, force: true });
+    await writeProjectFile('docs/superpowers/plans/demo-plan.md', '# Plan\n');
+
+    const evidence = await collectClassicEvidence(changeDir, projection);
+    const plan = evidence.find((item) => item.code === 'build.plan');
+
+    expect(plan).toMatchObject({
+      satisfied: false,
+      source: 'docs/superpowers/plans/demo-plan.md',
+    });
+    expect(plan?.detail).toContain('Classic layout');
+  });
+
   it('does not satisfy linked evidence with a project traversal pointer', async () => {
     const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-classic-outside-'));
     try {
@@ -228,7 +242,7 @@ describe('Classic evidence collection', () => {
     });
   });
 
-  it('does not satisfy a legacy handoff pointer from the alternate root during a dual-root conflict', async () => {
+  it('does not consume a handoff pointer from the standalone OpenSpec root', async () => {
     changeDir = path.join(projectRoot, 'docs', 'openspec', 'changes', 'demo');
     await fs.mkdir(changeDir, { recursive: true });
     await writeClassicConfig('docs');
@@ -243,7 +257,7 @@ describe('Classic evidence collection', () => {
     expect(handoff).toMatchObject({
       satisfied: false,
       source: 'openspec/changes/demo/.comet/handoff/context.json',
-      detail: expect.stringContaining('Classic layout conflict'),
+      detail: expect.stringContaining('standalone OpenSpec root is not a Comet artifact root'),
     });
   });
 

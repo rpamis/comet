@@ -81,6 +81,32 @@ describe('Comet Hook platform adapter', () => {
     ).toEqual({ intent: 'write', targets: ['src/b.ts'], toolName: 'apply_patch' });
   });
 
+  it('normalizes raw Codex apply_patch input from Hook stdin', () => {
+    const patch = [
+      '*** Begin Patch',
+      '*** Update File: src/existing.ts',
+      '*** Add File: src/new.ts',
+      '*** Delete File: src/old.ts',
+      '*** End Patch',
+    ].join('\n');
+
+    expect(parseCometHookRequest(patch)).toEqual({
+      intent: 'write',
+      targets: ['src/existing.ts', 'src/new.ts', 'src/old.ts'],
+      toolName: 'apply_patch',
+    });
+  });
+
+  it('normalizes standard unified-diff headers from raw patch input', () => {
+    const patch = ['--- a/src/old.ts', '+++ b/src/new.ts'].join('\n');
+
+    expect(parseCometHookRequest(patch)).toEqual({
+      intent: 'write',
+      targets: ['src/new.ts'],
+      toolName: 'apply_patch',
+    });
+  });
+
   it('keeps an absolute Hook working directory for linked-worktree routing', () => {
     const cwd = path.resolve('linked-worktree');
     expect(

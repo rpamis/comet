@@ -80,14 +80,47 @@ describe('Classic root show', () => {
     expect(result.stderr).toContain('Configured Classic OpenSpec root is missing');
   });
 
-  it('fails when both roots exist', async () => {
+  it('reports both roots without blocking read-only root inspection', async () => {
     await fs.mkdir(path.join(projectRoot, 'openspec'), { recursive: true });
     await fs.mkdir(path.join(projectRoot, 'docs', 'openspec'), { recursive: true });
 
     const result = await runClassicCli(['root', 'show']);
 
-    expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toContain('Classic layout conflict');
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout ?? '{}')).toMatchObject({
+      artifactLayout: 'legacy',
+      openSpecRoot: 'openspec',
+      alternateRoot: 'docs/openspec',
+      configuredRootExists: true,
+      alternateRootExists: true,
+      dualRoots: true,
+    });
+  });
+
+  it('exposes a safe dry-run path when both roots exist', async () => {
+    await fs.mkdir(path.join(projectRoot, 'openspec', 'changes', 'legacy'), {
+      recursive: true,
+    });
+    await fs.mkdir(path.join(projectRoot, 'docs', 'openspec', 'changes', 'docs'), {
+      recursive: true,
+    });
+
+    const result = await runClassicCli(['root', 'move', 'docs', '--dry-run']);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('目标初始状态: 非空目录');
+    expect(result.stdout).toContain('冲突:');
+    expect(result.stdout).toContain('docs 目标目录非空');
+    expect(result.stdout).toContain('请先解决上述冲突或阻塞项');
+
+    const configBefore = await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8');
+    const apply = await runClassicCli(['root', 'move', 'docs', '--apply']);
+
+    expect(apply.exitCode).toBe(70);
+    expect(apply.stderr).toContain('Classic 根目录迁移失败');
+    expect(await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8')).toBe(
+      configBefore,
+    );
   });
 
   it('fails when a managed root is a directory link', async () => {

@@ -953,7 +953,7 @@ describe('doctor command', () => {
   });
 
   it.each(['configured', 'alternate'] as const)(
-    'fails the Classic layout check when the %s root is a directory link',
+    'handles the Classic layout check when the %s root is a directory link',
     async (kind) => {
       const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-doctor-root-link-'));
       try {
@@ -1006,10 +1006,18 @@ describe('doctor command', () => {
 
         const results = await collectDoctorResults(tmpDir);
 
-        expect(results.find((result) => result.check === 'Classic artifact layout')).toMatchObject({
-          status: 'fail',
-          message: expect.stringMatching(/symbolic link or junction/iu),
-        });
+        const layoutResult = results.find((result) => result.check === 'Classic artifact layout');
+        if (kind === 'configured') {
+          expect(layoutResult).toMatchObject({
+            status: 'fail',
+            message: expect.stringMatching(/symbolic link or junction/iu),
+          });
+        } else {
+          expect(layoutResult).toMatchObject({
+            status: 'pass',
+            message: expect.stringMatching(/standalone OpenSpec root .* ignored by Comet/iu),
+          });
+        }
         expect(results.some((result) => result.check.includes('external-marker'))).toBe(false);
       } finally {
         await fs.rm(outsideRoot, { recursive: true, force: true });
@@ -1087,7 +1095,7 @@ describe('doctor command', () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it('accepts current comet state fields without mutating them during a layout conflict', async () => {
+  it('accepts current Comet state fields while a standalone OpenSpec root coexists', async () => {
     const changeDir = path.join(tmpDir, 'openspec', 'changes', 'current-state');
     await state(tmpDir, 'init', 'current-state', 'full');
     await state(tmpDir, 'set', 'current-state', 'phase', 'verify');
@@ -1108,9 +1116,12 @@ describe('doctor command', () => {
       status: string;
       message: string;
     }>;
-    expect(results.find((result) => result.check === 'Classic artifact layout')).toMatchObject({
-      status: 'fail',
-    });
+    const layoutResult = results.find((result) => result.check === 'Classic artifact layout');
+    expect(layoutResult).toMatchObject({ status: 'pass' });
+    expect(layoutResult?.message).toContain('openspec/');
+    expect(layoutResult?.message).toContain('docs/openspec/');
+    expect(layoutResult?.message).toContain('standalone OpenSpec root');
+    expect(layoutResult?.message).toContain('ignored by Comet');
     const stateResult = results.find((result) => result.check === '.comet.yaml: current-state');
     expect(stateResult).toMatchObject({
       status: 'pass',

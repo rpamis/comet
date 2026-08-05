@@ -6,7 +6,6 @@ import path from 'path';
 import {
   assertClassicLayoutReadable,
   assertClassicLayoutWritable,
-  ClassicLayoutConflictError,
   classicLayoutPaths,
   discoverClassicProject,
   inspectClassicLayout,
@@ -110,13 +109,16 @@ describe('Classic artifact layout', () => {
     await expect(readClassicArtifactLayout(root)).rejects.toThrow('Invalid .comet/config.yaml');
   });
 
-  it('fails closed for writes when both OpenSpec roots exist', async () => {
+  it('keeps the configured Classic root writable when a standalone OpenSpec root also exists', async () => {
     const root = await project();
     await config(root, '  artifact_layout: docs\n');
     await fs.mkdir(path.join(root, 'openspec'), { recursive: true });
     await fs.mkdir(path.join(root, 'docs', 'openspec'), { recursive: true });
 
-    await expect(assertClassicLayoutWritable(root)).rejects.toThrow('Classic layout conflict');
+    await expect(assertClassicLayoutWritable(root)).resolves.toMatchObject({
+      artifactLayout: 'docs',
+      openSpecRoot: path.join(root, 'docs', 'openspec'),
+    });
   });
 
   it('allows initialization to use its selected root without mutating an alternate root', async () => {
@@ -125,27 +127,34 @@ describe('Classic artifact layout', () => {
     await fs.mkdir(path.join(root, 'openspec'), { recursive: true });
     await fs.mkdir(path.join(root, 'docs', 'openspec'), { recursive: true });
 
-    await expect(
-      assertClassicLayoutWritable(root, 'docs', { allowAlternateRoot: true }),
-    ).resolves.toMatchObject({
+    await expect(assertClassicLayoutWritable(root, 'docs')).resolves.toMatchObject({
       artifactLayout: 'docs',
       openSpecRoot: path.join(root, 'docs', 'openspec'),
     });
   });
 
-  it('reports a structured dual-root error from the read-only layout boundary', async () => {
+  it('reads the configured root without scanning the standalone OpenSpec root', async () => {
     const root = await project();
     await config(root, '  artifact_layout: docs\n');
     await fs.mkdir(path.join(root, 'openspec'), { recursive: true });
     await fs.mkdir(path.join(root, 'docs', 'openspec'), { recursive: true });
 
-    const error = await assertClassicLayoutReadable(root).catch((cause: unknown) => cause);
+    await expect(assertClassicLayoutReadable(root)).resolves.toMatchObject({
+      artifactLayout: 'docs',
+      openSpecRoot: path.join(root, 'docs', 'openspec'),
+    });
+  });
 
-    expect(error).toBeInstanceOf(ClassicLayoutConflictError);
-    expect(error).toMatchObject({
-      code: 'classic-layout-conflict',
-      configuredRoot: path.join(root, 'docs', 'openspec'),
-      alternateRoot: path.join(root, 'openspec'),
+  it('keeps the configured root readable when the standalone root is a directory link', async () => {
+    const root = await project();
+    const outside = await externalDirectory();
+    await config(root, '  artifact_layout: docs\n');
+    await fs.mkdir(path.join(root, 'docs', 'openspec'), { recursive: true });
+    await directoryLink(outside, path.join(root, 'openspec'));
+
+    await expect(assertClassicLayoutReadable(root)).resolves.toMatchObject({
+      artifactLayout: 'docs',
+      openSpecRoot: path.join(root, 'docs', 'openspec'),
     });
   });
 

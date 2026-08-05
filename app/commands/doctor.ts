@@ -310,11 +310,16 @@ async function checkClassicLayout(projectPath: string): Promise<CheckResult> {
     };
   }
   if (inspection.dualRoots) {
+    const configuredRoot = path
+      .relative(projectPath, inspection.paths.openSpecRoot)
+      .replaceAll('\\', '/');
+    const alternateRoot = path
+      .relative(projectPath, inspection.alternateRoot)
+      .replaceAll('\\', '/');
     return {
       check: 'Classic artifact layout',
-      status: 'fail',
-      message:
-        'both openspec/ and docs/openspec/ exist; Classic writes are blocked until the conflict is resolved',
+      status: 'pass',
+      message: `${inspection.paths.artifactLayout}: configured ${configuredRoot}/ present; standalone OpenSpec root ${alternateRoot}/ also present and ignored by Comet`,
     };
   }
   const configuredRoot = path

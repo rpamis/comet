@@ -92,7 +92,7 @@ describe('comet guard', () => {
     execFileSync('git', ['commit', '-m', 'init'], { cwd: tmpDir, stdio: 'ignore' });
   });
 
-  it('fails closed before migrating state when both Classic roots exist', async () => {
+  it('keeps the configured guard active when a standalone OpenSpec root exists', async () => {
     await createChange(
       tmpDir,
       'dual-root',
@@ -123,11 +123,10 @@ describe('comet guard', () => {
 
     const result = runNode(tmpDir, guardScript, ['dual-root', 'open'], {}, 15000);
 
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain('Classic layout conflict');
+    expect(result.status).toBe(0);
     await expect(
       fs.stat(path.join(tmpDir, 'openspec', 'changes', 'dual-root', '.comet')),
-    ).rejects.toMatchObject({ code: 'ENOENT' });
+    ).resolves.toBeDefined();
   });
 
   describe('guard_open skips design.md for hotfix/tweak workflows', () => {

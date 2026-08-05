@@ -285,7 +285,7 @@ describe('Comet project status', () => {
     expect(status.unmanagedOpenSpec).toEqual([]);
   });
 
-  it('reports Classic unavailable without scanning either root during a dual-root conflict', async () => {
+  it('reports only the configured Classic root when a standalone root coexists', async () => {
     const config = defaultProjectConfig('docs');
     config.default_workflow = 'classic';
     config.workflows = ['classic'];
@@ -298,11 +298,10 @@ describe('Comet project status', () => {
 
     const status = await inspectCometProjectStatus(projectRoot);
 
-    expect(status.workflows.classic).toEqual({
-      changes: [],
-      error: expect.stringContaining('Classic layout conflict'),
-    });
-    expect(status.unmanagedOpenSpec).toEqual([]);
+    expect(status.workflows.classic).toEqual({ changes: [] });
+    expect(status.unmanagedOpenSpec).toEqual([
+      expect.objectContaining({ name: 'configured', cometManaged: false }),
+    ]);
   });
 
   it.each(['changes-root', 'change-dir'] as const)(

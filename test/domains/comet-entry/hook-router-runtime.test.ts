@@ -102,4 +102,26 @@ describe('packaged Hook Router worktree isolation', () => {
     expect(primaryRequest.status).toBe(2);
     expect(primaryRequest.stderr).toContain('primary-shape');
   });
+
+  it('enforces Native Shape for raw Codex apply_patch input', async () => {
+    await configureChange(primary, 'raw-patch-shape', 'shape');
+    const patch = [
+      '*** Begin Patch',
+      '*** Update File: src/app.ts',
+      '@@',
+      '-old',
+      '+new',
+      '*** End Patch',
+    ].join('\n');
+
+    const result = spawnSync(
+      process.execPath,
+      [router, '--platform', 'codex', '--project-root', primary],
+      { cwd: primary, input: patch, encoding: 'utf8', timeout: 20_000 },
+    );
+
+    expect(result.status, result.stderr).toBe(2);
+    expect(result.stderr).toContain('raw-patch-shape');
+    expect(result.stderr).toContain('only allowed in build');
+  });
 });

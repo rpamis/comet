@@ -20,7 +20,7 @@ docs:
 
 布局由 `.comet/config.yaml` 的 `classic.artifact_layout` 唯一指定。Classic 的 OpenSpec root、changes、archive、specs 以及 Superpowers specs、plans、reports 都必须由同一个布局 resolver 推导。
 
-Runtime 不扫描另一布局来寻找 fallback，不根据哪个目录先出现决定所有权。配置指定布局与磁盘事实冲突、或 legacy/docs 两个 OpenSpec 根同时存在时，所有写操作失败关闭；只读 status / doctor 报告两个根及修复命令。配置缺失或无效时，只读消费者报告布局不可用，不猜测 legacy 路径继续扫描。
+Runtime 不扫描另一布局来寻找 fallback，不根据哪个目录先出现决定所有权。配置指定的布局是 Comet 的唯一写入和读取边界；另一个 OpenSpec 根可以由用户独立运行官方 OpenSpec CLI，二者同时存在不构成 Classic 冲突。配置缺失或无效时，只读消费者报告布局不可用，不猜测 legacy 路径继续扫描。
 
 跨 workflow 的项目配置类型、字段规范化和相对路径边界属于 `domains/workflow-contract/`。Classic、Native、Entry、Factory、Dashboard 与 Skill 安装可以消费该契约，但不得分别以正则、字符串拼接或重复 YAML 解析重新定义它。
 
@@ -43,7 +43,7 @@ comet classic openspec -- <openspec-args...>
 
 该命令发现项目根、读取并验证 Classic layout，将进程 cwd 设为解析后的 OpenSpec root，然后执行配置的 OpenSpec CLI。legacy 的 cwd 是项目根，docs 的 cwd 是 `<project>/docs`。
 
-Adapter 原样转发 stdout、stderr 和退出码；命令不存在、配置无效、双根冲突或 root 不健康时返回明确错误，不切换另一布局重试。
+Adapter 原样转发 stdout、stderr 和退出码；命令不存在、配置无效或配置的 root 不健康时返回明确错误，不切换另一布局重试。另一个 OpenSpec 根不会被 Comet adapter 扫描或使用。
 
 Comet-owned Skill、Rule、reference、runtime 与用户可复制的命令必须使用该 adapter。用户也可以在解析后的 OpenSpec root 直接运行官方 CLI。项目内 docs 布局不创建、注册或依赖 OpenSpec store ID。
 
@@ -56,12 +56,13 @@ OpenSpec CLI / 平台工具资产安装与项目 artifact root 初始化是两�
 - CLI 安装和平台 Skill / command 文件继续落在项目对应的平台目录。
 - artifact root 初始化只在解析后的 OpenSpec root 创建官方 `openspec/` 结构，不把平台工具目录嵌套到 `docs/`。
 - docs 布局可以通过 `openspec init <project>/docs --tools none` 或等价的官方无工具初始化完成 root 创建。
+- 当项目尚无 Comet 配置、但已有用户管理的根级 `openspec/` 时，启用 Comet 的 docs 布局可以创建 `docs/openspec/`，不得移动、清理或扫描原有根级 OpenSpec 产物。
 - 工具资产需要 OpenSpec 生成时，在隔离 staging project 生成并通过现有 platform adapter 合并；不得在真实项目根留下临时 `openspec/`。
 - update 分别更新平台工具资产和配置的 artifact root，不以项目根存在 `openspec/` 为前提。
 
 ## 路径消费者
 
-以下能力必须使用布局 resolver，并在写入前执行双根/配置可写断言：
+以下能力必须使用布局 resolver，并在写入前执行配置 root 的可写断言：
 
 - Classic state、validate、guard、handoff、archive、resume probe、current selection 与 Hook Guard。
 - Entry status、Ambient Resume 与 Hook Router 的 Classic change 枚举。
@@ -119,7 +120,7 @@ Doctor 检查：
 
 - layout 枚举、配置与启用 workflows 的一致性；
 - OpenSpec root 健康状态；
-- legacy/docs 双根冲突；
+- 配置 root 与物理目录的存在性、类型和安全边界；另一个 OpenSpec 根仅作为独立工具目录保留，不参与 Classic 状态判断；
 - 未完成迁移 journal 及其完整身份；
 - platform tool 资产与 artifact root 是否错误耦合。
 
