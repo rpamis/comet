@@ -953,7 +953,7 @@ describe('doctor command', () => {
   });
 
   it.each(['configured', 'alternate'] as const)(
-    'fails the Classic layout check when the %s root is a directory link',
+    'handles the Classic layout check when the %s root is a directory link',
     async (kind) => {
       const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-doctor-root-link-'));
       try {
@@ -1006,10 +1006,18 @@ describe('doctor command', () => {
 
         const results = await collectDoctorResults(tmpDir);
 
-        expect(results.find((result) => result.check === 'Classic artifact layout')).toMatchObject({
-          status: 'fail',
-          message: expect.stringMatching(/symbolic link or junction/iu),
-        });
+        const layoutResult = results.find((result) => result.check === 'Classic artifact layout');
+        if (kind === 'configured') {
+          expect(layoutResult).toMatchObject({
+            status: 'fail',
+            message: expect.stringMatching(/symbolic link or junction/iu),
+          });
+        } else {
+          expect(layoutResult).toMatchObject({
+            status: 'pass',
+            message: expect.stringMatching(/standalone OpenSpec root .* ignored by Comet/iu),
+          });
+        }
         expect(results.some((result) => result.check.includes('external-marker'))).toBe(false);
       } finally {
         await fs.rm(outsideRoot, { recursive: true, force: true });
