@@ -1217,6 +1217,7 @@ describe('doctor command', () => {
 
       expect(output).toContain('Superpowers: detected');
       expect(output).toContain('Claude Code global');
+      expect(output).not.toContain('Claude Code project');
       expect(output).not.toContain('Superpowers: not detected');
     } finally {
       if (previousClaudeConfigDir === undefined) {
