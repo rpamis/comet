@@ -316,6 +316,128 @@ describe('doctor command', () => {
     }
   });
 
+  it('projects the primary worktree Router into a secondary worktree during project repair', async () => {
+    const secondary = path.join(
+      os.tmpdir(),
+      `comet-doctor-hook-secondary-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    const fakeHome = path.join(tmpDir, 'fake-home');
+    const git = (...args: string[]) =>
+      spawnSync('git', ['-C', tmpDir, ...args], { encoding: 'utf8', timeout: 20_000 });
+    try {
+      expect(git('init', '-b', 'master').status).toBe(0);
+      expect(git('config', 'user.email', 'doctor@example.com').status).toBe(0);
+      expect(git('config', 'user.name', 'Doctor Test').status).toBe(0);
+      await fs.writeFile(path.join(tmpDir, 'README.md'), '# test\n');
+      await writeProjectConfig(tmpDir, defaultProjectConfig('docs'));
+      expect(git('add', 'README.md', '.comet/config.yaml').status).toBe(0);
+      expect(git('commit', '-m', 'test').status).toBe(0);
+      expect(git('worktree', 'add', secondary, '-b', 'feature/doctor-hook-secondary').status).toBe(
+        0,
+      );
+      const primaryRouter = path.join(
+        tmpDir,
+        '.agents',
+        'skills',
+        'comet',
+        'scripts',
+        'comet-hook-router.mjs',
+      );
+      await fs.mkdir(path.dirname(primaryRouter), { recursive: true });
+      await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
+      await fs.writeFile(primaryRouter, '// primary Router\n', 'utf8');
+      await fs.writeFile(
+        path.join(tmpDir, '.comet', 'current-change.json'),
+        '{"schema":"comet.selection.v2","workflow":"native","change":"primary"}',
+        'utf8',
+      );
+
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      let payload: DoctorPayload;
+      try {
+        await doctorCommand(secondary, {
+          json: true,
+          repair: true,
+          scope: 'project',
+          homeDir: fakeHome,
+        });
+        payload = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      } finally {
+        log.mockRestore();
+      }
+
+      const hooks = await fs.readFile(path.join(secondary, '.codex', 'hooks.json'), 'utf8');
+      expect(hooks.replaceAll('\\', '/')).toContain(
+        `${secondary.replaceAll('\\', '/')}/.agents/skills/comet/scripts/comet-hook-router.mjs`,
+      );
+      await expect(
+        fs.access(
+          path.join(secondary, '.agents', 'skills', 'comet', 'scripts', 'comet-hook-router.mjs'),
+        ),
+      ).resolves.toBeUndefined();
+      await expect(
+        fs.access(path.join(secondary, '.comet', 'current-change.json')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(payload!.results).toContainEqual(
+        expect.objectContaining({ check: 'hooks: Codex (project)', status: 'pass' }),
+      );
+    } finally {
+      git('worktree', 'remove', '--force', secondary);
+      await fs.rm(secondary, { recursive: true, force: true });
+    }
+  });
+
+  it('falls back to a global Router source when the primary worktree has none', async () => {
+    const secondary = path.join(
+      os.tmpdir(),
+      `comet-doctor-global-hook-secondary-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    const fakeHome = path.join(tmpDir, 'global-hook-home');
+    const git = (...args: string[]) =>
+      spawnSync('git', ['-C', tmpDir, ...args], { encoding: 'utf8', timeout: 20_000 });
+    try {
+      expect(git('init', '-b', 'master').status).toBe(0);
+      expect(git('config', 'user.email', 'doctor@example.com').status).toBe(0);
+      expect(git('config', 'user.name', 'Doctor Test').status).toBe(0);
+      await fs.writeFile(path.join(tmpDir, 'README.md'), '# test\n');
+      await writeProjectConfig(tmpDir, defaultProjectConfig('docs'));
+      expect(git('add', 'README.md', '.comet/config.yaml').status).toBe(0);
+      expect(git('commit', '-m', 'test').status).toBe(0);
+      expect(git('worktree', 'add', secondary, '-b', 'feature/doctor-global-hook').status).toBe(0);
+      const globalRouter = path.join(
+        fakeHome,
+        '.agents',
+        'skills',
+        'comet',
+        'scripts',
+        'comet-hook-router.mjs',
+      );
+      await fs.mkdir(path.dirname(globalRouter), { recursive: true });
+      await fs.mkdir(path.join(fakeHome, '.codex'), { recursive: true });
+      await fs.writeFile(globalRouter, '// global Router\n', 'utf8');
+
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      try {
+        await doctorCommand(secondary, {
+          json: true,
+          repair: true,
+          scope: 'project',
+          homeDir: fakeHome,
+        });
+      } finally {
+        log.mockRestore();
+      }
+
+      const hooks = await fs.readFile(path.join(secondary, '.codex', 'hooks.json'), 'utf8');
+      expect(hooks.replaceAll('\\', '/')).toContain(
+        `${secondary.replaceAll('\\', '/')}/.agents/skills/comet/scripts/comet-hook-router.mjs`,
+      );
+    } finally {
+      git('worktree', 'remove', '--force', secondary);
+      await fs.rm(secondary, { recursive: true, force: true });
+    }
+  });
+
   it('repairs a missing CodeGraph index only with explicit --yes authorization', async () => {
     const binDir = path.join(tmpDir, 'bin');
     const logFile = path.join(tmpDir, 'codegraph.log');
@@ -1423,6 +1545,32 @@ describe('doctor command', () => {
       },
     );
     expect(await fs.readFile(hookPath, 'utf8')).toBe(malformed);
+  });
+
+  it('fails project repair when historical global Hook cleanup is unsafe', async () => {
+    const fakeHome = path.join(tmpDir, 'unsafe-global-hook-home');
+    const globalLegacyPath = path.join(fakeHome, '.codex', 'settings.local.json');
+    await installManagedCometSkills(tmpDir, '.agents');
+    await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
+    await fs.mkdir(path.dirname(globalLegacyPath), { recursive: true });
+    await fs.writeFile(globalLegacyPath, '{not-json', 'utf8');
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await expect(
+        doctorCommand(tmpDir, {
+          json: true,
+          repair: true,
+          scope: 'project',
+          homeDir: fakeHome,
+        }),
+      ).rejects.toThrow('historical global Hook');
+    } finally {
+      log.mockRestore();
+    }
+
+    await expect(fs.readFile(globalLegacyPath, 'utf8')).resolves.toBe('{not-json');
+    await expect(fs.access(path.join(tmpDir, '.codex', 'hooks.json'))).resolves.toBeUndefined();
   });
 
   it('reports a Rule destination access failure as a component warning', async () => {

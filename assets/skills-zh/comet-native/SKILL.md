@@ -82,6 +82,15 @@ comet native new <change-name> --language zh-CN \
 
 worktree 必须从已解析的本地目标分支提交创建。源目录有未提交内容时，先归因：可证明与新 change 无关的内容留在原目录；可能属于新 change 且无法从该提交带入时，等待用户决定如何保留，不静默提交、复制或遗漏。目标目录必须从目标分支获得一致配置，或通过公开 `comet native init` 建立合法配置并核对 artifact root、language、clarification、archive、verify 与 snapshot 语义；无法证明一致时停止。不得复制源目录的 `.comet/current-change.json`。
 
+目标配置就绪后、运行 `new` 前，Agent 必须在新工作目录中依次执行：
+
+```bash
+comet doctor --repair --scope project
+comet doctor --scope project --json
+```
+
+只有 Doctor 确认 Hook runtime 为当前版本、该平台恰好存在一个以目标项目为根的 Router，且没有遗留或重复 Comet Hook 时才继续。Agent 自行在新工作目录中执行这些命令，不让用户手动进入目录；不得从源目录复制 `.comet/current-change.json`。若项目配置未从目标分支继承，则先用公开 `comet native init` 按源项目的已核对语义建立配置，再执行上述 Doctor 序列。
+
 worktree 创建只完成部分步骤时立即停止：报告原始错误、目标分支与目标路径、已明确创建的分支/worktree/exclude/config/change 资源，以及可恢复的下一步。只能清理可证明由本次操作新建且删除安全的资源；无法证明归属时保留现场，绝不删除已有或可能属于用户的 worktree、分支与文件。
 
 Runtime 会在 `new` 的同一个 mutation lock 中重新检查当前目录是否已出现 active change。系统默认的 `current` 因竞态返回 `workspace-isolation-required` 时，自动按默认 `worktree` 重新准备并创建；用户明确选择的方式若在执行前失效，停止并重新确认，不擅自换方式。

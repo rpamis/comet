@@ -410,6 +410,9 @@ describe('Comet Native Skills', () => {
           '归档、推送并创建 PR',
           '持久化的 `targetBranch` 作为 PR base',
           'worktree 创建只完成部分步骤时立即停止',
+          'comet doctor --repair --scope project',
+          '恰好存在一个以目标项目为根的 Router',
+          '不让用户手动进入目录',
           '任何语义冲突都中止合并',
         ],
         commandTerms: [
@@ -433,6 +436,9 @@ describe('Comet Native Skills', () => {
           'archive, push, and open a PR',
           'persisted `targetBranch` as its base',
           'worktree creation completes only some steps',
+          'comet doctor --repair --scope project',
+          'exactly one Router rooted in the target project',
+          'without asking the user to enter it manually',
           'Abort any semantic conflict',
         ],
         commandTerms: [

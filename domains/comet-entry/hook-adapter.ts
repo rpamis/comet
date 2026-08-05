@@ -1,4 +1,5 @@
 import { readFileSync } from 'fs';
+import path from 'path';
 
 import type { CometHookDecision, CometHookProcessOutput, CometHookRequest } from './hook-types.js';
 
@@ -58,6 +59,15 @@ function readToolName(input: Record<string, unknown>): string | null {
     if (typeof value === 'string' && value.trim()) return value.trim();
   }
   return null;
+}
+
+function readWorkingDirectory(input: Record<string, unknown>): string | undefined {
+  for (const key of ['cwd', 'working_directory', 'workspaceRoot'] as const) {
+    const value = input[key];
+    if (typeof value !== 'string' || !value.trim() || !path.isAbsolute(value.trim())) continue;
+    return path.resolve(value.trim());
+  }
+  return undefined;
 }
 
 function parseJsonValue(value: unknown): unknown {
@@ -141,21 +151,24 @@ export function parseCometHookRequest(source: string, filePath?: string): CometH
 
   const toolName = readToolName(input);
   const targets = collectTargets(input, readToolArguments(input));
+  const cwd = readWorkingDirectory(input);
   if (toolName && WRITE_TOOL_NAMES.has(normalizedToolName(toolName))) {
     return {
       intent: targets.length > 0 ? 'write' : 'unknown',
       targets,
       toolName,
+      ...(cwd ? { cwd } : {}),
     };
   }
   if (toolName && NON_WRITE_TOOL_NAMES.has(normalizedToolName(toolName))) {
-    return { intent: 'non-write', targets: [], toolName };
+    return { intent: 'non-write', targets: [], toolName, ...(cwd ? { cwd } : {}) };
   }
-  if (toolName) return { intent: 'unknown', targets, toolName };
+  if (toolName) return { intent: 'unknown', targets, toolName, ...(cwd ? { cwd } : {}) };
   return {
     intent: targets.length > 0 ? 'write' : 'unknown',
     targets,
     toolName: null,
+    ...(cwd ? { cwd } : {}),
   };
 }
 

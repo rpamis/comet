@@ -28,7 +28,10 @@ import {
   createWorkingDirs,
   prepareNativeSkillInstallTarget,
 } from '../../domains/skill/platform-install.js';
-import { reconcileCometHooksForPlatform } from '../../domains/skill/hook-lifecycle.js';
+import {
+  reconcileCometHooksForPlatform,
+  reconcileProjectCometHooksForPlatform,
+} from '../../domains/skill/hook-lifecycle.js';
 import { syncCometProjectInstructions } from '../../domains/skill/project-instructions.js';
 import { LANGUAGES, type LanguageConfig } from '../../domains/skill/languages.js';
 import { resolveInitWorkflow } from '../../domains/comet-entry/init-workflow.js';
@@ -928,7 +931,11 @@ export async function initCommand(
           status,
           reason,
           cleanupFailed = 0,
-        } = await reconcileCometHooksForPlatform(baseDir, platform, scope, workflowSelection);
+        } = scope === 'project'
+          ? await reconcileProjectCometHooksForPlatform(baseDir, platform, workflowSelection, {
+              globalBaseDir: os.homedir(),
+            })
+          : await reconcileCometHooksForPlatform(baseDir, platform, scope, workflowSelection);
         cometComponentInstalled ||= status === 'installed';
         if (status === 'installed') {
           if (scope === 'project') projectRouterInstalled = true;

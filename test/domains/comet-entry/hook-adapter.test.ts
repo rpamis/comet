@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import path from 'path';
 
 import {
   COMET_HOOK_PLATFORM_IDS,
@@ -78,6 +79,28 @@ describe('Comet Hook platform adapter', () => {
         }),
       ),
     ).toEqual({ intent: 'write', targets: ['src/b.ts'], toolName: 'apply_patch' });
+  });
+
+  it('keeps an absolute Hook working directory for linked-worktree routing', () => {
+    const cwd = path.resolve('linked-worktree');
+    expect(
+      parseCometHookRequest(
+        JSON.stringify({
+          tool_name: 'Write',
+          cwd,
+          tool_input: { file_path: 'src/a.ts' },
+        }),
+      ),
+    ).toEqual({ intent: 'write', targets: ['src/a.ts'], toolName: 'Write', cwd });
+    expect(
+      parseCometHookRequest(
+        JSON.stringify({
+          tool_name: 'Write',
+          cwd: 'relative/worktree',
+          tool_input: { file_path: 'src/a.ts' },
+        }),
+      ),
+    ).toEqual({ intent: 'write', targets: ['src/a.ts'], toolName: 'Write' });
   });
 
   it('collects every target atomically and fails unknown writes closed', () => {

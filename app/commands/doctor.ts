@@ -23,7 +23,10 @@ import {
   getManagedSkillPaths,
   getManagedSkillPathsForSelection,
 } from '../../domains/skill/platform-install.js';
-import { reconcileCometHooksForPlatform } from '../../domains/skill/hook-lifecycle.js';
+import {
+  reconcileCometHooksForPlatform,
+  reconcileProjectCometHooksForPlatform,
+} from '../../domains/skill/hook-lifecycle.js';
 import {
   getPlatformRuleDestinations,
   getLegacyPlatformRuleDestinations,
@@ -63,6 +66,7 @@ import type { WorkflowProjectConfig } from '../../domains/workflow-contract/type
 import { resolveHookWorkflowOwner } from '../../domains/comet-entry/hook-router.js';
 import type { InitWorkflowSelection } from '../../domains/comet-entry/types.js';
 import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
+import { projectCometHooksFromInstalledScope } from '../../domains/skill/project-hook-projection.js';
 
 interface CheckResult {
   check: string;
@@ -731,54 +735,71 @@ async function checkPlatformComponents(
     }
   }
 
-  if (platform.supportsHooks && platform.hookFormat) {
-    const runtime = hookRouterRuntimePaths(baseDir, platform, scope);
-    try {
-      const [expected, installed] = await Promise.all([
-        fs.readFile(runtime.source),
-        fs.readFile(runtime.destination),
-      ]);
-      results.push({
-        check: `hook runtime: ${platform.name} (${scope})`,
-        status: expected.equals(installed) ? 'pass' : 'warn',
-        message: expected.equals(installed)
-          ? 'current'
-          : `outdated — run: comet doctor --repair --scope ${scope}`,
-      });
-    } catch (error) {
-      results.push({
-        check: `hook runtime: ${platform.name} (${scope})`,
-        status: 'warn',
-        message: `unable to verify current Router runtime (${(error as Error).message}) — run: comet doctor --repair --scope ${scope}`,
-      });
-    }
-    const inspection = await inspectCometHooksForPlatform(
-      baseDir,
-      platform,
-      scope,
-      workflowSelection,
-    );
-    if (scope === 'global') {
-      results.push(globalHookCheckResult(platform, scope, inspection));
-      return results;
-    }
+  results.push(...(await checkHookComponents(baseDir, platform, scope, workflowSelection)));
+
+  return results;
+}
+
+async function checkHookComponents(
+  baseDir: string,
+  platform: Platform,
+  scope: InstallScope,
+  workflowSelection: InitWorkflowSelection,
+): Promise<CheckResult[]> {
+  if (!platform.supportsHooks || !platform.hookFormat) return [];
+
+  const results: CheckResult[] = [];
+  const runtime = hookRouterRuntimePaths(baseDir, platform, scope);
+  try {
+    const [expected, installed] = await Promise.all([
+      fs.readFile(runtime.source),
+      fs.readFile(runtime.destination),
+    ]);
     results.push({
-      check: `hooks: ${platform.name} (${scope})`,
-      status:
-        inspection.present && !inspection.legacyPresent && !inspection.duplicatePresent
-          ? 'pass'
-          : 'warn',
-      message:
-        inspection.present && !inspection.legacyPresent && !inspection.duplicatePresent
-          ? 'exactly one managed Router Hook present'
-          : inspection.present && inspection.duplicatePresent
-            ? `duplicate managed Router Hooks remain — run: comet doctor --repair --scope ${scope}`
-            : inspection.present && inspection.legacyPresent
-              ? `Router Hook and legacy managed Hook coexist — run: comet doctor --repair --scope ${scope}`
-              : `${inspection.error ?? 'managed Hook missing'} — run: comet update --scope ${scope}`,
+      check: `hook runtime: ${platform.name} (${scope})`,
+      status: expected.equals(installed) ? 'pass' : 'warn',
+      message: expected.equals(installed)
+        ? 'current'
+        : `outdated — run: comet doctor --repair --scope ${scope}`,
+    });
+  } catch (error) {
+    results.push({
+      check: `hook runtime: ${platform.name} (${scope})`,
+      status: 'warn',
+      message: `unable to verify current Router runtime (${(error as Error).message}) — run: comet doctor --repair --scope ${scope}`,
     });
   }
-
+  const inspection = await inspectCometHooksForPlatform(
+    baseDir,
+    platform,
+    scope,
+    workflowSelection,
+  );
+  if (scope === 'global') {
+    results.push(globalHookCheckResult(platform, scope, inspection));
+    return results;
+  }
+  results.push({
+    check: `hooks: ${platform.name} (${scope})`,
+    status:
+      inspection.present &&
+      !inspection.error &&
+      !inspection.legacyPresent &&
+      !inspection.duplicatePresent
+        ? 'pass'
+        : 'warn',
+    message:
+      inspection.present &&
+      !inspection.error &&
+      !inspection.legacyPresent &&
+      !inspection.duplicatePresent
+        ? 'exactly one managed Router Hook present'
+        : inspection.present && inspection.duplicatePresent
+          ? `duplicate managed Router Hooks remain — run: comet doctor --repair --scope ${scope}`
+          : inspection.present && inspection.legacyPresent
+            ? `Router Hook and legacy managed Hook coexist — run: comet doctor --repair --scope ${scope}`
+            : `${inspection.error ?? 'managed Hook missing'} — run: comet update --scope ${scope}`,
+  });
   return results;
 }
 
@@ -797,8 +818,9 @@ async function getPlatformsForSkillInspection(
   }));
 }
 
-async function getGlobalHookOnlyInspections(
+async function getHookOnlyInspections(
   baseDir: string,
+  scope: InstallScope,
   knownPlatformIds: ReadonlySet<string>,
 ): Promise<
   Array<{
@@ -814,7 +836,7 @@ async function getGlobalHookOnlyInspections(
     if (knownPlatformIds.has(platform.id) || !platform.supportsHooks || !platform.hookFormat) {
       continue;
     }
-    const inspection = await inspectCometHooksForPlatform(baseDir, platform, 'global');
+    const inspection = await inspectCometHooksForPlatform(baseDir, platform, scope);
     if (
       inspection.present ||
       inspection.managedPresent ||
@@ -909,13 +931,19 @@ async function checkSkillCompleteness(
         );
       }
     }
-    if (base.scope === 'global') {
-      for (const { platform, inspection } of await getGlobalHookOnlyInspections(
-        base.baseDir,
-        detectedPlatformIds,
-      )) {
-        results.push(globalHookCheckResult(platform, base.scope, inspection));
-      }
+    for (const { platform } of await getHookOnlyInspections(
+      base.baseDir,
+      base.scope,
+      detectedPlatformIds,
+    )) {
+      results.push(
+        ...(await checkHookComponents(
+          base.baseDir,
+          platform,
+          base.scope,
+          base.scope === 'global' ? 'classic' : workflowSelection,
+        )),
+      );
     }
   }
 
@@ -1365,7 +1393,6 @@ async function repairDoctorState(
   quietCodegraph = false,
 ): Promise<string[]> {
   const repaired: string[] = [];
-  let projectRouterReady = false;
   if (scope !== 'global' && (await repairWorkflowProjectConfigTransaction(projectPath))) {
     repaired.push('project config write transaction');
   }
@@ -1378,12 +1405,44 @@ async function repairDoctorState(
       : workflows.includes('native')
         ? 'native'
         : 'classic';
+  const projectedProjectPlatforms = new Set<string>();
+  if (scope !== 'global') {
+    const worktree = inspectGitWorktree(projectPath);
+    if (worktree.isSecondaryWorktree && worktree.primaryWorktreeRoot) {
+      const sources: Array<{ baseDir: string; scope: InstallScope }> = [
+        { baseDir: worktree.primaryWorktreeRoot, scope: 'project' },
+        { baseDir: context.homeDir, scope: 'global' },
+      ];
+      for (const source of sources) {
+        const projection = await projectCometHooksFromInstalledScope(
+          projectPath,
+          source.baseDir,
+          source.scope,
+          workflowSelection,
+          { globalBaseDir: context.homeDir },
+        );
+        if (projection.failures.length > 0) {
+          const details = projection.failures
+            .map(({ platform, reason }) => `${platform}: ${reason}`)
+            .join('; ');
+          throw new Error(`failed to project Hook into linked worktree: ${details}`);
+        }
+        for (const platformId of projection.installedPlatforms) {
+          projectedProjectPlatforms.add(platformId);
+          repaired.push(`${platformId} (project) Hook projection`);
+        }
+        if (projection.installedPlatforms.length > 0) break;
+      }
+    }
+  }
   const targets: Array<{ baseDir: string; scope: InstallScope; platform: Platform }> = [];
   const hookOnlyTargets: Array<{ baseDir: string; scope: InstallScope; platform: Platform }> = [];
 
   for (const base of getScopeBases(projectPath, scope, context)) {
     const platforms = await getPlatformsForSkillInspection(base.baseDir, base.scope, scope);
-    const installedPlatformIds = new Set<string>();
+    const installedPlatformIds = new Set<string>(
+      base.scope === 'project' ? projectedProjectPlatforms : [],
+    );
     for (const { platform, inspectComponents } of platforms) {
       if (!inspectComponents || !(await hasManagedInstall(base.baseDir, platform, base.scope))) {
         continue;
@@ -1391,27 +1450,43 @@ async function repairDoctorState(
       installedPlatformIds.add(platform.id);
       targets.push({ baseDir: base.baseDir, scope: base.scope, platform });
     }
-    if (base.scope === 'global') {
-      for (const { platform } of await getGlobalHookOnlyInspections(
-        base.baseDir,
-        installedPlatformIds,
-      )) {
-        hookOnlyTargets.push({ baseDir: base.baseDir, scope: base.scope, platform });
-      }
+    for (const { platform } of await getHookOnlyInspections(
+      base.baseDir,
+      base.scope,
+      installedPlatformIds,
+    )) {
+      hookOnlyTargets.push({ baseDir: base.baseDir, scope: base.scope, platform });
     }
   }
 
+  let projectRouterReady = projectedProjectPlatforms.size > 0;
+
   for (const target of hookOnlyTargets) {
-    const hookResult = await reconcileCometHooksForPlatform(
-      target.baseDir,
-      target.platform,
-      target.scope,
-      workflowSelection,
-    );
+    if (target.scope === 'project') {
+      const runtime = hookRouterRuntimePaths(target.baseDir, target.platform, target.scope);
+      await copyFile(runtime.source, runtime.destination);
+    }
+    const hookResult =
+      target.scope === 'project'
+        ? await reconcileProjectCometHooksForPlatform(
+            target.baseDir,
+            target.platform,
+            workflowSelection,
+            { globalBaseDir: context.homeDir },
+          )
+        : await reconcileCometHooksForPlatform(
+            target.baseDir,
+            target.platform,
+            target.scope,
+            workflowSelection,
+          );
     if (hookResult.status === 'failed') {
       throw new Error(
         `failed to repair Hook for ${target.platform.name} (${target.scope}): ${hookResult.reason}`,
       );
+    }
+    if (target.scope === 'project' && hookResult.status === 'installed') {
+      projectRouterReady = true;
     }
     repaired.push(`${target.platform.name} (${target.scope}) Hook`);
   }
@@ -1422,12 +1497,12 @@ async function repairDoctorState(
       const runtime = hookRouterRuntimePaths(baseDir, platform, targetScope);
       await copyFile(runtime.source, runtime.destination);
     }
-    const hookResult = await reconcileCometHooksForPlatform(
-      baseDir,
-      platform,
-      targetScope,
-      workflowSelection,
-    );
+    const hookResult =
+      targetScope === 'project'
+        ? await reconcileProjectCometHooksForPlatform(baseDir, platform, workflowSelection, {
+            globalBaseDir: context.homeDir,
+          })
+        : await reconcileCometHooksForPlatform(baseDir, platform, targetScope, workflowSelection);
     if (hookResult.status === 'failed') {
       throw new Error(
         `failed to repair Hook for ${platform.name} (${targetScope}): ${hookResult.reason}`,

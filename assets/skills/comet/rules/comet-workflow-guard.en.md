@@ -30,4 +30,4 @@ A legacy Classic project without the current project schema uses only the Classi
 
 Each platform must install exactly one Comet Hook Router. One write event may invoke at most one workflow Guard; do not run separate Native and Classic Hooks.
 
-The Hook evaluates multi-file and patch targets atomically. It fails closed when the current phase blocks ordinary project writes, multiple ownership candidates exist, the selection or state cannot be read safely, or a write target cannot be determined. Never bypass the Hook; follow its denial message to resume the owning workflow, and select a current change only when ownership is ambiguous.
+The Hook evaluates multi-file and patch targets atomically. Unattributable events and targets that are entirely outside the project remain neutral. Once a write is attributed to this project, it fails closed when the current phase blocks ordinary project writes, multiple ownership candidates exist, or the selection, state, or target scope cannot be read safely. Never bypass the Hook; follow its denial message to resume the owning workflow, and select a current change only when ownership is ambiguous.

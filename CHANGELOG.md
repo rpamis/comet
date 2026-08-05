@@ -6,29 +6,27 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Added
 
-- **Dashboard change explorer**: Dashboard now loads the current project overview with lightweight change rows, paginates active, archived, and all changes in batches of five, and fetches full artifact details only when selected so large projects remain responsive.
-- **Global project activation**: A global initialization now stores complete Native or Classic defaults once, and the first explicit `/comet` invocation activates each unconfigured project from those defaults. Artifacts stay inside the project, activated projects keep stable settings when global defaults change, existing Classic projects retain Classic ownership, and project-scoped initialization remains optional for local asset copies or overrides.
-- **Native parallel changes**: Native now detects active changes before Shape and can establish an isolated Git worktree without requiring users to request parallelism. Current, branch, and worktree choices remain available when safe, and isolated changes remember their starting target branch for merge, push, or pull-request finishing.
+- **Global project activation**: Global Native or Classic defaults can now activate an unconfigured project on its first explicit `/comet` invocation. Project artifacts stay local, existing workflow ownership is preserved, and project-scoped initialization remains available for local overrides.
+- **Native parallel changes**: Before Shape, Native detects active changes and can create an isolated Git worktree automatically. `current`, `branch`, and `worktree` choices remain available when safe, and isolated changes remember their starting target branch for finishing.
 
 ### Changed
 
-- **Hook isolation**: Comet now installs its blocking Router only for project-scoped integrations and keeps it in a dedicated matcher group. Setup, update, and Doctor remove historical global Comet Hooks while preserving user-owned Hook entries and configuration.
+- **Dashboard change explorer**: Dashboard now loads lightweight change rows, paginates active, archived, and all changes, and fetches full details only for the selected change. Native and Classic keep the selected detail surface stable while loading and offer a retry when detail loading fails, keeping large projects responsive.
+- **Hook lifecycle and routing**: Activated projects and isolated Native worktrees now receive one project-rooted Router automatically. Setup, Update, and Doctor migrate historical global and legacy Comet Hooks while preserving user-owned Hook configuration and reporting incomplete cleanup instead of continuing silently.
 
 ### Fixed
 
-- **Native Verify retries**: Invalid verification reports are rejected before the automatic required check runs, and unchanged successful required-check receipts are reused on retry so Agents receive actionable evidence errors without repeating expensive checks.
-- **Native parallel resume**: Ambient Resume now discovers active Native changes without scanning every change's Runtime artifacts and performs full recovery checks only for the explicitly named, selected, or sole target, so unrelated parallel changes no longer add repeated checks or surface irrelevant Runtime errors.
-- **Subagent workflow dispatch**: Classic Build now runs the selected `subagent-driven-development` workflow directly, and Comet Any dispatches each authoring lane to its designated subagent without replacing the requested workflow based on platform-specific Agent labels.
-- **Native incremental projection consistency**: Native now re-reads files hidden from Git's modified-file scan by `assume-unchanged` or `skip-worktree` index flags, preventing false Build-to-Verify projection mismatches from blocking verification and archive.
-- **Inactive Hook routing**: Project Hooks now allow ordinary writes when no Comet change is selected and the configured workflow artifact roots have not been created, while continuing to block unreadable or ambiguous active change state.
-- **Native receipt scope recovery**: Automated and manual verification receipts now stop before execution when project files changed after Build, report the changed paths, and return the exact command for returning to Build and refreshing the implementation scope. Receipt refresh uses the same check instead of reporting that no stale receipts exist.
-- **Classic build recovery**: Full Classic workflows now return to plan creation after context recovery when no implementation plan is recorded or the recorded implementation-plan path is invalid, and block project source writes until the plan is restored and linked.
-- **Dashboard Classic selection**: Classic change selection now keeps a stable detail surface and change explorer frame during detail loads, and shows one clear selected row without a duplicate hover frame.
-- **Native change loading**: Native now pages lightweight change rows, fetches complete status, evidence, conflicts, and artifacts only for the selected change, and continues loading when the pagination footer is visible so large projects stay responsive without hiding reported changes.
-- **Ambient Resume cleanup**: Disabling the Ambient Resume probe now removes Comet-managed instructions from `AGENTS.md` and `CLAUDE.md` while preserving user-authored content.
-- **External write compatibility**: Comet Hooks now remain neutral for unknown or project-external write targets, including paths redirected through symlinks or junctions, and evaluate only the in-project targets from mixed write operations so unrelated Hooks such as memory writers can continue independently.
-
-- **Eval Dockerfile hash fallback**: `get_dockerfile_hash()` now falls back to `environment/Dockerfile` when a workspace has no root `Dockerfile`, matching the fallback `docker_build()` already applied. Building or naming an image for an eval workspace that keeps its Dockerfile under `environment/` no longer fails before reaching Docker.
+- **Global Native Skill updates**: Global `comet update` now refreshes the workflows already installed, including Native, without adding workflows the user did not choose.
+- **Native Verify retries**: Invalid verification reports are rejected before the required check runs, and unchanged successful required-check receipts are reused on retry so expensive checks are not repeated unnecessarily.
+- **Native parallel resume**: Ambient Resume now performs full recovery checks only for the explicitly named, selected, or sole Native change, so unrelated active changes do not surface irrelevant Runtime errors.
+- **Subagent workflow dispatch**: Classic Build runs the selected authoring workflow directly, and Comet Any keeps each authoring lane on its designated workflow instead of replacing it based on platform-specific Agent labels.
+- **Native scope consistency**: Native now detects files hidden from Git's modified-file view, preventing false Build-to-Verify scope mismatches from blocking verification and archive.
+- **Hook write handling**: Project Hooks allow ordinary writes when no active Comet change owns the target and remain neutral for unknown or external targets, including paths redirected through symlinks or junctions, while still evaluating in-project writes.
+- **Hook configuration safety**: Hook installation no longer overwrites user-owned Kiro files or leaves invalid Copilot entries, and Doctor now detects stale legacy files and disabled or structurally mismatched handlers before reporting the Router healthy.
+- **Native receipt scope recovery**: Verification receipts now stop before execution when project files changed after Build, report the changed paths, and provide the command for returning to Build and refreshing the implementation scope.
+- **Classic build recovery**: Full Classic workflows return to plan creation after context recovery when no valid implementation plan is recorded, and block project source writes until the plan is restored and linked.
+- **Ambient Resume cleanup**: Disabling Ambient Resume now removes Comet-managed instructions from `AGENTS.md` and `CLAUDE.md` while preserving user-authored content.
+- **Eval workspace Dockerfiles**: Eval image preparation now uses `environment/Dockerfile` when a workspace has no root Dockerfile, so those workspaces can build without moving the file.
 
 ## What's Changed [0.4.0-beta.14] - 2026-08-02
 

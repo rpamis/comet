@@ -88,6 +88,12 @@ async function readHookJson(filePath: string): Promise<JsonReadResult> {
   };
 }
 
+interface ExpectedHookDescriptor {
+  scriptRelPath: string;
+  command: string;
+  matcher: string;
+}
+
 function collectGroupedCommands(config: Record<string, unknown>, groupName: string): unknown[] {
   const hooks = config.hooks;
   if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) return [];
@@ -106,6 +112,36 @@ function collectGroupedCommands(config: Record<string, unknown>, groupName: stri
   });
 }
 
+function countGroupedHookMatches(
+  config: Record<string, unknown>,
+  groupName: string,
+  expected: ExpectedHookDescriptor,
+  expectedMatcher: (matcher: string) => string = (matcher) => matcher,
+): number {
+  const hooks = config.hooks;
+  if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) return 0;
+  const groups = (hooks as Record<string, unknown>)[groupName];
+  if (!Array.isArray(groups)) return 0;
+  return groups.reduce((count, group) => {
+    if (!group || typeof group !== 'object' || Array.isArray(group)) return count;
+    const record = group as Record<string, unknown>;
+    if (record.matcher !== expectedMatcher(expected.matcher) || !Array.isArray(record.hooks)) {
+      return count;
+    }
+    return (
+      count +
+      record.hooks.filter(
+        (handler) =>
+          handler !== null &&
+          typeof handler === 'object' &&
+          !Array.isArray(handler) &&
+          (handler as Record<string, unknown>).type === 'command' &&
+          (handler as Record<string, unknown>).command === expected.command,
+      ).length
+    );
+  }, 0);
+}
+
 function collectCommandArray(config: Record<string, unknown>, groupName: string): unknown[] {
   const hooks = config.hooks;
   if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) return [];
@@ -119,16 +155,22 @@ function collectCommandArray(config: Record<string, unknown>, groupName: string)
   });
 }
 
-function collectCopilotCommands(config: Record<string, unknown>): unknown[] {
+function countWindsurfHookMatches(
+  config: Record<string, unknown>,
+  expected: ExpectedHookDescriptor,
+): number {
   const hooks = config.hooks;
-  if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) return [];
-  const entries = (hooks as Record<string, unknown>).preToolUse;
-  if (!Array.isArray(entries)) return [];
-  return entries.map((entry) => {
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return undefined;
-    const record = entry as Record<string, unknown>;
-    return record.command ?? record.bash ?? record.powershell;
-  });
+  if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) return 0;
+  const entries = (hooks as Record<string, unknown>).pre_write_code;
+  if (!Array.isArray(entries)) return 0;
+  return entries.filter(
+    (entry) =>
+      entry !== null &&
+      typeof entry === 'object' &&
+      !Array.isArray(entry) &&
+      (entry as Record<string, unknown>).command === expected.command &&
+      (entry as Record<string, unknown>).show_output === true,
+  ).length;
 }
 
 function collectCopilotCommandFields(config: Record<string, unknown>): unknown[] {
@@ -143,14 +185,54 @@ function collectCopilotCommandFields(config: Record<string, unknown>): unknown[]
   });
 }
 
-function containsAllManagedCommands(commands: unknown[], expectedCommands: string[]): boolean {
-  return expectedCommands.every((expected) => commands.some((command) => command === expected));
+function countCopilotHookMatches(
+  config: Record<string, unknown>,
+  expected: ExpectedHookDescriptor,
+): number {
+  const hooks = config.hooks;
+  if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) return 0;
+  const entries = (hooks as Record<string, unknown>).preToolUse;
+  if (!Array.isArray(entries)) return 0;
+  const matcher =
+    expected.matcher === 'Write|Edit'
+      ? 'create|edit|str_replace_editor|apply_patch'
+      : expected.matcher;
+  return entries.filter(
+    (entry) =>
+      entry !== null &&
+      typeof entry === 'object' &&
+      !Array.isArray(entry) &&
+      (entry as Record<string, unknown>).matcher === matcher &&
+      (entry as Record<string, unknown>).bash === expected.command &&
+      (entry as Record<string, unknown>).powershell === expected.command,
+  ).length;
 }
 
-function containsDuplicateManagedCommand(commands: unknown[], expectedCommands: string[]): boolean {
-  return expectedCommands.some(
-    (expected) => commands.filter((command) => command === expected).length > 1,
+function containsDuplicateManagedHook(
+  config: Record<string, unknown>,
+  expectedHooks: ExpectedHookDescriptor[],
+  countMatches: (config: Record<string, unknown>, expected: ExpectedHookDescriptor) => number,
+): boolean {
+  return expectedHooks.some((expected) => countMatches(config, expected) > 1);
+}
+
+function containsExtraManagedCommandCopies(
+  commands: unknown[],
+  expectedHooks: ExpectedHookDescriptor[],
+  expectedCopiesPerHook: number,
+): boolean {
+  return expectedHooks.some(
+    ({ command }) =>
+      commands.filter((candidate) => candidate === command).length > expectedCopiesPerHook,
   );
+}
+
+function containsAllManagedHooks(
+  config: Record<string, unknown>,
+  expectedHooks: ExpectedHookDescriptor[],
+  countMatches: (config: Record<string, unknown>, expected: ExpectedHookDescriptor) => number,
+): boolean {
+  return expectedHooks.every((expected) => countMatches(config, expected) > 0);
 }
 
 function containsLegacyManagedCommand(commands: unknown[]): boolean {
@@ -164,23 +246,29 @@ function containsLegacyManagedCommand(commands: unknown[]): boolean {
 
 async function inspectSingleHookJson(
   configPath: string,
-  expectedCommands: string[],
-  scriptRelPaths: string[],
-  collectCommands: (config: Record<string, unknown>) => unknown[],
-  collectManagedCommands: (config: Record<string, unknown>) => unknown[] = collectCommands,
+  expectedHooks: ExpectedHookDescriptor[],
+  collectManagedCommands: (config: Record<string, unknown>) => unknown[],
+  countMatches: (config: Record<string, unknown>, expected: ExpectedHookDescriptor) => number,
+  expectedCommandCopiesPerHook = 1,
 ): Promise<HookInspectionResult> {
   const result = await readHookJson(configPath);
   if (result.status === 'missing') return { present: false };
   if (result.status === 'error') return { present: false, error: result.error };
-  const commands = collectCommands(result.value);
   const managedCommands = collectManagedCommands(result.value);
-  const managedScriptPaths = [...new Set([...scriptRelPaths, ...LEGACY_HOOK_SCRIPT_PATHS])];
+  const managedScriptPaths = [
+    ...new Set([
+      ...expectedHooks.map(({ scriptRelPath }) => scriptRelPath),
+      ...LEGACY_HOOK_SCRIPT_PATHS,
+    ]),
+  ];
   const managedPresent = managedCommands.some((command) =>
     isManagedHookCommand(command, managedScriptPaths),
   );
   const legacyPresent = containsLegacyManagedCommand(managedCommands);
-  const duplicatePresent = containsDuplicateManagedCommand(commands, expectedCommands);
-  const present = containsAllManagedCommands(commands, expectedCommands);
+  const duplicatePresent =
+    containsDuplicateManagedHook(result.value, expectedHooks, countMatches) ||
+    containsExtraManagedCommandCopies(managedCommands, expectedHooks, expectedCommandCopiesPerHook);
+  const present = containsAllManagedHooks(result.value, expectedHooks, countMatches);
   return {
     present,
     ...(!present && managedPresent ? { managedPresent: true } : {}),
@@ -191,15 +279,16 @@ async function inspectSingleHookJson(
 
 async function inspectKiroHooks(
   platformBase: string,
-  scriptRelPaths: string[],
-  expectedCommands: string[],
+  expectedHooks: ExpectedHookDescriptor[],
 ): Promise<HookInspectionResult> {
+  const scriptRelPaths = expectedHooks.map(({ scriptRelPath }) => scriptRelPath);
   const managedScriptPaths = [...new Set([...scriptRelPaths, ...LEGACY_HOOK_SCRIPT_PATHS])];
   let present = true;
   let managedPresent = false;
   let legacyPresent = false;
 
-  for (const [index, scriptRelPath] of scriptRelPaths.entries()) {
+  for (const expected of expectedHooks) {
+    const { scriptRelPath } = expected;
     const fileName = path.basename(scriptRelPath).replace(/\.mjs$/u, '.kiro.hook');
     const configPath = path.join(platformBase, 'hooks', fileName);
     const result = await readHookJson(configPath);
@@ -209,6 +298,7 @@ async function inspectKiroHooks(
     }
     if (result.status === 'error') return { present: false, error: result.error };
 
+    const when = result.value.when;
     const then = result.value.then;
     const command =
       then && typeof then === 'object' && !Array.isArray(then)
@@ -223,13 +313,29 @@ async function inspectKiroHooks(
         legacyPresent = true;
       }
     }
-    if (command !== expectedCommands[index]) present = false;
+    const expectedToolName = expected.matcher === 'Write|Edit' ? 'write' : '*';
+    if (
+      result.value.enabled !== true ||
+      !when ||
+      typeof when !== 'object' ||
+      Array.isArray(when) ||
+      (when as Record<string, unknown>).type !== 'preToolUse' ||
+      (when as Record<string, unknown>).toolName !== expectedToolName ||
+      !then ||
+      typeof then !== 'object' ||
+      Array.isArray(then) ||
+      (then as Record<string, unknown>).type !== 'runCommand' ||
+      command !== expected.command
+    ) {
+      present = false;
+    }
   }
 
   for (const scriptName of LEGACY_HOOK_SCRIPT_NAMES) {
     const result = await readHookJson(
       path.join(platformBase, 'hooks', scriptName.replace(/\.mjs$/u, '.kiro.hook')),
     );
+    if (result.status === 'error') return { present: false, error: result.error };
     if (result.status !== 'present') continue;
     const then = result.value.then;
     const command =
@@ -258,14 +364,19 @@ export async function inspectCometHooksForPlatform(
   if (!platform.supportsHooks || !platform.hookFormat) return { present: false };
 
   const manifest = await readManifest();
-  const scriptRelPaths = Object.keys(manifest.hooks ?? {});
+  const hooksConfig = manifest.hooks ?? {};
+  const scriptRelPaths = Object.keys(hooksConfig);
   if (scriptRelPaths.length === 0) return { present: false };
 
   const skillsDir = getPlatformSkillsDir(platform, scope);
-  const expectedCommands = scriptRelPaths.map((scriptRelPath) =>
-    buildHookCommand(baseDir, skillsDir, scriptRelPath, {
-      platformId: platform.id,
-      scope,
+  const expectedHooks: ExpectedHookDescriptor[] = Object.entries(hooksConfig).map(
+    ([scriptRelPath, config]) => ({
+      scriptRelPath,
+      command: buildHookCommand(baseDir, skillsDir, scriptRelPath, {
+        platformId: platform.id,
+        scope,
+      }),
+      matcher: config.matcher,
     }),
   );
 
@@ -275,48 +386,71 @@ export async function inspectCometHooksForPlatform(
     case 'claude-code':
       inspection = await inspectSingleHookJson(
         path.join(platformBase, platform.hookConfigFile ?? 'settings.local.json'),
-        expectedCommands,
-        scriptRelPaths,
+        expectedHooks,
         (config) => collectGroupedCommands(config, 'PreToolUse'),
+        (config, expected) => countGroupedHookMatches(config, 'PreToolUse', expected),
       );
+      for (const legacyFile of platform.legacyHookConfigFiles ?? []) {
+        const legacy = await inspectSingleHookJson(
+          path.join(platformBase, legacyFile),
+          expectedHooks,
+          (config) => collectGroupedCommands(config, 'PreToolUse'),
+          (config, expected) => countGroupedHookMatches(config, 'PreToolUse', expected),
+        );
+        if (legacy.error) {
+          inspection = { ...inspection, present: false, error: legacy.error };
+          break;
+        }
+        if (legacy.present || legacy.managedPresent || legacy.legacyPresent) {
+          inspection = {
+            ...inspection,
+            ...(!inspection.present ? { managedPresent: true } : {}),
+            legacyPresent: true,
+            ...(legacy.duplicatePresent ? { duplicatePresent: true } : {}),
+          };
+        }
+      }
       break;
     case 'qwen':
     case 'qoder':
     case 'codebuddy':
       inspection = await inspectSingleHookJson(
         path.join(platformBase, 'settings.json'),
-        expectedCommands,
-        scriptRelPaths,
+        expectedHooks,
         (config) => collectGroupedCommands(config, 'PreToolUse'),
+        (config, expected) => countGroupedHookMatches(config, 'PreToolUse', expected),
       );
       break;
     case 'gemini':
       inspection = await inspectSingleHookJson(
         path.join(platformBase, 'settings.json'),
-        expectedCommands,
-        scriptRelPaths,
+        expectedHooks,
         (config) => collectGroupedCommands(config, 'BeforeTool'),
+        (config, expected) =>
+          countGroupedHookMatches(config, 'BeforeTool', expected, (matcher) =>
+            matcher === 'Write|Edit' ? 'write_file|edit_file' : matcher,
+          ),
       );
       break;
     case 'windsurf':
       inspection = await inspectSingleHookJson(
         path.join(platformBase, 'hooks.json'),
-        expectedCommands,
-        scriptRelPaths,
+        expectedHooks,
         (config) => collectCommandArray(config, 'pre_write_code'),
+        countWindsurfHookMatches,
       );
       break;
     case 'copilot':
       inspection = await inspectSingleHookJson(
         path.join(platformBase, 'hooks', 'comet-guard.json'),
-        expectedCommands,
-        scriptRelPaths,
-        collectCopilotCommands,
+        expectedHooks,
         collectCopilotCommandFields,
+        countCopilotHookMatches,
+        2,
       );
       break;
     case 'kiro':
-      inspection = await inspectKiroHooks(platformBase, scriptRelPaths, expectedCommands);
+      inspection = await inspectKiroHooks(platformBase, expectedHooks);
       break;
   }
 

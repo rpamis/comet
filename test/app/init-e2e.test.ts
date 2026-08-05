@@ -2243,6 +2243,77 @@ describe('comet init E2E', () => {
     expect(registry.projects[0].lastTargets.length).toBeGreaterThan(0);
   });
 
+  it('removes the historical global Router when project init installs the replacement', async () => {
+    mockExternalSuccess();
+    const fakeHome = os.homedir();
+    const globalHooksPath = path.join(fakeHome, '.codex', 'hooks.json');
+    const userHook = { type: 'command', command: 'node user-hook.mjs' };
+    const globalRouter = {
+      type: 'command',
+      command: `node "${path.join(
+        fakeHome,
+        '.agents',
+        'skills',
+        'comet',
+        'scripts',
+        'comet-hook-router.mjs',
+      )}" --platform codex`,
+    };
+    await fs.mkdir(path.dirname(globalHooksPath), { recursive: true });
+    await fs.writeFile(
+      globalHooksPath,
+      JSON.stringify({
+        hooks: { PreToolUse: [{ matcher: 'Write|Edit', hooks: [userHook, globalRouter] }] },
+      }),
+      'utf8',
+    );
+
+    const { initCommand } = await import('../../app/commands/init.js');
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, {
+        yes: true,
+        json: true,
+        scope: 'project',
+        platform: 'codex',
+        workflow: 'native',
+        language: 'en',
+      }),
+    );
+
+    expect(result.status).toBe('complete');
+    const globalHooks = JSON.parse(await fs.readFile(globalHooksPath, 'utf8'));
+    expect(globalHooks.hooks.PreToolUse[0].hooks).toEqual([userHook]);
+    const projectHooks = await fs.readFile(path.join(tmpDir, '.codex', 'hooks.json'), 'utf8');
+    expect(projectHooks.replaceAll('\\', '/')).toContain(
+      `${tmpDir.replaceAll('\\', '/')}/.agents/skills/comet/scripts/comet-hook-router.mjs`,
+    );
+  });
+
+  it('reports project init as incomplete when historical global Hook cleanup is unsafe', async () => {
+    mockExternalSuccess();
+    const fakeHome = os.homedir();
+    const legacyPath = path.join(fakeHome, '.codex', 'settings.local.json');
+    await fs.mkdir(path.dirname(legacyPath), { recursive: true });
+    await fs.writeFile(legacyPath, '{not-json', 'utf8');
+
+    const { initCommand } = await import('../../app/commands/init.js');
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, {
+        yes: true,
+        json: true,
+        scope: 'project',
+        platform: 'codex',
+        workflow: 'native',
+        language: 'en',
+      }),
+    );
+
+    expect(result.status).toBe('incomplete');
+    expect(JSON.stringify(result)).toContain('historical global Hook');
+    await expect(fs.readFile(legacyPath, 'utf8')).resolves.toBe('{not-json');
+    await expect(fs.access(path.join(tmpDir, '.codex', 'hooks.json'))).resolves.toBeUndefined();
+  });
+
   it('preserves the installed language when reusing an explicit project target', async () => {
     mockExternalSuccess();
     const fakeHome = path.join(tmpDir, 'fake-home-explicit-reuse-language');

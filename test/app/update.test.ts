@@ -602,6 +602,46 @@ describe('update command helpers', () => {
     ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
+  it('removes the historical global Router when project update installs the replacement', async () => {
+    const fakeHome = path.join(tmpDir, 'global-hook-migration-home');
+    const globalHooksPath = path.join(fakeHome, '.codex', 'hooks.json');
+    const userHook = { type: 'command', command: 'node user-hook.mjs' };
+    const globalRouter = {
+      type: 'command',
+      command: `node "${path.join(
+        fakeHome,
+        '.agents',
+        'skills',
+        'comet',
+        'scripts',
+        'comet-hook-router.mjs',
+      )}" --platform codex`,
+    };
+    await fs.mkdir(path.join(tmpDir, '.agents', 'skills', 'comet'), { recursive: true });
+    await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, '.agents', 'skills', 'comet', 'SKILL.md'), '# Comet\n');
+    await fs.mkdir(path.dirname(globalHooksPath), { recursive: true });
+    await fs.writeFile(
+      globalHooksPath,
+      JSON.stringify({
+        hooks: { PreToolUse: [{ matcher: 'Write|Edit', hooks: [userHook, globalRouter] }] },
+      }),
+      'utf8',
+    );
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(tmpDir, { skipNpm: true, scope: 'project', platform: 'codex' });
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    const globalHooks = JSON.parse(await fs.readFile(globalHooksPath, 'utf8'));
+    expect(globalHooks.hooks.PreToolUse[0].hooks).toEqual([userHook]);
+    await expect(fs.access(path.join(tmpDir, '.codex', 'hooks.json'))).resolves.toBeUndefined();
+  });
+
   it('does not update Codex hooks when the managed Hook script cannot be copied', async () => {
     const fakeHome = path.join(tmpDir, 'hook-copy-failure-home');
     const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
@@ -2945,6 +2985,45 @@ describe('update command helpers', () => {
     await expect(
       fs.access(path.join(tmpDir, '.claude', 'settings.local.json')),
     ).resolves.toBeUndefined();
+  });
+
+  it('keeps Classic v1 selection when historical global Hook cleanup fails', async () => {
+    const fakeHome = path.join(tmpDir, 'classic-hook-cleanup-failure-home');
+    const config = defaultProjectConfig('.');
+    config.workflows = ['classic'];
+    config.default_workflow = 'classic';
+    await writeProjectConfig(tmpDir, config);
+    await fs.mkdir(path.join(tmpDir, '.agents', 'skills', 'comet'), { recursive: true });
+    await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.agents', 'skills', 'comet', 'SKILL.md'),
+      '# Stale Comet\n',
+    );
+    const selectionPath = path.join(tmpDir, '.comet', 'current-change.json');
+    const legacySelection = `${JSON.stringify({ version: 1, change: 'legacy-change', branch: null })}\n`;
+    await fs.writeFile(selectionPath, legacySelection, 'utf8');
+    const globalLegacyPath = path.join(fakeHome, '.codex', 'settings.local.json');
+    await fs.mkdir(path.dirname(globalLegacyPath), { recursive: true });
+    await fs.writeFile(globalLegacyPath, '{not-json', 'utf8');
+
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let result;
+    try {
+      result = await updateCommand(tmpDir, {
+        skipNpm: true,
+        scope: 'project',
+        platform: 'codex',
+      });
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    expect(result!.status).toBe('incomplete');
+    await expect(fs.readFile(selectionPath, 'utf8')).resolves.toBe(legacySelection);
+    await expect(fs.readFile(globalLegacyPath, 'utf8')).resolves.toBe('{not-json');
+    await expect(fs.access(path.join(tmpDir, '.codex', 'hooks.json'))).resolves.toBeUndefined();
   });
 
   it('migrates manifest-managed legacy Codex Skills for Native without touching unrelated state', async () => {

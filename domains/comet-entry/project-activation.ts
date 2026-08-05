@@ -15,6 +15,7 @@ import {
   nativeProjectPaths,
 } from '../comet-native/native-paths.js';
 import { installOpenSpec } from '../integrations/openspec.js';
+import { projectCometHooksFromInstalledScope } from '../skill/project-hook-projection.js';
 import {
   defaultWorkflowProjectConfig,
   readWorkflowGlobalConfig,
@@ -131,6 +132,24 @@ export async function activateCometProject(
   // project config. A failed activation therefore never leaves a configured
   // project pointing at an incomplete artifact root.
   const classicPermit = await ensureWorkflowDirectories(projectRoot, config);
+  const workflows = config.workflows ?? [config.default_workflow];
+  const workflowSelection =
+    workflows.includes('native') && workflows.includes('classic')
+      ? 'both'
+      : config.default_workflow;
+  const hookProjection = await projectCometHooksFromInstalledScope(
+    projectRoot,
+    options.homeDir ?? os.homedir(),
+    'global',
+    workflowSelection,
+    { globalBaseDir: options.homeDir ?? os.homedir() },
+  );
+  if (hookProjection.failures.length > 0) {
+    const details = hookProjection.failures
+      .map(({ platform, reason }) => `${platform}: ${reason}`)
+      .join('; ');
+    throw new Error(`Comet project Hook activation failed: ${details}`);
+  }
   await writeWorkflowProjectConfig(projectRoot, config);
   if (classicPermit) {
     await completeClassicLayoutInitialization(projectRoot, classicPermit);

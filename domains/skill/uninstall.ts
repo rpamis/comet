@@ -1031,11 +1031,11 @@ async function removeCometHooksForPlatform(
               scriptRelPaths,
             );
           } catch {
-            if (file === canonicalFile) failed++;
+            failed++;
             continue;
           }
           removed += result.removed;
-          if (file === canonicalFile) failed += result.failed;
+          failed += result.failed;
         }
         return { removed, failed };
       }

@@ -18,7 +18,7 @@ describe('removeCometHooksForPlatform', () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it('ignores malformed historical Codex hooks after canonical cleanup succeeds', async () => {
+  it('counts malformed historical Codex hooks after canonical cleanup succeeds', async () => {
     const codex = PLATFORMS.find((platform) => platform.id === 'codex')!;
     const canonicalPath = path.join(tmpDir, '.codex', 'hooks.json');
     const legacyPath = path.join(tmpDir, '.codex', 'settings.local.json');
@@ -29,7 +29,7 @@ describe('removeCometHooksForPlatform', () => {
 
     await expect(removeCometHooksForPlatform(tmpDir, codex, 'project')).resolves.toEqual({
       removed: 1,
-      failed: 0,
+      failed: 1,
     });
 
     const cleanedCanonical = JSON.parse(await fs.readFile(canonicalPath, 'utf8'));
@@ -37,7 +37,7 @@ describe('removeCometHooksForPlatform', () => {
     await expect(fs.readFile(legacyPath, 'utf8')).resolves.toBe(malformedLegacy);
   });
 
-  it('ignores unreadable historical Codex hook paths after canonical cleanup succeeds', async () => {
+  it('counts unreadable historical Codex hook paths after canonical cleanup succeeds', async () => {
     const codex = PLATFORMS.find((platform) => platform.id === 'codex')!;
     const legacyPath = path.join(tmpDir, '.codex', 'settings.local.json');
 
@@ -46,7 +46,7 @@ describe('removeCometHooksForPlatform', () => {
 
     await expect(removeCometHooksForPlatform(tmpDir, codex, 'project')).resolves.toEqual({
       removed: 1,
-      failed: 0,
+      failed: 1,
     });
   });
 
@@ -175,7 +175,7 @@ describe('removeCometHooksForPlatform', () => {
     },
   );
 
-  it('keeps unreadable historical Codex Hook access best-effort after canonical cleanup', async () => {
+  it('counts unreadable historical Codex Hook access after canonical cleanup', async () => {
     const codex = PLATFORMS.find((platform) => platform.id === 'codex')!;
     const canonicalPath = path.join(tmpDir, '.codex', 'hooks.json');
     const legacyPath = path.join(tmpDir, '.codex', 'settings.local.json');
@@ -192,7 +192,7 @@ describe('removeCometHooksForPlatform', () => {
     try {
       await expect(removeCometHooksForPlatform(tmpDir, codex, 'project')).resolves.toEqual({
         removed: 1,
-        failed: 0,
+        failed: 1,
       });
     } finally {
       accessSpy.mockRestore();

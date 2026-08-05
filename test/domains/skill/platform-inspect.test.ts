@@ -222,6 +222,161 @@ describe('platform component inspection', () => {
     });
   });
 
+  it('reports a structurally mismatched extra grouped Router as a duplicate', async () => {
+    const target = platform('claude');
+    await installManagedHookScripts(tmpDir, target);
+    await installCometHooksForPlatform(tmpDir, target, 'project');
+    const configPath = hookConfigPath(tmpDir, target.id);
+    const config = JSON.parse(await fs.readFile(configPath, 'utf8'));
+    const duplicate = structuredClone(config.hooks.PreToolUse[0]);
+    duplicate.matcher = 'Read';
+    config.hooks.PreToolUse.push(duplicate);
+    await fs.writeFile(configPath, JSON.stringify(config), 'utf8');
+
+    await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
+      present: true,
+      duplicatePresent: true,
+    });
+  });
+
+  it.each([
+    ['codex', 'matcher'],
+    ['codex', 'type'],
+    ['qwen', 'matcher'],
+    ['gemini', 'matcher'],
+  ] as const)('rejects a structurally mismatched %s grouped Hook (%s)', async (id, field) => {
+    const target = platform(id);
+    await installManagedHookScripts(tmpDir, target);
+    await installCometHooksForPlatform(tmpDir, target, 'project');
+    const configPath = hookConfigPath(tmpDir, id);
+    const config = JSON.parse(await fs.readFile(configPath, 'utf8'));
+    const groupName = id === 'gemini' ? 'BeforeTool' : 'PreToolUse';
+    const group = config.hooks[groupName][0];
+    if (field === 'matcher') group.matcher = 'Read';
+    else group.hooks[0].type = 'prompt';
+    await fs.writeFile(configPath, JSON.stringify(config), 'utf8');
+
+    await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
+      present: false,
+      managedPresent: true,
+    });
+  });
+
+  it.each(['matcher', 'powershell'] as const)(
+    'rejects a structurally mismatched Copilot Hook (%s)',
+    async (field) => {
+      const target = platform('github-copilot');
+      await installManagedHookScripts(tmpDir, target);
+      await installCometHooksForPlatform(tmpDir, target, 'project');
+      const configPath = hookConfigPath(tmpDir, target.id);
+      const config = JSON.parse(await fs.readFile(configPath, 'utf8'));
+      const entry = config.hooks.preToolUse[0];
+      if (field === 'matcher') entry.matcher = '*';
+      else delete entry.powershell;
+      await fs.writeFile(configPath, JSON.stringify(config), 'utf8');
+
+      await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
+        present: false,
+        managedPresent: true,
+      });
+    },
+  );
+
+  it('reports a structurally mismatched extra Copilot Router as a duplicate', async () => {
+    const target = platform('github-copilot');
+    await installManagedHookScripts(tmpDir, target);
+    await installCometHooksForPlatform(tmpDir, target, 'project');
+    const configPath = hookConfigPath(tmpDir, target.id);
+    const config = JSON.parse(await fs.readFile(configPath, 'utf8'));
+    const duplicate = { ...config.hooks.preToolUse[0], matcher: '*' };
+    config.hooks.preToolUse.push(duplicate);
+    await fs.writeFile(configPath, JSON.stringify(config), 'utf8');
+
+    await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
+      present: true,
+      duplicatePresent: true,
+    });
+  });
+
+  it('reports an invalid legacy Kiro Hook instead of treating the Router as healthy', async () => {
+    const target = platform('kiro');
+    await installManagedHookScripts(tmpDir, target);
+    await installCometHooksForPlatform(tmpDir, target, 'project');
+    await fs.writeFile(
+      path.join(tmpDir, '.kiro', 'hooks', 'comet-hook-guard.kiro.hook'),
+      '{not-json',
+      'utf8',
+    );
+
+    await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
+      present: false,
+      error: expect.stringContaining('Invalid Hook JSON'),
+    });
+  });
+
+  it.each(['enabled', 'when-type', 'tool-name', 'then-type'] as const)(
+    'rejects a structurally mismatched Kiro Hook (%s)',
+    async (field) => {
+      const target = platform('kiro');
+      await installManagedHookScripts(tmpDir, target);
+      await installCometHooksForPlatform(tmpDir, target, 'project');
+      const configPath = hookConfigPath(tmpDir, target.id);
+      const config = JSON.parse(await fs.readFile(configPath, 'utf8'));
+      if (field === 'enabled') config.enabled = false;
+      if (field === 'when-type') config.when.type = 'postToolUse';
+      if (field === 'tool-name') config.when.toolName = 'read';
+      if (field === 'then-type') config.then.type = 'askAgent';
+      await fs.writeFile(configPath, JSON.stringify(config), 'utf8');
+
+      await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
+        present: false,
+        managedPresent: true,
+      });
+    },
+  );
+
+  it('rejects a Windsurf Router whose output contract is disabled', async () => {
+    const target = platform('windsurf');
+    await installManagedHookScripts(tmpDir, target);
+    await installCometHooksForPlatform(tmpDir, target, 'project');
+    const configPath = hookConfigPath(tmpDir, target.id);
+    const config = JSON.parse(await fs.readFile(configPath, 'utf8'));
+    config.hooks.pre_write_code[0].show_output = false;
+    await fs.writeFile(configPath, JSON.stringify(config), 'utf8');
+
+    await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
+      present: false,
+      managedPresent: true,
+    });
+  });
+
+  it('reports a managed Codex Hook in the legacy settings file', async () => {
+    const target = platform('codex');
+    await installManagedHookScripts(tmpDir, target);
+    await installCometHooksForPlatform(tmpDir, target, 'project');
+    const canonicalPath = hookConfigPath(tmpDir, target.id);
+    const legacyPath = path.join(tmpDir, '.codex', 'settings.local.json');
+    await fs.copyFile(canonicalPath, legacyPath);
+
+    await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
+      present: true,
+      legacyPresent: true,
+    });
+  });
+
+  it('reports invalid Codex legacy Hook JSON even when the canonical Router is current', async () => {
+    const target = platform('codex');
+    await installManagedHookScripts(tmpDir, target);
+    await installCometHooksForPlatform(tmpDir, target, 'project');
+    const legacyPath = path.join(tmpDir, '.codex', 'settings.local.json');
+    await fs.writeFile(legacyPath, '{not-json', 'utf8');
+
+    await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toMatchObject({
+      present: false,
+      error: expect.stringContaining('settings.local.json'),
+    });
+  });
+
   it.each([
     'claude',
     'codex',

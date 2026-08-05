@@ -1,3 +1,5 @@
+import path from 'path';
+
 import type { Platform } from '../../platform/install/platforms.js';
 import type { InstallScope } from '../../platform/install/types.js';
 import type { InitWorkflowSelection } from '../comet-entry/types.js';
@@ -39,4 +41,34 @@ export async function reconcileCometHooksForPlatform(
         ? `blocking Hooks are project-scoped; removed ${cleanup.removed} legacy global Hook${cleanup.removed === 1 ? '' : 's'}`
         : 'blocking Hooks are project-scoped',
   };
+}
+
+export async function reconcileProjectCometHooksForPlatform(
+  projectRoot: string,
+  platform: Platform,
+  workflowSelection: InitWorkflowSelection,
+  options: { globalBaseDir: string },
+): Promise<HookInstallResult> {
+  const project = await installCometHooksForPlatform(
+    projectRoot,
+    platform,
+    'project',
+    workflowSelection,
+  );
+  if (project.status !== 'installed') return project;
+  if (path.resolve(projectRoot) === path.resolve(options.globalBaseDir)) return project;
+
+  const globalCleanup = await removeCometHooksForPlatform(
+    options.globalBaseDir,
+    platform,
+    'global',
+  );
+  if (globalCleanup.failed > 0) {
+    return {
+      status: 'failed',
+      cleanupFailed: globalCleanup.failed,
+      reason: `project Router installed, but failed to remove ${globalCleanup.failed} historical global Hook configuration(s)`,
+    };
+  }
+  return project;
 }

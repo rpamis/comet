@@ -20,7 +20,10 @@ import {
   mergeProjectConfig,
   prepareManagedSkillCopyTarget,
 } from '../../domains/skill/platform-install.js';
-import { reconcileCometHooksForPlatform } from '../../domains/skill/hook-lifecycle.js';
+import {
+  reconcileCometHooksForPlatform,
+  reconcileProjectCometHooksForPlatform,
+} from '../../domains/skill/hook-lifecycle.js';
 import { removeLegacyCometSkillsForPlatform } from '../../domains/skill/uninstall.js';
 import { syncCometProjectInstructions } from '../../domains/skill/project-instructions.js';
 import {
@@ -1743,12 +1746,14 @@ async function updateSingleProject(
         status,
         reason,
         cleanupFailed = 0,
-      } = await reconcileCometHooksForPlatform(
-        baseDir,
-        target.platform,
-        target.scope,
-        target.scope === 'global' ? 'classic' : projectWorkflowSelection,
-      );
+      } = target.scope === 'project'
+        ? await reconcileProjectCometHooksForPlatform(
+            baseDir,
+            target.platform,
+            projectWorkflowSelection,
+            { globalBaseDir: os.homedir() },
+          )
+        : await reconcileCometHooksForPlatform(baseDir, target.platform, target.scope, 'classic');
       const hookFailed = status === 'failed' ? 1 : cleanupFailed;
       totalHooksFailed += hookFailed;
       hookTargetResults.push({

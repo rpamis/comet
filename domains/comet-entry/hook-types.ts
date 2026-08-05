@@ -6,6 +6,7 @@ export interface CometHookRequest {
   intent: CometHookIntent;
   targets: string[];
   toolName: string | null;
+  cwd?: string;
 }
 
 export interface CometHookDecision {

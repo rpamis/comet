@@ -30,4 +30,4 @@ Classic 旧项目没有新版配置时只按 Classic legacy fallback 处理，�
 
 平台只应安装一个 Comet Hook Router。一次写入事件最多进入一个 workflow Guard；不得分别运行 Native 和 Classic Hook。
 
-Hook 会对多文件和 patch 目标整体裁决。当前阶段不允许普通项目写入、存在多个所有权候选、selection/状态不可安全读取或写入目标无法判断时会失败关闭。不要绕过 Hook；按拒绝信息恢复对应 workflow，只有所有权不明确时才重新选择当前 change。
+Hook 会对多文件和 patch 目标整体裁决。无法归因的事件和仅位于项目外的目标保持中立；一旦写入已归属于本项目，当前阶段不允许普通项目写入、存在多个所有权候选，或 selection、状态与目标范围无法安全读取时会失败关闭。不要绕过 Hook；按拒绝信息恢复对应 workflow，只有所有权不明确时才重新选择当前 change。

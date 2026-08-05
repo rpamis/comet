@@ -35,7 +35,10 @@ import {
   renderProjectConfig,
   mergeProjectConfig,
 } from '../../../domains/skill/platform-install.js';
-import { reconcileCometHooksForPlatform } from '../../../domains/skill/hook-lifecycle.js';
+import {
+  reconcileCometHooksForPlatform,
+  reconcileProjectCometHooksForPlatform,
+} from '../../../domains/skill/hook-lifecycle.js';
 import { PLATFORMS, type Platform } from '../../../platform/install/platforms.js';
 import {
   artifactLanguageToSkillLanguage,
@@ -977,6 +980,91 @@ describe('skills', () => {
       expect(updated.hooks.PreToolUse[1]).toEqual({ matcher: 'Write|Edit', hooks: [] });
     });
 
+    it('installs a project Router and removes the historical global Router atomically', async () => {
+      const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
+      const projectRoot = path.join(tmpDir, 'project');
+      const homeDir = path.join(tmpDir, 'home');
+      const globalHooksPath = path.join(homeDir, '.codex', 'hooks.json');
+      const userHook = { type: 'command', command: 'node user-hook.mjs' };
+      await fs.mkdir(path.dirname(globalHooksPath), { recursive: true });
+      await fs.writeFile(
+        globalHooksPath,
+        JSON.stringify({
+          hooks: {
+            PreToolUse: [
+              {
+                matcher: 'Write|Edit',
+                hooks: [
+                  userHook,
+                  {
+                    type: 'command',
+                    command: expectedHookCommand('.agents', 'codex', homeDir, 'global'),
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+        'utf8',
+      );
+
+      await expect(
+        reconcileProjectCometHooksForPlatform(projectRoot, codex, 'native', {
+          globalBaseDir: homeDir,
+        }),
+      ).resolves.toEqual({ status: 'installed' });
+
+      const projectHooks = JSON.parse(
+        await fs.readFile(path.join(projectRoot, '.codex', 'hooks.json'), 'utf8'),
+      );
+      expect(projectHooks.hooks.PreToolUse[0].hooks[0].command).toBe(
+        expectedHookCommand('.agents', 'codex', projectRoot),
+      );
+      const globalHooks = JSON.parse(await fs.readFile(globalHooksPath, 'utf8'));
+      expect(globalHooks.hooks.PreToolUse[0].hooks).toEqual([userHook]);
+    });
+
+    it('does not remove the project Router when the project root is also the configured home', async () => {
+      const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
+
+      await expect(
+        reconcileProjectCometHooksForPlatform(tmpDir, codex, 'native', {
+          globalBaseDir: tmpDir,
+        }),
+      ).resolves.toEqual({ status: 'installed' });
+
+      const hooks = JSON.parse(
+        await fs.readFile(path.join(tmpDir, '.codex', 'hooks.json'), 'utf8'),
+      );
+      expect(hooks.hooks.PreToolUse[0].hooks[0].command).toBe(
+        expectedHookCommand('.agents', 'codex', tmpDir),
+      );
+    });
+
+    it('reports incomplete project reconciliation when historical global cleanup fails', async () => {
+      const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
+      const projectRoot = path.join(tmpDir, 'project');
+      const homeDir = path.join(tmpDir, 'home');
+      const legacyPath = path.join(homeDir, '.codex', 'settings.local.json');
+      await fs.mkdir(path.dirname(legacyPath), { recursive: true });
+      await fs.writeFile(legacyPath, '{not-json', 'utf8');
+
+      await expect(
+        reconcileProjectCometHooksForPlatform(projectRoot, codex, 'native', {
+          globalBaseDir: homeDir,
+        }),
+      ).resolves.toEqual({
+        status: 'failed',
+        cleanupFailed: 1,
+        reason:
+          'project Router installed, but failed to remove 1 historical global Hook configuration(s)',
+      });
+      await expect(
+        fs.access(path.join(projectRoot, '.codex', 'hooks.json')),
+      ).resolves.toBeUndefined();
+      await expect(fs.readFile(legacyPath, 'utf8')).resolves.toBe('{not-json');
+    });
+
     it('reports failure when a legacy Codex Hook config cannot be cleaned up', async () => {
       const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
       const legacyPath = path.join(tmpDir, '.codex', 'settings.local.json');
@@ -984,7 +1072,7 @@ describe('skills', () => {
       await fs.writeFile(legacyPath, '{not-json', 'utf-8');
 
       await expect(installCometHooksForPlatform(tmpDir, codex, 'project')).resolves.toEqual({
-        status: 'installed',
+        status: 'failed',
         cleanupFailed: 1,
         reason: expect.stringContaining('legacy Hook cleanup failed'),
       });
@@ -1137,7 +1225,7 @@ describe('skills', () => {
       ).toEqual(preservedCommands);
     });
 
-    it('keeps canonical Codex hook installation successful when legacy cleanup cannot be written', async () => {
+    it('reports Codex hook installation failure when legacy cleanup cannot be written', async () => {
       const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
       const canonicalPath = path.join(tmpDir, '.codex', 'hooks.json');
       const legacyPath = path.join(tmpDir, '.codex', 'settings.local.json');
@@ -1158,7 +1246,7 @@ describe('skills', () => {
         .mockRejectedValueOnce(new Error('simulated legacy write failure'));
 
       await expect(installCometHooksForPlatform(tmpDir, codex, 'project')).resolves.toEqual({
-        status: 'installed',
+        status: 'failed',
         cleanupFailed: 1,
         reason: 'legacy Hook cleanup failed for settings.local.json',
       });
@@ -1166,7 +1254,7 @@ describe('skills', () => {
       await expect(fs.readFile(legacyPath, 'utf-8')).resolves.toBe(JSON.stringify(legacy, null, 2));
     });
 
-    it('keeps canonical Codex hook installation successful when legacy access fails', async () => {
+    it('reports Codex hook installation failure when legacy access fails', async () => {
       const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
       const canonicalPath = path.join(tmpDir, '.codex', 'hooks.json');
       const legacyPath = path.join(tmpDir, '.codex', 'settings.local.json');
@@ -1182,7 +1270,7 @@ describe('skills', () => {
 
       try {
         await expect(installCometHooksForPlatform(tmpDir, codex, 'project')).resolves.toEqual({
-          status: 'installed',
+          status: 'failed',
           cleanupFailed: 1,
           reason: 'legacy Hook cleanup failed for settings.local.json',
         });
@@ -1243,7 +1331,7 @@ describe('skills', () => {
       await fs.writeFile(legacyPath, invalid, 'utf-8');
 
       await expect(installCometHooksForPlatform(tmpDir, codex, 'project')).resolves.toEqual({
-        status: 'installed',
+        status: 'failed',
         cleanupFailed: 1,
         reason: 'legacy Hook cleanup failed for settings.local.json',
       });
@@ -1606,6 +1694,89 @@ describe('skills', () => {
       await installCometHooksForPlatform(tmpDir, platform);
       const secondInstall = JSON.parse(await fs.readFile(hooksPath, 'utf-8'));
       expect(secondInstall).toEqual(firstInstall);
+    });
+
+    it('does not overwrite an unmanaged Kiro file at the canonical Router path', async () => {
+      const kiro = PLATFORMS.find((candidate) => candidate.id === 'kiro')!;
+      const canonicalPath = path.join(tmpDir, '.kiro', 'hooks', 'comet-hook-router.kiro.hook');
+      const original = {
+        enabled: true,
+        then: { type: 'runCommand', command: 'node user-hook.mjs' },
+      };
+      await fs.mkdir(path.dirname(canonicalPath), { recursive: true });
+      await fs.writeFile(canonicalPath, JSON.stringify(original, null, 2), 'utf8');
+
+      await expect(installCometHooksForPlatform(tmpDir, kiro, 'project')).resolves.toMatchObject({
+        status: 'failed',
+        reason: expect.stringContaining('user-owned'),
+      });
+      await expect(fs.readFile(canonicalPath, 'utf8').then(JSON.parse)).resolves.toEqual(original);
+    });
+
+    it('preserves unmanaged legacy-named Kiro files while removing managed legacy files', async () => {
+      const kiro = PLATFORMS.find((candidate) => candidate.id === 'kiro')!;
+      const hooksDir = path.join(tmpDir, '.kiro', 'hooks');
+      const classicLegacyPath = path.join(hooksDir, 'comet-hook-guard.kiro.hook');
+      const nativeLegacyPath = path.join(hooksDir, 'comet-native-hook-guard.kiro.hook');
+      const staleNativeCommand = `node "${normalized(
+        path.join(
+          tmpDir,
+          '.kiro',
+          'skills',
+          'comet-native',
+          'scripts',
+          'comet-native-hook-guard.mjs',
+        ),
+      )}"`;
+      await fs.mkdir(hooksDir, { recursive: true });
+      await fs.writeFile(
+        classicLegacyPath,
+        JSON.stringify({ then: { type: 'runCommand', command: 'node user.mjs' } }),
+        'utf8',
+      );
+      await fs.writeFile(
+        nativeLegacyPath,
+        JSON.stringify({ then: { type: 'runCommand', command: staleNativeCommand } }),
+        'utf8',
+      );
+
+      await expect(installCometHooksForPlatform(tmpDir, kiro, 'project')).resolves.toEqual({
+        status: 'installed',
+      });
+      await expect(fs.readFile(classicLegacyPath, 'utf8').then(JSON.parse)).resolves.toBeTruthy();
+      await expect(fs.access(nativeLegacyPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    });
+
+    it('keeps migrated Copilot entries schema-valid and carries metadata onto the Router entry', async () => {
+      const copilot = PLATFORMS.find((candidate) => candidate.id === 'github-copilot')!;
+      const hookPath = path.join(tmpDir, '.github', 'hooks', 'comet-guard.json');
+      const staleRouterCommand = expectedHookCommand('.github', 'github-copilot');
+      await fs.mkdir(path.dirname(hookPath), { recursive: true });
+      await fs.writeFile(
+        hookPath,
+        JSON.stringify({
+          hooks: {
+            preToolUse: [{ matcher: 'old', bash: staleRouterCommand, label: 'keep-me' }],
+          },
+        }),
+        'utf8',
+      );
+
+      await installCometHooksForPlatform(tmpDir, copilot, 'project');
+
+      const entries = (
+        JSON.parse(await fs.readFile(hookPath, 'utf8')) as {
+          hooks: { preToolUse: Array<Record<string, unknown>> };
+        }
+      ).hooks.preToolUse;
+      expect(
+        entries.every((entry) =>
+          ['command', 'bash', 'powershell'].some((key) => typeof entry[key] === 'string'),
+        ),
+      ).toBe(true);
+      expect(entries).toContainEqual(
+        expect.objectContaining({ label: 'keep-me', bash: expect.any(String) }),
+      );
     });
   });
 
@@ -2881,12 +3052,16 @@ describe('skills', () => {
       expect(zhGuard).toContain('零个表示当前没有 Comet 需求');
       expect(zhGuard).toContain('多个候选时暂停并让用户选择');
       expect(zhGuard).toContain('普通写入权限不覆盖 brief 中未解决的 `[blocking]`');
+      expect(zhGuard).toContain('无法归因的事件和仅位于项目外的目标保持中立');
+      expect(zhGuard).toContain('一旦写入已归属于本项目');
       expect(enGuard).toContain('record the failed result');
       expect(enGuard).toContain('return to Build before modifying the implementation');
       expect(enGuard).toContain('dot-prefixed project files');
       expect(enGuard).toContain('zero means there is no current Comet request');
       expect(enGuard).toContain('multiple candidates require an explicit user selection');
       expect(enGuard).toContain('does not override unresolved `[blocking]` user decisions');
+      expect(enGuard).toContain('targets that are entirely outside the project remain neutral');
+      expect(enGuard).toContain('Once a write is attributed to this project');
 
       await expect(
         fs.access(

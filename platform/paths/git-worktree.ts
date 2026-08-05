@@ -59,6 +59,19 @@ function inspectGitWorktree(projectPath: string): GitWorktreeContext {
   }
 }
 
+function listGitWorktreeRoots(projectPath: string): string[] {
+  try {
+    runGit(projectPath, ['rev-parse', '--is-inside-work-tree']);
+  } catch {
+    return [];
+  }
+  const porcelain = runGit(projectPath, ['worktree', 'list', '--porcelain', '-z']);
+  return porcelain
+    .split('\0')
+    .filter((token) => token.startsWith('worktree '))
+    .map((token) => path.resolve(token.slice('worktree '.length)));
+}
+
 function isLocalGitBranch(projectPath: string, branch: string): boolean {
   try {
     runGit(projectPath, ['check-ref-format', '--branch', branch]);
@@ -69,5 +82,5 @@ function isLocalGitBranch(projectPath: string, branch: string): boolean {
   }
 }
 
-export { inspectGitWorktree, isLocalGitBranch };
+export { inspectGitWorktree, isLocalGitBranch, listGitWorktreeRoots };
 export type { GitWorktreeContext };

@@ -82,6 +82,15 @@ Before creating a worktree, add `.worktrees/` to the repository-local Git exclud
 
 Create the worktree from the resolved commit of a verified local target branch. If the source directory has uncommitted content, attribute it first: leave work proven unrelated to the new change in place; if content may belong to the new change and cannot enter through that commit, wait for the user to decide how to preserve it rather than silently committing, copying, or omitting it. The target directory must receive consistent configuration from the target branch or establish legal configuration through public `comet native init`, then verify artifact-root, language, clarification, archive, verify, and snapshot semantics. Stop when consistency cannot be proven. Never copy the source `.comet/current-change.json`.
 
+After the target configuration is ready and before running `new`, the Agent must run these commands in the new working directory:
+
+```bash
+comet doctor --repair --scope project
+comet doctor --scope project --json
+```
+
+Continue only when Doctor confirms that the Hook runtime is current, the platform has exactly one Router rooted in the target project, and no legacy or duplicate Comet Hook remains. The Agent runs these commands in the new working directory without asking the user to enter it manually, and never copies `.comet/current-change.json` from the source directory. If the target branch did not provide project configuration, first use the public `comet native init` command to establish the source project's verified semantics, then run the Doctor sequence above.
+
 If worktree creation completes only some steps, stop immediately and report the original error, target branch and path, every branch/worktree/exclude/config/change resource known to have been created, and the recoverable next action. Clean up only resources proven to be newly created by this operation and safe to remove. Preserve the scene when ownership is uncertain; never remove an existing or possibly user-owned worktree, branch, or file.
 
 Runtime rechecks for a newly active change inside the same mutation lock used by `new`. If a system-default `current` loses this race and returns `workspace-isolation-required`, automatically prepare the default worktree and retry there. If an explicit user choice becomes invalid before execution, stop and reconfirm rather than silently changing modes.

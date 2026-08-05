@@ -14,6 +14,7 @@ import {
 import { runWithHookReadCache } from '../../platform/process/hook-read-cache.js';
 import { inspectCometHook } from './hook-router.js';
 import type { CometHookDecision } from './hook-types.js';
+import { resolveCometHookProjectRoot } from './hook-project-root.js';
 
 const USAGE = 'Usage: comet-hook-router --platform <platform-id> [--project-root <project-root>]';
 
@@ -45,8 +46,13 @@ function parseArgs(args: readonly string[]): ParsedArgs {
   return { platformId, ...(projectRoot ? { projectRoot: path.resolve(projectRoot) } : {}) };
 }
 
-export async function projectRootFrom(parsed: ParsedArgs): Promise<string | null> {
-  if (parsed.projectRoot) return parsed.projectRoot;
+export async function projectRootFrom(
+  parsed: ParsedArgs,
+  request?: ReturnType<typeof readCometHookRequest>,
+): Promise<string | null> {
+  if (parsed.projectRoot) {
+    return request ? resolveCometHookProjectRoot(parsed.projectRoot, request) : parsed.projectRoot;
+  }
   const discovered = await discoverNativeProject(process.cwd());
   for (const marker of [['.comet', 'config.yaml'], ['.git']]) {
     try {
@@ -78,8 +84,8 @@ export async function runCometHookRouter(args: readonly string[]): Promise<numbe
 
   let decision: CometHookDecision;
   try {
-    const projectRoot = await projectRootFrom(parsed);
     const request = readCometHookRequest();
+    const projectRoot = await projectRootFrom(parsed, request);
     decision = projectRoot
       ? await runWithHookReadCache(() => inspectCometHook(projectRoot, request))
       : { allowed: true, reason: 'No Comet project discovered' };
