@@ -138,6 +138,20 @@ describe('Classic evidence collection', () => {
     expect(evidenceSatisfied(evidence, 'run.checkpoint')).toBe(false);
   });
 
+  it('does not satisfy linked evidence when the configured layout is unavailable', async () => {
+    await fs.rm(path.join(projectRoot, 'openspec'), { recursive: true, force: true });
+    await writeProjectFile('docs/superpowers/plans/demo-plan.md', '# Plan\n');
+
+    const evidence = await collectClassicEvidence(changeDir, projection);
+    const plan = evidence.find((item) => item.code === 'build.plan');
+
+    expect(plan).toMatchObject({
+      satisfied: false,
+      source: 'docs/superpowers/plans/demo-plan.md',
+    });
+    expect(plan?.detail).toContain('Classic layout');
+  });
+
   it('does not satisfy linked evidence with a project traversal pointer', async () => {
     const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-classic-outside-'));
     try {

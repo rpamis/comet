@@ -163,6 +163,16 @@ export async function resolveClassicLayout(
   );
 }
 
+async function inspectUntrustedAlternateRoot(alternateRoot: string): Promise<boolean> {
+  try {
+    await fs.lstat(alternateRoot);
+    return true;
+  } catch (error) {
+    if (isMissingPath(error)) return false;
+    throw error;
+  }
+}
+
 export async function inspectClassicLayout(
   projectRoot: string,
   artifactLayout?: ClassicArtifactLayout,
@@ -171,7 +181,7 @@ export async function inspectClassicLayout(
   const alternateLayout: ClassicArtifactLayout =
     paths.artifactLayout === 'legacy' ? 'docs' : 'legacy';
   const alternateRoot = classicLayoutPaths(projectRoot, alternateLayout).openSpecRoot;
-  const [configuredRoot, alternate] = await Promise.all([
+  const [configuredRoot, alternateRootExists] = await Promise.all([
     inspectProtectedProjectPath(
       paths.projectRoot,
       classicProjectRelative(paths.projectRoot, paths.openSpecRoot),
@@ -180,17 +190,9 @@ export async function inspectClassicLayout(
         expected: 'directory',
       },
     ),
-    inspectProtectedProjectPath(
-      paths.projectRoot,
-      classicProjectRelative(paths.projectRoot, alternateRoot),
-      {
-        label: 'Alternate Classic OpenSpec root',
-        expected: 'directory',
-      },
-    ),
+    inspectUntrustedAlternateRoot(alternateRoot),
   ]);
   const configuredRootExists = configuredRoot.exists;
-  const alternateRootExists = alternate.exists;
   return {
     paths,
     configuredRootExists,
@@ -200,16 +202,12 @@ export async function inspectClassicLayout(
   };
 }
 
-async function assertClassicManagedRootsPhysical(
-  paths: ClassicLayoutPaths,
-  alternateRoot: string,
-): Promise<void> {
+async function assertClassicManagedRootsPhysical(paths: ClassicLayoutPaths): Promise<void> {
   const managedRoots = [
     paths.openSpecRoot,
     paths.changesDir,
     paths.archiveDir,
     paths.specsDir,
-    alternateRoot,
     paths.superpowersRoot,
     paths.superpowersSpecsDir,
     paths.superpowersPlansDir,
@@ -229,7 +227,7 @@ export async function assertClassicLayoutReadable(
   artifactLayout?: ClassicArtifactLayout,
 ): Promise<ClassicLayoutPaths> {
   const inspection = await inspectClassicLayout(projectRoot, artifactLayout);
-  await assertClassicManagedRootsPhysical(inspection.paths, inspection.alternateRoot);
+  await assertClassicManagedRootsPhysical(inspection.paths);
   // `artifact_layout` is the ownership boundary. The alternate OpenSpec root
   // may belong to a standalone OpenSpec workflow and must not block Comet from
   // reading or writing its configured root. Explicit root migration remains

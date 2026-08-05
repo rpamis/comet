@@ -34,9 +34,20 @@ async function linkedFileEvidence(
   code: string,
   relativePath: string | null,
   layout?: ClassicLayoutPaths,
+  layoutError?: unknown,
 ): Promise<ClassicEvidence> {
   if (!relativePath) return { code, satisfied: false };
   const source = relativePath.replaceAll('\\', '/');
+  if (layoutError) {
+    return {
+      code,
+      satisfied: false,
+      source,
+      detail: `Classic layout is unsafe or unavailable: ${
+        layoutError instanceof Error ? layoutError.message : String(layoutError)
+      }`,
+    };
+  }
   try {
     if (layout) {
       const alternateLayout = layout.artifactLayout === 'legacy' ? 'docs' : 'legacy';
@@ -227,9 +238,11 @@ export async function collectClassicEvidence(
     ? path.resolve(changeDir, projection.run.checkpointRef)
     : path.join(changeDir, '.comet', 'checkpoint.json');
   let layout: ClassicLayoutPaths | undefined;
+  let layoutError: unknown;
   try {
     layout = await assertClassicLayoutReadable(projectRoot);
-  } catch {
+  } catch (error) {
+    layoutError = error;
     // The individual evidence item keeps reporting the precise unavailable
     // layout error; pointers are only scoped when a valid layout is known.
   }
@@ -239,14 +252,21 @@ export async function collectClassicEvidence(
     directFileEvidence(projectRoot, 'openspec.design', design),
     directFileEvidence(projectRoot, 'openspec.tasks', tasks),
     deltaSpecEvidence(projectRoot, changeDir),
-    linkedFileEvidence(projectRoot, 'design.document', classic?.designDoc ?? null, layout),
-    linkedFileEvidence(projectRoot, 'build.plan', classic?.plan ?? null, layout),
+    linkedFileEvidence(
+      projectRoot,
+      'design.document',
+      classic?.designDoc ?? null,
+      layout,
+      layoutError,
+    ),
+    linkedFileEvidence(projectRoot, 'build.plan', classic?.plan ?? null, layout, layoutError),
     taskEvidence(projectRoot, tasks),
     linkedFileEvidence(
       projectRoot,
       'verification.report',
       classic?.verificationReport ?? null,
       layout,
+      layoutError,
     ),
     archivedHandoffEvidence(projectRoot, changeDir, classic?.handoffContext ?? null, layout),
     directFileEvidence(projectRoot, 'run.checkpoint', checkpoint),

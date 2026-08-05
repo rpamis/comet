@@ -145,6 +145,19 @@ describe('Classic artifact layout', () => {
     });
   });
 
+  it('keeps the configured root readable when the standalone root is a directory link', async () => {
+    const root = await project();
+    const outside = await externalDirectory();
+    await config(root, '  artifact_layout: docs\n');
+    await fs.mkdir(path.join(root, 'docs', 'openspec'), { recursive: true });
+    await directoryLink(outside, path.join(root, 'openspec'));
+
+    await expect(assertClassicLayoutReadable(root)).resolves.toMatchObject({
+      artifactLayout: 'docs',
+      openSpecRoot: path.join(root, 'docs', 'openspec'),
+    });
+  });
+
   it('fails closed for writes when the configured OpenSpec root is missing', async () => {
     const root = await project();
     await config(root, '  artifact_layout: docs\n');
