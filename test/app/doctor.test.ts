@@ -1087,7 +1087,7 @@ describe('doctor command', () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it('accepts current comet state fields without mutating them during a layout conflict', async () => {
+  it('accepts current Comet state fields while a standalone OpenSpec root coexists', async () => {
     const changeDir = path.join(tmpDir, 'openspec', 'changes', 'current-state');
     await state(tmpDir, 'init', 'current-state', 'full');
     await state(tmpDir, 'set', 'current-state', 'phase', 'verify');
@@ -1109,11 +1109,11 @@ describe('doctor command', () => {
       message: string;
     }>;
     const layoutResult = results.find((result) => result.check === 'Classic artifact layout');
-    expect(layoutResult).toMatchObject({ status: 'fail' });
+    expect(layoutResult).toMatchObject({ status: 'pass' });
     expect(layoutResult?.message).toContain('openspec/');
     expect(layoutResult?.message).toContain('docs/openspec/');
-    expect(layoutResult?.message).toContain('comet classic root show');
-    expect(layoutResult?.message).toContain('comet classic root move docs --dry-run');
+    expect(layoutResult?.message).toContain('standalone OpenSpec root');
+    expect(layoutResult?.message).toContain('ignored by Comet');
     const stateResult = results.find((result) => result.check === '.comet.yaml: current-state');
     expect(stateResult).toMatchObject({
       status: 'pass',

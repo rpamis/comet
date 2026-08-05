@@ -126,7 +126,7 @@ describe('resolveCometResumeProbe', () => {
     });
   });
 
-  it('fails closed instead of resuming from either root during a dual-root conflict', async () => {
+  it('resumes the configured Classic root without scanning the standalone OpenSpec root', async () => {
     await createChange('legacy-change', buildYaml);
     await writeFile(
       path.join(tmpDir, 'docs', 'openspec', 'changes', 'docs-change', 'proposal.md'),
@@ -139,7 +139,11 @@ describe('resolveCometResumeProbe', () => {
         utterance: '继续刚才的任务',
         agent_context: { non_trivial_work: true, already_in_comet_flow: false },
       }),
-    ).rejects.toThrow('Classic layout conflict');
+    ).resolves.toMatchObject({
+      action: 'auto_resume',
+      changeName: 'legacy-change',
+      phase: 'build',
+    });
   });
 
   it('fails closed when an active change directory is a junction', async () => {

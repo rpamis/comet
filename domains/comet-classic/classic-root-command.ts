@@ -178,9 +178,7 @@ export const classicRootCommand: ClassicCommandHandler = async (args) => {
   const [action, target, mode, ...extra] = args;
   if (action === 'show' && target === undefined) {
     const projectRoot = await discoverClassicProject(process.cwd());
-    const layout = await assertClassicLayoutReadable(projectRoot, undefined, {
-      allowAlternateRoot: true,
-    });
+    const layout = await assertClassicLayoutReadable(projectRoot);
     const inspection = await inspectClassicLayout(projectRoot, layout.artifactLayout);
     return {
       exitCode: 0,
@@ -209,9 +207,7 @@ export const classicRootCommand: ClassicCommandHandler = async (args) => {
     return usage(language);
   }
 
-  const layout = await assertClassicLayoutReadable(projectRoot, undefined, {
-    allowAlternateRoot: true,
-  });
+  const layout = await assertClassicLayoutReadable(projectRoot);
   const reportMode: RootMoveMode = mode === '--dry-run' ? 'dry-run' : 'complete';
   if (layout.artifactLayout === 'docs') {
     return {

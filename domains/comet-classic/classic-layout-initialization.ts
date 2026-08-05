@@ -999,9 +999,10 @@ export async function repairClassicLayoutInitialization(
 }
 
 /**
- * Validate the only two safe OpenSpec initialization states:
- * an existing configured Classic layout that is already writable, or a truly
- * fresh project where neither managed OpenSpec root exists.
+ * Validate OpenSpec initialization against the explicitly selected Classic
+ * root. A standalone OpenSpec root may already exist at the alternate
+ * location; initialization owns only the selected root and leaves the
+ * alternate root untouched.
  */
 export async function assertClassicLayoutInitializationSafe(
   projectRoot: string,
@@ -1085,11 +1086,6 @@ export async function assertClassicLayoutInitializationSafe(
         `Classic init ownership is ${ownership.stage}; recover it with comet doctor before continuing`,
       );
     }
-    if (alternateRoot.exists) {
-      throw new Error(
-        'Classic layout conflict: the alternate OpenSpec root appeared during initialization',
-      );
-    }
     const originalConfigStillMatches = workflowProjectConfigIdentityEquals(
       configIdentity,
       ownership.configIdentity,
@@ -1150,9 +1146,7 @@ export async function assertClassicLayoutInitializationSafe(
         `Configured Classic OpenSpec root is missing for ${desiredLayout} layout while the alternate root exists`,
       );
     }
-    const configured = await assertClassicLayoutWritable(root, desiredLayout, {
-      allowAlternateRoot: true,
-    });
+    const configured = await assertClassicLayoutWritable(root, desiredLayout);
     return {
       ...configured,
       initializationPermit: permitsDesiredRoot(permit, root, desiredLayout)
@@ -1163,6 +1157,14 @@ export async function assertClassicLayoutInitializationSafe(
 
   if (legacyRoot.exists || docsRoot.exists) {
     if (desiredRoot.exists && !alternateRoot.exists) {
+      return {
+        ...desired,
+        initializationPermit: permitsDesiredRoot(permit, root, desiredLayout)
+          ? permit
+          : initializationPermit(root, desiredLayout, configIdentity),
+      };
+    }
+    if (!desiredRoot.exists && alternateRoot.exists) {
       return {
         ...desired,
         initializationPermit: permitsDesiredRoot(permit, root, desiredLayout)

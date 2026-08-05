@@ -100,14 +100,29 @@ describe('Classic OpenSpec adapter', () => {
     });
   });
 
-  it('fails closed when legacy and docs roots coexist', async () => {
+  it('uses the configured docs root when a standalone OpenSpec root also exists', async () => {
     await fs.mkdir(path.join(projectRoot, 'openspec'));
+    mockedSpawnSync.mockReturnValue({
+      pid: 1,
+      output: [null, 'standalone root is independent\n', ''],
+      stdout: 'standalone root is independent\n',
+      stderr: '',
+      status: 0,
+      signal: null,
+    });
 
     const result = await runClassicCli(['openspec', 'status']);
 
-    expect(result.exitCode).toBe(70);
-    expect(result.stderr).toContain('Classic layout conflict');
-    expect(mockedSpawnSync).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      exitCode: 0,
+      stdout: 'standalone root is independent\n',
+      stderr: undefined,
+    });
+    expect(mockedSpawnSync).toHaveBeenCalledWith(
+      'openspec',
+      ['status'],
+      expect.objectContaining({ cwd: path.join(projectRoot, 'docs') }),
+    );
   });
 
   it('fails closed when the configured OpenSpec root is missing', async () => {

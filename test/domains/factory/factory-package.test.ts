@@ -963,11 +963,11 @@ describe('Factory skill package generation', () => {
     }
   });
 
-  it('rejects generated Classic routing when configured and alternate roots both exist', async () => {
+  it('uses the configured Classic root when a standalone OpenSpec root also exists', async () => {
     const workflow = normalizeWorkflowDefinition(
       builtinCometFivePhaseWorkflow({
         name: 'classic-dual-root',
-        goal: 'Reject ambiguous Classic catalogues.',
+        goal: 'Keep standalone and Comet OpenSpec catalogues independent.',
       }),
     );
     const output = await generateFactorySkillPackage(
@@ -986,7 +986,7 @@ describe('Factory skill package generation', () => {
           [path.join(output.packageRoot, 'scripts', 'workflow-state.mjs'), 'next'],
           { env },
         ),
-      ).rejects.toThrow(/Classic layout conflict/iu);
+      ).rejects.toThrow(/No active Comet change/iu);
     } finally {
       await fs.rm(runRoot, { recursive: true, force: true });
     }

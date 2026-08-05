@@ -228,7 +228,7 @@ describe('Classic evidence collection', () => {
     });
   });
 
-  it('does not satisfy a legacy handoff pointer from the alternate root during a dual-root conflict', async () => {
+  it('does not consume a handoff pointer from the standalone OpenSpec root', async () => {
     changeDir = path.join(projectRoot, 'docs', 'openspec', 'changes', 'demo');
     await fs.mkdir(changeDir, { recursive: true });
     await writeClassicConfig('docs');
@@ -243,7 +243,7 @@ describe('Classic evidence collection', () => {
     expect(handoff).toMatchObject({
       satisfied: false,
       source: 'openspec/changes/demo/.comet/handoff/context.json',
-      detail: expect.stringContaining('Classic layout conflict'),
+      detail: expect.stringContaining('standalone OpenSpec root is not a Comet artifact root'),
     });
   });
 

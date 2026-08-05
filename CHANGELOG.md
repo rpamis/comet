@@ -6,7 +6,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
-- **Classic dual-root recovery**: `comet classic root show` and migration dry-runs now remain available when both legacy and docs roots exist, exposing the conflict and a safe remediation path while keeping Classic writes blocked until it is resolved.
+- **Classic/OpenSpec coexistence**: Classic now uses only the configured artifact root, so a standalone OpenSpec project can keep the other root at the same time; explicit root migration still refuses to overwrite a non-empty destination.
 - **Codex Native Hook parsing**: Raw `apply_patch` input now attributes Add, Update, Delete, and standard `+++ b/...` file headers so Native phase protection is applied consistently.
 
 ## What's Changed [0.4.0-beta.15] - 2026-08-05
