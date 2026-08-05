@@ -63,7 +63,7 @@ export class ClassicLayoutConflictError extends Error {
     const configured = classicProjectRelative(projectRoot, configuredRoot);
     const alternate = classicProjectRelative(projectRoot, alternateRoot);
     super(
-      `Classic layout conflict: both ${configured}/ and ${alternate}/ exist; run comet doctor and resolve the conflict before writing`,
+      `Classic layout conflict: both ${configured}/ and ${alternate}/ exist; run comet classic root show, then comet classic root move docs --dry-run to inspect a safe migration before writing`,
     );
     this.name = 'ClassicLayoutConflictError';
   }

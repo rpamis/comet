@@ -302,6 +302,8 @@ describe('Comet project status', () => {
       changes: [],
       error: expect.stringContaining('Classic layout conflict'),
     });
+    expect(status.workflows.classic.error).toContain('comet classic root show');
+    expect(status.workflows.classic.error).toContain('comet classic root move docs --dry-run');
     expect(status.unmanagedOpenSpec).toEqual([]);
   });
 

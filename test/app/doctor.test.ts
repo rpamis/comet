@@ -1108,9 +1108,12 @@ describe('doctor command', () => {
       status: string;
       message: string;
     }>;
-    expect(results.find((result) => result.check === 'Classic artifact layout')).toMatchObject({
-      status: 'fail',
-    });
+    const layoutResult = results.find((result) => result.check === 'Classic artifact layout');
+    expect(layoutResult).toMatchObject({ status: 'fail' });
+    expect(layoutResult?.message).toContain('openspec/');
+    expect(layoutResult?.message).toContain('docs/openspec/');
+    expect(layoutResult?.message).toContain('comet classic root show');
+    expect(layoutResult?.message).toContain('comet classic root move docs --dry-run');
     const stateResult = results.find((result) => result.check === '.comet.yaml: current-state');
     expect(stateResult).toMatchObject({
       status: 'pass',

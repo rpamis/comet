@@ -145,6 +145,10 @@ export function parseCometHookRequest(source: string, filePath?: string): CometH
   try {
     input = JSON.parse(source) as unknown;
   } catch {
+    const targets = patchTargets(source);
+    if (targets.length > 0) {
+      return { intent: 'write', targets: [...new Set(targets)], toolName: 'apply_patch' };
+    }
     return { intent: 'unknown', targets: [], toolName: null };
   }
   if (!isRecord(input)) return { intent: 'unknown', targets: [], toolName: null };
