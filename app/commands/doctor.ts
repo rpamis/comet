@@ -38,6 +38,7 @@ import {
   getPlatformSkillsDirs,
   type Platform,
 } from '../../platform/install/platforms.js';
+import { hasSkills } from '../../platform/install/detect.js';
 import { resolveCanonicalSkillRootOwners } from '../../platform/install/skill-root-owner.js';
 import type { InstallScope } from '../../platform/install/types.js';
 import { inspectClassicChangeReadOnly } from '../../domains/comet-classic/classic-diagnostics.js';
@@ -615,6 +616,15 @@ async function checkSuperpowers(
   const detected: string[] = [];
   for (const base of getScopeBases(projectPath, scope, context)) {
     for (const platform of PLATFORMS) {
+      if (
+        await hasSkills(base.baseDir, platform, 'superpowers', [platform], base.scope, {
+          includeGlobalFallback: false,
+          includePluginFallback: base.scope === 'global',
+        })
+      ) {
+        detected.push(`${platform.name} ${base.scope}`);
+        continue;
+      }
       for (const skillsDir of getPlatformSkillsDirs(platform, base.scope)) {
         for (const sentinel of SUPERPOWERS_SENTINELS) {
           if (await fileExists(path.join(base.baseDir, skillsDir, 'skills', sentinel))) {

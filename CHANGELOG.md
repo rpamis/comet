@@ -16,6 +16,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Native worktree root routing**: Native commands launched from a linked worktree no longer fall back to the primary checkout when a host supplies a conflicting project root, keeping change state and baselines in the active worktree.
 - **Native mid-change scope recovery**: When implementation needs to continue after Verify or Archive, Native now offers an explicit return-to-Build path that clears stale evidence and preserves the change boundary instead of requiring an unsafe out-of-phase write.
 
+- **Doctor Superpowers detection**: `comet doctor` now recognizes Claude Code plugin-managed Superpowers installs, so users with Superpowers under the plugin cache no longer receive a misleading install warning.
+
 ## What's Changed [0.4.0-beta.16] - 2026-08-05
 
 ### Fixed

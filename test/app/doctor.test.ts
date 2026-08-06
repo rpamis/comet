@@ -1195,6 +1195,51 @@ describe('doctor command', () => {
     );
   });
 
+  it('detects Claude plugin-managed Superpowers installs', async () => {
+    const fakeHome = path.join(tmpDir, 'plugin-home');
+    const pluginVersion = '999.0.0-test';
+    const pluginSkillsDir = path.join(
+      fakeHome,
+      '.claude',
+      'plugins',
+      'cache',
+      'claude-plugins-official',
+      'superpowers',
+      pluginVersion,
+      'skills',
+    );
+    await fs.mkdir(path.join(pluginSkillsDir, 'using-superpowers'), { recursive: true });
+    await fs.writeFile(
+      path.join(pluginSkillsDir, 'using-superpowers', 'SKILL.md'),
+      '# using-superpowers\n',
+      'utf8',
+    );
+
+    const previousClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+    process.env.CLAUDE_CONFIG_DIR = path.join(fakeHome, '.claude');
+    try {
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      let output: string;
+      try {
+        await doctorCommand(tmpDir, { homeDir: fakeHome });
+        output = log.mock.calls.map((call) => call.join(' ')).join('\n');
+      } finally {
+        log.mockRestore();
+      }
+
+      expect(output).toContain('Superpowers: detected');
+      expect(output).toContain('Claude Code global');
+      expect(output).not.toContain('Claude Code project');
+      expect(output).not.toContain('Superpowers: not detected');
+    } finally {
+      if (previousClaudeConfigDir === undefined) {
+        delete process.env.CLAUDE_CONFIG_DIR;
+      } else {
+        process.env.CLAUDE_CONFIG_DIR = previousClaudeConfigDir;
+      }
+    }
+  });
+
   it('reports partial Comet installs with an update command instead of a raw missing dump', async () => {
     await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), {
       recursive: true,
