@@ -1197,6 +1197,7 @@ describe('doctor command', () => {
 
   it('detects Claude plugin-managed Superpowers installs', async () => {
     const fakeHome = path.join(tmpDir, 'plugin-home');
+    const pluginVersion = '999.0.0-test';
     const pluginSkillsDir = path.join(
       fakeHome,
       '.claude',
@@ -1204,7 +1205,7 @@ describe('doctor command', () => {
       'cache',
       'claude-plugins-official',
       'superpowers',
-      '6.2.0',
+      pluginVersion,
       'skills',
     );
     await fs.mkdir(path.join(pluginSkillsDir, 'using-superpowers'), { recursive: true });
