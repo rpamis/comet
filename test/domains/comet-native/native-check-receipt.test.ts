@@ -253,6 +253,63 @@ describe('Native scoped check receipts', () => {
     });
   });
 
+  it('reports an unowned baseline deletion until its exact partial scope is confirmed', async () => {
+    await fs.mkdir(path.join(projectRoot, 'src'), { recursive: true });
+    await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 1;\n');
+    await fs.writeFile(path.join(projectRoot, 'src', 'unrelated.ts'), 'export const old = true;\n');
+    const created = await createNativeChange({
+      paths,
+      verificationProtocol: 'legacy-v1',
+      name: 'safe-check',
+      language: 'en',
+      now: new Date('2026-07-17T00:00:00.000Z'),
+    });
+    await fs.writeFile(path.join(nativeChangeDir(paths, created.name), 'brief.md'), brief);
+    await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 2;\n');
+    await fs.rm(path.join(projectRoot, 'src', 'unrelated.ts'));
+    const build = await prepareNativeBuildEvidence({
+      paths,
+      state: { ...created, phase: 'build', approval: 'implicit' },
+      artifactRefs: ['src/feature.ts'],
+    });
+    const state: NativeChangeState = {
+      ...created,
+      phase: 'verify',
+      approval: 'implicit',
+      implementation_scope: build.scopeRef,
+    };
+
+    const unconfirmed = await executeNativeCheckReceipt({ paths, state });
+    expect(unconfirmed.receipt).toMatchObject({
+      status: 'failed',
+      counts: { filesSelected: 2, filesScanned: 1, issueCount: 1 },
+      issues: [{ path: 'src/unrelated.ts', kind: 'scope-mismatch' }],
+    });
+
+    const confirmed = await prepareNativeBuildEvidence({
+      paths,
+      state: { ...created, phase: 'build', approval: 'implicit' },
+      artifactRefs: ['src/feature.ts'],
+      allowPartialScopeHash: build.bundle.scope.scopeHash,
+      partialReason: 'The deleted file belongs to parallel work.',
+      confirmedSummary: 'Confirmed the exact deleted path is outside this change.',
+      confirmed: true,
+    });
+    const allowed = await executeNativeCheckReceipt({
+      paths,
+      state: {
+        ...state,
+        implementation_scope: confirmed.scopeRef,
+        partial_allowance: confirmed.allowanceRef,
+      },
+    });
+    expect(allowed.receipt).toMatchObject({
+      status: 'passed',
+      counts: { filesSelected: 1, filesScanned: 1, issueCount: 0 },
+      issues: [],
+    });
+  });
+
   it('fails closed on a scoped parent redirected through a symlink or junction', async () => {
     const state = await prepareState('export const value = 2;\n');
     const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-check-outside-'));
@@ -315,7 +372,7 @@ describe('Native scoped check receipts', () => {
     });
   });
 
-  it('fails closed when individually bounded scoped files exceed the total byte budget', async () => {
+  it('batches individually bounded scoped files beyond one receipt byte budget', async () => {
     await fs.mkdir(path.join(projectRoot, 'src'), { recursive: true });
     for (let index = 0; index < 9; index += 1) {
       await fs.writeFile(path.join(projectRoot, 'src', `file-${index}.txt`), '');
@@ -349,19 +406,23 @@ describe('Native scoped check receipts', () => {
     const { receipt } = await executeNativeCheckReceipt({ paths, state });
 
     expect(receipt).toMatchObject({
-      status: 'failed',
-      counts: { filesSelected: 9, filesScanned: 0, bytesScanned: 0, issueCount: 1 },
-      issues: [
-        {
-          path: `src/file-${NATIVE_CHECK_LIMITS.maxTotalBytes / NATIVE_CHECK_LIMITS.maxFileBytes}.txt`,
-          line: 1,
-          kind: 'scan-limit',
-        },
-      ],
+      status: 'passed',
+      counts: {
+        filesSelected: 9,
+        filesScanned: 9,
+        bytesScanned: 9 * NATIVE_CHECK_LIMITS.maxFileBytes,
+        issueCount: 0,
+        batches: [
+          expect.objectContaining({ filesSelected: 4 }),
+          expect.objectContaining({ filesSelected: 4 }),
+          expect.objectContaining({ filesSelected: 1 }),
+        ],
+      },
+      issues: [],
     });
   });
 
-  it('fails closed when scope detail overflow prevents a complete bounded check', async () => {
+  it('checks every attributed file when scope detail pages exceed one page', async () => {
     await fs.mkdir(path.join(projectRoot, 'src'), { recursive: true });
     for (let index = 0; index <= NATIVE_CHECK_LIMITS.maxFiles; index += 1) {
       await fs.writeFile(path.join(projectRoot, 'src', `file-${index}.txt`), '');
@@ -388,22 +449,24 @@ describe('Native scoped check receipts', () => {
       approval: 'implicit',
       implementation_scope: build.scopeRef,
     };
-    expect(build.bundle.scope.unresolvedScopes).toEqual(
-      expect.arrayContaining([expect.objectContaining({ kind: 'scope-detail-overflow' })]),
-    );
-    const detailedSelected = build.bundle.scope.changes.filter((change) => change.after).length;
+    expect(build.bundle.scope.complete).toBe(true);
+    expect(build.bundle.scope.changes.length).toBeLessThanOrEqual(128);
 
     const { receipt } = await executeNativeCheckReceipt({ paths, state });
 
     expect(receipt).toMatchObject({
-      status: 'failed',
+      status: 'passed',
       counts: {
-        filesSelected: detailedSelected,
-        filesScanned: 0,
-        bytesScanned: 0,
-        issueCount: 1,
+        filesSelected: NATIVE_CHECK_LIMITS.maxFiles + 1,
+        filesScanned: NATIVE_CHECK_LIMITS.maxFiles + 1,
+        bytesScanned: NATIVE_CHECK_LIMITS.maxFiles + 1,
+        issueCount: 0,
+        batches: [
+          expect.objectContaining({ filesSelected: NATIVE_CHECK_LIMITS.maxFiles }),
+          expect.objectContaining({ filesSelected: 1 }),
+        ],
       },
-      issues: [expect.objectContaining({ kind: 'scan-limit', line: 1 })],
+      issues: [],
     });
   });
 

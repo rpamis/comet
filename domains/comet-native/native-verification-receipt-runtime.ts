@@ -37,6 +37,7 @@ import {
 } from './native-verification-receipt.js';
 import {
   buildNativeImplementationScopeBundle,
+  deriveNativeImplementationChanges,
   type NativeImplementationScopeBundle,
   type NativeSnapshotProjection,
 } from './native-verification-scope.js';
@@ -341,7 +342,14 @@ export async function persistNativeStaticInspectionReceipt(options: {
     actor: `native-runtime:${options.checkReceipt.checker.policy}`,
     issuedAt: options.checkReceipt.endedAt,
     evidence: {
-      subjects: context.scope.scope.changes.map((change) => change.path).sort(),
+      subjects: deriveNativeImplementationChanges({
+        baseline: context.scope.baseline,
+        current: context.scope.current,
+        declaredArtifacts: context.scope.scope.declaredArtifacts,
+      })
+        .filter((change) => change.attributedTo.length > 0)
+        .map((change) => change.path)
+        .sort(),
       rule: options.checkReceipt.checker.policy,
       resultSummary:
         status === 'passed'
@@ -382,7 +390,11 @@ function isReusableRequiredCheck(options: {
   ) {
     return false;
   }
-  const selectedFiles = context.scope.scope.changes.filter((change) => change.after !== null);
+  const selectedFiles = deriveNativeImplementationChanges({
+    baseline: context.scope.baseline,
+    current: context.scope.current,
+    declaredArtifacts: context.scope.scope.declaredArtifacts,
+  }).filter((change) => change.attributedTo.length > 0 && change.after !== null);
   const selectedBytes = selectedFiles.reduce((total, change) => total + change.after!.size, 0);
   return (
     checkReceipt.change === context.bindings.change &&
@@ -647,6 +659,7 @@ async function currentReceiptFence(options: {
     declaredArtifacts: options.context.scope.scope.declaredArtifacts,
     noCodeReason: options.context.scope.scope.noCodeReason,
     gitChangedPaths: options.context.scope.authority.gitChangedPaths,
+    externalDrift: options.context.scope.authority.externalDrift,
   });
   const changes = inspectNativeReceiptFenceChanges(options.context.scope.current, bundle.current);
   return {

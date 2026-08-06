@@ -15,7 +15,10 @@ import {
 } from './native-check-receipt-model.js';
 import { writeNativeCheckReceipt } from './native-check-receipt-storage.js';
 import { collectNativeContractFiles } from './native-contract-files.js';
-import { readNativeImplementationScopeBundle } from './native-evidence-storage.js';
+import {
+  readNativeImplementationScopeBundle,
+  readNativePartialAllowance,
+} from './native-evidence-storage.js';
 import { sameNativeFileObject } from './native-file-identity.js';
 import { isInsidePath } from './native-paths.js';
 import { createNativeCurrentContentSnapshot } from './native-snapshot.js';
@@ -26,6 +29,7 @@ import type {
 } from './native-types.js';
 import {
   buildNativeImplementationScopeBundle,
+  deriveNativeImplementationChanges,
   type NativeImplementationFileIdentity,
   type NativeImplementationScopeBundle,
   type NativeSnapshotProjection,
@@ -130,6 +134,9 @@ async function collectBoundFacts(options: {
     noCodeReason: options.scope.authority.noCodeReason,
     ...(options.scope.authority.gitChangedPaths
       ? { gitChangedPaths: options.scope.authority.gitChangedPaths }
+      : {}),
+    ...(options.scope.authority.externalDrift
+      ? { externalDrift: options.scope.authority.externalDrift }
       : {}),
   });
   return {
@@ -398,14 +405,45 @@ async function readScopedFile(options: {
   }
 }
 
-function selectedScopedFiles(scope: NativeImplementationScopeBundle): {
+function selectedScopedFilesWithAllowance(
+  scope: NativeImplementationScopeBundle,
+  allowedScopeIds: ReadonlySet<string>,
+): {
   files: ScopedFile[];
   mismatches: string[];
+  unowned: string[];
 } {
   const current = new Map(scope.current.entries.map((entry) => [entry.path, entry]));
   const files: ScopedFile[] = [];
   const mismatches: string[] = [];
-  for (const change of scope.scope.changes) {
+  const unowned: string[] = [];
+  const externalPaths = new Set(scope.authority.externalDrift?.paths ?? []);
+  const unresolvedByPath = new Map(
+    scope.scope.unresolvedScopes
+      .filter((unresolved) => unresolved.kind === 'unattributed-change' && unresolved.path !== null)
+      .map((unresolved) => [unresolved.path!, unresolved.id]),
+  );
+  const overflowAllowed = scope.scope.unresolvedScopes.some(
+    (unresolved) =>
+      unresolved.kind === 'scope-detail-overflow' && allowedScopeIds.has(unresolved.id),
+  );
+  for (const change of deriveNativeImplementationChanges({
+    baseline: scope.baseline,
+    current: scope.current,
+    declaredArtifacts: scope.scope.declaredArtifacts,
+  })) {
+    if (externalPaths.has(change.path)) continue;
+    if (change.attributedTo.length === 0) {
+      const unresolvedId = unresolvedByPath.get(change.path);
+      const allowed =
+        unresolvedId === undefined ? overflowAllowed : allowedScopeIds.has(unresolvedId);
+      if (allowed) {
+        // A confirmed allowance deliberately removes this path from the static text-safety scan.
+        continue;
+      }
+      unowned.push(change.path);
+      continue;
+    }
     if (!change.after) continue;
     const entry = current.get(change.path);
     if (
@@ -421,7 +459,8 @@ function selectedScopedFiles(scope: NativeImplementationScopeBundle): {
   }
   files.sort((left, right) => left.path.localeCompare(right.path, 'en'));
   mismatches.sort((left, right) => left.localeCompare(right, 'en'));
-  return { files, mismatches };
+  unowned.sort((left, right) => left.localeCompare(right, 'en'));
+  return { files, mismatches, unowned };
 }
 
 function inspectText(
@@ -445,6 +484,28 @@ function inspectText(
   }
 }
 
+async function readAllowedScopeIds(options: {
+  paths: NativeProjectPaths;
+  state: NativeChangeState;
+  scope: NativeImplementationScopeBundle;
+}): Promise<Set<string>> {
+  if (options.state.partial_allowance === null) return new Set();
+  const allowance = await readNativePartialAllowance(
+    options.paths,
+    options.state.name,
+    options.state.partial_allowance,
+  );
+  const expectedIds = options.scope.scope.unresolvedScopes.map((scope) => scope.id).sort();
+  if (
+    allowance.change !== options.state.name ||
+    allowance.scopeHash !== options.scope.scope.scopeHash ||
+    JSON.stringify(allowance.scopeIds) !== JSON.stringify(expectedIds)
+  ) {
+    throw new Error('Native partial allowance does not match the current implementation scope');
+  }
+  return new Set(allowance.scopeIds);
+}
+
 /**
  * Run Comet's bounded text-safety policy against the current implementation scope.
  *
@@ -466,76 +527,112 @@ export async function executeNativeCheckReceipt(options: {
   );
   const before = await collectBoundFacts({ paths: options.paths, state: options.state, scope });
   const startedAt = receiptTime(options.clock, 'start');
-  const selected = selectedScopedFiles(scope);
+  const allowedScopeIds = await readAllowedScopeIds({
+    paths: options.paths,
+    state: options.state,
+    scope,
+  });
+  const selected = selectedScopedFilesWithAllowance(scope, allowedScopeIds);
   const issues: NativeCheckIssue[] = [];
   let issueCount = 0;
-  const addIssue = (issue: NativeCheckIssue): void => {
+  const addIssue = (issue: NativeCheckIssue): boolean => {
     issueCount += 1;
-    if (issues.length < NATIVE_CHECK_LIMITS.maxIssues) issues.push(issue);
+    if (issues.length >= NATIVE_CHECK_LIMITS.maxIssues) return false;
+    issues.push(issue);
+    return true;
   };
-  let candidates = selected.files;
-  const selectedCount = selected.files.length + selected.mismatches.length;
-  const scopeDetailOverflow = scope.scope.unresolvedScopes.some(
-    (unresolved) => unresolved.kind === 'scope-detail-overflow',
-  );
-  if (scopeDetailOverflow) {
-    const overflowPath =
-      scope.scope.changes.at(-1)?.path ??
-      scope.current.entries.at(-1)?.path ??
-      scope.baseline.entries.at(-1)?.path;
-    if (!overflowPath) {
-      throw new Error('Native implementation scope overflow has no bounded diagnostic path');
+
+  interface CheckBatch {
+    files: ScopedFile[];
+    diagnostics: NativeCheckIssue[];
+  }
+
+  const batches: CheckBatch[] = [];
+  let fileBatch: CheckBatch = { files: [], diagnostics: [] };
+  let fileBatchBytes = 0;
+  const flushFileBatch = (): void => {
+    if (fileBatch.files.length > 0) batches.push(fileBatch);
+    fileBatch = { files: [], diagnostics: [] };
+    fileBatchBytes = 0;
+  };
+  for (const file of selected.files) {
+    if (
+      file.expected.size > NATIVE_CHECK_LIMITS.maxFileBytes ||
+      (fileBatch.files.length > 0 &&
+        (fileBatch.files.length >= NATIVE_CHECK_LIMITS.maxFiles ||
+          fileBatchBytes + file.expected.size > NATIVE_CHECK_LIMITS.maxTotalBytes))
+    ) {
+      flushFileBatch();
     }
-    addIssue({ path: overflowPath, line: 1, kind: 'scan-limit' });
-    candidates = [];
-  } else if (selectedCount > NATIVE_CHECK_LIMITS.maxFiles) {
-    const selectedPaths = [...selected.files.map((file) => file.path), ...selected.mismatches].sort(
-      (left, right) => left.localeCompare(right, 'en'),
-    );
-    addIssue({
-      path: selectedPaths[NATIVE_CHECK_LIMITS.maxFiles],
-      line: 1,
-      kind: 'scan-limit',
+    fileBatch.files.push(file);
+    fileBatchBytes += file.expected.size;
+    if (file.expected.size > NATIVE_CHECK_LIMITS.maxFileBytes) flushFileBatch();
+  }
+  flushFileBatch();
+
+  const diagnostics = [...selected.unowned, ...selected.mismatches]
+    .sort((left, right) => left.localeCompare(right, 'en'))
+    .map((pathRef) => ({ path: pathRef, line: 1, kind: 'scope-mismatch' as const }));
+  for (let index = 0; index < diagnostics.length; index += NATIVE_CHECK_LIMITS.maxFiles) {
+    batches.push({
+      files: [],
+      diagnostics: diagnostics.slice(index, index + NATIVE_CHECK_LIMITS.maxFiles),
     });
-    candidates = [];
-  } else {
-    let total = 0;
-    for (const file of selected.files) {
-      if (file.expected.size > NATIVE_CHECK_LIMITS.maxFileBytes) {
-        addIssue({ path: file.path, line: 1, kind: 'scan-limit' });
-        candidates = [];
-        break;
-      }
-      total += file.expected.size;
-      if (total > NATIVE_CHECK_LIMITS.maxTotalBytes) {
-        addIssue({ path: file.path, line: 1, kind: 'scan-limit' });
-        candidates = [];
-        break;
-      }
-    }
   }
-  for (const mismatch of selected.mismatches) {
-    addIssue({ path: mismatch, line: 1, kind: 'scope-mismatch' });
-  }
+  const selectedCount = batches.reduce(
+    (total, batch) => total + batch.files.length + batch.diagnostics.length,
+    0,
+  );
 
   let filesScanned = 0;
   let binaryFilesSkipped = 0;
   let bytesScanned = 0;
-  for (const file of candidates) {
-    try {
-      const scanned = await readScopedFile({ projectRoot: options.paths.projectRoot, file });
-      bytesScanned += scanned.bytes;
-      if (scanned.text === null) {
-        binaryFilesSkipped += 1;
-        addIssue({ path: file.path, line: 1, kind: 'binary-skipped' });
-      } else {
-        filesScanned += 1;
-        inspectText(file.path, scanned.text, addIssue);
+  const batchCounts: Array<{
+    filesSelected: number;
+    filesScanned: number;
+    binaryFilesSkipped: number;
+    bytesScanned: number;
+    issueCount: number;
+    recordedIssueCount: number;
+  }> = [];
+  for (const batch of batches) {
+    const counts = {
+      filesSelected: batch.files.length + batch.diagnostics.length,
+      filesScanned: 0,
+      binaryFilesSkipped: 0,
+      bytesScanned: 0,
+      issueCount: 0,
+      recordedIssueCount: 0,
+    };
+    const recordIssue = (issue: NativeCheckIssue): void => {
+      counts.issueCount += 1;
+      if (addIssue(issue)) counts.recordedIssueCount += 1;
+    };
+    for (const diagnostic of batch.diagnostics) recordIssue(diagnostic);
+    for (const file of batch.files) {
+      if (file.expected.size > NATIVE_CHECK_LIMITS.maxFileBytes) {
+        recordIssue({ path: file.path, line: 1, kind: 'scan-limit' });
+        continue;
       }
-    } catch (error) {
-      if (!(error instanceof ScopedFileError)) throw error;
-      addIssue({ path: file.path, line: 1, kind: error.kind });
+      try {
+        const scanned = await readScopedFile({ projectRoot: options.paths.projectRoot, file });
+        bytesScanned += scanned.bytes;
+        counts.bytesScanned += scanned.bytes;
+        if (scanned.text === null) {
+          binaryFilesSkipped += 1;
+          counts.binaryFilesSkipped += 1;
+          recordIssue({ path: file.path, line: 1, kind: 'binary-skipped' });
+        } else {
+          filesScanned += 1;
+          counts.filesScanned += 1;
+          inspectText(file.path, scanned.text, recordIssue);
+        }
+      } catch (error) {
+        if (!(error instanceof ScopedFileError)) throw error;
+        recordIssue({ path: file.path, line: 1, kind: error.kind });
+      }
     }
+    batchCounts.push(counts);
   }
   const after = await collectBoundFacts({ paths: options.paths, state: options.state, scope });
   const endedAt = receiptTime(options.clock, 'end');
@@ -570,6 +667,7 @@ export async function executeNativeCheckReceipt(options: {
       bytesScanned,
       issueCount,
       recordedIssueCount: issues.length,
+      ...(batchCounts.length > 1 ? { batches: batchCounts } : {}),
     },
     issues,
     issuesTruncated: issueCount > issues.length,

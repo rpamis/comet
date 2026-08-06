@@ -357,7 +357,7 @@ describe('Native evidence storage', () => {
     );
   });
 
-  it('streams overflow for ten thousand changes owned by 128 overlapping artifacts', async () => {
+  it('retains snapshot incompleteness when the source projection cannot retain ten thousand files', async () => {
     const { contract } = fixtures();
     const segments = Array.from({ length: 128 }, () => 'a');
     const artifactPaths = segments.map((_, index) => segments.slice(0, index + 1).join('/'));
@@ -392,7 +392,7 @@ describe('Native evidence storage', () => {
     expect(bundle.scope.changes.length).toBeLessThan(128);
     expect(bundle.scope.changes[0]?.attributedTo).toHaveLength(128);
     expect(bundle.scope.unresolvedScopes).toEqual(
-      expect.arrayContaining([expect.objectContaining({ kind: 'scope-detail-overflow' })]),
+      expect.arrayContaining([expect.objectContaining({ kind: 'snapshot-incomplete' })]),
     );
     expect(
       [bundle.baseline, bundle.current, bundle.scope].every(

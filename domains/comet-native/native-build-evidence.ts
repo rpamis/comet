@@ -13,6 +13,7 @@ import {
 } from './native-evidence-storage.js';
 import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
 import { nativeSensitiveArtifactReason } from './native-sensitive-paths.js';
+import { detectNativeGitExternalDrift } from './native-git-provenance.js';
 import {
   createNativeCurrentContentSnapshot,
   filterNativeContentSnapshotToProjectScope,
@@ -35,6 +36,7 @@ import {
   buildNativePartialAllowance,
   type NativePartialAllowance,
 } from './native-verification-evidence.js';
+import { readNativeWorkspaceIdentity } from './native-workspace.js';
 
 export const NATIVE_BUILD_EVIDENCE_LIMITS = {
   maxDeclaredArtifacts: 128,
@@ -269,13 +271,35 @@ export async function inspectNativeBuildEvidence(
     now: options.now,
   });
   assertStableNativeSelection(current, 'current snapshot');
-  const bundle = buildNativeImplementationScopeBundle({
+  const baseBundle = buildNativeImplementationScopeBundle({
     baseline,
     current,
     contractHash: contract.contract.contractHash,
     declaredArtifacts,
     noCodeReason: options.noCodeReason ?? null,
   });
+  const workspace = await readNativeWorkspaceIdentity(options.paths, options.state.name);
+  const externalDrift =
+    workspace?.git === undefined
+      ? null
+      : detectNativeGitExternalDrift({
+          projectRoot: options.paths.projectRoot,
+          provenance: workspace.git,
+          baseline,
+          current,
+          declaredArtifacts,
+        });
+  const bundle =
+    externalDrift === null
+      ? baseBundle
+      : buildNativeImplementationScopeBundle({
+          baseline,
+          current,
+          contractHash: contract.contract.contractHash,
+          declaredArtifacts,
+          noCodeReason: options.noCodeReason ?? null,
+          externalDrift,
+        });
   if (!bundle.baseline.complete) {
     throw nativeBaselineProjectionIncompleteError(options.state.name, baseline, bundle.baseline);
   }

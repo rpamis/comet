@@ -2,7 +2,11 @@ import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
-import { inspectGitWorktree, isLocalGitBranch } from '../../platform/paths/git-worktree.js';
+import {
+  inspectGitWorktree,
+  isLocalGitBranch,
+  resolveGitRef,
+} from '../../platform/paths/git-worktree.js';
 
 import { atomicWriteJson } from './native-atomic-file.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
@@ -11,6 +15,7 @@ import { resolveContainedNativePath } from './native-paths.js';
 import type { NativeProjectPaths } from './native-types.js';
 
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
+const GIT_COMMIT_PATTERN = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
 const MAX_WORKSPACE_IDENTITY_BYTES = 16 * 1024;
 const HOST_PLATFORM = process.platform;
 
@@ -23,6 +28,13 @@ export interface NativeWorkspaceBinding {
   targetBranch: string | null;
 }
 
+export interface NativeWorkspaceGitProvenance {
+  provider: 'git';
+  baseCommit: string;
+  targetBranch: string;
+  targetCommit: string;
+}
+
 interface NativeWorkspaceIdentityFields {
   capturedAt: string;
   capturedRevision: number;
@@ -33,6 +45,7 @@ interface NativeWorkspaceIdentityFields {
   projectRootPathId?: string;
   nativeRootPathId?: string;
   sessionHash?: string;
+  git?: NativeWorkspaceGitProvenance;
 }
 
 export interface NativeWorkspaceIdentityV2 extends NativeWorkspaceIdentityFields {
@@ -197,6 +210,28 @@ function assertBinding(value: NativeWorkspaceBinding): void {
   }
 }
 
+function assertGitProvenance(value: unknown): asserts value is NativeWorkspaceGitProvenance {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Native workspace Git provenance must be an object');
+  }
+  const root = value as Record<string, unknown>;
+  const allowed = new Set(['provider', 'baseCommit', 'targetBranch', 'targetCommit']);
+  const unknown = Object.keys(root).filter((key) => !allowed.has(key));
+  if (unknown.length > 0) {
+    throw new Error(`Native workspace Git provenance has unknown field(s): ${unknown.join(', ')}`);
+  }
+  if (
+    root.provider !== 'git' ||
+    typeof root.baseCommit !== 'string' ||
+    !GIT_COMMIT_PATTERN.test(root.baseCommit) ||
+    typeof root.targetCommit !== 'string' ||
+    !GIT_COMMIT_PATTERN.test(root.targetCommit)
+  ) {
+    throw new Error('Native workspace Git provenance is invalid');
+  }
+  optionalBranch(root.targetBranch, 'Native workspace Git target branch');
+}
+
 function assertIdentity(value: unknown): asserts value is NativeWorkspaceIdentity {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('Native workspace identity must be an object');
@@ -212,6 +247,7 @@ function assertIdentity(value: unknown): asserts value is NativeWorkspaceIdentit
     'projectRootPathId',
     'nativeRootPathId',
     'sessionHash',
+    'git',
     'isolation',
     'changeBranch',
     'targetBranch',
@@ -249,6 +285,7 @@ function assertIdentity(value: unknown): asserts value is NativeWorkspaceIdentit
   if (root.sessionHash !== undefined && !HASH_PATTERN.test(String(root.sessionHash))) {
     throw new Error('Native workspace session hash is invalid');
   }
+  if (root.git !== undefined) assertGitProvenance(root.git);
   if (root.schema === 'comet.native.workspace.v2') {
     if (
       root.isolation !== undefined ||
@@ -419,6 +456,27 @@ export async function inspectNativeWorkspaceIdentity(
   }
   const nativeRootRef = portableRelative(options.paths.projectRoot, options.paths.nativeRoot);
   if (!nativeRootRef) throw new Error('Native root is outside the project root');
+  const gitContext = inspectGitWorktree(options.paths.projectRoot);
+  const baseCommit = gitContext.isGitWorktree
+    ? resolveGitRef(options.paths.projectRoot, 'HEAD')
+    : null;
+  const targetBranch = options.binding?.targetBranch ?? gitContext.currentBranch;
+  const targetCommit =
+    targetBranch === null || targetBranch === undefined
+      ? null
+      : resolveGitRef(options.paths.projectRoot, targetBranch);
+  const git =
+    baseCommit !== null &&
+    targetBranch !== null &&
+    targetBranch !== undefined &&
+    targetCommit !== null
+      ? {
+          provider: 'git' as const,
+          baseCommit,
+          targetBranch,
+          targetCommit,
+        }
+      : undefined;
   const [projectRootId, nativeRootId, projectRootPathId, nativeRootPathId] = await Promise.all([
     physicalDirectoryIdentity('comet.native.workspace-project-root.v2', options.paths.projectRoot),
     physicalDirectoryIdentity('comet.native.workspace-native-root.v2', options.paths.nativeRoot),
@@ -438,6 +496,7 @@ export async function inspectNativeWorkspaceIdentity(
     nativeRootId,
     projectRootPathId,
     nativeRootPathId,
+    ...(git ? { git } : {}),
     ...(options.sessionId
       ? {
           sessionHash: identityHash(

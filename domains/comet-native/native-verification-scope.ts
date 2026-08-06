@@ -21,6 +21,8 @@ const SCOPE_DETAIL_OVERFLOW_HASH_TAG = 'comet.native.scope-detail-overflow.v1';
 const SNAPSHOT_PROJECTION_OVERFLOW_HASH_TAG = 'comet.native.snapshot-projection-overflow.v2';
 const SHA256_HASH_PATTERN = /^[a-f0-9]{64}$/u;
 export const MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES = 1024 * 1024;
+// These caps bound the inline detail page only. Completeness and verification coverage must come
+// from the full snapshot projections, not from the number of changes retained in this document.
 export const MAX_NATIVE_DETAILED_SCOPE_CHANGES = 128;
 export const MAX_NATIVE_DETAILED_UNRESOLVED_SCOPES = 128;
 
@@ -67,6 +69,14 @@ export interface NativeGitScopeAdvisory {
   pathsAbsentFromSnapshotChanges: string[];
 }
 
+export interface NativeExternalDrift {
+  provider: 'git';
+  baseCommit: string;
+  targetBranch: string;
+  targetCommit: string;
+  paths: string[];
+}
+
 export interface NativeImplementationScope {
   schema: typeof NATIVE_IMPLEMENTATION_SCOPE_SCHEMA;
   contractHash: string;
@@ -81,6 +91,7 @@ export interface NativeImplementationScope {
   unresolvedScopes: NativeUnresolvedScope[];
   noCodeReason: string | null;
   gitAdvisory?: NativeGitScopeAdvisory;
+  externalDrift?: NativeExternalDrift;
   scopeHash: string;
 }
 
@@ -91,6 +102,7 @@ export interface BuildNativeImplementationScopeInput {
   declaredArtifacts: readonly NativeDeclaredArtifact[];
   noCodeReason?: string | null;
   gitChangedPaths?: readonly string[];
+  externalDrift?: NativeExternalDrift;
 }
 
 export interface NativeSnapshotProjection {
@@ -111,6 +123,7 @@ export interface NativeImplementationScopeAuthority {
   declaredArtifacts: NativeDeclaredArtifact[];
   noCodeReason: string | null;
   gitChangedPaths?: string[];
+  externalDrift?: NativeExternalDrift;
 }
 
 /**
@@ -407,7 +420,10 @@ function normalizeDeclaredArtifacts(
   );
 }
 
-function artifactOwnsPath(artifact: NativeDeclaredArtifact, changedPath: string): boolean {
+export function nativeDeclaredArtifactOwnsPath(
+  artifact: NativeDeclaredArtifact,
+  changedPath: string,
+): boolean {
   if (artifact.kind === 'file') return artifact.path === changedPath;
   return changedPath === artifact.path || changedPath.startsWith(`${artifact.path}/`);
 }
@@ -464,8 +480,30 @@ function materializeChange(
 ): NativeImplementationChange {
   return {
     ...core,
-    attributedTo: declaredArtifacts.filter((artifact) => artifactOwnsPath(artifact, core.path)),
+    attributedTo: declaredArtifacts.filter((artifact) =>
+      nativeDeclaredArtifactOwnsPath(artifact, core.path),
+    ),
   };
+}
+
+/**
+ * Derive the complete change set from the authoritative snapshot projections.
+ *
+ * The persisted scope intentionally stores only a bounded detail page. Callers that need to
+ * execute a check must use this projection-derived view instead of treating `scope.changes` as
+ * the complete set.
+ */
+export function deriveNativeImplementationChanges(input: {
+  baseline: NativeSnapshotProjection;
+  current: NativeSnapshotProjection;
+  declaredArtifacts: readonly NativeDeclaredArtifact[];
+}): NativeImplementationChange[] {
+  const declaredArtifacts = normalizeDeclaredArtifacts(input.declaredArtifacts);
+  const changes: NativeImplementationChange[] = [];
+  visitDerivedChanges(input.baseline, input.current, (core) => {
+    changes.push(materializeChange(core, declaredArtifacts));
+  });
+  return changes;
 }
 
 function unresolvedScope(identity: UnresolvedScopeIdentity, reason: string): NativeUnresolvedScope {
@@ -562,10 +600,46 @@ function normalizeGitChangedPaths(paths: readonly string[]): string[] {
   ].sort(compareText);
 }
 
+function normalizeGitCommit(value: string, label: string): string {
+  if (typeof value !== 'string' || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(value)) {
+    throw new Error(`${label} must be a Git commit object id`);
+  }
+  return value;
+}
+
+function normalizeGitBranch(value: string, label: string): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.trim() !== value ||
+    value.includes('\\') ||
+    value.includes('\0') ||
+    value.startsWith('-')
+  ) {
+    throw new Error(`${label} must be a valid Git branch name`);
+  }
+  return value;
+}
+
+function normalizeExternalDrift(value: NativeExternalDrift): NativeExternalDrift {
+  if (!value || value.provider !== 'git') {
+    throw new Error('Native external drift provider is invalid');
+  }
+  const paths = normalizeGitChangedPaths(value.paths);
+  if (paths.length === 0) throw new Error('Native external drift requires at least one path');
+  return {
+    provider: 'git',
+    baseCommit: normalizeGitCommit(value.baseCommit, 'Native external drift base commit'),
+    targetBranch: normalizeGitBranch(value.targetBranch, 'Native external drift target branch'),
+    targetCommit: normalizeGitCommit(value.targetCommit, 'Native external drift target commit'),
+    paths,
+  };
+}
+
 function normalizeScopeAuthority(
   input: Pick<
     BuildNativeImplementationScopeInput,
-    'contractHash' | 'declaredArtifacts' | 'noCodeReason' | 'gitChangedPaths'
+    'contractHash' | 'declaredArtifacts' | 'noCodeReason' | 'gitChangedPaths' | 'externalDrift'
   >,
 ): NativeImplementationScopeAuthority {
   if (typeof input.contractHash !== 'string' || !SHA256_HASH_PATTERN.test(input.contractHash)) {
@@ -578,12 +652,16 @@ function normalizeScopeAuthority(
     ...(input.gitChangedPaths === undefined
       ? {}
       : { gitChangedPaths: normalizeGitChangedPaths(input.gitChangedPaths) }),
+    ...(input.externalDrift === undefined
+      ? {}
+      : { externalDrift: normalizeExternalDrift(input.externalDrift) }),
   };
 }
 
 interface NativeScopeChangeScan {
   candidates: NativeImplementationChange[];
   gitPathsPresentInChanges: string[];
+  changePaths: string[];
   totalChanges: number;
   totalUnattributed: number;
 }
@@ -593,18 +671,23 @@ function scanScopeChanges(
   current: NativeSnapshotProjection,
   declaredArtifacts: NativeDeclaredArtifact[],
   gitChangedPaths?: string[],
+  externalDriftPaths?: ReadonlySet<string>,
 ): NativeScopeChangeScan {
   const candidates: NativeImplementationChange[] = [];
   const gitChangedPathSet = gitChangedPaths === undefined ? null : new Set(gitChangedPaths);
   const gitPathsPresentInChanges: string[] = [];
+  const changePaths: string[] = [];
   let candidateBytes = 0;
   let candidateBudgetExhausted = false;
   let totalChanges = 0;
   let totalUnattributed = 0;
   visitDerivedChanges(baseline, current, (core) => {
-    const attributed = declaredArtifacts.some((artifact) => artifactOwnsPath(artifact, core.path));
+    const attributed = declaredArtifacts.some((artifact) =>
+      nativeDeclaredArtifactOwnsPath(artifact, core.path),
+    );
     totalChanges += 1;
-    if (!attributed) totalUnattributed += 1;
+    changePaths.push(core.path);
+    if (!attributed && !externalDriftPaths?.has(core.path)) totalUnattributed += 1;
     if (gitChangedPathSet?.has(core.path)) gitPathsPresentInChanges.push(core.path);
     if (!candidateBudgetExhausted && candidates.length < MAX_NATIVE_DETAILED_SCOPE_CHANGES) {
       const candidate = materializeChange(core, declaredArtifacts);
@@ -617,7 +700,7 @@ function scanScopeChanges(
       }
     }
   });
-  return { candidates, gitPathsPresentInChanges, totalChanges, totalUnattributed };
+  return { candidates, gitPathsPresentInChanges, changePaths, totalChanges, totalUnattributed };
 }
 
 function scopeDetailOverflow(
@@ -678,7 +761,7 @@ function hashScopeDetailOverflow(options: {
       updateFramedHash(hash, 'change', core);
       let attributionCount = 0;
       for (const artifact of options.declaredArtifacts) {
-        if (!artifactOwnsPath(artifact, core.path)) continue;
+        if (!nativeDeclaredArtifactOwnsPath(artifact, core.path)) continue;
         attributionCount += 1;
         updateFramedHash(hash, 'change-attribution', artifact);
       }
@@ -721,10 +804,29 @@ function buildScopeFromProjections(
     current,
     declaredArtifacts,
     authority.gitChangedPaths,
+    authority.externalDrift ? new Set(authority.externalDrift.paths) : undefined,
   );
+  if (authority.externalDrift) {
+    const externalPathSet = new Set(authority.externalDrift.paths);
+    const actualChangePathSet = new Set(changeScan.changePaths);
+    const invalidExternalPaths = authority.externalDrift.paths.filter(
+      (value) =>
+        !actualChangePathSet.has(value) ||
+        declaredArtifacts.some((artifact) => nativeDeclaredArtifactOwnsPath(artifact, value)),
+    );
+    if (invalidExternalPaths.length > 0) {
+      throw new Error(
+        `Native external drift contains paths outside the unowned change set: ${invalidExternalPaths.slice(0, 8).join(', ')}`,
+      );
+    }
+    if (externalPathSet.size !== authority.externalDrift.paths.length) {
+      throw new Error('Native external drift paths must be unique');
+    }
+  }
   const baselineProjectionHash = canonicalHash(SNAPSHOT_PROJECTION_HASH_TAG, baseline);
   const currentProjectionHash = canonicalHash(SNAPSHOT_PROJECTION_HASH_TAG, current);
   const omissionCandidates: NativeUnresolvedScope[] = [];
+  const externalDriftPaths = new Set(authority.externalDrift?.paths ?? []);
   for (const [source, projection] of [
     ['baseline', baseline],
     ['current', current],
@@ -792,7 +894,9 @@ function buildScopeFromProjections(
     overflowHash: string;
   }) => {
     const changes = changeScan.candidates.slice(0, options.detailedChangeCount);
-    const unattributed = changes.filter((change) => change.attributedTo.length === 0);
+    const unattributed = changes.filter(
+      (change) => change.attributedTo.length === 0 && !externalDriftPaths.has(change.path),
+    );
     const overflowChanges = changeScan.totalChanges - changes.length;
     const overflowUnattributed = changeScan.totalUnattributed - unattributed.length;
     const overflowOmissions = totalOmissionDetails - options.detailedOmissionCount;
@@ -815,7 +919,7 @@ function buildScopeFromProjections(
       ),
       ...omissionCandidates.slice(0, options.detailedOmissionCount),
       ...essentialScopes,
-      ...(overflowChanges > 0 || overflowUnresolved > 0
+      ...(overflowUnresolved > 0
         ? [
             scopeDetailOverflow(options.overflowHash, {
               changes: overflowChanges,
@@ -841,6 +945,7 @@ function buildScopeFromProjections(
       unresolvedScopes,
       noCodeReason,
       ...(gitAdvisory ? { gitAdvisory } : {}),
+      ...(authority.externalDrift ? { externalDrift: authority.externalDrift } : {}),
     };
   };
 
@@ -943,6 +1048,7 @@ const SCOPE_KEYS = new Set([
   'unresolvedScopes',
   'noCodeReason',
   'gitAdvisory',
+  'externalDrift',
   'scopeHash',
 ]);
 
@@ -1153,6 +1259,27 @@ function parseSortedPaths(value: unknown, label: string): string[] {
   return paths;
 }
 
+function parseExternalDrift(value: unknown): NativeExternalDrift {
+  const root = scopeRecord(value, 'Native implementation external drift');
+  exactScopeKeys(
+    root,
+    ['provider', 'baseCommit', 'targetBranch', 'targetCommit', 'paths'],
+    [],
+    'Native implementation external drift',
+  );
+  if (root.provider !== 'git') {
+    throw new Error('Native implementation external drift provider is invalid');
+  }
+  const paths = parseSortedPaths(root.paths, 'Native external drift paths');
+  return normalizeExternalDrift({
+    provider: 'git',
+    baseCommit: root.baseCommit as string,
+    targetBranch: root.targetBranch as string,
+    targetCommit: root.targetCommit as string,
+    paths,
+  });
+}
+
 /**
  * Parse a persisted scope and re-check its self-contained invariants.
  * Storage additionally calls `rebuildNativeImplementationScopeBundle` so snapshot-derived facts
@@ -1160,8 +1287,10 @@ function parseSortedPaths(value: unknown, label: string): string[] {
  */
 export function parseNativeImplementationScope(value: unknown): NativeImplementationScope {
   const root = scopeRecord(value, 'Native implementation scope');
-  const required = [...SCOPE_KEYS].filter((key) => key !== 'gitAdvisory');
-  exactScopeKeys(root, required, ['gitAdvisory'], 'Native implementation scope');
+  const required = [...SCOPE_KEYS].filter(
+    (key) => key !== 'gitAdvisory' && key !== 'externalDrift',
+  );
+  exactScopeKeys(root, required, ['gitAdvisory', 'externalDrift'], 'Native implementation scope');
   if (root.schema !== NATIVE_IMPLEMENTATION_SCOPE_SCHEMA) {
     throw new Error('Native implementation scope schema is invalid');
   }
@@ -1227,14 +1356,21 @@ export function parseNativeImplementationScope(value: unknown): NativeImplementa
       (change) =>
         JSON.stringify(change.attributedTo) !==
         JSON.stringify(
-          declaredArtifacts.filter((artifact) => artifactOwnsPath(artifact, change.path)),
+          declaredArtifacts.filter((artifact) =>
+            nativeDeclaredArtifactOwnsPath(artifact, change.path),
+          ),
         ),
     )
   ) {
     throw new Error('Implementation scope change attribution is inconsistent');
   }
   const unattributed = root.unattributed.map(parseImplementationChange);
-  const expectedUnattributed = changes.filter((change) => change.attributedTo.length === 0);
+  const externalDrift =
+    root.externalDrift === undefined ? undefined : parseExternalDrift(root.externalDrift);
+  const externalDriftPaths = new Set(externalDrift?.paths ?? []);
+  const expectedUnattributed = changes.filter(
+    (change) => change.attributedTo.length === 0 && !externalDriftPaths.has(change.path),
+  );
   if (JSON.stringify(unattributed) !== JSON.stringify(expectedUnattributed)) {
     throw new Error('Implementation scope unattributed changes are inconsistent');
   }
@@ -1339,12 +1475,11 @@ export function parseNativeImplementationScope(value: unknown): NativeImplementa
     const partition = [...pathsPresentInSnapshotChanges, ...pathsAbsentFromSnapshotChanges].sort(
       compareText,
     );
-    const detailedChangePaths = new Set(changes.map((change) => change.path));
     if (
       JSON.stringify(partition) !== JSON.stringify(changedPaths) ||
-      ((detailOverflow?.changes ?? 0) === 0 &&
-        pathsPresentInSnapshotChanges.some((entry) => !detailedChangePaths.has(entry))) ||
-      pathsAbsentFromSnapshotChanges.some((entry) => detailedChangePaths.has(entry))
+      pathsAbsentFromSnapshotChanges.some((entry) =>
+        changes.some((change) => change.path === entry),
+      )
     ) {
       throw new Error('Implementation scope Git advisory partition is invalid');
     }
@@ -1370,6 +1505,7 @@ export function parseNativeImplementationScope(value: unknown): NativeImplementa
     unresolvedScopes,
     noCodeReason,
     ...(gitAdvisory ? { gitAdvisory } : {}),
+    ...(externalDrift ? { externalDrift } : {}),
   };
   const scopeHash = scopeHashValue(root.scopeHash, 'Implementation scope scopeHash');
   if (canonicalHash(IMPLEMENTATION_SCOPE_HASH_TAG, content) !== scopeHash) {
@@ -1383,7 +1519,7 @@ function parseScopeAuthority(value: unknown): NativeImplementationScopeAuthority
   exactScopeKeys(
     root,
     ['contractHash', 'declaredArtifacts', 'noCodeReason'],
-    ['gitChangedPaths'],
+    ['gitChangedPaths', 'externalDrift'],
     'Native implementation scope authority',
   );
   if (!Array.isArray(root.declaredArtifacts)) {
@@ -1411,11 +1547,14 @@ function parseScopeAuthority(value: unknown): NativeImplementationScopeAuthority
       'Native implementation scope authority Git paths',
     );
   }
+  const externalDrift =
+    root.externalDrift === undefined ? undefined : parseExternalDrift(root.externalDrift);
   const authority = normalizeScopeAuthority({
     contractHash: root.contractHash as string,
     declaredArtifacts,
     noCodeReason: root.noCodeReason as string | null,
     ...(gitChangedPaths === undefined ? {} : { gitChangedPaths }),
+    ...(externalDrift === undefined ? {} : { externalDrift }),
   });
   if (authority.contractHash !== root.contractHash) {
     throw new Error('Native implementation scope authority contract hash is not canonical');
@@ -1463,6 +1602,7 @@ export function rebuildNativeImplementationScopeBundle(input: {
       ...(suppliedScope.gitAdvisory
         ? { gitChangedPaths: suppliedScope.gitAdvisory.changedPaths }
         : {}),
+      ...(suppliedScope.externalDrift ? { externalDrift: suppliedScope.externalDrift } : {}),
     },
     baseline: input.baseline,
     current: input.current,

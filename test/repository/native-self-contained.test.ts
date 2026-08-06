@@ -34,10 +34,16 @@ describe('Native self-contained runtime boundary', () => {
       .map(([file]) => file);
     const snapshot = sources.get('native-snapshot.ts');
     const receiptRuntime = sources.get('native-verification-receipt-runtime.ts');
+    const gitProvenance = sources.get('native-git-provenance.ts');
 
-    expect(processFiles).toEqual(['native-snapshot.ts', 'native-verification-receipt-runtime.ts']);
+    expect(processFiles).toEqual([
+      'native-git-provenance.ts',
+      'native-snapshot.ts',
+      'native-verification-receipt-runtime.ts',
+    ]);
     expect(snapshot).toBeDefined();
     expect(receiptRuntime).toBeDefined();
+    expect(gitProvenance).toBeDefined();
     expect(snapshot).toContain("import { spawn, type ChildProcess } from 'node:child_process';");
     expect(snapshot).not.toMatch(/\b(?:execFile|execSync|execFileSync|fork|spawnSync)\s*\(/u);
     expect(receiptRuntime).toContain('env: { ...process.env }');
@@ -46,12 +52,18 @@ describe('Native self-contained runtime boundary', () => {
     expect(receiptRuntime).toContain('resolveWindowsCommand');
     expect(receiptRuntime).not.toContain('sanitizedAutomatedCommandEnvironment');
     expect(receiptRuntime).toContain('terminateProcessTree(child)');
+    expect(gitProvenance).toContain("execFileSync('git'");
+    expect(gitProvenance).toContain('maxBuffer: 2 * 1024 * 1024');
+    expect(gitProvenance).toContain('windowsHide: true');
+    expect(gitProvenance).not.toContain('shell: true');
 
+    const processProviderFiles = new Set([
+      'native-git-provenance.ts',
+      'native-snapshot.ts',
+      'native-verification-receipt-runtime.ts',
+    ]);
     const sourcesOutsideProcessProviders = [...sources]
-      .filter(
-        ([file]) =>
-          file !== 'native-snapshot.ts' && file !== 'native-verification-receipt-runtime.ts',
-      )
+      .filter(([file]) => !processProviderFiles.has(file))
       .map(([, source]) => source)
       .join('\n');
     expect(sourcesOutsideProcessProviders).not.toMatch(

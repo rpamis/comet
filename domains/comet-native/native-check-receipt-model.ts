@@ -7,6 +7,8 @@ export const NATIVE_CHECK_RECEIPT_HASH_TAG = 'comet.native.check-receipt.v1';
 export const NATIVE_CHECK_POLICY = 'scoped-text-safety' as const;
 export const NATIVE_CHECK_POLICY_VERSION = 1 as const;
 export const NATIVE_CHECK_LIMITS = Object.freeze({
+  // maxFiles and maxTotalBytes apply to each auditable batch; one receipt may aggregate many
+  // batches when the complete projection-derived scope is larger than one batch.
   maxFiles: 256,
   // Generated Native runtimes are deliberately emitted as a single auditable asset and
   // currently exceed 1 MiB. Keep the bounded checker usable for that supported asset
@@ -54,6 +56,15 @@ export interface NativeCheckIssue {
   kind: NativeCheckIssueKind;
 }
 
+export interface NativeCheckBatchCounts {
+  filesSelected: number;
+  filesScanned: number;
+  binaryFilesSkipped: number;
+  bytesScanned: number;
+  issueCount: number;
+  recordedIssueCount: number;
+}
+
 export interface NativeCheckReceipt {
   schema: typeof NATIVE_CHECK_RECEIPT_SCHEMA;
   change: string;
@@ -86,6 +97,7 @@ export interface NativeCheckReceipt {
     bytesScanned: number;
     issueCount: number;
     recordedIssueCount: number;
+    batches?: NativeCheckBatchCounts[];
   };
   issues: NativeCheckIssue[];
   issuesTruncated: boolean;
@@ -139,8 +151,9 @@ function exactKeys(
   value: Record<string, unknown>,
   expected: readonly string[],
   label: string,
+  optional: readonly string[] = [],
 ): void {
-  const keys = new Set(expected);
+  const keys = new Set([...expected, ...optional]);
   const unknown = Object.keys(value).filter((key) => !keys.has(key));
   const missing = expected.filter((key) => !(key in value));
   if (unknown.length > 0) throw new Error(`${label} has unknown field(s): ${unknown.join(', ')}`);
@@ -260,6 +273,54 @@ function parseImplementation(value: unknown): NativeCheckReceipt['implementation
   };
 }
 
+function parseBatchCounts(value: unknown, index: number): NativeCheckBatchCounts {
+  const batch = record(value, `Native check batch ${index}`);
+  exactKeys(
+    batch,
+    [
+      'filesSelected',
+      'filesScanned',
+      'binaryFilesSkipped',
+      'bytesScanned',
+      'issueCount',
+      'recordedIssueCount',
+    ],
+    `Native check batch ${index}`,
+  );
+  const parsed = {
+    filesSelected: nonNegativeInteger(
+      batch.filesSelected,
+      `Native check batch ${index} filesSelected`,
+    ),
+    filesScanned: nonNegativeInteger(
+      batch.filesScanned,
+      `Native check batch ${index} filesScanned`,
+    ),
+    binaryFilesSkipped: nonNegativeInteger(
+      batch.binaryFilesSkipped,
+      `Native check batch ${index} binaryFilesSkipped`,
+    ),
+    bytesScanned: nonNegativeInteger(
+      batch.bytesScanned,
+      `Native check batch ${index} bytesScanned`,
+    ),
+    issueCount: nonNegativeInteger(batch.issueCount, `Native check batch ${index} issueCount`),
+    recordedIssueCount: nonNegativeInteger(
+      batch.recordedIssueCount,
+      `Native check batch ${index} recordedIssueCount`,
+    ),
+  };
+  if (
+    parsed.filesSelected > NATIVE_CHECK_LIMITS.maxFiles ||
+    parsed.filesScanned + parsed.binaryFilesSkipped > parsed.filesSelected ||
+    parsed.bytesScanned > NATIVE_CHECK_LIMITS.maxTotalBytes ||
+    parsed.recordedIssueCount > parsed.issueCount
+  ) {
+    throw new Error(`Native check batch ${index} accounting is invalid`);
+  }
+  return parsed;
+}
+
 function parseCounts(value: unknown): NativeCheckReceipt['counts'] {
   const counts = record(value, 'Native check receipt counts');
   exactKeys(
@@ -273,6 +334,7 @@ function parseCounts(value: unknown): NativeCheckReceipt['counts'] {
       'recordedIssueCount',
     ],
     'Native check receipt counts',
+    ['batches'],
   );
   const parsed = {
     filesSelected: nonNegativeInteger(counts.filesSelected, 'Native check filesSelected'),
@@ -287,13 +349,48 @@ function parseCounts(value: unknown): NativeCheckReceipt['counts'] {
       counts.recordedIssueCount,
       'Native check recordedIssueCount',
     ),
+    ...(counts.batches === undefined
+      ? {}
+      : {
+          batches: Array.isArray(counts.batches)
+            ? counts.batches.map(parseBatchCounts)
+            : (() => {
+                throw new Error('Native check receipt batches must be an array');
+              })(),
+        }),
   };
+  const batches = parsed.batches;
+  if (batches !== undefined) {
+    if (batches.length === 0) throw new Error('Native check receipt batches must not be empty');
+    const totals = batches.reduce(
+      (total, batch) => ({
+        filesSelected: total.filesSelected + batch.filesSelected,
+        filesScanned: total.filesScanned + batch.filesScanned,
+        binaryFilesSkipped: total.binaryFilesSkipped + batch.binaryFilesSkipped,
+        bytesScanned: total.bytesScanned + batch.bytesScanned,
+        issueCount: total.issueCount + batch.issueCount,
+        recordedIssueCount: total.recordedIssueCount + batch.recordedIssueCount,
+      }),
+      {
+        filesSelected: 0,
+        filesScanned: 0,
+        binaryFilesSkipped: 0,
+        bytesScanned: 0,
+        issueCount: 0,
+        recordedIssueCount: 0,
+      },
+    );
+    if (JSON.stringify(totals) !== JSON.stringify({ ...parsed, batches: undefined })) {
+      throw new Error('Native check receipt batch totals are inconsistent');
+    }
+  }
   if (
     parsed.filesScanned + parsed.binaryFilesSkipped > parsed.filesSelected ||
-    parsed.filesScanned + parsed.binaryFilesSkipped > NATIVE_CHECK_LIMITS.maxFiles ||
-    parsed.bytesScanned > NATIVE_CHECK_LIMITS.maxTotalBytes ||
     parsed.recordedIssueCount > parsed.issueCount ||
-    parsed.recordedIssueCount > NATIVE_CHECK_LIMITS.maxIssues
+    parsed.recordedIssueCount > NATIVE_CHECK_LIMITS.maxIssues ||
+    (batches === undefined &&
+      (parsed.filesScanned + parsed.binaryFilesSkipped > NATIVE_CHECK_LIMITS.maxFiles ||
+        parsed.bytesScanned > NATIVE_CHECK_LIMITS.maxTotalBytes))
   ) {
     throw new Error('Native check receipt count accounting is invalid');
   }
@@ -441,12 +538,13 @@ export function parseNativeCheckReceipt(value: unknown): NativeCheckReceipt {
   }
   if (
     receipt.status === 'passed' &&
-    (counts.filesSelected > NATIVE_CHECK_LIMITS.maxFiles ||
+    ((counts.batches === undefined && counts.filesSelected > NATIVE_CHECK_LIMITS.maxFiles) ||
       counts.filesScanned + counts.binaryFilesSkipped !== counts.filesSelected)
   ) {
     throw new Error('Passed Native check receipt must cover every selected file');
   }
   if (
+    counts.batches === undefined &&
     counts.filesSelected > NATIVE_CHECK_LIMITS.maxFiles &&
     !issues.some((issue) => issue.kind === 'scan-limit')
   ) {

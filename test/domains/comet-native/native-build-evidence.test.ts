@@ -10,12 +10,16 @@ import {
   persistNativeBuildEvidence,
   prepareNativeBuildEvidence,
 } from '../../../domains/comet-native/native-build-evidence.js';
+import { executeNativeCheckReceipt } from '../../../domains/comet-native/native-check-receipt.js';
 import {
   createNativeChange,
   nativeChangeDir,
   writeNativeChange,
 } from '../../../domains/comet-native/native-change.js';
-import { readNativeImplementationScope } from '../../../domains/comet-native/native-evidence-storage.js';
+import {
+  readNativeImplementationScope,
+  readNativeImplementationScopeBundle,
+} from '../../../domains/comet-native/native-evidence-storage.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import type {
   NativeChangeState,
@@ -254,6 +258,81 @@ describe('Native Build evidence preparation', () => {
     ).resolves.toEqual(result.bundle.scope);
   });
 
+  it('automatically classifies proven fast-forward target-branch drift as external', async () => {
+    const gitRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-external-drift-'));
+    try {
+      await fs.mkdir(path.join(gitRoot, 'src'), { recursive: true });
+      await fs.writeFile(path.join(gitRoot, 'src', 'baseline.ts'), 'export const base = 1;\n');
+      await execFileAsync('git', ['init', '-b', 'main'], { cwd: gitRoot });
+      await execFileAsync('git', ['config', 'user.name', 'Comet Test'], { cwd: gitRoot });
+      await execFileAsync('git', ['config', 'user.email', 'comet@example.test'], { cwd: gitRoot });
+      await execFileAsync('git', ['add', 'src/baseline.ts'], { cwd: gitRoot });
+      await execFileAsync('git', ['commit', '-m', 'baseline'], { cwd: gitRoot });
+
+      const gitPaths = await nativeProjectPaths(gitRoot, '.');
+      const created = await createNativeChange({
+        paths: gitPaths,
+        verificationProtocol: 'legacy-v1',
+        name: 'external-drift',
+        language: 'en',
+        now: new Date('2026-07-17T00:00:00.000Z'),
+      });
+      await fs.writeFile(path.join(nativeChangeDir(gitPaths, created.name), 'brief.md'), brief);
+
+      await fs.writeFile(path.join(gitRoot, 'src', 'parallel.ts'), 'export const parallel = 1; \n');
+      await execFileAsync('git', ['add', 'src/parallel.ts'], { cwd: gitRoot });
+      await execFileAsync('git', ['commit', '-m', 'parallel target update'], { cwd: gitRoot });
+      await fs.writeFile(path.join(gitRoot, 'src', 'feature.ts'), 'export const feature = 1;\n');
+
+      const result = await inspectNativeBuildEvidence({
+        paths: gitPaths,
+        state: { ...created, phase: 'build', approval: 'implicit' },
+        artifactRefs: ['src/feature.ts'],
+      });
+
+      expect(result.bundle.scope).toMatchObject({
+        complete: true,
+        externalDrift: {
+          provider: 'git',
+          targetBranch: 'main',
+          paths: ['src/parallel.ts'],
+        },
+        unattributed: [],
+      });
+      expect(result.allowance).toBeNull();
+      await persistNativeBuildEvidence({
+        paths: gitPaths,
+        state: { ...created, phase: 'build' },
+        preparation: result,
+      });
+      await expect(
+        readNativeImplementationScopeBundle(gitPaths, created.name, result.scopeRef),
+      ).resolves.toMatchObject({
+        authority: { externalDrift: { paths: ['src/parallel.ts'] } },
+        scope: { externalDrift: { paths: ['src/parallel.ts'] } },
+      });
+      const checked = await executeNativeCheckReceipt({
+        paths: gitPaths,
+        state: {
+          ...created,
+          phase: 'verify',
+          approval: 'implicit',
+          implementation_scope: result.scopeRef,
+        },
+      });
+      expect(checked.receipt).toMatchObject({
+        status: 'passed',
+        counts: { filesSelected: 1, filesScanned: 1, issueCount: 0 },
+        issues: [],
+      });
+      await expect(
+        readNativeImplementationScope(gitPaths, created.name, result.scopeRef),
+      ).resolves.toEqual(result.bundle.scope);
+    } finally {
+      await fs.rm(gitRoot, { recursive: true, force: true });
+    }
+  });
+
   it('persists deterministic partial scope IDs and only allows their exact confirmed set', async () => {
     await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 2;\n');
     await fs.writeFile(path.join(projectRoot, 'src', 'unrelated.ts'), 'export const extra = 1;\n');
@@ -292,6 +371,21 @@ describe('Native Build evidence preparation', () => {
     expect(confirmed.findings).toEqual([]);
     expect(confirmed.allowanceRef).toMatch(/^runtime\/evidence\/allowances\/[a-f0-9]{64}\.json$/u);
     expect(confirmed.allowance?.scopeIds).toEqual(scopeIds);
+
+    const checked = await executeNativeCheckReceipt({
+      paths,
+      state: {
+        ...state,
+        phase: 'verify',
+        implementation_scope: confirmed.scopeRef,
+        partial_allowance: confirmed.allowanceRef,
+      },
+    });
+    expect(checked.receipt).toMatchObject({
+      status: 'passed',
+      counts: { filesSelected: 1, filesScanned: 1, issueCount: 0 },
+      issues: [],
+    });
   });
 
   it('infers a removed baseline file without requiring a now-missing artifact', async () => {

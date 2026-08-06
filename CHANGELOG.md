@@ -7,6 +7,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Fixed
 
 - **Global Hook isolation**: Legacy global Hooks now use the host-provided project context when available and remain neutral without one, so ordinary writes in another project are not blocked by an unrelated active Comet change.
+- **Native verification scope coverage**: Large declared changes and unrelated fast-forward Git updates no longer turn the required check into a scan-limit failure; Comet verifies all declared files in bounded batches and leaves only genuinely unowned changes for confirmation.
 
 ## What's Changed [0.4.0-beta.16] - 2026-08-05
 

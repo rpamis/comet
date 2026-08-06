@@ -30,6 +30,7 @@ import type {
 } from './native-types.js';
 import {
   buildNativeImplementationScopeBundle,
+  deriveNativeImplementationChanges,
   type NativeImplementationScopeBundle,
   type NativeSnapshotProjection,
 } from './native-verification-scope.js';
@@ -168,6 +169,7 @@ async function currentProjectionHash(options: {
     contractHash: options.bundle.scope.contractHash,
     declaredArtifacts: options.bundle.scope.declaredArtifacts,
     noCodeReason: options.bundle.scope.noCodeReason,
+    externalDrift: options.bundle.authority.externalDrift,
   }).scope.currentProjectionHash;
 }
 
@@ -277,7 +279,11 @@ function checkReceiptBindingCodes(options: {
 }): NativeVerificationFreshnessFindingCode[] {
   const { receipt, implementationScope } = options;
   const codes: NativeVerificationFreshnessFindingCode[] = [];
-  const selectedFiles = implementationScope.scope.changes.filter((change) => change.after !== null);
+  const selectedFiles = deriveNativeImplementationChanges({
+    baseline: implementationScope.baseline,
+    current: implementationScope.current,
+    declaredArtifacts: implementationScope.scope.declaredArtifacts,
+  }).filter((change) => change.attributedTo.length > 0 && change.after !== null);
   const selectedBytes = selectedFiles.reduce((total, change) => total + change.after!.size, 0);
   if (
     receipt.stale ||

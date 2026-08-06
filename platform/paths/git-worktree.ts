@@ -82,5 +82,18 @@ function isLocalGitBranch(projectPath: string, branch: string): boolean {
   }
 }
 
-export { inspectGitWorktree, isLocalGitBranch, listGitWorktreeRoots };
+function resolveGitRef(projectPath: string, ref: string): string | null {
+  try {
+    const objectId = runGit(projectPath, [
+      'rev-parse',
+      '--verify',
+      `${ref}^{commit}`,
+    ]).toLowerCase();
+    return /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(objectId) ? objectId : null;
+  } catch {
+    return null;
+  }
+}
+
+export { inspectGitWorktree, isLocalGitBranch, listGitWorktreeRoots, resolveGitRef };
 export type { GitWorktreeContext };

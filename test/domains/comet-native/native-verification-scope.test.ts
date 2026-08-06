@@ -464,6 +464,54 @@ describe('Native implementation scope', () => {
     expect(parseNativeImplementationScopeBundle(first)).toEqual(first);
   });
 
+  it('keeps a large fully attributed scope complete when only detail pages are compacted', () => {
+    const entries = Array.from({ length: 500 }, (_, index) =>
+      entry(`generated/${String(index).padStart(4, '0')}.ts`, HASH_A),
+    );
+    const largeManifest = (values: NativeSnapshotEntry[]): NativeContentSnapshotManifest => ({
+      ...manifest(),
+      limits: {
+        maxFiles: 1_000,
+        maxFileBytes: 1_000,
+        maxTotalBytes: 1_000_000,
+        maxManifestBytes: 1_000_000,
+      },
+      entries: values,
+    });
+    const bundle = buildNativeImplementationScopeBundle({
+      baseline: largeManifest([]),
+      current: largeManifest(entries),
+      contractHash: HASH_B,
+      declaredArtifacts: [{ path: 'generated', kind: 'directory' }],
+    });
+
+    expect(bundle.scope.changes.length).toBeLessThan(entries.length);
+    expect(bundle.scope.complete).toBe(true);
+    expect(bundle.scope.unattributed).toEqual([]);
+    expect(bundle.scope.unresolvedScopes).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: 'scope-detail-overflow' })]),
+    );
+    expect(parseNativeImplementationScopeBundle(bundle)).toEqual(bundle);
+  });
+
+  it('rejects malformed external Git commit identities', () => {
+    expect(() =>
+      buildNativeImplementationScopeBundle({
+        baseline: manifest(),
+        current: manifest({ entries: [entry('parallel.ts', HASH_A)] }),
+        contractHash: HASH_B,
+        declaredArtifacts: [],
+        externalDrift: {
+          provider: 'git',
+          baseCommit: 'a'.repeat(41),
+          targetBranch: 'main',
+          targetCommit: 'b'.repeat(40),
+          paths: ['parallel.ts'],
+        },
+      }),
+    ).toThrow('base commit');
+  });
+
   it('bounds long omission details by serialized bytes and folds the remainder stably', () => {
     const omitted = Array.from({ length: 1_000 }, (_, index) => ({
       path: `generated/omitted-${String(index).padStart(4, '0')}-${'x'.repeat(450)}.bin`,
