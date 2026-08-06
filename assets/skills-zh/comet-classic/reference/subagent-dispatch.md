@@ -1,6 +1,6 @@
 # Subagent 驱动开发的 Comet 扩展
 
-规范路径：`comet/reference/subagent-dispatch.md`
+规范路径：`comet-classic/reference/subagent-dispatch.md`
 
 本文档提供在 Superpowers `subagent-driven-development` 技能**之上**应用的 Comet 专属扩展。Superpowers `subagent-driven-development` 技能提供基础连续派发循环（每个 task 派发全新 implementer，并包含默认 task reviewer 节点）并强制连续执行。本文档添加 Comet 特有的子代理派发、任务追踪、状态验证、上下文恢复，以及审查/修复预算；Comet 的 `review_mode` 接管 reviewer 阶段，决定哪些任务需要 reviewer、需要几轮修复和最终审查。若 Superpowers 技能与本文档发生冲突时，以本文档中更具体的 Comet 约束为准。
 

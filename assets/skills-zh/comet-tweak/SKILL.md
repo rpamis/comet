@@ -5,7 +5,7 @@ description: "仅在用户明确调用 /comet-tweak，或由 Comet 根 Skill/run
 
 # Comet 预设路径：Tweak
 
-开始或恢复前必须先读取并执行 `comet/reference/classic-layout.md`；本文件中的 OpenSpec CLI 调用必须使用 adapter，文件路径必须使用该协议绑定的 `<classic-*>` 逻辑根。
+开始或恢复前必须先读取并执行 `comet-classic/reference/classic-layout.md`；本文件中的 OpenSpec CLI 调用必须使用 adapter，文件路径必须使用该协议绑定的 `<classic-*>` 逻辑根。
 
 Tweak 是 Comet 五阶段能力的预设工作流，不是独立的平行流程。它串联 OpenSpec 的核心流程，复用 open、build、verify、archive 能力，仅跳过 Superpowers brainstorming 和完整 plan。
 
@@ -29,7 +29,7 @@ Tweak 是 Comet 五阶段能力的预设工作流，不是独立的平行流程�
 
 执行链路：open → OpenSpec apply → verify → archive。Tweak 为每个阶段提供默认决策：精简开启、通过 OpenSpec apply 直接构建、按规模与 delta spec 判定验证轻重、验证通过后进入归档前最终确认。
 
-开始前按 `comet/reference/scripts.md` 运行公开 Comet CLI 命令；从任意入口恢复时先按 `comet/reference/context-recovery.md` 检查 phase/workflow。
+开始前按 `comet-classic/reference/scripts.md` 运行公开 Comet CLI 命令；从任意入口恢复时先按 `comet-classic/reference/context-recovery.md` 检查 phase/workflow。
 
 恢复已有 tweak change 时，第一项状态操作必须是 `comet state select <change-name>`；创建新 change 时，在 `.comet.yaml` 初始化成功后立即运行该命令，再进入源码写入步骤。
 
@@ -61,9 +61,9 @@ comet state select <name>
 comet state check <name> open
 ```
 
-若上述 `select` / `check` 输出 `BLOCKED`，且原因是 `bound_branch` 与当前分支不一致，立即按 `comet/reference/decision-point.md` 暂停，让用户单选：切回绑定分支后重新运行入口验证，或在用户明确确认当前分支应接管该 change 后运行 `comet state rebind <change-name>` 并重新入口验证。不得自行切换分支，不得自行换绑。
+若上述 `select` / `check` 输出 `BLOCKED`，且原因是 `bound_branch` 与当前分支不一致，立即按 `comet-classic/reference/decision-point.md` 暂停，让用户单选：切回绑定分支后重新运行入口验证，或在用户明确确认当前分支应接管该 change 后运行 `comet state rebind <change-name>` 并重新入口验证。不得自行切换分支，不得自行换绑。
 
-入口工作区隔离是用户决策点，不再把 `current` 当作默认隔离模式写入。按 `comet/reference/decision-point.md` 暂停让用户单选：
+入口工作区隔离是用户决策点，不再把 `current` 当作默认隔离模式写入。按 `comet-classic/reference/decision-point.md` 暂停让用户单选：
 
 - A. 当前分支直接工作：运行 `comet state set <name> isolation current`，如实绑定当前分支
 - B. 创建分支：先创建并切换到 `tweak/YYYYMMDD/<change-name>`，再运行 `comet state set <name> isolation branch`
@@ -89,7 +89,7 @@ comet guard <change-name> open --apply
 这条 apply 路径只属于 tweak。完整 `/comet-classic` 或 `workflow: full` 不得套用 tweak 的 `openspec-apply-change` 构建路径；full 仍必须先通过 `/comet-design` 生成 Design Doc，再由 `/comet-build` 通过 Superpowers `writing-plans`、执行方式选择和对应执行技能完成构建。
 </IMPORTANT>
 
-继续或开始修改前，按 `comet/reference/dirty-worktree.md` 协议处理未提交改动。若归因后发现命中质变信号或文件数 tripwire，按本文件「升级判定」处理。
+继续或开始修改前，按 `comet-classic/reference/dirty-worktree.md` 协议处理未提交改动。若归因后发现命中质变信号或文件数 tripwire，按本文件「升级判定」处理。
 
 **立即执行：** 使用 Skill 工具加载 `openspec-apply-change` 技能。禁止跳过此步骤。
 
@@ -112,9 +112,9 @@ comet guard <change-name> open --apply
 
 执行 tweak 期间，只要运行程序、测试、构建或手动验证时出现崩溃、异常行为、测试失败或构建失败，必须使用 Skill 工具加载 Superpowers `systematic-debugging` 技能。在完成根因调查前，不得提出或实施源码修复。
 
-具体调查、最小失败测试、修复验证和保持当前 change 验证闭环的要求，按 `comet/reference/debug-gate.md` 执行。
+具体调查、最小失败测试、修复验证和保持当前 change 验证闭环的要求，按 `comet-classic/reference/debug-gate.md` 执行。
 
-**升级判定检查**：build 全程持续判断，并在 build→verify 守卫执行前做一次集中复核。判定采用三层分工（详见「升级判定」章节）：质变信号靠 agent 语义识别、文件数仅作提示交用户拍板、scale 脚本仅管验证轻重。命中质变信号或文件数超提示阈值时，**不得自行升级或自行判定可继续**，必须按 `comet/reference/decision-point.md` 暂停并把决策权交给用户：继续 tweak 轻量流程，还是升级为完整 `/comet-classic`。
+**升级判定检查**：build 全程持续判断，并在 build→verify 守卫执行前做一次集中复核。判定采用三层分工（详见「升级判定」章节）：质变信号靠 agent 语义识别、文件数仅作提示交用户拍板、scale 脚本仅管验证轻重。命中质变信号或文件数超提示阈值时，**不得自行升级或自行判定可继续**，必须按 `comet-classic/reference/decision-point.md` 暂停并把决策权交给用户：继续 tweak 轻量流程，还是升级为完整 `/comet-classic`。
 
 运行阶段守卫完成 build → verify 过渡：
 
@@ -174,7 +174,7 @@ tweak 的升级判定只决定是否从轻量预设转为 full；delta spec 本�
 
 文件数 tripwire 仅作提示：改动文件数超过提示阈值（如 > 6 个文件）时，也交给用户决定继续 tweak 还是升级 full；文件数多不等于质变。tweak 常伴随 delta spec 或配置调整，波及面天然比 bug 修复宽，故提示阈值高于 hotfix。
 
-命中质变信号或文件数 tripwire 时，**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户明确选择**。不得直接进入 `/comet-design`，不得自动补充 Design Doc。
+命中质变信号或文件数 tripwire 时，**必须按 `comet-classic/reference/decision-point.md` 的协议暂停并等待用户明确选择**。不得直接进入 `/comet-design`，不得自动补充 Design Doc。
 
 用户选择升级（选项 B）后，使用状态机合法的升级通道，单条命令完成预设流程 → full 转换并回退到 design 阶段：
 
@@ -197,7 +197,7 @@ comet state transition <name> preset-escalate
 
 ## 自动衔接下一阶段
 
-按 `comet/reference/auto-transition.md` 执行。关键命令：
+按 `comet-classic/reference/auto-transition.md` 执行。关键命令：
 
 ```bash
 comet state next <name>

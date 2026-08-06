@@ -5,7 +5,7 @@ description: "仅在用户明确调用 /comet-open，或由 Comet 根 Skill/runt
 
 # Comet 阶段 1：开启（Open）
 
-开始或恢复前必须先读取并执行 `comet/reference/classic-layout.md`；本文件中的 OpenSpec CLI 调用必须使用 adapter，文件路径必须使用该协议绑定的 `<classic-*>` 逻辑根。
+开始或恢复前必须先读取并执行 `comet-classic/reference/classic-layout.md`；本文件中的 OpenSpec CLI 调用必须使用 adapter，文件路径必须使用该协议绑定的 `<classic-*>` 逻辑根。
 
 ## 前置条件
 
@@ -75,7 +75,7 @@ comet classic openspec -- --version
 - 预计会产生多个 delta spec 或超过 3 个大任务
 - 任一部分失败或延期不应阻塞其他部分进入后续阶段
 
-如推荐拆分，必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户选择。
+如推荐拆分，必须按 `comet-classic/reference/decision-point.md` 的协议暂停并等待用户选择。
 
 用户选择必须包含：
 - 「创建多个 OpenSpec changes」— 按候选拆分逐个创建独立 change
@@ -119,7 +119,7 @@ comet state check <name> design
 - **范围与命名都明确时直接继续**，不得仅为了让用户批准摘要或名称而创建停顿点；最终审视会统一确认 change 名称、范围和产物内容
 - 用户已经提供名称时，规范化为 kebab-case 并在进度说明中回显；规范化不改变含义时无需再次确认
 - 已确认批量拆分项直接复用批量清单中的摘要与名称；检测到范围漂移或清单信息缺失时，才重新澄清
-- 只有仍存在会改变范围或目标 change 身份的互斥选择时，才按 `comet/reference/decision-point.md` 提出一个联合问题；命名偏好本身不是独立阻塞点
+- 只有仍存在会改变范围或目标 change 身份的互斥选择时，才按 `comet-classic/reference/decision-point.md` 提出一个联合问题；命名偏好本身不是独立阻塞点
 
 OpenSpec change 名称必须是 kebab-case 英文（小写字母、数字、单连字符）。若名称冲突但目标仍明确，派生一个不冲突且语义稳定的名称并继续；只有无法判断应复用现有 change 还是创建新 change 时才交给用户选择。
 
@@ -222,7 +222,7 @@ comet state check <name> open
 
 ### 5. 用户审视确认（阻塞点）
 
-全部 OpenSpec artifacts 完成且内容完整性检查通过后，**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户确认**。不得在用户确认前执行阶段守卫或自动流转。
+全部 OpenSpec artifacts 完成且内容完整性检查通过后，**必须按 `comet-classic/reference/decision-point.md` 的协议暂停并等待用户确认**。不得在用户确认前执行阶段守卫或自动流转。
 
 最终审视同时确认 change 名称、范围和产物内容；不得因 Step 1b 已完成解析而省略，也不得在此之前再增加一次常规摘要/命名确认。
 
@@ -257,7 +257,7 @@ comet guard <change-name> open --apply
 
 ## 自动衔接下一阶段
 
-按 `comet/reference/auto-transition.md` 执行。关键命令：
+按 `comet-classic/reference/auto-transition.md` 执行。关键命令：
 
 ```bash
 comet state next <change-name>

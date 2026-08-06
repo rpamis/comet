@@ -1,8 +1,8 @@
 # .comet.yaml Field Reference
 
-Canonical path: `comet/reference/comet-yaml-fields.md`
+Canonical path: `comet-classic/reference/comet-yaml-fields.md`
 
-This file is the field reference for each change-level `.comet.yaml` state file under `<classic-change-dir>/`. `<classic-change-dir>` comes from the resolver binding in `comet/reference/classic-layout.md`.
+This file is the field reference for each change-level `.comet.yaml` state file under `<classic-change-dir>/`. `<classic-change-dir>` comes from the resolver binding in `comet-classic/reference/classic-layout.md`.
 Consult on demand; not loaded inline with skills. Project defaults live in `.comet/config.yaml`, global defaults live in `~/.comet/config.yaml`, and project values take precedence.
 
 ## Example

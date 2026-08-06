@@ -1,6 +1,6 @@
 # Comet Extensions for Subagent-Driven Development
 
-Canonical path: `comet/reference/subagent-dispatch.md`
+Canonical path: `comet-classic/reference/subagent-dispatch.md`
 
 This document provides Comet-specific extensions applied **on top of** the Superpowers `subagent-driven-development` skill. The Superpowers `subagent-driven-development` skill provides the base continuous dispatch loop (a fresh implementer for each task, including the default task reviewer node) and enforces continuous execution. This document adds Comet-specific subagent dispatch, task tracking, state verification, context recovery, and review/fix budgets; Comet's `review_mode` takes over the reviewer stage to decide which tasks need reviewers, how many fix rounds are allowed, and which final review runs. If the Superpowers skill conflicts with this document, the more specific Comet constraints here take precedence.
 

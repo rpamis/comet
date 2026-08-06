@@ -1,6 +1,6 @@
 # 异常调试协议
 
-规范路径：`comet/reference/debug-gate.md`
+规范路径：`comet-classic/reference/debug-gate.md`
 
 本协议由 build、hotfix、tweak 等会直接修改代码的 comet 子 skill 共享。当运行程序、测试、构建或手动验证时出现崩溃、异常行为、测试失败或构建失败，必须进入异常调试协议。
 

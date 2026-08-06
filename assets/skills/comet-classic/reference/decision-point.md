@@ -1,6 +1,6 @@
 # Decision Point Protocol
 
-Canonical path: `comet/reference/decision-point.md`
+Canonical path: `comet-classic/reference/decision-point.md`
 
 This protocol is shared by all comet sub-skills that contain user decision points. Any step labeled as a blocking point or user decision point must follow this protocol.
 

@@ -1,6 +1,6 @@
 # 文件结构参考
 
-规范路径：`comet/reference/file-structure.md`
+规范路径：`comet-classic/reference/file-structure.md`
 
 本文件是 Comet 项目文件结构参考。按需查阅，不随 skill 一次性加载。
 

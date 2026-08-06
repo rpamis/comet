@@ -1,6 +1,6 @@
 # Debug Gate Protocol
 
-Canonical path: `comet/reference/debug-gate.md`
+Canonical path: `comet-classic/reference/debug-gate.md`
 
 This protocol is shared by comet sub-skills that directly modify code, including build, hotfix, and tweak. Enter the Debug Gate when a crash, unexpected behavior, test failure, or build failure appears while running the program, tests, build, or manual verification.
 

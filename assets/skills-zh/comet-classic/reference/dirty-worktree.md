@@ -1,6 +1,6 @@
 # Dirty Worktree 协议
 
-规范路径：`comet/reference/dirty-worktree.md`
+规范路径：`comet-classic/reference/dirty-worktree.md`
 
 本协议由所有涉及代码修改的 comet 子 skill 共享。当 agent 恢复上下文或继续执行时，必须按本协议处理未提交的工作区改动。各子 skill 可在本协议基础上定义阶段特例（如 verify 阶段对实现改动的特殊处理），详见对应子 skill 文件。本文件不重复阶段特例。
 

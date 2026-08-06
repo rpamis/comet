@@ -5,7 +5,7 @@ description: "Use only when explicitly invoked as /comet-hotfix or routed by the
 
 # Comet Preset Path: Hotfix
 
-Before starting or recovering, read and follow `comet/reference/classic-layout.md`. Every OpenSpec CLI call in this file must use the adapter, and every file path must use the `<classic-*>` logical roots bound by that protocol.
+Before starting or recovering, read and follow `comet-classic/reference/classic-layout.md`. Every OpenSpec CLI call in this file must use the adapter, and every file path must use the `<classic-*>` logical roots bound by that protocol.
 
 Quick bug fix workflow: open → build → verify → archive. Skip brainstorming and full plan, applicable for behavior fixes not involving new capability design.
 
@@ -26,7 +26,7 @@ Streamlined OpenSpec artifacts must use the configured Comet artifact language. 
 
 Execution chain: open → build → root cause check → verify → archive. Hotfix provides default decisions for each phase: streamlined open, direct build, root cause confirmation, scale-based verification, and final archive confirmation after verification passes.
 
-Before starting, use `comet/reference/scripts.md` to run the public Comet CLI command. When resuming from any entry point, first use `comet/reference/context-recovery.md` to check phase/workflow.
+Before starting, use `comet-classic/reference/scripts.md` to run the public Comet CLI command. When resuming from any entry point, first use `comet-classic/reference/context-recovery.md` to check phase/workflow.
 
 When resuming an existing hotfix change, the first state operation must be `comet state select <change-name>`. For a new change, run the command immediately after `.comet.yaml` initialization and before source writes.
 
@@ -47,9 +47,9 @@ comet state select <name>
 comet state check <name> open
 ```
 
-If the `select` / `check` output is `BLOCKED` because `bound_branch` does not match the current branch, immediately pause under `comet/reference/decision-point.md` and let the user choose one option: switch back to the bound branch and rerun entry verification, or run `comet state rebind <change-name>` after the user explicitly confirms the current branch should take over this change, then rerun entry verification. Do not switch branches or rebind on your own.
+If the `select` / `check` output is `BLOCKED` because `bound_branch` does not match the current branch, immediately pause under `comet-classic/reference/decision-point.md` and let the user choose one option: switch back to the bound branch and rerun entry verification, or run `comet state rebind <change-name>` after the user explicitly confirms the current branch should take over this change, then rerun entry verification. Do not switch branches or rebind on your own.
 
-Entry workspace isolation is a user decision point; do not use `current` as the default isolation mode. Pause under `comet/reference/decision-point.md` and let the user choose one option:
+Entry workspace isolation is a user decision point; do not use `current` as the default isolation mode. Pause under `comet-classic/reference/decision-point.md` and let the user choose one option:
 
 - A. Work directly on the current branch: run `comet state set <name> isolation current` to truthfully bind the current branch
 - B. Create a branch: create and switch to `hotfix/YYYYMMDD/<change-name>`, then run `comet state set <name> isolation branch`
@@ -86,7 +86,7 @@ comet state next <name>
 
 Use hotfix defaults: `build_mode: direct`, `tdd_mode: direct`, and `review_mode: off`. `isolation` must keep the entry workspace isolation the user confirmed in Step 1; do not change it back to `current` on your own. Here `direct` skips full planning/TDD orchestration; it never skips reproduction, regression coverage, or verification. Skip Superpowers `brainstorming` and `writing-plans`; **task count alone does not route to `/comet-build`**. Keep larger task lists ordered in the current hotfix and ask about upgrading only when a qualitative-change signal or scope tripwire is hit.
 
-Before continuing or starting changes, handle uncommitted changes through `comet/reference/dirty-worktree.md`. If attribution shows a qualitative-change signal or file-count tripwire is hit, handle it through this file's "Upgrade Assessment".
+Before continuing or starting changes, handle uncommitted changes through `comet-classic/reference/dirty-worktree.md`. If attribution shows a qualitative-change signal or file-count tripwire is hit, handle it through this file's "Upgrade Assessment".
 
 Before implementation, **reproduce the bug and record failing evidence first**:
 
@@ -111,7 +111,7 @@ After RED evidence exists, execute tasks one by one according to tasks.md:
 
 During hotfix execution, whenever a crash, unexpected behavior, test failure, or build failure appears while running the program, tests, build, or manual verification, must use the Skill tool to load the Superpowers `systematic-debugging` skill. Before root-cause investigation is complete, must not propose or implement source-code fixes.
 
-For specific investigation, minimal failing test, fix verification, and keeping the current change verification loop, follow `comet/reference/debug-gate.md`.
+For specific investigation, minimal failing test, fix verification, and keeping the current change verification loop, follow `comet-classic/reference/debug-gate.md`.
 
 ### 3. Root Cause Elimination Check
 
@@ -182,7 +182,7 @@ Continuously check these qualitative-change signals: cross-module coordination, 
 
 The file-count tripwire is only a prompt: when changed files exceed the hint threshold (for example > 4 files), ask the user whether to continue hotfix or upgrade full. More files do not necessarily mean qualitative change. A bug fix is usually focused on 1-3 files, so exceeding the threshold means the change surface is larger and is worth having the user confirm it still fits the preset scope.
 
-When a qualitative-change signal or file-count tripwire is hit, **must pause under the `comet/reference/decision-point.md` protocol and wait for the user's explicit choice**. Do not directly enter `/comet-design`; do not automatically add a Design Doc.
+When a qualitative-change signal or file-count tripwire is hit, **must pause under the `comet-classic/reference/decision-point.md` protocol and wait for the user's explicit choice**. Do not directly enter `/comet-design`; do not automatically add a Design Doc.
 
 After the user chooses upgrade (option B), use the legal state-machine upgrade channel, a single command that converts the preset workflow to full and rolls back to design:
 
@@ -205,7 +205,7 @@ When the user chooses continue (option A), continue the hotfix workflow and reco
 
 ## Automatic Handoff to Next Phase
 
-Follow `comet/reference/auto-transition.md`. Key command:
+Follow `comet-classic/reference/auto-transition.md`. Key command:
 
 ```bash
 comet state next <name>

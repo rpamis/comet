@@ -1,6 +1,6 @@
 # 自动衔接下一阶段协议
 
-规范路径：`comet/reference/auto-transition.md`
+规范路径：`comet-classic/reference/auto-transition.md`
 
 本协议由所有 comet 子 skill 共享，定义阶段守卫推进后的自动衔接规则。
 

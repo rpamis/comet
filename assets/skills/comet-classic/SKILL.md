@@ -5,7 +5,7 @@ description: "Use when the user explicitly invokes /comet-classic, asks to start
 
 # Comet Classic — OpenSpec + Superpowers Dual-Star Development Workflow
 
-Before starting or recovering, read and follow `comet/reference/classic-layout.md`. Every OpenSpec CLI call in this file must use the adapter, and every file path must use the `<classic-*>` logical roots bound by that protocol.
+Before starting or recovering, read and follow `comet-classic/reference/classic-layout.md`. Every OpenSpec CLI call in this file must use the adapter, and every file path must use the `<classic-*>` logical roots bound by that protocol.
 
 OpenSpec and Superpowers orbit the same goal like a binary star system.
 
@@ -30,7 +30,7 @@ Use the configured Comet artifact language as the output language for every Open
 
 **Step 0: Active Change Discovery and Intent Resolution**
 
-1. First follow `comet/reference/scripts.md` and run the public `comet` CLI command directly.
+1. First follow `comet-classic/reference/scripts.md` and run the public `comet` CLI command directly.
 2. Run `comet classic openspec -- list --json` to collect active changes.
 3. Fill a `CometIntentFrame` from the user request, active change list, and necessary repository state.
 4. Prefer `comet classic intent route --stdin` to pass the frame JSON and get the runtime-normalized route. `CometIntentFrame + runtime scorer` is the source of truth; this prose is only for intent recognition slot extraction.
@@ -39,7 +39,7 @@ Use the configured Comet artifact language as the output language for every Open
    - `tweak` → invoke `/comet-tweak`
    - `full` → follow the active-change table to invoke `/comet-open` or ask for confirmation
    - `resume` → continue to Step 1 and read the selected change `.comet.yaml`
-   - `ask_user` → pause through `comet/reference/decision-point.md` and wait for the user's choice
+   - `ask_user` → pause through `comet-classic/reference/decision-point.md` and wait for the user's choice
    - `out_of_scope` → explain that the input is not a Comet workflow start/resume request and do not initialize a change
 
 After the runtime route, Ambient Resume, or user choice resolves one explicit change, bind the current execution context before entering its phase Skill:
@@ -97,7 +97,7 @@ Never attach unrelated work to an active Comet change only because `.comet.yaml`
 ```
 
 **Intent Recognition Slot Extraction**:
-See `comet/reference/intent-frame.md` for complete field meanings; normal routing only needs the minimal skeleton above.
+See `comet-classic/reference/intent-frame.md` for complete field meanings; normal routing only needs the minimal skeleton above.
 
 - `fix_bug` + `existing_behavior: true` + no new capability/public API/schema/cross-module signal → prefer `hotfix`
 - User explicitly describes a lightweight/medium change that can fit in a single OpenSpec change, should be executed through OpenSpec apply, and does not need full `/comet-classic` deep design/plan → prefer `tweak`
@@ -126,7 +126,7 @@ Prefer reading `<classic-change-dir>/.comet.yaml`. If not available, fall back t
 
 **Resume rules**:
 - On every context resume, rerun Step 0 and Step 1; do not trust conversation history for phase detection
-- If there is an active change and the worktree has uncommitted changes, handle them through `comet/reference/dirty-worktree.md`. That protocol defines checks, attribution, and prohibitions; this file does not repeat them
+- If there is an active change and the worktree has uncommitted changes, handle them through `comet-classic/reference/dirty-worktree.md`. That protocol defines checks, attribution, and prohibitions; this file does not repeat them
 - If `phase: build`, first check `build_pause`, `plan`, `isolation`, `build_mode`, `tdd_mode`, and `review_mode` (see details below):
   - If `build_pause: plan-ready` but `isolation`, `build_mode`, `tdd_mode`, and `review_mode` are all already set, treat as stale pause: first output `[COMET] Detected stale pause (build_pause=plan-ready but isolation/build_mode/tdd_mode/review_mode are set), auto-clearing and continuing`, then run `comet state set <name> build_pause null`, then read the next unchecked task from tasks.md and resume execution per `build_mode`
   - If `build_pause: plan-ready` and the plan file exists, but `isolation`, `build_mode`, `tdd_mode`, or `review_mode` is not yet set, return to the `/comet-build` plan-ready resume point, prompt the user to complete/confirm workspace isolation, execution method, TDD mode, and code review mode, and do not regenerate the plan
@@ -188,7 +188,7 @@ Flow chain: open → design → build → verify → archive
 
 **Distinguish phase advancement vs automatic handoff**: each sub-skill runs phase guard `--apply` before exit to advance the `.comet.yaml` `phase` field. This step **always happens** and is not controlled by `auto_transition`. After that, the sub-skill runs `comet state next <name>` to resolve the next action: when `auto_transition` is not `false`, output is `NEXT: auto` (auto-invoke next skill); when `auto_transition` is `false`, output is `NEXT: manual` (do not invoke next skill; return control with `HINT`). `NEXT: manual` is not a user decision point and must not ask whether to continue. Therefore `auto_transition` **only controls next skill invocation, not phase advancement**. Regardless of `auto_transition`, genuine user decision points below remain blocking.
 
-**Decision points are blocking points**: whenever reaching any of the following nodes, the current `/comet-classic` invocation must stop, and follow the `comet/reference/decision-point.md` protocol to obtain the user's explicit choice. Only after the user explicitly chooses can the corresponding state fields be written and operations executed, then auto-advance resumes.
+**Decision points are blocking points**: whenever reaching any of the following nodes, the current `/comet-classic` invocation must stop, and follow the `comet-classic/reference/decision-point.md` protocol to obtain the user's explicit choice. Only after the user explicitly chooses can the corresponding state fields be written and operations executed, then auto-advance resumes.
 
 Nodes requiring user participation (pause only at these nodes):
 1. Workflow target selection: multiple active changes, continue an existing change versus create a new one, or choose which completed batch item starts first
@@ -261,31 +261,31 @@ Agents should not skip these decision points; other unambiguous phase transition
 
 ### .comet.yaml Field Reference
 
-See `comet/reference/comet-yaml-fields.md` for complete field reference with examples and descriptions.
+See `comet-classic/reference/comet-yaml-fields.md` for complete field reference with examples and descriptions.
 
 ### File Structure
 
-See `comet/reference/file-structure.md` for the complete directory layout and artifact organization.
+See `comet-classic/reference/file-structure.md` for the complete directory layout and artifact organization.
 
 ### Auto-Transition Protocol
 
-See `comet/reference/auto-transition.md` for the complete automatic handoff workflow.
+See `comet-classic/reference/auto-transition.md` for the complete automatic handoff workflow.
 
 ### Context Recovery
 
-See `comet/reference/context-recovery.md` for structured recovery after context compression.
+See `comet-classic/reference/context-recovery.md` for structured recovery after context compression.
 
 ### Decision Point Protocol
 
-See `comet/reference/decision-point.md` for the complete user decision point protocol.
+See `comet-classic/reference/decision-point.md` for the complete user decision point protocol.
 
 ### Debug Gate Protocol
 
-See `comet/reference/debug-gate.md` for the complete debug gate protocol.
+See `comet-classic/reference/debug-gate.md` for the complete debug gate protocol.
 
 ### Public CLI
 
-Follow `comet/reference/scripts.md` once per session and use only the public `comet` CLI. Do not search for or invoke internal bundles. Key entry points:
+Follow `comet-classic/reference/scripts.md` once per session and use only the public `comet` CLI. Do not search for or invoke internal bundles. Key entry points:
 
 ```bash
 comet guard <change-name> <phase> --apply             # phase guard + state update

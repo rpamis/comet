@@ -1,6 +1,6 @@
 # File Structure Reference
 
-Canonical path: `comet/reference/file-structure.md`
+Canonical path: `comet-classic/reference/file-structure.md`
 
 This file is the Comet project file structure reference. Consult on demand; not loaded inline with skills.
 

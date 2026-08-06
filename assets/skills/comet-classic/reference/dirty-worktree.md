@@ -1,6 +1,6 @@
 # Dirty Worktree Protocol
 
-Canonical path: `comet/reference/dirty-worktree.md`
+Canonical path: `comet-classic/reference/dirty-worktree.md`
 
 This protocol is shared by all Comet sub-skills that may modify code. When an agent resumes context or continues execution, it must handle uncommitted working tree changes through this protocol.
 

@@ -42,13 +42,13 @@ describe('Chinese Comet entry Skills', () => {
     expect(source).toContain('comet state select <change-name>');
     expect(source).toContain('/comet-open');
     expect(source).toContain('/comet-build');
-    expect(source).toContain('comet/reference/scripts.md');
+    expect(source).toContain('comet-classic/reference/scripts.md');
     expect(source.length).toBeGreaterThan(10_000);
     expect(source).not.toMatch(/\/comet(?![-/])/u);
   });
 
   it('keeps shared Classic references on the explicit Classic entry', async () => {
-    const referenceRoot = path.join(chineseRoot, 'comet', 'reference');
+    const referenceRoot = path.join(chineseRoot, 'comet-classic', 'reference');
     const files = (await fs.readdir(referenceRoot)).filter((name) => name.endsWith('.md'));
     const source = (
       await Promise.all(files.map((name) => fs.readFile(path.join(referenceRoot, name), 'utf8')))
@@ -118,13 +118,13 @@ describe('English Comet entry Skills', () => {
     expect(source).toContain('comet state select <change-name>');
     expect(source).toContain('/comet-open');
     expect(source).toContain('/comet-build');
-    expect(source).toContain('comet/reference/scripts.md');
+    expect(source).toContain('comet-classic/reference/scripts.md');
     expect(source.length).toBeGreaterThan(10_000);
     expect(source).not.toMatch(/\/comet(?![-/])/u);
   });
 
   it('keeps shared Classic references on the explicit Classic entry', async () => {
-    const referenceRoot = path.join(englishRoot, 'comet', 'reference');
+    const referenceRoot = path.join(englishRoot, 'comet-classic', 'reference');
     const files = (await fs.readdir(referenceRoot)).filter((name) => name.endsWith('.md'));
     const source = (
       await Promise.all(files.map((name) => fs.readFile(path.join(referenceRoot, name), 'utf8')))

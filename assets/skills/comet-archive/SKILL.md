@@ -5,7 +5,7 @@ description: "Use only when explicitly invoked as /comet-archive or routed by th
 
 # Comet Phase 5: Archive (Archive)
 
-Before starting or recovering, read and follow `comet/reference/classic-layout.md`. Every OpenSpec CLI call in this file must use the adapter, and every file path must use the `<classic-*>` logical roots bound by that protocol.
+Before starting or recovering, read and follow `comet-classic/reference/classic-layout.md`. Every OpenSpec CLI call in this file must use the adapter, and every file path must use the `<classic-*>` logical roots bound by that protocol.
 
 ## Prerequisites
 
@@ -21,7 +21,7 @@ Archive summaries and lifecycle closure notes must use the configured Comet arti
 
 ### 0. Entry State Verification (Entry Check)
 
-Use the stable `comet` CLI described in `comet/reference/scripts.md`, then run entry verification. When resuming from any entry point, first run the recovery check in `comet/reference/context-recovery.md`:
+Use the stable `comet` CLI described in `comet-classic/reference/scripts.md`, then run entry verification. When resuming from any entry point, first run the recovery check in `comet-classic/reference/context-recovery.md`:
 
 ```bash
 comet state select <change-name>
@@ -30,11 +30,11 @@ comet state check <name> archive
 
 Proceed to Step 1 after verification passes. The script outputs specific failure reasons when verification fails.
 
-If the `select` / `check` output is `BLOCKED` because `bound_branch` does not match the current branch, immediately pause under `comet/reference/decision-point.md` and let the user choose one option: switch back to the bound branch and rerun entry verification, or run `comet state rebind <change-name>` after the user explicitly confirms the current branch should take over this change, then rerun entry verification. Do not switch branches or rebind on your own.
+If the `select` / `check` output is `BLOCKED` because `bound_branch` does not match the current branch, immediately pause under `comet-classic/reference/decision-point.md` and let the user choose one option: switch back to the bound branch and rerun entry verification, or run `comet state rebind <change-name>` after the user explicitly confirms the current branch should take over this change, then rerun entry verification. Do not switch branches or rebind on your own.
 
 ### 1. Final Archive and Delivery Confirmation (Blocking Point)
 
-After entry verification passes, first read `comet state get <change-name> isolation`, then **follow the `comet/reference/decision-point.md` protocol to pause and wait for the user to confirm whether to archive and deliver remotely now**. Must not run `comet state transition <change-name> archive-confirm` or `comet archive "<change-name>"` before user confirmation.
+After entry verification passes, first read `comet state get <change-name> isolation`, then **follow the `comet-classic/reference/decision-point.md` protocol to pause and wait for the user to confirm whether to archive and deliver remotely now**. Must not run `comet state transition <change-name> archive-confirm` or `comet archive "<change-name>"` before user confirmation.
 
 Before confirmation, show the user a brief summary:
 - Change name
@@ -150,4 +150,4 @@ Comet Classic workflow complete. To start new Classic work, invoke `/comet-class
 
 ## Context Compression Recovery
 
-Follow `comet/reference/context-recovery.md` with phase set to `archive`. If `archived: true` and the archive directory exists, do not re-execute archive operations. Retry the same push or PR creation only when the current task context explicitly records the remote delivery method selected in Step 1. This Skill does not promise automatic recovery after the user leaves the flow and changes branch topology independently.
+Follow `comet-classic/reference/context-recovery.md` with phase set to `archive`. If `archived: true` and the archive directory exists, do not re-execute archive operations. Retry the same push or PR creation only when the current task context explicitly records the remote delivery method selected in Step 1. This Skill does not promise automatic recovery after the user leaves the flow and changes branch topology independently.

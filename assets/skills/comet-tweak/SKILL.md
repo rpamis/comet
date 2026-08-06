@@ -5,7 +5,7 @@ description: "Use only when explicitly invoked as /comet-tweak or routed by the 
 
 # Comet Preset Path: Tweak
 
-Before starting or recovering, read and follow `comet/reference/classic-layout.md`. Every OpenSpec CLI call in this file must use the adapter, and every file path must use the `<classic-*>` logical roots bound by that protocol.
+Before starting or recovering, read and follow `comet-classic/reference/classic-layout.md`. Every OpenSpec CLI call in this file must use the adapter, and every file path must use the `<classic-*>` logical roots bound by that protocol.
 
 Tweak is a preset workflow of Comet's five-phase capabilities, not an independent parallel process. It chains OpenSpec's core flow, reusing open, build, verify, archive capabilities, only skipping Superpowers brainstorming and full plan.
 
@@ -29,7 +29,7 @@ Streamlined OpenSpec artifacts must use the configured Comet artifact language. 
 
 Execution chain: open → OpenSpec apply → verify → archive. Tweak provides default decisions for each phase: streamlined open, direct build through OpenSpec apply, scale- and delta-spec-driven verification weight, and final archive confirmation after verification passes.
 
-Before starting, use `comet/reference/scripts.md` to run the public Comet CLI command. When resuming from any entry point, first use `comet/reference/context-recovery.md` to check phase/workflow.
+Before starting, use `comet-classic/reference/scripts.md` to run the public Comet CLI command. When resuming from any entry point, first use `comet-classic/reference/context-recovery.md` to check phase/workflow.
 
 When resuming an existing tweak change, the first state operation must be `comet state select <change-name>`. For a new change, run the command immediately after `.comet.yaml` initialization and before source writes.
 
@@ -61,9 +61,9 @@ Verify initialized state:
 comet state check <name> open
 ```
 
-If the `select` / `check` output is `BLOCKED` because `bound_branch` does not match the current branch, immediately pause under `comet/reference/decision-point.md` and let the user choose one option: switch back to the bound branch and rerun entry verification, or run `comet state rebind <change-name>` after the user explicitly confirms the current branch should take over this change, then rerun entry verification. Do not switch branches or rebind on your own.
+If the `select` / `check` output is `BLOCKED` because `bound_branch` does not match the current branch, immediately pause under `comet-classic/reference/decision-point.md` and let the user choose one option: switch back to the bound branch and rerun entry verification, or run `comet state rebind <change-name>` after the user explicitly confirms the current branch should take over this change, then rerun entry verification. Do not switch branches or rebind on your own.
 
-Entry workspace isolation is a user decision point; do not use `current` as the default isolation mode. Pause under `comet/reference/decision-point.md` and let the user choose one option:
+Entry workspace isolation is a user decision point; do not use `current` as the default isolation mode. Pause under `comet-classic/reference/decision-point.md` and let the user choose one option:
 
 - A. Work directly on the current branch: run `comet state set <name> isolation current` to truthfully bind the current branch
 - B. Create a branch: create and switch to `tweak/YYYYMMDD/<change-name>`, then run `comet state set <name> isolation branch`
@@ -89,7 +89,7 @@ Use tweak defaults: `build_mode: direct`. `isolation` must keep the entry worksp
 This apply path belongs only to tweak. Full `/comet-classic` or `workflow: full` must not use tweak's `openspec-apply-change` build path; full must still generate a Design Doc through `/comet-design`, then let `/comet-build` use Superpowers `writing-plans`, execution-method selection, and the corresponding execution skill to build.
 </IMPORTANT>
 
-Before continuing or starting changes, handle uncommitted changes through `comet/reference/dirty-worktree.md`. If attribution shows a qualitative-change signal or file-count tripwire is hit, handle it through this file's "Upgrade Assessment".
+Before continuing or starting changes, handle uncommitted changes through `comet-classic/reference/dirty-worktree.md`. If attribution shows a qualitative-change signal or file-count tripwire is hit, handle it through this file's "Upgrade Assessment".
 
 **Immediately execute:** Use the Skill tool to load the `openspec-apply-change` skill. Skipping this step is prohibited.
 
@@ -111,9 +111,9 @@ After the skill loads, use the current `<change-name>` as input and follow `open
 
 During tweak execution, whenever running programs, tests, builds, or manual verification results in crashes, abnormal behavior, test failures, or build failures, you must use the Skill tool to load the Superpowers `systematic-debugging` skill. Do not propose or implement source code fixes before completing root cause investigation.
 
-For specific investigation, minimal failing test, fix verification, and keeping the current change verification loop, follow `comet/reference/debug-gate.md`.
+For specific investigation, minimal failing test, fix verification, and keeping the current change verification loop, follow `comet-classic/reference/debug-gate.md`.
 
-**Upgrade assessment check**: Continuously judge throughout build, and do a consolidated re-check before running the build→verify guard. Assessment uses a three-layer division of labor (see "Upgrade Assessment" section): qualitative-change signals rely on agent semantic recognition, file count is only a hint delegated to the user, and the scale script only governs verification weight. When a qualitative-change signal or file-count tripwire is hit, **do not upgrade on your own or decide to continue on your own** — must pause per `comet/reference/decision-point.md` and delegate the decision to the user: continue the tweak lightweight flow, or upgrade to the full `/comet-classic`.
+**Upgrade assessment check**: Continuously judge throughout build, and do a consolidated re-check before running the build→verify guard. Assessment uses a three-layer division of labor (see "Upgrade Assessment" section): qualitative-change signals rely on agent semantic recognition, file count is only a hint delegated to the user, and the scale script only governs verification weight. When a qualitative-change signal or file-count tripwire is hit, **do not upgrade on your own or decide to continue on your own** — must pause per `comet-classic/reference/decision-point.md` and delegate the decision to the user: continue the tweak lightweight flow, or upgrade to the full `/comet-classic`.
 
 7. Run phase guard to transition build → verify:
 
@@ -177,7 +177,7 @@ Continuously check these qualitative-change signals: cross-module coordination, 
 
 The file-count tripwire is only a prompt: when changed files exceed the hint threshold (for example > 6 files), ask the user whether to continue tweak or upgrade full. More files do not necessarily mean qualitative change. Tweaks often come with delta spec or config changes, so their reach is naturally wider than a bug fix, hence the higher threshold than hotfix.
 
-When a qualitative-change signal or file-count tripwire is hit, **must pause under the `comet/reference/decision-point.md` protocol and wait for the user's explicit choice**. Do not directly enter `/comet-design`; do not automatically add a Design Doc.
+When a qualitative-change signal or file-count tripwire is hit, **must pause under the `comet-classic/reference/decision-point.md` protocol and wait for the user's explicit choice**. Do not directly enter `/comet-design`; do not automatically add a Design Doc.
 
 After the user chooses upgrade (option B), use the legal state-machine upgrade channel, a single command that converts the preset workflow to full and rolls back to design:
 
@@ -200,7 +200,7 @@ When the user chooses continue (option A), continue the tweak workflow and recor
 
 ## Automatic Handoff to Next Phase
 
-Follow `comet/reference/auto-transition.md`. Key command:
+Follow `comet-classic/reference/auto-transition.md`. Key command:
 
 ```bash
 comet state next <name>

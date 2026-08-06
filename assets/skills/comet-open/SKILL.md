@@ -5,7 +5,7 @@ description: "Use only when explicitly invoked as /comet-open or routed by the r
 
 # Comet Phase 1: Open
 
-Before starting or recovering, read and follow `comet/reference/classic-layout.md`. Every OpenSpec CLI call in this file must use the adapter, and every file path must use the `<classic-*>` logical roots bound by that protocol.
+Before starting or recovering, read and follow `comet-classic/reference/classic-layout.md`. Every OpenSpec CLI call in this file must use the adapter, and every file path must use the `<classic-*>` logical roots bound by that protocol.
 
 ## Prerequisites
 
@@ -75,7 +75,7 @@ Recommend splitting when any condition applies:
 - The work is expected to produce multiple delta specs or more than 3 large tasks
 - Failure or delay in one part should not block other parts from entering later phases
 
-When splitting is recommended, must follow the `comet/reference/decision-point.md` protocol to pause and wait for the user's choice.
+When splitting is recommended, must follow the `comet-classic/reference/decision-point.md` protocol to pause and wait for the user's choice.
 
 The user choices must include:
 - "Create multiple OpenSpec changes" — create independent changes from the proposed split
@@ -119,7 +119,7 @@ Before creating OpenSpec artifacts, turn Step 1 clarification into a resolved br
 - **Continue directly when scope and naming are both unambiguous**. Do not pause merely to approve a summary or name; final review confirms the change name, scope, and artifacts together
 - If the user supplied a name, normalize it to kebab-case and echo it in the progress update. Do not re-confirm when normalization preserves meaning
 - Reuse a confirmed batch item's persisted summary and name. Re-clarify only when scope drift or missing manifest data is detected
-- Use `comet/reference/decision-point.md` for one joint question only when mutually exclusive choices still change scope or the target change identity. Naming preference alone is not a blocking point
+- Use `comet-classic/reference/decision-point.md` for one joint question only when mutually exclusive choices still change scope or the target change identity. Naming preference alone is not a blocking point
 
 OpenSpec names must be kebab-case English using lowercase letters, digits, and single hyphens. When a collision exists but the target remains clear, derive a stable non-conflicting name and continue. Ask only when Comet cannot determine whether to reuse the existing change or create a new one.
 
@@ -222,7 +222,7 @@ Then check key artifact content: proposal covers problem, goals, scope, and non-
 
 ### 5. User Review and Confirmation (Blocking Point)
 
-After all OpenSpec artifacts are complete and the content check passes, **must follow the `comet/reference/decision-point.md` protocol to pause and wait for user confirmation**. Must not execute the phase guard or auto-transition before user confirmation.
+After all OpenSpec artifacts are complete and the content check passes, **must follow the `comet-classic/reference/decision-point.md` protocol to pause and wait for user confirmation**. Must not execute the phase guard or auto-transition before user confirmation.
 
 The final review confirms the change name, scope, and artifact content together. Do not skip it because Step 1b resolved the brief, and do not add another routine summary/name confirmation before it.
 
@@ -257,7 +257,7 @@ Full workflow auto-transitions to `phase: design`; hotfix/tweak presets auto-tra
 
 ## Automatic Handoff to Next Phase
 
-Follow `comet/reference/auto-transition.md`. Key command:
+Follow `comet-classic/reference/auto-transition.md`. Key command:
 
 ```bash
 comet state next <change-name>

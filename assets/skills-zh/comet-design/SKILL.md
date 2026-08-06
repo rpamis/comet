@@ -5,7 +5,7 @@ description: "仅在用户明确调用 /comet-design，或由 Comet 根 Skill/ru
 
 # Comet 阶段 2：深度设计（Design）
 
-开始或恢复前必须先读取并执行 `comet/reference/classic-layout.md`；本文件中的 OpenSpec CLI 调用必须使用 adapter，文件路径必须使用该协议绑定的 `<classic-*>` 逻辑根。
+开始或恢复前必须先读取并执行 `comet-classic/reference/classic-layout.md`；本文件中的 OpenSpec CLI 调用必须使用 adapter，文件路径必须使用该协议绑定的 `<classic-*>` 逻辑根。
 
 ## 前置条件
 
@@ -18,7 +18,7 @@ description: "仅在用户明确调用 /comet-design，或由 Comet 根 Skill/ru
 
 ### 0. 入口状态验证（Entry Check）
 
-按 `comet/reference/scripts.md` 运行公开 Comet CLI 命令，然后执行入口验证；从任意入口恢复时先按 `comet/reference/context-recovery.md` 运行恢复检查：
+按 `comet-classic/reference/scripts.md` 运行公开 Comet CLI 命令，然后执行入口验证；从任意入口恢复时先按 `comet-classic/reference/context-recovery.md` 运行恢复检查：
 
 ```bash
 comet state select <change-name>
@@ -134,7 +134,7 @@ brainstorming 阶段不写入 Design Doc 文件，仅产出设计方案供 Step 
 
 ### 1c. 用户确认设计方案（阻塞点）
 
-brainstorming 产出设计方案后，**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户明确确认设计方案**。不得在用户确认前创建最终 Design Doc、写入 `design_doc`、运行 design guard，或进入 `/comet-build`。
+brainstorming 产出设计方案后，**必须按 `comet-classic/reference/decision-point.md` 的协议暂停并等待用户明确确认设计方案**。不得在用户确认前创建最终 Design Doc、写入 `design_doc`、运行 design guard，或进入 `/comet-build`。
 
 暂停时只展示必要摘要：
 - 采用的技术方案
@@ -249,11 +249,11 @@ comet guard <change-name> design --apply
 
 ## 上下文压缩恢复
 
-按 `comet/reference/context-recovery.md` 执行，phase 参数为 `design`。
+按 `comet-classic/reference/context-recovery.md` 执行，phase 参数为 `design`。
 
 ## 自动衔接下一阶段
 
-按 `comet/reference/auto-transition.md` 执行。关键命令：
+按 `comet-classic/reference/auto-transition.md` 执行。关键命令：
 
 ```bash
 comet state next <change-name>

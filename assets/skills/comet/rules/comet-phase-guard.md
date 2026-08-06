@@ -113,7 +113,7 @@ comet state check <name> <phase> --recover
 
 **特别注意 `build_mode`**：若恢复脚本输出 `build_mode: subagent-driven-development`，你是协调者，不是执行者。必须：
 1. 使用 Skill 工具重新加载 Superpowers `subagent-driven-development` 技能 (Use the Skill tool to reload the Superpowers `subagent-driven-development` skill)
-2. 读取 `comet/reference/subagent-dispatch.md` 获取 Comet 专属扩展 (re-read `comet/reference/subagent-dispatch.md` for Comet-specific extensions)
+2. 读取 `comet-classic/reference/subagent-dispatch.md` 获取 Comet 专属扩展 (re-read `comet-classic/reference/subagent-dispatch.md` for Comet-specific extensions)
 3. 读取 `<classic-change-dir>/.comet/subagent-progress.md` 恢复精确阶段、证据和审查-修复轮次 (Read `<classic-change-dir>/.comet/subagent-progress.md` to recover the exact stage, evidence, and review-fix round)
 4. 禁止在主会话中直接执行 task (Do not execute the pending task directly in the main window)
 5. 按检查点恢复；缺失或不匹配时才从第一个未勾选 task 开始

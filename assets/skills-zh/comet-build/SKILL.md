@@ -5,7 +5,7 @@ description: "仅在用户明确调用 /comet-build，或由 Comet 根 Skill/run
 
 # Comet 阶段 3：计划与构建（Build）
 
-开始或恢复前必须先读取并执行 `comet/reference/classic-layout.md`；本文件中的 OpenSpec CLI 调用必须使用 adapter，文件路径必须使用该协议绑定的 `<classic-*>` 逻辑根。
+开始或恢复前必须先读取并执行 `comet-classic/reference/classic-layout.md`；本文件中的 OpenSpec CLI 调用必须使用 adapter，文件路径必须使用该协议绑定的 `<classic-*>` 逻辑根。
 
 ## 前置条件
 
@@ -16,7 +16,7 @@ description: "仅在用户明确调用 /comet-build，或由 Comet 根 Skill/run
 
 ### 0. 入口状态验证（Entry Check）
 
-按 `comet/reference/scripts.md` 使用稳定 `comet` CLI，然后执行入口验证；从任意入口恢复时先按 `comet/reference/context-recovery.md` 运行恢复检查：
+按 `comet-classic/reference/scripts.md` 使用稳定 `comet` CLI，然后执行入口验证；从任意入口恢复时先按 `comet-classic/reference/context-recovery.md` 运行恢复检查：
 
 ```bash
 comet state select <change-name>
@@ -25,7 +25,7 @@ comet state check <name> build
 
 验证通过后继续 Step 1。验证失败时脚本会输出具体失败原因。
 
-若上述 `select` / `check` 输出 `BLOCKED`，且原因是 `bound_branch` 与当前分支不一致，立即按 `comet/reference/decision-point.md` 暂停，让用户单选：切回绑定分支后重新运行入口验证，或在用户明确确认当前分支应接管该 change 后运行 `comet state rebind <change-name>` 并重新入口验证。不得自行切换分支，不得自行换绑。
+若上述 `select` / `check` 输出 `BLOCKED`，且原因是 `bound_branch` 与当前分支不一致，立即按 `comet-classic/reference/decision-point.md` 暂停，让用户单选：切回绑定分支后重新运行入口验证，或在用户明确确认当前分支应接管该 change 后运行 `comet state rebind <change-name>` 并重新入口验证。不得自行切换分支，不得自行换绑。
 
 **幂等性**：build 阶段所有操作可安全重复执行。读取 `.comet.yaml` 的 `phase` 字段确认仍在 build 阶段，读取 plan 文件头的 `base-ref`，再按文档顺序解析 tasks.md 的复选框，从第一个未勾选任务继续执行。已提交的任务不得重复提交。
 
@@ -88,7 +88,7 @@ comet state set <name> plan docs/superpowers/plans/YYYY-MM-DD-feature.md
 | A | 继续执行并提交配置 | 在同一次回复中选择 Step 3 的隔离、执行、TDD 和审查配置；如选择 branch，同时提交分支名 |
 | B | 暂停切换模型 | 记录 `build_pause: plan-ready`，本次 `/comet-build` 停止，用户稍后可从 `/comet-classic` 或 `/comet-build` 恢复 |
 
-这是用户决策点。**必须按 `comet/reference/decision-point.md` 的协议一次性展示计划摘要、暂停选项和 Step 3 全部可执行配置**。用户选择继续时，必须在同一回复中给出所有配置以及条件性的分支名；不得自动选择，也不得把暂停写入 `build_mode`。
+这是用户决策点。**必须按 `comet-classic/reference/decision-point.md` 的协议一次性展示计划摘要、暂停选项和 Step 3 全部可执行配置**。用户选择继续时，必须在同一回复中给出所有配置以及条件性的分支名；不得自动选择，也不得把暂停写入 `build_mode`。
 
 用户选择继续并给出完整配置时：
 
@@ -225,14 +225,14 @@ comet state select <change-name>
 **执行计划**：必须按 `build_mode` 的真实运行位置处理。
 
 - `build_mode: executing-plans`：**立即执行：** 使用 Skill 工具加载 Superpowers `executing-plans` 技能。禁止跳过此步骤。若加载失败，停止并报告错误，不要用普通对话替代该步骤。技能加载后，ARGUMENTS 必须包含与 Step 1 相同的 Language 约束：`Language: 使用 comet state get <name> language 读取到的 Comet 配置产物语言输出`。按计划执行。
-- `build_mode: subagent-driven-development`：主会话只负责协调，禁止直接编写实现代码。**立即执行：** 使用 Skill 工具加载 Superpowers `subagent-driven-development` 技能。技能加载后，读取 `comet/reference/subagent-dispatch.md` 获取 Comet 专属扩展（子代理派发、任务隔离、勾选验证、TDD 约束、连续执行、上下文恢复），与技能工作流配合应用。若两者发生冲突，以更具体的 Comet 扩展为准。
-- 若子代理派发操作失败，按 `comet/reference/subagent-dispatch.md` 将当前任务记录为 `BLOCKED` 并带上失败原因；主会话不得接管实现。
+- `build_mode: subagent-driven-development`：主会话只负责协调，禁止直接编写实现代码。**立即执行：** 使用 Skill 工具加载 Superpowers `subagent-driven-development` 技能。技能加载后，读取 `comet-classic/reference/subagent-dispatch.md` 获取 Comet 专属扩展（子代理派发、任务隔离、勾选验证、TDD 约束、连续执行、上下文恢复），与技能工作流配合应用。若两者发生冲突，以更具体的 Comet 扩展为准。
+- 若子代理派发操作失败，按 `comet-classic/reference/subagent-dispatch.md` 将当前任务记录为 `BLOCKED` 并带上失败原因；主会话不得接管实现。
 
 **TDD 模式执行约束**：
 
 若 `tdd_mode: tdd`：
 - `build_mode: executing-plans`：加载执行技能后、执行第一个任务前，**立即执行：** 使用 Skill 工具加载 Superpowers `test-driven-development` 技能一次。禁止跳过此步骤。技能加载后，从第一个未勾选任务开始，对每个任务遵循已加载的 TDD Red-Green-Refactor 循环执行。不得跳过失败测试验证阶段。后续任务不再重新加载该技能，直接遵循已加载流程。若上下文压缩后恢复，重新运行本步骤加载 TDD 技能一次，然后从第一个未勾选任务继续。
-- `build_mode: subagent-driven-development`：主会话不加载 TDD skill；TDD 约束和证据门槛已在 `comet/reference/subagent-dispatch.md` 中定义，每个后台 implementer 和修复 agent 必须自行使用 Skill 工具加载 Superpowers `test-driven-development` 技能，并遵循 Comet 注入的 TDD 硬约束。
+- `build_mode: subagent-driven-development`：主会话不加载 TDD skill；TDD 约束和证据门槛已在 `comet-classic/reference/subagent-dispatch.md` 中定义，每个后台 implementer 和修复 agent 必须自行使用 Skill 工具加载 Superpowers `test-driven-development` 技能，并遵循 Comet 注入的 TDD 硬约束。
 
 若 `tdd_mode: direct`：按正常流程执行，不强制 TDD。
 
@@ -254,7 +254,7 @@ comet state select <change-name>
 
 执行任务期间，只要运行程序、测试、构建或手动验证时出现崩溃、异常行为、测试失败或构建失败，必须使用 Skill 工具加载 Superpowers `systematic-debugging` 技能。在完成根因调查前，不得提出或实施源码修复。
 
-具体调查、最小失败测试、修复验证和保持当前 change 验证闭环的要求，按 `comet/reference/debug-gate.md` 执行。
+具体调查、最小失败测试、修复验证和保持当前 change 验证闭环的要求，按 `comet-classic/reference/debug-gate.md` 执行。
 
 ### 4. Spec 增量更新
 
@@ -266,7 +266,7 @@ comet state select <change-name>
 | 中 | 接口变更、新增组件、数据流变化 | **暂停、展示选择并等待用户明确确认后**，必须使用 Skill 工具加载 Superpowers `brainstorming` 更新 Design Doc + delta spec |
 | 大 | 全新 capability 需求 | **暂停、展示拆分选择并等待用户明确确认**；用户确认后，通过 `/comet-open` 创建独立 change |
 
-**50% 阈值判定**：以 tasks.md 初始任务总数为基准，若新增任务数超过该总数的一半，视为超出原计划范围，**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户决定是否拆分为新 change**。
+**50% 阈值判定**：以 tasks.md 初始任务总数为基准，若新增任务数超过该总数的一半，视为超出原计划范围，**必须按 `comet-classic/reference/decision-point.md` 的协议暂停并等待用户决定是否拆分为新 change**。
 
 创建独立 change 时必须调用 `/comet-open`，不得直接调用 `/opsx:new`。`/comet-open` 会同时创建 OpenSpec 产物和 `.comet.yaml`，避免新 change 脱离 Comet 状态机。
 
@@ -285,8 +285,8 @@ comet state select <change-name>
 Build 是最长阶段，可能跨越大量任务。为支持上下文压缩后断点恢复：
 
 - **每完成一个 task**：按当前执行分支和 `review_mode` 完成验收后再勾选对应任务并提交。`subagent-driven-development` 在 `off` 时不派发每任务 reviewer；`standard` 下仅当任务命中风险信号时派发；`thorough` 下每个任务都派发每任务 reviewer。所有模式都必须按任务唯一文本完成定向检查。通过解析 tasks.md 复选框统计剩余任务，无需反复读取与当前任务无关的正文
-- **上下文压缩后恢复**：按 `comet/reference/context-recovery.md` 执行，phase 参数为 `build`。
-- **用户手动修改恢复**：按 `comet/reference/dirty-worktree.md` 协议处理未提交改动。该协议定义了检查步骤、归因分类和禁令。build 阶段的特殊处理：
+- **上下文压缩后恢复**：按 `comet-classic/reference/context-recovery.md` 执行，phase 参数为 `build`。
+- **用户手动修改恢复**：按 `comet-classic/reference/dirty-worktree.md` 协议处理未提交改动。该协议定义了检查步骤、归因分类和禁令。build 阶段的特殊处理：
   1. 归因后，若 diff 暗示计划或 spec 已变化，按 Step 4「Spec 增量更新」分级处理
 - **长任务拆分**：单任务超过 200 行代码变更时，考虑拆分为多个子任务分别提交
 
@@ -322,7 +322,7 @@ comet guard <change-name> build --apply
 
 ## 自动衔接下一阶段
 
-按 `comet/reference/auto-transition.md` 执行。关键命令：
+按 `comet-classic/reference/auto-transition.md` 执行。关键命令：
 
 ```bash
 comet state next <change-name>

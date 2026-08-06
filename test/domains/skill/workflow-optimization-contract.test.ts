@@ -339,7 +339,7 @@ describe('Comet workflow optimization contracts', () => {
     '%s dispatch failure records a blocked task without manufacturing a new choice',
     async (_language, root, stopMarker, blockedMarker, stalePause) => {
       const dispatch = await fs.readFile(
-        path.join(root, 'comet', 'reference', 'subagent-dispatch.md'),
+        path.join(root, 'comet-classic', 'reference', 'subagent-dispatch.md'),
         'utf8',
       );
 
@@ -392,7 +392,7 @@ describe('Comet workflow optimization contracts', () => {
     '%s decision protocol does not manufacture choices for deterministic handling',
     async (_language, root, classification, manualHandoff) => {
       const protocol = await fs.readFile(
-        path.join(root, 'comet', 'reference', 'decision-point.md'),
+        path.join(root, 'comet-classic', 'reference', 'decision-point.md'),
         'utf8',
       );
 

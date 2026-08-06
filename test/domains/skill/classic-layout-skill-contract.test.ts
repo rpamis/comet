@@ -60,7 +60,7 @@ async function classicGuidanceFiles(
 ): Promise<string[]> {
   const assetRoot = path.resolve('assets', languageRoot);
   const files = CLASSIC_SKILLS.map((skill) => path.join(assetRoot, skill, 'SKILL.md'));
-  files.push(...(await markdownFiles(path.join(assetRoot, 'comet', 'reference'))));
+  files.push(...(await markdownFiles(path.join(assetRoot, 'comet-classic', 'reference'))));
   files.push(...(await markdownFiles(path.join(assetRoot, 'comet-any'))));
   files.push(...ruleFiles.map((rule) => path.resolve('assets', 'skills', 'comet', 'rules', rule)));
   return files;
@@ -71,7 +71,7 @@ describe('Classic layout Skill contract', () => {
     'ships the layout resolver and adapter protocol in %s',
     async (languageRoot) => {
       const reference = await fs.readFile(
-        path.resolve('assets', languageRoot, 'comet', 'reference', 'classic-layout.md'),
+        path.resolve('assets', languageRoot, 'comet-classic', 'reference', 'classic-layout.md'),
         'utf8',
       );
       expect(reference).toContain('comet classic root show');
@@ -85,7 +85,7 @@ describe('Classic layout Skill contract', () => {
           path.resolve('assets', languageRoot, skill, 'SKILL.md'),
           'utf8',
         );
-        expect(source, skill).toContain('comet/reference/classic-layout.md');
+        expect(source, skill).toContain('comet-classic/reference/classic-layout.md');
       }
     },
   );

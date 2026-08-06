@@ -113,7 +113,7 @@ After recovery, first re-run the "Phase-Entry Self-Consistency Check" table: if 
 
 **Special attention to `build_mode`**: If recovery script outputs `build_mode: subagent-driven-development`, you are the coordinator, not the executor. Must:
 1. Use the Skill tool to reload the Superpowers `subagent-driven-development` skill
-2. Re-read `comet/reference/subagent-dispatch.md` for Comet-specific extensions
+2. Re-read `comet-classic/reference/subagent-dispatch.md` for Comet-specific extensions
 3. Read `<classic-change-dir>/.comet/subagent-progress.md` to recover the exact stage, evidence, and review-fix round
 4. Do not execute tasks directly in the main session
 5. Resume from the checkpoint; start from the first unchecked task only when it is missing or mismatched

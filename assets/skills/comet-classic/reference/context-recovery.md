@@ -1,22 +1,22 @@
 # Context Compression Recovery Protocol
 
-Canonical path: `comet/reference/context-recovery.md`
+Canonical path: `comet-classic/reference/context-recovery.md`
 
 This protocol is shared by all comet sub-skills that may trigger context compression. When the agent suspects context compression has occurred (previous conversation summarized, cannot find previously discussed content), follow this protocol to recover.
 
 ## Any-Entry Recovery Principle
 
-The user may resume the workflow directly from `/comet-open`, `/comet-design`, `/comet-build`, `/comet-verify`, `/comet-archive`, `/comet-hotfix`, or `/comet-tweak`. On entry to any sub-skill, use `comet/reference/scripts.md` to run the public CLI command, then run the entry check or recovery check for that sub-skill's phase. Do not infer phase from conversation history.
+The user may resume the workflow directly from `/comet-open`, `/comet-design`, `/comet-build`, `/comet-verify`, `/comet-archive`, `/comet-hotfix`, or `/comet-tweak`. On entry to any sub-skill, use `comet-classic/reference/scripts.md` to run the public CLI command, then run the entry check or recovery check for that sub-skill's phase. Do not infer phase from conversation history.
 
 ```bash
 comet state check <change-name> <phase> --recover
 ```
 
-If the check shows the actual phase, workflow, or evidence belongs to another skill, switch according to script output and `/comet-classic` routing rules; do not keep writing state in the wrong phase. If the worktree has uncommitted changes, attribute them first via `comet/reference/dirty-worktree.md`.
+If the check shows the actual phase, workflow, or evidence belongs to another skill, switch according to script output and `/comet-classic` routing rules; do not keep writing state in the wrong phase. If the worktree has uncommitted changes, attribute them first via `comet-classic/reference/dirty-worktree.md`.
 
 ## Recovery Without Explicit `/comet-classic`
 
-If the user did not mention `/comet-classic`, but this repository may have an active change, run the Ambient Resume probe before starting work that may need code changes or investigation. Use `comet/reference/scripts.md` to run the public CLI command, then pass the current user request on stdin:
+If the user did not mention `/comet-classic`, but this repository may have an active change, run the Ambient Resume probe before starting work that may need code changes or investigation. Use `comet-classic/reference/scripts.md` to run the public CLI command, then pass the current user request on stdin:
 
 ```bash
 comet resume-probe . --stdin --json
@@ -37,7 +37,7 @@ The script outputs structured recovery context (phase, completed fields, pending
 If the recovery script outputs `build_mode: subagent-driven-development`:
 
 1. Use the Skill tool to reload the Superpowers `subagent-driven-development` skill
-2. Re-read `comet/reference/subagent-dispatch.md` for Comet-specific extensions
+2. Re-read `comet-classic/reference/subagent-dispatch.md` for Comet-specific extensions
 3. Read `<classic-change-dir>/.comet/subagent-progress.md` to recover the current task or final review, implementation commit, RED/GREEN evidence, passed reviews, unresolved feedback, and review-fix round
 4. Do not execute tasks directly in the main session
 5. Resume from the checkpoint's exact stage; begin implementer dispatch for the first unchecked task only when the checkpoint is missing or mismatched

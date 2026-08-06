@@ -5,7 +5,7 @@ description: "用于用户明确调用 /comet-classic、要求启动或恢复永
 
 # Comet Classic — OpenSpec + Superpowers 双星开发流程
 
-开始或恢复前必须先读取并执行 `comet/reference/classic-layout.md`；本文件中的 OpenSpec CLI 调用必须使用 adapter，文件路径必须使用该协议绑定的 `<classic-*>` 逻辑根。
+开始或恢复前必须先读取并执行 `comet-classic/reference/classic-layout.md`；本文件中的 OpenSpec CLI 调用必须使用 adapter，文件路径必须使用该协议绑定的 `<classic-*>` 逻辑根。
 
 OpenSpec 与 Superpowers 如双星系统围绕同一目标运转。
 
@@ -30,7 +30,7 @@ agent 做决策只需读本节，参考附录按需查阅。
 
 **Step 0: 活跃 Change 发现与意图判定**
 
-1. 先按 `comet/reference/scripts.md` 直接运行公开 Comet CLI 命令。
+1. 先按 `comet-classic/reference/scripts.md` 直接运行公开 Comet CLI 命令。
 2. 运行 `comet classic openspec -- list --json` 获取所有活跃 change。
 3. 根据用户请求、active change 列表和必要仓库状态填写 `CometIntentFrame`。
 4. 优先用 `comet classic intent route --stdin` 传入 frame JSON，获取 runtime 规范化路由。`CometIntentFrame + runtime scorer` 是事实源；本节自然语言规则只用于意图识别槽位提取。
@@ -39,7 +39,7 @@ agent 做决策只需读本节，参考附录按需查阅。
    - `tweak` → 直接调用 `/comet-tweak`
    - `full` → 按活跃 change 表决定 `/comet-open` 或用户确认
    - `resume` → 进入 Step 1 读取对应 change 的 `.comet.yaml`
-   - `ask_user` → 按 `comet/reference/decision-point.md` 暂停并等待用户选择
+   - `ask_user` → 按 `comet-classic/reference/decision-point.md` 暂停并等待用户选择
    - `out_of_scope` → 说明本次输入不是 Comet workflow 启动/恢复请求，不初始化 change
 
 当 runtime route、Ambient Resume 或用户选择已经解析出明确 change 后，进入对应阶段 Skill 前必须先绑定当前执行上下文：
@@ -97,7 +97,7 @@ comet resume-probe . --stdin --json
 ```
 
 **意图识别槽位提取**：
-字段完整含义见 `comet/reference/intent-frame.md`；正常路由只需按上方最小骨架填写。
+字段完整含义见 `comet-classic/reference/intent-frame.md`；正常路由只需按上方最小骨架填写。
 
 - `fix_bug` + `existing_behavior: true` + 无新增 capability/public API/schema/cross-module 信号 → 倾向 `hotfix`
 - 用户明确描述为可收敛为单一 OpenSpec change 的轻量/中等变更，需通过 OpenSpec apply 执行，且不需要完整 `/comet-classic` 深度设计/plan → 倾向 `tweak`
@@ -126,7 +126,7 @@ comet resume-probe . --stdin --json
 
 **断点恢复规则**：
 - 每次恢复上下文时，先重新执行 Step 0 和 Step 1，不依赖对话历史判断阶段
-- 只要存在 active change 且工作区有未提交改动，必须按 `comet/reference/dirty-worktree.md` 协议处理。该协议定义了检查步骤、归因分类和禁令，本文件不重复
+- 只要存在 active change 且工作区有未提交改动，必须按 `comet-classic/reference/dirty-worktree.md` 协议处理。该协议定义了检查步骤、归因分类和禁令，本文件不重复
 - 若 `phase: build`，先检查 `build_pause`、`plan`、`isolation`、`build_mode`、`tdd_mode` 和 `review_mode`（详见下方）：
   - 若 `build_pause: plan-ready` 但 `isolation`、`build_mode`、`tdd_mode` 和 `review_mode` 都已经设置，则视为 stale pause：先输出 `[COMET] 检测到 stale pause（build_pause=plan-ready 但 isolation/build_mode/tdd_mode/review_mode 已设置），自动清除并继续`，再运行 `comet state set <name> build_pause null`，然后读取 tasks.md 的下一个未勾选任务并按 `build_mode` 恢复执行
   - 若 `build_pause: plan-ready` 且 plan 文件存在，但 `isolation`、`build_mode`、`tdd_mode` 或 `review_mode` 尚未设置，回到 `/comet-build` 的 plan-ready 恢复点，提示用户继续补齐/确认工作区隔离、执行方式、TDD 模式和代码审查模式，不重新生成 plan
@@ -188,7 +188,7 @@ hotfix/tweak 的范围判定采用三层分工，避免「用纯文件数当硬�
 
 **阶段推进与自动衔接的区分**：每个子 skill 退出前都会运行阶段守卫 `--apply` 推进 `.comet.yaml` 的 `phase` 字段——这一步**始终发生**，与 `auto_transition` 无关。之后子 skill 运行 `comet state next <name>` 解析下一步：`auto_transition` 不为 `false` 时输出 `NEXT: auto`（自动调用下一 skill），为 `false` 时输出 `NEXT: manual`（不调用下一 skill，按 `HINT` 交还控制权）。`NEXT: manual` 不是用户决策点，不得再询问“是否继续”。因此 `auto_transition` **只控制是否自动调用下一个 skill，不影响 phase 推进**。无论 `auto_transition` 取何值，下方真正的用户决策点都必须阻塞等待。
 
-**决策点是阻塞点**：只要到达下列任一节点，当前 `/comet-classic` 调用必须停住，并按 `comet/reference/decision-point.md` 的协议获取用户明确选择。用户明确选择后才能写入对应状态字段、执行对应操作，随后再继续自动流转。
+**决策点是阻塞点**：只要到达下列任一节点，当前 `/comet-classic` 调用必须停住，并按 `comet-classic/reference/decision-point.md` 的协议获取用户明确选择。用户明确选择后才能写入对应状态字段、执行对应操作，随后再继续自动流转。
 
 需要用户参与的节点（仅在这些节点暂停）：
 1. workflow 目标选择：多个 active changes、继续现有 change/创建新 change、或批量拆分完成后选择先启动哪一个
@@ -249,12 +249,12 @@ agent 不应跳过这些决策点；其他明确无歧义的阶段衔接必须�
 ## 参考附录（Reference Appendix）
 
 > 字段说明、文件结构和自动衔接协议已提取为渐进式加载参考文档，按需查阅：
-> - **`.comet.yaml` 完整字段表**：按 `comet/reference/comet-yaml-fields.md` 查阅（含必需字段、可选字段和完整示例）
-> - **文件结构**：按 `comet/reference/file-structure.md` 查阅
-> - **自动衔接协议**：按 `comet/reference/auto-transition.md` 查阅
-> - **上下文压缩恢复**：按 `comet/reference/context-recovery.md` 查阅
-> - **用户决策点协议**：按 `comet/reference/decision-point.md` 查阅
-> - **异常调试协议**：按 `comet/reference/debug-gate.md` 查阅
+> - **`.comet.yaml` 完整字段表**：按 `comet-classic/reference/comet-yaml-fields.md` 查阅（含必需字段、可选字段和完整示例）
+> - **文件结构**：按 `comet-classic/reference/file-structure.md` 查阅
+> - **自动衔接协议**：按 `comet-classic/reference/auto-transition.md` 查阅
+> - **上下文压缩恢复**：按 `comet-classic/reference/context-recovery.md` 查阅
+> - **用户决策点协议**：按 `comet-classic/reference/decision-point.md` 查阅
+> - **异常调试协议**：按 `comet-classic/reference/debug-gate.md` 查阅
 
 ### 状态机硬约束
 
@@ -269,7 +269,7 @@ agent 不应跳过这些决策点；其他明确无歧义的阶段衔接必须�
 
 ### 脚本定位
 
-每个会话按 `comet/reference/scripts.md` 直接运行公开 CLI 命令。关键入口：
+每个会话按 `comet-classic/reference/scripts.md` 直接运行公开 CLI 命令。关键入口：
 
 ```bash
 comet guard <change-name> <phase> --apply             # 阶段守卫 + 自动状态更新
@@ -280,4 +280,4 @@ comet archive <change-name>                           # 一键完成归档
 
 ### 文件结构
 
-按 `comet/reference/file-structure.md` 查阅完整目录结构。
+按 `comet-classic/reference/file-structure.md` 查阅完整目录结构。

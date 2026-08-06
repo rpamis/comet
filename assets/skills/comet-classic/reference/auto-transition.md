@@ -1,6 +1,6 @@
 # Automatic Handoff to Next Phase Protocol
 
-Canonical path: `comet/reference/auto-transition.md`
+Canonical path: `comet-classic/reference/auto-transition.md`
 
 This protocol is shared by all comet sub-skills. It defines the automatic handoff rules after phase guard advancement.
 

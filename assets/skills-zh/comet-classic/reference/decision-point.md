@@ -1,6 +1,6 @@
 # 用户决策点协议
 
-规范路径：`comet/reference/decision-point.md`
+规范路径：`comet-classic/reference/decision-point.md`
 
 本协议由所有包含用户决策点的 comet 子 skill 共享。凡标注为“阻塞点”或“用户决策点”的步骤，都必须按本协议处理。
 

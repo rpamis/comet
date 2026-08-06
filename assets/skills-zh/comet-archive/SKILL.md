@@ -5,7 +5,7 @@ description: "仅在用户明确调用 /comet-archive，或由 Comet 根 Skill/r
 
 # Comet 阶段 5：归档（Archive）
 
-开始或恢复前必须先读取并执行 `comet/reference/classic-layout.md`；本文件中的 OpenSpec CLI 调用必须使用 adapter，文件路径必须使用该协议绑定的 `<classic-*>` 逻辑根。
+开始或恢复前必须先读取并执行 `comet-classic/reference/classic-layout.md`；本文件中的 OpenSpec CLI 调用必须使用 adapter，文件路径必须使用该协议绑定的 `<classic-*>` 逻辑根。
 
 ## 前置条件
 
@@ -21,7 +21,7 @@ description: "仅在用户明确调用 /comet-archive，或由 Comet 根 Skill/r
 
 ### 0b. 入口状态验证（Entry Check）
 
-按 `comet/reference/scripts.md` 使用稳定 `comet` CLI，然后执行入口验证；从任意入口恢复时先按 `comet/reference/context-recovery.md` 运行恢复检查：
+按 `comet-classic/reference/scripts.md` 使用稳定 `comet` CLI，然后执行入口验证；从任意入口恢复时先按 `comet-classic/reference/context-recovery.md` 运行恢复检查：
 
 ```bash
 comet state select <change-name>
@@ -30,11 +30,11 @@ comet state check <name> archive
 
 验证通过后继续 Step 1。验证失败时脚本会输出具体失败原因。
 
-若上述 `select` / `check` 输出 `BLOCKED`，且原因是 `bound_branch` 与当前分支不一致，立即按 `comet/reference/decision-point.md` 暂停，让用户单选：切回绑定分支后重新运行入口验证，或在用户明确确认当前分支应接管该 change 后运行 `comet state rebind <change-name>` 并重新入口验证。不得自行切换分支，不得自行换绑。
+若上述 `select` / `check` 输出 `BLOCKED`，且原因是 `bound_branch` 与当前分支不一致，立即按 `comet-classic/reference/decision-point.md` 暂停，让用户单选：切回绑定分支后重新运行入口验证，或在用户明确确认当前分支应接管该 change 后运行 `comet state rebind <change-name>` 并重新入口验证。不得自行切换分支，不得自行换绑。
 
 ### 1. 归档与交付前最终确认（阻塞点）
 
-入口验证通过后，先读取 `comet state get <change-name> isolation`，再**按 `comet/reference/decision-point.md` 的协议暂停并等待用户确认是否立即归档和远端交付**。不得在用户确认前运行 `comet state transition <change-name> archive-confirm` 或 `comet archive "<change-name>"`。
+入口验证通过后，先读取 `comet state get <change-name> isolation`，再**按 `comet-classic/reference/decision-point.md` 的协议暂停并等待用户确认是否立即归档和远端交付**。不得在用户确认前运行 `comet state transition <change-name> archive-confirm` 或 `comet archive "<change-name>"`。
 
 确认前必须向用户展示简短摘要：
 - change 名称
@@ -150,4 +150,4 @@ Comet Classic 流程全部完成。如需开始新的 Classic 工作，调用 `/
 
 ## 上下文压缩恢复
 
-按 `comet/reference/context-recovery.md` 执行，phase 参数为 `archive`。若 `archived: true` 且归档目录存在，不得再次执行归档操作；只有当前任务的上下文已明确记录 Step 1 选择的远端交付方式时，才能重试同一个 push 或 PR 创建操作。本 Skill 不承诺用户脱离流程、自行改变分支拓扑后的自动恢复。
+按 `comet-classic/reference/context-recovery.md` 执行，phase 参数为 `archive`。若 `archived: true` 且归档目录存在，不得再次执行归档操作；只有当前任务的上下文已明确记录 Step 1 选择的远端交付方式时，才能重试同一个 push 或 PR 创建操作。本 Skill 不承诺用户脱离流程、自行改变分支拓扑后的自动恢复。

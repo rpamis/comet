@@ -5,7 +5,7 @@ description: "Use only when explicitly invoked as /comet-design or routed by the
 
 # Comet Phase 2: Deep Design (Design)
 
-Before starting or recovering, read and follow `comet/reference/classic-layout.md`. Every OpenSpec CLI call in this file must use the adapter, and every file path must use the `<classic-*>` logical roots bound by that protocol.
+Before starting or recovering, read and follow `comet-classic/reference/classic-layout.md`. Every OpenSpec CLI call in this file must use the adapter, and every file path must use the `<classic-*>` logical roots bound by that protocol.
 
 ## Prerequisites
 
@@ -18,7 +18,7 @@ Before starting or recovering, read and follow `comet/reference/classic-layout.m
 
 ### 0. Entry State Verification (Entry Check)
 
-Locate scripts via `comet/reference/scripts.md`, then run entry verification. When resuming from any entry point, first run the recovery check in `comet/reference/context-recovery.md`:
+Locate scripts via `comet-classic/reference/scripts.md`, then run entry verification. When resuming from any entry point, first run the recovery check in `comet-classic/reference/context-recovery.md`:
 
 ```bash
 comet state select <change-name>
@@ -134,7 +134,7 @@ For context compaction recovery, the agent must incrementally update `brainstorm
 
 ### 1c. User Confirms Design Proposal (Blocking Point)
 
-After brainstorming produces a design proposal, **must follow the `comet/reference/decision-point.md` protocol to pause and wait for the user to explicitly confirm the design proposal**. Must not create the final Design Doc, write `design_doc`, run design guard, or enter `/comet-build` before user confirmation.
+After brainstorming produces a design proposal, **must follow the `comet-classic/reference/decision-point.md` protocol to pause and wait for the user to explicitly confirm the design proposal**. Must not create the final Design Doc, write `design_doc`, run design guard, or enter `/comet-build` before user confirmation.
 
 When pausing, only present essential summary:
 - Technical approach adopted
@@ -248,11 +248,11 @@ comet guard <change-name> design --apply
 
 ## Context Compression Recovery
 
-Follow `comet/reference/context-recovery.md` with phase set to `design`.
+Follow `comet-classic/reference/context-recovery.md` with phase set to `design`.
 
 ## Automatic Handoff to Next Phase
 
-Follow `comet/reference/auto-transition.md`. Key command:
+Follow `comet-classic/reference/auto-transition.md`. Key command:
 
 ```bash
 comet state next <change-name>

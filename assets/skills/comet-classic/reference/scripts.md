@@ -1,6 +1,6 @@
 # Stable Public CLI Contract
 
-Canonical path: `comet/reference/scripts.md`
+Canonical path: `comet-classic/reference/scripts.md`
 
 This file is the single source of truth for Classic Skill calls into the Comet Runtime. Skills use only the public `comet` CLI on PATH. The packaged `comet/scripts/*.mjs` files are internal installation and Runtime assets; Skills do not search for or invoke them directly.
 

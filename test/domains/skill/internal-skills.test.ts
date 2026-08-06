@@ -101,10 +101,12 @@ describe('internal Skill assets', () => {
     );
     expect(native).toContain('comet-any/SKILL.md');
     expect(native).not.toContain('comet-classic/SKILL.md');
+    expect(native).not.toContain('comet-classic/reference/scripts.md');
     expect(native).not.toContain('comet-open/SKILL.md');
 
     expect(classic).toContain('comet-any/SKILL.md');
     expect(classic).toContain('comet-classic/SKILL.md');
+    expect(classic).toContain('comet-classic/reference/scripts.md');
     expect(classic).toContain('comet-open/SKILL.md');
     expect(classic).not.toContain('comet-native/SKILL.md');
     expect(both).toEqual(getManagedSkillPaths(shipped));

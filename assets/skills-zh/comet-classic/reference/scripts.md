@@ -1,6 +1,6 @@
 # 稳定公开 CLI 协议
 
-规范路径：`comet/reference/scripts.md`
+规范路径：`comet-classic/reference/scripts.md`
 
 本文件是 Classic Skill 调用 Comet Runtime 的单一事实来源。Skill 只使用 PATH 中的公开 `comet` CLI；随包发布的 `comet/scripts/*.mjs` 属于内部安装与 Runtime 资产，不由 Skill 搜索或直接调用。
 
