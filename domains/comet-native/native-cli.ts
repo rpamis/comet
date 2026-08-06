@@ -13,6 +13,7 @@ import { nativeSelectCommand } from './native-select-command.js';
 import { nativeShowCommand } from './native-show-command.js';
 import { nativeSpecCommand } from './native-spec-command.js';
 import { nativeStatusCommand } from './native-status-command.js';
+import { nativeHelp } from './native-cli-help.js';
 import {
   errorResult,
   NativeUsageError,
@@ -20,7 +21,6 @@ import {
   render,
   takeFlag,
   takeOption,
-  USAGE,
   type DispatchResult,
   type NativeCommandResult,
 } from './native-cli-shared.js';
@@ -51,8 +51,22 @@ async function dispatch(
   rawArgs: string[],
   explicitProjectRoot: string | undefined,
 ): Promise<DispatchResult> {
-  if (rawArgs.length === 0 || rawArgs[0] === '--help' || rawArgs[0] === 'help') {
-    return { command: rawArgs[0] ?? null, exitCode: 0, data: { usage: USAGE }, text: USAGE };
+  const helpIndex = rawArgs.indexOf('--help');
+  if (rawArgs.length === 0 || helpIndex >= 0 || rawArgs[0] === 'help') {
+    const topicParts =
+      rawArgs[0] === 'help' ? rawArgs.slice(1) : helpIndex >= 0 ? rawArgs.slice(0, helpIndex) : [];
+    let help: ReturnType<typeof nativeHelp>;
+    try {
+      help = nativeHelp(topicParts);
+    } catch (error) {
+      throw new NativeUsageError((error as Error).message);
+    }
+    return {
+      command: help.topic ? `${help.topic} --help` : 'help',
+      exitCode: 0,
+      data: help,
+      text: help.usage,
+    };
   }
   const command = rawArgs.shift()!;
   const projectRoot = await projectRootFrom(explicitProjectRoot);

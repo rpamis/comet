@@ -154,7 +154,7 @@ ${n.comment}`:n.comment}this.doc.range[2]=n.offset;break}default:this.errors.pus
 # auto_transition: true | false`},"zh-CN":{schema:"# Comet 使用的配置格式版本，请勿修改此值。",default_workflow:"# `/comet` 默认进入的工作流；该值也必须出现在 workflows 中。",workflows:"# 此项目启用的工作流，可填写 native、classic 或同时启用两者。",ambient_resume:`# 是否启用只读的环境感知恢复探针，同时作用于 Native 和 Classic；设为 false 可关闭自动工作流恢复。
 # ambient_resume: true | false`,native:"# Native 工作流配置，不会改变 Classic 的状态或行为。","native.artifact_root":"# Native 产物的存放根目录，包括规格、change 和运行时数据。","native.language":`# Native 工作流文档使用的产物语言。
 # 可选值：en | zh-CN`,"native.clarification_mode":`# Native 每轮询问一个问题，或一次提出当前所有可回答的问题。
-# 可选值：sequential | batch`,"native.archive_confirmation":`# Native 归档预演成功后自动归档，或等待用户明确确认。
+# 可选值：sequential | batch`,"native.archive_confirmation":`# Native 归档检查成功后自动归档，或等待用户明确确认。
 # 可选值：automatic | required`,"native.max_verify_failures":"# 同一份已确认 contract 最多允许的 Verify 失败次数；达到上限后停止完成循环。","native.snapshot":"# Native 内容快照使用的可审计项目范围与有界工作预算。","native.snapshot.include":"# Native 快照纳入的项目相对路径；模式使用 /，支持 *、** 和 ?。","native.snapshot.exclude":"# 从纳入范围中排除路径；新 change 会把排除策略绑定到 baseline。","native.snapshot.max_files":"# 单次快照最多捕获的文件数；大型 monorepo 可按需提高。","native.snapshot.max_total_bytes":"# 单次快照最多哈希的文件内容总字节数；内容采用流式读取，不依赖 Git hash。","native.snapshot.max_duration_ms":"# 单次快照的最长执行时间（毫秒）；较慢或更大的仓库应与字节预算一并提高。",classic:"# Classic 工作流配置，不会改变 Native 的状态或行为。","classic.artifact_layout":`# Classic 产物布局；默认使用 docs，update 检测到根目录 legacy 产物时予以保留。
 # 可选值：legacy | docs`,"classic.language":`# Classic 工作流文档使用的产物语言。
 # 可选值：en | zh-CN`,"classic.context_compression":`# 新建 Classic change 是否启用 beta 上下文压缩。

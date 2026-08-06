@@ -1,8 +1,8 @@
 # Native Artifact Reference
 
-Read this file only when editing the brief, complete target specifications, verification report, or acceptance evidence.
+Read this file only when editing the brief, complete target specifications, verification, or acceptance evidence.
 
-## Artifact boundary
+## Editing boundary
 
 The Agent primarily edits:
 
@@ -13,42 +13,11 @@ The Agent primarily edits:
   verification.md
 ```
 
-Project configuration, the current change, change state, and `runtime/workspace.json` are read inputs. Do not manually change Runtime-managed phase, confirmation, specification operations, workspace bindings, scope, evidence, checkpoints, locks, or transaction fields.
-
-For a new change, `comet.native.workspace.v3` records `isolation`, `changeBranch`, `targetBranch`, the finishing choice persisted by `--finish` before Archive, and physical directory identity. It supports cross-session recovery and write protection; it is not a session lease. Legacy v1/v2 metadata remains compatible and must not be manually migrated merely to enable isolation.
-
-The Native artifact root is selected only by `.comet/config.yaml`. Do not scan another workflow's directories or create a second state root.
-
-## Scope snapshot boundaries
-
-Git snapshots contain tracked and non-ignored untracked files, with each submodule/gitlink treated atomically. Non-Git projects use a bounded physical-tree snapshot.
-
-- `git-selection-changed`: wait until Git writes are stable, then retry. It cannot be authorized as partial scope.
-- `physical-selection-changed` or `physical-enumeration-limit`: wait for a stable filesystem or reduce the project tree, then retry. Neither can be authorized as partial scope.
-- When scope details exceed the budget, the Runtime reports a `scope-detail-overflow` count and content hash instead of guessing omitted paths. Do not edit evidence or treat an incomplete snapshot as complete.
-
-## Project configuration
-
-Configuration that directly affects Agent behavior:
-
-```yaml
-native:
-  artifact_root: docs
-  language: en
-  clarification_mode: sequential
-  archive_confirmation: automatic
-  max_verify_failures: 5
-```
-
-- `clarification_mode`: `sequential` or `batch`.
-- `archive_confirmation`: `automatic` or `required`.
-- `max_verify_failures`: total Verify-fail submissions allowed for one confirmed contract.
-
-Missing fields default to `sequential`, `automatic`, and `5`. Configuration changes do not keep old evidence fresh or clear existing blockers automatically.
+Only `.comet/config.yaml` selects the artifact root. Runtime state, workspace, scope, evidence, checkpoints, locks, and transactions are read-only; do not migrate or repair them manually.
 
 ## Brief
 
-`brief.md` uses these level-one headings:
+`brief.md` uses these non-empty level-one headings:
 
 ```text
 # Outcome
@@ -61,33 +30,25 @@ Missing fields default to `sequential`, `automatic`, and `5`. Configuration chan
 # Verification expectations
 ```
 
-Outcome, Scope, Non-goals, and Acceptance examples must contain substantive content.
-
-Blocking items in Open questions use these fixed forms:
+Only real unresolved user questions use these forms under Open questions:
 
 ```text
 - [blocking] <current Sequential question>
-- [blocking] Q1: <question>
+- [blocking] Q1: <Batch question>
 - [blocking] CONFIRM: <final shared understanding>
 ```
 
-Keep unanswered or ambiguous questions. After the user confirms a decision, write it into Decisions and the complete target specifications before removing its blocker. Do not preserve hidden reasoning.
+After each decision is confirmed, write it immediately into Decisions and complete target specifications before removing the blocker. Do not store hidden reasoning.
 
 ## Complete target specifications
 
-Write specifications at:
+Each `specs/<capability>/spec.md` describes the capability's complete behavior after Archive, not an incremental patch:
 
-```text
-changes/<change-name>/specs/<capability>/spec.md
-```
+- new capability: write a complete specification;
+- existing capability: write the complete replacement;
+- removed capability: use CLI `spec remove`, not only file deletion.
 
-Each file describes the complete capability behavior after Archive, not an incremental patch against old text.
-
-- New capability: write the complete specification.
-- Existing capability: write the complete replacement specification.
-- Removed capability: run `comet native spec remove`; do not only delete the file.
-
-The Runtime records create, replace, remove, and the canonical baseline. On a canonical conflict, reread and rewrite the complete target specification before using `spec rebase`. Do not edit Runtime state or hashes manually.
+On canonical conflict, reread the latest specification, rewrite the complete target according to user intent, and use the Runtime-provided rebase action. Do not edit operations, base hashes, or state.
 
 ## Verification
 
@@ -102,17 +63,13 @@ The Runtime records create, replace, remove, and the canonical baseline. On a ca
 # Conclusion
 ```
 
-Record real commands, results, and reviewable facts. Put checks that did not run under Skipped checks. A failing result cannot be reported as pass.
+Record actual commands, results, and reviewable facts. Put unrun checks under Skipped checks. Failed, skipped, blocked, or timed-out results cannot be reported as passed.
 
 ## Acceptance evidence
 
-Use acceptance IDs returned by the Runtime; do not calculate them. Prepare the entries array, then run:
+Use Runtime-provided acceptance IDs and receipt refs; do not calculate IDs or reuse evidence across changes. Prepare a JSON entries array, run `evidence format`, and place its machine block unchanged under `# Acceptance evidence`.
 
-```text
-comet native evidence format [--entries <path>]
-```
-
-Place the command output unchanged under `# Acceptance evidence`. The basic input shape is:
+Basic entries:
 
 ```json
 [
@@ -130,7 +87,4 @@ Place the command output unchanged under `# Acceptance evidence`. The basic inpu
 ]
 ```
 
-- `passed` references a currently valid typed receipt.
-- `failed` states the actual failure or skipped reason.
-
-Do not hand-format the machine block, reuse an evidence ref from another change, or report failed, skipped, or blocked results as passed.
+Do not hand-format the machine block. Every receipt must represent a real execution or observation and bind to the current revision, contract, scope, snapshot, and artifacts.

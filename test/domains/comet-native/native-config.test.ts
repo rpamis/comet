@@ -295,7 +295,7 @@ describe('Native project configuration', () => {
     expect(source).toContain('# 是否启用只读的环境感知恢复探针');
     expect(source).toContain('# Native 产物的存放根目录');
     expect(source).toContain('# Native 每轮询问一个问题');
-    expect(source).toContain('# Native 归档预演成功后自动归档');
+    expect(source).toContain('# Native 归档检查成功后自动归档');
     expect(source).toContain('# 同一份已确认 contract 最多允许的 Verify 失败次数');
     expect(source).toContain('# Native 快照纳入的项目相对路径');
     expect(source).toContain('# 单次快照最多哈希的文件内容总字节数');

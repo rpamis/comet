@@ -272,6 +272,16 @@ export type NativeContinuationAction =
   | 'archive'
   | 'none';
 
+export interface NativeContinuationInputOption {
+  input: string;
+  flags: string[];
+  required: boolean;
+  placeholder: string | null;
+  choices?: string[];
+  repeatable?: boolean;
+  alternativeGroup?: string;
+}
+
 export interface NativeContinuation {
   schema: 'comet.native.continuation.v1';
   skill: 'comet-native';
@@ -281,8 +291,11 @@ export interface NativeContinuation {
   disposition: NativeContinuationDisposition;
   action: NativeContinuationAction;
   command: string | null;
+  /** Full executable plus argv template. Placeholders are explicit angle-bracket tokens. */
+  commandArgs: string[] | null;
   requiresUserDecision: boolean;
   requiredInputs: string[];
+  inputOptions: NativeContinuationInputOption[];
 }
 
 export interface NativeCheckpointArtifact {
@@ -413,6 +426,8 @@ export interface NativeAcceptancePageProjection {
   failedCheckIds: string[];
   failedCheckIdsTruncated: boolean;
   nextCursor: string | null;
+  nextPageCommand?: string | null;
+  nextPageArgs?: string[] | null;
   limits: {
     maxItems: number;
     maxTextBytes: number;
@@ -421,6 +436,17 @@ export interface NativeAcceptancePageProjection {
     maxFailedCheckIds: number;
     maxSerializedBytes: number;
   };
+}
+
+export interface NativeWorkspaceProjection {
+  projectRoot: string;
+  currentBranch: string | null;
+  isSecondaryWorktree: boolean;
+  bindingState: 'missing' | 'legacy' | 'aligned' | 'drifted' | 'invalid';
+  isolation: 'current' | 'branch' | 'worktree' | null;
+  changeBranch: string | null;
+  targetBranch: string | null;
+  finish: 'merge' | 'push' | 'pull-request' | 'keep' | null;
 }
 
 export interface NativeRepairDecisionProjection {
@@ -529,6 +555,7 @@ export interface NativeStatusProjection {
   detailsCommand: string | null;
   checkpoint: NativeCheckpointCompactView | null;
   continuation: NativeContinuation | null;
+  workspace: NativeWorkspaceProjection;
   repair?: NativeRepairStatusProjection | null;
   acceptancePage?: NativeAcceptancePageProjection;
   findings?: NativeStructuredFinding[];
@@ -554,6 +581,8 @@ export interface NativeStatusPageProjection {
   offset: number;
   items: NativeStatusProjection[];
   nextCursor: string | null;
+  nextPageCommand: string | null;
+  nextPageArgs: string[] | null;
   limits: {
     maxItems: number;
     maxChanges: number;

@@ -12,7 +12,7 @@ import { atomicWriteJson } from './native-atomic-file.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
 import { resolveContainedNativePath } from './native-paths.js';
-import type { NativeProjectPaths } from './native-types.js';
+import type { NativeProjectPaths, NativeWorkspaceProjection } from './native-types.js';
 
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
 const GIT_COMMIT_PATTERN = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
@@ -431,6 +431,59 @@ export async function inspectNativeWorkspaceSchema(
     return schema;
   }
   throw new Error('Unsupported Native workspace identity');
+}
+
+export async function projectNativeWorkspace(
+  paths: NativeProjectPaths,
+  name: string,
+): Promise<NativeWorkspaceProjection> {
+  const context = inspectGitWorktree(paths.projectRoot);
+  const base = {
+    projectRoot: path.resolve(paths.projectRoot),
+    currentBranch: context.currentBranch,
+    isSecondaryWorktree: context.isSecondaryWorktree,
+  };
+  try {
+    const identity = await readNativeWorkspaceIdentity(paths, name);
+    if (identity === null) {
+      return {
+        ...base,
+        bindingState: 'missing',
+        isolation: null,
+        changeBranch: null,
+        targetBranch: null,
+        finish: null,
+      };
+    }
+    if (identity.schema !== 'comet.native.workspace.v3') {
+      return {
+        ...base,
+        bindingState: 'legacy',
+        isolation: null,
+        changeBranch: identity.git?.targetBranch ?? null,
+        targetBranch: identity.git?.targetBranch ?? null,
+        finish: null,
+      };
+    }
+    const inspection = await inspectNativeWorkspaceBinding({ paths, identity });
+    return {
+      ...base,
+      bindingState: inspection.state === 'aligned' ? 'aligned' : 'drifted',
+      isolation: identity.isolation,
+      changeBranch: identity.changeBranch,
+      targetBranch: identity.targetBranch,
+      finish: identity.finish,
+    };
+  } catch {
+    return {
+      ...base,
+      bindingState: 'invalid',
+      isolation: null,
+      changeBranch: null,
+      targetBranch: null,
+      finish: null,
+    };
+  }
 }
 
 export async function nativeWorkspaceIdentityNeedsMigration(

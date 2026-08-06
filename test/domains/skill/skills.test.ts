@@ -193,39 +193,18 @@ describe('skills', () => {
         );
         const allContent = [main, ...references].join('\n');
 
-        const requiredCommands =
-          languageDir === 'skills-zh'
-            ? [
-                'comet native select <change-name>',
-                'comet native check <change-name>',
-                'comet native archive <change-name> --dry-run',
-                'comet native spec rebase',
-                'comet native checkpoint',
-              ]
-            : [
-                'comet native select <change-name>',
-                'comet native check <change-name>',
-                'comet native archive <change-name> --dry-run',
-                'comet native spec rebase',
-                'comet native checkpoint',
-              ];
         for (const required of [
-          ...requiredCommands,
+          'comet native <command> --help',
           'continuation.disposition',
+          'commandArgs',
+          'inputOptions',
+          'nextPageArgs',
+          'workspaceFinishResult',
           '[blocking]',
           '--confirmed',
-          '--no-code-reason',
-          '--allow-partial-scope',
-          'git-selection-changed',
-          'physical-selection-changed',
-          'scope-detail-overflow',
-          'acceptancePage.nextCursor',
-          '--result pass|fail',
-          '--report verification.md',
-          '--override-repair',
-          '--expect-preflight',
-          'baseline-snapshot-missing',
-          'workspace-root-changed',
+          '--return-to-build',
+          languageDir === 'skills-zh' ? '决策树' : 'decision tree',
+          languageDir === 'skills-zh' ? 'subagent' : 'subagents',
         ]) {
           expect(allContent, `${languageDir}: ${required}`).toContain(required);
         }
@@ -257,6 +236,8 @@ describe('skills', () => {
           '--failed-check',
           'external-role handoff',
           '外部角色交接',
+          'comet native select <change-name>',
+          'comet native check <change-name>',
         ]) {
           expect(allContent, `${languageDir}: ${unwanted}`).not.toContain(unwanted);
         }
@@ -270,9 +251,7 @@ describe('skills', () => {
         path.join(getAssetsDir(), 'skills', 'comet-native', 'SKILL.md'),
         'utf-8',
       );
-      expect(zhMain).toMatch(/transition 成功后(?:不再调用工具|禁止任何工具调用)/);
       expect(zhMain).toContain('不依赖任何外部 Skill');
-      expect(enMain).toContain('make no tool calls after the transition succeeds');
       expect(enMain).toContain('does not depend on any external Skill');
     });
 
@@ -295,44 +274,46 @@ describe('skills', () => {
       );
 
       const zhSectionOffsets = [
-        zhMain.indexOf('## 核心规则'),
+        zhMain.indexOf('## 不可破坏的边界'),
         zhMain.indexOf('## 开始或恢复'),
-        zhMain.indexOf('## 按需加载'),
+        zhMain.indexOf('## 按需读取'),
         zhMain.indexOf('## Shape'),
       ];
       expect(zhSectionOffsets.every((offset) => offset >= 0)).toBe(true);
       expect(zhSectionOffsets).toEqual([...zhSectionOffsets].sort((left, right) => left - right));
-      expect(zhMain).toContain('确认当前 change 和 phase 后，再按需读取一份对应 reference');
-      expect(zhMain).not.toContain('5. 只读取当前 phase 需要的正式产物');
-      expect(zhMain).toContain('进入 Shape 时，必须先读取并执行[澄清参考]');
-      expect(zhMain).toContain('不得以“需求看起来明确”为由跳过');
-      expect(zhMain).toContain('即使初步判断没有未决行为，也必须完成');
-      expect(zhMain).toContain('完成共享理解确认前，不得修改项目实现或推进到 Build');
+      expect(zhMain).toContain('确认 phase 后只读取需要的一份 reference');
+      expect(zhMain).toContain('Shape：必须读取并执行[澄清参考]');
+      expect(zhMain).toContain('未解决问题保持 `[blocking]`；有阻塞项时不修改项目实现');
+      expect(zhMain).toContain(
+        '只有用户明确确认后才使用 continuation 中含 `--confirmed` 的动作推进',
+      );
       expect(zhClarification).toContain('进入 Shape 后必须读取本文件');
       expect(zhClarification).toContain(
         '完成问题判定、静默假设检查和共享理解确认前，不得修改项目实现或推进到 Build',
       );
+      expect(zhClarification).toContain('一次只提出一个当前可提问节点并等待回答');
 
       const enSectionOffsets = [
-        enMain.indexOf('## Core rules'),
+        enMain.indexOf('## Inviolable boundaries'),
         enMain.indexOf('## Start or resume'),
-        enMain.indexOf('## On-demand loading'),
+        enMain.indexOf('## Read on demand'),
         enMain.indexOf('## Shape'),
       ];
       expect(enSectionOffsets.every((offset) => offset >= 0)).toBe(true);
       expect(enSectionOffsets).toEqual([...enSectionOffsets].sort((left, right) => left - right));
-      expect(enMain).toContain('After confirming the current change and phase');
-      expect(enMain).not.toContain('5. Read only the formal artifacts');
-      expect(enMain).toContain('When entering Shape, you must first read and execute');
-      expect(enMain).toContain('Do not skip it because “the requirements look clear.”');
-      expect(enMain).toContain('Even when the initial assessment finds no unresolved behavior');
+      expect(enMain).toContain('After confirming the phase, read only the needed reference');
+      expect(enMain).toContain('Shape: always read and execute the [clarification reference]');
       expect(enMain).toContain(
-        'Do not modify project implementation or advance to Build until shared understanding is confirmed',
+        'Keep unresolved questions `[blocking]`; do not modify implementation while a blocker remains',
+      );
+      expect(enMain).toContain(
+        'Advance with the continuation containing `--confirmed` only after explicit user confirmation',
       );
       expect(enClarification).toContain('You must read this file after entering Shape');
       expect(enClarification).toContain(
         'Do not modify project implementation or advance to Build until problem classification, the silent-assumption check, and shared-understanding confirmation are complete',
       );
+      expect(enClarification).toContain('Ask exactly one currently askable node and wait');
     });
   });
 

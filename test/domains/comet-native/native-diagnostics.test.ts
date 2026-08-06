@@ -179,6 +179,14 @@ describe('Native status diagnostics', () => {
       disposition: 'continue',
       action: 'archive',
       command: `comet native archive ready-change --expect-preflight ${preflightHash}`,
+      commandArgs: [
+        'comet',
+        'native',
+        'archive',
+        'ready-change',
+        '--expect-preflight',
+        preflightHash,
+      ],
       requiresUserDecision: false,
       requiredInputs: [],
     });
@@ -193,9 +201,83 @@ describe('Native status diagnostics', () => {
       disposition: 'await-user',
       action: 'archive',
       command: null,
+      commandArgs: [
+        'comet',
+        'native',
+        'archive',
+        'ready-change',
+        '--expect-preflight',
+        preflightHash,
+        '--confirmed',
+      ],
       requiresUserDecision: true,
       requiredInputs: ['archive-confirmation'],
+      inputOptions: [
+        expect.objectContaining({
+          input: 'archive-confirmation',
+          flags: ['--confirmed'],
+          choices: ['confirm', 'keep-active'],
+        }),
+      ],
     });
+  });
+
+  it('returns complete phase argv templates and alternative Build evidence', () => {
+    const build = nativeContinuation({
+      state: {
+        name: 'build-change',
+        phase: 'build',
+        revision: 3,
+        approval: 'confirmed',
+        verification_result: 'pending',
+      } as NativeChangeState,
+    });
+    expect(build).toMatchObject({
+      commandArgs: [
+        'comet',
+        'native',
+        'next',
+        'build-change',
+        '--summary',
+        '<summary>',
+        '--artifact',
+        '<project-relative-path>',
+      ],
+      requiredInputs: ['summary', 'artifact-or-no-code-reason'],
+      inputOptions: expect.arrayContaining([
+        expect.objectContaining({
+          input: 'artifact-or-no-code-reason',
+          flags: ['--artifact'],
+          repeatable: true,
+          alternativeGroup: 'build-evidence',
+        }),
+        expect.objectContaining({
+          input: 'artifact-or-no-code-reason',
+          flags: ['--no-code-reason'],
+          alternativeGroup: 'build-evidence',
+        }),
+      ]),
+    });
+
+    const verify = nativeContinuation({
+      state: {
+        name: 'verify-change',
+        phase: 'verify',
+        revision: 4,
+      } as NativeChangeState,
+    });
+    expect(verify.commandArgs).toEqual([
+      'comet',
+      'native',
+      'next',
+      'verify-change',
+      '--summary',
+      '<summary>',
+      '--result',
+      '<pass|fail>',
+      '--report',
+      '<change-relative-path>',
+    ]);
   });
 
   afterEach(async () => {
@@ -282,6 +364,7 @@ describe('Native status diagnostics', () => {
     });
     expect(first.items).toHaveLength(NATIVE_STATUS_PAGE_LIMITS.maxItems);
     expect(first.nextCursor).not.toBeNull();
+    expect(first.nextPageArgs).toEqual(['comet', 'native', 'status', '--cursor', first.nextCursor]);
     expect(Buffer.byteLength(JSON.stringify(first), 'utf8')).toBeLessThanOrEqual(
       NATIVE_STATUS_PAGE_LIMITS.maxSerializedBytes,
     );

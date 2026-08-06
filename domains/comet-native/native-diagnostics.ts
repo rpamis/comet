@@ -31,6 +31,7 @@ import {
   inspectNativeWorkspaceAdvisory,
   inspectNativeWorkspaceBinding,
   isNativeWorkspaceAdvisoryCode,
+  projectNativeWorkspace,
   readNativeWorkspaceIdentity,
 } from './native-workspace.js';
 import { captureNativeProtectedDirectoryGuard } from './native-protected-file.js';
@@ -52,6 +53,12 @@ export const NATIVE_STATUS_PAGE_LIMITS = Object.freeze({
   maxSerializedBytes: 512 * 1024,
 });
 
+function displayCommandArgs(args: readonly string[]): string {
+  return args
+    .map((value) => (/^[A-Za-z0-9_./:=+@-]+$/u.test(value) ? value : JSON.stringify(value)))
+    .join(' ');
+}
+
 async function selectedName(paths: NativeProjectPaths): Promise<string | null> {
   return (await readNativeSelectionRecord(paths))?.change ?? null;
 }
@@ -62,18 +69,7 @@ export function nativeNextCommand(
   evidenceRetreat = false,
   _clarificationMode?: NativeClarificationMode,
 ): string | null {
-  if (state.phase === 'archive') {
-    return archiveReady
-      ? `comet native archive ${state.name} --dry-run`
-      : evidenceRetreat
-        ? `comet native next ${state.name} --summary "<summary>"`
-        : null;
-  }
-  return `comet native next ${state.name} --summary "<summary>"${
-    state.phase === 'shape' || (state.phase === 'build' && state.approval !== 'confirmed')
-      ? ' --confirmed'
-      : ''
-  }`;
+  return nativeContinuation({ state, archiveReady, evidenceRetreat }).command;
 }
 
 async function statusFindings(
@@ -177,6 +173,7 @@ export async function inspectNativeStatus(
   },
 ): Promise<NativeStatusProjection> {
   const selected = (await selectedName(paths)) === name;
+  const workspace = await projectNativeWorkspace(paths, name);
   let state: NativeChangeState;
   try {
     const inspection = await inspectNativeChange(paths, name);
@@ -209,6 +206,7 @@ export async function inspectNativeStatus(
         detailsCommand: `comet native status ${name} --details`,
         checkpoint: null,
         continuation: null,
+        workspace,
         schema: inspection.schema,
         migrationRequired: true,
         minimumRuntimeVersion: inspection.minimumRuntimeVersion,
@@ -244,6 +242,7 @@ export async function inspectNativeStatus(
         detailsCommand: `comet native status ${name} --details`,
         checkpoint: null,
         continuation: null,
+        workspace,
         schema: inspection.schema,
         minimumRuntimeVersion: inspection.minimumRuntimeVersion,
         error: inspection.message ?? `Native change ${name} is incompatible`,
@@ -279,6 +278,7 @@ export async function inspectNativeStatus(
       detailsCommand: `comet native status ${name} --details`,
       checkpoint: null,
       continuation: null,
+      workspace,
       error: (error as Error).message,
     };
   }
@@ -343,13 +343,35 @@ export async function inspectNativeStatus(
           );
         }
       }
-      acceptancePage = projectNativeAcceptancePage({
+      const projectedAcceptancePage = projectNativeAcceptancePage({
         criteria: contract.contract.acceptance,
         acceptanceHash: contract.contract.acceptanceHash,
         verificationStatuses,
         failedCheckIds: repair?.failedCheckIds ?? [],
         ...(options.acceptanceCursor ? { cursor: options.acceptanceCursor } : {}),
       });
+      const nextPageArgs = projectedAcceptancePage.nextCursor
+        ? [
+            'comet',
+            'native',
+            'status',
+            state.name,
+            '--details',
+            '--acceptance-cursor',
+            projectedAcceptancePage.nextCursor,
+            '--project-root',
+            paths.projectRoot,
+          ]
+        : null;
+      acceptancePage = {
+        ...projectedAcceptancePage,
+        ...(nextPageArgs
+          ? {
+              nextPageCommand: displayCommandArgs(nextPageArgs),
+              nextPageArgs,
+            }
+          : {}),
+      };
     } catch (error) {
       if (options.acceptanceCursor) throw error;
       acceptancePage = undefined;
@@ -502,6 +524,7 @@ export async function inspectNativeStatus(
       evidenceRetreat,
       clarificationMode: options?.clarificationMode,
     }),
+    workspace,
     repair,
     ...(options?.details
       ? {
@@ -624,6 +647,20 @@ export async function listNativeStatusPage(
       offset,
       items: trialItems,
       nextCursor: nextOffset < names.length ? nativeStatusCursor(namesHash, nextOffset) : null,
+      nextPageCommand:
+        nextOffset < names.length
+          ? displayCommandArgs([
+              'comet',
+              'native',
+              'status',
+              '--cursor',
+              nativeStatusCursor(namesHash, nextOffset),
+            ])
+          : null,
+      nextPageArgs:
+        nextOffset < names.length
+          ? ['comet', 'native', 'status', '--cursor', nativeStatusCursor(namesHash, nextOffset)]
+          : null,
       limits: { ...NATIVE_STATUS_PAGE_LIMITS },
     };
     if (
@@ -638,12 +675,16 @@ export async function listNativeStatusPage(
     items.push(candidate);
   }
   const nextOffset = offset + items.length;
+  const nextCursor = nextOffset < names.length ? nativeStatusCursor(namesHash, nextOffset) : null;
+  const nextPageArgs = nextCursor ? ['comet', 'native', 'status', '--cursor', nextCursor] : null;
   return {
     schema: 'comet.native.status-page.v1',
     total: names.length,
     offset,
     items,
-    nextCursor: nextOffset < names.length ? nativeStatusCursor(namesHash, nextOffset) : null,
+    nextCursor,
+    nextPageCommand: nextPageArgs ? displayCommandArgs(nextPageArgs) : null,
+    nextPageArgs,
     limits: { ...NATIVE_STATUS_PAGE_LIMITS },
   };
 }

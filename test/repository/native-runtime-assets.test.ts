@@ -110,7 +110,11 @@ describe('Native runtime release asset', () => {
     execFileSync(process.execPath, [builder, '--check'], { stdio: 'pipe' });
   });
 
-  it('documents the docs-based default artifact root bilingually', async () => {
+  it('keeps command syntax and defaults in CLI help instead of Skill references', async () => {
+    const help = await fs.readFile(
+      path.resolve('domains', 'comet-native', 'native-cli-help.ts'),
+      'utf8',
+    );
     const english = await fs.readFile(
       path.resolve('assets', 'skills', 'comet-native', 'reference', 'commands.md'),
       'utf8',
@@ -120,12 +124,12 @@ describe('Native runtime release asset', () => {
       'utf8',
     );
 
-    expect(english).toContain('comet native new <change-name> [--language en|zh-CN]');
-    expect(chinese).toContain('comet native new <change-name> [--language en|zh-CN]');
-    expect(english).toContain('When configuration is absent');
-    expect(english).toContain('`docs/comet/`');
-    expect(chinese).toContain('配置缺失时');
-    expect(chinese).toContain('`docs/comet/`');
+    expect(help).toContain('comet native new <change-name> [--language en|zh-CN]');
+    expect(help).toContain('defaults to docs');
+    for (const reference of [english, chinese]) {
+      expect(reference).toContain('comet native <command> --help');
+      expect(reference).not.toContain('comet native new <change-name> [--language en|zh-CN]');
+    }
   });
 
   it('detects a stale generated runtime', async () => {

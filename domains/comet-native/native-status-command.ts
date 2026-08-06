@@ -1,7 +1,9 @@
-import { inspectNativeStatus, listNativeStatusPage } from './native-diagnostics.js';
+import {
+  inspectDiscoveredNativeStatus,
+  listDiscoveredNativeStatusPage,
+} from './native-status-discovery.js';
 import {
   assertNoArguments,
-  configuredPaths,
   NativeUsageError,
   success,
   takeFlag,
@@ -27,18 +29,16 @@ export async function nativeStatusCommand(
     throw new NativeUsageError('--acceptance-cursor requires a change name');
   }
   assertNoArguments(args);
-  const { config, paths } = await configuredPaths(projectRoot);
   const data = name
-    ? await inspectNativeStatus(paths, name, {
+    ? await inspectDiscoveredNativeStatus({
+        projectRoot,
+        name,
         details,
         ...(acceptanceCursor ? { acceptanceCursor } : {}),
-        clarificationMode: config.native.clarification_mode,
-        maxVerifyFailures: config.native.max_verify_failures,
       })
-    : await listNativeStatusPage(paths, {
+    : await listDiscoveredNativeStatusPage({
+        projectRoot,
         ...(cursor ? { cursor } : {}),
-        clarificationMode: config.native.clarification_mode,
-        maxVerifyFailures: config.native.max_verify_failures,
       });
   return success('status', data);
 }

@@ -3,6 +3,9 @@ import type {
   NativeChangeState,
   NativeClarificationMode,
   NativeContinuation,
+  NativeContinuationAction,
+  NativeContinuationDisposition,
+  NativeContinuationInputOption,
   NativeStructuredFinding,
 } from './native-types.js';
 import { isNativeWorkspaceAdvisoryCode } from './native-workspace.js';
@@ -10,17 +13,138 @@ import { isNativeWorkspaceAdvisoryCode } from './native-workspace.js';
 const REPAIR_CODES =
   /^(?:run-|trajectory-|checkpoint-(?:missing|mismatch|invalid|progress-invalid)|transition-(?:incomplete|invalid))/u;
 
-function requiredPhaseInputs(state: NativeChangeState): string[] {
+interface ContinuationFields {
+  disposition: NativeContinuationDisposition;
+  action: NativeContinuationAction;
+  commandArgs?: string[] | null;
+  command?: string | null;
+  requiresUserDecision?: boolean;
+  requiredInputs?: string[];
+  inputOptions?: NativeContinuationInputOption[];
+}
+
+function displayArg(value: string): string {
+  return /^[A-Za-z0-9_./:=+@-]+$/u.test(value) ? value : JSON.stringify(value);
+}
+
+function displayCommand(commandArgs: readonly string[] | null): string | null {
+  return commandArgs ? commandArgs.map(displayArg).join(' ') : null;
+}
+
+function commandArgsFromDisplay(command: string | null): string[] | null {
+  if (command === null) return null;
+  const values = command.match(/"(?:[^"\\]|\\.)*"|'[^']*'|\S+/gu);
+  if (!values || values[0] !== 'comet') return null;
+  return values.map((value) => {
+    if (value.startsWith('"') && value.endsWith('"')) {
+      try {
+        return JSON.parse(value) as string;
+      } catch {
+        return value.slice(1, -1);
+      }
+    }
+    if (value.startsWith("'") && value.endsWith("'")) return value.slice(1, -1);
+    return value;
+  });
+}
+
+function inputOption(
+  input: string,
+  flags: string[],
+  placeholder: string | null,
+  options: Partial<
+    Pick<NativeContinuationInputOption, 'required' | 'choices' | 'repeatable' | 'alternativeGroup'>
+  > = {},
+): NativeContinuationInputOption {
+  return {
+    input,
+    flags,
+    required: options.required ?? true,
+    placeholder,
+    ...(options.choices ? { choices: options.choices } : {}),
+    ...(options.repeatable ? { repeatable: true } : {}),
+    ...(options.alternativeGroup ? { alternativeGroup: options.alternativeGroup } : {}),
+  };
+}
+
+function optionsForInputs(inputs: readonly string[]): NativeContinuationInputOption[] {
+  return inputs.map((input) => inputOption(input, [], null));
+}
+
+function phaseCommand(state: NativeChangeState): {
+  commandArgs: string[];
+  requiredInputs: string[];
+  inputOptions: NativeContinuationInputOption[];
+} {
+  const commandArgs = ['comet', 'native', 'next', state.name, '--summary', '<summary>'];
+  const inputOptions = [inputOption('summary', ['--summary'], '<summary>')];
   if (state.phase === 'shape') {
-    return ['summary', 'shared-understanding-confirmation'];
+    commandArgs.push('--confirmed');
+    inputOptions.push(inputOption('shared-understanding-confirmation', ['--confirmed'], null));
+    return {
+      commandArgs,
+      requiredInputs: ['summary', 'shared-understanding-confirmation'],
+      inputOptions,
+    };
   }
   if (state.phase === 'build') {
-    return state.approval === 'confirmed'
-      ? ['summary', 'artifact-or-no-code-reason']
-      : ['summary', 'artifact-or-no-code-reason', 'shared-understanding-confirmation'];
+    commandArgs.push('--artifact', '<project-relative-path>');
+    inputOptions.push(
+      inputOption('artifact-or-no-code-reason', ['--artifact'], '<project-relative-path>', {
+        repeatable: true,
+        alternativeGroup: 'build-evidence',
+      }),
+      inputOption('artifact-or-no-code-reason', ['--no-code-reason'], '<reason>', {
+        alternativeGroup: 'build-evidence',
+      }),
+    );
+    const requiredInputs = ['summary', 'artifact-or-no-code-reason'];
+    if (state.approval !== 'confirmed') {
+      commandArgs.push('--confirmed');
+      requiredInputs.push('shared-understanding-confirmation');
+      inputOptions.push(inputOption('shared-understanding-confirmation', ['--confirmed'], null));
+    }
+    return { commandArgs, requiredInputs, inputOptions };
   }
-  if (state.phase === 'verify') return ['summary', 'verification-result', 'verification-report'];
-  return [];
+  if (state.phase === 'verify') {
+    commandArgs.push('--result', '<pass|fail>', '--report', '<change-relative-path>');
+    inputOptions.push(
+      inputOption('verification-result', ['--result'], '<pass|fail>', {
+        choices: ['pass', 'fail'],
+      }),
+      inputOption('verification-report', ['--report'], '<change-relative-path>'),
+    );
+    return {
+      commandArgs,
+      requiredInputs: ['summary', 'verification-result', 'verification-report'],
+      inputOptions,
+    };
+  }
+  return { commandArgs, requiredInputs: [], inputOptions: [] };
+}
+
+function buildContinuation(
+  state: NativeChangeState,
+  fields: ContinuationFields,
+): NativeContinuation {
+  const commandArgs =
+    fields.commandArgs === undefined
+      ? commandArgsFromDisplay(fields.command ?? null)
+      : fields.commandArgs;
+  return {
+    schema: 'comet.native.continuation.v1',
+    skill: 'comet-native',
+    change: state.name,
+    phase: state.phase,
+    revision: state.revision,
+    disposition: fields.disposition,
+    action: fields.action,
+    command: fields.command === undefined ? displayCommand(commandArgs ?? null) : fields.command,
+    commandArgs: commandArgs ?? null,
+    requiresUserDecision: fields.requiresUserDecision ?? false,
+    requiredInputs: fields.requiredInputs ?? [],
+    inputOptions: fields.inputOptions ?? optionsForInputs(fields.requiredInputs ?? []),
+  };
 }
 
 export function nativeContinuation(options: {
@@ -58,221 +182,151 @@ export function nativeContinuation(options: {
   ].sort();
 
   if (options.done) {
-    return {
-      schema: 'comet.native.continuation.v1',
-      skill: 'comet-native',
-      change: options.state.name,
-      phase: options.state.phase,
-      revision: options.state.revision,
+    return buildContinuation(options.state, {
       disposition: 'done',
       action: 'none',
-      command: null,
-      requiresUserDecision: false,
-      requiredInputs: [],
-    };
+      commandArgs: null,
+    });
   }
   if (repairDecision) {
-    return {
-      schema: 'comet.native.continuation.v1',
-      skill: 'comet-native',
-      change: options.state.name,
-      phase: options.state.phase,
-      revision: options.state.revision,
+    return buildContinuation(options.state, {
       disposition: 'await-user',
       action: 'work-phase',
-      command: null,
+      commandArgs: null,
       requiresUserDecision: true,
       requiredInputs: ['repair-continuation-decision'],
-    };
+      inputOptions: [
+        inputOption('repair-continuation-decision', [], null, {
+          choices: ['continue', 'change-contract', 'stop'],
+        }),
+      ],
+    });
   }
   if (decision) {
-    return {
-      schema: 'comet.native.continuation.v1',
-      skill: 'comet-native',
-      change: options.state.name,
-      phase: options.state.phase,
-      revision: options.state.revision,
+    return buildContinuation(options.state, {
       disposition: 'await-user',
       action: 'work-phase',
-      command: null,
+      commandArgs: null,
       requiresUserDecision: true,
       requiredInputs,
-    };
+    });
   }
   if (stagnationStop) {
-    return {
-      schema: 'comet.native.continuation.v1',
-      skill: 'comet-native',
-      change: options.state.name,
-      phase: options.state.phase,
-      revision: options.state.revision,
+    return buildContinuation(options.state, {
       disposition: 'blocked',
       action: 'repair',
-      command: null,
-      requiresUserDecision: false,
+      commandArgs: null,
       requiredInputs: ['new-repair-hypothesis'],
-    };
+    });
   }
   if (workspaceBindingFailure) {
-    return {
-      schema: 'comet.native.continuation.v1',
-      skill: 'comet-native',
-      change: options.state.name,
-      phase: options.state.phase,
-      revision: options.state.revision,
+    return buildContinuation(options.state, {
       disposition: 'blocked',
       action: 'none',
-      command: null,
-      requiresUserDecision: false,
+      commandArgs: null,
       requiredInputs,
-    };
+    });
   }
   if (repair) {
-    return {
-      schema: 'comet.native.continuation.v1',
-      skill: 'comet-native',
-      change: options.state.name,
-      phase: options.state.phase,
-      revision: options.state.revision,
+    return buildContinuation(options.state, {
       disposition: 'blocked',
       action: 'repair',
       command: repair.repairCommand,
-      requiresUserDecision: false,
       requiredInputs,
-    };
+    });
   }
   if (options.evidenceRetreat) {
-    return {
-      schema: 'comet.native.continuation.v1',
-      skill: 'comet-native',
-      change: options.state.name,
-      phase: options.state.phase,
-      revision: options.state.revision,
+    const commandArgs = ['comet', 'native', 'next', options.state.name, '--summary', '<summary>'];
+    return buildContinuation(options.state, {
       disposition: 'continue',
       action: 'advance-phase',
-      command: `comet native next ${options.state.name} --summary "<summary>"`,
-      requiresUserDecision: false,
+      commandArgs,
       requiredInputs: ['summary'],
-    };
+      inputOptions: [inputOption('summary', ['--summary'], '<summary>')],
+    });
   }
   if (options.state.phase === 'build' && options.state.verification_result === 'fail') {
-    return {
-      schema: 'comet.native.continuation.v1',
-      skill: 'comet-native',
-      change: options.state.name,
-      phase: options.state.phase,
-      revision: options.state.revision,
+    return buildContinuation(options.state, {
       disposition: 'continue',
       action: 'work-phase',
-      command: null,
-      requiresUserDecision: false,
+      commandArgs: null,
       requiredInputs: ['repair-verification-gaps'],
-    };
+    });
   }
   if (actionableFindings.length > 0) {
     if (options.state.phase === 'archive') {
-      return {
-        schema: 'comet.native.continuation.v1',
-        skill: 'comet-native',
-        change: options.state.name,
-        phase: options.state.phase,
-        revision: options.state.revision,
+      return buildContinuation(options.state, {
         disposition: 'blocked',
         action: 'none',
-        command: null,
-        requiresUserDecision: false,
+        commandArgs: null,
         requiredInputs,
-      };
+      });
     }
-    // Receipt binding failures carry a concrete recovery command, so route the
-    // Agent straight to `receipt refresh` instead of a generic work-phase nudge.
     if (requiredInputs.includes('refresh-verification-receipts')) {
-      return {
-        schema: 'comet.native.continuation.v1',
-        skill: 'comet-native',
-        change: options.state.name,
-        phase: options.state.phase,
-        revision: options.state.revision,
+      return buildContinuation(options.state, {
         disposition: 'continue',
         action: 'work-phase',
-        command: `comet native receipt refresh ${options.state.name} --apply`,
-        requiresUserDecision: false,
+        commandArgs: ['comet', 'native', 'receipt', 'refresh', options.state.name, '--apply'],
         requiredInputs,
-      };
+      });
     }
-    return {
-      schema: 'comet.native.continuation.v1',
-      skill: 'comet-native',
-      change: options.state.name,
-      phase: options.state.phase,
-      revision: options.state.revision,
+    return buildContinuation(options.state, {
       disposition: 'continue',
       action: 'work-phase',
-      command: null,
-      requiresUserDecision: false,
+      commandArgs: null,
       requiredInputs,
-    };
+    });
   }
   if (options.state.phase === 'archive') {
     if (options.archiveReady && options.archivePreflightHash) {
       if (!/^[a-f0-9]{64}$/u.test(options.archivePreflightHash)) {
         throw new Error('Native Archive continuation preflight must be a SHA-256 hash');
       }
+      const commandArgs = [
+        'comet',
+        'native',
+        'archive',
+        options.state.name,
+        '--expect-preflight',
+        options.archivePreflightHash,
+      ];
       if (options.archiveConfirmation === 'required') {
-        return {
-          schema: 'comet.native.continuation.v1',
-          skill: 'comet-native',
-          change: options.state.name,
-          phase: options.state.phase,
-          revision: options.state.revision,
+        commandArgs.push('--confirmed');
+        return buildContinuation(options.state, {
           disposition: 'await-user',
           action: 'archive',
+          commandArgs,
           command: null,
           requiresUserDecision: true,
           requiredInputs: ['archive-confirmation'],
-        };
+          inputOptions: [
+            inputOption('archive-confirmation', ['--confirmed'], null, {
+              choices: ['confirm', 'keep-active'],
+            }),
+          ],
+        });
       }
-      return {
-        schema: 'comet.native.continuation.v1',
-        skill: 'comet-native',
-        change: options.state.name,
-        phase: options.state.phase,
-        revision: options.state.revision,
+      return buildContinuation(options.state, {
         disposition: 'continue',
         action: 'archive',
-        command: `comet native archive ${options.state.name} --expect-preflight ${options.archivePreflightHash}`,
-        requiresUserDecision: false,
-        requiredInputs: [],
-      };
+        commandArgs,
+      });
     }
-    return {
-      schema: 'comet.native.continuation.v1',
-      skill: 'comet-native',
-      change: options.state.name,
-      phase: options.state.phase,
-      revision: options.state.revision,
+    return buildContinuation(options.state, {
       disposition: options.archiveReady ? 'continue' : 'blocked',
       action: options.archiveReady ? 'archive' : 'none',
-      command: options.archiveReady ? `comet native archive ${options.state.name} --dry-run` : null,
-      requiresUserDecision: false,
+      commandArgs: options.archiveReady
+        ? ['comet', 'native', 'archive', options.state.name, '--dry-run']
+        : null,
       requiredInputs: options.archiveReady ? [] : ['archive-readiness'],
-    };
+    });
   }
-  const confirmationSuffix =
-    options.state.phase === 'shape' ||
-    (options.state.phase === 'build' && options.state.approval !== 'confirmed')
-      ? ' --confirmed'
-      : '';
-  return {
-    schema: 'comet.native.continuation.v1',
-    skill: 'comet-native',
-    change: options.state.name,
-    phase: options.state.phase,
-    revision: options.state.revision,
+  const phase = phaseCommand(options.state);
+  return buildContinuation(options.state, {
     disposition: 'continue',
     action: 'advance-phase',
-    command: `comet native next ${options.state.name} --summary "<summary>"${confirmationSuffix}`,
-    requiresUserDecision: false,
-    requiredInputs: requiredPhaseInputs(options.state),
-  };
+    commandArgs: phase.commandArgs,
+    requiredInputs: phase.requiredInputs,
+    inputOptions: phase.inputOptions,
+  });
 }

@@ -8,6 +8,11 @@ import {
   type NativeWorkspaceFinish,
 } from './native-workspace.js';
 import {
+  finishArchivedNativeWorkspace,
+  NativeWorkspaceFinishError,
+  prepareNativeWorkspaceFinish,
+} from './native-workspace-finish.js';
+import {
   assertNoArguments,
   configuredPaths,
   NativeUsageError,
@@ -106,16 +111,47 @@ export async function nativeArchiveCommand(
       'Native branch and worktree isolation require a persisted --finish preview',
     );
   }
+  const finishPlan =
+    workspace?.schema === 'comet.native.workspace.v3'
+      ? await prepareNativeWorkspaceFinish({ paths, state, workspace })
+      : null;
   const result = await archiveNativeChange({
     paths,
     name,
     expectedPreflightHash: expectedPreflightHash!,
   });
+  let workspaceFinishResult = null;
+  if (finishPlan) {
+    try {
+      workspaceFinishResult = await finishArchivedNativeWorkspace({
+        paths,
+        state,
+        name,
+        archiveDir: result.archiveDir,
+        transactionId: result.transactionId,
+        plan: finishPlan,
+      });
+    } catch (error) {
+      if (!(error instanceof NativeWorkspaceFinishError)) throw error;
+      return {
+        command: 'archive',
+        exitCode: 73,
+        data: {
+          ...result,
+          workspaceFinish: finishPlan.finish,
+          workspaceFinishResult: error.result,
+          continuation: nativeContinuation({ state, done: true }),
+        },
+        error: { code: 'conflict', message: error.message },
+      };
+    }
+  }
   return success(
     'archive',
     {
       ...result,
       workspaceFinish: workspace?.schema === 'comet.native.workspace.v3' ? workspace.finish : null,
+      workspaceFinishResult,
       continuation: nativeContinuation({ state, done: true }),
     },
     `Archived Native change ${name} to ${result.archiveDir}\n`,

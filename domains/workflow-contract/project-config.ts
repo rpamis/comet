@@ -211,7 +211,7 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
     'native.clarification_mode':
       '# Native 每轮询问一个问题，或一次提出当前所有可回答的问题。\n# 可选值：sequential | batch',
     'native.archive_confirmation':
-      '# Native 归档预演成功后自动归档，或等待用户明确确认。\n# 可选值：automatic | required',
+      '# Native 归档检查成功后自动归档，或等待用户明确确认。\n# 可选值：automatic | required',
     'native.max_verify_failures':
       '# 同一份已确认 contract 最多允许的 Verify 失败次数；达到上限后停止完成循环。',
     'native.snapshot': '# Native 内容快照使用的可审计项目范围与有界工作预算。',

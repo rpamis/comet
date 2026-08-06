@@ -1,117 +1,42 @@
 # Native 恢复参考
 
-只在 Runtime 报告中断、失效证据、repair stop、冲突、锁、迁移或损坏状态时读取本文件。
+只在 Runtime 报告中断、证据失效、repair stop、冲突、迁移或损坏状态时读取。
 
 ## 通用原则
 
-先停止写入并运行只读诊断：
+停止写入，重新运行 `status --details --json` 和只读 `doctor`。只执行 continuation、finding 或 doctor 返回的动作；不要手改状态、workspace、hash、证据、锁或事务。无法证明自动修复安全时保留现场并等待用户。
 
-```text
-comet native doctor [<change-name>]
-```
+## Workspace
 
-只根据 doctor 或 continuation 返回的事实采取动作。不要手改状态、hash、证据、锁或事务文件；Runtime 无法证明自动修复安全时，保留现场并等待用户。
+`status` 会跨已登记 worktree 查找绑定一致的 change，并返回实际 `workspace.projectRoot`。在该目录恢复并重新 `select`；不要复制 active change、在其他目录重建同名 change，或编辑 workspace 取得所有权。
 
-## 工作区提示
+以下绑定错误阻止写入：root、branch、worktree kind 或 Git 可用性与记录不一致。原目录或分支确实丢失时保留 artifacts，先看 doctor；只有用户可决定恢复目录、从可信备份重建或放弃 change。旧元数据的 root 提示不单独阻塞，也不授权自动刷新 baseline。
 
-先用 `git worktree list --porcelain` 和每个安全可访问目录中的 `comet native status --project-root <path> --json` 查找 change 的实际工作目录。不要复制 active change 目录、不要在另一个 worktree 重建同名 change，也不要通过改 `workspace.json` 接管。
+## Transition、baseline 与证据
 
-旧元数据的 `workspace-root-changed` 与 `workspace-inspection-unavailable` 只用于解释当前 root 事实的来源，不单独阻止推进或 Archive。新绑定的以下错误会阻止写入：
-
-- `workspace-binding-root-changed`：当前物理工作目录不是创建 change 的目录；
-- `workspace-branch-changed`：当前分支不是绑定的 change 分支；
-- `workspace-kind-changed`：绑定为 worktree，但当前目录不再是 linked worktree；
-- `workspace-vcs-unavailable`：绑定所需的 Git 工作目录不可用。
-
-找到登记中的原工作目录后，在其中恢复并重新 `select`。原目录或分支确实丢失时保留 artifacts，先运行只读 doctor；Runtime 没有证明可修复时停止并让用户决定恢复目录、从可信备份重建，或放弃 change。不要把任意 `workspace-*` finding 都当作提示，也不要自动刷新 baseline。
-
-`workspace-isolation-required` 发生在新建竞态：系统默认 `current` 可自动准备独立 worktree 后重试；显式用户选择失效时重新确认。
-
-## 未完成的阶段推进
-
-status 或 doctor 报告未完成 transition 时，优先按 continuation 重试原动作。需要显式修复时：
-
-```text
-comet native doctor <change-name> --repair --strategy continue
-```
-
-普通 Shape、Build、Verify transition 只支持 continue，不支持 rollback。
-
-## Baseline 缺失或不完整
-
-`baseline-snapshot-missing` 或 `baseline-snapshot-incomplete` 不能用当前文件重建，也不能通过手改 evidence 修复。
-
-只能：
-
-1. 从可信备份恢复原 baseline；或
-2. 保留用户已写的 brief、规格和实现事实，重新创建 change。
-
-## 证据失效
-
-brief、规格、实现、报告或 receipt 改变后，旧 scope 或 Verify pass 可能失效。按 continuation 回到 Build，重新确认发生变化的用户行为、生成新 scope 并重新验证。不要复用旧 pass 或旧 preflight。
-
-receipt 与 revision 绑定：每次状态写入（checkpoint、规格刷新、阶段推进）都会让 revision 递增，此前签发的 receipt 会因此绑定过期。`next --result` 报 `verification-receipt-binding-mismatch` 时，finding 会列出每个过期 receipt 及其不一致字段（如 `sourceRevision: expected 6, got 5`），并给出恢复命令。只有 manual evidence 仅发生 sourceRevision 不一致时，才可以不回到 Verify，运行 `comet native receipt refresh <change> --apply` 按当前 revision 重签并写回 verification.md；contract、scope、snapshot 或 artifact 不一致都必须重新验证。automated receipt 必须用 `receipt automated` 重新执行原命令，不能静默重签。
+- 未完成 transition：优先按 continuation 重试；doctor 只允许其明确列出的 continue/rollback。
+- baseline 缺失或不完整：只能从可信备份恢复，或保留已确认事实后重建 change；不能从当前文件猜测 baseline。
+- brief、规格、实现、报告或 receipt 改变：回到 Build，重新确认受影响行为、生成 scope 并验证；不复用旧 pass 或 preflight。
+- receipt binding mismatch：按输出分类。仅 source revision 不一致的 manual receipt 可 refresh；automated receipt 重跑；contract、scope、snapshot 或 artifact 不一致重新验证。
 
 ## Verify fail 与 repair stop
 
-Verify fail 回到 Build 后：
+Verify fail 后读取 failed/missing acceptance 和 failed check，实际修复并重新验证。
 
-1. 从 status details 读取 failed/missing acceptance 和 failed check；
-2. 实际修复这些缺口；
-3. 重新运行相关验证；
-4. 再提交 Verify 结果。
+`repair-stagnation-stop` 不是用户决定：根据当前 signature 提出一个不同且具体的新假设，完成对应修改后使用一次 override。不要让用户提供 signature 或 hash。
 
-相同缺口第三次出现时，Runtime 返回 `repair-stagnation-stop`。这不是用户决策：Agent 从 status 读取 signature，提出一个与上一轮不同且具体的新的修复假设，完成对应修改后，使用该 signature 和假设摘要执行一次 repair override。不要让用户提供 signature、hash 或 override 参数。
+只有 `repair-continuation-decision` 才让用户选择继续尝试、调整已确认契约或停止。你负责修改配置或正式产物并执行后续动作。
 
-override 已耗尽或达到 `native.max_verify_failures` 时，continuation 返回 `await-user` 和 `repair-continuation-decision`。向用户说明当前失败和已尝试方案，只让用户选择：
+## 规格与 Archive 冲突
 
-1. 继续尝试：由 Agent 提高 `native.max_verify_failures` 后继续；
-2. 调整已确认契约：回到 Shape 更新 brief 和完整目标规格，并重新确认；
-3. 停止本次修复：保留 change 和当前现场，不继续推进或 Archive。
+canonical spec 改变时，重读最新 canonical、brief 和拟议完整规格，按用户意图改写后执行 finding 返回的 rebase 动作，再重新实现和验证。不得覆盖并发变化。
 
-用户只做方向选择；Agent 负责修改配置或正式产物、读取 Runtime signature，并执行后续命令。
+Archive 或 root move 中断时，以 doctor 返回的 transaction 和允许方向为准。journal、路径或实际文件不一致时保留两侧现场，不自行回滚或删除。
 
-## Canonical spec 冲突
+若 `workspaceFinishResult.status` 为 `blocked`，change 已可能归档或提交；先运行其 `recoveryArgs` 查看 Git 状态。不要重复 Archive、复用旧 preflight、强制删除 worktree，或在未知状态下再次 merge/push。
 
-Archive 报告 canonical spec 已变化时：
+## 损坏状态
 
-1. 重读最新 canonical spec、brief 和拟议完整规格；
-2. 按用户意图改写完整目标规格；
-3. 运行：
-
-```text
-comet native spec rebase <change-name> --summary <摘要>
-```
-
-4. 按 Runtime 返回的 phase 重新实现、确认和验证。
-
-不要手改 `base_hash` 或覆盖并发变化。
-
-## Archive 中断
-
-先运行 doctor，确认 transaction 和允许的恢复方向：
-
-```text
-comet native doctor <change-name>
-comet native doctor <change-name> --repair --strategy continue
-comet native doctor <change-name> --repair --strategy rollback
-```
-
-- `continue`：继续完成归档；
-- `rollback`：恢复 active change；
-- doctor 未提供 rollback 时，不要自行回退。
-
-出现 journal 与实际文件不一致、路径冲突或无法证明安全时，保留所有相关目录并停止自动修复。
-
-## Artifact root 迁移中断
-
-存在 `pending_root_move` 时，普通 Native 写命令会停止。运行 doctor，并只执行报告允许的 continue 或 rollback。
-
-如果旧 root 与新 root 不一致，不删除任何一棵目录；把 doctor 返回的两条路径交给用户处理。
-
-## 锁、当前 change 或损坏产物
-
-- 不手动删除锁。只在 doctor 明确判断可安全接管时使用 `--repair`。
-- doctor 可以清理指向不存在 change 的当前 change 记录。
-- 损坏的 config、change 状态、brief、规格或 verification 不会被自动猜测重写。
-- doctor 无法确定 owner、事务或文件身份时，保留现场并停止。
+- 不手动删除锁；只有 doctor 明确允许时 repair。
+- 损坏的 config、change、brief、规格或 verification 不由 Agent 猜测重写。
+- 无法确定 owner、事务或文件身份时保留现场并停止。

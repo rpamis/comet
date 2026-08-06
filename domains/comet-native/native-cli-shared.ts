@@ -13,7 +13,9 @@ import { discoverNativeProject, nativeProjectPaths } from './native-paths.js';
 import { readProjectConfig, resolveNativeProject } from './native-config.js';
 import { NativeReceiptScopeStaleError } from './native-receipt-errors.js';
 import { NativeVerificationReceiptBindingError } from './native-verification-runtime.js';
+import { NativeWorkspacePreparationError } from './native-workspace-preparation.js';
 import type { CometProjectConfig, NativeProjectPaths } from './native-types.js';
+export { USAGE } from './native-cli-help.js';
 
 export interface NativeCommandResult {
   exitCode: number;
@@ -30,6 +32,7 @@ export interface NativeCliErrorShape {
     | 'internal'
     | 'baseline-incomplete'
     | 'workspace-isolation-required'
+    | 'workspace-preparation-incomplete'
     | 'implementation-scope-stale';
   message: string;
 }
@@ -45,30 +48,6 @@ export interface DispatchResult {
 export const NATIVE_SHOW_MAX_SERIALIZED_BYTES = 10 * 1024 * 1024;
 
 export class NativeUsageError extends Error {}
-
-export const USAGE = `Usage: comet native <command> [options]
-
-Commands:
-  hook-guard [--hook-output copilot]
-  init [--root <artifact-root>] [--language en|zh-CN]
-  root show
-  root move <artifact-root>
-  new <change-name> [--language en|zh-CN] [--isolation current|branch|worktree] [--change-branch <branch>] [--target-branch <branch>]
-  spec remove <change-name> <capability>
-  spec rebase <change-name> --summary <text>
-  show <change-name>
-  status [<change-name>] [--cursor <token>] [--details [--acceptance-cursor <token>]]
-  select <change-name>
-  checkpoint <change-name> --summary <text> --next-action <text> [--artifact <project-relative>] [--expect-revision <n>]
-  check <change-name>
-  evidence format [--entries <path>]
-  receipt manual <change-name> --acceptance <id> --step <text> --observation <text>
-  receipt automated <change-name> --acceptance <id> [--timeout-ms <n>] -- <executable> [args...]
-  next <change-name> --summary <text> [--confirmed] [--return-to-build] [--artifact <path>] [--no-code-reason <text>] [--allow-partial-scope <sha256> --partial-reason <text>] [--result pass|fail] [--report <path>] [--override-repair <sha256> --override-summary <text>]
-  archive <change-name> --dry-run [--finish merge|push|pull-request|keep]
-  archive <change-name> --expect-preflight <sha256> [--confirmed]
-  doctor [<change-name>] [--repair] [--strategy continue|rollback]
-`;
 
 export function takeFlag(args: string[], name: string): boolean {
   const indexes = args.flatMap((value, index) => (value === name ? [index] : []));
@@ -293,6 +272,14 @@ export function errorResult(command: string | null, error: unknown): DispatchRes
         requiredAction: 'create-native-worktree',
       },
       error: { code: 'workspace-isolation-required', message: error.message },
+    };
+  }
+  if (error instanceof NativeWorkspacePreparationError) {
+    return {
+      command,
+      exitCode: 73,
+      data: { preparation: error.preparation },
+      error: { code: 'workspace-preparation-incomplete', message: error.message },
     };
   }
   if (error instanceof NativeBaselineIncompleteError) {

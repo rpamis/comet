@@ -110,6 +110,13 @@ describe('CLI help text', () => {
     expect(nativeHelp.stdout).toContain('Usage: comet native <command> [options]');
     expect(nativeHelp.stdout).toContain('root move <artifact-root>');
     expect(nativeHelp.stdout).toContain('doctor [<change-name>]');
+    expect(nativeHelp.stdout).not.toContain('hook-guard');
+
+    const statusHelp = runCli('native', 'status', '--help');
+    expect(statusHelp.status).toBe(0);
+    expect(statusHelp.stdout).toContain('Usage: comet native status');
+    expect(statusHelp.stdout).toContain('--acceptance-cursor <token>');
+    expect(statusHelp.stdout).toContain('--project-root <path>');
   });
 
   it('separates repository evals from Engine Run runtime checks', () => {

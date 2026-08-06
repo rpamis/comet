@@ -440,10 +440,12 @@ describe('Comet Native CLI dispatcher', () => {
           ).data,
         ).toMatchObject({
           phase: 'shape',
-          findingSummary: {
-            codes: expect.arrayContaining(['workspace-binding-root-changed']),
+          workspace: {
+            projectRoot: path.resolve(projectRoot),
+            bindingState: 'aligned',
+            changeBranch: targetBranch,
           },
-          continuation: { disposition: 'blocked' },
+          continuation: { disposition: 'continue' },
         });
       }
     } finally {
@@ -507,6 +509,120 @@ describe('Comet Native CLI dispatcher', () => {
       await fs.rm(secondary, { recursive: true, force: true });
     }
   });
+
+  it('prepares a requested branch and linked worktree inside new', async () => {
+    expect(await runNativeCli(['init', ...projectArgs()])).toMatchObject({ exitCode: 0 });
+    execFileSync('git', ['config', 'user.email', 'native@example.test'], { cwd: projectRoot });
+    execFileSync('git', ['config', 'user.name', 'Native Test'], { cwd: projectRoot });
+    execFileSync('git', ['add', '.comet/config.yaml'], { cwd: projectRoot, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', 'initialize Native'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+    const targetBranch = execFileSync('git', ['branch', '--show-current'], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+    }).trim();
+
+    const preparedBranch = json(
+      await runNativeCli([
+        'new',
+        'prepared-branch',
+        '--isolation',
+        'branch',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(preparedBranch).toMatchObject({
+      exitCode: 0,
+      data: {
+        preparation: {
+          isolation: 'branch',
+          changeBranch: 'comet/prepared-branch',
+          targetBranch,
+          createdBranch: true,
+          createdWorktree: false,
+        },
+      },
+    });
+    execFileSync('git', ['add', '-A'], { cwd: projectRoot, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', 'capture prepared branch'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+    execFileSync('git', ['switch', targetBranch], { cwd: projectRoot, stdio: 'ignore' });
+
+    const worktreeRoot = path.join(projectRoot, '.worktrees', 'prepared-worktree');
+    await fs.mkdir(worktreeRoot, { recursive: true });
+    await fs.writeFile(path.join(worktreeRoot, 'owner.txt'), 'user-owned\n');
+    const collision = json(
+      await runNativeCli([
+        'new',
+        'prepared-worktree',
+        '--isolation',
+        'worktree',
+        '--target-branch',
+        targetBranch,
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(collision).toMatchObject({
+      exitCode: 65,
+      error: { message: expect.stringContaining('worktree path already exists') },
+    });
+    await expect(fs.readFile(path.join(worktreeRoot, 'owner.txt'), 'utf8')).resolves.toBe(
+      'user-owned\n',
+    );
+    await fs.rm(worktreeRoot, { recursive: true });
+    try {
+      const preparedWorktree = json(
+        await runNativeCli([
+          'new',
+          'prepared-worktree',
+          '--isolation',
+          'worktree',
+          '--target-branch',
+          targetBranch,
+          '--json',
+          ...projectArgs(),
+        ]),
+      );
+      expect(preparedWorktree).toMatchObject({
+        exitCode: 0,
+        data: {
+          preparation: {
+            isolation: 'worktree',
+            projectRoot: path.resolve(worktreeRoot),
+            changeBranch: 'comet/prepared-worktree',
+            targetBranch,
+            worktreePath: path.resolve(worktreeRoot),
+            createdBranch: true,
+            createdWorktree: true,
+            gitExcludeUpdated: true,
+          },
+        },
+      });
+      await expect(
+        fs.access(
+          path.join(worktreeRoot, 'docs', 'comet', 'changes', 'prepared-worktree', 'brief.md'),
+        ),
+      ).resolves.toBeUndefined();
+      const commonDir = execFileSync('git', ['rev-parse', '--git-common-dir'], {
+        cwd: projectRoot,
+        encoding: 'utf8',
+      }).trim();
+      await expect(
+        fs.readFile(path.join(path.resolve(projectRoot, commonDir), 'info', 'exclude'), 'utf8'),
+      ).resolves.toContain('/.worktrees/');
+    } finally {
+      execFileSync('git', ['worktree', 'remove', '--force', worktreeRoot], {
+        cwd: projectRoot,
+        stdio: 'ignore',
+      });
+    }
+  }, 120_000);
 
   it('keeps a linked worktree authoritative when a host passes the primary root', async () => {
     execFileSync('git', ['config', 'user.email', 'native@example.test'], { cwd: projectRoot });
@@ -988,16 +1104,66 @@ Pass.
     await expect(
       fs.stat(path.join(projectRoot, 'docs', 'comet', 'changes', 'sentence-counting')),
     ).resolves.toBeDefined();
-    const archived = await runNativeCli([
-      'archive',
-      'sentence-counting',
-      '--expect-preflight',
-      requiredPreflightHash,
-      '--confirmed',
-      ...projectArgs(),
-    ]);
-    expect(archived.exitCode, archived.stderr).toBe(0);
-    expect(archived.stdout).toContain('Archived Native change sentence-counting');
+    const dirtyFinish = json(
+      await runNativeCli([
+        'archive',
+        'sentence-counting',
+        '--expect-preflight',
+        requiredPreflightHash,
+        '--confirmed',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(dirtyFinish).toMatchObject({
+      exitCode: 65,
+      error: {
+        message: expect.stringContaining('change-owned implementation and artifacts are committed'),
+      },
+    });
+    await expect(
+      fs.stat(path.join(projectRoot, 'docs', 'comet', 'changes', 'sentence-counting')),
+    ).resolves.toBeDefined();
+    execFileSync('git', ['add', '-A'], { cwd: projectRoot, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', 'feat: implement sentence counting'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+    const archived = json(
+      await runNativeCli([
+        'archive',
+        'sentence-counting',
+        '--expect-preflight',
+        requiredPreflightHash,
+        '--confirmed',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(archived, JSON.stringify(archived, null, 2)).toMatchObject({
+      exitCode: 0,
+      data: {
+        workspaceFinish: 'merge',
+        workspaceFinishResult: {
+          action: 'merge',
+          status: 'completed',
+          merged: true,
+          cleanup: {
+            performed: false,
+            reason: 'post-merge-validation-required-before-cleanup',
+          },
+        },
+      },
+    });
+    expect(
+      execFileSync('git', ['branch', '--show-current'], {
+        cwd: projectRoot,
+        encoding: 'utf8',
+      }).trim(),
+    ).toBe(targetBranch);
+    expect(json(await runNativeCli(['status', '--json', ...projectArgs()])).data).toMatchObject({
+      total: 0,
+    });
 
     const moved = await runNativeCli(['root', 'move', 'artifacts/native', ...projectArgs()]);
     expect(moved.exitCode, moved.stderr).toBe(0);
@@ -1074,9 +1240,26 @@ Pass.
       expect(pageResult.exitCode).toBe(0);
       const page = (
         pageResult.data as {
-          acceptancePage: { items: Array<{ id: string }>; nextCursor: string | null };
+          acceptancePage: {
+            items: Array<{ id: string }>;
+            nextCursor: string | null;
+            nextPageArgs: string[] | null;
+          };
         }
       ).acceptancePage;
+      if (page.nextCursor) {
+        expect(page.nextPageArgs).toEqual([
+          'comet',
+          'native',
+          'status',
+          'paged-acceptance',
+          '--details',
+          '--acceptance-cursor',
+          page.nextCursor,
+          '--project-root',
+          path.resolve(projectRoot),
+        ]);
+      }
       ids.push(...page.items.map((item) => item.id));
       cursor = page.nextCursor;
     }
@@ -1158,8 +1341,12 @@ Pass.
     expect(usage.stderr).toBeUndefined();
 
     const help = await runNativeCli(['--help', ...projectArgs()]);
-    expect(help.stdout).toContain('[--confirmed]');
-    expect(help.stdout).toContain('spec rebase <change-name> --summary <text>');
+    expect(help.stdout).toContain('next <change-name>');
+    const nextHelp = await runNativeCli(['next', '--help', ...projectArgs()]);
+    expect(nextHelp.stdout).toContain('--confirmed');
+    expect(nextHelp.stdout).toContain('--result pass|fail');
+    const specHelp = await runNativeCli(['spec', 'rebase', '--help', ...projectArgs()]);
+    expect(specHelp.stdout).toContain('spec rebase <change-name> --summary <text>');
     expect(help.stdout).not.toContain('trust ');
     expect(help.stdout).not.toContain('receipt implement');
     expect(help.stdout).not.toContain('receipt review');
