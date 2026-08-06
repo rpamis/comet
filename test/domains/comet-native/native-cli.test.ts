@@ -18,6 +18,7 @@ import { NATIVE_CONTRACT_FILE_LIMITS } from '../../../domains/comet-native/nativ
 import { acquireNativeLock, releaseNativeLock } from '../../../domains/comet-native/native-lock.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import { MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES } from '../../../domains/comet-native/native-verification-scope.js';
+import { projectRootFrom } from '../../../domains/comet-native/native-cli-shared.js';
 
 const brief = `# Outcome
 Add sentence counting.
@@ -477,6 +478,60 @@ describe('Comet Native CLI dispatcher', () => {
           },
         },
       });
+    } finally {
+      execFileSync('git', ['worktree', 'remove', '--force', secondary], {
+        cwd: projectRoot,
+        stdio: 'ignore',
+      });
+      await fs.rm(secondary, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps a linked worktree authoritative when a host passes the primary root', async () => {
+    execFileSync('git', ['config', 'user.email', 'native@example.test'], { cwd: projectRoot });
+    execFileSync('git', ['config', 'user.name', 'Native Test'], { cwd: projectRoot });
+    await writeProjectConfig(projectRoot, defaultProjectConfig('docs'));
+    execFileSync('git', ['add', '.comet/config.yaml'], { cwd: projectRoot, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', 'seed Native worktree config'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+
+    const secondary = path.join(
+      os.tmpdir(),
+      `comet-native-cli-root-route-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    try {
+      execFileSync('git', ['worktree', 'add', '-b', 'comet/root-route', secondary, 'HEAD'], {
+        cwd: projectRoot,
+        stdio: 'ignore',
+      });
+      const cwd = vi.spyOn(process, 'cwd').mockReturnValue(secondary);
+      try {
+        await expect(projectRootFrom(projectRoot)).resolves.toBe(path.resolve(secondary));
+        expect(
+          json(await runNativeCli(['new', 'root-routed', '--json', '--project-root', projectRoot])),
+        ).toMatchObject({ exitCode: 0 });
+      } finally {
+        cwd.mockRestore();
+      }
+
+      await expect(
+        fs.access(
+          path.join(
+            secondary,
+            'docs',
+            'comet',
+            'changes',
+            'root-routed',
+            'runtime',
+            'workspace.json',
+          ),
+        ),
+      ).resolves.toBeUndefined();
+      await expect(
+        fs.access(path.join(projectRoot, 'docs', 'comet', 'changes', 'root-routed')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
     } finally {
       execFileSync('git', ['worktree', 'remove', '--force', secondary], {
         cwd: projectRoot,

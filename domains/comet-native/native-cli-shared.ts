@@ -1,6 +1,7 @@
 import path from 'path';
 
 import { RaceSafeReadError, readFileRaceSafe } from '../../platform/fs/race-safe-read.js';
+import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
 
 import { NativeArchivePreflightError, NativeSpecConflictError } from './native-archive.js';
 import {
@@ -134,8 +135,50 @@ export function revisionOption(args: string[]): number | undefined {
   return Number(value);
 }
 
+function samePath(left: string, right: string): boolean {
+  const normalizedLeft = path.normalize(left);
+  const normalizedRight = path.normalize(right);
+  return process.platform === 'win32'
+    ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
+    : normalizedLeft === normalizedRight;
+}
+
+/**
+ * Resolve the project root for a Native invocation without allowing a host
+ * process already running inside a linked worktree to silently fall back to
+ * the primary checkout. The primary checkout may still explicitly target a
+ * secondary worktree; this only makes the current secondary worktree
+ * authoritative when it is the process context.
+ */
+function explicitProjectRootFromCurrentWorktree(explicit: string): string {
+  const requested = path.resolve(explicit);
+  const current = inspectGitWorktree(process.cwd());
+  if (
+    !current.isSecondaryWorktree ||
+    current.currentWorktreeRoot === null ||
+    current.primaryWorktreeRoot === null
+  ) {
+    return requested;
+  }
+
+  const requestedContext = inspectGitWorktree(requested);
+  if (
+    !requestedContext.isGitWorktree ||
+    requestedContext.currentWorktreeRoot === null ||
+    requestedContext.primaryWorktreeRoot === null ||
+    !samePath(current.primaryWorktreeRoot, requestedContext.primaryWorktreeRoot) ||
+    samePath(current.currentWorktreeRoot, requestedContext.currentWorktreeRoot)
+  ) {
+    return requested;
+  }
+
+  return current.currentWorktreeRoot;
+}
+
 export async function projectRootFrom(explicit: string | undefined): Promise<string> {
-  return explicit ? path.resolve(explicit) : discoverNativeProject(process.cwd());
+  return explicit
+    ? explicitProjectRootFromCurrentWorktree(explicit)
+    : discoverNativeProject(process.cwd());
 }
 
 export async function configuredPaths(projectRoot: string): Promise<{
