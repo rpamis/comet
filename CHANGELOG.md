@@ -7,6 +7,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Changed
 
 - **Native change setup choices**: Native now recommends a change name together with its isolation mode, branch, target branch, and worktree directory before creation, while allowing users to override any choice.
+- **Native snapshot defaults**: New and updated Native configurations now exclude common IDE metadata, dependency trees, caches, test output, and compiled artifacts from baseline snapshots while preserving custom exclusions.
 
 ### Fixed
 

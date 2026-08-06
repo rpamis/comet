@@ -63,7 +63,10 @@ import {
 import { classicLayoutPaths } from '../../domains/comet-classic/classic-layout.js';
 import { assertClassicOpenSpecRootHealthy } from '../../domains/comet-classic/classic-openspec-root.js';
 import { discoverNativeProject } from '../../domains/comet-native/native-paths.js';
-import { defaultProjectConfig } from '../../domains/comet-native/native-config.js';
+import {
+  defaultProjectConfig,
+  mergeNativeSnapshotExcludes,
+} from '../../domains/comet-native/native-config.js';
 import { readWorkflowProjectConfigSnapshot } from '../../domains/workflow-contract/project-config-reader.js';
 import {
   readWorkflowGlobalConfig,
@@ -106,7 +109,20 @@ async function refreshGlobalWorkflowConfig(
   const existing = await readWorkflowGlobalConfig(homeDir);
   const defaults = defaultProjectConfig('docs', language ?? 'en');
   const config = existing ?? { ...defaults, schema: 'comet.global.v1' as const };
-  if (language && config.native) config.native.language = language;
+  if (config.native) {
+    config.native = {
+      ...config.native,
+      ...(config.native.snapshot
+        ? {
+            snapshot: {
+              ...config.native.snapshot,
+              exclude: mergeNativeSnapshotExcludes(config.native.snapshot.exclude),
+            },
+          }
+        : { snapshot: defaults.native.snapshot }),
+    };
+    if (language) config.native.language = language;
+  }
   if (language && config.classic) config.classic.language = language;
   await writeWorkflowGlobalConfig(homeDir, config);
 }

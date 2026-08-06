@@ -59,9 +59,75 @@ const DEFAULT_WORKFLOW_NATIVE_MANAGED_SKILL_EXCLUDES = [
   '.zcode/skills/**',
 ] as const;
 
+// Native snapshots describe source and project intent, not dependency trees,
+// IDE metadata, caches, test output, or compiler output. The generated-path
+// defaults below apply at every directory depth so monorepos do not pull
+// generated folders into a baseline just because they are nested below the
+// project root.
+const DEFAULT_WORKFLOW_NATIVE_GENERATED_EXCLUDES = [
+  '**/.idea/**',
+  '**/.vscode/**',
+  '.codex/skills/**',
+  '**/node_modules/**',
+  '**/.next/**',
+  '**/.nuxt/**',
+  '**/.output/**',
+  '**/.svelte-kit/**',
+  '**/.vite/**',
+  '**/.parcel-cache/**',
+  '**/.turbo/**',
+  '**/.nx/cache/**',
+  '**/dist/**',
+  '**/build/**',
+  '**/out/**',
+  '**/coverage/**',
+  '**/.nyc_output/**',
+  '**/target/**',
+  '**/.gradle/**',
+  '**/bin/**',
+  '**/.cxx/**',
+  '**/.externalNativeBuild/**',
+  '**/captures/**',
+  '**/__pycache__/**',
+  '**/.pytest_cache/**',
+  '**/.mypy_cache/**',
+  '**/.ruff_cache/**',
+  '**/.tox/**',
+  '**/.nox/**',
+  '**/.venv/**',
+  '**/venv/**',
+  '**/obj/**',
+  '**/CMakeFiles/**',
+  '**/cmake-build-*/**',
+  '**/.cache/**',
+  '**/tmp/**',
+  '**/temp/**',
+  '**/logs/**',
+  '**/*.tsbuildinfo',
+  '**/*.log',
+  '**/.DS_Store',
+  '**/Thumbs.db',
+] as const;
+
+export const DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_EXCLUDES = [
+  ...DEFAULT_WORKFLOW_NATIVE_MANAGED_SKILL_EXCLUDES,
+  ...DEFAULT_WORKFLOW_NATIVE_GENERATED_EXCLUDES,
+].sort((left, right) => left.localeCompare(right, 'en'));
+
+export function mergeWorkflowNativeSnapshotExcludes(exclude: readonly string[]): string[] {
+  const merged = [...exclude];
+  const seen = new Set(exclude);
+  for (const pattern of DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_EXCLUDES) {
+    if (seen.has(pattern)) continue;
+    seen.add(pattern);
+    merged.push(pattern);
+  }
+  return merged;
+}
+
 export const DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG: WorkflowNativeSnapshotConfig = {
   include: ['**/*'],
-  exclude: [...DEFAULT_WORKFLOW_NATIVE_MANAGED_SKILL_EXCLUDES],
+  exclude: [...DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_EXCLUDES],
   max_files: 10_000,
   max_total_bytes: 256 * 1024 * 1024,
   max_duration_ms: 60_000,

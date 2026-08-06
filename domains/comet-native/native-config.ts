@@ -4,6 +4,7 @@ import {
   DEFAULT_WORKFLOW_NATIVE_MAX_VERIFY_FAILURES,
   DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG,
   defaultWorkflowProjectConfig,
+  mergeWorkflowNativeSnapshotExcludes,
   MAX_WORKFLOW_SNAPSHOT_PATTERN_LENGTH,
   MAX_WORKFLOW_SNAPSHOT_PATTERN_WILDCARDS,
   mergeWorkflowProjectConfigDocument,
@@ -35,6 +36,7 @@ export const DEFAULT_NATIVE_SNAPSHOT_CONFIG: NativeSnapshotConfig =
   DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG;
 export const DEFAULT_NATIVE_MAX_VERIFY_FAILURES = DEFAULT_WORKFLOW_NATIVE_MAX_VERIFY_FAILURES;
 export const normalizeNativeSnapshotPattern = normalizeWorkflowSnapshotPattern;
+export const mergeNativeSnapshotExcludes = mergeWorkflowNativeSnapshotExcludes;
 
 export function defaultProjectConfig(
   artifactRoot = 'docs',

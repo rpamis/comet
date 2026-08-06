@@ -7,6 +7,7 @@ import { PLATFORMS } from '../../../platform/install/platforms.js';
 import {
   DEFAULT_NATIVE_SNAPSHOT_CONFIG,
   defaultProjectConfig,
+  mergeNativeSnapshotExcludes,
   readProjectConfig,
   resolveNativeProject,
   writeProjectConfig,
@@ -32,39 +33,7 @@ describe('Native project configuration', () => {
     expect(defaultProjectConfig().native.max_verify_failures).toBe(5);
     expect(defaultProjectConfig().native.snapshot).toEqual({
       include: ['**/*'],
-      exclude: [
-        '.agents/skills/**',
-        '.amazonq/skills/**',
-        '.augment/skills/**',
-        '.bob/skills/**',
-        '.claude/skills/**',
-        '.cline/skills/**',
-        '.codebuddy/skills/**',
-        '.continue/skills/**',
-        '.cospec/skills/**',
-        '.crush/skills/**',
-        '.cursor/skills/**',
-        '.factory/skills/**',
-        '.forge/skills/**',
-        '.gemini/skills/**',
-        '.github/skills/**',
-        '.iflow/skills/**',
-        '.junie/skills/**',
-        '.kilocode/skills/**',
-        '.kimi-code/skills/**',
-        '.kiro/skills/**',
-        '.lingma/skills/**',
-        '.mimocode/skills/**',
-        '.opencode/skills/**',
-        '.pi/skills/**',
-        '.qoder/skills/**',
-        '.qwen/skills/**',
-        '.roo/skills/**',
-        '.trae-cn/skills/**',
-        '.trae/skills/**',
-        '.windsurf/skills/**',
-        '.zcode/skills/**',
-      ],
+      exclude: DEFAULT_NATIVE_SNAPSHOT_CONFIG.exclude,
       max_files: 10_000,
       max_total_bytes: 256 * 1024 * 1024,
       max_duration_ms: 60_000,
@@ -72,9 +41,35 @@ describe('Native project configuration', () => {
   });
 
   it('keeps every supported platform Skill directory outside the default baseline scope', () => {
-    expect(new Set(DEFAULT_NATIVE_SNAPSHOT_CONFIG.exclude)).toEqual(
-      new Set(PLATFORMS.map((platform) => `${platform.skillsDir}/skills/**`)),
+    expect(DEFAULT_NATIVE_SNAPSHOT_CONFIG.exclude).toEqual(
+      expect.arrayContaining(PLATFORMS.map((platform) => `${platform.skillsDir}/skills/**`)),
     );
+  });
+
+  it('includes common generated, IDE, and Comet-managed paths in default snapshots', () => {
+    expect(DEFAULT_NATIVE_SNAPSHOT_CONFIG.exclude).toEqual(
+      expect.arrayContaining([
+        '**/.idea/**',
+        '**/.vscode/**',
+        '.codex/skills/**',
+        '**/node_modules/**',
+        '**/dist/**',
+        '**/target/**',
+        '**/__pycache__/**',
+        '**/obj/**',
+        '**/logs/**',
+        '**/tmp/**',
+        '**/temp/**',
+      ]),
+    );
+  });
+
+  it('preserves custom exclusions while adding missing defaults', () => {
+    const merged = mergeNativeSnapshotExcludes(['custom/generated/**', '**/dist/**']);
+
+    expect(merged).toEqual(expect.arrayContaining(['custom/generated/**', '**/dist/**']));
+    expect(merged).toEqual(expect.arrayContaining(['**/.idea/**', '**/node_modules/**']));
+    expect(new Set(merged).size).toBe(merged.length);
   });
 
   it('round-trips a custom artifact root with stable YAML fields', async () => {

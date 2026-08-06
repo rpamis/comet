@@ -2950,6 +2950,42 @@ describe('update command helpers', () => {
     await expect(fs.readFile(selectionPath, 'utf8')).resolves.toBe(legacySelection);
   });
 
+  it('adds default Native snapshot exclusions during project update', async () => {
+    const config = defaultProjectConfig('.');
+    config.native.snapshot.exclude = ['custom/generated/**'];
+    await writeProjectConfig(tmpDir, config);
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'), '# Comet\n');
+
+    const fakeHome = path.join(tmpDir, 'native-snapshot-update-home');
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(tmpDir, {
+        currentProject: true,
+        installMode: 'symlink',
+        skipNpm: true,
+      });
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    const updated = parse(
+      await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8'),
+    ) as {
+      native: { snapshot: { exclude: string[] } };
+    };
+    expect(updated.native.snapshot.exclude).toEqual(
+      expect.arrayContaining([
+        'custom/generated/**',
+        '**/.idea/**',
+        '**/node_modules/**',
+        '**/target/**',
+      ]),
+    );
+  });
+
   it('migrates Classic v1 selection after update installs the project Router', async () => {
     const fakeHome = path.join(tmpDir, 'classic-update-home');
     const config = defaultProjectConfig('.');

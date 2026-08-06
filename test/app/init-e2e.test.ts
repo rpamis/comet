@@ -570,6 +570,10 @@ describe('comet init E2E', () => {
         'workflows: [native]',
         'native:',
         '  language: en',
+        '  snapshot:',
+        '    include: ["**/*"]',
+        '    exclude:',
+        '      - custom/init-generated/**',
         '',
       ].join('\n'),
       'utf8',
@@ -593,10 +597,13 @@ describe('comet init E2E', () => {
       projectConfigUpdated: true,
     });
     const config = parse(await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8')) as {
-      native?: { artifact_root?: string };
+      native?: { artifact_root?: string; snapshot?: { exclude?: string[] } };
       classic?: { artifact_layout?: string };
     };
     expect(config.native?.artifact_root).toBe('docs');
+    expect(config.native?.snapshot?.exclude).toEqual(
+      expect.arrayContaining(['custom/init-generated/**', '**/.idea/**', '**/node_modules/**']),
+    );
     expect(config.classic?.artifact_layout).toBe('legacy');
     await expect(fs.stat(path.join(tmpDir, 'openspec', 'config.yaml'))).resolves.toBeDefined();
     await expect(fs.access(path.join(tmpDir, 'docs', 'openspec'))).rejects.toMatchObject({
@@ -1562,6 +1569,10 @@ describe('comet init E2E', () => {
         'ambient_resume: false',
         'native:',
         '  artifact_root: docs',
+        '  snapshot:',
+        '    include: ["**/*"]',
+        '    exclude:',
+        '      - custom/global-generated/**',
         '',
       ].join('\n'),
     );
@@ -1583,7 +1594,13 @@ describe('comet init E2E', () => {
 
     await expect(
       fs.readFile(path.join(fakeHome, '.comet', 'config.yaml'), 'utf8'),
-    ).resolves.toContain('ambient_resume: false');
+    ).resolves.toMatch(/ambient_resume: false/);
+    const globalConfig = parse(
+      await fs.readFile(path.join(fakeHome, '.comet', 'config.yaml'), 'utf8'),
+    ) as { native: { snapshot: { exclude: string[] } } };
+    expect(globalConfig.native.snapshot.exclude).toEqual(
+      expect.arrayContaining(['custom/global-generated/**', '**/.idea/**', '**/node_modules/**']),
+    );
   });
 
   it('does not publish a global Classic default when OpenSpec initialization fails', async () => {

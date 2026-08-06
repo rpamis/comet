@@ -22,6 +22,7 @@ import {
 } from '../comet-classic/classic-layout-initialization.js';
 import {
   DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG,
+  mergeWorkflowNativeSnapshotExcludes,
   parseWorkflowProjectConfigDocument,
   projectConfigComment,
   renderStructuredProjectConfig,
@@ -1927,6 +1928,11 @@ async function mergeProjectConfig(
       }
       if (snapshot.exclude === undefined) {
         snapshot.exclude = [...DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.exclude];
+      } else if (
+        Array.isArray(snapshot.exclude) &&
+        snapshot.exclude.every((pattern): pattern is string => typeof pattern === 'string')
+      ) {
+        snapshot.exclude = mergeWorkflowNativeSnapshotExcludes(snapshot.exclude);
       }
       if (snapshot.max_files === undefined) {
         snapshot.max_files = DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.max_files;

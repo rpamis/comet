@@ -83,6 +83,27 @@ describe('Comet Native CLI dispatcher', () => {
     ).resolves.toContain('artifact_root: docs');
   });
 
+  it('adds default snapshot exclusions when reinitializing an existing Native project', async () => {
+    const config = defaultProjectConfig('.');
+    config.native.snapshot.exclude = ['custom/generated/**'];
+    await writeProjectConfig(projectRoot, config);
+
+    expect(json(await runNativeCli(['init', '--json', ...projectArgs()]))).toMatchObject({
+      command: 'init',
+      exitCode: 0,
+    });
+
+    const saved = await readProjectConfig(projectRoot);
+    expect(saved?.native.snapshot.exclude).toEqual(
+      expect.arrayContaining([
+        'custom/generated/**',
+        '**/.idea/**',
+        '**/.vscode/**',
+        '**/node_modules/**',
+      ]),
+    );
+  });
+
   it('returns structured baseline diagnostics when change creation cannot capture a complete baseline', async () => {
     const config = defaultProjectConfig('.');
     config.native.snapshot.max_total_bytes = 5 * 1024 * 1024;
