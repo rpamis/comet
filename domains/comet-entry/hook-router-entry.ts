@@ -53,7 +53,16 @@ export async function projectRootFrom(
   if (parsed.projectRoot) {
     return request ? resolveCometHookProjectRoot(parsed.projectRoot, request) : parsed.projectRoot;
   }
-  const discovered = await discoverNativeProject(process.cwd());
+  // A Router without --project-root is a legacy/global installation. It must
+  // use the host-provided working directory when one is available; the
+  // process cwd is often the directory where the global Hook was installed,
+  // not the project that owns the current tool request. Without a trusted
+  // request cwd there is no safe project to inspect, so leave the legacy Hook
+  // neutral instead of applying another project's phase guard.
+  if (!request?.cwd) return null;
+
+  const discoveryStart = request.cwd;
+  const discovered = await discoverNativeProject(discoveryStart);
   for (const marker of [['.comet', 'config.yaml'], ['.git']]) {
     try {
       await fs.lstat(path.join(discovered, ...marker));
@@ -62,7 +71,7 @@ export async function projectRootFrom(
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }
   }
-  const classic = await discoverClassicProject(process.cwd());
+  const classic = await discoverClassicProject(discoveryStart);
   const layout = await assertClassicLayoutReadable(classic);
   try {
     await fs.lstat(layout.changesDir);

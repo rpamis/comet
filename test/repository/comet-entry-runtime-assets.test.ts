@@ -87,11 +87,9 @@ describe('Comet entry resolver runtime release asset', () => {
         env: { ...process.env, FILE_PATH: 'src/app.ts' },
       },
     );
-    expect(outsideProject.status).toBe(2);
+    expect(outsideProject.status).toBe(0);
     expect(outsideProject.stdout).toBe('');
-    expect(outsideProject.stderr).toContain(
-      'Classic artifact layout is unavailable from .comet/config.yaml',
-    );
+    expect(outsideProject.stderr).toBe('');
   });
 
   it('resolves Native from project config with only the bundled Skill runtime available', async () => {

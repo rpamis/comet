@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-beta.17] - 2026-08-06
+
+### Fixed
+
+- **Global Hook isolation**: Legacy global Hooks now use the host-provided project context when available and remain neutral without one, so ordinary writes in another project are not blocked by an unrelated active Comet change.
+
 ## What's Changed [0.4.0-beta.16] - 2026-08-05
 
 ### Fixed

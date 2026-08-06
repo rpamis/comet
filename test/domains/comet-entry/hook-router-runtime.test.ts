@@ -103,6 +103,45 @@ describe('packaged Hook Router worktree isolation', () => {
     expect(primaryRequest.stderr).toContain('primary-shape');
   });
 
+  it('uses the host working directory for a legacy global Router invocation', async () => {
+    await configureChange(primary, 'primary-shape', 'shape');
+    const payload = JSON.stringify({
+      tool_name: 'Write',
+      cwd: secondary,
+      tool_input: { file_path: 'src/app.ts' },
+    });
+
+    const result = spawnSync(process.execPath, [router, '--platform', 'codex'], {
+      cwd: primary,
+      input: payload,
+      encoding: 'utf8',
+      timeout: 20_000,
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+  });
+
+  it('keeps a legacy global Router neutral when the host omits its working directory', async () => {
+    await configureChange(primary, 'primary-shape', 'shape');
+    const patch = [
+      '*** Begin Patch',
+      '*** Update File: src/app.ts',
+      '@@',
+      '-old',
+      '+new',
+      '*** End Patch',
+    ].join('\n');
+
+    const result = spawnSync(process.execPath, [router, '--platform', 'codex'], {
+      cwd: primary,
+      input: patch,
+      encoding: 'utf8',
+      timeout: 20_000,
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+  });
+
   it('enforces Native Shape for raw Codex apply_patch input', async () => {
     await configureChange(primary, 'raw-patch-shape', 'shape');
     const patch = [
