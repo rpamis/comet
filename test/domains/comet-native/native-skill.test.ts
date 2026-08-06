@@ -464,6 +464,40 @@ describe('Comet Native Skills', () => {
     }
   });
 
+  it('recommends and preserves user-defined Native creation values in both languages', async () => {
+    const variants = [
+      {
+        language: 'zh' as const,
+        terms: [
+          '创建命名与覆盖规则',
+          '给出一个简短、可识别且符合 Runtime 小写 kebab-case 规则的推荐名称',
+          '用户可以整组接受，也可以只覆盖任意字段',
+          '未被用户明确覆盖的分支名和目录名重新按 `comet/<change-name>`、`.worktrees/<change-name>` 计算',
+          '先展示最终采用的名称、隔离方式、分支、目标分支和目录',
+          '修复会话超时',
+        ],
+      },
+      {
+        language: 'en' as const,
+        terms: [
+          'Creation naming and override rules',
+          "derive a short, recognizable recommendation that satisfies the Runtime's lowercase kebab-case rule",
+          'The user may accept the set or override any field',
+          'recompute only branch and directory values that the user has not explicitly overridden',
+          'show the final name, isolation mode, branch, target branch, and directory',
+          'fix session timeout',
+        ],
+      },
+    ];
+
+    for (const variant of variants) {
+      const skill = await read(variant.language, 'SKILL.md');
+      for (const term of variant.terms) {
+        expect(skill, `${variant.language}: ${term}`).toContain(term);
+      }
+    }
+  });
+
   it('removes the external cryptographic review workflow from both languages', async () => {
     const zhSkill = await read('zh', 'SKILL.md');
     const enSkill = await read('en', 'SKILL.md');

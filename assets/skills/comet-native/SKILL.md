@@ -50,6 +50,13 @@ Use only the Native artifact root selected by project configuration.
 
 The parallelism unit is a change: separate changes may progress concurrently in separate working directories. One change is writable only from its bound working directory and current execution context; Native does not create a long-lived session lease.
 
+Creation naming and override rules:
+
+- Resolve `<change-name>` before `new`. When the user has not supplied a name, the Agent must derive a short, recognizable recommendation that satisfies the Runtime's lowercase kebab-case rule; do not leave the missing argument for the command to report and do not create silently without showing the name.
+- Under the workspace selection rules below, present the applicable `change-name`, isolation mode, change branch, target branch, and worktree directory in one creation choice, marking the recommended values. The user may accept the set or override any field; explicit user values take precedence and do not need to be asked again.
+- Keep defaults linked: when the change name changes, recompute only branch and directory values that the user has not explicitly overridden, using `comet/<change-name>` and `.worktrees/<change-name>`. `current` creates no new branch or worktree, so show only the current branch and directory.
+- Before executing `comet native new`, show the final name, isolation mode, branch, target branch, and directory. On a name, branch, or directory collision, stop and ask the user to change it; never add a random suffix or take over an existing resource.
+
 Before creation, inspect the current branch, uncommitted changes, active Native changes in the current directory, and registered Git worktrees. Keep three workspace modes:
 
 - `current`: keep the current branch and directory;
@@ -61,7 +68,7 @@ Selection rules:
 - When the current directory is clean and no discovered working directory has another active change, default directly to `current`; do not ask whether the user wants “parallel” work.
 - When uncommitted changes or other facts make isolation materially affect the user's directory, present one joint `current / branch / worktree` choice with the recommendation, branch, and working-directory path. Do not split it into a separate “parallel?” question.
 - When another active Native change owns the current directory, disclose that `current` and `branch` are unavailable because of baseline-drift risk, then use the only safe `worktree` mode. Active changes already in other worktrees do not disable `current` or `branch` here.
-- In the same choice, the user may override the default branch `comet/<change-name>` and directory `.worktrees/<change-name>`. On a path or branch collision, stop; do not add a random suffix or take over a directory that is not already legally bound to this change.
+- In the same choice, the user may override the default change branch `comet/<change-name>`, target branch, and directory `.worktrees/<change-name>`. On a path or branch collision, stop; do not add a random suffix or take over a directory that is not already legally bound to this change.
 
 Prepare `branch` or `worktree` before running `new` and before the baseline is captured. The target branch defaults to the starting branch at the moment the branch or worktree is created:
 
@@ -77,6 +84,8 @@ comet native new <change-name> --language en \
 comet native new <change-name> --language en \
   --isolation worktree --change-branch comet/<change-name> --target-branch <starting-branch>
 ```
+
+For example, when the user only says “fix session timeout,” first present `change-name=session-timeout-fix`, `isolation=worktree`, `change-branch=comet/session-timeout-fix`, `target-branch=main`, and `directory=.worktrees/session-timeout-fix`. If the user replies “rename it to auth-session, use fix/auth-session for the branch, and keep the default directory,” recompute and show the final values before creating it.
 
 Before creating a worktree, add `.worktrees/` to the repository-local Git exclude in the Git common directory's `info/exclude`; do not modify tracked `.gitignore` for this. The Agent continues automatically in the new working directory instead of handing navigation to the user.
 

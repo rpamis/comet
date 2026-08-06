@@ -50,6 +50,13 @@ comet native archive <change-name> --dry-run
 
 并行单位是 change：不同 change 可以位于不同工作目录并行推进；同一个 change 只能由其绑定工作目录中的当前执行上下文写入，不为会话建立长期 lease。
 
+创建命名与覆盖规则：
+
+- `new` 前必须先确定 `<change-name>`。用户未提供名称时，Agent 必须根据需求给出一个简短、可识别且符合 Runtime 小写 kebab-case 规则的推荐名称；不能把缺少参数留给命令报错，也不能在未展示名称的情况下静默创建。
+- 根据下方工作区选择规则，在同一次创建选择中展示适用的 `change-name`、隔离方式、change 分支、目标分支和 worktree 目录，并明确哪些是推荐值。用户可以整组接受，也可以只覆盖任意字段；用户已明确提供的值优先，不重复询问。
+- 默认值之间保持联动：change 名称变化时，未被用户明确覆盖的分支名和目录名重新按 `comet/<change-name>`、`.worktrees/<change-name>` 计算；已明确覆盖的值保持不变。`current` 不创建新分支或 worktree，因此只展示当前分支和目录。
+- 执行 `comet native new` 前，先展示最终采用的名称、隔离方式、分支、目标分支和目录；名称、分支或目录发生冲突时停止并让用户修改，不自动追加随机后缀或接管现有资源。
+
 创建前读取当前分支、未提交改动、当前目录中的 active Native change 和已登记 Git worktree。工作方式保留三种：
 
 - `current`：保留当前分支和目录；
@@ -61,7 +68,7 @@ comet native archive <change-name> --dry-run
 - 当前目录干净且所有已发现工作目录都没有其他 active change 时，默认直接使用 `current`，不询问“是否并行”；
 - 当前目录已有未提交改动或其他事实使隔离方式会明显影响用户目录时，一次联合展示 `current / branch / worktree`，说明推荐项、分支名和工作目录；不要拆成“是否并行”等多轮问题；
 - 当前目录已被另一个 active Native change 占用时，披露 `current` 和 `branch` 因 baseline 漂移风险不可用，并直接使用唯一安全的 `worktree`；其他 worktree 中的 active change 不会让本目录的 `current` 或 `branch` 自动失效；
-- 用户可在同一次选择中覆盖默认分支 `comet/<change-name>` 和默认目录 `.worktrees/<change-name>`；路径或分支冲突时停止，不追加随机后缀、不接管不属于该 change 的现有目录。
+- 用户可在同一次选择中覆盖默认 change 分支 `comet/<change-name>`、目标分支和默认目录 `.worktrees/<change-name>`；路径或分支冲突时停止，不追加随机后缀、不接管不属于该 change 的现有目录。
 
 `branch` 与 `worktree` 都必须在运行 `new`、建立 baseline 之前准备完成。目标分支默认绑定为创建分支或 worktree 时所在的起始分支：
 
@@ -77,6 +84,8 @@ comet native new <change-name> --language zh-CN \
 comet native new <change-name> --language zh-CN \
   --isolation worktree --change-branch comet/<change-name> --target-branch <起始分支>
 ```
+
+例如用户只说“修复会话超时”，可先展示：`change-name=session-timeout-fix`、`isolation=worktree`、`change-branch=comet/session-timeout-fix`、`target-branch=main`、`directory=.worktrees/session-timeout-fix`。用户可以回复“名称改为 auth-session，分支改为 fix/auth-session，目录保持默认”，Agent 应据此重新展示最终值再创建。
 
 创建 worktree 前，把 `.worktrees/` 写入仓库本地 Git exclude（Git common dir 的 `info/exclude`），不得为此修改 tracked `.gitignore`。Agent 必须在新工作目录中自动继续，不把进入目录的操作交给用户。
 

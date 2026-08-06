@@ -4,6 +4,10 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ## What's Changed [0.4.0-beta.17] - 2026-08-06
 
+### Changed
+
+- **Native change setup choices**: Native now recommends a change name together with its isolation mode, branch, target branch, and worktree directory before creation, while allowing users to override any choice.
+
 ### Fixed
 
 - **Global Hook isolation**: Legacy global Hooks now use the host-provided project context when available and remain neutral without one, so ordinary writes in another project are not blocked by an unrelated active Comet change.
