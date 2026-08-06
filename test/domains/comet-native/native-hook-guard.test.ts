@@ -171,7 +171,7 @@ describe('Native phase Hook guard', () => {
       expect(result.exitCode).toBe(0);
       expect(JSON.parse(result.stdout ?? '')).toEqual({
         permissionDecision: 'deny',
-        permissionDecisionReason: expect.stringContaining('only allowed in build'),
+        permissionDecisionReason: expect.stringContaining('--return-to-build'),
       });
     } finally {
       if (previousFilePath === undefined) delete process.env.FILE_PATH;

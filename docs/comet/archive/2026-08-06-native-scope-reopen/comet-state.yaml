@@ -1,0 +1,23 @@
+schema: comet.native.v3
+minimum_runtime_version: 3
+revision: 7
+verification_protocol: legacy-v1
+name: native-scope-reopen
+language: zh-CN
+phase: archive
+brief: brief.md
+approval: confirmed
+approved_contract_hash: 87de2677a2f437465033de976562bd8b4f8ab59cd3945e1d4a2d97c14481dd80
+spec_changes:
+  - capability: native-scope-reopen
+    operation: create
+    source: specs/native-scope-reopen/spec.md
+    base_hash: null
+verification_result: pass
+verification_report: verification.md
+implementation_scope: runtime/evidence/scopes/d6cae89d6165d4fb7f3a57b2b7bb5518a261e2951e0a5859645f234acc6fb6f7.json
+verification_evidence: runtime/evidence/verifications/af21737337b9a628fe507707f8038d93fa45139bfe0f91cd6769a346a3592cb8.json
+partial_allowance: null
+archived: true
+created_at: 2026-08-06
+run_id: a15e5079-096a-4c67-9d47-3d129b9115a7

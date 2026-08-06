@@ -1230,6 +1230,87 @@ Pass.
     });
   });
 
+  it('returns Verify to Build with an explicit flag and rejects mixed evidence', async () => {
+    await runNativeCli(['new', 'return-to-build', ...projectArgs()]);
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    const changeDir = path.join(paths.changesDir, 'return-to-build');
+    await fs.writeFile(path.join(changeDir, 'brief.md'), brief);
+    const invalidPhase = await runNativeCli([
+      'next',
+      'return-to-build',
+      '--summary',
+      'Return is only valid after implementation has entered verification',
+      '--return-to-build',
+      '--json',
+      ...projectArgs(),
+    ]);
+    expect(invalidPhase.exitCode).toBe(64);
+    expect(json(invalidPhase)).toMatchObject({
+      command: 'next',
+      error: { code: 'usage' },
+    });
+    const shaped = json(
+      await runNativeCli([
+        'next',
+        'return-to-build',
+        '--summary',
+        'Shape is confirmed',
+        '--confirmed',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(shaped.data).toMatchObject({ change: { phase: 'build' } });
+
+    await fs.writeFile(path.join(projectRoot, 'feature.ts'), 'export const feature = true;\n');
+    const built = json(
+      await runNativeCli([
+        'next',
+        'return-to-build',
+        '--summary',
+        'Build is ready',
+        '--artifact',
+        'feature.ts',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(built.data).toMatchObject({ change: { phase: 'verify' } });
+
+    const returned = json(
+      await runNativeCli([
+        'next',
+        'return-to-build',
+        '--summary',
+        'The user requested follow-up implementation',
+        '--return-to-build',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(returned).toMatchObject({
+      exitCode: 0,
+      data: { change: { phase: 'build', verification_result: 'pending' } },
+    });
+
+    const mixed = await runNativeCli([
+      'next',
+      'return-to-build',
+      '--summary',
+      'Invalid mixed request',
+      '--return-to-build',
+      '--artifact',
+      'feature.ts',
+      '--json',
+      ...projectArgs(),
+    ]);
+    expect(mixed.exitCode).toBe(64);
+    expect(json(mixed)).toMatchObject({
+      command: 'next',
+      error: { code: 'usage' },
+    });
+  });
+
   it('enforces shared-understanding confirmation in Sequential and Batch modes', async () => {
     await runNativeCli(['init', '--root', 'docs', ...projectArgs()]);
     await runNativeCli(['new', 'mode-boundary', ...projectArgs()]);

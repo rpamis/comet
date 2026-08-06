@@ -89,6 +89,10 @@ function hasEvidenceRetreatExtras(evidence: NativeAdvanceEvidence): boolean {
   );
 }
 
+function hasReturnToBuild(evidence: NativeAdvanceEvidence): boolean {
+  return evidence.returnToBuild === true;
+}
+
 function repairFinding(
   decision: Pick<NativeRepairDecisionProjection, 'disposition' | 'reasonCode' | 'signatureHash'>,
 ): { code: string; message: string } {
@@ -216,6 +220,7 @@ async function retreatStaleNativeEvidence(options: {
   state: NativeChangeState;
   run: NonNullable<Awaited<ReturnType<typeof readNativeRunState>>>;
   evidenceHash: string;
+  force?: boolean;
 }): Promise<NativeAdvanceResult> {
   if (hasEvidenceRetreatExtras(options.transition.evidence)) {
     throw new Error('Native evidence retreat only accepts a transition summary');
@@ -228,8 +233,9 @@ async function retreatStaleNativeEvidence(options: {
   ) {
     throw new Error('Native Verify/Archive Run cannot retreat evidence safely');
   }
-  const evidenceIsFresh =
-    previousPhase === 'archive'
+  const evidenceIsFresh = options.force
+    ? false
+    : previousPhase === 'archive'
       ? ['complete', 'partial'].includes(
           (
             await inspectNativeVerificationFreshness({
@@ -302,6 +308,7 @@ async function retreatStaleNativeEvidence(options: {
     artifacts: [],
     noCodeReason: null,
     verificationResult: null,
+    ...(hasReturnToBuild(options.transition.evidence) ? { returnToBuild: true } : {}),
   };
   const journal = await prepareNativeTransition({
     paths: options.transition.paths,
@@ -429,6 +436,17 @@ async function advanceNativeChangeLocked(
       state,
       run: existingRun,
       evidenceHash: hash,
+      force: hasReturnToBuild(options.evidence),
+    });
+  }
+  if (state.phase === 'verify' && hasReturnToBuild(options.evidence)) {
+    if (!existingRun) throw new Error('Native Verify Run state is missing');
+    return retreatStaleNativeEvidence({
+      transition: options,
+      state,
+      run: existingRun,
+      evidenceHash: hash,
+      force: true,
     });
   }
   if (state.phase === 'verify' && !hasEvidenceRetreatExtras(options.evidence)) {

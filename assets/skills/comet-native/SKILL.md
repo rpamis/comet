@@ -30,7 +30,7 @@ comet native status [--json]
 comet native show <change-name>
 comet native select <change-name>
 comet native new <change-name> [--language en|zh-CN] [--isolation current|branch|worktree]
-comet native next <change-name> --summary <text> [--confirmed]
+comet native next <change-name> --summary <text> [--confirmed] [--return-to-build]
 comet native archive <change-name> --dry-run
 ```
 
@@ -146,6 +146,16 @@ comet native next <change-name> \
 
 If no code changed or the Runtime cannot prove complete scope, read the command reference. Never describe unknown or incomplete scope as complete.
 
+### Mid-change requests and scope ownership
+
+When an implementation request such as “change one more file” arrives during Verify or Archive, pause project writes and classify ownership first. Do not modify a project file merely because the request was just made:
+
+- Extension of the current change's implementation: run `comet native next <change-name> --summary "<reason>" --return-to-build`, confirm that the phase returned to Build and that old Verify/Archive evidence was cleared, then write the file.
+- A new user-visible contract or behavior: return to Build first, then update Decisions, the brief, and the complete specifications and repeat clarification and confirmation; keep a `[blocking]` item until confirmation and do not implement before it.
+- Unrelated to the current change: preserve the current change and create or select a separate Native change instead of mixing the file into the current scope.
+
+The Runtime accepts explicit `--return-to-build` only from Verify or Archive. It does not increase the Verify failure count or change the confirmed change identity, workspace, or baseline. After returning, reread status and declare the real artifact under the Build scope.
+
 ## Completion Loop
 
 After entering Build, converge through this loop:
@@ -164,7 +174,7 @@ Run real validation based on the acceptance items, complete target specification
 
 Use acceptance IDs and receipts returned by the Runtime. Read the artifact and command references when you need to generate the evidence block or record an automated or manual receipt.
 
-Submit `pass` only when the Runtime accepts the complete, fresh acceptance matrix and required checks. Reverify after relevant implementation, specification, report, or evidence changes.
+Submit `pass` only when the Runtime accepts a complete acceptance matrix that is current and valid, together with the required checks. Reverify after relevant implementation, specification, report, or evidence changes.
 
 When submitting Verify, pass only `--result` and `--report`; `next` does not accept `--receipt` or caller-supplied required-check arguments. The Runtime validates the report format, complete acceptance matrix, and acceptance receipts before it runs or reuses the built-in required check for the current scope. If the report is invalid, fix it before retrying instead of submitting the same `next` command repeatedly.
 

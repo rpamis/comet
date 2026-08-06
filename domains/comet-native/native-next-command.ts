@@ -1,4 +1,5 @@
 import { inspectNativeStatus } from './native-diagnostics.js';
+import { readNativeChange } from './native-change.js';
 import { advanceNativeChange } from './native-transitions.js';
 import type { NativeAdvanceEvidence } from './native-types.js';
 import {
@@ -21,6 +22,7 @@ export async function nativeNextCommand(
   const summary = takeOption(args, '--summary');
   if (!summary) throw new NativeUsageError('--summary is required');
   const confirmed = takeFlag(args, '--confirmed');
+  const returnToBuild = takeFlag(args, '--return-to-build');
   const artifacts = takeMany(args, '--artifact');
   const noCodeReason = takeOption(args, '--no-code-reason');
   const allowPartialScopeHash = takeOption(args, '--allow-partial-scope');
@@ -58,10 +60,33 @@ export async function nativeNextCommand(
   if (repairOverrideSignature && verificationResult !== undefined) {
     throw new NativeUsageError('--override-repair cannot be combined with --result');
   }
+  if (
+    returnToBuild &&
+    (confirmed ||
+      artifacts.length > 0 ||
+      noCodeReason !== undefined ||
+      allowPartialScopeHash !== undefined ||
+      partialReason !== undefined ||
+      verificationResult !== undefined ||
+      verificationReport !== undefined ||
+      repairOverrideSignature !== undefined ||
+      repairOverrideSummary !== undefined)
+  ) {
+    throw new NativeUsageError(
+      '--return-to-build cannot be combined with confirmation, artifact, verification, partial-scope, or repair evidence',
+    );
+  }
   assertNoArguments(args);
   const { config, paths } = await configuredPaths(projectRoot);
+  if (returnToBuild) {
+    const state = await readNativeChange(paths, name);
+    if (state.phase !== 'verify' && state.phase !== 'archive') {
+      throw new NativeUsageError('--return-to-build is only valid in Verify or Archive');
+    }
+  }
   const evidence: NativeAdvanceEvidence = {
     summary,
+    ...(returnToBuild ? { returnToBuild: true } : {}),
     ...(confirmed ? { confirmed: true } : {}),
     ...(artifacts.length > 0 ? { artifacts } : {}),
     ...(noCodeReason ? { noCodeReason } : {}),

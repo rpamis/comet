@@ -1,0 +1,174 @@
+# Acceptance evidence
+
+<!-- comet-native:acceptance-evidence:start -->
+[
+  {
+    "acceptance_id": "acceptance-019adad96d66f03deb467e4ac3e57cecbe9ea116043fcc46cc78299a499d7e3e",
+    "status": "passed",
+    "evidence_refs": [
+      "runtime/evidence/receipts/753b5d26311f85b77b60cb79085445950eae8f24bd34b95d86063fd8cf991206.json"
+    ]
+  },
+  {
+    "acceptance_id": "acceptance-08513bbeffd0a29895bc62aa8376b2b081b00befe38ec3a4f9b16d744de65a12",
+    "status": "passed",
+    "evidence_refs": [
+      "runtime/evidence/receipts/753b5d26311f85b77b60cb79085445950eae8f24bd34b95d86063fd8cf991206.json"
+    ]
+  },
+  {
+    "acceptance_id": "acceptance-1af5fa7389265572e52d9b12626f34bf05ea1c94d180bdbd69eee728d8e9ca3d",
+    "status": "passed",
+    "evidence_refs": [
+      "runtime/evidence/receipts/753b5d26311f85b77b60cb79085445950eae8f24bd34b95d86063fd8cf991206.json"
+    ]
+  },
+  {
+    "acceptance_id": "acceptance-31561e5150429f22f0f1a7b949cd2cc075da90d2d8f889404e198982d62bde92",
+    "status": "passed",
+    "evidence_refs": [
+      "runtime/evidence/receipts/753b5d26311f85b77b60cb79085445950eae8f24bd34b95d86063fd8cf991206.json"
+    ]
+  },
+  {
+    "acceptance_id": "acceptance-3bcdb9fb65814f2855cf57ddc46466aa5e2d7d93467c1f94215646bc9bdfdeb6",
+    "status": "passed",
+    "evidence_refs": [
+      "runtime/evidence/receipts/753b5d26311f85b77b60cb79085445950eae8f24bd34b95d86063fd8cf991206.json"
+    ]
+  },
+  {
+    "acceptance_id": "acceptance-3f3ebfb063a15cb054c55392de2fa92fb8cfa8fcd57dd4485306c4fe6094604f",
+    "status": "passed",
+    "evidence_refs": [
+      "runtime/evidence/receipts/753b5d26311f85b77b60cb79085445950eae8f24bd34b95d86063fd8cf991206.json"
+    ]
+  },
+  {
+    "acceptance_id": "acceptance-3f834c258079c126899cb334a89322ce37cc4d3c66058bb228db0e62d3ad8f4c",
+    "status": "passed",
+    "evidence_refs": [
+      "runtime/evidence/receipts/753b5d26311f85b77b60cb79085445950eae8f24bd34b95d86063fd8cf991206.json"
+    ]
+  },
+  {
+    "acceptance_id": "acceptance-4965f70b67b00cea9e63bf7bc5bd31f064254214ca24354915ee8aa306d14307",
+    "status": "passed",
+    "evidence_refs": [
+      "runtime/evidence/receipts/753b5d26311f85b77b60cb79085445950eae8f24bd34b95d86063fd8cf991206.json"
+    ]
+  },
+  {
+    "acceptance_id": "acceptance-6ca1cf9c8df24e3e91c7bee9665c7dfcdd64f72601dc3851628eba3e186e6a14",
+    "status": "passed",
+    "evidence_refs": [
+      "runtime/evidence/receipts/753b5d26311f85b77b60cb79085445950eae8f24bd34b95d86063fd8cf991206.json"
+    ]
+  },
+  {
+    "acceptance_id": "acceptance-6e19db02b3a034310e1e5a4fa9554b0e2c4ef8c647c94d35b8fd2eceaf56ef8e",
+    "status": "passed",
+    "evidence_refs": [
+      "runtime/evidence/receipts/753b5d26311f85b77b60cb79085445950eae8f24bd34b95d86063fd8cf991206.json"
+    ]
+  },
+  {
+    "acceptance_id": "acceptance-7060331653f39db2cc91f678932fc2f209ce7e58fb500a8ede0bcab24369c623",
+    "status": "passed",
+    "evidence_refs": [
+      "runtime/evidence/receipts/753b5d26311f85b77b60cb79085445950eae8f24bd34b95d86063fd8cf991206.json"
+    ]
+  },
+  {
+    "acceptance_id": "acceptance-79f1e559201d52fb4afe34e18abc870286c07e23815aceb021ae6ee358d65379",
+    "status": "passed",
+    "evidence_refs": [
+      "runtime/evidence/receipts/753b5d26311f85b77b60cb79085445950eae8f24bd34b95d86063fd8cf991206.json"
+    ]
+  },
+  {
+    "acceptance_id": "acceptance-7d62f13b2894dbfae1ee11ca1462ae02b5b3144d1d23e9c7de8f62fbf949a157",
+    "status": "passed",
+    "evidence_refs": [
+      "runtime/evidence/receipts/753b5d26311f85b77b60cb79085445950eae8f24bd34b95d86063fd8cf991206.json"
+    ]
+  },
+  {
+    "acceptance_id": "acceptance-91d9d1dee9c0814bbb9eb6a67533903eeb6d7f443bdcaa2a33566bf1a29d3868",
+    "status": "passed",
+    "evidence_refs": [
+      "runtime/evidence/receipts/753b5d26311f85b77b60cb79085445950eae8f24bd34b95d86063fd8cf991206.json"
+    ]
+  },
+  {
+    "acceptance_id": "acceptance-949dda7f8942bbe31029a53957c9faf4e32b92f2d885b197f25ef2078ec299cd",
+    "status": "passed",
+    "evidence_refs": [
+      "runtime/evidence/receipts/753b5d26311f85b77b60cb79085445950eae8f24bd34b95d86063fd8cf991206.json"
+    ]
+  },
+  {
+    "acceptance_id": "acceptance-aaabac0763f685b5367232f4130031141f2e54bfa5b397b2ed49cfbf4de57232",
+    "status": "passed",
+    "evidence_refs": [
+      "runtime/evidence/receipts/753b5d26311f85b77b60cb79085445950eae8f24bd34b95d86063fd8cf991206.json"
+    ]
+  },
+  {
+    "acceptance_id": "acceptance-ec769ca6dc2723adfe6ca3aeb751b8bdf273ce5bbd4404e43085851176a0b755",
+    "status": "passed",
+    "evidence_refs": [
+      "runtime/evidence/receipts/753b5d26311f85b77b60cb79085445950eae8f24bd34b95d86063fd8cf991206.json"
+    ]
+  },
+  {
+    "acceptance_id": "acceptance-ec8f48375feb01d84550b9da295b7994bc7e28e3c56f3bf85c8564fdae7f2257",
+    "status": "passed",
+    "evidence_refs": [
+      "runtime/evidence/receipts/753b5d26311f85b77b60cb79085445950eae8f24bd34b95d86063fd8cf991206.json"
+    ]
+  },
+  {
+    "acceptance_id": "acceptance-ef3e7e89f8e350f1c0f0a5fc52d1b6a2496b6bd0a1f05e43888e425adcd84d48",
+    "status": "passed",
+    "evidence_refs": [
+      "runtime/evidence/receipts/753b5d26311f85b77b60cb79085445950eae8f24bd34b95d86063fd8cf991206.json"
+    ]
+  },
+  {
+    "acceptance_id": "acceptance-f9ebc73b58d2dd2f0f32df8ec325edd6204288bed4ec46a5d83222f2ad4cc1f2",
+    "status": "passed",
+    "evidence_refs": [
+      "runtime/evidence/receipts/753b5d26311f85b77b60cb79085445950eae8f24bd34b95d86063fd8cf991206.json"
+    ]
+  }
+]
+<!-- comet-native:acceptance-evidence:end -->
+
+# Commands and results
+
+- `npx vitest run test/domains/comet-native/native-transitions.test.ts test/domains/comet-native/native-hook-guard.test.ts test/domains/comet-native/native-transition-evidence.test.ts test/domains/comet-native/native-build-evidence.test.ts test/domains/comet-native/native-diagnostics.test.ts test/domains/comet-native/native-skill.test.ts test/repository/native-runtime-assets.test.ts`: 7 files, 89 tests passed.
+- `npx vitest run test/domains/comet-native/native-skill.test.ts test/domains/comet-native/native-cli.test.ts -t "Comet Native Skills|returns Verify to Build"`: 2 files, 17 tests passed, 37 skipped by the test filter.
+- `pnpm exec eslint app/ domains/ platform/`: passed.
+- `pnpm exec prettier --check ...`: passed for all affected source, tests, Skill, reference, and changelog files.
+- `pnpm run check:generated`: passed.
+- `pnpm build:native-runtime`: passed.
+- `pnpm build`: passed, including TypeScript compilation and Dashboard production build.
+
+# Skipped checks
+
+- `pnpm lint` could not complete because the pre-existing untracked `.codex-remote-attachments` directory is outside the repository architecture allowlist; the ESLint portion passed.
+- `pnpm test` was attempted with a five-minute timeout but did not produce a result before timing out; the spawned Vitest process was stopped and the affected Native suite was run separately.
+
+# Spec consistency
+
+Matches the approved Native scope-reopen brief and complete specification. The current implementation scope is complete and the acceptance evidence is bound to the current contract, snapshot, and artifact hashes.
+
+# Known limitations and risks
+
+The full Vitest suite still needs a separate environment investigation because it exceeded five minutes without reporting a result. This does not represent a reported test failure; the affected Native regression suite and build checks passed.
+
+# Conclusion
+
+Pass.
+

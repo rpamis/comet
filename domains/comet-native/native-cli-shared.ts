@@ -64,7 +64,7 @@ Commands:
   evidence format [--entries <path>]
   receipt manual <change-name> --acceptance <id> --step <text> --observation <text>
   receipt automated <change-name> --acceptance <id> [--timeout-ms <n>] -- <executable> [args...]
-  next <change-name> --summary <text> [--confirmed] [--artifact <path>] [--no-code-reason <text>] [--allow-partial-scope <sha256> --partial-reason <text>] [--result pass|fail] [--report <path>] [--override-repair <sha256> --override-summary <text>]
+  next <change-name> --summary <text> [--confirmed] [--return-to-build] [--artifact <path>] [--no-code-reason <text>] [--allow-partial-scope <sha256> --partial-reason <text>] [--result pass|fail] [--report <path>] [--override-repair <sha256> --override-summary <text>]
   archive <change-name> --dry-run [--finish merge|push|pull-request|keep]
   archive <change-name> --expect-preflight <sha256> [--confirmed]
   doctor [<change-name>] [--repair] [--strategy continue|rollback]

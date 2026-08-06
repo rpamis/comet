@@ -47,8 +47,12 @@ export const NATIVE_RUNTIME_PACKAGE: SkillPackage = {
   evals: [],
 };
 
-export const NATIVE_RUNTIME_HASH = sha256Text('comet-native-runtime:v3:semantic-repair-budget');
+export const NATIVE_RUNTIME_HASH = sha256Text('comet-native-runtime:v3:scope-reopen');
 export const NATIVE_LEGACY_RUNTIME_IDENTITIES = [
+  {
+    skillVersion: '3',
+    skillHash: sha256Text('comet-native-runtime:v3:semantic-repair-budget'),
+  },
   {
     skillVersion: '2',
     skillHash: sha256Text('comet-native-runtime:v2:max-iterations-32'),

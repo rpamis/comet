@@ -1,0 +1,47 @@
+{
+  "schema": "comet.native.verification-receipt.v3",
+  "kind": "manual-evidence",
+  "role": "acceptance-evidence",
+  "status": "passed",
+  "bindings": {
+    "change": "native-scope-reopen",
+    "sourceRevision": 5,
+    "contractHash": "87de2677a2f437465033de976562bd8b4f8ab59cd3945e1d4a2d97c14481dd80",
+    "scopeHash": "d6cae89d6165d4fb7f3a57b2b7bb5518a261e2951e0a5859645f234acc6fb6f7",
+    "snapshotHash": "5f810754d38e75f2621dddf85c526399fa8472b45df6761cb2f8a2a8afb9f3b5",
+    "artifactHash": "b68c23e5d5768dd82d390ffa1267c82dadaad83627b954aed62d8dc54752c001"
+  },
+  "acceptanceIds": [
+    "acceptance-019adad96d66f03deb467e4ac3e57cecbe9ea116043fcc46cc78299a499d7e3e",
+    "acceptance-08513bbeffd0a29895bc62aa8376b2b081b00befe38ec3a4f9b16d744de65a12",
+    "acceptance-1af5fa7389265572e52d9b12626f34bf05ea1c94d180bdbd69eee728d8e9ca3d",
+    "acceptance-31561e5150429f22f0f1a7b949cd2cc075da90d2d8f889404e198982d62bde92",
+    "acceptance-3bcdb9fb65814f2855cf57ddc46466aa5e2d7d93467c1f94215646bc9bdfdeb6",
+    "acceptance-3f3ebfb063a15cb054c55392de2fa92fb8cfa8fcd57dd4485306c4fe6094604f",
+    "acceptance-3f834c258079c126899cb334a89322ce37cc4d3c66058bb228db0e62d3ad8f4c",
+    "acceptance-4965f70b67b00cea9e63bf7bc5bd31f064254214ca24354915ee8aa306d14307",
+    "acceptance-6ca1cf9c8df24e3e91c7bee9665c7dfcdd64f72601dc3851628eba3e186e6a14",
+    "acceptance-6e19db02b3a034310e1e5a4fa9554b0e2c4ef8c647c94d35b8fd2eceaf56ef8e",
+    "acceptance-7060331653f39db2cc91f678932fc2f209ce7e58fb500a8ede0bcab24369c623",
+    "acceptance-79f1e559201d52fb4afe34e18abc870286c07e23815aceb021ae6ee358d65379",
+    "acceptance-7d62f13b2894dbfae1ee11ca1462ae02b5b3144d1d23e9c7de8f62fbf949a157",
+    "acceptance-91d9d1dee9c0814bbb9eb6a67533903eeb6d7f443bdcaa2a33566bf1a29d3868",
+    "acceptance-949dda7f8942bbe31029a53957c9faf4e32b92f2d885b197f25ef2078ec299cd",
+    "acceptance-aaabac0763f685b5367232f4130031141f2e54bfa5b397b2ed49cfbf4de57232",
+    "acceptance-ec769ca6dc2723adfe6ca3aeb751b8bdf273ce5bbd4404e43085851176a0b755",
+    "acceptance-ec8f48375feb01d84550b9da295b7994bc7e28e3c56f3bf85c8564fdae7f2257",
+    "acceptance-ef3e7e89f8e350f1c0f0a5fc52d1b6a2496b6bd0a1f05e43888e425adcd84d48",
+    "acceptance-f9ebc73b58d2dd2f0f32df8ec325edd6204288bed4ec46a5d83222f2ad4cc1f2"
+  ],
+  "actor": "native-runtime:manual-evidence",
+  "issuedAt": "2026-08-06T14:37:08.154Z",
+  "evidence": {
+    "steps": [
+      "Run focused Native regression tests, lint, formatting, generated-asset checks, and full build."
+    ],
+    "observations": [
+      "The focused Native suite passed 89 tests; ESLint, Prettier, check:generated, build:native-runtime, and full build passed. Architecture lint was blocked only by the pre-existing .codex-remote-attachments directory outside the repository top-level allowlist, and the full Vitest suite exceeded the five-minute command timeout."
+    ]
+  },
+  "receiptHash": "753b5d26311f85b77b60cb79085445950eae8f24bd34b95d86063fd8cf991206"
+}

@@ -91,6 +91,7 @@ const TRANSITION_EVENT_DATA_KEYS = new Set([
   'implementationScopeHash',
   'repairScopeHash',
   'repairStagnation',
+  'returnToBuild',
 ]);
 
 interface NativeTransitionEventData extends Record<string, unknown> {
@@ -104,6 +105,7 @@ interface NativeTransitionEventData extends Record<string, unknown> {
   implementationScopeHash?: string;
   repairScopeHash?: string;
   repairStagnation?: NativeRepairTrajectoryProjection;
+  returnToBuild?: boolean;
 }
 
 export class NativeTransitionMigrationRequiredError extends Error {
@@ -183,7 +185,8 @@ function parseTransitionEventData(value: unknown, evidenceHash: string): NativeT
     REQUIRED_TRANSITION_EVENT_DATA_KEYS.size +
     (Object.hasOwn(record, 'implementationScopeHash') ? 1 : 0) +
     (Object.hasOwn(record, 'repairScopeHash') ? 1 : 0) +
-    (Object.hasOwn(record, 'repairStagnation') ? 1 : 0);
+    (Object.hasOwn(record, 'repairStagnation') ? 1 : 0) +
+    (Object.hasOwn(record, 'returnToBuild') ? 1 : 0);
   if (unknown || missing || keys.length !== expectedSize) {
     throw new Error(
       `Native transition journal event data keys are invalid${unknown ? `: ${unknown}` : missing ? `: missing ${missing}` : ''}`,
@@ -197,6 +200,9 @@ function parseTransitionEventData(value: unknown, evidenceHash: string): NativeT
   }
   if (record.evidenceHash !== evidenceHash) {
     throw new Error('Native transition journal event evidence hash mismatch');
+  }
+  if (record.returnToBuild !== undefined && typeof record.returnToBuild !== 'boolean') {
+    throw new Error('Native transition journal returnToBuild flag is invalid');
   }
   assertNativeTrajectoryText(record.summary, 'Native transition journal event summary');
   if (redactNativeCredentialText(record.summary) !== record.summary) {
@@ -279,6 +285,7 @@ function parseTransitionEventData(value: unknown, evidenceHash: string): NativeT
     artifacts: [...record.artifacts] as string[],
     noCodeReason: record.noCodeReason as string | null,
     verificationResult: record.verificationResult as 'pass' | 'fail' | null,
+    ...(record.returnToBuild === true ? { returnToBuild: true } : {}),
     ...(implementationScopeHash ? { implementationScopeHash } : {}),
     ...(repairScopeHash ? { repairScopeHash } : {}),
     ...(repairStagnation ? { repairStagnation } : {}),
@@ -524,7 +531,10 @@ function validateTransitionStateSemantics(
       previousState.created_at === nextState.created_at &&
       previousState.run_id === nextState.run_id &&
       isDeepStrictEqual(previousState.spec_changes, nextState.spec_changes);
-    const expectedHash = nativeAdvanceEvidenceHash({ summary: event.summary });
+    const expectedHash = nativeAdvanceEvidenceHash({
+      summary: event.summary,
+      ...(event.returnToBuild ? { returnToBuild: true } : {}),
+    });
     const validSourcePhase =
       (previousState.phase === 'archive' && previousState.verification_result === 'pass') ||
       (previousState.phase === 'verify' && previousState.verification_result === 'pending');

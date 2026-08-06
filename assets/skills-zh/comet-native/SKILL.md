@@ -30,7 +30,7 @@ comet native status [--json]
 comet native show <change-name>
 comet native select <change-name>
 comet native new <change-name> [--language en|zh-CN] [--isolation current|branch|worktree]
-comet native next <change-name> --summary <text> [--confirmed]
+comet native next <change-name> --summary <text> [--confirmed] [--return-to-build]
 comet native archive <change-name> --dry-run
 ```
 
@@ -146,6 +146,16 @@ comet native next <change-name> \
 
 没有代码变化或 Runtime 无法证明完整 scope 时，读取命令参考。不得把未知或不完整范围声明为 complete。
 
+### 中途请求与范围归属
+
+Verify 或 Archive 阶段收到“再改一个文件”之类的实现请求时，先暂停写入并判断归属，不得因为用户刚提出请求就直接修改项目文件：
+
+- 当前 change 的实现补充：先执行 `comet native next <change-name> --summary "<原因>" --return-to-build`，确认 phase 已回到 Build、旧 Verify/Archive 证据已清理后再写入。
+- 新的用户可见契约或行为：先返回 Build，再更新 Decisions、brief 和完整规格，重新完成澄清与确认；确认前保留 `[blocking]`，不得实现。
+- 与当前 change 无关：保留当前 change，创建或选择另一个 Native change，不把文件混入当前 scope。
+
+Runtime 只接受 Verify 或 Archive 的显式 `--return-to-build`，且该操作不会增加 Verify 失败次数或改变已确认的 change 身份、workspace 和 baseline。返回后必须重新读取 status，再按 Build scope 声明真实 artifact。
+
 ## Completion Loop
 
 进入 Build 后按以下循环收敛：
@@ -164,7 +174,7 @@ comet native next <change-name> \
 
 使用 Runtime 返回的 acceptance ID 和 receipt。需要生成证据块或记录 automated/manual receipt 时，读取产物与命令参考。
 
-只有 Runtime 接受完整且新鲜的验收矩阵和 required checks 时才能提交 `pass`。相关实现、规格、报告或证据改变后重新验证。
+只有 Runtime 接受完整且当前有效的验收矩阵和 required checks 时才能提交 `pass`。相关实现、规格、报告或证据改变后重新验证。
 
 提交 Verify 时只传 `--result` 和 `--report`；`next` 不接受 `--receipt` 或其他调用方提供的 required-check 参数。Runtime 会先校验报告格式、完整验收矩阵和 acceptance receipt，只有这些输入有效后才执行或复用当前 scope 的内置 required check。报告无效时先修正报告，不要反复重试同一个 `next` 命令。
 
@@ -186,7 +196,7 @@ Verify 失败的中间循环不运行 Archive，也不触发归档确认。持�
 
 展示精确 change 分支、目标分支和工作目录；结合目标分支是否本地可用、目录是否干净给出一个推荐。只有用户选择后才执行对应外部 Git 动作；选择“暂不归档”时保留现场并停止。
 
-然后预演：
+然后检查归档条件：
 
 ```text
 # current
@@ -196,7 +206,7 @@ comet native archive <change-name> --dry-run
 comet native archive <change-name> --dry-run --finish merge|push|pull-request|keep
 ```
 
-预演成功后：
+归档检查通过后：
 
 - `automatic`：执行 continuation 返回的精确提交命令；
 - `required`：向用户展示实现、验证和规格操作摘要，等待用户选择立即归档或保留 change。

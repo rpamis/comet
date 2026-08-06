@@ -379,6 +379,7 @@ export interface NativeArtifactValidation {
 
 export interface NativeAdvanceEvidence {
   summary: string;
+  returnToBuild?: boolean;
   confirmed?: boolean;
   artifacts?: string[];
   noCodeReason?: string;

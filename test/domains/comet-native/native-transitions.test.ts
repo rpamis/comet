@@ -407,6 +407,99 @@ describe('Native guarded transitions', () => {
     expect(retry.change.revision).toBe(result.change.revision);
   });
 
+  it('explicitly returns a fresh Verify change to Build without counting a failure', async () => {
+    await advanceNativeChange({
+      paths,
+      name: 'advance-change',
+      evidence: { summary: 'shape is ready', confirmed: true },
+    });
+    await fs.writeFile(path.join(projectRoot, 'feature.ts'), 'export const feature = true;\n');
+    const build = await advanceNativeChange({
+      paths,
+      name: 'advance-change',
+      evidence: { summary: 'build is ready', artifacts: ['feature.ts'] },
+    });
+    expect(build.change.phase).toBe('verify');
+
+    const returned = await advanceNativeChange({
+      paths,
+      name: 'advance-change',
+      evidence: {
+        summary: 'User requested an additional implementation file',
+        returnToBuild: true,
+      },
+    });
+
+    expect(returned).toMatchObject({
+      previousPhase: 'verify',
+      next: 'auto',
+      change: {
+        phase: 'build',
+        revision: build.change.revision + 1,
+        verification_result: 'pending',
+        verification_report: null,
+        implementation_scope: null,
+        verification_evidence: null,
+        partial_allowance: null,
+        approved_contract_hash: build.change.approved_contract_hash,
+      },
+    });
+    const run = await readRunStateAt(changeDir, NATIVE_RUN_STORAGE);
+    expect(run).toMatchObject({ currentStep: 'build', status: 'running' });
+    const trajectory = await readTrajectory(changeDir, run!.trajectoryRef);
+    expect(trajectory.at(-1)).toMatchObject({
+      type: 'state_transitioned',
+      data: { previousPhase: 'verify', nextPhase: 'build', returnToBuild: true },
+    });
+  });
+
+  it('explicitly returns an Archive change to Build and invalidates its pass', async () => {
+    await advanceNativeChange({
+      paths,
+      name: 'advance-change',
+      evidence: { summary: 'shape is ready', confirmed: true },
+    });
+    await fs.writeFile(path.join(projectRoot, 'feature.ts'), 'export const feature = true;\n');
+    await advanceNativeChange({
+      paths,
+      name: 'advance-change',
+      evidence: { summary: 'build is ready', artifacts: ['feature.ts'] },
+    });
+    await fs.writeFile(
+      path.join(changeDir, 'verification.md'),
+      await nativeVerificationFixtureReport({
+        paths,
+        name: 'advance-change',
+        evidenceRefs: ['feature.ts'],
+      }),
+    );
+    const verified = await advanceNativeChange({
+      paths,
+      name: 'advance-change',
+      evidence: {
+        summary: 'verification passed',
+        verificationResult: 'pass',
+        verificationReport: 'verification.md',
+      },
+    });
+    expect(verified.change.phase).toBe('archive');
+
+    const returned = await advanceNativeChange({
+      paths,
+      name: 'advance-change',
+      evidence: { summary: 'User requested follow-up implementation', returnToBuild: true },
+    });
+
+    expect(returned.change).toMatchObject({
+      phase: 'build',
+      verification_result: 'pending',
+      verification_report: null,
+      implementation_scope: null,
+      verification_evidence: null,
+      partial_allowance: null,
+    });
+  });
+
   it('advances Verify pass to the Native archive command without reasoning fields', async () => {
     await advanceNativeChange({
       paths,

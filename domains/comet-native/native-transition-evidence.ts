@@ -6,6 +6,7 @@ export function nativeAdvanceEvidenceHash(evidence: NativeAdvanceEvidence): stri
   return sha256Text(
     JSON.stringify({
       summary: evidence.summary,
+      returnToBuild: evidence.returnToBuild ?? false,
       confirmed: evidence.confirmed ?? false,
       artifacts: [...(evidence.artifacts ?? [])].sort(),
       noCodeReason: evidence.noCodeReason ?? null,
