@@ -51,6 +51,14 @@ const PLATFORM_FIXTURES = [
     id: 'qoder',
     single: { tool_name: 'Write', tool_input: { file_path: 'src/qoder.ts' } },
   },
+  {
+    id: 'trae',
+    single: { tool_name: 'Write', tool_input: { file_path: 'src/trae.ts' } },
+  },
+  {
+    id: 'trae-cn',
+    single: { tool_name: 'Write', tool_input: { file_path: 'src/trae-cn.ts' } },
+  },
 ] as const;
 
 describe('Comet Hook platform adapter', () => {

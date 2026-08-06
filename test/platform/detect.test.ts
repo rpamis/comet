@@ -120,6 +120,10 @@ describe('detect', () => {
       expect(traeCn?.openspecToolId).toBe('trae');
       expect(traeCn?.rulesDir).toBe('rules');
       expect(traeCn?.rulesFormat).toBe('md');
+      expect(traeCn?.supportsHooks).toBe(true);
+      expect(traeCn?.hookFormat).toBe('trae');
+      expect(traeCn?.configDir).toBe('.trae');
+      expect(traeCn?.globalConfigDir).toBe('.trae-cn');
     });
   });
 

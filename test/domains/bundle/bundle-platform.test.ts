@@ -158,6 +158,24 @@ describe('Bundle platform compiler', () => {
     ]);
   });
 
+  it('plans Trae hooks in project hooks.json while scripts remain under .trae', async () => {
+    const trae = targets.find((target) => target.id === 'trae')!;
+
+    const report = await compileBundleForPlatform(ir(), trae, {
+      projectRoot,
+      scope: 'project',
+      locale: 'zh',
+    });
+
+    expect(report.executableDisclosures).toEqual([
+      expect.objectContaining({
+        id: 'protect-write',
+        destination: path.join(projectRoot, '.trae', 'hooks.json'),
+        command: expect.stringContaining('.trae/skills'),
+      }),
+    ]);
+  });
+
   it('reports every required and optional capability gap without dropping it silently', async () => {
     const kimi = targets.find((target) => target.id === 'kimicode')!;
 

@@ -39,6 +39,9 @@ function hookConfigPath(baseDir: string, platformId: string): string {
       return path.join(baseDir, '.gemini', 'settings.json');
     case 'windsurf':
       return path.join(baseDir, '.windsurf', 'hooks.json');
+    case 'trae':
+    case 'trae-cn':
+      return path.join(baseDir, '.trae', 'hooks.json');
     case 'github-copilot':
       return path.join(baseDir, '.github', 'hooks', 'comet-guard.json');
     case 'kiro':
@@ -131,6 +134,8 @@ describe('platform component inspection', () => {
     'codebuddy',
     'gemini',
     'windsurf',
+    'trae',
+    'trae-cn',
     'github-copilot',
     'kiro',
   ])('recognizes the managed Hook command in the %s format', async (id) => {
@@ -160,6 +165,8 @@ describe('platform component inspection', () => {
     'codebuddy',
     'gemini',
     'windsurf',
+    'trae',
+    'trae-cn',
     'github-copilot',
     'kiro',
   ])('removes only the managed %s Router while preserving user configuration', async (id) => {

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { spawnSync } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
@@ -39,12 +40,26 @@ import {
   reconcileCometHooksForPlatform,
   reconcileProjectCometHooksForPlatform,
 } from '../../../domains/skill/hook-lifecycle.js';
+import { removeCometHooksForPlatform } from '../../../domains/skill/uninstall.js';
 import { PLATFORMS, type Platform } from '../../../platform/install/platforms.js';
 import {
   artifactLanguageToSkillLanguage,
   resolveArtifactLanguage,
 } from '../../../domains/skill/languages.js';
 import { assertClassicLayoutInitializationSafe } from '../../../domains/comet-classic/classic-layout-initialization.js';
+import {
+  createNativeChange,
+  writeNativeChange,
+} from '../../../domains/comet-native/native-change.js';
+import {
+  defaultProjectConfig,
+  writeProjectConfig,
+} from '../../../domains/comet-native/native-config.js';
+import {
+  ensureNativeDirectories,
+  nativeProjectPaths,
+} from '../../../domains/comet-native/native-paths.js';
+import { selectNativeChange } from '../../../domains/comet-native/native-selection.js';
 import { DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG } from '../../../domains/workflow-contract/project-config.js';
 
 describe('skills', () => {
@@ -819,6 +834,31 @@ describe('skills', () => {
       scope: 'project' | 'global' = 'project',
     ) =>
       `node "${normalized(path.join(baseDir, skillsDir, 'skills', ...currentCometScript.split('/')))}" --platform "${platformId}"${scope === 'project' ? ` --project-root "${normalized(baseDir)}"` : ''}`;
+    const runManagedHookCommand = (command: string, cwd: string) =>
+      spawnSync(command, {
+        cwd,
+        input: JSON.stringify({
+          tool_name: 'Write',
+          tool_input: { file_path: 'src/app.ts' },
+        }),
+        shell: true,
+        encoding: 'utf8',
+        timeout: 20_000,
+      });
+    const configureNativeBuildChange = async (projectRoot: string): Promise<void> => {
+      await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+      const paths = await nativeProjectPaths(projectRoot, '.');
+      await ensureNativeDirectories(paths);
+      const change = await createNativeChange({
+        paths,
+        name: 'trae-cn-build',
+        language: 'en',
+        verificationProtocol: 'legacy-v1',
+      });
+      change.phase = 'build';
+      await writeNativeChange(paths, change);
+      await selectNativeChange(paths, change.name);
+    };
 
     it('installs only the unified Router Hook for a Native project', async () => {
       const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
@@ -1528,6 +1568,135 @@ describe('skills', () => {
         expect(secondInstall).toEqual(firstInstall);
       },
     );
+
+    it('writes Trae project hooks to hooks.json with versioned PreToolUse groups', async () => {
+      const platform = PLATFORMS.find((candidate) => candidate.id === 'trae')!;
+      const hooksPath = path.join(tmpDir, '.trae', 'hooks.json');
+      const initialHooks = {
+        version: 1,
+        userSetting: 'keep',
+        hooks: {
+          PostToolUse: [{ matcher: 'Read', hooks: [{ type: 'command', command: 'echo post' }] }],
+          PreToolUse: [
+            {
+              matcher: 'Write|Edit',
+              hooks: [
+                { type: 'command', command: 'echo user-write-check', timeout: 5 },
+                { type: 'command', command: staleCometCommand, timeout: 10 },
+              ],
+            },
+          ],
+        },
+      };
+      await fs.mkdir(path.dirname(hooksPath), { recursive: true });
+      await fs.writeFile(hooksPath, JSON.stringify(initialHooks), 'utf-8');
+
+      await configureNativeBuildChange(tmpDir);
+      await copyCometSkillsForPlatform(tmpDir, platform, false, 'skills', 'project');
+      await expect(installCometHooksForPlatform(tmpDir, platform, 'project')).resolves.toEqual({
+        status: 'installed',
+      });
+      const firstInstall = JSON.parse(await fs.readFile(hooksPath, 'utf-8'));
+
+      expect(firstInstall.version).toBe(1);
+      expect(firstInstall.userSetting).toBe('keep');
+      expect(firstInstall.hooks.PostToolUse).toEqual(initialHooks.hooks.PostToolUse);
+      expect(firstInstall.hooks.PreToolUse).toEqual([
+        {
+          matcher: 'Write|Edit',
+          hooks: [{ type: 'command', command: 'echo user-write-check', timeout: 5 }],
+        },
+        {
+          matcher: 'Write|Edit',
+          hooks: [
+            {
+              type: 'command',
+              command: expectedHookCommand('.trae', 'trae'),
+              timeout: 30,
+            },
+          ],
+        },
+      ]);
+      const router = runManagedHookCommand(
+        firstInstall.hooks.PreToolUse[1].hooks[0].command,
+        tmpDir,
+      );
+      expect(router.status, router.stderr).toBe(0);
+
+      await installCometHooksForPlatform(tmpDir, platform, 'project');
+      const secondInstall = JSON.parse(await fs.readFile(hooksPath, 'utf-8'));
+      expect(secondInstall).toEqual(firstInstall);
+    });
+
+    it('writes and removes Trae CN project hooks from .trae and global hooks from .trae-cn', async () => {
+      const platform = PLATFORMS.find((candidate) => candidate.id === 'trae-cn')!;
+      const projectHooksPath = path.join(tmpDir, '.trae', 'hooks.json');
+      const globalRoot = path.join(tmpDir, 'home');
+      const globalHooksPath = path.join(globalRoot, '.trae-cn', 'hooks.json');
+
+      await configureNativeBuildChange(tmpDir);
+      await copyCometSkillsForPlatform(tmpDir, platform, false, 'skills', 'project');
+      await copyCometSkillsForPlatform(globalRoot, platform, false, 'skills', 'global');
+      await expect(installCometHooksForPlatform(tmpDir, platform, 'project')).resolves.toEqual({
+        status: 'installed',
+      });
+      await expect(installCometHooksForPlatform(globalRoot, platform, 'global')).resolves.toEqual({
+        status: 'installed',
+      });
+
+      const projectHooks = JSON.parse(await fs.readFile(projectHooksPath, 'utf-8'));
+      const globalHooks = JSON.parse(await fs.readFile(globalHooksPath, 'utf-8'));
+      expect(projectHooks.hooks.PreToolUse[0].hooks[0]).toMatchObject({
+        type: 'command',
+        command: expectedHookCommand('.trae-cn', 'trae-cn'),
+        timeout: 30,
+      });
+      expect(globalHooks.hooks.PreToolUse[0].hooks[0]).toMatchObject({
+        type: 'command',
+        command: expectedHookCommand('.trae-cn', 'trae-cn', globalRoot, 'global'),
+        timeout: 30,
+      });
+      const projectRouter = runManagedHookCommand(
+        projectHooks.hooks.PreToolUse[0].hooks[0].command,
+        tmpDir,
+      );
+      const globalRouter = runManagedHookCommand(
+        globalHooks.hooks.PreToolUse[0].hooks[0].command,
+        tmpDir,
+      );
+      expect(projectRouter.status, projectRouter.stderr).toBe(0);
+      expect(globalRouter.status, globalRouter.stderr).toBe(0);
+
+      await expect(removeCometHooksForPlatform(tmpDir, platform, 'project')).resolves.toEqual({
+        removed: 1,
+        failed: 0,
+      });
+      await expect(removeCometHooksForPlatform(globalRoot, platform, 'global')).resolves.toEqual({
+        removed: 1,
+        failed: 0,
+      });
+      const cleanedProjectHooks = JSON.parse(await fs.readFile(projectHooksPath, 'utf-8'));
+      const cleanedGlobalHooks = JSON.parse(await fs.readFile(globalHooksPath, 'utf-8'));
+      expect(cleanedProjectHooks.hooks).toBeUndefined();
+      expect(cleanedGlobalHooks.hooks).toBeUndefined();
+      await expect(fs.access(path.join(tmpDir, '.trae-cn', 'hooks.json'))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+    });
+
+    it('leaves invalid Trae hooks byte-for-byte unchanged', async () => {
+      const platform = PLATFORMS.find((candidate) => candidate.id === 'trae')!;
+      const hooksPath = path.join(tmpDir, '.trae', 'hooks.json');
+      const invalidHooks = '{\r\n  "hooks": {\r\n';
+      await fs.mkdir(path.dirname(hooksPath), { recursive: true });
+      await fs.writeFile(hooksPath, invalidHooks, 'utf-8');
+
+      const result = await installCometHooksForPlatform(tmpDir, platform, 'project');
+
+      expect(result.status).toBe('failed');
+      expect(result.reason).toContain('Invalid Trae settings');
+      await expect(fs.readFile(hooksPath, 'utf-8')).resolves.toBe(invalidHooks);
+    });
 
     it('does not add a global CodeBuddy Hook or change unrelated user config', async () => {
       const platform = PLATFORMS.find((candidate) => candidate.id === 'codebuddy')!;

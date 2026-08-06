@@ -1006,6 +1006,7 @@ ${content}`;
  *   'windsurf' — hooks.json with pre_write_code array
  *   'copilot' — hooks/*.json with preToolUse
  *   'kiro' — hooks/*.kiro.hook JSON files
+ *   'trae' — hooks.json with version and PreToolUse grouped command hooks
  */
 async function installCometHooksForPlatform(
   baseDir: string,
@@ -1023,7 +1024,7 @@ async function installCometHooksForPlatform(
     };
   }
 
-  if (scope === 'global') {
+  if (scope === 'global' && platform.hookFormat !== 'trae') {
     return {
       status: 'skipped',
       reason: 'blocking Hooks are project-scoped',
@@ -1114,6 +1115,15 @@ async function installCometHooksForPlatform(
           platformId: platform.id,
           scope,
         });
+      case 'trae':
+        return await installTraeHooks(
+          baseDir,
+          platformBase,
+          skillsDir,
+          hooksConfig,
+          platform.name,
+          { platformId: platform.id, scope },
+        );
       default:
         return { status: 'failed', reason: `unsupported hook format: ${hookFormat}` };
     }
@@ -1537,6 +1547,53 @@ async function installWindsurfHooks(
   merged.push(...entries);
 
   hooksFile.hooks = { ...existingHooks, pre_write_code: merged };
+  await ensureDir(path.dirname(hooksPath));
+  await writeFile(hooksPath, JSON.stringify(hooksFile, null, 2) + '\n', 'utf-8');
+  return { status: 'installed' };
+}
+
+/**
+ * Trae format:
+ * Writes to hooks.json with { version: 1, hooks: { PreToolUse: [{ matcher, hooks: [{ type, command, timeout }] }] } }
+ */
+async function installTraeHooks(
+  baseDir: string,
+  platformBase: string,
+  skillsDir: string,
+  hooksConfig: Record<string, HookConfig>,
+  platformName: string,
+  context: HookCommandContext,
+): Promise<HookInstallResult> {
+  const hooksPath = path.join(platformBase, 'hooks.json');
+  const matcherGroups: Record<
+    string,
+    Array<{ type: string; command: string; timeout: number }>
+  > = {};
+
+  for (const [scriptRelPath, config] of Object.entries(hooksConfig)) {
+    matcherGroups[config.matcher] ??= [];
+    matcherGroups[config.matcher].push({
+      type: 'command',
+      command: buildHookCommand(baseDir, skillsDir, scriptRelPath, context),
+      timeout: 30,
+    });
+  }
+
+  const preToolUseEntries = Object.entries(matcherGroups).map(([matcher, hooks]) => ({
+    matcher,
+    hooks,
+  }));
+  const hooksFile = await readSettingsJsonObject(hooksPath, platformName);
+  const existingHooks = (hooksFile.hooks as Record<string, unknown>) ?? {};
+  const existingPreToolUse = asHookGroup(existingHooks.PreToolUse);
+  const merged = mergeHookGroups(
+    existingPreToolUse,
+    preToolUseEntries,
+    managedHookScriptPaths(hooksConfig),
+  );
+
+  hooksFile.version = hooksFile.version ?? 1;
+  hooksFile.hooks = { ...existingHooks, PreToolUse: merged };
   await ensureDir(path.dirname(hooksPath));
   await writeFile(hooksPath, JSON.stringify(hooksFile, null, 2) + '\n', 'utf-8');
   return { status: 'installed' };

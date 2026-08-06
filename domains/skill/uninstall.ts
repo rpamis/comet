@@ -1047,6 +1047,8 @@ async function removeCometHooksForPlatform(
         return await removeGeminiHooks(platformBase, scriptRelPaths);
       case 'windsurf':
         return await removeWindsurfHooks(platformBase, scriptRelPaths);
+      case 'trae':
+        return await removeTraeHooks(platformBase, scriptRelPaths);
       case 'copilot':
         return await removeCopilotHooks(platformBase, scriptRelPaths);
       case 'kiro':
@@ -1065,7 +1067,6 @@ async function removeQwenStyleHooks(
 ): Promise<RemovalResult> {
   const settingsPath = path.join(platformBase, 'settings.json');
   if (!(await fileExists(settingsPath))) return { removed: 0, failed: 0 };
-  let removed = 0;
   const readResult = await readJsonObjectFile(settingsPath);
   if (readResult.status === 'missing') return { removed: 0, failed: 0 };
   if (readResult.status === 'error') return { removed: 0, failed: 1 };
@@ -1081,6 +1082,7 @@ async function removeQwenStyleHooks(
     return { removed: 0, failed: 0 };
   }
 
+  let removed = 0;
   const filtered = existingPreToolUse.flatMap((group) => {
     if (!Array.isArray(group.hooks)) return [group];
 
@@ -1117,7 +1119,6 @@ async function removeGeminiHooks(
 ): Promise<RemovalResult> {
   const settingsPath = path.join(platformBase, 'settings.json');
   if (!(await fileExists(settingsPath))) return { removed: 0, failed: 0 };
-  let removed = 0;
   const readResult = await readJsonObjectFile(settingsPath);
   if (readResult.status === 'missing') return { removed: 0, failed: 0 };
   if (readResult.status === 'error') return { removed: 0, failed: 1 };
@@ -1133,21 +1134,9 @@ async function removeGeminiHooks(
     return { removed: 0, failed: 0 };
   }
 
-  const filtered = existingBeforeTool.flatMap((group) => {
-    if (!Array.isArray(group.hooks)) return [group];
-
-    const hooksBefore = (group.hooks as Array<Record<string, unknown>>).length;
-    const hooks = (group.hooks as Array<Record<string, unknown>>).filter(
-      (hook) => !isManagedHookCommand(hook.command, scriptRelPaths),
-    );
-    removed += hooksBefore - hooks.length;
-
-    const hasUnknownMetadata = Object.keys(group).some(
-      (key) => key !== 'matcher' && key !== 'hooks',
-    );
-    if (hooks.length === 0) return hasUnknownMetadata ? [{ ...group, hooks: [] }] : [];
-    return [{ ...group, hooks }];
-  });
+  const result = removeManagedGroupedHooks(existingBeforeTool, scriptRelPaths);
+  const removed = result.removed;
+  const filtered = result.groups;
 
   if (filtered.length === 0) {
     delete existingHooks.BeforeTool;
@@ -1163,13 +1152,36 @@ async function removeGeminiHooks(
   return { removed, failed: 0 };
 }
 
+function removeManagedGroupedHooks(
+  groups: Array<Record<string, unknown>>,
+  scriptRelPaths: string[],
+): { groups: Array<Record<string, unknown>>; removed: number } {
+  let removed = 0;
+  const filtered = groups.flatMap((group) => {
+    if (!Array.isArray(group.hooks)) return [group];
+
+    const hooksBefore = (group.hooks as Array<Record<string, unknown>>).length;
+    const hooks = (group.hooks as Array<Record<string, unknown>>).filter(
+      (hook) => !isManagedHookCommand(hook.command, scriptRelPaths),
+    );
+    removed += hooksBefore - hooks.length;
+
+    const hasUnknownMetadata = Object.keys(group).some(
+      (key) => key !== 'matcher' && key !== 'hooks',
+    );
+    if (hooks.length === 0) return hasUnknownMetadata ? [{ ...group, hooks: [] }] : [];
+    return [{ ...group, hooks }];
+  });
+
+  return { groups: filtered, removed };
+}
+
 async function removeWindsurfHooks(
   platformBase: string,
   scriptRelPaths: string[],
 ): Promise<RemovalResult> {
   const hooksPath = path.join(platformBase, 'hooks.json');
   if (!(await fileExists(hooksPath))) return { removed: 0, failed: 0 };
-  let removed = 0;
   const readResult = await readJsonObjectFile(hooksPath);
   if (readResult.status === 'missing') return { removed: 0, failed: 0 };
   if (readResult.status === 'error') return { removed: 0, failed: 1 };
@@ -1187,6 +1199,7 @@ async function removeWindsurfHooks(
     return { removed: 0, failed: 0 };
   }
 
+  let removed = 0;
   const filtered = existingPreWrite.filter((entry) => {
     if (isManagedHookCommand(entry.command, scriptRelPaths)) {
       removed++;
@@ -1199,6 +1212,45 @@ async function removeWindsurfHooks(
     delete existingHooks.pre_write_code;
   } else {
     existingHooks.pre_write_code = filtered;
+  }
+
+  if (Object.keys(existingHooks).length === 0) {
+    delete hooksFile.hooks;
+  }
+
+  await writeFile(hooksPath, JSON.stringify(hooksFile, null, 2) + '\n', 'utf-8');
+  return { removed, failed: 0 };
+}
+
+async function removeTraeHooks(
+  platformBase: string,
+  scriptRelPaths: string[],
+): Promise<RemovalResult> {
+  const hooksPath = path.join(platformBase, 'hooks.json');
+  if (!(await fileExists(hooksPath))) return { removed: 0, failed: 0 };
+  const readResult = await readJsonObjectFile(hooksPath);
+  if (readResult.status === 'missing') return { removed: 0, failed: 0 };
+  if (readResult.status === 'error') return { removed: 0, failed: 1 };
+  const hooksFile = readResult.value;
+
+  const existingHooks = hooksFile.hooks as Record<string, unknown> | undefined;
+  if (!existingHooks) {
+    return { removed: 0, failed: 0 };
+  }
+
+  const existingPreToolUse = existingHooks.PreToolUse as Array<Record<string, unknown>> | undefined;
+  if (!existingPreToolUse || !Array.isArray(existingPreToolUse)) {
+    return { removed: 0, failed: 0 };
+  }
+
+  const result = removeManagedGroupedHooks(existingPreToolUse, scriptRelPaths);
+  const removed = result.removed;
+  const filtered = result.groups;
+
+  if (filtered.length === 0) {
+    delete existingHooks.PreToolUse;
+  } else {
+    existingHooks.PreToolUse = filtered;
   }
 
   if (Object.keys(existingHooks).length === 0) {

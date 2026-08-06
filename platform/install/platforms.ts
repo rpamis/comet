@@ -15,6 +15,8 @@ export interface Platform {
   legacySkillsDirs?: string[];
   /** Platform configuration and hook root when it differs from the Skill root. */
   configDir?: string;
+  /** Global platform configuration and hook root when it differs from the global Skill root. */
+  globalConfigDir?: string;
   detectionPaths?: string[];
   openspecToolId: string;
   /** OpenSpec's generated tool root when it differs from Comet's canonical Skill root. */
@@ -36,7 +38,8 @@ export interface Platform {
     | 'qwen'
     | 'kiro'
     | 'qoder'
-    | 'codebuddy';
+    | 'codebuddy'
+    | 'trae';
   /** Hook config filename relative to the platform config root when it differs from the format default. */
   hookConfigFile?: string;
   /** Historical hook config filenames checked during migration and uninstall. */
@@ -63,6 +66,9 @@ export function getPlatformSkillsDirs(platform: Platform, scope: InstallScope): 
 }
 
 export function getPlatformConfigDir(platform: Platform, scope: InstallScope): string {
+  if (scope === 'global' && platform.globalConfigDir) {
+    return platform.globalConfigDir;
+  }
   return platform.configDir ?? getPlatformSkillsDir(platform, scope);
 }
 
@@ -306,17 +312,23 @@ export const PLATFORMS: Platform[] = [
     openspecToolId: 'trae',
     rulesDir: 'rules',
     rulesFormat: 'md',
+    supportsHooks: true,
+    hookFormat: 'trae',
   },
   {
     id: 'trae-cn',
     name: 'Trae CN',
     skillsDir: '.trae-cn',
     globalSkillsDir: '.trae-cn',
+    configDir: '.trae',
+    globalConfigDir: '.trae-cn',
     // OpenSpec exposes Trae as one tool id; keep Comet's CN-specific install
     // directories but reuse the supported OpenSpec Trae integration.
     openspecToolId: 'trae',
     rulesDir: 'rules',
     rulesFormat: 'md',
+    supportsHooks: true,
+    hookFormat: 'trae',
   },
   {
     id: 'zcode',

@@ -25,9 +25,10 @@ describe('packaged Hook Router worktree isolation', () => {
   let secondary: string;
 
   beforeEach(async () => {
-    primary = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-router-runtime-primary-'));
+    const tmpRoot = await fs.realpath(os.tmpdir());
+    primary = await fs.mkdtemp(path.join(tmpRoot, 'comet-router-runtime-primary-'));
     secondary = path.join(
-      os.tmpdir(),
+      tmpRoot,
       `comet-router-runtime-secondary-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     const git = (...args: string[]) =>
@@ -35,6 +36,7 @@ describe('packaged Hook Router worktree isolation', () => {
     expect(git('init', '-b', 'master').status).toBe(0);
     expect(git('config', 'user.email', 'router@example.com').status).toBe(0);
     expect(git('config', 'user.name', 'Router Test').status).toBe(0);
+    expect(git('config', 'commit.gpgsign', 'false').status).toBe(0);
     await fs.writeFile(path.join(primary, 'README.md'), '# worktree\n');
     expect(git('add', 'README.md').status).toBe(0);
     expect(git('commit', '-m', 'initial').status).toBe(0);
@@ -124,4 +126,46 @@ describe('packaged Hook Router worktree isolation', () => {
     expect(result.stderr).toContain('raw-patch-shape');
     expect(result.stderr).toContain('only allowed in build');
   });
+
+  it.each(['trae', 'trae-cn'] as const)(
+    'enforces Native Shape for %s write payloads through the packaged router',
+    async (platform) => {
+      await configureChange(primary, `${platform}-shape`, 'shape');
+      const payload = JSON.stringify({
+        tool_name: 'Write',
+        tool_input: { file_path: `src/${platform}.ts` },
+      });
+
+      const result = spawnSync(
+        process.execPath,
+        [router, '--platform', platform, '--project-root', primary],
+        { cwd: primary, input: payload, encoding: 'utf8', timeout: 20_000 },
+      );
+
+      expect(result.status, result.stderr).toBe(2);
+      expect(result.stderr).toContain(`${platform}-shape`);
+      expect(result.stderr).toContain('only allowed in build');
+    },
+  );
+
+  it.each(['trae', 'trae-cn'] as const)(
+    'allows %s write payloads through the packaged router during Native Build',
+    async (platform) => {
+      await configureChange(primary, `${platform}-build`, 'build');
+      const payload = JSON.stringify({
+        tool_name: 'Write',
+        tool_input: { file_path: `src/${platform}.ts` },
+      });
+
+      const result = spawnSync(
+        process.execPath,
+        [router, '--platform', platform, '--project-root', primary],
+        { cwd: primary, input: payload, encoding: 'utf8', timeout: 20_000 },
+      );
+
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toBe('');
+      expect(result.stderr).toBe('');
+    },
+  );
 });

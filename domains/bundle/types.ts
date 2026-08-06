@@ -334,7 +334,8 @@ export interface PlatformInstallFile {
           | 'qwen'
           | 'kiro'
           | 'qoder'
-          | 'codebuddy';
+          | 'codebuddy'
+          | 'trae';
         event: NormalizedHook['event'];
         matcher?: string;
         command: string;

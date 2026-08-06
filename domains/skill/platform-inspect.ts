@@ -117,6 +117,11 @@ function countGroupedHookMatches(
   groupName: string,
   expected: ExpectedHookDescriptor,
   expectedMatcher: (matcher: string) => string = (matcher) => matcher,
+  isExpectedHandler: (
+    handler: Record<string, unknown>,
+    expected: ExpectedHookDescriptor,
+  ) => boolean = (handler, descriptor) =>
+    handler.type === 'command' && handler.command === descriptor.command,
 ): number {
   const hooks = config.hooks;
   if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) return 0;
@@ -135,8 +140,7 @@ function countGroupedHookMatches(
           handler !== null &&
           typeof handler === 'object' &&
           !Array.isArray(handler) &&
-          (handler as Record<string, unknown>).type === 'command' &&
-          (handler as Record<string, unknown>).command === expected.command,
+          isExpectedHandler(handler as Record<string, unknown>, expected),
       ).length
     );
   }, 0);
@@ -438,6 +442,29 @@ export async function inspectCometHooksForPlatform(
         expectedHooks,
         (config) => collectCommandArray(config, 'pre_write_code'),
         countWindsurfHookMatches,
+      );
+      break;
+    case 'trae':
+      inspection = await inspectSingleHookJson(
+        path.join(platformBase, 'hooks.json'),
+        expectedHooks,
+        (config) => collectGroupedCommands(config, 'PreToolUse'),
+        (config, expected) =>
+          countGroupedHookMatches(
+            config,
+            'PreToolUse',
+            expected,
+            undefined,
+            (handler, descriptor) => {
+              const timeout = handler.timeout;
+              return (
+                handler.type === 'command' &&
+                handler.command === descriptor.command &&
+                typeof timeout === 'number' &&
+                timeout > 0
+              );
+            },
+          ),
       );
       break;
     case 'copilot':

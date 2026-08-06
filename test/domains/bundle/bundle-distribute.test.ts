@@ -523,6 +523,39 @@ describe('Bundle distribution', () => {
     );
   });
 
+  it('writes Trae hooks with version and timeout after executable confirmation', async () => {
+    await makeReady({ name: 'confirmed-trae-hook-bundle', requiresHooks: true });
+    const settingsPath = path.join(projectRoot, '.trae', 'hooks.json');
+
+    const result = await distributeBundle({
+      projectRoot,
+      name: 'confirmed-trae-hook-bundle',
+      platforms: ['trae'],
+      scope: 'project',
+      confirmedExecutables: true,
+    });
+    const settings = JSON.parse(await fs.readFile(settingsPath, 'utf8')) as {
+      version: number;
+      hooks: {
+        PreToolUse: Array<{
+          matcher: string;
+          hooks: Array<{ type: string; command: string; timeout: number }>;
+        }>;
+      };
+    };
+
+    expect(result.platforms[0].written).toContain(settingsPath);
+    expect(settings.version).toBe(1);
+    expect(settings.hooks.PreToolUse[0].matcher).toBe('Write|Edit');
+    expect(settings.hooks.PreToolUse[0].hooks).toEqual([
+      expect.objectContaining({
+        type: 'command',
+        command: expect.stringContaining('verify.mjs'),
+        timeout: 30,
+      }),
+    ]);
+  });
+
   it('skips existing target files by default and overwrites only when requested', async () => {
     await makeReady({ name: 'overwrite-bundle' });
     const skillPath = path.join(projectRoot, '.claude', 'skills', 'entry', 'SKILL.md');

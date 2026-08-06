@@ -118,6 +118,7 @@ function hookDestination(target: BundlePlatformTarget, hookId: string): string |
     case 'gemini':
       return path.join(platformRoot, 'settings.json');
     case 'windsurf':
+    case 'trae':
       return path.join(platformRoot, 'hooks.json');
     case 'copilot':
       return path.join(platformRoot, 'hooks', `${hookId}.json`);
@@ -287,6 +288,18 @@ async function applyHookInstallFile(file: PlatformInstallFile): Promise<void> {
         commandHook,
         operation.command,
       );
+      settings.hooks = hooks;
+      await writeFile(file.destination, JSON.stringify(settings, null, 2) + '\n');
+      return;
+    }
+    case 'trae': {
+      hooks.PreToolUse = mergeCommandHookGroup(
+        asHookGroups(hooks.PreToolUse),
+        matcher,
+        { ...commandHook, timeout: 30 },
+        operation.command,
+      );
+      settings.version = settings.version ?? 1;
       settings.hooks = hooks;
       await writeFile(file.destination, JSON.stringify(settings, null, 2) + '\n');
       return;
