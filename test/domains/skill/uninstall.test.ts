@@ -54,6 +54,8 @@ describe('removeCometHooksForPlatform', () => {
     { id: 'qwen', configPath: ['.qwen', 'settings.json'] },
     { id: 'gemini', configPath: ['.gemini', 'settings.json'] },
     { id: 'windsurf', configPath: ['.windsurf', 'hooks.json'] },
+    { id: 'trae', configPath: ['.trae', 'hooks.json'] },
+    { id: 'trae-cn', configPath: ['.trae', 'hooks.json'] },
   ])('fails closed when canonical $id Hook JSON is malformed', async ({ id, configPath }) => {
     const platform = PLATFORMS.find((candidate) => candidate.id === id)!;
     const settingsPath = path.join(tmpDir, ...configPath);
@@ -72,6 +74,8 @@ describe('removeCometHooksForPlatform', () => {
     { id: 'qwen', configPath: ['.qwen', 'settings.json'] },
     { id: 'gemini', configPath: ['.gemini', 'settings.json'] },
     { id: 'windsurf', configPath: ['.windsurf', 'hooks.json'] },
+    { id: 'trae', configPath: ['.trae', 'hooks.json'] },
+    { id: 'trae-cn', configPath: ['.trae', 'hooks.json'] },
   ])('fails closed when canonical $id Hook JSON is an array', async ({ id, configPath }) => {
     const platform = PLATFORMS.find((candidate) => candidate.id === id)!;
     const settingsPath = path.join(tmpDir, ...configPath);
@@ -135,6 +139,16 @@ describe('removeCometHooksForPlatform', () => {
       id: 'windsurf',
       accessPath: ['.windsurf', 'hooks.json'],
       snapshotPath: ['.windsurf', 'hooks.json'],
+    },
+    {
+      id: 'trae',
+      accessPath: ['.trae', 'hooks.json'],
+      snapshotPath: ['.trae', 'hooks.json'],
+    },
+    {
+      id: 'trae-cn',
+      accessPath: ['.trae', 'hooks.json'],
+      snapshotPath: ['.trae', 'hooks.json'],
     },
     {
       id: 'kiro',
@@ -216,4 +230,38 @@ describe('removeCometHooksForPlatform', () => {
     });
     await expect(fs.readFile(hooksPath, 'utf8')).resolves.toBe(content);
   });
+
+  it.each(['trae', 'trae-cn'])(
+    'removes managed %s hooks while preserving user handlers and events',
+    async (id) => {
+      const platform = PLATFORMS.find((candidate) => candidate.id === id)!;
+      const hooksPath = path.join(tmpDir, '.trae', 'hooks.json');
+      await installCometHooksForPlatform(tmpDir, platform, 'project');
+      const hooks = JSON.parse(await fs.readFile(hooksPath, 'utf8'));
+      hooks.userSetting = 'keep';
+      hooks.hooks.PostToolUse = [
+        { matcher: 'Read', hooks: [{ type: 'command', command: 'echo post' }] },
+      ];
+      hooks.hooks.PreToolUse.unshift({
+        matcher: 'Write|Edit',
+        hooks: [{ type: 'command', command: 'echo user-write-check', timeout: 5 }],
+      });
+      await fs.writeFile(hooksPath, `${JSON.stringify(hooks, null, 2)}\n`, 'utf8');
+
+      await expect(removeCometHooksForPlatform(tmpDir, platform, 'project')).resolves.toEqual({
+        removed: 1,
+        failed: 0,
+      });
+
+      const updated = JSON.parse(await fs.readFile(hooksPath, 'utf8'));
+      expect(updated.userSetting).toBe('keep');
+      expect(updated.hooks.PostToolUse).toEqual(hooks.hooks.PostToolUse);
+      expect(updated.hooks.PreToolUse).toEqual([
+        {
+          matcher: 'Write|Edit',
+          hooks: [{ type: 'command', command: 'echo user-write-check', timeout: 5 }],
+        },
+      ]);
+    },
+  );
 });

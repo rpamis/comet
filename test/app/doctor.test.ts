@@ -245,6 +245,7 @@ describe('doctor command', () => {
       expect(git('init', '-b', 'master').status).toBe(0);
       expect(git('config', 'user.email', 'doctor@example.com').status).toBe(0);
       expect(git('config', 'user.name', 'Doctor Test').status).toBe(0);
+      expect(git('config', 'commit.gpgsign', 'false').status).toBe(0);
       await fs.writeFile(path.join(tmpDir, 'README.md'), '# test\n');
       expect(git('add', 'README.md').status).toBe(0);
       expect(git('commit', '-m', 'test').status).toBe(0);
@@ -328,6 +329,7 @@ describe('doctor command', () => {
       expect(git('init', '-b', 'master').status).toBe(0);
       expect(git('config', 'user.email', 'doctor@example.com').status).toBe(0);
       expect(git('config', 'user.name', 'Doctor Test').status).toBe(0);
+      expect(git('config', 'commit.gpgsign', 'false').status).toBe(0);
       await fs.writeFile(path.join(tmpDir, 'README.md'), '# test\n');
       await writeProjectConfig(tmpDir, defaultProjectConfig('docs'));
       expect(git('add', 'README.md', '.comet/config.yaml').status).toBe(0);
@@ -399,6 +401,7 @@ describe('doctor command', () => {
       expect(git('init', '-b', 'master').status).toBe(0);
       expect(git('config', 'user.email', 'doctor@example.com').status).toBe(0);
       expect(git('config', 'user.name', 'Doctor Test').status).toBe(0);
+      expect(git('config', 'commit.gpgsign', 'false').status).toBe(0);
       await fs.writeFile(path.join(tmpDir, 'README.md'), '# test\n');
       await writeProjectConfig(tmpDir, defaultProjectConfig('docs'));
       expect(git('add', 'README.md', '.comet/config.yaml').status).toBe(0);
