@@ -1754,7 +1754,7 @@ function managedConfigFields(language: string = 'en'): ManagedConfigFields {
     },
     {
       key: 'clarification_mode',
-      def: 'sequential',
+      def: 'batch',
       comment: projectConfigComment('native.clarification_mode', commentLanguage),
     },
     {

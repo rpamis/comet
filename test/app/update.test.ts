@@ -2340,7 +2340,7 @@ describe('update command helpers', () => {
       native: {
         artifact_root: 'docs',
         language: 'en',
-        clarification_mode: 'sequential',
+        clarification_mode: 'batch',
         archive_confirmation: 'automatic',
         max_verify_failures: 5,
         snapshot: {
@@ -2914,7 +2914,7 @@ describe('update command helpers', () => {
     expect(updatedConfig).toContain('ambient_resume: true');
     expect(updatedConfig).toContain('keep: true');
     expect(updatedConfig).toContain('artifact_root: docs');
-    expect(updatedConfig).toContain('clarification_mode: sequential');
+    expect(updatedConfig).toContain('clarification_mode: batch');
     expect(updatedConfig).not.toContain('classic:');
     expect(updatedConfig).toContain('language: legacy');
     await expect(

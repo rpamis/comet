@@ -345,7 +345,7 @@ describe('comet init E2E', () => {
       const projectConfig = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8');
       expect(projectConfig).toContain('default_workflow: native');
       expect(projectConfig).toContain('artifact_root: docs');
-      expect(projectConfig).toContain('clarification_mode: sequential');
+      expect(projectConfig).toContain('clarification_mode: batch');
       expect(mockedExecFileSync.mock.calls.some((call) => String(call[0]) === 'openspec')).toBe(
         false,
       );
@@ -478,7 +478,7 @@ describe('comet init E2E', () => {
     expect(config).toContain('default_workflow: native');
     expect(config).toContain('- native');
     expect(config).toContain('- classic');
-    expect(config).toContain('clarification_mode: sequential');
+    expect(config).toContain('clarification_mode: batch');
     await expect(fs.stat(path.join(tmpDir, 'docs', 'comet', 'changes'))).resolves.toBeDefined();
     await expect(fs.stat(path.join(tmpDir, 'docs', 'superpowers', 'specs'))).resolves.toBeDefined();
     await expect(

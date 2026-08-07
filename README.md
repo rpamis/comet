@@ -543,7 +543,7 @@ evidence, and recovery data under `docs/comet/` by default.
 | Verify    | Check stable acceptance IDs and write executions, skipped checks, risks, and evidence to `verification.md` | Pass advances to Archive; failure returns to Build through bounded repair |
 | Archive   | Run read-only preflight, check canonical-spec concurrency, then sync specs and move the complete change | The confirmed preflight is still current and the archive transaction commits |
 
-Shape supports `clarification_mode: sequential` and `clarification_mode: batch`. Sequential asks one upstream question per round; Batch asks every currently answerable question whose prerequisites are settled. In both modes, the agent investigates discoverable facts and writes user decisions back into the brief and complete target specs.
+Shape supports `clarification_mode: sequential` and `clarification_mode: batch`. Sequential asks one upstream question per round; Batch asks every currently answerable question whose prerequisites are settled and is the default for new projects. In both modes, the agent investigates discoverable facts and writes user decisions back into the brief and complete target specs.
 
 </details>
 

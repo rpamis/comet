@@ -10,6 +10,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Native workspace lifecycle**: Native now recommends workspace choices, lets `new` prepare the selected branch or worktree, discovers bound changes across registered worktrees, and lets Archive perform the authorized merge, push, pull-request, or keep action with recoverable results.
 - **Native CLI guidance**: Public Native commands now provide command-specific help, complete structured continuation inputs, workspace identity, and exact pagination actions, while the bilingual Skills load less duplicated command and Runtime prose.
 - **Native snapshot defaults**: New and updated Native configurations now exclude common IDE metadata, dependency trees, caches, test output, and compiled artifacts from baseline snapshots while preserving custom exclusions.
+- **Native clarification default**: New Native projects now default to Batch clarification (every currently answerable question per round) instead of Sequential; existing projects keep their configured mode.
 
 ### Fixed
 

@@ -28,7 +28,7 @@ describe('Native project configuration', () => {
 
   it('builds the shared default project config with docs as the Native artifact root', () => {
     expect(defaultProjectConfig().native.artifact_root).toBe('docs');
-    expect(defaultProjectConfig().native.clarification_mode).toBe('sequential');
+    expect(defaultProjectConfig().native.clarification_mode).toBe('batch');
     expect(defaultProjectConfig().native.archive_confirmation).toBe('automatic');
     expect(defaultProjectConfig().native.max_verify_failures).toBe(5);
     expect(defaultProjectConfig().native.snapshot).toEqual({
@@ -83,7 +83,7 @@ describe('Native project configuration', () => {
       native: {
         artifact_root: 'docs',
         language: 'en',
-        clarification_mode: 'sequential',
+        clarification_mode: 'batch',
         archive_confirmation: 'automatic',
         max_verify_failures: 5,
         snapshot: {
@@ -97,13 +97,15 @@ describe('Native project configuration', () => {
     });
     const source = await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8');
     expect(source).toContain('# Enables automatic recovery');
-    expect(source).toContain('# Controls whether Native asks one clarification at a time');
+    expect(source).toContain(
+      '# Controls how Native asks clarifying questions: batch asks every currently answerable question per round',
+    );
     expect(source).toContain('# Controls whether Native archives automatically');
     expect(source).toContain('# Maximum failed Verify outcomes');
     expect(source).toContain('# Selects the project-relative paths included in Native snapshots');
     expect(source).toContain('# Bounds the total file content hashed by one snapshot');
     expect(source).toContain('ambient_resume: true');
-    expect(source).toContain('clarification_mode: sequential');
+    expect(source).toContain('clarification_mode: batch');
     expect(source).toContain('archive_confirmation: automatic');
     expect(source).toContain('max_verify_failures: 5');
     expect(source).toContain('include:');
@@ -229,7 +231,7 @@ describe('Native project configuration', () => {
     );
 
     expect((await readProjectConfig(projectRoot))?.native.language).toBe('en');
-    expect((await readProjectConfig(projectRoot))?.native.clarification_mode).toBe('sequential');
+    expect((await readProjectConfig(projectRoot))?.native.clarification_mode).toBe('batch');
     expect((await readProjectConfig(projectRoot))?.native.archive_confirmation).toBe('automatic');
     expect((await readProjectConfig(projectRoot))?.native.max_verify_failures).toBe(5);
     expect((await readProjectConfig(projectRoot))?.native.snapshot).toEqual(
@@ -238,16 +240,16 @@ describe('Native project configuration', () => {
     expect((await readProjectConfig(projectRoot))?.ambient_resume).toBe(true);
   });
 
-  it('round-trips the batch clarification mode', async () => {
+  it('round-trips the sequential clarification mode', async () => {
     const config = defaultProjectConfig('docs');
-    config.native.clarification_mode = 'batch';
+    config.native.clarification_mode = 'sequential';
 
     await writeProjectConfig(projectRoot, config);
 
-    expect((await readProjectConfig(projectRoot))?.native.clarification_mode).toBe('batch');
+    expect((await readProjectConfig(projectRoot))?.native.clarification_mode).toBe('sequential');
     await expect(
       fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8'),
-    ).resolves.toContain('clarification_mode: batch');
+    ).resolves.toContain('clarification_mode: sequential');
   });
 
   it('round-trips required Native archive confirmation', async () => {
@@ -294,7 +296,7 @@ describe('Native project configuration', () => {
     const source = await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8');
     expect(source).toContain('# 是否启用只读的环境感知恢复探针');
     expect(source).toContain('# Native 产物的存放根目录');
-    expect(source).toContain('# Native 每轮询问一个问题');
+    expect(source).toContain('# Native 提问澄清问题的方式');
     expect(source).toContain('# Native 归档检查成功后自动归档');
     expect(source).toContain('# 同一份已确认 contract 最多允许的 Verify 失败次数');
     expect(source).toContain('# Native 快照纳入的项目相对路径');

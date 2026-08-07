@@ -170,7 +170,7 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
     'native.language':
       '# Artifact language used by Native workflow documents.\n# language: en | zh-CN',
     'native.clarification_mode':
-      '# Controls whether Native asks one clarification at a time or every currently answerable question in a round.\n# clarification_mode: sequential | batch',
+      '# Controls how Native asks clarifying questions: batch asks every currently answerable question per round (default), sequential asks one at a time.\n# clarification_mode: batch | sequential',
     'native.archive_confirmation':
       '# Controls whether Native archives automatically after a successful preview or waits for explicit user confirmation.\n# archive_confirmation: automatic | required',
     'native.max_verify_failures':
@@ -209,7 +209,7 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
     'native.artifact_root': '# Native 产物的存放根目录，包括规格、change 和运行时数据。',
     'native.language': '# Native 工作流文档使用的产物语言。\n# 可选值：en | zh-CN',
     'native.clarification_mode':
-      '# Native 每轮询问一个问题，或一次提出当前所有可回答的问题。\n# 可选值：sequential | batch',
+      '# Native 提问澄清问题的方式：batch 每轮一次提出当前所有可回答的问题（默认），sequential 每轮只问一个。\n# 可选值：batch | sequential',
     'native.archive_confirmation':
       '# Native 归档检查成功后自动归档，或等待用户明确确认。\n# 可选值：automatic | required',
     'native.max_verify_failures':
@@ -529,7 +529,7 @@ function normalizeWorkflowNativeProjectConfig(
   if (typeof artifactRoot !== 'string') {
     throw new Error('native.artifact_root must be a string');
   }
-  const clarificationMode = native.clarification_mode ?? 'sequential';
+  const clarificationMode = native.clarification_mode ?? 'batch';
   if (clarificationMode !== 'sequential' && clarificationMode !== 'batch') {
     throw new Error('native.clarification_mode must be sequential or batch');
   }
@@ -806,7 +806,7 @@ export function defaultWorkflowProjectConfig(
     native: {
       artifact_root: normalizeWorkflowArtifactRoot(artifactRoot),
       language,
-      clarification_mode: 'sequential',
+      clarification_mode: 'batch',
       archive_confirmation: 'automatic',
       max_verify_failures: DEFAULT_WORKFLOW_NATIVE_MAX_VERIFY_FAILURES,
       snapshot: {
@@ -1734,7 +1734,7 @@ function managedWorkflowConfigFields(source) {
     }
     nativeArtifactRoot = normalizeWorkflowArtifactRoot(native.artifact_root);
     workflowConfigLanguage(native.language, 'en', 'native.language');
-    const clarificationMode = native.clarification_mode ?? 'sequential';
+    const clarificationMode = native.clarification_mode ?? 'batch';
     if (clarificationMode !== 'sequential' && clarificationMode !== 'batch') {
       throw new Error('native.clarification_mode must be sequential or batch');
     }

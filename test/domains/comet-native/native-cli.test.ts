@@ -1500,6 +1500,12 @@ Pass.
 
   it('enforces shared-understanding confirmation in Sequential and Batch modes', async () => {
     await runNativeCli(['init', '--root', 'docs', ...projectArgs()]);
+    const initialConfig = await readProjectConfig(projectRoot);
+    expect(initialConfig).not.toBeNull();
+    await writeProjectConfig(projectRoot, {
+      ...initialConfig!,
+      native: { ...initialConfig!.native, clarification_mode: 'sequential' },
+    });
     await runNativeCli(['new', 'mode-boundary', ...projectArgs()]);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const changeDir = path.join(paths.changesDir, 'mode-boundary');

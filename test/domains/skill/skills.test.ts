@@ -3545,7 +3545,7 @@ describe('skills', () => {
         native: {
           artifact_root: 'docs',
           language: 'en',
-          clarification_mode: 'sequential',
+          clarification_mode: 'batch',
           archive_confirmation: 'automatic',
           max_verify_failures: 5,
           snapshot: {
