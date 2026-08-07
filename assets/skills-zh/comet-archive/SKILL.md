@@ -1,6 +1,7 @@
 ---
 name: comet-archive
-description: "仅在用户明确调用 /comet-archive，或由 Comet 根 Skill/runtime 路由到 archive 阶段时使用；确认归档、合并 delta spec 并完成分支收尾。"
+description: "Comet Classic 阶段 5 —— 确认归档、合并 delta spec 并完成分支收尾。"
+disable-model-invocation: true
 ---
 
 # Comet 阶段 5：归档（Archive）

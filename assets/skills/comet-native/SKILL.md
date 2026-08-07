@@ -1,6 +1,6 @@
 ---
 name: comet-native
-description: Use when the user explicitly invokes /comet-native, asks to start or resume a Native change, or the entry router selects Native; clarify requirements, read state, and drive Shape → Build → Verify → Archive.
+description: "Comet Native workflow. Use when the user invokes /comet-native, asks to start or resume a Native change, or the entry router selects Native."
 ---
 
 # Comet Native

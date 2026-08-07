@@ -1,6 +1,7 @@
 ---
 name: comet-any
-description: "Use only when explicitly invoked as /comet-any or when the user explicitly wants to customize the /comet-classic five-phase workflow or create/upgrade a workflow Skill managed by Comet Creator. Do not use for general Skill authoring, cleanup, or review."
+description: "Create or upgrade a Comet Classic workflow Skill via Comet Creator. Not for general Skill authoring, cleanup, or review."
+disable-model-invocation: true
 ---
 
 # Comet Any - Skill Creator

@@ -1,6 +1,6 @@
 ---
 name: comet
-description: "当用户明确调用 /comet，或明确要求使用 Comet 但未指定 Native/Classic 时使用；首次使用会按全局默认配置激活项目，之后按项目配置加载一个永久入口。"
+description: "Comet 工作流入口。当用户明确调用 /comet，或明确要求使用 Comet 但未指定 Native/Classic 时使用；解析项目配置并加载唯一入口。"
 ---
 
 # Comet 入口

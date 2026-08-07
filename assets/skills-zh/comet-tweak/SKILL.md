@@ -1,6 +1,7 @@
 ---
 name: comet-tweak
-description: "仅在用户明确调用 /comet-tweak，或由 Comet 根 Skill/runtime 路由到 tweak preset 时使用；处理可收敛为单一 OpenSpec change 的轻量或中等变更。"
+description: "Comet 预设 —— 处理可收敛为单一 OpenSpec change 的轻量或中等变更。"
+disable-model-invocation: true
 ---
 
 # Comet 预设路径：Tweak

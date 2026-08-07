@@ -1,6 +1,7 @@
 ---
 name: comet-verify
-description: "Use only when explicitly invoked as /comet-verify or routed by the root Comet skill/runtime to the verify phase; verify a Comet change, record evidence, and manage repair loops."
+description: "Phase 4 of Comet Classic — verify a change, record evidence, and drive repair loops."
+disable-model-invocation: true
 ---
 
 # Comet Phase 4: Verify

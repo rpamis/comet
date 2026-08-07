@@ -1,6 +1,7 @@
 ---
 name: comet-any
-description: "仅在用户明确调用 /comet-any，或明确要求定制 /comet-classic 五阶段流程、创建或升级由 Comet Creator 管理的 workflow Skill 时使用；不要用于一般 Skill 的编写、整理或评审。"
+description: "通过 Comet Creator 创建或升级 Comet Classic workflow Skill。不用于一般 Skill 的编写、整理或评审。"
+disable-model-invocation: true
 ---
 
 # Comet Any - Skill Creator

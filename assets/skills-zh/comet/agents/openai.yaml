@@ -1,0 +1,3 @@
+interface:
+  display_name: "Comet"
+  short_description: "解析项目配置并加载 Native 或 Classic 入口"

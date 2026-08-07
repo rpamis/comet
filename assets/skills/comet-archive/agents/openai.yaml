@@ -1,0 +1,5 @@
+interface:
+  display_name: "Comet Phase 5: Archive"
+  short_description: "Confirm archive, merge delta specs, finish the branch"
+policy:
+  allow_implicit_invocation: false

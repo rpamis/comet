@@ -122,7 +122,7 @@ describe('skills', () => {
       expect(zhContent).toContain('技能加载后，把用户原始请求完整交给已加载的入口 Skill');
 
       expect(enContent).toContain(
-        'Use when the user explicitly invokes /comet or asks to use Comet without choosing Native or Classic',
+        'Use when the user invokes /comet or asks to use Comet without choosing Native or Classic',
       );
       expect(enContent).toContain(
         'Once this Skill is loaded, treat the `/comet` entry as selected',

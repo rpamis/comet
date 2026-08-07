@@ -1,6 +1,7 @@
 ---
 name: comet-design
-description: "Use only when explicitly invoked as /comet-design or routed by the root Comet skill/runtime to a full workflow design phase; create or recover the deep technical Design Doc."
+description: "Phase 2 of Comet Classic — produce the deep technical Design Doc behind a change."
+disable-model-invocation: true
 ---
 
 # Comet Phase 2: Deep Design (Design)

@@ -1,6 +1,7 @@
 ---
 name: comet-design
-description: "仅在用户明确调用 /comet-design，或由 Comet 根 Skill/runtime 路由到 full workflow 的 design 阶段时使用；创建或恢复深度技术 Design Doc。"
+description: "Comet Classic 阶段 2 —— 为 change 产出深度技术 Design Doc。"
+disable-model-invocation: true
 ---
 
 # Comet 阶段 2：深度设计（Design）

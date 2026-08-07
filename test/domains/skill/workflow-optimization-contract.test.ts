@@ -218,23 +218,11 @@ describe('Comet workflow optimization contracts', () => {
   );
 
   it.each([
-    [
-      '中文',
-      zhSkillRoot,
-      '仅在用户明确调用',
-      '或由 Comet 根 Skill/runtime',
-      '明确要求使用 Comet 但未指定 Native/Classic',
-    ],
-    [
-      'English',
-      skillRoot,
-      'Use only when explicitly invoked',
-      'or routed by the root Comet skill/runtime',
-      'asks to use Comet without choosing Native or Classic',
-    ],
+    ['中文', zhSkillRoot, '明确要求使用 Comet 但未指定 Native/Classic'],
+    ['English', skillRoot, 'asks to use Comet without choosing Native or Classic'],
   ])(
     '%s phase skill descriptions cannot bypass root routing',
-    async (_language, root, explicitMarker, routedMarker, rootTrigger) => {
+    async (_language, root, rootTrigger) => {
       const rootDescription = descriptionOf(await readSkill(root, 'comet'));
 
       expect(rootDescription).toContain('/comet');
@@ -252,12 +240,14 @@ describe('Comet workflow optimization contracts', () => {
       ]) {
         const description = descriptionOf(await readSkill(root, name));
 
-        expect(description, name).toContain(explicitMarker);
-        expect(description, name).toContain(routedMarker);
+        // Phase/preset skills are user-invoked (disable-model-invocation: true) and
+        // must never pose as the root entry: no root trigger phrase, no bare `/comet`.
+        expect(description, name).not.toContain(rootTrigger);
+        expect(description, name).not.toMatch(/(^|[^-])\/comet(?!\w)/u);
       }
 
       const anyDescription = descriptionOf(await readSkill(root, 'comet-any'));
-      expect(anyDescription).toMatch(/不要用于一般 Skill|Do not use for general Skill/u);
+      expect(anyDescription).toMatch(/不用于一般 Skill|Not for general Skill/u);
     },
   );
 

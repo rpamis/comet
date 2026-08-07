@@ -1,6 +1,7 @@
 ---
 name: comet-tweak
-description: "Use only when explicitly invoked as /comet-tweak or routed by the root Comet skill/runtime to the tweak preset; handle a lightweight or medium change that fits one OpenSpec change."
+description: "Comet preset — handle a lightweight or medium change that fits one OpenSpec change."
+disable-model-invocation: true
 ---
 
 # Comet Preset Path: Tweak

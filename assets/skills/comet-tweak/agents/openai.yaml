@@ -1,0 +1,5 @@
+interface:
+  display_name: "Comet Preset: Tweak"
+  short_description: "Handle a lightweight or medium change in one OpenSpec change"
+policy:
+  allow_implicit_invocation: false

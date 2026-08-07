@@ -1,0 +1,5 @@
+interface:
+  display_name: "Comet 阶段 1:Open"
+  short_description: "开启 OpenSpec change 并建立其产物"
+policy:
+  allow_implicit_invocation: false

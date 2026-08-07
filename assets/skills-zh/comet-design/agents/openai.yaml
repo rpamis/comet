@@ -1,0 +1,5 @@
+interface:
+  display_name: "Comet 阶段 2:Design"
+  short_description: "为 change 产出深度技术 Design Doc"
+policy:
+  allow_implicit_invocation: false

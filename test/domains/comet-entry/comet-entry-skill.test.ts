@@ -15,7 +15,7 @@ describe('Chinese Comet entry Skills', () => {
 
     expect(source).toContain('name: comet');
     expect(source).toContain(
-      'description: "当用户明确调用 /comet，或明确要求使用 Comet 但未指定 Native/Classic 时使用；首次使用会按全局默认配置激活项目，之后按项目配置加载一个永久入口。"',
+      'description: "Comet 工作流入口。当用户明确调用 /comet，或明确要求使用 Comet 但未指定 Native/Classic 时使用；解析项目配置并加载唯一入口。"',
     );
     expect(source).not.toContain('存在需要恢复的 active Comet change');
     expect(source).toContain('comet workflow resolve . --activate --json');
@@ -89,7 +89,7 @@ describe('English Comet entry Skills', () => {
 
     expect(source).toContain('name: comet');
     expect(source).toContain(
-      'description: "Use when the user explicitly invokes /comet or asks to use Comet without choosing Native or Classic; activate an unconfigured project from global defaults, then load exactly one permanent entry from project configuration."',
+      'description: "Comet workflow entry. Use when the user invokes /comet or asks to use Comet without choosing Native or Classic; resolve and load exactly one entry from project configuration."',
     );
     expect(source).not.toContain('an active Comet change needs to be resumed');
     expect(source).toContain('comet workflow resolve . --activate --json');

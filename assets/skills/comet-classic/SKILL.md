@@ -1,6 +1,6 @@
 ---
 name: comet-classic
-description: "Use when the user explicitly invokes /comet-classic, asks to start or resume the permanent Comet Classic workflow, or repository evidence identifies one unambiguous active Classic change; route through the intent runtime and .comet.yaml."
+description: "Comet Classic workflow (OpenSpec + Superpowers). Use when the user invokes /comet-classic, asks to start or resume it, or resume-probe returns an unambiguous active Classic change."
 ---
 
 # Comet Classic — OpenSpec + Superpowers Dual-Star Development Workflow

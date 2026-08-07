@@ -1,6 +1,7 @@
 ---
 name: comet-verify
-description: "仅在用户明确调用 /comet-verify，或由 Comet 根 Skill/runtime 路由到 verify 阶段时使用；验证 Comet change、记录证据并处理修复循环。"
+description: "Comet Classic 阶段 4 —— 验证 change、记录证据并驱动修复循环。"
+disable-model-invocation: true
 ---
 
 # Comet 阶段 4：验证（Verify）

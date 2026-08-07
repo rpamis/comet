@@ -1,0 +1,3 @@
+interface:
+  display_name: "Comet"
+  short_description: "Resolve and load the Native or Classic Comet entry"

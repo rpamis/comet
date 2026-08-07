@@ -1,6 +1,6 @@
 ---
 name: comet-classic
-description: "用于用户明确调用 /comet-classic、要求启动或恢复永久 Comet Classic，或仓库中存在可无歧义恢复的 active Classic change；负责通过 intent runtime 和 .comet.yaml 路由阶段。"
+description: "Comet Classic 工作流（OpenSpec + Superpowers）。当用户明确调用 /comet-classic、要求启动或恢复 Comet Classic，或 resume-probe 返回可无歧义恢复的 active Classic change 时使用。"
 ---
 
 # Comet Classic — OpenSpec + Superpowers 双星开发流程

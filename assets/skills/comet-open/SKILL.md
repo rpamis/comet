@@ -1,6 +1,7 @@
 ---
 name: comet-open
-description: "Use only when explicitly invoked as /comet-open or routed by the root Comet skill/runtime to the open phase; create or recover an OpenSpec change and its proposal/design/tasks/.comet.yaml artifacts."
+description: "Phase 1 of Comet Classic — open an OpenSpec change and stand up its proposal/design/tasks/.comet.yaml artifacts."
+disable-model-invocation: true
 ---
 
 # Comet Phase 1: Open

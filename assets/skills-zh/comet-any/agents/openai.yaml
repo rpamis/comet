@@ -1,0 +1,5 @@
+interface:
+  display_name: "Comet Any / Skill Creator"
+  short_description: "创建或升级 Comet Classic workflow Skill"
+policy:
+  allow_implicit_invocation: false

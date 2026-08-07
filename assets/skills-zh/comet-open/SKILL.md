@@ -1,6 +1,7 @@
 ---
 name: comet-open
-description: "仅在用户明确调用 /comet-open，或由 Comet 根 Skill/runtime 路由到 open 阶段时使用；创建或恢复 OpenSpec change，并补齐 proposal/design/tasks/.comet.yaml。"
+description: "Comet Classic 阶段 1 —— 开启 OpenSpec change 并建立 proposal/design/tasks/.comet.yaml 产物。"
+disable-model-invocation: true
 ---
 
 # Comet 阶段 1：开启（Open）

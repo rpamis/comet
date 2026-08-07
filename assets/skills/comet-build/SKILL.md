@@ -1,6 +1,7 @@
 ---
 name: comet-build
-description: "Use only when explicitly invoked as /comet-build or routed by the root Comet skill/runtime to a full workflow build phase; create or recover the implementation plan and execute tasks."
+description: "Phase 3 of Comet Classic — recover or create the implementation plan and execute its tasks."
+disable-model-invocation: true
 ---
 
 # Comet Phase 3: Plan and Build (Build)

@@ -1,6 +1,7 @@
 ---
 name: comet-hotfix
-description: "仅在用户明确调用 /comet-hotfix，或由 Comet 根 Skill/runtime 路由到 hotfix preset 时使用；修复已有行为 bug，不用于普通的未托管 bugfix。"
+description: "Comet 预设 —— 通过 open-build-verify-archive 短流程修复已有行为 bug。"
+disable-model-invocation: true
 ---
 
 # Comet 预设路径：Hotfix

@@ -1,6 +1,7 @@
 ---
 name: comet-build
-description: "仅在用户明确调用 /comet-build，或由 Comet 根 Skill/runtime 路由到 full workflow 的 build 阶段时使用；创建或恢复实施计划并执行任务。"
+description: "Comet Classic 阶段 3 —— 恢复或创建实施计划并执行其任务。"
+disable-model-invocation: true
 ---
 
 # Comet 阶段 3：计划与构建（Build）

@@ -1,6 +1,7 @@
 ---
 name: comet-hotfix
-description: "Use only when explicitly invoked as /comet-hotfix or routed by the root Comet skill/runtime to the hotfix preset; fix an existing behavior bug, not an ordinary unmanaged bugfix."
+description: "Comet preset — fix an existing behavior bug through a short open-build-verify-archive flow."
+disable-model-invocation: true
 ---
 
 # Comet Preset Path: Hotfix

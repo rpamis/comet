@@ -1,6 +1,6 @@
 ---
 name: comet
-description: "Use when the user explicitly invokes /comet or asks to use Comet without choosing Native or Classic; activate an unconfigured project from global defaults, then load exactly one permanent entry from project configuration."
+description: "Comet workflow entry. Use when the user invokes /comet or asks to use Comet without choosing Native or Classic; resolve and load exactly one entry from project configuration."
 ---
 
 # Comet Entry
