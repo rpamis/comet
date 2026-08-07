@@ -15,6 +15,18 @@ Agent 主要编辑：
 
 artifact root 只由 `.comet/config.yaml` 指定。Runtime 状态、workspace、scope、evidence、checkpoint、锁和事务文件只读；不要手工迁移或修复。
 
+## 证据投影
+
+每次写入 evidence 的推进（进入或离开 Build、Verify）后，Runtime 会重新生成一份只读的人类可读投影：
+
+```text
+<artifact-root>/comet/changes/<change-name>/runtime/projections/evidence.md
+```
+
+它把 `runtime/evidence/` 下 hash 命名的内容寻址证据翻译成可读文字——实现范围（改了哪些文件、字节变化）、验证结论（验收点 pass/fail、覆盖统计）、检查收据（命令、退出码、摘要）。调试或排查 change 时打开它即可，不必解析 hash 文件。
+
+该投影是只读衍生品：Runtime 每次推进都会覆写，不可手改，也不能当作验证证据引用。canonical 事实始终在 `runtime/evidence/` 下的 hash 文件里。
+
 ## Brief
 
 `brief.md` 使用以下非空一级标题：

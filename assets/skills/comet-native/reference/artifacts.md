@@ -15,6 +15,18 @@ The Agent primarily edits:
 
 Only `.comet/config.yaml` selects the artifact root. Runtime state, workspace, scope, evidence, checkpoints, locks, and transactions are read-only; do not migrate or repair them manually.
 
+## Evidence projection
+
+After every evidence-bearing transition (entering or leaving Build, Verify), the Runtime regenerates a read-only, human-readable projection:
+
+```text
+<artifact-root>/comet/changes/<change-name>/runtime/projections/evidence.md
+```
+
+It translates the hash-named, content-addressed evidence under `runtime/evidence/` into readable text — implementation scope (which files changed, byte deltas), verification outcome (acceptance pass/fail, coverage totals), and check receipts (command, exit code, summary). Open it when debugging or inspecting a change instead of parsing the hash files.
+
+The projection is a read-only derivative: the Runtime overwrites it on every transition, it must not be hand-edited, and it must never be cited as verification evidence. The canonical facts always live in the hash-named documents under `runtime/evidence/`.
+
 ## Brief
 
 `brief.md` uses these non-empty level-one headings:

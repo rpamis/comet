@@ -1,5 +1,6 @@
 import { inspectNativeStatus } from './native-diagnostics.js';
 import { readNativeChange } from './native-change.js';
+import { writeNativeEvidenceProjection } from './native-evidence-projection.js';
 import { advanceNativeChange } from './native-transitions.js';
 import type { NativeAdvanceEvidence } from './native-types.js';
 import {
@@ -103,6 +104,18 @@ export async function nativeNextCommand(
     evidence,
     clarificationMode: config.native.clarification_mode,
     maxVerifyFailures: config.native.max_verify_failures,
+    hooks: {
+      afterChangeStateWritten: async () => {
+        // The projection is a read-only derivative. A failure here must not
+        // roll back a transition that already committed.
+        try {
+          await writeNativeEvidenceProjection(paths, name);
+        } catch {
+          // Projection regeneration is best-effort; the canonical evidence
+          // under runtime/evidence/ remains the source of truth.
+        }
+      },
+    },
   });
   if (result.next === 'manual') {
     const repairBlocked =
