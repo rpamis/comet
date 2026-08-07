@@ -4,7 +4,7 @@ Read this file only when Runtime reports interruption, stale evidence, repair st
 
 ## General rule
 
-Stop writing, rerun `status --details --json`, and run read-only `doctor`. Execute only actions returned by the continuation, finding, or doctor. Do not edit state, workspace, hashes, evidence, locks, or transactions. Preserve the scene and wait for the user when automatic repair cannot be proven safe.
+Stop writing, rerun `status --details --json`, and run read-only `doctor`. Execute only actions returned by the continuation, findings, or doctor. Do not edit state, workspace, hashes, evidence, locks, or transactions. Preserve the scene and wait for the user when automatic repair cannot be proven safe.
 
 ## Workspace
 

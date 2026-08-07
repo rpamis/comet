@@ -5,20 +5,20 @@ description: 当用户明确调用 /comet-native、要求启动或恢复 Native 
 
 # Comet Native
 
-Native 保存需求、完整目标规格、状态和证据。你负责理解、实现和验证；Runtime 负责状态、边界和恢复。
+Native 在磁盘上保存需求、完整目标规格、状态和证据。你的职责是理解、实现和验证；状态、边界和恢复由 Runtime 掌管，不要越界。
 
-## 不可破坏的边界
+## 硬性边界
 
 - 磁盘中的 `.comet/config.yaml`、当前 change、状态和正式产物优先于聊天记忆。
 - 不要直接编辑 Runtime 管理的状态、workspace、scope、evidence、checkpoint、锁或事务文件。
-- 只调用 PATH 中公开的 `comet native`。命令不可用时说明 Comet 安装不完整，不搜索或直接调用内部 bundle。
+- 只调用 PATH 中公开的 `comet native`。命令不可用时说明 Comet 安装不完整，不搜索或直接调用内部脚本。
 - 需要参数或输出说明时运行 `comet native <command> --help`；不要在 Skill 中猜测或重建命令。
 - Native 主流程不依赖任何外部 Skill。
 
 ## 开始或恢复
 
-1. 运行 `comet native status --json`。CLI 会发现已登记 Git worktree，返回每个 change 的实际 workspace、phase、continuation 和分页动作。
-2. 有目标名称时运行 `comet native status <change-name> --details --json` 和 `show`。跟随 `nextPageArgs` 读取后续状态或 acceptance 页。
+1. 运行 `comet native status --json`。CLI 会发现已登记 Git worktree，返回每个 change 的实际 workspace、phase、`continuation`（后续指令）和翻页参数。
+2. 有目标名称时运行 `comet native status <change-name> --details --json` 和 `show`。跟随 `nextPageArgs` 翻页，读取后续的状态或 acceptance（验收项）。
 3. 同名 active change 已存在时，在返回的 `workspace.projectRoot` 上恢复并 `select`，不重复创建。多个合理候选才让用户选择。
 4. 只有没有对应 active change 时才创建。只使用配置指定的 artifact root。
 
@@ -53,46 +53,46 @@ Native 保存需求、完整目标规格、状态和证据。你负责理解、�
 
 严格按 `native.clarification_mode` 和澄清参考维护决策树：Sequential 每轮只问一个当前可提问节点；Batch 每轮询问全部当前可提问节点。只有会实质改变用户可见结果且无法可靠推断的决定才问用户。
 
-每个结论立即同步到 Decisions、brief 和完整目标规格。未解决问题保持 `[blocking]`；有阻塞项时不修改项目实现。所有分支和静默假设检查完成后，向用户给出目标、范围、关键决定、验收标准与非目标摘要。只有用户明确确认后才使用 continuation 中含 `--confirmed` 的动作推进。
+每个结论立即同步到 Decisions、brief 和完整目标规格。未解决问题保持 `[blocking]`；有阻塞项时不修改项目实现。所有分支和静默假设检查完成后，向用户给出目标、范围、关键决定、验收标准与非目标摘要。只有用户明确确认后才使用后续指令中含 `--confirmed` 的命令推进。
 
 ## Build
 
-实现满足 brief 和完整目标规格的最简单可靠方案。分批工作可用 checkpoint 保存恢复摘要，但 checkpoint 不是完成证据。
+实现满足 brief 和完整目标规格的最简单可靠方案。分批工作可用 checkpoint 保存恢复上下文，但 checkpoint 不是完成证据。
 
 需求变化时先判断归属：
 
-- 属于当前 change 的实现补充：Verify/Archive 先使用 continuation 返回的 `--return-to-build` 动作，确认回到 Build 后再写实现；
+- 属于当前 change 的实现补充：Verify/Archive 先使用后续指令返回的 `--return-to-build` 动作，确认回到 Build 后再写实现；
 - 改变用户可见契约：回到 Build 后重新执行澄清、更新正式产物并取得确认；
 - 与当前 change 无关：保留当前 change，创建或选择另一个 change。
 
 用户明确要求当前 change 增加文件或行为时，不得仅因旧计划未列出就拒绝；应按上述归属更新正式范围。确认前仍保持阻塞。
 
-候选实现完成后，对照完整规格和全部 acceptance 复核遗漏。使用 continuation 的 `commandArgs` 提交真实项目 artifact；确实没有项目文件变化时使用其 no-code 备选输入。不要把未知范围声明为完整。
+候选实现完成后，对照完整规格和全部 acceptance 复核遗漏。使用后续指令的 `commandArgs` 提交真实项目 artifact；确实没有项目文件变化时使用其 no-code 备选输入。不要把未知范围声明为完整。
 
 ## Completion Loop
 
-1. 读取 `status <change-name> --details --json` 及所有 acceptance 页；失败后的 Build 优先处理 failed/missing acceptance 与 failed check。
+1. 读取 `status <change-name> --details --json` 和分页返回的全部 acceptance；失败后的 Build 优先处理 failed/missing acceptance 与 failed check。
 2. 完成一批相关修复并复核完整规格。
 3. 运行真实验证，生成当前 receipt 和 verification 报告。
 4. `fail` 回到 Build 继续修复；只有 `pass` 才进入 Archive。
 
-`blocked` 进入恢复分支，处理 findings 后重新读取 continuation。只有 `done`、`await-user` 或用户明确要求停止才结束；一次 turn、checkpoint 或自述完成都不是终态。
+`blocked` 进入恢复分支，处理 findings 后重新读取后续指令。只有 `done`、`await-user` 或用户明确要求停止才结束；一次 turn、checkpoint 或自述完成都不是终态。
 
 ## Verify
 
 按 acceptance、完整规格和改动风险运行真实验证。报告只记录实际命令、结果和可复核事实；未运行、失败、跳过或超时不能写成通过。
 
-使用 Runtime 返回的 acceptance ID 和 typed receipt。提交 Verify 时按 continuation 提供 `--result` 与 `--report`；不要传入调用方生成的 required-check receipt。规格、实现、报告或证据改变后重新验证。
+使用 Runtime 返回的 acceptance ID 和 typed receipt。提交 Verify 时，按后续指令的要求提供 `--result` 与 `--report`；不要传入调用方生成的 required-check receipt。规格、实现、报告或证据改变后重新验证。
 
-Verify fail 后实际修复缺口再重试。`repair-stagnation-stop` 时提出一个不同且具体的新修复假设，并使用 Runtime 返回的 override 输入；只有 continuation 要求 `repair-continuation-decision` 时才等待用户选择。
+Verify fail 后实际修复缺口再重试。`repair-stagnation-stop` 时提出一个不同且具体的新修复假设，并使用 Runtime 返回的 override 输入；只有后续指令要求 `repair-continuation-decision` 时才等待用户选择。
 
 ## Archive
 
 只有最终 Verify pass 后才准备归档。
 
-`current` 不需要分支收尾选择。`branch` 或 `worktree` 必须向用户一次展示实际 change 分支、目标分支和工作目录，并让用户选择：本地合并、推送 change 分支、推送并创建 PR、保留，或暂不归档。选择“暂不归档”时停止。
+`current` 不需要分支收尾选择。使用 `branch` 或 `worktree` 时，你必须一次性向用户展示实际的 change 分支、目标分支和工作目录，并让用户选择：本地合并、推送 change 分支、推送并创建 PR、保留，或暂不归档。选择“暂不归档”时停止。
 
-执行前只提交属于该 change 的实现和正式 active-change 产物，保留其他用户改动；CLI 会拒绝夹带未提交路径。然后用 `archive --dry-run --finish ...` 持久化选择，并使用返回 continuation 的精确 `commandArgs`：
+执行前只提交属于该 change 的实现和正式 active-change 产物，保留其他用户改动；CLI 会拒绝夹带未提交路径。然后用 `archive --dry-run --finish ...` 持久化选择，并使用后续指令返回的精确 `commandArgs`：
 
 - `automatic` 直接执行；
 - `required` 展示摘要并等待明确确认；
@@ -100,7 +100,7 @@ Verify fail 后实际修复缺口再重试。`repair-stagnation-stop` 时提出�
 
 归档命令负责提交归档路径并执行获授权的 merge、push 或 PR 动作。检查 `workspaceFinishResult`：`completed`/`kept` 表示已执行；`blocked` 表示归档已完成但外部收尾未完成，保留现场并按 `recoveryArgs` 诊断。合并后清理被延后到合并结果验证完成；不得静默解决语义冲突。
 
-## Continuation
+## continuation（后续指令）
 
 每次命令后以 Runtime 返回值为准：
 

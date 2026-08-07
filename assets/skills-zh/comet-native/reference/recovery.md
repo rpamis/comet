@@ -4,7 +4,7 @@
 
 ## 通用原则
 
-停止写入，重新运行 `status --details --json` 和只读 `doctor`。只执行 continuation、finding 或 doctor 返回的动作；不要手改状态、workspace、hash、证据、锁或事务。无法证明自动修复安全时保留现场并等待用户。
+停止写入，重新运行 `status --details --json` 和只读 `doctor`。只执行后续指令、findings 或 doctor 返回的动作；不要手改状态、workspace、hash、证据、锁或事务。无法证明自动修复安全时保留现场并等待用户。
 
 ## Workspace
 
@@ -14,7 +14,7 @@
 
 ## Transition、baseline 与证据
 
-- 未完成 transition：优先按 continuation 重试；doctor 只允许其明确列出的 continue/rollback。
+- 未完成 transition：优先按后续指令重试；doctor 只允许其明确列出的 continue/rollback。
 - baseline 缺失或不完整：只能从可信备份恢复，或保留已确认事实后重建 change；不能从当前文件猜测 baseline。
 - brief、规格、实现、报告或 receipt 改变：回到 Build，重新确认受影响行为、生成 scope 并验证；不复用旧 pass 或 preflight。
 - receipt binding mismatch：按输出分类。仅 source revision 不一致的 manual receipt 可 refresh；automated receipt 重跑；contract、scope、snapshot 或 artifact 不一致重新验证。

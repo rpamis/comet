@@ -274,7 +274,7 @@ describe('skills', () => {
       );
 
       const zhSectionOffsets = [
-        zhMain.indexOf('## 不可破坏的边界'),
+        zhMain.indexOf('## 硬性边界'),
         zhMain.indexOf('## 开始或恢复'),
         zhMain.indexOf('## 按需读取'),
         zhMain.indexOf('## Shape'),
@@ -284,9 +284,7 @@ describe('skills', () => {
       expect(zhMain).toContain('确认 phase 后只读取需要的一份 reference');
       expect(zhMain).toContain('Shape：必须读取并执行[澄清参考]');
       expect(zhMain).toContain('未解决问题保持 `[blocking]`；有阻塞项时不修改项目实现');
-      expect(zhMain).toContain(
-        '只有用户明确确认后才使用 continuation 中含 `--confirmed` 的动作推进',
-      );
+      expect(zhMain).toContain('只有用户明确确认后才使用后续指令中含 `--confirmed` 的命令推进');
       expect(zhClarification).toContain('进入 Shape 后必须读取本文件');
       expect(zhClarification).toContain(
         '完成问题判定、静默假设检查和共享理解确认前，不得修改项目实现或推进到 Build',

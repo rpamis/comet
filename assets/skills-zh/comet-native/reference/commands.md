@@ -8,17 +8,17 @@ comet native <command> --help
 comet native <group> <command> --help
 ```
 
-不要从本文件复制旧参数；优先执行 continuation 的 `commandArgs`，并按 `inputOptions` 填入真实值。所有命令可使用 `--json` 和 `--project-root`。
+不要从本文件复制旧参数；优先执行后续指令（`continuation`）的 `commandArgs`，并按 `inputOptions` 填入真实值。所有命令可使用 `--json` 和 `--project-root`。
 
 ## 结构化输出
 
 JSON 外层包含 `command`、`exitCode`、`data`，失败时包含 `error`。常用动作字段：
 
-- `continuation.disposition`：`continue | await-user | blocked | done`；
+- `continuation.disposition`（后续指令的处置）：`continue | await-user | blocked | done`；
 - `commandArgs`：完整 executable 与 argv 模板；
 - `inputOptions`：必需输入、flag、候选值、重复性和互斥备选；
 - `workspace` / `preparation`：change 实际目录与本次创建结果；
-- `nextPageArgs`：状态或 acceptance 的下一页动作；
+- `nextPageArgs`：状态或 acceptance（验收项）的翻页参数；
 - `findings`：`requiredAction`、`retryCommand`、`repairCommand` 和是否需要用户决定；
 - `workspaceFinishResult`：归档后的 Git 收尾结果和恢复动作。
 
