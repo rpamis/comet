@@ -2,15 +2,11 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.4.0-beta.18] - 2026-08-07
+## What's Changed [0.4.0-beta.17] - 2026-08-06
 
 ### Added
 
 - **Trae Hook support**: `comet init`, `comet update`, `comet doctor`, and `comet uninstall` now support managed Hook Router entries for Trae and Trae CN, using Trae's official project and global `hooks.json` locations while preserving user-owned Hook configuration.
-
-## What's Changed [0.4.0-beta.17] - 2026-08-06
-
-### Added
 
 - **Native evidence projection**: After every evidence-bearing transition (entering or leaving Build, Verify), Native now writes a read-only, human-readable `runtime/projections/evidence.md` inside the change. It translates the hash-named, content-addressed evidence into readable text — implementation scope (which files changed, byte deltas), verification outcome (acceptance pass/fail, coverage), and check receipts (command, exit code, summary). Users and reviewers can open it to understand a change without parsing raw evidence JSON. The projection is a derivative only; the canonical facts still live in the hash-named evidence documents and are not replaced by it.
 
