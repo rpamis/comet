@@ -488,7 +488,7 @@ describe('Native artifact root moves', () => {
       expect((await readProjectConfig(projectRoot))?.native).toEqual({
         artifact_root: '.',
         language: 'en',
-        clarification_mode: 'sequential',
+        clarification_mode: 'batch',
         archive_confirmation: 'automatic',
         max_verify_failures: 5,
         snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,

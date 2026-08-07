@@ -206,7 +206,7 @@ describe('Native artifact root recovery', () => {
     expect(recovered.config.native).toEqual({
       artifact_root: 'docs',
       language: 'en',
-      clarification_mode: 'sequential',
+      clarification_mode: 'batch',
       archive_confirmation: 'automatic',
       max_verify_failures: 5,
       snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
@@ -239,7 +239,7 @@ describe('Native artifact root recovery', () => {
     expect(recovered.config.native).toEqual({
       artifact_root: 'docs',
       language: 'en',
-      clarification_mode: 'sequential',
+      clarification_mode: 'batch',
       archive_confirmation: 'automatic',
       max_verify_failures: 5,
       snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
@@ -329,7 +329,7 @@ describe('Native artifact root recovery', () => {
     expect(recovered.config.native).toEqual({
       artifact_root: '.',
       language: 'en',
-      clarification_mode: 'sequential',
+      clarification_mode: 'batch',
       archive_confirmation: 'automatic',
       max_verify_failures: 5,
       snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
