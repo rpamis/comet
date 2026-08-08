@@ -120,7 +120,7 @@ describe('Comet Native CLI dispatcher', () => {
       await runNativeCli(['new', 'incomplete-baseline', '--json', ...projectArgs()]),
     );
     expect(result).toMatchObject({
-      exitCode: 73,
+      exitCode: 65,
       data: {
         change: 'incomplete-baseline',
         complete: false,
