@@ -4,8 +4,13 @@ import os from 'os';
 import path from 'path';
 
 import {
+  inspectNativeRuntimeStorage,
+  nativeChangeRuntimeDir,
+  nativeLegacyChangeRuntimeDir,
   nativePreferredChangeRuntimeDir,
   nativeProjectPaths,
+  nativeRuntimeRefFile,
+  nativeStorageRoot,
   normalizeArtifactRootRef,
   resolveArtifactRoot,
 } from '../../../domains/comet-native/native-paths.js';
@@ -83,6 +88,69 @@ describe('Native artifact root safety', () => {
     expect(docsPaths.runtimeDir).toBe(rootPaths.runtimeDir);
     expect(nativePreferredChangeRuntimeDir(docsPaths, 'focused-change')).toBe(
       path.join(projectRoot, '.comet', 'runtime', 'native', 'changes', 'focused-change'),
+    );
+  });
+
+  it('reports preferred, legacy, missing, and conflicting Runtime storage', async () => {
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    const name = 'runtime-health';
+    const preferred = nativePreferredChangeRuntimeDir(paths, name);
+    const legacy = nativeLegacyChangeRuntimeDir(paths, name);
+
+    await expect(inspectNativeRuntimeStorage(paths, name)).resolves.toMatchObject({
+      status: 'missing',
+      layout: 'missing',
+      path: preferred,
+    });
+    expect(nativeChangeRuntimeDir(paths, name)).toBe(preferred);
+
+    await fs.mkdir(preferred, { recursive: true });
+    await expect(inspectNativeRuntimeStorage(paths, name)).resolves.toMatchObject({
+      status: 'available',
+      layout: 'project-local',
+      path: preferred,
+    });
+    expect(nativeChangeRuntimeDir(paths, name)).toBe(preferred);
+
+    await fs.rm(preferred, { recursive: true });
+    await fs.mkdir(legacy, { recursive: true });
+    await expect(inspectNativeRuntimeStorage(paths, name)).resolves.toMatchObject({
+      status: 'available',
+      layout: 'legacy',
+      path: legacy,
+    });
+    expect(nativeChangeRuntimeDir(paths, name)).toBe(legacy);
+
+    await fs.mkdir(preferred, { recursive: true });
+    await expect(inspectNativeRuntimeStorage(paths, name)).resolves.toMatchObject({
+      status: 'invalid',
+      layout: 'project-local',
+      message: 'Both project-local and legacy Native Runtime directories exist',
+    });
+
+    await fs.rm(legacy, { recursive: true });
+    await fs.rm(preferred, { recursive: true });
+    await fs.writeFile(preferred, 'not a directory');
+    await expect(inspectNativeRuntimeStorage(paths, name)).resolves.toMatchObject({
+      status: 'invalid',
+      layout: 'project-local',
+      message: 'Native Runtime path must be a real directory',
+    });
+  });
+
+  it('keeps Runtime references and storage roots contained', async () => {
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+
+    expect(nativeRuntimeRefFile(paths.runtimeDir, 'runtime/changes/example/state.json')).toBe(
+      path.join(paths.runtimeDir, 'changes', 'example', 'state.json'),
+    );
+    expect(() => nativeRuntimeRefFile(paths.runtimeDir, '../outside.json')).toThrow(
+      'Invalid Native Runtime ref',
+    );
+    expect(nativeStorageRoot(paths, paths.runtimeDir)).toBe(paths.runtimeDir);
+    expect(nativeStorageRoot(paths, paths.nativeRoot)).toBe(paths.nativeRoot);
+    expect(() => nativeStorageRoot(paths, projectRoot)).toThrow(
+      'outside Native document and Runtime roots',
     );
   });
 });
