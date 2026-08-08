@@ -140,7 +140,7 @@ export async function nativeArchiveCommand(
           ...result,
           workspaceFinish: finishPlan.finish,
           workspaceFinishResult: error.result,
-          continuation: nativeContinuation({ state, done: true }),
+          continuation: nativeContinuation({ state, archiveReady: false }),
         },
         error: { code: 'conflict', message: error.message },
       };

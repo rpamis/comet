@@ -559,6 +559,11 @@ async function inspectRuntimeLayoutMigrations(
         });
         await resolveContainedNativePath(paths.runtimeDir, preferred);
         await fs.mkdir(paths.changesRuntimeDir, { recursive: true });
+        const targetParentGuard = await captureNativeProtectedDirectoryGuard({
+          root: paths.runtimeDir,
+          directory: paths.changesRuntimeDir,
+          label: `Native Runtime migration target parent ${name}`,
+        });
         try {
           await fs.lstat(preferred);
           throw new Error(`Target Native Runtime already exists: ${preferred}`);
@@ -566,6 +571,7 @@ async function inspectRuntimeLayoutMigrations(
           if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
         }
         await guard.verify();
+        await targetParentGuard.verify();
         await fs.rename(legacy, preferred);
       });
       findings.push({

@@ -209,6 +209,7 @@ export async function finishArchivedNativeWorkspace(options: {
   plan: NativeWorkspaceFinishPlan;
 }): Promise<NativeWorkspaceFinishResult> {
   const result = baseResult(options.plan);
+  let switchedMergeRoot: string | null = null;
   try {
     const allowedPaths = [
       portableRelative(options.paths.projectRoot, nativeChangeDir(options.paths, options.name)),
@@ -298,6 +299,7 @@ export async function finishArchivedNativeWorkspace(options: {
     const mergeRoot = options.plan.targetRoot ?? options.plan.changeRoot;
     if (options.plan.isolation === 'branch') {
       runGitCommand(mergeRoot, ['switch', options.plan.targetBranch]);
+      switchedMergeRoot = mergeRoot;
     }
     runGitCommand(mergeRoot, ['merge', '--no-ff', '--no-edit', options.plan.changeBranch]);
     result.merged = true;
@@ -308,6 +310,24 @@ export async function finishArchivedNativeWorkspace(options: {
     };
     return result;
   } catch (error) {
+    if (switchedMergeRoot !== null) {
+      let restored: boolean;
+      try {
+        runGitCommand(switchedMergeRoot, ['merge', '--abort']);
+      } catch {
+        // The failed merge may not have left an in-progress merge to abort.
+      }
+      try {
+        if (inspectGitWorktree(switchedMergeRoot).currentBranch === options.plan.targetBranch) {
+          runGitCommand(switchedMergeRoot, ['switch', options.plan.changeBranch]);
+        }
+        restored =
+          inspectGitWorktree(switchedMergeRoot).currentBranch === options.plan.changeBranch;
+      } catch {
+        restored = false;
+      }
+      if (!restored) result.targetRoot = switchedMergeRoot;
+    }
     result.status = 'blocked';
     result.message = (error as Error).message;
     result.recoveryArgs =

@@ -88,8 +88,7 @@ async function ensureConfig(
 async function appendLocalExclude(projectRoot: string, worktreePath: string): Promise<boolean> {
   if (!isInside(projectRoot, worktreePath)) return false;
   const relative = path.relative(projectRoot, worktreePath).replaceAll('\\', '/');
-  const first = relative.split('/')[0];
-  const pattern = `/${first}/`;
+  const pattern = `/${relative.replace(/\/+$/u, '')}/`;
   const rawCommonDir = runGitCommand(projectRoot, ['rev-parse', '--git-common-dir']);
   const commonDir = path.resolve(projectRoot, rawCommonDir);
   const excludeFile = path.join(commonDir, 'info', 'exclude');

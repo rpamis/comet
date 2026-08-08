@@ -120,7 +120,7 @@ describe('Comet Native CLI dispatcher', () => {
       await runNativeCli(['new', 'incomplete-baseline', '--json', ...projectArgs()]),
     );
     expect(result).toMatchObject({
-      exitCode: 65,
+      exitCode: 73,
       data: {
         change: 'incomplete-baseline',
         complete: false,
@@ -613,7 +613,7 @@ describe('Comet Native CLI dispatcher', () => {
       }).trim();
       await expect(
         fs.readFile(path.join(path.resolve(projectRoot, commonDir), 'info', 'exclude'), 'utf8'),
-      ).resolves.toContain('/.worktrees/');
+      ).resolves.toContain('/.worktrees/prepared-worktree/');
     } finally {
       execFileSync('git', ['worktree', 'remove', '--force', worktreeRoot], {
         cwd: projectRoot,
@@ -621,6 +621,60 @@ describe('Comet Native CLI dispatcher', () => {
       });
     }
   }, 120_000);
+
+  it('rejects an incomplete root move before preparing an isolated workspace', async () => {
+    expect(await runNativeCli(['init', ...projectArgs()])).toMatchObject({ exitCode: 0 });
+    const config = await readProjectConfig(projectRoot);
+    expect(config).not.toBeNull();
+    config!.native.pending_root_move = {
+      id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      fromArtifactRoot: 'docs',
+      toArtifactRoot: 'artifacts/native',
+      stage: 'ready',
+    };
+    await writeProjectConfig(projectRoot, config!);
+    execFileSync('git', ['config', 'user.email', 'native@example.test'], { cwd: projectRoot });
+    execFileSync('git', ['config', 'user.name', 'Native Test'], { cwd: projectRoot });
+    execFileSync('git', ['add', '.comet/config.yaml'], { cwd: projectRoot, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', 'seed pending root move'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+    const targetBranch = execFileSync('git', ['branch', '--show-current'], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+    }).trim();
+
+    const result = json(
+      await runNativeCli([
+        'new',
+        'blocked-root-move',
+        '--isolation',
+        'branch',
+        '--target-branch',
+        targetBranch,
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+
+    expect(result).toMatchObject({
+      exitCode: 73,
+      error: { message: expect.stringContaining('root move') },
+    });
+    expect(
+      execFileSync('git', ['branch', '--show-current'], {
+        cwd: projectRoot,
+        encoding: 'utf8',
+      }).trim(),
+    ).toBe(targetBranch);
+    expect(
+      execFileSync('git', ['branch', '--list', 'comet/blocked-root-move'], {
+        cwd: projectRoot,
+        encoding: 'utf8',
+      }).trim(),
+    ).toBe('');
+  });
 
   it('keeps a linked worktree authoritative when a host passes the primary root', async () => {
     execFileSync('git', ['config', 'user.email', 'native@example.test'], { cwd: projectRoot });

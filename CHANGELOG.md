@@ -25,6 +25,9 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Native worktree root routing**: Native commands launched from a linked worktree no longer fall back to the primary checkout when a host supplies a conflicting project root, keeping change state and baselines in the active worktree.
 - **Native mid-change scope recovery**: When implementation needs to continue after Verify or Archive, Native now offers an explicit return-to-Build path that clears stale evidence and preserves the change boundary instead of requiring an unsafe out-of-phase write.
 - **Classic reference distribution**: Classic entry and phase Skills now resolve their bilingual reference documents from `comet-classic/reference`, keeping the smart `/comet` entry focused on workflow routing and excluding Classic-only references from Native installs.
+- **Native Archive recovery**: A blocked workspace merge now remains visibly blocked and restores the change branch after an incomplete merge, keeping the repository in a recoverable state.
+- **Native snapshot scope**: Generic `bin/` directories are no longer excluded by default, so source directories such as Rust `src/bin/` remain available to Native snapshots.
+- **Native status continuation**: Discovered status pages now preserve structured JSON mode when following their next-page command.
 
 - **Doctor Superpowers detection**: `comet doctor` now recognizes Claude Code plugin-managed Superpowers installs, so users with Superpowers under the plugin cache no longer receive a misleading install warning.
 

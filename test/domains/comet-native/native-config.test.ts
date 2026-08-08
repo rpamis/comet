@@ -62,6 +62,7 @@ describe('Native project configuration', () => {
         '**/temp/**',
       ]),
     );
+    expect(DEFAULT_NATIVE_SNAPSHOT_CONFIG.exclude).not.toContain('**/bin/**');
   });
 
   it('preserves custom exclusions while adding missing defaults', () => {

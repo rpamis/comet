@@ -9,6 +9,8 @@ import {
   inspectNativeWorkspaceBinding,
   inspectNativeWorkspaceAdvisory,
   inspectNativeWorkspaceIdentity,
+  nativeWorkspaceFile,
+  projectNativeWorkspace,
   readNativeWorkspaceIdentity,
   setNativeWorkspaceFinish,
   writeNativeWorkspaceIdentity,
@@ -91,6 +93,38 @@ describe('Native workspace identity', () => {
       state: 'aligned',
       code: null,
       message: null,
+    });
+  });
+
+  it('does not treat legacy target-branch provenance as a change-branch binding', async () => {
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    await fs.mkdir(paths.runtimeDir, { recursive: true });
+    await writeNativeWorkspaceIdentity({
+      paths,
+      name: 'legacy-example',
+      revision: 1,
+      binding: { isolation: 'current', changeBranch: null, targetBranch: null },
+    });
+    const file = nativeWorkspaceFile(paths, 'legacy-example');
+    const identity = JSON.parse(await fs.readFile(file, 'utf8')) as Record<string, unknown>;
+    delete identity.schema;
+    identity.schema = 'comet.native.workspace.v2';
+    delete identity.isolation;
+    delete identity.changeBranch;
+    delete identity.targetBranch;
+    delete identity.finish;
+    identity.git = {
+      provider: 'git',
+      baseCommit: 'a'.repeat(40),
+      targetBranch: 'main',
+      targetCommit: 'b'.repeat(40),
+    };
+    await fs.writeFile(file, JSON.stringify(identity));
+
+    await expect(projectNativeWorkspace(paths, 'legacy-example')).resolves.toMatchObject({
+      bindingState: 'legacy',
+      changeBranch: null,
+      targetBranch: 'main',
     });
   });
 

@@ -639,9 +639,9 @@ function resolveRefLexically(paths: NativeProjectPaths, ref: string): string {
     throw new Error(`Unsafe Native transaction ref: ${ref}`);
   }
   const runtimePrefix = 'runtime/';
-  const runtimeRef = ref.startsWith(runtimePrefix);
+  const runtimeRef = ref === 'runtime' || ref.startsWith(runtimePrefix);
   const root = runtimeRef ? paths.runtimeDir : paths.nativeRoot;
-  const relativeRef = runtimeRef ? ref.slice(runtimePrefix.length) : ref;
+  const relativeRef = ref === 'runtime' ? '' : runtimeRef ? ref.slice(runtimePrefix.length) : ref;
   const target = path.resolve(root, ...relativeRef.split(/[\\/]/u));
   if (!isInsidePath(root, target)) throw new Error(`Unsafe Native transaction ref: ${ref}`);
   return target;

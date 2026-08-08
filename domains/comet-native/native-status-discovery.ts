@@ -180,7 +180,7 @@ function pageAction(
   nextPageArgs: string[] | null;
 } {
   const args = cursor
-    ? ['comet', 'native', 'status', '--cursor', cursor, '--project-root', projectRoot]
+    ? ['comet', 'native', 'status', '--cursor', cursor, '--project-root', projectRoot, '--json']
     : null;
   return {
     nextPageCommand: args ? displayCommandArgs(args) : null,

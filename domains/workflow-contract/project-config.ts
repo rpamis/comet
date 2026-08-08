@@ -84,7 +84,6 @@ const DEFAULT_WORKFLOW_NATIVE_GENERATED_EXCLUDES = [
   '**/.nyc_output/**',
   '**/target/**',
   '**/.gradle/**',
-  '**/bin/**',
   '**/.cxx/**',
   '**/.externalNativeBuild/**',
   '**/captures/**',

@@ -31,6 +31,9 @@ export async function nativeNewCommand(
   const worktreePath = takeOption(args, '--worktree-path');
   assertNoArguments(args);
   const sourceConfig = config;
+  if (config?.native.pending_root_move) {
+    throw new Error(`Native root move ${config.native.pending_root_move.id} is incomplete`);
+  }
   const prepared = await prepareNativeWorkspace({
     projectRoot,
     name,

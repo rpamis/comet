@@ -62,6 +62,28 @@ describe('Native transaction schema', () => {
     ]);
   });
 
+  it('does not resolve the exact Runtime root under the Native artifact root', async () => {
+    const source = path.join(paths.runtimeDir, 'staged-change');
+    await fs.mkdir(source, { recursive: true });
+    const rootMove = {
+      ...journal,
+      operations: [
+        {
+          id: 'move-runtime-root',
+          type: 'move' as const,
+          source: 'runtime/staged-change',
+          target: 'runtime',
+        },
+      ],
+    };
+    await createNativeTransaction(paths, rootMove);
+
+    await expect(applyNativeTransaction(paths, rootMove)).rejects.toThrow(
+      'Move target already exists: runtime',
+    );
+    await expect(fs.stat(source)).resolves.toBeDefined();
+  });
+
   it.each([
     ['unknown journal key', { unknown: true }],
     ['invalid status', { status: 'unknown' }],

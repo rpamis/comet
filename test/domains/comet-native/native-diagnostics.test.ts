@@ -107,6 +107,23 @@ describe('Native status diagnostics', () => {
     });
   });
 
+  it('keeps a failed workspace finish blocked after Archive has moved the change', () => {
+    const continuation = nativeContinuation({
+      state: {
+        name: 'finish-blocked',
+        phase: 'archive',
+        revision: 4,
+      } as NativeChangeState,
+      archiveReady: false,
+    });
+
+    expect(continuation).toMatchObject({
+      disposition: 'blocked',
+      action: 'none',
+      command: null,
+    });
+  });
+
   it('blocks status when a workspace binding cannot be parsed safely', async () => {
     const state = await createNativeChange({
       paths,

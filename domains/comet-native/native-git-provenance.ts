@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 
 import type { NativeSnapshotEntry } from './native-types.js';
+import { isLocalGitBranch } from '../../platform/paths/git-worktree.js';
 import type { NativeExternalDrift, NativeSnapshotProjection } from './native-verification-scope.js';
 import { nativeDeclaredArtifactOwnsPath } from './native-verification-scope.js';
 import type { NativeWorkspaceGitProvenance } from './native-workspace.js';
@@ -112,11 +113,12 @@ export function detectNativeGitExternalDrift(options: {
   ) {
     return null;
   }
+  if (!isLocalGitBranch(options.projectRoot, provenance.targetBranch)) return null;
   const targetCommit = commit(
     runGitMustSucceed(options.projectRoot, [
       'rev-parse',
       '--verify',
-      `${provenance.targetBranch}^{commit}`,
+      `refs/heads/${provenance.targetBranch}^{commit}`,
     ]),
   );
   if (targetCommit === null) return null;

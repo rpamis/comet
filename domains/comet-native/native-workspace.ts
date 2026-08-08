@@ -470,7 +470,7 @@ export async function projectNativeWorkspace(
         ...base,
         bindingState: 'legacy',
         isolation: null,
-        changeBranch: identity.git?.targetBranch ?? null,
+        changeBranch: null,
         targetBranch: identity.git?.targetBranch ?? null,
         finish: null,
       };
