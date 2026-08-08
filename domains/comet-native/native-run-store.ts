@@ -115,14 +115,14 @@ function sameDirectoryIdentity(
   );
 }
 
-function runFile(changeDir: string, kind: NativeRunFileKind, relativePath?: string): string {
+function runFile(runtimeDir: string, kind: NativeRunFileKind, relativePath?: string): string {
   const expected = NATIVE_RUN_STORAGE[kind];
   if (relativePath !== undefined && relativePath !== expected) {
     throw new Error(`Native Run ${kind} ref must be ${expected}`);
   }
-  const root = path.resolve(changeDir);
-  const target = path.resolve(root, ...expected.split('/'));
-  if (!isInside(root, target)) throw new Error('Native Run path must stay inside its change');
+  const root = path.resolve(runtimeDir);
+  const target = path.resolve(root, ...expected.slice('runtime/'.length).split('/'));
+  if (!isInside(root, target)) throw new Error('Native Run path must stay inside its Runtime root');
   return target;
 }
 

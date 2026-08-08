@@ -1,12 +1,9 @@
-import path from 'path';
-
 import {
   inspectNativeCheckpointFreshness,
   NATIVE_CHECKPOINT_LIMITS,
   readNativeCheckpointJournal,
   nativeCheckpointJournalFile,
 } from './native-checkpoint-storage.js';
-import { nativeChangeDir } from './native-change.js';
 import type {
   NativeChangeState,
   NativeCheckpointCompactView,
@@ -119,15 +116,7 @@ export async function buildNativeResumeView(options: {
         summary: inspected.checkpoint.summary,
         nextAction: inspected.checkpoint.nextAction,
         manifestHash: inspected.checkpoint.manifestHash,
-        manifestRef: path
-          .relative(
-            options.paths.projectRoot,
-            path.join(
-              nativeChangeDir(options.paths, options.state.name),
-              ...inspected.checkpoint.manifestRef.split('/'),
-            ),
-          )
-          .replaceAll('\\', '/'),
+        manifestRef: inspected.checkpoint.manifestRef,
         artifacts: inspected.manifest.artifacts,
         totalBytes: inspected.manifest.totalBytes,
       }

@@ -3,8 +3,12 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
 import { atomicWriteJson } from './native-atomic-file.js';
-import { nativeChangeDir } from './native-change.js';
-import { resolveContainedNativePath } from './native-paths.js';
+import {
+  nativeChangeRuntimeDir,
+  nativeRuntimeRefFile,
+  nativeStorageRoot,
+  resolveContainedNativePath,
+} from './native-paths.js';
 import { hasComparableNativeFileObject, sameNativeFileObject } from './native-file-identity.js';
 import type { NativeProjectPaths } from './native-types.js';
 import {
@@ -311,10 +315,10 @@ function evidenceFile(
   hash: string,
   changeDir?: string,
 ): string {
-  return path.join(
-    changeDir ?? nativeChangeDir(paths, name),
-    ...nativeEvidenceRef(kind, hash).split('/'),
-  );
+  const ref = nativeEvidenceRef(kind, hash);
+  return changeDir
+    ? path.join(changeDir, ...ref.split('/'))
+    : nativeRuntimeRefFile(nativeChangeRuntimeDir(paths, name), ref);
 }
 
 async function readEvidenceDocument(options: {
@@ -325,10 +329,16 @@ async function readEvidenceDocument(options: {
   hooks?: NativeEvidenceReadHooks;
   changeDir?: string;
 }): Promise<unknown> {
-  const changeDir = options.changeDir ?? nativeChangeDir(options.paths, options.name);
-  const file = evidenceFile(options.paths, options.name, options.kind, options.hash, changeDir);
-  await resolveContainedNativePath(options.paths.nativeRoot, file);
-  return readBoundedEvidenceJson(file, changeDir, options.hooks);
+  const file = evidenceFile(
+    options.paths,
+    options.name,
+    options.kind,
+    options.hash,
+    options.changeDir,
+  );
+  const storageRoot = options.changeDir ?? nativeStorageRoot(options.paths, file);
+  await resolveContainedNativePath(storageRoot, file);
+  return readBoundedEvidenceJson(file, storageRoot, options.hooks);
 }
 
 async function writeEvidenceDocument(options: {
@@ -340,7 +350,8 @@ async function writeEvidenceDocument(options: {
 }): Promise<string> {
   assertEvidenceDocumentBudget(options.value);
   const file = evidenceFile(options.paths, options.name, options.kind, options.hash);
-  await resolveContainedNativePath(options.paths.nativeRoot, file);
+  const storageRoot = nativeStorageRoot(options.paths, file);
+  await resolveContainedNativePath(storageRoot, file);
   try {
     const existing = await readEvidenceDocument(options);
     if (JSON.stringify(existing) !== JSON.stringify(options.value)) {
@@ -350,7 +361,7 @@ async function writeEvidenceDocument(options: {
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
-  await atomicWriteJson(file, options.value, { containedRoot: options.paths.nativeRoot });
+  await atomicWriteJson(file, options.value, { containedRoot: storageRoot });
   const persisted = await readEvidenceDocument(options);
   if (JSON.stringify(persisted) !== JSON.stringify(options.value)) {
     throw new Error(`Native evidence changed during commit for ${options.hash}`);
@@ -654,8 +665,8 @@ export async function listNativeVerificationReceiptRefs(
   paths: NativeProjectPaths,
   name: string,
 ): Promise<string[]> {
-  const directory = path.join(nativeChangeDir(paths, name), 'runtime', 'evidence', 'receipts');
-  await resolveContainedNativePath(paths.nativeRoot, directory);
+  const directory = path.join(nativeChangeRuntimeDir(paths, name), 'evidence', 'receipts');
+  await resolveContainedNativePath(nativeStorageRoot(paths, directory), directory);
   let entries: import('node:fs').Dirent[];
   try {
     entries = await fs.readdir(directory, { withFileTypes: true });

@@ -14,6 +14,11 @@ import {
   NATIVE_RUNTIME_HASH,
   NATIVE_RUNTIME_PACKAGE,
 } from '../../domains/comet-native/native-runtime-package.js';
+import { nativeChangeRuntimeDir } from '../../domains/comet-native/native-paths.js';
+import {
+  startNativeRun,
+  writeNativeRunState,
+} from '../../domains/comet-native/native-run-store.js';
 import type {
   NativeChangeState,
   NativeProjectPaths,
@@ -21,8 +26,6 @@ import type {
 } from '../../domains/comet-native/native-types.js';
 import { prepareNativeVerificationEvidence } from '../../domains/comet-native/native-verification-runtime.js';
 import { issueNativeManualEvidenceReceipt } from '../../domains/comet-native/native-verification-receipt-runtime.js';
-import { NATIVE_RUN_STORAGE } from '../../domains/engine/storage-layout.js';
-import { startRunWithStorage, writeRunStateAt } from '../../domains/engine/storage-run.js';
 import { nativeVerificationFixtureReceipt } from './native-verification.js';
 
 const brief = `# Outcome
@@ -153,15 +156,10 @@ Pass.
     },
     verifyState.revision,
   );
-  const run = startRunWithStorage(
-    NATIVE_RUNTIME_PACKAGE,
-    archiveState.run_id!,
-    NATIVE_RUNTIME_HASH,
-    NATIVE_RUN_STORAGE,
-  );
+  const run = startNativeRun(NATIVE_RUNTIME_PACKAGE, archiveState.run_id!, NATIVE_RUNTIME_HASH);
   run.currentStep = 'archive';
   run.iteration = 3;
-  await writeRunStateAt(changeDir, run, NATIVE_RUN_STORAGE);
+  await writeNativeRunState(nativeChangeRuntimeDir(options.paths, options.name), run);
   return { state: archiveState, changeDir };
 }
 

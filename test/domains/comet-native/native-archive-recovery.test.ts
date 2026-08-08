@@ -12,7 +12,10 @@ import {
   readNativeChangeFile,
 } from '../../../domains/comet-native/native-change.js';
 import { sha256File } from '../../../domains/comet-native/native-hash.js';
-import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import {
+  nativePreferredChangeRuntimeDir,
+  nativeProjectPaths,
+} from '../../../domains/comet-native/native-paths.js';
 import {
   createNativeTransaction,
   nativeRootRef,
@@ -454,13 +457,16 @@ describe('Native archive recovery', () => {
       }),
     ).rejects.toThrow('crash after move');
     const archiveDir = path.join(paths.archiveDir, '2026-07-19-invalid-before-finalize');
-    const runFile = path.join(archiveDir, 'runtime', 'run-state.json');
+    const runFile = path.join(
+      nativePreferredChangeRuntimeDir(paths, 'invalid-before-finalize'),
+      'run-state.json',
+    );
     const originalRun = await fs.readFile(runFile);
     await fs.writeFile(runFile, '{"broken":true}\n');
 
     await expect(
       recoverArchiveTransaction({ paths, transactionId, strategy: 'continue' }),
-    ).rejects.toThrow(/content changed|changed before finalization/u);
+    ).rejects.toThrow(/content changed|changed before finalization|Invalid Run state/u);
     expect(
       (await readNativeTransactionEvents(paths, transactionId)).some(
         (event) => event.type === 'archive-finalization-started',
@@ -593,7 +599,10 @@ describe('Native archive recovery', () => {
     const journal = await readNativeArchiveTransactionV2(paths, transactionId);
     const write = journal.operations.find((operation) => operation.type === 'write');
     expect(write?.staged).toBeTruthy();
-    const staged = path.resolve(paths.nativeRoot, ...write!.staged!.split('/'));
+    const staged = path.resolve(
+      paths.runtimeDir,
+      ...write!.staged!.slice('runtime/'.length).split('/'),
+    );
     await fs.writeFile(staged, 'tampered staged content\n');
 
     await expect(

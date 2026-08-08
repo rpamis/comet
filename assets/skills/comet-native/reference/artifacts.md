@@ -4,28 +4,32 @@ Read this file only when editing the brief, complete target specifications, veri
 
 ## Editing boundary
 
-The Agent primarily edits:
+Each active change directory contains only user-readable formal artifacts that can travel through Git:
 
 ```text
 <artifact-root>/comet/changes/<change-name>/
+  comet-state.yaml
   brief.md
   specs/<capability>/spec.md
   verification.md
+  evidence.md
 ```
 
-Only `.comet/config.yaml` selects the artifact root. Runtime state, workspace, scope, evidence, checkpoints, locks, and transactions are read-only; do not migrate or repair them manually.
+The Agent edits only the brief, complete target specifications, and verification. Runtime manages `comet-state.yaml` and `evidence.md`. Files that have not yet been generated may be absent.
+
+Machine Runtime lives under the project-local, Git-ignored `.comet/runtime/native/`: per-change baseline, workspace, Run, trajectory, scope, receipts, and checkpoints live under `changes/<change-name>/`; global locks and transactions live under `locks/` and `transactions/`. Only `.comet/config.yaml` selects the artifact root, and it does not relocate machine Runtime. Do not migrate or repair Runtime files manually.
 
 ## Evidence projection
 
-After every evidence-bearing transition (entering or leaving Build, Verify), the Runtime regenerates a read-only, human-readable projection:
+After every evidence-bearing transition (entering or leaving Build, Verify), the Runtime regenerates a read-only, human-readable projection at the change root:
 
 ```text
-<artifact-root>/comet/changes/<change-name>/runtime/projections/evidence.md
+<artifact-root>/comet/changes/<change-name>/evidence.md
 ```
 
-It translates the hash-named, content-addressed evidence under `runtime/evidence/` into readable text — implementation scope (which files changed, byte deltas), verification outcome (acceptance pass/fail, coverage totals), and check receipts (command, exit code, summary). Open it when debugging or inspecting a change instead of parsing the hash files.
+It translates the hash-named, content-addressed evidence in project-local Runtime into readable text — implementation scope (which files changed, byte deltas), verification outcome (acceptance pass/fail, coverage totals), and check receipts (command, exit code, summary). Open it when debugging or inspecting a change instead of parsing machine files.
 
-The projection is a read-only derivative: the Runtime overwrites it on every transition, it must not be hand-edited, and it must never be cited as verification evidence. The canonical facts always live in the hash-named documents under `runtime/evidence/`.
+The projection is a read-only derivative: the Runtime overwrites it on every transition, it must not be hand-edited, and it must never be cited as verification evidence. Machine references in state keep the stable logical `runtime/...` form regardless of physical storage.
 
 ## Brief
 

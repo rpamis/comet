@@ -1,0 +1,27 @@
+schema: comet.native.v3
+minimum_runtime_version: 3
+revision: 7
+verification_protocol: legacy-v1
+name: separate-native-runtime-storage
+language: en
+phase: archive
+brief: brief.md
+approval: confirmed
+approved_contract_hash: 9407c91ec1f44a2caa238486674f3b7b0354d183706ca1ee2e385c4c843414d1
+spec_changes:
+  - capability: native-init-workspace-defaults
+    operation: replace
+    source: specs/native-init-workspace-defaults/spec.md
+    base_hash: d571b00896f5465672169268230f58ae87aa423d22aae16f09914411a299c310
+  - capability: native-runtime-storage
+    operation: create
+    source: specs/native-runtime-storage/spec.md
+    base_hash: null
+verification_result: pass
+verification_report: verification.md
+implementation_scope: runtime/evidence/scopes/aa244e7a11c54dcef070a3eedbb34e0a4ade54ab13aa4597581774bd7e6958f3.json
+verification_evidence: runtime/evidence/verifications/8e78fcb039495fad3939283685fe9ef335b0c4a8e4634c99ea282fceb1062ccb.json
+partial_allowance: null
+archived: true
+created_at: 2026-08-07
+run_id: 54d5cf28-21af-4e10-9d6f-bb1cff00d032

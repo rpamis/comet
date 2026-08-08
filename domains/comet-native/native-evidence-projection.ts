@@ -16,12 +16,12 @@ import type { NativeVerificationReceipt } from './native-verification-receipt.js
  * Relative path of the human-readable evidence projection inside a Native change.
  *
  * The projection is a read-only derivative of the content-addressed evidence in
- * `runtime/evidence/`. It exists so that people (and developers debugging a
+ * the project-local Native Runtime. It exists so that people (and developers debugging a
  * change) can read what the hash-named files contain without parsing raw JSON
  * or reading runtime source. The Runtime regenerates it on every evidence-
  * bearing transition, so it must never be cited as evidence itself.
  */
-export const NATIVE_EVIDENCE_PROJECTION_REF = 'runtime/projections/evidence.md';
+export const NATIVE_EVIDENCE_PROJECTION_REF = 'evidence.md';
 
 const NATIVE_EVIDENCE_PROJECTION_GENERATOR = 'comet-native';
 
@@ -271,7 +271,7 @@ export function renderNativeEvidenceProjectionMarkdown(input: {
     '',
     '<!--',
     '  This file is a read-only projection of the content-addressed evidence under',
-    '  runtime/evidence/. The Native Runtime regenerates it on every evidence-bearing',
+    '  .comet/runtime/native directory. The Native Runtime regenerates it on every evidence-bearing',
     '  transition. Do not hand-edit, and never cite this file as verification proof —',
     '  the canonical facts live in the hash-named evidence documents.',
     '-->',

@@ -67,9 +67,7 @@ describe('Native Wave B CLI contract', () => {
       data: {
         change: { phase: 'shape', revision: 2 },
         checkpoint: {
-          manifestRef: expect.stringMatching(
-            /^docs\/comet\/changes\/cold-resume\/runtime\/checkpoints\/manifests\//u,
-          ),
+          manifestRef: expect.stringMatching(/^runtime\/checkpoints\/manifests\//u),
         },
         expectedRevision: 1,
         previousRevision: 1,

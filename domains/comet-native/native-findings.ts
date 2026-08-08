@@ -22,6 +22,24 @@ interface FindingMetadata {
 }
 
 const EXACT_METADATA: Record<string, FindingMetadata> = {
+  'runtime-missing': {
+    severity: 'warning',
+    requiredAction: 'rebuild-native-runtime',
+    retry: 'next',
+    repair: 'none',
+  },
+  'runtime-layout-legacy': {
+    severity: 'warning',
+    requiredAction: 'migrate-native-runtime-layout',
+    retry: 'status',
+    repair: 'doctor',
+  },
+  'runtime-storage-invalid': {
+    severity: 'error',
+    requiredAction: 'repair-native-runtime-storage',
+    retry: 'status',
+    repair: 'doctor',
+  },
   'brief-blocking-question': {
     severity: 'error',
     requiredAction: 'answer-blocking-question',

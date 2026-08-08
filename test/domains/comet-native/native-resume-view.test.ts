@@ -90,9 +90,7 @@ describe('Native resume status view', () => {
       findings: [],
       checkpointDetails: {
         summary: 'Feature implementation is ready',
-        manifestRef: expect.stringMatching(
-          /^comet\/changes\/compact-resume\/runtime\/checkpoints\/manifests\//u,
-        ),
+        manifestRef: expect.stringMatching(/^runtime\/checkpoints\/manifests\//u),
         artifacts: [{ path: 'feature.ts', size: 29 }],
       },
       budgets: {

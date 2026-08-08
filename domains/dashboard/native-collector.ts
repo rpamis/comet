@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
+import { parseNativeVerificationMachineBlock } from '../comet-native/native-acceptance.js';
 import { readNativeBoundedTextFile } from '../comet-native/native-bounded-file.js';
 import {
   NATIVE_CHANGE_STATE_FILE,
@@ -66,6 +67,7 @@ function artifactDescriptors(state: NativeChangeState): Array<[string, string, s
   if (state.verification_report) {
     descriptors.push(['verification', '验证报告', state.verification_report]);
   }
+  if (state.archived) descriptors.push(['evidence', '证据摘要', 'evidence.md']);
   return descriptors.slice(0, NATIVE_DASHBOARD_LIMITS.maxArtifactPreviews);
 }
 
@@ -138,12 +140,30 @@ async function acceptanceSummary(
       return { total, evidenced: 0, skipped: 0, missing: total };
     }
     if (state.archived) {
-      const counts = await readArchivedNativeVerificationAcceptanceCounts(
-        paths,
-        state.name,
-        state.verification_evidence,
-        changeDir,
-      );
+      let counts: { total: number; evidenced: number; skipped: number };
+      try {
+        counts = await readArchivedNativeVerificationAcceptanceCounts(
+          paths,
+          state.name,
+          state.verification_evidence,
+          changeDir,
+        );
+      } catch {
+        if (!state.verification_report) throw new Error('Archived verification report is missing');
+        const report = await readNativeBoundedTextFile({
+          root: changeDir,
+          ref: state.verification_report,
+        });
+        const acceptanceIds = new Set(contract.contract.acceptance.map((entry) => entry.id));
+        const entries = parseNativeVerificationMachineBlock(report.text).filter((entry) =>
+          acceptanceIds.has(entry.acceptance_id),
+        );
+        counts = {
+          total,
+          evidenced: entries.filter((entry) => entry.evidence_refs.length > 0).length,
+          skipped: entries.filter((entry) => entry.skipped_reason !== undefined).length,
+        };
+      }
       return {
         ...counts,
         missing: Math.max(0, counts.total - counts.evidenced - counts.skipped),

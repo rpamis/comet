@@ -3,16 +3,21 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 
-import { readTrajectory } from '../../../domains/engine/run-store.js';
-import { NATIVE_RUN_STORAGE } from '../../../domains/engine/storage-layout.js';
-import { readRunStateAt } from '../../../domains/engine/storage-run.js';
 import {
   createNativeChange,
   nativeChangeDir,
   readNativeChange,
   writeNativeChange,
 } from '../../../domains/comet-native/native-change.js';
-import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import {
+  nativeChangeRuntimeDir,
+  nativeProjectPaths,
+  nativeRuntimeRefFile,
+} from '../../../domains/comet-native/native-paths.js';
+import {
+  readNativeRunState,
+  readNativeTrajectory,
+} from '../../../domains/comet-native/native-run-store.js';
 import { inspectNativeStatus } from '../../../domains/comet-native/native-diagnostics.js';
 import {
   readNativeBaselineManifest,
@@ -48,6 +53,7 @@ describe('Native guarded transitions', () => {
   let projectRoot: string;
   let paths: NativeProjectPaths;
   let changeDir: string;
+  let runtimeDir: string;
 
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-transitions-'));
@@ -59,6 +65,7 @@ describe('Native guarded transitions', () => {
       verificationProtocol: 'legacy-v1',
     });
     changeDir = nativeChangeDir(paths, state.name);
+    runtimeDir = nativeChangeRuntimeDir(paths, state.name);
     await fs.writeFile(path.join(changeDir, 'brief.md'), brief);
   });
 
@@ -91,9 +98,7 @@ describe('Native guarded transitions', () => {
     expect(result.next).toBe('manual');
     expect((await readNativeChange(paths, 'advance-change')).phase).toBe('shape');
     expect((await readNativeChange(paths, 'advance-change')).spec_changes).toEqual([]);
-    await expect(
-      fs.access(path.join(changeDir, 'runtime', 'run-state.json')),
-    ).rejects.toMatchObject({
+    await expect(fs.access(path.join(runtimeDir, 'run-state.json'))).rejects.toMatchObject({
       code: 'ENOENT',
     });
   });
@@ -146,7 +151,7 @@ describe('Native guarded transitions', () => {
       approved_contract_hash: expect.stringMatching(/^[a-f0-9]{64}$/u),
       run_id: 'native-run-1',
     });
-    expect((await readRunStateAt(changeDir, NATIVE_RUN_STORAGE))?.currentStep).toBe('build');
+    expect((await readNativeRunState(runtimeDir))?.currentStep).toBe('build');
 
     const retry = await advanceNativeChange({
       paths,
@@ -155,9 +160,9 @@ describe('Native guarded transitions', () => {
     });
     expect(retry.change.phase).toBe('build');
     expect(retry.change.revision).toBe(2);
-    const run = (await readRunStateAt(changeDir, NATIVE_RUN_STORAGE))!;
+    const run = (await readNativeRunState(runtimeDir))!;
     expect(
-      (await readTrajectory(changeDir, run.trajectoryRef)).filter(
+      (await readNativeTrajectory(runtimeDir, run.trajectoryRef)).filter(
         (event) => event.type === 'state_transitioned',
       ),
     ).toHaveLength(1);
@@ -171,6 +176,111 @@ describe('Native guarded transitions', () => {
     expect(build.change.phase).toBe('verify');
     expect(build.change.revision).toBe(3);
   });
+
+  it('rebuilds a missing Build Runtime without pretending verification survived', async () => {
+    await advanceNativeChange({
+      paths,
+      name: 'advance-change',
+      evidence: { summary: 'shape done', confirmed: true },
+      runId: () => 'initial-runtime-run',
+    });
+    await fs.rm(runtimeDir, { recursive: true });
+
+    const rebuilt = await advanceNativeChange({
+      paths,
+      name: 'advance-change',
+      evidence: { summary: 'rebuild this worktree Runtime' },
+      runId: () => 'rebuilt-runtime-run',
+    });
+
+    expect(rebuilt.change).toMatchObject({
+      phase: 'build',
+      revision: 3,
+      run_id: 'rebuilt-runtime-run',
+      verification_result: 'pending',
+      verification_report: null,
+      implementation_scope: null,
+      verification_evidence: null,
+    });
+    expect(await readNativeRunState(runtimeDir)).toMatchObject({
+      runId: 'rebuilt-runtime-run',
+      currentStep: 'build',
+    });
+    expect(await readNativeBaselineManifest(paths, 'advance-change')).not.toBeNull();
+  });
+
+  it('rebuilds a missing Shape Runtime before applying the requested Shape transition', async () => {
+    await fs.rm(runtimeDir, { recursive: true });
+
+    const rebuilt = await advanceNativeChange({
+      paths,
+      name: 'advance-change',
+      evidence: { summary: 'shape done after cloning', confirmed: true },
+      runId: () => 'rebuilt-shape-run',
+    });
+
+    expect(rebuilt.change).toMatchObject({
+      phase: 'build',
+      revision: 2,
+      run_id: 'rebuilt-shape-run',
+      verification_result: 'pending',
+    });
+    expect(await readNativeRunState(runtimeDir)).toMatchObject({
+      runId: 'rebuilt-shape-run',
+      currentStep: 'build',
+    });
+    expect(await readNativeBaselineManifest(paths, 'advance-change')).not.toBeNull();
+  });
+
+  it.each(['verify', 'archive'] as const)(
+    'returns a missing %s Runtime to Build and clears stale verification bindings',
+    async (phase) => {
+      await advanceNativeChange({
+        paths,
+        name: 'advance-change',
+        evidence: { summary: 'shape done', confirmed: true },
+      });
+      await fs.writeFile(path.join(projectRoot, 'feature.ts'), 'export const feature = true;\n');
+      const verifying = await advanceNativeChange({
+        paths,
+        name: 'advance-change',
+        evidence: { summary: 'implemented', artifacts: ['feature.ts'] },
+      });
+      const state =
+        phase === 'archive'
+          ? {
+              ...verifying.change,
+              phase,
+              verification_result: 'pass' as const,
+              verification_report: 'verification.md',
+              verification_evidence: `runtime/evidence/verifications/${'a'.repeat(64)}.json`,
+            }
+          : verifying.change;
+      await writeNativeChange(paths, state);
+      await fs.writeFile(path.join(changeDir, 'evidence.md'), '# Stale evidence\n');
+      await fs.rm(runtimeDir, { recursive: true });
+
+      const rebuilt = await advanceNativeChange({
+        paths,
+        name: 'advance-change',
+        evidence: { summary: 'continue after cloning' },
+        runId: () => `rebuilt-${phase}-run`,
+      });
+
+      expect(rebuilt.change).toMatchObject({
+        phase: 'build',
+        revision: state.revision + 1,
+        run_id: `rebuilt-${phase}-run`,
+        verification_result: 'pending',
+        verification_report: null,
+        implementation_scope: null,
+        verification_evidence: null,
+      });
+      await expect(fs.access(path.join(changeDir, 'evidence.md'))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+    },
+  );
 
   it.each(['sequential', 'batch'] as const)(
     'requires explicit shared-understanding confirmation in %s mode',
@@ -457,9 +567,9 @@ describe('Native guarded transitions', () => {
         approved_contract_hash: build.change.approved_contract_hash,
       },
     });
-    const run = await readRunStateAt(changeDir, NATIVE_RUN_STORAGE);
+    const run = await readNativeRunState(runtimeDir);
     expect(run).toMatchObject({ currentStep: 'build', status: 'running' });
-    const trajectory = await readTrajectory(changeDir, run!.trajectoryRef);
+    const trajectory = await readNativeTrajectory(runtimeDir, run!.trajectoryRef);
     expect(trajectory.at(-1)).toMatchObject({
       type: 'state_transitioned',
       data: { previousPhase: 'verify', nextPhase: 'build', returnToBuild: true },
@@ -544,8 +654,8 @@ describe('Native guarded transitions', () => {
     });
     expect(result.change.phase).toBe('archive');
     expect(result.nextCommand).toBe('comet native archive advance-change --dry-run');
-    const run = (await readRunStateAt(changeDir, NATIVE_RUN_STORAGE))!;
-    const source = await fs.readFile(path.join(changeDir, run.trajectoryRef), 'utf8');
+    const run = (await readNativeRunState(runtimeDir))!;
+    const source = await fs.readFile(nativeRuntimeRefFile(runtimeDir, run.trajectoryRef), 'utf8');
     expect(source).not.toMatch(/reasoning|thoughts|chain_of_thought/iu);
 
     await fs.appendFile(path.join(changeDir, 'verification.md'), '\nChanged after transition.\n');

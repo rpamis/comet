@@ -11,7 +11,11 @@ import {
 import { atomicWriteJson } from './native-atomic-file.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
-import { resolveContainedNativePath } from './native-paths.js';
+import {
+  nativeChangeRuntimeDir,
+  nativeStorageRoot,
+  resolveContainedNativePath,
+} from './native-paths.js';
 import type { NativeProjectPaths, NativeWorkspaceProjection } from './native-types.js';
 
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
@@ -384,13 +388,18 @@ export function assertNativeWorkspaceBindingCurrent(
 }
 
 export function nativeWorkspaceFile(paths: NativeProjectPaths, name: string): string {
-  return path.join(paths.changesDir, name, 'runtime', 'workspace.json');
+  return path.join(nativeChangeRuntimeDir(paths, name), 'workspace.json');
 }
 
-function nativeWorkspaceRef(paths: NativeProjectPaths, name: string): string {
-  const relative = portableRelative(paths.nativeRoot, nativeWorkspaceFile(paths, name));
+function nativeWorkspaceRef(
+  paths: NativeProjectPaths,
+  name: string,
+): { root: string; ref: string } {
+  const file = nativeWorkspaceFile(paths, name);
+  const root = nativeStorageRoot(paths, file);
+  const relative = portableRelative(root, file);
   if (!relative || relative === '.') throw new Error('Native workspace file escaped its root');
-  return normalizedPortableRef(relative, 'Native workspace file ref');
+  return { root, ref: normalizedPortableRef(relative, 'Native workspace file ref') };
 }
 
 async function readNativeWorkspaceValue(
@@ -398,9 +407,10 @@ async function readNativeWorkspaceValue(
   name: string,
 ): Promise<unknown | null> {
   try {
+    const workspace = nativeWorkspaceRef(paths, name);
     const artifact = await readNativeBoundedTextFile({
-      root: paths.nativeRoot,
-      ref: nativeWorkspaceRef(paths, name),
+      root: workspace.root,
+      ref: workspace.ref,
       maxBytes: MAX_WORKSPACE_IDENTITY_BYTES,
     });
     return JSON.parse(artifact.text) as unknown;
@@ -576,8 +586,9 @@ export async function writeNativeWorkspaceIdentity(
 ): Promise<NativeWorkspaceIdentity> {
   const identity = await inspectNativeWorkspaceIdentity(options);
   const file = nativeWorkspaceFile(options.paths, options.name);
-  await resolveContainedNativePath(options.paths.nativeRoot, file);
-  await atomicWriteJson(file, identity, { containedRoot: options.paths.nativeRoot });
+  const storageRoot = nativeStorageRoot(options.paths, file);
+  await resolveContainedNativePath(storageRoot, file);
+  await atomicWriteJson(file, identity, { containedRoot: storageRoot });
   return identity;
 }
 
@@ -597,8 +608,9 @@ export async function setNativeWorkspaceFinish(
     const updated: NativeWorkspaceIdentityV3 = { ...identity, finish };
     assertIdentity(updated);
     const file = nativeWorkspaceFile(paths, name);
-    await resolveContainedNativePath(paths.nativeRoot, file);
-    await atomicWriteJson(file, updated, { containedRoot: paths.nativeRoot });
+    const storageRoot = nativeStorageRoot(paths, file);
+    await resolveContainedNativePath(storageRoot, file);
+    await atomicWriteJson(file, updated, { containedRoot: storageRoot });
     return updated;
   });
 }

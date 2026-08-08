@@ -109,7 +109,7 @@ export async function prepareNativeWorkspaceFinish(options: {
   state: NativeChangeState;
   workspace: NativeWorkspaceIdentityV3;
 }): Promise<NativeWorkspaceFinishPlan | null> {
-  const { paths, state, workspace } = options;
+  const { paths, workspace } = options;
   if (workspace.isolation === 'current') return null;
   if (!workspace.finish || !workspace.changeBranch || !workspace.targetBranch) {
     throw new Error('Native isolated workspace finish is not persisted');
@@ -126,13 +126,7 @@ export async function prepareNativeWorkspaceFinish(options: {
     throw new Error('Native workspace finish requires a registered Git worktree');
   }
   assertGitIdentity(paths.projectRoot);
-  const allowedBeforeArchive = [
-    portableRelative(paths.projectRoot, nativeSelectionFile(paths)),
-    portableRelative(
-      paths.projectRoot,
-      path.join(nativeChangeDir(paths, state.name), 'runtime', 'workspace.json'),
-    ),
-  ];
+  const allowedBeforeArchive = [portableRelative(paths.projectRoot, nativeSelectionFile(paths))];
   const unrelated = gitStatusPaths(paths.projectRoot).filter(
     (candidate) => !pathCovered(candidate, allowedBeforeArchive),
   );
@@ -224,10 +218,6 @@ export async function finishArchivedNativeWorkspace(options: {
           options.paths.projectRoot,
           canonicalSpecPath(options.paths, change.capability),
         ),
-      ),
-      portableRelative(
-        options.paths.projectRoot,
-        path.join(options.paths.transactionsDir, options.transactionId),
       ),
       portableRelative(options.paths.projectRoot, nativeSelectionFile(options.paths)),
     ];

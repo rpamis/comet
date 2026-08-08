@@ -14,7 +14,10 @@ import {
   NATIVE_STATUS_PAGE_LIMITS,
 } from '../../../domains/comet-native/native-diagnostics.js';
 import { nativeContinuation } from '../../../domains/comet-native/native-continuation.js';
-import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import {
+  nativeChangeRuntimeDir,
+  nativeProjectPaths,
+} from '../../../domains/comet-native/native-paths.js';
 import { selectNativeChange } from '../../../domains/comet-native/native-selection.js';
 import type {
   NativeChangeState,
@@ -112,7 +115,7 @@ describe('Native status diagnostics', () => {
       workspaceBinding: { isolation: 'current', changeBranch: null, targetBranch: null },
     });
     await fs.writeFile(
-      path.join(nativeChangeDir(paths, state.name), 'runtime', 'workspace.json'),
+      path.join(nativeChangeRuntimeDir(paths, state.name), 'workspace.json'),
       '{"schema":"comet.native.workspace.v3","isolation":"invalid"}\n',
     );
 
@@ -504,11 +507,29 @@ describe('Native status diagnostics', () => {
       name: 'missing-run',
       evidence: { summary: 'shape is ready' },
     });
-    await fs.rm(path.join(nativeChangeDir(paths, 'missing-run'), 'runtime', 'run-state.json'));
+    await fs.rm(path.join(nativeChangeRuntimeDir(paths, 'missing-run'), 'run-state.json'));
 
     expect(await inspectNativeStatus(paths, 'missing-run')).toMatchObject({
       phase: 'build',
       error: 'Native change references a missing Run state',
+    });
+  });
+
+  it('keeps a change discoverable when its whole local Runtime is missing', async () => {
+    await validChange('missing-runtime');
+    await advanceNativeChange({
+      paths,
+      name: 'missing-runtime',
+      evidence: { summary: 'shape is ready' },
+    });
+    await fs.rm(nativeChangeRuntimeDir(paths, 'missing-runtime'), { recursive: true });
+
+    expect(await inspectNativeStatus(paths, 'missing-runtime', { details: true })).toMatchObject({
+      name: 'missing-runtime',
+      phase: 'build',
+      runtime: { status: 'missing', layout: 'missing' },
+      nextCommand: 'comet native next missing-runtime --summary "<summary>"',
+      findingSummary: { codes: ['runtime-missing'], warnings: 1, errors: 0 },
     });
   });
 });

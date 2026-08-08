@@ -14,7 +14,10 @@ import {
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
 import { inspectNativeStatus } from '../../../domains/comet-native/native-diagnostics.js';
-import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import {
+  nativeChangeRuntimeDir,
+  nativeProjectPaths,
+} from '../../../domains/comet-native/native-paths.js';
 import {
   inspectNativeRepairHistory,
   nativeRepairFailedCheckIdsFromReceipts,
@@ -56,6 +59,7 @@ describe('Native repair stagnation transitions', () => {
   let projectRoot: string;
   let paths: NativeProjectPaths;
   let changeDir: string;
+  let runtimeDir: string;
 
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-repair-transition-'));
@@ -70,6 +74,7 @@ describe('Native repair stagnation transitions', () => {
       verificationProtocol: 'legacy-v1',
     });
     changeDir = nativeChangeDir(paths, state.name);
+    runtimeDir = nativeChangeRuntimeDir(paths, state.name);
     await fs.writeFile(path.join(changeDir, 'brief.md'), brief);
     await advanceNativeChange({
       paths,
@@ -353,7 +358,7 @@ describe('Native repair stagnation transitions', () => {
   });
 
   it('rejects oversized trajectory text before state or evidence mutation', async () => {
-    const trajectoryFile = path.join(changeDir, 'runtime', 'trajectory.jsonl');
+    const trajectoryFile = path.join(runtimeDir, 'trajectory.jsonl');
     const beforeTrajectory = await fs.readFile(trajectoryFile, 'utf8');
     const beforeStatus = await inspectNativeStatus(paths, 'repair-change');
     await expect(
@@ -370,7 +375,7 @@ describe('Native repair stagnation transitions', () => {
     });
 
     await failVerify('Move to Build for no-code boundary coverage.');
-    const evidenceRoot = path.join(changeDir, 'runtime', 'evidence');
+    const evidenceRoot = path.join(runtimeDir, 'evidence');
     const countEvidenceFiles = async () => {
       const directories = await fs.readdir(evidenceRoot, { withFileTypes: true });
       let count = 0;
@@ -520,7 +525,7 @@ describe('Native repair stagnation transitions', () => {
       partialAllowanceRef: null,
     });
 
-    const allowanceDir = path.join(changeDir, 'runtime', 'evidence', 'allowances');
+    const allowanceDir = path.join(runtimeDir, 'evidence', 'allowances');
     const allowanceCount = async (): Promise<number> => {
       try {
         return (await fs.readdir(allowanceDir)).length;

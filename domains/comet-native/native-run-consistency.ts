@@ -1,7 +1,5 @@
-import path from 'path';
-
 import { NATIVE_RUN_STORAGE } from '../engine/storage-layout.js';
-import { nativeChangeDir } from './native-change.js';
+import { nativeChangeRuntimeDir, nativeRuntimeRefFile } from './native-paths.js';
 import {
   readNativeCheckpoint,
   readNativeRunState,
@@ -10,20 +8,16 @@ import {
 import { inspectNativeTrajectoryTail } from './native-trajectory-recovery.js';
 import type { NativeChangeState, NativeFinding, NativeProjectPaths } from './native-types.js';
 
-function runPath(changeDir: string, ref: string): string {
-  return path.resolve(changeDir, ...ref.split(/[\\/]/u));
-}
-
 export async function inspectNativeRunConsistency(
   paths: NativeProjectPaths,
   state: NativeChangeState,
 ): Promise<NativeFinding[]> {
   const findings: NativeFinding[] = [];
-  const changeDir = nativeChangeDir(paths, state.name);
-  const stateFile = runPath(changeDir, NATIVE_RUN_STORAGE.stateRef);
+  const runtimeDir = nativeChangeRuntimeDir(paths, state.name);
+  const stateFile = nativeRuntimeRefFile(runtimeDir, NATIVE_RUN_STORAGE.stateRef);
   let run;
   try {
-    run = await readNativeRunState(changeDir);
+    run = await readNativeRunState(runtimeDir);
   } catch (error) {
     return [
       {
@@ -74,7 +68,7 @@ export async function inspectNativeRunConsistency(
     });
   }
 
-  const trajectoryFile = runPath(changeDir, run.trajectoryRef);
+  const trajectoryFile = nativeRuntimeRefFile(runtimeDir, run.trajectoryRef);
   const tailInspection = await inspectNativeTrajectoryTail(paths, state.name);
   if (tailInspection.status === 'repairable') {
     findings.push({
@@ -94,7 +88,7 @@ export async function inspectNativeRunConsistency(
   }
   let trajectory;
   try {
-    trajectory = await readNativeTrajectory(changeDir, run.trajectoryRef);
+    trajectory = await readNativeTrajectory(runtimeDir, run.trajectoryRef);
     if (
       trajectory.length === 0 ||
       trajectory.some(
@@ -120,9 +114,9 @@ export async function inspectNativeRunConsistency(
     return findings;
   }
 
-  const checkpointFile = runPath(changeDir, run.checkpointRef);
+  const checkpointFile = nativeRuntimeRefFile(runtimeDir, run.checkpointRef);
   try {
-    const checkpoint = await readNativeCheckpoint(changeDir, run.checkpointRef);
+    const checkpoint = await readNativeCheckpoint(runtimeDir, run.checkpointRef);
     if (!checkpoint) {
       findings.push({
         code: 'checkpoint-missing',

@@ -24,7 +24,11 @@ import {
   readNativeVerificationReceipt,
   writeNativeVerificationReceipt,
 } from '../../../domains/comet-native/native-evidence-storage.js';
-import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import {
+  nativeChangeRuntimeDir,
+  nativeProjectPaths,
+  nativeRuntimeRefFile,
+} from '../../../domains/comet-native/native-paths.js';
 import type {
   NativeChangeState,
   NativeProjectPaths,
@@ -62,6 +66,7 @@ describe('Native verification evidence runtime', () => {
   let projectRoot: string;
   let paths: NativeProjectPaths;
   let changeDir: string;
+  let runtimeDir: string;
   let verifyState: NativeChangeState;
   let report: string;
   let acceptanceReceiptRef: string;
@@ -83,6 +88,7 @@ describe('Native verification evidence runtime', () => {
       now: new Date('2026-07-17T00:00:00.000Z'),
     });
     changeDir = nativeChangeDir(paths, created.name);
+    runtimeDir = nativeChangeRuntimeDir(paths, created.name);
     await fs.writeFile(path.join(changeDir, 'brief.md'), brief);
     const buildState: NativeChangeState = {
       ...created,
@@ -346,13 +352,7 @@ Pass.
   it('preserves an immutable report snapshot after the live report is rewritten', async () => {
     const { evidenceRef } = await archiveState();
     const envelope = await readNativeVerificationEvidence(paths, verifyState.name, evidenceRef);
-    const snapshot = path.join(
-      changeDir,
-      'runtime',
-      'evidence',
-      'reports',
-      `${envelope.reportHash}.json`,
-    );
+    const snapshot = path.join(runtimeDir, 'evidence', 'reports', `${envelope.reportHash}.json`);
 
     expect(JSON.parse(await fs.readFile(snapshot, 'utf8'))).toMatchObject({ content: report });
     await fs.writeFile(path.join(changeDir, 'verification.md'), `${report}\nReverified later.\n`);
@@ -370,7 +370,7 @@ Pass.
       envelope: { requiredReceiptRefs: [receiptRef] },
     });
 
-    const receiptFile = path.join(changeDir, ...(await checkDependencyRef(receiptRef)).split('/'));
+    const receiptFile = nativeRuntimeRefFile(runtimeDir, await checkDependencyRef(receiptRef));
     const persisted = JSON.parse(await fs.readFile(receiptFile, 'utf8')) as {
       checker: { version: number };
     };
@@ -385,7 +385,7 @@ Pass.
 
   it('rejects an unsupported check policy before binding Verify evidence', async () => {
     const receiptRef = await writeCheckReceipt();
-    const receiptFile = path.join(changeDir, ...(await checkDependencyRef(receiptRef)).split('/'));
+    const receiptFile = nativeRuntimeRefFile(runtimeDir, await checkDependencyRef(receiptRef));
     const persisted = JSON.parse(await fs.readFile(receiptFile, 'utf8')) as {
       checker: { version: number };
     };
@@ -641,7 +641,7 @@ ${JSON.stringify(entries, null, 2)}
 
   it('fails closed when the evidence document is tampered with', async () => {
     const { state, evidenceRef } = await archiveState();
-    const evidenceFile = path.join(changeDir, ...evidenceRef.split('/'));
+    const evidenceFile = nativeRuntimeRefFile(runtimeDir, evidenceRef);
     const value = JSON.parse(await fs.readFile(evidenceFile, 'utf8')) as Record<string, unknown>;
     value.result = 'fail';
     await fs.writeFile(evidenceFile, JSON.stringify(value));

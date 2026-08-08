@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   archiveNativeChange,
@@ -14,7 +14,10 @@ import {
   readNativeChangeFile,
 } from '../../../domains/comet-native/native-change.js';
 import { sha256File } from '../../../domains/comet-native/native-hash.js';
-import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import {
+  nativePreferredChangeRuntimeDir,
+  nativeProjectPaths,
+} from '../../../domains/comet-native/native-paths.js';
 import {
   resolveSelectedNativeChange,
   selectNativeChange,
@@ -24,8 +27,6 @@ import type {
   NativeProjectPaths,
   NativeSpecChange,
 } from '../../../domains/comet-native/native-types.js';
-import { NATIVE_RUN_STORAGE } from '../../../domains/engine/storage-layout.js';
-import { readRunStateAt } from '../../../domains/engine/storage-run.js';
 import {
   prepareNativeArchiveFixture,
   readyNativeArchivePreflight,
@@ -102,7 +103,13 @@ describe('Native archive', () => {
       archived: true,
       phase: 'archive',
     });
-    expect((await readRunStateAt(result.archiveDir, NATIVE_RUN_STORAGE))?.status).toBe('completed');
+    await expect(
+      fs.access(nativePreferredChangeRuntimeDir(paths, 'auth-update')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(fs.access(path.join(result.archiveDir, 'runtime'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    expect(result.runtimeCleanupWarning).toBeNull();
     expect(await readNativeTransaction(paths, result.transactionId)).toMatchObject({
       schema: 'comet.native.transaction.v2',
       kind: 'archive',
@@ -136,12 +143,13 @@ describe('Native archive', () => {
 
   it('supports an archive with no spec changes', async () => {
     const now = new Date('2026-07-15T00:00:00.000Z');
-    await prepareNativeArchiveFixture({ paths, name: 'docs-only' });
+    const { changeDir } = await prepareNativeArchiveFixture({ paths, name: 'docs-only' });
     const expectedPreflightHash = await readyNativeArchivePreflight({
       paths,
       name: 'docs-only',
       now,
     });
+    await fs.rm(path.join(changeDir, 'evidence.md'), { force: true });
     const result = await archiveNativeChange({
       paths,
       name: 'docs-only',
@@ -154,6 +162,45 @@ describe('Native archive', () => {
     ).toMatchObject({
       archived: true,
     });
+    await expect(
+      fs.readFile(path.join(result.archiveDir, 'evidence.md'), 'utf8'),
+    ).resolves.toContain('# Comet Native Evidence Projection');
+  });
+
+  it('keeps a committed archive when local Runtime cleanup fails', async () => {
+    const now = new Date('2026-07-15T00:30:00.000Z');
+    const name = 'cleanup-warning';
+    await prepareNativeArchiveFixture({ paths, name });
+    const expectedPreflightHash = await readyNativeArchivePreflight({ paths, name, now });
+    const runtimeDir = nativePreferredChangeRuntimeDir(paths, name);
+    const realRm = fs.rm.bind(fs);
+    const rm = vi.spyOn(fs, 'rm').mockImplementation(async (target, options) => {
+      if (path.resolve(String(target)) === path.resolve(runtimeDir)) {
+        throw Object.assign(new Error('Runtime directory is busy'), { code: 'EBUSY' });
+      }
+      return realRm(target, options);
+    });
+    try {
+      const result = await archiveNativeChange({
+        paths,
+        name,
+        expectedPreflightHash,
+        now,
+      });
+
+      expect(result.runtimeCleanupWarning).toContain('Runtime directory is busy');
+      expect(
+        await readNativeChangeFile(path.join(result.archiveDir, 'comet-state.yaml')),
+      ).toMatchObject({
+        archived: true,
+      });
+      await expect(fs.access(runtimeDir)).resolves.toBeUndefined();
+      expect(await readNativeTransaction(paths, result.transactionId)).toMatchObject({
+        status: 'committed',
+      });
+    } finally {
+      rm.mockRestore();
+    }
   });
 
   it('rechecks verification freshness after spec operations and before moving the change', async () => {

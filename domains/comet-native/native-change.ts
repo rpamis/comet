@@ -2,6 +2,8 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { parseDocument, stringify } from 'yaml';
 
+import { listGitWorktreeRoots } from '../../platform/paths/git-worktree.js';
+
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
 import { atomicWriteText } from './native-atomic-file.js';
 import {
@@ -11,7 +13,13 @@ import {
   writeProjectConfig,
 } from './native-config.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
-import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
+import {
+  isInsidePath,
+  nativeChangeRuntimeDir,
+  nativePreferredChangeRuntimeDir,
+  nativeProjectPaths,
+  resolveContainedNativePath,
+} from './native-paths.js';
 import { readNativeProtectedDirectory } from './native-protected-file.js';
 import { compareAndSwapNativeRevision } from './native-revision.js';
 import {
@@ -576,8 +584,12 @@ export async function hasPendingNativeSchemaMigration(
   paths: NativeProjectPaths,
   name: string,
 ): Promise<boolean> {
-  const file = path.join(nativeChangeDir(paths, name), 'runtime', 'schema-migration.json');
-  await resolveContainedNativePath(paths.nativeRoot, file);
+  const runtimeDir = nativeChangeRuntimeDir(paths, name);
+  const file = path.join(runtimeDir, 'schema-migration.json');
+  await resolveContainedNativePath(
+    isInsidePath(paths.runtimeDir, file) ? paths.runtimeDir : paths.nativeRoot,
+    file,
+  );
   try {
     await fs.lstat(file);
     return true;
@@ -591,8 +603,12 @@ export async function hasPendingNativeCheckpointRecovery(
   paths: NativeProjectPaths,
   name: string,
 ): Promise<boolean> {
-  const file = path.join(nativeChangeDir(paths, name), 'runtime', 'checkpoint-journal.json');
-  await resolveContainedNativePath(paths.nativeRoot, file);
+  const runtimeDir = nativeChangeRuntimeDir(paths, name);
+  const file = path.join(runtimeDir, 'checkpoint-journal.json');
+  await resolveContainedNativePath(
+    isInsidePath(paths.runtimeDir, file) ? paths.runtimeDir : paths.nativeRoot,
+    file,
+  );
   try {
     await fs.lstat(file);
     return true;
@@ -644,8 +660,11 @@ async function createNativeChangeLocked(options: {
   }
   const verificationProtocol = options.verificationProtocol ?? 'legacy-v1';
   const changeDir = nativeChangeDir(options.paths, options.name);
+  const runtimeDir = nativePreferredChangeRuntimeDir(options.paths, options.name);
   await resolveContainedNativePath(options.paths.nativeRoot, changeDir);
+  await resolveContainedNativePath(options.paths.runtimeDir, runtimeDir);
   let createdChangeDir = false;
+  let createdRuntimeDir = false;
   try {
     try {
       await fs.mkdir(changeDir, { recursive: false });
@@ -666,6 +685,20 @@ async function createNativeChangeLocked(options: {
         }
       } else if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
         throw new Error(`Native change already exists: ${options.name}`, { cause: error });
+      } else {
+        throw error;
+      }
+    }
+    try {
+      await fs.mkdir(runtimeDir, { recursive: false });
+      createdRuntimeDir = true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        await fs.mkdir(options.paths.changesRuntimeDir, { recursive: true });
+        await fs.mkdir(runtimeDir, { recursive: false });
+        createdRuntimeDir = true;
+      } else if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+        throw new Error(`Native change Runtime already exists: ${options.name}`, { cause: error });
       } else {
         throw error;
       }
@@ -693,7 +726,7 @@ async function createNativeChangeLocked(options: {
     };
     await Promise.all([
       fs.mkdir(path.join(changeDir, 'specs'), { recursive: true }),
-      fs.mkdir(path.join(changeDir, 'runtime', 'checkpoints'), { recursive: true }),
+      fs.mkdir(path.join(runtimeDir, 'checkpoints'), { recursive: true }),
       atomicWriteText(path.join(changeDir, 'brief.md'), NATIVE_BRIEF_TEMPLATE),
     ]);
     const projectConfig = await readProjectConfig(options.paths.projectRoot);
@@ -739,6 +772,7 @@ async function createNativeChangeLocked(options: {
     });
     return state;
   } catch (error) {
+    if (createdRuntimeDir) await fs.rm(runtimeDir, { recursive: true, force: true });
     if (createdChangeDir) await fs.rm(changeDir, { recursive: true, force: true });
     throw error;
   }
@@ -973,6 +1007,7 @@ async function listActiveNativeChangesOwnedByWorkspace(
     }
     if (inspection.state.archived) continue;
     const identity = await readNativeWorkspaceIdentity(paths, name);
+    if (!identity && (await hasForeignRegisteredWorkspaceOwner(paths, name))) continue;
     if (identity?.schema === 'comet.native.workspace.v3') {
       const binding = await inspectNativeWorkspaceBinding({ paths, identity });
       if (binding.code === 'workspace-binding-root-changed') continue;
@@ -983,4 +1018,42 @@ async function listActiveNativeChangesOwnedByWorkspace(
     owned.push(name);
   }
   return owned;
+}
+
+function sameWorkspaceRoot(left: string, right: string): boolean {
+  const normalizedLeft = path.resolve(left);
+  const normalizedRight = path.resolve(right);
+  return process.platform === 'win32'
+    ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
+    : normalizedLeft === normalizedRight;
+}
+
+async function hasForeignRegisteredWorkspaceOwner(
+  paths: NativeProjectPaths,
+  name: string,
+): Promise<boolean> {
+  for (const root of listGitWorktreeRoots(paths.projectRoot)) {
+    if (sameWorkspaceRoot(root, paths.projectRoot)) continue;
+    try {
+      const config = await readProjectConfig(root);
+      if (!config) continue;
+      const candidatePaths = await nativeProjectPaths(root, config.native.artifact_root);
+      await fs.access(path.join(candidatePaths.changesDir, name, NATIVE_CHANGE_STATE_FILE));
+      const identity = await readNativeWorkspaceIdentity(candidatePaths, name);
+      if (!identity) continue;
+      if (identity.schema === 'comet.native.workspace.v3') {
+        const binding = await inspectNativeWorkspaceBinding({ paths: candidatePaths, identity });
+        if (binding.state === 'aligned') return true;
+        continue;
+      }
+      const advisory = await inspectNativeWorkspaceAdvisory({
+        paths: candidatePaths,
+        identity,
+      });
+      if (advisory.state !== 'drifted') return true;
+    } catch {
+      // A foreign worktree that cannot prove ownership must not suppress the local change.
+    }
+  }
+  return false;
 }

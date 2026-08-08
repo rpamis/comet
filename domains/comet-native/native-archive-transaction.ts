@@ -7,7 +7,7 @@ import {
   inspectNativeArchiveContent,
   type NativeArchiveContentIdentity,
 } from './native-archive-content.js';
-import { resolveContainedNativePath } from './native-paths.js';
+import { isInsidePath, nativeStorageRoot, resolveContainedNativePath } from './native-paths.js';
 import {
   captureNativeProtectedDirectoryGuard,
   copyNativeProtectedFile,
@@ -91,15 +91,20 @@ interface NativeArchiveCasRecord {
 }
 
 function resolveRefLexically(paths: NativeProjectPaths, ref: string): string {
-  const target = path.resolve(paths.nativeRoot, ...ref.split('/'));
-  if (path.relative(paths.nativeRoot, target).split(path.sep).includes('..')) {
+  const runtimePrefix = 'runtime/';
+  const runtimeRef = ref.startsWith(runtimePrefix);
+  const root = runtimeRef ? paths.runtimeDir : paths.nativeRoot;
+  const relativeRef = runtimeRef ? ref.slice(runtimePrefix.length) : ref;
+  const target = path.resolve(root, ...relativeRef.split('/'));
+  if (!isInsidePath(root, target)) {
     throw new Error(`Unsafe Native Archive transaction ref: ${ref}`);
   }
   return target;
 }
 
 async function resolveRef(paths: NativeProjectPaths, ref: string): Promise<string> {
-  return resolveContainedNativePath(paths.nativeRoot, resolveRefLexically(paths, ref));
+  const target = resolveRefLexically(paths, ref);
+  return resolveContainedNativePath(nativeStorageRoot(paths, target), target);
 }
 
 function sameContent(
@@ -139,7 +144,7 @@ export async function createNativeArchiveTransactionV2(
   const tx = await resolveNativeTransactionPaths(paths, validated.id);
   await fs.mkdir(tx.staged, { recursive: true });
   await fs.mkdir(tx.backups, { recursive: true });
-  await atomicWriteJson(tx.journal, validated, { containedRoot: paths.nativeRoot });
+  await atomicWriteJson(tx.journal, validated, { containedRoot: paths.runtimeDir });
   await appendNativeTransactionEvent(paths, validated.id, 'prepared');
 }
 
@@ -149,7 +154,7 @@ export async function readNativeArchiveTransactionV2(
 ): Promise<NativeArchiveTransactionJournalV2> {
   const tx = await resolveNativeTransactionPaths(paths, id);
   const snapshot = await readNativeProtectedFile({
-    root: paths.nativeRoot,
+    root: paths.runtimeDir,
     file: tx.journal,
     maxBytes: NATIVE_ARCHIVE_JOURNAL_MAX_BYTES,
     label: `Native Archive transaction journal ${id}`,
@@ -168,7 +173,7 @@ async function setStatus(
 ): Promise<NativeArchiveTransactionJournalV2> {
   const updated = parseNativeArchiveTransactionJournalV2({ ...journal, status });
   const tx = await resolveNativeTransactionPaths(paths, updated.id);
-  await atomicWriteJson(tx.journal, updated, { containedRoot: paths.nativeRoot });
+  await atomicWriteJson(tx.journal, updated, { containedRoot: paths.runtimeDir });
   return updated;
 }
 
@@ -239,7 +244,7 @@ async function captureStableArchiveFile(options: {
   }
   const beforeVersion = fileVersion(before);
   const snapshot = await readNativeProtectedFile({
-    root: options.paths.nativeRoot,
+    root: nativeStorageRoot(options.paths, options.file),
     file: options.file,
     maxBytes: NATIVE_ARCHIVE_COPY_MAX_BYTES,
     label: options.label,
@@ -333,7 +338,9 @@ async function archiveCasPaths(
     rollbackQuarantine: path.join(path.dirname(target), `${prefix}.rollback`),
   };
   await Promise.all(
-    Object.values(result).map((item) => resolveContainedNativePath(paths.nativeRoot, item)),
+    Object.values(result).map((item) =>
+      resolveContainedNativePath(nativeStorageRoot(paths, item), item),
+    ),
   );
   return result;
 }
@@ -347,7 +354,7 @@ async function readCasRecord(options: {
 }): Promise<NativeArchiveCasRecord | null> {
   if (!(await pathExists(options.file))) return null;
   const snapshot = await readNativeProtectedFile({
-    root: options.paths.nativeRoot,
+    root: options.paths.runtimeDir,
     file: options.file,
     maxBytes: NATIVE_ARCHIVE_CAS_RECORD_MAX_BYTES,
     label: `Archive CAS ${options.operation.id} ${options.role} record`,
@@ -378,7 +385,7 @@ async function persistCasRecord(options: {
     return existing;
   }
   await ensureNativeProtectedDirectory({
-    root: options.paths.nativeRoot,
+    root: options.paths.runtimeDir,
     directory: path.dirname(options.file),
     label: `Archive CAS ${options.operation.id} records`,
   });
@@ -391,7 +398,7 @@ async function persistCasRecord(options: {
   };
   try {
     await atomicWriteJson(options.file, record, {
-      containedRoot: options.paths.nativeRoot,
+      containedRoot: options.paths.runtimeDir,
       exclusive: true,
     });
   } catch (error) {
@@ -463,7 +470,7 @@ async function restoreUnexpectedQuarantine(options: {
 }): Promise<void> {
   if (!(await pathExists(options.quarantine)) || (await pathExists(options.target))) return;
   const guard = await captureNativeProtectedDirectoryGuard({
-    root: options.paths.nativeRoot,
+    root: nativeStorageRoot(options.paths, options.target),
     directory: path.dirname(options.target),
     label: `Archive CAS ${options.operation.id} quarantine restoration`,
   });
@@ -506,7 +513,7 @@ async function quarantineBoundTarget(options: {
     return;
   }
   const guard = await captureNativeProtectedDirectoryGuard({
-    root: options.paths.nativeRoot,
+    root: nativeStorageRoot(options.paths, options.target),
     directory: path.dirname(options.target),
     label: `Archive ${options.phase} target ${options.operation.target}`,
   });
@@ -560,7 +567,7 @@ async function removeExactCasFile(options: {
   if (!(await pathExists(options.file))) return;
   await validateFileAgainstCasRecord(options);
   const guard = await captureNativeProtectedDirectoryGuard({
-    root: options.paths.nativeRoot,
+    root: nativeStorageRoot(options.paths, options.file),
     directory: path.dirname(options.file),
     label: options.label,
   });
@@ -591,9 +598,9 @@ async function ensureBackup(
     label: `Archive transaction target ${operation.target}`,
   });
   await copyNativeProtectedFile({
-    sourceRoot: paths.nativeRoot,
+    sourceRoot: nativeStorageRoot(paths, target),
     source: target,
-    targetRoot: paths.nativeRoot,
+    targetRoot: nativeStorageRoot(paths, backup),
     target: backup,
     maxBytes: NATIVE_ARCHIVE_COPY_MAX_BYTES,
     label: `Archive transaction backup ${operation.backup}`,
@@ -715,14 +722,14 @@ async function ensureWriteCandidate(options: {
     return cas.candidate;
   }
   await ensureNativeProtectedDirectory({
-    root: options.paths.nativeRoot,
+    root: options.paths.runtimeDir,
     directory: cas.directory,
     label: `Archive CAS ${options.operation.id} records`,
   });
   await copyNativeProtectedFile({
-    sourceRoot: options.paths.nativeRoot,
+    sourceRoot: nativeStorageRoot(options.paths, options.staged),
     source: options.staged,
-    targetRoot: options.paths.nativeRoot,
+    targetRoot: options.paths.runtimeDir,
     target: cas.candidate,
     maxBytes: NATIVE_ARCHIVE_COPY_MAX_BYTES,
     label: `Archive transaction staged file ${options.operation.staged}`,
@@ -822,12 +829,12 @@ async function ensureWriteInstalled(options: {
     label: `Archive write candidate ${options.operation.target}`,
   });
   await ensureNativeProtectedDirectory({
-    root: options.paths.nativeRoot,
+    root: nativeStorageRoot(options.paths, options.target),
     directory: path.dirname(options.target),
     label: `Archive write target ${options.operation.target}`,
   });
   const guard = await captureNativeProtectedDirectoryGuard({
-    root: options.paths.nativeRoot,
+    root: nativeStorageRoot(options.paths, options.target),
     directory: path.dirname(options.target),
     label: `Archive write target ${options.operation.target}`,
   });
@@ -1202,7 +1209,7 @@ async function installOriginalTarget(options: {
     label: `Archive rollback original quarantine ${options.operation.target}`,
   });
   const guard = await captureNativeProtectedDirectoryGuard({
-    root: options.paths.nativeRoot,
+    root: nativeStorageRoot(options.paths, options.target),
     directory: path.dirname(options.target),
     label: `Archive rollback target ${options.operation.target}`,
   });

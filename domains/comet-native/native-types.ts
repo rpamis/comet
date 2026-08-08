@@ -48,6 +48,7 @@ export interface NativeProjectPaths {
   changesDir: string;
   archiveDir: string;
   runtimeDir: string;
+  changesRuntimeDir: string;
   locksDir: string;
   transactionsDir: string;
 }
@@ -508,7 +509,11 @@ interface NativeTransitionJournalFields<TState extends NativeReadableChangeState
   eventData: Record<string, unknown>;
 }
 
-export type NativeTransitionOperation = 'advance' | 'spec-rebase' | 'evidence-retreat';
+export type NativeTransitionOperation =
+  | 'advance'
+  | 'spec-rebase'
+  | 'evidence-retreat'
+  | 'runtime-rebuild';
 
 export interface NativeLegacyTransitionJournal extends NativeTransitionJournalFields<NativeLegacyChangeState> {
   schema: typeof NATIVE_LEGACY_TRANSITION_SCHEMA;
@@ -556,6 +561,12 @@ export interface NativeStatusProjection {
   checkpoint: NativeCheckpointCompactView | null;
   continuation: NativeContinuation | null;
   workspace: NativeWorkspaceProjection;
+  runtime: {
+    status: 'available' | 'missing' | 'invalid';
+    layout: 'project-local' | 'legacy' | 'missing';
+    path: string;
+    message?: string;
+  };
   repair?: NativeRepairStatusProjection | null;
   acceptancePage?: NativeAcceptancePageProjection;
   findings?: NativeStructuredFinding[];

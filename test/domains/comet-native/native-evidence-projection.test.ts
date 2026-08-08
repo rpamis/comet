@@ -23,7 +23,11 @@ import {
   renderNativeEvidenceProjectionMarkdown,
   writeNativeEvidenceProjection,
 } from '../../../domains/comet-native/native-evidence-projection.js';
-import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import {
+  nativeChangeRuntimeDir,
+  nativeProjectPaths,
+  nativeRuntimeRefFile,
+} from '../../../domains/comet-native/native-paths.js';
 import type {
   NativeContentSnapshotManifest,
   NativeProjectPaths,
@@ -401,7 +405,7 @@ describe('Native evidence projection write', () => {
     // Sanity: the projection reads cleanly before tampering.
     await writeNativeEvidenceProjection(paths, 'secure-login');
 
-    const scopeFile = path.join(nativeChangeDir(paths, 'secure-login'), ...scopeRef.split('/'));
+    const scopeFile = nativeRuntimeRefFile(nativeChangeRuntimeDir(paths, 'secure-login'), scopeRef);
     const value = JSON.parse(await fs.readFile(scopeFile, 'utf8')) as Record<string, unknown>;
     value.complete = true;
     await fs.writeFile(scopeFile, JSON.stringify(value));

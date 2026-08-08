@@ -159,7 +159,7 @@ classic:
   auto_transition: true
 ```
 
-Native 默认把产物放在 `docs/comet/`。如需使用其他项目内根目录，可以显式指定；例如下面会改为 `artifacts/comet/`：
+Native 默认把用户可读产物放在 `docs/comet/`，机器 Runtime 固定放在项目本地的 `.comet/runtime/native/`。如需使用其他项目内 artifact root，可以显式指定；例如下面会改为 `artifacts/comet/`：
 
 ```bash
 comet init --workflow native --root artifacts
@@ -492,7 +492,7 @@ Native 与 Classic runtime 都由 TypeScript 生成，通过 `node` 在所有平
 
 ### Native 工作流
 
-`/comet-native` 使用 Shape → Build → Verify → Archive 四个阶段。Shape 负责澄清、brief、完整目标规格与用户确认；其余规划和实现方法由 Agent 自主选择。状态、验证证据和恢复数据都由 Native runtime 管理，默认写入 `docs/comet/`。
+`/comet-native` 使用 Shape → Build → Verify → Archive 四个阶段。Shape 负责澄清、brief、完整目标规格与用户确认；其余规划和实现方法由 Agent 自主选择。用户可读状态、规格和验证材料默认写入 `docs/comet/`；机器 Runtime、锁、事务和恢复数据写入项目本地的 `.comet/runtime/native/`。
 
 <details>
 <summary>查看 Native 阶段流程</summary>
@@ -525,13 +525,15 @@ Shape 的 `clarification_mode` 可设为 `sequential` 或 `batch`。前者每轮
 | `docs/comet/changes/<name>/comet-state.yaml`    | Native phase、revision、approval、spec operation 和证据引用           |
 | `docs/comet/changes/<name>/brief.md`            | Outcome、范围、非目标、验收示例、约束、决定和未决问题                 |
 | `docs/comet/changes/<name>/specs/`              | 每个 capability 归档后应具备的完整目标行为                           |
-| `docs/comet/changes/<name>/verification.md`     | 验收证据、命令结果、跳过检查、规格一致性、风险和结论                 |
-| `docs/comet/changes/<name>/runtime/`            | baseline、Run、trajectory、checkpoint、实现范围和验证 evidence        |
-| `docs/comet/specs/` / `archive/` / `runtime/`   | canonical specs、已归档 changes，以及锁和可恢复事务                  |
+| `docs/comet/changes/<name>/verification.md`      | 验收证据、命令结果、跳过检查、规格一致性、风险和结论                   |
+| `docs/comet/changes/<name>/evidence.md`          | Runtime 生成的只读、人类可读证据摘要                                  |
+| `.comet/runtime/native/changes/<name>/`          | Native per-change 机器 Runtime：baseline、Run、trajectory、checkpoint、evidence |
+| `.comet/runtime/native/locks/` / `transactions/`  | 项目本地锁和可恢复事务                                               |
+| `docs/comet/specs/` / `archive/`                 | canonical specs、已归档 changes 和用户可读验证材料                    |
 
 Native 可以同时保留多个 active change；`comet status` 会分别列出候选，`.comet/current-change.json` 只选择当前请求归属，不代表只能存在一个 change。选择缺失、失效或存在歧义时，恢复和写入都会停止并要求明确选择，不会猜测另一个 change 或切换到 Classic。
 
-`comet-state.yaml` 和 `runtime/` 中的 revision、hash、evidence 引用及事务状态由 Runtime 管理。需求改变时修改 brief 或拟议规格，再让命令重新计算 contract；不要手改 phase、hash 或 JSON 证据来绕过检查。
+`comet-state.yaml` 中的 phase、revision 和逻辑 `runtime/...` 引用，以及 `.comet/runtime/native/` 中的机器状态由 Runtime 管理。需求改变时修改 brief 或拟议规格，再让命令重新计算 contract；不要手改 phase、hash 或 JSON 证据来绕过检查。
 
 </details>
 
@@ -697,7 +699,11 @@ classic_migration: 1                                     # 脚本维护的迁移
 your-project/
 ├── .comet/
 │   ├── config.yaml                    # 共享项目配置与 Native artifact_root
-│   └── current-change.json            # 可选；当前需求归属（Native/Classic 共用）
+│   ├── current-change.json            # 可选；当前需求归属（Native/Classic 共用）
+│   └── runtime/native/                # 被 Git 忽略的 Native 机器 Runtime
+│       ├── changes/<name>/            # baseline、Run、trajectory、checkpoint、evidence
+│       ├── locks/                     # 项目本地锁
+│       └── transactions/              # 可恢复事务
 ├── .claude/skills/                    # 以 Claude Code 为例的平台技能目录
 │   ├── comet/SKILL.md                 # 配置驱动的共享入口
 │   └── comet-native/
@@ -711,9 +717,8 @@ your-project/
     │   ├── brief.md                   # 结果、范围、决策与验收预期
     │   ├── specs/<capability>/spec.md # 完整目标规格
     │   ├── verification.md            # 验证报告
-    │   └── runtime/                   # checkpoint、证据与恢复状态
+    │   └── evidence.md                # Runtime 生成的只读证据摘要
     ├── archive/YYYY-MM-DD-<name>/     # 已归档 change
-    └── runtime/                       # locks 与可恢复 transactions
 ```
 
 </details>

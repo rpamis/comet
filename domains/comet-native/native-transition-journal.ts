@@ -8,7 +8,6 @@ import { atomicWriteJson } from './native-atomic-file.js';
 import {
   hasPendingNativeSchemaMigration,
   compareAndSwapNativeChangeLocked,
-  nativeChangeDir,
   parseLegacyNativeChangeValue,
   parseNativeChangeValue,
   parseV2NativeChangeValue,
@@ -17,7 +16,11 @@ import {
 import { sha256Text } from './native-hash.js';
 import { acquireNativeLock, releaseNativeLock, type NativeLock } from './native-lock.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
-import { resolveContainedNativePath } from './native-paths.js';
+import {
+  nativeChangeRuntimeDir,
+  nativeStorageRoot,
+  resolveContainedNativePath,
+} from './native-paths.js';
 import { readNativeProtectedFile } from './native-protected-file.js';
 import { redactNativeCredentialText } from './native-redaction.js';
 import {
@@ -118,7 +121,7 @@ export class NativeTransitionMigrationRequiredError extends Error {
 }
 
 export function nativeTransitionJournalFile(paths: NativeProjectPaths, name: string): string {
-  return path.join(nativeChangeDir(paths, name), 'runtime', 'transition.json');
+  return path.join(nativeChangeRuntimeDir(paths, name), 'transition.json');
 }
 
 function nativeTransitionLockName(name: string): string {
@@ -418,6 +421,7 @@ function validateTransitionRunSemantics(
   nextState: NativeReadableChangeState,
   envelope: ReturnType<typeof validateJournalEnvelope>,
   allowCompatibleLegacyIdentity = false,
+  operation: NativeTransitionOperation = 'advance',
 ): void {
   const { previousRun, nextRun } = envelope;
   assertNativeRunMetadata(
@@ -428,6 +432,19 @@ function validateTransitionRunSemantics(
   assertCommittableRun(nextRun, 'next Run');
   if (nextRun.runId !== nextState.run_id || nextRun.currentStep !== nextState.phase) {
     throw new Error('Native transition journal next Run does not match the next change state');
+  }
+
+  if (operation === 'runtime-rebuild') {
+    if (
+      previousRun !== null ||
+      previousState.phase === 'shape' ||
+      nextState.phase !== 'build' ||
+      nextRun.iteration !== 1 ||
+      Object.keys(nextRun.retries).length !== 0
+    ) {
+      throw new Error('Native Runtime rebuild Run transition is invalid');
+    }
+    return;
   }
 
   if (previousRun === null) {
@@ -516,6 +533,37 @@ function validateTransitionStateSemantics(
   }
   if (previousState.archived || nextState.archived) {
     throw new Error('Native transition journal cannot mutate an archived change');
+  }
+
+  if (operation === 'runtime-rebuild') {
+    const sameDurableIdentity =
+      previousState.name === nextState.name &&
+      previousState.language === nextState.language &&
+      previousState.brief === nextState.brief &&
+      previousState.approval === nextState.approval &&
+      ('approved_contract_hash' in previousState
+        ? 'approved_contract_hash' in nextState &&
+          previousState.approved_contract_hash === nextState.approved_contract_hash
+        : !('approved_contract_hash' in nextState)) &&
+      previousState.created_at === nextState.created_at &&
+      isDeepStrictEqual(previousState.spec_changes, nextState.spec_changes);
+    if (
+      previousState.phase === 'shape' ||
+      nextState.phase !== 'build' ||
+      nextState.verification_result !== 'pending' ||
+      nextState.verification_report !== null ||
+      event.verificationResult !== null ||
+      event.artifacts.length !== 0 ||
+      event.noCodeReason !== null ||
+      !sameDurableIdentity ||
+      nextRefs === null ||
+      nextRefs.implementation_scope !== null ||
+      nextRefs.verification_evidence !== null ||
+      nextRefs.partial_allowance !== null
+    ) {
+      throw new Error('Native Runtime rebuild transition semantics are invalid');
+    }
+    return;
   }
 
   if (operation === 'evidence-retreat') {
@@ -685,7 +733,8 @@ export function parseNativeTransitionJournalValue(
   if (
     journal.operation !== 'advance' &&
     journal.operation !== 'spec-rebase' &&
-    journal.operation !== 'evidence-retreat'
+    journal.operation !== 'evidence-retreat' &&
+    journal.operation !== 'runtime-rebuild'
   ) {
     throw new Error('Native transition journal operation is invalid');
   }
@@ -696,7 +745,7 @@ export function parseNativeTransitionJournalValue(
     throw new Error('Native transition journal state mismatch');
   }
   validateTransitionStateSemantics(previousState, nextState, envelope, journal.operation);
-  validateTransitionRunSemantics(previousState, nextState, envelope);
+  validateTransitionRunSemantics(previousState, nextState, envelope, false, journal.operation);
   if (nextState.revision !== previousState.revision + 1) {
     throw new Error('Native transition journal state revision must advance exactly once');
   }
@@ -835,10 +884,11 @@ export async function inspectPendingNativeTransitionSchema(
   name: string,
 ): Promise<NativeTransitionSchemaInspection | null> {
   const file = nativeTransitionJournalFile(paths, name);
-  await resolveContainedNativePath(paths.nativeRoot, file);
+  const storageRoot = nativeStorageRoot(paths, file);
+  await resolveContainedNativePath(storageRoot, file);
   try {
     const snapshot = await readNativeProtectedFile({
-      root: paths.nativeRoot,
+      root: storageRoot,
       file,
       maxBytes: NATIVE_TRANSITION_JOURNAL_MAX_BYTES,
       label: `Native transition journal ${name}`,
@@ -897,11 +947,12 @@ export async function prepareNativeTransition(options: {
   };
   const validated = parseNativeTransitionJournalValue(journal, journal.change);
   const file = nativeTransitionJournalFile(options.paths, validated.change);
-  await resolveContainedNativePath(options.paths.nativeRoot, file);
+  const storageRoot = nativeStorageRoot(options.paths, file);
+  await resolveContainedNativePath(storageRoot, file);
   if (await inspectPendingNativeTransition(options.paths, validated.change)) {
     throw new Error(`Native transition recovery is already pending for ${validated.change}`);
   }
-  await atomicWriteJson(file, validated);
+  await atomicWriteJson(file, validated, { containedRoot: storageRoot });
   return validated;
 }
 
@@ -1028,13 +1079,13 @@ export async function continueNativeTransitionLocked(
   await assertNativeTrajectoryHealthy(paths, name);
   const journal = await inspectPendingNativeTransition(paths, name);
   if (!journal) return null;
-  const changeDir = nativeChangeDir(paths, name);
+  const runtimeDir = nativeChangeRuntimeDir(paths, name);
   const initialEvents = inspectExistingTransitionEvents(
-    await readNativeTrajectory(changeDir, journal.nextRun.trajectoryRef),
+    await readNativeTrajectory(runtimeDir, journal.nextRun.trajectoryRef),
     journal,
   );
   const [actualRun, actualChange] = await Promise.all([
-    readNativeRunState(changeDir),
+    readNativeRunState(runtimeDir),
     readNativeChange(paths, name),
   ]);
   const runSource = assertRunRecoverySource(actualRun, journal);
@@ -1049,10 +1100,10 @@ export async function continueNativeTransitionLocked(
   }
 
   if (runSource === 'previous') {
-    await writeNativeRunState(changeDir, journal.nextRun);
+    await writeNativeRunState(runtimeDir, journal.nextRun);
     await hooks?.afterRunStateWritten?.(journal);
   }
-  if (!sameValue(await readNativeRunState(changeDir), journal.nextRun)) {
+  if (!sameValue(await readNativeRunState(runtimeDir), journal.nextRun)) {
     throw new Error(
       `Native transition Run content changed while continuing ${journal.change}; recovery journal was preserved`,
     );
@@ -1083,13 +1134,13 @@ export async function continueNativeTransitionLocked(
   }
 
   const existingEvents = inspectExistingTransitionEvents(
-    await readNativeTrajectory(changeDir, journal.nextRun.trajectoryRef),
+    await readNativeTrajectory(runtimeDir, journal.nextRun.trajectoryRef),
     journal,
   );
   if (journal.previousRun === null) {
     if (!existingEvents.started) {
       await appendNativeTrajectoryEvent({
-        changeDir,
+        changeDir: runtimeDir,
         run: journal.nextRun,
         type: 'run_started',
         data: {
@@ -1104,7 +1155,7 @@ export async function continueNativeTransitionLocked(
   let event = existingEvents.transitioned;
   if (!event) {
     event = await appendNativeTrajectoryEvent({
-      changeDir,
+      changeDir: runtimeDir,
       run: journal.nextRun,
       type: 'state_transitioned',
       data: { ...journal.eventData, transitionId: journal.id },
@@ -1112,14 +1163,14 @@ export async function continueNativeTransitionLocked(
     });
   }
   await writeNativeCheckpoint({
-    changeDir,
+    changeDir: runtimeDir,
     run: journal.nextRun,
     trajectoryOffset: event.sequence,
     evidenceHash: journal.evidenceHash,
     now: new Date(journal.createdAt),
   });
   const [finalRun, finalChange] = await Promise.all([
-    readNativeRunState(changeDir),
+    readNativeRunState(runtimeDir),
     readNativeChange(paths, name),
   ]);
   assertRunRecoverySource(finalRun, { ...journal, previousRun: journal.nextRun });

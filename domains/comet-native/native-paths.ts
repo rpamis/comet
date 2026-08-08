@@ -1,4 +1,4 @@
-import { promises as fs } from 'fs';
+import { existsSync, promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
 
@@ -7,6 +7,7 @@ import { normalizeWorkflowArtifactRoot } from '../workflow-contract/project-conf
 import type { NativeProjectPaths } from './native-types.js';
 
 export const PROJECT_CONFIG_FILE = '.comet/config.yaml';
+const NATIVE_CHANGE_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 
 async function isFileOrDirectory(target: string): Promise<boolean> {
   try {
@@ -116,8 +117,20 @@ export async function nativeProjectPaths(
   if (!inside(physicalArtifactRoot, physicalNativeRoot)) {
     throw new Error('The configured Native comet root resolves outside its artifact root');
   }
+  const resolvedProjectRoot = path.resolve(projectRoot);
+  const runtimeDir = path.join(resolvedProjectRoot, '.comet', 'runtime', 'native');
+  if (await isSymbolicLink(runtimeDir)) {
+    throw new Error('The Native Runtime root must not be a symbolic link');
+  }
+  const [physicalProjectRoot, physicalRuntimeDir] = await Promise.all([
+    fs.realpath(resolvedProjectRoot),
+    physicalPath(runtimeDir),
+  ]);
+  if (!inside(physicalProjectRoot, physicalRuntimeDir)) {
+    throw new Error('The Native Runtime root resolves outside the project root');
+  }
   return {
-    projectRoot: path.resolve(projectRoot),
+    projectRoot: resolvedProjectRoot,
     configFile: path.join(projectRoot, ...PROJECT_CONFIG_FILE.split('/')),
     artifactRoot,
     artifactRootRef: normalized,
@@ -125,26 +138,141 @@ export async function nativeProjectPaths(
     specsDir: path.join(nativeRoot, 'specs'),
     changesDir: path.join(nativeRoot, 'changes'),
     archiveDir: path.join(nativeRoot, 'archive'),
-    runtimeDir: path.join(nativeRoot, 'runtime'),
-    locksDir: path.join(nativeRoot, 'runtime', 'locks'),
-    transactionsDir: path.join(nativeRoot, 'runtime', 'transactions'),
+    runtimeDir,
+    changesRuntimeDir: path.join(runtimeDir, 'changes'),
+    locksDir: path.join(runtimeDir, 'locks'),
+    transactionsDir: path.join(runtimeDir, 'transactions'),
   };
 }
 
 export async function ensureNativeDirectories(paths: NativeProjectPaths): Promise<void> {
-  const directories = [
-    paths.specsDir,
-    paths.changesDir,
-    paths.archiveDir,
-    paths.locksDir,
-    paths.transactionsDir,
-  ];
   await Promise.all(
-    directories.map(async (directory) => {
+    [paths.specsDir, paths.changesDir, paths.archiveDir].map(async (directory) => {
       await resolveContainedNativePath(paths.nativeRoot, directory);
       await fs.mkdir(directory, { recursive: true });
     }),
   );
+  await Promise.all(
+    [paths.changesRuntimeDir, paths.locksDir, paths.transactionsDir].map(async (directory) => {
+      await resolveContainedNativePath(paths.projectRoot, directory);
+      await fs.mkdir(directory, { recursive: true });
+    }),
+  );
+}
+
+function assertNativeRuntimeChangeName(name: string): void {
+  if (!NATIVE_CHANGE_NAME_PATTERN.test(name)) {
+    throw new Error(`Invalid Native change name: ${name}`);
+  }
+}
+
+export function nativePreferredChangeRuntimeDir(paths: NativeProjectPaths, name: string): string {
+  assertNativeRuntimeChangeName(name);
+  const target = path.join(paths.changesRuntimeDir, name);
+  if (!isInsidePath(paths.changesRuntimeDir, target)) {
+    throw new Error('Native change Runtime path escaped');
+  }
+  return target;
+}
+
+export function nativeLegacyChangeRuntimeDir(paths: NativeProjectPaths, name: string): string {
+  assertNativeRuntimeChangeName(name);
+  const target = path.join(paths.changesDir, name, 'runtime');
+  if (!isInsidePath(paths.changesDir, target)) {
+    throw new Error('Legacy Native change Runtime path escaped');
+  }
+  return target;
+}
+
+/**
+ * Resolve the physical Runtime root for a change. New Runtime wins whenever it exists;
+ * otherwise an existing legacy `<change>/runtime` remains readable until Doctor migrates it.
+ * A missing Runtime resolves to the preferred new location so all new writes use `.comet`.
+ */
+export function nativeChangeRuntimeDir(paths: NativeProjectPaths, name: string): string {
+  const preferred = nativePreferredChangeRuntimeDir(paths, name);
+  if (existsSync(preferred)) return preferred;
+  const legacy = nativeLegacyChangeRuntimeDir(paths, name);
+  return existsSync(legacy) ? legacy : preferred;
+}
+
+export interface NativeRuntimeStorageInspection {
+  status: 'available' | 'missing' | 'invalid';
+  layout: 'project-local' | 'legacy' | 'missing';
+  path: string;
+  message?: string;
+}
+
+async function inspectRuntimeDirectory(
+  target: string,
+): Promise<'directory' | 'missing' | 'invalid'> {
+  try {
+    const stat = await fs.lstat(target);
+    return stat.isDirectory() && !stat.isSymbolicLink() ? 'directory' : 'invalid';
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return 'missing';
+    throw error;
+  }
+}
+
+/** Read-only storage health used by status/doctor before opening machine-owned files. */
+export async function inspectNativeRuntimeStorage(
+  paths: NativeProjectPaths,
+  name: string,
+): Promise<NativeRuntimeStorageInspection> {
+  const preferred = nativePreferredChangeRuntimeDir(paths, name);
+  const legacy = nativeLegacyChangeRuntimeDir(paths, name);
+  const [preferredKind, legacyKind] = await Promise.all([
+    inspectRuntimeDirectory(preferred),
+    inspectRuntimeDirectory(legacy),
+  ]);
+  if (preferredKind === 'invalid') {
+    return {
+      status: 'invalid',
+      layout: 'project-local',
+      path: preferred,
+      message: 'Native Runtime path must be a real directory',
+    };
+  }
+  if (legacyKind === 'invalid') {
+    return {
+      status: 'invalid',
+      layout: 'legacy',
+      path: legacy,
+      message: 'Legacy Native Runtime path must be a real directory',
+    };
+  }
+  if (preferredKind === 'directory' && legacyKind === 'directory') {
+    return {
+      status: 'invalid',
+      layout: 'project-local',
+      path: preferred,
+      message: 'Both project-local and legacy Native Runtime directories exist',
+    };
+  }
+  if (preferredKind === 'directory') {
+    return { status: 'available', layout: 'project-local', path: preferred };
+  }
+  if (legacyKind === 'directory') {
+    return { status: 'available', layout: 'legacy', path: legacy };
+  }
+  return { status: 'missing', layout: 'missing', path: preferred };
+}
+
+export function nativeRuntimeRefFile(runtimeDir: string, ref: string): string {
+  if (!ref.startsWith('runtime/') || path.isAbsolute(ref) || ref.split(/[\\/]/u).includes('..')) {
+    throw new Error(`Invalid Native Runtime ref: ${ref}`);
+  }
+  const target = path.resolve(runtimeDir, ...ref.slice('runtime/'.length).split('/'));
+  if (!isInsidePath(runtimeDir, target)) throw new Error(`Native Runtime ref escaped: ${ref}`);
+  return target;
+}
+
+export function nativeStorageRoot(paths: NativeProjectPaths, target: string): string {
+  const absolute = path.resolve(target);
+  if (isInsidePath(paths.runtimeDir, absolute)) return paths.runtimeDir;
+  if (isInsidePath(paths.nativeRoot, absolute)) return paths.nativeRoot;
+  throw new Error(`Path is outside Native document and Runtime roots: ${target}`);
 }
 
 export function isInsidePath(parent: string, target: string): boolean {

@@ -15,7 +15,7 @@ import { sha256File, sha256Text } from './native-hash.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
 import { captureNativeProtectedDirectoryGuard } from './native-protected-file.js';
 import { redactNativeCredentialText } from './native-redaction.js';
-import { resolveContainedNativePath } from './native-paths.js';
+import { nativeChangeRuntimeDir, resolveContainedNativePath } from './native-paths.js';
 import {
   continueNativeTransitionLocked,
   prepareNativeTransition,
@@ -183,8 +183,8 @@ export async function rebaseNativeSpecChanges(options: {
           throw new Error('Shape spec metadata is refreshed by the next command');
         }
         if (state.archived) throw new Error(`Native change ${state.name} is already archived`);
-        const changeDir = nativeChangeDir(options.paths, options.name);
-        const run = await readNativeRunState(changeDir);
+        const runtimeDir = nativeChangeRuntimeDir(options.paths, options.name);
+        const run = await readNativeRunState(runtimeDir);
         if (!run || run.runId !== state.run_id || run.currentStep !== state.phase || run.pending) {
           throw new Error(`Native Run state is missing or inconsistent for ${state.name}`);
         }

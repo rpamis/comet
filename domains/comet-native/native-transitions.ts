@@ -1,17 +1,33 @@
 import { randomUUID } from 'crypto';
+import { promises as fs } from 'fs';
+import path from 'path';
 
 import { decideWithResolver, recordOutcomeWithResolver } from '../engine/loop.js';
 import { inspectNativeGuard } from './native-guards.js';
-import { DEFAULT_NATIVE_MAX_VERIFY_FAILURES } from './native-config.js';
+import {
+  DEFAULT_NATIVE_MAX_VERIFY_FAILURES,
+  DEFAULT_NATIVE_SNAPSHOT_CONFIG,
+  readProjectConfig,
+} from './native-config.js';
 import { checkNativeChangeLocked } from './native-check.js';
 import { projectNativeAcceptancePage } from './native-acceptance.js';
-import { nativeChangeDir, readNativeChange } from './native-change.js';
+import {
+  NativeBaselineIncompleteError,
+  nativeChangeDir,
+  readNativeChange,
+} from './native-change.js';
 import { collectNativeContractFiles } from './native-contract-files.js';
 import { inspectNativeBuildEvidence, persistNativeBuildEvidence } from './native-build-evidence.js';
 import { nativeContinuation } from './native-continuation.js';
 import { structureNativeFindings } from './native-findings.js';
 import { settleNativeChangeJournalsLocked } from './native-change-recovery.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
+import {
+  inspectNativeRuntimeStorage,
+  nativeChangeRuntimeDir,
+  nativePreferredChangeRuntimeDir,
+} from './native-paths.js';
+import { sha256Text } from './native-hash.js';
 import { redactNativeCredentialText } from './native-redaction.js';
 import {
   inspectLatestNativeRepairDecision,
@@ -32,6 +48,11 @@ import {
 import { readNativeRunState, readNativeTrajectory, startNativeRun } from './native-run-store.js';
 import { reconcileNativeSpecChanges } from './native-specs.js';
 import {
+  createNativeContentSnapshot,
+  inspectNativeContentSnapshotHealth,
+  writeNativeBaselineManifest,
+} from './native-snapshot.js';
+import {
   inspectNativeImplementationScopeFreshness,
   inspectNativeVerificationEvidence,
   inspectNativeVerificationFreshness,
@@ -45,6 +66,7 @@ import {
 } from './native-transition-journal.js';
 import { nativeAdvanceEvidenceHash } from './native-transition-evidence.js';
 import { assertNativeTrajectoryText } from './native-trajectory-limits.js';
+import { writeNativeWorkspaceIdentity } from './native-workspace.js';
 import type {
   NativeAdvanceEvidence,
   NativeAdvanceResult,
@@ -362,17 +384,177 @@ export async function advanceNativeChange(
   );
 }
 
+async function rebuildMissingNativeRuntime(
+  options: AdvanceNativeChangeOptions & { maxVerifyFailures: number },
+  state: NativeChangeState,
+): Promise<NativeAdvanceResult | null> {
+  const runtimeDir = nativePreferredChangeRuntimeDir(options.paths, state.name);
+  let transitionPrepared = false;
+  await fs.mkdir(path.join(runtimeDir, 'checkpoints'), { recursive: true });
+  try {
+    const projectConfig = await readProjectConfig(options.paths.projectRoot);
+    const snapshotPolicy = projectConfig?.native.snapshot ?? DEFAULT_NATIVE_SNAPSHOT_CONFIG;
+    const baseline = await createNativeContentSnapshot(options.paths, {
+      now: options.now,
+      origin: 'change-created',
+      policy: snapshotPolicy,
+      limits: {
+        maxFiles: snapshotPolicy.max_files,
+        maxFileBytes: snapshotPolicy.max_total_bytes,
+        maxTotalBytes: snapshotPolicy.max_total_bytes,
+        maxDurationMs: snapshotPolicy.max_duration_ms,
+      },
+      deadlineMs: snapshotPolicy.max_duration_ms,
+    });
+    if (!baseline.complete) {
+      const health = inspectNativeContentSnapshotHealth(baseline);
+      const omittedByReason = baseline.omitted.reduce<Record<string, number>>((counts, item) => {
+        counts[item.reason] = (counts[item.reason] ?? 0) + 1;
+        return counts;
+      }, {});
+      const overflowCount = baseline.omissionOverflow?.count ?? 0;
+      if (overflowCount > 0) omittedByReason.overflow = overflowCount;
+      throw new NativeBaselineIncompleteError(
+        state.name,
+        baseline.omittedCount,
+        omittedByReason,
+        health.samplePaths,
+        health.sampleTruncated,
+        baseline.limits,
+        baseline.policy?.hash ?? null,
+      );
+    }
+    await writeNativeBaselineManifest(options.paths, state.name, baseline);
+    await writeNativeWorkspaceIdentity({
+      paths: options.paths,
+      name: state.name,
+      revision: state.revision,
+      now: options.now,
+    });
+
+    // Shape has no Run yet. Once its baseline/workspace are restored, the same invocation can
+    // perform the ordinary Shape transition using the user's confirmation evidence.
+    if (state.phase === 'shape') return null;
+
+    const started = startNativeRun(
+      NATIVE_RUNTIME_PACKAGE,
+      options.runId?.() ?? randomUUID(),
+      NATIVE_RUNTIME_HASH,
+    );
+    const decision = decideWithResolver(
+      NATIVE_RUNTIME_PACKAGE,
+      started,
+      new Set(),
+      nativePhaseResolver,
+      undefined,
+    );
+    if (!decision.action) {
+      throw new Error(decision.reason ?? 'Native Runtime rebuild produced no Build action');
+    }
+    const nextRun = recordOutcomeWithResolver(
+      NATIVE_RUNTIME_PACKAGE,
+      decision.state,
+      {
+        actionId: decision.action.id,
+        status: 'succeeded',
+        summary: `Rebuilt local Runtime for ${state.name}`,
+      },
+      nativePhaseResolver,
+      undefined,
+    );
+    if (nextRun.currentStep !== 'build') {
+      throw new Error('Native Runtime rebuild did not resume at Build');
+    }
+    const nextState: NativeChangeState = {
+      ...state,
+      revision: state.revision + 1,
+      phase: 'build',
+      run_id: nextRun.runId,
+      verification_result: 'pending',
+      verification_report: null,
+      implementation_scope: null,
+      verification_evidence: null,
+      partial_allowance: null,
+    };
+    const evidenceHash = sha256Text(
+      JSON.stringify({
+        operation: 'runtime-rebuild',
+        change: state.name,
+        previousPhase: state.phase,
+        nextPhase: 'build',
+      }),
+    );
+    const journal = await prepareNativeTransition({
+      paths: options.paths,
+      previousState: state,
+      nextState,
+      previousRun: null,
+      nextRun,
+      evidenceHash,
+      eventData: {
+        previousPhase: state.phase,
+        nextPhase: 'build',
+        evidenceHash,
+        summary: `Rebuilt local Runtime for ${state.name}`,
+        artifacts: [],
+        noCodeReason: null,
+        verificationResult: null,
+      },
+      operation: 'runtime-rebuild',
+      now: options.now,
+      transitionId: options.transitionId,
+    });
+    transitionPrepared = true;
+    await options.hooks?.afterPrepared?.(journal);
+    const persisted = await continueNativeTransitionLocked(
+      options.paths,
+      state.name,
+      options.hooks,
+    );
+    if (!persisted) throw new Error('Native Runtime rebuild journal disappeared before completion');
+    await fs.rm(path.join(nativeChangeDir(options.paths, state.name), 'evidence.md'), {
+      force: true,
+    });
+    return {
+      change: persisted,
+      previousPhase: state.phase,
+      next: 'auto',
+      nextCommand: null,
+      findings: [],
+      continuation: nativeContinuation({
+        state: persisted,
+        clarificationMode: options.clarificationMode,
+      }),
+    };
+  } catch (error) {
+    if (!transitionPrepared) await fs.rm(runtimeDir, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 async function advanceNativeChangeLocked(
   options: AdvanceNativeChangeOptions & { maxVerifyFailures: number },
 ): Promise<NativeAdvanceResult> {
+  const initialState = await readNativeChange(options.paths, options.name);
+  const runtimeStorage = await inspectNativeRuntimeStorage(options.paths, options.name);
+  if (runtimeStorage.status === 'invalid') {
+    throw new Error(
+      runtimeStorage.message ?? `Native Runtime storage is invalid: ${runtimeStorage.path}`,
+    );
+  }
+  if (runtimeStorage.status === 'missing') {
+    const rebuilt = await rebuildMissingNativeRuntime(options, initialState);
+    if (rebuilt) return rebuilt;
+  }
   await settleNativeChangeJournalsLocked(options.paths, options.name);
   const state = await readNativeChange(options.paths, options.name);
   const previousPhase = state.phase;
   const changeDir = nativeChangeDir(options.paths, options.name);
+  const runtimeDir = nativeChangeRuntimeDir(options.paths, options.name);
   const hash = nativeAdvanceEvidenceHash(options.evidence);
-  const existingRun = await readNativeRunState(changeDir);
+  const existingRun = await readNativeRunState(runtimeDir);
   if (existingRun) {
-    const trajectory = await readNativeTrajectory(changeDir, existingRun.trajectoryRef);
+    const trajectory = await readNativeTrajectory(runtimeDir, existingRun.trajectoryRef);
     const last = trajectory.at(-1);
     if (
       last?.type === 'state_transitioned' &&

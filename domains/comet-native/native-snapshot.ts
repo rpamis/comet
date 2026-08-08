@@ -11,7 +11,12 @@ import {
 } from './native-config.js';
 import { sha256Text } from './native-hash.js';
 import { hasComparableNativeFileObject, sameNativeFileObject } from './native-file-identity.js';
-import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
+import {
+  isInsidePath,
+  nativeChangeRuntimeDir,
+  nativeStorageRoot,
+  resolveContainedNativePath,
+} from './native-paths.js';
 import { readNativeProtectedTextFile } from './native-protected-file.js';
 import { nativeSensitiveRelativePathReason } from './native-sensitive-paths.js';
 import type {
@@ -757,12 +762,14 @@ async function readNativeGitSelectionResults(
 ): Promise<NativeGitSelectionResults> {
   const projectRoot = path.resolve(paths.projectRoot);
   const selectionFile = path.join(projectRoot, '.comet', 'current-change.json');
-  const excludedRefs = [paths.nativeRoot, paths.configFile, selectionFile].map((target) => {
-    const relative = path.relative(projectRoot, path.resolve(target)).replaceAll('\\', '/');
-    const safe = safeGitProjectPath(relative);
-    if (safe === null) throw new Error('Native Git snapshot exclusion escaped the project root');
-    return safe;
-  });
+  const excludedRefs = [paths.nativeRoot, paths.runtimeDir, paths.configFile, selectionFile].map(
+    (target) => {
+      const relative = path.relative(projectRoot, path.resolve(target)).replaceAll('\\', '/');
+      const safe = safeGitProjectPath(relative);
+      if (safe === null) throw new Error('Native Git snapshot exclusion escaped the project root');
+      return safe;
+    },
+  );
   const pathspecs = [
     '--',
     '.',
@@ -1011,6 +1018,7 @@ async function nativePhysicalSnapshotSelection(options: {
   // makes the whole physical selection non-overridable overflow evidence.
   const projectRoot = path.resolve(options.paths.projectRoot);
   const nativeRoot = path.resolve(options.paths.nativeRoot);
+  const runtimeRoot = path.resolve(options.paths.runtimeDir);
   const configFile = path.resolve(options.paths.configFile);
   const selectionFile = path.join(projectRoot, '.comet', 'current-change.json');
   const records: NativePhysicalSelectionRecord[] = [];
@@ -1105,6 +1113,7 @@ async function nativePhysicalSnapshotSelection(options: {
           target === configFile ||
           target === selectionFile ||
           sameOrInside(nativeRoot, target) ||
+          sameOrInside(runtimeRoot, target) ||
           options.denylist.some((denied) => sameOrInside(denied, target)) ||
           nativeSensitiveRelativePathReason(relative) !== null
         ) {
@@ -1334,7 +1343,10 @@ async function inspectGitlinkWorkingTree(
 function isSnapshotProjectRef(paths: NativeProjectPaths, relative: string): boolean {
   if (nativeSensitiveRelativePathReason(relative) !== null) return false;
   const target = path.resolve(paths.projectRoot, ...relative.split('/'));
-  return !sameOrInside(path.resolve(paths.nativeRoot), target);
+  return (
+    !sameOrInside(path.resolve(paths.nativeRoot), target) &&
+    !sameOrInside(path.resolve(paths.runtimeDir), target)
+  );
 }
 
 export function inspectNativeContentSnapshotHealth(
@@ -2309,9 +2321,7 @@ export async function filterNativeContentSnapshotToProjectScope(
 
 export function nativeBaselineManifestFile(paths: NativeProjectPaths, name: string): string {
   if (!CHANGE_NAME_PATTERN.test(name)) throw new Error(`Invalid Native change name: ${name}`);
-  const changeDir = path.join(paths.changesDir, name);
-  if (!isInsidePath(paths.changesDir, changeDir)) throw new Error('Native change path escaped');
-  return path.join(changeDir, 'runtime', 'baseline-manifest.json');
+  return path.join(nativeChangeRuntimeDir(paths, name), 'baseline-manifest.json');
 }
 
 export async function createNativeContentSnapshot(
@@ -2350,6 +2360,7 @@ export async function createNativeContentSnapshot(
   const physicalProjectRoot = await fs.realpath(projectRoot);
   const nativeRoot = path.resolve(paths.nativeRoot);
   const physicalNativeRoot = await fs.realpath(nativeRoot);
+  const runtimeRoot = path.resolve(paths.runtimeDir);
   const configFile = path.resolve(paths.configFile);
   const selectionFile = path.join(projectRoot, '.comet', 'current-change.json');
   const denylist = normalizedDenylist(projectRoot, options.denylist ?? []);
@@ -2914,6 +2925,7 @@ export async function createNativeContentSnapshot(
       if (
         target === configFile ||
         target === selectionFile ||
+        sameOrInside(runtimeRoot, target) ||
         denylist.some((denied) => sameOrInside(denied, target))
       ) {
         continue;
@@ -3188,7 +3200,7 @@ export async function writeNativeBaselineManifest(
   manifest: NativeContentSnapshotManifest,
 ): Promise<void> {
   const file = nativeBaselineManifestFile(paths, name);
-  await resolveContainedNativePath(paths.nativeRoot, file);
+  await resolveContainedNativePath(nativeStorageRoot(paths, file), file);
   await atomicWriteJson(file, parseNativeContentSnapshotManifest(manifest));
 }
 
@@ -3197,10 +3209,11 @@ export async function readNativeBaselineManifest(
   name: string,
 ): Promise<NativeContentSnapshotManifest | null> {
   const file = nativeBaselineManifestFile(paths, name);
-  await resolveContainedNativePath(paths.nativeRoot, file);
+  const storageRoot = nativeStorageRoot(paths, file);
+  await resolveContainedNativePath(storageRoot, file);
   try {
     const source = await readNativeProtectedTextFile({
-      root: paths.nativeRoot,
+      root: storageRoot,
       file,
       maxBytes: NATIVE_SNAPSHOT_MANIFEST_HARD_MAX_BYTES,
       label: 'Native baseline snapshot manifest',

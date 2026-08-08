@@ -1,9 +1,14 @@
 import path from 'path';
 
 import { atomicWriteJson } from './native-atomic-file.js';
-import { nativeChangeDir, parseNativeChangeValue } from './native-change.js';
+import { parseNativeChangeValue } from './native-change.js';
 import { sha256Text } from './native-hash.js';
-import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
+import {
+  isInsidePath,
+  nativeChangeRuntimeDir,
+  nativeStorageRoot,
+  resolveContainedNativePath,
+} from './native-paths.js';
 import { readNativeProtectedFile } from './native-protected-file.js';
 import {
   nativeSensitiveArtifactReason,
@@ -92,11 +97,11 @@ export function normalizeNativeCheckpointArtifactRef(value: string): string {
 }
 
 export function nativeProgressCheckpointFile(paths: NativeProjectPaths, name: string): string {
-  return path.join(nativeChangeDir(paths, name), 'runtime', 'checkpoints', 'progress.json');
+  return path.join(nativeChangeRuntimeDir(paths, name), 'checkpoints', 'progress.json');
 }
 
 export function nativeCheckpointJournalFile(paths: NativeProjectPaths, name: string): string {
-  return path.join(nativeChangeDir(paths, name), 'runtime', 'checkpoint-journal.json');
+  return path.join(nativeChangeRuntimeDir(paths, name), 'checkpoint-journal.json');
 }
 
 export function nativeCheckpointManifestFile(
@@ -105,13 +110,7 @@ export function nativeCheckpointManifestFile(
   hash: string,
 ): string {
   if (!HASH_PATTERN.test(hash)) throw new Error('Native checkpoint manifest hash is invalid');
-  return path.join(
-    nativeChangeDir(paths, name),
-    'runtime',
-    'checkpoints',
-    'manifests',
-    `${hash}.json`,
-  );
+  return path.join(nativeChangeRuntimeDir(paths, name), 'checkpoints', 'manifests', `${hash}.json`);
 }
 
 export function nativeCheckpointManifestRef(hash: string): string {
@@ -362,7 +361,11 @@ async function hashProjectArtifact(
   hooks?: NativeCheckpointArtifactReadHooks,
 ): Promise<NativeCheckpointArtifact> {
   const target = path.resolve(paths.projectRoot, ...artifactRef.split('/'));
-  if (!isInsidePath(paths.projectRoot, target) || isInsidePath(paths.nativeRoot, target)) {
+  if (
+    !isInsidePath(paths.projectRoot, target) ||
+    isInsidePath(paths.nativeRoot, target) ||
+    isInsidePath(paths.runtimeDir, target)
+  ) {
     throw new Error(`Checkpoint artifact is outside project content: ${artifactRef}`);
   }
   const sensitiveReason = nativeSensitiveArtifactReason(paths, artifactRef);
@@ -376,7 +379,7 @@ async function hashProjectArtifact(
     file: target,
     maxBytes: NATIVE_CHECKPOINT_LIMITS.maxFileBytes,
     label: `Checkpoint artifact ${artifactRef}`,
-    forbiddenRoots: [paths.nativeRoot],
+    forbiddenRoots: [paths.nativeRoot, paths.runtimeDir],
     hooks: {
       afterParentChainCaptured: () => hooks?.afterParentChainCaptured?.(artifactRef),
       afterOpen: () => hooks?.afterOpen?.(artifactRef),
@@ -424,10 +427,11 @@ export async function readNativeProgressCheckpoint(
   name: string,
 ): Promise<NativeProgressCheckpoint | null> {
   const file = nativeProgressCheckpointFile(paths, name);
-  await resolveContainedNativePath(paths.nativeRoot, file);
+  const storageRoot = nativeStorageRoot(paths, file);
+  await resolveContainedNativePath(storageRoot, file);
   try {
     return parseNativeProgressCheckpointValue(
-      await readBoundedJson(paths.nativeRoot, file, 'Native progress checkpoint'),
+      await readBoundedJson(storageRoot, file, 'Native progress checkpoint'),
       name,
     );
   } catch (error) {
@@ -442,8 +446,9 @@ export async function readNativeCheckpointManifest(
   hash: string,
 ): Promise<NativeCheckpointManifest> {
   const file = nativeCheckpointManifestFile(paths, name, hash);
-  await resolveContainedNativePath(paths.nativeRoot, file);
-  const value = await readBoundedJson(paths.nativeRoot, file, 'Native checkpoint manifest');
+  const storageRoot = nativeStorageRoot(paths, file);
+  await resolveContainedNativePath(storageRoot, file);
+  const value = await readBoundedJson(storageRoot, file, 'Native checkpoint manifest');
   const manifest = parseNativeCheckpointManifestValue(value, name);
   assertCheckpointManifestSafeForPaths(paths, manifest);
   if (hashNativeCheckpointManifest(manifest) !== hash) {
@@ -457,10 +462,11 @@ export async function readNativeCheckpointJournal(
   name: string,
 ): Promise<NativeCheckpointJournal | null> {
   const file = nativeCheckpointJournalFile(paths, name);
-  await resolveContainedNativePath(paths.nativeRoot, file);
+  const storageRoot = nativeStorageRoot(paths, file);
+  await resolveContainedNativePath(storageRoot, file);
   try {
     const journal = parseNativeCheckpointJournalValue(
-      await readBoundedJson(paths.nativeRoot, file, 'Native checkpoint journal'),
+      await readBoundedJson(storageRoot, file, 'Native checkpoint journal'),
       name,
     );
     assertCheckpointManifestSafeForPaths(paths, journal.manifest);
@@ -481,7 +487,8 @@ export async function writeNativeCheckpointManifest(
   assertCheckpointManifestSafeForPaths(paths, parsed);
   const hash = hashNativeCheckpointManifest(parsed);
   const file = nativeCheckpointManifestFile(paths, name, hash);
-  await resolveContainedNativePath(paths.nativeRoot, file);
+  const storageRoot = nativeStorageRoot(paths, file);
+  await resolveContainedNativePath(storageRoot, file);
   try {
     const existing = await readNativeCheckpointManifest(paths, name, hash);
     if (JSON.stringify(existing) !== JSON.stringify(parsed)) {
@@ -494,7 +501,7 @@ export async function writeNativeCheckpointManifest(
   // exists. Otherwise an internal parent symlink could bypass the write-time
   // directory-chain validation through the read-only idempotent branch.
   await atomicWriteJson(file, parsed, {
-    containedRoot: paths.nativeRoot,
+    containedRoot: storageRoot,
     beforeCommit: hooks?.beforeCommit,
   });
   return hash;
@@ -534,8 +541,9 @@ export async function writeNativeProgressCheckpoint(
     throw new Error('Native progress checkpoint does not match its artifact manifest');
   }
   const file = nativeProgressCheckpointFile(paths, checkpoint.change);
-  await resolveContainedNativePath(paths.nativeRoot, file);
-  await atomicWriteJson(file, parsed, { containedRoot: paths.nativeRoot });
+  const storageRoot = nativeStorageRoot(paths, file);
+  await resolveContainedNativePath(storageRoot, file);
+  await atomicWriteJson(file, parsed, { containedRoot: storageRoot });
 }
 
 export async function writeNativeCheckpointJournal(
@@ -544,11 +552,12 @@ export async function writeNativeCheckpointJournal(
 ): Promise<void> {
   const parsed = parseNativeCheckpointJournalValue(journal, journal.change);
   const file = nativeCheckpointJournalFile(paths, journal.change);
-  await resolveContainedNativePath(paths.nativeRoot, file);
+  const storageRoot = nativeStorageRoot(paths, file);
+  await resolveContainedNativePath(storageRoot, file);
   if (await readNativeCheckpointJournal(paths, journal.change)) {
     throw new Error(`Native checkpoint recovery is already pending for ${journal.change}`);
   }
-  await atomicWriteJson(file, parsed, { containedRoot: paths.nativeRoot });
+  await atomicWriteJson(file, parsed, { containedRoot: storageRoot });
 }
 
 export async function inspectNativeCheckpointFreshness(options: {

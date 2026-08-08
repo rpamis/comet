@@ -8,7 +8,6 @@ import { buildNativeCheckReceipt } from '../../../domains/comet-native/native-ch
 import { writeNativeCheckReceipt } from '../../../domains/comet-native/native-check-receipt-storage.js';
 import {
   createNativeChange,
-  nativeChangeDir,
   writeNativeChange,
 } from '../../../domains/comet-native/native-change.js';
 import { buildNativeContractSnapshot } from '../../../domains/comet-native/native-contract.js';
@@ -28,7 +27,11 @@ import {
   writeNativeVerificationReportSnapshot,
   writeNativeVerificationEvidence,
 } from '../../../domains/comet-native/native-evidence-storage.js';
-import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import {
+  nativeChangeRuntimeDir,
+  nativeProjectPaths,
+  nativeRuntimeRefFile,
+} from '../../../domains/comet-native/native-paths.js';
 import { createNativeTransaction } from '../../../domains/comet-native/native-transaction.js';
 import type {
   NativeChangeState,
@@ -110,7 +113,7 @@ function receipt(sourceRevision: number, scopeHash = HASH_B, snapshotHash = HASH
 }
 
 function refFile(paths: NativeProjectPaths, ref: string): string {
-  return path.join(nativeChangeDir(paths, CHANGE), ...ref.split('/'));
+  return nativeRuntimeRefFile(nativeChangeRuntimeDir(paths, CHANGE), ref);
 }
 
 async function setOldMtime(
@@ -160,8 +163,7 @@ describe('Native evidence retention', () => {
   it('keeps doctor read-only by default, prunes only old excess documents, and is idempotent', async () => {
     await writeOldReceipts(NATIVE_EVIDENCE_RETENTION_POLICY.keepLatestUnreferencedPerKind + 11);
     const receiptDirectory = path.join(
-      nativeChangeDir(paths, CHANGE),
-      'runtime',
+      nativeChangeRuntimeDir(paths, CHANGE),
       'evidence',
       'check-receipts',
     );
@@ -196,8 +198,7 @@ describe('Native evidence retention', () => {
   it('defers every cleanup while archive or root-move recovery can still relocate a change', async () => {
     await writeOldReceipts(NATIVE_EVIDENCE_RETENTION_POLICY.keepLatestUnreferencedPerKind + 2);
     const receiptDirectory = path.join(
-      nativeChangeDir(paths, CHANGE),
-      'runtime',
+      nativeChangeRuntimeDir(paths, CHANGE),
       'evidence',
       'check-receipts',
     );
@@ -585,8 +586,7 @@ describe('Native evidence retention', () => {
   it('fails closed for unknown, damaged, and special evidence entries', async () => {
     await writeOldReceipts(NATIVE_EVIDENCE_RETENTION_POLICY.keepLatestUnreferencedPerKind + 2);
     const receiptDirectory = path.join(
-      nativeChangeDir(paths, CHANGE),
-      'runtime',
+      nativeChangeRuntimeDir(paths, CHANGE),
       'evidence',
       'check-receipts',
     );
@@ -637,8 +637,7 @@ describe('Native evidence retention', () => {
     async () => {
       await writeOldReceipts(NATIVE_EVIDENCE_RETENTION_POLICY.keepLatestUnreferencedPerKind + 2);
       const receiptDirectory = path.join(
-        nativeChangeDir(paths, CHANGE),
-        'runtime',
+        nativeChangeRuntimeDir(paths, CHANGE),
         'evidence',
         'check-receipts',
       );

@@ -3,7 +3,7 @@ import { constants as fsConstants, promises as fs } from 'node:fs';
 import path from 'node:path';
 
 import { parseNativeCheckReceipt } from './native-check-receipt-model.js';
-import { nativeChangeDir, inspectNativeChange } from './native-change.js';
+import { inspectNativeChange } from './native-change.js';
 import { readNativeCheckpointJournal } from './native-checkpoint-storage.js';
 import { readProjectConfig } from './native-config.js';
 import {
@@ -13,7 +13,12 @@ import {
   type NativeEvidenceKind,
 } from './native-evidence-storage.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
-import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
+import {
+  isInsidePath,
+  nativeChangeRuntimeDir,
+  nativeStorageRoot,
+  resolveContainedNativePath,
+} from './native-paths.js';
 import { inspectPendingNativeSchemaMigration } from './native-schema-migration.js';
 import { inspectPendingNativeTransition } from './native-transition-journal.js';
 import { readNativeTransaction } from './native-transaction.js';
@@ -179,7 +184,7 @@ function portableProjectRef(paths: NativeProjectPaths, target: string): string {
 }
 
 function evidenceRootPath(paths: NativeProjectPaths, name: string): string {
-  return path.join(nativeChangeDir(paths, name), 'runtime', 'evidence');
+  return path.join(nativeChangeRuntimeDir(paths, name), 'evidence');
 }
 
 function evidenceRootRef(paths: NativeProjectPaths, name: string): string {
@@ -445,12 +450,13 @@ async function inspectCleanupQuarantines(options: {
   repair: boolean;
   hooks: NativeEvidenceRetentionHooks;
 }): Promise<NativeCleanupRecoveryResult> {
-  const changeRoot = nativeChangeDir(options.paths, options.name);
+  const runtimeRoot = nativeChangeRuntimeDir(options.paths, options.name);
+  const changeRoot = runtimeRoot;
   const evidenceRoot = evidenceRootPath(options.paths, options.name);
-  await resolveContainedNativePath(options.paths.nativeRoot, evidenceRoot);
+  await resolveContainedNativePath(nativeStorageRoot(options.paths, evidenceRoot), evidenceRoot);
   let rootEntries;
   try {
-    const rootChain = await captureDirectoryChain(changeRoot, evidenceRoot);
+    const rootChain = await captureDirectoryChain(runtimeRoot, evidenceRoot);
     rootEntries = await fs.readdir(evidenceRoot, { withFileTypes: true });
     await verifyDirectoryChain(rootChain);
   } catch (error) {
@@ -471,7 +477,7 @@ async function inspectCleanupQuarantines(options: {
   for (const kind of MANAGED_KINDS) {
     if (!rootEntries.some((entry) => entry.name === kind)) continue;
     const directory = path.join(evidenceRoot, kind);
-    const directoryChain = await captureDirectoryChain(changeRoot, directory);
+    const directoryChain = await captureDirectoryChain(runtimeRoot, directory);
     const entries = (await fs.readdir(directory, { withFileTypes: true })).sort((left, right) =>
       compareText(left.name, right.name),
     );
@@ -652,12 +658,13 @@ async function scanEvidenceStore(
   paths: NativeProjectPaths,
   name: string,
 ): Promise<NativeEvidenceDocument[]> {
-  const changeRoot = nativeChangeDir(paths, name);
-  const evidenceRoot = path.join(changeRoot, 'runtime', 'evidence');
-  await resolveContainedNativePath(paths.nativeRoot, evidenceRoot);
+  const runtimeRoot = nativeChangeRuntimeDir(paths, name);
+  const changeRoot = runtimeRoot;
+  const evidenceRoot = path.join(runtimeRoot, 'evidence');
+  await resolveContainedNativePath(nativeStorageRoot(paths, evidenceRoot), evidenceRoot);
   let rootEntries;
   try {
-    const rootChain = await captureDirectoryChain(changeRoot, evidenceRoot);
+    const rootChain = await captureDirectoryChain(runtimeRoot, evidenceRoot);
     rootEntries = await fs.readdir(evidenceRoot, { withFileTypes: true });
     await verifyDirectoryChain(rootChain);
   } catch (error) {
@@ -703,7 +710,7 @@ async function scanEvidenceStore(
       }
       const ref = refForKind(kind, match[1]);
       const file = path.join(directory, entry.name);
-      await resolveContainedNativePath(paths.nativeRoot, file);
+      await resolveContainedNativePath(nativeStorageRoot(paths, file), file);
       const document = await readCanonicalDocument({
         changeRoot,
         file,

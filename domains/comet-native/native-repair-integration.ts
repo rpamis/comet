@@ -1,4 +1,4 @@
-import { nativeChangeDir } from './native-change.js';
+import { nativeChangeRuntimeDir } from './native-paths.js';
 import {
   readNativeImplementationScopeBundle,
   readNativeVerificationEvidence,
@@ -70,17 +70,17 @@ export async function readNativeCommittedRepairTrajectory(
   paths: NativeProjectPaths,
   state: NativeChangeState,
 ): Promise<NativeCommittedRepairTrajectory> {
-  const changeDir = nativeChangeDir(paths, state.name);
-  const run = await readNativeRunState(changeDir);
+  const runtimeDir = nativeChangeRuntimeDir(paths, state.name);
+  const run = await readNativeRunState(runtimeDir);
   if (!run || !state.run_id || run.runId !== state.run_id) {
     throw new Error('Native repair history Run state is missing or mismatched');
   }
-  const checkpoint = await readNativeCheckpoint(changeDir, run.checkpointRef);
+  const checkpoint = await readNativeCheckpoint(runtimeDir, run.checkpointRef);
   if (!checkpoint || checkpoint.runId !== run.runId || checkpoint.stateVersion !== run.iteration) {
     throw new Error('Native repair history checkpoint is missing or mismatched');
   }
   return {
-    trajectory: await readNativeTrajectory(changeDir, run.trajectoryRef),
+    trajectory: await readNativeTrajectory(runtimeDir, run.trajectoryRef),
     committedTrajectoryOffset: checkpoint.trajectoryOffset,
     runId: run.runId,
   };

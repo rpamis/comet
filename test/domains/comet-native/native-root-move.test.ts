@@ -12,7 +12,10 @@ import {
 import { createNativeChange } from '../../../domains/comet-native/native-change.js';
 import { sha256File } from '../../../domains/comet-native/native-hash.js';
 import { acquireNativeLock, releaseNativeLock } from '../../../domains/comet-native/native-lock.js';
-import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import {
+  nativeChangeRuntimeDir,
+  nativeProjectPaths,
+} from '../../../domains/comet-native/native-paths.js';
 import { moveNativeRoot } from '../../../domains/comet-native/native-root-move.js';
 import { readNativeTransaction } from '../../../domains/comet-native/native-transaction.js';
 import {
@@ -176,9 +179,7 @@ describe('Native artifact root moves', () => {
       },
     });
     const workspaceFile = path.join(
-      paths.changesDir,
-      'invalid-binding',
-      'runtime',
+      nativeChangeRuntimeDir(paths, 'invalid-binding'),
       'workspace.json',
     );
     const workspace = JSON.parse(await fs.readFile(workspaceFile, 'utf8')) as Record<
@@ -258,7 +259,7 @@ describe('Native artifact root moves', () => {
   it.each([
     ['workspace v3', false],
     ['legacy workspace v2', true],
-  ])('does not take over a foreign identity during root move (%s)', async (_label, legacy) => {
+  ])('moves documents without requiring another worktree Runtime (%s)', async (_label, legacy) => {
     await seedNativeRoot(projectRoot, 'docs');
     await fs.rm(path.join(projectRoot, 'docs/comet/changes/active-change'), {
       recursive: true,
@@ -289,9 +290,7 @@ describe('Native artifact root moves', () => {
     });
     if (legacy) {
       const workspaceFile = path.join(
-        paths.changesDir,
-        'foreign-change',
-        'runtime',
+        nativeChangeRuntimeDir(paths, 'foreign-change'),
         'workspace.json',
       );
       const workspace = JSON.parse(await fs.readFile(workspaceFile, 'utf8')) as Record<
@@ -325,11 +324,12 @@ describe('Native artifact root moves', () => {
       );
       await expect(
         moveNativeRoot({ projectRoot: secondary, toArtifactRoot: 'artifacts/native' }),
-      ).rejects.toThrow('must be aligned and repaired before moving the root');
-      expect((await readProjectConfig(secondary))?.native.artifact_root).toBe('docs');
-      await expect(fs.access(path.join(secondary, 'artifacts/native/comet'))).rejects.toMatchObject(
-        { code: 'ENOENT' },
-      );
+      ).resolves.toMatchObject({ toNativeRoot: path.join(secondary, 'artifacts/native/comet') });
+      expect((await readProjectConfig(secondary))?.native.artifact_root).toBe('artifacts/native');
+      const secondaryPaths = await nativeProjectPaths(secondary, 'artifacts/native');
+      await expect(
+        fs.access(nativeChangeRuntimeDir(secondaryPaths, 'foreign-change')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
     } finally {
       execFileSync('git', ['worktree', 'remove', '--force', secondary], {
         cwd: projectRoot,

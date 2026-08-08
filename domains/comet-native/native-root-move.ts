@@ -4,7 +4,6 @@ import path from 'path';
 
 import { atomicWriteText } from './native-atomic-file.js';
 import { defaultProjectConfig, readProjectConfig, writeProjectConfig } from './native-config.js';
-import { inspectNativeChange } from './native-change.js';
 import { acquireNativeLock, releaseNativeLock } from './native-lock.js';
 import { isInsidePath, nativeProjectPaths, normalizeArtifactRootRef } from './native-paths.js';
 import {
@@ -141,22 +140,8 @@ async function refreshNativeWorkspaceIdentities(paths: NativeProjectPaths): Prom
       });
       continue;
     }
-    let inspection: Awaited<ReturnType<typeof inspectNativeChange>>;
-    try {
-      inspection = await inspectNativeChange(paths, entry.name);
-    } catch {
-      // Workspace identity is advisory. Invalid user-authored change data must not strand a
-      // completed root move after the source tree has already been removed.
-      continue;
-    }
-    if (inspection.status !== 'current' || !inspection.state || !('revision' in inspection.state)) {
-      continue;
-    }
-    await writeNativeWorkspaceIdentity({
-      paths,
-      name: entry.name,
-      revision: inspection.state.revision,
-    });
+    // A document-root move must not materialize missing machine state. The next explicit
+    // continuation rebuilds Runtime when this worktree has no local identity yet.
   }
 }
 
@@ -451,7 +436,7 @@ async function writeCleanupManifest(options: {
     throw new Error('Native root-move cleanup manifest exceeds its byte budget');
   }
   await atomicWriteText(cleanupManifestFile(options.paths, options.id, options.kind), source, {
-    containedRoot: options.paths.nativeRoot,
+    containedRoot: options.paths.runtimeDir,
   });
   return cleanupManifestHash(source);
 }
@@ -462,7 +447,7 @@ async function readCleanupManifest(options: {
   cleanup: NativeRootMoveCleanup;
 }): Promise<RootMoveCleanupManifest> {
   const snapshot = await readNativeProtectedFile({
-    root: options.paths.nativeRoot,
+    root: options.paths.runtimeDir,
     file: cleanupManifestFile(options.paths, options.id, options.cleanup.kind),
     maxBytes: NATIVE_ROOT_MOVE_MAX_MANIFEST_BYTES,
     label: `Native root-move cleanup manifest ${options.cleanup.kind}`,

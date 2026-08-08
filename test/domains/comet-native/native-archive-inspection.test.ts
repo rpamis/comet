@@ -12,7 +12,10 @@ import {
   writeNativeChange,
 } from '../../../domains/comet-native/native-change.js';
 import { collectNativeContractFiles } from '../../../domains/comet-native/native-contract-files.js';
-import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import {
+  nativeChangeRuntimeDir,
+  nativeProjectPaths,
+} from '../../../domains/comet-native/native-paths.js';
 import { nativeTransitionJournalFile } from '../../../domains/comet-native/native-transition-journal.js';
 import type {
   NativeChangeState,
@@ -203,8 +206,8 @@ describe('Native Archive inspection', () => {
       name: 'competing-change',
       language: 'en',
     });
-    const sourceEvidence = path.join(nativeChangeDir(paths, state.name), 'runtime', 'evidence');
-    const targetEvidence = path.join(nativeChangeDir(paths, competing.name), 'runtime', 'evidence');
+    const sourceEvidence = path.join(nativeChangeRuntimeDir(paths, state.name), 'evidence');
+    const targetEvidence = path.join(nativeChangeRuntimeDir(paths, competing.name), 'evidence');
     await fs.cp(sourceEvidence, targetEvidence, { recursive: true });
     await writeNativeChange(paths, {
       ...competing,

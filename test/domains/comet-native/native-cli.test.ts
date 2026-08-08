@@ -16,7 +16,10 @@ import {
 } from '../../../domains/comet-native/native-config.js';
 import { NATIVE_CONTRACT_FILE_LIMITS } from '../../../domains/comet-native/native-contract-files.js';
 import { acquireNativeLock, releaseNativeLock } from '../../../domains/comet-native/native-lock.js';
-import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import {
+  nativeChangeRuntimeDir,
+  nativeProjectPaths,
+} from '../../../domains/comet-native/native-paths.js';
 import { MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES } from '../../../domains/comet-native/native-verification-scope.js';
 import { projectRootFrom } from '../../../domains/comet-native/native-cli-shared.js';
 
@@ -152,17 +155,10 @@ describe('Comet Native CLI dispatcher', () => {
       change: 'first-change',
       branch: null,
     });
+    const firstPaths = await nativeProjectPaths(projectRoot, 'docs');
     const workspace = JSON.parse(
       await fs.readFile(
-        path.join(
-          projectRoot,
-          'docs',
-          'comet',
-          'changes',
-          'first-change',
-          'runtime',
-          'workspace.json',
-        ),
+        path.join(nativeChangeRuntimeDir(firstPaths, 'first-change'), 'workspace.json'),
         'utf8',
       ),
     ) as { changeBranch: string; targetBranch: string };
@@ -287,9 +283,10 @@ describe('Comet Native CLI dispatcher', () => {
         ...projectArgs(),
       ]),
     ).toMatchObject({ exitCode: 0 });
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
     const workspace = JSON.parse(
       await fs.readFile(
-        path.join(projectRoot, 'docs/comet/changes/branch-owned/runtime/workspace.json'),
+        path.join(nativeChangeRuntimeDir(paths, 'branch-owned'), 'workspace.json'),
         'utf8',
       ),
     );
@@ -385,10 +382,11 @@ describe('Comet Native CLI dispatcher', () => {
     expect(await runNativeCli(['new', 'primary-change', ...projectArgs()])).toMatchObject({
       exitCode: 0,
     });
+    const primaryPaths = await nativeProjectPaths(projectRoot, 'docs');
     if (legacy) {
       const workspaceFile = path.join(
-        projectRoot,
-        'docs/comet/changes/primary-change/runtime/workspace.json',
+        nativeChangeRuntimeDir(primaryPaths, 'primary-change'),
+        'workspace.json',
       );
       const workspace = JSON.parse(await fs.readFile(workspaceFile, 'utf8')) as Record<
         string,
@@ -653,17 +651,10 @@ describe('Comet Native CLI dispatcher', () => {
         cwd.mockRestore();
       }
 
+      const secondaryPaths = await nativeProjectPaths(secondary, 'docs');
       await expect(
         fs.access(
-          path.join(
-            secondary,
-            'docs',
-            'comet',
-            'changes',
-            'root-routed',
-            'runtime',
-            'workspace.json',
-          ),
+          path.join(nativeChangeRuntimeDir(secondaryPaths, 'root-routed'), 'workspace.json'),
         ),
       ).resolves.toBeUndefined();
       await expect(
@@ -694,6 +685,7 @@ describe('Comet Native CLI dispatcher', () => {
       exitCode: 0,
       data: { artifactRoot: 'docs', language: 'zh-CN' },
     });
+    await fs.writeFile(path.join(projectRoot, '.gitignore'), '.comet/runtime/\n');
     execFileSync('git', ['config', 'user.email', 'native@example.test'], { cwd: projectRoot });
     execFileSync('git', ['config', 'user.name', 'Native Test'], { cwd: projectRoot });
     if (process.platform === 'win32') {

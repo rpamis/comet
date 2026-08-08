@@ -3,7 +3,11 @@ import path from 'path';
 
 import { NATIVE_RUN_STORAGE } from '../engine/storage-layout.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
-import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
+import {
+  nativeChangeRuntimeDir,
+  nativeStorageRoot,
+  resolveContainedNativePath,
+} from './native-paths.js';
 import { readNativeTrajectoryText, replaceNativeTrajectoryText } from './native-run-store.js';
 import type { NativeProjectPaths } from './native-types.js';
 
@@ -56,9 +60,7 @@ function sha256Buffer(value: Buffer): string {
 
 function trajectoryFile(paths: NativeProjectPaths, name: string): string {
   if (!CHANGE_NAME_PATTERN.test(name)) throw new Error(`Invalid Native change name: ${name}`);
-  const changeDir = path.join(paths.changesDir, name);
-  if (!isInsidePath(paths.changesDir, changeDir)) throw new Error('Native change path escaped');
-  return path.join(changeDir, 'runtime', 'trajectory.jsonl');
+  return path.join(nativeChangeRuntimeDir(paths, name), 'trajectory.jsonl');
 }
 
 function parseCompleteLines(
@@ -131,9 +133,9 @@ async function inspectFile(
   name: string,
 ): Promise<NativeTrajectoryTailInspection | RepairableAnalysis> {
   const file = trajectoryFile(paths, name);
-  await resolveContainedNativePath(paths.nativeRoot, file);
-  const changeDir = path.join(paths.changesDir, name);
-  const content = await readNativeTrajectoryText(changeDir, NATIVE_RUN_STORAGE.trajectoryRef);
+  await resolveContainedNativePath(nativeStorageRoot(paths, file), file);
+  const runtimeDir = nativeChangeRuntimeDir(paths, name);
+  const content = await readNativeTrajectoryText(runtimeDir, NATIVE_RUN_STORAGE.trajectoryRef);
   return content === null
     ? { status: 'clean', file }
     : analyzeTrajectory(file, Buffer.from(content));
@@ -168,7 +170,7 @@ export async function repairNativeTrajectoryTail(
     }
     try {
       await replaceNativeTrajectoryText(
-        path.join(paths.changesDir, name),
+        nativeChangeRuntimeDir(paths, name),
         NATIVE_RUN_STORAGE.trajectoryRef,
         result.targetContent,
         result.inspection.originalHash,

@@ -15,7 +15,10 @@ import {
 } from '../../../domains/comet-native/native-config.js';
 import { doctorNativeProject } from '../../../domains/comet-native/native-doctor.js';
 import { acquireNativeLock, releaseNativeLock } from '../../../domains/comet-native/native-lock.js';
-import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import {
+  nativeChangeRuntimeDir,
+  nativeProjectPaths,
+} from '../../../domains/comet-native/native-paths.js';
 import { moveNativeRoot } from '../../../domains/comet-native/native-root-move.js';
 import { nativeSelectionFile } from '../../../domains/comet-native/native-selection.js';
 import { createNativeTransaction } from '../../../domains/comet-native/native-transaction.js';
@@ -262,7 +265,7 @@ Run focused tests.
       name: state.name,
       evidence: { summary: 'shape is ready' },
     });
-    const trajectory = path.join(changeDir, 'runtime', 'trajectory.jsonl');
+    const trajectory = path.join(nativeChangeRuntimeDir(paths, state.name), 'trajectory.jsonl');
     await fs.appendFile(trajectory, '{not-json}\n');
 
     const inspected = await doctorNativeProject({ paths });
@@ -274,6 +277,30 @@ Run focused tests.
         path: trajectory,
       }),
     );
+  });
+
+  it('migrates an explicit legacy change-local Runtime into project-local storage', async () => {
+    const state = await createNativeChange({
+      paths,
+      name: 'legacy-layout',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
+    const preferred = nativeChangeRuntimeDir(paths, state.name);
+    const legacy = path.join(nativeChangeDir(paths, state.name), 'runtime');
+    await fs.rename(preferred, legacy);
+
+    const inspected = await doctorNativeProject({ paths, name: state.name });
+    expect(inspected.findings).toContainEqual(
+      expect.objectContaining({ code: 'runtime-layout-legacy', repair: 'migrate' }),
+    );
+
+    const repaired = await doctorNativeProject({ paths, name: state.name, repair: true });
+    expect(repaired.findings).toContainEqual(
+      expect.objectContaining({ code: 'runtime-layout-migrated', severity: 'info' }),
+    );
+    await expect(fs.stat(preferred)).resolves.toBeDefined();
+    await expect(fs.access(legacy)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('diagnoses live and stale locks and only removes a proven stale lock', async () => {
@@ -389,6 +416,7 @@ Run focused tests.
     const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-doctor-outside-'));
     try {
       await fs.mkdir(paths.nativeRoot, { recursive: true });
+      await fs.mkdir(path.dirname(paths.runtimeDir), { recursive: true });
       await fs.symlink(
         outside,
         paths.runtimeDir,

@@ -18,7 +18,11 @@ import {
   createNativeChange,
   nativeChangeDir,
 } from '../../../domains/comet-native/native-change.js';
-import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import {
+  nativeChangeRuntimeDir,
+  nativeProjectPaths,
+  nativeRuntimeRefFile,
+} from '../../../domains/comet-native/native-paths.js';
 import type {
   NativeChangeState,
   NativeProjectPaths,
@@ -561,7 +565,7 @@ describe('Native scoped check receipts', () => {
       }),
     ).toThrow('cover every selected file');
 
-    const file = path.join(nativeChangeDir(paths, state.name), ...ref.split('/'));
+    const file = nativeRuntimeRefFile(nativeChangeRuntimeDir(paths, state.name), ref);
     await fs.writeFile(file, JSON.stringify({ ...receipt, unexpected: true }));
     await expect(readNativeCheckReceipt(paths, state.name, ref)).rejects.toThrow('unknown field');
     await expect(writeNativeCheckReceipt({ paths, name: state.name, receipt })).rejects.toThrow();
@@ -581,7 +585,7 @@ describe('Native scoped check receipts', () => {
       await expect(executeNativeCheckReceipt({ paths, state })).rejects.toThrow('interrupted read');
       await expect(
         fs.access(
-          path.join(nativeChangeDir(paths, state.name), 'runtime', 'evidence', 'check-receipts'),
+          path.join(nativeChangeRuntimeDir(paths, state.name), 'evidence', 'check-receipts'),
         ),
       ).rejects.toMatchObject({ code: 'ENOENT' });
     } finally {
@@ -597,12 +601,12 @@ describe('Native scoped check receipts', () => {
     );
 
     const receiptDirectory = path.join(
-      nativeChangeDir(paths, state.name),
-      'runtime',
+      nativeChangeRuntimeDir(paths, state.name),
       'evidence',
       'check-receipts',
     );
     const redirected = path.join(paths.nativeRoot, 'runtime', 'redirected-check-receipts');
+    await fs.mkdir(path.dirname(redirected), { recursive: true });
     await fs.rename(receiptDirectory, redirected);
     await fs.symlink(
       redirected,
@@ -611,7 +615,7 @@ describe('Native scoped check receipts', () => {
     );
 
     await expect(readNativeCheckReceipt(paths, state.name, ref)).rejects.toThrow(
-      /outside its change|symlink|real directory/iu,
+      /outside (?:its change|the Native root)|symlink|real directory/iu,
     );
   });
 
@@ -620,7 +624,7 @@ describe('Native scoped check receipts', () => {
     async () => {
       const state = await prepareState('export const value = 2;\n');
       const { ref } = await executeNativeCheckReceipt({ paths, state });
-      const receiptFile = path.join(nativeChangeDir(paths, state.name), ...ref.split('/'));
+      const receiptFile = nativeRuntimeRefFile(nativeChangeRuntimeDir(paths, state.name), ref);
       const outside = path.join(projectRoot, 'outside-receipt.json');
       await fs.writeFile(outside, '{}');
       const originalOpen = fs.open.bind(fs);

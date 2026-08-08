@@ -70,7 +70,7 @@ describe('Native current change selection', () => {
     await fs.symlink(outside, paths.runtimeDir, process.platform === 'win32' ? 'junction' : 'dir');
 
     await expect(selectNativeChange(paths, 'selected-change')).rejects.toThrow(
-      'resolves outside the Native root',
+      /must not be a symbolic link|resolves outside the Native root/u,
     );
     await expect(fs.access(nativeSelectionFile(paths))).rejects.toMatchObject({ code: 'ENOENT' });
     await expect(fs.access(path.join(outside, 'current-change.json'))).rejects.toMatchObject({

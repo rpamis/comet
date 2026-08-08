@@ -2,9 +2,14 @@ import { constants as fsConstants, promises as fs } from 'node:fs';
 import path from 'node:path';
 
 import { atomicWriteJson } from './native-atomic-file.js';
-import { nativeChangeDir } from './native-change.js';
 import { parseNativeCheckReceipt, type NativeCheckReceipt } from './native-check-receipt-model.js';
-import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
+import {
+  isInsidePath,
+  nativeChangeRuntimeDir,
+  nativeRuntimeRefFile,
+  nativeStorageRoot,
+  resolveContainedNativePath,
+} from './native-paths.js';
 import { hasComparableNativeFileObject, sameNativeFileObject } from './native-file-identity.js';
 import type { NativeProjectPaths } from './native-types.js';
 
@@ -108,7 +113,7 @@ function receiptHashFromRef(ref: string): string {
 }
 
 function receiptFile(paths: NativeProjectPaths, name: string, hash: string): string {
-  return path.join(nativeChangeDir(paths, name), ...nativeCheckReceiptRef(hash).split('/'));
+  return nativeRuntimeRefFile(nativeChangeRuntimeDir(paths, name), nativeCheckReceiptRef(hash));
 }
 
 async function readBoundedReceipt(
@@ -199,12 +204,11 @@ export async function readNativeCheckReceipt(
   ref: string,
 ): Promise<NativeCheckReceipt> {
   const expectedHash = receiptHashFromRef(ref);
-  const changeRoot = nativeChangeDir(paths, name);
+  const runtimeRoot = nativeChangeRuntimeDir(paths, name);
   const file = receiptFile(paths, name, expectedHash);
-  await resolveContainedNativePath(paths.nativeRoot, file);
-  const receipt = parseNativeCheckReceipt(
-    await readBoundedReceipt(file, changeRoot, paths.nativeRoot),
-  );
+  const storageRoot = nativeStorageRoot(paths, file);
+  await resolveContainedNativePath(storageRoot, file);
+  const receipt = parseNativeCheckReceipt(await readBoundedReceipt(file, runtimeRoot, storageRoot));
   if (receipt.change !== name || receipt.receiptHash !== expectedHash) {
     throw new Error('Native check receipt ref/hash/change mismatch');
   }
@@ -226,7 +230,8 @@ export async function writeNativeCheckReceipt(options: {
   if (serializedBytes > MAX_NATIVE_CHECK_RECEIPT_BYTES) {
     throw new Error(`Native check receipt exceeds ${MAX_NATIVE_CHECK_RECEIPT_BYTES} bytes`);
   }
-  await resolveContainedNativePath(options.paths.nativeRoot, file);
+  const storageRoot = nativeStorageRoot(options.paths, file);
+  await resolveContainedNativePath(storageRoot, file);
   try {
     const existing = await readNativeCheckReceipt(options.paths, options.name, ref);
     if (JSON.stringify(existing) !== JSON.stringify(receipt)) {
@@ -236,7 +241,7 @@ export async function writeNativeCheckReceipt(options: {
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
-  await atomicWriteJson(file, receipt, { containedRoot: options.paths.nativeRoot });
+  await atomicWriteJson(file, receipt, { containedRoot: storageRoot });
   const persisted = await readNativeCheckReceipt(options.paths, options.name, ref);
   if (JSON.stringify(persisted) !== JSON.stringify(receipt)) {
     throw new Error('Native check receipt changed while being persisted');

@@ -4,9 +4,6 @@ import path from 'path';
 import { stringify } from 'yaml';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { readCheckpoint, readTrajectory } from '../../../domains/engine/run-store.js';
-import { NATIVE_RUN_STORAGE } from '../../../domains/engine/storage-layout.js';
-import { readRunStateAt } from '../../../domains/engine/storage-run.js';
 import { archiveNativeChange } from '../../../domains/comet-native/native-archive.js';
 import { inspectNativeArchivePreflight } from '../../../domains/comet-native/native-archive-inspection.js';
 import {
@@ -25,7 +22,15 @@ import {
 } from '../../../domains/comet-native/native-config.js';
 import { inspectNativeStatus } from '../../../domains/comet-native/native-diagnostics.js';
 import { doctorNativeProject } from '../../../domains/comet-native/native-doctor.js';
-import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import {
+  nativeChangeRuntimeDir,
+  nativeProjectPaths,
+} from '../../../domains/comet-native/native-paths.js';
+import {
+  readNativeCheckpoint as readCheckpoint,
+  readNativeRunState as readRunStateAt,
+  readNativeTrajectory as readTrajectory,
+} from '../../../domains/comet-native/native-run-store.js';
 import {
   inspectPendingNativeSchemaMigration,
   migrateNativeChange,
@@ -95,6 +100,10 @@ Run focused tests.
 describe('Native schema compatibility and journalized migration', () => {
   let projectRoot: string;
   let paths: NativeProjectPaths;
+
+  function runtimeDir(changeDir: string): string {
+    return nativeChangeRuntimeDir(paths, path.basename(changeDir));
+  }
 
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-schema-'));
@@ -314,7 +323,7 @@ describe('Native schema compatibility and journalized migration', () => {
         partial_allowance: null,
       });
       if (phase !== 'shape') {
-        expect(await readRunStateAt(changeDir, NATIVE_RUN_STORAGE)).toMatchObject({
+        expect(await readRunStateAt(runtimeDir(changeDir))).toMatchObject({
           runId: state.run_id,
           currentStep: phase,
         });
@@ -356,7 +365,7 @@ describe('Native schema compatibility and journalized migration', () => {
           verification_report: null,
         });
       }
-      expect(await readRunStateAt(changeDir, NATIVE_RUN_STORAGE)).toMatchObject({
+      expect(await readRunStateAt(runtimeDir(changeDir))).toMatchObject({
         runId: state.run_id,
         currentStep: evidencePhase ? 'build' : phase,
       });
@@ -389,21 +398,21 @@ describe('Native schema compatibility and journalized migration', () => {
       partial_allowance: null,
       archived: false,
     });
-    const run = (await readRunStateAt(changeDir, NATIVE_RUN_STORAGE))!;
+    const run = (await readRunStateAt(runtimeDir(changeDir)))!;
     expect(run).toMatchObject({
       runId: state.run_id,
       currentStep: 'build',
       pending: null,
       status: 'running',
     });
-    const trajectory = await readTrajectory(changeDir, run.trajectoryRef);
+    const trajectory = await readTrajectory(runtimeDir(changeDir), run.trajectoryRef);
     expect(
       trajectory.filter(
         (event) =>
           event.type === 'state_migrated' && event.data.migrationId === 'migration-archive',
       ),
     ).toHaveLength(1);
-    expect(await readCheckpoint(changeDir, run.checkpointRef)).toMatchObject({
+    expect(await readCheckpoint(runtimeDir(changeDir), run.checkpointRef)).toMatchObject({
       runId: run.runId,
       stateVersion: run.iteration,
       trajectoryOffset: trajectory.length,
@@ -415,7 +424,7 @@ describe('Native schema compatibility and journalized migration', () => {
       expect.arrayContaining(['run-phase-mismatch', 'checkpoint-mismatch', 'trajectory-invalid']),
     );
     await migrateNativeChange({ paths, name });
-    expect(await readTrajectory(changeDir, run.trajectoryRef)).toEqual(trajectory);
+    expect(await readTrajectory(runtimeDir(changeDir), run.trajectoryRef)).toEqual(trajectory);
   });
 
   it.each<NativePhase>(['verify', 'archive'])(
@@ -542,15 +551,15 @@ describe('Native schema compatibility and journalized migration', () => {
         verification_report: null,
         verification_evidence: null,
       });
-      const run = (await readRunStateAt(changeDir, NATIVE_RUN_STORAGE))!;
-      const trajectory = await readTrajectory(changeDir, run.trajectoryRef);
+      const run = (await readRunStateAt(runtimeDir(changeDir)))!;
+      const trajectory = await readTrajectory(runtimeDir(changeDir), run.trajectoryRef);
       expect(
         trajectory.filter(
           (event) =>
             event.type === 'state_migrated' && event.data.migrationId === `migration-${slug}`,
         ),
       ).toHaveLength(1);
-      expect(await readCheckpoint(changeDir, run.checkpointRef)).toMatchObject({
+      expect(await readCheckpoint(runtimeDir(changeDir), run.checkpointRef)).toMatchObject({
         runId: run.runId,
         stateVersion: run.iteration,
         trajectoryOffset: trajectory.length,
@@ -612,7 +621,7 @@ describe('Native schema compatibility and journalized migration', () => {
         },
       }),
     ).rejects.toThrow('interrupt before checkpoint appeared');
-    await fs.writeFile(path.join(changeDir, 'runtime', 'checkpoint-journal.json'), '{}\n');
+    await fs.writeFile(path.join(runtimeDir(changeDir), 'checkpoint-journal.json'), '{}\n');
 
     await expect(migrateNativeChange({ paths, name: state.name })).rejects.toThrow(
       'pending progress checkpoint',

@@ -177,6 +177,7 @@ export function nativeContinuation(options: {
       finding.requiredAction === 'return-to-bound-working-directory' ||
       finding.requiredAction === 'repair-workspace-binding',
   );
+  const runtimeMissing = actionableFindings.find((finding) => finding.code === 'runtime-missing');
   const requiredInputs = [
     ...new Set(actionableFindings.map((finding) => finding.requiredAction)),
   ].sort();
@@ -225,6 +226,15 @@ export function nativeContinuation(options: {
       action: 'none',
       commandArgs: null,
       requiredInputs,
+    });
+  }
+  if (runtimeMissing) {
+    return buildContinuation(options.state, {
+      disposition: 'continue',
+      action: 'advance-phase',
+      commandArgs: ['comet', 'native', 'next', options.state.name, '--summary', '<summary>'],
+      requiredInputs: ['summary'],
+      inputOptions: [inputOption('summary', ['--summary'], '<summary>')],
     });
   }
   if (repair) {

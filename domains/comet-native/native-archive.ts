@@ -34,10 +34,16 @@ import {
   writeNativeChangeFile,
 } from './native-change.js';
 import { settleNativeChangeJournalsLocked } from './native-change-recovery.js';
+import { writeNativeEvidenceProjection } from './native-evidence-projection.js';
 import { sha256File, sha256Text } from './native-hash.js';
 import { acquireNativeLock, releaseNativeLock } from './native-lock.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
-import { resolveContainedNativePath } from './native-paths.js';
+import {
+  inspectNativeRuntimeStorage,
+  nativeChangeRuntimeDir,
+  nativePreferredChangeRuntimeDir,
+  resolveContainedNativePath,
+} from './native-paths.js';
 import { copyNativeProtectedFile } from './native-protected-file.js';
 import { NATIVE_RUNTIME_PACKAGE, nativePhaseResolver } from './native-runtime-package.js';
 import { clearNativeSelectionIfLocked } from './native-selection.js';
@@ -201,7 +207,7 @@ async function buildArchiveJournal(options: {
     const stagedSnapshot = await copyNativeProtectedFile({
       sourceRoot: changeDir,
       source,
-      targetRoot: paths.nativeRoot,
+      targetRoot: paths.runtimeDir,
       target: staged,
       maxBytes: NATIVE_ARCHIVE_COPY_MAX_BYTES,
       label: `Native Archive proposed spec ${change.capability}`,
@@ -287,7 +293,8 @@ async function finalizeArchive(
   if (!journal.change || state.name !== journal.change) {
     throw new Error(`Archive transaction ${journal.id} change mismatch`);
   }
-  const run = await readNativeRunState(archiveDir);
+  const runtimeDir = nativeChangeRuntimeDir(paths, state.name);
+  const run = await readNativeRunState(runtimeDir);
   if (
     !run ||
     run.runId !== state.run_id ||
@@ -318,7 +325,7 @@ async function finalizeArchive(
     );
   }
   const evidenceHash = sha256Text(`archive:${journal.id}:${state.name}`);
-  const trajectory = await readNativeTrajectory(archiveDir, completed.trajectoryRef);
+  const trajectory = await readNativeTrajectory(runtimeDir, completed.trajectoryRef);
   const transactionEvents = trajectory.filter((item) => item.data.transactionId === journal.id);
   if (
     journal.schema === 'comet.native.transaction.v2' &&
@@ -370,7 +377,7 @@ async function finalizeArchive(
   }
   if (!event) {
     event = await appendNativeTrajectoryEvent({
-      changeDir: archiveDir,
+      changeDir: runtimeDir,
       run: completed,
       type: 'state_transitioned',
       data: eventData,
@@ -380,7 +387,7 @@ async function finalizeArchive(
     });
   }
   await writeNativeCheckpoint({
-    changeDir: archiveDir,
+    changeDir: runtimeDir,
     run: completed,
     trajectoryOffset: event.sequence,
     evidenceHash,
@@ -388,7 +395,7 @@ async function finalizeArchive(
       ? { now: new Date(journal.createdAt) }
       : {}),
   });
-  await writeNativeRunState(archiveDir, completed);
+  await writeNativeRunState(runtimeDir, completed);
   await clearNativeSelectionIfLocked(paths, state.name);
   if (journal.schema === 'comet.native.transaction.v2') {
     await finalizeNativeArchiveTransactionV2(paths, journal, 'archive-finalized');
@@ -397,11 +404,30 @@ async function finalizeArchive(
   }
 }
 
+async function cleanupArchivedNativeRuntime(
+  paths: NativeProjectPaths,
+  change: string,
+): Promise<string | null> {
+  const runtimeDir = nativePreferredChangeRuntimeDir(paths, change);
+  try {
+    const stat = await fs.lstat(runtimeDir);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) {
+      throw new Error(`Native Runtime cleanup target is not a real directory: ${runtimeDir}`);
+    }
+    await resolveContainedNativePath(paths.runtimeDir, runtimeDir);
+    await fs.rm(runtimeDir, { recursive: true, force: true });
+    return null;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    return `Archived change ${change}, but local Runtime cleanup failed: ${(error as Error).message}`;
+  }
+}
+
 async function continueArchive(
   paths: NativeProjectPaths,
   journal: AnyArchiveTransactionJournal,
   hooks?: NativeArchiveTransactionHooksV2,
-): Promise<AnyArchiveTransactionJournal> {
+): Promise<{ journal: AnyArchiveTransactionJournal; runtimeCleanupWarning: string | null }> {
   if (journal.schema === 'comet.native.transaction.v2') {
     const events = await readNativeTransactionEvents(paths, journal.id);
     if (!events.some((event) => event.type === 'operation-started')) {
@@ -441,11 +467,21 @@ async function continueArchive(
       },
     });
     await finalizeArchive(paths, applied, hooks);
-    return finalizeNativeArchiveTransactionV2(paths, applied, 'commit');
+    const committed = await finalizeNativeArchiveTransactionV2(paths, applied, 'commit');
+    return {
+      journal: committed,
+      runtimeCleanupWarning: await cleanupArchivedNativeRuntime(paths, committed.change),
+    };
   }
   const applied = await applyNativeTransaction(paths, journal);
   await finalizeArchive(paths, applied, hooks);
-  return finalizeNativeTransaction(paths, applied, 'commit');
+  const committed = await finalizeNativeTransaction(paths, applied, 'commit');
+  return {
+    journal: committed,
+    runtimeCleanupWarning: committed.change
+      ? await cleanupArchivedNativeRuntime(paths, committed.change)
+      : null,
+  };
 }
 
 function assertMatchingJournal(
@@ -471,7 +507,12 @@ export async function archiveNativeChange(options: {
   expectedPreflightHash: string;
   now?: Date;
   hooks?: NativeArchiveTransactionHooksV2;
-}): Promise<{ archiveDir: string; transactionId: string; preflightHash: string }> {
+}): Promise<{
+  archiveDir: string;
+  transactionId: string;
+  preflightHash: string;
+  runtimeCleanupWarning: string | null;
+}> {
   return withNativeMutationLock(options.paths, `archive ${options.name}`, () =>
     withNativeTransitionLock(options.paths, options.name, `archive ${options.name}`, async () => {
       await settleNativeChangeJournalsLocked(options.paths, options.name);
@@ -491,6 +532,19 @@ export async function archiveNativeChange(options: {
         }
         const state = await readNativeChange(options.paths, options.name);
         assertArchiveReady(state);
+        const runtimeStorage = await inspectNativeRuntimeStorage(options.paths, options.name);
+        if (runtimeStorage.status !== 'available') {
+          throw new Error(
+            runtimeStorage.message ??
+              `Native Runtime is ${runtimeStorage.status}: ${runtimeStorage.path}`,
+          );
+        }
+        if (runtimeStorage.layout === 'legacy') {
+          throw new Error(
+            `Native Archive requires project-local Runtime; run comet native doctor ${options.name} --repair`,
+          );
+        }
+        await writeNativeEvidenceProjection(options.paths, state.name, { now: options.now });
         await assertArchiveArtifacts(options.paths, state);
         const transactionId = randomUUID();
         const journal = await buildArchiveJournal({
@@ -503,11 +557,12 @@ export async function archiveNativeChange(options: {
         });
         await createNativeArchiveTransactionV2(options.paths, journal);
         await options.hooks?.afterPrepared?.(journal);
-        await continueArchive(options.paths, journal, options.hooks);
+        const continued = await continueArchive(options.paths, journal, options.hooks);
         return {
           archiveDir: archiveDirectoryFromJournal(options.paths, journal),
           transactionId,
           preflightHash: preflight.preflightHash,
+          runtimeCleanupWarning: continued.runtimeCleanupWarning,
         };
       } finally {
         await releaseNativeLock(lock);
@@ -537,9 +592,13 @@ export async function recoverArchiveTransaction(options: {
             ? await readNativeArchiveTransactionV2(options.paths, options.transactionId)
             : generic;
         assertMatchingJournal(options.paths, journal);
-        if (journal.status === 'committed' || journal.status === 'rolled-back') return journal;
+        if (journal.status === 'committed') {
+          if (journal.change) await cleanupArchivedNativeRuntime(options.paths, journal.change);
+          return journal;
+        }
+        if (journal.status === 'rolled-back') return journal;
         return options.strategy === 'continue'
-          ? continueArchive(options.paths, journal)
+          ? (await continueArchive(options.paths, journal)).journal
           : journal.schema === 'comet.native.transaction.v2'
             ? rollbackNativeArchiveTransactionV2(options.paths, journal)
             : rollbackNativeTransaction(options.paths, journal);

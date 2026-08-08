@@ -19,7 +19,11 @@ import {
 } from './native-change.js';
 import { sha256File, sha256Text } from './native-hash.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
-import { resolveContainedNativePath } from './native-paths.js';
+import {
+  nativeChangeRuntimeDir,
+  nativeStorageRoot,
+  resolveContainedNativePath,
+} from './native-paths.js';
 import { readNativeProtectedTextFile } from './native-protected-file.js';
 import { NATIVE_RUNTIME_HASH, NATIVE_RUNTIME_PACKAGE } from './native-runtime-package.js';
 import {
@@ -346,7 +350,7 @@ function parseTransitionSupersede(
 }
 
 export function nativeSchemaMigrationJournalFile(paths: NativeProjectPaths, name: string): string {
-  return path.join(nativeChangeDir(paths, name), 'runtime', 'schema-migration.json');
+  return path.join(nativeChangeRuntimeDir(paths, name), 'schema-migration.json');
 }
 
 function parseMigrationJournal(value: unknown, expectedName: string): NativeSchemaMigrationJournal {
@@ -538,10 +542,11 @@ export async function inspectPendingNativeSchemaMigration(
   name: string,
 ): Promise<NativeSchemaMigrationJournal | null> {
   const file = nativeSchemaMigrationJournalFile(paths, name);
-  await resolveContainedNativePath(paths.nativeRoot, file);
+  const storageRoot = nativeStorageRoot(paths, file);
+  await resolveContainedNativePath(storageRoot, file);
   try {
     const source = await readNativeProtectedTextFile({
-      root: paths.nativeRoot,
+      root: storageRoot,
       file,
       maxBytes: 512 * 1024,
       label: 'Native schema migration journal',
@@ -616,8 +621,8 @@ async function inspectSupersedeEvent(
   journal: NativeSchemaMigrationJournal,
 ): Promise<{ trajectoryLength: number; sequence: number | null }> {
   const supersede = journal.transitionSupersede!;
-  const changeDir = nativeChangeDir(paths, journal.change);
-  const trajectory = await readNativeTrajectory(changeDir, supersede.nextRun.trajectoryRef);
+  const runtimeDir = nativeChangeRuntimeDir(paths, journal.change);
+  const trajectory = await readNativeTrajectory(runtimeDir, supersede.nextRun.trajectoryRef);
   const matches = trajectory
     .map((event, index) => ({ event, index }))
     .filter(({ event }) => event.data.migrationId === journal.id);
@@ -645,10 +650,11 @@ async function assertSupersedeSourceBeforeMutation(
       `Native superseded transition source changed for ${journal.change}: expected ${journal.transitionSupersede.sourceHash}, actual ${actualHash}`,
     );
   }
-  const run = await readNativeRunState(nativeChangeDir(paths, journal.change));
+  const runtimeDir = nativeChangeRuntimeDir(paths, journal.change);
+  const run = await readNativeRunState(runtimeDir);
   const event = await inspectSupersedeEvent(paths, journal);
   const checkpoint = await readNativeCheckpoint(
-    nativeChangeDir(paths, journal.change),
+    runtimeDir,
     journal.transitionSupersede.nextRun.checkpointRef,
   );
   if (
@@ -677,8 +683,8 @@ async function continueTransitionSupersede(
 ): Promise<void> {
   const supersede = journal.transitionSupersede;
   if (!supersede) return;
-  const changeDir = nativeChangeDir(paths, journal.change);
-  const currentRun = await readNativeRunState(changeDir);
+  const runtimeDir = nativeChangeRuntimeDir(paths, journal.change);
+  const currentRun = await readNativeRunState(runtimeDir);
   if (!currentRun) {
     throw new Error(`Native schema migration Run state disappeared for ${journal.change}`);
   }
@@ -686,17 +692,17 @@ async function continueTransitionSupersede(
     if (!sameRunState(currentRun, supersede.previousRun)) {
       throw new Error(`Native schema migration Run source changed for ${journal.change}`);
     }
-    await writeNativeRunState(changeDir, supersede.nextRun);
+    await writeNativeRunState(runtimeDir, supersede.nextRun);
     await hooks?.afterRunStateWritten?.(journal);
   }
-  if (!sameRunState((await readNativeRunState(changeDir))!, supersede.nextRun)) {
+  if (!sameRunState((await readNativeRunState(runtimeDir))!, supersede.nextRun)) {
     throw new Error(`Native schema migration Run write diverged for ${journal.change}`);
   }
 
   let event = await inspectSupersedeEvent(paths, journal);
   if (event.sequence === null) {
     const appended = await appendNativeTrajectoryEvent({
-      changeDir,
+      changeDir: runtimeDir,
       run: supersede.nextRun,
       type: 'state_migrated',
       data: {
@@ -710,7 +716,7 @@ async function continueTransitionSupersede(
   }
   await hooks?.afterTrajectoryWritten?.(journal);
   await writeNativeCheckpoint({
-    changeDir,
+    changeDir: runtimeDir,
     run: supersede.nextRun,
     trajectoryOffset: event.sequence!,
     evidenceHash: supersede.evidenceHash,
@@ -735,8 +741,8 @@ async function continueRunRetreat(
   hooks?: NativeSchemaMigrationHooks,
 ): Promise<void> {
   if (!journal.runRetreat) return;
-  const changeDir = nativeChangeDir(paths, journal.change);
-  const currentRun = await readNativeRunState(changeDir);
+  const runtimeDir = nativeChangeRuntimeDir(paths, journal.change);
+  const currentRun = await readNativeRunState(runtimeDir);
   if (!currentRun) {
     throw new Error(`Native schema migration Run state disappeared for ${journal.change}`);
   }
@@ -744,16 +750,16 @@ async function continueRunRetreat(
     if (!sameRunState(currentRun, journal.runRetreat.previousRun)) {
       throw new Error(`Native schema migration Run source changed for ${journal.change}`);
     }
-    await writeNativeRunState(changeDir, journal.runRetreat.nextRun);
+    await writeNativeRunState(runtimeDir, journal.runRetreat.nextRun);
     await hooks?.afterRunStateWritten?.(journal);
   }
-  let trajectory = await readNativeTrajectory(changeDir, journal.runRetreat.nextRun.trajectoryRef);
+  let trajectory = await readNativeTrajectory(runtimeDir, journal.runRetreat.nextRun.trajectoryRef);
   let event = trajectory.find(
     (item) => item.type === 'state_migrated' && item.data.migrationId === journal.id,
   );
   if (!event) {
     event = await appendNativeTrajectoryEvent({
-      changeDir,
+      changeDir: runtimeDir,
       run: journal.runRetreat.nextRun,
       type: 'state_migrated',
       data: {
@@ -767,7 +773,7 @@ async function continueRunRetreat(
   }
   await hooks?.afterTrajectoryWritten?.(journal);
   await writeNativeCheckpoint({
-    changeDir,
+    changeDir: runtimeDir,
     run: journal.runRetreat.nextRun,
     trajectoryOffset: trajectory.length,
     evidenceHash: journal.runRetreat.evidenceHash,
@@ -828,8 +834,8 @@ async function stableEvidenceRetreat(options: {
   state: NativeV2ChangeState;
   migrationId: string;
 }): Promise<NonNullable<NativeSchemaMigrationJournal['runRetreat']>> {
-  const changeDir = nativeChangeDir(options.paths, options.state.name);
-  const run = await readNativeRunState(changeDir);
+  const runtimeDir = nativeChangeRuntimeDir(options.paths, options.state.name);
+  const run = await readNativeRunState(runtimeDir);
   if (
     !run ||
     run.runId !== options.state.run_id ||
@@ -887,8 +893,8 @@ async function pendingEvidenceTransitionSupersede(options: {
   if (!stateIsPrevious && !stateIsNext) {
     throw new Error(`Native change ${state.name} does not match its v2 evidence transition`);
   }
-  const changeDir = nativeChangeDir(options.paths, state.name);
-  const currentRun = await readNativeRunState(changeDir);
+  const runtimeDir = nativeChangeRuntimeDir(options.paths, state.name);
+  const currentRun = await readNativeRunState(runtimeDir);
   if (!currentRun) throw new Error(`Native v2 transition Run is missing for ${state.name}`);
   const runIsPrevious =
     journal.previousRun !== null && sameRunState(currentRun, journal.previousRun);
@@ -897,7 +903,7 @@ async function pendingEvidenceTransitionSupersede(options: {
     throw new Error(`Native v2 transition Run does not match its durable state for ${state.name}`);
   }
 
-  const trajectory = await readNativeTrajectory(changeDir, journal.nextRun.trajectoryRef);
+  const trajectory = await readNativeTrajectory(runtimeDir, journal.nextRun.trajectoryRef);
   const collisions = trajectory
     .map((event, index) => ({ event, index }))
     .filter(({ event }) => event.data.transitionId === journal.id);
@@ -1145,8 +1151,9 @@ export async function migrateNativeChange(options: {
             id: options.id?.() ?? randomUUID(),
           });
           const journalFile = nativeSchemaMigrationJournalFile(options.paths, options.name);
-          await resolveContainedNativePath(options.paths.nativeRoot, journalFile);
-          await atomicWriteJson(journalFile, journal);
+          const storageRoot = nativeStorageRoot(options.paths, journalFile);
+          await resolveContainedNativePath(storageRoot, journalFile);
+          await atomicWriteJson(journalFile, journal, { containedRoot: storageRoot });
           await options.hooks?.afterPrepared?.(journal);
         }
         throw new Error(

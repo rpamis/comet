@@ -176,6 +176,9 @@ describe('Native Dashboard collector', () => {
     const fixture = await prepareNativeArchiveFixture({ paths, name: 'legacy-archived-dashboard' });
     const evidenceHash = 'a'.repeat(64);
     const legacyEvidenceRef = `runtime/evidence/verifications/${evidenceHash}.json`;
+    await fs.mkdir(path.dirname(path.join(fixture.changeDir, ...legacyEvidenceRef.split('/'))), {
+      recursive: true,
+    });
     await fs.writeFile(
       path.join(fixture.changeDir, ...legacyEvidenceRef.split('/')),
       JSON.stringify({

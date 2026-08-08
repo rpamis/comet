@@ -35,6 +35,7 @@ import {
   readNativeWorkspaceIdentity,
 } from './native-workspace.js';
 import { captureNativeProtectedDirectoryGuard } from './native-protected-file.js';
+import { inspectNativeRuntimeStorage } from './native-paths.js';
 import type {
   NativeChangeState,
   NativeClarificationMode,
@@ -173,6 +174,7 @@ export async function inspectNativeStatus(
   },
 ): Promise<NativeStatusProjection> {
   const selected = (await selectedName(paths)) === name;
+  const runtime = await inspectNativeRuntimeStorage(paths, name);
   const workspace = await projectNativeWorkspace(paths, name);
   let state: NativeChangeState;
   try {
@@ -207,6 +209,7 @@ export async function inspectNativeStatus(
         checkpoint: null,
         continuation: null,
         workspace,
+        runtime,
         schema: inspection.schema,
         migrationRequired: true,
         minimumRuntimeVersion: inspection.minimumRuntimeVersion,
@@ -243,6 +246,7 @@ export async function inspectNativeStatus(
         checkpoint: null,
         continuation: null,
         workspace,
+        runtime,
         schema: inspection.schema,
         minimumRuntimeVersion: inspection.minimumRuntimeVersion,
         error: inspection.message ?? `Native change ${name} is incompatible`,
@@ -279,7 +283,47 @@ export async function inspectNativeStatus(
       checkpoint: null,
       continuation: null,
       workspace,
+      runtime,
       error: (error as Error).message,
+    };
+  }
+  if (runtime.status !== 'available') {
+    const rawFinding: NativeFinding = {
+      code: runtime.status === 'missing' ? 'runtime-missing' : 'runtime-storage-invalid',
+      message:
+        runtime.status === 'missing'
+          ? `Native Runtime is missing; continue ${state.name} to rebuild local execution state`
+          : (runtime.message ?? 'Native Runtime storage is invalid'),
+      path: runtime.path,
+    };
+    const findings = structureNativeFindings({ paths, state, findings: [rawFinding] });
+    const continuation = nativeContinuation({ state, findings });
+    return {
+      name: state.name,
+      phase: state.phase,
+      revision: state.revision,
+      approval: state.approval,
+      verificationResult: state.verification_result,
+      specChanges: state.spec_changes.length,
+      selected,
+      nextCommand: continuation.command,
+      archiveReady: false,
+      inspection: {
+        freshness: 'stale',
+        codes: [rawFinding.code],
+        reasonCount: 1,
+        codesTruncated: false,
+      },
+      findingSummary: summarizeNativeFindings(findings),
+      detailsCommand: `comet native status ${state.name} --details`,
+      checkpoint: null,
+      continuation,
+      workspace,
+      runtime,
+      ...(options?.details ? { findings } : {}),
+      schema: state.schema,
+      minimumRuntimeVersion: state.minimum_runtime_version,
+      ...(runtime.status === 'invalid' ? { error: rawFinding.message } : {}),
     };
   }
   const resume = await buildNativeResumeView({ paths, state });
@@ -525,6 +569,7 @@ export async function inspectNativeStatus(
       clarificationMode: options?.clarificationMode,
     }),
     workspace,
+    runtime,
     repair,
     ...(options?.details
       ? {

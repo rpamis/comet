@@ -11,7 +11,10 @@ import {
 import { inspectNativeArchivePreflight } from '../../../domains/comet-native/native-archive-inspection.js';
 import { inspectNativeStatus } from '../../../domains/comet-native/native-diagnostics.js';
 import { sha256Text } from '../../../domains/comet-native/native-hash.js';
-import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import {
+  nativeChangeRuntimeDir,
+  nativeProjectPaths,
+} from '../../../domains/comet-native/native-paths.js';
 import {
   readNativeRunState,
   readNativeTrajectoryText,
@@ -46,6 +49,7 @@ describe('Native evidence-bound phase transitions', () => {
   let projectRoot: string;
   let paths: NativeProjectPaths;
   let changeDir: string;
+  let runtimeDir: string;
 
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-evidence-transition-'));
@@ -59,6 +63,7 @@ describe('Native evidence-bound phase transitions', () => {
       verificationProtocol: 'legacy-v1',
     });
     changeDir = nativeChangeDir(paths, state.name);
+    runtimeDir = nativeChangeRuntimeDir(paths, state.name);
     await fs.writeFile(path.join(changeDir, 'brief.md'), brief);
     await advanceNativeChange({
       paths,
@@ -259,9 +264,9 @@ describe('Native evidence-bound phase transitions', () => {
   });
 
   it('continues an active v1 Run through the compatible v2 iteration-budget upgrade', async () => {
-    const run = await readNativeRunState(changeDir);
+    const run = await readNativeRunState(runtimeDir);
     expect(run).not.toBeNull();
-    await writeNativeRunState(changeDir, {
+    await writeNativeRunState(runtimeDir, {
       ...run!,
       ...NATIVE_LEGACY_RUNTIME_IDENTITIES[0],
     });
@@ -274,7 +279,7 @@ describe('Native evidence-bound phase transitions', () => {
     });
 
     expect(built.change.phase).toBe('verify');
-    await expect(readNativeRunState(changeDir)).resolves.toMatchObject(
+    await expect(readNativeRunState(runtimeDir)).resolves.toMatchObject(
       NATIVE_LEGACY_RUNTIME_IDENTITIES[0],
     );
   });
@@ -287,7 +292,7 @@ describe('Native evidence-bound phase transitions', () => {
       evidence: { summary: 'Implemented the behavior.', artifacts: ['src/feature.ts'] },
     });
     await writeVerification();
-    const evidenceDir = path.join(changeDir, 'runtime', 'evidence', 'verifications');
+    const evidenceDir = path.join(runtimeDir, 'evidence', 'verifications');
     const evidenceCount = async (): Promise<number> => {
       try {
         return (await fs.readdir(evidenceDir)).length;
@@ -298,9 +303,9 @@ describe('Native evidence-bound phase transitions', () => {
     };
     const beforeCount = await evidenceCount();
     const beforeState = await readNativeChange(paths, 'evidence-change');
-    const run = await readNativeRunState(changeDir);
+    const run = await readNativeRunState(runtimeDir);
     expect(run).not.toBeNull();
-    await writeNativeRunState(changeDir, { ...run!, currentStep: 'build' });
+    await writeNativeRunState(runtimeDir, { ...run!, currentStep: 'build' });
 
     const blocked = await advanceNativeChange({
       paths,
@@ -332,7 +337,7 @@ describe('Native evidence-bound phase transitions', () => {
       evidence: { summary: 'Implemented the behavior.', artifacts: ['src/feature.ts'] },
     });
     await writeVerification();
-    const evidenceDir = path.join(changeDir, 'runtime', 'evidence', 'verifications');
+    const evidenceDir = path.join(runtimeDir, 'evidence', 'verifications');
     const evidenceCount = async (): Promise<number> => {
       try {
         return (await fs.readdir(evidenceDir)).length;
@@ -343,12 +348,12 @@ describe('Native evidence-bound phase transitions', () => {
     };
     const beforeCount = await evidenceCount();
     const beforeState = await readNativeChange(paths, 'evidence-change');
-    const run = await readNativeRunState(changeDir);
+    const run = await readNativeRunState(runtimeDir);
     expect(run).not.toBeNull();
-    const trajectory = await readNativeTrajectoryText(changeDir, run!.trajectoryRef);
+    const trajectory = await readNativeTrajectoryText(runtimeDir, run!.trajectoryRef);
     expect(trajectory).not.toBeNull();
     await replaceNativeTrajectoryText(
-      changeDir,
+      runtimeDir,
       run!.trajectoryRef,
       '{invalid trajectory tail\n',
       sha256Text(trajectory!),
@@ -537,7 +542,7 @@ describe('Native evidence-bound phase transitions', () => {
     });
 
     expect(confirmed.change.phase).toBe('verify');
-    const persisted = await readTreeText(changeDir);
+    const persisted = `${await readTreeText(changeDir)}\n${await readTreeText(runtimeDir)}`;
     expect(persisted).toContain('Valid credentials remain ordinary prose');
     expect(persisted).toContain('Bearer [REDACTED]');
     expect(persisted).toContain('api_key=[REDACTED]');
@@ -558,7 +563,7 @@ describe('Native evidence-bound phase transitions', () => {
     });
 
     expect(result.change.phase).toBe('verify');
-    const persisted = await readTreeText(changeDir);
+    const persisted = `${await readTreeText(changeDir)}\n${await readTreeText(runtimeDir)}`;
     expect(persisted).toContain('Documented credentials semantics');
     expect(persisted).toContain('password=[REDACTED]');
     expect(persisted).toContain('access_token=[REDACTED]');

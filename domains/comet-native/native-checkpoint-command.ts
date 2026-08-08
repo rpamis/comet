@@ -1,6 +1,3 @@
-import path from 'path';
-
-import { nativeChangeDir } from './native-change.js';
 import { inspectNativeStatus } from './native-diagnostics.js';
 import { checkpointNativeChange } from './native-progress-checkpoint.js';
 import {
@@ -40,15 +37,8 @@ export async function nativeCheckpointCommand(
     clarificationMode: config.native.clarification_mode,
     maxVerifyFailures: config.native.max_verify_failures,
   });
-  const manifestRef = path
-    .relative(
-      paths.projectRoot,
-      path.join(nativeChangeDir(paths, name), ...result.checkpoint.manifestRef.split('/')),
-    )
-    .replaceAll('\\', '/');
   return success('checkpoint', {
     ...result,
-    checkpoint: { ...result.checkpoint, manifestRef },
     continuation: status.continuation,
   });
 }

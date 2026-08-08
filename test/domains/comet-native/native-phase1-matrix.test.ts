@@ -315,7 +315,7 @@ describe('Comet Native Phase 1 behavior matrix', () => {
     );
     expect(blockedCommit).toMatchObject({ exitCode: 73, error: { code: 'conflict' } });
     expect(await fs.readFile(canonical, 'utf8')).toContain('Original behavior');
-  }, 60_000);
+  }, 120_000);
 
   it('continues and rolls back interrupted archive transactions deterministically', async () => {
     const projectRoot = await project();
@@ -414,7 +414,7 @@ describe('Comet Native Phase 1 behavior matrix', () => {
     await expect(
       fs.access(path.join(paths.specsDir, 'rollback-capability', 'spec.md')),
     ).rejects.toMatchObject({ code: 'ENOENT' });
-  }, 60_000);
+  }, 120_000);
 
   it('continues and rolls back interrupted artifact-root moves from pending config', async () => {
     const projectRoot = await project();

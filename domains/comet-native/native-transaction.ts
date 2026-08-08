@@ -3,7 +3,7 @@ import path from 'path';
 import { TextDecoder } from 'util';
 
 import { atomicWriteJson, atomicWriteText } from './native-atomic-file.js';
-import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
+import { isInsidePath, nativeStorageRoot, resolveContainedNativePath } from './native-paths.js';
 import {
   copyNativeProtectedFile,
   ensureNativeProtectedDirectory,
@@ -623,7 +623,7 @@ export async function resolveNativeTransactionPaths(
   const transaction = nativeTransactionPaths(paths, id);
   await Promise.all(
     Object.values(transaction).map((target) =>
-      resolveContainedNativePath(paths.nativeRoot, target),
+      resolveContainedNativePath(paths.runtimeDir, target),
     ),
   );
   return transaction;
@@ -638,14 +638,18 @@ function resolveRefLexically(paths: NativeProjectPaths, ref: string): string {
   ) {
     throw new Error(`Unsafe Native transaction ref: ${ref}`);
   }
-  const target = path.resolve(paths.nativeRoot, ...ref.split(/[\\/]/u));
-  if (!isInsidePath(paths.nativeRoot, target))
-    throw new Error(`Unsafe Native transaction ref: ${ref}`);
+  const runtimePrefix = 'runtime/';
+  const runtimeRef = ref.startsWith(runtimePrefix);
+  const root = runtimeRef ? paths.runtimeDir : paths.nativeRoot;
+  const relativeRef = runtimeRef ? ref.slice(runtimePrefix.length) : ref;
+  const target = path.resolve(root, ...relativeRef.split(/[\\/]/u));
+  if (!isInsidePath(root, target)) throw new Error(`Unsafe Native transaction ref: ${ref}`);
   return target;
 }
 
 async function resolveRef(paths: NativeProjectPaths, ref: string): Promise<string> {
-  return resolveContainedNativePath(paths.nativeRoot, resolveRefLexically(paths, ref));
+  const target = resolveRefLexically(paths, ref);
+  return resolveContainedNativePath(nativeStorageRoot(paths, target), target);
 }
 
 async function exists(file: string): Promise<boolean> {
@@ -681,7 +685,7 @@ async function readEventLogSnapshot(
   }
   try {
     const snapshot = await readNativeProtectedFile({
-      root: paths.nativeRoot,
+      root: paths.runtimeDir,
       file: tx.events,
       maxBytes: NATIVE_TRANSACTION_EVENTS_MAX_BYTES,
       label: `Native transaction event log ${id}`,
@@ -742,7 +746,7 @@ export async function appendNativeTransactionEvent(
   if (existing) {
     if (snapshot.needsRepair) {
       await atomicWriteText(tx.events, snapshot.canonicalSource, {
-        containedRoot: paths.nativeRoot,
+        containedRoot: paths.runtimeDir,
         beforeCommit: () => assertEventLogSnapshotUnchanged(paths, id, snapshot),
       });
     }
@@ -762,7 +766,7 @@ export async function appendNativeTransactionEvent(
   parseEvent(event, event.sequence);
   await fs.mkdir(tx.directory, { recursive: true });
   await atomicWriteText(tx.events, canonicalEventLogSource([...snapshot.events, event]), {
-    containedRoot: paths.nativeRoot,
+    containedRoot: paths.runtimeDir,
     beforeCommit: () => assertEventLogSnapshotUnchanged(paths, id, snapshot),
   });
   return event;
@@ -779,7 +783,7 @@ export async function createNativeTransaction(
   const tx = await resolveNativeTransactionPaths(paths, journal.id);
   await fs.mkdir(tx.staged, { recursive: true });
   await fs.mkdir(tx.backups, { recursive: true });
-  await atomicWriteJson(tx.journal, journal);
+  await atomicWriteJson(tx.journal, journal, { containedRoot: paths.runtimeDir });
   await appendNativeTransactionEvent(paths, journal.id, 'prepared');
 }
 
@@ -790,7 +794,7 @@ export async function readNativeTransaction(
 ): Promise<NativeTransactionJournal> {
   const tx = await resolveNativeTransactionPaths(paths, id);
   const snapshot = await readNativeProtectedFile({
-    root: paths.nativeRoot,
+    root: paths.runtimeDir,
     file: tx.journal,
     maxBytes: NATIVE_TRANSACTION_JOURNAL_MAX_BYTES,
     label: `Native transaction journal ${id}`,
@@ -821,7 +825,9 @@ export async function setNativeTransactionStatus(
     throw new Error('Native Archive v2 transactions require the content-bound transaction API');
   }
   const updated = parseJournal({ ...journal, status });
-  await atomicWriteJson((await resolveNativeTransactionPaths(paths, journal.id)).journal, updated);
+  await atomicWriteJson((await resolveNativeTransactionPaths(paths, journal.id)).journal, updated, {
+    containedRoot: paths.runtimeDir,
+  });
   return updated;
 }
 
@@ -832,7 +838,7 @@ async function readLegacyTransactionFile(
 ): Promise<NativeProtectedFile | null> {
   try {
     return await readNativeProtectedFile({
-      root: paths.nativeRoot,
+      root: nativeStorageRoot(paths, file),
       file,
       maxBytes: NATIVE_LEGACY_TRANSACTION_FILE_MAX_BYTES,
       label,
@@ -853,14 +859,14 @@ async function copyAtomic(
   if (!sourceSnapshot) throw new Error(`${label} source does not exist`);
   const targetSnapshot = await readLegacyTransactionFile(paths, target, `${label} target`);
   await ensureNativeProtectedDirectory({
-    root: paths.nativeRoot,
+    root: nativeStorageRoot(paths, target),
     directory: path.dirname(target),
     label: `${label} target parent`,
   });
   await copyNativeProtectedFile({
-    sourceRoot: paths.nativeRoot,
+    sourceRoot: nativeStorageRoot(paths, source),
     source,
-    targetRoot: paths.nativeRoot,
+    targetRoot: nativeStorageRoot(paths, target),
     target,
     maxBytes: NATIVE_LEGACY_TRANSACTION_FILE_MAX_BYTES,
     label,
@@ -878,7 +884,7 @@ async function removeLegacyTransactionFile(
   const snapshot = await readLegacyTransactionFile(paths, file, label);
   if (!snapshot) return;
   await removeNativeProtectedFile({
-    root: paths.nativeRoot,
+    root: nativeStorageRoot(paths, file),
     file,
     maxBytes: NATIVE_LEGACY_TRANSACTION_FILE_MAX_BYTES,
     expectedHash: snapshot.hash,
@@ -928,7 +934,7 @@ async function applyOperation(
   const [sourceExists, targetExists] = await Promise.all([exists(source), exists(target)]);
   if (!sourceExists && targetExists) {
     const targetDirectory = await readNativeProtectedDirectory({
-      root: paths.nativeRoot,
+      root: nativeStorageRoot(paths, target),
       directory: target,
       label: `Legacy Native transaction move target ${operation.id}`,
       maxEntries: NATIVE_LEGACY_TRANSACTION_DIRECTORY_MAX_ENTRIES,
@@ -939,7 +945,7 @@ async function applyOperation(
   if (targetExists) throw new Error(`Move target already exists: ${operation.target}`);
   if (!sourceExists) throw new Error(`Move source does not exist: ${operation.source}`);
   await moveNativeProtectedDirectory({
-    root: paths.nativeRoot,
+    root: nativeStorageRoot(paths, source),
     source,
     target,
     label: `Legacy Native transaction move ${operation.id}`,
@@ -991,7 +997,7 @@ async function rollbackOperation(
         throw new Error(`Legacy Native rollback source already exists: ${operation.source}`);
       }
       await moveNativeProtectedDirectory({
-        root: paths.nativeRoot,
+        root: nativeStorageRoot(paths, target),
         source: target,
         target: source,
         label: `Legacy Native transaction rollback move ${operation.id}`,
@@ -1060,8 +1066,12 @@ export async function finalizeNativeTransaction(
 
 export function nativeRootRef(paths: NativeProjectPaths, target: string): string {
   const absolute = path.resolve(target);
+  if (isInsidePath(paths.runtimeDir, absolute)) {
+    const relative = path.relative(paths.runtimeDir, absolute).split(path.sep).join('/');
+    return relative === '' ? 'runtime' : `runtime/${relative}`;
+  }
   if (!isInsidePath(paths.nativeRoot, absolute)) {
-    throw new Error(`Path is outside the Native root: ${target}`);
+    throw new Error(`Path is outside the Native document and Runtime roots: ${target}`);
   }
   return path.relative(paths.nativeRoot, absolute).split(path.sep).join('/');
 }

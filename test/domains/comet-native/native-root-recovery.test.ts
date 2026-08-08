@@ -363,7 +363,7 @@ describe('Native artifact root recovery', () => {
     expect((await readProjectConfig(projectRoot))?.native.pending_root_move?.stage).toBe('ready');
   });
 
-  it('bounds the staged fallback journal before parsing it', async () => {
+  it('bounds the project-local root-move journal before parsing it', async () => {
     const source = await seedNativeRoot(projectRoot, '.');
     let transactionId = '';
     await expect(
@@ -379,22 +379,13 @@ describe('Native artifact root recovery', () => {
       }),
     ).rejects.toThrow('crash before journal fallback');
     const staging = path.join(projectRoot, 'docs', `.comet-native-move-${transactionId}`);
+    const runtimePaths = await nativeProjectPaths(projectRoot, '.');
     const sourceJournal = path.join(
-      source,
-      'runtime',
-      'transactions',
+      runtimePaths.transactionsDir,
       transactionId,
       'transaction.json',
     );
-    const stagedJournal = path.join(
-      staging,
-      'runtime',
-      'transactions',
-      transactionId,
-      'transaction.json',
-    );
-    await fs.rm(sourceJournal);
-    await fs.writeFile(stagedJournal, 'x'.repeat(256 * 1024 + 1));
+    await fs.writeFile(sourceJournal, 'x'.repeat(256 * 1024 + 1));
 
     await expect(recoverNativeRootMove({ projectRoot, strategy: 'continue' })).rejects.toThrow(
       /exceeds 262144 bytes/u,
@@ -403,7 +394,7 @@ describe('Native artifact root recovery', () => {
     expect(await fs.stat(staging)).toBeTruthy();
   });
 
-  it('rejects a junction in the staged fallback journal parent chain', async () => {
+  it('rejects a junction in the project-local journal parent chain', async () => {
     const source = await seedNativeRoot(projectRoot, '.');
     let transactionId = '';
     await expect(
@@ -418,20 +409,13 @@ describe('Native artifact root recovery', () => {
         },
       }),
     ).rejects.toThrow('crash before junction fallback');
-    const staging = path.join(projectRoot, 'docs', `.comet-native-move-${transactionId}`);
-    const sourceJournal = path.join(
-      source,
-      'runtime',
-      'transactions',
-      transactionId,
-      'transaction.json',
-    );
-    const stagedTransaction = path.join(staging, 'runtime', 'transactions', transactionId);
+    const runtimePaths = await nativeProjectPaths(projectRoot, '.');
+    const stagedTransaction = path.join(runtimePaths.transactionsDir, transactionId);
+    const sourceJournal = path.join(stagedTransaction, 'transaction.json');
     const external = path.join(projectRoot, 'external-journal');
     const journal = await fs.readFile(sourceJournal);
     await fs.mkdir(external);
     await fs.writeFile(path.join(external, 'transaction.json'), journal);
-    await fs.rm(sourceJournal);
     await fs.rm(stagedTransaction, { recursive: true });
     await fs.symlink(
       external,
@@ -440,7 +424,7 @@ describe('Native artifact root recovery', () => {
     );
 
     await expect(recoverNativeRootMove({ projectRoot, strategy: 'continue' })).rejects.toThrow(
-      /parent must be a real directory/u,
+      /outside the Native root|parent must be a real directory/u,
     );
     expect(await fs.readFile(path.join(external, 'transaction.json'))).toEqual(journal);
     expect(await fs.stat(source)).toBeTruthy();

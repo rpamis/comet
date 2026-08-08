@@ -15,7 +15,9 @@ Root, branch, worktree-kind, or Git-availability binding errors block writes. If
 ## Transition, baseline, and evidence
 
 - Unfinished transition: retry through the continuation first; doctor permits only the continue/rollback direction it explicitly returns.
-- Missing or incomplete baseline: restore a trusted original or preserve confirmed facts and recreate the change. Never infer a baseline from current files.
+- Entire project-local Runtime missing: `status` still shows the change state with `runtime.status: missing`; explicitly execute its `next` continuation to rebuild execution context. Shape remains in Shape, Build remains in Build, and Verify/Archive returns to Build for revalidation. This cannot restore another device's Run, trajectory, or unsynchronized content.
+- Runtime present but baseline missing, incomplete, or damaged: treat it as `invalid`; restore a trusted original or execute only a repair explicitly allowed by doctor. Never infer a baseline from current files or overwrite damaged evidence automatically.
+- Legacy `<change>/runtime` layout: normal reads remain compatible; use `comet native doctor <change> --repair` to migrate it explicitly into `.comet/runtime/native/`. Do not move it manually.
 - Changed brief, specification, implementation, report, or receipt: return to Build, reconfirm affected behavior, regenerate scope, and reverify. Do not reuse an old pass or preflight.
 - Receipt binding mismatch: follow its classification. Refresh only source-revision-only manual receipts; rerun automated receipts; reverify contract, scope, snapshot, or artifact mismatches.
 

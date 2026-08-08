@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 
 import {
+  nativePreferredChangeRuntimeDir,
   nativeProjectPaths,
   normalizeArtifactRootRef,
   resolveArtifactRoot,
@@ -59,6 +60,29 @@ describe('Native artifact root safety', () => {
 
     await expect(nativeProjectPaths(projectRoot, '.')).rejects.toThrow(
       'Native comet root must not be a symbolic link',
+    );
+  });
+
+  it('rejects a .comet parent junction that redirects Runtime outside the project', async () => {
+    await fs.symlink(
+      outside,
+      path.join(projectRoot, '.comet'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+
+    await expect(nativeProjectPaths(projectRoot, 'docs')).rejects.toThrow(
+      'Native Runtime root resolves outside the project root',
+    );
+  });
+
+  it('keeps Runtime project-local when the document artifact root changes', async () => {
+    const rootPaths = await nativeProjectPaths(projectRoot, '.');
+    const docsPaths = await nativeProjectPaths(projectRoot, 'docs');
+
+    expect(rootPaths.runtimeDir).toBe(path.join(projectRoot, '.comet', 'runtime', 'native'));
+    expect(docsPaths.runtimeDir).toBe(rootPaths.runtimeDir);
+    expect(nativePreferredChangeRuntimeDir(docsPaths, 'focused-change')).toBe(
+      path.join(projectRoot, '.comet', 'runtime', 'native', 'changes', 'focused-change'),
     );
   });
 });

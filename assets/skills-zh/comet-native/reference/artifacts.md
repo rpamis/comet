@@ -4,28 +4,32 @@
 
 ## 编辑边界
 
-Agent 主要编辑：
+每个 active change 目录只保留用户可读、可随 Git 同步的正式产物：
 
 ```text
 <artifact-root>/comet/changes/<change-name>/
+  comet-state.yaml
   brief.md
   specs/<capability>/spec.md
   verification.md
+  evidence.md
 ```
 
-artifact root 只由 `.comet/config.yaml` 指定。Runtime 状态、workspace、scope、evidence、checkpoint、锁和事务文件只读；不要手工迁移或修复。
+Agent 只编辑 brief、完整目标规格和 verification；`comet-state.yaml` 与 `evidence.md` 由 Runtime 管理。文件尚未生成时可以不存在。
+
+机器 Runtime 固定保存在项目本地且被 Git 忽略的 `.comet/runtime/native/`：per-change baseline、workspace、Run、trajectory、scope、receipt 与 checkpoint 位于 `changes/<change-name>/`，全局锁与事务位于 `locks/` 和 `transactions/`。artifact root 只由 `.comet/config.yaml` 指定，不改变机器 Runtime 的位置。不要手工迁移或修复 Runtime 文件。
 
 ## 证据投影
 
-每次写入 evidence 的推进（进入或离开 Build、Verify）后，Runtime 会重新生成一份只读的人类可读投影：
+每次写入 evidence 的推进（进入或离开 Build、Verify）后，Runtime 会在 change 根重新生成只读的人类可读投影：
 
 ```text
-<artifact-root>/comet/changes/<change-name>/runtime/projections/evidence.md
+<artifact-root>/comet/changes/<change-name>/evidence.md
 ```
 
-它把 `runtime/evidence/` 下 hash 命名的内容寻址证据翻译成可读文字——实现范围（改了哪些文件、字节变化）、验证结论（验收点 pass/fail、覆盖统计）、检查收据（命令、退出码、摘要）。调试或排查 change 时打开它即可，不必解析 hash 文件。
+它把项目本地 Runtime 中 hash 命名的内容寻址证据翻译成可读文字——实现范围（改了哪些文件、字节变化）、验证结论（验收点 pass/fail、覆盖统计）、检查收据（命令、退出码、摘要）。调试或排查 change 时打开它即可，不必解析机器文件。
 
-该投影是只读衍生品：Runtime 每次推进都会覆写，不可手改，也不能当作验证证据引用。canonical 事实始终在 `runtime/evidence/` 下的 hash 文件里。
+该投影是只读衍生品：Runtime 每次推进都会覆写，不可手改，也不能当作验证证据引用。状态中的机器引用继续使用稳定的 `runtime/...` 逻辑格式，与物理存储位置无关。
 
 ## Brief
 

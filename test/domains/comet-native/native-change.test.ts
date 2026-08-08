@@ -18,7 +18,10 @@ import {
   readNativeChange,
   writeNativeChange,
 } from '../../../domains/comet-native/native-change.js';
-import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import {
+  nativePreferredChangeRuntimeDir,
+  nativeProjectPaths,
+} from '../../../domains/comet-native/native-paths.js';
 import { readNativeBaselineManifest } from '../../../domains/comet-native/native-snapshot.js';
 import {
   NATIVE_CHANGE_SCHEMA,
@@ -68,7 +71,7 @@ describe('Native change store', () => {
     ).rejects.toMatchObject({ code: 'ENOENT' });
     expect(await fs.stat(path.join(paths.changesDir, state.name, 'specs'))).toBeDefined();
     expect(
-      await fs.stat(path.join(paths.changesDir, state.name, 'runtime', 'checkpoints')),
+      await fs.stat(path.join(nativePreferredChangeRuntimeDir(paths, state.name), 'checkpoints')),
     ).toBeDefined();
     expect(await readNativeBaselineManifest(paths, state.name)).toMatchObject({
       schema: 'comet.native.content-snapshot.v1',

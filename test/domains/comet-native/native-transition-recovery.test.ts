@@ -4,9 +4,7 @@ import path from 'path';
 import { stringify } from 'yaml';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { readCheckpoint, readTrajectory } from '../../../domains/engine/run-store.js';
 import { NATIVE_RUN_STORAGE } from '../../../domains/engine/storage-layout.js';
-import { readRunStateAt, writeRunStateAt } from '../../../domains/engine/storage-run.js';
 import { archiveNativeChange } from '../../../domains/comet-native/native-archive.js';
 import { inspectNativeArchivePreflight } from '../../../domains/comet-native/native-archive-inspection.js';
 import {
@@ -17,7 +15,17 @@ import {
 import { inspectNativeStatus } from '../../../domains/comet-native/native-diagnostics.js';
 import { doctorNativeProject } from '../../../domains/comet-native/native-doctor.js';
 import { sha256Text } from '../../../domains/comet-native/native-hash.js';
-import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import {
+  nativeChangeRuntimeDir,
+  nativeProjectPaths,
+  nativeRuntimeRefFile,
+} from '../../../domains/comet-native/native-paths.js';
+import {
+  readNativeCheckpoint as readCheckpoint,
+  readNativeRunState as readRunStateAt,
+  readNativeTrajectory as readTrajectory,
+  writeNativeRunState as writeRunStateAt,
+} from '../../../domains/comet-native/native-run-store.js';
 import {
   inspectPendingNativeSchemaMigration,
   migrateNativeChange,
@@ -144,6 +152,7 @@ describe('Native transition recovery', () => {
   let projectRoot: string;
   let paths: NativeProjectPaths;
   let changeDir: string;
+  let runtimeDir: string;
 
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-transition-recovery-'));
@@ -155,6 +164,7 @@ describe('Native transition recovery', () => {
       verificationProtocol: 'legacy-v1',
     });
     changeDir = nativeChangeDir(paths, state.name);
+    runtimeDir = nativeChangeRuntimeDir(paths, state.name);
     await fs.writeFile(path.join(changeDir, 'brief.md'), brief);
   });
 
@@ -232,11 +242,11 @@ describe('Native transition recovery', () => {
       phase: 'build',
       revision: 2,
     });
-    const run = await readRunStateAt(changeDir, NATIVE_RUN_STORAGE);
+    const run = await readRunStateAt(runtimeDir);
     expect(run?.currentStep).toBe('build');
-    const events = await readTrajectory(changeDir, run!.trajectoryRef);
+    const events = await readTrajectory(runtimeDir, run!.trajectoryRef);
     expect(events.filter((event) => event.type === 'state_transitioned')).toHaveLength(1);
-    expect(await readCheckpoint(changeDir, run!.checkpointRef)).toMatchObject({
+    expect(await readCheckpoint(runtimeDir, run!.checkpointRef)).toMatchObject({
       runId: 'recoverable-run',
       stateVersion: 1,
     });
@@ -298,10 +308,10 @@ describe('Native transition recovery', () => {
       }
       expect(await fs.readFile(changeFile, 'utf8')).toBe(changeBefore);
       expect(await fs.readFile(transitionFile, 'utf8')).toBe(transitionBefore);
-      expect(await readRunStateAt(changeDir, NATIVE_RUN_STORAGE)).toBeNull();
-      await expect(
-        fs.access(path.join(changeDir, 'runtime', 'schema-migration.json')),
-      ).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(await readRunStateAt(runtimeDir)).toBeNull();
+      await expect(fs.access(path.join(runtimeDir, 'schema-migration.json'))).rejects.toMatchObject(
+        { code: 'ENOENT' },
+      );
     },
   );
 
@@ -696,8 +706,8 @@ describe('Native transition recovery', () => {
       });
       expect(migrated.evidenceHash).not.toBe(legacyHash);
       await continueNativeTransition(paths, 'recover-transition');
-      const run = (await readRunStateAt(changeDir, NATIVE_RUN_STORAGE))!;
-      const event = (await readTrajectory(changeDir, run.trajectoryRef)).at(-1)!;
+      const run = (await readRunStateAt(runtimeDir))!;
+      const event = (await readTrajectory(runtimeDir, run.trajectoryRef)).at(-1)!;
       expect(event).toMatchObject({
         type: 'state_transitioned',
         data: {
@@ -752,7 +762,7 @@ describe('Native transition recovery', () => {
     );
     expect(await fs.readFile(changeFile, 'utf8')).toBe(changeBefore);
     expect(await fs.readFile(transitionFile, 'utf8')).toBe(journalBefore);
-    expect(await readRunStateAt(changeDir, NATIVE_RUN_STORAGE)).toBeNull();
+    expect(await readRunStateAt(runtimeDir)).toBeNull();
   });
 
   it('preserves a pending journal when a different valid Run is present', async () => {
@@ -770,11 +780,7 @@ describe('Native transition recovery', () => {
     ).rejects.toThrow('seed pending Run CAS');
     const journal = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
     const transitionFile = nativeTransitionJournalFile(paths, 'recover-transition');
-    await writeRunStateAt(
-      changeDir,
-      { ...journal.nextRun, runId: 'other-valid-run' },
-      NATIVE_RUN_STORAGE,
-    );
+    await writeRunStateAt(runtimeDir, { ...journal.nextRun, runId: 'other-valid-run' });
     const [changeBefore, journalBefore] = await Promise.all([
       fs.readFile(path.join(changeDir, 'comet-state.yaml'), 'utf8'),
       fs.readFile(transitionFile, 'utf8'),
@@ -785,7 +791,7 @@ describe('Native transition recovery', () => {
     );
     expect(await fs.readFile(path.join(changeDir, 'comet-state.yaml'), 'utf8')).toBe(changeBefore);
     expect(await fs.readFile(transitionFile, 'utf8')).toBe(journalBefore);
-    expect(await readRunStateAt(changeDir, NATIVE_RUN_STORAGE)).toMatchObject({
+    expect(await readRunStateAt(runtimeDir)).toMatchObject({
       runId: 'other-valid-run',
     });
   });
@@ -806,7 +812,7 @@ describe('Native transition recovery', () => {
     ).rejects.toThrow('seed pending trajectory collision');
     const journal = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
     await appendNativeTrajectoryEvent({
-      changeDir,
+      changeDir: runtimeDir,
       run: journal.nextRun,
       type: 'run_started',
       data: {
@@ -817,7 +823,7 @@ describe('Native transition recovery', () => {
       now: new Date(journal.createdAt),
     });
     await appendNativeTrajectoryEvent({
-      changeDir,
+      changeDir: runtimeDir,
       run: journal.nextRun,
       type: 'state_transitioned',
       data: { ...journal.eventData, summary: 'tampered summary', transitionId: journal.id },
@@ -830,7 +836,7 @@ describe('Native transition recovery', () => {
       /trajectory event changed/iu,
     );
     expect(await fs.readFile(transitionFile, 'utf8')).toBe(journalBefore);
-    expect(await readRunStateAt(changeDir, NATIVE_RUN_STORAGE)).toBeNull();
+    expect(await readRunStateAt(runtimeDir)).toBeNull();
     expect((await readNativeChange(paths, 'recover-transition')).phase).toBe('shape');
   });
 
@@ -902,7 +908,7 @@ describe('Native transition recovery', () => {
       const preservedEvents: string[] = [];
       if (prewriteEvents) {
         const started = await appendNativeTrajectoryEvent({
-          changeDir,
+          changeDir: runtimeDir,
           run: currentJournal.nextRun,
           type: 'run_started',
           data: {
@@ -913,7 +919,7 @@ describe('Native transition recovery', () => {
           now: new Date(currentJournal.createdAt),
         });
         const transitioned = await appendNativeTrajectoryEvent({
-          changeDir,
+          changeDir: runtimeDir,
           run: currentJournal.nextRun,
           type: 'state_transitioned',
           data: { ...currentJournal.eventData, transitionId: currentJournal.id },
@@ -983,7 +989,7 @@ describe('Native transition recovery', () => {
       });
       await expect(fs.access(transitionFile)).rejects.toMatchObject({ code: 'ENOENT' });
 
-      const events = await readTrajectory(changeDir, currentJournal.nextRun.trajectoryRef);
+      const events = await readTrajectory(runtimeDir, currentJournal.nextRun.trajectoryRef);
       expect(
         events.filter(
           (event) => event.type === 'run_started' && event.data.transitionId === currentJournal.id,
@@ -1006,7 +1012,7 @@ describe('Native transition recovery', () => {
         recoveryStrategy: 'continue',
       });
       expect((await readNativeChange(paths, 'recover-transition')).revision).toBe(2);
-      const replayedEvents = await readTrajectory(changeDir, currentJournal.nextRun.trajectoryRef);
+      const replayedEvents = await readTrajectory(runtimeDir, currentJournal.nextRun.trajectoryRef);
       expect(replayedEvents).toEqual(events);
     },
   );
@@ -1064,9 +1070,9 @@ describe('Native transition recovery', () => {
       verification_evidence: null,
       partial_allowance: null,
     });
-    const run = (await readRunStateAt(changeDir, NATIVE_RUN_STORAGE))!;
+    const run = (await readRunStateAt(runtimeDir))!;
     expect(run).toMatchObject({ runId: 'v2-transition-run', currentStep: 'build' });
-    const events = await readTrajectory(changeDir, run.trajectoryRef);
+    const events = await readTrajectory(runtimeDir, run.trajectoryRef);
     expect(
       events.filter(
         (event) =>
@@ -1130,9 +1136,9 @@ describe('Native transition recovery', () => {
       phase: 'build',
       revision: 2,
     });
-    const run = (await readRunStateAt(changeDir, NATIVE_RUN_STORAGE))!;
+    const run = (await readRunStateAt(runtimeDir))!;
     expect(
-      (await readTrajectory(changeDir, run.trajectoryRef)).filter(
+      (await readTrajectory(runtimeDir, run.trajectoryRef)).filter(
         (event) =>
           event.type === 'state_transitioned' && event.data.transitionId === currentJournal.id,
       ),
@@ -1180,7 +1186,7 @@ describe('Native transition recovery', () => {
     ).rejects.toThrow('interrupt after archive state');
     const currentJournal = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
     await appendNativeTrajectoryEvent({
-      changeDir,
+      changeDir: runtimeDir,
       run: currentJournal.nextRun,
       type: 'state_transitioned',
       data: { ...currentJournal.eventData, transitionId: currentJournal.id },
@@ -1214,14 +1220,14 @@ describe('Native transition recovery', () => {
       verification_evidence: null,
       partial_allowance: null,
     });
-    const run = (await readRunStateAt(changeDir, NATIVE_RUN_STORAGE))!;
+    const run = (await readRunStateAt(runtimeDir))!;
     expect(run).toMatchObject({
       currentStep: 'build',
       iteration: currentJournal.nextRun.iteration + 1,
       pending: null,
       status: 'running',
     });
-    const events = await readTrajectory(changeDir, run.trajectoryRef);
+    const events = await readTrajectory(runtimeDir, run.trajectoryRef);
     expect(
       events.filter(
         (event) =>
@@ -1238,7 +1244,7 @@ describe('Native transition recovery', () => {
       ),
     ).toHaveLength(1);
     await expect(fs.access(transitionFile)).rejects.toMatchObject({ code: 'ENOENT' });
-    expect(await readCheckpoint(changeDir, run.checkpointRef)).toMatchObject({
+    expect(await readCheckpoint(runtimeDir, run.checkpointRef)).toMatchObject({
       runId: run.runId,
       stateVersion: run.iteration,
       trajectoryOffset: events.length,
@@ -1307,7 +1313,7 @@ describe('Native transition recovery', () => {
       ).rejects.toThrow('seed durable Archive transition');
       const pending = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
       await appendNativeTrajectoryEvent({
-        changeDir,
+        changeDir: runtimeDir,
         run: pending.nextRun,
         type: 'state_transitioned',
         data: { ...pending.eventData, transitionId: pending.id },
@@ -1347,8 +1353,8 @@ describe('Native transition recovery', () => {
         verification_result: 'pending',
         verification_report: null,
       });
-      const run = (await readRunStateAt(changeDir, NATIVE_RUN_STORAGE))!;
-      const events = await readTrajectory(changeDir, run.trajectoryRef);
+      const run = (await readRunStateAt(runtimeDir))!;
+      const events = await readTrajectory(runtimeDir, run.trajectoryRef);
       expect(
         events.filter(
           (event) => event.type === 'state_transitioned' && event.data.transitionId === pending.id,
@@ -1366,7 +1372,7 @@ describe('Native transition recovery', () => {
       await expect(
         fs.access(nativeSchemaMigrationJournalFile(paths, 'recover-transition')),
       ).rejects.toMatchObject({ code: 'ENOENT' });
-      expect(await readCheckpoint(changeDir, run.checkpointRef)).toMatchObject({
+      expect(await readCheckpoint(runtimeDir, run.checkpointRef)).toMatchObject({
         runId: run.runId,
         stateVersion: run.iteration,
       });
@@ -1434,9 +1440,9 @@ describe('Native transition recovery', () => {
 
     const journal = await inspectPendingNativeTransition(paths, 'recover-transition');
     expect(journal).not.toBeNull();
-    expect(await readTrajectory(changeDir, journal!.nextRun.trajectoryRef)).toEqual([]);
+    expect(await readTrajectory(runtimeDir, journal!.nextRun.trajectoryRef)).toEqual([]);
     await continueNativeTransition(paths, 'recover-transition');
-    const events = await readTrajectory(changeDir, journal!.nextRun.trajectoryRef);
+    const events = await readTrajectory(runtimeDir, journal!.nextRun.trajectoryRef);
     expect(events.map((event) => event.type)).toEqual(['run_started', 'state_transitioned']);
   });
 
@@ -1456,9 +1462,9 @@ describe('Native transition recovery', () => {
       }),
     ).rejects.toThrow('crash before trajectory append completed');
     const stateFile = path.join(changeDir, 'comet-state.yaml');
-    const runFile = path.join(changeDir, NATIVE_RUN_STORAGE.stateRef);
+    const runFile = nativeRuntimeRefFile(runtimeDir, NATIVE_RUN_STORAGE.stateRef);
     const transitionFile = nativeTransitionJournalFile(paths, 'recover-transition');
-    const trajectoryFile = path.join(changeDir, NATIVE_RUN_STORAGE.trajectoryRef);
+    const trajectoryFile = nativeRuntimeRefFile(runtimeDir, NATIVE_RUN_STORAGE.trajectoryRef);
     await fs.appendFile(trajectoryFile, '{"sequence":1');
     const before = await Promise.all([
       fs.readFile(stateFile, 'utf8'),
@@ -1507,7 +1513,7 @@ describe('Native transition recovery', () => {
         expect.objectContaining({ code: 'transition-recovered', severity: 'info' }),
       ]),
     );
-    const events = await readTrajectory(changeDir, NATIVE_RUN_STORAGE.trajectoryRef);
+    const events = await readTrajectory(runtimeDir, NATIVE_RUN_STORAGE.trajectoryRef);
     expect(events.map((event) => event.type)).toEqual(['run_started', 'state_transitioned']);
     expect((await readNativeChange(paths, 'recover-transition')).revision).toBe(2);
   });
@@ -1519,7 +1525,7 @@ describe('Native transition recovery', () => {
       evidence: { summary: 'shape is ready' },
       runId: () => 'middle-corruption-run',
     });
-    const trajectoryFile = path.join(changeDir, NATIVE_RUN_STORAGE.trajectoryRef);
+    const trajectoryFile = nativeRuntimeRefFile(runtimeDir, NATIVE_RUN_STORAGE.trajectoryRef);
     await fs.appendFile(trajectoryFile, '{not-json}\n{"sequence":');
     const before = await fs.readFile(trajectoryFile, 'utf8');
 
@@ -1554,7 +1560,7 @@ describe('Native transition recovery', () => {
       evidence: { summary: 'shape is ready' },
       runId: () => 'trajectory-cas-run',
     });
-    const trajectoryFile = path.join(changeDir, NATIVE_RUN_STORAGE.trajectoryRef);
+    const trajectoryFile = nativeRuntimeRefFile(runtimeDir, NATIVE_RUN_STORAGE.trajectoryRef);
     const withoutNewline = (await fs.readFile(trajectoryFile, 'utf8')).trimEnd();
     await fs.writeFile(trajectoryFile, withoutNewline);
     const appended =

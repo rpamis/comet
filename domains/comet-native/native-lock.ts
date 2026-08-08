@@ -56,7 +56,7 @@ interface NativeLockSnapshot {
   identity: NativeLockFileIdentity;
 }
 
-type NativeLockCoordinatorPaths = Pick<NativeProjectPaths, 'nativeRoot' | 'locksDir'>;
+type NativeLockCoordinatorPaths = Pick<NativeProjectPaths, 'runtimeDir' | 'locksDir'>;
 
 const nativeLockCoordinator = new AsyncLocalStorage<Map<string, NativeLock>>();
 const nativeLockLocalCoordinator = new Map<string, Promise<void>>();
@@ -272,10 +272,10 @@ async function publishNativeCoordinatorClaim(
   paths: NativeLockCoordinatorPaths,
   operation: string,
 ): Promise<NativeLock> {
-  const locksDir = await resolveContainedNativePath(paths.nativeRoot, paths.locksDir);
+  const locksDir = await resolveContainedNativePath(paths.runtimeDir, paths.locksDir);
   await fs.mkdir(locksDir, { recursive: true });
   const coordinatorDir = await resolveContainedNativePath(
-    paths.nativeRoot,
+    paths.runtimeDir,
     path.join(locksDir, NATIVE_LOCK_COORDINATOR_DIR),
   );
   await fs.mkdir(coordinatorDir, { recursive: true });
@@ -289,7 +289,7 @@ async function publishNativeCoordinatorClaim(
     if (!published || !sameNativeLockObject(identity, published.identity)) {
       throw new Error(`Native lock coordinator claim changed while publishing: ${file}`);
     }
-    return { file, nativeRoot: paths.nativeRoot, locksDir, owner, identity: published.identity };
+    return { file, nativeRoot: paths.runtimeDir, locksDir, owner, identity: published.identity };
   } finally {
     await fs.rm(temporary, { force: true });
   }
@@ -411,32 +411,36 @@ export async function acquireNativeLock(
   operation: string,
 ): Promise<NativeLock> {
   return withNativeLockCoordinator(paths, `acquire ${name}`, async () => {
-    const locksDir = await resolveContainedNativePath(paths.nativeRoot, paths.locksDir);
+    const locksDir = await resolveContainedNativePath(paths.runtimeDir, paths.locksDir);
     await fs.mkdir(locksDir, { recursive: true });
     const file = await resolveContainedNativePath(
-      paths.nativeRoot,
+      paths.runtimeDir,
       path.join(locksDir, lockName(name)),
     );
     const owner = newNativeLockOwner(operation);
     const identity = await writeNativeLockFile(file, owner);
-    return { file, nativeRoot: paths.nativeRoot, locksDir, owner, identity };
+    return { file, nativeRoot: paths.runtimeDir, locksDir, owner, identity };
   });
 }
 
 export async function releaseNativeLock(lock: NativeLock): Promise<void> {
   if (!(await readNativeLockSnapshot(lock.file))) return;
-  await withNativeLockCoordinator(lock, `release ${path.basename(lock.file)}`, async () => {
-    const current = await readNativeLockSnapshot(lock.file);
-    if (!current) return;
-    if (current.owner.id !== lock.owner.id) {
-      throw new Error(`Native lock ownership changed: ${lock.file}`);
-    }
-    if (!sameNativeLockVersion(current.identity, lock.identity)) {
-      throw new Error(`Native lock identity changed: ${lock.file}`);
-    }
-    const coordinatorDir = path.join(lock.locksDir, NATIVE_LOCK_COORDINATOR_DIR);
-    await removeBoundNativeLock(current, coordinatorDir);
-  });
+  await withNativeLockCoordinator(
+    { runtimeDir: lock.nativeRoot, locksDir: lock.locksDir },
+    `release ${path.basename(lock.file)}`,
+    async () => {
+      const current = await readNativeLockSnapshot(lock.file);
+      if (!current) return;
+      if (current.owner.id !== lock.owner.id) {
+        throw new Error(`Native lock ownership changed: ${lock.file}`);
+      }
+      if (!sameNativeLockVersion(current.identity, lock.identity)) {
+        throw new Error(`Native lock identity changed: ${lock.file}`);
+      }
+      const coordinatorDir = path.join(lock.locksDir, NATIVE_LOCK_COORDINATOR_DIR);
+      await removeBoundNativeLock(current, coordinatorDir);
+    },
+  );
 }
 
 export function isProcessAlive(pid: number): boolean | null {
@@ -461,8 +465,8 @@ export async function takeOverNativeStaleLock(
   expected?: NativeLockDiagnosis,
 ): Promise<NativeStaleLockTakeover> {
   return withNativeLockCoordinator(paths, `take over ${path.basename(file)}`, async () => {
-    const locksDir = await resolveContainedNativePath(paths.nativeRoot, paths.locksDir);
-    const containedFile = await resolveContainedNativePath(paths.nativeRoot, file);
+    const locksDir = await resolveContainedNativePath(paths.runtimeDir, paths.locksDir);
+    const containedFile = await resolveContainedNativePath(paths.runtimeDir, file);
     if (path.resolve(path.dirname(containedFile)) !== path.resolve(locksDir)) {
       throw new Error(`Native lock takeover target is outside the lock directory: ${file}`);
     }

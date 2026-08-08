@@ -53,11 +53,10 @@ describe('Native VCS-independent content snapshots', () => {
     await execFileAsync('git', ['init'], { cwd: projectRoot });
     await Promise.all([
       fs.mkdir(path.join(projectRoot, 'src'), { recursive: true }),
-      fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true }),
       fs.mkdir(path.join(projectRoot, '.cache'), { recursive: true }),
       fs.mkdir(path.join(projectRoot, 'node_modules', 'dep'), { recursive: true }),
       fs.mkdir(path.join(projectRoot, 'private', 'nested'), { recursive: true }),
-      fs.mkdir(path.join(paths.nativeRoot, 'runtime'), { recursive: true }),
+      fs.mkdir(paths.runtimeDir, { recursive: true }),
     ]);
     await Promise.all([
       fs.writeFile(path.join(projectRoot, 'src', 'app.ts'), safe),
@@ -67,7 +66,7 @@ describe('Native VCS-independent content snapshots', () => {
       fs.writeFile(path.join(projectRoot, '.cache', 'cache.bin'), 'secret\n'),
       fs.writeFile(path.join(projectRoot, 'node_modules', 'dep', 'index.js'), 'secret\n'),
       fs.writeFile(path.join(projectRoot, 'private', 'nested', 'key.txt'), 'secret\n'),
-      fs.writeFile(path.join(paths.nativeRoot, 'runtime', 'state.json'), 'secret\n'),
+      fs.writeFile(path.join(paths.runtimeDir, 'state.json'), 'secret\n'),
       fs.writeFile(paths.configFile, 'secret\n'),
       fs.writeFile(path.join(projectRoot, '.comet', 'current-change.json'), 'selection\n'),
       fs.writeFile(path.join(outsideRoot, 'outside.txt'), 'secret\n'),

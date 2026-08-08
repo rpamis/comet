@@ -15,7 +15,9 @@
 ## Transition、baseline 与证据
 
 - 未完成 transition：优先按后续指令重试；doctor 只允许其明确列出的 continue/rollback。
-- baseline 缺失或不完整：只能从可信备份恢复，或保留已确认事实后重建 change；不能从当前文件猜测 baseline。
+- 整个项目本地 Runtime 缺失：`status` 仍展示 change 状态和 `runtime.status: missing`；显式执行其 `next` 后续动作可重建执行上下文。Shape 继续 Shape，Build 保持 Build，Verify/Archive 回到 Build 并重新验证。它不能恢复另一台设备的 Run、trajectory 或未同步内容。
+- Runtime 存在但 baseline 缺失、不完整或损坏：按 `invalid` 处理，只能从可信备份恢复或执行 doctor 明确允许的修复；不能从当前文件猜测 baseline 或自动覆盖损坏证据。
+- 旧 `<change>/runtime` 布局：普通读取保持兼容；使用 `comet native doctor <change> --repair` 显式迁移到 `.comet/runtime/native/`，不要手工移动。
 - brief、规格、实现、报告或 receipt 改变：回到 Build，重新确认受影响行为、生成 scope 并验证；不复用旧 pass 或 preflight。
 - receipt binding mismatch：按输出分类。仅 source revision 不一致的 manual receipt 可 refresh；automated receipt 重跑；contract、scope、snapshot 或 artifact 不一致重新验证。
 

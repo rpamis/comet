@@ -15,7 +15,10 @@ import {
 } from '../../../domains/comet-native/native-config.js';
 import { readNativeVerificationEvidence } from '../../../domains/comet-native/native-evidence-storage.js';
 import { readNativeVerificationReceipt } from '../../../domains/comet-native/native-evidence-storage.js';
-import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import {
+  nativeChangeRuntimeDir,
+  nativeProjectPaths,
+} from '../../../domains/comet-native/native-paths.js';
 import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
 
 const brief = `# Outcome
@@ -52,6 +55,13 @@ describe('Native check public seam', () => {
   let projectRoot: string;
   const name = 'safe-check';
   const projectArgs = () => ['--project-root', projectRoot] as const;
+
+  function runtimeDir(
+    paths: Awaited<ReturnType<typeof nativeProjectPaths>>,
+    changeDir: string,
+  ): string {
+    return nativeChangeRuntimeDir(paths, path.basename(changeDir));
+  }
 
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-check-cli-'));
@@ -118,9 +128,12 @@ describe('Native check public seam', () => {
   it('runs the internal scoped check through a whitelist-only CLI projection', async () => {
     const { paths, changeDir } = await prepareVerifyChange();
     const stateBefore = await fs.readFile(path.join(changeDir, 'comet-state.yaml'), 'utf8');
-    const runBefore = await fs.readFile(path.join(changeDir, 'runtime', 'run-state.json'), 'utf8');
+    const runBefore = await fs.readFile(
+      path.join(runtimeDir(paths, changeDir), 'run-state.json'),
+      'utf8',
+    );
     const trajectoryBefore = await fs.readFile(
-      path.join(changeDir, 'runtime', 'trajectory.jsonl'),
+      path.join(runtimeDir(paths, changeDir), 'trajectory.jsonl'),
       'utf8',
     );
 
@@ -166,8 +179,12 @@ describe('Native check public seam', () => {
       status: 'passed',
     });
 
-    const checkReceiptDirectory = path.join(changeDir, 'runtime', 'evidence', 'check-receipts');
-    const typedReceiptDirectory = path.join(changeDir, 'runtime', 'evidence', 'receipts');
+    const checkReceiptDirectory = path.join(
+      runtimeDir(paths, changeDir),
+      'evidence',
+      'check-receipts',
+    );
+    const typedReceiptDirectory = path.join(runtimeDir(paths, changeDir), 'evidence', 'receipts');
     const countFiles = async (directory: string): Promise<number> =>
       (await fs.readdir(directory)).length;
     const checkReceiptCount = await countFiles(checkReceiptDirectory);
@@ -193,12 +210,12 @@ describe('Native check public seam', () => {
     expect(serializedProjection).not.toContain('stdout');
     expect(serializedProjection).not.toContain('stderr');
     expect(await fs.readFile(path.join(changeDir, 'comet-state.yaml'), 'utf8')).toBe(stateBefore);
-    expect(await fs.readFile(path.join(changeDir, 'runtime', 'run-state.json'), 'utf8')).toBe(
-      runBefore,
-    );
-    expect(await fs.readFile(path.join(changeDir, 'runtime', 'trajectory.jsonl'), 'utf8')).toBe(
-      trajectoryBefore,
-    );
+    expect(
+      await fs.readFile(path.join(runtimeDir(paths, changeDir), 'run-state.json'), 'utf8'),
+    ).toBe(runBefore);
+    expect(
+      await fs.readFile(path.join(runtimeDir(paths, changeDir), 'trajectory.jsonl'), 'utf8'),
+    ).toBe(trajectoryBefore);
   });
 
   it('runs and binds a fresh required check when Verify passes', async () => {
@@ -237,7 +254,11 @@ describe('Native check public seam', () => {
   it('validates the Verify report before running the automatic required check', async () => {
     const { paths, changeDir } = await prepareVerifyChange();
     await fs.writeFile(path.join(changeDir, 'verification.md'), '# Conclusion\nPass.\n');
-    const checkReceiptDirectory = path.join(changeDir, 'runtime', 'evidence', 'check-receipts');
+    const checkReceiptDirectory = path.join(
+      runtimeDir(paths, changeDir),
+      'evidence',
+      'check-receipts',
+    );
     const countReceipts = async (): Promise<number> => {
       try {
         return (await fs.readdir(checkReceiptDirectory)).length;
@@ -281,7 +302,7 @@ describe('Native check public seam', () => {
     );
     const before = await readNativeChange(paths, name);
     const trajectoryBefore = await fs.readFile(
-      path.join(changeDir, 'runtime', 'trajectory.jsonl'),
+      path.join(runtimeDir(paths, changeDir), 'trajectory.jsonl'),
       'utf8',
     );
     const result = json(await runNativeCli(['check', name, '--json', ...projectArgs()]));
@@ -309,9 +330,9 @@ describe('Native check public seam', () => {
       status: 'failed',
     });
     await expect(readNativeChange(paths, name)).resolves.toEqual(before);
-    expect(await fs.readFile(path.join(changeDir, 'runtime', 'trajectory.jsonl'), 'utf8')).toBe(
-      trajectoryBefore,
-    );
+    expect(
+      await fs.readFile(path.join(runtimeDir(paths, changeDir), 'trajectory.jsonl'), 'utf8'),
+    ).toBe(trajectoryBefore);
   });
 
   it('rejects non-Verify use and any attempt to supply a command or path', async () => {
@@ -327,7 +348,7 @@ describe('Native check public seam', () => {
     expect(shape).toMatchObject({ exitCode: 65, error: { code: 'invalid-data' } });
 
     const { changeDir } = await prepareVerifyChange();
-    const receiptDirectory = path.join(changeDir, 'runtime', 'evidence', 'check-receipts');
+    const receiptDirectory = path.join(runtimeDir(paths, changeDir), 'evidence', 'check-receipts');
     const countReceipts = async (): Promise<number> => {
       try {
         return (await fs.readdir(receiptDirectory)).length;

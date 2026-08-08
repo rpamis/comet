@@ -18,7 +18,10 @@ import {
   readNativeProgressCheckpoint,
   writeNativeCheckpointManifest,
 } from '../../../domains/comet-native/native-checkpoint-storage.js';
-import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import {
+  nativeChangeRuntimeDir,
+  nativeProjectPaths,
+} from '../../../domains/comet-native/native-paths.js';
 import { checkpointNativeChange } from '../../../domains/comet-native/native-progress-checkpoint.js';
 import { markNativeSpecRemoval } from '../../../domains/comet-native/native-specs.js';
 import { doctorNativeProject } from '../../../domains/comet-native/native-doctor.js';
@@ -598,7 +601,7 @@ Run focused tests.
   });
 
   it('rejects an internal symlink or junction in the checkpoint manifest parent chain', async () => {
-    const runtime = path.join(nativeChangeDir(paths, 'resume-work'), 'runtime');
+    const runtime = nativeChangeRuntimeDir(paths, 'resume-work');
     const internalTarget = path.join(runtime, 'internal-checkpoint-target');
     const linkedParent = path.join(runtime, 'checkpoints');
     const manifest = {
@@ -635,8 +638,7 @@ Run focused tests.
     };
     const manifestDirectory = path.dirname(
       path.join(
-        nativeChangeDir(paths, 'resume-work'),
-        'runtime',
+        nativeChangeRuntimeDir(paths, 'resume-work'),
         'checkpoints',
         'manifests',
         `${'0'.repeat(64)}.json`,
