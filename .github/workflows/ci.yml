@@ -94,6 +94,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      - run: pnpm test:native-parallel
       - run: pnpm test:runtime-smoke
 
   package-e2e:

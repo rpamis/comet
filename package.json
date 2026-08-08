@@ -67,6 +67,7 @@
     "check:generated": "node scripts/build/build-classic-runtime.mjs --check && node scripts/build/build-native-runtime.mjs --check && node scripts/build/build-entry-runtime.mjs --check",
     "dev": "tsc --watch",
     "test": "vitest run",
+    "test:native-parallel": "vitest run test/domains/comet-native/native-parallel-worktree.test.ts",
     "test:script-smoke": "vitest run test/domains/comet-classic/comet-scripts.test.ts",
     "test:runtime-smoke": "vitest run test/domains/comet-classic/comet-scripts.test.ts test/repository/native-runtime-assets.test.ts test/repository/comet-entry-runtime-assets.test.ts test/app/cli-smoke.test.ts",
     "test:package-e2e": "node scripts/release/package-e2e.mjs",

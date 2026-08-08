@@ -1,0 +1,23 @@
+schema: comet.native.v3
+minimum_runtime_version: 3
+revision: 5
+verification_protocol: legacy-v1
+name: native-parallel-worktree-tests
+language: en
+phase: archive
+brief: brief.md
+approval: confirmed
+approved_contract_hash: b7731ca895dba8fcd1a47cf39826b495003ab5adced5e1247226e887ecda8ab3
+spec_changes:
+  - capability: native-parallel-worktree-tests
+    operation: create
+    source: specs/native-parallel-worktree-tests/spec.md
+    base_hash: null
+verification_result: pass
+verification_report: verification.md
+implementation_scope: runtime/evidence/scopes/401f0c3945bf15ce734a87c607716c335fcc2019ba531997f848d27a03a883ea.json
+verification_evidence: runtime/evidence/verifications/72ff616882d7d98a5527e23c6d490f27e2ce8a5bca64e3f28131ad6f0c5df936.json
+partial_allowance: runtime/evidence/allowances/9ed2fc1388399debfd9b2d12dba0d48b78b11bfa7dead2c4fe949b8718ba3d3d.json
+archived: true
+created_at: 2026-08-08
+run_id: 79ffcbc8-13f1-4902-b824-74ba75322190
