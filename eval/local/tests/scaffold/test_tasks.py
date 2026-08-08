@@ -996,9 +996,18 @@ def test_native_interrupted_transition_fixture_is_recovered_by_current_runtime(t
         expected_exit=65,
     )
 
+    trajectory = (
+        workspace
+        / ".comet"
+        / "runtime"
+        / "native"
+        / "changes"
+        / "add-character-counting"
+        / "trajectory.jsonl"
+    )
     events = [
         json.loads(line)
-        for line in (change / "runtime/trajectory.jsonl").read_text(encoding="utf-8").splitlines()
+        for line in trajectory.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
     recovered = [

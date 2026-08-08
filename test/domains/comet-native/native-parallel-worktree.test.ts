@@ -207,10 +207,12 @@ describe('Native parallel linked-worktree Runtime', () => {
     );
     created.forEach((result, index) => assertCompleted(result, `create ${CHANGE_NAMES[index]}`));
 
-    const worktrees = CHANGE_NAMES.map((name) => ({
-      name,
-      root: path.resolve(repository, '.worktrees', name),
-    }));
+    const worktrees = await Promise.all(
+      CHANGE_NAMES.map(async (name) => ({
+        name,
+        root: await fs.realpath(path.resolve(repository, '.worktrees', name)),
+      })),
+    );
     worktrees.forEach(({ root }) => linkedWorktrees.push({ repository, root }));
     expect(new Set(created.map((result) => result.data?.preparation?.projectRoot))).toEqual(
       new Set(worktrees.map(({ root }) => root)),
