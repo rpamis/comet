@@ -6,6 +6,12 @@ import {
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
 import { NATIVE_CONTRACT_FILE_LIMITS } from './native-contract-files.js';
 import { readNativeProposedSpecs } from './native-specs.js';
+import { nativePortableContinuation } from './native-portable-continuation.js';
+import {
+  isNativePortableChange,
+  nativePortableChangeDir,
+  readNativePortableChange,
+} from './native-portable-runtime.js';
 import {
   assertNoArguments,
   configuredPaths,
@@ -22,6 +28,39 @@ export async function nativeShowCommand(
   const name = requiredPositional(args, 'change name');
   assertNoArguments(args);
   const { paths } = await configuredPaths(projectRoot);
+  if (await isNativePortableChange(paths, name)) {
+    const state = await readNativePortableChange(paths, name);
+    const changeDir = nativePortableChangeDir(paths, name);
+    const brief = await readNativeBoundedTextFile({
+      root: changeDir,
+      ref: state.brief,
+      maxBytes: null,
+      includeHash: false,
+    });
+    const proposedSpecs = [];
+    for (const spec of state.spec_changes) {
+      if (spec.source === null) continue;
+      const source = await readNativeBoundedTextFile({
+        root: changeDir,
+        ref: spec.source,
+        maxBytes: null,
+        includeHash: false,
+      });
+      proposedSpecs.push({
+        capability: spec.capability,
+        operation: spec.operation,
+        source: spec.source,
+        content: source.text,
+      });
+    }
+    const payload = {
+      state,
+      brief: brief.text,
+      proposedSpecs,
+      continuation: nativePortableContinuation(state),
+    };
+    return success('show', payload);
+  }
   const inspection = await inspectNativeChange(paths, name);
   if (inspection.status === 'migration-required') {
     return success('show', {

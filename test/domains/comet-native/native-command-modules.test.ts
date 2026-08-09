@@ -7,9 +7,6 @@ const mocks = vi.hoisted(() => ({
   issueManual: vi.fn(),
   issueAutomated: vi.fn(),
   refresh: vi.fn(),
-  markRemoval: vi.fn(),
-  rebase: vi.fn(),
-  inspectStatus: vi.fn(),
 }));
 
 vi.mock('../../../domains/comet-native/native-verification-receipt-runtime.js', () => ({
@@ -20,15 +17,6 @@ vi.mock('../../../domains/comet-native/native-verification-receipt-runtime.js', 
 
 vi.mock('../../../domains/comet-native/native-receipt-refresh.js', () => ({
   refreshNativeVerificationReceipts: mocks.refresh,
-}));
-
-vi.mock('../../../domains/comet-native/native-specs.js', () => ({
-  markNativeSpecRemoval: mocks.markRemoval,
-  rebaseNativeSpecChanges: mocks.rebase,
-}));
-
-vi.mock('../../../domains/comet-native/native-diagnostics.js', () => ({
-  inspectNativeStatus: mocks.inspectStatus,
 }));
 
 import {
@@ -47,10 +35,6 @@ describe('Native command modules', () => {
     mocks.issueManual.mockReset();
     mocks.issueAutomated.mockReset();
     mocks.refresh.mockReset();
-    mocks.markRemoval.mockReset();
-    mocks.rebase.mockReset();
-    mocks.inspectStatus.mockReset();
-    mocks.inspectStatus.mockResolvedValue({ continuation: { disposition: 'continue' } });
   });
 
   afterEach(async () => {
@@ -245,43 +229,13 @@ describe('Native command modules', () => {
     );
   });
 
-  it('runs both Native spec mutation command variants with the current continuation', async () => {
-    mocks.markRemoval.mockResolvedValue({ name: 'demo-change', phase: 'build', revision: 2 });
-    mocks.rebase.mockResolvedValue({ name: 'demo-change', phase: 'build', revision: 3 });
-
-    const removed = await nativeSpecCommand(
-      ['remove', 'demo-change', 'legacy-capability'],
-      projectRoot,
-    );
-    const rebased = await nativeSpecCommand(
-      ['rebase', 'demo-change', '--summary', 'Rebase the current spec set'],
-      projectRoot,
-    );
-
-    expect(removed).toMatchObject({
-      command: 'spec remove',
-      data: { name: 'demo-change', continuation: { disposition: 'continue' } },
-    });
-    expect(rebased).toMatchObject({
-      command: 'spec rebase',
-      data: { name: 'demo-change', continuation: { disposition: 'continue' } },
-    });
-    expect(mocks.markRemoval).toHaveBeenCalledWith(
-      expect.any(Object),
-      'demo-change',
-      'legacy-capability',
-    );
-    expect(mocks.rebase).toHaveBeenCalledWith({
-      paths: expect.any(Object),
-      name: 'demo-change',
-      summary: 'Rebase the current spec set',
-    });
-  });
-
-  it('rejects missing spec rebase summaries', async () => {
-    await expect(nativeSpecCommand(['rebase', 'demo-change'], projectRoot)).rejects.toThrow(
-      '--summary is required',
-    );
+  it('rejects retired Native spec mutation variants', async () => {
+    await expect(
+      nativeSpecCommand(
+        ['rebase', 'demo-change', '--summary', 'Rebase the current spec set'],
+        projectRoot,
+      ),
+    ).rejects.toThrow('Unknown spec command: rebase');
     await expect(nativeSpecCommand(['unknown', 'demo-change'], projectRoot)).rejects.toThrow(
       'Unknown spec command',
     );

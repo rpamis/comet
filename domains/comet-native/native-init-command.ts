@@ -4,6 +4,7 @@ import {
   readProjectConfig,
   writeProjectConfig,
 } from './native-config.js';
+import { ensureCometProjectGitignore } from '../workflow-contract/project-gitignore.js';
 import {
   ensureNativeDirectories,
   nativeProjectPaths,
@@ -51,6 +52,7 @@ export async function nativeInitCommand(
     : defaultProjectConfig(artifactRoot, language);
   const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
   await ensureNativeDirectories(paths);
+  await ensureCometProjectGitignore(projectRoot);
   await writeProjectConfig(projectRoot, config);
   return success(
     'init',

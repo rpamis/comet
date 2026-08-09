@@ -402,6 +402,13 @@ describe('uninstall', () => {
   describe('removeCometSkillsForPlatform', () => {
     const claudePlatform: Platform = PLATFORMS.find((p) => p.id === 'claude')!;
 
+    const retiredNativeBundles = [
+      'comet-native/scripts/comet-native-checkpoint.mjs',
+      'comet-native/scripts/comet-native-check.mjs',
+      'comet-native/scripts/comet-native-evidence.mjs',
+      'comet-native/scripts/comet-native-receipt.mjs',
+    ] as const;
+
     it('removes installed Comet skills', async () => {
       await copyCometSkillsForPlatform(tmpDir, claudePlatform, true, 'skills', 'project');
 
@@ -422,6 +429,37 @@ describe('uninstall', () => {
       const result = await removeCometSkillsForPlatform(tmpDir, claudePlatform, 'project');
       expect(result.removed).toBe(0);
       expect(result.failed).toBe(0);
+    });
+
+    it('removes retired Native bundles from copy and central stores without deleting user files', async () => {
+      const roots = [
+        path.join(tmpDir, '.claude', 'skills'),
+        path.join(tmpDir, '.comet', 'skills', 'skills'),
+      ];
+      for (const root of roots) {
+        const userFile = path.join(root, 'comet-native', 'scripts', 'user-helper.mjs');
+        await fs.mkdir(path.dirname(userFile), { recursive: true });
+        await fs.writeFile(userFile, 'keep user content\n', 'utf8');
+        for (const relativePath of retiredNativeBundles) {
+          const target = path.join(root, ...relativePath.split('/'));
+          await fs.writeFile(target, 'legacy bundle\n', 'utf8');
+        }
+      }
+
+      const result = await removeCometSkillsForPlatform(tmpDir, claudePlatform, 'project');
+
+      expect(result.failed).toBe(0);
+      expect(result.removed).toBe(retiredNativeBundles.length * roots.length);
+      for (const root of roots) {
+        for (const relativePath of retiredNativeBundles) {
+          await expect(
+            fs.access(path.join(root, ...relativePath.split('/'))),
+          ).rejects.toMatchObject({ code: 'ENOENT' });
+        }
+        await expect(
+          fs.readFile(path.join(root, 'comet-native', 'scripts', 'user-helper.mjs'), 'utf8'),
+        ).resolves.toBe('keep user content\n');
+      }
     });
 
     it('removes only the selected workflow Skills and keeps their shared entry', async () => {

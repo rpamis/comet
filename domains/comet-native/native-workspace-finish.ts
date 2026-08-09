@@ -12,6 +12,7 @@ import { inspectGitWorktree, listGitWorktreeRoots } from '../../platform/paths/g
 
 import { canonicalSpecPath } from './native-artifacts.js';
 import { nativeChangeDir } from './native-change.js';
+import type { NativePortableState } from './native-portable-types.js';
 import { nativeSelectionFile } from './native-selection.js';
 import type { NativeChangeState, NativeProjectPaths } from './native-types.js';
 import type { NativeWorkspaceFinish, NativeWorkspaceIdentityV3 } from './native-workspace.js';
@@ -51,6 +52,10 @@ export class NativeWorkspaceFinishError extends Error {
     this.name = 'NativeWorkspaceFinishError';
   }
 }
+
+type NativeWorkspaceFinishState =
+  | Pick<NativeChangeState, 'name' | 'spec_changes'>
+  | Pick<NativePortableState, 'name' | 'spec_changes'>;
 
 function pathContains(parent: string, target: string): boolean {
   const relative = path.relative(parent, target);
@@ -166,6 +171,80 @@ export async function prepareNativeWorkspaceFinish(options: {
   };
 }
 
+/**
+ * Prepare Git finishing directly from the portable YAML binding.
+ *
+ * Unlike the legacy workspace identity this deliberately does not create or
+ * compare root hashes. The current Git worktree registration and branch are
+ * the only local facts needed before the user-authorized finish action.
+ */
+export async function prepareNativePortableWorkspaceFinish(options: {
+  paths: NativeProjectPaths;
+  state: NativePortableState;
+  archiveDir?: string;
+}): Promise<NativeWorkspaceFinishPlan | null> {
+  const { paths, state } = options;
+  const workspace = state.workspace;
+  if (workspace.isolation === 'current') return null;
+  if (!workspace.finish || !workspace.change_branch || !workspace.target_branch) {
+    throw new Error('Native isolated workspace finish is not persisted');
+  }
+  if (workspace.change_branch === workspace.target_branch) {
+    throw new Error('Native change and target branches must be different for workspace finish');
+  }
+  const context = inspectGitWorktree(paths.projectRoot);
+  if (!context.primaryWorktreeRoot || context.currentBranch !== workspace.change_branch) {
+    throw new Error(
+      `Native workspace finish requires branch ${workspace.change_branch} in the current registered worktree`,
+    );
+  }
+  assertGitIdentity(paths.projectRoot);
+  const allowedBeforeArchive = [portableRelative(paths.projectRoot, nativeSelectionFile(paths))];
+  if (options.archiveDir) {
+    allowedBeforeArchive.push(
+      portableRelative(paths.projectRoot, nativeChangeDir(paths, state.name)),
+      portableRelative(paths.projectRoot, options.archiveDir),
+    );
+  }
+  const unrelated = gitStatusPaths(paths.projectRoot).filter(
+    (candidate) => !pathCovered(candidate, allowedBeforeArchive),
+  );
+  if (unrelated.length > 0) {
+    throw new Error(
+      `Native workspace finish is blocked until change-owned implementation and artifacts are committed; remaining paths: ${unrelated.slice(0, 20).join(', ')}${unrelated.length > 20 ? ', ...' : ''}`,
+    );
+  }
+  const targetRoot =
+    workspace.isolation === 'branch'
+      ? paths.projectRoot
+      : findTargetRoot(context.primaryWorktreeRoot, workspace.target_branch);
+  if (workspace.finish === 'merge' && workspace.isolation === 'worktree') {
+    if (!targetRoot) {
+      throw new Error(
+        `Native merge finish requires a registered worktree on target branch ${workspace.target_branch}`,
+      );
+    }
+    if (!gitWorktreeIsClean(targetRoot)) {
+      throw new Error(`Native merge target worktree is not clean: ${targetRoot}`);
+    }
+  }
+  const remote =
+    workspace.finish === 'push' || workspace.finish === 'pull-request'
+      ? gitBranchRemote(paths.projectRoot, workspace.change_branch)
+      : null;
+  if (workspace.finish === 'pull-request') assertCommandAvailable('gh', ['--version']);
+  return {
+    finish: workspace.finish,
+    changeRoot: paths.projectRoot,
+    primaryRoot: context.primaryWorktreeRoot,
+    changeBranch: workspace.change_branch,
+    targetBranch: workspace.target_branch,
+    targetRoot,
+    remote,
+    isolation: workspace.isolation,
+  };
+}
+
 function runGh(projectRoot: string, args: readonly string[]): string {
   try {
     return runExternalCommand('gh', args, { cwd: projectRoot, timeoutMs: 60_000 }).trim();
@@ -202,7 +281,7 @@ function baseResult(plan: NativeWorkspaceFinishPlan): NativeWorkspaceFinishResul
 
 export async function finishArchivedNativeWorkspace(options: {
   paths: NativeProjectPaths;
-  state: NativeChangeState;
+  state: NativeWorkspaceFinishState;
   name: string;
   archiveDir: string;
   transactionId: string;

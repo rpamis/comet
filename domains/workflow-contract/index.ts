@@ -64,6 +64,7 @@ export {
   writeWorkflowProjectConfigDocument,
   writeWorkflowProjectConfigSource,
 } from './project-config-writer.js';
+export { ensureCometProjectGitignore, renderCometProjectGitignore } from './project-gitignore.js';
 export {
   inspectWorkflowProjectConfigTransaction,
   repairWorkflowProjectConfigTransaction,

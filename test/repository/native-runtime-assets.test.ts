@@ -57,7 +57,6 @@ describe('Native runtime release asset', () => {
       'show',
       'status',
       'select',
-      'receipt',
       'next',
       'archive',
       'doctor',
@@ -76,6 +75,9 @@ describe('Native runtime release asset', () => {
     expect(source).not.toContain('waiver-receipt');
     expect(source).not.toContain('trust authorize');
     expect(source).toContain('new <change-name> [--language en|zh-CN]');
+    const help = execFileSync(process.execPath, [runtime, '--help'], { encoding: 'utf8' });
+    expect(help).toContain('skill-coordinated steps');
+    expect(help).not.toMatch(/checkpoint|receipt|evidence|preflight|sha256|--result|--report/iu);
     execFileSync(process.execPath, [builder, '--check'], { stdio: 'pipe' });
   });
 
@@ -94,10 +96,6 @@ describe('Native runtime release asset', () => {
       'comet-native-show.mjs',
       'comet-native-status.mjs',
       'comet-native-select.mjs',
-      'comet-native-checkpoint.mjs',
-      'comet-native-check.mjs',
-      'comet-native-evidence.mjs',
-      'comet-native-receipt.mjs',
       'comet-native-next.mjs',
       'comet-native-archive.mjs',
       'comet-native-doctor.mjs',
@@ -106,6 +104,17 @@ describe('Native runtime release asset', () => {
       const source = await fs.readFile(path.join(scriptsDir, script), 'utf8');
       expect(source.startsWith('#!/usr/bin/env node\n')).toBe(true);
       expect(source).not.toMatch(/from\s+['"]\.\/comet-native-runtime\.mjs['"]/u);
+    }
+    for (const retired of [
+      'comet-native-checkpoint.mjs',
+      'comet-native-check.mjs',
+      'comet-native-evidence.mjs',
+      'comet-native-receipt.mjs',
+    ]) {
+      expect(manifest.skills).not.toContain(`comet-native/scripts/${retired}`);
+      await expect(fs.access(path.join(scriptsDir, retired))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
     }
     execFileSync(process.execPath, [builder, '--check'], { stdio: 'pipe' });
   });

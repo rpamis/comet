@@ -20,9 +20,9 @@ A legacy Classic project without the current project schema uses only the Classi
 | Native | Shape, Verify, Archive | Build |
 | Classic | Open, Design, Archive | Build, Verify |
 
-- Native Verify only runs checks and records evidence. When it exposes an implementation problem, record the failed result and use the Native Runtime to return to Build before modifying the implementation. Ordinary dot-prefixed project files do not become cross-phase allowlisted paths merely because of their names.
+- Native Verify remains read-only: Runtime executes required checks and a new Verifier execution independently covers every acceptance item. When it exposes an implementation problem, record the failed result and use the Native Runtime to return to Build before modifying the implementation. Ordinary dot-prefixed project files do not become cross-phase allowlisted paths merely because of their names.
 - Ordinary write permission in Native Build does not override unresolved `[blocking]` user decisions in the brief. When a new decision appears, follow the Native Skill to pause implementation and reconfirm.
-- For Native ownership, resume `/comet-native` and continue from Native state, evidence, and automatic-progression rules.
+- For Native ownership, resume `/comet-native` and continue from the portable state's Loop, blockers, and next action. A missing local execution does not mean the change is damaged.
 - For Classic ownership, resume `/comet-classic` and continue from Classic state, decision points, and phase rules.
 - Never convert a Native change into a Classic change or vice versa. Switching workflows means selecting a separate change.
 

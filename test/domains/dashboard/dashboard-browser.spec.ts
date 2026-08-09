@@ -16,10 +16,13 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
   await nativeWorkflow.click();
   await expect(nativeWorkflow).toHaveClass(/ant-menu-item-selected/);
   await expect(page.getByRole('heading', { name: 'Native 变更工作区' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '最近进展' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '循环与恢复' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '变更范围' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '验收覆盖' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Repair 状态' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '验收状态' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '检查结果' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '阻塞项' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '执行历史' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '恢复状态' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Git 摘要' })).toBeVisible();
   await expect(page.getByRole('tab', { name: '活跃', exact: true })).toBeVisible();
   await expect(page.getByRole('tab', { name: '已归档', exact: true })).toBeVisible();
@@ -32,14 +35,15 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
 
   await page.getByRole('button', { name: '需求简报' }).click();
   await expect(page.getByRole('heading', { name: '需求简报' })).toBeVisible();
-  await expect(page.getByText('Ship a dedicated Native dashboard view.')).toBeVisible();
+  await expect(page.getByText('Ship a fast, recoverable Native dashboard.')).toBeVisible();
   await page.getByRole('button', { name: '关闭产物预览' }).last().click();
 
   await page.getByRole('tab', { name: '已归档', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'document-native-resume' })).toBeVisible();
   await expect(page.getByLabel('Archive 已完成')).toHaveText('✓');
-  await expect(page.getByText('已完成 · 已归档', { exact: true })).toBeVisible();
-  await expect(page.getByText('已完成 · 无需后续操作', { exact: true })).toBeVisible();
+  await expect(page.getByText(/Build ↔ Verify Loop · 已完成/u)).toBeVisible();
+  await expect(page.getByText('用户确认降级通过', { exact: true })).toBeVisible();
+  await expect(page.getByText('归档只读', { exact: true }).first()).toBeVisible();
 
   const classicWorkflow = page.getByRole('menuitem', { name: 'Classic 工作流' });
   await classicWorkflow.click();
@@ -552,38 +556,63 @@ test('fills a server-paged Native list when its footer is already visible', asyn
     workflow: 'native',
     name: `native-${index + 1}`,
     status: 'archived',
+    archiveName: `2026-08-04-native-${index + 1}`,
     archivedAt: '2026-08-04',
     phase: 'archive',
-    revision: index + 1,
-    selected: index === 0,
-    approval: 'confirmed',
-    nextCommand: null,
-    verificationResult: 'pass',
-    verificationFreshness: 'complete',
-    archiveReady: true,
-    continuation: {
-      disposition: 'done',
-      action: 'archive',
-      command: null,
-      requiresUserDecision: false,
-      requiredInputs: [],
-      requiredInputsTruncated: false,
-    },
-    findings: { total: 0, errors: 0, warnings: 0, info: 0, requiresUserDecision: false, codes: [] },
-    conflicts: { visibleDefiniteConflict: 0, visiblePossibleOverlap: 0, peers: [] },
-    artifacts: [],
-    progress: {
-      createdAt: '2026-08-04T00:00:00.000Z',
-      checkpointAt: null,
-      checkpointPhase: null,
-      summary: '已完成',
+    lifecycleStatus: 'done',
+    stateVersion: index + 1,
+    legacy: false,
+    migration: { status: 'none', message: null },
+    loop: {
+      stage: 'done',
+      goalCycle: 1,
+      iteration: index + 1,
+      attempt: 1,
       nextAction: null,
-      artifactCount: 0,
+      actor: null,
     },
-    specs: { total: 0, create: 0, replace: 0, remove: 0, capabilities: [] },
-    acceptance: { total: 1, evidenced: 1, skipped: 0, missing: 0 },
-    implementation: null,
-    repair: null,
+    acceptance: { total: 1, passed: 1, failed: 0, blocked: 0, pending: 0 },
+    verificationResult: 'pass',
+    localExecution: {
+      status: 'absent',
+      reason: 'archived',
+      stage: null,
+      actor: null,
+      startedAt: null,
+      requestCheckRounds: 0,
+      checks: [],
+      recoverableFromStage: null,
+    },
+    artifacts: [],
+    specs: {
+      total: 0,
+      create: 0,
+      modify: 0,
+      remove: 0,
+      capabilities: [],
+      capabilitiesTruncated: false,
+    },
+    acceptanceItems: [
+      { id: 'A1', source: 'brief.md', text: '归档验收通过。', result: 'passed', reason: null },
+    ],
+    builderHandoff: null,
+    verification: {
+      verdict: 'pass',
+      assurance: 'host-attested',
+      summary: { text: '验证通过。', truncated: false },
+      risks: [],
+      risksTruncated: false,
+      completedAt: '2026-08-04T00:00:00.000Z',
+    },
+    checks: [],
+    blockers: [],
+    history: [],
+    historyOverflow: {
+      droppedEntries: 0,
+      firstDroppedAt: null,
+      lastDroppedAt: null,
+      outcomeCounts: { pass: 0, fail: 0, blocked: 0, 'execution-error': 0, recovery: 0 },
+    },
   }));
 
   const pageRequests: string[] = [];
@@ -625,23 +654,15 @@ test('fills a server-paged Native list when its footer is already visible', asyn
           },
           initialChanges: { status: 'active', items: [], total: 0, nextCursor: null },
           native: {
-            schema: 'comet.dashboard.native.v1',
+            schema: 'comet.dashboard.native.v2',
             generatedAt: '2026-08-04T00:00:00.000Z',
             totalChangeCount: nativeItems.length,
             visibleChangeCount: 0,
             archivedChangeCount: nativeItems.length,
             changes: [],
             activeChangeCount: 0,
-            conflicts: {
-              available: true,
-              definiteConflict: 0,
-              possibleOverlap: 0,
-              disjoint: nativeItems.length,
-              relationshipCount: 0,
-              visibleRelationshipCount: 0,
-              omittedRelationshipCount: 0,
-              relationshipsTruncated: false,
-            },
+            omittedChangeCount: nativeItems.length,
+            changesTruncated: true,
           },
           git: {
             branch: 'main',
@@ -662,16 +683,7 @@ test('fills a server-paged Native list when its footer is already visible', asyn
       await route.fulfill({
         json: {
           status: 'archived',
-          items: nativeItems.slice(offset, offset + 5).map((change) => ({
-            workflow: 'native',
-            name: change.name,
-            status: change.status,
-            archivedAt: change.archivedAt,
-            phase: change.phase,
-            revision: change.revision,
-            verificationResult: change.verificationResult,
-            verificationFreshness: change.verificationFreshness,
-          })),
+          items: nativeItems.slice(offset, offset + 5),
           total: nativeItems.length,
           nextCursor: offset + 5 < nativeItems.length ? String(offset + 5) : null,
         },
@@ -894,9 +906,11 @@ test('keeps Classic and Native side panels within the center panel height', asyn
     await expect(contentShell).toHaveCSS('scrollbar-width', 'none');
     const rightPanel = workspace.locator('.dashboard-workspace-right');
     await expect(rightPanel).toHaveCSS('border-top-width', '1px');
-    await expect
-      .poll(() => rightPanel.evaluate((element) => element.scrollHeight > element.clientHeight))
-      .toBe(true);
+    if (!native) {
+      await expect
+        .poll(() => rightPanel.evaluate((element) => element.scrollHeight > element.clientHeight))
+        .toBe(true);
+    }
     const workspaceFrame = workspace.locator(
       native ? '.native-changes-explorer' : '.classic-changes-explorer',
     );
@@ -985,21 +999,16 @@ test('keeps Classic and Native side panels within the center panel height', asyn
       await expect(selectedNativeRow).toHaveCSS('border-radius', '10px');
       await expect(selectedNativeRow.locator('.truncate')).toHaveCSS('font-size', '14px');
       await expect(selectedNativeRow.getByText('◇', { exact: true })).toHaveCount(0);
-      await expect(selectedNativeRow).toContainText('Build · 2/4');
+      await expect(selectedNativeRow).toContainText('Build · 构建中 · 第2轮/第1次');
       const nativeProgress = selectedNativeRow.getByRole('progressbar');
       await expect(nativeProgress).toHaveCount(1);
       await expect(nativeProgress).toHaveAttribute('aria-valuenow', '50');
-      const conflictSection = rightPanel
-        .getByRole('heading', { name: '关联冲突' })
+      const recoverySection = rightPanel
+        .getByRole('heading', { name: '恢复状态' })
         .locator('..')
         .locator('..');
-      const conflictMetrics = await conflictSection.evaluate((section) => {
-        const countPill = section.querySelector('h3')?.parentElement?.querySelector('span');
-        const firstPeer = section.querySelector('li');
-        if (!countPill || !firstPeer) throw new Error('Expected conflict count and first peer');
-        return firstPeer.getBoundingClientRect().top - countPill.getBoundingClientRect().bottom;
-      });
-      expect(conflictMetrics).toBeGreaterThanOrEqual(8);
+      await expect(recoverySection).toContainText('与当前 YAML 一致');
+      await expect(recoverySection).toContainText('Builder');
     }
 
     const metrics = await workspace.evaluate((element) => {

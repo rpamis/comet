@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   dashboardResponseError,
   isStaleNativeDashboardCursorError,
+  nativeDashboardChangeKey,
   refreshDashboardPage,
+  refreshNativeDashboardPage,
   shouldAutoLoadDashboardDetail,
   shouldShowDashboardDetailLoading,
 } from '../../../domains/dashboard/web/src/dashboard-web-state.js';
@@ -69,6 +71,55 @@ describe('Dashboard web state helpers', () => {
       isStaleNativeDashboardCursorError(new Error('Stale Native Dashboard change cursor')),
     ).toBe(true);
     expect(isStaleNativeDashboardCursorError(new Error('network unavailable'))).toBe(false);
+  });
+
+  it('refreshes Native v2 head rows while preserving already appended rows', () => {
+    const existing = {
+      status: 'active',
+      total: 3,
+      nextCursor: null,
+      items: [
+        { status: 'active', name: 'one', loop: { iteration: 1 } },
+        { status: 'active', name: 'two', loop: { iteration: 1 } },
+        { status: 'active', name: 'three', loop: { iteration: 1 } },
+      ],
+    };
+    const fresh = {
+      status: 'active',
+      total: 3,
+      nextCursor: 'next',
+      items: [
+        { status: 'active', name: 'one', loop: { iteration: 2 } },
+        { status: 'active', name: 'two', loop: { iteration: 2 } },
+      ],
+    };
+
+    expect(refreshNativeDashboardPage(existing, fresh)).toEqual({
+      ...existing,
+      items: [
+        { status: 'active', name: 'one', loop: { iteration: 2 } },
+        { status: 'active', name: 'two', loop: { iteration: 2 } },
+        { status: 'active', name: 'three', loop: { iteration: 1 } },
+      ],
+    });
+  });
+
+  it('resets Native rows when order changes and distinguishes same-name archives', () => {
+    const existing = {
+      status: 'all',
+      total: 2,
+      nextCursor: null,
+      items: [
+        { status: 'active', name: 'same' },
+        { status: 'archived', archiveName: '2026-08-09-same', name: 'same' },
+      ],
+    };
+    const fresh = { ...existing, items: existing.items.slice().reverse() };
+
+    expect(refreshNativeDashboardPage(existing, fresh)).toEqual(fresh);
+    expect(nativeDashboardChangeKey(existing.items[0])).not.toBe(
+      nativeDashboardChangeKey(existing.items[1]),
+    );
   });
 
   it('does not auto-retry a detail request that already failed for the selected change', () => {

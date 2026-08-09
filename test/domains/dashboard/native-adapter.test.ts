@@ -1,332 +1,277 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildNativeConflictRadar } from '../../../domains/comet-native/native-conflict-radar.js';
-import type { NativeArchivePreflight } from '../../../domains/comet-native/native-archive-preflight.js';
-import type { NativeStatusProjection } from '../../../domains/comet-native/native-types.js';
 import {
+  NATIVE_LOCAL_EXECUTION_SCHEMA,
+  NATIVE_PORTABLE_STATE_SCHEMA,
+  type NativeLocalExecutionState,
+  type NativePortableState,
+} from '../../../domains/comet-native/native-portable-types.js';
+import {
+  adaptNativeDashboardChange,
+  adaptNativeDashboardListItem,
   adaptNativeDashboardProjection,
   NATIVE_DASHBOARD_LIMITS,
 } from '../../../domains/dashboard/native-adapter.js';
 
-const NOW = '2026-07-17T08:00:00.000Z';
-const HASH = 'a'.repeat(64);
-const OTHER_HASH = 'b'.repeat(64);
+const NOW = '2026-08-09T08:00:00.000Z';
+const text = (value: string) => ({ text: value, truncated: false });
 
-function status(
-  name: string,
-  overrides: Partial<NativeStatusProjection> = {},
-): NativeStatusProjection {
-  const revision = overrides.revision ?? 1;
-  const phase = overrides.phase ?? 'shape';
+function portableState(name = 'dashboard-v2'): NativePortableState {
   return {
+    schema: NATIVE_PORTABLE_STATE_SCHEMA,
     name,
-    phase,
-    revision,
-    approval: null,
-    verificationResult: 'pending',
-    specChanges: 0,
-    selected: false,
-    nextCommand: `comet native next ${name} --summary "<summary>"`,
-    archiveReady: false,
-    inspection: {
-      freshness: 'fresh',
-      codes: [],
-      reasonCount: 0,
-      codesTruncated: false,
+    language: 'zh-CN',
+    phase: 'verify',
+    status: 'active',
+    state_version: 7,
+    brief: 'brief.md',
+    spec_changes: [{ capability: 'dashboard', operation: 'modify', source: 'specs/dashboard.md' }],
+    workspace: {
+      isolation: 'current',
+      change_branch: null,
+      target_branch: null,
+      finish: null,
     },
-    findingSummary: {
-      total: 0,
-      errors: 0,
-      warnings: 0,
-      info: 0,
-      requiresUserDecision: false,
-      codes: [],
-      truncated: false,
+    loop: {
+      stage: 'verify-ready',
+      goal_cycle: 2,
+      iteration: 3,
+      attempt: 2,
+      retry_epoch: 1,
+      failed_iteration_count: 1,
+      no_progress_count: 0,
+      execution_failure_count: 0,
+      previous_unresolved_ids: ['accept-failed'],
+      next_action: 'Verifier 独立复核本轮候选实现。',
     },
-    detailsCommand: `comet native status ${name} --details`,
-    checkpoint: null,
-    continuation:
-      phase === 'invalid' || revision === null
-        ? null
-        : {
-            schema: 'comet.native.continuation.v1',
-            skill: 'comet-native',
-            change: name,
-            phase,
-            revision,
-            disposition: 'continue',
-            action: 'advance-phase',
-            command: `comet native next ${name} --summary "<summary>"`,
-            requiresUserDecision: false,
-            requiredInputs: ['summary'],
-          },
-    ...overrides,
+    acceptance: [
+      {
+        id: 'accept-passed',
+        source: 'brief.md',
+        text: '列表展示 loop 进度。',
+        result: 'passed',
+        reason: text('已观察到对应结果。'),
+      },
+      {
+        id: 'accept-failed',
+        source: 'specs/dashboard.md',
+        text: '失败项回到 Builder。',
+        result: 'failed',
+        reason: text('缺少失败态文案。'),
+      },
+      {
+        id: 'accept-blocked',
+        source: 'brief.md',
+        text: '外部依赖可阻塞。',
+        result: 'blocked',
+        reason: text('等待外部服务。'),
+      },
+      {
+        id: 'accept-pending',
+        source: 'brief.md',
+        text: '归档前复核。',
+        result: 'pending',
+        reason: null,
+      },
+    ],
+    builder_handoff: {
+      candidate_id: 'candidate-3',
+      identity_provider: 'runtime',
+      builder_execution_ref: 'builder-3',
+      iteration: 3,
+      summary: text('Builder 已提交本轮实现。'),
+      addressed_acceptance_ids: ['accept-failed'],
+      checks: [{ name: text('focused tests'), result: 'passed', note: null }],
+      checks_truncated: false,
+      known_limits: [text('尚未覆盖真实浏览器。')],
+      known_limits_truncated: false,
+      submitted_at: NOW,
+    },
+    blockers: [
+      {
+        owner: 'builder',
+        reason: text('需要补充失败态文案。'),
+        acceptance_ids: ['accept-failed'],
+        resolution_action: 'return-build',
+      },
+    ],
+    verification: {
+      candidate_id: 'candidate-3',
+      identity_provider: 'runtime',
+      verifier_execution_ref: 'verifier-3',
+      iteration: 3,
+      attempt: 2,
+      assurance: 'host-attested',
+      verdict: 'fail',
+      checks: [
+        {
+          id: 'focused-tests',
+          name: text('Dashboard focused tests'),
+          argv_display: [text('pnpm'), text('vitest')],
+          argv_truncated: true,
+          cwd_ref: '.',
+          status: 'failed',
+          exit_code: 1,
+          duration_ms: 1250,
+        },
+      ],
+      summary: text('一项验收仍失败。'),
+      risks: [text('失败态可能误导用户。')],
+      risks_truncated: false,
+      completed_at: NOW,
+    },
+    history: [
+      {
+        goal_cycle: 2,
+        iteration: 2,
+        attempt: 1,
+        outcome: 'fail',
+        unresolved_ids: ['accept-failed'],
+        summary: text('上一轮验证失败。'),
+        completed_at: NOW,
+      },
+    ],
+    history_overflow: {
+      dropped_entries: 2,
+      first_dropped_at: '2026-08-08T08:00:00.000Z',
+      last_dropped_at: '2026-08-08T09:00:00.000Z',
+      outcome_counts: { pass: 0, fail: 1, blocked: 0, 'execution-error': 0, recovery: 1 },
+    },
+    verification_result: 'fail',
+    verification_report: 'verification.md',
+    archived: false,
+    created_at: '2026-08-08T07:00:00.000Z',
   };
 }
 
-function preflight(
-  name: string,
-  overrides: Partial<NativeArchivePreflight> = {},
-): NativeArchivePreflight {
+function localExecution(stateVersion = 7): NativeLocalExecutionState {
   return {
-    schema: 'comet.native.archive-preflight.v1',
-    change: name,
-    revision: 1,
-    targetRef: `archive/2026-07-17-${name}`,
-    ready: false,
-    evidenceFreshness: 'missing',
-    operationCount: 0,
-    operations: [],
-    findingCodes: ['archive-phase-required', 'verification-evidence-missing'],
-    preflightHash: HASH,
-    ...overrides,
+    schema: NATIVE_LOCAL_EXECUTION_SCHEMA,
+    change: 'dashboard-v2',
+    basedOnStateVersion: stateVersion,
+    workspace: {
+      projectRoot: 'D:\\project',
+      worktreeRoot: 'D:\\project',
+      branch: null,
+    },
+    execution: {
+      operationId: 'verify-operation',
+      stage: 'verifying',
+      actor: 'verifier',
+      executionId: 'private-verifier-session',
+      status: 'running',
+      startedAt: NOW,
+      requestCheckRounds: 2,
+    },
+    checks: [
+      {
+        id: 'focused-tests',
+        name: 'Dashboard focused tests',
+        operationId: 'verify-operation',
+        status: 'running',
+        repeatable: true,
+        timeoutMs: 10_000,
+        executionCount: 1,
+        argv: ['pnpm', 'vitest', '--run'],
+        cwd: 'D:\\project',
+        exitCode: null,
+        startedAt: NOW,
+        completedAt: null,
+        log: 'D:\\project\\.comet\\private.log',
+      },
+    ],
   };
 }
 
-describe('Native Dashboard read-only adapter', () => {
-  it('preserves CLI parity fields and adds bounded continuation and Archive facts', () => {
-    const source = status('dashboard-visible-change', {
-      selected: true,
-      findingSummary: {
-        total: 1,
-        errors: 1,
-        warnings: 0,
-        info: 0,
-        requiresUserDecision: false,
-        codes: ['brief-section-empty'],
-        truncated: false,
-      },
+describe('Native Dashboard v2 adapter', () => {
+  it('projects loop, acceptance, verifier results, blockers, history, and recovery state', () => {
+    const projection = adaptNativeDashboardChange({
+      state: portableState(),
+      status: 'active',
+      localExecution: localExecution(),
+      localExecutionReason: 'current',
     });
 
-    const projection = adaptNativeDashboardProjection({
-      generatedAt: NOW,
-      statuses: [source],
-      preflights: { 'dashboard-visible-change': preflight('dashboard-visible-change') },
-    });
-
-    expect(projection.changes[0]).toMatchObject({
+    expect(projection).toMatchObject({
       workflow: 'native',
-      name: source.name,
-      phase: source.phase,
-      nextCommand: source.nextCommand,
-      verificationResult: source.verificationResult,
-      verificationFreshness: 'missing',
-      archiveReady: false,
-      continuation: {
-        disposition: 'continue',
-        action: 'advance-phase',
-        command: source.nextCommand,
-        requiredInputs: ['summary'],
+      name: 'dashboard-v2',
+      stateVersion: 7,
+      loop: { stage: 'verify-ready', goalCycle: 2, iteration: 3, attempt: 2, actor: 'verifier' },
+      acceptance: { total: 4, passed: 1, failed: 1, blocked: 1, pending: 1 },
+      verificationResult: 'fail',
+      specs: { total: 1, modify: 1 },
+      localExecution: {
+        status: 'running',
+        reason: 'current',
+        stage: 'verifying',
+        actor: 'verifier',
+        requestCheckRounds: 2,
+        checks: [{ id: 'focused-tests', status: 'running', logAvailable: true }],
       },
-      findings: {
-        total: 1,
-        codes: ['brief-section-empty'],
+      verification: {
+        verdict: 'fail',
+        assurance: 'host-attested',
+        summary: text('一项验收仍失败。'),
       },
-      archive: {
-        ready: false,
-        evidenceFreshness: 'missing',
-        operationCount: 0,
-        findingCodes: ['archive-phase-required', 'verification-evidence-missing'],
-        preflightHash: HASH,
-      },
-    });
-  });
-
-  it('drops detailed findings, raw conflict signals, reports, roots, and unexpected commands', () => {
-    const absolutePath = 'C:/Users/Alice/private-report.md';
-    const artifactPath = 'private/implementation-secret.ts';
-    const source = status('alpha-change', {
-      nextCommand: `comet native next alpha-change --summary "${absolutePath}"`,
-      error: `Unable to read ${absolutePath}`,
-      findings: [
-        {
-          code: 'verification-report-invalid',
-          message: `Raw report at ${absolutePath}`,
-          severity: 'error',
-          path: absolutePath,
-          requiredAction: 'complete-verification-evidence',
-          retryCommand: null,
-          repairCommand: null,
-          requiresUserDecision: false,
-        },
-      ],
-      continuation: {
-        schema: 'comet.native.continuation.v1',
-        skill: 'comet-native',
-        change: 'alpha-change',
-        phase: 'shape',
-        revision: 1,
-        disposition: 'continue',
-        action: 'advance-phase',
-        command: `comet native next alpha-change --summary "${absolutePath}"`,
-        requiresUserDecision: false,
-        requiredInputs: ['summary'],
-      },
-    });
-    const radar = buildNativeConflictRadar([
-      {
-        name: 'alpha-change',
-        revision: 1,
-        specs: [],
-        declaredArtifacts: [{ path: artifactPath, kind: 'file' }],
-      },
-      {
-        name: 'beta-change',
-        revision: 1,
-        specs: [],
-        declaredArtifacts: [{ path: artifactPath, kind: 'file' }],
-      },
-    ]);
-    const archive = preflight('alpha-change', {
-      targetRef: 'archive/2026-07-17-private-target',
-      operationCount: 1,
-      operations: [
-        {
-          capability: 'internal-capability',
-          operation: 'replace',
-          expectedBaseHash: HASH,
-          actualBaseHash: HASH,
-          proposedHash: OTHER_HASH,
-          operationHash: HASH,
-        },
-      ],
-    });
-
-    const projection = adaptNativeDashboardProjection({
-      generatedAt: NOW,
-      statuses: [source, status('beta-change')],
-      preflights: { 'alpha-change': archive },
-      conflictRadar: radar,
+      blockers: [{ owner: 'builder', acceptanceIds: ['accept-failed'] }],
+      history: [{ iteration: 2, attempt: 1, outcome: 'fail' }],
+      historyOverflow: { droppedEntries: 2 },
     });
     const serialized = JSON.stringify(projection);
-
-    expect(projection.changes[0].nextCommand).toBeNull();
-    expect(projection.changes[0].continuation?.command).toBeNull();
-    expect(projection.changes[0].conflicts.peers).toEqual([
-      {
-        change: 'beta-change',
-        classification: 'definite-conflict',
-        workspaceRelationship: 'unknown',
-        signalCount: 1,
-      },
-    ]);
-    expect(serialized).not.toContain(absolutePath);
-    expect(serialized).not.toContain(artifactPath);
-    expect(serialized).not.toContain('internal-capability');
-    expect(serialized).not.toContain('private-target');
-    expect(serialized).not.toContain('Raw report');
+    expect(serialized).not.toContain('private-verifier-session');
+    expect(serialized).not.toContain('D:\\\\project\\\\.comet\\\\private.log');
+    expect(serialized).not.toContain('"argv":["pnpm"');
+    expect(serialized).not.toContain('argvDisplay');
+    expect(serialized).not.toContain('cwdRef');
   });
 
-  it('fails closed for missing or revision-mismatched preflight projections', () => {
-    const missing = adaptNativeDashboardProjection({
-      generatedAt: NOW,
-      statuses: [status('missing-preview')],
-    });
-    const mismatched = adaptNativeDashboardProjection({
-      generatedAt: NOW,
-      statuses: [status('stale-preview', { revision: 3 })],
-      preflights: { 'stale-preview': preflight('stale-preview', { revision: 2, ready: true }) },
+  it('does not apply an overlay whose state version does not match the YAML', () => {
+    const item = adaptNativeDashboardListItem({
+      state: portableState(),
+      status: 'active',
+      localExecution: localExecution(6),
+      localExecutionReason: 'version-mismatch',
     });
 
-    expect(missing.changes[0]).toMatchObject({
-      verificationFreshness: 'unknown',
-      archiveReady: false,
-      archive: { findingCodes: ['dashboard-preflight-unavailable'], preflightHash: null },
-    });
-    expect(mismatched.changes[0]).toMatchObject({
-      verificationFreshness: 'unknown',
-      archiveReady: false,
-      archive: { findingCodes: ['dashboard-preflight-mismatch'], preflightHash: null },
+    expect(item.loop?.actor).toBeNull();
+    expect(item.localExecution).toMatchObject({
+      status: 'absent',
+      reason: 'version-mismatch',
+      actor: null,
+      checks: [],
+      recoverableFromStage: 'verify-ready',
     });
   });
 
-  it('projects global and per-change conflict summaries without carrying signal details', () => {
-    const radar = buildNativeConflictRadar([
-      {
-        name: 'alpha-change',
-        revision: 1,
-        specs: [{ capability: 'shared-capability', operation: 'replace', baseHash: HASH }],
-        declaredArtifacts: [],
-      },
-      {
-        name: 'beta-change',
-        revision: 1,
-        specs: [{ capability: 'shared-capability', operation: 'replace', baseHash: HASH }],
-        declaredArtifacts: [],
-      },
-      {
-        name: 'gamma-change',
-        revision: 1,
-        specs: [],
-        declaredArtifacts: [{ path: 'src', kind: 'directory' }],
-      },
-    ]);
-
-    const projection = adaptNativeDashboardProjection({
-      generatedAt: NOW,
-      statuses: [status('gamma-change'), status('beta-change'), status('alpha-change')],
-      conflictRadar: radar,
-    });
-
-    expect(projection.conflicts).toMatchObject({
-      available: true,
-      definiteConflict: 1,
-      possibleOverlap: 0,
-      disjoint: 2,
-      relationshipCount: 3,
-    });
-    expect(projection.changes.map(({ name }) => name)).toEqual([
-      'alpha-change',
-      'beta-change',
-      'gamma-change',
-    ]);
-    expect(projection.changes[0].conflicts).toMatchObject({
-      visibleDefiniteConflict: 1,
-      visiblePossibleOverlap: 0,
-      peers: [{ change: 'beta-change', classification: 'definite-conflict' }],
-    });
-    expect(JSON.stringify(projection)).not.toContain('shared-capability');
+  it.each([
+    'host-attested',
+    'skill-coordinated',
+    'semantic-verification-unavailable',
+    'user-confirmed-degraded',
+  ] as const)('preserves the portable %s assurance boundary', (assurance) => {
+    const state = portableState();
+    state.verification!.assurance = assurance;
+    const projection = adaptNativeDashboardChange({ state, status: 'active' });
+    expect(projection.verification?.assurance).toBe(assurance);
   });
 
-  it('caps changes, compact codes, and serialized output without mutating source projections', () => {
-    const statuses = Array.from({ length: 40 }, (_, index) => {
-      const name = `change-${String(index).padStart(2, '0')}`;
-      return status(name, {
-        findingSummary: {
-          total: 12,
-          errors: 12,
-          warnings: 0,
-          info: 0,
-          requiresUserDecision: false,
-          codes: Array.from({ length: 12 }, (__, codeIndex) => `finding-${codeIndex}`),
-          truncated: false,
-        },
-      });
-    });
-    const sourceBefore = structuredClone(statuses);
+  it('emits the v2 schema and enforces the bounded all-in-one projection', () => {
+    const changes = Array.from({ length: NATIVE_DASHBOARD_LIMITS.maxChanges + 2 }, (_, index) =>
+      adaptNativeDashboardChange({
+        state: portableState(`dashboard-${index}`),
+        status: 'active',
+      }),
+    );
+    const projection = adaptNativeDashboardProjection({ generatedAt: NOW, changes });
 
-    const projection = adaptNativeDashboardProjection({
-      generatedAt: NOW,
-      statuses,
-      omittedSourceChangeCount: 3,
-    });
-
-    expect(statuses).toEqual(sourceBefore);
+    expect(projection.schema).toBe('comet.dashboard.native.v2');
     expect(projection.visibleChangeCount).toBe(NATIVE_DASHBOARD_LIMITS.maxChanges);
-    expect(projection.totalChangeCount).toBe(43);
-    expect(projection.omittedChangeCount).toBe(11);
+    expect(projection.omittedChangeCount).toBe(2);
     expect(projection.changesTruncated).toBe(true);
-    expect(projection.changes[0].findings.codes).toHaveLength(
-      NATIVE_DASHBOARD_LIMITS.maxFindingCodes,
-    );
-    expect(projection.changes[0].findings.truncated).toBe(true);
-    expect(Buffer.byteLength(JSON.stringify(projection), 'utf8')).toBeLessThanOrEqual(
-      NATIVE_DASHBOARD_LIMITS.maxSerializedBytes,
-    );
   });
 
-  it('requires a canonical timestamp so callers cannot smuggle unbounded metadata', () => {
-    expect(() => adaptNativeDashboardProjection({ generatedAt: 'today', statuses: [] })).toThrow(
+  it('rejects invalid projection timestamps', () => {
+    expect(() => adaptNativeDashboardProjection({ generatedAt: 'today', changes: [] })).toThrow(
       'canonical ISO timestamp',
     );
   });

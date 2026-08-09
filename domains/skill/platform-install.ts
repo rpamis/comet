@@ -21,8 +21,6 @@ import {
   type ClassicLayoutInitializationPermit,
 } from '../comet-classic/classic-layout-initialization.js';
 import {
-  DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG,
-  mergeWorkflowNativeSnapshotExcludes,
   parseWorkflowProjectConfigDocument,
   projectConfigComment,
   renderStructuredProjectConfig,
@@ -61,6 +59,12 @@ const NATIVE_SHARED_SKILL_PATHS = new Set([
   'comet/scripts/comet-entry-runtime.mjs',
   'comet/scripts/comet-hook-router.mjs',
 ]);
+const RETIRED_COMET_OWNED_SKILL_PATHS = [
+  'comet-native/scripts/comet-native-checkpoint.mjs',
+  'comet-native/scripts/comet-native-check.mjs',
+  'comet-native/scripts/comet-native-evidence.mjs',
+  'comet-native/scripts/comet-native-receipt.mjs',
+] as const;
 
 interface HookCommandContext {
   platformId: string;
@@ -167,8 +171,12 @@ function getManagedSkillReplacementPaths(
   workflowSelection: InitWorkflowSelection = 'both',
 ): Set<string> {
   const allowed = new Set<string>();
+  const managedPaths = [
+    ...getManagedSkillPathsForSelection(manifest, workflowSelection),
+    ...(workflowSelection === 'classic' ? [] : RETIRED_COMET_OWNED_SKILL_PATHS),
+  ];
 
-  for (const skillPath of getManagedSkillPathsForSelection(manifest, workflowSelection)) {
+  for (const skillPath of managedPaths) {
     const parts = skillPath.split('/').filter(Boolean);
     for (let depth = 1; depth <= parts.length; depth++) {
       allowed.add(parts.slice(0, depth).join('/'));
@@ -317,6 +325,63 @@ async function lstatOrNull(filePath: string): Promise<Awaited<ReturnType<typeof 
     if (code === 'ENOENT' || code === 'ENOTDIR') return null;
     throw err;
   }
+}
+
+async function removeRetiredCometOwnedSkillPaths(
+  skillsRoots: readonly string[],
+): Promise<{ removed: number; failed: number }> {
+  let removed = 0;
+  let failed = 0;
+
+  for (const skillsRoot of new Set(skillsRoots.map((root) => path.resolve(root)))) {
+    const rootStat = await lstatOrNull(skillsRoot);
+    if (!rootStat) continue;
+    if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
+      failed++;
+      continue;
+    }
+
+    for (const relativePath of RETIRED_COMET_OWNED_SKILL_PATHS) {
+      const parts = relativePath.split('/');
+      let current = skillsRoot;
+      let parentMissing = false;
+      let unsafeParent = false;
+
+      try {
+        for (const part of parts.slice(0, -1)) {
+          current = path.join(current, part);
+          const stat = await lstatOrNull(current);
+          if (!stat) {
+            parentMissing = true;
+            break;
+          }
+          if (!stat.isDirectory() || stat.isSymbolicLink()) {
+            unsafeParent = true;
+            break;
+          }
+        }
+        if (parentMissing) continue;
+        if (unsafeParent) {
+          failed++;
+          continue;
+        }
+
+        const target = path.join(skillsRoot, ...parts);
+        const targetStat = await lstatOrNull(target);
+        if (!targetStat) continue;
+        if (!targetStat.isFile() && !targetStat.isSymbolicLink()) {
+          failed++;
+          continue;
+        }
+        await unlink(target);
+        removed++;
+      } catch {
+        failed++;
+      }
+    }
+  }
+
+  return { removed, failed };
 }
 
 async function prepareManagedSkillCopyTarget(
@@ -555,6 +620,11 @@ async function installSkillsAsSymlink(
     failedCount += result.failed;
   }
 
+  if (failedCount === 0 && workflowSelection !== 'classic') {
+    const cleanup = await removeRetiredCometOwnedSkillPaths([centralSkillsDir]);
+    failedCount += cleanup.failed;
+  }
+
   return { copied, skipped: skippedCount, failed: failedCount };
 }
 
@@ -649,6 +719,16 @@ async function copyCometSkillsForPlatform(
     copied += result.copied;
     skippedCount += result.skipped;
     failedCount += result.failed;
+  }
+
+  if (failedCount === 0 && workflowSelection !== 'classic') {
+    const platformSkillsRoot = path.join(baseDir, getPlatformSkillsDir(platform, scope), 'skills');
+    const centralSkillsRoot = path.join(getCentralSkillsDir(baseDir, scope), 'skills');
+    const cleanup = await removeRetiredCometOwnedSkillPaths([
+      platformSkillsRoot,
+      centralSkillsRoot,
+    ]);
+    failedCount += cleanup.failed;
   }
 
   return { copied, skipped: skippedCount, failed: failedCount };
@@ -1968,40 +2048,7 @@ async function mergeProjectConfig(
       }
       nativeBlock[f.key] = coerceConfigScalar(value);
     }
-    if (nativeBlock.snapshot === undefined) {
-      nativeBlock.snapshot = {
-        ...DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG,
-        include: [...DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.include],
-        exclude: [...DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.exclude],
-      };
-    } else if (
-      nativeBlock.snapshot &&
-      typeof nativeBlock.snapshot === 'object' &&
-      !Array.isArray(nativeBlock.snapshot)
-    ) {
-      const snapshot = { ...(nativeBlock.snapshot as Record<string, unknown>) };
-      if (snapshot.include === undefined) {
-        snapshot.include = [...DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.include];
-      }
-      if (snapshot.exclude === undefined) {
-        snapshot.exclude = [...DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.exclude];
-      } else if (
-        Array.isArray(snapshot.exclude) &&
-        snapshot.exclude.every((pattern): pattern is string => typeof pattern === 'string')
-      ) {
-        snapshot.exclude = mergeWorkflowNativeSnapshotExcludes(snapshot.exclude);
-      }
-      if (snapshot.max_files === undefined) {
-        snapshot.max_files = DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.max_files;
-      }
-      if (snapshot.max_total_bytes === undefined) {
-        snapshot.max_total_bytes = DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.max_total_bytes;
-      }
-      if (snapshot.max_duration_ms === undefined) {
-        snapshot.max_duration_ms = DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.max_duration_ms;
-      }
-      nativeBlock.snapshot = snapshot;
-    }
+    delete nativeBlock.snapshot;
     root.native = nativeBlock;
   }
 
@@ -2096,5 +2143,7 @@ export {
   installSkillsAsSymlink,
   prepareManagedSkillCopyTarget,
   prepareNativeSkillInstallTarget,
+  removeRetiredCometOwnedSkillPaths,
+  RETIRED_COMET_OWNED_SKILL_PATHS,
 };
 export type { Manifest, LanguageConfig, PlannedSkillFile, PlannedSkillSourceFile };

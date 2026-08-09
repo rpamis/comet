@@ -1,13 +1,9 @@
 import { nativeArchiveCommand } from './native-archive-command.js';
-import { nativeCheckCommand } from './native-check-command.js';
-import { nativeCheckpointCommand } from './native-checkpoint-command.js';
 import { nativeDoctorCommand } from './native-doctor-command.js';
-import { nativeEvidenceCommand } from './native-evidence-command.js';
 import { nativeHookGuardCommand } from './native-hook-guard-command.js';
 import { nativeInitCommand } from './native-init-command.js';
 import { nativeNewCommand } from './native-new-command.js';
 import { nativeNextCommand } from './native-next-command.js';
-import { nativeReceiptCommand } from './native-receipt-command.js';
 import { nativeRootCommand } from './native-root-command.js';
 import { nativeSelectCommand } from './native-select-command.js';
 import { nativeShowCommand } from './native-show-command.js';
@@ -38,10 +34,6 @@ const COMMAND_HANDLERS: Record<string, NativeCommandHandler> = {
   show: nativeShowCommand,
   status: nativeStatusCommand,
   select: nativeSelectCommand,
-  checkpoint: nativeCheckpointCommand,
-  check: nativeCheckCommand,
-  evidence: nativeEvidenceCommand,
-  receipt: nativeReceiptCommand,
   next: nativeNextCommand,
   archive: nativeArchiveCommand,
   doctor: nativeDoctorCommand,

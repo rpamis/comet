@@ -60,7 +60,6 @@ import {
   nativeProjectPaths,
 } from '../../../domains/comet-native/native-paths.js';
 import { selectNativeChange } from '../../../domains/comet-native/native-selection.js';
-import { DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG } from '../../../domains/workflow-contract/project-config.js';
 
 describe('skills', () => {
   let tmpDir: string;
@@ -3691,7 +3690,7 @@ describe('skills', () => {
       expect(content).not.toMatch(/^(language|context_compression|review_mode|auto_transition):/mu);
     });
 
-    it('adds every managed Native default only to an existing Native block', async () => {
+    it('adds active Native defaults without writing legacy snapshot settings', async () => {
       const configDir = path.join(tmpDir, '.comet');
       const configPath = path.join(configDir, 'config.yaml');
       await fs.mkdir(configDir, { recursive: true });
@@ -3717,18 +3716,10 @@ describe('skills', () => {
           clarification_mode: 'batch',
           archive_confirmation: 'automatic',
           max_verify_failures: 5,
-          snapshot: {
-            include: ['**/*'],
-            exclude: DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.exclude,
-            max_files: 10_000,
-            max_total_bytes: 256 * 1024 * 1024,
-            max_duration_ms: 60_000,
-          },
         },
       });
       const source = await fs.readFile(configPath, 'utf-8');
-      expect(source).toContain('# Controls the auditable project scope');
-      expect(source).toContain('# Bounds the total file content hashed by one snapshot');
+      expect(source).not.toMatch(/^\s+snapshot:/mu);
     });
 
     it('preserves batch clarification mode across idempotent config updates', async () => {

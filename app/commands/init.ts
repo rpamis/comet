@@ -37,10 +37,7 @@ import { LANGUAGES, type LanguageConfig } from '../../domains/skill/languages.js
 import { resolveInitWorkflow } from '../../domains/comet-entry/init-workflow.js';
 import type { CometWorkflow, InitWorkflowSelection } from '../../domains/comet-entry/types.js';
 import { migrateLegacyClassicSelection } from '../../domains/comet-entry/current-selection.js';
-import {
-  defaultProjectConfig,
-  mergeNativeSnapshotExcludes,
-} from '../../domains/comet-native/native-config.js';
+import { defaultProjectConfig } from '../../domains/comet-native/native-config.js';
 import {
   ensureNativeDirectories,
   nativeProjectPaths,
@@ -64,6 +61,7 @@ import {
   readWorkflowProjectConfigSnapshot,
 } from '../../domains/workflow-contract/project-config-reader.js';
 import { writeWorkflowProjectConfig } from '../../domains/workflow-contract/project-config-writer.js';
+import { ensureCometProjectGitignore } from '../../domains/workflow-contract/project-gitignore.js';
 import {
   readWorkflowGlobalConfig,
   writeWorkflowGlobalConfig,
@@ -1216,15 +1214,6 @@ export async function initCommand(
         if (includesWorkflow(workflowSelection, 'native') && !config.native) {
           config.native = defaults.native;
         }
-        if (includesWorkflow(workflowSelection, 'native') && config.native) {
-          config.native = {
-            ...config.native,
-            snapshot: {
-              ...config.native.snapshot,
-              exclude: mergeNativeSnapshotExcludes(config.native.snapshot.exclude),
-            },
-          };
-        }
         config.default_workflow = workflowDecision.workflow;
         config.workflows = [...selectedWorkflows];
         if (includesWorkflow(workflowSelection, 'classic')) {
@@ -1242,6 +1231,7 @@ export async function initCommand(
             classicLayoutInitializationPermit,
           );
         }
+        await ensureCometProjectGitignore(projectPath);
         await writeWorkflowProjectConfig(projectPath, config, {
           expectedIdentity: initialProjectConfigSnapshot?.identity,
         });
@@ -1267,15 +1257,7 @@ export async function initCommand(
         ...(includesWorkflow(workflowSelection, 'native')
           ? {
               native: existingGlobalConfig?.native
-                ? {
-                    ...existingGlobalConfig.native,
-                    snapshot: {
-                      ...existingGlobalConfig.native.snapshot,
-                      exclude: mergeNativeSnapshotExcludes(
-                        existingGlobalConfig.native.snapshot.exclude,
-                      ),
-                    },
-                  }
+                ? { ...existingGlobalConfig.native }
                 : defaults.native,
             }
           : {}),

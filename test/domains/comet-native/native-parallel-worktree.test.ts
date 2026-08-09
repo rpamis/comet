@@ -139,7 +139,10 @@ async function readDirectoryOrEmpty(directory: string): Promise<string[]> {
   }
 }
 
-describe('Native parallel linked-worktree Runtime', () => {
+// This beta17 bundle-level scenario used checkpoint/snapshot commands. v4
+// worktree creation and foreign-worktree discovery are covered by the v4
+// surface and status-discovery suites.
+describe('Native parallel linked-worktree Runtime (legacy)', () => {
   const repositories: string[] = [];
   const linkedWorktrees: Array<{ repository: string; root: string }> = [];
 
@@ -162,7 +165,7 @@ describe('Native parallel linked-worktree Runtime', () => {
     );
   });
 
-  it('keeps concurrent linked worktrees usable after a manual business-source edit', async () => {
+  it.skip('keeps concurrent linked worktrees usable after a manual business-source edit', async () => {
     const repository = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-parallel-'));
     repositories.push(repository);
     execFileSync('git', ['init'], { cwd: repository, stdio: 'ignore' });
@@ -331,4 +334,14 @@ describe('Native parallel linked-worktree Runtime', () => {
       fs.access(path.join(repository, 'docs', 'comet', 'changes', 'parallel-beta')),
     ).rejects.toMatchObject({ code: 'ENOENT' });
   }, 120_000);
+
+  it('rejects the retired checkpoint bundle on a linked-worktree-capable host', async () => {
+    const repository = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-retired-command-'));
+    repositories.push(repository);
+    execFileSync('git', ['init'], { cwd: repository, stdio: 'ignore' });
+    const result = await runNativeCommand('runtime', ['checkpoint', 'legacy-change'], repository);
+    expect(result.timedOut).toBe(false);
+    expect(result.exitCode).toBe(64);
+    expect(result.error?.code).toBe('usage');
+  }, 30_000);
 });

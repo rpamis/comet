@@ -52,7 +52,9 @@ function json(result: Awaited<ReturnType<typeof runNativeCli>>): JsonEnvelope {
   return JSON.parse(result.stdout!) as JsonEnvelope;
 }
 
-describe('Native verification receipt fence recovery', () => {
+// Receipt/snapshot fences were removed from the v4 public Native path. Their
+// replacement is covered by native-portable-runtime and native-v4-regression-eval.
+describe('Native verification receipt fence recovery (legacy)', () => {
   let projectRoot: string;
   let paths: NativeProjectPaths;
   let state: NativeChangeState;
@@ -101,7 +103,7 @@ describe('Native verification receipt fence recovery', () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
-  it('stops before command execution and returns a bounded self-healing recovery payload', async () => {
+  it.skip('stops before command execution and returns a bounded self-healing recovery payload', async () => {
     const sentinel = path.join(projectRoot, 'receipt-command-ran.txt');
     const result = json(
       await runNativeCli([
@@ -142,7 +144,7 @@ describe('Native verification receipt fence recovery', () => {
     await expect(fs.access(sentinel)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
-  it('routes receipt refresh to Build scope recovery instead of reporting a clean no-op', async () => {
+  it.skip('routes receipt refresh to Build scope recovery instead of reporting a clean no-op', async () => {
     const result = json(
       await runNativeCli([
         'receipt',
@@ -168,7 +170,7 @@ describe('Native verification receipt fence recovery', () => {
     });
   });
 
-  it('keeps the post-command fence and reports files changed by the verification command', async () => {
+  it.skip('keeps the post-command fence and reports files changed by the verification command', async () => {
     await fs.writeFile(path.join(projectRoot, '.gitignore'), 'node_modules/\n.cache/\n');
     const feature = path.join(projectRoot, 'feature.ts');
     const result = json(
@@ -203,7 +205,7 @@ describe('Native verification receipt fence recovery', () => {
     });
   });
 
-  it('allows verification commands to write ignored cache files', async () => {
+  it.skip('allows verification commands to write ignored cache files', async () => {
     await fs.writeFile(path.join(projectRoot, '.gitignore'), 'node_modules/\n.cache/\n');
     const cache = path.join(projectRoot, '.cache', 'result.txt');
     const result = json(
@@ -228,5 +230,16 @@ describe('Native verification receipt fence recovery', () => {
       data: { receipt: { status: 'passed' } },
     });
     expect((result.data as { recovery?: unknown }).recovery).toBeUndefined();
+  });
+
+  it('rejects the retired receipt command at the public boundary', async () => {
+    const result = json(
+      await runNativeCli(['receipt', state.name, '--json', '--project-root', projectRoot]),
+    );
+    expect(result).toMatchObject({
+      command: 'receipt',
+      exitCode: 64,
+      error: { code: 'usage' },
+    });
   });
 });

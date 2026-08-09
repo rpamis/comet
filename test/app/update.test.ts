@@ -4,6 +4,7 @@ import path from 'path';
 import os from 'os';
 import { EventEmitter } from 'events';
 import { spawn } from 'child_process';
+import { spawnSync } from 'node:child_process';
 import { select } from '@inquirer/prompts';
 import { parse } from 'yaml';
 import { getLatestVersion } from '../../platform/version/version.js';
@@ -29,23 +30,26 @@ import {
   writeProjectConfig,
 } from '../../domains/comet-native/native-config.js';
 import { assertClassicLayoutReadable } from '../../domains/comet-classic/classic-layout.js';
-import { DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG } from '../../domains/workflow-contract/project-config.js';
 
 // Mock the interactive select prompt so tests don't hang on CI (no TTY).
 vi.mock('@inquirer/prompts', () => ({
   select: vi.fn().mockResolvedValue(false),
 }));
 
-vi.mock('child_process', () => ({
-  spawn: vi.fn(() => {
-    const child = new EventEmitter();
-    queueMicrotask(() => {
-      child.emit('exit', 0);
-      child.emit('close', 0);
-    });
-    return child;
-  }),
-}));
+vi.mock('child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('child_process')>();
+  return {
+    ...actual,
+    spawn: vi.fn(() => {
+      const child = new EventEmitter();
+      queueMicrotask(() => {
+        child.emit('exit', 0);
+        child.emit('close', 0);
+      });
+      return child;
+    }),
+  };
+});
 
 vi.mock('../../platform/version/version.js', () => ({
   getCurrentVersion: vi.fn(() => '0.4.0-beta.7'),
@@ -83,6 +87,13 @@ const claudePlatform: Platform = {
 };
 
 const manifestPath = path.resolve('assets', 'manifest.json');
+
+const RETIRED_NATIVE_BUNDLES = [
+  'comet-native/scripts/comet-native-checkpoint.mjs',
+  'comet-native/scripts/comet-native-check.mjs',
+  'comet-native/scripts/comet-native-evidence.mjs',
+  'comet-native/scripts/comet-native-receipt.mjs',
+] as const;
 
 async function readManifest() {
   return JSON.parse(await fs.readFile(manifestPath, 'utf-8')) as { skills: string[] };
@@ -2343,13 +2354,6 @@ describe('update command helpers', () => {
         clarification_mode: 'batch',
         archive_confirmation: 'automatic',
         max_verify_failures: 5,
-        snapshot: {
-          include: ['**/*'],
-          exclude: DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.exclude,
-          max_files: 10_000,
-          max_total_bytes: 256 * 1024 * 1024,
-          max_duration_ms: 60_000,
-        },
       },
       classic: {
         artifact_layout: 'docs',
@@ -2950,12 +2954,50 @@ describe('update command helpers', () => {
     await expect(fs.readFile(selectionPath, 'utf8')).resolves.toBe(legacySelection);
   });
 
-  it('adds default Native snapshot exclusions during project update', async () => {
-    const config = defaultProjectConfig('.');
-    config.native.snapshot.exclude = ['custom/generated/**'];
-    await writeProjectConfig(tmpDir, config);
+  it('upgrades a beta17 Native project without leaving retired bundles or hiding config', async () => {
+    expect(spawnSync('git', ['init'], { cwd: tmpDir }).status).toBe(0);
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'workflows: [native]',
+        'native:',
+        '  artifact_root: .',
+        '  snapshot:',
+        '    include: ["**/*"]',
+        '    exclude: ["custom/generated/**"]',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
     await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
     await fs.writeFile(path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'), '# Comet\n');
+    const installedSkillsRoot = path.join(tmpDir, '.claude', 'skills');
+    const userBundle = path.join(installedSkillsRoot, 'comet-native', 'scripts', 'user-helper.mjs');
+    await fs.mkdir(path.dirname(userBundle), { recursive: true });
+    for (const relativePath of RETIRED_NATIVE_BUNDLES) {
+      await fs.writeFile(
+        path.join(installedSkillsRoot, ...relativePath.split('/')),
+        'legacy bundle\n',
+        'utf8',
+      );
+    }
+    await fs.writeFile(userBundle, 'keep user content\n', 'utf8');
+    await fs.writeFile(
+      path.join(tmpDir, '.gitignore'),
+      ['node_modules/', '.comet/', 'dist/', ''].join('\n'),
+      'utf8',
+    );
+    for (const relativePath of [
+      '.comet/runtime/native/locks/demo.lock',
+      '.comet/runtime/native/logs/demo.log',
+    ]) {
+      const target = path.join(tmpDir, ...relativePath.split('/'));
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      await fs.writeFile(target, `${relativePath}\n`, 'utf8');
+    }
 
     const fakeHome = path.join(tmpDir, 'native-snapshot-update-home');
     const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
@@ -2974,16 +3016,32 @@ describe('update command helpers', () => {
     const updated = parse(
       await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8'),
     ) as {
-      native: { snapshot: { exclude: string[] } };
+      native: { snapshot?: unknown };
     };
-    expect(updated.native.snapshot.exclude).toEqual(
-      expect.arrayContaining([
-        'custom/generated/**',
-        '**/.idea/**',
-        '**/node_modules/**',
-        '**/target/**',
-      ]),
-    );
+    expect(updated.native.snapshot).toBeUndefined();
+    for (const relativePath of RETIRED_NATIVE_BUNDLES) {
+      await expect(
+        fs.access(path.join(installedSkillsRoot, ...relativePath.split('/'))),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+    }
+    await expect(fs.readFile(userBundle, 'utf8')).resolves.toBe('keep user content\n');
+
+    const gitignore = await fs.readFile(path.join(tmpDir, '.gitignore'), 'utf8');
+    expect(gitignore).toContain('node_modules/\n');
+    expect(gitignore).toContain('dist/\n');
+    expect(gitignore).toContain('!/.comet/config.yaml\n');
+    expect(
+      spawnSync('git', ['check-ignore', '--quiet', '.comet/config.yaml'], { cwd: tmpDir }).status,
+    ).toBe(1);
+    for (const relativePath of [
+      '.comet/runtime/native/locks/demo.lock',
+      '.comet/runtime/native/logs/demo.log',
+    ]) {
+      expect(
+        spawnSync('git', ['check-ignore', '--quiet', relativePath], { cwd: tmpDir }).status,
+        relativePath,
+      ).toBe(0);
+    }
   });
 
   it('migrates Classic v1 selection after update installs the project Router', async () => {

@@ -13,6 +13,14 @@ import { readProjectConfig } from './native-config.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { resolveSelectedNativeChange } from './native-selection.js';
 import type { NativeChangeState, NativeProjectPaths } from './native-types.js';
+import {
+  isNativePortableChange,
+  nativePortableChangeDir,
+  readNativePortableChange,
+  returnNativePortableChangeToBuild,
+  returnNativePortableChangeToShape,
+} from './native-portable-runtime.js';
+import type { NativePortableState } from './native-portable-types.js';
 
 export type NativeHookIntent = CometHookIntent;
 export interface NativeHookRequest extends Omit<CometHookRequest, 'toolName'> {
@@ -29,7 +37,138 @@ export interface ActiveNativeHookChange {
 
 interface ActiveNativeContext {
   paths: NativeProjectPaths;
-  changes: NativeChangeState[];
+  changes: Array<
+    { kind: 'legacy'; state: NativeChangeState } | { kind: 'portable'; state: NativePortableState }
+  >;
+}
+
+async function inspectPortableWriteTargets(options: {
+  projectRoot: string;
+  paths: NativeProjectPaths;
+  state: NativePortableState;
+  request: NativeHookRequest;
+}): Promise<NativeHookGuardResult> {
+  const { projectRoot, paths, state, request } = options;
+  const changeDir = nativePortableChangeDir(paths, state.name);
+  const formalTargets: string[] = [];
+  const implementationTargets: string[] = [];
+  let controlTarget = false;
+  let externalTarget = false;
+
+  for (const targetPath of request.targets) {
+    const target = path.resolve(projectRoot, targetPath);
+    if (!isWithin(projectRoot, target)) {
+      externalTarget = true;
+      continue;
+    }
+    const relative = path.relative(projectRoot, target).replaceAll('\\', '/');
+    if (relative === '.comet/config.yaml') {
+      controlTarget = true;
+      continue;
+    }
+    if (!isWithin(paths.nativeRoot, target)) {
+      implementationTargets.push(relative);
+      continue;
+    }
+    if (!isWithin(changeDir, target)) {
+      return {
+        allowed: false,
+        reason: 'Portable Native control state is Runtime-owned',
+        workflow: 'native',
+        phase: state.phase,
+        change: state.name,
+      };
+    }
+    const changeRelative = path.relative(changeDir, target).replaceAll('\\', '/');
+    if (changeRelative === 'brief.md' || changeRelative.startsWith('specs/')) {
+      formalTargets.push(changeRelative);
+      continue;
+    }
+    return {
+      allowed: false,
+      reason: `${changeRelative || 'change directory'} is Runtime-owned and cannot be edited by the Agent`,
+      workflow: 'native',
+      phase: state.phase,
+      change: state.name,
+    };
+  }
+
+  if (formalTargets.length > 0 && implementationTargets.length > 0) {
+    return {
+      allowed: false,
+      reason:
+        'Formal Native requirements and implementation files must be edited in separate actions',
+      workflow: 'native',
+      phase: state.phase,
+      change: state.name,
+    };
+  }
+  if (formalTargets.length > 0) {
+    if (state.phase !== 'shape') {
+      const returned = await returnNativePortableChangeToShape({
+        paths,
+        name: state.name,
+        reason: `Formal requirement write requested for ${formalTargets.join(', ')}`,
+      });
+      return {
+        allowed: true,
+        reason: `Native requirements changed; returned to Shape goal cycle ${returned.loop.goal_cycle}`,
+        workflow: 'native',
+        phase: 'shape',
+        change: state.name,
+      };
+    }
+    return {
+      allowed: true,
+      reason: 'Native control artifact write',
+      workflow: 'native',
+      phase: state.phase,
+      change: state.name,
+    };
+  }
+  if (implementationTargets.length > 0) {
+    if (state.phase === 'build') {
+      return {
+        allowed: true,
+        reason: 'Native change is in Build',
+        workflow: 'native',
+        phase: state.phase,
+        change: state.name,
+      };
+    }
+    if (state.phase === 'verify' || state.phase === 'archive') {
+      const returned = await returnNativePortableChangeToBuild({
+        paths,
+        name: state.name,
+        reason: `Observed implementation write before ${implementationTargets.join(', ')}`,
+      });
+      return {
+        allowed: true,
+        reason: `Native candidate was invalidated and returned to Build iteration ${returned.loop.iteration}`,
+        workflow: 'native',
+        phase: 'build',
+        change: state.name,
+      };
+    }
+    return {
+      allowed: false,
+      reason: `Native change ${state.name} is in ${state.phase}; implementation writes are only allowed in Build`,
+      workflow: 'native',
+      phase: state.phase,
+      change: state.name,
+    };
+  }
+  return {
+    allowed: true,
+    reason: controlTarget
+      ? 'Native control artifact write'
+      : externalTarget
+        ? 'Write target is outside the guarded project'
+        : 'No guarded write target was provided',
+    workflow: 'native',
+    phase: state.phase,
+    change: state.name,
+  };
 }
 
 function isWithin(parent: string, target: string): boolean {
@@ -66,11 +205,16 @@ async function activeNativeContextImpl(projectRoot: string): Promise<ActiveNativ
     throw error;
   }
 
-  const changes: NativeChangeState[] = [];
+  const changes: ActiveNativeContext['changes'] = [];
   for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
     if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
-    const state = await readNativeChange(paths, entry.name);
-    if (!state.archived) changes.push(state);
+    if (await isNativePortableChange(paths, entry.name)) {
+      const state = await readNativePortableChange(paths, entry.name);
+      if (!state.archived) changes.push({ kind: 'portable', state });
+    } else {
+      const state = await readNativeChange(paths, entry.name);
+      if (!state.archived) changes.push({ kind: 'legacy', state });
+    }
   }
   return { paths, changes };
 }
@@ -89,8 +233,8 @@ export async function listActiveNativeHookChanges(
   const context = await activeNativeContext(projectRoot);
   return (context?.changes ?? []).map((change) => ({
     workflow: 'native',
-    name: change.name,
-    phase: change.phase,
+    name: change.state.name,
+    phase: change.state.phase,
   }));
 }
 
@@ -123,9 +267,9 @@ export async function inspectNativeHookGuard(
     };
   }
 
-  let change: NativeChangeState | undefined;
+  let change: ActiveNativeContext['changes'][number] | undefined;
   if (selectedChangeName) {
-    change = context.changes.find((candidate) => candidate.name === selectedChangeName);
+    change = context.changes.find((candidate) => candidate.state.name === selectedChangeName);
     if (!change) {
       return {
         allowed: false,
@@ -138,7 +282,7 @@ export async function inspectNativeHookGuard(
     change = context.changes[0];
   } else {
     const selectedName = await resolveSelectedNativeChange(context.paths);
-    change = context.changes.find((candidate) => candidate.name === selectedName);
+    change = context.changes.find((candidate) => candidate.state.name === selectedName);
     if (!change) {
       return {
         allowed: false,
@@ -149,13 +293,14 @@ export async function inspectNativeHookGuard(
     }
   }
 
-  if (change.phase === 'build') {
+  const state = change.state;
+  if (change.kind === 'legacy' && state.phase === 'build') {
     return {
       allowed: true,
       reason: 'Native change is in Build',
       workflow: 'native',
-      phase: change.phase,
-      change: change.name,
+      phase: state.phase,
+      change: state.name,
     };
   }
   if (request.intent === 'unknown' || request.targets.length === 0) {
@@ -163,9 +308,17 @@ export async function inspectNativeHookGuard(
       allowed: true,
       reason: 'Hook write target was not attributed to the guarded project',
       workflow: 'native',
-      phase: change.phase,
-      change: change.name,
+      phase: state.phase,
+      change: state.name,
     };
+  }
+  if (change.kind === 'portable') {
+    return inspectPortableWriteTargets({
+      projectRoot,
+      paths: context.paths,
+      state: change.state,
+      request,
+    });
   }
 
   let controlTarget = false;
@@ -177,16 +330,20 @@ export async function inspectNativeHookGuard(
       continue;
     }
     const relative = path.relative(projectRoot, target).replaceAll('\\', '/');
-    if (relative === '.comet/config.yaml' || isWithin(context.paths.nativeRoot, target)) {
+    if (relative === '.comet/config.yaml') {
+      controlTarget = true;
+      continue;
+    }
+    if (isWithin(context.paths.nativeRoot, target)) {
       controlTarget = true;
       continue;
     }
     return {
       allowed: false,
-      reason: `Native change ${change.name} is in ${change.phase}; implementation writes are only allowed in build. If this belongs to the current change, confirm the scope and run comet native next ${change.name} --summary "<reason>" --return-to-build; otherwise create or select a separate Native change`,
+      reason: `Native change ${state.name} is in ${state.phase}; implementation writes are only allowed in build. If this belongs to the current change, confirm the scope and run comet native next ${state.name} --summary "<reason>" --return-to-build; otherwise create or select a separate Native change`,
       workflow: 'native',
-      phase: change.phase,
-      change: change.name,
+      phase: state.phase,
+      change: state.name,
     };
   }
 
@@ -198,7 +355,7 @@ export async function inspectNativeHookGuard(
         ? 'Write target is outside the guarded project'
         : 'No guarded write target was provided',
     workflow: 'native',
-    phase: change.phase,
-    change: change.name,
+    phase: state.phase,
+    change: state.name,
   };
 }

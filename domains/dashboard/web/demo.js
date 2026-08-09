@@ -635,306 +635,362 @@ export const DEMO_SNAPSHOT = {
       },
     ],
   },
-  native: {
-    schema: 'comet.dashboard.native.v1',
-    generatedAt: '2026-07-19T14:32:00.000Z',
-    totalChangeCount: 3,
-    visibleChangeCount: 3,
-    omittedChangeCount: 0,
-    changesTruncated: false,
-    changes: [
-      {
-        workflow: 'native',
-        name: 'ship-native-dashboard',
-        status: 'active',
-        archivedAt: null,
-        phase: 'build',
-        revision: 4,
-        selected: true,
-        approval: 'confirmed',
-        nextCommand: 'comet native next ship-native-dashboard --summary "Dashboard UI implemented"',
-        verificationResult: 'pending',
-        verificationFreshness: 'missing',
-        archiveReady: false,
-        continuation: {
-          disposition: 'continue',
-          action: 'work-phase',
-          command: null,
-          requiresUserDecision: false,
-          requiredInputs: [],
-          requiredInputsTruncated: false,
-        },
-        findings: {
-          total: 0,
-          errors: 0,
-          warnings: 0,
-          info: 0,
-          requiresUserDecision: false,
-          codes: [],
-          truncated: false,
-        },
-        archive: {
-          ready: false,
-          evidenceFreshness: 'missing',
-          operationCount: 0,
-          findingCodes: ['archive-phase-required', 'verification-evidence-missing'],
-          findingCodesTruncated: false,
-          preflightHash: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-        },
-        conflicts: {
-          visibleDefiniteConflict: 0,
-          visiblePossibleOverlap: 1,
-          peers: [
-            {
-              change: 'align-dashboard-copy',
-              classification: 'possible-overlap',
-              workspaceRelationship: 'same',
-              signalCount: 1,
-            },
-          ],
-          peersTruncated: false,
-        },
-        artifacts: [
-          {
-            key: 'brief',
-            label: '需求简报',
-            path: 'brief.md',
-            exists: true,
-            content:
-              '# Outcome\n\nShip a dedicated Native dashboard view.\n\n# Scope\n\nReuse the Classic information architecture and Markdown preview.\n',
-            truncated: false,
-            size: 132,
-          },
-          {
-            key: 'spec-dashboard',
-            label: 'dashboard Spec',
-            path: 'specs/dashboard/spec.md',
-            exists: true,
-            content:
-              '# Dashboard workflow view\n\n## Requirement\n\nClassic and Native views MUST be selected independently.\n',
-            truncated: false,
-            size: 103,
-          },
-        ],
-        progress: {
-          createdAt: '2026-07-18T09:10:00.000Z',
-          checkpointAt: '2026-07-19T13:46:00.000Z',
-          checkpointPhase: 'build',
-          summary: '完成 Native 独立视图、归档筛选和 Markdown 产物预览。',
-          nextAction: '补充信息密度并完成 Dashboard 浏览器验证。',
-          artifactCount: 2,
-        },
-        specs: {
-          total: 1,
-          create: 1,
-          replace: 0,
-          remove: 0,
-          capabilities: [{ capability: 'dashboard', operation: 'create' }],
-          capabilitiesTruncated: false,
-        },
-        acceptance: { total: 4, evidenced: 2, skipped: 0, missing: 2 },
-        implementation: {
-          complete: true,
-          declaredArtifactCount: 5,
-          changeCount: 8,
-          unattributedCount: 0,
-          unresolvedCount: 0,
-        },
-        repair: null,
-      },
-      {
-        workflow: 'native',
-        name: 'align-dashboard-copy',
-        status: 'active',
-        archivedAt: null,
-        phase: 'verify',
-        revision: 7,
-        selected: false,
-        approval: 'implicit',
-        nextCommand: null,
-        verificationResult: 'fail',
-        verificationFreshness: 'partial',
-        archiveReady: false,
-        continuation: {
-          disposition: 'await-user',
-          action: 'repair',
-          command: null,
-          requiresUserDecision: true,
-          requiredInputs: ['verification-scope'],
-          requiredInputsTruncated: false,
-        },
-        findings: {
-          total: 2,
-          errors: 1,
-          warnings: 1,
-          info: 0,
-          requiresUserDecision: true,
-          codes: ['verification-command-failed', 'user-decision-required'],
-          truncated: false,
-        },
-        archive: {
-          ready: false,
-          evidenceFreshness: 'partial',
-          operationCount: 0,
-          findingCodes: ['verification-not-passed'],
-          findingCodesTruncated: false,
-          preflightHash: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-        },
-        conflicts: {
-          visibleDefiniteConflict: 0,
-          visiblePossibleOverlap: 1,
-          peers: [
-            {
-              change: 'ship-native-dashboard',
-              classification: 'possible-overlap',
-              workspaceRelationship: 'same',
-              signalCount: 1,
-            },
-          ],
-          peersTruncated: false,
-        },
-        artifacts: [
-          {
-            key: 'brief',
-            label: '需求简报',
-            path: 'brief.md',
-            exists: true,
-            content: '# Outcome\n\nAlign the Native dashboard copy with Runtime terminology.\n',
-            truncated: false,
-            size: 70,
-          },
-          {
-            key: 'verification',
-            label: '验证报告',
-            path: 'verification.md',
-            exists: true,
-            content: '# Conclusion\n\nOne copy assertion still requires a user decision.\n',
-            truncated: false,
-            size: 68,
-          },
-        ],
-        progress: {
-          createdAt: '2026-07-18T11:30:00.000Z',
-          checkpointAt: '2026-07-19T12:20:00.000Z',
-          checkpointPhase: 'verify',
-          summary: '完成中英文术语同步，验证发现一项需要用户决定的文案差异。',
-          nextAction: '确认 verification scope 后重新运行验证。',
-          artifactCount: 2,
-        },
-        specs: {
-          total: 1,
-          create: 0,
-          replace: 1,
-          remove: 0,
-          capabilities: [{ capability: 'dashboard-copy', operation: 'replace' }],
-          capabilitiesTruncated: false,
-        },
-        acceptance: { total: 3, evidenced: 2, skipped: 0, missing: 1 },
-        implementation: {
-          complete: false,
-          declaredArtifactCount: 2,
-          changeCount: 3,
-          unattributedCount: 0,
-          unresolvedCount: 1,
-        },
-        repair: null,
-      },
-      {
-        workflow: 'native',
-        name: 'document-native-resume',
-        status: 'archived',
-        archivedAt: '2026-07-18',
-        phase: 'archive',
-        revision: 9,
-        selected: false,
-        approval: 'confirmed',
-        nextCommand: 'comet native archive document-native-resume --dry-run',
-        verificationResult: 'pass',
-        verificationFreshness: 'complete',
-        archiveReady: true,
-        continuation: {
-          disposition: 'done',
-          action: 'archive',
-          command: 'comet native archive document-native-resume --dry-run',
-          requiresUserDecision: false,
-          requiredInputs: [],
-          requiredInputsTruncated: false,
-        },
-        findings: {
-          total: 0,
-          errors: 0,
-          warnings: 0,
-          info: 0,
-          requiresUserDecision: false,
-          codes: [],
-          truncated: false,
-        },
-        archive: {
-          ready: true,
-          evidenceFreshness: 'complete',
-          operationCount: 3,
-          findingCodes: [],
-          findingCodesTruncated: false,
-          preflightHash: 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
-        },
-        conflicts: {
-          visibleDefiniteConflict: 0,
-          visiblePossibleOverlap: 0,
-          peers: [],
-          peersTruncated: false,
-        },
-        artifacts: [
-          {
-            key: 'brief',
-            label: '需求简报',
-            path: 'brief.md',
-            exists: true,
-            content: '# Outcome\n\nDocument automatic Native resume probing.\n',
-            truncated: false,
-            size: 55,
-          },
-          {
-            key: 'verification',
-            label: '验证报告',
-            path: 'verification.md',
-            exists: true,
-            content: '# Conclusion\n\nDocumentation validation passed.\n',
-            truncated: false,
-            size: 48,
-          },
-        ],
-        progress: {
-          createdAt: '2026-07-16T08:15:00.000Z',
-          checkpointAt: null,
-          checkpointPhase: null,
-          summary: 'Native change 已完成并归档。',
-          nextAction: null,
-          artifactCount: 2,
-        },
-        specs: {
-          total: 1,
-          create: 0,
-          replace: 1,
-          remove: 0,
-          capabilities: [{ capability: 'native-resume', operation: 'replace' }],
-          capabilitiesTruncated: false,
-        },
-        acceptance: { total: 2, evidenced: 2, skipped: 0, missing: 0 },
-        implementation: null,
-        repair: null,
-      },
-    ],
-    conflicts: {
-      available: true,
-      definiteConflict: 0,
-      possibleOverlap: 1,
-      disjoint: 2,
-      relationshipCount: 3,
-      visibleRelationshipCount: 3,
-      omittedRelationshipCount: 0,
-      relationshipsTruncated: false,
+};
+
+function demoNativeText(text) {
+  return { text, truncated: false };
+}
+
+function createNativeV2Seed(options) {
+  const archived = options.status === 'archived';
+  const acceptanceItems = options.acceptanceItems ?? [];
+  const acceptance = {
+    total: acceptanceItems.length,
+    passed: acceptanceItems.filter((item) => item.result === 'passed').length,
+    failed: acceptanceItems.filter((item) => item.result === 'failed').length,
+    blocked: acceptanceItems.filter((item) => item.result === 'blocked').length,
+    pending: acceptanceItems.filter((item) => item.result === 'pending').length,
+  };
+  return {
+    workflow: 'native',
+    name: options.name,
+    status: options.status,
+    ...(options.archiveName ? { archiveName: options.archiveName } : {}),
+    archivedAt: options.archivedAt ?? null,
+    phase: options.phase,
+    lifecycleStatus: archived ? 'done' : 'active',
+    stateVersion: options.stateVersion,
+    legacy: false,
+    migration: { status: 'none', message: null },
+    loop: {
+      stage: options.stage,
+      goalCycle: options.goalCycle ?? 1,
+      iteration: options.iteration,
+      attempt: options.attempt,
+      nextAction: options.nextAction ?? null,
+      actor: options.actor ?? null,
     },
+    acceptance,
+    verificationResult: options.verificationResult,
+    localExecution: {
+      status: options.localStatus ?? 'absent',
+      reason: options.localReason,
+      stage: options.localStage ?? null,
+      actor: options.actor ?? null,
+      startedAt: options.localStatus === 'running' ? '2026-08-09T14:20:00.000Z' : null,
+      requestCheckRounds: options.requestCheckRounds ?? 0,
+      checks: options.localChecks ?? [],
+      recoverableFromStage: options.recoverableFromStage ?? null,
+    },
+    artifacts: options.artifacts ?? [],
+    specs: options.specs ?? {
+      total: 0,
+      create: 0,
+      modify: 0,
+      remove: 0,
+      capabilities: [],
+      capabilitiesTruncated: false,
+    },
+    acceptanceItems,
+    builderHandoff: options.builderHandoff ?? null,
+    verification: options.verification ?? null,
+    checks: options.checks ?? [],
+    blockers: options.blockers ?? [],
+    history: options.history ?? [],
+    historyOverflow: options.historyOverflow ?? {
+      droppedEntries: 0,
+      firstDroppedAt: null,
+      lastDroppedAt: null,
+      outcomeCounts: { pass: 0, fail: 0, blocked: 0, 'execution-error': 0, recovery: 0 },
+    },
+  };
+}
+
+const nativeV2Building = createNativeV2Seed({
+  name: 'ship-native-dashboard',
+  status: 'active',
+  phase: 'build',
+  stateVersion: 8,
+  stage: 'building',
+  iteration: 2,
+  attempt: 1,
+  actor: 'builder',
+  nextAction: 'Builder 完成本轮实现后提交 handoff。',
+  verificationResult: 'pending',
+  localStatus: 'running',
+  localReason: 'current',
+  localStage: 'building',
+  requestCheckRounds: 1,
+  localChecks: [
+    {
+      id: 'dashboard-focused-tests',
+      status: 'running',
+      startedAt: '2026-08-09T14:20:00.000Z',
+      completedAt: null,
+      logAvailable: true,
+    },
+  ],
+  artifacts: [
+    {
+      key: 'brief',
+      label: '需求简报',
+      path: 'brief.md',
+      exists: true,
+      content: '# Outcome\n\nShip a fast, recoverable Native dashboard.\n',
+      truncated: false,
+      size: 58,
+    },
+    {
+      key: 'spec-dashboard',
+      label: 'dashboard Spec',
+      path: 'specs/dashboard.md',
+      exists: true,
+      content: '# Dashboard\n\nShow Loop and acceptance state.\n',
+      truncated: false,
+      size: 48,
+    },
+  ],
+  specs: {
+    total: 1,
+    create: 0,
+    modify: 1,
+    remove: 0,
+    capabilities: [{ capability: 'dashboard', operation: 'modify' }],
+    capabilitiesTruncated: false,
   },
+  acceptanceItems: [
+    {
+      id: 'A1',
+      source: 'brief.md',
+      text: 'Dashboard 展示 Loop 轮次与执行者。',
+      result: 'passed',
+      reason: demoNativeText('列表与详情均已显示。'),
+    },
+    {
+      id: 'A2',
+      source: 'brief.md',
+      text: '当前构建完成后由 Verifier 独立复核。',
+      result: 'pending',
+      reason: null,
+    },
+  ],
+  builderHandoff: {
+    iteration: 1,
+    summary: demoNativeText('上一轮 Builder 已提交。'),
+    addressedAcceptanceIds: ['A1'],
+    checks: [{ name: demoNativeText('Dashboard tests'), result: 'passed', note: null }],
+    checksTruncated: false,
+    knownLimits: [],
+    knownLimitsTruncated: false,
+    submittedAt: '2026-08-09T13:00:00.000Z',
+  },
+  history: Array.from({ length: 9 }, (_, index) => ({
+    goalCycle: 1,
+    iteration: index + 1,
+    attempt: 1,
+    outcome: index % 3 === 0 ? 'recovery' : 'fail',
+    unresolvedIds: ['A2'],
+    summary: demoNativeText(`演示循环记录 ${index + 1}`),
+    completedAt: `2026-08-09T${String(index + 4).padStart(2, '0')}:00:00.000Z`,
+  })),
+  historyOverflow: {
+    droppedEntries: 3,
+    firstDroppedAt: '2026-08-08T08:00:00.000Z',
+    lastDroppedAt: '2026-08-08T10:00:00.000Z',
+    outcomeCounts: { pass: 0, fail: 2, blocked: 0, 'execution-error': 0, recovery: 1 },
+  },
+});
+
+const nativeV2Repairing = createNativeV2Seed({
+  name: 'align-dashboard-copy',
+  status: 'active',
+  phase: 'build',
+  stateVersion: 12,
+  stage: 'repairing',
+  goalCycle: 2,
+  iteration: 4,
+  attempt: 2,
+  nextAction: 'Builder 修复失败与阻塞的验收项。',
+  verificationResult: 'fail',
+  localReason: 'version-mismatch',
+  recoverableFromStage: 'repairing',
+  artifacts: [
+    {
+      key: 'brief',
+      label: '需求简报',
+      path: 'brief.md',
+      exists: true,
+      content: '# Outcome\n\nAlign Native dashboard copy.\n',
+      truncated: false,
+      size: 43,
+    },
+    {
+      key: 'verification',
+      label: '验证报告',
+      path: 'verification.md',
+      exists: true,
+      content: '# Conclusion\n\nOne item failed and one is blocked.\n',
+      truncated: false,
+      size: 54,
+    },
+  ],
+  specs: {
+    total: 1,
+    create: 0,
+    modify: 1,
+    remove: 0,
+    capabilities: [{ capability: 'dashboard-copy', operation: 'modify' }],
+    capabilitiesTruncated: false,
+  },
+  acceptanceItems: [
+    { id: 'A1', source: 'brief.md', text: '展示通过项。', result: 'passed', reason: null },
+    {
+      id: 'A2',
+      source: 'brief.md',
+      text: '失败项返回 Builder。',
+      result: 'failed',
+      reason: demoNativeText('失败态文案仍不清楚。'),
+    },
+    {
+      id: 'A3',
+      source: 'brief.md',
+      text: '外部依赖阻塞可见。',
+      result: 'blocked',
+      reason: demoNativeText('等待浏览器环境。'),
+    },
+    { id: 'A4', source: 'brief.md', text: '修复后重新验证。', result: 'pending', reason: null },
+  ],
+  verification: {
+    verdict: 'fail',
+    assurance: 'skill-coordinated',
+    summary: demoNativeText('Verifier 发现一项失败和一项阻塞。'),
+    risks: [demoNativeText('本机 overlay 已过期，将从 YAML 恢复。')],
+    risksTruncated: false,
+    completedAt: '2026-08-09T14:00:00.000Z',
+  },
+  checks: [
+    {
+      id: 'dashboard-copy-tests',
+      name: demoNativeText('Dashboard copy tests'),
+      status: 'failed',
+      exitCode: 1,
+      durationMs: 1320,
+    },
+  ],
+  blockers: [
+    {
+      owner: 'builder',
+      reason: demoNativeText('失败态文案仍不清楚。'),
+      acceptanceIds: ['A2'],
+      resolutionAction: 'return-build',
+    },
+    {
+      owner: 'external',
+      reason: demoNativeText('等待浏览器环境。'),
+      acceptanceIds: ['A3'],
+      resolutionAction: 'wait-external',
+    },
+  ],
+  history: [
+    {
+      goalCycle: 2,
+      iteration: 3,
+      attempt: 2,
+      outcome: 'fail',
+      unresolvedIds: ['A2', 'A3'],
+      summary: demoNativeText('Verifier 返回修复。'),
+      completedAt: '2026-08-09T14:00:00.000Z',
+    },
+  ],
+});
+
+const nativeV2Archived = createNativeV2Seed({
+  name: 'document-native-resume',
+  status: 'archived',
+  archiveName: '2026-08-08-document-native-resume',
+  archivedAt: '2026-08-08',
+  phase: 'archive',
+  stateVersion: 16,
+  stage: 'done',
+  iteration: 3,
+  attempt: 1,
+  verificationResult: 'pass',
+  localReason: 'archived',
+  artifacts: [
+    {
+      key: 'brief',
+      label: '需求简报',
+      path: 'brief.md',
+      exists: true,
+      content: '# Resume\n',
+      size: 9,
+    },
+    {
+      key: 'verification',
+      label: '验证报告',
+      path: 'verification.md',
+      exists: true,
+      content: '# Conclusion\n\nPass.\n',
+      size: 21,
+    },
+  ],
+  specs: {
+    total: 1,
+    create: 0,
+    modify: 1,
+    remove: 0,
+    capabilities: [{ capability: 'native-resume', operation: 'modify' }],
+    capabilitiesTruncated: false,
+  },
+  acceptanceItems: [
+    {
+      id: 'A1',
+      source: 'brief.md',
+      text: '跨设备恢复后重新验证。',
+      result: 'passed',
+      reason: null,
+    },
+  ],
+  verification: {
+    verdict: 'pass',
+    assurance: 'user-confirmed-degraded',
+    summary: demoNativeText('归档前验证通过。'),
+    risks: [],
+    risksTruncated: false,
+    completedAt: '2026-08-08T16:00:00.000Z',
+  },
+  checks: [
+    {
+      id: 'docs-check',
+      name: demoNativeText('Documentation check'),
+      status: 'passed',
+      exitCode: 0,
+      durationMs: 620,
+    },
+  ],
+  history: [
+    {
+      goalCycle: 1,
+      iteration: 3,
+      attempt: 1,
+      outcome: 'pass',
+      unresolvedIds: [],
+      summary: demoNativeText('验收通过并归档。'),
+      completedAt: '2026-08-08T16:00:00.000Z',
+    },
+  ],
+});
+
+DEMO_SNAPSHOT.native = {
+  schema: 'comet.dashboard.native.v2',
+  generatedAt: '2026-08-09T14:32:00.000Z',
+  totalChangeCount: 3,
+  activeChangeCount: 2,
+  archivedChangeCount: 1,
+  visibleChangeCount: 3,
+  omittedChangeCount: 0,
+  changesTruncated: false,
+  changes: [nativeV2Building, nativeV2Repairing, nativeV2Archived],
 };
 
 function cloneDemoValue(value) {
@@ -996,19 +1052,11 @@ function createNativeDemoChange(template, index) {
   const name = `demo-native-${String(index).padStart(2, '0')}`;
 
   change.name = name;
-  change.selected = false;
-  change.revision += index;
-  if (change.nextCommand) {
-    change.nextCommand = change.nextCommand.replace(template.name, name);
-  }
-  if (change.continuation?.command) {
-    change.continuation.command = change.continuation.command.replace(template.name, name);
-  }
-  if (change.conflicts?.peers) {
-    change.conflicts.peers = change.conflicts.peers.map((peer) => ({
-      ...peer,
-      change: `${peer.change}-demo`,
-    }));
+  change.stateVersion += index;
+  if (change.status === 'archived') {
+    const archivedAt = `2026-08-${String(1 + (index % 8)).padStart(2, '0')}`;
+    change.archivedAt = archivedAt;
+    change.archiveName = `${archivedAt}-${name}`;
   }
   return change;
 }
@@ -1056,16 +1104,17 @@ DEMO_SNAPSHOT.native.changes.push(
   ),
 );
 const nativeSidebarDemoChange = DEMO_SNAPSHOT.native.changes[0];
-nativeSidebarDemoChange.conflicts.peers.push(
+nativeSidebarDemoChange.history.push(
   ...Array.from({ length: 9 }, (_, index) => ({
-    change: `demo-native-overlap-${String(index + 1).padStart(2, '0')}`,
-    classification: 'possible-overlap',
-    workspaceRelationship: 'same',
-    signalCount: index + 2,
+    goalCycle: 2,
+    iteration: index + 10,
+    attempt: 1,
+    outcome: index % 2 === 0 ? 'recovery' : 'fail',
+    unresolvedIds: ['A2'],
+    summary: demoNativeText(`额外恢复记录 ${index + 1}`),
+    completedAt: `2026-08-09T${String(index + 13).padStart(2, '0')}:00:00.000Z`,
   })),
 );
-nativeSidebarDemoChange.conflicts.visiblePossibleOverlap =
-  nativeSidebarDemoChange.conflicts.peers.length;
 DEMO_SNAPSHOT.summary.activeChanges = DEMO_SNAPSHOT.changes.active.length;
 DEMO_SNAPSHOT.summary.archivedChanges = DEMO_SNAPSHOT.changes.archived.length;
 DEMO_SNAPSHOT.summary.verifyFailed = DEMO_SNAPSHOT.changes.active.filter(
@@ -1077,25 +1126,12 @@ DEMO_SNAPSHOT.summary.tasksIncomplete = DEMO_SNAPSHOT.changes.active.reduce(
 );
 DEMO_SNAPSHOT.native.totalChangeCount = DEMO_SNAPSHOT.native.changes.length;
 DEMO_SNAPSHOT.native.visibleChangeCount = DEMO_SNAPSHOT.native.changes.length;
-DEMO_SNAPSHOT.native.conflicts = {
-  ...DEMO_SNAPSHOT.native.conflicts,
-  definiteConflict: DEMO_SNAPSHOT.native.changes.reduce(
-    (total, change) => total + (change.conflicts?.visibleDefiniteConflict ?? 0),
-    0,
-  ),
-  possibleOverlap: DEMO_SNAPSHOT.native.changes.reduce(
-    (total, change) => total + (change.conflicts?.visiblePossibleOverlap ?? 0),
-    0,
-  ),
-  relationshipCount: DEMO_SNAPSHOT.native.changes.reduce(
-    (total, change) => total + (change.conflicts?.peers?.length ?? 0),
-    0,
-  ),
-  visibleRelationshipCount: DEMO_SNAPSHOT.native.changes.reduce(
-    (total, change) => total + (change.conflicts?.peers?.length ?? 0),
-    0,
-  ),
-};
+DEMO_SNAPSHOT.native.activeChangeCount = DEMO_SNAPSHOT.native.changes.filter(
+  (change) => change.status === 'active',
+).length;
+DEMO_SNAPSHOT.native.archivedChangeCount = DEMO_SNAPSHOT.native.changes.filter(
+  (change) => change.status === 'archived',
+).length;
 
 // Enrich all changes with comet intermediate artifacts
 DEMO_SNAPSHOT.changes.active.forEach(addCometArtifacts);

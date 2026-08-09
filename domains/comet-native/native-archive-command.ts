@@ -1,16 +1,23 @@
-import { archiveNativeChange } from './native-archive.js';
-import { inspectNativeArchivePreflight } from './native-archive-inspection.js';
-import { readNativeChange } from './native-change.js';
-import { nativeContinuation } from './native-continuation.js';
 import {
-  readNativeWorkspaceIdentity,
-  setNativeWorkspaceFinish,
-  type NativeWorkspaceFinish,
-} from './native-workspace.js';
+  archiveNativePortableChange,
+  hasNativePortableArchiveRecovery,
+  inspectNativePortableArchive,
+  NativePortableArchiveOrderRequiredError,
+} from './native-portable-archive.js';
+import { nativePortableContinuation } from './native-portable-continuation.js';
+import { migrateNativeLegacyChangeToPortable } from './native-portable-migration-runtime.js';
+import { recoverNativePortableChange } from './native-portable-recovery.js';
+import { readNativePortableTransaction } from './native-portable-transactions.js';
+import {
+  isNativePortableChange,
+  readNativePortableChange,
+  setNativePortableWorkspaceFinish,
+} from './native-portable-runtime.js';
+import type { NativeWorkspaceFinish } from './native-workspace.js';
 import {
   finishArchivedNativeWorkspace,
   NativeWorkspaceFinishError,
-  prepareNativeWorkspaceFinish,
+  prepareNativePortableWorkspaceFinish,
 } from './native-workspace-finish.js';
 import {
   assertNoArguments,
@@ -32,6 +39,13 @@ export async function nativeArchiveCommand(
   const expectedPreflightHash = takeOption(args, '--expect-preflight');
   const confirmed = takeFlag(args, '--confirmed');
   const finishOption = takeOption(args, '--finish');
+  const serialFirstOption = takeOption(args, '--serial-first');
+  if (
+    serialFirstOption !== undefined &&
+    !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u.test(serialFirstOption)
+  ) {
+    throw new NativeUsageError('--serial-first must be one Native change name');
+  }
   const finish = finishOption as NativeWorkspaceFinish | undefined;
   if (
     finish !== undefined &&
@@ -42,118 +56,233 @@ export async function nativeArchiveCommand(
   ) {
     throw new NativeUsageError('--finish must be merge, push, pull-request, or keep');
   }
-  if (dryRun && expectedPreflightHash) {
-    throw new NativeUsageError('--dry-run and --expect-preflight cannot be combined');
-  }
-  if (dryRun && confirmed) {
-    throw new NativeUsageError('--confirmed is only valid with --expect-preflight');
-  }
-  if (!dryRun && finish) {
-    throw new NativeUsageError('--finish is only valid with --dry-run');
-  }
-  if (!dryRun && !expectedPreflightHash) {
-    throw new NativeUsageError('archive requires --dry-run or --expect-preflight <sha256>');
-  }
-  if (expectedPreflightHash && !/^[a-f0-9]{64}$/u.test(expectedPreflightHash)) {
-    throw new NativeUsageError('--expect-preflight must be a SHA-256 hash');
-  }
-  assertNoArguments(args);
-  const { config, paths } = await configuredPaths(projectRoot);
-  if (dryRun) {
-    const initialWorkspace = await readNativeWorkspaceIdentity(paths, name);
-    let workspace = initialWorkspace;
-    if (initialWorkspace?.schema === 'comet.native.workspace.v3') {
-      if (initialWorkspace.isolation === 'current') {
-        if (finish) {
-          throw new NativeUsageError('Native current isolation does not accept --finish');
-        }
-      } else if (finish) {
-        workspace = await setNativeWorkspaceFinish(paths, name, finish);
-      } else if (initialWorkspace.finish === null) {
+  const configured = await configuredPaths(projectRoot);
+  const portableActive = await isNativePortableChange(configured.paths, name);
+  const activeArchiveTransaction = portableActive
+    ? await readNativePortableTransaction(configured.paths, { kind: 'archive', change: name })
+    : null;
+  const portableRecoveryAvailable = portableActive
+    ? false
+    : await hasNativePortableArchiveRecovery(configured.paths, name);
+  if (portableActive || portableRecoveryAvailable) {
+    if (expectedPreflightHash) {
+      throw new NativeUsageError('Portable Native Archive does not use preflight hashes');
+    }
+    if (dryRun && confirmed) {
+      throw new NativeUsageError('--confirmed is only valid when executing Archive');
+    }
+    if (dryRun && serialFirstOption) {
+      throw new NativeUsageError('--serial-first is only valid when executing Archive');
+    }
+    if (!dryRun && finish) {
+      throw new NativeUsageError('--finish is only valid with --dry-run');
+    }
+    assertNoArguments(args);
+    const recovery =
+      portableActive && !dryRun && activeArchiveTransaction?.kind !== 'archive'
+        ? await recoverNativePortableChange({ paths: configured.paths, name })
+        : null;
+    let state =
+      recovery?.state ??
+      (portableActive ? await readNativePortableChange(configured.paths, name) : null);
+    if (recovery?.action === 'reverify' || recovery?.action === 'await-user') {
+      return success(
+        dryRun ? 'archive --dry-run' : 'archive',
+        {
+          archived: false,
+          state: recovery.state,
+          recovery,
+          continuation: nativePortableContinuation(recovery.state),
+        },
+        `${recovery.message}\n`,
+      );
+    }
+    if (dryRun) {
+      if (!state) {
+        return success(
+          'archive --dry-run',
+          {
+            change: name,
+            ready: true,
+            archiveRecovery: true,
+            continuation: {
+              disposition: 'continue',
+              reason: 'Resume the interrupted Native Archive transaction.',
+              commandArgs: ['comet', 'native', 'archive', name, '--confirmed'],
+              inputOptions: [],
+              runnerAction: null,
+            },
+          },
+          `Native Archive recovery is ready for ${name}\n`,
+        );
+      }
+      if (finish) {
+        state = await setNativePortableWorkspaceFinish({
+          paths: configured.paths,
+          name,
+          finish,
+        });
+      } else if (state.workspace.isolation !== 'current' && state.workspace.finish === null) {
         throw new NativeUsageError(
           'Native branch and worktree isolation require --finish with --dry-run',
         );
       }
-    } else if (finish) {
-      throw new NativeUsageError('--finish requires a workspace v3 branch or worktree binding');
+      const preview = await inspectNativePortableArchive({ paths: configured.paths, name });
+      const baseContinuation = nativePortableContinuation(state);
+      const continuation =
+        preview.capabilityPeers.length > 0
+          ? {
+              ...baseContinuation,
+              disposition: 'await-user' as const,
+              action: 'none' as const,
+              commandArgs: null,
+              requiredInputs: ['choose-first-archive'],
+              runnerAction: { ...baseContinuation.runnerAction, kind: 'none' as const },
+            }
+          : baseContinuation;
+      return success(
+        'archive --dry-run',
+        {
+          ...preview,
+          workspaceFinish: state.workspace.finish,
+          continuation,
+        },
+        `Native Archive preview: ${preview.ready ? 'ready' : 'blocked'}\n`,
+      );
     }
-    const preview = await inspectNativeArchivePreflight({ paths, name });
-    const state = await readNativeChange(paths, name);
-    return success(
-      'archive --dry-run',
-      {
-        ...preview,
-        workspaceFinish:
-          workspace?.schema === 'comet.native.workspace.v3' ? workspace.finish : null,
-        continuation: nativeContinuation({
+    if (configured.config.native.archive_confirmation === 'required' && !confirmed) {
+      throw new NativeUsageError(
+        'archive requires --confirmed when native.archive_confirmation is required',
+      );
+    }
+    if (state && state.workspace.isolation !== 'current' && state.workspace.finish === null) {
+      throw new NativeUsageError(
+        'Native branch and worktree isolation require a persisted --finish preview',
+      );
+    }
+    let finishPlan = state
+      ? await prepareNativePortableWorkspaceFinish({
+          paths: configured.paths,
           state,
-          archiveReady: preview.ready,
-          archiveConfirmation: preview.archiveConfirmation,
-          archivePreflightHash: preview.preflightHash,
-        }),
-      },
-      `Native Archive preview ${preview.preflightHash}: ${preview.ready ? 'ready' : 'blocked'}\n`,
-    );
-  }
-  if (config.native.archive_confirmation === 'required' && !confirmed) {
-    throw new NativeUsageError(
-      'archive requires --confirmed when native.archive_confirmation is required',
-    );
-  }
-  const state = await readNativeChange(paths, name);
-  const workspace = await readNativeWorkspaceIdentity(paths, name);
-  if (
-    workspace?.schema === 'comet.native.workspace.v3' &&
-    workspace.isolation !== 'current' &&
-    workspace.finish === null
-  ) {
-    throw new NativeUsageError(
-      'Native branch and worktree isolation require a persisted --finish preview',
-    );
-  }
-  const finishPlan =
-    workspace?.schema === 'comet.native.workspace.v3'
-      ? await prepareNativeWorkspaceFinish({ paths, state, workspace })
+        })
       : null;
-  const result = await archiveNativeChange({
-    paths,
-    name,
-    expectedPreflightHash: expectedPreflightHash!,
-  });
-  let workspaceFinishResult = null;
-  if (finishPlan) {
+    let result;
     try {
-      workspaceFinishResult = await finishArchivedNativeWorkspace({
-        paths,
-        state,
+      result = await archiveNativePortableChange({
+        paths: configured.paths,
         name,
-        archiveDir: result.archiveDir,
-        transactionId: result.transactionId,
-        plan: finishPlan,
+        ...(serialFirstOption ? { serialFirstChange: serialFirstOption } : {}),
       });
     } catch (error) {
-      if (!(error instanceof NativeWorkspaceFinishError)) throw error;
+      if (!(error instanceof NativePortableArchiveOrderRequiredError)) throw error;
+      if (!state) throw error;
+      const preview = await inspectNativePortableArchive({ paths: configured.paths, name });
+      const commandArgs =
+        error.peers.length > 0
+          ? ['comet', 'native', 'archive', name, '--confirmed', '--serial-first', name]
+          : ['comet', 'native', 'archive', name, '--confirmed'];
       return {
         command: 'archive',
         exitCode: 73,
         data: {
-          ...result,
-          workspaceFinish: finishPlan.finish,
-          workspaceFinishResult: error.result,
-          continuation: nativeContinuation({ state, archiveReady: false }),
+          ...preview,
+          workspaceFinish: state.workspace.finish,
+          workspaceFinishResult: null,
+          continuation: {
+            disposition: 'await-user',
+            reason: error.message,
+            commandArgs,
+            inputOptions: error.peers.length > 0 ? ['serial-first-change'] : [],
+            runnerAction: null,
+          },
         },
         error: { code: 'conflict', message: error.message },
       };
     }
+    state = result.state;
+    if (!finishPlan && state.workspace.isolation !== 'current') {
+      finishPlan = await prepareNativePortableWorkspaceFinish({
+        paths: configured.paths,
+        state,
+        archiveDir: result.archiveDir,
+      });
+    }
+    let workspaceFinishResult = null;
+    if (finishPlan) {
+      try {
+        workspaceFinishResult = await finishArchivedNativeWorkspace({
+          paths: configured.paths,
+          state: result.state,
+          name,
+          archiveDir: result.archiveDir,
+          transactionId: result.transactionId,
+          plan: finishPlan,
+        });
+      } catch (error) {
+        if (!(error instanceof NativeWorkspaceFinishError)) throw error;
+        return {
+          command: 'archive',
+          exitCode: 73,
+          data: {
+            ...result,
+            workspaceFinish: result.state.workspace.finish,
+            workspaceFinishResult: error.result,
+            continuation: {
+              disposition: 'blocked',
+              reason: error.message,
+              commandArgs: error.result.recoveryArgs,
+              inputOptions: [],
+              runnerAction: null,
+            },
+          },
+          error: { code: 'conflict', message: error.message },
+        };
+      }
+    }
+    return success(
+      'archive',
+      {
+        ...result,
+        workspaceFinish: result.state.workspace.finish,
+        workspaceFinishResult,
+        continuation: nativePortableContinuation(result.state),
+      },
+      `Archived Native change ${name} to ${result.archiveDir}\n`,
+    );
   }
+  if (serialFirstOption) {
+    throw new NativeUsageError('--serial-first is only valid for portable Native changes');
+  }
+  if (!dryRun && finish) {
+    throw new NativeUsageError('--finish is only valid with --dry-run');
+  }
+  assertNoArguments(args);
+  if (dryRun) {
+    return {
+      command: 'archive --dry-run',
+      exitCode: 65,
+      data: {
+        change: name,
+        migrationRequired: true,
+        repairCommand: `comet native doctor ${name} --repair`,
+      },
+      error: {
+        code: 'invalid-data',
+        message: `Native active change ${name} must migrate before Archive preview`,
+      },
+    };
+  }
+  const state = await migrateNativeLegacyChangeToPortable({
+    paths: configured.paths,
+    name,
+  });
   return success(
     'archive',
     {
-      ...result,
-      workspaceFinish: workspace?.schema === 'comet.native.workspace.v3' ? workspace.finish : null,
-      workspaceFinishResult,
-      continuation: nativeContinuation({ state, done: true }),
+      migration: { from: 'legacy', to: state.schema, completed: true },
+      state,
+      continuation: nativePortableContinuation(state),
     },
-    `Archived Native change ${name} to ${result.archiveDir}\n`,
+    `Migrated Native change ${name}; follow the returned portable continuation before Archive\n`,
   );
 }

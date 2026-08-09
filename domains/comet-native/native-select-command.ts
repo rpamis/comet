@@ -1,4 +1,6 @@
 import { inspectNativeStatus } from './native-diagnostics.js';
+import { inspectNativePortableStatus } from './native-portable-status.js';
+import { isNativePortableChange } from './native-portable-runtime.js';
 import { selectNativeChange } from './native-selection.js';
 import {
   assertNoArguments,
@@ -16,10 +18,12 @@ export async function nativeSelectCommand(
   assertNoArguments(args);
   const { config, paths } = await configuredPaths(projectRoot);
   await selectNativeChange(paths, name);
-  const status = await inspectNativeStatus(paths, name, {
-    clarificationMode: config.native.clarification_mode,
-    maxVerifyFailures: config.native.max_verify_failures,
-  });
+  const status = (await isNativePortableChange(paths, name))
+    ? await inspectNativePortableStatus({ paths, name })
+    : await inspectNativeStatus(paths, name, {
+        clarificationMode: config.native.clarification_mode,
+        maxVerifyFailures: config.native.max_verify_failures,
+      });
   return success(
     'select',
     { selected: name, continuation: status.continuation },

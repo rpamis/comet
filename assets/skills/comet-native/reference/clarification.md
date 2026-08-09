@@ -10,7 +10,7 @@ Separate information into three categories:
 - **User decision**: alternatives materially change output, defaults, failure behavior, scope, or irreversible effects. The user confirms it.
 - **Implementation choice**: algorithm, structure, or working method that does not change user-visible results. The Agent decides it.
 
-Ask only when ambiguity would materially change user-visible results and cannot be resolved reliably from the user's request, formal specifications, or an applicable contract. Do not invent questions to cover a checklist or send implementation choices to the user.
+Ask only when ambiguity would materially change user-visible results and cannot be resolved reliably from the user's request, formal specifications, or applicable project rules. Do not invent questions to cover a checklist or send implementation choices to the user.
 
 Rewrite ambiguous behavior as comparable “input → output” or “trigger → result” cases. Each question includes:
 

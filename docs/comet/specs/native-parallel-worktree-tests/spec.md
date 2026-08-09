@@ -41,17 +41,17 @@ workspace boundary.
 #### Scenario: Independent changes progress concurrently
 
 - **WHEN** both linked worktrees concurrently run supported Native status,
-  checkpoint, and continuation/progress operations
+  continuation, candidate, or stable-state operations
 - **THEN** every command MUST finish within the test timeout
 - **AND** each command MUST resolve its own change from its own physical
   worktree
 - **AND** one worktree MUST NOT mutate the other worktree's selection, phase,
-  checkpoint, runtime state, lock, or transaction journal
+  portable state, local overlay, lock, or transaction
 
 #### Scenario: Runtime artifacts are isolated
 
 - **WHEN** both changes have completed their concurrent operations
-- **THEN** each worktree MUST retain only its own Native Runtime state
+- **THEN** each worktree MUST retain only its own `state.json` and check logs
 - **AND** no cross-worktree lock or transaction artifact MAY remain
 - **AND** the test MUST report the owning worktree and command when an
   isolation assertion fails
@@ -69,10 +69,10 @@ Native change is progressing and then resuming the workflow.
   linked worktree
 - **THEN** Native MUST preserve the manually edited source bytes
 - **AND** the command MUST finish within the bounded timeout
-- **AND** Native MUST return either a valid continuation or an explicit,
-  actionable stale-evidence/reverification or return-to-Build outcome
-- **AND** Native MUST NOT silently claim that the old implementation evidence
-  still describes the changed source
+- **AND** Native MUST return either a valid Build continuation or an explicit
+  return-to-Build and new-Verifier outcome
+- **AND** a host-observed write after candidate submission MUST invalidate the
+  previous candidate rather than silently retaining pass
 
 #### Scenario: Manual edit in one worktree does not affect the other
 
@@ -106,6 +106,6 @@ are built.
 
 - This change does not add randomized stress, remote Git operations, PR/merge
   behavior, or agent scheduling coverage.
-- This change does not weaken Native's Build scope sealing, Verify evidence,
-  Archive conflict detection, or Hook Guard policy.
+- This change does not weaken Builder/Verifier separation, complete acceptance
+  coverage, Archive capability-conflict detection, or Hook Guard policy.
 - This change does not combine Native and Classic state machines.

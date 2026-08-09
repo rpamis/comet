@@ -21,6 +21,32 @@ export interface NativeBoundedTextFile {
   text: string;
 }
 
+export interface NativeUnhashedTextFile extends Omit<NativeBoundedTextFile, 'hash'> {
+  hash: null;
+}
+
+export interface NativeTextFilePrefix {
+  ref: string;
+  size: number;
+  text: string;
+  truncated: boolean;
+}
+
+interface NativeTextFileReadOptions {
+  root: string;
+  ref: string;
+  maxBytes?: number | null;
+  includeHash?: boolean;
+  hooks?: NativeBoundedFileReadHooks;
+}
+
+interface NativeTextFilePrefixReadOptions {
+  root: string;
+  ref: string;
+  maxBytes: number;
+  hooks?: NativeBoundedFileReadHooks;
+}
+
 interface DirectoryIdentity {
   path: string;
   realPath: string;
@@ -153,14 +179,20 @@ async function verifyDirectoryChain(chain: readonly DirectoryIdentity[]): Promis
   }
 }
 
-export async function readNativeBoundedTextFile(options: {
-  root: string;
-  ref: string;
-  maxBytes?: number;
-  hooks?: NativeBoundedFileReadHooks;
-}): Promise<NativeBoundedTextFile> {
+export function readNativeBoundedTextFile(
+  options: NativeTextFileReadOptions & { includeHash: false },
+): Promise<NativeUnhashedTextFile>;
+export function readNativeBoundedTextFile(
+  options: NativeTextFileReadOptions & { includeHash?: true; maxBytes?: number },
+): Promise<NativeBoundedTextFile>;
+export async function readNativeBoundedTextFile(
+  options: NativeTextFileReadOptions,
+): Promise<NativeBoundedTextFile | NativeUnhashedTextFile> {
   const ref = portableArtifactRef(options.ref);
-  const maxBytes = positiveLimit(options.maxBytes ?? DEFAULT_NATIVE_ARTIFACT_MAX_BYTES);
+  const maxBytes =
+    options.maxBytes === null
+      ? null
+      : positiveLimit(options.maxBytes ?? DEFAULT_NATIVE_ARTIFACT_MAX_BYTES);
   const file = path.resolve(options.root, ...ref.split('/'));
   const chain = await captureDirectoryChain(options.root, path.dirname(file));
   await options.hooks?.afterParentChainCaptured?.();
@@ -168,7 +200,9 @@ export async function readNativeBoundedTextFile(options: {
   if (!before.isFile() || before.isSymbolicLink()) {
     throw new Error(`Native artifact must be a regular file: ${ref}`);
   }
-  if (before.size > maxBytes) throw new Error(`Native artifact exceeds ${maxBytes} bytes: ${ref}`);
+  if (maxBytes !== null && before.size > maxBytes) {
+    throw new Error(`Native artifact exceeds ${maxBytes} bytes: ${ref}`);
+  }
   const realPath = await fs.realpath(file);
   if (!isInside(chain[0].realPath, realPath)) {
     throw new Error(`Native artifact resolves outside its root: ${ref}`);
@@ -194,13 +228,17 @@ export async function readNativeBoundedTextFile(options: {
     await options.hooks?.afterOpen?.();
     const chunks: Buffer[] = [];
     let total = 0;
-    const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1));
+    const buffer = Buffer.allocUnsafe(
+      maxBytes === null ? 64 * 1024 : Math.min(64 * 1024, maxBytes + 1),
+    );
     while (true) {
-      const remaining = maxBytes + 1 - total;
+      const remaining = maxBytes === null ? buffer.length : maxBytes + 1 - total;
       const result = await handle.read(buffer, 0, Math.min(buffer.length, remaining), null);
       if (result.bytesRead === 0) break;
       total += result.bytesRead;
-      if (total > maxBytes) throw new Error(`Native artifact exceeds ${maxBytes} bytes: ${ref}`);
+      if (maxBytes !== null && total > maxBytes) {
+        throw new Error(`Native artifact exceeds ${maxBytes} bytes: ${ref}`);
+      }
       chunks.push(Buffer.from(buffer.subarray(0, result.bytesRead)));
     }
     await options.hooks?.beforeFinalCheck?.();
@@ -229,9 +267,98 @@ export async function readNativeBoundedTextFile(options: {
     return {
       ref,
       size: total,
-      hash: createHash('sha256').update(bytes).digest('hex'),
+      hash: options.includeHash === false ? null : createHash('sha256').update(bytes).digest('hex'),
       text,
     };
+  } finally {
+    await handle.close();
+  }
+}
+
+/**
+ * Read a display prefix without making the file's total size the read budget.
+ * The returned size comes from the verified open file, while at most maxBytes
+ * are read into memory.
+ */
+export async function readNativeTextFilePrefix(
+  options: NativeTextFilePrefixReadOptions,
+): Promise<NativeTextFilePrefix> {
+  const ref = portableArtifactRef(options.ref);
+  const maxBytes = positiveLimit(options.maxBytes);
+  const file = path.resolve(options.root, ...ref.split('/'));
+  const chain = await captureDirectoryChain(options.root, path.dirname(file));
+  await options.hooks?.afterParentChainCaptured?.();
+  const before = await fs.lstat(file);
+  if (!before.isFile() || before.isSymbolicLink()) {
+    throw new Error(`Native artifact must be a regular file: ${ref}`);
+  }
+  const realPath = await fs.realpath(file);
+  if (!isInside(chain[0].realPath, realPath)) {
+    throw new Error(`Native artifact resolves outside its root: ${ref}`);
+  }
+  const handle = await fs.open(file, 'r');
+  try {
+    const [opened, afterOpenPath, afterOpenRealPath] = await Promise.all([
+      handle.stat(),
+      fs.lstat(file),
+      fs.realpath(file),
+    ]);
+    await verifyDirectoryChain(chain);
+    if (
+      !opened.isFile() ||
+      !afterOpenPath.isFile() ||
+      afterOpenPath.isSymbolicLink() ||
+      afterOpenRealPath !== realPath ||
+      !sameFileIdentity(before, opened) ||
+      !sameFileIdentity(opened, afterOpenPath)
+    ) {
+      throw new Error(`Native artifact changed while opening: ${ref}`);
+    }
+    await options.hooks?.afterOpen?.();
+
+    const targetBytes = Math.min(opened.size, maxBytes);
+    const chunks: Buffer[] = [];
+    let total = 0;
+    const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes));
+    while (total < targetBytes) {
+      const result = await handle.read(
+        buffer,
+        0,
+        Math.min(buffer.length, targetBytes - total),
+        null,
+      );
+      if (result.bytesRead === 0) break;
+      total += result.bytesRead;
+      chunks.push(Buffer.from(buffer.subarray(0, result.bytesRead)));
+    }
+
+    await options.hooks?.beforeFinalCheck?.();
+    const [afterHandle, afterPath, afterRealPath] = await Promise.all([
+      handle.stat(),
+      fs.lstat(file),
+      fs.realpath(file),
+    ]);
+    await verifyDirectoryChain(chain);
+    if (
+      !afterPath.isFile() ||
+      afterPath.isSymbolicLink() ||
+      afterRealPath !== realPath ||
+      !sameFileIdentity(opened, afterHandle) ||
+      !sameFileIdentity(opened, afterPath) ||
+      total !== targetBytes
+    ) {
+      throw new Error(`Native artifact changed while reading: ${ref}`);
+    }
+
+    const truncated = opened.size > maxBytes;
+    const bytes = Buffer.concat(chunks, total);
+    let text: string;
+    try {
+      text = new TextDecoder('utf-8', { fatal: true }).decode(bytes, { stream: truncated });
+    } catch (error) {
+      throw new Error(`Native artifact prefix is not valid UTF-8: ${ref}`, { cause: error });
+    }
+    return { ref, size: opened.size, text, truncated };
   } finally {
     await handle.close();
   }

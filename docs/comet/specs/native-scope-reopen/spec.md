@@ -2,119 +2,123 @@
 
 ## 目标
 
-Native 在 Verify 或 Archive 阶段必须保持项目实现写入保护，同时为用户主动提出的继续实现请求提供可审计的返回 Build 机制。返回 Build 后，旧验证证据必须失效，新的实现范围必须重新封存并重新验证。
+Native 必须区分三类后续写入：当前目标的实现继续、改变用户可见结果的正式需求修改，以及无关请求。实现继续使当前候选失效并返回 Build；正式需求修改返回 Shape 重新确认；无关请求不得归入当前 change。
 
-## Requirements
+新路径不封存 content-addressed scope，也不通过项目 snapshot 或文件哈希证明“没有任何变化”。Runtime 只对宿主实际上报的写入动作和受控状态转换负责。
 
-### Requirement: 显式返回 Build
+## Requirement: 显式返回 Build
 
-Runtime MUST extend the existing `comet native next <change-name>` command with an explicit `--return-to-build` option. The option MUST be accepted only when the current phase is `verify` or `archive`, and MUST require a non-empty summary explaining why implementation must continue.
+Runtime MUST 支持 `comet native next <change-name> --summary <summary> --return-to-build`，并且只允许当前 phase 为 Verify 或 Archive。
 
-#### Scenario: Verify 中用户要求继续实现
+#### Scenario: Verify 后需要继续实现
 
-- **WHEN** 当前 change 处于 Verify，且用户明确要求继续修改项目实现
-- **THEN** Agent MUST NOT attempt the project write while the phase remains Verify
-- **AND** Runtime MUST accept `comet native next <change-name> --summary <summary> --return-to-build`
-- **AND** the change MUST enter Build through the normal mutation lock and transition journal
+- **WHEN** 用户明确要求继续修改当前已确认目标的实现
+- **THEN** Runner MUST 先调用显式 return-to-Build action
+- **AND** Runtime MUST 在 mutation lock 内进入 Build、增加 iteration 并持久化 summary
+- **AND** Builder MUST 在新的稳定边界继续实现
 
-#### Scenario: Build 中错误使用返回参数
+#### Scenario: 不适用 phase
 
-- **WHEN** 当前 change 处于 Shape 或 Build，且调用方提供 `--return-to-build`
-- **THEN** Runtime MUST reject the command with a structured usage error
-- **AND** MUST NOT modify phase, revision, Run state, or evidence
+- **WHEN** Shape 或 Build 调用 `--return-to-build`
+- **THEN** Runtime MUST 返回结构化 usage error
+- **AND** MUST NOT 修改 phase、state version、Loop 或本机 overlay
 
-### Requirement: 返回 Build 的状态清理
+#### Scenario: 参数边界
 
-Returning to Build MUST invalidate the prior completion evidence while preserving the change identity and workspace boundary.
+- **WHEN** `--return-to-build` 与 Shape confirmation、Verifier retry 或已移除的 Agent 自报验收参数组合
+- **THEN** Runtime MUST 在写入前拒绝
+- **AND** Agent MUST NOT 通过 CLI 提交 Builder/Verifier 身份或 pass 结论
 
-#### Scenario: 清理 Verify/Archive 证据
+## Requirement: 候选失效
 
-- **WHEN** Verify 或 Archive change successfully returns to Build
-- **THEN** Runtime MUST set `phase: build` and increment revision
-- **AND** MUST clear `verification_result`, `verification_report`, `implementation_scope`, `verification_evidence`, and `partial_allowance`
-- **AND** MUST preserve the baseline, workspace binding, change branch, current selection, and approved contract hash
-- **AND** MUST NOT increment Verify failure or repair failure counters
+Returning to Build MUST invalidate the current candidate and pass while preserving the change identity, confirmed acceptance text and workspace binding.
 
-#### Scenario: 返回后重新建立 scope
+#### Scenario: 清理当前验收结论
 
-- **WHEN** Agent modifies the project after returning to Build
-- **THEN** the next Build transition MUST derive a new content-addressed implementation scope
-- **AND** the next Verify MUST use only the new scope and new receipts
-- **AND** old Verify or Archive evidence MUST NOT be reusable
+- **WHEN** Verify 或 Archive change 成功返回 Build
+- **THEN** Runtime MUST set `phase: build`, `loop.stage: repairing`, increment iteration and reset attempt
+- **AND** MUST reset all acceptance results to pending
+- **AND** MUST clear the current Builder handoff, Verifier result, blocker, verification result and report reference
+- **AND** MUST preserve goal cycle, Spec declarations, workspace isolation/branches/finish, failure budget and compact history
+- **AND** MUST NOT 把这次用户驱动返回计为 Verify fail 或停滞
 
-### Requirement: 需求归属与契约变化
+#### Scenario: 新候选重新验收
 
-Native MUST distinguish an implementation extension of the current change from a user-visible contract change and an unrelated request.
+- **WHEN** Builder 完成继续实现并提交新候选
+- **THEN** Runtime MUST 生成新的 random candidate ID 并记录可信 Builder execution ref
+- **AND** Runtime MUST 对新候选执行必要检查并分派新的独立 Verifier execution
+- **AND** 旧 candidate 与旧 pass MUST NOT 被复用
+
+## Requirement: 宿主观察到实现写入
+
+支持写入动作事件的平台 MUST 在 Verify 或 Archive 观察到当前项目实现写入时取消当前候选并返回 Build。
+
+#### Scenario: Guard 接收实现写入
+
+- **WHEN** selected portable change 处于 Verify 或 Archive，且 Hook Router 把项目实现写入归属到该 change
+- **THEN** Runtime MUST 先在 mutation lock 内执行与显式 return-to-Build 相同的失效转换
+- **AND** Guard MAY 在转换成功后允许该写入
+- **AND** 返回结果 MUST 明确新的 Build iteration
+
+#### Scenario: 宿主没有写入事件
+
+- **WHEN** 平台无法提供实现写入动作序列
+- **THEN** Runtime MUST NOT 声称能够发现编辑器、后台进程或绕过 Comet 的并发变化
+- **AND** Verify MUST 不复用 Builder 自报检查，而是为候选执行一次最终必要检查
+
+## Requirement: 正式需求变化返回 Shape
+
+brief、完整目标 Spec 或验收项的变化 MUST 开始新的目标周期，而不是作为普通实现继续处理。
+
+#### Scenario: Build 或更晚阶段编辑正式需求
+
+- **WHEN** Guard 观察到对当前 change 的 `brief.md` 或 `specs/**` 写入，且 phase 不是 Shape
+- **THEN** Runtime MUST 在写入前返回 Shape 并增加 `goal_cycle`
+- **AND** MUST clear confirmed acceptance、Builder handoff、current verification、blockers and Loop failure counters
+- **AND** Guard MAY 在成功转换后允许正式文档写入
+- **AND** 用户 MUST 重新确认由更新后 brief/Spec 解析出的完整验收清单
+
+#### Scenario: Shape 中编辑正式需求
+
+- **WHEN** 当前 phase 已是 Shape
+- **THEN** Agent MAY 编辑 brief 与目标 Spec
+- **AND** `comet-state.yaml` 与 `verification.md` MUST remain Runtime-owned
+
+## Requirement: 请求归属
 
 #### Scenario: 当前 change 的实现扩展
 
-- **WHEN** the requested file change is necessary for the already confirmed behavior but changes no user-visible contract
-- **THEN** Agent MAY keep the request in the current change
-- **AND** MUST return to Build before writing when the phase is Verify or Archive
-- **AND** MUST include the new file or directory in the next Build artifact references
+- **WHEN** requested work 只补充已确认行为的实现，不改变 outcome、验收项或 non-goals
+- **THEN** Agent MAY 保留在当前 change
+- **AND** Verify/Archive 中 MUST 先返回 Build
 
 #### Scenario: 用户可见范围变化
 
-- **WHEN** the requested work changes the outcome, scope, acceptance criteria, or non-goals
-- **THEN** Agent MUST update the brief and complete target specification before implementation
-- **AND** the changed contract MUST require the Native confirmation boundary before leaving Build
-- **AND** the old implementation and verification evidence MUST NOT be presented as current
+- **WHEN** requested work 改变 outcome、范围、验收标准或 non-goals
+- **THEN** Agent MUST 更新 brief 与完整目标 Spec
+- **AND** Runtime MUST 返回 Shape 并要求新的确认边界
 
 #### Scenario: 无关请求
 
-- **WHEN** the requested work is unrelated to the active change
-- **THEN** Agent MUST NOT attribute it to the active change or mutate its implementation scope
-- **AND** Agent MUST preserve the active change's recoverable state and guide the user to a separate Native change/worktree
+- **WHEN** requested work 与 active change 无关
+- **THEN** Agent MUST NOT 把它写入当前 change 的 handoff 或正式 Spec
+- **AND** MUST 保留当前 portable 状态，并引导用户创建或选择独立 Native change/worktree
 
-### Requirement: Hook Guard 恢复提示
+## Requirement: 状态与恢复安全
 
-Native Hook Guard MUST continue to deny ordinary project writes outside Build, but its denial MUST identify the current phase and the supported recovery direction.
+- 返回 Shape/Build 都 MUST 使用 mutation lock、原子 YAML 替换和单调 `state_version`；本机 JSON 只能基于新版本重建。
+- 转换中断后，status/doctor MUST 从 portable 稳定边界或明确的本机 interrupted operation 恢复，不得通过扫描项目内容猜测结果。
+- Hook MUST 拒绝 Agent 直接写 `comet-state.yaml`、`verification.md` 或其他 Runtime control state。
+- 当前 change 的 workspace/branch 无法匹配时 MUST `await-user`，不得为了执行返回操作而静默重绑。
 
-#### Scenario: Verify 项目写入被阻止
+## 双语与验证
 
-- **WHEN** a write target is inside the guarded project but outside Native control artifacts and the selected change is in Verify or Archive
-- **THEN** Guard MUST return `allowed: false`
-- **AND** the reason MUST state that implementation writes are allowed only in Build
-- **AND** the reason MUST instruct the Agent to decide current-change versus separate-change ownership and use the Native return-to-Build recovery path when applicable
-
-#### Scenario: Build 中项目写入
-
-- **WHEN** the selected change is in Build and the write target is inside the guarded project
-- **THEN** Guard MUST preserve the existing allowed behavior
-- **AND** Build evidence MUST remain responsible for detecting undeclared or unattributed changes at the phase boundary
-
-### Requirement: 参数与状态安全
-
-The explicit return operation MUST fail closed when combined with evidence inputs or when its persisted transition cannot be proven safe.
-
-#### Scenario: 参数互斥
-
-- **WHEN** `--return-to-build` is combined with `--result`, `--report`, `--artifact`, `--no-code-reason`, partial-scope options, or Verify receipt options
-- **THEN** Runtime MUST reject the command before writing state or evidence
-
-#### Scenario: 事务中断恢复
-
-- **WHEN** the return transition is interrupted after its journal is prepared
-- **THEN** Native status/doctor MUST report the pending transition
-- **AND** explicit recovery MUST preserve or complete the same transition without silently rewriting user-authored artifacts
-
-### Requirement: 双语 Skill 与 Runtime 资产一致
-
-The Chinese and English Native Skill and command reference MUST describe the same scope-change behavior, and generated Native runtime assets MUST be rebuilt from source.
-
-#### Scenario: Skill 恢复流程
-
-- **WHEN** a user asks for a project write during Verify or Archive
-- **THEN** the Skill MUST instruct the Agent to inspect ownership, avoid a direct project edit, return the current change to Build when applicable, and re-read status before continuing
-
-#### Scenario: 生成资产
-
-- **WHEN** Native Runtime source or CLI entry changes
-- **THEN** `pnpm build:native-runtime` MUST regenerate the self-contained Native runtime and command bundles
-- **AND** repository asset and runtime tests MUST verify the generated outputs
+- 中文和英文 Native Skill/command reference MUST 描述相同的 request ownership、return Shape/Build 与重新验收语义。
+- 回归测试 MUST 覆盖显式返回、Hook 自动失效、正式需求返回 Shape、参数互斥、iteration/goal-cycle 计数、portable/local 版本对齐和中断恢复。
+- Native Runtime source 变化后 MUST 重建 self-contained runtime 与命令 bundle，并由 repository asset tests 校验。
 
 ## 非目标
 
 - 不改变 Classic workflow。
-- 不移除 Verify/Archive 的 fail-closed 项目写入保护。
-- 不新增独立 Native phase、外部 Skill 依赖或手工状态编辑能力。
+- 不保证发现宿主没有上报的外部写入。
+- 不新增 Native phase、项目内容证明链、外部 Skill 依赖或手工状态编辑能力。

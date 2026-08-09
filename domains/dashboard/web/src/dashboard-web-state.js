@@ -13,6 +13,25 @@ export function refreshDashboardPage(existing, fresh) {
   };
 }
 
+export function nativeDashboardChangeKey(change) {
+  return `${change.status}:${change.archiveName ?? ''}:${change.name}`;
+}
+
+export function refreshNativeDashboardPage(existing, fresh) {
+  if (!existing) return fresh;
+
+  const existingHead = existing.items.slice(0, fresh.items.length).map(nativeDashboardChangeKey);
+  const freshKeys = fresh.items.map(nativeDashboardChangeKey);
+  if (existing.total !== fresh.total || existingHead.length !== freshKeys.length) return fresh;
+  if (!existingHead.every((key, index) => key === freshKeys[index])) return fresh;
+
+  const freshByKey = new Map(fresh.items.map((item) => [nativeDashboardChangeKey(item), item]));
+  return {
+    ...existing,
+    items: existing.items.map((item) => freshByKey.get(nativeDashboardChangeKey(item)) ?? item),
+  };
+}
+
 export function isStaleNativeDashboardCursorError(error) {
   return error instanceof Error && error.message === 'Stale Native Dashboard change cursor';
 }

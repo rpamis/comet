@@ -19,6 +19,10 @@ async function combined(files: string[]): Promise<string> {
   return (await Promise.all(files.map((file) => fs.readFile(file, 'utf8')))).join('\n');
 }
 
+async function nativeSpec(name: string): Promise<string> {
+  return fs.readFile(path.resolve('docs', 'comet', 'specs', name, 'spec.md'), 'utf8');
+}
+
 describe('Comet Native isolation boundaries', () => {
   it('keeps the Native domain independent from Classic and OpenSpec execution', async () => {
     const files = (await filesUnder(path.resolve('domains', 'comet-native'))).filter((file) =>
@@ -71,5 +75,43 @@ describe('Comet Native isolation boundaries', () => {
         entryImports.every((entry) => /(?:current-selection|hook-adapter|hook-types)/u.test(entry)),
       ).toBe(true);
     }
+  });
+
+  it('keeps canonical Native specs on the portable verification architecture', async () => {
+    const [verification, loop, storage, resume, scope, workspace, init, parallel] =
+      await Promise.all([
+        nativeSpec('native-verification-evidence'),
+        nativeSpec('native-completion-loop'),
+        nativeSpec('native-runtime-storage'),
+        nativeSpec('native-ambient-resume'),
+        nativeSpec('native-scope-reopen'),
+        nativeSpec('native-shape-workspace-isolation'),
+        nativeSpec('native-init-workspace-defaults'),
+        nativeSpec('native-parallel-worktree-tests'),
+      ]);
+    const canonical = [verification, loop, storage, resume, scope, workspace, init, parallel].join(
+      '\n',
+    );
+
+    expect(verification).toContain('builder_execution_ref');
+    expect(verification).toContain('verifier_execution_ref');
+    expect(verification).toContain('每个已知验收 ID 恰好返回一次');
+    expect(verification).toContain('Archive 不重新分派 Verifier');
+    expect(loop).toContain('Build ↔ Verify');
+    expect(loop).toContain('连续三个 attempt');
+    expect(loop).toContain('native.max_verify_failures');
+    expect(storage).toContain('一个 active change 只有一份可携带权威：`comet-state.yaml`');
+    expect(storage).toContain('│   ├── state.json');
+    expect(storage).toContain('Archive 不重新运行必要检查或 Verifier');
+    expect(resume).toContain('本机 Runtime 缺失不能使可同步的 active change 消失');
+    expect(scope).toContain('实现继续使当前候选失效并返回 Build');
+    expect(scope).toContain('正式需求修改返回 Shape');
+    expect(workspace).toContain('portable workspace binding');
+    expect(init).toContain('!.comet/config.yaml');
+    expect(parallel).toContain('Builder/Verifier separation');
+
+    expect(canonical).not.toMatch(
+      /contractHash|approved_contract_hash|implementation_scope|verification_evidence|partial_allowance|base_hash|baseline-manifest\.json|trajectory\.jsonl|checkpoint-journal\.json|typed receipts|Archive freshness/iu,
+    );
   });
 });

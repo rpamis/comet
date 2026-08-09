@@ -1,6 +1,6 @@
 # Native Artifact Reference
 
-Read this file only when editing the brief, complete target specifications, verification, or acceptance evidence.
+Read this file only when editing the brief or complete target specifications, or viewing the Runtime-generated acceptance report.
 
 ## Editing boundary
 
@@ -12,24 +12,19 @@ Each active change directory contains only user-readable formal artifacts that c
   brief.md
   specs/<capability>/spec.md
   verification.md
-  evidence.md
 ```
 
-The Agent edits only the brief, complete target specifications, and verification. Runtime manages `comet-state.yaml` and `evidence.md`. Files that have not yet been generated may be absent.
+The Agent edits only the brief and complete target specifications. Runtime manages `comet-state.yaml` and `verification.md`; the report may be absent before the first valid Verify.
 
-Machine Runtime lives under the project-local, Git-ignored `.comet/runtime/native/`: per-change baseline, workspace, Run, trajectory, scope, receipts, and checkpoints live under `changes/<change-name>/`; global locks and transactions live under `locks/` and `transactions/`. Only `.comet/config.yaml` selects the artifact root, and it does not relocate machine Runtime. Do not migrate or repair Runtime files manually.
+Local Runtime lives under the Git-ignored `.comet/runtime/native/`. Each active change uses only `changes/<change-name>/state.json` and `logs/`; project-level locks and short-lived transactions live under the same Runtime root. Do not create, migrate, or repair these files manually.
 
-## Evidence projection
+## Portable state and report
 
-After every evidence-bearing transition (entering or leaving Build, Verify), the Runtime regenerates a read-only, human-readable projection at the change root:
+`comet-state.yaml` is the portable semantic authority at stable workflow boundaries. It stores phase, status, state version, Loop counters, acceptance results, Builder handoff, blockers, next action, check summaries, and compact history. It does not store local processes, absolute paths, or complete command output, and the Agent must not edit it.
 
-```text
-<artifact-root>/comet/changes/<change-name>/evidence.md
-```
+`verification.md` is the human-readable projection Runtime generates from the same YAML state version. When the report is missing or behind, regenerate only the report without rerunning checks or the Verifier; Markdown body text cannot advance machine state.
 
-It translates the hash-named, content-addressed evidence in project-local Runtime into readable text — implementation scope (which files changed, byte deltas), verification outcome (acceptance pass/fail, coverage totals), and check receipts (command, exit code, summary). Open it when debugging or inspecting a change instead of parsing machine files.
-
-The projection is a read-only derivative: the Runtime overwrites it on every transition, it must not be hand-edited, and it must never be cited as verification evidence. Machine references in state keep the stable logical `runtime/...` form regardless of physical storage.
+`.comet/config.yaml` selects the workflow and artifact root. Synchronize it for cross-device discovery of a non-default root; every other `.comet/*` path remains local-only.
 
 ## Brief
 
@@ -56,51 +51,33 @@ Only real unresolved user questions use these forms under Open questions:
 
 After each decision is confirmed, write it immediately into Decisions and complete target specifications before removing the blocker. Do not store hidden reasoning.
 
+Acceptance criteria must be specific, observable, and non-duplicated. Use simple sequential IDs such as `A1`, `A2`, and `A3`; an ID only maps results, is not calculated from content, and does not identify a file. Runtime stores each full item and its source when Shape is confirmed.
+
 ## Complete target specifications
 
 Each `specs/<capability>/spec.md` describes the capability's complete behavior after Archive, not an incremental patch:
 
 - new capability: write a complete specification;
-- existing capability: write the complete replacement;
+- existing capability: write the complete modified specification;
 - removed capability: use CLI `spec remove`, not only file deletion.
 
-On canonical conflict, reread the latest specification, rewrite the complete target according to user intent, and use the Runtime-provided rebase action. Do not edit operations, base hashes, or state.
+On canonical conflict, reread the latest specification, rewrite the complete target according to user intent, and use the Runtime-provided rebase action. Do not edit operations or state.
 
 ## Verification
 
-`verification.md` uses these non-empty level-one headings:
+Runtime generates `verification.md` with this recommended structure:
 
 ```text
-# Acceptance evidence
-# Commands and results
-# Skipped checks
-# Spec consistency
-# Known limitations and risks
-# Conclusion
+# Verification
+## Current result
+## Acceptance
+## Checks
+## Blockers
+## Risks and skipped work
+## Previous iterations
+## Conclusion
 ```
 
-Record actual commands, results, and reviewable facts. Put unrun checks under Skipped checks. Failed, skipped, blocked, or timed-out results cannot be reported as passed.
+The report shows every acceptance result and reason, redacted command previews and statuses for real checks, blockers, risks, and compact Loop history. Complete stdout and stderr remain only in local logs.
 
-## Acceptance evidence
-
-Use Runtime-provided acceptance IDs and receipt refs; do not calculate IDs or reuse evidence across changes. Prepare a JSON entries array, run `evidence format`, and place its machine block unchanged under `# Acceptance evidence`.
-
-Basic entries:
-
-```json
-[
-  {
-    "acceptance_id": "acceptance-<sha256>",
-    "status": "passed",
-    "evidence_refs": ["runtime/evidence/receipts/<sha256>.json"]
-  },
-  {
-    "acceptance_id": "acceptance-<sha256>",
-    "status": "failed",
-    "evidence_refs": [],
-    "skipped_reason": "actual failure or incomplete reason"
-  }
-]
-```
-
-Do not hand-format the machine block. Every receipt must represent a real execution or observation and bind to the current revision, contract, scope, snapshot, and artifacts.
+Do not handwrite or patch the report to change a conclusion. Failed, blocked, unrun, or timed-out work cannot appear as passed; only complete acceptance decisions and successful required checks for the current candidate in YAML can produce a final pass.

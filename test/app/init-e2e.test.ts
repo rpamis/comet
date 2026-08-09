@@ -346,6 +346,10 @@ describe('comet init E2E', () => {
       expect(projectConfig).toContain('default_workflow: native');
       expect(projectConfig).toContain('artifact_root: docs');
       expect(projectConfig).toContain('clarification_mode: batch');
+      expect(projectConfig).not.toMatch(/^\s+snapshot:/mu);
+      await expect(fs.readFile(path.join(tmpDir, '.gitignore'), 'utf8')).resolves.toContain(
+        '!/.comet/config.yaml',
+      );
       expect(mockedExecFileSync.mock.calls.some((call) => String(call[0]) === 'openspec')).toBe(
         false,
       );
@@ -557,7 +561,7 @@ describe('comet init E2E', () => {
     });
   });
 
-  it('repairs missing Native defaults while initializing Both over a legacy Classic root', async () => {
+  it('repairs missing Native defaults and removes legacy snapshot config while initializing Both', async () => {
     mockExternalSuccess();
     await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
     await fs.mkdir(path.join(tmpDir, 'openspec', 'changes', 'archive'), { recursive: true });
@@ -597,13 +601,11 @@ describe('comet init E2E', () => {
       projectConfigUpdated: true,
     });
     const config = parse(await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8')) as {
-      native?: { artifact_root?: string; snapshot?: { exclude?: string[] } };
+      native?: { artifact_root?: string; snapshot?: unknown };
       classic?: { artifact_layout?: string };
     };
     expect(config.native?.artifact_root).toBe('docs');
-    expect(config.native?.snapshot?.exclude).toEqual(
-      expect.arrayContaining(['custom/init-generated/**', '**/.idea/**', '**/node_modules/**']),
-    );
+    expect(config.native?.snapshot).toBeUndefined();
     expect(config.classic?.artifact_layout).toBe('legacy');
     await expect(fs.stat(path.join(tmpDir, 'openspec', 'config.yaml'))).resolves.toBeDefined();
     await expect(fs.access(path.join(tmpDir, 'docs', 'openspec'))).rejects.toMatchObject({
@@ -1551,6 +1553,9 @@ describe('comet init E2E', () => {
     await expect(
       fs.readFile(path.join(os.homedir(), '.comet', 'config.yaml'), 'utf8'),
     ).resolves.toContain('artifact_root: artifacts');
+    await expect(
+      fs.readFile(path.join(os.homedir(), '.comet', 'config.yaml'), 'utf8'),
+    ).resolves.not.toMatch(/^\s+snapshot:/mu);
     await expect(fs.access(path.join(os.homedir(), 'artifacts', 'comet'))).rejects.toThrow();
     await expect(fs.access(path.join(tmpDir, '.comet', 'config.yaml'))).rejects.toThrow();
   });
@@ -1597,10 +1602,8 @@ describe('comet init E2E', () => {
     ).resolves.toMatch(/ambient_resume: false/);
     const globalConfig = parse(
       await fs.readFile(path.join(fakeHome, '.comet', 'config.yaml'), 'utf8'),
-    ) as { native: { snapshot: { exclude: string[] } } };
-    expect(globalConfig.native.snapshot.exclude).toEqual(
-      expect.arrayContaining(['custom/global-generated/**', '**/.idea/**', '**/node_modules/**']),
-    );
+    ) as { native: { snapshot?: unknown } };
+    expect(globalConfig.native.snapshot).toBeUndefined();
   });
 
   it('does not publish a global Classic default when OpenSpec initialization fails', async () => {

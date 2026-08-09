@@ -1,6 +1,6 @@
 # Native 产物参考
 
-只在编辑 brief、完整目标规格、verification 或验收证据时读取。
+只在编辑 brief、完整目标规格，或查看 Runtime 生成的验收报告时读取。
 
 ## 编辑边界
 
@@ -12,24 +12,19 @@
   brief.md
   specs/<capability>/spec.md
   verification.md
-  evidence.md
 ```
 
-Agent 只编辑 brief、完整目标规格和 verification；`comet-state.yaml` 与 `evidence.md` 由 Runtime 管理。文件尚未生成时可以不存在。
+Agent 只编辑 brief 和完整目标规格。`comet-state.yaml` 与 `verification.md` 由 Runtime 管理；报告在首次有效 Verify 前可以不存在。
 
-机器 Runtime 固定保存在项目本地且被 Git 忽略的 `.comet/runtime/native/`：per-change baseline、workspace、Run、trajectory、scope、receipt 与 checkpoint 位于 `changes/<change-name>/`，全局锁与事务位于 `locks/` 和 `transactions/`。artifact root 只由 `.comet/config.yaml` 指定，不改变机器 Runtime 的位置。不要手工迁移或修复 Runtime 文件。
+本机 Runtime 固定保存在被 Git 忽略的 `.comet/runtime/native/`。每个 active change 只使用 `changes/<change-name>/state.json` 和 `logs/`；项目级锁与短生命周期事务位于同一 Runtime 根。不要手工创建、迁移或修复这些文件。
 
-## 证据投影
+## 可携带状态与报告
 
-每次写入 evidence 的推进（进入或离开 Build、Verify）后，Runtime 会在 change 根重新生成只读的人类可读投影：
+`comet-state.yaml` 是稳定工作流边界的可携带语义权威，保存 phase、status、状态版本、Loop 计数、验收结果、Builder handoff、blocker、下一动作、检查摘要和精简历史。它不记录本机进程、绝对路径或完整命令输出，Agent 不得手改。
 
-```text
-<artifact-root>/comet/changes/<change-name>/evidence.md
-```
+`verification.md` 是 Runtime 根据同一 YAML 状态版本生成的人类可读投影。报告缺失或落后时只需重建报告，不重新执行检查或 Verifier；Markdown 正文不能反向推进机器状态。
 
-它把项目本地 Runtime 中 hash 命名的内容寻址证据翻译成可读文字——实现范围（改了哪些文件、字节变化）、验证结论（验收点 pass/fail、覆盖统计）、检查收据（命令、退出码、摘要）。调试或排查 change 时打开它即可，不必解析机器文件。
-
-该投影是只读衍生品：Runtime 每次推进都会覆写，不可手改，也不能当作验证证据引用。状态中的机器引用继续使用稳定的 `runtime/...` 逻辑格式，与物理存储位置无关。
+`.comet/config.yaml` 决定 workflow 和 artifact root。需要跨设备自动发现非默认根时同步该文件；其余 `.comet/*` 仍保持本机私有。
 
 ## Brief
 
@@ -56,51 +51,33 @@ Open questions 中只有真实未解决的用户问题使用：
 
 每个决定确认后立即写入 Decisions 和完整目标规格，再移除对应阻塞项。不要保存隐藏推理。
 
+验收标准必须具体、可观察且互不重复。使用简单顺序 ID，例如 `A1`、`A2`、`A3`；ID 只用于结果映射，不从内容计算，也不代表文件身份。Runtime 在 Shape 确认时保存完整验收文字及其来源。
+
 ## 完整目标规格
 
 每个 `specs/<capability>/spec.md` 描述归档后 capability 的完整行为，不是相对旧文本的增量 patch：
 
 - 新 capability：写完整规格；
-- 已有 capability：写替换后的完整规格；
+- 已有 capability：写修改后的完整规格；
 - 删除 capability：使用 CLI 的 `spec remove`，不只删除文件。
 
-canonical 冲突时重读最新规格，按用户意图改写完整目标，再使用 Runtime 返回的 rebase 动作。不要手改 operation、base hash 或状态。
+canonical 冲突时重读最新规格，按用户意图改写完整目标，再使用 Runtime 返回的 rebase 动作。不要手改 operation 或状态。
 
 ## Verification
 
-`verification.md` 使用以下非空一级标题：
+`verification.md` 由 Runtime 生成，建议结构如下：
 
 ```text
-# Acceptance evidence
-# Commands and results
-# Skipped checks
-# Spec consistency
-# Known limitations and risks
-# Conclusion
+# Verification
+## Current result
+## Acceptance
+## Checks
+## Blockers
+## Risks and skipped work
+## Previous iterations
+## Conclusion
 ```
 
-记录真实命令、结果和可复核事实。未运行检查放入 Skipped checks；失败、跳过、阻塞或超时不能写成 pass。
+报告展示每个验收项的结果和原因、真实检查的脱敏命令预览与状态、阻塞项、风险以及精简 Loop 历史。完整 stdout/stderr 只留在本机日志。
 
-## Acceptance evidence
-
-使用 Runtime 返回的 acceptance ID 和 receipt ref，不自行计算或跨 change 复用。准备 JSON 条目数组，再用 `evidence format` 生成机器块并原样放入 `# Acceptance evidence`。
-
-基本条目：
-
-```json
-[
-  {
-    "acceptance_id": "acceptance-<sha256>",
-    "status": "passed",
-    "evidence_refs": ["runtime/evidence/receipts/<sha256>.json"]
-  },
-  {
-    "acceptance_id": "acceptance-<sha256>",
-    "status": "failed",
-    "evidence_refs": [],
-    "skipped_reason": "实际失败或未完成原因"
-  }
-]
-```
-
-不要手工排版机器块。receipt 必须对应真实执行或观察，并与当前 revision、contract、scope、snapshot 和 artifact 绑定。
+不要手写或修补报告来改变结论。失败、阻塞、未运行或超时不能显示成通过；只有 YAML 中当前候选的完整验收结论和成功必要检查可以形成最终 pass。

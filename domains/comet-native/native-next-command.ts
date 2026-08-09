@@ -1,8 +1,17 @@
-import { inspectNativeStatus } from './native-diagnostics.js';
-import { readNativeChange } from './native-change.js';
-import { writeNativeEvidenceProjection } from './native-evidence-projection.js';
-import { advanceNativeChange } from './native-transitions.js';
-import type { NativeAdvanceEvidence } from './native-types.js';
+import { nativePortableContinuation } from './native-portable-continuation.js';
+import { migrateNativeLegacyChangeToPortable } from './native-portable-migration-runtime.js';
+import { recoverNativePortableChange } from './native-portable-recovery.js';
+import { applyNativeRunnerInput, readNativeRunnerInput } from './native-runner-input.js';
+import { NATIVE_SKILL_COORDINATION } from './native-runner-protocol.js';
+import {
+  confirmNativePortableShape,
+  confirmNativePortableSkillCoordinatedPass,
+  confirmNativePortableVerifierUnavailable,
+  isNativePortableChange,
+  resolveNativePortableVerifierBlocker,
+  returnNativePortableChangeToBuild,
+  retryNativePortableVerifier,
+} from './native-portable-runtime.js';
 import {
   assertNoArguments,
   configuredPaths,
@@ -10,7 +19,6 @@ import {
   requiredPositional,
   success,
   takeFlag,
-  takeMany,
   takeOption,
   type DispatchResult,
 } from './native-cli-shared.js';
@@ -21,124 +29,133 @@ export async function nativeNextCommand(
 ): Promise<DispatchResult> {
   const name = requiredPositional(args, 'change name');
   const summary = takeOption(args, '--summary');
-  if (!summary) throw new NativeUsageError('--summary is required');
+  const runnerInputFile = takeOption(args, '--runner-input');
   const confirmed = takeFlag(args, '--confirmed');
   const returnToBuild = takeFlag(args, '--return-to-build');
-  const artifacts = takeMany(args, '--artifact');
-  const noCodeReason = takeOption(args, '--no-code-reason');
-  const allowPartialScopeHash = takeOption(args, '--allow-partial-scope');
-  const partialReason = takeOption(args, '--partial-reason');
-  const verificationResult = takeOption(args, '--result');
-  const verificationReport = takeOption(args, '--report');
-  const repairOverrideSignature = takeOption(args, '--override-repair');
-  const repairOverrideSummary = takeOption(args, '--override-summary');
+  const retryVerifier = takeFlag(args, '--retry-verifier');
+  const resolveVerifierBlocker = takeFlag(args, '--resolve-verifier-blocker');
   if (
-    verificationResult !== undefined &&
-    verificationResult !== 'pass' &&
-    verificationResult !== 'fail'
-  ) {
-    throw new NativeUsageError('--result must be pass or fail');
-  }
-  if ((allowPartialScopeHash === undefined) !== (partialReason === undefined)) {
-    throw new NativeUsageError(
-      '--allow-partial-scope and --partial-reason must be provided together',
-    );
-  }
-  if (allowPartialScopeHash && !/^[a-f0-9]{64}$/u.test(allowPartialScopeHash)) {
-    throw new NativeUsageError('--allow-partial-scope must be a SHA-256 hash');
-  }
-  if (allowPartialScopeHash && !confirmed) {
-    throw new NativeUsageError('--allow-partial-scope requires --confirmed');
-  }
-  if ((repairOverrideSignature === undefined) !== (repairOverrideSummary === undefined)) {
-    throw new NativeUsageError(
-      '--override-repair and --override-summary must be provided together',
-    );
-  }
-  if (repairOverrideSignature && !/^[a-f0-9]{64}$/u.test(repairOverrideSignature)) {
-    throw new NativeUsageError('--override-repair must be a SHA-256 hash');
-  }
-  if (repairOverrideSignature && verificationResult !== undefined) {
-    throw new NativeUsageError('--override-repair cannot be combined with --result');
-  }
-  if (
-    returnToBuild &&
-    (confirmed ||
-      artifacts.length > 0 ||
-      noCodeReason !== undefined ||
-      allowPartialScopeHash !== undefined ||
-      partialReason !== undefined ||
-      verificationResult !== undefined ||
-      verificationReport !== undefined ||
-      repairOverrideSignature !== undefined ||
-      repairOverrideSummary !== undefined)
+    [confirmed, returnToBuild, retryVerifier, resolveVerifierBlocker].filter(Boolean).length > 1
   ) {
     throw new NativeUsageError(
-      '--return-to-build cannot be combined with confirmation, artifact, verification, partial-scope, or repair evidence',
+      '--confirmed, --return-to-build, --retry-verifier, and --resolve-verifier-blocker are mutually exclusive',
     );
   }
+  // Agent-authored Build/Verify completion fields retired with Native v4.
+  // Parsing the complete public surface before migration prevents a legacy
+  // invocation from silently accepting one of those old fields.
   assertNoArguments(args);
-  const { config, paths } = await configuredPaths(projectRoot);
-  if (returnToBuild) {
-    const state = await readNativeChange(paths, name);
-    if (state.phase !== 'verify' && state.phase !== 'archive') {
-      throw new NativeUsageError('--return-to-build is only valid in Verify or Archive');
+
+  const configured = await configuredPaths(projectRoot);
+  if (!(await isNativePortableChange(configured.paths, name))) {
+    if (runnerInputFile) {
+      throw new NativeUsageError('--runner-input is only valid for portable Native changes');
     }
+    if (!summary) throw new NativeUsageError('--summary is required');
+    // The first mutating command on a legacy active change performs the
+    // deterministic migration and stops at the resulting stable boundary.
+    const state = await migrateNativeLegacyChangeToPortable({
+      paths: configured.paths,
+      name,
+    });
+    return success('next', {
+      state,
+      migration: { completed: true, summary },
+      continuation: nativePortableContinuation(state),
+    });
   }
-  const evidence: NativeAdvanceEvidence = {
-    summary,
-    ...(returnToBuild ? { returnToBuild: true } : {}),
-    ...(confirmed ? { confirmed: true } : {}),
-    ...(artifacts.length > 0 ? { artifacts } : {}),
-    ...(noCodeReason ? { noCodeReason } : {}),
-    ...(allowPartialScopeHash ? { allowPartialScopeHash } : {}),
-    ...(partialReason ? { partialReason } : {}),
-    ...(verificationResult ? { verificationResult } : {}),
-    ...(verificationReport ? { verificationReport } : {}),
-    ...(repairOverrideSignature ? { repairOverrideSignature } : {}),
-    ...(repairOverrideSummary ? { repairOverrideSummary } : {}),
-  };
-  const result = await advanceNativeChange({
-    paths,
-    name,
-    evidence,
-    clarificationMode: config.native.clarification_mode,
-    maxVerifyFailures: config.native.max_verify_failures,
-    hooks: {
-      afterChangeStateWritten: async () => {
-        // The projection is a read-only derivative. A failure here must not
-        // roll back a transition that already committed.
-        try {
-          await writeNativeEvidenceProjection(paths, name);
-        } catch {
-          // Projection regeneration is best-effort; the canonical evidence
-          // under runtime/evidence/ remains the source of truth.
-        }
-      },
-    },
-  });
-  if (result.next === 'manual') {
-    const repairBlocked =
-      result.repair?.disposition === 'manual-stop' ||
-      result.repair?.disposition === 'hard-stop' ||
-      result.findings.some((finding) =>
-        ['repair-stagnation-stop', 'repair-iteration-limit', 'repair-override-exhausted'].includes(
-          finding.code,
-        ),
+
+  if (runnerInputFile) {
+    if (summary || confirmed || returnToBuild || retryVerifier || resolveVerifierBlocker) {
+      throw new NativeUsageError(
+        '--runner-input cannot be combined with --summary or Agent transition flags',
       );
+    }
+    const recovery = await recoverNativePortableChange({
+      paths: configured.paths,
+      name,
+      preserveRunningExecution: true,
+    });
+    const current = recovery.state;
+    if (
+      recovery.action === 'await-user' ||
+      recovery.action === 'done' ||
+      recovery.reason !== 'available'
+    ) {
+      return success('next', {
+        state: current,
+        recovery,
+        continuation: nativePortableContinuation(current),
+      });
+    }
+    const input = await readNativeRunnerInput(runnerInputFile, projectRoot);
+    const result = await applyNativeRunnerInput({
+      paths: configured.paths,
+      name,
+      input,
+      maxVerifyFailures: configured.config.native.max_verify_failures,
+    });
+    return success('next', { ...result, coordination: NATIVE_SKILL_COORDINATION });
+  }
+  const recovery = await recoverNativePortableChange({ paths: configured.paths, name });
+  const current = recovery.state;
+  if (!summary) throw new NativeUsageError('--summary is required');
+  let state;
+  if (confirmed) {
+    if (current.phase === 'shape') {
+      state = await confirmNativePortableShape({ paths: configured.paths, name });
+    } else if (
+      current.phase === 'verify' &&
+      current.status === 'await-user' &&
+      current.loop.next_action === 'confirm-skill-coordinated-pass'
+    ) {
+      state = await confirmNativePortableSkillCoordinatedPass({
+        paths: configured.paths,
+        name,
+      });
+    } else if (
+      current.phase === 'verify' &&
+      current.status === 'await-user' &&
+      current.loop.next_action === 'confirm-verifier-unavailable'
+    ) {
+      state = await confirmNativePortableVerifierUnavailable({
+        paths: configured.paths,
+        name,
+        summary,
+      });
+    } else {
+      throw new NativeUsageError(
+        '--confirmed is only valid in Shape, for an accepted Skill-coordinated pass, or for a user-accepted degraded verification fallback',
+      );
+    }
+  } else if (returnToBuild) {
+    state = await returnNativePortableChangeToBuild({
+      paths: configured.paths,
+      name,
+      reason: summary,
+    });
+  } else if (retryVerifier) {
+    state = await retryNativePortableVerifier({ paths: configured.paths, name });
+  } else if (resolveVerifierBlocker) {
+    state = await resolveNativePortableVerifierBlocker({ paths: configured.paths, name });
+  } else {
+    if (recovery.reason !== 'available') {
+      return success('next', {
+        state: current,
+        recovery,
+        continuation: nativePortableContinuation(current),
+      });
+    }
     return {
       command: 'next',
-      exitCode: repairBlocked ? 75 : 65,
-      data: result,
+      exitCode: 65,
+      data: { state: current, continuation: nativePortableContinuation(current) },
       error: {
-        code: repairBlocked ? 'blocked' : 'invalid-data',
-        message: result.findings[0]?.message ?? 'Native phase guard failed',
+        code: 'invalid-data',
+        message:
+          'This Native step requires the skill-coordinated --runner-input action returned by continuation; public JSON cannot supply identity, provider, execution ref, or candidate binding',
       },
     };
   }
-  const status = await inspectNativeStatus(paths, name, {
-    clarificationMode: config.native.clarification_mode,
-    maxVerifyFailures: config.native.max_verify_failures,
-  });
-  return success('next', { ...result, continuation: status.continuation });
+  return success('next', { state, continuation: nativePortableContinuation(state) });
 }

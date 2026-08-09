@@ -8,12 +8,19 @@ import {
   releaseNativeLock,
   type NativeLock,
 } from './native-lock.js';
+import {
+  describeNativePortableTransactionEntry,
+  isNativePortableTransactionUnfinished,
+  readNativePortableTransactionEntry,
+  type NativePortableTransactionRef,
+} from './native-portable-transactions.js';
 import { readNativeTransaction } from './native-transaction.js';
 import type { NativeProjectPaths } from './native-types.js';
 
 async function hasUnfinishedTransaction(
   paths: NativeProjectPaths,
   allowedTransactionId?: string,
+  allowedPortableTransaction?: NativePortableTransactionRef,
 ): Promise<boolean> {
   let entries;
   try {
@@ -34,6 +41,24 @@ async function hasUnfinishedTransaction(
         return true;
       }
     } catch {
+      return true;
+    }
+  }
+  for (const entry of entries) {
+    if (!describeNativePortableTransactionEntry(entry.name)) continue;
+    try {
+      const transaction = await readNativePortableTransactionEntry(paths, entry.name);
+      if (!transaction) continue;
+      if (
+        allowedPortableTransaction?.kind === transaction.kind &&
+        allowedPortableTransaction.change === transaction.change
+      ) {
+        continue;
+      }
+      if (isNativePortableTransactionUnfinished(transaction)) return true;
+    } catch {
+      // A file with an exact portable transaction name must be diagnosed or
+      // removed before a mutation can safely cross its unknown boundary.
       return true;
     }
   }
@@ -64,12 +89,21 @@ export async function withNativeMutationLock<T>(
   paths: NativeProjectPaths,
   operation: string,
   work: () => Promise<T>,
-  options?: { allowedTransactionId?: string },
+  options?: {
+    allowedTransactionId?: string;
+    allowedPortableTransaction?: NativePortableTransactionRef;
+  },
 ): Promise<T> {
   const lock = await acquireNativeMutationLock(paths, operation);
   try {
     await assertNoPendingNativeRootMove(paths.projectRoot);
-    if (await hasUnfinishedTransaction(paths, options?.allowedTransactionId)) {
+    if (
+      await hasUnfinishedTransaction(
+        paths,
+        options?.allowedTransactionId,
+        options?.allowedPortableTransaction,
+      )
+    ) {
       throw new Error('Native transaction recovery is required before another mutation');
     }
     return await work();

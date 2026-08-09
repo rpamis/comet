@@ -16,7 +16,7 @@ describe('dashboard demo data', () => {
     const { DEMO_SNAPSHOT } = await import('../../../domains/dashboard/web/demo.js');
 
     expect(DEMO_SNAPSHOT.native).toMatchObject({
-      schema: 'comet.dashboard.native.v1',
+      schema: 'comet.dashboard.native.v2',
       totalChangeCount: DEMO_SNAPSHOT.native.changes.length,
       visibleChangeCount: DEMO_SNAPSHOT.native.changes.length,
       omittedChangeCount: 0,
@@ -24,16 +24,40 @@ describe('dashboard demo data', () => {
     });
     expect(DEMO_SNAPSHOT.native.changes.slice(0, 3).map((change) => change.phase)).toEqual([
       'build',
-      'verify',
+      'build',
       'archive',
     ]);
-    expect(DEMO_SNAPSHOT.native.changes.some((change) => change.archiveReady)).toBe(true);
+    expect(DEMO_SNAPSHOT.native.changes.slice(0, 3).map((change) => change.loop.stage)).toEqual([
+      'building',
+      'repairing',
+      'done',
+    ]);
     expect(
-      DEMO_SNAPSHOT.native.changes.some((change) => change.continuation?.requiresUserDecision),
+      DEMO_SNAPSHOT.native.changes.some(
+        (change) =>
+          change.acceptance?.passed > 0 &&
+          change.acceptance?.failed > 0 &&
+          change.acceptance?.blocked > 0 &&
+          change.acceptance?.pending > 0,
+      ),
     ).toBe(true);
-    expect(DEMO_SNAPSHOT.native.changes.some((change) => change.conflicts.peers.length > 0)).toBe(
-      true,
-    );
+    expect(DEMO_SNAPSHOT.native.changes.some((change) => change.checks.length > 0)).toBe(true);
+    expect(DEMO_SNAPSHOT.native.changes.some((change) => change.blockers.length > 0)).toBe(true);
+    expect(DEMO_SNAPSHOT.native.changes.some((change) => change.history.length > 0)).toBe(true);
+    expect(
+      DEMO_SNAPSHOT.native.changes.some((change) => change.historyOverflow.droppedEntries > 0),
+    ).toBe(true);
+    expect(
+      DEMO_SNAPSHOT.native.changes.some((change) => change.localExecution.reason === 'current'),
+    ).toBe(true);
+    expect(
+      DEMO_SNAPSHOT.native.changes.some(
+        (change) => change.localExecution.reason === 'version-mismatch',
+      ),
+    ).toBe(true);
+    expect(
+      DEMO_SNAPSHOT.native.changes.some((change) => change.localExecution.reason === 'archived'),
+    ).toBe(true);
   });
 
   it('populates enough changes to demonstrate bounded side-panel scrolling', async () => {
@@ -44,6 +68,6 @@ describe('dashboard demo data', () => {
     expect(DEMO_SNAPSHOT.native.changes.length).toBeGreaterThanOrEqual(10);
     expect(DEMO_SNAPSHOT.changes.active[0].risks.length).toBeGreaterThanOrEqual(8);
     expect(DEMO_SNAPSHOT.git.recentCommits.length).toBeGreaterThanOrEqual(10);
-    expect(DEMO_SNAPSHOT.native.changes[0].conflicts.peers.length).toBeGreaterThanOrEqual(8);
+    expect(DEMO_SNAPSHOT.native.changes[0].history.length).toBeGreaterThanOrEqual(8);
   });
 });

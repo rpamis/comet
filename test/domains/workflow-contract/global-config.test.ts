@@ -34,9 +34,9 @@ describe('global workflow configuration', () => {
       workflows: ['native'],
       native: { artifact_root: 'docs', language: 'zh-CN' },
     });
-    await expect(
-      fs.readFile(path.join(homeDir, '.comet', 'config.yaml'), 'utf8'),
-    ).resolves.toContain('schema: comet.global.v1');
+    const source = await fs.readFile(path.join(homeDir, '.comet', 'config.yaml'), 'utf8');
+    expect(source).toContain('schema: comet.global.v1');
+    expect(source).not.toMatch(/^\s+snapshot:/mu);
   });
 
   it('rejects absolute global artifact templates', async () => {

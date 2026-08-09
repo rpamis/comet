@@ -40,6 +40,9 @@ import {
   isManagedHookCommand,
   removeManagedCopilotHookEntries,
   removeManagedHooksFromJsonFile,
+  getCentralSkillsDir,
+  removeRetiredCometOwnedSkillPaths,
+  RETIRED_COMET_OWNED_SKILL_PATHS,
 } from './platform-install.js';
 import type { CometWorkflow, InitWorkflowSelection } from '../comet-entry/types.js';
 import { removeCometProjectInstructions } from './project-instructions.js';
@@ -726,6 +729,13 @@ async function removeCometSkillsForPlatform(
   )) {
     if (workflowsToKeep.length > 0) removablePaths.delete(retainedPath);
   }
+  const removeRetiredNativePaths =
+    workflowsToRemove.includes('native') && !workflowsToKeep.includes('native');
+  if (removeRetiredNativePaths) {
+    for (const retiredPath of RETIRED_COMET_OWNED_SKILL_PATHS) {
+      removablePaths.add(retiredPath);
+    }
+  }
   const managedSkills = [...removablePaths];
   const skillsDir = getPlatformSkillsDir(platform, scope);
   const uniqueSkillsDirs = [
@@ -737,6 +747,13 @@ async function removeCometSkillsForPlatform(
   const skillsRemoval = await removeManagedSkillsFromDirs(baseDir, uniqueSkillsDirs, managedSkills);
   let removed = skillsRemoval.removed;
   let failed = skillsRemoval.failed;
+  if (removeRetiredNativePaths) {
+    const centralCleanup = await removeRetiredCometOwnedSkillPaths([
+      path.join(getCentralSkillsDir(baseDir, scope), 'skills'),
+    ]);
+    removed += centralCleanup.removed;
+    failed += centralCleanup.failed;
+  }
 
   if (OPENCODE_STYLE_PLATFORM_IDS.has(platform.id)) {
     const commandsDir = path.join(baseDir, skillsDir, 'commands');
