@@ -1,6 +1,6 @@
 # Native Runtime 独立验收、有界 Loop 与可携带恢复重构设计
 
-> 状态：Implemented on `beta18`（发布版本 `0.4.0-beta.19`）
+> 状态：Implemented on `beta18`（发布版本 `0.4.0-beta.18`）
 > 设计基线：`0.4.0-beta.17`（`38e2aee0`）
 > 影响范围：Native Runtime、Native 中英文 Skill、Dashboard、Native 测试与真实 Agent Eval
 

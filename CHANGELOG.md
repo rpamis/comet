@@ -2,7 +2,7 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.4.0-beta.19] - 2026-08-09
+## What's Changed [0.4.0-beta.18] - 2026-08-09
 
 ### Added
 
