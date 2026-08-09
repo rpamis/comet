@@ -37,6 +37,7 @@ describe('Native runtime release asset', () => {
       'comet-native/reference/clarification.md',
       'comet-native/reference/commands.md',
       'comet-native/reference/recovery.md',
+      'comet-native/reference/workspace.md',
       'comet-native/scripts/comet-native-runtime.mjs',
       'comet-native/scripts/comet-native-hook-guard.mjs',
     ]) {

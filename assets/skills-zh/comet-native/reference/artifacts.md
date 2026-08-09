@@ -14,17 +14,17 @@
   verification.md
 ```
 
-Agent 只编辑 brief 和完整目标规格。`comet-state.yaml` 与 `verification.md` 由 Runtime 管理；报告在首次有效 Verify 前可以不存在。
+Agent 只编辑 brief 和完整目标规格。`comet-state.yaml` 与 `verification.md` 由 Runtime 管理；Runtime 第一次接受 Verifier 结果后生成报告。
 
-本机 Runtime 固定保存在被 Git 忽略的 `.comet/runtime/native/`。每个 active change 只使用 `changes/<change-name>/state.json` 和 `logs/`；项目级锁与短生命周期事务位于同一 Runtime 根。不要手工创建、迁移或修复这些文件。
+本机 Runtime 固定保存在被 Git 忽略的 `.comet/runtime/native/`。每个 active change 的本机状态和日志位于 `changes/<change-name>/state.json` 与 `logs/`；项目级锁和短期事务也放在这个 Runtime 目录中。这些机器文件始终交给 Runtime 创建、迁移和修复。
 
-## 可携带状态与报告
+## 跨设备状态与报告
 
-`comet-state.yaml` 是稳定工作流边界的可携带语义权威，保存 phase、status、状态版本、Loop 计数、验收结果、Builder handoff、blocker、下一动作、检查摘要和精简历史。它不记录本机进程、绝对路径或完整命令输出，Agent 不得手改。
+`comet-state.yaml` 是跨设备恢复时唯一可信的工作流状态，记录当前阶段、状态、版本、验收循环次数、验收结果、Builder 交接摘要、阻塞原因、下一步、检查摘要和精简历史。本机进程、绝对路径和完整命令输出只保留在本机 Runtime 中。该文件由 Runtime 更新。
 
-`verification.md` 是 Runtime 根据同一 YAML 状态版本生成的人类可读投影。报告缺失或落后时只需重建报告，不重新执行检查或 Verifier；Markdown 正文不能反向推进机器状态。
+`verification.md` 是 Runtime 根据同一版本的 YAML 生成的可读验收报告。报告缺失或版本落后时，Runtime 只重建报告，不会因此重新运行检查或 Verifier。工作流进度始终以 YAML 为准，不能通过修改 Markdown 报告来推进。
 
-`.comet/config.yaml` 决定 workflow 和 artifact root。需要跨设备自动发现非默认根时同步该文件；其余 `.comet/*` 仍保持本机私有。
+`.comet/config.yaml` 决定使用哪种工作流，以及 change 产物保存在哪个目录。使用非默认产物目录并需要跨设备恢复时，应同步该文件；其余 `.comet/*` 只保留在本机。
 
 ## Brief
 
@@ -49,35 +49,22 @@ Open questions 中只有真实未解决的用户问题使用：
 - [blocking] CONFIRM: <最终共享理解>
 ```
 
-每个决定确认后立即写入 Decisions 和完整目标规格，再移除对应阻塞项。不要保存隐藏推理。
+每个决定确认后立即写入 Decisions 和完整目标规格，再移除对应阻塞项。正式产物只记录结论和理由，不记录模型的隐藏推理过程。
 
 验收标准必须具体、可观察且互不重复。使用简单顺序 ID，例如 `A1`、`A2`、`A3`；ID 只用于结果映射，不从内容计算，也不代表文件身份。Runtime 在 Shape 确认时保存完整验收文字及其来源。
 
 ## 完整目标规格
 
-每个 `specs/<capability>/spec.md` 描述归档后 capability 的完整行为，不是相对旧文本的增量 patch：
+每个 `specs/<capability>/spec.md` 描述归档后 capability 的完整行为，而不是只写相对旧文本的变化：
 
 - 新 capability：写完整规格；
 - 已有 capability：写修改后的完整规格；
 - 删除 capability：使用 CLI 的 `spec remove`，不只删除文件。
 
-canonical 冲突时重读最新规格，按用户意图改写完整目标，再使用 Runtime 返回的 rebase 动作。不要手改 operation 或状态。
+如果项目中已经归档的正式 Spec 与当前 change 发生冲突，先重读最新 Spec，再按用户意图改写当前 change 的完整目标规格，最后执行 Runtime 返回的重新对齐（rebase）动作。Spec 操作类型和工作流状态仍由 Runtime 管理。
 
 ## Verification
 
-`verification.md` 由 Runtime 生成，建议结构如下：
+报告展示每个验收项的结果和原因、实际检查的脱敏命令预览与状态、阻塞项、风险以及精简的验收循环历史。完整命令输出只保留在本机日志中。
 
-```text
-# Verification
-## Current result
-## Acceptance
-## Checks
-## Blockers
-## Risks and skipped work
-## Previous iterations
-## Conclusion
-```
-
-报告展示每个验收项的结果和原因、真实检查的脱敏命令预览与状态、阻塞项、风险以及精简 Loop 历史。完整 stdout/stderr 只留在本机日志。
-
-不要手写或修补报告来改变结论。失败、阻塞、未运行或超时不能显示成通过；只有 YAML 中当前候选的完整验收结论和成功必要检查可以形成最终 pass。
+验收结论由 Runtime 根据 YAML 生成。失败、阻塞、未运行或超时的项目保持原状态；只有当前候选的全部验收项都有结论，并且必要检查成功，最终结果才是通过。

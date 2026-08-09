@@ -15,7 +15,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Portable Native recovery**: `comet-state.yaml` now records the stable phase, loop, handoff, blockers, checks, and verification summary needed by a new Agent on another synchronized device. `verification.md` is a rebuildable user report, while in-flight execution and logs remain device-local.
 - **Native Dashboard workflow view**: Native details now show Build/Verify stage, iteration, attempt, acceptance outcomes, checks, blockers, and compact history directly from portable state; archived legacy changes remain available through a read-only adapter.
 - **Native clarification and workspace flow**: Batch clarification is now the default for new projects, dependent decisions are mapped before asking, and branch/worktree changes keep structured creation, discovery, recovery, and authorized finish actions.
-- **Native command guidance**: Public commands and bilingual Skills now return the exact next action for Builder handoff, Runtime checks, Verifier dispatch, recovery, and Archive without exposing machine-only state files.
+- **Native command guidance**: Public commands and bilingual Skills now keep normal progression on Runtime continuation, explain the bounded Build/Verify loop, and load workspace, command-exception, or recovery details only when needed without exposing machine-only state files.
 - **Codex Skill invocation policy**: User-facing phase and preset Skills now include display metadata and require explicit invocation, while permanent workflow entry Skills remain available for model routing.
 
 ### Fixed

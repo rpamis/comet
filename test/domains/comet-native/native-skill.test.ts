@@ -14,6 +14,7 @@ const markdownFiles = [
   'reference/clarification.md',
   'reference/commands.md',
   'reference/recovery.md',
+  'reference/workspace.md',
 ] as const;
 
 async function read(language: keyof typeof roots, relative: string): Promise<string> {
@@ -46,6 +47,7 @@ describe('Comet Native Skills', () => {
         'reference/clarification.md',
         'reference/commands.md',
         'reference/recovery.md',
+        'reference/workspace.md',
       ]);
       await Promise.all(links.map((link) => fs.access(path.join(roots[language], link))));
     }
@@ -75,11 +77,11 @@ describe('Comet Native Skills', () => {
         language: 'zh' as const,
         required: [
           'comet native <command> --help',
-          'CLI 会发现已登记 Git worktree',
+          'active change 已存在时',
           '`workspace.projectRoot`',
           '`preparation.projectRoot`',
-          'CLI 负责创建或复用合法绑定的 branch/worktree',
-          '用户明确要求当前 change 增加文件或行为时，不得仅因旧计划未列出就拒绝',
+          '工作区选择参考',
+          '用户明确补充当前范围时，按同一规则处理',
           '`--return-to-build`',
           '`commandArgs`',
           '`inputOptions`',
@@ -92,11 +94,11 @@ describe('Comet Native Skills', () => {
         language: 'en' as const,
         required: [
           'comet native <command> --help',
-          'The CLI discovers registered Git worktrees',
+          'When an active change already exists',
           '`workspace.projectRoot`',
           '`preparation.projectRoot`',
-          'The CLI creates or reuses a legally bound branch/worktree',
-          'do not reject it merely because an earlier plan omitted it',
+          'workspace selection reference',
+          'Apply the same rule when the user explicitly adds to the current scope',
           '`--return-to-build`',
           '`commandArgs`',
           '`inputOptions`',
@@ -119,6 +121,40 @@ describe('Comet Native Skills', () => {
     }
   });
 
+  it('keeps the completion loop bounded and preserves v4-only semantics', async () => {
+    const variants = [
+      {
+        language: 'zh' as const,
+        required: [
+          'Build ↔ Verify Loop',
+          'Builder 提交候选',
+          '新的只读 Verifier',
+          '`iteration` 表示实现候选的轮次',
+          '`attempt` 表示同一候选启动 Verifier 的次数',
+          '所有计数都由 Runtime 更新',
+        ],
+      },
+      {
+        language: 'en' as const,
+        required: [
+          'Build ↔ Verify Loop',
+          'the Builder submits a candidate',
+          'a fresh read-only Verifier',
+          '`iteration` is the implementation-candidate round',
+          '`attempt` is the number of times a Verifier has been started',
+          'The Runtime updates all counters',
+        ],
+      },
+    ];
+
+    for (const variant of variants) {
+      const skill = await read(variant.language, 'SKILL.md');
+      for (const term of variant.required) {
+        expect(skill, `${variant.language}: ${term}`).toContain(term);
+      }
+    }
+  });
+
   it('uses one shared clarification decision tree with mode-specific scheduling', async () => {
     const variants = [
       {
@@ -129,8 +165,9 @@ describe('Comet Native Skills', () => {
           '实现选择',
           '建立并持续维护一棵决策树',
           '可以将彼此独立的事实调查委派给 subagent',
-          '一次只提出一个当前可提问节点',
-          '本轮全部当前可提问节点',
+          '优先使用结构化提问',
+          'Sequential 模式一次提交一个单选或多选问题',
+          'Batch 模式在一次请求中提交本轮完整的问题集合',
           '- [blocking] CONFIRM: <确认内容>',
         ],
       },
@@ -140,10 +177,11 @@ describe('Comet Native Skills', () => {
           'Investigable fact',
           'User decision',
           'Implementation choice',
-          'build and continuously maintain a decision tree',
-          'delegate independent fact investigations to subagents',
-          'Ask exactly one currently askable node',
-          'every currently askable node in this round',
+          'create and continuously maintain a decision tree',
+          'independent fact-finding can be delegated to subagents',
+          'prefer a structured question',
+          'Sequential mode submits one single-choice or multiple-choice question',
+          'Batch mode submits the complete current question set',
           '- [blocking] CONFIRM: <confirmation>',
         ],
       },
@@ -169,12 +207,14 @@ describe('Comet Native Skills', () => {
         '# Verification expectations',
         'comet-state.yaml',
         'verification.md',
-        '## Current result',
-        '## Acceptance',
-        '## Checks',
+        'Runtime',
       ]) {
         expect(artifacts, `${language}: ${required}`).toContain(required);
       }
+      expect(artifacts).toContain(
+        language === 'zh' ? '完整目标规格' : 'complete target specification',
+      );
+      expect(artifacts).toContain(language === 'zh' ? '验收循环' : 'acceptance Loop');
       for (const RuntimeDetail of [
         'comet.native.workspace.v3',
         'baselineProjectionRef',
@@ -203,17 +243,14 @@ describe('Comet Native Skills', () => {
       ]) {
         expect(commands).toContain(field);
       }
-      expect(commands).toContain('--return-to-build');
-      expect(commands).toContain('--confirmed');
-      expect(commands).toContain('--runner-input');
       expect(commands).toContain('builder-handoff');
       expect(commands).toContain('dispatch-verifier');
-      expect(commands).toContain('request-checks');
-      expect(commands).toContain('final-result');
+      expect(commands).toContain('verifier-response');
       expect(commands).toContain('verifier-execution-error');
       expect(commands).toContain('skill-coordinated');
-      expect(commands).toContain('"checks":[]');
       expect(commands.match(/comet native/gu)?.length ?? 0).toBeLessThanOrEqual(4);
+      expect(commands).not.toContain('```json');
+      expect(commands).not.toContain('| Exit code |');
       expect(commands).not.toContain('--expect-preflight <sha256> [--confirmed]');
       expect(commands).not.toContain('comet native receipt automated <change-name>');
       expect(commands).not.toContain('comet native checkpoint <change-name>');
@@ -228,9 +265,9 @@ describe('Comet Native Skills', () => {
           '`workspace.projectRoot`',
           '`comet-state.yaml`',
           '`state.json`',
-          'Verify / verify-ready',
+          'Verify（`verify-ready`）',
           '`migration-required`',
-          '`workspaceFinishResult.status` 为 `blocked`',
+          '`workspaceFinishResult.status`',
           '`recoveryArgs`',
         ],
       },
@@ -240,9 +277,9 @@ describe('Comet Native Skills', () => {
           '`workspace.projectRoot`',
           '`comet-state.yaml`',
           '`state.json`',
-          'Verify / verify-ready',
+          'Verify (`verify-ready`)',
           '`migration-required`',
-          '`workspaceFinishResult.status` is `blocked`',
+          '`workspaceFinishResult.status`',
           '`recoveryArgs`',
         ],
       },
@@ -256,6 +293,41 @@ describe('Comet Native Skills', () => {
       expect(recovery).not.toContain('comet native spec rebase <change-name>');
       expect(recovery).not.toContain('--strategy continue');
       expect(recovery).not.toContain('--strategy rollback');
+    }
+  });
+
+  it('asks about workspace isolation only when it changes the user workflow', async () => {
+    const variants = [
+      {
+        language: 'zh' as const,
+        required: [
+          '当前目录有未提交工作',
+          '已有其他 active Native change',
+          'Runtime 默认的 `current`',
+          '结构化单选工具',
+          '| A | 当前目录（`current`）',
+          '| B | 新分支（`branch`）',
+          '| C | 新 worktree（`worktree`）',
+        ],
+      },
+      {
+        language: 'en' as const,
+        required: [
+          'current directory has uncommitted work',
+          'Another active Native change already exists',
+          'Runtime default, `current`',
+          'structured single-choice tool',
+          '| A | Current directory (`current`)',
+          '| B | New branch (`branch`)',
+          '| C | New worktree (`worktree`)',
+        ],
+      },
+    ];
+    for (const variant of variants) {
+      const workspace = await read(variant.language, 'reference/workspace.md');
+      for (const term of variant.required) {
+        expect(workspace, `${variant.language}: ${term}`).toContain(term);
+      }
     }
   });
 

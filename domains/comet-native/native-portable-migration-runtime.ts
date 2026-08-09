@@ -39,6 +39,7 @@ import { readNativeWorkspaceIdentity } from './native-workspace.js';
 
 const LEGACY_PROJECTION_FILES = [
   'evidence.md',
+  'verification.md',
   'repair.md',
   'archive.md',
   'checkpoint.md',
@@ -148,7 +149,7 @@ function assertMigrationWorkspaceCurrent(
   paths: NativeProjectPaths,
   workspace: NativePortableWorkspace,
 ): void {
-  if (workspace.isolation === 'current') return;
+  if (workspace.isolation === 'current' && workspace.change_branch === null) return;
   const inspection = inspectGitWorktree(paths.projectRoot);
   if (!inspection.isGitWorktree) {
     throw new Error('Native legacy migration requires its bound Git branch or worktree');

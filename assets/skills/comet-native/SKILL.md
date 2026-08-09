@@ -1,110 +1,105 @@
 ---
 name: comet-native
-description: "Comet Native workflow. Use when the user invokes /comet-native, asks to start or resume a Native change, or the entry router selects Native."
+description: "Comet Native workflow. Use when the user explicitly invokes /comet-native, asks to start or resume a Native change, or the entry router selects Native."
 ---
 
 # Comet Native
 
-Native stores requirements, complete target specifications, portable state, and acceptance results on disk. You clarify, implement, and organize independent verification as directed by Runtime; Runtime owns state, Loop behavior, boundaries, and recovery.
+Native stores the requirements, complete target specifications, current progress, and verification conclusions in the project. After completing each phase, return to the Runtime for the next action and handle only the phase it specifies.
 
-## Inviolable boundaries
+## Core boundaries
 
-- `.comet/config.yaml`, the current change, `comet-state.yaml`, and formal Markdown on disk override chat memory.
-- Do not directly edit Runtime-managed state, local executions, logs, locks, or transactions.
-- Invoke only the public `comet native` on PATH. If it is unavailable, report an incomplete Comet installation; do not search for or invoke an internal bundle.
-- Run `comet native <command> --help` for parameters and output. Do not guess or reconstruct commands in the Skill.
-- A Builder completion claim is not an acceptance result. The Skill must start a new Verifier subagent or independent Agent execution; the Builder cannot author the Verifier result directly.
-- The Native main workflow does not depend on any external Skill.
+- The on-disk `.comet/config.yaml`, current change, `comet-state.yaml`, and formal Markdown are the working source; chat memory is only supplementary.
+- The Runtime manages workflow state, local tasks, logs, locks, and transactions. Advance every phase through the public `comet native` commands on PATH.
+- If a command is unavailable, report an incomplete Comet installation and stop. Treat `comet native <command> --help` as authoritative for arguments and output.
+- The Builder submits a candidate. A fresh read-only Verifier subagent or separate Agent task makes the verification judgment.
+- This Skill and the Runtime complete the Native workflow.
 
 ## Start or resume
 
-1. Run `comet native status --json`. The CLI discovers registered Git worktrees and returns each change's actual workspace, phase, Loop, and continuation.
-2. When a target name is known, run `comet native status <change-name> --details --json` and `show`. Follow `nextPageArgs` to read every acceptance item or later status page.
-3. If the active change already exists, resume against its returned `workspace.projectRoot` and `select` it instead of creating a duplicate. Ask the user only when multiple reasonable candidates remain.
-4. Create only when no matching active change exists. Use only the configured artifact root.
+1. When the change name is known, run `comet native status <change-name> --details --json` directly. Only run `comet native status --json` when the name is unknown, then query the selected change in detail.
+2. Run pagination commands from `nextPageArgs` only when the current phase needs the complete acceptance list. Run `show` or read the corresponding brief/Spec only when editing or checking formal content.
+3. When an active change already exists, enter the returned `workspace.projectRoot` and run `select`. Ask the user only when multiple reasonable candidates remain.
+4. Create a change only when no matching active change exists, using the artifact directory from configuration.
 
 ### Create a change
 
-Resolve a lowercase kebab-case name first. If the user did not name it, present a short recommendation before creation.
+Choose a lowercase kebab-case name, then use the [workspace selection reference](reference/workspace.md) to decide whether to use the current directory, create a branch, or create a worktree.
 
-Ask about isolation only when it materially affects the user's directory, presenting the applicable choices and recommendation together:
+The CLI binds the branch or worktree, maintains repository-local exclusions, validates configuration, and creates state that can be resumed across devices. Then enter the returned `preparation.projectRoot`.
 
-- `current`: default when the directory is clean and not owned by another active Native change;
-- `branch`: use a separate branch in the current clean directory;
-- `worktree`: use when another active change owns the directory or an independent working directory is needed.
+If preparation does not finish, keep the resources already created, show the failure reason from `preparation`, and continue with the recovery direction from the Runtime or user.
 
-The user may override the change branch, target branch, and worktree path together. Defaults are `comet/<change-name>`, the current branch, and `.worktrees/<change-name>`. Show the final selection. On collision, stop; never add a random suffix or take over an existing resource.
+## Read by phase
 
-Pass the selection to `new`. The CLI creates or reuses a legally bound branch/worktree, maintains the repository-local exclude, checks target configuration, and creates portable state plus the local execution overlay. Continue from `preparation.projectRoot`. If preparation is partial, report the error and resources recorded in `preparation`; do not delete a directory, branch, or file with uncertain ownership.
+After confirming the current phase, load only what that step needs:
 
-Keep legacy workspace metadata compatible. Do not migrate it or move the change merely to enable isolation.
-
-## Read on demand
-
-After confirming the phase, read only the needed reference:
-
-- Shape: always read and execute the [clarification reference](reference/clarification.md);
-- editing the brief or complete target specifications, or viewing the acceptance report: [artifact reference](reference/artifacts.md);
-- a Runtime `runnerAction`, constructing `--runner-input`, Verifier dispatch, or diagnostics: [command reference](reference/commands.md);
-- interrupted execution, missing local Runtime, stagnation, conflict, migration, or damage: [recovery reference](reference/recovery.md).
+- Shape: read and follow the [clarification reference](reference/clarification.md).
+- Read the [artifact reference](reference/artifacts.md) when editing the brief or complete target specifications, or when reviewing the verification report.
+- During normal progression, execute the command returned in Runtime `continuation`. Read the [command reference](reference/commands.md) only when a returned field is unclear, command input is rejected, the Verifier cannot be started, Verifier execution fails, or the Verifier needs user-provided information.
+- Read the [recovery reference](reference/recovery.md) only when the task cannot continue because of an interrupted process, missing local Runtime state after moving devices, repeated lack of progress, a concurrency conflict, failed legacy migration, or damaged state.
 
 ## Shape
 
-Investigate facts available from the repository, tools, and runtime environment first. You may use subagents for independent fact investigations; do not send investigable facts to the user.
+First investigate facts that can be determined from the repository, tools, and runtime environment. Independent fact-finding may be delegated to subagents. Follow `native.clarification_mode` and the clarification reference to maintain a decision tree. Ask the user only for choices that change the visible result and cannot be inferred reliably.
 
-Follow `native.clarification_mode` and the clarification reference while maintaining a decision tree. Sequential asks exactly one currently askable node per round; Batch asks the complete currently askable set. Ask only decisions that materially change user-visible results and cannot be inferred reliably.
+Immediately synchronize confirmed user-visible decisions and important constraints into Decisions, the brief, and complete target specifications. Keep ordinary implementation choices in the implementation and tests unless they affect visible behavior. Acceptance items must be specific, observable, and non-duplicative.
 
-Synchronize every conclusion immediately into Decisions, the brief, and complete target specifications. Write acceptance criteria as non-empty, observable, non-duplicated items. Keep unresolved questions `[blocking]`; do not modify implementation while a blocker remains. After checking every branch and silent assumption, summarize the goal, scope, key decisions, acceptance criteria, and non-goals. Advance with the continuation containing `--confirmed` only after explicit user confirmation.
+Completion criterion: every choice that affects the visible result and every unstated assumption has been handled, no `[blocking]` item remains, the user has explicitly confirmed the outcome, scope, key decisions, acceptance items, and non-goals, and the Runtime has entered Build.
+
+## Build ↔ Verify Loop
+
+Build and Verify form a bounded acceptance Loop: the Builder submits a candidate, the Runtime runs the necessary checks, and a fresh read-only Verifier evaluates it. If verification does not pass, return to Build, make the changes, and submit the next candidate. When every item passes, enter Archive.
+
+`iteration` is the implementation-candidate round. `attempt` is the number of times a Verifier has been started for the same candidate. Repeated failures, no meaningful progress, or repeated Verifier execution errors cause the Runtime to enter an await-user or blocked state at its configured budget. The Runtime updates all counters; the Agent follows only the latest `continuation`.
 
 ## Build
 
-Implement the simplest reliable solution satisfying the brief and complete target specifications. When requirements change, classify ownership first:
+For the first implementation, read the current brief, complete target specifications, and all acceptance items. When Verify returns to Build, first address the failed items, blocked verification issues, and failed checks reported by the Verifier. Before submitting again, recheck the complete specifications and all acceptance items so that fixing the reported issue does not hide other omissions.
 
-- implementation work belonging to this change: from Verify/Archive, use the continuation's `--return-to-build` action and confirm Build before writing implementation;
-- changed user-visible behavior or acceptance criteria: return to Shape, update formal artifacts and acceptance items, then reconfirm;
-- work unrelated to this change: preserve it and create or select another change.
+When requirements change, classify them first:
 
-When the user explicitly adds a file or behavior to this change, do not reject it merely because an earlier plan omitted it. Update the formal scope through the ownership rule above; keep it blocked until required confirmation is complete.
+- The current requirement was implemented incompletely: use `--return-to-build` from Verify or Archive to return to Build.
+- User-visible behavior or acceptance criteria changed: return to Shape, update the formal artifacts, and reconfirm.
+- The request is unrelated to the current requirement: keep it for another change.
 
-When the candidate is complete, review it against the full specification and every acceptance item, then use `next --runner-input <file>` from `continuation.commandArgs` to submit a compact Builder handoff: this iteration's implementation summary, how prior failures were addressed, development checks actually run or not run, and known limitations. Public JSON never supplies candidate, identity, provider, or execution refs; Runtime allocates those correlations. Put the input in the OS temporary directory and delete it in `finally` after the call, never leaving it in the project or Runtime directory. Do not write an acceptance verdict, copy complete command output, or substitute a self-reported completion for Verify.
+Apply the same rule when the user explicitly adds to the current scope.
 
-## Completion loop
+When the candidate is ready, use the input template in Runtime `continuation` to submit a concise Builder handoff: what changed in this round, which acceptance items were addressed, which development-time checks were or were not actually run, and any known limitations.
 
-1. Read the current Loop, every acceptance item, blockers, and next action. After failure, prioritize failed or blocked items and failed checks.
-2. Complete a coherent repair batch, review the full specification, and pass `builder-handoff` JSON to the same `next --runner-input` from the continuation.
-3. Explicitly resolve the command-check plan and pass `dispatch-verifier` JSON to that option. Use `checks: []` only when the project truly has no applicable command check, never to hide an unknown plan.
-4. Read the complete returned `verifierDispatch`; give its candidate, iteration, attempt, acceptance list, brief/Spec refs, Builder handoff, and real Runtime checks to a new read-only Verifier subagent. If subagents are unavailable, start a new independent Agent execution. If neither is available, submit `verifier-unavailable` only after the explicit check plan completed and all checks passed; Runtime must stop for degraded user confirmation instead of fabricating a Verifier result.
-5. Pass the Verifier's `verifier-response` or `verifier-execution-error` JSON to the same option. For an execution error or unavailable Verifier, copy the four binding fields from the current `verifierDispatch` exactly; they prevent a delayed old execution from changing a newer attempt. Continue the same attempt after `request-checks`; the final result covers every acceptance ID. `fail` returns to Build. For semantic `blocked`, wait for the user's choice, then use `--resolve-verifier-blocker` to retain completed checks and dispatch a new attempt when implementation is unchanged, or return to Build when it must change. A `skill-coordinated` pass stops at `await-user`: explain that the generic CLI cannot strongly prove an independent execution, ask once whether the user accepts that boundary, then run the returned `next --confirmed --summary` to enter Archive.
+The handoff is stored in `comet-state.yaml`; it does not create a separate file and does not mean verification passed. The Runtime gives it to the Verifier, and the Builder submits it once.
 
-Continue the bounded Loop returned by Runtime. Stop only on `done`, `await-user`, `blocked`, or an explicit user request; one turn, one implementation submission, or an Agent completion claim is not terminal.
+Completion criterion: the implementation and relevant checks are ready for verification, the complete acceptance list has been rechecked, and the Runtime accepts the handoff and enters Verify.
 
 ## Verify
 
-The Verifier does not trust completion claims in the Builder handoff. It read-only inspects the brief, complete target specifications, actual implementation, Runtime check results, and every acceptance item; the handoff is only an investigative lead.
+When the Runtime requests `dispatch-verifier`, first fill `inputOptions.template` with the tests and check commands needed for the current candidate, then let the Runtime execute them. The Runtime reuses completed checks. Follow the latest `continuation` for any retry or additional check.
 
-When extra checks are needed, the Verifier requests them in one batch and Runtime records their real exit state, timeout, and logs. Never treat a prose result as proof that a check ran. The final response must return exactly one `passed`, `failed`, or `blocked` decision for every known acceptance ID, with a reason the next Build can act on directly.
+After the Runtime returns `verifierDispatch`, immediately start a fresh read-only Verifier subagent. If the platform does not support subagents, start a new Agent task separate from the Builder session.
 
-The Verifier does not modify implementation, advance state, or fill candidate, provider, or execution identity in its response or CLI. The released Runtime always labels this path `skill-coordinated`: it binds a candidate and attempt programmatically, but any local caller can invoke it, so it cannot prove that a malicious caller started an independent Agent and must never be called trusted, runner-attested, or host-attested. Reliability comes from the Skill's new-subagent protocol, real Runtime-executed checks, exactly-once coverage of every acceptance ID, and user confirmation before Archive. The fallback for platforms without an independent execution must retain `semantic-verification-unavailable` / `user-confirmed-degraded` assurance and cannot be reported as a normal independent pass.
+The Verifier first reads the acceptance items, brief, complete target Specs, actual implementation, and Runtime check results. It reads the Builder handoff last, as an investigation lead, so the verification judgment remains independent.
 
-After Verify fail, actually repair the gaps before retrying. Runtime judges progress from unresolved acceptance items and failure counters; obey its `blocked` or `await-user` disposition when stagnation or execution-failure limits are reached instead of retrying blindly.
+The Verifier remains read-only. If existing checks are insufficient, list the additional checks in the `inputOptions.template` returned by the Runtime. The Runtime executes them and returns the results to the Verifier.
+
+The Verifier must finally mark every acceptance item exactly once as `passed`, `failed`, or `blocked`. For a failed or blocked item, provide a reason that the next Build round can act on directly. If the Verifier cannot be started, execution fails, or external information is missing, follow the command reference and the latest `continuation`.
+
+Completion criterion: the Runtime has accepted the complete Verifier result and has explicitly entered one of Build, Archive, `await-user`, `blocked`, or `done`.
 
 ## Archive
 
-Prepare Archive only after Runtime accepts a final Verify pass or the user explicitly accepts the unavailable-semantic-verification boundary. Archive does not rerun checks or dispatch another Verifier.
+Continue only when `continuation` permits Archive. Archive uses the accepted verification result directly. When a `branch` or `worktree` needs a finish decision, show the actual change branch, target branch, and directory together, then let the user choose merge, push, create a PR, keep the workspace, or defer Archive.
 
-`current` needs no branch-finishing choice. For `branch` or `worktree`, show the exact change branch, target branch, and directory once, then ask the user to choose local merge, push the change branch, push and create a PR, keep, or do not archive. Stop on “do not archive.”
+Commit only the implementation and formal artifacts that belong to the current change, preserving other user changes. Execute the returned `commandArgs`, then inspect `workspaceFinishResult`. If it is `blocked`, preserve the workspace and run the recovery command in `recoveryArgs`.
 
-Before execution, commit only implementation and active-change formal artifacts owned by this change, preserving every other user change; the CLI rejects unrelated uncommitted paths. Use Runtime's `commandArgs` and current state version for the authorized Archive. When confirmation is required, show the summary and wait for an explicit answer; do not reuse an old action.
+Completion criterion: state is `done`, and the user-authorized workspace finish result is `completed` or `kept`. Follow `continuation` for any other result.
 
-Archive applies complete target Specs, moves the change, removes local per-change Runtime, and performs the authorized merge, push, or PR action. Inspect `workspaceFinishResult`: `completed`/`kept` means the action ran; `blocked` means Archive or its external finish needs recovery, so preserve the scene and diagnose with `recoveryArgs`. Never resolve semantic conflicts silently.
+## Follow-up actions
 
-## Continuation
+After every command, handle only the latest `continuation`:
 
-After every command, follow Runtime output:
+- `continue`: execute `commandArgs` and fill `inputOptions` from its template.
+- `await-user`: wait for the listed user decision.
+- `blocked`: resolve the listed blocker or recovery action first.
+- `done`: finish.
 
-- `continue`: fill real values into `commandArgs` and `inputOptions`, then continue;
-- `await-user`: wait only for the listed user decision;
-- `blocked`: pause the normal loop and resolve blockers, findings, or recovery actions;
-- `done`: the change and selected finish reached the terminal state reported by the command.
-
-Do not assemble shell text from `command`; prefer structured argv. Reread status after execution and verify that phase, Loop, state version, and workspace still match expectations.
+After a state-changing command, query the change details again and confirm the current phase, acceptance Loop, state version, and working directory. Run `show` only when formal content is needed.

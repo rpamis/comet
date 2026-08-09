@@ -1,65 +1,79 @@
-# Native Clarification Reference
+# Native clarification reference
 
-You must read this file after entering Shape. Do not modify project implementation or advance to Build until problem classification, the silent-assumption check, and shared-understanding confirmation are complete.
+Read this file after entering Shape. Keep the implementation unchanged and remain in Shape until question classification, unstated-assumption checks, and shared understanding are complete.
 
 ## Whether to ask
 
-Separate information into three categories:
+First separate three kinds of information:
 
-- **Investigable fact**: repository state, tool capability, dependency defaults, and runtime environment. The Agent investigates it and may delegate independent fact investigations to subagents.
-- **User decision**: alternatives materially change output, defaults, failure behavior, scope, or irreversible effects. The user confirms it.
-- **Implementation choice**: algorithm, structure, or working method that does not change user-visible results. The Agent decides it.
+- **Investigable fact**: repository state, tool capabilities, dependency defaults, and runtime environment. The Agent investigates these; independent fact-finding can be delegated to subagents.
+- **User decision**: choices that materially change output, default behavior, failure results, scope, or irreversible impact. The user confirms these.
+- **Implementation choice**: algorithms, structures, and working methods that do not change the visible result. The Agent decides these.
 
-Ask only when ambiguity would materially change user-visible results and cannot be resolved reliably from the user's request, formal specifications, or applicable project rules. Do not invent questions to cover a checklist or send implementation choices to the user.
+Ask the user only when ambiguity materially changes the visible result and cannot be determined reliably from the request, formal specifications, or project rules. Questions must come from real divergence; the Agent decides ordinary implementation details directly.
 
-Rewrite ambiguous behavior as comparable “input → output” or “trigger → result” cases. Each question includes:
+Rewrite ambiguous behavior into comparable “input → output” or “trigger → result” form. Every question should contain:
 
-- Question: the user-visible difference to decide;
-- Recommendation: the preferred option and why;
-- Impact: the practical result of each option.
+- Question: the user-visible difference to decide.
+- Recommendation: the preferred option and reason.
+- Impact: the actual result of each option.
 
-## Decision tree and fact investigation
+## How to ask the user
 
-Before asking the first user question, build and continuously maintain a decision tree. Include only user decisions that materially change user-visible results. Treat investigable facts as prerequisites and implementation choices as Agent-owned work instead of disguising either as user decisions.
+Pause at a user decision point and wait for an explicit choice. If only one valid option exists, explain why and adopt it directly. Use a text question for open-ended questions or when the options cannot be listed accurately.
 
-For every decision node, identify at least the behavior to decide, its parent or prerequisite decisions, required facts, and whether it is waiting on prerequisites, currently askable, or resolved. An unresolved node is a currently askable node when its parent decisions and required facts are settled. Currently askable nodes must not depend on one another's answers.
+When two or more clear, mutually exclusive, executable options exist and the platform provides `AskUserQuestion`, prefer a structured question:
 
-The decision tree is the Agent's working model, not a new Runtime artifact or schema. Persist only actual unresolved user questions in the brief through the existing `[blocking]` lines. After every user answer or fact-finding conclusion, immediately update affected nodes, add, remove, or rewrite their descendants, and recompute the currently askable nodes.
+- Sequential mode submits one single-choice or multiple-choice question at a time.
+- Batch mode submits the complete current question set in one request. If the tool cannot hold the complete set, ask the entire batch as text instead of splitting the round because of tool limits.
+- Give every option a short label and its actual impact. Put the recommended option first and explain why; a recommendation does not replace user confirmation.
+- After a successful tool call, wait for the answer without printing a duplicate text option list.
+- If the tool is unavailable or the call fails, use text questions for the rest of this session instead of retrying the same tool repeatedly.
 
-Fact investigation must not stall unrelated branches. When a fact remains unresolved, pause only the node and descendants that depend on that fact, then continue with other currently askable nodes. A temporarily empty set of currently askable nodes does not permit the Agent to ignore material branches still awaiting facts or inspection.
+For a text question, state whether it is single-choice or multiple-choice, number the options, recommendation, and impact, ask the user to reply with a number, then pause.
 
-## Sequential
+## Decision tree and fact-finding
 
-1. Investigate facts required by the decision tree and isolate branches still waiting on facts as described above.
-2. Select one most-upstream node from the currently askable nodes. When several qualify, prefer the node that unlocks more descendants or has greater impact on user-visible results.
+Before asking the first user question, create and continuously maintain a decision tree. Include only user decisions that materially change the visible result. Treat investigable facts as prerequisites and ordinary implementation choices as Agent-owned.
+
+For every decision node, record at least what must be decided, which decision it depends on, which facts must be investigated first, and whether it is waiting, askable, or resolved. A node becomes askable only after its prerequisite decisions and facts are known. Questions in the same round must be independent.
+
+The decision tree exists only in the Agent's working process and creates no new Runtime file or state field. Write only actual unresolved user questions into the brief as existing `[blocking]` lines. After every user answer or fact-finding conclusion, immediately update affected nodes and later branches, then recompute which nodes are askable.
+
+When a fact is still unknown, pause only the dependent node and its later branches; continue handling unrelated questions. If no node is currently askable, continue investigating pending facts and check for omitted branches.
+
+## Sequential mode
+
+1. Investigate the facts required by the decision tree and isolate branches still waiting on facts.
+2. Choose one currently askable node. If several exist, prefer the question that affects more later choices or has greater impact on the visible result.
 3. Save one `- [blocking] <question>` in the brief.
-4. Ask exactly one currently askable node and wait for the answer. Do not ask a second user decision in the same round.
-5. After the answer, immediately update Decisions, the brief, and the complete target specifications.
-6. Update the decision tree and recompute the currently askable nodes before starting the next round.
+4. Ask one currently askable node and wait for the answer. Ask the next user decision in a later round.
+5. After the user answers, immediately update Decisions, the brief, and complete target specifications.
+6. Update the decision tree, recompute askable nodes, and begin the next round.
 
-Keep ambiguous, partial, or unanswered content `[blocking]`. An answer decides only the behavior it covers explicitly.
+Ambiguous, partial, or unanswered content remains `[blocking]`. An answer decides only the behavior it explicitly covers.
 
-## Batch
+## Batch mode
 
-For each round, take the complete set of currently askable nodes from the decision tree. Their prerequisite decisions and environmental facts are settled, and their answers do not depend on one another.
+In each round, find the complete set of decision-tree questions that can be asked together: their prerequisite decisions and environment facts are known, and their answers do not depend on one another.
 
-1. Save `- [blocking] Q1: <question>`, `- [blocking] Q2: <question>` in the brief.
-2. Ask every currently askable node in this round together, giving Question, Recommendation, and Impact for each item.
-3. Update the formal artifacts after the answer. Keep unanswered or ambiguous questions `[blocking]`.
+1. Save `- [blocking] Q1: <question>` and `- [blocking] Q2: <question>` in the brief.
+2. Ask every currently askable node in one round, giving the question, recommendation, and impact for each.
+3. Update formal artifacts after the user answers. Unanswered or unclear questions remain `[blocking]`.
 4. Update answered and unanswered nodes in the decision tree, then compute the complete node set for the next round.
 
-Do not compress independent decisions into one multi-select question or split one ready batch across multiple rounds.
+Keep every independent decision as a separate question. Ask mutually independent questions together in the same batch.
 
 ## Persistence and final confirmation
 
-Write every confirmed answer immediately into Decisions and the complete target specifications of the existing change. Do not update only the brief, wait until final confirmation to write specifications, or create another change for a clarification answer.
+Write every confirmed decision immediately into Decisions and the complete target specifications of the existing change, synchronizing the brief. Add supplemental answers to the same change.
 
-Begin final confirmation only when every identified branch has been handled, no pending investigable fact can change user-visible behavior, the set of currently askable nodes is empty, and the silent-assumption check adds no new node:
+Begin final confirmation only when every identified branch has been handled, no pending fact could change visible behavior, no askable node remains, and unstated assumptions create no new question:
 
-1. Check for remaining silent assumptions.
-2. Give the user a summary of the goal, scope, key decisions, acceptance criteria, and non-goals.
+1. Check again for unstated assumptions that could still affect the result.
+2. Present a summary of the outcome, scope, key decisions, acceptance criteria, and non-goals.
 3. Save `- [blocking] CONFIRM: <confirmation>` in the brief.
 4. Wait for explicit user confirmation.
-5. Remove the blocker and advance with `--confirmed`.
+5. After confirmation, remove the blocker and advance with `--confirmed`.
 
-The initial feature request is not the final shared-understanding confirmation. If the user changes or rejects the summary, update the formal artifacts and continue clarification.
+The initial request is not final shared-understanding confirmation. If the user adds to or rejects the summary, update the formal artifacts and continue clarifying.

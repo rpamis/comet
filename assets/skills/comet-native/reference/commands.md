@@ -1,6 +1,8 @@
-# Native Command Reference
+# Native command and exception reference
 
-Read this file only for advanced inputs, Verifier dispatch, or diagnostic actions requested by Runtime. The CLI owns command signatures, options, examples, and output:
+During the normal flow, execute the command returned in Runtime `continuation`. This file explains returned fields and handles these cases: command input is rejected, the Verifier cannot start, the Verifier task fails, the Verifier cannot decide because external information is missing, or the Runtime asks the user to confirm degraded verification.
+
+Treat CLI help as authoritative for command signatures and current arguments:
 
 ```text
 comet native --help
@@ -8,69 +10,37 @@ comet native <command> --help
 comet native <group> <command> --help
 ```
 
-Do not copy stale arguments from this file. Prefer the continuation's `commandArgs` and fill real values according to `inputOptions`. Every public command supports `--json` and `--project-root`.
+## Next action returned by the Runtime
 
-## Structured output
+- `disposition`: whether to continue, wait for the user, resolve a blocker, or finish.
+- `commandArgs`: the complete command arguments the Runtime requires.
+- `inputOptions`: fields and a JSON template for this command.
+- `workspace` / `preparation`: the actual working directory and change-creation result.
+- `stateVersion` / `loop`: the current state version and acceptance Loop progress.
+- `acceptance` / `nextPageArgs`: the acceptance summary and command for the next page.
+- `verifierDispatch`: inputs needed to start an independent Verifier.
+- `workspaceFinishResult` / `recoveryArgs`: the post-Archive workspace result and recovery command.
 
-The JSON envelope contains `command`, `exitCode`, `data`, and `error` on failure. Important action fields are:
+Angle brackets in a template mark values to fill in. `await-user` means wait for the user's decision before running an advancing command. `localExecution: absent` means only that this machine has no currently running local task; it does not mean the change is damaged.
 
-- `continuation.disposition`: `continue | await-user | blocked | done`;
-- `commandArgs`: complete executable and argv template;
-- `inputOptions`: required inputs, flags, choices, repeatability, and alternatives;
-- `workspace` / `preparation`: actual change directory and creation result;
-- `stateVersion` / `loop`: current stable state version, stage, iteration, and attempt;
-- `acceptance` / `nextPageArgs`: acceptance state and later page actions;
-- `builderHandoff` / `verifierDispatch`: candidate summary and independent verification execution to start;
-- `blockers` / `findings`: owner, reason, allowed resolution, and whether a user decision is required;
-- `localExecution`: this machine's running, completed, interrupted, or absent operation;
-- `workspaceFinishResult`: Git finish result and recovery action after Archive.
+## Fill command input
 
-Never execute angle-bracket placeholders literally or auto-execute a template while disposition is `await-user`. `localExecution: absent` means only that this machine has no current operation; valid portable state means the change is not damaged.
+Copy `inputOptions.template` into a temporary system JSON file, replace only the requested values, then execute `continuation.commandArgs`. Delete the temporary file afterward. Preserve the acceptance iteration, Verifier attempt, state version, and task identifiers already present in the template. Fill only the fields exposed by the template.
 
-## Skill coordination bridge
+- `builder-handoff`: submit the implementation summary for this round, addressed acceptance IDs, development checks the Builder actually ran, and known limitations. Leave acceptance conclusions to the Verifier.
+- `dispatch-verifier`: list the checks the Runtime should execute for the current candidate. Submit an empty list when no command-based check applies.
+- `verifier-response`: request additional checks or submit a final result that covers every acceptance ID.
+- `verifier-execution-error` / `verifier-unavailable`: report that the Verifier task failed or could not start. Preserve the task-binding fields from the template so a late message from an old task cannot affect a new Verifier.
 
-When `continuation.runnerAction` requires coordination, follow its `commandArgs` and use these exact JSON shapes with the same `next --runner-input <file>`. Put the file in the OS temporary directory and delete it in `finally`; never put it in the project or Runtime directory. For an execution error or unavailable Verifier, copy `stateVersion`, `iteration`, `attempt`, and `verifierExecutionRef` exactly from the current `verifierDispatch`; these are Runtime-issued stale-message guards, not Agent-authored identity.
+The Runtime executes and records verification checks. Development checks listed in the Builder handoff only describe the candidate; the Verifier relies on actual Runtime check results. The latest `continuation` decides whether to add checks, retry, or start a new Verifier.
 
-```jsonl
-{"kind":"builder-handoff","summary":"iteration implementation summary","addressed_acceptance_ids":["A1"],"checks":[{"name":"development check","result":"passed","note":null}],"known_limits":[]}
-{"kind":"dispatch-verifier","checks":[{"id":"focused-test","name":"Focused tests","executable":"pnpm","argv":["vitest","run","path/to/test.ts"],"cwdRef":".","timeoutMs":120000,"repeatable":true}]}
-{"kind":"verifier-response","response":{"kind":"request-checks","iteration":1,"attempt":1,"checks":[{"id":"extra-check","name":"Extra check","executable":"pnpm","argv":["test"],"cwdRef":".","timeoutMs":120000,"repeatable":true}]}}
-{"kind":"verifier-response","response":{"kind":"final-result","result":{"iteration":1,"attempt":1,"verdict":"pass","acceptance":[{"id":"A1","result":"passed","reason":"Observed the behavior"}],"risks":[],"summary":"Reviewed every acceptance item"}}}
-{"kind":"verifier-execution-error","summary":"Why the Verifier execution failed","stateVersion":7,"iteration":1,"attempt":2,"verifierExecutionRef":"skill-coordinated:verifier:<from verifierDispatch>"}
-{"kind":"verifier-unavailable","summary":"The platform cannot start a new independent semantic-verification execution","stateVersion":7,"iteration":1,"attempt":2,"verifierExecutionRef":"skill-coordinated:verifier:<from verifierDispatch>"}
-```
+## Exceptional cases
 
-The Skill explicitly resolves the check plan from repository guidance and the change; Runtime executes it. Use `"checks":[]` only when no command check applies, and still have the Verifier cover every acceptance item. `verifierDispatch` returns Runtime-allocated candidate/iteration/attempt values, all acceptance items, brief/Spec refs, the identity-free handoff, and real check results.
-
-After `request-checks`, resume the same Verifier/attempt with the updated `verifierDispatch`. If the platform can start neither a subagent nor a new independent Agent execution, submit `verifier-unavailable` only after `dispatch-verifier` explicitly resolved the check plan and every Runtime result is `passed`; an explicit `checks: []` also counts as resolved. Runtime stops at degraded `await-user` with `semantic-verification-unavailable` assurance. Only explicit user confirmation enters Archive with `user-confirmed-degraded` assurance; this path is never host-attested or a normal independent acceptance result.
-
-When a valid Verifier returns semantic `blocked` and the user confirms that no implementation change is needed, execute the continuation's `next --resolve-verifier-blocker --summary`. Runtime increments `retry_epoch`, reuses completed checks for the same candidate, and dispatches a new attempt. Continue to use `--return-to-build` when implementation changes are needed.
-The released public bridge is always `skill-coordinated` and cannot resist a malicious local caller. A normal Skill-coordinated pass stops at `await-user`; ask once for boundary confirmation, then use Runtime's `next --confirmed --summary` to enter Archive.
-
-## Semantics to preserve
-
-- Shape confirmation: use `--confirmed` only after the user confirms shared understanding and the acceptance list.
-- Build handoff: submit the real implementation summary, addressed acceptance IDs, development checks actually run or not run, and known limitations; do not submit an acceptance verdict.
-- Mid-change work from Verify/Archive: use `--return-to-build` and reread status before editing implementation; return to Shape and reconfirm when acceptance criteria change.
-- Runtime checks: the Skill explicitly resolves a structured plan, and Runtime only executes and records that plan. Complete output goes to logs; the Agent does not wrap prose as a successful result.
-- Verifier dispatch: use a new read-only subagent or independent Agent execution with the brief, target Specs, actual implementation, check results, every acceptance item, and Builder handoff.
-- Verifier requests: request extra checks in one batch for Runtime to deduplicate and execute; do not repeatedly request equivalent checks in one attempt.
-- Verifier result: return every acceptance ID exactly once, with every item `passed` for a `pass`. The Agent does not self-report candidate, provider, or execution identity in a body or CLI.
-- Loop: `fail` returns to Build, while execution errors increment only attempt-related counters. A semantic `blocked` result retries the same candidate or returns to Build only after user choice; obey `blocked` / `await-user` at stagnation or budget limits.
-- Archive: `--finish` only persists an approved isolated-workspace choice. Execute only for the current state version without repeating checks or independent verification.
+- Independent Verifier cannot start: first confirm that all applicable checks are listed and every Runtime check passes. Then report unavailable using the template and wait for the user to decide whether to accept degraded verification with command checks only and no independent semantic review.
+- Verifier is temporarily unable to decide (`semantic blocked`): if only user or external information is missing, execute the resolution action returned by the Runtime. If the implementation must change, return to Build.
+- A Skill-coordinated Verifier reports all items passed (`skill-coordinated pass`): when the Runtime requires user confirmation, explain the verification boundary once, then execute the returned command after confirmation.
+- Verifier task fails (`execution error`): submit the error using the template, then read the new `continuation`. The Runtime decides which checks to reuse and whether to retry.
 
 ## Diagnostics
 
-Run read-only `doctor` first. Use `--repair` and a strategy only when its output offers that action. Never delete locks, rewrite state, or change transactions manually.
-
-## Exit codes
-
-| Exit | Meaning |
-| --- | --- |
-| `0` | Success |
-| `1` | A check, acceptance decision, or execution reported a problem |
-| `64` | Invalid arguments or usage |
-| `65` | Invalid configuration, state, or formal artifact |
-| `70` | Unexpected internal failure |
-| `73` | Lock, transaction, concurrency, workspace, or finish conflict |
-| `75` | Loop stagnation or failure budget blocks progress |
+Run read-only `doctor` first. Execute a repair command only when `doctor` explicitly returns one; the Runtime continues to manage locks, cross-device state, and transactions.

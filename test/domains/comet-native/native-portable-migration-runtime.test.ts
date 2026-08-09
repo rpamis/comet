@@ -66,6 +66,7 @@ describe('Native portable migration Runtime', () => {
       recursive: true,
     });
     await fs.writeFile(path.join(changeDir, 'evidence.md'), 'legacy evidence');
+    await fs.writeFile(path.join(changeDir, 'verification.md'), 'legacy verification: passed');
     return paths;
   }
 
@@ -85,6 +86,11 @@ describe('Native portable migration Runtime', () => {
     ]);
     await expect(
       fs.stat(path.join(paths.changesDir, 'legacy-change', 'evidence.md')),
+    ).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    await expect(
+      fs.stat(path.join(paths.changesDir, 'legacy-change', 'verification.md')),
     ).rejects.toMatchObject({
       code: 'ENOENT',
     });
@@ -202,6 +208,27 @@ describe('Native portable migration Runtime', () => {
         isolation: 'branch',
         changeBranch: 'comet/legacy-change',
         targetBranch: 'main',
+      },
+    });
+
+    await expect(
+      migrateNativeLegacyChangeToPortable({ paths, name: 'legacy-change' }),
+    ).rejects.toThrow('requires its bound Git branch or worktree');
+    await expect(
+      fs.readFile(path.join(paths.changesDir, 'legacy-change', 'comet-state.yaml'), 'utf8'),
+    ).resolves.toContain('schema: comet.native.v3');
+  });
+
+  it('refuses to migrate a current legacy change when its saved branch does not match', async () => {
+    const paths = await legacyChange();
+    await writeNativeWorkspaceIdentity({
+      paths,
+      name: 'legacy-change',
+      revision: 4,
+      binding: {
+        isolation: 'current',
+        changeBranch: 'comet/legacy-change',
+        targetBranch: null,
       },
     });
 
