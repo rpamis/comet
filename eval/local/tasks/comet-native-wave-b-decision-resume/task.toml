@@ -1,6 +1,6 @@
 [metadata]
 name = "comet-native-wave-b-decision-resume"
-description = "Test one hidden product decision and a context-cleared Native resume from disk"
+description = "Test one hidden product decision and a context-cleared Native v4 resume"
 difficulty = "hard"
 category = "comet-native"
 tags = ["comet-native", "decision", "cold-resume", "multi-turn", "wave-b"]
@@ -16,19 +16,19 @@ timeout_sec = 900
 
 [validation]
 test_scripts = "test_native_wave_b_decision_resume.py"
-target_artifacts = [".cache/comet-native-eval/resume-status.json", ".cache/comet-native-eval/archive-preview.json", ".cache/comet-native-eval/archive-commit.json", "docs/comet/archive", "docs/comet/specs/unique-word-counting/spec.md"]
+target_artifacts = [".cache/comet-native-eval/resume-status.json", "docs/comet/archive", "docs/comet/specs/unique-word-counting/spec.md"]
 timeout = 120
 
 [evaluation]
 profile = "generic"
 required_skills = ["comet-native"]
-expected_artifacts = [".cache/comet-native-eval/resume-status.json", ".cache/comet-native-eval/archive-preview.json", ".cache/comet-native-eval/archive-commit.json", "docs/comet/archive", "docs/comet/specs/unique-word-counting/spec.md"]
+expected_artifacts = [".cache/comet-native-eval/resume-status.json", "docs/comet/archive", "docs/comet/specs/unique-word-counting/spec.md"]
 require_skill_invocation = true
 rubric_criteria = [
   "Surfaces exactly one user-visible token-normalization decision before Build",
   "Records the deterministic answer in the brief and complete target specification",
-  "Resumes the same change from disk after context is cleared instead of relying on chat memory",
-  "Implements, verifies, and commits the exact ready Archive preflight with real evidence",
+  "Resumes the same v4 change from portable state after context is cleared",
+  "Implements, independently verifies, and archives only after all acceptance items pass",
 ]
 
 [interaction]
@@ -36,5 +36,5 @@ mode = "auto_user"
 max_turns = 4
 decision_patterns = ["normalization", "punctuation", "apostrophe", "unique word"]
 decision_reply = "Treat words case-insensitively, strip surrounding punctuation, and preserve internal apostrophes."
-continue_prompt = "This is a context-cleared continuation. First invoke `/comet-native` so its recovery contract is loaded. After the Skill loads, the first Bash command, before any Read, Edit, test, or transition, must create .cache/comet-native-eval/ and invoke the bundled runtime command `status add-unique-counting --json`, redirecting its stdout directly to .cache/comet-native-eval/resume-status.json. Confirm that exact envelope names add-unique-counting in Build, and write it exactly once. That file is the immutable cold-resume snapshot: never overwrite or recreate it later, including after Archive. Then re-read the confirmed Native artifacts from disk and continue the same change through Verify and Archive. The first archive dry-run command must include --dry-run --json and redirect stdout directly to .cache/comet-native-eval/archive-preview.json; read data.preflightHash from that exact envelope. The first commit command must include --expect-preflight with that hash and --json, and redirect stdout directly to .cache/comet-native-eval/archive-commit.json. Do not reconstruct either archive envelope after Archive. Verify all three runtime envelopes exist before reporting completion."
+continue_prompt = "This is a context-cleared continuation. First invoke `/comet-native`. Then run the Runtime-provided read-only status command before any Read, Edit, test, or transition and redirect its complete stdout JSON envelope exactly once to `.cache/comet-native-eval/resume-status.json`. Recover the same change from the v4 portable state and artifacts on disk, continue through Build and independent Verify, and execute only the Runtime continuation returned for Archive. Do not recreate the saved status envelope."
 fresh_resume_marker = "COMET_NATIVE_COLD_RESUME_READY"

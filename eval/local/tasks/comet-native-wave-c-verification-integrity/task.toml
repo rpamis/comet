@@ -1,6 +1,6 @@
 [metadata]
 name = "comet-native-wave-c-verification-integrity"
-description = "Test confirmed partial scope, stale evidence retreat, and complete two-step Native Archive"
+description = "Test beta17 Runtime checks, complete Verifier coverage, and the repair loop"
 difficulty = "hard"
 category = "comet-native"
 tags = ["comet-native", "verification", "freshness", "acceptance-trace", "wave-c"]
@@ -10,25 +10,25 @@ default_treatments = ["COMET_NATIVE_PHASE1"]
 required = []
 
 [environment]
-description = "Python word-count workspace for exercising Native verification freshness and acceptance traces."
+description = "Python word-count workspace for exercising beta17 Native verification and repair."
 dockerfile = "environment/Dockerfile"
 timeout_sec = 900
 
 [validation]
 test_scripts = "test_native_wave_c_verification_integrity.py"
-target_artifacts = [".cache/comet-native-eval/partial-scope.json", ".cache/comet-native-eval/partial-archive-preview.json", ".cache/comet-native-eval/stale-status.json", ".cache/comet-native-eval/stale-archive-preview.json", ".cache/comet-native-eval/stale-archive-commit.json", ".cache/comet-native-eval/final-archive-preview.json", ".cache/comet-native-eval/archive-commit.json", "docs/comet/archive", "docs/comet/specs/longest-word/spec.md"]
+target_artifacts = [".cache/comet-native-eval/verifier-missing.json", ".cache/comet-native-eval/verifier-failed.json", ".cache/comet-native-eval/final-status.json", "docs/comet/archive", "docs/comet/specs/longest-word/spec.md"]
 timeout = 120
 
 [evaluation]
 profile = "generic"
 required_skills = ["comet-native"]
-expected_artifacts = [".cache/comet-native-eval/partial-scope.json", ".cache/comet-native-eval/partial-archive-preview.json", ".cache/comet-native-eval/stale-status.json", ".cache/comet-native-eval/stale-archive-preview.json", ".cache/comet-native-eval/stale-archive-commit.json", ".cache/comet-native-eval/final-archive-preview.json", ".cache/comet-native-eval/archive-commit.json", "docs/comet/archive", "docs/comet/specs/longest-word/spec.md"]
+expected_artifacts = [".cache/comet-native-eval/verifier-missing.json", ".cache/comet-native-eval/verifier-failed.json", ".cache/comet-native-eval/final-status.json", "docs/comet/archive", "docs/comet/specs/longest-word/spec.md"]
 require_skill_invocation = true
 rubric_criteria = [
-  "Requires an exact user-confirmed allowance before accepting a partial implementation scope",
-  "Detects post-verification implementation drift and retreats stale evidence back to Build",
-  "Links every acceptance criterion to concrete immutable evidence before Archive",
-  "Uses dry-run plus the exact preflight hash and archives only complete fresh final evidence",
+  "Rejects a Verifier response that omits an acceptance item",
+  "Returns a failed candidate to Build and uses a new Verifier attempt after repair",
+  "Archives only a complete v4 state with readable verification.md",
+  "Does not rerun Runtime checks during Archive",
 ]
 
 [interaction]

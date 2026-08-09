@@ -660,6 +660,82 @@ def _completion_input(outputs: dict[str, Any], key: str) -> dict[str, list[str]]
     return None
 
 
+def _is_native_eval(outputs: dict[str, Any], test_dir: Path) -> bool:
+    required = outputs.get("required_skills") or []
+    if "comet-native" in required:
+        return True
+    config = test_dir / ".comet" / "config.yaml"
+    if config.is_file():
+        try:
+            return "native" in config.read_text(errors="ignore").lower()
+        except OSError:
+            pass
+    return (test_dir / "docs" / "comet").exists()
+
+
+def _native_change(test_dir: Path) -> tuple[Path | None, dict[str, Any] | None]:
+    try:
+        from scaffold.python.validation.native_v4 import active_changes, archive_changes, state_for
+
+        changes = archive_changes(test_dir) or active_changes(test_dir)
+        if not changes:
+            return None, None
+        change = changes[-1]
+        return change, state_for(change)
+    except Exception:
+        return None, None
+
+
+def _score_native_main_flow(test_dir: Path) -> tuple[float, str]:
+    change, state = _native_change(test_dir)
+    if not change or not isinstance(state, dict) or state.get("schema") != "comet.native.v4":
+        return 0.0, "no beta17 portable state"
+    phase = state.get("phase")
+    stage = (state.get("loop") or {}).get("stage")
+    return (
+        (1.0, f"phase={phase} loop={stage}")
+        if phase in {"shape", "build", "verify", "archive"}
+        else (0.0, "invalid Native phase")
+    )
+
+
+def _score_native_gate_guard(events: dict[str, Any]) -> tuple[float, str]:
+    commands = _join_commands(events).lower()
+    native = bool(re.search(r"comet(?:-native|\s+native)", commands))
+    legacy = any(token in commands for token in ("checkpoint", "preflight", "receipt", "evidence"))
+    return _binary_score([native, not legacy])[
+        0
+    ], f"native_commands={native} legacy_commands={legacy}"
+
+
+def _score_native_artifact_quality(test_dir: Path) -> tuple[float, str]:
+    change, state = _native_change(test_dir)
+    if not change or not isinstance(state, dict):
+        return 0.0, "no Native change"
+    checks = [
+        (change / "comet-state.yaml").is_file(),
+        (change / "brief.md").is_file(),
+        bool(list((change / "specs").glob("**/spec.md"))),
+    ]
+    if state.get("phase") == "archive" or state.get("archived"):
+        checks.append((change / "verification.md").is_file())
+    return _binary_score(checks)[0], f"portable_artifacts={sum(checks)}/{len(checks)}"
+
+
+def _score_native_recovery(test_dir: Path) -> tuple[float, str]:
+    _, state = _native_change(test_dir)
+    if not isinstance(state, dict):
+        return 0.0, "no Native state"
+    loop = state.get("loop")
+    history = state.get("history")
+    checks = [
+        state.get("schema") == "comet.native.v4",
+        isinstance(loop, dict) and isinstance(loop.get("iteration"), int),
+        isinstance(history, list) and len(history) <= 50,
+    ]
+    return _binary_score(checks)[0], f"portable_loop={sum(checks)}/{len(checks)}"
+
+
 def comet_rubric_validator(test_dir: Path, outputs: dict) -> tuple[list[str], list[str]]:
     """Run all rubric dimensions and return (passed_messages, []).
 
@@ -675,6 +751,7 @@ def comet_rubric_validator(test_dir: Path, outputs: dict) -> tuple[list[str], li
     workflow_completion = _completion_input(outputs or {}, "workflow_completion")
     is_control = _is_control_business_only(outputs or {})
     workflow = _detect_workflow_kind(events, test_dir, outputs)
+    is_native = _is_native_eval(outputs or {}, test_dir)
 
     if is_control:
         na_reason = "CONTROL business-only baseline"
@@ -695,6 +772,38 @@ def comet_rubric_validator(test_dir: Path, outputs: dict) -> tuple[list[str], li
             ("decision_point_compliance", None, na_reason),
             ("artifact_quality", None, na_reason),
             ("recovery_resilience", None, na_reason),
+        ]
+    elif is_native:
+        native_business = _completion_input(outputs or {}, "business_completion")
+        scored = [
+            ("main_flow", *_score_native_main_flow(test_dir)),
+            ("gate_guard", *_score_native_gate_guard(events)),
+            (
+                "skill_invocation",
+                (
+                    1.0,
+                    "comet-native required"
+                    if "comet-native" in (outputs or {}).get("required_skills", [])
+                    else "native artifacts detected",
+                ),
+            ),
+            ("spec_drift", (1.0, "Native formal spec is portable")),
+            (
+                "business_completion",
+                *_score_completion({"business_completion": native_business}, "business_completion"),
+            ),
+            ("workflow_completion", None, "Native validator owns workflow completion")
+            if workflow_completion is None
+            else (
+                "workflow_completion",
+                *_score_completion(
+                    {"workflow_completion": workflow_completion}, "workflow_completion"
+                ),
+            ),
+            ("efficiency", *_score_efficiency(events)),
+            ("decision_point_compliance", (1.0, "Native decisions are checked by Runtime")),
+            ("artifact_quality", *_score_native_artifact_quality(test_dir)),
+            ("recovery_resilience", *_score_native_recovery(test_dir)),
         ]
     else:
         scored = [
@@ -746,7 +855,7 @@ def comet_rubric_validator(test_dir: Path, outputs: dict) -> tuple[list[str], li
     weighted = _compute_weighted_score(dimension_scores)
     passed.append(_fmt_weighted(weighted))
 
-    if not is_control:
+    if not is_control and not is_native:
         invoked = events.get("skills_invoked", []) or []
         if "comet" not in invoked:
             failed.append("Required skill not invoked: comet")
@@ -757,6 +866,10 @@ def comet_rubric_validator(test_dir: Path, outputs: dict) -> tuple[list[str], li
                 failed.append("Required OpenSpec dependency skill not invoked")
             if not any(skill in invoked for skill in _SUPERPOWERS_DEPENDENCY_SKILLS):
                 failed.append("Required Superpowers dependency skill not invoked")
+    elif is_native and not is_control:
+        invoked = events.get("skills_invoked", []) or []
+        if "comet-native" not in invoked:
+            failed.append("Required skill not invoked: comet-native")
 
     # Optional LLM-as-judge overlay: when BENCH_LLM_JUDGE=1, a judge model
     # re-scores the three qualitative dimensions (artifact_quality, spec_drift,

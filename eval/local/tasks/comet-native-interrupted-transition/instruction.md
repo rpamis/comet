@@ -4,4 +4,4 @@ Begin by invoking the `/comet-native` Skill. Inspect `status` and `doctor`, reco
 
 After recovery, add a `--characters` flag that prints `Characters: N`, counting every input character including whitespace and newlines. Preserve word and line behavior, add focused tests, complete Build and Verify with real evidence, and archive the existing complete target specification.
 
-Use only the Comet Native Skill and bundled runtime. Do not create OpenSpec, Classic, `.comet`, or external workflow artifacts.
+Use only the Comet Native Skill and bundled runtime. Do not create OpenSpec, Classic, or change-local machine artifacts. `.comet/config.yaml`, `.comet/current-change.json`, and `.comet/runtime/` are Runtime-owned.

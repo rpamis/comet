@@ -16,7 +16,8 @@ COMET_NATIVE_PHASE1:
     switch sessions, takes priority over automatic progression: persist the
     requested boundary, stop there, and continue toward the terminal archive
     only in the resumed session. Do not create OpenSpec, Classic, Superpowers,
-    or hidden `.comet` workflow artifacts.
+    or change-local machine artifacts. The Native Runtime owns `.comet/config.yaml`,
+    `.comet/runtime/native/`, and `.comet/current-change.json`.
   skills:
     - name: comet-native
       source: path
@@ -34,8 +35,9 @@ COMET_NATIVE_SEQUENTIAL:
     in `.comet/config.yaml` before asking any product question.
     Do not change the configured clarification mode. Ask one most-upstream user
     decision per round, persist every answer, and continue through Shape, Build,
-    Verify, and Archive. Do not create OpenSpec, Classic, Superpowers, or hidden
-    `.comet` workflow artifacts.
+    Verify, and Archive. Do not create OpenSpec, Classic, Superpowers, or change-local
+    machine artifacts. The Native Runtime owns `.comet/config.yaml`,
+    `.comet/runtime/native/`, and `.comet/current-change.json`.
   skills:
     - name: comet-native
       source: path
@@ -55,7 +57,8 @@ COMET_NATIVE_BATCH:
     independent user decision in one numbered round, persist every answer, then
     present and persist the required final shared-understanding confirmation
     before continuing through Build, Verify, and Archive. Do not create OpenSpec,
-    Classic, Superpowers, or hidden `.comet` workflow artifacts.
+    Classic, Superpowers, or change-local machine artifacts. The Native Runtime owns
+    `.comet/config.yaml`, `.comet/runtime/native/`, and `.comet/current-change.json`.
   skills:
     - name: comet-native
       source: path

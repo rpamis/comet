@@ -1,9 +1,8 @@
-"""Shared hard checks for the Comet Native wave B-F evaluations.
+"""Legacy helpers retained for legacy fixtures only.
 
-The wave tasks intentionally exercise different runtime contracts, but their
-evidence is all machine-readable JSON.  Keeping the parsing here prevents each
-task validator from inventing a slightly different interpretation of Native
-state, compare-and-swap outcomes, or Dashboard projections.
+Beta17 Wave B-F validators import :mod:`native_v4` instead.  This module stays
+available for migration fixtures so the retired receipt/snapshot protocol is
+not silently reintroduced into the current Native acceptance path.
 """
 
 from __future__ import annotations

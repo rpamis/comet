@@ -1,6 +1,6 @@
 You are working on a Python project named `wordcount-cli`.
 
-Begin by invoking the `/comet-native` Skill. Use its bundled Native runtime and no other workflow Skill to add sentence counting:
+Begin by invoking the `/comet-native` Skill. Use its bundled Native runtime and beta17 portable `comet.native.v4` state; no other workflow Skill is needed to add sentence counting:
 
 - initialize Comet Native with `artifact_root: docs`, automatic archive confirmation, and
   `max_verify_failures: 5`;
@@ -15,9 +15,10 @@ Begin by invoking the `/comet-native` Skill. Use its bundled Native runtime and 
   that omits at least one acceptance entry, confirm from Build `status --details` that Runtime
   projects the omitted item as `missing` and returns `work-phase`, then implement or evidence the
   remaining gap and continue to the final Verify;
-- issue current typed acceptance and required-check receipts before archiving the change;
+- submit the Builder handoff, let Runtime run required checks, and use a new read-only Verifier to cover every acceptance item before archiving;
 - implement, verify, and archive the change.
 
 Request the required final shared-understanding confirmation, then continue automatically while the
-remaining requirements are unambiguous. Do not create `openspec/` or any hidden `.comet/` workflow
-artifact beyond `config.yaml`. Do not use Classic, OpenSpec, Superpowers, or any external Skill.
+remaining requirements are unambiguous. Do not create `openspec/`, Classic artifacts, or change-local
+machine files. `.comet/config.yaml`, `.comet/current-change.json`, and `.comet/runtime/` are managed by
+Native Runtime. Do not use Classic, OpenSpec, Superpowers, or any external Skill.

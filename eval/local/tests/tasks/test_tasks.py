@@ -204,7 +204,7 @@ def test_control_comet_workflow_filters_workflow_only_checks():
             "tests_exist",
             "native_skill_invocation",
             "native_artifacts",
-            "native_trajectory",
+            "native_loop",
         ],
         [
             "openspec_artifacts: openspec/changes/ directory not found",
@@ -230,7 +230,7 @@ def test_split_comet_completion_checks_separates_business_and_workflow():
             "workflow_phases: 5/5",
             "native_skill_invocation",
             "native_artifacts",
-            "native_trajectory",
+            "native_loop",
         ],
         [
             "openspec_artifacts: missing",
@@ -251,7 +251,7 @@ def test_split_comet_completion_checks_separates_business_and_workflow():
             "workflow_phases: 5/5",
             "native_skill_invocation",
             "native_artifacts",
-            "native_trajectory",
+            "native_loop",
         ],
         "failed": [
             "openspec_artifacts: missing",

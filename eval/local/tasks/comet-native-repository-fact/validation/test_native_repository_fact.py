@@ -8,6 +8,8 @@ from pathlib import Path
 
 import yaml
 
+from scaffold.python.validation.native_v4 import validate_terminal_state
+
 
 WORKSPACE = Path("/workspace")
 RESULTS_FILE = os.environ.get("BENCH_TEST_RESULTS", "_test_results.json")
@@ -30,7 +32,8 @@ def check_native():
     archives = sorted((WORKSPACE / "docs/comet/archive").glob("*-*"))
     assert archives
     state = yaml.safe_load((archives[-1] / "comet-state.yaml").read_text(encoding="utf-8"))
-    assert state["approval"] == "implicit"
+    assert state.get("schema") == "comet.native.v4"
+    assert not validate_terminal_state(state)
     brief = (archives[-1] / "brief.md").read_text(encoding="utf-8").lower()
     assert "whitespace" in brief or "blank line" in brief
     assert (WORKSPACE / "docs/comet/specs/paragraph-counting/spec.md").is_file()
@@ -43,7 +46,10 @@ def main():
             check()
         except Exception as error:
             failed.append(f"{name}: {error}")
-    output = {"passed": [] if failed else ["paragraph_behavior", "native_artifacts"], "failed": failed}
+    output = {
+        "passed": [] if failed else ["paragraph_behavior", "native_artifacts"],
+        "failed": failed,
+    }
     (WORKSPACE / RESULTS_FILE).write_text(json.dumps(output, indent=2), encoding="utf-8")
     print(json.dumps(output))
     return 1 if failed else 0

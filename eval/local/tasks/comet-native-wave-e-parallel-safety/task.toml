@@ -1,9 +1,9 @@
 [metadata]
 name = "comet-native-wave-e-parallel-safety"
-description = "Test early conflict/workspace status and single-winner Native compare-and-swap"
+description = "Test early conflict status and one-winner Native v4 Runtime mutation"
 difficulty = "hard"
 category = "comet-native"
-tags = ["comet-native", "parallel", "conflict", "workspace", "cas", "wave-e"]
+tags = ["comet-native", "parallel", "conflict", "state-version", "wave-e"]
 default_treatments = ["COMET_NATIVE_PHASE1"]
 
 [template]
@@ -16,20 +16,20 @@ timeout_sec = 900
 
 [validation]
 test_scripts = "test_native_wave_e_parallel_safety.py"
-target_artifacts = [".cache/comet-native-eval/conflict-status.json", ".cache/comet-native-eval/checkpoint-attempt-a.json", ".cache/comet-native-eval/checkpoint-attempt-b.json", "docs/comet/changes"]
+target_artifacts = [".cache/comet-native-eval/conflict-status.json", ".cache/comet-native-eval/mutation-attempt-a.json", ".cache/comet-native-eval/mutation-attempt-b.json", "docs/comet/changes"]
 timeout = 120
 
 [evaluation]
 profile = "generic"
 required_skills = ["comet-native"]
-expected_artifacts = [".cache/comet-native-eval/conflict-status.json", ".cache/comet-native-eval/checkpoint-attempt-a.json", ".cache/comet-native-eval/checkpoint-attempt-b.json", "docs/comet/changes"]
+expected_artifacts = [".cache/comet-native-eval/conflict-status.json", ".cache/comet-native-eval/mutation-attempt-a.json", ".cache/comet-native-eval/mutation-attempt-b.json", "docs/comet/changes"]
 require_skill_invocation = true
 native_terminal = "active"
 rubric_criteria = [
-  "Creates two active changes that target the same Native capability and artifact",
-  "Reports the definite conflict before Archive together with an advisory-only workspace drift",
-  "Runs two concurrent writes from one expected revision with exactly one CAS winner",
-  "Preserves both active changes and does not expose workspace identity hashes",
+  "Creates two active v4 changes that target the same capability and artifact with distinct proposed behavior",
+  "Reports the definite conflict before Archive without exposing workspace identity details",
+  "Runs two concurrent state-version-bound writes with exactly one Runtime winner",
+  "Preserves both active changes and keeps machine state under the central Runtime directory",
 ]
 
 [interaction]

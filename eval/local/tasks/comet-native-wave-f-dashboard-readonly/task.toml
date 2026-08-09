@@ -1,6 +1,6 @@
 [metadata]
 name = "comet-native-wave-f-dashboard-readonly"
-description = "Test Dashboard parity with Native CLI state and prove read-only collection"
+description = "Test Dashboard v2 parity with Native v4 state and prove read-only collection"
 difficulty = "hard"
 category = "comet-native"
 tags = ["comet-native", "dashboard", "projection", "read-only", "wave-f"]
@@ -10,7 +10,7 @@ default_treatments = ["COMET_NATIVE_PHASE1"]
 required = []
 
 [environment]
-description = "Passing baseline Python workspace with an active Native change visible to Dashboard."
+description = "Python workspace with an active beta17 Native change visible to Dashboard."
 dockerfile = "environment/Dockerfile"
 timeout_sec = 900
 
@@ -25,10 +25,10 @@ required_skills = ["comet-native"]
 expected_artifacts = [".cache/comet-native-eval/cli-before.json", ".cache/comet-native-eval/cli-after.json", ".cache/comet-native-eval/dashboard.json", ".cache/comet-native-eval/native-tree-before.json", ".cache/comet-native-eval/native-tree-after.json"]
 require_skill_invocation = true
 rubric_criteria = [
-  "Creates one active Native change with a stable CLI projection",
-  "Captures the bounded Dashboard Native snapshot and matches Runtime state and continuation fields",
-  "Hashes the Native artifact tree before and after Dashboard collection",
-  "Demonstrates that Dashboard collection changes no Native-owned file and exposes no raw evidence",
+  "Creates one active beta17 Native change with a stable CLI projection",
+  "Matches Dashboard v2 stateVersion, phase, loop, and acceptance fields with Runtime state",
+  "Demonstrates that Dashboard collection changes no Native-owned file",
+  "Keeps raw paths, execution identifiers, and full logs out of the public projection",
 ]
 
 [interaction]

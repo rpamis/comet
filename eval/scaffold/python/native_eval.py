@@ -25,7 +25,7 @@ NATIVE_WORKFLOW_CHECK_PREFIXES = (
     "native_skill_invocation",
     "native_artifacts",
     "native_state",
-    "native_trajectory",
+    "native_loop",
     "native_isolation",
 )
 COMET_WORKFLOW_CHECK_PREFIXES = (
@@ -33,14 +33,19 @@ COMET_WORKFLOW_CHECK_PREFIXES = (
     *NATIVE_WORKFLOW_CHECK_PREFIXES,
 )
 
-NATIVE_PROMPT_PREFIX = """[COMET NATIVE TREATMENT]
+NATIVE_PROMPT_PREFIX = """[COMET NATIVE BETA17 TREATMENT]
 Invoke /comet-native as the only Skill. Do not invoke /comet or any other Skill.
 Preserve every business requirement in the task below, but interpret legacy
 references to the comet workflow and its Open, Design, Build, Verify, and Archive
-phases as the Native Shape, Build, Verify, and Archive workflow. Use only Native's
-bundled runtime and initialize artifact_root `docs`. {terminal_instruction}
+phases as the Native Shape, Build, Verify, and Archive workflow. Use beta17's
+portable `comet.native.v4` state and its bounded Build↔Verify loop. Keep the
+user-readable brief, specification, and verification report at the change root;
+the machine-owned execution overlay belongs under `.comet/runtime`. Initialize
+artifact_root `docs`. {terminal_instruction}
 {clarification_instruction}
-Do not create OpenSpec, Classic, Superpowers, or hidden `.comet` artifacts.
+Do not create OpenSpec, Classic, Superpowers, snapshot, evidence, receipt,
+checkpoint, trajectory, or change-local `runtime` artifacts. `.comet/config.yaml`
+and `.comet/runtime` are the only Native machine state expected for this task.
 
 [ORIGINAL BUSINESS TASK]
 """

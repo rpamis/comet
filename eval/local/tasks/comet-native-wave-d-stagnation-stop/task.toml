@@ -1,6 +1,6 @@
 [metadata]
 name = "comet-native-wave-d-stagnation-stop"
-description = "Test third-signature stop, one explicit override, and the twelfth-failure hard ceiling"
+description = "Test Native v4 no-progress stopping, one explicit override, and the bounded repair ceiling"
 difficulty = "hard"
 category = "comet-native"
 tags = ["comet-native", "verification", "stagnation", "manual-stop", "hard-stop", "wave-d"]
@@ -26,9 +26,9 @@ expected_artifacts = [".cache/comet-native-eval/manual-stop.json", ".cache/comet
 require_skill_invocation = true
 native_terminal = "active-blocked"
 rubric_criteria = [
-  "Stops on the third consecutive identical failure signature without changing code or contract",
-  "Accepts exactly one explicit signature-bound repair override",
-  "Hard-stops the twelfth total repair failure even when later signatures alternate",
+  "Stops after repeated unresolved verification through portable v4 Loop counters and a user-readable blocker",
+  "Accepts exactly one explicit new repair hypothesis and keeps the change active",
+  "Reaches the bounded failure ceiling without legacy machine artifacts",
   "Leaves the unresolved change active with passing baseline tests and unchanged acceptance",
 ]
 

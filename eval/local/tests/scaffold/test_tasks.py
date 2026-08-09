@@ -234,7 +234,7 @@ def test_native_task_uses_its_own_skill_contract():
     assert prompt.startswith("You are working on a Python project")
     assert "Begin by invoking the `/comet-native` Skill" in prompt
     assert "/comet` Skill/slash command" not in prompt
-    assert "current typed acceptance and required-check receipts" in prompt
+    assert "portable `comet.native.v4` state" in prompt
     assert "required final shared-understanding confirmation" in prompt
 
 
@@ -819,18 +819,29 @@ def test_native_clarification_validator_accepts_one_semantic_canonical_spec(tmp_
     archived = tmp_path / "docs" / "comet" / "archive" / "2026-07-15-add-sentences"
     archived.mkdir(parents=True)
     (archived / "comet-state.yaml").write_text(
-        """schema: comet.native.v1
+        """schema: comet.native.v4
 name: add-sentences
 phase: archive
-approval: confirmed
+status: done
+state_version: 4
+loop:
+  stage: done
+  iteration: 1
+  attempt: 1
+acceptance:
+  - id: A1
+    result: passed
+verification:
+  verdict: pass
+  assurance: host-attested
 spec_changes:
   - capability: sentences
     operation: create
     source: specs/sentences/spec.md
-    base_hash: null
 verification_result: pass
 verification_report: verification.md
 archived: true
+history: []
 """,
         encoding="utf-8",
     )
@@ -849,25 +860,6 @@ archived: true
     archived_spec.write_text(canonical.read_text(encoding="utf-8"), encoding="utf-8")
     (archived / "verification.md").write_text(
         "# Commands and results\npytest: 24 passed\n# Conclusion\npass\n",
-        encoding="utf-8",
-    )
-    trajectory = archived / "runtime" / "trajectory.jsonl"
-    trajectory.parent.mkdir(parents=True)
-    trajectory.write_text(
-        "\n".join(
-            json.dumps(
-                {
-                    "type": "state_transitioned",
-                    "data": {"previousPhase": previous, "nextPhase": following},
-                }
-            )
-            for previous, following in [
-                ("shape", "build"),
-                ("build", "verify"),
-                ("verify", "archive"),
-                ("archive", None),
-            ]
-        ),
         encoding="utf-8",
     )
     (tmp_path / "_test_context.json").write_text(

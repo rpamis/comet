@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import yaml
+
 
 WORKSPACE = Path("/workspace")
 RESULTS_FILE = os.environ.get("BENCH_TEST_RESULTS", "_test_results.json")
@@ -29,31 +31,28 @@ def check_recovery():
     archives = sorted((WORKSPACE / "docs/comet/archive").glob("*-add-character-counting"))
     assert archives
     archived = archives[-1]
-    events = [
-        json.loads(line)
-        for line in (archived / "runtime/trajectory.jsonl").read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
-    assert (
-        sum(
-            event.get("type") == "state_transitioned"
-            and event.get("data", {}).get("transitionId") == TRANSITION_ID
-            for event in events
-        )
-        == 1
-    )
-    assert not (archived / "runtime/transition.json").exists()
+    state = yaml.safe_load((archived / "comet-state.yaml").read_text(encoding="utf-8")) or {}
+    assert state.get("schema") == "comet.native.v4"
+    assert state.get("archived") is True
+    assert not (archived / "runtime").exists()
+    assert not (archived / "transition.json").exists()
     assert (WORKSPACE / "docs/comet/specs/character-counting/spec.md").is_file()
 
 
 def main():
     failed = []
-    for name, check in (("character_behavior", check_behavior), ("transition_recovery", check_recovery)):
+    for name, check in (
+        ("character_behavior", check_behavior),
+        ("transition_recovery", check_recovery),
+    ):
         try:
             check()
         except Exception as error:
             failed.append(f"{name}: {error}")
-    output = {"passed": [] if failed else ["character_behavior", "transition_recovery"], "failed": failed}
+    output = {
+        "passed": [] if failed else ["character_behavior", "transition_recovery"],
+        "failed": failed,
+    }
     (WORKSPACE / RESULTS_FILE).write_text(json.dumps(output, indent=2), encoding="utf-8")
     print(json.dumps(output))
     return 1 if failed else 0

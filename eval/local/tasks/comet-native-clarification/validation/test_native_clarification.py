@@ -8,6 +8,8 @@ from pathlib import Path
 
 import yaml
 
+from scaffold.python.validation.native_v4 import validate_terminal_state
+
 
 WORKSPACE = Path("/workspace")
 RESULTS_FILE = os.environ.get("BENCH_TEST_RESULTS", "_test_results.json")
@@ -86,7 +88,7 @@ def check_confirmed_archive():
         return failed(
             "confirmed_archive",
             f"Expected exactly one Native archive for the clarified change, found {len(archives)}",
-    )
+        )
     archived = archives[0]
     state_file = archived / "comet-state.yaml"
     if not state_file.is_file():
@@ -94,8 +96,8 @@ def check_confirmed_archive():
     state = yaml.safe_load(state_file.read_text(encoding="utf-8")) or {}
     if state.get("phase") != "archive" or state.get("archived") is not True:
         return failed("confirmed_archive", "Archived state is not terminal")
-    if state.get("approval") != "confirmed":
-        return failed("confirmed_archive", "Shape did not record explicit confirmation")
+    if state.get("schema") != "comet.native.v4":
+        return failed("confirmed_archive", "State is not beta17 portable v4")
     if state.get("verification_result") != "pass":
         return failed("confirmed_archive", "Verify did not record a passing result")
     brief_file = archived / "brief.md"
@@ -144,23 +146,9 @@ def check_confirmed_archive():
     if "pass" not in report or "pytest" not in report:
         return failed("confirmed_archive", "Verification evidence does not record passing tests")
 
-    trajectory_file = archived / "runtime" / "trajectory.jsonl"
-    if not trajectory_file.is_file():
-        return failed("confirmed_archive", "Native trajectory is missing")
-    transitions = []
-    for line in trajectory_file.read_text(encoding="utf-8").splitlines():
-        event = json.loads(line)
-        if event.get("type") == "state_transitioned":
-            data = event.get("data") or {}
-            transitions.append((data.get("previousPhase"), data.get("nextPhase")))
-    expected_transitions = [
-        ("shape", "build"),
-        ("build", "verify"),
-        ("verify", "archive"),
-        ("archive", None),
-    ]
-    if transitions != expected_transitions:
-        return failed("confirmed_archive", "Native trajectory does not cover every phase exactly once")
+    state_errors = validate_terminal_state(state)
+    if state_errors:
+        return failed("confirmed_archive", "; ".join(state_errors))
 
     interaction = read_interaction()
     if interaction.get("mode") != "auto_user":
@@ -179,7 +167,7 @@ def main():
     output = {
         "passed": [result["check"] for result in results if result["status"] == "passed"],
         "failed": [
-            f'{result["check"]}: {result.get("reason", "")}'
+            f"{result['check']}: {result.get('reason', '')}"
             for result in results
             if result["status"] == "failed"
         ],

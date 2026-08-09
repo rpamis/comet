@@ -9,6 +9,8 @@ from pathlib import Path
 
 import yaml
 
+from scaffold.python.validation.native_v4 import validate_terminal_state
+
 
 WORKSPACE = Path("/workspace")
 RESULTS_FILE = os.environ.get("BENCH_TEST_RESULTS", "_test_results.json")
@@ -163,16 +165,8 @@ def check_confirmed_archive():
     state = yaml.safe_load(state_file.read_text(encoding="utf-8")) or {}
     if state.get("phase") != "archive" or state.get("archived") is not True:
         return failed("clarification_mode_archive", "Archived state is not terminal")
-    config_file = WORKSPACE / ".comet" / "config.yaml"
-    project_config = yaml.safe_load(config_file.read_text(encoding="utf-8")) or {}
-    clarification_mode = (project_config.get("native") or {}).get("clarification_mode")
-    if (
-        not approval_is_valid(clarification_mode, state.get("approval"))
-        or state.get("verification_result") != "pass"
-    ):
-        return failed(
-            "clarification_mode_archive", "Approval or verification evidence is incomplete"
-        )
+    if state.get("schema") != "comet.native.v4" or validate_terminal_state(state):
+        return failed("clarification_mode_archive", "Portable v4 verification is incomplete")
 
     brief_file = archived / "brief.md"
     if not brief_file.is_file():
