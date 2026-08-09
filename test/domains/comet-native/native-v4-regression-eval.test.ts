@@ -16,6 +16,7 @@ import {
 import { archiveNativePortableChange } from '../../../domains/comet-native/native-portable-archive.js';
 import {
   confirmNativePortableShape,
+  confirmNativePortableSkillCoordinatedPass,
   createNativePortableChange,
   dispatchNativePortableVerifier,
   executeNativePortableCheckPlan,
@@ -320,14 +321,21 @@ Ship a command whose output remains valid at every supported diagnostic size.
       }),
     });
     expect(passed.state).toMatchObject({
-      phase: 'archive',
+      phase: 'verify',
+      status: 'await-user',
       verification_result: 'pass',
-      loop: { stage: 'archive-ready', iteration: 2, attempt: 1 },
+      loop: { stage: 'await-user', iteration: 2, attempt: 1 },
     });
     expect(
       passed.state.verification?.checks.map(({ id, duration_ms }) => ({ id, duration_ms })),
     ).toEqual(finalChecks.checks.map(({ id, duration_ms }) => ({ id, duration_ms })));
     await expectNoLegacyVerificationArtifacts();
+
+    const confirmed = await confirmNativePortableSkillCoordinatedPass({ paths, name });
+    expect(confirmed).toMatchObject({
+      phase: 'archive',
+      loop: { stage: 'archive-ready', iteration: 2, attempt: 1 },
+    });
 
     const countsBeforeArchive = await readCounters();
     const archived = await archiveNativePortableChange({ paths, name });

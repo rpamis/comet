@@ -61,14 +61,19 @@ function counts(state: NativePortableState): NativePortableAcceptanceCounts {
 function workspaceProjection(paths: NativeProjectPaths, state: NativePortableState) {
   const context = inspectGitWorktree(paths.projectRoot);
   let message: string | null = null;
-  if (state.workspace.isolation !== 'current') {
+  if (state.workspace.change_branch !== null) {
     if (!context.isGitWorktree) {
       message = 'The Native change requires a registered Git worktree.';
     } else if (context.currentBranch !== state.workspace.change_branch) {
       message = `Expected branch ${state.workspace.change_branch}, current branch is ${context.currentBranch ?? '(detached)'}.`;
-    } else if (state.workspace.isolation === 'worktree' && !context.isSecondaryWorktree) {
-      message = 'The Native change requires its linked worktree.';
     }
+  }
+  if (
+    message === null &&
+    state.workspace.isolation === 'worktree' &&
+    !context.isSecondaryWorktree
+  ) {
+    message = 'The Native change requires its linked worktree.';
   }
   return {
     projectRoot: paths.projectRoot,

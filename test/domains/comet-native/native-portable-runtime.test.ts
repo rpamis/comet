@@ -15,6 +15,7 @@ import {
 } from '../../../domains/comet-native/native-paths.js';
 import {
   confirmNativePortableShape,
+  confirmNativePortableSkillCoordinatedPass,
   createNativePortableChange,
   dispatchNativePortableVerifier,
   executeNativePortableCheckPlan,
@@ -200,15 +201,24 @@ Ship the behavior.
     });
 
     expect(submitted.state).toMatchObject({
-      phase: 'archive',
+      phase: 'verify',
+      status: 'await-user',
       verification_result: 'pass',
+      loop: { stage: 'await-user', iteration: 1, attempt: 1 },
+    });
+    const confirmed = await confirmNativePortableSkillCoordinatedPass({
+      paths,
+      name: state.name,
+    });
+    expect(confirmed).toMatchObject({
+      phase: 'archive',
       loop: { stage: 'archive-ready', iteration: 1, attempt: 1 },
     });
     expect(await fs.readFile(path.join(changeDir, 'verification.md'), 'utf8')).toContain(
       'generated_from_state_version:',
     );
     expect((await readNativePortableChange(paths, state.name)).state_version).toBe(
-      submitted.state.state_version,
+      confirmed.state_version,
     );
   });
 
@@ -444,9 +454,13 @@ Ship the behavior.
       }),
     });
     expect(completed.state).toMatchObject({
-      phase: 'archive',
+      phase: 'verify',
+      status: 'await-user',
       verification_result: 'pass',
     });
+    await expect(
+      confirmNativePortableSkillCoordinatedPass({ paths, name: state.name }),
+    ).resolves.toMatchObject({ phase: 'archive' });
     expect(completed.state.verification?.risks[0]).toMatchObject({ truncated: true });
   });
 

@@ -251,6 +251,40 @@ describe('Native phase Hook guard', () => {
     });
   });
 
+  it('allows concurrent implementation writes after invalidating one Verify candidate once', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    const { paths, state } = await portableBuild('portable-concurrent-write');
+    const runner = createNativeRunnerChannel();
+    await submitNativePortableBuilderCandidate({
+      paths,
+      name: state.name,
+      input: {
+        identity: runner.captureExecutionIdentity({
+          identityProvider: 'test-host',
+          executionRef: 'builder',
+        }),
+        candidateId: 'candidate',
+        summary: 'Built.',
+        addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
+      },
+    });
+
+    const results = await Promise.all([
+      inspectNativeHookGuard(projectRoot, writeRequest('src/a.ts')),
+      inspectNativeHookGuard(projectRoot, writeRequest('src/b.ts')),
+    ]);
+
+    expect(results).toEqual([
+      expect.objectContaining({ allowed: true, phase: 'build' }),
+      expect.objectContaining({ allowed: true, phase: 'build' }),
+    ]);
+    await expect(readNativePortableChange(paths, state.name)).resolves.toMatchObject({
+      phase: 'build',
+      loop: { iteration: 2 },
+      builder_handoff: null,
+    });
+  });
+
   it('returns a portable Build change to Shape before allowing formal requirement edits', async () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
     const { paths, state } = await portableBuild('portable-shape-write');

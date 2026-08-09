@@ -22,6 +22,15 @@ import {
   NATIVE_STATUS_PAGE_LIMITS,
 } from '../comet-native/native-diagnostics.js';
 import { nativeProjectPaths } from '../comet-native/native-paths.js';
+import {
+  isNativePortableChange,
+  nativePortableChangeDir,
+  readNativePortableChange,
+} from '../comet-native/native-portable-runtime.js';
+import {
+  inspectNativePortableStatus,
+  type NativePortableStatusProjection,
+} from '../comet-native/native-portable-status.js';
 import { runWithHookReadCache } from '../../platform/process/hook-read-cache.js';
 import { discoverCachedNativeProject, readCachedProjectConfig } from './entry-reads.js';
 import { readNativeSelectionRecord } from '../comet-native/native-selection.js';
@@ -31,6 +40,7 @@ import type {
   NativeFinding,
   NativeProjectPaths,
 } from '../comet-native/native-types.js';
+import type { NativePortableState } from '../comet-native/native-portable-types.js';
 import { resolveCometEntry } from './resolve-entry.js';
 import type { CometEntryResolutionSource, CometEntrySkill, CometWorkflow } from './types.js';
 
@@ -221,6 +231,14 @@ async function nativeResumeCandidates(
   return Promise.all(
     displayedNames.map(async (name) => {
       try {
+        if (await isNativePortableChange(paths, name)) {
+          const state = await readNativePortableChange(paths, name);
+          return {
+            name,
+            phase: state.phase,
+            selected: name === selectedName,
+          };
+        }
         const inspection = await inspectNativeChangeStateDocument(paths, name);
         return {
           name,
@@ -237,15 +255,33 @@ async function nativeResumeCandidates(
 async function nativeRelatedEvidence(
   paths: NativeProjectPaths,
   change: { name: string; phase: string },
-  state: NativeChangeState,
+  state: NativeChangeState | NativePortableState,
   utterance: string,
 ): Promise<CometResumeProbeEvidence[]> {
   let source: string;
   try {
-    const specs = await readNativeProposedSpecs(paths, change.name);
+    const portable = state.schema === 'comet.native.v4';
+    const specs = portable
+      ? Object.fromEntries(
+          await Promise.all(
+            state.spec_changes
+              .filter((entry): entry is typeof entry & { source: string } => entry.source !== null)
+              .map(async (entry) => [
+                entry.capability,
+                await fs.readFile(
+                  path.join(nativePortableChangeDir(paths, change.name), entry.source),
+                  'utf8',
+                ),
+              ]),
+          ),
+        )
+      : await readNativeProposedSpecs(paths, change.name);
+    const changeDirectory = portable
+      ? nativePortableChangeDir(paths, change.name)
+      : nativeChangeDir(paths, change.name);
     source = [
       change.name,
-      await fs.readFile(path.join(nativeChangeDir(paths, change.name), state.brief), 'utf8'),
+      await fs.readFile(path.join(changeDirectory, state.brief), 'utf8'),
       ...Object.keys(specs),
       ...Object.values(specs),
     ]
@@ -408,11 +444,17 @@ async function resolveNativeResumeProbe(
   }
 
   const target = candidates.find((change) => change.name === targetName);
-  let targetState: NativeChangeState | null = null;
+  let targetState: NativeChangeState | NativePortableState | null = null;
+  let targetPortableStatus: NativePortableStatusProjection | null = null;
   let targetStateError: string | null = null;
   if (target) {
     try {
-      targetState = await readNativeChange(paths, target.name);
+      if (await isNativePortableChange(paths, target.name)) {
+        targetState = await readNativePortableChange(paths, target.name);
+        targetPortableStatus = await inspectNativePortableStatus({ paths, name: target.name });
+      } else {
+        targetState = await readNativeChange(paths, target.name);
+      }
     } catch (error) {
       targetStateError = error instanceof Error ? error.message : String(error);
     }
@@ -464,9 +506,25 @@ async function resolveNativeResumeProbe(
     });
   }
 
-  const blockingFinding = blockingNativeResumeFinding(
-    await inspectNativeArtifactFindings(paths, targetState),
-  );
+  if (targetPortableStatus?.workspace.bindingState === 'mismatch') {
+    return result({
+      workflow: 'native',
+      skill: 'comet-native',
+      entrySource,
+      action: 'ask_user',
+      change: { name: target.name, phase: target.phase },
+      confidence: 'low',
+      reasonCode: 'native-workspace-mismatch',
+      reason: targetPortableStatus.workspace.message ?? 'Native workspace binding is invalid',
+      evidence: [{ source: 'state', quote: `change: ${target.name}` }],
+      candidates,
+    });
+  }
+
+  const blockingFinding =
+    targetState.schema === 'comet.native.v4'
+      ? null
+      : blockingNativeResumeFinding(await inspectNativeArtifactFindings(paths, targetState));
   if (blockingFinding) {
     return result({
       workflow: 'native',

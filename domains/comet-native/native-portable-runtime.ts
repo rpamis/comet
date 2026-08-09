@@ -150,9 +150,12 @@ function assertPortableWorkspaceBindingCurrent(
   projectRoot: string,
   binding: NativeWorkspaceBinding | undefined,
 ): void {
-  if (!binding || binding.isolation === 'current') return;
+  if (!binding) return;
   const inspection = inspectGitWorktree(projectRoot);
-  if (!inspection.isGitWorktree || inspection.currentBranch !== binding.changeBranch) {
+  if (
+    binding.changeBranch !== null &&
+    (!inspection.isGitWorktree || inspection.currentBranch !== binding.changeBranch)
+  ) {
     throw new Error(
       `Native workspace binding ${binding.changeBranch ?? '(missing)'} does not match the current branch ${inspection.currentBranch ?? '(detached)'}`,
     );
@@ -1747,6 +1750,7 @@ export async function returnNativePortableChangeToBuild(options: {
     `return portable change ${options.name} to Build`,
     async () => {
       const state = await readNativePortableChange(options.paths, options.name);
+      if (state.phase === 'build') return state;
       const next = returnNativeCandidateToBuild({ state, reason: options.reason });
       const written = await writePortableMutation({ paths: options.paths, previous: state, next });
       await writeNativeLocalExecution(
@@ -1876,6 +1880,7 @@ export async function returnNativePortableChangeToShape(options: {
     `return portable change ${options.name} to Shape`,
     async () => {
       const state = await readNativePortableChange(options.paths, options.name);
+      if (state.phase === 'shape') return state;
       return returnNativePortableStateToShapeLocked({
         paths: options.paths,
         state,

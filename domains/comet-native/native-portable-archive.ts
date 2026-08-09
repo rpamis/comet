@@ -25,8 +25,9 @@ import {
   nativePortableTransactionFile,
   readNativePortableTransaction,
   type NativePortableArchiveTransaction,
+  type NativePortableArchiveSpecChange,
 } from './native-portable-transactions.js';
-import type { NativePortableSpecChange, NativePortableState } from './native-portable-types.js';
+import type { NativePortableState } from './native-portable-types.js';
 import {
   inspectNativeVerificationReportAlignment,
   writeNativeVerificationReport,
@@ -232,7 +233,7 @@ function normalizeSerialDecision(change: string | undefined): string | null {
 async function applySpecChange(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
-  change: NativePortableSpecChange;
+  change: NativePortableArchiveSpecChange;
 }): Promise<void> {
   const capabilityDirectory = path.join(options.paths.specsDir, options.change.capability);
   const target = path.join(capabilityDirectory, 'spec.md');
@@ -283,17 +284,20 @@ async function applySpecChange(options: {
     });
     return;
   }
-  if (options.change.source === null) {
-    throw new Error(`Native ${options.change.operation} spec requires complete source content`);
+  if (options.change.source === null || options.change.content === null) {
+    throw new Error(`Native ${options.change.operation} spec requires frozen source content`);
   }
-  const source = await readNativeBoundedTextFile({
-    root: nativePortableChangeDir(options.paths, options.state.name),
-    ref: options.change.source,
-    maxBytes: null,
-    includeHash: false,
+  const sourceTarget = path.join(
+    nativePortableChangeDir(options.paths, options.state.name),
+    options.change.source,
+  );
+  await atomicWriteText(sourceTarget, options.change.content, {
+    containedRoot: options.paths.nativeRoot,
   });
   await fs.mkdir(capabilityDirectory, { recursive: true });
-  await atomicWriteText(target, source.text, { containedRoot: options.paths.nativeRoot });
+  await atomicWriteText(target, options.change.content, {
+    containedRoot: options.paths.nativeRoot,
+  });
 }
 
 function assertArchiveReady(state: NativePortableState): void {
@@ -309,15 +313,26 @@ function assertArchiveReady(state: NativePortableState): void {
   }
 }
 
-function appliedSpecCapabilities(
-  transaction: NativePortableArchiveTransaction | null,
-): ReadonlySet<string> | undefined {
-  if (transaction === null || transaction.next_spec_index === 0) return undefined;
-  return new Set(
-    transaction.spec_changes
-      .slice(0, transaction.next_spec_index)
-      .map(({ capability }) => capability),
-  );
+async function freezeArchiveSpecChanges(
+  paths: NativeProjectPaths,
+  state: NativePortableState,
+): Promise<NativePortableArchiveSpecChange[]> {
+  const changeRoot = nativePortableChangeDir(paths, state.name);
+  const frozen: NativePortableArchiveSpecChange[] = [];
+  for (const change of state.spec_changes) {
+    if (change.source === null) {
+      frozen.push({ ...change, content: null });
+      continue;
+    }
+    const source = await readNativeBoundedTextFile({
+      root: changeRoot,
+      ref: change.source,
+      maxBytes: null,
+      includeHash: false,
+    });
+    frozen.push({ ...change, content: source.text });
+  }
+  return frozen;
 }
 
 function assertTransactionState(
@@ -363,15 +378,16 @@ export async function inspectNativePortableArchive(options: {
     blockers.push((error as Error).message);
   }
   const transaction = await readTransaction(options.paths, options.name);
-  try {
-    const drift = await inspectNativePortableAcceptanceDrift({
-      paths: options.paths,
-      state,
-      ignoreSpecOperationFor: appliedSpecCapabilities(transaction),
-    });
-    if (drift.drifted) blockers.push(drift.reason ?? 'Native confirmed requirements changed');
-  } catch (error) {
-    blockers.push((error as Error).message);
+  if (transaction === null) {
+    try {
+      const drift = await inspectNativePortableAcceptanceDrift({
+        paths: options.paths,
+        state,
+      });
+      if (drift.drifted) blockers.push(drift.reason ?? 'Native confirmed requirements changed');
+    } catch (error) {
+      blockers.push((error as Error).message);
+    }
   }
   const alignment =
     state.verification === null
@@ -424,37 +440,19 @@ export async function archiveNativePortableChange(options: {
       } else {
         throw new Error(`Native active change is missing: ${options.name}`);
       }
-      if (activeExists && !state.archived) {
+      if (activeExists && !state.archived && transaction === null) {
         const drift = await inspectNativePortableAcceptanceDrift({
           paths: options.paths,
           state,
-          ignoreSpecOperationFor: appliedSpecCapabilities(transaction),
         });
         if (drift.drifted) {
           const reason = drift.reason ?? 'Native confirmed requirements changed';
-          if (
-            transaction === null ||
-            (transaction.status === 'prepared' && transaction.next_spec_index === 0)
-          ) {
-            if (transaction) {
-              await fs.rm(
-                nativePortableTransactionFile(options.paths, {
-                  kind: 'archive',
-                  change: state.name,
-                }),
-                { force: true },
-              );
-            }
-            await returnNativePortableStateToShapeLocked({
-              paths: options.paths,
-              state,
-              reason,
-            });
-            throw new Error(`${reason}; Native change returned to Shape and requires confirmation`);
-          }
-          throw new Error(
-            `${reason}; the in-progress Archive transaction requires doctor recovery`,
-          );
+          await returnNativePortableStateToShapeLocked({
+            paths: options.paths,
+            state,
+            reason,
+          });
+          throw new Error(`${reason}; Native change returned to Shape and requires confirmation`);
         }
       }
       const target = archiveDirectory(options.paths, transaction?.archive_ref ?? archiveRef(state));
@@ -499,7 +497,7 @@ export async function archiveNativePortableChange(options: {
           archive_ref: archiveRef(state),
           status: state.archived ? 'state-finalized' : 'prepared',
           next_spec_index: state.archived ? state.spec_changes.length : 0,
-          spec_changes: state.spec_changes,
+          spec_changes: await freezeArchiveSpecChanges(options.paths, state),
           created_at: new Date().toISOString(),
         };
         await writeTransaction(options.paths, transaction);

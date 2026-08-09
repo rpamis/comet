@@ -972,48 +972,33 @@ def test_native_interrupted_transition_fixture_is_recovered_by_current_runtime(t
         "doctor",
         "add-character-counting",
         "--repair",
-        "--strategy",
-        "continue",
-        expected_exit=65,
     )
 
-    assert {finding["code"] for finding in repaired["data"]["findings"]} >= {
-        "schema-migrated",
-        "transition-recovered",
-        "contract-changed-after-approval",
+    assert repaired["data"]["healthy"] is True
+    assert repaired["data"]["repaired"] is True
+    assert repaired["data"]["migration"] == {
+        "from": "legacy",
+        "to": "comet.native.v4",
+        "stateVersion": 1,
     }
     state = yaml.safe_load((change / "comet-state.yaml").read_text(encoding="utf-8"))
-    assert state["phase"] == "build"
-    assert state["run_id"] == "native-recovery-eval-run"
+    assert state["schema"] == "comet.native.v4"
+    assert state["phase"] == "shape"
+    assert state["loop"]["stage"] == "shape"
+    assert state["verification"] is None
+    assert state["history"][-1]["outcome"] == "recovery"
     assert not (change / "runtime/transition.json").exists()
 
-    run_native(
-        "doctor",
-        "add-character-counting",
-        "--repair",
-        "--strategy",
-        "continue",
-        expected_exit=65,
-    )
+    repeated = run_native("doctor", "add-character-counting", "--repair")
+    assert repeated["data"]["healthy"] is True
 
-    trajectory = (
+    local_runtime = (
         workspace
         / ".comet"
         / "runtime"
         / "native"
         / "changes"
         / "add-character-counting"
-        / "trajectory.jsonl"
     )
-    events = [
-        json.loads(line)
-        for line in trajectory.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
-    recovered = [
-        event
-        for event in events
-        if event.get("type") == "state_transitioned"
-        and event.get("data", {}).get("transitionId") == "11111111-2222-4333-8444-555555555555"
-    ]
-    assert len(recovered) == 1
+    assert (local_runtime / "state.json").exists()
+    assert not (local_runtime / "trajectory.jsonl").exists()

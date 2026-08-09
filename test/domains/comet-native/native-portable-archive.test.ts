@@ -24,6 +24,7 @@ import {
 } from '../../../domains/comet-native/native-portable-archive.js';
 import {
   confirmNativePortableShape,
+  confirmNativePortableSkillCoordinatedPass,
   createNativePortableChange,
   dispatchNativePortableVerifier,
   executeNativePortableCheckPlan,
@@ -57,7 +58,7 @@ describe('Native portable Archive', () => {
   async function verifyState(state: Awaited<ReturnType<typeof confirmNativePortableShape>>) {
     const name = state.name;
     const runner = createNativeRunnerChannel();
-    state = await submitNativePortableBuilderCandidate({
+    await submitNativePortableBuilderCandidate({
       paths,
       name,
       input: {
@@ -86,50 +87,53 @@ describe('Native portable Archive', () => {
       ],
     });
     state = await dispatchNativePortableVerifier({ paths, name, checks: executed.checks });
-    return (
-      await submitNativePortableVerifierResult({
-        paths,
-        name,
-        checks: executed.checks,
-        maxVerifyFailures: 5,
-        envelope: runner.envelopeVerifierResponse({
-          candidateId: `${name}-candidate`,
-          identity: runner.captureExecutionIdentity({
-            identityProvider: 'test-host',
-            executionRef: `${name}-verifier`,
-          }),
-          payload: {
-            kind: 'final-result',
-            result: {
-              iteration: 1,
-              attempt: 1,
-              verdict: 'pass',
-              acceptance: state.acceptance.map(({ id }) => ({
-                id,
-                result: 'passed',
-                reason: 'Verified.',
-              })),
-              risks: [],
-              summary: 'Passed.',
-            },
-          },
+    await submitNativePortableVerifierResult({
+      paths,
+      name,
+      checks: executed.checks,
+      maxVerifyFailures: 5,
+      envelope: runner.envelopeVerifierResponse({
+        candidateId: `${name}-candidate`,
+        identity: runner.captureExecutionIdentity({
+          identityProvider: 'test-host',
+          executionRef: `${name}-verifier`,
         }),
-      })
-    ).state;
+        payload: {
+          kind: 'final-result',
+          result: {
+            iteration: 1,
+            attempt: 1,
+            verdict: 'pass',
+            acceptance: state.acceptance.map(({ id }) => ({
+              id,
+              result: 'passed',
+              reason: 'Verified.',
+            })),
+            risks: [],
+            summary: 'Passed.',
+          },
+        },
+      }),
+    });
+    return confirmNativePortableSkillCoordinatedPass({ paths, name });
   }
 
-  async function archiveReady(name = 'archive-change') {
+  async function archiveReady(
+    name = 'archive-change',
+    specs: Array<[string, string]> = [
+      ['sample', '# Sample\n\nRuntime MUST expose the updated behavior.\n'],
+    ],
+  ) {
     await createNativePortableChange({ paths, name, language: 'en' });
     const changeDir = nativePortableChangeDir(paths, name);
     await fs.writeFile(
       path.join(changeDir, 'brief.md'),
       '# Acceptance examples\n- The canonical behavior is updated.\n',
     );
-    await fs.mkdir(path.join(changeDir, 'specs', 'sample'), { recursive: true });
-    await fs.writeFile(
-      path.join(changeDir, 'specs', 'sample', 'spec.md'),
-      '# Sample\n\nRuntime MUST expose the updated behavior.\n',
-    );
+    for (const [capability, source] of specs) {
+      await fs.mkdir(path.join(changeDir, 'specs', capability), { recursive: true });
+      await fs.writeFile(path.join(changeDir, 'specs', capability, 'spec.md'), source);
+    }
     return verifyState(await confirmNativePortableShape({ paths, name }));
   }
 
@@ -361,6 +365,38 @@ describe('Native portable Archive', () => {
     await expect(archiveNativePortableChange({ paths, name: state.name })).resolves.toMatchObject({
       state: { status: 'done', archived: true },
     });
+  });
+
+  it('resumes from frozen Spec contents after a later active Spec edit', async () => {
+    const originalBeta = '# Beta\n\nRuntime MUST preserve the confirmed beta behavior.\n';
+    const state = await archiveReady('frozen-specs', [
+      ['alpha', '# Alpha\n\nRuntime MUST preserve the confirmed alpha behavior.\n'],
+      ['beta', originalBeta],
+    ]);
+    await expect(
+      archiveNativePortableChange({
+        paths,
+        name: state.name,
+        hooks: {
+          afterSpecApplied: (index) => {
+            if (index === 0) throw new Error('pause-after-first-spec');
+          },
+        },
+      }),
+    ).rejects.toThrow('pause-after-first-spec');
+
+    await fs.writeFile(
+      path.join(nativePortableChangeDir(paths, state.name), 'specs', 'beta', 'spec.md'),
+      '# Beta\n\nRuntime MUST use an unconfirmed replacement.\n',
+    );
+    const resumed = await archiveNativePortableChange({ paths, name: state.name });
+
+    await expect(fs.readFile(path.join(paths.specsDir, 'beta', 'spec.md'), 'utf8')).resolves.toBe(
+      originalBeta,
+    );
+    await expect(
+      fs.readFile(path.join(resumed.archiveDir, 'specs', 'beta', 'spec.md'), 'utf8'),
+    ).resolves.toBe(originalBeta);
   });
 
   it('reports interrupted Archive transactions in named and project-wide Doctor and repairs them', async () => {

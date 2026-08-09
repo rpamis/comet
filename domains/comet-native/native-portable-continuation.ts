@@ -20,6 +20,7 @@ export interface NativePortableContinuation {
     | 'confirm-skill-coordinated-pass'
     | 'confirm-verifier-unavailable'
     | 'resolve-verifier-blocker'
+    | 'resolve-loop-stop'
     | 'builder-handoff'
     | 'dispatch-verifier'
     | 'await-verifier'
@@ -157,6 +158,33 @@ export function nativePortableContinuation(state: NativePortableState): NativePo
           '--resolve-verifier-blocker',
         ],
         requiredInputs: ['summary', 'user-resolution'],
+        inputOptions: [
+          {
+            name: 'summary',
+            flag: '--summary',
+            valueKind: 'text',
+            required: true,
+            template: null,
+          },
+        ],
+        runnerAction: runner('none'),
+      };
+    }
+    if (state.phase === 'verify' && state.loop.next_action === 'await-user') {
+      return {
+        ...base,
+        disposition: 'await-user',
+        action: 'resolve-loop-stop',
+        commandArgs: [
+          'comet',
+          'native',
+          'next',
+          state.name,
+          '--return-to-build',
+          '--summary',
+          '<summary>',
+        ],
+        requiredInputs: ['summary', 'user-decision'],
         inputOptions: [
           {
             name: 'summary',

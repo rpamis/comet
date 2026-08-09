@@ -56,10 +56,7 @@ export async function nativeNewCommand(
     paths,
     name,
     language,
-    // Portable current-workspace state intentionally carries no branch or
-    // finish binding. The preparation result may still report the current
-    // branch for diagnostics, so only isolated bindings cross this boundary.
-    ...(prepared.binding.isolation === 'current' ? {} : { workspaceBinding: prepared.binding }),
+    workspaceBinding: prepared.binding,
     ...(initialProjectConfig ? { initialProjectConfig } : {}),
   });
   await selectNativeChange(paths, state.name);

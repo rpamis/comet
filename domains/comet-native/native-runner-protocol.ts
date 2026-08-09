@@ -41,17 +41,12 @@ function requiredOpaqueText(value: string, label: string): string {
 }
 
 /**
- * Create the in-process seam used by a host Runner.
+ * Create the package-local Runner seam.
  *
- * Native CLI commands never expose this constructor or accept its branded
- * values as JSON/flags. A host adapter captures execution identity from its
- * own scheduler, then calls the Runtime API with the branded envelope. Agent
- * response bodies remain plain, untrusted data.
- *
- * The generic `next --runner-input` bridge may use this seam with Runtime-
- * allocated correlation refs, but it labels that path `skill-coordinated`.
- * Because any local caller can invoke that CLI, the bridge is not host identity
- * attestation and must never be described as trusted or runner-attested.
+ * This constructor is shipped with Comet and can be called by any local
+ * process, so it can only create Skill-coordinated identities. A future host
+ * attestation path must live outside this package boundary instead of trusting
+ * caller-provided provider strings.
  */
 export function createNativeRunnerChannel(): NativeRunnerChannel {
   const identities = new WeakSet<object>();
@@ -59,8 +54,9 @@ export function createNativeRunnerChannel(): NativeRunnerChannel {
     captureExecutionIdentity(
       input: NativeRunnerExecutionIdentityInput,
     ): NativeTrustedExecutionIdentity {
+      requiredOpaqueText(input.identityProvider, 'Native identity provider');
       const identity = Object.freeze({
-        identityProvider: requiredOpaqueText(input.identityProvider, 'Native identity provider'),
+        identityProvider: NATIVE_SKILL_COORDINATION,
         executionRef: requiredOpaqueText(input.executionRef, 'Native execution ref'),
         [TRUSTED_IDENTITY]: true as const,
       });

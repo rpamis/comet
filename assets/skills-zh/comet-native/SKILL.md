@@ -84,7 +84,7 @@ Verifier 不信任 Builder handoff 中的完成声明。它只读检查 brief、
 
 Verifier 需要额外检查时一次批量提出，由 Runtime 执行并记录真实退出状态、超时和日志；不要把自由文本结果当作检查已执行。Verifier 最终必须对每个已知验收 ID 恰好返回一次 `passed`、`failed` 或 `blocked`，并给出下一轮 Build 可以直接处理的原因。
 
-Verifier 不修改实现、不自行推进状态，也不在响应或 CLI 中填写 candidate、provider 或 execution identity。通用 CLI 输出必须标记为 `skill-coordinated`：它能程序化绑定候选和 attempt，但任何本地调用者都能调用 CLI，因此不能证明恶意调用者确实启动了独立 Agent，也绝不能称为 trusted、runner-attested 或 host-attested。可靠性来自 Skill 的新 subagent 协议、Runtime 真实执行检查以及全部验收 ID 恰好覆盖一次；只有从平台调度器取得身份并调用 in-process Runtime API 的 host adapter 才提供强身份边界。平台没有独立 execution 时的 fallback 必须保留 `semantic-verification-unavailable` / `user-confirmed-degraded` assurance，不能写成正常独立 pass。
+Verifier 不修改实现、不自行推进状态，也不在响应或 CLI 中填写 candidate、provider 或 execution identity。当前发布的 Runtime 统一标记为 `skill-coordinated`：它能程序化绑定候选和 attempt，但任何本地调用者都能调用，因此不能证明恶意调用者确实启动了独立 Agent，也绝不能称为 trusted、runner-attested 或 host-attested。可靠性来自 Skill 的新 subagent 协议、Runtime 真实执行检查、全部验收 ID 恰好覆盖一次，以及进入 Archive 前的用户确认。平台没有独立 execution 时的 fallback 必须保留 `semantic-verification-unavailable` / `user-confirmed-degraded` assurance，不能写成正常独立 pass。
 
 Verify fail 后实际修复缺口再重试。Runtime 根据未解决验收项和失败计数判断进展；达到停滞或执行失败上限时遵循其 `blocked` 或 `await-user` 处置，不盲目重试。
 

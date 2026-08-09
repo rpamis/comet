@@ -204,11 +204,11 @@ function parseWorkspace(value: unknown): NativePortableWorkspace {
           ['merge', 'push', 'pull-request', 'keep'] as const,
           `${label}.finish`,
         );
-  if (
-    isolation === 'current' &&
-    (change_branch !== null || target_branch !== null || finish !== null)
-  ) {
-    throw new Error('Native current workspace cannot contain branch or finish fields');
+  if (isolation === 'current' && finish !== null) {
+    throw new Error('Native current workspace cannot contain a finish action');
+  }
+  if (isolation === 'current' && (change_branch === null) !== (target_branch === null)) {
+    throw new Error('Native workspace branch bindings must both be present or both be null');
   }
   if (isolation !== 'current' && (change_branch === null || target_branch === null)) {
     throw new Error('Native isolated workspace requires change_branch and target_branch');

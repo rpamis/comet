@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { createNativeRunnerChannel } from '../../../domains/comet-native/native-runner-protocol.js';
+import {
+  createNativeRunnerChannel,
+  NATIVE_SKILL_COORDINATION,
+} from '../../../domains/comet-native/native-runner-protocol.js';
 import {
   validateNativeTrustedVerifierEnvelope,
   type NativeVerifierBinding,
@@ -8,7 +11,7 @@ import {
 
 const binding: NativeVerifierBinding = {
   candidateId: 'candidate-1',
-  identityProvider: 'codex-host',
+  identityProvider: NATIVE_SKILL_COORDINATION,
   builderExecutionRef: 'builder-1',
   iteration: 1,
   attempt: 1,
@@ -35,8 +38,8 @@ function finalResult(
   };
 }
 
-describe('Native trusted Verifier protocol', () => {
-  it('accepts one complete result from a different trusted execution', () => {
+describe('Native package-local Verifier protocol', () => {
+  it('accepts one complete Skill-coordinated result from a different execution', () => {
     const runner = createNativeRunnerChannel();
     const identity = runner.captureExecutionIdentity({
       identityProvider: 'codex-host',
@@ -68,19 +71,29 @@ describe('Native trusted Verifier protocol', () => {
     ).toThrow('trusted Runner');
   });
 
-  it('rejects same-execution self verification and cross-provider strings', () => {
+  it('does not trust a caller-provided host identity provider', () => {
     const runner = createNativeRunnerChannel();
-    for (const [identityProvider, executionRef, message] of [
-      ['codex-host', 'builder-1', 'different executions'],
-      ['other-host', 'verifier-1', 'provider'],
-    ] as const) {
-      const envelope = runner.envelopeVerifierResponse({
-        candidateId: 'candidate-1',
-        identity: runner.captureExecutionIdentity({ identityProvider, executionRef }),
-        payload: finalResult(),
-      });
-      expect(() => validateNativeTrustedVerifierEnvelope({ envelope, binding })).toThrow(message);
-    }
+    const identity = runner.captureExecutionIdentity({
+      identityProvider: 'caller-claimed-host',
+      executionRef: 'verifier-1',
+    });
+
+    expect(identity.identityProvider).toBe(NATIVE_SKILL_COORDINATION);
+  });
+
+  it('rejects same-execution self verification', () => {
+    const runner = createNativeRunnerChannel();
+    const envelope = runner.envelopeVerifierResponse({
+      candidateId: 'candidate-1',
+      identity: runner.captureExecutionIdentity({
+        identityProvider: 'caller-claimed-host',
+        executionRef: 'builder-1',
+      }),
+      payload: finalResult(),
+    });
+    expect(() => validateNativeTrustedVerifierEnvelope({ envelope, binding })).toThrow(
+      'different executions',
+    );
   });
 
   it.each([

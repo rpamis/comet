@@ -209,11 +209,16 @@ describe('Native portable recovery', () => {
     });
     expect(rebound).toMatchObject({
       state: {
-        phase: 'build',
-        builder_handoff: null,
-        loop: { stage: 'repairing', iteration: 2, next_action: 'submit-builder-candidate' },
+        phase: 'verify',
+        builder_handoff: { candidate_id: 'candidate', identity_provider: 'skill-coordinated' },
+        loop: { stage: 'verify-ready', iteration: 1, attempt: 2 },
       },
-      verifierDispatch: null,
+      verifierDispatch: {
+        candidateId: 'candidate',
+        iteration: 1,
+        attempt: 2,
+        coordination: 'skill-coordinated',
+      },
     });
   });
 

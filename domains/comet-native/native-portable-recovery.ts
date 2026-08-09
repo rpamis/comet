@@ -41,12 +41,15 @@ export interface NativePortableRecoveryResult {
 }
 
 function workspaceMismatch(paths: NativeProjectPaths, state: NativePortableState): string | null {
-  if (state.workspace.isolation === 'current') return null;
   const context = inspectGitWorktree(paths.projectRoot);
-  if (!context.isGitWorktree) return 'The portable change requires a Git branch/worktree';
-  if (state.workspace.change_branch && context.currentBranch !== state.workspace.change_branch) {
-    return `Expected Native change branch ${state.workspace.change_branch}, current branch is ${context.currentBranch ?? '(detached)'}`;
+  if (state.workspace.change_branch !== null) {
+    if (!context.isGitWorktree) return 'The portable change requires a Git branch/worktree';
+    if (context.currentBranch !== state.workspace.change_branch) {
+      return `Expected Native change branch ${state.workspace.change_branch}, current branch is ${context.currentBranch ?? '(detached)'}`;
+    }
   }
+  if (state.workspace.isolation === 'current') return null;
+  if (!context.isGitWorktree) return 'The portable change requires a Git branch/worktree';
   if (state.workspace.isolation === 'worktree' && !context.isSecondaryWorktree) {
     return 'The portable change requires its linked worktree';
   }

@@ -45,7 +45,7 @@ Skill 根据仓库说明和改动显式解析检查计划，Runtime 真实执行
 `request-checks` 后用更新的 `verifierDispatch` 恢复同一 Verifier/attempt。若平台既不能启动 subagent，也不能启动新的独立 Agent execution，只能在 `dispatch-verifier` 已显式解析检查计划且 Runtime 返回的全部检查都为 `passed` 后提交 `verifier-unavailable`；明确的 `checks: []` 也算已解析。Runtime 会以 `semantic-verification-unavailable` assurance 停在降级 `await-user`，用户明确确认后才以 `user-confirmed-degraded` assurance 进入 Archive，绝不写成 host-attested 或正常独立验收。
 
 有效 Verifier 返回 semantic `blocked` 时，若用户确认无需修改实现，执行 continuation 返回的 `next --resolve-verifier-blocker --summary`：同一 candidate 的 `retry_epoch` 增加、已完成检查被复用，再分派新 attempt。若需要修改实现，仍使用 `--return-to-build`。
-公共桥接只称 `skill-coordinated`，不能抵抗恶意本地调用者；只有从平台调度器取得身份的 in-process host adapter 才有强身份。正常 Skill 协调 pass 会停在 `await-user`，询问一次边界确认，再执行 Runtime 返回的 `next --confirmed --summary` 进入 Archive。
+当前发布的公共桥接统一称为 `skill-coordinated`，不能抵抗恶意本地调用者。正常 Skill 协调 pass 会停在 `await-user`，询问一次边界确认，再执行 Runtime 返回的 `next --confirmed --summary` 进入 Archive。
 
 ## 必须保留的语义
 

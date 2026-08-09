@@ -45,7 +45,7 @@ The Skill explicitly resolves the check plan from repository guidance and the ch
 After `request-checks`, resume the same Verifier/attempt with the updated `verifierDispatch`. If the platform can start neither a subagent nor a new independent Agent execution, submit `verifier-unavailable` only after `dispatch-verifier` explicitly resolved the check plan and every Runtime result is `passed`; an explicit `checks: []` also counts as resolved. Runtime stops at degraded `await-user` with `semantic-verification-unavailable` assurance. Only explicit user confirmation enters Archive with `user-confirmed-degraded` assurance; this path is never host-attested or a normal independent acceptance result.
 
 When a valid Verifier returns semantic `blocked` and the user confirms that no implementation change is needed, execute the continuation's `next --resolve-verifier-blocker --summary`. Runtime increments `retry_epoch`, reuses completed checks for the same candidate, and dispatches a new attempt. Continue to use `--return-to-build` when implementation changes are needed.
-The public bridge is only `skill-coordinated` and cannot resist a malicious local caller; only an in-process host adapter using scheduler identity has strong identity assurance. A normal Skill-coordinated pass stops at `await-user`; ask once for boundary confirmation, then use Runtime's `next --confirmed --summary` to enter Archive.
+The released public bridge is always `skill-coordinated` and cannot resist a malicious local caller. A normal Skill-coordinated pass stops at `await-user`; ask once for boundary confirmation, then use Runtime's `next --confirmed --summary` to enter Archive.
 
 ## Semantics to preserve
 

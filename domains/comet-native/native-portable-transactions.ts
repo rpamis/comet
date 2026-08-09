@@ -12,6 +12,10 @@ import type { NativeProjectPaths } from './native-types.js';
 export const NATIVE_PORTABLE_ARCHIVE_TRANSACTION_SCHEMA =
   'comet.native.archive-transaction.v4' as const;
 
+export interface NativePortableArchiveSpecChange extends NativePortableSpecChange {
+  content: string | null;
+}
+
 export interface NativePortableArchiveTransaction {
   schema: typeof NATIVE_PORTABLE_ARCHIVE_TRANSACTION_SCHEMA;
   id: string;
@@ -20,7 +24,7 @@ export interface NativePortableArchiveTransaction {
   archive_ref: string;
   status: 'prepared' | 'specs-applied' | 'state-finalized' | 'report-aligned' | 'moved';
   next_spec_index: number;
-  spec_changes: NativePortableSpecChange[];
+  spec_changes: NativePortableArchiveSpecChange[];
   created_at: string;
 }
 
@@ -70,7 +74,7 @@ const ARCHIVE_KEYS = new Set([
   'spec_changes',
   'created_at',
 ]);
-const SPEC_CHANGE_KEYS = new Set(['capability', 'operation', 'source']);
+const SPEC_CHANGE_KEYS = new Set(['capability', 'operation', 'source', 'content']);
 const CAPABILITY_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 
 function record(value: unknown, label: string): Record<string, unknown> {
@@ -92,7 +96,7 @@ function rejectUnknown(
   }
 }
 
-function parseSpecChange(value: unknown, index: number): NativePortableSpecChange {
+function parseSpecChange(value: unknown, index: number): NativePortableArchiveSpecChange {
   const label = `Native portable Archive spec_changes[${index}]`;
   const input = record(value, label);
   rejectUnknown(input, SPEC_CHANGE_KEYS, label);
@@ -104,8 +108,10 @@ function parseSpecChange(value: unknown, index: number): NativePortableSpecChang
   }
   const operation = input.operation as NativePortableSpecChange['operation'];
   if (operation === 'remove') {
-    if (input.source !== null) throw new Error(`${label} remove requires source null`);
-    return { capability: input.capability, operation, source: null };
+    if (input.source !== null || input.content !== null) {
+      throw new Error(`${label} remove requires source and content null`);
+    }
+    return { capability: input.capability, operation, source: null, content: null };
   }
   if (
     typeof input.source !== 'string' ||
@@ -117,7 +123,15 @@ function parseSpecChange(value: unknown, index: number): NativePortableSpecChang
   ) {
     throw new Error(`${label}.${operation} source is invalid`);
   }
-  return { capability: input.capability, operation, source: input.source };
+  if (typeof input.content !== 'string') {
+    throw new Error(`${label}.${operation} content is invalid`);
+  }
+  return {
+    capability: input.capability,
+    operation,
+    source: input.source,
+    content: input.content,
+  };
 }
 
 export function parseNativePortableArchiveTransaction(
@@ -214,7 +228,7 @@ export async function readNativePortableTransactionEntry(
   const text = await readNativeBoundedTextFile({
     root: paths.transactionsDir,
     ref: entryName,
-    maxBytes: 1024 * 1024,
+    maxBytes: null,
     includeHash: false,
   });
   const value = JSON.parse(text.text) as unknown;

@@ -128,6 +128,7 @@ describe('Comet Native CLI dispatcher', () => {
   });
 
   it('creates v4 portable artifacts without scanning or snapshotting an unrelated large project file', async () => {
+    const branch = currentBranch();
     await fs.writeFile(
       path.join(projectRoot, 'large-project-file.bin'),
       Buffer.alloc(5 * 1024 * 1024),
@@ -145,8 +146,8 @@ describe('Comet Native CLI dispatcher', () => {
         phase: 'shape',
         workspace: {
           isolation: 'current',
-          change_branch: null,
-          target_branch: null,
+          change_branch: branch,
+          target_branch: branch,
           finish: null,
         },
         continuation: {
@@ -185,11 +186,12 @@ describe('Comet Native CLI dispatcher', () => {
   });
 
   it('binds one current-workspace change and requires isolation for a second change', async () => {
+    const branch = currentBranch();
     const first = json(await runNativeCli(['new', 'first-change', '--json', ...projectArgs()]));
     expect(first).toMatchObject({
       exitCode: 0,
       data: {
-        workspace: { isolation: 'current', change_branch: null, target_branch: null },
+        workspace: { isolation: 'current', change_branch: branch, target_branch: branch },
       },
     });
     expect(
@@ -212,6 +214,35 @@ describe('Comet Native CLI dispatcher', () => {
         requiredAction: 'create-native-worktree',
       },
       error: { code: 'workspace-isolation-required' },
+    });
+  });
+
+  it('fails closed when a current-workspace change is opened from another branch', async () => {
+    const boundBranch = await initializeAndCommit();
+    expect(
+      json(await runNativeCli(['new', 'current-bound', '--json', ...projectArgs()])),
+    ).toMatchObject({
+      exitCode: 0,
+      data: {
+        workspace: {
+          isolation: 'current',
+          change_branch: boundBranch,
+          target_branch: boundBranch,
+        },
+      },
+    });
+
+    execFileSync('git', ['switch', '-c', 'current-drift'], { cwd: projectRoot, stdio: 'ignore' });
+    expect(
+      json(await runNativeCli(['status', 'current-bound', '--json', ...projectArgs()])),
+    ).toMatchObject({
+      data: {
+        workspace: { bindingState: 'mismatch', changeBranch: boundBranch },
+        continuation: {
+          disposition: 'await-user',
+          requiredInputs: ['return-to-bound-workspace'],
+        },
+      },
     });
   });
 

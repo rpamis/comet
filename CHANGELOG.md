@@ -6,7 +6,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Added
 
-- **Independent Native verification**: After a Builder submits a candidate, Comet runs the declared local checks and coordinates a fresh read-only Verifier over every acceptance item. Failed items return to Build through a bounded loop; environments without host-attested Agent identities require one explicit user confirmation before Archive.
+- **Independent Native verification**: After a Builder submits a candidate, Comet runs the declared local checks and coordinates a fresh read-only Verifier over every acceptance item. Failed items return to Build through a bounded loop; the packaged Skill-coordinated flow requires one explicit user confirmation before Archive.
 - **Trae Hook support**: `comet init`, `comet update`, `comet doctor`, and `comet uninstall` now support managed Hook Router entries for Trae and Trae CN, using Trae's official project and global `hooks.json` locations while preserving user-owned Hook configuration.
 
 ### Changed
@@ -16,6 +16,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Native Dashboard workflow view**: Native details now show Build/Verify stage, iteration, attempt, acceptance outcomes, checks, blockers, and compact history directly from portable state; archived legacy changes remain available through a read-only adapter.
 - **Native clarification and workspace flow**: Batch clarification is now the default for new projects, dependent decisions are mapped before asking, and branch/worktree changes keep structured creation, discovery, recovery, and authorized finish actions.
 - **Native command guidance**: Public commands and bilingual Skills now return the exact next action for Builder handoff, Runtime checks, Verifier dispatch, recovery, and Archive without exposing machine-only state files.
+- **Codex Skill invocation policy**: User-facing phase and preset Skills now include display metadata and require explicit invocation, while permanent workflow entry Skills remain available for model routing.
 
 ### Fixed
 

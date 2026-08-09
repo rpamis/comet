@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   applyNativeVerifierEnvelope,
+  confirmNativeSkillCoordinatedPass,
   confirmNativePortableAcceptance,
   recordNativeVerifierExecutionError,
   reserveNativeVerifierAttempt,
@@ -18,6 +19,7 @@ import {
   createNativeRunnerChannel,
   NATIVE_SKILL_COORDINATION,
 } from '../../../domains/comet-native/native-runner-protocol.js';
+import { nativePortableContinuation } from '../../../domains/comet-native/native-portable-continuation.js';
 
 const checks: NativePortableCheckSummary[] = [
   {
@@ -114,7 +116,7 @@ function resubmitRepair(
 }
 
 describe('Native portable Build/Verify loop', () => {
-  it('moves a complete trusted pass directly to archive-ready', () => {
+  it('requires user confirmation before a package-local pass becomes archive-ready', () => {
     const { state, runner } = buildState();
     const result = applyNativeVerifierEnvelope({
       state,
@@ -124,12 +126,18 @@ describe('Native portable Build/Verify loop', () => {
     }).state;
 
     expect(result).toMatchObject({
-      phase: 'archive',
+      phase: 'verify',
+      status: 'await-user',
       verification_result: 'pass',
       verification_report: 'verification.md',
-      loop: { stage: 'archive-ready', iteration: 1, attempt: 1 },
+      loop: { stage: 'await-user', iteration: 1, attempt: 1 },
     });
     expect(result.acceptance.every(({ result }) => result === 'passed')).toBe(true);
+    expect(confirmNativeSkillCoordinatedPass(result)).toMatchObject({
+      phase: 'archive',
+      status: 'active',
+      loop: { stage: 'archive-ready' },
+    });
   });
 
   it('allows an explicitly empty Runtime check plan when Verifier covers every acceptance ID', () => {
@@ -142,10 +150,11 @@ describe('Native portable Build/Verify loop', () => {
     }).state;
 
     expect(result).toMatchObject({
-      phase: 'archive',
+      phase: 'verify',
+      status: 'await-user',
       verification_result: 'pass',
       verification: { checks: [] },
-      loop: { stage: 'archive-ready', iteration: 1, attempt: 1 },
+      loop: { stage: 'await-user', iteration: 1, attempt: 1 },
     });
     expect(result.acceptance.map(({ result: acceptanceResult }) => acceptanceResult)).toEqual([
       'passed',
@@ -178,7 +187,9 @@ describe('Native portable Build/Verify loop', () => {
   });
 
   it('counts alternating and increased unresolved sets as no progress, but resets on a strict subset', () => {
-    let { state, runner } = buildState();
+    const prepared = buildState();
+    let { state } = prepared;
+    const { runner } = prepared;
     state = applyNativeVerifierEnvelope({
       state,
       envelope: envelope(runner, state, 'fail', ['A1']),
@@ -220,7 +231,9 @@ describe('Native portable Build/Verify loop', () => {
   });
 
   it('stops alternating unresolved sets after three non-progressive results', () => {
-    let { state, runner } = buildState();
+    const prepared = buildState();
+    let { state } = prepared;
+    const { runner } = prepared;
     for (const unresolved of [['A1'], ['A2'], ['A1'], ['A2']]) {
       state = applyNativeVerifierEnvelope({
         state,
@@ -235,6 +248,20 @@ describe('Native portable Build/Verify loop', () => {
       status: 'await-user',
       verification_report: 'verification.md',
       loop: { no_progress_count: 3, stage: 'await-user' },
+    });
+    expect(nativePortableContinuation(state)).toMatchObject({
+      disposition: 'await-user',
+      action: 'resolve-loop-stop',
+      commandArgs: [
+        'comet',
+        'native',
+        'next',
+        state.name,
+        '--return-to-build',
+        '--summary',
+        '<summary>',
+      ],
+      requiredInputs: ['summary', 'user-decision'],
     });
   });
 

@@ -284,7 +284,7 @@ async function main() {
     );
     if (
       hookDecision.permissionDecision !== 'deny' ||
-      !String(hookDecision.permissionDecisionReason).includes('only allowed in build')
+      !String(hookDecision.permissionDecisionReason).toLowerCase().includes('only allowed in build')
     ) {
       throw new Error(
         `Installed Hook Router did not block a Shape write: ${JSON.stringify(hookDecision)}`,

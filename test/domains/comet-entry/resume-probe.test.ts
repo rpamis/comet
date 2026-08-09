@@ -22,6 +22,10 @@ import {
   selectNativeChange,
 } from '../../../domains/comet-native/native-selection.js';
 import { advanceNativeChange } from '../../../domains/comet-native/native-transitions.js';
+import {
+  createNativePortableChange,
+  nativeLocalExecutionFile,
+} from '../../../domains/comet-native/native-portable-runtime.js';
 import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
 
 const VALID_BRIEF = `# Outcome
@@ -151,6 +155,25 @@ describe('Comet entry resume probe v2', () => {
       changeName: 'cache-controls',
       phase: 'shape',
       nextCommand: '/comet-native',
+    });
+  });
+
+  it('auto-resumes a portable v4 change without a local execution overlay', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    const paths = await nativeProjectPaths(projectRoot, '.');
+    await createNativePortableChange({ paths, name: 'portable-resume', language: 'en' });
+    await selectNativeChange(paths, 'portable-resume');
+    await fs.rm(nativeLocalExecutionFile(paths, 'portable-resume'), { force: true });
+
+    await expect(
+      resolveCometEntryResumeProbe(projectRoot, input('继续 portable-resume')),
+    ).resolves.toMatchObject({
+      workflow: 'native',
+      skill: 'comet-native',
+      action: 'auto_resume',
+      changeName: 'portable-resume',
+      phase: 'shape',
+      reasonCode: 'native-change-named',
     });
   });
 

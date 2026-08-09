@@ -8,8 +8,10 @@ interface NativeEnvelope {
   command?: string | null;
   exitCode: number;
   data?: {
+    phase?: string;
     preparation?: { projectRoot?: string };
     change?: { phase?: string };
+    state?: { phase?: string; loop?: { iteration?: number } };
     findingSummary?: { codes?: string[] };
     continuation?: { disposition?: string };
   };
@@ -66,6 +68,7 @@ function runNativeCommand(
   args: string[],
   projectRoot: string,
   timeoutMs = COMMAND_TIMEOUT_MS,
+  environment: NodeJS.ProcessEnv = process.env,
 ): Promise<NativeProcessResult> {
   return new Promise((resolve) => {
     const child = spawn(
@@ -73,7 +76,7 @@ function runNativeCommand(
       [commandScript(command), ...args, '--json', '--project-root', projectRoot],
       {
         cwd: projectRoot,
-        env: process.env,
+        env: environment,
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true,
       },
@@ -130,6 +133,28 @@ function assertCompleted(result: NativeProcessResult, label: string): void {
   expect(result.exitCode, `${label}\n${result.stdout}\n${result.stderr}`).toBe(0);
 }
 
+async function submitBuilderHandoff(
+  name: string,
+  projectRoot: string,
+): Promise<NativeProcessResult> {
+  const input = path.join(projectRoot, `.runner-input-${name}.json`);
+  await fs.writeFile(
+    input,
+    JSON.stringify({
+      kind: 'builder-handoff',
+      summary: 'Implemented the confirmed behavior.',
+      addressed_acceptance_ids: ['A1'],
+      checks: [],
+      known_limits: [],
+    }),
+  );
+  try {
+    return await runNativeCommand('next', [name, '--runner-input', input], projectRoot);
+  } finally {
+    await fs.rm(input, { force: true });
+  }
+}
+
 async function readDirectoryOrEmpty(directory: string): Promise<string[]> {
   try {
     return (await fs.readdir(directory)).sort();
@@ -139,10 +164,7 @@ async function readDirectoryOrEmpty(directory: string): Promise<string[]> {
   }
 }
 
-// This beta17 bundle-level scenario used checkpoint/snapshot commands. v4
-// worktree creation and foreign-worktree discovery are covered by the v4
-// surface and status-discovery suites.
-describe('Native parallel linked-worktree Runtime (legacy)', () => {
+describe('Native parallel linked-worktree Runtime', () => {
   const repositories: string[] = [];
   const linkedWorktrees: Array<{ repository: string; root: string }> = [];
 
@@ -165,7 +187,7 @@ describe('Native parallel linked-worktree Runtime (legacy)', () => {
     );
   });
 
-  it.skip('keeps concurrent linked worktrees usable after a manual business-source edit', async () => {
+  it('keeps concurrent linked worktrees usable after a manual business-source edit', async () => {
     const repository = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-parallel-'));
     repositories.push(repository);
     execFileSync('git', ['init'], { cwd: repository, stdio: 'ignore' });
@@ -240,32 +262,29 @@ describe('Native parallel linked-worktree Runtime (legacy)', () => {
           root,
         );
         assertCompleted(shaped, `shape ${name}`);
-        expect(shaped.data?.change?.phase).toBe('build');
+        expect(shaped.data?.state?.phase).toBe('build');
 
         await fs.writeFile(
           path.join(root, BUSINESS_SOURCE),
           `export const value = "${name}-implementation";\n`,
         );
-        const checkpoint = await runNativeCommand(
-          'checkpoint',
-          [name, '--summary', 'Capture parallel progress', '--next-action', 'Run verification'],
-          root,
-        );
-        assertCompleted(checkpoint, `checkpoint ${name}`);
-
-        const built = await runNativeCommand(
-          'next',
-          [name, '--summary', 'Capture the implementation scope', '--artifact', BUSINESS_SOURCE],
-          root,
-        );
+        const built = await submitBuilderHandoff(name, root);
         assertCompleted(built, `build ${name}`);
-        expect(built.data?.change?.phase).toBe('verify');
+        expect(built.data?.state?.phase).toBe('verify');
       }),
     );
 
     const editedWorktree = worktrees[0];
     const untouchedWorktree = worktrees[1];
     const userSource = 'export const value = "user-edited-during-verify";\n';
+    const guard = await runNativeCommand(
+      'hook-guard',
+      [],
+      editedWorktree.root,
+      COMMAND_TIMEOUT_MS,
+      { ...process.env, FILE_PATH: BUSINESS_SOURCE },
+    );
+    assertCompleted(guard, 'guard manual source edit');
     await fs.writeFile(path.join(editedWorktree.root, BUSINESS_SOURCE), userSource);
 
     const [editedStatus, untouchedStatus] = await Promise.all([
@@ -274,39 +293,16 @@ describe('Native parallel linked-worktree Runtime (legacy)', () => {
     ]);
     assertCompleted(editedStatus, 'status after manual source edit');
     assertCompleted(untouchedStatus, 'status in untouched worktree');
-    expect(editedStatus.data?.findingSummary?.codes).toContain('verification-implementation-stale');
+    expect(editedStatus.data?.phase).toBe('build');
     expect(editedStatus.data?.continuation?.disposition).not.toBe('blocked');
-    expect(untouchedStatus.data?.findingSummary?.codes).not.toContain(
-      'verification-implementation-stale',
-    );
+    expect(untouchedStatus.data?.phase).toBe('verify');
     await expect(
       fs.readFile(path.join(untouchedWorktree.root, BUSINESS_SOURCE), 'utf8'),
     ).resolves.toBe('export const value = "parallel-beta-implementation";\n');
 
-    const resumed = await runNativeCommand(
-      'next',
-      [editedWorktree.name, '--summary', 'Resume after the user source edit'],
-      editedWorktree.root,
-    );
-    assertCompleted(resumed, 'resume edited worktree');
-    expect(resumed.data?.change?.phase).toBe('build');
-    await expect(
-      fs.readFile(path.join(editedWorktree.root, BUSINESS_SOURCE), 'utf8'),
-    ).resolves.toBe(userSource);
-
-    const rebuilt = await runNativeCommand(
-      'next',
-      [
-        editedWorktree.name,
-        '--summary',
-        'Refresh the implementation scope',
-        '--artifact',
-        BUSINESS_SOURCE,
-      ],
-      editedWorktree.root,
-    );
+    const rebuilt = await submitBuilderHandoff(editedWorktree.name, editedWorktree.root);
     assertCompleted(rebuilt, 'rebuild edited worktree');
-    expect(rebuilt.data?.change?.phase).toBe('verify');
+    expect(rebuilt.data?.state?.phase).toBe('verify');
     await expect(
       fs.readFile(path.join(editedWorktree.root, BUSINESS_SOURCE), 'utf8'),
     ).resolves.toBe(userSource);
