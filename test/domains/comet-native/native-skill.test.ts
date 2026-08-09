@@ -157,7 +157,7 @@ describe('Comet Native Skills', () => {
     }
   });
 
-  it('keeps only Agent-authored artifact formats in the artifact reference', async () => {
+  it('keeps Agent-authored formal artifacts separate from Runtime state and reports', async () => {
     for (const language of ['en', 'zh'] as const) {
       const artifacts = await read(language, 'reference/artifacts.md');
       for (const required of [
@@ -167,10 +167,11 @@ describe('Comet Native Skills', () => {
         'verification.md',
         '# Acceptance examples',
         '# Verification expectations',
-        '# Acceptance evidence',
-        'evidence format',
-        '"status": "passed"',
-        '"status": "failed"',
+        'comet-state.yaml',
+        'verification.md',
+        '## Current result',
+        '## Acceptance',
+        '## Checks',
       ]) {
         expect(artifacts, `${language}: ${required}`).toContain(required);
       }
@@ -204,8 +205,14 @@ describe('Comet Native Skills', () => {
       }
       expect(commands).toContain('--return-to-build');
       expect(commands).toContain('--confirmed');
-      expect(commands).toContain('Partial scope');
-      expect(commands).toContain('Receipt refresh');
+      expect(commands).toContain('--runner-input');
+      expect(commands).toContain('builder-handoff');
+      expect(commands).toContain('dispatch-verifier');
+      expect(commands).toContain('request-checks');
+      expect(commands).toContain('final-result');
+      expect(commands).toContain('verifier-execution-error');
+      expect(commands).toContain('skill-coordinated');
+      expect(commands).toContain('"checks":[]');
       expect(commands.match(/comet native/gu)?.length ?? 0).toBeLessThanOrEqual(4);
       expect(commands).not.toContain('--expect-preflight <sha256> [--confirmed]');
       expect(commands).not.toContain('comet native receipt automated <change-name>');
@@ -219,10 +226,10 @@ describe('Comet Native Skills', () => {
         language: 'zh' as const,
         required: [
           '`workspace.projectRoot`',
-          '不能从当前文件猜测 baseline',
-          'automated receipt 重跑',
-          '`repair-stagnation-stop` 不是用户决定',
-          '`repair-continuation-decision`',
+          '`comet-state.yaml`',
+          '`state.json`',
+          'Verify / verify-ready',
+          '`migration-required`',
           '`workspaceFinishResult.status` 为 `blocked`',
           '`recoveryArgs`',
         ],
@@ -231,10 +238,10 @@ describe('Comet Native Skills', () => {
         language: 'en' as const,
         required: [
           '`workspace.projectRoot`',
-          'Never infer a baseline from current files',
-          'rerun automated receipts',
-          '`repair-stagnation-stop` is not a user decision',
-          '`repair-continuation-decision`',
+          '`comet-state.yaml`',
+          '`state.json`',
+          'Verify / verify-ready',
+          '`migration-required`',
           '`workspaceFinishResult.status` is `blocked`',
           '`recoveryArgs`',
         ],

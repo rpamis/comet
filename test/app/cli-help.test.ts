@@ -115,7 +115,7 @@ describe('CLI help text', () => {
     const statusHelp = runCli('native', 'status', '--help');
     expect(statusHelp.status).toBe(0);
     expect(statusHelp.stdout).toContain('Usage: comet native status');
-    expect(statusHelp.stdout).toContain('--acceptance-cursor <token>');
+    expect(statusHelp.stdout).toContain('--cursor <token>');
     expect(statusHelp.stdout).toContain('--project-root <path>');
   });
 

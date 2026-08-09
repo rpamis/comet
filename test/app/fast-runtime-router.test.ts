@@ -23,19 +23,10 @@ describe('CLI fast runtime router', () => {
 
   it('preserves the command tail without parsing it', () => {
     expect(
-      resolveFastRuntime([
-        'native',
-        'receipt',
-        'automated',
-        'change',
-        '--',
-        'node',
-        'script.mjs',
-        '--flag',
-      ]),
+      resolveFastRuntime(['native', 'next', 'change', '--summary', 'ready', '--confirmed']),
     ).toEqual({
-      assetPath: 'assets/skills/comet-native/scripts/comet-native-receipt.mjs',
-      args: ['automated', 'change', '--', 'node', 'script.mjs', '--flag'],
+      assetPath: 'assets/skills/comet-native/scripts/comet-native-next.mjs',
+      args: ['change', '--summary', 'ready', '--confirmed'],
     });
   });
 
@@ -43,6 +34,9 @@ describe('CLI fast runtime router', () => {
     expect(resolveFastRuntime(['state', '--help'])).toBeNull();
     expect(resolveFastRuntime(['native', '--help'])).toBeNull();
     expect(resolveFastRuntime(['native', 'unknown'])).toBeNull();
+    for (const retired of ['checkpoint', 'check', 'evidence', 'receipt']) {
+      expect(resolveFastRuntime(['native', retired, 'change'])).toBeNull();
+    }
     expect(resolveFastRuntime(['classic', 'root', 'show'])).toBeNull();
     expect(resolveFastRuntime(['resume-probe', '.', '--json'])).toBeNull();
   });

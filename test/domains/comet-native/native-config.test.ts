@@ -73,7 +73,7 @@ describe('Native project configuration', () => {
     expect(new Set(merged).size).toBe(merged.length);
   });
 
-  it('round-trips a custom artifact root with stable YAML fields', async () => {
+  it('round-trips a custom artifact root without persisting legacy snapshot settings', async () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('docs'));
 
     expect(await readProjectConfig(projectRoot)).toEqual({
@@ -99,19 +99,20 @@ describe('Native project configuration', () => {
     const source = await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8');
     expect(source).toContain('# Enables automatic recovery');
     expect(source).toContain(
+      '# Root directory where Native stores Comet specs and changes. Runtime data stays under .comet.',
+    );
+    expect(source).toContain(
       '# Controls how Native asks clarifying questions: batch asks every currently answerable question per round',
     );
     expect(source).toContain('# Controls whether Native archives automatically');
-    expect(source).toContain('# Maximum failed Verify outcomes');
-    expect(source).toContain('# Selects the project-relative paths included in Native snapshots');
-    expect(source).toContain('# Bounds the total file content hashed by one snapshot');
+    expect(source).toContain(
+      '# Maximum failed Verify outcomes allowed for one confirmed acceptance target',
+    );
     expect(source).toContain('ambient_resume: true');
     expect(source).toContain('clarification_mode: batch');
     expect(source).toContain('archive_confirmation: automatic');
     expect(source).toContain('max_verify_failures: 5');
-    expect(source).toContain('include:');
-    expect(source).toContain('- "**/*"');
-    expect(source).toContain('max_total_bytes: 268435456');
+    expect(source).not.toMatch(/^\s+snapshot:/mu);
   });
 
   it('does not write Native project config through a linked .comet directory', async () => {
@@ -296,12 +297,11 @@ describe('Native project configuration', () => {
 
     const source = await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8');
     expect(source).toContain('# 是否启用只读的环境感知恢复探针');
-    expect(source).toContain('# Native 产物的存放根目录');
+    expect(source).toContain('# Native 规格和 change 的存放根目录；运行时数据始终位于 .comet');
     expect(source).toContain('# Native 提问澄清问题的方式');
     expect(source).toContain('# Native 归档检查成功后自动归档');
-    expect(source).toContain('# 同一份已确认 contract 最多允许的 Verify 失败次数');
-    expect(source).toContain('# Native 快照纳入的项目相对路径');
-    expect(source).toContain('# 单次快照最多哈希的文件内容总字节数');
+    expect(source).toContain('# 同一个已确认验收目标最多允许的 Verify 失败次数');
+    expect(source).not.toMatch(/^\s+snapshot:/mu);
     expect(source).not.toContain('# Enables automatic recovery');
   });
 
@@ -509,7 +509,7 @@ describe('Native project configuration', () => {
     expect(source).toContain('auto_transition: false');
   });
 
-  it('round-trips unknown top-level and nested workflow extension fields', async () => {
+  it('preserves extensions outside the retired Native snapshot subtree', async () => {
     await fs.writeFile(
       path.join(projectRoot, '.comet', 'config.yaml'),
       [
@@ -541,7 +541,8 @@ describe('Native project configuration', () => {
     const source = await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8');
     expect(source).toContain('artifact_root: docs');
     expect(source).toContain('custom_extension:');
-    expect(source).toContain('snapshot_extension: keep');
+    expect(source).not.toContain('snapshot_extension: keep');
+    expect(source).not.toMatch(/^\s+snapshot:/mu);
     expect(source).toContain('classic_extension: keep');
     expect(source).toContain('top_extension:');
   });

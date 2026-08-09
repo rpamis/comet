@@ -35,6 +35,7 @@ import {
   readNativeCheckpointJournal,
 } from './native-checkpoint-storage.js';
 import { nativeSelectionFile, readNativeSelectionRecord } from './native-selection.js';
+import { isNativePortableChange } from './native-portable-runtime.js';
 import {
   inspectPendingNativeSchemaMigration,
   migrateNativeChange,
@@ -184,6 +185,7 @@ async function inspectSelection(
     ];
   }
   try {
+    if (await isNativePortableChange(paths, value.change)) return [];
     await readNativeChange(paths, value.change);
     return [];
   } catch (error) {
@@ -858,6 +860,7 @@ export async function doctorNativeProject(options: {
   name?: string;
   repair?: boolean;
   recoveryStrategy?: 'continue' | 'rollback';
+  projectOnly?: boolean;
   now?: Date;
 }): Promise<{ healthy: boolean; findings: NativeDoctorFinding[] }> {
   const repair = options.repair ?? false;
@@ -936,34 +939,38 @@ export async function doctorNativeProject(options: {
     recoveryStrategy: options.recoveryStrategy,
   });
   findings.push(...transactions.findings);
-  findings.push(...(await inspectRuntimeLayoutMigrations(paths, { name: options.name, repair })));
-  findings.push(...(await inspectSchemaMigrations(paths, { name: options.name, repair })));
-  findings.push(
-    ...(await inspectWorkspaceIdentityMigrations(paths, { name: options.name, repair })),
-  );
-  findings.push(...(await inspectTrajectoryTailRepairs(paths, { name: options.name, repair })));
-  findings.push(
-    ...(await inspectTransitionJournals(paths, {
-      name: options.name,
-      repair,
-      recoveryStrategy: options.recoveryStrategy,
-    })),
-  );
-  findings.push(...(await inspectCheckpointJournals(paths, { name: options.name, repair })));
-  findings.push(
-    ...(await inspectNativeEvidenceRetention({
-      paths,
-      name: options.name,
-      repair,
-      now: options.now,
-      deferAll: relocationRecoveryPending || transactions.unfinished.length > 0,
-    })),
-  );
+  if (!options.projectOnly) {
+    findings.push(...(await inspectRuntimeLayoutMigrations(paths, { name: options.name, repair })));
+    findings.push(...(await inspectSchemaMigrations(paths, { name: options.name, repair })));
+    findings.push(
+      ...(await inspectWorkspaceIdentityMigrations(paths, { name: options.name, repair })),
+    );
+    findings.push(...(await inspectTrajectoryTailRepairs(paths, { name: options.name, repair })));
+    findings.push(
+      ...(await inspectTransitionJournals(paths, {
+        name: options.name,
+        repair,
+        recoveryStrategy: options.recoveryStrategy,
+      })),
+    );
+    findings.push(...(await inspectCheckpointJournals(paths, { name: options.name, repair })));
+    findings.push(
+      ...(await inspectNativeEvidenceRetention({
+        paths,
+        name: options.name,
+        repair,
+        now: options.now,
+        deferAll: relocationRecoveryPending || transactions.unfinished.length > 0,
+      })),
+    );
+  }
   findings.push(...(await inspectLocks(paths, repair, transactions.unfinished)));
   findings.push(...(await inspectSelection(paths, repair)));
-  findings.push(
-    ...(await inspectChanges(paths, options.name, config?.native.max_verify_failures ?? 5)),
-  );
+  if (!options.projectOnly) {
+    findings.push(
+      ...(await inspectChanges(paths, options.name, config?.native.max_verify_failures ?? 5)),
+    );
+  }
   return {
     healthy: findings.every((finding) => finding.severity === 'info'),
     findings,

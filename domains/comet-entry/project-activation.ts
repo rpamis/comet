@@ -18,6 +18,7 @@ import { installOpenSpec } from '../integrations/openspec.js';
 import { projectCometHooksFromInstalledScope } from '../skill/project-hook-projection.js';
 import {
   defaultWorkflowProjectConfig,
+  ensureCometProjectGitignore,
   readWorkflowGlobalConfig,
   readWorkflowProjectConfig,
   workflowProjectConfigFromGlobalConfig,
@@ -150,6 +151,7 @@ export async function activateCometProject(
       .join('; ');
     throw new Error(`Comet project Hook activation failed: ${details}`);
   }
+  await ensureCometProjectGitignore(projectRoot);
   await writeWorkflowProjectConfig(projectRoot, config);
   if (classicPermit) {
     await completeClassicLayoutInitialization(projectRoot, classicPermit);

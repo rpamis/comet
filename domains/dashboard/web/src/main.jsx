@@ -43,7 +43,9 @@ import { DashboardWorkspaceRegion } from './workspace-layout.jsx';
 import {
   dashboardResponseError,
   isStaleNativeDashboardCursorError,
+  nativeDashboardChangeKey,
   refreshDashboardPage,
+  refreshNativeDashboardPage,
   shouldAutoLoadDashboardDetail,
   shouldShowDashboardDetailLoading,
 } from './dashboard-web-state.js';
@@ -187,6 +189,7 @@ function DashboardApp({ theme, onToggleTheme }) {
   const selectedIdRef = useRef(null);
   const pagesRef = useRef({ active: null, archived: null, all: null });
   const nativePagesRef = useRef({ active: null, archived: null, all: null });
+  const nativeSelectedDetailRef = useRef(null);
   const lastLoadedQueryRef = useRef('');
   const { message: messageApi } = AntApp.useApp();
   const toast = useCallback((content, type = 'success') => messageApi[type](content), [messageApi]);
@@ -194,8 +197,11 @@ function DashboardApp({ theme, onToggleTheme }) {
   const useDemo = new URLSearchParams(window.location.search).has('demo');
   const queryRef = useRef(query);
   const tabRef = useRef(tab);
+  const workflowRef = useRef(workflow);
   queryRef.current = query;
   tabRef.current = tab;
+  workflowRef.current = workflow;
+  nativeSelectedDetailRef.current = nativeSelectedDetail;
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
@@ -244,6 +250,56 @@ function DashboardApp({ theme, onToggleTheme }) {
             : nativePagesRef.current;
           nativePagesRef.current = nextNativePages;
           setNativePages(nextNativePages);
+          if (!queryChanged && workflowRef.current === 'native' && next.native) {
+            const selectedNative = nativeSelectedDetailRef.current;
+            const selectedNativeKey = selectedNative
+              ? nativeDashboardChangeKey(selectedNative)
+              : null;
+            const nativeRefreshes = [];
+            if (nextNativePages[currentTab]) {
+              nativeRefreshes.push(
+                fetchDashboardNativeChangePage(activeProjectId, currentTab, {
+                  query: currentQuery,
+                  signal: controller.signal,
+                }).then((freshPage) => {
+                  if (snapshotRequestRef.current !== controller || controller.signal.aborted)
+                    return;
+                  const currentNativePages = nativePagesRef.current;
+                  const refreshedPage = refreshNativeDashboardPage(
+                    currentNativePages[currentTab],
+                    freshPage,
+                  );
+                  const refreshedPages = {
+                    ...currentNativePages,
+                    [currentTab]: refreshedPage,
+                  };
+                  nativePagesRef.current = refreshedPages;
+                  setNativePages(refreshedPages);
+                }),
+              );
+            }
+            if (selectedNative) {
+              nativeRefreshes.push(
+                fetchDashboardNativeChangeDetail(
+                  activeProjectId,
+                  selectedNative,
+                  controller.signal,
+                ).then((freshDetail) => {
+                  if (snapshotRequestRef.current !== controller || controller.signal.aborted)
+                    return;
+                  const currentSelected = nativeSelectedDetailRef.current;
+                  if (
+                    currentSelected &&
+                    selectedNativeKey === nativeDashboardChangeKey(currentSelected)
+                  ) {
+                    nativeSelectedDetailRef.current = freshDetail;
+                    setNativeSelectedDetail(freshDetail);
+                  }
+                }),
+              );
+            }
+            await Promise.allSettled(nativeRefreshes);
+          }
           const nextId = pickSelectedFromPage(
             queryChanged && currentTab !== 'active' ? nextPages[currentTab] : currentPage,
             selectedIdRef.current,
@@ -288,6 +344,7 @@ function DashboardApp({ theme, onToggleTheme }) {
       snapshotRequestRef.current?.abort();
       pageRequestRef.current?.abort();
       nativePageRequestRef.current?.abort();
+      nativeDetailRequestRef.current?.abort();
       nativeDetailRequestRef.current?.abort();
       detailRequestRef.current?.abort();
     },
@@ -369,6 +426,9 @@ function DashboardApp({ theme, onToggleTheme }) {
       pagesRef.current = { active: null, archived: null, all: null };
       setNativePages({ active: null, archived: null, all: null });
       nativePagesRef.current = { active: null, archived: null, all: null };
+      setNativeSelectedDetail(null);
+      nativeSelectedDetailRef.current = null;
+      setNativeDetailError(null);
     }, 250);
     return () => window.clearTimeout(timer);
   }, [activeProjectId, query, snapshot, useDemo]);
@@ -424,8 +484,17 @@ function DashboardApp({ theme, onToggleTheme }) {
     async (change) => {
       if (!change) return;
       setNativeDetailError(null);
+      if (
+        nativeSelectedDetailRef.current &&
+        nativeDashboardChangeKey(nativeSelectedDetailRef.current) !==
+          nativeDashboardChangeKey(change)
+      ) {
+        nativeSelectedDetailRef.current = null;
+        setNativeSelectedDetail(null);
+      }
       if (useDemo) {
         setNativeSelectedDetail(change);
+        nativeSelectedDetailRef.current = change;
         return;
       }
       if (!activeProjectId) return;
@@ -441,6 +510,7 @@ function DashboardApp({ theme, onToggleTheme }) {
         );
         if (nativeDetailRequestRef.current !== controller || controller.signal.aborted) return;
         setNativeSelectedDetail(detail);
+        nativeSelectedDetailRef.current = detail;
       } catch (error) {
         if (controller.signal.aborted) return;
         setNativeDetailError({
@@ -584,6 +654,7 @@ function DashboardApp({ theme, onToggleTheme }) {
             setNativePages({ active: null, archived: null, all: null });
             nativePagesRef.current = { active: null, archived: null, all: null };
             setNativeSelectedDetail(null);
+            nativeSelectedDetailRef.current = null;
             setNativeDetailError(null);
             setSelectedId(null);
             selectedIdRef.current = null;

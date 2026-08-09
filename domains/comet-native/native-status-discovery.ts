@@ -3,6 +3,7 @@ import path from 'node:path';
 import { listGitWorktreeRoots } from '../../platform/paths/git-worktree.js';
 
 import { canonicalHash } from './native-canonical-hash.js';
+import { inspectNativeChangeStateDocument } from './native-change.js';
 import { readProjectConfig } from './native-config.js';
 import {
   inspectNativeStatus,
@@ -10,11 +11,15 @@ import {
   NATIVE_STATUS_PAGE_LIMITS,
 } from './native-diagnostics.js';
 import { nativeProjectPaths } from './native-paths.js';
+import {
+  inspectNativePortableStatus,
+  type NativePortableStatusProjection,
+} from './native-portable-status.js';
+import { isNativePortableChange } from './native-portable-runtime.js';
 import { projectNativeWorkspace } from './native-workspace.js';
 import type {
   CometProjectConfig,
   NativeProjectPaths,
-  NativeStatusPageProjection,
   NativeStatusProjection,
   NativeWorkspaceProjection,
 } from './native-types.js';
@@ -26,13 +31,58 @@ interface NativeWorkspaceSource {
   projectRoot: string;
   config: CometProjectConfig;
   paths: NativeProjectPaths;
-  names: string[];
+  changes: Array<{ name: string; kind: 'portable' | 'legacy' }>;
 }
 
 interface NativeStatusCandidate {
   source: NativeWorkspaceSource;
   name: string;
+  kind: 'portable' | 'legacy';
+  workspace: NativeWorkspaceProjection | NativePortableStatusProjection['workspace'];
+  portableStatus: NativePortableStatusProjection | null;
+}
+
+export type NativeDiscoveredStatusProjection =
+  | NativeStatusProjection
+  | NativePortableStatusProjection
+  | NativeLegacyMigrationStatusProjection;
+
+export interface NativeLegacyMigrationStatusProjection {
+  schema: 'comet.native.status.v2';
+  name: string;
+  phase: string;
+  status: 'blocked';
+  migrationRequired: true;
+  legacySchema: string;
   workspace: NativeWorkspaceProjection;
+  continuation: {
+    schema: 'comet.native.continuation.v2';
+    skill: 'comet-native';
+    change: string;
+    phase: string;
+    status: 'blocked';
+    disposition: 'blocked';
+    action: 'none';
+    commandArgs: string[];
+    requiredInputs: [];
+    runnerAction: {
+      kind: 'none';
+      candidateId: null;
+      iteration: 0;
+      attempt: 0;
+    };
+  };
+}
+
+export interface NativeDiscoveredStatusPageProjection {
+  schema: 'comet.native.status-page.v1' | 'comet.native.status-page.v2';
+  total: number;
+  offset: number;
+  items: NativeDiscoveredStatusProjection[];
+  nextCursor: string | null;
+  nextPageCommand: string | null;
+  nextPageArgs: string[] | null;
+  limits: typeof NATIVE_STATUS_PAGE_LIMITS;
 }
 
 function samePath(left: string, right: string): boolean {
@@ -47,6 +97,19 @@ function displayCommandArgs(args: readonly string[]): string {
   return args
     .map((value) => (/^[A-Za-z0-9_./:=+@-]+$/u.test(value) ? value : JSON.stringify(value)))
     .join(' ');
+}
+
+async function discoverChanges(
+  paths: NativeProjectPaths,
+): Promise<NativeWorkspaceSource['changes']> {
+  const changes: NativeWorkspaceSource['changes'] = [];
+  for (const name of await listNativeChangeNames(paths)) {
+    changes.push({
+      name,
+      kind: (await isNativePortableChange(paths, name)) ? 'portable' : 'legacy',
+    });
+  }
+  return changes;
 }
 
 async function discoverSources(projectRoot: string): Promise<NativeWorkspaceSource[]> {
@@ -64,7 +127,7 @@ async function discoverSources(projectRoot: string): Promise<NativeWorkspaceSour
       projectRoot: candidate,
       config,
       paths,
-      names: await listNativeChangeNames(paths),
+      changes: await discoverChanges(paths),
     });
   }
   if (sources.length === 0) {
@@ -75,7 +138,7 @@ async function discoverSources(projectRoot: string): Promise<NativeWorkspaceSour
       projectRoot: path.resolve(projectRoot),
       config,
       paths,
-      names: await listNativeChangeNames(paths),
+      changes: await discoverChanges(paths),
     });
   }
   return sources;
@@ -94,10 +157,16 @@ async function discoverCandidates(
   projectRoot: string,
   sources: readonly NativeWorkspaceSource[],
 ): Promise<NativeStatusCandidate[]> {
-  const grouped = new Map<string, NativeWorkspaceSource[]>();
+  const grouped = new Map<
+    string,
+    Array<{ source: NativeWorkspaceSource; kind: 'portable' | 'legacy' }>
+  >();
   for (const source of sources) {
-    for (const name of source.names) {
-      grouped.set(name, [...(grouped.get(name) ?? []), source]);
+    for (const change of source.changes) {
+      grouped.set(change.name, [
+        ...(grouped.get(change.name) ?? []),
+        { source, kind: change.kind },
+      ]);
     }
   }
   const selected: NativeStatusCandidate[] = [];
@@ -105,11 +174,25 @@ async function discoverCandidates(
     left.localeCompare(right),
   )) {
     const candidates = await Promise.all(
-      nameSources.map(async (source) => ({
-        source,
-        name,
-        workspace: await projectNativeWorkspace(source.paths, name),
-      })),
+      nameSources.map(async ({ source, kind }): Promise<NativeStatusCandidate> => {
+        if (kind === 'portable') {
+          const portableStatus = await inspectNativePortableStatus({ paths: source.paths, name });
+          return {
+            source,
+            name,
+            kind,
+            workspace: portableStatus.workspace,
+            portableStatus,
+          };
+        }
+        return {
+          source,
+          name,
+          kind,
+          workspace: await projectNativeWorkspace(source.paths, name),
+          portableStatus: null,
+        };
+      }),
     );
     candidates.sort((left, right) => {
       const rank = candidateRank(left, projectRoot) - candidateRank(right, projectRoot);
@@ -188,11 +271,45 @@ function pageAction(
   };
 }
 
-async function inspectCandidate(
+async function inspectLegacyCandidate(
   candidate: NativeStatusCandidate,
   details: boolean,
   acceptanceCursor?: string,
-): Promise<NativeStatusProjection> {
+): Promise<NativeStatusProjection | NativeLegacyMigrationStatusProjection> {
+  let inspection: Awaited<ReturnType<typeof inspectNativeChangeStateDocument>> | null = null;
+  try {
+    inspection = await inspectNativeChangeStateDocument(candidate.source.paths, candidate.name);
+  } catch {
+    // The legacy status adapter below owns malformed and missing-state diagnostics.
+  }
+  if (inspection?.state) {
+    return {
+      schema: 'comet.native.status.v2',
+      name: candidate.name,
+      phase: inspection.state.phase,
+      status: 'blocked',
+      migrationRequired: true,
+      legacySchema: inspection.schema,
+      workspace: candidate.workspace as NativeWorkspaceProjection,
+      continuation: {
+        schema: 'comet.native.continuation.v2',
+        skill: 'comet-native',
+        change: candidate.name,
+        phase: inspection.state.phase,
+        status: 'blocked',
+        disposition: 'blocked',
+        action: 'none',
+        commandArgs: ['comet', 'native', 'doctor', candidate.name, '--repair'],
+        requiredInputs: [],
+        runnerAction: {
+          kind: 'none',
+          candidateId: null,
+          iteration: 0,
+          attempt: 0,
+        },
+      },
+    };
+  }
   return inspectNativeStatus(candidate.source.paths, candidate.name, {
     details,
     ...(acceptanceCursor ? { acceptanceCursor } : {}),
@@ -201,12 +318,31 @@ async function inspectCandidate(
   });
 }
 
+async function inspectCandidate(
+  candidate: NativeStatusCandidate,
+  details: boolean,
+  acceptanceCursor?: string,
+): Promise<NativeDiscoveredStatusProjection> {
+  if (candidate.kind === 'portable') {
+    if (acceptanceCursor) {
+      throw new Error('Portable Native status includes the complete acceptance list');
+    }
+    if (!details && candidate.portableStatus) return candidate.portableStatus;
+    return inspectNativePortableStatus({
+      paths: candidate.source.paths,
+      name: candidate.name,
+      details,
+    });
+  }
+  return inspectLegacyCandidate(candidate, details, acceptanceCursor);
+}
+
 export async function inspectDiscoveredNativeStatus(options: {
   projectRoot: string;
   name: string;
   details?: boolean;
   acceptanceCursor?: string;
-}): Promise<NativeStatusProjection> {
+}): Promise<NativeDiscoveredStatusProjection> {
   const sources = await discoverSources(options.projectRoot);
   const candidates = (await discoverCandidates(options.projectRoot, sources)).filter(
     (candidate) => candidate.name === options.name,
@@ -234,7 +370,7 @@ export async function inspectDiscoveredNativeStatus(options: {
 export async function listDiscoveredNativeStatusPage(options: {
   projectRoot: string;
   cursor?: string | null;
-}): Promise<NativeStatusPageProjection> {
+}): Promise<NativeDiscoveredStatusPageProjection> {
   const sources = await discoverSources(options.projectRoot);
   const candidates = await discoverCandidates(options.projectRoot, sources);
   const candidatesHash = canonicalHash(
@@ -243,6 +379,7 @@ export async function listDiscoveredNativeStatusPage(options: {
       name: candidate.name,
       projectRoot: candidate.source.projectRoot,
       bindingState: candidate.workspace.bindingState,
+      kind: candidate.kind,
     })),
   );
   const offset = discoveryOffset({
@@ -255,14 +392,17 @@ export async function listDiscoveredNativeStatusPage(options: {
       .slice(offset, offset + NATIVE_STATUS_PAGE_LIMITS.maxItems)
       .map((candidate) => inspectCandidate(candidate, false)),
   );
-  const items: NativeStatusProjection[] = [];
+  const items: NativeDiscoveredStatusProjection[] = [];
+  const schema = candidates.some(({ kind }) => kind === 'portable')
+    ? ('comet.native.status-page.v2' as const)
+    : ('comet.native.status-page.v1' as const);
   for (const candidate of projected) {
     const trialItems = [...items, candidate];
     const nextOffset = offset + trialItems.length;
     const nextCursor =
       nextOffset < candidates.length ? discoveryCursor(candidatesHash, nextOffset) : null;
-    const trial: NativeStatusPageProjection = {
-      schema: 'comet.native.status-page.v1',
+    const trial: NativeDiscoveredStatusPageProjection = {
+      schema,
       total: candidates.length,
       offset,
       items: trialItems,
@@ -285,7 +425,7 @@ export async function listDiscoveredNativeStatusPage(options: {
   const nextCursor =
     nextOffset < candidates.length ? discoveryCursor(candidatesHash, nextOffset) : null;
   return {
-    schema: 'comet.native.status-page.v1',
+    schema,
     total: candidates.length,
     offset,
     items,

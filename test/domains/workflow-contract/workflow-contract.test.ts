@@ -11,6 +11,7 @@ import {
   builtinCometNativeWorkflow,
   defaultWorkflowProjectConfig,
   hashWorkflowProtocol,
+  mergeWorkflowProjectConfigDocument,
   normalizeClassicArtifactLayout,
   parseWorkflowProjectConfigDocument,
   readWorkflowProjectConfigIdentity,
@@ -19,6 +20,7 @@ import {
   normalizeWorkflowRelativePath,
   inspectProtectedProjectPath,
   validateWorkflowDefinition,
+  workflowProjectConfigManagedValue,
   workflowProjectConfigRuntimeHelperScript,
   inspectWorkflowProjectConfigTransaction,
   repairWorkflowProjectConfigTransaction,
@@ -148,6 +150,34 @@ describe('workflow contract normalization', () => {
       owners: ['platform', 'workflow'],
       note: 'value: with # content',
     });
+  });
+
+  it('keeps legacy snapshot parsing internal while omitting it from managed writes', () => {
+    const config = defaultWorkflowProjectConfig('docs');
+    config.native.snapshot.exclude = ['legacy/generated/**'];
+
+    expect(workflowProjectConfigManagedValue(config)).not.toHaveProperty('native.snapshot');
+
+    const merged = mergeWorkflowProjectConfigDocument(
+      {
+        native: {
+          artifact_root: 'legacy-root',
+          snapshot: {
+            include: ['**/*'],
+            snapshot_extension: 'remove-with-retired-block',
+          },
+          custom_extension: 'keep',
+        },
+      },
+      config,
+    );
+    expect(merged).not.toHaveProperty('native.snapshot');
+    expect(merged).toHaveProperty('native.custom_extension', 'keep');
+
+    const parsed = parseWorkflowProjectConfigDocument(
+      'schema: comet.project.v1\ndefault_workflow: native\nnative:\n  artifact_root: docs\n',
+    );
+    expect(parsed.config?.native?.snapshot).toEqual(defaultWorkflowProjectConfig().native.snapshot);
   });
 
   it.each([

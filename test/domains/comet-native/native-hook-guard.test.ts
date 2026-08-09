@@ -23,6 +23,14 @@ import {
   nativeProjectPaths,
 } from '../../../domains/comet-native/native-paths.js';
 import { selectNativeChange } from '../../../domains/comet-native/native-selection.js';
+import {
+  confirmNativePortableShape,
+  createNativePortableChange,
+  nativePortableChangeDir,
+  readNativePortableChange,
+  submitNativePortableBuilderCandidate,
+} from '../../../domains/comet-native/native-portable-runtime.js';
+import { createNativeRunnerChannel } from '../../../domains/comet-native/native-runner-protocol.js';
 
 describe('Native phase Hook guard', () => {
   let projectRoot: string;
@@ -45,6 +53,18 @@ describe('Native phase Hook guard', () => {
     });
     state.phase = phase;
     await writeNativeChange(paths, state);
+    return { paths, state };
+  }
+
+  async function portableBuild(name: string) {
+    const paths = await nativeProjectPaths(projectRoot, '.');
+    await ensureNativeDirectories(paths);
+    await createNativePortableChange({ paths, name, language: 'en' });
+    await fs.writeFile(
+      path.join(nativePortableChangeDir(paths, name), 'brief.md'),
+      '# Acceptance examples\n- The implementation exposes the requested behavior.\n',
+    );
+    const state = await confirmNativePortableShape({ paths, name });
     return { paths, state };
   }
 
@@ -151,6 +171,102 @@ describe('Native phase Hook guard', () => {
     await expect(inspectNativeHookGuard(projectRoot, nonWriteRequest())).resolves.toMatchObject({
       allowed: true,
       reason: 'Hook event is not a write',
+    });
+  });
+
+  it('allows portable Build implementation writes while protecting Runtime-owned state', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    const { paths, state } = await portableBuild('portable-build');
+    const briefRef = path
+      .relative(projectRoot, path.join(nativePortableChangeDir(paths, state.name), 'brief.md'))
+      .replaceAll('\\', '/');
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest(briefRef, 'src/index.ts')),
+    ).resolves.toMatchObject({
+      allowed: false,
+      reason: expect.stringContaining('separate actions'),
+    });
+    await expect(readNativePortableChange(paths, state.name)).resolves.toMatchObject({
+      phase: 'build',
+    });
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest('src/index.ts')),
+    ).resolves.toMatchObject({ allowed: true, phase: 'build', change: state.name });
+    const stateRef = path
+      .relative(
+        projectRoot,
+        path.join(nativePortableChangeDir(paths, state.name), 'comet-state.yaml'),
+      )
+      .replaceAll('\\', '/');
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest(stateRef)),
+    ).resolves.toMatchObject({ allowed: false, reason: expect.stringContaining('Runtime-owned') });
+  });
+
+  it('invalidates a portable Verify candidate before allowing an implementation write', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    const { paths, state } = await portableBuild('portable-verify-write');
+    const runner = createNativeRunnerChannel();
+    await submitNativePortableBuilderCandidate({
+      paths,
+      name: state.name,
+      input: {
+        identity: runner.captureExecutionIdentity({
+          identityProvider: 'test-host',
+          executionRef: 'builder',
+        }),
+        candidateId: 'candidate',
+        summary: 'Built.',
+        addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
+      },
+    });
+
+    const stateRef = path
+      .relative(
+        projectRoot,
+        path.join(nativePortableChangeDir(paths, state.name), 'comet-state.yaml'),
+      )
+      .replaceAll('\\', '/');
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest('src/index.ts', stateRef)),
+    ).resolves.toMatchObject({
+      allowed: false,
+      reason: expect.stringContaining('Runtime-owned'),
+    });
+    await expect(readNativePortableChange(paths, state.name)).resolves.toMatchObject({
+      phase: 'verify',
+    });
+
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest('src/index.ts')),
+    ).resolves.toMatchObject({
+      allowed: true,
+      phase: 'build',
+      reason: expect.stringContaining('candidate was invalidated'),
+    });
+    await expect(readNativePortableChange(paths, state.name)).resolves.toMatchObject({
+      phase: 'build',
+      builder_handoff: null,
+      verification: null,
+    });
+  });
+
+  it('returns a portable Build change to Shape before allowing formal requirement edits', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    const { paths, state } = await portableBuild('portable-shape-write');
+    const briefRef = path
+      .relative(projectRoot, path.join(nativePortableChangeDir(paths, state.name), 'brief.md'))
+      .replaceAll('\\', '/');
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest(briefRef)),
+    ).resolves.toMatchObject({
+      allowed: true,
+      phase: 'shape',
+      reason: expect.stringContaining('requirements changed'),
+    });
+    await expect(readNativePortableChange(paths, state.name)).resolves.toMatchObject({
+      phase: 'shape',
+      acceptance: [],
     });
   });
 

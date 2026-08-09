@@ -10,6 +10,7 @@ import { assertNativeName, readNativeChange } from './native-change.js';
 import { assertNoPendingNativeRootMove } from './native-config.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
 import type { NativeProjectPaths } from './native-types.js';
+import { isNativePortableChange, readNativePortableChange } from './native-portable-runtime.js';
 
 export const NATIVE_SELECTION_MAX_BYTES = 16 * 1024;
 
@@ -29,7 +30,8 @@ export function nativeSelectionFile(paths: NativeProjectPaths): string {
 export async function selectNativeChange(paths: NativeProjectPaths, name: string): Promise<void> {
   return withNativeMutationLock(paths, `select change ${name}`, async () => {
     assertNativeName(name);
-    await readNativeChange(paths, name);
+    if (await isNativePortableChange(paths, name)) await readNativePortableChange(paths, name);
+    else await readNativeChange(paths, name);
     await writeCometCurrentSelection(paths.projectRoot, {
       schema: 'comet.selection.v2',
       workflow: 'native',
@@ -44,7 +46,11 @@ export async function resolveSelectedNativeChange(
 ): Promise<string | null> {
   const value = await readNativeSelectionRecord(paths);
   if (!value) return null;
-  await readNativeChange(paths, value.change);
+  if (await isNativePortableChange(paths, value.change)) {
+    await readNativePortableChange(paths, value.change);
+  } else {
+    await readNativeChange(paths, value.change);
+  }
   return value.change;
 }
 

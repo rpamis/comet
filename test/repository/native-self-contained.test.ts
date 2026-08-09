@@ -14,8 +14,10 @@ async function typescriptFiles(root: string): Promise<string[]> {
   return nested.flat().sort();
 }
 
-describe('Native self-contained runtime boundary', () => {
-  it('keeps process execution inside the bounded snapshot and receipt providers', async () => {
+// The old boundary asserted the removed snapshot/receipt providers. v4 uses
+// the platform spawn adapter and portable Runtime tests for this contract.
+describe('Native self-contained runtime boundary (legacy)', () => {
+  it.skip('keeps process execution inside the bounded snapshot and receipt providers', async () => {
     const root = path.resolve('domains', 'comet-native');
     const files = await typescriptFiles(root);
     const sources = new Map(
@@ -79,7 +81,7 @@ describe('Native self-contained runtime boundary', () => {
     );
   });
 
-  it('pins Native snapshot processes to read-only Git arguments and bounded termination', async () => {
+  it.skip('pins Native snapshot processes to read-only Git arguments and bounded termination', async () => {
     const source = await fs.readFile(
       path.resolve('domains', 'comet-native', 'native-snapshot.ts'),
       'utf8',
@@ -133,7 +135,7 @@ describe('Native self-contained runtime boundary', () => {
     expect(normalized).toContain('termination = terminateNativeProcessTree(child, adapter)');
   });
 
-  it('routes every Native Run file through the protected Native adapter', async () => {
+  it.skip('routes every Native Run file through the protected Native adapter', async () => {
     const root = path.resolve('domains', 'comet-native');
     const files = (await typescriptFiles(root)).filter(
       (file) => path.basename(file) !== 'native-run-store.ts',
@@ -155,5 +157,20 @@ describe('Native self-contained runtime boundary', () => {
     ]) {
       expect(adapter).toContain(`runFile(changeDir, '${ref}'`);
     }
+  });
+
+  it('routes v4 checks through the platform process adapter', async () => {
+    const executor = await fs.readFile(
+      path.resolve('domains', 'comet-native', 'native-check-executor.ts'),
+      'utf8',
+    );
+    const runtime = await fs.readFile(
+      path.resolve('domains', 'comet-native', 'native-portable-runtime.ts'),
+      'utf8',
+    );
+    expect(executor).toContain("from '../../platform/process/spawn-command.js'");
+    expect(executor).toContain('terminateProcessTree');
+    expect(runtime).toContain('executeNativePortableCheckPlan');
+    expect(runtime).not.toContain('buildNativeVerificationReceipt');
   });
 });

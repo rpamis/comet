@@ -38,6 +38,10 @@ describe('repository layout registry', () => {
     expect(resolveRepositoryPath(layout.nativeRuntime.outputs.runtime)).toBe(
       path.resolve('assets', 'skills', 'comet-native', 'scripts', 'comet-native-runtime.mjs'),
     );
+    for (const retired of ['checkpoint', 'check', 'evidence', 'receipt']) {
+      expect(layout.nativeRuntime.entries).not.toHaveProperty(retired);
+      expect(layout.nativeRuntime.outputs).not.toHaveProperty(retired);
+    }
     expect(layout.entryRuntime).toEqual({
       entries: {
         runtime: 'domains/comet-entry/entry-runtime-entry.ts',

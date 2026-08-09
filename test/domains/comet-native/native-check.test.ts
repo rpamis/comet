@@ -51,7 +51,9 @@ function json(result: Awaited<ReturnType<typeof runNativeCli>>): JsonEnvelope {
   return JSON.parse(result.stdout!) as JsonEnvelope;
 }
 
-describe('Native check public seam', () => {
+// `check` is now an internal Runtime executor, not a public receipt command.
+// See native-check-executor.test.ts and native-portable-runtime.test.ts.
+describe('Native check public seam (legacy)', () => {
   let projectRoot: string;
   const name = 'safe-check';
   const projectArgs = () => ['--project-root', projectRoot] as const;
@@ -125,7 +127,7 @@ describe('Native check public seam', () => {
     return { paths, changeDir };
   }
 
-  it('runs the internal scoped check through a whitelist-only CLI projection', async () => {
+  it.skip('runs the internal scoped check through a whitelist-only CLI projection', async () => {
     const { paths, changeDir } = await prepareVerifyChange();
     const stateBefore = await fs.readFile(path.join(changeDir, 'comet-state.yaml'), 'utf8');
     const runBefore = await fs.readFile(
@@ -218,7 +220,7 @@ describe('Native check public seam', () => {
     ).toBe(trajectoryBefore);
   });
 
-  it('runs and binds a fresh required check when Verify passes', async () => {
+  it.skip('runs and binds a fresh required check when Verify passes', async () => {
     const { paths, changeDir } = await prepareVerifyChange();
     await fs.writeFile(
       path.join(changeDir, 'verification.md'),
@@ -251,7 +253,7 @@ describe('Native check public seam', () => {
     ]);
   });
 
-  it('validates the Verify report before running the automatic required check', async () => {
+  it.skip('validates the Verify report before running the automatic required check', async () => {
     const { paths, changeDir } = await prepareVerifyChange();
     await fs.writeFile(path.join(changeDir, 'verification.md'), '# Conclusion\nPass.\n');
     const checkReceiptDirectory = path.join(
@@ -295,7 +297,7 @@ describe('Native check public seam', () => {
     });
   });
 
-  it('returns CLI exit 1 and persists bounded text issues without changing workflow state', async () => {
+  it.skip('returns CLI exit 1 and persists bounded text issues without changing workflow state', async () => {
     const { paths, changeDir } = await prepareVerifyChange(
       name,
       'export const value = 3; \n<<<<<<< HEAD\n=======\n>>>>>>> branch\n',
@@ -335,7 +337,7 @@ describe('Native check public seam', () => {
     ).toBe(trajectoryBefore);
   });
 
-  it('rejects non-Verify use and any attempt to supply a command or path', async () => {
+  it.skip('rejects non-Verify use and any attempt to supply a command or path', async () => {
     const shapeName = 'shape-check';
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     await createNativeChange({
@@ -371,5 +373,14 @@ describe('Native check public seam', () => {
       expect(rejected).toMatchObject({ exitCode: 64, error: { code: 'usage' } });
     }
     expect(await countReceipts()).toBe(beforeCount);
+  });
+
+  it('rejects the retired public check command', async () => {
+    const result = json(await runNativeCli(['check', name, '--json', ...projectArgs()]));
+    expect(result).toMatchObject({
+      command: 'check',
+      exitCode: 64,
+      error: { code: 'usage' },
+    });
   });
 });

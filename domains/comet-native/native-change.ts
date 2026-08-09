@@ -980,7 +980,7 @@ async function listNativeChangeNames(paths: NativeProjectPaths): Promise<string[
       root: paths.nativeRoot,
       directory: paths.changesDir,
       label: 'Native changes directory',
-      maxEntries: 4_096,
+      maxEntries: Number.MAX_SAFE_INTEGER,
     });
     await directory.verify();
     entries = directory.entries;
@@ -995,13 +995,14 @@ async function listNativeChangeNames(paths: NativeProjectPaths): Promise<string[
   return names;
 }
 
-async function listActiveNativeChangesOwnedByWorkspace(
+export async function listActiveNativeChangesOwnedByWorkspace(
   paths: NativeProjectPaths,
 ): Promise<string[]> {
   const owned: string[] = [];
   for (const name of await listNativeChangeNames(paths)) {
     const inspection = await inspectNativeChangeStateDocument(paths, name);
     if (!inspection.state) {
+      if (await hasForeignRegisteredWorkspaceOwner(paths, name)) continue;
       owned.push(name);
       continue;
     }
@@ -1038,7 +1039,34 @@ async function hasForeignRegisteredWorkspaceOwner(
       const config = await readProjectConfig(root);
       if (!config) continue;
       const candidatePaths = await nativeProjectPaths(root, config.native.artifact_root);
-      await fs.access(path.join(candidatePaths.changesDir, name, NATIVE_CHANGE_STATE_FILE));
+      const changeDir = path.join(candidatePaths.changesDir, name);
+      const portableStateFile = path.join(changeDir, 'comet-state.yaml');
+      try {
+        const portableSource = await fs.readFile(portableStateFile, 'utf8');
+        if (/^schema:\s*comet\.native\.v4\s*$/mu.test(portableSource)) {
+          const localSource = await fs.readFile(
+            path.join(nativePreferredChangeRuntimeDir(candidatePaths, name), 'state.json'),
+            'utf8',
+          );
+          const local = JSON.parse(localSource) as {
+            schema?: unknown;
+            workspace?: { projectRoot?: unknown };
+          };
+          if (
+            local.schema === 'comet.native.local-execution.v4' &&
+            typeof local.workspace?.projectRoot === 'string' &&
+            sameWorkspaceRoot(local.workspace.projectRoot, root)
+          ) {
+            return true;
+          }
+          continue;
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          // A malformed foreign portable overlay cannot prove ownership.
+        }
+      }
+      await fs.access(path.join(changeDir, NATIVE_CHANGE_STATE_FILE));
       const identity = await readNativeWorkspaceIdentity(candidatePaths, name);
       if (!identity) continue;
       if (identity.schema === 'comet.native.workspace.v3') {

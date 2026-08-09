@@ -24,6 +24,13 @@ const mockPlatform: Platform = {
 
 const codexPlatform = PLATFORMS.find((platform) => platform.id === 'codex');
 
+const RETIRED_NATIVE_BUNDLES = [
+  'comet-native/scripts/comet-native-checkpoint.mjs',
+  'comet-native/scripts/comet-native-check.mjs',
+  'comet-native/scripts/comet-native-evidence.mjs',
+  'comet-native/scripts/comet-native-receipt.mjs',
+] as const;
+
 if (!codexPlatform) {
   throw new Error('Codex platform definition is missing');
 }
@@ -103,6 +110,96 @@ describe('symlink install mode', () => {
   });
 
   describe('copyCometSkillsForPlatform install modes', () => {
+    it.each(['copy', 'symlink'] as const)(
+      'removes only retired Native bundles from the %s storage root after a successful install',
+      async (installMode) => {
+        const storageRoot =
+          installMode === 'copy'
+            ? path.join(tmpDir, '.claude', 'skills')
+            : path.join(tmpDir, '.comet', 'skills', 'skills');
+        const userFile = path.join(storageRoot, 'comet-native', 'scripts', 'user-helper.mjs');
+        await mkdir(path.dirname(userFile), { recursive: true });
+        for (const relativePath of RETIRED_NATIVE_BUNDLES) {
+          await writeFile(path.join(storageRoot, ...relativePath.split('/')), 'legacy bundle\n');
+        }
+        await writeFile(userFile, 'keep user content\n');
+
+        const result = await copyCometSkillsForPlatform(
+          tmpDir,
+          mockPlatform,
+          true,
+          'skills',
+          'project',
+          installMode,
+          'native',
+        );
+
+        expect(result.failed).toBe(0);
+        for (const relativePath of RETIRED_NATIVE_BUNDLES) {
+          await expect(
+            lstat(path.join(storageRoot, ...relativePath.split('/'))),
+          ).rejects.toMatchObject({ code: 'ENOENT' });
+        }
+        await expect(readFile(userFile, 'utf8')).resolves.toBe('keep user content\n');
+        expect(
+          await fileExists(
+            path.join(storageRoot, 'comet-native', 'scripts', 'comet-native-next.mjs'),
+          ),
+        ).toBe(true);
+      },
+    );
+
+    it('leaves retired Native paths untouched during a Classic-only install', async () => {
+      const retiredPath = path.join(
+        tmpDir,
+        '.claude',
+        'skills',
+        ...RETIRED_NATIVE_BUNDLES[0].split('/'),
+      );
+      await mkdir(path.dirname(retiredPath), { recursive: true });
+      await writeFile(retiredPath, 'keep Native installation\n');
+
+      const result = await copyCometSkillsForPlatform(
+        tmpDir,
+        mockPlatform,
+        true,
+        'skills',
+        'project',
+        'copy',
+        'classic',
+      );
+
+      expect(result.failed).toBe(0);
+      await expect(readFile(retiredPath, 'utf8')).resolves.toBe('keep Native installation\n');
+    });
+
+    it('recognizes retired bundles when replacing a beta17 copy tree with managed symlinks', async () => {
+      const installedRoot = path.join(tmpDir, '.claude', 'skills');
+      for (const relativePath of RETIRED_NATIVE_BUNDLES) {
+        const target = path.join(installedRoot, ...relativePath.split('/'));
+        await mkdir(path.dirname(target), { recursive: true });
+        await writeFile(target, 'legacy bundle\n');
+      }
+
+      const result = await copyCometSkillsForPlatform(
+        tmpDir,
+        mockPlatform,
+        true,
+        'skills',
+        'project',
+        'symlink',
+        'native',
+      );
+
+      expect(result.failed).toBe(0);
+      expect((await lstat(path.join(installedRoot, 'comet-native'))).isSymbolicLink()).toBe(true);
+      for (const relativePath of RETIRED_NATIVE_BUNDLES) {
+        await expect(
+          lstat(path.join(installedRoot, ...relativePath.split('/'))),
+        ).rejects.toMatchObject({ code: 'ENOENT' });
+      }
+    });
+
     it('copies Codex skills to .agents without writing to legacy .codex skills', async () => {
       const result = await copyCometSkillsForPlatform(
         tmpDir,

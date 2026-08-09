@@ -1,0 +1,107 @@
+const TRUSTED_IDENTITY = Symbol('comet.native.trusted-execution-identity');
+const TRUSTED_ENVELOPE = Symbol('comet.native.trusted-verifier-envelope');
+
+export const NATIVE_SKILL_COORDINATION = 'skill-coordinated' as const;
+
+export interface NativeRunnerExecutionIdentityInput {
+  identityProvider: string;
+  executionRef: string;
+}
+
+export interface NativeTrustedExecutionIdentity {
+  readonly identityProvider: string;
+  readonly executionRef: string;
+  readonly [TRUSTED_IDENTITY]: true;
+}
+
+export interface NativeTrustedVerifierEnvelope<TPayload> {
+  readonly candidateId: string;
+  readonly identityProvider: string;
+  readonly verifierExecutionRef: string;
+  readonly payload: TPayload;
+  readonly [TRUSTED_ENVELOPE]: true;
+}
+
+export interface NativeRunnerChannel {
+  captureExecutionIdentity(
+    input: NativeRunnerExecutionIdentityInput,
+  ): NativeTrustedExecutionIdentity;
+  envelopeVerifierResponse<TPayload>(options: {
+    candidateId: string;
+    identity: NativeTrustedExecutionIdentity;
+    payload: TPayload;
+  }): NativeTrustedVerifierEnvelope<TPayload>;
+}
+
+function requiredOpaqueText(value: string, label: string): string {
+  if (typeof value !== 'string' || value.trim().length === 0 || value.includes('\u0000')) {
+    throw new Error(`${label} is invalid`);
+  }
+  return value;
+}
+
+/**
+ * Create the in-process seam used by a host Runner.
+ *
+ * Native CLI commands never expose this constructor or accept its branded
+ * values as JSON/flags. A host adapter captures execution identity from its
+ * own scheduler, then calls the Runtime API with the branded envelope. Agent
+ * response bodies remain plain, untrusted data.
+ *
+ * The generic `next --runner-input` bridge may use this seam with Runtime-
+ * allocated correlation refs, but it labels that path `skill-coordinated`.
+ * Because any local caller can invoke that CLI, the bridge is not host identity
+ * attestation and must never be described as trusted or runner-attested.
+ */
+export function createNativeRunnerChannel(): NativeRunnerChannel {
+  const identities = new WeakSet<object>();
+  return Object.freeze({
+    captureExecutionIdentity(
+      input: NativeRunnerExecutionIdentityInput,
+    ): NativeTrustedExecutionIdentity {
+      const identity = Object.freeze({
+        identityProvider: requiredOpaqueText(input.identityProvider, 'Native identity provider'),
+        executionRef: requiredOpaqueText(input.executionRef, 'Native execution ref'),
+        [TRUSTED_IDENTITY]: true as const,
+      });
+      identities.add(identity);
+      return identity;
+    },
+    envelopeVerifierResponse<TPayload>(options: {
+      candidateId: string;
+      identity: NativeTrustedExecutionIdentity;
+      payload: TPayload;
+    }): NativeTrustedVerifierEnvelope<TPayload> {
+      if (!identities.has(options.identity)) {
+        throw new Error('Native execution identity was not captured by this Runner channel');
+      }
+      return Object.freeze({
+        candidateId: requiredOpaqueText(options.candidateId, 'Native candidate ID'),
+        identityProvider: options.identity.identityProvider,
+        verifierExecutionRef: options.identity.executionRef,
+        payload: options.payload,
+        [TRUSTED_ENVELOPE]: true as const,
+      });
+    },
+  });
+}
+
+export function isNativeTrustedVerifierEnvelope<TPayload>(
+  value: unknown,
+): value is NativeTrustedVerifierEnvelope<TPayload> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as Record<PropertyKey, unknown>)[TRUSTED_ENVELOPE] === true
+  );
+}
+
+export function isNativeTrustedExecutionIdentity(
+  value: unknown,
+): value is NativeTrustedExecutionIdentity {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as Record<PropertyKey, unknown>)[TRUSTED_IDENTITY] === true
+  );
+}

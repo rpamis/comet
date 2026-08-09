@@ -1,10 +1,10 @@
-import { createNativeChange } from './native-change.js';
 import { defaultProjectConfig, readProjectConfig } from './native-config.js';
-import { inspectNativeStatus } from './native-diagnostics.js';
 import { ensureNativeDirectories, nativeProjectPaths } from './native-paths.js';
+import { nativePortableContinuation } from './native-portable-continuation.js';
+import { createNativePortableChange } from './native-portable-runtime.js';
 import { selectNativeChange } from './native-selection.js';
 import { prepareNativeWorkspace } from './native-workspace-preparation.js';
-import { readNativeWorkspaceIdentity, type NativeWorkspaceIsolation } from './native-workspace.js';
+import { type NativeWorkspaceIsolation } from './native-workspace.js';
 import {
   assertNoArguments,
   languageOption,
@@ -52,27 +52,23 @@ export async function nativeNewCommand(
   }
   const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
   await ensureNativeDirectories(paths);
-  const state = await createNativeChange({
+  const state = await createNativePortableChange({
     paths,
     name,
     language,
-    workspaceBinding: prepared.binding,
+    // Portable current-workspace state intentionally carries no branch or
+    // finish binding. The preparation result may still report the current
+    // branch for diagnostics, so only isolated bindings cross this boundary.
+    ...(prepared.binding.isolation === 'current' ? {} : { workspaceBinding: prepared.binding }),
     ...(initialProjectConfig ? { initialProjectConfig } : {}),
   });
-  config = (await readProjectConfig(projectRoot)) ?? config;
   await selectNativeChange(paths, state.name);
-  const workspace = await readNativeWorkspaceIdentity(paths, state.name);
-  const status = await inspectNativeStatus(paths, state.name, {
-    clarificationMode: config.native.clarification_mode,
-    maxVerifyFailures: config.native.max_verify_failures,
-  });
   return success(
     'new',
     {
       ...state,
-      workspace,
       preparation: prepared.preparation,
-      continuation: status.continuation,
+      continuation: nativePortableContinuation(state),
     },
     `Created Native change ${state.name}\n`,
   );

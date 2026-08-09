@@ -24,7 +24,9 @@ function json(result: Awaited<ReturnType<typeof runNativeCli>>): JsonEnvelope {
   return JSON.parse(result.stdout!) as JsonEnvelope;
 }
 
-describe('Native Wave B CLI contract', () => {
+// Beta17 Wave-B checkpoint/finding envelopes are retained only for legacy-read-only
+// compatibility. The v4 CLI contract is covered by native-cli-v4-surface.test.ts.
+describe('Native Wave B CLI contract (legacy)', () => {
   let projectRoot: string;
   const projectArgs = () => ['--project-root', projectRoot] as const;
 
@@ -45,7 +47,7 @@ describe('Native Wave B CLI contract', () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
-  it('keeps one envelope and returns the same continuation shape from mutations and status', async () => {
+  it.skip('keeps one envelope and returns the same continuation shape from mutations and status', async () => {
     const checkpoint = json(
       await runNativeCli([
         'checkpoint',
@@ -99,7 +101,7 @@ describe('Native Wave B CLI contract', () => {
     expect(status.data).not.toHaveProperty('checkpointDetails');
   });
 
-  it('puts bounded finding and manifest details behind status --details', async () => {
+  it.skip('puts bounded finding and manifest details behind status --details', async () => {
     const details = json(
       await runNativeCli(['status', 'cold-resume', '--details', '--json', ...projectArgs()]),
     );
@@ -116,7 +118,7 @@ describe('Native Wave B CLI contract', () => {
     });
   });
 
-  it('returns revision conflicts with exit 73 and decision findings with stable fields', async () => {
+  it.skip('returns revision conflicts with exit 73 and decision findings with stable fields', async () => {
     await runNativeCli([
       'checkpoint',
       'cold-resume',
@@ -195,6 +197,17 @@ describe('Native Wave B CLI contract', () => {
           requiresUserDecision: true,
         },
       },
+    });
+  });
+
+  it('rejects the retired checkpoint command instead of invoking the v4 Runtime', async () => {
+    const result = json(
+      await runNativeCli(['checkpoint', 'cold-resume', '--json', ...projectArgs()]),
+    );
+    expect(result).toMatchObject({
+      command: 'checkpoint',
+      exitCode: 64,
+      error: { code: 'usage' },
     });
   });
 });

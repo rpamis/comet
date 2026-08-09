@@ -39,6 +39,7 @@ export const NATIVE_ACCEPTANCE_EVIDENCE_END_MARKER =
   '<!-- comet-native:acceptance-evidence:end -->';
 
 export type NativeAcceptanceKind = 'brief-example' | 'spec-scenario' | 'spec-must';
+export type NativeAcceptanceIdentityMode = 'content-hash' | 'none';
 
 export interface NativeAcceptanceCriterion {
   id: string;
@@ -345,6 +346,7 @@ function criterion(
   source: string,
   rawText: string,
   rawContext: readonly string[] = [],
+  identityMode: NativeAcceptanceIdentityMode = 'content-hash',
 ): NativeAcceptanceCriterion {
   const text = normalizeNativeAcceptanceText(rawText);
   const normalizedSource = source.replaceAll('\\', '/').trim();
@@ -354,12 +356,15 @@ function criterion(
     throw new Error(`${kind} acceptance criterion source must not be empty`);
   }
   return {
-    id: `acceptance-${canonicalHash(ACCEPTANCE_HASH_TAG, {
-      kind,
-      source: normalizedSource,
-      context,
-      text,
-    })}`,
+    id:
+      identityMode === 'content-hash'
+        ? `acceptance-${canonicalHash(ACCEPTANCE_HASH_TAG, {
+            kind,
+            source: normalizedSource,
+            context,
+            text,
+          })}`
+        : '',
     kind,
     source: normalizedSource,
     context,
@@ -370,11 +375,16 @@ function criterion(
 function uniqueCriteria(
   criteria: NativeAcceptanceCriterion[],
   label: string,
+  identityMode: NativeAcceptanceIdentityMode = 'content-hash',
 ): NativeAcceptanceCriterion[] {
   const seen = new Set<string>();
   for (const item of criteria) {
-    if (seen.has(item.id)) throw new Error(`${label} contains duplicate acceptance criteria`);
-    seen.add(item.id);
+    const identity =
+      identityMode === 'content-hash'
+        ? item.id
+        : JSON.stringify([item.kind, item.source, item.context, item.text]);
+    if (seen.has(identity)) throw new Error(`${label} contains duplicate acceptance criteria`);
+    seen.add(identity);
   }
   return criteria;
 }
@@ -407,6 +417,7 @@ export function deriveBriefAcceptanceCriteria(
   markdown: string,
   source = 'brief.md',
   maxCriteria: number = NATIVE_ACCEPTANCE_LIMITS.maxCriteria,
+  identityMode: NativeAcceptanceIdentityMode = 'content-hash',
 ): NativeAcceptanceCriterion[] {
   if (!Number.isSafeInteger(maxCriteria) || maxCriteria < 0) {
     throw new Error('Native brief acceptance budget is invalid');
@@ -445,8 +456,9 @@ export function deriveBriefAcceptanceCriteria(
   pushActive();
 
   return uniqueCriteria(
-    items.map((lines) => criterion('brief-example', source, lines.join('\n'))),
+    items.map((lines) => criterion('brief-example', source, lines.join('\n'), [], identityMode)),
     'Brief',
+    identityMode,
   );
 }
 
@@ -455,6 +467,7 @@ export function deriveSpecAcceptanceCriteria(
   markdown: string,
   source = 'spec.md',
   maxCriteria: number = NATIVE_ACCEPTANCE_LIMITS.maxCriteria,
+  identityMode: NativeAcceptanceIdentityMode = 'content-hash',
 ): NativeAcceptanceCriterion[] {
   if (!Number.isSafeInteger(maxCriteria) || maxCriteria < 0) {
     throw new Error('Native specification acceptance budget is invalid');
@@ -469,7 +482,13 @@ export function deriveSpecAcceptanceCriteria(
       throw new Error(`Native acceptance exceeds its ${maxCriteria}-criterion acceptance budget`);
     }
     criteria.push(
-      criterion('spec-scenario', source, [active.title, ...active.body].join('\n'), active.context),
+      criterion(
+        'spec-scenario',
+        source,
+        [active.title, ...active.body].join('\n'),
+        active.context,
+        identityMode,
+      ),
     );
     active = null;
   };
@@ -498,7 +517,7 @@ export function deriveSpecAcceptanceCriteria(
     }
   }
   flush();
-  return uniqueCriteria(criteria, 'Specification');
+  return uniqueCriteria(criteria, 'Specification', identityMode);
 }
 
 /**
@@ -510,6 +529,7 @@ export function deriveSpecMandatoryAcceptanceCriteria(
   markdown: string,
   source = 'spec.md',
   maxCriteria: number = NATIVE_ACCEPTANCE_LIMITS.maxCriteria,
+  identityMode: NativeAcceptanceIdentityMode = 'content-hash',
 ): NativeAcceptanceCriterion[] {
   if (!Number.isSafeInteger(maxCriteria) || maxCriteria < 0) {
     throw new Error('Native specification acceptance budget is invalid');
@@ -526,7 +546,9 @@ export function deriveSpecMandatoryAcceptanceCriteria(
     if (criteria.length >= maxCriteria) {
       throw new Error(`Native acceptance exceeds its ${maxCriteria}-criterion acceptance budget`);
     }
-    criteria.push(criterion('spec-must', source, active.parts.join(' '), active.context));
+    criteria.push(
+      criterion('spec-must', source, active.parts.join(' '), active.context, identityMode),
+    );
     active = null;
   };
   const excludedSection = () =>
@@ -588,7 +610,7 @@ export function deriveSpecMandatoryAcceptanceCriteria(
     }
   }
   flush();
-  return uniqueCriteria(criteria, 'Specification mandatory requirements');
+  return uniqueCriteria(criteria, 'Specification mandatory requirements', identityMode);
 }
 
 function normalizeEvidenceRef(value: string, acceptanceId: string): string {

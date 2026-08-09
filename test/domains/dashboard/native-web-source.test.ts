@@ -24,37 +24,47 @@ describe('Native dashboard web source contracts', () => {
       'native?.changes',
       'change.name',
       'change.phase',
-      'change.verificationFreshness',
-      'change.archiveReady',
-      'change.continuation',
-      'change.findings.codes',
-      'change.conflicts.peers',
-      'change.progress',
+      'change.loop',
+      'change.loop.iteration',
+      'change.loop.attempt',
+      'change.loop.actor',
+      'change.verificationResult',
       'change.specs',
       'change.acceptance',
-      'change.implementation',
-      'change.repair',
-      'peer.change',
-      'peer.classification',
+      'change.acceptanceItems',
+      'change.checks',
+      'change.blockers',
+      'change.history',
+      'change.historyOverflow',
+      'change.localExecution',
+      'change.migration',
     ]) {
       expect(source).toContain(field);
     }
 
     for (const forbiddenField of [
       '.nextCommand',
-      '.revision',
-      '.verificationResult',
       '.preflightHash',
       '.operationCount',
       '.command',
       '.requiredInputs',
       '.workspaceRelationship',
       '.signalCount',
-      '.path',
       '.report',
       '.evidenceRefs',
       '.operations',
-      '.message',
+      '.verificationFreshness',
+      '.archiveReady',
+      '.continuation',
+      '.findings',
+      '.conflicts',
+      '.implementation',
+      '.repair',
+      '.checkpoint',
+      '.preflight',
+      '.argvDisplay',
+      '.cwdRef',
+      '.operationId',
     ]) {
       expect(source).not.toContain(forbiddenField);
     }
@@ -76,6 +86,8 @@ describe('Native dashboard web source contracts', () => {
     expect(source).toContain('<DashboardWorkspaceRegion');
     expect(nativeSource).toContain('native-changes-explorer');
     expect(nativeSource).toContain('native-change-detail');
+    expect(nativeSource).toContain('语义验收不可用');
+    expect(nativeSource).toContain('用户确认降级通过');
     expect(source).not.toContain('<NativeWorkflowPanel native={snapshot.native} />');
   });
 });

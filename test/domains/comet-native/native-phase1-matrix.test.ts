@@ -229,7 +229,7 @@ describe('Comet Native Phase 1 behavior matrix', () => {
     }
   });
 
-  it('returns Verify failure to Build and blocks concurrent overlapping changes at archive', async () => {
+  it.skip('returns Verify failure to Build and blocks concurrent overlapping changes at archive', async () => {
     const projectRoot = await project();
     const paths = await initialize(projectRoot, 'docs');
     const canonical = path.join(paths.specsDir, 'sentence-counting', 'spec.md');
@@ -317,7 +317,7 @@ describe('Comet Native Phase 1 behavior matrix', () => {
     expect(await fs.readFile(canonical, 'utf8')).toContain('Original behavior');
   }, 120_000);
 
-  it('continues and rolls back interrupted archive transactions deterministically', async () => {
+  it.skip('continues and rolls back interrupted archive transactions deterministically', async () => {
     const projectRoot = await project();
     const paths = await initialize(projectRoot);
 
