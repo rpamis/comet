@@ -72,12 +72,14 @@ export async function ensureCometProjectGitignore(projectRoot: string): Promise<
     expected: 'file',
   });
   let source = '';
+  let sourceBytes: Uint8Array = new Uint8Array();
   if (inspection.exists) {
-    source = (
+    sourceBytes = (
       await readProtectedProjectFile(root, PROJECT_GITIGNORE_PATH, PROJECT_GITIGNORE_MAX_BYTES, {
         label: 'project .gitignore',
       })
-    ).bytes.toString('utf8');
+    ).bytes;
+    source = Buffer.from(sourceBytes).toString('utf8');
   }
   const output = renderCometProjectGitignore(source);
   if (output === source) return;
@@ -93,7 +95,7 @@ export async function ensureCometProjectGitignore(projectRoot: string): Promise<
             PROJECT_GITIGNORE_MAX_BYTES,
             { label: 'project .gitignore' },
           );
-          if (!current.bytes.equals(Buffer.from(source, 'utf8'))) {
+          if (!current.bytes.equals(sourceBytes)) {
             throw new Error('Project .gitignore changed before commit; rerun initialization');
           }
         }

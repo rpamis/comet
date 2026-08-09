@@ -6,6 +6,8 @@ import type { Readable } from 'node:stream';
 export type SpawnedCommand = ChildProcessByStdio<null, Readable, Readable>;
 
 const WINDOWS_SHIM_EXTENSIONS = new Set(['.bat', '.cmd', '.ps1']);
+const WINDOWS_BATCH_EXTENSIONS = new Set(['.bat', '.cmd']);
+const WINDOWS_BATCH_UNSAFE_ARGUMENT = /[&|<>()^%"!\r\n]/u;
 const WINDOWS_POWERSHELL_SCRIPT = [
   "$ProgressPreference = 'SilentlyContinue'",
   '$encoded = $env:COMET_COMMAND_PAYLOAD',
@@ -18,8 +20,15 @@ const WINDOWS_POWERSHELL_SCRIPT = [
   'exit $LASTEXITCODE',
 ].join('; ');
 
+function environmentValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  const expected = name.toLowerCase();
+  return Object.entries(env).find(
+    ([key, value]) => key.toLowerCase() === expected && value !== undefined,
+  )?.[1];
+}
+
 function windowsExecutableExtensions(env: NodeJS.ProcessEnv): string[] {
-  const configured = (env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD')
+  const configured = (environmentValue(env, 'PATHEXT') ?? '.COM;.EXE;.BAT;.CMD')
     .split(';')
     .map((extension) => extension.trim().toLowerCase())
     .filter(Boolean);
@@ -30,7 +39,7 @@ function windowsCommandCandidates(command: string, env: NodeJS.ProcessEnv, cwd: 
   const hasPath = path.win32.isAbsolute(command) || /[\\/]/u.test(command);
   const directories = hasPath
     ? ['']
-    : (env.PATH ?? '')
+    : (environmentValue(env, 'PATH') ?? '')
         .split(path.delimiter)
         .map((directory) => directory.trim().replace(/^"(.*)"$/u, '$1'))
         .filter(Boolean);
@@ -51,7 +60,7 @@ function resolveWindowsCommand(command: string, env: NodeJS.ProcessEnv, cwd: str
 }
 
 function powershellExecutable(env: NodeJS.ProcessEnv): string {
-  const systemRoot = env.SYSTEMROOT ?? env.SystemRoot;
+  const systemRoot = environmentValue(env, 'SystemRoot');
   if (systemRoot) {
     const bundled = path.join(
       systemRoot,
@@ -63,6 +72,12 @@ function powershellExecutable(env: NodeJS.ProcessEnv): string {
     if (existsSync(bundled)) return bundled;
   }
   return 'powershell.exe';
+}
+
+function assertSafeWindowsBatchArguments(args: readonly string[]): void {
+  if (args.some((argument) => WINDOWS_BATCH_UNSAFE_ARGUMENT.test(argument))) {
+    throw new Error('Windows batch check arguments must not contain shell syntax');
+  }
 }
 
 function spawnWindowsShim(
@@ -117,7 +132,9 @@ export function spawnCommand(
     });
   }
   const resolved = resolveWindowsCommand(command, env, options.cwd);
-  if (WINDOWS_SHIM_EXTENSIONS.has(path.win32.extname(resolved).toLowerCase())) {
+  const extension = path.win32.extname(resolved).toLowerCase();
+  if (WINDOWS_BATCH_EXTENSIONS.has(extension)) assertSafeWindowsBatchArguments(args);
+  if (WINDOWS_SHIM_EXTENSIONS.has(extension)) {
     return spawnWindowsShim(resolved, args, { cwd: options.cwd, env });
   }
   return spawn(resolved, [...args], {
