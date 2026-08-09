@@ -1,10 +1,10 @@
 # Native Runtime 独立验收、有界 Loop 与可携带恢复重构设计
 
-> 状态：Implemented on `beta18`（发布版本 `0.4.0-beta.18`）
+> 状态：Implemented on `beta17`（发布版本 `0.4.0-beta.17`）
 > 设计基线：`0.4.0-beta.17`（`38e2aee0`）
 > 影响范围：Native Runtime、Native 中英文 Skill、Dashboard、Native 测试与真实 Agent Eval
 
-> 实施记录（2026-08-09）：本文设计已落到 beta18。新 Native 路径使用 portable `comet-state.yaml`、本机 `state.json`/logs 和 Build↔Verify Loop；正常路径不创建或读取项目 snapshot、项目内容哈希、receipt、evidence、trajectory 或独立 checkpoint。旧模块仍仅为迁移/legacy 只读兼容，不参与新 change 的正常验收。
+> 实施记录（2026-08-09）：本文设计已落到 beta17。新 Native 路径使用 portable `comet-state.yaml`、本机 `state.json`/logs 和 Build↔Verify Loop；正常路径不创建或读取项目 snapshot、项目内容哈希、receipt、evidence、trajectory 或独立 checkpoint。旧模块仍仅为迁移/legacy 只读兼容，不参与新 change 的正常验收。
 
 > 交付证据：真实 Agent Eval 完成 10 次 CLI 往返；第一次新的 Verifier 发现 Builder 漏掉 A2，Runtime 返回 Build；修复后由第二个新的 Verifier 完成全量验收，通用 CLI 先停在 `await-user`，明确确认后 Archive。长 stdout/stderr、Windows `pnpm` shim、跨设备 overlay 重建、Archive 不重验和升级清理均有自动化回归。真实模型 Eval 不能证明所有项目语义都能被发现，因此该边界仍由 Verifier 选择质量和用户确认承担。
 

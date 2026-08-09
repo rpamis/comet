@@ -2,11 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.4.0-beta.18] - 2026-08-09
+## What's Changed [0.4.0-beta.17] - 2026-08-09
 
 ### Added
 
 - **Independent Native verification**: After a Builder submits a candidate, Comet runs the declared local checks and coordinates a fresh read-only Verifier over every acceptance item. Failed items return to Build through a bounded loop; environments without host-attested Agent identities require one explicit user confirmation before Archive.
+- **Trae Hook support**: `comet init`, `comet update`, `comet doctor`, and `comet uninstall` now support managed Hook Router entries for Trae and Trae CN, using Trae's official project and global `hooks.json` locations while preserving user-owned Hook configuration.
 
 ### Changed
 
@@ -20,22 +21,11 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 - **Native worktree and recovery routing**: Commands keep linked worktrees authoritative, discover portable changes across registered worktrees, reject migration from the wrong checkout, and resume interrupted Archive steps without silently reusing an unverifiable pass.
 - **Workflow isolation and references**: Legacy global Hooks remain neutral outside the active project, and Classic-only reference documents stay scoped to Classic installations.
+- **Doctor Superpowers detection**: `comet doctor` now recognizes Claude Code plugin-managed Superpowers installs, so users with Superpowers under the plugin cache no longer receive a misleading install warning.
 
 ### Removed
 
 - **Native verification bookkeeping**: New Native changes no longer expose snapshot configuration or the public `checkpoint`, `check`, `evidence`, and `receipt` command chain. Legacy active changes migrate conservatively, and archived legacy changes remain read-only.
-
-## What's Changed [0.4.0-beta.18] - 2026-08-07
-
-### Added
-
-- **Trae Hook support**: `comet init`, `comet update`, `comet doctor`, and `comet uninstall` now support managed Hook Router entries for Trae and Trae CN, using Trae's official project and global `hooks.json` locations while preserving user-owned Hook configuration.
-
-## What's Changed [0.4.0-beta.17] - 2026-08-05
-
-### Fixed
-
-- **Doctor Superpowers detection**: `comet doctor` now recognizes Claude Code plugin-managed Superpowers installs, so users with Superpowers under the plugin cache no longer receive a misleading install warning.
 
 ## What's Changed [0.4.0-beta.16] - 2026-08-05
 

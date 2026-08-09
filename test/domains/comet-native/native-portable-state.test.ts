@@ -177,7 +177,7 @@ describe('Native portable state', () => {
       ],
       workspace: {
         isolation: 'worktree',
-        change_branch: 'beta18',
+        change_branch: 'beta17',
         target_branch: 'beta17',
         finish: 'push',
       },

@@ -31,7 +31,7 @@ const ACCEPTANCE: NativePortableAcceptanceCriterion[] = [
 ];
 const WORKSPACE: NativePortableWorkspace = {
   isolation: 'worktree',
-  change_branch: 'beta18',
+  change_branch: 'beta17',
   target_branch: 'master',
   finish: 'pull-request',
 };
