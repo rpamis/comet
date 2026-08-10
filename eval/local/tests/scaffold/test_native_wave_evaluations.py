@@ -7,10 +7,7 @@ receipt/snapshot/checkpoint fixtures belong to a separate legacy test suite.
 from __future__ import annotations
 
 import importlib.util
-import json
 from pathlib import Path
-
-import yaml
 
 from scaffold.python.validation.native_v4 import (
     check_dashboard_projection,
