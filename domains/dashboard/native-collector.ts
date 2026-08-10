@@ -106,7 +106,10 @@ function artifactDescriptors(
     'brief' | 'spec_changes' | 'verification_report'
   >,
 ): Array<[string, string, string]> {
-  const descriptors: Array<[string, string, string]> = [['brief', '需求简报', state.brief]];
+  const descriptors: Array<[string, string, string]> = [
+    ['comet-state.yaml', '工作流状态', NATIVE_CHANGE_STATE_FILE],
+    ['brief', '需求简报', state.brief],
+  ];
   for (const spec of state.spec_changes) {
     if (!spec.source) continue;
     descriptors.push([`spec-${spec.capability}`, `${spec.capability} Spec`, spec.source]);

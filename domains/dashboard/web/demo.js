@@ -651,6 +651,19 @@ function createNativeV2Seed(options) {
     blocked: acceptanceItems.filter((item) => item.result === 'blocked').length,
     pending: acceptanceItems.filter((item) => item.result === 'pending').length,
   };
+  const stateContent = [
+    'schema: comet.native.v4',
+    `state_version: ${options.stateVersion}`,
+    `status: ${options.status === 'archived' ? 'done' : 'active'}`,
+    `phase: ${options.phase}`,
+    `loop_stage: ${options.stage}`,
+    `acceptance_total: ${acceptance.total}`,
+    `acceptance_passed: ${acceptance.passed}`,
+    `acceptance_failed: ${acceptance.failed}`,
+    `acceptance_blocked: ${acceptance.blocked}`,
+    `acceptance_pending: ${acceptance.pending}`,
+    '',
+  ].join('\n');
   return {
     workflow: 'native',
     name: options.name,
@@ -682,7 +695,18 @@ function createNativeV2Seed(options) {
       checks: options.localChecks ?? [],
       recoverableFromStage: options.recoverableFromStage ?? null,
     },
-    artifacts: options.artifacts ?? [],
+    artifacts: [
+      {
+        key: 'comet-state.yaml',
+        label: '工作流状态',
+        path: 'comet-state.yaml',
+        exists: true,
+        content: stateContent,
+        truncated: false,
+        size: stateContent.length,
+      },
+      ...(options.artifacts ?? []),
+    ],
     specs: options.specs ?? {
       total: 0,
       create: 0,
@@ -825,6 +849,15 @@ const nativeV2Repairing = createNativeV2Seed({
       size: 43,
     },
     {
+      key: 'spec-dashboard-copy',
+      label: 'dashboard-copy Spec',
+      path: 'specs/dashboard-copy.md',
+      exists: true,
+      content: '# Dashboard copy\n\nUse clear Native workflow language.\n',
+      truncated: false,
+      size: 56,
+    },
+    {
       key: 'verification',
       label: '验证报告',
       path: 'verification.md',
@@ -924,6 +957,15 @@ const nativeV2Archived = createNativeV2Seed({
       exists: true,
       content: '# Resume\n',
       size: 9,
+    },
+    {
+      key: 'spec-native-resume',
+      label: 'native-resume Spec',
+      path: 'specs/native-resume.md',
+      exists: true,
+      content: '# Native resume\n\nResume from portable state.\n',
+      truncated: false,
+      size: 48,
     },
     {
       key: 'verification',

@@ -289,6 +289,7 @@ describe('Native Dashboard v2 collector', () => {
       blockers: [{ owner: 'builder', acceptanceIds: ['A1'] }],
       history: [{ iteration: 1, attempt: 1, outcome: 'fail' }],
       artifacts: [
+        { key: 'comet-state.yaml', exists: true },
         { key: 'brief', exists: true },
         { key: 'spec-dashboard', exists: true },
         { key: 'verification', exists: true },
@@ -333,11 +334,12 @@ describe('Native Dashboard v2 collector', () => {
       name: state.name,
     });
 
-    expect(detail?.artifacts).toEqual([
+    const briefArtifact = detail?.artifacts.find((artifact) => artifact.key === 'brief');
+    expect(briefArtifact).toEqual(
       expect.objectContaining({ key: 'brief', exists: true, size, truncated: true }),
-    ]);
-    expect(detail?.artifacts[0]?.content).toHaveLength(48 * 1024);
-    expect(detail?.artifacts[0]?.content).toMatch(/^a+$/u);
+    );
+    expect(briefArtifact?.content).toHaveLength(48 * 1024);
+    expect(briefArtifact?.content).toMatch(/^a+$/u);
     expect(bytesRead).toBe(48 * 1024);
   });
 

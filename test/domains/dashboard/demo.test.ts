@@ -60,6 +60,22 @@ describe('dashboard demo data', () => {
     ).toBe(true);
   });
 
+  it('shows the complete beta17 portable artifact set by lifecycle', async () => {
+    const { DEMO_SNAPSHOT } = await import('../../../domains/dashboard/web/demo.js');
+
+    for (const change of DEMO_SNAPSHOT.native.changes) {
+      const keys = change.artifacts
+        .filter((artifact) => artifact.exists)
+        .map((artifact) => artifact.key);
+      expect(keys).toContain('comet-state.yaml');
+      expect(keys).toContain('brief');
+      expect(keys.some((key) => key.startsWith('spec-'))).toBe(true);
+      if (change.verificationResult !== 'pending') {
+        expect(keys).toContain('verification');
+      }
+    }
+  });
+
   it('populates enough changes to demonstrate bounded side-panel scrolling', async () => {
     const { DEMO_SNAPSHOT } = await import('../../../domains/dashboard/web/demo.js');
 

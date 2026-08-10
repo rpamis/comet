@@ -227,7 +227,10 @@ describe('startDashboardServer', () => {
     expect(detailResponse.status).toBe(200);
     expect(JSON.parse(detailResponse.body)).toMatchObject({
       name: first.items[0].name,
-      artifacts: [expect.objectContaining({ key: 'brief' })],
+      artifacts: expect.arrayContaining([
+        expect.objectContaining({ key: 'comet-state.yaml' }),
+        expect.objectContaining({ key: 'brief' }),
+      ]),
     });
 
     const secondResponse = await request(
