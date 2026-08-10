@@ -1,6 +1,6 @@
 # Native clarification reference
 
-Read this file after entering Shape. Keep the implementation unchanged and remain in Shape until question classification, unstated-assumption checks, and shared understanding are complete.
+You must read this file after entering Shape. Do not modify project implementation or advance to Build until problem classification, the silent-assumption check, and shared-understanding confirmation are complete.
 
 ## Whether to ask
 
@@ -47,7 +47,7 @@ When a fact is still unknown, pause only the dependent node and its later branch
 1. Investigate the facts required by the decision tree and isolate branches still waiting on facts.
 2. Choose one currently askable node. If several exist, prefer the question that affects more later choices or has greater impact on the visible result.
 3. Save one `- [blocking] <question>` in the brief.
-4. Ask one currently askable node and wait for the answer. Ask the next user decision in a later round.
+4. Ask exactly one currently askable node and wait for the answer. Ask the next user decision in a later round.
 5. After the user answers, immediately update Decisions, the brief, and complete target specifications.
 6. Update the decision tree, recompute askable nodes, and begin the next round.
 

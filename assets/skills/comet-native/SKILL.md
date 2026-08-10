@@ -7,13 +7,13 @@ description: "Comet Native workflow. Use when the user explicitly invokes /comet
 
 Native stores the requirements, complete target specifications, current progress, and verification conclusions in the project. After completing each phase, return to the Runtime for the next action and handle only the phase it specifies.
 
-## Core boundaries
+## Inviolable boundaries
 
 - The on-disk `.comet/config.yaml`, current change, `comet-state.yaml`, and formal Markdown are the working source; chat memory is only supplementary.
 - The Runtime manages workflow state, local tasks, logs, locks, and transactions. Advance every phase through the public `comet native` commands on PATH.
 - If a command is unavailable, report an incomplete Comet installation and stop. Treat `comet native <command> --help` as authoritative for arguments and output.
 - The Builder submits a candidate. A fresh read-only Verifier subagent or separate Agent task makes the verification judgment.
-- This Skill and the Runtime complete the Native workflow.
+- This Skill and the Runtime complete the Native workflow; Native does not depend on any external Skill.
 
 ## Start or resume
 
@@ -30,11 +30,11 @@ The CLI binds the branch or worktree, maintains repository-local exclusions, val
 
 If preparation does not finish, keep the resources already created, show the failure reason from `preparation`, and continue with the recovery direction from the Runtime or user.
 
-## Read by phase
+## Read on demand
 
-After confirming the current phase, load only what that step needs:
+After confirming the phase, read only the needed reference:
 
-- Shape: read and follow the [clarification reference](reference/clarification.md).
+- Shape: always read and execute the [clarification reference](reference/clarification.md).
 - Read the [artifact reference](reference/artifacts.md) when editing the brief or complete target specifications, or when reviewing the verification report.
 - During normal progression, execute the command returned in Runtime `continuation`. Read the [command reference](reference/commands.md) only when a returned field is unclear, command input is rejected, the Verifier cannot be started, Verifier execution fails, or the Verifier needs user-provided information.
 - Read the [recovery reference](reference/recovery.md) only when the task cannot continue because of an interrupted process, missing local Runtime state after moving devices, repeated lack of progress, a concurrency conflict, failed legacy migration, or damaged state.
@@ -45,7 +45,7 @@ First investigate facts that can be determined from the repository, tools, and r
 
 Immediately synchronize confirmed user-visible decisions and important constraints into Decisions, the brief, and complete target specifications. Keep ordinary implementation choices in the implementation and tests unless they affect visible behavior. Acceptance items must be specific, observable, and non-duplicative.
 
-Completion criterion: every choice that affects the visible result and every unstated assumption has been handled, no `[blocking]` item remains, the user has explicitly confirmed the outcome, scope, key decisions, acceptance items, and non-goals, and the Runtime has entered Build.
+Keep unresolved questions `[blocking]`; do not modify implementation while a blocker remains. Completion criterion: every choice that affects the visible result and every unstated assumption has been handled, no `[blocking]` item remains, the user has explicitly confirmed the outcome, scope, key decisions, acceptance items, and non-goals, and the Runtime has entered Build. Advance with the continuation containing `--confirmed` only after explicit user confirmation.
 
 ## Build ↔ Verify Loop
 

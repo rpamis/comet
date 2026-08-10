@@ -7,13 +7,13 @@ description: "Comet Native 工作流。当用户明确调用 /comet-native、要
 
 Native 把需求、完整目标规格、当前进度和验收结论保存在项目中。每完成一个阶段都回到 Runtime 读取下一步，当前只处理 Runtime 指定的阶段。
 
-## 核心边界
+## 硬性边界
 
 - 磁盘中的 `.comet/config.yaml`、当前 change、`comet-state.yaml` 和正式 Markdown 是工作依据，聊天记忆只作辅助。
 - Runtime 管理工作流状态、本机任务、日志、锁和事务；所有阶段推进都通过 PATH 中公开的 `comet native` 命令完成。
 - 命令不可用时报告 Comet 安装不完整并停止。参数和输出以 `comet native <command> --help` 为准。
 - Builder 提交候选，新的只读 Verifier subagent 或独立 Agent 任务作出验收判断。
-- Native 主流程由本 Skill 和 Runtime 完成。
+- Native 主流程由本 Skill 和 Runtime 完成，不依赖任何外部 Skill。
 
 ## 开始或恢复
 
@@ -30,11 +30,11 @@ CLI 会完成分支或 worktree 绑定、维护仓库本地排除规则、核对
 
 如果准备没有完成，保留已经创建的资源，展示 `preparation` 中的失败原因，并按 Runtime 或用户给出的恢复方向继续。
 
-## 按阶段读取
+## 按需读取
 
-确认当前阶段后，只加载这一步需要的内容：
+确认 phase 后只读取需要的一份 reference：
 
-- Shape：读取并执行[澄清参考](reference/clarification.md)；
+- Shape：必须读取并执行[澄清参考](reference/clarification.md)；
 - 实际编辑 brief/完整目标规格，或查看验收报告时读取[产物参考](reference/artifacts.md)；
 - 正常推进时，直接执行 Runtime 在 `continuation` 中给出的命令。只有返回字段含义不清、命令输入被拒绝、无法启动 Verifier、Verifier 执行报错，或 Verifier 要求用户补充信息时，才读取[命令参考](reference/commands.md)；
 - 只有任务因进程中断、换设备后本机状态缺失、连续多轮没有进展、并发冲突、旧版本迁移失败或状态损坏而无法继续时，才读取[恢复参考](reference/recovery.md)。
@@ -45,7 +45,7 @@ CLI 会完成分支或 worktree 绑定、维护仓库本地排除规则、核对
 
 确认后的用户可见决定和重要约束立即同步到 Decisions、brief 和完整目标规格；普通实现选择保留在实现和测试中，只有影响用户可见行为时才进入正式需求。验收项必须具体、可观察且互不重复。
 
-完成标准：所有会影响用户可见结果的选择和未明说的假设均已处理，没有 `[blocking]`，用户明确确认目标、范围、关键决定、验收项和非目标，并且 Runtime 已进入 Build。
+未解决问题保持 `[blocking]`；有阻塞项时不修改项目实现。完成标准：所有会影响用户可见结果的选择和未明说的假设均已处理，没有 `[blocking]`，用户明确确认目标、范围、关键决定、验收项和非目标，并且 Runtime 已进入 Build。只有用户明确确认后才使用后续指令中含 `--confirmed` 的命令推进。
 
 ## Build ↔ Verify Loop
 
