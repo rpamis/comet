@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+from datetime import date, datetime
 from pathlib import Path
 
 import yaml
@@ -47,6 +48,10 @@ def _portable_text(value):
     )
 
 
+def _portable_timestamp(value):
+    return isinstance(value, (str, datetime, date))
+
+
 def _all_acceptance_passed(state):
     acceptance = state.get("acceptance")
     return (
@@ -83,7 +88,7 @@ def _history_is_valid(state):
             entry.get("outcome") not in outcomes
             or not isinstance(entry.get("unresolved_ids"), list)
             or not _portable_text(entry.get("summary"))
-            or not isinstance(entry.get("completed_at"), str)
+            or not _portable_timestamp(entry.get("completed_at"))
         ):
             return False
         serialized = json.dumps(entry, default=str).lower()

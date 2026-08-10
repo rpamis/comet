@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -74,6 +75,11 @@ def _portable_text(value: Any) -> bool:
     )
 
 
+def _portable_timestamp(value: Any) -> bool:
+    """Accept ISO text and the datetime/date objects produced by PyYAML."""
+    return isinstance(value, (str, datetime, date))
+
+
 def _state_history(state: dict[str, Any]) -> tuple[list[dict[str, Any]], bool]:
     history = state.get("history")
     if not isinstance(history, list):
@@ -102,7 +108,7 @@ def _state_history(state: dict[str, Any]) -> tuple[list[dict[str, Any]], bool]:
             or entry.get("outcome") not in valid_outcomes
             or not isinstance(entry.get("unresolved_ids"), list)
             or not _portable_text(entry.get("summary"))
-            or not isinstance(entry.get("completed_at"), str)
+            or not _portable_timestamp(entry.get("completed_at"))
         ):
             return entries, False
     return entries, True
