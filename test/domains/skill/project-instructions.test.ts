@@ -108,4 +108,39 @@ describe('Comet project instructions', () => {
       '# User\n\nKeep Claude rules.\n',
     );
   });
+
+  it('updates the in-project target without replacing an AGENTS.md alias', async () => {
+    await fs.writeFile(path.join(tmpDir, 'CLAUDE.md'), '# User instructions\n', 'utf8');
+    try {
+      await fs.symlink('CLAUDE.md', path.join(tmpDir, 'AGENTS.md'), 'file');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+      throw error;
+    }
+
+    const result = await installCometProjectInstructions(tmpDir, 'en');
+
+    expect(result.changed).toBe(1);
+    expect((await fs.lstat(path.join(tmpDir, 'AGENTS.md'))).isSymbolicLink()).toBe(true);
+    const content = await fs.readFile(path.join(tmpDir, 'CLAUDE.md'), 'utf8');
+    expect(content).toContain('<comet-ambient-resume>');
+    await expect(fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8')).resolves.toBe(content);
+  });
+
+  it('creates the target for a dangling in-project AGENTS.md alias', async () => {
+    try {
+      await fs.symlink('CLAUDE.md', path.join(tmpDir, 'AGENTS.md'), 'file');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+      throw error;
+    }
+
+    const result = await installCometProjectInstructions(tmpDir, 'en');
+
+    expect(result.changed).toBe(1);
+    expect((await fs.lstat(path.join(tmpDir, 'AGENTS.md'))).isSymbolicLink()).toBe(true);
+    await expect(fs.readFile(path.join(tmpDir, 'CLAUDE.md'), 'utf8')).resolves.toContain(
+      '<comet-ambient-resume>',
+    );
+  });
 });

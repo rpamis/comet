@@ -1,5 +1,5 @@
-import path from 'path';
 import type { SkillLanguageId } from './languages.js';
+import { resolveProtectedProjectInstructionPath } from '../workflow-contract/protected-project-path.js';
 import {
   mergeManagedMarkdownBlock,
   removeManagedMarkdownBlock,
@@ -67,7 +67,8 @@ export async function installCometProjectInstructions(
   const files = [];
 
   for (const file of PROJECT_INSTRUCTION_FILES) {
-    const result = await mergeManagedMarkdownBlock(path.join(projectPath, file), {
+    const instruction = await resolveProtectedProjectInstructionPath(projectPath, file);
+    const result = await mergeManagedMarkdownBlock(instruction.target, {
       tagName: COMET_AMBIENT_RESUME_TAG,
       content,
     });
@@ -100,10 +101,8 @@ export async function removeCometProjectInstructions(
   const files = [];
 
   for (const file of PROJECT_INSTRUCTION_FILES) {
-    const result = await removeManagedMarkdownBlock(
-      path.join(projectPath, file),
-      COMET_AMBIENT_RESUME_TAG,
-    );
+    const instruction = await resolveProtectedProjectInstructionPath(projectPath, file);
+    const result = await removeManagedMarkdownBlock(instruction.target, COMET_AMBIENT_RESUME_TAG);
     files.push({ file, result });
   }
 
