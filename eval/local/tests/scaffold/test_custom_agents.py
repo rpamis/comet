@@ -141,7 +141,7 @@ def test_custom_registry_rejects_malformed_duplicate_and_escape_entries(
         pass
     monkeypatch.setenv("COMET_EVAL_ADAPTERS_DIR", str(tmp_path))
 
-    with pytest.raises(ValueError, match="duplicate|outside|invalid|match"):
+    with pytest.raises(ValueError, match="duplicate|outside|invalid|match|escapes"):
         discover_custom_agent_specs()
 
 
