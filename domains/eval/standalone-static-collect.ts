@@ -30,6 +30,18 @@ const CUSTOM_CAPABILITIES = [
   'telemetry',
   'skillInvocationEvidence',
 ] as const;
+const BUILTIN_MODEL_ENVS: Record<string, string[]> = {
+  'claude-code': ['BENCH_CC_MODEL', 'ANTHROPIC_MODEL'],
+  codex: ['BENCH_CODEX_MODEL', 'OPENAI_MODEL', 'CODEX_MODEL'],
+  qoder: ['BENCH_QODER_MODEL', 'QODER_MODEL'],
+  codebuddy: ['BENCH_CODEBUDDY_MODEL', 'CODEBUDDY_MODEL'],
+};
+const BUILTIN_BASE_URL_ENVS: Record<string, string[]> = {
+  'claude-code': ['ANTHROPIC_BASE_URL'],
+  codex: ['OPENAI_BASE_URL', 'CODEX_BASE_URL'],
+  qoder: ['QODER_BASE_URL'],
+  codebuddy: ['CODEBUDDY_BASE_URL'],
+};
 const hash = (value: string | Buffer) =>
   `sha256:${createHash('sha256').update(value).digest('hex')}`;
 const codePoint = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
@@ -249,6 +261,14 @@ function validateBaseUrl(data: Record<string, unknown>, field: string) {
     throw new Error(`${field}.baseUrl: must be a valid absolute http(s) URL`);
   }
 }
+function environmentValue(keys: string[]): string | undefined {
+  return keys.map((key) => process.env[key]?.trim()).find((value) => value);
+}
+function judgeFlagEnabled(): boolean {
+  return ['1', 'true', 'yes', 'on'].includes(
+    (process.env.BENCH_LLM_JUDGE ?? '').trim().toLowerCase(),
+  );
+}
 async function validateExecutionConfig(
   options: StaticCollectOptions,
   manifest?: Record<string, unknown>,
@@ -286,7 +306,12 @@ async function validateExecutionConfig(
       ? execution.baseUrl
       : typeof execution.base_url === 'string'
         ? execution.base_url
-        : undefined);
+        : environmentValue(
+            adapter?.baseUrlEnv
+              ? [adapter.baseUrlEnv]
+              : (BUILTIN_BASE_URL_ENVS[configuredAgent] ?? []),
+          ));
+  if (configuredBaseUrl !== undefined) validateBaseUrl({ baseUrl: configuredBaseUrl }, 'execution');
   if (adapter?.id && configuredBaseUrl && !adapter.baseUrlEnv) {
     throw new Error(
       `custom Agent ${adapter.id} must declare baseUrlEnv before execution.baseUrl can be used`,
@@ -296,19 +321,34 @@ async function validateExecutionConfig(
   const configuredJudge =
     options.judgeAgent ??
     (typeof judge?.agent === 'string' ? judge.agent : undefined) ??
-    (options.judgeModel !== undefined || options.judgeBaseUrl !== undefined
+    (judge ||
+    options.judgeModel !== undefined ||
+    options.judgeBaseUrl !== undefined ||
+    judgeFlagEnabled()
       ? configuredAgent
       : undefined);
   if (configuredJudge) await loadInstalledCustomAgent(configuredJudge);
-  if (
-    options.judgeAgent !== undefined ||
-    options.judgeModel !== undefined ||
-    options.judgeBaseUrl !== undefined
-  ) {
-    if (options.judgeModel === undefined && !manifest?.judge) {
-      throw new Error('judge.model: is required when CLI Judge options are used');
-    }
+  const configuredJudgeModel =
+    options.judgeModel ??
+    (typeof judge?.model === 'string' ? judge.model : undefined) ??
+    environmentValue(['BENCH_JUDGE_MODEL']);
+  const judgeEnabled = Boolean(configuredJudge);
+  if (judgeEnabled && !configuredJudgeModel) {
+    throw new Error(
+      judgeFlagEnabled()
+        ? 'BENCH_JUDGE_MODEL is required when BENCH_LLM_JUDGE=1'
+        : 'judge.model: is required when LLM-as-Judge is enabled',
+    );
   }
+  const configuredJudgeBaseUrl =
+    options.judgeBaseUrl ??
+    (typeof judge?.baseUrl === 'string'
+      ? judge.baseUrl
+      : typeof judge?.base_url === 'string'
+        ? judge.base_url
+        : environmentValue(['BENCH_JUDGE_BASE_URL']));
+  if (configuredJudgeBaseUrl !== undefined)
+    validateBaseUrl({ baseUrl: configuredJudgeBaseUrl }, 'judge');
   return { agent: configuredAgent, adapter };
 }
 async function file(value: string) {
@@ -780,15 +820,8 @@ export async function collectStandaloneTasks(
         ? configuredModel
         : undefined) ??
       customModel ??
-      (agent === 'claude-code'
-        ? (process.env.BENCH_CC_MODEL ?? process.env.ANTHROPIC_MODEL ?? 'runtime-default')
-        : agent === 'codex'
-          ? (process.env.BENCH_CODEX_MODEL ?? process.env.OPENAI_MODEL ?? 'runtime-default')
-          : agent === 'qoder'
-            ? (process.env.BENCH_QODER_MODEL ?? process.env.QODER_MODEL ?? 'runtime-default')
-            : (process.env.BENCH_CODEBUDDY_MODEL ??
-              process.env.CODEBUDDY_MODEL ??
-              'runtime-default'));
+      environmentValue(BUILTIN_MODEL_ENVS[agent] ?? []) ??
+      'runtime-default';
     const customBaseUrl = executionConfig.adapter?.baseUrlEnv
       ? process.env[executionConfig.adapter.baseUrlEnv]?.trim() || undefined
       : undefined;
@@ -799,13 +832,8 @@ export async function collectStandaloneTasks(
         : typeof execution.base_url === 'string'
           ? execution.base_url
           : (customBaseUrl ??
-            (agent === 'claude-code'
-              ? (process.env.ANTHROPIC_BASE_URL ?? 'runtime-default')
-              : agent === 'codex'
-                ? (process.env.OPENAI_BASE_URL ?? process.env.CODEX_BASE_URL ?? 'runtime-default')
-                : agent === 'qoder'
-                  ? (process.env.QODER_BASE_URL ?? 'runtime-default')
-                  : (process.env.CODEBUDDY_BASE_URL ?? 'runtime-default'))));
+            environmentValue(BUILTIN_BASE_URL_ENVS[agent] ?? []) ??
+            'runtime-default'));
     const generation = createHash('sha256')
       .update(
         canonical({

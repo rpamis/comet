@@ -10,6 +10,8 @@ from typing import Any
 
 import yaml
 
+from scaffold.python.validation.core import _normalize_skill_invocations
+
 
 def _failure(name: str, reason: str) -> str:
     return f"{name}: {reason}"
@@ -186,7 +188,10 @@ def validate_native_workflow(
     passed: list[str] = []
     failed: list[str] = []
 
-    invoked = (outputs.get("events") or {}).get("skills_invoked", []) or []
+    events = outputs.get("events") or {}
+    invoked = _normalize_skill_invocations(events, outputs)
+    if isinstance(events, dict):
+        events["skills_invoked"] = invoked
     unexpected_skills = sorted({skill for skill in invoked if skill != "comet-native"})
     if "comet-native" in invoked and not unexpected_skills:
         passed.append("native_skill_invocation")

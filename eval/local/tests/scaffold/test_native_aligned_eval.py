@@ -287,6 +287,23 @@ def test_validate_native_workflow_rejects_external_skill_invocation(tmp_path: Pa
     )
 
 
+def test_validate_native_workflow_does_not_infer_custom_agent_skill_invocation(
+    tmp_path: Path,
+):
+    _write_native_archive(tmp_path)
+
+    passed, failed = validate_native_workflow(
+        tmp_path,
+        {
+            "agent": "fixture-agent",
+            "events": {"skills_invoked": ["comet-native"]},
+        },
+    )
+
+    assert "native_skill_invocation" not in passed
+    assert any(item.startswith("native_skill_invocation:") for item in failed)
+
+
 def test_adapt_checks_for_native_replaces_classic_contract_but_keeps_business(tmp_path: Path):
     _write_native_archive(tmp_path)
 

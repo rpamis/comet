@@ -323,26 +323,42 @@ comet uninstall --scope project  # 仅移除项目级安装
 
 `comet eval` 用来回答一个很朴素的问题：这个 Skill 真的能在标准任务里稳定工作吗？
 
-最常见的是评估 `/comet-any` 生成的 Skill。生成物里通常会有 `comet/eval.yaml`，优先把这个文件交给
-`comet eval`：
+首选路径是评估你已经拥有的本地 Skill；不需要先运行 `/comet-any`，也不需要先写
+`comet/eval.yaml`：
 
 ```bash
-comet eval ./generated-skill/comet/eval.yaml --collect
-comet eval ./generated-skill/comet/eval.yaml --html
-```
-
-第一条命令只做发现和预检查，用来确认 manifest、任务和依赖路径能被识别，不会先跑高成本评估。
-第二条命令执行本地评估并生成可浏览报告，适合作为发布前证据。报告路径会在命令输出里显示，通常位于
-`eval/local/logs/experiments/<experiment-id>/summary.html`。
-
-如果你还没有 `comet/eval.yaml`，只有一个本地 Skill 目录，可以先跑低成本冒烟：
-
-```bash
+comet eval ./my-skill --collect
+comet eval ./my-skill --html
 comet eval ./my-skill --quick --html
 ```
 
-这个路径适合早期验证 Skill 目录能否被读取、能否注入到 eval harness，以及通用 smoke task 能否跑起来。
-准备发布时，仍推荐通过 `/comet-any` 生成 `comet/eval.yaml`，再走 manifest 评估。
+`--collect` 只做静态发现和配置检查，不启动 Agent、Docker、插件、凭据或网络请求；普通运行会在
+Skill 没有 `comet/eval.yaml` 时自动生成并缓存 2–4 个任务；`--quick` 使用固定的
+`generic-skill-smoke` 任务。报告路径会在命令输出里显示，并写入 Skill 或 `--project` 指定项目下的
+`.comet/eval/runs/<experiment-id>/`。
+
+如果 Skill 包含 `comet/eval.yaml`，传入 Skill 目录会自动发现它；也可以直接传入 manifest 或
+`SKILL.md`：
+
+```bash
+comet eval ./my-skill/comet/eval.yaml --collect
+comet eval ./my-skill/SKILL.md --html
+```
+
+主 Agent、模型和 API 地址可以直接配置；LLM-as-Judge 使用独立的 Agent、模型、API 地址和凭据：
+
+```yaml
+execution:
+  agent: codex
+  model: subject-model
+  baseUrl: https://subject.example/v1
+judge:
+  agent: claude-code
+  model: judge-model
+  baseUrl: https://judge.example/v1
+```
+
+`/comet-any` 仍可以生成兼容的 manifest，但只是可选的 Skill 生产方式，不是 `comet eval` 的前置依赖。
 
 ### Local 评估怎么看
 
@@ -376,17 +392,17 @@ LANGSMITH_TRACING=true
 然后通过同一个 `comet eval` 入口选择 LangSmith 套件：
 
 ```bash
-comet eval ./generated-skill/comet/eval.yaml --suite langsmith --html
+comet eval ./my-skill --suite langsmith --html
 ```
 
-`--suite` 默认为 `local`。选择 `langsmith` 后，CLI 会启动 LangSmith runner，在启动信息中显示 `Suite: langsmith`，并把报告写入 `eval/langsmith/logs/experiments/`。PowerShell 中可以用 `$env:LANGSMITH_API_KEY`、`$env:LANGSMITH_PROJECT` 和 `$env:LANGSMITH_TRACING` 设置变量；也可以把它们放进 `eval/.env`。完整插件缓存和轨迹追踪说明见 [eval/langsmith/README.md](eval/langsmith/README.md)。
+`--suite` 默认为 `local`。选择 `langsmith` 后，CLI 会启动 LangSmith runner，在启动信息中显示 `Suite: langsmith`，并把报告写入项目的 `.comet/eval/runs/`。PowerShell 中可以用 `$env:LANGSMITH_API_KEY`、`$env:LANGSMITH_PROJECT` 和 `$env:LANGSMITH_TRACING` 设置变量；也可以把它们放进 `eval/.env`。完整插件缓存和轨迹追踪说明见 [eval/langsmith/README.md](eval/langsmith/README.md)。
 
 ### 什么时候用哪个
 
-- 日常开发：`comet eval ./my-skill --quick --html`
-- `/comet-any` 生成物：`comet eval ./generated-skill/comet/eval.yaml --collect`，再跑 `--html`
-- 发布前证据：优先使用 `comet/eval.yaml` 的本地 HTML 报告
-- 团队追踪和横向对比：`comet eval ./generated-skill/comet/eval.yaml --suite langsmith --html`
+- 本地 Skill：`comet eval ./my-skill --collect`，确认无误后运行 `comet eval ./my-skill --html`
+- 低成本冒烟：`comet eval ./my-skill --quick --html`
+- `/comet-any` 生成物：可以传入目录自动发现 manifest，也可以直接传入 `comet/eval.yaml`
+- 团队追踪和横向对比：`comet eval ./my-skill --suite langsmith --html`
 
 更完整的任务、treatment、报告口径和排障说明见 [Eval 使用文档](docs/operations/EVAL-USAGE-ZH.md)。
 
@@ -395,7 +411,7 @@ comet eval ./generated-skill/comet/eval.yaml --suite langsmith --html
 <details>
 <summary><code>/comet-any</code> / <code>comet creator</code> / <code>comet publish</code> — 创建、评估和发布 Skill</summary>
 
-`/comet-any` 是普通用户主路径：创建或优化可复用 Skill → `comet eval` 验证 → 审核与分发，直到形成稳定组合 Skill。
+`/comet-any` 是可选的 Skill 创建与组合路径：创建或优化可复用 Skill → `comet eval` 验证 → 审核与分发，直到形成稳定组合 Skill。
 需要恢复或发布时，使用 `comet creator`、`comet creator status` / `comet creator next`、`comet publish` 和
 `comet publish distribute --preview`。README 不展开后端命令清单；高级 Bundle 后端和高级 Engine Run（例如
 `comet skill run` / `comet skill continue`）见 [Skill 创建文档](docs/operations/SKILL-CREATION-ZH.md)。

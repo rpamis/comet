@@ -31,8 +31,31 @@ def _normalize_skill_invocations(events: object, outputs: dict | None) -> list[s
     except ModuleNotFoundError:
         if not isinstance(events, dict):
             return []
+        output_data = outputs if isinstance(outputs, dict) else {}
+        event_agent = events.get("agent")
+        output_agent = output_data.get("agent")
+        agent = output_agent if isinstance(output_agent, str) else event_agent
+        if isinstance(agent, str) and agent not in {
+            "claude-code",
+            "codex",
+            "qoder",
+            "codebuddy",
+        }:
+            # Validator sidecars do not carry the host-side adapter registry.
+            # A custom Agent must therefore provide explicit invocation events;
+            # artifacts or legacy path inference are not sufficient evidence.
+            explicit = events.get("skill_invocations")
+            return (
+                [item for item in explicit if isinstance(item, str)]
+                if isinstance(explicit, list)
+                else []
+            )
         invoked = events.get("skills_invoked")
-        return [item for item in invoked if isinstance(item, str)] if isinstance(invoked, list) else []
+        return (
+            [item for item in invoked if isinstance(item, str)]
+            if isinstance(invoked, list)
+            else []
+        )
     return normalize_skill_invocations(
         events,
         agent=(outputs or {}).get("agent"),

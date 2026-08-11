@@ -44,6 +44,27 @@ async function skillRoot(manifest?: string): Promise<{ root: string; manifest: s
   return { root: skill, manifest: target };
 }
 
+async function withEnvironment<T>(
+  values: Record<string, string | undefined>,
+  callback: () => Promise<T>,
+): Promise<T> {
+  const previous = new Map<string, string | undefined>(
+    Object.keys(values).map((key) => [key, process.env[key]]),
+  );
+  for (const [key, value] of Object.entries(values)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  try {
+    return await callback();
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
 function pythonAccepts(manifest: string): boolean {
   try {
     execFileSync(
@@ -293,6 +314,49 @@ describe('standalone static collector parity', () => {
       'Tasks: pending generation',
     );
     expect(pythonAccepts(manifest)).toBe(true);
+  });
+
+  it('rejects an enabled environment Judge without a dedicated model', async () => {
+    const { root, manifest } = await skillRoot();
+    const context = await resolveEvalContext({ manifest, project: path.dirname(root) });
+    await withEnvironment({ BENCH_LLM_JUDGE: '1', BENCH_JUDGE_MODEL: undefined }, async () => {
+      await expect(collectStandaloneTasks({}, context, packageRoot)).rejects.toThrow(
+        'BENCH_JUDGE_MODEL is required when BENCH_LLM_JUDGE=1',
+      );
+    });
+  });
+
+  it('validates environment-provided main and Judge base URLs during static collection', async () => {
+    const { root, manifest } = await skillRoot();
+    const context = await resolveEvalContext({ manifest, project: path.dirname(root) });
+    await withEnvironment(
+      {
+        BENCH_EVAL_AGENT: 'claude-code',
+        ANTHROPIC_BASE_URL: 'relative/main-url',
+        BENCH_LLM_JUDGE: undefined,
+        BENCH_JUDGE_MODEL: undefined,
+        BENCH_JUDGE_BASE_URL: undefined,
+      },
+      async () => {
+        await expect(collectStandaloneTasks({}, context, packageRoot)).rejects.toThrow(
+          'execution.baseUrl',
+        );
+      },
+    );
+    await withEnvironment(
+      {
+        BENCH_EVAL_AGENT: undefined,
+        ANTHROPIC_BASE_URL: undefined,
+        BENCH_LLM_JUDGE: '1',
+        BENCH_JUDGE_MODEL: 'judge-model',
+        BENCH_JUDGE_BASE_URL: 'relative/judge-url',
+      },
+      async () => {
+        await expect(collectStandaloneTasks({}, context, packageRoot)).rejects.toThrow(
+          'judge.baseUrl',
+        );
+      },
+    );
   });
 
   it.each([
