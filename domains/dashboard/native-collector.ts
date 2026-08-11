@@ -531,12 +531,14 @@ async function buildNativeDashboardIndex(
     candidates
       .map((candidate, index) => ({ ...candidate, children: [...children[index]] }))
       .filter(({ locator }) => !suppressed.has(locator));
+  const rootActive = rootCandidates(active, activeChildren);
+  const rootArchived = rootCandidates(archived, archivedChildren);
   return {
-    active: rootCandidates(active, activeChildren),
-    archived: rootCandidates(archived, archivedChildren),
+    active: rootActive,
+    archived: rootArchived,
     all,
-    activeChangeCount: active.length,
-    archivedChangeCount: archived.length,
+    activeChangeCount: rootActive.length,
+    archivedChangeCount: rootArchived.length,
   };
 }
 

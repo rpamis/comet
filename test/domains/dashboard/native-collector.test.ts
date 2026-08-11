@@ -531,6 +531,17 @@ describe('Native Dashboard v2 collector', () => {
       ],
     });
 
+    await expect(
+      collectNativeDashboardOverview(projectRoot, { now: new Date(NOW) }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        totalChangeCount: 1,
+        activeChangeCount: 1,
+        archivedChangeCount: 0,
+        omittedChangeCount: 1,
+      }),
+    );
+
     const searched = await collectNativeDashboardChangePage(projectRoot, {
       status: 'active',
       query: 'child-ready',
