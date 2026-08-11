@@ -20,6 +20,18 @@
   "$defs": {
     "taskName": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$" },
     "stringList": { "type": "array", "items": { "type": "string" } },
+    "absoluteHttpUrl": { "type": "string", "pattern": "^https?://[^\\s/]+" },
+    "artifactDescriptor": {
+      "type": "object", "additionalProperties": false,
+      "required": ["node", "schema", "artifact", "paths"],
+      "properties": {
+        "node": { "type": "string" }, "schema": { "type": "string" },
+        "artifact": { "type": "string" }, "paths": { "$ref": "#/$defs/stringList" }
+      }
+    },
+    "artifactList": {
+      "type": "array", "items": { "oneOf": [{ "type": "string" }, { "$ref": "#/$defs/artifactDescriptor" }] }
+    },
     "metadata": {
       "type": "object",
       "additionalProperties": false,
@@ -129,8 +141,8 @@
         "expected_evidence": { "type": "array", "items": { "type": "object" } },
         "requiredSkills": { "$ref": "#/$defs/stringList" },
         "required_skills": { "$ref": "#/$defs/stringList" },
-        "expectedArtifacts": { "$ref": "#/$defs/stringList" },
-        "expected_artifacts": { "$ref": "#/$defs/stringList" },
+        "expectedArtifacts": { "$ref": "#/$defs/artifactList" },
+        "expected_artifacts": { "$ref": "#/$defs/artifactList" },
         "generatedNodeSkills": { "$ref": "#/$defs/stringList" },
         "generated_node_skills": { "$ref": "#/$defs/stringList" },
         "routeConformance": { "$ref": "#/$defs/routeConformance" },
@@ -160,8 +172,8 @@
       "properties": {
         "agent": { "type": "string" },
         "model": { "type": "string" },
-        "baseUrl": { "type": "string", "format": "uri" },
-        "base_url": { "type": "string", "format": "uri" }
+        "baseUrl": { "$ref": "#/$defs/absoluteHttpUrl" },
+        "base_url": { "$ref": "#/$defs/absoluteHttpUrl" }
       }
     },
     "judge": {
@@ -170,8 +182,8 @@
       "properties": {
         "agent": { "type": "string" },
         "model": { "type": "string" },
-        "baseUrl": { "type": "string", "format": "uri" },
-        "base_url": { "type": "string", "format": "uri" }
+        "baseUrl": { "$ref": "#/$defs/absoluteHttpUrl" },
+        "base_url": { "$ref": "#/$defs/absoluteHttpUrl" }
       }
     },
     "reporting": {

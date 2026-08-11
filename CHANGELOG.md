@@ -11,10 +11,6 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Automatic evaluation tasks**: A taskless Skill evaluation now generates a bounded, hash-cached task set on the first normal run while keeping `--quick` and cache-only `--collect` available for smoke and discovery workflows.
 - **Langfuse evaluation suite**: `comet eval --suite langfuse` now reports task traces, rubric scores, pass metrics, and experiment summaries to Langfuse, automatically provisions pinned official Claude Code/Codex plugins in an isolated cache, and captures Qoder/CodeBuddy transcripts without changing local scoring.
 
-### Changed
-
-- **Static evaluation collection**: `comet eval --collect` now validates standalone Skill manifests and reports authored, recommended, or frozen generated tasks without starting Python, credentials, Docker, plugins, or network work; first-use taskless Skills clearly report pending generation.
-
 ## What's Changed [0.4.0-beta.17] - 2026-08-10
 
 ### Added

@@ -322,3 +322,46 @@ def test_schema_rejects_unknown_fields_with_yaml_paths(tmp_path: Path, yaml_frag
 
     with pytest.raises(ValueError, match=re.escape(message)):
         load_eval_manifest(manifest_path)
+
+
+@pytest.mark.parametrize(
+    ("fragment", "message"),
+    [
+        ("interaction: null\n", "interaction: None is not of type 'object'"),
+        ("evaluation: []\n", "evaluation: [] is not of type 'object'"),
+        ("execution: invalid\n", "execution: 'invalid' is not of type 'object'"),
+    ],
+)
+def test_schema_rejects_explicit_non_mapping_sections(
+    tmp_path: Path, fragment: str, message: str
+):
+    manifest_path = tmp_path / "eval.yaml"
+    manifest_path.write_text(
+        "apiVersion: comet.eval/v1alpha1\nkind: SkillEvalManifest\nmetadata: {name: my-skill}\nskill: {name: my-skill, source: .}\n"
+        + fragment,
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match=re.escape(message)):
+        load_eval_manifest(manifest_path)
+
+
+def test_schema_declared_interaction_fields_are_normalized(tmp_path: Path):
+    manifest_path = tmp_path / "eval.yaml"
+    manifest_path.write_text(
+        """apiVersion: comet.eval/v1alpha1
+kind: SkillEvalManifest
+metadata: {name: my-skill}
+skill: {name: my-skill, source: .}
+interaction:
+  decisionPatterns: [confirm]
+  decisionReply: "yes"
+  decisionReplies: [first, second]
+  continuePrompt: Keep going.
+""",
+        encoding="utf-8",
+    )
+    interaction = load_eval_manifest(manifest_path).interaction
+    assert interaction.decision_patterns == ["confirm"]
+    assert interaction.decision_reply == "yes"
+    assert interaction.decision_replies == ["first", "second"]
+    assert interaction.continue_prompt == "Keep going."

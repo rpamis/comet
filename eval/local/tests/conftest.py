@@ -351,7 +351,9 @@ def _ensure_langfuse_trajectory_support(test_dir: Path, agent: str) -> None:
 
 
 def _ensure_auto_generated_manifest(config, task_filter: str | None = None) -> None:
-    """Resolve the taskless default into a frozen #251 manifest before collection."""
+    """Freeze generated descriptors once while retaining the original manifest authority."""
+    if getattr(config, "_comet_frozen_task_set", None) is not None:
+        return
     if config.getoption("--task") or task_filter or config.getoption("--quick"):
         return
 
@@ -395,7 +397,19 @@ def _ensure_auto_generated_manifest(config, task_filter: str | None = None) -> N
         )
     except AutoTaskError as exc:
         raise pytest.UsageError(str(exc)) from exc
-    config.option.eval_manifest = str(generated.manifest_path)
+    from scaffold.python.manifest_tasks import load_manifest_tasks
+    from scaffold.python.task_resolution import ResolvedTask, ResolvedTaskSet
+    from scaffold.python.manifests import load_eval_manifest
+
+    generated_manifest = load_eval_manifest(generated.manifest_path)
+    config._comet_frozen_task_set = ResolvedTaskSet(
+        "generated-cache",
+        tuple(
+            ResolvedTask(task.name, "generated", task)
+            for task in load_manifest_tasks(generated_manifest)
+        ),
+        None,
+    )
     config._comet_generated_manifest = generated
 
 
@@ -965,8 +979,12 @@ def _get_dynamic_treatment_config(config):
         manifest = load_eval_manifest(manifest_path)
         generation_metadata = {}
         generation_metadata_hash = None
-        if manifest.generation_metadata_path and manifest.generation_metadata_path.is_file():
-            generation_metadata_bytes = manifest.generation_metadata_path.read_bytes()
+        generated = getattr(config, "_comet_generated_manifest", None)
+        generation_metadata_path = (
+            generated.metadata_path if generated is not None else manifest.generation_metadata_path
+        )
+        if generation_metadata_path and generation_metadata_path.is_file():
+            generation_metadata_bytes = generation_metadata_path.read_bytes()
             generation_metadata = json.loads(generation_metadata_bytes)
             generation_metadata_hash = (
                 "sha256:" + hashlib.sha256(generation_metadata_bytes).hexdigest()
@@ -998,10 +1016,12 @@ def _get_dynamic_treatment_config(config):
                     "required_output_schemas": manifest.required_output_schemas,
                     "expected_evidence": manifest.expected_evidence,
                     "draft_hash": manifest.draft_hash,
-                    "generation_hash": manifest.generation_hash,
+                    "generation_hash": (
+                        generated.generation_hash if generated is not None else manifest.generation_hash
+                    ),
                     "generation_metadata_path": (
-                        str(manifest.generation_metadata_path)
-                        if manifest.generation_metadata_path
+                        str(generation_metadata_path)
+                        if generation_metadata_path
                         else None
                     ),
                     "generation_manifest_hash": generation_metadata.get("manifest_hash"),
@@ -1353,6 +1373,10 @@ def _docker_environment_dirs_for_request(request, tasks_dir: Path) -> list[Path]
     """Return only task environments selected by the current eval invocation."""
     if not tasks_dir.exists():
         return []
+
+    frozen = getattr(request.config, "_comet_frozen_task_set", None)
+    if frozen is not None:
+        return [item.task.environment_dir for item in frozen.tasks if item.task.environment_dir.is_dir()]
 
     all_task_names = sorted(task_dir.name for task_dir in tasks_dir.iterdir() if task_dir.is_dir())
     task_filter = request.config.getoption("--task")

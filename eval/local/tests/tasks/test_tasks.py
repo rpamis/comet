@@ -99,8 +99,6 @@ def generate_test_params(task_filter: str | None, treatment_filter: str | None, 
     params = []
     if config is not None:
         conftest._ensure_auto_generated_manifest(config, task_filter)
-        if config.getoption("--quick") and not task_filter:
-            task_filter = "generic-skill-smoke"
     all_treatments = load_treatments()
     all_tasks = list_tasks()
     dynamic = None
@@ -117,7 +115,7 @@ def generate_test_params(task_filter: str | None, treatment_filter: str | None, 
 
         manifest = load_eval_manifest(config.getoption("--eval-manifest"))
         context = resolve_eval_context(manifest_path=manifest.path, project_root=config.getoption("--project-root"))
-        resolved = resolve_task_set(
+        resolved = getattr(config, "_comet_frozen_task_set", None) or resolve_task_set(
             context,
             manifest,
             build_task_catalogue(manifest, get_tasks_dir()),

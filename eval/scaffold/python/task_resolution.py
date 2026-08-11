@@ -139,8 +139,28 @@ def resolve_task_set(
     if plan.cached is None:
         return ResolvedTaskSet("pending-generation", (), plan)
     generated = load_eval_manifest(plan.cached.manifest_path)
-    tasks = tuple(
-        ResolvedTask(task.name, "generated", task)
-        for task in load_manifest_tasks(generated)
-    )
-    return ResolvedTaskSet("generated-cache", tasks, plan)
+    loaded = load_manifest_tasks(generated)
+    names: set[str] = set()
+    tasks: list[ResolvedTask] = []
+    for index, task in enumerate(loaded):
+        if task.name in names:
+            first_index = next(
+                item_index
+                for item_index, item in enumerate(loaded[:index])
+                if item.name == task.name
+            )
+            raise ValueError(
+                f'generated.tasks[{index}].name duplicates '
+                f'generated.tasks[{first_index}].name: "{task.name}"'
+            )
+        if task.name in catalogue.canonical:
+            bundle = next(
+                key for key, item in catalogue.bundled.items() if item.name == task.name
+            )
+            raise ValueError(
+                f'generated.tasks[{index}].name conflicts with bundled task '
+                f'"{bundle}": "{task.name}"'
+            )
+        names.add(task.name)
+        tasks.append(ResolvedTask(task.name, "generated", task))
+    return ResolvedTaskSet("generated-cache", tuple(tasks), plan)

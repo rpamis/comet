@@ -40,6 +40,14 @@ vi.mock('fs', async (importOriginal) => {
         String(target).includes('v1alpha1.schema.json')
           ? original.promises.readFile(target, ...(args as []))
           : readFile(target, ...args),
+      stat: async (target: Parameters<typeof original.promises.stat>[0]) => {
+        if (String(target).includes('comet-eval-context-')) return original.promises.stat(target);
+        return {
+          isFile: () =>
+            String(target).endsWith('SKILL.md') || String(target).includes('eval\\local\\tasks'),
+          isDirectory: () => true,
+        };
+      },
     },
     existsSync,
   };
@@ -490,6 +498,33 @@ describe('eval command', () => {
 
     expect(prepareEvalManifest).not.toHaveBeenCalled();
     expect(cleanupPreparedManifest).not.toHaveBeenCalled();
+    expect(execFileSync).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid deterministic inline expectations during static collection', async () => {
+    readFile.mockResolvedValue(
+      [
+        'apiVersion: comet.eval/v1alpha1',
+        'kind: SkillEvalManifest',
+        'metadata: { name: demo }',
+        'skill: { name: demo, source: .. }',
+        'evaluation:',
+        '  tasks:',
+        '    - name: invalid-expect',
+        '      prompt: do work',
+        '      expect:',
+        '        json:',
+        '          - file: result.json',
+        '            path: items[0]',
+        '            equals: done',
+        '',
+      ].join('\n'),
+    );
+    const { evalCollectCommand } = await import('../../app/commands/eval.js');
+
+    await expect(evalCollectCommand({ project, manifest })).rejects.toThrow(
+      'evaluation.tasks[0].expect.json[0].path must start with "$"',
+    );
     expect(execFileSync).not.toHaveBeenCalled();
   });
 

@@ -52,7 +52,7 @@ describe('packaged static collect', () => {
     await fs.writeFile(path.join(consumer, 'package.json'), '{"private":true}\n', 'utf8');
     const installed = run(
       'npm',
-      ['install', '--offline', '--ignore-scripts', '--no-audit', '--no-fund', tarball],
+      ['install', '--ignore-scripts', '--no-audit', '--no-fund', tarball],
       consumer,
       isolatedEnv,
       process.platform === 'win32',

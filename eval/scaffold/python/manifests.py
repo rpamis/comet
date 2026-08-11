@@ -52,7 +52,7 @@ class SkillEvalManifest:
     required_output_schemas: list[str] = field(default_factory=list)
     expected_evidence: list[dict] = field(default_factory=list)
     required_skills: list[str] = field(default_factory=list)
-    expected_artifacts: list[str] = field(default_factory=list)
+    expected_artifacts: list[str | dict[str, Any]] = field(default_factory=list)
     generated_node_skills: list[str] = field(default_factory=list)
     route_conformance_task: str | None = None
     route_conformance_expected_node_order: list[str] = field(default_factory=list)
@@ -306,16 +306,14 @@ def _parse_manifest_tasks(evaluation: dict, package_root: Path) -> list[Manifest
 
 def load_eval_manifest(path: Path | str) -> SkillEvalManifest:
     manifest_path = Path(path).expanduser().resolve()
-    data = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
+    data = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("manifest: must be a mapping")
     if data.get("apiVersion") != "comet.eval/v1alpha1":
         raise ValueError("Expected apiVersion comet.eval/v1alpha1")
     if data.get("kind") != "SkillEvalManifest":
         raise ValueError("Expected kind SkillEvalManifest")
-    for field_name in ("evaluation", "interaction", "execution", "judge", "reporting"):
-        if data.get(field_name) is None:
-            data.pop(field_name, None)
     validate_manifest_schema(data)
-
     metadata = _require_mapping(data, "metadata")
     skill = _require_mapping(data, "skill")
     evaluation = data.get("evaluation") or {}
@@ -387,6 +385,12 @@ def load_eval_manifest(path: Path | str) -> SkillEvalManifest:
             max_turns=int(interaction_data.get("maxTurns", interaction_data.get("max_turns", 12))),
             simulator_prompt=interaction_data.get("simulatorPrompt")
             or interaction_data.get("simulator_prompt"),
+            decision_patterns=list(interaction_data.get("decisionPatterns") or []),
+            decision_reply=interaction_data.get("decisionReply"),
+            decision_replies=list(interaction_data.get("decisionReplies") or []),
+            continue_prompt=interaction_data.get(
+                "continuePrompt", "Please continue with the next phase of the workflow."
+            ),
             fresh_resume_marker=interaction_data.get("freshResumeMarker")
             or interaction_data.get("fresh_resume_marker"),
         ),

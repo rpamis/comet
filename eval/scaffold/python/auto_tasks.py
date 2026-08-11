@@ -18,6 +18,11 @@ import yaml
 
 from scaffold.python.agents import AgentId, validate_agent_id
 from scaffold.python.eval_context import managed_path_for_owner
+from scaffold.python.generated_task_cache import (
+    build_skill_snapshot as _shared_build_skill_snapshot,
+    cache_location as _shared_cache_location,
+    generation_hash as _shared_generation_hash,
+)
 from scaffold.python.manifests import load_eval_manifest
 from scaffold.python.utils import run_agent_in_docker
 
@@ -103,36 +108,11 @@ def _add_snapshot_file(root: Path, files: dict[str, SnapshotFile], path: Path) -
 
 def build_skill_snapshot(skill_path: Path | str) -> SkillSnapshot:
     """Capture only the Skill and its bounded, relevant package context."""
-    root = _safe_skill_root(Path(skill_path))
-    files: dict[str, SnapshotFile] = {}
-    skill_file = root / "SKILL.md"
-    _add_snapshot_file(root, files, skill_file)
-    skill_content = skill_file.read_text(encoding="utf-8", errors="replace")
-
-    references = re.findall(r"[`\"']([^`\"']+)[`\"']", skill_content)
-    for reference in references:
-        candidate = root / reference.replace("\\", "/")
-        if candidate.is_file() and _inside(root, candidate):
-            _add_snapshot_file(root, files, candidate)
-
-    for directory_name in ("scripts", "references", "reference", "examples", "templates"):
-        directory = root / directory_name
-        if not directory.is_dir():
-            continue
-        for candidate in sorted(directory.rglob("*")):
-            if candidate.is_symlink() or not _inside(root, candidate):
-                continue
-            _add_snapshot_file(root, files, candidate)
-            if len(files) >= MAX_SNAPSHOT_FILES:
-                break
-
-    ordered = tuple(files[key] for key in sorted(files))
-    manifest = json.dumps(
-        [{"path": item.path, "hash": item.content_hash} for item in ordered],
-        sort_keys=True,
-        separators=(",", ":"),
+    snapshot = _shared_build_skill_snapshot(skill_path)
+    return SkillSnapshot(
+        tuple(SnapshotFile(item.path, item.content, item.content_hash) for item in snapshot.files),
+        snapshot.content_hash,
     )
-    return SkillSnapshot(ordered, _sha256(manifest))
 
 
 def find_project_root(skill_path: Path | str) -> Path:
@@ -155,23 +135,13 @@ def _generation_hash(
     profile: str,
     interaction: dict[str, Any],
 ) -> str:
-    payload = {
-        "snapshot_hash": snapshot.content_hash,
-        "agent": agent,
-        "model": model or "runtime-default",
-        "profile": profile,
-        "interaction": interaction,
-        "generator_version": GENERATOR_VERSION,
-        "task_schema_version": TASK_SCHEMA_VERSION,
-    }
-    return hashlib.sha256(
-        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
+    return _shared_generation_hash(
+        snapshot, agent=agent, model=model, profile=profile, interaction=interaction
+    )
 
 
 def _cache_location(project_root: Path, skill_root: Path, generation_hash: str) -> Path:
-    safe_name = re.sub(r"[^A-Za-z0-9._-]+", "-", skill_root.name).strip("-") or "skill"
-    return managed_path_for_owner(project_root, "generated", safe_name, generation_hash)
+    return _shared_cache_location(project_root, skill_root, generation_hash)
 
 
 def _atomic_write_text(path: Path, value: str) -> None:
@@ -271,6 +241,23 @@ def _validate_generated_payload(payload: dict[str, Any]) -> list[dict[str, Any]]
     return tasks
 
 
+def _reject_generated_bundled_collisions(tasks: list[dict[str, Any]]) -> None:
+    """Reject a generated descriptor that would be ambiguous to the normal catalogue."""
+    from scaffold.python.paths import get_tasks_dir
+    from scaffold.python.tasks import load_task
+
+    bundled: dict[str, str] = {}
+    for directory in get_tasks_dir().iterdir():
+        if (directory / "task.toml").is_file() and (directory / "instruction.md").is_file():
+            bundled[load_task(directory).name] = directory.name
+    for index, task in enumerate(tasks):
+        name = task["name"]
+        if name in bundled:
+            raise AutoTaskError(
+                f'generated.tasks[{index}].name conflicts with bundled task "{bundled[name]}": "{name}"'
+            )
+
+
 def _manifest_source(
     skill_root: Path,
     skill_name: str,
@@ -364,7 +351,8 @@ def _load_cached(cache_dir: Path, generation_hash: str) -> GeneratedManifest | N
             manifest_path, metadata
         ):
             return None
-        load_eval_manifest(manifest_path)
+        manifest = load_eval_manifest(manifest_path)
+        _reject_generated_bundled_collisions([{"name": task.name} for task in manifest.tasks])
     except (OSError, ValueError, json.JSONDecodeError, TypeError):
         return None
     return GeneratedManifest(manifest_path, metadata_path, generation_hash, reused=True)
@@ -483,6 +471,7 @@ def ensure_generated_manifest(
                 attempts.append(telemetry)
                 payload = _extract_json_payload(raw_output)
                 tasks = _validate_generated_payload(payload)
+                _reject_generated_bundled_collisions(tasks)
                 manifest_source = _manifest_source(
                     skill_root, skill_root.name, profile, generation_hash, tasks
                 )

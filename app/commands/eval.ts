@@ -249,7 +249,20 @@ async function resolveEvalContext(options: EvalCommandOptions): Promise<Resolved
     }
   }
 
+  if (!(await isFile(path.join(skillRoot, 'SKILL.md')))) {
+    throw new Error(`Skill package must contain SKILL.md: ${skillRoot}`);
+  }
   const artifactOwnerRoot = options.project ? await canonicalPath(options.project) : skillRoot;
+  try {
+    if (!(await fs.stat(artifactOwnerRoot)).isDirectory()) {
+      throw new Error(`Artifact owner root must be an existing directory: ${artifactOwnerRoot}`);
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Artifact owner root')) throw error;
+    throw new Error(`Artifact owner root must be an existing directory: ${artifactOwnerRoot}`, {
+      cause: error,
+    });
+  }
   return {
     schema: 'comet.eval.context.v1',
     skillRoot,
@@ -361,7 +374,7 @@ async function buildLaunchDetails(
   context: ResolvedEvalContext,
 ): Promise<EvalLaunchDetails> {
   const suite = resolveSuite(options);
-  const reportConfig = await resolveReportConfig(options);
+  const reportConfig = collectOnly ? null : await resolveReportConfig(options);
   const experimentId = `comet-eval-${randomUUID()}`;
   return {
     mode: collectOnly ? 'collect' : 'run',
@@ -509,6 +522,68 @@ function validateInlineTask(task: Record<string, unknown>, index: number): void 
       task.rubric.some((item) => typeof item !== 'string' || !item.trim()))
   )
     throw new Error(`${prefix}.rubric must be a list of non-empty strings`);
+
+  const assertRelativeArtifact = (value: unknown, field: string): string => {
+    if (typeof value !== 'string' || !value.trim()) {
+      throw new Error(`${field} must contain non-empty relative paths`);
+    }
+    const normalized = value.replaceAll('\\', '/');
+    if (path.isAbsolute(normalized) || normalized.split('/').includes('..')) {
+      throw new Error(`${field} must stay within the task workspace: ${JSON.stringify(value)}`);
+    }
+    return normalized;
+  };
+  const files = expect.files ?? [];
+  if (!Array.isArray(files) || files.some((value) => typeof value !== 'string')) {
+    throw new Error(`${prefix}.expect.files must be a list of strings`);
+  }
+  files.forEach((value) => assertRelativeArtifact(value, `${prefix}.expect.files`));
+
+  const contains = expect.contains ?? {};
+  if (!contains || typeof contains !== 'object' || Array.isArray(contains)) {
+    throw new Error(`${prefix}.expect.contains must be a mapping`);
+  }
+  for (const [file, values] of Object.entries(contains)) {
+    assertRelativeArtifact(file, `${prefix}.expect.contains`);
+    if (!Array.isArray(values) || values.some((value) => typeof value !== 'string')) {
+      throw new Error(`${prefix}.expect.contains.${file} must be a list of strings`);
+    }
+  }
+
+  const json = expect.json ?? [];
+  if (!Array.isArray(json) || json.some((value) => !value || typeof value !== 'object')) {
+    throw new Error(`${prefix}.expect.json must be a list of mappings`);
+  }
+  for (const [jsonIndex, item] of json.entries()) {
+    const check = item as Record<string, unknown>;
+    assertRelativeArtifact(check.file, `${prefix}.expect.json[${jsonIndex}].file`);
+    if (typeof check.path !== 'string' || !check.path.startsWith('$')) {
+      throw new Error(`${prefix}.expect.json[${jsonIndex}].path must start with "$"`);
+    }
+    if (!Object.hasOwn(check, 'equals')) {
+      throw new Error(`${prefix}.expect.json[${jsonIndex}].equals is required`);
+    }
+  }
+
+  const commands = expect.commands ?? [];
+  if (!Array.isArray(commands) || commands.some((value) => !value || typeof value !== 'object')) {
+    throw new Error(`${prefix}.expect.commands must be a list of mappings`);
+  }
+  for (const [commandIndex, item] of commands.entries()) {
+    const command = item as Record<string, unknown>;
+    if (typeof command.run !== 'string' || !command.run.trim()) {
+      throw new Error(`${prefix}.expect.commands[${commandIndex}].run is required`);
+    }
+    const timeout = command.timeout ?? 120;
+    if (
+      typeof timeout !== 'number' ||
+      !Number.isInteger(timeout) ||
+      timeout < 1 ||
+      timeout > 3600
+    ) {
+      throw new Error(`${prefix}.expect.commands[${commandIndex}].timeout must be 1..3600`);
+    }
+  }
 }
 
 function validateStaticManifestSettings(manifest: Record<string, unknown>): void {
@@ -553,12 +628,12 @@ function staticInteraction(manifest: Record<string, unknown> | undefined): Recor
   return {
     mode: data.mode ?? 'none',
     max_turns: Number(data.maxTurns ?? data.max_turns ?? 12),
-    simulator_prompt: data.simulatorPrompt ?? data.simulator_prompt ?? null,
-    decision_patterns: [],
-    decision_reply: null,
-    decision_replies: [],
-    continue_prompt: 'Please continue with the next phase of the workflow.',
-    fresh_resume_marker: data.freshResumeMarker ?? data.fresh_resume_marker ?? null,
+    simulator_prompt: data.simulatorPrompt || data.simulator_prompt || null,
+    decision_patterns: data.decisionPatterns ?? [],
+    decision_reply: data.decisionReply ?? null,
+    decision_replies: data.decisionReplies ?? [],
+    continue_prompt: data.continuePrompt ?? 'Please continue with the next phase of the workflow.',
+    fresh_resume_marker: data.freshResumeMarker || data.fresh_resume_marker || null,
   };
 }
 
@@ -587,7 +662,8 @@ async function staticSnapshot(skillRoot: string): Promise<string> {
     const start = path.join(root, directory);
     try {
       const walk = async (target: string): Promise<void> => {
-        for (const entry of await fs.readdir(target, { withFileTypes: true })) {
+        const children = await fs.readdir(target, { withFileTypes: true });
+        for (const entry of children.sort((left, right) => left.name.localeCompare(right.name))) {
           const child = path.join(target, entry.name);
           if (entry.isSymbolicLink()) continue;
           if (entry.isDirectory()) await walk(child);
@@ -607,6 +683,7 @@ async function loadStaticGeneratedCache(
   options: EvalCommandOptions,
   context: ResolvedEvalContext,
   manifest: Record<string, unknown> | undefined,
+  forbiddenNames: ReadonlySet<string>,
 ): Promise<string[]> {
   try {
     const execution = manifest?.execution;
@@ -616,8 +693,8 @@ async function loadStaticGeneratedCache(
         : {};
     const agent = options.agent ?? (settings.agent as string | undefined) ?? 'claude-code';
     const profile =
-      (manifest?.skill as Record<string, unknown> | undefined)?.profile ??
       options.profile ??
+      (manifest?.skill as Record<string, unknown> | undefined)?.profile ??
       'generic';
     const snapshotHash = await staticSnapshot(context.skillRoot);
     const generationHash = createHash('sha256')
@@ -664,6 +741,7 @@ async function loadStaticGeneratedCache(
       return name;
     });
     if (new Set(names).size !== names.length) return [];
+    if (names.some((name) => forbiddenNames.has(name))) return [];
     return names;
   } catch {
     return [];
@@ -852,7 +930,12 @@ async function runPackagedStaticCollect(
     console.log('Tasks: recommended');
     names(recommended).forEach((name) => console.log(`- ${name}`));
   } else {
-    const cached = await loadStaticGeneratedCache(options, context, manifest);
+    const cached = await loadStaticGeneratedCache(
+      options,
+      context,
+      manifest,
+      new Set([...bundled, ...authoredNames, ...recommendedNames]),
+    );
     if (cached.length) {
       console.log('Tasks: generated cache');
       cached.forEach((name) => console.log(`- ${name}`));

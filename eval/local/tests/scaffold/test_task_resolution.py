@@ -37,8 +37,7 @@ def _manifest(tmp_path: Path, evaluation: str) -> tuple[Path, object]:
                 "skill:",
                 "  name: skill",
                 "  source: ..",
-                "evaluation:",
-                *[f"  {line}" for line in evaluation.splitlines()],
+                *(["evaluation:", *[f"  {line}" for line in evaluation.splitlines()]] if evaluation else []),
             ]
         )
         + "\n",

@@ -44,7 +44,7 @@ def validate_manifest_schema(data: Any) -> None:
     if error.validator == "additionalProperties":
         match = _UNEXPECTED.search(error.message)
         field = next((part for part in (match.groups() if match else ()) if part), "unknown")
-        raise ValueError(f"{path}.{field}: unknown field")
-    if error.validator == "format" and error.validator_value == "uri":
+        raise ValueError(f"{field if path == 'manifest' else f'{path}.{field}'}: unknown field")
+    if error.validator in {"format", "pattern"} and str(path).endswith(("baseUrl", "base_url")):
         raise ValueError(f"{path}: must be a valid absolute http(s) URL")
     raise ValueError(f"{path}: {error.message}")
