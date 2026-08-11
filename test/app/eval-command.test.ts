@@ -828,4 +828,49 @@ describe('eval command', () => {
       await fs.rm(root, { recursive: true, force: true });
     }
   });
+
+  it('rejects an owner-local cache link that resolves outside before launching uv', async () => {
+    const { promises: fs } = await vi.importActual<typeof import('node:fs')>('node:fs');
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-eval-cache-link-'));
+    const owner = path.join(root, 'owner');
+    const outside = path.join(root, 'outside');
+    const skill = path.join(root, 'skill');
+    await fs.mkdir(owner);
+    await fs.mkdir(outside);
+    await fs.mkdir(skill);
+    await fs.writeFile(path.join(skill, 'SKILL.md'), '# Demo\n', 'utf8');
+    await fs.mkdir(path.join(owner, '.comet', 'eval'), { recursive: true });
+    await fs.symlink(outside, path.join(owner, '.comet', 'eval', 'cache'), 'junction');
+    try {
+      const { evalRunCommand } = await import('../../app/commands/eval.js');
+      await expect(
+        evalRunCommand({ project: owner, skillPath: skill, quick: true }),
+      ).rejects.toThrow('Eval managed path must stay within its owner root');
+      expect(execFileSync).not.toHaveBeenCalled();
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects an owner-local uv cache child link that resolves outside before launching uv', async () => {
+    const { promises: fs } = await vi.importActual<typeof import('node:fs')>('node:fs');
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-eval-uv-link-'));
+    const owner = path.join(root, 'owner');
+    const outside = path.join(root, 'outside');
+    const skill = path.join(root, 'skill');
+    await fs.mkdir(outside);
+    await fs.mkdir(skill);
+    await fs.writeFile(path.join(skill, 'SKILL.md'), '# Demo\n', 'utf8');
+    await fs.mkdir(path.join(owner, '.comet', 'eval', 'cache'), { recursive: true });
+    await fs.symlink(outside, path.join(owner, '.comet', 'eval', 'cache', 'uv'), 'junction');
+    try {
+      const { evalRunCommand } = await import('../../app/commands/eval.js');
+      await expect(
+        evalRunCommand({ project: owner, skillPath: skill, quick: true }),
+      ).rejects.toThrow('Eval managed path must stay within its owner root');
+      expect(execFileSync).not.toHaveBeenCalled();
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
 });

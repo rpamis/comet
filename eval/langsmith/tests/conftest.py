@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 from dotenv import load_dotenv
-from scaffold.python.eval_context import assert_artifact_root_is_safe, context_from_environment
+from scaffold.python.eval_context import context_from_environment, resolve_managed_path
 from scaffold.python.utils import _to_bash_path
 
 LANGSMITH_ROOT = Path(__file__).resolve().parents[1]
@@ -110,7 +110,7 @@ def _default_langsmith_plugin_dir() -> Path:
     context = context_from_environment()
     if context is None:
         return DEFAULT_LANGSMITH_PLUGIN_DIR
-    return assert_artifact_root_is_safe(context) / "cache" / "langsmith" / "langsmith-cc-plugin"
+    return resolve_managed_path(context, "cache", "langsmith", "langsmith-cc-plugin")
 
 
 def provision_langsmith_plugin_dir() -> Path | None:

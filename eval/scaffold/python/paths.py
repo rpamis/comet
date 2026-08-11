@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 
-from scaffold.python.eval_context import assert_artifact_root_is_safe, context_from_environment
+from scaffold.python.eval_context import context_from_environment, resolve_managed_path
 
 
 EVAL_ROOT = Path(__file__).resolve().parents[2]
@@ -62,5 +62,5 @@ def get_runs_dir() -> Path:
     """Return the run directory, preferring CLI-resolved user-owned state."""
     context = context_from_environment()
     if context is not None:
-        return assert_artifact_root_is_safe(context) / "runs"
+        return resolve_managed_path(context, "runs")
     return get_logs_dir() / "experiments"

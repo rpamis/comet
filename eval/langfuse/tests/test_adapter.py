@@ -232,6 +232,22 @@ def test_langfuse_default_trajectory_cache_is_owned_by_the_resolved_owner(tmp_pa
     )
 
 
+def test_langfuse_context_cache_ignores_an_external_environment_override(tmp_path: Path, monkeypatch):
+    skill = tmp_path / "skill"
+    owner = tmp_path / "owner"
+    external = tmp_path / "external-cache"
+    skill.mkdir()
+    owner.mkdir()
+    external.mkdir()
+    (skill / "SKILL.md").write_text("# Demo\n", encoding="utf-8")
+    context = resolve_eval_context(skill_path=skill, project_root=owner)
+    monkeypatch.setenv("LANGFUSE_TRAJECTORY_CACHE_DIR", str(external))
+
+    resolved = langfuse_conftest.resolve_trajectory_cache_root(context, owner)
+
+    assert resolved == owner / ".comet" / "eval" / "cache" / "langfuse" / "plugins"
+
+
 def test_trajectory_modes_expose_official_and_transcript_adapters():
     config = LangfuseConfig("pk", "sk")
     mode = enable_trajectory_environment(config, "qoder")

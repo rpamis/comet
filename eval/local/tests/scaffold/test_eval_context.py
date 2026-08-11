@@ -10,6 +10,7 @@ import pytest
 from scaffold.python.eval_context import (
     EvalContextError,
     context_from_environment,
+    resolve_managed_path,
     resolve_eval_context,
 )
 from scaffold.python.logging import ExperimentLogger
@@ -142,6 +143,35 @@ def test_context_rejects_an_owner_comet_link_that_escapes_the_owner(tmp_path: Pa
 
     with pytest.raises(EvalContextError, match="artifact root must stay within its owner root"):
         resolve_eval_context(skill_path=skill, project_root=owner)
+
+
+@pytest.mark.parametrize(
+    ("managed_root", "child"),
+    [
+        ("cache", "uv"),
+        ("runs", "report"),
+        ("generated", "demo"),
+        ("locks", "generation.lock"),
+    ],
+)
+def test_managed_paths_reject_owner_child_links_that_escape(
+    tmp_path: Path, managed_root: str, child: str
+):
+    skill = _write_skill(tmp_path)
+    owner = tmp_path / "owner"
+    outside = tmp_path / "outside"
+    owner.mkdir()
+    outside.mkdir()
+    context = resolve_eval_context(skill_path=skill, project_root=owner)
+    link = context.artifact_root / managed_root
+    link.parent.mkdir(parents=True)
+    if os.name == "nt":
+        subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(outside)], check=True)
+    else:
+        link.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(EvalContextError, match="managed path must stay within its owner root"):
+        resolve_managed_path(context, managed_root, child)
 
 
 def test_environment_context_preserves_user_owned_artifact_root_and_rejects_credentials(

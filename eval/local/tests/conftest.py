@@ -42,7 +42,12 @@ from scaffold.python import (
 )
 from scaffold.python.agents import get_agent_adapter, resolve_agent
 from scaffold.python.auto_tasks import AutoTaskError, ensure_generated_manifest, find_project_root
-from scaffold.python.eval_context import EvalContextError, context_from_environment, resolve_eval_context
+from scaffold.python.eval_context import (
+    EvalContextError,
+    context_from_environment,
+    resolve_eval_context,
+    resolve_managed_path,
+)
 from scaffold.python.langfuse_adapter import (
     install_codex_plugin_workspace,
     install_transcript_hook,
@@ -228,7 +233,9 @@ REPOSITORY_ROOT = EVAL_ROOT.parent
 
 # Shared files for xdist worker coordination
 _RUNTIME_CONTEXT = context_from_environment()
-_CONTEXT_LOCK_ROOT = _RUNTIME_CONTEXT.artifact_root / "locks" if _RUNTIME_CONTEXT else PROJECT_ROOT
+_CONTEXT_LOCK_ROOT = (
+    resolve_managed_path(_RUNTIME_CONTEXT, "locks") if _RUNTIME_CONTEXT else PROJECT_ROOT
+)
 XDIST_EXPERIMENT_FILE = _CONTEXT_LOCK_ROOT / ".pytest_experiment_id"
 DOCKER_BUILD_LOCK = _CONTEXT_LOCK_ROOT / ".pytest_docker_build.lock"
 EXPERIMENT_ID_ENV = "COMET_EVAL_EXPERIMENT_ID"
@@ -1169,16 +1176,22 @@ def _get_or_create_experiment_id(name: str, use_coordination: bool) -> str:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         return f"{name}_{timestamp}"
 
-    lock_file = XDIST_EXPERIMENT_FILE.with_suffix(".lock")
+    context = context_from_environment()
+    experiment_file = (
+        resolve_managed_path(context, "locks", ".pytest_experiment_id")
+        if context is not None
+        else XDIST_EXPERIMENT_FILE
+    )
+    lock_file = experiment_file.with_suffix(".lock")
 
     with file_lock(lock_file):
-        if XDIST_EXPERIMENT_FILE.exists():
-            data = json.loads(XDIST_EXPERIMENT_FILE.read_text())
+        if experiment_file.exists():
+            data = json.loads(experiment_file.read_text())
             return data["experiment_id"]
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         experiment_id = f"{name}_{timestamp}"
-        XDIST_EXPERIMENT_FILE.write_text(
+        experiment_file.write_text(
             json.dumps(
                 {
                     "experiment_id": experiment_id,
@@ -1264,7 +1277,13 @@ def _cleanup_experiment_coordination():
     """Remove coordination files after experiment."""
     import sys
 
-    for f in [XDIST_EXPERIMENT_FILE, XDIST_EXPERIMENT_FILE.with_suffix(".lock")]:
+    context = context_from_environment()
+    experiment_file = (
+        resolve_managed_path(context, "locks", ".pytest_experiment_id")
+        if context is not None
+        else XDIST_EXPERIMENT_FILE
+    )
+    for f in [experiment_file, experiment_file.with_suffix(".lock")]:
         try:
             f.unlink(missing_ok=True)
         except Exception as e:
@@ -1375,7 +1394,13 @@ def prebuild_docker_image(request):
     yield
 
     try:
-        DOCKER_BUILD_LOCK.unlink(missing_ok=True)
+        context = context_from_environment()
+        lock_path = (
+            resolve_managed_path(context, "locks", ".pytest_docker_build.lock")
+            if context is not None
+            else DOCKER_BUILD_LOCK
+        )
+        lock_path.unlink(missing_ok=True)
     except Exception:
         pass
 
@@ -1891,7 +1916,13 @@ def _build_docker_image_with_lock(environment_dir: Path, agent: str | None = Non
     if not environment_dir or not (environment_dir / "Dockerfile").exists():
         return None
 
-    with file_lock(DOCKER_BUILD_LOCK):
+    context = context_from_environment()
+    lock_path = (
+        resolve_managed_path(context, "locks", ".pytest_docker_build.lock")
+        if context is not None
+        else DOCKER_BUILD_LOCK
+    )
+    with file_lock(lock_path):
         # A cold image build downloads Debian packages and installs the selected CLI.
         # Five minutes is insufficient after cache cleanup or on a proxied connection.
         command = ["docker.sh", "build", str(environment_dir)]

@@ -164,6 +164,36 @@ async function assertArtifactRootIsSafe(context: ResolvedEvalContext): Promise<v
   }
 }
 
+async function resolveManagedPath(
+  context: ResolvedEvalContext,
+  managedRoot: 'cache' | 'runs' | 'generated' | 'locks',
+  ...parts: string[]
+): Promise<string> {
+  await assertArtifactRootIsSafe(context);
+  const ownerRoot = await canonicalPath(context.artifactOwnerRoot);
+  const target = path.join(context.artifactRoot, managedRoot, ...parts);
+  let component = context.artifactRoot;
+  for (const segment of [managedRoot, ...parts]) {
+    component = path.join(component, segment);
+    try {
+      await fs.lstat(component);
+      const resolved = await fs.realpath(component);
+      if (!isPathWithin(ownerRoot, resolved)) {
+        throw new Error('Eval managed path must stay within its owner root');
+      }
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === 'Eval managed path must stay within its owner root'
+      ) {
+        throw error;
+      }
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+  }
+  return target;
+}
+
 async function resolveManifestSkillRoot(manifestPath: string): Promise<string> {
   try {
     const data = parse(await fs.readFile(manifestPath, 'utf8')) as {
@@ -410,6 +440,8 @@ function runEval(
   suite: EvalSuite,
   experimentId: string,
   context: ResolvedEvalContext,
+  uvCacheDir: string,
+  uvProjectEnvironment: string,
 ): void {
   assertEvalHarness(root, suite);
   // Validate the owner boundary immediately before uv can create its cache or environment.
@@ -424,8 +456,8 @@ function runEval(
       COMET_EVAL_CONTEXT: JSON.stringify(context),
       PYTHONDONTWRITEBYTECODE: '1',
       PYTEST_ADDOPTS: [process.env.PYTEST_ADDOPTS, '-p no:cacheprovider'].filter(Boolean).join(' '),
-      UV_CACHE_DIR: path.join(context.artifactRoot, 'cache', 'uv'),
-      UV_PROJECT_ENVIRONMENT: path.join(context.artifactRoot, 'cache', 'venv'),
+      UV_CACHE_DIR: uvCacheDir,
+      UV_PROJECT_ENVIRONMENT: uvProjectEnvironment,
     },
   });
 }
@@ -434,6 +466,8 @@ async function executeEval(options: EvalCommandOptions, collectOnly: boolean): P
   assertTarget(options);
   const context = await resolveEvalContext(options);
   await assertArtifactRootIsSafe(context);
+  const uvCacheDir = await resolveManagedPath(context, 'cache', 'uv');
+  const uvProjectEnvironment = await resolveManagedPath(context, 'cache', 'venv');
   const suite = resolveSuite(options);
   const root = evalRoot(options, suite);
   const details = await buildLaunchDetails(options, collectOnly, root, context);
@@ -448,11 +482,20 @@ async function executeEval(options: EvalCommandOptions, collectOnly: boolean): P
       : context;
     const args = await buildEvalArgs(options, collectOnly, runtimeContext, details.reportConfig);
     printLaunchDetails(details);
-    runEval(args, root, details.suite, details.experimentId, runtimeContext);
+    runEval(
+      args,
+      root,
+      details.suite,
+      details.experimentId,
+      runtimeContext,
+      uvCacheDir,
+      uvProjectEnvironment,
+    );
     if (!collectOnly && prepared?.context && details.suite === 'local') {
+      const experimentDir = await resolveManagedPath(runtimeContext, 'runs', details.experimentId);
       await recordRepositoryEvalExperiment({
         context: prepared.context,
-        experimentDir: path.join(context.artifactRoot, 'runs', details.experimentId),
+        experimentDir,
         level: options.quick === false ? 'full' : 'quick',
       });
     }

@@ -12,9 +12,9 @@ from dotenv import load_dotenv
 
 from scaffold.python.eval_context import (
     ResolvedEvalContext,
-    artifact_root_for_owner,
-    assert_artifact_root_is_safe,
     context_from_environment,
+    managed_path_for_owner,
+    resolve_managed_path,
 )
 from scaffold.python.paths import get_runs_dir
 
@@ -38,7 +38,19 @@ _LANGFUSE_CONFIG: LangfuseConfig | None = None
 
 def default_trajectory_cache_root(context: ResolvedEvalContext) -> Path:
     """Place default trajectory assets in the resolved owner cache."""
-    return assert_artifact_root_is_safe(context) / "cache" / "langfuse" / "plugins"
+    return resolve_managed_path(context, "cache", "langfuse", "plugins")
+
+
+def resolve_trajectory_cache_root(
+    context: ResolvedEvalContext | None, project_root: Path
+) -> Path:
+    """Keep CLI-resolved trajectory state owner-local; retain direct harness overrides."""
+    if context is not None:
+        return default_trajectory_cache_root(context)
+    explicit_cache = os.environ.get("LANGFUSE_TRAJECTORY_CACHE_DIR")
+    if explicit_cache:
+        return Path(explicit_cache)
+    return managed_path_for_owner(project_root, "cache", "langfuse", "plugins")
 
 os.environ.setdefault("BENCH_SUITE_ROOT", str(LANGFUSE_ROOT))
 os.environ.setdefault("BENCH_TASKS_DIR", str(LOCAL_ROOT / "tasks"))
@@ -86,13 +98,7 @@ def pytest_configure(config):
     _LANGFUSE_REPORTER = LangfuseRunReporter(_LANGFUSE_CLIENT)
     context = getattr(config, "_comet_eval_context", None) or context_from_environment()
     project_root = Path(config.getoption("--project-root") or EVAL_ROOT.parent)
-    cache_root = (
-        Path(os.environ["LANGFUSE_TRAJECTORY_CACHE_DIR"])
-        if os.environ.get("LANGFUSE_TRAJECTORY_CACHE_DIR")
-        else default_trajectory_cache_root(context)
-        if context is not None
-        else artifact_root_for_owner(project_root) / "cache" / "langfuse" / "plugins"
-    )
+    cache_root = resolve_trajectory_cache_root(context, project_root)
     os.environ["LANGFUSE_TRAJECTORY_CACHE_DIR"] = str(cache_root)
     try:
         provision = provision_trajectory_plugin(cache_root, selected_agent)

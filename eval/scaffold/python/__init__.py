@@ -21,6 +21,8 @@ from .eval_context import (
     artifact_root_for_owner,
     assert_artifact_root_is_safe,
     context_from_environment,
+    managed_path_for_owner,
+    resolve_managed_path,
     resolve_eval_context,
 )
 from .manifest_tasks import load_manifest_tasks
@@ -144,6 +146,8 @@ __all__ = [
     "artifact_root_for_owner",
     "assert_artifact_root_is_safe",
     "context_from_environment",
+    "managed_path_for_owner",
+    "resolve_managed_path",
     "resolve_eval_context",
     "load_manifest_tasks",
     "AUTHORING_SKILL_PROFILE",

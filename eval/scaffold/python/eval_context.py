@@ -15,6 +15,7 @@ import yaml
 CONTEXT_ENV = "COMET_EVAL_CONTEXT"
 CONTEXT_SCHEMA = "comet.eval.context.v1"
 _CREDENTIAL_KEY = re.compile(r"(?:api[_-]?key|auth[_-]?token|password|secret|credential)", re.I)
+_MANAGED_ROOTS = frozenset({"cache", "runs", "generated", "locks"})
 ManifestSource = Literal["explicit", "auto-detected", "synthesized"]
 
 
@@ -87,6 +88,38 @@ def assert_artifact_root_is_safe(context: "ResolvedEvalContext") -> Path:
     if context.artifact_root != expected:
         raise EvalContextError("Eval context artifact root must stay under its owner root")
     return expected
+
+
+def _managed_path_for_owner(owner_root: Path | str, managed_root: str, *parts: str) -> Path:
+    """Resolve one mutable Eval path while keeping every real component owner-local."""
+    if managed_root not in _MANAGED_ROOTS:
+        raise EvalContextError(f"Unsupported Eval managed root: {managed_root}")
+    owner = Path(owner_root).expanduser().resolve()
+    artifact_root = artifact_root_for_owner(owner)
+    path = artifact_root / managed_root
+    for part in parts:
+        component = Path(part)
+        if component.is_absolute() or len(component.parts) != 1 or component.parts[0] in {".", ".."}:
+            raise EvalContextError("Eval managed path components must be relative names")
+        path /= component
+    try:
+        path.resolve().relative_to(owner)
+    except ValueError as exc:
+        raise EvalContextError("Eval managed path must stay within its owner root") from exc
+    return path
+
+
+def resolve_managed_path(
+    context: "ResolvedEvalContext", managed_root: str, *parts: str
+) -> Path:
+    """Return a checked owner-owned mutable path immediately before it is used."""
+    assert_artifact_root_is_safe(context)
+    return _managed_path_for_owner(context.artifact_owner_root, managed_root, *parts)
+
+
+def managed_path_for_owner(owner_root: Path | str, managed_root: str, *parts: str) -> Path:
+    """Resolve a checked mutable path for callers that only have the owner root."""
+    return _managed_path_for_owner(owner_root, managed_root, *parts)
 
 
 @dataclass(frozen=True)
