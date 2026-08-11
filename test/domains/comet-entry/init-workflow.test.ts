@@ -142,7 +142,9 @@ describe('Comet init workflow policy', () => {
         throw error;
       }
 
-      await expect(resolveInitWorkflow(projectRoot)).rejects.toThrow(/symbolic link or junction/iu);
+      await expect(resolveInitWorkflow(projectRoot)).rejects.toThrow(
+        /symbolic link or junction|alias must point/iu,
+      );
     } finally {
       await fs.rm(outsideRoot, { recursive: true, force: true });
     }

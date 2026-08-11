@@ -44,7 +44,7 @@ vi.mock('fs', async (importOriginal) => {
         if (String(target).includes('comet-eval-context-')) return original.promises.stat(target);
         return {
           isFile: () =>
-            String(target).endsWith('SKILL.md') || String(target).includes('eval\\local\\tasks'),
+            String(target).endsWith('SKILL.md') || /eval[\\/]local[\\/]tasks/u.test(String(target)),
           isDirectory: () => true,
         };
       },
