@@ -52,6 +52,11 @@ async function makePublishFixture(): Promise<string> {
   await writeFile(root, 'package.json', JSON.stringify(packageJson, null, 2));
   await writeFile(root, 'README.md', '# Comet publish fixture\n');
   await writeFile(root, 'eval/pyproject.toml', '[project]\nname = "comet-eval-fixture"\n');
+  await writeFile(
+    root,
+    'eval/schemas/comet.eval/v1alpha1.schema.json',
+    '{"$schema":"https://json-schema.org/draft/2020-12/schema"}\n',
+  );
   await writeFile(root, 'eval/local/tests/tasks/test_tasks.py', 'def test_fixture(): pass\n');
   await writeFile(root, 'eval/.env', 'API_KEY=must-not-pack\n');
   await writeFile(root, 'eval/.envrc', 'export API_KEY=must-not-pack\n');
@@ -92,6 +97,7 @@ describe('prepublish security check', () => {
     const published = packed.files.map((file) => `package/${file.path}`);
 
     expect(published).toContain('package/eval/pyproject.toml');
+    expect(published).toContain('package/eval/schemas/comet.eval/v1alpha1.schema.json');
     expect(published).toContain('package/eval/local/tests/tasks/test_tasks.py');
     expect(published.some((file) => /\/(?:\.env)(?:[^/]*)$/u.test(file))).toBe(false);
     expect(published.some((file) => file.startsWith('package/eval/.venv/'))).toBe(false);

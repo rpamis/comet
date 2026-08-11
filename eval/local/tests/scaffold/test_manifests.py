@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import re
+
 import pytest
 
 from scaffold.python.manifests import load_eval_manifest
@@ -227,7 +229,7 @@ evaluation:
         ),
         (
             "- name: unknown\n  prompt: Do it.\n  expect:\n    files: [result.md]\n  executable: true\n",
-            "unknown fields",
+            "unknown field",
         ),
     ],
 )
@@ -280,5 +282,43 @@ evaluation:
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="duplicate task name"):
+    with pytest.raises(ValueError, match="duplicates evaluation.tasks"):
+        load_eval_manifest(manifest_path)
+
+
+@pytest.mark.parametrize(
+    ("yaml_fragment", "message"),
+    [
+        ("unknownTopLevel: true\n", "unknownTopLevel: unknown field"),
+        ("evaluation:\n  unknownFlag: true\n", "evaluation.unknownFlag: unknown field"),
+        ("execution:\n  unknownFlag: true\n", "execution.unknownFlag: unknown field"),
+        ("judge:\n  unknownFlag: true\n", "judge.unknownFlag: unknown field"),
+        ("reporting:\n  unknownFlag: true\n", "reporting.unknownFlag: unknown field"),
+        ("interaction:\n  unknownFlag: true\n", "interaction.unknownFlag: unknown field"),
+        (
+            "evaluation:\n"
+            "  tasks:\n"
+            "    - name: exact\n"
+            "      prompt: Write result.md.\n"
+            "      expect: {files: [result.md]}\n"
+            "      unknownFlag: true\n",
+            "evaluation.tasks[0].unknownFlag: unknown field",
+        ),
+    ],
+)
+def test_schema_rejects_unknown_fields_with_yaml_paths(tmp_path: Path, yaml_fragment: str, message: str):
+    manifest_path = tmp_path / "eval.yaml"
+    manifest_path.write_text(
+        "apiVersion: comet.eval/v1alpha1\n"
+        "kind: SkillEvalManifest\n"
+        "metadata:\n"
+        "  name: my-skill\n"
+        "skill:\n"
+        "  name: my-skill\n"
+        "  source: .\n"
+        + yaml_fragment,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=re.escape(message)):
         load_eval_manifest(manifest_path)

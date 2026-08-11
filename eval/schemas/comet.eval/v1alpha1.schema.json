@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://comet.dev/schemas/comet.eval/v1alpha1.schema.json",
+  "title": "Comet Skill Eval manifest v1alpha1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata", "skill"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "apiVersion": { "const": "comet.eval/v1alpha1" },
+    "kind": { "const": "SkillEvalManifest" },
+    "metadata": { "$ref": "#/$defs/metadata" },
+    "skill": { "$ref": "#/$defs/skill" },
+    "evaluation": { "$ref": "#/$defs/evaluation" },
+    "interaction": { "$ref": "#/$defs/interaction" },
+    "execution": { "$ref": "#/$defs/execution" },
+    "judge": { "$ref": "#/$defs/judge" },
+    "reporting": { "$ref": "#/$defs/reporting" }
+  },
+  "$defs": {
+    "taskName": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$" },
+    "stringList": { "type": "array", "items": { "type": "string" } },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "draftHash": { "type": "string" },
+        "draft_hash": { "type": "string" },
+        "generationHash": { "type": "string" },
+        "generation_hash": { "type": "string" },
+        "generationFile": { "type": "string" },
+        "generation_file": { "type": "string" }
+      }
+    },
+    "skill": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "source": { "type": "string" },
+        "profile": { "type": "string" }
+      }
+    },
+    "inlineExpect": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "files": { "$ref": "#/$defs/stringList" },
+        "contains": { "type": "object", "additionalProperties": { "$ref": "#/$defs/stringList" } },
+        "json": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["file", "path", "equals"],
+            "properties": {
+              "file": { "type": "string" },
+              "path": { "type": "string" },
+              "equals": {}
+            }
+          }
+        },
+        "commands": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["run"],
+            "properties": { "run": { "type": "string" }, "timeout": { "type": "integer" } }
+          }
+        }
+      }
+    },
+    "inlineTask": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "prompt", "expect"],
+      "properties": {
+        "name": { "$ref": "#/$defs/taskName" },
+        "prompt": { "type": "string" },
+        "workspace": { "type": "string" },
+        "expect": { "$ref": "#/$defs/inlineExpect" },
+        "rubric": { "$ref": "#/$defs/stringList" }
+      }
+    },
+    "sourceTask": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source"],
+      "properties": { "name": { "$ref": "#/$defs/taskName" }, "source": { "type": "string" } }
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "$ref": "#/$defs/taskName" },
+        "source": { "type": "string" },
+        "prompt": { "type": "string" },
+        "workspace": { "type": "string" },
+        "expect": { "$ref": "#/$defs/inlineExpect" },
+        "rubric": { "$ref": "#/$defs/stringList" }
+      }
+    },
+    "routeConformance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "task": { "type": "string" },
+        "expectedNodeOrder": { "$ref": "#/$defs/stringList" },
+        "expected_node_order": { "$ref": "#/$defs/stringList" }
+      }
+    },
+    "evaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tasks": { "type": "array", "items": { "$ref": "#/$defs/task" } },
+        "recommendedTasks": { "$ref": "#/$defs/stringList" },
+        "recommended_tasks": { "$ref": "#/$defs/stringList" },
+        "baselineTreatments": { "$ref": "#/$defs/stringList" },
+        "baseline_treatments": { "$ref": "#/$defs/stringList" },
+        "qualityGates": { "type": "object" },
+        "quality_gates": { "type": "object" },
+        "requiredOutputSchemas": { "$ref": "#/$defs/stringList" },
+        "required_output_schemas": { "$ref": "#/$defs/stringList" },
+        "expectedEvidence": { "type": "array", "items": { "type": "object" } },
+        "expected_evidence": { "type": "array", "items": { "type": "object" } },
+        "requiredSkills": { "$ref": "#/$defs/stringList" },
+        "required_skills": { "$ref": "#/$defs/stringList" },
+        "expectedArtifacts": { "$ref": "#/$defs/stringList" },
+        "expected_artifacts": { "$ref": "#/$defs/stringList" },
+        "generatedNodeSkills": { "$ref": "#/$defs/stringList" },
+        "generated_node_skills": { "$ref": "#/$defs/stringList" },
+        "routeConformance": { "$ref": "#/$defs/routeConformance" },
+        "route_conformance": { "$ref": "#/$defs/routeConformance" }
+      }
+    },
+    "interaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "type": "string" },
+        "maxTurns": { "type": "integer" },
+        "max_turns": { "type": "integer" },
+        "simulatorPrompt": { "type": "string" },
+        "simulator_prompt": { "type": "string" },
+        "freshResumeMarker": { "type": "string" },
+        "fresh_resume_marker": { "type": "string" },
+        "decisionPatterns": { "$ref": "#/$defs/stringList" },
+        "decisionReply": { "type": "string" },
+        "decisionReplies": { "$ref": "#/$defs/stringList" },
+        "continuePrompt": { "type": "string" }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "agent": { "type": "string" },
+        "model": { "type": "string" },
+        "baseUrl": { "type": "string", "format": "uri" },
+        "base_url": { "type": "string", "format": "uri" }
+      }
+    },
+    "judge": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "agent": { "type": "string" },
+        "model": { "type": "string" },
+        "baseUrl": { "type": "string", "format": "uri" },
+        "base_url": { "type": "string", "format": "uri" }
+      }
+    },
+    "reporting": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "suite": { "type": "string" }, "config": { "type": "string" } }
+    }
+  }
+}

@@ -10,6 +10,7 @@ from typing import Any
 import yaml
 
 from scaffold.python.agents import validate_agent_id
+from scaffold.python.eval_schema import validate_manifest_schema
 from scaffold.python.tasks import InteractionConfig
 
 
@@ -294,7 +295,10 @@ def _parse_manifest_tasks(evaluation: dict, package_root: Path) -> list[Manifest
             ):
                 raise ValueError(f"{field_prefix}.rubric must be a list of non-empty strings")
         if task.name in names:
-            raise ValueError(f"duplicate task name in evaluation.tasks: {task.name}")
+            first_index = next(item_index for item_index, item in enumerate(tasks) if item.name == task.name)
+            raise ValueError(
+                f'evaluation.tasks[{index}].name duplicates evaluation.tasks[{first_index}].name: "{task.name}"'
+            )
         names.add(task.name)
         tasks.append(task)
     return tasks
@@ -307,6 +311,10 @@ def load_eval_manifest(path: Path | str) -> SkillEvalManifest:
         raise ValueError("Expected apiVersion comet.eval/v1alpha1")
     if data.get("kind") != "SkillEvalManifest":
         raise ValueError("Expected kind SkillEvalManifest")
+    for field_name in ("evaluation", "interaction", "execution", "judge", "reporting"):
+        if data.get(field_name) is None:
+            data.pop(field_name, None)
+    validate_manifest_schema(data)
 
     metadata = _require_mapping(data, "metadata")
     skill = _require_mapping(data, "skill")
@@ -326,6 +334,15 @@ def load_eval_manifest(path: Path | str) -> SkillEvalManifest:
     skill_path = (manifest_path.parent / skill_source).resolve()
     package_root = skill_path
     route_conformance = evaluation.get("routeConformance") or {}
+    recommended_tasks = _optional_string_list(evaluation, "recommendedTasks", "recommended_tasks")
+    seen_recommended: dict[str, int] = {}
+    for index, task_name in enumerate(recommended_tasks):
+        if task_name in seen_recommended:
+            raise ValueError(
+                f'evaluation.recommendedTasks[{index}] duplicates '
+                f'evaluation.recommendedTasks[{seen_recommended[task_name]}]: "{task_name}"'
+            )
+        seen_recommended[task_name] = index
 
     return SkillEvalManifest(
         path=manifest_path,
@@ -349,9 +366,7 @@ def load_eval_manifest(path: Path | str) -> SkillEvalManifest:
             if isinstance(metadata.get("generation_file"), str)
             else None
         ),
-        recommended_tasks=_optional_string_list(
-            evaluation, "recommendedTasks", "recommended_tasks"
-        ),
+        recommended_tasks=recommended_tasks,
         baseline_treatments=_optional_string_list(
             evaluation, "baselineTreatments", "baseline_treatments"
         ),

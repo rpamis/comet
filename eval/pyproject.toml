@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Benchmark evaluation for Comet skill (OpenSpec + Superpowers workflow)"
 requires-python = ">=3.11"
 dependencies = [
+    "jsonschema>=4.23",
     "pytest>=8.0",
     "pytest-timeout>=2.2",
     "pytest-xdist>=3.5",

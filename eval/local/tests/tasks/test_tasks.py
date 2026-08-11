@@ -35,6 +35,9 @@ from scaffold.python.native_eval import (
 )
 from scaffold.python.profiles import resolve_profile_name, run_profile_rubric
 from scaffold.python.manifest_tasks import load_manifest_tasks
+from scaffold.python.eval_context import resolve_eval_context
+from scaffold.python.task_resolution import build_task_catalogue, resolve_task_set
+from scaffold.python.paths import get_tasks_dir
 from scaffold.python.tasks import list_tasks, load_task
 from scaffold.python.treatments import TreatmentConfig, build_treatment_skills, load_treatments
 from scaffold.python.validation import run_validators
@@ -55,6 +58,9 @@ def _manifest_authored_tasks(config):
 
 
 def _load_eval_task(task_name: str, config=None):
+    resolved = getattr(config, "_comet_resolved_tasks", {}) if config is not None else {}
+    if task_name in resolved:
+        return resolved[task_name]
     authored = _manifest_authored_tasks(config)
     if task_name in authored:
         return authored[task_name]
@@ -110,8 +116,21 @@ def generate_test_params(task_filter: str | None, treatment_filter: str | None, 
         from scaffold.python.manifests import load_eval_manifest
 
         manifest = load_eval_manifest(config.getoption("--eval-manifest"))
-        manifest_tasks = manifest.recommended_tasks
-        authored_tasks = _manifest_authored_tasks(config)
+        context = resolve_eval_context(manifest_path=manifest.path, project_root=config.getoption("--project-root"))
+        resolved = resolve_task_set(
+            context,
+            manifest,
+            build_task_catalogue(manifest, get_tasks_dir()),
+            explicit_task=task_filter,
+            quick=bool(config.getoption("--quick")),
+        )
+        config._comet_resolved_tasks = {item.name: item.task for item in resolved.tasks}
+        manifest_tasks = [item.name for item in resolved.tasks]
+        authored_tasks = {
+            item.name: item.task
+            for item in resolved.tasks
+            if item.provenance in {"inline", "source"}
+        }
         manifest_baseline_treatments = manifest.baseline_treatments
 
     collisions = sorted(set(authored_tasks) & set(all_tasks))
@@ -142,7 +161,7 @@ def generate_test_params(task_filter: str | None, treatment_filter: str | None, 
     if task_filter:
         tasks_to_run = [task_filter]
     elif authored_tasks or manifest_tasks:
-        tasks_to_run = list(authored_tasks) + list(manifest_tasks or [])
+        tasks_to_run = list(manifest_tasks or authored_tasks)
     else:
         tasks_to_run = all_tasks
     tasks_to_run = list(dict.fromkeys(tasks_to_run))
@@ -232,7 +251,7 @@ interaction:
     ]
 
 
-def test_eval_manifest_merges_authored_tasks_with_recommended_tasks(tmp_path):
+def test_eval_manifest_prefers_authored_tasks_over_recommended_tasks(tmp_path):
     package = tmp_path / "manifest-skill"
     package.mkdir()
     (package / "SKILL.md").write_text("# Skill\n", encoding="utf-8")
@@ -268,7 +287,7 @@ def test_eval_manifest_merges_authored_tasks_with_recommended_tasks(tmp_path):
 
     params = generate_test_params(None, None, Config())
 
-    assert [task_name for task_name, _ in params] == ["inline-task", "generic-skill-smoke"]
+    assert [task_name for task_name, _ in params] == ["inline-task"]
     assert all(treatment == "DYNAMIC_SKILL" for _, treatment in params)
 
 
