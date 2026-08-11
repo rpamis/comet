@@ -36,12 +36,11 @@ When creating a new change, initialize `.comet.yaml` first, then immediately run
 
 ### 0b. Workspace Decision and Preparation Before Open
 
-The workspace decision must be completed before creating OpenSpec artifacts or `.comet.yaml`; it must not be deferred to Build:
+Read `comet-classic/reference/workspace.md` when creating a Classic change. The workspace decision must be completed before creating OpenSpec artifacts or `.comet.yaml`; it must not be deferred to Build:
 
-- Explicit “parallel”, “at the same time”, or “multiple sessions” intent selects `worktree` automatically; do not ask a current/branch/worktree three-way question
-- Explicit serial intent, a single change, or no parallel intent uses `current`; `branch` remains sequential branch isolation and must not be described as parallel-safe
-- Explicitly requested independent but serial branch work may select `branch`; it is not treated as a parallel workspace
-- When active changes exist but serial versus parallel intent is unclear, ask one question: serial in the current workspace or parallel in a Worktree
+- When parallel intent is explicit, use `worktree` directly so the independent workspace is ready before OpenSpec and state creation
+- When isolation is not specified, follow the reference: show the valid `current`, `branch`, and `worktree` choices when a decision is needed, and make the recommendation explanatory only
+- A user-selected `current` or `branch` remains a serial choice; do not describe it as safe for simultaneous sessions
 
 Prepare a new change before running OpenSpec `new`:
 

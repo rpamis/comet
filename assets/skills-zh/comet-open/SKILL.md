@@ -36,12 +36,11 @@ comet state select <change-name>
 
 ### 0b. Open 前工作区决策与准备
 
-工作区决策必须在创建 OpenSpec artifacts 和 `.comet.yaml` 之前完成，不能推迟到 Build：
+创建 Classic change 时读取 `comet-classic/reference/workspace.md`。工作区决策必须在创建 OpenSpec artifacts 和 `.comet.yaml` 之前完成，不能推迟到 Build：
 
-- 用户明确说“并行”“同时做”“多个会话”时，直接使用 `worktree`，不再询问 current/branch/worktree 三选一
-- 用户明确说串行、只做一个 change，或没有并行意图时，使用 `current`；`branch` 仍表示串行分支隔离，不把它描述成并行安全方案
-- 用户明确要求独立但串行的分支时，可以选择 `branch`；它不会被当作并行工作区
-- 已有 active changes 且用户没有表达串行/并行意图时，只询问一次“串行使用当前工作区，还是并行创建 Worktree”；不得继续追问三选一
+- 用户明确表达并行意图时直接使用 `worktree`，确保在创建 OpenSpec 和 state 前准备好独立工作区
+- 未指定隔离方式时按参考文档处理：需要决策时展示合法的 `current`、`branch`、`worktree` 选项，推荐只作说明
+- 用户选择的 `current` 或 `branch` 仍表示串行方式，不得把它描述为适合同时会话
 
 新 change 在运行 OpenSpec `new` 前准备工作区：
 

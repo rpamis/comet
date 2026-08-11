@@ -443,4 +443,43 @@ describe('Comet workflow optimization contracts', () => {
       expect(example).not.toContain(staleGuardPause);
     },
   );
+
+  it('keeps Classic isolation choices user-controlled while making parallel worktree guidance explicit', async () => {
+    const variants = [
+      {
+        language: 'zh' as const,
+        required: [
+          '当前目录有未提交工作',
+          '已有其他 active Classic change',
+          '| A | 当前目录（`current`）',
+          '| B | 新分支（`branch`）',
+          '| C | 新 worktree（`worktree`）',
+          '推荐只作说明',
+          '直接使用 `worktree`',
+        ],
+      },
+      {
+        language: 'en' as const,
+        required: [
+          'current directory has uncommitted work',
+          'Another active Classic change already exists',
+          '| A | Current directory (`current`)',
+          '| B | New branch (`branch`)',
+          '| C | New worktree (`worktree`)',
+          'A recommendation is explanatory only',
+          'select `worktree` directly',
+        ],
+      },
+    ];
+    for (const variant of variants) {
+      const workspaceRoot = variant.language === 'zh' ? zhSkillRoot : skillRoot;
+      const workspace = await fs.readFile(
+        path.join(workspaceRoot, 'comet-classic', 'reference', 'workspace.md'),
+        'utf8',
+      );
+      for (const term of variant.required) {
+        expect(workspace, `${variant.language}: ${term}`).toContain(term);
+      }
+    }
+  });
 });

@@ -50,7 +50,7 @@ comet classic workspace resolve <change-name> --json
 comet state select <change-name>
 ```
 
-Workspace decisions happen in `/comet-open`: explicit parallel, simultaneous, or multi-session intent automatically prepares a Worktree; explicit serial intent uses the current workspace. When an active change exists but serial versus parallel intent is unclear, ask only whether to use the current workspace serially or a Worktree in parallel; do not ask a current/branch/worktree three-way question. Preparation and resume scan registered Worktrees and prefer the one whose branch matches. Ask for rebind only when the branch was renamed or taken over.
+Workspace decisions happen in `/comet-open` and follow `comet-classic/reference/workspace.md`: explicit parallel, simultaneous, or multi-session intent prepares a Worktree before binding; when isolation is unspecified, present `current`, `branch`, and `worktree` as a single-choice decision when needed, with recommendations as explanation only. Preparation and resume scan registered Worktrees and prefer the one whose branch matches. Ask for rebind only when the branch was renamed or taken over.
 
 When multiple active changes exist and the user has not selected one, do not bind early; keep the existing `ask_user` decision point.
 

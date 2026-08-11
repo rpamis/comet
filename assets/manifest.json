@@ -16,6 +16,7 @@
     "comet-classic/reference/intent-frame.md",
     "comet-classic/reference/scripts.md",
     "comet-classic/reference/subagent-dispatch.md",
+    "comet-classic/reference/workspace.md",
     "comet-any/SKILL.md",
     "comet-any/agents/openai.yaml",
     "comet-any/reference/authoring-subagents.md",

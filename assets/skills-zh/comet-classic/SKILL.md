@@ -50,7 +50,7 @@ comet classic workspace resolve <change-name> --json
 comet state select <change-name>
 ```
 
-新 change 的 workspace 决策在 `/comet-open` 完成：用户明确表达并行、同时处理或多个会话时自动准备 Worktree；明确串行时使用当前工作区。已有 active change 且串行/并行意图不清时，只询问“串行当前工作区”或“并行 Worktree”，不再把 current/branch/worktree 作为三选一。准备和恢复都会扫描已登记 Worktree，优先复用分支匹配的工作区；仅在分支已重命名或被用户接管时请求 rebind。
+新 change 的 workspace 决策在 `/comet-open` 完成，并遵循 `comet-classic/reference/workspace.md`：用户明确表达并行、同时处理或多个会话时，在绑定前准备 Worktree；未指定隔离方式时，需要决策就把 `current`、`branch`、`worktree` 作为单选项展示，推荐只作说明。准备和恢复都会扫描已登记 Worktree，优先复用分支匹配的工作区；仅在分支已重命名或被用户接管时请求 rebind。
 
 多个 active change 且用户尚未明确选择时，不得提前绑定；继续按 `ask_user` 决策点等待选择。
 
