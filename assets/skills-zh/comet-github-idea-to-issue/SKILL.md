@@ -4,32 +4,32 @@ description: 基于当前代码库，将本地 Comet 想法、观察到的回归
 disable-model-invocation: true
 ---
 
-# Comet Local Idea to GitHub Issue
+# Comet 本地想法转 GitHub Issue
 
-Load `../comet-github/references/maintainer-contract.md` first. Drafting is local/read-only; creating the GitHub issue requires explicit confirmation.
+先读取 `../comet-github/references/maintainer-contract.md`。起草阶段只读；创建 GitHub Issue 必须得到明确确认。
 
-## Establish the issue
+## 确定 Issue 内容
 
-1. Understand the local observation and inspect the current implementation, tests, Runtime path, and relevant documentation.
-2. Search existing GitHub issues and PRs by domain concept. Decide whether this is a duplicate, a follow-up to an existing issue, or a new report.
-3. Choose the smallest matching repository template: bug, feature, task, or question. Read the current YAML template before drafting fields.
-4. Separate the user-visible problem from the suspected implementation cause. Include implementation details only when they help reproduce or scope the work.
+1. 理解本地观察，检查当前实现、测试、Runtime 路径和相关文档。
+2. 按领域概念搜索已有 GitHub Issue 和 PR，判断这是重复问题、已有 Issue 的 follow-up，还是新报告。
+3. 选择最匹配的仓库模板：bug、feature、task 或 question。起草字段前先读取当前 YAML 模板。
+4. 区分用户可见问题和推测的实现原因。只有有助于复现或界定范围时才写入实现细节。
 
-## Draft the body
+## 起草正文
 
-Produce:
+生成以下内容：
 
-- a concise title using the repository's template prefix;
-- the affected workflow, platform, and version/state;
-- current behavior and expected behavior;
-- reproduction or motivating workflow;
-- evidence and suspected boundary, marked as hypothesis when unverified;
-- explicit scope and non-goals;
-- acceptance criteria that can be checked independently;
-- related issue/PR links and a duplicate-search note.
+- 使用仓库模板前缀的简洁标题；
+- 受影响的 workflow、平台和版本/状态；
+- 当前行为与预期行为；
+- 复现步骤或触发该想法的用户流程；
+- 已有证据和疑似边界，未经验证的内容标注为假设；
+- 明确范围和非目标；
+- 可以独立检查的验收标准；
+- 相关 Issue/PR 链接和重复搜索说明。
 
-For a feature, describe the workflow problem and desired behavior before proposing implementation. For a bug, preserve exact commands, logs, versions, and project state when they are necessary to reproduce it.
+Feature 需要先描述 workflow 问题和期望行为，再提出实现方案。Bug 需要在必要时保留准确命令、日志、版本和项目状态。
 
-## Publish only after confirmation
+## 确认后再发布
 
-Show the complete proposed title, template type, labels, and body first. Ask for confirmation before calling `gh issue create`. After explicit approval, create the issue, verify the returned URL and title, and report the identifier. Do not modify labels, close related issues, or create additional tickets unless separately requested.
+先展示完整的标题、模板类型、标签和正文。得到确认后才能调用 `gh issue create`。创建后验证返回的 URL 和标题，并报告 Issue 编号。除非另行要求，不修改标签、不关闭相关 Issue，也不创建额外 ticket。

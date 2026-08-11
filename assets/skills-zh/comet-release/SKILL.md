@@ -4,25 +4,25 @@ description: 根据真实版本和分支范围准备 Comet 发布或发布说明
 disable-model-invocation: true
 ---
 
-# Comet Release
+# Comet 发布
 
-Load `../comet-github/references/maintainer-contract.md` first. This skill prepares release artifacts; commit, push, tag, GitHub release, and npm publication remain separate authorized actions.
+先读取 `../comet-github/references/maintainer-contract.md`。本 Skill 负责准备发布资产；commit、push、tag、GitHub Release 和 npm 发布仍然需要单独授权。
 
-## Establish the release boundary
+## 确定发布范围
 
-1. Read `package.json`, the lockfile metadata, the active top Changelog heading, current branch, `origin/master`, the previous release tag, and the release/hotfix branch range.
-2. Determine whether the branch already has a version higher than master. Append or rewrite that same version instead of inventing a duplicate entry.
-3. Build a candidate list from the actual release range, then keep only changes a user upgrading from the previous release would notice.
-4. Classify entries as Added, Changed, Fixed, Removed, or Security. Use Fixed only for a user-facing problem that already existed in the released baseline.
+1. 阅读 `package.json`、lockfile 元数据、当前顶部 Changelog 标题、当前分支、`origin/master`、上一发布 tag 以及 release/hotfix 分支范围。
+2. 判断当前分支是否已有高于 master 的版本。如果已有，就追加或重写同一个版本，不要创建重复版本。
+3. 根据真实发布范围列出候选变更，只保留用户从上一版本升级后能够感知的内容。
+4. 将条目分类为 Added、Changed、Fixed、Removed 或 Security。只有已发布基线中已经存在的用户问题才归入 Fixed。
 
-## Write the release surface
+## 编写发布内容
 
-Write professional, neutral, user-visible English Changelog text. Describe behavior and benefit, not implementation chronology, bundle/cache details, generated file names, Git object IDs, review follow-ups, or ordinary test refactors.
+使用专业、中性、面向用户的英文 Changelog。描述行为和价值，不写实现过程、bundle/cache 细节、生成文件名、Git 对象 ID、review follow-up 或普通测试重构。
 
-When website release docs are in scope, call `comet-bilingual-docs` to synchronize the accepted semantics across the main repository and `D:\Project\comet-website-docs`. Keep English and Chinese structures aligned.
+网站发布文档在范围内时，调用 `comet-bilingual-docs`，同步主仓库与 `D:\Project\comet-website-docs` 中已确认的用户可见语义，并保持中英文结构一致。
 
-## Verify readiness
+## 验证发布就绪
 
-Run checks proportional to the release risk: affected tests and formatting for docs-only changes; build, generated-asset checks, package dry-run, and full tests when Runtime, install, routing, or release metadata changes. Validate the website from its own repository with the available Mintlify command and report timeouts as unverified.
+根据发布风险运行检查：纯文档变更运行受影响测试和格式检查；Runtime、安装、路由或发布元数据变更再运行 build、生成资产检查、package dry-run 和全量测试。网站从自己的仓库运行可用的 Mintlify 命令，超时要标记为未验证。
 
-Show the final release version, included user-visible changes, validation results, and remaining unknowns. Use `comet-safe-delivery` for any explicitly authorized commit or push. Do not publish to npm as part of this Skill.
+展示最终版本、包含的用户可见变更、验证结果和剩余未知项。用户明确授权 commit 或 push 时使用 `comet-safe-delivery`。本 Skill 不负责 npm 发布。

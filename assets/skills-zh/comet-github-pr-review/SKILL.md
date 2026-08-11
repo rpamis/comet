@@ -4,47 +4,41 @@ description: 以只读、证据优先的方式审阅 Comet 社区 PR，包括最
 disable-model-invocation: true
 ---
 
-# Comet GitHub PR Review
+# Comet GitHub PR 审阅
 
-Load `../comet-github/references/maintainer-contract.md` first. Keep the review read-only unless the user separately authorizes a fix or GitHub response.
+先读取 `../comet-github/references/maintainer-contract.md`。除非用户另行授权修复或回复 GitHub，否则保持只读。
 
-## Refresh the target
+## 刷新目标状态
 
-1. Resolve the PR number or URL and confirm the repository.
-2. Fetch current PR metadata: base branch, head branch and SHA, author, linked issues, labels, mergeable state, and update time.
-3. Read the complete PR body, commits, diff, comments, and review threads. Check whether threads are resolved or outdated instead of treating every visible comment as active.
-4. Query current checks for the exact head. If a check fails, hand the detailed investigation to `comet-github-ci-triage`.
+1. 解析 PR 编号或 URL，并确认仓库。
+2. 获取当前 PR 元数据：目标分支、源分支和 SHA、作者、关联 Issue、标签、可合并状态和更新时间。
+3. 阅读完整 PR 正文、提交、diff、评论和 review thread。确认 thread 是否已解决或过期，不要把所有可见评论都当作仍然有效。
+4. 查询准确 head 对应的当前检查。如果有失败检查，将详细调查交给 `comet-github-ci-triage`。
 
-Use the live PR head/base for conclusions. A green test report does not prove that the PR is mergeable if the head is behind the base or has current conflicts.
+结论必须基于当前 PR head/base。测试通过不能证明 PR 可合并，因为 head 可能落后于 base 或存在当前冲突。
 
-## Review the implementation
+## 审阅实现
 
-For each claimed behavior:
+针对每个声明的行为：
 
-- find the real production call path;
-- compare the implementation with the linked Issue/spec;
-- inspect affected tests and generated/runtime assets when relevant;
-- reproduce a reachable failure when the report is a bug or blocker;
-- check whether the concern is already fixed in the current head.
+- 找到真实的生产调用路径；
+- 将实现与关联 Issue/spec 对照；
+- 必要时检查相关测试和生成 Runtime 资产；
+- 报告 Bug 或阻塞项时复现可达的失败路径；
+- 检查当前 head 是否已经修复该问题。
 
-Review-bot output is evidence to investigate, not an authority. Distinguish production logic, test/fixture drift, generated-output drift, environment noise, and merge conflicts.
+Review bot 输出只能作为调查线索，不能直接作为结论。区分生产逻辑、测试/fixture 漂移、生成物漂移、环境噪音和合并冲突。
 
-## Report only actionable findings
+## 只报告必须处理的问题
 
-Prefer findings that are reachable and block correctness, data integrity, security, user-visible behavior, or merging. Omit style-only suggestions, theoretical edge cases, and speculative improvements unless they are required by the repository contract.
+优先报告会阻塞正确性、数据完整性、安全、用户可见行为或合并的问题。除非仓库契约明确要求，否则省略纯风格建议、理论边界和推测性改进。
 
-For each finding include:
+每个问题包含：严重程度、简洁标题、准确的文件/行号或 Runtime 路径、当前行为为何失败、最小修正方向以及证据状态。
 
-- severity and concise title;
-- exact file/line or runtime path;
-- why the current behavior fails;
-- a minimal correction direction;
-- evidence status: confirmed, likely, or unverified.
+结尾给出明确结论，例如“没有必须修复项”“存在必须修复项”“需要先处理合并/CI 问题”或“证据不足”。
 
-End with a verdict such as `没有必须修复项`, `存在必须修复项`, `需要先解决合并/CI问题`, or `证据不足`.
+## 评论和修复边界
 
-## Comment and fix boundaries
-
-- If the user asks for a comment, provide copy-paste-ready Chinese Markdown after the analysis.
-- Do not post the comment unless explicitly asked.
-- If the user asks to fix findings, pass the confirmed scope to `comet-github-issue-fix` or the existing Comet workflow; do not patch based on unresolved bot suggestions.
+- 用户要求评论时，在分析后提供可直接复制的 Markdown。
+- 未经明确要求不得发布评论。
+- 用户要求修复时，将已确认范围交给 `comet-github-issue-fix` 或现有 Comet workflow；不要基于未确认的 bot 建议直接修改。

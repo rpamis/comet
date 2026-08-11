@@ -4,33 +4,33 @@ description: 通过区分过期配置与源码缺陷，并执行真实打包 Run
 disable-model-invocation: true
 ---
 
-# Comet Runtime Diagnosis
+# Comet Runtime 诊断
 
-Load `../comet-github/references/maintainer-contract.md` first. Diagnose before changing source or reinstalling anything.
+先读取 `../comet-github/references/maintainer-contract.md`。修改源码或重新安装前，先完成诊断。
 
-## Identify the boundary
+## 确定问题边界
 
-Classify the report as one or more of:
+将报告分类为以下一种或多种：
 
-- stale or incomplete local installation;
-- project/global configuration or path attribution;
-- source/runtime logic defect;
-- generated asset drift;
-- platform registry, install, or uninstall mismatch;
-- documentation or lifecycle-contract mismatch.
+- 本地安装过期或不完整；
+- 项目/全局配置或路径归属问题；
+- 源码/Runtime 逻辑缺陷；
+- 生成资产漂移；
+- 平台注册、安装或卸载不一致；
+- 文档或生命周期契约不一致。
 
-Inspect the current source, installed files, generated assets, platform metadata, lifecycle JSON/configuration, and relevant tests. Static configuration alone is not enough when the claim concerns execution.
+检查当前源码、已安装文件、生成资产、平台元数据、生命周期 JSON/配置和相关测试。涉及真实执行时，静态配置检查不足以得出结论。
 
-## Execute the real path
+## 执行真实路径
 
-- Invoke the generated/packaged Router or Runtime with the host-provided project `cwd` and the actual platform identifier when available.
-- Check both guarded and allowed phases, plus missing/ambiguous project context where relevant.
-- For cross-platform work, compare against the canonical platform registry and inspect every affected adapter; do not substitute a short hand-written platform list.
-- When source changes are suspected, compare the source entry, generated bundle, manifest, and installed copy.
-- Keep project/global Hook attribution separate and remain neutral when trusted host context is missing.
+- 使用宿主提供的项目 `cwd` 和实际平台标识（如果有），调用生成/打包后的 Router 或 Runtime。
+- 必要时检查被保护和允许的阶段，以及缺少或存在歧义的项目上下文。
+- 跨平台工作对照规范平台注册表，检查每个受影响的 adapter；不要用短的手写平台列表替代规范注册表。
+- 怀疑源码时，对照源码入口、生成 bundle、Manifest 和已安装副本。
+- 区分项目级和全局 Hook 归属；缺少可信宿主上下文时保持中立，不要自行扫描当前进程目录。
 
-## Report the diagnosis
+## 报告诊断结果
 
-Return the observed command/path, expected contract, actual result, classification, evidence, and smallest next action. State whether the problem is reproducible, configuration-only, generated-output-only, or a production defect.
+返回观察到的命令/路径、预期契约、实际结果、分类、证据和最小下一步。明确问题是可复现、仅配置、仅生成物，还是生产缺陷。
 
-Do not modify source, generated assets, installation state, or GitHub issues unless the user asks. If a fix is authorized, route it through `comet-github-issue-fix` and rebuild the generated Runtime from source before verification.
+除非用户要求，不修改源码、生成资产、安装状态或 GitHub Issue。用户授权修复时，交给 `comet-github-issue-fix`，并从源码重新构建生成 Runtime 后再验证。

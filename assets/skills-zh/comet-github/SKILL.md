@@ -6,26 +6,26 @@ disable-model-invocation: true
 
 # Comet GitHub
 
-Use this skill as the explicit entry point for Comet GitHub work. Load [the shared maintainer contract](references/maintainer-contract.md) before routing.
+将本 Skill 作为 Comet GitHub 工作的明确入口。路由前先读取[共享维护者契约](references/maintainer-contract.md)。
 
-## Route by intent
+## 按意图路由
 
 - “审阅 PR / 看这个 PR” → `comet-github-pr-review`
-- “看下这个 Issue 是否成立 / 是不是 bug” → `comet-github-issue-triage`
+- “看下这个 Issue 是否成立 / 是不是 Bug” → `comet-github-issue-triage`
 - “把这个本地想法提成 Issue” → `comet-github-idea-to-issue`
 - “CI 有报错 / 哪个 job 失败了” → `comet-github-ci-triage`
 - “按照这个 Issue 修复” → `comet-github-issue-fix`
 
-If the request combines review and repair, complete the read-only diagnosis first, then state the proposed handoff. Do not silently cross from analysis into code or GitHub mutation.
+如果请求同时包含审阅和修复，先完成只读诊断，再说明建议交接到哪个流程。不得从分析阶段无声地跨入代码修改或 GitHub 写操作。
 
-## Shared routing rules
+## 共享路由规则
 
-1. Identify the repository, issue/PR number or URL, current local branch, and requested mutation level.
-2. Refresh live GitHub state before relying on pasted comments, old CI results, or remembered SHAs.
-3. Keep evidence, diagnosis, proposed action, and completed action as separate sections.
-4. Report uncertainty explicitly: `confirmed`, `likely`, `insufficient evidence`, `blocked`, or `unverified`.
-5. Default to read-only. Posting comments, changing labels, closing issues, creating issues, committing, pushing, or opening PRs requires explicit authorization.
+1. 确认仓库、Issue/PR 编号或 URL、当前本地分支以及用户要求的操作级别。
+2. 在依赖复制来的评论、旧 CI 结果或记忆中的 SHA 前，先刷新 GitHub 实时状态。
+3. 将证据、诊断、建议动作和已完成动作分开报告。
+4. 明确报告不确定性：已确认、可能成立、证据不足、已阻塞或未验证。
+5. 默认只读。评论、改标签、关闭 Issue、创建 Issue、提交、推送或创建 PR 都需要明确授权。
 
-## Handoff output
+## 交接输出
 
-Return a short routing decision, the selected Skill, the evidence that makes the route appropriate, and the next safe action. Preserve the user's requested scope and do not treat a generated draft as a published GitHub change.
+返回简短的路由决定、选中的 Skill、支持该路由的证据以及下一步安全动作。保留用户指定的范围，不要把生成的草稿当作已经发布到 GitHub 的变更。

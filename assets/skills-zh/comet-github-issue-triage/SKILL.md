@@ -4,37 +4,32 @@ description: 对照当前仓库契约、源码、Runtime、测试和安装行为
 disable-model-invocation: true
 ---
 
-# Comet GitHub Issue Triage
+# Comet GitHub Issue 分诊
 
-Load `../comet-github/references/maintainer-contract.md` first. Keep the workflow read-only unless the user explicitly authorizes a GitHub or code change.
+先读取 `../comet-github/references/maintainer-contract.md`。除非用户明确授权 GitHub 或代码变更，否则保持只读。
 
-## Gather current evidence
+## 收集当前证据
 
-1. Read the full issue body, comments, labels, author, timestamps, linked PRs, and previous triage notes.
-2. Search existing issues by domain concept, not only by the reporter's wording. Identify duplicates, superseding issues, and already-implemented behavior.
-3. Inspect the current source, configuration, install path, generated assets, and relevant tests. Use the repository's actual contract as the reference point.
-4. For a bug with sufficient steps, reproduce the smallest meaningful path. For an environment or credential report, separate local setup from product behavior.
+1. 阅读完整 Issue 正文、评论、标签、作者、时间、关联 PR 和此前的分诊记录。
+2. 按领域概念搜索已有 Issue，而不只是复用报告者的原文措辞。识别重复、被替代的 Issue 和已经实现的行为。
+3. 检查当前源码、配置、安装路径、生成资产和相关测试，以实际仓库契约作为判断依据。
+4. Bug 信息充分时复现最小有效路径。环境或凭证问题需要区分本地设置和产品行为。
 
-Do not infer a defect from a convincing description alone. A report may be valid, overstated, stale, or caused by a local installation/configuration mismatch.
+不要仅因描述听起来合理就认定存在缺陷。报告可能有效、夸大、过期，或由本地安装/配置不一致造成。
 
-## Classify the result
+## 分类结果
 
-Choose one primary classification:
+选择一个主要分类：
 
-- `confirmed defect` — current behavior violates a user-visible or repository contract and evidence identifies the path;
-- `likely defect` — strong evidence exists but reproduction or a decisive boundary is missing;
-- `configuration/install issue` — current product behavior is correct or the local installation is stale/misconfigured;
-- `duplicate/already implemented` — the behavior or issue already exists elsewhere;
-- `insufficient information` — ask for specific missing steps, versions, logs, platform, or project state;
-- `feature request` — the report describes a desired capability rather than a regression.
+- `confirmed defect`：当前行为违反用户可见行为或仓库契约，且证据能定位路径；
+- `likely defect`：证据较强，但仍缺少复现或决定性边界；
+- `configuration/install issue`：产品行为正确，或本地安装已过期/配置错误；
+- `duplicate/already implemented`：行为或 Issue 已在其他位置存在；
+- `insufficient information`：需要补充具体步骤、版本、日志、平台或项目状态；
+- `feature request`：请求的是新能力，而不是回归问题。
 
-## Report and next action
+## 报告与下一步
 
-Return:
+返回分类和置信度、检查过的证据、相关代码/Runtime 路径、已确认和未知的内容，以及建议动作：补充信息、本地修复、创建聚焦 follow-up、关联已有 PR，或按重复/已实现处理。
 
-1. classification and confidence;
-2. evidence inspected and the relevant code/runtime path;
-3. what is confirmed, what is not, and what would change the conclusion;
-4. recommended next action: request information, fix locally, create a focused follow-up, link an existing PR, or close as duplicate/already implemented.
-
-Do not close, label, comment, or create a follow-up issue automatically. If a follow-up issue is appropriate, let `comet-github-idea-to-issue` draft it after the user confirms scope.
+不得自动关闭、加标签、评论或创建 follow-up Issue。确实需要新 Issue 时，用户确认范围后再交给 `comet-github-idea-to-issue` 起草。

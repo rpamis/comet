@@ -4,26 +4,26 @@ description: 在保留已确认语义、仓库结构、子模块边界和聚焦�
 disable-model-invocation: true
 ---
 
-# Comet Bilingual Documentation
+# Comet 双语文档
 
-Load `../comet-github/references/maintainer-contract.md` first. Keep documentation changes scoped to the requested surfaces.
+先读取 `../comet-github/references/maintainer-contract.md`，并将文档变更限制在用户要求的范围内。
 
-## Establish the source meaning
+## 确定源语义
 
-1. Identify the authoritative behavior, release scope, or accepted Chinese wording.
-2. Update and review the Chinese semantics first. Do not silently reinterpret an approved user-visible term while translating.
-3. For Skill content, pause after the Chinese version when user confirmation is required by the project workflow; synchronize English only after that confirmation.
-4. For an explicitly requested release sync, keep the main Changelog and English/Chinese website pages on the same user-visible semantics and information architecture.
+1. 确认权威的行为、发布范围或已接受的中文措辞。
+2. 先更新并审阅中文语义。翻译时不要静默改变已经确认的用户可见术语。
+3. Skill 内容需要用户确认时，在中文版本完成后暂停；确认后再同步英文版本。
+4. 明确要求发布同步时，保持主 Changelog 和中英文网站页面的用户可见语义及信息架构一致。
 
-## Synchronize carefully
+## 谨慎同步
 
-- Preserve examples, command names, configuration keys, links, anchors, and code fences exactly unless the change requires them.
-- Keep Chinese terminology natural; do not translate workflow “gate” as “门”.
-- Avoid adding technical implementation detail that users do not need.
-- For `D:\Project\comet-website-docs`, treat the website as an independent repository. Commit its changes before updating a parent gitlink when delivery is authorized.
+- 除非变更确实需要，准确保留示例、命令名、配置键、链接、锚点和代码围栏。
+- 中文术语要自然，不要把 workflow 的 “gate” 翻译为“门”。
+- 不增加用户不需要的实现细节。
+- 将 `D:\Project\comet-website-docs` 视为独立仓库。用户授权交付时，先提交网站仓库，再更新父仓库 gitlink。
 
-## Validate and report
+## 验证与报告
 
-Run affected-file Prettier and `git diff --check`. For website changes, run `mint validate --disable-openapi` from the website repository or report the exact fallback/timeout. For repository README or contract changes, run the focused repository contract test when available.
+运行受影响文件的 Prettier 和 `git diff --check`。网站变更从网站仓库运行 `mint validate --disable-openapi`，或报告准确的 fallback/超时。README 或仓库契约变更时，运行可用的聚焦仓库契约测试。
 
-Report the source language, synchronized surfaces, validation results, and any intentionally deferred translation. Do not commit or push unless explicitly requested; use `comet-safe-delivery` for delivery.
+报告源语言、同步的文件范围、验证结果和有意延后的翻译。除非用户明确要求，不提交或推送；交付时使用 `comet-safe-delivery`。

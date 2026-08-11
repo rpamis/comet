@@ -4,26 +4,26 @@ description: 在保护无关脏改动、关联 worktree、子模块和用户明�
 disable-model-invocation: true
 ---
 
-# Comet Safe Delivery
+# Comet 安全交付
 
-Load `../comet-github/references/maintainer-contract.md` first. This skill performs Git delivery only after the user explicitly authorizes the requested action. It never publishes to npm.
+先读取 `../comet-github/references/maintainer-contract.md`。只有用户明确授权后才执行 Git 交付动作；本 Skill 永远不会发布到 npm。
 
-## Preflight
+## 交付前检查
 
-1. Record the current branch, upstream, `git status --short --branch`, and `git worktree list --porcelain`.
-2. Inspect the diff and identify the exact intended paths. Ask for scope clarification if the requested files overlap unrelated work.
-3. Confirm the target branch and remote. Do not silently switch branches or change the delivery target.
-4. If a submodule is involved, verify its own branch/status and commit it before updating the parent gitlink.
+1. 记录当前分支、upstream、`git status --short --branch` 和 `git worktree list --porcelain`。
+2. 检查 diff，确定准确的目标路径。如果与无关改动重叠，先确认范围。
+3. 确认目标分支和 remote，不要静默切换分支或改变交付目标。
+4. 涉及子模块时，先确认子模块自己的分支/状态；得到授权交付时，先提交子模块，再更新父仓库 gitlink。
 
-## Stage and verify
+## 暂存与验证
 
-- Stage explicit intended paths only; do not use broad staging in a mixed checkout.
-- Inspect `git diff --cached --name-status`, `git diff --cached --stat`, and `git diff --cached --check`.
-- Let the repository pre-commit hook run. If it changes staged files, recheck the staged names and diff.
-- Use a type-prefixed commit message such as `fix: ...`, `docs: ...`, or `chore: ...`.
+- 只暂存明确的目标路径；混合工作区中不要使用宽泛的暂存命令。
+- 检查 `git diff --cached --name-status`、`git diff --cached --stat` 和 `git diff --cached --check`。
+- 让仓库 pre-commit hook 正常运行。如果 hook 修改了暂存内容，重新检查暂存文件名和 diff。
+- 使用带类型前缀的提交信息，例如 `fix: ...`、`docs: ...` 或 `chore: ...`。
 
-## Deliver
+## 交付
 
-Commit only the confirmed staged scope. Push only the explicitly requested branch and remote. Afterward verify the local status, commit SHA, upstream relation, and remote branch SHA. Report commit, push, and any online CI state separately.
+只提交已确认的暂存范围，只推送用户明确指定的分支和 remote。完成后验证本地状态、commit SHA、upstream 关系和远端分支 SHA。分别报告 commit、push 和线上 CI 状态。
 
-Do not create a PR, merge a remote branch, delete a branch, remove a worktree, or rewrite history unless separately requested. Before any worktree/branch deletion, verify linked worktrees, exact targets, and recoverability; never force-delete a broad or unresolved path.
+除非另行要求，不创建 PR、不合并远端分支、不删除分支、不移除 worktree、不改写历史。删除 worktree 或分支前，确认关联关系、准确目标和可恢复性；不得强制删除宽泛或未解析的路径。
