@@ -1146,6 +1146,242 @@ DEMO_SNAPSHOT.native.changes.push(
   ),
 );
 const nativeSidebarDemoChange = DEMO_SNAPSHOT.native.changes[0];
+nativeSidebarDemoChange.children = [
+  {
+    name: 'prepare-parent-workspace',
+    dependsOn: [],
+    covers: ['A1'],
+    status: 'done',
+    phase: 'archive',
+    message: '工作区已准备并完成归档。',
+    locator: 'demo-native-child-prepare',
+    changeStatus: 'archived',
+    archiveName: '2026-08-08-prepare-parent-workspace',
+    workspace: {
+      id: 'demo-worktree-prepare',
+      label: 'native/prepare-parent-workspace',
+      branch: 'native/prepare-parent-workspace',
+      current: false,
+    },
+  },
+  {
+    name: 'render-parent-child-tree',
+    dependsOn: ['prepare-parent-workspace'],
+    covers: ['A2'],
+    status: 'active',
+    phase: 'build',
+    message: '正在实现 Dashboard 父子层级展示。',
+    locator: 'demo-native-child-render',
+    changeStatus: 'active',
+    workspace: {
+      id: 'demo-worktree-render',
+      label: 'native/render-parent-child-tree',
+      branch: 'native/render-parent-child-tree',
+      current: false,
+    },
+  },
+  {
+    name: 'verify-parent-child-flow',
+    dependsOn: ['render-parent-child-tree'],
+    covers: ['A3'],
+    status: 'pending',
+    phase: 'build',
+    message: '等待前置子 change 完成后开始验证。',
+    locator: 'demo-native-child-verify',
+    changeStatus: 'active',
+    workspace: {
+      id: 'demo-worktree-verify',
+      label: 'native/verify-parent-child-flow',
+      branch: 'native/verify-parent-child-flow',
+      current: false,
+    },
+  },
+];
+
+function nativeChildArtifact(key, label, content) {
+  return {
+    key,
+    label,
+    path: `${key}.md`,
+    exists: true,
+    content,
+    truncated: false,
+    size: content.length,
+  };
+}
+
+function addNativeChildDemoDetail(child, options) {
+  const detail = createNativeV2Seed({
+    name: child.name,
+    status: child.changeStatus,
+    archiveName: child.archiveName,
+    archivedAt: options.archivedAt,
+    phase: child.phase,
+    ...options,
+  });
+  return {
+    ...detail,
+    ...child,
+    status: child.status,
+    changeStatus: child.changeStatus,
+  };
+}
+
+nativeSidebarDemoChange.children = [
+  addNativeChildDemoDetail(nativeSidebarDemoChange.children[0], {
+    stateVersion: 3,
+    stage: 'done',
+    iteration: 1,
+    attempt: 1,
+    actor: 'verifier',
+    verificationResult: 'pass',
+    localReason: 'archived',
+    archivedAt: '2026-08-08',
+    artifacts: [
+      nativeChildArtifact('brief', '需求简报', '# Workspace\n\nPrepare the parent workspace.\n'),
+      nativeChildArtifact(
+        'spec-workspace',
+        'workspace Spec',
+        '# Workspace\n\nCreate the child worktree.\n',
+      ),
+      nativeChildArtifact(
+        'verification',
+        '验证报告',
+        '# Conclusion\n\nWorkspace preparation passed.\n',
+      ),
+    ],
+    specs: {
+      total: 1,
+      create: 1,
+      modify: 0,
+      remove: 0,
+      capabilities: [{ capability: 'workspace', operation: 'create' }],
+      capabilitiesTruncated: false,
+    },
+    acceptanceItems: [
+      {
+        id: 'A1',
+        source: 'brief.md',
+        text: '准备父 change 所需的子工作区。',
+        result: 'passed',
+        reason: demoNativeText('准备工作区已完成并归档。'),
+      },
+    ],
+    verification: {
+      verdict: 'pass',
+      assurance: 'user-confirmed-degraded',
+      summary: demoNativeText('子工作区已准备完成。'),
+      risks: [],
+      risksTruncated: false,
+      completedAt: '2026-08-08T16:00:00.000Z',
+    },
+    checks: [
+      {
+        id: 'workspace-check',
+        name: demoNativeText('Workspace check'),
+        status: 'passed',
+        exitCode: 0,
+        durationMs: 420,
+      },
+    ],
+    history: [
+      {
+        goalCycle: 1,
+        iteration: 1,
+        attempt: 1,
+        outcome: 'pass',
+        unresolvedIds: [],
+        summary: demoNativeText('工作区准备完成并通过验证。'),
+        completedAt: '2026-08-08T16:00:00.000Z',
+      },
+    ],
+  }),
+  addNativeChildDemoDetail(nativeSidebarDemoChange.children[1], {
+    stateVersion: 4,
+    stage: 'building',
+    iteration: 1,
+    attempt: 1,
+    actor: 'builder',
+    nextAction: '完成父子列表后提交 handoff。',
+    verificationResult: 'pending',
+    localStatus: 'running',
+    localReason: 'current',
+    localStage: 'building',
+    requestCheckRounds: 1,
+    artifacts: [
+      nativeChildArtifact('brief', '需求简报', '# Parent-child tree\n\nRender nested changes.\n'),
+      nativeChildArtifact(
+        'spec-dashboard-tree',
+        'dashboard tree Spec',
+        '# Dashboard tree\n\nShow child progress and selection.\n',
+      ),
+    ],
+    specs: {
+      total: 1,
+      create: 0,
+      modify: 1,
+      remove: 0,
+      capabilities: [{ capability: 'dashboard-tree', operation: 'modify' }],
+      capabilitiesTruncated: false,
+    },
+    acceptanceItems: [
+      {
+        id: 'A1',
+        source: 'brief.md',
+        text: '父 change 能展示子 change。',
+        result: 'passed',
+        reason: demoNativeText('列表层级已可见。'),
+      },
+      {
+        id: 'A2',
+        source: 'brief.md',
+        text: '点击子 change 后展示详情。',
+        result: 'pending',
+        reason: null,
+      },
+    ],
+  }),
+  addNativeChildDemoDetail(nativeSidebarDemoChange.children[2], {
+    stateVersion: 2,
+    stage: 'building',
+    iteration: 1,
+    attempt: 1,
+    nextAction: '等待前置子 change 完成。',
+    verificationResult: 'pending',
+    localReason: 'missing',
+    recoverableFromStage: 'building',
+    artifacts: [
+      nativeChildArtifact(
+        'brief',
+        '需求简报',
+        '# Parent-child flow\n\nVerify the child workflow.\n',
+      ),
+      nativeChildArtifact(
+        'spec-verification',
+        'verification Spec',
+        '# Verification\n\nVerify dependency order.\n',
+      ),
+    ],
+    specs: {
+      total: 1,
+      create: 0,
+      modify: 1,
+      remove: 0,
+      capabilities: [{ capability: 'parent-child-flow', operation: 'modify' }],
+      capabilitiesTruncated: false,
+    },
+    acceptanceItems: [
+      {
+        id: 'A1',
+        source: 'brief.md',
+        text: '依赖完成后才允许验证。',
+        result: 'pending',
+        reason: demoNativeText('等待 render-parent-child-tree 完成。'),
+      },
+    ],
+  }),
+];
+
 nativeSidebarDemoChange.history.push(
   ...Array.from({ length: 9 }, (_, index) => ({
     goalCycle: 2,

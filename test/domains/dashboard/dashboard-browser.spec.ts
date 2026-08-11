@@ -63,6 +63,29 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
   expect(consoleErrors).toEqual([]);
 });
 
+test('keeps the demo Native detail visible after selecting a child change', async ({ page }) => {
+  const consoleErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+
+  await page.goto('/?demo');
+  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
+
+  const childRow = page
+    .locator('.native-child-change-row')
+    .filter({ hasText: 'prepare-parent-workspace' });
+  await expect(childRow).toBeVisible();
+  await childRow.click();
+
+  await expect(page.locator('.native-change-detail h3')).toHaveText('prepare-parent-workspace');
+  await expect(page.getByRole('button', { name: 'brief 需求简报' })).toBeVisible();
+  await expect(page.getByText('100% 已处理', { exact: true })).toBeVisible();
+  await expect(page.getByText('准备工作区已完成并归档。', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Native 变更工作区' })).toBeVisible();
+  expect(consoleErrors).toEqual([]);
+});
+
 test('keeps Classic task progress inside the change detail column', async ({ page }) => {
   await page.setViewportSize({ width: 1580, height: 900 });
   await page.goto('/?demo');

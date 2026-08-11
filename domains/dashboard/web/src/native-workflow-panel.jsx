@@ -106,6 +106,7 @@ function changeKey(change) {
 function childChangeReference(child) {
   if (!child.locator || !child.changeStatus) return null;
   return {
+    ...child,
     workflow: 'native',
     locator: child.locator,
     name: child.name,
@@ -193,7 +194,10 @@ export function NativeWorkflowPanel({
       Math.min(current + NATIVE_CHANGE_PAGE_SIZE, sourceChanges.length),
     );
   }, [hasMore, onLoadMore, pageLoading, serverPaged, sourceChanges.length]);
-  const visibleChanges = serverPaged ? sourceChanges : sourceChanges.slice(0, visibleChangeCount);
+  const visibleChanges = useMemo(
+    () => (serverPaged ? sourceChanges : sourceChanges.slice(0, visibleChangeCount)),
+    [serverPaged, sourceChanges, visibleChangeCount],
+  );
   const hasMoreChanges = serverPaged ? hasMore : visibleChanges.length < sourceChanges.length;
   const selectableChanges = useMemo(
     () =>
