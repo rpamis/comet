@@ -1,0 +1,6 @@
+interface:
+  display_name: "Comet Runtime 诊断"
+  short_description: "诊断 Hook 和生成 Runtime"
+  default_prompt: "使用 $comet-runtime-diagnose 诊断 Comet Hook、安装、路由或生成 Runtime 行为。"
+policy:
+  allow_implicit_invocation: false

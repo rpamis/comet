@@ -1,0 +1,6 @@
+interface:
+  display_name: "Comet 发布"
+  short_description: "准备面向用户的版本发布"
+  default_prompt: "使用 $comet-release 准备并验证 Comet 发布。"
+policy:
+  allow_implicit_invocation: false

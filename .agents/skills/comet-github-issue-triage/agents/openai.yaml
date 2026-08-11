@@ -1,6 +1,0 @@
-interface:
-  display_name: "Comet Issue Triage"
-  short_description: "Triage Comet GitHub issues"
-  default_prompt: "Use $comet-github-issue-triage to validate and classify a Comet GitHub issue."
-policy:
-  allow_implicit_invocation: false

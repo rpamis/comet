@@ -1,6 +1,0 @@
-interface:
-  display_name: "Comet Safe Delivery"
-  short_description: "Commit and deliver scoped changes"
-  default_prompt: "Use $comet-safe-delivery to commit or push only an explicitly scoped Comet change."
-policy:
-  allow_implicit_invocation: false

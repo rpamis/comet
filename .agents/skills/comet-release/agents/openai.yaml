@@ -1,6 +1,0 @@
-interface:
-  display_name: "Comet Release"
-  short_description: "Prepare a user-visible release"
-  default_prompt: "Use $comet-release to prepare and verify a Comet release."
-policy:
-  allow_implicit_invocation: false

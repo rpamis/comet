@@ -1,0 +1,6 @@
+interface:
+  display_name: "Comet PR 审阅"
+  short_description: "审阅社区 Pull Request"
+  default_prompt: "使用 $comet-github-pr-review 基于当前证据审阅社区 Pull Request。"
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Comet 安全交付"
+  short_description: "提交并交付范围明确的变更"
+  default_prompt: "使用 $comet-safe-delivery 只提交或推送范围明确的 Comet 变更。"
+policy:
+  allow_implicit_invocation: false

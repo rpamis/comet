@@ -1,6 +1,0 @@
-interface:
-  display_name: "Comet Runtime Diagnosis"
-  short_description: "Diagnose hooks and generated runtimes"
-  default_prompt: "Use $comet-runtime-diagnose to diagnose Comet Hook, install, routing, or generated-runtime behavior."
-policy:
-  allow_implicit_invocation: false

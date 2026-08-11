@@ -1,6 +1,0 @@
-interface:
-  display_name: "Comet Issue Fix"
-  short_description: "Implement a verified issue"
-  default_prompt: "Use $comet-github-issue-fix to implement a verified Comet issue safely."
-policy:
-  allow_implicit_invocation: false
