@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-beta.18] - 2026-08-11
+
+### Fixed
+
+- **Classic OpenSpec version passthrough**: `comet classic openspec -- --version` now routes through the Classic facade before top-level CLI option parsing, so `/comet-open` compares the OpenSpec CLI version instead of Comet's own version.
+
 ## What's Changed [0.4.0-beta.17] - 2026-08-10
 
 ### Added

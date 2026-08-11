@@ -635,8 +635,21 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function classicGroupArgs(argv: readonly string[]): string[] | null {
+  const args = argv.slice(2);
+  const classicIndex = args[0] === '--' ? 1 : 0;
+  return args[classicIndex] === 'classic' ? args.slice(classicIndex + 1) : null;
+}
+
 async function runCli(): Promise<void> {
   try {
+    const classicArgs = classicGroupArgs(process.argv);
+    if (classicArgs) {
+      const { runClassicGroupFacade } = await import('../commands/classic.js');
+      process.exitCode = await runClassicGroupFacade(classicArgs);
+      return;
+    }
+
     await program.parseAsync();
   } catch (error) {
     const cancelled = error instanceof Error && error.name === 'ExitPromptError';

@@ -103,4 +103,27 @@ describe('Classic command facade', () => {
       process.exitCode = originalExitCode;
     }
   });
+
+  it('routes Classic group argv before global version parsing', async () => {
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    runClassicCli.mockResolvedValue({ exitCode: 0, stdout: 'openspec version\n' });
+    const originalArgv = process.argv;
+    const originalExitCode = process.exitCode;
+    process.argv = [process.execPath, 'comet', 'classic', 'openspec', '--', '--version'];
+    process.exitCode = undefined;
+    vi.resetModules();
+
+    try {
+      await import('../../app/cli/index.js');
+      await vi.waitFor(() => {
+        expect(runClassicCli).toHaveBeenCalledWith(['openspec', '--', '--version']);
+        expect(stdout).toHaveBeenCalledWith('openspec version\n');
+        expect(process.exitCode).toBe(0);
+      });
+    } finally {
+      stdout.mockRestore();
+      process.argv = originalArgv;
+      process.exitCode = originalExitCode;
+    }
+  });
 });
