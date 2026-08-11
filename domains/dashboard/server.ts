@@ -185,8 +185,9 @@ async function handleRequest(
 
     if (subpath === '/native-change') {
       const changeName = url.searchParams.get('changeName');
+      const changeLocator = url.searchParams.get('changeLocator');
       const status = url.searchParams.get('status');
-      if (!changeName) {
+      if (!changeName && !changeLocator) {
         throw new NativeDashboardQueryError('Missing Native Dashboard change name');
       }
       if (status !== 'active' && status !== 'archived') {
@@ -194,8 +195,9 @@ async function handleRequest(
       }
       const detail = await collectNativeDashboardChangeDetail(project.path, {
         status,
-        name: changeName,
+        name: changeName ?? '',
         archiveName: url.searchParams.get('archiveName') ?? undefined,
+        locator: changeLocator ?? undefined,
       });
       if (!detail) {
         respondJson(res, req.method, 404, { error: 'Unknown Native Dashboard change' });
@@ -206,7 +208,7 @@ async function handleRequest(
     }
 
     if (subpath === '/change') {
-      const changeId = url.searchParams.get('changeId');
+      const changeId = url.searchParams.get('changeLocator') ?? url.searchParams.get('changeId');
       if (!changeId) {
         throw new DashboardChangeQueryError('Missing dashboard change id');
       }

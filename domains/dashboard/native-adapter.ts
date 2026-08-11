@@ -13,6 +13,8 @@ import type {
   NativePortableVerificationAssurance,
   NativePortableVerificationResult,
 } from '../comet-native/native-portable-types.js';
+import type { NativeChildDerivedStatus } from '../comet-native/native-children.js';
+import type { DashboardWorkspaceIdentity } from './workspace.js';
 
 export const NATIVE_DASHBOARD_SCHEMA = 'comet.dashboard.native.v2' as const;
 
@@ -164,8 +166,23 @@ export interface NativeDashboardMigrationSummary {
   message: string | null;
 }
 
+export interface NativeDashboardChildSummary {
+  name: string;
+  dependsOn: string[];
+  covers: string[];
+  status: NativeChildDerivedStatus;
+  phase: NativePortablePhase | null;
+  message: string | null;
+  locator: string | null;
+  changeStatus: 'active' | 'archived' | null;
+  archiveName?: string;
+  workspace: DashboardWorkspaceIdentity | null;
+}
+
 interface NativeDashboardChangeIdentity {
   workflow: 'native';
+  locator: string;
+  workspace: DashboardWorkspaceIdentity;
   name: string;
   status: 'active' | 'archived';
   archiveName?: string;
@@ -179,6 +196,7 @@ interface NativeDashboardChangeIdentity {
   acceptance: NativeDashboardAcceptanceCounts | null;
   verificationResult: NativePortableVerificationResult;
   localExecution: NativeDashboardLocalExecutionSummary;
+  children: NativeDashboardChildSummary[];
 }
 
 export type NativeDashboardChangeListItem = NativeDashboardChangeIdentity;
@@ -215,6 +233,18 @@ export interface NativeDashboardPortableInput {
   artifacts?: NativeDashboardArtifactPreview[];
   localExecution?: NativeLocalExecutionState | null;
   localExecutionReason?: NativeDashboardLocalExecutionReason;
+  locator?: string;
+  workspace?: DashboardWorkspaceIdentity;
+  children?: NativeDashboardChildSummary[];
+}
+
+function fallbackWorkspace(state: NativePortableState): DashboardWorkspaceIdentity {
+  return {
+    id: 'local',
+    label: state.workspace.change_branch ?? 'current',
+    branch: state.workspace.change_branch,
+    current: true,
+  };
 }
 
 function acceptanceCounts(
@@ -294,6 +324,8 @@ function identity(input: NativeDashboardPortableInput): NativeDashboardChangeIde
   );
   return {
     workflow: 'native',
+    locator: input.locator ?? `${input.status}:${input.archiveName ?? ''}:${state.name}`,
+    workspace: input.workspace ?? fallbackWorkspace(state),
     name: state.name,
     status: input.status,
     ...(input.archiveName ? { archiveName: input.archiveName } : {}),
@@ -314,6 +346,7 @@ function identity(input: NativeDashboardPortableInput): NativeDashboardChangeIde
     acceptance: acceptanceCounts(state.acceptance),
     verificationResult: state.verification_result,
     localExecution,
+    children: input.children ?? [],
   };
 }
 

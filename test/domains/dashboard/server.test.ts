@@ -151,7 +151,7 @@ describe('startDashboardServer', () => {
     const pageResponse = await request(handle.port, `${base}/changes?status=active&limit=5`);
     expect(pageResponse.status).toBe(200);
     const page = JSON.parse(pageResponse.body) as {
-      items: Array<{ id: string; status: string }>;
+      items: Array<{ id: string; locator: string; status: string }>;
       total: number;
       nextCursor: string | null;
     };
@@ -161,11 +161,12 @@ describe('startDashboardServer', () => {
 
     const detailResponse = await request(
       handle.port,
-      `${base}/change?changeId=${encodeURIComponent(page.items[0].id)}`,
+      `${base}/change?changeLocator=${encodeURIComponent(page.items[0].locator)}`,
     );
     expect(detailResponse.status).toBe(200);
     expect(JSON.parse(detailResponse.body)).toMatchObject({
       id: page.items[0].id,
+      locator: page.items[0].locator,
       artifacts: expect.any(Object),
       artifactPreviews: expect.any(Array),
     });
@@ -210,7 +211,7 @@ describe('startDashboardServer', () => {
     );
     expect(firstResponse.status).toBe(200);
     const first = JSON.parse(firstResponse.body) as {
-      items: Array<{ name: string; status: string }>;
+      items: Array<{ name: string; status: string; locator: string }>;
       total: number;
       nextCursor: string | null;
     };
@@ -222,11 +223,12 @@ describe('startDashboardServer', () => {
 
     const detailResponse = await request(
       handle.port,
-      `${base}/native-change?status=active&changeName=${encodeURIComponent(first.items[0].name)}`,
+      `${base}/native-change?status=active&changeLocator=${encodeURIComponent(first.items[0].locator)}`,
     );
     expect(detailResponse.status).toBe(200);
     expect(JSON.parse(detailResponse.body)).toMatchObject({
       name: first.items[0].name,
+      locator: first.items[0].locator,
       artifacts: expect.arrayContaining([
         expect.objectContaining({ key: 'comet-state.yaml' }),
         expect.objectContaining({ key: 'brief' }),

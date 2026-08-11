@@ -146,6 +146,8 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain('/native-changes?');
     expect(source).toContain("const params = new URLSearchParams({ status, limit: '5' });");
     expect(source).toContain('fetchDashboardChangeDetail');
+    expect(source).toContain('new URLSearchParams({ changeLocator: changeId })');
+    expect(source).toContain('change.workspace && !change.workspace.current');
     expect(source).toContain('onScroll={handleScroll}');
     expect(source).toContain('正在加载变更详情');
     expect(source).not.toContain('async function fetchSnapshot');

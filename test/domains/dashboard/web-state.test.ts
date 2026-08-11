@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  dashboardChangeKey,
   dashboardResponseError,
   isStaleNativeDashboardCursorError,
   nativeDashboardChangeKey,
@@ -64,6 +65,16 @@ describe('Dashboard web state helpers', () => {
     const fresh = page([{ id: 'new', value: 'new-row' }], 2);
 
     expect(refreshDashboardPage(existing, fresh)).toEqual(fresh);
+  });
+
+  it('uses worktree locators to distinguish same-name Classic and Native rows', () => {
+    const classicA = { id: 'openspec/changes/same', locator: 'classic-a' };
+    const classicB = { id: 'openspec/changes/same', locator: 'classic-b' };
+    const nativeA = { status: 'active', name: 'same', locator: 'native-a' };
+    const nativeB = { status: 'active', name: 'same', locator: 'native-b' };
+
+    expect(dashboardChangeKey(classicA)).not.toBe(dashboardChangeKey(classicB));
+    expect(nativeDashboardChangeKey(nativeA)).not.toBe(nativeDashboardChangeKey(nativeB));
   });
 
   it('recognizes a stale Native cursor error as recoverable pagination state', () => {
