@@ -1219,10 +1219,10 @@ test('keeps Classic and Native side panels within the center panel height', asyn
       await expect(selectedNativeRow).toHaveCSS('border-radius', '10px');
       await expect(selectedNativeRow.locator('.truncate')).toHaveCSS('font-size', '14px');
       await expect(selectedNativeRow.getByText('◇', { exact: true })).toHaveCount(0);
-      await expect(selectedNativeRow).toContainText('Build · 构建中 · 第2轮/第1次');
+      await expect(selectedNativeRow).toContainText('Build · 1/3 子变更待验证');
       const nativeProgress = selectedNativeRow.getByRole('progressbar');
       await expect(nativeProgress).toHaveCount(1);
-      await expect(nativeProgress).toHaveAttribute('aria-valuenow', '50');
+      await expect(nativeProgress).toHaveAttribute('aria-valuenow', '33');
       const recoverySection = rightPanel
         .getByRole('heading', { name: '恢复状态' })
         .locator('..')
