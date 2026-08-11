@@ -1,0 +1,6 @@
+interface:
+  display_name: "Comet Bilingual Docs"
+  short_description: "Synchronize English and Chinese docs"
+  default_prompt: "Use $comet-bilingual-docs to synchronize Comet documentation across Chinese and English."
+policy:
+  allow_implicit_invocation: false

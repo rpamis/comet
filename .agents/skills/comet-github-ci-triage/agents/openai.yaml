@@ -1,0 +1,6 @@
+interface:
+  display_name: "Comet CI Triage"
+  short_description: "Diagnose failing PR checks"
+  default_prompt: "Use $comet-github-ci-triage to find the real cause of failing Comet CI checks."
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Comet GitHub"
+  short_description: "Route Comet GitHub maintenance work"
+  default_prompt: "Use $comet-github to route a Comet GitHub task to the right workflow."
+policy:
+  allow_implicit_invocation: false

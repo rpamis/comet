@@ -1,0 +1,6 @@
+interface:
+  display_name: "Idea to GitHub Issue"
+  short_description: "Turn local ideas into issues"
+  default_prompt: "Use $comet-github-idea-to-issue to turn a local Comet idea into a focused GitHub issue."
+policy:
+  allow_implicit_invocation: false
