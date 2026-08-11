@@ -103,7 +103,8 @@ describe('eval command', () => {
     );
     expect(run?.[2]?.env).toMatchObject({
       PYTHONDONTWRITEBYTECODE: '1',
-      UV_PROJECT_ENVIRONMENT: path.join(os.tmpdir(), 'demo', '.comet', 'eval', 'venv'),
+      UV_CACHE_DIR: path.join(os.tmpdir(), 'demo', '.comet', 'eval', 'cache', 'uv'),
+      UV_PROJECT_ENVIRONMENT: path.join(os.tmpdir(), 'demo', '.comet', 'eval', 'cache', 'venv'),
     });
   });
 
@@ -623,7 +624,7 @@ describe('eval command', () => {
         manifest,
       }),
     ).rejects.toThrow(
-      `Eval harness is missing at ${evalCwd}.\n` +
+      `Eval harness is missing at ${packagedEvalCwd}.\n` +
         'Reinstall @rpamis/comet or pass --project <repository-root>.',
     );
 
@@ -771,5 +772,60 @@ describe('eval command', () => {
         artifactRoot: path.join(projectRoot, '.comet', 'eval'),
       }),
     });
+  });
+
+  it('uses the packaged harness when an explicit artifact owner has no eval harness', async () => {
+    const { promises: fs } = await vi.importActual<typeof import('node:fs')>('node:fs');
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-eval-owner-'));
+    const owner = path.join(root, 'owner');
+    const skill = path.join(root, 'skill');
+    await fs.mkdir(owner);
+    await fs.mkdir(skill);
+    await fs.writeFile(path.join(skill, 'SKILL.md'), '# Demo\n', 'utf8');
+    existsSync.mockImplementation((file) => path.resolve(file).startsWith(packagedEvalCwd));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { evalCommand } = await import('../../app/commands/eval.js');
+      await evalCommand(skill, { project: owner, quick: true });
+      expectUvRun(
+        [
+          'run',
+          'pytest',
+          'local/tests/tasks/test_tasks.py',
+          '--task=generic-skill-smoke',
+          `--skill-path=${skill}`,
+          '--skill-name=skill',
+          '--quick',
+          `--project-root=${owner}`,
+          '-v',
+        ],
+        packagedEvalCwd,
+      );
+    } finally {
+      log.mockRestore();
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects an owner-local .comet link that resolves outside before launching uv', async () => {
+    const { promises: fs } = await vi.importActual<typeof import('node:fs')>('node:fs');
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-eval-link-'));
+    const owner = path.join(root, 'owner');
+    const outside = path.join(root, 'outside');
+    const skill = path.join(root, 'skill');
+    await fs.mkdir(owner);
+    await fs.mkdir(outside);
+    await fs.mkdir(skill);
+    await fs.writeFile(path.join(skill, 'SKILL.md'), '# Demo\n', 'utf8');
+    await fs.symlink(outside, path.join(owner, '.comet'), 'junction');
+    try {
+      const { evalRunCommand } = await import('../../app/commands/eval.js');
+      await expect(
+        evalRunCommand({ project: owner, skillPath: skill, quick: true }),
+      ).rejects.toThrow('Eval artifact root must stay within its owner root');
+      expect(execFileSync).not.toHaveBeenCalled();
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
   });
 });

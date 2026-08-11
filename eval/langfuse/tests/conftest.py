@@ -10,6 +10,14 @@ from pathlib import Path
 import pytest
 from dotenv import load_dotenv
 
+from scaffold.python.eval_context import (
+    ResolvedEvalContext,
+    artifact_root_for_owner,
+    assert_artifact_root_is_safe,
+    context_from_environment,
+)
+from scaffold.python.paths import get_runs_dir
+
 from scaffold.python.langfuse_adapter import (
     LangfuseConfig,
     LangfuseRunReporter,
@@ -26,6 +34,11 @@ LOCAL_ROOT = EVAL_ROOT / "local"
 _LANGFUSE_CLIENT = None
 _LANGFUSE_REPORTER: LangfuseRunReporter | None = None
 _LANGFUSE_CONFIG: LangfuseConfig | None = None
+
+
+def default_trajectory_cache_root(context: ResolvedEvalContext) -> Path:
+    """Place default trajectory assets in the resolved owner cache."""
+    return assert_artifact_root_is_safe(context) / "cache" / "langfuse" / "plugins"
 
 os.environ.setdefault("BENCH_SUITE_ROOT", str(LANGFUSE_ROOT))
 os.environ.setdefault("BENCH_TASKS_DIR", str(LOCAL_ROOT / "tasks"))
@@ -71,8 +84,15 @@ def pytest_configure(config):
     enable_trajectory_environment(_LANGFUSE_CONFIG, selected_agent)
     _LANGFUSE_CLIENT = create_client(_LANGFUSE_CONFIG)
     _LANGFUSE_REPORTER = LangfuseRunReporter(_LANGFUSE_CLIENT)
+    context = getattr(config, "_comet_eval_context", None) or context_from_environment()
     project_root = Path(config.getoption("--project-root") or EVAL_ROOT.parent)
-    cache_root = project_root / ".comet" / "eval" / "langfuse" / "plugins"
+    cache_root = (
+        Path(os.environ["LANGFUSE_TRAJECTORY_CACHE_DIR"])
+        if os.environ.get("LANGFUSE_TRAJECTORY_CACHE_DIR")
+        else default_trajectory_cache_root(context)
+        if context is not None
+        else artifact_root_for_owner(project_root) / "cache" / "langfuse" / "plugins"
+    )
     os.environ["LANGFUSE_TRAJECTORY_CACHE_DIR"] = str(cache_root)
     try:
         provision = provision_trajectory_plugin(cache_root, selected_agent)
@@ -94,9 +114,7 @@ def pytest_sessionfinish(session, exitstatus):
             return
         if (getattr(session.config.option, "numprocesses", None) or 0) > 0:
             experiment_id = os.environ.get("COMET_EVAL_EXPERIMENT_ID", "")
-            reports_dir = (
-                Path(os.environ["BENCH_LOGS_DIR"]) / "experiments" / experiment_id / "reports"
-            )
+            reports_dir = get_runs_dir() / experiment_id / "reports"
             cases = []
             for report_path in sorted(reports_dir.glob("*_report.json")):
                 report = json.loads(report_path.read_text(encoding="utf-8"))

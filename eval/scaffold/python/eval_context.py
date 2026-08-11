@@ -67,6 +67,28 @@ def _base_manifest(skill_root: Path) -> dict[str, Any]:
     }
 
 
+def artifact_root_for_owner(owner_root: Path | str) -> Path:
+    """Return an owner-local Eval root without following a `.comet` escape."""
+    owner = Path(owner_root).expanduser().resolve()
+    if not owner.is_dir():
+        raise EvalContextError(f"Artifact owner root must be an existing directory: {owner}")
+    artifact_root = owner / ".comet" / "eval"
+    resolved_artifact_root = artifact_root.resolve()
+    try:
+        resolved_artifact_root.relative_to(owner)
+    except ValueError as exc:
+        raise EvalContextError("Eval artifact root must stay within its owner root") from exc
+    return artifact_root
+
+
+def assert_artifact_root_is_safe(context: "ResolvedEvalContext") -> Path:
+    """Revalidate the boundary immediately before a harness writes mutable state."""
+    expected = artifact_root_for_owner(context.artifact_owner_root)
+    if context.artifact_root != expected:
+        raise EvalContextError("Eval context artifact root must stay under its owner root")
+    return expected
+
+
 @dataclass(frozen=True)
 class ResolvedEvalContext:
     """The target identity and all mutable state locations for one Eval run."""
@@ -126,9 +148,7 @@ def resolve_eval_context(
             base_manifest = _base_manifest(skill_root)
 
     owner = Path(project_root).expanduser().resolve() if project_root else skill_root
-    if not owner.is_dir():
-        raise EvalContextError(f"Artifact owner root must be an existing directory: {owner}")
-    artifact_root = owner / ".comet" / "eval"
+    artifact_root = artifact_root_for_owner(owner)
     return ResolvedEvalContext(
         skill_root=skill_root,
         manifest_source=source,
@@ -157,9 +177,9 @@ def context_from_environment() -> ResolvedEvalContext | None:
         raise EvalContextError("Eval context has an invalid manifest source")
     skill_root = _skill_root(payload.get("skillRoot", ""))
     owner = Path(payload.get("artifactOwnerRoot", "")).expanduser().resolve()
-    expected_artifact_root = owner / ".comet" / "eval"
-    artifact_root = Path(payload.get("artifactRoot", "")).expanduser().resolve()
-    if artifact_root != expected_artifact_root:
+    expected_artifact_root = artifact_root_for_owner(owner)
+    supplied_artifact_root = Path(payload.get("artifactRoot", "")).expanduser().absolute()
+    if supplied_artifact_root != expected_artifact_root:
         raise EvalContextError("Eval context artifact root must stay under its owner root")
     manifest_value = payload.get("manifestPath")
     manifest_path = Path(manifest_value).expanduser().resolve() if isinstance(manifest_value, str) else None
@@ -178,6 +198,6 @@ def context_from_environment() -> ResolvedEvalContext | None:
         manifest_source=source,
         manifest_path=manifest_path,
         artifact_owner_root=owner,
-        artifact_root=artifact_root,
+        artifact_root=expected_artifact_root,
         base_manifest=base_manifest,
     )

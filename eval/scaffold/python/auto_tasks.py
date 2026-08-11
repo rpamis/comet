@@ -17,6 +17,7 @@ from typing import Any, Callable, Iterator, Mapping
 import yaml
 
 from scaffold.python.agents import AgentId, validate_agent_id
+from scaffold.python.eval_context import artifact_root_for_owner
 from scaffold.python.manifests import load_eval_manifest
 from scaffold.python.utils import run_agent_in_docker
 
@@ -170,7 +171,7 @@ def _generation_hash(
 
 def _cache_location(project_root: Path, skill_root: Path, generation_hash: str) -> Path:
     safe_name = re.sub(r"[^A-Za-z0-9._-]+", "-", skill_root.name).strip("-") or "skill"
-    return project_root.resolve() / ".comet" / "eval" / "generated" / safe_name / generation_hash
+    return artifact_root_for_owner(project_root) / "generated" / safe_name / generation_hash
 
 
 def _atomic_write_text(path: Path, value: str) -> None:
@@ -454,7 +455,7 @@ def ensure_generated_manifest(
         )
 
     cache_dir.parent.mkdir(parents=True, exist_ok=True)
-    lock_path = Path(project_root).resolve() / ".comet" / "eval" / "locks" / f"generated-{generation_hash}.lock"
+    lock_path = artifact_root_for_owner(project_root) / "locks" / f"generated-{generation_hash}.lock"
     with _generation_lock(lock_path):
         cached = _load_cached(cache_dir, generation_hash)
         if cached:

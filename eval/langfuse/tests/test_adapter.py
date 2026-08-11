@@ -16,6 +16,7 @@ from scaffold.python.langfuse_adapter import (
     enable_trajectory_environment,
     trajectory_mode,
 )
+from scaffold.python.eval_context import resolve_eval_context
 
 
 class FakeObservation:
@@ -175,6 +176,60 @@ def test_xdist_master_rebuilds_one_complete_summary_from_local_reports(tmp_path:
     assert client.observation.output["aggregates"]["task/CONTROL"]["runs"] == 1
     assert client.flushed is True
     assert session.exitstatus == 0
+
+
+def test_xdist_master_reads_reports_from_the_resolved_owner_runs_root(tmp_path: Path, monkeypatch):
+    skill = tmp_path / "skill"
+    owner = tmp_path / "owner"
+    skill.mkdir()
+    owner.mkdir()
+    (skill / "SKILL.md").write_text("# Demo\n", encoding="utf-8")
+    context = resolve_eval_context(skill_path=skill, project_root=owner)
+    reports = context.artifact_root / "runs" / "exp-owner" / "reports"
+    reports.mkdir(parents=True)
+    (reports / "task_control_r1_report.json").write_text(
+        json.dumps(
+            {
+                "run_id": "run-owner",
+                "passed": True,
+                "checks_passed": ["ok"],
+                "checks_failed": [],
+                "events_summary": {
+                    "task": "task",
+                    "treatment": "CONTROL",
+                    "sample": 1,
+                    "agent": "codex",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    client = FakeClient()
+    reporter = LangfuseRunReporter(client)
+    monkeypatch.setattr(langfuse_conftest, "_LANGFUSE_REPORTER", reporter)
+    monkeypatch.setenv("COMET_EVAL_CONTEXT", json.dumps(context.to_payload()))
+    monkeypatch.setenv("COMET_EVAL_EXPERIMENT_ID", "exp-owner")
+    session = SimpleNamespace(
+        config=SimpleNamespace(option=SimpleNamespace(numprocesses=2)), exitstatus=0
+    )
+
+    langfuse_conftest.pytest_sessionfinish(session, 0)
+
+    assert client.observation.output["cases"] == 1
+    assert client.observation.output["aggregates"]["task/CONTROL"]["runs"] == 1
+
+
+def test_langfuse_default_trajectory_cache_is_owned_by_the_resolved_owner(tmp_path: Path):
+    skill = tmp_path / "skill"
+    owner = tmp_path / "owner"
+    skill.mkdir()
+    owner.mkdir()
+    (skill / "SKILL.md").write_text("# Demo\n", encoding="utf-8")
+    context = resolve_eval_context(skill_path=skill, project_root=owner)
+
+    assert langfuse_conftest.default_trajectory_cache_root(context) == (
+        owner / ".comet" / "eval" / "cache" / "langfuse" / "plugins"
+    )
 
 
 def test_trajectory_modes_expose_official_and_transcript_adapters():

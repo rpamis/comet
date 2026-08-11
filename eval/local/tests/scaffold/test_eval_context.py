@@ -1,7 +1,9 @@
 """Tests for standalone Eval target resolution and user-owned state."""
 
 import json
+import os
 from pathlib import Path
+import subprocess
 
 import pytest
 
@@ -124,6 +126,22 @@ def test_context_rejects_manifest_paths_outside_the_skill_package(tmp_path: Path
 
     with pytest.raises(EvalContextError, match="Skill package must contain SKILL.md"):
         resolve_eval_context(manifest_path=manifest)
+
+
+def test_context_rejects_an_owner_comet_link_that_escapes_the_owner(tmp_path: Path):
+    skill = _write_skill(tmp_path)
+    owner = tmp_path / "owner"
+    outside = tmp_path / "outside"
+    owner.mkdir()
+    outside.mkdir()
+    link = owner / ".comet"
+    if os.name == "nt":
+        subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(outside)], check=True)
+    else:
+        link.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(EvalContextError, match="artifact root must stay within its owner root"):
+        resolve_eval_context(skill_path=skill, project_root=owner)
 
 
 def test_environment_context_preserves_user_owned_artifact_root_and_rejects_credentials(

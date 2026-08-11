@@ -55,15 +55,21 @@ const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
 const moduleRoot = path.resolve(moduleDirectory, '../..');
 const packageRoot = path.basename(moduleRoot) === 'dist' ? path.dirname(moduleRoot) : moduleRoot;
 
-function evalRoot(options: EvalCommandOptions): string {
-  return options.project
+function hasEvalHarness(root: string, suite: EvalSuite): boolean {
+  const requiredFiles = ['pyproject.toml', `${suite}/tests/tasks/test_tasks.py`];
+  return requiredFiles.every((file) => existsSync(path.join(root, file)));
+}
+
+function evalRoot(options: EvalCommandOptions, suite: EvalSuite): string {
+  const projectHarness = options.project
     ? path.join(path.resolve(options.project), 'eval')
-    : path.join(packageRoot, 'eval');
+    : undefined;
+  if (projectHarness && hasEvalHarness(projectHarness, suite)) return projectHarness;
+  return path.join(packageRoot, 'eval');
 }
 
 function assertEvalHarness(root: string, suite: EvalSuite): void {
-  const requiredFiles = ['pyproject.toml', `${suite}/tests/tasks/test_tasks.py`];
-  if (requiredFiles.every((file) => existsSync(path.join(root, file)))) return;
+  if (hasEvalHarness(root, suite)) return;
 
   throw new Error(
     `Eval harness is missing at ${root}.\n` +
@@ -110,6 +116,51 @@ async function isFile(target: string): Promise<boolean> {
     return (await fs.stat(target)).isFile();
   } catch {
     return false;
+  }
+}
+
+function isPathWithin(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return (
+    relative === '' ||
+    (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))
+  );
+}
+
+async function assertArtifactRootIsSafe(context: ResolvedEvalContext): Promise<void> {
+  const ownerRoot = await canonicalPath(context.artifactOwnerRoot);
+  const cometRoot = path.join(ownerRoot, '.comet');
+  let cometRootExists = false;
+  try {
+    await fs.lstat(cometRoot);
+    cometRootExists = true;
+    const resolvedCometRoot = await fs.realpath(cometRoot);
+    if (!isPathWithin(ownerRoot, resolvedCometRoot)) {
+      throw new Error('Eval artifact root must stay within its owner root');
+    }
+    try {
+      const resolvedArtifactRoot = await fs.realpath(path.join(cometRoot, 'eval'));
+      if (!isPathWithin(ownerRoot, resolvedArtifactRoot)) {
+        throw new Error('Eval artifact root must stay within its owner root');
+      }
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === 'Eval artifact root must stay within its owner root'
+      ) {
+        throw error;
+      }
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === 'Eval artifact root must stay within its owner root'
+    ) {
+      throw error;
+    }
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== 'ENOENT' || cometRootExists) throw error;
   }
 }
 
@@ -361,6 +412,8 @@ function runEval(
   context: ResolvedEvalContext,
 ): void {
   assertEvalHarness(root, suite);
+  // Validate the owner boundary immediately before uv can create its cache or environment.
+  // The context was validated during resolution and is rechecked in the Python harness before writes.
   assertUvAvailable();
   execFileSync('uv', args, {
     cwd: root,
@@ -371,15 +424,18 @@ function runEval(
       COMET_EVAL_CONTEXT: JSON.stringify(context),
       PYTHONDONTWRITEBYTECODE: '1',
       PYTEST_ADDOPTS: [process.env.PYTEST_ADDOPTS, '-p no:cacheprovider'].filter(Boolean).join(' '),
-      UV_PROJECT_ENVIRONMENT: path.join(context.artifactRoot, 'venv'),
+      UV_CACHE_DIR: path.join(context.artifactRoot, 'cache', 'uv'),
+      UV_PROJECT_ENVIRONMENT: path.join(context.artifactRoot, 'cache', 'venv'),
     },
   });
 }
 
 async function executeEval(options: EvalCommandOptions, collectOnly: boolean): Promise<void> {
   assertTarget(options);
-  const root = evalRoot(options);
   const context = await resolveEvalContext(options);
+  await assertArtifactRootIsSafe(context);
+  const suite = resolveSuite(options);
+  const root = evalRoot(options, suite);
   const details = await buildLaunchDetails(options, collectOnly, root, context);
   const prepared = options.manifest ? await prepareEvalManifest(options.manifest) : null;
   let bodyFailed = false;
