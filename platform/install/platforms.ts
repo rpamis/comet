@@ -102,7 +102,7 @@ export const PLATFORMS: Platform[] = [
     configDir: '.codex',
     detectionPaths: ['.codex'],
     openspecToolId: 'codex',
-    openspecSkillsDir: '.codex',
+    openspecSkillsDir: '.agents',
     rulesBaseDir: '.codex',
     rulesDir: 'rules',
     rulesFormat: 'md',

@@ -6,6 +6,7 @@ import os from 'os';
 import path from 'path';
 import { parse } from 'yaml';
 import { getProjectRegistryPath } from '../../platform/install/project-registry.js';
+import { stageOpenSpecSkills, unquoteWindowsArg } from '../helpers/openspec-test-utils.js';
 
 vi.mock('child_process', () => ({
   execFileSync: vi.fn(),
@@ -90,14 +91,20 @@ function mockExternalSuccess(options: { openSpecConfig?: 'healthy' | 'missing' |
       return Buffer.from('1.5.0');
     }
     if (cmd === 'openspec' && cmdArgs[0] === 'init') {
-      const targetPath = cmdArgs[1];
+      const targetPath = unquoteWindowsArg(cmdArgs[1]);
       if (targetPath) {
-        const openSpecRoot = path.join(targetPath, 'openspec');
-        mkdirSync(path.join(openSpecRoot, 'changes', 'archive'), { recursive: true });
-        if (openSpecConfig === 'healthy') {
-          writeFileSync(path.join(openSpecRoot, 'config.yaml'), 'schema: spec-driven\n');
-        } else if (openSpecConfig === 'corrupt') {
-          writeFileSync(path.join(openSpecRoot, 'config.yaml'), 'schema: [broken\n');
+        const toolsIndex = cmdArgs.indexOf('--tools');
+        const tools = toolsIndex >= 0 ? cmdArgs[toolsIndex + 1] : undefined;
+        if (tools && tools !== 'none') {
+          stageOpenSpecSkills(targetPath, tools);
+        } else {
+          const openSpecRoot = path.join(targetPath, 'openspec');
+          mkdirSync(path.join(openSpecRoot, 'changes', 'archive'), { recursive: true });
+          if (openSpecConfig === 'healthy') {
+            writeFileSync(path.join(openSpecRoot, 'config.yaml'), 'schema: spec-driven\n');
+          } else if (openSpecConfig === 'corrupt') {
+            writeFileSync(path.join(openSpecRoot, 'config.yaml'), 'schema: [broken\n');
+          }
         }
       }
       return Buffer.from('ok');
