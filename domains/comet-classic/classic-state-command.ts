@@ -1464,7 +1464,9 @@ async function selectChange(output: CommandOutput, name: string): Promise<void> 
     const requestedRoot = classicCommandProjectRoot();
     const workspace = await resolveClassicWorkspace({ projectRoot: requestedRoot, name });
     const selection = await selectCurrentChange(workspace.projectRoot, name);
-    const bound = selection.branch;
+    const change = await resolveClassicChangeDirectory(name, workspace.projectRoot);
+    const state = await readClassicState(change.directory, { migrate: false });
+    const bound = state.classic?.boundBranch ?? null;
     output.stderr.push(
       green(
         `[SELECTED] current change: ${selection.change}${bound ? ` (branch: ${bound})` : ''}${workspace.routed ? ` (workspace: ${workspace.projectRoot})` : ''}`,

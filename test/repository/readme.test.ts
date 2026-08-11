@@ -113,7 +113,7 @@ describe('README assets', () => {
     const readmeZh = await fs.readFile('README-zh.md', 'utf-8');
 
     expect(readmeEn).toContain('Create or optimize a reusable Skill');
-    expect(readmeEn).toContain('`/comet-any` is the main user path');
+    expect(readmeEn).toContain('`/comet-any` is an optional Skill creation and composition path');
     expect(readmeEn).toContain('`comet eval`');
     expect(readmeEn).toContain('`comet creator`');
     expect(readmeEn).toContain('`comet publish`');
@@ -125,7 +125,7 @@ describe('README assets', () => {
     expect(readmeEn).toContain('`comet skill run` / `comet skill continue`');
     expect(readmeEn).toContain('Skill creation guide');
     expect(readmeZh).toContain('创建或优化可复用 Skill');
-    expect(readmeZh).toContain('`/comet-any` 是普通用户主路径');
+    expect(readmeZh).toContain('`/comet-any` 是可选的 Skill 创建与组合路径');
     expect(readmeZh).toContain('`comet eval`');
     expect(readmeZh).toContain('`comet creator`');
     expect(readmeZh).toContain('`comet publish`');

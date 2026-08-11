@@ -778,7 +778,7 @@ describe('Classic hook guard command', () => {
     const result = run(dir, 'state', ['select', 'missing']);
 
     expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain('active change state not found');
+    expect(result.stderr).toContain('not found in any registered Git worktree');
   });
 
   it('allows writes when no active change exists', async () => {
