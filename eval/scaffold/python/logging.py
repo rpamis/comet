@@ -2,7 +2,9 @@
 
 import json
 import math
+import os
 import re
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -10,12 +12,37 @@ from pathlib import Path
 from typing import Any
 
 from scaffold.python.evidence import stable_treatment_name
-from scaffold.python.paths import get_logs_dir
+from scaffold.python.paths import get_runs_dir
 from scaffold.python.report_outputs import (
     ReportOutputConfig,
     preferred_report_path,
     write_report_outputs,
 )
+
+
+def _without_credentials(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _without_credentials(item)
+            for key, item in value.items()
+            if not re.search(r"(?:api[_-]?key|auth[_-]?token|password|secret|credential)", key, re.I)
+        }
+    if isinstance(value, list):
+        return [_without_credentials(item) for item in value]
+    return value
+
+
+def _atomic_write_json(path: Path, value: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.", delete=False
+    ) as temporary:
+        temporary.write(json.dumps(_without_credentials(value), indent=2) + "\n")
+        temporary_path = Path(temporary.name)
+    try:
+        os.replace(temporary_path, path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
 # Regex to strip ANSI escape codes
 ANSI_ESCAPE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
@@ -608,14 +635,15 @@ class ExperimentLogger:
             self.name = experiment_name or f"experiment_{self.timestamp}"
             self.experiment_id = f"{self.name}_{self.timestamp}"
 
-        self.base_dir = get_logs_dir() / "experiments" / self.experiment_id
+        self.base_dir = get_runs_dir() / self.experiment_id
 
         # Create subdirectories
         self.events_dir = self.base_dir / "events"
         self.reports_dir = self.base_dir / "reports"
         self.raw_dir = self.base_dir / "raw"
 
-        for d in [self.events_dir, self.reports_dir, self.raw_dir]:
+        self.artifacts_dir = self.base_dir / "artifacts"
+        for d in [self.events_dir, self.reports_dir, self.raw_dir, self.artifacts_dir]:
             d.mkdir(parents=True, exist_ok=True)
 
         self.columns = list(columns) if columns else rubric_columns()
@@ -825,7 +853,7 @@ class ExperimentLogger:
         self.metadata["report_outputs"] = {name: str(path) for name, path in written.items()}
 
         metadata_path = self.base_dir / "metadata.json"
-        metadata_path.write_text(json.dumps(self.metadata, indent=2), encoding="utf-8")
+        _atomic_write_json(metadata_path, self.metadata)
 
         print(f"\nExperiment results saved to: {self.base_dir}")
         if written:

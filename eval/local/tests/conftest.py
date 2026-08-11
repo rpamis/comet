@@ -42,6 +42,7 @@ from scaffold.python import (
 )
 from scaffold.python.agents import get_agent_adapter, resolve_agent
 from scaffold.python.auto_tasks import AutoTaskError, ensure_generated_manifest, find_project_root
+from scaffold.python.eval_context import EvalContextError, context_from_environment, resolve_eval_context
 from scaffold.python.langfuse_adapter import (
     install_codex_plugin_workspace,
     install_transcript_hook,
@@ -226,8 +227,10 @@ EVAL_ROOT = PROJECT_ROOT.parent
 REPOSITORY_ROOT = EVAL_ROOT.parent
 
 # Shared files for xdist worker coordination
-XDIST_EXPERIMENT_FILE = PROJECT_ROOT / ".pytest_experiment_id"
-DOCKER_BUILD_LOCK = PROJECT_ROOT / ".pytest_docker_build.lock"
+_RUNTIME_CONTEXT = context_from_environment()
+_CONTEXT_LOCK_ROOT = _RUNTIME_CONTEXT.artifact_root / "locks" if _RUNTIME_CONTEXT else PROJECT_ROOT
+XDIST_EXPERIMENT_FILE = _CONTEXT_LOCK_ROOT / ".pytest_experiment_id"
+DOCKER_BUILD_LOCK = _CONTEXT_LOCK_ROOT / ".pytest_docker_build.lock"
 EXPERIMENT_ID_ENV = "COMET_EVAL_EXPERIMENT_ID"
 EXPERIMENT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
@@ -367,7 +370,12 @@ def _ensure_auto_generated_manifest(config, task_filter: str | None = None) -> N
     selected = _resolve_eval_agent(config)
     profile = config.getoption("--profile") or (manifest.profile if manifest else None) or "generic"
     interaction = vars(manifest.interaction) if manifest else {"mode": "none", "max_turns": 12}
-    project_root = config.getoption("--project-root") or find_project_root(skill_path)
+    context = getattr(config, "_comet_eval_context", None)
+    project_root = (
+        context.artifact_owner_root
+        if context is not None
+        else config.getoption("--project-root") or find_project_root(skill_path)
+    )
     try:
         generated = ensure_generated_manifest(
             skill_path,
@@ -715,6 +723,23 @@ def pytest_configure(config):
         "markers",
         "eval_case(repetition): controller-owned task/treatment/repetition identity",
     )
+    try:
+        context = context_from_environment()
+        if context is None and (config.getoption("--eval-manifest") or config.getoption("--skill-path")):
+            context = resolve_eval_context(
+                skill_path=config.getoption("--skill-path"),
+                manifest_path=config.getoption("--eval-manifest"),
+                project_root=config.getoption("--project-root"),
+            )
+    except EvalContextError as exc:
+        raise pytest.UsageError(str(exc)) from exc
+    if context is not None:
+        config._comet_eval_context = context
+        config.option.project_root = str(context.artifact_owner_root)
+        if context.manifest_path is not None:
+            config.option.eval_manifest = str(context.manifest_path)
+        else:
+            config.option.skill_path = str(context.skill_root)
     _resolve_eval_agent(config)
     global _plugin
     _plugin = ExperimentPlugin(config)

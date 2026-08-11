@@ -97,6 +97,37 @@ def test_generated_manifest_is_cached_and_reused(tmp_path: Path):
     assert metadata["generation_overhead"]["attempt_count"] == 1
 
 
+def test_generated_cache_uses_owner_locks_atomic_replacement_and_redacted_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    skill = _write_skill(tmp_path)
+    replacements = []
+    import scaffold.python.auto_tasks as auto_tasks
+
+    original_replace = auto_tasks.os.replace
+    monkeypatch.setattr(
+        auto_tasks.os,
+        "replace",
+        lambda source, target: (replacements.append((Path(source), Path(target))), original_replace(source, target))[1],
+    )
+    result = ensure_generated_manifest(
+        skill,
+        tmp_path,
+        agent="codex",
+        model=None,
+        profile="generic",
+        interaction={"mode": "none", "api_key": "must-not-persist"},
+        generate=lambda _prompt: _generated_payload(),
+    )
+
+    metadata = result.metadata_path.read_text(encoding="utf-8")
+    lock_dir = tmp_path / ".comet" / "eval" / "locks"
+    assert lock_dir.is_dir()
+    assert "must-not-persist" not in metadata
+    assert "api_key" not in metadata
+    assert any(target == result.manifest_path.parent for _, target in replacements)
+
+
 def test_cached_manifest_hash_mismatch_forces_regeneration(tmp_path: Path):
     skill = _write_skill(tmp_path)
     calls = []

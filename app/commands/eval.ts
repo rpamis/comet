@@ -4,6 +4,7 @@ import { existsSync, promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { parse } from 'yaml';
 import { recordRepositoryEvalExperiment } from '../../domains/bundle/eval-run-result.js';
 import { prepareEvalManifest } from '../../domains/bundle/eval-manifest-runtime.js';
 
@@ -36,6 +37,18 @@ interface EvalLaunchDetails {
   reportPath: string;
   target: string;
   agent: EvalAgent | null;
+}
+
+type EvalManifestSource = 'explicit' | 'auto-detected' | 'synthesized';
+
+interface ResolvedEvalContext {
+  schema: 'comet.eval.context.v1';
+  skillRoot: string;
+  manifestSource: EvalManifestSource;
+  manifestPath?: string;
+  artifactOwnerRoot: string;
+  artifactRoot: string;
+  baseManifest?: Record<string, unknown>;
 }
 
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -81,6 +94,90 @@ function assertTarget(options: EvalCommandOptions): void {
   if (options.manifest && options.skillPath) {
     throw new Error('Pass exactly one of --manifest or --skill-path');
   }
+}
+
+async function canonicalPath(target: string): Promise<string> {
+  const resolved = path.resolve(target);
+  try {
+    return await fs.realpath(resolved);
+  } catch {
+    return resolved;
+  }
+}
+
+async function isFile(target: string): Promise<boolean> {
+  try {
+    return (await fs.stat(target)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+async function resolveManifestSkillRoot(manifestPath: string): Promise<string> {
+  try {
+    const data = parse(await fs.readFile(manifestPath, 'utf8')) as {
+      skill?: { source?: unknown };
+    };
+    const source = data?.skill?.source;
+    if (typeof source === 'string' && source.trim()) {
+      return canonicalPath(
+        path.isAbsolute(source) ? source : path.join(path.dirname(manifestPath), source),
+      );
+    }
+  } catch {
+    // The Python harness remains the validation authority and will report malformed manifests.
+  }
+  return canonicalPath(path.join(path.dirname(manifestPath), '..'));
+}
+
+async function resolveEvalContext(options: EvalCommandOptions): Promise<ResolvedEvalContext> {
+  assertTarget(options);
+  let skillRoot: string;
+  let manifestPath: string | undefined;
+  let manifestSource: EvalManifestSource;
+  let baseManifest: Record<string, unknown> | undefined;
+
+  if (options.manifest) {
+    manifestPath = await canonicalPath(options.manifest);
+    skillRoot = await resolveManifestSkillRoot(manifestPath);
+    manifestSource = 'explicit';
+  } else {
+    const rawSkillPath = options.skillPath!;
+    const canonicalTarget = await canonicalPath(rawSkillPath);
+    skillRoot =
+      path.basename(canonicalTarget) === 'SKILL.md'
+        ? path.dirname(canonicalTarget)
+        : canonicalTarget;
+    const yamlManifest = path.join(skillRoot, 'comet', 'eval.yaml');
+    const ymlManifest = path.join(skillRoot, 'comet', 'eval.yml');
+    if (await isFile(yamlManifest)) {
+      manifestPath = await canonicalPath(yamlManifest);
+      manifestSource = 'auto-detected';
+    } else if (await isFile(ymlManifest)) {
+      manifestPath = await canonicalPath(ymlManifest);
+      manifestSource = 'auto-detected';
+    } else {
+      manifestSource = 'synthesized';
+      baseManifest = {
+        apiVersion: 'comet.eval/v1alpha1',
+        kind: 'SkillEvalManifest',
+        metadata: { name: path.basename(skillRoot) },
+        skill: { name: path.basename(skillRoot), source: skillRoot },
+        evaluation: {},
+      };
+    }
+  }
+
+  const artifactOwnerRoot = options.project ? await canonicalPath(options.project) : skillRoot;
+  return {
+    schema: 'comet.eval.context.v1',
+    skillRoot,
+    manifestSource,
+    ...(manifestPath ? { manifestPath } : {}),
+    artifactOwnerRoot,
+    artifactRoot: path.join(artifactOwnerRoot, '.comet', 'eval'),
+    ...(baseManifest ? { baseManifest } : {}),
+  };
 }
 
 function inferredSkillName(target: string): string {
@@ -152,6 +249,7 @@ async function resolveReportConfig(options: EvalCommandOptions): Promise<string 
 async function buildEvalArgs(
   options: EvalCommandOptions,
   collectOnly: boolean,
+  context: ResolvedEvalContext,
   resolvedReportConfig?: string | null,
 ): Promise<string[]> {
   assertTarget(options);
@@ -163,8 +261,8 @@ async function buildEvalArgs(
   if (suite === 'langfuse' && !collectOnly) args.push('--extra', 'langfuse');
   args.push('pytest', `${suite}/tests/tasks/test_tasks.py`);
 
-  if (options.manifest) {
-    args.push(`--eval-manifest=${path.resolve(options.manifest)}`);
+  if (context.manifestPath) {
+    args.push(`--eval-manifest=${context.manifestPath}`);
   } else if (options.skillPath) {
     const task = options.task ?? (options.quick ? 'generic-skill-smoke' : undefined);
     if (task) args.push(`--task=${task}`);
@@ -175,11 +273,7 @@ async function buildEvalArgs(
 
   if (options.agent) args.push(`--agent=${resolveAgent(options)}`);
   if (options.quick) args.push('--quick');
-  if (options.project) {
-    args.push(`--project-root=${path.resolve(options.project)}`);
-  } else if (options.skillPath) {
-    args.push(`--project-root=${path.resolve(process.cwd())}`);
-  }
+  args.push(`--project-root=${context.artifactOwnerRoot}`);
 
   if (options.task && options.manifest) {
     args.push(`--task=${options.task}`);
@@ -202,6 +296,7 @@ async function buildLaunchDetails(
   options: EvalCommandOptions,
   collectOnly: boolean,
   root: string,
+  context: ResolvedEvalContext,
 ): Promise<EvalLaunchDetails> {
   const suite = resolveSuite(options);
   const reportConfig = await resolveReportConfig(options);
@@ -215,16 +310,14 @@ async function buildLaunchDetails(
     task: resolveTask(options),
     reportConfig,
     reportPath: path.join(
-      root,
-      suite,
-      'logs',
-      'experiments',
+      context.artifactRoot,
+      'runs',
       experimentId,
       reportConfig ? 'summary.html' : 'summary.md',
     ),
-    target: options.manifest
-      ? `manifest ${path.resolve(options.manifest)}`
-      : `skill ${path.resolve(options.skillPath!)}`,
+    target: context.manifestPath
+      ? `manifest ${context.manifestPath}`
+      : `skill ${context.skillRoot}`,
     agent: options.agent ? resolveAgent(options) : null,
   };
 }
@@ -260,40 +353,59 @@ function assertUvAvailable(): void {
   }
 }
 
-function runEval(args: string[], root: string, suite: EvalSuite, experimentId: string): void {
+function runEval(
+  args: string[],
+  root: string,
+  suite: EvalSuite,
+  experimentId: string,
+  context: ResolvedEvalContext,
+): void {
   assertEvalHarness(root, suite);
   assertUvAvailable();
   execFileSync('uv', args, {
     cwd: root,
     stdio: 'inherit',
-    env: { ...process.env, COMET_EVAL_EXPERIMENT_ID: experimentId },
+    env: {
+      ...process.env,
+      COMET_EVAL_EXPERIMENT_ID: experimentId,
+      COMET_EVAL_CONTEXT: JSON.stringify(context),
+      PYTHONDONTWRITEBYTECODE: '1',
+      PYTEST_ADDOPTS: [process.env.PYTEST_ADDOPTS, '-p no:cacheprovider'].filter(Boolean).join(' '),
+      UV_PROJECT_ENVIRONMENT: path.join(context.artifactRoot, 'venv'),
+    },
   });
 }
 
 async function executeEval(options: EvalCommandOptions, collectOnly: boolean): Promise<void> {
   assertTarget(options);
   const root = evalRoot(options);
-  const details = await buildLaunchDetails(options, collectOnly, root);
+  const context = await resolveEvalContext(options);
+  const details = await buildLaunchDetails(options, collectOnly, root, context);
   const prepared = options.manifest ? await prepareEvalManifest(options.manifest) : null;
   let bodyFailed = false;
   let bodyError: unknown;
   let cleanupFailed = false;
   let cleanupError: unknown;
   try {
-    const runtimeOptions = prepared ? { ...options, manifest: prepared.path } : options;
-    const args = await buildEvalArgs(runtimeOptions, collectOnly, details.reportConfig);
+    const runtimeContext = prepared
+      ? { ...context, manifestPath: await canonicalPath(prepared.path) }
+      : context;
+    const args = await buildEvalArgs(options, collectOnly, runtimeContext, details.reportConfig);
     printLaunchDetails(details);
-    runEval(args, root, details.suite, details.experimentId);
+    runEval(args, root, details.suite, details.experimentId, runtimeContext);
     if (!collectOnly && prepared?.context && details.suite === 'local') {
       await recordRepositoryEvalExperiment({
         context: prepared.context,
-        experimentDir: path.join(root, details.suite, 'logs', 'experiments', details.experimentId),
+        experimentDir: path.join(context.artifactRoot, 'runs', details.experimentId),
         level: options.quick === false ? 'full' : 'quick',
       });
     }
   } catch (error) {
     bodyFailed = true;
     bodyError = error;
+    if (existsSync(details.reportPath)) {
+      console.log(`Report path: ${details.reportPath}`);
+    }
   } finally {
     try {
       await prepared?.cleanup();

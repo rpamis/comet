@@ -173,6 +173,36 @@ def _cache_location(project_root: Path, skill_root: Path, generation_hash: str) 
     return project_root.resolve() / ".comet" / "eval" / "generated" / safe_name / generation_hash
 
 
+def _atomic_write_text(path: Path, value: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        newline="\n",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        delete=False,
+    ) as temporary:
+        temporary.write(value)
+        temporary_path = Path(temporary.name)
+    try:
+        os.replace(temporary_path, path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+
+def _without_credentials(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _without_credentials(item)
+            for key, item in value.items()
+            if not re.search(r"(?:api[_-]?key|auth[_-]?token|password|secret|credential)", key, re.I)
+        }
+    if isinstance(value, list):
+        return [_without_credentials(item) for item in value]
+    return value
+
+
 def _extract_json_payload(raw: object) -> dict[str, Any]:
     if isinstance(raw, GenerationOutput):
         raw = raw.output
@@ -424,7 +454,7 @@ def ensure_generated_manifest(
         )
 
     cache_dir.parent.mkdir(parents=True, exist_ok=True)
-    lock_path = cache_dir.parent / f".{generation_hash}.lock"
+    lock_path = Path(project_root).resolve() / ".comet" / "eval" / "locks" / f"generated-{generation_hash}.lock"
     with _generation_lock(lock_path):
         cached = _load_cached(cache_dir, generation_hash)
         if cached:
@@ -482,20 +512,25 @@ def ensure_generated_manifest(
             "agent": selected_agent,
             "model": model or "runtime-default",
             "profile": profile,
-            "interaction": interaction,
+            "interaction": _without_credentials(interaction),
             "manifest_hash": _sha256(manifest_source),
             "generation_overhead": _merge_generation_telemetry(attempts),
         }
         stage_dir = Path(tempfile.mkdtemp(dir=str(cache_dir.parent), prefix=f".{generation_hash}-"))
         try:
-            (stage_dir / "eval.yaml").write_text(manifest_source, encoding="utf-8", newline="\n")
-            (stage_dir / "generation.json").write_text(
-                json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+            _atomic_write_text(stage_dir / "eval.yaml", manifest_source)
+            _atomic_write_text(
+                stage_dir / "generation.json", json.dumps(_without_credentials(metadata), indent=2, sort_keys=True) + "\n"
             )
             if cache_dir.exists():
-                shutil.rmtree(cache_dir)
+                retired_dir = cache_dir.with_name(f".{cache_dir.name}.{time.time_ns()}.retired")
+                os.replace(cache_dir, retired_dir)
+            else:
+                retired_dir = None
             os.replace(stage_dir, cache_dir)
             stage_dir = None  # type: ignore[assignment]
+            if retired_dir is not None:
+                shutil.rmtree(retired_dir, ignore_errors=True)
         finally:
             if stage_dir is not None:
                 shutil.rmtree(stage_dir, ignore_errors=True)

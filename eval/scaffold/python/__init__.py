@@ -15,6 +15,7 @@ from .logging import (
     strip_ansi,
 )
 from .manifests import ManifestTask, SkillEvalManifest, load_eval_manifest
+from .eval_context import EvalContextError, ResolvedEvalContext, context_from_environment, resolve_eval_context
 from .manifest_tasks import load_manifest_tasks
 from .profiles import (
     AUTHORING_SKILL_PROFILE,
@@ -131,6 +132,10 @@ __all__ = [
     "ManifestTask",
     "SkillEvalManifest",
     "load_eval_manifest",
+    "EvalContextError",
+    "ResolvedEvalContext",
+    "context_from_environment",
+    "resolve_eval_context",
     "load_manifest_tasks",
     "AUTHORING_SKILL_PROFILE",
     "COMET_WORKFLOW_PROFILE",

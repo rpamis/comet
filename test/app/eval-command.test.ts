@@ -93,10 +93,18 @@ describe('eval command', () => {
         'pytest',
         'local/tests/tasks/test_tasks.py',
         `--eval-manifest=${path.resolve(manifest)}`,
+        `--project-root=${path.join(os.tmpdir(), 'demo')}`,
         '-v',
       ],
       packagedEvalCwd,
     );
+    const run = execFileSync.mock.calls.find(
+      ([command, args]) => command === 'uv' && Array.isArray(args) && args[0] === 'run',
+    );
+    expect(run?.[2]?.env).toMatchObject({
+      PYTHONDONTWRITEBYTECODE: '1',
+      UV_PROJECT_ENVIRONMENT: path.join(os.tmpdir(), 'demo', '.comet', 'eval', 'venv'),
+    });
   });
 
   it('runs a manifest-backed quick eval from the repo root', async () => {
@@ -203,7 +211,7 @@ describe('eval command', () => {
     ]);
     expect(recordRepositoryEvalExperiment).toHaveBeenCalledWith({
       context: repositoryEvalContext,
-      experimentDir: path.join(evalCwd, 'local', 'logs', 'experiments', experimentId),
+      experimentDir: path.join(project, '.comet', 'eval', 'runs', experimentId),
       level: 'quick',
     });
     expect(recordRepositoryEvalExperiment.mock.invocationCallOrder[0]).toBeLessThan(
@@ -334,7 +342,7 @@ describe('eval command', () => {
     expect(recordRepositoryEvalExperiment).not.toHaveBeenCalled();
     expect(output).toContain('Suite: langsmith');
     expect(output).toContain(
-      path.join(evalCwd, 'langsmith', 'logs', 'experiments', experimentId, 'summary.md'),
+      path.join(project, '.comet', 'eval', 'runs', experimentId, 'summary.md'),
     );
   });
 
@@ -368,7 +376,7 @@ describe('eval command', () => {
     expect(recordRepositoryEvalExperiment).not.toHaveBeenCalled();
     expect(output).toContain('Suite: langfuse');
     expect(output).toContain(
-      path.join(evalCwd, 'langfuse', 'logs', 'experiments', experimentId, 'summary.md'),
+      path.join(project, '.comet', 'eval', 'runs', experimentId, 'summary.md'),
     );
   });
 
@@ -659,5 +667,109 @@ describe('eval command', () => {
     ).rejects.toThrow('Pass either a target or explicit --manifest/--skill-path options');
 
     expect(execFileSync).not.toHaveBeenCalled();
+  });
+
+  it('resolves a Skill directory, SKILL.md, and auto-detected manifest to one user-owned context', async () => {
+    const { promises: fs } = await vi.importActual<typeof import('node:fs')>('node:fs');
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-eval-context-'));
+    const skill = path.join(root, 'skill');
+    const manifestPath = path.join(skill, 'comet', 'eval.yaml');
+    await fs.mkdir(path.dirname(manifestPath), { recursive: true });
+    await fs.writeFile(path.join(skill, 'SKILL.md'), '# Demo\n', 'utf8');
+    await fs.writeFile(
+      manifestPath,
+      [
+        'apiVersion: comet.eval/v1alpha1',
+        'kind: SkillEvalManifest',
+        'metadata:',
+        '  name: demo',
+        'skill:',
+        '  name: demo',
+        '  source: ..',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { evalCommand } = await import('../../app/commands/eval.js');
+      await evalCommand(skill, { quick: true });
+      await evalCommand(path.join(skill, 'SKILL.md'), { quick: true });
+    } finally {
+      log.mockRestore();
+      await fs.rm(root, { recursive: true, force: true });
+    }
+
+    const runs = execFileSync.mock.calls.filter(
+      ([command, args]) => command === 'uv' && Array.isArray(args) && args[0] === 'run',
+    );
+    expect(runs).toHaveLength(2);
+    for (const [, args, options] of runs) {
+      expect(args).toContain(`--eval-manifest=${manifestPath}`);
+      expect(args).toContain(`--project-root=${skill}`);
+      expect(options.env).toMatchObject({
+        COMET_EVAL_CONTEXT: JSON.stringify({
+          schema: 'comet.eval.context.v1',
+          skillRoot: skill,
+          manifestSource: 'auto-detected',
+          manifestPath,
+          artifactOwnerRoot: skill,
+          artifactRoot: path.join(skill, '.comet', 'eval'),
+        }),
+      });
+    }
+  });
+
+  it('keeps explicit manifests and projects authoritative while reporting user-owned run paths', async () => {
+    const { promises: fs } = await vi.importActual<typeof import('node:fs')>('node:fs');
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-eval-explicit-'));
+    const skill = path.join(root, 'skill');
+    const projectRoot = path.join(root, 'project');
+    const manifestPath = path.join(skill, 'comet', 'eval.yml');
+    await fs.mkdir(skill, { recursive: true });
+    await fs.mkdir(projectRoot, { recursive: true });
+    await fs.mkdir(path.dirname(manifestPath), { recursive: true });
+    await fs.writeFile(path.join(skill, 'SKILL.md'), '# Demo\n', 'utf8');
+    await fs.writeFile(
+      manifestPath,
+      [
+        'apiVersion: comet.eval/v1alpha1',
+        'kind: SkillEvalManifest',
+        'metadata:',
+        '  name: demo',
+        'skill:',
+        '  name: demo',
+        `  source: ${skill.replace(/\\/gu, '/')}`,
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    prepareEvalManifest.mockResolvedValue({ path: manifestPath, cleanup: cleanupPreparedManifest });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { evalCommand } = await import('../../app/commands/eval.js');
+      await evalCommand(manifestPath, { project: projectRoot, quick: true });
+    } finally {
+      log.mockRestore();
+      await fs.rm(root, { recursive: true, force: true });
+    }
+
+    const run = execFileSync.mock.calls.find(
+      ([command, args]) => command === 'uv' && Array.isArray(args) && args[0] === 'run',
+    );
+    expect(run?.[1]?.find((argument) => argument.startsWith('--eval-manifest='))).toBe(
+      `--eval-manifest=${manifestPath}`,
+    );
+    expect(run?.[1]).toContain(`--project-root=${projectRoot}`);
+    expect(run?.[2]?.env).toMatchObject({
+      COMET_EVAL_CONTEXT: JSON.stringify({
+        schema: 'comet.eval.context.v1',
+        skillRoot: skill,
+        manifestSource: 'explicit',
+        manifestPath,
+        artifactOwnerRoot: projectRoot,
+        artifactRoot: path.join(projectRoot, '.comet', 'eval'),
+      }),
+    });
   });
 });
