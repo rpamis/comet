@@ -22,17 +22,37 @@ disable-model-invocation: true
 
 恢复已有 change 时先检查 `<classic-change-dir>/.comet.yaml`：
 
-- 状态文件存在且可解析：第一项状态操作是选择 change
+- 状态文件存在且可解析：先运行 `comet classic workspace resolve <change-name> --json`，进入返回的 `projectRoot` 后再选择 change
 - 状态文件缺失但 change 目录有效：先运行 `comet state init <change-name> full`，再选择 change
 - 状态文件格式异常：停止并报告解析错误；从版本控制、备份或可验证产物人工修复后再继续，不得用 `state set` 覆盖损坏文件
 
 ```bash
+comet classic workspace resolve <change-name> --json
+# 进入返回的 projectRoot
 comet state select <change-name>
 ```
 
 创建新 change 时，必须先完成 `.comet.yaml` 初始化，再立即运行同一命令；状态文件不存在前不得伪造选择。
 
-### 0b. OpenSpec 兼容性检查
+### 0b. Open 前工作区决策与准备
+
+工作区决策必须在创建 OpenSpec artifacts 和 `.comet.yaml` 之前完成，不能推迟到 Build：
+
+- 用户明确说“并行”“同时做”“多个会话”时，直接使用 `worktree`，不再询问 current/branch/worktree 三选一
+- 用户明确说串行、只做一个 change，或没有并行意图时，使用 `current`；`branch` 仍表示串行分支隔离，不把它描述成并行安全方案
+- 用户明确要求独立但串行的分支时，可以选择 `branch`；它不会被当作并行工作区
+- 已有 active changes 且用户没有表达串行/并行意图时，只询问一次“串行使用当前工作区，还是并行创建 Worktree”；不得继续追问三选一
+
+新 change 在运行 OpenSpec `new` 前准备工作区：
+
+```bash
+comet classic workspace prepare <name> --isolation <current|branch|worktree> --json
+# 进入返回的 projectRoot；后续 OpenSpec、state 和产物写入都必须在该目录执行
+```
+
+准备命令会复用已登记且分支匹配的 Worktree；分支仍存在但登记的 Worktree 已被移除时会重建。只有分支已重命名、被用户接管或无法确认归属时，才暂停请求显式 rebind。
+
+### 0c. OpenSpec 兼容性检查
 
 在任何 OpenSpec 状态或指令命令前运行：
 
@@ -145,7 +165,7 @@ resolved brief 或 change 名称仍不明确时不得运行 `comet classic opens
 change 骨架创建后立即初始化可恢复状态，不能等 artifacts 全部生成后再写 `.comet.yaml`：
 
 ```bash
-comet state init <name> full
+comet state init <name> full --isolation <selected-isolation>
 comet state select <name>
 comet state check <name> open
 ```

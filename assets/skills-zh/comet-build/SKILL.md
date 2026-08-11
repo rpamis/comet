@@ -80,16 +80,16 @@ comet state set <name> plan docs/superpowers/plans/YYYY-MM-DD-feature.md
 
 无需手动更新 phase，阶段守卫（guard `--apply`）会在退出条件满足后推进 `phase` 字段。
 
-展示联合决策时，提供本工作流支持的全部工作区隔离和执行方式。用户选择后直接执行对应动作；若动作实际失败，停止并报告原错误。某个字段只剩一个工作流合法值时说明原因并直接采用，不为单选项制造额外停顿。
+展示联合决策时，只提供本工作流支持的执行方式、TDD 模式和代码审查模式。工作区已经在 Open 阶段准备并绑定；若当前 change 没有有效 isolation，返回 `/comet-open` 修复，不在 Build 创建或切换工作区。
 
-计划写入后只提供**一个联合决策点**，一次收集：是否现在继续、工作区隔离、执行方式、TDD 模式和代码审查模式。选择 `branch` 时，分支名也必须在 Step 2 的同一个联合决策中确认或由用户覆盖。不得先询问“继续/暂停”，继续后又创建第二个配置或命名阻塞点。
+计划写入后只提供**一个联合决策点**，一次收集：是否现在继续、执行方式、TDD 模式和代码审查模式。不得先询问“继续/暂停”，继续后又创建第二个配置阻塞点。
 
 | 选项 | 行为 | 说明 |
 |------|------|------|
-| A | 继续执行并提交配置 | 在同一次回复中选择 Step 3 的隔离、执行、TDD 和审查配置；如选择 branch，同时提交分支名 |
+| A | 继续执行并提交配置 | 在同一次回复中选择 Step 3 的执行、TDD 和审查配置 |
 | B | 暂停切换模型 | 记录 `build_pause: plan-ready`，本次 `/comet-build` 停止，用户稍后可从 `/comet-classic` 或 `/comet-build` 恢复 |
 
-这是用户决策点。**必须按 `comet-classic/reference/decision-point.md` 的协议一次性展示计划摘要、暂停选项和 Step 3 全部可执行配置**。用户选择继续时，必须在同一回复中给出所有配置以及条件性的分支名；不得自动选择，也不得把暂停写入 `build_mode`。
+这是用户决策点。**必须按 `comet-classic/reference/decision-point.md` 的协议一次性展示计划摘要、暂停选项和 Step 3 全部可执行配置**。不得自动选择，也不得把暂停写入 `build_mode`。
 
 用户选择继续并给出完整配置时：
 
@@ -113,22 +113,15 @@ comet state set <name> build_pause plan-ready
 comet state set <name> build_pause null
 ```
 
-然后应用本步骤中的工作区隔离、执行方式、TDD 模式和代码审查模式。
+然后应用本步骤中的执行方式、TDD 模式和代码审查模式。
 
-计划已写入当前分支。以下配置必须由 Step 2 的联合决策一次性确认：
+计划已写入 Open 阶段准备好的工作区。先确认已有绑定：
 
-**工作区隔离**：
+```bash
+comet state get <name> isolation
+```
 
-| 选项 | 方式 | 说明 |
-|------|------|------|
-| A | 当前分支直接工作 | 不创建新分支，如实绑定当前 Git 分支 |
-| B | 创建分支 | 在当前仓库创建新分支，简单快速 |
-| C | 创建 Worktree | 隔离工作区，完全独立，适合并行开发 |
-
-**推荐规则**：
-- 用户明确希望沿用当前分支，或当前分支本身就是该 change 的目标分支 → 推荐 A
-- 变更涉及 ≤ 3 个文件且当前分支干净 → 推荐 B
-- 需要并行开发、当前分支有未提交工作 → 推荐 C
+如果结果为空，停止 Build 并返回 `/comet-open` 执行 workspace resolve/prepare；不得在本步骤首次选择或创建 current、branch、worktree。
 
 **执行方式**：
 
@@ -142,13 +135,9 @@ comet state set <name> build_pause null
 - 任务数 ≤ 2 且无跨模块依赖 → 推荐 B
 - 来自 hotfix 路径 → 推荐 B
 
-这些表格是 Step 2 联合决策的一部分，不再单独暂停。始终展示本工作流支持的隔离和执行选项，不得因预判某个动作会失败而移除选项。在多个合法选项时，不得根据推荐规则自行选择 `current`、`branch` 或 `worktree`，也不得自行选择执行方式、TDD 模式或代码审查模式。推荐规则只能用于说明建议，不能替代用户确认。
+执行方式、TDD 和审查表格是 Step 2 联合决策的一部分，不再单独暂停。不得用推荐规则替代用户确认。
 
-用户选择后，更新 `isolation`、执行方式、TDD 模式和代码审查模式相关字段：
-
-```bash
-comet state set <name> isolation <current|branch|worktree>
-```
+用户选择后，只更新执行方式、TDD 模式和代码审查模式相关字段；保留 Open 阶段已绑定的 `isolation` 和 `bound_branch`。
 
 - 若用户选择 `executing-plans`：运行 `comet state set <name> subagent_dispatch null`，再运行 `comet state set <name> build_mode executing-plans`
 - 若用户选择 `subagent-driven-development`：先运行 `comet state set <name> subagent_dispatch confirmed` 记录已选择子代理执行，再运行 `comet state set <name> build_mode subagent-driven-development`
@@ -172,7 +161,7 @@ comet state set <name> isolation <current|branch|worktree>
 
 运行 `comet state set <name> review_mode <off|standard|thorough>`
 
-`isolation` 是脚本级硬约束。full workflow 初始化时可以为 `null`，但只允许存在到本步骤之前。若保持 `null`，`build → verify` 的 guard 和 `comet state transition build-complete` 都会失败。full workflow 允许 `current`、`branch` 或 `worktree`，但 `current` 必须通过用户在 Step 2 显式选择后写入，不得静默默认。
+`isolation` 是脚本级硬约束。full workflow 必须在 Open 阶段写入 `current`、`branch` 或 `worktree`，并在进入 Build 前完成对应 workspace 准备和 `bound_branch` 绑定；若缺失，Build 只能停止并返回 Open 修复。
 
 `subagent_dispatch` 是脚本级硬约束，用于记录用户已选择子代理执行。`build_mode: subagent-driven-development` 离开 build 阶段前必须同时满足 `subagent_dispatch: confirmed`，否则 `comet guard build --apply` 和 `comet state transition build-complete` 都会失败；它不是能力检查。
 
@@ -189,39 +178,9 @@ comet state set <name> build_mode direct
 
 没有 `direct_override: true` 时，full workflow 的 `build_mode=direct` 会被 guard 和状态转换同时拦截。
 
-**执行隔离**：
+**执行位置**：
 
-- **current**：不创建新分支或 worktree，直接在当前 Git 分支执行。立即运行 `comet state set <name> isolation current`；该命令会把当前分支写入 `bound_branch`。如果当前是 detached HEAD，必须停止并让用户先切回真实分支，因为没有可审计的绑定分支。
-
-- **branch**：使用 Step 2 已确认的分支名，不得再次暂停。若旧状态恢复时缺少该次联合决策中的分支名，重新进入 Step 2 的同一个联合决策；不得创建第二个独立分支命名决策点。
-
-  分支命名规范：
-  - 读取 `.comet.yaml` 的 `workflow` 字段确定前缀
-  - `workflow: full` → 推荐 `feature/YYYYMMDD/<change-name>`
-  - `workflow: hotfix` → 推荐 `hotfix/YYYYMMDD/<change-name>`
-  - `workflow: tweak` → 推荐 `tweak/YYYYMMDD/<change-name>`
-  - 日期取当前运行环境日期并格式化为 `YYYYMMDD`，不得依赖某一种 shell 的日期命令
-
-  示例：如果 change 名称为 `fix-login-bug`，今天是 2026-06-09，则推荐 `feature/20260609/fix-login-bug`
-
-  分支名由 Step 2 确认后，立即执行 `git checkout -b <branch-name>`，然后运行 `comet state set <name> isolation branch`，把新分支写入 `bound_branch`。后续工作在新分支上进行。
-
-- **worktree**：**立即执行：** 使用 Skill 工具加载 Superpowers `using-git-worktrees` 技能创建隔离工作区。禁止用普通 shell 命令或原生工具绕过该技能；若加载时因不可用而失败，停止并报告该错误。
-
-创建隔离后，确认计划文件可访问（分支方式天然可访问；worktree 方式需确认计划已提交）。若 worktree 模式下计划文件尚未提交，先提交计划文件再创建 worktree：
-
-```bash
-git add docs/superpowers/plans/YYYY-MM-DD-feature.md
-git commit -m "chore: add implementation plan"
-```
-
-进入最终执行分支或 worktree 后，必须在该实际工作区重新绑定当前 change。branch 模式已在切换后通过 `isolation branch` 绑定；worktree 模式必须在新工作区运行 `comet state set <name> isolation worktree`，把 worktree 的当前分支写入 `bound_branch`。新 worktree 不会继承原工作区的本地选择文件，因此还必须选择当前 change：
-
-```bash
-comet state select <change-name>
-```
-
-重新绑定成功后才能开始源码写入。
+Open 阶段已经根据 `isolation` 准备好当前目录、分支或 Worktree，并返回了实际 `projectRoot`。恢复时先运行 `comet classic workspace resolve <name> --json`，进入返回目录，再运行 `comet state select <change-name>`；不得在 Build 再创建 Worktree、切换分支、提交计划以跨 Worktree 传递，或重新绑定 isolation。
 
 **执行计划**：必须按 `build_mode` 的真实运行位置处理。
 

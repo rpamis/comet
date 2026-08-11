@@ -2,7 +2,7 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.4.0-beta.18] - 2026-08-11
+## What's Changed [0.4.0-beta.18] - 2026-08-12
 
 ### Added
 
@@ -13,6 +13,11 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Langfuse evaluation suite**: `comet eval --suite langfuse` now reports task traces, rubric scores, pass metrics, and experiment summaries to Langfuse, automatically provisions pinned official Claude Code/Codex plugins in an isolated cache, and captures Qoder/CodeBuddy transcripts without changing local scoring.
 - **Native parent-child changes**: The Native Skill now recognizes large requests that benefit from independent acceptance, proposes a named child graph during the parent Shape confirmation, automatically dispatches ready children with a serial fallback, merges them into the parent branch in order, and verifies the final integrated result against the parent acceptance criteria.
 - **Worktree-aware Dashboard changes**: The Dashboard now discovers Classic and Native changes across every registered Git worktree, keeps independent changes as separate root entries, and groups explicit Native child changes under expandable parents while preserving the existing detail workspace.
+
+### Changed
+
+- **Classic workspace routing**: Classic changes now choose and prepare their current branch or Worktree during Open, reuse matching registered Worktrees, and route resume/select operations to the aligned workspace.
+- **Native workspace reuse**: Native parallel changes now reuse an existing linked Worktree for their change branch and recreate a missing Worktree when the branch remains available.
 
 ### Fixed
 

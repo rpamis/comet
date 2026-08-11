@@ -22,17 +22,37 @@ Every prompt and artifact request passed to OpenSpec must include the resolved C
 
 When resuming an existing change, inspect `<classic-change-dir>/.comet.yaml` first:
 
-- If it exists and parses, select the change as the first state operation
+- If it exists and parses, first run `comet classic workspace resolve <change-name> --json`, enter the returned `projectRoot`, then select the change
 - If it is missing but the change directory is valid, run `comet state init <change-name> full`, then select the change
 - If it is malformed, stop and report the parse error; repair it manually from version control, a backup, or verifiable artifacts before continuing, and never overwrite a damaged file with `state set`
 
 ```bash
+comet classic workspace resolve <change-name> --json
+# enter the returned projectRoot
 comet state select <change-name>
 ```
 
 When creating a new change, initialize `.comet.yaml` first, then immediately run the same command; never fabricate a selection before state exists.
 
-### 0b. OpenSpec Compatibility Check
+### 0b. Workspace Decision and Preparation Before Open
+
+The workspace decision must be completed before creating OpenSpec artifacts or `.comet.yaml`; it must not be deferred to Build:
+
+- Explicit “parallel”, “at the same time”, or “multiple sessions” intent selects `worktree` automatically; do not ask a current/branch/worktree three-way question
+- Explicit serial intent, a single change, or no parallel intent uses `current`; `branch` remains sequential branch isolation and must not be described as parallel-safe
+- Explicitly requested independent but serial branch work may select `branch`; it is not treated as a parallel workspace
+- When active changes exist but serial versus parallel intent is unclear, ask one question: serial in the current workspace or parallel in a Worktree
+
+Prepare a new change before running OpenSpec `new`:
+
+```bash
+comet classic workspace prepare <name> --isolation <current|branch|worktree> --json
+# enter the returned projectRoot; all later OpenSpec, state, and artifact writes run there
+```
+
+The preparation command reuses a registered Worktree whose branch matches the change. If the branch still exists but its registered Worktree was removed, it recreates the Worktree. Ask for an explicit rebind only when the branch was renamed, taken over, or ownership is ambiguous.
+
+### 0c. OpenSpec Compatibility Check
 
 Before any OpenSpec status or instructions command, run:
 
@@ -145,7 +165,7 @@ Use the Step 1b resolved brief directly to populate artifact content. Fall back 
 Immediately after creating the change skeleton, initialize recoverable state instead of waiting until every artifact is generated:
 
 ```bash
-comet state init <name> full
+comet state init <name> full --isolation <selected-isolation>
 comet state select <name>
 comet state check <name> open
 ```

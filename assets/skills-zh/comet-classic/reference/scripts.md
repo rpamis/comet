@@ -13,6 +13,8 @@
 日常工作流统一调用公开 CLI：
 
 ```bash
+comet classic workspace prepare <change-name> --isolation <current|branch|worktree> --json
+comet classic workspace resolve <change-name> --json
 comet state select <change-name>
 comet state current
 comet state clear-selection
@@ -24,7 +26,7 @@ comet resume-probe . --stdin --json
 comet classic intent route --stdin
 ```
 
-当多个 active change 共存时，进入明确的 change 后先运行 `comet state select <change-name>`。普通源码写入只受该选择管辖；尚未选择时 hook 会阻塞并要求选择。单 active change 可继续自动归属。切换 branch/worktree 或选择失效后必须重新运行 `select`。
+在 Open 阶段先运行 workspace prepare；恢复时运行 workspace resolve，它会扫描已登记 Worktree 并返回应进入的 `projectRoot`。进入明确的 change 后再运行 `comet state select <change-name>`。普通源码写入只受该选择管辖；尚未选择时 hook 会阻塞并要求选择。切换 branch/worktree 或选择失效后必须重新运行 resolve 和 select。
 
 guard 的 `--apply` 在检查通过后推进状态。需要直接表达状态事件时使用 `comet state transition`；阶段推进后使用 `comet state next` 解析是否自动调用下一 Skill。
 

@@ -21,6 +21,8 @@ export async function runClassicGroupFacade(args: readonly string[]): Promise<nu
         'Usage: comet classic <command> [args]',
         '',
         'Commands:',
+        '  workspace prepare <name> --isolation <mode>  Prepare or reuse the Classic workspace',
+        '  workspace resolve <name>                    Route to the selected Classic workspace',
         '  openspec -- <openspec-args...>       Run OpenSpec from the configured Classic root',
         '  root show                            Print the configured Classic artifact roots',
         '  root move docs --dry-run              Inspect the legacy-to-docs migration',

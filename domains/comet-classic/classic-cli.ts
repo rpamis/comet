@@ -9,6 +9,7 @@ import { classicResumeProbeCommand } from './classic-resume-probe-command.js';
 import { classicRootCommand } from './classic-root-command.js';
 import { classicStateCommand } from './classic-state-command.js';
 import { classicValidateCommand } from './classic-validate-command.js';
+import { classicWorkspaceCommand } from './classic-workspace-command.js';
 
 export interface ClassicCommandResult {
   exitCode: number;
@@ -40,6 +41,7 @@ export const CLASSIC_COMMANDS = [
   'resume-probe',
   'openspec',
   'root',
+  'workspace',
 ] as const;
 
 export type ClassicCommandName = (typeof CLASSIC_COMMANDS)[number];
@@ -55,6 +57,7 @@ const DEFAULT_HANDLERS: ClassicCommandHandlers = {
   'resume-probe': classicResumeProbeCommand,
   openspec: classicOpenSpecCommand,
   root: classicRootCommand,
+  workspace: classicWorkspaceCommand,
 };
 
 function isClassicCommand(value: string): value is ClassicCommandName {

@@ -9,6 +9,12 @@ interface GitWorktreeContext {
   currentBranch: string | null;
 }
 
+export interface GitWorktreeEntry {
+  root: string;
+  branch: string | null;
+  detached: boolean;
+}
+
 function runGit(projectPath: string, args: string[]): string {
   return execFileSync('git', ['-C', projectPath, ...args], {
     encoding: 'utf8',
@@ -59,17 +65,35 @@ function inspectGitWorktree(projectPath: string): GitWorktreeContext {
   }
 }
 
-function listGitWorktreeRoots(projectPath: string): string[] {
+function listGitWorktrees(projectPath: string): GitWorktreeEntry[] {
   try {
     runGit(projectPath, ['rev-parse', '--is-inside-work-tree']);
+    const lines = runGit(projectPath, ['worktree', 'list', '--porcelain']).split(/\r?\n/u);
+    const entries: GitWorktreeEntry[] = [];
+    let current: GitWorktreeEntry | null = null;
+    for (const line of lines) {
+      if (line.startsWith('worktree ')) {
+        if (current) entries.push(current);
+        current = {
+          root: path.resolve(line.slice('worktree '.length)),
+          branch: null,
+          detached: false,
+        };
+      } else if (current && line.startsWith('branch refs/heads/')) {
+        current.branch = line.slice('branch refs/heads/'.length);
+      } else if (current && line === 'detached') {
+        current.detached = true;
+      }
+    }
+    if (current) entries.push(current);
+    return entries;
   } catch {
     return [];
   }
-  const porcelain = runGit(projectPath, ['worktree', 'list', '--porcelain', '-z']);
-  return porcelain
-    .split('\0')
-    .filter((token) => token.startsWith('worktree '))
-    .map((token) => path.resolve(token.slice('worktree '.length)));
+}
+
+function listGitWorktreeRoots(projectPath: string): string[] {
+  return listGitWorktrees(projectPath).map((entry) => entry.root);
 }
 
 function isLocalGitBranch(projectPath: string, branch: string): boolean {
@@ -95,5 +119,11 @@ function resolveGitRef(projectPath: string, ref: string): string | null {
   }
 }
 
-export { inspectGitWorktree, isLocalGitBranch, listGitWorktreeRoots, resolveGitRef };
+export {
+  inspectGitWorktree,
+  isLocalGitBranch,
+  listGitWorktreeRoots,
+  listGitWorktrees,
+  resolveGitRef,
+};
 export type { GitWorktreeContext };
