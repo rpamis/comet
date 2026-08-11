@@ -163,6 +163,47 @@ describe('Comet Native Skills', () => {
     }
   });
 
+  it('lets the Native Skill assess and coordinate large changes without a new mode', async () => {
+    const variants = [
+      {
+        language: 'zh' as const,
+        required: [
+          '拆分预检',
+          '可独立实现和验证',
+          '一次 Shape 确认',
+          '确认前不得创建子 change',
+          '自动派发',
+          '不支持并行时按顺序执行',
+          '需求文字长、任务条目多本身不能触发拆分',
+          '保持单一 Native change',
+        ],
+      },
+      {
+        language: 'en' as const,
+        required: [
+          'decomposition preflight',
+          'independently implement and verify',
+          'one Shape confirmation',
+          'Do not create child changes before confirmation',
+          'automatically dispatch',
+          'serial fallback',
+          'Text length and task count alone must not trigger decomposition',
+          'keep a single Native change',
+        ],
+      },
+    ];
+
+    for (const variant of variants) {
+      const skill = await read(variant.language, 'SKILL.md');
+      for (const term of variant.required) {
+        expect(skill, `${variant.language}: ${term}`).toContain(term);
+      }
+      expect(skill).not.toMatch(/\b(?:hotfix|tweak)\b/iu);
+      expect(skill).toContain(variant.language === 'zh' ? '恢复' : 'resume');
+      expect(skill).toContain(variant.language === 'zh' ? '不重复' : 'not duplicate');
+    }
+  });
+
   it('uses one shared clarification decision tree with mode-specific scheduling', async () => {
     const variants = [
       {
