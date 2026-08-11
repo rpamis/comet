@@ -11,6 +11,14 @@ import { parseTasksMarkdown } from './task-parser.js';
 import { parseCometYaml, type CometYaml } from './yaml.js';
 import { resolveVerify } from './verify-parser.js';
 import {
+  collectDashboardWorkspaceSources,
+  dashboardWorkspaceIdentity,
+  encodeDashboardChangeLocator,
+  parseDashboardChangeLocator,
+  type DashboardWorkspaceIdentity,
+  type DashboardWorkspaceSource,
+} from './workspace.js';
+import {
   inspectProtectedProjectPath,
   protectedProjectFileExists,
   readProtectedProjectFile,
@@ -139,6 +147,7 @@ export class DashboardChangeQueryError extends Error {
 
 interface ClassicChangeCandidate {
   id: string;
+  locator: string;
   name: string;
   displayName: string;
   status: 'active' | 'archived';
@@ -152,6 +161,9 @@ interface ClassicChangeCandidate {
   tasks: TasksSummary;
   verify: VerifySummary;
   risks: DashboardRisk[];
+  projectRoot: string;
+  workspace: DashboardWorkspaceIdentity;
+  bindingState: 'aligned' | 'unbound' | 'drifted';
 }
 
 interface ClassicCandidateCollection {
@@ -233,57 +245,115 @@ export async function collectDashboardOverview(
 /** Load one full Classic change after the user selects it in the explorer. */
 export async function collectDashboardChangeDetail(
   projectPath: string,
-  id: string,
+  locatorOrId: string,
 ): Promise<ChangeDashboardItem | null> {
-  const resolvedRoot = path.resolve(projectPath);
+  const requestedRoot = path.resolve(projectPath);
+  const sources = collectDashboardWorkspaceSources(requestedRoot);
+  const parsedLocator = parseDashboardChangeLocator(locatorOrId);
+  let source: DashboardWorkspaceSource | undefined =
+    sources.find(({ current }) => current) ?? sources[0];
+  let id = locatorOrId;
+  if (parsedLocator) {
+    if (!parsedLocator.identity.startsWith('classic:')) return null;
+    source = sources.find(({ id: workspaceId }) => workspaceId === parsedLocator.workspaceId);
+    if (!source) return null;
+    id = parsedLocator.identity.slice('classic:'.length);
+  }
+  if (!source) return null;
   const location = parseClassicChangeId(id);
   if (!location) return null;
-  const dir = path.join(resolvedRoot, ...location.relativePath.split('/'));
-  if (!(await safeProjectDirectoryExists(resolvedRoot, dir, `Classic change ${location.name}`))) {
+  const dir = path.join(source.projectRoot, ...location.relativePath.split('/'));
+  if (
+    !(await safeProjectDirectoryExists(source.projectRoot, dir, `Classic change ${location.name}`))
+  ) {
     return null;
   }
   return tryBuildChangeItem({
     name: location.name,
     dir,
     status: location.status,
-    projectRoot: resolvedRoot,
+    projectRoot: source.projectRoot,
     changesRelative: location.changesRelative,
+    workspace: dashboardWorkspaceIdentity(source),
+    locator: encodeDashboardChangeLocator(source.id, `classic:${id}`),
   });
 }
 
 async function collectClassicChangeCandidates(
   projectRoot: string,
 ): Promise<ClassicCandidateCollection> {
-  const collections = await Promise.all(
-    CLASSIC_CHANGES_ROOTS.map(async (changesRelative) => {
-      const changesRoot = path.join(projectRoot, ...changesRelative.split('/'));
-      const [active, archived] = await Promise.all([
-        collectCandidatesWithError({
-          changesRoot,
-          projectRoot,
-          changesRelative,
-          status: 'active',
-        }),
-        collectCandidatesWithError({
-          changesRoot: path.join(changesRoot, ARCHIVE_SEGMENT),
-          projectRoot,
-          changesRelative,
-          status: 'archived',
-        }),
-      ]);
-      return {
-        active: active.items,
-        archived: archived.items,
-        errors: [...active.errors, ...archived.errors],
-      };
-    }),
+  const sources = collectDashboardWorkspaceSources(projectRoot);
+  const collections = (
+    await Promise.all(
+      sources.map((source) =>
+        Promise.all(
+          CLASSIC_CHANGES_ROOTS.map(async (changesRelative) => {
+            const changesRoot = path.join(source.projectRoot, ...changesRelative.split('/'));
+            const [active, archived] = await Promise.all([
+              collectCandidatesWithError({
+                changesRoot,
+                projectRoot: source.projectRoot,
+                changesRelative,
+                status: 'active',
+                source,
+              }),
+              collectCandidatesWithError({
+                changesRoot: path.join(changesRoot, ARCHIVE_SEGMENT),
+                projectRoot: source.projectRoot,
+                changesRelative,
+                status: 'archived',
+                source,
+              }),
+            ]);
+            return {
+              active: active.items,
+              archived: archived.items,
+              errors: [...active.errors, ...archived.errors],
+            };
+          }),
+        ),
+      ),
+    )
+  ).flat();
+
+  const active = selectClassicWorkspaceCandidates(
+    collections.flatMap((collection) => collection.active),
+  );
+  const archived = selectClassicWorkspaceCandidates(
+    collections.flatMap((collection) => collection.archived),
   );
 
   return {
-    active: collections.flatMap((collection) => collection.active),
-    archived: collections.flatMap((collection) => collection.archived),
+    active,
+    archived,
     errors: collections.flatMap((collection) => collection.errors),
   };
+}
+
+function selectClassicWorkspaceCandidates(
+  candidates: readonly ClassicChangeCandidate[],
+): ClassicChangeCandidate[] {
+  const grouped = new Map<string, ClassicChangeCandidate[]>();
+  for (const candidate of candidates) {
+    const key = `${candidate.changesRelative}\0${candidate.name}`;
+    grouped.set(key, [...(grouped.get(key) ?? []), candidate]);
+  }
+
+  const selected: ClassicChangeCandidate[] = [];
+  for (const group of grouped.values()) {
+    const aligned = group.filter(({ bindingState }) => bindingState === 'aligned');
+    if (aligned.length > 0) {
+      selected.push(...aligned);
+      continue;
+    }
+    selected.push(
+      group.find(({ workspace }) => workspace.current) ??
+        group
+          .slice()
+          .sort((left, right) => left.workspace.label.localeCompare(right.workspace.label))[0],
+    );
+  }
+  return selected;
 }
 
 async function collectCandidatesWithError(
@@ -311,6 +381,7 @@ interface CollectCandidatesInput {
   projectRoot: string;
   changesRelative: string;
   status: 'active' | 'archived';
+  source: DashboardWorkspaceSource;
 }
 
 async function collectChangeCandidatesFromRoot(
@@ -415,8 +486,15 @@ async function buildChangeCandidate(
     input.status === 'archived'
       ? `${input.changesRelative}/${ARCHIVE_SEGMENT}/${input.name}`
       : `${input.changesRelative}/${input.name}`;
+  const boundBranch = stripNullish(yaml.bound_branch);
+  const bindingState = boundBranch
+    ? boundBranch === input.source.branch
+      ? 'aligned'
+      : 'drifted'
+    : 'unbound';
   return {
     id,
+    locator: encodeDashboardChangeLocator(input.source.id, `classic:${id}`),
     name: input.name,
     displayName:
       input.status === 'archived' && archive?.originalName ? archive.originalName : input.name,
@@ -431,6 +509,9 @@ async function buildChangeCandidate(
     tasks,
     verify,
     risks,
+    projectRoot: input.projectRoot,
+    workspace: dashboardWorkspaceIdentity(input.source),
+    bindingState,
   };
 }
 
@@ -467,7 +548,14 @@ function filterAndSortCandidates(
   const normalized = query?.trim().toLowerCase() ?? '';
   const filtered = normalized
     ? candidates.filter((candidate) =>
-        [candidate.name, candidate.displayName, candidate.workflow, candidate.phase]
+        [
+          candidate.name,
+          candidate.displayName,
+          candidate.workflow,
+          candidate.phase,
+          candidate.workspace.label,
+          candidate.workspace.branch,
+        ]
           .filter(Boolean)
           .join(' ')
           .toLowerCase()
@@ -480,6 +568,7 @@ function filterAndSortCandidates(
 function toDashboardChangeListItem(candidate: ClassicChangeCandidate): DashboardChangeListItem {
   return {
     id: candidate.id,
+    locator: candidate.locator,
     name: candidate.name,
     displayName: candidate.displayName,
     status: candidate.status,
@@ -489,6 +578,7 @@ function toDashboardChangeListItem(candidate: ClassicChangeCandidate): Dashboard
     updatedAt: candidate.updatedAt,
     tasks: { completed: candidate.tasks.completed, total: candidate.tasks.total },
     verify: { result: candidate.verify.result },
+    workspace: candidate.workspace,
   };
 }
 
@@ -503,7 +593,9 @@ function sortArchivedCandidates(items: ClassicChangeCandidate[]): ClassicChangeC
     );
     if (byArchivedAt !== 0) return byArchivedAt;
     const byName = left.name.localeCompare(right.name);
-    return byName !== 0 ? byName : left.relativePath.localeCompare(right.relativePath);
+    if (byName !== 0) return byName;
+    const byWorkspace = left.workspace.label.localeCompare(right.workspace.label);
+    return byWorkspace || left.relativePath.localeCompare(right.relativePath);
   });
 }
 
@@ -516,7 +608,9 @@ function compareActiveCandidates(
   const byUpdated = (right.updatedAt ?? '').localeCompare(left.updatedAt ?? '');
   if (byUpdated !== 0) return byUpdated;
   const byName = left.name.localeCompare(right.name);
-  return byName !== 0 ? byName : left.relativePath.localeCompare(right.relativePath);
+  if (byName !== 0) return byName;
+  const byWorkspace = left.workspace.label.localeCompare(right.workspace.label);
+  return byWorkspace || left.relativePath.localeCompare(right.relativePath);
 }
 
 function normalizeChangePageLimit(limit: number | undefined): number {
@@ -604,7 +698,7 @@ function isMissingPathError(error: unknown): boolean {
 }
 
 async function mapWithConcurrency<T, R>(
-  values: T[],
+  values: readonly T[],
   concurrency: number,
   worker: (value: T) => Promise<R>,
 ): Promise<R[]> {
@@ -631,101 +725,33 @@ interface ClassicCollection {
 }
 
 async function collectClassicChanges(projectRoot: string): Promise<ClassicCollection> {
-  const active: ChangeDashboardItem[] = [];
-  const archived: ChangeDashboardItem[] = [];
-  const errors: string[] = [];
-
-  for (const changesRelative of CLASSIC_CHANGES_ROOTS) {
-    const changesRoot = path.join(projectRoot, ...changesRelative.split('/'));
-    try {
-      active.push(...(await collectActiveChanges(changesRoot, projectRoot, changesRelative)));
-    } catch (error) {
-      errors.push(formatClassicCollectionError(changesRelative, error));
-    }
-    try {
-      archived.push(...(await collectArchivedChanges(changesRoot, projectRoot, changesRelative)));
-    } catch (error) {
-      errors.push(formatClassicCollectionError(`${changesRelative}/archive`, error));
-    }
-  }
-
-  return { active, archived, errors };
+  const candidates = await collectClassicChangeCandidates(projectRoot);
+  const collect = async (
+    entries: readonly ClassicChangeCandidate[],
+  ): Promise<ChangeDashboardItem[]> => {
+    const items = await mapWithConcurrency(entries, CHANGE_INDEX_CONCURRENCY, (candidate) =>
+      tryBuildChangeItem({
+        name: candidate.name,
+        dir: candidate.dir,
+        status: candidate.status,
+        projectRoot: candidate.projectRoot,
+        changesRelative: candidate.changesRelative,
+        workspace: candidate.workspace,
+        locator: candidate.locator,
+      }),
+    );
+    return items.filter((item): item is ChangeDashboardItem => item !== null);
+  };
+  const [active, archived] = await Promise.all([
+    collect(candidates.active),
+    collect(candidates.archived),
+  ]);
+  return { active, archived, errors: candidates.errors };
 }
 
 function formatClassicCollectionError(relativePath: string, error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return `Classic ${relativePath}: ${message}`;
-}
-
-async function collectActiveChanges(
-  changesRoot: string,
-  projectRoot: string,
-  changesRelative: string,
-): Promise<ChangeDashboardItem[]> {
-  const inspection = await inspectProtectedProjectPath(
-    projectRoot,
-    projectRelative(projectRoot, changesRoot),
-    {
-      label: 'Classic changes root',
-      expected: 'directory',
-    },
-  );
-  if (!inspection.exists) return [];
-  const entries = await fs.readdir(inspection.target);
-  const items: ChangeDashboardItem[] = [];
-
-  for (const entry of entries) {
-    if (entry === ARCHIVE_SEGMENT) continue;
-
-    const dir = path.join(changesRoot, entry);
-    if (!(await safeProjectDirectoryExists(projectRoot, dir, `Classic change ${entry}`))) continue;
-
-    const item = await tryBuildChangeItem({
-      name: entry,
-      dir,
-      status: 'active',
-      projectRoot,
-      changesRelative,
-    });
-    if (item) items.push(item);
-  }
-
-  return items;
-}
-
-async function collectArchivedChanges(
-  changesRoot: string,
-  projectRoot: string,
-  changesRelative: string,
-): Promise<ChangeDashboardItem[]> {
-  const archiveRoot = path.join(changesRoot, ARCHIVE_SEGMENT);
-  const inspection = await inspectProtectedProjectPath(
-    projectRoot,
-    projectRelative(projectRoot, archiveRoot),
-    {
-      label: 'Classic archive root',
-      expected: 'directory',
-    },
-  );
-  if (!inspection.exists) return [];
-  const entries = await fs.readdir(inspection.target);
-  const items: ChangeDashboardItem[] = [];
-
-  for (const entry of entries) {
-    const dir = path.join(archiveRoot, entry);
-    if (!(await safeProjectDirectoryExists(projectRoot, dir, `Classic archive ${entry}`))) continue;
-
-    const item = await tryBuildChangeItem({
-      name: entry,
-      dir,
-      status: 'archived',
-      projectRoot,
-      changesRelative,
-    });
-    if (item) items.push(item);
-  }
-
-  return items;
 }
 
 /**
@@ -750,6 +776,8 @@ interface BuildChangeInput {
   status: 'active' | 'archived';
   projectRoot: string;
   changesRelative: string;
+  workspace: DashboardWorkspaceIdentity;
+  locator: string;
 }
 
 async function buildChangeItem(input: BuildChangeInput): Promise<ChangeDashboardItem> {
@@ -917,6 +945,7 @@ async function buildChangeItem(input: BuildChangeInput): Promise<ChangeDashboard
       input.status === 'archived'
         ? `${input.changesRelative}/archive/${input.name}`
         : `${input.changesRelative}/${input.name}`,
+    locator: input.locator,
     name: input.name,
     displayName,
     status: input.status,
@@ -931,6 +960,7 @@ async function buildChangeItem(input: BuildChangeInput): Promise<ChangeDashboard
     artifactPreviews,
     verify,
     risks,
+    workspace: input.workspace,
   };
 
   if (input.status === 'active') {
@@ -1065,7 +1095,7 @@ function parsePhase(raw: string | undefined): ChangePhase {
   return VALID_PHASES.has(value as ChangePhase) ? (value as ChangePhase) : 'unknown';
 }
 
-function buildArchiveInfo(input: BuildChangeInput): ArchiveInfo {
+function buildArchiveInfo(input: Pick<BuildChangeInput, 'name' | 'dir'>): ArchiveInfo {
   const match = input.name.match(ARCHIVE_NAME_PATTERN);
   const info: ArchiveInfo = {
     archiveName: input.name,

@@ -8,6 +8,7 @@
  */
 
 import type { NativeDashboardChangeListItem, NativeDashboardProjection } from './native-adapter.js';
+import type { DashboardWorkspaceIdentity } from './workspace.js';
 
 export type ChangeStatus = 'active' | 'archived';
 
@@ -93,6 +94,7 @@ export interface ArchiveInfo {
 
 export interface ChangeDashboardItem {
   id: string;
+  locator: string;
   name: string;
   displayName: string;
   status: ChangeStatus;
@@ -108,6 +110,7 @@ export interface ChangeDashboardItem {
   verify: VerifySummary;
   next?: NextAction;
   risks: DashboardRisk[];
+  workspace: DashboardWorkspaceIdentity;
 }
 
 export interface GitSnapshot {
@@ -136,6 +139,7 @@ export type DashboardChangeTab = 'active' | 'archived' | 'all';
 
 export interface DashboardChangeListItem {
   id: string;
+  locator: string;
   name: string;
   displayName: string;
   status: ChangeStatus;
@@ -145,6 +149,7 @@ export interface DashboardChangeListItem {
   updatedAt?: string;
   tasks: Pick<TasksSummary, 'completed' | 'total'>;
   verify: Pick<VerifySummary, 'result'>;
+  workspace: DashboardWorkspaceIdentity;
 }
 
 export interface DashboardChangePage {

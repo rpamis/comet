@@ -90,4 +90,22 @@ describe('Native dashboard web source contracts', () => {
     expect(nativeSource).toContain('用户确认降级通过');
     expect(source).not.toContain('<NativeWorkflowPanel native={snapshot.native} />');
   });
+
+  it('renders Native parent children as an accessible expandable explorer tree', async () => {
+    const [source, styles] = await Promise.all([
+      readNativePanelSource(),
+      fs.readFile(path.resolve('domains', 'dashboard', 'web', 'src', 'styles.css'), 'utf8'),
+    ]);
+
+    expect(source).toContain('childChangeReference');
+    expect(source).toContain('childrenProgress(change)');
+    expect(source).toContain('native-change-disclosure');
+    expect(source).toContain('aria-expanded={expanded}');
+    expect(source).toContain('aria-controls={childrenId}');
+    expect(source).toContain('native-child-change-list');
+    expect(source).toContain('native-child-change-row');
+    expect(source).toContain('child.workspace.label');
+    expect(styles).toContain('.native-child-change-list');
+    expect(styles).toContain('.dashboard-workspace-label');
+  });
 });
