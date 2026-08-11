@@ -165,6 +165,26 @@ function projectRelativePath(projectPath: string, target: string, label: string)
   return relative.split(path.sep).join('/');
 }
 
+/**
+ * Whether a staged OpenSpec tool directory contains any files (recursively).
+ *
+ * The staging project is a private temporary directory freshly written by the
+ * OpenSpec CLI, so the tree is small and bounded; walking it is cheap. This
+ * distinguishes "no output at all" from "only empty directories" so a missing
+ * or empty staged tool output fails the update instead of reporting success.
+ */
+async function hasGeneratedToolFiles(dir: string): Promise<boolean> {
+  const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      if (await hasGeneratedToolFiles(path.join(dir, entry.name))) return true;
+    } else {
+      return true;
+    }
+  }
+  return false;
+}
+
 async function copyGeneratedToolDirectory(
   stagingProject: string,
   source: string,
@@ -233,31 +253,73 @@ async function copyGeneratedToolDirectory(
   }
 }
 
+interface GeneratedToolCopy {
+  source: string;
+  destination: string;
+}
+
+async function resolveGeneratedToolCopies(
+  stagingProject: string,
+  projectPath: string,
+  toolIds: readonly string[],
+): Promise<GeneratedToolCopy[]> {
+  const copies: GeneratedToolCopy[] = [];
+  const mergedDestinations = new Set<string>();
+  for (const toolId of toolIds) {
+    const platform = PLATFORMS.find((candidate) => candidate.openspecToolId === toolId);
+    if (!platform) continue;
+    const destination = path.join(projectPath, platform.skillsDir);
+    if (mergedDestinations.has(destination)) continue;
+    const candidateDirs = [
+      platform.openspecSkillsDir ?? platform.skillsDir,
+      ...(platform.legacySkillsDirs ?? []),
+    ];
+    const sourceDir = candidateDirs.find((dir) => fs.existsSync(path.join(stagingProject, dir)));
+    if (!sourceDir) {
+      throw new Error(
+        `OpenSpec generated no tool output for ${platform.id}: expected one of ${candidateDirs.join(', ')} under the staging project`,
+      );
+    }
+    const source = path.join(stagingProject, sourceDir);
+    if (!(await hasGeneratedToolFiles(source))) {
+      throw new Error(
+        `OpenSpec generated an empty tool output for ${platform.id}: ${sourceDir} contains no skills or commands`,
+      );
+    }
+    copies.push({ source, destination });
+    mergedDestinations.add(destination);
+  }
+  return copies;
+}
+
+/**
+ * Validates that every requested platform produced non-empty staged tool output
+ * before any project file is written. Runs after the staging `openspec init`
+ * and before the artifact-root init/merge, so a missing or empty later platform
+ * cannot leave partially written artifacts or Skills behind.
+ */
+async function preflightGeneratedToolDirectories(
+  stagingProject: string,
+  projectPath: string,
+  toolIds: readonly string[],
+): Promise<GeneratedToolCopy[]> {
+  return resolveGeneratedToolCopies(stagingProject, projectPath, toolIds);
+}
+
 async function mergeGeneratedToolDirectories(
+  copies: readonly GeneratedToolCopy[],
   stagingProject: string,
   projectPath: string,
   toolIds: readonly string[],
   mirrorOpenCodePlatformIds: readonly string[],
   projectMutationGuard?: ProjectMutationGuard,
 ): Promise<void> {
-  const skillDirs = new Set(
-    toolIds.flatMap((toolId) => {
-      const platform = PLATFORMS.find((candidate) => candidate.openspecToolId === toolId);
-      return platform ? [platform.openspecSkillsDir ?? platform.skillsDir] : [];
-    }),
-  );
-  for (const skillsDir of skillDirs) {
-    const source = path.join(stagingProject, skillsDir);
-    if (!fs.existsSync(source)) continue;
-    const platform = PLATFORMS.find(
-      (candidate) => (candidate.openspecSkillsDir ?? candidate.skillsDir) === skillsDir,
-    );
-    if (!platform) continue;
+  for (const copy of copies) {
     await copyGeneratedToolDirectory(
       stagingProject,
-      source,
+      copy.source,
       projectPath,
-      path.join(projectPath, platform.skillsDir),
+      copy.destination,
       projectMutationGuard,
     );
   }
@@ -646,6 +708,7 @@ async function installOpenSpec(
   let configHome: string | undefined;
   let configBackup: ConfigBackup | null = null;
   let stagingProject: string | undefined;
+  let generatedToolCopies: GeneratedToolCopy[] | undefined;
   try {
     const openspecEnv = createOpenSpecAllWorkflowsEnv();
     configHome = openspecEnv.configHome;
@@ -662,6 +725,11 @@ async function installOpenSpec(
           projectMutationGuard,
           false,
           false,
+        );
+        generatedToolCopies = await preflightGeneratedToolDirectories(
+          stagingProject,
+          projectPath,
+          toolIds,
         );
       }
       await assertProjectMutationAllowed(projectMutationGuard, 'before');
@@ -680,9 +748,10 @@ async function installOpenSpec(
         };
       }
       await runOpenSpecInit(artifactBase, ['none'], openspecEnv.env, artifactMutationGuard, true);
-      if (stagingProject) {
+      if (stagingProject && generatedToolCopies) {
         await assertProjectMutationAllowed(projectMutationGuard, 'before', true);
         await mergeGeneratedToolDirectories(
+          generatedToolCopies,
           stagingProject,
           projectPath,
           toolIds,

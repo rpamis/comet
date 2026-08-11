@@ -14,6 +14,11 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Native parent-child changes**: The Native Skill now recognizes large requests that benefit from independent acceptance, proposes a named child graph during the parent Shape confirmation, automatically dispatches ready children with a serial fallback, merges them into the parent branch in order, and verifies the final integrated result against the parent acceptance criteria.
 - **Worktree-aware Dashboard changes**: The Dashboard now discovers Classic and Native changes across every registered Git worktree, keeps independent changes as separate root entries, and groups explicit Native child changes under expandable parents while preserving the existing detail workspace.
 
+### Fixed
+
+- **Classic OpenSpec version passthrough**: `comet classic openspec -- --version` now routes through the Classic facade before top-level CLI option parsing, so `/comet-open` compares the OpenSpec CLI version instead of Comet's own version.
+- **Codex OpenSpec skills with OpenSpec 1.8**: `comet init` and `comet update` now read OpenSpec 1.8's `.agents` Codex skill output (keeping `.codex` as a legacy fallback for OpenSpec 1.7 and earlier), so project OpenSpec skills are refreshed to the installed CLI version instead of being reported as installed while staying stale. A missing or empty staged tool output now fails the OpenSpec update with a clear reason instead of silently reporting success.
+
 ## What's Changed [0.4.0-beta.17] - 2026-08-10
 
 ### Added
