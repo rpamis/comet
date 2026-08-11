@@ -7,12 +7,14 @@ from pathlib import Path
 from typing import Literal
 
 from scaffold.python.eval_context import ResolvedEvalContext
+from scaffold.python.execution import ResolvedExecution, resolve_execution
 from scaffold.python.generated_task_cache import (
     GeneratedCache,
     build_skill_snapshot,
     cache_location,
     generation_hash,
     load_generated_cache,
+    selected_agent_model,
 )
 from scaffold.python.manifest_tasks import load_manifest_tasks
 from scaffold.python.manifests import SkillEvalManifest, load_eval_manifest
@@ -96,13 +98,20 @@ def build_task_catalogue(manifest: SkillEvalManifest, tasks_dir: Path) -> TaskCa
     return TaskCatalogue(bundled, canonical, authored)
 
 
-def _generated_plan(context: ResolvedEvalContext, manifest: SkillEvalManifest) -> GenerationPlan:
+def _generated_plan(
+    context: ResolvedEvalContext,
+    manifest: SkillEvalManifest,
+    execution: ResolvedExecution | None = None,
+) -> GenerationPlan:
     snapshot = build_skill_snapshot(context.skill_root)
-    selected_agent = manifest.execution_agent or "claude-code"
+    resolved_execution = execution or resolve_execution(manifest=manifest.execution)
+    selected_agent = resolved_execution.agent
+    selected_model = resolved_execution.model or selected_agent_model(selected_agent)
     digest = generation_hash(
         snapshot,
         agent=selected_agent,
-        model=None,
+        model=selected_model,
+        base_url=resolved_execution.base_url,
         profile=manifest.profile or "generic",
         interaction=vars(manifest.interaction),
     )
@@ -118,6 +127,7 @@ def resolve_task_set(
     explicit_task: str | None = None,
     quick: bool = False,
     static_collect: bool = False,
+    execution: ResolvedExecution | None = None,
 ) -> ResolvedTaskSet:
     """Resolve exactly one precedence branch without probing lower branches."""
     if explicit_task:
@@ -135,7 +145,7 @@ def resolve_task_set(
         return ResolvedTaskSet("authored", tuple(catalogue.authored[item.name] for item in manifest.tasks), None)
     if manifest.recommended_tasks:
         return ResolvedTaskSet("recommended", tuple(catalogue.bundled[item] for item in manifest.recommended_tasks), None)
-    plan = _generated_plan(context, manifest)
+    plan = _generated_plan(context, manifest, execution)
     if plan.cached is None:
         return ResolvedTaskSet("pending-generation", (), plan)
     generated = load_eval_manifest(plan.cached.manifest_path)

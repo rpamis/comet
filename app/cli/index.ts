@@ -185,14 +185,12 @@ program
   .option('--manifest <path>', 'Path to comet/eval.yaml')
   .option('--skill-path <path>', 'Local Skill directory or SKILL.md')
   .option('--skill-name <name>', 'Skill name used with --skill-path')
-  .addOption(
-    new Option('--agent <agent>', 'Evaluation agent').choices([
-      'claude-code',
-      'codex',
-      'qoder',
-      'codebuddy',
-    ]),
-  )
+  .option('--agent <agent>', 'Evaluation agent (built-in or explicitly installed custom adapter)')
+  .option('--model <model>', 'Main evaluation model override')
+  .option('--base-url <url>', 'Main evaluation API base URL override')
+  .option('--judge-agent <agent>', 'Independent Judge agent (built-in or installed custom adapter)')
+  .option('--judge-model <model>', 'Independent Judge model (required when enabled)')
+  .option('--judge-base-url <url>', 'Independent Judge API base URL override')
   .addOption(
     new Option('--suite <suite>', 'Eval suite')
       .choices(['local', 'langsmith', 'langfuse'])

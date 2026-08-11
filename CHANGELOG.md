@@ -6,6 +6,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Added
 
+- **Standalone Skill evaluation**: `comet eval ./my-skill` now evaluates any local Skill without depending on `comet-any`, supports project-authored or automatically generated tasks, offline `--collect`, independent subject and LLM-as-judge model/API routing, and explicitly installed custom Agent adapters.
 - **Selectable evaluation agents**: `comet eval` can now run the subject, user simulator, and optional Judge with Claude Code, Codex, Qoder, or CodeBuddy, selected from the CLI or eval manifest while keeping Claude Code as the default.
 - **Project-authored evaluation tasks**: Skills can now declare inline deterministic tasks or reuse package-local task definitions from `evaluation.tasks` in `comet/eval.yaml`.
 - **Automatic evaluation tasks**: A taskless Skill evaluation now generates a bounded, hash-cached task set on the first normal run while keeping `--quick` and cache-only `--collect` available for smoke and discovery workflows.

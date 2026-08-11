@@ -57,8 +57,14 @@ fi
 # API keys to pass through to containers
 ENV_KEYS=(
     OPENAI_API_KEY
+    OPENAI_BASE_URL
+    OPENAI_MODEL
     CODEX_API_KEY
+    CODEX_BASE_URL
+    CODEX_MODEL
     QODER_PERSONAL_ACCESS_TOKEN
+    QODER_BASE_URL
+    QODER_MODEL
     CODEBUDDY_API_KEY
     CODEBUDDY_AUTH_TOKEN
     CODEBUDDY_BASE_URL
@@ -99,12 +105,28 @@ ENV_KEYS=(
     ANTHROPIC_DEFAULT_OPUS_MODEL_NAME
     ANTHROPIC_DEFAULT_SONNET_MODEL_NAME
     CLAUDE_CODE_SUBAGENT_MODEL
+    COMET_EVAL_CUSTOM_AGENT_ID
+    COMET_EVAL_CUSTOM_EXECUTABLE
+    COMET_EVAL_CUSTOM_CREDENTIALS
+    COMET_EVAL_CUSTOM_MODEL
+    COMET_EVAL_CUSTOM_BASE_URL
+    COMET_EVAL_CUSTOM_MODEL_ENV
+    COMET_EVAL_CUSTOM_BASE_URL_ENV
+    COMET_EVAL_CUSTOM_INSTALL_KIND
+    COMET_EVAL_CUSTOM_INSTALL_PACKAGE
+    COMET_EVAL_CUSTOM_INSTALL_VERSION
 )
 
 validate_agent() {
     case "$1" in
         claude-code|codex|qoder|codebuddy) return 0 ;;
-        *) echo "ERROR: Unsupported evaluation agent: $1" >&2; return 1 ;;
+        *)
+            if [[ "${COMET_EVAL_CUSTOM_AGENT_ID:-}" == "$1" && -n "${COMET_EVAL_CUSTOM_EXECUTABLE:-}" ]]; then
+                return 0
+            fi
+            echo "ERROR: Unsupported evaluation agent: $1" >&2
+            return 1
+            ;;
     esac
 }
 
@@ -114,7 +136,10 @@ agent_executable() {
         codex) printf '%s' "codex" ;;
         qoder) printf '%s' "qodercli" ;;
         codebuddy) printf '%s' "codebuddy" ;;
-        *) validate_agent "$1"; return 1 ;;
+        *)
+            validate_agent "$1" || return 1
+            printf '%s' "${COMET_EVAL_CUSTOM_EXECUTABLE}"
+            ;;
     esac
 }
 
@@ -124,7 +149,7 @@ agent_version() {
         codex) printf '%s' "$CODEX_VERSION" ;;
         qoder) printf '%s' "$QODER_VERSION" ;;
         codebuddy) printf '%s' "$CODEBUDDY_VERSION" ;;
-        *) validate_agent "$1"; return 1 ;;
+        *) validate_agent "$1" || return 1; printf '%s' "custom" ;;
     esac
 }
 
@@ -380,6 +405,11 @@ docker_build() {
         --build-arg CODEX_VERSION="$CODEX_VERSION" \
         --build-arg QODER_VERSION="$QODER_VERSION" \
         --build-arg CODEBUDDY_VERSION="$CODEBUDDY_VERSION" \
+        --build-arg CUSTOM_AGENT_ID="${COMET_EVAL_CUSTOM_AGENT_ID:-}" \
+        --build-arg CUSTOM_AGENT_EXECUTABLE="${COMET_EVAL_CUSTOM_EXECUTABLE:-}" \
+        --build-arg CUSTOM_INSTALL_KIND="${COMET_EVAL_CUSTOM_INSTALL_KIND:-none}" \
+        --build-arg CUSTOM_INSTALL_PACKAGE="${COMET_EVAL_CUSTOM_INSTALL_PACKAGE:-}" \
+        --build-arg CUSTOM_INSTALL_VERSION="${COMET_EVAL_CUSTOM_INSTALL_VERSION:-latest}" \
         --build-arg LANGFUSE_ENABLED="${TRACE_TO_LANGFUSE:-false}" \
         -f "$(_winpath "$overlay_file")" "$overlay_context" >&2; then
         echo "$image_name"
@@ -401,6 +431,22 @@ build_env_args() {
     for key in "${ENV_KEYS[@]}"; do
         if [[ -n "${!key:-}" ]]; then
             ENV_ARGS+=("-e" "$key=${!key}")
+        fi
+    done
+    if [[ -n "${COMET_EVAL_CUSTOM_CREDENTIALS:-}" ]]; then
+        local custom_key
+        IFS=',' read -r -a custom_keys <<< "${COMET_EVAL_CUSTOM_CREDENTIALS}"
+        for custom_key in "${custom_keys[@]}"; do
+            if [[ "$custom_key" =~ ^[A-Z][A-Z0-9_]{1,63}$ ]] && [[ -n "${!custom_key:-}" ]]; then
+                ENV_ARGS+=("-e" "$custom_key=${!custom_key}")
+            fi
+        done
+    fi
+    local metadata_key custom_routing_key
+    for metadata_key in COMET_EVAL_CUSTOM_MODEL_ENV COMET_EVAL_CUSTOM_BASE_URL_ENV; do
+        custom_routing_key="${!metadata_key:-}"
+        if [[ "$custom_routing_key" =~ ^[A-Z][A-Z0-9_]{1,63}$ ]] && [[ -n "${!custom_routing_key:-}" ]]; then
+            ENV_ARGS+=("-e" "$custom_routing_key=${!custom_routing_key}")
         fi
     done
     if [[ "${TRACE_TO_LANGFUSE:-}" == "true" ]]; then
@@ -478,6 +524,10 @@ build_agent_command() {
             ;;
         *)
             validate_agent "$agent" || return 1
+            AGENT_COMMAND=("${COMET_EVAL_CUSTOM_EXECUTABLE}" -p "$prompt" --output-format stream-json)
+            if [[ -n "$model" ]]; then
+                AGENT_COMMAND+=(--model "$model")
+            fi
             ;;
     esac
     if [[ "$agent" == "codex" ]]; then

@@ -6,6 +6,11 @@ ARG EVAL_AGENT=claude-code
 ARG CODEX_VERSION=latest
 ARG QODER_VERSION=latest
 ARG CODEBUDDY_VERSION=latest
+ARG CUSTOM_AGENT_ID=
+ARG CUSTOM_AGENT_EXECUTABLE=
+ARG CUSTOM_INSTALL_KIND=none
+ARG CUSTOM_INSTALL_PACKAGE=
+ARG CUSTOM_INSTALL_VERSION=latest
 ARG LANGFUSE_ENABLED=false
 
 RUN if [ "$EVAL_AGENT" = "codex" ]; then \
@@ -14,6 +19,14 @@ RUN if [ "$EVAL_AGENT" = "codex" ]; then \
       npm install -g @qoder-ai/qodercli@${QODER_VERSION}; \
     elif [ "$EVAL_AGENT" = "codebuddy" ]; then \
       npm install -g @tencent-ai/codebuddy-code@${CODEBUDDY_VERSION}; \
+    elif [ -n "$CUSTOM_AGENT_ID" ] && [ "$EVAL_AGENT" = "$CUSTOM_AGENT_ID" ] && [ "$CUSTOM_INSTALL_KIND" = "npm" ]; then \
+      npm install -g "${CUSTOM_INSTALL_PACKAGE}@${CUSTOM_INSTALL_VERSION}"; \
+    elif [ -n "$CUSTOM_AGENT_ID" ] && [ "$EVAL_AGENT" = "$CUSTOM_AGENT_ID" ] && [ "$CUSTOM_INSTALL_KIND" = "pip" ]; then \
+      if [ "$CUSTOM_INSTALL_VERSION" = "latest" ]; then \
+        python3 -m pip install --break-system-packages "${CUSTOM_INSTALL_PACKAGE}"; \
+      else \
+        python3 -m pip install --break-system-packages "${CUSTOM_INSTALL_PACKAGE}==${CUSTOM_INSTALL_VERSION}"; \
+      fi; \
     fi
 
 # The official Claude hook can use the preinstalled Python SDK, while the

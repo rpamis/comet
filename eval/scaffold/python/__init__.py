@@ -39,7 +39,26 @@ from .profiles import (
 )
 from .evidence import EvalArtifactReference, build_eval_artifact_references
 from .attribution import FailureAttribution, classify_failures
-from .agents import AGENT_IDS, AgentAdapter, AgentSelection, get_agent_adapter, resolve_agent
+from .agents import (
+    AGENT_IDS,
+    AgentAdapter,
+    AgentSelection,
+    get_agent_adapter,
+    resolve_agent,
+    validate_agent_capabilities,
+)
+from .custom_agents import CustomAgentSpec, discover_custom_agent_specs
+from .execution import (
+    ResolvedExecution,
+    ResolvedJudge,
+    api_identity,
+    build_agent_environment,
+    build_judge_environment,
+    preflight_credentials,
+    redact_sensitive,
+    resolve_execution,
+    resolve_judge,
+)
 from .sample_quality import (
     SampleQuality,
     include_in_analysis,
@@ -138,6 +157,18 @@ __all__ = [
     "AgentSelection",
     "get_agent_adapter",
     "resolve_agent",
+    "validate_agent_capabilities",
+    "CustomAgentSpec",
+    "discover_custom_agent_specs",
+    "ResolvedExecution",
+    "ResolvedJudge",
+    "resolve_execution",
+    "resolve_judge",
+    "build_agent_environment",
+    "build_judge_environment",
+    "preflight_credentials",
+    "redact_sensitive",
+    "api_identity",
     "ManifestTask",
     "SkillEvalManifest",
     "load_eval_manifest",

@@ -1,0 +1,19 @@
+apiVersion: comet.eval.agent/v1alpha1
+kind: EvalAgentAdapter
+metadata:
+  id: fixture-agent
+  version: 1.0.0
+runtime:
+  executable: fixture-agent
+  install:
+    kind: none
+credentials:
+  - FIXTURE_AGENT_API_KEY
+modelEnv: FIXTURE_AGENT_MODEL
+baseUrlEnv: FIXTURE_AGENT_BASE_URL
+capabilities:
+  singleTurn: true
+  resume: true
+  structuredEvents: true
+  telemetry: false
+  skillInvocationEvidence: true

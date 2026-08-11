@@ -212,6 +212,42 @@ describe('eval command', () => {
     ]);
   });
 
+  it('passes main and independent Judge model routing options to the eval harness', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { evalRunCommand } = await import('../../app/commands/eval.js');
+      await evalRunCommand({
+        project,
+        manifest,
+        agent: 'codex',
+        model: 'subject-model',
+        baseUrl: 'https://subject.example/v1',
+        judgeAgent: 'claude-code',
+        judgeModel: 'judge-model',
+        judgeBaseUrl: 'https://judge.example/v1',
+        quick: true,
+      });
+    } finally {
+      log.mockRestore();
+    }
+
+    expectUvRun([
+      'run',
+      'pytest',
+      'local/tests/tasks/test_tasks.py',
+      `--eval-manifest=${path.resolve(manifest)}`,
+      '--agent=codex',
+      '--model=subject-model',
+      '--base-url=https://subject.example/v1',
+      '--judge-agent=claude-code',
+      '--judge-model=judge-model',
+      '--judge-base-url=https://judge.example/v1',
+      '--quick',
+      `--project-root=${path.resolve(project)}`,
+      '-v',
+    ]);
+  });
+
   it('records a successful local Creator eval before cleaning up the prepared manifest', async () => {
     prepareEvalManifest.mockResolvedValue({
       path: preparedManifest,
@@ -532,7 +568,7 @@ describe('eval command', () => {
     const { evalCollectCommand } = await import('../../app/commands/eval.js');
 
     await expect(evalCollectCommand({ project, manifest })).rejects.toThrow(
-      'evaluation.tasks[0].expect.json[0].path must start with "$"',
+      'evaluation.tasks[0].expect.json[0].path',
     );
     expect(execFileSync).not.toHaveBeenCalled();
   });
@@ -638,7 +674,8 @@ describe('eval command', () => {
     expect(output).toContain(`Eval root: ${evalCwd}`);
     expect(output).toContain('Mode: run');
     expect(output).toContain('Profile: authoring-skill');
-    expect(output).toContain('Task selection: resolved by harness');
+    expect(output).toContain('Task selection: explicit');
+    expect(output).toContain('- generic-skill-smoke');
     expect(output).toContain('Experiment:');
     expect(output).toContain('Report path:');
     expect(output).toContain('Report config:');

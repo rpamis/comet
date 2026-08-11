@@ -10,7 +10,14 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-from scaffold.python.agents import AgentId, get_agent_adapter, validate_agent_id
+from scaffold.python.agents import AgentId, get_agent_adapter
+from scaffold.python.execution import (
+    ResolvedExecution,
+    ResolvedJudge,
+    build_judge_environment,
+    redact_sensitive,
+    resolve_judge,
+)
 
 
 _ANTHROPIC_PROVIDER_KEYS = (
@@ -35,11 +42,17 @@ class JudgeInvocation:
     auth_token: str
     base_url: str
     agent: AgentId = "claude-code"
+    resolved: ResolvedJudge | None = None
 
 
 def build_judge_invocation(
     source_env: Mapping[str, str] | None = None,
     agent: object | None = None,
+    model: object | None = None,
+    base_url: object | None = None,
+    manifest: object | None = None,
+    main_agent: AgentId = "claude-code",
+    excluded_credentials: tuple[str, ...] = (),
 ) -> JudgeInvocation:
     """Build an isolated selected-agent invocation environment for LLM-as-judge.
 
@@ -48,71 +61,47 @@ def build_judge_invocation(
     with the same model or endpoint under test.
     """
     source = source_env if source_env is not None else os.environ
-    selected_agent = validate_agent_id(
-        agent if agent is not None else source.get("BENCH_EVAL_AGENT", "claude-code"),
-        field="judge evaluation agent",
-    )
-    model = (source.get("BENCH_JUDGE_MODEL") or "").strip()
-    if not model:
-        raise ValueError("BENCH_JUDGE_MODEL is required when BENCH_LLM_JUDGE=1")
-
-    env = dict(source)
-    env["COMET_EVAL_AGENT_ROLE"] = "judge"
-    for key in _ANTHROPIC_PROVIDER_KEYS:
-        env.pop(key, None)
-    for key in (
-        "OPENAI_API_KEY",
-        "CODEX_API_KEY",
-        "QODER_PERSONAL_ACCESS_TOKEN",
-        "CODEBUDDY_API_KEY",
-        "CODEBUDDY_AUTH_TOKEN",
-        "CODEBUDDY_BASE_URL",
-        "CODEBUDDY_MODEL",
+    if (
+        manifest is None
+        and agent is None
+        and model is None
+        and base_url is None
+        and str(source.get("BENCH_LLM_JUDGE", "")).strip().lower()
+        not in {"1", "true", "yes", "on"}
     ):
-        env.pop(key, None)
-
-    env["ANTHROPIC_MODEL"] = model
+        manifest = {}
+    main = ResolvedExecution(main_agent, None, None, {})
+    resolved = resolve_judge(
+        main=main,
+        cli_agent=agent,
+        cli_model=model,
+        cli_base_url=base_url,
+        manifest=manifest,
+        source_env=source,
+    )
+    if resolved is None:
+        raise ValueError("Judge is not enabled")
+    selected_agent = resolved.agent
+    selected_model = resolved.model
+    selected_base_url = resolved.base_url
+    env = build_judge_environment(
+        resolved,
+        source_env=source,
+        excluded_credentials=excluded_credentials,
+    )
 
     api_key = (source.get("BENCH_JUDGE_API_KEY") or "").strip()
     auth_token = (source.get("BENCH_JUDGE_AUTH_TOKEN") or "").strip()
-    base_url = (source.get("BENCH_JUDGE_BASE_URL") or "").strip()
-
-    if selected_agent == "claude-code":
-        if api_key:
-            env["ANTHROPIC_API_KEY"] = api_key
-        if auth_token:
-            env["ANTHROPIC_AUTH_TOKEN"] = auth_token
-            env.pop("ANTHROPIC_API_KEY", None)
-        if base_url:
-            env["ANTHROPIC_BASE_URL"] = base_url
-    elif selected_agent == "codex":
-        if api_key:
-            env["OPENAI_API_KEY"] = api_key
-        if auth_token:
-            env["CODEX_API_KEY"] = auth_token
-        if base_url:
-            env["OPENAI_BASE_URL"] = base_url
-    elif selected_agent == "qoder" and (api_key or auth_token):
-        env["QODER_PERSONAL_ACCESS_TOKEN"] = auth_token or api_key
-    elif selected_agent == "codebuddy":
-        if api_key:
-            env["CODEBUDDY_API_KEY"] = api_key
-        if auth_token:
-            env["CODEBUDDY_AUTH_TOKEN"] = auth_token
-        if base_url:
-            env["CODEBUDDY_BASE_URL"] = base_url
-        env["CODEBUDDY_MODEL"] = model
-    if selected_agent != "claude-code":
-        env.pop("ANTHROPIC_MODEL", None)
 
     return JudgeInvocation(
         env=env,
-        model_flag=["--model", model],
-        model=model,
+        model_flag=["--model", selected_model],
+        model=selected_model,
         api_key=api_key,
         auth_token=auth_token,
-        base_url=base_url,
+        base_url=selected_base_url or "",
         agent=selected_agent,
+        resolved=resolved,
     )
 
 
@@ -120,7 +109,12 @@ def run_judge_prompt(
     prompt: str,
     timeout: int = 120,
     agent: object | None = None,
+    model: object | None = None,
+    base_url: object | None = None,
+    manifest: object | None = None,
+    main_agent: AgentId = "claude-code",
     evidence: dict[str, Any] | None = None,
+    excluded_credentials: tuple[str, ...] = (),
 ) -> str:
     """Run the judge prompt through a dedicated provider configuration.
 
@@ -130,7 +124,14 @@ def run_judge_prompt(
     the selected local agent CLI for existing host-authenticated setups.
     """
     try:
-        invocation = build_judge_invocation(agent=agent)
+        invocation = build_judge_invocation(
+            agent=agent,
+            model=model,
+            base_url=base_url,
+            manifest=manifest,
+            main_agent=main_agent,
+            excluded_credentials=excluded_credentials,
+        )
     except ValueError as e:
         return f"[RUBRIC-JUDGE] status: skipped - {e}"
 
@@ -181,9 +182,9 @@ def _run_judge_http(prompt: str, invocation: JudgeInvocation, timeout: int = 120
             payload = json.loads(response.read().decode("utf-8", errors="replace"))
     except urllib.error.HTTPError as e:
         detail = e.read().decode("utf-8", errors="replace").strip()
-        return f"(judge error: HTTP {e.code} {detail})"
+        return redact_sensitive(f"(judge error: HTTP {e.code} {detail})", invocation.env)
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
-        return f"(judge error: {e})"
+        return redact_sensitive(f"(judge error: {e})", invocation.env)
 
     content = payload.get("content") or []
     text_parts = [
@@ -191,7 +192,7 @@ def _run_judge_http(prompt: str, invocation: JudgeInvocation, timeout: int = 120
         for item in content
         if isinstance(item, dict) and item.get("type") == "text"
     ]
-    return "\n".join(part for part in text_parts if part).strip()
+    return redact_sensitive("\n".join(part for part in text_parts if part).strip(), invocation.env)
 
 
 def _run_judge_agent_cli(
@@ -235,10 +236,10 @@ def _run_judge_agent_cli(
                 if session_id not in judge_sessions:
                     judge_sessions.append(session_id)
         if invocation.agent == "claude-code":
-            return output
-        return _extract_agent_text(output)
+            return redact_sensitive(output, invocation.env)
+        return redact_sensitive(_extract_agent_text(output), invocation.env)
     except (subprocess.TimeoutExpired, FileNotFoundError) as e:
-        return f"(judge error: {e})"
+        return redact_sensitive(f"(judge error: {e})", invocation.env)
 
 
 def _extract_agent_session_ids(output: str) -> list[str]:

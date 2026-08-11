@@ -35,6 +35,36 @@ def test_save_artifacts_excludes_nested_git_metadata(tmp_path: Path):
     assert not (snapshot / ".git").exists()
 
 
+def test_save_artifacts_redacts_configured_credentials(tmp_path: Path, monkeypatch):
+    from conftest import _save_artifacts
+
+    monkeypatch.setenv("FIXTURE_AGENT_CREDENTIAL", "artifact-secret-value")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "result.md").write_text(
+        "Authorization: Bearer artifact-secret-value\n", encoding="utf-8"
+    )
+
+    _save_artifacts(tmp_path, "COMET_FULL_040_BETA", 1, workspace)
+
+    snapshot = tmp_path / "artifacts" / "comet_full_040_beta_rep1" / "claude"
+    saved = (snapshot / "result.md").read_text(encoding="utf-8")
+    assert "artifact-secret-value" not in saved
+
+
+def test_save_artifacts_skips_non_text_content_instead_of_persisting_secrets(tmp_path: Path):
+    from conftest import _save_artifacts
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "secret.bin").write_bytes(b"artifact-secret-value\x00\xff")
+
+    _save_artifacts(tmp_path, "COMET_FULL_040_BETA", 1, workspace)
+
+    snapshot = tmp_path / "artifacts" / "comet_full_040_beta_rep1" / "claude"
+    assert not (snapshot / "secret.bin").exists()
+
+
 def test_save_artifacts_uses_selected_agent_root_and_excludes_codebuddy_config(
     tmp_path: Path,
 ):
@@ -180,6 +210,28 @@ def test_extract_events_recognizes_codebuddy_runtime_skill_evidence():
     events = extract_events(parse_output(stdout))
 
     assert events["skills_invoked"] == ["demo"]
+
+
+def test_custom_agent_requires_explicit_skill_invocation_events():
+    path_only = json.dumps(
+        {
+            "type": "item.completed",
+            "item": {
+                "type": "command_execution",
+                "command": "cat .agents/skills/demo/SKILL.md",
+            },
+        }
+    )
+    inferred = extract_events(parse_output(path_only), agent="fixture-agent")
+    assert inferred["skills_invoked"] == []
+    assert inferred["skill_invocations"] == []
+
+    explicit = extract_events(
+        parse_output(json.dumps({"type": "skill_invocation", "skill": "demo"})),
+        agent="fixture-agent",
+    )
+    assert explicit["skills_invoked"] == ["demo"]
+    assert explicit["skill_invocations"] == ["demo"]
 
 
 def test_extract_events_accumulates_duration_across_results():
@@ -391,6 +443,27 @@ def test_save_raw_writes_utf8_output(tmp_path: Path):
 
     assert "中文" in stdout_path.read_text(encoding="utf-8")
     assert "stderr 中文" == stderr_path.read_text(encoding="utf-8")
+
+
+def test_saved_eval_outputs_redact_configured_credentials(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("FIXTURE_AGENT_API_KEY", "fixture-secret-value")
+    save_raw(
+        tmp_path,
+        "COMET_FULL_040_BETA",
+        1,
+        "Authorization: Bearer fixture-secret-value x-api-key: fixture-secret-value",
+        "token=fixture-secret-value",
+    )
+    save_events(tmp_path, "COMET_FULL_040_BETA", 1, {"token": "fixture-secret-value"})
+    save_report(tmp_path, "COMET_FULL_040_BETA", 1, {"credential": "fixture-secret-value"})
+
+    for path in (
+        tmp_path / "raw/COMET_FULL_040_BETA_rep1_stdout.json",
+        tmp_path / "raw/COMET_FULL_040_BETA_rep1_stderr.txt",
+        tmp_path / "events/COMET_FULL_040_BETA_rep1.json",
+        tmp_path / "reports/COMET_FULL_040_BETA_rep1_report.json",
+    ):
+        assert "fixture-secret-value" not in path.read_text(encoding="utf-8")
 
 
 def test_save_artifacts_preserve_stable_treatment_filenames(tmp_path: Path):

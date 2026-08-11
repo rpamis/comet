@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import html as html_module
 import json
 import os
 import re
@@ -16,12 +17,14 @@ from typing import Any, Callable, Iterator, Mapping
 
 import yaml
 
-from scaffold.python.agents import AgentId, validate_agent_id
+from scaffold.python.agents import AgentId, get_agent_adapter, validate_agent_id
 from scaffold.python.eval_context import managed_path_for_owner
 from scaffold.python.generated_task_cache import (
     build_skill_snapshot as _shared_build_skill_snapshot,
     cache_location as _shared_cache_location,
     generation_hash as _shared_generation_hash,
+    normalize_interaction,
+    validate_generated_manifest,
 )
 from scaffold.python.manifests import load_eval_manifest
 from scaffold.python.utils import run_agent_in_docker
@@ -132,11 +135,17 @@ def _generation_hash(
     *,
     agent: AgentId,
     model: str | None,
+    base_url: str | None = None,
     profile: str,
     interaction: dict[str, Any],
 ) -> str:
     return _shared_generation_hash(
-        snapshot, agent=agent, model=model, profile=profile, interaction=interaction
+        snapshot,
+        agent=agent,
+        model=model,
+        base_url=base_url,
+        profile=profile,
+        interaction=interaction,
     )
 
 
@@ -163,16 +172,21 @@ def _atomic_write_text(path: Path, value: str) -> None:
 
 
 def _write_generation_failure_report(
-    project_root: Path, *, attempts: list[dict[str, Any]], error: str
+    project_root: Path,
+    *,
+    attempts: list[dict[str, Any]],
+    error: str,
+    environment: Mapping[str, str] | None = None,
 ) -> Path:
     """Persist a user-owned terminal report without manufacturing task results."""
     experiment = os.environ.get("COMET_EVAL_EXPERIMENT_ID") or f"task-generation-{time.time_ns()}"
     report_dir = managed_path_for_owner(project_root, "runs", experiment)
     report_dir.mkdir(parents=True, exist_ok=True)
-    safe_error = _redact_sensitive(error)
-    safe_attempts = _redact_sensitive(_without_credentials(attempts))
+    safe_error = _redact_sensitive(error, environment)
+    safe_attempts = _redact_sensitive(_without_credentials(attempts), environment)
     html = os.environ.get("COMET_EVAL_REPORT_HTML") == "1"
     output_path = report_dir / ("summary.html" if html else "summary.md")
+    escaped_error = html_module.escape(str(safe_error)) if html else safe_error
     metadata = {
         "schema": "comet.eval.generation.failure.v1",
         "attribution": "task_generation",
@@ -194,7 +208,7 @@ def _write_generation_failure_report(
         (
             "<h1>Evaluation stopped during task generation</h1>"
             f"<p>Attempts: {len(attempts)}</p><p>Task denominator: 0</p>"
-            f"<p>Error: {safe_error}</p>"
+            f"<p>Error: {escaped_error}</p>"
             if html
             else "# Evaluation stopped during task generation\n\n"
             "Attribution: `task_generation`\n\n"
@@ -209,23 +223,78 @@ def _without_credentials(value: Any) -> Any:
         return {
             key: _without_credentials(item)
             for key, item in value.items()
-            if not re.search(r"(?:api[_-]?key|auth[_-]?token|password|secret|credential)", key, re.I)
+            if not re.search(
+                r"(?:api[_-]?key|auth[_-]?token|access[_-]?token|personal[_-]?access[_-]?token|"
+                r"(?:^|[_-])(key|token|secret|password|credential)$)",
+                key,
+                re.I,
+            )
         }
     if isinstance(value, list):
         return [_without_credentials(item) for item in value]
     return value
 
 
-def _redact_sensitive(value: Any) -> Any:
-    """Remove common credential values from generator errors and telemetry."""
+def _credential_values(source_env: Mapping[str, str] | None = None) -> tuple[str, ...]:
+    """Return configured credential values for final report redaction."""
+    environment = dict(os.environ)
+    if source_env is not None:
+        environment.update(source_env)
+    custom_names = {
+        item.strip()
+        for metadata_key in ("COMET_EVAL_CUSTOM_CREDENTIALS", "COMET_EVAL_MAIN_CREDENTIALS")
+        for item in environment.get(metadata_key, "").split(",")
+        if item.strip()
+    }
+    values = {
+        value.strip()
+        for key, value in environment.items()
+        if value.strip()
+        and (
+            key in custom_names
+            or re.search(
+                r"(?:api[_-]?key|auth[_-]?token|access[_-]?token|personal[_-]?access[_-]?token|"
+                r"(?:^|[_-])(key|token|secret|password|credential)$)",
+                key,
+                re.I,
+            )
+        )
+    }
+    return tuple(sorted((value for value in values if len(value) >= 4), key=len, reverse=True))
+
+
+def _redact_sensitive(value: Any, source_env: Mapping[str, str] | None = None) -> Any:
+    """Remove common credential forms and configured values from reports."""
     if isinstance(value, dict):
-        return {key: _redact_sensitive(item) for key, item in value.items()}
+        return {key: _redact_sensitive(item, source_env) for key, item in value.items()}
     if isinstance(value, list):
-        return [_redact_sensitive(item) for item in value]
+        return [_redact_sensitive(item, source_env) for item in value]
     if not isinstance(value, str):
         return value
-    redacted = re.sub(r"(?i)(api[_-]?key|token|secret|password|credential)\s*[=:]\s*[^\s,;]+", r"\1=[REDACTED]", value)
-    return re.sub(r"(https?://)[^/@\s:]+:[^/@\s]+@", r"\1[REDACTED]@", redacted)
+    redacted = re.sub(
+        r"(?i)(authorization\s*:\s*bearer\s+)[^\s,;]+",
+        r"\1[REDACTED]",
+        value,
+    )
+    redacted = re.sub(
+        r"(?i)(x-api-key\s*:\s*)[^\s,;]+",
+        r"\1[REDACTED]",
+        redacted,
+    )
+    redacted = re.sub(
+        r"(?i)(api[_-]?key|token|secret|password|credential)\s*[=:]\s*[^\s,;]+",
+        r"\1=[REDACTED]",
+        redacted,
+    )
+    redacted = re.sub(
+        r"(?i)([?&](?:api[_-]?key|token|access[_-]?token|auth[_-]?token)=)[^&#\s]+",
+        r"\1[REDACTED]",
+        redacted,
+    )
+    redacted = re.sub(r"(https?://)[^/@\s:]+:[^/@\s]+@", r"\1[REDACTED]@", redacted)
+    for secret in _credential_values(source_env):
+        redacted = redacted.replace(secret, "[REDACTED]")
+    return redacted
 
 
 def _extract_json_payload(raw: object) -> dict[str, Any]:
@@ -353,7 +422,14 @@ Bounded Skill snapshot:
 """
 
 
-def _default_generate(prompt: str, *, agent: AgentId, model: str | None) -> GenerationOutput:
+def _default_generate(
+    prompt: str,
+    *,
+    agent: AgentId,
+    model: str | None,
+    base_url: str | None = None,
+    environment: dict[str, str] | None = None,
+) -> GenerationOutput:
     from scaffold.python.manifest_tasks import _generic_environment_dir
     from scaffold.python.logging import extract_events, parse_output
 
@@ -361,7 +437,15 @@ def _default_generate(prompt: str, *, agent: AgentId, model: str | None) -> Gene
         workdir = Path(directory)
         shutil.copytree(_generic_environment_dir(), workdir, dirs_exist_ok=True)
         started = time.monotonic()
-        result = run_agent_in_docker(workdir, prompt, agent=agent, model=model, timeout=300)
+        result = run_agent_in_docker(
+            workdir,
+            prompt,
+            agent=agent,
+            model=model,
+            base_url=base_url,
+            environment=environment,
+            timeout=300,
+        )
         elapsed = time.monotonic() - started
         if result.returncode != 0:
             raise AutoTaskError(
@@ -369,7 +453,7 @@ def _default_generate(prompt: str, *, agent: AgentId, model: str | None) -> Gene
                 f"{(result.stderr or result.stdout or '')[-1000:]}"
             )
         stdout = result.stdout or ""
-        events = extract_events(parse_output(stdout))
+        events = extract_events(parse_output(stdout), agent=agent)
         return GenerationOutput(
             stdout,
             {
@@ -380,6 +464,9 @@ def _default_generate(prompt: str, *, agent: AgentId, model: str | None) -> Gene
                 "total_cost_usd": events.get("total_cost_usd"),
                 "model_usage": events.get("model_usage") or {},
                 "model": model or "runtime-default",
+                "telemetry_status": (
+                    "N/A" if not get_agent_adapter(agent).supports_telemetry else "available"
+                ),
             },
         )
 
@@ -405,7 +492,7 @@ def _load_cached(cache_dir: Path, generation_hash: str) -> GeneratedManifest | N
             manifest_path, metadata
         ):
             return None
-        manifest = load_eval_manifest(manifest_path)
+        manifest = validate_generated_manifest(manifest_path)
         _reject_generated_bundled_collisions([{"name": task.name} for task in manifest.tasks])
     except (OSError, ValueError, json.JSONDecodeError, TypeError):
         return None
@@ -461,6 +548,13 @@ def _merge_generation_telemetry(attempts: list[dict[str, Any]]) -> dict[str, Any
         "total_tokens": total("total_tokens"),
         "total_cost_usd": total("total_cost_usd"),
         "model_usage": merged_models,
+        "telemetry_status": (
+            "N/A"
+            if any(item.get("telemetry_status") == "N/A" for item in attempts)
+            else "available"
+            if any(item.get("telemetry_status") == "available" for item in attempts)
+            else "N/A"
+        ),
         "attempts": attempts,
     }
 
@@ -473,6 +567,8 @@ def ensure_generated_manifest(
     model: str | None,
     profile: str,
     interaction: dict[str, Any],
+    base_url: str | None = None,
+    environment: dict[str, str] | None = None,
     collect_only: bool = False,
     generate: Callable[[str], object] | None = None,
 ) -> GeneratedManifest:
@@ -480,12 +576,14 @@ def ensure_generated_manifest(
     selected_agent = validate_agent_id(agent, field="task-generator agent")
     skill_root = _safe_skill_root(Path(skill_path))
     snapshot = build_skill_snapshot(skill_root)
+    canonical_interaction = normalize_interaction(interaction)
     generation_hash = _generation_hash(
         snapshot,
         agent=selected_agent,
         model=model,
+        base_url=base_url,
         profile=profile,
-        interaction=interaction,
+        interaction=canonical_interaction,
     )
     cache_dir = _cache_location(Path(project_root), skill_root, generation_hash)
     cached = _load_cached(cache_dir, generation_hash)
@@ -506,7 +604,13 @@ def ensure_generated_manifest(
             return cached
 
         generator = generate or (
-            lambda prompt: _default_generate(prompt, agent=selected_agent, model=model)
+            lambda prompt: _default_generate(
+                prompt,
+                agent=selected_agent,
+                model=model,
+                base_url=base_url,
+                environment=environment,
+            )
         )
         error: str | None = None
         tasks: list[dict[str, Any]] | None = None
@@ -521,6 +625,10 @@ def ensure_generated_manifest(
                     raw_output = generated
                     telemetry = {}
                 telemetry.setdefault("model", model or "runtime-default")
+                telemetry.setdefault(
+                    "telemetry_status",
+                    "N/A" if not get_agent_adapter(selected_agent).supports_telemetry else "available",
+                )
                 telemetry["attempt"] = attempt + 1
                 attempts.append(telemetry)
                 payload = _extract_json_payload(raw_output)
@@ -545,7 +653,10 @@ def ensure_generated_manifest(
         if tasks is None:
             message = error or "task_generation: generated manifest is invalid"
             report_path = _write_generation_failure_report(
-                Path(project_root), attempts=attempts, error=message
+                Path(project_root),
+                attempts=attempts,
+                error=message,
+                environment=environment,
             )
             raise AutoTaskError(f"{message}\nPartial report: {report_path}")
 
@@ -562,7 +673,7 @@ def ensure_generated_manifest(
             "agent": selected_agent,
             "model": model or "runtime-default",
             "profile": profile,
-            "interaction": _without_credentials(interaction),
+            "interaction": canonical_interaction,
             "manifest_hash": _sha256(manifest_source),
             "generation_overhead": _merge_generation_telemetry(attempts),
         }

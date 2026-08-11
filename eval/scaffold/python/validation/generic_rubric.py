@@ -7,6 +7,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from scaffold.python.agents import normalize_skill_invocations
+
 GENERIC_RUBRIC_DIMENSIONS = (
     "completion",
     "skill_invocation",
@@ -153,6 +155,13 @@ def _fmt_na(dim: str, reason: str) -> str:
 
 
 def generic_rubric_validator(test_dir: Path, outputs: dict[str, Any]) -> tuple[list[str], list[str]]:
+    events = (outputs or {}).get("events")
+    if isinstance(events, dict):
+        events["skills_invoked"] = normalize_skill_invocations(
+            events,
+            agent=(outputs or {}).get("agent"),
+            adapter=(outputs or {}).get("agent_adapter"),
+        )
     scored: list[tuple[str, float | None, str]] = [
         ("completion", *_score_completion(outputs)),
         ("skill_invocation", *_score_skill_invocation(outputs)),

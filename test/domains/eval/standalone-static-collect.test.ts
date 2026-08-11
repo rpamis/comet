@@ -3,7 +3,11 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { collectStandaloneTasks, resolveEvalContext } from '../../../domains/eval/index.js';
+import {
+  collectStandaloneTasks,
+  loadInstalledCustomAgent,
+  resolveEvalContext,
+} from '../../../domains/eval/index.js';
 
 const repository = path.resolve('.');
 const packageRoot = repository;
@@ -104,7 +108,7 @@ describe('standalone static collector parity', () => {
         'metadata: { name: demo }',
         'skill: { name: demo, source: .. }',
         'evaluation:',
-        '  tasks: [{source: tasks/source}]',
+        '  tasks: [{name: public-alias, source: tasks/source}]',
         '',
       ].join('\n'),
     );
@@ -116,10 +120,202 @@ describe('standalone static collector parity', () => {
     );
     await fs.writeFile(path.join(source, 'instruction.md'), 'do work\n');
     const context = await resolveEvalContext({ manifest, project: path.dirname(root) });
-    await expect(collectStandaloneTasks({}, context, packageRoot)).resolves.toContain('- right');
+    await expect(collectStandaloneTasks({}, context, packageRoot)).resolves.toContain(
+      '- public-alias',
+    );
     expect(pythonAccepts(manifest)).toBe(true);
     await fs.writeFile(path.join(source, 'task.toml'), '[metadata\nname = "bad"\n');
     await expect(collectStandaloneTasks({}, context, packageRoot)).rejects.toThrow('task.toml');
+    expect(pythonAccepts(manifest)).toBe(false);
+  });
+
+  it('rejects source task TOML that the normal loader cannot execute', async () => {
+    const { root, manifest } = await skillRoot(
+      [
+        'apiVersion: comet.eval/v1alpha1',
+        'kind: SkillEvalManifest',
+        'metadata: { name: demo }',
+        'skill: { name: demo, source: .. }',
+        'evaluation:',
+        '  tasks: [{source: tasks/source}]',
+        '',
+      ].join('\n'),
+    );
+    const source = path.join(root, 'tasks', 'source');
+    await fs.mkdir(source, { recursive: true });
+    await fs.writeFile(
+      path.join(source, 'task.toml'),
+      '[metadata]\nname = "invalid-source"\n[evaluation]\nnative_terminal = "invalid"\n',
+    );
+    await fs.writeFile(path.join(source, 'instruction.md'), 'do work\n');
+    const context = await resolveEvalContext({ manifest, project: path.dirname(root) });
+    await expect(collectStandaloneTasks({}, context, packageRoot)).rejects.toThrow(
+      'evaluation.native_terminal',
+    );
+    expect(pythonAccepts(manifest)).toBe(false);
+  });
+
+  it.each([
+    ['execution.agent', 'execution:\n  agent: "unknown agent"\n'],
+    ['judge.agent', 'judge:\n  agent: "unknown agent"\n  model: judge-model\n'],
+  ])('rejects an unknown %s before task selection', async (field, section) => {
+    const { root, manifest } = await skillRoot(
+      [
+        'apiVersion: comet.eval/v1alpha1',
+        'kind: SkillEvalManifest',
+        'metadata: { name: demo }',
+        'skill: { name: demo, source: .. }',
+        section.trimEnd(),
+        'evaluation: {}',
+        '',
+      ].join('\n'),
+    );
+    const context = await resolveEvalContext({ manifest, project: path.dirname(root) });
+    await expect(collectStandaloneTasks({}, context, packageRoot)).rejects.toThrow(field);
+    expect(pythonAccepts(manifest)).toBe(false);
+  });
+
+  it('rejects an unknown CLI Agent before returning pending generation', async () => {
+    const { root, manifest } = await skillRoot();
+    const context = await resolveEvalContext({ manifest, project: path.dirname(root) });
+    await expect(
+      collectStandaloneTasks({ agent: 'unknown agent' }, context, packageRoot),
+    ).rejects.toThrow('CLI evaluation agent');
+  });
+
+  it('validates a custom Agent against the explicitly installed adapter registry', async () => {
+    const { root, manifest } = await skillRoot(
+      [
+        'apiVersion: comet.eval/v1alpha1',
+        'kind: SkillEvalManifest',
+        'metadata: { name: demo }',
+        'skill: { name: demo, source: .. }',
+        'execution:',
+        '  agent: fixture-agent',
+        'evaluation: {}',
+        '',
+      ].join('\n'),
+    );
+    const registry = path.join(path.dirname(root), 'adapters');
+    await fs.mkdir(path.join(registry, 'fixture-agent'), { recursive: true });
+    await fs.writeFile(
+      path.join(registry, 'fixture-agent', 'adapter.yaml'),
+      [
+        'apiVersion: comet.eval.agent/v1alpha1',
+        'kind: EvalAgentAdapter',
+        'metadata: { id: fixture-agent, version: 1.0.0 }',
+        'runtime: { executable: fixture-agent, install: { kind: none } }',
+        'credentials: [FIXTURE_AGENT_API_KEY]',
+        'modelEnv: FIXTURE_AGENT_MODEL',
+        'baseUrlEnv: FIXTURE_AGENT_BASE_URL',
+        'capabilities: { singleTurn: true, resume: true, structuredEvents: true, telemetry: false, skillInvocationEvidence: true }',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    const previous = process.env.COMET_EVAL_ADAPTERS_DIR;
+    process.env.COMET_EVAL_ADAPTERS_DIR = registry;
+    try {
+      await expect(loadInstalledCustomAgent('fixture-agent')).resolves.toEqual({
+        id: 'fixture-agent',
+        modelEnv: 'FIXTURE_AGENT_MODEL',
+        baseUrlEnv: 'FIXTURE_AGENT_BASE_URL',
+      });
+      const context = await resolveEvalContext({ manifest, project: path.dirname(root) });
+      await expect(collectStandaloneTasks({}, context, packageRoot)).resolves.toContain(
+        'Tasks: pending generation',
+      );
+    } finally {
+      if (previous === undefined) delete process.env.COMET_EVAL_ADAPTERS_DIR;
+      else process.env.COMET_EVAL_ADAPTERS_DIR = previous;
+    }
+  });
+
+  it('rejects manifests that set both alias spellings', async () => {
+    const { root, manifest } = await skillRoot(
+      [
+        'apiVersion: comet.eval/v1alpha1',
+        'kind: SkillEvalManifest',
+        'metadata: { name: demo }',
+        'skill: { name: demo, source: .. }',
+        'evaluation:',
+        '  recommendedTasks: [generic-skill-smoke]',
+        '  recommended_tasks: [workflow-route-conformance]',
+        '',
+      ].join('\n'),
+    );
+    const context = await resolveEvalContext({ manifest, project: path.dirname(root) });
+    await expect(collectStandaloneTasks({}, context, packageRoot)).rejects.toThrow(
+      'evaluation.recommendedTasks and evaluation.recommended_tasks cannot both be set',
+    );
+  });
+
+  it('rejects duplicate recommended task names with the Python field diagnostic', async () => {
+    const { root, manifest } = await skillRoot(
+      [
+        'apiVersion: comet.eval/v1alpha1',
+        'kind: SkillEvalManifest',
+        'metadata: { name: demo }',
+        'skill: { name: demo, source: .. }',
+        'evaluation:',
+        '  recommendedTasks: [generic-skill-smoke, generic-skill-smoke]',
+        '',
+      ].join('\n'),
+    );
+    const context = await resolveEvalContext({ manifest, project: path.dirname(root) });
+    await expect(collectStandaloneTasks({}, context, packageRoot)).rejects.toThrow(
+      'evaluation.recommendedTasks[1] duplicates evaluation.recommendedTasks[0]: "generic-skill-smoke"',
+    );
+    expect(pythonAccepts(manifest)).toBe(false);
+  });
+
+  it('accepts preserved main and Judge model routing fields during static collection', async () => {
+    const { root, manifest } = await skillRoot(
+      [
+        'apiVersion: comet.eval/v1alpha1',
+        'kind: SkillEvalManifest',
+        'metadata: { name: demo }',
+        'skill: { name: demo, source: .. }',
+        'execution:',
+        '  agent: codex',
+        '  model: gpt-main',
+        '  baseUrl: https://main.example.com/v1',
+        'judge:',
+        '  agent: claude-code',
+        '  model: claude-judge',
+        '  baseUrl: https://judge.example.com',
+        'evaluation: {}',
+        '',
+      ].join('\n'),
+    );
+    const context = await resolveEvalContext({ manifest, project: path.dirname(root) });
+    await expect(collectStandaloneTasks({}, context, packageRoot)).resolves.toContain(
+      'Tasks: pending generation',
+    );
+    expect(pythonAccepts(manifest)).toBe(true);
+  });
+
+  it.each([
+    ['execution.model', 'execution:\n  model: "   "\n'],
+    ['execution.baseUrl', 'execution:\n  baseUrl: ftp://main.example.com\n'],
+    ['execution.baseUrl', 'execution:\n  baseUrl: https://main.example.com:99999/v1\n'],
+    ['judge.model', 'judge:\n  agent: codex\n'],
+    ['judge.model', 'judge:\n  model: "   "\n'],
+    ['judge.baseUrl', 'judge:\n  model: judge-model\n  baseUrl: relative/path\n'],
+  ])('rejects invalid %s instead of silently ignoring it', async (field, section) => {
+    const { root, manifest } = await skillRoot(
+      [
+        'apiVersion: comet.eval/v1alpha1',
+        'kind: SkillEvalManifest',
+        'metadata: { name: demo }',
+        'skill: { name: demo, source: .. }',
+        section.trimEnd(),
+        'evaluation: {}',
+        '',
+      ].join('\n'),
+    );
+    const context = await resolveEvalContext({ manifest, project: path.dirname(root) });
+    await expect(collectStandaloneTasks({}, context, packageRoot)).rejects.toThrow(field);
     expect(pythonAccepts(manifest)).toBe(false);
   });
 
@@ -147,6 +343,25 @@ describe('standalone static collector parity', () => {
     await fs.writeFile(path.join(generatedRoot, safe, key, 'eval.yaml'), 'unknownTopLevel: true\n');
     await expect(collectStandaloneTasks({}, context, packageRoot)).resolves.toContain(
       'Tasks: pending generation',
+    );
+  });
+
+  it('hard-fails when generated cache components escape the owner-local artifact root', async () => {
+    const { root } = await skillRoot();
+    const owner = path.dirname(root);
+    const external = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-static-external-'));
+    temporary.push(external);
+    const generatedRoot = path.join(owner, '.comet', 'eval', 'generated');
+    await fs.mkdir(generatedRoot, { recursive: true });
+    const link = path.join(generatedRoot, path.basename(root));
+    try {
+      await fs.symlink(external, link, process.platform === 'win32' ? 'junction' : 'dir');
+    } catch {
+      return;
+    }
+    const context = await resolveEvalContext({ skillPath: root, project: owner });
+    await expect(collectStandaloneTasks({}, context, packageRoot)).rejects.toThrow(
+      'Eval managed path',
     );
   });
 });

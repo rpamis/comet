@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
 
 from scaffold.python.auto_tasks import (
     AutoTaskError,
@@ -161,6 +162,48 @@ def test_cached_manifest_hash_mismatch_forces_regeneration(tmp_path: Path):
     assert "normal-flow" in second.manifest_path.read_text(encoding="utf-8")
 
 
+@pytest.mark.parametrize("task_count", [1, 5])
+def test_cached_generated_manifest_revalidates_task_count(
+    tmp_path: Path, task_count: int
+):
+    skill = _write_skill(tmp_path)
+    calls = []
+
+    def generate(_prompt):
+        calls.append(True)
+        return _generated_payload()
+
+    first = ensure_generated_manifest(
+        skill,
+        tmp_path,
+        agent="codex",
+        model="gpt-test",
+        profile="generic",
+        interaction={"mode": "none", "max_turns": 12},
+        generate=generate,
+    )
+    data = yaml.safe_load(first.manifest_path.read_text(encoding="utf-8"))
+    tasks = data["evaluation"]["tasks"]
+    data["evaluation"]["tasks"] = (tasks * task_count)[:task_count]
+    first.manifest_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    from scaffold.python.generated_task_cache import write_cache_metadata
+
+    write_cache_metadata(first.manifest_path.parent, first.generation_hash)
+
+    second = ensure_generated_manifest(
+        skill,
+        tmp_path,
+        agent="codex",
+        model="gpt-test",
+        profile="generic",
+        interaction={"mode": "none", "max_turns": 12},
+        generate=generate,
+    )
+
+    assert calls == [True, True]
+    assert len(yaml.safe_load(second.manifest_path.read_text(encoding="utf-8"))["evaluation"]["tasks"]) == 2
+
+
 def test_generation_overhead_is_persisted_in_cache_metadata(tmp_path: Path):
     skill = _write_skill(tmp_path)
 
@@ -263,3 +306,45 @@ def test_invalid_generation_stops_after_one_repair_attempt(tmp_path: Path):
     assert metadata["report_path"] == str(report_path)
     assert "sk-secret-value" not in report_path.read_text(encoding="utf-8")
     assert "sk-secret-value" not in (report_path.parent / "metadata.json").read_text(encoding="utf-8")
+
+
+def test_html_generation_failure_escapes_generator_controlled_error_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    skill = _write_skill(tmp_path)
+    monkeypatch.setenv("COMET_EVAL_REPORT_HTML", "1")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "environment-secret-value")
+
+    def generate(_prompt):
+        raise ValueError(
+            "<script>globalThis.cometEvalInjected = true</script> "
+            "api_key=sk-secret-value Authorization: Bearer bearer-secret-value "
+            "x-api-key: header-secret-value environment-secret-value"
+        )
+
+    with pytest.raises(AutoTaskError) as exc_info:
+        ensure_generated_manifest(
+            skill,
+            tmp_path,
+            agent="claude-code",
+            model=None,
+            profile="generic",
+            interaction={"mode": "none", "max_turns": 12},
+            generate=generate,
+        )
+
+    report_path = Path(str(exc_info.value).split("Partial report: ", 1)[1])
+    report = report_path.read_text(encoding="utf-8")
+    assert report_path.suffix == ".html"
+    assert "<script>" not in report
+    assert "&lt;script&gt;globalThis.cometEvalInjected = true&lt;/script&gt;" in report
+    assert "sk-secret-value" not in report
+    metadata = (report_path.parent / "metadata.json").read_text(encoding="utf-8")
+    for secret in (
+        "sk-secret-value",
+        "bearer-secret-value",
+        "header-secret-value",
+        "environment-secret-value",
+    ):
+        assert secret not in report
+        assert secret not in metadata

@@ -214,6 +214,25 @@ def test_bash_env_bridges_codebuddy_credentials_and_model_to_wsl(monkeypatch):
     assert "CODEBUDDY_MODEL" in env["WSLENV"].split(":")
 
 
+def test_bash_env_bridges_custom_agent_model_and_base_url_to_wsl(monkeypatch):
+    monkeypatch.setattr(utils.os, "name", "nt")
+    monkeypatch.setattr(
+        utils,
+        "BASH_EXEC",
+        r"C:\Users\BENYM\AppData\Local\Microsoft\WindowsApps\bash.exe",
+    )
+    monkeypatch.setenv("WSLENV", "")
+    monkeypatch.setenv("COMET_EVAL_CUSTOM_MODEL_ENV", "FIXTURE_AGENT_MODEL")
+    monkeypatch.setenv("COMET_EVAL_CUSTOM_BASE_URL_ENV", "FIXTURE_AGENT_BASE_URL")
+    monkeypatch.setenv("FIXTURE_AGENT_MODEL", "fixture-model")
+    monkeypatch.setenv("FIXTURE_AGENT_BASE_URL", "https://fixture.example/v1")
+
+    env = utils._bash_env()
+
+    assert "FIXTURE_AGENT_MODEL" in env["WSLENV"].split(":")
+    assert "FIXTURE_AGENT_BASE_URL" in env["WSLENV"].split(":")
+
+
 def test_run_agent_in_docker_builds_the_selected_adapter_command(monkeypatch, tmp_path: Path):
     calls = []
 

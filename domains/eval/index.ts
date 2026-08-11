@@ -19,7 +19,9 @@ export {
 } from './standalone-context.js';
 export {
   collectStandaloneTasks,
+  loadInstalledCustomAgent,
   validateInlineTask,
+  type InstalledCustomAgent,
   type StaticCollectOptions,
 } from './standalone-static-collect.js';
 

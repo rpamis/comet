@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from scaffold.python.manifests import ManifestTask, SkillEvalManifest
@@ -57,7 +58,12 @@ def load_manifest_tasks(manifest: SkillEvalManifest) -> list[Task]:
     """Load all authored inline/source task entries in manifest order."""
     tasks: list[Task] = []
     for spec in manifest.tasks:
-        tasks.append(
-            _inline_task(manifest, spec) if spec.is_inline else load_task_from_path(spec.source)
-        )
+        task = _inline_task(manifest, spec) if spec.is_inline else load_task_from_path(spec.source)
+        # ``evaluation.tasks[].name`` is the public identity, including for a
+        # sourced package whose internal metadata name differs.  Keep the full
+        # package semantics loaded by ``load_task_from_path`` while applying
+        # the manifest alias consistently to catalogue, selection, and reports.
+        if task.name != spec.name:
+            task = replace(task, config=replace(task.config, name=spec.name))
+        tasks.append(task)
     return tasks

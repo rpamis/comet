@@ -7,6 +7,7 @@ import re
 import pytest
 
 from scaffold.python.manifests import load_eval_manifest
+from scaffold.python.manifest_tasks import load_manifest_tasks
 
 
 def test_load_eval_manifest_parses_skill_package_metadata(tmp_path: Path):
@@ -59,6 +60,12 @@ interaction:
   freshResumeMarker: COLD_RESUME_READY
 execution:
   agent: codex
+  model: gpt-main
+  baseUrl: https://main.example.com/v1
+judge:
+  agent: claude-code
+  model: claude-judge
+  baseUrl: https://judge.example.com
 """,
         encoding="utf-8",
     )
@@ -86,6 +93,67 @@ execution:
     assert manifest.interaction.simulator_prompt == "Answer concisely."
     assert manifest.interaction.fresh_resume_marker == "COLD_RESUME_READY"
     assert manifest.execution_agent == "codex"
+    assert manifest.execution.model == "gpt-main"
+    assert manifest.execution.base_url == "https://main.example.com/v1"
+    assert manifest.judge is not None
+    assert manifest.judge.agent == "claude-code"
+    assert manifest.judge.model == "claude-judge"
+    assert manifest.judge.base_url == "https://judge.example.com"
+    assert manifest.raw["execution"]["model"] == "gpt-main"
+    assert manifest.raw["judge"]["model"] == "claude-judge"
+
+
+def test_load_eval_manifest_normalizes_snake_case_aliases(tmp_path: Path):
+    package = tmp_path / "my-skill"
+    (package / "comet").mkdir(parents=True)
+    manifest_path = package / "comet" / "eval.yaml"
+    manifest_path.write_text(
+        """
+apiVersion: comet.eval/v1alpha1
+kind: SkillEvalManifest
+metadata:
+  name: my-skill
+  draft_hash: '0000000000000000000000000000000000000000000000000000000000000000'
+  generation_hash: generated
+skill:
+  name: my-skill
+  source: ..
+evaluation:
+  recommended_tasks: [generic-skill-smoke]
+  required_skills: [my-skill]
+  expected_artifacts: [result.md]
+  generated_node_skills: [my-skill-open]
+  route_conformance:
+    task: generic-skill-smoke
+    expected_node_order: [open, build]
+interaction:
+  max_turns: 4
+  simulator_prompt: Answer.
+  fresh_resume_marker: READY
+execution:
+  base_url: https://main.example.com
+judge:
+  model: judge-model
+  base_url: https://judge.example.com
+""",
+        encoding="utf-8",
+    )
+
+    manifest = load_eval_manifest(manifest_path)
+
+    assert manifest.draft_hash == "0" * 64
+    assert manifest.generation_hash == "generated"
+    assert manifest.recommended_tasks == ["generic-skill-smoke"]
+    assert manifest.required_skills == ["my-skill"]
+    assert manifest.expected_artifacts == ["result.md"]
+    assert manifest.generated_node_skills == ["my-skill-open"]
+    assert manifest.route_conformance_expected_node_order == ["open", "build"]
+    assert manifest.interaction.max_turns == 4
+    assert manifest.interaction.simulator_prompt == "Answer."
+    assert manifest.interaction.fresh_resume_marker == "READY"
+    assert manifest.execution.base_url == "https://main.example.com"
+    assert manifest.judge is not None
+    assert manifest.judge.base_url == "https://judge.example.com"
 
 
 def test_load_eval_manifest_rejects_wrong_kind(tmp_path: Path):
@@ -96,6 +164,37 @@ def test_load_eval_manifest_rejects_wrong_kind(tmp_path: Path):
     )
 
     with pytest.raises(ValueError, match="SkillEvalManifest"):
+        load_eval_manifest(manifest_path)
+
+
+@pytest.mark.parametrize(
+    ("section", "message"),
+    [
+        ("metadata:\n  draftHash: one\n  draft_hash: two", "metadata.draftHash"),
+        (
+            "evaluation:\n  recommendedTasks: [one]\n  recommended_tasks: [two]",
+            "evaluation.recommendedTasks",
+        ),
+        (
+            "execution:\n  baseUrl: https://main.example\n  base_url: https://other.example",
+            "execution.baseUrl",
+        ),
+    ],
+)
+def test_load_eval_manifest_rejects_conflicting_aliases(
+    tmp_path: Path, section: str, message: str
+):
+    manifest_path = tmp_path / "eval.yaml"
+    manifest_path.write_text(
+        "apiVersion: comet.eval/v1alpha1\n"
+        "kind: SkillEvalManifest\n"
+        "metadata:\n  name: demo\n"
+        "skill:\n  name: demo\n"
+        f"{section}\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=re.escape(message)):
         load_eval_manifest(manifest_path)
 
 
@@ -192,20 +291,25 @@ evaluation:
             timeout: 30
       rubric:
         - The summary explains the result.
-    - source: ./tasks/advanced
+    - name: advanced-alias
+      source: ./tasks/advanced
 """,
         encoding="utf-8",
     )
 
     manifest = load_eval_manifest(manifest_path)
 
-    assert [task.name for task in manifest.tasks] == ["create-summary", "advanced"]
+    assert [task.name for task in manifest.tasks] == ["create-summary", "advanced-alias"]
     inline = manifest.tasks[0]
     assert inline.prompt == "Create summary.md."
     assert inline.workspace == fixtures.resolve()
     assert inline.expect["files"] == ["summary.md"]
     assert inline.rubric == ["The summary explains the result."]
     assert manifest.tasks[1].source == source_task.resolve()
+    assert [task.name for task in load_manifest_tasks(manifest)] == [
+        "create-summary",
+        "advanced-alias",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -217,7 +321,7 @@ evaluation:
         ),
         (
             "- name: no-expect\n  prompt: Do it.\n",
-            "deterministic expect",
+                "expect: is required",
         ),
         (
             "- name: unsafe\n  prompt: Do it.\n  expect:\n    files: [../secret]\n",
@@ -286,13 +390,72 @@ evaluation:
         load_eval_manifest(manifest_path)
 
 
+def test_load_eval_manifest_rejects_duplicate_recommended_task_names(tmp_path: Path):
+    manifest_path = tmp_path / "eval.yaml"
+    manifest_path.write_text(
+        "apiVersion: comet.eval/v1alpha1\n"
+        "kind: SkillEvalManifest\n"
+        "metadata: {name: my-skill}\n"
+        "skill: {name: my-skill, source: .}\n"
+        "evaluation:\n"
+        "  recommendedTasks: [generic-skill-smoke, generic-skill-smoke]\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            'evaluation.recommendedTasks[1] duplicates '
+            'evaluation.recommendedTasks[0]: "generic-skill-smoke"'
+        ),
+    ):
+        load_eval_manifest(manifest_path)
+
+
+@pytest.mark.parametrize(
+    ("section", "message"),
+    [
+        ("execution:\n  model: '   '\n", "execution.model"),
+        ("execution:\n  baseUrl: ftp://main.example.com\n", "execution.baseUrl"),
+        ("judge:\n  agent: codex\n", "judge.model"),
+        ("judge:\n  model: '   '\n", "judge.model"),
+        (
+            "judge:\n  agent: unknown-agent\n  model: judge-model\n",
+            "manifest judge.agent",
+        ),
+        (
+            "judge:\n  model: judge-model\n  baseUrl: relative/path\n",
+            "judge.baseUrl",
+        ),
+    ],
+)
+def test_manifest_rejects_invalid_preserved_execution_and_judge_fields(
+    tmp_path: Path, section: str, message: str
+):
+    manifest_path = tmp_path / "eval.yaml"
+    manifest_path.write_text(
+        "apiVersion: comet.eval/v1alpha1\n"
+        "kind: SkillEvalManifest\n"
+        "metadata: {name: my-skill}\n"
+        "skill: {name: my-skill, source: .}\n"
+        + section,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        load_eval_manifest(manifest_path)
+
+
 @pytest.mark.parametrize(
     ("yaml_fragment", "message"),
     [
         ("unknownTopLevel: true\n", "unknownTopLevel: unknown field"),
         ("evaluation:\n  unknownFlag: true\n", "evaluation.unknownFlag: unknown field"),
         ("execution:\n  unknownFlag: true\n", "execution.unknownFlag: unknown field"),
-        ("judge:\n  unknownFlag: true\n", "judge.unknownFlag: unknown field"),
+        (
+            "judge:\n  model: judge-model\n  unknownFlag: true\n",
+            "judge.unknownFlag: unknown field",
+        ),
         ("reporting:\n  unknownFlag: true\n", "reporting.unknownFlag: unknown field"),
         ("interaction:\n  unknownFlag: true\n", "interaction.unknownFlag: unknown field"),
         (

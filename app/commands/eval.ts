@@ -4,18 +4,22 @@ import { existsSync, promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { parse as parseYaml } from 'yaml';
 import {
   canonicalPath,
   isPathWithin,
   resolveEvalContext,
   type ResolvedEvalContext,
 } from '../../domains/eval/index.js';
-import { collectStandaloneTasks } from '../../domains/eval/standalone-static-collect.js';
+import {
+  collectStandaloneTasks,
+  loadInstalledCustomAgent,
+} from '../../domains/eval/standalone-static-collect.js';
 import { recordRepositoryEvalExperiment } from '../../domains/bundle/eval-run-result.js';
 import { prepareEvalManifest } from '../../domains/bundle/eval-manifest-runtime.js';
 
 type EvalSuite = 'local' | 'langsmith' | 'langfuse';
-type EvalAgent = 'claude-code' | 'codex' | 'qoder' | 'codebuddy';
+type EvalAgent = string;
 
 interface EvalCommandOptions {
   project?: string;
@@ -30,6 +34,11 @@ interface EvalCommandOptions {
   collect?: boolean;
   suite?: EvalSuite;
   agent?: EvalAgent;
+  model?: string;
+  baseUrl?: string;
+  judgeAgent?: EvalAgent;
+  judgeModel?: string;
+  judgeBaseUrl?: string;
 }
 
 interface EvalLaunchDetails {
@@ -41,7 +50,12 @@ interface EvalLaunchDetails {
   reportConfig: string | null;
   reportPath: string;
   target: string;
+  manifestSource: string;
   agent: EvalAgent | null;
+  model: string;
+  api: 'default' | 'custom';
+  judge: { agent: EvalAgent; model: string; api: 'default' | 'custom' } | null;
+  taskLines: string[];
 }
 
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -78,12 +92,104 @@ function resolveSuite(options: EvalCommandOptions): EvalSuite {
 
 function resolveAgent(options: EvalCommandOptions): EvalAgent {
   const agent = options.agent ?? 'claude-code';
-  if (agent === 'claude-code' || agent === 'codex' || agent === 'qoder' || agent === 'codebuddy') {
+  if (/^[a-z][a-z0-9-]{1,31}$/u.test(agent)) {
     return agent;
   }
   throw new Error(
-    `Unsupported evaluation agent: ${agent}. Expected claude-code, codex, qoder, or codebuddy.`,
+    `Unsupported evaluation agent: ${agent}. Expected a built-in or explicitly installed adapter ID.`,
   );
+}
+
+function nonEmpty(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function manifestField(data: Record<string, unknown> | undefined, ...names: string[]): unknown {
+  if (!data) return undefined;
+  for (const name of names) {
+    if (Object.hasOwn(data, name)) return data[name];
+  }
+  return undefined;
+}
+
+async function resolveLaunchExecution(
+  options: EvalCommandOptions,
+  context: ResolvedEvalContext,
+): Promise<Pick<EvalLaunchDetails, 'agent' | 'model' | 'api' | 'judge'>> {
+  let manifest: Record<string, unknown> | undefined;
+  if (context.manifestPath) {
+    const parsed = parseYaml(await fs.readFile(context.manifestPath, 'utf8')) as unknown;
+    manifest =
+      parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : undefined;
+  }
+  const execution =
+    manifest?.execution && typeof manifest.execution === 'object'
+      ? (manifest.execution as Record<string, unknown>)
+      : undefined;
+  const manifestAgent = nonEmpty(manifestField(execution, 'agent')) as EvalAgent | undefined;
+  const mainAgent =
+    options.agent ??
+    manifestAgent ??
+    (nonEmpty(process.env.BENCH_EVAL_AGENT) as EvalAgent | undefined) ??
+    'claude-code';
+  const customAdapter = await loadInstalledCustomAgent(mainAgent);
+  const modelEnv: Partial<Record<EvalAgent, string[]>> = {
+    'claude-code': ['BENCH_CC_MODEL', 'ANTHROPIC_MODEL'],
+    codex: ['BENCH_CODEX_MODEL', 'OPENAI_MODEL', 'CODEX_MODEL'],
+    qoder: ['BENCH_QODER_MODEL', 'QODER_MODEL'],
+    codebuddy: ['BENCH_CODEBUDDY_MODEL', 'CODEBUDDY_MODEL'],
+  };
+  const baseUrlEnv: Partial<Record<EvalAgent, string[]>> = {
+    'claude-code': ['ANTHROPIC_BASE_URL'],
+    codex: ['OPENAI_BASE_URL', 'CODEX_BASE_URL'],
+    qoder: ['QODER_BASE_URL'],
+    codebuddy: ['CODEBUDDY_BASE_URL'],
+  };
+  const mainModel =
+    options.model ??
+    nonEmpty(manifestField(execution, 'model')) ??
+    (customAdapter?.modelEnv
+      ? nonEmpty(process.env[customAdapter.modelEnv])
+      : (modelEnv[mainAgent] ?? []).map((key) => nonEmpty(process.env[key])).find(Boolean)) ??
+    'default';
+  const mainBaseUrl =
+    options.baseUrl ??
+    nonEmpty(manifestField(execution, 'baseUrl', 'base_url')) ??
+    (customAdapter?.baseUrlEnv
+      ? nonEmpty(process.env[customAdapter.baseUrlEnv])
+      : (baseUrlEnv[mainAgent] ?? []).map((key) => nonEmpty(process.env[key])).find(Boolean));
+  const judgeManifest =
+    manifest?.judge && typeof manifest.judge === 'object'
+      ? (manifest.judge as Record<string, unknown>)
+      : undefined;
+  const judgeEnabled =
+    Boolean(judgeManifest) ||
+    Boolean(options.judgeAgent || options.judgeModel || options.judgeBaseUrl) ||
+    ['1', 'true', 'yes', 'on'].includes((process.env.BENCH_LLM_JUDGE ?? '').toLowerCase());
+  const judge: EvalLaunchDetails['judge'] = judgeEnabled
+    ? {
+        agent: (options.judgeAgent ??
+          (nonEmpty(manifestField(judgeManifest, 'agent')) as EvalAgent | undefined) ??
+          mainAgent) as EvalAgent,
+        model:
+          options.judgeModel ??
+          nonEmpty(manifestField(judgeManifest, 'model')) ??
+          nonEmpty(process.env.BENCH_JUDGE_MODEL) ??
+          'missing',
+        api:
+          (options.judgeBaseUrl ??
+          nonEmpty(manifestField(judgeManifest, 'baseUrl', 'base_url')) ??
+          nonEmpty(process.env.BENCH_JUDGE_BASE_URL))
+            ? 'custom'
+            : 'default',
+      }
+    : null;
+  return {
+    agent: mainAgent,
+    model: mainModel,
+    api: mainBaseUrl ? 'custom' : 'default',
+    judge,
+  };
 }
 
 function assertTarget(options: EvalCommandOptions): void {
@@ -199,8 +305,26 @@ function resolveProfile(options: EvalCommandOptions): string {
   return options.profile ?? 'generic';
 }
 
-async function resolveReportConfig(options: EvalCommandOptions): Promise<string | null> {
+async function resolveReportConfig(
+  options: EvalCommandOptions,
+  context?: ResolvedEvalContext,
+): Promise<string | null> {
   if (options.reportConfig) return path.resolve(options.reportConfig);
+  if (context?.manifestPath) {
+    const parsed = parseYaml(await fs.readFile(context.manifestPath, 'utf8')) as unknown;
+    const manifest =
+      parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+    const reporting =
+      manifest.reporting && typeof manifest.reporting === 'object'
+        ? (manifest.reporting as Record<string, unknown>)
+        : undefined;
+    if (typeof reporting?.config === 'string' && reporting.config.trim()) {
+      const configured = path.isAbsolute(reporting.config)
+        ? reporting.config
+        : path.resolve(path.dirname(context.manifestPath), reporting.config);
+      return configured;
+    }
+  }
   if (!options.html) return null;
 
   const file = path.join(os.tmpdir(), `comet-eval-report-${Date.now()}.json`);
@@ -243,6 +367,11 @@ async function buildEvalArgs(
   }
 
   if (options.agent) args.push(`--agent=${resolveAgent(options)}`);
+  if (options.model) args.push(`--model=${options.model}`);
+  if (options.baseUrl) args.push(`--base-url=${options.baseUrl}`);
+  if (options.judgeAgent) args.push(`--judge-agent=${resolveAgent({ agent: options.judgeAgent })}`);
+  if (options.judgeModel) args.push(`--judge-model=${options.judgeModel}`);
+  if (options.judgeBaseUrl) args.push(`--judge-base-url=${options.judgeBaseUrl}`);
   if (options.quick) args.push('--quick');
   args.push(`--project-root=${context.artifactOwnerRoot}`);
 
@@ -262,8 +391,24 @@ async function buildLaunchDetails(
   context: ResolvedEvalContext,
 ): Promise<EvalLaunchDetails> {
   const suite = resolveSuite(options);
-  const reportConfig = collectOnly ? null : await resolveReportConfig(options);
+  const reportConfig = collectOnly ? null : await resolveReportConfig(options, context);
   const experimentId = `comet-eval-${randomUUID()}`;
+  const execution = await resolveLaunchExecution(options, context);
+  const taskLines = await collectStandaloneTasks(
+    {
+      task: options.task,
+      quick: options.quick,
+      agent: options.agent,
+      model: options.model,
+      baseUrl: options.baseUrl,
+      judgeAgent: options.judgeAgent,
+      judgeModel: options.judgeModel,
+      judgeBaseUrl: options.judgeBaseUrl,
+      profile: options.profile,
+    },
+    context,
+    packageRoot,
+  );
   return {
     mode: collectOnly ? 'collect' : 'run',
     suite,
@@ -280,7 +425,12 @@ async function buildLaunchDetails(
     target: context.manifestPath
       ? `manifest ${context.manifestPath}`
       : `skill ${context.skillRoot}`,
-    agent: options.agent ? resolveAgent(options) : null,
+    manifestSource: context.manifestSource,
+    agent: execution.agent,
+    model: execution.model,
+    api: execution.api,
+    judge: execution.judge,
+    taskLines,
   };
 }
 
@@ -289,10 +439,22 @@ function printLaunchDetails(details: EvalLaunchDetails): void {
   console.log(`Mode: ${details.mode}`);
   console.log(`Suite: ${details.suite}`);
   console.log(`Target: ${details.target}`);
+  console.log(`Manifest source: ${details.manifestSource}`);
   console.log(`Experiment: ${details.experimentId}`);
   console.log(`Profile: ${details.profile}`);
-  console.log('Task selection: resolved by harness');
-  if (details.agent) console.log(`Agent override: ${details.agent}`);
+  const [taskSource, ...taskNames] = details.taskLines;
+  const taskLabel = (taskSource ?? 'Tasks: unknown').replace(/^Tasks:\s*/u, '');
+  console.log(`Task selection: ${taskLabel}`);
+  console.log(`Tasks: ${taskLabel}`);
+  for (const taskName of taskNames) console.log(taskName);
+  console.log(`Main Agent: ${details.agent}`);
+  console.log(`Main Model: ${details.model}`);
+  console.log(`Main API: ${details.api}`);
+  if (details.judge) {
+    console.log(`Judge Agent: ${details.judge.agent}`);
+    console.log(`Judge Model: ${details.judge.model}`);
+    console.log(`Judge API: ${details.judge.api}`);
+  }
   console.log(`Report path: ${details.reportPath}`);
   if (details.reportConfig) {
     console.log(`Report config: ${details.reportConfig}`);
@@ -354,8 +516,6 @@ async function executeEval(options: EvalCommandOptions, collectOnly: boolean): P
   const details = await buildLaunchDetails(options, collectOnly, root, context);
   if (collectOnly) {
     printLaunchDetails(details);
-    for (const line of await collectStandaloneTasks(options, context, packageRoot))
-      console.log(line);
     console.log(
       `Static collection only for ${suite}; credentials, Docker, endpoints, plugins, and network were not tested.`,
     );

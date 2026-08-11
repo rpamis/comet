@@ -6,7 +6,9 @@ from pathlib import Path
 
 import pytest
 
+from scaffold.python.auto_tasks import ensure_generated_manifest
 from scaffold.python.eval_context import resolve_eval_context
+from scaffold.python.execution import resolve_execution
 from scaffold.python.manifests import load_eval_manifest
 from scaffold.python.task_resolution import build_task_catalogue, resolve_task_set
 
@@ -143,3 +145,68 @@ def test_catalogue_rejects_authored_and_recommended_conflict(tmp_path: Path):
         match='evaluation.tasks\\[0\\].name conflicts with evaluation.recommendedTasks\\[0\\]: "generic-skill-smoke"',
     ):
         build_task_catalogue(manifest, tasks_dir)
+
+
+def test_resolution_reuses_normal_generation_cache_with_default_interaction(tmp_path: Path):
+    tasks_dir = tmp_path / "bundled"
+    tasks_dir.mkdir()
+    manifest_path, manifest = _manifest(tmp_path, "")
+    context = resolve_eval_context(manifest_path=manifest_path)
+    ensure_generated_manifest(
+        context.skill_root,
+        context.artifact_owner_root,
+        agent="claude-code",
+        model=None,
+        profile="generic",
+        interaction={"mode": "none", "max_turns": 12},
+        generate=lambda _prompt: {
+            "tasks": [
+                {
+                    "name": "generated-one",
+                    "prompt": "one",
+                    "expect": {"files": ["one.md"]},
+                },
+                {
+                    "name": "generated-two",
+                    "prompt": "two",
+                    "expect": {"files": ["two.md"]},
+                },
+            ]
+        },
+    )
+
+    resolved = resolve_task_set(
+        context,
+        manifest,
+        build_task_catalogue(manifest, tasks_dir),
+        static_collect=True,
+    )
+
+    assert resolved.source == "generated-cache"
+    assert [task.name for task in resolved.tasks] == ["generated-one", "generated-two"]
+
+
+def test_generation_plan_uses_cli_execution_identity(tmp_path: Path):
+    tasks_dir = tmp_path / "bundled"
+    tasks_dir.mkdir()
+    manifest_path, manifest = _manifest(tmp_path, "")
+    context = resolve_eval_context(manifest_path=manifest_path)
+    catalogue = build_task_catalogue(manifest, tasks_dir)
+
+    default_plan = resolve_task_set(context, manifest, catalogue, static_collect=True).generation
+    cli_plan = resolve_task_set(
+        context,
+        manifest,
+        catalogue,
+        static_collect=True,
+        execution=resolve_execution(
+            cli_agent="codex",
+            cli_model="subject-model",
+            cli_base_url="https://subject.example/v1",
+        ),
+    ).generation
+
+    assert default_plan is not None
+    assert cli_plan is not None
+    assert cli_plan.generation_hash != default_plan.generation_hash
+    assert cli_plan.cache_dir != default_plan.cache_dir

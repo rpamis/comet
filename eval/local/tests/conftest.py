@@ -40,13 +40,27 @@ from scaffold.python import (
     save_report,
     strip_ansi,
 )
-from scaffold.python.agents import get_agent_adapter, resolve_agent
+from scaffold.python.agents import get_agent_adapter, resolve_agent, validate_agent_capabilities
 from scaffold.python.auto_tasks import AutoTaskError, ensure_generated_manifest, find_project_root
 from scaffold.python.eval_context import (
     EvalContextError,
     context_from_environment,
     resolve_eval_context,
     resolve_managed_path,
+)
+from scaffold.python.execution import (
+    ResolvedExecution,
+    ResolvedJudge,
+    build_agent_environment,
+    missing_credentials,
+    preflight_credentials,
+    redact_sensitive,
+    resolve_execution,
+    resolve_judge,
+    validate_base_url,
+)
+from scaffold.python.generated_task_cache import (
+    selected_agent_model as _legacy_selected_agent_model,
 )
 from scaffold.python.langfuse_adapter import (
     install_codex_plugin_workspace,
@@ -55,7 +69,11 @@ from scaffold.python.langfuse_adapter import (
 )
 from scaffold.python.sample_quality import infer_sample_quality
 from scaffold.python.skill_parser import SCRIPT_EXTENSIONS
-from scaffold.python.utils import run_agent_loop_in_docker, run_claude_loop_in_docker
+from scaffold.python.utils import (
+    check_docker_available,
+    run_agent_loop_in_docker,
+    run_claude_loop_in_docker,
+)
 from scaffold.python.aligned_comparison import (
     EXPECTED_CASE_MATRIX_FILENAME,
     build_execution_identity,
@@ -273,43 +291,159 @@ MODEL_EXECUTION_ENV_KEYS = (
     "CODEBUDDY_BASE_URL",
     "CODEBUDDY_MODEL",
     "BENCH_CODEBUDDY_MODEL",
+    "OPENAI_BASE_URL",
+    "OPENAI_MODEL",
+    "CODEX_BASE_URL",
+    "CODEX_MODEL",
+    "QODER_BASE_URL",
+    "QODER_MODEL",
 )
 
 
-def _selected_claude_model() -> str | None:
-    """Resolve the exact model selector passed to Claude without persisting it."""
-    return os.environ.get("BENCH_CC_MODEL") or os.environ.get("ANTHROPIC_MODEL")
+def _getoption(config, name: str, default=None):
+    try:
+        value = config.getoption(name)
+    except (AttributeError, KeyError, ValueError):
+        return default
+    return default if value is None else value
+
+
+def _manifest_for_config(config):
+    manifest_path = _getoption(config, "--eval-manifest")
+    if not manifest_path:
+        return None
+    from scaffold.python.manifests import load_eval_manifest
+
+    return load_eval_manifest(manifest_path)
+
+
+def _resolve_eval_execution(config) -> ResolvedExecution:
+    manifest = _manifest_for_config(config)
+    manifest_execution = manifest.execution if manifest is not None else None
+    return resolve_execution(
+        cli_agent=_getoption(config, "--agent"),
+        cli_model=_getoption(config, "--model"),
+        cli_base_url=_getoption(config, "--base-url"),
+        manifest=manifest_execution,
+    )
+
+
+def _resolve_eval_judge(config) -> ResolvedJudge | None:
+    manifest = _manifest_for_config(config)
+    manifest_judge = manifest.judge if manifest is not None else None
+    return resolve_judge(
+        main=_resolve_eval_execution(config),
+        cli_agent=_getoption(config, "--judge-agent"),
+        cli_model=_getoption(config, "--judge-model"),
+        cli_base_url=_getoption(config, "--judge-base-url"),
+        manifest=manifest_judge,
+    )
 
 
 def _selected_agent_model(agent: str) -> str | None:
-    if agent == "claude-code":
-        return _selected_claude_model()
-    if agent == "codex":
-        return os.environ.get("BENCH_CODEX_MODEL") or os.environ.get("OPENAI_MODEL")
-    if agent == "qoder":
-        return os.environ.get("BENCH_QODER_MODEL") or os.environ.get("QODER_MODEL")
-    return os.environ.get("BENCH_CODEBUDDY_MODEL") or os.environ.get("CODEBUDDY_MODEL")
+    if _plugin is not None:
+        return _resolve_eval_execution(_plugin.config).model
+    return _legacy_selected_agent_model(agent)
 
 
 def _resolve_eval_agent(config):
-    manifest_agent = None
-    manifest_path = config.getoption("--eval-manifest")
-    if manifest_path:
-        from scaffold.python.manifests import load_eval_manifest
-
-        manifest_agent = load_eval_manifest(manifest_path).execution_agent
-    return resolve_agent(config.getoption("--agent"), manifest_agent)
+    execution = _resolve_eval_execution(config)
+    return resolve_agent(execution.agent, None)
 
 
 def _require_agent_credentials(agent: str, source_env: dict[str, str] | None = None) -> None:
     """Fail setup before workloads when the isolated Agent cannot authenticate."""
-    adapter = get_agent_adapter(agent)
     environment = source_env if source_env is not None else os.environ
-    if any(environment.get(key) for key in adapter.required_credentials):
+    missing = missing_credentials(agent, source_env=environment)
+    if not missing:
         return
+    adapter = get_agent_adapter(agent)
+    separator = ", " if adapter.custom else " or "
     raise pytest.UsageError(
-        f"Credentials for {agent} not set: {' or '.join(adapter.required_credentials)}"
+        f"Credentials for {agent} not set: {separator.join(missing)}"
     )
+
+
+def _normal_run_preflight(config) -> None:
+    """Validate normal-run dependencies before collection can generate or run tasks."""
+
+    if _is_unit_tests_only(config) or getattr(config.option, "collectonly", False):
+        return
+    from scaffold.python.utils import load_eval_environment
+
+    load_eval_environment()
+    main = _resolve_eval_execution(config)
+    judge = _resolve_eval_judge(config)
+    suite = next(
+        (name for name in ("local", "langsmith", "langfuse") if f"{name}/tests/" in " ".join(config.args)),
+        "local",
+    )
+    required_harness = (
+        EVAL_ROOT / "pyproject.toml",
+        EVAL_ROOT / "schemas" / "comet.eval" / "v1alpha1.schema.json",
+        EVAL_ROOT / suite / "tests" / "tasks" / "test_tasks.py",
+    )
+    missing_harness = [str(path) for path in required_harness if not path.is_file()]
+    if missing_harness:
+        raise pytest.UsageError(f"Packaged eval harness is incomplete: {', '.join(missing_harness)}")
+    manifest = _manifest_for_config(config)
+    if manifest is not None and manifest.reporting is not None:
+        selected_report_suite = manifest.reporting.suite
+        if selected_report_suite and selected_report_suite != suite:
+            raise pytest.UsageError(
+                f"reporting.suite is {selected_report_suite!r}, but the selected suite is {suite!r}"
+            )
+        report_config = manifest.reporting.config
+        if report_config and not _getoption(config, "--report-config"):
+            report_path = Path(report_config)
+            if not report_path.is_absolute():
+                report_path = manifest.path.parent / report_path
+            config.option.report_config = str(report_path.resolve())
+    try:
+        load_report_output_config(_getoption(config, "--report-config"))
+    except (OSError, ValueError) as exc:
+        raise pytest.UsageError(f"Eval report configuration is invalid: {exc}") from exc
+    try:
+        validate_agent_capabilities(get_agent_adapter(main.agent))
+        if judge is not None:
+            validate_agent_capabilities(get_agent_adapter(judge.agent))
+    except ValueError as exc:
+        raise pytest.UsageError(str(exc)) from exc
+    if main.base_url:
+        validate_base_url(main.base_url, field="execution.baseUrl")
+    if judge is not None and judge.base_url:
+        validate_base_url(judge.base_url, field="judge.baseUrl")
+    credential_errors = preflight_credentials(main, judge)
+    if credential_errors:
+        raise pytest.UsageError("; ".join(credential_errors))
+    if shutil.which("uv") is None:
+        raise pytest.UsageError("uv is not installed or not in PATH")
+    if not check_docker_available():
+        raise pytest.UsageError("Docker CLI or daemon is unavailable")
+    context = getattr(config, "_comet_eval_context", None)
+    if context is None:
+        raise pytest.UsageError("Eval context is missing before normal-run preflight")
+    artifact_root = Path(context.artifact_root)
+    artifact_root.mkdir(parents=True, exist_ok=True)
+    try:
+        with tempfile.NamedTemporaryFile(dir=artifact_root, prefix=".preflight-", delete=True):
+            pass
+    except OSError as exc:
+        raise pytest.UsageError(f"Eval artifact root is not writable: {artifact_root}") from exc
+    config._comet_execution_env = build_agent_environment(main)
+    config._comet_execution = main
+    config._comet_judge = judge
+    os.environ["COMET_EVAL_MAIN_CREDENTIALS"] = ",".join(
+        get_agent_adapter(main.agent).required_credentials
+    )
+    if judge is not None:
+        os.environ["BENCH_LLM_JUDGE"] = "1"
+        os.environ["BENCH_JUDGE_MODEL"] = judge.model
+        os.environ["BENCH_JUDGE_AGENT"] = judge.agent
+        if judge.base_url:
+            os.environ["BENCH_JUDGE_BASE_URL"] = judge.base_url
+        else:
+            os.environ.pop("BENCH_JUDGE_BASE_URL", None)
 
 
 def _agent_project_root(agent: str) -> str:
@@ -318,7 +452,7 @@ def _agent_project_root(agent: str) -> str:
         "codex": ".agents",
         "qoder": ".qoder",
         "codebuddy": ".codebuddy",
-    }[agent]
+    }.get(agent, ".comet-agent")
 
 
 def _ensure_langfuse_trajectory_support(test_dir: Path, agent: str) -> None:
@@ -370,13 +504,34 @@ def _ensure_auto_generated_manifest(config, task_filter: str | None = None) -> N
     if not skill_path:
         return
 
+    if getattr(getattr(config, "option", None), "collectonly", False):
+        from scaffold.python.manifests import SkillEvalManifest
+        from scaffold.python.task_resolution import ResolvedTaskSet
+
+        if manifest is None:
+            resolved_skill_root = Path(skill_path).expanduser().resolve()
+            if resolved_skill_root.is_file() and resolved_skill_root.name == "SKILL.md":
+                resolved_skill_root = resolved_skill_root.parent
+            manifest = SkillEvalManifest(
+                path=resolved_skill_root / "comet" / "eval.yaml",
+                name=resolved_skill_root.name,
+                description="",
+                skill_name=getattr(config.option, "skill_name", None) or resolved_skill_root.name,
+                skill_path=resolved_skill_root,
+                profile=config.getoption("--profile"),
+            )
+        config._comet_resolution_manifest = manifest
+        config._comet_resolved_tasks = {}
+        config._comet_frozen_task_set = ResolvedTaskSet("pending-generation", (), None)
+        return
+
     # Task generation happens during collection, before session fixtures run.
     # Load the documented local environment now so credentials and the model
     # participating in the cache key match the later execution environment.
     from scaffold.python.utils import load_eval_environment
 
     load_eval_environment()
-    selected = _resolve_eval_agent(config)
+    execution = _resolve_eval_execution(config)
     profile = config.getoption("--profile") or (manifest.profile if manifest else None) or "generic"
     interaction = vars(manifest.interaction) if manifest else {"mode": "none", "max_turns": 12}
     context = getattr(config, "_comet_eval_context", None)
@@ -389,8 +544,10 @@ def _ensure_auto_generated_manifest(config, task_filter: str | None = None) -> N
         generated = ensure_generated_manifest(
             skill_path,
             project_root,
-            agent=selected.agent,
-            model=_selected_agent_model(selected.agent),
+            agent=execution.agent,
+            model=execution.model,
+            base_url=execution.base_url,
+            environment=build_agent_environment(execution),
             profile=profile,
             interaction=interaction,
             collect_only=bool(getattr(getattr(config, "option", None), "collectonly", False)),
@@ -398,18 +555,34 @@ def _ensure_auto_generated_manifest(config, task_filter: str | None = None) -> N
     except AutoTaskError as exc:
         raise pytest.UsageError(str(exc)) from exc
     from scaffold.python.manifest_tasks import load_manifest_tasks
+    from scaffold.python.manifests import SkillEvalManifest, load_eval_manifest
     from scaffold.python.task_resolution import ResolvedTask, ResolvedTaskSet
-    from scaffold.python.manifests import load_eval_manifest
 
     generated_manifest = load_eval_manifest(generated.manifest_path)
-    config._comet_frozen_task_set = ResolvedTaskSet(
+    generated_tasks = tuple(
+        ResolvedTask(task.name, "generated", task)
+        for task in load_manifest_tasks(generated_manifest)
+    )
+    if manifest is None:
+        resolved_skill_root = Path(skill_path).expanduser().resolve()
+        if resolved_skill_root.is_file() and resolved_skill_root.name == "SKILL.md":
+            resolved_skill_root = resolved_skill_root.parent
+        manifest = SkillEvalManifest(
+            path=resolved_skill_root / "comet" / "eval.yaml",
+            name=resolved_skill_root.name,
+            description="",
+            skill_name=getattr(config.option, "skill_name", None) or resolved_skill_root.name,
+            skill_path=resolved_skill_root,
+            profile=config.getoption("--profile"),
+        )
+    frozen = ResolvedTaskSet(
         "generated-cache",
-        tuple(
-            ResolvedTask(task.name, "generated", task)
-            for task in load_manifest_tasks(generated_manifest)
-        ),
+        generated_tasks,
         None,
     )
+    config._comet_resolution_manifest = manifest
+    config._comet_resolved_tasks = {item.name: item.task for item in frozen.tasks}
+    config._comet_frozen_task_set = frozen
     config._comet_generated_manifest = generated
 
 
@@ -697,8 +870,37 @@ def pytest_addoption(parser):
         "--agent",
         action="store",
         default=None,
-        choices=["claude-code", "codex", "qoder", "codebuddy"],
-        help="Evaluation agent CLI (default: manifest value or claude-code)",
+        help="Evaluation agent CLI (built-in or explicitly installed custom adapter)",
+    )
+    parser.addoption(
+        "--model",
+        action="store",
+        default=None,
+        help="Main evaluation model override",
+    )
+    parser.addoption(
+        "--base-url",
+        action="store",
+        default=None,
+        help="Main evaluation API base URL override",
+    )
+    parser.addoption(
+        "--judge-agent",
+        action="store",
+        default=None,
+        help="Independent Judge agent (built-in or explicitly installed custom adapter)",
+    )
+    parser.addoption(
+        "--judge-model",
+        action="store",
+        default=None,
+        help="Independent Judge model",
+    )
+    parser.addoption(
+        "--judge-base-url",
+        action="store",
+        default=None,
+        help="Independent Judge API base URL",
     )
     parser.addoption(
         "--quick",
@@ -761,6 +963,9 @@ def pytest_configure(config):
             config.option.eval_manifest = str(context.manifest_path)
         else:
             config.option.skill_path = str(context.skill_root)
+    config._comet_execution = _resolve_eval_execution(config)
+    config._comet_judge = _resolve_eval_judge(config)
+    _normal_run_preflight(config)
     _resolve_eval_agent(config)
     global _plugin
     _plugin = ExperimentPlugin(config)
@@ -971,12 +1176,8 @@ def _get_experiment_name(session) -> str:
 
 def _get_dynamic_treatment_config(config):
     _ensure_auto_generated_manifest(config)
-    manifest_path = config.getoption("--eval-manifest")
-    if manifest_path:
-        from scaffold.python.manifests import load_eval_manifest
-        from scaffold.python.treatments import TreatmentConfig
 
-        manifest = load_eval_manifest(manifest_path)
+    def generation_hints(manifest):
         generation_metadata = {}
         generation_metadata_hash = None
         generated = getattr(config, "_comet_generated_manifest", None)
@@ -989,6 +1190,25 @@ def _get_dynamic_treatment_config(config):
             generation_metadata_hash = (
                 "sha256:" + hashlib.sha256(generation_metadata_bytes).hexdigest()
             )
+        return {
+            "generation_hash": (
+                generated.generation_hash if generated is not None else manifest.generation_hash
+            ),
+            "generation_metadata_path": (
+                str(generation_metadata_path) if generation_metadata_path else None
+            ),
+            "generation_manifest_hash": generation_metadata.get("manifest_hash"),
+            "generation_metadata_hash": generation_metadata_hash,
+            "generation_overhead": generation_metadata.get("generation_overhead"),
+        }
+
+    manifest_path = config.getoption("--eval-manifest")
+    if manifest_path:
+        from scaffold.python.manifests import load_eval_manifest
+        from scaffold.python.treatments import TreatmentConfig
+
+        manifest = load_eval_manifest(manifest_path)
+        generation = generation_hints(manifest)
         node_skills = []
         for node_skill in manifest.generated_node_skills:
             node_path = manifest.skill_path.parent / node_skill
@@ -1016,17 +1236,7 @@ def _get_dynamic_treatment_config(config):
                     "required_output_schemas": manifest.required_output_schemas,
                     "expected_evidence": manifest.expected_evidence,
                     "draft_hash": manifest.draft_hash,
-                    "generation_hash": (
-                        generated.generation_hash if generated is not None else manifest.generation_hash
-                    ),
-                    "generation_metadata_path": (
-                        str(generation_metadata_path)
-                        if generation_metadata_path
-                        else None
-                    ),
-                    "generation_manifest_hash": generation_metadata.get("manifest_hash"),
-                    "generation_metadata_hash": generation_metadata_hash,
-                    "generation_overhead": generation_metadata.get("generation_overhead"),
+                    **generation,
                     "required_skills": manifest.required_skills,
                     "expected_artifacts": manifest.expected_artifacts,
                     "generated_node_skills": manifest.generated_node_skills,
@@ -1043,7 +1253,8 @@ def _get_dynamic_treatment_config(config):
     if not skill_path:
         return None
     skill_name = config.getoption("--skill-name") or Path(skill_path).resolve().parent.name
-    profile = config.getoption("--profile")
+    manifest = getattr(config, "_comet_resolution_manifest", None)
+    profile = config.getoption("--profile") or (manifest.profile if manifest else None)
     skill_cfg = {
         "name": skill_name,
         "source": "path",
@@ -1051,6 +1262,9 @@ def _get_dynamic_treatment_config(config):
     }
     if profile:
         skill_cfg["profile"] = profile
+    if manifest:
+        skill_cfg["manifest"] = str(manifest.path)
+        skill_cfg.update(generation_hints(manifest))
     from scaffold.python.treatments import TreatmentConfig
 
     return TreatmentConfig(
@@ -1399,6 +1613,7 @@ def prebuild_docker_image(request):
         image = _build_docker_image_with_lock(
             env_dir,
             selected_agent if selected_agent != "claude-code" else None,
+            environment=getattr(request.config, "_comet_execution_env", None),
         )
         if image:
             print(f"\nPre-built Docker image: {image}")
@@ -1575,8 +1790,9 @@ def run_claude(test_dir, experiment_logger, request):
     is replaced by the multi-turn ``run-claude-loop`` driver, which simulates a
     user replying at the workflow's decision points.
     """
-    selected_agent = _resolve_eval_agent(request.config).agent
-    default_model = _selected_agent_model(selected_agent)
+    execution = _resolve_eval_execution(request.config)
+    selected_agent = execution.agent
+    default_model = execution.model
 
     def _run(
         prompt: str,
@@ -1586,6 +1802,13 @@ def run_claude(test_dir, experiment_logger, request):
         image_id: str | None = None,
     ):
         mdl = model or default_model
+        run_execution = ResolvedExecution(
+            selected_agent,
+            mdl,
+            execution.base_url,
+            execution.sources,
+        )
+        run_environment = build_agent_environment(run_execution)
         if os.environ.get("TRACE_TO_LANGSMITH", "").lower() == "true" and not os.environ.get(
             "CC_LANGSMITH_LOG_FILE"
         ):
@@ -1598,7 +1821,9 @@ def run_claude(test_dir, experiment_logger, request):
                 agent=selected_agent,
                 timeout=timeout,
                 model=mdl,
+                base_url=execution.base_url,
                 image_id=image_id,
+                environment=run_environment,
             )
         else:
             task_prompt_file = test_dir / ".eval-task-prompt.txt"
@@ -1643,6 +1868,7 @@ def run_claude(test_dir, experiment_logger, request):
                         test_dir,
                         loop_args[2:],
                         timeout=timeout + 60,
+                        environment=run_environment,
                     )
                 else:
                     result = run_agent_loop_in_docker(
@@ -1654,6 +1880,7 @@ def run_claude(test_dir, experiment_logger, request):
                             *loop_args[3:],
                         ],
                         timeout=timeout + 60,
+                        environment=run_environment,
                     )
             finally:
                 task_prompt_file.unlink(missing_ok=True)
@@ -1763,6 +1990,8 @@ def record_result(test_dir, experiment_logger, request):
                     "failure_attribution": failure_attribution,
                     "agent": events.get("agent", "claude-code"),
                     "role_models": events.get("role_models", {}),
+                    "role_agents": events.get("role_agents", {}),
+                    "telemetry_status": events.get("telemetry_status", "N/A"),
                     "role_sessions": events.get("role_sessions", {}),
                     "task": events.get("task"),
                     "treatment": events.get("treatment", treatment_name),
@@ -1825,6 +2054,7 @@ def _build_report_payload(
             "model_usage": events.get("model_usage", {}),
             "files_created": events.get("files_created", []),
             "skills_invoked": events.get("skills_invoked", []),
+            "skill_invocations": events.get("skill_invocations", []),
             "scripts_used": scripts_used,
             "profile": events.get("profile"),
             "skill_sources": events.get("skill_sources", []),
@@ -1836,6 +2066,8 @@ def _build_report_payload(
             "failure_attribution": failure_attribution,
             "agent": events.get("agent", "claude-code"),
             "role_models": events.get("role_models", {}),
+            "role_agents": events.get("role_agents", {}),
+            "telemetry_status": events.get("telemetry_status", "N/A"),
             "role_sessions": events.get("role_sessions", {}),
             "task": events.get("task"),
             "treatment": events.get("treatment", treatment_name),
@@ -1923,7 +2155,12 @@ def _filter_scripts(scripts_dir: Path, script_filter: str) -> Path | None:
     return temp_dir
 
 
-def _build_docker_image_with_lock(environment_dir: Path, agent: str | None = None) -> str | None:
+def _build_docker_image_with_lock(
+    environment_dir: Path,
+    agent: str | None = None,
+    *,
+    environment: dict[str, str] | None = None,
+) -> str | None:
     """Build Docker image with file locking to prevent race conditions."""
     if not environment_dir or not (environment_dir / "Dockerfile").exists():
         return None
@@ -1940,7 +2177,10 @@ def _build_docker_image_with_lock(environment_dir: Path, agent: str | None = Non
         command = ["docker.sh", "build", str(environment_dir)]
         if agent:
             command.extend(["--agent", agent])
-        result = run_shell(*command, timeout=900, check=False)
+        run_options = {"timeout": 900, "check": False}
+        if environment is not None:
+            run_options["env"] = environment
+        result = run_shell(*command, **run_options)
         if result.returncode == 0:
             return result.stdout.strip()
         return None
@@ -2030,7 +2270,7 @@ def _save_artifacts(
         "codex": "codex",
         "qoder": "qoder",
         "codebuddy": "codebuddy",
-    }.get(agent, "claude")
+    }.get(agent, agent)
     agent_dir = artifacts_dir / agent_dir_name
     execution_dir = artifacts_dir / "execution"
     agent_dir.mkdir(parents=True, exist_ok=True)
@@ -2076,7 +2316,18 @@ def _save_artifacts(
             rel_path = item.relative_to(test_dir)
             dest = agent_dir / rel_path
             dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy(item, dest)
+            try:
+                content = item.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                import sys
+
+                print(
+                    f"Warning: skipped non-text artifact {rel_path}; binary content is not persisted to protect credentials",
+                    file=sys.stderr,
+                )
+                continue
+            else:
+                dest.write_text(redact_sensitive(content), encoding="utf-8")
             claude_files.append(item)
         except Exception as e:
             import sys
@@ -2089,7 +2340,7 @@ def _save_artifacts(
                 success, output = run_python_in_docker(test_dir, py_file.name, timeout=300)
                 status = "success" if success else "error"
                 output_file = execution_dir / f"{py_file.stem}_{status}.txt"
-                output_file.write_text(strip_ansi(output))
+                output_file.write_text(redact_sensitive(strip_ansi(output)), encoding="utf-8")
             except Exception as e:
                 error_file = execution_dir / f"{py_file.stem}_error.txt"
-                error_file.write_text(str(e))
+                error_file.write_text(redact_sensitive(str(e)), encoding="utf-8")

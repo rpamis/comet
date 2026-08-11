@@ -131,6 +131,68 @@ Eval 报告同时保留 raw set 和 analysis set。Raw set 包含所有 run，�
 
 如果关键 treatment 的 clean data 不足，报告会输出 `Insufficient clean data` 或 `Inconclusive due to data quality`，而不是给出误导性的胜负结论。
 
+### 独立评估任意 Skill
+
+独立评估不依赖 `comet-any`。只要有一个 Skill 目录，就可以直接运行；没有
+`comet/eval.yaml` 时，普通运行会自动生成并缓存 2–4 个任务：
+
+```bash
+comet eval ./my-skill
+comet eval ./my-skill --agent codebuddy --model subject-model
+```
+
+主模型和 LLM-as-judge 是两套独立配置。Judge 只有在显式启用后才会运行，至少需要自己的
+`BENCH_JUDGE_MODEL` 和 `BENCH_JUDGE_API_KEY`/`BENCH_JUDGE_AUTH_TOKEN`；它可以使用不同的
+Agent、模型和 API 地址：
+
+```bash
+BENCH_LLM_JUDGE=1 \
+BENCH_JUDGE_MODEL=judge-model \
+BENCH_JUDGE_BASE_URL=https://judge.example/v1 \
+BENCH_JUDGE_API_KEY=... \
+comet eval ./my-skill --model subject-model --base-url https://subject.example/v1
+```
+
+也可以全部通过命令行或 manifest 配置：
+
+```bash
+comet eval ./my-skill \
+  --agent codebuddy --model subject-model --base-url https://subject.example/v1 \
+  --judge-agent claude-code --judge-model judge-model \
+  --judge-base-url https://judge.example/v1
+```
+
+如果只想检查任务、配置和快照，不执行 Agent、Docker、插件或网络请求，使用：
+
+```bash
+comet eval ./my-skill --collect
+```
+
+自定义 Agent 通过用户目录下显式安装的适配器注册，不会从 PATH 自动发现：
+`~/.comet/eval/adapters/<agent-id>/adapter.yaml`。适配器声明自己的可执行文件、npm/pip
+安装包、模型和 API 地址环境变量、凭据名称，以及 `resume`、结构化事件和 Skill 调用证据能力。
+安装后即可使用 `comet eval ./my-skill --agent <agent-id>`；主模型和 Judge 仍然可以分别配置。
+
+自定义 Agent 的最小配置示例：
+
+```yaml
+apiVersion: comet.eval.agent/v1alpha1
+kind: EvalAgentAdapter
+metadata: { id: my-agent, version: 1.0.0 }
+runtime:
+  executable: my-agent
+  install: { kind: npm, package: my-agent, version: latest }
+credentials: [MY_AGENT_API_KEY]
+modelEnv: MY_AGENT_MODEL
+baseUrlEnv: MY_AGENT_BASE_URL
+capabilities:
+  singleTurn: true
+  resume: true
+  structuredEvents: true
+  telemetry: false
+  skillInvocationEvidence: true
+```
+
 ### 评估任意 Skill
 
 ```bash
@@ -596,6 +658,13 @@ uv run pytest local/tests/tasks/test_tasks.py --count=5 -v
 | `--task=<name>`          | 指定任务                       |
 | `--treatment=<name>`     | 指定 treatment（逗号分隔多个） |
 | `--profile=<name>`       | 覆盖评估 profile               |
+| `--agent=<id>`           | 主 Agent；可用内置 Agent 或已安装的自定义适配器 |
+| `--model=<name>`         | 主模型覆盖                   |
+| `--base-url=<url>`       | 主模型 API 地址覆盖          |
+| `--judge-agent=<id>`     | 独立 Judge Agent              |
+| `--judge-model=<name>`   | 独立 Judge 模型               |
+| `--judge-base-url=<url>` | 独立 Judge API 地址            |
+| `--collect`              | 只解析/发现，不执行工作负载   |
 | `--skill-path=<path>`    | 注入本地 Skill 路径            |
 | `--skill-name=<name>`    | 注入的 Skill 名称              |
 | `--count=<n>`            | 重复运行次数                   |

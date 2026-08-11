@@ -135,6 +135,7 @@ evaluation:
         "--profile": None,
         "--project-root": str(tmp_path),
         "--agent": "codex",
+        "--skill-name": None,
     }
 
     class Config:
@@ -154,6 +155,56 @@ evaluation:
     assert captured["model"] == "model-from-dotenv"
     assert config.option.eval_manifest is None
     assert config._comet_frozen_task_set.source == "generated-cache"
+
+
+def test_taskless_collect_only_marks_generation_pending_without_agent_or_disk_work(
+    tmp_path: Path, monkeypatch
+):
+    skill = tmp_path / "skill"
+    skill.mkdir()
+    (skill / "SKILL.md").write_text("Evaluate me.\n", encoding="utf-8")
+    called = False
+
+    def fail_generation(*_args, **_kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("task generation must not run during collect-only")
+
+    class Config:
+        option = SimpleNamespace(collectonly=True, eval_manifest=None, skill_name=None)
+
+        @staticmethod
+        def getoption(name):
+            return {
+                "--task": None,
+                "--quick": False,
+                "--eval-manifest": None,
+                "--skill-path": str(skill),
+                "--profile": None,
+                "--project-root": str(tmp_path),
+                "--agent": None,
+                "--skill-name": None,
+            }[name]
+
+    monkeypatch.setattr(conftest, "ensure_generated_manifest", fail_generation)
+    config = Config()
+    conftest._ensure_auto_generated_manifest(config)
+
+    assert called is False
+    assert config._comet_frozen_task_set.source == "pending-generation"
+    assert config._comet_frozen_task_set.tasks == ()
+    assert config._comet_resolution_manifest.skill_path == skill.resolve()
+    assert config._comet_resolution_manifest.path == skill / "comet" / "eval.yaml"
+    assert config._comet_resolved_tasks == {}
+
+    from local.tests.tasks import test_tasks
+
+    monkeypatch.setattr(test_tasks, "load_treatments", lambda: {})
+    monkeypatch.setattr(test_tasks, "list_tasks", lambda: [])
+    frozen = config._comet_frozen_task_set
+    assert test_tasks.generate_test_params(None, None, config) == []
+    assert test_tasks.generate_test_params(None, None, config) == []
+    assert config._comet_frozen_task_set is frozen
 
 
 def test_selected_agent_missing_credentials_fails_before_workloads():

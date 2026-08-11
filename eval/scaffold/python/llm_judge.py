@@ -146,17 +146,31 @@ def _run_judge(
     prompt: str,
     timeout: int = 120,
     agent: object | None = None,
+    model: object | None = None,
+    base_url: object | None = None,
     evidence: dict | None = None,
+    excluded_credentials: tuple[str, ...] = (),
 ) -> str:
     """Call the judge LLM through the configured judge provider."""
-    return run_judge_prompt(prompt, timeout=timeout, agent=agent, evidence=evidence)
+    return run_judge_prompt(
+        prompt,
+        timeout=timeout,
+        agent=agent,
+        model=model,
+        base_url=base_url,
+        evidence=evidence,
+        excluded_credentials=excluded_credentials,
+    )
 
 
 def judge_artifacts(
     test_dir: Path,
     timeout: int = 120,
     agent: object | None = None,
+    model: object | None = None,
+    base_url: object | None = None,
     evidence: dict | None = None,
+    excluded_credentials: tuple[str, ...] = (),
 ) -> dict[str, tuple[float, str]]:
     """Score the three qualitative dimensions via an LLM judge.
 
@@ -168,7 +182,15 @@ def judge_artifacts(
         return {}
 
     prompt = _build_judge_prompt(test_dir)
-    raw = _run_judge(prompt, timeout=timeout, agent=agent, evidence=evidence)
+    raw = _run_judge(
+        prompt,
+        timeout=timeout,
+        agent=agent,
+        model=model,
+        base_url=base_url,
+        evidence=evidence,
+        excluded_credentials=excluded_credentials,
+    )
 
     scores: dict[str, tuple[float, str]] = {}
     for line in raw.splitlines():
@@ -190,17 +212,34 @@ def judge_messages(
     test_dir: Path,
     timeout: int = 120,
     agent: object | None = None,
+    model: object | None = None,
+    base_url: object | None = None,
     evidence: dict | None = None,
+    excluded_credentials: tuple[str, ...] = (),
 ) -> list[str]:
     """Convenience wrapper returning ``[RUBRIC-JUDGE]`` check messages."""
     out: list[str] = []
     try:
-        build_judge_invocation(agent=agent)
+        build_judge_invocation(
+            agent=agent,
+            model=model,
+            base_url=base_url,
+            excluded_credentials=excluded_credentials,
+        )
     except ValueError as e:
         return [f"[RUBRIC-JUDGE] status: skipped - {e}"]
 
-    for dim, (score, reason) in judge_artifacts(
-        test_dir, timeout=timeout, agent=agent, evidence=evidence
-    ).items():
+    scores = judge_artifacts(
+        test_dir,
+        timeout=timeout,
+        agent=agent,
+        model=model,
+        base_url=base_url,
+        excluded_credentials=excluded_credentials,
+        evidence=evidence,
+    )
+    if not scores:
+        return ["[RUBRIC-JUDGE] status: unavailable - no valid Judge scores"]
+    for dim, (score, reason) in scores.items():
         out.append(f"[RUBRIC-JUDGE] {dim}: {score:.2f} - {reason}")
     return out

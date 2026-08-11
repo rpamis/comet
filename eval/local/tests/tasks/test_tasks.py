@@ -14,7 +14,6 @@ Usage:
     pytest local/tests/tasks/test_tasks.py --task=comet-full-workflow --treatment=COMET_FULL_040_BETA --count=2 -n 2 -v
 """
 
-import os
 import sys
 import uuid
 
@@ -34,6 +33,8 @@ from scaffold.python.native_eval import (
     split_comet_completion_checks as _split_comet_completion_checks,
 )
 from scaffold.python.profiles import resolve_profile_name, run_profile_rubric
+from scaffold.python.agents import get_agent_adapter
+from scaffold.python.execution import redact_sensitive
 from scaffold.python.manifest_tasks import load_manifest_tasks
 from scaffold.python.eval_context import resolve_eval_context
 from scaffold.python.task_resolution import build_task_catalogue, resolve_task_set
@@ -101,6 +102,7 @@ def _resolve_frozen_task_set(config, task_filter: str | None):
         build_task_catalogue(manifest, get_tasks_dir()),
         explicit_task=task_filter,
         quick=bool(config.getoption("--quick")),
+        execution=conftest._resolve_eval_execution(config),
     )
     config._comet_frozen_task_set = frozen
     config._comet_resolved_tasks = {item.name: item.task for item in frozen.tasks}
@@ -164,14 +166,6 @@ def generate_test_params(task_filter: str | None, treatment_filter: str | None, 
         }
         manifest_baseline_treatments = manifest.baseline_treatments
 
-    collisions = sorted(set(authored_tasks) & set(all_tasks))
-    if collisions:
-        raise ValueError(f"Manifest task names collide with bundled tasks: {collisions}")
-    recommended_collisions = sorted(set(authored_tasks) & set(manifest_tasks or []))
-    if recommended_collisions:
-        raise ValueError(
-            f"Manifest task names collide with recommendedTasks: {recommended_collisions}"
-        )
     if task_filter and task_filter not in set(all_tasks) | set(authored_tasks):
         available = sorted(set(all_tasks) | set(authored_tasks))
         raise ValueError(f"Task not found: {task_filter}. Available: {available}")
@@ -495,7 +489,10 @@ def test_task_treatment(task_name, treatment_name):
         workspace_dir=task.workspace_dir,
     )
     selected_agent = conftest._resolve_eval_agent(fixtures.request_config).agent
-    selected_model = conftest._selected_agent_model(selected_agent)
+    selected_adapter = get_agent_adapter(selected_agent)
+    execution = conftest._resolve_eval_execution(fixtures.request_config)
+    selected_model = execution.model
+    judge = conftest._resolve_eval_judge(fixtures.request_config)
     role_models = {
         "subject": selected_model,
         "simulator": (
@@ -505,11 +502,12 @@ def test_task_treatment(task_name, treatment_name):
             and not interaction.decision_replies
             else None
         ),
-        "judge": (
-            os.environ.get("BENCH_JUDGE_MODEL")
-            if os.environ.get("BENCH_LLM_JUDGE") == "1"
-            else None
-        ),
+        "judge": judge.model if judge is not None else None,
+    }
+    role_agents = {
+        "subject": selected_agent,
+        "simulator": selected_agent if interaction.mode == "auto_user" else None,
+        "judge": judge.agent if judge is not None else None,
     }
     captured_execution = conftest._capture_execution_identity(
         fixtures.test_dir,
@@ -540,23 +538,31 @@ def test_task_treatment(task_name, treatment_name):
         image_id=captured_execution.runtime_image_id,
     )
 
-    events = extract_events(parse_output(result.stdout))
+    events = extract_events(parse_output(result.stdout), agent=selected_agent)
+    events["telemetry_status"] = "N/A" if not selected_adapter.supports_telemetry else "available"
     loop_interaction = conftest._extract_loop_interaction(result.stderr)
     for role, session_ids in loop_interaction.get("role_sessions", {}).items():
         target = events["role_sessions"].setdefault(role, [])
         for session_id in session_ids:
             if session_id not in target:
                 target.append(session_id)
-    subject_turns = conftest._extract_subject_turn_evidence(result.stdout)
+    subject_turns = conftest._extract_subject_turn_evidence(redact_sensitive(result.stdout))
     outputs = {
         "run_id": run_id,
         "treatment_name": treatment_name,
         "agent": selected_agent,
+        "agent_adapter": selected_adapter,
+        "main_credentials": selected_adapter.required_credentials,
         "role_models": role_models,
+        "role_agents": role_agents,
+        "telemetry_status": events["telemetry_status"],
+        "judge_agent": judge.agent if judge is not None else None,
+        "judge_model": judge.model if judge is not None else None,
+        "judge_base_url": judge.base_url if judge is not None else None,
         "events": events,
         "profile": profile_name,
         "skill_sources": skill_sources,
-        "eval_manifest": eval_manifest,
+        "eval_manifest": eval_manifest or skill_hints.get("manifest"),
         "required_skills": skill_hints.get("required_skills")
         or task.config.evaluation.required_skills,
         "expected_artifacts": skill_hints.get("expected_artifacts")
@@ -579,7 +585,8 @@ def test_task_treatment(task_name, treatment_name):
         "eval_generation": (
             {
                 "generation_hash": skill_hints.get("generation_hash"),
-                "manifest_path": str(fixtures.request_config.getoption("--eval-manifest")),
+                "manifest_path": skill_hints.get("manifest")
+                or str(fixtures.request_config.getoption("--eval-manifest")),
                 "metadata_path": skill_hints.get("generation_metadata_path"),
                 "manifest_hash": skill_hints.get("generation_manifest_hash"),
                 "metadata_hash": skill_hints.get("generation_metadata_hash"),
@@ -600,6 +607,8 @@ def test_task_treatment(task_name, treatment_name):
     events["profile"] = outputs["profile"]
     events["agent"] = selected_agent
     events["role_models"] = role_models
+    events["role_agents"] = role_agents
+    events["telemetry_status"] = outputs["telemetry_status"]
     events["skill_sources"] = outputs["skill_sources"]
     events["eval_manifest"] = outputs["eval_manifest"]
     events["interaction"] = outputs["interaction"]

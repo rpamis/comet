@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from scaffold.python.evidence import stable_treatment_name
+from scaffold.python.execution import redact_sensitive
 from scaffold.python.paths import get_runs_dir
 from scaffold.python.report_outputs import (
     ReportOutputConfig,
@@ -37,7 +38,7 @@ def _atomic_write_json(path: Path, value: dict[str, Any]) -> None:
     with tempfile.NamedTemporaryFile(
         mode="w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.", delete=False
     ) as temporary:
-        temporary.write(json.dumps(_without_credentials(value), indent=2) + "\n")
+        temporary.write(json.dumps(redact_sensitive(_without_credentials(value)), indent=2) + "\n")
         temporary_path = Path(temporary.name)
     try:
         os.replace(temporary_path, path)
@@ -62,10 +63,14 @@ def strip_ansi(text: str) -> str:
     return ANSI_ESCAPE.sub("", text)
 
 
-def _record_skill_invocation(events: dict[str, Any], skill: str) -> None:
+def _record_skill_invocation(events: dict[str, Any], skill: str, *, explicit: bool = False) -> None:
+    if not isinstance(skill, str) or not skill.strip():
+        return
     normalized = _SKILL_ALIASES.get(skill, skill)
     if normalized not in events["skills_invoked"]:
         events["skills_invoked"].append(normalized)
+    if explicit and normalized not in events["skill_invocations"]:
+        events["skill_invocations"].append(normalized)
 
 
 def _record_skill_path(events: dict[str, Any], value: object) -> None:
@@ -85,6 +90,7 @@ def parse_output(stdout: str) -> dict[str, Any]:
     """Parse stream-json output into structured data."""
     if not stdout:
         return {"messages": []}
+    stdout = redact_sensitive(stdout)
     messages = []
     for line in stdout.strip().split("\n"):
         try:
@@ -94,7 +100,37 @@ def parse_output(stdout: str) -> dict[str, Any]:
     return {"messages": messages}
 
 
-def extract_events(parsed: dict[str, Any]) -> dict[str, Any]:
+def _record_explicit_skill_value(events: dict[str, Any], value: Any) -> None:
+    if isinstance(value, str):
+        _record_skill_invocation(events, value, explicit=True)
+    elif isinstance(value, dict):
+        for key in ("skill", "skill_name", "skillName", "name"):
+            candidate = value.get(key)
+            if isinstance(candidate, str):
+                _record_skill_invocation(events, candidate, explicit=True)
+                return
+    elif isinstance(value, list):
+        for item in value:
+            _record_explicit_skill_value(events, item)
+
+
+def _record_explicit_skill_event(events: dict[str, Any], message: Any) -> None:
+    if not isinstance(message, dict):
+        return
+    event_type = str(message.get("type") or message.get("event") or "").lower()
+    if event_type in {"skill_invocation", "skill_invoked", "skill.use", "skill_used"}:
+        _record_explicit_skill_value(events, message.get("skill") or message.get("name"))
+    for key in ("skill_invocation", "skillInvocation", "skill_invocations", "skillInvocations"):
+        if key in message:
+            _record_explicit_skill_value(events, message[key])
+    item = message.get("item")
+    if isinstance(item, dict):
+        item_type = str(item.get("type") or item.get("event") or "").lower()
+        if item_type in {"skill_invocation", "skill_invoked", "skill.use", "skill_used"}:
+            _record_explicit_skill_value(events, item.get("skill") or item.get("name"))
+
+
+def extract_events(parsed: dict[str, Any], *, agent: str | None = None) -> dict[str, Any]:
     """Extract events (tool calls, files, etc.) from parsed output."""
     events = {
         "tool_calls": [],
@@ -103,6 +139,7 @@ def extract_events(parsed: dict[str, Any]) -> dict[str, Any]:
         "files_modified": [],
         "commands_run": [],
         "skills_invoked": [],
+        "skill_invocations": [],
         "duration_seconds": None,
         "subject_invocations": 0,
         "num_turns": None,
@@ -165,7 +202,14 @@ def extract_events(parsed: dict[str, Any]) -> dict[str, Any]:
                 elif key in capacities:
                     target[key] = max(target.get(key, 0), item)
 
+    infer_skill_paths = agent is None or agent in {"claude-code", "codex", "qoder", "codebuddy"}
+
+    def record_skill_path(value: object) -> None:
+        if infer_skill_paths:
+            _record_skill_path(events, value)
+
     for msg in parsed.get("messages", []):
+        _record_explicit_skill_event(events, msg)
         stack = [msg]
         session_id = None
         while stack and session_id is None:
@@ -223,7 +267,7 @@ def extract_events(parsed: dict[str, Any]) -> dict[str, Any]:
                 command = item.get("command")
                 if isinstance(command, str) and command:
                     events["commands_run"].append(command)
-                    _record_skill_path(events, command)
+                    record_skill_path(command)
                 tool_call = {"tool": "Bash", "input": {"command": command or ""}}
                 if item.get("aggregated_output") is not None:
                     tool_call["output"] = item["aggregated_output"]
@@ -240,7 +284,7 @@ def extract_events(parsed: dict[str, Any]) -> dict[str, Any]:
                         events["files_created"].append(path)
                     else:
                         events["files_modified"].append(path)
-                    _record_skill_path(events, path)
+                    record_skill_path(path)
             elif item.get("type") in {"mcp_tool_call", "tool_call"}:
                 tool = item.get("name") or item.get("tool") or "unknown"
                 events["tool_calls"].append(
@@ -279,16 +323,16 @@ def extract_events(parsed: dict[str, Any]) -> dict[str, Any]:
                     if tool == "Read" and path:
                         events["files_read"].append(path)
                         # Detect skill reads (e.g., .claude/skills/skill-name/SKILL.md)
-                        _record_skill_path(events, path)
+                        record_skill_path(path)
                     elif tool == "Write" and path:
                         events["files_created"].append(path)
                     elif tool == "Edit" and path:
                         events["files_modified"].append(path)
                     elif tool == "Bash" and inp.get("command"):
                         events["commands_run"].append(inp["command"])
-                        _record_skill_path(events, inp["command"])
+                        record_skill_path(inp["command"])
                     elif tool == "Skill" and inp.get("skill"):
-                        _record_skill_invocation(events, inp["skill"])
+                        _record_skill_invocation(events, inp["skill"], explicit=True)
 
         # Capture tool results and match to their tool_use calls
         if msg.get("type") == "user":
@@ -874,7 +918,7 @@ def save_events(base_dir: Path, treatment_name: str, rep: int, events: dict[str,
     events_dir = base_dir / "events"
     events_dir.mkdir(parents=True, exist_ok=True)
     save_path = events_dir / f"{stable_treatment_name(treatment_name)}_rep{rep}.json"
-    save_path.write_text(json.dumps(events, indent=2), encoding="utf-8")
+    save_path.write_text(json.dumps(redact_sensitive(events), indent=2), encoding="utf-8")
     return save_path
 
 
@@ -884,11 +928,11 @@ def save_raw(base_dir: Path, treatment_name: str, rep: int, stdout: str, stderr:
     raw_dir.mkdir(parents=True, exist_ok=True)
     stable_name = stable_treatment_name(treatment_name)
     stdout_path = raw_dir / f"{stable_name}_rep{rep}_stdout.json"
-    stdout_path.write_text(stdout, encoding="utf-8")
+    stdout_path.write_text(redact_sensitive(stdout), encoding="utf-8")
 
     if stderr:
         stderr_path = raw_dir / f"{stable_name}_rep{rep}_stderr.txt"
-        stderr_path.write_text(stderr, encoding="utf-8")
+        stderr_path.write_text(redact_sensitive(stderr), encoding="utf-8")
 
 
 def save_report(base_dir: Path, treatment_name: str, rep: int, report: dict[str, Any]):
@@ -896,5 +940,5 @@ def save_report(base_dir: Path, treatment_name: str, rep: int, report: dict[str,
     reports_dir = base_dir / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
     save_path = reports_dir / f"{stable_treatment_name(treatment_name)}_rep{rep}_report.json"
-    save_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    save_path.write_text(json.dumps(redact_sensitive(report), indent=2), encoding="utf-8")
     return save_path

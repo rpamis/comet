@@ -82,7 +82,12 @@ done
 
 case "$AGENT" in
     claude-code|codex|qoder|codebuddy) ;;
-    *) echo "[loop] unsupported evaluation agent: $AGENT" >&2; exit 2 ;;
+    *)
+        if [[ "${COMET_EVAL_CUSTOM_AGENT_ID:-}" != "$AGENT" || -z "${COMET_EVAL_CUSTOM_EXECUTABLE:-}" ]]; then
+            echo "[loop] unsupported evaluation agent: $AGENT" >&2
+            exit 2
+        fi
+        ;;
 esac
 if [[ -z "$MODEL" ]]; then
     case "$AGENT" in
@@ -134,6 +139,15 @@ run_agent_turn() {
             else
                 COMET_EVAL_AGENT_ROLE="$role" codebuddy -p "$prompt" --output-format stream-json \
                     --dangerously-skip-permissions "${MODEL_FLAG[@]}"
+            fi
+            ;;
+        *)
+            if [[ -n "$resume_id" ]]; then
+                COMET_EVAL_AGENT_ROLE="$role" "$COMET_EVAL_CUSTOM_EXECUTABLE" -p "$prompt" \
+                    --output-format stream-json "${MODEL_FLAG[@]}" --resume "$resume_id"
+            else
+                COMET_EVAL_AGENT_ROLE="$role" "$COMET_EVAL_CUSTOM_EXECUTABLE" -p "$prompt" \
+                    --output-format stream-json "${MODEL_FLAG[@]}"
             fi
             ;;
     esac
