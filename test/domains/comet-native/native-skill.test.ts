@@ -88,6 +88,10 @@ describe('Comet Native Skills', () => {
           '`nextPageArgs`',
           '`workspaceFinishResult`',
           '`recoveryArgs`',
+          '`children.yaml`',
+          '`readyChildren`',
+          '`finish=merge`',
+          '`repair-child`',
         ],
       },
       {
@@ -105,6 +109,10 @@ describe('Comet Native Skills', () => {
           '`nextPageArgs`',
           '`workspaceFinishResult`',
           '`recoveryArgs`',
+          '`children.yaml`',
+          '`readyChildren`',
+          '`finish=merge`',
+          '`repair-child`',
         ],
       },
     ];
@@ -201,6 +209,8 @@ describe('Comet Native Skills', () => {
       for (const required of [
         '<artifact-root>/comet/changes/<change-name>/',
         'brief.md',
+        'children.yaml',
+        'comet.native.children.v1',
         'specs/<capability>/spec.md',
         'verification.md',
         '# Acceptance examples',
@@ -239,6 +249,8 @@ describe('Comet Native Skills', () => {
         'workspace',
         'preparation',
         'nextPageArgs',
+        'children',
+        'readyChildren',
         'workspaceFinishResult',
       ]) {
         expect(commands).toContain(field);
@@ -269,6 +281,7 @@ describe('Comet Native Skills', () => {
           '`migration-required`',
           '`workspaceFinishResult.status`',
           '`recoveryArgs`',
+          '`repair-child`',
         ],
       },
       {
@@ -281,6 +294,7 @@ describe('Comet Native Skills', () => {
           '`migration-required`',
           '`workspaceFinishResult.status`',
           '`recoveryArgs`',
+          '`repair-child`',
         ],
       },
     ];
@@ -308,6 +322,8 @@ describe('Comet Native Skills', () => {
           '| A | 当前目录（`current`）',
           '| B | 新分支（`branch`）',
           '| C | 新 worktree（`worktree`）',
+          '`readyChildren`',
+          '`workspace.changeBranch`',
         ],
       },
       {
@@ -320,6 +336,8 @@ describe('Comet Native Skills', () => {
           '| A | Current directory (`current`)',
           '| B | New branch (`branch`)',
           '| C | New worktree (`worktree`)',
+          '`readyChildren`',
+          '`workspace.changeBranch`',
         ],
       },
     ];

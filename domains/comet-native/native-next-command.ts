@@ -1,17 +1,22 @@
+import { inspectNativeChildren } from './native-children.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
 import { migrateNativeLegacyChangeToPortable } from './native-portable-migration-runtime.js';
 import { recoverNativePortableChange } from './native-portable-recovery.js';
 import { applyNativeRunnerInput, readNativeRunnerInput } from './native-runner-input.js';
 import { NATIVE_SKILL_COORDINATION } from './native-runner-protocol.js';
 import {
+  completeNativePortableParentBuild,
   confirmNativePortableShape,
   confirmNativePortableSkillCoordinatedPass,
   confirmNativePortableVerifierUnavailable,
+  inspectNativePortableAcceptanceDrift,
   isNativePortableChange,
   resolveNativePortableVerifierBlocker,
   returnNativePortableChangeToBuild,
+  returnNativePortableChangeToShape,
   retryNativePortableVerifier,
 } from './native-portable-runtime.js';
+import type { NativePortableState } from './native-portable-types.js';
 import {
   assertNoArguments,
   configuredPaths,
@@ -22,6 +27,20 @@ import {
   takeOption,
   type DispatchResult,
 } from './native-cli-shared.js';
+import type { NativeProjectPaths } from './native-types.js';
+
+async function portableParentView(paths: NativeProjectPaths, state: NativePortableState) {
+  const children = await inspectNativeChildren({ paths, state });
+  return {
+    ...(children
+      ? {
+          children: children.children,
+          readyChildren: children.readyChildren,
+        }
+      : {}),
+    continuation: nativePortableContinuation(state, children),
+  };
+}
 
 export async function nativeNextCommand(
   args: string[],
@@ -85,8 +104,30 @@ export async function nativeNextCommand(
       return success('next', {
         state: current,
         recovery,
-        continuation: nativePortableContinuation(current),
+        ...(await portableParentView(configured.paths, current)),
       });
+    }
+    if (current.phase === 'build') {
+      const drift = await inspectNativePortableAcceptanceDrift({
+        paths: configured.paths,
+        state: current,
+      });
+      if (drift.drifted) {
+        const state = await returnNativePortableChangeToShape({
+          paths: configured.paths,
+          name,
+          reason: drift.reason ?? 'Native confirmed requirements changed',
+        });
+        return success('next', {
+          state,
+          ...(await portableParentView(configured.paths, state)),
+        });
+      }
+      if (await inspectNativeChildren({ paths: configured.paths, state: current })) {
+        throw new NativeUsageError(
+          'Native parent Build advances child changes and does not accept a Builder handoff',
+        );
+      }
     }
     const input = await readNativeRunnerInput(runnerInputFile, projectRoot);
     const result = await applyNativeRunnerInput({
@@ -95,7 +136,11 @@ export async function nativeNextCommand(
       input,
       maxVerifyFailures: configured.config.native.max_verify_failures,
     });
-    return success('next', { ...result, coordination: NATIVE_SKILL_COORDINATION });
+    return success('next', {
+      ...result,
+      ...(await portableParentView(configured.paths, result.state)),
+      coordination: NATIVE_SKILL_COORDINATION,
+    });
   }
   const recovery = await recoverNativePortableChange({ paths: configured.paths, name });
   const current = recovery.state;
@@ -143,7 +188,47 @@ export async function nativeNextCommand(
       return success('next', {
         state: current,
         recovery,
-        continuation: nativePortableContinuation(current),
+        ...(await portableParentView(configured.paths, current)),
+      });
+    }
+    if (current.phase === 'build') {
+      const drift = await inspectNativePortableAcceptanceDrift({
+        paths: configured.paths,
+        state: current,
+      });
+      if (drift.drifted) {
+        state = await returnNativePortableChangeToShape({
+          paths: configured.paths,
+          name,
+          reason: drift.reason ?? 'Native confirmed requirements changed',
+        });
+      } else {
+        const children = await inspectNativeChildren({ paths: configured.paths, state: current });
+        if (children) {
+          if (
+            children.allDone &&
+            !(current.loop.stage === 'repairing' && current.verification_result === 'fail')
+          ) {
+            state = await completeNativePortableParentBuild({
+              paths: configured.paths,
+              name,
+              summary,
+            });
+          } else {
+            return success('next', {
+              state: current,
+              children: children.children,
+              readyChildren: children.readyChildren,
+              continuation: nativePortableContinuation(current, children),
+            });
+          }
+        }
+      }
+    }
+    if (state) {
+      return success('next', {
+        state,
+        ...(await portableParentView(configured.paths, state)),
       });
     }
     return {
@@ -157,5 +242,8 @@ export async function nativeNextCommand(
       },
     };
   }
-  return success('next', { state, continuation: nativePortableContinuation(state) });
+  return success('next', {
+    state,
+    ...(await portableParentView(configured.paths, state)),
+  });
 }

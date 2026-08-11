@@ -43,7 +43,7 @@ CLI 会完成分支或 worktree 绑定、维护仓库本地排除规则、核对
 
 先调查能够从仓库、工具和运行环境确定的事实；彼此独立的事实可以交给 subagent 调查。按 `native.clarification_mode` 和澄清参考维护决策树，只把会改变用户可见结果、又无法可靠推断的决定交给用户。
 
-确认后的用户可见决定和重要约束立即同步到 Decisions、brief 和完整目标规格；普通实现选择保留在实现和测试中，只有影响用户可见行为时才进入正式需求。验收项必须具体、可观察且互不重复。
+确认后的用户可见决定和重要约束立即同步到 Decisions、brief 和完整目标规格；普通实现选择保留在实现和测试中，只有影响用户可见行为时才进入正式需求。验收项必须具体、可观察且互不重复。大型需求需要拆分时，在父 change 根目录维护 `children.yaml`，用 `depends_on` 表达真实先后关系，并用 `covers` 覆盖父验收项；数组顺序只用于稳定展示和同等就绪时的优先级。
 
 未解决问题保持 `[blocking]`；有阻塞项时不修改项目实现。完成标准：所有会影响用户可见结果的选择和未明说的假设均已处理，没有 `[blocking]`，用户明确确认目标、范围、关键决定、验收项和非目标，并且 Runtime 已进入 Build。只有用户明确确认后才使用后续指令中含 `--confirmed` 的命令推进。
 
@@ -56,6 +56,8 @@ Build 和 Verify 组成一个有界验收循环（Loop）：Builder 提交候选
 ## Build
 
 首次实现时读取当前 brief、完整目标规格和全部验收项。如果 Verify 未通过并返回 Build，先处理 Verifier 指出的未通过项、无法继续验证的问题和失败检查；再次提交前重新核对完整规格与全部验收项，避免只修报错点而遗漏其他要求。
+
+状态包含 `children` 时，当前 change 是父 change：不要运行父 Builder，只推进 `readyChildren`。每个 child 都是普通 Native change，必须在独立 worktree 中创建，以父 change 的 `workspace.changeBranch` 为目标分支；没有依赖的 child 可以并行 Build/Verify，但 Archive 必须逐个使用 `finish=merge` 合入父分支。先提交父契约基线以保持集成工作区干净；只有 child 的 Archive 已合入父分支才算 `done`，随后才从更新后的父 HEAD 创建依赖它的 child。全部 child 为 `done` 后，执行父 continuation 进入 Verify，由新的 Verifier 在最终集成分支上检查父 change 的完整验收项。父 Verify 未通过时不要重开已归档 child；按 `repair-child` 提示在 `children.yaml` 中追加覆盖失败验收项的唯一 repair child，重新确认父 Shape 后继续。
 
 需求变化时先判断归属：
 

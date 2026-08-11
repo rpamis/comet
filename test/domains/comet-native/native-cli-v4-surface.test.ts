@@ -157,6 +157,8 @@ Run applicable focused checks.
     expect(next.stdout).toContain('verifier-unavailable');
     expect(archive.stdout).toContain('does not repeat verification');
     expect(status.stdout).toContain('local execution availability');
+    expect(status.stdout).toContain('readyChildren');
+    expect(next.stdout).toContain('advance parent child changes');
     for (const output of [root.stdout!, next.stdout!, archive.stdout!, status.stdout!]) {
       expect(output).not.toMatch(
         /checkpoint|receipt|evidence|preflight|sha256|--result|--report|--acceptance-cursor/iu,

@@ -1,6 +1,6 @@
 # Native 工作区选择参考
 
-只在创建 change 时读取。用户已经指定 `current`、`branch` 或 `worktree` 时直接采用。
+只在创建 change 时读取。父 change 的 `readyChildren` 固定使用独立 `worktree`，并以父 change 的 `workspace.changeBranch` 为目标分支；其他 change 在用户已经指定 `current`、`branch` 或 `worktree` 时直接采用。
 
 未指定隔离方式时，出现以下任一情况才询问用户：
 

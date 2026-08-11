@@ -2,6 +2,7 @@ export * from './native-artifacts.js';
 export * from './native-archive.js';
 export * from './native-change.js';
 export * from './native-change-recovery.js';
+export * from './native-children.js';
 export * from './native-checkpoint-journal.js';
 export * from './native-checkpoint-storage.js';
 export * from './native-cli.js';

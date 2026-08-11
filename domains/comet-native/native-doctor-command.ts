@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
 import { doctorNativeProject } from './native-doctor.js';
+import { inspectNativeChildren } from './native-children.js';
 import { archiveNativePortableChange } from './native-portable-archive.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
 import {
@@ -10,6 +11,7 @@ import {
 } from './native-portable-migration-runtime.js';
 import { recoverNativePortableChange } from './native-portable-recovery.js';
 import { isNativePortableChange } from './native-portable-runtime.js';
+import type { NativePortableState } from './native-portable-types.js';
 import {
   inspectNativePortableStatus,
   listNativePortableChangeNames,
@@ -30,6 +32,11 @@ import {
   type DispatchResult,
 } from './native-cli-shared.js';
 import type { NativeDoctorFinding, NativeProjectPaths } from './native-types.js';
+
+async function portableContinuation(paths: NativeProjectPaths, state: NativePortableState) {
+  const children = await inspectNativeChildren({ paths, state });
+  return nativePortableContinuation(state, children);
+}
 
 async function listActiveChangeNames(paths: NativeProjectPaths): Promise<string[]> {
   let entries: import('node:fs').Dirent[];
@@ -190,7 +197,7 @@ export async function nativeDoctorCommand(
           repaired: true,
           archive: { recovered: true, transactionId: archived.transactionId },
           state: archived.state,
-          continuation: nativePortableContinuation(archived.state),
+          continuation: await portableContinuation(paths, archived.state),
         });
       }
       const state = await migrateNativeLegacyChangeToPortable({ paths, name });
@@ -201,7 +208,7 @@ export async function nativeDoctorCommand(
         repaired: true,
         migration: { recovered: true, to: state.schema, stateVersion: state.state_version },
         state,
-        continuation: nativePortableContinuation(state),
+        continuation: await portableContinuation(paths, state),
       });
     }
     return unhealthyDoctor({
@@ -255,7 +262,7 @@ export async function nativeDoctorCommand(
           repaired: true,
           migration: { recovered: true, to: state.schema, stateVersion: state.state_version },
           state,
-          continuation: nativePortableContinuation(state),
+          continuation: await portableContinuation(paths, state),
         });
       }
       const result = await recoverNativePortableChange({ paths, name });
@@ -265,7 +272,7 @@ export async function nativeDoctorCommand(
         change: name,
         repaired: true,
         result,
-        continuation: nativePortableContinuation(result.state),
+        continuation: await portableContinuation(paths, result.state),
       });
     }
     const result = await inspectNativePortableStatus({ paths, name, details: true });
@@ -288,7 +295,7 @@ export async function nativeDoctorCommand(
         repaired: true,
         migration: { from: 'legacy', to: state.schema, stateVersion: state.state_version },
         state,
-        continuation: nativePortableContinuation(state),
+        continuation: await portableContinuation(paths, state),
       });
     }
     return {

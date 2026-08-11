@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 
 import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
 
+import { inspectNativeChildren, type NativeChildStatusProjection } from './native-children.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
 import { nativePortableChangeDir, readNativePortableRuntime } from './native-portable-runtime.js';
 import type { NativeLocalExecutionState, NativePortableState } from './native-portable-types.js';
@@ -42,6 +43,8 @@ export interface NativePortableStatusProjection {
     status: 'available' | 'missing' | 'invalid' | 'stale' | 'not-expected';
     operation: NativeLocalExecutionState['execution'];
   };
+  children?: NativeChildStatusProjection[];
+  readyChildren?: string[];
   continuation: ReturnType<typeof nativePortableContinuation>;
   details?: {
     acceptance: NativePortableState['acceptance'];
@@ -94,7 +97,8 @@ export async function inspectNativePortableStatus(options: {
   const runtime = await readNativePortableRuntime(options);
   const localExpected = runtime.state.status === 'active' && runtime.state.loop.stage !== 'done';
   const workspace = workspaceProjection(options.paths, runtime.state);
-  const continuation = nativePortableContinuation(runtime.state);
+  const children = await inspectNativeChildren({ paths: options.paths, state: runtime.state });
+  const continuation = nativePortableContinuation(runtime.state, children);
   const effectiveContinuation =
     workspace.bindingState === 'mismatch'
       ? {
@@ -128,6 +132,12 @@ export async function inspectNativePortableStatus(options: {
       status: localExpected ? runtime.localStatus : 'not-expected',
       operation: runtime.localStatus === 'available' ? (runtime.local?.execution ?? null) : null,
     },
+    ...(children
+      ? {
+          children: children.children,
+          readyChildren: children.readyChildren,
+        }
+      : {}),
     continuation: effectiveContinuation,
     ...(options.details
       ? {

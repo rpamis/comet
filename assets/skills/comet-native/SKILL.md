@@ -43,7 +43,7 @@ After confirming the phase, read only the needed reference:
 
 First investigate facts that can be determined from the repository, tools, and runtime environment. Independent fact-finding may be delegated to subagents. Follow `native.clarification_mode` and the clarification reference to maintain a decision tree. Ask the user only for choices that change the visible result and cannot be inferred reliably.
 
-Immediately synchronize confirmed user-visible decisions and important constraints into Decisions, the brief, and complete target specifications. Keep ordinary implementation choices in the implementation and tests unless they affect visible behavior. Acceptance items must be specific, observable, and non-duplicative.
+Immediately synchronize confirmed user-visible decisions and important constraints into Decisions, the brief, and complete target specifications. Keep ordinary implementation choices in the implementation and tests unless they affect visible behavior. Acceptance items must be specific, observable, and non-duplicative. When a large requirement needs decomposition, maintain `children.yaml` at the parent change root, use `depends_on` for real ordering, and use `covers` to cover parent acceptance items. Array order is only stable display order and the priority among equally ready children.
 
 Keep unresolved questions `[blocking]`; do not modify implementation while a blocker remains. Completion criterion: every choice that affects the visible result and every unstated assumption has been handled, no `[blocking]` item remains, the user has explicitly confirmed the outcome, scope, key decisions, acceptance items, and non-goals, and the Runtime has entered Build. Advance with the continuation containing `--confirmed` only after explicit user confirmation.
 
@@ -56,6 +56,8 @@ Build and Verify form a bounded acceptance Loop: the Builder submits a candidate
 ## Build
 
 For the first implementation, read the current brief, complete target specifications, and all acceptance items. When Verify returns to Build, first address the failed items, blocked verification issues, and failed checks reported by the Verifier. Before submitting again, recheck the complete specifications and all acceptance items so that fixing the reported issue does not hide other omissions.
+
+When status contains `children`, the current change is a parent change: do not run a parent Builder; advance only `readyChildren`. Every child is an ordinary Native change and must be created in an independent worktree targeting the parent's `workspace.changeBranch`. Children without dependencies may Build and Verify in parallel, but Archive them one at a time with `finish=merge` into the parent branch. Commit the parent contract baseline first so the integration worktree stays clean. A child is `done` only after its Archive is merged into the parent branch; only then create dependents from the updated parent HEAD. After every child is `done`, execute the parent continuation to enter Verify, where a fresh Verifier checks the parent's complete acceptance list on the final integrated branch. If parent Verify fails, do not reopen an archived child. Follow `repair-child`, append a uniquely named repair child covering the failed acceptance items to `children.yaml`, reconfirm parent Shape, and continue.
 
 When requirements change, classify them first:
 

@@ -80,7 +80,11 @@ async function inspectPortableWriteTargets(options: {
       };
     }
     const changeRelative = path.relative(changeDir, target).replaceAll('\\', '/');
-    if (changeRelative === 'brief.md' || changeRelative.startsWith('specs/')) {
+    if (
+      changeRelative === 'brief.md' ||
+      changeRelative === 'children.yaml' ||
+      changeRelative.startsWith('specs/')
+    ) {
       formalTargets.push(changeRelative);
       continue;
     }
@@ -127,6 +131,15 @@ async function inspectPortableWriteTargets(options: {
     };
   }
   if (implementationTargets.length > 0) {
+    if (state.children_contract_hash) {
+      return {
+        allowed: false,
+        reason: 'Native parent Build advances child changes instead of editing implementation',
+        workflow: 'native',
+        phase: state.phase,
+        change: state.name,
+      };
+    }
     if (state.phase === 'build') {
       return {
         allowed: true,

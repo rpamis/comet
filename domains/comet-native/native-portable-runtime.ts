@@ -7,6 +7,11 @@ import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
 import { atomicWriteText } from './native-atomic-file.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
 import {
+  hashNativeParentContract,
+  inspectNativeChildren,
+  readNativeChildrenContract,
+} from './native-children.js';
+import {
   listActiveNativeChangesOwnedByWorkspace,
   NativeWorkspaceIsolationRequiredError,
 } from './native-change.js';
@@ -62,6 +67,7 @@ import type {
   NativePortableWorkspace,
 } from './native-portable-types.js';
 import {
+  createNativeRunnerChannel,
   isNativeTrustedVerifierEnvelope,
   type NativeTrustedVerifierEnvelope,
 } from './native-runner-protocol.js';
@@ -364,10 +370,41 @@ export async function confirmNativePortableShape(options: {
         state,
         specChanges,
       });
+      const children = await readNativeChildrenContract({
+        changeDir: nativePortableChangeDir(options.paths, state.name),
+        acceptanceIds: acceptance.map(({ id }) => id),
+      });
+      if (children && state.workspace.change_branch === null) {
+        throw new Error('Native parent changes require a Git integration branch');
+      }
       const next = confirmNativePortableAcceptance({
         state: { ...state, spec_changes: specChanges },
         acceptance: acceptance.map((entry) => ({ ...entry })),
       });
+      delete next.children_contract_hash;
+      if (children) {
+        next.children_contract_hash = hashNativeParentContract({
+          acceptance: next.acceptance,
+          children: children.contract,
+        });
+        const latestDecision = [...state.history]
+          .reverse()
+          .find(({ outcome }) => outcome === 'pass' || outcome === 'fail');
+        if (latestDecision?.outcome === 'fail' && latestDecision.unresolved_ids.length > 0) {
+          const inspection = await inspectNativeChildren({ paths: options.paths, state: next });
+          const repairCoverage = new Set(
+            (inspection?.children ?? [])
+              .filter(({ status }) => status !== 'done')
+              .flatMap(({ covers }) => covers),
+          );
+          const missing = latestDecision.unresolved_ids.filter((id) => !repairCoverage.has(id));
+          if (missing.length > 0) {
+            throw new Error(
+              `Native parent repair plan requires an unfinished child covering: ${missing.join(', ')}`,
+            );
+          }
+        }
+      }
       const written = await writePortableMutation({ paths: options.paths, previous: state, next });
       await writeNativeLocalExecution(
         nativeLocalExecutionFile(options.paths, state.name),
@@ -389,6 +426,11 @@ export async function inspectNativePortableAcceptanceDrift(options: {
   ignoreSpecOperationFor?: ReadonlySet<string>;
 }): Promise<{ drifted: boolean; reason: string | null }> {
   const specChanges = await discoverNativePortableSpecChanges(options);
+  const ignoredOperations =
+    options.ignoreSpecOperationFor ??
+    (options.state.children_contract_hash
+      ? new Set(options.state.spec_changes.map(({ capability }) => capability))
+      : undefined);
   const declarationsMatch =
     specChanges.length === options.state.spec_changes.length &&
     specChanges.every((actual, index) => {
@@ -398,7 +440,7 @@ export async function inspectNativePortableAcceptanceDrift(options: {
         actual.capability === expected.capability &&
         actual.source === expected.source &&
         (actual.operation === expected.operation ||
-          options.ignoreSpecOperationFor?.has(actual.capability) === true)
+          ignoredOperations?.has(actual.capability) === true)
       );
     });
   if (!declarationsMatch) {
@@ -406,9 +448,24 @@ export async function inspectNativePortableAcceptanceDrift(options: {
   }
   const acceptance = await readNativePortableAcceptance({ ...options, specChanges });
   const expected = options.state.acceptance.map(({ source, text }) => ({ source, text }));
-  return sameNativePortableAcceptance(expected, acceptance)
+  if (!sameNativePortableAcceptance(expected, acceptance)) {
+    return { drifted: true, reason: 'Native confirmed acceptance criteria changed' };
+  }
+  let children;
+  try {
+    children = await readNativeChildrenContract({
+      changeDir: nativePortableChangeDir(options.paths, options.state.name),
+      acceptanceIds: acceptance.map(({ id }) => id),
+    });
+  } catch {
+    return { drifted: true, reason: 'Native child declarations changed' };
+  }
+  const currentHash = children
+    ? hashNativeParentContract({ acceptance, children: children.contract })
+    : null;
+  return currentHash === (options.state.children_contract_hash ?? null)
     ? { drifted: false, reason: null }
-    : { drifted: true, reason: 'Native confirmed acceptance criteria changed' };
+    : { drifted: true, reason: 'Native child declarations changed' };
 }
 
 export async function ensureNativePortableAcceptanceCurrentLocked(options: {
@@ -437,7 +494,71 @@ export async function submitNativePortableBuilderCandidate(options: {
     async () => {
       const state = await readNativePortableChange(options.paths, options.name);
       await ensureNativePortableAcceptanceCurrentLocked({ paths: options.paths, state });
+      const children = await readNativeChildrenContract({
+        changeDir: nativePortableChangeDir(options.paths, state.name),
+        acceptanceIds: state.acceptance.map(({ id }) => id),
+      });
+      if (children || state.children_contract_hash) {
+        throw new Error('Native parent Build advances child changes instead of a parent Builder');
+      }
       const next = submitNativeBuilderCandidate({ state, input: options.input });
+      const written = await writePortableMutation({ paths: options.paths, previous: state, next });
+      await writeNativeLocalExecution(
+        nativeLocalExecutionFile(options.paths, state.name),
+        rebuildNativeLocalExecution({
+          portableState: written,
+          projectRoot: options.paths.projectRoot,
+          branch: currentBranch(options.paths.projectRoot),
+        }),
+        { containedRoot: options.paths.runtimeDir },
+      );
+      return written;
+    },
+  );
+}
+
+export async function completeNativePortableParentBuild(options: {
+  paths: NativeProjectPaths;
+  name: string;
+  summary: string;
+}): Promise<NativePortableState> {
+  return withNativeMutationLock(
+    options.paths,
+    `complete portable parent Build ${options.name}`,
+    async () => {
+      const state = await readNativePortableChange(options.paths, options.name);
+      if (state.phase !== 'build' || state.status !== 'active') {
+        throw new Error('Native parent integration can only complete from active Build');
+      }
+      await ensureNativePortableAcceptanceCurrentLocked({ paths: options.paths, state });
+      const children = await inspectNativeChildren({ paths: options.paths, state });
+      if (!children || !state.children_contract_hash) {
+        throw new Error(`Native change ${state.name} has no confirmed child contract`);
+      }
+      if (!children.confirmed) {
+        throw new Error('Native parent child declarations require Shape confirmation');
+      }
+      if (!children.allDone) {
+        throw new Error('Native parent cannot enter Verify before every child is merged');
+      }
+      if (state.loop.stage === 'repairing' && state.verification_result === 'fail') {
+        throw new Error('Native parent verification failed; add and confirm a repair child');
+      }
+      const runner = createNativeRunnerChannel();
+      const identity = runner.captureExecutionIdentity({
+        identityProvider: 'skill-coordinated',
+        executionRef: `native-parent-integration:${randomUUID()}`,
+      });
+      const next = submitNativeBuilderCandidate({
+        state,
+        input: {
+          identity,
+          summary: options.summary,
+          addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
+          checks: [],
+          knownLimits: [],
+        },
+      });
       const written = await writePortableMutation({ paths: options.paths, previous: state, next });
       await writeNativeLocalExecution(
         nativeLocalExecutionFile(options.paths, state.name),
@@ -1825,6 +1946,7 @@ export async function markNativePortableSpecRemoval(options: {
           next_action: 'confirm-shape',
         },
       };
+      delete next.children_contract_hash;
       const written = await writePortableMutation({ paths: options.paths, previous: state, next });
       await writeNativeLocalExecution(
         nativeLocalExecutionFile(options.paths, state.name),
@@ -1859,6 +1981,15 @@ export async function setNativePortableWorkspaceFinish(options: {
         workspace: { ...state.workspace, finish: options.finish },
       };
       const written = await writePortableMutation({ paths: options.paths, previous: state, next });
+      await writeNativeLocalExecution(
+        nativeLocalExecutionFile(options.paths, state.name),
+        rebuildNativeLocalExecution({
+          portableState: written,
+          projectRoot: options.paths.projectRoot,
+          branch: currentBranch(options.paths.projectRoot),
+        }),
+        { containedRoot: options.paths.runtimeDir },
+      );
       if (written.verification !== null) {
         await writeNativeVerificationReport({
           file: path.join(nativePortableChangeDir(options.paths, state.name), 'verification.md'),
@@ -1930,6 +2061,7 @@ export async function returnNativePortableStateToShapeLocked(options: {
       next_action: 'confirm-shape',
     },
   };
+  delete next.children_contract_hash;
   const written = await writePortableMutation({ paths: options.paths, previous: state, next });
   await writeNativeLocalExecution(
     nativeLocalExecutionFile(options.paths, state.name),
