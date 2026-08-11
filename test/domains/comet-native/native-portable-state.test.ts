@@ -96,6 +96,30 @@ describe('Native portable state', () => {
     await expect(readNativePortableState(file)).resolves.toEqual(next);
   });
 
+  it('keeps the parent contract hash optional for existing portable changes', async () => {
+    const ordinary = createNativePortableState({
+      name: 'ordinary-change',
+      language: 'en',
+      createdAt: '2026-08-09T00:00:00.000Z',
+    });
+    await writeNativePortableState(file, ordinary, { containedRoot: root });
+    await expect(readNativePortableState(file)).resolves.not.toHaveProperty(
+      'children_contract_hash',
+    );
+
+    const parent = parseNativePortableState({
+      ...ordinary,
+      children_contract_hash: 'a'.repeat(64),
+    });
+    await writeNativePortableState(file, parent, { containedRoot: root });
+    await expect(readNativePortableState(file)).resolves.toMatchObject({
+      children_contract_hash: 'a'.repeat(64),
+    });
+    expect(() =>
+      parseNativePortableState({ ...ordinary, children_contract_hash: 'not-a-hash' }),
+    ).toThrow(/children contract hash/iu);
+  });
+
   it('keeps only 50 history entries and folds older facts into a non-decision overflow', () => {
     let state = createNativePortableState({
       name: 'bounded-history',

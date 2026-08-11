@@ -4,6 +4,7 @@ import {
   NativeRuntimeCompatibilityError,
 } from './native-change.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
+import { inspectNativeChildren } from './native-children.js';
 import { NATIVE_CONTRACT_FILE_LIMITS } from './native-contract-files.js';
 import { readNativeProposedSpecs } from './native-specs.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
@@ -57,7 +58,10 @@ export async function nativeShowCommand(
       state,
       brief: brief.text,
       proposedSpecs,
-      continuation: nativePortableContinuation(state),
+      continuation: nativePortableContinuation(
+        state,
+        await inspectNativeChildren({ paths, state }),
+      ),
     };
     return success('show', payload);
   }

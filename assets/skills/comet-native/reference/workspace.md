@@ -1,6 +1,6 @@
 # Native workspace selection reference
 
-Read this file only when creating a change. If the user has already chosen `current`, `branch`, or `worktree`, use that choice directly.
+Read this file only when creating a change. Always create a parent's `readyChildren` in independent `worktree` mode targeting the parent's `workspace.changeBranch`. For other changes, use the user's existing choice of `current`, `branch`, or `worktree` directly.
 
 When no isolation mode is specified, ask the user only if any of these conditions is true:
 

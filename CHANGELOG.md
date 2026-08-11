@@ -11,6 +11,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Project-authored evaluation tasks**: Skills can now declare inline deterministic tasks or reuse package-local task definitions from `evaluation.tasks` in `comet/eval.yaml`.
 - **Automatic evaluation tasks**: A taskless Skill evaluation now generates a bounded, hash-cached task set on the first normal run while keeping `--quick` and cache-only `--collect` available for smoke and discovery workflows.
 - **Langfuse evaluation suite**: `comet eval --suite langfuse` now reports task traces, rubric scores, pass metrics, and experiment summaries to Langfuse, automatically provisions pinned official Claude Code/Codex plugins in an isolated cache, and captures Qoder/CodeBuddy transcripts without changing local scoring.
+- **Native parent-child changes**: The Native Skill now recognizes large requests that benefit from independent acceptance, proposes a named child graph during the parent Shape confirmation, automatically dispatches ready children with a serial fallback, merges them into the parent branch in order, and verifies the final integrated result against the parent acceptance criteria.
 
 ## What's Changed [0.4.0-beta.17] - 2026-08-10
 
