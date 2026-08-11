@@ -117,10 +117,64 @@ describe('eval command', () => {
       'pytest',
       'local/tests/tasks/test_tasks.py',
       `--eval-manifest=${path.resolve(manifest)}`,
+      '--quick',
+      `--project-root=${path.resolve(project)}`,
       '-v',
     ]);
     expect(prepareEvalManifest).toHaveBeenCalledWith(manifest);
     expect(cleanupPreparedManifest).toHaveBeenCalledTimes(1);
+  });
+
+  it('passes an explicitly selected agent to the eval harness', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { evalRunCommand } = await import('../../app/commands/eval.js');
+      await evalRunCommand({
+        project,
+        manifest,
+        agent: 'qoder',
+        quick: true,
+      });
+    } finally {
+      log.mockRestore();
+    }
+
+    expectUvRun([
+      'run',
+      'pytest',
+      'local/tests/tasks/test_tasks.py',
+      `--eval-manifest=${path.resolve(manifest)}`,
+      '--agent=qoder',
+      '--quick',
+      `--project-root=${path.resolve(project)}`,
+      '-v',
+    ]);
+  });
+
+  it('passes CodeBuddy selection to the eval harness', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { evalRunCommand } = await import('../../app/commands/eval.js');
+      await evalRunCommand({
+        project,
+        manifest,
+        agent: 'codebuddy',
+        quick: true,
+      });
+    } finally {
+      log.mockRestore();
+    }
+
+    expectUvRun([
+      'run',
+      'pytest',
+      'local/tests/tasks/test_tasks.py',
+      `--eval-manifest=${path.resolve(manifest)}`,
+      '--agent=codebuddy',
+      '--quick',
+      `--project-root=${path.resolve(project)}`,
+      '-v',
+    ]);
   });
 
   it('records a successful local Creator eval before cleaning up the prepared manifest', async () => {
@@ -143,6 +197,8 @@ describe('eval command', () => {
       'pytest',
       'local/tests/tasks/test_tasks.py',
       `--eval-manifest=${path.resolve(preparedManifest)}`,
+      '--quick',
+      `--project-root=${path.resolve(project)}`,
       '-v',
     ]);
     expect(recordRepositoryEvalExperiment).toHaveBeenCalledWith({
@@ -218,10 +274,36 @@ describe('eval command', () => {
       `--skill-path=${path.resolve(skillPath)}`,
       '--skill-name=demo-skill',
       '--profile=generic',
+      '--quick',
+      `--project-root=${path.resolve(project)}`,
       '-v',
     ]);
     expect(prepareEvalManifest).not.toHaveBeenCalled();
     expect(cleanupPreparedManifest).not.toHaveBeenCalled();
+  });
+
+  it('leaves the normal local Skill run taskless for automatic task generation', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { evalRunCommand } = await import('../../app/commands/eval.js');
+      await evalRunCommand({
+        project,
+        skillPath,
+        skillName: 'demo-skill',
+      });
+    } finally {
+      log.mockRestore();
+    }
+
+    expectUvRun([
+      'run',
+      'pytest',
+      'local/tests/tasks/test_tasks.py',
+      `--skill-path=${path.resolve(skillPath)}`,
+      '--skill-name=demo-skill',
+      `--project-root=${path.resolve(project)}`,
+      '-v',
+    ]);
   });
 
   it('routes LangSmith evals through the LangSmith runner and report directory', async () => {
@@ -246,6 +328,7 @@ describe('eval command', () => {
       'langsmith/tests/tasks/test_tasks.py',
       '--task=generic-skill-smoke',
       `--skill-path=${path.resolve(skillPath)}`,
+      `--project-root=${path.resolve(project)}`,
       '-v',
     ]);
     expect(recordRepositoryEvalExperiment).not.toHaveBeenCalled();
@@ -253,6 +336,65 @@ describe('eval command', () => {
     expect(output).toContain(
       path.join(evalCwd, 'langsmith', 'logs', 'experiments', experimentId, 'summary.md'),
     );
+  });
+
+  it('routes Langfuse evals through the Langfuse runner and report directory', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let output: string;
+    try {
+      const { evalRunCommand } = await import('../../app/commands/eval.js');
+      await evalRunCommand({
+        project,
+        skillPath,
+        suite: 'langfuse',
+        task: 'generic-skill-smoke',
+      });
+      output = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+    }
+
+    const experimentId = expectUvRun([
+      'run',
+      '--extra',
+      'langfuse',
+      'pytest',
+      'langfuse/tests/tasks/test_tasks.py',
+      '--task=generic-skill-smoke',
+      `--skill-path=${path.resolve(skillPath)}`,
+      `--project-root=${path.resolve(project)}`,
+      '-v',
+    ]);
+    expect(recordRepositoryEvalExperiment).not.toHaveBeenCalled();
+    expect(output).toContain('Suite: langfuse');
+    expect(output).toContain(
+      path.join(evalCwd, 'langfuse', 'logs', 'experiments', experimentId, 'summary.md'),
+    );
+  });
+
+  it('keeps Langfuse collection offline by not activating the optional extra', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { evalCollectCommand } = await import('../../app/commands/eval.js');
+      await evalCollectCommand({
+        project,
+        skillPath,
+        suite: 'langfuse',
+        task: 'generic-skill-smoke',
+      });
+    } finally {
+      log.mockRestore();
+    }
+
+    expectUvRun([
+      'run',
+      'pytest',
+      'langfuse/tests/tasks/test_tasks.py',
+      '--task=generic-skill-smoke',
+      `--skill-path=${path.resolve(skillPath)}`,
+      `--project-root=${path.resolve(project)}`,
+      '--collect-only',
+    ]);
   });
 
   it('runs a local Skill target directly without requiring --skill-path', async () => {
@@ -274,6 +416,8 @@ describe('eval command', () => {
       '--task=generic-skill-smoke',
       `--skill-path=${path.resolve(skillPath)}`,
       '--skill-name=demo-skill',
+      '--quick',
+      `--project-root=${path.resolve(project)}`,
       '-v',
     ]);
   });
@@ -295,6 +439,7 @@ describe('eval command', () => {
       'pytest',
       'local/tests/tasks/test_tasks.py',
       `--eval-manifest=${path.resolve(manifest)}`,
+      `--project-root=${path.resolve(project)}`,
       '--collect-only',
     ]);
   });
@@ -322,6 +467,7 @@ describe('eval command', () => {
       'pytest',
       'local/tests/tasks/test_tasks.py',
       `--eval-manifest=${path.resolve(preparedManifest)}`,
+      `--project-root=${path.resolve(project)}`,
       '--collect-only',
     ]);
     expect(prepareEvalManifest).toHaveBeenCalledWith(manifest);
@@ -497,7 +643,7 @@ describe('eval command', () => {
         manifest,
         suite: 'remote' as 'local',
       }),
-    ).rejects.toThrow('Unsupported eval suite: remote. Expected local or langsmith.');
+    ).rejects.toThrow('Unsupported eval suite: remote. Expected local, langsmith, or langfuse.');
 
     expect(execFileSync).not.toHaveBeenCalled();
   });

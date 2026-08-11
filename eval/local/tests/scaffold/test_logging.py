@@ -35,6 +35,26 @@ def test_save_artifacts_excludes_nested_git_metadata(tmp_path: Path):
     assert not (snapshot / ".git").exists()
 
 
+def test_save_artifacts_uses_selected_agent_root_and_excludes_codebuddy_config(
+    tmp_path: Path,
+):
+    from conftest import _save_artifacts
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "result.md").write_text("ok", encoding="utf-8")
+    (workspace / ".codebuddy" / "settings.json").parent.mkdir()
+    (workspace / ".codebuddy" / "settings.json").write_text(
+        '{"env":{"CODEBUDDY_API_KEY":"secret"}}', encoding="utf-8"
+    )
+
+    _save_artifacts(tmp_path, "COMET_FULL_040_BETA", 1, workspace, agent="codebuddy")
+
+    snapshot = tmp_path / "artifacts/comet_full_040_beta_rep1/codebuddy"
+    assert (snapshot / "result.md").read_text(encoding="utf-8") == "ok"
+    assert not (snapshot / ".codebuddy").exists()
+
+
 def test_save_artifacts_excludes_controller_cli_snapshot(tmp_path: Path):
     from conftest import _save_artifacts
 
@@ -91,6 +111,75 @@ def test_extract_events_captures_token_usage_and_cost():
     assert events["total_tokens"] == 475
     assert events["total_cost_usd"] == 0.123456
     assert events["model_usage"]["mimo-v2.5-pro"]["costUSD"] == 0.123456
+
+
+def test_extract_events_normalizes_codex_turns_and_runtime_skill_evidence():
+    stdout = "\n".join(
+        [
+            json.dumps({"type": "thread.started", "thread_id": "thread-1"}),
+            json.dumps(
+                {
+                    "type": "item.completed",
+                    "item": {
+                        "type": "command_execution",
+                        "command": "cat .agents/skills/demo/SKILL.md",
+                        "aggregated_output": "skill contents",
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "item.completed",
+                    "item": {
+                        "type": "file_change",
+                        "changes": [{"path": "result.md", "kind": "add"}],
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "turn.completed",
+                    "usage": {"input_tokens": 80, "output_tokens": 20},
+                    "duration_ms": 900,
+                }
+            ),
+        ]
+    )
+
+    events = extract_events(parse_output(stdout))
+
+    assert events["role_sessions"]["subject"] == ["thread-1"]
+
+    assert events["subject_invocations"] == 1
+    assert events["num_turns"] == 1
+    assert events["input_tokens"] == 80
+    assert events["output_tokens"] == 20
+    assert events["total_tokens"] == 100
+    assert events["duration_seconds"] == 0.9
+    assert events["commands_run"] == ["cat .agents/skills/demo/SKILL.md"]
+    assert events["files_created"] == ["result.md"]
+    assert events["skills_invoked"] == ["demo"]
+
+
+def test_extract_events_recognizes_codebuddy_runtime_skill_evidence():
+    stdout = json.dumps(
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "name": "Bash",
+                        "input": {"command": "cat .codebuddy/skills/demo/SKILL.md"},
+                    }
+                ]
+            },
+        }
+    )
+
+    events = extract_events(parse_output(stdout))
+
+    assert events["skills_invoked"] == ["demo"]
 
 
 def test_extract_events_accumulates_duration_across_results():

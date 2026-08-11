@@ -94,7 +94,7 @@ and `Evidence:`.
 It should not start a full model evaluation first, and it should not spend long-running cost
 before manifest and discovery work.
 
-## Choose the Local or LangSmith suite
+## Choose the Local, LangSmith, or Langfuse suite
 
 `comet eval` uses the `local` suite by default for day-to-day development and local reports. To sync runs, rubric
 feedback, costs, and Claude Code trajectories to LangSmith, select the suite explicitly:
@@ -108,13 +108,47 @@ Both suites reuse the same tasks, treatments, rubric, and manifest. The `langsmi
 writes reports under `eval/langsmith/logs/experiments/`. Without `--suite langsmith`, enabling tracing in the
 environment does not make the Local runner create a LangSmith experiment.
 
+To send core task/treatment traces and scores to Langfuse, select `langfuse`:
+
+```bash
+LANGFUSE_PUBLIC_KEY=pk-lf-... LANGFUSE_SECRET_KEY=sk-lf-... \
+  comet eval ./generated-skill/comet/eval.yaml --suite langfuse --html
+```
+
+`comet eval` selects the Langfuse optional extra automatically. The Langfuse suite authenticates before any Agent
+or Docker workload starts. A failure to write a core trace, score, summary, or final flush fails the suite; detailed
+trajectory upload remains best-effort. Claude Code and Codex use pinned official Langfuse plugins from an isolated
+`.comet/eval/langfuse/plugins/` cache. Qoder and CodeBuddy use project-local Stop hooks and JSONL transcript
+adapters. `--collect --suite langfuse` does not initialize the SDK, access the network, or download plugins.
+
+## Choose the evaluation agent
+
+Evaluations use `claude-code` by default. Select `claude-code`, `codex`, `qoder`, or `codebuddy` from the CLI:
+
+```bash
+comet eval ./generated-skill/comet/eval.yaml --agent codex
+comet eval ./generated-skill/comet/eval.yaml --agent qoder
+comet eval ./generated-skill/comet/eval.yaml --agent codebuddy
+```
+
+You can also set the manifest default:
+
+```yaml
+execution:
+  agent: codex
+```
+
+Precedence is CLI `--agent` > manifest `execution.agent` > `claude-code`. Local, LangSmith, and Langfuse share this
+selection rule; the subject, auto-user simulator, and optional Judge use isolated sessions of the selected
+agent. `--collect` validates the agent and manifest without starting an agent, Docker, or credential checks.
+
 ## What `--html` prints
 
 During execution, the CLI prints a set of execution facts:
 
 - `Eval root`: which `eval/` root was actually used
 - `Mode`: `collect` or `run`
-- `Suite`: `local` or `langsmith`
+- `Suite`: `local`, `langsmith`, or `langfuse`
 - `Target`: whether the target is a manifest or local Skill directory
 - `Experiment`: the experiment id for this run
 - `Profile`: which profile the run used
@@ -197,6 +231,28 @@ generic-skill-smoke
 
 This is only an early smoke path, not final publish evidence. Before publishing, it is still
 recommended to let `/comet-any` generate `comet/eval.yaml` and then use the manifest path.
+
+If `eval.yaml` has neither `evaluation.tasks` nor `recommendedTasks`, a normal run takes a bounded
+Skill snapshot, generates 2–4 deterministic tasks, and caches them under `.comet/eval/generated/`.
+The cache key includes the snapshot, Agent, profile, and interaction settings, and the generated
+manifest records its generation metadata. `--collect` only reads an existing cache and never starts
+the task-generator Agent; use `--quick` when you explicitly want to bypass generation.
+
+Projects can also author inline tasks or reference a Skill-local task package with `source`:
+
+```yaml
+evaluation:
+  tasks:
+    - name: writes-summary
+      prompt: Create summary.md.
+      expect:
+        files: [summary.md]
+        contains:
+          summary.md: ['# Summary']
+```
+
+`source`, `workspace`, and expected artifact paths must stay within the allowed package/workspace.
+Inline `files`, `contains`, `json`, and `commands` checks run inside the isolated Docker workspace.
 
 ## When to choose manifest vs skill-path
 

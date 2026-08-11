@@ -18,9 +18,10 @@ import statistics
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, Mapping, Sequence
 
 from scaffold.python.logging import extract_events, parse_output
+from scaffold.python.agents import AGENT_IDS
 from scaffold.python.pass_at_k import compute_pass_metrics
 from scaffold.python.sample_quality import quality_from_report
 
@@ -64,6 +65,7 @@ _RUNNER_FILES = (
     "scaffold/shell/run-claude-loop.sh",
     "scaffold/shell/decision-point.sh",
     "scaffold/shell/completion-point.sh",
+    "scaffold/docker/agent-overlay.Dockerfile",
 )
 _CONTROLLER_FILES = (
     "local/tests/tasks/test_tasks.py",
@@ -73,6 +75,7 @@ _CONTROLLER_FILES = (
     "scaffold/python/profiles.py",
     "scaffold/python/manifests.py",
     "scaffold/python/utils.py",
+    "scaffold/python/agents.py",
     "scaffold/python/logging.py",
     "scaffold/python/aligned_comparison.py",
 )
@@ -94,6 +97,7 @@ class CaseManifest:
     controller_hash: str | None
     execution_hash: str | None
     execution_identity: dict[str, str] | None
+    authored_hashes: dict[str, str] | None
     source: str
     run_bound: bool
     execution_bound: bool
@@ -236,13 +240,21 @@ def build_execution_identity(
 ) -> dict[str, str]:
     """Build the safe, report-bound execution identity.
 
-    Docker supplies hashes derived from the immutable image and the actual
-    ``claude --version`` output. Model and interaction text are hashed by the
-    controller; only bounded enums and digests enter reports.
+    Docker supplies identity derived from the immutable image and the actual
+    selected CLI version. Model and private interaction text are hashed by the
+    controller; only the bounded CLI version, enums, and digests enter reports.
     """
     if docker_identity.get("schema") != EXECUTION_IDENTITY_SCHEMA:
         raise ValueError("Docker execution identity schema is invalid")
-    allowed = {"schema", "runtime_image_id", *_EXECUTION_IDENTITY_HASH_KEYS[:4]}
+    allowed = {
+        "schema",
+        "runtime_image_id",
+        *_EXECUTION_IDENTITY_HASH_KEYS[:4],
+        "agent",
+        "agent_cli",
+        "agent_cli_version",
+        "agent_cli_version_hash",
+    }
     unknown = set(docker_identity) - allowed
     if unknown:
         raise ValueError(f"Docker execution identity has unknown keys: {sorted(unknown)}")
@@ -256,6 +268,25 @@ def build_execution_identity(
             raise ValueError(f"Docker execution identity {key} is invalid")
     if docker_identity["image_id_hash"] != _sha256_bytes(runtime_image_id.encode("utf-8")):
         raise ValueError("Docker execution identity image hash does not match its runtime image")
+    agent = docker_identity.get("agent", "claude-code")
+    agent_cli = docker_identity.get("agent_cli", "claude")
+    agent_cli_version_hash = docker_identity.get(
+        "agent_cli_version_hash", docker_identity.get("claude_tool_version_hash")
+    )
+    agent_cli_version = docker_identity.get("agent_cli_version")
+    if agent not in AGENT_IDS:
+        raise ValueError(f"Docker execution identity agent is invalid: {agent!r}")
+    if not isinstance(agent_cli, str) or not agent_cli:
+        raise ValueError("Docker execution identity agent_cli is invalid")
+    if not _is_hash(agent_cli_version_hash):
+        raise ValueError("Docker execution identity agent_cli_version_hash is invalid")
+    if agent_cli_version is not None and (
+        not isinstance(agent_cli_version, str)
+        or not agent_cli_version
+        or len(agent_cli_version) > 512
+        or any(ord(character) < 32 for character in agent_cli_version)
+    ):
+        raise ValueError("Docker execution identity agent_cli_version is invalid")
 
     mode = getattr(interaction, "mode", None) or "none"
     if mode not in {"none", "auto_user"}:
@@ -279,7 +310,7 @@ def build_execution_identity(
         for key, value in sorted((model_config or {}).items())
         if isinstance(key, str) and isinstance(value, (str, type(None)))
     }
-    return {
+    identity = {
         "schema": EXECUTION_IDENTITY_SCHEMA,
         **{key: docker_identity[key] for key in _EXECUTION_IDENTITY_HASH_KEYS[:4]},
         "model_selection_hash": _hash_private_value(
@@ -294,6 +325,17 @@ def build_execution_identity(
         "interaction_mode": mode,
         "interaction_max_turns": str(max_turns),
     }
+    if "agent" in docker_identity:
+        identity.update(
+            {
+                "agent": agent,
+                "agent_cli": agent_cli,
+                "agent_cli_version_hash": agent_cli_version_hash,
+            }
+        )
+        if agent_cli_version is not None:
+            identity["agent_cli_version"] = agent_cli_version
+    return identity
 
 
 def _validated_execution_identity(raw: Any) -> dict[str, str] | None:
@@ -306,10 +348,29 @@ def _validated_execution_identity(raw: Any) -> dict[str, str] | None:
         "interaction_mode",
         "interaction_max_turns",
     }
-    if set(raw) != allowed or raw.get("schema") != EXECUTION_IDENTITY_SCHEMA:
+    new_agent_keys = {"agent", "agent_cli", "agent_cli_version_hash"}
+    version_key = {"agent_cli_version"}
+    raw_keys = set(raw)
+    if raw_keys not in (allowed, allowed | new_agent_keys, allowed | new_agent_keys | version_key):
+        return None
+    if raw.get("schema") != EXECUTION_IDENTITY_SCHEMA:
         return None
     if not all(_is_hash(raw.get(key)) for key in _EXECUTION_IDENTITY_HASH_KEYS):
         return None
+    if new_agent_keys.issubset(raw_keys):
+        if raw.get("agent") not in AGENT_IDS:
+            return None
+        if not isinstance(raw.get("agent_cli"), str) or not raw["agent_cli"]:
+            return None
+        if not _is_hash(raw.get("agent_cli_version_hash")):
+            return None
+        if "agent_cli_version" in raw_keys and (
+            not isinstance(raw.get("agent_cli_version"), str)
+            or not raw["agent_cli_version"]
+            or len(raw["agent_cli_version"]) > 512
+            or any(ord(character) < 32 for character in raw["agent_cli_version"])
+        ):
+            return None
     if raw.get("model_source") not in {"explicit", "runtime-default"}:
         return None
     if raw.get("interaction_mode") not in {"none", "auto_user", "custom"}:
@@ -320,7 +381,8 @@ def _validated_execution_identity(raw: Any) -> dict[str, str] | None:
         return None
     if not 1 <= max_turns <= 1000 or str(max_turns) != raw.get("interaction_max_turns"):
         return None
-    return {key: raw[key] for key in sorted(allowed)}
+    identity_keys = raw_keys
+    return {key: raw[key] for key in sorted(identity_keys)}
 
 
 def build_case_manifest(
@@ -328,28 +390,73 @@ def build_case_manifest(
     tasks_dir: Path,
     *,
     execution_identity: dict[str, str] | None = None,
+    manifest_path: Path | None = None,
+    rendered_prompt: str | None = None,
+    workspace_dir: Path | None = None,
+    validation_rules: Mapping[str, Any] | None = None,
+    environment_dir: Path | None = None,
 ) -> CaseManifest:
     """Build a manifest for the canonical task and, for new runs, its execution."""
     task_dir = tasks_dir / task
-    instruction_path = task_dir / "instruction.md"
-    task_hash = _hash_tree(task_dir / "task.toml")
-    instruction_hash = _hash_tree(instruction_path)
-    validator_components = {
-        "task_validation": _hash_tree(task_dir / "validation"),
-        "shared_validation": _hash_tree(_EVAL_ROOT / "scaffold" / "python" / "validation"),
-        "native_adapter": _hash_tree(_EVAL_ROOT / "scaffold" / "python" / "native_eval.py"),
-    }
-    validator_hash = _sha256_bytes(
-        json.dumps(validator_components, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    )
-    environment_hash = _hash_tree(task_dir / "environment")
-    data_hash = _hash_tree(task_dir / "data")
-    instruction_bytes = instruction_path.read_bytes() if instruction_path.is_file() else b"missing"
-    prompt_components = {
-        "instruction": _sha256_bytes(b"canonical-task-prompt-v1\0" + instruction_bytes),
-        "task_renderer": _hash_tree(_EVAL_ROOT / "scaffold" / "python" / "tasks.py"),
-        "native_adapter": validator_components["native_adapter"],
-    }
+    native_adapter_hash = _hash_tree(_EVAL_ROOT / "scaffold" / "python" / "native_eval.py")
+    authored_hashes: dict[str, str] | None = None
+    if manifest_path is not None:
+        prompt_bytes = (rendered_prompt or "").encode("utf-8")
+        manifest_hash = _hash_tree(manifest_path)
+        workspace_hash = (
+            _hash_tree(workspace_dir)
+            if workspace_dir is not None
+            else _sha256_bytes(b"comet-empty-inline-workspace-v1")
+        )
+        validation_rule_hash = _hash_private_value(dict(validation_rules or {}))
+        instruction_hash = _sha256_bytes(b"inline-task-prompt-v1\0" + prompt_bytes)
+        task_hash = _hash_private_value(
+            {
+                "task": task,
+                "manifest_hash": manifest_hash,
+                "instruction_hash": instruction_hash,
+                "workspace_hash": workspace_hash,
+                "validation_rule_hash": validation_rule_hash,
+            }
+        )
+        validator_hash = validation_rule_hash
+        environment_hash = (
+            _hash_tree(environment_dir) if environment_dir else _sha256_bytes(b"missing")
+        )
+        data_hash = workspace_hash
+        prompt_components = {
+            "instruction": instruction_hash,
+            "task_renderer": _hash_tree(_EVAL_ROOT / "scaffold" / "python" / "tasks.py"),
+            "native_adapter": native_adapter_hash,
+        }
+        authored_hashes = {
+            "manifest_hash": manifest_hash,
+            "task_definition_hash": task_hash,
+            "workspace_hash": workspace_hash,
+            "validation_rule_hash": validation_rule_hash,
+        }
+    else:
+        instruction_path = task_dir / "instruction.md"
+        task_hash = _hash_tree(task_dir / "task.toml")
+        instruction_hash = _hash_tree(instruction_path)
+        validator_components = {
+            "task_validation": _hash_tree(task_dir / "validation"),
+            "shared_validation": _hash_tree(_EVAL_ROOT / "scaffold" / "python" / "validation"),
+            "native_adapter": native_adapter_hash,
+        }
+        validator_hash = _sha256_bytes(
+            json.dumps(validator_components, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        )
+        environment_hash = _hash_tree(task_dir / "environment")
+        data_hash = _hash_tree(task_dir / "data")
+        instruction_bytes = (
+            instruction_path.read_bytes() if instruction_path.is_file() else b"missing"
+        )
+        prompt_components = {
+            "instruction": _sha256_bytes(b"canonical-task-prompt-v1\0" + instruction_bytes),
+            "task_renderer": _hash_tree(_EVAL_ROOT / "scaffold" / "python" / "tasks.py"),
+            "native_adapter": native_adapter_hash,
+        }
     prompt_hash = _sha256_bytes(
         json.dumps(prompt_components, sort_keys=True, separators=(",", ":")).encode("utf-8")
     )
@@ -403,6 +510,7 @@ def build_case_manifest(
         controller_hash=controller_hash,
         execution_hash=execution_hash,
         execution_identity=validated_identity,
+        authored_hashes=authored_hashes,
         source=source,
         run_bound=run_bound,
         execution_bound=execution_bound,
@@ -425,6 +533,8 @@ def case_manifest_payload(manifest: CaseManifest) -> dict[str, Any]:
             }
         )
         payload["execution_identity"] = manifest.execution_identity
+    if manifest.authored_hashes is not None:
+        payload["authored_hashes"] = manifest.authored_hashes
     return payload
 
 
@@ -442,9 +552,27 @@ def _embedded_case_manifest(report: dict[str, Any], task: str) -> CaseManifest |
     expected_keys = {"schema", "task", "case_hash", *hashed_parts}
     if schema == CASE_MANIFEST_SCHEMA:
         expected_keys.add("execution_identity")
+    authored_hashes = raw.get("authored_hashes")
+    if authored_hashes is not None:
+        expected_keys.add("authored_hashes")
     if set(raw) != expected_keys:
         return None
     if not all(_is_hash(raw.get(key)) for key in hashed_parts):
+        return None
+    if authored_hashes is not None and (
+        not isinstance(authored_hashes, dict)
+        or set(authored_hashes)
+        != {
+            "manifest_hash",
+            "task_definition_hash",
+            "workspace_hash",
+            "validation_rule_hash",
+        }
+        or not all(_is_hash(value) for value in authored_hashes.values())
+        or authored_hashes["task_definition_hash"] != raw["task_hash"]
+        or authored_hashes["workspace_hash"] != raw["data_hash"]
+        or authored_hashes["validation_rule_hash"] != raw["validator_hash"]
+    ):
         return None
     case_hash = raw.get("case_hash")
     if not isinstance(case_hash, str) or not case_hash.startswith("sha256:"):
@@ -477,6 +605,7 @@ def _embedded_case_manifest(report: dict[str, Any], task: str) -> CaseManifest |
         controller_hash=raw.get("controller_hash"),
         execution_hash=raw.get("execution_hash"),
         execution_identity=execution_identity,
+        authored_hashes=authored_hashes,
         source="report-bound-v2" if schema == CASE_MANIFEST_SCHEMA else "report-bound-v1",
         run_bound=True,
         execution_bound=schema == CASE_MANIFEST_SCHEMA,

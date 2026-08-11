@@ -11,6 +11,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from scaffold.python.agents import validate_agent_id
 from scaffold.python.paths import EVAL_ROOT, get_suite_root
 
 TEST_CONTEXT_FILE = os.environ.get("BENCH_TEST_CONTEXT", "_test_context.json")
@@ -70,11 +71,20 @@ def _resolve_bash(os_name: str | None = None) -> str:
 BASH_EXEC = _resolve_bash()
 WSL_ENV_KEYS = (
     "OPENAI_API_KEY",
+    "QODER_PERSONAL_ACCESS_TOKEN",
+    "CODEX_API_KEY",
     "ANTHROPIC_API_KEY",
     "LANGSMITH_API_KEY",
     "LANGSMITH_PROJECT",
     "LANGSMITH_TRACING",
     "LANGSMITH_ENDPOINT",
+    "LANGFUSE_PUBLIC_KEY",
+    "LANGFUSE_SECRET_KEY",
+    "LANGFUSE_BASE_URL",
+    "LANGFUSE_TRACING_ENVIRONMENT",
+    "TRACE_TO_LANGFUSE",
+    "LANGFUSE_CODEX_TAGS",
+    "LANGFUSE_CODEX_METADATA",
     "TAVILY_API_KEY",
     "TRACE_TO_LANGSMITH",
     "CC_LANGSMITH_API_KEY",
@@ -97,6 +107,16 @@ WSL_ENV_KEYS = (
     "CLAUDE_CODE_SUBAGENT_MODEL",
     "BENCH_CC_VERSION",
     "BENCH_CC_MODEL",
+    "BENCH_CODEX_VERSION",
+    "BENCH_CODEX_MODEL",
+    "BENCH_QODER_VERSION",
+    "BENCH_QODER_MODEL",
+    "CODEBUDDY_API_KEY",
+    "CODEBUDDY_AUTH_TOKEN",
+    "CODEBUDDY_BASE_URL",
+    "CODEBUDDY_MODEL",
+    "BENCH_CODEBUDDY_VERSION",
+    "BENCH_CODEBUDDY_MODEL",
 )
 
 
@@ -153,9 +173,11 @@ def check_docker_available():
         return False
 
 
-def build_docker_image(test_dir, force=False, verbose=False):
+def build_docker_image(test_dir, force=False, verbose=False, agent=None):
     try:
         args = ["build", str(test_dir)] + (["--force"] if force else [])
+        if agent:
+            args.extend(["--agent", validate_agent_id(agent)])
         result = run_shell("docker.sh", *args, timeout=300, check=False)
         return result.stdout.strip() if result.returncode == 0 else None
     except subprocess.TimeoutExpired:
@@ -186,12 +208,48 @@ def run_node_in_docker(test_dir, script_name, timeout=120, args=None):
     return _docker_run_script("run-node", test_dir, script_name, timeout, args)
 
 
+def run_command_in_docker(test_dir, command, timeout=120):
+    """Run one user-authored validation command inside the task container."""
+    cmd = ["run-command", str(test_dir), "--timeout", str(timeout), "--", command]
+    if not check_docker_available():
+        return subprocess.CompletedProcess(cmd, 125, "", "Docker not available")
+    try:
+        return run_shell("docker.sh", *cmd, timeout=timeout + 30, check=False)
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(cmd, 124, "", f"Timeout after {timeout}s")
+
+
 def run_claude_in_docker(test_dir, prompt, timeout=300, model=None, image_id=None):
     if not check_docker_available():
         raise RuntimeError("Docker not available")
     cmd = ["run-claude", str(test_dir), prompt, "--timeout", str(timeout)]
     if model:
         cmd.extend(["--model", model])
+    if image_id:
+        cmd.extend(["--image-id", image_id])
+    try:
+        return run_shell("docker.sh", *cmd, timeout=timeout + 30, check=False)
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(cmd, 124, "", f"Timeout after {timeout}s")
+
+
+def run_agent_in_docker(
+    test_dir,
+    prompt,
+    *,
+    agent="claude-code",
+    timeout=300,
+    model=None,
+    image_id=None,
+):
+    """Run one subject, simulator, or judge turn through the selected adapter."""
+    agent_id = validate_agent_id(agent)
+    if not check_docker_available():
+        raise RuntimeError("Docker not available")
+    cmd = ["run-agent", str(test_dir), prompt, "--agent", agent_id]
+    if model:
+        cmd.extend(["--model", model])
+    cmd.extend(["--timeout", str(timeout)])
     if image_id:
         cmd.extend(["--image-id", image_id])
     try:
@@ -211,6 +269,41 @@ def run_claude_loop_in_docker(test_dir, loop_args, timeout=600):
             cleanup = run_shell(
                 "docker.sh",
                 "cleanup-claude-loop",
+                test_dir,
+                timeout=30,
+                check=False,
+            )
+            if cleanup.returncode != 0:
+                cleanup_error = f"; cleanup failed: {cleanup.stderr or cleanup.stdout}"
+        except Exception as cleanup_exception:  # pragma: no cover - defensive cleanup
+            cleanup_error = f"; cleanup failed: {cleanup_exception}"
+        stdout = (
+            error.stdout.decode("utf-8", errors="replace")
+            if isinstance(error.stdout, bytes)
+            else (error.stdout or "")
+        )
+        stderr = (
+            error.stderr.decode("utf-8", errors="replace")
+            if isinstance(error.stderr, bytes)
+            else (error.stderr or "")
+        )
+        message = f"Timeout after {timeout}s{cleanup_error}"
+        return subprocess.CompletedProcess(
+            cmd, 124, stdout, "\n".join(filter(None, (stderr, message)))
+        )
+
+
+def run_agent_loop_in_docker(test_dir, loop_args, timeout=600):
+    """Run the shared interactive driver for a non-default evaluation agent."""
+    cmd = ["run-agent-loop", str(test_dir), *loop_args]
+    try:
+        return run_shell("docker.sh", *cmd, timeout=timeout, check=False)
+    except subprocess.TimeoutExpired as error:
+        cleanup_error = ""
+        try:
+            cleanup = run_shell(
+                "docker.sh",
+                "cleanup-agent-loop",
                 test_dir,
                 timeout=30,
                 check=False,

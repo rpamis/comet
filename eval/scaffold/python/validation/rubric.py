@@ -880,7 +880,11 @@ def comet_rubric_validator(test_dir: Path, outputs: dict) -> tuple[list[str], li
         try:
             from scaffold.python.llm_judge import judge_messages
 
-            judge_results = judge_messages(test_dir)
+            judge_results = judge_messages(
+                test_dir,
+                agent=outputs.get("agent"),
+                evidence=outputs,
+            )
             passed.extend(judge_results)
             if any(
                 result.startswith("[RUBRIC-JUDGE] ") and " status:" not in result

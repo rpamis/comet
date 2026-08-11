@@ -178,6 +178,39 @@ def test_fallback_case_manifest_never_hashes_dotenv_files(tmp_path: Path):
     assert before.case_hash == after.case_hash
 
 
+def test_inline_case_manifest_hashes_authored_inputs(tmp_path: Path):
+    manifest_path = tmp_path / "comet" / "eval.yaml"
+    manifest_path.parent.mkdir(parents=True)
+    manifest_path.write_text("tasks:\n  - name: inline-task\n", encoding="utf-8")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "input.txt").write_text("fixture\n", encoding="utf-8")
+    environment = tmp_path / "environment"
+    environment.mkdir()
+    (environment / "Dockerfile").write_text("FROM scratch\n", encoding="utf-8")
+
+    case = build_case_manifest(
+        "inline-task",
+        tmp_path,
+        manifest_path=manifest_path,
+        rendered_prompt="Create result.md.",
+        workspace_dir=workspace,
+        validation_rules={"files": ["result.md"]},
+        environment_dir=environment,
+    )
+    payload = case_manifest_payload(case)
+
+    assert payload["authored_hashes"] == {
+        "manifest_hash": case.authored_hashes["manifest_hash"],
+        "task_definition_hash": case.task_hash,
+        "workspace_hash": case.data_hash,
+        "validation_rule_hash": case.validator_hash,
+    }
+    assert case.task_hash.startswith("sha256:")
+    assert case.data_hash.startswith("sha256:")
+    assert case.validator_hash.startswith("sha256:")
+
+
 def test_v2_case_manifest_binds_safe_execution_identity_without_raw_configuration(
     tmp_path: Path,
 ):
@@ -232,6 +265,43 @@ def test_v2_case_manifest_binds_safe_execution_identity_without_raw_configuratio
     )
     changed = build_case_manifest("task-a", tasks, execution_identity=changed_identity)
     assert changed.case_hash != manifest.case_hash
+
+
+def test_execution_identity_binds_selected_agent_cli():
+    interaction = SimpleNamespace(
+        mode="none",
+        max_turns=1,
+        simulator_prompt=None,
+        decision_patterns=[],
+        decision_reply=None,
+        decision_replies=[],
+        continue_prompt="continue",
+        fresh_resume_marker=None,
+    )
+    docker_identity = {
+        "schema": EXECUTION_IDENTITY_SCHEMA,
+        "runtime_image_id": "sha256:" + "2" * 64,
+        "image_id_hash": _digest("sha256:" + "2" * 64),
+        "image_repo_digests_hash": _digest("repo-digests"),
+        "image_ref_hash": _digest("build-ref"),
+        "claude_tool_version_hash": _digest("codex-1.0.0"),
+        "agent_cli_version_hash": _digest("codex-1.0.0"),
+        "agent_cli_version": "codex-cli 1.0.0",
+        "agent": "codex",
+        "agent_cli": "codex",
+    }
+
+    identity = build_execution_identity(
+        docker_identity,
+        model="o3",
+        model_config={"OPENAI_MODEL": "o3"},
+        interaction=interaction,
+    )
+
+    assert identity["agent"] == "codex"
+    assert identity["agent_cli"] == "codex"
+    assert identity["agent_cli_version_hash"] == _digest("codex-1.0.0")
+    assert identity["agent_cli_version"] == "codex-cli 1.0.0"
 
 
 def test_expected_matrix_detects_case_missing_from_both_experiments(tmp_path: Path):

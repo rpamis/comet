@@ -1,4 +1,4 @@
-"""Output parsing, event extraction, and experiment logging for Claude CLI."""
+"""Output parsing, event extraction, and experiment logging for agent CLIs."""
 
 import json
 import math
@@ -41,6 +41,14 @@ def _record_skill_invocation(events: dict[str, Any], skill: str) -> None:
         events["skills_invoked"].append(normalized)
 
 
+def _record_skill_path(events: dict[str, Any], value: object) -> None:
+    if not isinstance(value, str):
+        return
+    match = re.search(r"\.(?:claude|agents|qoder|codebuddy)/skills/([^/\\]+)", value)
+    if match:
+        _record_skill_invocation(events, match.group(1))
+
+
 # =============================================================================
 # OUTPUT PARSING
 # =============================================================================
@@ -78,6 +86,7 @@ def extract_events(parsed: dict[str, Any]) -> dict[str, Any]:
         "total_tokens": None,
         "total_cost_usd": None,
         "model_usage": {},
+        "role_sessions": {"subject": [], "simulator": [], "judge": []},
         "peak_context_input_tokens": None,
         "p95_context_input_tokens": None,
         "average_context_input_tokens": None,
@@ -130,6 +139,22 @@ def extract_events(parsed: dict[str, Any]) -> dict[str, Any]:
                     target[key] = max(target.get(key, 0), item)
 
     for msg in parsed.get("messages", []):
+        stack = [msg]
+        session_id = None
+        while stack and session_id is None:
+            item = stack.pop()
+            if isinstance(item, dict):
+                for key in ("session_id", "sessionId", "thread_id", "threadId"):
+                    candidate = item.get(key)
+                    if isinstance(candidate, str) and candidate:
+                        session_id = candidate
+                        break
+                stack.extend(item.values())
+            elif isinstance(item, list):
+                stack.extend(item)
+        if session_id and session_id not in events["role_sessions"]["subject"]:
+            events["role_sessions"]["subject"].append(session_id)
+
         if msg.get("type") == "result":
             events["subject_invocations"] += 1
             duration_ms = msg.get("duration_ms")
@@ -137,7 +162,7 @@ def extract_events(parsed: dict[str, Any]) -> dict[str, Any]:
                 duration_ms_total += duration_ms
                 duration_observed = True
 
-            # A loop concatenates one result per subject invocation. Claude's
+            # A loop concatenates one result per subject invocation. Agent
             # result telemetry is invocation-local, so task totals must add all
             # initial, answer, and cold-resume invocations instead of retaining
             # only the final result event.
@@ -149,6 +174,51 @@ def extract_events(parsed: dict[str, Any]) -> dict[str, Any]:
             add_metric("cache_creation_input_tokens", usage.get("cache_creation_input_tokens"))
             add_metric("total_cost_usd", msg.get("total_cost_usd"))
             merge_model_usage(msg.get("modelUsage"))
+
+        if msg.get("type") == "turn.completed":
+            events["subject_invocations"] += 1
+            add_metric("num_turns", 1)
+            usage = msg.get("usage") or {}
+            add_metric("input_tokens", usage.get("input_tokens", usage.get("inputTokens")))
+            add_metric("output_tokens", usage.get("output_tokens", usage.get("outputTokens")))
+            add_metric(
+                "cache_read_input_tokens",
+                usage.get("cached_input_tokens", usage.get("cacheReadInputTokens")),
+            )
+            duration_ms = msg.get("duration_ms")
+            if isinstance(duration_ms, (int, float)) and not isinstance(duration_ms, bool):
+                duration_ms_total += duration_ms
+                duration_observed = True
+
+        if msg.get("type") == "item.completed":
+            item = msg.get("item") or {}
+            if item.get("type") == "command_execution":
+                command = item.get("command")
+                if isinstance(command, str) and command:
+                    events["commands_run"].append(command)
+                    _record_skill_path(events, command)
+                tool_call = {"tool": "Bash", "input": {"command": command or ""}}
+                if item.get("aggregated_output") is not None:
+                    tool_call["output"] = item["aggregated_output"]
+                events["tool_calls"].append(tool_call)
+            elif item.get("type") == "file_change":
+                for change in item.get("changes") or []:
+                    if not isinstance(change, dict):
+                        continue
+                    path = change.get("path")
+                    if not isinstance(path, str) or not path:
+                        continue
+                    kind = str(change.get("kind") or "modify").lower()
+                    if kind in {"add", "create", "created"}:
+                        events["files_created"].append(path)
+                    else:
+                        events["files_modified"].append(path)
+                    _record_skill_path(events, path)
+            elif item.get("type") in {"mcp_tool_call", "tool_call"}:
+                tool = item.get("name") or item.get("tool") or "unknown"
+                events["tool_calls"].append(
+                    {"tool": tool, "input": item.get("arguments") or item.get("input") or {}}
+                )
 
         if msg.get("type") == "assistant":
             message = msg.get("message", {})
@@ -182,16 +252,14 @@ def extract_events(parsed: dict[str, Any]) -> dict[str, Any]:
                     if tool == "Read" and path:
                         events["files_read"].append(path)
                         # Detect skill reads (e.g., .claude/skills/skill-name/SKILL.md)
-                        if ".claude/skills/" in path and (
-                            m := re.search(r"\.claude/skills/([^/]+)", path)
-                        ):
-                            _record_skill_invocation(events, m.group(1))
+                        _record_skill_path(events, path)
                     elif tool == "Write" and path:
                         events["files_created"].append(path)
                     elif tool == "Edit" and path:
                         events["files_modified"].append(path)
                     elif tool == "Bash" and inp.get("command"):
                         events["commands_run"].append(inp["command"])
+                        _record_skill_path(events, inp["command"])
                     elif tool == "Skill" and inp.get("skill"):
                         _record_skill_invocation(events, inp["skill"])
 

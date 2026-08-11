@@ -3,9 +3,9 @@
 Generates rich experiment logs in logs/experiments/ including:
 - summary.md: Full markdown report with tables and details
 - events/: Parsed events from each test run
-- raw/: Raw Claude CLI output
+- raw/: Raw selected Agent CLI output
 - reports/: Per-run validation reports
-- artifacts/: Files Claude generated and their execution output
+- artifacts/: Files selected Agent generated and their execution output
 - metadata.json: Experiment metadata
 
 Supports pytest-xdist parallel execution via worker coordination.
@@ -27,7 +27,7 @@ from typing import Any
 
 import pytest
 
-from scaffold import run_claude_in_docker, run_python_in_docker, run_shell
+from scaffold import run_agent_in_docker, run_python_in_docker, run_shell
 from scaffold.python import (
     ExperimentLogger,
     TreatmentResult,
@@ -40,9 +40,16 @@ from scaffold.python import (
     save_report,
     strip_ansi,
 )
+from scaffold.python.agents import get_agent_adapter, resolve_agent
+from scaffold.python.auto_tasks import AutoTaskError, ensure_generated_manifest, find_project_root
+from scaffold.python.langfuse_adapter import (
+    install_codex_plugin_workspace,
+    install_transcript_hook,
+    provision_trajectory_plugin,
+)
 from scaffold.python.sample_quality import infer_sample_quality
 from scaffold.python.skill_parser import SCRIPT_EXTENSIONS
-from scaffold.python.utils import run_claude_loop_in_docker
+from scaffold.python.utils import run_agent_loop_in_docker, run_claude_loop_in_docker
 from scaffold.python.aligned_comparison import (
     EXPECTED_CASE_MATRIX_FILENAME,
     build_execution_identity,
@@ -56,14 +63,21 @@ def _extract_loop_turns(stderr: str | None) -> int | None:
     return int(match.group(1)) if match else None
 
 
-def _extract_loop_interaction(stderr: str | None) -> dict[str, int | None]:
+def _extract_loop_interaction(stderr: str | None) -> dict[str, Any]:
     source = stderr or ""
+    role_sessions = {"subject": [], "simulator": [], "judge": []}
+    for role, session_id in re.findall(
+        r"\[loop\] role-session (subject|simulator|judge) ([^\s]+)", source
+    ):
+        if session_id not in role_sessions[role]:
+            role_sessions[role].append(session_id)
     return {
         "actual_turns": _extract_loop_turns(source),
         "decision_points": source.count("[loop] decision point detected"),
         "deterministic_replies": source.count("[loop] deterministic decision reply applied"),
         "completion_signals": source.count("[loop] workflow completion detected"),
         "fresh_resume_boundaries": source.count("[loop] fresh resume boundary detected"),
+        "role_sessions": role_sessions,
     }
 
 
@@ -246,12 +260,128 @@ MODEL_EXECUTION_ENV_KEYS = (
     "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
     "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
     "CLAUDE_CODE_SUBAGENT_MODEL",
+    "CODEBUDDY_BASE_URL",
+    "CODEBUDDY_MODEL",
+    "BENCH_CODEBUDDY_MODEL",
 )
 
 
 def _selected_claude_model() -> str | None:
     """Resolve the exact model selector passed to Claude without persisting it."""
     return os.environ.get("BENCH_CC_MODEL") or os.environ.get("ANTHROPIC_MODEL")
+
+
+def _selected_agent_model(agent: str) -> str | None:
+    if agent == "claude-code":
+        return _selected_claude_model()
+    if agent == "codex":
+        return os.environ.get("BENCH_CODEX_MODEL") or os.environ.get("OPENAI_MODEL")
+    if agent == "qoder":
+        return os.environ.get("BENCH_QODER_MODEL") or os.environ.get("QODER_MODEL")
+    return os.environ.get("BENCH_CODEBUDDY_MODEL") or os.environ.get("CODEBUDDY_MODEL")
+
+
+def _resolve_eval_agent(config):
+    manifest_agent = None
+    manifest_path = config.getoption("--eval-manifest")
+    if manifest_path:
+        from scaffold.python.manifests import load_eval_manifest
+
+        manifest_agent = load_eval_manifest(manifest_path).execution_agent
+    return resolve_agent(config.getoption("--agent"), manifest_agent)
+
+
+def _require_agent_credentials(agent: str, source_env: dict[str, str] | None = None) -> None:
+    """Fail setup before workloads when the isolated Agent cannot authenticate."""
+    adapter = get_agent_adapter(agent)
+    environment = source_env if source_env is not None else os.environ
+    if any(environment.get(key) for key in adapter.required_credentials):
+        return
+    raise pytest.UsageError(
+        f"Credentials for {agent} not set: {' or '.join(adapter.required_credentials)}"
+    )
+
+
+def _agent_project_root(agent: str) -> str:
+    return {
+        "claude-code": ".claude",
+        "codex": ".agents",
+        "qoder": ".qoder",
+        "codebuddy": ".codebuddy",
+    }[agent]
+
+
+def _ensure_langfuse_trajectory_support(test_dir: Path, agent: str) -> None:
+    """Install only isolated, project-local trajectory support for Langfuse runs."""
+    if os.environ.get("TRACE_TO_LANGFUSE", "").lower() != "true":
+        return
+    if agent in {"qoder", "codebuddy"}:
+        try:
+            install_transcript_hook(test_dir, agent)
+        except Exception as exc:
+            if os.environ.get("LANGFUSE_TRANSCRIPT_SETUP_WARNING_EMITTED") != "true":
+                print(
+                    f"[langfuse] optional {agent} transcript setup skipped: {exc}",
+                    file=os.sys.stderr,
+                )
+                os.environ["LANGFUSE_TRANSCRIPT_SETUP_WARNING_EMITTED"] = "true"
+        return
+    if agent != "codex":
+        return
+    cache_root = os.environ.get("LANGFUSE_TRAJECTORY_CACHE_DIR")
+    if not cache_root:
+        return
+    try:
+        provision = provision_trajectory_plugin(Path(cache_root), agent)
+        install_codex_plugin_workspace(test_dir, provision)
+    except Exception as exc:
+        if os.environ.get("LANGFUSE_TRAJECTORY_SETUP_WARNING_EMITTED") != "true":
+            print(f"[langfuse] optional Codex trajectory setup skipped: {exc}", file=os.sys.stderr)
+            os.environ["LANGFUSE_TRAJECTORY_SETUP_WARNING_EMITTED"] = "true"
+
+
+def _ensure_auto_generated_manifest(config, task_filter: str | None = None) -> None:
+    """Resolve the taskless default into a frozen #251 manifest before collection."""
+    if config.getoption("--task") or task_filter or config.getoption("--quick"):
+        return
+
+    manifest_path = config.getoption("--eval-manifest")
+    skill_path = config.getoption("--skill-path")
+    manifest = None
+    if manifest_path:
+        from scaffold.python.manifests import load_eval_manifest
+
+        manifest = load_eval_manifest(manifest_path)
+        if manifest.tasks or manifest.recommended_tasks:
+            return
+        skill_path = str(manifest.skill_path)
+    if not skill_path:
+        return
+
+    # Task generation happens during collection, before session fixtures run.
+    # Load the documented local environment now so credentials and the model
+    # participating in the cache key match the later execution environment.
+    from scaffold.python.utils import load_eval_environment
+
+    load_eval_environment()
+    selected = _resolve_eval_agent(config)
+    profile = config.getoption("--profile") or (manifest.profile if manifest else None) or "generic"
+    interaction = vars(manifest.interaction) if manifest else {"mode": "none", "max_turns": 12}
+    project_root = config.getoption("--project-root") or find_project_root(skill_path)
+    try:
+        generated = ensure_generated_manifest(
+            skill_path,
+            project_root,
+            agent=selected.agent,
+            model=_selected_agent_model(selected.agent),
+            profile=profile,
+            interaction=interaction,
+            collect_only=bool(getattr(getattr(config, "option", None), "collectonly", False)),
+        )
+    except AutoTaskError as exc:
+        raise pytest.UsageError(str(exc)) from exc
+    config.option.eval_manifest = str(generated.manifest_path)
+    config._comet_generated_manifest = generated
 
 
 def _model_execution_config() -> dict[str, str | None]:
@@ -265,11 +395,13 @@ def _capture_execution_identity(test_dir: Path, *, model: str | None, interactio
         "docker.sh",
         "execution-identity",
         str(test_dir),
+        "--agent",
+        _resolve_eval_agent(_plugin.config).agent if _plugin else "claude-code",
         timeout=300,
         check=False,
     )
     if result.returncode != 0:
-        raise RuntimeError("Could not verify eval Docker/Claude execution identity")
+        raise RuntimeError("Could not verify eval Docker/agent execution identity")
     try:
         raw = json.loads(result.stdout)
     except (TypeError, json.JSONDecodeError) as error:
@@ -533,6 +665,25 @@ def pytest_addoption(parser):
         help="Path to comet/eval.yaml",
     )
     parser.addoption(
+        "--agent",
+        action="store",
+        default=None,
+        choices=["claude-code", "codex", "qoder", "codebuddy"],
+        help="Evaluation agent CLI (default: manifest value or claude-code)",
+    )
+    parser.addoption(
+        "--quick",
+        action="store_true",
+        default=False,
+        help="Use generic-skill-smoke and bypass automatic task generation",
+    )
+    parser.addoption(
+        "--project-root",
+        action="store",
+        default=None,
+        help="Project root used for generated eval cache",
+    )
+    parser.addoption(
         "--interaction-mode",
         action="store",
         default=None,
@@ -564,6 +715,7 @@ def pytest_configure(config):
         "markers",
         "eval_case(repetition): controller-owned task/treatment/repetition identity",
     )
+    _resolve_eval_agent(config)
     global _plugin
     _plugin = ExperimentPlugin(config)
     config.pluginmanager.register(_plugin, "experiment_plugin")
@@ -772,12 +924,21 @@ def _get_experiment_name(session) -> str:
 
 
 def _get_dynamic_treatment_config(config):
+    _ensure_auto_generated_manifest(config)
     manifest_path = config.getoption("--eval-manifest")
     if manifest_path:
         from scaffold.python.manifests import load_eval_manifest
         from scaffold.python.treatments import TreatmentConfig
 
         manifest = load_eval_manifest(manifest_path)
+        generation_metadata = {}
+        generation_metadata_hash = None
+        if manifest.generation_metadata_path and manifest.generation_metadata_path.is_file():
+            generation_metadata_bytes = manifest.generation_metadata_path.read_bytes()
+            generation_metadata = json.loads(generation_metadata_bytes)
+            generation_metadata_hash = (
+                "sha256:" + hashlib.sha256(generation_metadata_bytes).hexdigest()
+            )
         node_skills = []
         for node_skill in manifest.generated_node_skills:
             node_path = manifest.skill_path.parent / node_skill
@@ -799,11 +960,21 @@ def _get_dynamic_treatment_config(config):
                     "path": str(manifest.skill_path),
                     "profile": manifest.profile,
                     "manifest": str(manifest.path),
+                    "execution_agent": manifest.execution_agent,
                     "baseline_treatments": manifest.baseline_treatments,
                     "quality_gates": manifest.quality_gates,
                     "required_output_schemas": manifest.required_output_schemas,
                     "expected_evidence": manifest.expected_evidence,
                     "draft_hash": manifest.draft_hash,
+                    "generation_hash": manifest.generation_hash,
+                    "generation_metadata_path": (
+                        str(manifest.generation_metadata_path)
+                        if manifest.generation_metadata_path
+                        else None
+                    ),
+                    "generation_manifest_hash": generation_metadata.get("manifest_hash"),
+                    "generation_metadata_hash": generation_metadata_hash,
+                    "generation_overhead": generation_metadata.get("generation_overhead"),
                     "required_skills": manifest.required_skills,
                     "expected_artifacts": manifest.expected_artifacts,
                     "generated_node_skills": manifest.generated_node_skills,
@@ -899,14 +1070,15 @@ def _build_eval_claude_md(profile_name: str, treatment_claude_md: str | None = N
     return "\n\n".join(section for section in sections if section.strip()) or None
 
 
-def _comet_hook_command(test_dir: Path) -> str | None:
-    scripts_dir = test_dir / ".claude" / "skills" / "comet" / "scripts"
+def _comet_hook_command(test_dir: Path, agent: str = "claude-code") -> str | None:
+    project_root = _agent_project_root(agent)
+    scripts_dir = test_dir / project_root / "skills" / "comet" / "scripts"
     mjs_hook = scripts_dir / "comet-hook-guard.mjs"
     shell_hook = scripts_dir / "comet-hook-guard.sh"
     if mjs_hook.exists():
-        return "node /workspace/.claude/skills/comet/scripts/comet-hook-guard.mjs"
+        return f"node /workspace/{project_root}/skills/comet/scripts/comet-hook-guard.mjs"
     if shell_hook.exists():
-        return "bash /workspace/.claude/skills/comet/scripts/comet-hook-guard.sh"
+        return f"bash /workspace/{project_root}/skills/comet/scripts/comet-hook-guard.sh"
     return None
 
 
@@ -927,6 +1099,34 @@ def _ensure_claude_pre_tool_hook(test_dir: Path, command: str | None) -> None:
     }
     if not any(entry == hook_entry for entry in pre_tool_use):
         pre_tool_use.append(hook_entry)
+    settings_path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+
+
+def _ensure_agent_pre_tool_hook(test_dir: Path, agent: str, command: str | None) -> None:
+    if agent == "claude-code":
+        _ensure_claude_pre_tool_hook(test_dir, command)
+        return
+    if not command:
+        return
+
+    project_root = ".codex" if agent == "codex" else _agent_project_root(agent)
+    settings_name = "hooks.json" if agent == "codex" else "settings.json"
+    settings_path = test_dir / project_root / settings_name
+    if settings_path.exists():
+        settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    else:
+        settings = {}
+    hooks = settings.setdefault("hooks", {})
+    pre_tool_use = hooks.setdefault("PreToolUse", [])
+    hook_entry = {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [{"type": "command", "command": command}],
+    }
+    if agent in {"qoder", "codebuddy"}:
+        hook_entry["hooks"][0]["description"] = "Comet workflow guard"
+    if not any(entry == hook_entry for entry in pre_tool_use):
+        pre_tool_use.append(hook_entry)
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
     settings_path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
 
 
@@ -1067,8 +1267,8 @@ def worker_id(request):
 
 @pytest.fixture(scope="session", autouse=True)
 def verify_environment(project_root, request):
-    """Verify Docker, Claude CLI, uv, bash, and API keys are available."""
-    if _is_unit_tests_only(request.config):
+    """Verify the selected agent's Docker execution prerequisites."""
+    if _is_unit_tests_only(request.config) or request.config.option.collectonly:
         return
 
     from scaffold.python.utils import load_eval_environment
@@ -1101,11 +1301,8 @@ def verify_environment(project_root, request):
     if result.returncode != 0:
         pytest.skip("Docker not available")
 
-    if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
-        pytest.skip("ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN not set")
-
-    if shutil.which("claude") is None:
-        pytest.skip("Claude CLI not available")
+    selection = _resolve_eval_agent(request.config)
+    _require_agent_credentials(selection.agent)
 
 
 def _docker_environment_dirs_for_request(request, tasks_dir: Path) -> list[Path]:
@@ -1136,13 +1333,17 @@ def _docker_environment_dirs_for_request(request, tasks_dir: Path) -> list[Path]
 @pytest.fixture(scope="session", autouse=True)
 def prebuild_docker_image(request):
     """Pre-build Docker image once per session to avoid race conditions."""
-    if _is_unit_tests_only(request.config):
+    if _is_unit_tests_only(request.config) or request.config.option.collectonly:
         yield
         return
 
     tasks_dir = PROJECT_ROOT / "tasks"
     for env_dir in _docker_environment_dirs_for_request(request, tasks_dir):
-        image = _build_docker_image_with_lock(env_dir)
+        selected_agent = _resolve_eval_agent(request.config).agent
+        image = _build_docker_image_with_lock(
+            env_dir,
+            selected_agent if selected_agent != "claude-code" else None,
+        )
         if image:
             print(f"\nPre-built Docker image: {image}")
 
@@ -1181,7 +1382,8 @@ def setup_test_context(test_dir):
         scripts_dir: Path | None = None,
         source_dir: Path | None = None,
     ) -> None:
-        skill_dir = test_dir / ".claude" / "skills" / skill_name
+        agent = _resolve_eval_agent(_plugin.config).agent if _plugin else "claude-code"
+        skill_dir = test_dir / _agent_project_root(agent) / "skills" / skill_name
         skill_dir.mkdir(parents=True, exist_ok=True)
 
         if source_dir and source_dir.is_dir():
@@ -1212,13 +1414,38 @@ def setup_test_context(test_dir):
                 shutil.copy2(item, dest)
         _copy_current_comet_cli_snapshot(environment_dir, test_dir)
 
-    def _write_claude_md(content_file: str) -> None:
-        claude_dir = test_dir / ".claude"
-        claude_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(content_file, claude_dir / "CLAUDE.md")
-        shutil.copyfile(content_file, test_dir / "CLAUDE.md")
+    def _copy_workspace(workspace_dir: Path) -> None:
+        """Copy a bounded project fixture without replacing the task Dockerfile."""
+        for item in workspace_dir.iterdir():
+            if item.name in {"Dockerfile", CURRENT_COMET_CLI_MARKER, TRUSTED_NATIVE_RUNTIME_MARKER}:
+                continue
+            dest = test_dir / item.name
+            if item.is_dir():
+                shutil.copytree(item, dest, dirs_exist_ok=True)
+            else:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(item, dest)
 
-    def _setup(skills: dict = None, claude_md: str = None, environment_dir: Path = None):
+    def _write_claude_md(content_file: str) -> None:
+        agent = _resolve_eval_agent(_plugin.config).agent if _plugin else "claude-code"
+        if agent == "claude-code":
+            claude_dir = test_dir / ".claude"
+            claude_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(content_file, claude_dir / "CLAUDE.md")
+            shutil.copyfile(content_file, test_dir / "CLAUDE.md")
+        elif agent == "codebuddy":
+            codebuddy_dir = test_dir / ".codebuddy"
+            codebuddy_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(content_file, codebuddy_dir / "CODEBUDDY.md")
+        else:
+            shutil.copyfile(content_file, test_dir / "AGENTS.md")
+
+    def _setup(
+        skills: dict = None,
+        claude_md: str = None,
+        environment_dir: Path = None,
+        workspace_dir: Path = None,
+    ):
         for skill_name, cfg in (skills or {}).items():
             if not cfg:
                 continue
@@ -1251,6 +1478,9 @@ def setup_test_context(test_dir):
                 if is_temp_dir and filtered_dir.exists():
                     shutil.rmtree(filtered_dir)
 
+        if workspace_dir and workspace_dir.exists():
+            _copy_workspace(workspace_dir)
+
         if environment_dir and environment_dir.exists():
             _copy_environment(environment_dir)
             _copy_trusted_native_runtime_snapshot(environment_dir, test_dir, skills)
@@ -1266,7 +1496,9 @@ def setup_test_context(test_dir):
             finally:
                 os.unlink(temp_file)
 
-        _ensure_claude_pre_tool_hook(test_dir, _comet_hook_command(test_dir))
+        agent = _resolve_eval_agent(_plugin.config).agent if _plugin else "claude-code"
+        _ensure_langfuse_trajectory_support(test_dir, agent)
+        _ensure_agent_pre_tool_hook(test_dir, agent, _comet_hook_command(test_dir, agent))
 
         return test_dir
 
@@ -1275,13 +1507,14 @@ def setup_test_context(test_dir):
 
 @pytest.fixture
 def run_claude(test_dir, experiment_logger, request):
-    """Factory fixture to run Claude in Docker and capture artifacts.
+    """Factory fixture to run the selected evaluation agent in Docker.
 
     For tasks using ``interaction.mode=auto_user`` the single-shot ``run-claude``
     is replaced by the multi-turn ``run-claude-loop`` driver, which simulates a
     user replying at the workflow's decision points.
     """
-    default_model = _selected_claude_model()
+    selected_agent = _resolve_eval_agent(request.config).agent
+    default_model = _selected_agent_model(selected_agent)
 
     def _run(
         prompt: str,
@@ -1297,9 +1530,10 @@ def run_claude(test_dir, experiment_logger, request):
             os.environ["CC_LANGSMITH_LOG_FILE"] = "/workspace/langsmith-hook.log"
         use_loop = interaction is not None and interaction.mode == "auto_user"
         if not use_loop:
-            result = run_claude_in_docker(
+            result = run_agent_in_docker(
                 test_dir,
                 prompt,
+                agent=selected_agent,
                 timeout=timeout,
                 model=mdl,
                 image_id=image_id,
@@ -1342,11 +1576,23 @@ def run_claude(test_dir, experiment_logger, request):
                         "--simulator-prompt-file",
                         "//workspace/.eval-simulator-prompt.txt",
                     ]
-                result = run_claude_loop_in_docker(
-                    test_dir,
-                    loop_args[2:],
-                    timeout=timeout + 60,
-                )
+                if selected_agent == "claude-code":
+                    result = run_claude_loop_in_docker(
+                        test_dir,
+                        loop_args[2:],
+                        timeout=timeout + 60,
+                    )
+                else:
+                    result = run_agent_loop_in_docker(
+                        test_dir,
+                        [
+                            loop_args[2],
+                            "--agent",
+                            selected_agent,
+                            *loop_args[3:],
+                        ],
+                        timeout=timeout + 60,
+                    )
             finally:
                 task_prompt_file.unlink(missing_ok=True)
                 if prompt_file and prompt_file.exists():
@@ -1384,12 +1630,22 @@ def record_result(test_dir, experiment_logger, request):
         if not experiment_logger:
             return
 
+        if _plugin is not None:
+            _plugin.last_test_dir = test_dir
+
         treatment_name = _get_treatment_name(request.node)
         rep = _plugin.run_counter.get(treatment_name, 1) if _plugin else 1
+        events["sample"] = rep
         base_dir = experiment_logger.base_dir
 
         save_events(base_dir, treatment_name, rep, events)
-        _save_artifacts(base_dir, treatment_name, rep, test_dir)
+        _save_artifacts(
+            base_dir,
+            treatment_name,
+            rep,
+            test_dir,
+            agent=events.get("agent", "claude-code"),
+        )
         artifact_references = build_eval_artifact_references(base_dir, treatment_name, rep)
 
         scripts_used = _extract_scripts_used(events)
@@ -1439,9 +1695,21 @@ def record_result(test_dir, experiment_logger, request):
                     "skill_sources": events.get("skill_sources", []),
                     "eval_manifest": events.get("eval_manifest"),
                     "case_manifest": events.get("case_manifest"),
+                    "eval_generation": events.get("eval_generation"),
                     "interaction": events.get("interaction", {}),
                     "artifact_references": artifact_references,
                     "failure_attribution": failure_attribution,
+                    "agent": events.get("agent", "claude-code"),
+                    "role_models": events.get("role_models", {}),
+                    "role_sessions": events.get("role_sessions", {}),
+                    "task": events.get("task"),
+                    "treatment": events.get("treatment", treatment_name),
+                    "sample": events.get("sample", rep),
+                    "prompt": events.get("prompt"),
+                    "skill": events.get("skill"),
+                    "final_response": events.get("final_response"),
+                    "quality_gates": events.get("quality_gates", {}),
+                    "execution_identity": events.get("execution_identity"),
                 },
                 run_id=run_id,
             ),
@@ -1500,9 +1768,21 @@ def _build_report_payload(
             "skill_sources": events.get("skill_sources", []),
             "eval_manifest": events.get("eval_manifest"),
             "case_manifest": events.get("case_manifest"),
+            "eval_generation": events.get("eval_generation"),
             "interaction": events.get("interaction", {}),
             "artifact_references": artifact_references,
             "failure_attribution": failure_attribution,
+            "agent": events.get("agent", "claude-code"),
+            "role_models": events.get("role_models", {}),
+            "role_sessions": events.get("role_sessions", {}),
+            "task": events.get("task"),
+            "treatment": events.get("treatment", treatment_name),
+            "sample": events.get("sample", rep),
+            "prompt": events.get("prompt"),
+            "skill": events.get("skill"),
+            "final_response": events.get("final_response"),
+            "quality_gates": events.get("quality_gates", {}),
+            "execution_identity": events.get("execution_identity"),
         },
         "timestamp": datetime.now().isoformat(),
     }
@@ -1581,15 +1861,18 @@ def _filter_scripts(scripts_dir: Path, script_filter: str) -> Path | None:
     return temp_dir
 
 
-def _build_docker_image_with_lock(environment_dir: Path) -> str | None:
+def _build_docker_image_with_lock(environment_dir: Path, agent: str | None = None) -> str | None:
     """Build Docker image with file locking to prevent race conditions."""
     if not environment_dir or not (environment_dir / "Dockerfile").exists():
         return None
 
     with file_lock(DOCKER_BUILD_LOCK):
-        # A cold image build downloads Debian packages and installs the Claude CLI.
+        # A cold image build downloads Debian packages and installs the selected CLI.
         # Five minutes is insufficient after cache cleanup or on a proxied connection.
-        result = run_shell("docker.sh", "build", str(environment_dir), timeout=900, check=False)
+        command = ["docker.sh", "build", str(environment_dir)]
+        if agent:
+            command.extend(["--agent", agent])
+        result = run_shell(*command, timeout=900, check=False)
         if result.returncode == 0:
             return result.stdout.strip()
         return None
@@ -1664,18 +1947,34 @@ def _extract_scripts_used(events: dict) -> list[str]:
     return [s for s in _get_known_scripts() if s.lower() in all_activity]
 
 
-def _save_artifacts(base_dir: Path, treatment_name: str, rep: int, test_dir: Path):
-    """Save Claude's generated files as artifacts."""
+def _save_artifacts(
+    base_dir: Path,
+    treatment_name: str,
+    rep: int,
+    test_dir: Path,
+    *,
+    agent: str = "claude-code",
+):
+    """Save the selected Agent's generated files as artifacts."""
     artifacts_dir = base_dir / "artifacts" / f"{treatment_name.lower()}_rep{rep}"
-    claude_dir = artifacts_dir / "claude"
+    agent_dir_name = {
+        "claude-code": "claude",
+        "codex": "codex",
+        "qoder": "qoder",
+        "codebuddy": "codebuddy",
+    }.get(agent, "claude")
+    agent_dir = artifacts_dir / agent_dir_name
     execution_dir = artifacts_dir / "execution"
-    claude_dir.mkdir(parents=True, exist_ok=True)
+    agent_dir.mkdir(parents=True, exist_ok=True)
     execution_dir.mkdir(parents=True, exist_ok=True)
 
     from scaffold.python.utils import TEST_CONTEXT_FILE, TEST_RESULTS_FILE
 
     exclude_dirs = {
         ".claude",
+        ".agents",
+        ".qoder",
+        ".codebuddy",
         ".git",
         "_eval_current_comet",
         "node_modules",
@@ -1707,7 +2006,7 @@ def _save_artifacts(base_dir: Path, treatment_name: str, rep: int, test_dir: Pat
             continue
         try:
             rel_path = item.relative_to(test_dir)
-            dest = claude_dir / rel_path
+            dest = agent_dir / rel_path
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(item, dest)
             claude_files.append(item)

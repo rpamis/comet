@@ -7,7 +7,8 @@ import { fileURLToPath } from 'url';
 import { recordRepositoryEvalExperiment } from '../../domains/bundle/eval-run-result.js';
 import { prepareEvalManifest } from '../../domains/bundle/eval-manifest-runtime.js';
 
-type EvalSuite = 'local' | 'langsmith';
+type EvalSuite = 'local' | 'langsmith' | 'langfuse';
+type EvalAgent = 'claude-code' | 'codex' | 'qoder' | 'codebuddy';
 
 interface EvalCommandOptions {
   project?: string;
@@ -21,6 +22,7 @@ interface EvalCommandOptions {
   quick?: boolean;
   collect?: boolean;
   suite?: EvalSuite;
+  agent?: EvalAgent;
 }
 
 interface EvalLaunchDetails {
@@ -33,6 +35,7 @@ interface EvalLaunchDetails {
   reportConfig: string | null;
   reportPath: string;
   target: string;
+  agent: EvalAgent | null;
 }
 
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -57,8 +60,18 @@ function assertEvalHarness(root: string, suite: EvalSuite): void {
 
 function resolveSuite(options: EvalCommandOptions): EvalSuite {
   const suite = options.suite ?? 'local';
-  if (suite === 'local' || suite === 'langsmith') return suite;
-  throw new Error(`Unsupported eval suite: ${suite}. Expected local or langsmith.`);
+  if (suite === 'local' || suite === 'langsmith' || suite === 'langfuse') return suite;
+  throw new Error(`Unsupported eval suite: ${suite}. Expected local, langsmith, or langfuse.`);
+}
+
+function resolveAgent(options: EvalCommandOptions): EvalAgent {
+  const agent = options.agent ?? 'claude-code';
+  if (agent === 'claude-code' || agent === 'codex' || agent === 'qoder' || agent === 'codebuddy') {
+    return agent;
+  }
+  throw new Error(
+    `Unsupported evaluation agent: ${agent}. Expected claude-code, codex, qoder, or codebuddy.`,
+  );
 }
 
 function assertTarget(options: EvalCommandOptions): void {
@@ -109,7 +122,8 @@ function resolveProfile(options: EvalCommandOptions): string {
 
 function resolveTask(options: EvalCommandOptions): string {
   if (options.task) return options.task;
-  if (options.skillPath && options.quick !== false) return 'generic-skill-smoke';
+  if (options.quick) return 'generic-skill-smoke';
+  if (options.skillPath || options.manifest) return 'auto-generated';
   return 'recommended';
 }
 
@@ -143,16 +157,28 @@ async function buildEvalArgs(
   assertTarget(options);
 
   const suite = resolveSuite(options);
-  const args = ['run', 'pytest', `${suite}/tests/tasks/test_tasks.py`];
+  const args = ['run'];
+  // Collection must stay offline. The Langfuse adapter imports the SDK lazily,
+  // so the optional dependency is only needed for an actual reporting run.
+  if (suite === 'langfuse' && !collectOnly) args.push('--extra', 'langfuse');
+  args.push('pytest', `${suite}/tests/tasks/test_tasks.py`);
 
   if (options.manifest) {
     args.push(`--eval-manifest=${path.resolve(options.manifest)}`);
   } else if (options.skillPath) {
-    const task = options.task ?? (options.quick !== false ? 'generic-skill-smoke' : undefined);
+    const task = options.task ?? (options.quick ? 'generic-skill-smoke' : undefined);
     if (task) args.push(`--task=${task}`);
     args.push(`--skill-path=${path.resolve(options.skillPath)}`);
     if (options.skillName) args.push(`--skill-name=${options.skillName}`);
     if (options.profile) args.push(`--profile=${options.profile}`);
+  }
+
+  if (options.agent) args.push(`--agent=${resolveAgent(options)}`);
+  if (options.quick) args.push('--quick');
+  if (options.project) {
+    args.push(`--project-root=${path.resolve(options.project)}`);
+  } else if (options.skillPath) {
+    args.push(`--project-root=${path.resolve(process.cwd())}`);
   }
 
   if (options.task && options.manifest) {
@@ -199,6 +225,7 @@ async function buildLaunchDetails(
     target: options.manifest
       ? `manifest ${path.resolve(options.manifest)}`
       : `skill ${path.resolve(options.skillPath!)}`,
+    agent: options.agent ? resolveAgent(options) : null,
   };
 }
 
@@ -210,6 +237,7 @@ function printLaunchDetails(details: EvalLaunchDetails): void {
   console.log(`Experiment: ${details.experimentId}`);
   console.log(`Profile: ${details.profile}`);
   console.log(`Task: ${details.task}`);
+  if (details.agent) console.log(`Agent override: ${details.agent}`);
   console.log(`Report path: ${details.reportPath}`);
   if (details.reportConfig) {
     console.log(`Report config: ${details.reportConfig}`);
@@ -298,4 +326,4 @@ export async function evalCommand(
   await evalRunCommand(resolvedOptions);
 }
 
-export type { EvalCommandOptions, EvalSuite };
+export type { EvalAgent, EvalCommandOptions, EvalSuite };

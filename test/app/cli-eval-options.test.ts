@@ -36,7 +36,7 @@ describe('eval CLI options', () => {
     expect((explicitOptions as { project?: string }).project).toBe('custom-project');
   });
 
-  it('defaults to the local suite and accepts an explicit LangSmith suite', async () => {
+  it('defaults to the local suite and accepts explicit hosted suites', async () => {
     const [, defaultOptions] = await runEvalCli();
 
     expect((defaultOptions as { suite?: string }).suite).toBe('local');
@@ -45,5 +45,26 @@ describe('eval CLI options', () => {
     const [, explicitOptions] = await runEvalCli('--suite', 'langsmith');
 
     expect((explicitOptions as { suite?: string }).suite).toBe('langsmith');
+
+    evalFacadeCommand.mockReset();
+    const [, langfuseOptions] = await runEvalCli('--suite', 'langfuse');
+
+    expect((langfuseOptions as { suite?: string }).suite).toBe('langfuse');
+  });
+
+  it('accepts an explicit evaluation agent without changing the default', async () => {
+    const [, defaultOptions] = await runEvalCli();
+
+    expect((defaultOptions as { agent?: string }).agent).toBeUndefined();
+
+    evalFacadeCommand.mockReset();
+    const [, explicitOptions] = await runEvalCli('--agent', 'codex');
+
+    expect((explicitOptions as { agent?: string }).agent).toBe('codex');
+
+    evalFacadeCommand.mockReset();
+    const [, codeBuddyOptions] = await runEvalCli('--agent', 'codebuddy');
+
+    expect((codeBuddyOptions as { agent?: string }).agent).toBe('codebuddy');
   });
 });

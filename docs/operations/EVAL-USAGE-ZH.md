@@ -73,7 +73,7 @@ comet publish review <name> --platform <reference-platform> --json
 
 它不应该先跑完整模型评估，也不应该先消耗长时间任务。失败时，通常先修 manifest、路径或任务发现问题。
 
-## 选择 Local 或 LangSmith 套件
+## 选择 Local、LangSmith 或 Langfuse 套件
 
 `comet eval` 默认使用 `local` 套件，适合日常开发和本地报告。需要把 run、rubric feedback、成本和 Claude Code 轨迹同步到 LangSmith 时，显式选择 `langsmith`：
 
@@ -83,13 +83,41 @@ comet eval ./generated-skill/comet/eval.yaml --suite langsmith --html
 
 两个套件复用同一套任务、treatment、rubric 和 manifest。`langsmith` 套件会读取 `LANGSMITH_API_KEY`、`LANGSMITH_PROJECT` 和 `LANGSMITH_TRACING`，准备 Claude Code 轨迹插件，并把报告写入 `eval/langsmith/logs/experiments/`。没有 `--suite langsmith` 时，即使环境里启用了 tracing，Local runner 也不会创建 LangSmith experiment。
 
+需要把核心 task/treatment 结果和 score 同步到 Langfuse 时，选择 `langfuse`：
+
+```bash
+LANGFUSE_PUBLIC_KEY=pk-lf-... LANGFUSE_SECRET_KEY=sk-lf-... \
+  comet eval ./generated-skill/comet/eval.yaml --suite langfuse --html
+```
+
+`comet eval` 会自动选择 Langfuse optional extra。Langfuse 套件会在 Agent/Docker 运行前完成凭据与连接检查；核心 trace、score、summary 或 flush 上报失败会使本次套件失败。Claude Code 和 Codex 会使用隔离缓存中的固定版本官方 hook/plugin；Qoder、CodeBuddy 使用项目级 Stop hook 和 JSONL transcript 适配器，详细轨迹失败时只降级为 best-effort。`--collect --suite langfuse` 不初始化 SDK、不联网、不下载插件。
+
+## 选择评估 Agent
+
+评估默认使用 `claude-code`。可以用 CLI 选择 `claude-code`、`codex`、`qoder` 或 `codebuddy`：
+
+```bash
+comet eval ./generated-skill/comet/eval.yaml --agent codex
+comet eval ./generated-skill/comet/eval.yaml --agent qoder
+comet eval ./generated-skill/comet/eval.yaml --agent codebuddy
+```
+
+也可以在 manifest 中设置默认值：
+
+```yaml
+execution:
+  agent: codex
+```
+
+选择优先级是 CLI `--agent` > manifest `execution.agent` > `claude-code`。Local 和 LangSmith 套件共享同一选择规则；subject、auto_user simulator 和可选 Judge 都使用选定 Agent 的独立会话。`--collect` 只校验 Agent 与 manifest，不启动 Agent、Docker 或凭据检查。
+
 ## `--html` 会输出什么
 
 运行时 CLI 会先打印一组执行信息：
 
 - `Eval root`：实际从哪个 `eval/` 根目录启动
 - `Mode`：`collect` 或 `run`
-- `Suite`：`local` 或 `langsmith`
+- `Suite`：`local`、`langsmith` 或 `langfuse`
 - `Target`：当前评估的是 manifest 还是本地 Skill 目录
 - `Experiment`：本次实验 id
 - `Profile`：本次评估使用的 profile
@@ -155,6 +183,23 @@ generic-skill-smoke
 ```
 
 这只是早期冒烟，不等于发布前完整证据。准备发布时，仍推荐通过 `/comet-any` 生成 `comet/eval.yaml`，再走 manifest 路径。
+
+如果 `eval.yaml` 没有 `evaluation.tasks` 或 `recommendedTasks`，普通运行会对 Skill 做受限快照，自动生成 2–4 个确定性任务，并按快照、Agent、profile 和交互配置 hash 缓存到 `.comet/eval/generated/`。缓存 manifest 会保存生成元数据；`--collect` 只读取已有缓存，不会启动任务生成 Agent。需要跳过自动生成时显式使用 `--quick`。
+
+项目也可以直接在 `evaluation.tasks` 中声明 inline task，或用 `source` 引用 Skill 包内带有 `task.toml` 和 `instruction.md` 的任务包：
+
+```yaml
+evaluation:
+  tasks:
+    - name: writes-summary
+      prompt: Create summary.md.
+      expect:
+        files: [summary.md]
+        contains:
+          summary.md: ['# Summary']
+```
+
+`source`、`workspace` 和期望产物必须留在允许的包/工作区内；inline 的 `files`、`contains`、`json`、`commands` 检查会在 Docker 工作区执行。
 
 ## manifest 路径和 skill-path 路径怎么选
 

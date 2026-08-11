@@ -55,6 +55,8 @@ interaction:
   maxTurns: 8
   simulatorPrompt: Answer concisely.
   freshResumeMarker: COLD_RESUME_READY
+execution:
+  agent: codex
 """,
         encoding="utf-8",
     )
@@ -81,6 +83,7 @@ interaction:
     assert manifest.interaction.max_turns == 8
     assert manifest.interaction.simulator_prompt == "Answer concisely."
     assert manifest.interaction.fresh_resume_marker == "COLD_RESUME_READY"
+    assert manifest.execution_agent == "codex"
 
 
 def test_load_eval_manifest_rejects_wrong_kind(tmp_path: Path):
@@ -117,6 +120,10 @@ def test_load_eval_manifest_rejects_wrong_kind(tmp_path: Path):
             "metadata:\n  name: bad\nskill:\n  name: bad\nevaluation:\n  expectedEvidence:\n    - missing-node\n",
             "evaluation.expectedEvidence",
         ),
+        (
+            "metadata:\n  name: bad\nskill:\n  name: bad\nexecution:\n  agent: gemini\n",
+            "Unsupported evaluation agent",
+        ),
     ],
 )
 def test_load_eval_manifest_rejects_malformed_structured_fields(
@@ -131,4 +138,147 @@ def test_load_eval_manifest_rejects_malformed_structured_fields(
     )
 
     with pytest.raises(ValueError, match=message):
+        load_eval_manifest(manifest_path)
+
+
+def test_load_eval_manifest_parses_inline_and_source_tasks(tmp_path: Path):
+    package = tmp_path / "my-skill"
+    package.mkdir()
+    (package / "SKILL.md").write_text("# Skill\n", encoding="utf-8")
+    fixtures = package / "fixtures"
+    fixtures.mkdir()
+    (fixtures / "input.txt").write_text("input\n", encoding="utf-8")
+
+    source_task = package / "tasks" / "advanced"
+    (source_task / "environment").mkdir(parents=True)
+    (source_task / "validation").mkdir()
+    (source_task / "task.toml").write_text(
+        '[metadata]\nname = "advanced"\n\n[environment]\ndockerfile = "Dockerfile"\n',
+        encoding="utf-8",
+    )
+    (source_task / "instruction.md").write_text("Advanced task\n", encoding="utf-8")
+    (source_task / "environment" / "Dockerfile").write_text("FROM alpine\n", encoding="utf-8")
+
+    manifest_path = package / "comet" / "eval.yaml"
+    manifest_path.parent.mkdir()
+    manifest_path.write_text(
+        """
+apiVersion: comet.eval/v1alpha1
+kind: SkillEvalManifest
+metadata:
+  name: my-skill
+skill:
+  name: my-skill
+  source: ..
+evaluation:
+  tasks:
+    - name: create-summary
+      prompt: Create summary.md.
+      workspace: ./fixtures
+      expect:
+        files:
+          - summary.md
+        contains:
+          summary.md:
+            - "# Summary"
+        json:
+          - file: summary.json
+            path: $.status
+            equals: complete
+        commands:
+          - run: test -f summary.md
+            timeout: 30
+      rubric:
+        - The summary explains the result.
+    - source: ./tasks/advanced
+""",
+        encoding="utf-8",
+    )
+
+    manifest = load_eval_manifest(manifest_path)
+
+    assert [task.name for task in manifest.tasks] == ["create-summary", "advanced"]
+    inline = manifest.tasks[0]
+    assert inline.prompt == "Create summary.md."
+    assert inline.workspace == fixtures.resolve()
+    assert inline.expect["files"] == ["summary.md"]
+    assert inline.rubric == ["The summary explains the result."]
+    assert manifest.tasks[1].source == source_task.resolve()
+
+
+@pytest.mark.parametrize(
+    ("task_yaml", "message"),
+    [
+        (
+            "- name: missing-prompt\n  expect:\n    files: [result.md]\n",
+            "prompt",
+        ),
+        (
+            "- name: no-expect\n  prompt: Do it.\n",
+            "deterministic expect",
+        ),
+        (
+            "- name: unsafe\n  prompt: Do it.\n  expect:\n    files: [../secret]\n",
+            "evaluation.tasks.*.expect.files",
+        ),
+        (
+            "- name: unsafe\n  prompt: Do it.\n  workspace: ../outside\n  expect:\n    files: [result.md]\n",
+            "workspace",
+        ),
+        (
+            "- name: unknown\n  prompt: Do it.\n  expect:\n    files: [result.md]\n  executable: true\n",
+            "unknown fields",
+        ),
+    ],
+)
+def test_load_eval_manifest_rejects_invalid_inline_tasks(
+    tmp_path: Path,
+    task_yaml: str,
+    message: str,
+):
+    package = tmp_path / "my-skill"
+    (package / "comet").mkdir(parents=True)
+    manifest_path = package / "comet" / "eval.yaml"
+    manifest_path.write_text(
+        "apiVersion: comet.eval/v1alpha1\n"
+        "kind: SkillEvalManifest\n"
+        "metadata:\n  name: my-skill\n"
+        "skill:\n  name: my-skill\n  source: ..\n"
+        "evaluation:\n  tasks:\n"
+        + "".join(f"    {line}\n" for line in task_yaml.rstrip().splitlines()),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=message):
+        load_eval_manifest(manifest_path)
+
+
+def test_load_eval_manifest_rejects_duplicate_authored_task_names(tmp_path: Path):
+    package = tmp_path / "my-skill"
+    (package / "comet").mkdir(parents=True)
+    manifest_path = package / "comet" / "eval.yaml"
+    manifest_path.write_text(
+        """
+apiVersion: comet.eval/v1alpha1
+kind: SkillEvalManifest
+metadata:
+  name: my-skill
+skill:
+  name: my-skill
+  source: ..
+evaluation:
+  tasks:
+    - name: duplicate
+      prompt: First.
+      expect:
+        files: [one.txt]
+    - name: duplicate
+      prompt: Second.
+      expect:
+        files: [two.txt]
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="duplicate task name"):
         load_eval_manifest(manifest_path)
