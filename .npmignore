@@ -61,13 +61,4 @@ npm-debug.log*
 .agents/
 
 # Repository maintainer Skills are tracked under assets but are not part of the npm package
-assets/skills-zh/comet-github/
-assets/skills-zh/comet-github-pr-review/
-assets/skills-zh/comet-github-issue-triage/
-assets/skills-zh/comet-github-idea-to-issue/
-assets/skills-zh/comet-github-ci-triage/
-assets/skills-zh/comet-github-issue-fix/
-assets/skills-zh/comet-safe-delivery/
-assets/skills-zh/comet-release/
-assets/skills-zh/comet-bilingual-docs/
-assets/skills-zh/comet-runtime-diagnose/
+assets/skills-maintainer/
