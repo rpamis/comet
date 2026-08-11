@@ -67,6 +67,47 @@ def _load_eval_task(task_name: str, config=None):
     return load_task(task_name)
 
 
+def _resolve_frozen_task_set(config, task_filter: str | None):
+    """Resolve once per collection and retain the exact cross-suite task identity."""
+    frozen = getattr(config, "_comet_frozen_task_set", None)
+    if frozen is not None:
+        return frozen
+    from scaffold.python.manifests import SkillEvalManifest, load_eval_manifest
+
+    manifest_path = config.getoption("--eval-manifest")
+    context = getattr(config, "_comet_eval_context", None)
+    if manifest_path:
+        manifest = load_eval_manifest(manifest_path)
+        context = context or resolve_eval_context(
+            manifest_path=manifest.path, project_root=config.getoption("--project-root")
+        )
+    else:
+        if context is None:
+            context = resolve_eval_context(
+                skill_path=config.getoption("--skill-path"),
+                project_root=config.getoption("--project-root"),
+            )
+        manifest = SkillEvalManifest(
+            path=context.skill_root / "comet" / "eval.yaml",
+            name=context.skill_root.name,
+            description="",
+            skill_name=config.getoption("--skill-name") or context.skill_root.name,
+            skill_path=context.skill_root,
+            profile=config.getoption("--profile"),
+        )
+    frozen = resolve_task_set(
+        context,
+        manifest,
+        build_task_catalogue(manifest, get_tasks_dir()),
+        explicit_task=task_filter,
+        quick=bool(config.getoption("--quick")),
+    )
+    config._comet_frozen_task_set = frozen
+    config._comet_resolved_tasks = {item.name: item.task for item in frozen.tasks}
+    config._comet_resolution_manifest = manifest
+    return frozen
+
+
 # =============================================================================
 # PARAMETRIZE HELPERS
 # =============================================================================
@@ -110,19 +151,11 @@ def generate_test_params(task_filter: str | None, treatment_filter: str | None, 
     manifest_tasks = None
     authored_tasks = {}
     manifest_baseline_treatments = []
-    if config is not None and config.getoption("--eval-manifest"):
-        from scaffold.python.manifests import load_eval_manifest
-
-        manifest = load_eval_manifest(config.getoption("--eval-manifest"))
-        context = resolve_eval_context(manifest_path=manifest.path, project_root=config.getoption("--project-root"))
-        resolved = getattr(config, "_comet_frozen_task_set", None) or resolve_task_set(
-            context,
-            manifest,
-            build_task_catalogue(manifest, get_tasks_dir()),
-            explicit_task=task_filter,
-            quick=bool(config.getoption("--quick")),
-        )
-        config._comet_resolved_tasks = {item.name: item.task for item in resolved.tasks}
+    frozen_selected = False
+    if config is not None and (config.getoption("--eval-manifest") or config.getoption("--skill-path")):
+        resolved = _resolve_frozen_task_set(config, task_filter)
+        frozen_selected = True
+        manifest = config._comet_resolution_manifest
         manifest_tasks = [item.name for item in resolved.tasks]
         authored_tasks = {
             item.name: item.task
@@ -158,6 +191,8 @@ def generate_test_params(task_filter: str | None, treatment_filter: str | None, 
 
     if task_filter:
         tasks_to_run = [task_filter]
+    elif frozen_selected:
+        tasks_to_run = list(manifest_tasks or [])
     elif authored_tasks or manifest_tasks:
         tasks_to_run = list(manifest_tasks or authored_tasks)
     else:

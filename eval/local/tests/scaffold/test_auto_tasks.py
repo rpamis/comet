@@ -239,9 +239,9 @@ def test_invalid_generation_stops_after_one_repair_attempt(tmp_path: Path):
 
     def generate(_prompt):
         calls.append(True)
-        return {"tasks": [{"name": "only-one", "prompt": "No expect."}]}
+        return {"tasks": [{"name": "only-one", "prompt": "No expect. api_key=sk-secret-value"}]}
 
-    with pytest.raises(AutoTaskError, match="task_generation"):
+    with pytest.raises(AutoTaskError, match="task_generation") as exc_info:
         ensure_generated_manifest(
             skill,
             tmp_path,
@@ -253,3 +253,13 @@ def test_invalid_generation_stops_after_one_repair_attempt(tmp_path: Path):
         )
 
     assert calls == [True, True]
+    report_path = Path(str(exc_info.value).split("Partial report: ", 1)[1])
+    metadata = json.loads((report_path.parent / "metadata.json").read_text(encoding="utf-8"))
+    assert report_path.is_file()
+    assert metadata["attribution"] == "task_generation"
+    assert metadata["attempt_count"] == 2
+    assert metadata["task_denominator"] == 0
+    assert metadata["subject_metrics"] == {}
+    assert metadata["report_path"] == str(report_path)
+    assert "sk-secret-value" not in report_path.read_text(encoding="utf-8")
+    assert "sk-secret-value" not in (report_path.parent / "metadata.json").read_text(encoding="utf-8")

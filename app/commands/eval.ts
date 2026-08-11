@@ -1,11 +1,16 @@
 import { execFileSync } from 'child_process';
-import { createHash, randomUUID } from 'crypto';
+import { randomUUID } from 'crypto';
 import { existsSync, promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { parse } from 'yaml';
-import Ajv from 'ajv';
+import {
+  canonicalPath,
+  isPathWithin,
+  resolveEvalContext,
+  type ResolvedEvalContext,
+} from '../../domains/eval/index.js';
+import { collectStandaloneTasks } from '../../domains/eval/standalone-static-collect.js';
 import { recordRepositoryEvalExperiment } from '../../domains/bundle/eval-run-result.js';
 import { prepareEvalManifest } from '../../domains/bundle/eval-manifest-runtime.js';
 
@@ -37,18 +42,6 @@ interface EvalLaunchDetails {
   reportPath: string;
   target: string;
   agent: EvalAgent | null;
-}
-
-type EvalManifestSource = 'explicit' | 'auto-detected' | 'synthesized';
-
-interface ResolvedEvalContext {
-  schema: 'comet.eval.context.v1';
-  skillRoot: string;
-  manifestSource: EvalManifestSource;
-  manifestPath?: string;
-  artifactOwnerRoot: string;
-  artifactRoot: string;
-  baseManifest?: Record<string, unknown>;
 }
 
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -100,31 +93,6 @@ function assertTarget(options: EvalCommandOptions): void {
   if (options.manifest && options.skillPath) {
     throw new Error('Pass exactly one of --manifest or --skill-path');
   }
-}
-
-async function canonicalPath(target: string): Promise<string> {
-  const resolved = path.resolve(target);
-  try {
-    return await fs.realpath(resolved);
-  } catch {
-    return resolved;
-  }
-}
-
-async function isFile(target: string): Promise<boolean> {
-  try {
-    return (await fs.stat(target)).isFile();
-  } catch {
-    return false;
-  }
-}
-
-function isPathWithin(root: string, candidate: string): boolean {
-  const relative = path.relative(root, candidate);
-  return (
-    relative === '' ||
-    (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))
-  );
 }
 
 async function assertArtifactRootIsSafe(context: ResolvedEvalContext): Promise<void> {
@@ -192,86 +160,6 @@ async function resolveManagedPath(
     }
   }
   return target;
-}
-
-async function resolveManifestSkillRoot(manifestPath: string): Promise<string> {
-  try {
-    const data = parse(await fs.readFile(manifestPath, 'utf8')) as {
-      skill?: { source?: unknown };
-    };
-    const source = data?.skill?.source;
-    if (typeof source === 'string' && source.trim()) {
-      return canonicalPath(
-        path.isAbsolute(source) ? source : path.join(path.dirname(manifestPath), source),
-      );
-    }
-  } catch {
-    // The Python harness remains the validation authority and will report malformed manifests.
-  }
-  return canonicalPath(path.join(path.dirname(manifestPath), '..'));
-}
-
-async function resolveEvalContext(options: EvalCommandOptions): Promise<ResolvedEvalContext> {
-  assertTarget(options);
-  let skillRoot: string;
-  let manifestPath: string | undefined;
-  let manifestSource: EvalManifestSource;
-  let baseManifest: Record<string, unknown> | undefined;
-
-  if (options.manifest) {
-    manifestPath = await canonicalPath(options.manifest);
-    skillRoot = await resolveManifestSkillRoot(manifestPath);
-    manifestSource = 'explicit';
-  } else {
-    const rawSkillPath = options.skillPath!;
-    const canonicalTarget = await canonicalPath(rawSkillPath);
-    skillRoot =
-      path.basename(canonicalTarget) === 'SKILL.md'
-        ? path.dirname(canonicalTarget)
-        : canonicalTarget;
-    const yamlManifest = path.join(skillRoot, 'comet', 'eval.yaml');
-    const ymlManifest = path.join(skillRoot, 'comet', 'eval.yml');
-    if (await isFile(yamlManifest)) {
-      manifestPath = await canonicalPath(yamlManifest);
-      manifestSource = 'auto-detected';
-    } else if (await isFile(ymlManifest)) {
-      manifestPath = await canonicalPath(ymlManifest);
-      manifestSource = 'auto-detected';
-    } else {
-      manifestSource = 'synthesized';
-      baseManifest = {
-        apiVersion: 'comet.eval/v1alpha1',
-        kind: 'SkillEvalManifest',
-        metadata: { name: path.basename(skillRoot) },
-        skill: { name: path.basename(skillRoot), source: skillRoot },
-        evaluation: {},
-      };
-    }
-  }
-
-  if (!(await isFile(path.join(skillRoot, 'SKILL.md')))) {
-    throw new Error(`Skill package must contain SKILL.md: ${skillRoot}`);
-  }
-  const artifactOwnerRoot = options.project ? await canonicalPath(options.project) : skillRoot;
-  try {
-    if (!(await fs.stat(artifactOwnerRoot)).isDirectory()) {
-      throw new Error(`Artifact owner root must be an existing directory: ${artifactOwnerRoot}`);
-    }
-  } catch (error) {
-    if (error instanceof Error && error.message.startsWith('Artifact owner root')) throw error;
-    throw new Error(`Artifact owner root must be an existing directory: ${artifactOwnerRoot}`, {
-      cause: error,
-    });
-  }
-  return {
-    schema: 'comet.eval.context.v1',
-    skillRoot,
-    manifestSource,
-    ...(manifestPath ? { manifestPath } : {}),
-    artifactOwnerRoot,
-    artifactRoot: path.join(artifactOwnerRoot, '.comet', 'eval'),
-    ...(baseManifest ? { baseManifest } : {}),
-  };
 }
 
 function inferredSkillName(target: string): string {
@@ -416,539 +304,6 @@ function printLaunchDetails(details: EvalLaunchDetails): void {
   }
 }
 
-function jsonPointerToYamlPath(pointer: string | undefined): string {
-  if (!pointer) return 'manifest';
-  return pointer
-    .split('/')
-    .slice(1)
-    .map((part) => part.replaceAll('~1', '/').replaceAll('~0', '~'))
-    .reduce(
-      (result, part) =>
-        Number.isInteger(Number(part)) ? `${result}[${part}]` : `${result}.${part}`,
-      '',
-    )
-    .replace(/^\./u, '');
-}
-
-function staticHash(value: string | Buffer): string {
-  return `sha256:${createHash('sha256').update(value).digest('hex')}`;
-}
-
-function canonicalJson(value: unknown): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
-  const record = value as Record<string, unknown>;
-  return `{${Object.keys(record)
-    .sort()
-    .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
-    .join(',')}}`;
-}
-
-async function pathIsFile(target: string): Promise<boolean> {
-  try {
-    return (await fs.stat(target)).isFile();
-  } catch {
-    return false;
-  }
-}
-
-function assertTaskName(value: unknown, field: string): asserts value is string {
-  if (typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/u.test(value)) {
-    throw new Error(`${field} must be a valid task name`);
-  }
-}
-
-async function resolveSkillPackagePath(
-  skillRoot: string,
-  value: string,
-  field: string,
-): Promise<string> {
-  const normalized = value.replaceAll('\\', '/');
-  if (!normalized.trim() || path.isAbsolute(normalized) || normalized.split('/').includes('..')) {
-    throw new Error(`${field} must stay within the Skill package: ${JSON.stringify(value)}`);
-  }
-  const root = await fs.realpath(skillRoot);
-  const candidate = path.resolve(root, normalized);
-  if (!isPathWithin(root, candidate))
-    throw new Error(`${field} must stay within the Skill package: ${JSON.stringify(value)}`);
-  let resolved: string;
-  try {
-    resolved = await fs.realpath(candidate);
-  } catch {
-    throw new Error(`${field} does not exist: ${JSON.stringify(value)}`);
-  }
-  if (!isPathWithin(root, resolved))
-    throw new Error(`${field} must stay within the Skill package: ${JSON.stringify(value)}`);
-  return resolved;
-}
-
-async function taskNameFromToml(
-  taskRoot: string,
-  fallback: string,
-  field: string,
-): Promise<string> {
-  const source = await fs.readFile(path.join(taskRoot, 'task.toml'), 'utf8');
-  const match = /^\s*name\s*=\s*["']([^"']+)["']\s*$/mu.exec(source);
-  const name = match?.[1] ?? fallback;
-  assertTaskName(name, field);
-  return name;
-}
-
-function validateInlineTask(task: Record<string, unknown>, index: number): void {
-  const prefix = `evaluation.tasks[${index}]`;
-  assertTaskName(task.name, `${prefix}.name`);
-  if (typeof task.prompt !== 'string' || !task.prompt.trim())
-    throw new Error(`${prefix}.prompt is required`);
-  if (!task.expect || typeof task.expect !== 'object' || Array.isArray(task.expect))
-    throw new Error(`${prefix}.expect must contain at least one deterministic expect`);
-  const expect = task.expect as Record<string, unknown>;
-  const permitted = new Set(['files', 'contains', 'json', 'commands']);
-  const unknown = Object.keys(expect).find((field) => !permitted.has(field));
-  if (unknown) throw new Error(`${prefix}.expect.${unknown}: unknown field`);
-  if (
-    !Object.values(expect).some((value) =>
-      Array.isArray(value)
-        ? value.length
-        : value && typeof value === 'object'
-          ? Object.keys(value).length
-          : false,
-    )
-  ) {
-    throw new Error(`${prefix}.expect must contain at least one deterministic expect`);
-  }
-  if (
-    task.rubric !== undefined &&
-    (!Array.isArray(task.rubric) ||
-      task.rubric.some((item) => typeof item !== 'string' || !item.trim()))
-  )
-    throw new Error(`${prefix}.rubric must be a list of non-empty strings`);
-
-  const assertRelativeArtifact = (value: unknown, field: string): string => {
-    if (typeof value !== 'string' || !value.trim()) {
-      throw new Error(`${field} must contain non-empty relative paths`);
-    }
-    const normalized = value.replaceAll('\\', '/');
-    if (path.isAbsolute(normalized) || normalized.split('/').includes('..')) {
-      throw new Error(`${field} must stay within the task workspace: ${JSON.stringify(value)}`);
-    }
-    return normalized;
-  };
-  const files = expect.files ?? [];
-  if (!Array.isArray(files) || files.some((value) => typeof value !== 'string')) {
-    throw new Error(`${prefix}.expect.files must be a list of strings`);
-  }
-  files.forEach((value) => assertRelativeArtifact(value, `${prefix}.expect.files`));
-
-  const contains = expect.contains ?? {};
-  if (!contains || typeof contains !== 'object' || Array.isArray(contains)) {
-    throw new Error(`${prefix}.expect.contains must be a mapping`);
-  }
-  for (const [file, values] of Object.entries(contains)) {
-    assertRelativeArtifact(file, `${prefix}.expect.contains`);
-    if (!Array.isArray(values) || values.some((value) => typeof value !== 'string')) {
-      throw new Error(`${prefix}.expect.contains.${file} must be a list of strings`);
-    }
-  }
-
-  const json = expect.json ?? [];
-  if (!Array.isArray(json) || json.some((value) => !value || typeof value !== 'object')) {
-    throw new Error(`${prefix}.expect.json must be a list of mappings`);
-  }
-  for (const [jsonIndex, item] of json.entries()) {
-    const check = item as Record<string, unknown>;
-    assertRelativeArtifact(check.file, `${prefix}.expect.json[${jsonIndex}].file`);
-    if (typeof check.path !== 'string' || !check.path.startsWith('$')) {
-      throw new Error(`${prefix}.expect.json[${jsonIndex}].path must start with "$"`);
-    }
-    if (!Object.hasOwn(check, 'equals')) {
-      throw new Error(`${prefix}.expect.json[${jsonIndex}].equals is required`);
-    }
-  }
-
-  const commands = expect.commands ?? [];
-  if (!Array.isArray(commands) || commands.some((value) => !value || typeof value !== 'object')) {
-    throw new Error(`${prefix}.expect.commands must be a list of mappings`);
-  }
-  for (const [commandIndex, item] of commands.entries()) {
-    const command = item as Record<string, unknown>;
-    if (typeof command.run !== 'string' || !command.run.trim()) {
-      throw new Error(`${prefix}.expect.commands[${commandIndex}].run is required`);
-    }
-    const timeout = command.timeout ?? 120;
-    if (
-      typeof timeout !== 'number' ||
-      !Number.isInteger(timeout) ||
-      timeout < 1 ||
-      timeout > 3600
-    ) {
-      throw new Error(`${prefix}.expect.commands[${commandIndex}].timeout must be 1..3600`);
-    }
-  }
-}
-
-function validateStaticManifestSettings(manifest: Record<string, unknown>): void {
-  for (const field of ['execution', 'judge'] as const) {
-    const settings = manifest[field];
-    if (settings === undefined) continue;
-    if (!settings || typeof settings !== 'object' || Array.isArray(settings))
-      throw new Error(`${field} must be a mapping`);
-    const data = settings as Record<string, unknown>;
-    if (
-      data.agent !== undefined &&
-      !['claude-code', 'codex', 'qoder', 'codebuddy'].includes(data.agent as string)
-    )
-      throw new Error(
-        `Unsupported evaluation agent ${JSON.stringify(data.agent)} in ${field}.agent`,
-      );
-    const url = data.baseUrl ?? data.base_url;
-    if (url !== undefined && (typeof url !== 'string' || !/^https?:\/\/[^\s/]+/u.test(url)))
-      throw new Error(`${field}.baseUrl must be an absolute http(s) URL`);
-    if (data.model !== undefined && (typeof data.model !== 'string' || !data.model.trim()))
-      throw new Error(`${field}.model must be a non-empty string`);
-  }
-}
-
-function staticGenerationModel(agent: string): string | null {
-  if (agent === 'claude-code')
-    return process.env.BENCH_CC_MODEL ?? process.env.ANTHROPIC_MODEL ?? 'runtime-default';
-  if (agent === 'codex')
-    return process.env.BENCH_CODEX_MODEL ?? process.env.OPENAI_MODEL ?? 'runtime-default';
-  if (agent === 'qoder')
-    return process.env.BENCH_QODER_MODEL ?? process.env.QODER_MODEL ?? 'runtime-default';
-  return process.env.BENCH_CODEBUDDY_MODEL ?? process.env.CODEBUDDY_MODEL ?? 'runtime-default';
-}
-
-function staticInteraction(manifest: Record<string, unknown> | undefined): Record<string, unknown> {
-  if (!manifest) return { mode: 'none', max_turns: 12 };
-  const source = manifest?.interaction;
-  const data =
-    source && typeof source === 'object' && !Array.isArray(source)
-      ? (source as Record<string, unknown>)
-      : {};
-  return {
-    mode: data.mode ?? 'none',
-    max_turns: Number(data.maxTurns ?? data.max_turns ?? 12),
-    simulator_prompt: data.simulatorPrompt || data.simulator_prompt || null,
-    decision_patterns: data.decisionPatterns ?? [],
-    decision_reply: data.decisionReply ?? null,
-    decision_replies: data.decisionReplies ?? [],
-    continue_prompt: data.continuePrompt ?? 'Please continue with the next phase of the workflow.',
-    fresh_resume_marker: data.freshResumeMarker || data.fresh_resume_marker || null,
-  };
-}
-
-async function staticSnapshot(skillRoot: string): Promise<string> {
-  const root = await fs.realpath(skillRoot);
-  const entries = new Map<string, { path: string; hash: string }>();
-  let total = 0;
-  const add = async (candidate: string) => {
-    if (entries.size >= 128 || !(await pathIsFile(candidate))) return;
-    const resolved = await fs.realpath(candidate);
-    if (!isPathWithin(root, resolved)) return;
-    const relative = path.relative(root, resolved).replaceAll('\\', '/');
-    if (entries.has(relative)) return;
-    const content = await fs.readFile(resolved, 'utf8');
-    const bytes = Buffer.byteLength(content, 'utf8');
-    if (total + bytes > 512 * 1024) return;
-    total += bytes;
-    entries.set(relative, { path: relative, hash: staticHash(content) });
-  };
-  const skillFile = path.join(root, 'SKILL.md');
-  await add(skillFile);
-  const skillContent = await fs.readFile(skillFile, 'utf8');
-  for (const match of skillContent.matchAll(/[`"']([^`"']+)[`"']/gu))
-    await add(path.join(root, match[1].replaceAll('\\', '/')));
-  for (const directory of ['scripts', 'references', 'reference', 'examples', 'templates']) {
-    const start = path.join(root, directory);
-    try {
-      const walk = async (target: string): Promise<void> => {
-        const children = await fs.readdir(target, { withFileTypes: true });
-        for (const entry of children.sort((left, right) => left.name.localeCompare(right.name))) {
-          const child = path.join(target, entry.name);
-          if (entry.isSymbolicLink()) continue;
-          if (entry.isDirectory()) await walk(child);
-          else await add(child);
-        }
-      };
-      await walk(start);
-    } catch {
-      /* absent optional directory */
-    }
-  }
-  const files = [...entries.values()].sort((left, right) => left.path.localeCompare(right.path));
-  return staticHash(canonicalJson(files));
-}
-
-async function loadStaticGeneratedCache(
-  options: EvalCommandOptions,
-  context: ResolvedEvalContext,
-  manifest: Record<string, unknown> | undefined,
-  forbiddenNames: ReadonlySet<string>,
-): Promise<string[]> {
-  try {
-    const execution = manifest?.execution;
-    const settings =
-      execution && typeof execution === 'object' && !Array.isArray(execution)
-        ? (execution as Record<string, unknown>)
-        : {};
-    const agent = options.agent ?? (settings.agent as string | undefined) ?? 'claude-code';
-    const profile =
-      options.profile ??
-      (manifest?.skill as Record<string, unknown> | undefined)?.profile ??
-      'generic';
-    const snapshotHash = await staticSnapshot(context.skillRoot);
-    const generationHash = createHash('sha256')
-      .update(
-        canonicalJson({
-          snapshot_hash: snapshotHash,
-          agent,
-          model: staticGenerationModel(agent),
-          profile,
-          interaction: staticInteraction(manifest),
-          generator_version: 'comet-auto-task-generator.v1',
-          task_schema_version: 'comet.eval/v1alpha1',
-        }),
-      )
-      .digest('hex');
-    const safe =
-      path
-        .basename(context.skillRoot)
-        .replace(/[^A-Za-z0-9._-]+/gu, '-')
-        .replace(/^-+|-+$/gu, '') || 'skill';
-    const cache = path.join(context.artifactRoot, 'generated', safe, generationHash);
-    const [metadataRaw, cachedRaw] = await Promise.all([
-      fs.readFile(path.join(cache, 'generation.json'), 'utf8'),
-      fs.readFile(path.join(cache, 'eval.yaml'), 'utf8'),
-    ]);
-    const metadata = JSON.parse(metadataRaw) as Record<string, unknown>;
-    if (
-      metadata.generation_hash !== generationHash ||
-      metadata.manifest_hash !== staticHash(cachedRaw)
-    )
-      return [];
-    const cached = parse(cachedRaw) as Record<string, unknown>;
-    const tasks =
-      cached?.evaluation && typeof cached.evaluation === 'object'
-        ? (cached.evaluation as Record<string, unknown>).tasks
-        : undefined;
-    if (!Array.isArray(tasks) || tasks.length < 2 || tasks.length > 4) return [];
-    const names = tasks.map((task, index) => {
-      if (!task || typeof task !== 'object')
-        throw new Error(`cached evaluation.tasks[${index}] must be a mapping`);
-      const name = (task as Record<string, unknown>).name;
-      assertTaskName(name, `cached evaluation.tasks[${index}].name`);
-      validateInlineTask(task as Record<string, unknown>, index);
-      return name;
-    });
-    if (new Set(names).size !== names.length) return [];
-    if (names.some((name) => forbiddenNames.has(name))) return [];
-    return names;
-  } catch {
-    return [];
-  }
-}
-
-async function runPackagedStaticCollect(
-  options: EvalCommandOptions,
-  context: ResolvedEvalContext,
-  suite: EvalSuite,
-): Promise<void> {
-  let evaluation: Record<string, unknown> = {};
-  let manifest: Record<string, unknown> | undefined;
-  if (context.manifestPath) {
-    const raw = parse(await fs.readFile(context.manifestPath, 'utf8'));
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-      throw new Error('Eval manifest must be a mapping');
-    }
-    manifest = raw as Record<string, unknown>;
-    const schema = JSON.parse(
-      await fs.readFile(
-        path.join(packageRoot, 'eval', 'schemas', 'comet.eval', 'v1alpha1.schema.json'),
-        'utf8',
-      ),
-    ) as Record<string, unknown>;
-    delete schema.$schema;
-    const AjvConstructor = Ajv as unknown as new (options: Record<string, unknown>) => {
-      compile: (value: object) => {
-        (data: unknown): boolean;
-        errors?: Array<{
-          instancePath?: string;
-          keyword?: string;
-          message?: string;
-          params?: Record<string, unknown>;
-        }>;
-      };
-    };
-    const validator = new AjvConstructor({ allErrors: true, strict: false }).compile(schema);
-    if (!validator(manifest)) {
-      const error = validator.errors?.[0];
-      const yamlPath = jsonPointerToYamlPath(error?.instancePath);
-      const field = (error?.params as { additionalProperty?: string } | undefined)
-        ?.additionalProperty;
-      if (error?.keyword === 'additionalProperties' && field) {
-        throw new Error(
-          `${yamlPath === 'manifest' ? field : `${yamlPath}.${field}`}: unknown field`,
-        );
-      }
-      throw new Error(`${yamlPath}: ${error?.message ?? 'invalid manifest'}`);
-    }
-    if (manifest.apiVersion !== 'comet.eval/v1alpha1' || manifest.kind !== 'SkillEvalManifest') {
-      throw new Error('Expected comet.eval/v1alpha1 SkillEvalManifest');
-    }
-    if (
-      manifest.evaluation !== undefined &&
-      (typeof manifest.evaluation !== 'object' ||
-        manifest.evaluation === null ||
-        Array.isArray(manifest.evaluation))
-    ) {
-      throw new Error('evaluation must be a mapping');
-    }
-    evaluation = (manifest.evaluation as Record<string, unknown> | undefined) ?? {};
-  }
-  const authored = Array.isArray(evaluation.tasks) ? evaluation.tasks : [];
-  const recommended = Array.isArray(evaluation.recommendedTasks)
-    ? evaluation.recommendedTasks
-    : Array.isArray(evaluation.recommended_tasks)
-      ? evaluation.recommended_tasks
-      : [];
-  const names = (items: unknown[]) =>
-    items
-      .map((item) => (typeof item === 'string' ? item : (item as { name?: unknown }).name))
-      .filter((item): item is string => typeof item === 'string');
-  const bundledRoot = path.join(packageRoot, 'eval', 'local', 'tasks');
-  const bundledEntries = (await fs.readdir(bundledRoot, { withFileTypes: true })).filter((entry) =>
-    entry.isDirectory(),
-  );
-  const bundled = new Set<string>();
-  for (const entry of bundledEntries) {
-    const taskRoot = path.join(bundledRoot, entry.name);
-    if (
-      !(await pathIsFile(path.join(taskRoot, 'task.toml'))) ||
-      !(await pathIsFile(path.join(taskRoot, 'instruction.md')))
-    )
-      continue;
-    const name = await taskNameFromToml(taskRoot, entry.name, `bundled task ${entry.name}`);
-    if (bundled.has(name)) throw new Error(`bundled task name duplicates another bundle: ${name}`);
-    bundled.add(name);
-  }
-  const authoredNames: string[] = [];
-  for (const [index, item] of authored.entries()) {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) {
-      throw new Error(`evaluation.tasks[${index}] must be a mapping`);
-    }
-    const task = item as Record<string, unknown>;
-    if (typeof task.source === 'string') {
-      if (Object.keys(task).some((key) => key !== 'source' && key !== 'name')) {
-        throw new Error(`evaluation.tasks[${index}]: source tasks cannot define inline fields`);
-      }
-      const source = await resolveSkillPackagePath(
-        context.skillRoot,
-        task.source,
-        `evaluation.tasks[${index}].source`,
-      );
-      if (
-        !(await pathIsFile(path.join(source, 'task.toml'))) ||
-        !(await pathIsFile(path.join(source, 'instruction.md')))
-      ) {
-        throw new Error(
-          `evaluation.tasks[${index}].source must point to a task package with task.toml and instruction.md`,
-        );
-      }
-      const canonical =
-        task.name === undefined
-          ? await taskNameFromToml(
-              source,
-              path.basename(source),
-              `evaluation.tasks[${index}].source`,
-            )
-          : task.name;
-      assertTaskName(canonical, `evaluation.tasks[${index}].name`);
-      authoredNames.push(canonical);
-    } else {
-      validateInlineTask(task, index);
-      authoredNames.push(task.name as string);
-    }
-  }
-  const duplicate = (values: string[]) =>
-    values.find((value, index) => values.indexOf(value) !== index);
-  const duplicateAuthored = duplicate(authoredNames);
-  if (duplicateAuthored) {
-    const second = authoredNames.lastIndexOf(duplicateAuthored);
-    const first = authoredNames.indexOf(duplicateAuthored);
-    throw new Error(
-      `evaluation.tasks[${second}].name duplicates evaluation.tasks[${first}].name: "${duplicateAuthored}"`,
-    );
-  }
-  const recommendedNames = names(recommended);
-  const duplicateRecommended = duplicate(recommendedNames);
-  if (duplicateRecommended) {
-    const second = recommendedNames.lastIndexOf(duplicateRecommended);
-    const first = recommendedNames.indexOf(duplicateRecommended);
-    throw new Error(
-      `evaluation.recommendedTasks[${second}] duplicates evaluation.recommendedTasks[${first}]: "${duplicateRecommended}"`,
-    );
-  }
-  for (const [index, name] of recommendedNames.entries()) {
-    if (!bundled.has(name))
-      throw new Error(`evaluation.recommendedTasks[${index}]: unknown bundled task "${name}"`);
-    const taskIndex = authoredNames.indexOf(name);
-    if (taskIndex >= 0)
-      throw new Error(
-        `evaluation.tasks[${taskIndex}].name conflicts with evaluation.recommendedTasks[${index}]: "${name}"`,
-      );
-  }
-  for (const [index, item] of authored.entries()) {
-    const task = item as Record<string, unknown>;
-    if (bundled.has(authoredNames[index])) {
-      throw new Error(
-        `evaluation.tasks[${index}].name conflicts with bundled task "${authoredNames[index]}": "${authoredNames[index]}"`,
-      );
-    }
-    if (typeof task.workspace === 'string')
-      await resolveSkillPackagePath(
-        context.skillRoot,
-        task.workspace,
-        `evaluation.tasks[${index}].workspace`,
-      );
-  }
-  if (manifest) validateStaticManifestSettings(manifest);
-  if (options.task) {
-    if (!authoredNames.includes(options.task) && !bundled.has(options.task)) {
-      throw new Error(`Task not found: ${options.task}`);
-    }
-    console.log('Tasks: explicit');
-    console.log(`- ${options.task}`);
-  } else if (options.quick) {
-    if (!bundled.has('generic-skill-smoke'))
-      throw new Error('Bundled quick task generic-skill-smoke is unavailable');
-    console.log('Tasks: quick');
-    console.log('- generic-skill-smoke');
-  } else if (authored.length) {
-    console.log('Tasks: authored');
-    authoredNames.forEach((name) => console.log(`- ${name}`));
-  } else if (recommended.length) {
-    console.log('Tasks: recommended');
-    names(recommended).forEach((name) => console.log(`- ${name}`));
-  } else {
-    const cached = await loadStaticGeneratedCache(
-      options,
-      context,
-      manifest,
-      new Set([...bundled, ...authoredNames, ...recommendedNames]),
-    );
-    if (cached.length) {
-      console.log('Tasks: generated cache');
-      cached.forEach((name) => console.log(`- ${name}`));
-    } else {
-      console.log('Tasks: pending generation');
-      console.log('A normal comet eval run generates and freezes 2-4 tasks before execution.');
-    }
-  }
-  console.log(
-    `Static collection only for ${suite}; credentials, Docker, endpoints, plugins, and network were not tested.`,
-  );
-}
-
 function assertUvAvailable(): void {
   try {
     execFileSync('uv', ['--version'], { stdio: 'pipe' });
@@ -968,6 +323,7 @@ function runEval(
   context: ResolvedEvalContext,
   uvCacheDir: string,
   uvProjectEnvironment: string,
+  reportHtml: boolean,
 ): void {
   assertEvalHarness(root, suite);
   // Validate the owner boundary immediately before uv can create its cache or environment.
@@ -984,6 +340,7 @@ function runEval(
       PYTEST_ADDOPTS: [process.env.PYTEST_ADDOPTS, '-p no:cacheprovider'].filter(Boolean).join(' '),
       UV_CACHE_DIR: uvCacheDir,
       UV_PROJECT_ENVIRONMENT: uvProjectEnvironment,
+      COMET_EVAL_REPORT_HTML: reportHtml ? '1' : '0',
     },
   });
 }
@@ -997,7 +354,11 @@ async function executeEval(options: EvalCommandOptions, collectOnly: boolean): P
   const details = await buildLaunchDetails(options, collectOnly, root, context);
   if (collectOnly) {
     printLaunchDetails(details);
-    await runPackagedStaticCollect(options, context, suite);
+    for (const line of await collectStandaloneTasks(options, context, packageRoot))
+      console.log(line);
+    console.log(
+      `Static collection only for ${suite}; credentials, Docker, endpoints, plugins, and network were not tested.`,
+    );
     return;
   }
   const uvCacheDir = await resolveManagedPath(context, 'cache', 'uv');
@@ -1022,6 +383,7 @@ async function executeEval(options: EvalCommandOptions, collectOnly: boolean): P
       runtimeContext,
       uvCacheDir,
       uvProjectEnvironment,
+      Boolean(details.reportConfig),
     );
     if (!collectOnly && prepared?.context && details.suite === 'local') {
       const experimentDir = await resolveManagedPath(runtimeContext, 'runs', details.experimentId);
@@ -1034,8 +396,13 @@ async function executeEval(options: EvalCommandOptions, collectOnly: boolean): P
   } catch (error) {
     bodyFailed = true;
     bodyError = error;
-    if (existsSync(details.reportPath)) {
-      console.log(`Report path: ${details.reportPath}`);
+    const runDir = await resolveManagedPath(context, 'runs', details.experimentId);
+    for (const name of ['summary.html', 'summary.md']) {
+      const report = path.join(runDir, name);
+      if (existsSync(report)) {
+        console.log(`Report path: ${report}`);
+        break;
+      }
     }
   } finally {
     try {

@@ -162,6 +162,48 @@ def _atomic_write_text(path: Path, value: str) -> None:
         temporary_path.unlink(missing_ok=True)
 
 
+def _write_generation_failure_report(
+    project_root: Path, *, attempts: list[dict[str, Any]], error: str
+) -> Path:
+    """Persist a user-owned terminal report without manufacturing task results."""
+    experiment = os.environ.get("COMET_EVAL_EXPERIMENT_ID") or f"task-generation-{time.time_ns()}"
+    report_dir = managed_path_for_owner(project_root, "runs", experiment)
+    report_dir.mkdir(parents=True, exist_ok=True)
+    safe_error = _redact_sensitive(error)
+    safe_attempts = _redact_sensitive(_without_credentials(attempts))
+    html = os.environ.get("COMET_EVAL_REPORT_HTML") == "1"
+    output_path = report_dir / ("summary.html" if html else "summary.md")
+    metadata = {
+        "schema": "comet.eval.generation.failure.v1",
+        "attribution": "task_generation",
+        "category": "task_generation",
+        "attempt_count": len(attempts),
+        "case_count": 0,
+        "task_denominator": 0,
+        "subject_metrics": {},
+        "generation_overhead": _merge_generation_telemetry(safe_attempts),
+        "error": safe_error,
+        "report_path": str(output_path),
+        "report_output": output_path.name,
+    }
+    _atomic_write_text(
+        report_dir / "metadata.json", json.dumps(metadata, indent=2, sort_keys=True) + "\n"
+    )
+    _atomic_write_text(
+        output_path,
+        (
+            "<h1>Evaluation stopped during task generation</h1>"
+            f"<p>Attempts: {len(attempts)}</p><p>Task denominator: 0</p>"
+            f"<p>Error: {safe_error}</p>"
+            if html
+            else "# Evaluation stopped during task generation\n\n"
+            "Attribution: `task_generation`\n\n"
+            f"Attempts: {len(attempts)}\n\nTask denominator: 0\n\nError: {safe_error}\n"
+        ),
+    )
+    return output_path
+
+
 def _without_credentials(value: Any) -> Any:
     if isinstance(value, dict):
         return {
@@ -172,6 +214,18 @@ def _without_credentials(value: Any) -> Any:
     if isinstance(value, list):
         return [_without_credentials(item) for item in value]
     return value
+
+
+def _redact_sensitive(value: Any) -> Any:
+    """Remove common credential values from generator errors and telemetry."""
+    if isinstance(value, dict):
+        return {key: _redact_sensitive(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_redact_sensitive(item) for item in value]
+    if not isinstance(value, str):
+        return value
+    redacted = re.sub(r"(?i)(api[_-]?key|token|secret|password|credential)\s*[=:]\s*[^\s,;]+", r"\1=[REDACTED]", value)
+    return re.sub(r"(https?://)[^/@\s:]+:[^/@\s]+@", r"\1[REDACTED]@", redacted)
 
 
 def _extract_json_payload(raw: object) -> dict[str, Any]:
@@ -489,7 +543,11 @@ def ensure_generated_manifest(
                 error = str(exc)
                 tasks = None
         if tasks is None:
-            raise AutoTaskError(error or "task_generation: generated manifest is invalid")
+            message = error or "task_generation: generated manifest is invalid"
+            report_path = _write_generation_failure_report(
+                Path(project_root), attempts=attempts, error=message
+            )
+            raise AutoTaskError(f"{message}\nPartial report: {report_path}")
 
         manifest_source = _manifest_source(
             skill_root, skill_root.name, profile, generation_hash, tasks

@@ -84,8 +84,12 @@ describe('eval command', () => {
     execFileSync.mockReturnValue(Buffer.from(''));
     existsSync.mockReset();
     existsSync.mockReturnValue(true);
-    readFile.mockResolvedValue(
-      'apiVersion: comet.eval/v1alpha1\nkind: SkillEvalManifest\nmetadata: { name: demo }\nskill: { name: demo, source: .. }\nevaluation: {}\n',
+    readFile.mockImplementation((target: unknown) =>
+      Promise.resolve(
+        String(target).endsWith('task.toml')
+          ? `[metadata]\nname = "${path.basename(path.dirname(String(target)))}"\n`
+          : 'apiVersion: comet.eval/v1alpha1\nkind: SkillEvalManifest\nmetadata: { name: demo }\nskill: { name: demo, source: .. }\nevaluation: {}\n',
+      ),
     );
     prepareEvalManifest.mockReset();
     cleanupPreparedManifest.mockReset();
@@ -502,23 +506,28 @@ describe('eval command', () => {
   });
 
   it('rejects invalid deterministic inline expectations during static collection', async () => {
-    readFile.mockResolvedValue(
-      [
-        'apiVersion: comet.eval/v1alpha1',
-        'kind: SkillEvalManifest',
-        'metadata: { name: demo }',
-        'skill: { name: demo, source: .. }',
-        'evaluation:',
-        '  tasks:',
-        '    - name: invalid-expect',
-        '      prompt: do work',
-        '      expect:',
-        '        json:',
-        '          - file: result.json',
-        '            path: items[0]',
-        '            equals: done',
-        '',
-      ].join('\n'),
+    const invalidManifest = [
+      'apiVersion: comet.eval/v1alpha1',
+      'kind: SkillEvalManifest',
+      'metadata: { name: demo }',
+      'skill: { name: demo, source: .. }',
+      'evaluation:',
+      '  tasks:',
+      '    - name: invalid-expect',
+      '      prompt: do work',
+      '      expect:',
+      '        json:',
+      '          - file: result.json',
+      '            path: items[0]',
+      '            equals: done',
+      '',
+    ].join('\n');
+    readFile.mockImplementation((target: unknown) =>
+      Promise.resolve(
+        String(target).endsWith('task.toml')
+          ? `[metadata]\nname = "${path.basename(path.dirname(String(target)))}"\n`
+          : invalidManifest,
+      ),
     );
     const { evalCollectCommand } = await import('../../app/commands/eval.js');
 

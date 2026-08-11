@@ -7,6 +7,7 @@ import { pathToFileURL } from 'url';
 import { promisify } from 'util';
 import { parse } from 'yaml';
 import { generateFactorySkillPackage } from '../../../domains/factory/package.js';
+import { collectStandaloneTasks, resolveEvalContext } from '../../../domains/eval/index.js';
 import type {
   FactoryResolvedSkill,
   FactorySkillPackagePlan,
@@ -339,6 +340,35 @@ describe('Factory skill package generation', () => {
 
   afterEach(async () => {
     await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it('round-trips its generated eval manifest through static collection and Python loading', async () => {
+    const workflow = normalizeWorkflowDefinition(customWorkflow('eval-roundtrip'));
+    const output = await generateFactorySkillPackage(
+      packagePlan({ root, name: 'eval-roundtrip', workflow }),
+    );
+    const manifest = path.join(output.packageRoot, 'comet', 'eval.yaml');
+    const context = await resolveEvalContext({ manifest, project: root });
+
+    await expect(collectStandaloneTasks({}, context, path.resolve('.'))).resolves.toContain(
+      'Tasks: recommended',
+    );
+    await expect(
+      execFileAsync(
+        'uv',
+        [
+          'run',
+          'python',
+          '-c',
+          'from pathlib import Path; from scaffold.python.manifests import load_eval_manifest; load_eval_manifest(Path(__import__("sys").argv[1]))',
+          manifest,
+        ],
+        { cwd: path.resolve('eval') },
+      ),
+    ).resolves.toBeDefined();
+    const content = await fs.readFile(manifest, 'utf8');
+    expect(content).toContain('expectedArtifacts:');
+    expect(content).toContain('artifact: notes');
   });
 
   it('classifies scaffolded overlay packages when the Decision Core is not authored', async () => {

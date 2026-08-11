@@ -1371,31 +1371,19 @@ def verify_environment(project_root, request):
 
 def _docker_environment_dirs_for_request(request, tasks_dir: Path) -> list[Path]:
     """Return only task environments selected by the current eval invocation."""
-    if not tasks_dir.exists():
-        return []
-
     frozen = getattr(request.config, "_comet_frozen_task_set", None)
-    if frozen is not None:
-        return [item.task.environment_dir for item in frozen.tasks if item.task.environment_dir.is_dir()]
-
-    all_task_names = sorted(task_dir.name for task_dir in tasks_dir.iterdir() if task_dir.is_dir())
-    task_filter = request.config.getoption("--task")
-    manifest_path = request.config.getoption("--eval-manifest")
-    if task_filter:
-        task_names = [task_filter]
-    elif manifest_path:
-        from scaffold.python.manifests import load_eval_manifest
-
-        task_names = load_eval_manifest(manifest_path).recommended_tasks or all_task_names
-    else:
-        task_names = all_task_names
-
-    return [
-        environment_dir
-        for task_name in task_names
-        if (environment_dir := tasks_dir / task_name / "environment").is_dir()
-        and (environment_dir / "Dockerfile").is_file()
-    ]
+    if frozen is None:
+        raise pytest.UsageError("Eval task collection did not produce a frozen task set")
+    selected: list[Path] = []
+    for item in frozen.tasks:
+        environment_dir = item.task.environment_dir
+        if (
+            environment_dir.is_dir()
+            and (environment_dir / "Dockerfile").is_file()
+            and environment_dir not in selected
+        ):
+            selected.append(environment_dir)
+    return selected
 
 
 @pytest.fixture(scope="session", autouse=True)

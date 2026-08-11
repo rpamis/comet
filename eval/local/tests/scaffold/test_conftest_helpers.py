@@ -108,7 +108,24 @@ def test_auto_generation_loads_environment_before_resolving_cache_identity(
 
     def generate_manifest(_skill_path, _project_root, **kwargs):
         captured.update(kwargs)
-        return SimpleNamespace(manifest_path=tmp_path / "generated.yaml")
+        manifest_path = tmp_path / "generated.yaml"
+        manifest_path.write_text(
+            """apiVersion: comet.eval/v1alpha1
+kind: SkillEvalManifest
+metadata: {name: generated}
+skill: {name: generated, source: .}
+evaluation:
+  tasks:
+    - name: generated-one
+      prompt: one
+      expect: {files: [one.md]}
+    - name: generated-two
+      prompt: two
+      expect: {files: [two.md]}
+""",
+            encoding="utf-8",
+        )
+        return SimpleNamespace(manifest_path=manifest_path)
 
     options = {
         "--task": None,
@@ -135,7 +152,8 @@ def test_auto_generation_loads_environment_before_resolving_cache_identity(
 
     assert captured["agent"] == "codex"
     assert captured["model"] == "model-from-dotenv"
-    assert config.option.eval_manifest == str(tmp_path / "generated.yaml")
+    assert config.option.eval_manifest is None
+    assert config._comet_frozen_task_set.source == "generated-cache"
 
 
 def test_selected_agent_missing_credentials_fails_before_workloads():
@@ -1105,31 +1123,56 @@ def test_docker_prebuild_uses_only_the_tasks_selected_by_an_eval_manifest(
         environment.mkdir(parents=True)
         (environment / "Dockerfile").write_text("FROM python:3.11-slim\n", encoding="utf-8")
 
-    manifest = tmp_path / "eval.yaml"
-    manifest.write_text(
-        """
-apiVersion: comet.eval/v1alpha1
-kind: SkillEvalManifest
-metadata:
-  name: selected-tasks
-skill:
-  name: selected-tasks
-  source: .
-evaluation:
-  recommendedTasks:
-    - authoring-skill-smoke
-    - workflow-route-conformance
-""",
-        encoding="utf-8",
-    )
-
     class Config:
-        def getoption(self, name):
-            return {"--task": None, "--eval-manifest": str(manifest)}[name]
+        _comet_frozen_task_set = SimpleNamespace(
+            tasks=(
+                SimpleNamespace(task=SimpleNamespace(environment_dir=tasks_dir / "authoring-skill-smoke" / "environment")),
+                SimpleNamespace(task=SimpleNamespace(environment_dir=tasks_dir / "workflow-route-conformance" / "environment")),
+            )
+        )
 
     request = SimpleNamespace(config=Config())
 
     assert conftest._docker_environment_dirs_for_request(request, tasks_dir) == [
         tasks_dir / "authoring-skill-smoke" / "environment",
         tasks_dir / "workflow-route-conformance" / "environment",
+    ]
+
+
+@pytest.mark.parametrize(
+    "source,selected",
+    [
+        ("explicit", ["authoring-skill-smoke"]),
+        ("quick", ["workflow-route-conformance"]),
+        ("authored", ["authoring-skill-smoke"]),
+        ("recommended", ["workflow-route-conformance"]),
+        ("generated-cache", ["authoring-skill-smoke"]),
+        ("source", ["source-custom"]),
+    ],
+)
+def test_docker_prebuild_consumes_only_frozen_task_environments(tmp_path: Path, source, selected):
+    tasks_dir = tmp_path / "tasks"
+    environments = {}
+    for name in ("authoring-skill-smoke", "workflow-route-conformance", "source-custom", "unrelated"):
+        environment = tasks_dir / name / "environment"
+        environment.mkdir(parents=True)
+        (environment / "Dockerfile").write_text("FROM scratch\n", encoding="utf-8")
+        environments[name] = environment
+
+    frozen = SimpleNamespace(
+        source=source,
+        generation=SimpleNamespace(generation_hash="frozen-hash") if source == "generated-cache" else None,
+        tasks=tuple(
+            SimpleNamespace(
+                name=name,
+                provenance="source" if name == "source-custom" else source,
+                task=SimpleNamespace(environment_dir=environments[name]),
+            )
+            for name in [*selected, *selected]
+        ),
+    )
+    request = SimpleNamespace(config=SimpleNamespace(_comet_frozen_task_set=frozen))
+
+    assert conftest._docker_environment_dirs_for_request(request, tasks_dir) == [
+        environments[name] for name in selected
     ]

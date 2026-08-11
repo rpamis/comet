@@ -55,6 +55,9 @@ importers:
       mermaid:
         specifier: 11.15.0
         version: 11.15.0
+      smol-toml:
+        specifier: ^1.7.1
+        version: 1.7.1
       yaml:
         specifier: ^2.9.0
         version: 2.9.0
@@ -4313,6 +4316,13 @@ packages:
       }
     engines: { node: '>=20' }
 
+  smol-toml@1.7.1:
+    resolution:
+      {
+        integrity: sha512-PPlsspAZ4jbMBu5DMFhfUGDQLu/vrL4SyBROVS37x8ynnVmFIs1VPBz1Co8Xks3TvpIaZXmU85y4DrQ+UyVFoQ==,
+      }
+    engines: { node: '>= 18' }
+
   source-map-js@1.2.1:
     resolution:
       {
@@ -7366,6 +7376,8 @@ snapshots:
     dependencies:
       ansi-styles: 6.2.3
       is-fullwidth-code-point: 5.1.0
+
+  smol-toml@1.7.1: {}
 
   source-map-js@1.2.1: {}
 

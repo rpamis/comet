@@ -99,6 +99,8 @@ def _optional_draft_hash(metadata: dict) -> str | None:
     value = metadata.get("draftHash") or metadata.get("draft_hash")
     if value is None:
         return None
+    if value == "<current-bundle-hash>":
+        return None
     if not isinstance(value, str) or not SHA256_HEX_RE.match(value):
         raise ValueError("Expected metadata.draftHash to be 64 lowercase hex characters")
     return value
@@ -224,8 +226,8 @@ def _source_task_name(source: Path, task_name: object) -> str:
                 "metadata", {}
             )
             name = metadata.get("name")
-        except (OSError, ValueError, KeyError):
-            name = None
+        except (OSError, ValueError, KeyError) as exc:
+            raise ValueError(f"evaluation.tasks source task.toml is invalid: {source}") from exc
     name = name or source.name
     if not isinstance(name, str) or not TASK_NAME_RE.fullmatch(name):
         raise ValueError(f"Invalid evaluation task name: {name!r}")
