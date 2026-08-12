@@ -1,6 +1,7 @@
 import path from 'path';
+import { realpathSync } from 'fs';
 import { promises as fs } from 'fs';
-import { pathToFileURL } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 import { discoverNativeProject } from '../comet-native/native-paths.js';
 import {
@@ -115,8 +116,20 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
   return runCometHookRouter(argv);
 }
 
+export function isDirectEntry(
+  entry: string | undefined,
+  moduleUrl: string = import.meta.url,
+): boolean {
+  if (!entry) return false;
+  try {
+    return realpathSync(entry) === realpathSync(fileURLToPath(moduleUrl));
+  } catch {
+    return moduleUrl === pathToFileURL(entry).href;
+  }
+}
+
 const entry = process.argv[1];
-if (entry && import.meta.url === pathToFileURL(entry).href) {
+if (isDirectEntry(entry)) {
   void main().then((exitCode) => {
     process.exitCode = exitCode;
   });

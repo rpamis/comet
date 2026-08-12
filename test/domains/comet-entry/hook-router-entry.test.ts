@@ -1,10 +1,14 @@
 import path from 'node:path';
+import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { pathToFileURL } from 'node:url';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { inspectCometHook } from '../../../domains/comet-entry/hook-router.js';
 import {
   main,
+  isDirectEntry,
   projectRootFrom,
   runCometHookRouter,
 } from '../../../domains/comet-entry/hook-router-entry.js';
@@ -88,4 +92,22 @@ describe('Comet Hook Router entry', () => {
       projectRootFrom({ platformId: 'codex', projectRoot: path.resolve('project') }),
     ).resolves.toBe(path.resolve('project'));
   });
+
+  it.skipIf(process.platform === 'win32')(
+    'recognizes a direct invocation through a POSIX symlink',
+    async () => {
+      const tempDir = await mkdtemp(path.join(tmpdir(), 'comet-hook-router-entry-'));
+      const target = path.join(tempDir, 'router.mjs');
+      const link = path.join(tempDir, 'linked-router.mjs');
+      try {
+        await writeFile(target, 'export {};\n');
+        await symlink(target, link);
+
+        expect(isDirectEntry(link, pathToFileURL(target).href)).toBe(true);
+        expect(isDirectEntry(undefined, pathToFileURL(target).href)).toBe(false);
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
+    },
+  );
 });
