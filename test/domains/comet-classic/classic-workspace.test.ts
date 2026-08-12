@@ -145,6 +145,25 @@ describe('Classic workspace preparation and routing', () => {
     );
   });
 
+  it('rejects traversal in the change name and worktree path', async () => {
+    await expect(
+      prepareClassicWorkspace({
+        projectRoot: root,
+        name: '../../outside',
+        isolation: 'worktree',
+      }),
+    ).rejects.toThrow('Invalid change name');
+
+    await expect(
+      prepareClassicWorkspace({
+        projectRoot: root,
+        name: 'safe-change',
+        isolation: 'worktree',
+        worktreePath: path.resolve(root, '..', 'outside'),
+      }),
+    ).rejects.toThrow('must remain inside the primary worktree');
+  });
+
   it('initializes a new Classic state with the prepared workspace binding', async () => {
     const result = await withClassicCommandContext({ projectRoot: root, invocationCwd: root }, () =>
       classicStateCommand(['init', 'serial-change', 'full', '--isolation', 'current'], {

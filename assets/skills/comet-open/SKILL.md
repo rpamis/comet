@@ -23,7 +23,7 @@ Every prompt and artifact request passed to OpenSpec must include the resolved C
 When resuming an existing change, inspect `<classic-change-dir>/.comet.yaml` first:
 
 - If it exists and parses, first run `comet classic workspace resolve <change-name> --json`, enter the returned `projectRoot`, then select the change
-- If it is missing but the change directory is valid, run `comet state init <change-name> full`, then select the change
+- If it is missing but the change directory is valid, first prepare the workspace with the selected isolation mode, then run `comet state init <change-name> full --isolation <selected-isolation>` from the returned `projectRoot`, and select the change
 - If it is malformed, stop and report the parse error; repair it manually from version control, a backup, or verifiable artifacts before continuing, and never overwrite a damaged file with `state set`
 
 ```bash
@@ -225,7 +225,7 @@ Proceed to Step 4 after verification passes. The script outputs specific failure
 
 **Idempotent recovery algorithm**: all open phase operations can be safely re-executed. On recovery, process the status in this order:
 
-1. If state is missing, run `comet state init <name> full`; if malformed, stop and repair it instead of overwriting it. Then select the change and run `comet state check <name> open`.
+1. If state is missing, first prepare the workspace with the selected isolation mode, then run `comet state init <name> full --isolation <selected-isolation>` from the returned `projectRoot`; if malformed, stop and repair it instead of overwriting it. Then select the change and run `comet state check <name> open`.
 2. Run status and revalidate `changeRoot`, core ids, `applyRequires`, `artifacts`, and `missingDeps`.
 3. `done`: keep the artifact unchanged and do not regenerate it.
 4. `ready`: fetch its instructions, write the returned output, and immediately rerun status.

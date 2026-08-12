@@ -422,6 +422,7 @@ def parse_agent_transcript(path: Path, *, max_chars: int = 20_000) -> list[Traje
 def render_transcript_hook_script() -> str:
     """Return the no-credential Stop hook used by Qoder and CodeBuddy."""
     return """#!/usr/bin/env python3
+import hashlib
 import json
 import os
 import shutil

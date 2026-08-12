@@ -23,7 +23,7 @@ disable-model-invocation: true
 恢复已有 change 时先检查 `<classic-change-dir>/.comet.yaml`：
 
 - 状态文件存在且可解析：先运行 `comet classic workspace resolve <change-name> --json`，进入返回的 `projectRoot` 后再选择 change
-- 状态文件缺失但 change 目录有效：先运行 `comet state init <change-name> full`，再选择 change
+- 状态文件缺失但 change 目录有效：先使用所选隔离方式准备工作区，再进入返回的 `projectRoot` 运行 `comet state init <change-name> full --isolation <selected-isolation>`，最后选择 change
 - 状态文件格式异常：停止并报告解析错误；从版本控制、备份或可验证产物人工修复后再继续，不得用 `state set` 覆盖损坏文件
 
 ```bash
@@ -225,7 +225,7 @@ comet state check <name> open
 
 **幂等恢复算法**：open 阶段所有操作可安全重复执行。恢复时按以下顺序处理：
 
-1. 状态文件缺失时先运行 `comet state init <name> full`；格式异常时停止并修复，不得覆盖。随后选择 change 并运行 `comet state check <name> open`。
+1. 状态文件缺失时先使用所选隔离方式准备工作区，再进入返回的 `projectRoot` 运行 `comet state init <name> full --isolation <selected-isolation>`；格式异常时停止并修复，不得覆盖。随后选择 change 并运行 `comet state check <name> open`。
 2. 运行 `comet classic openspec -- status --change "<name>" --json`，重新验证 `changeRoot`、核心 ID、`applyRequires`、`artifacts` 和 `missingDeps`。
 3. `done`：该 artifact 已完成，保持原文件不变，不重复生成。
 4. `ready`：依赖已经满足，可以生成。先运行 `comet classic openspec -- instructions <artifact-id> --change "<name>" --json`，按返回内容写入；写完后立刻重新运行 status。

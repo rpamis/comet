@@ -423,6 +423,44 @@ def _get_image_name(directory: Path) -> str:
     return result.stdout.strip()
 
 
+def _get_custom_image_name(directory: Path, *, version: str) -> str:
+    """Resolve a custom-agent image name with the selected install metadata."""
+    script = (
+        'source "$1"; '
+        'image=$(get_image_name "$2" fixture-agent) || { echo "image lookup failed"; exit 1; }; '
+        'echo "image=$image"'
+    )
+    environment = {
+        **os.environ,
+        "COMET_EVAL_CUSTOM_AGENT_ID": "fixture-agent",
+        "COMET_EVAL_CUSTOM_EXECUTABLE": "fixture-agent-cli",
+        "COMET_EVAL_CUSTOM_INSTALL_KIND": "npm",
+        "COMET_EVAL_CUSTOM_INSTALL_PACKAGE": "fixture-agent-package",
+        "COMET_EVAL_CUSTOM_INSTALL_VERSION": version,
+    }
+    try:
+        result = subprocess.run(
+            [
+                utils.BASH_EXEC,
+                "-c",
+                script,
+                "_",
+                utils._to_bash_path(utils.SHELL_DIR / "docker.sh"),
+                utils._to_bash_path(directory),
+            ],
+            env=environment,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+    except FileNotFoundError:
+        pytest.skip("bash not available")
+    assert result.returncode == 0, f"get_image_name failed (stderr: {result.stderr})"
+    return result.stdout.strip()
+
+
 def test_get_image_name_falls_back_to_environment_dockerfile(tmp_path: Path):
     """get_image_name() resolves environment/Dockerfile when dir/Dockerfile is absent.
 
@@ -465,6 +503,13 @@ def test_get_image_name_prefers_root_dockerfile_over_environment(tmp_path: Path)
 
     assert _get_image_name(root_only) == _get_image_name(both)
     assert _get_image_name(both) != _get_image_name(env_only)
+
+
+def test_custom_image_name_changes_when_install_version_changes(tmp_path: Path):
+    (tmp_path / "Dockerfile").write_text("FROM python:3.11-slim\n", encoding="utf-8")
+    first = _get_custom_image_name(tmp_path, version="1.0.0")
+    second = _get_custom_image_name(tmp_path, version="2.0.0")
+    assert first != second
 
 
 def test_run_claude_fixture_defaults_langsmith_hook_log_path():

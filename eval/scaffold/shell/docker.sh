@@ -149,7 +149,17 @@ agent_version() {
         codex) printf '%s' "$CODEX_VERSION" ;;
         qoder) printf '%s' "$QODER_VERSION" ;;
         codebuddy) printf '%s' "$CODEBUDDY_VERSION" ;;
-        *) validate_agent "$1" || return 1; printf '%s' "custom" ;;
+        *)
+            validate_agent "$1" || return 1
+            local custom_identity
+            custom_identity=$(printf '%s\n%s\n%s\n%s' \
+                "${COMET_EVAL_CUSTOM_EXECUTABLE:-}" \
+                "${COMET_EVAL_CUSTOM_INSTALL_KIND:-none}" \
+                "${COMET_EVAL_CUSTOM_INSTALL_PACKAGE:-}" \
+                "${COMET_EVAL_CUSTOM_INSTALL_VERSION:-latest}")
+            custom_identity=$(sha256_text "$custom_identity") || return 1
+            printf 'custom-%s' "${custom_identity:0:12}"
+            ;;
     esac
 }
 

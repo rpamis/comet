@@ -13,7 +13,7 @@ import {
   listGitWorktrees,
   type GitWorktreeEntry,
 } from '../../platform/paths/git-worktree.js';
-import { inspectClassicActiveChangeDirectory } from './classic-paths.js';
+import { assertOpenSpecChangeName, inspectClassicActiveChangeDirectory } from './classic-paths.js';
 
 export type ClassicWorkspaceIsolation = 'current' | 'branch' | 'worktree';
 
@@ -85,6 +85,9 @@ async function pathExists(target: string): Promise<boolean> {
 
 function resolveWorktreePath(primaryRoot: string, name: string, requested?: string): string {
   const target = path.resolve(primaryRoot, requested ?? path.join('.worktrees', name));
+  if (!isInside(primaryRoot, target)) {
+    throw new Error('Classic worktree path must remain inside the primary worktree');
+  }
   const commonDir = path.resolve(
     primaryRoot,
     runGitCommand(primaryRoot, ['rev-parse', '--git-common-dir']),
@@ -123,6 +126,7 @@ export async function prepareClassicWorkspace(options: {
   targetBranch?: string;
   worktreePath?: string;
 }): Promise<ClassicWorkspacePreparation> {
+  assertOpenSpecChangeName(options.name);
   const initialRoot = path.resolve(options.projectRoot);
   const context = inspectGitWorktree(initialRoot);
   if (options.isolation === 'current') {
@@ -306,7 +310,7 @@ async function workspaceCandidates(
   const entries = listGitWorktrees(projectRoot);
   const roots =
     entries.length > 0
-      ? entries
+      ? [...entries]
       : [{ root: path.resolve(projectRoot), branch: null, detached: false }];
   if (!roots.some((entry) => samePath(entry.root, projectRoot))) {
     roots.push({

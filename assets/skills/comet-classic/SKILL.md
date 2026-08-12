@@ -50,7 +50,7 @@ comet classic workspace resolve <change-name> --json
 comet state select <change-name>
 ```
 
-Workspace decisions happen in `/comet-open` and follow `comet-classic/reference/workspace.md`: explicit parallel, simultaneous, or multi-session intent prepares a Worktree before binding; when isolation is unspecified, present `current`, `branch`, and `worktree` as a single-choice decision when needed, with recommendations as explanation only. Preparation and resume scan registered Worktrees and prefer the one whose branch matches. Ask for rebind only when the branch was renamed or taken over.
+Workspace decisions happen in `/comet-open` and follow `comet-classic/reference/workspace.md`: explicit parallel, simultaneous, or multi-session intent prepares a Worktree before binding; when isolation is unspecified, present `current`, `branch`, and `worktree` as a single-choice decision when needed, with recommendations as explanation only. Preparation and resume scan registered Worktrees and prefer the one whose branch matches. Ask for rebind when the branch was renamed, taken over, or its ownership cannot be confirmed.
 
 When multiple active changes exist and the user has not selected one, do not bind early; keep the existing `ask_user` decision point.
 
@@ -199,7 +199,7 @@ Nodes requiring user participation (pause only at these nodes):
 1. Workflow target selection: multiple active changes, continue an existing change versus create a new one, or choose which completed batch item starts first
 2. Open-phase final proposal/design/tasks review, including the change name and scope; clear requests have no pre-artifact summary/name confirmation
 3. Confirm the design approach during brainstorming
-4. Open-phase workspace decision: explicit parallel intent automatically uses a Worktree; serial intent uses the current workspace; unclear intent asks only serial-current versus parallel-Worktree
+4. Open-phase workspace decision: explicit parallel intent automatically uses a Worktree; when isolation is unclear, present the legal `current`, `branch`, and `worktree` choices as one decision
 5. One joint build decision: plan-ready pause, execution method, TDD mode, and code review mode
 6. Verify-phase acceptance of WARNING/SUGGESTION deviations, Spec drift handling, or continue/stop after the 4th failure; the first 3 clearly repairable failures close automatically
 7. Archive phase final confirmation before running the archive script

@@ -597,7 +597,7 @@ function DashboardApp({ theme, onToggleTheme }) {
     )
       return;
 
-    const nextId = visible[0]?.id ?? null;
+    const nextId = visible[0] ? dashboardChangeKey(visible[0]) : null;
     detailRequestRef.current?.abort();
     if (!nextId) {
       selectedIdRef.current = null;

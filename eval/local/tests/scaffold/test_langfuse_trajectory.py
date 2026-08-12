@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import io
 import json
+import subprocess
+import sys
 import tarfile
 from pathlib import Path
 
@@ -144,6 +146,29 @@ def test_transcript_hook_is_project_local_and_preserves_existing_settings(tmp_pa
     assert saved["custom"] is True
     assert len(saved["hooks"]["Stop"]) == 2
     assert "LANGFUSE_SECRET_KEY" not in settings.read_text(encoding="utf-8")
+
+    transcript = tmp_path / "transcript.jsonl"
+    transcript.write_text(
+        '{"type":"assistant","message":{"content":"done"}}\n',
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        [sys.executable, str(hook_path)],
+        input=json.dumps(
+            {
+                "hook_event_name": "Stop",
+                "transcript_path": str(transcript),
+                "cwd": str(tmp_path),
+            }
+        ),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert list(
+        (tmp_path / ".comet" / "eval" / "langfuse" / "trajectories").glob("*.jsonl")
+    )
 
 
 def test_codex_plugin_is_copied_into_the_project_codex_home_cache(tmp_path: Path):
