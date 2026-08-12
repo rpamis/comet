@@ -168,7 +168,7 @@ describe('Comet Native Skills', () => {
       {
         language: 'zh' as const,
         required: [
-          '拆分预检',
+          '拆分检测',
           '可独立实现和验证',
           '一次 Shape 确认',
           '确认前不得创建子 change',
@@ -187,7 +187,7 @@ describe('Comet Native Skills', () => {
           'Do not create child changes before confirmation',
           'automatically dispatch',
           'serial fallback',
-          'Text length and task count alone must not trigger decomposition',
+          'text length and task count alone must not trigger decomposition',
           'keep a single Native change',
         ],
       },
