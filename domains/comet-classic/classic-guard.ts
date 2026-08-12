@@ -237,11 +237,11 @@ async function handoffSourceFiles(changeDir: string): Promise<string[]> {
   const files = [`${changeRef}/proposal.md`, `${changeRef}/design.md`, `${changeRef}/tasks.md`];
   const specs = `${changeRef}/specs`;
   if (await exists(specs)) {
-    await inspectClassicProjectTarget(classicCommandProjectRoot(), specs, {
+    const specsInspection = await inspectClassicProjectTarget(classicCommandProjectRoot(), specs, {
       label: `Classic delta-spec directory ${specs}`,
       expected: 'directory',
     });
-    for (const entry of (await fs.readdir(specs)).sort()) {
+    for (const entry of (await fs.readdir(specsInspection.target)).sort()) {
       const spec = `${specs}/${entry}/spec.md`;
       if (await exists(spec)) files.push(spec);
     }

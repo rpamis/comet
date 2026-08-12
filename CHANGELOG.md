@@ -16,12 +16,13 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
-- **Project-local Hook write allowlist**: Projects can now configure `hook.allow_paths` in `.comet/config.yaml` for shared rules or notes that must remain writable during guarded Native Shape or Classic non-coding phases, while Comet Runtime and workflow-owned artifacts remain protected.
+- **Project-local Hook write allowlist**: Projects can now configure project-relative directories under `hook.allow_paths` in `.comet/config.yaml` for shared rules or notes that must remain writable during guarded Native Shape or Classic non-coding phases, while Comet Runtime and workflow-owned artifacts remain protected. The Hook itself does not block writes outside the project, so external paths do not need to be listed.
 - **Classic workspace routing**: Classic changes now choose and prepare their current branch or Worktree during Open, reuse matching registered Worktrees, and route resume/select operations to the aligned workspace.
 - **Native workspace reuse**: Native parallel changes now reuse an existing linked Worktree for their change branch and recreate a missing Worktree when the branch remains available.
 
 ### Fixed
 
+- **Classic Guard project-root resolution**: Classic design guards now enumerate delta specs from the discovered project root even when invoked from a nested working directory.
 - **Classic OpenSpec version passthrough**: `comet classic openspec -- --version` now routes through the Classic facade before top-level CLI option parsing, so `/comet-open` compares the OpenSpec CLI version instead of Comet's own version.
 - **Codex OpenSpec skills with OpenSpec 1.8**: `comet init` and `comet update` now read OpenSpec 1.8's `.agents` Codex skill output (keeping `.codex` as a legacy fallback for OpenSpec 1.7 and earlier), so project OpenSpec skills are refreshed to the installed CLI version instead of being reported as installed while staying stale. A missing or empty staged tool output now fails the OpenSpec update with a clear reason instead of silently reporting success.
 
