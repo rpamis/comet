@@ -42,6 +42,13 @@ describe('Native phase Hook guard', () => {
 
   const nonWriteRequest = (): NativeHookRequest => ({ intent: 'non-write', targets: [] });
 
+  async function addHookAllowPath(relativePath: string): Promise<void> {
+    await fs.appendFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      `hook:\n  allow_paths:\n    - ${relativePath}\n`,
+    );
+  }
+
   async function activeChange(phase: 'shape' | 'build' | 'verify' | 'archive', name: string) {
     const paths = await nativeProjectPaths(projectRoot, '.');
     await ensureNativeDirectories(paths);
@@ -148,6 +155,30 @@ describe('Native phase Hook guard', () => {
       phase,
       change: `guard-${phase}`,
     });
+  });
+
+  it('allows a configured project-local path during Native Shape', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    await addHookAllowPath('docs/team-notes');
+    await activeChange('shape', 'shape-allow-path');
+
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest('docs/team-notes/note.md')),
+    ).resolves.toMatchObject({
+      allowed: true,
+      phase: 'shape',
+      reason: expect.stringContaining('configured Hook allow path'),
+    });
+  });
+
+  it('does not let the allowlist bypass Native Runtime-owned files', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    await addHookAllowPath('.comet');
+    await activeChange('shape', 'runtime-reserved-allow-path');
+
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest('.comet/runtime/extra.json')),
+    ).resolves.toMatchObject({ allowed: false, phase: 'shape' });
   });
 
   it.each(['shape', 'verify', 'archive'] as const)(

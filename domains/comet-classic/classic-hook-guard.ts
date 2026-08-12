@@ -11,6 +11,7 @@ import { inspectClassicActiveChangeDirectory, openSpecChangeNameError } from './
 import { inspectClassicProjectTarget } from './classic-protected-path.js';
 import type { CometHookDecision, CometHookRequest } from '../comet-entry/hook-types.js';
 import { scopeCometHookTargets } from '../workflow-contract/hook-target-scope.js';
+import { configuredHookWritePath } from '../workflow-contract/hook-write-policy.js';
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
 import {
   driftStaleReason,
@@ -817,6 +818,13 @@ async function inspectClassicHookTarget(
     return allowed(`${relativePath} (whitelist: root markdown)`);
   }
 
+  const configuredAllowPath = await configuredHookWritePath(projectRoot, target, [
+    path.join(projectRoot, '.comet'),
+    layout.openSpecRoot,
+    layout.superpowersRoot,
+  ]);
+  if (configuredAllowPath) return allowed(configuredAllowPath);
+
   let governing: GoverningResolution;
   try {
     governing = await governingChange(relativePath, projectRoot, layout, selectedChangeName);
@@ -918,6 +926,7 @@ export async function inspectClassicHookGuard(
     };
   }
 
+  let configuredTarget = false;
   for (const target of request.targets) {
     const inspected = await inspectClassicHookTarget(
       projectRoot,
@@ -934,10 +943,13 @@ export async function inspectClassicHookGuard(
         phase: selected.phase,
       };
     }
+    if (inspected.stderr?.includes('configured Hook allow path')) configuredTarget = true;
   }
   return {
     allowed: true,
-    reason: `Classic write allowed in ${selected.phase}`,
+    reason: configuredTarget
+      ? 'Classic write allowed by configured Hook allow path'
+      : `Classic write allowed in ${selected.phase}`,
     workflow: 'classic',
     change: changeName,
     phase: selected.phase,

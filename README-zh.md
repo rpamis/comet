@@ -148,6 +148,15 @@ comet init --workflow both
 ambient_resume: false
 ```
 
+如果在非编码阶段仍需要写入项目内的共享规则或团队笔记目录，可以在同一份配置中声明 Hook 白名单。路径必须是项目相对目录；项目外路径仍按原有范围规则处理，`.comet` 和工作流产物目录不会被该配置绕过：
+
+```yaml
+hook:
+  allow_paths:
+    - .agents/rules
+    - docs/team-notes
+```
+
 Classic 专属默认值统一收纳在 `classic:` 块中；旧顶层字段会在下次 `comet init` / `comet update` 时迁移：
 
 ```yaml
@@ -536,7 +545,7 @@ Shape 的 `clarification_mode` 可设为 `sequential` 或 `batch`，新项目默
 
 | 文件或目录                                     | 用途                                                                 |
 | ---------------------------------------------- | -------------------------------------------------------------------- |
-| `.comet/config.yaml`                           | 选择启用/default workflow、artifact root、语言和澄清模式             |
+| `.comet/config.yaml`                           | 选择 workflow、artifact root、语言、澄清模式和项目内 Hook 写入白名单  |
 | `.comet/current-change.json`                   | Native/Classic 共用的当前需求归属；一次写入只路由到一个 workflow     |
 | `docs/comet/changes/<name>/comet-state.yaml`   | 可跨设备恢复的阶段、Loop、验收结果、阻塞项和下一步                    |
 | `docs/comet/changes/<name>/brief.md`           | Outcome、范围、非目标、验收示例、约束、决定和未决问题                 |

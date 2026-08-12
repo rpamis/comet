@@ -16,6 +16,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **Project-local Hook write allowlist**: Projects can now configure `hook.allow_paths` in `.comet/config.yaml` for shared rules or notes that must remain writable during guarded Native Shape or Classic non-coding phases, while Comet Runtime and workflow-owned artifacts remain protected.
 - **Classic workspace routing**: Classic changes now choose and prepare their current branch or Worktree during Open, reuse matching registered Worktrees, and route resume/select operations to the aligned workspace.
 - **Native workspace reuse**: Native parallel changes now reuse an existing linked Worktree for their change branch and recreate a missing Worktree when the branch remains available.
 

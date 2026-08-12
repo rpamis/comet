@@ -165,6 +165,15 @@ Generated configuration comments follow the language selected during installatio
 ambient_resume: false
 ```
 
+If an agent must write project-local shared rules or team notes during a non-coding phase, declare those directories in the same project configuration. Paths are project-relative; paths outside the project retain the existing scope behavior, and this setting cannot bypass `.comet` or workflow artifact directories:
+
+```yaml
+hook:
+  allow_paths:
+    - .agents/rules
+    - docs/team-notes
+```
+
 Classic-specific defaults live under `classic:`. The next `comet init` or `comet update` migrates legacy top-level fields:
 
 ```yaml
@@ -569,7 +578,7 @@ Shape supports `clarification_mode: sequential` and `clarification_mode: batch`.
 
 | File or directory                               | Purpose                                                                         |
 | ----------------------------------------------- | ------------------------------------------------------------------------------- |
-| `.comet/config.yaml`                            | Select enabled/default workflows, artifact root, language, and clarification mode |
+| `.comet/config.yaml`                            | Select workflows, artifact root, language, clarification mode, and project-local Hook write allow paths |
 | `.comet/current-change.json`                    | Shared Native/Classic ownership; each write routes to one workflow              |
 | `docs/comet/changes/<name>/comet-state.yaml`    | Portable phase, Loop, acceptance results, blockers, and next action              |
 | `docs/comet/changes/<name>/brief.md`            | Outcome, scope, non-goals, examples, constraints, decisions, and open questions  |

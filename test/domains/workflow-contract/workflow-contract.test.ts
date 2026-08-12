@@ -31,6 +31,39 @@ import {
 } from '../../../domains/workflow-contract/project-config-writer.js';
 
 describe('workflow contract normalization', () => {
+  it('normalizes project-local Hook allow paths and rejects unsafe paths', () => {
+    const parsed = parseWorkflowProjectConfigDocument(
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'workflows: [native]',
+        'native:',
+        '  artifact_root: docs',
+        'hook:',
+        '  allow_paths:',
+        '    - docs/team-notes',
+        '    - .agents\\rules',
+        '',
+      ].join('\n'),
+    );
+
+    expect(parsed.config?.hook).toEqual({ allow_paths: ['docs/team-notes', '.agents/rules'] });
+    expect(() =>
+      parseWorkflowProjectConfigDocument(
+        [
+          'schema: comet.project.v1',
+          'default_workflow: native',
+          'workflows: [native]',
+          'native:',
+          '  artifact_root: docs',
+          'hook:',
+          '  allow_paths: [../outside]',
+          '',
+        ].join('\n'),
+      ),
+    ).toThrow('hook.allow_paths[0] must stay inside its declared path base');
+  });
+
   it('keeps generated project-file reads bounded and rejects a post-inspection symlink swap', async () => {
     const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-generated-config-race-'));
     const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-generated-config-outside-'));
@@ -160,6 +193,9 @@ describe('workflow contract normalization', () => {
 
     const merged = mergeWorkflowProjectConfigDocument(
       {
+        hook: {
+          allow_paths: ['docs/team-notes'],
+        },
         native: {
           artifact_root: 'legacy-root',
           snapshot: {
@@ -173,6 +209,7 @@ describe('workflow contract normalization', () => {
     );
     expect(merged).not.toHaveProperty('native.snapshot');
     expect(merged).toHaveProperty('native.custom_extension', 'keep');
+    expect(merged).toHaveProperty('hook.allow_paths', ['docs/team-notes']);
 
     const parsed = parseWorkflowProjectConfigDocument(
       'schema: comet.project.v1\ndefault_workflow: native\nnative:\n  artifact_root: docs\n',
