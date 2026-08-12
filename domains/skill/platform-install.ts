@@ -56,6 +56,8 @@ const LEGACY_HOOK_SCRIPTS = [
 const LEGACY_RULE_FILES = ['comet-phase-guard.md', 'comet-native-phase-guard.md'] as const;
 const NATIVE_SHARED_SKILL_PATHS = new Set([
   'comet/SKILL.md',
+  'comet-review/SKILL.md',
+  'comet-review/agents/openai.yaml',
   'comet/scripts/comet-entry-runtime.mjs',
   'comet/scripts/comet-hook-router.mjs',
 ]);

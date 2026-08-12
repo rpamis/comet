@@ -1,0 +1,5 @@
+interface:
+  display_name: "Comet 手动代码审查"
+  short_description: "只读审查当前 change，不推进工作流"
+policy:
+  allow_implicit_invocation: false
