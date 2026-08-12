@@ -265,6 +265,8 @@ export const PLATFORMS: Platform[] = [
     openspecToolId: 'codebuddy',
     supportsHooks: true,
     hookFormat: 'codebuddy',
+    rulesDir: 'rules',
+    rulesFormat: 'md',
   },
   { id: 'costrict', name: 'CoStrict', skillsDir: '.cospec', openspecToolId: 'costrict' },
   { id: 'crush', name: 'Crush', skillsDir: '.crush', openspecToolId: 'crush' },
