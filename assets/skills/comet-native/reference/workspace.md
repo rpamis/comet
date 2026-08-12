@@ -1,6 +1,6 @@
 # Native workspace selection reference
 
-Read this file only when creating a change. Always create a parent's `readyChildren` in independent `worktree` mode targeting the parent's `workspace.changeBranch`. For other changes, use the user's existing choice of `current`, `branch`, or `worktree` directly.
+Read this file only when creating a change. Always create a Supervisor Change's `readyChildren` in independent `worktree` mode targeting the Supervisor Change's `workspace.changeBranch`. For other changes, use the user's existing choice of `current`, `branch`, or `worktree` directly.
 
 When the user explicitly says parallel, simultaneous, or multiple sessions, select `worktree` directly without asking for a three-way choice. When no isolation mode is specified and parallel intent is not explicit, ask the user only if any of these conditions is true:
 

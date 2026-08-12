@@ -1,6 +1,6 @@
 # Native 工作区选择参考
 
-只在创建 change 时读取。父 change 的 `readyChildren` 固定使用独立 `worktree`，并以父 change 的 `workspace.changeBranch` 为目标分支；其他 change 在用户已经指定 `current`、`branch` 或 `worktree` 时直接采用。
+只在创建 change 时读取。Supervisor Change 的 `readyChildren` 固定使用独立 `worktree`，并以 Supervisor Change 的 `workspace.changeBranch` 为目标分支；其他 change 在用户已经指定 `current`、`branch` 或 `worktree` 时直接采用。
 
 明确表达并行、同时处理或多个会话时，直接使用 `worktree`，不再询问三种方式。未指定隔离方式且没有明确并行意图时，出现以下任一情况才询问用户：
 
