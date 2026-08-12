@@ -690,5 +690,35 @@ describe('Native Dashboard v2 collector', () => {
     await expect(
       collectNativeDashboardChangePage(projectRoot, { status: 'active', limit: 51 }),
     ).rejects.toThrow('between 1 and 50');
+    await expect(
+      collectNativeDashboardChangePage(projectRoot, { status: 'active', limit: 0 }),
+    ).rejects.toThrow('between 1 and 50');
+    await expect(
+      collectNativeDashboardChangePage(projectRoot, { status: 'active', limit: 1.5 }),
+    ).rejects.toThrow('between 1 and 50');
+  });
+
+  it('returns empty results for unknown queries, locators, and changes', async () => {
+    await enableNative();
+    await writeActiveState(activeShapeState('known-change'));
+    await expect(
+      collectNativeDashboardChangePage(projectRoot, {
+        status: 'active',
+        query: 'does-not-exist',
+      }),
+    ).resolves.toMatchObject({ total: 0, items: [], nextCursor: null });
+    await expect(
+      collectNativeDashboardChangeDetail(projectRoot, {
+        status: 'active',
+        name: 'missing-change',
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      collectNativeDashboardChangeDetail(projectRoot, {
+        status: 'active',
+        name: 'known-change',
+        locator: 'not-a-native-locator',
+      }),
+    ).resolves.toBeNull();
   });
 });

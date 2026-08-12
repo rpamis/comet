@@ -139,6 +139,34 @@ describe('Native VCS-independent content snapshots', () => {
     expect(manifest.capture).toEqual({ provider: 'physical-tree' });
   });
 
+  it('rejects invalid snapshot budgets and unsafe denylist roots before capture', async () => {
+    const invalidOptions: Array<[string, Record<string, unknown>]> = [
+      ['maxFiles', { limits: { maxFiles: 0 } }],
+      ['maxFileBytes', { limits: { maxFileBytes: 0 } }],
+      ['maxTotalBytes', { limits: { maxTotalBytes: 0 } }],
+      ['maxManifestBytes', { limits: { maxManifestBytes: 0 } }],
+      ['deadline', { deadlineMs: 0 }],
+      ['git records', { gitSelectionLimits: { maxRecords: 0 } }],
+      ['git bytes', { gitSelectionLimits: { maxBytes: 0 } }],
+      ['git record bytes', { gitSelectionLimits: { maxRecordBytes: 0 } }],
+      ['physical nodes', { physicalSelectionLimits: { maxNodes: 0 } }],
+      ['physical bytes', { physicalSelectionLimits: { maxBytes: 0 } }],
+      ['physical path bytes', { physicalSelectionLimits: { maxPathBytes: 0 } }],
+      [
+        'physical path exceeds bytes',
+        { physicalSelectionLimits: { maxPathBytes: 2, maxBytes: 1 } },
+      ],
+    ];
+    for (const [label, options] of invalidOptions) {
+      try {
+        await createNativeContentSnapshot(paths, options);
+      } catch {
+        continue;
+      }
+      throw new Error(`${label} unexpectedly resolved`);
+    }
+  });
+
   it('fails closed when a discovered worktree .git file cannot be resolved', async () => {
     await Promise.all([
       fs.writeFile(path.join(projectRoot, '.git'), 'gitdir: C:/private/worktree-metadata\n'),
@@ -1342,6 +1370,615 @@ describe('Native VCS-independent content snapshots', () => {
     });
   });
 
+  it('covers Native snapshot manifest validation and optional metadata branches', () => {
+    const base = {
+      schema: 'comet.native.content-snapshot.v1',
+      origin: 'explicit',
+      createdAt: '2026-08-12T00:00:00.000Z',
+      complete: true,
+      limits: {
+        maxFiles: 10,
+        maxFileBytes: 100,
+        maxTotalBytes: 1_000,
+        maxManifestBytes: 10_000,
+        maxDurationMs: 1_000,
+      },
+      entries: [
+        {
+          path: 'src/main.ts',
+          hash: 'a'.repeat(64),
+          size: 1,
+          type: 'file',
+          gitObjectId: 'b'.repeat(40),
+        },
+      ],
+      omitted: [],
+      omittedCount: 0,
+    };
+    const policyInclude = ['**/*'];
+    const policyExclude = ['.cache/**'];
+    const policyHash = sha256Text(
+      `comet.native.snapshot-policy.v1\n${JSON.stringify({
+        include: policyInclude,
+        exclude: policyExclude,
+        hash: 'sha256',
+      })}`,
+    );
+    const parsed = parseNativeContentSnapshotManifest({
+      ...base,
+      policy: {
+        schema: 'comet.native.snapshot-policy.v1',
+        include: policyInclude,
+        exclude: policyExclude,
+        hash: policyHash,
+      },
+      omitted: [
+        { path: 'large.bin', size: null, type: 'file', reason: 'unreadable' },
+        { path: 'other.bin', size: null, type: 'file', reason: 'changed-during-read' },
+      ],
+      omittedCount: 3,
+      complete: false,
+      omissionOverflow: {
+        ref: `native-snapshot://omitted-overflow/${'c'.repeat(64)}`,
+        hash: 'c'.repeat(64),
+        count: 1,
+      },
+    });
+    expect(parsed.policy).toMatchObject({ include: policyInclude, exclude: policyExclude });
+    expect(parsed.entries[0]?.gitObjectId).toBe('b'.repeat(40));
+
+    const invalidCases: Array<[string, unknown, string]> = [
+      ['non-object', null, 'must be an object'],
+      ['unknown manifest field', { ...base, extra: true }, 'contains unknown field'],
+      ['schema', { ...base, schema: 'wrong' }, 'schema'],
+      ['origin', { ...base, origin: 'unknown' }, 'origin'],
+      ['capture provider', { ...base, capture: { provider: 'other' } }, 'capture provider'],
+      ['timestamp', { ...base, createdAt: 'not-a-date' }, 'timestamp'],
+      ['complete flag', { ...base, complete: 'true' }, 'complete flag'],
+      ['limits mapping', { ...base, limits: null }, 'limits must be an object'],
+      ['max files', { ...base, limits: { ...base.limits, maxFiles: 0 } }, 'maxFiles'],
+      ['max file bytes', { ...base, limits: { ...base.limits, maxFileBytes: 0 } }, 'maxFileBytes'],
+      [
+        'max total bytes',
+        { ...base, limits: { ...base.limits, maxTotalBytes: 0 } },
+        'maxTotalBytes',
+      ],
+      [
+        'max manifest bytes',
+        { ...base, limits: { ...base.limits, maxManifestBytes: 0 } },
+        'maxManifestBytes',
+      ],
+      ['max duration', { ...base, limits: { ...base.limits, maxDurationMs: 0 } }, 'maxDurationMs'],
+      [
+        'policy schema',
+        { ...base, policy: { schema: 'wrong', include: ['**/*'], exclude: [] } },
+        'policy schema',
+      ],
+      [
+        'policy arrays',
+        {
+          ...base,
+          policy: { schema: 'comet.native.snapshot-policy.v1', include: 'all', exclude: [] },
+        },
+        'policy patterns',
+      ],
+      [
+        'empty policy',
+        {
+          ...base,
+          policy: { schema: 'comet.native.snapshot-policy.v1', include: [], exclude: [] },
+        },
+        'include must not be empty',
+      ],
+      ['entries array', { ...base, entries: null }, 'entries and omissions'],
+      ['omitted array', { ...base, omitted: null }, 'entries and omissions'],
+      ['entry mapping', { ...base, entries: [null] }, 'entry 0 must be an object'],
+      [
+        'entry path',
+        { ...base, entries: [{ path: '../escape', hash: 'a'.repeat(64), size: 1, type: 'file' }] },
+        'stay inside',
+      ],
+      [
+        'entry hash',
+        { ...base, entries: [{ path: 'a.ts', hash: 'bad', size: 1, type: 'file' }] },
+        'entry 0 hash',
+      ],
+      [
+        'entry type',
+        { ...base, entries: [{ path: 'a.ts', hash: 'a'.repeat(64), size: 1, type: 'directory' }] },
+        'entry 0 type',
+      ],
+      [
+        'entry size',
+        { ...base, entries: [{ path: 'a.ts', hash: 'a'.repeat(64), size: -1, type: 'file' }] },
+        'entry 0 size',
+      ],
+      [
+        'entry object id',
+        {
+          ...base,
+          entries: [
+            { path: 'a.ts', hash: 'a'.repeat(64), size: 1, type: 'file', gitObjectId: 'bad' },
+          ],
+        },
+        'gitObjectId',
+      ],
+      [
+        'omission mapping',
+        { ...base, entries: [], omitted: [null], omittedCount: 1, complete: false },
+        'omission 0 must be an object',
+      ],
+      [
+        'omission type',
+        {
+          ...base,
+          entries: [],
+          omitted: [{ path: 'a', size: null, type: 'bad', reason: 'unreadable' }],
+          omittedCount: 1,
+          complete: false,
+        },
+        'omission 0 type',
+      ],
+      [
+        'omission reason',
+        {
+          ...base,
+          entries: [],
+          omitted: [{ path: 'a', size: null, type: 'file', reason: 'bad' }],
+          omittedCount: 1,
+          complete: false,
+        },
+        'omission 0 reason',
+      ],
+      [
+        'omission size',
+        {
+          ...base,
+          entries: [],
+          omitted: [{ path: 'a', size: -1, type: 'file', reason: 'unreadable' }],
+          omittedCount: 1,
+          complete: false,
+        },
+        'omission 0 size',
+      ],
+      [
+        'omission overflow hash',
+        { ...base, omissionOverflow: { ref: 'x', hash: 'bad', count: 1 } },
+        'overflow hash',
+      ],
+      [
+        'omission overflow ref',
+        { ...base, omissionOverflow: { ref: 'wrong', hash: 'd'.repeat(64), count: 1 } },
+        'overflow ref',
+      ],
+      [
+        'omission overflow count',
+        {
+          ...base,
+          omissionOverflow: {
+            ref: `native-snapshot://omitted-overflow/${'d'.repeat(64)}`,
+            hash: 'd'.repeat(64),
+            count: 0,
+          },
+        },
+        'overflow count',
+      ],
+      [
+        'duplicate entry',
+        { ...base, entries: [base.entries[0], base.entries[0]] },
+        'duplicate paths',
+      ],
+      ['omitted count', { ...base, omittedCount: -1 }, 'omittedCount'],
+      [
+        'complete mismatch',
+        {
+          ...base,
+          omitted: [{ path: 'a', size: null, type: 'file', reason: 'unreadable' }],
+          omittedCount: 1,
+        },
+        'completeness',
+      ],
+      [
+        'manifest byte limit',
+        { ...base, limits: { ...base.limits, maxManifestBytes: 1 } },
+        'manifest byte limit',
+      ],
+    ];
+
+    for (const [_label, value, message] of invalidCases) {
+      expect(() => parseNativeContentSnapshotManifest(value), _label).toThrow(message);
+    }
+  });
+
+  it('parses Git and physical selection evidence in every exceptional state', () => {
+    const stream = (overrides: Record<string, unknown> = {}) => ({
+      hash: 'a'.repeat(64),
+      recordCount: 1,
+      storedRecordCount: 1,
+      stdoutBytes: 1,
+      overflow: false,
+      ...overrides,
+    });
+    const gitSelection = (mode: 'changed' | 'overflow' | 'overflow-and-changed') => {
+      const changed = mode !== 'overflow';
+      const overflow = mode !== 'changed';
+      const before = stream({ overflow, storedRecordCount: overflow ? 0 : 1 });
+      const after = stream({
+        hash: changed ? 'b'.repeat(64) : 'a'.repeat(64),
+        overflow: overflow && !changed,
+        storedRecordCount: overflow && !changed ? 0 : 1,
+      });
+      return {
+        schema: 'comet.native.git-selection.v1',
+        status: mode,
+        stageBefore: before,
+        combined: stream(),
+        stageAfter: after,
+        finalStageBefore: after,
+        finalCombined: stream(),
+        finalStageAfter: after,
+      };
+    };
+    const physicalStream = (overrides: Record<string, unknown> = {}) => ({
+      hash: 'a'.repeat(64),
+      visitedNodeCount: 1,
+      recordCount: 1,
+      storedRecordCount: 1,
+      encodedBytes: 1,
+      overflow: false,
+      unstable: false,
+      ...overrides,
+    });
+    const physicalSelection = (mode: 'changed' | 'overflow' | 'overflow-and-changed') => {
+      const changed = mode !== 'overflow';
+      const overflow = mode !== 'changed';
+      return {
+        schema: 'comet.native.physical-selection.v1',
+        status: mode,
+        before: physicalStream({ overflow, storedRecordCount: overflow ? 0 : 1 }),
+        after: physicalStream({
+          hash: changed ? 'b'.repeat(64) : 'a'.repeat(64),
+          unstable: changed,
+          overflow: overflow && !changed,
+          storedRecordCount: overflow && !changed ? 0 : 1,
+        }),
+      };
+    };
+    const base = {
+      schema: 'comet.native.content-snapshot.v1',
+      origin: 'explicit',
+      createdAt: '2026-08-12T00:00:00.000Z',
+      complete: false,
+      limits: { maxFiles: 10, maxFileBytes: 100, maxTotalBytes: 1_000, maxManifestBytes: 10_000 },
+      entries: [],
+      omittedCount: 1,
+    };
+    for (const mode of ['changed', 'overflow', 'overflow-and-changed'] as const) {
+      const omitted = [
+        {
+          path: '.',
+          size: null,
+          type: 'directory',
+          reason: mode === 'changed' ? 'git-selection-changed' : 'git-enumeration-limit',
+        },
+      ];
+      if (mode === 'overflow-and-changed') {
+        omitted.push({
+          path: '.',
+          size: null,
+          type: 'directory',
+          reason: 'git-selection-changed',
+        });
+      }
+      expect(
+        parseNativeContentSnapshotManifest({
+          ...base,
+          omitted,
+          omittedCount: omitted.length,
+          capture: { provider: 'git', gitSelection: gitSelection(mode) },
+        }),
+      ).toMatchObject({ capture: { provider: 'git' }, omittedCount: omitted.length });
+    }
+    for (const mode of ['changed', 'overflow', 'overflow-and-changed'] as const) {
+      const omitted = [
+        {
+          path: '.',
+          size: null,
+          type: 'directory',
+          reason: mode === 'changed' ? 'physical-selection-changed' : 'physical-enumeration-limit',
+        },
+      ];
+      if (mode === 'overflow-and-changed') {
+        omitted.push({
+          path: '.',
+          size: null,
+          type: 'directory',
+          reason: 'physical-selection-changed',
+        });
+      }
+      expect(
+        parseNativeContentSnapshotManifest({
+          ...base,
+          omitted,
+          omittedCount: omitted.length,
+          capture: { provider: 'physical-tree', physicalSelection: physicalSelection(mode) },
+        }),
+      ).toMatchObject({ capture: { provider: 'physical-tree' }, omittedCount: omitted.length });
+    }
+    expect(
+      parseNativeContentSnapshotManifest({
+        ...base,
+        omitted: [{ path: '.', size: null, type: 'directory', reason: 'git-selection-changed' }],
+        omittedCount: 1,
+        capture: {
+          provider: 'physical-tree',
+          projection: { provider: 'git', selection: gitSelection('changed') },
+        },
+      }),
+    ).toMatchObject({ capture: { provider: 'physical-tree', projection: { provider: 'git' } } });
+
+    const invalid = [
+      { ...gitSelection('changed'), status: 'overflow' },
+      { ...gitSelection('changed'), stageBefore: { ...stream(), hash: 'bad' } },
+      { ...gitSelection('changed'), stageBefore: { ...stream(), storedRecordCount: 2 } },
+      { ...physicalSelection('changed'), status: 'overflow' },
+      { ...physicalSelection('changed'), before: { ...physicalStream(), unstable: 'no' } },
+      { ...physicalSelection('changed'), before: { ...physicalStream(), storedRecordCount: 2 } },
+    ];
+    for (const selection of invalid) {
+      expect(() =>
+        parseNativeContentSnapshotManifest({
+          ...base,
+          omitted: [{ path: '.', size: null, type: 'directory', reason: 'git-selection-changed' }],
+          capture: { provider: 'git', gitSelection: selection },
+        }),
+      ).toThrow();
+    }
+
+    const changedGit = gitSelection('changed');
+    const captureInvalidCases = [
+      { capture: null },
+      { capture: { provider: 'git', physicalSelection: physicalSelection('changed') } },
+      { capture: { provider: 'git', projection: { provider: 'git' } } },
+      { capture: { provider: 'physical-tree', gitSelection: changedGit } },
+      {
+        capture: {
+          provider: 'physical-tree',
+          physicalSelection: physicalSelection('changed'),
+          projection: { provider: 'git' },
+        },
+      },
+      { capture: { provider: 'other' } },
+      { capture: { provider: 'physical-tree', projection: { provider: 'other' } } },
+      { capture: { provider: 'git', gitSelection: { ...changedGit, extra: true } } },
+    ];
+    for (const candidate of captureInvalidCases) {
+      expect(() =>
+        parseNativeContentSnapshotManifest({
+          ...base,
+          omitted: [{ path: '.', size: null, type: 'directory', reason: 'git-selection-changed' }],
+          capture: candidate.capture,
+        }),
+      ).toThrow();
+    }
+  });
+
+  it('covers canonical capture combinations and stream validation', () => {
+    const stream = (overrides: Record<string, unknown> = {}) => ({
+      hash: 'a'.repeat(64),
+      recordCount: 1,
+      storedRecordCount: 1,
+      stdoutBytes: 1,
+      overflow: false,
+      ...overrides,
+    });
+    const gitSelection = {
+      schema: 'comet.native.git-selection.v1',
+      status: 'changed',
+      stageBefore: stream(),
+      combined: stream(),
+      stageAfter: stream({ hash: 'b'.repeat(64) }),
+      finalStageBefore: stream({ hash: 'b'.repeat(64) }),
+      finalCombined: stream(),
+      finalStageAfter: stream({ hash: 'b'.repeat(64) }),
+    };
+    const physicalSelection = {
+      schema: 'comet.native.physical-selection.v1',
+      status: 'changed',
+      before: {
+        hash: 'a'.repeat(64),
+        visitedNodeCount: 1,
+        recordCount: 1,
+        storedRecordCount: 1,
+        encodedBytes: 1,
+        overflow: false,
+        unstable: false,
+      },
+      after: {
+        hash: 'b'.repeat(64),
+        visitedNodeCount: 1,
+        recordCount: 1,
+        storedRecordCount: 1,
+        encodedBytes: 1,
+        overflow: false,
+        unstable: false,
+      },
+    };
+    const base = {
+      schema: 'comet.native.content-snapshot.v1',
+      origin: 'explicit',
+      createdAt: '2026-08-12T00:00:00.000Z',
+      complete: true,
+      limits: { maxFiles: 10, maxFileBytes: 100, maxTotalBytes: 1_000, maxManifestBytes: 10_000 },
+      entries: [],
+      omitted: [],
+      omittedCount: 0,
+    };
+    expect(parseNativeContentSnapshotManifest(base)).not.toHaveProperty('capture');
+    expect(
+      parseNativeContentSnapshotManifest({ ...base, capture: { provider: 'git' } }),
+    ).toMatchObject({
+      capture: { provider: 'git' },
+    });
+    expect(
+      parseNativeContentSnapshotManifest({
+        ...base,
+        capture: { provider: 'physical-tree' },
+      }),
+    ).toMatchObject({ capture: { provider: 'physical-tree' } });
+    expect(
+      parseNativeContentSnapshotManifest({
+        ...base,
+        omitted: [
+          { path: '.', size: null, type: 'directory', reason: 'physical-selection-changed' },
+        ],
+        omittedCount: 1,
+        complete: false,
+        capture: { provider: 'physical-tree', physicalSelection },
+      }),
+    ).toMatchObject({ capture: { provider: 'physical-tree' } });
+    expect(
+      parseNativeContentSnapshotManifest({
+        ...base,
+        omitted: [{ path: '.', size: null, type: 'directory', reason: 'git-selection-changed' }],
+        omittedCount: 1,
+        complete: false,
+        capture: {
+          provider: 'physical-tree',
+          projection: { provider: 'git', selection: gitSelection },
+        },
+      }),
+    ).toMatchObject({ capture: { provider: 'physical-tree', projection: { provider: 'git' } } });
+
+    const invalidCases: Array<Record<string, unknown>> = [
+      { capture: null },
+      { capture: { provider: 'git', physicalSelection } },
+      { capture: { provider: 'git', projection: { provider: 'git' } } },
+      { capture: { provider: 'physical-tree', gitSelection } },
+      {
+        capture: { provider: 'physical-tree', physicalSelection, projection: { provider: 'git' } },
+      },
+      { capture: { provider: 'other' } },
+      { capture: { provider: 'physical-tree', projection: { provider: 'other' } } },
+      { capture: { provider: 'git', gitSelection: { ...gitSelection, extra: true } } },
+      { capture: { provider: 'git', gitSelection: { ...gitSelection, status: 'overflow' } } },
+      {
+        capture: {
+          provider: 'git',
+          gitSelection: { ...gitSelection, stageBefore: stream({ storedRecordCount: 2 }) },
+        },
+      },
+      {
+        capture: {
+          provider: 'physical-tree',
+          physicalSelection: { ...physicalSelection, status: 'overflow' },
+        },
+      },
+      {
+        capture: {
+          provider: 'physical-tree',
+          physicalSelection: {
+            ...physicalSelection,
+            before: { ...physicalSelection.before, unstable: 'no' },
+          },
+        },
+      },
+    ];
+    for (const capture of invalidCases) {
+      expect(() => parseNativeContentSnapshotManifest({ ...base, ...capture })).toThrow();
+    }
+
+    expect(() =>
+      parseNativeContentSnapshotManifest({
+        ...base,
+        omitted: [{ path: '.', size: null, type: 'directory', reason: 'git-selection-changed' }],
+        omittedCount: 1,
+        capture: {
+          provider: 'git',
+          gitSelection: {
+            ...gitSelection,
+            status: 'changed',
+            stageBefore: stream({ overflow: 'no' }),
+          },
+        },
+      }),
+    ).toThrow('overflow flag');
+    expect(() =>
+      parseNativeContentSnapshotManifest({
+        ...base,
+        omitted: [{ path: '.', size: null, type: 'directory', reason: 'git-selection-changed' }],
+        omittedCount: 1,
+        capture: {
+          provider: 'git',
+          gitSelection: {
+            ...gitSelection,
+            status: 'changed',
+            stageBefore: stream({ storedRecordCount: 0 }),
+          },
+        },
+      }),
+    ).toThrow('stored record count');
+    expect(() =>
+      parseNativeContentSnapshotManifest({
+        ...base,
+        omitted: [{ path: '.', size: null, type: 'directory', reason: 'git-selection-changed' }],
+        omittedCount: 1,
+        capture: {
+          provider: 'git',
+          gitSelection: {
+            ...gitSelection,
+            status: 'changed',
+            stageBefore: stream({ recordCount: 2, storedRecordCount: 1 }),
+          },
+        },
+      }),
+    ).toThrow('stored record count');
+    expect(() =>
+      parseNativeContentSnapshotManifest({
+        ...base,
+        omitted: [{ path: '.', size: null, type: 'directory', reason: 'git-selection-changed' }],
+        omittedCount: 1,
+        capture: {
+          provider: 'git',
+          gitSelection: {
+            ...gitSelection,
+            status: 'changed',
+            stageBefore: stream(),
+            combined: stream(),
+            stageAfter: stream(),
+            finalStageBefore: stream(),
+            finalCombined: stream(),
+            finalStageAfter: stream(),
+          },
+        },
+      }),
+    ).toThrow('exceptional selection');
+    expect(() =>
+      parseNativeContentSnapshotManifest({
+        ...base,
+        omitted: [
+          { path: '.', size: null, type: 'directory', reason: 'physical-selection-changed' },
+        ],
+        omittedCount: 1,
+        capture: {
+          provider: 'physical-tree',
+          physicalSelection: {
+            ...physicalSelection,
+            status: 'changed',
+            before: physicalSelection.before,
+            after: physicalSelection.before,
+          },
+        },
+      }),
+    ).toThrow('exceptional selection');
+    expect(
+      parseNativeContentSnapshotManifest({
+        ...base,
+        capture: { provider: 'physical-tree', projection: { provider: 'git' } },
+      }),
+    ).toMatchObject({ capture: { provider: 'physical-tree', projection: { provider: 'git' } } });
+  });
+
   it('records an unreadable child as an omission while preserving the readable snapshot', async () => {
     const blocked = path.join(projectRoot, 'blocked.txt');
     await Promise.all([
@@ -1590,6 +2227,30 @@ describe('Native VCS-independent content snapshots', () => {
     ['?.md', 'docs/a.md', false],
   ])('matches snapshot glob %s against %s', (pattern, relativePath, expected) => {
     expect(compileNativeSnapshotPattern(pattern)(relativePath)).toBe(expected);
+  });
+
+  it('covers literal, wildcard, slash-sensitive, and invalid snapshot patterns', () => {
+    const cases: Array<[string, string, boolean]> = [
+      ['src/file.ts', 'src/file.ts', true],
+      ['src/file.ts', 'src/other.ts', false],
+      ['src/?.ts', 'src/a.ts', true],
+      ['src/?.ts', 'src/.ts', false],
+      ['src/?.ts', 'src/a/b.ts', false],
+      ['src/*.ts', 'src/file.ts', true],
+      ['src/*.ts', 'src/nested/file.ts', false],
+      ['**/*.ts', 'file.ts', true],
+      ['**/*.ts', 'src/nested/file.ts', true],
+      ['src/**', 'src/nested/file.ts', true],
+      ['src/**', 'other/file.ts', false],
+      ['**', 'a/b/c.ts', true],
+    ];
+    for (const [pattern, value, expected] of cases) {
+      expect(compileNativeSnapshotPattern(pattern)(value), `${pattern} -> ${value}`).toBe(expected);
+    }
+    expect(compileNativeSnapshotPattern('**/*')('src/file.ts', () => false)).toBe(false);
+    for (const pattern of ['', '../outside', 'a\\b', 'a\0b']) {
+      expect(() => compileNativeSnapshotPattern(pattern)).toThrow();
+    }
   });
 
   it('retains a deterministic hash/ref for omissions beyond the recorded output budget', async () => {

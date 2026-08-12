@@ -5,7 +5,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
   hashNativeArchiveTree,
+  hashNativeArchiveBytes,
   inspectNativeArchiveContent,
+  isNativeArchiveHash,
 } from '../../../domains/comet-native/native-archive-content.js';
 
 describe('Native Archive content identity budgets', () => {
@@ -66,5 +68,34 @@ describe('Native Archive content identity budgets', () => {
     } finally {
       await fs.rm(other, { recursive: true, force: true });
     }
+  });
+
+  it('validates every archive content limit and handles missing or unsafe targets', async () => {
+    const invalidLimits = [
+      ['maxDepth', 0],
+      ['maxEntries', Number.NaN],
+      ['maxFileBytes', -1],
+      ['maxTotalBytes', 1.5],
+      ['maxManifestBytes', Number.POSITIVE_INFINITY],
+      ['maxRefBytes', 0],
+    ] as const;
+    for (const [name, value] of invalidLimits) {
+      await expect(hashNativeArchiveTree(root, { [name]: value })).rejects.toThrow(name);
+    }
+    await expect(inspectNativeArchiveContent(path.join(root, 'missing'))).resolves.toBeNull();
+    const link = path.join(root, 'link');
+    await fs.symlink(root, link, process.platform === 'win32' ? 'junction' : 'dir');
+    await expect(inspectNativeArchiveContent(link)).rejects.toThrow('must not be a symlink');
+    expect(isNativeArchiveHash('a'.repeat(64))).toBe(true);
+    expect(isNativeArchiveHash('bad')).toBe(false);
+    expect(isNativeArchiveHash(null)).toBe(false);
+    expect(hashNativeArchiveBytes(new TextEncoder().encode('content'))).toMatch(/^[a-f0-9]{64}$/u);
+  });
+
+  it.runIf(process.platform !== 'win32')('rejects symlinks while walking', async () => {
+    const nested = path.join(root, 'nested');
+    await fs.mkdir(nested);
+    await fs.symlink(path.join(root, 'missing-target'), path.join(nested, 'link'));
+    await expect(hashNativeArchiveTree(root)).rejects.toThrow('must not contain symlinks');
   });
 });

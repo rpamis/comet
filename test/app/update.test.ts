@@ -972,6 +972,39 @@ describe('update command helpers', () => {
     });
   });
 
+  it('covers self-update semver and package-scope decision branches', async () => {
+    expect(resolveNpmSelfUpdatePlan('not-semver', '0.4.0')).toMatchObject({ action: 'fail' });
+    expect(resolveNpmSelfUpdatePlan('0.4.0', 'not-semver')).toMatchObject({ action: 'fail' });
+    expect(resolveNpmSelfUpdatePlan('0.4.0', '0.4.0')).toMatchObject({ action: 'skip' });
+    expect(resolveNpmSelfUpdatePlan('0.4.0', '0.4.1')).toEqual({
+      action: 'update',
+      version: '0.4.1',
+    });
+    expect(resolveNpmSelfUpdatePlan('0.4.0-beta.10', '0.4.0-beta.2')).toMatchObject({
+      action: 'skip',
+    });
+    expect(resolveNpmSelfUpdatePlan('0.4.0-alpha', '0.4.0-beta')).toMatchObject({
+      action: 'update',
+    });
+    expect(resolveNpmSelfUpdatePlan('0.4.0-alpha.1', '0.4.0-alpha.beta')).toMatchObject({
+      action: 'update',
+    });
+
+    const project = path.join(tmpDir, 'package-scope');
+    await fs.mkdir(path.join(project, 'node_modules', '@rpamis', 'comet'), { recursive: true });
+    await expect(
+      detectCometPackageScope(project, path.join(project, 'node_modules', '@rpamis', 'comet')),
+    ).resolves.toBe('project');
+    await fs.rm(path.join(project, 'node_modules'), { recursive: true, force: true });
+    await fs.writeFile(
+      path.join(project, 'package.json'),
+      JSON.stringify({ optionalDependencies: { '@rpamis/comet': '^0.4.0' } }),
+    );
+    await expect(detectCometPackageScope(project, path.join(tmpDir, 'other'))).resolves.toBe(
+      'project',
+    );
+  });
+
   it('does not self-update the global package for an explicit current-project refresh', async () => {
     await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
     await fs.writeFile(path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'), '# Comet');

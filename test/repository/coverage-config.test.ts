@@ -9,6 +9,6 @@ describe('coverage configuration', () => {
     for (const metric of ['functions', 'lines', 'statements']) {
       expect(config).toMatch(new RegExp(`${metric}: 80`, 'u'));
     }
-    expect(config).toMatch(/branches: 75/u);
+    expect(config).toMatch(/branches: 80/u);
   });
 });

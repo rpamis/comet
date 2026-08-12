@@ -102,4 +102,34 @@ describe('Native contract file collector', () => {
       }),
     ).rejects.toThrow(/exceeds/iu);
   });
+
+  it('rejects an oversized spec list and a proposed change without a source', async () => {
+    await expect(
+      collectNativeContractFiles({
+        changeDir,
+        briefRef: 'brief.md',
+        specChanges: Array.from({ length: 65 }, (_, index) => ({
+          capability: `too-many-${index}`,
+          operation: 'create' as const,
+          source: 'spec.md',
+          base_hash: null,
+        })),
+      }),
+    ).rejects.toThrow('spec-count budget');
+
+    await expect(
+      collectNativeContractFiles({
+        changeDir,
+        briefRef: 'brief.md',
+        specChanges: [
+          {
+            capability: 'missing-source',
+            operation: 'create',
+            source: null,
+            base_hash: null,
+          },
+        ],
+      }),
+    ).rejects.toThrow('has no proposed spec source');
+  });
 });

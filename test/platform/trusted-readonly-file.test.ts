@@ -65,5 +65,50 @@ describe('trusted read-only file capability', () => {
         parents: [],
       }),
     ).toContain('different host identity');
+    expect(
+      trustedReadonlyPosixFactsIssue({
+        currentUid: 1000,
+        fileUid: 0,
+        fileMode: 0o100444,
+        fileWritable: true,
+        parents: [],
+      }),
+    ).toContain('writable by the current process');
+    expect(
+      trustedReadonlyPosixFactsIssue({
+        currentUid: 1000,
+        fileUid: 0,
+        fileMode: 0o100444,
+        fileWritable: false,
+        parents: [{ uid: 1000, mode: 0o40555, writable: false }],
+      }),
+    ).toContain('parent chain');
+    expect(
+      trustedReadonlyPosixFactsIssue({
+        currentUid: 1000,
+        fileUid: 0,
+        fileMode: 0o100444,
+        fileWritable: false,
+        parents: [{ uid: 0, mode: 0o40777, writable: false }],
+      }),
+    ).toContain('parent chain');
+  });
+
+  it('rejects non-files and detects a changed identity', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-anchor-identity-'));
+    roots.push(root);
+    const file = path.join(root, 'controller-trust.json');
+    await fs.writeFile(file, '{}\n');
+    const unregister = registerTrustedReadonlyFileForTest(file);
+    try {
+      const identity = await assertTrustedReadonlyFile({ file });
+      await fs.writeFile(file, '{"changed":true}\n');
+      await expect(assertTrustedReadonlyFile({ file, previous: identity })).rejects.toThrow(
+        'identity changed',
+      );
+      await expect(assertTrustedReadonlyFile({ file: root })).rejects.toThrow('regular');
+    } finally {
+      unregister();
+    }
   });
 });

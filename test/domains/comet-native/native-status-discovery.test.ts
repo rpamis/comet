@@ -8,7 +8,10 @@ import {
   defaultProjectConfig,
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
-import { listDiscoveredNativeStatusPage } from '../../../domains/comet-native/native-status-discovery.js';
+import {
+  inspectDiscoveredNativeStatus,
+  listDiscoveredNativeStatusPage,
+} from '../../../domains/comet-native/native-status-discovery.js';
 import {
   ensureNativeDirectories,
   nativeProjectPaths,
@@ -49,5 +52,70 @@ describe('Native status discovery pagination', () => {
       path.resolve(projectRoot),
       '--json',
     ]);
+  });
+
+  it('follows a signed cursor and ends pagination at the final page', async () => {
+    const first = await listDiscoveredNativeStatusPage({ projectRoot });
+    const second = await listDiscoveredNativeStatusPage({
+      projectRoot,
+      cursor: first.nextCursor,
+    });
+
+    expect(second.offset).toBe(first.items.length);
+    expect(second.items.length).toBeGreaterThan(0);
+    expect(second.nextCursor).toBeNull();
+    expect(second.nextPageCommand).toBeNull();
+    expect(second.nextPageArgs).toBeNull();
+  });
+
+  it('rejects missing, stale, malformed, and invalid-offset cursors', async () => {
+    const first = await listDiscoveredNativeStatusPage({ projectRoot });
+    const cursor = first.nextCursor!;
+
+    await expect(
+      listDiscoveredNativeStatusPage({
+        projectRoot,
+        cursor: cursor.replace('native-workspaces-v1.', 'bad.'),
+      }),
+    ).rejects.toThrow('invalid or stale');
+    await expect(
+      listDiscoveredNativeStatusPage({ projectRoot, cursor: `${cursor}extra` }),
+    ).rejects.toThrow('invalid or stale');
+
+    const parts = cursor.split('.');
+    await expect(
+      listDiscoveredNativeStatusPage({
+        projectRoot,
+        cursor: `${parts[0]}.${parts[1]}.0.${parts[3]}`,
+      }),
+    ).rejects.toThrow('offset is invalid');
+    await expect(
+      listDiscoveredNativeStatusPage({
+        projectRoot,
+        cursor: `${parts[0]}.${parts[1]}.zz.${parts[3]}`,
+      }),
+    ).rejects.toThrow('offset is invalid');
+    await expect(
+      listDiscoveredNativeStatusPage({
+        projectRoot,
+        cursor: `${parts[0]}.${parts[1]}.1.${'0'.repeat(64)}`,
+      }),
+    ).rejects.toThrow('integrity failed');
+  });
+
+  it('returns a status projection for an existing and an unknown change', async () => {
+    const existing = await inspectDiscoveredNativeStatus({
+      projectRoot,
+      name: 'change-00',
+      details: true,
+    });
+    expect(existing).toMatchObject({ name: 'change-00' });
+
+    const missing = await inspectDiscoveredNativeStatus({
+      projectRoot,
+      name: 'not-created',
+      acceptanceCursor: 'acceptance-cursor',
+    });
+    expect(missing).toMatchObject({ name: 'not-created' });
   });
 });

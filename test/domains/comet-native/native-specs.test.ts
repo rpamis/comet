@@ -12,6 +12,7 @@ import { sha256File } from '../../../domains/comet-native/native-hash.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import {
   markNativeSpecRemoval,
+  readNativeProposedSpecs,
   reconcileNativeSpecChanges,
 } from '../../../domains/comet-native/native-specs.js';
 import { nativeTransitionJournalFile } from '../../../domains/comet-native/native-transition-journal.js';
@@ -175,5 +176,22 @@ describe('Native runtime-owned spec metadata', () => {
     await expect(fs.access(nativeTransitionJournalFile(paths, state.name))).rejects.toMatchObject({
       code: 'ENOENT',
     });
+  });
+
+  it('keeps existing remove metadata when no proposed specs remain and reads an empty proposal set', async () => {
+    const state = await createNativeChange({
+      paths,
+      verificationProtocol: 'legacy-v1',
+      name: 'empty-proposals',
+      language: 'en',
+    });
+    const canonicalFile = await canonical('legacy-capability', 'legacy\n');
+    const baseHash = await sha256File(canonicalFile);
+    const withRemoval = await markNativeSpecRemoval(paths, state.name, 'legacy-capability');
+
+    await expect(reconcileNativeSpecChanges(paths, withRemoval)).resolves.toEqual([
+      { capability: 'legacy-capability', operation: 'remove', base_hash: baseHash },
+    ]);
+    await expect(readNativeProposedSpecs(paths, state.name)).resolves.toEqual({});
   });
 });

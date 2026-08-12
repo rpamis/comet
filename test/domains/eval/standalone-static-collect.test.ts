@@ -252,6 +252,155 @@ describe('standalone static collector parity', () => {
     }
   });
 
+  it('fails closed across the installed custom adapter metadata matrix', async () => {
+    const { root } = await skillRoot();
+    const registry = path.join(path.dirname(root), 'adapters');
+    const candidate = path.join(registry, 'matrix-agent');
+    await fs.mkdir(candidate, { recursive: true });
+    const valid = () =>
+      [
+        'apiVersion: comet.eval.agent/v1alpha1',
+        'kind: EvalAgentAdapter',
+        'metadata: { id: matrix-agent, version: 1.0.0 }',
+        'runtime: { executable: matrix-agent, install: { kind: none } }',
+        'credentials: [MATRIX_AGENT_KEY]',
+        'modelEnv: MATRIX_AGENT_MODEL',
+        'baseUrlEnv: MATRIX_AGENT_BASE_URL',
+        'capabilities: { singleTurn: true, resume: true, structuredEvents: true, telemetry: false, skillInvocationEvidence: true }',
+        '',
+      ].join('\n');
+    const previous = process.env.COMET_EVAL_ADAPTERS_DIR;
+    process.env.COMET_EVAL_ADAPTERS_DIR = registry;
+    try {
+      await expect(loadInstalledCustomAgent('codex')).resolves.toBeNull();
+      await expect(loadInstalledCustomAgent('bad id')).resolves.toBeNull();
+      await expect(loadInstalledCustomAgent('missing-agent')).rejects.toThrow('not installed');
+
+      const cases: Array<[string, string, string]> = [
+        ['invalid YAML', 'not: [valid', 'invalid adapter.yaml'],
+        ['scalar document', 'true\n', 'must be a mapping'],
+        ['unknown field', `${valid()}extra: true\n`, 'invalid adapter metadata'],
+        [
+          'API version',
+          valid().replace('comet.eval.agent/v1alpha1', 'wrong/v1'),
+          'invalid adapter metadata',
+        ],
+        [
+          'metadata id',
+          valid().replace('id: matrix-agent', 'id: other-agent'),
+          'invalid adapter metadata',
+        ],
+        [
+          'metadata version',
+          valid().replace('version: 1.0.0', 'version: "not safe"'),
+          'invalid metadata.version',
+        ],
+        [
+          'runtime missing',
+          valid().replace('runtime: { executable: matrix-agent, install: { kind: none } }\n', ''),
+          'runtime must be a mapping',
+        ],
+        [
+          'runtime fields',
+          valid().replace(
+            'runtime: { executable: matrix-agent, install: { kind: none } }',
+            'runtime: { executable: matrix-agent, unknown: true }',
+          ),
+          'runtime has unknown fields',
+        ],
+        [
+          'runtime executable',
+          valid().replace('executable: matrix-agent', 'executable: "bad token"'),
+          'runtime.executable is invalid',
+        ],
+        [
+          'install mapping',
+          valid().replace('install: { kind: none }', 'install: invalid'),
+          'runtime.install must be a mapping',
+        ],
+        [
+          'install kind',
+          valid().replace('kind: none', 'kind: cargo'),
+          'runtime.install.kind is invalid',
+        ],
+        [
+          'install package without kind',
+          valid().replace('install: { kind: none }', 'install: { kind: none, package: package }'),
+          'package requires npm or pip',
+        ],
+        [
+          'install package',
+          valid().replace(
+            'install: { kind: none }',
+            'install: { kind: npm, package: "bad package" }',
+          ),
+          'runtime.install package is invalid',
+        ],
+        [
+          'credentials count',
+          valid().replace('credentials: [MATRIX_AGENT_KEY]', 'credentials: [A, B, C]'),
+          'credentials are invalid',
+        ],
+        [
+          'credentials name',
+          valid().replace('credentials: [MATRIX_AGENT_KEY]', 'credentials: [bad-name]'),
+          'credentials are invalid',
+        ],
+        [
+          'duplicate credentials',
+          valid().replace(
+            'credentials: [MATRIX_AGENT_KEY]',
+            'credentials: [MATRIX_AGENT_KEY, MATRIX_AGENT_KEY]',
+          ),
+          'credentials are invalid',
+        ],
+        [
+          'capabilities missing',
+          valid().replace(
+            'capabilities: { singleTurn: true, resume: true, structuredEvents: true, telemetry: false, skillInvocationEvidence: true }',
+            '',
+          ),
+          'capabilities are invalid',
+        ],
+        [
+          'capability unknown',
+          valid().replace(
+            'skillInvocationEvidence: true }',
+            'skillInvocationEvidence: true, unknown: true }',
+          ),
+          'capabilities are invalid',
+        ],
+        [
+          'capability type',
+          valid().replace('singleTurn: true', 'singleTurn: yes'),
+          'capabilities are invalid',
+        ],
+        [
+          'model env',
+          valid().replace('modelEnv: MATRIX_AGENT_MODEL', 'modelEnv: bad-name'),
+          'modelEnv must be an environment variable name',
+        ],
+        [
+          'base URL env',
+          valid().replace('baseUrlEnv: MATRIX_AGENT_BASE_URL', 'baseUrlEnv: bad-name'),
+          'baseUrlEnv must be an environment variable name',
+        ],
+      ];
+      for (const [label, content, message] of cases) {
+        await fs.writeFile(path.join(candidate, 'adapter.yaml'), content, 'utf8');
+        await expect(loadInstalledCustomAgent('matrix-agent'), label).rejects.toThrow(message);
+      }
+
+      await fs.rm(path.join(candidate, 'adapter.yaml'));
+      await expect(loadInstalledCustomAgent('matrix-agent')).rejects.toThrow(
+        'missing adapter.yaml',
+      );
+    } finally {
+      if (previous === undefined) delete process.env.COMET_EVAL_ADAPTERS_DIR;
+      else process.env.COMET_EVAL_ADAPTERS_DIR = previous;
+    }
+  });
+
   it('rejects manifests that set both alias spellings', async () => {
     const { root, manifest } = await skillRoot(
       [

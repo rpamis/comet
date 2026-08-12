@@ -10,11 +10,19 @@ import {
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
 import {
+  assertCapabilityId,
+  assertNativeName,
   compareAndSwapNativeChange,
   createNativeChange,
+  inspectNativeChangeValue,
   listNativeChanges,
   NATIVE_CHANGE_DOCUMENT_MAX_BYTES,
   NativeChangeRevisionConflictError,
+  nativeChangeDocument,
+  nativeV2ChangeDocument,
+  parseLegacyNativeChangeValue,
+  parseNativeChangeValue,
+  parseV2NativeChangeValue,
   readNativeChange,
   writeNativeChange,
 } from '../../../domains/comet-native/native-change.js';
@@ -25,9 +33,36 @@ import {
 import { readNativeBaselineManifest } from '../../../domains/comet-native/native-snapshot.js';
 import {
   NATIVE_CHANGE_SCHEMA,
+  NATIVE_LEGACY_CHANGE_SCHEMA,
   NATIVE_RUNTIME_PROTOCOL_VERSION,
+  NATIVE_V2_CHANGE_SCHEMA,
   type NativeProjectPaths,
 } from '../../../domains/comet-native/native-types.js';
+
+function validNativeChangeValue(patch: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    schema: NATIVE_CHANGE_SCHEMA,
+    minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION,
+    revision: 1,
+    verification_protocol: 'legacy-v1',
+    name: 'parser-change',
+    language: 'en',
+    phase: 'shape',
+    brief: 'brief.md',
+    approval: null,
+    spec_changes: [],
+    verification_result: 'pending',
+    verification_report: null,
+    implementation_scope: null,
+    verification_evidence: null,
+    partial_allowance: null,
+    archived: false,
+    created_at: '2026-08-12',
+    run_id: null,
+    approved_contract_hash: null,
+    ...patch,
+  };
+}
 
 describe('Native change store', () => {
   let projectRoot: string;
@@ -40,6 +75,243 @@ describe('Native change store', () => {
 
   afterEach(async () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
+  });
+
+  it('validates Native names and parses legacy, v2, and current change documents', () => {
+    expect(() => assertNativeName('valid-change-2')).not.toThrow();
+    expect(() => assertCapabilityId('capability-2')).not.toThrow();
+    expect(() => assertNativeName('Bad Change')).toThrow('Invalid Native change name');
+    expect(() => assertCapabilityId('../escape')).toThrow('Invalid Native capability id');
+
+    const legacy = {
+      ...validNativeChangeValue(),
+      schema: NATIVE_LEGACY_CHANGE_SCHEMA,
+    };
+    delete legacy.minimum_runtime_version;
+    delete legacy.revision;
+    delete legacy.verification_protocol;
+    delete legacy.approved_contract_hash;
+    delete legacy.implementation_scope;
+    delete legacy.verification_evidence;
+    delete legacy.partial_allowance;
+    const parsedLegacy = parseLegacyNativeChangeValue(legacy);
+    expect(parsedLegacy.schema).toBe(NATIVE_LEGACY_CHANGE_SCHEMA);
+
+    const v2 = {
+      ...legacy,
+      schema: NATIVE_V2_CHANGE_SCHEMA,
+      minimum_runtime_version: 2,
+      revision: 4,
+    };
+    const parsedV2 = parseV2NativeChangeValue(v2);
+    expect(parsedV2.revision).toBe(4);
+
+    const current = parseNativeChangeValue(
+      validNativeChangeValue({
+        approval: 'confirmed',
+        approved_contract_hash: 'a'.repeat(64),
+        implementation_scope: `runtime/evidence/scopes/${'b'.repeat(64)}.json`,
+        verification_evidence: `runtime/evidence/verifications/${'c'.repeat(64)}.json`,
+        partial_allowance: `runtime/evidence/allowances/${'d'.repeat(64)}.json`,
+        verification_report: 'runtime/verification-report.json',
+        run_id: 'run-1',
+        archived: true,
+        phase: 'archive',
+        verification_result: 'pass',
+        language: 'zh-CN',
+        spec_changes: [
+          { capability: 'new-cap', operation: 'create', source: 'specs/new.md', base_hash: null },
+          {
+            capability: 'replace-cap',
+            operation: 'replace',
+            source: 'specs/replace.md',
+            base_hash: 'e'.repeat(64),
+          },
+          { capability: 'remove-cap', operation: 'remove', base_hash: 'f'.repeat(64) },
+        ],
+      }),
+    );
+    expect(current).toMatchObject({ phase: 'archive', approval: 'confirmed', archived: true });
+    expect(nativeChangeDocument(current).schema).toBe(NATIVE_CHANGE_SCHEMA);
+    expect(nativeChangeDocument(current).spec_changes).toHaveLength(3);
+    expect(nativeV2ChangeDocument(parsedV2).schema).toBe(NATIVE_V2_CHANGE_SCHEMA);
+  });
+
+  it('reports migration, incompatibility, and current inspection states', () => {
+    const legacy = { ...validNativeChangeValue(), schema: NATIVE_LEGACY_CHANGE_SCHEMA };
+    delete legacy.minimum_runtime_version;
+    delete legacy.revision;
+    delete legacy.verification_protocol;
+    delete legacy.approved_contract_hash;
+    delete legacy.implementation_scope;
+    delete legacy.verification_evidence;
+    delete legacy.partial_allowance;
+
+    expect(inspectNativeChangeValue(legacy)).toMatchObject({
+      status: 'migration-required',
+      schema: NATIVE_LEGACY_CHANGE_SCHEMA,
+    });
+    expect(
+      inspectNativeChangeValue({ schema: 'comet.native.unknown', minimum_runtime_version: 9 }),
+    ).toMatchObject({
+      status: 'runtime-incompatible',
+      minimumRuntimeVersion: 9,
+    });
+    expect(inspectNativeChangeValue({})).toMatchObject({
+      status: 'runtime-incompatible',
+      schema: '(missing)',
+      minimumRuntimeVersion: null,
+    });
+    expect(inspectNativeChangeValue(validNativeChangeValue())).toMatchObject({
+      status: 'current',
+      minimumRuntimeVersion: NATIVE_RUNTIME_PROTOCOL_VERSION,
+    });
+    expect(() => parseNativeChangeValue(legacy)).toThrow('run comet native doctor');
+    expect(() =>
+      parseNativeChangeValue({
+        ...legacy,
+        schema: NATIVE_V2_CHANGE_SCHEMA,
+        minimum_runtime_version: 2,
+        revision: 1,
+      }),
+    ).toThrow('run comet native doctor');
+  });
+
+  it.each([
+    ['unknown current field', { extra: true }, 'unknown field'],
+    ['invalid minimum runtime', { minimum_runtime_version: 2 }, 'minimum_runtime_version must be'],
+    ['future minimum runtime', { minimum_runtime_version: 4 }, 'runtime protocol'],
+    ['invalid revision', { revision: 0 }, 'revision must be a positive integer'],
+    [
+      'invalid protocol',
+      { verification_protocol: 'v2' },
+      'verification_protocol must be legacy-v1',
+    ],
+    [
+      'approval hash without approval',
+      { approved_contract_hash: 'a'.repeat(64) },
+      'requires an approval',
+    ],
+    ['invalid approval hash', { approved_contract_hash: 'bad' }, 'approved_contract_hash'],
+    [
+      'invalid evidence ref',
+      { implementation_scope: 'runtime/evidence/bad.json' },
+      'implementation_scope',
+    ],
+    ['invalid date', { created_at: '2026-02-30' }, 'created_at must be'],
+    ['invalid run id', { run_id: '' }, 'run_id must be'],
+    ['invalid archived type', { archived: 'false' }, 'archived must be boolean'],
+    ['invalid verification report', { verification_report: 1 }, 'verification_report must be'],
+  ])('rejects %s current field', (_label, patch, message) => {
+    expect(() => parseNativeChangeValue(validNativeChangeValue(patch))).toThrow(message);
+  });
+
+  it.each([
+    ['missing name', { name: null }, 'name is required'],
+    ['invalid language', { language: 'fr' }, 'language must be'],
+    ['invalid phase', { phase: 'unknown' }, 'phase is invalid'],
+    ['invalid brief', { brief: 'README.md' }, 'brief must be'],
+    ['invalid approval', { approval: 'pending' }, 'approval is invalid'],
+    ['invalid spec list', { spec_changes: null }, 'spec_changes must be an array'],
+    [
+      'invalid verification result',
+      { verification_result: 'unknown' },
+      'verification_result is invalid',
+    ],
+    ['absolute verification report', { verification_report: '/tmp/report.json' }, 'stay inside'],
+    ['parent verification report', { verification_report: '../report.json' }, 'stay inside'],
+    ['invalid date shape', { created_at: '2026-1-1' }, 'created_at must be'],
+    ['invalid run id type', { run_id: 1 }, 'run_id must be'],
+  ])('rejects %s in the common change fields', (_label, patch, message) => {
+    expect(() => parseNativeChangeValue(validNativeChangeValue(patch))).toThrow(message);
+  });
+
+  it('rejects duplicate capabilities and invalid content-addressed references', () => {
+    expect(() =>
+      parseNativeChangeValue(
+        validNativeChangeValue({
+          spec_changes: [
+            { capability: 'same-cap', operation: 'create', source: 'one.md', base_hash: null },
+            { capability: 'same-cap', operation: 'remove', base_hash: 'a'.repeat(64) },
+          ],
+        }),
+      ),
+    ).toThrow('Duplicate Native capability operation');
+    expect(() =>
+      parseNativeChangeValue(
+        validNativeChangeValue({
+          implementation_scope: `runtime/evidence/unknown/${'a'.repeat(64)}.json`,
+        }),
+      ),
+    ).toThrow('implementation_scope');
+  });
+
+  it('accepts omitted optional protocol bindings and all supported relative references', () => {
+    const value = validNativeChangeValue();
+    delete value.verification_protocol;
+    delete value.approved_contract_hash;
+    const parsed = parseNativeChangeValue(value);
+    expect(parsed.verification_protocol).toBe('legacy-v1');
+    expect(parsed.approved_contract_hash).toBeNull();
+    expect(parsed.implementation_scope).toBeNull();
+  });
+
+  it.each([
+    ['non-mapping spec change', [null], 'must be a mapping'],
+    [
+      'missing capability',
+      [{ operation: 'create', source: 'spec.md', base_hash: null }],
+      'capability is required',
+    ],
+    [
+      'invalid operation',
+      [{ capability: 'cap', operation: 'update', base_hash: null }],
+      'Invalid spec operation',
+    ],
+    [
+      'non-string source',
+      [{ capability: 'cap', operation: 'create', source: 1, base_hash: null }],
+      'must be a string',
+    ],
+    [
+      'absolute source',
+      [{ capability: 'cap', operation: 'create', source: '/tmp/spec.md', base_hash: null }],
+      'stay inside',
+    ],
+    [
+      'create without source',
+      [{ capability: 'cap', operation: 'create', source: undefined, base_hash: null }],
+      'requires source',
+    ],
+    [
+      'create with base hash',
+      [{ capability: 'cap', operation: 'create', source: 'spec.md', base_hash: 'a'.repeat(64) }],
+      'requires null base_hash',
+    ],
+    [
+      'replace without source',
+      [{ capability: 'cap', operation: 'replace', base_hash: 'a'.repeat(64) }],
+      'requires source',
+    ],
+    [
+      'replace with invalid hash',
+      [{ capability: 'cap', operation: 'replace', source: 'spec.md', base_hash: null }],
+      'requires a SHA-256',
+    ],
+    [
+      'remove with source',
+      [{ capability: 'cap', operation: 'remove', source: 'spec.md', base_hash: 'a'.repeat(64) }],
+      'forbids source',
+    ],
+    [
+      'remove with invalid hash',
+      [{ capability: 'cap', operation: 'remove', base_hash: null }],
+      'requires a SHA-256',
+    ],
+  ])('rejects %s', (_label, specChanges, message) => {
+    expect(() =>
+      parseNativeChangeValue(validNativeChangeValue({ spec_changes: specChanges })),
+    ).toThrow(message);
   });
 
   it('creates the visible Native change layout without claiming Shape is complete', async () => {

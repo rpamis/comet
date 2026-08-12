@@ -45,6 +45,18 @@ describe('Native archive', () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
+  it('rejects an invalid preflight hash before inspecting Archive state', async () => {
+    await createNativeChange({
+      paths,
+      verificationProtocol: 'legacy-v1',
+      name: 'invalid-preflight',
+      language: 'en',
+    });
+    await expect(
+      archiveNativeChange({ paths, name: 'invalid-preflight', expectedPreflightHash: 'bad' }),
+    ).rejects.toThrow('expected preflight must be a SHA-256 hash');
+  });
+
   it('applies create, replace, and remove specs before archiving the active change', async () => {
     const replace = path.join(paths.specsDir, 'authentication', 'spec.md');
     const remove = path.join(paths.specsDir, 'legacy-auth', 'spec.md');

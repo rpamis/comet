@@ -56,6 +56,12 @@ describe('Hook write policy', () => {
         path.join(projectRoot, 'docs'),
       ]),
     ).resolves.toBeNull();
+    await expect(
+      configuredHookWritePath(projectRoot, path.join(projectRoot, 'docs', 'note.md')),
+    ).resolves.toContain('configured Hook allow path: docs');
+    await expect(
+      configuredHookWritePath(projectRoot, path.resolve(projectRoot, '..', 'note.md')),
+    ).resolves.toBeNull();
   });
 
   it('preserves an existing allowlist when another workflow rewrites its config', async () => {
@@ -69,5 +75,21 @@ describe('Hook write policy', () => {
     await expect(
       configuredHookWritePath(path.join(projectRoot, 'missing'), 'docs/note.md'),
     ).resolves.toBeNull();
+  });
+
+  it('uses case-sensitive comparison semantics off Windows', async () => {
+    await writeConfig(['Docs']);
+    const originalPlatform = process.platform;
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'linux' });
+    try {
+      await expect(configuredHookWritePath(projectRoot, 'Docs/note.md')).resolves.toContain(
+        'configured Hook allow path: Docs',
+      );
+    } finally {
+      Object.defineProperty(process, 'platform', {
+        configurable: true,
+        value: originalPlatform,
+      });
+    }
   });
 });

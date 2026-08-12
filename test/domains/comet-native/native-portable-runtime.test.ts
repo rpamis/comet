@@ -19,8 +19,10 @@ import {
   createNativePortableChange,
   dispatchNativePortableVerifier,
   executeNativePortableCheckPlan,
+  isNativePortableChange,
   nativeLocalExecutionFile,
   nativePortableChangeDir,
+  nativePortableStateFile,
   readNativePortableChange,
   recordNativePortableVerifierFailure,
   retryNativePortableVerifier,
@@ -45,6 +47,68 @@ describe('Native portable Runtime vertical path', () => {
 
   afterEach(async () => {
     await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it('bounds portable names, state discovery, and initial project configuration', async () => {
+    expect(() => nativePortableChangeDir(paths, '../escape')).toThrow('Invalid Native change name');
+    await expect(isNativePortableChange(paths, 'missing')).resolves.toBe(false);
+
+    await createNativePortableChange({
+      paths,
+      name: 'discovery-branches',
+      language: 'en',
+      initialProjectConfig: defaultProjectConfig('docs', 'en'),
+    });
+    expect(await fs.readFile(paths.configFile, 'utf8')).toContain('artifact_root');
+    await expect(isNativePortableChange(paths, 'discovery-branches')).resolves.toBe(true);
+
+    const stateFile = nativePortableStateFile(paths, 'discovery-branches');
+    await fs.writeFile(stateFile, 'not a Native state');
+    await expect(isNativePortableChange(paths, 'discovery-branches')).resolves.toBe(false);
+    await fs.rm(stateFile);
+    await fs.mkdir(stateFile);
+    await expect(isNativePortableChange(paths, 'discovery-branches')).rejects.toMatchObject({
+      code: expect.any(String),
+    });
+    await fs.rm(stateFile, { recursive: true });
+
+    await expect(
+      createNativePortableChange({ paths, name: 'bad_name', language: 'en' }),
+    ).rejects.toThrow('Invalid Native change name');
+  });
+
+  it('discovers proposed and modified capabilities while ignoring non-directories', async () => {
+    await createNativePortableChange({ paths, name: 'discovery', language: 'en' });
+    const changeDir = nativePortableChangeDir(paths, 'discovery');
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      '# Acceptance examples\n- The discovered capability is valid.\n',
+    );
+    await fs.writeFile(path.join(changeDir, 'specs', 'README.md'), 'ignored');
+    await fs.mkdir(path.join(changeDir, 'specs', 'new-capability'));
+    await fs.writeFile(
+      path.join(changeDir, 'specs', 'new-capability', 'spec.md'),
+      '# Requirement\nThe new capability works.\n',
+    );
+    await fs.mkdir(path.join(paths.specsDir, 'existing-capability'), { recursive: true });
+    await fs.writeFile(path.join(paths.specsDir, 'existing-capability', 'spec.md'), 'old');
+    await fs.mkdir(path.join(changeDir, 'specs', 'existing-capability'));
+    await fs.writeFile(
+      path.join(changeDir, 'specs', 'existing-capability', 'spec.md'),
+      '# Requirement\nThe existing capability works.\n',
+    );
+
+    await expect(confirmNativePortableShape({ paths, name: 'discovery' })).resolves.toMatchObject({
+      spec_changes: [
+        { capability: 'existing-capability', operation: 'modify' },
+        { capability: 'new-capability', operation: 'create' },
+      ],
+    });
+
+    await fs.mkdir(path.join(changeDir, 'specs', 'bad_name'));
+    await expect(confirmNativePortableShape({ paths, name: 'discovery' })).rejects.toThrow(
+      'Invalid Native capability',
+    );
   });
 
   it('creates only portable user artifacts and one local execution overlay', async () => {
