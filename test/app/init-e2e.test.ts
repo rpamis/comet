@@ -2467,7 +2467,7 @@ describe('comet init E2E', () => {
           initCommand(tmpDir, { yes: true, json: true }),
         );
 
-        expect((result.results as unknown[]).length).toBeGreaterThanOrEqual(33);
+        expect((result.results as unknown[]).length).toBeGreaterThanOrEqual(34);
 
         const manifest = await readManifest();
         const platformDirs = [
@@ -2488,6 +2488,7 @@ describe('comet init E2E', () => {
           '.lingma',
           '.junie',
           '.codebuddy',
+          '.workbuddy',
           '.cospec',
           '.crush',
           '.factory',
@@ -2532,6 +2533,34 @@ describe('comet init E2E', () => {
     },
     INIT_E2E_TIMEOUT_MS,
   );
+
+  it('installs WorkBuddy Skills in the user-level .workbuddy directory', async () => {
+    mockExternalSuccess();
+
+    const fakeHome = path.join(tmpDir, 'fake-home');
+    await fs.mkdir(fakeHome, { recursive: true });
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+
+    try {
+      const { initCommand } = await import('../../app/commands/init.js');
+      const result = await captureJsonOutput(() =>
+        initCommand(tmpDir, {
+          yes: true,
+          json: true,
+          scope: 'global',
+          platform: 'workbuddy',
+          workflow: 'native',
+        }),
+      );
+
+      expect(result.selectedPlatforms).toEqual(['workbuddy']);
+      await expect(
+        fs.access(path.join(fakeHome, '.workbuddy', 'skills', 'comet', 'SKILL.md')),
+      ).resolves.toBeUndefined();
+    } finally {
+      homedirSpy.mockRestore();
+    }
+  });
 
   it(
     'installs Antigravity and Antigravity 2.0 Comet skills to their respective global skills directories',

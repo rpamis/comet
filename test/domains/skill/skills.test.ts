@@ -1482,6 +1482,7 @@ describe('skills', () => {
       { id: 'qwen', skillsDir: '.qwen', hookFormat: 'qwen' as const },
       { id: 'qoder', skillsDir: '.qoder', hookFormat: 'qoder' as const },
       { id: 'codebuddy', skillsDir: '.codebuddy', hookFormat: 'codebuddy' as const },
+      { id: 'workbuddy', skillsDir: '.workbuddy', hookFormat: 'codebuddy' as const },
     ])(
       'installs a dedicated $id matcher group idempotently',
       async ({ id, skillsDir, hookFormat }) => {
@@ -1705,7 +1706,7 @@ describe('skills', () => {
       const result = await installCometHooksForPlatform(tmpDir, platform, 'project');
 
       expect(result.status).toBe('failed');
-      expect(result.reason).toContain('Invalid CodeBuddy Code settings');
+      expect(result.reason).toContain('Invalid CodeBuddy settings');
       await expect(fs.readFile(settingsPath, 'utf-8')).resolves.toBe(invalidSettings);
     });
 

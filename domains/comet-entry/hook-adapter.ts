@@ -42,6 +42,7 @@ export const COMET_HOOK_PLATFORM_IDS = new Set([
   'qwen',
   'kiro',
   'codebuddy',
+  'workbuddy',
   'qoder',
   'trae',
   'trae-cn',

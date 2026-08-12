@@ -125,6 +125,18 @@ describe('detect', () => {
       expect(traeCn?.configDir).toBe('.trae');
       expect(traeCn?.globalConfigDir).toBe('.trae-cn');
     });
+
+    it('declares WorkBuddy project and user Skill roots with CodeBuddy-style Hooks', () => {
+      const workbuddy = PLATFORMS.find((platform) => platform.id === 'workbuddy');
+
+      expect(workbuddy).toBeDefined();
+      expect(workbuddy?.skillsDir).toBe('.workbuddy');
+      expect(workbuddy?.globalSkillsDir).toBe('.workbuddy');
+      expect(workbuddy?.supportsHooks).toBe(true);
+      expect(workbuddy?.hookFormat).toBe('codebuddy');
+      expect(getPlatformSkillsDir(workbuddy!, 'project')).toBe('.workbuddy');
+      expect(getPlatformSkillsDir(workbuddy!, 'global')).toBe('.workbuddy');
+    });
   });
 
   describe('detectPlatforms', () => {

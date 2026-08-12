@@ -154,6 +154,59 @@ describe('openspec', () => {
       }
     });
 
+    it('mirrors CodeBuddy-compatible OpenSpec output into WorkBuddy project and global roots', async () => {
+      const projectDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), 'comet-openspec-workbuddy-project-'),
+      );
+      const globalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-workbuddy-global-'));
+      const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(globalDir);
+      try {
+        const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
+
+        await expect(
+          installOpenSpec(
+            projectDir,
+            ['codebuddy'],
+            'project',
+            false,
+            [],
+            'docs',
+            undefined,
+            undefined,
+            ['workbuddy'],
+          ),
+        ).resolves.toBe('installed');
+        await expect(
+          installOpenSpec(
+            projectDir,
+            ['codebuddy'],
+            'global',
+            false,
+            [],
+            'legacy',
+            undefined,
+            undefined,
+            ['workbuddy'],
+          ),
+        ).resolves.toBe('installed');
+
+        expect(
+          fs.existsSync(
+            path.join(projectDir, '.workbuddy', 'skills', 'openspec-propose', 'SKILL.md'),
+          ),
+        ).toBe(true);
+        expect(
+          fs.existsSync(
+            path.join(globalDir, '.workbuddy', 'skills', 'openspec-propose', 'SKILL.md'),
+          ),
+        ).toBe(true);
+      } finally {
+        homedirSpy.mockRestore();
+        fs.rmSync(projectDir, { recursive: true, force: true });
+        fs.rmSync(globalDir, { recursive: true, force: true });
+      }
+    });
+
     it('installs Codex OpenSpec Skills from the legacy .codex CLI staging output into the canonical agent root (OpenSpec <= 1.7)', async () => {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-codex-tools-'));
       try {

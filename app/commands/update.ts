@@ -1827,6 +1827,9 @@ async function updateSingleProject(
     const mirrorOpenCodePlatformIds = scopeTargets
       .map((target) => target.platform.id)
       .filter((id) => id === 'zcode' || id === 'mimocode');
+    const mirrorCodeBuddyPlatformIds = scopeTargets
+      .map((target) => target.platform.id)
+      .filter((id) => id === 'workbuddy');
     const artifactLayout = scope === 'project' ? classicArtifactLayout : 'legacy';
     try {
       if (scope === 'project') {
@@ -1840,6 +1843,8 @@ async function updateSingleProject(
         mirrorOpenCodePlatformIds,
         artifactLayout,
         scope === 'project' ? assertClassicProjectMutationAllowed : undefined,
+        undefined,
+        mirrorCodeBuddyPlatformIds,
       );
       if (status === 'failed') {
         openSpecStatus = 'failed';

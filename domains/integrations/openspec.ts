@@ -312,6 +312,7 @@ async function mergeGeneratedToolDirectories(
   projectPath: string,
   toolIds: readonly string[],
   mirrorOpenCodePlatformIds: readonly string[],
+  mirrorCodeBuddyPlatformIds: readonly string[],
   projectMutationGuard?: ProjectMutationGuard,
 ): Promise<void> {
   for (const copy of copies) {
@@ -324,21 +325,44 @@ async function mergeGeneratedToolDirectories(
     );
   }
 
-  if (!toolIds.includes('opencode') || mirrorOpenCodePlatformIds.length === 0) return;
-  const opencodePlatform = PLATFORMS.find((platform) => platform.id === 'opencode');
-  if (!opencodePlatform) return;
-  const source = path.join(stagingProject, opencodePlatform.skillsDir);
-  if (!fs.existsSync(source)) return;
-  for (const platformId of new Set(mirrorOpenCodePlatformIds)) {
-    const platform = PLATFORMS.find((candidate) => candidate.id === platformId);
-    if (!platform || platform.id === 'opencode') continue;
-    await copyGeneratedToolDirectory(
-      stagingProject,
-      source,
-      projectPath,
-      path.join(projectPath, getPlatformSkillsDir(platform, 'project')),
-      projectMutationGuard,
-    );
+  if (toolIds.includes('opencode') && mirrorOpenCodePlatformIds.length > 0) {
+    const opencodePlatform = PLATFORMS.find((platform) => platform.id === 'opencode');
+    if (opencodePlatform) {
+      const source = path.join(stagingProject, opencodePlatform.skillsDir);
+      if (fs.existsSync(source)) {
+        for (const platformId of new Set(mirrorOpenCodePlatformIds)) {
+          const platform = PLATFORMS.find((candidate) => candidate.id === platformId);
+          if (!platform || platform.id === 'opencode') continue;
+          await copyGeneratedToolDirectory(
+            stagingProject,
+            source,
+            projectPath,
+            path.join(projectPath, getPlatformSkillsDir(platform, 'project')),
+            projectMutationGuard,
+          );
+        }
+      }
+    }
+  }
+
+  if (toolIds.includes('codebuddy') && mirrorCodeBuddyPlatformIds.length > 0) {
+    const codebuddyPlatform = PLATFORMS.find((platform) => platform.id === 'codebuddy');
+    if (codebuddyPlatform) {
+      const source = path.join(stagingProject, codebuddyPlatform.skillsDir);
+      if (fs.existsSync(source)) {
+        for (const platformId of new Set(mirrorCodeBuddyPlatformIds)) {
+          const platform = PLATFORMS.find((candidate) => candidate.id === platformId);
+          if (!platform || platform.id === 'codebuddy') continue;
+          await copyGeneratedToolDirectory(
+            stagingProject,
+            source,
+            projectPath,
+            path.join(projectPath, getPlatformSkillsDir(platform, 'project')),
+            projectMutationGuard,
+          );
+        }
+      }
+    }
   }
 }
 
@@ -683,6 +707,7 @@ async function installOpenSpec(
   artifactLayout: 'legacy' | 'docs' = 'legacy',
   projectMutationGuard?: ProjectMutationGuard,
   failureObserver?: OpenSpecFailureObserver,
+  mirrorCodeBuddyPlatformIds: string[] = [],
 ): Promise<'installed' | 'failed' | 'skipped'> {
   if (scope === 'project') {
     try {
@@ -756,6 +781,7 @@ async function installOpenSpec(
           projectPath,
           toolIds,
           mirrorOpenCodePlatformIds,
+          mirrorCodeBuddyPlatformIds,
           projectMutationGuard,
         );
       }
@@ -775,6 +801,22 @@ async function installOpenSpec(
       toolIds.includes('opencode')
     ) {
       mirrorOpenCodeCompatibleOpenSpecPaths(openspecTargetBase, scope, mirrorOpenCodePlatformIds);
+    }
+
+    if (
+      scope === 'global' &&
+      mirrorCodeBuddyPlatformIds.length > 0 &&
+      toolIds.includes('codebuddy')
+    ) {
+      const codebuddyPlatform = PLATFORMS.find((platform) => platform.id === 'codebuddy');
+      if (codebuddyPlatform) {
+        mirrorOpenCodeCompatibleOpenSpecPathsFromSource(
+          openspecTargetBase,
+          scope,
+          codebuddyPlatform.id,
+          mirrorCodeBuddyPlatformIds,
+        );
+      }
     }
 
     if (openspecWritesGlobal && toolIds.includes('opencode')) {
@@ -798,6 +840,24 @@ async function installOpenSpec(
     if (stagingProject) {
       fs.rmSync(stagingProject, { recursive: true, force: true });
     }
+  }
+}
+
+function mirrorOpenCodeCompatibleOpenSpecPathsFromSource(
+  baseDir: string,
+  scope: InstallScope,
+  sourcePlatformId: string,
+  platformIds: string[],
+): void {
+  const sourcePlatform = PLATFORMS.find((platform) => platform.id === sourcePlatformId);
+  if (!sourcePlatform) return;
+
+  const srcDir = path.join(baseDir, getPlatformSkillsDir(sourcePlatform, scope));
+  for (const platformId of new Set(platformIds)) {
+    const platform = PLATFORMS.find((candidate) => candidate.id === platformId);
+    if (!platform || platform.id === sourcePlatformId) continue;
+    const destDir = path.join(baseDir, getPlatformSkillsDir(platform, scope));
+    copyOpenSpecPaths(srcDir, destDir);
   }
 }
 

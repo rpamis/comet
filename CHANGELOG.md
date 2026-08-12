@@ -13,6 +13,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Langfuse evaluation suite**: `comet eval --suite langfuse` now reports task traces, rubric scores, pass metrics, and experiment summaries to Langfuse, automatically provisions pinned official Claude Code/Codex plugins in an isolated cache, and captures Qoder/CodeBuddy transcripts without changing local scoring.
 - **Native parent-child changes**: The Native Skill now recognizes large requests that benefit from independent acceptance, proposes a named child graph during the parent Shape confirmation, automatically dispatches ready children with a serial fallback, merges them into the parent branch in order, and verifies the final integrated result against the parent acceptance criteria.
 - **Worktree-aware Dashboard changes**: The Dashboard now discovers Classic and Native changes across every registered Git worktree, keeps independent changes as separate root entries, and groups explicit Native child changes under expandable parents while preserving the existing detail workspace.
+- **WorkBuddy platform support**: `comet init` and `comet update` now install and refresh Comet Skills in project `.workbuddy/skills/` or user `~/.workbuddy/skills/`, and project installs merge the Comet Hook into `.workbuddy/settings.json` while preserving existing settings.
 
 ### Changed
 

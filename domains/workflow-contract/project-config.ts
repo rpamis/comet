@@ -34,6 +34,7 @@ const DEFAULT_WORKFLOW_NATIVE_MANAGED_SKILL_EXCLUDES = [
   '.claude/skills/**',
   '.cline/skills/**',
   '.codebuddy/skills/**',
+  '.workbuddy/skills/**',
   '.continue/skills/**',
   '.cospec/skills/**',
   '.crush/skills/**',

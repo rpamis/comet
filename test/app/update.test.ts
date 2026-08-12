@@ -525,6 +525,29 @@ describe('update command helpers', () => {
     ]);
   });
 
+  it('updates an explicitly scoped WorkBuddy project install and refreshes its project Hook', async () => {
+    const projectDir = path.join(tmpDir, 'workbuddy-project');
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(projectDir, {
+        json: true,
+        skipNpm: true,
+        scope: 'project',
+        platform: 'workbuddy',
+      });
+    } finally {
+      log.mockRestore();
+    }
+
+    await expect(
+      fs.access(path.join(projectDir, '.workbuddy', 'skills', 'comet', 'SKILL.md')),
+    ).resolves.toBeUndefined();
+    const settings = JSON.parse(
+      await fs.readFile(path.join(projectDir, '.workbuddy', 'settings.json'), 'utf8'),
+    );
+    expect(settings.hooks.PreToolUse).toEqual([expect.objectContaining({ matcher: 'Write|Edit' })]);
+  });
+
   it('detects legacy global Pi skills so update can migrate them', async () => {
     const projectDir = path.join(tmpDir, 'project');
     const globalDir = path.join(tmpDir, 'home');
@@ -2115,6 +2138,8 @@ describe('update command helpers', () => {
       [],
       'docs',
       expect.any(Function),
+      undefined,
+      [],
     );
     await expect(fs.access(path.join(tmpDir, 'openspec'))).rejects.toMatchObject({
       code: 'ENOENT',
@@ -2188,6 +2213,8 @@ describe('update command helpers', () => {
       [],
       'docs',
       expect.any(Function),
+      undefined,
+      [],
     );
     expect(mockedInstallSuperpowers).toHaveBeenCalledWith(tmpDir, 'project', ['claude'], true);
   });
@@ -2326,6 +2353,8 @@ describe('update command helpers', () => {
       [],
       'legacy',
       expect.any(Function),
+      undefined,
+      [],
     );
     await expect(fs.access(path.join(tmpDir, 'docs', 'openspec'))).rejects.toMatchObject({
       code: 'ENOENT',
@@ -2409,6 +2438,8 @@ describe('update command helpers', () => {
       [],
       'docs',
       expect.any(Function),
+      undefined,
+      [],
     );
   });
 
@@ -2449,6 +2480,8 @@ describe('update command helpers', () => {
       [],
       'docs',
       expect.any(Function),
+      undefined,
+      [],
     );
     await expect(
       fs.readFile(path.join(tmpDir, 'openspec', 'legacy-marker.txt'), 'utf8'),
@@ -2572,6 +2605,8 @@ describe('update command helpers', () => {
       [],
       'docs',
       expect.any(Function),
+      undefined,
+      [],
     );
   });
 
@@ -2618,6 +2653,8 @@ describe('update command helpers', () => {
       [],
       'docs',
       expect.any(Function),
+      undefined,
+      [],
     );
     await expect(fs.readFile(configPath)).resolves.toEqual(configBefore);
   });
@@ -2748,6 +2785,8 @@ describe('update command helpers', () => {
       [],
       'legacy',
       undefined,
+      undefined,
+      [],
     );
     await expect(fs.access(path.join(tmpDir, 'openspec'))).rejects.toMatchObject({
       code: 'ENOENT',

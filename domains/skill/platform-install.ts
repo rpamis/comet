@@ -1082,7 +1082,7 @@ ${content}`;
  *                   with platform metadata able to override the filename
  *   'qwen' — settings.json with PreToolUse/hooks array (Qwen Code)
  *   'qoder' — settings.json with PreToolUse/hooks array (Qoder)
- *   'codebuddy' — settings.json with PreToolUse/hooks array (CodeBuddy Code)
+ *   'codebuddy' — settings.json with PreToolUse/hooks array (CodeBuddy and WorkBuddy)
  *   'gemini' — settings.json with hooks.BeforeTool array (Gemini CLI)
  *   'windsurf' — hooks.json with pre_write_code array
  *   'copilot' — hooks/*.json with preToolUse
