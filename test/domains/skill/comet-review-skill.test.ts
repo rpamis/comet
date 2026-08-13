@@ -8,6 +8,42 @@ const zhOpenAiPath = path.resolve('assets/skills-zh/comet-review/agents/openai.y
 const enSkillPath = path.resolve('assets/skills/comet-review/SKILL.md');
 const enOpenAiPath = path.resolve('assets/skills/comet-review/agents/openai.yaml');
 
+const allowedReadOnlyCommands = new Set([
+  'comet status . --json',
+  'comet state get <change-name> phase',
+  'comet state get <change-name> base_ref',
+  'comet state get <change-name> plan',
+  'comet state get <change-name> verification_report',
+  'comet native show <change-name> --json',
+  'comet native status <change-name> --details --json',
+]);
+
+function expectReadOnlyCommandContract(source: string, prohibitionMarker: string): void {
+  const lines = source.split('\n');
+  const prohibitionLines = lines.filter((line) => line.includes(prohibitionMarker));
+  expect(prohibitionLines).toHaveLength(1);
+
+  const outsideProhibition = lines.filter((line) => !line.includes(prohibitionMarker)).join('\n');
+  for (const command of ['comet state set', 'comet state transition', 'comet native next']) {
+    expect(outsideProhibition).not.toContain(command);
+  }
+  expect(outsideProhibition).not.toMatch(/\bcomet(?: native)? archive\b/iu);
+  expect(outsideProhibition).not.toMatch(/\bcomet guard\b/iu);
+
+  const bashCommands = [...source.matchAll(/```bash\n([\s\S]*?)```/gu)].flatMap((match) =>
+    match[1]
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean),
+  );
+  expect(bashCommands.length).toBeGreaterThan(0);
+  for (const command of bashCommands) {
+    expect(allowedReadOnlyCommands.has(command), `unexpected executable command: ${command}`).toBe(
+      true,
+    );
+  }
+}
+
 describe('comet-review 中文 Skill', () => {
   it('保持显式调用且全程只读', async () => {
     const source = await fs.readFile(zhSkillPath, 'utf8');
@@ -20,6 +56,7 @@ describe('comet-review 中文 Skill', () => {
     expect(source).toContain('不推进 phase');
     expect(source).toContain('独立于 `review_mode`');
     expect(source).toContain('不能替代 `/comet-verify` 或 Native Verify');
+    expectReadOnlyCommandContract(source, '不运行 `comet state select`');
   });
 
   it('自动解析当前 Classic 或 Native change 并读取现有证据', async () => {
@@ -40,7 +77,8 @@ describe('comet-review 中文 Skill', () => {
 
     expect(source).toContain('git status --short');
     expect(source).toContain('已提交、已暂存和未暂存修改');
-    expect(source).toContain('未跟踪源码或测试文件');
+    expect(source).toContain('所有未跟踪文件');
+    expect(source).toContain('文档、配置和元数据');
     expect(source).toContain('CRITICAL');
     expect(source).toContain('IMPORTANT');
     expect(source).toContain('WARNING');
@@ -76,6 +114,7 @@ describe('comet-review bilingual contract', () => {
     expect(source).toContain('committed, staged, and unstaged changes');
     expect(source).toContain('independent of `review_mode`');
     expect(source).toContain('cannot replace `/comet-verify` or Native Verify');
+    expectReadOnlyCommandContract(source, 'Do not run `comet state select`');
   });
 
   it('provides explicit-only Codex metadata in both languages', async () => {
