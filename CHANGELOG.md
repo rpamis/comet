@@ -18,6 +18,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Changed
 
 - **User-level Eval configuration**: Published `comet eval` users can now configure separate Bench and LLM-as-judge credentials, endpoints, model names, and other Eval environment settings in `~/.comet/eval/.env` (or the Windows user-equivalent path), without editing the installed package or repository. Agent keys remain container-local and are never written into published assets or reports.
+- **CodeBuddy custom model routing**: CodeBuddy Eval runs now use the CLI's native API key, endpoint, model, and model-role settings, while keeping the host `models.json` and login directory outside the container.
 - **Project-local Hook write allowlist**: Projects can now configure project-relative directories under `hook.allow_paths` in `.comet/config.yaml` for shared rules or notes that must remain writable during guarded Native Shape or Classic non-coding phases, while Comet Runtime and workflow-owned artifacts remain protected. The Hook itself does not block writes outside the project, so external paths do not need to be listed.
 - **Classic workspace routing**: Classic changes now choose and prepare their current branch or Worktree during Open, reuse matching registered Worktrees, and route resume/select operations to the aligned workspace.
 - **Native workspace reuse**: Native parallel changes now reuse an existing linked Worktree for their change branch and recreate a missing Worktree when the branch remains available.

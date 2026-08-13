@@ -69,6 +69,7 @@ cp .env.example ~/.comet/eval/.env
 | `QODER_BASE_URL` / `QODER_MODEL` / `BENCH_QODER_VERSION`            | ❌   | Qoder 原生地址、模型和 CLI 版本覆盖                                                                   |
 | `CODEBUDDY_API_KEY` / `CODEBUDDY_AUTH_TOKEN`                     | CodeBuddy | 使用 `--agent codebuddy` 时的 CodeBuddy 认证                                                       |
 | `CODEBUDDY_BASE_URL` / `CODEBUDDY_MODEL` / `BENCH_CODEBUDDY_VERSION` | ❌ | CodeBuddy API endpoint、模型和 CLI 版本覆盖                                                        |
+| `CODEBUDDY_SMALL_FAST_MODEL` / `CODEBUDDY_BIG_SLOW_MODEL` / `CODEBUDDY_CODE_SUBAGENT_MODEL` | ❌ | CodeBuddy 的 fast、reasoning 和 code-subagent 模型覆盖 |
 | `CODEBUDDY_CUSTOM_HEADERS` / `CODEBUDDY_INTERNET_ENVIRONMENT`      | ❌   | CodeBuddy 的自定义请求头和联网环境配置                                                               |
 | `BENCH_SIMULATOR_PROMPT_FILE`                                     | ❌   | 显式覆盖任务级用户模拟器提示词；任务未配置时回退到 `eval/simulator-instruction.md`                    |
 | `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_BASE_URL` / `ANTHROPIC_MODEL` | ❌   | 用 Anthropic 兼容代理时的认证与模型配置；设置 `ANTHROPIC_AUTH_TOKEN` 后可不设置 `ANTHROPIC_API_KEY` |
@@ -94,6 +95,12 @@ comet eval ./generated-skill/comet/eval.yaml --agent codex
 comet eval ./generated-skill/comet/eval.yaml --agent qoder
 comet eval ./generated-skill/comet/eval.yaml --agent codebuddy
 ```
+
+CodeBuddy 的自定义模型使用其 OpenAI-compatible 配置：`CODEBUDDY_API_KEY`、
+`CODEBUDDY_BASE_URL` 和 provider 接受的 `CODEBUDDY_MODEL`，也可以直接用 `--model`
+覆盖当前运行的模型。宿主机的 `~/.codebuddy/models.json` 只用于注册模型；Eval 不挂载它，
+而是在容器内生成临时 `settings.json`，通过 `apiKeyHelper` 从进程环境读取凭据。不要把
+Claude Code 的 Anthropic 地址或 Claude 专用模型 ID 直接复用给 CodeBuddy。
 
 manifest 可声明默认 Agent：
 

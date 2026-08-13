@@ -60,7 +60,7 @@ prepare_agent_runtime_config() {
             mkdir -p "$config_root"
             cat > "$helper_path" <<'EOF'
 #!/usr/bin/env bash
-printf '%s' "${CODEBUDDY_API_KEY:-}"
+printf '%s' "${CODEBUDDY_AUTH_TOKEN:-${CODEBUDDY_API_KEY:-}}"
 EOF
             chmod 700 "$helper_path"
             {

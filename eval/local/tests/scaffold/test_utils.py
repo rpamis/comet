@@ -241,11 +241,17 @@ def test_bash_env_bridges_codebuddy_credentials_and_model_to_wsl(monkeypatch):
     monkeypatch.setenv("WSLENV", "")
     monkeypatch.setenv("CODEBUDDY_API_KEY", "codebuddy-key")
     monkeypatch.setenv("CODEBUDDY_MODEL", "codebuddy-model")
+    monkeypatch.setenv("CODEBUDDY_SMALL_FAST_MODEL", "codebuddy-fast-model")
+    monkeypatch.setenv("CODEBUDDY_BIG_SLOW_MODEL", "codebuddy-reasoning-model")
+    monkeypatch.setenv("CODEBUDDY_CODE_SUBAGENT_MODEL", "codebuddy-subagent-model")
 
     env = utils._bash_env()
 
     assert "CODEBUDDY_API_KEY" in env["WSLENV"].split(":")
     assert "CODEBUDDY_MODEL" in env["WSLENV"].split(":")
+    assert "CODEBUDDY_SMALL_FAST_MODEL" in env["WSLENV"].split(":")
+    assert "CODEBUDDY_BIG_SLOW_MODEL" in env["WSLENV"].split(":")
+    assert "CODEBUDDY_CODE_SUBAGENT_MODEL" in env["WSLENV"].split(":")
 
 
 def test_bash_env_bridges_custom_agent_model_and_base_url_to_wsl(monkeypatch):
@@ -390,6 +396,14 @@ def test_docker_script_dispatches_all_supported_agent_clis():
     assert "@tencent-ai/codebuddy-code" in overlay
 
 
+def test_codebuddy_forwards_official_model_variant_environment_variables():
+    docker_sh = (utils.SHELL_DIR / "docker.sh").read_text(encoding="utf-8")
+
+    assert "CODEBUDDY_SMALL_FAST_MODEL" in docker_sh
+    assert "CODEBUDDY_BIG_SLOW_MODEL" in docker_sh
+    assert "CODEBUDDY_CODE_SUBAGENT_MODEL" in docker_sh
+
+
 def test_codex_commands_use_explicit_openai_base_url_config():
     docker_sh = (utils.SHELL_DIR / "docker.sh").read_text(encoding="utf-8")
     loop_sh = (utils.SHELL_DIR / "run-claude-loop.sh").read_text(encoding="utf-8")
@@ -476,6 +490,38 @@ def test_agent_runtime_config_files_never_contain_credential_literals(tmp_path):
     assert "codebuddy-sentinel" not in helper_text
     assert "CODEBUDDY_API_KEY" in helper_text
     assert not list((tmp_path / "qoder").iterdir())
+
+
+def test_codebuddy_api_key_helper_prefers_auth_token_without_persisting_it(tmp_path):
+    codebuddy_home = utils._to_bash_path(tmp_path / "codebuddy")
+    script = utils._to_bash_path(utils.SHELL_DIR / "agent-runtime-config.sh")
+    env = dict(os.environ)
+    env.update(
+        {
+            "COMET_EVAL_CODEBUDDY_CONFIG_DIR": codebuddy_home,
+            "CODEBUDDY_AUTH_TOKEN": "auth-token-sentinel",
+            "CODEBUDDY_API_KEY": "api-key-sentinel",
+        }
+    )
+    result = subprocess.run(
+        [
+            utils.BASH_EXEC,
+            "-c",
+            f'source "{script}"; '
+            'prepare_agent_runtime_config codebuddy "subject-model"; '
+            'bash "$COMET_EVAL_CODEBUDDY_CONFIG_DIR/api-key-helper.sh"',
+        ],
+        env=utils._bash_env(env),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "auth-token-sentinel"
+    helper_text = (tmp_path / "codebuddy" / "api-key-helper.sh").read_text(encoding="utf-8")
+    assert "auth-token-sentinel" not in helper_text
+    assert "api-key-sentinel" not in helper_text
 
 
 def test_user_authored_validation_commands_receive_no_agent_or_reporting_secrets():
