@@ -120,6 +120,13 @@ builder_handoff:
     - A9
   checks:
     - name:
+        text: pnpm build
+        truncated: false
+      result: passed
+      note:
+        text: Passed with Node 22.22.3 via Corepack pnpm 10.18.3 after archive.
+        truncated: false
+    - name:
         text: npx vitest run test/domains/dashboard/web-source.test.ts
         truncated: false
       result: passed
@@ -143,9 +150,7 @@ builder_handoff:
         text: No whitespace errors
         truncated: false
   checks_truncated: false
-  known_limits:
-    - text: pnpm build 在 Node 24 本地环境中 TypeScript 阶段持续无输出，未将其记为通过；用户已完成人工视觉验收。
-      truncated: false
+  known_limits: []
   known_limits_truncated: false
   submitted_at: 2026-08-13T13:14:31.103Z
 blockers: []
@@ -174,12 +179,26 @@ verification:
       status: passed
       exit_code: 0
       duration_ms: 27418
+    - id: supported-toolchain-build
+      name:
+        text: pnpm build
+        truncated: false
+      argv_display:
+        - text: pnpm
+          truncated: false
+        - text: build
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 11595
   summary:
-    text: A1-A9 均通过；未新增 beta.19 版本或 Changelog。
+    text: A1-A9 均通过；Node 22.22.3 与 Corepack pnpm 10.18.3 已完成 pnpm build；未新增 beta.19 版本或 Changelog。
     truncated: false
   risks: []
   risks_truncated: false
-  completed_at: 2026-08-13T13:16:12.432Z
+  completed_at: 2026-08-13T13:27:49.000Z
 history:
   - goal_cycle: 1
     iteration: 1
