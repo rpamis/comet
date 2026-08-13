@@ -1,9 +1,24 @@
 import type { NativeChangeState } from '../comet-native/native-types.js';
 import type {
   NativeDashboardArtifactPreview,
+  NativeDashboardChildSummary,
   NativeDashboardChangeListItem,
   NativeDashboardChangeProjection,
 } from './native-adapter.js';
+import type { DashboardWorkspaceIdentity } from './workspace.js';
+
+interface NativeDashboardLegacyLocation {
+  locator?: string;
+  workspace?: DashboardWorkspaceIdentity;
+  children?: NativeDashboardChildSummary[];
+}
+
+const FALLBACK_WORKSPACE: DashboardWorkspaceIdentity = {
+  id: 'local',
+  label: 'current',
+  branch: null,
+  current: true,
+};
 
 function localExecution(archived: boolean): NativeDashboardChangeListItem['localExecution'] {
   return {
@@ -18,15 +33,20 @@ function localExecution(archived: boolean): NativeDashboardChangeListItem['local
   };
 }
 
-function identity(options: {
-  state: NativeChangeState;
-  status: 'active' | 'archived';
-  archiveName?: string;
-  archivedAt?: string | null;
-}): NativeDashboardChangeListItem {
+function identity(
+  options: {
+    state: NativeChangeState;
+    status: 'active' | 'archived';
+    archiveName?: string;
+    archivedAt?: string | null;
+  } & NativeDashboardLegacyLocation,
+): NativeDashboardChangeListItem {
   const archived = options.status === 'archived';
   return {
     workflow: 'native',
+    locator:
+      options.locator ?? `${options.status}:${options.archiveName ?? ''}:${options.state.name}`,
+    workspace: options.workspace ?? FALLBACK_WORKSPACE,
     name: options.state.name,
     status: options.status,
     ...(options.archiveName ? { archiveName: options.archiveName } : {}),
@@ -45,25 +65,30 @@ function identity(options: {
     acceptance: null,
     verificationResult: options.state.verification_result,
     localExecution: localExecution(archived),
+    children: options.children ?? [],
   };
 }
 
-export function adaptLegacyNativeDashboardListItem(options: {
-  state: NativeChangeState;
-  status: 'active' | 'archived';
-  archiveName?: string;
-  archivedAt?: string | null;
-}): NativeDashboardChangeListItem {
+export function adaptLegacyNativeDashboardListItem(
+  options: {
+    state: NativeChangeState;
+    status: 'active' | 'archived';
+    archiveName?: string;
+    archivedAt?: string | null;
+  } & NativeDashboardLegacyLocation,
+): NativeDashboardChangeListItem {
   return identity(options);
 }
 
-export function adaptLegacyNativeDashboardChange(options: {
-  state: NativeChangeState;
-  status: 'active' | 'archived';
-  archiveName?: string;
-  archivedAt?: string | null;
-  artifacts?: NativeDashboardArtifactPreview[];
-}): NativeDashboardChangeProjection {
+export function adaptLegacyNativeDashboardChange(
+  options: {
+    state: NativeChangeState;
+    status: 'active' | 'archived';
+    archiveName?: string;
+    archivedAt?: string | null;
+    artifacts?: NativeDashboardArtifactPreview[];
+  } & NativeDashboardLegacyLocation,
+): NativeDashboardChangeProjection {
   const specs = options.state.spec_changes;
   const capabilities = specs.slice(0, 8).map(({ capability, operation }) => ({
     capability,
@@ -95,15 +120,19 @@ export function adaptLegacyNativeDashboardChange(options: {
   };
 }
 
-export function invalidNativeDashboardListItem(options: {
-  name: string;
-  status: 'active' | 'archived';
-  archiveName?: string;
-  archivedAt?: string | null;
-  message?: string;
-}): NativeDashboardChangeListItem {
+export function invalidNativeDashboardListItem(
+  options: {
+    name: string;
+    status: 'active' | 'archived';
+    archiveName?: string;
+    archivedAt?: string | null;
+    message?: string;
+  } & NativeDashboardLegacyLocation,
+): NativeDashboardChangeListItem {
   return {
     workflow: 'native',
+    locator: options.locator ?? `${options.status}:${options.archiveName ?? ''}:${options.name}`,
+    workspace: options.workspace ?? FALLBACK_WORKSPACE,
     name: options.name,
     status: options.status,
     ...(options.archiveName ? { archiveName: options.archiveName } : {}),
@@ -117,16 +146,19 @@ export function invalidNativeDashboardListItem(options: {
     acceptance: null,
     verificationResult: 'pending',
     localExecution: localExecution(options.status === 'archived'),
+    children: options.children ?? [],
   };
 }
 
-export function invalidNativeDashboardChange(options: {
-  name: string;
-  status: 'active' | 'archived';
-  archiveName?: string;
-  archivedAt?: string | null;
-  message?: string;
-}): NativeDashboardChangeProjection {
+export function invalidNativeDashboardChange(
+  options: {
+    name: string;
+    status: 'active' | 'archived';
+    archiveName?: string;
+    archivedAt?: string | null;
+    message?: string;
+  } & NativeDashboardLegacyLocation,
+): NativeDashboardChangeProjection {
   return {
     ...invalidNativeDashboardListItem(options),
     artifacts: [],

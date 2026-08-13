@@ -3,9 +3,9 @@
 Generates rich experiment logs in logs/experiments/ including:
 - summary.md: Full markdown report with tables and details
 - events/: Parsed events from each test run
-- raw/: Raw Claude CLI output
+- raw/: Raw selected Agent CLI output
 - reports/: Per-run validation reports
-- artifacts/: Files Claude generated and their execution output
+- artifacts/: Files selected Agent generated and their execution output
 - metadata.json: Experiment metadata
 
 Supports pytest-xdist parallel execution via worker coordination.
@@ -27,7 +27,7 @@ from typing import Any
 
 import pytest
 
-from scaffold import run_claude_in_docker, run_python_in_docker, run_shell
+from scaffold import run_agent_in_docker, run_python_in_docker, run_shell
 from scaffold.python import (
     ExperimentLogger,
     TreatmentResult,
@@ -40,9 +40,40 @@ from scaffold.python import (
     save_report,
     strip_ansi,
 )
+from scaffold.python.agents import get_agent_adapter, resolve_agent, validate_agent_capabilities
+from scaffold.python.auto_tasks import AutoTaskError, ensure_generated_manifest, find_project_root
+from scaffold.python.eval_context import (
+    EvalContextError,
+    context_from_environment,
+    resolve_eval_context,
+    resolve_managed_path,
+)
+from scaffold.python.execution import (
+    ResolvedExecution,
+    ResolvedJudge,
+    build_agent_environment,
+    missing_credentials,
+    preflight_credentials,
+    redact_sensitive,
+    resolve_execution,
+    resolve_judge,
+    validate_base_url,
+)
+from scaffold.python.generated_task_cache import (
+    selected_agent_model as _legacy_selected_agent_model,
+)
+from scaffold.python.langfuse_adapter import (
+    install_codex_plugin_workspace,
+    install_transcript_hook,
+    provision_trajectory_plugin,
+)
 from scaffold.python.sample_quality import infer_sample_quality
 from scaffold.python.skill_parser import SCRIPT_EXTENSIONS
-from scaffold.python.utils import run_claude_loop_in_docker
+from scaffold.python.utils import (
+    check_docker_available,
+    run_agent_loop_in_docker,
+    run_claude_loop_in_docker,
+)
 from scaffold.python.aligned_comparison import (
     EXPECTED_CASE_MATRIX_FILENAME,
     build_execution_identity,
@@ -56,14 +87,21 @@ def _extract_loop_turns(stderr: str | None) -> int | None:
     return int(match.group(1)) if match else None
 
 
-def _extract_loop_interaction(stderr: str | None) -> dict[str, int | None]:
+def _extract_loop_interaction(stderr: str | None) -> dict[str, Any]:
     source = stderr or ""
+    role_sessions = {"subject": [], "simulator": [], "judge": []}
+    for role, session_id in re.findall(
+        r"\[loop\] role-session (subject|simulator|judge) ([^\s]+)", source
+    ):
+        if session_id not in role_sessions[role]:
+            role_sessions[role].append(session_id)
     return {
         "actual_turns": _extract_loop_turns(source),
         "decision_points": source.count("[loop] decision point detected"),
         "deterministic_replies": source.count("[loop] deterministic decision reply applied"),
         "completion_signals": source.count("[loop] workflow completion detected"),
         "fresh_resume_boundaries": source.count("[loop] fresh resume boundary detected"),
+        "role_sessions": role_sessions,
     }
 
 
@@ -212,8 +250,12 @@ EVAL_ROOT = PROJECT_ROOT.parent
 REPOSITORY_ROOT = EVAL_ROOT.parent
 
 # Shared files for xdist worker coordination
-XDIST_EXPERIMENT_FILE = PROJECT_ROOT / ".pytest_experiment_id"
-DOCKER_BUILD_LOCK = PROJECT_ROOT / ".pytest_docker_build.lock"
+_RUNTIME_CONTEXT = context_from_environment()
+_CONTEXT_LOCK_ROOT = (
+    resolve_managed_path(_RUNTIME_CONTEXT, "locks") if _RUNTIME_CONTEXT else PROJECT_ROOT
+)
+XDIST_EXPERIMENT_FILE = _CONTEXT_LOCK_ROOT / ".pytest_experiment_id"
+DOCKER_BUILD_LOCK = _CONTEXT_LOCK_ROOT / ".pytest_docker_build.lock"
 EXPERIMENT_ID_ENV = "COMET_EVAL_EXPERIMENT_ID"
 EXPERIMENT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
@@ -246,12 +288,305 @@ MODEL_EXECUTION_ENV_KEYS = (
     "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
     "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
     "CLAUDE_CODE_SUBAGENT_MODEL",
+    "CODEBUDDY_BASE_URL",
+    "CODEBUDDY_MODEL",
+    "CODEBUDDY_SMALL_FAST_MODEL",
+    "CODEBUDDY_BIG_SLOW_MODEL",
+    "CODEBUDDY_CODE_SUBAGENT_MODEL",
+    "BENCH_CODEBUDDY_MODEL",
+    "OPENAI_BASE_URL",
+    "OPENAI_MODEL",
+    "CODEX_BASE_URL",
+    "CODEX_MODEL",
+    "QODER_BASE_URL",
+    "QODER_MODEL",
 )
 
 
-def _selected_claude_model() -> str | None:
-    """Resolve the exact model selector passed to Claude without persisting it."""
-    return os.environ.get("BENCH_CC_MODEL") or os.environ.get("ANTHROPIC_MODEL")
+def _getoption(config, name: str, default=None):
+    try:
+        value = config.getoption(name)
+    except (AttributeError, KeyError, ValueError):
+        return default
+    return default if value is None else value
+
+
+def _manifest_for_config(config):
+    manifest_path = _getoption(config, "--eval-manifest")
+    if not manifest_path:
+        return None
+    from scaffold.python.manifests import load_eval_manifest
+
+    return load_eval_manifest(manifest_path)
+
+
+def _resolve_eval_execution(config) -> ResolvedExecution:
+    manifest = _manifest_for_config(config)
+    manifest_execution = manifest.execution if manifest is not None else None
+    return resolve_execution(
+        cli_agent=_getoption(config, "--agent"),
+        cli_model=_getoption(config, "--model"),
+        cli_base_url=_getoption(config, "--base-url"),
+        manifest=manifest_execution,
+    )
+
+
+def _resolve_eval_judge(config) -> ResolvedJudge | None:
+    manifest = _manifest_for_config(config)
+    manifest_judge = manifest.judge if manifest is not None else None
+    return resolve_judge(
+        main=_resolve_eval_execution(config),
+        cli_agent=_getoption(config, "--judge-agent"),
+        cli_model=_getoption(config, "--judge-model"),
+        cli_base_url=_getoption(config, "--judge-base-url"),
+        manifest=manifest_judge,
+    )
+
+
+def _selected_agent_model(agent: str) -> str | None:
+    if _plugin is not None:
+        return _resolve_eval_execution(_plugin.config).model
+    return _legacy_selected_agent_model(agent)
+
+
+def _resolve_eval_agent(config):
+    execution = _resolve_eval_execution(config)
+    return resolve_agent(execution.agent, None)
+
+
+def _require_agent_credentials(agent: str, source_env: dict[str, str] | None = None) -> None:
+    """Fail setup before workloads when the isolated Agent cannot authenticate."""
+    environment = source_env if source_env is not None else os.environ
+    missing = missing_credentials(agent, source_env=environment)
+    if not missing:
+        return
+    adapter = get_agent_adapter(agent)
+    separator = ", " if adapter.custom else " or "
+    raise pytest.UsageError(
+        f"Credentials for {agent} not set: {separator.join(missing)}"
+    )
+
+
+def _normal_run_preflight(config) -> None:
+    """Validate normal-run dependencies before collection can generate or run tasks."""
+
+    if _is_unit_tests_only(config) or getattr(config.option, "collectonly", False):
+        return
+    from scaffold.python.utils import load_eval_environment
+
+    load_eval_environment()
+    main = _resolve_eval_execution(config)
+    judge = _resolve_eval_judge(config)
+    suite = next(
+        (name for name in ("local", "langsmith", "langfuse") if f"{name}/tests/" in " ".join(config.args)),
+        "local",
+    )
+    required_harness = (
+        EVAL_ROOT / "pyproject.toml",
+        EVAL_ROOT / "schemas" / "comet.eval" / "v1alpha1.schema.json",
+        EVAL_ROOT / suite / "tests" / "tasks" / "test_tasks.py",
+    )
+    missing_harness = [str(path) for path in required_harness if not path.is_file()]
+    if missing_harness:
+        raise pytest.UsageError(f"Packaged eval harness is incomplete: {', '.join(missing_harness)}")
+    manifest = _manifest_for_config(config)
+    if manifest is not None and manifest.reporting is not None:
+        selected_report_suite = manifest.reporting.suite
+        if selected_report_suite and selected_report_suite != suite:
+            raise pytest.UsageError(
+                f"reporting.suite is {selected_report_suite!r}, but the selected suite is {suite!r}"
+            )
+        report_config = manifest.reporting.config
+        if report_config and not _getoption(config, "--report-config"):
+            report_path = Path(report_config)
+            if not report_path.is_absolute():
+                report_path = manifest.path.parent / report_path
+            config.option.report_config = str(report_path.resolve())
+    try:
+        load_report_output_config(_getoption(config, "--report-config"))
+    except (OSError, ValueError) as exc:
+        raise pytest.UsageError(f"Eval report configuration is invalid: {exc}") from exc
+    try:
+        validate_agent_capabilities(get_agent_adapter(main.agent))
+        if judge is not None:
+            validate_agent_capabilities(get_agent_adapter(judge.agent))
+    except ValueError as exc:
+        raise pytest.UsageError(str(exc)) from exc
+    if main.base_url:
+        validate_base_url(main.base_url, field="execution.baseUrl")
+    if judge is not None and judge.base_url:
+        validate_base_url(judge.base_url, field="judge.baseUrl")
+    credential_errors = preflight_credentials(main, judge)
+    if credential_errors:
+        raise pytest.UsageError("; ".join(credential_errors))
+    if shutil.which("uv") is None:
+        raise pytest.UsageError("uv is not installed or not in PATH")
+    if not check_docker_available():
+        raise pytest.UsageError("Docker CLI or daemon is unavailable")
+    context = getattr(config, "_comet_eval_context", None)
+    if context is None:
+        raise pytest.UsageError("Eval context is missing before normal-run preflight")
+    artifact_root = Path(context.artifact_root)
+    artifact_root.mkdir(parents=True, exist_ok=True)
+    try:
+        with tempfile.NamedTemporaryFile(dir=artifact_root, prefix=".preflight-", delete=True):
+            pass
+    except OSError as exc:
+        raise pytest.UsageError(f"Eval artifact root is not writable: {artifact_root}") from exc
+    config._comet_execution_env = build_agent_environment(main)
+    config._comet_execution = main
+    config._comet_judge = judge
+    os.environ["COMET_EVAL_MAIN_CREDENTIALS"] = ",".join(
+        get_agent_adapter(main.agent).required_credentials
+    )
+    if judge is not None:
+        os.environ["BENCH_LLM_JUDGE"] = "1"
+        os.environ["BENCH_JUDGE_MODEL"] = judge.model
+        os.environ["BENCH_JUDGE_AGENT"] = judge.agent
+        if judge.base_url:
+            os.environ["BENCH_JUDGE_BASE_URL"] = judge.base_url
+        else:
+            os.environ.pop("BENCH_JUDGE_BASE_URL", None)
+
+
+def _agent_project_root(agent: str) -> str:
+    return {
+        "claude-code": ".claude",
+        "codex": ".agents",
+        "qoder": ".qoder",
+        "codebuddy": ".codebuddy",
+    }.get(agent, ".comet-agent")
+
+
+def _ensure_langfuse_trajectory_support(test_dir: Path, agent: str) -> None:
+    """Install only isolated, project-local trajectory support for Langfuse runs."""
+    if os.environ.get("TRACE_TO_LANGFUSE", "").lower() != "true":
+        return
+    if agent in {"qoder", "codebuddy"}:
+        try:
+            install_transcript_hook(test_dir, agent)
+        except Exception as exc:
+            if os.environ.get("LANGFUSE_TRANSCRIPT_SETUP_WARNING_EMITTED") != "true":
+                print(
+                    f"[langfuse] optional {agent} transcript setup skipped: {exc}",
+                    file=os.sys.stderr,
+                )
+                os.environ["LANGFUSE_TRANSCRIPT_SETUP_WARNING_EMITTED"] = "true"
+        return
+    if agent != "codex":
+        return
+    cache_root = os.environ.get("LANGFUSE_TRAJECTORY_CACHE_DIR")
+    if not cache_root:
+        return
+    try:
+        provision = provision_trajectory_plugin(Path(cache_root), agent)
+        install_codex_plugin_workspace(test_dir, provision)
+    except Exception as exc:
+        if os.environ.get("LANGFUSE_TRAJECTORY_SETUP_WARNING_EMITTED") != "true":
+            print(f"[langfuse] optional Codex trajectory setup skipped: {exc}", file=os.sys.stderr)
+            os.environ["LANGFUSE_TRAJECTORY_SETUP_WARNING_EMITTED"] = "true"
+
+
+def _ensure_auto_generated_manifest(config, task_filter: str | None = None) -> None:
+    """Freeze generated descriptors once while retaining the original manifest authority."""
+    if getattr(config, "_comet_frozen_task_set", None) is not None:
+        return
+    if config.getoption("--task") or task_filter or config.getoption("--quick"):
+        return
+
+    manifest_path = config.getoption("--eval-manifest")
+    skill_path = config.getoption("--skill-path")
+    manifest = None
+    if manifest_path:
+        from scaffold.python.manifests import load_eval_manifest
+
+        manifest = load_eval_manifest(manifest_path)
+        if manifest.tasks or manifest.recommended_tasks:
+            return
+        skill_path = str(manifest.skill_path)
+    if not skill_path:
+        return
+
+    if getattr(getattr(config, "option", None), "collectonly", False):
+        from scaffold.python.manifests import SkillEvalManifest
+        from scaffold.python.task_resolution import ResolvedTaskSet
+
+        if manifest is None:
+            resolved_skill_root = Path(skill_path).expanduser().resolve()
+            if resolved_skill_root.is_file() and resolved_skill_root.name == "SKILL.md":
+                resolved_skill_root = resolved_skill_root.parent
+            manifest = SkillEvalManifest(
+                path=resolved_skill_root / "comet" / "eval.yaml",
+                name=resolved_skill_root.name,
+                description="",
+                skill_name=getattr(config.option, "skill_name", None) or resolved_skill_root.name,
+                skill_path=resolved_skill_root,
+                profile=config.getoption("--profile"),
+            )
+        config._comet_resolution_manifest = manifest
+        config._comet_resolved_tasks = {}
+        config._comet_frozen_task_set = ResolvedTaskSet("pending-generation", (), None)
+        return
+
+    # Task generation happens during collection, before session fixtures run.
+    # Load the documented local environment now so credentials and the model
+    # participating in the cache key match the later execution environment.
+    from scaffold.python.utils import load_eval_environment
+
+    load_eval_environment()
+    execution = _resolve_eval_execution(config)
+    profile = config.getoption("--profile") or (manifest.profile if manifest else None) or "generic"
+    interaction = vars(manifest.interaction) if manifest else {"mode": "none", "max_turns": 12}
+    context = getattr(config, "_comet_eval_context", None)
+    project_root = (
+        context.artifact_owner_root
+        if context is not None
+        else config.getoption("--project-root") or find_project_root(skill_path)
+    )
+    try:
+        generated = ensure_generated_manifest(
+            skill_path,
+            project_root,
+            agent=execution.agent,
+            model=execution.model,
+            base_url=execution.base_url,
+            environment=build_agent_environment(execution),
+            profile=profile,
+            interaction=interaction,
+            collect_only=bool(getattr(getattr(config, "option", None), "collectonly", False)),
+        )
+    except AutoTaskError as exc:
+        raise pytest.UsageError(str(exc)) from exc
+    from scaffold.python.manifest_tasks import load_manifest_tasks
+    from scaffold.python.manifests import SkillEvalManifest, load_eval_manifest
+    from scaffold.python.task_resolution import ResolvedTask, ResolvedTaskSet
+
+    generated_manifest = load_eval_manifest(generated.manifest_path)
+    generated_tasks = tuple(
+        ResolvedTask(task.name, "generated", task)
+        for task in load_manifest_tasks(generated_manifest)
+    )
+    if manifest is None:
+        resolved_skill_root = Path(skill_path).expanduser().resolve()
+        if resolved_skill_root.is_file() and resolved_skill_root.name == "SKILL.md":
+            resolved_skill_root = resolved_skill_root.parent
+        manifest = SkillEvalManifest(
+            path=resolved_skill_root / "comet" / "eval.yaml",
+            name=resolved_skill_root.name,
+            description="",
+            skill_name=getattr(config.option, "skill_name", None) or resolved_skill_root.name,
+            skill_path=resolved_skill_root,
+            profile=config.getoption("--profile"),
+        )
+    frozen = ResolvedTaskSet(
+        "generated-cache",
+        generated_tasks,
+        None,
+    )
+    config._comet_resolution_manifest = manifest
+    config._comet_resolved_tasks = {item.name: item.task for item in frozen.tasks}
+    config._comet_frozen_task_set = frozen
+    config._comet_generated_manifest = generated
 
 
 def _model_execution_config() -> dict[str, str | None]:
@@ -265,11 +600,13 @@ def _capture_execution_identity(test_dir: Path, *, model: str | None, interactio
         "docker.sh",
         "execution-identity",
         str(test_dir),
+        "--agent",
+        _resolve_eval_agent(_plugin.config).agent if _plugin else "claude-code",
         timeout=300,
         check=False,
     )
     if result.returncode != 0:
-        raise RuntimeError("Could not verify eval Docker/Claude execution identity")
+        raise RuntimeError("Could not verify eval Docker/agent execution identity")
     try:
         raw = json.loads(result.stdout)
     except (TypeError, json.JSONDecodeError) as error:
@@ -533,6 +870,54 @@ def pytest_addoption(parser):
         help="Path to comet/eval.yaml",
     )
     parser.addoption(
+        "--agent",
+        action="store",
+        default=None,
+        help="Evaluation agent CLI (built-in or explicitly installed custom adapter)",
+    )
+    parser.addoption(
+        "--model",
+        action="store",
+        default=None,
+        help="Main evaluation model override",
+    )
+    parser.addoption(
+        "--base-url",
+        action="store",
+        default=None,
+        help="Main evaluation API base URL override",
+    )
+    parser.addoption(
+        "--judge-agent",
+        action="store",
+        default=None,
+        help="Independent Judge agent (built-in or explicitly installed custom adapter)",
+    )
+    parser.addoption(
+        "--judge-model",
+        action="store",
+        default=None,
+        help="Independent Judge model",
+    )
+    parser.addoption(
+        "--judge-base-url",
+        action="store",
+        default=None,
+        help="Independent Judge API base URL",
+    )
+    parser.addoption(
+        "--quick",
+        action="store_true",
+        default=False,
+        help="Use generic-skill-smoke and bypass automatic task generation",
+    )
+    parser.addoption(
+        "--project-root",
+        action="store",
+        default=None,
+        help="Project root used for generated eval cache",
+    )
+    parser.addoption(
         "--interaction-mode",
         action="store",
         default=None,
@@ -564,6 +949,27 @@ def pytest_configure(config):
         "markers",
         "eval_case(repetition): controller-owned task/treatment/repetition identity",
     )
+    try:
+        context = context_from_environment()
+        if context is None and (config.getoption("--eval-manifest") or config.getoption("--skill-path")):
+            context = resolve_eval_context(
+                skill_path=config.getoption("--skill-path"),
+                manifest_path=config.getoption("--eval-manifest"),
+                project_root=config.getoption("--project-root"),
+            )
+    except EvalContextError as exc:
+        raise pytest.UsageError(str(exc)) from exc
+    if context is not None:
+        config._comet_eval_context = context
+        config.option.project_root = str(context.artifact_owner_root)
+        if context.manifest_path is not None:
+            config.option.eval_manifest = str(context.manifest_path)
+        else:
+            config.option.skill_path = str(context.skill_root)
+    config._comet_execution = _resolve_eval_execution(config)
+    config._comet_judge = _resolve_eval_judge(config)
+    _normal_run_preflight(config)
+    _resolve_eval_agent(config)
     global _plugin
     _plugin = ExperimentPlugin(config)
     config.pluginmanager.register(_plugin, "experiment_plugin")
@@ -772,12 +1178,40 @@ def _get_experiment_name(session) -> str:
 
 
 def _get_dynamic_treatment_config(config):
+    _ensure_auto_generated_manifest(config)
+
+    def generation_hints(manifest):
+        generation_metadata = {}
+        generation_metadata_hash = None
+        generated = getattr(config, "_comet_generated_manifest", None)
+        generation_metadata_path = (
+            generated.metadata_path if generated is not None else manifest.generation_metadata_path
+        )
+        if generation_metadata_path and generation_metadata_path.is_file():
+            generation_metadata_bytes = generation_metadata_path.read_bytes()
+            generation_metadata = json.loads(generation_metadata_bytes)
+            generation_metadata_hash = (
+                "sha256:" + hashlib.sha256(generation_metadata_bytes).hexdigest()
+            )
+        return {
+            "generation_hash": (
+                generated.generation_hash if generated is not None else manifest.generation_hash
+            ),
+            "generation_metadata_path": (
+                str(generation_metadata_path) if generation_metadata_path else None
+            ),
+            "generation_manifest_hash": generation_metadata.get("manifest_hash"),
+            "generation_metadata_hash": generation_metadata_hash,
+            "generation_overhead": generation_metadata.get("generation_overhead"),
+        }
+
     manifest_path = config.getoption("--eval-manifest")
     if manifest_path:
         from scaffold.python.manifests import load_eval_manifest
         from scaffold.python.treatments import TreatmentConfig
 
         manifest = load_eval_manifest(manifest_path)
+        generation = generation_hints(manifest)
         node_skills = []
         for node_skill in manifest.generated_node_skills:
             node_path = manifest.skill_path.parent / node_skill
@@ -799,11 +1233,13 @@ def _get_dynamic_treatment_config(config):
                     "path": str(manifest.skill_path),
                     "profile": manifest.profile,
                     "manifest": str(manifest.path),
+                    "execution_agent": manifest.execution_agent,
                     "baseline_treatments": manifest.baseline_treatments,
                     "quality_gates": manifest.quality_gates,
                     "required_output_schemas": manifest.required_output_schemas,
                     "expected_evidence": manifest.expected_evidence,
                     "draft_hash": manifest.draft_hash,
+                    **generation,
                     "required_skills": manifest.required_skills,
                     "expected_artifacts": manifest.expected_artifacts,
                     "generated_node_skills": manifest.generated_node_skills,
@@ -820,7 +1256,8 @@ def _get_dynamic_treatment_config(config):
     if not skill_path:
         return None
     skill_name = config.getoption("--skill-name") or Path(skill_path).resolve().parent.name
-    profile = config.getoption("--profile")
+    manifest = getattr(config, "_comet_resolution_manifest", None)
+    profile = config.getoption("--profile") or (manifest.profile if manifest else None)
     skill_cfg = {
         "name": skill_name,
         "source": "path",
@@ -828,6 +1265,9 @@ def _get_dynamic_treatment_config(config):
     }
     if profile:
         skill_cfg["profile"] = profile
+    if manifest:
+        skill_cfg["manifest"] = str(manifest.path)
+        skill_cfg.update(generation_hints(manifest))
     from scaffold.python.treatments import TreatmentConfig
 
     return TreatmentConfig(
@@ -899,14 +1339,15 @@ def _build_eval_claude_md(profile_name: str, treatment_claude_md: str | None = N
     return "\n\n".join(section for section in sections if section.strip()) or None
 
 
-def _comet_hook_command(test_dir: Path) -> str | None:
-    scripts_dir = test_dir / ".claude" / "skills" / "comet" / "scripts"
+def _comet_hook_command(test_dir: Path, agent: str = "claude-code") -> str | None:
+    project_root = _agent_project_root(agent)
+    scripts_dir = test_dir / project_root / "skills" / "comet" / "scripts"
     mjs_hook = scripts_dir / "comet-hook-guard.mjs"
     shell_hook = scripts_dir / "comet-hook-guard.sh"
     if mjs_hook.exists():
-        return "node /workspace/.claude/skills/comet/scripts/comet-hook-guard.mjs"
+        return f"node /workspace/{project_root}/skills/comet/scripts/comet-hook-guard.mjs"
     if shell_hook.exists():
-        return "bash /workspace/.claude/skills/comet/scripts/comet-hook-guard.sh"
+        return f"bash /workspace/{project_root}/skills/comet/scripts/comet-hook-guard.sh"
     return None
 
 
@@ -930,6 +1371,34 @@ def _ensure_claude_pre_tool_hook(test_dir: Path, command: str | None) -> None:
     settings_path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
 
 
+def _ensure_agent_pre_tool_hook(test_dir: Path, agent: str, command: str | None) -> None:
+    if agent == "claude-code":
+        _ensure_claude_pre_tool_hook(test_dir, command)
+        return
+    if not command:
+        return
+
+    project_root = ".codex" if agent == "codex" else _agent_project_root(agent)
+    settings_name = "hooks.json" if agent == "codex" else "settings.json"
+    settings_path = test_dir / project_root / settings_name
+    if settings_path.exists():
+        settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    else:
+        settings = {}
+    hooks = settings.setdefault("hooks", {})
+    pre_tool_use = hooks.setdefault("PreToolUse", [])
+    hook_entry = {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [{"type": "command", "command": command}],
+    }
+    if agent in {"qoder", "codebuddy"}:
+        hook_entry["hooks"][0]["description"] = "Comet workflow guard"
+    if not any(entry == hook_entry for entry in pre_tool_use):
+        pre_tool_use.append(hook_entry)
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+
+
 def _get_or_create_experiment_id(name: str, use_coordination: bool) -> str:
     """Get shared experiment ID or create new one."""
     requested = os.environ.get(EXPERIMENT_ID_ENV)
@@ -944,16 +1413,22 @@ def _get_or_create_experiment_id(name: str, use_coordination: bool) -> str:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         return f"{name}_{timestamp}"
 
-    lock_file = XDIST_EXPERIMENT_FILE.with_suffix(".lock")
+    context = context_from_environment()
+    experiment_file = (
+        resolve_managed_path(context, "locks", ".pytest_experiment_id")
+        if context is not None
+        else XDIST_EXPERIMENT_FILE
+    )
+    lock_file = experiment_file.with_suffix(".lock")
 
     with file_lock(lock_file):
-        if XDIST_EXPERIMENT_FILE.exists():
-            data = json.loads(XDIST_EXPERIMENT_FILE.read_text())
+        if experiment_file.exists():
+            data = json.loads(experiment_file.read_text())
             return data["experiment_id"]
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         experiment_id = f"{name}_{timestamp}"
-        XDIST_EXPERIMENT_FILE.write_text(
+        experiment_file.write_text(
             json.dumps(
                 {
                     "experiment_id": experiment_id,
@@ -1039,7 +1514,13 @@ def _cleanup_experiment_coordination():
     """Remove coordination files after experiment."""
     import sys
 
-    for f in [XDIST_EXPERIMENT_FILE, XDIST_EXPERIMENT_FILE.with_suffix(".lock")]:
+    context = context_from_environment()
+    experiment_file = (
+        resolve_managed_path(context, "locks", ".pytest_experiment_id")
+        if context is not None
+        else XDIST_EXPERIMENT_FILE
+    )
+    for f in [experiment_file, experiment_file.with_suffix(".lock")]:
         try:
             f.unlink(missing_ok=True)
         except Exception as e:
@@ -1067,8 +1548,8 @@ def worker_id(request):
 
 @pytest.fixture(scope="session", autouse=True)
 def verify_environment(project_root, request):
-    """Verify Docker, Claude CLI, uv, bash, and API keys are available."""
-    if _is_unit_tests_only(request.config):
+    """Verify the selected agent's Docker execution prerequisites."""
+    if _is_unit_tests_only(request.config) or request.config.option.collectonly:
         return
 
     from scaffold.python.utils import load_eval_environment
@@ -1101,55 +1582,55 @@ def verify_environment(project_root, request):
     if result.returncode != 0:
         pytest.skip("Docker not available")
 
-    if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
-        pytest.skip("ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN not set")
-
-    if shutil.which("claude") is None:
-        pytest.skip("Claude CLI not available")
+    selection = _resolve_eval_agent(request.config)
+    _require_agent_credentials(selection.agent)
 
 
 def _docker_environment_dirs_for_request(request, tasks_dir: Path) -> list[Path]:
     """Return only task environments selected by the current eval invocation."""
-    if not tasks_dir.exists():
-        return []
-
-    all_task_names = sorted(task_dir.name for task_dir in tasks_dir.iterdir() if task_dir.is_dir())
-    task_filter = request.config.getoption("--task")
-    manifest_path = request.config.getoption("--eval-manifest")
-    if task_filter:
-        task_names = [task_filter]
-    elif manifest_path:
-        from scaffold.python.manifests import load_eval_manifest
-
-        task_names = load_eval_manifest(manifest_path).recommended_tasks or all_task_names
-    else:
-        task_names = all_task_names
-
-    return [
-        environment_dir
-        for task_name in task_names
-        if (environment_dir := tasks_dir / task_name / "environment").is_dir()
-        and (environment_dir / "Dockerfile").is_file()
-    ]
+    frozen = getattr(request.config, "_comet_frozen_task_set", None)
+    if frozen is None:
+        raise pytest.UsageError("Eval task collection did not produce a frozen task set")
+    selected: list[Path] = []
+    for item in frozen.tasks:
+        environment_dir = item.task.environment_dir
+        if (
+            environment_dir.is_dir()
+            and (environment_dir / "Dockerfile").is_file()
+            and environment_dir not in selected
+        ):
+            selected.append(environment_dir)
+    return selected
 
 
 @pytest.fixture(scope="session", autouse=True)
 def prebuild_docker_image(request):
     """Pre-build Docker image once per session to avoid race conditions."""
-    if _is_unit_tests_only(request.config):
+    if _is_unit_tests_only(request.config) or request.config.option.collectonly:
         yield
         return
 
     tasks_dir = PROJECT_ROOT / "tasks"
     for env_dir in _docker_environment_dirs_for_request(request, tasks_dir):
-        image = _build_docker_image_with_lock(env_dir)
+        selected_agent = _resolve_eval_agent(request.config).agent
+        image = _build_docker_image_with_lock(
+            env_dir,
+            selected_agent if selected_agent != "claude-code" else None,
+            environment=getattr(request.config, "_comet_execution_env", None),
+        )
         if image:
             print(f"\nPre-built Docker image: {image}")
 
     yield
 
     try:
-        DOCKER_BUILD_LOCK.unlink(missing_ok=True)
+        context = context_from_environment()
+        lock_path = (
+            resolve_managed_path(context, "locks", ".pytest_docker_build.lock")
+            if context is not None
+            else DOCKER_BUILD_LOCK
+        )
+        lock_path.unlink(missing_ok=True)
     except Exception:
         pass
 
@@ -1181,7 +1662,8 @@ def setup_test_context(test_dir):
         scripts_dir: Path | None = None,
         source_dir: Path | None = None,
     ) -> None:
-        skill_dir = test_dir / ".claude" / "skills" / skill_name
+        agent = _resolve_eval_agent(_plugin.config).agent if _plugin else "claude-code"
+        skill_dir = test_dir / _agent_project_root(agent) / "skills" / skill_name
         skill_dir.mkdir(parents=True, exist_ok=True)
 
         if source_dir and source_dir.is_dir():
@@ -1212,13 +1694,38 @@ def setup_test_context(test_dir):
                 shutil.copy2(item, dest)
         _copy_current_comet_cli_snapshot(environment_dir, test_dir)
 
-    def _write_claude_md(content_file: str) -> None:
-        claude_dir = test_dir / ".claude"
-        claude_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(content_file, claude_dir / "CLAUDE.md")
-        shutil.copyfile(content_file, test_dir / "CLAUDE.md")
+    def _copy_workspace(workspace_dir: Path) -> None:
+        """Copy a bounded project fixture without replacing the task Dockerfile."""
+        for item in workspace_dir.iterdir():
+            if item.name in {"Dockerfile", CURRENT_COMET_CLI_MARKER, TRUSTED_NATIVE_RUNTIME_MARKER}:
+                continue
+            dest = test_dir / item.name
+            if item.is_dir():
+                shutil.copytree(item, dest, dirs_exist_ok=True)
+            else:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(item, dest)
 
-    def _setup(skills: dict = None, claude_md: str = None, environment_dir: Path = None):
+    def _write_claude_md(content_file: str) -> None:
+        agent = _resolve_eval_agent(_plugin.config).agent if _plugin else "claude-code"
+        if agent == "claude-code":
+            claude_dir = test_dir / ".claude"
+            claude_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(content_file, claude_dir / "CLAUDE.md")
+            shutil.copyfile(content_file, test_dir / "CLAUDE.md")
+        elif agent == "codebuddy":
+            codebuddy_dir = test_dir / ".codebuddy"
+            codebuddy_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(content_file, codebuddy_dir / "CODEBUDDY.md")
+        else:
+            shutil.copyfile(content_file, test_dir / "AGENTS.md")
+
+    def _setup(
+        skills: dict = None,
+        claude_md: str = None,
+        environment_dir: Path = None,
+        workspace_dir: Path = None,
+    ):
         for skill_name, cfg in (skills or {}).items():
             if not cfg:
                 continue
@@ -1251,6 +1758,9 @@ def setup_test_context(test_dir):
                 if is_temp_dir and filtered_dir.exists():
                     shutil.rmtree(filtered_dir)
 
+        if workspace_dir and workspace_dir.exists():
+            _copy_workspace(workspace_dir)
+
         if environment_dir and environment_dir.exists():
             _copy_environment(environment_dir)
             _copy_trusted_native_runtime_snapshot(environment_dir, test_dir, skills)
@@ -1266,7 +1776,9 @@ def setup_test_context(test_dir):
             finally:
                 os.unlink(temp_file)
 
-        _ensure_claude_pre_tool_hook(test_dir, _comet_hook_command(test_dir))
+        agent = _resolve_eval_agent(_plugin.config).agent if _plugin else "claude-code"
+        _ensure_langfuse_trajectory_support(test_dir, agent)
+        _ensure_agent_pre_tool_hook(test_dir, agent, _comet_hook_command(test_dir, agent))
 
         return test_dir
 
@@ -1275,13 +1787,15 @@ def setup_test_context(test_dir):
 
 @pytest.fixture
 def run_claude(test_dir, experiment_logger, request):
-    """Factory fixture to run Claude in Docker and capture artifacts.
+    """Factory fixture to run the selected evaluation agent in Docker.
 
     For tasks using ``interaction.mode=auto_user`` the single-shot ``run-claude``
     is replaced by the multi-turn ``run-claude-loop`` driver, which simulates a
     user replying at the workflow's decision points.
     """
-    default_model = _selected_claude_model()
+    execution = _resolve_eval_execution(request.config)
+    selected_agent = execution.agent
+    default_model = execution.model
 
     def _run(
         prompt: str,
@@ -1291,18 +1805,28 @@ def run_claude(test_dir, experiment_logger, request):
         image_id: str | None = None,
     ):
         mdl = model or default_model
+        run_execution = ResolvedExecution(
+            selected_agent,
+            mdl,
+            execution.base_url,
+            execution.sources,
+        )
+        run_environment = build_agent_environment(run_execution)
         if os.environ.get("TRACE_TO_LANGSMITH", "").lower() == "true" and not os.environ.get(
             "CC_LANGSMITH_LOG_FILE"
         ):
             os.environ["CC_LANGSMITH_LOG_FILE"] = "/workspace/langsmith-hook.log"
         use_loop = interaction is not None and interaction.mode == "auto_user"
         if not use_loop:
-            result = run_claude_in_docker(
+            result = run_agent_in_docker(
                 test_dir,
                 prompt,
+                agent=selected_agent,
                 timeout=timeout,
                 model=mdl,
+                base_url=execution.base_url,
                 image_id=image_id,
+                environment=run_environment,
             )
         else:
             task_prompt_file = test_dir / ".eval-task-prompt.txt"
@@ -1342,11 +1866,25 @@ def run_claude(test_dir, experiment_logger, request):
                         "--simulator-prompt-file",
                         "//workspace/.eval-simulator-prompt.txt",
                     ]
-                result = run_claude_loop_in_docker(
-                    test_dir,
-                    loop_args[2:],
-                    timeout=timeout + 60,
-                )
+                if selected_agent == "claude-code":
+                    result = run_claude_loop_in_docker(
+                        test_dir,
+                        loop_args[2:],
+                        timeout=timeout + 60,
+                        environment=run_environment,
+                    )
+                else:
+                    result = run_agent_loop_in_docker(
+                        test_dir,
+                        [
+                            loop_args[2],
+                            "--agent",
+                            selected_agent,
+                            *loop_args[3:],
+                        ],
+                        timeout=timeout + 60,
+                        environment=run_environment,
+                    )
             finally:
                 task_prompt_file.unlink(missing_ok=True)
                 if prompt_file and prompt_file.exists():
@@ -1384,12 +1922,22 @@ def record_result(test_dir, experiment_logger, request):
         if not experiment_logger:
             return
 
+        if _plugin is not None:
+            _plugin.last_test_dir = test_dir
+
         treatment_name = _get_treatment_name(request.node)
         rep = _plugin.run_counter.get(treatment_name, 1) if _plugin else 1
+        events["sample"] = rep
         base_dir = experiment_logger.base_dir
 
         save_events(base_dir, treatment_name, rep, events)
-        _save_artifacts(base_dir, treatment_name, rep, test_dir)
+        _save_artifacts(
+            base_dir,
+            treatment_name,
+            rep,
+            test_dir,
+            agent=events.get("agent", "claude-code"),
+        )
         artifact_references = build_eval_artifact_references(base_dir, treatment_name, rep)
 
         scripts_used = _extract_scripts_used(events)
@@ -1439,9 +1987,23 @@ def record_result(test_dir, experiment_logger, request):
                     "skill_sources": events.get("skill_sources", []),
                     "eval_manifest": events.get("eval_manifest"),
                     "case_manifest": events.get("case_manifest"),
+                    "eval_generation": events.get("eval_generation"),
                     "interaction": events.get("interaction", {}),
                     "artifact_references": artifact_references,
                     "failure_attribution": failure_attribution,
+                    "agent": events.get("agent", "claude-code"),
+                    "role_models": events.get("role_models", {}),
+                    "role_agents": events.get("role_agents", {}),
+                    "telemetry_status": events.get("telemetry_status", "N/A"),
+                    "role_sessions": events.get("role_sessions", {}),
+                    "task": events.get("task"),
+                    "treatment": events.get("treatment", treatment_name),
+                    "sample": events.get("sample", rep),
+                    "prompt": events.get("prompt"),
+                    "skill": events.get("skill"),
+                    "final_response": events.get("final_response"),
+                    "quality_gates": events.get("quality_gates", {}),
+                    "execution_identity": events.get("execution_identity"),
                 },
                 run_id=run_id,
             ),
@@ -1495,14 +2057,29 @@ def _build_report_payload(
             "model_usage": events.get("model_usage", {}),
             "files_created": events.get("files_created", []),
             "skills_invoked": events.get("skills_invoked", []),
+            "skill_invocations": events.get("skill_invocations", []),
             "scripts_used": scripts_used,
             "profile": events.get("profile"),
             "skill_sources": events.get("skill_sources", []),
             "eval_manifest": events.get("eval_manifest"),
             "case_manifest": events.get("case_manifest"),
+            "eval_generation": events.get("eval_generation"),
             "interaction": events.get("interaction", {}),
             "artifact_references": artifact_references,
             "failure_attribution": failure_attribution,
+            "agent": events.get("agent", "claude-code"),
+            "role_models": events.get("role_models", {}),
+            "role_agents": events.get("role_agents", {}),
+            "telemetry_status": events.get("telemetry_status", "N/A"),
+            "role_sessions": events.get("role_sessions", {}),
+            "task": events.get("task"),
+            "treatment": events.get("treatment", treatment_name),
+            "sample": events.get("sample", rep),
+            "prompt": events.get("prompt"),
+            "skill": events.get("skill"),
+            "final_response": events.get("final_response"),
+            "quality_gates": events.get("quality_gates", {}),
+            "execution_identity": events.get("execution_identity"),
         },
         "timestamp": datetime.now().isoformat(),
     }
@@ -1581,15 +2158,32 @@ def _filter_scripts(scripts_dir: Path, script_filter: str) -> Path | None:
     return temp_dir
 
 
-def _build_docker_image_with_lock(environment_dir: Path) -> str | None:
+def _build_docker_image_with_lock(
+    environment_dir: Path,
+    agent: str | None = None,
+    *,
+    environment: dict[str, str] | None = None,
+) -> str | None:
     """Build Docker image with file locking to prevent race conditions."""
     if not environment_dir or not (environment_dir / "Dockerfile").exists():
         return None
 
-    with file_lock(DOCKER_BUILD_LOCK):
-        # A cold image build downloads Debian packages and installs the Claude CLI.
+    context = context_from_environment()
+    lock_path = (
+        resolve_managed_path(context, "locks", ".pytest_docker_build.lock")
+        if context is not None
+        else DOCKER_BUILD_LOCK
+    )
+    with file_lock(lock_path):
+        # A cold image build downloads Debian packages and installs the selected CLI.
         # Five minutes is insufficient after cache cleanup or on a proxied connection.
-        result = run_shell("docker.sh", "build", str(environment_dir), timeout=900, check=False)
+        command = ["docker.sh", "build", str(environment_dir)]
+        if agent:
+            command.extend(["--agent", agent])
+        run_options = {"timeout": 900, "check": False}
+        if environment is not None:
+            run_options["env"] = environment
+        result = run_shell(*command, **run_options)
         if result.returncode == 0:
             return result.stdout.strip()
         return None
@@ -1664,18 +2258,34 @@ def _extract_scripts_used(events: dict) -> list[str]:
     return [s for s in _get_known_scripts() if s.lower() in all_activity]
 
 
-def _save_artifacts(base_dir: Path, treatment_name: str, rep: int, test_dir: Path):
-    """Save Claude's generated files as artifacts."""
+def _save_artifacts(
+    base_dir: Path,
+    treatment_name: str,
+    rep: int,
+    test_dir: Path,
+    *,
+    agent: str = "claude-code",
+):
+    """Save the selected Agent's generated files as artifacts."""
     artifacts_dir = base_dir / "artifacts" / f"{treatment_name.lower()}_rep{rep}"
-    claude_dir = artifacts_dir / "claude"
+    agent_dir_name = {
+        "claude-code": "claude",
+        "codex": "codex",
+        "qoder": "qoder",
+        "codebuddy": "codebuddy",
+    }.get(agent, agent)
+    agent_dir = artifacts_dir / agent_dir_name
     execution_dir = artifacts_dir / "execution"
-    claude_dir.mkdir(parents=True, exist_ok=True)
+    agent_dir.mkdir(parents=True, exist_ok=True)
     execution_dir.mkdir(parents=True, exist_ok=True)
 
     from scaffold.python.utils import TEST_CONTEXT_FILE, TEST_RESULTS_FILE
 
     exclude_dirs = {
         ".claude",
+        ".agents",
+        ".qoder",
+        ".codebuddy",
         ".git",
         "_eval_current_comet",
         "node_modules",
@@ -1707,9 +2317,20 @@ def _save_artifacts(base_dir: Path, treatment_name: str, rep: int, test_dir: Pat
             continue
         try:
             rel_path = item.relative_to(test_dir)
-            dest = claude_dir / rel_path
+            dest = agent_dir / rel_path
             dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy(item, dest)
+            try:
+                content = item.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                import sys
+
+                print(
+                    f"Warning: skipped non-text artifact {rel_path}; binary content is not persisted to protect credentials",
+                    file=sys.stderr,
+                )
+                continue
+            else:
+                dest.write_text(redact_sensitive(content), encoding="utf-8")
             claude_files.append(item)
         except Exception as e:
             import sys
@@ -1722,7 +2343,7 @@ def _save_artifacts(base_dir: Path, treatment_name: str, rep: int, test_dir: Pat
                 success, output = run_python_in_docker(test_dir, py_file.name, timeout=300)
                 status = "success" if success else "error"
                 output_file = execution_dir / f"{py_file.stem}_{status}.txt"
-                output_file.write_text(strip_ansi(output))
+                output_file.write_text(redact_sensitive(strip_ansi(output)), encoding="utf-8")
             except Exception as e:
                 error_file = execution_dir / f"{py_file.stem}_error.txt"
-                error_file.write_text(str(e))
+                error_file.write_text(redact_sensitive(str(e)), encoding="utf-8")

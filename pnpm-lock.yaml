@@ -34,6 +34,9 @@ importers:
       '@inquirer/type':
         specifier: ^4.0.5
         version: 4.0.5(@types/node@24.12.4)
+      ajv:
+        specifier: ^8.17.1
+        version: 8.20.0
       antd:
         specifier: ^6.5.2
         version: 6.5.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -41,8 +44,8 @@ importers:
         specifier: ^14.0.0
         version: 14.0.3
       dompurify:
-        specifier: ^3.4.12
-        version: 3.4.12
+        specifier: ^3.4.13
+        version: 3.4.13
       highlight.js:
         specifier: ^11.11.1
         version: 11.11.1
@@ -50,8 +53,11 @@ importers:
         specifier: ^18.0.4
         version: 18.0.6
       mermaid:
-        specifier: 11.15.0
-        version: 11.15.0
+        specifier: 11.16.1
+        version: 11.16.1
+      smol-toml:
+        specifier: ^1.7.1
+        version: 1.7.1
       yaml:
         specifier: ^2.9.0
         version: 2.9.0
@@ -2500,6 +2506,12 @@ packages:
         integrity: sha512-fgFx7Hfoq60ytK2c7DhnF8jIvzYgOMxfugjLOSMHjLIPgenqa7S7oaagATUq99mV6IYvN2tRmC0wnTYX6iPbMw==,
       }
 
+  ajv@8.20.0:
+    resolution:
+      {
+        integrity: sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA==,
+      }
+
   ansi-escapes@7.3.0:
     resolution:
       {
@@ -3062,10 +3074,10 @@ packages:
       }
     engines: { node: '>=8' }
 
-  dompurify@3.4.12:
+  dompurify@3.4.13:
     resolution:
       {
-        integrity: sha512-zQvGet8Z2sWbQhCmfFz/T5QWH2oBmjnqK3qvOjaqaNLrLEF912WamU+ohnTp0TCep/MFVHpdJuCZEdFOdTnEFg==,
+        integrity: sha512-2vmYIoqjze2d+kakP8S/nS5shfsl587kzwEjcGlTdiksUVgFHnFCsLYDVj/JNqJVOQZGSYBTmuycv0PodwmnMQ==,
       }
 
   electron-to-chromium@1.5.378:
@@ -3264,6 +3276,12 @@ packages:
     resolution:
       {
         integrity: sha512-gX8LrtNEI5hq8DVUfRQMbr5lpaS4nMIWV+7XEbXk2b8kiQIizgnlr12B4dA3ZEx3308ze0O4Q1R+cHts8kyUJg==,
+      }
+
+  fast-uri@3.1.5:
+    resolution:
+      {
+        integrity: sha512-gHwA1O9LDIcKunMKhObS/HimwtehO1nPUECKAu5TpKgaO19fcWEl4bliWe1jWxVFvIXztJjjQ4L8XQ1EU9f7Jw==,
       }
 
   fast-wrap-ansi@0.2.0:
@@ -3615,6 +3633,12 @@ packages:
         integrity: sha512-xbbCH5dCYU5T8LcEhhuh7HJ88HXuW3qsI3Y0zOZFKfZEHcpWiHU/Jxzk629Brsab/mMiHQti9wMP+845RPe3Vg==,
       }
 
+  json-schema-traverse@1.0.0:
+    resolution:
+      {
+        integrity: sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug==,
+      }
+
   json-stable-stringify-without-jsonify@1.0.1:
     resolution:
       {
@@ -3882,10 +3906,10 @@ packages:
       }
     engines: { node: '>= 8' }
 
-  mermaid@11.15.0:
+  mermaid@11.16.1:
     resolution:
       {
-        integrity: sha512-pTMbcf3rWdtLiYGpmoTjHEpeY8seiy6sR+9nD7LOs8KfUbHE4lOUAprTRqRAcWSQ6MQpdX+YEsxShtGsINtPtw==,
+        integrity: sha512-TQsq6u22fAn3rek5VOubrhKPo1g5hwC3FXUN9hiyupTckcYiGuuKGkNQrKYwGJkXUxZdojwRG46gsSCFZMDp4g==,
       }
 
   micromatch@4.0.8:
@@ -4291,6 +4315,13 @@ packages:
         integrity: sha512-stxByr12oeeOyY2BlviTNQlYV5xOj47GirPr4yA1hE9JCtxfQN0+tVbkxwCtYDQWhEKWFHsEK48ORg5jrouCAg==,
       }
     engines: { node: '>=20' }
+
+  smol-toml@1.7.1:
+    resolution:
+      {
+        integrity: sha512-PPlsspAZ4jbMBu5DMFhfUGDQLu/vrL4SyBROVS37x8ynnVmFIs1VPBz1Co8Xks3TvpIaZXmU85y4DrQ+UyVFoQ==,
+      }
+    engines: { node: '>= 18' }
 
   source-map-js@1.2.1:
     resolution:
@@ -6272,6 +6303,13 @@ snapshots:
       json-schema-traverse: 0.4.1
       uri-js: 4.4.1
 
+  ajv@8.20.0:
+    dependencies:
+      fast-deep-equal: 3.1.3
+      fast-uri: 3.1.5
+      json-schema-traverse: 1.0.0
+      require-from-string: 2.0.2
+
   ansi-escapes@7.3.0:
     dependencies:
       environment: 1.1.0
@@ -6641,7 +6679,7 @@ snapshots:
 
   detect-libc@2.1.2: {}
 
-  dompurify@3.4.12:
+  dompurify@3.4.13:
     optionalDependencies:
       '@types/trusted-types': 2.0.7
 
@@ -6790,6 +6828,8 @@ snapshots:
   fast-string-width@3.0.2:
     dependencies:
       fast-string-truncated-width: 3.0.3
+
+  fast-uri@3.1.5: {}
 
   fast-wrap-ansi@0.2.0:
     dependencies:
@@ -6956,6 +6996,8 @@ snapshots:
 
   json-schema-traverse@0.4.1: {}
 
+  json-schema-traverse@1.0.0: {}
+
   json-stable-stringify-without-jsonify@1.0.1: {}
 
   json2mq@0.2.0:
@@ -7096,7 +7138,7 @@ snapshots:
 
   merge2@1.4.1: {}
 
-  mermaid@11.15.0:
+  mermaid@11.16.1:
     dependencies:
       '@braintree/sanitize-url': 7.1.2
       '@iconify/utils': 3.1.4
@@ -7110,7 +7152,7 @@ snapshots:
       d3-sankey: 0.12.3
       dagre-d3-es: 7.0.14
       dayjs: 1.11.21
-      dompurify: 3.4.12
+      dompurify: 3.4.13
       es-toolkit: 1.49.0
       katex: 0.16.47
       khroma: 2.1.0
@@ -7334,6 +7376,8 @@ snapshots:
     dependencies:
       ansi-styles: 6.2.3
       is-fullwidth-code-point: 5.1.0
+
+  smol-toml@1.7.1: {}
 
   source-map-js@1.2.1: {}
 

@@ -2,47 +2,86 @@
 
 本文从用户视角说明新版本怎么评估一个 Skill。正常情况下，你不需要理解 pytest、task registry、profile、treatment 或 Docker 细节；用户主入口是 `comet eval`。
 
-## 先理解 `comet eval` 在 Comet 里的位置
+## 最短路径：评估你自己的本地 Skill
 
-`/comet-any` 负责创建或优化 Skill，`comet eval` 负责评估这个 Skill 是否能被 eval harness 发现、运行并产出报告。
-新版本的 `/comet-any` 还会把 eval 结果和项目级偏好证据一起放进 publish readiness：`preferenceHash`、组合方案、resolved Skill 证据和 eval evidence 必须都能对应当前 draft。
-
-两者的关系可以这样理解：
-
-```text
-/comet-any 生成 Skill
-  -> 产出 comet/eval.yaml
-  -> comet eval --collect 做发现预检查
-  -> comet eval --html 执行真实评估
-  -> /comet-any 或 comet creator status/next 读取评估结果并进入 readiness / review / publish / distribute
-```
-
-`comet eval` 不负责发布。发布仍然由 `/comet-any` 背后的 Bundle 后端处理，对普通用户暴露为 `comet publish`。eval 的职责是提供发布前证据。
-对普通用户，推荐链路仍是 `/comet-any -> comet eval -> comet creator status/next -> comet publish review/approve/run -> comet publish distribute --preview -> comet publish distribute`。
-稳定组合 Skill Bundle 的 required capability set（必需能力集合）是 `skills/scripts/rules/hooks/references`；
-其中 `scripts/rules/hooks` 是 required control plane，`hooks/*.yaml` 只有在 `comet publish distribute`
-编译到目标平台后才会生效。
-
-## 推荐路径：评估 `/comet-any` 生成的 Skill
-
-当 `/comet-any` 生成了 Skill 后，优先找这个文件：
-
-```text
-generated-skill/
-  comet/
-    eval.yaml
-```
-
-然后按两步跑：
+`comet eval` 首先是一个独立的 Skill 评估器。你不需要先运行 `/comet-any`，也不需要先写
+`comet/eval.yaml`：
 
 ```bash
-comet eval ./generated-skill/comet/eval.yaml --collect
-comet eval ./generated-skill/comet/eval.yaml --html
+# POSIX
+comet eval ./my-skill --collect
+comet eval ./my-skill --html
+comet eval ./my-skill --quick --html
 ```
 
-第一步 `--collect` 只确认“能不能发现任务”。它适合刚生成完 Skill 后做低成本预检查。
+```powershell
+# Windows PowerShell
+comet eval .\my-skill --collect
+comet eval .\my-skill --html
+comet eval .\my-skill --quick --html
+```
 
-第二步 `--html` 才执行真实评估，并生成可浏览报告。评估通过后，`/comet-any` 可以把这份结果作为发布前证据的一部分。
+- `--collect` 只做静态发现和配置检查，不启动 Agent、Docker、插件、凭据或网络请求。
+- 普通运行在没有 manifest 时，会直接读取 Skill 并自动生成、冻结和缓存 2–4 个任务。
+- `--quick` 使用固定的 `generic-skill-smoke` 任务，适合低成本冒烟。
+
+报告和运行状态写入 Skill 目录，或 `--project` 指定项目目录下的：
+
+```text
+.comet/eval/
+├── generated/   # 自动生成任务
+├── cache/       # uv、插件等缓存
+├── locks/       # 并发锁
+└── runs/        # summary、events、raw、reports、artifacts
+```
+
+Skill 目录、直接 `SKILL.md`、直接 `comet/eval.yaml` 都可以作为 target。传入 Skill 目录时，Eval
+会自动发现 `<skill-root>/comet/eval.yaml` 或 `.yml`；没有时只在内存中合成基础 manifest，不会改写你的 Skill：
+
+```bash
+comet eval ./my-skill/SKILL.md --html
+comet eval ./my-skill/comet/eval.yaml --collect
+```
+
+## 主 Agent 与独立 LLM-as-Judge
+
+主执行和 Judge 是两套独立配置。主 Agent、模型和 API 地址可以写在 manifest 中，也可以用 CLI 覆盖：
+
+```yaml
+execution:
+  agent: codex
+  model: subject-model
+  baseUrl: https://subject.example/v1
+judge:
+  agent: claude-code
+  model: judge-model
+  baseUrl: https://judge.example/v1
+```
+
+```powershell
+comet eval .\my-skill `
+  --agent codex --model subject-model --base-url https://subject.example/v1 `
+  --judge-agent claude-code --judge-model judge-model `
+  --judge-base-url https://judge.example/v1
+```
+
+```bash
+comet eval ./my-skill \
+  --agent codex --model subject-model --base-url https://subject.example/v1 \
+  --judge-agent claude-code --judge-model judge-model \
+  --judge-base-url https://judge.example/v1
+```
+
+CLI 优先于 manifest；如果只配置 `judge.model`，Judge Agent 继承主 Agent，但 Judge 模型、API 地址和凭据
+仍然独立。Judge 凭据只使用 `BENCH_JUDGE_API_KEY` / `BENCH_JUDGE_AUTH_TOKEN`，不会继承主 Agent 凭据。
+自定义 Agent 需要先安装用户目录下的显式适配器，再通过同一个 `--agent` / `--judge-agent` 选择；详情见
+后文的高级扩展说明。
+
+## `/comet-any` 是可选的生产方式
+
+`/comet-any` 仍可以生成兼容的 `comet/eval.yaml`，生成物直接传入 `comet eval` 即可；它不再是独立评估的
+前置依赖。`comet eval` 不负责发布，若你使用 `/comet-any` 的 Bundle 发布链路，评估结果还可以作为 publish
+readiness 的证据。
 
 ## eval 结果如何进入 publish readiness
 
@@ -73,15 +112,43 @@ comet publish review <name> --platform <reference-platform> --json
 
 它不应该先跑完整模型评估，也不应该先消耗长时间任务。失败时，通常先修 manifest、路径或任务发现问题。
 
-## 选择 Local 或 LangSmith 套件
+## 选择 Local、LangSmith 或 Langfuse 套件
 
 `comet eval` 默认使用 `local` 套件，适合日常开发和本地报告。需要把 run、rubric feedback、成本和 Claude Code 轨迹同步到 LangSmith 时，显式选择 `langsmith`：
 
 ```bash
-comet eval ./generated-skill/comet/eval.yaml --suite langsmith --html
+comet eval ./my-skill --suite langsmith --html
 ```
 
-两个套件复用同一套任务、treatment、rubric 和 manifest。`langsmith` 套件会读取 `LANGSMITH_API_KEY`、`LANGSMITH_PROJECT` 和 `LANGSMITH_TRACING`，准备 Claude Code 轨迹插件，并把报告写入 `eval/langsmith/logs/experiments/`。没有 `--suite langsmith` 时，即使环境里启用了 tracing，Local runner 也不会创建 LangSmith experiment。
+两个套件复用同一套任务、treatment、rubric 和 manifest。`langsmith` 套件会读取 `LANGSMITH_API_KEY`、`LANGSMITH_PROJECT` 和 `LANGSMITH_TRACING`，准备 Claude Code 轨迹插件，并把报告写入项目的 `.comet/eval/runs/`。没有 `--suite langsmith` 时，即使环境里启用了 tracing，Local runner 也不会创建 LangSmith experiment。
+
+需要把核心 task/treatment 结果和 score 同步到 Langfuse 时，选择 `langfuse`：
+
+```bash
+LANGFUSE_PUBLIC_KEY=pk-lf-... LANGFUSE_SECRET_KEY=sk-lf-... \
+  comet eval ./my-skill --suite langfuse --html
+```
+
+`comet eval` 会自动选择 Langfuse optional extra。Langfuse 套件会在 Agent/Docker 运行前完成凭据与连接检查；核心 trace、score、summary 或 flush 上报失败会使本次套件失败。Claude Code 和 Codex 会使用隔离缓存中的固定版本官方 hook/plugin；Qoder、CodeBuddy 使用项目级 Stop hook 和 JSONL transcript 适配器，详细轨迹失败时只降级为 best-effort。`--collect --suite langfuse` 不初始化 SDK、不联网、不下载插件。
+
+## 选择评估 Agent
+
+评估默认使用 `claude-code`。可以用 CLI 选择 `claude-code`、`codex`、`qoder` 或 `codebuddy`：
+
+```bash
+comet eval ./my-skill --agent codex
+comet eval ./my-skill --agent qoder
+comet eval ./my-skill --agent codebuddy
+```
+
+也可以在 manifest 中设置默认值：
+
+```yaml
+execution:
+  agent: codex
+```
+
+选择优先级是 CLI `--agent` > manifest `execution.agent` > `claude-code`。Local 和 LangSmith 套件共享同一选择规则；subject、auto_user simulator 和可选 Judge 都使用选定 Agent 的独立会话。`--collect` 只校验 Agent 与 manifest，不启动 Agent、Docker 或凭据检查。
 
 ## `--html` 会输出什么
 
@@ -89,7 +156,7 @@ comet eval ./generated-skill/comet/eval.yaml --suite langsmith --html
 
 - `Eval root`：实际从哪个 `eval/` 根目录启动
 - `Mode`：`collect` 或 `run`
-- `Suite`：`local` 或 `langsmith`
+- `Suite`：`local`、`langsmith` 或 `langfuse`
 - `Target`：当前评估的是 manifest 还是本地 Skill 目录
 - `Experiment`：本次实验 id
 - `Profile`：本次评估使用的 profile
@@ -100,7 +167,7 @@ comet eval ./generated-skill/comet/eval.yaml --suite langsmith --html
 `--html` 会要求报告同时产出 markdown 和 HTML。报告路径跟随所选套件：
 
 ```text
-eval/<suite>/logs/experiments/<experiment-id>/summary.html
+.comet/eval/runs/<experiment-id>/summary.html
 ```
 
 如果 CLI 输出里显示的是 `<experiment-id>` 占位符，用同一段输出里的 `Experiment` 值对应查找即可。
@@ -136,13 +203,20 @@ eval/<suite>/logs/experiments/<experiment-id>/summary.html
 
 ## 只有本地 Skill 目录时怎么评估
 
-如果你还没有 `comet/eval.yaml`，只有一个本地 Skill 目录，可以先做 quick smoke：
+如果你只有一个本地 Skill 目录，直接把它作为 target 即可：
 
 ```bash
-comet eval ./my-skill --quick
+comet eval ./my-skill --collect
+comet eval ./my-skill --html
 ```
 
-这个路径适合早期验证：
+如果只想做低成本冒烟：
+
+```bash
+comet eval ./my-skill --quick --html
+```
+
+这个路径适合验证：
 
 - Skill 目录是否可读取
 - eval harness 是否能把它当作动态 Skill 注入
@@ -154,18 +228,36 @@ comet eval ./my-skill --quick
 generic-skill-smoke
 ```
 
-这只是早期冒烟，不等于发布前完整证据。准备发布时，仍推荐通过 `/comet-any` 生成 `comet/eval.yaml`，再走 manifest 路径。
+这只是早期冒烟，不等于完整评估。需要可复现的任务定义时，可以在 Skill 中加入可选的
+`comet/eval.yaml`；如果使用 `/comet-any`，它生成的 manifest 也可以直接复用。
+
+如果 `eval.yaml` 没有 `evaluation.tasks` 或 `recommendedTasks`，普通运行会对 Skill 做受限快照，自动生成 2–4 个确定性任务，并按快照、Agent、profile 和交互配置 hash 缓存到 `.comet/eval/generated/`。缓存 manifest 会保存生成元数据；`--collect` 只读取已有缓存，不会启动任务生成 Agent。需要跳过自动生成时显式使用 `--quick`。
+
+项目也可以直接在 `evaluation.tasks` 中声明 inline task，或用 `source` 引用 Skill 包内带有 `task.toml` 和 `instruction.md` 的任务包：
+
+```yaml
+evaluation:
+  tasks:
+    - name: writes-summary
+      prompt: Create summary.md.
+      expect:
+        files: [summary.md]
+        contains:
+          summary.md: ['# Summary']
+```
+
+`source`、`workspace` 和期望产物必须留在允许的包/工作区内；inline 的 `files`、`contains`、`json`、`commands` 检查会在 Docker 工作区执行。
 
 ## manifest 路径和 skill-path 路径怎么选
 
 优先级很简单：
 
-- 有 `comet/eval.yaml`：直接把这个文件作为 target
-- 只有本地目录、还在早期调试：把 Skill 目录作为 target 并加 `--quick`
-- 是 `/comet-any` 生成物：直接传它的 `comet/eval.yaml`
-- 要进入发布 readiness：直接传它的 `comet/eval.yaml`
+- 普通本地 Skill：直接传 Skill 目录，Eval 会自动发现可选 manifest
+- 只有 `SKILL.md`：直接传 `SKILL.md`
+- 有 `comet/eval.yaml`：可以传 Skill 目录自动发现，也可以直接传 manifest
+- `/comet-any` 生成物：目录和 manifest 两种 target 都兼容
 
-不要把本地 Skill 的 `--quick` 冒烟当成最终发布评估。
+`--quick` 只表示固定 smoke 任务，不会替代完整任务评估。
 
 ## 失败时怎么判断下一步
 
@@ -192,7 +284,7 @@ generic-skill-smoke
 先看 CLI 输出的 `Experiment` 和 `Report path`。如果路径里有 `<experiment-id>`，用实际 experiment id 到下面目录查：
 
 ```text
-eval/local/logs/experiments/
+.comet/eval/runs/
 ```
 
 ## `comet eval` 和 `comet skill check` 不一样
@@ -206,7 +298,7 @@ eval/local/logs/experiments/
 如果你的问题是“这个 Skill 作为产品能力能不能通过评估”，用：
 
 ```bash
-comet eval ./generated-skill/comet/eval.yaml --html
+comet eval ./my-skill --html
 ```
 
 如果你的问题是“这个正在运行的 deterministic Skill Run 是否缺 artifact 或状态”，才用：
@@ -219,14 +311,14 @@ comet skill check --change ./changes/demo --scope completion
 
 实际使用时只需要记三件事：
 
-1. `/comet-any` 生成物优先用 `comet/eval.yaml`
-2. 先 `--collect`，再 `--html`
-3. eval 结果是 `/comet-any` 发布 readiness 的证据，不是发布动作本身
+1. 直接把自己的 Skill 交给 `comet eval`
+2. 先 `--collect`，再按需要运行 `--quick` 或 `--html`
+3. `/comet-any` 只是可选的 Skill 生产方式，eval 结果不是发布动作本身
 
 推荐命令：
 
 ```bash
-comet eval ./generated-skill/comet/eval.yaml --collect
-comet eval ./generated-skill/comet/eval.yaml --html
+comet eval ./my-skill --collect
+comet eval ./my-skill --html
 comet creator next <name> --json
 ```

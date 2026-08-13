@@ -41,6 +41,7 @@ import { NativeWorkflowPanel } from './native-workflow-panel.jsx';
 import { useAnimatedNumber } from './use-animated-number.js';
 import { DashboardWorkspaceRegion } from './workspace-layout.jsx';
 import {
+  dashboardChangeKey,
   dashboardResponseError,
   isStaleNativeDashboardCursorError,
   nativeDashboardChangeKey,
@@ -589,14 +590,14 @@ function DashboardApp({ theme, onToggleTheme }) {
       !shouldAutoLoadDashboardDetail({
         detailLoading,
         selectedId,
-        selectedDetailId: selectedDetail?.id ?? null,
-        visibleIds: visible.map((change) => change.id),
+        selectedDetailId: selectedDetail ? dashboardChangeKey(selectedDetail) : null,
+        visibleIds: visible.map(dashboardChangeKey),
         failedDetailId: detailError?.id ?? null,
       })
     )
       return;
 
-    const nextId = visible[0]?.id ?? null;
+    const nextId = visible[0] ? dashboardChangeKey(visible[0]) : null;
     detailRequestRef.current?.abort();
     if (!nextId) {
       selectedIdRef.current = null;
@@ -1086,10 +1087,11 @@ function TaskProgress({ change }) {
   const doneSections = change.tasks.sections.filter((s) => s.status === 'done').length;
   const totalSections = change.tasks.sections.length;
   const percent = total ? Math.round((completed / total) * 100) : 0;
-  const animatedPercent = useAnimatedNumber(percent, 900, change.id);
-  const animatedCompleted = useAnimatedNumber(completed, 900, change.id);
-  const animatedRemaining = useAnimatedNumber(remaining, 900, change.id);
-  const animatedDoneSections = useAnimatedNumber(doneSections, 900, change.id);
+  const animationKey = dashboardChangeKey(change);
+  const animatedPercent = useAnimatedNumber(percent, 900, animationKey);
+  const animatedCompleted = useAnimatedNumber(completed, 900, animationKey);
+  const animatedRemaining = useAnimatedNumber(remaining, 900, animationKey);
+  const animatedDoneSections = useAnimatedNumber(doneSections, 900, animationKey);
   const animatedRemainingValue = Math.round(animatedRemaining);
   const circumference = 2 * Math.PI * 54;
   const dashOffset = circumference * (1 - animatedPercent / 100);
@@ -1781,6 +1783,7 @@ async function fetchDashboardNativeChangePage(projectId, status, options = {}) {
 
 async function fetchDashboardNativeChangeDetail(projectId, change, signal) {
   const params = new URLSearchParams({ status: change.status, changeName: change.name });
+  if (change.locator) params.set('changeLocator', change.locator);
   if (change.archiveName) params.set('archiveName', change.archiveName);
   const res = await fetch(
     `/api/dashboard/projects/${encodeURIComponent(projectId)}/native-change?${params.toString()}`,
@@ -1791,7 +1794,7 @@ async function fetchDashboardNativeChangeDetail(projectId, change, signal) {
 }
 
 async function fetchDashboardChangeDetail(projectId, changeId, signal) {
-  const params = new URLSearchParams({ changeId });
+  const params = new URLSearchParams({ changeLocator: changeId });
   const res = await fetch(
     `/api/dashboard/projects/${encodeURIComponent(projectId)}/change?${params.toString()}`,
     { cache: 'no-store', signal },
@@ -1833,15 +1836,16 @@ function withDemoArtifactPreviews(snapshot) {
 
 function pickSelected(snapshot, previous) {
   const all = [...(snapshot.changes.active ?? []), ...(snapshot.changes.archived ?? [])];
-  if (previous && all.some((change) => change.id === previous)) return previous;
-  return snapshot.changes.active?.[0]?.id ?? snapshot.changes.archived?.[0]?.id ?? null;
+  if (previous && all.some((change) => dashboardChangeKey(change) === previous)) return previous;
+  const first = snapshot.changes.active?.[0] ?? snapshot.changes.archived?.[0];
+  return first ? dashboardChangeKey(first) : null;
 }
 
 function findChange(snapshot, id) {
   if (!snapshot || !id) return null;
   return (
     [...(snapshot.changes.active ?? []), ...(snapshot.changes.archived ?? [])].find(
-      (change) => change.id === id,
+      (change) => dashboardChangeKey(change) === id,
     ) ?? null
   );
 }
@@ -1857,7 +1861,14 @@ function filterChanges(snapshot, tab, query) {
   const q = query.trim().toLowerCase();
   if (!q) return list;
   return list.filter((change) =>
-    [change.name, change.displayName, change.workflow, change.phase]
+    [
+      change.name,
+      change.displayName,
+      change.workflow,
+      change.phase,
+      change.workspace?.label,
+      change.workspace?.branch,
+    ]
       .filter(Boolean)
       .join(' ')
       .toLowerCase()
@@ -2091,8 +2102,8 @@ function AntChangesExplorer({
 
 function pickSelectedFromPage(page, previous) {
   const items = page?.items ?? [];
-  if (previous && items.some((change) => change.id === previous)) return previous;
-  return items[0]?.id ?? null;
+  if (previous && items.some((change) => dashboardChangeKey(change) === previous)) return previous;
+  return items[0] ? dashboardChangeKey(items[0]) : null;
 }
 
 function materializeOverview(overview, initialPage) {
@@ -2155,14 +2166,14 @@ function DashboardChangeList({ visible, selectedId, onSelect, hasMore, pageLoadi
       ) : (
         visible.map((change) => (
           <div
-            key={change.id}
-            className={`dashboard-change-list-item ${change.id === selectedId ? 'selected' : ''} px-2`}
+            key={dashboardChangeKey(change)}
+            className={`dashboard-change-list-item ${dashboardChangeKey(change) === selectedId ? 'selected' : ''} px-2`}
           >
             <Button
-              className={`dashboard-change-row ${change.id === selectedId ? 'dashboard-change-row-selected' : ''}`}
+              className={`dashboard-change-row ${dashboardChangeKey(change) === selectedId ? 'dashboard-change-row-selected' : ''}`}
               type="text"
               block
-              onClick={() => onSelect(change.id)}
+              onClick={() => onSelect(dashboardChangeKey(change))}
             >
               <div className="flex w-full items-center gap-2.5 text-left">
                 <div className="min-w-0 flex-1">
@@ -2170,6 +2181,11 @@ function DashboardChangeList({ visible, selectedId, onSelect, hasMore, pageLoadi
                   <span className="mt-0.5 block text-xs text-meta">
                     {phaseLabel(change.phase)} · {change.tasks.completed}/{change.tasks.total}
                   </span>
+                  {change.workspace && !change.workspace.current ? (
+                    <span className="dashboard-workspace-label mt-1 inline-flex max-w-full truncate">
+                      {change.workspace.label}
+                    </span>
+                  ) : null}
                   <Progress
                     percent={
                       change.tasks.total

@@ -17,7 +17,7 @@ comet native <group> <command> --help
 - `inputOptions`：这次命令需要填写的字段和 JSON 模板；
 - `workspace` / `preparation`：实际工作目录和 change 创建结果；
 - `stateVersion` / `loop`：当前状态版本和验收循环进度；
-- `acceptance` / `nextPageArgs`：验收摘要和下一页的查询命令；
+- `acceptance` / `children` / `readyChildren` / `nextPageArgs`：验收摘要、Supervisor Change 的子项投影、当前可启动子项和下一页查询命令；
 - `verifierDispatch`：启动独立 Verifier 所需的输入；
 - `workspaceFinishResult` / `recoveryArgs`：归档后的工作区收尾结果和恢复命令。
 

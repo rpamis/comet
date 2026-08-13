@@ -60,6 +60,7 @@ import {
   inspectClassicPlanReadiness,
   type ClassicPlanReadiness,
 } from './classic-plan-readiness.js';
+import { resolveClassicWorkspace } from './classic-workspace.js';
 
 const GREEN = '\u001b[32m';
 const RED = '\u001b[31m';
@@ -393,7 +394,10 @@ async function reviewModeDefault(): Promise<string | null> {
 }
 
 function gitOutput(args: string[]): string | null {
-  const result = spawnSync('git', args, { encoding: 'utf8' });
+  const result = spawnSync('git', args, {
+    cwd: classicCommandProjectRoot(),
+    encoding: 'utf8',
+  });
   return result.status === 0 ? result.stdout.trim() : null;
 }
 
@@ -566,9 +570,21 @@ async function setField(
   output.stderr.push(green(`[SET] ${field}=${value}`));
 }
 
-async function init(output: CommandOutput, name: string, workflow: string): Promise<void> {
+async function init(
+  output: CommandOutput,
+  name: string,
+  workflow: string,
+  isolation: string | null = null,
+): Promise<void> {
   validateChangeName(name);
   validateEnum(workflow, PROFILES);
+  if (isolation !== null) validateEnum(isolation, ['current', 'branch', 'worktree']);
+  const boundBranch = isolation !== null ? liveGitBranch(classicCommandProjectRoot()) : null;
+  if (isolation !== null && isolation !== 'current' && boundBranch === null) {
+    fail(
+      `ERROR: cannot bind isolation=${isolation} while HEAD is detached; checkout a branch first`,
+    );
+  }
   const change = await ensureClassicActiveChangeDirectory(name, classicCommandProjectRoot());
   const { label, directory } = change;
   const file = path.join(directory, '.comet.yaml');
@@ -586,7 +602,7 @@ async function init(output: CommandOutput, name: string, workflow: string): Prom
     subagent_dispatch: null,
     tdd_mode: preset ? 'direct' : null,
     review_mode: reviewMode,
-    isolation: null,
+    isolation,
     verify_mode: preset ? 'light' : null,
     auto_transition: (await autoTransition()) === 'true',
     base_ref: gitOutput(['rev-parse', '--verify', 'HEAD']),
@@ -601,6 +617,7 @@ async function init(output: CommandOutput, name: string, workflow: string): Prom
     archive_confirmation: null,
     archived: false,
   });
+  if (isolation !== null) document.set('bound_branch', boundBranch);
   await atomicWrite(file, document.toString());
   output.stdout.push(green(`Initialized: ${label}/.comet.yaml (workflow=${workflow})`));
 }
@@ -1444,11 +1461,16 @@ async function assertStateCommandWritable(subcommand: string | undefined): Promi
 async function selectChange(output: CommandOutput, name: string): Promise<void> {
   validateChangeName(name);
   try {
-    const selection = await selectCurrentChange(classicCommandProjectRoot(), name);
-    const boundBranch = await readField(name, 'bound_branch');
-    const bound = boundBranch && boundBranch !== 'null' ? boundBranch : null;
+    const requestedRoot = classicCommandProjectRoot();
+    const workspace = await resolveClassicWorkspace({ projectRoot: requestedRoot, name });
+    const selection = await selectCurrentChange(workspace.projectRoot, name);
+    const change = await resolveClassicChangeDirectory(name, workspace.projectRoot);
+    const state = await readClassicState(change.directory, { migrate: false });
+    const bound = state.classic?.boundBranch ?? null;
     output.stderr.push(
-      green(`[SELECTED] current change: ${selection.change}${bound ? ` (branch: ${bound})` : ''}`),
+      green(
+        `[SELECTED] current change: ${selection.change}${bound ? ` (branch: ${bound})` : ''}${workspace.routed ? ` (workspace: ${workspace.projectRoot})` : ''}`,
+      ),
     );
   } catch (error) {
     fail(`ERROR: ${error instanceof Error ? error.message : String(error)}`);
@@ -1510,7 +1532,15 @@ export const classicStateCommand: ClassicCommandHandler = async (args, options) 
       await assertStateCommandWritable(subcommand);
       if (subcommand === 'init') {
         required(rest, 2, 'Usage: comet-state.mjs init <change-name> <workflow>');
-        await init(output, rest[0], rest[1]);
+        const initOptions = rest.slice(2);
+        let isolation: string | null = null;
+        if (initOptions.length > 0) {
+          if (initOptions.length !== 2 || initOptions[0] !== '--isolation') {
+            fail('Usage: comet-state.mjs init <change-name> <workflow> [--isolation <mode>]');
+          }
+          isolation = initOptions[1];
+        }
+        await init(output, rest[0], rest[1], isolation);
       } else if (subcommand === 'get') {
         required(rest, 2, 'Usage: comet-state.mjs get <change-name> <field>');
         validateChangeName(rest[0]);

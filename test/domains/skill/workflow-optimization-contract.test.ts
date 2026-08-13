@@ -284,16 +284,16 @@ describe('Comet workflow optimization contracts', () => {
     [
       '中文',
       zhSkillRoot,
-      '提供本工作流支持的全部工作区隔离和执行方式',
-      '分支名也必须在 Step 2 的同一个联合决策中确认',
-      '使用 Step 2 已确认的分支名，不得再次暂停',
+      '工作区已经在 Open 阶段准备并绑定',
+      '保留 Open 阶段已绑定的 `isolation`',
+      '不得在 Build 再创建 Worktree',
     ],
     [
       'English',
       skillRoot,
-      'provide every workspace-isolation and execution choice supported by this workflow',
-      'The branch name must be confirmed in the same Step 2 joint decision',
-      'Use the branch name already confirmed in Step 2; do not pause again',
+      'The workspace was prepared and bound during Open',
+      'preserve the `isolation` and `bound_branch` established during Open',
+      'do not create a Worktree',
     ],
   ])(
     '%s build flow has one executable configuration decision',
@@ -443,4 +443,43 @@ describe('Comet workflow optimization contracts', () => {
       expect(example).not.toContain(staleGuardPause);
     },
   );
+
+  it('keeps Classic isolation choices user-controlled while making parallel worktree guidance explicit', async () => {
+    const variants = [
+      {
+        language: 'zh' as const,
+        required: [
+          '当前目录有未提交工作',
+          '已有其他 active Classic change',
+          '| A | 当前目录（`current`）',
+          '| B | 新分支（`branch`）',
+          '| C | 新 worktree（`worktree`）',
+          '推荐只作说明',
+          '直接使用 `worktree`',
+        ],
+      },
+      {
+        language: 'en' as const,
+        required: [
+          'current directory has uncommitted work',
+          'Another active Classic change already exists',
+          '| A | Current directory (`current`)',
+          '| B | New branch (`branch`)',
+          '| C | New worktree (`worktree`)',
+          'A recommendation is explanatory only',
+          'select `worktree` directly',
+        ],
+      },
+    ];
+    for (const variant of variants) {
+      const workspaceRoot = variant.language === 'zh' ? zhSkillRoot : skillRoot;
+      const workspace = await fs.readFile(
+        path.join(workspaceRoot, 'comet-classic', 'reference', 'workspace.md'),
+        'utf8',
+      );
+      for (const term of variant.required) {
+        expect(workspace, `${variant.language}: ${term}`).toContain(term);
+      }
+    }
+  });
 });

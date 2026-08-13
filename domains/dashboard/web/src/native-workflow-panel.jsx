@@ -5,7 +5,9 @@ import {
   CheckCircleOutlined,
   CheckOutlined,
   CopyOutlined,
+  DownOutlined,
   FlagOutlined,
+  RightOutlined,
   SafetyCertificateOutlined,
   UserOutlined,
 } from '@ant-design/icons';
@@ -77,6 +79,20 @@ const MIGRATION_LABELS = {
   'legacy-read-only': '旧归档只读',
   invalid: '状态无效',
 };
+const CHILD_STATUS_LABELS = {
+  pending: '等待依赖',
+  ready: '可开始',
+  active: '进行中',
+  done: '已完成',
+  blocked: '已阻塞',
+};
+const CHILD_STATUS_TONES = {
+  pending: 'neutral',
+  ready: 'info',
+  active: 'warn',
+  done: 'ok',
+  blocked: 'danger',
+};
 const NATIVE_CHANGE_PAGE_SIZE = 5;
 
 function portableText(value, fallback = '—') {
@@ -84,7 +100,21 @@ function portableText(value, fallback = '—') {
 }
 
 function changeKey(change) {
-  return `${change.status}:${change.archiveName ?? ''}:${change.name}`;
+  return change.locator ?? `${change.status}:${change.archiveName ?? ''}:${change.name}`;
+}
+
+function childChangeReference(child) {
+  if (!child.locator || !child.changeStatus) return null;
+  return {
+    ...child,
+    workflow: 'native',
+    locator: child.locator,
+    name: child.name,
+    status: child.changeStatus,
+    ...(child.archiveName ? { archiveName: child.archiveName } : {}),
+    workspace: child.workspace,
+    children: [],
+  };
 }
 
 function acceptanceProgress(change) {
@@ -128,7 +158,23 @@ export function NativeWorkflowPanel({
     if (serverPaged) return source;
     return source.filter((change) => {
       const matchesTab = tab === 'all' || change.status === tab;
-      const matchesQuery = !normalizedQuery || change.name.toLowerCase().includes(normalizedQuery);
+      const matchesQuery =
+        !normalizedQuery ||
+        [
+          change.name,
+          change.workspace?.label,
+          change.workspace?.branch,
+          ...(change.children ?? []).flatMap((child) => [
+            child.name,
+            child.workspace?.label,
+            child.workspace?.branch,
+            child.message,
+          ]),
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+          .includes(normalizedQuery);
       return matchesTab && matchesQuery;
     });
   }, [native, normalizedQuery, pagedChanges, serverPaged, tab]);
@@ -148,8 +194,19 @@ export function NativeWorkflowPanel({
       Math.min(current + NATIVE_CHANGE_PAGE_SIZE, sourceChanges.length),
     );
   }, [hasMore, onLoadMore, pageLoading, serverPaged, sourceChanges.length]);
-  const visibleChanges = serverPaged ? sourceChanges : sourceChanges.slice(0, visibleChangeCount);
+  const visibleChanges = useMemo(
+    () => (serverPaged ? sourceChanges : sourceChanges.slice(0, visibleChangeCount)),
+    [serverPaged, sourceChanges, visibleChangeCount],
+  );
   const hasMoreChanges = serverPaged ? hasMore : visibleChanges.length < sourceChanges.length;
+  const selectableChanges = useMemo(
+    () =>
+      visibleChanges.flatMap((change) => [
+        change,
+        ...(change.children ?? []).map(childChangeReference).filter(Boolean),
+      ]),
+    [visibleChanges],
+  );
 
   useEffect(() => {
     if (!serverPaged || !hasMoreChanges) return undefined;
@@ -220,12 +277,14 @@ export function NativeWorkflowPanel({
 
   useEffect(() => {
     setSelectedKey((current) => {
-      if (visibleChanges.some((change) => changeKey(change) === current)) return current;
-      return visibleChanges[0] ? changeKey(visibleChanges[0]) : null;
+      if (selectableChanges.some((change) => changeKey(change) === current)) return current;
+      return selectableChanges[0] ? changeKey(selectableChanges[0]) : null;
     });
-  }, [visibleChanges]);
+  }, [selectableChanges]);
   const selectedSummary =
-    visibleChanges.find((change) => changeKey(change) === selectedKey) ?? visibleChanges[0] ?? null;
+    selectableChanges.find((change) => changeKey(change) === selectedKey) ??
+    selectableChanges[0] ??
+    null;
   useEffect(() => {
     if (selectedSummary) onSelect?.(selectedSummary);
   }, [onSelect, selectedSummary]);
@@ -256,6 +315,7 @@ export function NativeWorkflowPanel({
               changes={visibleChanges}
               total={serverPaged ? (total ?? sourceChanges.length) : sourceChanges.length}
               selectedKey={selectedSummary ? changeKey(selectedSummary) : null}
+              query={query}
               tab={tab}
               onTab={onTab}
               onSelect={(change) => setSelectedKey(changeKey(change))}
@@ -444,6 +504,7 @@ function NativeChangesExplorer({
   changes,
   total,
   selectedKey,
+  query,
   tab,
   onTab,
   onSelect,
@@ -453,6 +514,53 @@ function NativeChangesExplorer({
   pageLoading,
   onScroll,
 }) {
+  const [expandedParents, setExpandedParents] = useState(() => new Set());
+  const knownParentsRef = useRef(new Set());
+  const normalizedQuery = query.trim().toLowerCase();
+
+  useEffect(() => {
+    const parentKeys = new Set(
+      changes.filter((change) => change.children?.length).map((change) => changeKey(change)),
+    );
+    setExpandedParents((current) => {
+      const next = new Set([...current].filter((key) => parentKeys.has(key)));
+      for (const change of changes) {
+        const children = change.children ?? [];
+        if (children.length === 0) continue;
+        const key = changeKey(change);
+        const isNew = !knownParentsRef.current.has(key);
+        const selectedChild = children.some((child) => child.locator === selectedKey);
+        const matchingChild =
+          normalizedQuery &&
+          children.some((child) =>
+            [child.name, child.workspace?.label, child.workspace?.branch, child.message]
+              .filter(Boolean)
+              .join(' ')
+              .toLowerCase()
+              .includes(normalizedQuery),
+          );
+        if (
+          selectedChild ||
+          matchingChild ||
+          (isNew && change.status === 'active' && children.some(({ status }) => status !== 'done'))
+        ) {
+          next.add(key);
+        }
+      }
+      return next;
+    });
+    knownParentsRef.current = parentKeys;
+  }, [changes, normalizedQuery, selectedKey]);
+
+  const toggleParent = useCallback((key) => {
+    setExpandedParents((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
   return (
     <aside className="native-changes-explorer flex min-h-0 flex-col rounded-lg border border-border bg-bg shadow-raised">
       <div className="native-changes-explorer-header flex flex-none items-center border-b border-border-soft">
@@ -500,43 +608,107 @@ function NativeChangesExplorer({
             )
           ) : (
             changes.map((change) => {
-              const progress = acceptanceProgress(change);
+              const children = change.children ?? [];
+              const hasChildren = children.length > 0;
+              const key = changeKey(change);
+              const expanded = hasChildren && expandedParents.has(key);
+              const progress = childrenProgress(change) ?? acceptanceProgress(change);
+              const childrenId = `native-children-${change.workspace?.id ?? 'local'}-${change.name.replace(/[^a-z0-9_-]/giu, '-')}`;
+              const selectedChild = children.some((child) => child.locator === selectedKey);
               return (
                 <div
-                  key={changeKey(change)}
-                  className={`native-change-list-item ${changeKey(change) === selectedKey ? 'selected' : ''}`}
+                  key={key}
+                  className={`native-change-list-item ${key === selectedKey ? 'selected' : ''} ${selectedChild ? 'has-selected-child' : ''}`}
                 >
-                  <button
-                    type="button"
-                    className="native-change-row"
-                    onClick={() => onSelect(change)}
-                  >
-                    <div className="flex w-full items-center gap-2.5 text-left">
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate font-semibold">{change.name}</div>
-                        <div className="mt-1 text-xs text-meta">
-                          {PHASE_LABELS[change.phase] ?? '状态异常'}
-                          {change.loop
-                            ? ` · ${LOOP_STAGE_LABELS[change.loop.stage]} · 第${change.loop.iteration}轮/第${change.loop.attempt}次`
-                            : ''}
-                        </div>
-                        {progress && (
-                          <div
-                            className={`native-change-progress mt-1 ${progress.complete ? 'complete' : ''}`}
-                            role="progressbar"
-                            aria-valuenow={progress.percent}
-                            aria-valuemin="0"
-                            aria-valuemax="100"
-                          >
-                            <span style={{ width: `${progress.percent}%` }} />
+                  <div className="native-change-row-shell">
+                    {hasChildren ? (
+                      <button
+                        type="button"
+                        className="native-change-disclosure"
+                        aria-label={`${expanded ? '收起' : '展开'} ${change.name} 的子变更`}
+                        aria-expanded={expanded}
+                        aria-controls={childrenId}
+                        onClick={() => toggleParent(key)}
+                      >
+                        {expanded ? <DownOutlined /> : <RightOutlined />}
+                      </button>
+                    ) : (
+                      <span className="native-change-disclosure-spacer" aria-hidden="true" />
+                    )}
+                    <button
+                      type="button"
+                      className="native-change-row"
+                      onClick={() => onSelect(change)}
+                    >
+                      <div className="flex w-full items-center gap-2.5 text-left">
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate font-semibold">{change.name}</div>
+                          <div className="mt-1 text-xs text-meta">
+                            {PHASE_LABELS[change.phase] ?? '状态异常'}
+                            {hasChildren
+                              ? ` · ${progress.resolved}/${progress.total} 子变更`
+                              : change.loop
+                                ? ` · ${LOOP_STAGE_LABELS[change.loop.stage]} · 第${change.loop.iteration}轮/第${change.loop.attempt}次`
+                                : ''}
                           </div>
-                        )}
+                          {change.workspace && !change.workspace.current ? (
+                            <span className="dashboard-workspace-label mt-1 inline-flex max-w-full truncate">
+                              {change.workspace.label}
+                            </span>
+                          ) : null}
+                          {progress && (
+                            <div
+                              className={`native-change-progress mt-1 ${progress.complete ? 'complete' : ''}`}
+                              role="progressbar"
+                              aria-valuenow={progress.percent}
+                              aria-valuemin="0"
+                              aria-valuemax="100"
+                            >
+                              <span style={{ width: `${progress.percent}%` }} />
+                            </div>
+                          )}
+                        </div>
+                        <Pill tone={verificationTone(change.verificationResult)}>
+                          {VERIFICATION_LABELS[change.verificationResult] ?? '状态未知'}
+                        </Pill>
                       </div>
-                      <Pill tone={verificationTone(change.verificationResult)}>
-                        {VERIFICATION_LABELS[change.verificationResult] ?? '状态未知'}
-                      </Pill>
+                    </button>
+                  </div>
+                  {expanded ? (
+                    <div id={childrenId} className="native-child-change-list" role="group">
+                      {children.map((child) => {
+                        const reference = childChangeReference(child);
+                        const childSelected = child.locator === selectedKey;
+                        return (
+                          <button
+                            key={child.name}
+                            type="button"
+                            className={`native-child-change-row ${childSelected ? 'selected' : ''}`}
+                            disabled={!reference}
+                            title={child.message ?? undefined}
+                            onClick={() => reference && onSelect(reference)}
+                          >
+                            <span
+                              className={`native-child-status-dot native-child-status-${child.status}`}
+                              aria-hidden="true"
+                            />
+                            <span className="min-w-0 flex-1 text-left">
+                              <strong className="block truncate font-medium">{child.name}</strong>
+                              <span className="mt-0.5 block truncate text-[11px] text-meta">
+                                {child.phase
+                                  ? (PHASE_LABELS[child.phase] ?? child.phase)
+                                  : '尚未创建'}
+                                {child.workspace?.label ? ` · ${child.workspace.label}` : ''}
+                              </span>
+                            </span>
+                            <Pill tone={CHILD_STATUS_TONES[child.status] ?? 'neutral'}>
+                              {CHILD_STATUS_LABELS[child.status] ?? child.status}
+                            </Pill>
+                          </button>
+                        );
+                      })}
                     </div>
-                  </button>
+                  ) : null}
                 </div>
               );
             })
@@ -1162,4 +1334,16 @@ function formatTimestamp(value) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(date);
+}
+
+function childrenProgress(change) {
+  const children = change.children ?? [];
+  if (children.length === 0) return null;
+  const resolved = children.filter(({ status }) => status === 'done').length;
+  return {
+    resolved,
+    total: children.length,
+    percent: Math.round((resolved / children.length) * 100),
+    complete: resolved === children.length,
+  };
 }

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Comet GitHub 维护路由"
+  short_description: "路由 Comet GitHub 维护工作"
+  default_prompt: "使用 $comet-github 将 Comet GitHub 任务路由到合适的工作流。"
+policy:
+  allow_implicit_invocation: false

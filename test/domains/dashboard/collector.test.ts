@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
@@ -51,6 +52,15 @@ async function writeChange(root: string, fixture: ChangeFixture): Promise<void> 
     await fs.mkdir(reportDir, { recursive: true });
     await fs.writeFile(path.join(reportDir, 'verify-result.md'), fixture.verifyReport);
   }
+}
+
+function git(root: string, args: string[]): string {
+  return execFileSync('git', args, {
+    cwd: root,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: 10_000,
+  }).trim();
 }
 
 describe('collectDashboardSnapshot', () => {
@@ -130,6 +140,98 @@ describe('collectDashboardSnapshot', () => {
     expect(snap.changes.active[0].path).toBe(changeDir);
     expect(snap.changes.active[0].relativePath).toBe('docs/openspec/changes/docs-layout');
     expect(snap.classicError).toBeUndefined();
+  });
+
+  it('lists and opens independent same-name Classic changes from linked worktrees', async () => {
+    git(root, ['init', '-q', '-b', 'main']);
+    git(root, ['config', 'user.email', 'comet@test.local']);
+    git(root, ['config', 'user.name', 'Comet Test']);
+    await fs.writeFile(path.join(root, 'README.md'), '# Dashboard worktrees\n');
+    git(root, ['add', '.']);
+    git(root, ['commit', '-q', '-m', 'test: seed worktrees']);
+    const worktreeA = path.join(root, '.worktrees', 'classic-a');
+    const worktreeB = path.join(root, '.worktrees', 'classic-b');
+    git(root, ['worktree', 'add', '-q', '-b', 'classic/a', worktreeA]);
+    git(root, ['worktree', 'add', '-q', '-b', 'classic/b', worktreeB]);
+
+    await writeChange(worktreeA, {
+      name: 'independent-change',
+      yaml: {
+        phase: 'build',
+        workflow: 'classic',
+        isolation: 'worktree',
+        bound_branch: 'classic/a',
+      },
+      proposal: true,
+    });
+    await fs.writeFile(
+      path.join(worktreeA, 'openspec', 'changes', 'independent-change', 'proposal.md'),
+      '# Proposal A\n',
+    );
+    await writeChange(worktreeB, {
+      name: 'independent-change',
+      yaml: {
+        phase: 'verify',
+        workflow: 'classic',
+        isolation: 'worktree',
+        bound_branch: 'classic/b',
+      },
+      proposal: true,
+    });
+    await fs.writeFile(
+      path.join(worktreeB, 'openspec', 'changes', 'independent-change', 'proposal.md'),
+      '# Proposal B\n',
+    );
+
+    const page = await collectDashboardChangePage(root, { status: 'active', limit: 5 });
+    const items = page.items
+      .slice()
+      .sort((left, right) => left.workspace.label.localeCompare(right.workspace.label));
+    expect(page.total).toBe(2);
+    expect(items.map(({ name }) => name)).toEqual(['independent-change', 'independent-change']);
+    expect(items.map(({ workspace }) => workspace.label)).toEqual(['classic/a', 'classic/b']);
+    expect(new Set(items.map(({ locator }) => locator)).size).toBe(2);
+
+    const details = await Promise.all(
+      items.map(({ locator }) => collectDashboardChangeDetail(root, locator)),
+    );
+    expect(details.map((detail) => detail?.workspace.label)).toEqual(['classic/a', 'classic/b']);
+    expect(details.map((detail) => detail?.phase)).toEqual(['build', 'verify']);
+    expect(
+      details.map(
+        (detail) => detail?.artifactPreviews.find(({ key }) => key === 'proposal')?.content,
+      ),
+    ).toEqual(['# Proposal A\n', '# Proposal B\n']);
+  });
+
+  it('deduplicates an inherited Classic artifact in favor of its bound branch', async () => {
+    git(root, ['init', '-q', '-b', 'main']);
+    git(root, ['config', 'user.email', 'comet@test.local']);
+    git(root, ['config', 'user.name', 'Comet Test']);
+    await writeChange(root, {
+      name: 'bound-owner',
+      yaml: {
+        phase: 'build',
+        workflow: 'classic',
+        isolation: 'branch',
+        bound_branch: 'main',
+      },
+    });
+    git(root, ['add', '.']);
+    git(root, ['commit', '-q', '-m', 'test: commit bound Classic change']);
+    const secondary = path.join(root, '.worktrees', 'classic-copy');
+    git(root, ['worktree', 'add', '-q', '-b', 'classic/copy', secondary]);
+
+    const page = await collectDashboardChangePage(secondary, { status: 'active', limit: 5 });
+    expect(page).toMatchObject({
+      total: 1,
+      items: [
+        {
+          name: 'bound-owner',
+          workspace: { label: 'main', current: false },
+        },
+      ],
+    });
   });
 
   it('scans Classic roots despite invalid project config', async () => {

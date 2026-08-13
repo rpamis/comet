@@ -1,8 +1,10 @@
-"""Output parsing, event extraction, and experiment logging for Claude CLI."""
+"""Output parsing, event extraction, and experiment logging for agent CLIs."""
 
 import json
 import math
+import os
 import re
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -10,12 +12,38 @@ from pathlib import Path
 from typing import Any
 
 from scaffold.python.evidence import stable_treatment_name
-from scaffold.python.paths import get_logs_dir
+from scaffold.python.execution import redact_sensitive
+from scaffold.python.paths import get_runs_dir
 from scaffold.python.report_outputs import (
     ReportOutputConfig,
     preferred_report_path,
     write_report_outputs,
 )
+
+
+def _without_credentials(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _without_credentials(item)
+            for key, item in value.items()
+            if not re.search(r"(?:api[_-]?key|auth[_-]?token|password|secret|credential)", key, re.I)
+        }
+    if isinstance(value, list):
+        return [_without_credentials(item) for item in value]
+    return value
+
+
+def _atomic_write_json(path: Path, value: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.", delete=False
+    ) as temporary:
+        temporary.write(json.dumps(redact_sensitive(_without_credentials(value)), indent=2) + "\n")
+        temporary_path = Path(temporary.name)
+    try:
+        os.replace(temporary_path, path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
 # Regex to strip ANSI escape codes
 ANSI_ESCAPE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
@@ -35,10 +63,22 @@ def strip_ansi(text: str) -> str:
     return ANSI_ESCAPE.sub("", text)
 
 
-def _record_skill_invocation(events: dict[str, Any], skill: str) -> None:
+def _record_skill_invocation(events: dict[str, Any], skill: str, *, explicit: bool = False) -> None:
+    if not isinstance(skill, str) or not skill.strip():
+        return
     normalized = _SKILL_ALIASES.get(skill, skill)
     if normalized not in events["skills_invoked"]:
         events["skills_invoked"].append(normalized)
+    if explicit and normalized not in events["skill_invocations"]:
+        events["skill_invocations"].append(normalized)
+
+
+def _record_skill_path(events: dict[str, Any], value: object) -> None:
+    if not isinstance(value, str):
+        return
+    match = re.search(r"\.(?:claude|agents|qoder|codebuddy)/skills/([^/\\]+)", value)
+    if match:
+        _record_skill_invocation(events, match.group(1))
 
 
 # =============================================================================
@@ -50,6 +90,7 @@ def parse_output(stdout: str) -> dict[str, Any]:
     """Parse stream-json output into structured data."""
     if not stdout:
         return {"messages": []}
+    stdout = redact_sensitive(stdout)
     messages = []
     for line in stdout.strip().split("\n"):
         try:
@@ -59,7 +100,37 @@ def parse_output(stdout: str) -> dict[str, Any]:
     return {"messages": messages}
 
 
-def extract_events(parsed: dict[str, Any]) -> dict[str, Any]:
+def _record_explicit_skill_value(events: dict[str, Any], value: Any) -> None:
+    if isinstance(value, str):
+        _record_skill_invocation(events, value, explicit=True)
+    elif isinstance(value, dict):
+        for key in ("skill", "skill_name", "skillName", "name"):
+            candidate = value.get(key)
+            if isinstance(candidate, str):
+                _record_skill_invocation(events, candidate, explicit=True)
+                return
+    elif isinstance(value, list):
+        for item in value:
+            _record_explicit_skill_value(events, item)
+
+
+def _record_explicit_skill_event(events: dict[str, Any], message: Any) -> None:
+    if not isinstance(message, dict):
+        return
+    event_type = str(message.get("type") or message.get("event") or "").lower()
+    if event_type in {"skill_invocation", "skill_invoked", "skill.use", "skill_used"}:
+        _record_explicit_skill_value(events, message.get("skill") or message.get("name"))
+    for key in ("skill_invocation", "skillInvocation", "skill_invocations", "skillInvocations"):
+        if key in message:
+            _record_explicit_skill_value(events, message[key])
+    item = message.get("item")
+    if isinstance(item, dict):
+        item_type = str(item.get("type") or item.get("event") or "").lower()
+        if item_type in {"skill_invocation", "skill_invoked", "skill.use", "skill_used"}:
+            _record_explicit_skill_value(events, item.get("skill") or item.get("name"))
+
+
+def extract_events(parsed: dict[str, Any], *, agent: str | None = None) -> dict[str, Any]:
     """Extract events (tool calls, files, etc.) from parsed output."""
     events = {
         "tool_calls": [],
@@ -68,6 +139,7 @@ def extract_events(parsed: dict[str, Any]) -> dict[str, Any]:
         "files_modified": [],
         "commands_run": [],
         "skills_invoked": [],
+        "skill_invocations": [],
         "duration_seconds": None,
         "subject_invocations": 0,
         "num_turns": None,
@@ -78,6 +150,7 @@ def extract_events(parsed: dict[str, Any]) -> dict[str, Any]:
         "total_tokens": None,
         "total_cost_usd": None,
         "model_usage": {},
+        "role_sessions": {"subject": [], "simulator": [], "judge": []},
         "peak_context_input_tokens": None,
         "p95_context_input_tokens": None,
         "average_context_input_tokens": None,
@@ -129,7 +202,30 @@ def extract_events(parsed: dict[str, Any]) -> dict[str, Any]:
                 elif key in capacities:
                     target[key] = max(target.get(key, 0), item)
 
+    infer_skill_paths = agent is None or agent in {"claude-code", "codex", "qoder", "codebuddy"}
+
+    def record_skill_path(value: object) -> None:
+        if infer_skill_paths:
+            _record_skill_path(events, value)
+
     for msg in parsed.get("messages", []):
+        _record_explicit_skill_event(events, msg)
+        stack = [msg]
+        session_id = None
+        while stack and session_id is None:
+            item = stack.pop()
+            if isinstance(item, dict):
+                for key in ("session_id", "sessionId", "thread_id", "threadId"):
+                    candidate = item.get(key)
+                    if isinstance(candidate, str) and candidate:
+                        session_id = candidate
+                        break
+                stack.extend(item.values())
+            elif isinstance(item, list):
+                stack.extend(item)
+        if session_id and session_id not in events["role_sessions"]["subject"]:
+            events["role_sessions"]["subject"].append(session_id)
+
         if msg.get("type") == "result":
             events["subject_invocations"] += 1
             duration_ms = msg.get("duration_ms")
@@ -137,7 +233,7 @@ def extract_events(parsed: dict[str, Any]) -> dict[str, Any]:
                 duration_ms_total += duration_ms
                 duration_observed = True
 
-            # A loop concatenates one result per subject invocation. Claude's
+            # A loop concatenates one result per subject invocation. Agent
             # result telemetry is invocation-local, so task totals must add all
             # initial, answer, and cold-resume invocations instead of retaining
             # only the final result event.
@@ -149,6 +245,51 @@ def extract_events(parsed: dict[str, Any]) -> dict[str, Any]:
             add_metric("cache_creation_input_tokens", usage.get("cache_creation_input_tokens"))
             add_metric("total_cost_usd", msg.get("total_cost_usd"))
             merge_model_usage(msg.get("modelUsage"))
+
+        if msg.get("type") == "turn.completed":
+            events["subject_invocations"] += 1
+            add_metric("num_turns", 1)
+            usage = msg.get("usage") or {}
+            add_metric("input_tokens", usage.get("input_tokens", usage.get("inputTokens")))
+            add_metric("output_tokens", usage.get("output_tokens", usage.get("outputTokens")))
+            add_metric(
+                "cache_read_input_tokens",
+                usage.get("cached_input_tokens", usage.get("cacheReadInputTokens")),
+            )
+            duration_ms = msg.get("duration_ms")
+            if isinstance(duration_ms, (int, float)) and not isinstance(duration_ms, bool):
+                duration_ms_total += duration_ms
+                duration_observed = True
+
+        if msg.get("type") == "item.completed":
+            item = msg.get("item") or {}
+            if item.get("type") == "command_execution":
+                command = item.get("command")
+                if isinstance(command, str) and command:
+                    events["commands_run"].append(command)
+                    record_skill_path(command)
+                tool_call = {"tool": "Bash", "input": {"command": command or ""}}
+                if item.get("aggregated_output") is not None:
+                    tool_call["output"] = item["aggregated_output"]
+                events["tool_calls"].append(tool_call)
+            elif item.get("type") == "file_change":
+                for change in item.get("changes") or []:
+                    if not isinstance(change, dict):
+                        continue
+                    path = change.get("path")
+                    if not isinstance(path, str) or not path:
+                        continue
+                    kind = str(change.get("kind") or "modify").lower()
+                    if kind in {"add", "create", "created"}:
+                        events["files_created"].append(path)
+                    else:
+                        events["files_modified"].append(path)
+                    record_skill_path(path)
+            elif item.get("type") in {"mcp_tool_call", "tool_call"}:
+                tool = item.get("name") or item.get("tool") or "unknown"
+                events["tool_calls"].append(
+                    {"tool": tool, "input": item.get("arguments") or item.get("input") or {}}
+                )
 
         if msg.get("type") == "assistant":
             message = msg.get("message", {})
@@ -182,18 +323,16 @@ def extract_events(parsed: dict[str, Any]) -> dict[str, Any]:
                     if tool == "Read" and path:
                         events["files_read"].append(path)
                         # Detect skill reads (e.g., .claude/skills/skill-name/SKILL.md)
-                        if ".claude/skills/" in path and (
-                            m := re.search(r"\.claude/skills/([^/]+)", path)
-                        ):
-                            _record_skill_invocation(events, m.group(1))
+                        record_skill_path(path)
                     elif tool == "Write" and path:
                         events["files_created"].append(path)
                     elif tool == "Edit" and path:
                         events["files_modified"].append(path)
                     elif tool == "Bash" and inp.get("command"):
                         events["commands_run"].append(inp["command"])
+                        record_skill_path(inp["command"])
                     elif tool == "Skill" and inp.get("skill"):
-                        _record_skill_invocation(events, inp["skill"])
+                        _record_skill_invocation(events, inp["skill"], explicit=True)
 
         # Capture tool results and match to their tool_use calls
         if msg.get("type") == "user":
@@ -540,14 +679,15 @@ class ExperimentLogger:
             self.name = experiment_name or f"experiment_{self.timestamp}"
             self.experiment_id = f"{self.name}_{self.timestamp}"
 
-        self.base_dir = get_logs_dir() / "experiments" / self.experiment_id
+        self.base_dir = get_runs_dir() / self.experiment_id
 
         # Create subdirectories
         self.events_dir = self.base_dir / "events"
         self.reports_dir = self.base_dir / "reports"
         self.raw_dir = self.base_dir / "raw"
 
-        for d in [self.events_dir, self.reports_dir, self.raw_dir]:
+        self.artifacts_dir = self.base_dir / "artifacts"
+        for d in [self.events_dir, self.reports_dir, self.raw_dir, self.artifacts_dir]:
             d.mkdir(parents=True, exist_ok=True)
 
         self.columns = list(columns) if columns else rubric_columns()
@@ -757,7 +897,7 @@ class ExperimentLogger:
         self.metadata["report_outputs"] = {name: str(path) for name, path in written.items()}
 
         metadata_path = self.base_dir / "metadata.json"
-        metadata_path.write_text(json.dumps(self.metadata, indent=2), encoding="utf-8")
+        _atomic_write_json(metadata_path, self.metadata)
 
         print(f"\nExperiment results saved to: {self.base_dir}")
         if written:
@@ -778,7 +918,7 @@ def save_events(base_dir: Path, treatment_name: str, rep: int, events: dict[str,
     events_dir = base_dir / "events"
     events_dir.mkdir(parents=True, exist_ok=True)
     save_path = events_dir / f"{stable_treatment_name(treatment_name)}_rep{rep}.json"
-    save_path.write_text(json.dumps(events, indent=2), encoding="utf-8")
+    save_path.write_text(json.dumps(redact_sensitive(events), indent=2), encoding="utf-8")
     return save_path
 
 
@@ -788,11 +928,11 @@ def save_raw(base_dir: Path, treatment_name: str, rep: int, stdout: str, stderr:
     raw_dir.mkdir(parents=True, exist_ok=True)
     stable_name = stable_treatment_name(treatment_name)
     stdout_path = raw_dir / f"{stable_name}_rep{rep}_stdout.json"
-    stdout_path.write_text(stdout, encoding="utf-8")
+    stdout_path.write_text(redact_sensitive(stdout), encoding="utf-8")
 
     if stderr:
         stderr_path = raw_dir / f"{stable_name}_rep{rep}_stderr.txt"
-        stderr_path.write_text(stderr, encoding="utf-8")
+        stderr_path.write_text(redact_sensitive(stderr), encoding="utf-8")
 
 
 def save_report(base_dir: Path, treatment_name: str, rep: int, report: dict[str, Any]):
@@ -800,5 +940,5 @@ def save_report(base_dir: Path, treatment_name: str, rep: int, report: dict[str,
     reports_dir = base_dir / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
     save_path = reports_dir / f"{stable_treatment_name(treatment_name)}_rep{rep}_report.json"
-    save_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    save_path.write_text(json.dumps(redact_sensitive(report), indent=2), encoding="utf-8")
     return save_path

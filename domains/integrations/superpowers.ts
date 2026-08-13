@@ -27,6 +27,9 @@ const SKILLS_AGENT_MAP: Record<string, string | null> = {
   lingma: null,
   junie: 'junie',
   codebuddy: 'codebuddy',
+  // WorkBuddy does not expose a Skills CLI agent id; stage through the
+  // portable Claude target and copy the result into .workbuddy/skills.
+  workbuddy: null,
   costrict: 'universal',
   crush: 'crush',
   factory: 'droid',
@@ -51,6 +54,7 @@ const SUPERPOWERS_INSTALL_TIMEOUT_MS = 300_000;
 const LINGMA_PLATFORM_ID = 'lingma';
 const ZCODE_PLATFORM_ID = 'zcode';
 const MIMOCODE_PLATFORM_ID = 'mimocode';
+const WORKBUDDY_PLATFORM_ID = 'workbuddy';
 const STAGE_AGENT = 'claude-code';
 
 function buildSuperpowersInstallCommand(
@@ -98,6 +102,13 @@ function buildZCodeSuperpowersStageCommand(): { command: string; args: string[] 
 }
 
 function buildMimoCodeSuperpowersStageCommand(): { command: string; args: string[] } {
+  return {
+    command: getNpxExecutable(),
+    args: ['skills', 'add', 'obra/superpowers', '-y', '--agent', STAGE_AGENT],
+  };
+}
+
+function buildWorkBuddySuperpowersStageCommand(): { command: string; args: string[] } {
   return {
     command: getNpxExecutable(),
     args: ['skills', 'add', 'obra/superpowers', '-y', '--agent', STAGE_AGENT],
@@ -159,9 +170,22 @@ async function installSuperpowersForMimoCode(
   );
 }
 
+async function installSuperpowersForWorkBuddy(
+  projectPath: string,
+  scope: InstallScope,
+): Promise<'installed' | 'failed'> {
+  return stageAndCopySuperpowers(
+    WORKBUDDY_PLATFORM_ID,
+    buildWorkBuddySuperpowersStageCommand(),
+    projectPath,
+    scope,
+    'WorkBuddy',
+  );
+}
+
 /**
  * Shared staging flow for platforms whose agent is not supported by the skills CLI
- * (e.g. Lingma, ZCode, MimoCode). Superpowers are staged into a temp dir via
+ * (e.g. Lingma, WorkBuddy, ZCode, MimoCode). Superpowers are staged into a temp dir via
  * the claude-code agent and then copied into the target platform's skills directory.
  */
 async function stageAndCopySuperpowers(
@@ -219,6 +243,7 @@ async function installSuperpowersForPlatforms(
   const shouldInstallLingma = platformIds.includes(LINGMA_PLATFORM_ID);
   const shouldInstallZCode = platformIds.includes(ZCODE_PLATFORM_ID);
   const shouldInstallMimoCode = platformIds.includes(MIMOCODE_PLATFORM_ID);
+  const shouldInstallWorkBuddy = platformIds.includes(WORKBUDDY_PLATFORM_ID);
   let failed = false;
 
   if (skillsCliPlatformIds.length > 0) {
@@ -253,6 +278,11 @@ async function installSuperpowersForPlatforms(
     if (mimocodeStatus === 'failed') failed = true;
   }
 
+  if (shouldInstallWorkBuddy) {
+    const workbuddyStatus = await installSuperpowersForWorkBuddy(projectPath, scope);
+    if (workbuddyStatus === 'failed') failed = true;
+  }
+
   return failed ? 'failed' : 'installed';
 }
 
@@ -262,5 +292,6 @@ export {
   buildLingmaSuperpowersStageCommand,
   buildZCodeSuperpowersStageCommand,
   buildMimoCodeSuperpowersStageCommand,
+  buildWorkBuddySuperpowersStageCommand,
   SKILLS_AGENT_MAP,
 };

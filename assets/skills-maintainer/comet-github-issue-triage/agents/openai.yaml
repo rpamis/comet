@@ -1,0 +1,6 @@
+interface:
+  display_name: "Comet Issue 分诊"
+  short_description: "分诊 Comet GitHub Issue"
+  default_prompt: "使用 $comet-github-issue-triage 验证并分类 Comet GitHub Issue。"
+policy:
+  allow_implicit_invocation: false

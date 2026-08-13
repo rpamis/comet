@@ -6,8 +6,8 @@ produce meaningful output, or just a stub? This module asks a judge LLM to read
 workspace artifacts and score three generic quality dimensions on a 0.00-1.00
 scale with a cited reason.
 
-Runs on the host (not in Docker) via the same Claude CLI + proxy used for the
-subject agent, so it adds no new dependency. Scores are emitted in the same
+Runs on the host (not in Docker) via the selected agent CLI and its configured
+provider, so it adds no new dependency. Scores are emitted in the same
 ``[RUBRIC-JUDGE] dim: score - reason`` format the logging layer understands.
 
 Usage::
@@ -134,12 +134,9 @@ def _build_generic_judge_prompt(
 
     # Build the list of dimensions the judge should output.
     all_dims = list(GENERIC_JUDGE_DIMENSIONS)
-    dim_lines = [
-        f"[RUBRIC-JUDGE] {dim}: <score> - <reason>" for dim in all_dims
-    ]
+    dim_lines = [f"[RUBRIC-JUDGE] {dim}: <score> - <reason>" for dim in all_dims]
     extra_dim_lines = [
-        f"[RUBRIC-JUDGE] custom_{i}: <score> - <reason>"
-        for i in range(len(custom_criteria))
+        f"[RUBRIC-JUDGE] custom_{i}: <score> - <reason>" for i in range(len(custom_criteria))
     ]
     all_output_lines = "\n".join(dim_lines + extra_dim_lines)
 
@@ -177,9 +174,25 @@ Baseline validation results:
 """
 
 
-def _run_judge(prompt: str, timeout: int = 120) -> str:
+def _run_judge(
+    prompt: str,
+    timeout: int = 120,
+    agent: object | None = None,
+    model: object | None = None,
+    base_url: object | None = None,
+    evidence: dict[str, Any] | None = None,
+    excluded_credentials: tuple[str, ...] = (),
+) -> str:
     """Call the judge LLM through the configured judge provider."""
-    return run_judge_prompt(prompt, timeout=timeout)
+    return run_judge_prompt(
+        prompt,
+        timeout=timeout,
+        agent=agent,
+        model=model,
+        base_url=base_url,
+        evidence=evidence,
+        excluded_credentials=excluded_credentials,
+    )
 
 
 def judge_generic_artifacts(
@@ -194,7 +207,15 @@ def judge_generic_artifacts(
     rule-based scores.
     """
     prompt = _build_generic_judge_prompt(test_dir, outputs)
-    raw = _run_judge(prompt, timeout=timeout)
+    raw = _run_judge(
+        prompt,
+        timeout=timeout,
+        agent=outputs.get("judge_agent") or outputs.get("agent"),
+        model=outputs.get("judge_model"),
+        base_url=outputs.get("judge_base_url"),
+        excluded_credentials=tuple(outputs.get("main_credentials") or ()),
+        evidence=outputs,
+    )
 
     # Collect all valid dimension names (standard + custom).
     custom_criteria = outputs.get("rubric_criteria") or []
@@ -226,12 +247,18 @@ def judge_generic_messages(
     """Convenience wrapper returning ``[RUBRIC-JUDGE]`` check messages."""
     out: list[str] = []
     try:
-        build_judge_invocation()
+        build_judge_invocation(
+            agent=outputs.get("judge_agent") or outputs.get("agent"),
+            model=outputs.get("judge_model"),
+            base_url=outputs.get("judge_base_url"),
+            excluded_credentials=tuple(outputs.get("main_credentials") or ()),
+        )
     except ValueError as e:
         return [f"[RUBRIC-JUDGE] status: skipped - {e}"]
 
-    for dim, (score, reason) in judge_generic_artifacts(
-        test_dir, outputs, timeout=timeout
-    ).items():
+    scores = judge_generic_artifacts(test_dir, outputs, timeout=timeout)
+    if not scores:
+        return ["[RUBRIC-JUDGE] status: unavailable - no valid Judge scores"]
+    for dim, (score, reason) in scores.items():
         out.append(f"[RUBRIC-JUDGE] {dim}: {score:.2f} - {reason}")
     return out

@@ -1,0 +1,244 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://comet.dev/schemas/comet.eval/v1alpha1.schema.json",
+  "title": "Comet Skill Eval manifest v1alpha1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata", "skill"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "apiVersion": { "const": "comet.eval/v1alpha1" },
+    "kind": { "const": "SkillEvalManifest" },
+    "metadata": { "$ref": "#/$defs/metadata" },
+    "skill": { "$ref": "#/$defs/skill" },
+    "evaluation": { "$ref": "#/$defs/evaluation" },
+    "interaction": { "$ref": "#/$defs/interaction" },
+    "execution": { "$ref": "#/$defs/execution" },
+    "judge": { "$ref": "#/$defs/judge" },
+    "reporting": { "$ref": "#/$defs/reporting" }
+  },
+  "$defs": {
+    "taskName": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$" },
+    "stringList": { "type": "array", "items": { "type": "string" } },
+    "nonEmptyStringList": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?![A-Za-z]:)(?![/\\\\])(?!.*(?:^|[/\\\\])\\.\\.(?:[/\\\\]|$)).+$"
+    },
+    "absoluteHttpUrl": {
+      "type": "string",
+      "pattern": "^https?://[^\\s/@?#]+(?:/[^\\s?#]*)?$"
+    },
+    "artifactDescriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node", "schema", "artifact", "paths"],
+      "properties": {
+        "node": { "type": "string" },
+        "schema": { "type": "string" },
+        "artifact": { "type": "string" },
+        "paths": { "$ref": "#/$defs/stringList" }
+      }
+    },
+    "artifactList": {
+      "type": "array",
+      "items": { "oneOf": [{ "type": "string" }, { "$ref": "#/$defs/artifactDescriptor" }] }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "allOf": [
+        { "not": { "required": ["draftHash", "draft_hash"] } },
+        { "not": { "required": ["generationHash", "generation_hash"] } },
+        { "not": { "required": ["generationFile", "generation_file"] } }
+      ],
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "draftHash": { "type": "string" },
+        "draft_hash": { "type": "string" },
+        "generationHash": { "type": "string" },
+        "generation_hash": { "type": "string" },
+        "generationFile": { "type": "string" },
+        "generation_file": { "type": "string" }
+      }
+    },
+    "skill": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "source": { "type": "string" },
+        "profile": { "type": "string" }
+      }
+    },
+    "inlineExpect": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "files": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/relativePath" }
+        },
+        "contains": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/relativePath" },
+          "additionalProperties": { "$ref": "#/$defs/stringList" }
+        },
+        "json": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["file", "path", "equals"],
+            "properties": {
+              "file": { "$ref": "#/$defs/relativePath" },
+              "path": { "type": "string", "pattern": "^\\$" },
+              "equals": {}
+            }
+          }
+        },
+        "commands": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["run"],
+            "properties": {
+              "run": { "type": "string", "minLength": 1 },
+              "timeout": { "type": "integer", "minimum": 1, "maximum": 3600 }
+            }
+          }
+        }
+      }
+    },
+    "inlineTask": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "prompt", "expect"],
+      "properties": {
+        "name": { "$ref": "#/$defs/taskName" },
+        "prompt": { "type": "string", "minLength": 1 },
+        "workspace": { "$ref": "#/$defs/relativePath" },
+        "expect": { "$ref": "#/$defs/inlineExpect" },
+        "rubric": { "$ref": "#/$defs/nonEmptyStringList" }
+      }
+    },
+    "sourceTask": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source"],
+      "properties": {
+        "name": { "$ref": "#/$defs/taskName" },
+        "source": { "$ref": "#/$defs/relativePath" }
+      }
+    },
+    "task": {
+      "oneOf": [{ "$ref": "#/$defs/inlineTask" }, { "$ref": "#/$defs/sourceTask" }]
+    },
+    "routeConformance": {
+      "type": "object",
+      "additionalProperties": false,
+      "allOf": [{ "not": { "required": ["expectedNodeOrder", "expected_node_order"] } }],
+      "properties": {
+        "task": { "type": "string" },
+        "expectedNodeOrder": { "$ref": "#/$defs/stringList" },
+        "expected_node_order": { "$ref": "#/$defs/stringList" }
+      }
+    },
+    "evaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "allOf": [
+        { "not": { "required": ["recommendedTasks", "recommended_tasks"] } },
+        { "not": { "required": ["baselineTreatments", "baseline_treatments"] } },
+        { "not": { "required": ["qualityGates", "quality_gates"] } },
+        { "not": { "required": ["requiredOutputSchemas", "required_output_schemas"] } },
+        { "not": { "required": ["expectedEvidence", "expected_evidence"] } },
+        { "not": { "required": ["requiredSkills", "required_skills"] } },
+        { "not": { "required": ["expectedArtifacts", "expected_artifacts"] } },
+        { "not": { "required": ["generatedNodeSkills", "generated_node_skills"] } },
+        { "not": { "required": ["routeConformance", "route_conformance"] } }
+      ],
+      "properties": {
+        "tasks": { "type": "array", "items": { "$ref": "#/$defs/task" } },
+        "recommendedTasks": { "$ref": "#/$defs/stringList" },
+        "recommended_tasks": { "$ref": "#/$defs/stringList" },
+        "baselineTreatments": { "$ref": "#/$defs/stringList" },
+        "baseline_treatments": { "$ref": "#/$defs/stringList" },
+        "qualityGates": { "type": "object" },
+        "quality_gates": { "type": "object" },
+        "requiredOutputSchemas": { "$ref": "#/$defs/stringList" },
+        "required_output_schemas": { "$ref": "#/$defs/stringList" },
+        "expectedEvidence": { "type": "array", "items": { "type": "object" } },
+        "expected_evidence": { "type": "array", "items": { "type": "object" } },
+        "requiredSkills": { "$ref": "#/$defs/stringList" },
+        "required_skills": { "$ref": "#/$defs/stringList" },
+        "expectedArtifacts": { "$ref": "#/$defs/artifactList" },
+        "expected_artifacts": { "$ref": "#/$defs/artifactList" },
+        "generatedNodeSkills": { "$ref": "#/$defs/stringList" },
+        "generated_node_skills": { "$ref": "#/$defs/stringList" },
+        "routeConformance": { "$ref": "#/$defs/routeConformance" },
+        "route_conformance": { "$ref": "#/$defs/routeConformance" }
+      }
+    },
+    "interaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "allOf": [
+        { "not": { "required": ["maxTurns", "max_turns"] } },
+        { "not": { "required": ["simulatorPrompt", "simulator_prompt"] } },
+        { "not": { "required": ["freshResumeMarker", "fresh_resume_marker"] } }
+      ],
+      "properties": {
+        "mode": { "type": "string", "enum": ["none", "auto_user"] },
+        "maxTurns": { "type": "integer", "minimum": 1 },
+        "max_turns": { "type": "integer", "minimum": 1 },
+        "simulatorPrompt": { "type": "string" },
+        "simulator_prompt": { "type": "string" },
+        "freshResumeMarker": { "type": "string" },
+        "fresh_resume_marker": { "type": "string" },
+        "decisionPatterns": { "$ref": "#/$defs/stringList" },
+        "decisionReply": { "type": "string" },
+        "decisionReplies": { "$ref": "#/$defs/stringList" },
+        "continuePrompt": { "type": "string" }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "allOf": [{ "not": { "required": ["baseUrl", "base_url"] } }],
+      "properties": {
+        "agent": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,31}$" },
+        "model": { "type": "string", "minLength": 1 },
+        "baseUrl": { "$ref": "#/$defs/absoluteHttpUrl" },
+        "base_url": { "$ref": "#/$defs/absoluteHttpUrl" }
+      }
+    },
+    "judge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model"],
+      "allOf": [{ "not": { "required": ["baseUrl", "base_url"] } }],
+      "properties": {
+        "agent": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,31}$" },
+        "model": { "type": "string", "minLength": 1 },
+        "baseUrl": { "$ref": "#/$defs/absoluteHttpUrl" },
+        "base_url": { "$ref": "#/$defs/absoluteHttpUrl" }
+      }
+    },
+    "reporting": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "suite": { "type": "string", "enum": ["local", "langsmith", "langfuse"] },
+        "config": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

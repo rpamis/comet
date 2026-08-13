@@ -22,6 +22,7 @@ const requiredPackageFiles = [
   'bin/comet.js',
   'bin/fast-runtime-router.js',
   'dist/app/cli/index.js',
+  'eval/schemas/comet.eval/v1alpha1.schema.json',
   'scripts/install/postinstall.js',
 ];
 const requiredNativeInstallFiles = [

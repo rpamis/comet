@@ -17,7 +17,7 @@ comet native <group> <command> --help
 - `inputOptions`: fields and a JSON template for this command.
 - `workspace` / `preparation`: the actual working directory and change-creation result.
 - `stateVersion` / `loop`: the current state version and acceptance Loop progress.
-- `acceptance` / `nextPageArgs`: the acceptance summary and command for the next page.
+- `acceptance` / `children` / `readyChildren` / `nextPageArgs`: the acceptance summary, Supervisor Change child projections, currently startable children, and command for the next page.
 - `verifierDispatch`: inputs needed to start an independent Verifier.
 - `workspaceFinishResult` / `recoveryArgs`: the post-Archive workspace result and recovery command.
 

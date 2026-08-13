@@ -17,12 +17,18 @@ import {
   nativeProjectPaths,
 } from '../../../domains/comet-native/native-paths.js';
 import { nativeTransitionJournalFile } from '../../../domains/comet-native/native-transition-journal.js';
+import { writeNativeWorkspaceIdentity } from '../../../domains/comet-native/native-workspace.js';
 import type {
   NativeChangeState,
   NativeProjectPaths,
 } from '../../../domains/comet-native/native-types.js';
 import { prepareNativeVerificationEvidence } from '../../../domains/comet-native/native-verification-runtime.js';
-import { issueNativeManualEvidenceReceipt } from '../../../domains/comet-native/native-verification-receipt-runtime.js';
+import {
+  issueNativeAutomatedCheckReceipt,
+  findNativeReusableRequiredCheckReceipt,
+  issueNativeManualEvidenceReceipt,
+  validateNativeStaticReceiptDependency,
+} from '../../../domains/comet-native/native-verification-receipt-runtime.js';
 import {
   nativeVerificationFixtureReceipt,
   nativeVerificationFixtureReport,
@@ -161,6 +167,96 @@ describe('Native Archive inspection', () => {
     expect(await fs.readFile(changeFile, 'utf8')).toBe(before);
   });
 
+  it('validates manual acceptance IDs and automated command timeouts before execution', async () => {
+    const verifyState = {
+      ...state,
+      phase: 'verify' as const,
+      verification_result: 'pending' as const,
+      verification_report: null,
+      verification_evidence: null,
+      revision: state.revision,
+    };
+    await writeNativeChange(paths, verifyState);
+    await expect(
+      findNativeReusableRequiredCheckReceipt({ paths, state: verifyState }),
+    ).resolves.toBeNull();
+    await expect(
+      validateNativeStaticReceiptDependency({
+        paths,
+        state: verifyState,
+        receipt: { kind: 'manual-evidence' } as never,
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      issueNativeManualEvidenceReceipt({
+        paths,
+        name: verifyState.name,
+        acceptanceIds: [],
+        steps: ['step'],
+        observations: ['observation'],
+        now: new Date('2026-07-17T03:00:00.000Z'),
+      }),
+    ).rejects.toThrow('acceptance IDs do not match');
+    await expect(
+      issueNativeAutomatedCheckReceipt({
+        paths,
+        name: verifyState.name,
+        acceptanceIds: [],
+        command: process.execPath,
+        args: ['-e', 'process.exit(0)'],
+        timeoutMs: 0,
+      }),
+    ).rejects.toThrow('timeout must be an integer');
+    await expect(
+      issueNativeAutomatedCheckReceipt({
+        paths,
+        name: verifyState.name,
+        acceptanceIds: [],
+        command: process.execPath,
+        args: ['-e', 'process.exit(0)'],
+        timeoutMs: 60 * 60 * 1_000 + 1,
+      }),
+    ).rejects.toThrow('timeout must be an integer');
+    const contract = await collectNativeContractFiles({
+      changeDir: nativeChangeDir(paths, verifyState.name),
+      briefRef: verifyState.brief,
+      specChanges: verifyState.spec_changes,
+    });
+    const acceptanceIds = contract.contract.acceptance.map((criterion) => criterion.id);
+    const passed = await issueNativeAutomatedCheckReceipt({
+      paths,
+      name: verifyState.name,
+      acceptanceIds,
+      command: process.execPath,
+      args: ['-e', "process.stdout.write('automated output')"],
+      timeoutMs: 10_000,
+      now: () => new Date('2026-07-17T03:01:00.000Z'),
+    });
+    expect(passed.receipt.status).toBe('passed');
+    expect(passed.receipt.evidence).toMatchObject({
+      exitCode: 0,
+      signal: null,
+      timedOut: false,
+      outputSummary: 'automated output',
+      outputTruncated: false,
+    });
+    const failed = await issueNativeAutomatedCheckReceipt({
+      paths,
+      name: verifyState.name,
+      acceptanceIds,
+      command: process.execPath,
+      args: ['-e', 'process.exit(3)'],
+      timeoutMs: 10_000,
+      now: () => new Date('2026-07-17T03:02:00.000Z'),
+    });
+    expect(failed.receipt.status).toBe('failed');
+    expect(failed.receipt.evidence).toMatchObject({
+      exitCode: 3,
+      signal: null,
+      outputSummary: '(exit 3)',
+    });
+  });
+
   it('changes the preflight hash and blocks when implementation becomes stale', async () => {
     const before = await inspectNativeArchivePreflight({
       paths,
@@ -224,5 +320,26 @@ describe('Native Archive inspection', () => {
 
     expect(preview.ready).toBe(false);
     expect(preview.findingCodes).toContain('native-change-conflict');
+  });
+
+  it('includes the current workspace finishing contract when present', async () => {
+    await writeNativeWorkspaceIdentity({
+      paths,
+      name: state.name,
+      revision: state.revision,
+      binding: { isolation: 'current', changeBranch: null, targetBranch: null },
+    });
+
+    const preview = await inspectNativeArchivePreflight({
+      paths,
+      name: state.name,
+      now: new Date('2026-07-17T03:00:00.000Z'),
+    });
+
+    expect(preview.workspace).toMatchObject({
+      schema: 'comet.native.workspace.v3',
+      isolation: 'current',
+      finish: null,
+    });
   });
 });

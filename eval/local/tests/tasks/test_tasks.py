@@ -33,6 +33,12 @@ from scaffold.python.native_eval import (
     split_comet_completion_checks as _split_comet_completion_checks,
 )
 from scaffold.python.profiles import resolve_profile_name, run_profile_rubric
+from scaffold.python.agents import get_agent_adapter
+from scaffold.python.execution import redact_sensitive
+from scaffold.python.manifest_tasks import load_manifest_tasks
+from scaffold.python.eval_context import resolve_eval_context
+from scaffold.python.task_resolution import build_task_catalogue, resolve_task_set
+from scaffold.python.paths import get_tasks_dir
 from scaffold.python.tasks import list_tasks, load_task
 from scaffold.python.treatments import TreatmentConfig, build_treatment_skills, load_treatments
 from scaffold.python.validation import run_validators
@@ -41,6 +47,67 @@ from scaffold.python.validation import run_validators
 CLAUDE_TIMEOUT = 1500  # Default floor for Claude to complete a multi-turn task
 PYTEST_TIMEOUT = 3000  # 50 minutes total including task-specific runtime and teardown
 MANIFEST_DYNAMIC_ONLY_TASKS = {"workflow-overlay-contract"}
+
+
+def _manifest_authored_tasks(config):
+    if config is None or not config.getoption("--eval-manifest"):
+        return {}
+    from scaffold.python.manifests import load_eval_manifest
+
+    manifest = load_eval_manifest(config.getoption("--eval-manifest"))
+    return {task.name: task for task in load_manifest_tasks(manifest)}
+
+
+def _load_eval_task(task_name: str, config=None):
+    resolved = getattr(config, "_comet_resolved_tasks", {}) if config is not None else {}
+    if task_name in resolved:
+        return resolved[task_name]
+    authored = _manifest_authored_tasks(config)
+    if task_name in authored:
+        return authored[task_name]
+    return load_task(task_name)
+
+
+def _resolve_frozen_task_set(config, task_filter: str | None):
+    """Resolve once per collection and retain the exact cross-suite task identity."""
+    frozen = getattr(config, "_comet_frozen_task_set", None)
+    if frozen is not None:
+        return frozen
+    from scaffold.python.manifests import SkillEvalManifest, load_eval_manifest
+
+    manifest_path = config.getoption("--eval-manifest")
+    context = getattr(config, "_comet_eval_context", None)
+    if manifest_path:
+        manifest = load_eval_manifest(manifest_path)
+        context = context or resolve_eval_context(
+            manifest_path=manifest.path, project_root=config.getoption("--project-root")
+        )
+    else:
+        if context is None:
+            context = resolve_eval_context(
+                skill_path=config.getoption("--skill-path"),
+                project_root=config.getoption("--project-root"),
+            )
+        manifest = SkillEvalManifest(
+            path=context.skill_root / "comet" / "eval.yaml",
+            name=context.skill_root.name,
+            description="",
+            skill_name=config.getoption("--skill-name") or context.skill_root.name,
+            skill_path=context.skill_root,
+            profile=config.getoption("--profile"),
+        )
+    frozen = resolve_task_set(
+        context,
+        manifest,
+        build_task_catalogue(manifest, get_tasks_dir()),
+        explicit_task=task_filter,
+        quick=bool(config.getoption("--quick")),
+        execution=conftest._resolve_eval_execution(config),
+    )
+    config._comet_frozen_task_set = frozen
+    config._comet_resolved_tasks = {item.name: item.task for item in frozen.tasks}
+    config._comet_resolution_manifest = manifest
+    return frozen
 
 
 # =============================================================================
@@ -73,6 +140,8 @@ def expand_treatment_patterns(patterns: list[str], all_treatments: dict) -> list
 def generate_test_params(task_filter: str | None, treatment_filter: str | None, config=None):
     """Generate (task_name, treatment_name) pairs based on filters."""
     params = []
+    if config is not None:
+        conftest._ensure_auto_generated_manifest(config, task_filter)
     all_treatments = load_treatments()
     all_tasks = list_tasks()
     dynamic = None
@@ -82,16 +151,24 @@ def generate_test_params(task_filter: str | None, treatment_filter: str | None, 
         if dynamic:
             all_treatments[dynamic.name] = dynamic
     manifest_tasks = None
+    authored_tasks = {}
     manifest_baseline_treatments = []
-    if config is not None and config.getoption("--eval-manifest"):
-        from scaffold.python.manifests import load_eval_manifest
-
-        manifest = load_eval_manifest(config.getoption("--eval-manifest"))
-        manifest_tasks = manifest.recommended_tasks
+    frozen_selected = False
+    if config is not None and (config.getoption("--eval-manifest") or config.getoption("--skill-path")):
+        resolved = _resolve_frozen_task_set(config, task_filter)
+        frozen_selected = True
+        manifest = config._comet_resolution_manifest
+        manifest_tasks = [item.name for item in resolved.tasks]
+        authored_tasks = {
+            item.name: item.task
+            for item in resolved.tasks
+            if item.provenance in {"inline", "source"}
+        }
         manifest_baseline_treatments = manifest.baseline_treatments
 
-    if task_filter and task_filter not in all_tasks:
-        raise ValueError(f"Task not found: {task_filter}. Available: {all_tasks}")
+    if task_filter and task_filter not in set(all_tasks) | set(authored_tasks):
+        available = sorted(set(all_tasks) | set(authored_tasks))
+        raise ValueError(f"Task not found: {task_filter}. Available: {available}")
 
     treatment_list = []
     if treatment_filter:
@@ -106,10 +183,18 @@ def generate_test_params(task_filter: str | None, treatment_filter: str | None, 
     elif dynamic:
         treatment_list = [dynamic.name]
 
-    tasks_to_run = [task_filter] if task_filter else (manifest_tasks or all_tasks)
+    if task_filter:
+        tasks_to_run = [task_filter]
+    elif frozen_selected:
+        tasks_to_run = list(manifest_tasks or [])
+    elif authored_tasks or manifest_tasks:
+        tasks_to_run = list(manifest_tasks or authored_tasks)
+    else:
+        tasks_to_run = all_tasks
+    tasks_to_run = list(dict.fromkeys(tasks_to_run))
 
     for task_name in tasks_to_run:
-        task = load_task(task_name)
+        task = _load_eval_task(task_name, config)
         task_treatments = treatment_list
         if (
             dynamic
@@ -191,6 +276,46 @@ interaction:
         ("generic-skill-smoke", "DYNAMIC_SKILL"),
         ("workflow-overlay-contract", "DYNAMIC_SKILL"),
     ]
+
+
+def test_eval_manifest_prefers_authored_tasks_over_recommended_tasks(tmp_path):
+    package = tmp_path / "manifest-skill"
+    package.mkdir()
+    (package / "SKILL.md").write_text("# Skill\n", encoding="utf-8")
+    comet_dir = package / "comet"
+    comet_dir.mkdir()
+    manifest = comet_dir / "eval.yaml"
+    manifest.write_text(
+        "\n".join(
+            [
+                "apiVersion: comet.eval/v1alpha1",
+                "kind: SkillEvalManifest",
+                "metadata:",
+                "  name: manifest-skill",
+                "skill:",
+                "  name: manifest-skill",
+                "  source: ..",
+                "evaluation:",
+                "  tasks:",
+                "    - name: inline-task",
+                "      prompt: Create result.md.",
+                "      expect:",
+                "        files: [result.md]",
+                "  recommendedTasks:",
+                "    - generic-skill-smoke",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    class Config:
+        def getoption(self, name):
+            return {"--eval-manifest": str(manifest)}.get(name)
+
+    params = generate_test_params(None, None, Config())
+
+    assert [task_name for task_name, _ in params] == ["inline-task"]
+    assert all(treatment == "DYNAMIC_SKILL" for _, treatment in params)
 
 
 def test_control_comet_workflow_filters_workflow_only_checks():
@@ -310,7 +435,7 @@ def pytest_generate_tests(metafunc):
 def test_task_treatment(task_name, treatment_name):
     """Run a task with a treatment and validate results."""
     fixtures = get_fixtures()
-    task = load_task(task_name)
+    task = _load_eval_task(task_name, fixtures.request_config)
     treatments = load_treatments()
     dynamic = conftest._get_dynamic_treatment_config(fixtures.request_config)
     if dynamic:
@@ -361,8 +486,29 @@ def test_task_treatment(task_name, treatment_name):
         skills=treatment.skills,
         claude_md=conftest._build_eval_claude_md(profile_name, treatment.claude_md),
         environment_dir=task.environment_dir,
+        workspace_dir=task.workspace_dir,
     )
-    selected_model = conftest._selected_claude_model()
+    selected_agent = conftest._resolve_eval_agent(fixtures.request_config).agent
+    selected_adapter = get_agent_adapter(selected_agent)
+    execution = conftest._resolve_eval_execution(fixtures.request_config)
+    selected_model = execution.model
+    judge = conftest._resolve_eval_judge(fixtures.request_config)
+    role_models = {
+        "subject": selected_model,
+        "simulator": (
+            selected_model
+            if interaction.mode == "auto_user"
+            and not interaction.decision_reply
+            and not interaction.decision_replies
+            else None
+        ),
+        "judge": judge.model if judge is not None else None,
+    }
+    role_agents = {
+        "subject": selected_agent,
+        "simulator": selected_agent if interaction.mode == "auto_user" else None,
+        "judge": judge.agent if judge is not None else None,
+    }
     captured_execution = conftest._capture_execution_identity(
         fixtures.test_dir,
         model=selected_model,
@@ -373,6 +519,11 @@ def test_task_treatment(task_name, treatment_name):
             task.name,
             task.path.parent,
             execution_identity=captured_execution.report_identity,
+            manifest_path=task.manifest_path,
+            rendered_prompt=prompt if task.manifest_path else None,
+            workspace_dir=task.workspace_dir if task.manifest_path else None,
+            validation_rules=task.manifest_expectations if task.manifest_path else None,
+            environment_dir=task.environment_dir if task.manifest_path else None,
         )
     )
     skill_package_path = conftest._snapshot_dynamic_skill_package(
@@ -387,16 +538,31 @@ def test_task_treatment(task_name, treatment_name):
         image_id=captured_execution.runtime_image_id,
     )
 
-    events = extract_events(parse_output(result.stdout))
+    events = extract_events(parse_output(result.stdout), agent=selected_agent)
+    events["telemetry_status"] = "N/A" if not selected_adapter.supports_telemetry else "available"
     loop_interaction = conftest._extract_loop_interaction(result.stderr)
-    subject_turns = conftest._extract_subject_turn_evidence(result.stdout)
+    for role, session_ids in loop_interaction.get("role_sessions", {}).items():
+        target = events["role_sessions"].setdefault(role, [])
+        for session_id in session_ids:
+            if session_id not in target:
+                target.append(session_id)
+    subject_turns = conftest._extract_subject_turn_evidence(redact_sensitive(result.stdout))
     outputs = {
         "run_id": run_id,
         "treatment_name": treatment_name,
+        "agent": selected_agent,
+        "agent_adapter": selected_adapter,
+        "main_credentials": selected_adapter.required_credentials,
+        "role_models": role_models,
+        "role_agents": role_agents,
+        "telemetry_status": events["telemetry_status"],
+        "judge_agent": judge.agent if judge is not None else None,
+        "judge_model": judge.model if judge is not None else None,
+        "judge_base_url": judge.base_url if judge is not None else None,
         "events": events,
         "profile": profile_name,
         "skill_sources": skill_sources,
-        "eval_manifest": eval_manifest,
+        "eval_manifest": eval_manifest or skill_hints.get("manifest"),
         "required_skills": skill_hints.get("required_skills")
         or task.config.evaluation.required_skills,
         "expected_artifacts": skill_hints.get("expected_artifacts")
@@ -416,6 +582,19 @@ def test_task_treatment(task_name, treatment_name):
         "required_output_schemas": skill_hints.get("required_output_schemas") or [],
         "expected_evidence": skill_hints.get("expected_evidence") or [],
         "draft_hash": skill_hints.get("draft_hash"),
+        "eval_generation": (
+            {
+                "generation_hash": skill_hints.get("generation_hash"),
+                "manifest_path": skill_hints.get("manifest")
+                or str(fixtures.request_config.getoption("--eval-manifest")),
+                "metadata_path": skill_hints.get("generation_metadata_path"),
+                "manifest_hash": skill_hints.get("generation_manifest_hash"),
+                "metadata_hash": skill_hints.get("generation_metadata_hash"),
+                "overhead": skill_hints.get("generation_overhead"),
+            }
+            if skill_hints.get("generation_hash")
+            else None
+        ),
         "interaction": {
             "mode": interaction.mode,
             "max_turns": interaction.max_turns,
@@ -423,12 +602,18 @@ def test_task_treatment(task_name, treatment_name):
             "subject_turns": subject_turns,
         },
         "case_manifest": case_manifest,
+        "role_sessions": events["role_sessions"],
     }
     events["profile"] = outputs["profile"]
+    events["agent"] = selected_agent
+    events["role_models"] = role_models
+    events["role_agents"] = role_agents
+    events["telemetry_status"] = outputs["telemetry_status"]
     events["skill_sources"] = outputs["skill_sources"]
     events["eval_manifest"] = outputs["eval_manifest"]
     events["interaction"] = outputs["interaction"]
     events["case_manifest"] = case_manifest
+    events["eval_generation"] = outputs["eval_generation"]
 
     passed, failed = run_validators(validators, fixtures.test_dir, outputs)
     passed, failed = adapt_checks_for_native(
@@ -459,6 +644,21 @@ def test_task_treatment(task_name, treatment_name):
     )
     passed = passed + rubric_passed
     failed = failed + rubric_failed
+    agent_failed = result.returncode != 0
+    if agent_failed:
+        failed.append(f"Agent execution failed with exit code {result.returncode}")
+
+    # Keep the run-level context available to thin remote reporting wrappers.
+    # These fields are local evidence as well; Langfuse applies its own bounded
+    # capture policy before sending them remotely.
+    events["task"] = task.name
+    events["treatment"] = treatment_name
+    events["prompt"] = prompt
+    events["skill"] = skill_hints.get("name") or skill_hints.get("path")
+    events["final_response"] = subject_turns[-1].get("result") if subject_turns else None
+    events["quality_gates"] = outputs["quality_gates"]
+    events["execution_identity"] = captured_execution.report_identity
+    events["role_sessions"] = outputs["role_sessions"]
 
     fixtures.record_result(
         events,
@@ -470,5 +670,7 @@ def test_task_treatment(task_name, treatment_name):
         stderr=result.stderr,
     )
 
+    if agent_failed:
+        pytest.fail(f"{selected_agent} execution failed with exit code {result.returncode}")
     if failed and not _is_observational_baseline_run(treatment_name):
         pytest.fail(f"Validation failed: {failed}")

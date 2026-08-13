@@ -142,10 +142,28 @@ describe('Comet init workflow policy', () => {
         throw error;
       }
 
-      await expect(resolveInitWorkflow(projectRoot)).rejects.toThrow(/symbolic link or junction/iu);
+      await expect(resolveInitWorkflow(projectRoot)).rejects.toThrow(
+        /symbolic link or junction|alias must point/iu,
+      );
     } finally {
       await fs.rm(outsideRoot, { recursive: true, force: true });
     }
+  });
+
+  it('accepts an AGENTS.md alias that points to the in-project CLAUDE.md file', async () => {
+    await fs.writeFile(path.join(projectRoot, 'CLAUDE.md'), '# Project instructions\n', 'utf8');
+    try {
+      await fs.symlink('CLAUDE.md', path.join(projectRoot, 'AGENTS.md'), 'file');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+      throw error;
+    }
+
+    await expect(resolveInitWorkflow(projectRoot)).resolves.toMatchObject({
+      workflow: 'native',
+      source: 'new-project-default',
+      legacyEvidence: [],
+    });
   });
 
   it('lets an explicit Native choice override legacy fallback and select a custom root', async () => {

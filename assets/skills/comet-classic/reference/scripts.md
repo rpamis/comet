@@ -13,6 +13,8 @@ When entering a workflow, run the required public `comet` command below directly
 Everyday workflows use the public CLI:
 
 ```bash
+comet classic workspace prepare <change-name> --isolation <current|branch|worktree> --json
+comet classic workspace resolve <change-name> --json
 comet state select <change-name>
 comet state current
 comet state clear-selection
@@ -24,7 +26,7 @@ comet resume-probe . --stdin --json
 comet classic intent route --stdin
 ```
 
-When multiple active changes coexist, run `comet state select <change-name>` after resolving the intended change. Ordinary source writes are governed only by that selection; without one, the hook blocks and asks for a choice. A single active change retains automatic routing. Select again after switching branch/worktree or when the recorded selection becomes stale.
+During Open, run workspace prepare first; when resuming, run workspace resolve, which scans registered Worktrees and returns the `projectRoot` to enter. Then run `comet state select <change-name>`. Ordinary source writes are governed only by that selection; without one, the hook blocks and asks for a choice. A single active change retains automatic routing. Run resolve and select again after switching branch/worktree or when the recorded selection becomes stale.
 
 Guard `--apply` advances state after checks pass. Use `comet state transition` when expressing a state event directly, and `comet state next` after phase advancement to determine whether to invoke the next Skill automatically.
 

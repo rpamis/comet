@@ -6,30 +6,26 @@ description: "Comet Native 工作流。当用户明确调用 /comet-native、要
 # Comet Native
 
 Native 把需求、完整目标规格、当前进度和验收结论保存在项目中。每完成一个阶段都回到 Runtime 读取下一步，当前只处理 Runtime 指定的阶段。
-
 ## 硬性边界
 
 - 磁盘中的 `.comet/config.yaml`、当前 change、`comet-state.yaml` 和正式 Markdown 是工作依据，聊天记忆只作辅助。
-- Runtime 管理工作流状态、本机任务、日志、锁和事务；所有阶段推进都通过 PATH 中公开的 `comet native` 命令完成。
+- Runtime 管理工作流状态、本机任务、日志、锁和事务；所有阶段推进都通过 PATH 中公开的 `comet native` 命令完成，用户不手工执行这些命令。
 - 命令不可用时报告 Comet 安装不完整并停止。参数和输出以 `comet native <command> --help` 为准。
 - Builder 提交候选，新的只读 Verifier subagent 或独立 Agent 任务作出验收判断。
 - Native 主流程由本 Skill 和 Runtime 完成，不依赖任何外部 Skill。
-
 ## 开始或恢复
 
 1. 已知 change 名称时，直接运行 `comet native status <change-name> --details --json`；名称未知时才运行 `comet native status --json`，确定目标后再查询该 change 的详细状态。
 2. 当前阶段需要完整验收列表时才执行 `nextPageArgs` 中的分页命令；需要编辑或核对正式正文时才运行 `show` 或读取对应 brief/Spec。
-3. active change 已存在时，进入返回的 `workspace.projectRoot` 并 `select`。多个合理候选才让用户选择。
+3. active change 已存在时，进入返回的 `workspace.projectRoot` 并 `select`。Runtime 会扫描已登记 Worktree，优先返回绑定分支匹配的工作区；只有多个同样匹配的候选才让用户选择。
 4. 没有对应 active change 时才创建，并使用配置指定的产物目录。
-
 ### 创建 change
 
-先确定小写 kebab-case 名称，再按[工作区选择参考](reference/workspace.md)决定使用当前目录、创建分支还是创建 worktree。
+先确定小写 kebab-case 名称，再按[工作区选择参考](reference/workspace.md)决定使用当前目录、创建分支还是创建 worktree。用户明确说并行、同时处理或多个会话时自动选择 `worktree`，不再询问三种方式。
 
-CLI 会完成分支或 worktree 绑定、维护仓库本地排除规则、核对配置并创建可跨设备恢复的状态。随后进入命令返回的 `preparation.projectRoot`。
+CLI 会在创建 change 前完成分支或 worktree 绑定、复用已登记的 change 分支、在分支仍存在但登记 Worktree 已移除时重建 Worktree、维护仓库本地排除规则、核对配置并创建可跨设备恢复的状态。随后进入命令返回的 `preparation.projectRoot`；后续命令不得继续在原目录执行。
 
 如果准备没有完成，保留已经创建的资源，展示 `preparation` 中的失败原因，并按 Runtime 或用户给出的恢复方向继续。
-
 ## 按需读取
 
 确认 phase 后只读取需要的一份 reference：
@@ -38,13 +34,16 @@ CLI 会完成分支或 worktree 绑定、维护仓库本地排除规则、核对
 - 实际编辑 brief/完整目标规格，或查看验收报告时读取[产物参考](reference/artifacts.md)；
 - 正常推进时，直接执行 Runtime 在 `continuation` 中给出的命令。只有返回字段含义不清、命令输入被拒绝、无法启动 Verifier、Verifier 执行报错，或 Verifier 要求用户补充信息时，才读取[命令参考](reference/commands.md)；
 - 只有任务因进程中断、换设备后本机状态缺失、连续多轮没有进展、并发冲突、旧版本迁移失败或状态损坏而无法继续时，才读取[恢复参考](reference/recovery.md)。
-
 ## Shape
 
 先调查能够从仓库、工具和运行环境确定的事实；彼此独立的事实可以交给 subagent 调查。按 `native.clarification_mode` 和澄清参考维护决策树，只把会改变用户可见结果、又无法可靠推断的决定交给用户。
 
-确认后的用户可见决定和重要约束立即同步到 Decisions、brief 和完整目标规格；普通实现选择保留在实现和测试中，只有影响用户可见行为时才进入正式需求。验收项必须具体、可观察且互不重复。
+确认后的用户可见决定和重要约束立即同步到 Decisions、brief 和完整目标规格；普通实现选择保留在实现和测试中，只有影响用户可见行为时才进入正式需求。验收项必须具体、可观察且互不重复。大型需求需要拆分时，在 Supervisor Change 根目录维护 `children.yaml`，用 `depends_on` 表达真实先后关系，并用 `covers` 覆盖 Supervisor Change 验收项；数组顺序只用于稳定展示和同等就绪时的优先级。
 
+大型需求在最终 Shape 确认前执行一次拆分检测：只有至少两个结果可独立实现和验证、验收项能完整映射且有真实依赖/并行价值时建议 Supervisor Change 模式；目标紧耦合、反复修改同一核心区域、协调成本更高或用户要求单 change 时保持单一 Native change；需求文字长、任务条目多本身不能触发拆分。
+建议拆分时，Skill 将 `children.yaml` 草案、执行波次和验收覆盖摘要放入一次 Shape 确认；用户可确认、调整或保持单 change。确认前不得创建子 change、worktree 或派发 Agent。
+确认后，Skill 从 Runtime 的 `readyChildren` 自动派发当前可执行子 change；支持并行时同时推进，不支持并行时按顺序执行。子 change 范围严格继承父确认，出现新的用户可见决定时回到父 Shape。
+恢复 `/comet-native` 时根据 Runtime 状态继续，不重复创建已有 child 或 worktree。
 未解决问题保持 `[blocking]`；有阻塞项时不修改项目实现。完成标准：所有会影响用户可见结果的选择和未明说的假设均已处理，没有 `[blocking]`，用户明确确认目标、范围、关键决定、验收项和非目标，并且 Runtime 已进入 Build。只有用户明确确认后才使用后续指令中含 `--confirmed` 的命令推进。
 
 ## Build ↔ Verify Loop
@@ -56,6 +55,10 @@ Build 和 Verify 组成一个有界验收循环（Loop）：Builder 提交候选
 ## Build
 
 首次实现时读取当前 brief、完整目标规格和全部验收项。如果 Verify 未通过并返回 Build，先处理 Verifier 指出的未通过项、无法继续验证的问题和失败检查；再次提交前重新核对完整规格与全部验收项，避免只修报错点而遗漏其他要求。
+
+确认一次 Supervisor Change Shape 即授权严格派生的子 change，不要求用户重复确认相同范围。Skill 只执行 Runtime continuation 返回的动作，并在每个 child 完成后重新读取 `readyChildren`，继续下一波；Supervisor Change 最后仍由 Verify 验证完整验收项。
+
+状态包含 `children` 时，当前 change 是 Supervisor Change：不要运行 Supervisor Change Builder，只推进 `readyChildren`。每个 child 都是普通 Native change，必须在独立 worktree 中创建，以 Supervisor Change 的 `workspace.changeBranch` 为目标分支；没有依赖的 child 可以并行 Build/Verify，但 Archive 必须逐个使用 `finish=merge` 合入 Supervisor Change 分支。先提交 Supervisor Change 契约基线以保持集成工作区干净；只有 child 的 Archive 已合入 Supervisor Change 分支才算 `done`，随后才从更新后的 Supervisor Change HEAD 创建依赖它的 child。全部 child 为 `done` 后，执行 Supervisor Change continuation 进入 Verify，由新的 Verifier 在最终集成分支上检查 Supervisor Change 的完整验收项。Supervisor Change Verify 未通过时不要重开已归档 child；按 `repair-child` 提示在 `children.yaml` 中追加覆盖失败验收项的唯一 repair child，重新确认 Supervisor Change Shape 后继续。
 
 需求变化时先判断归属：
 

@@ -48,6 +48,10 @@ const PLATFORM_FIXTURES = [
     single: { tool_name: 'Write', tool_input: { file_path: 'src/codebuddy.ts' } },
   },
   {
+    id: 'workbuddy',
+    single: { tool_name: 'Write', tool_input: { file_path: 'src/workbuddy.ts' } },
+  },
+  {
     id: 'qoder',
     single: { tool_name: 'Write', tool_input: { file_path: 'src/qoder.ts' } },
   },

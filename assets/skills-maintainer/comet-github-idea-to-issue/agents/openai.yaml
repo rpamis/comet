@@ -1,0 +1,6 @@
+interface:
+  display_name: "想法转 GitHub Issue"
+  short_description: "将本地想法整理为 Issue"
+  default_prompt: "使用 $comet-github-idea-to-issue 将本地 Comet 想法整理为聚焦的 GitHub Issue。"
+policy:
+  allow_implicit_invocation: false

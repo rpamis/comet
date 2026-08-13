@@ -6,30 +6,26 @@ description: "Comet Native workflow. Use when the user explicitly invokes /comet
 # Comet Native
 
 Native stores the requirements, complete target specifications, current progress, and verification conclusions in the project. After completing each phase, return to the Runtime for the next action and handle only the phase it specifies.
-
 ## Inviolable boundaries
 
 - The on-disk `.comet/config.yaml`, current change, `comet-state.yaml`, and formal Markdown are the working source; chat memory is only supplementary.
-- The Runtime manages workflow state, local tasks, logs, locks, and transactions. Advance every phase through the public `comet native` commands on PATH.
+- The Runtime manages workflow state, local tasks, logs, locks, and transactions. Advance every phase through the public `comet native` commands on PATH; users do not run these commands manually.
 - If a command is unavailable, report an incomplete Comet installation and stop. Treat `comet native <command> --help` as authoritative for arguments and output.
 - The Builder submits a candidate. A fresh read-only Verifier subagent or separate Agent task makes the verification judgment.
 - This Skill and the Runtime complete the Native workflow; Native does not depend on any external Skill.
-
 ## Start or resume
 
 1. When the change name is known, run `comet native status <change-name> --details --json` directly. Only run `comet native status --json` when the name is unknown, then query the selected change in detail.
 2. Run pagination commands from `nextPageArgs` only when the current phase needs the complete acceptance list. Run `show` or read the corresponding brief/Spec only when editing or checking formal content.
-3. When an active change already exists, enter the returned `workspace.projectRoot` and run `select`. Ask the user only when multiple reasonable candidates remain.
+3. When an active change already exists, enter the returned `workspace.projectRoot` and run `select`. Runtime scans registered Worktrees and prefers a workspace whose bound branch matches; ask the user only when multiple equally aligned candidates remain.
 4. Create a change only when no matching active change exists, using the artifact directory from configuration.
-
 ### Create a change
 
-Choose a lowercase kebab-case name, then use the [workspace selection reference](reference/workspace.md) to decide whether to use the current directory, create a branch, or create a worktree.
+Choose a lowercase kebab-case name, then use the [workspace selection reference](reference/workspace.md) to decide whether to use the current directory, create a branch, or create a worktree. Explicit parallel, simultaneous, or multi-session intent automatically selects `worktree` without asking for a three-way choice.
 
-The CLI binds the branch or worktree, maintains repository-local exclusions, validates configuration, and creates state that can be resumed across devices. Then enter the returned `preparation.projectRoot`.
+Before creating the change, the CLI binds the branch or worktree, reuses a registered change branch, recreates a Worktree when its branch still exists but the registered Worktree was removed, maintains repository-local exclusions, validates configuration, and creates state that can be resumed across devices. Then enter the returned `preparation.projectRoot`; do not continue subsequent commands in the original directory.
 
 If preparation does not finish, keep the resources already created, show the failure reason from `preparation`, and continue with the recovery direction from the Runtime or user.
-
 ## Read on demand
 
 After confirming the phase, read only the needed reference:
@@ -38,13 +34,16 @@ After confirming the phase, read only the needed reference:
 - Read the [artifact reference](reference/artifacts.md) when editing the brief or complete target specifications, or when reviewing the verification report.
 - During normal progression, execute the command returned in Runtime `continuation`. Read the [command reference](reference/commands.md) only when a returned field is unclear, command input is rejected, the Verifier cannot be started, Verifier execution fails, or the Verifier needs user-provided information.
 - Read the [recovery reference](reference/recovery.md) only when the task cannot continue because of an interrupted process, missing local Runtime state after moving devices, repeated lack of progress, a concurrency conflict, failed legacy migration, or damaged state.
-
 ## Shape
 
 First investigate facts that can be determined from the repository, tools, and runtime environment. Independent fact-finding may be delegated to subagents. Follow `native.clarification_mode` and the clarification reference to maintain a decision tree. Ask the user only for choices that change the visible result and cannot be inferred reliably.
 
-Immediately synchronize confirmed user-visible decisions and important constraints into Decisions, the brief, and complete target specifications. Keep ordinary implementation choices in the implementation and tests unless they affect visible behavior. Acceptance items must be specific, observable, and non-duplicative.
+Immediately synchronize confirmed user-visible decisions and important constraints into Decisions, the brief, and complete target specifications. Keep ordinary implementation choices in the implementation and tests unless they affect visible behavior. Acceptance items must be specific, observable, and non-duplicative. When a large requirement needs decomposition, maintain `children.yaml` at the Supervisor Change root, use `depends_on` for real ordering, and use `covers` to cover Supervisor Change acceptance items. Array order is only stable display order and the priority among equally ready children.
 
+For a large requirement, run one decomposition preflight before the final Shape confirmation: recommend Supervisor Change mode only when workers can independently implement and verify at least two outcomes, acceptance items map completely, and real dependency or parallel value exists; keep a single Native change when the goal is tightly coupled, repeatedly edits one core area, coordination costs exceed independent verification, or the user asks for one change; text length and task count alone must not trigger decomposition.
+When decomposition is recommended, put the `children.yaml` draft, execution waves, and coverage summary into one Shape confirmation; the user can confirm, adjust, or keep one. Do not create child changes before confirmation; do not create worktrees or dispatch Agents before confirmation.
+After confirmation, the Skill automatically dispatches current ready children from Runtime; use parallel workers when available, otherwise use a serial fallback. Child scope inherits the parent confirmation; new user-visible decisions return to parent Shape.
+On `/comet-native` resume, continue from Runtime state and do not duplicate existing children or worktrees.
 Keep unresolved questions `[blocking]`; do not modify implementation while a blocker remains. Completion criterion: every choice that affects the visible result and every unstated assumption has been handled, no `[blocking]` item remains, the user has explicitly confirmed the outcome, scope, key decisions, acceptance items, and non-goals, and the Runtime has entered Build. Advance with the continuation containing `--confirmed` only after explicit user confirmation.
 
 ## Build ↔ Verify Loop
@@ -56,6 +55,10 @@ Build and Verify form a bounded acceptance Loop: the Builder submits a candidate
 ## Build
 
 For the first implementation, read the current brief, complete target specifications, and all acceptance items. When Verify returns to Build, first address the failed items, blocked verification issues, and failed checks reported by the Verifier. Before submitting again, recheck the complete specifications and all acceptance items so that fixing the reported issue does not hide other omissions.
+
+One parent Shape confirmation authorizes strictly derived child changes, so do not ask the user to repeat the same scope. The Skill executes only actions returned by Runtime continuation and rereads `readyChildren` after each child completes; the parent still verifies every acceptance item at the end.
+
+When status contains `children`, the current change is a Supervisor Change: do not run a Supervisor Change Builder; advance only `readyChildren`. Every child is an ordinary Native change and must be created in an independent worktree targeting the Supervisor Change's `workspace.changeBranch`. Children without dependencies may Build and Verify in parallel, but Archive them one at a time with `finish=merge` into the Supervisor Change branch. Commit the Supervisor Change contract baseline first so the integration worktree stays clean. A child is `done` only after its Archive is merged into the Supervisor Change branch; only then create dependents from the updated Supervisor Change HEAD. After every child is `done`, execute the Supervisor Change continuation to enter Verify, where a fresh Verifier checks the Supervisor Change's complete acceptance list on the final integrated branch. If Supervisor Change Verify fails, do not reopen an archived child. Follow `repair-child`, append a uniquely named repair child covering the failed acceptance items to `children.yaml`, reconfirm the Supervisor Change Shape, and continue.
 
 When requirements change, classify them first:
 

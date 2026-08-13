@@ -80,16 +80,16 @@ comet state set <name> plan docs/superpowers/plans/YYYY-MM-DD-feature.md
 
 No manual phase update needed — guard auto-transitions when exit conditions are met.
 
-When presenting the joint decision, provide every workspace-isolation and execution choice supported by this workflow. After the user chooses, run the corresponding action; if it fails, stop and report the original error. If a field has only one workflow-valid value, explain why and apply it without manufacturing another pause.
+When presenting the joint decision, provide only the execution method, TDD mode, and code-review mode supported by this workflow. The workspace was prepared and bound during Open; if the change has no valid isolation, return to `/comet-open` instead of creating or switching a workspace in Build.
 
-After recording the plan, provide exactly **one joint decision point** that collects whether to continue now, workspace isolation, execution method, TDD mode, and code review mode. The branch name must be confirmed in the same Step 2 joint decision when `branch` is selected. Do not ask continue/pause first and then create another configuration or naming blocker.
+After recording the plan, provide exactly **one joint decision point** that collects whether to continue now, execution method, TDD mode, and code review mode. Do not ask continue/pause first and then create another configuration blocker.
 
 | Option | Behavior | Description |
 |--------|----------|-------------|
-| A | Continue with configuration | Provide all Step 3 isolation, execution, TDD, and review choices in the same response; include the branch name when branch is selected |
+| A | Continue with configuration | Provide all Step 3 execution, TDD, and review choices in the same response |
 | B | Pause to switch model | Record `build_pause: plan-ready`, stop this `/comet-build` invocation, and allow the user to resume later from `/comet-classic` or `/comet-build` |
 
-This is a user decision point. **Follow `comet-classic/reference/decision-point.md` once and show the plan summary, pause option, and every executable Step 3 setting together**. Continuing requires all settings and any conditional branch name in the same response. Do not auto-select or write the pause into `build_mode`.
+This is a user decision point. **Follow `comet-classic/reference/decision-point.md` once and show the plan summary, pause option, and every executable Step 3 setting together**. Do not auto-select or write the pause into `build_mode`.
 
 When the user chooses to continue and supplies complete configuration:
 
@@ -113,22 +113,15 @@ If resuming with `build_pause: plan-ready` and the `plan` file exists, do not re
 comet state set <name> build_pause null
 ```
 
-Then apply the workspace isolation, execution method, TDD mode, and code review mode below.
+Then apply the execution method, TDD mode, and code review mode below.
 
-The plan is on the current branch. These settings are all part of the single Step 2 decision:
+The plan is in the workspace prepared during Open. First verify the existing binding:
 
-**Workspace Isolation**:
+```bash
+comet state get <name> isolation
+```
 
-| Option | Method | Description |
-|--------|--------|-------------|
-| A | Work on current branch | Do not create a new branch; truthfully bind the current Git branch |
-| B | Create branch | Create a new branch in the current repo, simple and fast |
-| C | Create Worktree | Isolated workspace, fully independent, suitable for parallel development |
-
-**Recommendation rules**:
-- User explicitly wants to keep the current branch, or the current branch is already the target branch for this change → Recommend A
-- Change involves ≤ 3 files and the current branch is clean → Recommend B
-- Need parallel development, current branch has uncommitted work → Recommend C
+If the result is empty, stop Build and return to `/comet-open` for workspace resolve/prepare; do not make the first current/branch/worktree choice or create a workspace here.
 
 **Execution Method**:
 
@@ -142,13 +135,9 @@ The plan is on the current branch. These settings are all part of the single Ste
 - Task count ≤ 2 and no cross-module dependencies → Recommend B
 - From hotfix path → Recommend B
 
-These tables are part of the Step 2 joint decision and do not create another pause. Always show the isolation and execution options supported by this workflow; do not remove an option by predicting that an action will fail. When multiple valid options remain, do not choose `current`, `branch`, or `worktree`, execution method, TDD mode, or review mode from recommendations. Recommendations explain a preference; they never replace user confirmation.
+The execution, TDD, and review tables are part of the Step 2 joint decision and do not create another pause. Recommendations never replace user confirmation.
 
-After user selection, update `isolation`, execution method, TDD mode, and code review mode fields:
-
-```bash
-comet state set <name> isolation <current|branch|worktree>
-```
+After user selection, update only the execution method, TDD mode, and code-review mode fields; preserve the `isolation` and `bound_branch` established during Open.
 
 - If the user chooses `executing-plans`: run `comet state set <name> subagent_dispatch null`, then run `comet state set <name> build_mode executing-plans`
 - If the user chooses `subagent-driven-development`: run `comet state set <name> subagent_dispatch confirmed` to record the selected subagent execution, then run `comet state set <name> build_mode subagent-driven-development`
@@ -172,7 +161,7 @@ Run `comet state set <name> tdd_mode <tdd|direct>`
 
 Run `comet state set <name> review_mode <off|standard|thorough>`
 
-`isolation` is a script-enforced hard constraint. Full workflow init may temporarily leave it as `null`, but only before this step. If it remains `null`, both the `build → verify` guard and `comet state transition build-complete` will fail. Full workflow allows `current`, `branch`, or `worktree`, but `current` must be written only after the user explicitly selects it in Step 2; never make it a silent default.
+`isolation` is a script-enforced hard constraint. Full workflow must write `current`, `branch`, or `worktree` during Open and complete the corresponding workspace preparation and `bound_branch` binding before entering Build; if it is missing, Build may only stop and return to Open for repair.
 
 `subagent_dispatch` is a script-enforced hard constraint that records the user's selected subagent execution. `build_mode: subagent-driven-development` requires `subagent_dispatch: confirmed` before leaving the build phase, otherwise both `comet guard build --apply` and `comet state transition build-complete` will fail; it is not a capability check.
 
@@ -189,39 +178,9 @@ comet state set <name> build_mode direct
 
 Without `direct_override: true`, `build_mode=direct` in full workflow is blocked by both guard and state transition.
 
-**Execute isolation**:
+**Execution location**:
 
-- **current**: Do not create a new branch or worktree; execute directly on the current Git branch. Run `comet state set <name> isolation current` immediately; the command writes the current branch to `bound_branch`. If HEAD is detached, stop and ask the user to check out a real branch first, because there is no auditable branch binding.
-
-- **branch**: Use the branch name already confirmed in Step 2; do not pause again. If legacy recovery no longer has the branch name from that joint decision, re-enter the same Step 2 decision instead of creating a separate branch-naming decision.
-
-  Branch naming convention:
-  - Read the `workflow` field from `.comet.yaml` to determine the prefix
-  - `workflow: full` → recommend `feature/YYYYMMDD/<change-name>`
-  - `workflow: hotfix` → recommend `hotfix/YYYYMMDD/<change-name>`
-  - `workflow: tweak` → recommend `tweak/YYYYMMDD/<change-name>`
-  - Format the current runtime date as `YYYYMMDD`; do not depend on one shell's date command
-
-  Example: if change name is `fix-login-bug` and today is 2026-06-09, recommend `feature/20260609/fix-login-bug`
-
-  Immediately after Step 2 confirms the branch name, run `git checkout -b <branch-name>`, then run `comet state set <name> isolation branch` to write the new branch to `bound_branch`. Continue on the new branch.
-
-- **worktree**: **Immediately execute:** Use the Skill tool to load the Superpowers `using-git-worktrees` skill to create an isolated workspace. Do not bypass this skill with plain shell commands or native tools. If loading it fails because it is unavailable, stop and report that error.
-
-After creating isolation, confirm plan file is accessible (naturally accessible with branch method; for worktree method, confirm plan has been committed). If the plan file has not been committed under worktree mode, commit it first before creating the worktree:
-
-```bash
-git add docs/superpowers/plans/YYYY-MM-DD-feature.md
-git commit -m "chore: add implementation plan"
-```
-
-After entering the final execution branch or worktree, bind the current change again inside that actual workspace. Branch mode is bound after checkout with `isolation branch`; worktree mode must run `comet state set <name> isolation worktree` inside the new workspace to write that worktree's current branch to `bound_branch`. A new worktree does not inherit the original workspace-local selection file, so select the current change too:
-
-```bash
-comet state select <change-name>
-```
-
-Do not begin source writes until this binding succeeds.
+Open has already prepared the current directory, branch, or Worktree according to `isolation` and returned the actual `projectRoot`. On resume, run `comet classic workspace resolve <name> --json`, enter the returned directory, then run `comet state select <change-name>`; do not create a Worktree, switch branches, commit a plan to transfer it across Worktrees, or rebind isolation in Build.
 
 **Execute plan**: Must handle execution according to the actual runtime of `build_mode`.
 

@@ -4,7 +4,7 @@ import os from 'os';
 import path from 'path';
 import { createBundleDraft, optimizeBundleDraft } from '../../../domains/bundle/draft.js';
 import { initializeBundleFactoryState } from '../../../domains/bundle/factory.js';
-import { recordAuthoringLane } from '../../../domains/bundle/authoring.js';
+import { buildAuthoringPlan, recordAuthoringLane } from '../../../domains/bundle/authoring.js';
 import {
   readBundleAuthoringState,
   reconcileBundleAuthoringState,
@@ -117,6 +117,46 @@ describe('Bundle authoring lifecycle', () => {
     expect(await fs.readdir(path.join(projectRoot, '.comet', 'bundle-authoring'))).toEqual([
       'demo-bundle.json',
     ]);
+  });
+
+  it('builds quick and full authoring plans with their distinct verification budgets', async () => {
+    await createBundleDraft({
+      projectRoot,
+      name: 'authoring-plan',
+      candidates: [],
+      defaultLocale: 'en',
+      locales: ['en'],
+      engineEnabled: false,
+    });
+
+    const quick = await buildAuthoringPlan({ projectRoot, name: 'authoring-plan' });
+    const full = await buildAuthoringPlan({
+      projectRoot,
+      name: 'authoring-plan',
+      depth: 'full',
+    });
+
+    expect(quick).toMatchObject({
+      schemaVersion: 1,
+      name: 'authoring-plan',
+      depth: 'quick',
+      verify: { voters: 1, maxRounds: 1, dryThreshold: 2 },
+    });
+    expect(full).toMatchObject({
+      depth: 'full',
+      verify: { voters: 3, maxRounds: 4, dryThreshold: 2 },
+    });
+    expect(quick.lanes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'workflow-entry', producesContentLeaves: true }),
+        expect.objectContaining({ id: 'skill-core', producesContentLeaves: true }),
+        expect.objectContaining({ id: 'pause-points', producesContentLeaves: true }),
+        expect.objectContaining({ id: 'skill-review', producesContentLeaves: true }),
+        expect.objectContaining({ id: 'script', producesContentLeaves: false }),
+        expect.objectContaining({ id: 'reference', producesContentLeaves: false }),
+      ]),
+    );
+    expect(quick.protocolHash).toBe(full.protocolHash);
   });
 
   it('serializes project paths relatively while rehydrating them for runtime operations', async () => {
@@ -762,6 +802,255 @@ describe('Bundle authoring lifecycle', () => {
     expect(caught).toBeInstanceOf(Error);
     expect((caught as Error).message).toContain('Authoring lane output is not valid JSON');
     expect((caught as Error & { cause?: unknown }).cause).toBeInstanceOf(Error);
+  });
+
+  it('merges valid content leaves and ignores artifacts outside the content contract', async () => {
+    const state = await createBundleDraft({
+      projectRoot,
+      name: 'content-lane',
+      candidates: [],
+      defaultLocale: 'en',
+      locales: ['en'],
+      engineEnabled: false,
+      factory: {
+        goal: 'content',
+        preferredSkills: [],
+        resolvedSkills: [],
+        callChain: [],
+        deviations: [],
+        engineMode: 'none',
+        runnerMode: 'standalone',
+      },
+    });
+    const output = path.join(root, 'content-lane.json');
+    await fs.writeFile(
+      output,
+      JSON.stringify({
+        lane: 'workflow-entry',
+        status: 'DONE_WITH_CONCERNS',
+        artifacts: [
+          { path: 'SKILL.md', content: '# Entry\n' },
+          { path: 'reference/decision-points.md', content: '# Decisions\n' },
+          { path: '../shared/SKILL.md', content: '# Shared\n' },
+          { path: 'README.md', content: 'ignored\n' },
+          { path: 'reference/recovery.md', content: '' },
+          { path: 42, content: 'ignored\n' },
+        ],
+      }),
+    );
+
+    const updated = await recordAuthoringLane({
+      projectRoot,
+      name: state.name,
+      lane: 'workflow-entry',
+      file: output,
+    });
+
+    expect(updated.factory?.authoringContent).toEqual({
+      'SKILL.md': '# Entry\n',
+      'reference/decision-points.md': '# Decisions\n',
+      '../shared/SKILL.md': '# Shared\n',
+    });
+  });
+
+  it('normalizes a skill-review lane with optional evidence metadata and all severities', async () => {
+    const state = await createBundleDraft({
+      projectRoot,
+      name: 'review-lane',
+      candidates: [],
+      defaultLocale: 'en',
+      locales: ['en'],
+      engineEnabled: false,
+      factory: {
+        goal: 'review',
+        preferredSkills: [],
+        resolvedSkills: [],
+        callChain: [],
+        deviations: [],
+        engineMode: 'none',
+        runnerMode: 'standalone',
+      },
+    });
+    const output = path.join(root, 'review-lane.json');
+    await fs.writeFile(
+      output,
+      JSON.stringify({
+        lane: 'skill-review',
+        status: 'DONE',
+        review: {
+          passed: false,
+          evidenceSource: 'llm-multivote',
+          voters: 3,
+          lenses: ['contract-fit'],
+          rounds: 2,
+          findings: [
+            { severity: 'critical', path: 'SKILL.md', problem: 'critical', fix: 'fix critical' },
+            { severity: 'important', problem: 'important' },
+            { severity: 'minor', path: 'reference/notes.md', problem: 'minor', fix: '' },
+          ],
+          reviewedAt: '2026-08-12T00:00:00.000Z',
+        },
+      }),
+    );
+
+    const updated = await recordAuthoringLane({
+      projectRoot,
+      name: state.name,
+      lane: 'skill-review',
+      file: output,
+    });
+
+    expect(updated.factory?.authoringReview).toEqual({
+      passed: false,
+      evidenceSource: 'llm-multivote',
+      voters: 3,
+      lenses: ['contract-fit'],
+      rounds: 2,
+      findings: [
+        { severity: 'critical', path: 'SKILL.md', problem: 'critical', fix: 'fix critical' },
+        { severity: 'important', problem: 'important' },
+        { severity: 'minor', path: 'reference/notes.md', problem: 'minor', fix: '' },
+      ],
+      reviewedAt: '2026-08-12T00:00:00.000Z',
+    });
+  });
+
+  it.each([
+    ['unknown lane', 'unknown', { lane: 'unknown', status: 'DONE' }, 'Unknown authoring lane'],
+    ['lane mismatch', 'script', { lane: 'reference', status: 'DONE' }, 'lane mismatch'],
+    ['invalid status', 'script', { lane: 'script', status: 'UNKNOWN' }, 'status is invalid'],
+    ['blocked status', 'script', { lane: 'script', status: 'BLOCKED' }, 'returned BLOCKED'],
+    [
+      'needs context status',
+      'script',
+      { lane: 'script', status: 'NEEDS_CONTEXT' },
+      'returned NEEDS_CONTEXT',
+    ],
+  ])('rejects %s lane outputs', async (_name, lane, payload, message) => {
+    const output = path.join(root, `${String(_name).replaceAll(' ', '-')}.json`);
+    await fs.writeFile(output, JSON.stringify(payload));
+    const state = await createBundleDraft({
+      projectRoot,
+      name: `reject-${String(_name).replaceAll(' ', '-')}`,
+      candidates: [],
+      defaultLocale: 'en',
+      locales: ['en'],
+      engineEnabled: false,
+      factory: {
+        goal: 'reject',
+        preferredSkills: [],
+        resolvedSkills: [],
+        callChain: [],
+        deviations: [],
+        engineMode: 'none',
+        runnerMode: 'standalone',
+      },
+    });
+
+    await expect(
+      recordAuthoringLane({ projectRoot, name: state.name, lane, file: output }),
+    ).rejects.toThrow(message);
+  });
+
+  it('rejects a lane output without Skill Creator metadata', async () => {
+    const state = await createBundleDraft({
+      projectRoot,
+      name: 'missing-factory',
+      candidates: [],
+      defaultLocale: 'en',
+      locales: ['en'],
+      engineEnabled: false,
+    });
+    const output = path.join(root, 'missing-factory.json');
+    await fs.writeFile(output, JSON.stringify({ lane: 'script', status: 'DONE' }));
+
+    await expect(
+      recordAuthoringLane({ projectRoot, name: state.name, lane: 'script', file: output }),
+    ).rejects.toThrow('has no Skill Creator metadata');
+  });
+
+  it.each([
+    ['review missing', { lane: 'skill-review', status: 'DONE' }, 'must include a review object'],
+    [
+      'review passed type',
+      { lane: 'skill-review', status: 'DONE', review: { passed: 'yes' } },
+      'review.passed must be boolean',
+    ],
+    [
+      'review evidence source',
+      { lane: 'skill-review', status: 'DONE', review: { passed: true, evidenceSource: 'other' } },
+      'review.evidenceSource is invalid',
+    ],
+    [
+      'review findings type',
+      {
+        lane: 'skill-review',
+        status: 'DONE',
+        review: { passed: true, evidenceSource: 'llm-single', findings: {} },
+      },
+      'review.findings must be an array',
+    ],
+    [
+      'review severity',
+      {
+        lane: 'skill-review',
+        status: 'DONE',
+        review: {
+          passed: true,
+          evidenceSource: 'llm-single',
+          findings: [{ severity: 'major', problem: 'problem' }],
+          reviewedAt: 'now',
+        },
+      },
+      'review.findings[0].severity is invalid',
+    ],
+    [
+      'review problem',
+      {
+        lane: 'skill-review',
+        status: 'DONE',
+        review: {
+          passed: true,
+          evidenceSource: 'llm-single',
+          findings: [{ severity: 'minor' }],
+          reviewedAt: 'now',
+        },
+      },
+      'review.findings[0].problem must be a non-empty string',
+    ],
+    [
+      'review timestamp',
+      {
+        lane: 'skill-review',
+        status: 'DONE',
+        review: { passed: true, evidenceSource: 'llm-single', findings: [] },
+      },
+      'review.reviewedAt must be a non-empty string',
+    ],
+  ])('rejects invalid %s metadata', async (_name, payload, message) => {
+    const state = await createBundleDraft({
+      projectRoot,
+      name: `invalid-${String(_name).replaceAll(' ', '-')}`,
+      candidates: [],
+      defaultLocale: 'en',
+      locales: ['en'],
+      engineEnabled: false,
+      factory: {
+        goal: 'invalid',
+        preferredSkills: [],
+        resolvedSkills: [],
+        callChain: [],
+        deviations: [],
+        engineMode: 'none',
+        runnerMode: 'standalone',
+      },
+    });
+    const output = path.join(root, `invalid-${String(_name).replaceAll(' ', '-')}.json`);
+    await fs.writeFile(output, JSON.stringify(payload));
+
+    await expect(
+      recordAuthoringLane({ projectRoot, name: state.name, lane: 'skill-review', file: output }),
+    ).rejects.toThrow(message);
   });
 
   async function preparedReadyState(name: string): Promise<BundleAuthoringState> {

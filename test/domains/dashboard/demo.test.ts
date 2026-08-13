@@ -60,6 +60,22 @@ describe('dashboard demo data', () => {
     ).toBe(true);
   });
 
+  it('includes a Native parent-child explorer example', async () => {
+    const { DEMO_SNAPSHOT } = await import('../../../domains/dashboard/web/demo.js');
+    const parent = DEMO_SNAPSHOT.native.changes.find(
+      (change) => (change.children?.length ?? 0) > 0,
+    );
+
+    expect(parent?.name).toBe('ship-native-dashboard');
+    expect(parent?.children).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ status: 'done', changeStatus: 'archived' }),
+        expect.objectContaining({ status: 'active', changeStatus: 'active' }),
+        expect.objectContaining({ status: 'pending', changeStatus: 'active' }),
+      ]),
+    );
+  });
+
   it('shows the complete beta17 portable artifact set by lifecycle', async () => {
     const { DEMO_SNAPSHOT } = await import('../../../domains/dashboard/web/demo.js');
 

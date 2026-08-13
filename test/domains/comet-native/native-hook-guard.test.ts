@@ -42,6 +42,13 @@ describe('Native phase Hook guard', () => {
 
   const nonWriteRequest = (): NativeHookRequest => ({ intent: 'non-write', targets: [] });
 
+  async function addHookAllowPath(relativePath: string): Promise<void> {
+    await fs.appendFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      `hook:\n  allow_paths:\n    - ${relativePath}\n`,
+    );
+  }
+
   async function activeChange(phase: 'shape' | 'build' | 'verify' | 'archive', name: string) {
     const paths = await nativeProjectPaths(projectRoot, '.');
     await ensureNativeDirectories(paths);
@@ -150,6 +157,30 @@ describe('Native phase Hook guard', () => {
     });
   });
 
+  it('allows a configured project-local path during Native Shape', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    await addHookAllowPath('docs/team-notes');
+    await activeChange('shape', 'shape-allow-path');
+
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest('docs/team-notes/note.md')),
+    ).resolves.toMatchObject({
+      allowed: true,
+      phase: 'shape',
+      reason: expect.stringContaining('configured Hook allow path'),
+    });
+  });
+
+  it('does not let the allowlist bypass Native Runtime-owned files', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    await addHookAllowPath('.comet');
+    await activeChange('shape', 'runtime-reserved-allow-path');
+
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest('.comet/runtime/extra.json')),
+    ).resolves.toMatchObject({ allowed: false, phase: 'shape' });
+  });
+
   it.each(['shape', 'verify', 'archive'] as const)(
     '%s stays neutral when a write target cannot be attributed',
     async (phase) => {
@@ -201,6 +232,48 @@ describe('Native phase Hook guard', () => {
     await expect(
       inspectNativeHookGuard(projectRoot, writeRequest(stateRef)),
     ).resolves.toMatchObject({ allowed: false, reason: expect.stringContaining('Runtime-owned') });
+  });
+
+  it('keeps parent Build implementation writes assigned to child changes', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    const paths = await nativeProjectPaths(projectRoot, '.');
+    await ensureNativeDirectories(paths);
+    const branch = execFileSync('git', ['branch', '--show-current'], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+    }).trim();
+    await createNativePortableChange({
+      paths,
+      name: 'portable-parent',
+      language: 'en',
+      workspaceBinding: {
+        isolation: 'current',
+        changeBranch: branch,
+        targetBranch: branch,
+      },
+    });
+    const changeDir = nativePortableChangeDir(paths, 'portable-parent');
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      '# Acceptance examples\n- The child implements the requested behavior.\n',
+    );
+    await fs.writeFile(
+      path.join(changeDir, 'children.yaml'),
+      'schema: comet.native.children.v1\nchildren:\n  - name: implementation-child\n    depends_on: []\n    covers: [A1]\n',
+    );
+    await confirmNativePortableShape({ paths, name: 'portable-parent' });
+
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest('src/index.ts')),
+    ).resolves.toMatchObject({
+      allowed: false,
+      phase: 'build',
+      reason: expect.stringContaining('parent Build advances child changes'),
+    });
+    await expect(readNativePortableChange(paths, 'portable-parent')).resolves.toMatchObject({
+      phase: 'build',
+      children_contract_hash: expect.stringMatching(/^[a-f0-9]{64}$/u),
+    });
   });
 
   it('invalidates a portable Verify candidate before allowing an implementation write', async () => {
@@ -288,11 +361,11 @@ describe('Native phase Hook guard', () => {
   it('returns a portable Build change to Shape before allowing formal requirement edits', async () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
     const { paths, state } = await portableBuild('portable-shape-write');
-    const briefRef = path
-      .relative(projectRoot, path.join(nativePortableChangeDir(paths, state.name), 'brief.md'))
+    const childrenRef = path
+      .relative(projectRoot, path.join(nativePortableChangeDir(paths, state.name), 'children.yaml'))
       .replaceAll('\\', '/');
     await expect(
-      inspectNativeHookGuard(projectRoot, writeRequest(briefRef)),
+      inspectNativeHookGuard(projectRoot, writeRequest(childrenRef)),
     ).resolves.toMatchObject({
       allowed: true,
       phase: 'shape',

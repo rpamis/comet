@@ -2,9 +2,15 @@ import { describe, expect, it } from 'vitest';
 
 import {
   compareNativeReceiptBindings,
+  loadNativeVerificationReceiptContext,
   nativeReceiptBindingsMatch,
 } from '../../../domains/comet-native/native-verification-receipt-runtime.js';
 import type { NativeVerificationReceiptBindings } from '../../../domains/comet-native/native-verification-receipt.js';
+import { buildNativeVerificationReceipt } from '../../../domains/comet-native/native-verification-receipt.js';
+import {
+  nativeRepairFailedCheckIdsFromReceipts,
+  projectNativeRepairDecision,
+} from '../../../domains/comet-native/native-repair-integration.js';
 
 const hash = (character: string) => character.repeat(64);
 const baseBindings: NativeVerificationReceiptBindings = {
@@ -66,5 +72,69 @@ describe('compareNativeReceiptBindings', () => {
       'sourceRevision: expected 3, got 6',
       `artifactHash: expected ${JSON.stringify(hash('4'))}, got ${JSON.stringify(hash('6'))}`,
     ]);
+  });
+
+  it('rejects receipt context creation before reading files when Verify prerequisites are absent', async () => {
+    const paths = {} as never;
+    await expect(
+      loadNativeVerificationReceiptContext(paths, {
+        phase: 'shape',
+      } as never),
+    ).rejects.toThrow(/requires Verify/u);
+    await expect(
+      loadNativeVerificationReceiptContext(paths, {
+        phase: 'verify',
+        implementation_scope: null,
+      } as never),
+    ).rejects.toThrow(/implementation scope/u);
+  });
+
+  it('projects repair decisions and derives stable failed-check identifiers', () => {
+    const bindings = { ...baseBindings };
+    const acceptanceId = `acceptance-${'a'.repeat(64)}`;
+    const failedManual = buildNativeVerificationReceipt({
+      kind: 'manual-evidence',
+      role: 'acceptance-evidence',
+      status: 'failed',
+      bindings,
+      acceptanceIds: [acceptanceId],
+      actor: 'native-runtime:test',
+      issuedAt: '2026-08-12T00:00:00.000Z',
+      evidence: { steps: ['step'], observations: ['failed'] },
+    });
+    const passedManual = buildNativeVerificationReceipt({
+      kind: 'manual-evidence',
+      role: 'acceptance-evidence',
+      status: 'passed',
+      bindings,
+      acceptanceIds: [acceptanceId],
+      actor: 'native-runtime:test',
+      issuedAt: '2026-08-12T00:00:00.000Z',
+      evidence: { steps: ['step'], observations: ['passed'] },
+    });
+    const failedIds = nativeRepairFailedCheckIdsFromReceipts([failedManual, passedManual]);
+    expect(failedIds).toHaveLength(1);
+    expect(failedIds[0]).toMatch(/^manual:/u);
+    expect(
+      projectNativeRepairDecision({
+        decision: {
+          disposition: 'manual-stop',
+          reasonCode: 'repeated-failure-stop',
+          signature: { signatureHash: 'f'.repeat(64) },
+          consecutiveFailures: 2,
+          totalRepairFailures: 3,
+          remainingIterations: 2,
+          overrideAccepted: false,
+        },
+      } as never),
+    ).toEqual({
+      disposition: 'manual-stop',
+      reasonCode: 'repeated-failure-stop',
+      signatureHash: 'f'.repeat(64),
+      consecutiveFailures: 2,
+      totalRepairFailures: 3,
+      remainingIterations: 2,
+      overrideAccepted: false,
+    });
   });
 });

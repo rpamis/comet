@@ -63,6 +63,29 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
   expect(consoleErrors).toEqual([]);
 });
 
+test('keeps the demo Native detail visible after selecting a child change', async ({ page }) => {
+  const consoleErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+
+  await page.goto('/?demo');
+  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
+
+  const childRow = page
+    .locator('.native-child-change-row')
+    .filter({ hasText: 'prepare-parent-workspace' });
+  await expect(childRow).toBeVisible();
+  await childRow.click();
+
+  await expect(page.locator('.native-change-detail h3')).toHaveText('prepare-parent-workspace');
+  await expect(page.getByRole('button', { name: 'brief 需求简报' })).toBeVisible();
+  await expect(page.getByText('100% 已处理', { exact: true })).toBeVisible();
+  await expect(page.getByText('准备工作区已完成并归档。', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Native 变更工作区' })).toBeVisible();
+  expect(consoleErrors).toEqual([]);
+});
+
 test('keeps Classic task progress inside the change detail column', async ({ page }) => {
   await page.setViewportSize({ width: 1580, height: 900 });
   await page.goto('/?demo');
@@ -499,7 +522,8 @@ test('fills the change explorer from five-row pages and continues on scroll', as
       return;
     }
     if (url.pathname.endsWith('/change')) {
-      const item = items.find((entry) => entry.id === url.searchParams.get('changeId')) ?? items[0];
+      const selected = url.searchParams.get('changeLocator') ?? url.searchParams.get('changeId');
+      const item = items.find((entry) => entry.id === selected) ?? items[0];
       await route.fulfill({ json: detailFor(item) });
       return;
     }
@@ -721,10 +745,204 @@ test('fills a server-paged Native list when its footer is already visible', asyn
   await expect(page.locator('.native-change-detail h3')).toHaveText('native-2');
 });
 
+test('expands a Native parent and keeps child selection in the existing detail center', async ({
+  page,
+}) => {
+  const workspace = (id: string, label: string, current: boolean) => ({
+    id,
+    label,
+    branch: label,
+    current,
+  });
+  type BrowserWorkspace = ReturnType<typeof workspace>;
+  const nativeDetail = (
+    name: string,
+    locator: string,
+    source: BrowserWorkspace,
+    children: Array<Record<string, unknown>> = [],
+  ) => ({
+    workflow: 'native',
+    locator,
+    workspace: source,
+    name,
+    status: 'active',
+    archivedAt: null,
+    phase: 'build',
+    lifecycleStatus: 'active',
+    stateVersion: 2,
+    legacy: false,
+    migration: { status: 'none', message: null },
+    loop: {
+      stage: 'building',
+      goalCycle: 1,
+      iteration: 1,
+      attempt: 1,
+      nextAction: `继续 ${name}`,
+      actor: 'builder',
+    },
+    acceptance: { total: 1, passed: 0, failed: 0, blocked: 0, pending: 1 },
+    verificationResult: 'pending',
+    localExecution: {
+      status: 'absent',
+      reason: 'missing',
+      stage: null,
+      actor: null,
+      startedAt: null,
+      requestCheckRounds: 0,
+      checks: [],
+      recoverableFromStage: 'building',
+    },
+    children,
+    artifacts: [],
+    specs: {
+      total: 0,
+      create: 0,
+      modify: 0,
+      remove: 0,
+      capabilities: [],
+      capabilitiesTruncated: false,
+    },
+    acceptanceItems: [
+      { id: 'A1', source: 'brief.md', text: `${name} 验收`, result: 'pending', reason: null },
+    ],
+    builderHandoff: null,
+    verification: null,
+    checks: [],
+    blockers: [],
+    history: [],
+    historyOverflow: {
+      droppedEntries: 0,
+      firstDroppedAt: null,
+      lastDroppedAt: null,
+      outcomeCounts: { pass: 0, fail: 0, blocked: 0, 'execution-error': 0, recovery: 0 },
+    },
+  });
+  const parentWorkspace = workspace('parent-workspace', 'integration', true);
+  const childWorkspace = workspace('child-workspace', 'native/child-a', false);
+  const childSummary = {
+    name: 'child-a',
+    dependsOn: [],
+    covers: ['A1'],
+    status: 'active',
+    phase: 'build',
+    message: null,
+    locator: 'child-locator',
+    changeStatus: 'active',
+    workspace: childWorkspace,
+  };
+  const parent = nativeDetail('parent-change', 'parent-locator', parentWorkspace, [childSummary]);
+  const child = nativeDetail('child-a', 'child-locator', childWorkspace);
+  const detailRequests: string[] = [];
+
+  await page.route('**/api/dashboard/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/dashboard/projects') {
+      await route.fulfill({
+        json: {
+          currentProjectId: 'fixture-project',
+          projects: [
+            {
+              id: 'fixture-project',
+              name: 'Fixture',
+              path: '/fixture',
+              lastSeenAt: null,
+              availability: 'available',
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/overview')) {
+      await route.fulfill({
+        json: {
+          project: { name: 'Fixture', path: '/fixture', generatedAt: '2026-08-11T00:00:00.000Z' },
+          summary: {
+            activeChanges: 0,
+            archivedChanges: 0,
+            verifyFailed: 0,
+            tasksIncomplete: 0,
+            dirtyFiles: 0,
+          },
+          initialChanges: { status: 'active', items: [], total: 0, nextCursor: null },
+          native: {
+            schema: 'comet.dashboard.native.v2',
+            generatedAt: '2026-08-11T00:00:00.000Z',
+            totalChangeCount: 2,
+            activeChangeCount: 2,
+            archivedChangeCount: 0,
+            visibleChangeCount: 0,
+            omittedChangeCount: 2,
+            changesTruncated: true,
+            changes: [],
+          },
+          git: {
+            branch: 'integration',
+            head: 'abc1234',
+            dirtyFiles: 0,
+            dirtyFileList: [],
+            recentCommits: [],
+          },
+          risks: [],
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/native-changes')) {
+      await route.fulfill({
+        json: { status: 'active', items: [parent], total: 1, nextCursor: null },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/native-change')) {
+      const locator = url.searchParams.get('changeLocator') ?? '';
+      detailRequests.push(locator);
+      await route.fulfill({ json: locator === child.locator ? child : parent });
+      return;
+    }
+    await route.continue();
+  });
+
+  await page.goto('/');
+  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
+
+  const disclosure = page.locator('.native-change-disclosure');
+  await expect(disclosure).toHaveAccessibleName('收起 parent-change 的子变更');
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+  const childRow = page.locator('.native-child-change-row').filter({ hasText: 'child-a' });
+  await expect(childRow).toBeVisible();
+  await expect(childRow).toContainText('native/child-a');
+  await childRow.click();
+  await expect.poll(() => detailRequests).toContain('child-locator');
+  await expect(page.locator('.native-change-detail h3')).toHaveText('child-a');
+  await expect(page.locator('.dashboard-workspace-center .native-change-detail')).toBeVisible();
+
+  await disclosure.click();
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+  await expect(disclosure).toHaveAccessibleName('展开 parent-change 的子变更');
+  await expect(childRow).toBeHidden();
+});
+
 test('keeps the current Classic detail visible while another change loads', async ({ page }) => {
   const changes = [
-    { id: 'classic-one', displayName: 'classic-one' },
-    { id: 'classic-two', displayName: 'classic-two' },
+    {
+      id: 'classic-one',
+      locator: 'classic-locator-one',
+      displayName: 'classic-one',
+      workspace: { id: 'main', label: 'main', branch: 'main', current: true },
+    },
+    {
+      id: 'classic-two',
+      locator: 'classic-locator-two',
+      displayName: 'classic-two',
+      workspace: {
+        id: 'classic-two',
+        label: 'classic/two',
+        branch: 'classic/two',
+        current: false,
+      },
+    },
   ].map((entry, index) => ({
     ...entry,
     name: entry.id,
@@ -816,7 +1034,8 @@ test('keeps the current Classic detail visible while another change loads', asyn
     }
     if (url.pathname.endsWith('/change')) {
       const change =
-        changes.find((entry) => entry.id === url.searchParams.get('changeId')) ?? changes[0];
+        changes.find((entry) => entry.locator === url.searchParams.get('changeLocator')) ??
+        changes[0];
       if (change.id === 'classic-one') {
         firstDetailStarted = true;
         await new Promise((resolve) => setTimeout(resolve, 600));
@@ -839,6 +1058,7 @@ test('keeps the current Classic detail visible while another change loads', asyn
 
   const detailTitle = page.locator('.change-detail > .ant-card-head .ant-card-head-title');
   await expect(detailTitle).toHaveText('classic-one');
+  await expect(page.getByText('classic/two', { exact: true })).toBeVisible();
   const loadedExplorer = await page.locator('.classic-changes-explorer').boundingBox();
   if (!loadingExplorer || !loadedExplorer) throw new Error('Expected Classic explorer bounds');
   expect(Math.abs(loadedExplorer.height - loadingExplorer.height)).toBeLessThanOrEqual(1);
@@ -999,10 +1219,10 @@ test('keeps Classic and Native side panels within the center panel height', asyn
       await expect(selectedNativeRow).toHaveCSS('border-radius', '10px');
       await expect(selectedNativeRow.locator('.truncate')).toHaveCSS('font-size', '14px');
       await expect(selectedNativeRow.getByText('◇', { exact: true })).toHaveCount(0);
-      await expect(selectedNativeRow).toContainText('Build · 构建中 · 第2轮/第1次');
+      await expect(selectedNativeRow).toContainText('Build · 1/3 子变更待验证');
       const nativeProgress = selectedNativeRow.getByRole('progressbar');
       await expect(nativeProgress).toHaveCount(1);
-      await expect(nativeProgress).toHaveAttribute('aria-valuenow', '50');
+      await expect(nativeProgress).toHaveAttribute('aria-valuenow', '33');
       const recoverySection = rightPanel
         .getByRole('heading', { name: '恢复状态' })
         .locator('..')

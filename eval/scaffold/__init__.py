@@ -18,6 +18,9 @@ from .python import (
     compose_validators,
     make_execution_validator,
     run_claude_in_docker,
+    run_agent_in_docker,
+    run_agent_loop_in_docker,
+    run_command_in_docker,
     run_eval_in_docker,
     run_node_in_docker,
     run_python_in_docker,
@@ -64,4 +67,7 @@ __all__ = [
     "run_eval_in_docker",
     "run_node_in_docker",
     "run_claude_in_docker",
+    "run_agent_in_docker",
+    "run_agent_loop_in_docker",
+    "run_command_in_docker",
 ]

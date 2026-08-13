@@ -1,0 +1,6 @@
+interface:
+  display_name: "Comet 双语文档"
+  short_description: "同步中英文文档"
+  default_prompt: "使用 $comet-bilingual-docs 同步 Comet 中英文文档。"
+policy:
+  allow_implicit_invocation: false

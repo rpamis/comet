@@ -1,9 +1,15 @@
 import { promises as fs } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { NATIVE_CHANGE_STATE_FILE } from '../../../domains/comet-native/native-change.js';
+import {
+  hashNativeParentContract,
+  NATIVE_CHILDREN_SCHEMA,
+  type NativeChildrenContract,
+} from '../../../domains/comet-native/native-children.js';
 import {
   defaultProjectConfig,
   writeProjectConfig,
@@ -33,6 +39,15 @@ import {
 const NOW = '2026-08-09T08:00:00.000Z';
 const LEGACY_ARCHIVE_FIXTURE = path.resolve('docs/comet/archive/2026-07-21-classic-config-block');
 const text = (value: string) => ({ text: value, truncated: false });
+
+function git(root: string, args: string[]): string {
+  return execFileSync('git', args, {
+    cwd: root,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: 10_000,
+  }).trim();
+}
 
 function verifierReadyState(name: string): NativePortableState {
   const base = createNativePortableState({ name, language: 'zh-CN', createdAt: NOW });
@@ -200,6 +215,15 @@ describe('Native Dashboard v2 collector', () => {
     return changeDir;
   }
 
+  async function writeActiveStateAt(root: string, state: NativePortableState): Promise<string> {
+    const paths = await nativeProjectPaths(root, 'docs');
+    const changeDir = path.join(paths.changesDir, state.name);
+    await fs.mkdir(changeDir, { recursive: true });
+    await writeNativePortableState(path.join(changeDir, NATIVE_CHANGE_STATE_FILE), state);
+    await fs.writeFile(path.join(changeDir, 'brief.md'), `# ${state.name}\n`);
+    return changeDir;
+  }
+
   it('does not create Native state when the project has no Comet config', async () => {
     await expect(collectNativeDashboardProjection(projectRoot)).resolves.toBeNull();
     await expect(fs.access(path.join(projectRoot, 'docs'))).rejects.toMatchObject({
@@ -305,6 +329,237 @@ describe('Native Dashboard v2 collector', () => {
       yamlBefore,
     );
     await expect(fs.readFile(localFile, 'utf8')).resolves.toBe(localBefore);
+  });
+
+  it('lists and opens independent same-name Native changes from linked worktrees', async () => {
+    git(projectRoot, ['init', '-q', '-b', 'main']);
+    git(projectRoot, ['config', 'user.email', 'comet@test.local']);
+    git(projectRoot, ['config', 'user.name', 'Comet Test']);
+    await writeProjectConfig(projectRoot, defaultProjectConfig('docs'));
+    await fs.writeFile(path.join(projectRoot, 'README.md'), '# Native worktrees\n');
+    git(projectRoot, ['add', '.']);
+    git(projectRoot, ['commit', '-q', '-m', 'test: seed Native worktrees']);
+    const worktreeA = path.join(projectRoot, '.worktrees', 'native-a');
+    const worktreeB = path.join(projectRoot, '.worktrees', 'native-b');
+    git(projectRoot, ['worktree', 'add', '-q', '-b', 'native/a', worktreeA]);
+    git(projectRoot, ['worktree', 'add', '-q', '-b', 'native/b', worktreeB]);
+
+    const stateFor = (branch: string, nextAction: string) => {
+      const base = activeShapeState('independent-native');
+      return parseNativePortableState({
+        ...base,
+        workspace: {
+          isolation: 'worktree',
+          change_branch: branch,
+          target_branch: 'main',
+          finish: null,
+        },
+        loop: { ...base.loop, next_action: nextAction },
+      });
+    };
+    await writeActiveStateAt(worktreeA, stateFor('native/a', 'Build A.'));
+    await writeActiveStateAt(worktreeB, stateFor('native/b', 'Build B.'));
+
+    const page = await collectNativeDashboardChangePage(projectRoot, {
+      status: 'active',
+      limit: 5,
+    });
+    expect(page.total).toBe(2);
+    expect(page.items.map(({ name }) => name)).toEqual([
+      'independent-native',
+      'independent-native',
+    ]);
+    expect(page.items.map(({ workspace }) => workspace.label)).toEqual(['native/a', 'native/b']);
+    expect(new Set(page.items.map(({ locator }) => locator)).size).toBe(2);
+
+    const details = await Promise.all(
+      page.items.map((item) =>
+        collectNativeDashboardChangeDetail(projectRoot, {
+          status: item.status,
+          name: item.name,
+          locator: item.locator,
+        }),
+      ),
+    );
+    expect(details.map((detail) => detail?.workspace.label)).toEqual(['native/a', 'native/b']);
+    expect(details.map((detail) => detail?.loop?.nextAction)).toEqual(['Build A.', 'Build B.']);
+  });
+
+  it('deduplicates an inherited Native artifact in favor of its bound branch', async () => {
+    git(projectRoot, ['init', '-q', '-b', 'main']);
+    git(projectRoot, ['config', 'user.email', 'comet@test.local']);
+    git(projectRoot, ['config', 'user.name', 'Comet Test']);
+    await writeProjectConfig(projectRoot, defaultProjectConfig('docs'));
+    const base = activeShapeState('bound-native');
+    const state = parseNativePortableState({
+      ...base,
+      workspace: {
+        isolation: 'branch',
+        change_branch: 'main',
+        target_branch: 'release',
+        finish: null,
+      },
+    });
+    await writeActiveStateAt(projectRoot, state);
+    git(projectRoot, ['add', '.']);
+    git(projectRoot, ['commit', '-q', '-m', 'test: commit bound Native change']);
+    const secondary = path.join(projectRoot, '.worktrees', 'native-copy');
+    git(projectRoot, ['worktree', 'add', '-q', '-b', 'native/copy', secondary]);
+
+    const page = await collectNativeDashboardChangePage(secondary, {
+      status: 'active',
+      limit: 5,
+    });
+    expect(page).toMatchObject({
+      total: 1,
+      items: [
+        {
+          name: 'bound-native',
+          workspace: { label: 'main', current: false },
+        },
+      ],
+    });
+  });
+
+  it('projects Native children under their parent while keeping uncreated children visible', async () => {
+    git(projectRoot, ['init', '-q', '-b', 'integration']);
+    git(projectRoot, ['config', 'user.email', 'comet@test.local']);
+    git(projectRoot, ['config', 'user.name', 'Comet Test']);
+    await writeProjectConfig(projectRoot, defaultProjectConfig('docs'));
+    await fs.writeFile(path.join(projectRoot, 'README.md'), '# Parent integration\n');
+    git(projectRoot, ['add', '.']);
+    git(projectRoot, ['commit', '-q', '-m', 'test: seed parent integration']);
+    const childWorktree = path.join(projectRoot, '.worktrees', 'child-a');
+    git(projectRoot, ['worktree', 'add', '-q', '-b', 'native/child-a', childWorktree]);
+
+    const acceptance = [
+      {
+        id: 'A1',
+        source: 'brief.md',
+        text: 'Child A is integrated.',
+        result: 'pending' as const,
+        reason: null,
+      },
+      {
+        id: 'A2',
+        source: 'brief.md',
+        text: 'The dependent and parallel work is complete.',
+        result: 'pending' as const,
+        reason: null,
+      },
+    ];
+    const contract: NativeChildrenContract = {
+      schema: NATIVE_CHILDREN_SCHEMA,
+      children: [
+        { name: 'child-a', depends_on: [], covers: ['A1'] },
+        { name: 'child-b', depends_on: ['child-a'], covers: ['A2'] },
+        { name: 'child-ready', depends_on: [], covers: ['A2'] },
+      ],
+    };
+    const parentBase = activeShapeState('parent-change');
+    const parentState = parseNativePortableState({
+      ...parentBase,
+      phase: 'build',
+      state_version: 2,
+      workspace: {
+        isolation: 'branch',
+        change_branch: 'integration',
+        target_branch: 'main',
+        finish: null,
+      },
+      loop: {
+        ...parentBase.loop,
+        stage: 'building',
+        iteration: 1,
+        next_action: 'Advance ready children.',
+      },
+      acceptance,
+      children_contract_hash: hashNativeParentContract({ acceptance, children: contract }),
+    });
+    const parentDir = await writeActiveStateAt(projectRoot, parentState);
+    await fs.writeFile(
+      path.join(parentDir, 'children.yaml'),
+      [
+        `schema: ${NATIVE_CHILDREN_SCHEMA}`,
+        'children:',
+        '  - name: child-a',
+        '    depends_on: []',
+        '    covers: [A1]',
+        '  - name: child-b',
+        '    depends_on: [child-a]',
+        '    covers: [A2]',
+        '  - name: child-ready',
+        '    depends_on: []',
+        '    covers: [A2]',
+        '',
+      ].join('\n'),
+    );
+
+    const childBase = activeShapeState('child-a');
+    const childState = parseNativePortableState({
+      ...childBase,
+      phase: 'build',
+      workspace: {
+        isolation: 'worktree',
+        change_branch: 'native/child-a',
+        target_branch: 'integration',
+        finish: null,
+      },
+      loop: { ...childBase.loop, stage: 'building', next_action: 'Build child A.' },
+    });
+    await writeActiveStateAt(childWorktree, childState);
+
+    const page = await collectNativeDashboardChangePage(projectRoot, {
+      status: 'active',
+      limit: 5,
+    });
+    expect(page.total).toBe(1);
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0]).toMatchObject({
+      name: 'parent-change',
+      workspace: { label: 'integration', current: true },
+      children: [
+        {
+          name: 'child-a',
+          status: 'active',
+          changeStatus: 'active',
+          workspace: { label: 'native/child-a' },
+          locator: expect.stringMatching(/^dashboard-change-v1\./u),
+        },
+        { name: 'child-b', status: 'pending', locator: null, workspace: null },
+        { name: 'child-ready', status: 'ready', locator: null, workspace: null },
+      ],
+    });
+
+    await expect(
+      collectNativeDashboardOverview(projectRoot, { now: new Date(NOW) }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        totalChangeCount: 1,
+        activeChangeCount: 1,
+        archivedChangeCount: 0,
+        omittedChangeCount: 1,
+      }),
+    );
+
+    const searched = await collectNativeDashboardChangePage(projectRoot, {
+      status: 'active',
+      query: 'child-ready',
+      limit: 5,
+    });
+    expect(searched.items.map(({ name }) => name)).toEqual(['parent-change']);
+
+    const child = page.items[0].children[0];
+    const detail = await collectNativeDashboardChangeDetail(projectRoot, {
+      status: child.changeStatus!,
+      name: child.name,
+      locator: child.locator!,
+    });
+    expect(detail).toMatchObject({
+      name: 'child-a',
+      workspace: { label: 'native/child-a' },
+      loop: { nextAction: 'Build child A.' },
+    });
   });
 
   it('previews a large artifact from a fixed 48 KiB read budget', async () => {
@@ -435,5 +690,35 @@ describe('Native Dashboard v2 collector', () => {
     await expect(
       collectNativeDashboardChangePage(projectRoot, { status: 'active', limit: 51 }),
     ).rejects.toThrow('between 1 and 50');
+    await expect(
+      collectNativeDashboardChangePage(projectRoot, { status: 'active', limit: 0 }),
+    ).rejects.toThrow('between 1 and 50');
+    await expect(
+      collectNativeDashboardChangePage(projectRoot, { status: 'active', limit: 1.5 }),
+    ).rejects.toThrow('between 1 and 50');
+  });
+
+  it('returns empty results for unknown queries, locators, and changes', async () => {
+    await enableNative();
+    await writeActiveState(activeShapeState('known-change'));
+    await expect(
+      collectNativeDashboardChangePage(projectRoot, {
+        status: 'active',
+        query: 'does-not-exist',
+      }),
+    ).resolves.toMatchObject({ total: 0, items: [], nextCursor: null });
+    await expect(
+      collectNativeDashboardChangeDetail(projectRoot, {
+        status: 'active',
+        name: 'missing-change',
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      collectNativeDashboardChangeDetail(projectRoot, {
+        status: 'active',
+        name: 'known-change',
+        locator: 'not-a-native-locator',
+      }),
+    ).resolves.toBeNull();
   });
 });

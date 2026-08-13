@@ -109,13 +109,14 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
   },
   status: {
     usage: 'comet native status [<change-name>] [--cursor <token>] [--details]',
-    purpose: 'Discover portable stable boundaries or inspect the exact next Runner action.',
+    purpose:
+      'Discover portable stable boundaries, parent child readiness, or the exact next Runner action.',
     options: [
       '--cursor <token>  Continue a status-list page.',
       '--details         Include acceptance, Spec, workspace, and report details.',
     ],
     output:
-      'A v2 status page or one portable Loop projection with local execution availability and continuation.runnerAction.',
+      'A v2 status page or one portable Loop projection with local execution availability and continuation.runnerAction; parent changes also expose children and readyChildren.',
     examples: [
       'comet native status --json',
       'comet native status session-timeout --details --json',
@@ -130,7 +131,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
     usage:
       'comet native next <change-name> --summary <text> [--confirmed|--return-to-build|--retry-verifier|--resolve-verifier-blocker]\n       comet native next <change-name> --runner-input <json-file>',
     purpose:
-      'Confirm or recover an Agent boundary, or use one skill-coordinated JSON bridge for Builder handoff, check-plan dispatch, and Verifier response/error.',
+      'Confirm or recover an Agent boundary, advance parent child changes, or use one skill-coordinated JSON bridge for Builder handoff, check-plan dispatch, and Verifier response/error.',
     options: [
       '--summary <text>    Required transition or recovery summary.',
       '--confirmed         Confirm Shape, a completed skill-coordinated pass, or an explicitly degraded verifier-unavailable fallback before Archive.',

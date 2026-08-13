@@ -22,17 +22,36 @@ disable-model-invocation: true
 
 恢复已有 change 时先检查 `<classic-change-dir>/.comet.yaml`：
 
-- 状态文件存在且可解析：第一项状态操作是选择 change
-- 状态文件缺失但 change 目录有效：先运行 `comet state init <change-name> full`，再选择 change
+- 状态文件存在且可解析：先运行 `comet classic workspace resolve <change-name> --json`，进入返回的 `projectRoot` 后再选择 change
+- 状态文件缺失但 change 目录有效：先使用所选隔离方式准备工作区，再进入返回的 `projectRoot` 运行 `comet state init <change-name> full --isolation <selected-isolation>`，最后选择 change
 - 状态文件格式异常：停止并报告解析错误；从版本控制、备份或可验证产物人工修复后再继续，不得用 `state set` 覆盖损坏文件
 
 ```bash
+comet classic workspace resolve <change-name> --json
+# 进入返回的 projectRoot
 comet state select <change-name>
 ```
 
 创建新 change 时，必须先完成 `.comet.yaml` 初始化，再立即运行同一命令；状态文件不存在前不得伪造选择。
 
-### 0b. OpenSpec 兼容性检查
+### 0b. Open 前工作区决策与准备
+
+创建 Classic change 时读取 `comet-classic/reference/workspace.md`。工作区决策必须在创建 OpenSpec artifacts 和 `.comet.yaml` 之前完成，不能推迟到 Build：
+
+- 用户明确表达并行意图时直接使用 `worktree`，确保在创建 OpenSpec 和 state 前准备好独立工作区
+- 未指定隔离方式时按参考文档处理：需要决策时展示合法的 `current`、`branch`、`worktree` 选项，推荐只作说明
+- 用户选择的 `current` 或 `branch` 仍表示串行方式，不得把它描述为适合同时会话
+
+新 change 在运行 OpenSpec `new` 前准备工作区：
+
+```bash
+comet classic workspace prepare <name> --isolation <current|branch|worktree> --json
+# 进入返回的 projectRoot；后续 OpenSpec、state 和产物写入都必须在该目录执行
+```
+
+准备命令会复用已登记且分支匹配的 Worktree；分支仍存在但登记的 Worktree 已被移除时会重建。只有分支已重命名、被用户接管或无法确认归属时，才暂停请求显式 rebind。
+
+### 0c. OpenSpec 兼容性检查
 
 在任何 OpenSpec 状态或指令命令前运行：
 
@@ -145,7 +164,7 @@ resolved brief 或 change 名称仍不明确时不得运行 `comet classic opens
 change 骨架创建后立即初始化可恢复状态，不能等 artifacts 全部生成后再写 `.comet.yaml`：
 
 ```bash
-comet state init <name> full
+comet state init <name> full --isolation <selected-isolation>
 comet state select <name>
 comet state check <name> open
 ```
@@ -206,7 +225,7 @@ comet state check <name> open
 
 **幂等恢复算法**：open 阶段所有操作可安全重复执行。恢复时按以下顺序处理：
 
-1. 状态文件缺失时先运行 `comet state init <name> full`；格式异常时停止并修复，不得覆盖。随后选择 change 并运行 `comet state check <name> open`。
+1. 状态文件缺失时先使用所选隔离方式准备工作区，再进入返回的 `projectRoot` 运行 `comet state init <name> full --isolation <selected-isolation>`；格式异常时停止并修复，不得覆盖。随后选择 change 并运行 `comet state check <name> open`。
 2. 运行 `comet classic openspec -- status --change "<name>" --json`，重新验证 `changeRoot`、核心 ID、`applyRequires`、`artifacts` 和 `missingDeps`。
 3. `done`：该 artifact 已完成，保持原文件不变，不重复生成。
 4. `ready`：依赖已经满足，可以生成。先运行 `comet classic openspec -- instructions <artifact-id> --change "<name>" --json`，按返回内容写入；写完后立刻重新运行 status。

@@ -4,6 +4,7 @@ import json
 import ntpath
 import os
 import random
+import re
 import shutil
 import subprocess
 import time
@@ -11,6 +12,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from scaffold.python.agents import validate_agent_id
+from scaffold.python.execution import ResolvedExecution, build_agent_environment
 from scaffold.python.paths import EVAL_ROOT, get_suite_root
 
 TEST_CONTEXT_FILE = os.environ.get("BENCH_TEST_CONTEXT", "_test_context.json")
@@ -21,8 +24,14 @@ SCAFFOLD_PYTHON_DIR = Path(__file__).parent
 
 def load_eval_environment() -> None:
     """Load eval credentials only at an explicit execution boundary, never on import."""
-    load_dotenv(EVAL_ROOT / ".env")
-    load_dotenv(get_suite_root() / ".env", override=True)
+    original_environment = dict(os.environ)
+    try:
+        load_dotenv(EVAL_ROOT / ".env", override=True)
+        load_dotenv(get_suite_root() / ".env", override=True)
+        load_dotenv(Path.home() / ".comet" / "eval" / ".env", override=True)
+    finally:
+        for key, value in original_environment.items():
+            os.environ[key] = value
 
 
 def _uses_wsl_bash(bash_exec: str) -> bool:
@@ -69,12 +78,28 @@ def _resolve_bash(os_name: str | None = None) -> str:
 
 BASH_EXEC = _resolve_bash()
 WSL_ENV_KEYS = (
+    "BENCH_EVAL_AGENT",
     "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+    "OPENAI_MODEL",
+    "QODER_PERSONAL_ACCESS_TOKEN",
+    "QODER_BASE_URL",
+    "QODER_MODEL",
+    "CODEX_API_KEY",
+    "CODEX_BASE_URL",
+    "CODEX_MODEL",
     "ANTHROPIC_API_KEY",
     "LANGSMITH_API_KEY",
     "LANGSMITH_PROJECT",
     "LANGSMITH_TRACING",
     "LANGSMITH_ENDPOINT",
+    "LANGFUSE_PUBLIC_KEY",
+    "LANGFUSE_SECRET_KEY",
+    "LANGFUSE_BASE_URL",
+    "LANGFUSE_TRACING_ENVIRONMENT",
+    "TRACE_TO_LANGFUSE",
+    "LANGFUSE_CODEX_TAGS",
+    "LANGFUSE_CODEX_METADATA",
     "TAVILY_API_KEY",
     "TRACE_TO_LANGSMITH",
     "CC_LANGSMITH_API_KEY",
@@ -97,6 +122,31 @@ WSL_ENV_KEYS = (
     "CLAUDE_CODE_SUBAGENT_MODEL",
     "BENCH_CC_VERSION",
     "BENCH_CC_MODEL",
+    "BENCH_CODEX_VERSION",
+    "BENCH_CODEX_MODEL",
+    "BENCH_QODER_VERSION",
+    "BENCH_QODER_MODEL",
+    "CODEBUDDY_API_KEY",
+    "CODEBUDDY_AUTH_TOKEN",
+    "CODEBUDDY_BASE_URL",
+    "CODEBUDDY_MODEL",
+    "CODEBUDDY_SMALL_FAST_MODEL",
+    "CODEBUDDY_BIG_SLOW_MODEL",
+    "CODEBUDDY_CODE_SUBAGENT_MODEL",
+    "CODEBUDDY_CUSTOM_HEADERS",
+    "CODEBUDDY_INTERNET_ENVIRONMENT",
+    "BENCH_CODEBUDDY_VERSION",
+    "BENCH_CODEBUDDY_MODEL",
+    "COMET_EVAL_CUSTOM_AGENT_ID",
+    "COMET_EVAL_CUSTOM_EXECUTABLE",
+    "COMET_EVAL_CUSTOM_CREDENTIALS",
+    "COMET_EVAL_CUSTOM_MODEL",
+    "COMET_EVAL_CUSTOM_BASE_URL",
+    "COMET_EVAL_CUSTOM_MODEL_ENV",
+    "COMET_EVAL_CUSTOM_BASE_URL_ENV",
+    "COMET_EVAL_CUSTOM_INSTALL_KIND",
+    "COMET_EVAL_CUSTOM_INSTALL_PACKAGE",
+    "COMET_EVAL_CUSTOM_INSTALL_VERSION",
 )
 
 
@@ -119,20 +169,33 @@ def _to_bash_path(value) -> str:
     return s
 
 
-def _bash_env() -> dict[str, str]:
-    env = os.environ.copy()
+def _bash_env(source_env: dict[str, str] | None = None) -> dict[str, str]:
+    env = dict(source_env if source_env is not None else os.environ)
     if os.name != "nt" or not _uses_wsl_bash(BASH_EXEC):
         return env
 
     existing = [item for item in env.get("WSLENV", "").split(":") if item]
+    custom_credentials = [
+        key.strip()
+        for key in env.get("COMET_EVAL_CUSTOM_CREDENTIALS", "").split(",")
+        if key.strip()
+    ]
+    custom_routing = [
+        key.strip()
+        for metadata_key in ("COMET_EVAL_CUSTOM_MODEL_ENV", "COMET_EVAL_CUSTOM_BASE_URL_ENV")
+        for key in [env.get(metadata_key, "")]
+        if re.fullmatch(r"[A-Z][A-Z0-9_]{1,63}", key.strip())
+    ]
     exported = [key for key in WSL_ENV_KEYS if env.get(key)]
+    exported.extend(key for key in custom_credentials if env.get(key))
+    exported.extend(key for key in custom_routing if env.get(key))
     merged = list(dict.fromkeys(existing + exported))
     if merged:
         env["WSLENV"] = ":".join(merged)
     return env
 
 
-def run_shell(script, *args, timeout=None, check=True):
+def run_shell(script, *args, timeout=None, check=True, env=None):
     cmd = [BASH_EXEC, _to_bash_path(SHELL_DIR / script)] + [_to_bash_path(a) for a in args]
     return subprocess.run(
         cmd,
@@ -142,7 +205,7 @@ def run_shell(script, *args, timeout=None, check=True):
         errors="replace",
         timeout=timeout,
         check=check,
-        env=_bash_env(),
+        env=_bash_env(env),
     )
 
 
@@ -153,9 +216,11 @@ def check_docker_available():
         return False
 
 
-def build_docker_image(test_dir, force=False, verbose=False):
+def build_docker_image(test_dir, force=False, verbose=False, agent=None):
     try:
         args = ["build", str(test_dir)] + (["--force"] if force else [])
+        if agent:
+            args.extend(["--agent", validate_agent_id(agent)])
         result = run_shell("docker.sh", *args, timeout=300, check=False)
         return result.stdout.strip() if result.returncode == 0 else None
     except subprocess.TimeoutExpired:
@@ -186,7 +251,26 @@ def run_node_in_docker(test_dir, script_name, timeout=120, args=None):
     return _docker_run_script("run-node", test_dir, script_name, timeout, args)
 
 
-def run_claude_in_docker(test_dir, prompt, timeout=300, model=None, image_id=None):
+def run_command_in_docker(test_dir, command, timeout=120):
+    """Run one user-authored validation command inside the task container."""
+    cmd = ["run-command", str(test_dir), "--timeout", str(timeout), "--", command]
+    if not check_docker_available():
+        return subprocess.CompletedProcess(cmd, 125, "", "Docker not available")
+    try:
+        return run_shell("docker.sh", *cmd, timeout=timeout + 30, check=False)
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(cmd, 124, "", f"Timeout after {timeout}s")
+
+
+def run_claude_in_docker(
+    test_dir,
+    prompt,
+    timeout=300,
+    model=None,
+    image_id=None,
+    base_url=None,
+    environment=None,
+):
     if not check_docker_available():
         raise RuntimeError("Docker not available")
     cmd = ["run-claude", str(test_dir), prompt, "--timeout", str(timeout)]
@@ -194,23 +278,95 @@ def run_claude_in_docker(test_dir, prompt, timeout=300, model=None, image_id=Non
         cmd.extend(["--model", model])
     if image_id:
         cmd.extend(["--image-id", image_id])
+    child_env = environment
+    if child_env is None and (model or base_url):
+        child_env = build_agent_environment(
+            ResolvedExecution("claude-code", model, base_url, {}),
+        )
     try:
-        return run_shell("docker.sh", *cmd, timeout=timeout + 30, check=False)
+        return run_shell("docker.sh", *cmd, timeout=timeout + 30, check=False, env=child_env)
     except subprocess.TimeoutExpired:
         return subprocess.CompletedProcess(cmd, 124, "", f"Timeout after {timeout}s")
 
 
-def run_claude_loop_in_docker(test_dir, loop_args, timeout=600):
+def run_agent_in_docker(
+    test_dir,
+    prompt,
+    *,
+    agent="claude-code",
+    timeout=300,
+    model=None,
+    base_url=None,
+    image_id=None,
+    environment=None,
+):
+    """Run one subject, simulator, or judge turn through the selected adapter."""
+    agent_id = validate_agent_id(agent)
+    if not check_docker_available():
+        raise RuntimeError("Docker not available")
+    cmd = ["run-agent", str(test_dir), prompt, "--agent", agent_id]
+    if model:
+        cmd.extend(["--model", model])
+    cmd.extend(["--timeout", str(timeout)])
+    if image_id:
+        cmd.extend(["--image-id", image_id])
+    child_env = environment
+    if child_env is None and (model or base_url):
+        child_env = build_agent_environment(
+            ResolvedExecution(agent_id, model, base_url, {}),
+        )
+    try:
+        return run_shell("docker.sh", *cmd, timeout=timeout + 30, check=False, env=child_env)
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(cmd, 124, "", f"Timeout after {timeout}s")
+
+
+def run_claude_loop_in_docker(test_dir, loop_args, timeout=600, environment=None):
     """Run the interactive driver and remove its container after host-side timeout."""
     cmd = ["run-claude-loop", str(test_dir), *loop_args]
     try:
-        return run_shell("docker.sh", *cmd, timeout=timeout, check=False)
+        return run_shell("docker.sh", *cmd, timeout=timeout, check=False, env=environment)
     except subprocess.TimeoutExpired as error:
         cleanup_error = ""
         try:
             cleanup = run_shell(
                 "docker.sh",
                 "cleanup-claude-loop",
+                test_dir,
+                timeout=30,
+                check=False,
+            )
+            if cleanup.returncode != 0:
+                cleanup_error = f"; cleanup failed: {cleanup.stderr or cleanup.stdout}"
+        except Exception as cleanup_exception:  # pragma: no cover - defensive cleanup
+            cleanup_error = f"; cleanup failed: {cleanup_exception}"
+        stdout = (
+            error.stdout.decode("utf-8", errors="replace")
+            if isinstance(error.stdout, bytes)
+            else (error.stdout or "")
+        )
+        stderr = (
+            error.stderr.decode("utf-8", errors="replace")
+            if isinstance(error.stderr, bytes)
+            else (error.stderr or "")
+        )
+        message = f"Timeout after {timeout}s{cleanup_error}"
+        return subprocess.CompletedProcess(
+            cmd, 124, stdout, "\n".join(filter(None, (stderr, message)))
+        )
+
+
+def run_agent_loop_in_docker(test_dir, loop_args, timeout=600, environment=None):
+    """Run the shared interactive driver for a non-default evaluation agent."""
+    cmd = ["run-agent-loop", str(test_dir), *loop_args]
+    try:
+        return run_shell("docker.sh", *cmd, timeout=timeout, check=False, env=environment)
+    except subprocess.TimeoutExpired as error:
+        cleanup_error = ""
+        try:
+            cleanup = run_shell(
+                "docker.sh",
+                "cleanup-agent-loop",
                 test_dir,
                 timeout=30,
                 check=False,

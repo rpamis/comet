@@ -39,6 +39,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from scaffold.python.agents import normalize_skill_invocations
+
 # All nine rubric dimensions, in display order.
 RUBRIC_DIMENSIONS = (
     "main_flow",
@@ -747,6 +749,12 @@ def comet_rubric_validator(test_dir: Path, outputs: dict) -> tuple[list[str], li
     Final weighted score uses dimension weights to aggregate.
     """
     events = (outputs or {}).get("events", {}) or {}
+    if isinstance(events, dict):
+        events["skills_invoked"] = normalize_skill_invocations(
+            events,
+            agent=(outputs or {}).get("agent"),
+            adapter=(outputs or {}).get("agent_adapter"),
+        )
     business_completion = _completion_input(outputs or {}, "business_completion")
     workflow_completion = _completion_input(outputs or {}, "workflow_completion")
     is_control = _is_control_business_only(outputs or {})
@@ -880,7 +888,14 @@ def comet_rubric_validator(test_dir: Path, outputs: dict) -> tuple[list[str], li
         try:
             from scaffold.python.llm_judge import judge_messages
 
-            judge_results = judge_messages(test_dir)
+            judge_results = judge_messages(
+                test_dir,
+                agent=outputs.get("judge_agent") or outputs.get("agent"),
+                model=outputs.get("judge_model"),
+                base_url=outputs.get("judge_base_url"),
+                excluded_credentials=tuple(outputs.get("main_credentials") or ()),
+                evidence=outputs,
+            )
             passed.extend(judge_results)
             if any(
                 result.startswith("[RUBRIC-JUDGE] ") and " status:" not in result

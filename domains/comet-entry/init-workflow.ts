@@ -14,6 +14,7 @@ import {
 import {
   inspectProtectedProjectPath,
   readProtectedProjectFile,
+  resolveProtectedProjectInstructionPath,
 } from '../workflow-contract/protected-project-path.js';
 import type { CometWorkflow } from './types.js';
 
@@ -42,9 +43,11 @@ async function containsLegacyManagedResumeBlock(
   relativeFile: string,
 ): Promise<boolean> {
   try {
+    const instruction = await resolveProtectedProjectInstructionPath(projectRoot, relativeFile);
+    if (!instruction.exists) return false;
     const source = (
-      await readProtectedProjectFile(projectRoot, relativeFile, 4 * 1024 * 1024, {
-        label: `${relativeFile} legacy resume evidence`,
+      await readProtectedProjectFile(projectRoot, instruction.relative, 4 * 1024 * 1024, {
+        label: `${instruction.relative} legacy resume evidence`,
       })
     ).bytes.toString('utf8');
     return source.includes('<comet-ambient-resume>') && !source.includes('comet.resume_probe.v2');
@@ -87,9 +90,13 @@ async function findLegacyEvidence(
   };
   await visit('openspec/changes');
 
+  const inspectedResumeTargets = new Set<string>();
   for (const file of ['AGENTS.md', 'CLAUDE.md']) {
-    if (await containsLegacyManagedResumeBlock(projectRoot, file)) {
-      evidence.push(`${file}#comet-ambient-resume`);
+    const instruction = await resolveProtectedProjectInstructionPath(projectRoot, file);
+    if (!instruction.exists || inspectedResumeTargets.has(instruction.relative)) continue;
+    inspectedResumeTargets.add(instruction.relative);
+    if (await containsLegacyManagedResumeBlock(projectRoot, instruction.relative)) {
+      evidence.push(`${instruction.relative}#comet-ambient-resume`);
     }
   }
   return evidence;

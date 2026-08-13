@@ -4,10 +4,16 @@ from __future__ import annotations
 
 import inspect
 import importlib.util
+import os
 import sys
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 import json
+
+import pytest
+
+from scaffold.python.eval_context import resolve_eval_context
 
 
 def _load_langsmith_conftest():
@@ -93,6 +99,63 @@ def test_langsmith_tracing_auto_builds_default_plugin_cache(monkeypatch, tmp_pat
     assert resolved == plugin_dir
     assert calls == [plugin_dir]
     assert module.os.environ["CC_LANGSMITH_PLUGIN_DIR"] == module._plugin_dir_env_value(plugin_dir)
+
+
+def test_langsmith_default_plugin_cache_uses_resolved_owner_not_packaged_harness(
+    monkeypatch, tmp_path
+):
+    skill = tmp_path / "skill"
+    owner = tmp_path / "owner"
+    harness_cache = tmp_path / "packaged-harness" / ".cache" / "langsmith-cc-plugin"
+    skill.mkdir()
+    owner.mkdir()
+    (skill / "SKILL.md").write_text("# Demo\n", encoding="utf-8")
+    context = resolve_eval_context(skill_path=skill, project_root=owner)
+    monkeypatch.setenv("COMET_EVAL_CONTEXT", json.dumps(context.to_payload()))
+    module = _load_langsmith_conftest()
+    monkeypatch.setattr(module, "DEFAULT_LANGSMITH_PLUGIN_DIR", harness_cache)
+    monkeypatch.delenv("CC_LANGSMITH_PLUGIN_DIR", raising=False)
+    monkeypatch.setenv("LANGSMITH_TRACING", "true")
+    monkeypatch.setenv("TRACE_TO_LANGSMITH", "true")
+    calls = []
+
+    def fake_build(target):
+        calls.append(target)
+        target.mkdir(parents=True)
+        return True
+
+    monkeypatch.setattr(module, "_build_default_langsmith_plugin", fake_build)
+
+    resolved = module.provision_langsmith_plugin_dir()
+
+    expected = owner / ".comet" / "eval" / "cache" / "langsmith" / "langsmith-cc-plugin"
+    assert resolved == expected
+    assert calls == [expected]
+    assert not harness_cache.exists()
+
+
+def test_langsmith_default_plugin_cache_rejects_an_owner_cache_link_that_escapes(
+    monkeypatch, tmp_path
+):
+    skill = tmp_path / "skill"
+    owner = tmp_path / "owner"
+    outside = tmp_path / "outside"
+    skill.mkdir()
+    owner.mkdir()
+    outside.mkdir()
+    (skill / "SKILL.md").write_text("# Demo\n", encoding="utf-8")
+    context = resolve_eval_context(skill_path=skill, project_root=owner)
+    cache_link = context.artifact_root / "cache"
+    cache_link.parent.mkdir(parents=True)
+    if os.name == "nt":
+        subprocess.run(["cmd", "/c", "mklink", "/J", str(cache_link), str(outside)], check=True)
+    else:
+        cache_link.symlink_to(outside, target_is_directory=True)
+    monkeypatch.setenv("COMET_EVAL_CONTEXT", json.dumps(context.to_payload()))
+    module = _load_langsmith_conftest()
+
+    with pytest.raises(ValueError, match="managed path must stay within its owner root"):
+        module._default_langsmith_plugin_dir()
 
 
 def test_langsmith_task_wrapper_registers_reexported_local_module():

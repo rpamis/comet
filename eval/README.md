@@ -23,16 +23,24 @@ eval/
 │   ├── treatments/            # Treatment 配置（注入哪些 Skill）
 │   ├── tests/                 # pytest 测试入口
 │   └── logs/                  # 评估结果日志
-└── langsmith/                 # LangSmith 评估入口（可选）
+├── langsmith/                 # LangSmith 评估入口（可选）
+└── langfuse/                  # Langfuse 评估入口（可选）
 ```
 
 ## 环境配置
+
+普通 npm 用户不需要进入 Comet 源码目录。首次运行 `comet eval` 时，CLI 会在用户目录自动创建完整配置模板：
+
+- Windows：`%USERPROFILE%\.comet\eval\.env`
+- macOS/Linux：`~/.comet/eval/.env`
+
+模板包含主任务（Bench）、独立 Judge、Claude Code、Codex、Qoder、CodeBuddy、LangSmith 和 Langfuse 的全部可配置参数。CLI 只会创建缺失文件，不会覆盖已有 `.env`；当前进程环境变量优先于文件内容。源码仓库下的 `eval/.env` 仅用于 Comet harness 开发和测试，不是普通用户配置入口。
 
 ### 前置依赖
 
 - Python 3.11+
 - Docker
-- Claude Code CLI（`claude` 命令可用）
+- 一个受支持的评估 Agent CLI：Claude Code、Codex、Qoder 或 CodeBuddy（运行时会在 Docker 镜像中准备对应 CLI）
 - `uv`（推荐）或 pip
 
 ### 安装
@@ -44,20 +52,32 @@ uv sync
 
 ### 环境变量
 
-评估运行会先读取当前 shell 的环境变量，也会按需加载 `eval/.env`。录屏或演示时可以不创建 `.env`，或只创建一个完全空的 `.env`，把密钥放在系统环境变量里，避免文件内容出现在画面中。
+已发布的 `comet eval` 不需要用户拉取源码。评估运行会先读取当前 shell 的环境变量，再按需加载用户目录下、与自定义 Agent 适配器并列的 `~/.comet/eval/.env`（Windows：`%USERPROFILE%\.comet\eval\.env`）。录屏或演示时可以不创建 `.env`，把密钥放在系统环境变量里。
 
-如需本地文件配置，可复制 `.env.example` 为 `.env` 并填写：
+如需本地文件配置，可参考 `.env.example`，创建用户级文件：
 
 ```bash
-cp .env.example .env
+mkdir -p ~/.comet/eval
+cp .env.example ~/.comet/eval/.env
 ```
 
-> 注意：如果你使用系统环境变量，不要把 `.env.example` 中的 `ANTHROPIC_API_KEY=` 这类空赋值原样保留到 `.env`；空赋值在部分加载路径中可能覆盖已经存在的系统环境变量。
+进程环境变量优先于用户 `.env`；显式 CLI 或 manifest 配置优先于环境默认值。空值不会覆盖已有的有效进程变量。
 
 | 变量                                                              | 必填 | 说明                                                                                                |
 | ----------------------------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------- |
-| `ANTHROPIC_API_KEY`                                               | ✅\* | Anthropic API 密钥；也可以由系统环境变量提供                                                        |
-| `BENCH_CC_MODEL`                                                  | ❌   | Claude 模型覆盖（默认用 CLI 配置）                                                                  |
+| `BENCH_EVAL_AGENT`                                                 | ❌   | 未通过 CLI 或 manifest 指定时的默认 Agent                                                            |
+| `BENCH_API_KEY` / `BENCH_BASE_URL` / `BENCH_MODEL`                | ✅\* | 主任务统一凭据、API 地址和模型；会映射到所选 Agent 的原生配置                                  |
+| `BENCH_JUDGE_AGENT` / `BENCH_JUDGE_API_KEY` / `BENCH_JUDGE_BASE_URL` / `BENCH_JUDGE_MODEL` | Judge | LLM-as-judge 的独立 Agent、凭据、API 地址和模型；不会继承主任务配置                         |
+| `ANTHROPIC_API_KEY`                                               | ✅\* | Claude Code 原生 API 密钥；显式设置时优先于 `BENCH_API_KEY`                                      |
+| `BENCH_CC_MODEL` / `BENCH_CC_VERSION`                             | ❌   | Claude 模型和 CLI 版本覆盖（默认用 CLI 配置）                                                        |
+| `OPENAI_API_KEY` / `CODEX_API_KEY`                               | Codex | 使用 `--agent codex` 时的 Codex 认证                                                                   |
+| `OPENAI_BASE_URL` / `OPENAI_MODEL` / `CODEX_BASE_URL` / `CODEX_MODEL` / `BENCH_CODEX_VERSION` | ❌ | Codex 原生地址、模型和 CLI 版本覆盖                                                              |
+| `QODER_PERSONAL_ACCESS_TOKEN`                                    | Qoder | 使用 `--agent qoder` 时的 Qoder 认证                                                                   |
+| `QODER_BASE_URL` / `QODER_MODEL` / `BENCH_QODER_VERSION`            | ❌   | Qoder 原生地址、模型和 CLI 版本覆盖                                                                   |
+| `CODEBUDDY_API_KEY` / `CODEBUDDY_AUTH_TOKEN`                     | CodeBuddy | 使用 `--agent codebuddy` 时的 CodeBuddy 认证                                                       |
+| `CODEBUDDY_BASE_URL` / `CODEBUDDY_MODEL` / `BENCH_CODEBUDDY_VERSION` | ❌ | CodeBuddy API endpoint、模型和 CLI 版本覆盖                                                        |
+| `CODEBUDDY_SMALL_FAST_MODEL` / `CODEBUDDY_BIG_SLOW_MODEL` / `CODEBUDDY_CODE_SUBAGENT_MODEL` | ❌ | CodeBuddy 的 fast、reasoning 和 code-subagent 模型覆盖 |
+| `CODEBUDDY_CUSTOM_HEADERS` / `CODEBUDDY_INTERNET_ENVIRONMENT`      | ❌   | CodeBuddy 的自定义请求头和联网环境配置                                                               |
 | `BENCH_SIMULATOR_PROMPT_FILE`                                     | ❌   | 显式覆盖任务级用户模拟器提示词；任务未配置时回退到 `eval/simulator-instruction.md`                    |
 | `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_BASE_URL` / `ANTHROPIC_MODEL` | ❌   | 用 Anthropic 兼容代理时的认证与模型配置；设置 `ANTHROPIC_AUTH_TOKEN` 后可不设置 `ANTHROPIC_API_KEY` |
 | `BENCH_LLM_JUDGE`                                                 | ❌   | 设为 `1` 启用 LLM-as-judge 评分                                                                     |
@@ -66,8 +86,50 @@ cp .env.example .env
 | `BENCH_JUDGE_API_KEY`                                             | ❌   | Judge 专用 Anthropic API key；如果设置 `BENCH_JUDGE_AUTH_TOKEN`，优先使用 auth token                 |
 | `LANGSMITH_API_KEY`                                               | ❌   | 仅 LangSmith 套件需要                                                                               |
 | `LANGSMITH_PROJECT` / `LANGSMITH_TRACING`                         | ❌   | LangSmith 套件项目名与追踪开关；Claude Code 插件变量会从这组配置自动派生                            |
+| `TRACE_TO_LANGSMITH`                                               | ❌   | 兼容旧配置的 LangSmith 追踪开关                                                                       |
+| `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY`                     | Langfuse | `--suite langfuse` 运行模式的项目凭据；只从当前进程读取，不写入报告或 manifest                  |
+| `LANGFUSE_BASE_URL` / `LANGFUSE_TRACING_ENVIRONMENT`              | ❌   | Langfuse 区域地址与 trace 环境标签                                                               |
+| `COMET_EVAL_ADAPTERS_DIR`                                         | ❌   | 覆盖自定义 Agent 适配器注册目录；默认是用户目录下的 `~/.comet/eval/adapters`                  |
 
-`*` 本地 Claude eval 至少需要 `ANTHROPIC_API_KEY` 或 `ANTHROPIC_AUTH_TOKEN` 之一存在于当前进程环境中。
+`*` 主任务至少需要 `BENCH_API_KEY` 或所选 Agent 的原生凭据之一。Claude Code、Codex 和 CodeBuddy 支持 `BENCH_BASE_URL`；Qoder 使用其官方支持的认证和服务地址配置。
+
+安全边界：Eval 不会把 API key 写入发布包、manifest、报告或 Skill 工作区。Docker 运行 Agent 时，Codex、Qoder、CodeBuddy 使用容器内独立的配置根；Codex 的 `config.toml` 只引用 `env_key`，CodeBuddy 的 `settings.json` 只使用 `apiKeyHelper`，实际密钥只存在于本次容器进程环境中，运行结束后随临时配置目录销毁。
+
+`comet eval` 默认使用 `claude-code`。可以通过 CLI 或 manifest 选择执行 Agent；CLI 优先于
+manifest，未指定时回退到 Claude Code：
+
+```bash
+comet eval ./generated-skill/comet/eval.yaml --agent codex
+comet eval ./generated-skill/comet/eval.yaml --agent qoder
+comet eval ./generated-skill/comet/eval.yaml --agent codebuddy
+```
+
+CodeBuddy 的自定义模型使用其 OpenAI-compatible 配置：`CODEBUDDY_API_KEY`、
+`CODEBUDDY_BASE_URL` 和 provider 接受的 `CODEBUDDY_MODEL`，也可以直接用 `--model`
+覆盖当前运行的模型。宿主机的 `~/.codebuddy/models.json` 只用于注册模型；Eval 不挂载它，
+而是在容器内生成临时 `settings.json`，通过 `apiKeyHelper` 从进程环境读取凭据。不要把
+Claude Code 的 Anthropic 地址或 Claude 专用模型 ID 直接复用给 CodeBuddy。
+
+manifest 可声明默认 Agent：
+
+```yaml
+execution:
+  agent: codex
+```
+
+四种 Agent 共用 subject、auto_user simulator 和可选 Judge 的执行/报告契约；缺失的 token、成本或
+上下文遥测会在报告中保留为 `N/A`，而不是用估算值补齐。
+
+### Langfuse 套件
+
+使用 `--suite langfuse` 时，local runner 的任务、Agent、Docker、validator 和本地报告保持不变，额外把每个 task/treatment 的核心结果写入 Langfuse，并在结束时 flush：
+
+```bash
+LANGFUSE_PUBLIC_KEY=pk-lf-... LANGFUSE_SECRET_KEY=sk-lf-... \
+  comet eval ./generated-skill/comet/eval.yaml --suite langfuse --html
+```
+
+`comet eval` 会自动选择 Langfuse optional extra。Claude Code 和 Codex 会在隔离的 `.comet/eval/langfuse/plugins/` 缓存中准备带完整性元数据的固定版本官方插件；Qoder 和 CodeBuddy 使用项目级 Stop hook 读取 JSONL transcript，转换失败时只降级详细轨迹，不影响本地评分和核心 trace。`--collect --suite langfuse` 不初始化 SDK、不联网、不下载插件。
 
 ## 快速开始
 
@@ -94,6 +156,132 @@ Eval 报告同时保留 raw set 和 analysis set。Raw set 包含所有 run，�
 
 如果关键 treatment 的 clean data 不足，报告会输出 `Insufficient clean data` 或 `Inconclusive due to data quality`，而不是给出误导性的胜负结论。
 
+### 独立评估任意 Skill
+
+独立评估不依赖 `comet-any`。只要有一个 Skill 目录，就可以直接运行；没有
+`comet/eval.yaml` 时，普通运行会自动生成并缓存 2–4 个任务：
+
+```bash
+comet eval ./my-skill
+comet eval ./my-skill --agent codebuddy --model subject-model
+```
+
+主模型和 LLM-as-judge 是两套独立配置。Judge 只有在显式启用后才会运行，至少需要自己的
+`BENCH_JUDGE_MODEL` 和 `BENCH_JUDGE_API_KEY`/`BENCH_JUDGE_AUTH_TOKEN`；它可以使用不同的
+Agent、模型和 API 地址：
+
+```bash
+BENCH_LLM_JUDGE=1 \
+BENCH_JUDGE_MODEL=judge-model \
+BENCH_JUDGE_BASE_URL=https://judge.example/v1 \
+BENCH_JUDGE_API_KEY=... \
+comet eval ./my-skill --model subject-model --base-url https://subject.example/v1
+```
+
+也可以全部通过命令行或 manifest 配置：
+
+```bash
+comet eval ./my-skill \
+  --agent codebuddy --model subject-model --base-url https://subject.example/v1 \
+  --judge-agent claude-code --judge-model judge-model \
+  --judge-base-url https://judge.example/v1
+```
+
+如果只想检查任务、配置和快照，不执行 Agent、Docker、插件或网络请求，使用：
+
+```bash
+comet eval ./my-skill --collect
+```
+
+### 扩展自定义 Agent
+
+非预定义的 Agent 不需要修改 Comet 源码，也不需要把适配器放进 npm 包。用户在自己的配置目录
+中显式注册即可，Eval 不会仅因为某个可执行文件在 `PATH` 中就自动发现它：
+
+| 系统 | 默认适配器目录 |
+| --- | --- |
+| macOS/Linux | `~/.comet/eval/adapters/<agent-id>/adapter.yaml` |
+| Windows | `%USERPROFILE%\\.comet\\eval\\adapters\\<agent-id>\\adapter.yaml` |
+
+也可以在用户级 `~/.comet/eval/.env`（Windows 为 `%USERPROFILE%\\.comet\\eval\\.env`）中设置
+`COMET_EVAL_ADAPTERS_DIR`，把整个适配器注册表放到其他位置。`<agent-id>` 必须是小写字母开头、
+只包含小写字母/数字/连字符、长度 2–32 的标识符。
+
+创建 `<agent-id>/adapter.yaml`，例如：
+
+```yaml
+apiVersion: comet.eval.agent/v1alpha1
+kind: EvalAgentAdapter
+metadata: { id: my-agent, version: 1.0.0 }
+runtime:
+  executable: my-agent
+  install: { kind: npm, package: my-agent, version: latest }
+credentials: [MY_AGENT_API_KEY]
+modelEnv: MY_AGENT_MODEL
+baseUrlEnv: MY_AGENT_BASE_URL
+capabilities:
+  singleTurn: true
+  resume: true
+  structuredEvents: true
+  telemetry: false
+  skillInvocationEvidence: true
+```
+
+字段含义：
+
+- `runtime.executable` 是容器内实际启动的命令；npm/pip 包必须暴露这个可执行入口。
+  `runtime.install.kind` 可为 `npm`、`pip` 或 `none`；使用 `npm`/`pip` 时 Eval 会在本次 Docker
+  镜像构建中安装对应包，`none` 表示命令已在基础镜像中准备好。
+- `credentials` 只能填写最多两个环境变量名，不要填写密钥值。主 Agent 运行时，只有这些声明的
+  环境变量会被转发到容器；Judge 运行时，`BENCH_JUDGE_API_KEY` 映射到第一个凭据名，
+  `BENCH_JUDGE_AUTH_TOKEN` 映射到第二个凭据名（如果声明了第二个）。
+- `modelEnv` 和 `baseUrlEnv` 是可选的环境变量名。主 Agent 可通过这些变量，或 CLI 的
+  `--model`/`--base-url`，或 manifest 的 `execution.model`/`execution.baseUrl` 配置；自定义 Agent
+  不会自动把 `BENCH_MODEL`、`BENCH_BASE_URL` 或 `BENCH_API_KEY` 映射到自定义变量。
+- `capabilities` 描述适配器的真实能力。`resume` 用于 `auto_user` 多轮交互；`structuredEvents`
+  要求 CLI 输出 JSON Lines；`skillInvocationEvidence` 表示输出中能提供明确的 Skill 调用事件；
+  `telemetry: false` 时报告中的 token/cost 可以是 `N/A`。运行真实评估至少需要
+  `singleTurn`、`resume`、`structuredEvents` 和 `skillInvocationEvidence` 为 `true`。
+
+自定义 CLI 必须接受 Eval 生成的调用形态：
+
+```text
+<executable> -p "<prompt>" --output-format stream-json --model <model> [--resume <session-id>]
+```
+
+并把每条结构化事件写到 stdout。若要让 rubric 认定 Skill 被调用，输出中需要有类似下面的 JSONL
+事件（普通文件产物或路径推断不算自定义 Agent 的调用证据）：
+
+```json
+{"type":"skill_invocation","skill":"my-skill"}
+```
+
+在用户级 `.env` 中填写适配器声明的变量，然后运行：
+
+```dotenv
+BENCH_EVAL_AGENT=my-agent
+MY_AGENT_API_KEY=your-subject-key
+MY_AGENT_MODEL=your-model
+MY_AGENT_BASE_URL=https://your-provider.example/v1
+
+# 如果让它作为独立 Judge：
+# BENCH_LLM_JUDGE=1
+# BENCH_JUDGE_AGENT=my-agent
+# BENCH_JUDGE_API_KEY=your-judge-key
+# BENCH_JUDGE_MODEL=your-judge-model
+# BENCH_JUDGE_BASE_URL=https://your-judge-provider.example/v1
+```
+
+```bash
+comet eval ./my-skill --collect --agent my-agent
+comet eval ./my-skill --quick --agent my-agent --model your-model
+```
+
+`--collect` 会校验适配器和配置但不会启动 Agent、Docker 或联网；确认通过后再运行真实评估。
+如果你的 CLI 不能兼容上述参数和 JSONL 事件契约，需要提供一个 wrapper CLI，将它转换为该契约；
+当前 `adapter.yaml` 不支持自定义参数模板或直接挂载宿主机 Agent 配置目录。适配器文件可以分发给
+团队成员，但真实凭据必须留在每个人自己的用户级 `.env` 或当前 shell 中。
+
 ### 评估任意 Skill
 
 ```bash
@@ -111,23 +299,29 @@ uv run pytest local/tests/tasks/test_tasks.py \
   --eval-manifest=/path/to/my-skill/comet/eval.yaml -v
 ```
 
-## 容器中的 Claude 实验工作区
+如果 manifest 没有 `evaluation.tasks` 或 `recommendedTasks`，普通运行会基于 Skill 的受限快照自动生成 2–4 个任务，并按 Agent、profile、交互配置和快照 hash 缓存到项目的 `.comet/eval/generated/`。缓存 manifest 会写入生成 hash 和元数据，方便复现；`--collect` 只接受已有缓存，不会在收集阶段调用生成 Agent。需要快速冒烟时显式使用：
 
-每次实验都会先在宿主机创建一个临时隔离目录，然后把它挂载到 Claude Code 容器的 `/workspace`。Claude 的当前工作目录就是 `/workspace`；双 agent 交互模式还会只读挂载 scaffold shell 到 `/opt/scaffold-shell`。
+```bash
+comet eval ./my-skill --quick
+```
+
+## 容器中的 Agent 实验工作区
+
+每次实验都会先在宿主机创建一个临时隔离目录，然后把它挂载到所选 Agent 的 Docker 容器的 `/workspace`。Agent 的当前工作目录就是 `/workspace`；双 agent 交互模式还会只读挂载 scaffold shell 到 `/opt/scaffold-shell`。
 
 典型结构如下（以 `COMET_FULL_040_BETA` 为例，展示 0.4.0 beta 的 Comet Skill + 完整 dependency snapshot；实际任务产物会随 task/treatment 变化）：
 
 ```text
-/workspace                                      # Claude Code 的当前工作目录；宿主机临时隔离目录挂载点
+/workspace                                      # 所选 Agent 的当前工作目录；宿主机临时隔离目录挂载点
 |-- Dockerfile                                  # 当前 task 的 Docker 构建文件，来自 task/environment/
 |-- requirements.txt                            # Python 依赖文件；仅 task 提供时存在
 |-- package.json                                # Node 依赖文件；仅 task 提供时存在
 |-- package-lock.json                           # Node 锁文件；仅 task 提供时存在
 |-- tsconfig.json                               # TypeScript 配置；仅 task 提供时存在
-|-- CLAUDE.md                                   # 项目级指令；comet-workflow profile 会注入强制 /comet 指令
+|-- CLAUDE.md                                   # Claude 项目级指令；其他 Agent 使用 AGENTS.md
 |-- .eval-task-prompt.txt                       # auto_user 模式下的任务提示词临时文件，运行后清理
 |-- .eval-simulator-prompt.txt                  # auto_user 模式下的用户模拟器提示词临时文件，运行后清理
-|-- .claude                                     # Claude Code 本地配置和 Skill 安装目录
+|-- .claude / .agents / .qoder / .codebuddy      # 所选 Agent 的本地配置和 Skill 安装目录
 |   |-- CLAUDE.md                               # Claude 专用项目指令副本
 |   |-- settings.json                           # Claude Code settings；包含 Comet PreToolUse hook
 |   `-- skills                                  # 当前 treatment 注入的完整 Skill 包
@@ -228,6 +422,28 @@ uv run pytest local/tests/tasks/test_tasks.py \
 - `/opt/scaffold-shell` 只在双 agent loop 运行时挂载，提供容器内调用 Claude 的循环驱动脚本。
 
 ## 定义自己的 Task
+
+除了把任务注册到 `eval/local/tasks/`，项目也可以在自己的 `comet/eval.yaml` 中声明 inline task 或引用 Skill 包内的 task package。项目任务会和 `recommendedTasks` 合并；同名任务会直接拒绝，避免覆盖内置任务。
+
+```yaml
+evaluation:
+  tasks:
+    - name: writes-summary
+      prompt: Create summary.md with a short result.
+      workspace: fixtures/summary
+      expect:
+        files: [summary.md]
+        contains:
+          summary.md: ["# Summary"]
+        commands:
+          - run: test -s summary.md
+            timeout: 30
+      rubric:
+        - The summary is specific and actionable.
+    - source: tasks/advanced
+```
+
+`workspace`、`source` 和所有期望产物都必须留在 Skill 包/任务工作区内；`files`、`contains`、`json` 和 `commands` 检查在隔离 Docker 工作区中执行。`--collect` 只做解析和发现，不运行 Agent 或用户命令。
 
 每个任务是 `local/tasks/` 下的一个目录，包含三个部分：
 
@@ -531,6 +747,13 @@ uv run pytest local/tests/tasks/test_tasks.py --count=5 -v
 | `--task=<name>`          | 指定任务                       |
 | `--treatment=<name>`     | 指定 treatment（逗号分隔多个） |
 | `--profile=<name>`       | 覆盖评估 profile               |
+| `--agent=<id>`           | 主 Agent；可用内置 Agent 或已安装的自定义适配器 |
+| `--model=<name>`         | 主模型覆盖                   |
+| `--base-url=<url>`       | 主模型 API 地址覆盖          |
+| `--judge-agent=<id>`     | 独立 Judge Agent              |
+| `--judge-model=<name>`   | 独立 Judge 模型               |
+| `--judge-base-url=<url>` | 独立 Judge API 地址            |
+| `--collect`              | 只解析/发现，不执行工作负载   |
 | `--skill-path=<path>`    | 注入本地 Skill 路径            |
 | `--skill-name=<name>`    | 注入的 Skill 名称              |
 | `--count=<n>`            | 重复运行次数                   |

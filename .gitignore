@@ -115,6 +115,7 @@ eval/**/.pytest*/
 eval/**/.pytest-*/
 eval/**/.pytest_*/
 eval/local/logs/
+eval/langfuse/logs/
 eval/local/.pytest_docker_build.lock
 
 # Windows "nul" device-name mishaps (created when a shell redirects to nul

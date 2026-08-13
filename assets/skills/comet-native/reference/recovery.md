@@ -19,7 +19,7 @@ If the original directory or branch is truly lost, the user decides which recove
 `comet-state.yaml` records the last workflow state that can be resumed safely. Local `state.json` only says what this machine is executing. If it is missing, stale, or belongs to an old task, the Runtime rebuilds it from YAML, the brief, and target Specs. Local state cannot overwrite newer YAML.
 
 - Shape: remain in Shape and continue clarification or confirmation.
-- Build: if the Runtime shows `repairing`, Verify has returned to Build. Keep the current iteration and continue from the Builder handoff, unresolved acceptance items, and next action.
+- Build: if the Runtime shows `repairing`, Verify has returned to Build. For an ordinary change, keep the current iteration and continue implementation. For a Supervisor Change, follow `repair-child` and add an unfinished child covering the failed acceptance items; do not reopen an archived child.
 - Verify (`verify-ready`): rerun the necessary checks for the current candidate and start a new Verifier. Do not reuse a pass from the old device.
 - Archive (`archive-ready`): safely return to Verify, reset the verification result to `pending`, and verify the implementation synchronized to the new device.
 - `await-user` / `blocked`: restore the original blocker, responsible actor, and allowed actions; wait until the corresponding condition is satisfied.

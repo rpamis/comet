@@ -65,6 +65,8 @@ export {
   writeWorkflowProjectConfigSource,
 } from './project-config-writer.js';
 export { ensureCometProjectGitignore, renderCometProjectGitignore } from './project-gitignore.js';
+export { configuredHookWritePath } from './hook-write-policy.js';
+export type { HookWritePolicy } from './hook-write-policy.js';
 export {
   inspectWorkflowProjectConfigTransaction,
   repairWorkflowProjectConfigTransaction,

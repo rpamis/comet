@@ -6,6 +6,7 @@ import type {
   ParsedWorkflowProjectConfigDocument,
   ProjectConfigLanguage,
   WorkflowClassicProjectConfig,
+  WorkflowHookProjectConfig,
   WorkflowNativeEnabledProjectConfig,
   WorkflowNativePendingRootMove,
   WorkflowNativeProjectConfig,
@@ -33,6 +34,7 @@ const DEFAULT_WORKFLOW_NATIVE_MANAGED_SKILL_EXCLUDES = [
   '.claude/skills/**',
   '.cline/skills/**',
   '.codebuddy/skills/**',
+  '.workbuddy/skills/**',
   '.continue/skills/**',
   '.cospec/skills/**',
   '.crush/skills/**',
@@ -137,6 +139,8 @@ type ProjectConfigCommentKey =
   | 'default_workflow'
   | 'workflows'
   | 'ambient_resume'
+  | 'hook'
+  | 'hook.allow_paths'
   | 'native'
   | 'native.artifact_root'
   | 'native.language'
@@ -163,6 +167,9 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
     workflows: '# Workflows enabled in this project: native, classic, or both.',
     ambient_resume:
       '# Enables automatic recovery through the read-only Ambient Resume probe for both Native and Classic. Set false to disable it.\n# ambient_resume: true | false',
+    hook: '# Hook write policy shared by Native and Classic. Paths are project-relative.',
+    'hook.allow_paths':
+      '# Project-relative directories allowed during guarded phases. Use one path per list item; empty by default.',
     native: '# Native workflow settings. They do not change Classic state or behavior.',
     'native.artifact_root':
       '# Root directory where Native stores Comet specs and changes. Runtime data stays under .comet.',
@@ -204,6 +211,8 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
     workflows: '# 此项目启用的工作流，可填写 native、classic 或同时启用两者。',
     ambient_resume:
       '# 是否启用只读的环境感知恢复探针，同时作用于 Native 和 Classic；设为 false 可关闭自动工作流恢复。\n# ambient_resume: true | false',
+    hook: '# Native 和 Classic 共享的 Hook 写入策略；路径必须是项目相对路径。',
+    'hook.allow_paths': '# 在受保护阶段允许写入的项目相对目录；每项填写一个目录，默认为空。',
     native: '# Native 工作流配置，不会改变 Classic 的状态或行为。',
     'native.artifact_root': '# Native 规格和 change 的存放根目录；运行时数据始终位于 .comet。',
     'native.language': '# Native 工作流文档使用的产物语言。\n# 可选值：en | zh-CN',
@@ -242,7 +251,7 @@ export function projectConfigComment(
 
 function commentKey(
   line: string,
-  block: 'native' | 'classic' | null,
+  block: 'native' | 'classic' | 'hook' | null,
   nativeNested: 'snapshot' | null,
 ): ProjectConfigCommentKey | null {
   const match = /^(\s*)([a-z_]+):/u.exec(line);
@@ -253,6 +262,10 @@ function commentKey(
   if (indent === 2 && block) {
     const blockKey = `${block}.${key}` as ProjectConfigCommentKey;
     if (blockKey in COMMENTS.en) return blockKey;
+  }
+  if (indent === 2 && block === null && key === 'hook') return 'hook';
+  if (indent === 2 && block === 'hook' && key === 'allow_paths') {
+    return 'hook.allow_paths';
   }
   if (indent === 4 && block === 'native' && nativeNested === 'snapshot') {
     const nestedKey = `native.snapshot.${key}` as ProjectConfigCommentKey;
@@ -266,7 +279,7 @@ export function renderStructuredProjectConfig(
   language: ProjectConfigCommentLanguage,
 ): string {
   const output: string[] = [];
-  let block: 'native' | 'classic' | null = null;
+  let block: 'native' | 'classic' | 'hook' | null = null;
   let nativeNested: 'snapshot' | null = null;
   for (const line of stringify(value).trimEnd().split('\n')) {
     const key = commentKey(line, block, nativeNested);
@@ -280,6 +293,7 @@ export function renderStructuredProjectConfig(
     if (/^[a-z_]+:/u.test(line)) {
       if (line.startsWith('native:')) block = 'native';
       else if (line.startsWith('classic:')) block = 'classic';
+      else if (line.startsWith('hook:')) block = 'hook';
       else block = null;
       nativeNested = null;
     } else if (/^ {2}[a-z_]+:/u.test(line) && block === 'native') {
@@ -576,6 +590,23 @@ function normalizeWorkflowClassicProjectConfig(value: unknown): WorkflowClassicP
   };
 }
 
+function normalizeWorkflowHookProjectConfig(value: unknown): WorkflowHookProjectConfig {
+  const hook = projectConfigRecord(value, 'hook');
+  const allowPaths = hook.allow_paths ?? [];
+  if (!Array.isArray(allowPaths)) {
+    throw new Error('hook.allow_paths must be an array');
+  }
+  return {
+    allow_paths: [
+      ...new Set(
+        allowPaths.map((allowPath, index) =>
+          normalizeWorkflowRelativePath(allowPath, `hook.allow_paths[${index}]`),
+        ),
+      ),
+    ],
+  };
+}
+
 function normalizeAmbientResume(value: unknown): boolean {
   const resolved = value ?? true;
   if (typeof resolved !== 'boolean') {
@@ -586,6 +617,7 @@ function normalizeAmbientResume(value: unknown): boolean {
 
 function normalizeWorkflowProjectConfig(
   root: Record<string, unknown>,
+  hook: WorkflowHookProjectConfig | undefined,
   native: WorkflowNativeProjectConfig | undefined,
   classic: WorkflowClassicProjectConfig | undefined,
   ambientResume: boolean,
@@ -625,6 +657,7 @@ function normalizeWorkflowProjectConfig(
     default_workflow: root.default_workflow,
     workflows,
     ambient_resume: ambientResume,
+    ...(hook ? { hook } : {}),
     ...(native ? { native } : {}),
     ...(classic ? { classic } : {}),
   };
@@ -652,6 +685,8 @@ export function parseWorkflowProjectConfigDocument(
   }
   const value = parsed as Record<string, unknown>;
   const ambientResume = normalizeAmbientResume(value.ambient_resume);
+  const hook =
+    value.hook === undefined ? undefined : normalizeWorkflowHookProjectConfig(value.hook);
   const native =
     value.native === undefined
       ? undefined
@@ -660,13 +695,14 @@ export function parseWorkflowProjectConfigDocument(
         });
   const classic =
     value.classic === undefined ? undefined : normalizeWorkflowClassicProjectConfig(value.classic);
-  const config = normalizeWorkflowProjectConfig(value, native, classic, ambientResume, {
+  const config = normalizeWorkflowProjectConfig(value, hook, native, classic, ambientResume, {
     allowPartialProject: options.allowPartialProject ?? false,
   });
   return {
     value,
     config,
     ambient_resume: ambientResume,
+    ...(hook ? { hook } : {}),
     ...(native ? { native } : {}),
     ...(classic ? { classic } : {}),
   };
@@ -700,6 +736,13 @@ export function workflowProjectConfigManagedValue(
     default_workflow: config.default_workflow,
     workflows: config.workflows ?? [config.default_workflow],
     ambient_resume: config.ambient_resume,
+    ...(config.hook
+      ? {
+          hook: {
+            allow_paths: [...config.hook.allow_paths],
+          },
+        }
+      : {}),
     ...(config.native
       ? {
           native: {
@@ -750,6 +793,12 @@ export function mergeWorkflowProjectConfigDocument(
     workflows: validated.workflows,
     ambient_resume: validated.ambient_resume,
   };
+  if (validated.hook) {
+    output.hook = {
+      ...optionalRecord(existing.hook),
+      allow_paths: [...validated.hook.allow_paths],
+    };
+  }
   if (validated.native) {
     const existingNative = optionalRecord(existing.native);
     const native: Record<string, unknown> = {

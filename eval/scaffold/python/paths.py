@@ -3,9 +3,11 @@
 import os
 from pathlib import Path
 
+from scaffold.python.eval_context import context_from_environment, resolve_managed_path
+
 
 EVAL_ROOT = Path(__file__).resolve().parents[2]
-SUITE_NAMES = {"local", "langsmith"}
+SUITE_NAMES = {"local", "langsmith", "langfuse"}
 
 
 def get_suite_root() -> Path:
@@ -54,3 +56,11 @@ def get_skills_dir() -> Path:
 def get_logs_dir() -> Path:
     configured = os.environ.get("BENCH_LOGS_DIR")
     return Path(configured).resolve() if configured else get_suite_root() / "logs"
+
+
+def get_runs_dir() -> Path:
+    """Return the run directory, preferring CLI-resolved user-owned state."""
+    context = context_from_environment()
+    if context is not None:
+        return resolve_managed_path(context, "runs")
+    return get_logs_dir() / "experiments"

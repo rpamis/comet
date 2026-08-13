@@ -148,6 +148,10 @@ class Task:
     path: Path
     config: TaskConfig
     instruction_template: str
+    _environment_dir: Path | None = field(default=None, repr=False)
+    workspace_dir: Path | None = field(default=None, repr=False)
+    manifest_expectations: dict[str, Any] | None = field(default=None, repr=False)
+    manifest_path: Path | None = field(default=None, repr=False)
 
     @property
     def name(self) -> str:
@@ -155,7 +159,7 @@ class Task:
 
     @property
     def environment_dir(self) -> Path:
-        return self.path / "environment"
+        return self._environment_dir or self.path / "environment"
 
     @property
     def validation_dir(self) -> Path:
@@ -195,6 +199,11 @@ class Task:
         The config specifies test_scripts and target_artifacts. The framework
         auto-builds an execution validator that runs the scripts in Docker.
         """
+        if self.manifest_expectations is not None:
+            from scaffold.python.inline_tasks import make_inline_expectations_validator
+
+            return [make_inline_expectations_validator(self.manifest_expectations)]
+
         vc = self.config.validation
         if vc.test_scripts:
             from scaffold.python.utils import make_execution_validator
@@ -212,7 +221,7 @@ class Task:
         return []
 
 
-def load_task(name: str, tasks_dir: Path | None = None) -> Task:
+def load_task(name: str | Path, tasks_dir: Path | None = None) -> Task:
     """Load a task by name.
 
     Args:
@@ -222,8 +231,7 @@ def load_task(name: str, tasks_dir: Path | None = None) -> Task:
     Returns:
         Task object with config and instruction template
     """
-    tasks_dir = tasks_dir or get_tasks_dir()
-    task_path = tasks_dir / name
+    task_path = Path(name) if isinstance(name, Path) else (tasks_dir or get_tasks_dir()) / name
 
     if not task_path.exists():
         raise FileNotFoundError(f"Task not found: {name} (looked in {tasks_dir})")
@@ -321,6 +329,11 @@ def load_task(name: str, tasks_dir: Path | None = None) -> Task:
     instruction_template = instruction_path.read_text(encoding="utf-8")
 
     return Task(path=task_path, config=config, instruction_template=instruction_template)
+
+
+def load_task_from_path(task_path: Path | str) -> Task:
+    """Load an advanced task package referenced by a project eval manifest."""
+    return load_task(Path(task_path))
 
 
 def list_tasks(tasks_dir: Path | None = None) -> list[str]:

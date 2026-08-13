@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 from dotenv import load_dotenv
+from scaffold.python.eval_context import context_from_environment, resolve_managed_path
 from scaffold.python.utils import _to_bash_path
 
 LANGSMITH_ROOT = Path(__file__).resolve().parents[1]
@@ -104,6 +105,14 @@ def _plugin_dir_env_value(plugin_dir: Path) -> str:
     return _to_bash_path(plugin_dir)
 
 
+def _default_langsmith_plugin_dir() -> Path:
+    """Use the owner cache for CLI-launched runs and the legacy cache otherwise."""
+    context = context_from_environment()
+    if context is None:
+        return DEFAULT_LANGSMITH_PLUGIN_DIR
+    return resolve_managed_path(context, "cache", "langsmith", "langsmith-cc-plugin")
+
+
 def provision_langsmith_plugin_dir() -> Path | None:
     """Resolve or auto-build the official Claude Code LangSmith plugin directory."""
     configure_langsmith_environment()
@@ -122,7 +131,7 @@ def provision_langsmith_plugin_dir() -> Path | None:
         )
         os.environ.pop("CC_LANGSMITH_PLUGIN_DIR", None)
 
-    plugin_dir = DEFAULT_LANGSMITH_PLUGIN_DIR
+    plugin_dir = _default_langsmith_plugin_dir()
     if plugin_dir.is_dir():
         os.environ["CC_LANGSMITH_PLUGIN_DIR"] = _plugin_dir_env_value(plugin_dir)
         return plugin_dir

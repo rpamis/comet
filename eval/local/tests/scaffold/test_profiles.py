@@ -422,8 +422,7 @@ def test_comet_profile_recognizes_proxied_openspec_spec_reconciliation(
     passed, _ = run_profile_rubric("comet-workflow", tmp_path, outputs)
 
     assert any(
-        "[RUBRIC] spec_drift: 1.00 - spec_written=True spec_synced=True" in msg
-        for msg in passed
+        "[RUBRIC] spec_drift: 1.00 - spec_written=True spec_synced=True" in msg for msg in passed
     )
 
 
@@ -445,8 +444,7 @@ def test_comet_profile_still_recognizes_direct_openspec_spec_reconciliation(tmp_
     passed, _ = run_profile_rubric("comet-workflow", tmp_path, outputs)
 
     assert any(
-        "[RUBRIC] spec_drift: 1.00 - spec_written=True spec_synced=True" in msg
-        for msg in passed
+        "[RUBRIC] spec_drift: 1.00 - spec_written=True spec_synced=True" in msg for msg in passed
     )
 
 
@@ -944,6 +942,64 @@ def test_judge_env_maps_independent_provider(monkeypatch):
     assert "subject-token" not in invocation.env.values()
 
 
+def test_judge_env_selects_the_same_agent_with_isolated_credentials(monkeypatch):
+    from scaffold.python.judge_config import build_judge_invocation
+
+    monkeypatch.setenv("OPENAI_API_KEY", "subject-key")
+    monkeypatch.setenv("BENCH_JUDGE_MODEL", "judge-model")
+    monkeypatch.setenv("BENCH_JUDGE_API_KEY", "judge-key")
+
+    invocation = build_judge_invocation(agent="codex")
+
+    assert invocation.agent == "codex"
+    assert invocation.env["OPENAI_API_KEY"] == "judge-key"
+    assert "ANTHROPIC_API_KEY" not in invocation.env
+    assert "subject-key" not in invocation.env.values()
+
+
+def test_judge_env_maps_codebuddy_credentials_and_endpoint(monkeypatch):
+    from scaffold.python.judge_config import build_judge_invocation
+
+    monkeypatch.setenv("CODEBUDDY_API_KEY", "subject-key")
+    monkeypatch.setenv("CODEBUDDY_MODEL", "subject-model")
+    monkeypatch.setenv("BENCH_JUDGE_MODEL", "judge-model")
+    monkeypatch.setenv("BENCH_JUDGE_API_KEY", "judge-key")
+    monkeypatch.setenv("BENCH_JUDGE_AUTH_TOKEN", "judge-token")
+    monkeypatch.setenv("BENCH_JUDGE_BASE_URL", "https://judge.example")
+
+    invocation = build_judge_invocation(agent="codebuddy")
+
+    assert invocation.agent == "codebuddy"
+    assert invocation.env["CODEBUDDY_API_KEY"] == "judge-key"
+    assert invocation.env["CODEBUDDY_AUTH_TOKEN"] == "judge-token"
+    assert invocation.env["CODEBUDDY_BASE_URL"] == "https://judge.example"
+    assert invocation.env["CODEBUDDY_MODEL"] == "judge-model"
+    assert invocation.env["COMET_EVAL_AGENT_ROLE"] == "judge"
+    assert "subject-key" not in invocation.env.values()
+    assert "subject-model" not in invocation.env.values()
+
+
+def test_codebuddy_judge_extracts_response_text_from_json_stream():
+    from scaffold.python.judge_config import _extract_agent_text
+
+    assert _extract_agent_text('{"response":"[RUBRIC-JUDGE] ok"}') == "[RUBRIC-JUDGE] ok"
+
+
+def test_judge_session_ids_are_extracted_from_nested_agent_events():
+    import json
+
+    from scaffold.python.judge_config import _extract_agent_session_ids
+
+    output = "\n".join(
+        [
+            json.dumps({"type": "thread.started", "thread_id": "judge-thread"}),
+            json.dumps({"message": {"sessionId": "judge-session"}}),
+        ]
+    )
+
+    assert _extract_agent_session_ids(output) == ["judge-thread", "judge-session"]
+
+
 def test_judge_provider_uses_direct_http_when_base_url_is_configured(monkeypatch):
     """Dedicated judge providers should not require Claude CLI compatibility."""
     import json
@@ -1034,17 +1090,19 @@ def test_generic_llm_judge_parses_output(tmp_path: Path):
         "[RUBRIC-JUDGE] output_quality: 0.90 - well-structured code\n"
         "[RUBRIC-JUDGE] instruction_adherence: 1.00 - all constraints followed\n"
     )
-    outputs = {"completion": {"passed": [], "failed": []}}
+    outputs = {"completion": {"passed": [], "failed": []}, "agent": "codebuddy"}
 
     with patch(
         "scaffold.python.generic_llm_judge._run_judge",
         return_value=mock_output,
-    ):
+    ) as run_judge:
         scores = judge_generic_artifacts(tmp_path, outputs)
 
     assert scores["task_completion"] == (0.80, "output present and mostly correct")
     assert scores["output_quality"] == (0.90, "well-structured code")
     assert scores["instruction_adherence"] == (1.00, "all constraints followed")
+    assert run_judge.call_args.kwargs["agent"] == "codebuddy"
+    assert run_judge.call_args.kwargs["evidence"] is outputs
 
 
 def test_generic_llm_judge_parses_custom_dimensions(tmp_path: Path):

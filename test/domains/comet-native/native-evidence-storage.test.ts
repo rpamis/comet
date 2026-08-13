@@ -7,9 +7,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createNativeChange } from '../../../domains/comet-native/native-change.js';
 import {
   MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES,
+  listNativeVerificationReceiptRefs,
   readNativeImplementationScope,
   readNativePartialAllowance,
+  readNativeVerificationReportSnapshot,
   readNativeVerificationEvidence,
+  readArchivedNativeVerificationAcceptanceCounts,
+  nativeEvidenceRef,
   writeNativeImplementationScope,
   writeNativePartialAllowance,
   writeNativeVerificationReportSnapshot,
@@ -602,4 +606,108 @@ describe('Native evidence storage', () => {
       ).rejects.toThrow(/outside|symlink|real directory/iu);
     },
   );
+
+  it('round-trips report snapshots and bounds their content-addressed refs', async () => {
+    const text = 'Verification passed.';
+    const hash = createHash('sha256').update(text).digest('hex');
+    await expect(
+      writeNativeVerificationReportSnapshot({ paths, name: 'secure-login', hash, text }),
+    ).resolves.toBe(nativeEvidenceRef('reports', hash));
+    await expect(readNativeVerificationReportSnapshot(paths, 'secure-login', hash)).resolves.toBe(
+      text,
+    );
+    await expect(
+      writeNativeVerificationReportSnapshot({
+        paths,
+        name: 'secure-login',
+        hash: 'f'.repeat(64),
+        text,
+      }),
+    ).rejects.toThrow(/hash or size/u);
+    await expect(
+      writeNativeVerificationReportSnapshot({
+        paths,
+        name: 'secure-login',
+        hash: createHash('sha256')
+          .update('x'.repeat(MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES + 1))
+          .digest('hex'),
+        text: 'x'.repeat(MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES + 1),
+      }),
+    ).rejects.toThrow(/hash or size/u);
+    await expect(
+      readNativeVerificationReportSnapshot(paths, 'secure-login', 'bad'),
+    ).rejects.toThrow(/hash is invalid/u);
+  });
+
+  it('lists only valid typed receipt filenames and returns an empty missing directory', async () => {
+    expect(await listNativeVerificationReceiptRefs(paths, 'secure-login')).toEqual([]);
+    const directory = path.join(
+      nativeChangeRuntimeDir(paths, 'secure-login'),
+      'evidence',
+      'receipts',
+    );
+    await fs.mkdir(directory, { recursive: true });
+    await Promise.all([
+      fs.writeFile(path.join(directory, `${'b'.repeat(64)}.json`), '{}'),
+      fs.writeFile(path.join(directory, `${'a'.repeat(64)}.json`), '{}'),
+      fs.writeFile(path.join(directory, 'not-a-receipt.txt'), '{}'),
+      fs.mkdir(path.join(directory, `${'c'.repeat(64)}.json`)),
+    ]);
+    await expect(listNativeVerificationReceiptRefs(paths, 'secure-login')).resolves.toEqual([
+      nativeEvidenceRef('receipts', 'a'.repeat(64)),
+      nativeEvidenceRef('receipts', 'b'.repeat(64)),
+    ]);
+  });
+
+  it('reads legacy archived acceptance counters and validates their envelope', async () => {
+    const hash = 'a'.repeat(64);
+    const archiveDir = path.join(paths.archiveDir, '2026-08-12-secure-login');
+    const file = path.join(archiveDir, 'runtime', 'evidence', 'verifications', `${hash}.json`);
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(
+      file,
+      JSON.stringify({
+        schema: 'comet.native.verification-evidence.v1',
+        change: 'secure-login',
+        envelopeHash: hash,
+        acceptanceTrace: {
+          schema: 'comet.native.acceptance-trace.v1',
+          total: 3,
+          evidenced: 2,
+          skipped: 1,
+        },
+      }),
+    );
+    await expect(
+      readArchivedNativeVerificationAcceptanceCounts(
+        paths,
+        'secure-login',
+        `runtime/evidence/verifications/${hash}.json`,
+        archiveDir,
+      ),
+    ).resolves.toEqual({ total: 3, evidenced: 2, skipped: 1 });
+
+    await fs.writeFile(
+      file,
+      JSON.stringify({
+        schema: 'comet.native.verification-evidence.v1',
+        change: 'other-change',
+        envelopeHash: hash,
+        acceptanceTrace: {
+          schema: 'comet.native.acceptance-trace.v1',
+          total: 1,
+          evidenced: 1,
+          skipped: 0,
+        },
+      }),
+    );
+    await expect(
+      readArchivedNativeVerificationAcceptanceCounts(
+        paths,
+        'secure-login',
+        `runtime/evidence/verifications/${hash}.json`,
+        archiveDir,
+      ),
+    ).rejects.toThrow(/change mismatch/u);
+  });
 });

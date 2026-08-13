@@ -1482,6 +1482,7 @@ describe('skills', () => {
       { id: 'qwen', skillsDir: '.qwen', hookFormat: 'qwen' as const },
       { id: 'qoder', skillsDir: '.qoder', hookFormat: 'qoder' as const },
       { id: 'codebuddy', skillsDir: '.codebuddy', hookFormat: 'codebuddy' as const },
+      { id: 'workbuddy', skillsDir: '.workbuddy', hookFormat: 'codebuddy' as const },
     ])(
       'installs a dedicated $id matcher group idempotently',
       async ({ id, skillsDir, hookFormat }) => {
@@ -1705,7 +1706,7 @@ describe('skills', () => {
       const result = await installCometHooksForPlatform(tmpDir, platform, 'project');
 
       expect(result.status).toBe('failed');
-      expect(result.reason).toContain('Invalid CodeBuddy Code settings');
+      expect(result.reason).toContain('Invalid CodeBuddy settings');
       await expect(fs.readFile(settingsPath, 'utf-8')).resolves.toBe(invalidSettings);
     });
 
@@ -2131,8 +2132,10 @@ describe('skills', () => {
         '不得用“跳过重复上下文探索”削弱 Superpowers `brainstorming` 的澄清流程',
       );
       expect(zhDesign).not.toContain('跳过重复上下文探索，直接进入设计提问');
-      expect(zhBuild).toContain('不得根据推荐规则自行选择 `current`、`branch` 或 `worktree`');
-      expect(zhBuild).toContain('也不得自行选择执行方式、TDD 模式或代码审查模式');
+      expect(zhOpen).toContain('comet-classic/reference/workspace.md');
+      expect(zhOpen).toContain('推荐只作说明');
+      expect(zhBuild).toContain('工作区已经在 Open 阶段准备并绑定');
+      expect(zhBuild).toContain('不得用推荐规则替代用户确认');
       expect(zhBuild).toContain('`comet-classic/reference/decision-point.md`');
       expect(zhVerify).toContain('前 3 次可修复失败自动回到 build');
       expect(zhVerify).toContain(
@@ -2296,16 +2299,15 @@ describe('skills', () => {
       expect(zhVerify).toContain('选项 A 属于 verify 阶段允许产物');
 
       // Dependency triggers must be explicit skill invocations, not ambiguous prose.
-      expect(zhBuild).toContain(
-        '**立即执行：** 使用 Skill 工具加载 Superpowers `using-git-worktrees`',
-      );
+      expect(zhOpen).toContain('直接使用 `worktree`');
+      expect(zhBuild).not.toContain('using-git-worktrees');
       expect(zhBuild).not.toContain('或使用原生 `EnterWorktree` 工具');
       expect(zhBuild).toContain('必须使用 Skill 工具加载 Superpowers `brainstorming`');
       expect(zhComet).toContain(
         '若 `build_mode: subagent-driven-development`，不得在主窗口直接执行任务',
       );
       expect(zhBuild).toContain('主会话只负责协调，禁止直接编写实现代码');
-      expect(zhBuild).toContain('提供本工作流支持的全部工作区隔离和执行方式');
+      expect(zhBuild).toContain('保留 Open 阶段已绑定的 `isolation`');
       expect(zhBuild).not.toContain('不得预检、推断或筛除');
       expect(zhBuild).not.toContain('真实异步派发、独立上下文、结果回收和所需交接能力');
       expect(zhBuild).not.toContain('`platform-default`');
@@ -2522,9 +2524,9 @@ describe('skills', () => {
       expect(enBuild).toContain(
         'show the plan summary, pause option, and every executable Step 3 setting together',
       );
-      expect(enBuild).toContain(
-        'do not choose `current`, `branch`, or `worktree`, execution method, TDD mode, or review mode from recommendations',
-      );
+      expect(enOpen).toContain('comet-classic/reference/workspace.md');
+      expect(enOpen).toContain('make the recommendation explanatory only');
+      expect(enBuild).toContain('The workspace was prepared and bound during Open');
       expect(enBuild).toContain('`comet-classic/reference/decision-point.md`');
       expect(enVerify).toContain(
         'Automatically return to build for the first 3 repairable failures',
@@ -2691,9 +2693,8 @@ describe('skills', () => {
       );
       expect(enComet).toContain('Open phase large PRD split confirmation');
       expect(enVerify).toContain('Option A is a verify phase allowed artifact');
-      expect(enBuild).toContain(
-        '**Immediately execute:** Use the Skill tool to load the Superpowers `using-git-worktrees`',
-      );
+      expect(enOpen).toContain('use `worktree` directly');
+      expect(enBuild).not.toContain('using-git-worktrees');
       expect(enBuild).not.toContain('native `EnterWorktree` tool');
       expect(enBuild).toContain(
         'must use Skill tool to load the Superpowers `brainstorming` skill',
@@ -2894,7 +2895,7 @@ describe('skills', () => {
         '使用 Skill 工具加载 Superpowers `subagent-driven-development` 技能',
       );
       expect(zhBuild).toContain('一个联合决策点');
-      expect(zhBuild).toContain('工作区隔离、执行方式、TDD 模式和代码审查模式');
+      expect(zhBuild).toContain('工作区已经在 Open 阶段准备并绑定');
       expect(zhBuild).toContain(
         '读取 `comet-classic/reference/subagent-dispatch.md` 获取 Comet 专属扩展',
       );
@@ -3025,15 +3026,13 @@ describe('skills', () => {
       expect(enBuild).toContain(
         'TDD constraints and evidence thresholds are defined in `comet-classic/reference/subagent-dispatch.md`',
       );
-      expect(enBuild).toContain(
-        'workspace isolation, execution method, TDD mode, and code review mode',
-      );
+      expect(enBuild).toContain('The workspace was prepared and bound during Open');
       expect(enBuild).toContain('one joint decision point');
       expect(enBuild).toContain(
-        'update `isolation`, execution method, TDD mode, and code review mode fields',
+        'After user selection, update only the execution method, TDD mode, and code-review mode fields',
       );
       expect(enBuild).toContain(
-        'provide every workspace-isolation and execution choice supported by this workflow',
+        'preserve the `isolation` and `bound_branch` established during Open',
       );
       expect(enBuild).not.toContain('Do not preflight, infer, or filter');
       expect(enBuild).not.toContain('no subagent environment');

@@ -45,8 +45,12 @@ agent 做决策只需读本节，参考附录按需查阅。
 当 runtime route、Ambient Resume 或用户选择已经解析出明确 change 后，进入对应阶段 Skill 前必须先绑定当前执行上下文：
 
 ```bash
+comet classic workspace resolve <change-name> --json
+# 进入返回的 projectRoot；state select 会在该工作区写入选择
 comet state select <change-name>
 ```
+
+新 change 的 workspace 决策在 `/comet-open` 完成，并遵循 `comet-classic/reference/workspace.md`：用户明确表达并行、同时处理或多个会话时，在绑定前准备 Worktree；未指定隔离方式时，需要决策就把 `current`、`branch`、`worktree` 作为单选项展示，推荐只作说明。准备和恢复都会扫描已登记 Worktree，优先复用分支匹配的工作区；当分支已重命名、被用户接管或无法确认归属时请求 rebind。
 
 多个 active change 且用户尚未明确选择时，不得提前绑定；继续按 `ask_user` 决策点等待选择。
 
@@ -131,7 +135,8 @@ comet resume-probe . --stdin --json
   - 若 `build_pause: plan-ready` 但 `isolation`、`build_mode`、`tdd_mode` 和 `review_mode` 都已经设置，则视为 stale pause：先输出 `[COMET] 检测到 stale pause（build_pause=plan-ready 但 isolation/build_mode/tdd_mode/review_mode 已设置），自动清除并继续`，再运行 `comet state set <name> build_pause null`，然后读取 tasks.md 的下一个未勾选任务并按 `build_mode` 恢复执行
   - 若 `build_pause: plan-ready` 且 plan 文件存在，但 `isolation`、`build_mode`、`tdd_mode` 或 `review_mode` 尚未设置，回到 `/comet-build` 的 plan-ready 恢复点，提示用户继续补齐/确认工作区隔离、执行方式、TDD 模式和代码审查模式，不重新生成 plan
   - 若 `build_pause: plan-ready` 但 plan 文件缺失，回到 `/comet-build` 处理状态损坏或重新生成 plan
-  - 若 `isolation`、`build_mode`、`tdd_mode` 或 `review_mode` 未设置，回到 `/comet-build` 对应步骤补充后再执行
+  - 若旧 change 的 `isolation` 未设置，先回到 `/comet-open` 执行 workspace resolve/prepare；不得在 Build 首次决定工作区
+  - 若 `build_mode`、`tdd_mode` 或 `review_mode` 未设置，回到 `/comet-build` 对应步骤补充后再执行
   - 若均已设置，读取 tasks.md 的下一个未勾选任务，并按 `build_mode` 恢复执行：
     - 若 `build_mode: subagent-driven-development`，不得在主窗口直接执行任务；必须回到 `/comet-build` 的后台 subagent 调度规则，由主窗口只做协调
     - 其他执行方式按 `/comet-build` 的对应规则继续
@@ -194,13 +199,14 @@ hotfix/tweak 的范围判定采用三层分工，避免「用纯文件数当硬�
 1. workflow 目标选择：多个 active changes、继续现有 change/创建新 change、或批量拆分完成后选择先启动哪一个
 2. open 阶段 proposal/design/tasks 最终审视确认（同时确认 change 名称与范围；清晰请求不做前置摘要/命名确认）
 3. brainstorming 确认设计方案
-4. build 阶段一次性联合选择 plan-ready 暂停或完整工作方式（工作区隔离 + 执行方式 + TDD 模式 + 代码审查模式；选择 branch 时同时确认分支名）
-5. verify 阶段接受 WARNING/SUGGESTION 偏差、处理 Spec 漂移，或第 4 次失败后选择继续修复/停止；前 3 次明确可修复失败自动闭环
-6. archive 阶段执行归档脚本前的最终确认
-7. 归档改动精确提交后选择 finishing-branch 分支处理方式
-8. 遇到升级判定信号（hotfix/tweak → 用户二选一：继续预设流程 / 升级完整流程）
-9. build 阶段范围扩张需重新设计或拆分新 change
-10. open 阶段大型 PRD 是否拆分为多个 changes
+4. open 阶段工作区决策：明确并行自动使用 Worktree；未指定隔离方式且需要决策时，将合法的 `current`、`branch`、`worktree` 作为单选项展示
+5. build 阶段一次性联合选择 plan-ready 暂停、执行方式、TDD 模式和代码审查模式
+6. verify 阶段接受 WARNING/SUGGESTION 偏差、处理 Spec 漂移，或第 4 次失败后选择继续修复/停止；前 3 次明确可修复失败自动闭环
+7. archive 阶段执行归档脚本前的最终确认
+8. 归档改动精确提交后选择 finishing-branch 分支处理方式
+9. 遇到升级判定信号（hotfix/tweak → 用户二选一：继续预设流程 / 升级完整流程）
+10. build 阶段范围扩张需重新设计或拆分新 change
+11. open 阶段大型 PRD 是否拆分为多个 changes
 
 agent 不应跳过这些决策点；其他明确无歧义的阶段衔接必须自动继续推进，不得中途退出。到达决策点时，**禁止跳过用户确认或自动选择——必须提出明确选项并获取用户选择后才能继续**。
 

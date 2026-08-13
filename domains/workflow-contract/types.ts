@@ -33,6 +33,10 @@ export interface WorkflowNativeSnapshotConfig {
   max_duration_ms: number;
 }
 
+export interface WorkflowHookProjectConfig {
+  allow_paths: string[];
+}
+
 export interface WorkflowNativeProjectConfig {
   artifact_root: string;
   language: ProjectConfigLanguage;
@@ -56,6 +60,7 @@ export interface WorkflowProjectConfig {
   default_workflow: CometProjectWorkflow;
   workflows?: CometProjectWorkflow[];
   ambient_resume: boolean;
+  hook?: WorkflowHookProjectConfig;
   native?: WorkflowNativeProjectConfig;
   classic?: WorkflowClassicProjectConfig;
 }

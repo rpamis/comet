@@ -10,11 +10,12 @@
 <artifact-root>/comet/changes/<change-name>/
   comet-state.yaml
   brief.md
+  children.yaml
   specs/<capability>/spec.md
   verification.md
 ```
 
-Agent 只编辑 brief 和完整目标规格。`comet-state.yaml` 与 `verification.md` 由 Runtime 管理；Runtime 第一次接受 Verifier 结果后生成报告。
+Agent 只编辑 brief、完整目标规格和 Supervisor Change 的 `children.yaml`。`comet-state.yaml` 与 `verification.md` 由 Runtime 管理；Runtime 第一次接受 Verifier 结果后生成报告。
 
 本机 Runtime 固定保存在被 Git 忽略的 `.comet/runtime/native/`。每个 active change 的本机状态和日志位于 `changes/<change-name>/state.json` 与 `logs/`；项目级锁和短期事务也放在这个 Runtime 目录中。这些机器文件始终交给 Runtime 创建、迁移和修复。
 
@@ -51,7 +52,7 @@ Open questions 中只有真实未解决的用户问题使用：
 
 每个决定确认后立即写入 Decisions 和完整目标规格，再移除对应阻塞项。正式产物只记录结论和理由，不记录模型的隐藏推理过程。
 
-验收标准必须具体、可观察且互不重复。使用简单顺序 ID，例如 `A1`、`A2`、`A3`；ID 只用于结果映射，不从内容计算，也不代表文件身份。Runtime 在 Shape 确认时保存完整验收文字及其来源。
+验收标准必须具体、可观察且互不重复。使用简单顺序 ID，例如 `A1`、`A2`、`A3`；ID 只用于结果映射，不从内容计算，也不代表文件身份。Runtime 在 Shape 确认时保存完整验收文字及其来源。Supervisor Change 的 `children.yaml` 使用 `comet.native.children.v1`，每个 child 只包含 `name`、`depends_on` 和 `covers`。名称必须唯一，依赖必须存在且无环，全部 Supervisor Change 验收 ID 都必须被覆盖。Runtime 将其与 Supervisor Change 验收项一起确认；修改后 Supervisor Change 返回 Shape。
 
 ## 完整目标规格
 

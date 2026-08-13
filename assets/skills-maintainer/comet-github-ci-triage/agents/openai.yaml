@@ -1,0 +1,6 @@
+interface:
+  display_name: "Comet CI 分诊"
+  short_description: "诊断失败的 PR 检查"
+  default_prompt: "使用 $comet-github-ci-triage 找出 Comet CI 检查失败的真实原因。"
+policy:
+  allow_implicit_invocation: false

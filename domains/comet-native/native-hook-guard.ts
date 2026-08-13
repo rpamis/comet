@@ -11,6 +11,7 @@ import type {
 import { readNativeChange } from './native-change.js';
 import { readProjectConfig } from './native-config.js';
 import { nativeProjectPaths } from './native-paths.js';
+import { configuredHookWritePath } from '../workflow-contract/hook-write-policy.js';
 import { resolveSelectedNativeChange } from './native-selection.js';
 import type { NativeChangeState, NativeProjectPaths } from './native-types.js';
 import {
@@ -52,6 +53,7 @@ async function inspectPortableWriteTargets(options: {
   const changeDir = nativePortableChangeDir(paths, state.name);
   const formalTargets: string[] = [];
   const implementationTargets: string[] = [];
+  let configuredTarget = false;
   let controlTarget = false;
   let externalTarget = false;
 
@@ -67,6 +69,15 @@ async function inspectPortableWriteTargets(options: {
       continue;
     }
     if (!isWithin(paths.nativeRoot, target)) {
+      if (
+        await configuredHookWritePath(projectRoot, target, [
+          path.join(projectRoot, '.comet'),
+          paths.nativeRoot,
+        ])
+      ) {
+        configuredTarget = true;
+        continue;
+      }
       implementationTargets.push(relative);
       continue;
     }
@@ -80,7 +91,11 @@ async function inspectPortableWriteTargets(options: {
       };
     }
     const changeRelative = path.relative(changeDir, target).replaceAll('\\', '/');
-    if (changeRelative === 'brief.md' || changeRelative.startsWith('specs/')) {
+    if (
+      changeRelative === 'brief.md' ||
+      changeRelative === 'children.yaml' ||
+      changeRelative.startsWith('specs/')
+    ) {
       formalTargets.push(changeRelative);
       continue;
     }
@@ -127,6 +142,15 @@ async function inspectPortableWriteTargets(options: {
     };
   }
   if (implementationTargets.length > 0) {
+    if (state.children_contract_hash) {
+      return {
+        allowed: false,
+        reason: 'Native parent Build advances child changes instead of editing implementation',
+        workflow: 'native',
+        phase: state.phase,
+        change: state.name,
+      };
+    }
     if (state.phase === 'build') {
       return {
         allowed: true,
@@ -153,6 +177,15 @@ async function inspectPortableWriteTargets(options: {
     return {
       allowed: false,
       reason: `Native change ${state.name} is in ${state.phase}; implementation writes are only allowed in Build`,
+      workflow: 'native',
+      phase: state.phase,
+      change: state.name,
+    };
+  }
+  if (configuredTarget) {
+    return {
+      allowed: true,
+      reason: 'Native configured Hook allow path',
       workflow: 'native',
       phase: state.phase,
       change: state.name,
@@ -323,6 +356,7 @@ export async function inspectNativeHookGuard(
 
   let controlTarget = false;
   let externalTarget = false;
+  let configuredTarget = false;
   for (const targetPath of request.targets) {
     const target = path.resolve(projectRoot, targetPath);
     if (!isWithin(projectRoot, target)) {
@@ -336,6 +370,15 @@ export async function inspectNativeHookGuard(
     }
     if (isWithin(context.paths.nativeRoot, target)) {
       controlTarget = true;
+      continue;
+    }
+    if (
+      await configuredHookWritePath(projectRoot, target, [
+        path.join(projectRoot, '.comet'),
+        context.paths.nativeRoot,
+      ])
+    ) {
+      configuredTarget = true;
       continue;
     }
     return {
@@ -353,7 +396,9 @@ export async function inspectNativeHookGuard(
       ? 'Native control artifact write'
       : externalTarget
         ? 'Write target is outside the guarded project'
-        : 'No guarded write target was provided',
+        : configuredTarget
+          ? 'Native configured Hook allow path'
+          : 'No guarded write target was provided',
     workflow: 'native',
     phase: state.phase,
     change: state.name,

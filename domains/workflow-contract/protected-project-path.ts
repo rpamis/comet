@@ -23,6 +23,18 @@ export interface ProtectedProjectPathOptions {
   expected?: 'file' | 'directory' | 'any';
 }
 
+export interface ProtectedProjectInstructionPath {
+  projectRoot: string;
+  target: string;
+  relative: string;
+  exists: boolean;
+}
+
+const PROJECT_INSTRUCTION_ALIASES = new Map([
+  ['AGENTS.md', 'CLAUDE.md'],
+  ['CLAUDE.md', 'AGENTS.md'],
+]);
+
 function isMissingPath(error: unknown): boolean {
   const code = (error as NodeJS.ErrnoException | undefined)?.code;
   return code === 'ENOENT' || code === 'ENOTDIR';
@@ -115,6 +127,99 @@ export async function inspectProtectedProjectPath(
     relative,
     exists: result.exists,
     kind: result.kind,
+  };
+}
+
+/**
+ * Resolve one of the two project instruction files without following an
+ * arbitrary link. Some repositories keep a single instruction file and link
+ * AGENTS.md to CLAUDE.md (or the reverse); that alias is safe only when the
+ * target is the other instruction file in this same project root.
+ */
+export async function resolveProtectedProjectInstructionPath(
+  projectRoot: string,
+  relativePath: string,
+): Promise<ProtectedProjectInstructionPath> {
+  const relative = normalizeWorkflowRelativePath(relativePath, 'project instruction file');
+  const aliasTarget = PROJECT_INSTRUCTION_ALIASES.get(relative);
+  if (!aliasTarget) {
+    throw new Error(`project instruction file must be AGENTS.md or CLAUDE.md: ${relative}`);
+  }
+
+  const requestedRoot = path.resolve(projectRoot);
+  const rootStat = await fs.stat(requestedRoot);
+  if (!rootStat.isDirectory()) {
+    throw new Error('project instruction file project root must be a directory');
+  }
+  // A registered project may be reached through a directory junction or
+  // symlink. Canonicalize that root first; only file aliases are restricted to
+  // the AGENTS.md/CLAUDE.md pair below.
+  const lexicalRoot = await fs.realpath(requestedRoot);
+  const realRoot = lexicalRoot;
+  const target = path.resolve(lexicalRoot, relative);
+  if (!isInside(lexicalRoot, target)) {
+    throw new Error(`project instruction file must stay inside the project root: ${relative}`);
+  }
+
+  let stat;
+  try {
+    stat = await fs.lstat(target);
+  } catch (error) {
+    if (isMissingPath(error)) {
+      return { projectRoot: lexicalRoot, target, relative, exists: false };
+    }
+    throw error;
+  }
+
+  if (!stat.isSymbolicLink()) {
+    const inspection = await inspectProtectedProjectPath(lexicalRoot, relative, {
+      label: `${relative} project instruction`,
+      expected: 'file',
+    });
+    return {
+      projectRoot: lexicalRoot,
+      target: inspection.target,
+      relative: inspection.relative,
+      exists: inspection.exists,
+    };
+  }
+
+  const linkTarget = await fs.readlink(target);
+  const resolvedTarget = path.resolve(path.dirname(target), linkTarget);
+  if (!isInside(lexicalRoot, resolvedTarget)) {
+    throw new Error(
+      `${relative} project instruction alias must point to ${aliasTarget} inside the project root`,
+    );
+  }
+  const resolvedRelative = path.relative(lexicalRoot, resolvedTarget).replaceAll('\\', '/');
+  if (resolvedRelative !== aliasTarget) {
+    throw new Error(
+      `${relative} project instruction alias must point to ${aliasTarget} inside the project root`,
+    );
+  }
+
+  const inspection = await inspectProtectedProjectPath(lexicalRoot, aliasTarget, {
+    label: `${relative} project instruction alias target`,
+    expected: 'file',
+  });
+  if (!inspection.exists) {
+    return {
+      projectRoot: lexicalRoot,
+      target: inspection.target,
+      relative: inspection.relative,
+      exists: false,
+    };
+  }
+  if (!isInside(realRoot, await fs.realpath(inspection.target))) {
+    throw new Error(
+      `${relative} project instruction alias target resolves outside the project root`,
+    );
+  }
+  return {
+    projectRoot: lexicalRoot,
+    target: inspection.target,
+    relative: inspection.relative,
+    exists: true,
   };
 }
 

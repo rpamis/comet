@@ -6,8 +6,8 @@ genuinely explore alternatives, or did it just happen to contain the word
 "risk"? This module asks a judge LLM to read the actual artifacts and score
 three dimensions on a 0.00–1.00 scale with a cited reason.
 
-Runs on the host (not in Docker) via the same Claude CLI + proxy used for the
-subject agent, so it adds no new dependency. Scores are emitted in the same
+Runs on the host (not in Docker) via the selected agent CLI and its configured
+provider, so it adds no new dependency. Scores are emitted in the same
 ``[RUBRIC-JUDGE] dim: score - reason`` format the logging layer understands.
 
 Usage from the rubric validator or rescore tool::
@@ -27,6 +27,7 @@ from scaffold.python.judge_config import build_judge_invocation, run_judge_promp
 # module is imported outside pytest (e.g. by the rescore tool).
 try:
     from dotenv import load_dotenv
+
     load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 except Exception:
     pass
@@ -141,12 +142,36 @@ Cite specific content from the artifacts in your reason (<=25 words each).
 """
 
 
-def _run_judge(prompt: str, timeout: int = 120) -> str:
+def _run_judge(
+    prompt: str,
+    timeout: int = 120,
+    agent: object | None = None,
+    model: object | None = None,
+    base_url: object | None = None,
+    evidence: dict | None = None,
+    excluded_credentials: tuple[str, ...] = (),
+) -> str:
     """Call the judge LLM through the configured judge provider."""
-    return run_judge_prompt(prompt, timeout=timeout)
+    return run_judge_prompt(
+        prompt,
+        timeout=timeout,
+        agent=agent,
+        model=model,
+        base_url=base_url,
+        evidence=evidence,
+        excluded_credentials=excluded_credentials,
+    )
 
 
-def judge_artifacts(test_dir: Path, timeout: int = 120) -> dict[str, tuple[float, str]]:
+def judge_artifacts(
+    test_dir: Path,
+    timeout: int = 120,
+    agent: object | None = None,
+    model: object | None = None,
+    base_url: object | None = None,
+    evidence: dict | None = None,
+    excluded_credentials: tuple[str, ...] = (),
+) -> dict[str, tuple[float, str]]:
     """Score the three qualitative dimensions via an LLM judge.
 
     Returns ``{dim: (score, reason)}``. On any failure (model error, no
@@ -157,7 +182,15 @@ def judge_artifacts(test_dir: Path, timeout: int = 120) -> dict[str, tuple[float
         return {}
 
     prompt = _build_judge_prompt(test_dir)
-    raw = _run_judge(prompt, timeout=timeout)
+    raw = _run_judge(
+        prompt,
+        timeout=timeout,
+        agent=agent,
+        model=model,
+        base_url=base_url,
+        evidence=evidence,
+        excluded_credentials=excluded_credentials,
+    )
 
     scores: dict[str, tuple[float, str]] = {}
     for line in raw.splitlines():
@@ -175,14 +208,38 @@ def judge_artifacts(test_dir: Path, timeout: int = 120) -> dict[str, tuple[float
     return scores
 
 
-def judge_messages(test_dir: Path, timeout: int = 120) -> list[str]:
+def judge_messages(
+    test_dir: Path,
+    timeout: int = 120,
+    agent: object | None = None,
+    model: object | None = None,
+    base_url: object | None = None,
+    evidence: dict | None = None,
+    excluded_credentials: tuple[str, ...] = (),
+) -> list[str]:
     """Convenience wrapper returning ``[RUBRIC-JUDGE]`` check messages."""
     out: list[str] = []
     try:
-        build_judge_invocation()
+        build_judge_invocation(
+            agent=agent,
+            model=model,
+            base_url=base_url,
+            excluded_credentials=excluded_credentials,
+        )
     except ValueError as e:
         return [f"[RUBRIC-JUDGE] status: skipped - {e}"]
 
-    for dim, (score, reason) in judge_artifacts(test_dir, timeout=timeout).items():
+    scores = judge_artifacts(
+        test_dir,
+        timeout=timeout,
+        agent=agent,
+        model=model,
+        base_url=base_url,
+        excluded_credentials=excluded_credentials,
+        evidence=evidence,
+    )
+    if not scores:
+        return ["[RUBRIC-JUDGE] status: unavailable - no valid Judge scores"]
+    for dim, (score, reason) in scores.items():
         out.append(f"[RUBRIC-JUDGE] {dim}: {score:.2f} - {reason}")
     return out

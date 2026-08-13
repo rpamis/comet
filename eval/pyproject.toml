@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Benchmark evaluation for Comet skill (OpenSpec + Superpowers workflow)"
 requires-python = ">=3.11"
 dependencies = [
+    "jsonschema>=4.23",
     "pytest>=8.0",
     "pytest-timeout>=2.2",
     "pytest-xdist>=3.5",
@@ -23,6 +24,9 @@ langsmith = [
     "langchain>=0.3",
     "langchain-openai>=0.2",
 ]
+langfuse = [
+    "langfuse>=4.0,<5",
+]
 dev = [
     "ruff>=0.4",
     "pre-commit>=3.7",
@@ -34,6 +38,7 @@ testpaths = ["local/tests"]
 pythonpath = ["."]
 markers = [
     "langsmith: marks test as using LangSmith tracing",
+    "langfuse: marks test as using Langfuse tracing",
 ]
 
 [tool.ruff]

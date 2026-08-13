@@ -128,6 +128,10 @@ describe('CLI help text', () => {
     expect(evalHelp.stdout).toContain('Evaluate a Skill or eval manifest with one command');
     expect(evalHelp.stdout).toContain('Usage: comet eval [options] [target]');
     expect(evalHelp.stdout).toContain('--suite <suite>');
+    expect(evalHelp.stdout).toContain('--model <model>');
+    expect(evalHelp.stdout).toContain('--base-url <url>');
+    expect(evalHelp.stdout).toContain('--judge-model <model>');
+    expect(evalHelp.stdout).toContain('--judge-base-url <url>');
     expect(evalHelp.stdout).toContain('--collect');
     expect(evalHelp.stdout).not.toContain('run [options]');
     expect(evalHelp.stdout).not.toContain('collect [options]');

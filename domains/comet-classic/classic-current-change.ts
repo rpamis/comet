@@ -14,6 +14,8 @@ import {
 } from './classic-branch-binding.js';
 import { assertOpenSpecChangeName, inspectClassicActiveChangeDirectory } from './classic-paths.js';
 import { readClassicState } from './classic-store.js';
+import { resolveClassicWorkspace } from './classic-workspace.js';
+import { ClassicLayoutUnavailableError } from './classic-layout.js';
 
 // Share the current-selection read with the router layer when both execute
 // inside one Hook decision. The clear/write paths below keep the raw reader
@@ -55,10 +57,30 @@ export async function selectCurrentChange(
   projectRoot: string,
   changeName: string,
 ): Promise<CurrentChangeSelection> {
-  const changeDir = await validateActiveChange(projectRoot, changeName);
+  assertOpenSpecChangeName(changeName);
+  let localInspection: Awaited<ReturnType<typeof inspectClassicActiveChangeDirectory>> = {
+    label: '',
+    directory: '',
+    exists: false,
+    stateExists: false,
+  };
+  try {
+    localInspection = await inspectClassicActiveChangeDirectory(changeName, projectRoot);
+  } catch (error) {
+    if (!(error instanceof ClassicLayoutUnavailableError)) throw error;
+  }
+  let workspace: Awaited<ReturnType<typeof resolveClassicWorkspace>>;
+  try {
+    workspace = await resolveClassicWorkspace({ projectRoot, name: changeName });
+  } catch (error) {
+    if (!localInspection.stateExists) await validateActiveChange(projectRoot, changeName);
+    throw error;
+  }
+  const selectedProjectRoot = workspace.projectRoot;
+  const changeDir = await validateActiveChange(selectedProjectRoot, changeName);
   const outcome = await resolveBranchBinding(changeDir, {
     heal: true,
-    cwd: projectRoot,
+    cwd: selectedProjectRoot,
   });
   if (outcome.status === 'drift') {
     throw new Error(driftStaleReason(changeName, outcome.boundBranch, outcome.currentBranch));
@@ -72,7 +94,7 @@ export async function selectCurrentChange(
     change: changeName,
     branch: outcome.currentBranch,
   };
-  await writeCometCurrentSelection(projectRoot, selection);
+  await writeCometCurrentSelection(selectedProjectRoot, selection);
   return selection;
 }
 

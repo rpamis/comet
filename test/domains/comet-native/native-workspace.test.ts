@@ -6,12 +6,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import {
+  assertNativeWorkspaceBindingCurrent,
   inspectNativeWorkspaceBinding,
   inspectNativeWorkspaceAdvisory,
   inspectNativeWorkspaceIdentity,
   nativeWorkspaceFile,
   projectNativeWorkspace,
   readNativeWorkspaceIdentity,
+  resolveNativeWorkspaceBinding,
   setNativeWorkspaceFinish,
   writeNativeWorkspaceIdentity,
 } from '../../../domains/comet-native/native-workspace.js';
@@ -272,5 +274,92 @@ describe('Native workspace identity', () => {
     await fs.symlink(outside, file);
 
     await expect(readNativeWorkspaceIdentity(paths, 'example')).rejects.toThrow('regular file');
+  });
+
+  it('resolves and rechecks current, branch, and worktree bindings against Git', async () => {
+    expect(resolveNativeWorkspaceBinding({ projectRoot, isolation: 'current' })).toEqual({
+      isolation: 'current',
+      changeBranch: null,
+      targetBranch: null,
+    });
+    await expect(() =>
+      resolveNativeWorkspaceBinding({ projectRoot, isolation: 'branch', targetBranch: 'main' }),
+    ).toThrow(/require a Git/u);
+
+    execFileSync('git', ['init', '-b', 'main'], { cwd: projectRoot, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.email', 'workspace@example.test'], { cwd: projectRoot });
+    execFileSync('git', ['config', 'user.name', 'Workspace Test'], { cwd: projectRoot });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'initial'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+    execFileSync('git', ['switch', '-c', 'comet/example'], { cwd: projectRoot, stdio: 'ignore' });
+
+    expect(resolveNativeWorkspaceBinding({ projectRoot, isolation: 'current' })).toEqual({
+      isolation: 'current',
+      changeBranch: 'comet/example',
+      targetBranch: 'comet/example',
+    });
+    expect(
+      resolveNativeWorkspaceBinding({ projectRoot, isolation: 'branch', targetBranch: 'main' }),
+    ).toEqual({ isolation: 'branch', changeBranch: 'comet/example', targetBranch: 'main' });
+    expect(() =>
+      resolveNativeWorkspaceBinding({ projectRoot, isolation: 'worktree', targetBranch: 'main' }),
+    ).toThrow(/linked Git worktree/u);
+    expect(() =>
+      resolveNativeWorkspaceBinding({
+        projectRoot,
+        isolation: 'branch',
+        changeBranch: 'wrong-branch',
+        targetBranch: 'main',
+      }),
+    ).toThrow(/does not match/u);
+    expect(() =>
+      resolveNativeWorkspaceBinding({ projectRoot, isolation: 'branch', targetBranch: 'missing' }),
+    ).toThrow(/verified local branch/u);
+    expect(() => resolveNativeWorkspaceBinding({ projectRoot, isolation: 'branch' })).toThrow(
+      /requires --target-branch/u,
+    );
+
+    const expected = {
+      isolation: 'branch' as const,
+      changeBranch: 'comet/example',
+      targetBranch: 'main',
+    };
+    expect(() => assertNativeWorkspaceBindingCurrent(projectRoot, expected)).not.toThrow();
+    expect(() =>
+      assertNativeWorkspaceBindingCurrent(projectRoot, { ...expected, changeBranch: 'other' }),
+    ).toThrow(/does not match/u);
+
+    execFileSync('git', ['switch', '--detach'], { cwd: projectRoot, stdio: 'ignore' });
+    expect(() => resolveNativeWorkspaceBinding({ projectRoot, isolation: 'current' })).toThrow(
+      /detached HEAD/u,
+    );
+  });
+
+  it('rejects isolated bindings outside a Git project and invalid binding fields', async () => {
+    await expect(() =>
+      resolveNativeWorkspaceBinding({ projectRoot, isolation: 'branch', targetBranch: 'main' }),
+    ).toThrow(/require a Git/u);
+    await expect(() =>
+      resolveNativeWorkspaceBinding({ projectRoot, isolation: 'current', changeBranch: 'main' }),
+    ).toThrow(/require a Git/u);
+
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    const written = await writeNativeWorkspaceIdentity({
+      paths,
+      name: 'example',
+      revision: 1,
+      binding: { isolation: 'current', changeBranch: null, targetBranch: null },
+    });
+    const file = nativeWorkspaceFile(paths, 'example');
+    await fs.writeFile(file, JSON.stringify({ ...written, isolation: 'invalid' }));
+    await expect(readNativeWorkspaceIdentity(paths, 'example')).rejects.toThrow(/isolation/u);
+    const incompletePathIdentity = { ...written } as Record<string, unknown>;
+    delete incompletePathIdentity.nativeRootPathId;
+    await fs.writeFile(file, JSON.stringify(incompletePathIdentity));
+    await expect(readNativeWorkspaceIdentity(paths, 'example')).rejects.toThrow(
+      /provided together/u,
+    );
   });
 });

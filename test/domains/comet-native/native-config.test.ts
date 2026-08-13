@@ -445,6 +445,12 @@ describe('Native project configuration', () => {
     expect(resolved.configured).toBe(false);
   });
 
+  it('can require an existing Native project config', async () => {
+    await expect(
+      resolveNativeProject({ startPath: projectRoot, allowMissingConfig: false }),
+    ).rejects.toThrow('.comet/config.yaml was not found');
+  });
+
   it('refuses an explicit root that conflicts with persisted config', async () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('docs'));
 

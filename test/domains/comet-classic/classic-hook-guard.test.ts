@@ -40,6 +40,13 @@ async function makeProject(): Promise<string> {
   return dir;
 }
 
+async function addHookAllowPath(dir: string, relativePath: string): Promise<void> {
+  await fs.appendFile(
+    path.join(dir, '.comet', 'config.yaml'),
+    `hook:\n  allow_paths:\n    - ${relativePath}\n`,
+  );
+}
+
 function git(cwd: string, args: string[]): void {
   const result = spawnSync('git', args, { cwd, encoding: 'utf8' });
   if (result.status !== 0) throw new Error(result.stderr || result.stdout);
@@ -131,6 +138,36 @@ async function seedChange(
 }
 
 describe('Classic hook guard command', () => {
+  it('allows a configured project-local path during Classic design', async () => {
+    const dir = await makeProject();
+    await addHookAllowPath(dir, '.agents/rules');
+    await seedChange(dir, 'demo', 'design');
+
+    const result = await inspectClassicHookGuard(dir, 'demo', {
+      intent: 'write',
+      targets: [path.join(dir, '.agents', 'rules', 'shared.md')],
+      toolName: 'Write',
+    });
+
+    expect(result).toMatchObject({ allowed: true, phase: 'design' });
+    expect(result.reason).toContain('configured Hook allow path');
+  });
+
+  it('keeps unconfigured project-local paths blocked during Classic design', async () => {
+    const dir = await makeProject();
+    await addHookAllowPath(dir, '.agents/rules');
+    await seedChange(dir, 'demo', 'design');
+
+    const result = await inspectClassicHookGuard(dir, 'demo', {
+      intent: 'write',
+      targets: [path.join(dir, '.agents', 'notes', 'shared.md')],
+      toolName: 'Write',
+    });
+
+    expect(result).toMatchObject({ allowed: false, phase: 'design' });
+    expect(result.reason).toContain('This phase does not allow source writes');
+  });
+
   it('allows an explicitly external target during a guarded Classic phase', async () => {
     const dir = await makeProject();
     await seedChange(dir, 'demo', 'design');
@@ -778,7 +815,7 @@ describe('Classic hook guard command', () => {
     const result = run(dir, 'state', ['select', 'missing']);
 
     expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain('active change state not found');
+    expect(result.stderr).toContain('not found in any registered Git worktree');
   });
 
   it('allows writes when no active change exists', async () => {

@@ -525,6 +525,29 @@ describe('update command helpers', () => {
     ]);
   });
 
+  it('updates an explicitly scoped WorkBuddy project install and refreshes its project Hook', async () => {
+    const projectDir = path.join(tmpDir, 'workbuddy-project');
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(projectDir, {
+        json: true,
+        skipNpm: true,
+        scope: 'project',
+        platform: 'workbuddy',
+      });
+    } finally {
+      log.mockRestore();
+    }
+
+    await expect(
+      fs.access(path.join(projectDir, '.workbuddy', 'skills', 'comet', 'SKILL.md')),
+    ).resolves.toBeUndefined();
+    const settings = JSON.parse(
+      await fs.readFile(path.join(projectDir, '.workbuddy', 'settings.json'), 'utf8'),
+    );
+    expect(settings.hooks.PreToolUse).toEqual([expect.objectContaining({ matcher: 'Write|Edit' })]);
+  });
+
   it('detects legacy global Pi skills so update can migrate them', async () => {
     const projectDir = path.join(tmpDir, 'project');
     const globalDir = path.join(tmpDir, 'home');
@@ -970,6 +993,39 @@ describe('update command helpers', () => {
       action: 'skip',
       reason: 'registry version 0.4.0-beta.6 is older than current version 0.4.0-beta.7',
     });
+  });
+
+  it('covers self-update semver and package-scope decision branches', async () => {
+    expect(resolveNpmSelfUpdatePlan('not-semver', '0.4.0')).toMatchObject({ action: 'fail' });
+    expect(resolveNpmSelfUpdatePlan('0.4.0', 'not-semver')).toMatchObject({ action: 'fail' });
+    expect(resolveNpmSelfUpdatePlan('0.4.0', '0.4.0')).toMatchObject({ action: 'skip' });
+    expect(resolveNpmSelfUpdatePlan('0.4.0', '0.4.1')).toEqual({
+      action: 'update',
+      version: '0.4.1',
+    });
+    expect(resolveNpmSelfUpdatePlan('0.4.0-beta.10', '0.4.0-beta.2')).toMatchObject({
+      action: 'skip',
+    });
+    expect(resolveNpmSelfUpdatePlan('0.4.0-alpha', '0.4.0-beta')).toMatchObject({
+      action: 'update',
+    });
+    expect(resolveNpmSelfUpdatePlan('0.4.0-alpha.1', '0.4.0-alpha.beta')).toMatchObject({
+      action: 'update',
+    });
+
+    const project = path.join(tmpDir, 'package-scope');
+    await fs.mkdir(path.join(project, 'node_modules', '@rpamis', 'comet'), { recursive: true });
+    await expect(
+      detectCometPackageScope(project, path.join(project, 'node_modules', '@rpamis', 'comet')),
+    ).resolves.toBe('project');
+    await fs.rm(path.join(project, 'node_modules'), { recursive: true, force: true });
+    await fs.writeFile(
+      path.join(project, 'package.json'),
+      JSON.stringify({ optionalDependencies: { '@rpamis/comet': '^0.4.0' } }),
+    );
+    await expect(detectCometPackageScope(project, path.join(tmpDir, 'other'))).resolves.toBe(
+      'project',
+    );
   });
 
   it('does not self-update the global package for an explicit current-project refresh', async () => {
@@ -2082,6 +2138,8 @@ describe('update command helpers', () => {
       [],
       'docs',
       expect.any(Function),
+      undefined,
+      [],
     );
     await expect(fs.access(path.join(tmpDir, 'openspec'))).rejects.toMatchObject({
       code: 'ENOENT',
@@ -2155,6 +2213,8 @@ describe('update command helpers', () => {
       [],
       'docs',
       expect.any(Function),
+      undefined,
+      [],
     );
     expect(mockedInstallSuperpowers).toHaveBeenCalledWith(tmpDir, 'project', ['claude'], true);
   });
@@ -2293,6 +2353,8 @@ describe('update command helpers', () => {
       [],
       'legacy',
       expect.any(Function),
+      undefined,
+      [],
     );
     await expect(fs.access(path.join(tmpDir, 'docs', 'openspec'))).rejects.toMatchObject({
       code: 'ENOENT',
@@ -2376,6 +2438,8 @@ describe('update command helpers', () => {
       [],
       'docs',
       expect.any(Function),
+      undefined,
+      [],
     );
   });
 
@@ -2416,6 +2480,8 @@ describe('update command helpers', () => {
       [],
       'docs',
       expect.any(Function),
+      undefined,
+      [],
     );
     await expect(
       fs.readFile(path.join(tmpDir, 'openspec', 'legacy-marker.txt'), 'utf8'),
@@ -2539,6 +2605,8 @@ describe('update command helpers', () => {
       [],
       'docs',
       expect.any(Function),
+      undefined,
+      [],
     );
   });
 
@@ -2585,6 +2653,8 @@ describe('update command helpers', () => {
       [],
       'docs',
       expect.any(Function),
+      undefined,
+      [],
     );
     await expect(fs.readFile(configPath)).resolves.toEqual(configBefore);
   });
@@ -2715,6 +2785,8 @@ describe('update command helpers', () => {
       [],
       'legacy',
       undefined,
+      undefined,
+      [],
     );
     await expect(fs.access(path.join(tmpDir, 'openspec'))).rejects.toMatchObject({
       code: 'ENOENT',

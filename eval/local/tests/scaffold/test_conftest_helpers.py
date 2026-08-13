@@ -81,8 +81,6 @@ def test_unit_test_detection_keeps_task_runs_as_experiments():
     assert conftest._is_unit_tests_only(Config()) is False
 
 
-
-
 def test_experiment_id_uses_explicit_comet_eval_run_id(monkeypatch):
     monkeypatch.setenv("COMET_EVAL_EXPERIMENT_ID", "comet-eval-1234")
 
@@ -95,6 +93,125 @@ def test_experiment_id_rejects_unsafe_explicit_value(monkeypatch):
 
     with pytest.raises(ValueError, match="COMET_EVAL_EXPERIMENT_ID"):
         conftest._get_or_create_experiment_id("ignored", False)
+
+
+def test_auto_generation_loads_environment_before_resolving_cache_identity(
+    tmp_path: Path, monkeypatch
+):
+    skill = tmp_path / "skill"
+    skill.mkdir()
+    (skill / "SKILL.md").write_text("Evaluate me.\n", encoding="utf-8")
+    captured = {}
+
+    def load_environment():
+        monkeypatch.setenv("BENCH_CODEX_MODEL", "model-from-dotenv")
+
+    def generate_manifest(_skill_path, _project_root, **kwargs):
+        captured.update(kwargs)
+        manifest_path = tmp_path / "generated.yaml"
+        manifest_path.write_text(
+            """apiVersion: comet.eval/v1alpha1
+kind: SkillEvalManifest
+metadata: {name: generated}
+skill: {name: generated, source: .}
+evaluation:
+  tasks:
+    - name: generated-one
+      prompt: one
+      expect: {files: [one.md]}
+    - name: generated-two
+      prompt: two
+      expect: {files: [two.md]}
+""",
+            encoding="utf-8",
+        )
+        return SimpleNamespace(manifest_path=manifest_path)
+
+    options = {
+        "--task": None,
+        "--quick": False,
+        "--eval-manifest": None,
+        "--skill-path": str(skill),
+        "--profile": None,
+        "--project-root": str(tmp_path),
+        "--agent": "codex",
+        "--skill-name": None,
+    }
+
+    class Config:
+        option = SimpleNamespace(collectonly=False, eval_manifest=None)
+
+        @staticmethod
+        def getoption(name):
+            return options[name]
+
+    monkeypatch.setattr("scaffold.python.utils.load_eval_environment", load_environment)
+    monkeypatch.setattr(conftest, "ensure_generated_manifest", generate_manifest)
+
+    config = Config()
+    conftest._ensure_auto_generated_manifest(config)
+
+    assert captured["agent"] == "codex"
+    assert captured["model"] == "model-from-dotenv"
+    assert config.option.eval_manifest is None
+    assert config._comet_frozen_task_set.source == "generated-cache"
+
+
+def test_taskless_collect_only_marks_generation_pending_without_agent_or_disk_work(
+    tmp_path: Path, monkeypatch
+):
+    skill = tmp_path / "skill"
+    skill.mkdir()
+    (skill / "SKILL.md").write_text("Evaluate me.\n", encoding="utf-8")
+    called = False
+
+    def fail_generation(*_args, **_kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("task generation must not run during collect-only")
+
+    class Config:
+        option = SimpleNamespace(collectonly=True, eval_manifest=None, skill_name=None)
+
+        @staticmethod
+        def getoption(name):
+            return {
+                "--task": None,
+                "--quick": False,
+                "--eval-manifest": None,
+                "--skill-path": str(skill),
+                "--profile": None,
+                "--project-root": str(tmp_path),
+                "--agent": None,
+                "--skill-name": None,
+            }[name]
+
+    monkeypatch.setattr(conftest, "ensure_generated_manifest", fail_generation)
+    config = Config()
+    conftest._ensure_auto_generated_manifest(config)
+
+    assert called is False
+    assert config._comet_frozen_task_set.source == "pending-generation"
+    assert config._comet_frozen_task_set.tasks == ()
+    assert config._comet_resolution_manifest.skill_path == skill.resolve()
+    assert config._comet_resolution_manifest.path == skill / "comet" / "eval.yaml"
+    assert config._comet_resolved_tasks == {}
+
+    from local.tests.tasks import test_tasks
+
+    monkeypatch.setattr(test_tasks, "load_treatments", lambda: {})
+    monkeypatch.setattr(test_tasks, "list_tasks", lambda: [])
+    frozen = config._comet_frozen_task_set
+    assert test_tasks.generate_test_params(None, None, config) == []
+    assert test_tasks.generate_test_params(None, None, config) == []
+    assert config._comet_frozen_task_set is frozen
+
+
+def test_selected_agent_missing_credentials_fails_before_workloads():
+    with pytest.raises(pytest.UsageError, match="Credentials for codebuddy not set"):
+        conftest._require_agent_credentials("codebuddy", {})
+
+    conftest._require_agent_credentials("codebuddy", {"CODEBUDDY_API_KEY": "configured"})
 
 
 def test_extract_loop_turns_reads_driver_completion_line():
@@ -113,6 +230,21 @@ def test_extract_loop_turns_reads_driver_completion_line():
         "deterministic_replies": 1,
         "completion_signals": 1,
         "fresh_resume_boundaries": 0,
+        "role_sessions": {"subject": [], "simulator": [], "judge": []},
+    }
+
+
+def test_extract_loop_interaction_records_isolated_role_sessions():
+    interaction = conftest._extract_loop_interaction(
+        "[loop] role-session subject subject-1\n"
+        "[loop] role-session simulator simulator-1\n"
+        "[loop] role-session subject subject-1\n"
+    )
+
+    assert interaction["role_sessions"] == {
+        "subject": ["subject-1"],
+        "simulator": ["simulator-1"],
+        "judge": [],
     }
     assert conftest._extract_loop_turns("ordinary stderr") is None
 
@@ -383,6 +515,7 @@ def test_dynamic_treatment_config_from_skill_path(tmp_path: Path):
                 "--skill-path": str(skill_dir),
                 "--skill-name": "demo-skill",
                 "--profile": "generic",
+                "--quick": True,
             }
             return values.get(name)
 
@@ -575,6 +708,49 @@ def test_setup_test_context_configures_039_shell_hook(tmp_path: Path, setup_test
     settings = json.loads((tmp_path / ".claude" / "settings.json").read_text(encoding="utf-8"))
     command = settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
     assert command == "bash /workspace/.claude/skills/comet/scripts/comet-hook-guard.sh"
+
+
+def test_codex_guard_uses_codex_hook_config_while_scripts_remain_under_agents(tmp_path: Path):
+    command = "node /workspace/.agents/skills/comet/scripts/comet-hook-guard.mjs"
+
+    conftest._ensure_agent_pre_tool_hook(tmp_path, "codex", command)
+
+    hooks_path = tmp_path / ".codex" / "hooks.json"
+    hooks = json.loads(hooks_path.read_text(encoding="utf-8"))
+    assert hooks["hooks"]["PreToolUse"][0]["hooks"][0]["command"] == command
+    assert not (tmp_path / ".agents" / "hooks.json").exists()
+
+
+def test_transcript_setup_failure_is_best_effort(tmp_path: Path, monkeypatch, capsys):
+    monkeypatch.setenv("TRACE_TO_LANGFUSE", "true")
+    monkeypatch.delenv("LANGFUSE_TRANSCRIPT_SETUP_WARNING_EMITTED", raising=False)
+    monkeypatch.setattr(
+        conftest,
+        "install_transcript_hook",
+        lambda *_args: (_ for _ in ()).throw(ValueError("invalid settings")),
+    )
+
+    conftest._ensure_langfuse_trajectory_support(tmp_path, "codebuddy")
+
+    assert "optional codebuddy transcript setup skipped" in capsys.readouterr().err
+
+
+def test_setup_test_context_writes_codebuddy_project_memory(
+    tmp_path: Path,
+    setup_test_context,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        conftest,
+        "_resolve_eval_agent",
+        lambda _config: SimpleNamespace(agent="codebuddy"),
+    )
+
+    setup_test_context(claude_md="Use the CodeBuddy workflow.")
+
+    memory = tmp_path / ".codebuddy" / "CODEBUDDY.md"
+    assert memory.read_text(encoding="utf-8") == "Use the CodeBuddy workflow."
+    assert not (tmp_path / "AGENTS.md").exists()
 
 
 def test_setup_test_context_copies_dependency_skill_packages_with_scripts(
@@ -879,6 +1055,11 @@ def test_build_report_payload_persists_sample_quality():
             "total_tokens": 100,
             "total_cost_usd": 0.01,
             "case_manifest": {"case_hash": "sha256:demo"},
+            "role_models": {
+                "subject": "subject-model",
+                "simulator": None,
+                "judge": "judge-model",
+            },
         },
         passed=["[RUBRIC] weighted_score: 1.00"],
         failed=[],
@@ -894,6 +1075,11 @@ def test_build_report_payload_persists_sample_quality():
     assert report["sample_quality"]["reason_code"] == "valid_signal"
     assert report["sample_quality"]["include_in_analysis"] is True
     assert report["events_summary"]["case_manifest"] == {"case_hash": "sha256:demo"}
+    assert report["events_summary"]["role_models"] == {
+        "subject": "subject-model",
+        "simulator": None,
+        "judge": "judge-model",
+    }
 
 
 def test_build_report_payload_marks_timeout_as_excluded():
@@ -941,6 +1127,44 @@ def test_prebuild_docker_image_allows_a_cold_image_build_to_run_for_fifteen_minu
     ]
 
 
+def test_resolve_eval_agent_applies_cli_manifest_precedence(tmp_path: Path):
+    manifest = tmp_path / "eval.yaml"
+    manifest.write_text(
+        """
+apiVersion: comet.eval/v1alpha1
+kind: SkillEvalManifest
+metadata:
+  name: selected-agent
+skill:
+  name: selected-agent
+  source: .
+execution:
+  agent: codex
+""",
+        encoding="utf-8",
+    )
+
+    class Config:
+        def __init__(self, agent):
+            self.agent = agent
+
+        def getoption(self, name):
+            return {
+                "--eval-manifest": str(manifest),
+                "--agent": self.agent,
+            }.get(name)
+
+    assert conftest._resolve_eval_agent(Config(None)).agent == "codex"
+    assert conftest._resolve_eval_agent(Config("qoder")).agent == "qoder"
+
+
+def test_selected_agent_uses_its_native_project_skill_root():
+    assert conftest._agent_project_root("claude-code") == ".claude"
+    assert conftest._agent_project_root("codex") == ".agents"
+    assert conftest._agent_project_root("qoder") == ".qoder"
+    assert conftest._agent_project_root("codebuddy") == ".codebuddy"
+
+
 def test_docker_prebuild_uses_only_the_tasks_selected_by_an_eval_manifest(
     tmp_path: Path,
 ):
@@ -950,31 +1174,56 @@ def test_docker_prebuild_uses_only_the_tasks_selected_by_an_eval_manifest(
         environment.mkdir(parents=True)
         (environment / "Dockerfile").write_text("FROM python:3.11-slim\n", encoding="utf-8")
 
-    manifest = tmp_path / "eval.yaml"
-    manifest.write_text(
-        """
-apiVersion: comet.eval/v1alpha1
-kind: SkillEvalManifest
-metadata:
-  name: selected-tasks
-skill:
-  name: selected-tasks
-  source: .
-evaluation:
-  recommendedTasks:
-    - authoring-skill-smoke
-    - workflow-route-conformance
-""",
-        encoding="utf-8",
-    )
-
     class Config:
-        def getoption(self, name):
-            return {"--task": None, "--eval-manifest": str(manifest)}[name]
+        _comet_frozen_task_set = SimpleNamespace(
+            tasks=(
+                SimpleNamespace(task=SimpleNamespace(environment_dir=tasks_dir / "authoring-skill-smoke" / "environment")),
+                SimpleNamespace(task=SimpleNamespace(environment_dir=tasks_dir / "workflow-route-conformance" / "environment")),
+            )
+        )
 
     request = SimpleNamespace(config=Config())
 
     assert conftest._docker_environment_dirs_for_request(request, tasks_dir) == [
         tasks_dir / "authoring-skill-smoke" / "environment",
         tasks_dir / "workflow-route-conformance" / "environment",
+    ]
+
+
+@pytest.mark.parametrize(
+    "source,selected",
+    [
+        ("explicit", ["authoring-skill-smoke"]),
+        ("quick", ["workflow-route-conformance"]),
+        ("authored", ["authoring-skill-smoke"]),
+        ("recommended", ["workflow-route-conformance"]),
+        ("generated-cache", ["authoring-skill-smoke"]),
+        ("source", ["source-custom"]),
+    ],
+)
+def test_docker_prebuild_consumes_only_frozen_task_environments(tmp_path: Path, source, selected):
+    tasks_dir = tmp_path / "tasks"
+    environments = {}
+    for name in ("authoring-skill-smoke", "workflow-route-conformance", "source-custom", "unrelated"):
+        environment = tasks_dir / name / "environment"
+        environment.mkdir(parents=True)
+        (environment / "Dockerfile").write_text("FROM scratch\n", encoding="utf-8")
+        environments[name] = environment
+
+    frozen = SimpleNamespace(
+        source=source,
+        generation=SimpleNamespace(generation_hash="frozen-hash") if source == "generated-cache" else None,
+        tasks=tuple(
+            SimpleNamespace(
+                name=name,
+                provenance="source" if name == "source-custom" else source,
+                task=SimpleNamespace(environment_dir=environments[name]),
+            )
+            for name in [*selected, *selected]
+        ),
+    )
+    request = SimpleNamespace(config=SimpleNamespace(_comet_frozen_task_set=frozen))
+
+    assert conftest._docker_environment_dirs_for_request(request, tasks_dir) == [
+        environments[name] for name in selected
     ]

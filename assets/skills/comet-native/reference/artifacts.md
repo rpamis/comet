@@ -10,11 +10,12 @@ Each active change directory contains only user-readable formal artifacts that c
 <artifact-root>/comet/changes/<change-name>/
   comet-state.yaml
   brief.md
+  children.yaml
   specs/<capability>/spec.md
   verification.md
 ```
 
-The Agent edits only the brief and complete target specifications. The Runtime manages `comet-state.yaml` and `verification.md`, generating the report after it first accepts a Verifier result.
+The Agent edits only the brief, complete target specifications, and a Supervisor Change's `children.yaml`. The Runtime manages `comet-state.yaml` and `verification.md`, generating the report after it first accepts a Verifier result.
 
 Local Runtime data always lives under the Git-ignored `.comet/runtime/native/`. Each active change keeps local state and logs under `changes/<change-name>/state.json` and `logs/`; project-level locks and short-lived transactions also live in this Runtime directory. Always let the Runtime create, migrate, and repair these machine files.
 
@@ -51,7 +52,7 @@ Use these forms in Open questions only for real unresolved user questions:
 
 As soon as a decision is confirmed, write it into Decisions and the complete target specifications, then remove the corresponding blocker. Formal artifacts record conclusions and reasons, not hidden model reasoning.
 
-Acceptance criteria must be specific, observable, and non-duplicative. Use simple sequential IDs such as `A1`, `A2`, and `A3`. IDs map results only; they are not derived from content and do not identify files. On Shape confirmation, the Runtime saves the full acceptance text and its source.
+Acceptance criteria must be specific, observable, and non-duplicative. Use simple sequential IDs such as `A1`, `A2`, and `A3`. IDs map results only; they are not derived from content and do not identify files. On Shape confirmation, the Runtime saves the full acceptance text and its source. A Supervisor Change's `children.yaml` uses `comet.native.children.v1`; each child contains only `name`, `depends_on`, and `covers`. Names must be unique, dependencies must exist and be acyclic, and every Supervisor Change acceptance ID must be covered. The Runtime confirms it together with the Supervisor Change acceptance; any change returns the Supervisor Change to Shape.
 
 ## Complete target specifications
 

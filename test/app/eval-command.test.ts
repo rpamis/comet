@@ -5,9 +5,11 @@ import { fileURLToPath } from 'url';
 
 const execFileSync = vi.fn();
 const existsSync = vi.fn(() => true);
+const readFile = vi.fn();
 const prepareEvalManifest = vi.fn();
 const recordRepositoryEvalExperiment = vi.fn();
 const cleanupPreparedManifest = vi.fn();
+const loadUserEvalEnvironment = vi.fn();
 const project = path.join(os.tmpdir(), 'comet-eval-project');
 const manifest = path.join(os.tmpdir(), 'demo', 'comet', 'eval.yaml');
 const preparedManifest = path.join(os.tmpdir(), 'prepared', 'eval.yaml');
@@ -29,10 +31,28 @@ vi.mock('child_process', () => ({
   execFileSync,
 }));
 
-vi.mock('fs', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('fs')>()),
-  existsSync,
-}));
+vi.mock('fs', async (importOriginal) => {
+  const original = await importOriginal<typeof import('fs')>();
+  return {
+    ...original,
+    promises: {
+      ...original.promises,
+      readFile: (target: Parameters<typeof original.promises.readFile>[0], ...args: unknown[]) =>
+        String(target).includes('v1alpha1.schema.json')
+          ? original.promises.readFile(target, ...(args as []))
+          : readFile(target, ...args),
+      stat: async (target: Parameters<typeof original.promises.stat>[0]) => {
+        if (String(target).includes('comet-eval-context-')) return original.promises.stat(target);
+        return {
+          isFile: () =>
+            String(target).endsWith('SKILL.md') || /eval[\\/]local[\\/]tasks/u.test(String(target)),
+          isDirectory: () => true,
+        };
+      },
+    },
+    existsSync,
+  };
+});
 
 vi.mock('../../domains/bundle/eval-manifest-runtime.js', () => ({
   prepareEvalManifest,
@@ -40,6 +60,10 @@ vi.mock('../../domains/bundle/eval-manifest-runtime.js', () => ({
 
 vi.mock('../../domains/bundle/eval-run-result.js', () => ({
   recordRepositoryEvalExperiment,
+}));
+
+vi.mock('../../domains/eval/user-environment.js', () => ({
+  loadUserEvalEnvironment,
 }));
 
 function expectUvRun(args: string[], cwd = evalCwd): string {
@@ -65,13 +89,70 @@ describe('eval command', () => {
     execFileSync.mockReturnValue(Buffer.from(''));
     existsSync.mockReset();
     existsSync.mockReturnValue(true);
+    readFile.mockImplementation((target: unknown) =>
+      Promise.resolve(
+        String(target).endsWith('task.toml')
+          ? `[metadata]\nname = "${path.basename(path.dirname(String(target)))}"\n`
+          : 'apiVersion: comet.eval/v1alpha1\nkind: SkillEvalManifest\nmetadata: { name: demo }\nskill: { name: demo, source: .. }\nevaluation: {}\n',
+      ),
+    );
     prepareEvalManifest.mockReset();
     cleanupPreparedManifest.mockReset();
     recordRepositoryEvalExperiment.mockReset();
+    loadUserEvalEnvironment.mockReset();
     prepareEvalManifest.mockResolvedValue({
       path: manifest,
       cleanup: cleanupPreparedManifest,
     });
+  });
+
+  it('loads the user eval environment before run and collect modes', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { evalRunCommand, evalCollectCommand } = await import('../../app/commands/eval.js');
+      await evalCollectCommand({ project, manifest });
+      await evalRunCommand({ project, manifest, quick: true });
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(loadUserEvalEnvironment).toHaveBeenCalledTimes(2);
+  });
+
+  it('prints the generated user eval config path on first startup', async () => {
+    loadUserEvalEnvironment.mockReturnValue({
+      path: 'C:\\Users\\demo\\.comet\\eval\\.env',
+      created: true,
+    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { evalCollectCommand } = await import('../../app/commands/eval.js');
+      await evalCollectCommand({ project, manifest });
+
+      expect(log).toHaveBeenCalledWith(
+        'Created user Eval config template: C:\\Users\\demo\\.comet\\eval\\.env',
+      );
+      expect(log).toHaveBeenCalledWith(
+        'Edit this file with your model credentials, then run comet eval again.',
+      );
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('uses the common Bench model in launch details', async () => {
+    const previous = process.env.BENCH_MODEL;
+    process.env.BENCH_MODEL = 'bench-model';
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { evalCollectCommand } = await import('../../app/commands/eval.js');
+      await evalCollectCommand({ project, manifest });
+      expect(log.mock.calls.map((call) => [...call])).toContainEqual(['Main Model: bench-model']);
+    } finally {
+      if (previous === undefined) delete process.env.BENCH_MODEL;
+      else process.env.BENCH_MODEL = previous;
+      log.mockRestore();
+    }
   });
 
   it('uses the packaged eval harness when project is omitted', async () => {
@@ -93,10 +174,19 @@ describe('eval command', () => {
         'pytest',
         'local/tests/tasks/test_tasks.py',
         `--eval-manifest=${path.resolve(manifest)}`,
+        `--project-root=${path.join(os.tmpdir(), 'demo')}`,
         '-v',
       ],
       packagedEvalCwd,
     );
+    const run = execFileSync.mock.calls.find(
+      ([command, args]) => command === 'uv' && Array.isArray(args) && args[0] === 'run',
+    );
+    expect(run?.[2]?.env).toMatchObject({
+      PYTHONDONTWRITEBYTECODE: '1',
+      UV_CACHE_DIR: path.join(os.tmpdir(), 'demo', '.comet', 'eval', 'cache', 'uv'),
+      UV_PROJECT_ENVIRONMENT: path.join(os.tmpdir(), 'demo', '.comet', 'eval', 'cache', 'venv'),
+    });
   });
 
   it('runs a manifest-backed quick eval from the repo root', async () => {
@@ -117,10 +207,100 @@ describe('eval command', () => {
       'pytest',
       'local/tests/tasks/test_tasks.py',
       `--eval-manifest=${path.resolve(manifest)}`,
+      '--quick',
+      `--project-root=${path.resolve(project)}`,
       '-v',
     ]);
     expect(prepareEvalManifest).toHaveBeenCalledWith(manifest);
     expect(cleanupPreparedManifest).toHaveBeenCalledTimes(1);
+  });
+
+  it('passes an explicitly selected agent to the eval harness', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { evalRunCommand } = await import('../../app/commands/eval.js');
+      await evalRunCommand({
+        project,
+        manifest,
+        agent: 'qoder',
+        quick: true,
+      });
+    } finally {
+      log.mockRestore();
+    }
+
+    expectUvRun([
+      'run',
+      'pytest',
+      'local/tests/tasks/test_tasks.py',
+      `--eval-manifest=${path.resolve(manifest)}`,
+      '--agent=qoder',
+      '--quick',
+      `--project-root=${path.resolve(project)}`,
+      '-v',
+    ]);
+  });
+
+  it('passes CodeBuddy selection to the eval harness', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { evalRunCommand } = await import('../../app/commands/eval.js');
+      await evalRunCommand({
+        project,
+        manifest,
+        agent: 'codebuddy',
+        quick: true,
+      });
+    } finally {
+      log.mockRestore();
+    }
+
+    expectUvRun([
+      'run',
+      'pytest',
+      'local/tests/tasks/test_tasks.py',
+      `--eval-manifest=${path.resolve(manifest)}`,
+      '--agent=codebuddy',
+      '--quick',
+      `--project-root=${path.resolve(project)}`,
+      '-v',
+    ]);
+  });
+
+  it('passes main and independent Judge model routing options to the eval harness', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { evalRunCommand } = await import('../../app/commands/eval.js');
+      await evalRunCommand({
+        project,
+        manifest,
+        agent: 'codex',
+        model: 'subject-model',
+        baseUrl: 'https://subject.example/v1',
+        judgeAgent: 'claude-code',
+        judgeModel: 'judge-model',
+        judgeBaseUrl: 'https://judge.example/v1',
+        quick: true,
+      });
+    } finally {
+      log.mockRestore();
+    }
+
+    expectUvRun([
+      'run',
+      'pytest',
+      'local/tests/tasks/test_tasks.py',
+      `--eval-manifest=${path.resolve(manifest)}`,
+      '--agent=codex',
+      '--model=subject-model',
+      '--base-url=https://subject.example/v1',
+      '--judge-agent=claude-code',
+      '--judge-model=judge-model',
+      '--judge-base-url=https://judge.example/v1',
+      '--quick',
+      `--project-root=${path.resolve(project)}`,
+      '-v',
+    ]);
   });
 
   it('records a successful local Creator eval before cleaning up the prepared manifest', async () => {
@@ -143,11 +323,13 @@ describe('eval command', () => {
       'pytest',
       'local/tests/tasks/test_tasks.py',
       `--eval-manifest=${path.resolve(preparedManifest)}`,
+      '--quick',
+      `--project-root=${path.resolve(project)}`,
       '-v',
     ]);
     expect(recordRepositoryEvalExperiment).toHaveBeenCalledWith({
       context: repositoryEvalContext,
-      experimentDir: path.join(evalCwd, 'local', 'logs', 'experiments', experimentId),
+      experimentDir: path.join(project, '.comet', 'eval', 'runs', experimentId),
       level: 'quick',
     });
     expect(recordRepositoryEvalExperiment.mock.invocationCallOrder[0]).toBeLessThan(
@@ -170,7 +352,7 @@ describe('eval command', () => {
     }
 
     expect(recordRepositoryEvalExperiment).not.toHaveBeenCalled();
-    expect(cleanupPreparedManifest).toHaveBeenCalledTimes(1);
+    expect(cleanupPreparedManifest).not.toHaveBeenCalled();
   });
 
   it('preserves a Creator recording failure while still cleaning up the prepared manifest', async () => {
@@ -195,7 +377,7 @@ describe('eval command', () => {
     expect(cleanupPreparedManifest).toHaveBeenCalledTimes(1);
   });
 
-  it('uses generic-skill-smoke for local skill quick runs', async () => {
+  it('forwards local skill quick intent without independently selecting a task', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     try {
       const { evalRunCommand } = await import('../../app/commands/eval.js');
@@ -214,14 +396,39 @@ describe('eval command', () => {
       'run',
       'pytest',
       'local/tests/tasks/test_tasks.py',
-      '--task=generic-skill-smoke',
       `--skill-path=${path.resolve(skillPath)}`,
       '--skill-name=demo-skill',
       '--profile=generic',
+      '--quick',
+      `--project-root=${path.resolve(project)}`,
       '-v',
     ]);
     expect(prepareEvalManifest).not.toHaveBeenCalled();
     expect(cleanupPreparedManifest).not.toHaveBeenCalled();
+  });
+
+  it('leaves the normal local Skill run taskless for automatic task generation', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { evalRunCommand } = await import('../../app/commands/eval.js');
+      await evalRunCommand({
+        project,
+        skillPath,
+        skillName: 'demo-skill',
+      });
+    } finally {
+      log.mockRestore();
+    }
+
+    expectUvRun([
+      'run',
+      'pytest',
+      'local/tests/tasks/test_tasks.py',
+      `--skill-path=${path.resolve(skillPath)}`,
+      '--skill-name=demo-skill',
+      `--project-root=${path.resolve(project)}`,
+      '-v',
+    ]);
   });
 
   it('routes LangSmith evals through the LangSmith runner and report directory', async () => {
@@ -246,13 +453,65 @@ describe('eval command', () => {
       'langsmith/tests/tasks/test_tasks.py',
       '--task=generic-skill-smoke',
       `--skill-path=${path.resolve(skillPath)}`,
+      `--project-root=${path.resolve(project)}`,
       '-v',
     ]);
     expect(recordRepositoryEvalExperiment).not.toHaveBeenCalled();
     expect(output).toContain('Suite: langsmith');
     expect(output).toContain(
-      path.join(evalCwd, 'langsmith', 'logs', 'experiments', experimentId, 'summary.md'),
+      path.join(project, '.comet', 'eval', 'runs', experimentId, 'summary.md'),
     );
+  });
+
+  it('routes Langfuse evals through the Langfuse runner and report directory', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let output: string;
+    try {
+      const { evalRunCommand } = await import('../../app/commands/eval.js');
+      await evalRunCommand({
+        project,
+        skillPath,
+        suite: 'langfuse',
+        task: 'generic-skill-smoke',
+      });
+      output = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+    }
+
+    const experimentId = expectUvRun([
+      'run',
+      '--extra',
+      'langfuse',
+      'pytest',
+      'langfuse/tests/tasks/test_tasks.py',
+      '--task=generic-skill-smoke',
+      `--skill-path=${path.resolve(skillPath)}`,
+      `--project-root=${path.resolve(project)}`,
+      '-v',
+    ]);
+    expect(recordRepositoryEvalExperiment).not.toHaveBeenCalled();
+    expect(output).toContain('Suite: langfuse');
+    expect(output).toContain(
+      path.join(project, '.comet', 'eval', 'runs', experimentId, 'summary.md'),
+    );
+  });
+
+  it('routes Langfuse collection through the offline static collector without the optional extra', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { evalCollectCommand } = await import('../../app/commands/eval.js');
+      await evalCollectCommand({
+        project,
+        skillPath,
+        suite: 'langfuse',
+        task: 'generic-skill-smoke',
+      });
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(execFileSync).not.toHaveBeenCalled();
   });
 
   it('runs a local Skill target directly without requiring --skill-path', async () => {
@@ -271,14 +530,15 @@ describe('eval command', () => {
       'run',
       'pytest',
       'local/tests/tasks/test_tasks.py',
-      '--task=generic-skill-smoke',
       `--skill-path=${path.resolve(skillPath)}`,
       '--skill-name=demo-skill',
+      '--quick',
+      `--project-root=${path.resolve(project)}`,
       '-v',
     ]);
   });
 
-  it('collects a manifest target directly with --collect', async () => {
+  it('collects a manifest target directly through the static collector', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     try {
       const { evalCommand } = await import('../../app/commands/eval.js');
@@ -290,13 +550,7 @@ describe('eval command', () => {
       log.mockRestore();
     }
 
-    expectUvRun([
-      'run',
-      'pytest',
-      'local/tests/tasks/test_tasks.py',
-      `--eval-manifest=${path.resolve(manifest)}`,
-      '--collect-only',
-    ]);
+    expect(execFileSync).not.toHaveBeenCalled();
   });
 
   it('uses collect-only discovery for manifest smoke checks', async () => {
@@ -317,38 +571,61 @@ describe('eval command', () => {
       log.mockRestore();
     }
 
-    expectUvRun([
-      'run',
-      'pytest',
-      'local/tests/tasks/test_tasks.py',
-      `--eval-manifest=${path.resolve(preparedManifest)}`,
-      '--collect-only',
-    ]);
-    expect(prepareEvalManifest).toHaveBeenCalledWith(manifest);
-    expect(cleanupPreparedManifest).toHaveBeenCalledTimes(1);
+    expect(execFileSync).not.toHaveBeenCalled();
+    expect(prepareEvalManifest).not.toHaveBeenCalled();
+    expect(cleanupPreparedManifest).not.toHaveBeenCalled();
     expect(output).toContain(`Target: manifest ${path.resolve(manifest)}`);
     expect(output).not.toContain(preparedManifest);
   });
 
-  it('preserves pytest failures and cleans up a prepared manifest once', async () => {
+  it('does not start a subprocess or prepare a manifest for static collection', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     prepareEvalManifest.mockResolvedValue({
       path: preparedManifest,
       cleanup: cleanupPreparedManifest,
     });
-    execFileSync.mockImplementation((command: string, args: string[]) => {
-      if (command === 'uv' && args[0] === 'run') throw new Error('pytest failed');
-      return Buffer.from('');
-    });
     try {
       const { evalCollectCommand } = await import('../../app/commands/eval.js');
-      await expect(evalCollectCommand({ project, manifest })).rejects.toThrow('pytest failed');
+      await evalCollectCommand({ project, manifest });
     } finally {
       log.mockRestore();
     }
 
-    expect(prepareEvalManifest).toHaveBeenCalledWith(manifest);
-    expect(cleanupPreparedManifest).toHaveBeenCalledTimes(1);
+    expect(prepareEvalManifest).not.toHaveBeenCalled();
+    expect(cleanupPreparedManifest).not.toHaveBeenCalled();
+    expect(execFileSync).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid deterministic inline expectations during static collection', async () => {
+    const invalidManifest = [
+      'apiVersion: comet.eval/v1alpha1',
+      'kind: SkillEvalManifest',
+      'metadata: { name: demo }',
+      'skill: { name: demo, source: .. }',
+      'evaluation:',
+      '  tasks:',
+      '    - name: invalid-expect',
+      '      prompt: do work',
+      '      expect:',
+      '        json:',
+      '          - file: result.json',
+      '            path: items[0]',
+      '            equals: done',
+      '',
+    ].join('\n');
+    readFile.mockImplementation((target: unknown) =>
+      Promise.resolve(
+        String(target).endsWith('task.toml')
+          ? `[metadata]\nname = "${path.basename(path.dirname(String(target)))}"\n`
+          : invalidManifest,
+      ),
+    );
+    const { evalCollectCommand } = await import('../../app/commands/eval.js');
+
+    await expect(evalCollectCommand({ project, manifest })).rejects.toThrow(
+      'evaluation.tasks[0].expect.json[0].path',
+    );
+    expect(execFileSync).not.toHaveBeenCalled();
   });
 
   it('cleans up a prepared manifest when eval run fails', async () => {
@@ -452,7 +729,8 @@ describe('eval command', () => {
     expect(output).toContain(`Eval root: ${evalCwd}`);
     expect(output).toContain('Mode: run');
     expect(output).toContain('Profile: authoring-skill');
-    expect(output).toContain('Task: generic-skill-smoke');
+    expect(output).toContain('Task selection: explicit');
+    expect(output).toContain('- generic-skill-smoke');
     expect(output).toContain('Experiment:');
     expect(output).toContain('Report path:');
     expect(output).toContain('Report config:');
@@ -469,7 +747,7 @@ describe('eval command', () => {
         manifest,
       }),
     ).rejects.toThrow(
-      `Eval harness is missing at ${evalCwd}.\n` +
+      `Eval harness is missing at ${packagedEvalCwd}.\n` +
         'Reinstall @rpamis/comet or pass --project <repository-root>.',
     );
 
@@ -497,7 +775,7 @@ describe('eval command', () => {
         manifest,
         suite: 'remote' as 'local',
       }),
-    ).rejects.toThrow('Unsupported eval suite: remote. Expected local or langsmith.');
+    ).rejects.toThrow('Unsupported eval suite: remote. Expected local, langsmith, or langfuse.');
 
     expect(execFileSync).not.toHaveBeenCalled();
   });
@@ -513,5 +791,208 @@ describe('eval command', () => {
     ).rejects.toThrow('Pass either a target or explicit --manifest/--skill-path options');
 
     expect(execFileSync).not.toHaveBeenCalled();
+  });
+
+  it('resolves a Skill directory, SKILL.md, and auto-detected manifest to one user-owned context', async () => {
+    const { promises: fs } = await vi.importActual<typeof import('node:fs')>('node:fs');
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-eval-context-'));
+    const skill = path.join(root, 'skill');
+    const manifestPath = path.join(skill, 'comet', 'eval.yaml');
+    await fs.mkdir(path.dirname(manifestPath), { recursive: true });
+    await fs.writeFile(path.join(skill, 'SKILL.md'), '# Demo\n', 'utf8');
+    await fs.writeFile(
+      manifestPath,
+      [
+        'apiVersion: comet.eval/v1alpha1',
+        'kind: SkillEvalManifest',
+        'metadata:',
+        '  name: demo',
+        'skill:',
+        '  name: demo',
+        '  source: ..',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { evalCommand } = await import('../../app/commands/eval.js');
+      await evalCommand(skill, { quick: true });
+      await evalCommand(path.join(skill, 'SKILL.md'), { quick: true });
+    } finally {
+      log.mockRestore();
+      await fs.rm(root, { recursive: true, force: true });
+    }
+
+    const runs = execFileSync.mock.calls.filter(
+      ([command, args]) => command === 'uv' && Array.isArray(args) && args[0] === 'run',
+    );
+    expect(runs).toHaveLength(2);
+    for (const [, args, options] of runs) {
+      expect(args).toContain(`--eval-manifest=${manifestPath}`);
+      expect(args).toContain(`--project-root=${skill}`);
+      expect(options.env).toMatchObject({
+        COMET_EVAL_CONTEXT: JSON.stringify({
+          schema: 'comet.eval.context.v1',
+          skillRoot: skill,
+          manifestSource: 'auto-detected',
+          manifestPath,
+          artifactOwnerRoot: skill,
+          artifactRoot: path.join(skill, '.comet', 'eval'),
+        }),
+      });
+    }
+  });
+
+  it('keeps explicit manifests and projects authoritative while reporting user-owned run paths', async () => {
+    const { promises: fs } = await vi.importActual<typeof import('node:fs')>('node:fs');
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-eval-explicit-'));
+    const skill = path.join(root, 'skill');
+    const projectRoot = path.join(root, 'project');
+    const manifestPath = path.join(skill, 'comet', 'eval.yml');
+    await fs.mkdir(skill, { recursive: true });
+    await fs.mkdir(projectRoot, { recursive: true });
+    await fs.mkdir(path.dirname(manifestPath), { recursive: true });
+    await fs.writeFile(path.join(skill, 'SKILL.md'), '# Demo\n', 'utf8');
+    await fs.writeFile(
+      manifestPath,
+      [
+        'apiVersion: comet.eval/v1alpha1',
+        'kind: SkillEvalManifest',
+        'metadata:',
+        '  name: demo',
+        'skill:',
+        '  name: demo',
+        `  source: ${skill.replace(/\\/gu, '/')}`,
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    prepareEvalManifest.mockResolvedValue({ path: manifestPath, cleanup: cleanupPreparedManifest });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { evalCommand } = await import('../../app/commands/eval.js');
+      await evalCommand(manifestPath, { project: projectRoot, quick: true });
+    } finally {
+      log.mockRestore();
+      await fs.rm(root, { recursive: true, force: true });
+    }
+
+    const run = execFileSync.mock.calls.find(
+      ([command, args]) => command === 'uv' && Array.isArray(args) && args[0] === 'run',
+    );
+    expect(run?.[1]?.find((argument) => argument.startsWith('--eval-manifest='))).toBe(
+      `--eval-manifest=${manifestPath}`,
+    );
+    expect(run?.[1]).toContain(`--project-root=${projectRoot}`);
+    expect(run?.[2]?.env).toMatchObject({
+      COMET_EVAL_CONTEXT: JSON.stringify({
+        schema: 'comet.eval.context.v1',
+        skillRoot: skill,
+        manifestSource: 'explicit',
+        manifestPath,
+        artifactOwnerRoot: projectRoot,
+        artifactRoot: path.join(projectRoot, '.comet', 'eval'),
+      }),
+    });
+  });
+
+  it('uses the packaged harness when an explicit artifact owner has no eval harness', async () => {
+    const { promises: fs } = await vi.importActual<typeof import('node:fs')>('node:fs');
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-eval-owner-'));
+    const owner = path.join(root, 'owner');
+    const skill = path.join(root, 'skill');
+    await fs.mkdir(owner);
+    await fs.mkdir(skill);
+    await fs.writeFile(path.join(skill, 'SKILL.md'), '# Demo\n', 'utf8');
+    existsSync.mockImplementation((file) => path.resolve(file).startsWith(packagedEvalCwd));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { evalCommand } = await import('../../app/commands/eval.js');
+      await evalCommand(skill, { project: owner, quick: true });
+      expectUvRun(
+        [
+          'run',
+          'pytest',
+          'local/tests/tasks/test_tasks.py',
+          `--skill-path=${skill}`,
+          '--skill-name=skill',
+          '--quick',
+          `--project-root=${owner}`,
+          '-v',
+        ],
+        packagedEvalCwd,
+      );
+    } finally {
+      log.mockRestore();
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects an owner-local .comet link that resolves outside before launching uv', async () => {
+    const { promises: fs } = await vi.importActual<typeof import('node:fs')>('node:fs');
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-eval-link-'));
+    const owner = path.join(root, 'owner');
+    const outside = path.join(root, 'outside');
+    const skill = path.join(root, 'skill');
+    await fs.mkdir(owner);
+    await fs.mkdir(outside);
+    await fs.mkdir(skill);
+    await fs.writeFile(path.join(skill, 'SKILL.md'), '# Demo\n', 'utf8');
+    await fs.symlink(outside, path.join(owner, '.comet'), 'junction');
+    try {
+      const { evalRunCommand } = await import('../../app/commands/eval.js');
+      await expect(
+        evalRunCommand({ project: owner, skillPath: skill, quick: true }),
+      ).rejects.toThrow('Eval artifact root must stay within its owner root');
+      expect(execFileSync).not.toHaveBeenCalled();
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects an owner-local cache link that resolves outside before launching uv', async () => {
+    const { promises: fs } = await vi.importActual<typeof import('node:fs')>('node:fs');
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-eval-cache-link-'));
+    const owner = path.join(root, 'owner');
+    const outside = path.join(root, 'outside');
+    const skill = path.join(root, 'skill');
+    await fs.mkdir(owner);
+    await fs.mkdir(outside);
+    await fs.mkdir(skill);
+    await fs.writeFile(path.join(skill, 'SKILL.md'), '# Demo\n', 'utf8');
+    await fs.mkdir(path.join(owner, '.comet', 'eval'), { recursive: true });
+    await fs.symlink(outside, path.join(owner, '.comet', 'eval', 'cache'), 'junction');
+    try {
+      const { evalRunCommand } = await import('../../app/commands/eval.js');
+      await expect(
+        evalRunCommand({ project: owner, skillPath: skill, quick: true }),
+      ).rejects.toThrow('Eval managed path must stay within its owner root');
+      expect(execFileSync).not.toHaveBeenCalled();
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects an owner-local uv cache child link that resolves outside before launching uv', async () => {
+    const { promises: fs } = await vi.importActual<typeof import('node:fs')>('node:fs');
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-eval-uv-link-'));
+    const owner = path.join(root, 'owner');
+    const outside = path.join(root, 'outside');
+    const skill = path.join(root, 'skill');
+    await fs.mkdir(outside);
+    await fs.mkdir(skill);
+    await fs.writeFile(path.join(skill, 'SKILL.md'), '# Demo\n', 'utf8');
+    await fs.mkdir(path.join(owner, '.comet', 'eval', 'cache'), { recursive: true });
+    await fs.symlink(outside, path.join(owner, '.comet', 'eval', 'cache', 'uv'), 'junction');
+    try {
+      const { evalRunCommand } = await import('../../app/commands/eval.js');
+      await expect(
+        evalRunCommand({ project: owner, skillPath: skill, quick: true }),
+      ).rejects.toThrow('Eval managed path must stay within its owner root');
+      expect(execFileSync).not.toHaveBeenCalled();
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
   });
 });

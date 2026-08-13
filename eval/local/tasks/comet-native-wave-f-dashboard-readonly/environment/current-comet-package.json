@@ -11,10 +11,10 @@
     "@inquirer/type": "^4.0.5",
     "antd": "^6.5.2",
     "commander": "^14.0.0",
-    "dompurify": "^3.4.12",
+    "dompurify": "^3.4.13",
     "highlight.js": "^11.11.1",
     "marked": "^18.0.4",
-    "mermaid": "11.15.0",
+    "mermaid": "11.16.1",
     "yaml": "^2.9.0"
   }
 }

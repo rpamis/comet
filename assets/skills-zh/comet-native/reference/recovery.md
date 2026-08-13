@@ -19,7 +19,7 @@
 `comet-state.yaml` 记录最后一个可以安全恢复的工作流状态。本机 `state.json` 只说明这台机器正在执行什么；如果它缺失、版本落后或属于旧任务，Runtime 会根据 YAML、brief 和目标 Spec 重建。本机状态不能覆盖版本更新的 YAML。
 
 - Shape：保持 Shape，继续澄清或确认。
-- Build：如果 Runtime 显示 `repairing`，表示 Verify 未通过后已返回 Build。保持当前验收轮次，根据 Builder handoff、未解决的验收项和下一步继续。
+- Build：如果 Runtime 显示 `repairing`，表示 Verify 未通过后已返回 Build。普通 change 保持当前验收轮次并继续修改；Supervisor Change 按 `repair-child` 追加覆盖失败验收项、尚未完成的 child，不重开已经归档的 child。
 - Verify（`verify-ready`）：重新运行当前候选的必要检查，并启动新的 Verifier；旧设备上的通过结果不再沿用。
 - Archive（`archive-ready`）：先安全返回 Verify，把验收结果重置为待检查（`pending`），再验收已经同步到新设备的实现。
 - 等待用户或阻塞（`await-user` / `blocked`）：恢复原来的阻塞原因、负责处理的人和允许动作，等待对应条件满足后再继续。

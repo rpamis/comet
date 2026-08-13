@@ -8,12 +8,37 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 - **On-demand change review**: The new `/comet-review` Skill reviews the current Native or Classic change against its implementation diff and existing evidence, reports prioritized correctness, security, edge-case, and coverage findings, and remains read-only without advancing or replacing Verify.
 
-## What's Changed [0.4.0-beta.18] - 2026-08-12
+## What's Changed [0.4.0-beta.18] - 2026-08-13
+
+### Added
+
+- **Standalone Skill evaluation**: `comet eval ./my-skill` now evaluates any local Skill without depending on `comet-any`, supports project-authored or automatically generated tasks, offline `--collect`, independent subject and LLM-as-judge model/API routing, and explicitly installed custom Agent adapters.
+- **Selectable evaluation agents**: `comet eval` can now run the subject, user simulator, and optional Judge with Claude Code, Codex, Qoder, or CodeBuddy, selected from the CLI or eval manifest while keeping Claude Code as the default.
+- **Project-authored evaluation tasks**: Skills can now declare inline deterministic tasks or reuse package-local task definitions from `evaluation.tasks` in `comet/eval.yaml`.
+- **Automatic evaluation tasks**: A taskless Skill evaluation now generates a bounded, hash-cached task set on the first normal run while keeping `--quick` and cache-only `--collect` available for smoke and discovery workflows.
+- **Langfuse evaluation suite**: `comet eval --suite langfuse` now reports task traces, rubric scores, pass metrics, and experiment summaries to Langfuse, automatically provisions pinned official Claude Code/Codex plugins in an isolated cache, and captures Qoder/CodeBuddy transcripts without changing local scoring.
+- **Native Supervisor Change mode**: The Native Skill now recognizes large requests that benefit from independent acceptance, proposes a named child graph during the Supervisor Change Shape confirmation, automatically dispatches ready children with a serial fallback, merges them into the Supervisor Change branch in order, and verifies the final integrated result against the Supervisor Change acceptance criteria.
+- **Worktree-aware Dashboard changes**: The Dashboard now discovers Classic and Native changes across every registered Git worktree, keeps independent changes as separate root entries, and groups explicit child changes under expandable Supervisor Changes while preserving the existing detail workspace.
+- **WorkBuddy platform support**: `comet init` and `comet update` now install and refresh Comet Skills in project `.workbuddy/skills/` or user `~/.workbuddy/skills/`, and project installs merge the Comet Hook into `.workbuddy/settings.json` while preserving existing settings.
+
+### Changed
+
+- **User-level Eval configuration**: Published `comet eval` users can now configure separate Bench and LLM-as-judge credentials, endpoints, model names, and other Eval environment settings in `~/.comet/eval/.env` (or the Windows user-equivalent path), without editing the installed package or repository. A missing file is created automatically as a complete commented template and is never overwritten. Agent keys remain container-local and are never written into published assets or reports.
+- **CodeBuddy custom model routing**: CodeBuddy Eval runs now use the CLI's native API key, endpoint, model, and model-role settings, while keeping the host `models.json` and login directory outside the container.
+- **Project-local Hook write allowlist**: Projects can now configure project-relative directories under `hook.allow_paths` in `.comet/config.yaml` for shared rules or notes that must remain writable during guarded Native Shape or Classic non-coding phases, while Comet Runtime and workflow-owned artifacts remain protected. The Hook itself does not block writes outside the project, so external paths do not need to be listed.
+- **Classic workspace routing**: Classic changes now choose and prepare their current branch or Worktree during Open, reuse matching registered Worktrees, and route resume/select operations to the aligned workspace.
+- **Native workspace reuse**: Native parallel changes now reuse an existing linked Worktree for their change branch and recreate a missing Worktree when the branch remains available.
 
 ### Fixed
 
+- **macOS packaged Hook Router**: Installed Comet packages now execute the Hook Router correctly from macOS temporary paths, including paths that resolve through `/var` symlinks.
+- **Classic Guard project-root resolution**: Classic design guards now enumerate delta specs from the discovered project root even when invoked from a nested working directory.
 - **Classic OpenSpec version passthrough**: `comet classic openspec -- --version` now routes through the Classic facade before top-level CLI option parsing, so `/comet-open` compares the OpenSpec CLI version instead of Comet's own version.
 - **Codex OpenSpec skills with OpenSpec 1.8**: `comet init` and `comet update` now read OpenSpec 1.8's `.agents` Codex skill output (keeping `.codex` as a legacy fallback for OpenSpec 1.7 and earlier), so project OpenSpec skills are refreshed to the installed CLI version instead of being reported as installed while staying stale. A missing or empty staged tool output now fails the OpenSpec update with a clear reason instead of silently reporting success.
+
+### Security
+
+- **Dependency security updates**: Updated DOMPurify, Mermaid, and Nanoid to patched releases to address reported XSS, denial-of-service, prototype-pollution, CSS-injection, and resource-exhaustion vulnerabilities.
 
 ## What's Changed [0.4.0-beta.17] - 2026-08-10
 

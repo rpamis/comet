@@ -45,8 +45,12 @@ Use the configured Comet artifact language as the output language for every Open
 After the runtime route, Ambient Resume, or user choice resolves one explicit change, bind the current execution context before entering its phase Skill:
 
 ```bash
+comet classic workspace resolve <change-name> --json
+# enter the returned projectRoot; state select writes the selection there
 comet state select <change-name>
 ```
+
+Workspace decisions happen in `/comet-open` and follow `comet-classic/reference/workspace.md`: explicit parallel, simultaneous, or multi-session intent prepares a Worktree before binding; when isolation is unspecified, present `current`, `branch`, and `worktree` as a single-choice decision when needed, with recommendations as explanation only. Preparation and resume scan registered Worktrees and prefer the one whose branch matches. Ask for rebind when the branch was renamed, taken over, or its ownership cannot be confirmed.
 
 When multiple active changes exist and the user has not selected one, do not bind early; keep the existing `ask_user` decision point.
 
@@ -131,7 +135,8 @@ Prefer reading `<classic-change-dir>/.comet.yaml`. If not available, fall back t
   - If `build_pause: plan-ready` but `isolation`, `build_mode`, `tdd_mode`, and `review_mode` are all already set, treat as stale pause: first output `[COMET] Detected stale pause (build_pause=plan-ready but isolation/build_mode/tdd_mode/review_mode are set), auto-clearing and continuing`, then run `comet state set <name> build_pause null`, then read the next unchecked task from tasks.md and resume execution per `build_mode`
   - If `build_pause: plan-ready` and the plan file exists, but `isolation`, `build_mode`, `tdd_mode`, or `review_mode` is not yet set, return to the `/comet-build` plan-ready resume point, prompt the user to complete/confirm workspace isolation, execution method, TDD mode, and code review mode, and do not regenerate the plan
   - If `build_pause: plan-ready` but the plan file is missing, return to `/comet-build` to handle corrupted state or regenerate the plan
-  - If `isolation`, `build_mode`, `tdd_mode`, or `review_mode` is unset, return to the corresponding `/comet-build` step to supplement before executing
+  - If an older change has no `isolation`, return to `/comet-open` for workspace resolve/prepare; do not make the first workspace decision in Build
+  - If `build_mode`, `tdd_mode`, or `review_mode` is unset, return to the corresponding `/comet-build` step to supplement before executing
   - If all are set, read the next unchecked task from tasks.md and continue:
     - If `build_mode: subagent-driven-development`, do not execute tasks directly in the main window; return to `/comet-build`'s background subagent dispatch rules, main window only coordinates
     - Other execution modes follow `/comet-build`'s corresponding rules
@@ -194,13 +199,14 @@ Nodes requiring user participation (pause only at these nodes):
 1. Workflow target selection: multiple active changes, continue an existing change versus create a new one, or choose which completed batch item starts first
 2. Open-phase final proposal/design/tasks review, including the change name and scope; clear requests have no pre-artifact summary/name confirmation
 3. Confirm the design approach during brainstorming
-4. One joint build decision: plan-ready pause or all workflow settings (workspace isolation + execution method + TDD mode + code review mode, plus branch name when branch is selected)
-5. Verify-phase acceptance of WARNING/SUGGESTION deviations, Spec drift handling, or continue/stop after the 4th failure; the first 3 clearly repairable failures close automatically
-6. Archive phase final confirmation before running the archive script
-7. Choose finishing-branch handling after exact archive changes are committed
-8. Encounter an upgrade-assessment signal (hotfix/tweak → user chooses one of two: continue preset / upgrade to full workflow)
-9. Build phase scope expansion requiring redesign or new change split
-10. Open phase large PRD split confirmation
+4. Open-phase workspace decision: explicit parallel intent automatically uses a Worktree; when isolation is unclear, present the legal `current`, `branch`, and `worktree` choices as one decision
+5. One joint build decision: plan-ready pause, execution method, TDD mode, and code review mode
+6. Verify-phase acceptance of WARNING/SUGGESTION deviations, Spec drift handling, or continue/stop after the 4th failure; the first 3 clearly repairable failures close automatically
+7. Archive phase final confirmation before running the archive script
+8. Choose finishing-branch handling after exact archive changes are committed
+9. Encounter an upgrade-assessment signal (hotfix/tweak → user chooses one of two: continue preset / upgrade to full workflow)
+10. Build phase scope expansion requiring redesign or new change split
+11. Open phase large PRD split confirmation
 
 Agents should not skip these decision points; other unambiguous phase transitions must proceed automatically, must not exit midway. At decision points, **must not skip user confirmation or choose automatically — ask clear options and wait for the user's explicit choice before continuing**.
 

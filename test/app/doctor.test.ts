@@ -1354,6 +1354,7 @@ describe('doctor command', () => {
     'qwen',
     'kiro',
     'codebuddy',
+    'workbuddy',
     'qoder',
   ])('recognizes exactly one healthy Router for the %s platform', async (id) => {
     const target = PLATFORMS.find((platform) => platform.id === id)!;

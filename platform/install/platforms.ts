@@ -259,9 +259,20 @@ export const PLATFORMS: Platform[] = [
   { id: 'junie', name: 'Junie', skillsDir: '.junie', openspecToolId: 'junie' },
   {
     id: 'codebuddy',
-    name: 'CodeBuddy Code',
+    name: 'CodeBuddy',
     skillsDir: '.codebuddy',
     globalSkillsDir: '.codebuddy',
+    openspecToolId: 'codebuddy',
+    supportsHooks: true,
+    hookFormat: 'codebuddy',
+  },
+  {
+    id: 'workbuddy',
+    name: 'WorkBuddy',
+    skillsDir: '.workbuddy',
+    globalSkillsDir: '.workbuddy',
+    // WorkBuddy currently shares CodeBuddy's OpenSpec-compatible generated
+    // Skill shape; Comet copies the generated output into .workbuddy below.
     openspecToolId: 'codebuddy',
     supportsHooks: true,
     hookFormat: 'codebuddy',

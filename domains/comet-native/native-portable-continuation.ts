@@ -1,3 +1,4 @@
+import type { NativeChildrenInspection } from './native-children.js';
 import type { NativePortableState } from './native-portable-types.js';
 
 export interface NativePortableRunnerAction {
@@ -21,6 +22,7 @@ export interface NativePortableContinuation {
     | 'confirm-verifier-unavailable'
     | 'resolve-verifier-blocker'
     | 'resolve-loop-stop'
+    | 'advance-children'
     | 'builder-handoff'
     | 'dispatch-verifier'
     | 'await-verifier'
@@ -40,7 +42,10 @@ export interface NativePortableContinuation {
   runnerAction: NativePortableRunnerAction;
 }
 
-export function nativePortableContinuation(state: NativePortableState): NativePortableContinuation {
+export function nativePortableContinuation(
+  state: NativePortableState,
+  children?: NativeChildrenInspection | null,
+): NativePortableContinuation {
   const base = {
     schema: 'comet.native.continuation.v2' as const,
     skill: 'comet-native' as const,
@@ -259,6 +264,70 @@ export function nativePortableContinuation(state: NativePortableState): NativePo
     };
   }
   if (state.phase === 'build') {
+    if (children) {
+      if (!children.confirmed) {
+        return {
+          ...base,
+          disposition: 'continue',
+          action: 'advance-children',
+          commandArgs: ['comet', 'native', 'next', state.name, '--summary', '<summary>'],
+          requiredInputs: ['summary'],
+          inputOptions: [
+            {
+              name: 'summary',
+              flag: '--summary',
+              valueKind: 'text',
+              required: true,
+              template: null,
+            },
+          ],
+          runnerAction: runner('none'),
+        };
+      }
+      if (state.loop.stage === 'repairing' && state.verification_result === 'fail') {
+        return {
+          ...base,
+          disposition: 'continue',
+          action: 'repair',
+          commandArgs: null,
+          requiredInputs: ['repair-child'],
+          inputOptions: [],
+          runnerAction: runner('none'),
+        };
+      }
+      if (children.allDone) {
+        return {
+          ...base,
+          disposition: 'continue',
+          action: 'advance-children',
+          commandArgs: ['comet', 'native', 'next', state.name, '--summary', '<summary>'],
+          requiredInputs: ['summary'],
+          inputOptions: [
+            {
+              name: 'summary',
+              flag: '--summary',
+              valueKind: 'text',
+              required: true,
+              template: null,
+            },
+          ],
+          runnerAction: runner('none'),
+        };
+      }
+      const blocked = children.children.some(({ status }) => status === 'blocked');
+      const progressing = children.children.some(
+        ({ status }) => status === 'ready' || status === 'active',
+      );
+      return {
+        ...base,
+        disposition: blocked && !progressing ? 'blocked' : 'continue',
+        action: 'advance-children',
+        commandArgs: null,
+        requiredInputs: blocked && !progressing ? ['resolve-child-blocker'] : ['ready-children'],
+        inputOptions: [],
+        runnerAction: runner('none'),
+      };
+    }
     return {
       ...base,
       disposition: 'continue',

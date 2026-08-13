@@ -137,6 +137,21 @@ describe('Native portable Archive', () => {
     return verifyState(await confirmNativePortableShape({ paths, name }));
   }
 
+  it('rejects malformed Archive options before dispatching to storage', async () => {
+    await expect(
+      nativeArchiveCommand(['archive-change', '--serial-first', 'BadName'], root),
+    ).rejects.toThrow('--serial-first must be one Native change name');
+    await expect(
+      nativeArchiveCommand(['archive-change', '--finish', 'invalid'], root),
+    ).rejects.toThrow('--finish must be merge, push, pull-request, or keep');
+    await expect(
+      nativeArchiveCommand(['archive-change', '--serial-first', 'first-change'], root),
+    ).rejects.toThrow('--serial-first is only valid for portable Native changes');
+    await expect(
+      nativeArchiveCommand(['archive-change', '--finish', 'keep'], root),
+    ).rejects.toThrow('--finish is only valid with --dry-run');
+  });
+
   it('applies full specs, finalizes YAML/report, moves the change, and removes local Runtime', async () => {
     const state = await archiveReady();
     expect(await inspectNativePortableArchive({ paths, name: state.name })).toMatchObject({

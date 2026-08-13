@@ -35,6 +35,8 @@ function hookConfigPath(baseDir: string, platformId: string): string {
       return path.join(baseDir, '.qoder', 'settings.json');
     case 'codebuddy':
       return path.join(baseDir, '.codebuddy', 'settings.json');
+    case 'workbuddy':
+      return path.join(baseDir, '.workbuddy', 'settings.json');
     case 'gemini':
       return path.join(baseDir, '.gemini', 'settings.json');
     case 'windsurf':
@@ -132,6 +134,7 @@ describe('platform component inspection', () => {
     'qwen',
     'qoder',
     'codebuddy',
+    'workbuddy',
     'gemini',
     'windsurf',
     'trae',
@@ -163,6 +166,7 @@ describe('platform component inspection', () => {
     'qwen',
     'qoder',
     'codebuddy',
+    'workbuddy',
     'gemini',
     'windsurf',
     'trae',
@@ -391,6 +395,7 @@ describe('platform component inspection', () => {
     'qwen',
     'qoder',
     'codebuddy',
+    'workbuddy',
     'gemini',
     'windsurf',
     'github-copilot',
@@ -419,6 +424,7 @@ describe('platform component inspection', () => {
     'qwen',
     'qoder',
     'codebuddy',
+    'workbuddy',
     'gemini',
     'windsurf',
     'github-copilot',

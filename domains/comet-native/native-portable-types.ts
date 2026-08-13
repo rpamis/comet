@@ -149,6 +149,7 @@ export interface NativePortableState {
   status: NativePortableStatus;
   state_version: number;
   brief: 'brief.md';
+  children_contract_hash?: string;
   spec_changes: NativePortableSpecChange[];
   workspace: NativePortableWorkspace;
   loop: NativePortableLoopState;

@@ -26,6 +26,7 @@ import {
 const NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 const CAPABILITY_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 const ACCEPTANCE_ID_PATTERN = /^A[1-9][0-9]*$/u;
+const HASH_PATTERN = /^[a-f0-9]{64}$/u;
 
 const ROOT_KEYS = new Set([
   'schema',
@@ -35,6 +36,7 @@ const ROOT_KEYS = new Set([
   'status',
   'state_version',
   'brief',
+  'children_contract_hash',
   'spec_changes',
   'workspace',
   'loop',
@@ -89,6 +91,12 @@ function stringValue(value: unknown, label: string, options?: { empty?: boolean 
 
 function nullableString(value: unknown, label: string): string | null {
   return value === null ? null : stringValue(value, label);
+}
+
+function hashValue(value: unknown, label: string): string {
+  const result = stringValue(value, label);
+  if (!HASH_PATTERN.test(result)) throw new Error(`${label} must be a SHA-256 hash`);
+  return result;
 }
 
 function booleanValue(value: unknown, label: string): boolean {
@@ -720,6 +728,14 @@ export function parseNativePortableState(value: unknown): NativePortableState {
     ),
     state_version: integerValue(root.state_version, 'Native state_version', 1),
     brief: 'brief.md',
+    ...(root.children_contract_hash === undefined
+      ? {}
+      : {
+          children_contract_hash: hashValue(
+            root.children_contract_hash,
+            'Native children contract hash',
+          ),
+        }),
     spec_changes,
     workspace: parseWorkspace(root.workspace),
     loop: parseLoop(root.loop),

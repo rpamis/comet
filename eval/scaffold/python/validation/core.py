@@ -20,6 +20,49 @@ TEST_CONTEXT_FILE = os.environ.get("BENCH_TEST_CONTEXT", "_test_context.json")
 TEST_RESULTS_FILE = os.environ.get("BENCH_TEST_RESULTS", "_test_results.json")
 
 
+def _normalize_skill_invocations(events: object, outputs: dict | None) -> list[str]:
+    """Use the Agent contract when the full scaffold is available.
+
+    Validator sidecars intentionally copy only a small subset of the scaffold,
+    so keep this helper import-local and preserve the historical fallback there.
+    """
+    try:
+        from scaffold.python.agents import normalize_skill_invocations
+    except ModuleNotFoundError:
+        if not isinstance(events, dict):
+            return []
+        output_data = outputs if isinstance(outputs, dict) else {}
+        event_agent = events.get("agent")
+        output_agent = output_data.get("agent")
+        agent = output_agent if isinstance(output_agent, str) else event_agent
+        if isinstance(agent, str) and agent not in {
+            "claude-code",
+            "codex",
+            "qoder",
+            "codebuddy",
+        }:
+            # Validator sidecars do not carry the host-side adapter registry.
+            # A custom Agent must therefore provide explicit invocation events;
+            # artifacts or legacy path inference are not sufficient evidence.
+            explicit = events.get("skill_invocations")
+            return (
+                [item for item in explicit if isinstance(item, str)]
+                if isinstance(explicit, list)
+                else []
+            )
+        invoked = events.get("skills_invoked")
+        return (
+            [item for item in invoked if isinstance(item, str)]
+            if isinstance(invoked, list)
+            else []
+        )
+    return normalize_skill_invocations(
+        events,
+        agent=(outputs or {}).get("agent"),
+        adapter=(outputs or {}).get("agent_adapter"),
+    )
+
+
 def load_test_context(path: str = TEST_CONTEXT_FILE) -> dict:
     """Load test context (run_id, events, langsmith_env, etc.) written by the host.
 
@@ -141,6 +184,9 @@ def run_validators(
     Returns:
         Combined (passed, failed) lists
     """
+    events = outputs.get("events") if isinstance(outputs, dict) else None
+    if isinstance(events, dict):
+        events["skills_invoked"] = _normalize_skill_invocations(events, outputs)
     all_passed, all_failed = [], []
     for validator in validators:
         passed, failed = validator(test_dir, outputs)
@@ -164,7 +210,7 @@ def check_starter_skill_first(
         return ["Note: starter skill check skipped (ALL_MAIN_SKILLS)"], []
 
     events = outputs.get("events", {}) if outputs else {}
-    skills_invoked = events.get("skills_invoked", [])
+    skills_invoked = _normalize_skill_invocations(events, outputs)
 
     # No skills invoked at all (e.g. CONTROL treatment) — nothing to check
     if not skills_invoked:
@@ -205,7 +251,7 @@ def check_skill_invoked(
         (passed, failed) lists
     """
     events = outputs.get("events", {}) if outputs else {}
-    skills_invoked = events.get("skills_invoked", [])
+    skills_invoked = _normalize_skill_invocations(events, outputs)
 
     if skill_name in skills_invoked:
         return [f"Invoked {skill_name} skill"], []
