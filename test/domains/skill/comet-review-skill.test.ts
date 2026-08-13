@@ -18,6 +18,7 @@ describe('comet-review 中文 Skill', () => {
     expect(source).toContain('不修改、创建或删除文件');
     expect(source).toContain('不运行 `comet state select`');
     expect(source).toContain('不推进 phase');
+    expect(source).toContain('独立于 `review_mode`');
     expect(source).toContain('不能替代 `/comet-verify` 或 Native Verify');
   });
 
@@ -73,6 +74,7 @@ describe('comet-review bilingual contract', () => {
     expect(source).toContain('comet native show <change-name> --json');
     expect(source).toContain('comet native status <change-name> --details --json');
     expect(source).toContain('committed, staged, and unstaged changes');
+    expect(source).toContain('independent of `review_mode`');
     expect(source).toContain('cannot replace `/comet-verify` or Native Verify');
   });
 

@@ -8,6 +8,8 @@ disable-model-invocation: true
 
 Run an on-demand, read-only code review for the currently selected Comet change. This entry is phase-neutral and does not replace Build or Verify validation and review.
 
+This entry is independent of `review_mode`: `review_mode` controls the in-workflow automatic review policy, while `/comet-review` represents a single review manually triggered by the user. Invoking this entry must not read, modify, or override the current change's `review_mode`.
+
 ## Invariants
 
 The entire Skill invocation must remain read-only:

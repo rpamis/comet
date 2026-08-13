@@ -8,6 +8,8 @@ disable-model-invocation: true
 
 对当前选中的 Comet change 执行一次按需、只读的代码审查。这个入口不属于任何阶段，也不替代 Build 或 Verify 的验证和审查。
 
+本入口独立于 `review_mode`：`review_mode` 控制流程内的自动 review 策略，而 `/comet-review` 只代表用户手动触发的单次审查；调用本入口不得读取、修改或覆盖当前 change 的 `review_mode`。
+
 ## 不可变约束
 
 本 Skill 的整个调用必须保持只读：
