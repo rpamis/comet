@@ -189,6 +189,26 @@ export const PLATFORMS: Platform[] = [
     hookFormat: 'gemini',
   },
   {
+    id: 'grok',
+    name: 'Grok',
+    // Project Skills share Codex's .agents root; Grok also scans that directory.
+    // Global Skills and all Grok-owned config live under .grok.
+    skillsDir: '.agents',
+    globalSkillsDir: '.grok',
+    configDir: '.grok',
+    globalConfigDir: '.grok',
+    detectionPaths: ['.grok'],
+    // OpenSpec has no grok tool; reuse Codex so Classic skills land in .agents.
+    openspecToolId: 'codex',
+    openspecSkillsDir: '.agents',
+    rulesBaseDir: '.grok',
+    rulesDir: 'rules',
+    rulesFormat: 'md',
+    supportsHooks: true,
+    hookFormat: 'claude-code',
+    hookConfigFile: 'hooks/comet.json',
+  },
+  {
     id: 'amazon-q',
     name: 'Amazon Q Developer',
     skillsDir: '.amazonq',

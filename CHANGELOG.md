@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-beta.21] - 2026-08-17
+
+### Added
+
+- **Grok platform support**: `comet init`, `comet update`, `comet doctor`, and `comet uninstall` now treat Grok as a first-class host. Skills, rules, and the Hook Router live under `.grok/skills/`, `.grok/rules/`, and `.grok/hooks/comet.json`. The Router recognizes `--platform grok` and matches Grok's native `write` / `search_replace` tools.
+
 ## What's Changed [0.4.0-beta.20] - 2026-08-16
 
 ### Added

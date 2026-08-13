@@ -54,6 +54,7 @@ describe('superpowers', () => {
     it('maps platforms to valid skills CLI agent ids', async () => {
       const { SKILLS_AGENT_MAP } = await import('../../../domains/integrations/superpowers.js');
       expect(SKILLS_AGENT_MAP['gemini']).toBe('gemini-cli');
+      expect(SKILLS_AGENT_MAP['grok']).toBe('codex');
       expect(SKILLS_AGENT_MAP['qwen']).toBe('qwen-code');
       expect(SKILLS_AGENT_MAP['kiro']).toBe('kiro-cli');
       expect(SKILLS_AGENT_MAP['kimicode']).toBe('kimi-code-cli');
@@ -66,7 +67,7 @@ describe('superpowers', () => {
       expect(SKILLS_AGENT_MAP['mimocode']).toBeNull();
     });
 
-    it('has entries for all 34 platforms', async () => {
+    it('has entries for all 35 platforms', async () => {
       const { SKILLS_AGENT_MAP } = await import('../../../domains/integrations/superpowers.js');
       const platformIds = [
         'claude',
@@ -79,6 +80,7 @@ describe('superpowers', () => {
         'continue',
         'github-copilot',
         'gemini',
+        'grok',
         'amazon-q',
         'qwen',
         'kilocode',
@@ -107,7 +109,7 @@ describe('superpowers', () => {
       for (const id of platformIds) {
         expect(SKILLS_AGENT_MAP).toHaveProperty(id);
       }
-      expect(Object.keys(SKILLS_AGENT_MAP)).toHaveLength(34);
+      expect(Object.keys(SKILLS_AGENT_MAP)).toHaveLength(35);
     });
   });
 

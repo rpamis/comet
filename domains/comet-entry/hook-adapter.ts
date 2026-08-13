@@ -11,6 +11,7 @@ const WRITE_TOOL_NAMES = new Set([
   'edit',
   'editfile',
   'patch',
+  'searchreplace',
   'strreplaceeditor',
   'write',
   'writefile',
@@ -46,6 +47,7 @@ export const COMET_HOOK_PLATFORM_IDS = new Set([
   'qoder',
   'trae',
   'trae-cn',
+  'grok',
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {

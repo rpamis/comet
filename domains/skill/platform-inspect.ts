@@ -12,6 +12,7 @@ import {
   computeRuleDestPath,
   isManagedHookCommand,
   readManifest,
+  resolveClaudeCodeHookMatcher,
 } from './platform-install.js';
 import { readJsonObjectFile } from './json-object.js';
 import type { InitWorkflowSelection } from '../comet-entry/types.js';
@@ -392,14 +393,20 @@ export async function inspectCometHooksForPlatform(
         path.join(platformBase, platform.hookConfigFile ?? 'settings.local.json'),
         expectedHooks,
         (config) => collectGroupedCommands(config, 'PreToolUse'),
-        (config, expected) => countGroupedHookMatches(config, 'PreToolUse', expected),
+        (config, expected) =>
+          countGroupedHookMatches(config, 'PreToolUse', expected, (matcher) =>
+            resolveClaudeCodeHookMatcher(platform.id, matcher),
+          ),
       );
       for (const legacyFile of platform.legacyHookConfigFiles ?? []) {
         const legacy = await inspectSingleHookJson(
           path.join(platformBase, legacyFile),
           expectedHooks,
           (config) => collectGroupedCommands(config, 'PreToolUse'),
-          (config, expected) => countGroupedHookMatches(config, 'PreToolUse', expected),
+          (config, expected) =>
+            countGroupedHookMatches(config, 'PreToolUse', expected, (matcher) =>
+              resolveClaudeCodeHookMatcher(platform.id, matcher),
+            ),
         );
         if (legacy.error) {
           inspection = { ...inspection, present: false, error: legacy.error };

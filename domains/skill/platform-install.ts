@@ -1451,6 +1451,14 @@ async function readSettingsJsonObject(
   });
 }
 
+/** Grok aliases Write/Edit to search_replace, but its native write tool is a separate name. */
+function resolveClaudeCodeHookMatcher(platformId: string, matcher: string): string {
+  if (platformId === 'grok' && matcher === 'Write|Edit') {
+    return 'Write|Edit|write|search_replace';
+  }
+  return matcher;
+}
+
 /**
  * Claude-shaped JSON format used by Claude Code, Codex, and Amazon Q.
  * Defaults to settings.local.json; platform metadata may override the filename.
@@ -1476,10 +1484,11 @@ async function installClaudeCodeHooks(
   const matcherGroups: Record<string, Array<{ type: string; command: string }>> = {};
   for (const [scriptRelPath, config] of Object.entries(hooksConfig)) {
     const command = buildHookCommand(baseDir, skillsDir, scriptRelPath, context);
-    if (!matcherGroups[config.matcher]) {
-      matcherGroups[config.matcher] = [];
+    const matcher = resolveClaudeCodeHookMatcher(context.platformId, config.matcher);
+    if (!matcherGroups[matcher]) {
+      matcherGroups[matcher] = [];
     }
-    matcherGroups[config.matcher].push({ type: 'command', command });
+    matcherGroups[matcher].push({ type: 'command', command });
   }
 
   const newEntries: ClaudeCodeHookEntry[] = Object.entries(matcherGroups).map(
@@ -2134,6 +2143,7 @@ export {
   computeRuleDestPath,
   formatRuleContent,
   isManagedHookCommand,
+  resolveClaudeCodeHookMatcher,
   removeManagedCopilotHookEntries,
   buildHookCommand,
   removeManagedHooksFromJsonFile,

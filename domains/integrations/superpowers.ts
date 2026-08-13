@@ -18,6 +18,8 @@ const SKILLS_AGENT_MAP: Record<string, string | null> = {
   continue: 'continue',
   'github-copilot': 'github-copilot',
   gemini: 'gemini-cli',
+  // Grok reads Superpowers from the shared .agents root that Codex owns.
+  grok: 'codex',
   'amazon-q': 'universal',
   qwen: 'qwen-code',
   kilocode: 'kilo',

@@ -72,6 +72,24 @@ describe('detect', () => {
       expect(getPlatformSkillsDirs(codex!, 'global')).toEqual(['.agents', '.codex']);
     });
 
+    it('declares Grok project Skills on .agents and Grok-owned config under .grok', () => {
+      const grok = PLATFORMS.find((platform) => platform.id === 'grok');
+
+      expect(grok).toBeDefined();
+      expect(grok?.skillsDir).toBe('.agents');
+      expect(grok?.globalSkillsDir).toBe('.grok');
+      expect(grok?.configDir).toBe('.grok');
+      expect(grok?.globalConfigDir).toBe('.grok');
+      expect(grok?.detectionPaths).toEqual(['.grok']);
+      expect(grok?.openspecToolId).toBe('codex');
+      expect(grok?.openspecSkillsDir).toBe('.agents');
+      expect(grok?.rulesBaseDir).toBe('.grok');
+      expect(grok?.hookFormat).toBe('claude-code');
+      expect(grok?.hookConfigFile).toBe('hooks/comet.json');
+      expect(getPlatformSkillsDir(grok!, 'project')).toBe('.agents');
+      expect(getPlatformSkillsDir(grok!, 'global')).toBe('.grok');
+    });
+
     it('declares Kimi Code global skills under the user .kimi-code directory', () => {
       const kimicode = PLATFORMS.find((platform) => platform.id === 'kimicode');
 
@@ -175,6 +193,12 @@ describe('detect', () => {
       await fs.mkdir(path.join(tmpDir, '.github'));
       const detected = await detectPlatforms(tmpDir);
       expect(detected.has('github-copilot')).toBe(false);
+    });
+
+    it('detects grok from the .grok config directory', async () => {
+      await fs.mkdir(path.join(tmpDir, '.grok'));
+      const detected = await detectPlatforms(tmpDir);
+      expect(detected.has('grok')).toBe(true);
     });
 
     it('detects multiple platforms', async () => {
