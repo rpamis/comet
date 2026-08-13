@@ -74,7 +74,7 @@ Read the returned brief, complete proposed Specs, acceptance items, Builder hand
 1. Run `git status --short` first and record the boundaries of committed, staged, unstaged, and untracked work.
 2. For Classic, prefer the `base_ref` after verifying that it identifies a commit. If the plan frontmatter provides a valid `base-ref`, it must agree with the state baseline; otherwise report uncertain scope and stop.
 3. For Native, prefer the verified target/change branch relationship from state and the current candidate's implementation-scope evidence.
-4. Inspect the complete diff from the trusted baseline to the current worktree, including committed, staged, and unstaged changes. Directly read untracked source or test files owned by the current change and label them as untracked.
+4. Inspect the complete diff from the trusted baseline to the current worktree, including committed, staged, and unstaged changes. Directly read all untracked files owned by the current change, including source, tests, documentation, configuration, and metadata (for example, `SKILL.md` and `agents/openai.yaml`), and label them as untracked.
 5. Exclude diffs clearly owned by another change or unrelated user work. If ownership cannot be established reliably, report a scope conflict and stop instead of guessing.
 
 When no trusted baseline exists, review only the visible worktree diff and prominently label the review scope as incomplete.

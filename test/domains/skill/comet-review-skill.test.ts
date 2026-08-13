@@ -112,6 +112,8 @@ describe('comet-review bilingual contract', () => {
     expect(source).toContain('comet native show <change-name> --json');
     expect(source).toContain('comet native status <change-name> --details --json');
     expect(source).toContain('committed, staged, and unstaged changes');
+    expect(source).toContain('all untracked files');
+    expect(source).toContain('documentation, configuration, and metadata');
     expect(source).toContain('independent of `review_mode`');
     expect(source).toContain('cannot replace `/comet-verify` or Native Verify');
     expectReadOnlyCommandContract(source, 'Do not run `comet state select`');
