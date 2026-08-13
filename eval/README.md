@@ -89,6 +89,7 @@ cp .env.example ~/.comet/eval/.env
 | `TRACE_TO_LANGSMITH`                                               | ❌   | 兼容旧配置的 LangSmith 追踪开关                                                                       |
 | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY`                     | Langfuse | `--suite langfuse` 运行模式的项目凭据；只从当前进程读取，不写入报告或 manifest                  |
 | `LANGFUSE_BASE_URL` / `LANGFUSE_TRACING_ENVIRONMENT`              | ❌   | Langfuse 区域地址与 trace 环境标签                                                               |
+| `COMET_EVAL_ADAPTERS_DIR`                                         | ❌   | 覆盖自定义 Agent 适配器注册目录；默认是用户目录下的 `~/.comet/eval/adapters`                  |
 
 `*` 主任务至少需要 `BENCH_API_KEY` 或所选 Agent 的原生凭据之一。Claude Code、Codex 和 CodeBuddy 支持 `BENCH_BASE_URL`；Qoder 使用其官方支持的认证和服务地址配置。
 
@@ -192,12 +193,21 @@ comet eval ./my-skill \
 comet eval ./my-skill --collect
 ```
 
-自定义 Agent 通过用户目录下显式安装的适配器注册，不会从 PATH 自动发现：
-`~/.comet/eval/adapters/<agent-id>/adapter.yaml`。适配器声明自己的可执行文件、npm/pip
-安装包、模型和 API 地址环境变量、凭据名称，以及 `resume`、结构化事件和 Skill 调用证据能力。
-安装后即可使用 `comet eval ./my-skill --agent <agent-id>`；主模型和 Judge 仍然可以分别配置。
+### 扩展自定义 Agent
 
-自定义 Agent 的最小配置示例：
+非预定义的 Agent 不需要修改 Comet 源码，也不需要把适配器放进 npm 包。用户在自己的配置目录
+中显式注册即可，Eval 不会仅因为某个可执行文件在 `PATH` 中就自动发现它：
+
+| 系统 | 默认适配器目录 |
+| --- | --- |
+| macOS/Linux | `~/.comet/eval/adapters/<agent-id>/adapter.yaml` |
+| Windows | `%USERPROFILE%\\.comet\\eval\\adapters\\<agent-id>\\adapter.yaml` |
+
+也可以在用户级 `~/.comet/eval/.env`（Windows 为 `%USERPROFILE%\\.comet\\eval\\.env`）中设置
+`COMET_EVAL_ADAPTERS_DIR`，把整个适配器注册表放到其他位置。`<agent-id>` 必须是小写字母开头、
+只包含小写字母/数字/连字符、长度 2–32 的标识符。
+
+创建 `<agent-id>/adapter.yaml`，例如：
 
 ```yaml
 apiVersion: comet.eval.agent/v1alpha1
@@ -216,6 +226,61 @@ capabilities:
   telemetry: false
   skillInvocationEvidence: true
 ```
+
+字段含义：
+
+- `runtime.executable` 是容器内实际启动的命令；npm/pip 包必须暴露这个可执行入口。
+  `runtime.install.kind` 可为 `npm`、`pip` 或 `none`；使用 `npm`/`pip` 时 Eval 会在本次 Docker
+  镜像构建中安装对应包，`none` 表示命令已在基础镜像中准备好。
+- `credentials` 只能填写最多两个环境变量名，不要填写密钥值。主 Agent 运行时，只有这些声明的
+  环境变量会被转发到容器；Judge 运行时，`BENCH_JUDGE_API_KEY` 映射到第一个凭据名，
+  `BENCH_JUDGE_AUTH_TOKEN` 映射到第二个凭据名（如果声明了第二个）。
+- `modelEnv` 和 `baseUrlEnv` 是可选的环境变量名。主 Agent 可通过这些变量，或 CLI 的
+  `--model`/`--base-url`，或 manifest 的 `execution.model`/`execution.baseUrl` 配置；自定义 Agent
+  不会自动把 `BENCH_MODEL`、`BENCH_BASE_URL` 或 `BENCH_API_KEY` 映射到自定义变量。
+- `capabilities` 描述适配器的真实能力。`resume` 用于 `auto_user` 多轮交互；`structuredEvents`
+  要求 CLI 输出 JSON Lines；`skillInvocationEvidence` 表示输出中能提供明确的 Skill 调用事件；
+  `telemetry: false` 时报告中的 token/cost 可以是 `N/A`。运行真实评估至少需要
+  `singleTurn`、`resume`、`structuredEvents` 和 `skillInvocationEvidence` 为 `true`。
+
+自定义 CLI 必须接受 Eval 生成的调用形态：
+
+```text
+<executable> -p "<prompt>" --output-format stream-json --model <model> [--resume <session-id>]
+```
+
+并把每条结构化事件写到 stdout。若要让 rubric 认定 Skill 被调用，输出中需要有类似下面的 JSONL
+事件（普通文件产物或路径推断不算自定义 Agent 的调用证据）：
+
+```json
+{"type":"skill_invocation","skill":"my-skill"}
+```
+
+在用户级 `.env` 中填写适配器声明的变量，然后运行：
+
+```dotenv
+BENCH_EVAL_AGENT=my-agent
+MY_AGENT_API_KEY=your-subject-key
+MY_AGENT_MODEL=your-model
+MY_AGENT_BASE_URL=https://your-provider.example/v1
+
+# 如果让它作为独立 Judge：
+# BENCH_LLM_JUDGE=1
+# BENCH_JUDGE_AGENT=my-agent
+# BENCH_JUDGE_API_KEY=your-judge-key
+# BENCH_JUDGE_MODEL=your-judge-model
+# BENCH_JUDGE_BASE_URL=https://your-judge-provider.example/v1
+```
+
+```bash
+comet eval ./my-skill --collect --agent my-agent
+comet eval ./my-skill --quick --agent my-agent --model your-model
+```
+
+`--collect` 会校验适配器和配置但不会启动 Agent、Docker 或联网；确认通过后再运行真实评估。
+如果你的 CLI 不能兼容上述参数和 JSONL 事件契约，需要提供一个 wrapper CLI，将它转换为该契约；
+当前 `adapter.yaml` 不支持自定义参数模板或直接挂载宿主机 Agent 配置目录。适配器文件可以分发给
+团队成员，但真实凭据必须留在每个人自己的用户级 `.env` 或当前 shell 中。
 
 ### 评估任意 Skill
 

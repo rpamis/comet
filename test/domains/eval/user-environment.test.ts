@@ -52,6 +52,8 @@ describe('user eval environment', () => {
     expect(template).toContain('# BENCH_JUDGE_MODEL=');
     expect(template).toContain('# BENCH_JUDGE_AGENT=');
     expect(template).toContain('# CODEBUDDY_CODE_SUBAGENT_MODEL=');
+    expect(template).toContain('# COMET_EVAL_ADAPTERS_DIR=');
+    expect(template).toContain('# MY_AGENT_API_KEY=');
     expect(template).toContain('# LANGFUSE_SECRET_KEY=');
   });
 
