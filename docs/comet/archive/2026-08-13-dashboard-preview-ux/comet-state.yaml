@@ -2,8 +2,8 @@ schema: comet.native.v4
 name: dashboard-preview-ux
 language: zh-CN
 phase: archive
-status: active
-state_version: 24
+status: done
+state_version: 25
 brief: brief.md
 spec_changes:
   - capability: dashboard-artifact-preview
@@ -15,7 +15,7 @@ workspace:
   target_branch: master
   finish: keep
 loop:
-  stage: archive-ready
+  stage: done
   goal_cycle: 2
   iteration: 4
   attempt: 1
@@ -24,7 +24,7 @@ loop:
   no_progress_count: 0
   execution_failure_count: 0
   previous_unresolved_ids: []
-  next_action: archive
+  next_action: null
 acceptance:
   - id: A1
     source: brief.md
@@ -274,5 +274,5 @@ history_overflow:
     recovery: 0
 verification_result: pass
 verification_report: verification.md
-archived: false
+archived: true
 created_at: 2026-08-13T12:05:30.984Z
