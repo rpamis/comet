@@ -150,7 +150,7 @@
     "@inquirer/type": "^4.0.5",
     "ajv": "^8.17.1",
     "antd": "^6.5.2",
-    "commander": "^14.0.0",
+    "commander": "^15.0.0",
     "dompurify": "^3.4.13",
     "highlight.js": "^11.11.1",
     "marked": "^18.0.4",
