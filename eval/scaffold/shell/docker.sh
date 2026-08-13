@@ -69,6 +69,8 @@ ENV_KEYS=(
     CODEBUDDY_AUTH_TOKEN
     CODEBUDDY_BASE_URL
     CODEBUDDY_MODEL
+    CODEBUDDY_CUSTOM_HEADERS
+    CODEBUDDY_INTERNET_ENVIRONMENT
     ANTHROPIC_API_KEY
     LANGSMITH_API_KEY
     LANGSMITH_PROJECT
@@ -440,7 +442,9 @@ build_env_args() {
     ENV_ARGS=()
     for key in "${ENV_KEYS[@]}"; do
         if [[ -n "${!key:-}" ]]; then
-            ENV_ARGS+=("-e" "$key=${!key}")
+            # Let Docker inherit the value from this process instead of putting
+            # the secret literal in the docker command's argument list.
+            ENV_ARGS+=("-e" "$key")
         fi
     done
     if [[ -n "${COMET_EVAL_CUSTOM_CREDENTIALS:-}" ]]; then
@@ -448,7 +452,7 @@ build_env_args() {
         IFS=',' read -r -a custom_keys <<< "${COMET_EVAL_CUSTOM_CREDENTIALS}"
         for custom_key in "${custom_keys[@]}"; do
             if [[ "$custom_key" =~ ^[A-Z][A-Z0-9_]{1,63}$ ]] && [[ -n "${!custom_key:-}" ]]; then
-                ENV_ARGS+=("-e" "$custom_key=${!custom_key}")
+                ENV_ARGS+=("-e" "$custom_key")
             fi
         done
     fi
@@ -456,14 +460,26 @@ build_env_args() {
     for metadata_key in COMET_EVAL_CUSTOM_MODEL_ENV COMET_EVAL_CUSTOM_BASE_URL_ENV; do
         custom_routing_key="${!metadata_key:-}"
         if [[ "$custom_routing_key" =~ ^[A-Z][A-Z0-9_]{1,63}$ ]] && [[ -n "${!custom_routing_key:-}" ]]; then
-            ENV_ARGS+=("-e" "$custom_routing_key=${!custom_routing_key}")
+            ENV_ARGS+=("-e" "$custom_routing_key")
         fi
     done
-    if [[ "${TRACE_TO_LANGFUSE:-}" == "true" ]]; then
-        # The official Codex plugin resolves its cache relative to CODEX_HOME;
-        # this path is project-mounted and never changes the user's host home.
-        ENV_ARGS+=("-e" "CODEX_HOME=/workspace/.codex")
-    fi
+}
+
+build_agent_runtime_mount_args() {
+    RUNTIME_CONFIG_MOUNT_ARGS=()
+    RUNTIME_CONFIG_TMPFS_ARGS=(
+        --tmpfs "//home/agent/.codex:rw,nosuid,nodev"
+        --tmpfs "//home/agent/.qoder:rw,nosuid,nodev"
+        --tmpfs "//home/agent/.codebuddy:rw,nosuid,nodev"
+    )
+    local shell_host
+    shell_host=$(_winpath "$SCRIPT_DIR")
+    RUNTIME_CONFIG_MOUNT_ARGS=("-v" "$shell_host://opt/scaffold-shell:ro")
+    # Agent auth/config roots are container-local. The generated files use
+    # env_key/apiKeyHelper references, never credential literals.
+    ENV_ARGS+=("-e" "CODEX_HOME=/home/agent/.codex")
+    ENV_ARGS+=("-e" "QODER_CONFIG_DIR=/home/agent/.qoder")
+    ENV_ARGS+=("-e" "COMET_EVAL_CODEBUDDY_CONFIG_DIR=/home/agent/.codebuddy")
 }
 
 # Build mount + CLI args for the official LangSmith Claude Code plugin.
@@ -511,46 +527,6 @@ build_langfuse_plugin_args() {
     LANGFUSE_PLUGIN_MOUNT_ARGS=("-v" "$plugin_host://opt/comet-langfuse-plugin:ro")
     if [[ "${1:-}" == "claude-code" ]]; then
         LANGFUSE_PLUGIN_CLI_ARGS=("--plugin-dir" "//opt/comet-langfuse-plugin")
-    fi
-}
-
-build_agent_command() {
-    local agent="$1"
-    local prompt="$2"
-    local model="${3:-}"
-    AGENT_COMMAND=()
-    case "$agent" in
-        claude-code)
-            AGENT_COMMAND=(claude -p "$prompt" --dangerously-skip-permissions --output-format stream-json --verbose)
-            ;;
-        codex)
-            AGENT_COMMAND=(codex exec --json --yolo)
-            ;;
-        qoder)
-            AGENT_COMMAND=(qodercli -p "$prompt" --output-format stream-json --yolo)
-            ;;
-        codebuddy)
-            AGENT_COMMAND=(codebuddy -p "$prompt" --output-format stream-json --dangerously-skip-permissions)
-            ;;
-        *)
-            validate_agent "$agent" || return 1
-            AGENT_COMMAND=("${COMET_EVAL_CUSTOM_EXECUTABLE}" -p "$prompt" --output-format stream-json)
-            if [[ -n "$model" ]]; then
-                AGENT_COMMAND+=(--model "$model")
-            fi
-            ;;
-    esac
-    if [[ "$agent" == "codex" ]]; then
-        if [[ -n "$model" ]]; then
-            AGENT_COMMAND+=(--model "$model")
-        fi
-        AGENT_COMMAND+=("$prompt")
-    elif [[ "$agent" == "qoder" && -n "$model" ]]; then
-        AGENT_COMMAND+=(--model "$model")
-    elif [[ "$agent" == "claude-code" && -n "$model" ]]; then
-        AGENT_COMMAND+=(--model "$model")
-    elif [[ "$agent" == "codebuddy" && -n "$model" ]]; then
-        AGENT_COMMAND+=(--model "$model")
     fi
 }
 
@@ -708,26 +684,17 @@ docker_run_claude() {
     image_id=$(resolve_runtime_image "$dir" "$expected_image_id") || return 1
 
     build_env_args
+    build_agent_runtime_mount_args
     build_plugin_args
     build_langfuse_plugin_args "claude-code"
     build_trusted_oracle_mount_args "$dir"
 
-    local cmd=(
-        claude -p "$prompt"
-        --dangerously-skip-permissions
-        --output-format stream-json
-        --verbose
-    )
-
+    local cmd=(bash //opt/scaffold-shell/run-agent-runtime.sh claude-code "$model" "$prompt" --)
     if [[ ${#PLUGIN_CLI_ARGS[@]} -gt 0 ]]; then
         cmd+=("${PLUGIN_CLI_ARGS[@]}")
     fi
     if [[ ${#LANGFUSE_PLUGIN_CLI_ARGS[@]} -gt 0 ]]; then
         cmd+=("${LANGFUSE_PLUGIN_CLI_ARGS[@]}")
-    fi
-
-    if [[ -n "$model" ]]; then
-        cmd+=(--model "$model")
     fi
 
     local windir
@@ -736,6 +703,8 @@ docker_run_claude() {
     if [[ -n "$TIMEOUT_CMD" ]]; then
         $TIMEOUT_CMD "$timeout" docker run --rm \
             -v "$windir://workspace" \
+            "${RUNTIME_CONFIG_MOUNT_ARGS[@]}" \
+            "${RUNTIME_CONFIG_TMPFS_ARGS[@]}" \
             ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"} \
             ${PLUGIN_MOUNT_ARGS[@]+"${PLUGIN_MOUNT_ARGS[@]}"} \
             ${LANGFUSE_PLUGIN_MOUNT_ARGS[@]+"${LANGFUSE_PLUGIN_MOUNT_ARGS[@]}"} \
@@ -746,6 +715,8 @@ docker_run_claude() {
     else
         docker run --rm \
             -v "$windir://workspace" \
+            "${RUNTIME_CONFIG_MOUNT_ARGS[@]}" \
+            "${RUNTIME_CONFIG_TMPFS_ARGS[@]}" \
             ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"} \
             ${PLUGIN_MOUNT_ARGS[@]+"${PLUGIN_MOUNT_ARGS[@]}"} \
             ${LANGFUSE_PLUGIN_MOUNT_ARGS[@]+"${LANGFUSE_PLUGIN_MOUNT_ARGS[@]}"} \
@@ -797,6 +768,7 @@ docker_run_agent() {
     image_id=$(resolve_runtime_image "$dir" "$expected_image_id" "$agent") || return 1
 
     build_env_args
+    build_agent_runtime_mount_args
     if [[ "$agent" == "claude-code" ]]; then
         build_plugin_args
     else
@@ -805,7 +777,7 @@ docker_run_agent() {
     fi
     build_langfuse_plugin_args "$agent"
     build_trusted_oracle_mount_args "$dir"
-    build_agent_command "$agent" "$prompt" "$model"
+    AGENT_COMMAND=(bash //opt/scaffold-shell/run-agent-runtime.sh "$agent" "$model" "$prompt" --)
     if [[ "$agent" == "claude-code" && ${#PLUGIN_CLI_ARGS[@]} -gt 0 ]]; then
         AGENT_COMMAND+=("${PLUGIN_CLI_ARGS[@]}")
     fi
@@ -818,6 +790,8 @@ docker_run_agent() {
     if [[ -n "$TIMEOUT_CMD" ]]; then
         $TIMEOUT_CMD "$timeout" docker run --rm \
             -v "$windir://workspace" \
+            "${RUNTIME_CONFIG_MOUNT_ARGS[@]}" \
+            "${RUNTIME_CONFIG_TMPFS_ARGS[@]}" \
             ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"} \
             ${PLUGIN_MOUNT_ARGS[@]+"${PLUGIN_MOUNT_ARGS[@]}"} \
             ${LANGFUSE_PLUGIN_MOUNT_ARGS[@]+"${LANGFUSE_PLUGIN_MOUNT_ARGS[@]}"} \
@@ -828,6 +802,8 @@ docker_run_agent() {
     else
         docker run --rm \
             -v "$windir://workspace" \
+            "${RUNTIME_CONFIG_MOUNT_ARGS[@]}" \
+            "${RUNTIME_CONFIG_TMPFS_ARGS[@]}" \
             ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"} \
             ${PLUGIN_MOUNT_ARGS[@]+"${PLUGIN_MOUNT_ARGS[@]}"} \
             ${LANGFUSE_PLUGIN_MOUNT_ARGS[@]+"${LANGFUSE_PLUGIN_MOUNT_ARGS[@]}"} \
@@ -869,13 +845,13 @@ docker_run_claude_loop() {
     image_id=$(resolve_runtime_image "$dir" "$expected_image_id" "claude-code") || return 1
 
     build_env_args
+    build_agent_runtime_mount_args
     build_plugin_args
     build_langfuse_plugin_args "claude-code"
     build_trusted_oracle_mount_args "$dir"
 
-    local windir shell_dir
+    local windir
     windir=$(_winpath "$dir")
-    shell_dir=$(_winpath "$SCRIPT_DIR")
     local container_name
     container_name="comet-eval-loop-$(sha256_text "$dir" | cut -c1-24)"
 
@@ -888,8 +864,9 @@ docker_run_claude_loop() {
     # at /opt/scaffold-shell/ inside the container.
     docker run --rm --name "$container_name" \
         -v "$windir://workspace" \
+        "${RUNTIME_CONFIG_MOUNT_ARGS[@]}" \
+        "${RUNTIME_CONFIG_TMPFS_ARGS[@]}" \
         ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"} \
-        -v "$shell_dir://opt/scaffold-shell:ro" \
         ${PLUGIN_MOUNT_ARGS[@]+"${PLUGIN_MOUNT_ARGS[@]}"} \
         ${LANGFUSE_PLUGIN_MOUNT_ARGS[@]+"${LANGFUSE_PLUGIN_MOUNT_ARGS[@]}"} \
         -w //workspace \
@@ -936,6 +913,7 @@ docker_run_agent_loop() {
     image_id=$(resolve_runtime_image "$dir" "$expected_image_id" "$agent") || return 1
 
     build_env_args
+    build_agent_runtime_mount_args
     if [[ "$agent" == "claude-code" ]]; then
         build_plugin_args
     else
@@ -945,17 +923,17 @@ docker_run_agent_loop() {
     build_langfuse_plugin_args "$agent"
     build_trusted_oracle_mount_args "$dir"
 
-    local windir shell_dir
+    local windir
     windir=$(_winpath "$dir")
-    shell_dir=$(_winpath "$SCRIPT_DIR")
     local container_name
     container_name="comet-eval-agent-loop-$(sha256_text "$dir" | cut -c1-24)"
     docker rm -f "$container_name" &> /dev/null || true
 
     docker run --rm --name "$container_name" \
         -v "$windir://workspace" \
+        "${RUNTIME_CONFIG_MOUNT_ARGS[@]}" \
+        "${RUNTIME_CONFIG_TMPFS_ARGS[@]}" \
         ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"} \
-        -v "$shell_dir://opt/scaffold-shell:ro" \
         ${PLUGIN_MOUNT_ARGS[@]+"${PLUGIN_MOUNT_ARGS[@]}"} \
         ${LANGFUSE_PLUGIN_MOUNT_ARGS[@]+"${LANGFUSE_PLUGIN_MOUNT_ARGS[@]}"} \
         -w //workspace \

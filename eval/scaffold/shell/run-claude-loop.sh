@@ -24,6 +24,7 @@ set -uo pipefail
 shopt -s nocasematch
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/agent-runtime-config.sh"
 
 PROMPT_ARG="${1:?usage: run-claude-loop.sh <prompt|@prompt-file> [--max-turns N]}"
 shift || true
@@ -92,11 +93,16 @@ esac
 if [[ -z "$MODEL" ]]; then
     case "$AGENT" in
         claude-code) MODEL="${ANTHROPIC_MODEL:-}" ;;
+        codex) MODEL="${OPENAI_MODEL:-${CODEX_MODEL:-}}" ;;
+        qoder) MODEL="${QODER_MODEL:-}" ;;
         codebuddy) MODEL="${CODEBUDDY_MODEL:-}" ;;
     esac
 fi
 MODEL_FLAG=()
 [[ -n "$MODEL" ]] && MODEL_FLAG=(--model "$MODEL")
+prepare_agent_runtime_config "$AGENT" "$MODEL"
+CODEBUDDY_SETTINGS_FLAG=()
+[[ -n "${CODEBUDDY_SETTINGS_PATH:-}" ]] && CODEBUDDY_SETTINGS_FLAG=(--settings "$CODEBUDDY_SETTINGS_PATH")
 
 run_agent_turn() {
     local prompt="$1"
@@ -135,10 +141,10 @@ run_agent_turn() {
         codebuddy)
             if [[ -n "$resume_id" ]]; then
                 COMET_EVAL_AGENT_ROLE="$role" codebuddy -p "$prompt" --output-format stream-json \
-                    --dangerously-skip-permissions "${MODEL_FLAG[@]}" -r "$resume_id"
+                    --dangerously-skip-permissions "${MODEL_FLAG[@]}" "${CODEBUDDY_SETTINGS_FLAG[@]}" -r "$resume_id"
             else
                 COMET_EVAL_AGENT_ROLE="$role" codebuddy -p "$prompt" --output-format stream-json \
-                    --dangerously-skip-permissions "${MODEL_FLAG[@]}"
+                    --dangerously-skip-permissions "${MODEL_FLAG[@]}" "${CODEBUDDY_SETTINGS_FLAG[@]}"
             fi
             ;;
         *)

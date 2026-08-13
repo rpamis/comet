@@ -18,12 +18,14 @@ _MODEL_ENV: dict[AgentId, tuple[str, ...]] = {
     "qoder": ("BENCH_QODER_MODEL", "QODER_MODEL"),
     "codebuddy": ("BENCH_CODEBUDDY_MODEL", "CODEBUDDY_MODEL"),
 }
+_COMMON_MODEL_AGENTS = frozenset(_MODEL_ENV)
 _BASE_URL_ENV: dict[AgentId, tuple[str, ...]] = {
     "claude-code": ("ANTHROPIC_BASE_URL",),
     "codex": ("OPENAI_BASE_URL", "CODEX_BASE_URL"),
     "qoder": ("QODER_BASE_URL",),
     "codebuddy": ("CODEBUDDY_BASE_URL",),
 }
+_COMMON_BASE_URL_AGENTS = frozenset({"claude-code", "codex", "codebuddy"})
 _MODEL_TARGET_ENV: dict[AgentId, str] = {
     "claude-code": "ANTHROPIC_MODEL",
     "codex": "OPENAI_MODEL",
@@ -58,6 +60,8 @@ _MAIN_OVERRIDE_KEYS = {
     "QODER_MODEL",
     "CODEBUDDY_MODEL",
     "BENCH_BASE_URL",
+    "BENCH_API_KEY",
+    "BENCH_MODEL",
 }
 _JUDGE_KEYS = {
     "BENCH_LLM_JUDGE",
@@ -219,6 +223,8 @@ def resolve_execution(
     manifest_model = _manifest_value(manifest, "model")
     model_candidates: list[object] = [cli_model, manifest_model]
     model_candidates.extend(environment.get(key) for key in _model_env_keys(agent))
+    if agent in _COMMON_MODEL_AGENTS:
+        model_candidates.append(environment.get("BENCH_MODEL"))
     model = _first_non_empty(model_candidates)
 
     manifest_base_url = _manifest_value(manifest, "base_url")
@@ -226,6 +232,8 @@ def resolve_execution(
         manifest_base_url = _manifest_value(manifest, "baseUrl")
     base_url_candidates: list[object] = [cli_base_url, manifest_base_url]
     base_url_candidates.extend(environment.get(key) for key in _base_url_env_keys(agent))
+    if agent in _COMMON_BASE_URL_AGENTS:
+        base_url_candidates.append(environment.get("BENCH_BASE_URL"))
     base_url = _first_non_empty(base_url_candidates)
     base_url = validate_base_url(base_url, field="execution.baseUrl")
     adapter = get_agent_adapter(agent)
@@ -364,6 +372,12 @@ def build_agent_environment(
     adapter = get_agent_adapter(execution.agent)
     _set_if_value(environment, adapter.model_env, execution.model)
     _set_if_value(environment, adapter.base_url_env, execution.base_url)
+    if not adapter.custom and not any(
+        environment.get(key) for key in _CREDENTIAL_ENV.get(execution.agent, ())
+    ):
+        credential_keys = _CREDENTIAL_ENV.get(execution.agent, ())
+        if credential_keys:
+            _set_if_value(environment, credential_keys[0], environment.get("BENCH_API_KEY"))
     if adapter.custom:
         environment["COMET_EVAL_CUSTOM_AGENT_ID"] = adapter.id
         environment["COMET_EVAL_CUSTOM_EXECUTABLE"] = adapter.executable
@@ -485,7 +499,7 @@ def missing_credentials(
     keys = adapter.required_credentials
     if adapter.custom:
         return tuple(key for key in keys if not environment.get(key))
-    return () if any(environment.get(key) for key in keys) else keys
+    return () if any(environment.get(key) for key in keys) or environment.get("BENCH_API_KEY") else keys
 
 
 def preflight_credentials(

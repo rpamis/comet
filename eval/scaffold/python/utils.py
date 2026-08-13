@@ -24,8 +24,14 @@ SCAFFOLD_PYTHON_DIR = Path(__file__).parent
 
 def load_eval_environment() -> None:
     """Load eval credentials only at an explicit execution boundary, never on import."""
-    load_dotenv(EVAL_ROOT / ".env")
-    load_dotenv(get_suite_root() / ".env", override=True)
+    original_environment = dict(os.environ)
+    try:
+        load_dotenv(EVAL_ROOT / ".env", override=True)
+        load_dotenv(get_suite_root() / ".env", override=True)
+        load_dotenv(Path.home() / ".comet" / "eval" / ".env", override=True)
+    finally:
+        for key, value in original_environment.items():
+            os.environ[key] = value
 
 
 def _uses_wsl_bash(bash_exec: str) -> bool:
@@ -72,6 +78,7 @@ def _resolve_bash(os_name: str | None = None) -> str:
 
 BASH_EXEC = _resolve_bash()
 WSL_ENV_KEYS = (
+    "BENCH_EVAL_AGENT",
     "OPENAI_API_KEY",
     "OPENAI_BASE_URL",
     "OPENAI_MODEL",
@@ -123,6 +130,8 @@ WSL_ENV_KEYS = (
     "CODEBUDDY_AUTH_TOKEN",
     "CODEBUDDY_BASE_URL",
     "CODEBUDDY_MODEL",
+    "CODEBUDDY_CUSTOM_HEADERS",
+    "CODEBUDDY_INTERNET_ENVIRONMENT",
     "BENCH_CODEBUDDY_VERSION",
     "BENCH_CODEBUDDY_MODEL",
     "COMET_EVAL_CUSTOM_AGENT_ID",

@@ -152,6 +152,71 @@ def test_main_environment_maps_model_and_url_through_each_builtin_adapter():
         assert child_env[url_key] == f"https://{agent}.example/v1"
 
 
+def test_common_subject_settings_map_to_each_builtin_agent():
+    expected = {
+        "claude-code": ("ANTHROPIC_MODEL", "ANTHROPIC_BASE_URL", "ANTHROPIC_API_KEY", True),
+        "codex": ("OPENAI_MODEL", "OPENAI_BASE_URL", "OPENAI_API_KEY", True),
+        "qoder": ("QODER_MODEL", "QODER_BASE_URL", "QODER_PERSONAL_ACCESS_TOKEN", False),
+        "codebuddy": ("CODEBUDDY_MODEL", "CODEBUDDY_BASE_URL", "CODEBUDDY_API_KEY", True),
+    }
+    source = {
+        "BENCH_MODEL": "bench-model",
+        "BENCH_BASE_URL": "https://bench.example/v1",
+        "BENCH_API_KEY": "bench-key",
+    }
+
+    for agent, (model_key, url_key, credential_key, uses_common_url) in expected.items():
+        resolved = resolve_execution(cli_agent=agent, source_env=source)
+        child_env = build_agent_environment(resolved, source_env=source)
+
+        assert resolved.model == "bench-model"
+        assert resolved.base_url == ("https://bench.example/v1" if uses_common_url else None)
+        assert child_env[model_key] == "bench-model"
+        assert child_env[credential_key] == "bench-key"
+        if uses_common_url:
+            assert child_env[url_key] == "https://bench.example/v1"
+        else:
+            assert url_key not in child_env
+
+
+def test_explicit_subject_credentials_override_common_fallback():
+    resolved = resolve_execution(
+        cli_agent="claude-code",
+        source_env={"BENCH_API_KEY": "fallback-key", "ANTHROPIC_API_KEY": "explicit-key"},
+    )
+
+    child_env = build_agent_environment(
+        resolved,
+        source_env={"BENCH_API_KEY": "fallback-key", "ANTHROPIC_API_KEY": "explicit-key"},
+    )
+
+    assert child_env["ANTHROPIC_API_KEY"] == "explicit-key"
+
+
+def test_common_subject_api_key_satisfies_preflight():
+    main = resolve_execution(
+        cli_agent="codex",
+        source_env={"BENCH_MODEL": "bench-model", "BENCH_API_KEY": "bench-key"},
+    )
+
+    assert preflight_credentials(main, None, source_env={"BENCH_API_KEY": "bench-key"}) == []
+
+
+def test_explicit_agent_model_and_base_url_override_common_fallbacks():
+    resolved = resolve_execution(
+        cli_agent="codex",
+        source_env={
+            "BENCH_MODEL": "common-model",
+            "BENCH_BASE_URL": "https://common.example/v1",
+            "OPENAI_MODEL": "native-model",
+            "OPENAI_BASE_URL": "https://native.example/v1",
+        },
+    )
+
+    assert resolved.model == "native-model"
+    assert resolved.base_url == "https://native.example/v1"
+
+
 def test_custom_agent_environment_preserves_declared_runtime_contract(
     tmp_path, monkeypatch
 ):

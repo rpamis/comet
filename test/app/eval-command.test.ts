@@ -9,6 +9,7 @@ const readFile = vi.fn();
 const prepareEvalManifest = vi.fn();
 const recordRepositoryEvalExperiment = vi.fn();
 const cleanupPreparedManifest = vi.fn();
+const loadUserEvalEnvironment = vi.fn();
 const project = path.join(os.tmpdir(), 'comet-eval-project');
 const manifest = path.join(os.tmpdir(), 'demo', 'comet', 'eval.yaml');
 const preparedManifest = path.join(os.tmpdir(), 'prepared', 'eval.yaml');
@@ -61,6 +62,10 @@ vi.mock('../../domains/bundle/eval-run-result.js', () => ({
   recordRepositoryEvalExperiment,
 }));
 
+vi.mock('../../domains/eval/user-environment.js', () => ({
+  loadUserEvalEnvironment,
+}));
+
 function expectUvRun(args: string[], cwd = evalCwd): string {
   expect(execFileSync).toHaveBeenCalledWith('uv', ['--version'], { stdio: 'pipe' });
   expect(execFileSync).toHaveBeenCalledWith('uv', args, {
@@ -94,10 +99,39 @@ describe('eval command', () => {
     prepareEvalManifest.mockReset();
     cleanupPreparedManifest.mockReset();
     recordRepositoryEvalExperiment.mockReset();
+    loadUserEvalEnvironment.mockReset();
     prepareEvalManifest.mockResolvedValue({
       path: manifest,
       cleanup: cleanupPreparedManifest,
     });
+  });
+
+  it('loads the user eval environment before run and collect modes', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { evalRunCommand, evalCollectCommand } = await import('../../app/commands/eval.js');
+      await evalCollectCommand({ project, manifest });
+      await evalRunCommand({ project, manifest, quick: true });
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(loadUserEvalEnvironment).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses the common Bench model in launch details', async () => {
+    const previous = process.env.BENCH_MODEL;
+    process.env.BENCH_MODEL = 'bench-model';
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { evalCollectCommand } = await import('../../app/commands/eval.js');
+      await evalCollectCommand({ project, manifest });
+      expect(log.mock.calls.map((call) => [...call])).toContainEqual(['Main Model: bench-model']);
+    } finally {
+      if (previous === undefined) delete process.env.BENCH_MODEL;
+      else process.env.BENCH_MODEL = previous;
+      log.mockRestore();
+    }
   });
 
   it('uses the packaged eval harness when project is omitted', async () => {

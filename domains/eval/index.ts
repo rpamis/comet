@@ -24,6 +24,7 @@ export {
   type InstalledCustomAgent,
   type StaticCollectOptions,
 } from './standalone-static-collect.js';
+export { loadUserEvalEnvironment } from './user-environment.js';
 
 export function resolveRepositoryEvalWorkspace(): RepositoryEvalWorkspace {
   const layout = readRepositoryLayout();

@@ -31,16 +31,16 @@ const CUSTOM_CAPABILITIES = [
   'skillInvocationEvidence',
 ] as const;
 const BUILTIN_MODEL_ENVS: Record<string, string[]> = {
-  'claude-code': ['BENCH_CC_MODEL', 'ANTHROPIC_MODEL'],
-  codex: ['BENCH_CODEX_MODEL', 'OPENAI_MODEL', 'CODEX_MODEL'],
-  qoder: ['BENCH_QODER_MODEL', 'QODER_MODEL'],
-  codebuddy: ['BENCH_CODEBUDDY_MODEL', 'CODEBUDDY_MODEL'],
+  'claude-code': ['BENCH_CC_MODEL', 'ANTHROPIC_MODEL', 'BENCH_MODEL'],
+  codex: ['BENCH_CODEX_MODEL', 'OPENAI_MODEL', 'CODEX_MODEL', 'BENCH_MODEL'],
+  qoder: ['BENCH_QODER_MODEL', 'QODER_MODEL', 'BENCH_MODEL'],
+  codebuddy: ['BENCH_CODEBUDDY_MODEL', 'CODEBUDDY_MODEL', 'BENCH_MODEL'],
 };
 const BUILTIN_BASE_URL_ENVS: Record<string, string[]> = {
-  'claude-code': ['ANTHROPIC_BASE_URL'],
-  codex: ['OPENAI_BASE_URL', 'CODEX_BASE_URL'],
+  'claude-code': ['ANTHROPIC_BASE_URL', 'BENCH_BASE_URL'],
+  codex: ['OPENAI_BASE_URL', 'CODEX_BASE_URL', 'BENCH_BASE_URL'],
   qoder: ['QODER_BASE_URL'],
-  codebuddy: ['CODEBUDDY_BASE_URL'],
+  codebuddy: ['CODEBUDDY_BASE_URL', 'BENCH_BASE_URL'],
 };
 const hash = (value: string | Buffer) =>
   `sha256:${createHash('sha256').update(value).digest('hex')}`;

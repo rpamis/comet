@@ -20,9 +20,43 @@ def test_import_does_not_read_dotenv(monkeypatch):
 
     assert calls == []
     utils.load_eval_environment()
-    assert len(calls) == 2
+    assert len(calls) == 3
     monkeypatch.undo()
     importlib.reload(utils)
+
+
+def test_load_eval_environment_prefers_user_file_but_preserves_process_values(
+    tmp_path, monkeypatch
+):
+    package = tmp_path / "package"
+    suite = tmp_path / "suite"
+    user = tmp_path / ".comet" / "eval"
+    package.mkdir()
+    suite.mkdir()
+    user.mkdir(parents=True)
+    (package / ".env").write_text(
+        "BENCH_MODEL=package\nBENCH_BASE_URL=https://package.example\n",
+        encoding="utf-8",
+    )
+    (suite / ".env").write_text(
+        "BENCH_MODEL=suite\nBENCH_BASE_URL=https://suite.example\n",
+        encoding="utf-8",
+    )
+    (user / ".env").write_text(
+        "BENCH_MODEL=user\nBENCH_BASE_URL=https://user.example\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(utils, "EVAL_ROOT", package)
+    monkeypatch.setattr(utils, "get_suite_root", lambda: suite)
+    monkeypatch.setattr(utils.Path, "home", staticmethod(lambda: tmp_path))
+    monkeypatch.setenv("BENCH_MODEL", "process")
+    monkeypatch.delenv("BENCH_BASE_URL", raising=False)
+
+    utils.load_eval_environment()
+
+    assert os.environ["BENCH_MODEL"] == "process"
+    assert os.environ["BENCH_BASE_URL"] == "https://user.example"
 
 
 def test_execution_validator_converts_structured_checks(monkeypatch, tmp_path: Path):
@@ -341,18 +375,107 @@ def test_docker_subject_run_uses_controller_verified_immutable_image_identity():
 
 def test_docker_script_dispatches_all_supported_agent_clis():
     docker_sh = (utils.SHELL_DIR / "docker.sh").read_text(encoding="utf-8")
+    runtime_sh = (utils.SHELL_DIR / "run-agent-runtime.sh").read_text(encoding="utf-8")
 
     assert "run-agent" in docker_sh
-    assert "codex exec" in docker_sh
-    assert "qodercli" in docker_sh
+    assert "codex exec" in runtime_sh
+    assert "qodercli" in runtime_sh
     assert "QODER_PERSONAL_ACCESS_TOKEN" in docker_sh
-    assert "codebuddy" in docker_sh
+    assert "codebuddy" in runtime_sh
     assert "CODEBUDDY_API_KEY" in docker_sh
 
     overlay = (utils.SHELL_DIR.parent / "docker" / "agent-overlay.Dockerfile").read_text(
         encoding="utf-8"
     )
     assert "@tencent-ai/codebuddy-code" in overlay
+
+
+def test_codex_commands_use_explicit_openai_base_url_config():
+    docker_sh = (utils.SHELL_DIR / "docker.sh").read_text(encoding="utf-8")
+    loop_sh = (utils.SHELL_DIR / "run-claude-loop.sh").read_text(encoding="utf-8")
+
+    assert 'base_url = ' in (utils.SHELL_DIR / "agent-runtime-config.sh").read_text(encoding="utf-8")
+    assert 'model_provider = "comet-eval"' in (utils.SHELL_DIR / "agent-runtime-config.sh").read_text(encoding="utf-8")
+    assert 'openai_base_url=$OPENAI_BASE_URL' not in docker_sh
+    assert 'openai_base_url=$OPENAI_BASE_URL' not in loop_sh
+
+
+def test_agent_runtime_credentials_use_ephemeral_cli_config_roots():
+    docker_sh = (utils.SHELL_DIR / "docker.sh").read_text(encoding="utf-8")
+    config_sh = (utils.SHELL_DIR / "agent-runtime-config.sh").read_text(encoding="utf-8")
+
+    assert "run-agent-runtime.sh" in docker_sh
+    assert "--tmpfs" in docker_sh
+    assert "bash //opt/scaffold-shell/run-agent-runtime.sh" in docker_sh
+    assert "/home/agent/.codex" in docker_sh
+    assert "/home/agent/.qoder" in docker_sh
+    assert "/home/agent/.codebuddy" in docker_sh
+    assert 'env_key = "OPENAI_API_KEY"' in config_sh
+    assert 'model_provider = "comet-eval"' in config_sh
+    assert '"apiKeyHelper"' in config_sh
+    assert "CODEBUDDY_API_KEY" in config_sh
+    assert "QODER_CONFIG_DIR" in config_sh
+    assert "config.toml" in config_sh
+    assert "settings.json" in config_sh
+
+
+def test_agent_runtime_config_is_agent_only_and_docker_does_not_inline_secrets():
+    docker_sh = (utils.SHELL_DIR / "docker.sh").read_text(encoding="utf-8")
+    config_sh = (utils.SHELL_DIR / "agent-runtime-config.sh").read_text(encoding="utf-8")
+    generic_run = docker_sh.split("docker_run() {", 1)[1].split(
+        "# Run Claude CLI in Docker", 1
+    )[0]
+
+    assert "COMET_EVAL_CODEBUDDY_CONFIG_DIR" in config_sh
+    assert 'ENV_ARGS+=("-e" "$key")' in docker_sh
+    assert 'ENV_ARGS+=("-e" "$key=${!key}")' not in docker_sh
+    assert "build_agent_runtime_mount_args" not in generic_run
+
+
+def test_agent_runtime_config_files_never_contain_credential_literals(tmp_path):
+    codex_home = utils._to_bash_path(tmp_path / "codex")
+    qoder_home = utils._to_bash_path(tmp_path / "qoder")
+    codebuddy_home = utils._to_bash_path(tmp_path / "codebuddy")
+    script = utils._to_bash_path(utils.SHELL_DIR / "agent-runtime-config.sh")
+    env = dict(os.environ)
+    env.update(
+        {
+            "CODEX_HOME": codex_home,
+            "QODER_CONFIG_DIR": qoder_home,
+            "COMET_EVAL_CODEBUDDY_CONFIG_DIR": codebuddy_home,
+            "OPENAI_API_KEY": "codex-sentinel",
+            "OPENAI_BASE_URL": "https://codex.example/v1",
+            "CODEBUDDY_API_KEY": "codebuddy-sentinel",
+            "CODEBUDDY_BASE_URL": "https://codebuddy.example/v1",
+        }
+    )
+    result = subprocess.run(
+        [
+            utils.BASH_EXEC,
+            "-c",
+            f'source "{script}"; '
+            'prepare_agent_runtime_config codex "subject-model"; '
+            'prepare_agent_runtime_config qoder "subject-model"; '
+            'prepare_agent_runtime_config codebuddy "subject-model"',
+        ],
+        env=utils._bash_env(env),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    config_text = (tmp_path / "codex" / "config.toml").read_text(encoding="utf-8")
+    settings_text = (tmp_path / "codebuddy" / "settings.json").read_text(encoding="utf-8")
+    helper_text = (tmp_path / "codebuddy" / "api-key-helper.sh").read_text(encoding="utf-8")
+
+    assert 'env_key = "OPENAI_API_KEY"' in config_text
+    assert "codex-sentinel" not in config_text
+    assert '"apiKeyHelper"' in settings_text
+    assert "codebuddy-sentinel" not in settings_text
+    assert "codebuddy-sentinel" not in helper_text
+    assert "CODEBUDDY_API_KEY" in helper_text
+    assert not list((tmp_path / "qoder").iterdir())
 
 
 def test_user_authored_validation_commands_receive_no_agent_or_reporting_secrets():

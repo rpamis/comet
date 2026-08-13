@@ -8,6 +8,7 @@ import { parse as parseYaml } from 'yaml';
 import {
   canonicalPath,
   isPathWithin,
+  loadUserEvalEnvironment,
   resolveEvalContext,
   type ResolvedEvalContext,
 } from '../../domains/eval/index.js';
@@ -134,16 +135,16 @@ async function resolveLaunchExecution(
     'claude-code';
   const customAdapter = await loadInstalledCustomAgent(mainAgent);
   const modelEnv: Partial<Record<EvalAgent, string[]>> = {
-    'claude-code': ['BENCH_CC_MODEL', 'ANTHROPIC_MODEL'],
-    codex: ['BENCH_CODEX_MODEL', 'OPENAI_MODEL', 'CODEX_MODEL'],
-    qoder: ['BENCH_QODER_MODEL', 'QODER_MODEL'],
-    codebuddy: ['BENCH_CODEBUDDY_MODEL', 'CODEBUDDY_MODEL'],
+    'claude-code': ['BENCH_CC_MODEL', 'ANTHROPIC_MODEL', 'BENCH_MODEL'],
+    codex: ['BENCH_CODEX_MODEL', 'OPENAI_MODEL', 'CODEX_MODEL', 'BENCH_MODEL'],
+    qoder: ['BENCH_QODER_MODEL', 'QODER_MODEL', 'BENCH_MODEL'],
+    codebuddy: ['BENCH_CODEBUDDY_MODEL', 'CODEBUDDY_MODEL', 'BENCH_MODEL'],
   };
   const baseUrlEnv: Partial<Record<EvalAgent, string[]>> = {
-    'claude-code': ['ANTHROPIC_BASE_URL'],
-    codex: ['OPENAI_BASE_URL', 'CODEX_BASE_URL'],
+    'claude-code': ['ANTHROPIC_BASE_URL', 'BENCH_BASE_URL'],
+    codex: ['OPENAI_BASE_URL', 'CODEX_BASE_URL', 'BENCH_BASE_URL'],
     qoder: ['QODER_BASE_URL'],
-    codebuddy: ['CODEBUDDY_BASE_URL'],
+    codebuddy: ['CODEBUDDY_BASE_URL', 'BENCH_BASE_URL'],
   };
   const mainModel =
     options.model ??
@@ -577,10 +578,12 @@ async function executeEval(options: EvalCommandOptions, collectOnly: boolean): P
 }
 
 export async function evalRunCommand(options: EvalCommandOptions = {}): Promise<void> {
+  loadUserEvalEnvironment();
   await executeEval(options, false);
 }
 
 export async function evalCollectCommand(options: EvalCommandOptions = {}): Promise<void> {
+  loadUserEvalEnvironment();
   await executeEval(options, true);
 }
 

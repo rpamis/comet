@@ -45,24 +45,31 @@ uv sync
 
 ### 环境变量
 
-评估运行会先读取当前 shell 的环境变量，也会按需加载 `eval/.env`。录屏或演示时可以不创建 `.env`，或只创建一个完全空的 `.env`，把密钥放在系统环境变量里，避免文件内容出现在画面中。
+已发布的 `comet eval` 不需要用户拉取源码。评估运行会先读取当前 shell 的环境变量，再按需加载用户目录下、与自定义 Agent 适配器并列的 `~/.comet/eval/.env`（Windows：`%USERPROFILE%\.comet\eval\.env`）。录屏或演示时可以不创建 `.env`，把密钥放在系统环境变量里。
 
-如需本地文件配置，可复制 `.env.example` 为 `.env` 并填写：
+如需本地文件配置，可参考 `.env.example`，创建用户级文件：
 
 ```bash
-cp .env.example .env
+mkdir -p ~/.comet/eval
+cp .env.example ~/.comet/eval/.env
 ```
 
-> 注意：如果你使用系统环境变量，不要把 `.env.example` 中的 `ANTHROPIC_API_KEY=` 这类空赋值原样保留到 `.env`；空赋值在部分加载路径中可能覆盖已经存在的系统环境变量。
+进程环境变量优先于用户 `.env`；显式 CLI 或 manifest 配置优先于环境默认值。空值不会覆盖已有的有效进程变量。
 
 | 变量                                                              | 必填 | 说明                                                                                                |
 | ----------------------------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------- |
-| `ANTHROPIC_API_KEY`                                               | ✅\* | Anthropic API 密钥；也可以由系统环境变量提供                                                        |
-| `BENCH_CC_MODEL`                                                  | ❌   | Claude 模型覆盖（默认用 CLI 配置）                                                                  |
+| `BENCH_EVAL_AGENT`                                                 | ❌   | 未通过 CLI 或 manifest 指定时的默认 Agent                                                            |
+| `BENCH_API_KEY` / `BENCH_BASE_URL` / `BENCH_MODEL`                | ✅\* | 主任务统一凭据、API 地址和模型；会映射到所选 Agent 的原生配置                                  |
+| `BENCH_JUDGE_API_KEY` / `BENCH_JUDGE_BASE_URL` / `BENCH_JUDGE_MODEL` | Judge | LLM-as-judge 的独立凭据、API 地址和模型；不会继承主任务配置                                     |
+| `ANTHROPIC_API_KEY`                                               | ✅\* | Claude Code 原生 API 密钥；显式设置时优先于 `BENCH_API_KEY`                                      |
+| `BENCH_CC_MODEL` / `BENCH_CC_VERSION`                             | ❌   | Claude 模型和 CLI 版本覆盖（默认用 CLI 配置）                                                        |
 | `OPENAI_API_KEY` / `CODEX_API_KEY`                               | Codex | 使用 `--agent codex` 时的 Codex 认证                                                                   |
+| `CODEX_BASE_URL` / `CODEX_MODEL` / `BENCH_CODEX_VERSION`           | ❌   | Codex 原生地址、模型和 CLI 版本覆盖                                                                   |
 | `QODER_PERSONAL_ACCESS_TOKEN`                                    | Qoder | 使用 `--agent qoder` 时的 Qoder 认证                                                                   |
+| `QODER_BASE_URL` / `QODER_MODEL` / `BENCH_QODER_VERSION`            | ❌   | Qoder 原生地址、模型和 CLI 版本覆盖                                                                   |
 | `CODEBUDDY_API_KEY` / `CODEBUDDY_AUTH_TOKEN`                     | CodeBuddy | 使用 `--agent codebuddy` 时的 CodeBuddy 认证                                                       |
-| `CODEBUDDY_BASE_URL` / `CODEBUDDY_MODEL`                        | ❌   | CodeBuddy API endpoint 与模型覆盖                                                                    |
+| `CODEBUDDY_BASE_URL` / `CODEBUDDY_MODEL` / `BENCH_CODEBUDDY_VERSION` | ❌ | CodeBuddy API endpoint、模型和 CLI 版本覆盖                                                        |
+| `CODEBUDDY_CUSTOM_HEADERS` / `CODEBUDDY_INTERNET_ENVIRONMENT`      | ❌   | CodeBuddy 的自定义请求头和联网环境配置                                                               |
 | `BENCH_SIMULATOR_PROMPT_FILE`                                     | ❌   | 显式覆盖任务级用户模拟器提示词；任务未配置时回退到 `eval/simulator-instruction.md`                    |
 | `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_BASE_URL` / `ANTHROPIC_MODEL` | ❌   | 用 Anthropic 兼容代理时的认证与模型配置；设置 `ANTHROPIC_AUTH_TOKEN` 后可不设置 `ANTHROPIC_API_KEY` |
 | `BENCH_LLM_JUDGE`                                                 | ❌   | 设为 `1` 启用 LLM-as-judge 评分                                                                     |
@@ -71,10 +78,13 @@ cp .env.example .env
 | `BENCH_JUDGE_API_KEY`                                             | ❌   | Judge 专用 Anthropic API key；如果设置 `BENCH_JUDGE_AUTH_TOKEN`，优先使用 auth token                 |
 | `LANGSMITH_API_KEY`                                               | ❌   | 仅 LangSmith 套件需要                                                                               |
 | `LANGSMITH_PROJECT` / `LANGSMITH_TRACING`                         | ❌   | LangSmith 套件项目名与追踪开关；Claude Code 插件变量会从这组配置自动派生                            |
+| `TRACE_TO_LANGSMITH`                                               | ❌   | 兼容旧配置的 LangSmith 追踪开关                                                                       |
 | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY`                     | Langfuse | `--suite langfuse` 运行模式的项目凭据；只从当前进程读取，不写入报告或 manifest                  |
 | `LANGFUSE_BASE_URL` / `LANGFUSE_TRACING_ENVIRONMENT`              | ❌   | Langfuse 区域地址与 trace 环境标签                                                               |
 
-`*` 本地 Claude eval 至少需要 `ANTHROPIC_API_KEY` 或 `ANTHROPIC_AUTH_TOKEN` 之一存在于当前进程环境中。
+`*` 主任务至少需要 `BENCH_API_KEY` 或所选 Agent 的原生凭据之一。Claude Code、Codex 和 CodeBuddy 支持 `BENCH_BASE_URL`；Qoder 使用其官方支持的认证和服务地址配置。
+
+安全边界：Eval 不会把 API key 写入发布包、manifest、报告或 Skill 工作区。Docker 运行 Agent 时，Codex、Qoder、CodeBuddy 使用容器内独立的配置根；Codex 的 `config.toml` 只引用 `env_key`，CodeBuddy 的 `settings.json` 只使用 `apiKeyHelper`，实际密钥只存在于本次容器进程环境中，运行结束后随临时配置目录销毁。
 
 `comet eval` 默认使用 `claude-code`。可以通过 CLI 或 manifest 选择执行 Agent；CLI 优先于
 manifest，未指定时回退到 Claude Code：
