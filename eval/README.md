@@ -29,6 +29,13 @@ eval/
 
 ## 环境配置
 
+普通 npm 用户不需要进入 Comet 源码目录。首次运行 `comet eval` 时，CLI 会在用户目录自动创建完整配置模板：
+
+- Windows：`%USERPROFILE%\.comet\eval\.env`
+- macOS/Linux：`~/.comet/eval/.env`
+
+模板包含主任务（Bench）、独立 Judge、Claude Code、Codex、Qoder、CodeBuddy、LangSmith 和 Langfuse 的全部可配置参数。CLI 只会创建缺失文件，不会覆盖已有 `.env`；当前进程环境变量优先于文件内容。源码仓库下的 `eval/.env` 仅用于 Comet harness 开发和测试，不是普通用户配置入口。
+
 ### 前置依赖
 
 - Python 3.11+
@@ -60,11 +67,11 @@ cp .env.example ~/.comet/eval/.env
 | ----------------------------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------- |
 | `BENCH_EVAL_AGENT`                                                 | ❌   | 未通过 CLI 或 manifest 指定时的默认 Agent                                                            |
 | `BENCH_API_KEY` / `BENCH_BASE_URL` / `BENCH_MODEL`                | ✅\* | 主任务统一凭据、API 地址和模型；会映射到所选 Agent 的原生配置                                  |
-| `BENCH_JUDGE_API_KEY` / `BENCH_JUDGE_BASE_URL` / `BENCH_JUDGE_MODEL` | Judge | LLM-as-judge 的独立凭据、API 地址和模型；不会继承主任务配置                                     |
+| `BENCH_JUDGE_AGENT` / `BENCH_JUDGE_API_KEY` / `BENCH_JUDGE_BASE_URL` / `BENCH_JUDGE_MODEL` | Judge | LLM-as-judge 的独立 Agent、凭据、API 地址和模型；不会继承主任务配置                         |
 | `ANTHROPIC_API_KEY`                                               | ✅\* | Claude Code 原生 API 密钥；显式设置时优先于 `BENCH_API_KEY`                                      |
 | `BENCH_CC_MODEL` / `BENCH_CC_VERSION`                             | ❌   | Claude 模型和 CLI 版本覆盖（默认用 CLI 配置）                                                        |
 | `OPENAI_API_KEY` / `CODEX_API_KEY`                               | Codex | 使用 `--agent codex` 时的 Codex 认证                                                                   |
-| `CODEX_BASE_URL` / `CODEX_MODEL` / `BENCH_CODEX_VERSION`           | ❌   | Codex 原生地址、模型和 CLI 版本覆盖                                                                   |
+| `OPENAI_BASE_URL` / `OPENAI_MODEL` / `CODEX_BASE_URL` / `CODEX_MODEL` / `BENCH_CODEX_VERSION` | ❌ | Codex 原生地址、模型和 CLI 版本覆盖                                                              |
 | `QODER_PERSONAL_ACCESS_TOKEN`                                    | Qoder | 使用 `--agent qoder` 时的 Qoder 认证                                                                   |
 | `QODER_BASE_URL` / `QODER_MODEL` / `BENCH_QODER_VERSION`            | ❌   | Qoder 原生地址、模型和 CLI 版本覆盖                                                                   |
 | `CODEBUDDY_API_KEY` / `CODEBUDDY_AUTH_TOKEN`                     | CodeBuddy | 使用 `--agent codebuddy` 时的 CodeBuddy 认证                                                       |

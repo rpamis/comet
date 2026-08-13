@@ -24,18 +24,49 @@ describe('user eval environment', () => {
     );
 
     const environment = { BENCH_MODEL: 'process-model' } as NodeJS.ProcessEnv;
-    loadUserEvalEnvironment(environment, home);
+    const result = loadUserEvalEnvironment(environment, home);
 
+    expect(result).toEqual({
+      path: path.join(home, '.comet', 'eval', '.env'),
+      created: false,
+    });
     expect(environment.BENCH_MODEL).toBe('process-model');
     expect(environment.BENCH_BASE_URL).toBe('https://user.example/v1');
   });
 
-  it('does nothing when the user file is absent', () => {
+  it('creates the complete user template when the user file is absent', async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-eval-home-'));
+    temporary.push(home);
     const environment = {} as NodeJS.ProcessEnv;
+    const envPath = path.join(home, '.comet', 'eval', '.env');
 
-    expect(
-      loadUserEvalEnvironment(environment, path.join(os.tmpdir(), 'missing-comet-home')),
-    ).toBeNull();
+    expect(loadUserEvalEnvironment(environment, home)).toEqual({
+      path: envPath,
+      created: true,
+    });
     expect(environment).toEqual({});
+    const template = await fs.readFile(envPath, 'utf8');
+    expect(template).toContain('# BENCH_API_KEY=');
+    expect(template).toContain('# OPENAI_BASE_URL=');
+    expect(template).toContain('# OPENAI_MODEL=');
+    expect(template).toContain('# BENCH_JUDGE_MODEL=');
+    expect(template).toContain('# BENCH_JUDGE_AGENT=');
+    expect(template).toContain('# CODEBUDDY_CODE_SUBAGENT_MODEL=');
+    expect(template).toContain('# LANGFUSE_SECRET_KEY=');
+  });
+
+  it('does not overwrite an existing user file', async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-eval-home-'));
+    temporary.push(home);
+    const envDirectory = path.join(home, '.comet', 'eval');
+    const envPath = path.join(envDirectory, '.env');
+    await fs.mkdir(envDirectory, { recursive: true });
+    await fs.writeFile(envPath, '# user-owned\n', 'utf8');
+
+    expect(loadUserEvalEnvironment({} as NodeJS.ProcessEnv, home)).toEqual({
+      path: envPath,
+      created: false,
+    });
+    await expect(fs.readFile(envPath, 'utf8')).resolves.toBe('# user-owned\n');
   });
 });

@@ -82,6 +82,7 @@ describe('Classic runtime release assets', () => {
     expect(packageJson.files).toContain('assets');
     expect(packageJson.files).toContain('bin');
     expect(packageJson.files).toContain('dist');
+    expect(packageJson.files).toContain('eval/.env.example');
     expect(packageJson.files).toContain('scripts/install/postinstall.js');
   });
 });

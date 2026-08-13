@@ -1,8 +1,17 @@
-import { readFileSync } from 'fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'fs';
 import os from 'os';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/u;
+const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
+const moduleRoot = path.resolve(moduleDirectory, '../..');
+const packageRoot = path.basename(moduleRoot) === 'dist' ? path.dirname(moduleRoot) : moduleRoot;
+
+export interface UserEvalEnvironmentStatus {
+  path: string;
+  created: boolean;
+}
 
 function parseValue(raw: string): string {
   const trimmed = raw.trim();
@@ -31,21 +40,40 @@ function parseDotenv(source: string): Array<[string, string]> {
   return values;
 }
 
+function readEvalEnvironmentTemplate(): string {
+  const templatePath = path.join(packageRoot, 'eval', '.env.example');
+  try {
+    return readFileSync(templatePath, 'utf8');
+  } catch (error) {
+    throw new Error(`Eval environment template is missing at ${templatePath}.`, { cause: error });
+  }
+}
+
 export function loadUserEvalEnvironment(
   environment: NodeJS.ProcessEnv = process.env,
   homeDirectory: string = os.homedir(),
-): string | null {
+): UserEvalEnvironmentStatus {
   const envPath = path.join(homeDirectory, '.comet', 'eval', '.env');
   let source: string;
+  let created = false;
   try {
     source = readFileSync(envPath, 'utf8');
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
-    throw error;
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+
+    source = readEvalEnvironmentTemplate();
+    mkdirSync(path.dirname(envPath), { recursive: true, mode: 0o700 });
+    try {
+      writeFileSync(envPath, source, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+      created = true;
+    } catch (writeError) {
+      if ((writeError as NodeJS.ErrnoException).code !== 'EEXIST') throw writeError;
+      source = readFileSync(envPath, 'utf8');
+    }
   }
 
   for (const [name, value] of parseDotenv(source)) {
     if (!environment[name]?.trim()) environment[name] = value;
   }
-  return envPath;
+  return { path: envPath, created };
 }

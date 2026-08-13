@@ -578,12 +578,20 @@ async function executeEval(options: EvalCommandOptions, collectOnly: boolean): P
 }
 
 export async function evalRunCommand(options: EvalCommandOptions = {}): Promise<void> {
-  loadUserEvalEnvironment();
+  const userEnvironment = loadUserEvalEnvironment();
+  if (userEnvironment?.created) {
+    console.log(`Created user Eval config template: ${userEnvironment.path}`);
+    console.log('Edit this file with your model credentials, then run comet eval again.');
+  }
   await executeEval(options, false);
 }
 
 export async function evalCollectCommand(options: EvalCommandOptions = {}): Promise<void> {
-  loadUserEvalEnvironment();
+  const userEnvironment = loadUserEvalEnvironment();
+  if (userEnvironment?.created) {
+    console.log(`Created user Eval config template: ${userEnvironment.path}`);
+    console.log('Edit this file with your model credentials, then run comet eval again.');
+  }
   await executeEval(options, true);
 }
 

@@ -119,6 +119,27 @@ describe('eval command', () => {
     expect(loadUserEvalEnvironment).toHaveBeenCalledTimes(2);
   });
 
+  it('prints the generated user eval config path on first startup', async () => {
+    loadUserEvalEnvironment.mockReturnValue({
+      path: 'C:\\Users\\demo\\.comet\\eval\\.env',
+      created: true,
+    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { evalCollectCommand } = await import('../../app/commands/eval.js');
+      await evalCollectCommand({ project, manifest });
+
+      expect(log).toHaveBeenCalledWith(
+        'Created user Eval config template: C:\\Users\\demo\\.comet\\eval\\.env',
+      );
+      expect(log).toHaveBeenCalledWith(
+        'Edit this file with your model credentials, then run comet eval again.',
+      );
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   it('uses the common Bench model in launch details', async () => {
     const previous = process.env.BENCH_MODEL;
     process.env.BENCH_MODEL = 'bench-model';

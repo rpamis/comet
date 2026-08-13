@@ -32,6 +32,7 @@
     "!assets/skills-maintainer/**",
     "eval",
     "!eval/.env*",
+    "eval/.env.example",
     "!eval/**/.env*",
     "!eval/.venv",
     "!eval/.uv-cache",
