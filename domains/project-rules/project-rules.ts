@@ -690,7 +690,9 @@ export class ProjectRulesService {
           });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          throw new Error(`Project rule carrier adapter ${adapter.id} failed: ${message}`);
+          throw new Error(`Project rule carrier adapter ${adapter.id} failed: ${message}`, {
+            cause: error,
+          });
         }
         if (!result || !result.targetPath.trim() || !result.change.trim()) {
           throw new Error(`Project rule carrier adapter ${adapter.id} returned an invalid result`);
