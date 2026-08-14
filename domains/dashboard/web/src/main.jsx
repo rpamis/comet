@@ -170,6 +170,7 @@ function DashboardApp({ theme, onToggleTheme }) {
   const [pluginLoading, setPluginLoading] = useState(false);
   const [pluginError, setPluginError] = useState(null);
   const [pluginRefreshToken, setPluginRefreshToken] = useState(0);
+  const pluginSelectionRef = useRef(null);
   const [projects, setProjects] = useState([]);
   const [projectsReady, setProjectsReady] = useState(false);
   const [pages, setPages] = useState({ active: null, archived: null, all: null });
@@ -209,6 +210,7 @@ function DashboardApp({ theme, onToggleTheme }) {
   tabRef.current = tab;
   workflowRef.current = workflow;
   nativeSelectedDetailRef.current = nativeSelectedDetail;
+  pluginSelectionRef.current = pluginSelection;
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
@@ -438,11 +440,13 @@ function DashboardApp({ theme, onToggleTheme }) {
   const invokePlugin = useCallback(
     async (pluginId, capability, input) => {
       if (!activeProjectId) return;
+      const requestedPluginId = pluginId;
       await invokeDashboardPlugin(activeProjectId, pluginId, capability, input);
       const [nextPage] = await Promise.all([
         fetchDashboardPluginPage(activeProjectId, pluginId),
         reloadPluginPages(),
       ]);
+      if (pluginSelectionRef.current !== requestedPluginId) return;
       setPluginPage(nextPage);
     },
     [activeProjectId, reloadPluginPages],

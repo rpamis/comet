@@ -132,8 +132,12 @@ export class DashboardPluginHost {
     try {
       if (action === 'enable') {
         const view = await this.runtime.get(pluginId);
-        if (view?.status === 'disabled') await this.runtime.enable(pluginId);
-        else await this.runtime.enable(pluginId, this.scope());
+        if (view?.status === 'disabled') {
+          await this.runtime.enable(pluginId);
+          await this.runtime.enable(pluginId, this.scope());
+        } else {
+          await this.runtime.enable(pluginId, this.scope());
+        }
       } else if (action === 'disable') {
         await this.runtime.disable(pluginId, this.scope());
       } else if (action === 'uninstall') {

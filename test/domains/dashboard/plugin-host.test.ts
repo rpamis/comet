@@ -114,4 +114,19 @@ describe('DashboardPluginHost', () => {
     await host.lifecycle('test.plugin', 'enable');
     await expect(host.list()).resolves.toEqual([expect.objectContaining({ status: 'enabled' })]);
   });
+
+  it('clears a project pause when global and project disable states overlap', async () => {
+    const runtime = new PluginRuntime({
+      cometVersion: '0.4.0',
+      store: new MemoryPluginStateStore(),
+      descriptors: [descriptor('test.plugin')],
+    });
+    await runtime.install('test.plugin');
+    await runtime.disable('test.plugin', { scope: 'project', projectId: 'project-1' });
+    await runtime.disable('test.plugin');
+    const host = new DashboardPluginHost({ runtime, projectId: 'project-1', pages: [page] });
+
+    await host.lifecycle('test.plugin', 'enable');
+    await expect(host.list()).resolves.toEqual([expect.objectContaining({ status: 'enabled' })]);
+  });
 });

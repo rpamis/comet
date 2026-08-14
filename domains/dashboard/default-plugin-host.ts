@@ -60,12 +60,19 @@ const firstPartyPages: readonly DashboardPluginPageRegistration[] = [
     load: async ({ projectId, invoke }) => ({
       status: await invoke('status'),
       retrieval: await invoke('retrieve', { projectKey: projectId }),
+      operations: ['correct', 'remove', 'rollback', 'sync', 'set-learning', 'set-retrieval'],
     }),
   },
   {
     pluginId: 'comet.project-rules',
     label: '项目规则',
     route: '/plugins/project-rules',
-    load: async ({ invoke }) => invoke('status'),
+    load: async ({ invoke }) => {
+      const status = (await invoke('status')) as Record<string, unknown>;
+      return {
+        ...status,
+        operations: ['init', 'scan', 'add', 'adopt', 'ignore', 'snooze', 'restore'],
+      };
+    },
   },
 ];
