@@ -104,6 +104,15 @@ describe('ProjectRulesService', () => {
     expect(candidate).toMatchObject({ status: 'pending', observations: 2 });
     expect(await service.candidates()).toHaveLength(1);
 
+    await service.snoozeCandidate(candidate?.id ?? '');
+    expect(await service.candidates()).toEqual([
+      { text: 'DTO 使用 PascalCase。', state: 'snoozed' },
+    ]);
+    await service.restoreCandidate(candidate?.id ?? '');
+    expect(await service.candidates()).toEqual([
+      { text: 'DTO 使用 PascalCase。', state: 'pending' },
+    ]);
+
     await service.adoptCandidate(candidate?.id ?? '');
     expect(await service.candidates()).toHaveLength(0);
     await expect(
@@ -134,6 +143,110 @@ describe('ProjectRulesService', () => {
         expect.objectContaining({ label: 'make check', executable: 'make' }),
       ]),
     );
+  });
+
+  it('does not claim an empty Gradle script and preserves the Python source', async () => {
+    const projectRoot = await projectDirectory();
+    await writeFile(path.join(projectRoot, 'build.gradle'), '// generated placeholder\n');
+    await writeFile(path.join(projectRoot, 'pytest.ini'), '[pytest]\naddopts = -q\n');
+
+    const service = new ProjectRulesService({ projectRoot });
+    const entrypoints = await service.discoverVerificationEntrypoints();
+
+    expect(entrypoints).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'gradle-check' })]),
+    );
+    expect(entrypoints).toEqual([
+      expect.objectContaining({ id: 'python-pytest', sourcePath: 'pytest.ini' }),
+    ]);
+  });
+
+  it('keeps selection bounded, relevant, source-filtered, and glob-safe', async () => {
+    const projectRoot = await projectDirectory();
+    await mkdir(path.join(projectRoot, '.comet', 'rules'), { recursive: true });
+    await writeFile(
+      path.join(projectRoot, '.comet', 'rules', 'many.md'),
+      '# Build\n\n- Build rule one.\n\n# Unrelated\n\n- Database rule.\n\n# Deep\n\n适用范围：server/**/migration/**\n\n- Migration rule.\n',
+    );
+    await writeFile(path.join(projectRoot, 'AGENTS.md'), '# Agent\n\n- Agent build rule.\n');
+    const service = new ProjectRulesService({ projectRoot });
+
+    const selected = await service.select({
+      task: 'build',
+      path: 'server/a/migration/V1.sql',
+      maxSections: 999,
+      maxBytes: 999999,
+      sourceKinds: ['comet-rules'],
+    });
+    expect(selected.length).toBeLessThanOrEqual(5);
+    expect(
+      selected.every((rule) => Buffer.byteLength(`${rule.title}\n${rule.text}`) <= 8 * 1024),
+    ).toBe(true);
+    expect(selected).toEqual(expect.arrayContaining([expect.objectContaining({ title: 'Deep' })]));
+    expect(selected).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ title: 'Unrelated' })]),
+    );
+    expect(selected).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ sourcePath: 'AGENTS.md' })]),
+    );
+  });
+
+  it('persists source index, project identity, and confines Runtime state', async () => {
+    const projectRoot = await projectDirectory();
+    await mkdir(path.join(projectRoot, '.comet', 'rules'), { recursive: true });
+    await writeFile(
+      path.join(projectRoot, '.comet', 'rules', 'project.md'),
+      '# Build\n\n- Run checks.\n',
+    );
+    const service = new ProjectRulesService({ projectRoot, projectId: 'project-a' });
+    await service.scan();
+    await service.recordObservation({
+      candidateKey: 'checks',
+      text: 'Run checks.',
+      workflow: 'native',
+      changeId: 'change-a',
+      success: true,
+    });
+    const state = JSON.parse(
+      await readFile(
+        path.join(projectRoot, '.comet', 'runtime', 'project-rules', 'state.json'),
+        'utf8',
+      ),
+    ) as { sources: unknown[]; observations: Array<{ projectId: string }> };
+    expect(state.sources).toHaveLength(1);
+    expect(state.observations[0]?.projectId).toBe('project-a');
+    expect(
+      () => new ProjectRulesService({ projectRoot, runtimeDirectory: path.dirname(projectRoot) }),
+    ).toThrow(/inside the project/iu);
+  });
+
+  it('upgrades a failed change only when the same evidence later succeeds', async () => {
+    const projectRoot = await projectDirectory();
+    const service = new ProjectRulesService({ projectRoot });
+    await service.recordObservation({
+      candidateKey: 'dto',
+      text: 'DTO 使用 PascalCase。',
+      workflow: 'native',
+      changeId: 'change-a',
+      success: false,
+    });
+    await service.recordObservation({
+      candidateKey: 'dto',
+      text: 'DTO 使用 PascalCase。',
+      workflow: 'native',
+      changeId: 'change-a',
+      success: true,
+    });
+    await service.recordObservation({
+      candidateKey: 'dto',
+      text: 'DTO 使用 PascalCase。',
+      workflow: 'classic',
+      changeId: 'change-b',
+      success: true,
+    });
+    expect(await service.candidateDetails()).toEqual([
+      expect.objectContaining({ key: 'dto', observations: 2 }),
+    ]);
   });
 
   it('keeps context selection within conservative limits', async () => {

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   projectRulesInitCommand,
+  projectRulesScanCommand,
   projectRulesStatusCommand,
 } from '../../app/commands/project-rules.js';
 
@@ -19,7 +20,7 @@ describe('project rules commands', () => {
     );
   });
 
-  it('initializes and reports project rules without creating a rule file', async () => {
+  it('initializes, scans, and reports readable project rules without leaking Runtime fields', async () => {
     const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'comet-project-rules-cli-'));
     directories.push(projectRoot);
     await writeFile(
@@ -37,11 +38,17 @@ describe('project rules commands', () => {
       initialized: true,
       verificationEntrypoints: [expect.objectContaining({ label: 'npm run test' })],
     });
+    expect(JSON.parse(logs.at(-1) ?? '{}')).not.toHaveProperty('candidates[0].id');
     await expect(
       readFile(path.join(projectRoot, '.comet', 'rules', 'project.md')),
     ).rejects.toMatchObject({
       code: 'ENOENT',
     });
+
+    logs.length = 0;
+    const scanned = await projectRulesScanCommand(projectRoot);
+    expect(scanned.initialized).toBe(true);
+    expect(logs.join('\n')).toContain('Project rules: initialized');
 
     logs.length = 0;
     const status = await projectRulesStatusCommand(projectRoot, { json: true });

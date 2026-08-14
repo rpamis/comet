@@ -3,7 +3,7 @@ name: self-evolving-project-rules
 language: zh-CN
 phase: build
 status: active
-state_version: 2
+state_version: 5
 brief: brief.md
 spec_changes:
   - capability: project-rules
@@ -15,138 +15,416 @@ workspace:
   target_branch: beta20
   finish: null
 loop:
-  stage: building
+  stage: repairing
   goal_cycle: 1
-  iteration: 1
+  iteration: 2
   attempt: 0
   retry_epoch: 0
-  failed_iteration_count: 0
+  failed_iteration_count: 1
   no_progress_count: 0
   execution_failure_count: 0
-  previous_unresolved_ids: []
-  next_action: submit-builder-candidate
+  previous_unresolved_ids:
+    - A5
+    - A6
+    - A7
+    - A10
+    - A13
+    - A15
+    - A17
+    - A18
+    - A19
+    - A20
+    - A21
+  next_action: repair-failed-acceptance
 acceptance:
   - id: A1
     source: brief.md
     text: 用户手动创建 `.comet/rules/database.md`，写入普通标题、列表和可选的
       `适用范围：server/**/migration/**`；扫描和选择器可以直接读取它。
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: 普通 Markdown 规则文件和可读范围示例可被读取。
+      truncated: false
   - id: A2
     source: brief.md
     text: 在没有规则文件的仓库运行 `comet rules init`，得到盘点摘要并保存 Runtime 状态，但仓库不会出现空规则文件或 Comet
       change。
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: 初始化与扫描保持幂等且只写 Runtime 状态。
+      truncated: false
   - id: A3
     source: brief.md
     text: 用户说“加入规则：迁移必须同步回滚说明”，服务追加到指定 Markdown 文件，已有内容和注释保持不变。
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: 显式规则可追加到用户指定的 Markdown 文件并保留已有内容。
+      truncated: false
   - id: A4
     source: brief.md
     text: 同一候选只在两个不同且成功的 change 中观察到后才进入待处理候选；重复恢复同一 change 不增加计数。
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: 观察按 workflow/change 去重，两个成功 change 后形成候选。
+      truncated: false
   - id: A5
     source: brief.md
     text: "`select` 对任务和目标路径返回相关规则，结果不超过固定字节上限；普通运行不返回整个候选列表。"
-    result: pending
-    reason: null
+    result: failed
+    reason:
+      text: 选择上限可由调用者任意放大，且无匹配的无范围规则仍可能返回；不满足固定上下文边界。
+      truncated: false
   - id: A6
     source: brief.md
     text: 项目含 `package.json`、`pom.xml`、`build.gradle` 或 Makefile
       时，服务返回项目实际可用的验证入口，不要求统一为 Comet 命令。
-    result: pending
-    reason: null
+    result: failed
+    reason:
+      text: 仅凭 build 文件存在就猜测 mvn/gradle 命令，未确认项目实际验证入口。
+      truncated: false
   - id: A7
     source: brief.md
     text: "`comet rules status --json` 返回初始化状态、规则来源、验证入口和候选摘要；不暴露内部 Runtime 字段。"
-    result: pending
-    reason: null
+    result: failed
+    reason:
+      text: CLI --json 直接暴露 candidate id/key、观察次数和时间戳等 Runtime 内部字段。
+      truncated: false
   - id: A8
     source: specs/project-rules/spec.md
     text: "`domains/project-rules` 提供项目规则文件读取、扫描、候选管理、上下文选择和验证入口发现。它不依赖某一个 Comet
       workflow，也不修改 Native、Classic、Hotfix 或 Tweak
       的状态。`app/commands/project-rules.ts` 只把这些能力暴露为 `comet rules` CLI。"
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: 未采用候选不进入公开选择结果，也不阻塞项目检查。
+      truncated: false
   - id: A9
     source: specs/project-rules/spec.md
     text: "`.comet/rules/*.md` 是可选的普通 Markdown 文件；一个文件可以写多条规则。"
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: 来源、任务和路径选择返回用户可读规则文本。
+      truncated: false
   - id: A10
     source: specs/project-rules/spec.md
     text: 规则段落可以用标题分组，并可在段落中写 `适用范围：<glob>`；没有范围时按标题、正文、任务和目标路径匹配。
-    result: pending
-    reason: null
+    result: failed
+    reason:
+      text: "** glob 会被后续 * 替换破坏，深层路径匹配失败；无范围零相关段落也会入选。"
+      truncated: false
   - id: A11
     source: specs/project-rules/spec.md
     text: 扫描还可以识别仓库已有的 `AGENTS.md`、`CLAUDE.md`、`.github/copilot-instructions.md`
       等指令来源，但不把它们复制到 `.comet/rules`。
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: 验证入口发现覆盖 package scripts、Maven、Gradle、Makefile 和 Python 配置。
+      truncated: false
   - id: A12
     source: specs/project-rules/spec.md
     text: 写入规则时只能追加或替换明确的目标文件，保留其他文本；初始化和扫描不能生成空规则文件。
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: 未执行命令、不安装依赖、不重新解释原生工具严重级别。
+      truncated: false
   - id: A13
     source: specs/project-rules/spec.md
     text: Runtime 状态位于
       `.comet/runtime/project-rules/`，包括最近扫描、来源索引、观察去重键和候选状态。它不是用户维护界面，也不替代
       Markdown、Agent 指令或原生检查配置。
-    result: pending
-    reason: null
+    result: failed
+    reason:
+      text: Runtime state 未持久化来源索引，且可通过 runtimeDirectory 指向项目外。
+      truncated: false
   - id: A14
     source: specs/project-rules/spec.md
     text: "`init` 和 `scan` 都执行有边界的只读盘点，并更新 Runtime 状态；两者幂等且不创建 Comet change。"
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: 规则状态位于 .comet/runtime/project-rules，规则来源仍由 Markdown 维护。
+      truncated: false
   - id: A15
     source: specs/project-rules/spec.md
     text: "`status` 返回初始化、上次盘点、来源、验证入口和待处理候选摘要。"
-    result: pending
-    reason: null
+    result: failed
+    reason:
+      text: 公开 candidates/status 返回原始 RuleCandidate，而不是用户可读摘要。
+      truncated: false
   - id: A16
     source: specs/project-rules/spec.md
     text: 显式添加的规则立即写入用户指定的普通 Markdown 文件；自动候选只有用户选择加入后才能生成仓库改动。
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: 项目内相对路径检查阻止规则写入项目外。
+      truncated: false
   - id: A17
     source: specs/project-rules/spec.md
     text: 观察必须带项目身份、workflow 家族、change ID、成功结果和候选键。同一 change 只计一次；至少两个不同且成功的 change
       提供一致证据后才生成非阻塞候选。
-    result: pending
-    reason: null
+    result: failed
+    reason:
+      text: 观察没有独立 project identity；成功一致性只信任调用者 candidateKey，且失败后同 change
+        成功不能纠正既有失败观察。
+      truncated: false
   - id: A18
     source: specs/project-rules/spec.md
     text: 候选可以 `adopt`、`ignore` 或 `snooze`。未采用候选不进入上下文，不阻塞编译、测试、构建或 CI，也不静默修改规则来源。
-    result: pending
-    reason: null
+    result: failed
+    reason:
+      text: snooze 后候选从公开结果永久消失，没有恢复或到期入口。
+      truncated: false
   - id: A19
     source: specs/project-rules/spec.md
     text: 选择器先按来源、项目、路径和任务做确定性过滤，再按匹配程度排序；结果使用固定的最大段数和字节数。调用者获得规则文本、来源路径和适用范围，不获得完整候选列表或
       Runtime 机器字段。
-    result: pending
-    reason: null
+    result: failed
+    reason:
+      text: 选择器没有来源过滤，零相关规则仍会入选，调用者可以放大上限。
+      truncated: false
   - id: A20
     source: specs/project-rules/spec.md
     text: 服务从 `package.json` scripts、Maven/Gradle 构建文件、Makefile、Python
       项目配置等已存在文件中发现验证入口，返回实际命令和来源。它不安装依赖、不运行命令、不改变 warning/error 语义；Agent
       或宿主负责在授权范围内执行并根据原生诊断修复。
-    result: pending
-    reason: null
+    result: failed
+    reason:
+      text: 空或仅注释的 build.gradle 也返回 gradle check，未识别 wrapper、插件任务和
+        lockfile；pytest.ini-only 的 sourcePath 也错误。
+      truncated: false
   - id: A21
     source: specs/project-rules/spec.md
     text: 三个命令调用同一领域服务；普通输出简短可读，`--json` 只返回用户需要的状态和摘要，不返回内部 ID、评分或状态机字段。
-    result: pending
-    reason: null
-builder_handoff: null
+    result: failed
+    reason:
+      text: JSON 仍暴露内部 ID/状态，CLI 测试未覆盖 scan 和普通文本输出。
+      truncated: false
+builder_handoff:
+  candidate_id: 36e3c135-6358-41e5-a1b6-390577bf0471
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:f1515274-740b-4493-b391-5ea1a13e9fad
+  iteration: 1
+  summary:
+    text: 已完成项目规则 child：普通 Markdown 规则来源和分段解析、初始化/扫描/状态
+      Runtime、显式规则追加、候选观察与两次独立成功阈值、加入/忽略/稍后、任务路径有界上下文选择、项目原生验证入口发现，以及 comet
+      rules init/scan/status CLI。未实现个人记忆、插件 Runtime、Hook/Skill 投递和 Dashboard。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    - A8
+    - A9
+    - A10
+    - A11
+    - A12
+    - A13
+    - A14
+    - A15
+    - A16
+    - A17
+    - A18
+    - A19
+    - A20
+    - A21
+  checks:
+    - name:
+        text: project rules tests
+        truncated: false
+      result: passed
+      note:
+        text: npx vitest run test/domains/project-rules/project-rules.test.ts
+          test/app/project-rules-command.test.ts；6/6 通过
+        truncated: false
+    - name:
+        text: TypeScript typecheck
+        truncated: false
+      result: passed
+      note:
+        text: pnpm exec tsc --noEmit；通过
+        truncated: false
+    - name:
+        text: architecture lint
+        truncated: false
+      result: passed
+      note:
+        text: pnpm run lint:architecture；通过
+        truncated: false
+    - name:
+        text: project rules formatting
+        truncated: false
+      result: passed
+      note:
+        text: npx prettier --check 受影响的 project-rules、CLI、测试、布局和文档文件；通过
+        truncated: false
+    - name:
+        text: repository build
+        truncated: false
+      result: passed
+      note:
+        text: pnpm build；Classic/Native/Entry、TypeScript 和 Dashboard 构建通过
+        truncated: false
+    - name:
+        text: repository lint
+        truncated: false
+      result: not-run
+      note:
+        text: pnpm lint 未运行：child worktree 中没有可用的 eslint 可执行文件
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: 本 child 提供项目规则领域服务和 CLI；Hook、宿主 Rule 加载器、Skill 上下文接线和 Dashboard 由最终集成或依赖
+        child 完成。
+      truncated: false
+    - text: 本 child 发现项目原生验证入口但不执行命令、不安装依赖、不重解释 warning/error 严重级别。
+      truncated: false
+    - text: 完整仓库 lint 因 child worktree 缺少 eslint 可执行文件未完成；其余 targeted/build checks
+        均通过。
+      truncated: false
+  known_limits_truncated: false
+  submitted_at: 2026-08-14T09:40:31.879Z
 blockers: []
-verification: null
-history: []
+verification:
+  candidate_id: 36e3c135-6358-41e5-a1b6-390577bf0471
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:194f4552-f36a-4ec2-82e6-da59c35391e2
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: fail
+  checks:
+    - id: project-rules-tests
+      name:
+        text: project rules tests
+        truncated: false
+      argv_display:
+        - text: vitest
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/project-rules/project-rules.test.ts
+          truncated: false
+        - text: test/app/project-rules-command.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 2597
+    - id: typescript-typecheck
+      name:
+        text: TypeScript typecheck
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: tsc
+          truncated: false
+        - text: --noEmit
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 6728
+    - id: architecture-lint
+      name:
+        text: architecture lint
+        truncated: false
+      argv_display:
+        - text: run
+          truncated: false
+        - text: lint:architecture
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 956
+    - id: project-rules-formatting
+      name:
+        text: project rules formatting
+        truncated: false
+      argv_display:
+        - text: prettier
+          truncated: false
+        - text: --check
+          truncated: false
+        - text: domains/project-rules/project-rules.ts
+          truncated: false
+        - text: domains/project-rules/types.ts
+          truncated: false
+        - text: domains/project-rules/index.ts
+          truncated: false
+        - text: app/commands/project-rules.ts
+          truncated: false
+        - text: app/cli/index.ts
+          truncated: false
+        - text: test/domains/project-rules/project-rules.test.ts
+          truncated: false
+        - text: test/app/project-rules-command.test.ts
+          truncated: false
+        - text: config/repository-layout.json
+          truncated: false
+        - text: docs/comet/changes/self-evolving-project-rules/brief.md
+          truncated: false
+        - text: docs/comet/changes/self-evolving-project-rules/specs/project-rules/spec.md
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 1769
+    - id: repository-build
+      name:
+        text: repository build
+        truncated: false
+      argv_display:
+        - text: run
+          truncated: false
+        - text: build
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 32021
+  summary:
+    text: 独立只读复核确认 13 项验收存在可复现缺口；先回到 Build 修复选择边界、来源状态、候选摘要、观察身份、snooze 恢复、验证入口判断和
+      CLI 输出，再重新验证。
+    truncated: false
+  risks:
+    - text: 项目规则 domain 默认直接依赖 node:fs/path，按仓库分层规范应由 platform 适配。
+      truncated: false
+    - text: 完整 pnpm lint 未运行，child worktree 缺少 eslint 可执行文件。
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-08-14T09:53:36.429Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A5
+      - A6
+      - A7
+      - A10
+      - A13
+      - A15
+      - A17
+      - A18
+      - A19
+      - A20
+      - A21
+    summary:
+      text: 独立只读复核确认 13 项验收存在可复现缺口；先回到 Build 修复选择边界、来源状态、候选摘要、观察身份、snooze 恢复、验证入口判断和
+        CLI 输出，再重新验证。
+      truncated: false
+    completed_at: 2026-08-14T09:53:36.429Z
 history_overflow:
   dropped_entries: 0
   first_dropped_at: null
@@ -157,7 +435,7 @@ history_overflow:
     blocked: 0
     execution-error: 0
     recovery: 0
-verification_result: pending
-verification_report: null
+verification_result: fail
+verification_report: verification.md
 archived: false
 created_at: 2026-08-14T09:29:48.366Z

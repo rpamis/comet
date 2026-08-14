@@ -6,11 +6,13 @@ import type {
   ProjectRuleSection,
   ProjectRuleSource,
   ProjectRuleSourceKind,
+  ProjectRuleCandidateSummary,
   ProjectRulesFileSystem,
   ProjectRulesSelectionRequest,
   ProjectRulesServiceOptions,
   ProjectRulesState,
   ProjectRulesStatus,
+  ProjectRuleSourceSnapshot,
   RuleCandidate,
   RuleObservation,
   SelectedProjectRule,
@@ -57,27 +59,50 @@ function cloneState(state: ProjectRulesState): ProjectRulesState {
 }
 
 function emptyState(): ProjectRulesState {
-  return { version: 1, initialized: false, lastScanAt: null, observations: [], candidates: [] };
+  return {
+    version: 1,
+    initialized: false,
+    lastScanAt: null,
+    sources: [],
+    observations: [],
+    candidates: [],
+  };
 }
 
-function normalizeState(value: unknown): ProjectRulesState {
+function normalizeState(value: unknown, projectId: string): ProjectRulesState {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return emptyState();
   const input = value as Record<string, unknown>;
   const observations = Array.isArray(input.observations) ? input.observations : [];
   const candidates = Array.isArray(input.candidates) ? input.candidates : [];
+  const sources = Array.isArray(input.sources) ? input.sources : [];
   return {
     version: 1,
     initialized: input.initialized === true,
     lastScanAt: typeof input.lastScanAt === 'string' ? input.lastScanAt : null,
-    observations: observations.filter(isObservation),
+    sources: sources.filter(isSourceSnapshot),
+    observations: observations
+      .filter(isObservation)
+      .map((observation) => ({ ...observation, projectId })),
     candidates: candidates.filter(isCandidate),
   };
+}
+
+function isSourceSnapshot(value: unknown): value is ProjectRuleSourceSnapshot {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const input = value as Record<string, unknown>;
+  return (
+    typeof input.path === 'string' &&
+    (input.kind === 'comet-rules' || input.kind === 'agent-instructions') &&
+    Number.isSafeInteger(input.sectionCount) &&
+    typeof input.contentHash === 'string'
+  );
 }
 
 function isObservation(value: unknown): value is RuleObservation {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const input = value as Record<string, unknown>;
   return (
+    typeof input.projectId === 'string' &&
     typeof input.candidateKey === 'string' &&
     typeof input.text === 'string' &&
     typeof input.workflow === 'string' &&
@@ -103,6 +128,12 @@ function isCandidate(value: unknown): value is RuleCandidate {
     typeof input.createdAt === 'string' &&
     typeof input.updatedAt === 'string'
   );
+}
+
+function isVisibleCandidate(candidate: RuleCandidate): candidate is RuleCandidate & {
+  status: 'pending' | 'snoozed';
+} {
+  return candidate.status === 'pending' || candidate.status === 'snoozed';
 }
 
 function markdownSections(
@@ -144,13 +175,31 @@ function markdownSections(
 }
 
 function globRegExp(pattern: string): RegExp {
-  const escaped = pattern
-    .trim()
-    .replace(/[.+^${}()|[\]\\]/gu, '\\$&')
-    .replaceAll('**', '.*')
-    .replaceAll('*', '[^/]*')
-    .replaceAll('?', '[^/]');
-  return new RegExp(`^${escaped}$`, 'u');
+  const normalized = pattern.trim().replaceAll('\\', '/');
+  let expression = '';
+  for (let index = 0; index < normalized.length; index += 1) {
+    const character = normalized[index];
+    if (character === '*' && normalized[index + 1] === '*') {
+      if (normalized[index + 2] === '/') {
+        expression += '(?:.*/)?';
+        index += 2;
+      } else {
+        expression += '.*';
+        index += 1;
+      }
+      continue;
+    }
+    if (character === '*') {
+      expression += '[^/]*';
+      continue;
+    }
+    if (character === '?') {
+      expression += '[^/]';
+      continue;
+    }
+    expression += /[.+^${}()|[\]\\]/u.test(character) ? `\\${character}` : character;
+  }
+  return new RegExp(`^${expression}$`, 'u');
 }
 
 function tokens(value: string): string[] {
@@ -163,29 +212,66 @@ function tokens(value: string): string[] {
 
 function scoreSection(section: ProjectRuleSection, request: ProjectRulesSelectionRequest): number {
   const targetPath = request.path?.replaceAll('\\', '/') ?? '';
-  if (section.scope && !globRegExp(section.scope).test(targetPath)) return 0;
+  if (section.scope && (!targetPath || !globRegExp(section.scope).test(targetPath))) return 0;
   const query = new Set(tokens(`${request.task} ${targetPath}`));
   const haystack = new Set(tokens(`${section.title} ${section.text}`));
-  let score = section.scope ? 4 : 1;
-  for (const token of query) if (haystack.has(token)) score += 2;
-  if (section.title.toLocaleLowerCase().includes(request.task.toLocaleLowerCase())) score += 2;
+  let score = section.scope ? 4 : 0;
+  let relevant = Boolean(section.scope);
+  for (const token of query) {
+    if (haystack.has(token)) {
+      score += 2;
+      relevant = true;
+    }
+  }
+  const task = request.task.trim().toLocaleLowerCase();
+  if (task && section.title.toLocaleLowerCase().includes(task)) {
+    score += 2;
+    relevant = true;
+  }
+  if (!relevant) return 0;
   return score;
 }
 
-function candidateId(key: string): string {
-  return `candidate-${createHash('sha256').update(key).digest('hex').slice(0, 16)}`;
+function candidateId(key: string, text: string): string {
+  return `candidate-${createHash('sha256')
+    .update(`${key}\n${text.trim()}`)
+    .digest('hex')
+    .slice(0, 16)}`;
 }
 
-function commandForPackageManager(projectRoot: string, manager: string | undefined): string {
+function commandForPackageManager(
+  manager: string | undefined,
+  lockFiles: readonly string[],
+): string {
   if (manager?.startsWith('pnpm')) return 'pnpm';
   if (manager?.startsWith('yarn')) return 'yarn';
   if (manager?.startsWith('npm')) return 'npm';
-  if (projectRoot.length > 0) return 'npm';
+  if (lockFiles.includes('pnpm-lock.yaml')) return 'pnpm';
+  if (lockFiles.includes('yarn.lock')) return 'yarn';
   return 'npm';
+}
+
+function sourceSnapshot(source: ProjectRuleSource, content: string): ProjectRuleSourceSnapshot {
+  return {
+    path: source.path,
+    kind: source.kind,
+    sectionCount: source.sections.length,
+    contentHash: createHash('sha256').update(content).digest('hex'),
+  };
+}
+
+function hasMeaningfulBuildScript(content: string): boolean {
+  return (
+    content
+      .replace(/\/\/.*$/gmu, '')
+      .replace(/\/\*[\s\S]*?\*\//gu, '')
+      .trim().length > 0
+  );
 }
 
 export class ProjectRulesService {
   private readonly projectRoot: string;
+  private readonly projectId: string;
   private readonly runtimeDirectory: string;
   private readonly stateFile: string;
   private readonly fileSystem: ProjectRulesFileSystem;
@@ -194,9 +280,22 @@ export class ProjectRulesService {
 
   public constructor(options: ProjectRulesServiceOptions) {
     this.projectRoot = path.resolve(options.projectRoot);
-    this.runtimeDirectory = path.resolve(
+    this.projectId =
+      options.projectId?.trim() ||
+      createHash('sha256').update(this.projectRoot).digest('hex').slice(0, 16);
+    const runtimeDirectory = path.resolve(
       options.runtimeDirectory ?? path.join(this.projectRoot, '.comet', 'runtime', 'project-rules'),
     );
+    const relativeRuntime = path.relative(this.projectRoot, runtimeDirectory);
+    if (
+      !relativeRuntime ||
+      relativeRuntime === '..' ||
+      relativeRuntime.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(relativeRuntime)
+    ) {
+      throw new Error('Project rules runtime directory must stay inside the project');
+    }
+    this.runtimeDirectory = runtimeDirectory;
     this.stateFile = path.join(this.runtimeDirectory, STATE_FILE);
     this.fileSystem = options.fileSystem ?? createDefaultFileSystem();
     this.now = options.now ?? (() => new Date());
@@ -209,7 +308,17 @@ export class ProjectRulesService {
   public async scan(): Promise<ProjectRulesStatus> {
     const state = await this.ensureState();
     const sources = await this.readSources();
-    const next = { ...state, initialized: true, lastScanAt: this.now().toISOString() };
+    const snapshots: ProjectRuleSourceSnapshot[] = [];
+    for (const source of sources) {
+      const content = await this.fileSystem.readText(path.join(this.projectRoot, source.path));
+      if (content !== null) snapshots.push(sourceSnapshot(source, content));
+    }
+    const next = {
+      ...state,
+      initialized: true,
+      lastScanAt: this.now().toISOString(),
+      sources: snapshots,
+    };
     await this.persist(next);
     return this.toStatus(next, sources);
   }
@@ -249,7 +358,10 @@ export class ProjectRulesService {
   public async select(
     request: ProjectRulesSelectionRequest,
   ): Promise<readonly SelectedProjectRule[]> {
-    const sections = (await this.readSources()).flatMap((source) => source.sections);
+    const allowedSources = request.sourceKinds ? new Set(request.sourceKinds) : null;
+    const sections = (await this.readSources())
+      .filter((source) => allowedSources === null || allowedSources.has(source.kind))
+      .flatMap((source) => source.sections);
     const ranked = sections
       .map((section) => ({ ...section, score: scoreSection(section, request) }))
       .filter((section) => section.score > 0)
@@ -259,8 +371,14 @@ export class ProjectRulesService {
           left.sourcePath.localeCompare(right.sourcePath) ||
           left.title.localeCompare(right.title),
       );
-    const maxSections = Math.max(1, request.maxSections ?? DEFAULT_MAX_SECTIONS);
-    const maxBytes = Math.max(1, request.maxBytes ?? DEFAULT_MAX_BYTES);
+    const maxSections = Math.min(
+      DEFAULT_MAX_SECTIONS,
+      Math.max(1, request.maxSections ?? DEFAULT_MAX_SECTIONS),
+    );
+    const maxBytes = Math.min(
+      DEFAULT_MAX_BYTES,
+      Math.max(1, request.maxBytes ?? DEFAULT_MAX_BYTES),
+    );
     const selected: SelectedProjectRule[] = [];
     let bytes = 0;
     for (const section of ranked) {
@@ -288,31 +406,60 @@ export class ProjectRulesService {
   }
 
   public async recordObservation(
-    observation: Omit<RuleObservation, 'observedAt'>,
+    observation: Omit<RuleObservation, 'observedAt' | 'projectId'>,
   ): Promise<RuleCandidate | null> {
     const state = await this.ensureState();
     const observedAt = this.now().toISOString();
-    const duplicate = state.observations.some(
+    const duplicateIndex = state.observations.findIndex(
       (entry) =>
+        entry.projectId === this.projectId &&
         entry.candidateKey === observation.candidateKey &&
         entry.workflow === observation.workflow &&
         entry.changeId === observation.changeId,
     );
-    if (duplicate)
-      return (
-        state.candidates.find((candidate) => candidate.key === observation.candidateKey) ?? null
-      );
-    const nextObservations = [...state.observations, { ...observation, observedAt }];
+    const observedEntry: RuleObservation = {
+      ...observation,
+      projectId: this.projectId,
+      observedAt,
+    };
+    const nextObservations = [...state.observations];
+    if (duplicateIndex >= 0) {
+      const previous = nextObservations[duplicateIndex];
+      if (
+        previous.success ||
+        !observation.success ||
+        previous.text.trim() !== observation.text.trim()
+      ) {
+        return (
+          state.candidates.find(
+            (candidate) =>
+              candidate.key === observation.candidateKey &&
+              candidate.text.trim() === observation.text.trim(),
+          ) ?? null
+        );
+      }
+      nextObservations[duplicateIndex] = observedEntry;
+    } else {
+      nextObservations.push(observedEntry);
+    }
     const successful = nextObservations.filter(
-      (entry) => entry.candidateKey === observation.candidateKey && entry.success,
+      (entry) =>
+        entry.projectId === this.projectId &&
+        entry.candidateKey === observation.candidateKey &&
+        entry.text.trim() === observation.text.trim() &&
+        entry.success,
     );
     let candidates = [...state.candidates];
     if (
       successful.length >= 2 &&
-      !candidates.some((candidate) => candidate.key === observation.candidateKey)
+      !candidates.some(
+        (candidate) =>
+          candidate.key === observation.candidateKey &&
+          candidate.text.trim() === observation.text.trim(),
+      )
     ) {
       candidates.push({
-        id: candidateId(observation.candidateKey),
+        id: candidateId(observation.candidateKey, observation.text),
         key: observation.candidateKey,
         text: observation.text,
         status: 'pending',
@@ -322,7 +469,8 @@ export class ProjectRulesService {
       });
     } else {
       candidates = candidates.map((candidate) =>
-        candidate.key === observation.candidateKey
+        candidate.key === observation.candidateKey &&
+        candidate.text.trim() === observation.text.trim()
           ? { ...candidate, observations: successful.length, updatedAt: observedAt }
           : candidate,
       );
@@ -331,10 +479,15 @@ export class ProjectRulesService {
     return candidates.find((candidate) => candidate.key === observation.candidateKey) ?? null;
   }
 
-  public async candidates(): Promise<readonly RuleCandidate[]> {
-    return (await this.ensureState()).candidates.filter(
-      (candidate) => candidate.status === 'pending',
-    );
+  public async candidates(): Promise<readonly ProjectRuleCandidateSummary[]> {
+    return (await this.ensureState()).candidates.filter(isVisibleCandidate).map((candidate) => ({
+      text: candidate.text,
+      state: candidate.status,
+    }));
+  }
+
+  public async candidateDetails(): Promise<readonly RuleCandidate[]> {
+    return (await this.ensureState()).candidates.filter(isVisibleCandidate);
   }
 
   public async adoptCandidate(id: string, targetPath = '.comet/rules/project.md'): Promise<void> {
@@ -360,6 +513,21 @@ export class ProjectRulesService {
     await this.updateCandidateStatus(id, 'snoozed');
   }
 
+  public async restoreCandidate(id: string): Promise<void> {
+    const state = await this.ensureState();
+    if (!state.candidates.some((candidate) => candidate.id === id)) {
+      throw new Error(`Unknown project rule candidate: ${id}`);
+    }
+    await this.persist({
+      ...state,
+      candidates: state.candidates.map((candidate) =>
+        candidate.id === id
+          ? { ...candidate, status: 'pending', updatedAt: this.now().toISOString() }
+          : candidate,
+      ),
+    });
+  }
+
   public async discoverVerificationEntrypoints(): Promise<readonly VerificationEntrypoint[]> {
     const entries: VerificationEntrypoint[] = [];
     const packageJson = await this.fileSystem.readText(path.join(this.projectRoot, 'package.json'));
@@ -369,7 +537,17 @@ export class ProjectRulesService {
           packageManager?: string;
           scripts?: Record<string, string>;
         };
-        const manager = commandForPackageManager(this.projectRoot, parsed.packageManager);
+        const lockFiles = await Promise.all(
+          ['pnpm-lock.yaml', 'yarn.lock', 'package-lock.json'].map(async (file) =>
+            (await this.fileSystem.readText(path.join(this.projectRoot, file))) !== null
+              ? file
+              : null,
+          ),
+        );
+        const manager = commandForPackageManager(
+          parsed.packageManager,
+          lockFiles.filter((file): file is string => file !== null),
+        );
         for (const script of ['lint', 'test', 'check', 'verify', 'build']) {
           if (parsed.scripts?.[script]) {
             entries.push({
@@ -386,34 +564,46 @@ export class ProjectRulesService {
         // Ignore malformed package metadata; another project-native entry may still be usable.
       }
     }
-    if (await this.fileSystem.readText(path.join(this.projectRoot, 'pom.xml'))) {
+    const pom = await this.fileSystem.readText(path.join(this.projectRoot, 'pom.xml'));
+    if (pom && /<project(?:\s|>)/u.test(pom)) {
+      const mavenExecutable =
+        (await this.fileSystem.readText(path.join(this.projectRoot, 'mvnw'))) !== null
+          ? './mvnw'
+          : (await this.fileSystem.readText(path.join(this.projectRoot, 'mvnw.cmd'))) !== null
+            ? 'mvnw.cmd'
+            : 'mvn';
       entries.push({
         id: 'maven-verify',
         label: 'mvn verify',
-        executable: 'mvn',
+        executable: mavenExecutable,
         args: ['verify'],
         cwd: '.',
         sourcePath: 'pom.xml',
       });
     }
-    if (await this.fileSystem.readText(path.join(this.projectRoot, 'build.gradle'))) {
+    const gradle = await this.fileSystem.readText(path.join(this.projectRoot, 'build.gradle'));
+    const gradleKotlin = await this.fileSystem.readText(
+      path.join(this.projectRoot, 'build.gradle.kts'),
+    );
+    const gradleScript = gradle ?? gradleKotlin;
+    const gradleWrapper =
+      (await this.fileSystem.readText(path.join(this.projectRoot, 'gradlew'))) !== null
+        ? './gradlew'
+        : (await this.fileSystem.readText(path.join(this.projectRoot, 'gradlew.bat'))) !== null
+          ? 'gradlew.bat'
+          : 'gradle';
+    if (
+      gradleScript &&
+      hasMeaningfulBuildScript(gradleScript) &&
+      /\b(?:check|tasks?|plugins?|apply\s+plugin)\b/u.test(gradleScript)
+    ) {
       entries.push({
         id: 'gradle-check',
         label: 'gradle check',
-        executable: 'gradle',
+        executable: gradleWrapper,
         args: ['check'],
         cwd: '.',
-        sourcePath: 'build.gradle',
-      });
-    }
-    if (await this.fileSystem.readText(path.join(this.projectRoot, 'build.gradle.kts'))) {
-      entries.push({
-        id: 'gradle-check',
-        label: 'gradle check',
-        executable: 'gradle',
-        args: ['check'],
-        cwd: '.',
-        sourcePath: 'build.gradle.kts',
+        sourcePath: gradle ? 'build.gradle' : 'build.gradle.kts',
       });
     }
     const makefile = await this.fileSystem.readText(path.join(this.projectRoot, 'Makefile'));
@@ -429,17 +619,16 @@ export class ProjectRulesService {
           sourcePath: 'Makefile',
         });
     }
-    if (
-      (await this.fileSystem.readText(path.join(this.projectRoot, 'pyproject.toml'))) ||
-      (await this.fileSystem.readText(path.join(this.projectRoot, 'pytest.ini')))
-    ) {
+    const pyproject = await this.fileSystem.readText(path.join(this.projectRoot, 'pyproject.toml'));
+    const pytestIni = await this.fileSystem.readText(path.join(this.projectRoot, 'pytest.ini'));
+    if (pyproject || pytestIni) {
       entries.push({
         id: 'python-pytest',
         label: 'python -m pytest',
         executable: 'python',
         args: ['-m', 'pytest'],
         cwd: '.',
-        sourcePath: 'pyproject.toml',
+        sourcePath: pyproject ? 'pyproject.toml' : 'pytest.ini',
       });
     }
     return entries;
@@ -463,7 +652,9 @@ export class ProjectRulesService {
   private async ensureState(): Promise<ProjectRulesState> {
     if (this.state !== null) return this.state;
     const content = await this.fileSystem.readText(this.stateFile);
-    this.state = content ? normalizeState(JSON.parse(content) as unknown) : emptyState();
+    this.state = content
+      ? normalizeState(JSON.parse(content) as unknown, this.projectId)
+      : emptyState();
     return this.state;
   }
 
@@ -498,7 +689,12 @@ export class ProjectRulesService {
         sectionCount: source.sections.length,
       })),
       verificationEntrypoints: await this.discoverVerificationEntrypoints(),
-      candidates: state.candidates.filter((candidate) => candidate.status === 'pending'),
+      candidates: state.candidates.filter(isVisibleCandidate).map(
+        (candidate): ProjectRuleCandidateSummary => ({
+          text: candidate.text,
+          state: candidate.status,
+        }),
+      ),
     };
   }
 }

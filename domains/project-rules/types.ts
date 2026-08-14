@@ -15,6 +15,13 @@ export interface ProjectRuleSource {
   readonly sections: readonly ProjectRuleSection[];
 }
 
+export interface ProjectRuleSourceSnapshot {
+  readonly path: string;
+  readonly kind: ProjectRuleSourceKind;
+  readonly sectionCount: number;
+  readonly contentHash: string;
+}
+
 export interface VerificationEntrypoint {
   readonly id: string;
   readonly label: string;
@@ -25,6 +32,7 @@ export interface VerificationEntrypoint {
 }
 
 export interface RuleObservation {
+  readonly projectId: string;
   readonly candidateKey: string;
   readonly text: string;
   readonly workflow: string;
@@ -48,6 +56,7 @@ export interface ProjectRulesState {
   readonly version: 1;
   readonly initialized: boolean;
   readonly lastScanAt: string | null;
+  readonly sources: readonly ProjectRuleSourceSnapshot[];
   readonly observations: readonly RuleObservation[];
   readonly candidates: readonly RuleCandidate[];
 }
@@ -61,6 +70,7 @@ export interface ProjectRulesFileSystem {
 export interface ProjectRulesSelectionRequest {
   readonly task: string;
   readonly path?: string;
+  readonly sourceKinds?: readonly ProjectRuleSourceKind[];
   readonly maxSections?: number;
   readonly maxBytes?: number;
 }
@@ -78,11 +88,17 @@ export interface ProjectRulesStatus {
     sectionCount: number;
   }[];
   readonly verificationEntrypoints: readonly VerificationEntrypoint[];
-  readonly candidates: readonly RuleCandidate[];
+  readonly candidates: readonly ProjectRuleCandidateSummary[];
+}
+
+export interface ProjectRuleCandidateSummary {
+  readonly text: string;
+  readonly state: 'pending' | 'snoozed';
 }
 
 export interface ProjectRulesServiceOptions {
   readonly projectRoot: string;
+  readonly projectId?: string;
   readonly fileSystem?: ProjectRulesFileSystem;
   readonly now?: () => Date;
   readonly runtimeDirectory?: string;
