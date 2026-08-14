@@ -1,9 +1,9 @@
 schema: comet.native.v4
 name: self-evolving-project-rules
 language: zh-CN
-phase: build
+phase: archive
 status: active
-state_version: 22
+state_version: 28
 brief: brief.md
 spec_changes:
   - capability: project-rules
@@ -15,19 +15,16 @@ workspace:
   target_branch: beta20
   finish: null
 loop:
-  stage: repairing
-  goal_cycle: 2
-  iteration: 5
-  attempt: 0
+  stage: archive-ready
+  goal_cycle: 3
+  iteration: 1
+  attempt: 1
   retry_epoch: 0
-  failed_iteration_count: 1
+  failed_iteration_count: 0
   no_progress_count: 0
   execution_failure_count: 0
-  previous_unresolved_ids:
-    - A6
-    - A17
-    - A20
-  next_action: repair-failed-acceptance
+  previous_unresolved_ids: []
+  next_action: archive
 acceptance:
   - id: A1
     source: brief.md
@@ -35,7 +32,7 @@ acceptance:
       `适用范围：server/**/migration/**`；扫描和选择器可以直接读取它。
     result: passed
     reason:
-      text: Markdown 规则可直接读取。
+      text: Markdown 标题、列表和适用范围可读取。
       truncated: false
   - id: A2
     source: brief.md
@@ -43,43 +40,43 @@ acceptance:
       change。
     result: passed
     reason:
-      text: init 只读盘点并保存 Runtime 状态。
+      text: 无规则 init 只写 Runtime，不生成空规则或 change。
       truncated: false
   - id: A3
     source: brief.md
     text: 用户说“加入规则：迁移必须同步回滚说明”，服务追加到指定 Markdown 文件，已有内容和注释保持不变。
     result: passed
     reason:
-      text: 显式添加保留原文并追加规则。
+      text: addRule 仅追加指定 Markdown 并保留已有文本。
       truncated: false
   - id: A4
     source: brief.md
     text: 同一候选只在两个不同且成功的 change 中观察到后才进入待处理候选；重复恢复同一 change 不增加计数。
     result: passed
     reason:
-      text: 不同成功 change 才形成候选且去重。
+      text: 不同成功 change 计数，重复 change 去重。
       truncated: false
   - id: A5
     source: brief.md
     text: "`select` 对任务和目标路径返回相关规则，结果不超过固定字节上限；普通运行不返回整个候选列表。"
     result: passed
     reason:
-      text: 完整返回数组受固定字节预算约束。
+      text: 选择结果受固定段数和完整数组序列化字节预算约束。
       truncated: false
   - id: A6
     source: brief.md
     text: 项目含 `package.json`、`pom.xml`、`build.gradle` 或 Makefile
       时，服务返回项目实际可用的验证入口，不要求统一为 Comet 命令。
-    result: failed
+    result: passed
     reason:
-      text: 旧实现的 Maven 入口判断把截断 XML 或依赖嵌套坐标误判为可用入口。
+      text: package、Maven、Gradle、Make 和 Python 入口均按项目内容发现。
       truncated: false
   - id: A7
     source: brief.md
     text: "`comet rules status --json` 返回初始化状态、规则来源、验证入口和候选摘要；不暴露内部 Runtime 字段。"
     result: passed
     reason:
-      text: status 摘要不暴露 Runtime 内部字段。
+      text: status JSON 只返回用户摘要。
       truncated: false
   - id: A8
     source: specs/project-rules/spec.md
@@ -88,21 +85,21 @@ acceptance:
       的状态。`app/commands/project-rules.ts` 只把这些能力暴露为 `comet rules` CLI。"
     result: passed
     reason:
-      text: 领域服务与 workflow 状态解耦。
+      text: 领域服务独立且不修改 workflow 状态。
       truncated: false
   - id: A9
     source: specs/project-rules/spec.md
     text: "`.comet/rules/*.md` 是可选的普通 Markdown 文件；一个文件可以写多条规则。"
     result: passed
     reason:
-      text: 普通 Markdown 文件可一文件多条规则。
+      text: 支持可选的一文件多段 Markdown 规则。
       truncated: false
   - id: A10
     source: specs/project-rules/spec.md
     text: 规则段落可以用标题分组，并可在段落中写 `适用范围：<glob>`；没有范围时按标题、正文、任务和目标路径匹配。
     result: passed
     reason:
-      text: 标题、范围和 glob 选择已覆盖。
+      text: 标题、正文、适用范围 glob 匹配正常。
       truncated: false
   - id: A11
     source: specs/project-rules/spec.md
@@ -110,14 +107,14 @@ acceptance:
       等指令来源，但不把它们复制到 `.comet/rules`。
     result: passed
     reason:
-      text: 原有指令源只读发现不复制。
+      text: 可发现 AGENTS、CLAUDE 和 Copilot 来源且不复制。
       truncated: false
   - id: A12
     source: specs/project-rules/spec.md
     text: 写入规则时只能追加或替换明确的目标文件，保留其他文本；初始化和扫描不能生成空规则文件。
     result: passed
     reason:
-      text: 写入只作用于明确目标并保留其他文本。
+      text: 路径约束、追加写入和盘点不建空文件。
       truncated: false
   - id: A13
     source: specs/project-rules/spec.md
@@ -126,36 +123,37 @@ acceptance:
       Markdown、Agent 指令或原生检查配置。
     result: passed
     reason:
-      text: Runtime 路径固定且保存来源索引。
+      text: Runtime 固定在 .comet/runtime/project-rules。
       truncated: false
   - id: A14
     source: specs/project-rules/spec.md
     text: "`init` 和 `scan` 都执行有边界的只读盘点，并更新 Runtime 状态；两者幂等且不创建 Comet change。"
     result: passed
     reason:
-      text: init/scan 有界、幂等且不创建 change。
+      text: init/scan 有界、幂等并不创建 change。
       truncated: false
   - id: A15
     source: specs/project-rules/spec.md
     text: "`status` 返回初始化、上次盘点、来源、验证入口和待处理/稍后候选摘要；摘要只包含用户可读文本和处理状态，候选详情按需读取。"
     result: passed
     reason:
-      text: 状态和候选公开接口返回可读摘要。
+      text: status 提供盘点、来源、入口和候选摘要。
       truncated: false
   - id: A16
     source: specs/project-rules/spec.md
     text: 显式添加的规则立即写入用户指定的普通 Markdown 文件；自动候选只有用户选择加入后才能生成仓库改动。
     result: passed
     reason:
-      text: 自动候选只有 adopt 才修改规则文件。
+      text: 显式规则立即写入，自动候选仅 adopt 才改仓库。
       truncated: false
   - id: A17
     source: specs/project-rules/spec.md
-    text: 观察必须带项目身份、workflow 家族、change ID、成功结果和候选键。同一 change 只计一次；至少两个不同且成功的 change
-      提供一致证据后才生成非阻塞候选。
-    result: failed
+    text: 观察必须带项目身份、workflow 家族、change ID、成功结果和候选键。Native 使用 `native`，Classic 使用
+      `full`、`hotfix` 或 `tweak`；宿主传入 `classic` 时归一化为 `full`，不能形成第二个证据族。同一 change
+      只计一次；至少两个不同且成功的 change 提供一致证据后才生成非阻塞候选。
+    result: passed
     reason:
-      text: 旧实现拒绝实际 Classic profile full，且未统一 classic 别名。
+      text: 接受 native/full/hotfix/tweak，classic 归一化为 full，身份和成功证据正确去重。
       truncated: false
   - id: A18
     source: specs/project-rules/spec.md
@@ -163,7 +161,7 @@ acceptance:
       CI，也不静默修改规则来源。
     result: passed
     reason:
-      text: 候选支持 adopt/ignore/snooze/restore 且非阻塞。
+      text: 支持 adopt/ignore/snooze/restore，未采用候选不进入选择也不阻塞。
       truncated: false
   - id: A19
     source: specs/project-rules/spec.md
@@ -171,33 +169,33 @@ acceptance:
       Runtime 机器字段。
     result: passed
     reason:
-      text: 过滤排序和固定上下限已覆盖。
+      text: 来源、路径、任务过滤和排序确定，调用者不能放大 5 段/8 KiB 上限。
       truncated: false
   - id: A20
     source: specs/project-rules/spec.md
     text: 服务从 `package.json` scripts、有效的 Maven/Gradle 构建文件、Makefile、Python 项目配置和可用
       wrapper 中发现验证入口，返回实际命令和来源；空文件或仅注释的构建文件不会被宣称为入口。它不安装依赖、不运行命令、不改变
       warning/error 语义；Agent 或宿主负责在授权范围内执行并根据原生诊断修复。
-    result: failed
+    result: passed
     reason:
-      text: 旧实现对截断或嵌套坐标 Maven 文件宣称 mvn verify。
+      text: 原生入口和 wrapper 发现正确，不执行命令；Maven 截断及嵌套坐标误报已修复。
       truncated: false
   - id: A21
     source: specs/project-rules/spec.md
     text: 三个命令调用同一领域服务；普通输出简短可读，`--json` 只返回用户需要的状态和摘要，不返回内部 ID、评分、证据时间戳或状态机字段。
     result: passed
     reason:
-      text: CLI 复用领域服务且 JSON 只公开用户需要的摘要。
+      text: 三个 CLI 共用领域服务，JSON 不暴露内部 ID、评分或状态机字段。
       truncated: false
 builder_handoff:
-  candidate_id: 5e81b332-c2d3-4beb-a54e-ce145057468b
+  candidate_id: 61b9199a-dcd1-4e88-8083-0c9b52f011ff
   identity_provider: skill-coordinated
-  builder_execution_ref: skill-coordinated:builder:752bdea4-dd2b-4bd1-b059-c3fc860c06a9
-  iteration: 4
+  builder_execution_ref: skill-coordinated:builder:12dc1955-49b9-4187-b998-4f38b4813fef
+  iteration: 1
   summary:
-    text: 已根据四轮独立 Verifier 反馈修复项目规则选择结果完整数组预算、Comet workflow 家族校验、固定 Runtime
-      路径、候选摘要与稍后恢复，以及去除 Gradle/Python 注释误判和强化 Maven/Python
-      入口判断；相关回归测试、类型检查、架构检查、格式检查和构建均通过。
+    text: 已修复独立 Verifier 复现的两个语义缺口：Maven 验证入口现在要求闭合 project 根并只读取项目级直接元素，避免截断 XML
+      和依赖嵌套坐标误判；workflow 证据接受 Native 的 native 与 Classic 的 full/hotfix/tweak，并把宿主
+      classic 别名归一化为 full。新增对应回归测试，领域测试、类型检查、架构检查、格式检查和仓库构建均通过。
     truncated: false
   addressed_acceptance_ids:
     - A1
@@ -228,42 +226,43 @@ builder_handoff:
       result: passed
       note:
         text: npx vitest run test/domains/project-rules/project-rules.test.ts
-          test/app/project-rules-command.test.ts；10/10 通过
+          test/app/project-rules-command.test.ts；10/10 通过，并覆盖 full workflow、截断
+          Maven 和依赖嵌套坐标。
         truncated: false
     - name:
         text: TypeScript typecheck
         truncated: false
       result: passed
       note:
-        text: pnpm exec tsc --noEmit；通过
+        text: pnpm exec tsc --noEmit；通过。
         truncated: false
     - name:
         text: architecture lint
         truncated: false
       result: passed
       note:
-        text: pnpm run lint:architecture；通过
+        text: pnpm run lint:architecture；通过。
         truncated: false
     - name:
         text: project rules formatting
         truncated: false
       result: passed
       note:
-        text: npx prettier --check 受影响的项目规则、CLI、测试、布局和文档文件；通过
+        text: npx prettier --check 受影响的项目规则、测试和 change 文档；通过。
         truncated: false
     - name:
         text: repository build
         truncated: false
       result: passed
       note:
-        text: pnpm run build；Classic/Native/Entry、TypeScript 和 Dashboard 构建通过
+        text: pnpm run build；Classic/Native/Entry、TypeScript 和 Dashboard 构建通过。
         truncated: false
     - name:
         text: repository lint
         truncated: false
       result: not-run
       note:
-        text: child worktree 缺少 eslint 可执行文件；未把 lint 记为通过
+        text: child worktree 缺少 eslint 可执行文件；未把 lint 记为通过。
         truncated: false
   checks_truncated: false
   known_limits:
@@ -275,16 +274,16 @@ builder_handoff:
     - text: 完整仓库 lint 因 child worktree 缺少 eslint 可执行文件未运行。
       truncated: false
   known_limits_truncated: false
-  submitted_at: 2026-08-14T10:20:16.006Z
+  submitted_at: 2026-08-14T10:30:16.496Z
 blockers: []
 verification:
-  candidate_id: 5e81b332-c2d3-4beb-a54e-ce145057468b
+  candidate_id: 61b9199a-dcd1-4e88-8083-0c9b52f011ff
   identity_provider: skill-coordinated
-  verifier_execution_ref: skill-coordinated:verifier:c67971cc-d21c-462f-ac24-bb5e0436bfd1
-  iteration: 4
+  verifier_execution_ref: skill-coordinated:verifier:930f5834-bdb8-494e-8a93-432e42f52869
+  iteration: 1
   attempt: 1
   assurance: skill-coordinated
-  verdict: fail
+  verdict: pass
   checks:
     - id: project-rules-tests
       name:
@@ -303,7 +302,7 @@ verification:
       cwd_ref: .
       status: passed
       exit_code: 0
-      duration_ms: 2529
+      duration_ms: 3032
     - id: typescript-typecheck
       name:
         text: TypeScript typecheck
@@ -319,7 +318,7 @@ verification:
       cwd_ref: .
       status: passed
       exit_code: 0
-      duration_ms: 6928
+      duration_ms: 9807
     - id: architecture-lint
       name:
         text: architecture lint
@@ -333,7 +332,7 @@ verification:
       cwd_ref: .
       status: passed
       exit_code: 0
-      duration_ms: 884
+      duration_ms: 1113
     - id: project-rules-formatting
       name:
         text: project rules formatting
@@ -367,7 +366,7 @@ verification:
       cwd_ref: .
       status: passed
       exit_code: 0
-      duration_ms: 1711
+      duration_ms: 2443
     - id: repository-build
       name:
         text: repository build
@@ -381,15 +380,18 @@ verification:
       cwd_ref: .
       status: passed
       exit_code: 0
-      duration_ms: 31345
+      duration_ms: 33821
   summary:
-    text: 独立 Verifier 复现 Maven 可用性误判及 Classic full workflow 拒绝；代码已回到 Build 修复并新增回归测试。
+    text: 独立只读终审通过：A1-A21 全部通过；Maven 可用性判断、Classic full workflow 归一化和固定选择预算均有独立复现证据。
     truncated: false
   risks:
-    - text: 本次失败证据对应 b4491b78；随后已修复 Maven 直接子元素解析和 Classic/full 规范化，需以新候选重新终审。
+    - text: child worktree 未运行 pnpm lint，因为隔离环境缺少 eslint
+        可执行文件；针对性测试、tsc、architecture、Prettier 和 build 均通过。
+      truncated: false
+    - text: Hook、Skill 上下文接线和 Dashboard 属于依赖 child 或最终集成，不在本 child 范围。
       truncated: false
   risks_truncated: false
-  completed_at: 2026-08-14T10:28:18.938Z
+  completed_at: 2026-08-14T10:35:16.947Z
 history:
   - goal_cycle: 1
     iteration: 1
@@ -464,6 +466,24 @@ history:
         修复并新增回归测试。
       truncated: false
     completed_at: 2026-08-14T10:28:18.938Z
+  - goal_cycle: 2
+    iteration: 5
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native confirmed acceptance criteria changed
+      truncated: false
+    completed_at: 2026-08-14T10:30:02.350Z
+  - goal_cycle: 3
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 独立只读终审通过：A1-A21 全部通过；Maven 可用性判断、Classic full workflow 归一化和固定选择预算均有独立复现证据。
+      truncated: false
+    completed_at: 2026-08-14T10:35:16.947Z
 history_overflow:
   dropped_entries: 0
   first_dropped_at: null
@@ -474,7 +494,7 @@ history_overflow:
     blocked: 0
     execution-error: 0
     recovery: 0
-verification_result: fail
+verification_result: pass
 verification_report: verification.md
 archived: false
 created_at: 2026-08-14T09:29:48.366Z
