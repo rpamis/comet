@@ -99,4 +99,19 @@ describe('DashboardPluginHost', () => {
     await expect(host.list()).resolves.toEqual([]);
     expect(await runtime.get('test.plugin')).toMatchObject({ status: 'uninstalled' });
   });
+
+  it('re-enables a globally disabled plugin from its project page', async () => {
+    const runtime = new PluginRuntime({
+      cometVersion: '0.4.0',
+      store: new MemoryPluginStateStore(),
+      descriptors: [descriptor('test.plugin')],
+    });
+    await runtime.install('test.plugin');
+    await runtime.disable('test.plugin');
+    const host = new DashboardPluginHost({ runtime, projectId: 'project-1', pages: [page] });
+
+    await expect(host.list()).resolves.toEqual([expect.objectContaining({ status: 'disabled' })]);
+    await host.lifecycle('test.plugin', 'enable');
+    await expect(host.list()).resolves.toEqual([expect.objectContaining({ status: 'enabled' })]);
+  });
 });

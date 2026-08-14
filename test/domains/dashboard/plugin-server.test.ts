@@ -74,8 +74,10 @@ describe('Dashboard plugin HTTP API', () => {
       compatible: () => true,
       create: async () => ({
         dashboard: { id: 'test', label: '测试插件', route: '/plugins/test' },
-        invoke: async (capability: string, input: unknown) =>
-          capability === 'echo' ? input : null,
+        invoke: async (capability: string, input: unknown) => {
+          if (capability === 'echo') return input;
+          throw new Error('capability exploded');
+        },
       }),
     };
     const runtime = new PluginRuntime({
@@ -118,6 +120,17 @@ describe('Dashboard plugin HTTP API', () => {
     });
     expect(invoke.status).toBe(200);
     expect(JSON.parse(invoke.body)).toEqual({ result: { from: 'dashboard' } });
+    const failedInvoke = await request(
+      server.port,
+      `${base}/plugins/test.dashboard/invoke`,
+      'POST',
+      { capability: 'broken', input: {} },
+    );
+    expect(failedInvoke.status).toBe(400);
+    expect(JSON.parse(failedInvoke.body)).toEqual({
+      error: 'capability exploded',
+      pluginId: 'test.dashboard',
+    });
   });
 
   it('rejects malformed plugin actions instead of forwarding them', async () => {
@@ -143,6 +156,9 @@ describe('Dashboard plugin HTTP API', () => {
       { input: {} },
     );
     expect(response.status).toBe(400);
-    expect(JSON.parse(response.body)).toEqual({ error: 'Plugin capability is required' });
+    expect(JSON.parse(response.body)).toEqual({
+      error: 'Plugin capability is required',
+      pluginId: 'missing',
+    });
   });
 });

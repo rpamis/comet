@@ -72,7 +72,10 @@ export async function startDashboardServer(
         return;
       }
       if (error instanceof DashboardPluginHostError) {
-        respondJson(res, req.method ?? 'GET', error.statusCode, { error: error.message });
+        respondJson(res, req.method ?? 'GET', error.statusCode, {
+          error: error.message,
+          ...(error.pluginId ? { pluginId: error.pluginId } : {}),
+        });
         return;
       }
       respondError(res, 500, `Internal server error: ${(error as Error).message}`);
