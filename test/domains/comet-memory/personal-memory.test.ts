@@ -192,6 +192,33 @@ describe('PersonalMemoryService', () => {
     });
   });
 
+  it('upgrades a failed observation when the same change later succeeds', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const base = {
+        scope: 'project' as const,
+        projectKey: 'project-a',
+        category: '工作习惯',
+        text: '只暂存本次改动文件',
+        workflow: 'native',
+        changeId: 'change-1',
+      };
+
+      await expect(memories.observe({ ...base, success: false })).resolves.toMatchObject({
+        candidate: false,
+        activated: false,
+      });
+      await expect(memories.observe({ ...base, success: true })).resolves.toMatchObject({
+        deduplicated: false,
+        candidate: true,
+        activated: false,
+      });
+      await expect(
+        memories.observe({ ...base, changeId: 'change-2', success: true }),
+      ).resolves.toMatchObject({ candidate: true, activated: true });
+    });
+  });
+
   it('reconciles a manually edited project file before id-based management', async () => {
     await withTempRepository(async (root) => {
       const memories = service(root);
@@ -340,6 +367,17 @@ describe('PersonalMemoryService', () => {
       await memories.pauseProjectRetrieval('project-a', true);
       expect((await memories.retrieve({ projectKey: 'project-a' })).records).toEqual([]);
       expect((await memories.retrieve({ projectKey: 'project-b' })).records).not.toEqual([]);
+    });
+  });
+
+  it('filters keyword retrieval instead of returning unrelated records', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      await memories.remember({ scope: 'global', category: '构建', text: '使用 pnpm build' });
+      await memories.remember({ scope: 'global', category: '沟通偏好', text: '使用中文回复' });
+
+      const result = await memories.retrieve({ query: 'build' });
+      expect(result.records.map((record) => record.text)).toEqual(['使用 pnpm build']);
     });
   });
 

@@ -186,7 +186,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
       const state = await this.loadAndReconcile(observation.scope, observation.projectKey);
       const key = observationKey(observation);
       const previous = state.observations.find((entry) => entry.key === key);
-      if (previous !== undefined) {
+      if (previous !== undefined && (previous.success || !observation.success)) {
         return {
           deduplicated: true,
           ignored: false,
@@ -212,7 +212,10 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
         source,
         observedAt: this.timestamp(),
       };
-      state.observations = [...state.observations, stored];
+      state.observations =
+        previous === undefined
+          ? [...state.observations, stored]
+          : state.observations.map((entry) => (entry.key === key ? stored : entry));
       const paused =
         observation.scope === 'project' &&
         observation.projectKey !== undefined &&
@@ -973,6 +976,13 @@ function attributesMatch(record: StoredRecord, query: MemoryQuery): boolean {
     !matchesAny(record.operations, query.operation)
   )
     return false;
+  if (query.query !== undefined) {
+    const terms = query.query.split(/\s+/u).map(normalizeText).filter(Boolean);
+    if (terms.length > 0) {
+      const haystack = normalizeText([record.category, record.text, ...record.tags].join(' '));
+      if (!terms.every((term) => haystack.includes(term))) return false;
+    }
+  }
   return true;
 }
 
