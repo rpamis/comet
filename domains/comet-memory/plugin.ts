@@ -32,7 +32,13 @@ async function createModule(
 ): Promise<PluginModule> {
   const service = options.createService(context);
   return {
-    events: ['change.completed', 'task.completed', 'memory.observe'],
+    events: [
+      'change.completed',
+      'task.completed',
+      'review.completed',
+      'verification.completed',
+      'memory.observe',
+    ],
     dashboard: {
       id: 'personal-memory',
       label: '个人记忆',

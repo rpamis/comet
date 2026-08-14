@@ -2,6 +2,7 @@ import path from 'node:path';
 
 import {
   createDefaultCometPluginBridge,
+  type CometLifecycleObservation,
   type CometPluginContextRequest,
 } from '../comet-plugin/index.js';
 import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
@@ -15,6 +16,20 @@ export async function collectCometPluginContext(
   return contributions.map(({ pluginId, text }) => ({ pluginId: String(pluginId), text }));
 }
 
+export async function collectCometProjectRuleCandidates(projectRoot: string): Promise<unknown> {
+  const bridge = await createBridge(projectRoot);
+  return bridge.projectRulesAction('candidates');
+}
+
+export async function applyCometProjectRuleAction(
+  projectRoot: string,
+  action: 'adopt' | 'ignore' | 'snooze' | 'restore',
+  input: { readonly id?: string; readonly text?: string },
+): Promise<unknown> {
+  const bridge = await createBridge(projectRoot);
+  return bridge.projectRulesAction(action, input);
+}
+
 export async function recordCometWorkflowResult(options: {
   readonly projectRoot: string;
   readonly workflow: string;
@@ -22,11 +37,13 @@ export async function recordCometWorkflowResult(options: {
   readonly command: string;
   readonly success: boolean;
   readonly summary?: string;
+  readonly eventName?: CometLifecycleObservation['name'];
 }): Promise<void> {
   if (!options.changeId.trim()) return;
   const bridge = await createBridge(options.projectRoot);
   await bridge.dispatchLifecycle({
-    name: options.command === 'archive' ? 'change.completed' : 'task.completed',
+    name:
+      options.eventName ?? (options.command === 'archive' ? 'change.completed' : 'task.completed'),
     workflow: options.workflow,
     changeId: options.changeId,
     success: options.success,

@@ -155,6 +155,32 @@ describe('skills', () => {
       );
     });
 
+    it('routes memory and project rules through every Comet entry skill', async () => {
+      const pairs = [
+        ['comet', 'comet'],
+        ['comet-native', 'comet-native'],
+        ['comet-classic', 'comet-classic'],
+        ['comet-hotfix', 'comet-hotfix'],
+        ['comet-tweak', 'comet-tweak'],
+      ] as const;
+      for (const [skill, name] of pairs) {
+        const zh = await fs.readFile(
+          path.join(getAssetsDir(), 'skills-zh', skill, 'SKILL.md'),
+          'utf8',
+        );
+        const en = await fs.readFile(
+          path.join(getAssetsDir(), 'skills', skill, 'SKILL.md'),
+          'utf8',
+        );
+        expect(zh, `${name} zh`).toContain('comet memory context');
+        expect(zh, `${name} zh`).toContain('comet rules verify');
+        expect(zh, `${name} zh`).toContain('comet rules candidates');
+        expect(en, `${name} en`).toContain('comet memory context');
+        expect(en, `${name} en`).toContain('comet rules verify');
+        expect(en, `${name} en`).toContain('comet rules candidates');
+      }
+    });
+
     it('rejects zh and en-US as artifact language values', () => {
       expect(() => resolveArtifactLanguage('zh')).toThrow('Invalid artifact language');
       expect(() => resolveArtifactLanguage('en-US')).toThrow('Invalid artifact language');
@@ -3196,6 +3222,9 @@ describe('skills', () => {
         expect(guard).toContain('Native');
         expect(guard).toContain('Classic');
         expect(guard).toContain('Hook Router');
+        expect(guard).toContain('comet memory context');
+        expect(guard).toContain('comet rules context');
+        expect(guard).toContain('.comet/config.yaml');
       }
       expect(zhGuard).toContain('先记录失败并通过 Native Runtime 回到 Build');
       expect(zhGuard).toContain('点号开头的普通项目文件');
@@ -3212,6 +3241,9 @@ describe('skills', () => {
       expect(enGuard).toContain('does not override unresolved `[blocking]` user decisions');
       expect(enGuard).toContain('targets that are entirely outside the project remain neutral');
       expect(enGuard).toContain('Once a write is attributed to this project');
+      expect(enGuard).toContain('comet memory context');
+      expect(enGuard).toContain('comet rules context');
+      expect(enGuard).toContain('.comet/config.yaml');
 
       await expect(
         fs.access(

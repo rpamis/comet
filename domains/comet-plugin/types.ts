@@ -27,6 +27,7 @@ export interface PluginEvent {
 export interface PluginContextRequest {
   readonly task: string;
   readonly path?: string;
+  readonly phase?: string;
   readonly projectId?: string;
 }
 

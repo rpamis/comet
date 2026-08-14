@@ -31,3 +31,11 @@ A legacy Classic project without the current project schema uses only the Classi
 Each platform must install exactly one Comet Hook Router. One write event may invoke at most one workflow Guard; do not run separate Native and Classic Hooks.
 
 The Hook evaluates multi-file and patch targets atomically. Unattributable events and targets that are entirely outside the project remain neutral. Once a write is attributed to this project, it fails closed when the current phase blocks ordinary project writes, multiple ownership candidates exist, or the selection, state, or target scope cannot be read safely. Never bypass the Hook; follow its denial message to resume the owning workflow, and select a current change only when ownership is ambiguous.
+
+## Memory and project-rule context
+
+Only perform the following when `.comet/config.yaml` exists and the user is using Comet. An ordinary repository without an enabled Comet project remains neutral: do not create files and do not change tool-call results.
+
+- At task start or after the target path is known, run `comet memory context <project-root> --task "<task>" --json` or `comet rules context <project-root> --task "<task>" --path "<path>" --json`; use only matching snippets rather than copying every rule.
+- After completion, verification, or review, the Comet Skill records `comet memory observe`; when a compiler, test, or linter explicitly identifies a convention it records `comet rules observe`, and it runs `comet rules verify` when an existing check is needed.
+- If the command is unavailable, the project is not initialized, or no snippet matches, remain neutral; a plugin failure must not be presented as a project-check failure.

@@ -10,6 +10,7 @@ export interface PersonalMemoryCommandOptions {
   readonly json?: boolean;
   readonly task?: string;
   readonly path?: string;
+  readonly phase?: string;
   readonly query?: string;
   readonly text?: string;
   readonly category?: string;
@@ -94,6 +95,7 @@ export async function personalMemoryContextCommand(
   const context = await bridge.collectContext({
     task: requireText(options.task, '--task'),
     path: options.path,
+    phase: options.phase,
   });
   print(context, options);
   return context;

@@ -31,6 +31,10 @@ Before starting, use `comet-classic/reference/scripts.md` to run the public Come
 
 When resuming an existing hotfix change, the first state operation must be `comet state select <change-name>`. For a new change, run the command immediately after `.comet.yaml` initialization and before source writes.
 
+After entering the hotfix workspace, automatically run `comet task <project-root> --task "<original user request>" --phase build --json` and inject only task-relevant memory and project rules. Workflow commands may carry `--comet-task`, `--comet-path`, and `--comet-phase`; the CLI strips them and displays selected context. After completion, verification, or review run `comet memory observe`; when a compiler, test, or linter identifies a project rule run `comet rules observe`, run `comet rules verify --max-attempts 3` when the repository's existing checks are needed, fix failures from their diagnostics, and rerun. At the end run `comet task <project-root> --task "<original user request>" --complete --workflow <workflow> --change <change-id> --json`; it returns one summary with adopt/ignore/defer operations. Without a Hook, this Skill performs the same actions directly; `comet memory context` remains a context-only fallback.
+
+Task-end fallback: `comet rules candidates --json`.
+
 ### 1. Quick Open (preset open)
 
 Reuse Comet open capability to create change, but use hotfix defaults: do not execute `openspec-explore` long exploration, directly enter streamlined change creation.

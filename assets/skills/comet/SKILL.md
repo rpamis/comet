@@ -5,14 +5,12 @@ description: "Comet workflow entry. Use when the user invokes /comet or asks to 
 
 # Comet Entry
 
-`/comet` only selects an entry. It does not contain either workflow's execution method.
+Once this Skill is loaded, treat the `/comet` entry as selected. Immediately perform the entry resolution below; do not re-evaluate whether the task is suitable for Comet.
 
-Once this Skill is loaded, treat the `/comet` entry as selected. Immediately perform the entry resolution below; do not re-evaluate whether the task is suitable for Comet, and do not merely explain why it will not be used.
-
-1. Run the Comet CLI installed on PATH in the current project:
+1. Run the Comet CLI installed on PATH:
 
    ```text
-   comet workflow resolve . --activate --json
+   comet workflow resolve . --activate --json --task "<original user request>"
    ```
 
    If project config is missing, this snapshots global defaults and creates project artifact directories. Later global changes do not rewrite it.
@@ -23,5 +21,7 @@ Once this Skill is loaded, treat the `/comet` entry as selected. Immediately per
     - `/comet-classic` → **Execute immediately:** Use the Skill tool to load the `comet-classic` skill. Do not skip this step.
 
    After the skill is loaded, pass the user's original request unchanged to the loaded entry Skill as its user input.
+
+The resolver selects context; use `comet memory context` if needed, then `comet rules verify` and `comet rules candidates`.
 
 Do not switch workflows based on task size, file count, active changes, or model judgment. Native and Classic changes, states, and artifacts always remain independent.

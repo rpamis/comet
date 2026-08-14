@@ -11,10 +11,13 @@ interface ProjectRulesCommandOptions {
   readonly id?: string;
   readonly task?: string;
   readonly path?: string;
+  readonly phase?: string;
   readonly workflow?: string;
   readonly change?: string;
   readonly candidateKey?: string;
   readonly source?: string;
+  readonly maxAttempts?: number;
+  readonly action?: 'adopt' | 'ignore' | 'snooze' | 'restore';
 }
 
 function printStatus(status: ProjectRulesStatus): void {
@@ -99,8 +102,11 @@ export async function projectRulesCandidatesCommand(
   targetPath = '.',
   options: ProjectRulesCommandOptions = {},
 ): Promise<unknown> {
+  if (options.action) {
+    return projectRulesCandidateActionCommand(options.action, targetPath, options);
+  }
   const bridge = await createBridge(targetPath);
-  const result = await bridge.projectRulesAction('details');
+  const result = await bridge.projectRulesAction('candidates');
   print(result, options);
   return result;
 }
@@ -129,6 +135,7 @@ export async function projectRulesContextCommand(
   const result = await bridge.selectRules({
     task: requireText(options.task, '--task'),
     ...(options.path ? { path: options.path } : {}),
+    ...(options.phase ? { stage: options.phase } : {}),
   });
   print(result, options);
   return result;
@@ -149,7 +156,9 @@ export async function projectRulesVerifyCommand(
   options: ProjectRulesCommandOptions = {},
 ): Promise<unknown> {
   const bridge = await createBridge(targetPath);
-  const result = await bridge.projectRulesAction('verify');
+  const result = await bridge.projectRulesAction('verify', {
+    ...(options.maxAttempts !== undefined ? { maxAttempts: options.maxAttempts } : {}),
+  });
   print(result, options);
   return result;
 }

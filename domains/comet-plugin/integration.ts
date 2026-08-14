@@ -12,7 +12,12 @@ import {
   type MemoryRetrieval,
 } from '../comet-memory/index.js';
 import { createProjectRulesPluginDescriptor } from '../project-rules/index.js';
-import type { ProjectRulesStatus, ProjectRulesSelectionRequest } from '../project-rules/index.js';
+import type {
+  ProjectRuleCarrierAdapter,
+  ProjectRulesStatus,
+  ProjectRulesSelectionRequest,
+  ProjectRulesVerificationResult,
+} from '../project-rules/index.js';
 import { getCurrentVersion } from '../../platform/version/version.js';
 import { JsonFilePluginStorageStore, JsonFileTextStore } from '../../platform/fs/plugin-store.js';
 import { JsonPluginStateStore, PluginRuntime } from './plugin-runtime.js';
@@ -44,11 +49,22 @@ export interface CometPluginBridgeOptions {
   readonly memoryRoot?: string;
   readonly stateRoot?: string;
   readonly cometVersion?: string;
+  /** Optional host callback: repair a failed project check before the next attempt. */
+  readonly repairProjectRules?: (failure: ProjectRulesVerificationResult) => Promise<boolean>;
+  /** Optional process adapter for hosts that already own command execution. */
+  readonly runProjectRuleVerification?: (
+    executable: string,
+    args: readonly string[],
+    cwd: string,
+  ) => string;
+  /** Optional host/project adapter for applying a rule to native project files. */
+  readonly projectRuleCarrierAdapters?: readonly ProjectRuleCarrierAdapter[];
 }
 
 export interface CometPluginContextRequest {
   readonly task: string;
   readonly path?: string;
+  readonly phase?: string;
 }
 
 export class CometPluginBridge {
@@ -113,6 +129,11 @@ export class CometPluginBridge {
     };
     await this.runtime.dispatch({ ...base, scope: 'user' });
     await this.runtime.dispatch({ ...base, scope: 'project', projectId: this.projectId });
+    try {
+      await this.syncMemory();
+    } catch {
+      // A remote or Git installation failure is a diagnostic, not a workflow failure.
+    }
   }
 
   public async remember(input: MemoryInput): Promise<MemoryRecord | null> {
@@ -169,6 +190,10 @@ export class CometPluginBridge {
       scope: 'project',
       projectId: this.projectId,
     });
+  }
+
+  public async projectRuleCandidates(): Promise<unknown> {
+    return this.projectRulesAction('candidates');
   }
 
   public async selectRules(
@@ -246,7 +271,27 @@ export async function createDefaultCometPluginBridge(
             }),
           }),
       }),
-      createProjectRulesPluginDescriptor({ projectRoot, projectId: options.projectId }),
+      createProjectRulesPluginDescriptor({
+        projectRoot,
+        projectId: options.projectId,
+        ...((options.repairProjectRules ??
+        options.runProjectRuleVerification ??
+        options.projectRuleCarrierAdapters)
+          ? {
+              serviceOptions: {
+                ...(options.repairProjectRules
+                  ? { repairVerification: options.repairProjectRules }
+                  : {}),
+                ...(options.runProjectRuleVerification
+                  ? { runVerification: options.runProjectRuleVerification }
+                  : {}),
+                ...(options.projectRuleCarrierAdapters
+                  ? { carrierAdapters: options.projectRuleCarrierAdapters }
+                  : {}),
+              },
+            }
+          : {}),
+      }),
     ],
   });
   await runtime.reconcileFirstParty();

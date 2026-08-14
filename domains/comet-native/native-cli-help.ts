@@ -29,6 +29,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       'select <change-name>         Select a change in its bound workspace.',
       'next <change-name>           Confirm or recover a stable workflow boundary.',
       'archive <change-name>        Preview and execute Archive plus workspace finish.',
+      'check <change-name>          Run the read-only Native verification check.',
       'doctor [<change-name>]       Diagnose, migrate, or rebuild local execution state.',
     ],
     options: GLOBAL_OPTIONS,

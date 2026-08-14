@@ -8,12 +8,15 @@ import type {
   ProjectRuleSource,
   ProjectRuleSourceKind,
   ProjectRuleCandidateSummary,
+  ProjectRuleCandidateEnvelope,
   ProjectRulesFileSystem,
   ProjectRulesSelectionRequest,
   ProjectRulesServiceOptions,
   ProjectRulesState,
   ProjectRulesStatus,
   ProjectRuleCarrierProposal,
+  ProjectRuleCarrierAdapter,
+  ProjectRuleCarrierAdapterResult,
   ProjectRuleSourceSnapshot,
   ProjectRuleVerificationSummary,
   ProjectRulesVerificationResult,
@@ -167,10 +170,15 @@ function markdownSections(
 
   return sections.map(({ title, lines }) => {
     const scopeIndex = lines.findIndex((line) => /^\s*适用范围\s*[:：]/u.test(line));
+    const stageIndex = lines.findIndex((line) => /^\s*(?:适用阶段|阶段)\s*[:：]/u.test(line));
     const scope =
       scopeIndex >= 0 ? lines[scopeIndex].replace(/^\s*适用范围\s*[:：]\s*/u, '') : undefined;
+    const stage =
+      stageIndex >= 0
+        ? lines[stageIndex].replace(/^\s*(?:适用阶段|阶段)\s*[:：]\s*/u, '')
+        : undefined;
     const text = lines
-      .filter((_line, index) => index !== scopeIndex)
+      .filter((_line, index) => index !== scopeIndex && index !== stageIndex)
       .join('\n')
       .trim();
     return {
@@ -179,6 +187,7 @@ function markdownSections(
       title,
       text,
       ...(scope ? { scope: scope.trim() } : {}),
+      ...(stage ? { stage: stage.trim() } : {}),
     };
   });
 }
@@ -222,6 +231,7 @@ function tokens(value: string): string[] {
 function scoreSection(section: ProjectRuleSection, request: ProjectRulesSelectionRequest): number {
   const targetPath = request.path?.replaceAll('\\', '/') ?? '';
   if (section.scope && (!targetPath || !globRegExp(section.scope).test(targetPath))) return 0;
+  if (section.stage && !matchesStage(section.stage, request.stage)) return 0;
   const query = new Set(tokens(`${request.task} ${targetPath}`));
   const haystack = new Set(tokens(`${section.title} ${section.text}`));
   let score = section.scope ? 4 : 0;
@@ -239,6 +249,16 @@ function scoreSection(section: ProjectRuleSection, request: ProjectRulesSelectio
   }
   if (!relevant) return 0;
   return score;
+}
+
+function matchesStage(sectionStage: string, requestedStage: string | undefined): boolean {
+  if (!requestedStage) return false;
+  const requested = requestedStage.trim().toLocaleLowerCase();
+  return sectionStage
+    .split(/[;,|\s]+/u)
+    .map((value) => value.trim().toLocaleLowerCase())
+    .filter(Boolean)
+    .some((value) => value === requested || value === '*');
 }
 
 function candidateId(key: string, text: string): string {
@@ -368,6 +388,10 @@ export class ProjectRulesService {
     args: readonly string[],
     cwd: string,
   ) => string;
+  private readonly repairVerification:
+    | ((failure: ProjectRulesVerificationResult) => Promise<boolean>)
+    | undefined;
+  private readonly carrierAdapters: readonly ProjectRuleCarrierAdapter[];
   private state: ProjectRulesState | null = null;
 
   public constructor(options: ProjectRulesServiceOptions) {
@@ -392,6 +416,8 @@ export class ProjectRulesService {
     this.runVerification =
       options.runVerification ??
       ((executable, args, cwd) => runExternalCommand(executable, args, { cwd }));
+    this.repairVerification = options.repairVerification;
+    this.carrierAdapters = options.carrierAdapters ?? [];
   }
 
   public async init(): Promise<ProjectRulesStatus> {
@@ -590,15 +616,44 @@ export class ProjectRulesService {
     }));
   }
 
+  public async candidateEnvelope(): Promise<ProjectRuleCandidateEnvelope> {
+    const candidates = await this.candidates();
+    return {
+      candidates,
+      summary:
+        candidates.length === 0
+          ? '当前没有待处理的项目规则候选。'
+          : candidates.map((candidate, index) => `${index + 1}. ${candidate.text}`).join('\n'),
+      operations: ['adopt', 'ignore', 'snooze', 'restore'],
+    };
+  }
+
   public async candidateDetails(): Promise<readonly RuleCandidate[]> {
     return (await this.ensureState()).candidates.filter(isVisibleCandidate);
   }
 
-  public async adoptCandidate(id: string, targetPath = '.comet/rules/project.md'): Promise<void> {
+  public async adoptCandidate(id: string, targetPath?: string): Promise<void> {
     const state = await this.ensureState();
     const candidate = state.candidates.find((entry) => entry.id === id);
     if (!candidate) throw new Error(`Unknown project rule candidate: ${id}`);
-    await this.addRule(candidate.text, targetPath);
+    const adapterResult =
+      targetPath === undefined ? await this.applyCarrierAdapter(candidate) : null;
+    if (adapterResult !== null) {
+      await this.persistAdoptedCandidate(state, id);
+      return;
+    }
+    const proposal = targetPath === undefined ? await this.proposeCarrier() : null;
+    if (proposal?.kind === 'agent-instructions' && proposal.sourcePath !== undefined) {
+      await this.appendCarrierRule(proposal.sourcePath, candidate.text);
+    } else if (proposal?.kind === 'verification') {
+      await this.writeVerificationCarrierProposal(candidate, proposal);
+    } else {
+      await this.addRule(candidate.text, targetPath ?? '.comet/rules/project.md');
+    }
+    await this.persistAdoptedCandidate(state, id);
+  }
+
+  private async persistAdoptedCandidate(state: ProjectRulesState, id: string): Promise<void> {
     await this.persist({
       ...state,
       candidates: state.candidates.map((entry) =>
@@ -607,6 +662,83 @@ export class ProjectRulesService {
           : entry,
       ),
     });
+  }
+
+  private async applyCarrierAdapter(
+    candidate: RuleCandidate,
+  ): Promise<ProjectRuleCarrierAdapterResult | null> {
+    if (this.carrierAdapters.length === 0) return null;
+    const entrypoints = await this.discoverVerificationEntrypoints();
+    for (const entrypoint of entrypoints) {
+      for (const adapter of this.carrierAdapters) {
+        if (!(await adapter.supports(entrypoint, candidate))) continue;
+        let result: ProjectRuleCarrierAdapterResult;
+        try {
+          result = await adapter.apply({
+            projectRoot: this.projectRoot,
+            candidate,
+            entrypoint,
+            readText: async (projectRelativePath) =>
+              this.fileSystem.readText(
+                path.join(this.projectRoot, this.projectRelative(projectRelativePath)),
+              ),
+            writeText: async (projectRelativePath, content) =>
+              this.fileSystem.writeText(
+                path.join(this.projectRoot, this.projectRelative(projectRelativePath)),
+                content,
+              ),
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          throw new Error(`Project rule carrier adapter ${adapter.id} failed: ${message}`, {
+            cause: error,
+          });
+        }
+        if (!result || !result.targetPath.trim() || !result.change.trim()) {
+          throw new Error(`Project rule carrier adapter ${adapter.id} returned an invalid result`);
+        }
+        this.projectRelative(result.targetPath);
+        return result;
+      }
+    }
+    return null;
+  }
+
+  private async appendCarrierRule(
+    sourcePath: string,
+    text: string,
+    verificationNote?: string,
+  ): Promise<void> {
+    const normalized = this.projectRelative(sourcePath);
+    if (!KNOWN_INSTRUCTION_FILES.includes(normalized as (typeof KNOWN_INSTRUCTION_FILES)[number])) {
+      throw new Error(`Project rule carrier is not an allowed Agent instruction: ${sourcePath}`);
+    }
+    const absolute = path.join(this.projectRoot, normalized);
+    const existing = (await this.fileSystem.readText(absolute)) ?? '';
+    const separator = existing.length === 0 || existing.endsWith('\n') ? '\n' : '\n\n';
+    const suffix = verificationNote ? `（${verificationNote}）` : '';
+    await this.fileSystem.writeText(absolute, `${existing}${separator}- ${text.trim()}${suffix}\n`);
+  }
+
+  private async writeVerificationCarrierProposal(
+    candidate: RuleCandidate,
+    proposal: ProjectRuleCarrierProposal,
+  ): Promise<void> {
+    const targetPath = proposal.targetPath ?? `.comet/rules/${candidate.id}.md`;
+    const normalized = this.projectRelative(targetPath);
+    const absolute = path.join(this.projectRoot, normalized);
+    const content = [
+      '# 项目规则实施提案',
+      '',
+      `- 规则：${candidate.text.trim()}`,
+      `- 验证入口：${proposal.label}`,
+      `- 原生文件：${proposal.sourcePath ?? '未识别'}`,
+      `- 建议改动：${proposal.change ?? '在该项目已有验证配置或测试中加入确定性检查。'}`,
+      '',
+      '该文件是可读的实施提案；它会按任务范围注入给 Agent。采用后由 Agent 在项目原生配置或测试中完成对应改动，验证入口负责阻止不符合规则的结果。',
+      '',
+    ].join('\n');
+    await this.fileSystem.writeText(absolute, content);
   }
 
   public async ignoreCandidate(id: string): Promise<void> {
@@ -745,6 +877,8 @@ export class ProjectRulesService {
         kind: 'verification',
         label: entrypoint.label,
         sourcePath: entrypoint.sourcePath,
+        targetPath: `.comet/rules/${entrypoint.id}.md`,
+        change: `在 ${entrypoint.sourcePath} 对应的项目验证配置或测试中加入该规则，并继续使用 ${entrypoint.label} 校验。`,
         reason: '项目已有可执行的验证入口，规则应优先由该入口在编译或检查阶段校验。',
       };
     }
@@ -766,7 +900,9 @@ export class ProjectRulesService {
     };
   }
 
-  public async verify(): Promise<ProjectRulesVerificationResult> {
+  public async verify(
+    options: { readonly maxAttempts?: number } = {},
+  ): Promise<ProjectRulesVerificationResult> {
     const entrypoint = (await this.discoverVerificationEntrypoints())[0];
     if (entrypoint === undefined) {
       return {
@@ -774,27 +910,51 @@ export class ProjectRulesService {
         label: null,
         sourcePath: null,
         output: '没有发现可执行的项目验证入口。',
+        attempts: 0,
+        nextAction: 'fix-and-rerun',
       };
     }
-    try {
-      return {
-        passed: true,
-        label: entrypoint.label,
-        sourcePath: entrypoint.sourcePath,
-        output: this.runVerification(
-          entrypoint.executable,
-          entrypoint.args,
-          path.resolve(this.projectRoot, entrypoint.cwd),
-        ),
-      };
-    } catch (error) {
-      return {
+    const maxAttempts = Math.min(3, Math.max(1, options.maxAttempts ?? 1));
+    let attempts = 0;
+    let failure: ProjectRulesVerificationResult | null = null;
+    while (attempts < maxAttempts) {
+      attempts += 1;
+      try {
+        return {
+          passed: true,
+          label: entrypoint.label,
+          sourcePath: entrypoint.sourcePath,
+          output: this.runVerification(
+            entrypoint.executable,
+            entrypoint.args,
+            path.resolve(this.projectRoot, entrypoint.cwd),
+          ),
+          attempts,
+          nextAction: 'complete',
+        };
+      } catch (error) {
+        failure = {
+          passed: false,
+          label: entrypoint.label,
+          sourcePath: entrypoint.sourcePath,
+          output: error instanceof Error ? error.message : String(error),
+          attempts,
+          nextAction: 'fix-and-rerun',
+        };
+        if (attempts >= maxAttempts || this.repairVerification === undefined) break;
+        if (!(await this.repairVerification(failure))) break;
+      }
+    }
+    return (
+      failure ?? {
         passed: false,
         label: entrypoint.label,
         sourcePath: entrypoint.sourcePath,
-        output: error instanceof Error ? error.message : String(error),
-      };
-    }
+        output: '项目验证未运行。',
+        attempts,
+        nextAction: 'fix-and-rerun',
+      }
+    );
   }
 
   private async updateCandidateStatus(id: string, status: 'ignored' | 'snoozed'): Promise<void> {

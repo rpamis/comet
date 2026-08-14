@@ -5,7 +5,7 @@ import type {
   PluginModule,
 } from '../comet-plugin/index.js';
 import { ProjectRulesService } from './project-rules.js';
-import type { ProjectRulesServiceOptions } from './types.js';
+import type { ProjectRuleCarrierAdapter, ProjectRulesServiceOptions } from './types.js';
 
 export const PROJECT_RULES_PLUGIN_ID = 'comet.project-rules';
 
@@ -15,6 +15,7 @@ export interface ProjectRulesPluginOptions {
   readonly version?: string;
   readonly cometVersionRange?: (cometVersion: string) => boolean;
   readonly createService?: (context: PluginContext) => ProjectRulesService;
+  readonly carrierAdapters?: readonly ProjectRuleCarrierAdapter[];
   readonly serviceOptions?: Omit<ProjectRulesServiceOptions, 'projectRoot' | 'projectId'>;
 }
 
@@ -41,6 +42,7 @@ async function createModule(
       projectRoot: options.projectRoot,
       projectId: options.projectId ?? context.projectId,
       ...options.serviceOptions,
+      ...(options.carrierAdapters ? { carrierAdapters: options.carrierAdapters } : {}),
     });
   return {
     events: ['change.completed', 'task.completed', 'review.completed', 'verification.completed'],
@@ -59,6 +61,7 @@ async function createModule(
             'observe',
             'propose',
             'verify',
+            'candidates',
             'adopt',
             'ignore',
             'snooze',
@@ -68,7 +71,11 @@ async function createModule(
       },
     },
     provideContext: async (request) => {
-      const selected = await service.select({ task: request.task, path: request.path });
+      const selected = await service.select({
+        task: request.task,
+        path: request.path,
+        stage: request.phase,
+      });
       if (selected.length === 0) return null;
       return {
         text: selected.map((section) => `## ${section.title}\n${section.text}`).join('\n\n'),
@@ -122,11 +129,14 @@ async function invokeCapability(
       return service.scan();
     case 'details':
       return service.candidateDetails();
+    case 'candidates':
+      return service.candidateEnvelope();
     case 'select': {
       const value = asObject(input, 'select');
       return service.select({
         task: asString(value.task, 'select.task'),
         ...(typeof value.path === 'string' ? { path: value.path } : {}),
+        ...(typeof value.stage === 'string' ? { stage: value.stage } : {}),
       });
     }
     case 'propose':
@@ -142,8 +152,12 @@ async function invokeCapability(
         ...(typeof value.source === 'string' ? { source: value.source } : {}),
       });
     }
-    case 'verify':
-      return service.verify();
+    case 'verify': {
+      const value = input === undefined ? {} : asObject(input, 'verify');
+      return service.verify({
+        ...(typeof value.maxAttempts === 'number' ? { maxAttempts: value.maxAttempts } : {}),
+      });
+    }
     case 'adopt':
       return service.adoptCandidate(
         await resolveCandidateId(service, input),

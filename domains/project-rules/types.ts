@@ -7,6 +7,7 @@ export interface ProjectRuleSection {
   readonly title: string;
   readonly text: string;
   readonly scope?: string;
+  readonly stage?: string;
 }
 
 export interface ProjectRuleSource {
@@ -43,6 +44,32 @@ export interface ProjectRuleCarrierProposal {
   readonly label: string;
   readonly reason: string;
   readonly sourcePath?: string;
+  readonly targetPath?: string;
+  readonly change?: string;
+}
+
+export interface ProjectRuleCarrierAdapterContext {
+  readonly projectRoot: string;
+  readonly candidate: RuleCandidate;
+  readonly entrypoint: VerificationEntrypoint;
+  readonly readText: (projectRelativePath: string) => Promise<string | null>;
+  readonly writeText: (projectRelativePath: string, content: string) => Promise<void>;
+}
+
+export interface ProjectRuleCarrierAdapterResult {
+  readonly targetPath: string;
+  readonly change: string;
+}
+
+export interface ProjectRuleCarrierAdapter {
+  readonly id: string;
+  readonly supports: (
+    entrypoint: VerificationEntrypoint,
+    candidate: RuleCandidate,
+  ) => boolean | Promise<boolean>;
+  readonly apply: (
+    context: ProjectRuleCarrierAdapterContext,
+  ) => Promise<ProjectRuleCarrierAdapterResult>;
 }
 
 export interface ProjectRulesVerificationResult {
@@ -50,6 +77,8 @@ export interface ProjectRulesVerificationResult {
   readonly label: string | null;
   readonly sourcePath: string | null;
   readonly output: string;
+  readonly attempts?: number;
+  readonly nextAction?: 'fix-and-rerun' | 'complete';
 }
 
 export interface RuleObservation {
@@ -91,6 +120,7 @@ export interface ProjectRulesFileSystem {
 export interface ProjectRulesSelectionRequest {
   readonly task: string;
   readonly path?: string;
+  readonly stage?: string;
   readonly sourceKinds?: readonly ProjectRuleSourceKind[];
   readonly maxSections?: number;
   readonly maxBytes?: number;
@@ -118,11 +148,19 @@ export interface ProjectRuleCandidateSummary {
   readonly state: 'pending' | 'snoozed';
 }
 
+export interface ProjectRuleCandidateEnvelope {
+  readonly summary: string;
+  readonly candidates: readonly ProjectRuleCandidateSummary[];
+  readonly operations: readonly ['adopt', 'ignore', 'snooze', 'restore'];
+}
+
 export interface ProjectRulesServiceOptions {
   readonly projectRoot: string;
   readonly projectId?: string;
   readonly fileSystem?: ProjectRulesFileSystem;
   readonly now?: () => Date;
   readonly runtimeDirectory?: string;
+  readonly carrierAdapters?: readonly ProjectRuleCarrierAdapter[];
   readonly runVerification?: (executable: string, args: readonly string[], cwd: string) => string;
+  readonly repairVerification?: (failure: ProjectRulesVerificationResult) => Promise<boolean>;
 }

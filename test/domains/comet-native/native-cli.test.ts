@@ -769,6 +769,7 @@ describe('Comet Native CLI dispatcher', () => {
 
     const help = await runNativeCli(['--help', ...projectArgs()]);
     expect(help.stdout).toContain('next <change-name>');
+    expect(help.stdout).toContain('check <change-name>');
     const nextHelp = await runNativeCli(['next', '--help', ...projectArgs()]);
     expect(nextHelp.stdout).toContain('--confirmed');
     expect(nextHelp.stdout).toContain('--runner-input <file>');
@@ -780,7 +781,7 @@ describe('Comet Native CLI dispatcher', () => {
     expect(
       json(await runNativeCli(['spec', 'rebase', '--help', '--json', ...projectArgs()])),
     ).toMatchObject({ exitCode: 64, error: { code: 'usage' } });
-    for (const retired of ['checkpoint', 'check', 'evidence', 'receipt']) {
+    for (const retired of ['checkpoint', 'evidence', 'receipt']) {
       expect(help.stdout).not.toContain(`\n  ${retired}`);
       expect(json(await runNativeCli([retired, '--json', ...projectArgs()]))).toMatchObject({
         command: retired,
