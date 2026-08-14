@@ -48,6 +48,30 @@ export interface ProjectRuleCarrierProposal {
   readonly change?: string;
 }
 
+export interface ProjectRuleCarrierAdapterContext {
+  readonly projectRoot: string;
+  readonly candidate: RuleCandidate;
+  readonly entrypoint: VerificationEntrypoint;
+  readonly readText: (projectRelativePath: string) => Promise<string | null>;
+  readonly writeText: (projectRelativePath: string, content: string) => Promise<void>;
+}
+
+export interface ProjectRuleCarrierAdapterResult {
+  readonly targetPath: string;
+  readonly change: string;
+}
+
+export interface ProjectRuleCarrierAdapter {
+  readonly id: string;
+  readonly supports: (
+    entrypoint: VerificationEntrypoint,
+    candidate: RuleCandidate,
+  ) => boolean | Promise<boolean>;
+  readonly apply: (
+    context: ProjectRuleCarrierAdapterContext,
+  ) => Promise<ProjectRuleCarrierAdapterResult>;
+}
+
 export interface ProjectRulesVerificationResult {
   readonly passed: boolean;
   readonly label: string | null;
@@ -136,6 +160,7 @@ export interface ProjectRulesServiceOptions {
   readonly fileSystem?: ProjectRulesFileSystem;
   readonly now?: () => Date;
   readonly runtimeDirectory?: string;
+  readonly carrierAdapters?: readonly ProjectRuleCarrierAdapter[];
   readonly runVerification?: (executable: string, args: readonly string[], cwd: string) => string;
   readonly repairVerification?: (failure: ProjectRulesVerificationResult) => Promise<boolean>;
 }

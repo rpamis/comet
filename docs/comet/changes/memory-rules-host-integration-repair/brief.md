@@ -25,8 +25,8 @@
 - 个人记忆存储在专用 Git repository；完成节点自动提交并按配置同步，另一会话、设备、同仓库 worktree 或重新克隆可以通过稳定 project identity 读取相同内容。
 - 项目规则上下文按任务、目标路径和验证阶段路由，固定保守上限；没有 Hook 时由 Skill 使用同一 selector，不复制整份规则到宿主配置。
 - 两次独立成功任务形成同一规则候选后，Skill 在任务结束只显示一条可读摘要；用户可以一次加入、忽略或稍后，不创建规则专用 Comet change。
-- 用户明确添加规则时，若已有可用 linter、测试、编译器、构建插件或 CI，Comet 生成/定位对应原生配置或测试改动；无法确定性检查的要求写入最相关的 Agent 指令或普通 Markdown 规则。
-- Agent 修改代码后，项目规则服务能够运行实际可用的仓库验证入口；只有命令失败才进入修复循环，warning 且命令成功不被误报为阻塞。
+- 用户明确添加规则时，若已有可用 linter、测试、编译器、构建插件或 CI 且存在匹配适配器，Comet 生成/定位对应原生配置或测试改动；没有匹配适配器时生成可读提案，不猜测未知 DSL；无法确定性检查的要求写入最相关的 Agent 指令或普通 Markdown 规则。
+- Agent 修改代码后，项目规则服务能够运行实际可用的仓库验证入口；只有命令失败才返回修复诊断，warning 且命令成功不被误报为阻塞；宿主或 Skill 提供修复回调时才进入“Agent 修复 -> 重新验证”循环，没有回调时不重复执行命令冒充自动修复。
 - Dashboard、Skill 和 CLI 调用同一插件 runtime、service、状态和存储；Dashboard 失效时 Skill/CLI 仍可完成上下文、候选、规则和记忆操作。
 - 缺少或失败的一个插件只产生带插件标识的诊断，健康插件和基础 workflow 继续运行；相关集成测试覆盖跨项目、跨插件和旧请求不回写。
 
@@ -42,6 +42,8 @@
 - repair child 名称为 `memory-rules-host-integration-repair`，依赖已归档的 `memory-rules-dashboard`，最终合入父级 `beta20`。
 - 采用“公开插件 bridge + Skill fallback + 可选 Hook”三条入口共用领域 service；Hook 只在平台支持时提供动态投递或检查，不改变普通未启用 Comet 项目。
 - 自动同步在完成/归档 checkpoint 触发；远端认证、冲突和不可用时保留本地文件并把状态作为可读诊断返回，不阻塞基础 workflow。
+- 用户已确认项目规则载体采用可插拔适配器：发现 Maven、Gradle、linter、测试、构建插件或 CI 入口时，适配器可以生成或修改对应原生配置/测试；没有适配器时只生成可读、可选择的规则提案，不猜测项目 DSL，也不直接改写未知配置。
+- 用户已确认验证修复采用宿主回调：Comet 默认运行实际验证并返回失败诊断，宿主或 Skill 提供 Agent 修复回调后再重新验证；`maxAttempts` 不能用重复执行命令冒充修复闭环。
 
 # Open questions
 

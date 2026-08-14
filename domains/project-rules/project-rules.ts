@@ -15,6 +15,8 @@ import type {
   ProjectRulesState,
   ProjectRulesStatus,
   ProjectRuleCarrierProposal,
+  ProjectRuleCarrierAdapter,
+  ProjectRuleCarrierAdapterResult,
   ProjectRuleSourceSnapshot,
   ProjectRuleVerificationSummary,
   ProjectRulesVerificationResult,
@@ -389,6 +391,7 @@ export class ProjectRulesService {
   private readonly repairVerification:
     | ((failure: ProjectRulesVerificationResult) => Promise<boolean>)
     | undefined;
+  private readonly carrierAdapters: readonly ProjectRuleCarrierAdapter[];
   private state: ProjectRulesState | null = null;
 
   public constructor(options: ProjectRulesServiceOptions) {
@@ -414,6 +417,7 @@ export class ProjectRulesService {
       options.runVerification ??
       ((executable, args, cwd) => runExternalCommand(executable, args, { cwd }));
     this.repairVerification = options.repairVerification;
+    this.carrierAdapters = options.carrierAdapters ?? [];
   }
 
   public async init(): Promise<ProjectRulesStatus> {
@@ -632,6 +636,12 @@ export class ProjectRulesService {
     const state = await this.ensureState();
     const candidate = state.candidates.find((entry) => entry.id === id);
     if (!candidate) throw new Error(`Unknown project rule candidate: ${id}`);
+    const adapterResult =
+      targetPath === undefined ? await this.applyCarrierAdapter(candidate) : null;
+    if (adapterResult !== null) {
+      await this.persistAdoptedCandidate(state, id);
+      return;
+    }
     const proposal = targetPath === undefined ? await this.proposeCarrier() : null;
     if (proposal?.kind === 'agent-instructions' && proposal.sourcePath !== undefined) {
       await this.appendCarrierRule(proposal.sourcePath, candidate.text);
@@ -640,6 +650,10 @@ export class ProjectRulesService {
     } else {
       await this.addRule(candidate.text, targetPath ?? '.comet/rules/project.md');
     }
+    await this.persistAdoptedCandidate(state, id);
+  }
+
+  private async persistAdoptedCandidate(state: ProjectRulesState, id: string): Promise<void> {
     await this.persist({
       ...state,
       candidates: state.candidates.map((entry) =>
@@ -648,6 +662,44 @@ export class ProjectRulesService {
           : entry,
       ),
     });
+  }
+
+  private async applyCarrierAdapter(
+    candidate: RuleCandidate,
+  ): Promise<ProjectRuleCarrierAdapterResult | null> {
+    if (this.carrierAdapters.length === 0) return null;
+    const entrypoints = await this.discoverVerificationEntrypoints();
+    for (const entrypoint of entrypoints) {
+      for (const adapter of this.carrierAdapters) {
+        if (!(await adapter.supports(entrypoint, candidate))) continue;
+        let result: ProjectRuleCarrierAdapterResult;
+        try {
+          result = await adapter.apply({
+            projectRoot: this.projectRoot,
+            candidate,
+            entrypoint,
+            readText: async (projectRelativePath) =>
+              this.fileSystem.readText(
+                path.join(this.projectRoot, this.projectRelative(projectRelativePath)),
+              ),
+            writeText: async (projectRelativePath, content) =>
+              this.fileSystem.writeText(
+                path.join(this.projectRoot, this.projectRelative(projectRelativePath)),
+                content,
+              ),
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          throw new Error(`Project rule carrier adapter ${adapter.id} failed: ${message}`);
+        }
+        if (!result || !result.targetPath.trim() || !result.change.trim()) {
+          throw new Error(`Project rule carrier adapter ${adapter.id} returned an invalid result`);
+        }
+        this.projectRelative(result.targetPath);
+        return result;
+      }
+    }
+    return null;
   }
 
   private async appendCarrierRule(

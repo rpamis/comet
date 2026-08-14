@@ -5,7 +5,7 @@ import type {
   PluginModule,
 } from '../comet-plugin/index.js';
 import { ProjectRulesService } from './project-rules.js';
-import type { ProjectRulesServiceOptions } from './types.js';
+import type { ProjectRuleCarrierAdapter, ProjectRulesServiceOptions } from './types.js';
 
 export const PROJECT_RULES_PLUGIN_ID = 'comet.project-rules';
 
@@ -15,6 +15,7 @@ export interface ProjectRulesPluginOptions {
   readonly version?: string;
   readonly cometVersionRange?: (cometVersion: string) => boolean;
   readonly createService?: (context: PluginContext) => ProjectRulesService;
+  readonly carrierAdapters?: readonly ProjectRuleCarrierAdapter[];
   readonly serviceOptions?: Omit<ProjectRulesServiceOptions, 'projectRoot' | 'projectId'>;
 }
 
@@ -41,6 +42,7 @@ async function createModule(
       projectRoot: options.projectRoot,
       projectId: options.projectId ?? context.projectId,
       ...options.serviceOptions,
+      ...(options.carrierAdapters ? { carrierAdapters: options.carrierAdapters } : {}),
     });
   return {
     events: ['change.completed', 'task.completed', 'review.completed', 'verification.completed'],

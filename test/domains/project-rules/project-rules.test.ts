@@ -184,6 +184,56 @@ describe('ProjectRulesService', () => {
     ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
+  it('lets a matching carrier adapter apply native project changes', async () => {
+    const projectRoot = await projectDirectory();
+    await writeFile(
+      path.join(projectRoot, 'package.json'),
+      JSON.stringify({ scripts: { lint: 'eslint .' } }),
+    );
+    const service = new ProjectRulesService({
+      projectRoot,
+      carrierAdapters: [
+        {
+          id: 'eslint-config',
+          supports: (entrypoint) => entrypoint.id === 'package-lint',
+          apply: async ({ candidate, writeText }) => {
+            await writeText(
+              '.eslintrc.comet.json',
+              JSON.stringify({ rule: candidate.text }, null, 2) + '\n',
+            );
+            return {
+              targetPath: '.eslintrc.comet.json',
+              change: '已将规则写入 ESLint 项目配置。',
+            };
+          },
+        },
+      ],
+    });
+    await service.recordObservation({
+      candidateKey: 'native-lint-adapter',
+      text: '禁止跨层直接访问文件系统。',
+      workflow: 'native',
+      changeId: 'change-a',
+      success: true,
+    });
+    const candidate = await service.recordObservation({
+      candidateKey: 'native-lint-adapter',
+      text: '禁止跨层直接访问文件系统。',
+      workflow: 'native',
+      changeId: 'change-b',
+      success: true,
+    });
+
+    await service.adoptCandidate(candidate?.id ?? '');
+
+    await expect(
+      readFile(path.join(projectRoot, '.eslintrc.comet.json'), 'utf8'),
+    ).resolves.toContain('禁止跨层直接访问文件系统');
+    await expect(
+      readFile(path.join(projectRoot, '.comet', 'rules', 'package-lint.md'), 'utf8'),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('discovers project-native verification entrypoints without imposing one command', async () => {
     const projectRoot = await projectDirectory();
     await writeFile(
@@ -255,6 +305,29 @@ describe('ProjectRulesService', () => {
       attempts: 2,
       nextAction: 'complete',
     });
+  });
+
+  it('returns the first verification failure when no repair callback is provided', async () => {
+    const projectRoot = await projectDirectory();
+    await writeFile(
+      path.join(projectRoot, 'package.json'),
+      JSON.stringify({ scripts: { test: 'test' } }),
+    );
+    let attempts = 0;
+    const service = new ProjectRulesService({
+      projectRoot,
+      runVerification: () => {
+        attempts += 1;
+        throw new Error('rule violation');
+      },
+    });
+
+    await expect(service.verify({ maxAttempts: 3 })).resolves.toMatchObject({
+      passed: false,
+      attempts: 1,
+      nextAction: 'fix-and-rerun',
+    });
+    expect(attempts).toBe(1);
   });
 
   it('does not claim an empty Gradle script and preserves the Python source', async () => {

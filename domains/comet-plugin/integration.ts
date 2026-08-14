@@ -13,6 +13,7 @@ import {
 } from '../comet-memory/index.js';
 import { createProjectRulesPluginDescriptor } from '../project-rules/index.js';
 import type {
+  ProjectRuleCarrierAdapter,
   ProjectRulesStatus,
   ProjectRulesSelectionRequest,
   ProjectRulesVerificationResult,
@@ -56,6 +57,8 @@ export interface CometPluginBridgeOptions {
     args: readonly string[],
     cwd: string,
   ) => string;
+  /** Optional host/project adapter for applying a rule to native project files. */
+  readonly projectRuleCarrierAdapters?: readonly ProjectRuleCarrierAdapter[];
 }
 
 export interface CometPluginContextRequest {
@@ -271,7 +274,9 @@ export async function createDefaultCometPluginBridge(
       createProjectRulesPluginDescriptor({
         projectRoot,
         projectId: options.projectId,
-        ...((options.repairProjectRules ?? options.runProjectRuleVerification)
+        ...((options.repairProjectRules ??
+        options.runProjectRuleVerification ??
+        options.projectRuleCarrierAdapters)
           ? {
               serviceOptions: {
                 ...(options.repairProjectRules
@@ -279,6 +284,9 @@ export async function createDefaultCometPluginBridge(
                   : {}),
                 ...(options.runProjectRuleVerification
                   ? { runVerification: options.runProjectRuleVerification }
+                  : {}),
+                ...(options.projectRuleCarrierAdapters
+                  ? { carrierAdapters: options.projectRuleCarrierAdapters }
                   : {}),
               },
             }

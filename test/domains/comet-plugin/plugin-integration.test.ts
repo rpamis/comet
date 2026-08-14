@@ -163,4 +163,55 @@ describe('Comet plugin integration bridge', () => {
       await fs.rm(root, { recursive: true, force: true });
     }
   });
+
+  test('passes project rule carrier adapters through the public bridge', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-carrier-'));
+    const memoryRoot = path.join(root, 'memory');
+    const projectRoot = path.join(root, 'project');
+    await fs.mkdir(projectRoot, { recursive: true });
+    await fs.writeFile(
+      path.join(projectRoot, 'package.json'),
+      JSON.stringify({ scripts: { lint: 'eslint .' } }),
+    );
+    try {
+      const bridge = await createDefaultCometPluginBridge({
+        projectRoot,
+        memoryRoot,
+        projectId: 'carrier-project',
+        stateRoot: path.join(root, 'plugin-state'),
+        projectRuleCarrierAdapters: [
+          {
+            id: 'eslint-config',
+            supports: (entrypoint) => entrypoint.id === 'package-lint',
+            apply: async ({ candidate, writeText }) => {
+              await writeText('.eslintrc.comet.json', JSON.stringify({ rule: candidate.text }));
+              return {
+                targetPath: '.eslintrc.comet.json',
+                change: '已将规则写入 ESLint 项目配置。',
+              };
+            },
+          },
+        ],
+      });
+      for (const changeId of ['carrier-1', 'carrier-2']) {
+        await bridge.dispatchLifecycle({
+          name: 'task.completed',
+          workflow: 'native',
+          changeId,
+          success: true,
+          category: 'project-rule',
+          text: '禁止跨层直接访问文件系统。',
+          ruleText: '禁止跨层直接访问文件系统。',
+          candidateKey: 'native-lint-adapter',
+        });
+      }
+      const details = (await bridge.projectRulesAction('details')) as Array<{ id: string }>;
+      await bridge.projectRulesAction('adopt', { id: details[0].id });
+      await expect(
+        fs.readFile(path.join(projectRoot, '.eslintrc.comet.json'), 'utf8'),
+      ).resolves.toContain('禁止跨层直接访问文件系统');
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
 });
