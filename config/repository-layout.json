@@ -134,6 +134,7 @@
     "eval",
     "factory",
     "integrations",
+    "project-rules",
     "skill",
     "workflow-contract"
   ],

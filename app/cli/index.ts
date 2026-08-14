@@ -69,6 +69,37 @@ workflow
     await workflowResolveCommand(targetPath, options);
   });
 
+const rules = program
+  .command('rules')
+  .description('Inspect and initialize project rules without creating a Comet change');
+
+rules
+  .command('init [path]')
+  .description('Initialize project rules scanning')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { projectRulesInitCommand } = await import('../commands/project-rules.js');
+    await projectRulesInitCommand(targetPath, options);
+  });
+
+rules
+  .command('scan [path]')
+  .description('Rescan project rules and verification entrypoints')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { projectRulesScanCommand } = await import('../commands/project-rules.js');
+    await projectRulesScanCommand(targetPath, options);
+  });
+
+rules
+  .command('status [path]')
+  .description('Show project rules sources and candidates')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { projectRulesStatusCommand } = await import('../commands/project-rules.js');
+    await projectRulesStatusCommand(targetPath, options);
+  });
+
 program
   .command('resume-probe [path]')
   .description('Probe whether an active Comet workflow should resume')
