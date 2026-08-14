@@ -8,6 +8,7 @@ import {
   Empty,
   Layout,
   Menu,
+  Modal,
   Progress,
   Steps,
   Tabs,
@@ -2228,6 +2229,8 @@ function PluginCenterPage({ page, loading, error, onRetry, onInvoke }) {
 }
 
 function PersonalMemoryCenter({ data, onInvoke }) {
+  const [editingRecord, setEditingRecord] = useState(null);
+  const [correctionText, setCorrectionText] = useState('');
   const status = data?.status ?? {};
   const retrieval = data?.retrieval ?? {};
   const records = retrieval.records ?? [];
@@ -2277,10 +2280,8 @@ function PersonalMemoryCenter({ data, onInvoke }) {
                     <Button
                       size="small"
                       onClick={() => {
-                        const text = window.prompt('修改这条记忆', record.text);
-                        if (text?.trim() && text.trim() !== record.text) {
-                          onInvoke('correct', { id: record.id, correction: { text: text.trim() } });
-                        }
+                        setEditingRecord(record);
+                        setCorrectionText(record.text);
                       }}
                     >
                       纠正
@@ -2302,6 +2303,30 @@ function PersonalMemoryCenter({ data, onInvoke }) {
           )}
         </AntCard>
       </div>
+      <Modal
+        open={editingRecord !== null}
+        title="纠正这条记忆"
+        okText="保存"
+        cancelText="取消"
+        okButtonProps={{ disabled: correctionText.trim().length === 0 }}
+        onCancel={() => setEditingRecord(null)}
+        onOk={() => {
+          if (!editingRecord || correctionText.trim().length === 0) return;
+          void onInvoke('correct', {
+            id: editingRecord.id,
+            correction: { text: correctionText.trim() },
+          });
+          setEditingRecord(null);
+        }}
+      >
+        <Input.TextArea
+          autoFocus
+          value={correctionText}
+          onChange={(event) => setCorrectionText(event.target.value)}
+          autoSize={{ minRows: 3, maxRows: 8 }}
+          placeholder="输入新的记忆内容"
+        />
+      </Modal>
     </div>
   );
 }
