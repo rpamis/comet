@@ -1,0 +1,268 @@
+schema: comet.native.v4
+name: comet-plugin-runtime
+language: zh-CN
+phase: build
+status: active
+state_version: 2
+brief: brief.md
+spec_changes:
+  - capability: comet-plugin-runtime
+    operation: create
+    source: specs/comet-plugin-runtime/spec.md
+workspace:
+  isolation: worktree
+  change_branch: comet/comet-plugin-runtime
+  target_branch: beta20
+  finish: null
+loop:
+  stage: building
+  goal_cycle: 1
+  iteration: 1
+  attempt: 0
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: submit-builder-candidate
+acceptance:
+  - id: A1
+    source: brief.md
+    text: 用户可以安装、启用、停用和卸载第三方插件；同一机制也管理两个第一方插件。
+    result: pending
+    reason: null
+  - id: A2
+    source: brief.md
+    text: 两个第一方插件在已有用户升级到首次包含它们的版本后自动可用；用户卸载其中一个后，后续 Comet 更新不会自动装回。
+    result: pending
+    reason: null
+  - id: A3
+    source: brief.md
+    text: 用户只安装或启用其中一个插件时，另一个能力和 Comet 基础 workflow 不受影响。
+    result: pending
+    reason: null
+  - id: A4
+    source: brief.md
+    text: 插件停用立即停止后续处理但保留数据；卸载移除入口但不自动删除数据。
+    result: pending
+    reason: null
+  - id: A5
+    source: brief.md
+    text: 第一方和第三方插件使用同一公开接口，不能直接访问其他插件私有数据或 Comet workflow 内部状态。
+    result: pending
+    reason: null
+  - id: A6
+    source: brief.md
+    text: 不兼容或运行失败的插件被隔离并给出诊断，不伪装成项目构建、测试或 workflow 失败。
+    result: pending
+    reason: null
+  - id: A7
+    source: brief.md
+    text: 插件可以通过公开接口贡献 Dashboard 入口；页面或调用失败不影响其他插件页面和现有 workflow 页面。
+    result: pending
+    reason: null
+  - id: A8
+    source: specs/comet-plugin-runtime/spec.md
+    text: "> 状态：Shape 正在澄清。本文记录已经确认的产品行为；具体包格式、命令名称和进程边界在 Design 中决定。"
+    result: pending
+    reason: null
+  - id: A9
+    source: specs/comet-plugin-runtime/spec.md
+    text: Comet 提供公开、稳定的插件机制，让第一方和第三方能力以相同方式接入。自进化个人记忆与项目规则是首批第一方插件，不作为 Comet Core
+      中无法移除的特殊功能。
+    result: pending
+    reason: null
+  - id: A10
+    source: specs/comet-plugin-runtime/spec.md
+    text: 两个第一方插件随 Comet 默认安装并启用；用户可以独立查看、启用、停用、更新和卸载它们，也可以明确安装第三方插件。
+    result: pending
+    reason: null
+  - id: A11
+    source: specs/comet-plugin-runtime/spec.md
+    text: 这两个插件首次随新版 Comet 发布时，已有用户升级后自动安装并启用，不要求手动发现或安装新能力。
+    result: pending
+    reason: null
+  - id: A12
+    source: specs/comet-plugin-runtime/spec.md
+    text: 用户之后明确停用或卸载任一第一方插件时，后续 Comet 更新保留该状态，不得自动重新启用或重新安装；用户仍可通过 Skill、CLI 或
+      Dashboard 主动恢复。
+    result: pending
+    reason: null
+  - id: A13
+    source: specs/comet-plugin-runtime/spec.md
+    text: Comet Skill 是主要交互入口；用户可以直接说“安装、启用、停用或卸载某个插件”，不要求先打开 Dashboard 或手动使用 CLI。
+    result: pending
+    reason: null
+  - id: A14
+    source: specs/comet-plugin-runtime/spec.md
+    text: CLI 与 Dashboard 可以提供同一能力，但不能维护另一套插件状态。
+    result: pending
+    reason: null
+  - id: A15
+    source: specs/comet-plugin-runtime/spec.md
+    text: 公开插件接口提供 Dashboard 功能页接入点；已安装插件可以在 Comet Dashboard
+      主侧边栏贡献一个独立入口，并在统一页面外壳中展示自己的中心页面，第一方插件不使用私有接入方式。
+    result: pending
+    reason: null
+  - id: A16
+    source: specs/comet-plugin-runtime/spec.md
+    text: 已安装但停用的插件入口继续显示，并呈现停用状态与重新启用操作；卸载插件后入口移除，保留的数据不因此删除。
+    result: pending
+    reason: null
+  - id: A17
+    source: specs/comet-plugin-runtime/spec.md
+    text: 插件中心页调用与 Skill、CLI 相同的领域能力和存储，不建立 Dashboard
+      专属状态；一个插件页面加载或调用失败时只显示该插件诊断，不影响其他页面。
+    result: pending
+    reason: null
+  - id: A18
+    source: specs/comet-plugin-runtime/spec.md
+    text: Dashboard 工作流页面继续只读；插件中心页只能执行该插件公开声明的管理操作，具体页面贡献格式与隔离方式在 Design 中确定。
+    result: pending
+    reason: null
+  - id: A19
+    source: specs/comet-plugin-runtime/spec.md
+    text: 安装和更新第三方插件必须是用户明确发起的操作，Comet 不根据项目内容静默下载或执行插件。
+    result: pending
+    reason: null
+  - id: A20
+    source: specs/comet-plugin-runtime/spec.md
+    text: 停用插件立即停止其后续处理，但保留插件数据；卸载也不自动删除数据，永久删除必须由用户明确执行。
+    result: pending
+    reason: null
+  - id: A21
+    source: specs/comet-plugin-runtime/spec.md
+    text: 第一方和第三方插件使用同一套公开接口完成发现、加载、生命周期、配置、诊断和能力调用。
+    result: pending
+    reason: null
+  - id: A22
+    source: specs/comet-plugin-runtime/spec.md
+    text: Comet Core 提供有来源的 workflow 生命周期事件、受控的上下文提供入口、插件隔离存储和必要的项目/用户作用域信息。
+    result: pending
+    reason: null
+  - id: A23
+    source: specs/comet-plugin-runtime/spec.md
+    text: 插件只能通过公开接口贡献能力，不能直接修改 Native、Classic、Hotfix 或 Tweak 的内部状态机与 Guard。
+    result: pending
+    reason: null
+  - id: A24
+    source: specs/comet-plugin-runtime/spec.md
+    text: 插件拥有独立名称、版本与兼容范围；不兼容插件在执行前被拒绝并给出可理解原因。
+    result: pending
+    reason: null
+  - id: A25
+    source: specs/comet-plugin-runtime/spec.md
+    text: 公开接口的兼容变更遵循 Comet 版本策略；插件不需要读取 Comet 私有 Runtime 文件来判断兼容性。
+    result: pending
+    reason: null
+  - id: A26
+    source: specs/comet-plugin-runtime/spec.md
+    text: 插件在用户作用域安装，并按声明的作用域生效：个人记忆插件服务当前用户的 Comet 任务，项目规则插件只在已启用 Comet
+      的项目中运行；用户可以全局或按项目暂停支持相应作用域的插件能力。
+    result: pending
+    reason: null
+  - id: A27
+    source: specs/comet-plugin-runtime/spec.md
+    text: 一个插件缺失、停用、版本不兼容或运行失败时，其他插件和 Comet 基础 workflow 继续工作。
+    result: pending
+    reason: null
+  - id: A28
+    source: specs/comet-plugin-runtime/spec.md
+    text: 插件的数据、配置和日志相互隔离；一个插件不能直接读写另一个插件的私有数据。
+    result: pending
+    reason: null
+  - id: A29
+    source: specs/comet-plugin-runtime/spec.md
+    text: 插件失败通过统一诊断返回，不伪装成项目编译、linter、测试或 workflow 失败。
+    result: pending
+    reason: null
+  - id: A30
+    source: specs/comet-plugin-runtime/spec.md
+    text: Comet Core 不保留只有第一方插件才能调用的隐式加载或生命周期路径。
+    result: pending
+    reason: null
+  - id: A31
+    source: specs/comet-plugin-runtime/spec.md
+    text: 自进化个人记忆插件负责学习、同步、检索和管理个人偏好及项目记忆。
+    result: pending
+    reason: null
+  - id: A32
+    source: specs/comet-plugin-runtime/spec.md
+    text: 项目规则插件负责规则发现、候选交互、上下文选择和原生检查修复循环，并通过 `comet rules` 命名空间提供项目初始化、重新扫描和状态查看命令。
+    result: pending
+    reason: null
+  - id: A33
+    source: specs/comet-plugin-runtime/spec.md
+    text: 两个插件可以消费同一批有来源事件，但各自判断、存储和生效；是否安装其中一个不影响另一个的可用性。
+    result: pending
+    reason: null
+  - id: A34
+    source: specs/comet-plugin-runtime/spec.md
+    text: 两个插件的完整领域行为分别由各自规格定义，公开插件机制不把它们的专有数据模型塞入 Comet Core。
+    result: pending
+    reason: null
+  - id: A35
+    source: specs/comet-plugin-runtime/spec.md
+    text: 用户只安装个人记忆插件时可以学习和检索记忆，不会启用项目规则；反向安装也成立。
+    result: pending
+    reason: null
+  - id: A36
+    source: specs/comet-plugin-runtime/spec.md
+    text: 已有用户升级到首次包含这两个插件的 Comet 版本后可以直接使用它们；用户随后卸载项目规则插件，再次更新 Comet
+      时该插件不会被自动装回，个人记忆插件继续工作。
+    result: pending
+    reason: null
+  - id: A37
+    source: specs/comet-plugin-runtime/spec.md
+    text: 用户停用个人记忆插件后，新任务不再学习或加载个人记忆，但项目规则和 Comet workflow 继续工作。
+    result: pending
+    reason: null
+  - id: A38
+    source: specs/comet-plugin-runtime/spec.md
+    text: 用户卸载项目规则插件后，仓库已有规则与原生检查配置保留，个人记忆插件继续工作。
+    result: pending
+    reason: null
+  - id: A39
+    source: specs/comet-plugin-runtime/spec.md
+    text: 一个使用公开接口编写的最小第三方插件可以完成安装、启用、接收一次受支持事件、提供结果、停用和卸载。
+    result: pending
+    reason: null
+  - id: A40
+    source: specs/comet-plugin-runtime/spec.md
+    text: 一个通过公开接口提供 Dashboard
+      功能页的插件安装后出现在主侧边栏，停用后保留可重新启用的中心页，卸载后入口消失；第一方个人记忆和项目规则页面遵循同一接入方式。
+    result: pending
+    reason: null
+  - id: A41
+    source: specs/comet-plugin-runtime/spec.md
+    text: 个人记忆页面加载失败时，项目规则、Classic 和 Native 页面仍能打开并正常工作，诊断只显示在个人记忆页面。
+    result: pending
+    reason: null
+  - id: A42
+    source: specs/comet-plugin-runtime/spec.md
+    text: 插件声明的兼容范围不包含当前 Comet 版本时，Comet 拒绝加载并说明版本不兼容；其他插件仍可正常使用。
+    result: pending
+    reason: null
+  - id: A43
+    source: specs/comet-plugin-runtime/spec.md
+    text: 插件启动或执行失败时，Comet 隔离该失败并提供诊断，不让 Native、Classic、Hotfix、Tweak 或其他插件失效。
+    result: pending
+    reason: null
+builder_handoff: null
+blockers: []
+verification: null
+history: []
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pending
+verification_report: null
+archived: false
+created_at: 2026-08-14T08:34:34.204Z
