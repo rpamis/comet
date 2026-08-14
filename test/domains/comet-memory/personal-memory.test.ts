@@ -430,4 +430,41 @@ describe('PersonalMemoryService', () => {
       expect(await runtime.get(descriptor.id)).toMatchObject({ status: 'disabled' });
     });
   });
+
+  it('includes global profile when project plugin context is requested', async () => {
+    await withTempRepository(async (root) => {
+      const descriptor = createPersonalMemoryPluginDescriptor({
+        createService: () => service(root),
+      });
+      const runtime = new PluginRuntime({
+        cometVersion: '1.0.0',
+        store: new MemoryPluginStateStore(),
+        descriptors: [descriptor],
+      });
+      await runtime.reconcileFirstParty();
+      await runtime.invoke('comet.personal-memory', 'remember', {
+        scope: 'global',
+        category: '沟通偏好',
+        text: '使用中文回复',
+      });
+      await runtime.invoke(
+        'comet.personal-memory',
+        'remember',
+        {
+          scope: 'project',
+          projectKey: 'project-a',
+          category: '构建',
+          text: '使用 pnpm build',
+        },
+        { scope: 'project', projectId: 'project-a' },
+      );
+
+      const contexts = await runtime.collectContext(
+        { task: 'build', projectId: 'project-a' },
+        { scope: 'project', projectId: 'project-a' },
+      );
+      expect(contexts[0]?.text).toContain('使用中文回复');
+      expect(contexts[0]?.text).toContain('使用 pnpm build');
+    });
+  });
 });

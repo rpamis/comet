@@ -42,7 +42,6 @@ async function createModule(
         projectKey: request.projectId ?? context.projectId,
         task: request.task,
         path: request.path,
-        scope: context.scope === 'project' ? 'project' : undefined,
       });
       if (retrieval.disabled || retrieval.records.length === 0) return null;
       return { text: retrieval.text, records: retrieval.records };
