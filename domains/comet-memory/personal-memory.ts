@@ -117,13 +117,29 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
       const current = state.records.find((entry) => entry.id === id) as StoredRecord | undefined;
       if (current === undefined) throw new Error(`Unknown memory: ${id}`);
       if (current.active) {
-        pushHistory(state, current);
         const path = memoryFilePath(current.scope, current.projectKey);
-        const content = await this.repository.readText(path);
-        if (content !== null) {
-          const nextContent = removeMarkdownBullet(content, current.text, current.category);
-          if (nextContent !== content) await this.repository.writeText(path, nextContent);
-          state.files[path] = fileState(nextContent, this.timestamp());
+        const content = await this.readStableFile(state, path, current.scope, current.projectKey);
+        const refreshed = state.records.find((entry) => entry.id === id) as
+          | StoredRecord
+          | undefined;
+        if (refreshed?.active) {
+          pushHistory(state, refreshed);
+          if (content !== null) {
+            const nextContent = removeMarkdownBullet(content, current.text, current.category);
+            if (nextContent !== content) {
+              const confirmed = await this.readStableFile(
+                state,
+                path,
+                refreshed.scope,
+                refreshed.projectKey,
+              );
+              if (confirmed !== content) {
+                throw new Error(`Memory file changed during update: ${path}`);
+              }
+              await this.repository.writeText(path, nextContent);
+            }
+            state.files[path] = fileState(nextContent, this.timestamp());
+          }
         }
       }
       if (options.permanent) {
@@ -463,11 +479,26 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
   ): Promise<MutableMemoryState> {
     const raw = await this.repository.readState();
     const state = mutableState(raw);
+    const knownProjectKeys = new Set<string>();
+    for (const record of state.records) {
+      if (record.scope === 'project' && record.projectKey !== undefined)
+        knownProjectKeys.add(record.projectKey);
+    }
+    for (const file of Object.keys(state.files)) {
+      const match = /^projects\/([A-Za-z0-9][A-Za-z0-9._-]*)\.md$/u.exec(file);
+      if (match?.[1] !== undefined) knownProjectKeys.add(match[1]);
+    }
     const targets =
       scope === undefined
         ? [
             { scope: 'global' as const },
-            ...(projectKey ? [{ scope: 'project' as const, projectKey }] : []),
+            ...[...knownProjectKeys].map((knownProjectKey) => ({
+              scope: 'project' as const,
+              projectKey: knownProjectKey,
+            })),
+            ...(projectKey !== undefined && !knownProjectKeys.has(projectKey)
+              ? [{ scope: 'project' as const, projectKey }]
+              : []),
           ]
         : [{ scope, ...(scope === 'project' ? { projectKey } : {}) }];
     for (const target of targets) {
@@ -490,7 +521,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
     previousCategory?: string,
   ): Promise<void> {
     const file = memoryFilePath(record.scope, record.projectKey);
-    const existing = await this.repository.readText(file);
+    const existing = await this.readStableFile(state, file, record.scope, record.projectKey);
     const next = previousText
       ? replaceMarkdownBullet(
           existing ?? '',
@@ -501,8 +532,28 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
           record.scope,
         )
       : appendMarkdownBullet(existing ?? '', record.category, record.text, record.scope);
-    if (next !== existing) await this.repository.writeText(file, next);
+    if (next !== existing) {
+      const confirmed = await this.readStableFile(state, file, record.scope, record.projectKey);
+      if (confirmed !== existing) throw new Error(`Memory file changed during update: ${file}`);
+      await this.repository.writeText(file, next);
+    }
     state.files[file] = fileState(next, this.timestamp());
+  }
+
+  private async readStableFile(
+    state: MutableMemoryState,
+    file: string,
+    scope: 'global' | 'project',
+    projectKey: string | undefined,
+  ): Promise<string | null> {
+    const content = await this.repository.readText(file);
+    const expectedHash = state.files[file]?.hash;
+    if (expectedHash !== undefined && memoryFileHash(content) !== expectedHash) {
+      reconcileMarkdown(state, file, scope, projectKey, content, this.timestamp());
+      await this.persist(state);
+      throw new Error(`Memory file changed during update: ${file}`);
+    }
+    return content;
   }
 
   private updateRecordValue(
@@ -705,15 +756,19 @@ function memoryIdentity(
 }
 
 function observationKey(observation: MemoryObservation): string {
-  return JSON.stringify([
-    observation.projectKey ?? '',
-    observation.workflow.trim().toLocaleLowerCase(),
-    observation.changeId.trim(),
-  ]);
+  // Comet keeps a stable change id while a change is resumed or upgraded
+  // between presets (for example hotfix/tweak -> full).  The workflow label
+  // is retained as source metadata, but must not turn one change into two
+  // independent observations.
+  return JSON.stringify([observation.projectKey ?? '', observation.changeId.trim()]);
 }
 
 function fileState(content: string, timestamp: string): { hash: string; observedAt: string } {
   return { hash: hashMemoryText(content), observedAt: timestamp };
+}
+
+function memoryFileHash(content: string | null): string {
+  return content === null ? '' : hashMemoryText(content);
 }
 
 function parseMarkdown(content: string): MarkdownBullet[] {

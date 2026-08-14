@@ -13,6 +13,25 @@ import {
 } from '../../../domains/comet-memory/index.js';
 import { MemoryPluginStateStore, PluginRuntime } from '../../../domains/comet-plugin/index.js';
 
+class EditOnReadRepository extends FileMemoryRepository {
+  private reads = 0;
+
+  public constructor(
+    root: string,
+    private readonly editAtRead: number,
+    private readonly edit: () => Promise<void>,
+  ) {
+    super(root);
+  }
+
+  public override async readText(relativePath: string): Promise<string | null> {
+    const content = await super.readText(relativePath);
+    this.reads += 1;
+    if (this.reads === this.editAtRead) await this.edit();
+    return content;
+  }
+}
+
 async function withTempRepository<T>(run: (root: string) => Promise<T>): Promise<T> {
   const root = await mkdtemp(path.join(os.tmpdir(), 'comet-memory-'));
   try {
@@ -147,6 +166,66 @@ describe('PersonalMemoryService', () => {
       expect(await readFile(path.join(root, 'projects/project-a.md'), 'utf8')).toContain(
         observation.text,
       );
+    });
+  });
+
+  it('deduplicates one change when its workflow is upgraded in place', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const base = {
+        scope: 'project' as const,
+        projectKey: 'project-a',
+        category: '工作习惯',
+        text: '只暂存本次改动文件',
+        success: true,
+      };
+
+      await expect(
+        memories.observe({ ...base, workflow: 'hotfix', changeId: 'change-1' }),
+      ).resolves.toMatchObject({ candidate: true, activated: false });
+      await expect(
+        memories.observe({ ...base, workflow: 'native', changeId: 'change-1' }),
+      ).resolves.toMatchObject({ deduplicated: true, activated: false });
+      await expect(
+        memories.observe({ ...base, workflow: 'tweak', changeId: 'change-2' }),
+      ).resolves.toMatchObject({ candidate: true, activated: true });
+    });
+  });
+
+  it('reconciles a manually edited project file before id-based management', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const record = await memories.remember({
+        scope: 'project',
+        projectKey: 'project-a',
+        category: '构建',
+        text: '使用 pnpm build',
+      });
+      const file = path.join(root, 'projects/project-a.md');
+      await writeFile(file, '# 项目记忆\n\n## 构建\n\n- 使用 npm run build\n');
+
+      await expect(memories.correct(record.id, { text: '使用 gradle build' })).rejects.toThrow(
+        `Memory is not active: ${record.id}`,
+      );
+      expect(await readFile(file, 'utf8')).toContain('使用 npm run build');
+    });
+  });
+
+  it('preserves a manual edit detected between read and atomic write', async () => {
+    await withTempRepository(async (root) => {
+      const file = path.join(root, 'profile.md');
+      const repository = new EditOnReadRepository(root, 2, async () => {
+        await writeFile(file, '# 个人画像\n\n## 沟通偏好\n\n- 用户手工内容\n');
+      });
+      const memories = new PersonalMemoryService({
+        repository,
+        now: () => new Date('2026-08-14T00:00:00.000Z'),
+      });
+
+      await expect(
+        memories.remember({ scope: 'global', category: '沟通偏好', text: '后台内容' }),
+      ).rejects.toThrow('Memory file changed during update: profile.md');
+      expect(await readFile(file, 'utf8')).toContain('用户手工内容');
     });
   });
 
