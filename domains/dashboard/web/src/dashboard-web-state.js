@@ -44,7 +44,11 @@ export async function dashboardResponseError(response) {
   try {
     const payload = await response.json();
     if (typeof payload?.error === 'string' && payload.error.trim()) {
-      return new Error(payload.error);
+      const pluginId = typeof payload.pluginId === 'string' ? payload.pluginId.trim() : '';
+      const message = pluginId ? `插件 ${pluginId}：${payload.error}` : payload.error;
+      const error = new Error(message);
+      if (pluginId) error.pluginId = pluginId;
+      return error;
     }
   } catch {
     // Fall back to the HTTP status when the server did not return its JSON error envelope.

@@ -469,6 +469,45 @@ describe('PersonalMemoryService', () => {
     });
   });
 
+  it('routes personal memory management actions through the plugin API', async () => {
+    await withTempRepository(async (root) => {
+      const descriptor = createPersonalMemoryPluginDescriptor({
+        createService: () => service(root),
+      });
+      const runtime = new PluginRuntime({
+        cometVersion: '1.0.0',
+        store: new MemoryPluginStateStore(),
+        descriptors: [descriptor],
+      });
+      await runtime.reconcileFirstParty();
+
+      const record = (await runtime.invoke('comet.personal-memory', 'remember', {
+        scope: 'global',
+        category: '沟通偏好',
+        text: '使用中文回复',
+      })) as { id: string };
+      await runtime.invoke('comet.personal-memory', 'correct', {
+        id: record.id,
+        correction: { text: '始终使用中文回复' },
+      });
+      await runtime.invoke('comet.personal-memory', 'remove', { id: record.id });
+      await runtime.invoke('comet.personal-memory', 'rollback', { id: record.id });
+      await runtime.invoke('comet.personal-memory', 'set-learning', { enabled: false });
+      await runtime.invoke('comet.personal-memory', 'set-retrieval', { enabled: false });
+
+      await expect(
+        runtime.invoke('comet.personal-memory', 'retrieve', { scope: 'global' }),
+      ).resolves.toMatchObject({ disabled: true });
+      await expect(runtime.invoke('comet.personal-memory', 'sync', {})).resolves.toMatchObject({
+        status: 'local-only',
+      });
+      await expect(runtime.invoke('comet.personal-memory', 'status', {})).resolves.toMatchObject({
+        learningEnabled: false,
+        retrievalEnabled: false,
+      });
+    });
+  });
+
   it('includes global profile when project plugin context is requested', async () => {
     await withTempRepository(async (root) => {
       const descriptor = createPersonalMemoryPluginDescriptor({

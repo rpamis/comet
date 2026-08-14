@@ -1,0 +1,492 @@
+schema: comet.native.v4
+name: memory-rules-dashboard
+language: zh-CN
+phase: archive
+status: done
+state_version: 16
+brief: brief.md
+spec_changes:
+  - capability: memory-rules-dashboard
+    operation: create
+    source: specs/memory-rules-dashboard/spec.md
+workspace:
+  isolation: worktree
+  change_branch: comet/memory-rules-dashboard
+  target_branch: beta20
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 3
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: 用户打开 Dashboard，侧边栏同时看到“个人记忆”和“项目规则”；切换入口后中心页保持现有 Dashboard 的紧凑 AntD 视觉语言。
+    result: passed
+    reason:
+      text: 双首方插件页面均注册并显示在独立侧边栏分组，沿用紧凑 AntD 页面。
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: 个人记忆插件不可用时，个人记忆页显示可读诊断，项目规则页和 workflow 页面仍能打开。
+    result: passed
+    reason:
+      text: 单页加载或调用失败隔离在对应页面并保留插件诊断。
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: 用户在个人记忆页纠正一条画像、删除一条项目记忆、点击回滚或同步，刷新页面后结果来自同一记忆仓库；页面不保存副本。
+    result: passed
+    reason:
+      text: 个人记忆页面动作经公开 Runtime 能力回读同一记忆仓库。
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: 用户在项目规则页对未初始化项目点击“初始化”，只得到盘点摘要；点击“重新扫描”更新来源和验证入口；对候选执行加入、忽略或稍后与 Skill/CLI
+      语义一致。
+    result: passed
+    reason:
+      text: 项目规则初始化、扫描和候选处理均经公开插件能力执行。
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: 停用插件后页面保留停用状态和启用按钮；卸载后侧边栏入口消失，但记忆文件、规则文件和原生检查配置仍保留。
+    result: passed
+    reason:
+      text: 停用保留入口与数据，卸载移除入口且不删除领域数据。
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: 插件页面加载异常、能力调用异常或返回无效数据时，其他页面继续可用并显示对应插件诊断。
+    result: passed
+    reason:
+      text: 服务端和前端错误均保留并显示 pluginId，其他页面继续可用。
+      truncated: false
+  - id: A7
+    source: specs/memory-rules-dashboard/spec.md
+    text: "`domains/dashboard` 负责把插件 Runtime 的公开页面贡献和能力调用投递到
+      Dashboard；`domains/comet-memory` 与 `domains/project-rules`
+      继续负责各自领域数据。Dashboard 不拥有记忆、规则、候选或插件生命周期状态。"
+    result: passed
+    reason:
+      text: Dashboard 只投递插件公开页面和能力，不拥有领域状态。
+      truncated: false
+  - id: A8
+    source: specs/memory-rules-dashboard/spec.md
+    text: "Dashboard Server 接收一个插件 Host，Host 使用 `PluginRuntime.dashboardPages({
+      scope: 'project', projectId })` 返回已安装插件页面。"
+    result: passed
+    reason:
+      text: Host 使用 PluginRuntime dashboardPages 按项目发现页面。
+      truncated: false
+  - id: A9
+    source: specs/memory-rules-dashboard/spec.md
+    text: 页面列表只公开 `pluginId`、用户可读标题、稳定路由和当前插件状态；停用插件仍返回页面并标记 `disabled`，卸载插件不返回页面。
+    result: passed
+    reason:
+      text: 页面列表只公开用户可读摘要，停用可见、卸载隐藏。
+      truncated: false
+  - id: A10
+    source: specs/memory-rules-dashboard/spec.md
+    text: 一个插件页面加载失败、能力调用失败或数据解析失败时，Host 返回带插件标识的诊断；其他页面和 workflow 页面继续正常响应。
+    result: passed
+    reason:
+      text: 页面和能力失败均返回带插件标识的诊断，健康页面继续响应。
+      truncated: false
+  - id: A11
+    source: specs/memory-rules-dashboard/spec.md
+    text: 在现有项目路由下增加：
+    result: passed
+    reason:
+      text: 插件 HTTP 路由挂载在现有 Dashboard 项目路由下。
+      truncated: false
+  - id: A12
+    source: specs/memory-rules-dashboard/spec.md
+    text: "`GET /api/dashboard/projects/:projectId/plugins`：返回页面列表、插件状态和诊断摘要。"
+    result: passed
+    reason:
+      text: 页面列表 API 返回状态和诊断摘要。
+      truncated: false
+  - id: A13
+    source: specs/memory-rules-dashboard/spec.md
+    text: "`GET
+      /api/dashboard/projects/:projectId/plugins/:pluginId`：返回对应中心页的用户可读快照。"
+    result: passed
+    reason:
+      text: 页面快照 API 返回首方中心页用户可读数据。
+      truncated: false
+  - id: A14
+    source: specs/memory-rules-dashboard/spec.md
+    text: "`POST /api/dashboard/projects/:projectId/plugins/:pluginId/invoke`：接收 `{
+      capability, input }`，调用公开插件能力，返回领域结果；未知能力、停用插件和失败均返回结构化错误。"
+    result: passed
+    reason:
+      text: invoke API 校验能力、停用状态和失败响应。
+      truncated: false
+  - id: A15
+    source: specs/memory-rules-dashboard/spec.md
+    text: '`POST /api/dashboard/projects/:projectId/plugins/:pluginId/lifecycle`：接收
+      `{ action: "enable" | "disable" | "uninstall" }`，只调用 Runtime 生命周期
+      API；卸载不删除插件数据。'
+    result: passed
+    reason:
+      text: lifecycle API 覆盖 enable、disable、uninstall 且只调用 Runtime。
+      truncated: false
+  - id: A16
+    source: specs/memory-rules-dashboard/spec.md
+    text: 项目 ID 必须先通过现有 Dashboard project directory 校验；接口不得接受任意路径。响应不包含 Runtime
+      内部状态文件、候选 ID、评分或证据时间戳。
+    result: passed
+    reason:
+      text: 项目目录和公开摘要边界经过服务端测试，未泄露 Runtime 内部字段。
+      truncated: false
+  - id: A17
+    source: specs/memory-rules-dashboard/spec.md
+    text: 个人记忆页面快照包含：`learningEnabled`、`retrievalEnabled`、当前项目记忆记录摘要、全局画像摘要、同步状态和可用操作。页面使用
+      `status`、`retrieve`、`correct`、`remove`、`rollback`、`sync` 能力，所有写操作后重新读取状态。
+    result: passed
+    reason:
+      text: 个人记忆快照含设置、检索摘要、同步状态和操作列表，写操作后重新读取。
+      truncated: false
+  - id: A18
+    source: specs/memory-rules-dashboard/spec.md
+    text: 项目规则页面快照包含：`initialized`、`lastScanAt`、规则来源摘要、验证入口摘要和待处理/稍后候选摘要。页面使用
+      `init`、`scan`、`status`、`adopt`、`ignore`、`snooze`、`restore`
+      能力；加入候选由领域服务决定目标文件，页面不创建 Dashboard 专属文件。
+    result: passed
+    reason:
+      text: 项目规则快照含盘点、来源、验证入口、候选和操作列表。
+      truncated: false
+  - id: A19
+    source: specs/memory-rules-dashboard/spec.md
+    text: 现有工作流导航保留；插件入口作为独立的侧边栏分组，不改变当前 workflow/change 选择。
+    result: passed
+    reason:
+      text: 插件入口独立于既有 workflow/change 导航。
+      truncated: false
+  - id: A20
+    source: specs/memory-rules-dashboard/spec.md
+    text: 中心页使用现有 AntD `Layout`、`Menu`、`Card`、`Tabs`、`Table`、`Alert` 和 `Modal`
+      语言；正常匹配保持安静，只有操作结果或插件诊断显示提示。
+    result: passed
+    reason:
+      text: 页面使用现有 AntD 组件语言，记忆纠正使用 Modal。
+      truncated: false
+  - id: A21
+    source: specs/memory-rules-dashboard/spec.md
+    text: 页面请求拥有独立 loading/error 边界；切换页面或刷新不会把上一个插件的数据写入另一个页面。
+    result: passed
+    reason:
+      text: 页面有独立 loading/error 边界，pluginProjectRef 与 pluginSelectionRef 防止旧响应回写。
+      truncated: false
+  - id: A22
+    source: specs/memory-rules-dashboard/spec.md
+    text: 停用页面显示“已停用”和“重新启用”；卸载后入口从侧边栏移除，但后端保留领域文件和 Runtime 数据。
+    result: passed
+    reason:
+      text: 停用页提供重新启用，卸载后侧边栏移除且后端数据保留。
+      truncated: false
+  - id: A23
+    source: specs/memory-rules-dashboard/spec.md
+    text: 两个首批页面都能从公开插件页面贡献发现，并可在同一侧边栏独立打开。
+    result: passed
+    reason:
+      text: 两个首方页面均由公开 Runtime 发现并可独立打开。
+      truncated: false
+  - id: A24
+    source: specs/memory-rules-dashboard/spec.md
+    text: 任一插件页面加载或调用失败不会影响另一个插件和既有 workflow 页面。
+    result: passed
+    reason:
+      text: 插件错误边界不会影响另一插件或既有 workflow 页面。
+      truncated: false
+  - id: A25
+    source: specs/memory-rules-dashboard/spec.md
+    text: 个人记忆和项目规则的核心读取、写入和生命周期动作复用公开领域/Runtime 接口。
+    result: passed
+    reason:
+      text: 个人记忆和项目规则动作均通过公开领域/Runtime 接口。
+      truncated: false
+  - id: A26
+    source: specs/memory-rules-dashboard/spec.md
+    text: Server API 对项目路径、插件标识、能力名和生命周期动作做校验，并返回用户可读错误。
+    result: passed
+    reason:
+      text: 项目、插件、能力和生命周期输入均有校验并返回可读错误。
+      truncated: false
+  - id: A27
+    source: specs/memory-rules-dashboard/spec.md
+    text: 页面和 API 测试覆盖停用、卸载、初始化、扫描、候选处理、纠正、删除、回滚、同步和刷新后状态一致性。
+    result: passed
+    reason:
+      text: 覆盖停用、卸载、初始化、扫描、候选处理、纠正、删除、回滚、同步和刷新一致性。
+      truncated: false
+builder_handoff:
+  candidate_id: ec87f65a-991e-4a3c-a87a-8c72060f6a10
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:3d65877c-644c-416a-9929-9266533f12d3
+  iteration: 3
+  summary:
+    text: 完成 Dashboard 插件中心的页面/API 回归覆盖、插件错误诊断展示和跨项目请求隔离；个人记忆与项目规则页面继续复用公开 Runtime
+      能力。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    - A8
+    - A9
+    - A10
+    - A11
+    - A12
+    - A13
+    - A14
+    - A15
+    - A16
+    - A17
+    - A18
+    - A19
+    - A20
+    - A21
+    - A22
+    - A23
+    - A24
+    - A25
+    - A26
+    - A27
+  checks:
+    - name:
+        text: dashboard-plugin-tests
+        truncated: false
+      result: passed
+      note:
+        text: 7 files / 48 tests
+        truncated: false
+    - name:
+        text: typescript
+        truncated: false
+      result: passed
+      note:
+        text: pnpm exec tsc --noEmit
+        truncated: false
+    - name:
+        text: architecture
+        truncated: false
+      result: passed
+      note:
+        text: pnpm run lint:architecture
+        truncated: false
+    - name:
+        text: prettier
+        truncated: false
+      result: passed
+      note:
+        text: affected source and test files
+        truncated: false
+    - name:
+        text: eslint
+        truncated: false
+      result: not-run
+      note:
+        text: 由 Native Verify 使用根工作区依赖执行
+        truncated: false
+    - name:
+        text: dashboard-build
+        truncated: false
+      result: not-run
+      note:
+        text: 由 Native Verify 使用根工作区 Vite 执行
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: 第三方插件自定义复杂页面渲染不在本 child 范围内；未提供页面时显示通用插件中心占位页。
+      truncated: false
+    - text: Native Verify 的 lint/build 使用根工作区可执行文件，避免 child worktree 缺少依赖。
+      truncated: false
+  known_limits_truncated: false
+  submitted_at: 2026-08-14T11:19:14.890Z
+blockers: []
+verification:
+  candidate_id: ec87f65a-991e-4a3c-a87a-8c72060f6a10
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:9e229abb-aad0-49a7-9719-b23fb939e76b
+  iteration: 3
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: dashboard-plugin-tests
+      name:
+        text: dashboard-plugin-tests
+        truncated: false
+      argv_display:
+        - text: run
+          truncated: false
+        - text: test/domains/dashboard/plugin-host.test.ts
+          truncated: false
+        - text: test/domains/dashboard/plugin-server.test.ts
+          truncated: false
+        - text: test/domains/dashboard/default-plugin-host.test.ts
+          truncated: false
+        - text: test/domains/dashboard/web-state.test.ts
+          truncated: false
+        - text: test/domains/dashboard/web-source.test.ts
+          truncated: false
+        - text: test/domains/project-rules/plugin.test.ts
+          truncated: false
+        - text: test/domains/comet-memory/personal-memory.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 3459
+    - id: typescript
+      name:
+        text: typescript
+        truncated: false
+      argv_display:
+        - text: --noEmit
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 6473
+    - id: architecture
+      name:
+        text: architecture
+        truncated: false
+      argv_display:
+        - text: run
+          truncated: false
+        - text: lint:architecture
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 923
+    - id: eslint
+      name:
+        text: eslint
+        truncated: false
+      argv_display:
+        - text: app/
+          truncated: false
+        - text: domains/
+          truncated: false
+        - text: platform/
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 7262
+    - id: prettier
+      name:
+        text: prettier
+        truncated: false
+      argv_display:
+        - text: --check
+          truncated: false
+        - text: domains/dashboard/web/src/dashboard-web-state.js
+          truncated: false
+        - text: domains/dashboard/web/src/main.jsx
+          truncated: false
+        - text: test/domains/comet-memory/personal-memory.test.ts
+          truncated: false
+        - text: test/domains/dashboard/plugin-server.test.ts
+          truncated: false
+        - text: test/domains/dashboard/web-state.test.ts
+          truncated: false
+        - text: test/domains/project-rules/plugin.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 1068
+    - id: dashboard-build
+      name:
+        text: dashboard-build
+        truncated: false
+      argv_display:
+        - text: build
+          truncated: false
+        - text: --config
+          truncated: false
+        - text: domains/dashboard/web/vite.config.mjs
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 19452
+  summary:
+    text: 27/27 acceptance items passed; no failed or blocked items.
+    truncated: false
+  risks:
+    - text: child worktree lacks local vitest; explicit root
+        D:\Project\Comet\node_modules\.bin\vitest.cmd passed
+      truncated: false
+    - text: root ESLint has one pre-existing unused-argument warning in
+        test/domains/dashboard/plugin-host.test.ts
+      truncated: false
+    - text: Vite build retains existing chunk-size warnings
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-08-14T11:22:49.487Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 修复全局停用插件的重新启用语义，并在 Dashboard 插件错误响应中保留 pluginId 诊断
+      truncated: false
+    completed_at: 2026-08-14T11:06:05.265Z
+  - goal_cycle: 1
+    iteration: 2
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 补齐全局停用与项目暂停叠加时的启用清理，并防止插件页面切换时旧请求覆盖新页面
+      truncated: false
+    completed_at: 2026-08-14T11:10:09.803Z
+  - goal_cycle: 1
+    iteration: 3
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 27/27 acceptance items passed; no failed or blocked items.
+      truncated: false
+    completed_at: 2026-08-14T11:22:49.487Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-14T10:37:39.916Z

@@ -8,6 +8,7 @@ import {
   Empty,
   Layout,
   Menu,
+  Modal,
   Progress,
   Steps,
   Tabs,
@@ -164,6 +165,14 @@ function DashboardApp({ theme, onToggleTheme }) {
   const [snapshot, setSnapshot] = useState(null);
   const [activeProjectId, setActiveProjectId] = useState(null);
   const [workflow, setWorkflow] = useState('classic');
+  const [pluginSelection, setPluginSelection] = useState(null);
+  const [pluginPages, setPluginPages] = useState([]);
+  const [pluginPage, setPluginPage] = useState(null);
+  const [pluginLoading, setPluginLoading] = useState(false);
+  const [pluginError, setPluginError] = useState(null);
+  const [pluginRefreshToken, setPluginRefreshToken] = useState(0);
+  const pluginSelectionRef = useRef(null);
+  const pluginProjectRef = useRef(null);
   const [projects, setProjects] = useState([]);
   const [projectsReady, setProjectsReady] = useState(false);
   const [pages, setPages] = useState({ active: null, archived: null, all: null });
@@ -203,6 +212,8 @@ function DashboardApp({ theme, onToggleTheme }) {
   tabRef.current = tab;
   workflowRef.current = workflow;
   nativeSelectedDetailRef.current = nativeSelectedDetail;
+  pluginSelectionRef.current = pluginSelection;
+  pluginProjectRef.current = activeProjectId;
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
@@ -377,6 +388,79 @@ function DashboardApp({ theme, onToggleTheme }) {
       cancelled = true;
     };
   }, [useDemo]);
+
+  const reloadPluginPages = useCallback(async () => {
+    if (useDemo || !activeProjectId) return;
+    const requestedProjectId = activeProjectId;
+    try {
+      const nextPages = await fetchDashboardPluginPages(requestedProjectId);
+      if (pluginProjectRef.current !== requestedProjectId) return;
+      setPluginPages(nextPages.pages ?? []);
+    } catch (error) {
+      toast(`插件页面加载失败：${error.message}`, 'error');
+    }
+  }, [activeProjectId, toast, useDemo]);
+
+  useEffect(() => {
+    if (useDemo || !activeProjectId) return undefined;
+    let cancelled = false;
+    setPluginSelection(null);
+    setPluginPage(null);
+    setPluginError(null);
+    void fetchDashboardPluginPages(activeProjectId)
+      .then((response) => {
+        if (!cancelled) setPluginPages(response.pages ?? []);
+      })
+      .catch((error) => {
+        if (!cancelled) toast(`插件页面加载失败：${error.message}`, 'error');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProjectId, toast, useDemo]);
+
+  useEffect(() => {
+    if (useDemo || !activeProjectId || !pluginSelection) return undefined;
+    let cancelled = false;
+    setPluginLoading(true);
+    setPluginError(null);
+    void fetchDashboardPluginPage(activeProjectId, pluginSelection)
+      .then((page) => {
+        if (!cancelled) setPluginPage(page);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setPluginPage(null);
+          setPluginError(error instanceof Error ? error.message : String(error));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setPluginLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProjectId, pluginRefreshToken, pluginSelection, useDemo]);
+
+  const invokePlugin = useCallback(
+    async (pluginId, capability, input) => {
+      if (!activeProjectId) return;
+      const requestedProjectId = activeProjectId;
+      const requestedPluginId = pluginId;
+      await invokeDashboardPlugin(requestedProjectId, pluginId, capability, input);
+      const [nextPage] = await Promise.all([
+        fetchDashboardPluginPage(requestedProjectId, pluginId),
+        reloadPluginPages(),
+      ]);
+      if (
+        pluginProjectRef.current !== requestedProjectId ||
+        pluginSelectionRef.current !== requestedPluginId
+      )
+        return;
+      setPluginPage(nextPage);
+    },
+    [activeProjectId, reloadPluginPages],
+  );
 
   const loadPage = useCallback(
     async (nextTab, append = false) => {
@@ -627,6 +711,13 @@ function DashboardApp({ theme, onToggleTheme }) {
         open={railOpen}
         workflow={workflow}
         onWorkflow={setWorkflow}
+        pluginPages={pluginPages}
+        pluginSelection={pluginSelection}
+        onPluginSelect={(pluginId) => {
+          setPluginSelection(pluginId);
+          setPluginPage(null);
+          setPluginError(null);
+        }}
         onClose={() => setRailOpen(false)}
       />
       {railOpen && (
@@ -662,13 +753,21 @@ function DashboardApp({ theme, onToggleTheme }) {
             setSelectedDetail(null);
             setDetailError(null);
             setQuery('');
+            setPluginSelection(null);
+            setPluginPages([]);
+            setPluginPage(null);
+            setPluginError(null);
             setRailOpen(false);
           }}
           loading={loading}
           query={query}
           onQuery={setQuery}
           onMenu={() => setRailOpen(true)}
-          onRefresh={() => refresh(true)}
+          onRefresh={async () => {
+            await refresh(true);
+            await reloadPluginPages();
+            if (pluginSelection) setPluginRefreshToken((value) => value + 1);
+          }}
           theme={theme}
           onToggleTheme={onToggleTheme}
         />
@@ -676,6 +775,35 @@ function DashboardApp({ theme, onToggleTheme }) {
           <div className="dashboard-content-inner">
             {!snapshot ? (
               <LoadingState />
+            ) : pluginSelection ? (
+              <PluginCenterPage
+                page={pluginPage}
+                loading={pluginLoading}
+                error={pluginError}
+                onRetry={() => {
+                  setPluginPage(null);
+                  setPluginError(null);
+                  setPluginRefreshToken((value) => value + 1);
+                }}
+                onInvoke={async (capability, input) => {
+                  try {
+                    if (capability === 'lifecycle') {
+                      await lifecycleDashboardPlugin(
+                        activeProjectId,
+                        pluginSelection,
+                        input.action,
+                      );
+                      setPluginRefreshToken((value) => value + 1);
+                      await reloadPluginPages();
+                    } else {
+                      await invokePlugin(pluginSelection, capability, input);
+                    }
+                    toast('插件状态已更新');
+                  } catch (error) {
+                    toast(`插件操作失败：${error.message}`, 'error');
+                  }
+                }}
+              />
             ) : workflow === 'native' ? (
               <NativeWorkflowPanel
                 native={snapshot.native}
@@ -1745,6 +1873,49 @@ async function fetchDashboardProjects() {
   return res.json();
 }
 
+async function fetchDashboardPluginPages(projectId) {
+  const res = await fetch(`/api/dashboard/projects/${encodeURIComponent(projectId)}/plugins`, {
+    cache: 'no-store',
+  });
+  if (!res.ok) throw await dashboardResponseError(res);
+  return res.json();
+}
+
+async function fetchDashboardPluginPage(projectId, pluginId) {
+  const res = await fetch(
+    `/api/dashboard/projects/${encodeURIComponent(projectId)}/plugins/${encodeURIComponent(pluginId)}`,
+    { cache: 'no-store' },
+  );
+  if (!res.ok) throw await dashboardResponseError(res);
+  return res.json();
+}
+
+async function invokeDashboardPlugin(projectId, pluginId, capability, input) {
+  const res = await fetch(
+    `/api/dashboard/projects/${encodeURIComponent(projectId)}/plugins/${encodeURIComponent(pluginId)}/invoke`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ capability, input }),
+    },
+  );
+  if (!res.ok) throw await dashboardResponseError(res);
+  return res.json();
+}
+
+async function lifecycleDashboardPlugin(projectId, pluginId, action) {
+  const res = await fetch(
+    `/api/dashboard/projects/${encodeURIComponent(projectId)}/plugins/${encodeURIComponent(pluginId)}/lifecycle`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action }),
+    },
+  );
+  if (!res.ok) throw await dashboardResponseError(res);
+  return res.json();
+}
+
 async function fetchDashboardOverview(projectId, signal, query = '') {
   const params = new URLSearchParams();
   if (query.trim()) params.set('q', query.trim());
@@ -1921,20 +2092,55 @@ async function copyText(text) {
 }
 
 createRoot(document.getElementById('root')).render(<App />);
-function AntSidebar({ open, workflow, onWorkflow, onClose }) {
+function AntSidebar({
+  open,
+  workflow,
+  onWorkflow,
+  pluginPages,
+  pluginSelection,
+  onPluginSelect,
+  onClose,
+}) {
   const navigation = (
-    <Menu
-      mode="inline"
-      selectedKeys={[workflow]}
-      items={[
-        { key: 'classic', icon: <BranchesOutlined />, label: 'Classic 工作流' },
-        { key: 'native', icon: <FileTextOutlined />, label: 'Native 工作流' },
-      ]}
-      onClick={({ key }) => {
-        onWorkflow(key);
-        onClose();
-      }}
-    />
+    <>
+      <Menu
+        mode="inline"
+        selectedKeys={pluginSelection ? [pluginSelection] : [workflow]}
+        items={[
+          { key: 'classic', icon: <BranchesOutlined />, label: 'Classic 工作流' },
+          { key: 'native', icon: <FileTextOutlined />, label: 'Native 工作流' },
+        ]}
+        onClick={({ key }) => {
+          onPluginSelect(null);
+          onWorkflow(key);
+          onClose();
+        }}
+      />
+      <div className="dashboard-sidebar-label dashboard-sidebar-label-spaced">插件中心</div>
+      <Menu
+        mode="inline"
+        selectedKeys={pluginSelection ? [pluginSelection] : []}
+        items={pluginPages.map((page) => ({
+          key: page.pluginId,
+          icon:
+            page.pluginId === 'comet.personal-memory' ? (
+              <BulbOutlined />
+            ) : (
+              <SafetyCertificateOutlined />
+            ),
+          label: (
+            <span className="dashboard-plugin-menu-item">
+              <span>{page.label}</span>
+              {page.status === 'disabled' ? <Badge status="default" text="停用" /> : null}
+            </span>
+          ),
+        }))}
+        onClick={({ key }) => {
+          onPluginSelect(key);
+          onClose();
+        }}
+      />
+    </>
   );
   return (
     <>
@@ -1972,6 +2178,279 @@ function AntSidebar({ open, workflow, onWorkflow, onClose }) {
         {navigation}
       </Drawer>
     </>
+  );
+}
+
+function PluginCenterPage({ page, loading, error, onRetry, onInvoke }) {
+  if (loading && !page) return <LoadingState />;
+  if (error && !page) {
+    return (
+      <div className="mx-auto max-w-dashboard">
+        <SectionHead title="插件中心" hint="页面暂时不可用" />
+        <Alert
+          type="error"
+          showIcon
+          message="插件页面加载失败"
+          description={error}
+          action={<Button onClick={onRetry}>重试</Button>}
+        />
+      </div>
+    );
+  }
+  if (!page) return <LoadingState />;
+  if (page.status === 'disabled') {
+    return (
+      <div className="mx-auto max-w-dashboard">
+        <SectionHead title={page.label} hint="插件中心" />
+        <Alert
+          type="info"
+          showIcon
+          message="插件已停用"
+          description="页面数据和项目文件仍然保留，重新启用后即可继续使用。"
+          action={
+            <Button onClick={() => onInvoke('lifecycle', { action: 'enable' })}>重新启用</Button>
+          }
+        />
+      </div>
+    );
+  }
+  if (page.pluginId === 'comet.personal-memory') {
+    return <PersonalMemoryCenter data={page.data} onInvoke={onInvoke} />;
+  }
+  if (page.pluginId === 'comet.project-rules') {
+    return <ProjectRulesCenter data={page.data} onInvoke={onInvoke} />;
+  }
+  return (
+    <div className="mx-auto max-w-dashboard">
+      <SectionHead title={page.label} hint="插件中心" />
+      <AntCard size="small">该插件暂未提供可视化中心页。</AntCard>
+    </div>
+  );
+}
+
+function PersonalMemoryCenter({ data, onInvoke }) {
+  const [editingRecord, setEditingRecord] = useState(null);
+  const [correctionText, setCorrectionText] = useState('');
+  const status = data?.status ?? {};
+  const retrieval = data?.retrieval ?? {};
+  const records = retrieval.records ?? [];
+  return (
+    <div className="mx-auto min-w-0 max-w-dashboard">
+      <SectionHead title="个人记忆" hint="跨会话沉淀你的偏好与常用操作" />
+      <div className="dashboard-plugin-toolbar">
+        <Button
+          size="small"
+          type={status.learningEnabled ? 'primary' : 'default'}
+          onClick={() => onInvoke('set-learning', { enabled: !status.learningEnabled })}
+        >
+          自动学习：{status.learningEnabled ? '开启' : '关闭'}
+        </Button>
+        <Button
+          size="small"
+          type={status.retrievalEnabled ? 'primary' : 'default'}
+          onClick={() => onInvoke('set-retrieval', { enabled: !status.retrievalEnabled })}
+        >
+          注入记忆：{status.retrievalEnabled ? '开启' : '关闭'}
+        </Button>
+        <Button size="small" onClick={() => onInvoke('sync', {})}>
+          同步记忆仓库
+        </Button>
+      </div>
+      <div className="dashboard-plugin-grid">
+        <AntCard size="small" title="当前画像">
+          <p className="text-sm text-muted">
+            {status.learningEnabled ? 'Comet 会自动沉淀稳定偏好。' : '自动学习已暂停。'}
+          </p>
+          <p className="mt-2 text-xs text-meta">
+            {status.files?.length ?? 0} 个记忆文件 · {status.sync?.message ?? '本地记忆仓库已连接'}
+          </p>
+        </AntCard>
+        <AntCard size="small" title="本次项目可用记忆">
+          {records.length === 0 ? (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有匹配的记忆" />
+          ) : (
+            <div className="space-y-3">
+              {records.map((record) => (
+                <div key={record.id} className="dashboard-plugin-record">
+                  <div>
+                    <strong>{record.category}</strong>
+                    <p className="mt-1 text-sm text-muted">{record.text}</p>
+                  </div>
+                  <div className="flex shrink-0 gap-1">
+                    <Button
+                      size="small"
+                      onClick={() => {
+                        setEditingRecord(record);
+                        setCorrectionText(record.text);
+                      }}
+                    >
+                      纠正
+                    </Button>
+                    <Button size="small" onClick={() => onInvoke('rollback', { id: record.id })}>
+                      回滚
+                    </Button>
+                    <Button
+                      size="small"
+                      danger
+                      onClick={() => onInvoke('remove', { id: record.id })}
+                    >
+                      删除
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </AntCard>
+      </div>
+      <Modal
+        open={editingRecord !== null}
+        title="纠正这条记忆"
+        okText="保存"
+        cancelText="取消"
+        okButtonProps={{ disabled: correctionText.trim().length === 0 }}
+        onCancel={() => setEditingRecord(null)}
+        onOk={() => {
+          if (!editingRecord || correctionText.trim().length === 0) return;
+          void onInvoke('correct', {
+            id: editingRecord.id,
+            correction: { text: correctionText.trim() },
+          });
+          setEditingRecord(null);
+        }}
+      >
+        <Input.TextArea
+          autoFocus
+          value={correctionText}
+          onChange={(event) => setCorrectionText(event.target.value)}
+          autoSize={{ minRows: 3, maxRows: 8 }}
+          placeholder="输入新的记忆内容"
+        />
+      </Modal>
+    </div>
+  );
+}
+
+function ProjectRulesCenter({ data, onInvoke }) {
+  const [ruleText, setRuleText] = useState('');
+  const sources = data?.sources ?? [];
+  const candidates = data?.candidates ?? [];
+  return (
+    <div className="mx-auto min-w-0 max-w-dashboard">
+      <SectionHead title="项目规则" hint="把团队约定交给规则文件或项目原生检查" />
+      <div className="dashboard-plugin-toolbar">
+        <Button size="small" type="primary" onClick={() => onInvoke('init', {})}>
+          初始化项目
+        </Button>
+        <Button size="small" onClick={() => onInvoke('scan', {})}>
+          重新扫描
+        </Button>
+        <Input
+          size="small"
+          value={ruleText}
+          onChange={(event) => setRuleText(event.target.value)}
+          placeholder="新增一条可读规则"
+          style={{ maxWidth: 300 }}
+        />
+        <Button
+          size="small"
+          disabled={!ruleText.trim()}
+          onClick={async () => {
+            await onInvoke('add', { text: ruleText.trim() });
+            setRuleText('');
+          }}
+        >
+          添加规则
+        </Button>
+      </div>
+      <div className="dashboard-plugin-grid">
+        <AntCard size="small" title="规则来源">
+          <p className="text-sm text-muted">
+            {data?.initialized ? `上次扫描：${formatTimestamp(data.lastScanAt)}` : '尚未初始化'}
+          </p>
+          {sources.length === 0 ? (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未发现规则文件" />
+          ) : (
+            <ul className="mt-3 space-y-2 text-sm">
+              {sources.map((source) => (
+                <li key={source.path} className="flex items-center justify-between gap-3">
+                  <span>{source.path}</span>
+                  <span className="text-xs text-meta">{source.sectionCount} 段</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </AntCard>
+        <AntCard size="small" title="项目原生检查">
+          {(data?.verificationEntrypoints ?? []).length === 0 ? (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未发现可用检查入口" />
+          ) : (
+            <ul className="space-y-2 text-sm">
+              {data.verificationEntrypoints.map((entry) => (
+                <li
+                  key={`${entry.sourcePath}-${entry.label}`}
+                  className="flex justify-between gap-3"
+                >
+                  <span>{entry.label}</span>
+                  <span className="text-xs text-meta">{entry.sourcePath}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </AntCard>
+      </div>
+      <AntCard size="small" className="mt-4" title="待处理规则建议">
+        {candidates.length === 0 ? (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无待处理建议" />
+        ) : (
+          <div className="space-y-3">
+            {candidates.map((candidate) => (
+              <div key={`${candidate.state}-${candidate.text}`} className="dashboard-plugin-record">
+                <div>
+                  <p className="text-sm">{candidate.text}</p>
+                  <span className="text-xs text-meta">
+                    {candidate.state === 'snoozed' ? '稍后处理' : '待加入规则文件'}
+                  </span>
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  {candidate.state === 'snoozed' ? (
+                    <Button
+                      size="small"
+                      onClick={() => onInvoke('restore', { text: candidate.text })}
+                    >
+                      恢复
+                    </Button>
+                  ) : (
+                    <>
+                      <Button
+                        size="small"
+                        type="primary"
+                        onClick={() => onInvoke('adopt', { text: candidate.text })}
+                      >
+                        加入
+                      </Button>
+                      <Button
+                        size="small"
+                        onClick={() => onInvoke('snooze', { text: candidate.text })}
+                      >
+                        稍后
+                      </Button>
+                      <Button
+                        size="small"
+                        danger
+                        onClick={() => onInvoke('ignore', { text: candidate.text })}
+                      >
+                        忽略
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </AntCard>
+    </div>
   );
 }
 

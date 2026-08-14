@@ -2,6 +2,7 @@ import path from 'path';
 import { collectDashboardSnapshot } from '../../domains/dashboard/collector.js';
 import { openInBrowser } from '../../domains/dashboard/open-browser.js';
 import { startDashboardServer } from '../../domains/dashboard/server.js';
+import { createDefaultDashboardPluginHostFactory } from '../../domains/dashboard/default-plugin-host.js';
 
 import { discoverDashboardProjectRoot } from '../../domains/dashboard/project-root.js';
 export interface DashboardOptions {
@@ -32,7 +33,11 @@ export async function dashboardCommand(
   }
 
   const port = normalizePort(options.port);
-  const handle = await startDashboardServer({ projectPath, port });
+  const handle = await startDashboardServer({
+    projectPath,
+    port,
+    pluginHost: createDefaultDashboardPluginHostFactory(),
+  });
 
   console.log(`Comet Dashboard running at ${handle.url}`);
   console.log('Press Ctrl+C to stop.');
