@@ -2,8 +2,8 @@ schema: comet.native.v4
 name: self-evolving-personal-memory
 language: zh-CN
 phase: archive
-status: active
-state_version: 20
+status: done
+state_version: 21
 brief: brief.md
 spec_changes:
   - capability: self-evolving-personal-memory
@@ -15,7 +15,7 @@ workspace:
   target_branch: beta20
   finish: merge
 loop:
-  stage: archive-ready
+  stage: done
   goal_cycle: 1
   iteration: 4
   attempt: 1
@@ -24,7 +24,7 @@ loop:
   no_progress_count: 0
   execution_failure_count: 0
   previous_unresolved_ids: []
-  next_action: archive
+  next_action: null
 acceptance:
   - id: A1
     source: brief.md
@@ -450,5 +450,5 @@ history_overflow:
     recovery: 0
 verification_result: pass
 verification_report: verification.md
-archived: false
+archived: true
 created_at: 2026-08-14T09:29:34.723Z
