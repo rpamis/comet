@@ -377,7 +377,7 @@ export class PluginRuntime {
           cometVersion: this.cometVersion,
           scope: target.scope,
           projectId: target.projectId,
-          config: this.config[descriptor.id] ?? {},
+          config: Object.freeze({ ...(this.config[descriptor.id] ?? {}) }),
           storage: await this.storage.open(descriptor.id, target.scope, target.projectId),
           reportDiagnostic: (diagnostic) =>
             this.diagnosticEntries.push({ pluginId: descriptor.id, ...diagnostic }),

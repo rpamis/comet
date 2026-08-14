@@ -3,7 +3,7 @@ name: comet-plugin-runtime
 language: zh-CN
 phase: verify
 status: active
-state_version: 11
+state_version: 14
 brief: brief.md
 spec_changes:
   - capability: comet-plugin-runtime
@@ -17,14 +17,14 @@ workspace:
 loop:
   stage: verify-ready
   goal_cycle: 1
-  iteration: 3
-  attempt: 0
+  iteration: 4
+  attempt: 1
   retry_epoch: 0
   failed_iteration_count: 0
   no_progress_count: 0
   execution_failure_count: 0
   previous_unresolved_ids: []
-  next_action: run-required-checks-and-dispatch-verifier
+  next_action: await-verifier-result
 acceptance:
   - id: A1
     source: brief.md
@@ -249,13 +249,13 @@ acceptance:
     result: pending
     reason: null
 builder_handoff:
-  candidate_id: 6c149b41-b480-43c1-83ce-47fd012cdcfa
+  candidate_id: 6b58ddb8-3c17-495b-a527-24614f434905
   identity_provider: skill-coordinated
-  builder_execution_ref: skill-coordinated:builder:701381c9-da99-4bdb-ad3d-93a707c4e58c
-  iteration: 3
+  builder_execution_ref: skill-coordinated:builder:f1f5e231-eb9b-4f52-98a0-32d2d4f30bd0
+  iteration: 4
   summary:
-    text: 已完成可插拔插件运行时的最小公开实现：第一方自动启用与升级状态保留、第三方用户动作保护、插件生命周期、作用域、兼容性检查、事件与上下文贡献、Dashboard
-      页面贡献、JSON 持久化和统一诊断；插件失败不会阻断其他插件。
+    text: 已完成并提交插件运行时隔离增强：统一公开生命周期接口、第一方升级状态保留、第三方显式用户动作、来源事件、作用域与项目级暂停、插件级配置读取/更新、隔离存储、能力调用、Dashboard
+      贡献和失败诊断；更新会销毁旧活动实例，后续调用加载新版本。
     truncated: false
   addressed_acceptance_ids:
     - A1
@@ -287,7 +287,6 @@ builder_handoff:
     - A35
     - A36
     - A39
-    - A41
     - A42
     - A43
   checks:
@@ -296,7 +295,7 @@ builder_handoff:
         truncated: false
       result: passed
       note:
-        text: npx vitest run test/domains/comet-plugin/plugin-runtime.test.ts；6/6 通过
+        text: npx vitest run test/domains/comet-plugin/plugin-runtime.test.ts；8/8 通过
         truncated: false
     - name:
         text: TypeScript typecheck
@@ -317,7 +316,8 @@ builder_handoff:
         truncated: false
       result: passed
       note:
-        text: npx prettier --check domains/comet-plugin
+        text: npx prettier --check domains/comet-plugin/plugin-runtime.ts
+          domains/comet-plugin/types.ts
           test/domains/comet-plugin/plugin-runtime.test.ts
           config/repository-layout.json；通过
         truncated: false
@@ -330,16 +330,18 @@ builder_handoff:
         truncated: false
   checks_truncated: false
   known_limits:
-    - text: 本 child 只实现插件领域运行时和注入式 JSON 持久化接口；个人记忆、项目规则、CLI/Skill 交互适配和 Dashboard
-        主机页面由依赖 child 实现。
+    - text: 本 child 只实现插件领域运行时和注入式存储/配置/能力接口；个人记忆、项目规则、Skill/CLI 交互、Dashboard
+        主机侧边栏与中心页由依赖 child 实现。
       truncated: false
-    - text: 当前没有把运行时接入现有 Comet 更新、Skill 或 Dashboard 宿主；这些接线属于后续 child。
+    - text: 当前没有把运行时接入现有 Comet 更新、Skill、CLI 或 Dashboard 宿主；这些接线属于后续 child。
       truncated: false
-    - text: 完整仓库 lint 因 child worktree 缺少 eslint 可执行文件未完成；已通过插件测试、TypeScript 检查、架构检查和
-        Prettier 检查。
+    - text: 跨 Native、Classic、Hotfix、Tweak 的宿主端到端验证留给集成和 Dashboard
+        child；本轮只验证运行时插件隔离边界。
+      truncated: false
+    - text: 完整仓库 lint 因 child worktree 缺少 eslint 可执行文件未完成；其余 targeted checks 均通过。
       truncated: false
   known_limits_truncated: false
-  submitted_at: 2026-08-14T08:54:07.267Z
+  submitted_at: 2026-08-14T09:04:45.224Z
 blockers: []
 verification: null
 history:
@@ -371,6 +373,15 @@ history:
       text: 清理 Runner 临时输入文件后重新提交同一实现候选，修复 Verify 检查环境而不改变源码。
       truncated: false
     completed_at: 2026-08-14T08:53:50.047Z
+  - goal_cycle: 1
+    iteration: 3
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 实现已补齐插件隔离、来源事件、项目暂停、配置和能力调用，返回 Build 重新提交新的候选。
+      truncated: false
+    completed_at: 2026-08-14T09:04:30.341Z
 history_overflow:
   dropped_entries: 0
   first_dropped_at: null
