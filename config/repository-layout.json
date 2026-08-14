@@ -127,6 +127,7 @@
     "bundle",
     "comet-classic",
     "comet-entry",
+    "comet-memory",
     "comet-native",
     "comet-plugin",
     "dashboard",
