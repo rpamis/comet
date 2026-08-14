@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
+import { runExternalCommand } from '../../platform/process/external-command.js';
 import type {
   ProjectRuleSection,
   ProjectRuleSource,
@@ -12,8 +13,10 @@ import type {
   ProjectRulesServiceOptions,
   ProjectRulesState,
   ProjectRulesStatus,
+  ProjectRuleCarrierProposal,
   ProjectRuleSourceSnapshot,
   ProjectRuleVerificationSummary,
+  ProjectRulesVerificationResult,
   RuleCandidate,
   RuleObservation,
   SelectedProjectRule,
@@ -360,6 +363,11 @@ export class ProjectRulesService {
   private readonly stateFile: string;
   private readonly fileSystem: ProjectRulesFileSystem;
   private readonly now: () => Date;
+  private readonly runVerification: (
+    executable: string,
+    args: readonly string[],
+    cwd: string,
+  ) => string;
   private state: ProjectRulesState | null = null;
 
   public constructor(options: ProjectRulesServiceOptions) {
@@ -381,6 +389,9 @@ export class ProjectRulesService {
     this.stateFile = path.join(this.runtimeDirectory, STATE_FILE);
     this.fileSystem = options.fileSystem ?? createDefaultFileSystem();
     this.now = options.now ?? (() => new Date());
+    this.runVerification =
+      options.runVerification ??
+      ((executable, args, cwd) => runExternalCommand(executable, args, { cwd }));
   }
 
   public async init(): Promise<ProjectRulesStatus> {
@@ -727,6 +738,65 @@ export class ProjectRulesService {
     return entries;
   }
 
+  public async proposeCarrier(): Promise<ProjectRuleCarrierProposal> {
+    const entrypoint = (await this.discoverVerificationEntrypoints())[0];
+    if (entrypoint !== undefined) {
+      return {
+        kind: 'verification',
+        label: entrypoint.label,
+        sourcePath: entrypoint.sourcePath,
+        reason: '项目已有可执行的验证入口，规则应优先由该入口在编译或检查阶段校验。',
+      };
+    }
+    const instruction = (await this.readSources()).find(
+      (source) => source.kind === 'agent-instructions',
+    );
+    if (instruction !== undefined) {
+      return {
+        kind: 'agent-instructions',
+        label: instruction.path,
+        sourcePath: instruction.path,
+        reason: '项目已有 Agent 指令文件，规则可按任务范围选择性注入。',
+      };
+    }
+    return {
+      kind: 'comet-rules',
+      label: '.comet/rules/project.md',
+      reason: '项目暂无可识别的验证入口或 Agent 指令文件，先保存在 Comet 项目规则中。',
+    };
+  }
+
+  public async verify(): Promise<ProjectRulesVerificationResult> {
+    const entrypoint = (await this.discoverVerificationEntrypoints())[0];
+    if (entrypoint === undefined) {
+      return {
+        passed: false,
+        label: null,
+        sourcePath: null,
+        output: '没有发现可执行的项目验证入口。',
+      };
+    }
+    try {
+      return {
+        passed: true,
+        label: entrypoint.label,
+        sourcePath: entrypoint.sourcePath,
+        output: this.runVerification(
+          entrypoint.executable,
+          entrypoint.args,
+          path.resolve(this.projectRoot, entrypoint.cwd),
+        ),
+      };
+    } catch (error) {
+      return {
+        passed: false,
+        label: entrypoint.label,
+        sourcePath: entrypoint.sourcePath,
+        output: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
   private async updateCandidateStatus(id: string, status: 'ignored' | 'snoozed'): Promise<void> {
     const state = await this.ensureState();
     if (!state.candidates.some((candidate) => candidate.id === id)) {
@@ -787,6 +857,7 @@ export class ProjectRulesService {
           sourcePath: entrypoint.sourcePath,
         }),
       ),
+      carrier: await this.proposeCarrier(),
       candidates: state.candidates.filter(isVisibleCandidate).map(
         (candidate): ProjectRuleCandidateSummary => ({
           text: candidate.text,

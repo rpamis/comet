@@ -1,4 +1,9 @@
-import type { PluginContext, PluginDescriptor, PluginModule } from '../comet-plugin/index.js';
+import type {
+  PluginContext,
+  PluginDescriptor,
+  PluginEvent,
+  PluginModule,
+} from '../comet-plugin/index.js';
 import { ProjectRulesService } from './project-rules.js';
 import type { ProjectRulesServiceOptions } from './types.js';
 
@@ -38,10 +43,29 @@ async function createModule(
       ...options.serviceOptions,
     });
   return {
+    events: ['change.completed', 'task.completed', 'review.completed', 'verification.completed'],
     dashboard: {
       id: 'project-rules',
       label: '项目规则',
       route: '/plugins/project-rules',
+      load: async ({ invoke }) => {
+        const status = (await invoke('status')) as Record<string, unknown>;
+        return {
+          ...status,
+          operations: [
+            'init',
+            'scan',
+            'add',
+            'observe',
+            'propose',
+            'verify',
+            'adopt',
+            'ignore',
+            'snooze',
+            'restore',
+          ],
+        };
+      },
     },
     provideContext: async (request) => {
       const selected = await service.select({ task: request.task, path: request.path });
@@ -51,7 +75,36 @@ async function createModule(
         rules: selected.map(({ score: _score, ...section }) => section),
       };
     },
+    onEvent: async (event) => {
+      const observation = observationFromEvent(event);
+      if (observation !== null) await service.recordObservation(observation);
+    },
     invoke: async (capability, input) => invokeCapability(service, capability, input),
+  };
+}
+
+function observationFromEvent(
+  event: PluginEvent,
+): Parameters<ProjectRulesService['recordObservation']>[0] | null {
+  const payload = event.payload;
+  const text = payload.ruleText;
+  const workflow = typeof payload.workflow === 'string' ? payload.workflow : event.source.name;
+  const changeId = typeof payload.changeId === 'string' ? payload.changeId : event.source.change;
+  const candidateKey = typeof payload.candidateKey === 'string' ? payload.candidateKey : undefined;
+  if (
+    typeof text !== 'string' ||
+    typeof workflow !== 'string' ||
+    typeof changeId !== 'string' ||
+    candidateKey === undefined
+  )
+    return null;
+  return {
+    candidateKey,
+    text,
+    workflow,
+    changeId,
+    success: payload.success !== false,
+    ...(typeof payload.source === 'string' ? { source: payload.source } : {}),
   };
 }
 
@@ -69,6 +122,28 @@ async function invokeCapability(
       return service.scan();
     case 'details':
       return service.candidateDetails();
+    case 'select': {
+      const value = asObject(input, 'select');
+      return service.select({
+        task: asString(value.task, 'select.task'),
+        ...(typeof value.path === 'string' ? { path: value.path } : {}),
+      });
+    }
+    case 'propose':
+      return service.proposeCarrier();
+    case 'observe': {
+      const value = asObject(input, 'observe');
+      return service.recordObservation({
+        candidateKey: asString(value.candidateKey, 'observe.candidateKey'),
+        text: asString(value.text, 'observe.text'),
+        workflow: asString(value.workflow, 'observe.workflow'),
+        changeId: asString(value.changeId, 'observe.changeId'),
+        success: value.success !== false,
+        ...(typeof value.source === 'string' ? { source: value.source } : {}),
+      });
+    }
+    case 'verify':
+      return service.verify();
     case 'adopt':
       return service.adoptCandidate(
         await resolveCandidateId(service, input),

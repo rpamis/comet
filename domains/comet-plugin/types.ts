@@ -35,10 +35,16 @@ export interface PluginContextContribution {
   readonly [key: string]: unknown;
 }
 
+export interface PluginDashboardContext {
+  readonly projectId: string;
+  readonly invoke: (capability: string, input?: unknown) => Promise<unknown>;
+}
+
 export interface PluginDashboardContribution {
   readonly id: string;
   readonly label: string;
   readonly route: string;
+  readonly load?: (context: PluginDashboardContext) => Promise<unknown>;
 }
 
 export interface PluginDashboardPage extends PluginDashboardContribution {

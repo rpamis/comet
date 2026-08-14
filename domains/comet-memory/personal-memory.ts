@@ -402,7 +402,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
   }
 
   public async status(): Promise<PersonalMemoryStatus> {
-    return this.repository.withLock(async () => {
+    const status = await this.repository.withLock(async () => {
       const state = await this.loadAndReconcile();
       await this.persist(state);
       return {
@@ -414,13 +414,27 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
         files: Object.keys(state.files)
           .filter((file) => state.files[file]?.hash !== '')
           .sort(),
-        sync: null,
       };
     });
+    return {
+      ...status,
+      remote: redactRemote((await this.repository.remote?.()) ?? null),
+      sync: await this.repository.sync(),
+    };
   }
 
   public async sync() {
     return this.repository.sync();
+  }
+
+  public async remote(): Promise<string | null> {
+    return redactRemote((await this.repository.remote?.()) ?? null);
+  }
+
+  public async configureRemote(url: string): Promise<void> {
+    if (this.repository.configureRemote === undefined)
+      throw new Error('Memory Git sync is unavailable');
+    await this.repository.configureRemote(url);
   }
 
   public async setLearningEnabled(enabled: boolean): Promise<void> {
@@ -1039,6 +1053,20 @@ function mergePausedProjects(
   retrieval: ReadonlySet<string>,
 ): string[] {
   return [...new Set([...learning, ...retrieval])].sort();
+}
+
+function redactRemote(remote: string | null): string | null {
+  if (remote === null) return null;
+  try {
+    const parsed = new URL(remote);
+    if (parsed.username || parsed.password) {
+      parsed.username = parsed.username ? '***' : '';
+      parsed.password = parsed.password ? '***' : '';
+    }
+    return parsed.toString().replace(/\/$/u, '');
+  } catch {
+    return remote.replace(/(\/\/)[^/@]+@/u, '$1***@');
+  }
 }
 
 function boundedPositive(value: number, fallback: number): number {

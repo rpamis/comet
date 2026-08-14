@@ -201,6 +201,7 @@ function mergePages(
         pluginId: page.pluginId,
         label: page.label,
         route: page.route,
+        ...(page.load ? { load: page.load } : {}),
       });
     }
   }

@@ -36,6 +36,22 @@ export interface ProjectRuleVerificationSummary {
   readonly sourcePath: string;
 }
 
+export type ProjectRuleCarrierKind = 'verification' | 'agent-instructions' | 'comet-rules';
+
+export interface ProjectRuleCarrierProposal {
+  readonly kind: ProjectRuleCarrierKind;
+  readonly label: string;
+  readonly reason: string;
+  readonly sourcePath?: string;
+}
+
+export interface ProjectRulesVerificationResult {
+  readonly passed: boolean;
+  readonly label: string | null;
+  readonly sourcePath: string | null;
+  readonly output: string;
+}
+
 export interface RuleObservation {
   readonly projectId: string;
   readonly candidateKey: string;
@@ -93,6 +109,7 @@ export interface ProjectRulesStatus {
     sectionCount: number;
   }[];
   readonly verificationEntrypoints: readonly ProjectRuleVerificationSummary[];
+  readonly carrier: ProjectRuleCarrierProposal;
   readonly candidates: readonly ProjectRuleCandidateSummary[];
 }
 
@@ -107,4 +124,5 @@ export interface ProjectRulesServiceOptions {
   readonly fileSystem?: ProjectRulesFileSystem;
   readonly now?: () => Date;
   readonly runtimeDirectory?: string;
+  readonly runVerification?: (executable: string, args: readonly string[], cwd: string) => string;
 }

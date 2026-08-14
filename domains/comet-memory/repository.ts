@@ -166,6 +166,15 @@ export class FileMemoryRepository implements MemoryRepository {
     return this.withLock(() => this.git!.sync());
   }
 
+  public async remote(): Promise<string | null> {
+    return this.git?.remote ? this.git.remote() : null;
+  }
+
+  public async configureRemote(url: string): Promise<void> {
+    if (!this.git?.configureRemote) throw new Error('Memory Git sync is unavailable');
+    await this.withLock(() => this.git!.configureRemote!(url));
+  }
+
   private resolve(relativePath: string): string {
     const normalized = relativePath.replaceAll('\\', '/');
     if (
@@ -266,6 +275,34 @@ export class GitMemorySync implements MemoryGitSync {
       };
     } catch (error) {
       return failedSync(error, /conflict|merge|rebase/iu.test(errorMessage(error)));
+    }
+  }
+
+  public async remote(): Promise<string | null> {
+    await fs.mkdir(this.root, { recursive: true });
+    try {
+      await this.runCommand(['rev-parse', '--git-dir']);
+      const result = await this.runCommand(['remote', 'get-url', this.remoteName]);
+      return result.stdout.trim() || null;
+    } catch {
+      return null;
+    }
+  }
+
+  public async configureRemote(url: string): Promise<void> {
+    const normalized = url.trim();
+    if (!normalized) throw new Error('Memory Git remote must not be empty');
+    await fs.mkdir(this.root, { recursive: true });
+    try {
+      await this.runCommand(['rev-parse', '--git-dir']);
+    } catch {
+      await this.runCommand(['init']);
+    }
+    try {
+      await this.runCommand(['remote', 'get-url', this.remoteName]);
+      await this.runCommand(['remote', 'set-url', this.remoteName, normalized]);
+    } catch {
+      await this.runCommand(['remote', 'add', this.remoteName, normalized]);
     }
   }
 }

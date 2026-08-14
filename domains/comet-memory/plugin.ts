@@ -37,6 +37,23 @@ async function createModule(
       id: 'personal-memory',
       label: '个人记忆',
       route: '/plugins/personal-memory',
+      load: async ({ projectId, invoke }) => ({
+        projectKey: projectId,
+        status: await invoke('status'),
+        retrieval: await invoke('retrieve', { projectKey: projectId }),
+        operations: [
+          'correct',
+          'remove',
+          'rollback',
+          'sync',
+          'remote',
+          'configure-remote',
+          'set-learning',
+          'set-retrieval',
+          'pause-project-learning',
+          'pause-project-retrieval',
+        ],
+      }),
     },
     onEvent: async (event) => {
       const observation = observationFromEvent(event);
@@ -85,6 +102,12 @@ async function invokeCapability(
       return service.status();
     case 'sync':
       return service.sync();
+    case 'remote':
+      return service.remote?.() ?? null;
+    case 'configure-remote': {
+      if (service.configureRemote === undefined) throw new Error('Memory Git sync is unavailable');
+      return service.configureRemote(asString(asObject(input, 'configure-remote').url, 'url'));
+    }
     case 'set-learning':
       if (service.setLearningEnabled === undefined)
         throw new Error('Learning settings are unavailable');
@@ -93,6 +116,20 @@ async function invokeCapability(
       if (service.setRetrievalEnabled === undefined)
         throw new Error('Retrieval settings are unavailable');
       return service.setRetrievalEnabled(asBoolean(asObject(input, 'set-retrieval').enabled));
+    case 'pause-project-learning':
+      if (service.pauseProjectLearning === undefined)
+        throw new Error('Project learning settings are unavailable');
+      return service.pauseProjectLearning(
+        asString(asObject(input, 'pause-project-learning').projectKey, 'projectKey'),
+        asBoolean(asObject(input, 'pause-project-learning').paused),
+      );
+    case 'pause-project-retrieval':
+      if (service.pauseProjectRetrieval === undefined)
+        throw new Error('Project retrieval settings are unavailable');
+      return service.pauseProjectRetrieval(
+        asString(asObject(input, 'pause-project-retrieval').projectKey, 'projectKey'),
+        asBoolean(asObject(input, 'pause-project-retrieval').paused),
+      );
     default:
       throw new Error(`Unknown personal memory capability: ${capability}`);
   }

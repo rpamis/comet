@@ -54,6 +54,10 @@ comet state select <change-name>
 
 多个 active change 且用户尚未明确选择时，不得提前绑定；继续按 `ask_user` 决策点等待选择。
 
+### 记忆与项目规则接入
+
+绑定 Classic 工作区后，Agent 自动运行 `comet memory context <project-root> --task "<用户原始请求>" --json`，只注入当前任务匹配的记忆和项目规则。成功完成 change、验证或审查后自动记录 `comet memory observe`；编译器、测试或 linter 明确指出的项目规范通过 `comet rules observe` 沉淀，需要执行项目已有检查时调用 `comet rules verify`。没有 Hook 时由 Skill 直接调用这些命令，不要求用户打开 Dashboard 或手动确认。
+
 ### Comet Ambient Resume
 
 当用户未显式输入 `/comet-classic`，但当前仓库可能已有 active Comet change 时，开始处理需要改动或调查的任务前先运行只读探针：

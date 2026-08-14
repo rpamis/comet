@@ -2231,9 +2231,13 @@ function PluginCenterPage({ page, loading, error, onRetry, onInvoke }) {
 function PersonalMemoryCenter({ data, onInvoke }) {
   const [editingRecord, setEditingRecord] = useState(null);
   const [correctionText, setCorrectionText] = useState('');
+  const [remoteUrl, setRemoteUrl] = useState('');
   const status = data?.status ?? {};
   const retrieval = data?.retrieval ?? {};
   const records = retrieval.records ?? [];
+  const projectKey = data?.projectKey;
+  const learningPaused = projectKey && (status.pausedLearningProjects ?? []).includes(projectKey);
+  const retrievalPaused = projectKey && (status.pausedRetrievalProjects ?? []).includes(projectKey);
   return (
     <div className="mx-auto min-w-0 max-w-dashboard">
       <SectionHead title="个人记忆" hint="跨会话沉淀你的偏好与常用操作" />
@@ -2255,6 +2259,54 @@ function PersonalMemoryCenter({ data, onInvoke }) {
         <Button size="small" onClick={() => onInvoke('sync', {})}>
           同步记忆仓库
         </Button>
+        <Button
+          size="small"
+          onClick={() =>
+            onInvoke('pause-project-learning', { projectKey, paused: !learningPaused })
+          }
+        >
+          项目学习：{learningPaused ? '暂停中' : '开启'}
+        </Button>
+        <Button
+          size="small"
+          onClick={() =>
+            onInvoke('pause-project-retrieval', { projectKey, paused: !retrievalPaused })
+          }
+        >
+          项目注入：{retrievalPaused ? '暂停中' : '开启'}
+        </Button>
+        <Input
+          size="small"
+          value={remoteUrl}
+          onChange={(event) => setRemoteUrl(event.target.value)}
+          placeholder={status.remote ?? '记忆仓库 Git remote'}
+          style={{ maxWidth: 280 }}
+        />
+        <Button
+          size="small"
+          disabled={!remoteUrl.trim()}
+          onClick={() => {
+            void onInvoke('configure-remote', { url: remoteUrl.trim() });
+            setRemoteUrl('');
+          }}
+        >
+          保存 remote
+        </Button>
+        <Button
+          size="small"
+          danger
+          onClick={() =>
+            Modal.confirm({
+              title: '卸载个人记忆插件？',
+              content: '记忆文件和历史会保留，之后可以重新安装。',
+              okText: '卸载',
+              cancelText: '取消',
+              onOk: () => onInvoke('lifecycle', { action: 'uninstall' }),
+            })
+          }
+        >
+          卸载插件
+        </Button>
       </div>
       <div className="dashboard-plugin-grid">
         <AntCard size="small" title="当前画像">
@@ -2262,7 +2314,9 @@ function PersonalMemoryCenter({ data, onInvoke }) {
             {status.learningEnabled ? 'Comet 会自动沉淀稳定偏好。' : '自动学习已暂停。'}
           </p>
           <p className="mt-2 text-xs text-meta">
-            {status.files?.length ?? 0} 个记忆文件 · {status.sync?.message ?? '本地记忆仓库已连接'}
+            {status.files?.length ?? 0} 个记忆文件 ·{' '}
+            {status.remote ? `remote：${status.remote}` : '尚未配置 remote'} ·{' '}
+            {status.sync?.message ?? '本地记忆仓库已连接'}
           </p>
         </AntCard>
         <AntCard size="small" title="本次项目可用记忆">
@@ -2362,6 +2416,21 @@ function ProjectRulesCenter({ data, onInvoke }) {
         >
           添加规则
         </Button>
+        <Button
+          size="small"
+          danger
+          onClick={() =>
+            Modal.confirm({
+              title: '卸载项目规则插件？',
+              content: '规则文件和运行状态会保留，之后可以重新安装。',
+              okText: '卸载',
+              cancelText: '取消',
+              onOk: () => onInvoke('lifecycle', { action: 'uninstall' }),
+            })
+          }
+        >
+          卸载插件
+        </Button>
       </div>
       <div className="dashboard-plugin-grid">
         <AntCard size="small" title="规则来源">
@@ -2397,6 +2466,12 @@ function ProjectRulesCenter({ data, onInvoke }) {
               ))}
             </ul>
           )}
+        </AntCard>
+        <AntCard size="small" title="规则载体建议">
+          <p className="text-sm text-muted">{data?.carrier?.reason ?? '尚未生成建议'}</p>
+          {data?.carrier?.label ? (
+            <p className="mt-2 text-xs text-meta">优先使用：{data.carrier.label}</p>
+          ) : null}
         </AntCard>
       </div>
       <AntCard size="small" className="mt-4" title="待处理规则建议">

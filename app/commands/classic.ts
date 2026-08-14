@@ -1,4 +1,5 @@
 import { runClassicCli } from '../../domains/comet-classic/classic-cli.js';
+import { recordCometWorkflowResult } from '../../domains/comet-entry/plugin-context.js';
 
 export const PUBLIC_CLASSIC_COMMANDS = ['state', 'guard', 'handoff', 'archive'] as const;
 
@@ -9,6 +10,7 @@ export async function runClassicFacade(
   args: readonly string[],
 ): Promise<number> {
   const result = await runClassicCli([command, ...args]);
+  await recordClassicResult(command, args, result);
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);
   return result.exitCode;
@@ -33,7 +35,28 @@ export async function runClassicGroupFacade(args: readonly string[]): Promise<nu
     return 0;
   }
   const result = await runClassicCli(args);
+  await recordClassicResult(args[0] ?? 'classic', args.slice(1), result);
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);
   return result.exitCode;
+}
+
+async function recordClassicResult(
+  command: string,
+  args: readonly string[],
+  result: Awaited<ReturnType<typeof runClassicCli>>,
+): Promise<void> {
+  if (result.exitCode !== 0 || !['archive', 'handoff', 'workspace'].includes(command)) return;
+  try {
+    await recordCometWorkflowResult({
+      projectRoot: process.cwd(),
+      workflow: command === 'workspace' ? 'full' : 'full',
+      changeId: args.find((value) => !value.startsWith('--')) ?? command,
+      command,
+      success: true,
+      summary: result.stdout,
+    });
+  } catch {
+    // Plugin learning must never make a workflow command fail.
+  }
 }

@@ -1,4 +1,3 @@
-import { createHash } from 'crypto';
 import { promises as fs } from 'fs';
 import path from 'path';
 
@@ -7,6 +6,7 @@ import {
   readProjectRegistry,
   type ProjectRegistryEntry,
 } from '../../platform/install/project-registry.js';
+import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
 
 export type DashboardProjectAvailability = 'available' | 'missing' | 'unreadable';
 
@@ -35,7 +35,7 @@ function canonicalKey(projectPath: string): string {
 }
 
 function projectId(projectPath: string): string {
-  return createHash('sha256').update(canonicalKey(projectPath)).digest('base64url').slice(0, 22);
+  return resolveStableProjectId(projectPath);
 }
 
 function projectName(projectPath: string): string {

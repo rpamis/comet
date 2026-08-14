@@ -54,6 +54,10 @@ Workspace decisions happen in `/comet-open` and follow `comet-classic/reference/
 
 When multiple active changes exist and the user has not selected one, do not bind early; keep the existing `ask_user` decision point.
 
+### Memory and project-rule integration
+
+After binding a Classic workspace, the Agent automatically runs `comet memory context <project-root> --task "<original user request>" --json` and injects only matching memory and project-rule snippets. After a successful change, verification, or review it records `comet memory observe`; compiler, test, or linter evidence that identifies a project convention is recorded with `comet rules observe`, and an existing project verification entrypoint can be run with `comet rules verify`. When no Hook is available, the Skill calls these commands directly, so the user does not need to open the Dashboard or confirm each observation.
+
 ### Comet Ambient Resume
 
 When the user did not explicitly invoke `/comet-classic`, but this repository may already have an active Comet change, run the read-only probe before starting work that may need code changes or investigation:

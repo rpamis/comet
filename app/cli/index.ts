@@ -82,6 +82,101 @@ rules
     await projectRulesInitCommand(targetPath, options);
   });
 
+const memory = program.command('memory').description('查看和维护跨会话的个人记忆');
+
+memory
+  .command('status [path]')
+  .description('查看个人记忆状态和同步状态')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { personalMemoryStatusCommand } = await import('../commands/personal-memory.js');
+    await personalMemoryStatusCommand(targetPath, options);
+  });
+
+memory
+  .command('retrieve [path]')
+  .description('按当前任务检索相关个人记忆')
+  .option('--task <text>', '任务描述')
+  .option('--path <path>', '当前文件或目录')
+  .option('--query <text>', '关键词')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { personalMemoryRetrieveCommand } = await import('../commands/personal-memory.js');
+    await personalMemoryRetrieveCommand(targetPath, options);
+  });
+
+memory
+  .command('remember [path]')
+  .description('手动记录一条个人记忆')
+  .requiredOption('--text <text>', '记忆内容')
+  .option('--category <category>', '记忆类别', 'preference')
+  .addOption(
+    new Option('--scope <scope>', '记忆范围').choices(['global', 'project']).default('project'),
+  )
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { personalMemoryRememberCommand } = await import('../commands/personal-memory.js');
+    await personalMemoryRememberCommand(targetPath, options);
+  });
+
+memory
+  .command('observe [path]')
+  .description('记录一次工作流成功结果，用于自动学习')
+  .requiredOption('--text <text>', '观察到的稳定行为')
+  .requiredOption('--workflow <workflow>', '工作流类型')
+  .requiredOption('--change <id>', 'Change ID')
+  .requiredOption('--candidate-key <key>', '候选行为标识')
+  .option('--category <category>', '记忆类别', 'preference')
+  .option('--no-success', '将本次结果记录为失败')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { personalMemoryObserveCommand } = await import('../commands/personal-memory.js');
+    await personalMemoryObserveCommand(targetPath, options);
+  });
+
+memory
+  .command('context [path]')
+  .description('为当前任务选择应注入的个人记忆和项目规则')
+  .requiredOption('--task <text>', '任务描述')
+  .option('--path <path>', '当前文件或目录')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { personalMemoryContextCommand } = await import('../commands/personal-memory.js');
+    await personalMemoryContextCommand(targetPath, options);
+  });
+
+memory
+  .command('sync [path]')
+  .description('同步个人记忆仓库')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { personalMemorySyncCommand } = await import('../commands/personal-memory.js');
+    await personalMemorySyncCommand(targetPath, options);
+  });
+
+memory
+  .command('remote [path]')
+  .description('查看或配置专用记忆仓库的 Git remote')
+  .option('--set <url>', '设置 origin remote')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { personalMemoryRemoteCommand } = await import('../commands/personal-memory.js');
+    await personalMemoryRemoteCommand(targetPath, options);
+  });
+
+memory
+  .command('pause [path]')
+  .description('暂停或恢复指定项目的记忆学习/检索')
+  .option('--project <key>', '项目记忆 key')
+  .option('--learning', '仅暂停学习')
+  .option('--retrieval', '仅暂停检索')
+  .option('--resume', '恢复项目记忆')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { personalMemoryPauseCommand } = await import('../commands/personal-memory.js');
+    await personalMemoryPauseCommand(targetPath, options);
+  });
+
 rules
   .command('scan [path]')
   .description('Rescan project rules and verification entrypoints')
@@ -98,6 +193,82 @@ rules
   .action(async (targetPath = '.', options) => {
     const { projectRulesStatusCommand } = await import('../commands/project-rules.js');
     await projectRulesStatusCommand(targetPath, options);
+  });
+
+rules
+  .command('add [path]')
+  .description('手动追加一条项目规则')
+  .requiredOption('--text <text>', '规则内容')
+  .option('--target-path <path>', '规则 Markdown 文件', '.comet/rules/project.md')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { projectRulesAddCommand } = await import('../commands/project-rules.js');
+    await projectRulesAddCommand(targetPath, options);
+  });
+
+rules
+  .command('observe [path]')
+  .description('记录一次验证结果中的项目规则')
+  .requiredOption('--text <text>', '规则内容')
+  .requiredOption('--workflow <workflow>', '工作流类型')
+  .requiredOption('--change <id>', 'Change ID')
+  .requiredOption('--candidate-key <key>', '候选规则标识')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { projectRulesObserveCommand } = await import('../commands/project-rules.js');
+    await projectRulesObserveCommand(targetPath, options);
+  });
+
+rules
+  .command('candidates [path]')
+  .description('查看待处理的项目规则候选')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { projectRulesCandidatesCommand } = await import('../commands/project-rules.js');
+    await projectRulesCandidatesCommand(targetPath, options);
+  });
+
+for (const action of ['adopt', 'ignore', 'snooze', 'restore'] as const) {
+  rules
+    .command(`${action} [path]`)
+    .description(`${action} 项目规则候选`)
+    .option('--id <id>', '候选 ID')
+    .option('--text <text>', '候选文本')
+    .option('--target-path <path>', '采用时写入的规则文件')
+    .option('--json', 'Output as JSON')
+    .action(async (targetPath = '.', options) => {
+      const { projectRulesCandidateActionCommand } = await import('../commands/project-rules.js');
+      await projectRulesCandidateActionCommand(action, targetPath, options);
+    });
+}
+
+rules
+  .command('context [path]')
+  .description('为当前任务选择相关项目规则')
+  .requiredOption('--task <text>', '任务描述')
+  .option('--path <path>', '当前文件或目录')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { projectRulesContextCommand } = await import('../commands/project-rules.js');
+    await projectRulesContextCommand(targetPath, options);
+  });
+
+rules
+  .command('propose [path]')
+  .description('根据项目现有能力建议规则载体')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { projectRulesProposeCommand } = await import('../commands/project-rules.js');
+    await projectRulesProposeCommand(targetPath, options);
+  });
+
+rules
+  .command('verify [path]')
+  .description('运行项目已存在的验证入口并返回结果')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { projectRulesVerifyCommand } = await import('../commands/project-rules.js');
+    await projectRulesVerifyCommand(targetPath, options);
   });
 
 program

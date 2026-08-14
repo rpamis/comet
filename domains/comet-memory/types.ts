@@ -100,6 +100,8 @@ export interface MemorySyncResult {
 
 export interface MemoryGitSync {
   sync(): Promise<MemorySyncResult>;
+  remote?(): Promise<string | null>;
+  configureRemote?(url: string): Promise<void>;
 }
 
 export interface MemoryRuntimeState {
@@ -151,6 +153,8 @@ export interface MemoryRepository {
   writeState(state: MemoryRuntimeState): Promise<void>;
   withLock<T>(operation: () => Promise<T>): Promise<T>;
   sync(): Promise<MemorySyncResult>;
+  remote?(): Promise<string | null>;
+  configureRemote?(url: string): Promise<void>;
 }
 
 export interface FileMemoryRepositoryOptions {
@@ -181,6 +185,7 @@ export interface PersonalMemoryStatus {
   readonly pausedLearningProjects: readonly string[];
   readonly pausedRetrievalProjects: readonly string[];
   readonly files: readonly string[];
+  readonly remote: string | null;
   readonly sync: MemorySyncResult | null;
 }
 
@@ -199,8 +204,12 @@ export interface PersonalMemoryServiceLike {
   retrieve(query: MemoryQuery): Promise<MemoryRetrieval>;
   status(): Promise<PersonalMemoryStatus>;
   sync(): Promise<MemorySyncResult>;
+  remote?(): Promise<string | null>;
+  configureRemote?(url: string): Promise<void>;
   setLearningEnabled?(enabled: boolean): Promise<void>;
   setRetrievalEnabled?(enabled: boolean): Promise<void>;
+  pauseProjectLearning?(projectKey: string, paused: boolean): Promise<void>;
+  pauseProjectRetrieval?(projectKey: string, paused: boolean): Promise<void>;
 }
 
 export type PersonalMemoryPluginDescriptorFactory = (

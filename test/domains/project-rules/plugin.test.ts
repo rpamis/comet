@@ -26,6 +26,7 @@ describe('project rules plugin', () => {
         id: 'project-rules',
         label: '项目规则',
         route: '/plugins/project-rules',
+        load: expect.any(Function),
       },
     ]);
     await expect(
@@ -41,7 +42,15 @@ describe('project rules plugin', () => {
   it('exposes project initialization, rule authoring, and candidate actions', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-project-rules-plugin-'));
     try {
-      const service = new ProjectRulesService({ projectRoot: root, projectId: 'project-1' });
+      await fs.writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ scripts: { test: 'test' } }),
+      );
+      const service = new ProjectRulesService({
+        projectRoot: root,
+        projectId: 'project-1',
+        runVerification: () => 'ok',
+      });
       const descriptor = createProjectRulesPluginDescriptor({
         projectRoot: root,
         projectId: 'project-1',
@@ -62,20 +71,36 @@ describe('project rules plugin', () => {
       );
       await runtime.invoke('comet.project-rules', 'add', { text: '使用项目验证命令' }, scope);
       await runtime.invoke('comet.project-rules', 'scan', {}, scope);
-      await service.recordObservation({
-        candidateKey: 'verify-command',
-        text: '使用项目验证命令',
-        workflow: 'native',
-        changeId: 'change-1',
-        success: true,
+      await expect(
+        runtime.invoke('comet.project-rules', 'verify', {}, scope),
+      ).resolves.toMatchObject({
+        passed: true,
+        label: 'npm run test',
       });
-      await service.recordObservation({
-        candidateKey: 'verify-command',
-        text: '使用项目验证命令',
-        workflow: 'full',
-        changeId: 'change-2',
-        success: true,
-      });
+      await runtime.invoke(
+        'comet.project-rules',
+        'observe',
+        {
+          candidateKey: 'verify-command',
+          text: '使用项目验证命令',
+          workflow: 'native',
+          changeId: 'change-1',
+          success: true,
+        },
+        scope,
+      );
+      await runtime.invoke(
+        'comet.project-rules',
+        'observe',
+        {
+          candidateKey: 'verify-command',
+          text: '使用项目验证命令',
+          workflow: 'full',
+          changeId: 'change-2',
+          success: true,
+        },
+        scope,
+      );
 
       const details = await runtime.invoke('comet.project-rules', 'details', {}, scope);
       const candidate = (details as Array<{ id: string; text: string }>)[0];
