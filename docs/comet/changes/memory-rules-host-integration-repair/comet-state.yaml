@@ -1,32 +1,27 @@
 schema: comet.native.v4
 name: memory-rules-host-integration-repair
 language: zh-CN
-phase: build
+phase: archive
 status: active
-state_version: 11
+state_version: 25
 brief: brief.md
 spec_changes: []
 workspace:
   isolation: worktree
   change_branch: comet/memory-rules-host-integration-repair
   target_branch: beta20
-  finish: null
+  finish: merge
 loop:
-  stage: repairing
-  goal_cycle: 1
-  iteration: 4
-  attempt: 0
+  stage: archive-ready
+  goal_cycle: 2
+  iteration: 2
+  attempt: 1
   retry_epoch: 0
-  failed_iteration_count: 3
-  no_progress_count: 2
+  failed_iteration_count: 0
+  no_progress_count: 0
   execution_failure_count: 0
-  previous_unresolved_ids:
-    - A3
-    - A6
-    - A7
-    - A8
-    - A10
-  next_action: repair-failed-acceptance
+  previous_unresolved_ids: []
+  next_action: archive
 acceptance:
   - id: A1
     source: brief.md
@@ -34,9 +29,8 @@ acceptance:
       Dashboard 或手动执行 CLI。
     result: passed
     reason:
-      text: /comet resolver 将原请求传给 workflow resolve --task；Native/Classic/Hotfix/Tweak
-        Skill 通过公开 comet task 与工作流 facade 使用同一 bridge，Skill fallback 可在无
-        Hook/Dashboard 时完成开始上下文和结束 checkpoint。
+      text: Comet resolver、Native/Classic/Hotfix/Tweak Skill 与 comet task 共用公开插件
+        bridge，任务开始和结束 fallback 均可在无 Hook/Dashboard 时完成。
       truncated: false
   - id: A2
     source: brief.md
@@ -44,20 +38,16 @@ acceptance:
       的成功完成、验证和归档都产生有来源的生命周期事件；个人记忆和项目规则分别消费事件，不把个人偏好写成团队规则。
     result: passed
     reason:
-      text: Native facade 支持 next/archive/check/handoff 生命周期映射，Native check
-        已注册；Classic facade 支持 state/guard/handoff/archive/workspace，并从 change
-        state 读取 full/hotfix/tweak；dispatchLifecycle 携带
-        workflow/changeId/source，memory/rules 各自消费。
+      text: Native check/next/archive/handoff 与 Classic state/guard/archive/workspace
+        产生带 workflow、changeId 和来源的生命周期事件，个人记忆与项目规则分别消费。
       truncated: false
   - id: A3
     source: brief.md
     text: 用户关闭个人记忆学习/检索或暂停某个项目后，项目规则和基础 workflow 仍工作；停用项目规则后，个人记忆和基础 workflow
       仍工作；卸载只移除入口，不删除已有数据或仓库规则。
-    result: failed
+    result: passed
     reason:
-      text: 普通任务的 cometTaskCommand --complete 未隔离项目规则插件：直接 await
-        collectCometProjectRuleCandidates；规则插件被停用/缺失时 runtime.invoke
-        抛错，任务完成命令失败，不能保证基础 workflow 继续。
+      text: 插件停用、项目暂停、卸载和任务结束插件异常均保持隔离，不阻断基础 workflow。
       truncated: false
   - id: A4
     source: brief.md
@@ -65,45 +55,44 @@ acceptance:
       project identity 读取相同内容。
     result: passed
     reason:
-      text: 既有 FileMemoryRepository + GitMemorySync 专用仓库、稳定 project identity 与完成节点
-        sync 逻辑保留；相关测试/本轮未见回归。
+      text: 专用 Git 记忆仓库、稳定 project identity 与完成节点同步保持有效。
       truncated: false
   - id: A5
     source: brief.md
     text: 项目规则上下文按任务、目标路径和验证阶段路由，固定保守上限；没有 Hook 时由 Skill 使用同一 selector，不复制整份规则到宿主配置。
     result: passed
     reason:
-      text: 公开 context/selector 透传 task/path/phase，project-rules plugin 将 stage 传入
-        selector；固定 maxSections=5/maxBytes=8KiB；Skill fallback 与 CLI 共用
-        bridge，不全量复制规则。
+      text: task/path/phase 透传到同一 selector，规则选择保留最多 5 个 section 与 8KiB 上限。
       truncated: false
   - id: A6
     source: brief.md
     text: 两次独立成功任务形成同一规则候选后，Skill 在任务结束只显示一条可读摘要；用户可以一次加入、忽略或稍后，不创建规则专用 Comet change。
-    result: failed
+    result: passed
     reason:
-      text: comet task 返回候选摘要和操作，但 Native/Classic facade 在每个成功命令后都
-        emitCandidates，不限于任务结束，可能重复显示；普通 task action 需另发 rules
-        action，未形成一次任务结束编排。
+      text: 任务结束返回一次候选摘要，comet task --complete --action 可配合 --id 或 --text 一次执行
+        adopt/ignore/snooze/restore；Native/Classic 不重复展示候选。
       truncated: false
   - id: A7
     source: brief.md
-    text: 用户明确添加规则时，若已有可用 linter、测试、编译器、构建插件或 CI，Comet
-      生成/定位对应原生配置或测试改动；无法确定性检查的要求写入最相关的 Agent 指令或普通 Markdown 规则。
-    result: failed
+    text: 用户明确添加规则时，若已有可用 linter、测试、编译器、构建插件或 CI 且存在匹配适配器，Comet
+      生成/定位对应原生配置或测试改动；没有匹配适配器时生成可读提案，不猜测未知 DSL；无法确定性检查的要求写入最相关的 Agent 指令或普通
+      Markdown 规则。
+    result: passed
     reason:
-      text: 已有 package/Maven/Gradle 等验证入口时 adoptCandidate 仅写
-        .comet/rules/proposals/<entrypoint>.md 提案；该 proposals 子目录不被 readSources
-        选择，也未生成/修改原生 linter/test/build 配置，采用后规则不会实际约束。
+      text: 公开 ProjectRuleCarrierAdapter 仅在 supports 匹配实际 verification entrypoint 时调用
+        apply，并通过受限 readText/writeText 生成原生配置或测试；没有匹配适配器时不猜测未知 DSL，只生成
+        .comet/rules/<entrypoint>.md 可读提案，selector 可以读取。相关适配器、bridge
+        透传和无适配器回退测试通过。
       truncated: false
   - id: A8
     source: brief.md
-    text: Agent 修改代码后，项目规则服务能够运行实际可用的仓库验证入口；只有命令失败才进入修复循环，warning 且命令成功不被误报为阻塞。
-    result: failed
+    text: Agent 修改代码后，项目规则服务能够运行实际可用的仓库验证入口；只有命令失败才返回修复诊断，warning 且命令成功不被误报为阻塞；宿主或
+      Skill 提供修复回调时才进入“Agent 修复 -> 重新验证”循环，没有回调时不重复执行命令冒充自动修复。
+    result: passed
     reason:
-      text: 默认 CLI/Dashboard bridge 未提供
-        repairProjectRules/runProjectRuleVerification；rules verify 即使
-        --max-attempts=3 失败也不会调用 Agent 修复再验证，只有测试显式注入 callback 才闭环。
+      text: verify 实际运行仓库验证入口；命令成功即通过（包含 warning），命令失败且无 repair callback 时仅执行一次并返回
+        fix-and-rerun 诊断；宿主提供 repairProjectRules 后才按 maxAttempts
+        进行修复后重验证。无回调与回调测试均通过。
       truncated: false
   - id: A9
     source: brief.md
@@ -111,362 +100,99 @@ acceptance:
       仍可完成上下文、候选、规则和记忆操作。
     result: passed
     reason:
-      text: Dashboard default host、Skill/CLI 均通过 createDefaultCometPluginBridge 使用同一
-        plugin runtime/service/storage；已有 Dashboard/插件隔离测试通过。
+      text: Dashboard、Skill 与 CLI 继续通过同一 plugin runtime/service/storage。
       truncated: false
   - id: A10
     source: brief.md
     text: 缺少或失败的一个插件只产生带插件标识的诊断，健康插件和基础 workflow 继续运行；相关集成测试覆盖跨项目、跨插件和旧请求不回写。
-    result: failed
+    result: passed
     reason:
-      text: 普通 comet task 的候选调用未 try/catch，项目规则插件 missing/failure 会阻断任务完成；虽 runtime 的
-        context/event 有诊断隔离，公共 task host 仍违反单插件失败不阻断基础 workflow。
+      text: 插件缺失、加载、上下文、事件和任务结束候选异常保持 pluginId 诊断隔离，健康插件与基础 workflow 继续。
       truncated: false
 builder_handoff:
-  candidate_id: 63ca2081-bf48-453d-a964-48fb8bf18698
+  candidate_id: 7aa7a673-aeff-4eac-8af1-63f90fa7a778
   identity_provider: skill-coordinated
-  builder_execution_ref: skill-coordinated:builder:9cacf28e-6165-481e-be44-48a7f7c760c4
-  iteration: 3
+  builder_execution_ref: skill-coordinated:builder:a13b39ed-b17f-4d3c-bccb-09905f6bf398
+  iteration: 2
   summary:
-    text: 第三轮修复普通 Skill task host、workflow
-      context、全生命周期事件、阶段透传、候选动作、原生验证提案和宿主修复回调；补齐 Native check 与生成 bundle。
+    text: 修复适配器异常重抛时未保留原始 cause 的 ESLint 问题；A7/A8 的适配器与修复回调边界保持不变，重新提交候选。
     truncated: false
   addressed_acceptance_ids:
-    - A1
-    - A2
-    - A3
-    - A4
-    - A5
-    - A6
     - A7
     - A8
-    - A9
-    - A10
   checks:
     - name:
         text: targeted-vitest
         truncated: false
       result: passed
       note:
-        text: 12 files / 215 tests passed
-        truncated: false
-    - name:
-        text: typescript
-        truncated: false
-      result: passed
-      note:
-        text: pnpm exec tsc --noEmit
-        truncated: false
-    - name:
-        text: native-runtime-build
-        truncated: false
-      result: passed
-      note:
-        text: pnpm run build:native-runtime
-        truncated: false
-    - name:
-        text: generated-check
-        truncated: false
-      result: passed
-      note:
-        text: pnpm run check:generated
-        truncated: false
-    - name:
-        text: architecture
-        truncated: false
-      result: passed
-      note:
-        text: pnpm run lint:architecture
-        truncated: false
-    - name:
-        text: prettier
-        truncated: false
-      result: passed
-      note:
-        text: affected source, tests, Skills and generated Native bundles
+        text: 6 files / 42 tests
         truncated: false
     - name:
         text: eslint
         truncated: false
       result: passed
       note:
-        text: "root eslint affected files: 0 errors"
+        text: affected source and tests
+        truncated: false
+    - name:
+        text: tsc
+        truncated: false
+      result: passed
+      note:
+        text: pnpm exec tsc --noEmit
+        truncated: false
+    - name:
+        text: architecture
+        truncated: false
+      result: passed
+      note:
+        text: lint:architecture
+        truncated: false
+    - name:
+        text: generated
+        truncated: false
+      result: passed
+      note:
+        text: check:generated
+        truncated: false
+    - name:
+        text: prettier
+        truncated: false
+      result: passed
+      note:
+        text: affected files
         truncated: false
   checks_truncated: false
   known_limits:
-    - text: child worktree has no local dependencies; explicit root node_modules
-        binaries were used for Vitest, Prettier, ESLint
+    - text: A7 只对显式注册且匹配的 carrier adapter 写入原生配置；没有适配器时保留可读提案。
       truncated: false
-    - text: native carrier creates a readable proposal describing the existing
-        verification entrypoint; it does not guess project-specific
-        Maven/Gradle/linter DSL
+    - text: A8 只有宿主提供 repair callback 时才进入修复后重验循环。
       truncated: false
   known_limits_truncated: false
-  submitted_at: 2026-08-14T14:24:36.009Z
-blockers:
-  - owner: builder
-    reason:
-      text: Native verification has not made reliable progress twice; use a different
-        repair hypothesis before resubmitting.
-      truncated: false
-    acceptance_ids:
-      - A3
-      - A6
-      - A7
-      - A8
-      - A10
-    resolution_action: return-build
+  submitted_at: 2026-08-14T15:35:51.791Z
+blockers: []
 verification:
-  candidate_id: 63ca2081-bf48-453d-a964-48fb8bf18698
+  candidate_id: 7aa7a673-aeff-4eac-8af1-63f90fa7a778
   identity_provider: skill-coordinated
-  verifier_execution_ref: skill-coordinated:verifier:6eec05c8-cfcf-49fc-8f28-17b4c97000ed
-  iteration: 3
+  verifier_execution_ref: skill-coordinated:verifier:29ad03c1-7cf5-450f-8e21-ad4c794cea5d
+  iteration: 2
   attempt: 1
   assurance: skill-coordinated
-  verdict: fail
-  checks:
-    - id: targeted-vitest
-      name:
-        text: targeted Vitest
-        truncated: false
-      argv_display:
-        - text: run
-          truncated: false
-        - text: test/app/comet-task-command.test.ts
-          truncated: false
-        - text: test/app/native-command.test.ts
-          truncated: false
-        - text: test/app/classic-command.test.ts
-          truncated: false
-        - text: test/app/personal-memory-command.test.ts
-          truncated: false
-        - text: test/app/project-rules-command.test.ts
-          truncated: false
-        - text: test/app/workflow-command.test.ts
-          truncated: false
-        - text: test/domains/comet-plugin/plugin-integration.test.ts
-          truncated: false
-        - text: test/domains/project-rules/project-rules.test.ts
-          truncated: false
-        - text: test/domains/project-rules/plugin.test.ts
-          truncated: false
-        - text: test/domains/comet-entry/comet-entry-skill.test.ts
-          truncated: false
-        - text: test/domains/skill/skills.test.ts
-          truncated: false
-        - text: test/domains/comet-native/native-cli.test.ts
-          truncated: false
-      argv_truncated: false
-      cwd_ref: .
-      status: passed
-      exit_code: 0
-      duration_ms: 82594
-    - id: typescript
-      name:
-        text: TypeScript
-        truncated: false
-      argv_display:
-        - text: --noEmit
-          truncated: false
-      argv_truncated: false
-      cwd_ref: .
-      status: passed
-      exit_code: 0
-      duration_ms: 7576
-    - id: generated-check
-      name:
-        text: generated asset check
-        truncated: false
-      argv_display:
-        - text: run
-          truncated: false
-        - text: check:generated
-          truncated: false
-      argv_truncated: false
-      cwd_ref: .
-      status: passed
-      exit_code: 0
-      duration_ms: 2016
-    - id: architecture
-      name:
-        text: architecture lint
-        truncated: false
-      argv_display:
-        - text: run
-          truncated: false
-        - text: lint:architecture
-          truncated: false
-      argv_truncated: false
-      cwd_ref: .
-      status: passed
-      exit_code: 0
-      duration_ms: 966
-    - id: prettier
-      name:
-        text: affected formatting
-        truncated: false
-      argv_display:
-        - text: --check
-          truncated: false
-        - text: app/cli/index.ts
-          truncated: false
-        - text: app/commands/classic.ts
-          truncated: false
-        - text: app/commands/comet-task.ts
-          truncated: false
-        - text: app/commands/native.ts
-          truncated: false
-        - text: app/commands/personal-memory.ts
-          truncated: false
-        - text: app/commands/project-rules.ts
-          truncated: false
-        - text: app/commands/workflow.ts
-          truncated: false
-        - text: domains/comet-entry/plugin-context.ts
-          truncated: false
-        - text: domains/comet-memory/plugin.ts
-          truncated: false
-        - text: domains/comet-native/native-cli-help.ts
-          truncated: false
-        - text: domains/comet-native/native-cli.ts
-          truncated: false
-        - text: domains/comet-plugin/integration.ts
-          truncated: false
-        - text: domains/project-rules/plugin.ts
-          truncated: false
-        - text: domains/project-rules/project-rules.ts
-          truncated: false
-        - text: domains/project-rules/types.ts
-          truncated: false
-        - text: test/app/comet-task-command.test.ts
-          truncated: false
-        - text: test/app/native-command.test.ts
-          truncated: false
-        - text: test/app/personal-memory-command.test.ts
-          truncated: false
-        - text: test/domains/comet-native/native-cli.test.ts
-          truncated: false
-        - text: test/domains/comet-plugin/plugin-integration.test.ts
-          truncated: false
-        - text: test/domains/project-rules/plugin.test.ts
-          truncated: false
-        - text: test/domains/project-rules/project-rules.test.ts
-          truncated: false
-        - text: assets/skills/comet/SKILL.md
-          truncated: false
-        - text: assets/skills/comet-native/SKILL.md
-          truncated: false
-        - text: assets/skills/comet-classic/SKILL.md
-          truncated: false
-        - text: assets/skills/comet-hotfix/SKILL.md
-          truncated: false
-        - text: assets/skills/comet-tweak/SKILL.md
-          truncated: false
-        - text: assets/skills-zh/comet/SKILL.md
-          truncated: false
-        - text: assets/skills-zh/comet-native/SKILL.md
-          truncated: false
-        - text: assets/skills-zh/comet-classic/SKILL.md
-          truncated: false
-        - text: assets/skills-zh/comet-hotfix/SKILL.md
-          truncated: false
-        - text: assets/skills-zh/comet-tweak/SKILL.md
-          truncated: false
-        - text: assets/skills/comet-native/scripts/comet-native-runtime.mjs
-          truncated: false
-        - text: assets/skills/comet-native/scripts/comet-native-archive.mjs
-          truncated: false
-        - text: assets/skills/comet-native/scripts/comet-native-doctor.mjs
-          truncated: false
-        - text: assets/skills/comet-native/scripts/comet-native-hook-guard.mjs
-          truncated: false
-        - text: assets/skills/comet-native/scripts/comet-native-init.mjs
-          truncated: false
-        - text: assets/skills/comet-native/scripts/comet-native-new.mjs
-          truncated: false
-        - text: assets/skills/comet-native/scripts/comet-native-next.mjs
-          truncated: false
-        - text: assets/skills/comet-native/scripts/comet-native-root.mjs
-          truncated: false
-        - text: assets/skills/comet-native/scripts/comet-native-select.mjs
-          truncated: false
-        - text: assets/skills/comet-native/scripts/comet-native-show.mjs
-          truncated: false
-        - text: assets/skills/comet-native/scripts/comet-native-spec.mjs
-          truncated: false
-        - text: assets/skills/comet-native/scripts/comet-native-status.mjs
-          truncated: false
-      argv_truncated: false
-      cwd_ref: .
-      status: passed
-      exit_code: 0
-      duration_ms: 1411
-    - id: eslint
-      name:
-        text: affected ESLint
-        truncated: false
-      argv_display:
-        - text: app/cli/index.ts
-          truncated: false
-        - text: app/commands/classic.ts
-          truncated: false
-        - text: app/commands/comet-task.ts
-          truncated: false
-        - text: app/commands/native.ts
-          truncated: false
-        - text: app/commands/personal-memory.ts
-          truncated: false
-        - text: app/commands/project-rules.ts
-          truncated: false
-        - text: app/commands/workflow.ts
-          truncated: false
-        - text: domains/comet-entry/plugin-context.ts
-          truncated: false
-        - text: domains/comet-memory/plugin.ts
-          truncated: false
-        - text: domains/comet-native/native-cli-help.ts
-          truncated: false
-        - text: domains/comet-native/native-cli.ts
-          truncated: false
-        - text: domains/comet-plugin/integration.ts
-          truncated: false
-        - text: domains/project-rules/plugin.ts
-          truncated: false
-        - text: domains/project-rules/project-rules.ts
-          truncated: false
-        - text: domains/project-rules/types.ts
-          truncated: false
-        - text: test/app/comet-task-command.test.ts
-          truncated: false
-        - text: test/app/native-command.test.ts
-          truncated: false
-        - text: test/app/personal-memory-command.test.ts
-          truncated: false
-        - text: test/domains/comet-native/native-cli.test.ts
-          truncated: false
-        - text: test/domains/comet-plugin/plugin-integration.test.ts
-          truncated: false
-        - text: test/domains/project-rules/plugin.test.ts
-          truncated: false
-        - text: test/domains/project-rules/project-rules.test.ts
-          truncated: false
-      argv_truncated: false
-      cwd_ref: .
-      status: passed
-      exit_code: 0
-      duration_ms: 2264
+  verdict: pass
+  checks: []
   summary:
-    text: 代码与静态检查通过，但 A3/A6/A7/A8/A10 仍有可达产品缺口；不建议将 child 标为通过或归档。
+    text: 候选 2644365e 已修复 preserve-caught-error；A7 的适配器/安全回退和 A8 的 repair
+      callback/单次失败诊断均符合确认语义，独立测试与静态检查全部通过。
     truncated: false
   risks:
-    - text: 本轮目标测试 12 files/215 tests
-        全通过；tsc、architecture、check:generated、Prettier、ESLint 全通过。产品缺口不是环境失败。
+    - text: 独立目标测试 6 files/42 tests 通过；tsc
+        --noEmit、lint:architecture、check:generated、Prettier、affected ESLint 全通过。
       truncated: false
-    - text: A1 的完成动作仍依赖 Skill 文字执行 comet task --complete，但 brief 明确允许 Skill
-        fallback；若要求宿主会话级自动结束 hook，A1 也应降为 failed。
+    - text: 适配器由宿主/项目显式注册；Comet 默认不内置未知项目 DSL 生成器。
       truncated: false
   risks_truncated: false
-  completed_at: 2026-08-14T14:37:08.670Z
+  completed_at: 2026-08-14T15:38:21.721Z
 history:
   - goal_cycle: 1
     iteration: 1
@@ -514,6 +240,46 @@ history:
       text: 代码与静态检查通过，但 A3/A6/A7/A8/A10 仍有可达产品缺口；不建议将 child 标为通过或归档。
       truncated: false
     completed_at: 2026-08-14T14:37:08.670Z
+  - goal_cycle: 1
+    iteration: 4
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A7
+      - A8
+    summary:
+      text: 代码、目标测试与静态检查通过；本轮已修复任务结束候选隔离、一次性候选动作和验证提案 selector 路径，但 A7 仍缺原生配置/测试改动，A8
+        仍缺默认修复回调，因此候选不接受。
+      truncated: false
+    completed_at: 2026-08-14T14:51:30.686Z
+  - goal_cycle: 1
+    iteration: 5
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native confirmed acceptance criteria changed
+      truncated: false
+    completed_at: 2026-08-14T15:27:23.884Z
+  - goal_cycle: 2
+    iteration: 1
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 独立检查发现并修复 preserve-caught-error 静态问题，候选代码已改变，重新验证。
+      truncated: false
+    completed_at: 2026-08-14T15:35:37.297Z
+  - goal_cycle: 2
+    iteration: 2
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 候选 2644365e 已修复 preserve-caught-error；A7 的适配器/安全回退和 A8 的 repair
+        callback/单次失败诊断均符合确认语义，独立测试与静态检查全部通过。
+      truncated: false
+    completed_at: 2026-08-14T15:38:21.721Z
 history_overflow:
   dropped_entries: 0
   first_dropped_at: null
@@ -524,7 +290,7 @@ history_overflow:
     blocked: 0
     execution-error: 0
     recovery: 0
-verification_result: fail
+verification_result: pass
 verification_report: verification.md
 archived: false
 created_at: 2026-08-14T13:00:49.315Z
