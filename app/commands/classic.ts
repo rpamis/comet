@@ -26,7 +26,9 @@ export async function runClassicFacade(
     integration.workflow,
     projectRoot,
   );
-  if (result.exitCode === 0) await emitCandidates(projectRoot, integration);
+  if (result.exitCode === 0 && integration.ruleAction) {
+    await emitCandidates(projectRoot, integration);
+  }
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);
   return result.exitCode;
@@ -61,7 +63,9 @@ export async function runClassicGroupFacade(args: readonly string[]): Promise<nu
     integration.workflow,
     integration.projectRoot,
   );
-  if (result.exitCode === 0) await emitCandidates(integration.projectRoot, integration);
+  if (result.exitCode === 0 && integration.ruleAction) {
+    await emitCandidates(integration.projectRoot, integration);
+  }
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);
   return result.exitCode;

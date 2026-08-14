@@ -174,8 +174,11 @@ describe('ProjectRulesService', () => {
     await service.adoptCandidate(candidate?.id ?? '');
 
     await expect(
-      readFile(path.join(projectRoot, '.comet', 'rules', 'proposals', 'package-lint.md'), 'utf8'),
+      readFile(path.join(projectRoot, '.comet', 'rules', 'package-lint.md'), 'utf8'),
     ).resolves.toEqual(expect.stringContaining('验证入口：npm run lint'));
+    expect((await service.readSources()).map((source) => source.path)).toContain(
+      '.comet/rules/package-lint.md',
+    );
     await expect(
       readFile(path.join(projectRoot, '.comet', 'rules', 'project.md'), 'utf8'),
     ).rejects.toMatchObject({ code: 'ENOENT' });

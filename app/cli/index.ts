@@ -66,6 +66,9 @@ program
   .option('--complete', '记录成功任务并返回规则候选')
   .option('--workflow <workflow>', '工作流类型')
   .option('--change <id>', '当前 change ID')
+  .option('--action <action>', '任务结束时处理候选：adopt、ignore、snooze 或 restore')
+  .option('--id <id>', '候选 ID')
+  .option('--text <text>', '候选文本')
   .option('--json', 'Output as JSON')
   .action(async (targetPath = '.', options) => {
     const { cometTaskCommand } = await import('../commands/comet-task.js');

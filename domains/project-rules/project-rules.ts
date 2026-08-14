@@ -670,7 +670,7 @@ export class ProjectRulesService {
     candidate: RuleCandidate,
     proposal: ProjectRuleCarrierProposal,
   ): Promise<void> {
-    const targetPath = proposal.targetPath ?? `.comet/rules/proposals/${candidate.id}.md`;
+    const targetPath = proposal.targetPath ?? `.comet/rules/${candidate.id}.md`;
     const normalized = this.projectRelative(targetPath);
     const absolute = path.join(this.projectRoot, normalized);
     const content = [
@@ -681,7 +681,7 @@ export class ProjectRulesService {
       `- 原生文件：${proposal.sourcePath ?? '未识别'}`,
       `- 建议改动：${proposal.change ?? '在该项目已有验证配置或测试中加入确定性检查。'}`,
       '',
-      '该文件是可读的实施提案；采用后由 Agent 在项目原生配置或测试中完成对应改动，验证入口负责阻止不符合规则的结果。',
+      '该文件是可读的实施提案；它会按任务范围注入给 Agent。采用后由 Agent 在项目原生配置或测试中完成对应改动，验证入口负责阻止不符合规则的结果。',
       '',
     ].join('\n');
     await this.fileSystem.writeText(absolute, content);
@@ -823,7 +823,7 @@ export class ProjectRulesService {
         kind: 'verification',
         label: entrypoint.label,
         sourcePath: entrypoint.sourcePath,
-        targetPath: `.comet/rules/proposals/${entrypoint.id}.md`,
+        targetPath: `.comet/rules/${entrypoint.id}.md`,
         change: `在 ${entrypoint.sourcePath} 对应的项目验证配置或测试中加入该规则，并继续使用 ${entrypoint.label} 校验。`,
         reason: '项目已有可执行的验证入口，规则应优先由该入口在编译或检查阶段校验。',
       };

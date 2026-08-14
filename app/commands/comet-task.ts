@@ -1,6 +1,7 @@
 import path from 'node:path';
 
 import {
+  applyCometProjectRuleAction,
   collectCometPluginContext,
   collectCometProjectRuleCandidates,
   recordCometWorkflowResult,
@@ -13,6 +14,9 @@ export interface CometTaskCommandOptions {
   readonly complete?: boolean;
   readonly workflow?: string;
   readonly change?: string;
+  readonly action?: 'adopt' | 'ignore' | 'snooze' | 'restore';
+  readonly id?: string;
+  readonly text?: string;
   readonly json?: boolean;
 }
 
@@ -47,7 +51,28 @@ export async function cometTaskCommand(
       summary: options.task,
       eventName: 'task.completed',
     });
-    candidates = await collectCometProjectRuleCandidates(projectRoot);
+    try {
+      if (options.action) {
+        await applyCometProjectRuleAction(projectRoot, options.action, {
+          ...(options.id ? { id: options.id } : {}),
+          ...(options.text ? { text: options.text } : {}),
+        });
+      }
+      candidates = await collectCometProjectRuleCandidates(projectRoot);
+    } catch (error) {
+      candidates = {
+        summary: '项目规则插件暂不可用，基础任务已完成。',
+        candidates: [],
+        operations: [],
+        diagnostics: [
+          {
+            pluginId: 'comet.project-rules',
+            code: 'execution-failed',
+            message: error instanceof Error ? error.message : String(error),
+          },
+        ],
+      };
+    }
   }
   const result = { context, candidates };
   if (options.json) console.log(JSON.stringify(result, null, 2));

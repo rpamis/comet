@@ -12,7 +12,9 @@ export async function runNativeFacade(args: readonly string[]): Promise<number> 
   await emitContext(projectRoot, integration);
   const result = await runNativeCli(integration.cliArgs);
   await recordNativeResult(integration.cliArgs, result, integration.workflow);
-  if (result.exitCode === 0) await emitCandidates(projectRoot, integration);
+  if (result.exitCode === 0 && integration.ruleAction) {
+    await emitCandidates(projectRoot, integration);
+  }
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr)
     process.stderr.write(result.stderr + (result.stderr.endsWith('\n') ? '' : '\n'));

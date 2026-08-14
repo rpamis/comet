@@ -140,6 +140,15 @@ describe('Native command facade', () => {
     );
   });
 
+  it('does not redisplay rule candidates after every successful workflow command', async () => {
+    runNativeCli.mockResolvedValue({ exitCode: 0, stdout: 'done\n', stderr: '' });
+    const { runNativeFacade } = await import('../../app/commands/native.js');
+
+    await runNativeFacade(['next', 'change-name']);
+
+    expect(collectCometProjectRuleCandidates).not.toHaveBeenCalled();
+  });
+
   it('handles a candidate action at the end of a host task', async () => {
     runNativeCli.mockResolvedValue({ exitCode: 0, stdout: 'done\n', stderr: '' });
     collectCometProjectRuleCandidates.mockResolvedValue({

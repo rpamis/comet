@@ -125,7 +125,7 @@ describe('project rules plugin', () => {
         candidates: [],
       });
       await expect(
-        fs.readFile(path.join(root, '.comet', 'rules', 'proposals', 'package-test.md'), 'utf8'),
+        fs.readFile(path.join(root, '.comet', 'rules', 'package-test.md'), 'utf8'),
       ).resolves.toContain('使用项目验证命令');
     } finally {
       await fs.rm(root, { recursive: true, force: true });
