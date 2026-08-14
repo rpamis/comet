@@ -3,7 +3,7 @@ name: self-evolving-personal-memory
 language: zh-CN
 phase: archive
 status: active
-state_version: 19
+state_version: 20
 brief: brief.md
 spec_changes:
   - capability: self-evolving-personal-memory
