@@ -1,0 +1,503 @@
+schema: comet.native.v4
+name: comet-plugin-runtime
+language: zh-CN
+phase: archive
+status: done
+state_version: 32
+brief: brief.md
+spec_changes:
+  - capability: comet-plugin-runtime
+    operation: create
+    source: specs/comet-plugin-runtime/spec.md
+workspace:
+  isolation: worktree
+  change_branch: comet/comet-plugin-runtime
+  target_branch: beta20
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 2
+  iteration: 2
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: 第一方和第三方插件共享安装、启用、停用、更新、卸载、兼容性和诊断接口；第三方安装/更新拒绝非用户动作来源。
+    result: passed
+    reason:
+      text: 第一方和第三方共享生命周期接口；第三方 install/update 的 system 来源被拒绝。
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: 第一方插件首次协调时自动启用；用户显式停用或卸载后，后续协调和版本更新保留该选择。
+    result: passed
+    reason:
+      text: 第一方协调自动启用，显式 disable/uninstall 与版本更新保留用户选择。
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: 停用立即停止事件、上下文、能力调用和页面加载，但不删除插件状态或插件数据；更新会销毁旧活动实例。
+    result: passed
+    reason:
+      text: 停用停止调用并销毁活动实例，状态与存储保留；update 销毁旧实例。
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: 事件带有来源和作用域；上下文、能力调用和 Dashboard 贡献按用户或项目作用域路由，项目暂停只影响指定项目。
+    result: passed
+    reason:
+      text: 事件来源和作用域完整，context/invoke/dashboard 按 user/project 路由，项目暂停按项目隔离。
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: 每个插件只能获得自己的配置、存储和诊断通道；插件不能通过运行时 API 访问其他插件私有数据。
+    result: passed
+    reason:
+      text: 配置、storage、diagnostic 以 pluginId 和作用域隔离，插件只获得自身句柄。
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: 不兼容、启动、事件、上下文、能力或页面贡献失败都会产生带插件标识的诊断，不阻断健康插件。
+    result: passed
+    reason:
+      text: load/event/context/invoke/dashboard 及兼容性和缺失路径均记录带插件标识诊断，健康插件继续运行。
+      truncated: false
+  - id: A7
+    source: brief.md
+    text: 一个最小第三方插件可以安装、启用、接收事件、调用能力、停用和卸载；JSON 状态适配器可以恢复生命周期状态。
+    result: passed
+    reason:
+      text: 第三方最小插件生命周期、事件、能力调用和 JSON 状态恢复均有覆盖。
+      truncated: false
+  - id: A8
+    source: specs/comet-plugin-runtime/spec.md
+    text: "> 本文是 `comet-plugin-runtime` child 的实现规格。Supervisor Change
+      中关于个人记忆、项目规则、Skill/CLI 和 Dashboard 用户体验的完整验收，分别由依赖 child 和最终集成 Verify 完成。"
+    result: passed
+    reason:
+      text: spec 明确本 child 仅覆盖插件运行时，记忆/规则/Skill/CLI/Dashboard 主机由依赖 child 完成。
+      truncated: false
+  - id: A9
+    source: specs/comet-plugin-runtime/spec.md
+    text: Comet
+      提供公开、稳定的插件运行时，让第一方和第三方能力通过同一套接口接入。运行时只负责生命周期、路由、隔离、持久化和诊断，不把任何第一方领域模型塞进
+      Core。
+    result: passed
+    reason:
+      text: domains/comet-plugin 导出稳定公开运行时边界，不含第一方领域模型。
+      truncated: false
+  - id: A10
+    source: specs/comet-plugin-runtime/spec.md
+    text: 第一方和第三方插件使用同一套公开接口完成发现结果登记、加载、生命周期、配置、诊断和能力调用。
+    result: passed
+    reason:
+      text: 第一方和第三方使用同一 descriptor/runtime 公开接口完成发现、生命周期、配置、诊断和调用。
+      truncated: false
+  - id: A11
+    source: specs/comet-plugin-runtime/spec.md
+    text: 插件通过公开接口接收带来源的 workflow 事件、受控上下文请求、用户/项目作用域信息、只读配置和插件级隔离存储。
+    result: passed
+    reason:
+      text: 公开 context/event 接口提供来源、作用域、只读配置和插件隔离存储。
+      truncated: false
+  - id: A12
+    source: specs/comet-plugin-runtime/spec.md
+    text: 插件可以声明事件订阅，提供上下文贡献、能力调用和 Dashboard 页面贡献；运行时捕获每个调用边界的异常。
+    result: passed
+    reason:
+      text: 支持事件订阅、上下文贡献、能力调用和 Dashboard 页面贡献，并在每个调用边界捕获异常。
+      truncated: false
+  - id: A13
+    source: specs/comet-plugin-runtime/spec.md
+    text: 插件拥有独立名称、版本与兼容范围；不兼容插件在加载和主动启用前被拒绝并产生可理解诊断。
+    result: passed
+    reason:
+      text: descriptor 具备 id/version/compatible；不兼容在主动启用和加载前拒绝并记录诊断。
+      truncated: false
+  - id: A14
+    source: specs/comet-plugin-runtime/spec.md
+    text: 插件不能访问另一个插件的私有配置、存储、日志或运行时内部状态，也不能修改 Native、Classic、Hotfix 或 Tweak 的状态机与
+      Guard。
+    result: passed
+    reason:
+      text: 插件 API 未暴露其他插件配置/存储/内部状态，也未暴露 workflow/Guard 修改入口。
+      truncated: false
+  - id: A15
+    source: specs/comet-plugin-runtime/spec.md
+    text: 第一方插件在运行时协调时自动登记为启用；用户显式停用或卸载后，后续协调和版本更新保留该选择。
+    result: passed
+    reason:
+      text: 第一方协调自动登记启用，用户 disable/uninstall 后后续协调与版本更新不强制恢复。
+      truncated: false
+  - id: A16
+    source: specs/comet-plugin-runtime/spec.md
+    text: 第三方插件安装和更新必须由用户动作触发，系统来源不得静默执行。
+    result: passed
+    reason:
+      text: 第三方 install/update 强制 user action，system 来源不能静默安装或更新。
+      truncated: false
+  - id: A17
+    source: specs/comet-plugin-runtime/spec.md
+    text: 停用停止事件、上下文、能力和页面调用但保留状态与数据；卸载移除运行入口但不自动删除数据。
+    result: passed
+    reason:
+      text: 停用/卸载停止运行入口但不删除状态和存储数据。
+      truncated: false
+  - id: A18
+    source: specs/comet-plugin-runtime/spec.md
+    text: 插件可以声明 `user` 或 `project` 作用域；项目作用域调用带有 `projectId`，用户可以只暂停或恢复一个项目。
+    result: passed
+    reason:
+      text: 支持 user/project scope、projectId，并可只暂停/恢复指定项目。
+      truncated: false
+  - id: A19
+    source: specs/comet-plugin-runtime/spec.md
+    text: 更新完成后，旧的活动实例必须销毁；下一次调用加载新版本实例。
+    result: passed
+    reason:
+      text: 显式 update 销毁所有活动实例，下一次调用重新加载 descriptor/module。
+      truncated: false
+  - id: A20
+    source: specs/comet-plugin-runtime/spec.md
+    text: 每个插件获得以插件标识、作用域和项目标识隔离的存储句柄；Core 不把共享状态句柄交给插件。
+    result: passed
+    reason:
+      text: Memory storage 按 pluginId:scope:projectId 命名空间，context 仅得到自身 storage。
+      truncated: false
+  - id: A21
+    source: specs/comet-plugin-runtime/spec.md
+    text: 插件配置通过只读副本提供，配置更新只影响目标插件并使其后续实例读取新配置。
+    result: passed
+    reason:
+      text: getConfig 和 create context 提供深度只读副本；configure 仅影响目标插件并重载后续实例。
+      truncated: false
+  - id: A22
+    source: specs/comet-plugin-runtime/spec.md
+    text: 缺失、不兼容、启动、事件、上下文、能力或 Dashboard 贡献失败均返回统一诊断；健康插件继续运行。
+    result: passed
+    reason:
+      text: 缺失/不兼容/启动/事件/context/invoke/dashboard 失败均统一诊断，缺失 invoke 已单独回归覆盖。
+      truncated: false
+  - id: A23
+    source: specs/comet-plugin-runtime/spec.md
+    text: 运行时诊断不伪装成项目编译、linter、测试或 workflow 失败。
+    result: passed
+    reason:
+      text: 诊断仅属于插件运行时，不伪装为编译、linter、测试或 workflow 失败。
+      truncated: false
+  - id: A24
+    source: specs/comet-plugin-runtime/spec.md
+    text: 一个最小第三方插件可以完成安装、启用、接收带来源事件、调用公开能力、停用和卸载。
+    result: passed
+    reason:
+      text: 最小第三方插件可由用户 install、enable、接收事件、invoke、disable、uninstall。
+      truncated: false
+  - id: A25
+    source: specs/comet-plugin-runtime/spec.md
+    text: 第一方协调自动启用两个描述符；用户卸载其中一个后再次协调不会装回，另一个仍可运行。
+    result: passed
+    reason:
+      text: 两个第一方 descriptor 协调启用，卸载其中一个后协调不装回，另一个保持运行。
+      truncated: false
+  - id: A26
+    source: specs/comet-plugin-runtime/spec.md
+    text: 一个项目插件只在启用的项目作用域接收事件；暂停项目 A 不影响项目 B 或用户级插件。
+    result: passed
+    reason:
+      text: 项目暂停只跳过目标 projectId，其他项目和 user scope 路由不受影响。
+      truncated: false
+  - id: A27
+    source: specs/comet-plugin-runtime/spec.md
+    text: 一个插件的上下文、能力或 Dashboard 贡献抛错时，其他插件仍可返回结果，并在诊断中标明插件和阶段。
+    result: passed
+    reason:
+      text: 插件 context/invoke/dashboard 异常被隔离并记录阶段诊断，健康插件结果保留。
+      truncated: false
+  - id: A28
+    source: specs/comet-plugin-runtime/spec.md
+    text: JSON 状态适配器恢复启用、停用和卸载状态；不兼容插件不会被加载。
+    result: passed
+    reason:
+      text: JsonPluginStateStore 恢复 enabled/disabled/uninstalled，兼容性失败插件不会加载。
+      truncated: false
+builder_handoff:
+  candidate_id: c48ed643-6869-4055-92ad-31649303ced4
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:a07dcbc2-c108-4341-9a40-49c41b9ab87f
+  iteration: 2
+  summary:
+    text: 已修复独立 Verifier 复现的插件运行时缺口：配置和上下文改为深度复制并冻结；enable、disable
+      和项目暂停不再隐式安装未安装插件；缺失能力会写入统一 invoke 诊断。新增回归测试覆盖三条路径。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    - A8
+    - A9
+    - A10
+    - A11
+    - A12
+    - A13
+    - A14
+    - A15
+    - A16
+    - A17
+    - A18
+    - A19
+    - A20
+    - A21
+    - A22
+    - A23
+    - A24
+    - A25
+    - A26
+    - A27
+    - A28
+  checks:
+    - name:
+        text: plugin runtime tests
+        truncated: false
+      result: passed
+      note:
+        text: npx vitest run test/domains/comet-plugin/plugin-runtime.test.ts；10/10 通过
+        truncated: false
+    - name:
+        text: TypeScript typecheck
+        truncated: false
+      result: passed
+      note:
+        text: pnpm exec tsc --noEmit；通过
+        truncated: false
+    - name:
+        text: architecture lint
+        truncated: false
+      result: passed
+      note:
+        text: pnpm run lint:architecture；通过
+        truncated: false
+    - name:
+        text: plugin formatting
+        truncated: false
+      result: passed
+      note:
+        text: npx prettier --check domains/comet-plugin/plugin-runtime.ts
+          domains/comet-plugin/types.ts
+          test/domains/comet-plugin/plugin-runtime.test.ts
+          config/repository-layout.json；通过
+        truncated: false
+    - name:
+        text: repository lint
+        truncated: false
+      result: not-run
+      note:
+        text: pnpm lint 未能运行：child worktree 中没有可用的 eslint 可执行文件
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: 本 child 只实现插件领域运行时和注入式存储、配置、能力接口；个人记忆、项目规则、Skill/CLI 交互和 Dashboard 主机页面由依赖
+        child 实现。
+      truncated: false
+    - text: 跨 Native、Classic、Hotfix、Tweak 的宿主端到端验证留给最终集成 Verify。
+      truncated: false
+    - text: 完整仓库 lint 因 child worktree 缺少 eslint 可执行文件未完成；其余 targeted checks 均通过。
+      truncated: false
+  known_limits_truncated: false
+  submitted_at: 2026-08-14T09:22:01.003Z
+blockers: []
+verification:
+  candidate_id: c48ed643-6869-4055-92ad-31649303ced4
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:28b5f70b-780a-4f4f-9e11-527bae980cfd
+  iteration: 2
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: plugin-runtime-tests
+      name:
+        text: plugin runtime tests
+        truncated: false
+      argv_display:
+        - text: vitest
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/comet-plugin/plugin-runtime.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 2394
+    - id: typescript-typecheck
+      name:
+        text: TypeScript typecheck
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: tsc
+          truncated: false
+        - text: --noEmit
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 6580
+    - id: architecture-lint
+      name:
+        text: architecture lint
+        truncated: false
+      argv_display:
+        - text: run
+          truncated: false
+        - text: lint:architecture
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 874
+    - id: plugin-formatting
+      name:
+        text: plugin formatting
+        truncated: false
+      argv_display:
+        - text: prettier
+          truncated: false
+        - text: --check
+          truncated: false
+        - text: domains/comet-plugin/plugin-runtime.ts
+          truncated: false
+        - text: domains/comet-plugin/types.ts
+          truncated: false
+        - text: test/domains/comet-plugin/plugin-runtime.test.ts
+          truncated: false
+        - text: config/repository-layout.json
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 1564
+  summary:
+    text: 独立只读 Verifier 检查当前 candidate；28/28 验收通过，四项 Runtime 检查通过，可进入 Archive。
+    truncated: false
+  risks:
+    - text: pnpm lint 未运行：child worktree 缺少 eslint 可执行文件；四项针对性检查已通过。
+      truncated: false
+    - text: 跨 Native/Classic/Hotfix/Tweak 的宿主端到端接线属于最终集成 Verify。
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-08-14T09:27:32.416Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 修正 Builder handoff：上一提交只写入了临时占位输入，需补齐真实实现范围和检查记录。
+      truncated: false
+    completed_at: 2026-08-14T08:47:50.062Z
+  - goal_cycle: 1
+    iteration: 2
+    attempt: 1
+    outcome: execution-error
+    unresolved_ids: []
+    summary:
+      text: "Native Verifier response was invalid: Native Verifier repeatedly
+        requested only equivalent checks"
+      truncated: false
+    completed_at: 2026-08-14T08:52:18.920Z
+  - goal_cycle: 1
+    iteration: 2
+    attempt: 2
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 清理 Runner 临时输入文件后重新提交同一实现候选，修复 Verify 检查环境而不改变源码。
+      truncated: false
+    completed_at: 2026-08-14T08:53:50.047Z
+  - goal_cycle: 1
+    iteration: 3
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 实现已补齐插件隔离、来源事件、项目暂停、配置和能力调用，返回 Build 重新提交新的候选。
+      truncated: false
+    completed_at: 2026-08-14T09:04:30.341Z
+  - goal_cycle: 1
+    iteration: 4
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 冻结插件配置上下文后重新提交候选；实现变化仅强化配置隔离，需刷新 Verify。
+      truncated: false
+    completed_at: 2026-08-14T09:07:12.437Z
+  - goal_cycle: 1
+    iteration: 5
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 收敛 child 正式验收范围：父级完整产品验收保留，当前 child 只验收插件运行时接口、隔离和持久化；避免把依赖 child 的宿主功能纳入本
+        child。
+      truncated: false
+    completed_at: 2026-08-14T09:09:55.648Z
+  - goal_cycle: 1
+    iteration: 6
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native confirmed acceptance criteria changed
+      truncated: false
+    completed_at: 2026-08-14T09:10:55.409Z
+  - goal_cycle: 2
+    iteration: 1
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 独立 Verifier 复现三项运行时缺口：配置仅浅层冻结导致嵌套值可变；未安装第三方插件可由 enable
+        或项目暂停路径隐式启用；缺失能力异常未记录统一诊断。返回 Build 修复并补充回归测试。
+      truncated: false
+    completed_at: 2026-08-14T09:19:33.362Z
+  - goal_cycle: 2
+    iteration: 2
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 独立只读 Verifier 检查当前 candidate；28/28 验收通过，四项 Runtime 检查通过，可进入 Archive。
+      truncated: false
+    completed_at: 2026-08-14T09:27:32.416Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-14T08:34:34.204Z
