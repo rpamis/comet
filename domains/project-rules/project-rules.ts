@@ -13,6 +13,7 @@ import type {
   ProjectRulesState,
   ProjectRulesStatus,
   ProjectRuleSourceSnapshot,
+  ProjectRuleVerificationSummary,
   RuleCandidate,
   RuleObservation,
   SelectedProjectRule,
@@ -269,6 +270,14 @@ function hasMeaningfulBuildScript(content: string): boolean {
   );
 }
 
+function hasGradleCheckTask(content: string): boolean {
+  const knownCheckPlugins =
+    /(?:id\s*\(?\s*['"](?:java|java-library|kotlin|groovy|scala|application|checkstyle|pmd|jacoco)['"]|apply\s+plugin\s*:\s*['"](?:java|java-library|kotlin|groovy|scala|application|checkstyle|pmd|jacoco)['"])/u;
+  const explicitCheckTask =
+    /(?:tasks?\s*\.\s*(?:register|named|create)\s*\(?\s*['"]check['"]|task\s*\(?\s*['"]check['"]|\bcheck\s*\{)/u;
+  return knownCheckPlugins.test(content) || explicitCheckTask.test(content);
+}
+
 export class ProjectRulesService {
   private readonly projectRoot: string;
   private readonly projectId: string;
@@ -283,17 +292,15 @@ export class ProjectRulesService {
     this.projectId =
       options.projectId?.trim() ||
       createHash('sha256').update(this.projectRoot).digest('hex').slice(0, 16);
-    const runtimeDirectory = path.resolve(
-      options.runtimeDirectory ?? path.join(this.projectRoot, '.comet', 'runtime', 'project-rules'),
+    const expectedRuntimeDirectory = path.resolve(
+      this.projectRoot,
+      '.comet',
+      'runtime',
+      'project-rules',
     );
-    const relativeRuntime = path.relative(this.projectRoot, runtimeDirectory);
-    if (
-      !relativeRuntime ||
-      relativeRuntime === '..' ||
-      relativeRuntime.startsWith(`..${path.sep}`) ||
-      path.isAbsolute(relativeRuntime)
-    ) {
-      throw new Error('Project rules runtime directory must stay inside the project');
+    const runtimeDirectory = path.resolve(options.runtimeDirectory ?? expectedRuntimeDirectory);
+    if (path.relative(expectedRuntimeDirectory, runtimeDirectory) !== '') {
+      throw new Error('Project rules runtime directory must be .comet/runtime/project-rules');
     }
     this.runtimeDirectory = runtimeDirectory;
     this.stateFile = path.join(this.runtimeDirectory, STATE_FILE);
@@ -565,7 +572,11 @@ export class ProjectRulesService {
       }
     }
     const pom = await this.fileSystem.readText(path.join(this.projectRoot, 'pom.xml'));
-    if (pom && /<project(?:\s|>)/u.test(pom)) {
+    if (
+      pom &&
+      /<project(?:\s|>)/u.test(pom) &&
+      /<modelVersion>\s*[^<]+<\/modelVersion>/u.test(pom)
+    ) {
       const mavenExecutable =
         (await this.fileSystem.readText(path.join(this.projectRoot, 'mvnw'))) !== null
           ? './mvnw'
@@ -595,7 +606,7 @@ export class ProjectRulesService {
     if (
       gradleScript &&
       hasMeaningfulBuildScript(gradleScript) &&
-      /\b(?:check|tasks?|plugins?|apply\s+plugin)\b/u.test(gradleScript)
+      hasGradleCheckTask(gradleScript)
     ) {
       entries.push({
         id: 'gradle-check',
@@ -688,7 +699,12 @@ export class ProjectRulesService {
         kind: source.kind,
         sectionCount: source.sections.length,
       })),
-      verificationEntrypoints: await this.discoverVerificationEntrypoints(),
+      verificationEntrypoints: (await this.discoverVerificationEntrypoints()).map(
+        (entrypoint): ProjectRuleVerificationSummary => ({
+          label: entrypoint.label,
+          sourcePath: entrypoint.sourcePath,
+        }),
+      ),
       candidates: state.candidates.filter(isVisibleCandidate).map(
         (candidate): ProjectRuleCandidateSummary => ({
           text: candidate.text,

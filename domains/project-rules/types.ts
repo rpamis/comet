@@ -31,6 +31,11 @@ export interface VerificationEntrypoint {
   readonly sourcePath: string;
 }
 
+export interface ProjectRuleVerificationSummary {
+  readonly label: string;
+  readonly sourcePath: string;
+}
+
 export interface RuleObservation {
   readonly projectId: string;
   readonly candidateKey: string;
@@ -87,7 +92,7 @@ export interface ProjectRulesStatus {
     kind: ProjectRuleSourceKind;
     sectionCount: number;
   }[];
-  readonly verificationEntrypoints: readonly VerificationEntrypoint[];
+  readonly verificationEntrypoints: readonly ProjectRuleVerificationSummary[];
   readonly candidates: readonly ProjectRuleCandidateSummary[];
 }
 

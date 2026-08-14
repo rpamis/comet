@@ -129,7 +129,10 @@ describe('ProjectRulesService', () => {
         scripts: { lint: 'eslint .', test: 'vitest' },
       }),
     );
-    await writeFile(path.join(projectRoot, 'pom.xml'), '<project />');
+    await writeFile(
+      path.join(projectRoot, 'pom.xml'),
+      '<project><modelVersion>4.0.0</modelVersion></project>',
+    );
     await writeFile(path.join(projectRoot, 'Makefile'), 'check:\n\t@echo ok\n');
 
     const service = new ProjectRulesService({ projectRoot });
@@ -159,6 +162,14 @@ describe('ProjectRulesService', () => {
     expect(entrypoints).toEqual([
       expect.objectContaining({ id: 'python-pytest', sourcePath: 'pytest.ini' }),
     ]);
+
+    await writeFile(
+      path.join(projectRoot, 'build.gradle'),
+      "plugins { id 'com.example.unknown' }\n",
+    );
+    expect(await service.discoverVerificationEntrypoints()).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'gradle-check' })]),
+    );
   });
 
   it('keeps selection bounded, relevant, source-filtered, and glob-safe', async () => {
@@ -217,7 +228,7 @@ describe('ProjectRulesService', () => {
     expect(state.observations[0]?.projectId).toBe('project-a');
     expect(
       () => new ProjectRulesService({ projectRoot, runtimeDirectory: path.dirname(projectRoot) }),
-    ).toThrow(/inside the project/iu);
+    ).toThrow(/must be .comet\/runtime\/project-rules/iu);
   });
 
   it('upgrades a failed change only when the same evidence later succeeds', async () => {

@@ -39,6 +39,7 @@ describe('project rules commands', () => {
       verificationEntrypoints: [expect.objectContaining({ label: 'npm run test' })],
     });
     expect(JSON.parse(logs.at(-1) ?? '{}')).not.toHaveProperty('candidates[0].id');
+    expect(JSON.parse(logs.at(-1) ?? '{}')).not.toHaveProperty('verificationEntrypoints[0].id');
     await expect(
       readFile(path.join(projectRoot, '.comet', 'rules', 'project.md')),
     ).rejects.toMatchObject({
