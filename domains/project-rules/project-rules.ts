@@ -278,6 +278,22 @@ function hasGradleCheckTask(content: string): boolean {
   return knownCheckPlugins.test(content) || explicitCheckTask.test(content);
 }
 
+function hasUsableMavenProject(content: string): boolean {
+  return (
+    /<project(?:\s|>)/u.test(content) &&
+    /<modelVersion>\s*[^<]+<\/modelVersion>/u.test(content) &&
+    /<artifactId>\s*[^<]+<\/artifactId>/u.test(content) &&
+    (/<groupId>\s*[^<]+<\/groupId>/u.test(content) ||
+      /<parent>\s*[\s\S]*?<\/parent>/u.test(content)) &&
+    (/<version>\s*[^<]+<\/version>/u.test(content) ||
+      /<parent>\s*[\s\S]*?<\/parent>/u.test(content))
+  );
+}
+
+function hasUsablePytestProject(pyproject: string | null, pytestIni: string | null): boolean {
+  return pytestIni !== null || (pyproject !== null && /\bpytest\b/u.test(pyproject));
+}
+
 export class ProjectRulesService {
   private readonly projectRoot: string;
   private readonly projectId: string;
@@ -389,7 +405,7 @@ export class ProjectRulesService {
     const selected: SelectedProjectRule[] = [];
     let bytes = 0;
     for (const section of ranked) {
-      const sectionBytes = Buffer.byteLength(`${section.title}\n${section.text}`, 'utf8');
+      const sectionBytes = Buffer.byteLength(JSON.stringify(section), 'utf8');
       if (selected.length >= maxSections || bytes + sectionBytes > maxBytes) continue;
       selected.push(section);
       bytes += sectionBytes;
@@ -415,33 +431,40 @@ export class ProjectRulesService {
   public async recordObservation(
     observation: Omit<RuleObservation, 'observedAt' | 'projectId'>,
   ): Promise<RuleCandidate | null> {
+    const candidateKey = observation.candidateKey.trim();
+    const workflow = observation.workflow.trim();
+    const changeId = observation.changeId.trim();
+    const text = observation.text.trim();
+    if (!candidateKey || !workflow || !changeId || !text) {
+      throw new Error(
+        'Project rule observations require candidate key, workflow, change ID, and text',
+      );
+    }
     const state = await this.ensureState();
     const observedAt = this.now().toISOString();
     const duplicateIndex = state.observations.findIndex(
       (entry) =>
         entry.projectId === this.projectId &&
-        entry.candidateKey === observation.candidateKey &&
-        entry.workflow === observation.workflow &&
-        entry.changeId === observation.changeId,
+        entry.candidateKey === candidateKey &&
+        entry.workflow === workflow &&
+        entry.changeId === changeId,
     );
     const observedEntry: RuleObservation = {
       ...observation,
+      candidateKey,
+      workflow,
+      changeId,
+      text,
       projectId: this.projectId,
       observedAt,
     };
     const nextObservations = [...state.observations];
     if (duplicateIndex >= 0) {
       const previous = nextObservations[duplicateIndex];
-      if (
-        previous.success ||
-        !observation.success ||
-        previous.text.trim() !== observation.text.trim()
-      ) {
+      if (previous.success || !observation.success || previous.text.trim() !== text) {
         return (
           state.candidates.find(
-            (candidate) =>
-              candidate.key === observation.candidateKey &&
-              candidate.text.trim() === observation.text.trim(),
+            (candidate) => candidate.key === candidateKey && candidate.text.trim() === text,
           ) ?? null
         );
       }
@@ -452,23 +475,21 @@ export class ProjectRulesService {
     const successful = nextObservations.filter(
       (entry) =>
         entry.projectId === this.projectId &&
-        entry.candidateKey === observation.candidateKey &&
-        entry.text.trim() === observation.text.trim() &&
+        entry.candidateKey === candidateKey &&
+        entry.text.trim() === text &&
         entry.success,
     );
     let candidates = [...state.candidates];
     if (
       successful.length >= 2 &&
       !candidates.some(
-        (candidate) =>
-          candidate.key === observation.candidateKey &&
-          candidate.text.trim() === observation.text.trim(),
+        (candidate) => candidate.key === candidateKey && candidate.text.trim() === text,
       )
     ) {
       candidates.push({
-        id: candidateId(observation.candidateKey, observation.text),
-        key: observation.candidateKey,
-        text: observation.text,
+        id: candidateId(candidateKey, text),
+        key: candidateKey,
+        text,
         status: 'pending',
         observations: successful.length,
         createdAt: observedAt,
@@ -476,14 +497,17 @@ export class ProjectRulesService {
       });
     } else {
       candidates = candidates.map((candidate) =>
-        candidate.key === observation.candidateKey &&
-        candidate.text.trim() === observation.text.trim()
+        candidate.key === candidateKey && candidate.text.trim() === text
           ? { ...candidate, observations: successful.length, updatedAt: observedAt }
           : candidate,
       );
     }
     await this.persist({ ...state, observations: nextObservations, candidates });
-    return candidates.find((candidate) => candidate.key === observation.candidateKey) ?? null;
+    return (
+      candidates.find(
+        (candidate) => candidate.key === candidateKey && candidate.text.trim() === text,
+      ) ?? null
+    );
   }
 
   public async candidates(): Promise<readonly ProjectRuleCandidateSummary[]> {
@@ -572,11 +596,7 @@ export class ProjectRulesService {
       }
     }
     const pom = await this.fileSystem.readText(path.join(this.projectRoot, 'pom.xml'));
-    if (
-      pom &&
-      /<project(?:\s|>)/u.test(pom) &&
-      /<modelVersion>\s*[^<]+<\/modelVersion>/u.test(pom)
-    ) {
+    if (pom && hasUsableMavenProject(pom)) {
       const mavenExecutable =
         (await this.fileSystem.readText(path.join(this.projectRoot, 'mvnw'))) !== null
           ? './mvnw'
@@ -632,7 +652,7 @@ export class ProjectRulesService {
     }
     const pyproject = await this.fileSystem.readText(path.join(this.projectRoot, 'pyproject.toml'));
     const pytestIni = await this.fileSystem.readText(path.join(this.projectRoot, 'pytest.ini'));
-    if (pyproject || pytestIni) {
+    if (hasUsablePytestProject(pyproject, pytestIni)) {
       entries.push({
         id: 'python-pytest',
         label: 'python -m pytest',

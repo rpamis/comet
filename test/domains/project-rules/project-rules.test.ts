@@ -131,7 +131,7 @@ describe('ProjectRulesService', () => {
     );
     await writeFile(
       path.join(projectRoot, 'pom.xml'),
-      '<project><modelVersion>4.0.0</modelVersion></project>',
+      '<project><modelVersion>4.0.0</modelVersion><groupId>demo</groupId><artifactId>demo</artifactId><version>1.0.0</version></project>',
     );
     await writeFile(path.join(projectRoot, 'Makefile'), 'check:\n\t@echo ok\n');
 
@@ -170,6 +170,12 @@ describe('ProjectRulesService', () => {
     expect(await service.discoverVerificationEntrypoints()).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ id: 'gradle-check' })]),
     );
+
+    await rm(path.join(projectRoot, 'pytest.ini'));
+    await writeFile(path.join(projectRoot, 'pyproject.toml'), '[project]\nname = "demo"\n');
+    expect(await service.discoverVerificationEntrypoints()).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'python-pytest' })]),
+    );
   });
 
   it('keeps selection bounded, relevant, source-filtered, and glob-safe', async () => {
@@ -190,6 +196,7 @@ describe('ProjectRulesService', () => {
       sourceKinds: ['comet-rules'],
     });
     expect(selected.length).toBeLessThanOrEqual(5);
+    expect(Buffer.byteLength(JSON.stringify(selected), 'utf8')).toBeLessThanOrEqual(8 * 1024);
     expect(
       selected.every((rule) => Buffer.byteLength(`${rule.title}\n${rule.text}`) <= 8 * 1024),
     ).toBe(true);
@@ -258,6 +265,15 @@ describe('ProjectRulesService', () => {
     expect(await service.candidateDetails()).toEqual([
       expect.objectContaining({ key: 'dto', observations: 2 }),
     ]);
+    await expect(
+      service.recordObservation({
+        candidateKey: 'dto',
+        text: 'DTO 使用 PascalCase。',
+        workflow: ' ',
+        changeId: 'change-c',
+        success: true,
+      }),
+    ).rejects.toThrow(/require candidate key/iu);
   });
 
   it('keeps context selection within conservative limits', async () => {
