@@ -146,6 +146,21 @@ describe('ProjectRulesService', () => {
         expect.objectContaining({ label: 'make check', executable: 'make' }),
       ]),
     );
+
+    await writeFile(
+      path.join(projectRoot, 'pom.xml'),
+      '<project><modelVersion>4.0.0</modelVersion><groupId>demo</groupId><artifactId>demo</artifactId><version>1.0.0</version>',
+    );
+    expect(await service.discoverVerificationEntrypoints()).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'maven-verify' })]),
+    );
+    await writeFile(
+      path.join(projectRoot, 'pom.xml'),
+      '<project><modelVersion>4.0.0</modelVersion><dependencies><dependency><groupId>demo</groupId><artifactId>demo</artifactId><version>1.0.0</version></dependency></dependencies></project>',
+    );
+    expect(await service.discoverVerificationEntrypoints()).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'maven-verify' })]),
+    );
   });
 
   it('does not claim an empty Gradle script and preserves the Python source', async () => {
@@ -290,6 +305,15 @@ describe('ProjectRulesService', () => {
         success: true,
       }),
     ).rejects.toThrow(/workflow family/iu);
+    await expect(
+      service.recordObservation({
+        candidateKey: 'dto',
+        text: 'DTO 使用 PascalCase。',
+        workflow: 'full',
+        changeId: 'change-d',
+        success: true,
+      }),
+    ).resolves.toBeDefined();
   });
 
   it('keeps context selection within conservative limits', async () => {

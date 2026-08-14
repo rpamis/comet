@@ -20,7 +20,7 @@ Runtime 状态位于 `.comet/runtime/project-rules/`，包括最近扫描、来�
 - `init` 和 `scan` 都执行有边界的只读盘点，并更新 Runtime 状态；两者幂等且不创建 Comet change。
 - `status` 返回初始化、上次盘点、来源、验证入口和待处理/稍后候选摘要；摘要只包含用户可读文本和处理状态，候选详情按需读取。
 - 显式添加的规则立即写入用户指定的普通 Markdown 文件；自动候选只有用户选择加入后才能生成仓库改动。
-- 观察必须带项目身份、workflow 家族、change ID、成功结果和候选键。同一 change 只计一次；至少两个不同且成功的 change 提供一致证据后才生成非阻塞候选。
+- 观察必须带项目身份、workflow 家族、change ID、成功结果和候选键。Native 使用 `native`，Classic 使用 `full`、`hotfix` 或 `tweak`；宿主传入 `classic` 时归一化为 `full`，不能形成第二个证据族。同一 change 只计一次；至少两个不同且成功的 change 提供一致证据后才生成非阻塞候选。
 - 候选可以 `adopt`、`ignore`、`snooze` 或恢复为待处理。未采用候选不进入上下文，不阻塞编译、测试、构建或 CI，也不静默修改规则来源。
 
 ## 上下文选择

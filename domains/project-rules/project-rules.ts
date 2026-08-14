@@ -28,7 +28,11 @@ const KNOWN_INSTRUCTION_FILES = [
   'CLAUDE.md',
   '.github/copilot-instructions.md',
 ] as const;
-const COMET_WORKFLOW_FAMILIES = new Set(['native', 'classic', 'hotfix', 'tweak']);
+// Native uses `native`; Classic changes persist their profile as `full`,
+// `hotfix`, or `tweak`. `classic` remains an input alias for callers that
+// report the host workflow rather than the persisted Classic profile, but is
+// normalized to `full` so it cannot create a second evidence family.
+const COMET_WORKFLOW_FAMILIES = new Set(['native', 'full', 'hotfix', 'tweak']);
 
 function createDefaultFileSystem(): ProjectRulesFileSystem {
   return {
@@ -280,16 +284,51 @@ function stripGradleComments(content: string): string {
 }
 
 function hasUsableMavenProject(content: string): boolean {
-  const project = content.replace(/<!--[\s\S]*?-->/gu, '');
+  const project = directXmlElements(content, 'project');
+  if (!project) return false;
+  const parent = project.get('parent');
+  const parentElements = parent ? directXmlElements(`<parent>${parent}</parent>`, 'parent') : null;
+  const hasValue = (elements: ReadonlyMap<string, string> | null, name: string): boolean =>
+    (elements?.get(name)?.trim().length ?? 0) > 0;
   return (
-    /<project(?:\s|>)/u.test(project) &&
-    /<modelVersion>\s*[^<]+<\/modelVersion>/u.test(project) &&
-    /<artifactId>\s*[^<]+<\/artifactId>/u.test(project) &&
-    (/<groupId>\s*[^<]+<\/groupId>/u.test(project) ||
-      /<parent>\s*[\s\S]*?<\/parent>/u.test(project)) &&
-    (/<version>\s*[^<]+<\/version>/u.test(project) ||
-      /<parent>\s*[\s\S]*?<\/parent>/u.test(project))
+    hasValue(project, 'modelVersion') &&
+    hasValue(project, 'artifactId') &&
+    (hasValue(project, 'groupId') || hasValue(parentElements, 'groupId')) &&
+    (hasValue(project, 'version') || hasValue(parentElements, 'version'))
   );
+}
+
+function directXmlElements(content: string, rootName: string): Map<string, string> | null {
+  const project = content.replace(/<!--[\s\S]*?-->/gu, '').trim();
+  const rootStart = new RegExp(`<${rootName}(?:\\s[^>]*)?>`, 'u').exec(project);
+  const rootEnd = new RegExp(`</${rootName}>\\s*$`, 'u').exec(project);
+  if (!rootStart || !rootEnd || rootStart.index >= rootEnd.index) return null;
+  const body = project.slice(rootStart.index + rootStart[0].length, rootEnd.index);
+  const elements = new Map<string, string>();
+  const stack: string[] = [];
+  let directName: string | null = null;
+  let directValueStart = 0;
+  const tags = /<\/?([A-Za-z_][\w:.-]*)(?:\s[^>]*)?\/?>/gu;
+  for (const match of body.matchAll(tags)) {
+    const token = match[0];
+    const name = match[1];
+    if (token.startsWith('</')) {
+      if (stack.pop() !== name) return null;
+      if (stack.length === 0 && directName === name) {
+        elements.set(name, body.slice(directValueStart, match.index).trim());
+        directName = null;
+      }
+    } else if (token.endsWith('/>')) {
+      if (stack.length === 0) elements.set(name, '');
+    } else {
+      if (stack.length === 0) {
+        directName = name;
+        directValueStart = (match.index ?? 0) + token.length;
+      }
+      stack.push(name);
+    }
+  }
+  return stack.length === 0 && directName === null ? elements : null;
 }
 
 function hasUsablePytestProject(pyproject: string | null, pytestIni: string | null): boolean {
@@ -451,7 +490,8 @@ export class ProjectRulesService {
     observation: Omit<RuleObservation, 'observedAt' | 'projectId'>,
   ): Promise<RuleCandidate | null> {
     const candidateKey = observation.candidateKey.trim();
-    const workflow = observation.workflow.trim();
+    const workflowInput = observation.workflow.trim().toLocaleLowerCase();
+    const workflow = workflowInput === 'classic' ? 'full' : workflowInput;
     const changeId = observation.changeId.trim();
     const text = observation.text.trim();
     if (!candidateKey || !workflow || !changeId || !text) {

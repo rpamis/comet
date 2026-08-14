@@ -12,7 +12,7 @@
 - 用户可以显式追加规则、忽略候选或稍后处理候选；写入时保留已有 Markdown 内容。
 - 从项目 manifest、构建文件和脚本发现项目实际验证入口，支持不同技术栈和 Maven/Gradle 等插件，不规定统一命令。
 - 以任务、路径和来源范围做确定性规则选择，使用固定条目数和字节上限；未选中的规则不进入上下文。
-- 记录带 workflow、project、change 和成功结果的轻量观察；同一 change 去重，至少两个独立成功 change 的一致观察才形成非阻塞候选。
+- 记录带 workflow、project、change 和成功结果的轻量观察；Native 使用 `native`，Classic 使用 `full`、`hotfix` 或 `tweak`（宿主传入 `classic` 时归一化为 `full`）；同一 change 去重，至少两个独立成功 change 的一致观察才形成非阻塞候选。
 - 提供 `comet rules init|scan|status` 的 CLI 入口；Skill、Hook、宿主 Rule 加载器和 Dashboard 只消费本 child 的公开服务，留给最终接线。
 
 # Non-goals
