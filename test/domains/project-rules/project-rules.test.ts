@@ -165,7 +165,7 @@ describe('ProjectRulesService', () => {
 
     await writeFile(
       path.join(projectRoot, 'build.gradle'),
-      "plugins { id 'com.example.unknown' }\n",
+      "version = '1.0'\n// plugins { id 'java' }\n",
     );
     expect(await service.discoverVerificationEntrypoints()).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ id: 'gradle-check' })]),
@@ -173,6 +173,13 @@ describe('ProjectRulesService', () => {
 
     await rm(path.join(projectRoot, 'pytest.ini'));
     await writeFile(path.join(projectRoot, 'pyproject.toml'), '[project]\nname = "demo"\n');
+    expect(await service.discoverVerificationEntrypoints()).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'python-pytest' })]),
+    );
+    await writeFile(
+      path.join(projectRoot, 'pyproject.toml'),
+      '[project]\ndescription = "pytest is not used here"\n',
+    );
     expect(await service.discoverVerificationEntrypoints()).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ id: 'python-pytest' })]),
     );
@@ -274,6 +281,15 @@ describe('ProjectRulesService', () => {
         success: true,
       }),
     ).rejects.toThrow(/require candidate key/iu);
+    await expect(
+      service.recordObservation({
+        candidateKey: 'dto',
+        text: 'DTO 使用 PascalCase。',
+        workflow: 'other',
+        changeId: 'change-c',
+        success: true,
+      }),
+    ).rejects.toThrow(/workflow family/iu);
   });
 
   it('keeps context selection within conservative limits', async () => {

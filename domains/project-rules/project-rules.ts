@@ -28,6 +28,7 @@ const KNOWN_INSTRUCTION_FILES = [
   'CLAUDE.md',
   '.github/copilot-instructions.md',
 ] as const;
+const COMET_WORKFLOW_FAMILIES = new Set(['native', 'classic', 'hotfix', 'tweak']);
 
 function createDefaultFileSystem(): ProjectRulesFileSystem {
   return {
@@ -262,36 +263,55 @@ function sourceSnapshot(source: ProjectRuleSource, content: string): ProjectRule
 }
 
 function hasMeaningfulBuildScript(content: string): boolean {
-  return (
-    content
-      .replace(/\/\/.*$/gmu, '')
-      .replace(/\/\*[\s\S]*?\*\//gu, '')
-      .trim().length > 0
-  );
+  return stripGradleComments(content).trim().length > 0;
 }
 
 function hasGradleCheckTask(content: string): boolean {
+  const script = stripGradleComments(content);
   const knownCheckPlugins =
     /(?:id\s*\(?\s*['"](?:java|java-library|kotlin|groovy|scala|application|checkstyle|pmd|jacoco)['"]|apply\s+plugin\s*:\s*['"](?:java|java-library|kotlin|groovy|scala|application|checkstyle|pmd|jacoco)['"])/u;
   const explicitCheckTask =
     /(?:tasks?\s*\.\s*(?:register|named|create)\s*\(?\s*['"]check['"]|task\s*\(?\s*['"]check['"]|\bcheck\s*\{)/u;
-  return knownCheckPlugins.test(content) || explicitCheckTask.test(content);
+  return knownCheckPlugins.test(script) || explicitCheckTask.test(script);
+}
+
+function stripGradleComments(content: string): string {
+  return content.replace(/\/\/.*$/gmu, '').replace(/\/\*[\s\S]*?\*\//gu, '');
 }
 
 function hasUsableMavenProject(content: string): boolean {
+  const project = content.replace(/<!--[\s\S]*?-->/gu, '');
   return (
-    /<project(?:\s|>)/u.test(content) &&
-    /<modelVersion>\s*[^<]+<\/modelVersion>/u.test(content) &&
-    /<artifactId>\s*[^<]+<\/artifactId>/u.test(content) &&
-    (/<groupId>\s*[^<]+<\/groupId>/u.test(content) ||
-      /<parent>\s*[\s\S]*?<\/parent>/u.test(content)) &&
-    (/<version>\s*[^<]+<\/version>/u.test(content) ||
-      /<parent>\s*[\s\S]*?<\/parent>/u.test(content))
+    /<project(?:\s|>)/u.test(project) &&
+    /<modelVersion>\s*[^<]+<\/modelVersion>/u.test(project) &&
+    /<artifactId>\s*[^<]+<\/artifactId>/u.test(project) &&
+    (/<groupId>\s*[^<]+<\/groupId>/u.test(project) ||
+      /<parent>\s*[\s\S]*?<\/parent>/u.test(project)) &&
+    (/<version>\s*[^<]+<\/version>/u.test(project) ||
+      /<parent>\s*[\s\S]*?<\/parent>/u.test(project))
   );
 }
 
 function hasUsablePytestProject(pyproject: string | null, pytestIni: string | null): boolean {
-  return pytestIni !== null || (pyproject !== null && /\bpytest\b/u.test(pyproject));
+  if (pytestIni !== null || pyproject === null) return pytestIni !== null;
+  const lines = pyproject.replace(/^\s*#.*$/gmu, '').split(/\r?\n/u);
+  let section = '';
+  for (const line of lines) {
+    const heading = /^\s*\[([^\]]+)\]\s*$/u.exec(line);
+    if (heading) {
+      section = heading[1].toLocaleLowerCase();
+      if (section.startsWith('tool.pytest')) return true;
+      continue;
+    }
+    if (section.includes('dependenc') && /^\s*pytest\s*(?:[=<>!~]|$)/u.test(line)) return true;
+    if (
+      section === 'project' &&
+      /^\s*(?:dependencies|optional-dependencies)\s*=.*\bpytest(?:[<>=~!]|["'])/u.test(line)
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export class ProjectRulesService {
@@ -403,12 +423,11 @@ export class ProjectRulesService {
       Math.max(1, request.maxBytes ?? DEFAULT_MAX_BYTES),
     );
     const selected: SelectedProjectRule[] = [];
-    let bytes = 0;
     for (const section of ranked) {
-      const sectionBytes = Buffer.byteLength(JSON.stringify(section), 'utf8');
-      if (selected.length >= maxSections || bytes + sectionBytes > maxBytes) continue;
+      if (selected.length >= maxSections) continue;
+      const candidate = [...selected, section];
+      if (Buffer.byteLength(JSON.stringify(candidate), 'utf8') > maxBytes) continue;
       selected.push(section);
-      bytes += sectionBytes;
     }
     return selected;
   }
@@ -439,6 +458,9 @@ export class ProjectRulesService {
       throw new Error(
         'Project rule observations require candidate key, workflow, change ID, and text',
       );
+    }
+    if (!COMET_WORKFLOW_FAMILIES.has(workflow.toLocaleLowerCase())) {
+      throw new Error(`Unsupported Comet workflow family: ${workflow}`);
     }
     const state = await this.ensureState();
     const observedAt = this.now().toISOString();
