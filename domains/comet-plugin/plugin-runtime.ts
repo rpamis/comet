@@ -132,7 +132,7 @@ export class PluginRuntime {
     this.store = options.store;
     this.storage = options.storage ?? new MemoryPluginStorageStore();
     this.config = Object.fromEntries(
-      Object.entries(options.config ?? {}).map(([id, value]) => [id, { ...value }]),
+      Object.entries(options.config ?? {}).map(([id, value]) => [id, cloneValue(value)]),
     );
     this.descriptors = descriptors;
     this.now = options.now ?? (() => new Date());
@@ -199,6 +199,7 @@ export class PluginRuntime {
   public async enable(id: string, target?: PluginScopeContext): Promise<void> {
     const descriptor = this.requireDescriptor(id);
     this.assertCompatible(descriptor);
+    await this.requireInstalled(descriptor);
     if (target?.scope === 'project' && target.projectId !== undefined) {
       await this.setProjectPause(descriptor, target.projectId, false);
       return;
@@ -208,6 +209,7 @@ export class PluginRuntime {
 
   public async disable(id: string, target?: PluginScopeContext): Promise<void> {
     const descriptor = this.requireDescriptor(id);
+    await this.requireInstalled(descriptor);
     if (target?.scope === 'project' && target.projectId !== undefined) {
       await this.setProjectPause(descriptor, target.projectId, true);
       await this.disposeActive(id, target.projectId);
@@ -244,12 +246,12 @@ export class PluginRuntime {
 
   public getConfig(id: string): Readonly<Record<string, unknown>> {
     this.requireDescriptor(id);
-    return Object.freeze({ ...(this.config[id] ?? {}) });
+    return cloneAndFreeze(this.config[id] ?? {}) as Readonly<Record<string, unknown>>;
   }
 
   public async configure(id: string, config: Readonly<Record<string, unknown>>): Promise<void> {
     this.requireDescriptor(id);
-    this.config[id] = { ...config };
+    this.config[id] = cloneValue(config);
     await this.disposeActive(id);
   }
 
@@ -264,6 +266,12 @@ export class PluginRuntime {
     await this.loadScope(target);
     const active = this.active.get(this.activeKey(id, target));
     if (active === undefined || active.module.invoke === undefined) {
+      this.diagnosticEntries.push({
+        pluginId: descriptor.id,
+        code: 'missing',
+        phase: 'invoke',
+        message: `Plugin capability is unavailable: ${id}/${capability}`,
+      });
       throw new PluginRuntimeError(
         `Plugin capability is unavailable: ${id}/${capability}`,
         'missing',
@@ -377,7 +385,9 @@ export class PluginRuntime {
           cometVersion: this.cometVersion,
           scope: target.scope,
           projectId: target.projectId,
-          config: Object.freeze({ ...(this.config[descriptor.id] ?? {}) }),
+          config: cloneAndFreeze(this.config[descriptor.id] ?? {}) as Readonly<
+            Record<string, unknown>
+          >,
           storage: await this.storage.open(descriptor.id, target.scope, target.projectId),
           reportDiagnostic: (diagnostic) =>
             this.diagnosticEntries.push({ pluginId: descriptor.id, ...diagnostic }),
@@ -423,7 +433,10 @@ export class PluginRuntime {
   ): Promise<void> {
     const state = await this.ensureState();
     const existing = state.plugins.find((record) => record.id === descriptor.id);
-    const current = existing ?? this.record(descriptor.id, descriptor.version, 'enabled');
+    if (existing === undefined || existing.status === 'uninstalled') {
+      throw new PluginRuntimeError(`Plugin is not installed: ${descriptor.id}`, 'missing');
+    }
+    const current = existing;
     const disabledProjects = new Set(current.disabledProjects);
     if (paused) disabledProjects.add(projectId);
     else disabledProjects.delete(projectId);
@@ -479,6 +492,17 @@ export class PluginRuntime {
     const descriptor = this.descriptors.get(id);
     if (descriptor === undefined) throw new PluginRuntimeError(`Unknown plugin: ${id}`, 'missing');
     return descriptor;
+  }
+
+  private async requireInstalled(
+    descriptor: PluginDescriptor,
+  ): Promise<PluginState['plugins'][number]> {
+    const state = await this.ensureState();
+    const record = state.plugins.find((entry) => entry.id === descriptor.id);
+    if (record === undefined || record.status === 'uninstalled') {
+      throw new PluginRuntimeError(`Plugin is not installed: ${descriptor.id}`, 'missing');
+    }
+    return record;
   }
 
   private assertCompatible(descriptor: PluginDescriptor): void {

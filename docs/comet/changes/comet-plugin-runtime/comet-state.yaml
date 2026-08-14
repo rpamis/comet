@@ -3,7 +3,7 @@ name: comet-plugin-runtime
 language: zh-CN
 phase: build
 status: active
-state_version: 22
+state_version: 26
 brief: brief.md
 spec_changes:
   - capability: comet-plugin-runtime
@@ -15,9 +15,9 @@ workspace:
   target_branch: beta20
   finish: null
 loop:
-  stage: building
+  stage: repairing
   goal_cycle: 2
-  iteration: 1
+  iteration: 2
   attempt: 0
   retry_epoch: 0
   failed_iteration_count: 0
@@ -239,6 +239,16 @@ history:
       text: Native confirmed acceptance criteria changed
       truncated: false
     completed_at: 2026-08-14T09:10:55.409Z
+  - goal_cycle: 2
+    iteration: 1
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 独立 Verifier 复现三项运行时缺口：配置仅浅层冻结导致嵌套值可变；未安装第三方插件可由 enable
+        或项目暂停路径隐式启用；缺失能力异常未记录统一诊断。返回 Build 修复并补充回归测试。
+      truncated: false
+    completed_at: 2026-08-14T09:19:33.362Z
 history_overflow:
   dropped_entries: 0
   first_dropped_at: null

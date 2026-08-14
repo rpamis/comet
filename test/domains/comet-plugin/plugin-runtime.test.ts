@@ -252,14 +252,14 @@ describe('PluginRuntime', () => {
       store: new MemoryPluginStateStore(),
       storage,
       config: {
-        memory: { mode: 'safe' },
+        memory: { mode: 'safe', nested: { level: 'strict' } },
         rules: { mode: 'strict' },
       },
       descriptors: [
         descriptor('memory', 'first-party', {
           scopes: ['project'],
           create: async (context) => {
-            expect(context.config).toEqual({ mode: 'safe' });
+            expect(context.config).toEqual({ mode: 'safe', nested: { level: 'strict' } });
             await context.storage.write({ owner: 'memory' });
             return {
               events: ['change.completed'],
@@ -379,5 +379,55 @@ describe('PluginRuntime', () => {
       { pluginId: 'memory', text: 'version-2' },
     ]);
     expect(disposals).toBe(1);
+  });
+
+  it('deep-freezes configuration and does not enable an uninstalled plugin', async () => {
+    let contextConfig: Readonly<Record<string, unknown>> | undefined;
+    const runtime = new PluginRuntime({
+      cometVersion: '1.0.0',
+      store: new MemoryPluginStateStore(),
+      config: { external: { nested: { enabled: true } } },
+      descriptors: [
+        descriptor('external', 'third-party', {
+          create: (context) => {
+            contextConfig = context.config;
+            return {};
+          },
+        }),
+      ],
+    });
+
+    await expect(runtime.enable('external')).rejects.toMatchObject({ code: 'missing' });
+    await expect(
+      runtime.disable('external', { scope: 'project', projectId: 'project-a' }),
+    ).rejects.toMatchObject({ code: 'missing' });
+    expect(await runtime.get('external')).toMatchObject({ status: 'uninstalled' });
+
+    await runtime.install('external');
+    await runtime.collectContext({ task: 'inspect' }, 'user');
+    expect(Object.isFrozen(contextConfig)).toBe(true);
+    expect(Object.isFrozen(contextConfig?.nested)).toBe(true);
+    expect(() => {
+      (contextConfig?.nested as Record<string, unknown>).enabled = false;
+    }).toThrow();
+    expect(runtime.getConfig('external')).toEqual({ nested: { enabled: true } });
+  });
+
+  it('records a diagnostic when a requested capability is missing', async () => {
+    const runtime = new PluginRuntime({
+      cometVersion: '1.0.0',
+      store: new MemoryPluginStateStore(),
+      descriptors: [descriptor('memory', 'first-party')],
+    });
+    await runtime.reconcileFirstParty();
+
+    await expect(runtime.invoke('memory', 'missing', {})).rejects.toMatchObject({
+      code: 'missing',
+    });
+    expect(runtime.diagnostics()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ pluginId: 'memory', code: 'missing', phase: 'invoke' }),
+      ]),
+    );
   });
 });
