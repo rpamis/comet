@@ -2,15 +2,20 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const runNativeCli = vi.fn();
 const recordCometWorkflowResult = vi.fn();
+const collectCometPluginContext = vi.fn();
 
 vi.mock('../../domains/comet-native/native-cli.js', () => ({ runNativeCli }));
-vi.mock('../../domains/comet-entry/plugin-context.js', () => ({ recordCometWorkflowResult }));
+vi.mock('../../domains/comet-entry/plugin-context.js', () => ({
+  recordCometWorkflowResult,
+  collectCometPluginContext,
+}));
 
 describe('Native command facade', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     runNativeCli.mockReset();
     recordCometWorkflowResult.mockReset();
+    collectCometPluginContext.mockReset();
   });
 
   it('forwards exact argv, stdout, stderr, and exit code', async () => {
@@ -83,6 +88,48 @@ describe('Native command facade', () => {
         changeId: 'change-name',
         command: 'archive',
         success: true,
+      }),
+    );
+  });
+
+  it('automatically collects task context before a workflow command', async () => {
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    collectCometPluginContext.mockResolvedValue([
+      { pluginId: 'comet.personal-memory', text: '使用中文回复' },
+    ]);
+    runNativeCli.mockResolvedValue({ exitCode: 0, stdout: 'done\n', stderr: '' });
+    const { runNativeFacade } = await import('../../app/commands/native.js');
+
+    await runNativeFacade([
+      'next',
+      'change-name',
+      '--comet-task',
+      '完成服务端改动',
+      '--comet-path',
+      'src/server.ts',
+      '--comet-phase',
+      'verify',
+    ]);
+
+    expect(runNativeCli).toHaveBeenCalledWith(['next', 'change-name']);
+    expect(collectCometPluginContext).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ task: '完成服务端改动', path: 'src/server.ts', phase: 'verify' }),
+    );
+    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('使用中文回复'));
+  });
+
+  it('records verification commands as verification lifecycle events', async () => {
+    runNativeCli.mockResolvedValue({ exitCode: 0, stdout: 'verified\n', stderr: '' });
+    const { runNativeFacade } = await import('../../app/commands/native.js');
+
+    await runNativeFacade(['check', 'change-name', '--comet-workflow', 'native']);
+
+    expect(recordCometWorkflowResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: 'check',
+        eventName: 'verification.completed',
+        workflow: 'native',
       }),
     );
   });

@@ -4,17 +4,22 @@ import path from 'path';
 
 const runClassicCli = vi.fn();
 const recordCometWorkflowResult = vi.fn();
+const collectCometPluginContext = vi.fn();
 
 vi.mock('../../domains/comet-classic/classic-cli.js', () => ({
   runClassicCli,
 }));
-vi.mock('../../domains/comet-entry/plugin-context.js', () => ({ recordCometWorkflowResult }));
+vi.mock('../../domains/comet-entry/plugin-context.js', () => ({
+  recordCometWorkflowResult,
+  collectCometPluginContext,
+}));
 
 describe('Classic command facade', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     runClassicCli.mockReset();
     recordCometWorkflowResult.mockReset();
+    collectCometPluginContext.mockReset();
   });
 
   it('exposes exactly the four stable public Classic commands', async () => {
@@ -142,6 +147,47 @@ describe('Classic command facade', () => {
         changeId: 'change-name',
         command: 'archive',
         success: true,
+      }),
+    );
+  });
+
+  it('automatically collects task context before a Classic command', async () => {
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    collectCometPluginContext.mockResolvedValue([
+      { pluginId: 'comet.project-rules', text: '服务端改动必须运行测试' },
+    ]);
+    runClassicCli.mockResolvedValue({ exitCode: 0, stdout: 'done\n', stderr: '' });
+    const { runClassicFacade } = await import('../../app/commands/classic.js');
+
+    await runClassicFacade('guard', [
+      'check',
+      '--comet-task',
+      '完成服务端改动',
+      '--comet-path',
+      'src/server.ts',
+      '--comet-phase',
+      'verify',
+    ]);
+
+    expect(runClassicCli).toHaveBeenCalledWith(['guard', 'check']);
+    expect(collectCometPluginContext).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ task: '完成服务端改动', path: 'src/server.ts', phase: 'verify' }),
+    );
+    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('服务端改动必须运行测试'));
+  });
+
+  it('records Classic verification using the selected preset family', async () => {
+    runClassicCli.mockResolvedValue({ exitCode: 0, stdout: 'verified\n', stderr: '' });
+    const { runClassicFacade } = await import('../../app/commands/classic.js');
+
+    await runClassicFacade('guard', ['check', '--comet-workflow', 'hotfix']);
+
+    expect(recordCometWorkflowResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: 'guard',
+        eventName: 'verification.completed',
+        workflow: 'hotfix',
       }),
     );
   });

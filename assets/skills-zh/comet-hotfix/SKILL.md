@@ -31,7 +31,7 @@ disable-model-invocation: true
 
 恢复已有 hotfix change 时，第一项状态操作必须是 `comet state select <change-name>`；创建新 change 时，在 `.comet.yaml` 初始化成功后立即运行该命令，再进入源码写入步骤。
 
-进入 hotfix 工作区后，自动运行 `comet memory context <project-root> --task "<用户原始请求>" --json`，只注入当前任务相关的记忆和项目规则。完成、验证或审查后运行 `comet memory observe`；编译器、测试或 linter 指出项目规范时运行 `comet rules observe`，需要执行仓库已有检查时运行 `comet rules verify`，任务结束运行 `comet rules candidates --json` 并合并为一条摘要。用户可以在当前对话中全部加入、选择部分加入、忽略或稍后处理。没有 Hook 时由本 Skill 直接执行。
+进入 hotfix 工作区后，自动运行 `comet memory context <project-root> --task "<用户原始请求>" --json`，只注入当前任务相关的记忆和项目规则；工作流命令可带 `--comet-task`、`--comet-path`、`--comet-phase`，CLI 会自动显示相关片段。完成、验证或审查后运行 `comet memory observe`；编译器、测试或 linter 指出项目规范时运行 `comet rules observe`，需要执行仓库已有检查时运行 `comet rules verify --max-attempts 3`，失败按诊断修复后重跑；任务结束运行 `comet rules candidates --json`，使用一条摘要处理加入、忽略或稍后。没有 Hook 时由本 Skill 直接执行。
 
 ### 1. 快速开启（预设 open）
 

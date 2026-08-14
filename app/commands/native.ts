@@ -1,10 +1,18 @@
 import { runNativeCli } from '../../domains/comet-native/native-cli.js';
-import { recordCometWorkflowResult } from '../../domains/comet-entry/plugin-context.js';
+import {
+  collectCometPluginContext,
+  collectCometProjectRuleCandidates,
+  recordCometWorkflowResult,
+} from '../../domains/comet-entry/plugin-context.js';
 import path from 'node:path';
 
 export async function runNativeFacade(args: readonly string[]): Promise<number> {
-  const result = await runNativeCli(args);
-  await recordNativeResult(args, result);
+  const integration = splitIntegrationArgs(args);
+  const projectRoot = path.resolve(integration.projectRoot ?? process.cwd());
+  await emitContext(projectRoot, integration);
+  const result = await runNativeCli(integration.cliArgs);
+  await recordNativeResult(integration.cliArgs, result, integration.workflow);
+  if (result.exitCode === 0) await emitCandidates(projectRoot);
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr)
     process.stderr.write(result.stderr + (result.stderr.endsWith('\n') ? '' : '\n'));
@@ -14,10 +22,11 @@ export async function runNativeFacade(args: readonly string[]): Promise<number> 
 async function recordNativeResult(
   args: readonly string[],
   result: Awaited<ReturnType<typeof runNativeCli>>,
+  workflowOverride?: string,
 ): Promise<void> {
   if (result.exitCode !== 0) return;
-  const command = args.find((value) => ['next', 'archive', 'handoff'].includes(value));
-  if (!command || !['next', 'archive', 'handoff'].includes(command)) return;
+  const command = args.find((value) => ['next', 'archive', 'handoff', 'check'].includes(value));
+  if (!command || !['next', 'archive', 'handoff', 'check'].includes(command)) return;
   const commandIndex = args.indexOf(command);
   const projectIndex = args.indexOf('--project-root');
   const projectRoot = projectIndex >= 0 ? args[projectIndex + 1] : process.cwd();
@@ -28,13 +37,98 @@ async function recordNativeResult(
   try {
     await recordCometWorkflowResult({
       projectRoot: path.resolve(projectRoot),
-      workflow: 'native',
+      workflow: workflowOverride ?? 'native',
       changeId: changeId ?? command,
       command,
       success: true,
       summary: result.stdout,
+      eventName:
+        command === 'archive'
+          ? 'change.completed'
+          : command === 'check' || args.includes('--result')
+            ? 'verification.completed'
+            : 'task.completed',
     });
   } catch {
     // Plugin learning must never make a workflow command fail.
+  }
+}
+
+interface NativeIntegrationArgs {
+  readonly cliArgs: readonly string[];
+  readonly projectRoot?: string;
+  readonly task?: string;
+  readonly contextPath?: string;
+  readonly phase?: string;
+  readonly workflow?: string;
+}
+
+function splitIntegrationArgs(args: readonly string[]): NativeIntegrationArgs {
+  const cliArgs: string[] = [];
+  let projectRoot: string | undefined;
+  let task: string | undefined;
+  let contextPath: string | undefined;
+  let phase: string | undefined;
+  let workflow: string | undefined;
+  for (let index = 0; index < args.length; index += 1) {
+    const value = args[index];
+    const next = args[index + 1];
+    if (
+      value === '--comet-task' ||
+      value === '--comet-path' ||
+      value === '--comet-phase' ||
+      value === '--comet-workflow'
+    ) {
+      if (next === undefined) throw new Error(`${value} requires a value`);
+      if (value === '--comet-task') task = next;
+      if (value === '--comet-path') contextPath = next;
+      if (value === '--comet-phase') phase = next;
+      if (value === '--comet-workflow') workflow = next;
+      index += 1;
+      continue;
+    }
+    cliArgs.push(value);
+    if (value === '--project-root' && next !== undefined) projectRoot = next;
+  }
+  return {
+    cliArgs,
+    projectRoot,
+    task: task ?? process.env.COMET_TASK,
+    contextPath,
+    phase,
+    workflow,
+  };
+}
+
+async function emitContext(projectRoot: string, options: NativeIntegrationArgs): Promise<void> {
+  if (!options.task?.trim()) return;
+  try {
+    const contributions =
+      (await collectCometPluginContext(projectRoot, {
+        task: options.task,
+        ...(options.contextPath ? { path: options.contextPath } : {}),
+        ...(options.phase ? { phase: options.phase } : {}),
+      })) ?? [];
+    if (contributions.length === 0) return;
+    process.stderr.write(
+      `Comet context:\n${contributions.map((entry) => `- ${entry.text}`).join('\n')}\n`,
+    );
+  } catch {
+    // Context injection is best effort and must not block the workflow.
+  }
+}
+
+async function emitCandidates(projectRoot: string): Promise<void> {
+  try {
+    const envelope = (await collectCometProjectRuleCandidates(projectRoot)) as
+      | { summary?: unknown; candidates?: unknown }
+      | null
+      | undefined;
+    if (!envelope || !Array.isArray(envelope.candidates) || envelope.candidates.length === 0)
+      return;
+    if (typeof envelope.summary === 'string')
+      process.stderr.write(`Comet project-rule candidates:\n${envelope.summary}\n`);
+  } catch {
+    // Candidate discovery is best effort and must not block the workflow.
   }
 }

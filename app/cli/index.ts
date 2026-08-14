@@ -247,6 +247,7 @@ rules
   .description('为当前任务选择相关项目规则')
   .requiredOption('--task <text>', '任务描述')
   .option('--path <path>', '当前文件或目录')
+  .option('--phase <phase>', '当前 workflow 阶段')
   .option('--json', 'Output as JSON')
   .action(async (targetPath = '.', options) => {
     const { projectRulesContextCommand } = await import('../commands/project-rules.js');
@@ -265,6 +266,13 @@ rules
 rules
   .command('verify [path]')
   .description('运行项目已存在的验证入口并返回结果')
+  .option('--max-attempts <n>', '失败后最多重跑次数', (value) => {
+    const attempts = Number.parseInt(value, 10);
+    if (!Number.isSafeInteger(attempts) || attempts < 1 || attempts > 3) {
+      throw new Error('max-attempts must be an integer between 1 and 3');
+    }
+    return attempts;
+  })
   .option('--json', 'Output as JSON')
   .action(async (targetPath = '.', options) => {
     const { projectRulesVerifyCommand } = await import('../commands/project-rules.js');

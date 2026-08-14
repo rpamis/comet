@@ -7,6 +7,7 @@ export interface ProjectRuleSection {
   readonly title: string;
   readonly text: string;
   readonly scope?: string;
+  readonly stage?: string;
 }
 
 export interface ProjectRuleSource {
@@ -50,6 +51,8 @@ export interface ProjectRulesVerificationResult {
   readonly label: string | null;
   readonly sourcePath: string | null;
   readonly output: string;
+  readonly attempts?: number;
+  readonly nextAction?: 'fix-and-rerun' | 'complete';
 }
 
 export interface RuleObservation {
@@ -91,6 +94,7 @@ export interface ProjectRulesFileSystem {
 export interface ProjectRulesSelectionRequest {
   readonly task: string;
   readonly path?: string;
+  readonly stage?: string;
   readonly sourceKinds?: readonly ProjectRuleSourceKind[];
   readonly maxSections?: number;
   readonly maxBytes?: number;
@@ -118,6 +122,12 @@ export interface ProjectRuleCandidateSummary {
   readonly state: 'pending' | 'snoozed';
 }
 
+export interface ProjectRuleCandidateEnvelope {
+  readonly summary: string;
+  readonly candidates: readonly ProjectRuleCandidateSummary[];
+  readonly operations: readonly ['adopt', 'ignore', 'snooze', 'restore'];
+}
+
 export interface ProjectRulesServiceOptions {
   readonly projectRoot: string;
   readonly projectId?: string;
@@ -125,4 +135,5 @@ export interface ProjectRulesServiceOptions {
   readonly now?: () => Date;
   readonly runtimeDirectory?: string;
   readonly runVerification?: (executable: string, args: readonly string[], cwd: string) => string;
+  readonly repairVerification?: (failure: ProjectRulesVerificationResult) => Promise<boolean>;
 }

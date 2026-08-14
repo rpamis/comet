@@ -149,6 +149,38 @@ describe('ProjectRulesService', () => {
     ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
+  it('uses a readable Agent carrier when a native verification entrypoint exists', async () => {
+    const projectRoot = await projectDirectory();
+    await writeFile(
+      path.join(projectRoot, 'package.json'),
+      JSON.stringify({ scripts: { lint: 'eslint .' } }),
+    );
+    const service = new ProjectRulesService({ projectRoot });
+    await service.recordObservation({
+      candidateKey: 'native-lint',
+      text: '禁止跨层直接访问文件系统。',
+      workflow: 'native',
+      changeId: 'change-a',
+      success: true,
+    });
+    const candidate = await service.recordObservation({
+      candidateKey: 'native-lint',
+      text: '禁止跨层直接访问文件系统。',
+      workflow: 'native',
+      changeId: 'change-b',
+      success: true,
+    });
+
+    await service.adoptCandidate(candidate?.id ?? '');
+
+    await expect(readFile(path.join(projectRoot, 'AGENTS.md'), 'utf8')).resolves.toEqual(
+      expect.stringContaining('验证入口：npm run lint'),
+    );
+    await expect(
+      readFile(path.join(projectRoot, '.comet', 'rules', 'project.md'), 'utf8'),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('discovers project-native verification entrypoints without imposing one command', async () => {
     const projectRoot = await projectDirectory();
     await writeFile(
@@ -190,6 +222,36 @@ describe('ProjectRulesService', () => {
     expect(await service.discoverVerificationEntrypoints()).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ id: 'maven-verify' })]),
     );
+  });
+
+  it('retries a failed verification after the host repair callback', async () => {
+    const projectRoot = await projectDirectory();
+    await writeFile(
+      path.join(projectRoot, 'package.json'),
+      JSON.stringify({ scripts: { test: 'test' } }),
+    );
+    let attempts = 0;
+    const service = new ProjectRulesService({
+      projectRoot,
+      runVerification: () => {
+        attempts += 1;
+        if (attempts === 1) throw new Error('rule violation');
+        return 'ok';
+      },
+      ...({
+        repairVerification: async () => true,
+      } as { repairVerification: (failure: unknown) => Promise<boolean> }),
+    });
+
+    await expect(
+      (service as unknown as { verify(options?: unknown): Promise<unknown> }).verify({
+        maxAttempts: 2,
+      }),
+    ).resolves.toMatchObject({
+      passed: true,
+      attempts: 2,
+      nextAction: 'complete',
+    });
   });
 
   it('does not claim an empty Gradle script and preserves the Python source', async () => {
@@ -258,6 +320,25 @@ describe('ProjectRulesService', () => {
     expect(selected).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ sourcePath: 'AGENTS.md' })]),
     );
+  });
+
+  it('routes rules by the requested verification stage', async () => {
+    const projectRoot = await projectDirectory();
+    await mkdir(path.join(projectRoot, '.comet', 'rules'), { recursive: true });
+    await writeFile(
+      path.join(projectRoot, '.comet', 'rules', 'stages.md'),
+      '# Build checks\n\n适用阶段：build\n\n- Build 阶段规则。\n\n# Verify checks\n\n适用阶段：verify\n\n- Verify 阶段规则。\n',
+    );
+
+    const service = new ProjectRulesService({ projectRoot });
+    const selected = await service.select({
+      task: '阶段规则',
+      ...({ stage: 'verify' } as { stage: string }),
+    });
+
+    expect(selected).toEqual([
+      expect.objectContaining({ title: 'Verify checks', text: expect.stringContaining('Verify') }),
+    ]);
   });
 
   it('persists source index, project identity, and confines Runtime state', async () => {

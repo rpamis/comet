@@ -105,6 +105,12 @@ describe('project rules plugin', () => {
       const details = await runtime.invoke('comet.project-rules', 'details', {}, scope);
       const candidate = (details as Array<{ id: string; text: string }>)[0];
       expect(candidate).toMatchObject({ text: '使用项目验证命令' });
+      await expect(
+        runtime.invoke('comet.project-rules', 'candidates', {}, scope),
+      ).resolves.toMatchObject({
+        candidates: [{ text: '使用项目验证命令', state: 'pending' }],
+        operations: ['adopt', 'ignore', 'snooze', 'restore'],
+      });
       await runtime.invoke('comet.project-rules', 'snooze', { id: candidate.id }, scope);
       await expect(
         runtime.invoke('comet.project-rules', 'status', {}, scope),
@@ -118,9 +124,9 @@ describe('project rules plugin', () => {
       ).resolves.toMatchObject({
         candidates: [],
       });
-      await expect(
-        fs.readFile(path.join(root, '.comet/rules/project.md'), 'utf8'),
-      ).resolves.toContain('使用项目验证命令');
+      await expect(fs.readFile(path.join(root, 'AGENTS.md'), 'utf8')).resolves.toContain(
+        '使用项目验证命令',
+      );
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }

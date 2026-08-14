@@ -23,6 +23,6 @@ description: "Comet 工作流入口。当用户明确调用 /comet，或明确�
 
    技能加载后，把用户原始请求完整交给已加载的入口 Skill，作为该入口的用户输入。
 
-入口 Skill 开始工作后，自动执行 `comet memory context <project-root> --task "<用户原始请求>" --json`，并按任务和路径只注入相关的个人记忆与项目规则；任务完成、验证或审查后记录 `comet memory observe`，发现编译器、测试或 linter 明确指出的项目规范时记录 `comet rules observe`，需要执行仓库已有检查时调用 `comet rules verify`，任务结束调用 `comet rules candidates --json` 合并成一条摘要。用户可以在当前对话中选择全部加入、逐个加入、忽略或稍后处理。全部动作由入口 Skill 或可用 Hook 完成，用户不需要打开 Dashboard 或手动运行 CLI。
+入口 Skill 负责任务上下文、记忆学习和项目规则接入；按该入口说明调用 `comet memory context`、`comet rules verify` 和 `comet rules candidates`。
 
 不根据任务大小、文件数量、活跃 change 或模型判断改选另一套工作流。Native 与 Classic 的 change、状态和产物始终彼此独立。

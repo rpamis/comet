@@ -59,6 +59,7 @@ async function createModule(
             'observe',
             'propose',
             'verify',
+            'candidates',
             'adopt',
             'ignore',
             'snooze',
@@ -68,7 +69,11 @@ async function createModule(
       },
     },
     provideContext: async (request) => {
-      const selected = await service.select({ task: request.task, path: request.path });
+      const selected = await service.select({
+        task: request.task,
+        path: request.path,
+        stage: request.phase,
+      });
       if (selected.length === 0) return null;
       return {
         text: selected.map((section) => `## ${section.title}\n${section.text}`).join('\n\n'),
@@ -122,6 +127,8 @@ async function invokeCapability(
       return service.scan();
     case 'details':
       return service.candidateDetails();
+    case 'candidates':
+      return service.candidateEnvelope();
     case 'select': {
       const value = asObject(input, 'select');
       return service.select({
@@ -142,8 +149,12 @@ async function invokeCapability(
         ...(typeof value.source === 'string' ? { source: value.source } : {}),
       });
     }
-    case 'verify':
-      return service.verify();
+    case 'verify': {
+      const value = input === undefined ? {} : asObject(input, 'verify');
+      return service.verify({
+        ...(typeof value.maxAttempts === 'number' ? { maxAttempts: value.maxAttempts } : {}),
+      });
+    }
     case 'adopt':
       return service.adoptCandidate(
         await resolveCandidateId(service, input),

@@ -49,6 +49,7 @@ export interface CometPluginBridgeOptions {
 export interface CometPluginContextRequest {
   readonly task: string;
   readonly path?: string;
+  readonly phase?: string;
 }
 
 export class CometPluginBridge {
@@ -174,6 +175,10 @@ export class CometPluginBridge {
       scope: 'project',
       projectId: this.projectId,
     });
+  }
+
+  public async projectRuleCandidates(): Promise<unknown> {
+    return this.projectRulesAction('candidates');
   }
 
   public async selectRules(
