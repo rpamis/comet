@@ -199,6 +199,8 @@ export interface PersonalMemoryServiceLike {
   retrieve(query: MemoryQuery): Promise<MemoryRetrieval>;
   status(): Promise<PersonalMemoryStatus>;
   sync(): Promise<MemorySyncResult>;
+  setLearningEnabled?(enabled: boolean): Promise<void>;
+  setRetrievalEnabled?(enabled: boolean): Promise<void>;
 }
 
 export type PersonalMemoryPluginDescriptorFactory = (

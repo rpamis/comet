@@ -33,6 +33,11 @@ async function createModule(
   const service = options.createService(context);
   return {
     events: ['change.completed', 'task.completed', 'memory.observe'],
+    dashboard: {
+      id: 'personal-memory',
+      label: '个人记忆',
+      route: '/plugins/personal-memory',
+    },
     onEvent: async (event) => {
       const observation = observationFromEvent(event);
       if (observation !== null) await service.observe(observation);
@@ -80,6 +85,14 @@ async function invokeCapability(
       return service.status();
     case 'sync':
       return service.sync();
+    case 'set-learning':
+      if (service.setLearningEnabled === undefined)
+        throw new Error('Learning settings are unavailable');
+      return service.setLearningEnabled(asBoolean(asObject(input, 'set-learning').enabled));
+    case 'set-retrieval':
+      if (service.setRetrievalEnabled === undefined)
+        throw new Error('Retrieval settings are unavailable');
+      return service.setRetrievalEnabled(asBoolean(asObject(input, 'set-retrieval').enabled));
     default:
       throw new Error(`Unknown personal memory capability: ${capability}`);
   }
@@ -142,5 +155,10 @@ function asRecord<T>(value: unknown, name: string): T {
 function asString(value: unknown, name: string): string {
   if (typeof value !== 'string' || value.trim().length === 0)
     throw new Error(`${name} must be a non-empty string`);
+  return value;
+}
+
+function asBoolean(value: unknown): boolean {
+  if (typeof value !== 'boolean') throw new Error('enabled must be a boolean');
   return value;
 }
