@@ -3,7 +3,7 @@ name: self-evolving-project-rules
 language: zh-CN
 phase: archive
 status: active
-state_version: 28
+state_version: 29
 brief: brief.md
 spec_changes:
   - capability: project-rules
@@ -13,7 +13,7 @@ workspace:
   isolation: worktree
   change_branch: comet/self-evolving-project-rules
   target_branch: beta20
-  finish: null
+  finish: merge
 loop:
   stage: archive-ready
   goal_cycle: 3
