@@ -131,6 +131,36 @@ describe('Dashboard plugin HTTP API', () => {
       error: 'capability exploded',
       pluginId: 'test.dashboard',
     });
+
+    const disabled = await request(
+      server.port,
+      `${base}/plugins/test.dashboard/lifecycle`,
+      'POST',
+      { action: 'disable' },
+    );
+    expect(disabled.status).toBe(200);
+    await expect(request(server.port, `${base}/plugins/test.dashboard`)).resolves.toMatchObject({
+      status: 200,
+      body: expect.stringContaining('"data":null'),
+    });
+
+    const enabled = await request(server.port, `${base}/plugins/test.dashboard/lifecycle`, 'POST', {
+      action: 'enable',
+    });
+    expect(enabled.status).toBe(200);
+    await expect(request(server.port, `${base}/plugins/test.dashboard`)).resolves.toMatchObject({
+      status: 200,
+      body: expect.stringContaining('"value"'),
+    });
+
+    const uninstalled = await request(
+      server.port,
+      `${base}/plugins/test.dashboard/lifecycle`,
+      'POST',
+      { action: 'uninstall' },
+    );
+    expect(uninstalled.status).toBe(200);
+    expect(JSON.parse((await request(server.port, `${base}/plugins`)).body)).toEqual({ pages: [] });
   });
 
   it('rejects malformed plugin actions instead of forwarding them', async () => {

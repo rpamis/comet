@@ -171,6 +171,7 @@ function DashboardApp({ theme, onToggleTheme }) {
   const [pluginError, setPluginError] = useState(null);
   const [pluginRefreshToken, setPluginRefreshToken] = useState(0);
   const pluginSelectionRef = useRef(null);
+  const pluginProjectRef = useRef(null);
   const [projects, setProjects] = useState([]);
   const [projectsReady, setProjectsReady] = useState(false);
   const [pages, setPages] = useState({ active: null, archived: null, all: null });
@@ -211,6 +212,7 @@ function DashboardApp({ theme, onToggleTheme }) {
   workflowRef.current = workflow;
   nativeSelectedDetailRef.current = nativeSelectedDetail;
   pluginSelectionRef.current = pluginSelection;
+  pluginProjectRef.current = activeProjectId;
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
@@ -388,8 +390,10 @@ function DashboardApp({ theme, onToggleTheme }) {
 
   const reloadPluginPages = useCallback(async () => {
     if (useDemo || !activeProjectId) return;
+    const requestedProjectId = activeProjectId;
     try {
-      const nextPages = await fetchDashboardPluginPages(activeProjectId);
+      const nextPages = await fetchDashboardPluginPages(requestedProjectId);
+      if (pluginProjectRef.current !== requestedProjectId) return;
       setPluginPages(nextPages.pages ?? []);
     } catch (error) {
       toast(`插件页面加载失败：${error.message}`, 'error');
@@ -440,13 +444,18 @@ function DashboardApp({ theme, onToggleTheme }) {
   const invokePlugin = useCallback(
     async (pluginId, capability, input) => {
       if (!activeProjectId) return;
+      const requestedProjectId = activeProjectId;
       const requestedPluginId = pluginId;
-      await invokeDashboardPlugin(activeProjectId, pluginId, capability, input);
+      await invokeDashboardPlugin(requestedProjectId, pluginId, capability, input);
       const [nextPage] = await Promise.all([
-        fetchDashboardPluginPage(activeProjectId, pluginId),
+        fetchDashboardPluginPage(requestedProjectId, pluginId),
         reloadPluginPages(),
       ]);
-      if (pluginSelectionRef.current !== requestedPluginId) return;
+      if (
+        pluginProjectRef.current !== requestedProjectId ||
+        pluginSelectionRef.current !== requestedPluginId
+      )
+        return;
       setPluginPage(nextPage);
     },
     [activeProjectId, reloadPluginPages],
@@ -1867,7 +1876,7 @@ async function fetchDashboardPluginPages(projectId) {
   const res = await fetch(`/api/dashboard/projects/${encodeURIComponent(projectId)}/plugins`, {
     cache: 'no-store',
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) throw await dashboardResponseError(res);
   return res.json();
 }
 
@@ -1876,7 +1885,7 @@ async function fetchDashboardPluginPage(projectId, pluginId) {
     `/api/dashboard/projects/${encodeURIComponent(projectId)}/plugins/${encodeURIComponent(pluginId)}`,
     { cache: 'no-store' },
   );
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) throw await dashboardResponseError(res);
   return res.json();
 }
 
@@ -1889,7 +1898,7 @@ async function invokeDashboardPlugin(projectId, pluginId, capability, input) {
       body: JSON.stringify({ capability, input }),
     },
   );
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) throw await dashboardResponseError(res);
   return res.json();
 }
 
@@ -1902,7 +1911,7 @@ async function lifecycleDashboardPlugin(projectId, pluginId, action) {
       body: JSON.stringify({ action }),
     },
   );
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) throw await dashboardResponseError(res);
   return res.json();
 }
 
