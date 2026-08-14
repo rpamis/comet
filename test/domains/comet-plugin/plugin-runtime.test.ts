@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   JsonPluginStateStore,
+  MemoryPluginStorageStore,
   MemoryPluginStateStore,
   PluginRuntime,
   type PluginDescriptor,
@@ -53,13 +54,19 @@ describe('PluginRuntime', () => {
 
   it('bootstraps first-party plugins without silently installing third-party plugins', async () => {
     const store = new MemoryPluginStateStore();
+    const events: string[] = [];
     const runtime = new PluginRuntime({
       cometVersion: '1.0.0',
       store,
       descriptors: [
         descriptor('memory', 'first-party'),
         descriptor('rules', 'first-party'),
-        descriptor('external', 'third-party'),
+        descriptor('external', 'third-party', {
+          create: () => ({
+            onEvent: (event) => events.push(event.name),
+            invoke: (capability, input) => ({ capability, input }),
+          }),
+        }),
       ],
     });
 
@@ -76,6 +83,24 @@ describe('PluginRuntime', () => {
     });
     await runtime.install('external');
     expect((await runtime.get('external'))?.status).toBe('enabled');
+    await runtime.dispatch({
+      name: 'plugin.event',
+      scope: 'user',
+      source: { kind: 'system', name: 'test' },
+      payload: { value: 1 },
+    });
+    expect(events).toEqual(['plugin.event']);
+    await expect(runtime.invoke('external', 'echo', { value: 1 })).resolves.toEqual({
+      capability: 'echo',
+      input: { value: 1 },
+    });
+
+    await runtime.disable('external');
+    expect((await runtime.get('external'))?.status).toBe('disabled');
+    await runtime.enable('external');
+    await runtime.update('external');
+    await runtime.uninstall('external');
+    expect((await runtime.get('external'))?.status).toBe('uninstalled');
   });
 
   it('preserves explicit disable and uninstall choices across first-party upgrades', async () => {
@@ -127,9 +152,15 @@ describe('PluginRuntime', () => {
     await runtime.reconcileFirstParty();
 
     const payload = { change: 'one' };
-    await runtime.dispatch({ name: 'change.completed', scope: 'user', payload });
+    await runtime.dispatch({
+      name: 'change.completed',
+      scope: 'user',
+      source: { kind: 'workflow', name: 'native', change: 'one' },
+      payload,
+    });
     payload.change = 'mutated';
     expect(seen[0]?.payload).toEqual({ change: 'one' });
+    expect(seen[0]?.source).toEqual({ kind: 'workflow', name: 'native', change: 'one' });
 
     await expect(runtime.collectContext({ task: 'build' }, 'user')).resolves.toEqual([
       { pluginId: 'memory', text: 'memory context' },
@@ -145,15 +176,26 @@ describe('PluginRuntime', () => {
       store: new MemoryPluginStateStore(),
       descriptors: [
         descriptor('healthy', 'first-party', {
-          create: () => ({ provideContext: () => ({ text: 'ok' }) }),
+          create: () => ({
+            provideContext: () => ({ text: 'ok' }),
+            dashboard: { id: 'healthy-page', label: 'Healthy', route: '/healthy' },
+          }),
         }),
         descriptor('incompatible', 'first-party', { compatible: () => false }),
         descriptor('broken', 'first-party', {
-          create: () => ({
-            provideContext: () => {
-              throw new Error('broken provider');
-            },
-          }),
+          create: () => {
+            const module = {
+              provideContext: () => {
+                throw new Error('broken provider');
+              },
+            };
+            Object.defineProperty(module, 'dashboard', {
+              get: () => {
+                throw new Error('broken dashboard');
+              },
+            });
+            return module;
+          },
         }),
       ],
     });
@@ -162,10 +204,14 @@ describe('PluginRuntime', () => {
     await expect(runtime.collectContext({ task: 'build' }, 'user')).resolves.toEqual([
       { pluginId: 'healthy', text: 'ok' },
     ]);
+    await expect(runtime.dashboardPages('user')).resolves.toEqual([
+      { pluginId: 'healthy', id: 'healthy-page', label: 'Healthy', route: '/healthy' },
+    ]);
     expect(runtime.diagnostics()).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ pluginId: 'incompatible', code: 'incompatible' }),
         expect.objectContaining({ pluginId: 'broken', code: 'execution-failed' }),
+        expect.objectContaining({ pluginId: 'broken', phase: 'dashboard' }),
       ]),
     );
   });
@@ -178,6 +224,7 @@ describe('PluginRuntime', () => {
           version: '1.0.0',
           status: 'enabled',
           explicitRemoval: false,
+          disabledProjects: [],
           updatedAt: '2026-01-01T00:00:00.000Z',
         },
       ],
@@ -195,5 +242,142 @@ describe('PluginRuntime', () => {
         expect.objectContaining({ pluginId: 'removed', code: 'missing', phase: 'load' }),
       ]),
     );
+  });
+
+  it('provides source-aware events, isolated plugin storage, configuration, and project pauses', async () => {
+    const seen: string[] = [];
+    const storage = new MemoryPluginStorageStore();
+    const runtime = new PluginRuntime({
+      cometVersion: '1.0.0',
+      store: new MemoryPluginStateStore(),
+      storage,
+      config: {
+        memory: { mode: 'safe' },
+        rules: { mode: 'strict' },
+      },
+      descriptors: [
+        descriptor('memory', 'first-party', {
+          scopes: ['project'],
+          create: async (context) => {
+            expect(context.config).toEqual({ mode: 'safe' });
+            await context.storage.write({ owner: 'memory' });
+            return {
+              events: ['change.completed'],
+              onEvent: (event) => seen.push(`${event.source.name}:${event.payload.change}`),
+              provideContext: async (request) => ({
+                text: `${request.projectId}:${(await context.storage.read())?.owner}`,
+              }),
+            };
+          },
+        }),
+        descriptor('rules', 'first-party', {
+          scopes: ['project'],
+          create: async (context) => {
+            expect(context.config).toEqual({ mode: 'strict' });
+            await context.storage.write({ owner: 'rules' });
+            return {
+              onEvent: (event) => seen.push(`${event.source.name}:${event.payload.change}`),
+              invoke: (capability, input) =>
+                capability === 'check' ? { capability, input, owner: 'rules' } : null,
+            };
+          },
+        }),
+      ],
+    });
+    await runtime.reconcileFirstParty();
+
+    await runtime.dispatch({
+      name: 'change.completed',
+      scope: 'project',
+      projectId: 'project-a',
+      source: { kind: 'workflow', name: 'native', projectId: 'project-a' },
+      payload: { change: 'one' },
+    });
+    expect(seen).toEqual(['native:one', 'native:one']);
+    await expect(
+      runtime.collectContext(
+        { task: 'build', projectId: 'project-a' },
+        {
+          scope: 'project',
+          projectId: 'project-a',
+        },
+      ),
+    ).resolves.toEqual([{ pluginId: 'memory', text: 'project-a:memory' }]);
+    expect(
+      await runtime.invoke(
+        'rules',
+        'check',
+        { path: 'src' },
+        {
+          scope: 'project',
+          projectId: 'project-a',
+        },
+      ),
+    ).toEqual({ capability: 'check', input: { path: 'src' }, owner: 'rules' });
+    expect(runtime.getConfig('rules')).toEqual({ mode: 'strict' });
+    await runtime.disable('rules', { scope: 'project', projectId: 'project-a' });
+    expect(await runtime.get('rules')).toMatchObject({
+      status: 'enabled',
+      disabledProjects: ['project-a'],
+    });
+    await runtime.dispatch({
+      name: 'change.completed',
+      scope: 'project',
+      projectId: 'project-a',
+      source: { kind: 'workflow', name: 'native', projectId: 'project-a' },
+      payload: { change: 'two' },
+    });
+    expect(seen).toEqual(['native:one', 'native:one', 'native:two']);
+
+    await runtime.enable('rules', { scope: 'project', projectId: 'project-a' });
+    await runtime.dispatch({
+      name: 'change.completed',
+      scope: 'project',
+      projectId: 'project-a',
+      source: { kind: 'workflow', name: 'native', projectId: 'project-a' },
+      payload: { change: 'three' },
+    });
+    expect(seen).toEqual([
+      'native:one',
+      'native:one',
+      'native:two',
+      'native:three',
+      'native:three',
+    ]);
+    await runtime.configure('rules', { mode: 'evaluate' });
+    expect(runtime.getConfig('rules')).toEqual({ mode: 'evaluate' });
+  });
+
+  it('recreates an active plugin after update so new code handles later events', async () => {
+    let creates = 0;
+    let disposals = 0;
+    const runtime = new PluginRuntime({
+      cometVersion: '1.0.0',
+      store: new MemoryPluginStateStore(),
+      descriptors: [
+        descriptor('memory', 'first-party', {
+          create: () => {
+            creates += 1;
+            const version = creates;
+            return {
+              provideContext: () => ({ text: `version-${version}` }),
+              dispose: () => {
+                disposals += 1;
+              },
+            };
+          },
+        }),
+      ],
+    });
+    await runtime.reconcileFirstParty();
+    await expect(runtime.collectContext({ task: 'before' }, 'user')).resolves.toEqual([
+      { pluginId: 'memory', text: 'version-1' },
+    ]);
+
+    await runtime.update('memory');
+    await expect(runtime.collectContext({ task: 'after' }, 'user')).resolves.toEqual([
+      { pluginId: 'memory', text: 'version-2' },
+    ]);
+    expect(disposals).toBe(1);
   });
 });

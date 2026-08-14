@@ -8,12 +8,48 @@ import type {
   PluginModule,
   PluginActionSource,
   PluginScope,
+  PluginScopeContext,
   PluginState,
   PluginStateFile,
   PluginStateStore,
+  PluginStorage,
+  PluginStorageStore,
   PluginStatus,
   PluginView,
 } from './types.js';
+
+type PluginScopeTarget = PluginScope | PluginScopeContext;
+
+function normalizeScopeTarget(target: PluginScopeTarget): PluginScopeContext {
+  return typeof target === 'string' ? { scope: target } : target;
+}
+
+function storageKey(pluginId: string, scope: PluginScope, projectId?: string): string {
+  return `${pluginId}:${scope}:${projectId ?? ''}`;
+}
+
+function cloneValue<T>(value: T): T {
+  if (value === undefined) return value;
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+export class MemoryPluginStorageStore implements PluginStorageStore {
+  private readonly values = new Map<string, unknown>();
+
+  public async open(
+    pluginId: string,
+    scope: PluginScope,
+    projectId?: string,
+  ): Promise<PluginStorage> {
+    const key = storageKey(pluginId, scope, projectId);
+    return {
+      read: async () => (this.values.has(key) ? cloneValue(this.values.get(key)) : null),
+      write: async (value) => {
+        this.values.set(key, cloneValue(value));
+      },
+    };
+  }
+}
 
 export class MemoryPluginStateStore implements PluginStateStore {
   private state: PluginState;
@@ -60,6 +96,8 @@ export class JsonPluginStateStore implements PluginStateStore {
 export interface PluginRuntimeOptions {
   readonly cometVersion: string;
   readonly store: PluginStateStore;
+  readonly storage?: PluginStorageStore;
+  readonly config?: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
   readonly descriptors: readonly PluginDescriptor[];
   readonly now?: () => Date;
 }
@@ -68,11 +106,14 @@ interface ActivePlugin {
   readonly descriptor: PluginDescriptor;
   readonly module: PluginModule;
   readonly scope: PluginScope;
+  readonly projectId?: string;
 }
 
 export class PluginRuntime {
   private readonly cometVersion: string;
   private readonly store: PluginStateStore;
+  private readonly storage: PluginStorageStore;
+  private readonly config: Record<string, Record<string, unknown>>;
   private readonly descriptors: ReadonlyMap<string, PluginDescriptor>;
   private readonly now: () => Date;
   private readonly active = new Map<string, ActivePlugin>();
@@ -89,6 +130,10 @@ export class PluginRuntime {
     }
     this.cometVersion = options.cometVersion;
     this.store = options.store;
+    this.storage = options.storage ?? new MemoryPluginStorageStore();
+    this.config = Object.fromEntries(
+      Object.entries(options.config ?? {}).map(([id, value]) => [id, { ...value }]),
+    );
     this.descriptors = descriptors;
     this.now = options.now ?? (() => new Date());
   }
@@ -151,14 +196,23 @@ export class PluginRuntime {
     await this.setRecord(descriptor, 'enabled', false);
   }
 
-  public async enable(id: string): Promise<void> {
+  public async enable(id: string, target?: PluginScopeContext): Promise<void> {
     const descriptor = this.requireDescriptor(id);
     this.assertCompatible(descriptor);
+    if (target?.scope === 'project' && target.projectId !== undefined) {
+      await this.setProjectPause(descriptor, target.projectId, false);
+      return;
+    }
     await this.setRecord(descriptor, 'enabled', false);
   }
 
-  public async disable(id: string): Promise<void> {
+  public async disable(id: string, target?: PluginScopeContext): Promise<void> {
     const descriptor = this.requireDescriptor(id);
+    if (target?.scope === 'project' && target.projectId !== undefined) {
+      await this.setProjectPause(descriptor, target.projectId, true);
+      await this.disposeActive(id, target.projectId);
+      return;
+    }
     await this.setRecord(descriptor, 'disabled', false);
     await this.disposeActive(id);
   }
@@ -185,13 +239,56 @@ export class PluginRuntime {
           : record,
       ),
     });
+    await this.disposeActive(id);
+  }
+
+  public getConfig(id: string): Readonly<Record<string, unknown>> {
+    this.requireDescriptor(id);
+    return Object.freeze({ ...(this.config[id] ?? {}) });
+  }
+
+  public async configure(id: string, config: Readonly<Record<string, unknown>>): Promise<void> {
+    this.requireDescriptor(id);
+    this.config[id] = { ...config };
+    await this.disposeActive(id);
+  }
+
+  public async invoke(
+    id: string,
+    capability: string,
+    input: unknown,
+    scope: PluginScopeTarget = 'user',
+  ): Promise<unknown> {
+    const descriptor = this.requireDescriptor(id);
+    const target = normalizeScopeTarget(scope);
+    await this.loadScope(target);
+    const active = this.active.get(this.activeKey(id, target));
+    if (active === undefined || active.module.invoke === undefined) {
+      throw new PluginRuntimeError(
+        `Plugin capability is unavailable: ${id}/${capability}`,
+        'missing',
+      );
+    }
+    try {
+      return await active.module.invoke(capability, cloneValue(input));
+    } catch (error) {
+      this.recordExecutionFailure(descriptor.id, 'invoke', error);
+      return null;
+    }
   }
 
   public async dispatch(event: PluginEvent): Promise<void> {
     const eventCopy = freezeEvent(event);
-    await this.loadScope(event.scope);
+    const target = { scope: event.scope, projectId: event.projectId };
+    await this.loadScope(target);
     for (const active of this.active.values()) {
-      if (active.scope !== event.scope || active.module.onEvent === undefined) continue;
+      if (
+        active.scope !== event.scope ||
+        active.projectId !== event.projectId ||
+        active.module.onEvent === undefined ||
+        (active.module.events !== undefined && !active.module.events.includes(event.name))
+      )
+        continue;
       try {
         await active.module.onEvent(eventCopy);
       } catch (error) {
@@ -202,12 +299,18 @@ export class PluginRuntime {
 
   public async collectContext(
     request: PluginContextRequest,
-    scope: PluginScope,
+    scope: PluginScopeTarget,
   ): Promise<PluginContextContribution[]> {
-    await this.loadScope(scope);
+    const target = normalizeScopeTarget(scope);
+    await this.loadScope(target);
     const contributions: PluginContextContribution[] = [];
     for (const active of this.active.values()) {
-      if (active.scope !== scope || active.module.provideContext === undefined) continue;
+      if (
+        active.scope !== target.scope ||
+        active.projectId !== target.projectId ||
+        active.module.provideContext === undefined
+      )
+        continue;
       try {
         const contribution = await active.module.provideContext({ ...request });
         if (contribution !== null)
@@ -219,13 +322,16 @@ export class PluginRuntime {
     return contributions;
   }
 
-  public async dashboardPages(scope: PluginScope): Promise<PluginDashboardPage[]> {
-    await this.loadScope(scope);
+  public async dashboardPages(scope: PluginScopeTarget): Promise<PluginDashboardPage[]> {
+    const target = normalizeScopeTarget(scope);
+    await this.loadScope(target);
     const pages: PluginDashboardPage[] = [];
     for (const active of this.active.values()) {
-      if (active.scope !== scope || active.module.dashboard === undefined) continue;
+      if (active.scope !== target.scope || active.projectId !== target.projectId) continue;
       try {
-        pages.push({ pluginId: active.descriptor.id, ...active.module.dashboard });
+        const dashboard = active.module.dashboard;
+        if (dashboard === undefined) continue;
+        pages.push({ pluginId: active.descriptor.id, ...dashboard });
       } catch (error) {
         this.recordExecutionFailure(active.descriptor.id, 'dashboard', error);
       }
@@ -237,7 +343,7 @@ export class PluginRuntime {
     return this.diagnosticEntries.map((diagnostic) => ({ ...diagnostic }));
   }
 
-  private async loadScope(scope: PluginScope): Promise<void> {
+  private async loadScope(target: PluginScopeContext): Promise<void> {
     const state = await this.ensureState();
     for (const record of state.plugins) {
       if (record.status !== 'enabled') continue;
@@ -251,8 +357,10 @@ export class PluginRuntime {
         });
         continue;
       }
-      if (!descriptor.scopes.includes(scope)) continue;
-      const key = `${record.id}:${scope}`;
+      if (!descriptor.scopes.includes(target.scope)) continue;
+      if (target.projectId !== undefined && record.disabledProjects.includes(target.projectId))
+        continue;
+      const key = this.activeKey(record.id, target);
       if (this.active.has(key)) continue;
       if (!this.isCompatible(descriptor)) {
         this.diagnosticEntries.push({
@@ -267,11 +375,19 @@ export class PluginRuntime {
         const module = await descriptor.create({
           pluginId: descriptor.id,
           cometVersion: this.cometVersion,
-          scope,
+          scope: target.scope,
+          projectId: target.projectId,
+          config: this.config[descriptor.id] ?? {},
+          storage: await this.storage.open(descriptor.id, target.scope, target.projectId),
           reportDiagnostic: (diagnostic) =>
             this.diagnosticEntries.push({ pluginId: descriptor.id, ...diagnostic }),
         });
-        this.active.set(key, { descriptor, module, scope });
+        this.active.set(key, {
+          descriptor,
+          module,
+          scope: target.scope,
+          projectId: target.projectId,
+        });
       } catch (error) {
         this.recordExecutionFailure(descriptor.id, 'load', error);
       }
@@ -284,8 +400,15 @@ export class PluginRuntime {
     explicitRemoval: boolean,
   ): Promise<void> {
     const state = await this.ensureState();
-    const next = this.record(descriptor.id, descriptor.version, status, explicitRemoval);
-    const found = state.plugins.some((record) => record.id === descriptor.id);
+    const existing = state.plugins.find((record) => record.id === descriptor.id);
+    const next = this.record(
+      descriptor.id,
+      descriptor.version,
+      status,
+      explicitRemoval,
+      existing?.disabledProjects,
+    );
+    const found = existing !== undefined;
     await this.persist({
       plugins: found
         ? state.plugins.map((record) => (record.id === descriptor.id ? next : record))
@@ -293,8 +416,45 @@ export class PluginRuntime {
     });
   }
 
-  private record(id: string, version: string, status: PluginStatus, explicitRemoval = false) {
-    return { id, version, status, explicitRemoval, updatedAt: this.timestamp() };
+  private async setProjectPause(
+    descriptor: PluginDescriptor,
+    projectId: string,
+    paused: boolean,
+  ): Promise<void> {
+    const state = await this.ensureState();
+    const existing = state.plugins.find((record) => record.id === descriptor.id);
+    const current = existing ?? this.record(descriptor.id, descriptor.version, 'enabled');
+    const disabledProjects = new Set(current.disabledProjects);
+    if (paused) disabledProjects.add(projectId);
+    else disabledProjects.delete(projectId);
+    const next = {
+      ...current,
+      version: descriptor.version,
+      disabledProjects: [...disabledProjects].sort(),
+      updatedAt: this.timestamp(),
+    };
+    await this.persist({
+      plugins: existing
+        ? state.plugins.map((record) => (record.id === descriptor.id ? next : record))
+        : [...state.plugins, next],
+    });
+  }
+
+  private record(
+    id: string,
+    version: string,
+    status: PluginStatus,
+    explicitRemoval = false,
+    disabledProjects: readonly string[] = [],
+  ) {
+    return {
+      id,
+      version,
+      status,
+      explicitRemoval,
+      disabledProjects: [...disabledProjects],
+      updatedAt: this.timestamp(),
+    };
   }
 
   private view(
@@ -353,8 +513,15 @@ export class PluginRuntime {
     }
   }
 
-  private async disposeActive(id: string): Promise<void> {
-    const entries = [...this.active.entries()].filter(([key]) => key.startsWith(`${id}:`));
+  private activeKey(id: string, target: PluginScopeContext): string {
+    return `${id}:${target.scope}:${target.projectId ?? ''}`;
+  }
+
+  private async disposeActive(id: string, projectId?: string): Promise<void> {
+    const entries = [...this.active.entries()].filter(
+      ([key, active]) =>
+        key.startsWith(`${id}:`) && (projectId === undefined || active.projectId === projectId),
+    );
     for (const [key, active] of entries) {
       this.active.delete(key);
       try {
@@ -400,7 +567,12 @@ export class PluginRuntimeError extends Error {
 }
 
 function cloneState(state: PluginState): PluginState {
-  return { plugins: state.plugins.map((record) => ({ ...record })) };
+  return {
+    plugins: state.plugins.map((record) => ({
+      ...record,
+      disabledProjects: [...(record.disabledProjects ?? [])],
+    })),
+  };
 }
 
 function validateState(value: unknown): PluginState {
@@ -431,6 +603,11 @@ function validateState(value: unknown): PluginState {
         version: record.version,
         status: record.status,
         explicitRemoval: record.explicitRemoval,
+        disabledProjects: Array.isArray(record.disabledProjects)
+          ? record.disabledProjects.filter(
+              (projectId): projectId is string => typeof projectId === 'string',
+            )
+          : [],
         updatedAt: record.updatedAt,
       };
     }),
@@ -439,7 +616,14 @@ function validateState(value: unknown): PluginState {
 
 function freezeEvent(event: PluginEvent): PluginEvent {
   const payload = cloneAndFreeze(event.payload) as Readonly<Record<string, unknown>>;
-  return Object.freeze({ name: event.name, scope: event.scope, payload });
+  const source = cloneAndFreeze(event.source) as PluginEvent['source'];
+  return Object.freeze({
+    name: event.name,
+    scope: event.scope,
+    projectId: event.projectId,
+    source,
+    payload,
+  });
 }
 
 function cloneAndFreeze(value: unknown): unknown {

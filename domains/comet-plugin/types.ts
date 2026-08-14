@@ -2,16 +2,32 @@ export type PluginKind = 'first-party' | 'third-party';
 export type PluginScope = 'user' | 'project';
 export type PluginStatus = 'enabled' | 'disabled' | 'uninstalled';
 export type PluginActionSource = 'user' | 'system';
+export type PluginEventSourceKind = 'workflow' | 'system';
+
+export interface PluginScopeContext {
+  readonly scope: PluginScope;
+  readonly projectId?: string;
+}
+
+export interface PluginEventSource {
+  readonly kind: PluginEventSourceKind;
+  readonly name: string;
+  readonly change?: string;
+  readonly projectId?: string;
+}
 
 export interface PluginEvent {
   readonly name: string;
   readonly scope: PluginScope;
+  readonly projectId?: string;
+  readonly source: PluginEventSource;
   readonly payload: Readonly<Record<string, unknown>>;
 }
 
 export interface PluginContextRequest {
   readonly task: string;
   readonly path?: string;
+  readonly projectId?: string;
 }
 
 export interface PluginContextContribution {
@@ -32,23 +48,37 @@ export interface PluginDashboardPage extends PluginDashboardContribution {
 export interface PluginDiagnostic {
   readonly pluginId: string;
   readonly code: 'missing' | 'incompatible' | 'execution-failed';
-  readonly phase: 'load' | 'event' | 'context' | 'dashboard';
+  readonly phase: 'load' | 'event' | 'context' | 'dashboard' | 'invoke';
   readonly message: string;
+}
+
+export interface PluginStorage {
+  read(): Promise<unknown | null>;
+  write(value: unknown): Promise<void>;
+}
+
+export interface PluginStorageStore {
+  open(pluginId: string, scope: PluginScope, projectId?: string): Promise<PluginStorage>;
 }
 
 export interface PluginContext {
   readonly pluginId: string;
   readonly cometVersion: string;
   readonly scope: PluginScope;
+  readonly projectId?: string;
+  readonly config: Readonly<Record<string, unknown>>;
+  readonly storage: PluginStorage;
   readonly reportDiagnostic: (diagnostic: Omit<PluginDiagnostic, 'pluginId'>) => void;
 }
 
 export interface PluginModule {
+  readonly events?: readonly string[];
   readonly onEvent?: (event: PluginEvent) => void | Promise<void>;
   readonly provideContext?: (
     request: PluginContextRequest,
   ) => PluginContextContribution | null | Promise<PluginContextContribution | null>;
   readonly dashboard?: PluginDashboardContribution;
+  readonly invoke?: (capability: string, input: unknown) => unknown | Promise<unknown>;
   readonly dispose?: () => void | Promise<void>;
 }
 
@@ -66,6 +96,7 @@ export interface PluginRecord {
   readonly version: string;
   readonly status: PluginStatus;
   readonly explicitRemoval: boolean;
+  readonly disabledProjects: readonly string[];
   readonly updatedAt: string;
 }
 
