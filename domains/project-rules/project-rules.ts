@@ -636,14 +636,7 @@ export class ProjectRulesService {
     if (proposal?.kind === 'agent-instructions' && proposal.sourcePath !== undefined) {
       await this.appendCarrierRule(proposal.sourcePath, candidate.text);
     } else if (proposal?.kind === 'verification') {
-      const instruction = (await this.readSources()).find(
-        (source) => source.kind === 'agent-instructions',
-      );
-      await this.appendCarrierRule(
-        instruction?.path ?? 'AGENTS.md',
-        candidate.text,
-        `验证入口：${proposal.label}`,
-      );
+      await this.writeVerificationCarrierProposal(candidate, proposal);
     } else {
       await this.addRule(candidate.text, targetPath ?? '.comet/rules/project.md');
     }
@@ -671,6 +664,27 @@ export class ProjectRulesService {
     const separator = existing.length === 0 || existing.endsWith('\n') ? '\n' : '\n\n';
     const suffix = verificationNote ? `（${verificationNote}）` : '';
     await this.fileSystem.writeText(absolute, `${existing}${separator}- ${text.trim()}${suffix}\n`);
+  }
+
+  private async writeVerificationCarrierProposal(
+    candidate: RuleCandidate,
+    proposal: ProjectRuleCarrierProposal,
+  ): Promise<void> {
+    const targetPath = proposal.targetPath ?? `.comet/rules/proposals/${candidate.id}.md`;
+    const normalized = this.projectRelative(targetPath);
+    const absolute = path.join(this.projectRoot, normalized);
+    const content = [
+      '# 项目规则实施提案',
+      '',
+      `- 规则：${candidate.text.trim()}`,
+      `- 验证入口：${proposal.label}`,
+      `- 原生文件：${proposal.sourcePath ?? '未识别'}`,
+      `- 建议改动：${proposal.change ?? '在该项目已有验证配置或测试中加入确定性检查。'}`,
+      '',
+      '该文件是可读的实施提案；采用后由 Agent 在项目原生配置或测试中完成对应改动，验证入口负责阻止不符合规则的结果。',
+      '',
+    ].join('\n');
+    await this.fileSystem.writeText(absolute, content);
   }
 
   public async ignoreCandidate(id: string): Promise<void> {
@@ -809,6 +823,8 @@ export class ProjectRulesService {
         kind: 'verification',
         label: entrypoint.label,
         sourcePath: entrypoint.sourcePath,
+        targetPath: `.comet/rules/proposals/${entrypoint.id}.md`,
+        change: `在 ${entrypoint.sourcePath} 对应的项目验证配置或测试中加入该规则，并继续使用 ${entrypoint.label} 校验。`,
         reason: '项目已有可执行的验证入口，规则应优先由该入口在编译或检查阶段校验。',
       };
     }

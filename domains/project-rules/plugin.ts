@@ -134,6 +134,7 @@ async function invokeCapability(
       return service.select({
         task: asString(value.task, 'select.task'),
         ...(typeof value.path === 'string' ? { path: value.path } : {}),
+        ...(typeof value.stage === 'string' ? { stage: value.stage } : {}),
       });
     }
     case 'propose':

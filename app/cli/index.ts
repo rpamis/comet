@@ -57,12 +57,30 @@ program
     await statusCommand(targetPath, options);
   });
 
+program
+  .command('task [path]')
+  .description('为普通 Comet Skill 任务选择上下文并在结束时记录结果')
+  .requiredOption('--task <text>', '用户原始请求')
+  .option('--path <path>', '当前任务目标路径')
+  .option('--phase <phase>', '当前工作阶段，例如 build 或 verify')
+  .option('--complete', '记录成功任务并返回规则候选')
+  .option('--workflow <workflow>', '工作流类型')
+  .option('--change <id>', '当前 change ID')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { cometTaskCommand } = await import('../commands/comet-task.js');
+    await cometTaskCommand(targetPath, options);
+  });
+
 const workflow = program.command('workflow').description('Resolve the configured Comet workflow');
 
 workflow
   .command('resolve [path]')
   .description('Resolve /comet to its permanent Native or Classic entry')
   .option('--activate', 'Create project configuration from global defaults when missing')
+  .option('--task <text>', '当前任务，用于自动选择记忆和项目规则上下文')
+  .option('--path <path>', '当前任务目标路径')
+  .option('--phase <phase>', '当前工作阶段，例如 build 或 verify')
   .option('--json', 'Output as JSON')
   .action(async (targetPath = '.', options) => {
     const { workflowResolveCommand } = await import('../commands/workflow.js');
@@ -139,6 +157,7 @@ memory
   .description('为当前任务选择应注入的个人记忆和项目规则')
   .requiredOption('--task <text>', '任务描述')
   .option('--path <path>', '当前文件或目录')
+  .option('--phase <phase>', '验证阶段，例如 build 或 verify')
   .option('--json', 'Output as JSON')
   .action(async (targetPath = '.', options) => {
     const { personalMemoryContextCommand } = await import('../commands/personal-memory.js');
@@ -222,6 +241,16 @@ rules
 rules
   .command('candidates [path]')
   .description('查看待处理的项目规则候选')
+  .addOption(
+    new Option('--action <action>', '直接处理候选').choices([
+      'adopt',
+      'ignore',
+      'snooze',
+      'restore',
+    ]),
+  )
+  .option('--id <id>', '候选 ID')
+  .option('--text <text>', '候选文本')
   .option('--json', 'Output as JSON')
   .action(async (targetPath = '.', options) => {
     const { projectRulesCandidatesCommand } = await import('../commands/project-rules.js');

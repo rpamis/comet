@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { MemoryPluginStateStore, PluginRuntime } from '../../../domains/comet-plugin/index.js';
 import { createProjectRulesPluginDescriptor } from '../../../domains/project-rules/plugin.js';
 import { ProjectRulesService } from '../../../domains/project-rules/project-rules.js';
@@ -124,9 +124,40 @@ describe('project rules plugin', () => {
       ).resolves.toMatchObject({
         candidates: [],
       });
-      await expect(fs.readFile(path.join(root, 'AGENTS.md'), 'utf8')).resolves.toContain(
-        '使用项目验证命令',
+      await expect(
+        fs.readFile(path.join(root, '.comet', 'rules', 'proposals', 'package-test.md'), 'utf8'),
+      ).resolves.toContain('使用项目验证命令');
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('forwards the verification stage through the public selector capability', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-project-rules-stage-'));
+    try {
+      const service = new ProjectRulesService({
+        projectRoot: root,
+        projectId: 'project-stage',
+      });
+      const select = vi.spyOn(service, 'select');
+      const descriptor = createProjectRulesPluginDescriptor({
+        projectRoot: root,
+        projectId: 'project-stage',
+        createService: () => service,
+      });
+      const runtime = new PluginRuntime({
+        cometVersion: '0.4.0',
+        store: new MemoryPluginStateStore(),
+        descriptors: [descriptor],
+      });
+      await runtime.reconcileFirstParty();
+      await runtime.invoke(
+        'comet.project-rules',
+        'select',
+        { task: '运行测试', path: 'src', stage: 'verify' },
+        { scope: 'project', projectId: 'project-stage' },
       );
+      expect(select).toHaveBeenCalledWith({ task: '运行测试', path: 'src', stage: 'verify' });
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }

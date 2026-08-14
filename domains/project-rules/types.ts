@@ -44,6 +44,8 @@ export interface ProjectRuleCarrierProposal {
   readonly label: string;
   readonly reason: string;
   readonly sourcePath?: string;
+  readonly targetPath?: string;
+  readonly change?: string;
 }
 
 export interface ProjectRulesVerificationResult {

@@ -50,6 +50,7 @@ describe('personal memory commands', () => {
       memoryRoot,
       stateRoot,
       task: '写文档',
+      phase: 'verify',
       json: true,
     })) as readonly { pluginId: string }[];
     expect(context.map((entry) => entry.pluginId)).toContain('comet.personal-memory');

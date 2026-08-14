@@ -12,7 +12,11 @@ import {
   type MemoryRetrieval,
 } from '../comet-memory/index.js';
 import { createProjectRulesPluginDescriptor } from '../project-rules/index.js';
-import type { ProjectRulesStatus, ProjectRulesSelectionRequest } from '../project-rules/index.js';
+import type {
+  ProjectRulesStatus,
+  ProjectRulesSelectionRequest,
+  ProjectRulesVerificationResult,
+} from '../project-rules/index.js';
 import { getCurrentVersion } from '../../platform/version/version.js';
 import { JsonFilePluginStorageStore, JsonFileTextStore } from '../../platform/fs/plugin-store.js';
 import { JsonPluginStateStore, PluginRuntime } from './plugin-runtime.js';
@@ -44,6 +48,14 @@ export interface CometPluginBridgeOptions {
   readonly memoryRoot?: string;
   readonly stateRoot?: string;
   readonly cometVersion?: string;
+  /** Optional host callback: repair a failed project check before the next attempt. */
+  readonly repairProjectRules?: (failure: ProjectRulesVerificationResult) => Promise<boolean>;
+  /** Optional process adapter for hosts that already own command execution. */
+  readonly runProjectRuleVerification?: (
+    executable: string,
+    args: readonly string[],
+    cwd: string,
+  ) => string;
 }
 
 export interface CometPluginContextRequest {
@@ -256,7 +268,22 @@ export async function createDefaultCometPluginBridge(
             }),
           }),
       }),
-      createProjectRulesPluginDescriptor({ projectRoot, projectId: options.projectId }),
+      createProjectRulesPluginDescriptor({
+        projectRoot,
+        projectId: options.projectId,
+        ...((options.repairProjectRules ?? options.runProjectRuleVerification)
+          ? {
+              serviceOptions: {
+                ...(options.repairProjectRules
+                  ? { repairVerification: options.repairProjectRules }
+                  : {}),
+                ...(options.runProjectRuleVerification
+                  ? { runVerification: options.runProjectRuleVerification }
+                  : {}),
+              },
+            }
+          : {}),
+      }),
     ],
   });
   await runtime.reconcileFirstParty();

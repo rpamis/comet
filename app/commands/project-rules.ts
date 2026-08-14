@@ -17,6 +17,7 @@ interface ProjectRulesCommandOptions {
   readonly candidateKey?: string;
   readonly source?: string;
   readonly maxAttempts?: number;
+  readonly action?: 'adopt' | 'ignore' | 'snooze' | 'restore';
 }
 
 function printStatus(status: ProjectRulesStatus): void {
@@ -101,6 +102,9 @@ export async function projectRulesCandidatesCommand(
   targetPath = '.',
   options: ProjectRulesCommandOptions = {},
 ): Promise<unknown> {
+  if (options.action) {
+    return projectRulesCandidateActionCommand(options.action, targetPath, options);
+  }
   const bridge = await createBridge(targetPath);
   const result = await bridge.projectRulesAction('candidates');
   print(result, options);

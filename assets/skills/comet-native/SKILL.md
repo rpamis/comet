@@ -25,12 +25,13 @@ Native stores the requirements, complete target specifications, current progress
 After entering the change workspace, the Agent automatically runs:
 
 ```text
-comet memory context <project-root> --task "<original user request>" --json
+comet task <project-root> --task "<original user request>" --phase build --json
 ```
 
-Only relevant memory and project-rule snippets are added to the current task context. Workflow commands may carry `--comet-task`, `--comet-path`, and `--comet-phase`; the CLI strips these markers, selects context, and prints the relevant snippets. If context is unavailable or empty, continue normally. After a successful change, verification, or review, the Agent records a stable summary with `comet memory observe` using the workflow, change ID, and candidate key so preferences can accumulate across sessions. When a compiler, test, or linter report clearly identifies a project rule, it also records that evidence with `comet rules observe`; run `comet rules verify --max-attempts 3` for an existing entrypoint, and read its diagnostics, fix the code, and rerun after a failure. At task end, run `comet rules candidates --json`; it returns one readable summary and adopt/ignore/defer operations. A rule candidate appears after two independent successes and is written to a project carrier only when adopted.
+Only relevant memory and project-rule snippets are added to the current task context. Workflow commands may carry `--comet-task`, `--comet-path`, and `--comet-phase`; the CLI strips these markers, selects context, and prints the relevant snippets. If context is unavailable or empty, continue normally. After a successful change, verification, or review, the Agent records a stable summary with `comet memory observe` using the workflow, change ID, and candidate key so preferences can accumulate across sessions. When a compiler, test, or linter report clearly identifies a project rule, it also records that evidence with `comet rules observe`; run `comet rules verify --max-attempts 3` for an existing entrypoint, and read its diagnostics, fix the code, and rerun after a failure. At task end, run `comet task <project-root> --task "<original user request>" --complete --workflow <workflow> --change <change-id> --json`; it returns one readable summary and adopt/ignore/defer operations. A rule candidate appears after two independent successes and is written to a project carrier only when adopted.
 
-Without a Hook platform, these commands are the Skill fallback for context and learning. With a Hook, the same selector still injects only task-relevant snippets instead of loading every rule.
+Without a Hook platform, these commands are the Skill fallback for context and learning; the lower-level `comet memory context` command remains available. With a Hook, the same selector still injects only task-relevant snippets instead of loading every rule.
+Task-end candidates can also be listed with `comet rules candidates --json`.
 ### Create a change
 
 Choose a lowercase kebab-case name, then use the [workspace selection reference](reference/workspace.md) to decide whether to use the current directory, create a branch, or create a worktree. Explicit parallel, simultaneous, or multi-session intent automatically selects `worktree` without asking for a three-way choice.

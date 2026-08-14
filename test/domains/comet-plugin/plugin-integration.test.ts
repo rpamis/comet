@@ -111,4 +111,56 @@ describe('Comet plugin integration bridge', () => {
       expect(sync).toHaveBeenCalledOnce();
     });
   });
+
+  test('consumes verification and review lifecycle events as memory observations', async () => {
+    await withBridge(async (bridge) => {
+      for (const [name, changeId] of [
+        ['verification.completed', 'verify-1'],
+        ['review.completed', 'review-1'],
+      ] as const) {
+        await bridge.dispatchLifecycle({
+          name,
+          workflow: 'native',
+          changeId,
+          success: true,
+          category: '工作方式',
+          text: '验证后再提交',
+          candidateKey: 'verify-before-submit',
+        });
+      }
+      expect((await bridge.retrieve({ task: '验证 提交' })).records).toHaveLength(1);
+    });
+  });
+
+  test('lets the host repair a failed project check before rerunning it', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-repair-'));
+    const memoryRoot = path.join(root, 'memory');
+    const projectRoot = path.join(root, 'project');
+    await fs.mkdir(projectRoot, { recursive: true });
+    await fs.writeFile(
+      path.join(projectRoot, 'package.json'),
+      JSON.stringify({ scripts: { test: 'host-check' } }),
+    );
+    try {
+      let executions = 0;
+      const bridge = await createDefaultCometPluginBridge({
+        projectRoot,
+        memoryRoot,
+        projectId: 'repair-project',
+        stateRoot: path.join(root, 'plugin-state'),
+        runProjectRuleVerification: () => {
+          executions += 1;
+          if (executions === 1) throw new Error('check failed');
+          return 'ok';
+        },
+        repairProjectRules: async () => {
+          return true;
+        },
+      });
+      const result = await bridge.projectRulesAction('verify', { maxAttempts: 2 });
+      expect(result).toMatchObject({ passed: true, attempts: 2, nextAction: 'complete' });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
 });

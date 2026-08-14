@@ -149,7 +149,7 @@ describe('ProjectRulesService', () => {
     ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
-  it('uses a readable Agent carrier when a native verification entrypoint exists', async () => {
+  it('writes a readable native verification proposal when an entrypoint exists', async () => {
     const projectRoot = await projectDirectory();
     await writeFile(
       path.join(projectRoot, 'package.json'),
@@ -173,9 +173,9 @@ describe('ProjectRulesService', () => {
 
     await service.adoptCandidate(candidate?.id ?? '');
 
-    await expect(readFile(path.join(projectRoot, 'AGENTS.md'), 'utf8')).resolves.toEqual(
-      expect.stringContaining('验证入口：npm run lint'),
-    );
+    await expect(
+      readFile(path.join(projectRoot, '.comet', 'rules', 'proposals', 'package-lint.md'), 'utf8'),
+    ).resolves.toEqual(expect.stringContaining('验证入口：npm run lint'));
     await expect(
       readFile(path.join(projectRoot, '.comet', 'rules', 'project.md'), 'utf8'),
     ).rejects.toMatchObject({ code: 'ENOENT' });
