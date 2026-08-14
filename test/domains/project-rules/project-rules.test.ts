@@ -120,6 +120,35 @@ describe('ProjectRulesService', () => {
     ).resolves.toContain('DTO 使用 PascalCase');
   });
 
+  it('adopts an explicit candidate into an existing Agent instruction carrier', async () => {
+    const projectRoot = await projectDirectory();
+    await writeFile(path.join(projectRoot, 'AGENTS.md'), '# Repository Rules\n\n- Run checks.\n');
+    const service = new ProjectRulesService({ projectRoot });
+    await service.recordObservation({
+      candidateKey: 'migration-docs',
+      text: '修改数据库迁移时同步更新回滚说明。',
+      workflow: 'native',
+      changeId: 'change-a',
+      success: true,
+    });
+    const candidate = await service.recordObservation({
+      candidateKey: 'migration-docs',
+      text: '修改数据库迁移时同步更新回滚说明。',
+      workflow: 'native',
+      changeId: 'change-b',
+      success: true,
+    });
+
+    await service.adoptCandidate(candidate?.id ?? '');
+
+    await expect(readFile(path.join(projectRoot, 'AGENTS.md'), 'utf8')).resolves.toContain(
+      '修改数据库迁移时同步更新回滚说明',
+    );
+    await expect(
+      readFile(path.join(projectRoot, '.comet', 'rules', 'project.md'), 'utf8'),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('discovers project-native verification entrypoints without imposing one command', async () => {
     const projectRoot = await projectDirectory();
     await writeFile(

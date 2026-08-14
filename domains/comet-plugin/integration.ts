@@ -113,6 +113,11 @@ export class CometPluginBridge {
     };
     await this.runtime.dispatch({ ...base, scope: 'user' });
     await this.runtime.dispatch({ ...base, scope: 'project', projectId: this.projectId });
+    try {
+      await this.syncMemory();
+    } catch {
+      // A remote or Git installation failure is a diagnostic, not a workflow failure.
+    }
   }
 
   public async remember(input: MemoryInput): Promise<MemoryRecord | null> {

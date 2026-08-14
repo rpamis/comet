@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import {
   createDefaultCometPluginBridge,
   type CometPluginBridge,
@@ -88,6 +88,27 @@ describe('Comet plugin integration bridge', () => {
       expect((await bridge.projectRulesStatus()).candidates).toEqual([
         { text: '只提交本次改动文件', state: 'pending' },
       ]);
+    });
+  });
+
+  test('checkpoints personal memory after a workflow observation', async () => {
+    await withBridge(async (bridge) => {
+      const sync = vi.spyOn(bridge, 'syncMemory').mockResolvedValue({
+        status: 'local-only',
+        retryable: false,
+        message: 'No memory Git remote is configured',
+      });
+
+      await bridge.dispatchLifecycle({
+        name: 'change.completed',
+        workflow: 'native',
+        changeId: 'change-checkpoint',
+        success: true,
+        category: 'checkpoint',
+        text: 'workflow completed',
+      });
+
+      expect(sync).toHaveBeenCalledOnce();
     });
   });
 });

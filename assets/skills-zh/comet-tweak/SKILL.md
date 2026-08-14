@@ -34,6 +34,8 @@ Tweak 是 Comet 五阶段能力的预设工作流，不是独立的平行流程�
 
 恢复已有 tweak change 时，第一项状态操作必须是 `comet state select <change-name>`；创建新 change 时，在 `.comet.yaml` 初始化成功后立即运行该命令，再进入源码写入步骤。
 
+进入 tweak 工作区后，自动运行 `comet memory context <project-root> --task "<用户原始请求>" --json`，只注入当前任务相关的记忆和项目规则。完成、验证或审查后运行 `comet memory observe`；编译器、测试或 linter 指出项目规范时运行 `comet rules observe`，需要执行仓库已有检查时运行 `comet rules verify`，任务结束运行 `comet rules candidates --json` 并合并为一条摘要。用户可以在当前对话中全部加入、选择部分加入、忽略或稍后处理。没有 Hook 时由本 Skill 直接执行。
+
 ### 1. 快速开启（预设 open）
 
 复用 Comet open 能力创建 change，但使用 tweak 默认值：不执行 `openspec-explore` 长探索，直接进入精简 change 创建。

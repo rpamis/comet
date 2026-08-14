@@ -24,4 +24,6 @@ Once this Skill is loaded, treat the `/comet` entry as selected. Immediately per
 
    After the skill is loaded, pass the user's original request unchanged to the loaded entry Skill as its user input.
 
+After the entry Skill starts, it automatically runs `comet memory context <project-root> --task "<original user request>" --json` and injects only task- and path-relevant personal memory and project rules. After a task, verification, or review it records `comet memory observe`; when a compiler, test, or linter identifies a project rule it records `comet rules observe`, runs `comet rules verify` when the repository's existing checks are needed, and runs `comet rules candidates --json` at the end to combine candidates into one summary. The user can add all, add selected items, ignore, or defer them in the current conversation. The entry Skill or an available Hook performs these actions; the user does not need to open Dashboard or run the CLI manually.
+
 Do not switch workflows based on task size, file count, active changes, or model judgment. Native and Classic changes, states, and artifacts always remain independent.

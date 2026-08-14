@@ -594,11 +594,16 @@ export class ProjectRulesService {
     return (await this.ensureState()).candidates.filter(isVisibleCandidate);
   }
 
-  public async adoptCandidate(id: string, targetPath = '.comet/rules/project.md'): Promise<void> {
+  public async adoptCandidate(id: string, targetPath?: string): Promise<void> {
     const state = await this.ensureState();
     const candidate = state.candidates.find((entry) => entry.id === id);
     if (!candidate) throw new Error(`Unknown project rule candidate: ${id}`);
-    await this.addRule(candidate.text, targetPath);
+    const proposal = targetPath === undefined ? await this.proposeCarrier() : null;
+    if (proposal?.kind === 'agent-instructions' && proposal.sourcePath !== undefined) {
+      await this.appendCarrierRule(proposal.sourcePath, candidate.text);
+    } else {
+      await this.addRule(candidate.text, targetPath ?? '.comet/rules/project.md');
+    }
     await this.persist({
       ...state,
       candidates: state.candidates.map((entry) =>
@@ -607,6 +612,17 @@ export class ProjectRulesService {
           : entry,
       ),
     });
+  }
+
+  private async appendCarrierRule(sourcePath: string, text: string): Promise<void> {
+    const normalized = this.projectRelative(sourcePath);
+    if (!KNOWN_INSTRUCTION_FILES.includes(normalized as (typeof KNOWN_INSTRUCTION_FILES)[number])) {
+      throw new Error(`Project rule carrier is not an allowed Agent instruction: ${sourcePath}`);
+    }
+    const absolute = path.join(this.projectRoot, normalized);
+    const existing = (await this.fileSystem.readText(absolute)) ?? '';
+    const separator = existing.length === 0 || existing.endsWith('\n') ? '\n' : '\n\n';
+    await this.fileSystem.writeText(absolute, `${existing}${separator}- ${text.trim()}\n`);
   }
 
   public async ignoreCandidate(id: string): Promise<void> {

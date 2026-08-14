@@ -3,15 +3,18 @@ import { promises as fs } from 'fs';
 import path from 'path';
 
 const runClassicCli = vi.fn();
+const recordCometWorkflowResult = vi.fn();
 
 vi.mock('../../domains/comet-classic/classic-cli.js', () => ({
   runClassicCli,
 }));
+vi.mock('../../domains/comet-entry/plugin-context.js', () => ({ recordCometWorkflowResult }));
 
 describe('Classic command facade', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     runClassicCli.mockReset();
+    recordCometWorkflowResult.mockReset();
   });
 
   it('exposes exactly the four stable public Classic commands', async () => {
@@ -125,5 +128,21 @@ describe('Classic command facade', () => {
       process.argv = originalArgv;
       process.exitCode = originalExitCode;
     }
+  });
+
+  it('records a successful Classic archive through the shared plugin bridge', async () => {
+    runClassicCli.mockResolvedValue({ exitCode: 0, stdout: 'archived\n', stderr: '' });
+    const { runClassicFacade } = await import('../../app/commands/classic.js');
+
+    await runClassicFacade('archive', ['change-name']);
+
+    expect(recordCometWorkflowResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workflow: 'full',
+        changeId: 'change-name',
+        command: 'archive',
+        success: true,
+      }),
+    );
   });
 });

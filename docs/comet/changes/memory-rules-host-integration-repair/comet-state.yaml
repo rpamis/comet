@@ -1,0 +1,99 @@
+schema: comet.native.v4
+name: memory-rules-host-integration-repair
+language: zh-CN
+phase: build
+status: active
+state_version: 2
+brief: brief.md
+spec_changes: []
+workspace:
+  isolation: worktree
+  change_branch: comet/memory-rules-host-integration-repair
+  target_branch: beta20
+  finish: null
+loop:
+  stage: building
+  goal_cycle: 1
+  iteration: 1
+  attempt: 0
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: submit-builder-candidate
+acceptance:
+  - id: A1
+    source: brief.md
+    text: 用户只在 Comet Skill 中完成一个普通任务时，任务开始能得到个人画像和当前项目相关的规则片段；任务结束自动记录成功结果，且不会要求用户打开
+      Dashboard 或手动执行 CLI。
+    result: pending
+    reason: null
+  - id: A2
+    source: brief.md
+    text: Native、Classic、Hotfix、Tweak
+      的成功完成、验证和归档都产生有来源的生命周期事件；个人记忆和项目规则分别消费事件，不把个人偏好写成团队规则。
+    result: pending
+    reason: null
+  - id: A3
+    source: brief.md
+    text: 用户关闭个人记忆学习/检索或暂停某个项目后，项目规则和基础 workflow 仍工作；停用项目规则后，个人记忆和基础 workflow
+      仍工作；卸载只移除入口，不删除已有数据或仓库规则。
+    result: pending
+    reason: null
+  - id: A4
+    source: brief.md
+    text: 个人记忆存储在专用 Git repository；完成节点自动提交并按配置同步，另一会话、设备、同仓库 worktree 或重新克隆可以通过稳定
+      project identity 读取相同内容。
+    result: pending
+    reason: null
+  - id: A5
+    source: brief.md
+    text: 项目规则上下文按任务、目标路径和验证阶段路由，固定保守上限；没有 Hook 时由 Skill 使用同一 selector，不复制整份规则到宿主配置。
+    result: pending
+    reason: null
+  - id: A6
+    source: brief.md
+    text: 两次独立成功任务形成同一规则候选后，Skill 在任务结束只显示一条可读摘要；用户可以一次加入、忽略或稍后，不创建规则专用 Comet change。
+    result: pending
+    reason: null
+  - id: A7
+    source: brief.md
+    text: 用户明确添加规则时，若已有可用 linter、测试、编译器、构建插件或 CI，Comet
+      生成/定位对应原生配置或测试改动；无法确定性检查的要求写入最相关的 Agent 指令或普通 Markdown 规则。
+    result: pending
+    reason: null
+  - id: A8
+    source: brief.md
+    text: Agent 修改代码后，项目规则服务能够运行实际可用的仓库验证入口；只有命令失败才进入修复循环，warning 且命令成功不被误报为阻塞。
+    result: pending
+    reason: null
+  - id: A9
+    source: brief.md
+    text: Dashboard、Skill 和 CLI 调用同一插件 runtime、service、状态和存储；Dashboard 失效时 Skill/CLI
+      仍可完成上下文、候选、规则和记忆操作。
+    result: pending
+    reason: null
+  - id: A10
+    source: brief.md
+    text: 缺少或失败的一个插件只产生带插件标识的诊断，健康插件和基础 workflow 继续运行；相关集成测试覆盖跨项目、跨插件和旧请求不回写。
+    result: pending
+    reason: null
+builder_handoff: null
+blockers: []
+verification: null
+history: []
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pending
+verification_report: null
+archived: false
+created_at: 2026-08-14T13:00:49.315Z
