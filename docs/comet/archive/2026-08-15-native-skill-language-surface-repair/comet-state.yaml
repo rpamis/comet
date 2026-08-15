@@ -1,0 +1,172 @@
+schema: comet.native.v4
+name: native-skill-language-surface-repair
+language: en
+phase: archive
+status: done
+state_version: 13
+brief: brief.md
+spec_changes: []
+workspace:
+  isolation: worktree
+  change_branch: comet/native-skill-language-surface-repair
+  target_branch: beta20
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 2
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 1
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: "A1: The six permanent English and Chinese Native Markdown files remain
+      structurally aligned and each stays within 400 lines."
+    result: passed
+    reason:
+      text: Runtime 使用主 checkout 绝对依赖路径运行 native-skill.test.ts，11/11
+        通过；独立计数确认英文与中文六个永久 Markdown 均为 400 行，逐文件标题数量结构一致（10,14,7,5,8,1）。
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: "A2: The Skill states that explicit `--language` is the only
+      artifact-language override after initialization."
+    result: passed
+    reason:
+      text: 中英文主 Skill 语义一致：comet init 按所选 Skill 语言初始化
+        native.language；配置存在后产物跟随项目配置，只有用户明确要求时才传入 --language 覆盖。
+      truncated: false
+builder_handoff:
+  candidate_id: 6d245752-37d6-4d50-97ef-80384efa3c1b
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:e170a06a-879a-405d-ba82-d18b9cd40ae0
+  iteration: 2
+  summary:
+    text: 重提相同的 Skill 语言上下文预算修复；本轮从主 checkout 使用绝对依赖路径，避免 worktree 缺少 node_modules。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+  checks:
+    - name:
+        text: native-skill-tests
+        truncated: false
+      result: passed
+      note:
+        text: 将由 Runtime 使用 D:/Project/Comet/node_modules/.bin/vitest.cmd 重跑
+        truncated: false
+    - name:
+        text: skill-format
+        truncated: false
+      result: passed
+      note:
+        text: 将由 Runtime 使用 D:/Project/Comet/node_modules/.bin/prettier.cmd 重跑
+        truncated: false
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  submitted_at: 2026-08-15T07:42:49.044Z
+blockers: []
+verification:
+  candidate_id: 6d245752-37d6-4d50-97ef-80384efa3c1b
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:da473fcc-84db-4051-9ead-9daf938969a9
+  iteration: 2
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: native-skill-tests
+      name:
+        text: Native Skill tests
+        truncated: false
+      argv_display:
+        - text: run
+          truncated: false
+        - text: test/domains/comet-native/native-skill.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 1851
+    - id: skill-format
+      name:
+        text: Skill Markdown format
+        truncated: false
+      argv_display:
+        - text: --check
+          truncated: false
+        - text: assets/skills/comet-native/SKILL.md
+          truncated: false
+        - text: assets/skills-zh/comet-native/SKILL.md
+          truncated: false
+        - text: assets/skills/comet-native/reference/artifacts.md
+          truncated: false
+        - text: assets/skills-zh/comet-native/reference/artifacts.md
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 472
+  summary:
+    text: Native Skill 双语永久上下文修复通过：两套文件结构一致且各为 400 行，语言初始化/配置继承/显式覆盖规则一致；Native
+      Skill 11/11、四个 Markdown Prettier 和 git diff --check 均通过。
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-08-15T07:44:31.115Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: execution-error
+    unresolved_ids: []
+    summary:
+      text: Verifier check commands used worktree-relative node_modules paths, but
+        this linked worktree has no node_modules directory. Both checks exited
+        immediately with MODULE_NOT_FOUND before running tests or formatting;
+        retry with absolute dependency paths from the main checkout.
+      truncated: false
+    completed_at: 2026-08-15T07:38:30.633Z
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 2
+    outcome: fail
+    unresolved_ids:
+      - A1
+    summary:
+      text: repair 内容满足 400 行双语结构与显式 --language 规则，worktree-safe 测试和格式检查通过；但 Runtime
+        保留首次 MODULE_NOT_FOUND 的失败检查，当前 attempt 无法按协议通过，返回 Build 重新提交候选。
+      truncated: false
+    completed_at: 2026-08-15T07:41:59.748Z
+  - goal_cycle: 1
+    iteration: 2
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: Native Skill 双语永久上下文修复通过：两套文件结构一致且各为 400 行，语言初始化/配置继承/显式覆盖规则一致；Native
+        Skill 11/11、四个 Markdown Prettier 和 git diff --check 均通过。
+      truncated: false
+    completed_at: 2026-08-15T07:44:31.115Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-15T07:33:27.112Z
