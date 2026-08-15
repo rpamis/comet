@@ -3,14 +3,14 @@ name: native-skill-language-surface-repair
 language: en
 phase: archive
 status: active
-state_version: 11
+state_version: 12
 brief: brief.md
 spec_changes: []
 workspace:
   isolation: worktree
   change_branch: comet/native-skill-language-surface-repair
   target_branch: beta20
-  finish: null
+  finish: merge
 loop:
   stage: archive-ready
   goal_cycle: 1
