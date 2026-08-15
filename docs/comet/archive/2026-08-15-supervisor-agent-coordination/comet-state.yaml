@@ -1,0 +1,298 @@
+schema: comet.native.v4
+name: supervisor-agent-coordination
+language: zh-CN
+phase: archive
+status: done
+state_version: 12
+brief: brief.md
+spec_changes:
+  - capability: supervisor-agent-coordination
+    operation: create
+    source: specs/supervisor-agent-coordination/spec.md
+workspace:
+  isolation: worktree
+  change_branch: comet/supervisor-agent-coordination
+  target_branch: beta20
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 2
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: specs/supervisor-agent-coordination/spec.md
+    text: "**Given** Parent 已确认 Child contract 且依赖满足"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A2
+    source: specs/supervisor-agent-coordination/spec.md
+    text: "**When** Runtime 派发 Builder 或 Verifier"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A3
+    source: specs/supervisor-agent-coordination/spec.md
+    text: "**Then** 任务包必须同时包含稳定角色、Child 名称、projectRoot、baseCommit 与唯一 runId"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A4
+    source: specs/supervisor-agent-coordination/spec.md
+    text: "**And** Builder 的 baseCommit 等于当前 integration HEAD，Verifier 的 baseCommit
+      等于已记录 candidate/verified commit"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A5
+    source: specs/supervisor-agent-coordination/spec.md
+    text: "**And** 角色、Child、worktree、分支或 runId 不匹配时拒绝接收结果"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A6
+    source: specs/supervisor-agent-coordination/spec.md
+    text: "**Given** 多个 Child 已 ready 且互不依赖"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A7
+    source: specs/supervisor-agent-coordination/spec.md
+    text: "**When** Runtime 派发任务"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A8
+    source: specs/supervisor-agent-coordination/spec.md
+    text: "**Then** 并行数不超过 `maxParallel`，默认上限为 2"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A9
+    source: specs/supervisor-agent-coordination/spec.md
+    text: "**And** 宿主不支持并行或容量不足时按依赖顺序安全串行，不改变集成顺序"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A10
+    source: specs/supervisor-agent-coordination/spec.md
+    text: "**And** `comet native next <change> --max-parallel 1` 明确选择串行，默认值为 2"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A11
+    source: specs/supervisor-agent-coordination/spec.md
+    text: "**Given** 任务进程中断、重连或取消"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A12
+    source: specs/supervisor-agent-coordination/spec.md
+    text: "**When** Runtime 收到带 runId 的操作"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A13
+    source: specs/supervisor-agent-coordination/spec.md
+    text: "**Then** 只允许当前 runId 重连或取消，并写入可持久化审计事件"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A14
+    source: specs/supervisor-agent-coordination/spec.md
+    text: "**And** 旧任务结果不得推进新 runId 的状态"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A15
+    source: specs/supervisor-agent-coordination/spec.md
+    text: "**And** Builder 失败可回到 ready，Verifier 不完整可进入 needs-reverify 并复用
+      candidate，不重复构建"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A16
+    source: specs/supervisor-agent-coordination/spec.md
+    text: "**And** Runtime 通过 `supervisor-reconnect`、`supervisor-cancel` 与
+      `supervisor-builder-failure` 输入持久化这些操作，而不是只提供内存函数"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A17
+    source: specs/supervisor-agent-coordination/spec.md
+    text: "**Given** 任务身份、baseCommit 或 worktree 状态不一致"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A18
+    source: specs/supervisor-agent-coordination/spec.md
+    text: "**When** Runtime 尝试派发、重连或接收结果"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A19
+    source: specs/supervisor-agent-coordination/spec.md
+    text: "**Then** 返回明确 blocker，不重置、覆盖或删除 Child 文件"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A20
+    source: specs/supervisor-agent-coordination/spec.md
+    text: "**And** 所有任务仍通过父级 Runtime 持久化，不依赖外部 mailbox 或调度器"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+builder_handoff:
+  candidate_id: 794848eb-f1da-47ff-8008-d94f28182cf7
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:31eae768-ed31-466a-8dfc-708a7f1b3efe
+  iteration: 1
+  summary:
+    text: 完成 Supervisor agent-coordination 子 Change：任务包包含
+      role/child/projectRoot/baseCommit/runId，支持 maxParallel
+      有限派发、依赖顺序串行降级、重连取消与旧 runId 拒绝，并由父级 Runtime 持久化审计状态。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    - A8
+    - A9
+    - A10
+    - A11
+    - A12
+    - A13
+    - A14
+    - A15
+    - A16
+    - A17
+    - A18
+    - A19
+    - A20
+  checks:
+    - name:
+        text: Native Supervisor task coordination tests
+        truncated: false
+      result: passed
+      note:
+        text: 覆盖任务包、runId、重连、取消、Verifier 重试、依赖和状态生命周期。
+        truncated: false
+    - name:
+        text: TypeScript and generated Native runtime checks
+        truncated: false
+      result: passed
+      note:
+        text: 父级已通过 tsc、Native runtime 构建和生成物检查，当前 child 复用该实现基线。
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: 当前子 Change 不引入外部 mailbox、调度服务或供应商证明；全量测试保留既有 Windows/旧断言基线失败。
+      truncated: false
+  known_limits_truncated: false
+  submitted_at: 2026-08-15T17:43:55.572Z
+blockers: []
+verification:
+  candidate_id: 794848eb-f1da-47ff-8008-d94f28182cf7
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:bfb2db4f-e7c8-4e94-a5ea-02eade91dc93
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: native-supervisor-agent-coordination
+      name:
+        text: Native Supervisor coordination and lifecycle tests
+        truncated: false
+      argv_display:
+        - text: D:/Project/Comet/node_modules/vitest/vitest.mjs
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/comet-native/native-supervisor.test.ts
+          truncated: false
+        - text: test/domains/comet-native/native-portable-recovery.test.ts
+          truncated: false
+        - text: test/domains/comet-native/native-portable-status.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 44149
+  summary:
+    text: Independent review passed all Supervisor agent-coordination acceptance
+      criteria on fc66faf2.
+    truncated: false
+  risks:
+    - text: Independent verifier did not run the repository-wide test suite; known
+        unrelated Windows and legacy baseline failures remain outside this child
+        scope.
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-08-15T17:45:27.805Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native confirmed acceptance criteria changed
+      truncated: false
+    completed_at: 2026-08-15T17:41:50.464Z
+  - goal_cycle: 2
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: Independent review passed all Supervisor agent-coordination acceptance
+        criteria on fc66faf2.
+      truncated: false
+    completed_at: 2026-08-15T17:45:27.805Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-15T17:05:36.526Z

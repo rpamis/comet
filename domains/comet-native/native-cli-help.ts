@@ -130,7 +130,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
   },
   next: {
     usage:
-      'comet native next <change-name> --summary <text> [--confirmed|--return-to-build|--retry-verifier|--resolve-verifier-blocker]\n       comet native next <change-name> --runner-input <json-file>',
+      'comet native next <change-name> --summary <text> [--confirmed|--return-to-build|--retry-verifier|--resolve-verifier-blocker] [--max-parallel <n>]\n       comet native next <change-name> --runner-input <json-file>',
     purpose:
       'Confirm or recover an Agent boundary, advance parent child changes, or use one skill-coordinated JSON bridge for Builder handoff, check-plan dispatch, and Verifier response/error.',
     options: [
@@ -139,13 +139,14 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       '--return-to-build   Return Verify or Archive to Build after invalidation or user choice.',
       '--retry-verifier    Retry a blocked Verifier execution when the continuation allows it.',
       '--resolve-verifier-blocker  Resolve a semantic Verifier blocker without changing the candidate, then dispatch a new attempt.',
-      '--runner-input <file>  Skill-coordinated JSON: builder-handoff, dispatch-verifier, verifier-response, verifier-execution-error, verifier-unavailable, or Supervisor task results. Identity/provider/execution/candidate fields are rejected.',
+      '--max-parallel <n>  Supervisor task concurrency cap; defaults to 2, use 1 for serial fallback.',
+      '--runner-input <file>  Skill-coordinated JSON: builder-handoff, dispatch-verifier, verifier-response, verifier-execution-error, verifier-unavailable, or Supervisor task operations. Identity/provider/execution/candidate fields are rejected.',
       '  builder-handoff fields: kind, summary, addressed_acceptance_ids, checks, known_limits.',
       '  dispatch-verifier fields: kind, checks (an explicitly resolved plan; [] is allowed).',
       '  verifier-response fields: kind, response (request-checks or final-result).',
       '  verifier-execution-error fields: kind, summary, stateVersion, iteration, attempt, verifierExecutionRef copied from verifierDispatch.',
       '  verifier-unavailable fields: kind, summary, stateVersion, iteration, attempt, verifierExecutionRef copied from verifierDispatch; accepted only after the explicit Runtime check plan completed and passed.',
-      '  Supervisor task fields: supervisor-builder-result (child, runId, candidateCommit), supervisor-verifier-result (child, runId, verdict, verification data), or supervisor-integrate (child, checks).',
+      '  Supervisor task fields: supervisor-builder-result (child, runId, candidateCommit), supervisor-builder-failure (child, runId, reason), supervisor-verifier-result (child, runId, verdict, verification data), supervisor-reconnect (child, runId), supervisor-cancel (child, runId, reason), or supervisor-integrate (child, checks).',
     ],
     output:
       'The portable state, explicit skill-coordinated label, Runtime-owned check results, complete verifierDispatch, bounded request-check response, continuation.runnerAction, and machine-readable continuation.inputOptions. This generic bridge is not trusted identity attestation: a passing result waits for explicit user confirmation before Archive.',

@@ -61,6 +61,7 @@ export interface NativeSupervisorEvent {
     | 'task-dispatched'
     | 'task-reconnected'
     | 'task-cancelled'
+    | 'task-blocked'
     | 'builder-result'
     | 'verifier-result'
     | 'child-integrated'
@@ -277,6 +278,7 @@ function assertSupervisorState(value: unknown): asserts value is NativeSuperviso
     }
   }
   const names = new Set<string>();
+  const runIds = new Set<string>();
   for (const child of state.children) {
     if (!child || typeof child !== 'object' || typeof child.name !== 'string') {
       throw new Error('Native Supervisor child state is invalid');
@@ -311,6 +313,38 @@ function assertSupervisorState(value: unknown): asserts value is NativeSuperviso
     }
     if (!Array.isArray(child.checks) || !Array.isArray(child.verification?.checks ?? [])) {
       throw new Error(`Native Supervisor child ${child.name} evidence is invalid`);
+    }
+    if (child.task !== null) {
+      if (!child.task || typeof child.task !== 'object') {
+        throw new Error(`Native Supervisor child ${child.name} task is invalid`);
+      }
+      if (
+        !['builder', 'verifier'].includes(child.task.role) ||
+        child.task.child !== child.name ||
+        typeof child.task.projectRoot !== 'string' ||
+        child.task.projectRoot.length === 0 ||
+        typeof child.task.runId !== 'string' ||
+        child.task.runId.length === 0
+      ) {
+        throw new Error(`Native Supervisor child ${child.name} task identity is invalid`);
+      }
+      assertCommit(child.task.baseCommit, `Native Supervisor child ${child.name} task base commit`);
+      if (runIds.has(child.task.runId)) {
+        throw new Error(`Native Supervisor task runId ${child.task.runId} is duplicated`);
+      }
+      runIds.add(child.task.runId);
+      if (child.task.role === 'verifier' && child.task.baseCommit !== child.candidateCommit) {
+        throw new Error(`Native Supervisor child ${child.name} verifier base commit is invalid`);
+      }
+      if (child.task.projectRoot !== child.projectRoot) {
+        throw new Error(`Native Supervisor child ${child.name} task projectRoot is invalid`);
+      }
+      if (
+        (child.task.role === 'builder' && child.status !== 'active') ||
+        (child.task.role === 'verifier' && !['active', 'needs-reverify'].includes(child.status))
+      ) {
+        throw new Error(`Native Supervisor child ${child.name} task status is invalid`);
+      }
     }
   }
 }
@@ -366,6 +400,26 @@ function assertChildDependenciesIntegrated(
       );
     }
   }
+}
+
+function stableSupervisorIntegrationOrder(
+  state: NativeSupervisorState,
+): NativeSupervisorChildState[] {
+  const remaining = new Set(state.children.map(({ name }) => name));
+  const ordered: NativeSupervisorChildState[] = [];
+  while (remaining.size > 0) {
+    const candidate = state.children.find(
+      (child) =>
+        remaining.has(child.name) &&
+        child.dependsOn.every((dependency) => !remaining.has(dependency)),
+    );
+    if (!candidate) {
+      throw new Error('Native Supervisor Child dependencies contain a cycle');
+    }
+    ordered.push(candidate);
+    remaining.delete(candidate.name);
+  }
+  return ordered;
 }
 
 export function createNativeSupervisorState(options: {
@@ -684,6 +738,24 @@ function refreshNativeSupervisorBuilderWorkspace(
   }
 }
 
+function assertNativeSupervisorVerifierWorkspace(
+  workspaceRoot: string,
+  expectedBranch: string,
+  expectedCommit: string,
+): void {
+  const identity = inspectGitWorktree(workspaceRoot);
+  if (!identity.isGitWorktree || identity.currentBranch !== expectedBranch) {
+    throw new Error(`Native Supervisor Verifier worktree identity is not ${expectedBranch}`);
+  }
+  if (!gitWorktreeIsClean(workspaceRoot)) {
+    throw new Error(`Native Supervisor Verifier worktree is not clean: ${workspaceRoot}`);
+  }
+  const head = runGitCommand(workspaceRoot, ['rev-parse', 'HEAD']);
+  if (head !== expectedCommit) {
+    throw new Error('Native Supervisor Verifier worktree is not at its candidate commit');
+  }
+}
+
 export function cancelNativeSupervisorTask(
   state: NativeSupervisorState,
   options: { child: string; runId: string; reason: string },
@@ -699,12 +771,37 @@ export function cancelNativeSupervisorTask(
     child.status = 'ready';
     child.candidateCommit = null;
   } else {
-    child.status = 'active';
+    // A cancelled Verifier keeps the candidate and can be safely redispatched
+    // without rebuilding it. `active` has no dispatch path and would strand
+    // the Child after a normal cancellation.
+    child.status = 'needs-reverify';
   }
   child.task = null;
   child.blocker = options.reason;
   recordEvent(next, {
     kind: 'task-cancelled',
+    child: options.child,
+    runId: options.runId,
+    summary: options.reason,
+  });
+  next.stateVersion += 1;
+  return next;
+}
+
+export function blockNativeSupervisorTask(
+  state: NativeSupervisorState,
+  options: { child: string; runId: string; reason: string },
+): NativeSupervisorState {
+  if (options.reason.trim().length === 0)
+    throw new Error('Native Supervisor blocker reason is required');
+  const next = cloneState(state);
+  const child = next.children.find(({ name }) => name === options.child);
+  if (!child?.task || child.task.runId !== options.runId) {
+    throw new Error(`Native Supervisor task runId is not current for ${options.child}`);
+  }
+  child.blocker = options.reason;
+  recordEvent(next, {
+    kind: 'task-blocked',
     child: options.child,
     runId: options.runId,
     summary: options.reason,
@@ -734,24 +831,50 @@ export async function dispatchNativeSupervisorReadyTasks(options: {
       const sourceConfig = await readProjectConfig(options.paths.projectRoot);
       let next = state;
       const tasks: NativeSupervisorTask[] = [];
+      let stateChanged = false;
       for (const child of state.children) {
         if (tasks.length >= capacity) break;
         if (child.task !== null) continue;
         const reverify = child.status === 'needs-reverify' && child.candidateCommit !== null;
         if (child.status !== 'ready' && !reverify) continue;
-        const workspace = await prepareNativeSupervisorChildWorkspace({
-          projectRoot: options.paths.projectRoot,
-          parent: state.parent,
-          child: child.name,
-          targetBranch: state.integration.branch,
-          sourceConfig,
-        });
-        if (!reverify) {
-          refreshNativeSupervisorBuilderWorkspace(
-            workspace.projectRoot,
-            `comet/supervisor/${state.parent}/${child.name}`,
-            state.integration.headCommit,
-          );
+        let workspace: PreparedNativeWorkspace;
+        try {
+          workspace = await prepareNativeSupervisorChildWorkspace({
+            projectRoot: options.paths.projectRoot,
+            parent: state.parent,
+            child: child.name,
+            targetBranch: state.integration.branch,
+            sourceConfig,
+          });
+          if (!reverify) {
+            refreshNativeSupervisorBuilderWorkspace(
+              workspace.projectRoot,
+              `comet/supervisor/${state.parent}/${child.name}`,
+              state.integration.headCommit,
+            );
+          } else {
+            assertNativeSupervisorVerifierWorkspace(
+              workspace.projectRoot,
+              `comet/supervisor/${state.parent}/${child.name}`,
+              child.candidateCommit!,
+            );
+          }
+        } catch (error) {
+          const blocked = cloneState(next);
+          const blockedChild = blocked.children.find(({ name }) => name === child.name);
+          if (blockedChild) {
+            blockedChild.blocker = (error as Error).message;
+            recordEvent(blocked, {
+              kind: 'task-blocked',
+              child: child.name,
+              runId: null,
+              summary: blockedChild.blocker,
+            });
+            blocked.stateVersion += 1;
+            next = blocked;
+            stateChanged = true;
+          }
+          continue;
         }
         const created = createNativeSupervisorTask(next, {
           role: reverify ? 'verifier' : 'builder',
@@ -762,7 +885,7 @@ export async function dispatchNativeSupervisorReadyTasks(options: {
         next = created.state;
         tasks.push(created.task);
       }
-      if (tasks.length > 0) await writeNativeSupervisorState(options.paths, next);
+      if (tasks.length > 0 || stateChanged) await writeNativeSupervisorState(options.paths, next);
       return { state: next, tasks };
     },
   );
@@ -909,6 +1032,16 @@ export async function integrateNativeSupervisorChildWorkspace(options: {
       }
       const child = state.children.find(({ name }) => name === options.name);
       if (!child) throw new Error(`Native Supervisor child ${options.name} does not exist`);
+      // Keep integration deterministic using a stable topological order with
+      // declaration order as the same-level tie-breaker.
+      const nextInIntegrationOrder = stableSupervisorIntegrationOrder(state).find(
+        ({ status }) => status !== 'integrated' && status !== 'archived',
+      );
+      if (nextInIntegrationOrder && nextInIntegrationOrder.name !== options.name) {
+        throw new Error(
+          `Native Supervisor integration order requires ${nextInIntegrationOrder.name} before ${options.name}`,
+        );
+      }
       if (child.status !== 'verified' || !child.verifiedCommit) {
         throw new Error(
           `Native Supervisor child ${options.name} must be verified before integration`,

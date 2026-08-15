@@ -57,6 +57,11 @@ export async function nativeNextCommand(
   const returnToBuild = takeFlag(args, '--return-to-build');
   const retryVerifier = takeFlag(args, '--retry-verifier');
   const resolveVerifierBlocker = takeFlag(args, '--resolve-verifier-blocker');
+  const maxParallelText = takeOption(args, '--max-parallel');
+  const maxParallel = maxParallelText === undefined ? 2 : Number(maxParallelText);
+  if (!Number.isSafeInteger(maxParallel) || maxParallel < 1) {
+    throw new NativeUsageError('--max-parallel must be a positive integer');
+  }
   if (
     [confirmed, returnToBuild, retryVerifier, resolveVerifierBlocker].filter(Boolean).length > 1
   ) {
@@ -222,10 +227,13 @@ export async function nativeNextCommand(
             const dispatched = await dispatchNativeSupervisorReadyTasks({
               paths: configured.paths,
               parent: name,
-              maxParallel: 2,
+              maxParallel,
             });
             supervisorTasks = dispatched.tasks;
-            if (supervisorTasks.length > 0) {
+            if (
+              supervisorTasks.length > 0 ||
+              dispatched.state.stateVersion !== supervisor.stateVersion
+            ) {
               effectiveChildren =
                 (await inspectNativeChildren({ paths: configured.paths, state: current })) ??
                 effectiveChildren;

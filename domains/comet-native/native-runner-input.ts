@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
 import { gitWorktreeIsClean, runGitCommand } from '../../platform/process/git.js';
+import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
 
 import type { NativeCheckPlan } from './native-check-executor.js';
 import { readNativeLocalExecution } from './native-local-execution.js';
@@ -21,14 +22,18 @@ import {
 import {
   applyNativeSupervisorBuilderResult,
   applyNativeSupervisorVerifierResult,
+  blockNativeSupervisorTask,
+  cancelNativeSupervisorTask,
   createNativeSupervisorTask,
   integrateNativeSupervisorChildWorkspace,
   recordNativeSupervisorFinalVerification,
   readNativeSupervisorState,
+  reconnectNativeSupervisorTaskWithState,
   writeNativeSupervisorState,
   type NativeSupervisorIntegrationCheck,
   type NativeSupervisorVerificationEvidence,
 } from './native-supervisor.js';
+import { withNativeMutationLock } from './native-mutation-lock.js';
 import { createNativeRunnerChannel, NATIVE_SKILL_COORDINATION } from './native-runner-protocol.js';
 import type {
   NativeBuilderHandoff,
@@ -84,6 +89,26 @@ interface RunnerSupervisorBuilderInput {
   candidateCommit: string;
 }
 
+interface RunnerSupervisorBuilderFailureInput {
+  kind: 'supervisor-builder-failure';
+  child: string;
+  runId: string;
+  reason: string;
+}
+
+interface RunnerSupervisorReconnectInput {
+  kind: 'supervisor-reconnect';
+  child: string;
+  runId: string;
+}
+
+interface RunnerSupervisorCancelInput {
+  kind: 'supervisor-cancel';
+  child: string;
+  runId: string;
+  reason: string;
+}
+
 interface RunnerSupervisorVerifierInput {
   kind: 'supervisor-verifier-result';
   child: string;
@@ -105,6 +130,9 @@ export type NativeRunnerInput =
   | RunnerExecutionErrorInput
   | RunnerVerifierUnavailableInput
   | RunnerSupervisorBuilderInput
+  | RunnerSupervisorBuilderFailureInput
+  | RunnerSupervisorReconnectInput
+  | RunnerSupervisorCancelInput
   | RunnerSupervisorVerifierInput
   | RunnerSupervisorIntegrateInput;
 
@@ -313,6 +341,36 @@ export function parseNativeRunnerInput(value: unknown): NativeRunnerInput {
       candidateCommit: text(input.candidateCommit, 'Native Supervisor candidate commit'),
     };
   }
+  if (input.kind === 'supervisor-builder-failure') {
+    exactKeys(
+      input,
+      ['kind', 'child', 'runId', 'reason'],
+      'Native Supervisor Builder failure input',
+    );
+    return {
+      kind: 'supervisor-builder-failure',
+      child: text(input.child, 'Native Supervisor child'),
+      runId: text(input.runId, 'Native Supervisor runId'),
+      reason: text(input.reason, 'Native Supervisor Builder failure reason'),
+    };
+  }
+  if (input.kind === 'supervisor-reconnect') {
+    exactKeys(input, ['kind', 'child', 'runId'], 'Native Supervisor reconnect input');
+    return {
+      kind: 'supervisor-reconnect',
+      child: text(input.child, 'Native Supervisor child'),
+      runId: text(input.runId, 'Native Supervisor runId'),
+    };
+  }
+  if (input.kind === 'supervisor-cancel') {
+    exactKeys(input, ['kind', 'child', 'runId', 'reason'], 'Native Supervisor cancel input');
+    return {
+      kind: 'supervisor-cancel',
+      child: text(input.child, 'Native Supervisor child'),
+      runId: text(input.runId, 'Native Supervisor runId'),
+      reason: text(input.reason, 'Native Supervisor cancellation reason'),
+    };
+  }
   if (input.kind === 'supervisor-verifier-result') {
     exactKeys(
       input,
@@ -388,6 +446,34 @@ function assertSupervisorTaskCommit(
     runGitCommand(task.projectRoot, ['merge-base', '--is-ancestor', task.baseCommit, commit]);
   } catch (error) {
     throw new Error(`Native Supervisor ${role} result is not based on its task base commit`, {
+      cause: error,
+    });
+  }
+}
+
+function assertSupervisorTaskWorkspaceIdentity(
+  task: { projectRoot: string; baseCommit: string; role: 'builder' | 'verifier' },
+  expectedBranch: string,
+): void {
+  const identity = inspectGitWorktree(task.projectRoot);
+  const root = path.resolve(identity.currentWorktreeRoot ?? '');
+  if (!identity.isGitWorktree || root !== path.resolve(task.projectRoot)) {
+    throw new Error('Native Supervisor task worktree identity is invalid');
+  }
+  if (identity.currentBranch !== expectedBranch) {
+    throw new Error('Native Supervisor task is attached to the wrong Child branch');
+  }
+  const head = runGitCommand(task.projectRoot, ['rev-parse', 'HEAD']);
+  if (task.role === 'verifier') {
+    if (!gitWorktreeIsClean(task.projectRoot) || head !== task.baseCommit) {
+      throw new Error('Native Supervisor Verifier task worktree is not at its candidate commit');
+    }
+    return;
+  }
+  try {
+    runGitCommand(task.projectRoot, ['merge-base', '--is-ancestor', task.baseCommit, head]);
+  } catch (error) {
+    throw new Error('Native Supervisor Builder task base commit is not an ancestor of its HEAD', {
       cause: error,
     });
   }
@@ -491,61 +577,199 @@ export async function applyNativeRunnerInput(options: {
     portableBeforeInput?.phase === 'verify' &&
     supervisor.children.every(({ status }) => status === 'integrated' || status === 'archived');
   if (supervisor && input.kind === 'supervisor-builder-result') {
-    const child = supervisor.children.find(({ name }) => name === input.child);
-    if (!child?.task || child.task.role !== 'builder') {
-      throw new Error(`Native Supervisor Builder task is not active for ${input.child}`);
-    }
-    assertSupervisorTaskCommit(
-      child.task,
-      input.candidateCommit,
-      'builder',
-      `comet/supervisor/${supervisor.parent}/${input.child}`,
+    return withNativeMutationLock(
+      options.paths,
+      `apply Native Supervisor Builder result ${input.child}`,
+      async () => {
+        const current = await readNativeSupervisorState(options.paths, options.name);
+        if (!current) throw new Error(`Native Supervisor state is missing for ${options.name}`);
+        const child = current.children.find(({ name }) => name === input.child);
+        if (!child?.task || child.task.role !== 'builder') {
+          throw new Error(`Native Supervisor Builder task is not active for ${input.child}`);
+        }
+        try {
+          assertSupervisorTaskCommit(
+            child.task,
+            input.candidateCommit,
+            'builder',
+            `comet/supervisor/${current.parent}/${input.child}`,
+          );
+        } catch (error) {
+          await writeNativeSupervisorState(
+            options.paths,
+            blockNativeSupervisorTask(current, {
+              child: input.child,
+              runId: input.runId,
+              reason: (error as Error).message,
+            }),
+          );
+          throw error;
+        }
+        const projectRoot = child.task.projectRoot;
+        const candidate = applyNativeSupervisorBuilderResult(current, input);
+        const verifier = createNativeSupervisorTask(candidate, {
+          role: 'verifier',
+          child: input.child,
+          projectRoot,
+          runId: randomUUID(),
+        });
+        await writeNativeSupervisorState(options.paths, verifier.state);
+        const portableState = await readNativePortableChange(options.paths, options.name);
+        return {
+          state: portableState,
+          supervisorTask: verifier.task,
+          checks: [],
+          requestChecks: null,
+          verifierDispatch: null,
+          continuation: nativePortableContinuation(portableState),
+        };
+      },
     );
-    const projectRoot = child.task.projectRoot;
-    const candidate = applyNativeSupervisorBuilderResult(supervisor, input);
-    const verifier = createNativeSupervisorTask(candidate, {
-      role: 'verifier',
-      child: input.child,
-      projectRoot,
-      runId: randomUUID(),
-    });
-    const portableState = await readNativePortableChange(options.paths, options.name);
-    await writeNativeSupervisorState(options.paths, verifier.state);
-    return {
-      state: portableState,
-      supervisorTask: verifier.task,
-      checks: [],
-      requestChecks: null,
-      verifierDispatch: null,
-      continuation: nativePortableContinuation(
-        await readNativePortableChange(options.paths, options.name),
-      ),
-    };
+  }
+  if (supervisor && input.kind === 'supervisor-builder-failure') {
+    return withNativeMutationLock(
+      options.paths,
+      `cancel Native Supervisor Builder task ${input.child}`,
+      async () => {
+        const current = await readNativeSupervisorState(options.paths, options.name);
+        if (!current) throw new Error(`Native Supervisor state is missing for ${options.name}`);
+        const child = current.children.find(({ name }) => name === input.child);
+        if (!child?.task || child.task.role !== 'builder') {
+          throw new Error(`Native Supervisor Builder failure is not valid for ${input.child}`);
+        }
+        const state = cancelNativeSupervisorTask(current, {
+          child: input.child,
+          runId: input.runId,
+          reason: input.reason,
+        });
+        await writeNativeSupervisorState(options.paths, state);
+        const portableState = await readNativePortableChange(options.paths, options.name);
+        return {
+          state: portableState,
+          supervisorState: state,
+          supervisorTask: null,
+          checks: [],
+          requestChecks: null,
+          verifierDispatch: null,
+          continuation: nativePortableContinuation(portableState),
+        };
+      },
+    );
+  }
+  if (supervisor && input.kind === 'supervisor-reconnect') {
+    return withNativeMutationLock(
+      options.paths,
+      `reconnect Native Supervisor task ${input.child}`,
+      async () => {
+        const current = await readNativeSupervisorState(options.paths, options.name);
+        if (!current) throw new Error(`Native Supervisor state is missing for ${options.name}`);
+        const task = current.children.find(({ name }) => name === input.child)?.task;
+        if (!task || task.runId !== input.runId) {
+          throw new Error(`Native Supervisor task runId is not current for ${input.child}`);
+        }
+        try {
+          assertSupervisorTaskWorkspaceIdentity(
+            task,
+            `comet/supervisor/${current.parent}/${input.child}`,
+          );
+        } catch (error) {
+          await writeNativeSupervisorState(
+            options.paths,
+            blockNativeSupervisorTask(current, {
+              child: input.child,
+              runId: input.runId,
+              reason: (error as Error).message,
+            }),
+          );
+          throw error;
+        }
+        const reconnected = reconnectNativeSupervisorTaskWithState(current, {
+          child: input.child,
+          runId: input.runId,
+        });
+        await writeNativeSupervisorState(options.paths, reconnected.state);
+        const portableState = await readNativePortableChange(options.paths, options.name);
+        return {
+          state: portableState,
+          supervisorState: reconnected.state,
+          supervisorTask: reconnected.task,
+          checks: [],
+          requestChecks: null,
+          verifierDispatch: null,
+          continuation: nativePortableContinuation(portableState),
+        };
+      },
+    );
+  }
+  if (supervisor && input.kind === 'supervisor-cancel') {
+    return withNativeMutationLock(
+      options.paths,
+      `cancel Native Supervisor task ${input.child}`,
+      async () => {
+        const current = await readNativeSupervisorState(options.paths, options.name);
+        if (!current) throw new Error(`Native Supervisor state is missing for ${options.name}`);
+        const state = cancelNativeSupervisorTask(current, {
+          child: input.child,
+          runId: input.runId,
+          reason: input.reason,
+        });
+        await writeNativeSupervisorState(options.paths, state);
+        const portableState = await readNativePortableChange(options.paths, options.name);
+        return {
+          state: portableState,
+          supervisorState: state,
+          supervisorTask: null,
+          checks: [],
+          requestChecks: null,
+          verifierDispatch: null,
+          continuation: nativePortableContinuation(portableState),
+        };
+      },
+    );
   }
   if (supervisor && input.kind === 'supervisor-verifier-result') {
-    const child = supervisor.children.find(({ name }) => name === input.child);
-    if (!child?.task || child.task.role !== 'verifier' || !child.candidateCommit) {
-      throw new Error(`Native Supervisor Verifier task is not active for ${input.child}`);
-    }
-    assertSupervisorTaskCommit(
-      child.task,
-      child.candidateCommit,
-      'verifier',
-      `comet/supervisor/${supervisor.parent}/${input.child}`,
+    return withNativeMutationLock(
+      options.paths,
+      `apply Native Supervisor Verifier result ${input.child}`,
+      async () => {
+        const current = await readNativeSupervisorState(options.paths, options.name);
+        if (!current) throw new Error(`Native Supervisor state is missing for ${options.name}`);
+        const child = current.children.find(({ name }) => name === input.child);
+        if (!child?.task || child.task.role !== 'verifier' || !child.candidateCommit) {
+          throw new Error(`Native Supervisor Verifier task is not active for ${input.child}`);
+        }
+        try {
+          assertSupervisorTaskCommit(
+            child.task,
+            child.candidateCommit,
+            'verifier',
+            `comet/supervisor/${current.parent}/${input.child}`,
+          );
+        } catch (error) {
+          await writeNativeSupervisorState(
+            options.paths,
+            blockNativeSupervisorTask(current, {
+              child: input.child,
+              runId: input.runId,
+              reason: (error as Error).message,
+            }),
+          );
+          throw error;
+        }
+        const state = applyNativeSupervisorVerifierResult(current, input);
+        await writeNativeSupervisorState(options.paths, state);
+        const portableState = await readNativePortableChange(options.paths, options.name);
+        return {
+          state: portableState,
+          supervisorState: state,
+          supervisorTask: null,
+          checks: [],
+          requestChecks: null,
+          verifierDispatch: null,
+          continuation: nativePortableContinuation(portableState),
+        };
+      },
     );
-    const state = applyNativeSupervisorVerifierResult(supervisor, input);
-    await writeNativeSupervisorState(options.paths, state);
-    return {
-      state: await readNativePortableChange(options.paths, options.name),
-      supervisorState: state,
-      supervisorTask: null,
-      checks: [],
-      requestChecks: null,
-      verifierDispatch: null,
-      continuation: nativePortableContinuation(
-        await readNativePortableChange(options.paths, options.name),
-      ),
-    };
   }
   if (supervisor && input.kind === 'supervisor-integrate') {
     const state = await integrateNativeSupervisorChildWorkspace({
@@ -572,7 +796,12 @@ export async function applyNativeRunnerInput(options: {
       input.kind === 'dispatch-verifier' ||
       input.kind === 'verifier-response' ||
       input.kind === 'verifier-execution-error' ||
-      input.kind === 'verifier-unavailable') &&
+      input.kind === 'verifier-unavailable' ||
+      input.kind === 'supervisor-builder-result' ||
+      input.kind === 'supervisor-builder-failure' ||
+      input.kind === 'supervisor-reconnect' ||
+      input.kind === 'supervisor-cancel' ||
+      input.kind === 'supervisor-verifier-result') &&
     !supervisorParentVerification
   ) {
     throw new Error(
