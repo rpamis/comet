@@ -61,6 +61,7 @@ export interface NativeSupervisorEvent {
     | 'task-dispatched'
     | 'task-reconnected'
     | 'task-cancelled'
+    | 'task-blocked'
     | 'builder-result'
     | 'verifier-result'
     | 'child-integrated'
@@ -311,6 +312,31 @@ function assertSupervisorState(value: unknown): asserts value is NativeSuperviso
     }
     if (!Array.isArray(child.checks) || !Array.isArray(child.verification?.checks ?? [])) {
       throw new Error(`Native Supervisor child ${child.name} evidence is invalid`);
+    }
+    if (child.task !== null) {
+      if (!child.task || typeof child.task !== 'object') {
+        throw new Error(`Native Supervisor child ${child.name} task is invalid`);
+      }
+      if (
+        !['builder', 'verifier'].includes(child.task.role) ||
+        child.task.child !== child.name ||
+        typeof child.task.projectRoot !== 'string' ||
+        child.task.projectRoot.length === 0 ||
+        typeof child.task.runId !== 'string' ||
+        child.task.runId.length === 0
+      ) {
+        throw new Error(`Native Supervisor child ${child.name} task identity is invalid`);
+      }
+      assertCommit(child.task.baseCommit, `Native Supervisor child ${child.name} task base commit`);
+      if (child.task.projectRoot !== child.projectRoot) {
+        throw new Error(`Native Supervisor child ${child.name} task projectRoot is invalid`);
+      }
+      if (
+        (child.task.role === 'builder' && child.status !== 'active') ||
+        (child.task.role === 'verifier' && !['active', 'needs-reverify'].includes(child.status))
+      ) {
+        throw new Error(`Native Supervisor child ${child.name} task status is invalid`);
+      }
     }
   }
 }
@@ -699,12 +725,37 @@ export function cancelNativeSupervisorTask(
     child.status = 'ready';
     child.candidateCommit = null;
   } else {
-    child.status = 'active';
+    // A cancelled Verifier keeps the candidate and can be safely redispatched
+    // without rebuilding it. `active` has no dispatch path and would strand
+    // the Child after a normal cancellation.
+    child.status = 'needs-reverify';
   }
   child.task = null;
   child.blocker = options.reason;
   recordEvent(next, {
     kind: 'task-cancelled',
+    child: options.child,
+    runId: options.runId,
+    summary: options.reason,
+  });
+  next.stateVersion += 1;
+  return next;
+}
+
+export function blockNativeSupervisorTask(
+  state: NativeSupervisorState,
+  options: { child: string; runId: string; reason: string },
+): NativeSupervisorState {
+  if (options.reason.trim().length === 0)
+    throw new Error('Native Supervisor blocker reason is required');
+  const next = cloneState(state);
+  const child = next.children.find(({ name }) => name === options.child);
+  if (!child?.task || child.task.runId !== options.runId) {
+    throw new Error(`Native Supervisor task runId is not current for ${options.child}`);
+  }
+  child.blocker = options.reason;
+  recordEvent(next, {
+    kind: 'task-blocked',
     child: options.child,
     runId: options.runId,
     summary: options.reason,
@@ -739,13 +790,31 @@ export async function dispatchNativeSupervisorReadyTasks(options: {
         if (child.task !== null) continue;
         const reverify = child.status === 'needs-reverify' && child.candidateCommit !== null;
         if (child.status !== 'ready' && !reverify) continue;
-        const workspace = await prepareNativeSupervisorChildWorkspace({
-          projectRoot: options.paths.projectRoot,
-          parent: state.parent,
-          child: child.name,
-          targetBranch: state.integration.branch,
-          sourceConfig,
-        });
+        let workspace: PreparedNativeWorkspace;
+        try {
+          workspace = await prepareNativeSupervisorChildWorkspace({
+            projectRoot: options.paths.projectRoot,
+            parent: state.parent,
+            child: child.name,
+            targetBranch: state.integration.branch,
+            sourceConfig,
+          });
+        } catch (error) {
+          const blocked = cloneState(next);
+          const blockedChild = blocked.children.find(({ name }) => name === child.name);
+          if (blockedChild) {
+            blockedChild.blocker = (error as Error).message;
+            recordEvent(blocked, {
+              kind: 'task-blocked',
+              child: child.name,
+              runId: null,
+              summary: blockedChild.blocker,
+            });
+            blocked.stateVersion += 1;
+            await writeNativeSupervisorState(options.paths, blocked);
+          }
+          throw error;
+        }
         if (!reverify) {
           refreshNativeSupervisorBuilderWorkspace(
             workspace.projectRoot,

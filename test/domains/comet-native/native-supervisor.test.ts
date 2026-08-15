@@ -35,6 +35,7 @@ import {
 } from '../../../domains/comet-native/native-supervisor.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import { parseNativeChildrenContract } from '../../../domains/comet-native/native-children.js';
+import { parseNativeRunnerInput } from '../../../domains/comet-native/native-runner-input.js';
 
 const CONTRACT = parseNativeChildrenContract(`
 schema: comet.native.children.v2
@@ -48,6 +49,40 @@ children:
 `);
 
 describe('Native Supervisor v2 state', () => {
+  it('parses persisted coordination recovery inputs with strict run identity', () => {
+    expect(
+      parseNativeRunnerInput({
+        kind: 'supervisor-reconnect',
+        child: 'integration-core',
+        runId: 'run-1',
+      }),
+    ).toEqual({
+      kind: 'supervisor-reconnect',
+      child: 'integration-core',
+      runId: 'run-1',
+    });
+    expect(
+      parseNativeRunnerInput({
+        kind: 'supervisor-builder-failure',
+        child: 'integration-core',
+        runId: 'run-1',
+        reason: 'worker exited',
+      }),
+    ).toEqual({
+      kind: 'supervisor-builder-failure',
+      child: 'integration-core',
+      runId: 'run-1',
+      reason: 'worker exited',
+    });
+    expect(() =>
+      parseNativeRunnerInput({
+        kind: 'supervisor-cancel',
+        child: 'integration-core',
+        runId: 'run-1',
+        reason: '',
+      }),
+    ).toThrow(/reason/iu);
+  });
   it('keeps machine state under the central Native Runtime directory', () => {
     const paths = {
       changesRuntimeDir: 'D:/project/.comet/runtime/native/changes',
@@ -517,6 +552,16 @@ children:
     expect(reverified.children[0]).toMatchObject({
       status: 'verified',
       verifiedCommit: 'b'.repeat(40),
+      task: null,
+    });
+    const cancelledVerifier = cancelNativeSupervisorTask(verifier.state, {
+      child: 'integration-core',
+      runId: 'verifier-run',
+      reason: 'verifier disconnected',
+    });
+    expect(cancelledVerifier.children[0]).toMatchObject({
+      status: 'needs-reverify',
+      candidateCommit: 'b'.repeat(40),
       task: null,
     });
   });
