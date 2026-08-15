@@ -1169,7 +1169,10 @@ export async function refreshNativeSupervisorTarget(options: {
   const target = resolveGitRef(options.paths.projectRoot, options.state.integration.targetBranch);
   if (!target || target === options.state.integration.targetCommit) return null;
   const state = options.state;
-  assertNativeSupervisorIntegrationWorkspace(state);
+  const integrationHead = assertNativeSupervisorIntegrationWorkspace(state);
+  if (integrationHead !== state.integration.headCommit) {
+    throw new Error('Native Supervisor integration head changed before target refresh');
+  }
   try {
     runGitCommand(state.integration.worktree, [
       'merge',
