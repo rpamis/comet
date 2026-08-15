@@ -278,6 +278,7 @@ function assertSupervisorState(value: unknown): asserts value is NativeSuperviso
     }
   }
   const names = new Set<string>();
+  const runIds = new Set<string>();
   for (const child of state.children) {
     if (!child || typeof child !== 'object' || typeof child.name !== 'string') {
       throw new Error('Native Supervisor child state is invalid');
@@ -328,6 +329,13 @@ function assertSupervisorState(value: unknown): asserts value is NativeSuperviso
         throw new Error(`Native Supervisor child ${child.name} task identity is invalid`);
       }
       assertCommit(child.task.baseCommit, `Native Supervisor child ${child.name} task base commit`);
+      if (runIds.has(child.task.runId)) {
+        throw new Error(`Native Supervisor task runId ${child.task.runId} is duplicated`);
+      }
+      runIds.add(child.task.runId);
+      if (child.task.role === 'verifier' && child.task.baseCommit !== child.candidateCommit) {
+        throw new Error(`Native Supervisor child ${child.name} verifier base commit is invalid`);
+      }
       if (child.task.projectRoot !== child.projectRoot) {
         throw new Error(`Native Supervisor child ${child.name} task projectRoot is invalid`);
       }
