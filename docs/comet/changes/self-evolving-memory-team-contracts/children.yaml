@@ -539,3 +539,8 @@ children:
       - native-skill-language-surface-repair
     covers:
       - A273
+  - name: dashboard-index-artifact-repair
+    depends_on:
+      - memory-rules-entry-runtime-repair
+    covers:
+      - A40

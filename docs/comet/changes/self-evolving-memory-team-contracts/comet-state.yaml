@@ -3,9 +3,9 @@ name: self-evolving-memory-team-contracts
 language: en
 phase: build
 status: active
-state_version: 29
+state_version: 34
 brief: brief.md
-children_contract_hash: ccce34a1c2461c5cc58c8792ecc74d0cbaf4022da210ba063c38e706ab629e9c
+children_contract_hash: ca40296797cbea14cdd996abdc9bc4856d788071780682b7378f9bda2c4f0398
 spec_changes:
   - capability: comet-plugin-runtime
     operation: modify
@@ -23,7 +23,7 @@ workspace:
   finish: null
 loop:
   stage: building
-  goal_cycle: 6
+  goal_cycle: 7
   iteration: 1
   attempt: 0
   retry_epoch: 0
@@ -2101,6 +2101,29 @@ history:
       text: Native child declarations changed
       truncated: false
     completed_at: 2026-08-15T10:24:19.576Z
+  - goal_cycle: 6
+    iteration: 1
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A40
+    summary:
+      text: "Parent Verify found one concrete integration issue: the dashboard SQLite
+        change committed a large user-visible dashboard-installed-snapshot.json
+        at repository root, and the architecture check rejects it. The SQLite
+        index must remain private under the platform cache; the tracked snapshot
+        should be removed."
+      truncated: false
+    completed_at: 2026-08-15T10:45:15.083Z
+  - goal_cycle: 6
+    iteration: 2
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native child declarations changed
+      truncated: false
+    completed_at: 2026-08-15T10:45:43.198Z
 history_overflow:
   dropped_entries: 0
   first_dropped_at: null
