@@ -1481,6 +1481,16 @@ function ArtifactDrawer({ artifact, onClose }) {
     return () => scrollEl.removeEventListener('scroll', onScroll);
   }, [toc, isFullscreen]);
 
+  useEffect(() => {
+    if (!isFullscreen) return undefined;
+
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isFullscreen, onClose]);
+
   if (!artifact) return null;
   const preview = artifact.preview;
   return (
@@ -1505,7 +1515,7 @@ function ArtifactDrawer({ artifact, onClose }) {
         <header className="flex items-start gap-3 border-b border-border-soft p-5">
           <div className="min-w-0 flex-1">
             <h2 className="text-xl font-bold">{artifact.name}</h2>
-            <div className="mt-1 flex items-start gap-1.5">
+            <div className="mt-1 flex items-center gap-1.5">
               {preview?.path && (
                 <button
                   type="button"
@@ -1537,7 +1547,7 @@ function ArtifactDrawer({ artifact, onClose }) {
                   </svg>
                 </button>
               )}
-              <p className="min-w-0 flex-1 break-all font-mono text-xs text-meta">
+              <p className="artifact-preview-path min-w-0 flex-1 break-all font-mono text-xs text-meta">
                 {preview?.path ?? '当前服务未返回全文内容'}
               </p>
             </div>
@@ -1602,9 +1612,9 @@ function ArtifactDrawer({ artifact, onClose }) {
           {isFullscreen && toc.length > 0 && (
             <nav
               aria-label="文档目录"
-              className="hidden w-[220px] shrink-0 overflow-y-auto border-r border-border-soft bg-surface px-3 py-4 sm:block"
+              className="hidden w-[250px] shrink-0 overflow-y-auto border-r border-border-soft bg-surface px-3 py-4 sm:block"
             >
-              <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted">
+              <p className="mb-2 px-2 text-sm font-semibold uppercase tracking-wider text-muted">
                 目录
               </p>
               <ul className="space-y-0.5">
@@ -1627,9 +1637,9 @@ function ArtifactDrawer({ artifact, onClose }) {
                       }}
                       className={[
                         'block rounded-md px-2 py-1.5 leading-snug transition-colors',
-                        item.depth === 1 ? 'text-[13px] font-medium' : '',
-                        item.depth === 2 ? 'pl-4 text-xs' : '',
-                        item.depth === 3 ? 'pl-7 text-xs' : '',
+                        item.depth === 1 ? 'text-base font-medium' : '',
+                        item.depth === 2 ? 'pl-4 text-base' : '',
+                        item.depth === 3 ? 'pl-7 text-base' : '',
                         activeTocId === item.id
                           ? 'bg-accent-soft font-medium text-accent'
                           : 'text-fg-2 hover:bg-surface-warm hover:text-fg',

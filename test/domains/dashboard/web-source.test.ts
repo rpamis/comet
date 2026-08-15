@@ -92,6 +92,46 @@ describe('dashboard web source contracts', () => {
     expect(source).not.toContain('{toc.length > 0 && (');
   });
 
+  it('keeps only preview table headers readable and scrollable instead of wrapping', async () => {
+    const styles = await readDashboardStyles();
+
+    expect(styles).toContain('.md-github {');
+    expect(styles).toContain('overflow-x: auto;');
+    expect(styles).toContain('width: 100%;');
+    expect(styles).not.toContain('width: max-content;');
+    expect(styles).toContain('.md-github th {');
+    expect(styles).toContain('white-space: nowrap;');
+  });
+
+  it('uses the confirmed fullscreen directory dimensions and type scale', async () => {
+    const source = await readDashboardSource();
+
+    expect(source).toContain('w-[250px]');
+    expect(source).toContain('text-sm font-semibold uppercase');
+    expect(source).toContain("item.depth === 1 ? 'text-base font-medium'");
+    expect(source).toContain("item.depth === 2 ? 'pl-4 text-base'");
+    expect(source).toContain("item.depth === 3 ? 'pl-7 text-base'");
+  });
+
+  it('closes only fullscreen preview with Escape', async () => {
+    const source = await readDashboardSource();
+
+    expect(source).toContain("if (event.key === 'Escape') onClose();");
+    expect(source).toContain("window.addEventListener('keydown', onKeyDown)");
+    expect(source).toContain("window.removeEventListener('keydown', onKeyDown)");
+  });
+
+  it('vertically centers the preview path copy control with its text', async () => {
+    const [source, styles] = await Promise.all([readDashboardSource(), readDashboardStyles()]);
+
+    expect(source).toContain('className="mt-1 flex items-center gap-1.5"');
+    expect(source).toContain(
+      'className="artifact-preview-path min-w-0 flex-1 break-all font-mono text-xs text-meta"',
+    );
+    expect(styles).toContain('p.artifact-preview-path {');
+    expect(styles).toContain('margin: 0;');
+  });
+
   it('wraps artifact paths and exposes a copy control beside them', async () => {
     const source = await readDashboardSource();
 

@@ -225,6 +225,7 @@ const ignoredGeneratedTrees = new Set([
   '.agents',
   '.codex',
   '.comet',
+  '.zcode',
   '.git',
   '.pytest_cache',
   '.tmp',

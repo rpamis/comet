@@ -1,0 +1,97 @@
+name: PR Template
+
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  check-template:
+    name: PR template
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check pull request template
+        uses: actions/github-script@d746ffe35508b1917358783b479e04febd2b8f71 # v9.0.0
+        with:
+          script: |
+            const body = context.payload.pull_request?.body ?? '';
+            const baseSha = context.payload.pull_request?.base?.sha;
+            const templateResponse = await github.rest.repos.getContent({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              path: '.github/PULL_REQUEST_TEMPLATE.md',
+              ref: baseSha,
+            });
+            if (Array.isArray(templateResponse.data) || !templateResponse.data.content) {
+              core.setFailed('Unable to read .github/PULL_REQUEST_TEMPLATE.md.');
+              return;
+            }
+
+            const template = Buffer.from(templateResponse.data.content, 'base64')
+              .toString('utf8')
+              .replace(/<!--[\s\S]*?-->/g, '');
+            const sections = [...template.matchAll(/^##\s+.+$/gm)].map((match, index, headings) => {
+              const start = match.index ?? 0;
+              const end = headings[index + 1]?.index ?? template.length;
+              return { heading: match[0].trim(), content: template.slice(start, end) };
+            });
+            const templateHeadings = sections.map((section) => section.heading);
+            const missingHeadings = templateHeadings.filter((heading) => !body.includes(heading));
+            const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const templateItems = sections.flatMap((section) =>
+              [...section.content.matchAll(/^- \[[ xX]\] (.+)$/gm)].map((match) => ({
+                section: section.heading,
+                label: match[1].trim(),
+              })),
+            );
+            const missingItems = templateItems.filter(
+              ({ label }) =>
+                !new RegExp(`^- \\[[ xX]\\] ${escapeRegExp(label)}\\s*$`, 'im').test(body),
+            );
+            const checklistItems = templateItems.filter(({ section }) => /checklist/i.test(section));
+            const uncheckedChecklistItems = checklistItems.filter(({ label }) =>
+              !new RegExp(`^- \\[xX\\] ${escapeRegExp(label)}\\s*$`, 'im').test(body),
+            );
+            const errors = missingHeadings.map((heading) => `Missing template section: ${heading}`);
+            errors.push(
+              ...missingItems.map(({ label }) => `Missing template item: ${label}`),
+              ...uncheckedChecklistItems.map(({ label }) => `Checklist item is not checked: ${label}`),
+            );
+
+            const marker = '<!-- comet-pr-template-check -->';
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+            const existing = comments.data.find(
+              (comment) =>
+                comment.user?.login === 'github-actions[bot]' && comment.body?.includes(marker),
+            );
+            const commentBody = errors.length
+              ? `${marker}\n## PR template needs attention\n\nPlease update this PR to match the current .github/PULL_REQUEST_TEMPLATE.md:\n\n${errors.map((error) => `- ${error}`).join('\n')}\n`
+              : `${marker}\n✅ PR template check passed.\n`;
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: commentBody,
+              });
+            } else if (errors.length) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: commentBody,
+              });
+            }
+
+            if (errors.length) {
+              core.setFailed('Pull request does not satisfy the repository template.');
+            }

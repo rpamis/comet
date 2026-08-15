@@ -2,11 +2,18 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.4.0-beta.19] - 2026-08-13
+## What's Changed [0.4.0-beta.19] - 2026-08-15
 
-### Added
+### Changed
 
+- **Dashboard artifact previews**: Fullscreen previews now close with Escape, keep long tables horizontally scrollable, preserve readable table headers, and use a larger directory navigation scale.
+- **Hook allow-path documentation**: The website now explains how to configure project-relative `hook.allow_paths` directories for guarded workflow phases.
 - **On-demand change review**: The new `/comet-review` Skill reviews the current Native or Classic change against its implementation diff and existing evidence, reports prioritized correctness, security, edge-case, and coverage findings, and remains read-only without advancing or replacing Verify.
+
+### Fixed
+
+- **Fork pull request greetings**: First-time contributors now receive the repository guidance comment when opening a pull request from a fork, without weakening the read-only permissions of workflows that execute contributor code.
+- **Pull request template checks**: Pull requests now receive an actionable comment and a failing check when items from the repository template are missing or its checklist is incomplete.
 
 ## What's Changed [0.4.0-beta.18] - 2026-08-13
 
