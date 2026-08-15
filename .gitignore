@@ -129,3 +129,6 @@ nul
 # <<< Comet managed project state <<<
 
 .zcode
+
+# Dashboard local cache snapshots must never enter the project repository.
+dashboard-installed-snapshot.json

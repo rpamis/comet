@@ -1,0 +1,213 @@
+schema: comet.native.v4
+name: dashboard-index-artifact-repair
+language: zh-CN
+phase: archive
+status: done
+state_version: 8
+brief: brief.md
+spec_changes: []
+workspace:
+  isolation: worktree
+  change_branch: comet/dashboard-index-artifact-repair
+  target_branch: beta20
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: "`dashboard-installed-snapshot.json` 不再存在于仓库 HEAD，架构检查不再因该文件失败。"
+    result: passed
+    reason:
+      text: HEAD no longer contains dashboard-installed-snapshot.json; the only
+        implementation diff deletes it and .gitignore prevents it from being
+        re-added, and the architecture check passed.
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: SQLite 索引仍写入用户缓存目录，不在项目根目录创建索引或快照文件。
+    result: passed
+    reason:
+      text: DashboardIndexStore still resolves SQLite under the user cache root
+        (LOCALAPPDATA on Windows, with an injected cache root in the path test);
+        the focused tests confirm the project root remains empty.
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: Dashboard SQLite index 与 native collector 的相关测试继续通过。
+    result: passed
+    reason:
+      text: "Independent rerun of dashboard-index-store, index-reconciler, and
+        native-collector tests passed: 3 files and 19 tests."
+      truncated: false
+builder_handoff:
+  candidate_id: 062176b2-c01b-4e0f-9de7-c4ae17ddd790
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:eb5bb348-d258-4110-8c91-fbe21e0c6546
+  iteration: 1
+  summary:
+    text: 删除根目录 dashboard-installed-snapshot.json，并将其加入 Git 忽略；SQLite 索引实现保持不变。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+  checks:
+    - name:
+        text: Dashboard index tests
+        truncated: false
+      result: passed
+      note:
+        text: 3 files, 19 tests passed
+        truncated: false
+    - name:
+        text: Architecture lint
+        truncated: false
+      result: passed
+      note:
+        text: Architecture lint passed
+        truncated: false
+    - name:
+        text: TypeScript
+        truncated: false
+      result: passed
+      note:
+        text: tsc --noEmit passed
+        truncated: false
+    - name:
+        text: Prettier
+        truncated: false
+      result: passed
+      note:
+        text: Affected Markdown passed; .gitignore is not parsed by Prettier
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: The root beta20 workspace has unrelated top-level .review-worktrees and
+        .ruff_cache entries; child worktree architecture check is clean.
+      truncated: false
+  known_limits_truncated: false
+  submitted_at: 2026-08-15T10:47:33.095Z
+blockers: []
+verification:
+  candidate_id: 062176b2-c01b-4e0f-9de7-c4ae17ddd790
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:d7c413fa-1b1f-4426-b8ae-b3be2241bbfb
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: artifact-dashboard-tests
+      name:
+        text: Dashboard index and collector tests
+        truncated: false
+      argv_display:
+        - text: run
+          truncated: false
+        - text: test/domains/dashboard/dashboard-index-store.test.ts
+          truncated: false
+        - text: test/domains/dashboard/index-reconciler.test.ts
+          truncated: false
+        - text: test/domains/dashboard/native-collector.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 19395
+    - id: artifact-architecture
+      name:
+        text: Architecture layout check
+        truncated: false
+      argv_display:
+        - text: scripts/lint/architecture.mjs
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 185
+    - id: artifact-no-root-snapshot
+      name:
+        text: No project-root dashboard snapshot
+        truncated: false
+      argv_display:
+        - text: -e
+          truncated: false
+        - text: const fs=require('node:fs');
+            if(fs.existsSync('dashboard-installed-snapshot.json'))
+            process.exit(1);
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 74
+    - id: artifact-typecheck
+      name:
+        text: TypeScript typecheck
+        truncated: false
+      argv_display:
+        - text: --noEmit
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 6160
+    - id: artifact-prettier
+      name:
+        text: Repair brief formatting
+        truncated: false
+      argv_display:
+        - text: --check
+          truncated: false
+        - text: docs/comet/changes/dashboard-index-artifact-repair/brief.md
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 502
+  summary:
+    text: 独立核验通过：变更仅删除仓库根目录快照、加入 Git 忽略并保留 SQLite 用户缓存路径；架构检查、TypeScript 与 3 个
+      Dashboard 相关测试文件均通过。
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-08-15T10:51:10.836Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 独立核验通过：变更仅删除仓库根目录快照、加入 Git 忽略并保留 SQLite 用户缓存路径；架构检查、TypeScript 与 3 个
+        Dashboard 相关测试文件均通过。
+      truncated: false
+    completed_at: 2026-08-15T10:51:10.836Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-15T10:46:16.295Z
