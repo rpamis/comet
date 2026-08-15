@@ -3,7 +3,6 @@ import path from 'node:path';
 
 import { readNativeTextFilePrefix } from '../comet-native/native-bounded-file.js';
 import {
-  inspectNativeChildren,
   NATIVE_CHILDREN_FILE,
   readNativeChildrenContract,
   type NativeChildStatusProjection,
@@ -43,6 +42,8 @@ import {
   invalidNativeDashboardListItem,
 } from './native-legacy-adapter.js';
 import type { DashboardChangeTab, NativeDashboardChangePage } from './types.js';
+import { DashboardIndexStore, resolveDashboardIndexPath } from './index-store.js';
+import { DashboardIndexReconciler } from './index-reconciler.js';
 import {
   collectDashboardWorkspaceSources,
   dashboardWorkspaceIdentity,
@@ -56,6 +57,9 @@ const ARCHIVE_NAME_PATTERN = /^(\d{4}-\d{2}-\d{2})-(.+)$/u;
 const DEFAULT_NATIVE_CHANGE_PAGE_SIZE = 5;
 const MAX_NATIVE_CHANGE_PAGE_SIZE = 50;
 const NATIVE_DASHBOARD_CURSOR_PREFIX = 'native-dashboard-v2.';
+const NATIVE_INDEX_REFRESH_INTERVAL_MS = 30_000;
+
+const nativeIndexReconciler = new DashboardIndexReconciler(NATIVE_INDEX_REFRESH_INTERVAL_MS);
 
 interface NativeDashboardEntry {
   status: 'active' | 'archived';
@@ -459,13 +463,79 @@ async function activeParentChildren(
 ): Promise<NativeDashboardChildSummary[]> {
   try {
     if (!(await hasNativeChildrenContract(candidate))) return [];
-    const { read } = await readEntryState(candidate.source.paths, candidate.entry);
+    const { changeDir, read } = await readEntryState(candidate.source.paths, candidate.entry);
     if (read.kind !== 'portable') return [];
-    const inspection = await inspectNativeChildren({
-      paths: candidate.source.paths,
-      state: read.state,
+    const document = await readNativeChildrenContract({
+      changeDir,
+      ...(read.state.acceptance.length > 0
+        ? { acceptanceIds: read.state.acceptance.map(({ id }) => id) }
+        : {}),
     });
-    return inspection?.children.map((child) => childSummary(child, candidates)) ?? [];
+    if (!document) return [];
+    const children = document.contract.children;
+    const candidatesByName = new Map(
+      children.map((child) => [
+        child.name,
+        matchingChildCandidate(
+          {
+            name: child.name,
+            dependsOn: child.depends_on,
+            covers: child.covers,
+            status: 'pending',
+            phase: null,
+            projectRoot: null,
+            message: null,
+          },
+          candidates,
+        ),
+      ]),
+    );
+    const archived = new Set(
+      children
+        .filter(({ name }) => candidatesByName.get(name)?.entry.status === 'archived')
+        .map(({ name }) => name),
+    );
+    return Promise.all(
+      children.map(async (child): Promise<NativeDashboardChildSummary> => {
+        const childCandidate = candidatesByName.get(child.name) ?? null;
+        let status: NativeChildStatusProjection['status'] = 'pending';
+        let phase: NativeChildStatusProjection['phase'] = null;
+        let message: string | null = null;
+        if (childCandidate?.entry.status === 'archived') {
+          status = 'done';
+        } else if (childCandidate) {
+          status = 'active';
+          const childState = await readEntryState(
+            childCandidate.source.paths,
+            childCandidate.entry,
+          );
+          if (childState.read.kind === 'portable') {
+            phase = childState.read.state.phase;
+            if (childState.read.state.status === 'blocked') {
+              status = 'blocked';
+              message = childState.read.state.blockers[0]?.reason.text ?? null;
+            } else if (childState.read.state.status === 'await-user') {
+              status = 'blocked';
+              message = childState.read.state.blockers[0]?.reason.text ?? null;
+            }
+          }
+        } else if (child.depends_on.every((dependency) => archived.has(dependency))) {
+          status = 'ready';
+        }
+        return childSummary(
+          {
+            name: child.name,
+            dependsOn: child.depends_on,
+            covers: child.covers,
+            status,
+            phase,
+            projectRoot: childCandidate?.source.workspace.projectRoot ?? null,
+            message,
+          },
+          candidates,
+        );
+      }),
+    );
   } catch {
     return [];
   }
@@ -503,7 +573,55 @@ async function archivedParentChildren(
   }
 }
 
-async function buildNativeDashboardIndex(
+function isNativeDashboardIndex(value: unknown): value is NativeDashboardIndex {
+  if (!value || typeof value !== 'object') return false;
+  const index = value as Partial<NativeDashboardIndex>;
+  return (
+    Array.isArray(index.active) &&
+    Array.isArray(index.archived) &&
+    Array.isArray(index.all) &&
+    typeof index.activeChangeCount === 'number' &&
+    typeof index.archivedChangeCount === 'number'
+  );
+}
+
+async function readCachedNativeDashboardIndex(
+  projectRoot: string,
+): Promise<NativeDashboardIndex | null> {
+  const store = new DashboardIndexStore({ projectRoot });
+  try {
+    await store.open();
+    const cached = await store.readNativeIndex<unknown>();
+    return isNativeDashboardIndex(cached) ? cached : null;
+  } catch {
+    return null;
+  } finally {
+    await store.close();
+  }
+}
+
+async function readCachedNativeDashboardEntries(
+  projectRoot: string,
+  status: DashboardChangeTab,
+  query: string | undefined,
+): Promise<{ entries: NativeDashboardRootCandidate[]; query: string } | null> {
+  const store = new DashboardIndexStore({ projectRoot });
+  try {
+    await store.open();
+    const result = await store.queryNativeIndex<NativeDashboardRootCandidate>({
+      status,
+      query,
+    });
+    if (!result.indexed) return null;
+    return { entries: result.rows, query: query?.trim().toLowerCase() ?? '' };
+  } catch {
+    return null;
+  } finally {
+    await store.close();
+  }
+}
+
+async function rebuildNativeDashboardIndex(
   projectRoot: string,
 ): Promise<NativeDashboardIndex | null> {
   const sources = await discoverNativeDashboardSources(projectRoot);
@@ -540,6 +658,56 @@ async function buildNativeDashboardIndex(
     activeChangeCount: rootActive.length,
     archivedChangeCount: rootArchived.length,
   };
+}
+
+async function reconcileNativeDashboardIndex(root: string): Promise<NativeDashboardIndex | null> {
+  const index = await rebuildNativeDashboardIndex(root);
+  if (!index) return null;
+  const store = new DashboardIndexStore({ projectRoot: root });
+  try {
+    await store.open();
+    await store.replaceNativeIndex(index);
+  } finally {
+    await store.close();
+  }
+  return index;
+}
+
+async function refreshNativeDashboardIndex(
+  projectRoot: string,
+): Promise<NativeDashboardIndex | null> {
+  const root = path.resolve(projectRoot);
+  const key = resolveDashboardIndexPath(root);
+  try {
+    return await nativeIndexReconciler.refresh(key, () => reconcileNativeDashboardIndex(root));
+  } catch {
+    // SQLite is only a cache. A failed open, lock, or transaction must not
+    // make the Dashboard unavailable when the fact sources are readable.
+    return rebuildNativeDashboardIndex(root);
+  }
+}
+
+function scheduleNativeDashboardRefresh(projectRoot: string): void {
+  const root = path.resolve(projectRoot);
+  const key = resolveDashboardIndexPath(root);
+  nativeIndexReconciler.schedule(key, () => reconcileNativeDashboardIndex(root));
+}
+
+export function markNativeDashboardIndexDirty(projectRoot: string): void {
+  nativeIndexReconciler.markDirty(resolveDashboardIndexPath(path.resolve(projectRoot)));
+  scheduleNativeDashboardRefresh(projectRoot);
+}
+
+async function buildNativeDashboardIndex(
+  projectRoot: string,
+): Promise<NativeDashboardIndex | null> {
+  const root = path.resolve(projectRoot);
+  const cached = await readCachedNativeDashboardIndex(root);
+  if (cached) {
+    scheduleNativeDashboardRefresh(root);
+    return cached;
+  }
+  return refreshNativeDashboardIndex(root);
 }
 
 function listNativeDashboardEntries(
@@ -767,9 +935,13 @@ export async function collectNativeDashboardChangePage(
     nextCursor: null,
   };
   const root = path.resolve(projectRoot);
-  const index = await buildNativeDashboardIndex(root);
+  const index = options.cursor
+    ? await refreshNativeDashboardIndex(root)
+    : await buildNativeDashboardIndex(root);
   if (!index) return emptyPage;
-  const listed = listNativeDashboardEntries(index, options.status, options.query);
+  const listed =
+    (await readCachedNativeDashboardEntries(root, options.status, options.query)) ??
+    listNativeDashboardEntries(index, options.status, options.query);
   const offset = nativeDashboardOffset({
     cursor: options.cursor,
     status: options.status,

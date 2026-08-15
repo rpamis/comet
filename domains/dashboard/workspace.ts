@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 
-import { inspectGitWorktree, listGitWorktreeRoots } from '../../platform/paths/git-worktree.js';
+import { inspectGitWorktree, listGitWorktrees } from '../../platform/paths/git-worktree.js';
 
 const DASHBOARD_CHANGE_LOCATOR_PREFIX = 'dashboard-change-v1';
 const WORKSPACE_ID_PATTERN = /^[a-f0-9]{64}$/u;
@@ -47,8 +47,8 @@ export function collectDashboardWorkspaceSources(projectRoot: string): Dashboard
   const requestedRoot = path.resolve(projectRoot);
   const requestedContext = inspectGitWorktree(requestedRoot);
   const currentRoot = requestedContext.currentWorktreeRoot ?? requestedRoot;
-  const discovered = listGitWorktreeRoots(requestedRoot);
-  const roots = discovered.length > 0 ? discovered : [requestedRoot];
+  const discovered = listGitWorktrees(requestedRoot);
+  const roots = discovered.length > 0 ? discovered.map(({ root }) => root) : [requestedRoot];
   if (!roots.some((candidate) => sameDashboardPath(candidate, currentRoot))) {
     roots.push(currentRoot);
   }
@@ -61,8 +61,10 @@ export function collectDashboardWorkspaceSources(projectRoot: string): Dashboard
 
   return [...unique.values()]
     .map((candidate): DashboardWorkspaceSource => {
-      const context = inspectGitWorktree(candidate);
-      const branch = context.currentBranch;
+      const discoveredEntry = discovered.find(({ root }) => sameDashboardPath(root, candidate));
+      const branch =
+        discoveredEntry?.branch ??
+        (sameDashboardPath(candidate, currentRoot) ? requestedContext.currentBranch : null);
       return {
         id: dashboardWorkspaceId(candidate),
         label: workspaceLabel(candidate, branch),
