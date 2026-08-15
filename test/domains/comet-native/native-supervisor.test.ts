@@ -27,6 +27,7 @@ import {
   reconnectNativeSupervisorTask,
   reconnectNativeSupervisorTaskWithState,
   cancelNativeSupervisorTask,
+  dispatchNativeSupervisorReadyTasks,
   prepareNativeSupervisorChildWorkspace,
   prepareNativeSupervisorIntegrationWorkspace,
   readNativeSupervisorState,
@@ -520,6 +521,99 @@ children:
     });
   });
 
+  it('refreshes a reused Builder worktree to the current integration base', async () => {
+    const repository = await fs.mkdtemp(path.join(process.cwd(), '.tmp-supervisor-dispatch-'));
+    try {
+      const git = (args: string[]) =>
+        execFileSync('git', args, { cwd: repository, encoding: 'utf8' }).trim();
+      git(['init', '-b', 'main']);
+      git(['config', 'user.email', 'native@example.test']);
+      git(['config', 'user.name', 'Native Test']);
+      const config = defaultProjectConfig('docs', 'en');
+      config.workflows = ['native'];
+      config.default_workflow = 'native';
+      await writeProjectConfig(repository, config);
+      await fs.writeFile(path.join(repository, 'README.md'), 'seed\n');
+      git(['add', '.']);
+      git(['commit', '-m', 'seed']);
+      const prepared = await prepareNativeSupervisorIntegrationWorkspace({
+        projectRoot: repository,
+        parent: 'parent',
+        targetBranch: 'main',
+        sourceConfig: config,
+      });
+      const childPrepared = await prepareNativeSupervisorChildWorkspace({
+        projectRoot: repository,
+        parent: 'parent',
+        child: 'integration-core',
+        targetBranch: prepared.binding.changeBranch!,
+        sourceConfig: config,
+      });
+      const paths = await nativeProjectPaths(repository, 'docs');
+      const state = createNativeSupervisorState({
+        parent: 'parent',
+        targetBranch: 'main',
+        targetCommit: git(['rev-parse', 'main']),
+        integrationBranch: prepared.binding.changeBranch!,
+        integrationWorktree: prepared.projectRoot,
+        contract: parseNativeChildrenContract(`
+schema: comet.native.children.v2
+children:
+  - name: integration-core
+    summary: Core integration.
+    depends_on: []
+`),
+      });
+      await fs.writeFile(path.join(prepared.projectRoot, 'integration.txt'), 'integrated\n');
+      execFileSync('git', ['add', '.'], { cwd: prepared.projectRoot });
+      execFileSync('git', ['commit', '-m', 'advance integration'], {
+        cwd: prepared.projectRoot,
+      });
+      state.integration.headCommit = git([
+        '--git-dir',
+        path.join(repository, '.git'),
+        'rev-parse',
+        prepared.binding.changeBranch!,
+      ]);
+      await writeNativeSupervisorState(paths, state);
+
+      const dispatched = await dispatchNativeSupervisorReadyTasks({
+        paths,
+        parent: 'parent',
+        maxParallel: 1,
+      });
+      expect(dispatched.tasks[0]).toMatchObject({
+        role: 'builder',
+        baseCommit: state.integration.headCommit,
+      });
+      expect(git(['rev-parse', '--verify', `comet/supervisor/parent/integration-core`])).toBe(
+        state.integration.headCommit,
+      );
+      expect(git(['rev-parse', '--git-dir'])).toBe('.git');
+      expect(
+        execFileSync('git', ['rev-parse', 'HEAD'], {
+          cwd: childPrepared.projectRoot,
+          encoding: 'utf8',
+        }).trim(),
+      ).toBe(state.integration.headCommit);
+    } finally {
+      for (const worktree of [
+        path.join(repository, '.worktrees', 'parent-integration-core'),
+        path.join(repository, '.worktrees', 'parent-integration'),
+      ]) {
+        try {
+          execFileSync('git', ['worktree', 'remove', '--force', worktree], {
+            cwd: repository,
+            stdio: 'ignore',
+          });
+        } catch {
+          // Preserve the assertion failure when setup did not reach a worktree.
+        }
+      }
+      await fs.rm(repository, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
+  });
+
   it('serially merges a verified commit into integration while protecting target', async () => {
     const repository = await fs.mkdtemp(path.join(process.cwd(), '.tmp-supervisor-merge-'));
     try {
@@ -745,6 +839,129 @@ children:
         maxRetries: 5,
         retryDelay: 100,
       });
+    }
+  });
+
+  it('preflights every cleanup target and preserves integrated state on a blocker', async () => {
+    const repository = await fs.mkdtemp(path.join(process.cwd(), '.tmp-supervisor-cleanup-'));
+    try {
+      const git = (args: string[]) =>
+        execFileSync('git', args, { cwd: repository, encoding: 'utf8' }).trim();
+      git(['init', '-b', 'main']);
+      git(['config', 'user.email', 'native@example.test']);
+      git(['config', 'user.name', 'Native Test']);
+      const config = defaultProjectConfig('docs', 'en');
+      config.workflows = ['native'];
+      config.default_workflow = 'native';
+      await writeProjectConfig(repository, config);
+      await fs.writeFile(path.join(repository, 'README.md'), 'seed\n');
+      git(['add', '.']);
+      git(['commit', '-m', 'seed']);
+      const targetCommit = git(['rev-parse', 'main']);
+      const prepared = await prepareNativeSupervisorIntegrationWorkspace({
+        projectRoot: repository,
+        parent: 'parent',
+        targetBranch: 'main',
+        sourceConfig: config,
+      });
+      const core = await prepareNativeSupervisorChildWorkspace({
+        projectRoot: repository,
+        parent: 'parent',
+        child: 'integration-core',
+        targetBranch: prepared.binding.changeBranch!,
+        sourceConfig: config,
+      });
+      const dashboard = await prepareNativeSupervisorChildWorkspace({
+        projectRoot: repository,
+        parent: 'parent',
+        child: 'dashboard',
+        targetBranch: prepared.binding.changeBranch!,
+        sourceConfig: config,
+      });
+      await fs.writeFile(path.join(prepared.projectRoot, 'integrated.txt'), 'done\n');
+      execFileSync('git', ['add', '.'], { cwd: prepared.projectRoot });
+      execFileSync('git', ['commit', '-m', 'integrated'], { cwd: prepared.projectRoot });
+      const integrationCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: prepared.projectRoot,
+        encoding: 'utf8',
+      }).trim();
+      const contract = parseNativeChildrenContract(`
+schema: comet.native.children.v2
+children:
+  - name: integration-core
+    summary: Core integration.
+    depends_on: []
+  - name: dashboard
+    summary: Dashboard integration.
+    depends_on: []
+`);
+      let state = createNativeSupervisorState({
+        parent: 'parent',
+        targetBranch: 'main',
+        targetCommit,
+        integrationBranch: prepared.binding.changeBranch!,
+        integrationWorktree: prepared.projectRoot,
+        contract,
+      });
+      for (const child of ['integration-core', 'dashboard']) {
+        state = markNativeSupervisorChildVerified(state, {
+          name: child,
+          baseCommit: state.integration.headCommit,
+          verifiedCommit: targetCommit,
+          evidence: { summary: `${child} verified`, checks: ['child test'] },
+        });
+        state = integrateNativeSupervisorChild(state, {
+          name: child,
+          integrationCommit,
+          checks: [{ name: 'integration test', status: 'passed' }],
+        });
+      }
+      state = recordNativeSupervisorFinalVerification(state, {
+        status: 'passed',
+        summary: 'parent checks passed',
+        headCommit: integrationCommit,
+        layers: {
+          childVerification: 'complete',
+          parentIntegration: 'complete',
+          parentChecks: ['parent test'],
+          notRerun: ['child test'],
+          incomplete: [],
+        },
+      });
+      const paths = await nativeProjectPaths(repository, 'docs');
+      await writeNativeSupervisorState(paths, state);
+      await fs.writeFile(path.join(dashboard.projectRoot, 'uncommitted.txt'), 'keep me\n');
+
+      await expect(finalizeNativeSupervisorDelivery({ paths, state })).rejects.toThrow(
+        /clean worktree|cleanup/i,
+      );
+      await expect(fs.stat(path.join(core.projectRoot, 'README.md'))).resolves.toBeDefined();
+      await expect(fs.stat(path.join(prepared.projectRoot, 'README.md'))).resolves.toBeDefined();
+      await expect(
+        fs.stat(path.join(dashboard.projectRoot, 'uncommitted.txt')),
+      ).resolves.toBeDefined();
+      expect((await readNativeSupervisorState(paths, 'parent'))?.children).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'integration-core', status: 'integrated' }),
+          expect.objectContaining({ name: 'dashboard', status: 'integrated' }),
+        ]),
+      );
+    } finally {
+      for (const worktree of [
+        path.join(repository, '.worktrees', 'parent-dashboard'),
+        path.join(repository, '.worktrees', 'parent-integration-core'),
+        path.join(repository, '.worktrees', 'parent-integration'),
+      ]) {
+        try {
+          execFileSync('git', ['worktree', 'remove', '--force', worktree], {
+            cwd: repository,
+            stdio: 'ignore',
+          });
+        } catch {
+          // Preserve the assertion failure when setup did not reach a worktree.
+        }
+      }
+      await fs.rm(repository, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
   });
 
