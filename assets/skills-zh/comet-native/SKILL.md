@@ -7,21 +7,18 @@ description: "Comet Native 工作流。当用户明确调用 /comet-native、要
 
 Native 把需求、完整目标规格、当前进度和验收结论保存在项目中。每完成一个阶段都回到 Runtime 读取下一步，当前只处理 Runtime 指定的阶段。
 ## 硬性边界
-
 - 磁盘中的 `.comet/config.yaml`、当前 change、`comet-state.yaml` 和正式 Markdown 是工作依据，聊天记忆只作辅助。
 - Runtime 管理工作流状态、本机任务、日志、锁和事务；所有阶段推进都通过 PATH 中公开的 `comet native` 命令完成，用户不手工执行这些命令。
 - 命令不可用时报告 Comet 安装不完整并停止。参数和输出以 `comet native <command> --help` 为准。
 - Builder 提交候选，新的只读 Verifier subagent 或独立 Agent 任务作出验收判断。
 - Native 主流程由本 Skill 和 Runtime 完成，不依赖任何外部 Skill。
 ## 开始或恢复
-
 1. 已知 change 名称时，直接运行 `comet native status <change-name> --details --json`；名称未知时才运行 `comet native status --json`，确定目标后再查询该 change 的详细状态。
 2. 当前阶段需要完整验收列表时才执行 `nextPageArgs` 中的分页命令；需要编辑或核对正式正文时才运行 `show` 或读取对应 brief/Spec。
 3. active change 已存在时，进入返回的 `workspace.projectRoot` 并 `select`。Runtime 会扫描已登记 Worktree，优先返回绑定分支匹配的工作区；只有多个同样匹配的候选才让用户选择。
-4. 没有对应 active change 时才创建，并使用配置指定的产物目录。
+4. 没有对应 active change 时才创建，并使用配置指定的产物目录。`comet init` 会按所选 Skill 语言初始化 `native.language`；之后产物跟随项目配置，只有用户明确要求覆盖时才传入 `--language`。
 
 ### 记忆与项目规则接入
-
 进入 change 工作区后，Agent 自动运行一次：
 
 ```text
@@ -33,14 +30,12 @@ comet task <project-root> --task "<用户原始请求>" --phase build --json
 没有 Hook 平台时，上述命令就是 Skill 的上下文和学习回退路径，底层仍可调用 `comet memory context`；有 Hook 时仍只注入当前任务匹配的片段，不全量加载规则。
 任务结束也可直接调用 `comet rules candidates --json` 查看候选摘要。
 ### 创建 change
-
 先确定小写 kebab-case 名称，再按[工作区选择参考](reference/workspace.md)决定使用当前目录、创建分支还是创建 worktree。用户明确说并行、同时处理或多个会话时自动选择 `worktree`，不再询问三种方式。
 
 CLI 会在创建 change 前完成分支或 worktree 绑定、复用已登记的 change 分支、在分支仍存在但登记 Worktree 已移除时重建 Worktree、维护仓库本地排除规则、核对配置并创建可跨设备恢复的状态。随后进入命令返回的 `preparation.projectRoot`；后续命令不得继续在原目录执行。
 
 如果准备没有完成，保留已经创建的资源，展示 `preparation` 中的失败原因，并按 Runtime 或用户给出的恢复方向继续。
 ## 按需读取
-
 确认 phase 后只读取需要的一份 reference：
 
 - Shape：必须读取并执行[澄清参考](reference/clarification.md)；
@@ -48,7 +43,6 @@ CLI 会在创建 change 前完成分支或 worktree 绑定、复用已登记的 
 - 正常推进时，直接执行 Runtime 在 `continuation` 中给出的命令。只有返回字段含义不清、命令输入被拒绝、无法启动 Verifier、Verifier 执行报错，或 Verifier 要求用户补充信息时，才读取[命令参考](reference/commands.md)；
 - 只有任务因进程中断、换设备后本机状态缺失、连续多轮没有进展、并发冲突、旧版本迁移失败或状态损坏而无法继续时，才读取[恢复参考](reference/recovery.md)。
 ## Shape
-
 先调查能够从仓库、工具和运行环境确定的事实；彼此独立的事实可以交给 subagent 调查。按 `native.clarification_mode` 和澄清参考维护决策树，只把会改变用户可见结果、又无法可靠推断的决定交给用户。
 
 确认后的用户可见决定和重要约束立即同步到 Decisions、brief 和完整目标规格；普通实现选择保留在实现和测试中，只有影响用户可见行为时才进入正式需求。验收项必须具体、可观察且互不重复。大型需求需要拆分时，在 Supervisor Change 根目录维护 `children.yaml`，用 `depends_on` 表达真实先后关系，并用 `covers` 覆盖 Supervisor Change 验收项；数组顺序只用于稳定展示和同等就绪时的优先级。
@@ -60,7 +54,6 @@ CLI 会在创建 change 前完成分支或 worktree 绑定、复用已登记的 
 未解决问题保持 `[blocking]`；有阻塞项时不修改项目实现。完成标准：所有会影响用户可见结果的选择和未明说的假设均已处理，没有 `[blocking]`，用户明确确认目标、范围、关键决定、验收项和非目标，并且 Runtime 已进入 Build。只有用户明确确认后才使用后续指令中含 `--confirmed` 的命令推进。
 
 ## Build ↔ Verify Loop
-
 Build 和 Verify 组成一个有界验收循环（Loop）：Builder 提交候选，Runtime 执行必要检查，再由新的只读 Verifier 验收。验收未通过时回到 Build，完成修改并提交下一轮候选；全部通过时进入 Archive。
 
 `iteration` 表示实现候选的轮次，`attempt` 表示同一候选启动 Verifier 的次数。连续失败、没有实际进展或 Verifier 多次执行出错时，Runtime 会在预算上限处进入等待用户或阻塞状态。所有计数都由 Runtime 更新，Agent 只执行最新 `continuation`。

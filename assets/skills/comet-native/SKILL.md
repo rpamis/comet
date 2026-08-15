@@ -7,21 +7,18 @@ description: "Comet Native workflow. Use when the user explicitly invokes /comet
 
 Native stores the requirements, complete target specifications, current progress, and verification conclusions in the project. After completing each phase, return to the Runtime for the next action and handle only the phase it specifies.
 ## Inviolable boundaries
-
 - The on-disk `.comet/config.yaml`, current change, `comet-state.yaml`, and formal Markdown are the working source; chat memory is only supplementary.
 - The Runtime manages workflow state, local tasks, logs, locks, and transactions. Advance every phase through the public `comet native` commands on PATH; users do not run these commands manually.
 - If a command is unavailable, report an incomplete Comet installation and stop. Treat `comet native <command> --help` as authoritative for arguments and output.
 - The Builder submits a candidate. A fresh read-only Verifier subagent or separate Agent task makes the verification judgment.
 - This Skill and the Runtime complete the Native workflow; Native does not depend on any external Skill.
 ## Start or resume
-
 1. When the change name is known, run `comet native status <change-name> --details --json` directly. Only run `comet native status --json` when the name is unknown, then query the selected change in detail.
 2. Run pagination commands from `nextPageArgs` only when the current phase needs the complete acceptance list. Run `show` or read the corresponding brief/Spec only when editing or checking formal content.
 3. When an active change already exists, enter the returned `workspace.projectRoot` and run `select`. Runtime scans registered Worktrees and prefers a workspace whose bound branch matches; ask the user only when multiple equally aligned candidates remain.
-4. Create a change only when no matching active change exists, using the artifact directory from configuration.
+4. Create a change only when no matching active change exists, using the artifact directory from configuration. `comet init` initializes `native.language` from the selected Skill language; after that, artifacts follow the project setting, and `--language` is only for an explicit user override.
 
 ### Memory and project-rule integration
-
 After entering the change workspace, the Agent automatically runs:
 
 ```text
@@ -33,14 +30,12 @@ Only relevant memory and project-rule snippets are added to the current task con
 Without a Hook platform, these commands are the Skill fallback for context and learning; the lower-level `comet memory context` command remains available. With a Hook, the same selector still injects only task-relevant snippets instead of loading every rule.
 Task-end candidates can also be listed with `comet rules candidates --json`.
 ### Create a change
-
 Choose a lowercase kebab-case name, then use the [workspace selection reference](reference/workspace.md) to decide whether to use the current directory, create a branch, or create a worktree. Explicit parallel, simultaneous, or multi-session intent automatically selects `worktree` without asking for a three-way choice.
 
 Before creating the change, the CLI binds the branch or worktree, reuses a registered change branch, recreates a Worktree when its branch still exists but the registered Worktree was removed, maintains repository-local exclusions, validates configuration, and creates state that can be resumed across devices. Then enter the returned `preparation.projectRoot`; do not continue subsequent commands in the original directory.
 
 If preparation does not finish, keep the resources already created, show the failure reason from `preparation`, and continue with the recovery direction from the Runtime or user.
 ## Read on demand
-
 After confirming the phase, read only the needed reference:
 
 - Shape: always read and execute the [clarification reference](reference/clarification.md).
@@ -48,7 +43,6 @@ After confirming the phase, read only the needed reference:
 - During normal progression, execute the command returned in Runtime `continuation`. Read the [command reference](reference/commands.md) only when a returned field is unclear, command input is rejected, the Verifier cannot be started, Verifier execution fails, or the Verifier needs user-provided information.
 - Read the [recovery reference](reference/recovery.md) only when the task cannot continue because of an interrupted process, missing local Runtime state after moving devices, repeated lack of progress, a concurrency conflict, failed legacy migration, or damaged state.
 ## Shape
-
 First investigate facts that can be determined from the repository, tools, and runtime environment. Independent fact-finding may be delegated to subagents. Follow `native.clarification_mode` and the clarification reference to maintain a decision tree. Ask the user only for choices that change the visible result and cannot be inferred reliably.
 
 Immediately synchronize confirmed user-visible decisions and important constraints into Decisions, the brief, and complete target specifications. Keep ordinary implementation choices in the implementation and tests unless they affect visible behavior. Acceptance items must be specific, observable, and non-duplicative. When a large requirement needs decomposition, maintain `children.yaml` at the Supervisor Change root, use `depends_on` for real ordering, and use `covers` to cover Supervisor Change acceptance items. Array order is only stable display order and the priority among equally ready children.
@@ -60,7 +54,6 @@ On `/comet-native` resume, continue from Runtime state and do not duplicate exis
 Keep unresolved questions `[blocking]`; do not modify implementation while a blocker remains. Completion criterion: every choice that affects the visible result and every unstated assumption has been handled, no `[blocking]` item remains, the user has explicitly confirmed the outcome, scope, key decisions, acceptance items, and non-goals, and the Runtime has entered Build. Advance with the continuation containing `--confirmed` only after explicit user confirmation.
 
 ## Build ↔ Verify Loop
-
 Build and Verify form a bounded acceptance Loop: the Builder submits a candidate, the Runtime runs the necessary checks, and a fresh read-only Verifier evaluates it. If verification does not pass, return to Build, make the changes, and submit the next candidate. When every item passes, enter Archive.
 
 `iteration` is the implementation-candidate round. `attempt` is the number of times a Verifier has been started for the same candidate. Repeated failures, no meaningful progress, or repeated Verifier execution errors cause the Runtime to enter an await-user or blocked state at its configured budget. The Runtime updates all counters; the Agent follows only the latest `continuation`.
