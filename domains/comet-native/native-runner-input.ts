@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
 import { gitWorktreeIsClean, runGitCommand } from '../../platform/process/git.js';
+import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
 
 import type { NativeCheckPlan } from './native-check-executor.js';
 import { readNativeLocalExecution } from './native-local-execution.js';
@@ -450,6 +451,34 @@ function assertSupervisorTaskCommit(
   }
 }
 
+function assertSupervisorTaskWorkspaceIdentity(
+  task: { projectRoot: string; baseCommit: string; role: 'builder' | 'verifier' },
+  expectedBranch: string,
+): void {
+  const identity = inspectGitWorktree(task.projectRoot);
+  const root = path.resolve(identity.currentWorktreeRoot ?? '');
+  if (!identity.isGitWorktree || root !== path.resolve(task.projectRoot)) {
+    throw new Error('Native Supervisor task worktree identity is invalid');
+  }
+  if (identity.currentBranch !== expectedBranch) {
+    throw new Error('Native Supervisor task is attached to the wrong Child branch');
+  }
+  const head = runGitCommand(task.projectRoot, ['rev-parse', 'HEAD']);
+  if (task.role === 'verifier') {
+    if (!gitWorktreeIsClean(task.projectRoot) || head !== task.baseCommit) {
+      throw new Error('Native Supervisor Verifier task worktree is not at its candidate commit');
+    }
+    return;
+  }
+  try {
+    runGitCommand(task.projectRoot, ['merge-base', '--is-ancestor', task.baseCommit, head]);
+  } catch (error) {
+    throw new Error('Native Supervisor Builder task base commit is not an ancestor of its HEAD', {
+      cause: error,
+    });
+  }
+}
+
 function assertSkillCoordinatedCandidate(state: NativePortableState): NativeBuilderHandoff {
   if (state.builder_handoff === null) {
     throw new Error('Native Skill coordination has no current Builder candidate');
@@ -634,6 +663,26 @@ export async function applyNativeRunnerInput(options: {
       async () => {
         const current = await readNativeSupervisorState(options.paths, options.name);
         if (!current) throw new Error(`Native Supervisor state is missing for ${options.name}`);
+        const task = current.children.find(({ name }) => name === input.child)?.task;
+        if (!task || task.runId !== input.runId) {
+          throw new Error(`Native Supervisor task runId is not current for ${input.child}`);
+        }
+        try {
+          assertSupervisorTaskWorkspaceIdentity(
+            task,
+            `comet/supervisor/${current.parent}/${input.child}`,
+          );
+        } catch (error) {
+          await writeNativeSupervisorState(
+            options.paths,
+            blockNativeSupervisorTask(current, {
+              child: input.child,
+              runId: input.runId,
+              reason: (error as Error).message,
+            }),
+          );
+          throw error;
+        }
         const reconnected = reconnectNativeSupervisorTaskWithState(current, {
           child: input.child,
           runId: input.runId,

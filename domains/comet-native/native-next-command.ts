@@ -230,7 +230,10 @@ export async function nativeNextCommand(
               maxParallel,
             });
             supervisorTasks = dispatched.tasks;
-            if (supervisorTasks.length > 0) {
+            if (
+              supervisorTasks.length > 0 ||
+              dispatched.state.stateVersion !== supervisor.stateVersion
+            ) {
               effectiveChildren =
                 (await inspectNativeChildren({ paths: configured.paths, state: current })) ??
                 effectiveChildren;

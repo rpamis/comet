@@ -402,6 +402,26 @@ function assertChildDependenciesIntegrated(
   }
 }
 
+function stableSupervisorIntegrationOrder(
+  state: NativeSupervisorState,
+): NativeSupervisorChildState[] {
+  const remaining = new Set(state.children.map(({ name }) => name));
+  const ordered: NativeSupervisorChildState[] = [];
+  while (remaining.size > 0) {
+    const candidate = state.children.find(
+      (child) =>
+        remaining.has(child.name) &&
+        child.dependsOn.every((dependency) => !remaining.has(dependency)),
+    );
+    if (!candidate) {
+      throw new Error('Native Supervisor Child dependencies contain a cycle');
+    }
+    ordered.push(candidate);
+    remaining.delete(candidate.name);
+  }
+  return ordered;
+}
+
 export function createNativeSupervisorState(options: {
   parent: string;
   targetBranch: string;
@@ -718,6 +738,24 @@ function refreshNativeSupervisorBuilderWorkspace(
   }
 }
 
+function assertNativeSupervisorVerifierWorkspace(
+  workspaceRoot: string,
+  expectedBranch: string,
+  expectedCommit: string,
+): void {
+  const identity = inspectGitWorktree(workspaceRoot);
+  if (!identity.isGitWorktree || identity.currentBranch !== expectedBranch) {
+    throw new Error(`Native Supervisor Verifier worktree identity is not ${expectedBranch}`);
+  }
+  if (!gitWorktreeIsClean(workspaceRoot)) {
+    throw new Error(`Native Supervisor Verifier worktree is not clean: ${workspaceRoot}`);
+  }
+  const head = runGitCommand(workspaceRoot, ['rev-parse', 'HEAD']);
+  if (head !== expectedCommit) {
+    throw new Error('Native Supervisor Verifier worktree is not at its candidate commit');
+  }
+}
+
 export function cancelNativeSupervisorTask(
   state: NativeSupervisorState,
   options: { child: string; runId: string; reason: string },
@@ -813,6 +851,12 @@ export async function dispatchNativeSupervisorReadyTasks(options: {
               workspace.projectRoot,
               `comet/supervisor/${state.parent}/${child.name}`,
               state.integration.headCommit,
+            );
+          } else {
+            assertNativeSupervisorVerifierWorkspace(
+              workspace.projectRoot,
+              `comet/supervisor/${state.parent}/${child.name}`,
+              child.candidateCommit!,
             );
           }
         } catch (error) {
@@ -988,7 +1032,9 @@ export async function integrateNativeSupervisorChildWorkspace(options: {
       }
       const child = state.children.find(({ name }) => name === options.name);
       if (!child) throw new Error(`Native Supervisor child ${options.name} does not exist`);
-      const nextInIntegrationOrder = state.children.find(
+      // Keep integration deterministic using a stable topological order with
+      // declaration order as the same-level tie-breaker.
+      const nextInIntegrationOrder = stableSupervisorIntegrationOrder(state).find(
         ({ status }) => status !== 'integrated' && status !== 'archived',
       );
       if (nextInIntegrationOrder && nextInIntegrationOrder.name !== options.name) {
