@@ -162,7 +162,7 @@ describe('Native Supervisor v2 state', () => {
         contract: CONTRACT,
       });
       expect(rebuiltAfterProgress?.children[0]).toMatchObject({
-        status: 'needs-reverify',
+        status: 'blocked',
         blocker: expect.stringContaining('Runtime was lost'),
       });
       const childPrepared = await prepareNativeSupervisorChildWorkspace({
@@ -961,6 +961,12 @@ children:
       expect(delivered.state.children[0]).toMatchObject({ status: 'archived' });
       expect(delivered.state.integration.headCommit).toBe(reverified.integration.headCommit);
       expect(git(['rev-parse', 'main'])).toBe(reverified.integration.headCommit);
+      const redelivered = await finalizeNativeSupervisorDelivery({
+        paths,
+        state: delivered.state,
+      });
+      expect(redelivered.state.children[0]).toMatchObject({ status: 'archived' });
+      expect(git(['rev-parse', 'main'])).toBe(reverified.integration.headCommit);
     } finally {
       try {
         execFileSync(
@@ -1362,6 +1368,7 @@ children:
       await expect(finalizeNativeSupervisorDelivery({ paths, state })).rejects.toThrow(
         /clean worktree|cleanup/i,
       );
+      expect(git(['rev-parse', 'main'])).toBe(targetCommit);
       await expect(fs.stat(path.join(core.projectRoot, 'README.md'))).resolves.toBeDefined();
       await expect(fs.stat(path.join(prepared.projectRoot, 'README.md'))).resolves.toBeDefined();
       await expect(

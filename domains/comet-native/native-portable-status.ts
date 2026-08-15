@@ -132,13 +132,82 @@ function workspaceProjection(paths: NativeProjectPaths, state: NativePortableSta
     message = 'The Native change requires its linked worktree.';
   }
   return {
-    projectRoot: paths.projectRoot,
+    projectRoot: '.',
     isolation: state.workspace.isolation,
     bindingState: message === null ? ('aligned' as const) : ('mismatch' as const),
     changeBranch: state.workspace.change_branch,
     targetBranch: state.workspace.target_branch,
     finish: state.workspace.finish,
     message,
+  };
+}
+
+function supervisorPublicRoots(paths: NativeProjectPaths, state: NativeSupervisorState): string[] {
+  return [
+    paths.projectRoot,
+    state.integration.worktree,
+    ...state.children.flatMap((child) => [child.projectRoot, child.task?.projectRoot]),
+  ]
+    .filter((root): root is string => Boolean(root))
+    .map((root) => root.replaceAll('/', '\\'))
+    .sort((left, right) => right.length - left.length);
+}
+
+function redactSupervisorText(value: string | null, roots: readonly string[]): string | null {
+  if (value === null) return null;
+  return roots.reduce(
+    (result, root) =>
+      result.replaceAll(root, '<worktree>').replaceAll(root.replaceAll('\\', '/'), '<worktree>'),
+    value,
+  );
+}
+
+function redactSupervisorChildren(
+  children: readonly NativeChildStatusProjection[],
+  roots: readonly string[],
+): NativeChildStatusProjection[] {
+  return children.map((child) => ({
+    ...child,
+    projectRoot: child.projectRoot ? '<worktree>' : null,
+    message: redactSupervisorText(child.message, roots),
+  }));
+}
+
+function redactSupervisorDetails(
+  state: NativeSupervisorState,
+  history: NativeSupervisorState['history'],
+  nextCursor: string | null,
+  roots: readonly string[],
+) {
+  return {
+    ...state,
+    integration: {
+      ...state.integration,
+      worktree: '<worktree>',
+      targetCommit: '<redacted>',
+      headCommit: '<redacted>',
+    },
+    children: state.children.map((child) => ({
+      ...child,
+      projectRoot: child.projectRoot ? '<worktree>' : null,
+      baseCommit: child.baseCommit ? '<redacted>' : null,
+      candidateCommit: child.candidateCommit ? '<redacted>' : null,
+      verifiedCommit: child.verifiedCommit ? '<redacted>' : null,
+      integrationCommit: child.integrationCommit ? '<redacted>' : null,
+      blocker: redactSupervisorText(child.blocker, roots),
+      task: child.task
+        ? {
+            ...child.task,
+            projectRoot: '<worktree>',
+            baseCommit: '<redacted>',
+          }
+        : null,
+    })),
+    history: history.map((event) => ({
+      ...event,
+      summary: redactSupervisorText(event.summary, roots) ?? '',
+    })),
+    nextCursor,
   };
 }
 
@@ -168,6 +237,7 @@ export async function inspectNativePortableStatus(options: {
           },
         }
       : continuation;
+  const supervisorRoots = supervisor ? supervisorPublicRoots(options.paths, supervisor) : [];
   const supervisorSummary = supervisor
     ? (() => {
         const waiting = supervisor.children.filter(
@@ -191,11 +261,14 @@ export async function inspectNativePortableStatus(options: {
           .map((child) => ({
             name: child.name,
             summary: child.summary,
-            projectRoot: child.task?.projectRoot ?? child.projectRoot ?? null,
-            reason: child.blocker,
+            projectRoot: (child.task?.projectRoot ?? child.projectRoot) ? '<worktree>' : null,
+            reason: redactSupervisorText(child.blocker, supervisorRoots),
           }));
         const risks = supervisor.children
-          .flatMap(({ blocker }) => (blocker ? [blocker] : []))
+          .flatMap(({ blocker }) => {
+            const redacted = redactSupervisorText(blocker, supervisorRoots);
+            return redacted ? [redacted] : [];
+          })
           .slice(0, 16);
         return {
           targetSpecs: runtime.state.spec_changes.length,
@@ -252,7 +325,7 @@ export async function inspectNativePortableStatus(options: {
                 {
                   role: child.task.role,
                   child: child.task.child,
-                  projectRoot: child.task.projectRoot,
+                  projectRoot: '<worktree>',
                 },
               ]
             : [],
@@ -289,7 +362,7 @@ export async function inspectNativePortableStatus(options: {
     },
     ...(children
       ? {
-          children: children.children,
+          children: redactSupervisorChildren(children.children, supervisorRoots),
           readyChildren: children.readyChildren,
         }
       : {}),
@@ -304,11 +377,12 @@ export async function inspectNativePortableStatus(options: {
             verificationReport: runtime.state.verification_report,
             ...(supervisor
               ? {
-                  supervisor: {
-                    ...supervisor,
-                    history: supervisorHistory!.history,
-                    nextCursor: supervisorHistory!.nextCursor,
-                  },
+                  supervisor: redactSupervisorDetails(
+                    supervisor,
+                    supervisorHistory!.history,
+                    supervisorHistory!.nextCursor,
+                    supervisorRoots,
+                  ),
                 }
               : {}),
           },

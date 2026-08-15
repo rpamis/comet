@@ -137,6 +137,7 @@ describe('Native portable status', () => {
     });
     expect(JSON.stringify(status)).not.toContain('internal-run-id');
     expect(JSON.stringify(status)).not.toContain('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+    expect(JSON.stringify(status)).not.toContain(root);
     expect(status.history).toBeUndefined();
 
     const firstDetails = await inspectNativePortableStatus({
@@ -153,5 +154,7 @@ describe('Native portable status', () => {
       cursor: firstDetails.details?.supervisor?.nextCursor ?? undefined,
     });
     expect(secondDetails.details?.supervisor?.history[0]?.summary).toBe('event 31');
+    expect(JSON.stringify(firstDetails)).not.toContain(root);
+    expect(JSON.stringify(firstDetails)).not.toContain('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
   });
 });

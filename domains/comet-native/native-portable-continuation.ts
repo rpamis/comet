@@ -314,7 +314,9 @@ export function nativePortableContinuation(
           runnerAction: runner('none'),
         };
       }
-      const blocked = children.children.some(({ status }) => status === 'blocked');
+      const blocked = children.children.some(
+        ({ status }) => status === 'blocked' || status === 'needs-reverify',
+      );
       const progressing = children.children.some(
         ({ status }) => status === 'ready' || status === 'active',
       );
