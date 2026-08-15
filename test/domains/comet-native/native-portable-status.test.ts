@@ -156,5 +156,7 @@ describe('Native portable status', () => {
     expect(secondDetails.details?.supervisor?.history[0]?.summary).toBe('event 31');
     expect(JSON.stringify(firstDetails)).not.toContain(root);
     expect(JSON.stringify(firstDetails)).not.toContain('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+    expect(JSON.stringify(firstDetails)).not.toContain('internal-run-id');
+    expect(JSON.stringify(firstDetails)).not.toContain('run-0');
   });
 });

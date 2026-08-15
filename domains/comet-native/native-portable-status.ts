@@ -200,11 +200,13 @@ function redactSupervisorDetails(
             ...child.task,
             projectRoot: '<worktree>',
             baseCommit: '<redacted>',
+            runId: '<redacted>',
           }
         : null,
     })),
     history: history.map((event) => ({
       ...event,
+      runId: event.runId ? '<redacted>' : null,
       summary: redactSupervisorText(event.summary, roots) ?? '',
     })),
     nextCursor,

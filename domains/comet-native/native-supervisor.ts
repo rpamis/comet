@@ -1369,6 +1369,7 @@ interface NativeSupervisorCleanupPlan {
   parent: string;
   targetCommit: string;
   worktrees: string[];
+  expectedBranches: Record<string, string>;
   branches: string[];
 }
 
@@ -1386,35 +1387,44 @@ function preflightNativeSupervisorCleanup(options: {
 }): NativeSupervisorCleanupPlan {
   const roots = listGitWorktreeRoots(options.paths.projectRoot).map((root) => path.resolve(root));
   const currentRoot = path.resolve(process.cwd());
-  const candidates = [
-    options.state.integration.worktree,
-    ...options.state.children.map(({ name }) =>
-      nativeSupervisorChildWorktree(options.paths.projectRoot, options.state.parent, name),
-    ),
-  ].map((root) => path.resolve(root));
+  const candidateSpecs = [
+    {
+      root: options.state.integration.worktree,
+      branch: options.state.integration.branch,
+    },
+    ...options.state.children.map(({ name }) => ({
+      root: nativeSupervisorChildWorktree(options.paths.projectRoot, options.state.parent, name),
+      branch: `comet/supervisor/${options.state.parent}/${name}`,
+    })),
+  ].map((candidate) => ({ ...candidate, root: path.resolve(candidate.root) }));
   const targetCommit = options.targetCommit;
   const branches = [
     options.state.integration.branch,
     ...options.state.children.map(({ name }) => `comet/supervisor/${options.state.parent}/${name}`),
   ];
 
-  const registeredCandidates = candidates.flatMap((candidate) => {
-    const registered = roots.find((root) => root === candidate);
-    return registered ? [registered] : [];
+  const registeredCandidates = candidateSpecs.flatMap((candidate) => {
+    const registered = roots.find((root) => root === candidate.root);
+    return registered ? [{ ...candidate, root: registered }] : [];
   });
 
   // Complete all safety checks before removing anything. A clean worktree is
   // not sufficient: its branch must also be fully contained in the delivered
   // target commit, otherwise cleanup would discard an unintegrated commit.
-  for (const registered of registeredCandidates) {
-    if (isPathInside(registered, currentRoot)) {
-      throw new Error(`Native Supervisor cannot clean the current worktree: ${registered}`);
+  for (const candidate of registeredCandidates) {
+    if (isPathInside(candidate.root, currentRoot)) {
+      throw new Error(`Native Supervisor cannot clean the current worktree: ${candidate.root}`);
     }
-    if (!gitWorktreeIsClean(registered)) {
-      throw new Error(`Native Supervisor cleanup requires a clean worktree: ${registered}`);
+    if (!gitWorktreeIsClean(candidate.root)) {
+      throw new Error(`Native Supervisor cleanup requires a clean worktree: ${candidate.root}`);
     }
-    const branch = inspectGitWorktree(registered).currentBranch;
-    if (!branch) throw new Error(`Native Supervisor worktree is detached: ${registered}`);
+    const branch = inspectGitWorktree(candidate.root).currentBranch;
+    if (!branch) throw new Error(`Native Supervisor worktree is detached: ${candidate.root}`);
+    if (branch !== candidate.branch) {
+      throw new Error(
+        `Native Supervisor cleanup found unexpected branch ${branch} for ${candidate.root}; expected ${candidate.branch}`,
+      );
+    }
     try {
       runGitCommand(options.paths.projectRoot, [
         'merge-base',
@@ -1443,7 +1453,10 @@ function preflightNativeSupervisorCleanup(options: {
   return {
     parent: options.state.parent,
     targetCommit: options.targetCommit,
-    worktrees: registeredCandidates,
+    worktrees: registeredCandidates.map(({ root }) => root),
+    expectedBranches: Object.fromEntries(
+      registeredCandidates.map(({ root, branch }) => [root, branch]),
+    ),
     branches,
   };
 }
@@ -1460,6 +1473,8 @@ async function loadOrPreflightNativeSupervisorCleanup(options: {
       parsed.parent === options.state.parent &&
       parsed.targetCommit === options.targetCommit &&
       Array.isArray(parsed.worktrees) &&
+      parsed.expectedBranches &&
+      typeof parsed.expectedBranches === 'object' &&
       Array.isArray(parsed.branches)
     ) {
       // A journal makes execution resumable, but it never bypasses the
@@ -1470,6 +1485,10 @@ async function loadOrPreflightNativeSupervisorCleanup(options: {
         parent: parsed.parent,
         targetCommit: parsed.targetCommit,
         worktrees: [...new Set([...parsed.worktrees, ...refreshed.worktrees])],
+        expectedBranches: {
+          ...parsed.expectedBranches,
+          ...refreshed.expectedBranches,
+        },
         branches: [...new Set([...parsed.branches, ...refreshed.branches])],
       };
     }
@@ -1490,6 +1509,16 @@ async function executeNativeSupervisorCleanup(options: {
       .map((root) => path.resolve(root))
       .includes(path.resolve(worktree));
     if (!registered) continue;
+    const expectedBranch = options.plan.expectedBranches[worktree];
+    if (!expectedBranch) {
+      throw new Error(`Native Supervisor cleanup has no expected branch for ${worktree}`);
+    }
+    const currentBranch = inspectGitWorktree(worktree).currentBranch;
+    if (currentBranch !== expectedBranch) {
+      throw new Error(
+        `Native Supervisor cleanup found unexpected branch ${currentBranch ?? '(detached)'} for ${worktree}; expected ${expectedBranch}`,
+      );
+    }
     runGitCommand(options.paths.projectRoot, ['worktree', 'remove', worktree]);
   }
   for (const branch of options.plan.branches) {
