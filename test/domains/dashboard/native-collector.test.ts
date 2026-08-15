@@ -721,4 +721,23 @@ describe('Native Dashboard v2 collector', () => {
       }),
     ).resolves.toBeNull();
   });
+
+  it('serves a warm Native list from the SQLite index before background refresh', async () => {
+    await enableNative();
+    const changeDir = await writeActiveState(activeShapeState('cached-change'));
+
+    const first = await collectNativeDashboardChangePage(projectRoot, {
+      status: 'active',
+      limit: 5,
+    });
+    expect(first.items.map(({ name }) => name)).toEqual(['cached-change']);
+
+    await fs.rm(changeDir, { recursive: true, force: true });
+
+    const second = await collectNativeDashboardChangePage(projectRoot, {
+      status: 'active',
+      limit: 5,
+    });
+    expect(second.items.map(({ name }) => name)).toEqual(['cached-change']);
+  });
 });
