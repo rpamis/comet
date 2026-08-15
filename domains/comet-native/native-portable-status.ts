@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import path from 'node:path';
 
 import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
 
@@ -132,7 +133,7 @@ function workspaceProjection(paths: NativeProjectPaths, state: NativePortableSta
     message = 'The Native change requires its linked worktree.';
   }
   return {
-    projectRoot: '.',
+    projectRoot: path.resolve(paths.projectRoot),
     isolation: state.workspace.isolation,
     bindingState: message === null ? ('aligned' as const) : ('mismatch' as const),
     changeBranch: state.workspace.change_branch,
@@ -221,9 +222,11 @@ export async function inspectNativePortableStatus(options: {
 }): Promise<NativePortableStatusProjection> {
   const runtime = await readNativePortableRuntime(options);
   const localExpected = runtime.state.status === 'active' && runtime.state.loop.stage !== 'done';
-  const workspace = workspaceProjection(options.paths, runtime.state);
   const children = await inspectNativeChildren({ paths: options.paths, state: runtime.state });
   const supervisor = await readNativeSupervisorState(options.paths, options.name);
+  const workspace = supervisor
+    ? { ...workspaceProjection(options.paths, runtime.state), projectRoot: '.' }
+    : workspaceProjection(options.paths, runtime.state);
   const continuation = nativePortableContinuation(runtime.state, children);
   const effectiveContinuation =
     workspace.bindingState === 'mismatch'
