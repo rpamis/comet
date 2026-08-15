@@ -785,6 +785,7 @@ export async function dispatchNativeSupervisorReadyTasks(options: {
       const sourceConfig = await readProjectConfig(options.paths.projectRoot);
       let next = state;
       const tasks: NativeSupervisorTask[] = [];
+      let stateChanged = false;
       for (const child of state.children) {
         if (tasks.length >= capacity) break;
         if (child.task !== null) continue;
@@ -799,6 +800,13 @@ export async function dispatchNativeSupervisorReadyTasks(options: {
             targetBranch: state.integration.branch,
             sourceConfig,
           });
+          if (!reverify) {
+            refreshNativeSupervisorBuilderWorkspace(
+              workspace.projectRoot,
+              `comet/supervisor/${state.parent}/${child.name}`,
+              state.integration.headCommit,
+            );
+          }
         } catch (error) {
           const blocked = cloneState(next);
           const blockedChild = blocked.children.find(({ name }) => name === child.name);
@@ -811,16 +819,10 @@ export async function dispatchNativeSupervisorReadyTasks(options: {
               summary: blockedChild.blocker,
             });
             blocked.stateVersion += 1;
-            await writeNativeSupervisorState(options.paths, blocked);
+            next = blocked;
+            stateChanged = true;
           }
-          throw error;
-        }
-        if (!reverify) {
-          refreshNativeSupervisorBuilderWorkspace(
-            workspace.projectRoot,
-            `comet/supervisor/${state.parent}/${child.name}`,
-            state.integration.headCommit,
-          );
+          continue;
         }
         const created = createNativeSupervisorTask(next, {
           role: reverify ? 'verifier' : 'builder',
@@ -831,7 +833,7 @@ export async function dispatchNativeSupervisorReadyTasks(options: {
         next = created.state;
         tasks.push(created.task);
       }
-      if (tasks.length > 0) await writeNativeSupervisorState(options.paths, next);
+      if (tasks.length > 0 || stateChanged) await writeNativeSupervisorState(options.paths, next);
       return { state: next, tasks };
     },
   );
@@ -978,6 +980,14 @@ export async function integrateNativeSupervisorChildWorkspace(options: {
       }
       const child = state.children.find(({ name }) => name === options.name);
       if (!child) throw new Error(`Native Supervisor child ${options.name} does not exist`);
+      const nextInIntegrationOrder = state.children.find(
+        ({ status }) => status !== 'integrated' && status !== 'archived',
+      );
+      if (nextInIntegrationOrder && nextInIntegrationOrder.name !== options.name) {
+        throw new Error(
+          `Native Supervisor integration order requires ${nextInIntegrationOrder.name} before ${options.name}`,
+        );
+      }
       if (child.status !== 'verified' || !child.verifiedCommit) {
         throw new Error(
           `Native Supervisor child ${options.name} must be verified before integration`,

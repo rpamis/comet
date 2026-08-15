@@ -604,6 +604,10 @@ export async function applyNativeRunnerInput(options: {
       async () => {
         const current = await readNativeSupervisorState(options.paths, options.name);
         if (!current) throw new Error(`Native Supervisor state is missing for ${options.name}`);
+        const child = current.children.find(({ name }) => name === input.child);
+        if (!child?.task || child.task.role !== 'builder') {
+          throw new Error(`Native Supervisor Builder failure is not valid for ${input.child}`);
+        }
         const state = cancelNativeSupervisorTask(current, {
           child: input.child,
           runId: input.runId,
