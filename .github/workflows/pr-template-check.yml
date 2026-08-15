@@ -53,7 +53,7 @@ jobs:
             );
             const checklistItems = templateItems.filter(({ section }) => /checklist/i.test(section));
             const uncheckedChecklistItems = checklistItems.filter(({ label }) =>
-              !new RegExp(`^- \\[xX\\] ${escapeRegExp(label)}\\s*$`, 'im').test(body),
+              !new RegExp(`^- \\[[xX]\\] ${escapeRegExp(label)}\\s*$`, 'im').test(body),
             );
             const errors = missingHeadings.map((heading) => `Missing template section: ${heading}`);
             errors.push(
