@@ -85,6 +85,7 @@ import {
   nativePreferredChangeRuntimeDir,
   resolveContainedNativePath,
 } from './native-paths.js';
+import { nativeBriefTemplate } from './native-artifact-language.js';
 import type { CometProjectConfig, NativeProjectPaths } from './native-types.js';
 import type { NativeWorkspaceBinding } from './native-workspace.js';
 import { readProjectConfig, writeProjectConfig } from './native-config.js';
@@ -93,22 +94,7 @@ const NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 export const NATIVE_PORTABLE_STATE_FILE = 'comet-state.yaml';
 export const NATIVE_LOCAL_EXECUTION_FILE = 'state.json';
 
-export const NATIVE_PORTABLE_BRIEF_TEMPLATE = `# Outcome
-
-# Scope
-
-# Non-goals
-
-# Acceptance examples
-
-# Constraints and invariants
-
-# Decisions
-
-# Open questions
-
-# Verification expectations
-`;
+export const NATIVE_PORTABLE_BRIEF_TEMPLATE = nativeBriefTemplate('en');
 
 export function nativePortableChangeDir(paths: NativeProjectPaths, name: string): string {
   if (!NAME_PATTERN.test(name)) throw new Error(`Invalid Native change name: ${name}`);
@@ -217,7 +203,10 @@ export async function createNativePortableChange(options: {
         await fs.mkdir(runtimeDir, { recursive: false });
         createdRuntime = true;
         await fs.mkdir(path.join(changeDir, 'specs'), { recursive: true });
-        await atomicWriteText(path.join(changeDir, 'brief.md'), NATIVE_PORTABLE_BRIEF_TEMPLATE);
+        await atomicWriteText(
+          path.join(changeDir, 'brief.md'),
+          nativeBriefTemplate(options.language),
+        );
         const state = createNativePortableState({
           name: options.name,
           language: options.language,

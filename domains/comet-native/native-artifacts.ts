@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 
+import { nativeHeadingKey, nativeVerificationHeadingKey } from './native-artifact-language.js';
 import { nativeChangeDir } from './native-change.js';
 import {
   DEFAULT_NATIVE_ARTIFACT_MAX_BYTES,
@@ -15,21 +16,21 @@ import type {
   NativeProjectPaths,
 } from './native-types.js';
 
-const BRIEF_REQUIRED = ['Outcome', 'Scope', 'Non-goals', 'Acceptance examples'];
+const BRIEF_REQUIRED = ['outcome', 'scope', 'nonGoals', 'acceptanceExamples'];
 const BRIEF_ALL = [
   ...BRIEF_REQUIRED,
-  'Constraints and invariants',
-  'Decisions',
-  'Open questions',
-  'Verification expectations',
+  'constraints',
+  'decisions',
+  'openQuestions',
+  'verificationExpectations',
 ];
 const VERIFICATION_ALL = [
-  'Acceptance evidence',
-  'Commands and results',
-  'Skipped checks',
-  'Spec consistency',
-  'Known limitations and risks',
-  'Conclusion',
+  'acceptanceEvidence',
+  'commandsAndResults',
+  'skippedChecks',
+  'specConsistency',
+  'knownLimitationsAndRisks',
+  'conclusion',
 ];
 
 export const NATIVE_ARTIFACT_VALIDATION_LIMITS = {
@@ -92,7 +93,10 @@ export async function validateNativeBrief(
   } catch (error) {
     return result([{ code: 'brief-missing', message: (error as Error).message, path: briefRef }]);
   }
-  const sections = markdownSections(source);
+  const sections = new Map<string, string>();
+  for (const [heading, body] of markdownSections(source)) {
+    sections.set(nativeHeadingKey(heading) ?? heading, body);
+  }
   for (const heading of BRIEF_ALL) {
     if (!sections.has(heading)) {
       findings.push({
@@ -111,7 +115,7 @@ export async function validateNativeBrief(
       });
     }
   }
-  const openQuestions = sections.get('Open questions') ?? '';
+  const openQuestions = sections.get('openQuestions') ?? '';
   if (/^\s*-\s*\[blocking\]/imu.test(openQuestions)) {
     findings.push({
       code: 'brief-blocking-question',
@@ -141,7 +145,10 @@ export async function validateNativeVerification(
       { code: 'verification-missing', message: (error as Error).message, path: reportRef },
     ]);
   }
-  const sections = markdownSections(source);
+  const sections = new Map<string, string>();
+  for (const [heading, body] of markdownSections(source)) {
+    sections.set(nativeVerificationHeadingKey(heading) ?? heading, body);
+  }
   for (const heading of VERIFICATION_ALL) {
     if (!sections.has(heading)) {
       findings.push({

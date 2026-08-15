@@ -529,3 +529,8 @@ children:
       - A327
       - A328
       - A329
+  - name: native-skill-language-surface-repair
+    depends_on:
+      - memory-rules-host-integration-repair
+    covers:
+      - A30

@@ -3,9 +3,9 @@ name: self-evolving-memory-team-contracts
 language: en
 phase: build
 status: active
-state_version: 11
+state_version: 24
 brief: brief.md
-children_contract_hash: 2acd7d459f32d7da2d770d34b770c74ff54828884d4db72c9484dd7e652cd1e9
+children_contract_hash: ff44ddc7cf32e6104e8529c3f34a6fb879d3af34646f8d8943dfdf5fae059406
 spec_changes:
   - capability: comet-plugin-runtime
     operation: modify
@@ -23,7 +23,7 @@ workspace:
   finish: null
 loop:
   stage: building
-  goal_cycle: 4
+  goal_cycle: 5
   iteration: 1
   attempt: 0
   retry_epoch: 0
@@ -2021,6 +2021,65 @@ history:
       text: Native child declarations changed
       truncated: false
     completed_at: 2026-08-14T12:59:16.819Z
+  - goal_cycle: 4
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 五个 child 已全部归档并合入 beta20。父级最终接线的 targeted tests、TypeScript、生成物、源码 ESLint
+        和受影响文件格式检查通过；全量测试超时及 .ruff_cache 架构白名单风险已明确记录，未发现新的产品验收失败。
+      truncated: false
+    completed_at: 2026-08-14T16:00:38.546Z
+  - goal_cycle: 4
+    iteration: 1
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 修复 Native 产物语言未跟随项目配置的问题，返回 Build 重新验证
+      truncated: false
+    completed_at: 2026-08-15T06:51:52.469Z
+  - goal_cycle: 4
+    iteration: 2
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: Native 核心产物语言继承候选通过：配置默认语言与显式覆盖、中文/英文 brief 解析、verification/evidence
+        双语渲染、机器字段稳定性、生成 Runtime 资产同步均已核验；历史 language=en Supervisor 的状态和英文标题保持不变。
+      truncated: false
+    completed_at: 2026-08-15T07:04:35.998Z
+  - goal_cycle: 4
+    iteration: 2
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 补充确认：Native Skill 的用户可读产物必须统一跟随项目 native.language 配置，不能由 Skill 安装语言决定；返回
+        Build 更新 Skill 规则、模板和回归测试。
+      truncated: false
+    completed_at: 2026-08-15T07:08:10.288Z
+  - goal_cycle: 4
+    iteration: 3
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A30
+    summary:
+      text: 语言初始化、配置继承、显式覆盖、双语解析/渲染、机器字段、tsc、生成资产和 Prettier 均通过；但 Native Skill 常驻上下文
+        413 行超过 400 行硬上限，相关必跑测试失败，因此 iteration 3 验收失败并返回 Build。
+      truncated: false
+    completed_at: 2026-08-15T07:29:12.468Z
+  - goal_cycle: 4
+    iteration: 4
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native child declarations changed
+      truncated: false
+    completed_at: 2026-08-15T07:32:17.569Z
 history_overflow:
   dropped_entries: 0
   first_dropped_at: null

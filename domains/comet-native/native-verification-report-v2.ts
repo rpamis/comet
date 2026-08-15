@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 
 import { atomicWriteText } from './native-atomic-file.js';
+import { nativeLocalizedText, nativeVerificationHeading } from './native-artifact-language.js';
 import { NATIVE_SKILL_COORDINATION } from './native-runner-protocol.js';
 import type { NativePortableState, NativePortableText } from './native-portable-types.js';
 
@@ -15,28 +16,57 @@ function tableCell(value: string): string {
 }
 
 function verdictLabel(state: NativePortableState): string {
+  const language = state.language;
   if (state.verification?.assurance === 'semantic-verification-unavailable') {
-    return 'Semantic verification unavailable, user confirmation required';
+    return nativeLocalizedText(
+      language,
+      'Semantic verification unavailable, user confirmation required',
+      '语义验证不可用，需要用户确认',
+    );
   }
   if (state.verification?.assurance === 'user-confirmed-degraded') {
-    return 'Passed with user-confirmed degraded assurance';
+    return nativeLocalizedText(
+      language,
+      'Passed with user-confirmed degraded assurance',
+      '已通过，但采用了用户确认的降级保证',
+    );
   }
   if (state.verification_result === 'pass') {
-    return state.phase === 'verify' && state.loop.next_action === 'confirm-skill-coordinated-pass'
-      ? 'Passed, user confirmation required'
-      : 'Passed';
+    return nativeLocalizedText(
+      language,
+      state.phase === 'verify' && state.loop.next_action === 'confirm-skill-coordinated-pass'
+        ? 'Passed, user confirmation required'
+        : 'Passed',
+      state.phase === 'verify' && state.loop.next_action === 'confirm-skill-coordinated-pass'
+        ? '已通过，需要用户确认'
+        : '已通过',
+    );
   }
-  if (state.verification_result === 'blocked') return 'Blocked';
-  if (state.verification_result === 'fail') return 'Failed';
-  return 'Pending';
+  if (state.verification_result === 'blocked') {
+    return nativeLocalizedText(language, 'Blocked', '已阻塞');
+  }
+  if (state.verification_result === 'fail') {
+    return nativeLocalizedText(language, 'Failed', '未通过');
+  }
+  return nativeLocalizedText(language, 'Pending', '待处理');
 }
 
 function assuranceLabel(state: NativePortableState): string {
-  return (
+  const assurance =
     state.verification?.assurance ??
     (state.builder_handoff?.identity_provider === NATIVE_SKILL_COORDINATION
       ? NATIVE_SKILL_COORDINATION
-      : 'host-attested')
+      : 'host-attested');
+  if (state.language === 'en') return assurance;
+  return (
+    (
+      {
+        'host-attested': '宿主验证',
+        'skill-coordinated': 'Skill 协同',
+        'semantic-verification-unavailable': '语义验证不可用',
+        'user-confirmed-degraded': '用户确认的降级保证',
+      } as Record<string, string>
+    )[assurance] ?? assurance
   );
 }
 
@@ -44,6 +74,11 @@ export function renderNativeVerificationReport(state: NativePortableState): stri
   if (state.verification === null) {
     throw new Error('Native verification report requires a stable Verifier result');
   }
+  const language = state.language;
+  const heading = (section: Parameters<typeof nativeVerificationHeading>[1]) =>
+    nativeVerificationHeading(language, section);
+  const localized = (english: string, chinese: string) =>
+    nativeLocalizedText(language, english, chinese);
   const acceptance = state.acceptance
     .map(
       (entry) =>
@@ -52,9 +87,9 @@ export function renderNativeVerificationReport(state: NativePortableState): stri
     .join('\n');
   const checks =
     state.verification.checks.length === 0
-      ? '_No Runtime checks were recorded._'
+      ? `_${localized('No Runtime checks were recorded.', '没有记录 Runtime 检查。')}_`
       : [
-          '| Check | Command | Working directory | Status | Exit | Duration |',
+          `| ${localized('Check', '检查')} | ${localized('Command', '命令')} | ${localized('Working directory', '工作目录')} | ${localized('Status', '状态')} | ${localized('Exit', '退出码')} | ${localized('Duration', '耗时')} |`,
           '| --- | --- | --- | --- | ---: | ---: |',
           ...state.verification.checks.map((check) => {
             const command = check.argv_display.map(display).join(' ');
@@ -63,7 +98,7 @@ export function renderNativeVerificationReport(state: NativePortableState): stri
         ].join('\n');
   const blockers =
     state.blockers.length === 0
-      ? '_None._'
+      ? `_${localized('None.', '无。')}_`
       : state.blockers
           .map(
             (blocker) =>
@@ -76,13 +111,13 @@ export function renderNativeVerificationReport(state: NativePortableState): stri
           .join('\n');
   const risks =
     state.verification.risks.length === 0
-      ? '_None reported._'
+      ? `_${localized('None reported.', '未报告风险。')}_`
       : state.verification.risks.map((risk) => `- ${display(risk)}`).join('\n');
   const history =
     state.history.length === 0
-      ? '_No previous iterations._'
+      ? `_${localized('No previous iterations.', '没有之前的迭代。')}_`
       : [
-          '| Goal cycle | Iteration | Attempt | Outcome | Unresolved | Summary | Completed |',
+          `| ${localized('Goal cycle', '目标周期')} | ${localized('Iteration', '迭代')} | ${localized('Attempt', '尝试')} | ${localized('Outcome', '结果')} | ${localized('Unresolved', '未解决项')} | ${localized('Summary', '摘要')} | ${localized('Completed', '完成时间')} |`,
           '| ---: | ---: | ---: | --- | --- | --- | --- |',
           ...state.history.map(
             (entry) =>
@@ -94,45 +129,45 @@ export function renderNativeVerificationReport(state: NativePortableState): stri
 generated_from_state_version: ${state.state_version}
 ---
 
-# Verification
+# ${heading('verification')}
 
-## Current result
+## ${heading('currentResult')}
 
-- Result: **${verdictLabel(state)}**
-- Assurance: **${assuranceLabel(state)}**
-- Goal cycle: ${state.loop.goal_cycle}
-- Iteration: ${state.verification.iteration}
-- Verifier attempt: ${state.verification.attempt}
-- Completed: ${state.verification.completed_at}
-- Summary: ${display(state.verification.summary)}
+- ${localized('Result', '结果')}: **${verdictLabel(state)}**
+- ${localized('Assurance', '保证级别')}: **${assuranceLabel(state)}**
+- ${localized('Goal cycle', '目标周期')}: ${state.loop.goal_cycle}
+- ${localized('Iteration', '迭代')}: ${state.verification.iteration}
+- ${localized('Verifier attempt', '验证器尝试次数')}: ${state.verification.attempt}
+- ${localized('Completed', '完成时间')}: ${state.verification.completed_at}
+- ${localized('Summary', '摘要')}: ${display(state.verification.summary)}
 
-## Acceptance
+## ${heading('acceptance')}
 
-| ID | Result | Source | Criterion | Reason |
+| ${localized('ID', '编号')} | ${localized('Result', '结果')} | ${localized('Source', '来源')} | ${localized('Criterion', '验收项')} | ${localized('Reason', '原因')} |
 | --- | --- | --- | --- | --- |
 ${acceptance}
 
-## Checks
+## ${heading('checks')}
 
 ${checks}
 
-## Blockers
+## ${heading('blockers')}
 
 ${blockers}
 
-## Risks and skipped work
+## ${heading('risks')}
 
 ${risks}
 
-## Previous iterations
+## ${heading('previousIterations')}
 
 ${history}
 
 ${
   state.history_overflow.dropped_entries > 0
-    ? `Earlier history entries folded into summary: ${state.history_overflow.dropped_entries}.\n\n`
+    ? `${localized('Earlier history entries folded into summary', '更早的历史记录已折叠到摘要中')}: ${state.history_overflow.dropped_entries}.\n\n`
     : ''
-}## Conclusion
+}## ${heading('conclusion')}
 
 ${display(state.verification.summary)}
 `;

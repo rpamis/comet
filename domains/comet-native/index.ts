@@ -1,4 +1,5 @@
 export * from './native-artifacts.js';
+export * from './native-artifact-language.js';
 export * from './native-archive.js';
 export * from './native-change.js';
 export * from './native-change-recovery.js';

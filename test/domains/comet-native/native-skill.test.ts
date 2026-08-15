@@ -129,6 +129,30 @@ describe('Comet Native Skills', () => {
     }
   });
 
+  it('uses Skill language only to initialize config, then project config owns artifacts', async () => {
+    const variants = [
+      {
+        language: 'zh' as const,
+        required: ['`comet init`', '产物跟随项目配置', '用户明确要求覆盖时才传入 `--language`'],
+      },
+      {
+        language: 'en' as const,
+        required: [
+          '`comet init`',
+          'artifacts follow the project setting',
+          '`--language` is only for an explicit user override',
+        ],
+      },
+    ];
+
+    for (const variant of variants) {
+      const skill = await read(variant.language, 'SKILL.md');
+      for (const term of variant.required) {
+        expect(skill, `${variant.language}: ${term}`).toContain(term);
+      }
+    }
+  });
+
   it('keeps the completion loop bounded and preserves v4-only semantics', async () => {
     const variants = [
       {

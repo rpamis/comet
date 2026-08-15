@@ -1,6 +1,11 @@
 import path from 'node:path';
 
 import { atomicWriteText } from './native-atomic-file.js';
+import {
+  nativeLocalizedText,
+  nativeVerificationHeading,
+  type NativeArtifactLanguage,
+} from './native-artifact-language.js';
 import { nativeChangeDir, readNativeChange } from './native-change.js';
 import {
   readNativeImplementationScope,
@@ -45,14 +50,17 @@ function sortText(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-function describeScopeChangeKind(kind: 'added' | 'modified' | 'removed'): string {
+function describeScopeChangeKind(
+  kind: 'added' | 'modified' | 'removed',
+  language: NativeArtifactLanguage,
+): string {
   switch (kind) {
     case 'added':
-      return 'added';
+      return nativeLocalizedText(language, 'added', '新增');
     case 'modified':
-      return 'modified';
+      return nativeLocalizedText(language, 'modified', '修改');
     case 'removed':
-      return 'removed';
+      return nativeLocalizedText(language, 'removed', '删除');
   }
 }
 
@@ -64,22 +72,29 @@ function describeBytes(before: number | null, after: number | null): string {
   return `${before}→${after} bytes`;
 }
 
-function renderScopeSection(scope: NativeImplementationScope): string[] {
+function renderScopeSection(
+  scope: NativeImplementationScope,
+  language: NativeArtifactLanguage,
+): string[] {
+  const localized = (english: string, chinese: string) =>
+    nativeLocalizedText(language, english, chinese);
   const lines: string[] = [
-    '## Implementation scope',
+    `## ${localized('Implementation scope', '实现范围')}`,
     '',
-    `- Source: ${scope.baselineProjectionRef.replace(/^runtime\/evidence\/snapshots\//u, 'evidence/snapshots/')}`,
-    `- Current: ${scope.currentProjectionRef.replace(/^runtime\/evidence\/snapshots\//u, 'evidence/snapshots/')}`,
-    `- Scope: evidence/scopes/${shortHash(scope.scopeHash)}.json`,
-    `- Status: ${scope.complete ? 'complete' : 'partial (has unresolved scope)'}`,
-    `- Declared artifacts: ${scope.declaredArtifacts.length}`,
+    `- ${localized('Source', '基线')}: ${scope.baselineProjectionRef.replace(/^runtime\/evidence\/snapshots\//u, 'evidence/snapshots/')}`,
+    `- ${localized('Current', '当前')}: ${scope.currentProjectionRef.replace(/^runtime\/evidence\/snapshots\//u, 'evidence/snapshots/')}`,
+    `- ${localized('Scope', '范围')}: evidence/scopes/${shortHash(scope.scopeHash)}.json`,
+    `- ${localized('Status', '状态')}: ${scope.complete ? localized('complete', '完整') : localized('partial (has unresolved scope)', '部分完成（存在未解决范围）')}`,
+    `- ${localized('Declared artifacts', '声明的产物')}: ${scope.declaredArtifacts.length}`,
   ];
 
   if (scope.noCodeReason) {
-    lines.push(`- No-code reason: ${scope.noCodeReason}`);
+    lines.push(`- ${localized('No-code reason', '无代码原因')}: ${scope.noCodeReason}`);
   }
   if (scope.unattributed.length > 0) {
-    lines.push(`- Unattributed changes: ${scope.unattributed.length}`);
+    lines.push(
+      `- ${localized('Unattributed changes', '未归因的变更')}: ${scope.unattributed.length}`,
+    );
   }
 
   lines.push('');
@@ -90,7 +105,13 @@ function renderScopeSection(scope: NativeImplementationScope): string[] {
   const truncated = changes.length - shown.length;
 
   if (shown.length === 0) {
-    lines.push('No implementation changes detected between baseline and current snapshots.', '');
+    lines.push(
+      localized(
+        'No implementation changes detected between baseline and current snapshots.',
+        '基线与当前快照之间未检测到实现变更。',
+      ),
+      '',
+    );
   } else {
     for (const change of shown) {
       const attribution =
@@ -98,7 +119,7 @@ function renderScopeSection(scope: NativeImplementationScope): string[] {
           ? ` (covers: ${change.attributedTo.map((artifact) => artifact.path).join(', ')})`
           : '';
       lines.push(
-        `- ${change.path} ${describeScopeChangeKind(change.kind)} ${describeBytes(
+        `- ${change.path} ${describeScopeChangeKind(change.kind, language)} ${describeBytes(
           change.before?.size ?? null,
           change.after?.size ?? null,
         )}${attribution}`,
@@ -106,7 +127,7 @@ function renderScopeSection(scope: NativeImplementationScope): string[] {
     }
     if (truncated > 0) {
       lines.push(
-        `- ... ${truncated} more change(s) truncated; read the scope evidence for the full set`,
+        `- ... ${truncated} ${localized('more changes truncated; read the scope evidence for the full set', '项变更已截断；完整内容请查看范围证据')}`,
       );
     }
     lines.push('');
@@ -116,13 +137,15 @@ function renderScopeSection(scope: NativeImplementationScope): string[] {
   const unresolvedLimit = NATIVE_EVIDENCE_PROJECTION_LIMITS.maxUnresolvedReasons;
   const unresolvedShown = unresolved.slice(0, unresolvedLimit);
   if (unresolvedShown.length > 0) {
-    lines.push('### Unresolved scope', '');
+    lines.push(`### ${localized('Unresolved scope', '未解决范围')}`, '');
     for (const entry of unresolvedShown) {
       lines.push(`- ${entry.reason}`);
     }
     const unresolvedTruncated = unresolved.length - unresolvedShown.length;
     if (unresolvedTruncated > 0) {
-      lines.push(`- ... ${unresolvedTruncated} more unresolved reason(s) truncated`);
+      lines.push(
+        `- ... ${unresolvedTruncated} ${localized('more unresolved reason(s) truncated', '项未解决原因已截断')}`,
+      );
     }
     lines.push('');
   }
@@ -130,39 +153,45 @@ function renderScopeSection(scope: NativeImplementationScope): string[] {
   return lines;
 }
 
-function describeAcceptanceStatus(status: 'passed' | 'failed' | 'missing'): string {
+function describeAcceptanceStatus(
+  status: 'passed' | 'failed' | 'missing',
+  language: NativeArtifactLanguage,
+): string {
   switch (status) {
     case 'passed':
-      return 'passed';
+      return nativeLocalizedText(language, 'passed', '通过');
     case 'failed':
-      return 'failed';
+      return nativeLocalizedText(language, 'failed', '未通过');
     case 'missing':
-      return 'missing';
+      return nativeLocalizedText(language, 'missing', '缺失');
   }
 }
 
 function renderVerificationSection(
   envelope: NativeReadableVerificationEvidenceEnvelope,
   receipts: readonly NativeVerificationReceipt[],
+  language: NativeArtifactLanguage,
 ): string[] {
+  const localized = (english: string, chinese: string) =>
+    nativeLocalizedText(language, english, chinese);
   const lines: string[] = [
-    '## Verification',
+    `## ${nativeVerificationHeading(language, 'verification')}`,
     '',
-    `- Result: ${envelope.result}`,
-    `- Freshness: ${envelope.freshness}`,
-    `- Evidence: evidence/verifications/${shortHash(envelope.envelopeHash)}.json`,
-    `- Contract: ${shortHash(envelope.contractHash)}`,
-    `- Acceptance criteria: ${shortHash(envelope.acceptanceCriteriaHash)}`,
+    `- ${localized('Result', '结果')}: ${envelope.result}`,
+    `- ${localized('Freshness', '新鲜度')}: ${envelope.freshness}`,
+    `- ${localized('Evidence', '证据')}: evidence/verifications/${shortHash(envelope.envelopeHash)}.json`,
+    `- ${localized('Contract', '契约')}: ${shortHash(envelope.contractHash)}`,
+    `- ${localized('Acceptance criteria', '验收标准')}: ${shortHash(envelope.acceptanceCriteriaHash)}`,
   ];
 
   if (envelope.partialAllowanceRef) {
     lines.push(
-      `- Partial allowance: ${envelope.partialAllowanceRef.replace(/^runtime\/evidence\/allowances\//u, 'evidence/allowances/')}`,
+      `- ${localized('Partial allowance', '部分许可')}: ${envelope.partialAllowanceRef.replace(/^runtime\/evidence\/allowances\//u, 'evidence/allowances/')}`,
     );
   }
 
   lines.push(
-    `- Acceptance coverage: ${envelope.acceptanceTrace.evidenced}/${envelope.acceptanceTrace.total} evidenced, ${envelope.acceptanceTrace.skipped} skipped`,
+    `- ${localized('Acceptance coverage', '验收覆盖')}: ${envelope.acceptanceTrace.evidenced}/${envelope.acceptanceTrace.total} ${localized('evidenced', '有证据')}, ${envelope.acceptanceTrace.skipped} ${localized('skipped', '跳过')}`,
     '',
   );
 
@@ -174,7 +203,7 @@ function renderVerificationSection(
   const truncated = entries.length - shown.length;
 
   if (shown.length > 0) {
-    lines.push('### Acceptance trace', '');
+    lines.push(`### ${localized('Acceptance trace', '验收追踪')}`, '');
     for (const entry of shown) {
       const reason = entry.skippedReason ? ` — ${entry.skippedReason}` : '';
       const refs =
@@ -184,12 +213,12 @@ function renderVerificationSection(
               .join(', ')})`
           : '';
       lines.push(
-        `- ${shortHash(entry.acceptanceId)} (${entry.kind}, ${entry.source}) ${describeAcceptanceStatus(entry.status)}${refs}${reason}`,
+        `- ${shortHash(entry.acceptanceId)} (${entry.kind}, ${entry.source}) ${describeAcceptanceStatus(entry.status, language)}${refs}${reason}`,
       );
     }
     if (truncated > 0) {
       lines.push(
-        `- ... ${truncated} more acceptance entr${truncated === 1 ? 'y' : 'ies'} truncated`,
+        `- ... ${truncated} ${localized('more acceptance entries truncated', '项验收追踪已截断')}`,
       );
     }
     lines.push('');
@@ -200,12 +229,14 @@ function renderVerificationSection(
     const receiptLimit = NATIVE_EVIDENCE_PROJECTION_LIMITS.maxReceipts;
     const shownReceipts = sortedReceipts.slice(0, receiptLimit);
     const receiptsTruncated = sortedReceipts.length - shownReceipts.length;
-    lines.push('### Check receipts', '');
+    lines.push(`### ${localized('Check receipts', '检查收据')}`, '');
     for (const receipt of shownReceipts) {
-      lines.push(...renderReceipt(receipt));
+      lines.push(...renderReceipt(receipt, language));
     }
     if (receiptsTruncated > 0) {
-      lines.push(`- ... ${receiptsTruncated} more receipt(s) truncated`);
+      lines.push(
+        `- ... ${receiptsTruncated} ${localized('more receipts truncated', '项收据已截断')}`,
+      );
     }
     lines.push('');
   }
@@ -213,33 +244,38 @@ function renderVerificationSection(
   return lines;
 }
 
-function renderReceipt(receipt: NativeVerificationReceipt): string[] {
+function renderReceipt(
+  receipt: NativeVerificationReceipt,
+  language: NativeArtifactLanguage,
+): string[] {
+  const localized = (english: string, chinese: string) =>
+    nativeLocalizedText(language, english, chinese);
   const lines: string[] = [
     `- ${receipt.kind} (${receipt.role}) ${receipt.status} — evidence/receipts/${shortHash(receipt.receiptHash)}.json`,
   ];
   if (receipt.kind === 'automated-check') {
     const evidence = receipt.evidence;
     const command = [evidence.executable, ...evidence.args].join(' ');
-    lines.push(`  - command: \`${command}\``);
-    lines.push(`  - exit code: ${evidence.exitCode}`);
+    lines.push(`  - ${localized('command', '命令')}: \`${command}\``);
+    lines.push(`  - ${localized('exit code', '退出码')}: ${evidence.exitCode}`);
     if (evidence.timedOut) {
-      lines.push(`  - timed out after ${evidence.timeoutMs}ms`);
+      lines.push(`  - ${localized('timed out after', '超时，耗时')} ${evidence.timeoutMs}ms`);
     }
     lines.push(
-      `  - summary: ${evidence.outputSummary}${evidence.outputTruncated ? ' (truncated)' : ''}`,
+      `  - ${localized('summary', '摘要')}: ${evidence.outputSummary}${evidence.outputTruncated ? ` (${localized('truncated', '已截断')})` : ''}`,
     );
   } else if (receipt.kind === 'static-inspection') {
     const evidence = receipt.evidence;
-    lines.push(`  - rule: ${evidence.rule}`);
-    lines.push(`  - subjects: ${evidence.subjects.length}`);
-    lines.push(`  - summary: ${evidence.resultSummary}`);
+    lines.push(`  - ${localized('rule', '规则')}: ${evidence.rule}`);
+    lines.push(`  - ${localized('subjects', '对象数')}: ${evidence.subjects.length}`);
+    lines.push(`  - ${localized('summary', '摘要')}: ${evidence.resultSummary}`);
   } else {
     const evidence = receipt.evidence;
     if (evidence.steps.length > 0) {
-      lines.push(`  - steps: ${evidence.steps.length}`);
+      lines.push(`  - ${localized('steps', '步骤数')}: ${evidence.steps.length}`);
     }
     if (evidence.observations.length > 0) {
-      lines.push(`  - observations: ${evidence.observations.length}`);
+      lines.push(`  - ${localized('observations', '观察数')}: ${evidence.observations.length}`);
     }
   }
   return lines;
@@ -254,18 +290,22 @@ export function renderNativeEvidenceProjectionMarkdown(input: {
   change: string;
   phase: NativeChangeState['phase'];
   revision: number;
+  language?: NativeArtifactLanguage;
   scope: NativeImplementationScope | null;
   envelope: NativeReadableVerificationEvidenceEnvelope | null;
   receipts: readonly NativeVerificationReceipt[];
   generatedAt: string;
 }): string {
+  const language = input.language ?? 'en';
+  const localized = (english: string, chinese: string) =>
+    nativeLocalizedText(language, english, chinese);
   const lines: string[] = [
-    '# Comet Native Evidence Projection',
+    language === 'zh-CN' ? '# Comet Native 证据概览' : '# Comet Native Evidence Projection',
     '',
-    `- Change: ${input.change}`,
-    `- Phase: ${input.phase}`,
-    `- Revision: ${input.revision}`,
-    `- Generated-at: ${input.generatedAt}`,
+    `- ${localized('Change', '变更')}: ${input.change}`,
+    `- ${localized('Phase', '阶段')}: ${input.phase}`,
+    `- ${localized('Revision', '修订号')}: ${input.revision}`,
+    `- ${localized('Generated-at', '生成时间')}: ${input.generatedAt}`,
     '',
     `Generated-by: ${NATIVE_EVIDENCE_PROJECTION_GENERATOR}`,
     '',
@@ -279,15 +319,25 @@ export function renderNativeEvidenceProjectionMarkdown(input: {
   ];
 
   if (input.scope) {
-    lines.push(...renderScopeSection(input.scope));
+    lines.push(...renderScopeSection(input.scope, language));
   } else {
-    lines.push('## Implementation scope', '', 'No implementation scope evidence recorded yet.', '');
+    lines.push(
+      `## ${localized('Implementation scope', '实现范围')}`,
+      '',
+      localized('No implementation scope evidence recorded yet.', '尚未记录实现范围证据。'),
+      '',
+    );
   }
 
   if (input.envelope) {
-    lines.push(...renderVerificationSection(input.envelope, input.receipts));
+    lines.push(...renderVerificationSection(input.envelope, input.receipts, language));
   } else {
-    lines.push('## Verification', '', 'No verification evidence recorded yet.', '');
+    lines.push(
+      `## ${nativeVerificationHeading(language, 'verification')}`,
+      '',
+      localized('No verification evidence recorded yet.', '尚未记录验证证据。'),
+      '',
+    );
   }
 
   return `${lines
@@ -341,6 +391,7 @@ export async function writeNativeEvidenceProjection(
     change: name,
     phase: state.phase,
     revision: state.revision,
+    language: state.language,
     scope,
     envelope,
     receipts,

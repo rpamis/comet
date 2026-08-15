@@ -1,9 +1,7 @@
 # Native 产物参考
-
 只在编辑 brief、完整目标规格，或查看 Runtime 生成的验收报告时读取。
 
 ## 编辑边界
-
 每个 active change 目录只保留用户可读、可随 Git 同步的正式产物：
 
 ```text
@@ -20,7 +18,6 @@ Agent 只编辑 brief、完整目标规格和 Supervisor Change 的 `children.ya
 本机 Runtime 固定保存在被 Git 忽略的 `.comet/runtime/native/`。每个 active change 的本机状态和日志位于 `changes/<change-name>/state.json` 与 `logs/`；项目级锁和短期事务也放在这个 Runtime 目录中。这些机器文件始终交给 Runtime 创建、迁移和修复。
 
 ## 跨设备状态与报告
-
 `comet-state.yaml` 是跨设备恢复时唯一可信的工作流状态，记录当前阶段、状态、版本、验收循环次数、验收结果、Builder 交接摘要、阻塞原因、下一步、检查摘要和精简历史。本机进程、绝对路径和完整命令输出只保留在本机 Runtime 中。该文件由 Runtime 更新。
 
 `verification.md` 是 Runtime 根据同一版本的 YAML 生成的可读验收报告。报告缺失或版本落后时，Runtime 只重建报告，不会因此重新运行检查或 Verifier。工作流进度始终以 YAML 为准，不能通过修改 Markdown 报告来推进。
@@ -28,7 +25,6 @@ Agent 只编辑 brief、完整目标规格和 Supervisor Change 的 `children.ya
 `.comet/config.yaml` 决定使用哪种工作流，以及 change 产物保存在哪个目录。使用非默认产物目录并需要跨设备恢复时，应同步该文件；其余 `.comet/*` 只保留在本机。
 
 ## Brief
-
 `brief.md` 使用以下非空一级标题：
 
 ```text
@@ -55,7 +51,6 @@ Open questions 中只有真实未解决的用户问题使用：
 验收标准必须具体、可观察且互不重复。使用简单顺序 ID，例如 `A1`、`A2`、`A3`；ID 只用于结果映射，不从内容计算，也不代表文件身份。Runtime 在 Shape 确认时保存完整验收文字及其来源。Supervisor Change 的 `children.yaml` 使用 `comet.native.children.v1`，每个 child 只包含 `name`、`depends_on` 和 `covers`。名称必须唯一，依赖必须存在且无环，全部 Supervisor Change 验收 ID 都必须被覆盖。Runtime 将其与 Supervisor Change 验收项一起确认；修改后 Supervisor Change 返回 Shape。
 
 ## 完整目标规格
-
 每个 `specs/<capability>/spec.md` 描述归档后 capability 的完整行为，而不是只写相对旧文本的变化：
 
 - 新 capability：写完整规格；
@@ -65,7 +60,6 @@ Open questions 中只有真实未解决的用户问题使用：
 如果项目中已经归档的正式 Spec 与当前 change 发生冲突，先重读最新 Spec，再按用户意图改写当前 change 的完整目标规格，最后执行 Runtime 返回的重新对齐（rebase）动作。Spec 操作类型和工作流状态仍由 Runtime 管理。
 
 ## Verification
-
 报告展示每个验收项的结果和原因、实际检查的脱敏命令预览与状态、阻塞项、风险以及精简的验收循环历史。完整命令输出只保留在本机日志中。
 
 验收结论由 Runtime 根据 YAML 生成。失败、阻塞、未运行或超时的项目保持原状态；只有当前候选的全部验收项都有结论，并且必要检查成功，最终结果才是通过。

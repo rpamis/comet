@@ -1,5 +1,6 @@
 import path from 'node:path';
 
+import { nativeHeadingKey } from './native-artifact-language.js';
 import { canonicalHash } from './native-canonical-hash.js';
 import type {
   NativeAcceptanceCriterionProjection,
@@ -398,7 +399,7 @@ function acceptanceSectionBounds(markdown: string): { start: number; end: number
     lineCount = index + 1;
     const heading = body ? markdownHeading(line) : null;
     if (heading?.level !== 1) continue;
-    if (heading.text.toLocaleLowerCase('en-US') === 'acceptance examples') {
+    if (nativeHeadingKey(heading.text) === 'acceptanceExamples') {
       matches += 1;
       if (matches === 1) sectionStart = index + 1;
     } else if (sectionStart !== null && sectionEnd === null) {

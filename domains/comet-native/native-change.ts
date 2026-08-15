@@ -6,6 +6,7 @@ import { listGitWorktreeRoots } from '../../platform/paths/git-worktree.js';
 
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
 import { atomicWriteText } from './native-atomic-file.js';
+import { nativeBriefTemplate } from './native-artifact-language.js';
 import {
   assertNoPendingNativeRootMove,
   DEFAULT_NATIVE_SNAPSHOT_CONFIG,
@@ -173,24 +174,7 @@ export class NativeBaselineIncompleteError extends Error {
   }
 }
 
-export const NATIVE_BRIEF_TEMPLATE = [
-  '# Outcome',
-  '',
-  '# Scope',
-  '',
-  '# Non-goals',
-  '',
-  '# Acceptance examples',
-  '',
-  '# Constraints and invariants',
-  '',
-  '# Decisions',
-  '',
-  '# Open questions',
-  '',
-  '# Verification expectations',
-  '',
-].join('\n');
+export const NATIVE_BRIEF_TEMPLATE = nativeBriefTemplate('en');
 
 function record(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -727,7 +711,7 @@ async function createNativeChangeLocked(options: {
     await Promise.all([
       fs.mkdir(path.join(changeDir, 'specs'), { recursive: true }),
       fs.mkdir(path.join(runtimeDir, 'checkpoints'), { recursive: true }),
-      atomicWriteText(path.join(changeDir, 'brief.md'), NATIVE_BRIEF_TEMPLATE),
+      atomicWriteText(path.join(changeDir, 'brief.md'), nativeBriefTemplate(options.language)),
     ]);
     const projectConfig = await readProjectConfig(options.paths.projectRoot);
     const snapshot = projectConfig?.native.snapshot ?? DEFAULT_NATIVE_SNAPSHOT_CONFIG;
