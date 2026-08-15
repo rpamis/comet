@@ -112,6 +112,29 @@ describe('CI workflows', () => {
     expect(workflow).not.toContain('actions/checkout');
   });
 
+  it('checks pull request template sections and reports actionable failures', async () => {
+    const workflow = await readWorkflow('pr-template-check.yml');
+    const template = await fs.readFile('.github/PULL_REQUEST_TEMPLATE.md', 'utf8');
+
+    expect(workflow).toContain('pull_request_target:');
+    expect(workflow).toContain('types: [opened, edited, reopened, synchronize, ready_for_review]');
+    expect(workflow).toContain('pull-requests: write');
+    expect(workflow).toContain('actions/github-script@d746ffe35508b1917358783b479e04febd2b8f71');
+    expect(workflow).toContain('github.rest.issues.createComment');
+    expect(workflow).toContain('github.rest.issues.updateComment');
+    expect(workflow).toContain('core.setFailed');
+    expect(workflow).not.toContain('actions/checkout');
+    for (const heading of [
+      '## ✨ Summary',
+      '## 🎯 Scope',
+      '## 🧪 Testing',
+      '## ✅ Checklist',
+      '## 👀 Notes for Reviewers',
+    ]) {
+      expect(template).toContain(heading);
+    }
+  });
+
   it('defines stale PR auto-closing with a manual dry-run mode', async () => {
     const workflow = await readWorkflow('stale-prs.yml');
 

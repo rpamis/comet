@@ -7,6 +7,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Fixed
 
 - **Fork pull request greetings**: First-time contributors now receive the repository guidance comment when opening a pull request from a fork, without weakening the read-only permissions of workflows that execute contributor code.
+- **Pull request template checks**: Pull requests now receive an actionable comment and a failing check when required sections or checklist selections are missing.
 
 ## What's Changed [0.4.0-beta.18] - 2026-08-13
 
