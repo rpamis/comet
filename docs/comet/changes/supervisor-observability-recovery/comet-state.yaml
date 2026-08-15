@@ -3,7 +3,7 @@ name: supervisor-observability-recovery
 language: zh-CN
 phase: archive
 status: active
-state_version: 10
+state_version: 11
 brief: brief.md
 spec_changes:
   - capability: supervisor-observability-recovery
@@ -13,7 +13,7 @@ workspace:
   isolation: worktree
   change_branch: comet/supervisor-observability-recovery
   target_branch: beta20
-  finish: null
+  finish: merge
 loop:
   stage: archive-ready
   goal_cycle: 2
