@@ -3,9 +3,9 @@ name: self-evolving-memory-team-contracts
 language: en
 phase: build
 status: active
-state_version: 24
+state_version: 29
 brief: brief.md
-children_contract_hash: ff44ddc7cf32e6104e8529c3f34a6fb879d3af34646f8d8943dfdf5fae059406
+children_contract_hash: ccce34a1c2461c5cc58c8792ecc74d0cbaf4022da210ba063c38e706ab629e9c
 spec_changes:
   - capability: comet-plugin-runtime
     operation: modify
@@ -23,7 +23,7 @@ workspace:
   finish: null
 loop:
   stage: building
-  goal_cycle: 5
+  goal_cycle: 6
   iteration: 1
   attempt: 0
   retry_epoch: 0
@@ -2080,6 +2080,27 @@ history:
       text: Native child declarations changed
       truncated: false
     completed_at: 2026-08-15T07:32:17.569Z
+  - goal_cycle: 5
+    iteration: 1
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A273
+    summary:
+      text: 333 项逐项核验：332 项通过，A273 未通过。所有 child 已归档，Plugin Runtime、个人记忆、项目规则、Dashboard
+        与宿主接线的现有实现和归档证据一致；本轮目标测试 17/18 通过、tsc 与 ESLint 通过。唯一真实缺口是发布的
+        comet-hook-router.mjs 过期。Windows pnpm 绝对路径失败属于检查执行计划问题，不能作为产品失败。
+      truncated: false
+    completed_at: 2026-08-15T10:22:06.472Z
+  - goal_cycle: 5
+    iteration: 2
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native child declarations changed
+      truncated: false
+    completed_at: 2026-08-15T10:24:19.576Z
 history_overflow:
   dropped_entries: 0
   first_dropped_at: null

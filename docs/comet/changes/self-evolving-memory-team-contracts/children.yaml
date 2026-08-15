@@ -534,3 +534,8 @@ children:
       - memory-rules-host-integration-repair
     covers:
       - A30
+  - name: memory-rules-entry-runtime-repair
+    depends_on:
+      - native-skill-language-surface-repair
+    covers:
+      - A273
