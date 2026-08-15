@@ -4,6 +4,7 @@ import { atomicWriteText } from './native-atomic-file.js';
 import { nativeLocalizedText, nativeVerificationHeading } from './native-artifact-language.js';
 import { NATIVE_SKILL_COORDINATION } from './native-runner-protocol.js';
 import type { NativePortableState, NativePortableText } from './native-portable-types.js';
+import type { NativeSupervisorState } from './native-supervisor.js';
 
 function display(value: NativePortableText | null): string {
   if (value === null) return '—';
@@ -70,7 +71,10 @@ function assuranceLabel(state: NativePortableState): string {
   );
 }
 
-export function renderNativeVerificationReport(state: NativePortableState): string {
+export function renderNativeVerificationReport(
+  state: NativePortableState,
+  supervisor?: NativeSupervisorState,
+): string {
   if (state.verification === null) {
     throw new Error('Native verification report requires a stable Verifier result');
   }
@@ -125,6 +129,17 @@ export function renderNativeVerificationReport(state: NativePortableState): stri
           ),
         ].join('\n');
 
+  const supervisorEvidence = supervisor?.finalVerification.layers
+    ? `
+## ${localized('Supervisor evidence layers', 'Supervisor 分层证据')}
+
+- ${localized('Child verification', 'Child 验证')}: ${supervisor.finalVerification.layers.childVerification}
+- ${localized('Parent integration', '父级集成')}: ${supervisor.finalVerification.layers.parentIntegration}
+- ${localized('Parent checks', '父级检查')}: ${supervisor.finalVerification.layers.parentChecks.join(', ') || '—'}
+- ${localized('Not rerun', '未重跑')}: ${supervisor.finalVerification.layers.notRerun.join(', ') || '—'}
+- ${localized('Incomplete', '未完成')}: ${supervisor.finalVerification.layers.incomplete.join(', ') || '—'}
+`
+    : '';
   return `---
 generated_from_state_version: ${state.state_version}
 ---
@@ -162,6 +177,8 @@ ${risks}
 ## ${heading('previousIterations')}
 
 ${history}
+
+${supervisorEvidence}
 
 ${
   state.history_overflow.dropped_entries > 0
@@ -201,6 +218,10 @@ export async function inspectNativeVerificationReportAlignment(options: {
 export async function writeNativeVerificationReport(options: {
   file: string;
   state: NativePortableState;
+  supervisor?: NativeSupervisorState;
 }): Promise<void> {
-  await atomicWriteText(options.file, renderNativeVerificationReport(options.state));
+  await atomicWriteText(
+    options.file,
+    renderNativeVerificationReport(options.state, options.supervisor),
+  );
 }

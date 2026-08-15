@@ -27,6 +27,7 @@ export * from './native-revision.js';
 export * from './native-run-consistency.js';
 export * from './native-selection.js';
 export * from './native-schema-migration.js';
+export * from './native-supervisor.js';
 export * from './native-snapshot.js';
 export * from './native-specs.js';
 export * from './native-transitions.js';

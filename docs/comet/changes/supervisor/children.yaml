@@ -1,0 +1,91 @@
+schema: comet.native.children.v1
+children:
+  - name: supervisor-integration-core
+    depends_on: []
+    covers:
+      - A2
+      - A6
+      - A7
+      - A12
+      - A13
+      - A18
+      - A19
+      - A20
+      - A23
+      - A26
+      - A29
+      - A31
+      - A32
+      - A34
+      - A35
+      - A37
+      - A38
+      - A39
+      - A40
+      - A45
+      - A46
+      - A50
+      - A51
+      - A53
+      - A55
+      - A63
+      - A64
+      - A67
+      - A68
+      - A69
+      - A74
+      - A76
+  - name: supervisor-agent-coordination
+    depends_on:
+      - supervisor-integration-core
+    covers:
+      - A5
+      - A15
+      - A16
+      - A17
+      - A24
+      - A30
+      - A33
+      - A44
+      - A48
+      - A49
+      - A57
+      - A72
+      - A77
+  - name: supervisor-observability-recovery
+    depends_on:
+      - supervisor-integration-core
+      - supervisor-agent-coordination
+    covers:
+      - A1
+      - A3
+      - A4
+      - A8
+      - A9
+      - A10
+      - A11
+      - A14
+      - A21
+      - A22
+      - A25
+      - A27
+      - A28
+      - A36
+      - A41
+      - A42
+      - A43
+      - A47
+      - A52
+      - A54
+      - A56
+      - A58
+      - A59
+      - A60
+      - A61
+      - A62
+      - A65
+      - A66
+      - A70
+      - A71
+      - A73
+      - A75

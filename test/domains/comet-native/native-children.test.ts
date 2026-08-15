@@ -289,6 +289,37 @@ children:
     }
   });
 
+  it('parses children.v2 summaries without acceptance ownership fields', () => {
+    const parsed = parseNativeChildrenContract(`
+schema: comet.native.children.v2
+children:
+  - name: integration-core
+    summary: Owns the parent integration branch.
+    depends_on: []
+  - name: dashboard
+    summary: Connects the read-only status view.
+    depends_on: [integration-core]
+`);
+
+    expect(parsed).toEqual({
+      schema: 'comet.native.children.v2',
+      children: [
+        {
+          name: 'integration-core',
+          summary: 'Owns the parent integration branch.',
+          depends_on: [],
+          covers: [],
+        },
+        {
+          name: 'dashboard',
+          summary: 'Connects the read-only status view.',
+          depends_on: ['integration-core'],
+          covers: [],
+        },
+      ],
+    });
+  });
+
   it('gates the parent on real child merges and starts dependents from the integrated HEAD', async () => {
     const repository = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-children-'));
     repositories.push(repository);

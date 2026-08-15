@@ -168,6 +168,7 @@ export interface NativeDashboardMigrationSummary {
 
 export interface NativeDashboardChildSummary {
   name: string;
+  summary: string | null;
   dependsOn: string[];
   covers: string[];
   status: NativeChildDerivedStatus;

@@ -5,6 +5,10 @@ import { recoverNativePortableChange } from './native-portable-recovery.js';
 import { applyNativeRunnerInput, readNativeRunnerInput } from './native-runner-input.js';
 import { NATIVE_SKILL_COORDINATION } from './native-runner-protocol.js';
 import {
+  dispatchNativeSupervisorReadyTasks,
+  readNativeSupervisorState,
+} from './native-supervisor.js';
+import {
   completeNativePortableParentBuild,
   confirmNativePortableShape,
   confirmNativePortableSkillCoordinatedPass,
@@ -123,7 +127,11 @@ export async function nativeNextCommand(
           ...(await portableParentView(configured.paths, state)),
         });
       }
-      if (await inspectNativeChildren({ paths: configured.paths, state: current })) {
+      const supervisor = await readNativeSupervisorState(configured.paths, name);
+      if (
+        (await inspectNativeChildren({ paths: configured.paths, state: current })) &&
+        !supervisor
+      ) {
         throw new NativeUsageError(
           'Native parent Build advances child changes and does not accept a Builder handoff',
         );
@@ -205,8 +213,26 @@ export async function nativeNextCommand(
       } else {
         const children = await inspectNativeChildren({ paths: configured.paths, state: current });
         if (children) {
+          let effectiveChildren = children;
+          let supervisorTasks = [] as Awaited<
+            ReturnType<typeof dispatchNativeSupervisorReadyTasks>
+          >['tasks'];
+          const supervisor = await readNativeSupervisorState(configured.paths, name);
+          if (supervisor && !children.allDone) {
+            const dispatched = await dispatchNativeSupervisorReadyTasks({
+              paths: configured.paths,
+              parent: name,
+              maxParallel: 2,
+            });
+            supervisorTasks = dispatched.tasks;
+            if (supervisorTasks.length > 0) {
+              effectiveChildren =
+                (await inspectNativeChildren({ paths: configured.paths, state: current })) ??
+                effectiveChildren;
+            }
+          }
           if (
-            children.allDone &&
+            effectiveChildren.allDone &&
             !(current.loop.stage === 'repairing' && current.verification_result === 'fail')
           ) {
             state = await completeNativePortableParentBuild({
@@ -217,9 +243,10 @@ export async function nativeNextCommand(
           } else {
             return success('next', {
               state: current,
-              children: children.children,
-              readyChildren: children.readyChildren,
-              continuation: nativePortableContinuation(current, children),
+              children: effectiveChildren.children,
+              readyChildren: effectiveChildren.readyChildren,
+              ...(supervisorTasks.length > 0 ? { supervisorTasks } : {}),
+              continuation: nativePortableContinuation(current, effectiveChildren),
             });
           }
         }

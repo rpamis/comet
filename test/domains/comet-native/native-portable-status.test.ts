@@ -12,6 +12,11 @@ import {
   nativeProjectPaths,
 } from '../../../domains/comet-native/native-paths.js';
 import { createNativePortableChange } from '../../../domains/comet-native/native-portable-runtime.js';
+import {
+  createNativeSupervisorState,
+  createNativeSupervisorTask,
+  writeNativeSupervisorState,
+} from '../../../domains/comet-native/native-supervisor.js';
 import { nativeSelectCommand } from '../../../domains/comet-native/native-select-command.js';
 import {
   inspectNativePortableStatus,
@@ -78,5 +83,75 @@ describe('Native portable status', () => {
     ).resolves.toMatchObject({
       localExecution: { status: 'invalid', operation: null },
     });
+  });
+
+  it('keeps Supervisor default status compact and paginates diagnostic history', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-supervisor-status-'));
+    roots.push(root);
+    const config = defaultProjectConfig('docs', 'en');
+    await writeProjectConfig(root, config);
+    const paths = await nativeProjectPaths(root, 'docs');
+    await ensureNativeDirectories(paths);
+    await createNativePortableChange({ paths, name: 'supervisor-status', language: 'en' });
+    const initial = createNativeSupervisorState({
+      parent: 'supervisor-status',
+      targetBranch: 'main',
+      targetCommit: 'a'.repeat(40),
+      integrationBranch: 'comet/supervisor/supervisor-status/integration',
+      integrationWorktree: path.join(root, '.worktrees', 'supervisor-status-integration'),
+      contract: {
+        schema: 'comet.native.children.v2',
+        children: [{ name: 'core', summary: 'Core implementation', depends_on: [], covers: [] }],
+      },
+    });
+    const dispatched = createNativeSupervisorTask(initial, {
+      role: 'builder',
+      child: 'core',
+      projectRoot: path.join(root, '.worktrees', 'supervisor-status-core'),
+      runId: 'internal-run-id',
+    });
+    let state = dispatched.state;
+    for (let index = 0; index < 40; index += 1) {
+      state = {
+        ...state,
+        history: [
+          ...state.history,
+          {
+            kind: 'task-dispatched',
+            child: 'core',
+            runId: `run-${index}`,
+            summary: `event ${index}`,
+            at: new Date(0).toISOString(),
+          },
+        ],
+      };
+    }
+    await writeNativeSupervisorState(paths, state);
+
+    const status = await inspectNativePortableStatus({ paths, name: 'supervisor-status' });
+    expect(status.supervisor?.summary).toMatchObject({
+      targetSpecs: 0,
+      implementationChildren: 1,
+      working: 1,
+      agents: { working: 1 },
+    });
+    expect(JSON.stringify(status)).not.toContain('internal-run-id');
+    expect(JSON.stringify(status)).not.toContain('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+    expect(status.history).toBeUndefined();
+
+    const firstDetails = await inspectNativePortableStatus({
+      paths,
+      name: 'supervisor-status',
+      details: true,
+    });
+    expect(firstDetails.details?.supervisor?.history).toHaveLength(32);
+    expect(firstDetails.details?.supervisor?.nextCursor).toBeTruthy();
+    const secondDetails = await inspectNativePortableStatus({
+      paths,
+      name: 'supervisor-status',
+      details: true,
+      cursor: firstDetails.details?.supervisor?.nextCursor ?? undefined,
+    });
+    expect(secondDetails.details?.supervisor?.history[0]?.summary).toBe('event 31');
   });
 });

@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
 
 import { inspectNativeChildren, type NativeChildStatusProjection } from './native-children.js';
+import { readNativeSupervisorState, type NativeSupervisorState } from './native-supervisor.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
 import { nativePortableChangeDir, readNativePortableRuntime } from './native-portable-runtime.js';
 import type { NativeLocalExecutionState, NativePortableState } from './native-portable-types.js';
@@ -26,10 +27,10 @@ export interface NativePortableStatusProjection {
   acceptance: NativePortableAcceptanceCounts;
   verificationResult: NativePortableState['verification_result'];
   blockers: NativePortableState['blockers'];
-  builderHandoff: NativePortableState['builder_handoff'];
-  verification: NativePortableState['verification'];
-  history: NativePortableState['history'];
-  historyOverflow: NativePortableState['history_overflow'];
+  builderHandoff?: NativePortableState['builder_handoff'];
+  verification?: NativePortableState['verification'];
+  history?: NativePortableState['history'];
+  historyOverflow?: NativePortableState['history_overflow'];
   workspace: {
     projectRoot: string;
     isolation: NativePortableState['workspace']['isolation'];
@@ -45,13 +46,65 @@ export interface NativePortableStatusProjection {
   };
   children?: NativeChildStatusProjection[];
   readyChildren?: string[];
+  supervisor?: NativeSupervisorStatusProjection;
   continuation: ReturnType<typeof nativePortableContinuation>;
   details?: {
     acceptance: NativePortableState['acceptance'];
     specChanges: NativePortableState['spec_changes'];
     workspace: NativePortableState['workspace'];
     verificationReport: NativePortableState['verification_report'];
+    supervisor?: NativeSupervisorState & {
+      history: NativeSupervisorState['history'];
+      nextCursor: string | null;
+    };
   };
+}
+
+export interface NativeSupervisorStatusProjection {
+  schema: NativeSupervisorState['schema'];
+  parent: string;
+  integration: Pick<NativeSupervisorState['integration'], 'branch' | 'targetBranch'>;
+  tasks: Array<
+    Pick<
+      NonNullable<NativeSupervisorState['children'][number]['task']>,
+      'role' | 'child' | 'projectRoot'
+    >
+  >;
+  finalVerification: Pick<NativeSupervisorState['finalVerification'], 'status' | 'summary'>;
+  summary: {
+    targetSpecs: number;
+    implementationChildren: number;
+    waiting: number;
+    working: number;
+    integrated: number;
+    blocked: number;
+    active: Array<{
+      name: string;
+      summary: string | null;
+      projectRoot: string | null;
+      reason: string | null;
+    }>;
+    agents: { working: number; completed: number };
+    risks: string[];
+    nextAction: string | null;
+  };
+}
+
+function supervisorDetailsCursor(stateVersion: number, offset: number): string {
+  return `native-supervisor-details-v1.${stateVersion}.${offset.toString(36)}`;
+}
+
+function supervisorDetailsOffset(cursor: string | undefined, stateVersion: number): number {
+  if (!cursor) return 0;
+  const match = /^native-supervisor-details-v1\.(\d+)\.([0-9a-z]+)$/u.exec(cursor);
+  if (!match || Number(match[1]) !== stateVersion) {
+    throw new Error('Native Supervisor details cursor is stale or invalid');
+  }
+  const offset = Number.parseInt(match[2], 36);
+  if (!Number.isSafeInteger(offset) || offset < 0) {
+    throw new Error('Native Supervisor details cursor offset is invalid');
+  }
+  return offset;
 }
 
 function counts(state: NativePortableState): NativePortableAcceptanceCounts {
@@ -93,11 +146,13 @@ export async function inspectNativePortableStatus(options: {
   paths: NativeProjectPaths;
   name: string;
   details?: boolean;
+  cursor?: string;
 }): Promise<NativePortableStatusProjection> {
   const runtime = await readNativePortableRuntime(options);
   const localExpected = runtime.state.status === 'active' && runtime.state.loop.stage !== 'done';
   const workspace = workspaceProjection(options.paths, runtime.state);
   const children = await inspectNativeChildren({ paths: options.paths, state: runtime.state });
+  const supervisor = await readNativeSupervisorState(options.paths, options.name);
   const continuation = nativePortableContinuation(runtime.state, children);
   const effectiveContinuation =
     workspace.bindingState === 'mismatch'
@@ -113,6 +168,102 @@ export async function inspectNativePortableStatus(options: {
           },
         }
       : continuation;
+  const supervisorSummary = supervisor
+    ? (() => {
+        const waiting = supervisor.children.filter(
+          ({ status }) => status === 'pending' || status === 'ready',
+        ).length;
+        const working = supervisor.children.filter(
+          ({ status }) => status === 'active' || status === 'verified',
+        ).length;
+        const integrated = supervisor.children.filter(
+          ({ status }) => status === 'integrated' || status === 'archived',
+        ).length;
+        const blocked = supervisor.children.filter(
+          ({ status }) => status === 'blocked' || status === 'needs-reverify',
+        ).length;
+        const active = supervisor.children
+          .filter(
+            ({ status }) =>
+              status === 'active' || status === 'blocked' || status === 'needs-reverify',
+          )
+          .slice(0, 16)
+          .map((child) => ({
+            name: child.name,
+            summary: child.summary,
+            projectRoot: child.task?.projectRoot ?? child.projectRoot ?? null,
+            reason: child.blocker,
+          }));
+        const risks = supervisor.children
+          .flatMap(({ blocker }) => (blocker ? [blocker] : []))
+          .slice(0, 16);
+        return {
+          targetSpecs: runtime.state.spec_changes.length,
+          implementationChildren: supervisor.children.length,
+          waiting,
+          working,
+          integrated,
+          blocked,
+          active,
+          agents: {
+            working: supervisor.children.filter(({ task }) => task !== null).length,
+            completed: integrated,
+          },
+          risks,
+          nextAction:
+            supervisor.finalVerification.status === 'passed'
+              ? 'final-delivery'
+              : supervisor.finalVerification.status === 'pending' &&
+                  integrated === supervisor.children.length
+                ? 'parent-verification'
+                : waiting > 0
+                  ? 'dispatch-ready-child'
+                  : blocked > 0
+                    ? 'resolve-blocker'
+                    : 'continue-supervisor',
+        };
+      })()
+    : null;
+  const supervisorHistory = supervisor
+    ? (() => {
+        const pageSize = 32;
+        const offset = supervisorDetailsOffset(options.cursor, supervisor.stateVersion);
+        const history = supervisor.history.slice(offset, offset + pageSize);
+        return {
+          history,
+          nextCursor:
+            offset + history.length < supervisor.history.length
+              ? supervisorDetailsCursor(supervisor.stateVersion, offset + history.length)
+              : null,
+        };
+      })()
+    : null;
+  const supervisorProjection = supervisor
+    ? {
+        schema: supervisor.schema,
+        parent: supervisor.parent,
+        integration: {
+          branch: supervisor.integration.branch,
+          targetBranch: supervisor.integration.targetBranch,
+        },
+        tasks: supervisor.children.flatMap((child) =>
+          child.task
+            ? [
+                {
+                  role: child.task.role,
+                  child: child.task.child,
+                  projectRoot: child.task.projectRoot,
+                },
+              ]
+            : [],
+        ),
+        finalVerification: {
+          status: supervisor.finalVerification.status,
+          summary: supervisor.finalVerification.summary,
+        },
+        summary: supervisorSummary!,
+      }
+    : null;
   return {
     schema: 'comet.native.status.v2',
     name: runtime.state.name,
@@ -122,11 +273,15 @@ export async function inspectNativePortableStatus(options: {
     loop: runtime.state.loop,
     acceptance: counts(runtime.state),
     verificationResult: runtime.state.verification_result,
-    blockers: runtime.state.blockers,
-    builderHandoff: runtime.state.builder_handoff,
-    verification: runtime.state.verification,
-    history: runtime.state.history,
-    historyOverflow: runtime.state.history_overflow,
+    blockers: supervisor ? [] : runtime.state.blockers,
+    ...(supervisor
+      ? {}
+      : {
+          builderHandoff: runtime.state.builder_handoff,
+          verification: runtime.state.verification,
+          history: runtime.state.history,
+          historyOverflow: runtime.state.history_overflow,
+        }),
     workspace,
     localExecution: {
       status: localExpected ? runtime.localStatus : 'not-expected',
@@ -138,6 +293,7 @@ export async function inspectNativePortableStatus(options: {
           readyChildren: children.readyChildren,
         }
       : {}),
+    ...(supervisorProjection ? { supervisor: supervisorProjection } : {}),
     continuation: effectiveContinuation,
     ...(options.details
       ? {
@@ -146,6 +302,15 @@ export async function inspectNativePortableStatus(options: {
             specChanges: runtime.state.spec_changes,
             workspace: runtime.state.workspace,
             verificationReport: runtime.state.verification_report,
+            ...(supervisor
+              ? {
+                  supervisor: {
+                    ...supervisor,
+                    history: supervisorHistory!.history,
+                    nextCursor: supervisorHistory!.nextCursor,
+                  },
+                }
+              : {}),
           },
         }
       : {}),

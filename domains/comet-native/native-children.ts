@@ -11,6 +11,12 @@ import { canonicalHash } from './native-canonical-hash.js';
 import { readProjectConfig } from './native-config.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { parseNativePortableState, readNativePortableState } from './native-portable-state.js';
+import {
+  projectNativeSupervisorChildren,
+  readNativeSupervisorState,
+  rebuildNativeSupervisorStateFromFacts,
+  writeNativeSupervisorState,
+} from './native-supervisor.js';
 import type {
   NativePortableAcceptanceState,
   NativePortablePhase,
@@ -20,19 +26,22 @@ import type { NativeProjectPaths } from './native-types.js';
 
 export const NATIVE_CHILDREN_FILE = 'children.yaml';
 export const NATIVE_CHILDREN_SCHEMA = 'comet.native.children.v1' as const;
+export const NATIVE_CHILDREN_V2_SCHEMA = 'comet.native.children.v2' as const;
 
 const NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 const ROOT_KEYS = new Set(['schema', 'children']);
-const CHILD_KEYS = new Set(['name', 'depends_on', 'covers']);
+const V1_CHILD_KEYS = new Set(['name', 'depends_on', 'covers']);
+const V2_CHILD_KEYS = new Set(['name', 'summary', 'depends_on']);
 
 export interface NativeChildDefinition {
   name: string;
+  summary: string | null;
   depends_on: string[];
   covers: string[];
 }
 
 export interface NativeChildrenContract {
-  schema: typeof NATIVE_CHILDREN_SCHEMA;
+  schema: typeof NATIVE_CHILDREN_SCHEMA | typeof NATIVE_CHILDREN_V2_SCHEMA;
   children: NativeChildDefinition[];
 }
 
@@ -41,10 +50,20 @@ export interface NativeChildrenDocument {
   size: number;
 }
 
-export type NativeChildDerivedStatus = 'pending' | 'ready' | 'active' | 'done' | 'blocked';
+export type NativeChildDerivedStatus =
+  | 'pending'
+  | 'ready'
+  | 'active'
+  | 'verified'
+  | 'integrated'
+  | 'archived'
+  | 'needs-reverify'
+  | 'done'
+  | 'blocked';
 
 export interface NativeChildStatusProjection {
   name: string;
+  summary: string | null;
   dependsOn: string[];
   covers: string[];
   status: NativeChildDerivedStatus;
@@ -164,22 +183,40 @@ export function parseNativeChildrenContract(
   }
   const root = record(document.toJS({ mapAsMap: false }), 'Native children contract');
   exactKeys(root, ROOT_KEYS, 'Native children contract');
-  if (root.schema !== NATIVE_CHILDREN_SCHEMA) {
-    throw new Error(`Native children schema must be ${NATIVE_CHILDREN_SCHEMA}`);
+  if (root.schema !== NATIVE_CHILDREN_SCHEMA && root.schema !== NATIVE_CHILDREN_V2_SCHEMA) {
+    throw new Error(
+      `Native children schema must be ${NATIVE_CHILDREN_SCHEMA} or ${NATIVE_CHILDREN_V2_SCHEMA}`,
+    );
   }
   if (!Array.isArray(root.children) || root.children.length === 0) {
     throw new Error('Native children must be a non-empty array');
   }
   const children = root.children.map((entry, index): NativeChildDefinition => {
     const child = record(entry, `Native child ${index}`);
-    exactKeys(child, CHILD_KEYS, `Native child ${index}`);
+    exactKeys(
+      child,
+      root.schema === NATIVE_CHILDREN_V2_SCHEMA ? V2_CHILD_KEYS : V1_CHILD_KEYS,
+      `Native child ${index}`,
+    );
     if (typeof child.name !== 'string' || !NAME_PATTERN.test(child.name)) {
       throw new Error(`Native child ${index} name is invalid`);
     }
+    if (root.schema === NATIVE_CHILDREN_V2_SCHEMA) {
+      if (typeof child.summary !== 'string' || child.summary.trim().length === 0) {
+        throw new Error(`Native child ${child.name} summary must be a non-empty string`);
+      }
+      if (child.summary.length > 2_000) {
+        throw new Error(`Native child ${child.name} summary exceeds 2000 characters`);
+      }
+    }
     return {
       name: child.name,
+      summary: root.schema === NATIVE_CHILDREN_V2_SCHEMA ? (child.summary as string) : null,
       depends_on: stringList(child.depends_on, `Native child ${child.name} depends_on`),
-      covers: stringList(child.covers, `Native child ${child.name} covers`),
+      covers:
+        root.schema === NATIVE_CHILDREN_V2_SCHEMA
+          ? []
+          : stringList(child.covers, `Native child ${child.name} covers`),
     };
   });
   const names = children.map(({ name }) => name);
@@ -192,8 +229,10 @@ export function parseNativeChildrenContract(
     }
   }
   assertAcyclic(children);
-  if (acceptanceIds) validateCoverage(children, acceptanceIds);
-  return { schema: NATIVE_CHILDREN_SCHEMA, children };
+  if (acceptanceIds && root.schema === NATIVE_CHILDREN_SCHEMA) {
+    validateCoverage(children, acceptanceIds);
+  }
+  return { schema: root.schema, children };
 }
 
 export async function readNativeChildrenContract(options: {
@@ -377,10 +416,83 @@ export async function inspectNativeChildren(options: {
     acceptance: options.state.acceptance,
     children: document.contract,
   });
+  const parentBranch = options.state.workspace.change_branch;
   const confirmed =
     options.state.phase !== 'shape' && options.state.children_contract_hash === contractHash;
+  if (document.contract.schema === NATIVE_CHILDREN_V2_SCHEMA) {
+    let supervisor = await readNativeSupervisorState(options.paths, options.state.name);
+    if (!supervisor) {
+      const targetBranch =
+        options.state.workspace.target_branch ?? options.state.workspace.change_branch;
+      if (targetBranch) {
+        const rebuilt = await rebuildNativeSupervisorStateFromFacts({
+          paths: options.paths,
+          parent: options.state.name,
+          targetBranch,
+          contract: document.contract,
+        });
+        if (rebuilt) {
+          supervisor = rebuilt;
+          await writeNativeSupervisorState(options.paths, rebuilt);
+        }
+      }
+    }
+    if (supervisor) {
+      const projected = projectNativeSupervisorChildren(supervisor);
+      if (options.state.children_contract_hash !== contractHash) {
+        return {
+          ...projected,
+          contractHash,
+          confirmed: false,
+          readyChildren: [],
+          allDone: false,
+          children: projected.children.map((child) => ({
+            ...child,
+            message: 'Supervisor child plan changed; Shape confirmation is required',
+          })),
+        };
+      }
+      return { ...projected, contractHash, confirmed };
+    }
+    const definitions = new Map(document.contract.children.map((child) => [child.name, child]));
+    const projections = document.contract.children.map(
+      (child): NativeChildStatusProjection => ({
+        name: child.name,
+        summary: child.summary,
+        dependsOn: [...child.depends_on],
+        covers: [],
+        status:
+          confirmed &&
+          child.depends_on.every((dependency) =>
+            document.contract.children
+              .filter(({ name }) => name !== child.name)
+              .every(({ name }) => name !== dependency),
+          )
+            ? 'ready'
+            : 'pending',
+        phase: null,
+        projectRoot: null,
+        message: confirmed ? null : 'Parent Shape confirmation is required',
+      }),
+    );
+    // The fallback only applies before the machine state is first written. A dependency
+    // is ready only when all of its declared ancestors are represented in the plan;
+    // the persisted Supervisor state becomes authoritative as soon as Build starts.
+    for (const projection of projections) {
+      if (projection.status !== 'ready') continue;
+      const definition = definitions.get(projection.name)!;
+      if (definition.depends_on.length > 0) projection.status = 'pending';
+    }
+    return {
+      contractHash,
+      confirmed,
+      parentBranch,
+      children: projections,
+      readyChildren: projections.filter(({ status }) => status === 'ready').map(({ name }) => name),
+      allDone: false,
+    };
+  }
   const sources = await workspaceSources(options.paths);
-  const parentBranch = options.state.workspace.change_branch;
   const names = new Set(document.contract.children.map(({ name }) => name));
   const archives = new Map<string, ArchivedChildEvidence[]>();
   const active = new Map<string, Array<{ source: WorkspaceSource; state: NativePortableState }>>();
@@ -480,6 +592,7 @@ export async function inspectNativeChildren(options: {
     }
     const projection: NativeChildStatusProjection = {
       name,
+      summary: definition.summary,
       dependsOn: [...definition.depends_on],
       covers: [...definition.covers],
       status,

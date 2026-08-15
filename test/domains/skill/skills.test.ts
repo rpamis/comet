@@ -245,6 +245,8 @@ describe('skills', () => {
           '--return-to-build',
           languageDir === 'skills-zh' ? '决策树' : 'decision tree',
           languageDir === 'skills-zh' ? 'subagent' : 'subagents',
+          'comet.native.children.v2',
+          'integration workspace',
         ]) {
           expect(allContent, `${languageDir}: ${required}`).toContain(required);
         }

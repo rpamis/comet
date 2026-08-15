@@ -19,14 +19,16 @@ export async function nativeStatusCommand(
   const cursor = takeOption(args, '--cursor');
   const name = args[0]?.startsWith('--') ? undefined : args.shift();
   if (details && !name) throw new NativeUsageError('status --details requires a change name');
-  if (cursor && name) throw new NativeUsageError('--cursor is only valid for status lists');
-  if (cursor && details) throw new NativeUsageError('--cursor cannot be combined with --details');
+  if (cursor && name && !details) {
+    throw new NativeUsageError('--cursor for a named status requires --details');
+  }
   assertNoArguments(args);
   const data = name
     ? await inspectDiscoveredNativeStatus({
         projectRoot,
         name,
         details,
+        ...(cursor ? { detailsCursor: cursor } : {}),
       })
     : await listDiscoveredNativeStatusPage({
         projectRoot,

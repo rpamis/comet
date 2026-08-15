@@ -4,6 +4,7 @@ import path from 'node:path';
 import { readNativeTextFilePrefix } from '../comet-native/native-bounded-file.js';
 import {
   NATIVE_CHILDREN_FILE,
+  inspectNativeChildren,
   readNativeChildrenContract,
   type NativeChildStatusProjection,
 } from '../comet-native/native-children.js';
@@ -434,6 +435,7 @@ function childSummary(
   const candidate = matchingChildCandidate(child, candidates);
   return {
     name: child.name,
+    summary: child.summary,
     dependsOn: [...child.dependsOn],
     covers: [...child.covers],
     status: child.status,
@@ -472,6 +474,15 @@ async function activeParentChildren(
         : {}),
     });
     if (!document) return [];
+    if (document.contract.schema === 'comet.native.children.v2') {
+      const inspection = await inspectNativeChildren({
+        paths: candidate.source.paths,
+        state: read.state,
+      });
+      if (inspection) {
+        return inspection.children.map((child) => childSummary(child, candidates));
+      }
+    }
     const children = document.contract.children;
     const candidatesByName = new Map(
       children.map((child) => [
@@ -479,6 +490,7 @@ async function activeParentChildren(
         matchingChildCandidate(
           {
             name: child.name,
+            summary: child.summary,
             dependsOn: child.depends_on,
             covers: child.covers,
             status: 'pending',
@@ -525,6 +537,7 @@ async function activeParentChildren(
         return childSummary(
           {
             name: child.name,
+            summary: child.summary,
             dependsOn: child.depends_on,
             covers: child.covers,
             status,
@@ -558,6 +571,7 @@ async function archivedParentChildren(
       childSummary(
         {
           name: child.name,
+          summary: child.summary,
           dependsOn: child.depends_on,
           covers: child.covers,
           status: 'done',

@@ -2,6 +2,13 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-beta.20] - 2026-08-15
+
+### Changed
+
+- **Native Supervisor workflow**: Supervisor Changes now coordinate Children through a dedicated integration workspace, independent Builder/Verifier task packages, dependency-aware `verified` and `integrated` states, and a final parent verification before target delivery.
+- **Native status and recovery**: Supervisor status exposes compact Child summaries, current task bindings, integration progress, and preserved verification evidence while keeping machine Runtime state under `.comet/runtime`.
+
 ## What's Changed [0.4.0-beta.18] - 2026-08-13
 
 ### Added

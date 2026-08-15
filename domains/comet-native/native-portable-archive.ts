@@ -17,6 +17,10 @@ import {
   returnNativePortableStateToShapeLocked,
 } from './native-portable-runtime.js';
 import {
+  finalizeNativeSupervisorDeliveryLocked,
+  readNativeSupervisorState,
+} from './native-supervisor.js';
+import {
   compareAndSwapNativePortableState,
   readNativePortableState,
 } from './native-portable-state.js';
@@ -440,6 +444,7 @@ export async function archiveNativePortableChange(options: {
       } else {
         throw new Error(`Native active change is missing: ${options.name}`);
       }
+      let supervisor = await readNativeSupervisorState(options.paths, options.name);
       if (activeExists && !state.archived && transaction === null) {
         const drift = await inspectNativePortableAcceptanceDrift({
           paths: options.paths,
@@ -512,6 +517,17 @@ export async function archiveNativePortableChange(options: {
         );
       }
 
+      let supervisorDelivered = false;
+      if (transaction.status === 'prepared' && supervisor && !state.archived) {
+        // Do not publish the parent's canonical Specs before Supervisor has
+        // delivered its verified integration result to the real target.
+        const delivered = await finalizeNativeSupervisorDeliveryLocked({
+          paths: options.paths,
+          state: supervisor,
+        });
+        supervisor = delivered.state;
+        supervisorDelivered = true;
+      }
       if (transaction.status === 'prepared') {
         for (
           let index = transaction.next_spec_index;
@@ -532,6 +548,17 @@ export async function archiveNativePortableChange(options: {
       }
 
       if (transaction.status === 'specs-applied') {
+        // Supervisor delivery is the parent-level commit boundary. Do it before
+        // finalizing the portable parent as archived so a target-drift blocker
+        // cannot expose a false archived state while delivery is still pending.
+        if (supervisor && !state.archived && !supervisorDelivered) {
+          const delivered = await finalizeNativeSupervisorDeliveryLocked({
+            paths: options.paths,
+            state: supervisor,
+          });
+          supervisor = delivered.state;
+          supervisorDelivered = true;
+        }
         if (!state.archived) {
           const next: NativePortableState = {
             ...state,
@@ -559,6 +586,7 @@ export async function archiveNativePortableChange(options: {
         await writeNativeVerificationReport({
           file: path.join(reportRoot, 'verification.md'),
           state,
+          ...(supervisor ? { supervisor } : {}),
         });
         const alignment = await inspectNativeVerificationReportAlignment({
           file: path.join(reportRoot, 'verification.md'),
@@ -568,10 +596,23 @@ export async function archiveNativePortableChange(options: {
           throw new Error('Native final verification report is not aligned');
         transaction = { ...transaction, status: 'report-aligned' };
         await writeTransaction(options.paths, transaction);
+        if (supervisor && !supervisorDelivered) {
+          await finalizeNativeSupervisorDeliveryLocked({
+            paths: options.paths,
+            state: supervisor,
+          });
+          supervisorDelivered = true;
+        }
         await options.hooks?.afterReportAligned?.();
       }
 
       if (transaction.status === 'report-aligned') {
+        if (supervisor && !supervisorDelivered) {
+          await finalizeNativeSupervisorDeliveryLocked({
+            paths: options.paths,
+            state: supervisor,
+          });
+        }
         await fs.mkdir(options.paths.archiveDir, { recursive: true });
         if (await exists(target)) {
           throw new Error(`Native Archive target already exists: ${target}`);

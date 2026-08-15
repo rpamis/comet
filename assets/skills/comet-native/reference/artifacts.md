@@ -47,8 +47,7 @@ Use these forms in Open questions only for real unresolved user questions:
 ```
 
 As soon as a decision is confirmed, write it into Decisions and the complete target specifications, then remove the corresponding blocker. Formal artifacts record conclusions and reasons, not hidden model reasoning.
-
-Acceptance criteria must be specific, observable, and non-duplicative. Use simple sequential IDs such as `A1`, `A2`, and `A3`. IDs map results only; they are not derived from content and do not identify files. On Shape confirmation, the Runtime saves the full acceptance text and its source. A Supervisor Change's `children.yaml` uses `comet.native.children.v1`; each child contains only `name`, `depends_on`, and `covers`. Names must be unique, dependencies must exist and be acyclic, and every Supervisor Change acceptance ID must be covered. The Runtime confirms it together with the Supervisor Change acceptance; any change returns the Supervisor Change to Shape.
+Acceptance criteria must be specific, observable, and non-duplicative. Use simple sequential IDs such as `A1`, `A2`, and `A3`. IDs map results only; they are not derived from content and do not identify files. On Shape confirmation, the Runtime saves the full acceptance text and its source. A new Supervisor Change's `children.yaml` uses `comet.native.children.v2`; each Child contains only `name`, a user-facing `summary`, and `depends_on`, with no `covers` or `owns`. Names must be unique, dependencies must exist, and the graph must be acyclic. Runtime reads `comet.native.children.v1` during the compatibility window without rewriting archived v1. Any v2 plan change returns the Supervisor Change to Shape.
 
 ## Complete target specifications
 Each `specs/<capability>/spec.md` describes the complete capability behavior after Archive, rather than only the difference from older text:

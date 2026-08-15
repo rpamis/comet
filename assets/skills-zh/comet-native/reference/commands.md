@@ -17,7 +17,7 @@ comet native <group> <command> --help
 - `inputOptions`：这次命令需要填写的字段和 JSON 模板；
 - `workspace` / `preparation`：实际工作目录和 change 创建结果；
 - `stateVersion` / `loop`：当前状态版本和验收循环进度；
-- `acceptance` / `children` / `readyChildren` / `nextPageArgs`：验收摘要、Supervisor Change 的子项投影、当前可启动子项和下一页查询命令；
+- `acceptance` / `children` / `readyChildren` / `supervisor` / `nextPageArgs`：验收摘要、Supervisor Change 的同源 Child 投影、当前可启动子项、integration branch 与当前任务包摘要，以及下一页查询命令；
 - `verifierDispatch`：启动独立 Verifier 所需的输入；
 - `workspaceFinishResult` / `recoveryArgs`：归档后的工作区收尾结果和恢复命令。
 
@@ -30,6 +30,7 @@ comet native <group> <command> --help
 - `builder-handoff`：提交本轮实现摘要、处理的验收 ID、Builder 实际做过的开发检查和已知限制。验收结论留给 Verifier。
 - `dispatch-verifier`：列出当前候选需要由 Runtime 执行的检查。确认没有适用的命令检查时提交空列表。
 - `verifier-response`：Verifier 请求补充检查，或提交覆盖全部验收 ID 的最终结果。
+- Supervisor 任务回报使用 `supervisor-builder-result`、`supervisor-verifier-result` 和 `supervisor-integrate`；每次回报必须带 Runtime 当前任务包的 `runId`，迟到或重复回报会被拒绝。
 - `verifier-execution-error` / `verifier-unavailable`：报告 Verifier 任务执行出错或无法启动。模板中的任务关联字段必须原样保留，避免旧任务的迟到消息影响新的 Verifier。
 
 Runtime 负责执行并记录验收检查。Builder 在 handoff 中列出的开发检查只用于说明候选；Verifier 以 Runtime 的实际检查结果为准。是否补充检查、重试或启动新的 Verifier，由最新 `continuation` 决定。

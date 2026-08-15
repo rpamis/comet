@@ -47,8 +47,7 @@ Open questions 中只有真实未解决的用户问题使用：
 ```
 
 每个决定确认后立即写入 Decisions 和完整目标规格，再移除对应阻塞项。正式产物只记录结论和理由，不记录模型的隐藏推理过程。
-
-验收标准必须具体、可观察且互不重复。使用简单顺序 ID，例如 `A1`、`A2`、`A3`；ID 只用于结果映射，不从内容计算，也不代表文件身份。Runtime 在 Shape 确认时保存完整验收文字及其来源。Supervisor Change 的 `children.yaml` 使用 `comet.native.children.v1`，每个 child 只包含 `name`、`depends_on` 和 `covers`。名称必须唯一，依赖必须存在且无环，全部 Supervisor Change 验收 ID 都必须被覆盖。Runtime 将其与 Supervisor Change 验收项一起确认；修改后 Supervisor Change 返回 Shape。
+验收标准必须具体、可观察且互不重复。使用简单顺序 ID，例如 `A1`、`A2`、`A3`；ID 只用于结果映射，不从内容计算，也不代表文件身份。Runtime 在 Shape 确认时保存完整验收文字及其来源。新的 Supervisor Change 使用 `comet.native.children.v2`，每个 Child 只包含 `name`、用户可读 `summary` 和 `depends_on`，不写 `covers` 或 `owns`；名称必须唯一，依赖必须存在且无环。Runtime 在兼容期读取 `comet.native.children.v1`，但不把已归档 v1 改写为 v2。修改 v2 计划后，Supervisor Change 返回 Shape。
 
 ## 完整目标规格
 每个 `specs/<capability>/spec.md` 描述归档后 capability 的完整行为，而不是只写相对旧文本的变化：

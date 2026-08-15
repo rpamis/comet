@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
+import { gitWorktreeIsClean, runGitCommand } from '../../platform/process/git.js';
+
 import type { NativeCheckPlan } from './native-check-executor.js';
 import { readNativeLocalExecution } from './native-local-execution.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
@@ -16,6 +18,17 @@ import {
   submitNativePortableBuilderCandidate,
   submitNativePortableVerifierResult,
 } from './native-portable-runtime.js';
+import {
+  applyNativeSupervisorBuilderResult,
+  applyNativeSupervisorVerifierResult,
+  createNativeSupervisorTask,
+  integrateNativeSupervisorChildWorkspace,
+  recordNativeSupervisorFinalVerification,
+  readNativeSupervisorState,
+  writeNativeSupervisorState,
+  type NativeSupervisorIntegrationCheck,
+  type NativeSupervisorVerificationEvidence,
+} from './native-supervisor.js';
 import { createNativeRunnerChannel, NATIVE_SKILL_COORDINATION } from './native-runner-protocol.js';
 import type {
   NativeBuilderHandoff,
@@ -64,12 +77,36 @@ interface RunnerVerifierUnavailableInput {
   verifierExecutionRef: string;
 }
 
+interface RunnerSupervisorBuilderInput {
+  kind: 'supervisor-builder-result';
+  child: string;
+  runId: string;
+  candidateCommit: string;
+}
+
+interface RunnerSupervisorVerifierInput {
+  kind: 'supervisor-verifier-result';
+  child: string;
+  runId: string;
+  verdict: 'pass' | 'fail' | 'incomplete';
+  evidence: NativeSupervisorVerificationEvidence;
+}
+
+interface RunnerSupervisorIntegrateInput {
+  kind: 'supervisor-integrate';
+  child: string;
+  checks: NativeSupervisorIntegrationCheck[];
+}
+
 export type NativeRunnerInput =
   | RunnerBuilderInput
   | RunnerDispatchInput
   | RunnerVerifierInput
   | RunnerExecutionErrorInput
-  | RunnerVerifierUnavailableInput;
+  | RunnerVerifierUnavailableInput
+  | RunnerSupervisorBuilderInput
+  | RunnerSupervisorVerifierInput
+  | RunnerSupervisorIntegrateInput;
 
 function record(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -174,6 +211,41 @@ function verifierAttemptBinding(
   };
 }
 
+function supervisorEvidence(value: unknown): NativeSupervisorVerificationEvidence {
+  const input = record(value, 'Native Supervisor evidence');
+  exactKeys(input, ['summary', 'checks'], 'Native Supervisor evidence');
+  return {
+    summary: text(input.summary, 'Native Supervisor evidence summary'),
+    checks: strings(input.checks, 'Native Supervisor evidence checks'),
+  };
+}
+
+function supervisorIntegrationChecks(value: unknown): NativeSupervisorIntegrationCheck[] {
+  if (!Array.isArray(value))
+    throw new Error('Native Supervisor integration checks must be an array');
+  return value.map((entry, index) => {
+    const input = record(entry, `Native Supervisor integration check ${index}`);
+    const allowed = new Set(['name', 'status', 'reason']);
+    if (Object.keys(input).some((key) => !allowed.has(key))) {
+      throw new Error(`Native Supervisor integration check ${index} fields are invalid`);
+    }
+    if (!Object.hasOwn(input, 'name') || !Object.hasOwn(input, 'status')) {
+      throw new Error(`Native Supervisor integration check ${index} fields are invalid`);
+    }
+    if (!['passed', 'failed', 'incomplete'].includes(String(input.status))) {
+      throw new Error(`Native Supervisor integration check ${index} status is invalid`);
+    }
+    if (input.reason !== undefined && input.reason !== null && typeof input.reason !== 'string') {
+      throw new Error(`Native Supervisor integration check ${index} reason is invalid`);
+    }
+    return {
+      name: text(input.name, `Native Supervisor integration check ${index} name`),
+      status: input.status as NativeSupervisorIntegrationCheck['status'],
+      reason: (input.reason as string | null | undefined) ?? null,
+    };
+  });
+}
+
 export function parseNativeRunnerInput(value: unknown): NativeRunnerInput {
   const input = record(value, 'Native Runner input');
   if (input.kind === 'builder-handoff') {
@@ -228,6 +300,44 @@ export function parseNativeRunnerInput(value: unknown): NativeRunnerInput {
       ...verifierAttemptBinding(input, 'Native Runner unavailable Verifier input'),
     };
   }
+  if (input.kind === 'supervisor-builder-result') {
+    exactKeys(
+      input,
+      ['kind', 'child', 'runId', 'candidateCommit'],
+      'Native Supervisor Builder input',
+    );
+    return {
+      kind: 'supervisor-builder-result',
+      child: text(input.child, 'Native Supervisor child'),
+      runId: text(input.runId, 'Native Supervisor runId'),
+      candidateCommit: text(input.candidateCommit, 'Native Supervisor candidate commit'),
+    };
+  }
+  if (input.kind === 'supervisor-verifier-result') {
+    exactKeys(
+      input,
+      ['kind', 'child', 'runId', 'verdict', 'evidence'],
+      'Native Supervisor Verifier input',
+    );
+    if (!['pass', 'fail', 'incomplete'].includes(String(input.verdict))) {
+      throw new Error('Native Supervisor Verifier verdict is invalid');
+    }
+    return {
+      kind: 'supervisor-verifier-result',
+      child: text(input.child, 'Native Supervisor child'),
+      runId: text(input.runId, 'Native Supervisor runId'),
+      verdict: input.verdict as RunnerSupervisorVerifierInput['verdict'],
+      evidence: supervisorEvidence(input.evidence),
+    };
+  }
+  if (input.kind === 'supervisor-integrate') {
+    exactKeys(input, ['kind', 'child', 'checks'], 'Native Supervisor integration input');
+    return {
+      kind: 'supervisor-integrate',
+      child: text(input.child, 'Native Supervisor child'),
+      checks: supervisorIntegrationChecks(input.checks),
+    };
+  }
   throw new Error('Native Runner input kind is invalid');
 }
 
@@ -251,6 +361,36 @@ export async function readNativeRunnerInput(
 
 function skillExecutionRef(role: 'builder' | 'verifier'): string {
   return `${NATIVE_SKILL_COORDINATION}:${role}:${randomUUID()}`;
+}
+
+function assertSupervisorTaskCommit(
+  task: { projectRoot: string; baseCommit: string },
+  commit: string,
+  role: 'builder' | 'verifier',
+  expectedBranch: string,
+): void {
+  const root = path.resolve(runGitCommand(task.projectRoot, ['rev-parse', '--show-toplevel']));
+  if (root !== path.resolve(task.projectRoot)) {
+    throw new Error(`Native Supervisor ${role} worktree identity is invalid`);
+  }
+  const branch = runGitCommand(task.projectRoot, ['branch', '--show-current']);
+  if (branch !== expectedBranch) {
+    throw new Error(`Native Supervisor ${role} result came from the wrong Child worktree branch`);
+  }
+  if (!gitWorktreeIsClean(task.projectRoot)) {
+    throw new Error(`Native Supervisor ${role} worktree must be clean before returning a commit`);
+  }
+  const head = runGitCommand(task.projectRoot, ['rev-parse', 'HEAD']);
+  if (head !== commit) {
+    throw new Error(`Native Supervisor ${role} result is not bound to the worktree HEAD`);
+  }
+  try {
+    runGitCommand(task.projectRoot, ['merge-base', '--is-ancestor', task.baseCommit, commit]);
+  } catch (error) {
+    throw new Error(`Native Supervisor ${role} result is not based on its task base commit`, {
+      cause: error,
+    });
+  }
 }
 
 function assertSkillCoordinatedCandidate(state: NativePortableState): NativeBuilderHandoff {
@@ -341,7 +481,105 @@ export async function applyNativeRunnerInput(options: {
   input: NativeRunnerInput;
   maxVerifyFailures: number;
 }) {
-  if (options.input.kind === 'builder-handoff') {
+  const supervisor = await readNativeSupervisorState(options.paths, options.name);
+  const input = options.input;
+  const portableBeforeInput = supervisor
+    ? await readNativePortableChange(options.paths, options.name)
+    : null;
+  const supervisorParentVerification =
+    supervisor !== null &&
+    portableBeforeInput?.phase === 'verify' &&
+    supervisor.children.every(({ status }) => status === 'integrated' || status === 'archived');
+  if (supervisor && input.kind === 'supervisor-builder-result') {
+    const child = supervisor.children.find(({ name }) => name === input.child);
+    if (!child?.task || child.task.role !== 'builder') {
+      throw new Error(`Native Supervisor Builder task is not active for ${input.child}`);
+    }
+    assertSupervisorTaskCommit(
+      child.task,
+      input.candidateCommit,
+      'builder',
+      `comet/supervisor/${supervisor.parent}/${input.child}`,
+    );
+    const projectRoot = child.task.projectRoot;
+    const candidate = applyNativeSupervisorBuilderResult(supervisor, input);
+    const verifier = createNativeSupervisorTask(candidate, {
+      role: 'verifier',
+      child: input.child,
+      projectRoot,
+      runId: randomUUID(),
+    });
+    const portableState = await readNativePortableChange(options.paths, options.name);
+    await writeNativeSupervisorState(options.paths, verifier.state);
+    return {
+      state: portableState,
+      supervisorTask: verifier.task,
+      checks: [],
+      requestChecks: null,
+      verifierDispatch: null,
+      continuation: nativePortableContinuation(
+        await readNativePortableChange(options.paths, options.name),
+      ),
+    };
+  }
+  if (supervisor && input.kind === 'supervisor-verifier-result') {
+    const child = supervisor.children.find(({ name }) => name === input.child);
+    if (!child?.task || child.task.role !== 'verifier' || !child.candidateCommit) {
+      throw new Error(`Native Supervisor Verifier task is not active for ${input.child}`);
+    }
+    assertSupervisorTaskCommit(
+      child.task,
+      child.candidateCommit,
+      'verifier',
+      `comet/supervisor/${supervisor.parent}/${input.child}`,
+    );
+    const state = applyNativeSupervisorVerifierResult(supervisor, input);
+    await writeNativeSupervisorState(options.paths, state);
+    return {
+      state: await readNativePortableChange(options.paths, options.name),
+      supervisorState: state,
+      supervisorTask: null,
+      checks: [],
+      requestChecks: null,
+      verifierDispatch: null,
+      continuation: nativePortableContinuation(
+        await readNativePortableChange(options.paths, options.name),
+      ),
+    };
+  }
+  if (supervisor && input.kind === 'supervisor-integrate') {
+    const state = await integrateNativeSupervisorChildWorkspace({
+      paths: options.paths,
+      state: supervisor,
+      name: input.child,
+      checks: input.checks,
+    });
+    return {
+      state: await readNativePortableChange(options.paths, options.name),
+      supervisorState: state,
+      supervisorTask: null,
+      checks: input.checks,
+      requestChecks: null,
+      verifierDispatch: null,
+      continuation: nativePortableContinuation(
+        await readNativePortableChange(options.paths, options.name),
+      ),
+    };
+  }
+  if (
+    supervisor &&
+    (input.kind === 'builder-handoff' ||
+      input.kind === 'dispatch-verifier' ||
+      input.kind === 'verifier-response' ||
+      input.kind === 'verifier-execution-error' ||
+      input.kind === 'verifier-unavailable') &&
+    !supervisorParentVerification
+  ) {
+    throw new Error(
+      'Native Supervisor accepts only Supervisor task result inputs until every Child is integrated',
+    );
+  }
+  if (input.kind === 'builder-handoff') {
     const runner = createNativeRunnerChannel();
     const identity = runner.captureExecutionIdentity({
       identityProvider: NATIVE_SKILL_COORDINATION,
@@ -352,10 +590,10 @@ export async function applyNativeRunnerInput(options: {
       name: options.name,
       input: {
         identity,
-        summary: options.input.summary,
-        addressedAcceptanceIds: options.input.addressed_acceptance_ids,
-        checks: options.input.checks,
-        knownLimits: options.input.known_limits,
+        summary: input.summary,
+        addressedAcceptanceIds: input.addressed_acceptance_ids,
+        checks: input.checks,
+        knownLimits: input.known_limits,
       },
     });
     return {
@@ -366,7 +604,10 @@ export async function applyNativeRunnerInput(options: {
       continuation: nativePortableContinuation(state),
     };
   }
-  if (options.input.kind === 'dispatch-verifier') {
+  if (input.kind === 'dispatch-verifier') {
+    if (supervisorParentVerification && input.checks.length === 0) {
+      throw new Error('Native Supervisor parent verification requires at least one check');
+    }
     const ready = await readNativePortableChange(options.paths, options.name);
     if (
       ready.builder_handoff !== null &&
@@ -390,7 +631,10 @@ export async function applyNativeRunnerInput(options: {
     const executed = await executeNativePortableCheckPlan({
       paths: options.paths,
       name: options.name,
-      plans: options.input.checks,
+      plans: input.checks,
+      ...(supervisorParentVerification && supervisor
+        ? { projectRoot: supervisor.integration.worktree }
+        : {}),
     });
     const verifierExecutionRef = skillExecutionRef('verifier');
     const state = await dispatchNativePortableVerifier({
@@ -398,6 +642,9 @@ export async function applyNativeRunnerInput(options: {
       name: options.name,
       checks: executed.checks,
       verifierExecutionId: verifierExecutionRef,
+      ...(supervisorParentVerification && supervisor
+        ? { projectRoot: supervisor.integration.worktree }
+        : {}),
     });
     return {
       state,
@@ -407,15 +654,15 @@ export async function applyNativeRunnerInput(options: {
       continuation: nativePortableContinuation(state),
     };
   }
-  if (options.input.kind === 'verifier-execution-error') {
+  if (input.kind === 'verifier-execution-error') {
     const current = await readNativePortableChange(options.paths, options.name);
     assertSkillCoordinatedCandidate(current);
     await currentSkillVerifierExecutionRef({ paths: options.paths, state: current });
     const state = await recordNativePortableVerifierFailure({
       paths: options.paths,
       name: options.name,
-      summary: options.input.summary,
-      expected: options.input,
+      summary: input.summary,
+      expected: input,
       requireSkillCoordination: true,
     });
     return {
@@ -426,12 +673,12 @@ export async function applyNativeRunnerInput(options: {
       continuation: nativePortableContinuation(state),
     };
   }
-  if (options.input.kind === 'verifier-unavailable') {
+  if (input.kind === 'verifier-unavailable') {
     const state = await recordNativePortableVerifierUnavailable({
       paths: options.paths,
       name: options.name,
-      summary: options.input.summary,
-      expected: options.input,
+      summary: input.summary,
+      expected: input,
       requireSkillCoordination: true,
     });
     return {
@@ -441,6 +688,9 @@ export async function applyNativeRunnerInput(options: {
       verifierDispatch: null,
       continuation: nativePortableContinuation(state),
     };
+  }
+  if (input.kind !== 'verifier-response') {
+    throw new Error('Native Runner input kind is invalid for the portable verifier bridge');
   }
   const state = await readNativePortableChange(options.paths, options.name);
   const handoff = assertSkillCoordinatedCandidate(state);
@@ -456,11 +706,68 @@ export async function applyNativeRunnerInput(options: {
     envelope: runner.envelopeVerifierResponse({
       candidateId: handoff.candidate_id,
       identity: verifierIdentity,
-      payload: options.input.response,
+      payload: input.response,
     }),
     checks: [],
     maxVerifyFailures: options.maxVerifyFailures,
+    ...(supervisorParentVerification && supervisor
+      ? { projectRoot: supervisor.integration.worktree }
+      : {}),
   });
+  if (supervisorParentVerification) {
+    if (
+      applied.state.verification_result === 'pass' &&
+      (applied.checks.length === 0 || applied.checks.some(({ status }) => status !== 'passed'))
+    ) {
+      throw new Error(
+        'Native Supervisor parent verification cannot pass without completed integration checks',
+      );
+    }
+    const supervisorState = await readNativeSupervisorState(options.paths, options.name);
+    if (!supervisorState)
+      throw new Error('Native Supervisor state disappeared during verification');
+    const integrationHead = runGitCommand(supervisorState.integration.worktree, [
+      'rev-parse',
+      'HEAD',
+    ]);
+    const responseResult =
+      applied.response.kind === 'final-result' ? applied.response.result : null;
+    const parentSummary =
+      responseResult?.summary ?? 'Native Supervisor parent verification completed';
+    const childVerification = supervisorState.children.every(
+      ({ status, verification }) =>
+        (status === 'integrated' || status === 'archived') && verification !== null,
+    );
+    const parentIntegration =
+      applied.checks.length > 0 && applied.checks.every(({ status }) => status === 'passed');
+    const nextSupervisor = recordNativeSupervisorFinalVerification(supervisorState, {
+      status:
+        applied.state.verification_result === 'pass'
+          ? 'passed'
+          : applied.state.verification_result === 'blocked'
+            ? 'incomplete'
+            : 'failed',
+      summary: parentSummary,
+      headCommit: integrationHead,
+      layers: {
+        childVerification: childVerification ? 'complete' : 'incomplete',
+        parentIntegration: parentIntegration ? 'complete' : 'incomplete',
+        parentChecks: applied.checks.map(({ name }) => name.text),
+        notRerun: supervisorState.children.flatMap(
+          ({ verification }) => verification?.checks ?? [],
+        ),
+        incomplete: applied.checks
+          .filter(({ status }) => status !== 'passed')
+          .map(({ name }) => name.text),
+      },
+    });
+    await writeNativeSupervisorState(options.paths, nextSupervisor);
+    return {
+      ...applied,
+      supervisorState: nextSupervisor,
+      continuation: nativePortableContinuation(applied.state),
+    };
+  }
   return {
     ...applied,
     verifierDispatch:

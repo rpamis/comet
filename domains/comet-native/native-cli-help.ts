@@ -113,7 +113,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
     purpose:
       'Discover portable stable boundaries, parent child readiness, or the exact next Runner action.',
     options: [
-      '--cursor <token>  Continue a status-list page.',
+      '--cursor <token>  Continue a status-list page, or a named details/history page.',
       '--details         Include acceptance, Spec, workspace, and report details.',
     ],
     output:
@@ -139,12 +139,13 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       '--return-to-build   Return Verify or Archive to Build after invalidation or user choice.',
       '--retry-verifier    Retry a blocked Verifier execution when the continuation allows it.',
       '--resolve-verifier-blocker  Resolve a semantic Verifier blocker without changing the candidate, then dispatch a new attempt.',
-      '--runner-input <file>  Skill-coordinated JSON: builder-handoff, dispatch-verifier, verifier-response, verifier-execution-error, or verifier-unavailable. Identity/provider/execution/candidate fields are rejected.',
+      '--runner-input <file>  Skill-coordinated JSON: builder-handoff, dispatch-verifier, verifier-response, verifier-execution-error, verifier-unavailable, or Supervisor task results. Identity/provider/execution/candidate fields are rejected.',
       '  builder-handoff fields: kind, summary, addressed_acceptance_ids, checks, known_limits.',
       '  dispatch-verifier fields: kind, checks (an explicitly resolved plan; [] is allowed).',
       '  verifier-response fields: kind, response (request-checks or final-result).',
       '  verifier-execution-error fields: kind, summary, stateVersion, iteration, attempt, verifierExecutionRef copied from verifierDispatch.',
       '  verifier-unavailable fields: kind, summary, stateVersion, iteration, attempt, verifierExecutionRef copied from verifierDispatch; accepted only after the explicit Runtime check plan completed and passed.',
+      '  Supervisor task fields: supervisor-builder-result (child, runId, candidateCommit), supervisor-verifier-result (child, runId, verdict, verification data), or supervisor-integrate (child, checks).',
     ],
     output:
       'The portable state, explicit skill-coordinated label, Runtime-owned check results, complete verifierDispatch, bounded request-check response, continuation.runnerAction, and machine-readable continuation.inputOptions. This generic bridge is not trusted identity attestation: a passing result waits for explicit user confirmation before Archive.',
