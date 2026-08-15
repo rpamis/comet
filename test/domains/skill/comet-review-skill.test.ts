@@ -74,8 +74,20 @@ describe('comet-review 中文 Skill', () => {
 
   it('审查完整差异并输出可定位、分级的 finding', async () => {
     const source = await fs.readFile(zhSkillPath, 'utf8');
+    const diffScopeSection = source.match(/## 3\. 确定实现差异[\s\S]*?## 4\. 执行审查/u)?.[0];
 
-    expect(source).toContain('git status --short');
+    expect(diffScopeSection).toBeTruthy();
+    expect(source).toContain('git status --short --untracked-files=all');
+    expect(diffScopeSection).toContain('完整枚举已暂存、未暂存和未跟踪的工作树状态');
+    expect(diffScopeSection).not.toContain('记录已提交');
+    expect(source).toContain('当前 change 的需求、工作区绑定、Git 历史和工作树状态');
+    expect(source).toContain('优先使用有效的 plan `base-ref`');
+    expect(source).toContain('回退到状态中的 `base_ref`');
+    expect(source).toContain('不要求两者一致');
+    expect(source).toContain('只有两者均无效时，才将 Classic 基线视为缺失');
+    expect(source).toContain('只有歧义会实质影响审查结论时才询问用户');
+    expect(source).not.toContain('它必须与状态基线一致');
+    expect(diffScopeSection).not.toContain('报告范围冲突并停止');
     expect(source).toContain('已提交、已暂存和未暂存修改');
     expect(source).toContain('所有未跟踪文件');
     expect(source).toContain('文档、配置和元数据');
@@ -102,7 +114,11 @@ describe('comet-review 中文 Skill', () => {
 describe('comet-review bilingual contract', () => {
   it('keeps the English Skill aligned with the confirmed Chinese behavior', async () => {
     const source = await fs.readFile(enSkillPath, 'utf8');
+    const diffScopeSection = source.match(
+      /## 3\. Establish the implementation diff[\s\S]*?## 4\. Perform the review/u,
+    )?.[0];
 
+    expect(diffScopeSection).toBeTruthy();
     expect(source).toContain('name: comet-review');
     expect(source).toContain('disable-model-invocation: true');
     expect(source).toContain('The entire Skill invocation must remain read-only');
@@ -111,6 +127,22 @@ describe('comet-review bilingual contract', () => {
     expect(source).toContain('comet state get <change-name> base_ref');
     expect(source).toContain('comet native show <change-name> --json');
     expect(source).toContain('comet native status <change-name> --details --json');
+    expect(source).toContain('git status --short --untracked-files=all');
+    expect(diffScopeSection).toContain(
+      'fully enumerate staged, unstaged, and untracked worktree state',
+    );
+    expect(source).toContain(
+      "current change's requirements, workspace binding, Git history, and worktree state",
+    );
+    expect(source).toContain('prefer a valid plan `base-ref`');
+    expect(source).toContain('fall back to the state `base_ref`');
+    expect(source).toContain('The two values do not need to match');
+    expect(source).toContain('Only when both values are invalid is the Classic baseline missing');
+    expect(source).toContain(
+      'Ask the user only when ambiguity would materially affect the review conclusions',
+    );
+    expect(diffScopeSection).not.toContain('report a scope conflict and stop');
+    expect(source).not.toContain('it must agree with the state baseline');
     expect(source).toContain('committed, staged, and unstaged changes');
     expect(source).toContain('all untracked files');
     expect(source).toContain('documentation, configuration, and metadata');

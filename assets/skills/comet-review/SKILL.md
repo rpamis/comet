@@ -71,13 +71,12 @@ Read the returned brief, complete proposed Specs, acceptance items, Builder hand
 
 ## 3. Establish the implementation diff
 
-1. Run `git status --short` first and record the boundaries of committed, staged, unstaged, and untracked work.
-2. For Classic, prefer the `base_ref` after verifying that it identifies a commit. If the plan frontmatter provides a valid `base-ref`, it must agree with the state baseline; otherwise report uncertain scope and stop.
-3. For Native, prefer the verified target/change branch relationship from state and the current candidate's implementation-scope evidence.
-4. Inspect the complete diff from the trusted baseline to the current worktree, including committed, staged, and unstaged changes. Directly read all untracked files owned by the current change, including source, tests, documentation, configuration, and metadata (for example, `SKILL.md` and `agents/openai.yaml`), and label them as untracked.
-5. Exclude diffs clearly owned by another change or unrelated user work. If ownership cannot be established reliably, report a scope conflict and stop instead of guessing.
+1. Run `git status --short --untracked-files=all` first to fully enumerate staged, unstaged, and untracked worktree state.
+2. Use the current change's requirements, workspace binding, Git history, and worktree state to determine the most credible review scope related to the current change. For Classic, prefer a valid plan `base-ref`; when it is missing or invalid, fall back to the state `base_ref`. The two values do not need to match. Only when both values are invalid is the Classic baseline missing. For Native, treat the workspace relationship in state and the current candidate's implementation-scope evidence as inputs to this judgment.
+3. Inspect the complete diff from the trusted baseline to the current worktree, including committed, staged, and unstaged changes. Directly read all untracked files owned by the current change, including source, tests, documentation, configuration, and metadata (for example, `SKILL.md` and `agents/openai.yaml`), and label them as untracked.
+4. Exclude diffs clearly owned by another change or unrelated user work. Ask the user only when ambiguity would materially affect the review conclusions; otherwise continue from the available evidence and report the scope judgment and assumptions.
 
-When no trusted baseline exists, review only the visible worktree diff and prominently label the review scope as incomplete.
+If the evidence above still does not yield a trusted, verifiable baseline, continue reviewing the visible worktree diff and prominently label the review scope as incomplete.
 
 ## 4. Perform the review
 
