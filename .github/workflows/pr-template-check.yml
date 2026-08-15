@@ -18,40 +18,48 @@ jobs:
         with:
           script: |
             const body = context.payload.pull_request?.body ?? '';
-            const requiredSections = [
-              '## ✨ Summary',
-              '## 🎯 Scope',
-              '## 🧪 Testing',
-              '## ✅ Checklist',
-              '## 👀 Notes for Reviewers',
-            ];
-            const missingSections = requiredSections.filter((heading) => !body.includes(heading));
-
-            function readSection(heading) {
-              const start = body.indexOf(heading);
-              if (start < 0) return '';
-              const content = body.slice(start + heading.length);
-              const nextHeading = content.search(/\n##\s/);
-              return nextHeading < 0 ? content : content.slice(0, nextHeading);
+            const baseSha = context.payload.pull_request?.base?.sha;
+            const templateResponse = await github.rest.repos.getContent({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              path: '.github/PULL_REQUEST_TEMPLATE.md',
+              ref: baseSha,
+            });
+            if (Array.isArray(templateResponse.data) || !templateResponse.data.content) {
+              core.setFailed('Unable to read .github/PULL_REQUEST_TEMPLATE.md.');
+              return;
             }
 
-            const scope = readSection('## 🎯 Scope');
-            const testing = readSection('## 🧪 Testing');
-            const checklist = readSection('## ✅ Checklist');
-            const errors = missingSections.map((heading) => `Missing section: ${heading}`);
-
-            if (scope && !/^- \[x\] /im.test(scope)) {
-              errors.push('Select at least one item in the Scope section.');
-            }
-            if (testing && !/^- \[x\] /im.test(testing)) {
-              errors.push('Select at least one item in the Testing section, or select Not run.');
-            }
-            if (checklist) {
-              const unchecked = checklist.match(/^- \[ \] .+$/gim) ?? [];
-              if (unchecked.length > 0) {
-                errors.push(`Complete all Checklist items (${unchecked.length} remaining).`);
-              }
-            }
+            const template = Buffer.from(templateResponse.data.content, 'base64')
+              .toString('utf8')
+              .replace(/<!--[\s\S]*?-->/g, '');
+            const sections = [...template.matchAll(/^##\s+.+$/gm)].map((match, index, headings) => {
+              const start = match.index ?? 0;
+              const end = headings[index + 1]?.index ?? template.length;
+              return { heading: match[0].trim(), content: template.slice(start, end) };
+            });
+            const templateHeadings = sections.map((section) => section.heading);
+            const missingHeadings = templateHeadings.filter((heading) => !body.includes(heading));
+            const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const templateItems = sections.flatMap((section) =>
+              [...section.content.matchAll(/^- \[[ xX]\] (.+)$/gm)].map((match) => ({
+                section: section.heading,
+                label: match[1].trim(),
+              })),
+            );
+            const missingItems = templateItems.filter(
+              ({ label }) =>
+                !new RegExp(`^- \\[[ xX]\\] ${escapeRegExp(label)}\\s*$`, 'im').test(body),
+            );
+            const checklistItems = templateItems.filter(({ section }) => /checklist/i.test(section));
+            const uncheckedChecklistItems = checklistItems.filter(({ label }) =>
+              !new RegExp(`^- \\[xX\\] ${escapeRegExp(label)}\\s*$`, 'im').test(body),
+            );
+            const errors = missingHeadings.map((heading) => `Missing template section: ${heading}`);
+            errors.push(
+              ...missingItems.map(({ label }) => `Missing template item: ${label}`),
+              ...uncheckedChecklistItems.map(({ label }) => `Checklist item is not checked: ${label}`),
+            );
 
             const marker = '<!-- comet-pr-template-check -->';
             const comments = await github.rest.issues.listComments({
@@ -65,7 +73,7 @@ jobs:
                 comment.user?.login === 'github-actions[bot]' && comment.body?.includes(marker),
             );
             const commentBody = errors.length
-              ? `${marker}\n## PR template needs attention\n\nPlease update this PR to match .github/PULL_REQUEST_TEMPLATE.md:\n\n${errors.map((error) => `- ${error}`).join('\n')}\n`
+              ? `${marker}\n## PR template needs attention\n\nPlease update this PR to match the current .github/PULL_REQUEST_TEMPLATE.md:\n\n${errors.map((error) => `- ${error}`).join('\n')}\n`
               : `${marker}\n✅ PR template check passed.\n`;
 
             if (existing) {

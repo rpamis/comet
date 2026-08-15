@@ -120,19 +120,19 @@ describe('CI workflows', () => {
     expect(workflow).toContain('types: [opened, edited, reopened, synchronize, ready_for_review]');
     expect(workflow).toContain('pull-requests: write');
     expect(workflow).toContain('actions/github-script@d746ffe35508b1917358783b479e04febd2b8f71');
+    expect(workflow).toContain('github.rest.repos.getContent');
+    expect(workflow).toContain("path: '.github/PULL_REQUEST_TEMPLATE.md'");
+    expect(workflow).toContain('context.payload.pull_request?.base?.sha');
+    expect(workflow).toContain('template.matchAll(/^##\\s+.+$/gm)');
+    expect(workflow).toContain('templateItems');
+    expect(workflow).toContain('uncheckedChecklistItems');
     expect(workflow).toContain('github.rest.issues.createComment');
     expect(workflow).toContain('github.rest.issues.updateComment');
     expect(workflow).toContain('core.setFailed');
     expect(workflow).not.toContain('actions/checkout');
-    for (const heading of [
-      '## ✨ Summary',
-      '## 🎯 Scope',
-      '## 🧪 Testing',
-      '## ✅ Checklist',
-      '## 👀 Notes for Reviewers',
-    ]) {
-      expect(template).toContain(heading);
-    }
+    expect(workflow).not.toContain('const requiredSections = [');
+    expect(template).toMatch(/^##\s+.+$/m);
+    expect(template).toMatch(/^- \[ \] .+$/m);
   });
 
   it('defines stale PR auto-closing with a manual dry-run mode', async () => {
