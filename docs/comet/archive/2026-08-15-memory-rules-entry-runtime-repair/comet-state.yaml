@@ -1,0 +1,194 @@
+schema: comet.native.v4
+name: memory-rules-entry-runtime-repair
+language: zh-CN
+phase: archive
+status: done
+state_version: 8
+brief: brief.md
+spec_changes: []
+workspace:
+  isolation: worktree
+  change_branch: comet/memory-rules-entry-runtime-repair
+  target_branch: beta20
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: A1：`node scripts/build/build-entry-runtime.mjs --check` 通过。
+    result: passed
+    reason:
+      text: Runtime 已执行 build-entry-runtime --check 并以 exit 0 通过；构建脚本会逐字节比较两个 Entry
+        生成资产与当前源码打包结果。
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: A2：`test/repository/comet-entry-runtime-assets.test.ts` 全部通过。
+    result: passed
+    reason:
+      text: Runtime 已执行 test/repository/comet-entry-runtime-assets.test.ts，1 个测试文件、5
+        个测试均通过。
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: A3：生成物只包含当前 Entry runtime 源码对应的同步结果。
+    result: passed
+    reason:
+      text: 独立核对显示只有 assets/skills/comet/scripts/comet-hook-router.mjs 发生 75 行新增、74
+        行删除的生成差异；domains/comet-entry、构建脚本、清单和 comet-entry-runtime.mjs
+        均无差异。repository-layout 将该文件声明为 hookRouter 的唯一输出，且 freshness
+        检查通过，确认是当前源码的同步结果，没有路由逻辑改动。
+      truncated: false
+builder_handoff:
+  candidate_id: f799545b-66db-420f-85a2-042482bb2446
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:0722ea55-1e96-4f8c-b678-0cb974a94ab2
+  iteration: 1
+  summary:
+    text: 重新生成 Entry runtime 资产，修复父级 A273 的 comet-hook-router.mjs freshness；未修改路由逻辑。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+  checks:
+    - name:
+        text: Entry runtime freshness check
+        truncated: false
+      result: passed
+      note:
+        text: node scripts/build/build-entry-runtime.mjs --check
+        truncated: false
+    - name:
+        text: Entry runtime asset tests
+        truncated: false
+      result: passed
+      note:
+        text: "test/repository/comet-entry-runtime-assets.test.ts: 5/5"
+        truncated: false
+    - name:
+        text: TypeScript check
+        truncated: false
+      result: passed
+      note:
+        text: tsc --noEmit
+        truncated: false
+    - name:
+        text: Affected formatting
+        truncated: false
+      result: passed
+      note:
+        text: Prettier check for generated asset and brief
+        truncated: false
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  submitted_at: 2026-08-15T10:28:07.005Z
+blockers: []
+verification:
+  candidate_id: f799545b-66db-420f-85a2-042482bb2446
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:734bdfb5-5af1-4e09-a686-858ee9ec3c97
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: entry-runtime-freshness
+      name:
+        text: Entry runtime freshness
+        truncated: false
+      argv_display:
+        - text: scripts/build/build-entry-runtime.mjs
+          truncated: false
+        - text: --check
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 226
+    - id: entry-runtime-assets
+      name:
+        text: Entry runtime asset tests
+        truncated: false
+      argv_display:
+        - text: run
+          truncated: false
+        - text: test/repository/comet-entry-runtime-assets.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 2821
+    - id: entry-runtime-types
+      name:
+        text: TypeScript typecheck
+        truncated: false
+      argv_display:
+        - text: --noEmit
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 6797
+    - id: entry-runtime-format
+      name:
+        text: Affected formatting
+        truncated: false
+      argv_display:
+        - text: --check
+          truncated: false
+        - text: assets/skills/comet/scripts/comet-hook-router.mjs
+          truncated: false
+        - text: docs/comet/changes/memory-rules-entry-runtime-repair/brief.md
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 545
+  summary:
+    text: 候选 f799545b-66db-420f-85a2-042482bb2446 通过独立验收：四项 Runtime 检查均通过，且差异严格限于由
+      Entry 构建脚本生成的 Hook Router 发布资产。
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-08-15T10:30:47.441Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 候选 f799545b-66db-420f-85a2-042482bb2446 通过独立验收：四项 Runtime 检查均通过，且差异严格限于由
+        Entry 构建脚本生成的 Hook Router 发布资产。
+      truncated: false
+    completed_at: 2026-08-15T10:30:47.441Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-15T10:25:35.911Z
