@@ -133,7 +133,6 @@ describe('Native Supervisor v2 state', () => {
         targetBranch: 'main',
         sourceConfig: config,
       });
-
       expect(prepared.binding).toMatchObject({
         isolation: 'worktree',
         changeBranch: 'comet/supervisor/parent/integration',
@@ -162,7 +161,7 @@ describe('Native Supervisor v2 state', () => {
         contract: CONTRACT,
       });
       expect(rebuiltAfterProgress?.children[0]).toMatchObject({
-        status: 'needs-reverify',
+        status: 'blocked',
         blocker: expect.stringContaining('Runtime was lost'),
       });
       const childPrepared = await prepareNativeSupervisorChildWorkspace({
@@ -886,6 +885,13 @@ children:
         targetBranch: 'main',
         sourceConfig: config,
       });
+      const childPrepared = await prepareNativeSupervisorChildWorkspace({
+        projectRoot: repository,
+        parent: 'parent',
+        child: 'integration-core',
+        targetBranch: prepared.binding.changeBranch!,
+        sourceConfig: config,
+      });
       const contract = parseNativeChildrenContract(`
 schema: comet.native.children.v2
 children:
@@ -957,22 +963,45 @@ children:
         },
       });
       await writeNativeSupervisorState(paths, reverified);
+      const expectedChildBranch = 'comet/supervisor/parent/integration-core';
+      const targetBeforeDelivery = git(['rev-parse', 'main']);
+      execFileSync('git', ['switch', '-c', 'comet/supervisor/parent/unrelated'], {
+        cwd: childPrepared.projectRoot,
+        stdio: 'ignore',
+      });
+      await expect(finalizeNativeSupervisorDelivery({ paths, state: reverified })).rejects.toThrow(
+        /unexpected branch/iu,
+      );
+      expect(git(['rev-parse', 'main'])).toBe(targetBeforeDelivery);
+      execFileSync('git', ['switch', expectedChildBranch], {
+        cwd: childPrepared.projectRoot,
+        stdio: 'ignore',
+      });
       const delivered = await finalizeNativeSupervisorDelivery({ paths, state: reverified });
       expect(delivered.state.children[0]).toMatchObject({ status: 'archived' });
       expect(delivered.state.integration.headCommit).toBe(reverified.integration.headCommit);
       expect(git(['rev-parse', 'main'])).toBe(reverified.integration.headCommit);
+      const redelivered = await finalizeNativeSupervisorDelivery({
+        paths,
+        state: delivered.state,
+      });
+      expect(redelivered.state.children[0]).toMatchObject({ status: 'archived' });
+      expect(git(['rev-parse', 'main'])).toBe(reverified.integration.headCommit);
     } finally {
       try {
-        execFileSync(
-          'git',
-          [
-            'worktree',
-            'remove',
-            '--force',
-            path.join(repository, '.worktrees', 'parent-integration'),
-          ],
-          { cwd: repository, stdio: 'ignore' },
-        );
+        for (const worktree of [
+          path.join(repository, '.worktrees', 'parent-integration'),
+          path.join(repository, '.worktrees', 'parent-integration-core'),
+        ]) {
+          try {
+            execFileSync('git', ['worktree', 'remove', '--force', worktree], {
+              cwd: repository,
+              stdio: 'ignore',
+            });
+          } catch {
+            // Preserve the assertion failure when setup did not reach a worktree.
+          }
+        }
       } catch {
         // Preserve the assertion failure when setup did not reach a worktree.
       }
@@ -1362,6 +1391,7 @@ children:
       await expect(finalizeNativeSupervisorDelivery({ paths, state })).rejects.toThrow(
         /clean worktree|cleanup/i,
       );
+      expect(git(['rev-parse', 'main'])).toBe(targetCommit);
       await expect(fs.stat(path.join(core.projectRoot, 'README.md'))).resolves.toBeDefined();
       await expect(fs.stat(path.join(prepared.projectRoot, 'README.md'))).resolves.toBeDefined();
       await expect(

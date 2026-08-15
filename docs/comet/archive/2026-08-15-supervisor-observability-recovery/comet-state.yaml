@@ -1,0 +1,341 @@
+schema: comet.native.v4
+name: supervisor-observability-recovery
+language: zh-CN
+phase: archive
+status: done
+state_version: 12
+brief: brief.md
+spec_changes:
+  - capability: supervisor-observability-recovery
+    operation: create
+    source: specs/supervisor-observability-recovery/spec.md
+workspace:
+  isolation: worktree
+  change_branch: comet/supervisor-observability-recovery
+  target_branch: beta20
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 2
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: status 默认输出只包含可行动摘要，details 才分页展示历史，并隐藏 runId、commit 和绝对路径等内部字段。
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: Runtime state 缺失时只能依据 Git 重建 integration branch/worktree 与
+      pending/reverify 边界，不伪造 Child 通过证据。
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: target 漂移只合入隔离 integration branch，target 本身不被修改，final verification 回到
+      pending。
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: merge/cleanup 中断、冲突、dirty/current/subdirectory worktree 或未集成分支时保留现场并返回
+      blocker，不部分删除。
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: 交付必须满足所有 Child integrated/archived、最终验证绑定当前 integration HEAD、target 与
+      integration clean；重复执行由 Git ancestor 事实恢复。
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A6
+    source: specs/supervisor-observability-recovery/spec.md
+    text: "**Given** Supervisor 存在多个 Child、任务和 integration head"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A7
+    source: specs/supervisor-observability-recovery/spec.md
+    text: "**When** 用户调用 status/show/next"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A8
+    source: specs/supervisor-observability-recovery/spec.md
+    text: "**Then** 默认输出提供 Child 状态、ready/blocker、任务角色和继续动作，details 才展开分页历史"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A9
+    source: specs/supervisor-observability-recovery/spec.md
+    text: "**And** 用户可见投影不泄露 runId、commit、绝对路径或内部 mailbox 信息"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A10
+    source: specs/supervisor-observability-recovery/spec.md
+    text: "**And** continuation 与 Runtime phase/stateVersion 保持一致，v1 children
+      contract 仍可读取"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A11
+    source: specs/supervisor-observability-recovery/spec.md
+    text: "**Given** Supervisor Runtime 文件缺失、中断或版本落后"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A12
+    source: specs/supervisor-observability-recovery/spec.md
+    text: "**When** Native recovery/doctor 运行"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A13
+    source: specs/supervisor-observability-recovery/spec.md
+    text: "**Then** 只能从 Git branch/worktree/HEAD/ancestor 事实恢复 integration 绑定"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A14
+    source: specs/supervisor-observability-recovery/spec.md
+    text: "**And** 没有可移植 Child 验证证据时不得伪造 verified/integrated/archive 状态"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A15
+    source: specs/supervisor-observability-recovery/spec.md
+    text: "**And** 已完成的 Git merge 不应因状态写入中断而重复合入"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A16
+    source: specs/supervisor-observability-recovery/spec.md
+    text: "**Given** target branch 在 Child 集成期间发生漂移"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A17
+    source: specs/supervisor-observability-recovery/spec.md
+    text: "**When** Supervisor 刷新或最终交付"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A18
+    source: specs/supervisor-observability-recovery/spec.md
+    text: "**Then** 漂移只进入隔离 integration branch，target branch 不被修改"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A19
+    source: specs/supervisor-observability-recovery/spec.md
+    text: "**And** final verification 绑定当前 integration HEAD，漂移后必须回到 pending 并重跑父级检查"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A20
+    source: specs/supervisor-observability-recovery/spec.md
+    text: "**And** 交付拒绝未集成、未验证、脏或错误 branch/worktree，并在可恢复 blocker 中保留现场"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A21
+    source: specs/supervisor-observability-recovery/spec.md
+    text: "**Given** merge 冲突、dirty/current/subdirectory worktree、未集成分支或进程中断"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A22
+    source: specs/supervisor-observability-recovery/spec.md
+    text: "**When** integrate/archive/cleanup 重试"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A23
+    source: specs/supervisor-observability-recovery/spec.md
+    text: "**Then** 返回明确 blocker，不 reset、覆盖或在预检失败时删除任何 Child 文件"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A24
+    source: specs/supervisor-observability-recovery/spec.md
+    text: "**And** cleanup 先完整预检所有候选，再执行；执行中断必须保留 journal，并可幂等续跑剩余清理"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+  - id: A25
+    source: specs/supervisor-observability-recovery/spec.md
+    text: "**And** 重复执行依据 Git ancestor/target 已包含 integration head 的事实安全恢复"
+    result: passed
+    reason:
+      text: Independent review passed.
+      truncated: false
+builder_handoff:
+  candidate_id: 0b725d2d-a13b-40b0-a484-6af7683c4875
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:41f0ad32-5d7c-4acd-a090-a0b7b2d1166b
+  iteration: 1
+  summary:
+    text: 完成 Supervisor 可观测状态、Runtime/Git 恢复、target 漂移、冲突清理与交付边界的端到端复核，并补齐必要回归。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    - A8
+    - A9
+    - A10
+    - A11
+    - A12
+    - A13
+    - A14
+    - A15
+    - A16
+    - A17
+    - A18
+    - A19
+    - A20
+    - A21
+    - A22
+    - A23
+    - A24
+    - A25
+  checks:
+    - name:
+        text: Supervisor observability, recovery and delivery tests
+        truncated: false
+      result: passed
+      note:
+        text: 覆盖状态投影、Runtime 丢失重建、target 漂移、冲突、重复交付和清理保护。
+        truncated: false
+    - name:
+        text: TypeScript and generated Native runtime checks
+        truncated: false
+      result: passed
+      note:
+        text: 当前 beta20 基线已通过 TypeScript 与 Native generated check。
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: 不引入外部调度器或供应商证明；全量测试保留仓库既有 Windows/旧断言基线。
+      truncated: false
+  known_limits_truncated: false
+  submitted_at: 2026-08-15T18:14:23.497Z
+blockers: []
+verification:
+  candidate_id: 0b725d2d-a13b-40b0-a484-6af7683c4875
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:def299c8-a95c-4b28-a74b-21f273e6bb5c
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: native-supervisor-observability-recovery
+      name:
+        text: Native Supervisor observability and recovery tests
+        truncated: false
+      argv_display:
+        - text: D:/Project/Comet/node_modules/vitest/vitest.mjs
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/comet-native/native-supervisor.test.ts
+          truncated: false
+        - text: test/domains/comet-native/native-portable-status.test.ts
+          truncated: false
+        - text: test/domains/comet-native/native-portable-recovery.test.ts
+          truncated: false
+        - text: test/domains/comet-native/native-diagnostics.test.ts
+          truncated: false
+        - text: test/domains/comet-native/native-archive-recovery.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 54676
+  summary:
+    text: Independent review passed all Supervisor observability, recovery, cleanup,
+      and delivery acceptance criteria on 9d1af01b.
+    truncated: false
+  risks:
+    - text: Independent verifier did not run the repository-wide suite; known
+        unrelated Windows/legacy baseline failures remain.
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-08-15T18:15:27.543Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native confirmed acceptance criteria changed
+      truncated: false
+    completed_at: 2026-08-15T18:14:01.394Z
+  - goal_cycle: 2
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: Independent review passed all Supervisor observability, recovery, cleanup,
+        and delivery acceptance criteria on 9d1af01b.
+      truncated: false
+    completed_at: 2026-08-15T18:15:27.543Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-15T17:46:30.340Z
