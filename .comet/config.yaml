@@ -18,7 +18,7 @@ native:
   language: zh-CN
   # Native 提问澄清问题的方式：batch 每轮一次提出当前所有可回答的问题（默认），sequential 每轮只问一个。
   # 可选值：batch | sequential
-  clarification_mode: sequential
+  clarification_mode: batch
   # Native 归档检查成功后自动归档，或等待用户明确确认。
   # 可选值：automatic | required
   archive_confirmation: automatic
@@ -34,7 +34,7 @@ classic:
   language: zh-CN
   # 新建 Classic change 是否启用 beta 上下文压缩。
   # 可选值：off | beta
-  context_compression: off
+  context_compression: beta
   # 新建 Classic change 默认使用的审查深度。
   # 可选值：off | standard | thorough
   review_mode: standard

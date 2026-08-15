@@ -122,13 +122,13 @@ eval/local/.pytest_docker_build.lock
 # outside cmd.exe semantics); never track these.
 nul
 **/nul
-# >>> Comet managed project state >>>
-!/.comet/
-/.comet/*
-!/.comet/config.yaml
-# <<< Comet managed project state <<<
 
 .zcode
 
 # Dashboard local cache snapshots must never enter the project repository.
 dashboard-installed-snapshot.json
+# >>> Comet managed project state >>>
+!/.comet/
+/.comet/*
+!/.comet/config.yaml
+# <<< Comet managed project state <<<
