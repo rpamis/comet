@@ -8,6 +8,7 @@ import { nativePreferredChangeRuntimeDir } from './native-paths.js';
 import { readProjectConfig } from './native-config.js';
 import {
   inspectGitWorktree,
+  isLocalGitBranch,
   listGitWorktreeRoots,
   resolveGitRef,
 } from '../../platform/paths/git-worktree.js';
@@ -116,6 +117,11 @@ export interface NativeSupervisorState {
 }
 
 const COMMIT_PATTERN = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
+
+function isPathInside(parent: string, target: string): boolean {
+  const relative = path.relative(path.resolve(parent), path.resolve(target));
+  return relative === '' || (!path.isAbsolute(relative) && !relative.startsWith(`..${path.sep}`));
+}
 
 export function nativeSupervisorIntegrationBranch(parent: string): string {
   if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u.test(parent)) {
@@ -629,6 +635,55 @@ export function reconnectNativeSupervisorTaskWithState(
   return { state: next, task };
 }
 
+function refreshNativeSupervisorBuilderWorkspace(
+  workspaceRoot: string,
+  expectedBranch: string,
+  integrationHead: string,
+): void {
+  const identity = inspectGitWorktree(workspaceRoot);
+  if (!identity.isGitWorktree || identity.currentBranch !== expectedBranch) {
+    throw new Error(`Native Supervisor child worktree identity is not ${expectedBranch}`);
+  }
+  if (!gitWorktreeIsClean(workspaceRoot)) {
+    throw new Error(`Native Supervisor child worktree is not clean: ${workspaceRoot}`);
+  }
+  const currentHead = runGitCommand(workspaceRoot, ['rev-parse', 'HEAD']);
+  if (currentHead === integrationHead) return;
+
+  const integrationContainsCurrent = (() => {
+    try {
+      runGitCommand(workspaceRoot, ['merge-base', '--is-ancestor', currentHead, integrationHead]);
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+  if (!integrationContainsCurrent) {
+    throw new Error(
+      `Native Supervisor child worktree ${workspaceRoot} cannot be refreshed from integration HEAD`,
+    );
+  }
+
+  const childContainsIntegration = (() => {
+    try {
+      runGitCommand(workspaceRoot, ['merge-base', '--is-ancestor', integrationHead, currentHead]);
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+  if (childContainsIntegration) {
+    throw new Error(
+      `Native Supervisor child worktree ${workspaceRoot} contains unintegrated commits`,
+    );
+  }
+  runGitCommand(workspaceRoot, ['merge', '--ff-only', integrationHead]);
+  const refreshedHead = runGitCommand(workspaceRoot, ['rev-parse', 'HEAD']);
+  if (refreshedHead !== integrationHead) {
+    throw new Error(`Native Supervisor child worktree did not reach integration HEAD`);
+  }
+}
+
 export function cancelNativeSupervisorTask(
   state: NativeSupervisorState,
   options: { child: string; runId: string; reason: string },
@@ -691,6 +746,13 @@ export async function dispatchNativeSupervisorReadyTasks(options: {
           targetBranch: state.integration.branch,
           sourceConfig,
         });
+        if (!reverify) {
+          refreshNativeSupervisorBuilderWorkspace(
+            workspace.projectRoot,
+            `comet/supervisor/${state.parent}/${child.name}`,
+            state.integration.headCommit,
+          );
+        }
         const created = createNativeSupervisorTask(next, {
           role: reverify ? 'verifier' : 'builder',
           child: child.name,
@@ -1129,9 +1191,12 @@ async function finalizeNativeSupervisorDeliveryLocked(options: {
   }
   const next = cloneState(state);
   for (const child of next.children) child.status = 'archived';
+  // Preflight and clean the integrated workspaces before persisting archived
+  // status. If cleanup is blocked, keep the full integrated state and all
+  // worktrees available for recovery instead of publishing a false archive.
+  await cleanupNativeSupervisorWorkspaces({ paths: options.paths, state });
   next.stateVersion += 1;
   await writeNativeSupervisorState(options.paths, next);
-  await cleanupNativeSupervisorWorkspaces({ paths: options.paths, state: next });
   return { state: next, targetRoot, targetCommit };
 }
 
@@ -1147,28 +1212,68 @@ async function cleanupNativeSupervisorWorkspaces(options: {
       nativeSupervisorChildWorktree(options.paths.projectRoot, options.state.parent, name),
     ),
   ].map((root) => path.resolve(root));
-  for (const candidate of candidates) {
-    const registered = roots.find((root) => root === candidate);
-    if (!registered) continue;
-    if (registered === currentRoot) {
-      throw new Error(`Native Supervisor cannot clean the current worktree: ${registered}`);
-    }
-    if (!gitWorktreeIsClean(registered)) {
-      throw new Error(`Native Supervisor cleanup requires a clean worktree: ${registered}`);
-    }
-    runGitCommand(options.paths.projectRoot, ['worktree', 'remove', registered]);
+  const targetCommit = resolveGitRef(
+    options.paths.projectRoot,
+    options.state.integration.targetBranch,
+  );
+  if (!targetCommit) {
+    throw new Error(
+      `Native Supervisor cleanup target branch is unavailable: ${options.state.integration.targetBranch}`,
+    );
   }
   const branches = [
     options.state.integration.branch,
     ...options.state.children.map(({ name }) => `comet/supervisor/${options.state.parent}/${name}`),
   ];
-  for (const branch of branches) {
-    try {
-      runGitCommand(options.paths.projectRoot, ['branch', '-d', branch]);
-    } catch {
-      // A branch may already have been removed by a previous interrupted
-      // cleanup. Never force-delete a branch or user data during recovery.
+
+  const registeredCandidates = candidates.flatMap((candidate) => {
+    const registered = roots.find((root) => root === candidate);
+    return registered ? [registered] : [];
+  });
+
+  // Complete all safety checks before removing anything. A clean worktree is
+  // not sufficient: its branch must also be fully contained in the delivered
+  // target commit, otherwise cleanup would discard an unintegrated commit.
+  for (const registered of registeredCandidates) {
+    if (isPathInside(registered, currentRoot)) {
+      throw new Error(`Native Supervisor cannot clean the current worktree: ${registered}`);
     }
+    if (!gitWorktreeIsClean(registered)) {
+      throw new Error(`Native Supervisor cleanup requires a clean worktree: ${registered}`);
+    }
+    const branch = inspectGitWorktree(registered).currentBranch;
+    if (!branch) throw new Error(`Native Supervisor worktree is detached: ${registered}`);
+    try {
+      runGitCommand(options.paths.projectRoot, [
+        'merge-base',
+        '--is-ancestor',
+        branch,
+        targetCommit,
+      ]);
+    } catch {
+      throw new Error(`Native Supervisor cleanup found unintegrated branch ${branch}`);
+    }
+  }
+  for (const branch of branches) {
+    if (!isLocalGitBranch(options.paths.projectRoot, branch)) continue;
+    try {
+      runGitCommand(options.paths.projectRoot, [
+        'merge-base',
+        '--is-ancestor',
+        branch,
+        targetCommit,
+      ]);
+    } catch {
+      throw new Error(`Native Supervisor cleanup found unintegrated branch ${branch}`);
+    }
+  }
+
+  for (const registered of registeredCandidates) {
+    runGitCommand(options.paths.projectRoot, ['worktree', 'remove', registered]);
+  }
+  for (const branch of branches) {
+    if (!isLocalGitBranch(options.paths.projectRoot, branch)) continue;
+    runGitCommand(options.paths.projectRoot, ['branch', '-d', branch]);
   }
 }
 

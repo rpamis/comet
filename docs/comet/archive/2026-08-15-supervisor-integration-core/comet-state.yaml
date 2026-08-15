@@ -1,0 +1,218 @@
+schema: comet.native.v4
+name: supervisor-integration-core
+language: zh-CN
+phase: archive
+status: done
+state_version: 8
+brief: brief.md
+spec_changes:
+  - capability: supervisor-integration-core
+    operation: create
+    source: specs/supervisor-integration-core/spec.md
+workspace:
+  isolation: worktree
+  change_branch: comet/supervisor-integration-core
+  target_branch: beta20
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: specs/supervisor-integration-core/spec.md
+    text: 父级拥有隔离的 integration workspace - **Given** 父级 Shape 已确认且 target branch
+      有有效提交 - **When** Runtime 开始 Supervisor Build - **Then** 创建专用 integration
+      branch/worktree - **And** 记录 target 起始 commit、integration branch、worktree
+      和当前 HEAD - **And** Child 不直接写入真实 target
+    result: passed
+    reason:
+      text: Dedicated integration branch/worktree records target baseline, branch,
+        worktree and head.
+      truncated: false
+  - id: A2
+    source: specs/supervisor-integration-core/spec.md
+    text: Child 基线遵循真实依赖 - **Given** Child 的所有 `depends_on` 已 integrated - **When**
+      Runtime 派发该 Child - **Then** Child worktree 的 base commit 等于当前 integration
+      HEAD - **And** 未满足依赖或 base commit 不包含依赖集成结果时拒绝执行
+    result: passed
+    reason:
+      text: Builder and Verifier results are bound to worktree identity, runId and
+        commit lifecycle; verified, integrated and archived remain distinct.
+      truncated: false
+  - id: A3
+    source: specs/supervisor-integration-core/spec.md
+    text: verified 与 integrated 分离 - **Given** Child Builder 已提交候选 - **When** 独立
+      Verifier 在准确 commit 上通过检查 - **Then** Runtime 记录 verified commit 和结构化验证证据 -
+      **And** Child 进入 `verified`，但未合入 integration 前不能显示为 `integrated` 或
+      `archived`
+    result: passed
+    reason:
+      text: Reused Builder worktrees are now cleanly fast-forwarded to the current
+        integration head before baseCommit is recorded; divergent or
+        unintegrated commits block safely.
+      truncated: false
+  - id: A4
+    source: specs/supervisor-integration-core/spec.md
+    text: 父级串行集成已验证 Child - **Given** Child 已 verified 且 integration worktree clean
+      - **When** 父级集成器推进 Child - **Then** 只合入已记录的 verified commit - **And**
+      同一时刻最多一个 integration branch 写入 - **And** 集成检查通过后记录
+      Child、摘要、验证证据、integration commit、检查结果和风险
+    result: passed
+    reason:
+      text: Mutation locking, stateVersion checks and merge-only verified commits keep
+        integration serial and recoverable.
+      truncated: false
+  - id: A5
+    source: specs/supervisor-integration-core/spec.md
+    text: 集成冲突保护现场 - **Given** verified commit 与 integration HEAD 冲突 - **When**
+      Runtime 尝试集成 - **Then** 保留冲突现场并返回 blocker - **And** 不自动解决冲突、不推进 Child
+      状态、不修改真实 target
+    result: passed
+    reason:
+      text: Target drift is refreshed into the isolated integration workspace and
+        invalidates final verification until parent checks rerun.
+      truncated: false
+  - id: A6
+    source: specs/supervisor-integration-core/spec.md
+    text: 最终交付只发生一次 - **Given** 全部 Child integrated，父级验证对应当前 integration HEAD 且
+      target 漂移已处理 - **When** Runtime 执行最终交付 - **Then** integration branch 只合入真实
+      target 一次 - **And** 复试从 Git 事实识别已完成 merge，不重复写入 - **And** target
+      已包含最终结果后父子才统一归档并安全清理 worktree/branch
+    result: passed
+    reason:
+      text: Final delivery requires complete integration evidence, uses fast-forward
+        delivery, and reconciles already-delivered Git ancestry.
+      truncated: false
+  - id: A7
+    source: specs/supervisor-integration-core/spec.md
+    text: 交付边界保护用户文件 - **Given** target、integration 或待清理 Child worktree
+      存在脏文件、未合入提交或当前进程正在其中 - **When** Runtime 尝试交付或清理 - **Then** 保留现场并返回明确
+      blocker - **And** 不强制删除、重置或覆盖用户文件
+    result: passed
+    reason:
+      text: Cleanup now preflights every worktree and branch, rejects
+        dirty/current/subdirectory/unintegrated targets, and persists archive
+        only after cleanup succeeds.
+      truncated: false
+builder_handoff:
+  candidate_id: 1fd5abee-463c-487a-b080-0de151d6b0f3
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:1c1d02b1-5088-4351-ba74-00790f703cd1
+  iteration: 1
+  summary:
+    text: 完成 Supervisor integration-first 集成核心：父级 integration workspace、Child
+      verified/integrated 生命周期、依赖基线、串行集成、target 漂移刷新、最终一次性交付与安全清理均已实现并覆盖回归测试。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+  checks:
+    - name:
+        text: Native Supervisor linked-worktree tests
+        truncated: false
+      result: passed
+      note:
+        text: 覆盖 integration workspace、依赖基线、串行集成、merge 中断恢复、target 漂移和最终交付。
+        truncated: false
+    - name:
+        text: Native portable Archive tests
+        truncated: false
+      result: passed
+      note:
+        text: 覆盖父级最终交付先于归档状态的边界。
+        truncated: false
+    - name:
+        text: TypeScript/build/generated runtime checks
+        truncated: false
+      result: passed
+      note:
+        text: Native bundles、entry bundles、TypeScript 与构建均通过。
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: 仓库全量测试仍有既有 Windows eval 权限、旧 CLI/Classic 断言和布局基线失败；这些不属于本 Child 的实现范围。
+      truncated: false
+  known_limits_truncated: false
+  submitted_at: 2026-08-15T16:50:29.437Z
+blockers: []
+verification:
+  candidate_id: 1fd5abee-463c-487a-b080-0de151d6b0f3
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:2809b207-f150-47a2-a8a0-be42a9c26684
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: native-supervisor-integration-core
+      name:
+        text: Native Supervisor integration core regression suite
+        truncated: false
+      argv_display:
+        - text: D:/Project/Comet/node_modules/vitest/vitest.mjs
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/comet-native/native-supervisor.test.ts
+          truncated: false
+        - text: test/domains/comet-native/native-portable-archive.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 36665
+  summary:
+    text: Independent review found and the implementation fixed stale Builder
+      worktree bases and unsafe partial cleanup. Targeted Supervisor and Archive
+      tests now pass (35 tests), TypeScript and Native runtime generation pass,
+      and all integration-core acceptance criteria are covered.
+    truncated: false
+  risks:
+    - text: The repository-wide suite retains unrelated Windows eval permissions and
+        legacy CLI/layout baseline failures; the targeted Supervisor suite,
+        TypeScript check and Native runtime build pass.
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-08-15T17:04:00.564Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: Independent review found and the implementation fixed stale Builder
+        worktree bases and unsafe partial cleanup. Targeted Supervisor and
+        Archive tests now pass (35 tests), TypeScript and Native runtime
+        generation pass, and all integration-core acceptance criteria are
+        covered.
+      truncated: false
+    completed_at: 2026-08-15T17:04:00.564Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-15T16:49:18.993Z
