@@ -103,6 +103,15 @@ describe('CI workflows', () => {
     expect(workflow).toContain('subjectPattern: ^.{1,72}$');
   });
 
+  it('greets first-time contributors from the trusted base workflow', async () => {
+    const workflow = await readWorkflow('greeting-guideline-pr.yml');
+
+    expect(workflow).toMatch(/^  pull_request_target:$/m);
+    expect(workflow).not.toMatch(/^  pull_request:$/m);
+    expect(workflow).toContain('pull-requests: write');
+    expect(workflow).not.toContain('actions/checkout');
+  });
+
   it('defines stale PR auto-closing with a manual dry-run mode', async () => {
     const workflow = await readWorkflow('stale-prs.yml');
 

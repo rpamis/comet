@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-beta.19] - 2026-08-15
+
+### Fixed
+
+- **Fork pull request greetings**: First-time contributors now receive the repository guidance comment when opening a pull request from a fork, without weakening the read-only permissions of workflows that execute contributor code.
+
 ## What's Changed [0.4.0-beta.18] - 2026-08-13
 
 ### Added
