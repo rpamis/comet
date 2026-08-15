@@ -96,7 +96,7 @@ Verifier 最终必须逐项标记为通过（`passed`）、未通过（`failed`�
 
 ## Archive
 
-只有 `continuation` 允许 Archive 时才继续。Archive 直接使用已经接受的验收结果。`branch` 或 `worktree` 需要收尾选择时，一次展示实际 change 分支、目标分支和目录，让用户选择合并（merge）、推送（push）、创建 PR、保留工作区（keep）或暂不归档。
+只有 `continuation` 允许 Archive 时才继续。Archive 直接使用已经接受的验收结果。`branch` 或 `worktree` 需要收尾选择时，一次展示实际 change 分支、目标分支和目录，让用户选择合并（merge）、推送（push）、创建 PR、保留工作区（keep）或暂不归档。归档完成后，如果存在已归档且干净的 change worktree，向用户提供清理选项；只有用户确认后才执行 `git worktree remove`，保留分支引用，脏或仍被使用的 worktree 必须保留。
 
 只提交属于当前 change 的实现和正式产物，保留其他用户改动。执行 Runtime 返回的 `commandArgs`，再检查工作区收尾结果 `workspaceFinishResult`；结果为阻塞（`blocked`）时保留现场，并执行 `recoveryArgs` 中的恢复命令。
 

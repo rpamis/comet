@@ -129,6 +129,34 @@ describe('Comet Native Skills', () => {
     }
   });
 
+  it('offers explicit cleanup for clean archived change worktrees', async () => {
+    const variants = [
+      {
+        language: 'zh' as const,
+        required: [
+          '归档完成后，如果存在已归档且干净的 change worktree，向用户提供清理选项',
+          '只有用户确认后才执行 `git worktree remove`',
+          '脏或仍被使用的 worktree 必须保留',
+        ],
+      },
+      {
+        language: 'en' as const,
+        required: [
+          'After Archive, if a clean worktree belongs to an archived change, offer cleanup',
+          'only run `git worktree remove` after user confirmation',
+          'keep dirty or still-used worktrees',
+        ],
+      },
+    ];
+
+    for (const variant of variants) {
+      const skill = await read(variant.language, 'SKILL.md');
+      for (const term of variant.required) {
+        expect(skill, `${variant.language}: ${term}`).toContain(term);
+      }
+    }
+  });
+
   it('uses Skill language only to initialize config, then project config owns artifacts', async () => {
     const variants = [
       {

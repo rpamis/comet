@@ -96,7 +96,7 @@ Completion criterion: the Runtime has accepted the complete Verifier result and 
 
 ## Archive
 
-Continue only when `continuation` permits Archive. Archive uses the accepted verification result directly. When a `branch` or `worktree` needs a finish decision, show the actual change branch, target branch, and directory together, then let the user choose merge, push, create a PR, keep the workspace, or defer Archive.
+Continue only when `continuation` permits Archive. Archive uses the accepted verification result directly. When a `branch` or `worktree` needs a finish decision, show the actual change branch, target branch, and directory together, then let the user choose merge, push, create a PR, keep the workspace, or defer Archive. After Archive, if a clean worktree belongs to an archived change, offer cleanup; only run `git worktree remove` after user confirmation, preserve the branch ref, and keep dirty or still-used worktrees.
 
 Commit only the implementation and formal artifacts that belong to the current change, preserving other user changes. Execute the returned `commandArgs`, then inspect `workspaceFinishResult`. If it is `blocked`, preserve the workspace and run the recovery command in `recoveryArgs`.
 
