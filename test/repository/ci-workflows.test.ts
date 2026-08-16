@@ -101,6 +101,57 @@ describe('CI workflows', () => {
     expect(workflow).toContain('types: [opened, edited, reopened, ready_for_review]');
     expect(workflow).toContain('requireScope: false');
     expect(workflow).toContain('subjectPattern: ^.{1,72}$');
+    for (const scope of [
+      'app',
+      'native',
+      'classic',
+      'hook',
+      'dashboard',
+      'platform',
+      'workflow',
+      'bundle',
+      'engine',
+      'factory',
+      'integrations',
+      'eval',
+      'repo',
+      'tests',
+      'website',
+    ]) {
+      expect(workflow).toMatch(new RegExp(`^            ${scope}$`, 'm'));
+    }
+  });
+
+  it('triages issue form areas with a trusted, least-privilege workflow', async () => {
+    const workflow = await readWorkflow('issue-triage.yml');
+    const issueForms = await Promise.all(
+      ['bug_report.yml', 'feature_request.yml', 'question.yml'].map((name) =>
+        fs.readFile(`.github/ISSUE_TEMPLATE/${name}`, 'utf8'),
+      ),
+    );
+
+    expect(workflow).toMatch(/^  issues:\s*$/m);
+    expect(workflow).toContain('types: [opened, edited]');
+    expect(workflow).toContain('issues: write');
+    expect(workflow).toContain('actions/github-script@d746ffe35508b1917358783b479e04febd2b8f71');
+    expect(workflow).toContain('needs-triage');
+    expect(workflow).toContain("replace(/^[^A-Za-z0-9]+/, '')");
+    expect(workflow).toContain('area:native');
+    expect(workflow).toContain('area:hook');
+    expect(workflow).toContain('area:workflow');
+    expect(workflow).toContain('area:repo');
+    expect(workflow).not.toContain('actions/checkout');
+
+    for (const form of issueForms) {
+      expect(form).toContain('Native workflow runtime');
+      expect(form).toContain('Shared Hook / Hook Router');
+    }
+  });
+
+  it('keeps the maintenance task template backed by an existing task label', async () => {
+    const template = await fs.readFile('.github/ISSUE_TEMPLATE/task.yml', 'utf8');
+
+    expect(template).toContain("labels: ['task']");
   });
 
   it('greets first-time contributors from the trusted base workflow', async () => {

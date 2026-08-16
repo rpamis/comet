@@ -10,10 +10,12 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **On-demand change review**: The new `/comet-review` Skill reviews the current Native or Classic change against its implementation diff and existing evidence, reports prioritized correctness, security, edge-case, and coverage findings, and remains read-only without advancing or replacing Verify.
 - **Fork pull request guidance**: First-time contributors opening pull requests from forks now receive the repository guidance comment through a trusted workflow.
 - **Pull request template validation**: Pull requests now receive an actionable comment and a failing check when required template sections or items are missing, or when checklist items are incomplete.
+- **Issue triage labels**: New issues are automatically marked for triage and assigned a repository area label from their structured issue form selection.
 
 ### Changed
 
 - **Dashboard artifact previews**: Fullscreen previews now close with Escape, keep long tables horizontally scrollable, preserve readable table headers, and use a larger directory navigation scale.
+- **Pull request title scopes**: Conventional PR titles now support Native, Classic, Hook, Dashboard, Platform, Workflow, Eval, and other repository areas, including titles such as `feat(native): ...`.
 
 ### Fixed
 
