@@ -3,9 +3,9 @@ name: semantic-self-evolving-memory
 language: zh-CN
 phase: build
 status: active
-state_version: 15
+state_version: 20
 brief: brief.md
-children_contract_hash: 8f82510bd7905b6ae1d98ef770d88d73006084e47a962d8e6631c81536381508
+children_contract_hash: 13305b964a40f68dc69676729cc983bb1c6fcf7400321698bc0d09e1fa0206e4
 spec_changes:
   - capability: comet-memory-skill
     operation: modify
@@ -23,7 +23,7 @@ workspace:
   finish: null
 loop:
   stage: building
-  goal_cycle: 2
+  goal_cycle: 3
   iteration: 1
   attempt: 0
   retry_epoch: 0
@@ -673,6 +673,36 @@ history:
       text: Native child declarations changed
       truncated: false
     completed_at: 2026-08-16T21:52:22.121Z
+  - goal_cycle: 2
+    iteration: 1
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A11
+      - A24
+      - A34
+      - A37
+      - A44
+      - A51
+      - A65
+      - A67
+      - A94
+      - A96
+    summary:
+      text: Independent verification found eight failed acceptance items and two items
+        requiring stronger evidence. Return the parent Change to Build for a
+        focused repair before Archive.
+      truncated: false
+    completed_at: 2026-08-16T22:27:36.521Z
+  - goal_cycle: 2
+    iteration: 2
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native child declarations changed
+      truncated: false
+    completed_at: 2026-08-16T22:27:56.549Z
 history_overflow:
   dropped_entries: 0
   first_dropped_at: null

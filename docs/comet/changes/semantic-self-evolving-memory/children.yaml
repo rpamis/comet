@@ -191,3 +191,17 @@ children:
       - A96
       - A97
       - A98
+  - name: semantic-memory-review-repair-v2
+    depends_on:
+      - semantic-memory-review-repair
+    covers:
+      - A11
+      - A24
+      - A34
+      - A37
+      - A44
+      - A51
+      - A65
+      - A67
+      - A94
+      - A96
