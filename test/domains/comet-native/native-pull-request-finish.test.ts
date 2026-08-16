@@ -90,6 +90,27 @@ describe('Native pull request finish', () => {
     );
   });
 
+  it('preserves an observed pull request when final GitHub verification is temporarily unavailable', () => {
+    external.runExternalCommand.mockImplementation((_command: string, args: readonly string[]) => {
+      if (args[1] === 'list') return ghJson([pullRequest]);
+      if (args[1] === 'view') throw new Error('temporary GitHub failure');
+      throw new Error(`unexpected gh args: ${args.join(' ')}`);
+    });
+
+    let caught: unknown;
+    try {
+      finishNativePullRequest(options());
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(NativePullRequestFinishError);
+    expect(caught).toMatchObject({
+      message: expect.stringContaining('Final GitHub pull request verification failed'),
+      pullRequest: { number: 17, url: pullRequest.url },
+      cause: expect.any(Error),
+    });
+  });
+
   it('passes versioned JSON to a repository command and verifies its result independently', () => {
     external.runExternalCommand.mockImplementation(
       (command: string, args: readonly string[], run) => {
@@ -143,6 +164,55 @@ describe('Native pull request finish', () => {
       ['-NoProfile', '-File', 'scripts/comet-create-pr.ps1'],
       expect.objectContaining({ cwd: projectRoot, timeoutMs: 120_000, input: expect.any(String) }),
     );
+  });
+
+  it('preserves an authorized provider pull request when final verification is temporarily unavailable', () => {
+    let listCalls = 0;
+    external.runExternalCommand.mockImplementation((command: string, args: readonly string[]) => {
+      if (command === 'gh' && args[1] === 'list') {
+        listCalls += 1;
+        if (listCalls === 1) return '[]';
+        throw new Error('temporary GitHub list failure');
+      }
+      if (command === 'gh' && args[1] === 'view') {
+        throw new Error('temporary GitHub view failure');
+      }
+      if (command === 'pwsh') {
+        return ghJson({
+          schema: 'comet.native.pull-request-finish-result.v1',
+          disposition: 'created',
+          remoteVerified: true,
+          pullRequest: {
+            number: 17,
+            url: pullRequest.url,
+            baseBranch: 'main',
+            headBranch: 'comet/change',
+            headSha,
+          },
+        });
+      }
+      throw new Error(`unexpected command: ${command} ${args.join(' ')}`);
+    });
+
+    let caught: unknown;
+    try {
+      finishNativePullRequest({
+        ...options(),
+        config: {
+          provider: 'repository-command',
+          command: ['pwsh', '-File', 'scripts/comet-create-pr.ps1'],
+          timeout_ms: 120_000,
+        },
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(NativePullRequestFinishError);
+    expect(caught).toMatchObject({
+      message: expect.stringContaining('Final repository pull request verification failed'),
+      pullRequest: { number: 17, url: pullRequest.url },
+      cause: expect.any(Error),
+    });
   });
 
   it('preserves an observed pull request when repository verification fails', () => {

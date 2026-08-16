@@ -425,6 +425,70 @@ describe('Native archived workspace finish', () => {
     ]);
   });
 
+  it('keeps the provider PR URL and recovery command when final GitHub verification is unavailable', async () => {
+    const record = {
+      number: 8,
+      url: 'https://github.com/example/pr/8',
+      baseRefName: 'main',
+      headRefName: 'comet/change',
+      headRefOid: 'a'.repeat(40),
+      state: 'OPEN',
+    };
+    let listCalls = 0;
+    external.runExternalCommand.mockImplementation((command: string, args: readonly string[]) => {
+      if (command === 'gh' && args[1] === 'list') {
+        listCalls += 1;
+        if (listCalls === 1) return '[]';
+        throw new Error('temporary GitHub list failure');
+      }
+      if (command === 'gh' && args[1] === 'view') {
+        throw new Error('temporary GitHub view failure');
+      }
+      if (command === 'pwsh') {
+        return JSON.stringify({
+          schema: 'comet.native.pull-request-finish-result.v1',
+          disposition: 'created',
+          remoteVerified: true,
+          pullRequest: {
+            number: record.number,
+            url: record.url,
+            baseBranch: record.baseRefName,
+            headBranch: record.headRefName,
+            headSha: record.headRefOid,
+          },
+        });
+      }
+      throw new Error(`unexpected command: ${command} ${args.join(' ')}`);
+    });
+
+    const rejection = finishArchivedNativeWorkspace({
+      paths,
+      state,
+      name: state.name,
+      archiveDir: path.join(projectRoot, 'comet', 'archive', state.name),
+      transactionId: 'tx-final-verification-blocked',
+      plan: plan({
+        finish: 'pull-request',
+        remote: 'origin',
+        isolation: 'worktree',
+        pullRequestFinish: {
+          provider: 'repository-command',
+          command: ['pwsh', '-File', 'scripts/comet-create-pr.ps1'],
+          timeout_ms: 120_000,
+        },
+      }),
+    });
+    await expect(rejection).rejects.toMatchObject({
+      result: {
+        status: 'blocked',
+        pushed: true,
+        pullRequestUrl: record.url,
+        message: expect.stringContaining('Final repository pull request verification failed'),
+        cleanup: { performed: false },
+        recoveryArgs: ['comet', 'native', 'archive', state.name, '--confirmed'],
+      },
+    });
+  });
   it('returns a blocked result for an unexpected archive path and exposes recovery args', async () => {
     git.gitStatusPaths.mockReturnValue(['unrelated.txt']);
     const rejection = finishArchivedNativeWorkspace({

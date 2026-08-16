@@ -323,7 +323,17 @@ function createWithGithubFill(options: {
       disposition = 'reused';
     }
   }
-  const verified = verifyNativePullRequest({ ...options, pullRequest });
+  let verified: NativePullRequestRecord;
+  try {
+    verified = verifyNativePullRequest({ ...options, pullRequest });
+  } catch (error) {
+    if (error instanceof NativePullRequestFinishError) throw error;
+    throw new NativePullRequestFinishError(
+      `Final GitHub pull request verification failed: ${(error as Error).message}`,
+      pullRequest,
+      { cause: error },
+    );
+  }
   return {
     provider: 'github-fill',
     disposition,
@@ -373,7 +383,18 @@ function createWithRepositoryCommand(options: {
       recovered,
     );
   }
-  const verified = verifyNativePullRequest({ ...options, pullRequest: providerRecord });
+  let verified: NativePullRequestRecord;
+  try {
+    verified = verifyNativePullRequest({ ...options, pullRequest: providerRecord });
+  } catch (error) {
+    if (error instanceof NativePullRequestFinishError) throw error;
+    const recovered = bestEffortObserve(options) ?? options.existingPullRequest ?? providerRecord;
+    throw new NativePullRequestFinishError(
+      `Final repository pull request verification failed: ${(error as Error).message}`,
+      recovered,
+      { cause: error },
+    );
+  }
   return {
     provider: 'repository-command',
     disposition: output.disposition,
