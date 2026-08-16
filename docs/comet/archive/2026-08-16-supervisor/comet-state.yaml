@@ -2,8 +2,8 @@ schema: comet.native.v4
 name: supervisor
 language: zh-CN
 phase: archive
-status: active
-state_version: 32
+status: done
+state_version: 33
 brief: brief.md
 children_contract_hash: 6f1b3d350e625c913566de035da8867268d4cca0089498b068a52adf87de7212
 spec_changes:
@@ -28,7 +28,7 @@ workspace:
   target_branch: beta20
   finish: null
 loop:
-  stage: archive-ready
+  stage: done
   goal_cycle: 5
   iteration: 1
   attempt: 1
@@ -37,7 +37,7 @@ loop:
   no_progress_count: 0
   execution_failure_count: 0
   previous_unresolved_ids: []
-  next_action: archive
+  next_action: null
 acceptance:
   - id: A1
     source: specs/supervisor-agents/spec.md
@@ -1258,5 +1258,5 @@ history_overflow:
     recovery: 0
 verification_result: pass
 verification_report: verification.md
-archived: false
+archived: true
 created_at: 2026-08-15T13:55:13.062Z
