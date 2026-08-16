@@ -3,12 +3,12 @@ name: semantic-self-evolving-memory
 language: zh-CN
 phase: build
 status: active
-state_version: 2
+state_version: 15
 brief: brief.md
-children_contract_hash: 05c16c3cd2f97cc7a66d376c8cbd052a886df303dd549652fbc7b777f69da839
+children_contract_hash: 8f82510bd7905b6ae1d98ef770d88d73006084e47a962d8e6631c81536381508
 spec_changes:
   - capability: comet-memory-skill
-    operation: create
+    operation: modify
     source: specs/comet-memory-skill/spec.md
   - capability: personal-memory
     operation: modify
@@ -23,7 +23,7 @@ workspace:
   finish: null
 loop:
   stage: building
-  goal_cycle: 1
+  goal_cycle: 2
   iteration: 1
   attempt: 0
   retry_epoch: 0
@@ -592,7 +592,87 @@ acceptance:
 builder_handoff: null
 blockers: []
 verification: null
-history: []
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 父级 Verify 发现 3 个 Dashboard 文件格式不合规，且 Windows 对 eval 下两个历史 pytest 临时目录拒绝
+        scandir；返回 Build 做最小修复后重新验证。
+      truncated: false
+    completed_at: 2026-08-16T20:20:02.977Z
+  - goal_cycle: 1
+    iteration: 2
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 第二轮 Verify 发现 domains/dashboard/web/index.html 也受 Windows 换行影响；全量测试仅因干净
+        worktree 缺少 Python yaml 环境失败，已定位为验证环境依赖。返回 Build 补 HTML 换行契约并让干净
+        worktree 复用现有 eval Python 环境后重验。
+      truncated: false
+    completed_at: 2026-08-16T20:44:48.201Z
+  - goal_cycle: 1
+    iteration: 3
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A3
+      - A4
+      - A5
+      - A17
+      - A18
+      - A19
+      - A20
+      - A22
+      - A23
+      - A24
+      - A34
+      - A37
+      - A48
+      - A50
+      - A51
+      - A52
+      - A54
+      - A55
+      - A65
+      - A67
+      - A74
+      - A75
+      - A76
+      - A78
+      - A79
+      - A81
+      - A82
+      - A83
+      - A84
+      - A85
+      - A89
+      - A90
+      - A91
+      - A93
+      - A94
+      - A95
+      - A96
+      - A97
+      - A98
+    summary:
+      text: 独立 Verifier 判定 fail：生产 Runtime 尚未把 bounded comet-memory Skill
+        review、action validator 与持久化闭环接入自动路径；Eval 也缺少独立 no-memory
+        treatment、完整质量指标、阈值冻结和独立 Judge。
+      truncated: false
+    completed_at: 2026-08-16T21:20:53.552Z
+  - goal_cycle: 1
+    iteration: 4
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native child declarations changed
+      truncated: false
+    completed_at: 2026-08-16T21:52:22.121Z
 history_overflow:
   dropped_entries: 0
   first_dropped_at: null
