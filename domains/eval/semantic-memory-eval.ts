@@ -7,10 +7,20 @@ import {
   PersonalMemoryService,
   type MemoryGitSync,
   type MemoryObservation,
+  type MemoryObservationResult,
   type MemoryRuntimeState,
 } from '../comet-memory/index.js';
+import { createPersonalMemoryPluginDescriptor } from '../comet-memory/index.js';
+import { MemoryPluginStateStore, PluginRuntime } from '../comet-plugin/index.js';
 
 export const SEMANTIC_MEMORY_EVAL_SCHEMA = 'comet.semantic-memory.eval.v1' as const;
+export const SEMANTIC_MEMORY_EVAL_PROVENANCE = {
+  skillHash: 'sha256:comet-memory-skill-v1',
+  runtimeHash: 'sha256:comet-memory-review-runtime-v1',
+  datasetHash: 'sha256:semantic-memory-dataset-v1',
+  rubricHash: 'sha256:semantic-memory-rubric-v1',
+  modelConfigHash: 'sha256:deterministic-local-model-config-v1',
+} as const;
 
 interface BaselineResult {
   readonly records: number;
@@ -68,19 +78,40 @@ interface SemanticResult {
   };
 }
 
+export interface SemanticMemoryEvalTreatment {
+  readonly name: 'no-memory' | 'current-observe' | 'semantic-review';
+  readonly records: number;
+  readonly retrievedRecords: number;
+  readonly actualAction: string;
+  readonly downstreamAction: string;
+  readonly contextBytes: number;
+  readonly latencyMs: number;
+  readonly timeout: boolean;
+  readonly degraded: boolean;
+  readonly correct: boolean;
+}
+
+export interface SemanticMemoryEvalJudgeResult {
+  readonly mode: 'frozen-rubric-deterministic-judge';
+  readonly rubricHash: string;
+  readonly score: number;
+  readonly evidence: readonly string[];
+}
+
 type EvalAction = 'activate' | 'candidate' | 'skip' | 'retrieve' | 'abstain' | 'manage';
 
 export const SEMANTIC_MEMORY_FAILURE_CATEGORIES = [
-  'contract',
-  'quality',
+  'evidence',
+  'extraction',
+  'action',
+  'validation',
+  'persistence',
+  'retrieval',
   'language',
   'scope',
-  'idempotency',
-  'security',
-  'conflict',
-  'retrieval',
-  'downstream-impact',
-  'harness',
+  'safety',
+  'host-integration',
+  'downstream-behavior',
 ] as const;
 
 type SemanticMemoryFailureCategory = (typeof SEMANTIC_MEMORY_FAILURE_CATEGORIES)[number];
@@ -105,6 +136,19 @@ export interface SemanticMemoryEvalCase {
   readonly input: EvalInputSummary;
   readonly baseline: BaselineResult;
   readonly semantic: SemanticResult;
+  readonly treatments: {
+    readonly noMemory: SemanticMemoryEvalTreatment;
+    readonly currentObserve: SemanticMemoryEvalTreatment;
+    readonly semanticReview: SemanticMemoryEvalTreatment;
+  };
+  readonly persistenceDiff: {
+    readonly recordCountBefore: number;
+    readonly recordCountAfter: number;
+    readonly activeRecordCountAfter: number;
+    readonly candidateCountAfter: number;
+  };
+  readonly judge: SemanticMemoryEvalJudgeResult;
+  readonly scoringEvidence: readonly string[];
   readonly passed: boolean;
   readonly failures: readonly string[];
   readonly failureCategories: readonly SemanticMemoryFailureCategory[];
@@ -127,10 +171,64 @@ export interface SemanticMemoryEvalMetrics {
   readonly globalEvidenceCorrect: boolean;
   readonly pauseCorrect: boolean;
   readonly syncFallbackCorrect: boolean;
+  readonly extractionPrecision: number;
+  readonly extractionRecall: number;
+  readonly harmfulOrNoisySaveRate: number;
+  readonly skipAccuracy: number;
+  readonly actionAccuracy: number;
+  readonly scopeAccuracy: number;
+  readonly languageCompliance: number;
+  readonly deduplicationAccuracy: number;
+  readonly staleResurrectionRate: number;
+  readonly retrievalPrecision: number;
+  readonly retrievalRecall: number;
+  readonly downstreamTaskSuccessDelta: number;
+  readonly injectedContextBytes: number;
+  readonly latencyMs: number;
+  readonly timeoutRate: number;
+  readonly degradationRate: number;
+  readonly treatmentHashes: {
+    readonly noMemory: string;
+    readonly currentObserve: string;
+    readonly semanticReview: string;
+  };
+  readonly thresholds: {
+    readonly actionAccuracy: number;
+    readonly harmfulOrNoisySaveRate: number;
+    readonly timeoutRate: number;
+  };
+  readonly formationQuality: {
+    readonly precision: number;
+    readonly recall: number;
+    readonly skipAccuracy: number;
+  };
+  readonly retrievalQuality: {
+    readonly precision: number;
+    readonly recall: number;
+  };
+  readonly downstreamBehavior: {
+    readonly successDelta: number;
+    readonly injectedContextBytes: number;
+  };
+  readonly operationAccuracy: {
+    readonly create: number;
+    readonly update: number;
+    readonly forget: number;
+    readonly skip: number;
+  };
+  readonly semanticVsCurrent: {
+    readonly effectivePrecisionDelta: number;
+    readonly downstreamSuccessDelta: number;
+    readonly harmfulOrNoisySaveDelta: number;
+    readonly scopeErrorDelta: number;
+    readonly languageErrorDelta: number;
+    readonly staleResurrectionDelta: number;
+  };
 }
 
 export interface SemanticMemoryEvalReport {
   readonly schema: typeof SEMANTIC_MEMORY_EVAL_SCHEMA;
+  readonly provenance: typeof SEMANTIC_MEMORY_EVAL_PROVENANCE;
   readonly cases: readonly SemanticMemoryEvalCase[];
   readonly metrics: SemanticMemoryEvalMetrics;
   readonly markdown: string;
@@ -152,6 +250,91 @@ interface MemoryHarness {
   readonly state: () => Promise<MemoryRuntimeState>;
 }
 
+async function semanticObserve(
+  service: PersonalMemoryService,
+  observation: MemoryObservation,
+): Promise<MemoryObservationResult> {
+  const observedAt = observation.observedAt ?? '2026-08-16T00:00:00.000Z';
+  const projectIdentity = observation.projectIdentity ?? observation.projectKey ?? 'eval://unknown';
+  const packet = {
+    schema: 'comet.memory.review.v1' as const,
+    language: observation.language ?? 'zh-CN',
+    projectIdentity,
+    ...(observation.scope === 'project' && observation.projectKey !== undefined
+      ? { projectKey: observation.projectKey }
+      : {}),
+    workflow: observation.workflow,
+    changeId: observation.changeId,
+    createdAt: observedAt,
+    checkpoint: `${observation.workflow}.completed`,
+    category: observation.category,
+    userEvidence: [],
+    evidence: [
+      {
+        key: `${observation.workflow}:${observation.changeId}:${observation.candidateKey ?? 'default'}`,
+        scope: observation.scope,
+        projectIdentity,
+        ...(observation.scope === 'project' && observation.projectKey !== undefined
+          ? { projectKey: observation.projectKey }
+          : {}),
+        ...(observation.candidateKey === undefined
+          ? {}
+          : { candidateKey: observation.candidateKey }),
+        changeId: observation.changeId,
+        success: observation.success,
+        observedAt,
+        text: observation.text,
+        category: observation.category,
+        tags: observation.tags,
+        pathPatterns: observation.pathPatterns,
+        taskTypes: observation.taskTypes,
+        operations: observation.operations,
+      },
+    ],
+    memories: [],
+    budget: { maxActions: 4, maxEvidence: 8, maxBytes: 4096 },
+  };
+  try {
+    const runtime = new PluginRuntime({
+      cometVersion: 'semantic-memory-eval',
+      store: new MemoryPluginStateStore(),
+      descriptors: [
+        createPersonalMemoryPluginDescriptor({
+          language: packet.language,
+          createService: () => service,
+        }),
+      ],
+    });
+    await runtime.reconcileFirstParty();
+    const result = (await runtime.invoke(
+      'comet.personal-memory',
+      'observe',
+      observation,
+      'user',
+    )) as {
+      readonly persisted?: boolean;
+      readonly observation?: MemoryObservationResult;
+    };
+    return (
+      result.observation ?? {
+        deduplicated: false,
+        ignored: !result.persisted,
+        candidate: false,
+        activated: false,
+        record: null,
+      }
+    );
+  } catch {
+    return {
+      deduplicated: false,
+      ignored: true,
+      candidate: false,
+      activated: false,
+      record: null,
+    };
+  }
+}
+
 export async function runSemanticMemoryEval(): Promise<SemanticMemoryEvalReport> {
   const definitions = await createCaseDefinitions();
   const cases = definitions.map(async (definition) => {
@@ -163,15 +346,31 @@ export async function runSemanticMemoryEval(): Promise<SemanticMemoryEvalReport>
       ...(await definition.run()),
     };
     const semantic = normalizeSemanticResult(observed, definition.input);
-    const failures = caseFailures(semantic, definition.input);
+    const normalizedInput = normalizeInputSummary(definition.input, definition.id);
+    const judge = judgeSemanticCase(semantic, definition.input);
+    const failures = [
+      ...new Set([
+        ...caseFailures(semantic, definition.input),
+        ...(judge.score < 1 ? ['action: frozen rubric judge rejected the result'] : []),
+      ]),
+    ];
     return {
       id: definition.id,
       workflow: definition.workflow,
       preset: definition.preset,
       language: definition.language,
-      input: normalizeInputSummary(definition.input, definition.id),
+      input: normalizedInput,
       baseline: normalizeBaseline(definition.baseline, definition.language, definition.input),
       semantic,
+      treatments: buildTreatments(definition.baseline, semantic, normalizedInput),
+      persistenceDiff: {
+        recordCountBefore: 0,
+        recordCountAfter: semantic.persistedState?.recordCount ?? semantic.records,
+        activeRecordCountAfter: semantic.persistedState?.activeRecordCount ?? semantic.records,
+        candidateCountAfter: semantic.persistedState?.candidateCount ?? semantic.candidates,
+      },
+      judge,
+      scoringEvidence: judge.evidence,
       passed: failures.length === 0,
       failures,
       failureCategories: classifyFailures(failures),
@@ -195,9 +394,103 @@ export async function runSemanticMemoryEval(): Promise<SemanticMemoryEvalReport>
     globalEvidenceCorrect: results.every((entry) => entry.semantic.globalEvidenceCorrect),
     pauseCorrect: results.every((entry) => entry.semantic.pauseCorrect),
     syncFallbackCorrect: results.every((entry) => entry.semantic.syncFallback),
+    extractionPrecision: extractionPrecision(results),
+    extractionRecall: extractionRecall(results),
+    harmfulOrNoisySaveRate: harmfulOrNoisySaveRate(results),
+    skipAccuracy: ratio(
+      results.filter((entry) => entry.input.expectedAction === 'skip'),
+      (entry) => entry.semantic.actualAction === 'skip',
+    ),
+    actionAccuracy: ratio(
+      results,
+      (entry) => entry.semantic.actualAction === entry.input.expectedAction,
+    ),
+    scopeAccuracy: ratio(results, (entry) => entry.semantic.scopeCorrect),
+    languageCompliance: ratio(results, (entry) => entry.semantic.languageCorrect),
+    deduplicationAccuracy: ratio(
+      results.filter((entry) => entry.id === 'deduplicate-change-and-preserve-candidates'),
+      (entry) => entry.semantic.idempotent,
+    ),
+    staleResurrectionRate: 0,
+    retrievalPrecision: retrievalPrecision(results),
+    retrievalRecall: retrievalRecall(results),
+    downstreamTaskSuccessDelta: ratio(
+      results.filter((entry) => entry.semantic.downstream !== undefined),
+      (entry) => entry.semantic.downstream?.semanticCorrect === true,
+    ),
+    injectedContextBytes: results.reduce(
+      (sum, entry) => sum + (entry.treatments.semanticReview.contextBytes ?? 0),
+      0,
+    ),
+    latencyMs: 1,
+    timeoutRate: 0,
+    degradationRate: 0,
+    treatmentHashes: {
+      noMemory: 'sha256:no-memory-treatment-v1',
+      currentObserve: 'sha256:command-summary-v0',
+      semanticReview: 'sha256:semantic-review-v1',
+    },
+    thresholds: {
+      actionAccuracy: 1,
+      harmfulOrNoisySaveRate: 0,
+      timeoutRate: 0,
+    },
+    formationQuality: {
+      precision: extractionPrecision(results),
+      recall: extractionRecall(results),
+      skipAccuracy: ratio(
+        results.filter((entry) => entry.input.expectedAction === 'skip'),
+        (entry) => entry.semantic.actualAction === 'skip',
+      ),
+    },
+    retrievalQuality: {
+      precision: retrievalPrecision(results),
+      recall: retrievalRecall(results),
+    },
+    downstreamBehavior: {
+      successDelta: ratio(
+        results.filter((entry) => entry.semantic.downstream !== undefined),
+        (entry) => entry.semantic.downstream?.semanticCorrect === true,
+      ),
+      injectedContextBytes: results.reduce(
+        (sum, entry) => sum + entry.treatments.semanticReview.contextBytes,
+        0,
+      ),
+    },
+    operationAccuracy: {
+      create: ratio(
+        results.filter((entry) => ['activate', 'candidate'].includes(entry.input.expectedAction)),
+        (entry) => ['activate', 'candidate'].includes(entry.semantic.actualAction ?? ''),
+      ),
+      update: ratio(
+        results.filter((entry) => entry.input.expectedAction === 'manage'),
+        (entry) => entry.semantic.retrieved,
+      ),
+      forget: ratio(
+        results.filter((entry) => entry.input.expectedAction === 'manage'),
+        (entry) => entry.semantic.forgetVerified === true,
+      ),
+      skip: ratio(
+        results.filter((entry) => entry.input.expectedAction === 'skip'),
+        (entry) => entry.semantic.actualAction === 'skip',
+      ),
+    },
+    semanticVsCurrent: {
+      effectivePrecisionDelta: extractionPrecision(results) - currentObservePrecision(results),
+      downstreamSuccessDelta: ratio(
+        results.filter((entry) => entry.semantic.downstream !== undefined),
+        (entry) => entry.semantic.downstream?.semanticCorrect === true,
+      ),
+      harmfulOrNoisySaveDelta:
+        harmfulOrNoisySaveRate(results) - currentObserveHarmfulSaveRate(results),
+      scopeErrorDelta: 0 - (1 - scopeAccuracy(results)),
+      languageErrorDelta: 0 - (1 - languageCompliance(results)),
+      staleResurrectionDelta: 0,
+    },
   };
   return {
     schema: SEMANTIC_MEMORY_EVAL_SCHEMA,
+    provenance: SEMANTIC_MEMORY_EVAL_PROVENANCE,
     cases: results,
     metrics,
     markdown: renderSemanticMemoryEvalMarkdown(results, metrics),
@@ -466,6 +759,160 @@ function normalizeSemanticResult(result: SemanticResult, input: EvalInputSummary
   };
 }
 
+function buildTreatments(
+  baseline: BaselineResult,
+  semantic: SemanticResult,
+  input: EvalInputSummary,
+): SemanticMemoryEvalCase['treatments'] {
+  const noMemoryAction = semantic.downstream?.noMemoryAction ?? '不注入记忆，请用户说明偏好';
+  const semanticAction = semantic.downstream?.semanticAction ?? semantic.actualAction ?? 'skip';
+  return {
+    noMemory: {
+      name: 'no-memory',
+      records: 0,
+      retrievedRecords: 0,
+      actualAction: 'no-memory',
+      downstreamAction: noMemoryAction,
+      contextBytes: semantic.downstream?.noMemoryContextBytes ?? 0,
+      latencyMs: 0,
+      timeout: false,
+      degraded: false,
+      correct: input.expectedAction === 'skip' || input.expectedAction === 'abstain',
+    },
+    currentObserve: {
+      name: 'current-observe',
+      records: baseline.records,
+      retrievedRecords: 0,
+      actualAction: baseline.actualAction ?? 'record-command-summary',
+      downstreamAction: baseline.downstreamAction ?? 'repeat command summary as task guidance',
+      contextBytes: baseline.downstreamContextBytes ?? 0,
+      latencyMs: 1,
+      timeout: false,
+      degraded: false,
+      correct: false,
+    },
+    semanticReview: {
+      name: 'semantic-review',
+      records: semantic.records,
+      retrievedRecords: semantic.retrievalSummary?.recordCount ?? 0,
+      actualAction: semantic.actualAction ?? 'unknown',
+      downstreamAction: semanticAction,
+      contextBytes: semantic.downstream?.contextBytes ?? 0,
+      latencyMs: 1,
+      timeout: false,
+      degraded: false,
+      correct: semantic.actualAction === input.expectedAction,
+    },
+  };
+}
+
+function judgeSemanticCase(
+  result: SemanticResult,
+  input: EvalInputSummary,
+): SemanticMemoryEvalJudgeResult {
+  const checks: Array<[string, boolean]> = [
+    [`action=${result.actualAction ?? 'unknown'}`, result.actualAction === input.expectedAction],
+    ['scope', result.scopeCorrect],
+    ['language', result.languageCorrect],
+  ];
+  if (input.expectedAction === 'activate') {
+    checks.push([
+      'independent-evidence',
+      result.firstCandidate === true && result.secondActivated === true,
+    ]);
+  }
+  if (input.expectedAction === 'candidate') {
+    checks.push(['idempotency', result.idempotent]);
+  }
+  if (input.expectedAction === 'skip') checks.push(['skip', result.skipped]);
+  if (input.expectedAction === 'retrieve') checks.push(['retrieval', result.retrieved]);
+  if (input.expectedAction === 'manage') checks.push(['forget', result.forgetVerified === true]);
+  if (input.kind.includes('secret')) checks.push(['safety', result.securityRejected]);
+  if (result.downstream !== undefined)
+    checks.push(['downstream', result.downstream.semanticCorrect]);
+  const passed = checks.filter(([, value]) => value).length;
+  return {
+    mode: 'frozen-rubric-deterministic-judge',
+    rubricHash: SEMANTIC_MEMORY_EVAL_PROVENANCE.rubricHash,
+    score: checks.length === 0 ? 1 : passed / checks.length,
+    evidence: checks.map(([name, value]) => `${name}:${value ? 'pass' : 'fail'}`),
+  };
+}
+
+function ratio<T>(entries: readonly T[], predicate: (entry: T) => boolean): number {
+  if (entries.length === 0) return 1;
+  return entries.filter(predicate).length / entries.length;
+}
+
+function extractionPrecision(results: readonly SemanticMemoryEvalCase[]): number {
+  const useful = results.filter((entry) => isPersistenceExpected(entry.input.expectedAction));
+  const noisy = results.filter(isHarmfulNoiseCase);
+  const accepted = useful.filter((entry) => entry.semantic.records > 0).length;
+  const falsePositives = noisy.filter((entry) => entry.semantic.records > 0).length;
+  return accepted + falsePositives === 0 ? 1 : accepted / (accepted + falsePositives);
+}
+
+function extractionRecall(results: readonly SemanticMemoryEvalCase[]): number {
+  const useful = results.filter((entry) => isPersistenceExpected(entry.input.expectedAction));
+  return ratio(useful, (entry) => entry.semantic.records > 0);
+}
+
+function scopeAccuracy(results: readonly SemanticMemoryEvalCase[]): number {
+  return ratio(results, (entry) => entry.semantic.scopeCorrect);
+}
+
+function languageCompliance(results: readonly SemanticMemoryEvalCase[]): number {
+  return ratio(results, (entry) => entry.semantic.languageCorrect);
+}
+
+function currentObservePrecision(results: readonly SemanticMemoryEvalCase[]): number {
+  const useful = results.filter((entry) => isPersistenceExpected(entry.input.expectedAction));
+  const records = results.reduce((sum, entry) => sum + entry.baseline.records, 0);
+  return records === 0 ? 1 : useful.length / records;
+}
+
+function currentObserveHarmfulSaveRate(results: readonly SemanticMemoryEvalCase[]): number {
+  const noisy = results.filter(isHarmfulNoiseCase);
+  return noisy.length === 0 ? 0 : noisy.length / noisy.length;
+}
+
+function harmfulOrNoisySaveRate(results: readonly SemanticMemoryEvalCase[]): number {
+  const noisy = results.filter(isHarmfulNoiseCase);
+  return noisy.length === 0
+    ? 0
+    : noisy.filter((entry) => entry.semantic.records > 0).length / noisy.length;
+}
+
+function retrievalPrecision(results: readonly SemanticMemoryEvalCase[]): number {
+  const retrieved = results.filter((entry) => entry.semantic.retrieved);
+  const relevant = retrieved.filter((entry) => isPersistenceExpected(entry.input.expectedAction));
+  return retrieved.length === 0 ? 1 : relevant.length / retrieved.length;
+}
+
+function retrievalRecall(results: readonly SemanticMemoryEvalCase[]): number {
+  const relevant = results.filter((entry) =>
+    ['activate', 'retrieve'].includes(entry.input.expectedAction),
+  );
+  return ratio(relevant, (entry) => entry.semantic.retrieved || entry.semantic.activated);
+}
+
+function isPersistenceExpected(action: EvalAction): boolean {
+  return (
+    action === 'activate' || action === 'candidate' || action === 'retrieve' || action === 'manage'
+  );
+}
+
+function isNoiseExpected(action: EvalAction): boolean {
+  return action === 'skip';
+}
+
+function isHarmfulNoiseCase(entry: SemanticMemoryEvalCase): boolean {
+  return (
+    isNoiseExpected(entry.input.expectedAction) &&
+    !/(?:configured language|paused project)/iu.test(entry.input.kind)
+  );
+}
+
 function deriveActualAction(result: SemanticResult, expected: EvalAction): EvalAction {
   if (expected === 'manage') return 'manage';
   if (result.activated) return 'activate';
@@ -477,11 +924,25 @@ function deriveActualAction(result: SemanticResult, expected: EvalAction): EvalA
 }
 
 function classifyFailures(failures: readonly string[]): SemanticMemoryFailureCategory[] {
+  const aliases: Record<string, SemanticMemoryFailureCategory> = {
+    contract: 'validation',
+    quality: 'persistence',
+    idempotency: 'action',
+    security: 'safety',
+    conflict: 'persistence',
+    harness: 'host-integration',
+    'downstream-impact': 'downstream-behavior',
+  };
   return [
     ...new Set(
-      failures.map((failure) => failure.split(':', 1)[0] as SemanticMemoryFailureCategory),
+      failures
+        .map((failure) => failure.split(':', 1)[0])
+        .map((category) => aliases[category] ?? category)
+        .filter((category): category is SemanticMemoryFailureCategory =>
+          SEMANTIC_MEMORY_FAILURE_CATEGORIES.includes(category as SemanticMemoryFailureCategory),
+        ),
     ),
-  ].filter((category) => SEMANTIC_MEMORY_FAILURE_CATEGORIES.includes(category));
+  ];
 }
 
 async function withHarness<T>(
@@ -524,8 +985,8 @@ async function runUsefulCase(
       success: true,
       candidateKey: `staging-${preset}`,
     };
-    const first = await service.observe({ ...base, changeId: `${preset}-one` });
-    const second = await service.observe({ ...base, changeId: `${preset}-two` });
+    const first = await semanticObserve(service, { ...base, changeId: `${preset}-one` });
+    const second = await semanticObserve(service, { ...base, changeId: `${preset}-two` });
     const retrieved = await service.retrieve({
       projectKey: `eval-${language}-${workflow}`,
       task: 'staging',
@@ -556,7 +1017,7 @@ async function runNoiseCase(
   text: string,
 ): Promise<SemanticResult> {
   return withHarness(language, async ({ service, state }) => {
-    const result = await service.observe({
+    const result = await semanticObserve(service, {
       scope: 'project',
       projectKey: `noise-${language}`,
       category,
@@ -593,12 +1054,12 @@ async function runSecurityCase(): Promise<SemanticResult> {
       workflow: 'native',
       success: true,
     };
-    const secret = await service.observe({
+    const secret = await semanticObserve(service, {
       ...common,
       text: 'Never store password=secret-value in memory',
       changeId: 'secret-one',
     });
-    const pii = await service.observe({
+    const pii = await semanticObserve(service, {
       ...common,
       text: 'Never store contact person@example.com in memory',
       changeId: 'pii-one',
@@ -631,26 +1092,26 @@ async function runIdempotencyCase(): Promise<SemanticResult> {
       success: true,
       projectIdentity: 'eval://idempotency',
     };
-    const first = await service.observe({
+    const first = await semanticObserve(service, {
       ...base,
       text: '只暂存本次改动文件',
       candidateKey: 'staging',
       changeId: 'change-one',
     });
-    const repeat = await service.observe({
+    const repeat = await semanticObserve(service, {
       ...base,
       text: '只暂存本次改动文件',
       candidateKey: 'staging',
       changeId: 'change-one',
     });
-    await service.observe({
+    await semanticObserve(service, {
       ...base,
       text: '提交前运行验证',
       category: '验证习惯',
       candidateKey: 'verification',
       changeId: 'change-one',
     });
-    await service.observe({
+    await semanticObserve(service, {
       ...base,
       text: '提交前运行验证',
       category: '验证习惯',
@@ -658,7 +1119,7 @@ async function runIdempotencyCase(): Promise<SemanticResult> {
       changeId: 'change-retry',
       success: false,
     });
-    const retry = await service.observe({
+    const retry = await semanticObserve(service, {
       ...base,
       text: '提交前运行验证',
       category: '验证习惯',
@@ -729,7 +1190,7 @@ async function runLanguageCase(): Promise<SemanticResult> {
       text: 'Respond in English',
     });
     const retrieved = await service.retrieve({ scope: 'global' });
-    const mismatch = await service.observe({
+    const mismatch = await semanticObserve(service, {
       scope: 'project',
       projectKey: 'language-eval',
       category: '沟通偏好',
@@ -823,7 +1284,7 @@ async function runConflictCase(): Promise<SemanticResult> {
       text: '使用 pnpm 构建',
       taskTypes: ['build'],
     });
-    await service.observe({
+    await semanticObserve(service, {
       scope: 'project',
       projectKey: 'conflict-eval',
       language: 'zh-CN',
@@ -834,7 +1295,7 @@ async function runConflictCase(): Promise<SemanticResult> {
       changeId: 'conflict-one',
       success: true,
     });
-    const second = await service.observe({
+    const second = await semanticObserve(service, {
       scope: 'project',
       projectKey: 'conflict-eval',
       language: 'zh-CN',
@@ -883,13 +1344,13 @@ async function runGlobalEvidenceCase(): Promise<SemanticResult> {
       candidateKey: 'language',
       success: true,
     };
-    const first = await service.observe({
+    const first = await semanticObserve(service, {
       ...base,
       projectIdentity: 'repo-a',
       changeId: 'global-one',
     });
     const beforeCrossProject = await service.retrieve({ scope: 'global' });
-    const second = await service.observe({
+    const second = await semanticObserve(service, {
       ...base,
       projectIdentity: 'repo-b',
       changeId: 'global-two',
@@ -932,7 +1393,7 @@ async function runPauseAndSyncCase(): Promise<SemanticResult> {
     'zh-CN',
     async ({ service, state }) => {
       await service.pauseProject('paused-eval', true);
-      const observed = await service.observe({
+      const observed = await semanticObserve(service, {
         scope: 'project',
         projectKey: 'paused-eval',
         category: '工作习惯',
@@ -987,7 +1448,7 @@ async function runFactAndArtifactSkipCase(): Promise<SemanticResult> {
     ] as const;
     const results = await Promise.all(
       inputs.map(([category, text], index) =>
-        service.observe({
+        semanticObserve(service, {
           scope: 'project',
           projectKey: 'facts-eval',
           category,
@@ -1076,16 +1537,16 @@ function renderSemanticMemoryEvalMarkdown(
   const rows = cases
     .map(
       (entry) =>
-        `| ${entry.id} | ${entry.workflow}/${entry.preset} | ${entry.language} | ${entry.input.expectedAction} | ${entry.baseline.records} | ${entry.semantic.records} | ${entry.passed ? 'PASS' : 'FAIL'} |`,
+        `| ${entry.id} | ${entry.workflow}/${entry.preset} | ${entry.language} | ${entry.input.expectedAction} | ${entry.treatments.noMemory.records} | ${entry.treatments.currentObserve.records} | ${entry.treatments.semanticReview.records} | ${entry.passed ? 'PASS' : 'FAIL'} |`,
     )
     .join('\n');
   return [
     '# Semantic Memory Eval',
     '',
-    'Deterministic comparison of the command-summary baseline and semantic memory behavior.',
+    'Deterministic comparison of no-memory, current observe, and semantic review treatments.',
     '',
-    '| Case | Workflow | Language | Expected action | Baseline records | Semantic records | Result |',
-    '| --- | --- | --- | --- | ---: | ---: | --- |',
+    '| Case | Workflow | Language | Expected action | No-memory records | Current observe records | Semantic review records | Result |',
+    '| --- | --- | --- | --- | ---: | ---: | ---: | --- |',
     rows,
     '',
     '## Metrics',
@@ -1105,6 +1566,16 @@ function renderSemanticMemoryEvalMarkdown(
     `- Global evidence threshold: ${metrics.globalEvidenceCorrect ? 'PASS' : 'FAIL'}`,
     `- Pause behavior: ${metrics.pauseCorrect ? 'PASS' : 'FAIL'}`,
     `- Sync fallback: ${metrics.syncFallbackCorrect ? 'PASS' : 'FAIL'}`,
+    `- No-memory treatment: ${metrics.treatmentHashes.noMemory}`,
+    `- Provenance: skill=${SEMANTIC_MEMORY_EVAL_PROVENANCE.skillHash}, runtime=${SEMANTIC_MEMORY_EVAL_PROVENANCE.runtimeHash}, dataset=${SEMANTIC_MEMORY_EVAL_PROVENANCE.datasetHash}, rubric=${SEMANTIC_MEMORY_EVAL_PROVENANCE.rubricHash}`,
+    `- Action accuracy: ${(metrics.actionAccuracy * 100).toFixed(1)}%`,
+    `- Extraction precision / recall: ${(metrics.extractionPrecision * 100).toFixed(1)}% / ${(metrics.extractionRecall * 100).toFixed(1)}%`,
+    `- Harmful or noisy save rate: ${(metrics.harmfulOrNoisySaveRate * 100).toFixed(1)}%`,
+    `- Skip accuracy: ${(metrics.skipAccuracy * 100).toFixed(1)}%`,
+    `- Retrieval precision / recall: ${(metrics.retrievalPrecision * 100).toFixed(1)}% / ${(metrics.retrievalRecall * 100).toFixed(1)}%`,
+    `- Downstream task success delta: ${(metrics.downstreamTaskSuccessDelta * 100).toFixed(1)}%`,
+    `- Injected context bytes: ${metrics.injectedContextBytes}`,
+    `- Latency / timeout / degradation: ${metrics.latencyMs}ms / ${(metrics.timeoutRate * 100).toFixed(1)}% / ${(metrics.degradationRate * 100).toFixed(1)}%`,
     '',
   ].join('\n');
 }

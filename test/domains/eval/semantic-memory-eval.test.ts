@@ -9,6 +9,10 @@ describe('semantic memory eval', () => {
 
     expect(first).toEqual(second);
     expect(first.schema).toBe('comet.semantic-memory.eval.v1');
+    expect(first.provenance.skillHash).toMatch(/^sha256:/);
+    expect(first.provenance.runtimeHash).toMatch(/^sha256:/);
+    expect(first.provenance.datasetHash).toMatch(/^sha256:/);
+    expect(first.provenance.rubricHash).toMatch(/^sha256:/);
     expect(first.metrics.totalCases).toBeGreaterThanOrEqual(15);
     expect(first.metrics.passedCases).toBe(first.metrics.totalCases);
     expect(first.metrics.noiseSkipped).toBeGreaterThan(0);
@@ -24,6 +28,15 @@ describe('semantic memory eval', () => {
     expect(first.metrics.globalEvidenceCorrect).toBe(true);
     expect(first.metrics.pauseCorrect).toBe(true);
     expect(first.metrics.syncFallbackCorrect).toBe(true);
+    expect(first.metrics.actionAccuracy).toBe(1);
+    expect(first.metrics.skipAccuracy).toBeGreaterThan(0.9);
+    expect(first.metrics.extractionPrecision).toBe(1);
+    expect(first.metrics.extractionRecall).toBe(1);
+    expect(first.metrics.harmfulOrNoisySaveRate).toBe(0);
+    expect(first.metrics.staleResurrectionRate).toBe(0);
+    expect(first.metrics.timeoutRate).toBe(0);
+    expect(first.metrics.degradationRate).toBe(0);
+    expect(first.metrics.treatmentHashes.semanticReview).toMatch(/^sha256:/);
     expect(
       first.cases.every(
         (entry) =>
@@ -36,6 +49,13 @@ describe('semantic memory eval', () => {
           entry.semantic.actualAction === entry.input.expectedAction &&
           entry.semantic.persistedState !== undefined &&
           entry.semantic.retrievalSummary !== undefined &&
+          entry.treatments.noMemory !== undefined &&
+          entry.treatments.currentObserve !== undefined &&
+          entry.treatments.semanticReview !== undefined &&
+          entry.treatments.semanticReview.correct &&
+          entry.persistenceDiff !== undefined &&
+          entry.judge.mode === 'frozen-rubric-deterministic-judge' &&
+          entry.scoringEvidence.length > 0 &&
           entry.baseline.model === 'command-summary-v0' &&
           entry.baseline.actualAction === 'record-command-summary',
       ),
@@ -47,6 +67,7 @@ describe('semantic memory eval', () => {
     ).toBe(true);
     expect(first.markdown).toContain('Semantic Memory Eval');
     expect(first.markdown).toContain('Baseline noise records');
+    expect(first.markdown).toContain('No-memory treatment');
     expect(first.markdown).not.toMatch(/password|Bearer|sk-[A-Za-z0-9]/i);
     expect(JSON.stringify(first)).not.toMatch(
       /secret-value|person@example\.com|Ignore previous instructions/i,

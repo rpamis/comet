@@ -49,6 +49,110 @@ function service(root: string, git?: MemoryGitSync): PersonalMemoryService {
 }
 
 describe('PersonalMemoryService', () => {
+  it('applies only validated semantic review actions and skips noise without persistence', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root) as PersonalMemoryService & {
+        reviewAndApply(packet: unknown, actions: unknown): Promise<unknown>;
+      };
+      const packet = {
+        schema: 'comet.memory.review.v1',
+        language: 'zh-CN',
+        projectIdentity: 'repo-a',
+        projectKey: 'project-a',
+        workflow: 'native',
+        changeId: 'change-noise',
+        createdAt: '2026-08-14T00:00:00.000Z',
+        checkpoint: 'task.completed',
+        userEvidence: [],
+        evidence: [
+          {
+            key: 'checkpoint:change-noise',
+            scope: 'project',
+            projectIdentity: 'repo-a',
+            projectKey: 'project-a',
+            candidateKey: 'native:build',
+            changeId: 'change-noise',
+            success: true,
+            observedAt: '2026-08-14T00:00:00.000Z',
+            text: '完成命令检查点',
+          },
+        ],
+        memories: [],
+        budget: { maxActions: 4, maxEvidence: 8, maxBytes: 4096 },
+      };
+      const result = await memories.reviewAndApply(packet, {
+        schema: 'comet.memory.actions.v1',
+        actions: [{ action: 'skip', language: 'zh-CN', reason: '没有长期可复用内容' }],
+      });
+
+      expect(result).toMatchObject({ action: 'skip', persisted: false });
+      expect((await memories.manage({ projectKey: 'project-a' })).records).toHaveLength(0);
+      expect((await memories.status()).files).toEqual([]);
+    });
+  });
+
+  it('persists localized title and reason from a validated semantic create action', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root) as PersonalMemoryService & {
+        reviewAndApply(packet: unknown, actions: unknown): Promise<unknown>;
+      };
+      const packet = {
+        schema: 'comet.memory.review.v1',
+        language: 'zh-CN',
+        projectIdentity: 'repo-a',
+        projectKey: 'project-a',
+        workflow: 'native',
+        changeId: 'change-useful',
+        createdAt: '2026-08-14T00:00:00.000Z',
+        checkpoint: 'verification.completed',
+        userEvidence: ['提交前只暂存本次改动文件'],
+        evidence: [
+          {
+            key: 'preference:staging:change-useful',
+            scope: 'project',
+            projectIdentity: 'repo-a',
+            projectKey: 'project-a',
+            candidateKey: 'staging',
+            changeId: 'change-useful',
+            success: true,
+            observedAt: '2026-08-14T00:00:00.000Z',
+            text: '提交前只暂存本次改动文件',
+          },
+        ],
+        memories: [],
+        budget: { maxActions: 4, maxEvidence: 8, maxBytes: 4096 },
+      };
+      const result = await memories.reviewAndApply(packet, {
+        schema: 'comet.memory.actions.v1',
+        actions: [
+          {
+            action: 'create',
+            language: 'zh-CN',
+            scope: 'project',
+            projectKey: 'project-a',
+            candidateKey: 'staging',
+            category: '协作习惯',
+            text: '提交前只暂存本次改动文件',
+            title: '提交范围偏好',
+            reason: '已在成功变更中重复验证，后续任务可复用',
+            evidenceKeys: ['preference:staging:change-useful'],
+          },
+        ],
+      });
+
+      expect(result).toMatchObject({ action: 'create', persisted: true });
+      const managed = await memories.manage({ projectKey: 'project-a' });
+      expect(managed.records).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            title: '提交范围偏好',
+            reason: '已在成功变更中重复验证，后续任务可复用',
+          }),
+        ]),
+      );
+    });
+  });
+
   it('writes explicit global and project memories only when they first exist', async () => {
     await withTempRepository(async (root) => {
       const memories = service(root);

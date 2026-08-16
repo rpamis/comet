@@ -64,6 +64,8 @@ export function validateMemoryReviewPacket(
   const changeId = requiredString(object.changeId, 'changeId');
   const createdAt = requiredTimestamp(object.createdAt, 'createdAt');
   const checkpoint = requiredString(object.checkpoint, 'checkpoint');
+  const category = optionalString(object.category, 'category');
+  if (category !== undefined) validateLanguageText(category, language, 'category');
   const budget = normalizeBudget(object.budget, options);
   const userEvidence = boundedStrings(object.userEvidence, 'userEvidence', 8, true);
   const evidence = asArray(object.evidence, 'evidence');
@@ -100,6 +102,10 @@ export function validateMemoryReviewPacket(
     }
     const evidenceText = optionalString(item.text, `evidence[${index}].text`);
     if (evidenceText !== undefined) validateSafeText(evidenceText, `evidence[${index}].text`);
+    const evidenceCategory = optionalString(item.category, `evidence[${index}].category`);
+    if (evidenceCategory !== undefined)
+      validateLanguageText(evidenceCategory, language, `evidence[${index}].category`);
+    const evidenceArrays = optionalEvidenceArrays(item, language, index);
     return {
       key,
       scope,
@@ -112,6 +118,8 @@ export function validateMemoryReviewPacket(
       success: item.success,
       observedAt,
       ...(evidenceText === undefined ? {} : { text: evidenceText }),
+      ...(evidenceCategory === undefined ? {} : { category: evidenceCategory }),
+      ...evidenceArrays,
     };
   });
   const evidenceKeys = new Set(normalizedEvidence.map((entry) => entry.key));
@@ -139,8 +147,12 @@ export function validateMemoryReviewPacket(
     }
     const category = requiredString(item.category, `memories[${index}].category`);
     const text = requiredString(item.text, `memories[${index}].text`);
+    const title = optionalString(item.title, `memories[${index}].title`);
+    const reason = optionalString(item.reason, `memories[${index}].reason`);
     validateSafeText(category, `memories[${index}].category`);
     validateSafeText(text, `memories[${index}].text`);
+    if (title !== undefined) validateLanguageText(title, language, `memories[${index}].title`);
+    if (reason !== undefined) validateLanguageText(reason, language, `memories[${index}].reason`);
     const kind: MemoryKind =
       item.kind === 'explicit' || item.kind === 'inferred' ? item.kind : invalid('kind');
     return {
@@ -150,6 +162,8 @@ export function validateMemoryReviewPacket(
       ...(memoryProjectKey === undefined ? {} : { projectKey: memoryProjectKey }),
       category,
       text,
+      ...(title === undefined ? {} : { title }),
+      ...(reason === undefined ? {} : { reason }),
       kind,
       active: item.active === true,
     };
@@ -170,6 +184,7 @@ export function validateMemoryReviewPacket(
     changeId,
     createdAt,
     checkpoint,
+    ...(category === undefined ? {} : { category }),
     userEvidence,
     evidence: normalizedEvidence,
     memories: normalizedMemories,
@@ -227,6 +242,8 @@ export function validateMemoryReviewActions(
     }
     const reason = optionalString(action.reason, `actions[${index}].reason`);
     if (reason !== undefined) validateLanguageText(reason, language, `actions[${index}].reason`);
+    const title = optionalString(action.title, `actions[${index}].title`);
+    if (title !== undefined) validateLanguageText(title, language, `actions[${index}].title`);
     if (kind === 'skip') {
       if (reason === undefined) throw new Error(`actions[${index}] skip requires a reason`);
       if (scope !== undefined) actionScopes.add(scope);
@@ -254,6 +271,7 @@ export function validateMemoryReviewActions(
         targetId,
         evidenceKeys: actionEvidence,
         ...(reason === undefined ? {} : { reason }),
+        ...(title === undefined ? {} : { title }),
       };
     }
     if (kind === 'create') {
@@ -274,6 +292,7 @@ export function validateMemoryReviewActions(
         text,
         evidenceKeys: actionEvidence,
         ...(reason === undefined ? {} : { reason }),
+        ...(title === undefined ? {} : { title }),
         ...optionalArrays(action, language, index),
       };
     }
@@ -311,6 +330,7 @@ export function validateMemoryReviewActions(
       ...(category === undefined ? {} : { category }),
       evidenceKeys: actionEvidence,
       ...(reason === undefined ? {} : { reason }),
+      ...(title === undefined ? {} : { title }),
       ...optionalArrays(action, language, index),
     };
   });
@@ -387,6 +407,37 @@ function optionalArrays(
         validateLanguageText(entry, language, `actions[${actionIndex}].tags[${index}]`);
       } else {
         validateSafeText(entry, name);
+      }
+    });
+    result[name] = values;
+  }
+  return result;
+}
+
+function optionalEvidenceArrays(
+  value: Record<string, unknown>,
+  language: MemoryLanguage,
+  evidenceIndex: number,
+): {
+  tags?: string[];
+  pathPatterns?: string[];
+  taskTypes?: string[];
+  operations?: string[];
+} {
+  const result: {
+    tags?: string[];
+    pathPatterns?: string[];
+    taskTypes?: string[];
+    operations?: string[];
+  } = {};
+  for (const name of ['tags', 'pathPatterns', 'taskTypes', 'operations'] as const) {
+    if (value[name] === undefined) continue;
+    const values = boundedStrings(value[name], `evidence[${evidenceIndex}].${name}`, 16, false);
+    values.forEach((entry, index) => {
+      if (name === 'tags') {
+        validateLanguageText(entry, language, `evidence[${evidenceIndex}].${name}[${index}]`);
+      } else {
+        validateSafeText(entry, `evidence[${evidenceIndex}].${name}[${index}]`);
       }
     });
     result[name] = values;

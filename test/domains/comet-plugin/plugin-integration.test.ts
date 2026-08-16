@@ -210,6 +210,26 @@ describe('Comet plugin integration bridge', () => {
     });
   });
 
+  test('routes lifecycle checkpoints through semantic review and keeps command summaries out', async () => {
+    await withBridge(async (bridge) => {
+      for (const changeId of ['checkpoint-noise-1', 'checkpoint-noise-2']) {
+        await bridge.dispatchLifecycle({
+          name: 'task.completed',
+          workflow: 'native',
+          changeId,
+          success: true,
+          category: '工作流检查点',
+          text: '完成命令检查点',
+          candidateKey: 'native:build',
+          operations: ['build'],
+        });
+      }
+
+      expect((await bridge.retrieve({ projectKey: 'demo-project' })).records).toHaveLength(0);
+      expect((await bridge.manage({ projectKey: 'demo-project' })).records).toHaveLength(0);
+    });
+  });
+
   test('consumes verification and review lifecycle events as memory observations', async () => {
     await withBridge(async (bridge) => {
       for (const [name, changeId] of [

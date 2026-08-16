@@ -18,6 +18,8 @@ export interface MemoryInput {
   readonly scope: MemoryScope;
   readonly projectKey?: string;
   readonly language?: MemoryLanguage;
+  readonly title?: string;
+  readonly reason?: string;
   readonly category: string;
   readonly text: string;
   readonly tags?: readonly string[];
@@ -31,6 +33,8 @@ export interface MemoryRecord {
   readonly id: string;
   readonly scope: MemoryScope;
   readonly projectKey?: string;
+  readonly title?: string;
+  readonly reason?: string;
   readonly category: string;
   readonly text: string;
   readonly tags: readonly string[];
@@ -47,6 +51,8 @@ export interface MemoryRecord {
 }
 
 export interface MemoryCorrection {
+  readonly title?: string;
+  readonly reason?: string;
   readonly text?: string;
   readonly category?: string;
   readonly tags?: readonly string[];
@@ -60,6 +66,8 @@ export interface MemoryObservation {
   readonly projectKey?: string;
   readonly category: string;
   readonly text: string;
+  readonly title?: string;
+  readonly reason?: string;
   readonly tags?: readonly string[];
   readonly pathPatterns?: readonly string[];
   readonly taskTypes?: readonly string[];
@@ -108,6 +116,8 @@ export interface MemoryManagementRecord {
   readonly id: string;
   readonly scope: MemoryScope;
   readonly projectKey?: string;
+  readonly title?: string;
+  readonly reason?: string;
   readonly category: string;
   readonly text: string;
   readonly tags: readonly string[];
@@ -207,6 +217,11 @@ export interface MemoryReviewEvidence {
   readonly success: boolean;
   readonly observedAt: string;
   readonly text?: string;
+  readonly category?: string;
+  readonly tags?: readonly string[];
+  readonly pathPatterns?: readonly string[];
+  readonly taskTypes?: readonly string[];
+  readonly operations?: readonly string[];
 }
 
 export interface MemoryReviewMemorySummary {
@@ -214,6 +229,8 @@ export interface MemoryReviewMemorySummary {
   readonly scope: MemoryScope;
   readonly projectIdentity?: string;
   readonly projectKey?: string;
+  readonly title?: string;
+  readonly reason?: string;
   readonly category: string;
   readonly text: string;
   readonly kind: MemoryKind;
@@ -229,6 +246,7 @@ export interface MemoryReviewPacket {
   readonly changeId: string;
   readonly createdAt: string;
   readonly checkpoint: string;
+  readonly category?: string;
   readonly userEvidence: readonly string[];
   readonly evidence: readonly MemoryReviewEvidence[];
   readonly memories: readonly MemoryReviewMemorySummary[];
@@ -243,6 +261,7 @@ export interface MemoryReviewActionBase {
   readonly candidateKey?: string;
   readonly evidenceKeys?: readonly string[];
   readonly reason?: string;
+  readonly title?: string;
 }
 
 export interface MemoryReviewCreateAction extends MemoryReviewActionBase {
@@ -286,6 +305,15 @@ export type MemoryReviewAction =
 export interface MemoryReviewActionSet {
   readonly schema: 'comet.memory.actions.v1';
   readonly actions: readonly MemoryReviewAction[];
+}
+
+export interface MemoryReviewResult {
+  readonly action: MemoryReviewActionKind;
+  readonly persisted: boolean;
+  readonly reason?: string;
+  readonly notification?: string;
+  readonly observation?: MemoryObservationResult;
+  readonly results?: readonly MemoryReviewResult[];
 }
 
 export interface MemorySettings {
@@ -358,6 +386,10 @@ export interface PersonalMemoryServiceLike {
   remove(id: string, options?: { readonly permanent?: boolean }): Promise<void>;
   rollback(id: string): Promise<MemoryRecord>;
   observe(observation: MemoryObservation): Promise<MemoryObservationResult>;
+  reviewAndApply(
+    packet: MemoryReviewPacket,
+    actions: MemoryReviewActionSet,
+  ): Promise<MemoryReviewResult>;
   retrieve(query: MemoryQuery): Promise<MemoryRetrieval>;
   manage(query?: MemoryQuery): Promise<MemoryManagementView>;
   status(): Promise<PersonalMemoryStatus>;

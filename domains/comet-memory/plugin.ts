@@ -8,9 +8,11 @@ import type {
   MemoryInput,
   MemoryQuery,
   MemoryObservation,
+  MemoryReviewPacket,
   PersonalMemoryPluginOptions,
   PersonalMemoryServiceLike,
 } from './types.js';
+import { reviewMemoryPacket } from './semantic-review.js';
 
 export const PERSONAL_MEMORY_PLUGIN_ID = 'comet.personal-memory';
 
@@ -67,7 +69,15 @@ async function createModule(
     },
     onEvent: async (event) => {
       const observation = observationFromEvent(event);
-      if (observation !== null) await service.observe(observation);
+      if (observation !== null) {
+        const packet = await reviewPacketFromObservation(
+          service,
+          observation,
+          event.name,
+          options.language,
+        );
+        await service.reviewAndApply(packet, reviewMemoryPacket(packet));
+      }
     },
     provideContext: async (request) => {
       const retrieval = await service.retrieve({
@@ -78,7 +88,8 @@ async function createModule(
       if (retrieval.disabled || retrieval.records.length === 0) return null;
       return { text: retrieval.text, records: retrieval.records };
     },
-    invoke: async (capability, input) => invokeCapability(service, capability, input),
+    invoke: async (capability, input) =>
+      invokeCapability(service, capability, input, options.language),
   };
 }
 
@@ -86,6 +97,7 @@ async function invokeCapability(
   service: PersonalMemoryServiceLike,
   capability: string,
   input: unknown,
+  language: 'zh-CN' | 'en' | undefined,
 ): Promise<unknown> {
   switch (capability) {
     case 'remember':
@@ -104,8 +116,16 @@ async function invokeCapability(
       const value = asObject(input, 'rollback');
       return service.rollback(asString(value.id, 'rollback.id'));
     }
-    case 'observe':
-      return service.observe(asRecord<MemoryObservation>(input, 'observe'));
+    case 'observe': {
+      const observation = asRecord<MemoryObservation>(input, 'observe');
+      const packet = await reviewPacketFromObservation(
+        service,
+        observation,
+        'memory.observe',
+        language,
+      );
+      return service.reviewAndApply(packet, reviewMemoryPacket(packet));
+    }
     case 'retrieve':
       return service.retrieve(asRecord(input, 'retrieve') as never);
     case 'manage':
@@ -165,6 +185,8 @@ function observationFromEvent(event: PluginEvent): MemoryObservation | null {
       (typeof payload.projectKey === 'string' ? payload.projectKey : undefined),
     category: payload.category,
     text: payload.text,
+    title: typeof payload.title === 'string' ? payload.title : undefined,
+    reason: typeof payload.reason === 'string' ? payload.reason : undefined,
     tags: strings(payload.tags),
     pathPatterns: strings(payload.pathPatterns),
     taskTypes: strings(payload.taskTypes),
@@ -185,6 +207,71 @@ function observationFromEvent(event: PluginEvent): MemoryObservation | null {
         event.source.projectId ??
         (typeof payload.projectKey === 'string' ? payload.projectKey : undefined),
     },
+  };
+}
+
+async function reviewPacketFromObservation(
+  service: PersonalMemoryServiceLike,
+  observation: MemoryObservation,
+  checkpoint: string,
+  defaultLanguage: 'zh-CN' | 'en' | undefined,
+): Promise<MemoryReviewPacket> {
+  const projectIdentity = observation.projectIdentity ?? observation.projectKey ?? 'comet-project';
+  const observedAt = observation.observedAt ?? new Date().toISOString();
+  const candidateKey = observation.candidateKey;
+  const evidenceKey = [observation.workflow, observation.changeId, candidateKey ?? 'default'].join(
+    ':',
+  );
+  const management = await service.manage(
+    observation.scope === 'project' && observation.projectKey !== undefined
+      ? { scope: 'project', projectKey: observation.projectKey }
+      : { scope: 'global' },
+  );
+  return {
+    schema: 'comet.memory.review.v1',
+    language: observation.language ?? defaultLanguage ?? 'zh-CN',
+    projectIdentity,
+    ...(observation.scope === 'project' && observation.projectKey !== undefined
+      ? { projectKey: observation.projectKey }
+      : {}),
+    workflow: observation.workflow,
+    changeId: observation.changeId,
+    createdAt: observedAt,
+    checkpoint,
+    category: observation.category,
+    userEvidence: [],
+    evidence: [
+      {
+        key: evidenceKey,
+        scope: observation.scope,
+        projectIdentity,
+        ...(observation.scope === 'project' && observation.projectKey !== undefined
+          ? { projectKey: observation.projectKey }
+          : {}),
+        ...(candidateKey === undefined ? {} : { candidateKey }),
+        changeId: observation.changeId,
+        success: observation.success,
+        observedAt,
+        text: observation.text,
+        category: observation.category,
+        tags: observation.tags,
+        pathPatterns: observation.pathPatterns,
+        taskTypes: observation.taskTypes,
+        operations: observation.operations,
+      },
+    ],
+    memories: management.records.slice(0, 16).map((record) => ({
+      id: record.id,
+      scope: record.scope,
+      ...(record.projectKey === undefined ? {} : { projectKey: record.projectKey }),
+      ...(record.title === undefined ? {} : { title: record.title }),
+      ...(record.reason === undefined ? {} : { reason: record.reason }),
+      category: record.category,
+      text: record.text,
+      kind: record.kind,
+      active: record.status === 'active',
+    })),
+    budget: { maxActions: 4, maxEvidence: 8, maxBytes: 4096 },
   };
 }
 

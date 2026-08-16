@@ -11,6 +11,9 @@ import type {
   MemoryObservation,
   MemoryObservationResult,
   MemoryQuery,
+  MemoryReviewActionSet,
+  MemoryReviewPacket,
+  MemoryReviewResult,
   MemoryRecord,
   MemoryRepository,
   MemoryRetrieval,
@@ -25,7 +28,12 @@ import type {
   PersonalMemoryStatus,
 } from './types.js';
 import { hashMemoryText, memoryFilePath } from './repository.js';
-import { validateMemoryLanguageText, validateSafeMemoryText } from './review-contract.js';
+import {
+  validateMemoryLanguageText,
+  validateMemoryReviewActions,
+  validateMemoryReviewPacket,
+  validateSafeMemoryText,
+} from './review-contract.js';
 
 const DEFAULT_MAX_ENTRIES = 12;
 const DEFAULT_MAX_BYTES = 8 * 1024;
@@ -404,6 +412,119 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
     });
   }
 
+  public async reviewAndApply(
+    packet: MemoryReviewPacket,
+    actions: MemoryReviewActionSet,
+  ): Promise<MemoryReviewResult> {
+    // Validate the complete packet and action envelope before touching the repository.
+    const validatedPacket = validateMemoryReviewPacket(packet);
+    const validatedActions = validateMemoryReviewActions(validatedPacket, actions);
+    const results: MemoryReviewResult[] = [];
+    for (const action of validatedActions.actions) {
+      results.push(await this.applyReviewAction(validatedPacket, action));
+    }
+    const first = results[0];
+    if (first === undefined) {
+      return { action: 'skip', persisted: false };
+    }
+    if (results.length === 1) return first;
+    return {
+      action: first.action,
+      persisted: results.some((result) => result.persisted),
+      ...(results.find((result) => result.reason !== undefined)?.reason === undefined
+        ? {}
+        : { reason: results.find((result) => result.reason !== undefined)?.reason }),
+      ...(results.find((result) => result.notification !== undefined)?.notification === undefined
+        ? {}
+        : {
+            notification: results.find((result) => result.notification !== undefined)?.notification,
+          }),
+      results,
+    };
+  }
+
+  private async applyReviewAction(
+    packet: MemoryReviewPacket,
+    action: MemoryReviewActionSet['actions'][number],
+  ): Promise<MemoryReviewResult> {
+    if (action.action === 'skip') {
+      return {
+        action: 'skip',
+        persisted: false,
+        ...(action.reason === undefined ? {} : { reason: action.reason }),
+      };
+    }
+    if (action.action === 'create') {
+      const observation = await this.observe({
+        scope: action.scope,
+        ...(action.projectKey === undefined ? {} : { projectKey: action.projectKey }),
+        category: action.category,
+        text: action.text,
+        title: action.title,
+        reason: action.reason,
+        tags: action.tags,
+        pathPatterns: action.pathPatterns,
+        taskTypes: action.taskTypes,
+        operations: action.operations,
+        language: action.language,
+        projectIdentity: packet.projectIdentity,
+        candidateKey: action.candidateKey,
+        observedAt: packet.createdAt,
+        workflow: packet.workflow,
+        changeId: packet.changeId,
+        success: true,
+        source: {
+          kind: 'review',
+          label: packet.checkpoint,
+          workflow: packet.workflow,
+          changeId: packet.changeId,
+          projectKey: action.projectKey,
+        },
+      });
+      return {
+        action: 'create',
+        persisted:
+          !observation.ignored &&
+          (observation.deduplicated || observation.candidate || observation.activated),
+        ...(observation.activated
+          ? {
+              notification:
+                action.language === 'en'
+                  ? 'A reusable workflow preference is now available.'
+                  : '已形成一条可复用的协作偏好。',
+            }
+          : {}),
+        observation,
+      };
+    }
+
+    if (action.action === 'update') {
+      await this.correct(action.targetId, {
+        ...(action.text === undefined ? {} : { text: action.text }),
+        ...(action.category === undefined ? {} : { category: action.category }),
+        ...(action.tags === undefined ? {} : { tags: action.tags }),
+        ...(action.pathPatterns === undefined ? {} : { pathPatterns: action.pathPatterns }),
+        ...(action.taskTypes === undefined ? {} : { taskTypes: action.taskTypes }),
+        ...(action.operations === undefined ? {} : { operations: action.operations }),
+        ...(action.title === undefined ? {} : { title: action.title }),
+        ...(action.reason === undefined ? {} : { reason: action.reason }),
+      });
+      return {
+        action: 'update',
+        persisted: true,
+        ...(action.reason === undefined ? {} : { reason: action.reason }),
+        observation: undefined,
+      };
+    }
+
+    await this.remove(action.targetId);
+    return {
+      action: 'forget',
+      persisted: true,
+      ...(action.reason === undefined ? {} : { reason: action.reason }),
+    };
+  }
+
   public async retrieve(query: MemoryQuery): Promise<MemoryRetrieval> {
     return this.repository.withLock(async () => {
       const state = await this.loadAndReconcile(
@@ -707,6 +828,8 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
     const nextInput: MemoryInput = {
       scope: input.scope,
       projectKey: input.projectKey,
+      title: input.title ?? current.title,
+      reason: input.reason ?? current.reason,
       category: input.category ?? current.category,
       text: input.text ?? current.text,
       tags: input.tags ?? current.tags,
@@ -719,6 +842,8 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
     return {
       ...current,
       identity: memoryIdentity(nextInput),
+      ...(nextInput.title === undefined ? {} : { title: nextInput.title }),
+      ...(nextInput.reason === undefined ? {} : { reason: nextInput.reason }),
       category: nextInput.category,
       text: nextInput.text,
       tags: normalizeArray(nextInput.tags),
@@ -829,6 +954,8 @@ function projectManagementRecord(
     id: record.id,
     scope: record.scope,
     ...(record.projectKey === undefined ? {} : { projectKey: record.projectKey }),
+    ...(record.title === undefined ? {} : { title: record.title }),
+    ...(record.reason === undefined ? {} : { reason: record.reason }),
     category: record.category,
     text: record.text,
     tags: [...record.tags],
@@ -873,6 +1000,8 @@ function createRecord(
     identity,
     scope: input.scope,
     ...(input.projectKey === undefined ? {} : { projectKey: input.projectKey }),
+    ...(input.title === undefined ? {} : { title: input.title.trim() }),
+    ...(input.reason === undefined ? {} : { reason: input.reason.trim() }),
     category: input.category.trim(),
     text: input.text.trim(),
     tags: normalizeArray(input.tags),
@@ -979,6 +1108,8 @@ function observationInput(observation: MemoryObservation, source: MemorySource):
       ? { projectKey: observation.projectKey }
       : {}),
     ...(observation.language === undefined ? {} : { language: observation.language }),
+    ...(observation.title === undefined ? {} : { title: observation.title }),
+    ...(observation.reason === undefined ? {} : { reason: observation.reason }),
     category: observation.category,
     text: observation.text,
     tags: observation.tags,
@@ -1386,6 +1517,15 @@ function validateInput(input: MemoryInput): void {
     throw new Error('Project key is invalid');
   if (input.category.trim().length === 0 || input.text.trim().length === 0)
     throw new Error('Memory category and text are required');
+  for (const [field, value] of [
+    ['title', input.title],
+    ['reason', input.reason],
+  ] as const) {
+    if (value === undefined) continue;
+    if (value.trim().length === 0) throw new Error(`Memory ${field} must not be empty`);
+    validateSafeMemoryText(value);
+    if (input.language !== undefined) validateMemoryLanguageText(value, input.language, field);
+  }
 }
 
 function validateObservation(observation: MemoryObservation): void {
