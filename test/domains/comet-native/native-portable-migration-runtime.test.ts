@@ -14,7 +14,10 @@ import {
   nativeProjectPaths,
 } from '../../../domains/comet-native/native-paths.js';
 import { withNativeMutationLock } from '../../../domains/comet-native/native-mutation-lock.js';
-import { migrateNativeLegacyChangeToPortable } from '../../../domains/comet-native/native-portable-migration-runtime.js';
+import {
+  hasIncompleteNativePortableMigration,
+  migrateNativeLegacyChangeToPortable,
+} from '../../../domains/comet-native/native-portable-migration-runtime.js';
 import { createNativePortableChange } from '../../../domains/comet-native/native-portable-runtime.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
 import { writeNativeWorkspaceIdentity } from '../../../domains/comet-native/native-workspace.js';
@@ -69,6 +72,28 @@ describe('Native portable migration Runtime', () => {
     await fs.writeFile(path.join(changeDir, 'verification.md'), 'legacy verification: passed');
     return paths;
   }
+
+  async function portableChange(): Promise<NativeProjectPaths> {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-portable-report-'));
+    roots.push(root);
+    await writeProjectConfig(root, defaultProjectConfig('docs', 'en'));
+    const paths = await nativeProjectPaths(root, 'docs');
+    await ensureNativeDirectories(paths);
+    await createNativePortableChange({ paths, name: 'portable-change', language: 'en' });
+    return paths;
+  }
+
+  it('does not treat a portable verification report as incomplete migration', async () => {
+    const paths = await portableChange();
+    await fs.writeFile(
+      path.join(paths.changesDir, 'portable-change', 'verification.md'),
+      '# Verification\n\nPassed\n',
+    );
+
+    await expect(hasIncompleteNativePortableMigration(paths, 'portable-change')).resolves.toBe(
+      false,
+    );
+  });
 
   it('commits portable YAML before cleaning legacy Runtime and is idempotent', async () => {
     const paths = await legacyChange();

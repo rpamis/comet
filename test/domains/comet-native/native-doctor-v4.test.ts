@@ -89,6 +89,27 @@ describe('Native portable Doctor', () => {
     });
   });
 
+  it('keeps a generated portable verification report out of migration findings', async () => {
+    const name = 'verified-portable';
+    await createPortable(name);
+    const report = path.join(paths.changesDir, name, 'verification.md');
+    await fs.writeFile(report, '# Verification\n\nPassed\n');
+
+    await expect(nativeDoctorCommand([name], projectRoot)).resolves.toMatchObject({
+      exitCode: 0,
+      data: { healthy: true, workflow: 'native-portable', change: name },
+    });
+    await expect(nativeDoctorCommand([name, '--repair'], projectRoot)).resolves.toMatchObject({
+      exitCode: 0,
+      data: { healthy: true, repaired: true },
+    });
+    await expect(fs.stat(report)).resolves.toBeTruthy();
+    await expect(nativeDoctorCommand([], projectRoot)).resolves.toMatchObject({
+      exitCode: 0,
+      data: { healthy: true, workflow: 'native-portable', findings: [] },
+    });
+  });
+
   it('merges portable statuses with legacy migration findings in a mixed project', async () => {
     await createPortable('portable-change');
     await createLegacy('legacy-change');

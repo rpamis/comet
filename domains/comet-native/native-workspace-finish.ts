@@ -77,6 +77,27 @@ function pathCovered(candidate: string, allowed: readonly string[]): boolean {
   return allowed.some((entry) => candidate === entry || candidate.startsWith(`${entry}/`));
 }
 
+function gitPathList(output: string): string[] {
+  return output.split('\0').filter(Boolean);
+}
+
+function listTrackedPaths(projectRoot: string, candidate: string): string[] {
+  return gitPathList(runGitCommand(projectRoot, ['ls-files', '-z', '--', candidate]));
+}
+
+function listUntrackedNonIgnoredPaths(projectRoot: string, candidate: string): string[] {
+  return gitPathList(
+    runGitCommand(projectRoot, [
+      'ls-files',
+      '--others',
+      '--exclude-standard',
+      '-z',
+      '--',
+      candidate,
+    ]),
+  );
+}
+
 function assertGitIdentity(projectRoot: string): void {
   try {
     if (
@@ -309,14 +330,23 @@ export async function finishArchivedNativeWorkspace(options: {
         `Native Archive produced or encountered paths outside the authorized finish scope: ${unexpected.slice(0, 20).join(', ')}${unexpected.length > 20 ? ', ...' : ''}`,
       );
     }
-    const stageable: string[] = [];
+    const trackedCandidates: string[] = [];
+    const untrackedPaths = new Set<string>();
     for (const candidate of allowedPaths) {
       const absolute = path.resolve(options.paths.projectRoot, ...candidate.split('/'));
-      const tracked = runGitCommand(options.plan.changeRoot, ['ls-files', '--', candidate]) !== '';
-      if ((await pathExists(absolute)) || tracked) stageable.push(candidate);
+      const tracked = listTrackedPaths(options.plan.changeRoot, candidate);
+      if (tracked.length > 0) trackedCandidates.push(candidate);
+      if (await pathExists(absolute)) {
+        for (const file of listUntrackedNonIgnoredPaths(options.plan.changeRoot, candidate)) {
+          untrackedPaths.add(file);
+        }
+      }
     }
-    if (stageable.length > 0) {
-      runGitCommand(options.plan.changeRoot, ['add', '-A', '--', ...stageable]);
+    if (trackedCandidates.length > 0) {
+      runGitCommand(options.plan.changeRoot, ['add', '-u', '--', ...trackedCandidates]);
+    }
+    if (untrackedPaths.size > 0) {
+      runGitCommand(options.plan.changeRoot, ['add', '--', ...untrackedPaths]);
     }
     const staged = runGitCommand(options.plan.changeRoot, [
       'diff',
