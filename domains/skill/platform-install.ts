@@ -107,7 +107,7 @@ function getManagedSkillPaths(manifest: Manifest): string[] {
   return [...new Set([...manifest.skills, ...(manifest.internalSkills ?? [])])];
 }
 
-function isManagedSkillPathForSelection(
+export function isManagedSkillPathForSelection(
   skillPath: string,
   workflowSelection: InitWorkflowSelection,
 ): boolean {
@@ -116,7 +116,8 @@ function isManagedSkillPathForSelection(
   return (
     NATIVE_SHARED_SKILL_PATHS.has(skillPath) ||
     skillPath.startsWith('comet-native/') ||
-    skillPath.startsWith('comet-any/')
+    skillPath.startsWith('comet-any/') ||
+    skillPath.startsWith('comet-memory/')
   );
 }
 

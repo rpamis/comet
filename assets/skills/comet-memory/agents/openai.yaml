@@ -1,0 +1,5 @@
+interface:
+  display_name: "Comet Semantic Memory Review"
+  short_description: "Review comet.memory.review.v1 and return fixed actions"
+policy:
+  allow_implicit_invocation: false

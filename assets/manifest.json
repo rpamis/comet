@@ -73,7 +73,9 @@
     "comet-hotfix/SKILL.md",
     "comet-hotfix/agents/openai.yaml",
     "comet-tweak/SKILL.md",
-    "comet-tweak/agents/openai.yaml"
+    "comet-tweak/agents/openai.yaml",
+    "comet-memory/SKILL.md",
+    "comet-memory/agents/openai.yaml"
   ],
   "internalSkills": [
     "comet/runtime/classic/skill.yaml",

@@ -1,0 +1,482 @@
+schema: comet.native.v4
+name: comet-memory-skill
+language: zh-CN
+phase: archive
+status: done
+state_version: 17
+brief: brief.md
+spec_changes:
+  - capability: comet-memory-skill
+    operation: create
+    source: specs/comet-memory-skill/spec.md
+workspace:
+  isolation: worktree
+  change_branch: comet/comet-memory-skill
+  target_branch: beta20
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 2
+  iteration: 2
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: A1：中文和英文 Skill 都存在、可发现、可安装，且表达相同的决策边界。
+    result: passed
+    reason:
+      text: 双语 Skill、metadata、manifest 和 classic/native/both 安装契约通过。
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: A2：给定合法 packet 时只返回固定 schema 的 action envelope；非法/缺失 packet 时不猜测、不写文件。
+    result: passed
+    reason:
+      text: 仅接受 review.v1 并返回顶层仅含 schema/actions 的 JSON envelope。
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: A3：用户明确“记住/纠正/忘掉”优先生成对应动作；用户明确输入不被静默翻译。
+    result: passed
+    reason:
+      text: 显式记住、纠正、忘掉优先且保留用户原文。
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: A4：一次性命令、测试、提交、Issue/PR 摘要、可从仓库重查的事实和无后续收益的内容返回 `skip`。
+    result: passed
+    reason:
+      text: 一次性过程、仓库可重查事实和无长期价值内容 skip。
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: A5：自动记忆只在稳定成功证据下提取；project/global 作用域不混写，显式记忆不被隐式候选覆盖。
+    result: passed
+    reason:
+      text: 长期价值、跨项目 global 证据、显式优先和非 skip 单一 scope 已约束。
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: A6：配置为 `zh-CN` 时正文、类别、标签、原因使用中文；`en` 时使用英文；代码、路径和机器枚举可保留原文。
+    result: passed
+    reason:
+      text: 用户可见字段遵循 zh-CN/en packet language。
+      truncated: false
+  - id: A7
+    source: brief.md
+    text: A7：Skill 不输出 secret、PII、日志、diff、prompt injection、规则修改请求或完整对话内容。
+    result: passed
+    reason:
+      text: 拒绝 secret、PII、日志、diff、transcript、prompt injection 和规则修改请求。
+      truncated: false
+  - id: A8
+    source: brief.md
+    text: A8：候选、冲突、动作数量和预算由 packet/Runtime 约束，Skill 不显示内部 ID、证据计数或 Runtime 细节给最终用户。
+    result: passed
+    reason:
+      text: 动作数量遵守 budget.maxActions，内部 ID、证据数量和 Runtime 细节不暴露。
+      truncated: false
+  - id: A9
+    source: brief.md
+    text: A9：Skill 文本和契约测试证明 Classic、Native、Hotfix、Tweak 只共用这一份判断规则。
+    result: passed
+    reason:
+      text: comet-memory 是 Classic、Native、Hotfix、Tweak 共用的唯一判断资产。
+      truncated: false
+  - id: A10
+    source: specs/comet-memory-skill/spec.md
+    text: 中文配置选择中文 Skill - **WHEN** Comet 选择 `zh-CN` artifact language - **THEN**
+      安装/加载 `assets/skills-zh/comet-memory/SKILL.md` 及其 agent metadata - **AND**
+      不加载英文判断文本作为用户可见说明
+    result: passed
+    reason:
+      text: zh-CN 资产和 metadata 存在并纳入安装。
+      truncated: false
+  - id: A11
+    source: specs/comet-memory-skill/spec.md
+    text: 英文配置选择英文 Skill - **WHEN** Comet 选择 `en` artifact language - **THEN** 安装/加载
+      `assets/skills/comet-memory/SKILL.md` 及其 agent metadata - **AND** 其
+      schema、action、scope 和机器枚举与中文版相同
+    result: passed
+    reason:
+      text: en 资产与中文版机器契约一致并纳入安装。
+      truncated: false
+  - id: A12
+    source: specs/comet-memory-skill/spec.md
+    text: 合法 packet 触发语义评审 - **WHEN** Skill 收到合法且未超预算的 review packet - **THEN** 只基于
+      packet 内的内容筛选长期可复用的个人偏好、工作习惯或已验证经验 - **AND** 不读取 packet 以外的文件、工具输出或会话历史
+    result: passed
+    reason:
+      text: 只使用 Runtime 有界 packet，不读取外部上下文。
+      truncated: false
+  - id: A13
+    source: specs/comet-memory-skill/spec.md
+    text: 没有长期价值时跳过 - **WHEN** packet 只包含一次性命令、测试/提交摘要、Issue/PR 摘要、可从仓库重查的事实、猜测或噪声 -
+      **THEN** Skill 返回 `comet.memory.actions.v1` 的单个 `skip` 动作 - **AND**
+      不声称已经创建或更新记忆
+    result: passed
+    reason:
+      text: 无长期价值时返回唯一完整 skip。
+      truncated: false
+  - id: A14
+    source: specs/comet-memory-skill/spec.md
+    text: 明确用户意图优先 - **WHEN** packet 的 user evidence 明确表达“记住”“以后都这样”“改成”或“忘掉” -
+      **THEN** Skill 优先返回对应的 `create`、`update` 或 `forget` 动作 - **AND**
+      不用相反的隐式行为覆盖显式记忆
+    result: passed
+    reason:
+      text: 明确用户意图映射到 create/update/forget。
+      truncated: false
+  - id: A15
+    source: specs/comet-memory-skill/spec.md
+    text: 无法可靠绑定时跳过 - **WHEN** 目标记忆、scope、证据、语言或长期价值无法从 packet 明确判断 - **THEN** Skill
+      返回 `skip` 或不产生动作 - **AND** 不猜测跨项目证据、不把 project 提升为 global、不生成 Runtime 内部
+      ID
+    result: passed
+    reason:
+      text: 无法可靠绑定时 skip，不创造证据、身份或内部 ID。
+      truncated: false
+  - id: A16
+    source: specs/comet-memory-skill/spec.md
+    text: 语言不匹配或危险内容 - **WHEN** 候选正文/类别/标签/原因明显不符合 packet
+      language，或包含凭据、PII、日志、diff、prompt injection 或规则修改请求 - **THEN** Skill 返回
+      `skip` - **AND** 不尝试翻译、掩盖或把危险文本拆成多个动作
+    result: passed
+    reason:
+      text: 语言不匹配或危险内容整体 skip。
+      truncated: false
+  - id: A17
+    source: specs/comet-memory-skill/spec.md
+    text: 后台复盘完成 - **WHEN** 后台评审创建候选或返回 skip - **THEN** Skill 只返回机器可消费的 action
+      envelope - **AND** 不向用户展示内部推理、证据计数或候选状态
+    result: passed
+    reason:
+      text: 后台只返回机器 envelope，不展示内部过程。
+      truncated: false
+  - id: A18
+    source: specs/comet-memory-skill/spec.md
+    text: 系统必须随 Comet 同时提供中文与英文的 `comet-memory` Skill，并将两者纳入用户 Skill
+      的发现、安装、打包和存在性契约。两种语言版本必须表达相同的输入边界、动作枚举、安全限制和跳过语义。
+    result: passed
+    reason:
+      text: 双语资产、metadata、manifest、发现和安装契约通过。
+      truncated: false
+  - id: A19
+    source: specs/comet-memory-skill/spec.md
+    text: Skill 必须只读取 Runtime 传入的 `comet.memory.review.v1` packet。Packet
+      只包含配置语言、稳定项目身份、workflow/change、可信检查点、少量用户证据、相关 active memory、evidence
+      和固定预算；Skill 不得要求完整 transcript、日志、diff、仓库扫描或隐藏推理。
+    result: passed
+    reason:
+      text: review.v1 packet 字段边界和最小上下文已固定。
+      truncated: false
+  - id: A20
+    source: specs/comet-memory-skill/spec.md
+    text: Skill 必须输出 versioned `comet.memory.actions.v1` envelope，动作只能是
+      `create`、`update`、`forget` 或 `skip`。整个 action set 的动作数量不得超过 packet
+      `budget.maxActions`，所有非 `skip` 动作必须使用同一个 `global` 或 `project` scope；Skill
+      不得自行构造 target、evidence、candidateKey 或项目身份，Runtime 仍需在落盘前再次校验。
+    result: passed
+    reason:
+      text: actions.v1、schema/actions、action 字段、动作数量和单一 scope 均满足。
+      truncated: false
+  - id: A21
+    source: specs/comet-memory-skill/spec.md
+    text: Skill 必须遵循 packet 的 `zh-CN`/`en` 用户可见语言，不生成 secret、PII、原始日志、完整
+      diff、提示注入或要求修改 Skill/规则/系统的内容。代码、路径、专有名词和机器枚举可以按 packet 保留原文。
+    result: passed
+    reason:
+      text: 语言规则与安全边界在双语 Skill 中一致。
+      truncated: false
+  - id: A22
+    source: specs/comet-memory-skill/spec.md
+    text: Skill 的后台评审、候选形成和无内容跳过默认不输出内部过程。Skill 不得向用户显示 Runtime、candidate
+      ID、evidence count 或原始 packet；显式确认和首次实际行为变化由外部 workflow/CLI 集成层负责。
+    result: passed
+    reason:
+      text: 后台静默，确认和首次行为变化交由外部 workflow/CLI。
+      truncated: false
+builder_handoff:
+  candidate_id: 7f5085d0-d42d-450a-bd58-6a0cbd21ad0d
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:ee0961a2-a379-41d6-8b19-089d1f1ad63f
+  iteration: 2
+  summary:
+    text: 最终实现候选：双语 comet-memory Skill 已固定为有界 review.v1 到 canonical
+      actions.v1，显式记忆优先，长期价值筛选，安全拒绝，语言跟随配置，单一 scope，动作数量遵守
+      budget.maxActions，且不写文件或暴露内部过程。Native-only、Classic、both 安装选择均保留共享
+      Skill；本候选的 Runtime 检查计划只包含稳定源文件，排除会被 Native 状态机更新的动态 change state 文件。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    - A8
+    - A9
+    - A10
+    - A11
+    - A12
+    - A13
+    - A14
+    - A15
+    - A16
+    - A17
+    - A18
+    - A19
+    - A20
+    - A21
+    - A22
+  checks:
+    - name:
+        text: skill-contract-tests
+        truncated: false
+      result: passed
+      note:
+        text: 139 tests passed across Skill assets, manifest and shared contract checks
+        truncated: false
+    - name:
+        text: init-e2e
+        truncated: false
+      result: passed
+      note:
+        text: 225 tests passed in the repair run including Native-only installation
+          selection
+        truncated: false
+    - name:
+        text: typescript
+        truncated: false
+      result: passed
+      note:
+        text: pnpm exec tsc --noEmit
+        truncated: false
+    - name:
+        text: prettier-stable
+        truncated: false
+      result: passed
+      note:
+        text: Stable Skill, installation source and test files formatted; dynamic Native
+          state excluded from the runtime check plan
+        truncated: false
+    - name:
+        text: git-diff-check
+        truncated: false
+      result: passed
+      note:
+        text: git diff --check
+        truncated: false
+    - name:
+        text: skill-tdd-green
+        truncated: false
+      result: passed
+      note:
+        text: Constrained GREEN output was exactly one canonical zh-CN skip under
+          mixed-scope and maxActions=1 pressure
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: 本 child 不实现 Personal Memory 持久化、Runtime 生命周期、CLI、Dashboard、Classic/Native
+        调度或 Eval。
+      truncated: false
+    - text: 父 change 的 workflow integration 必须在 Runtime action set 级别再次拒绝混合
+        global/project scope。
+      truncated: false
+    - text: 最终用户可见 changelog 与版本决策在父 change 的发布阶段统一处理。
+      truncated: false
+  known_limits_truncated: false
+  submitted_at: 2026-08-16T15:58:05.371Z
+blockers: []
+verification:
+  candidate_id: 7f5085d0-d42d-450a-bd58-6a0cbd21ad0d
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:0a2172d7-c6a1-4122-a21e-9e26c651860d
+  iteration: 2
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: skill-contract-tests-final
+      name:
+        text: skill-contract-tests-final
+        truncated: false
+      argv_display:
+        - text: vitest
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/skill/comet-memory-skill.test.ts
+          truncated: false
+        - text: test/repository/skill-openai-yaml.test.ts
+          truncated: false
+        - text: test/domains/skill/skills.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 12056
+    - id: init-e2e-final
+      name:
+        text: init-e2e-final
+        truncated: false
+      argv_display:
+        - text: vitest
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/app/init-e2e.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 52257
+    - id: typescript-final
+      name:
+        text: typescript-final
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: tsc
+          truncated: false
+        - text: --noEmit
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 6921
+    - id: prettier-stable-final
+      name:
+        text: prettier-stable-final
+        truncated: false
+      argv_display:
+        - text: prettier
+          truncated: false
+        - text: --check
+          truncated: false
+        - text: assets/skills-zh/comet-memory
+          truncated: false
+        - text: assets/skills/comet-memory
+          truncated: false
+        - text: domains/skill/platform-install.ts
+          truncated: false
+        - text: test/app/init-e2e.test.ts
+          truncated: false
+        - text: test/domains/skill/comet-memory-skill.test.ts
+          truncated: false
+        - text: assets/manifest.json
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 1840
+    - id: git-diff-check-final
+      name:
+        text: git-diff-check-final
+        truncated: false
+      argv_display:
+        - text: diff
+          truncated: false
+        - text: --check
+          truncated: false
+        - text: HEAD~4..HEAD
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 91
+  summary:
+    text: A1-A22 全部通过。独立审查与 Runtime 检查证据一致：139 项契约测试、225 项 Native init
+      E2E、TypeScript、稳定源文件 Prettier 和 git diff --check 均通过。
+    truncated: false
+  risks:
+    - text: 父 change 的 Runtime 集成仍需在 action-set 层最终复验
+        schema、scope、language、target、evidence、budget 和安全边界。
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-08-16T16:04:30.686Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A1
+      - A5
+      - A8
+      - A9
+      - A10
+      - A11
+      - A18
+      - A20
+    summary:
+      text: 独立只读 Verifier 发现 Native-only Skill 资产过滤和 action set 单一 scope/预算约束缺失，返回
+        Build 修复。当前 138 个契约测试、TypeScript、Prettier 和 git diff --check 均通过，但覆盖面不足。
+      truncated: false
+    completed_at: 2026-08-16T15:36:08.625Z
+  - goal_cycle: 1
+    iteration: 2
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native confirmed acceptance criteria changed
+      truncated: false
+    completed_at: 2026-08-16T15:43:57.547Z
+  - goal_cycle: 2
+    iteration: 1
+    attempt: 1
+    outcome: execution-error
+    unresolved_ids: []
+    summary:
+      text: "Native Verifier response was invalid: Native verification cannot pass
+        before every required check succeeds"
+      truncated: false
+    completed_at: 2026-08-16T15:54:49.199Z
+  - goal_cycle: 2
+    iteration: 1
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 首次 Verifier 尝试因动态 Native 状态文件导致格式检查记录失败，且旧检查计划已解析，按恢复协议返回 Build
+        以提交新候选并只执行稳定源文件检查。实现与独立语义审查均通过。
+      truncated: false
+    completed_at: 2026-08-16T15:57:46.043Z
+  - goal_cycle: 2
+    iteration: 2
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: A1-A22 全部通过。独立审查与 Runtime 检查证据一致：139 项契约测试、225 项 Native init
+        E2E、TypeScript、稳定源文件 Prettier 和 git diff --check 均通过。
+      truncated: false
+    completed_at: 2026-08-16T16:04:30.686Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-16T15:16:57.677Z
