@@ -13,6 +13,7 @@ import {
   type MemoryQuery,
   type MemoryRecord,
   type MemoryRetrieval,
+  type MemoryReviewRequest,
 } from '../comet-memory/index.js';
 import { createProjectRulesPluginDescriptor } from '../project-rules/index.js';
 import type {
@@ -45,6 +46,8 @@ export interface CometLifecycleObservation {
   readonly pathPatterns?: readonly string[];
   readonly taskTypes?: readonly string[];
   readonly operations?: readonly string[];
+  readonly userEvidence?: readonly string[];
+  readonly explicitRequest?: MemoryReviewRequest;
   readonly ruleText?: string;
 }
 
@@ -65,6 +68,8 @@ export interface CometPluginBridgeOptions {
   ) => string;
   /** Optional host/project adapter for applying a rule to native project files. */
   readonly projectRuleCarrierAdapters?: readonly ProjectRuleCarrierAdapter[];
+  /** Optional host-owned adapter for nonblocking semantic memory review. */
+  readonly runMemoryReviewInBackground?: (task: () => Promise<void>) => void | Promise<void>;
 }
 
 export interface CometPluginContextRequest {
@@ -155,7 +160,7 @@ export class CometPluginBridge {
     return (await this.runtime.invoke(
       'comet.personal-memory',
       'remember',
-      normalized,
+      { ...normalized, language: normalized.language ?? this.language },
       'user',
     )) as MemoryRecord | null;
   }
@@ -308,6 +313,9 @@ export async function createDefaultCometPluginBridge(
     descriptors: [
       createPersonalMemoryPluginDescriptor({
         language,
+        ...(options.runMemoryReviewInBackground === undefined
+          ? {}
+          : { runReviewInBackground: options.runMemoryReviewInBackground }),
         createService: () =>
           new PersonalMemoryService({
             language,

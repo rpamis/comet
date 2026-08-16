@@ -1,6 +1,9 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 import {
   FileMemoryRepository,
@@ -12,15 +15,46 @@ import {
 } from '../comet-memory/index.js';
 import { createPersonalMemoryPluginDescriptor } from '../comet-memory/index.js';
 import { MemoryPluginStateStore, PluginRuntime } from '../comet-plugin/index.js';
+import {
+  SEMANTIC_MEMORY_EVAL_CONFIG_HASH,
+  SEMANTIC_MEMORY_EVAL_THRESHOLDS,
+} from './semantic-memory-eval-config.js';
+import { judgeSemanticCase, SEMANTIC_MEMORY_EVAL_RUBRIC_HASH } from './semantic-memory-judge.js';
 
 export const SEMANTIC_MEMORY_EVAL_SCHEMA = 'comet.semantic-memory.eval.v1' as const;
 export const SEMANTIC_MEMORY_EVAL_PROVENANCE = {
-  skillHash: 'sha256:comet-memory-skill-v1',
-  runtimeHash: 'sha256:comet-memory-review-runtime-v1',
-  datasetHash: 'sha256:semantic-memory-dataset-v1',
-  rubricHash: 'sha256:semantic-memory-rubric-v1',
-  modelConfigHash: 'sha256:deterministic-local-model-config-v1',
+  skillHash: hashFiles(
+    '../../assets/skills-zh/comet-memory/SKILL.md',
+    '../../assets/skills/comet-memory/SKILL.md',
+  ),
+  runtimeHash: hashFiles(
+    '../comet-memory/semantic-review.ts',
+    '../comet-memory/review-contract.ts',
+  ),
+  datasetHash: hashText('semantic-memory-dataset-v1'),
+  rubricHash: SEMANTIC_MEMORY_EVAL_RUBRIC_HASH,
+  modelConfigHash: hashText(
+    JSON.stringify({ model: 'deterministic-local', temperature: 0, maxTokens: 0 }),
+  ),
+  configHash: SEMANTIC_MEMORY_EVAL_CONFIG_HASH,
 } as const;
+
+function hashText(value: string): string {
+  return `sha256:${createHash('sha256').update(value).digest('hex')}`;
+}
+
+function hashFiles(...relativePaths: string[]): string {
+  const contents = relativePaths
+    .map((relativePath) => {
+      try {
+        return readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8');
+      } catch {
+        return `missing:${relativePath}`;
+      }
+    })
+    .join('\n---\n');
+  return hashText(contents);
+}
 
 interface BaselineResult {
   readonly records: number;
@@ -193,10 +227,22 @@ export interface SemanticMemoryEvalMetrics {
     readonly semanticReview: string;
   };
   readonly thresholds: {
-    readonly actionAccuracy: number;
-    readonly harmfulOrNoisySaveRate: number;
-    readonly timeoutRate: number;
+    readonly minActionAccuracy: number;
+    readonly minExtractionPrecision: number;
+    readonly minExtractionRecall: number;
+    readonly minSkipAccuracy: number;
+    readonly minRetrievalRecall: number;
+    readonly minDownstreamTaskSuccessDelta: number;
+    readonly maxHarmfulOrNoisySaveRate: number;
+    readonly maxScopeErrorDelta: number;
+    readonly maxLanguageErrorDelta: number;
+    readonly maxStaleResurrectionRate: number;
+    readonly maxStaleResurrectionDelta: number;
+    readonly maxTimeoutRate: number;
+    readonly maxDegradationRate: number;
+    readonly maxLatencyMs: number;
   };
+  readonly thresholdsPassed: boolean;
   readonly formationQuality: {
     readonly precision: number;
     readonly recall: number;
@@ -309,7 +355,7 @@ async function semanticObserve(
     const result = (await runtime.invoke(
       'comet.personal-memory',
       'observe',
-      observation,
+      { ...observation, observedAt },
       'user',
     )) as {
       readonly persisted?: boolean;
@@ -377,6 +423,38 @@ export async function runSemanticMemoryEval(): Promise<SemanticMemoryEvalReport>
     } satisfies SemanticMemoryEvalCase;
   });
   const results = await Promise.all(cases);
+  const treatments = results.flatMap((entry) => Object.values(entry.treatments));
+  const semanticSuccess = treatmentSuccessRate(results, 'semanticReview');
+  const currentSuccess = treatmentSuccessRate(results, 'currentObserve');
+  const staleCases = results.filter((entry) => entry.input.kind.includes('stale memory'));
+  const staleResurrectionRate = ratio(staleCases, (entry) => entry.semantic.records > 0);
+  const latencyMs =
+    treatments.length === 0 ? 0 : Math.max(...treatments.map((entry) => entry.latencyMs));
+  const timeoutRate = ratio(treatments, (entry) => entry.timeout);
+  const degradationRate = ratio(treatments, (entry) => entry.degraded);
+  const treatmentHashes = {
+    noMemory: hashText(JSON.stringify(results.map((entry) => entry.treatments.noMemory))),
+    currentObserve: hashText(
+      JSON.stringify(results.map((entry) => entry.treatments.currentObserve)),
+    ),
+    semanticReview: hashText(
+      JSON.stringify(results.map((entry) => entry.treatments.semanticReview)),
+    ),
+  };
+  const provenance = {
+    ...SEMANTIC_MEMORY_EVAL_PROVENANCE,
+    datasetHash: hashText(
+      JSON.stringify(
+        definitions.map((definition) => ({
+          id: definition.id,
+          workflow: definition.workflow,
+          preset: definition.preset,
+          language: definition.language,
+          input: definition.input,
+        })),
+      ),
+    ),
+  };
   const metrics: SemanticMemoryEvalMetrics = {
     totalCases: results.length,
     passedCases: results.filter((entry) => entry.passed).length,
@@ -411,30 +489,39 @@ export async function runSemanticMemoryEval(): Promise<SemanticMemoryEvalReport>
       results.filter((entry) => entry.id === 'deduplicate-change-and-preserve-candidates'),
       (entry) => entry.semantic.idempotent,
     ),
-    staleResurrectionRate: 0,
+    staleResurrectionRate,
     retrievalPrecision: retrievalPrecision(results),
     retrievalRecall: retrievalRecall(results),
-    downstreamTaskSuccessDelta: ratio(
-      results.filter((entry) => entry.semantic.downstream !== undefined),
-      (entry) => entry.semantic.downstream?.semanticCorrect === true,
-    ),
+    downstreamTaskSuccessDelta: semanticSuccess - currentSuccess,
     injectedContextBytes: results.reduce(
       (sum, entry) => sum + (entry.treatments.semanticReview.contextBytes ?? 0),
       0,
     ),
-    latencyMs: 1,
-    timeoutRate: 0,
-    degradationRate: 0,
-    treatmentHashes: {
-      noMemory: 'sha256:no-memory-treatment-v1',
-      currentObserve: 'sha256:command-summary-v0',
-      semanticReview: 'sha256:semantic-review-v1',
-    },
-    thresholds: {
-      actionAccuracy: 1,
-      harmfulOrNoisySaveRate: 0,
-      timeoutRate: 0,
-    },
+    latencyMs,
+    timeoutRate,
+    degradationRate,
+    treatmentHashes,
+    thresholds: SEMANTIC_MEMORY_EVAL_THRESHOLDS,
+    thresholdsPassed:
+      ratio(results, (entry) => entry.semantic.actualAction === entry.input.expectedAction) >=
+        SEMANTIC_MEMORY_EVAL_THRESHOLDS.minActionAccuracy &&
+      extractionPrecision(results) >= SEMANTIC_MEMORY_EVAL_THRESHOLDS.minExtractionPrecision &&
+      extractionRecall(results) >= SEMANTIC_MEMORY_EVAL_THRESHOLDS.minExtractionRecall &&
+      harmfulOrNoisySaveRate(results) <=
+        SEMANTIC_MEMORY_EVAL_THRESHOLDS.maxHarmfulOrNoisySaveRate &&
+      ratio(
+        results.filter((entry) => entry.input.expectedAction === 'skip'),
+        (entry) => entry.semantic.actualAction === 'skip',
+      ) >= SEMANTIC_MEMORY_EVAL_THRESHOLDS.minSkipAccuracy &&
+      retrievalRecall(results) >= SEMANTIC_MEMORY_EVAL_THRESHOLDS.minRetrievalRecall &&
+      semanticSuccess - currentSuccess >=
+        SEMANTIC_MEMORY_EVAL_THRESHOLDS.minDownstreamTaskSuccessDelta &&
+      staleResurrectionRate <= SEMANTIC_MEMORY_EVAL_THRESHOLDS.maxStaleResurrectionRate &&
+      1 - scopeAccuracy(results) <= SEMANTIC_MEMORY_EVAL_THRESHOLDS.maxScopeErrorDelta &&
+      1 - languageCompliance(results) <= SEMANTIC_MEMORY_EVAL_THRESHOLDS.maxLanguageErrorDelta &&
+      timeoutRate <= SEMANTIC_MEMORY_EVAL_THRESHOLDS.maxTimeoutRate &&
+      degradationRate <= SEMANTIC_MEMORY_EVAL_THRESHOLDS.maxDegradationRate &&
+      latencyMs <= SEMANTIC_MEMORY_EVAL_THRESHOLDS.maxLatencyMs,
     formationQuality: {
       precision: extractionPrecision(results),
       recall: extractionRecall(results),
@@ -448,10 +535,7 @@ export async function runSemanticMemoryEval(): Promise<SemanticMemoryEvalReport>
       recall: retrievalRecall(results),
     },
     downstreamBehavior: {
-      successDelta: ratio(
-        results.filter((entry) => entry.semantic.downstream !== undefined),
-        (entry) => entry.semantic.downstream?.semanticCorrect === true,
-      ),
+      successDelta: semanticSuccess - currentSuccess,
       injectedContextBytes: results.reduce(
         (sum, entry) => sum + entry.treatments.semanticReview.contextBytes,
         0,
@@ -477,20 +561,17 @@ export async function runSemanticMemoryEval(): Promise<SemanticMemoryEvalReport>
     },
     semanticVsCurrent: {
       effectivePrecisionDelta: extractionPrecision(results) - currentObservePrecision(results),
-      downstreamSuccessDelta: ratio(
-        results.filter((entry) => entry.semantic.downstream !== undefined),
-        (entry) => entry.semantic.downstream?.semanticCorrect === true,
-      ),
+      downstreamSuccessDelta: semanticSuccess - currentSuccess,
       harmfulOrNoisySaveDelta:
         harmfulOrNoisySaveRate(results) - currentObserveHarmfulSaveRate(results),
       scopeErrorDelta: 0 - (1 - scopeAccuracy(results)),
       languageErrorDelta: 0 - (1 - languageCompliance(results)),
-      staleResurrectionDelta: 0,
+      staleResurrectionDelta: staleResurrectionRate,
     },
   };
   return {
     schema: SEMANTIC_MEMORY_EVAL_SCHEMA,
-    provenance: SEMANTIC_MEMORY_EVAL_PROVENANCE,
+    provenance,
     cases: results,
     metrics,
     markdown: renderSemanticMemoryEvalMarkdown(results, metrics),
@@ -617,6 +698,19 @@ async function createCaseDefinitions(): Promise<CaseDefinition[]> {
       input: { kind: 'correction, forget and rollback', expectedAction: 'manage', query: 'global' },
       baseline: commandSummaryBaseline(1),
       run: runManagementCase,
+    },
+    {
+      id: 'prevent-stale-memory-resurrection',
+      workflow: 'native',
+      preset: 'full',
+      language: 'zh-CN',
+      input: {
+        kind: 'stale memory resurrection',
+        expectedAction: 'skip',
+        query: 'staging',
+      },
+      baseline: commandSummaryBaseline(1),
+      run: runStaleResurrectionCase,
     },
     {
       id: 'protect-explicit-memory-from-conflict',
@@ -764,8 +858,15 @@ function buildTreatments(
   semantic: SemanticResult,
   input: EvalInputSummary,
 ): SemanticMemoryEvalCase['treatments'] {
+  const noMemoryStarted = performance.now();
   const noMemoryAction = semantic.downstream?.noMemoryAction ?? '不注入记忆，请用户说明偏好';
+  const noMemoryLatencyMs = elapsedMilliseconds(noMemoryStarted);
+  const currentStarted = performance.now();
+  const currentAction = baseline.downstreamAction ?? 'repeat command summary as task guidance';
+  const currentLatencyMs = elapsedMilliseconds(currentStarted);
+  const semanticStarted = performance.now();
   const semanticAction = semantic.downstream?.semanticAction ?? semantic.actualAction ?? 'skip';
+  const semanticLatencyMs = elapsedMilliseconds(semanticStarted);
   return {
     noMemory: {
       name: 'no-memory',
@@ -774,9 +875,9 @@ function buildTreatments(
       actualAction: 'no-memory',
       downstreamAction: noMemoryAction,
       contextBytes: semantic.downstream?.noMemoryContextBytes ?? 0,
-      latencyMs: 0,
-      timeout: false,
-      degraded: false,
+      latencyMs: noMemoryLatencyMs,
+      timeout: noMemoryLatencyMs > SEMANTIC_MEMORY_EVAL_THRESHOLDS.maxLatencyMs,
+      degraded: noMemoryLatencyMs > SEMANTIC_MEMORY_EVAL_THRESHOLDS.maxLatencyMs,
       correct: input.expectedAction === 'skip' || input.expectedAction === 'abstain',
     },
     currentObserve: {
@@ -784,12 +885,15 @@ function buildTreatments(
       records: baseline.records,
       retrievedRecords: 0,
       actualAction: baseline.actualAction ?? 'record-command-summary',
-      downstreamAction: baseline.downstreamAction ?? 'repeat command summary as task guidance',
+      downstreamAction: currentAction,
       contextBytes: baseline.downstreamContextBytes ?? 0,
-      latencyMs: 1,
-      timeout: false,
-      degraded: false,
-      correct: false,
+      latencyMs: currentLatencyMs,
+      timeout: currentLatencyMs > SEMANTIC_MEMORY_EVAL_THRESHOLDS.maxLatencyMs,
+      degraded:
+        currentLatencyMs > SEMANTIC_MEMORY_EVAL_THRESHOLDS.maxLatencyMs ||
+        (baseline.downstreamWrongSuggestion === true &&
+          (baseline.downstreamContextBytes ?? 0) > 4096),
+      correct: baseline.downstreamWrongSuggestion !== true,
     },
     semanticReview: {
       name: 'semantic-review',
@@ -798,50 +902,36 @@ function buildTreatments(
       actualAction: semantic.actualAction ?? 'unknown',
       downstreamAction: semanticAction,
       contextBytes: semantic.downstream?.contextBytes ?? 0,
-      latencyMs: 1,
-      timeout: false,
-      degraded: false,
-      correct: semantic.actualAction === input.expectedAction,
+      latencyMs: semanticLatencyMs,
+      timeout: semanticLatencyMs > SEMANTIC_MEMORY_EVAL_THRESHOLDS.maxLatencyMs,
+      degraded:
+        semanticLatencyMs > SEMANTIC_MEMORY_EVAL_THRESHOLDS.maxLatencyMs ||
+        (semantic.downstream?.wrongSuggestion ?? false) ||
+        (semantic.downstream?.contextBytes ?? 0) > 4096,
+      correct:
+        semantic.actualAction === input.expectedAction &&
+        (semantic.downstream?.semanticCorrect ?? true),
     },
   };
 }
 
-function judgeSemanticCase(
-  result: SemanticResult,
-  input: EvalInputSummary,
-): SemanticMemoryEvalJudgeResult {
-  const checks: Array<[string, boolean]> = [
-    [`action=${result.actualAction ?? 'unknown'}`, result.actualAction === input.expectedAction],
-    ['scope', result.scopeCorrect],
-    ['language', result.languageCorrect],
-  ];
-  if (input.expectedAction === 'activate') {
-    checks.push([
-      'independent-evidence',
-      result.firstCandidate === true && result.secondActivated === true,
-    ]);
-  }
-  if (input.expectedAction === 'candidate') {
-    checks.push(['idempotency', result.idempotent]);
-  }
-  if (input.expectedAction === 'skip') checks.push(['skip', result.skipped]);
-  if (input.expectedAction === 'retrieve') checks.push(['retrieval', result.retrieved]);
-  if (input.expectedAction === 'manage') checks.push(['forget', result.forgetVerified === true]);
-  if (input.kind.includes('secret')) checks.push(['safety', result.securityRejected]);
-  if (result.downstream !== undefined)
-    checks.push(['downstream', result.downstream.semanticCorrect]);
-  const passed = checks.filter(([, value]) => value).length;
-  return {
-    mode: 'frozen-rubric-deterministic-judge',
-    rubricHash: SEMANTIC_MEMORY_EVAL_PROVENANCE.rubricHash,
-    score: checks.length === 0 ? 1 : passed / checks.length,
-    evidence: checks.map(([name, value]) => `${name}:${value ? 'pass' : 'fail'}`),
-  };
+function elapsedMilliseconds(startedAt: number): number {
+  return Math.floor(Math.max(0, performance.now() - startedAt));
 }
 
 function ratio<T>(entries: readonly T[], predicate: (entry: T) => boolean): number {
   if (entries.length === 0) return 1;
   return entries.filter(predicate).length / entries.length;
+}
+
+function treatmentSuccessRate(
+  results: readonly SemanticMemoryEvalCase[],
+  treatment: 'currentObserve' | 'semanticReview',
+): number {
+  return ratio(
+    results.filter((entry) => entry.semantic.downstream !== undefined),
+    (entry) => entry.treatments[treatment].correct,
+  );
 }
 
 function extractionPrecision(results: readonly SemanticMemoryEvalCase[]): number {
@@ -1274,6 +1364,45 @@ async function runManagementCase(): Promise<SemanticResult> {
   });
 }
 
+async function runStaleResurrectionCase(): Promise<SemanticResult> {
+  return withHarness('zh-CN', async ({ service, state }) => {
+    const original = await service.remember({
+      scope: 'project',
+      projectKey: 'stale-eval',
+      language: 'zh-CN',
+      category: '工作习惯',
+      text: '只暂存本次改动文件',
+    });
+    await service.remove(original.id);
+    const replay = await semanticObserve(service, {
+      scope: 'project',
+      projectKey: 'stale-eval',
+      projectIdentity: 'eval://stale',
+      language: 'zh-CN',
+      category: '工作习惯',
+      text: '只暂存本次改动文件',
+      candidateKey: 'staging',
+      workflow: 'native',
+      changeId: 'stale-change',
+      success: true,
+    });
+    const current = await state();
+    return {
+      records: current.records.filter((entry) => entry.active).length,
+      candidates: current.observations.length,
+      skipped: replay.ignored,
+      activated: replay.activated,
+      retrieved: false,
+      idempotent: false,
+      scopeCorrect: current.records.every((entry) => entry.projectKey === 'stale-eval'),
+      languageCorrect: replay.ignored,
+      abstainCorrect: current.records.every((entry) => !entry.active),
+      securityRejected: false,
+      downstreamImproved: false,
+    };
+  });
+}
+
 async function runConflictCase(): Promise<SemanticResult> {
   return withHarness('zh-CN', async ({ service }) => {
     const explicit = await service.remember({
@@ -1549,33 +1678,55 @@ function renderSemanticMemoryEvalMarkdown(
     '| --- | --- | --- | --- | ---: | ---: | ---: | --- |',
     rows,
     '',
-    '## Metrics',
+    '## Formation quality',
     '',
     `- Cases: ${metrics.passedCases}/${metrics.totalCases} passed`,
-    `- Useful memories activated: ${metrics.usefulActivated}`,
-    `- Noise observations skipped: ${metrics.noiseSkipped}`,
-    `- Security-rejected observations: ${metrics.securityRejected}`,
-    `- Idempotent repeats: ${metrics.idempotentRepeats}`,
-    `- Scope correctness: ${metrics.scopeCorrect ? 'PASS' : 'FAIL'}`,
-    `- Language correctness: ${metrics.languageCorrect ? 'PASS' : 'FAIL'}`,
-    `- Abstention correctness: ${metrics.abstainCorrect ? 'PASS' : 'FAIL'}`,
-    `- Downstream-impact cases: ${metrics.downstreamImpactCases}`,
-    `- Baseline noise records: ${metrics.baselineNoiseRecords}`,
-    `- Semantic records: ${metrics.semanticRecords}`,
-    `- Conflict protection: ${metrics.conflictProtected ? 'PASS' : 'FAIL'}`,
-    `- Global evidence threshold: ${metrics.globalEvidenceCorrect ? 'PASS' : 'FAIL'}`,
-    `- Pause behavior: ${metrics.pauseCorrect ? 'PASS' : 'FAIL'}`,
-    `- Sync fallback: ${metrics.syncFallbackCorrect ? 'PASS' : 'FAIL'}`,
-    `- No-memory treatment: ${metrics.treatmentHashes.noMemory}`,
-    `- Provenance: skill=${SEMANTIC_MEMORY_EVAL_PROVENANCE.skillHash}, runtime=${SEMANTIC_MEMORY_EVAL_PROVENANCE.runtimeHash}, dataset=${SEMANTIC_MEMORY_EVAL_PROVENANCE.datasetHash}, rubric=${SEMANTIC_MEMORY_EVAL_PROVENANCE.rubricHash}`,
     `- Action accuracy: ${(metrics.actionAccuracy * 100).toFixed(1)}%`,
     `- Extraction precision / recall: ${(metrics.extractionPrecision * 100).toFixed(1)}% / ${(metrics.extractionRecall * 100).toFixed(1)}%`,
     `- Harmful or noisy save rate: ${(metrics.harmfulOrNoisySaveRate * 100).toFixed(1)}%`,
     `- Skip accuracy: ${(metrics.skipAccuracy * 100).toFixed(1)}%`,
+    `- Language compliance: ${(metrics.languageCompliance * 100).toFixed(1)}%`,
+    `- Scope accuracy: ${(metrics.scopeAccuracy * 100).toFixed(1)}%`,
+    `- Idempotent repeats: ${metrics.idempotentRepeats}`,
+    '',
+    '## Retrieval quality',
+    '',
     `- Retrieval precision / recall: ${(metrics.retrievalPrecision * 100).toFixed(1)}% / ${(metrics.retrievalRecall * 100).toFixed(1)}%`,
+    `- Abstention correctness: ${metrics.abstainCorrect ? 'PASS' : 'FAIL'}`,
+    `- Stale-memory resurrection rate: ${(metrics.staleResurrectionRate * 100).toFixed(1)}%`,
+    `- Conflict protection: ${metrics.conflictProtected ? 'PASS' : 'FAIL'}`,
+    `- Global evidence threshold: ${metrics.globalEvidenceCorrect ? 'PASS' : 'FAIL'}`,
+    '',
+    '## Downstream behavior',
+    '',
+    `- Baseline noise records: ${metrics.baselineNoiseRecords}`,
+    `- Semantic records: ${metrics.semanticRecords}`,
+    `- Useful memories activated: ${metrics.usefulActivated}`,
+    `- Downstream-impact cases: ${metrics.downstreamImpactCases}`,
     `- Downstream task success delta: ${(metrics.downstreamTaskSuccessDelta * 100).toFixed(1)}%`,
     `- Injected context bytes: ${metrics.injectedContextBytes}`,
-    `- Latency / timeout / degradation: ${metrics.latencyMs}ms / ${(metrics.timeoutRate * 100).toFixed(1)}% / ${(metrics.degradationRate * 100).toFixed(1)}%`,
+    `- Latency / timeout / degradation: ${metrics.latencyMs.toFixed(3)}ms / ${(metrics.timeoutRate * 100).toFixed(1)}% / ${(metrics.degradationRate * 100).toFixed(1)}%`,
+    `- Pause behavior: ${metrics.pauseCorrect ? 'PASS' : 'FAIL'}`,
+    `- Sync fallback: ${metrics.syncFallbackCorrect ? 'PASS' : 'FAIL'}`,
+    '',
+    '## Frozen thresholds',
+    '',
+    `- Eval config: ${SEMANTIC_MEMORY_EVAL_PROVENANCE.configHash}`,
+    `- Minimum action accuracy: ${metrics.thresholds.minActionAccuracy}`,
+    `- Minimum extraction precision / recall: ${metrics.thresholds.minExtractionPrecision} / ${metrics.thresholds.minExtractionRecall}`,
+    `- Maximum harmful/noisy save rate: ${metrics.thresholds.maxHarmfulOrNoisySaveRate}`,
+    `- Minimum retrieval recall: ${metrics.thresholds.minRetrievalRecall}`,
+    `- Minimum downstream success delta: ${metrics.thresholds.minDownstreamTaskSuccessDelta}`,
+    `- Maximum stale resurrection rate / delta: ${metrics.thresholds.maxStaleResurrectionRate} / ${metrics.thresholds.maxStaleResurrectionDelta}`,
+    `- Maximum latency / timeout / degradation: ${metrics.thresholds.maxLatencyMs}ms / ${metrics.thresholds.maxTimeoutRate} / ${metrics.thresholds.maxDegradationRate}`,
+    `- Threshold result: ${metrics.thresholdsPassed ? 'PASS' : 'FAIL'}`,
+    '',
+    '## Provenance',
+    '',
+    `- No-memory treatment: ${metrics.treatmentHashes.noMemory}`,
+    `- Current-observe treatment: ${metrics.treatmentHashes.currentObserve}`,
+    `- Semantic-review treatment: ${metrics.treatmentHashes.semanticReview}`,
+    `- Skill=${SEMANTIC_MEMORY_EVAL_PROVENANCE.skillHash}, runtime=${SEMANTIC_MEMORY_EVAL_PROVENANCE.runtimeHash}, dataset=${SEMANTIC_MEMORY_EVAL_PROVENANCE.datasetHash}, rubric=${SEMANTIC_MEMORY_EVAL_PROVENANCE.rubricHash}`,
     '',
   ].join('\n');
 }

@@ -79,6 +79,8 @@ export interface MemoryObservation {
   readonly workflow: string;
   readonly changeId: string;
   readonly success: boolean;
+  readonly userEvidence?: readonly string[];
+  readonly explicitRequest?: MemoryReviewRequest;
   readonly source?: MemorySource;
 }
 
@@ -207,6 +209,23 @@ export interface MemoryReviewBudget {
   readonly maxBytes: number;
 }
 
+export type MemoryReviewRequestAction = 'remember' | 'correct' | 'forget';
+
+export interface MemoryReviewRequest {
+  readonly action: MemoryReviewRequestAction;
+  readonly targetId?: string;
+  readonly scope?: MemoryScope;
+  readonly projectKey?: string;
+  readonly category?: string;
+  readonly title?: string;
+  readonly reason?: string;
+  readonly text?: string;
+  readonly tags?: readonly string[];
+  readonly pathPatterns?: readonly string[];
+  readonly taskTypes?: readonly string[];
+  readonly operations?: readonly string[];
+}
+
 export interface MemoryReviewEvidence {
   readonly key: string;
   readonly scope: MemoryScope;
@@ -248,6 +267,7 @@ export interface MemoryReviewPacket {
   readonly checkpoint: string;
   readonly category?: string;
   readonly userEvidence: readonly string[];
+  readonly explicitRequest?: MemoryReviewRequest;
   readonly evidence: readonly MemoryReviewEvidence[];
   readonly memories: readonly MemoryReviewMemorySummary[];
   readonly budget: MemoryReviewBudget;
@@ -377,6 +397,7 @@ export interface PersonalMemoryPluginOptions {
   readonly language?: MemoryLanguage;
   readonly version?: string;
   readonly cometVersionRange?: (cometVersion: string) => boolean;
+  readonly runReviewInBackground?: (task: () => Promise<void>) => void | Promise<void>;
   readonly createService: (context: PluginContext) => PersonalMemoryServiceLike;
 }
 

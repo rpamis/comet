@@ -33,6 +33,11 @@ export {
   type SemanticMemoryEvalMetrics,
   type SemanticMemoryEvalReport,
 } from './semantic-memory-eval.js';
+export {
+  SEMANTIC_MEMORY_EVAL_CONFIG_HASH,
+  SEMANTIC_MEMORY_EVAL_CONFIG_VERSION,
+  SEMANTIC_MEMORY_EVAL_THRESHOLDS,
+} from './semantic-memory-eval-config.js';
 
 export function resolveRepositoryEvalWorkspace(): RepositoryEvalWorkspace {
   const layout = readRepositoryLayout();

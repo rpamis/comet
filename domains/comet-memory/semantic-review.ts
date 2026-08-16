@@ -1,4 +1,4 @@
-import type { MemoryReviewActionSet, MemoryReviewPacket } from './types.js';
+import type { MemoryReviewActionSet, MemoryReviewPacket, MemoryReviewRequest } from './types.js';
 import {
   validateMemoryReviewActions,
   validateMemoryReviewPacket,
@@ -13,6 +13,12 @@ const INJECTION_OR_ARTIFACT =
 
 export function reviewMemoryPacket(value: unknown): MemoryReviewActionSet {
   const packet = validateMemoryReviewPacket(value);
+  if (packet.explicitRequest !== undefined) {
+    return validateMemoryReviewActions(packet, {
+      schema: 'comet.memory.actions.v1',
+      actions: [buildExplicitAction(packet, packet.explicitRequest)],
+    });
+  }
   if (
     packet.userEvidence.length === 0 &&
     packet.category !== undefined &&
@@ -28,6 +34,99 @@ export function reviewMemoryPacket(value: unknown): MemoryReviewActionSet {
     schema: 'comet.memory.actions.v1',
     actions: [action],
   });
+}
+
+function buildExplicitAction(
+  packet: MemoryReviewPacket,
+  request: MemoryReviewRequest,
+): Record<string, unknown> {
+  const language = packet.language;
+  const metadata = {
+    reason:
+      request.reason ??
+      (language === 'en' ? 'Requested directly by the user' : '由用户明确要求，立即更新个人记忆'),
+    title: request.title ?? (language === 'en' ? 'Personal memory' : '个人记忆'),
+  };
+  if (request.action === 'remember') {
+    const text = request.text;
+    if (text === undefined) return skip(packet, localizedSkip(language, '显式记忆缺少正文'));
+    const evidence = matchingEvidence(packet, request.scope, request.projectKey);
+    const scope = request.scope ?? evidence[0]?.scope ?? 'project';
+    const projectKey =
+      scope === 'project'
+        ? (request.projectKey ?? evidence[0]?.projectKey ?? packet.projectKey)
+        : undefined;
+    return {
+      action: 'create',
+      language,
+      scope,
+      ...(projectKey === undefined ? {} : { projectKey }),
+      category: request.category ?? localizedCategory(language),
+      text,
+      ...metadata,
+      evidenceKeys: evidence.map((entry) => entry.key),
+      ...copyRequestArrays(request),
+    };
+  }
+
+  const target = packet.memories.find((entry) => entry.id === request.targetId);
+  if (target === undefined || request.targetId === undefined) {
+    return skip(packet, localizedSkip(language, '找不到需要处理的目标记忆'));
+  }
+  const evidence = matchingEvidence(packet, target.scope, target.projectKey);
+  if (request.action === 'forget') {
+    return {
+      action: 'forget',
+      language,
+      targetId: request.targetId,
+      reason:
+        request.reason ??
+        (language === 'en' ? 'Requested directly by the user' : '由用户明确要求忘记'),
+      title: metadata.title,
+      evidenceKeys: evidence.map((entry) => entry.key),
+    };
+  }
+  return {
+    action: 'update',
+    language,
+    targetId: request.targetId,
+    ...(request.scope === undefined ? {} : { scope: request.scope }),
+    ...(request.projectKey === undefined ? {} : { projectKey: request.projectKey }),
+    ...metadata,
+    ...(request.text === undefined ? {} : { text: request.text }),
+    ...(request.category === undefined ? {} : { category: request.category }),
+    evidenceKeys: evidence.map((entry) => entry.key),
+    ...copyRequestArrays(request),
+  };
+}
+
+function matchingEvidence(
+  packet: MemoryReviewPacket,
+  scope: 'global' | 'project' | undefined,
+  projectKey: string | undefined,
+) {
+  return packet.evidence.filter(
+    (entry) =>
+      entry.success &&
+      (scope === undefined || entry.scope === scope) &&
+      (scope !== 'project' || entry.projectKey === projectKey),
+  );
+}
+
+function copyRequestArrays(request: MemoryReviewRequest): Record<string, readonly string[]> {
+  return Object.fromEntries(
+    (['tags', 'pathPatterns', 'taskTypes', 'operations'] as const)
+      .filter((name) => request[name] !== undefined)
+      .map((name) => [name, request[name] as readonly string[]]),
+  );
+}
+
+function localizedCategory(language: 'zh-CN' | 'en'): string {
+  return language === 'en' ? 'Reusable preference' : '可复用偏好';
+}
+
+function localizedSkip(language: 'zh-CN' | 'en', message: string): string {
+  return language === 'en' ? 'The explicit memory request is incomplete' : message;
 }
 
 function isNonReusableCategory(category: string): boolean {
@@ -87,10 +186,7 @@ function buildAction(packet: MemoryReviewPacket): Record<string, unknown> {
     ...(firstEvidence.candidateKey === undefined
       ? {}
       : { candidateKey: firstEvidence.candidateKey }),
-    category:
-      packet.category ??
-      firstEvidence.category ??
-      (packet.language === 'en' ? 'Reusable preference' : '可复用偏好'),
+    category: packet.category ?? firstEvidence.category ?? localizedCategory(packet.language),
     text,
     title: packet.language === 'en' ? 'Reusable workflow preference' : '可复用协作偏好',
     reason:

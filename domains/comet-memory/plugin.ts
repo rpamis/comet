@@ -9,6 +9,7 @@ import type {
   MemoryQuery,
   MemoryObservation,
   MemoryReviewPacket,
+  MemoryReviewRequest,
   PersonalMemoryPluginOptions,
   PersonalMemoryServiceLike,
 } from './types.js';
@@ -70,13 +71,24 @@ async function createModule(
     onEvent: async (event) => {
       const observation = observationFromEvent(event);
       if (observation !== null) {
-        const packet = await reviewPacketFromObservation(
-          service,
-          observation,
-          event.name,
-          options.language,
-        );
-        await service.reviewAndApply(packet, reviewMemoryPacket(packet));
+        const review = async () => {
+          const packet = await reviewPacketFromObservation(
+            service,
+            observation,
+            event.name,
+            options.language,
+          );
+          await service.reviewAndApply(packet, reviewMemoryPacket(packet));
+        };
+        if (options.runReviewInBackground !== undefined) {
+          try {
+            await options.runReviewInBackground(review);
+          } catch {
+            // Host background adapters are optional; a failed review is non-blocking.
+          }
+        } else {
+          await review();
+        }
       }
     },
     provideContext: async (request) => {
@@ -197,6 +209,10 @@ function observationFromEvent(event: PluginEvent): MemoryObservation | null {
     workflow,
     changeId,
     success: payload.success !== false,
+    userEvidence: strings(payload.userEvidence),
+    explicitRequest: isRecord(payload.explicitRequest)
+      ? (payload.explicitRequest as unknown as MemoryReviewRequest)
+      : undefined,
     source: {
       kind: 'workflow',
       label: event.name,
@@ -239,7 +255,10 @@ async function reviewPacketFromObservation(
     createdAt: observedAt,
     checkpoint,
     category: observation.category,
-    userEvidence: [],
+    userEvidence: observation.userEvidence ?? [],
+    ...(observation.explicitRequest === undefined
+      ? {}
+      : { explicitRequest: observation.explicitRequest }),
     evidence: [
       {
         key: evidenceKey,
@@ -273,6 +292,10 @@ async function reviewPacketFromObservation(
     })),
     budget: { maxActions: 4, maxEvidence: 8, maxBytes: 4096 },
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function strings(value: unknown): string[] | undefined {

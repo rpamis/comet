@@ -49,6 +49,31 @@ function service(root: string, git?: MemoryGitSync): PersonalMemoryService {
 }
 
 describe('PersonalMemoryService', () => {
+  it('rejects unsafe direct remember and correction input before persistence', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      await expect(
+        memories.remember({
+          scope: 'global',
+          language: 'zh-CN',
+          category: '偏好',
+          text: 'password=secret-value',
+        }),
+      ).rejects.toThrow('unsafe');
+
+      const record = await memories.remember({
+        scope: 'global',
+        language: 'zh-CN',
+        category: '偏好',
+        text: '使用中文回复',
+      });
+      await expect(memories.correct(record.id, { text: 'api_key=secret-value' })).rejects.toThrow(
+        'unsafe',
+      );
+      expect((await memories.get(record.id))?.text).toBe('使用中文回复');
+    });
+  });
+
   it('applies only validated semantic review actions and skips noise without persistence', async () => {
     await withTempRepository(async (root) => {
       const memories = service(root) as PersonalMemoryService & {

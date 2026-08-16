@@ -111,9 +111,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
   }
 
   public async correct(id: string, correction: MemoryCorrection): Promise<MemoryRecord> {
-    if (correction.text !== undefined && normalizeText(correction.text).length === 0) {
-      throw new Error('Memory correction text must not be empty');
-    }
+    validateCorrection(correction);
     return this.repository.withLock(async () => {
       const state = await this.loadAndReconcile();
       const current = state.records.find((entry) => entry.id === id) as StoredRecord | undefined;
@@ -125,6 +123,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
       if (current === undefined || (!current.active && !userRemoved)) {
         throw new Error(`Memory is not active: ${id}`);
       }
+      validateCorrection(correction);
       pushHistory(state, current);
       clearInferredCandidates(state, current.identity);
       const next = this.updateRecordValue(
@@ -1510,13 +1509,15 @@ function normalizedMemoryTextHash(text: string): string {
   return hashMemoryText(normalizeText(text).replace(/\s+/gu, ''));
 }
 
-function validateInput(input: MemoryInput): void {
+function validateInput(input: MemoryInput, configuredLanguage?: MemoryLanguage): void {
   if (input.scope === 'project' && input.projectKey === undefined)
     throw new Error('Project memory requires a project key');
   if (input.scope === 'project' && !/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(input.projectKey ?? ''))
     throw new Error('Project key is invalid');
   if (input.category.trim().length === 0 || input.text.trim().length === 0)
     throw new Error('Memory category and text are required');
+  validateSafeMemoryText(input.category);
+  validateSafeMemoryText(input.text);
   for (const [field, value] of [
     ['title', input.title],
     ['reason', input.reason],
@@ -1524,12 +1525,50 @@ function validateInput(input: MemoryInput): void {
     if (value === undefined) continue;
     if (value.trim().length === 0) throw new Error(`Memory ${field} must not be empty`);
     validateSafeMemoryText(value);
-    if (input.language !== undefined) validateMemoryLanguageText(value, input.language, field);
+    if (configuredLanguage !== undefined) {
+      validateMemoryLanguageText(value, configuredLanguage, field);
+    }
+  }
+  validateMemoryArrays(input);
+}
+
+function validateCorrection(correction: MemoryCorrection, language?: MemoryLanguage): void {
+  for (const [field, value] of [
+    ['title', correction.title],
+    ['reason', correction.reason],
+    ['text', correction.text],
+    ['category', correction.category],
+  ] as const) {
+    if (value === undefined) continue;
+    if (normalizeText(value).length === 0)
+      throw new Error(`Memory correction ${field} must not be empty`);
+    validateSafeMemoryText(value);
+    if (language !== undefined && field !== 'text') {
+      validateMemoryLanguageText(value, language, `correction.${field}`);
+    }
+  }
+  validateMemoryArrays(correction);
+}
+
+function validateMemoryArrays(
+  input: Pick<MemoryInput, 'tags' | 'pathPatterns' | 'taskTypes' | 'operations'>,
+): void {
+  for (const [field, values] of [
+    ['tags', input.tags],
+    ['pathPatterns', input.pathPatterns],
+    ['taskTypes', input.taskTypes],
+    ['operations', input.operations],
+  ] as const) {
+    if (values === undefined) continue;
+    if (values.length > 32) throw new Error(`Memory ${field} exceeds the collection limit`);
+    values.forEach((value) => {
+      validateSafeMemoryText(value);
+    });
   }
 }
 
 function validateObservation(observation: MemoryObservation): void {
-  validateInput(observation);
+  validateInput(observation, observation.language);
   if (observation.workflow.trim().length === 0 || observation.changeId.trim().length === 0)
     throw new Error('Observation workflow and change ID are required');
   if (

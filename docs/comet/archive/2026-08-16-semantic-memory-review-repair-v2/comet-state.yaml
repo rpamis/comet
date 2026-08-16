@@ -1,0 +1,238 @@
+schema: comet.native.v4
+name: semantic-memory-review-repair-v2
+language: zh-CN
+phase: archive
+status: done
+state_version: 10
+brief: brief.md
+spec_changes: []
+workspace:
+  isolation: worktree
+  change_branch: comet/semantic-memory-review-repair-v2
+  target_branch: beta20
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 2
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: 自动和显式评审都能安全地产生或应用 create/update/forget/skip，且错误动作不落盘。
+    result: passed
+    reason:
+      text: review contract 支持 explicit remember/correct/forget；semantic-review 生成
+        create/update/forget/skip；reviewAndApply 在持久化前完整校验。相关 targeted tests 通过。
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: "`zh-CN` 自动记忆的 category、title、reason 和提示均为中文；直接 CLI 文本保留原文。"
+    result: passed
+    reason:
+      text: zh-CN 自动 category/title/reason 与提示使用中文默认值并经语言校验；CLI 默认 category
+        为可复用偏好，直接用户文本保持原文。
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: 宿主无后台 Agent 时仍由当前协调流程完成同一有界评审，失败不阻塞主 workflow。
+    result: passed
+    reason:
+      text: 无 host background adapter 时 plugin 直接同步执行有界 review；有 adapter
+        时可交给宿主；异常被捕获且不阻塞主 workflow。
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: Eval 的报告正文独立列出 formation quality、retrieval quality、downstream
+      behavior，阈值来自冻结配置而不是运行结果。
+    result: passed
+    reason:
+      text: 实际 Eval 输出包含 Formation quality、Retrieval quality、Downstream
+        behavior、Frozen thresholds 四个独立区段；阈值来自 frozen 配置并输出 config hash。
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: 删除后重放旧证据不会复活旧记忆；报告包含 stale resurrection 结果、三种 treatment 的实测指标和独立 Judge 证据。
+    result: passed
+    reason:
+      text: 实际 Eval 16/16 passed；stale resurrection rate 为 0%；报告包含三种 treatment、实测
+        latency/timeout/degradation、treatment hashes 和独立 frozen-rubric Judge。
+      truncated: false
+builder_handoff:
+  candidate_id: d3713ef1-6e19-4947-aab0-a8eb6f35f303
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:a327a61b-b26a-471a-8c27-3eb76a34807d
+  iteration: 1
+  summary:
+    text: 已完成语义评审与 Eval 证据修复，提交 81773b2d；目标是使自动/显式记忆动作安全可验证，并按中文配置记录中文元数据。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+  checks:
+    - name:
+        text: targeted-tests
+        truncated: false
+      result: passed
+      note:
+        text: 5 个相关测试文件，51 tests passed
+        truncated: false
+    - name:
+        text: lint
+        truncated: false
+      result: passed
+      note:
+        text: pnpm lint
+        truncated: false
+    - name:
+        text: build
+        truncated: false
+      result: passed
+      note:
+        text: pnpm build
+        truncated: false
+    - name:
+        text: semantic-eval
+        truncated: false
+      result: passed
+      note:
+        text: 16/16 cases; frozen thresholds passed
+        truncated: false
+    - name:
+        text: full-test
+        truncated: false
+      result: passed
+      note:
+        text: 316/318 files passed; 两个失败均为本机全局配置/并行环境误报；隔离 HOME 下 Classic 221/221
+          passed，Eval 单独 2/2 passed
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: 默认全量并行测试会继承本机全局中文 Comet 配置并产生 Classic fixture 误报；隔离 HOME 后相关测试全通过。
+      truncated: false
+  known_limits_truncated: false
+  submitted_at: 2026-08-16T23:14:20.416Z
+blockers: []
+verification:
+  candidate_id: d3713ef1-6e19-4947-aab0-a8eb6f35f303
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:ba310cb3-6aa9-4e13-9457-def84e6290c2
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: memory-format
+      name:
+        text: semantic memory format check
+        truncated: false
+      argv_display:
+        - text: format:check
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 15082
+    - id: memory-lint
+      name:
+        text: semantic memory lint and architecture check
+        truncated: false
+      argv_display:
+        - text: lint
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 9134
+    - id: memory-targeted-tests
+      name:
+        text: semantic memory targeted tests
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: vitest
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/app/personal-memory-command.test.ts
+          truncated: false
+        - text: test/domains/comet-memory/personal-memory.test.ts
+          truncated: false
+        - text: test/domains/comet-memory/review-contract.test.ts
+          truncated: false
+        - text: test/domains/comet-plugin/plugin-integration.test.ts
+          truncated: false
+        - text: test/domains/eval/semantic-memory-eval.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 6206
+    - id: memory-generated
+      name:
+        text: semantic memory generated runtime consistency
+        truncated: false
+      argv_display:
+        - text: check:generated
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 1830
+  summary:
+    text: A1-A5 全部 passed；候选可进入 Native 后续阶段。
+    truncated: false
+  risks:
+    - text: Runtime 检查计划未直接执行 benchmark；独立 Verifier 已在指定 worktree 实际运行并核对 Eval 输出。
+      truncated: false
+    - text: 本机全量并行测试存在全局配置环境误报；隔离 HOME 后相关 Classic/Eval 测试通过。
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-08-16T23:21:18.464Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native confirmed acceptance criteria changed
+      truncated: false
+    completed_at: 2026-08-16T23:13:15.815Z
+  - goal_cycle: 2
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: A1-A5 全部 passed；候选可进入 Native 后续阶段。
+      truncated: false
+    completed_at: 2026-08-16T23:21:18.464Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-16T22:28:32.476Z
