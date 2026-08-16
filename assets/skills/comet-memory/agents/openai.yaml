@@ -1,0 +1,5 @@
+interface:
+  display_name: "Comet Semantic Memory Review"
+  short_description: "Filter reusable personal memories from bounded review packets"
+policy:
+  allow_implicit_invocation: false
