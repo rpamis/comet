@@ -1,0 +1,492 @@
+schema: comet.native.v4
+name: semantic-memory-eval
+language: zh-CN
+phase: archive
+status: done
+state_version: 11
+brief: brief.md
+spec_changes:
+  - capability: semantic-memory-eval
+    operation: create
+    source: specs/semantic-memory-eval/spec.md
+workspace:
+  isolation: worktree
+  change_branch: comet/semantic-memory-eval
+  target_branch: beta20
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 2
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 1
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: specs/semantic-memory-eval/spec.md
+    text: Eval 必须提供固定的 case 数据集，至少覆盖 `zh-CN` 与 `en`、Native 与
+      Classic、`full`/`hotfix`/`tweak`。每个 case
+      必须声明项目身份、workflow、语言、稳定检查点、输入证据、已有记忆、期望
+      action、期望持久化差异和后续检索任务。数据集不得包含真实凭据、PII、完整对话或隐藏推理。
+    result: passed
+    reason:
+      text: 15 个固定 case 覆盖中英文、Native/Classic 及 full/hotfix/tweak，并输出完整脱敏元数据。
+      truncated: false
+  - id: A2
+    source: specs/semantic-memory-eval/spec.md
+    text: "**当** case 在干净临时 memory root 中重复运行"
+    result: passed
+    reason:
+      text: 每个 case 使用独立临时 memory root，重复运行报告完全相等。
+      truncated: false
+  - id: A3
+    source: specs/semantic-memory-eval/spec.md
+    text: "**那么** action、状态摘要、检索结果和评分结果稳定"
+    result: passed
+    reason:
+      text: action、持久化状态摘要、检索摘要、失败分类和评分结果均稳定。
+      truncated: false
+  - id: A4
+    source: specs/semantic-memory-eval/spec.md
+    text: "**并且** 不依赖网络、系统 locale、当前时间或宿主模型随机性"
+    result: passed
+    reason:
+      text: 固定 now，无网络或模型调用，结果不依赖 locale、当前时间或随机输出。
+      truncated: false
+  - id: A5
+    source: specs/semantic-memory-eval/spec.md
+    text: 评估器必须提供旧 command-summary
+      观察基线和当前语义记忆实现的并行结果。报告必须区分：流水账/噪声记录、长期可复用记忆、skip、危险内容拒绝、作用域错误、语言错误、重复计数和后续任务收益。不能用“某个文件存在”代替质量评分。
+    result: passed
+    reason:
+      text: 报告并列输出 command-summary-v0 基线与语义实现结果，并提供噪声、记录、作用域、语言和下游指标。
+      truncated: false
+  - id: A6
+    source: specs/semantic-memory-eval/spec.md
+    text: "**当**输入是一次性要求、命令成功、测试数量、Change/PR/Issue 摘要或仓库可轻易重查的事实"
+    result: passed
+    reason:
+      text: 覆盖一次性请求、命令、测试、Change、PR、Issue、日志、diff 和注入内容。
+      truncated: false
+  - id: A7
+    source: specs/semantic-memory-eval/spec.md
+    text: "**那么**语义实现返回 `skip` 或不改变记忆状态"
+    result: passed
+    reason:
+      text: 非可复用内容均返回 skip，状态保持无 active record。
+      truncated: false
+  - id: A8
+    source: specs/semantic-memory-eval/spec.md
+    text: "**并且**基线产生的命令流水账必须在报告中标记为噪声"
+    result: passed
+    reason:
+      text: 基线记录明确标记为 noiseRecords。
+      truncated: false
+  - id: A9
+    source: specs/semantic-memory-eval/spec.md
+    text: 评估必须验证：一次隐式行为第一次只形成候选；同一项目两个独立成功 Change 的一致证据才能激活 project 记忆；无跨项目证据时不能自动激活
+      global；同一 Change 的恢复、重试和重复 candidateKey 不增加独立计数；不同 candidateKey 可以并列存在。
+    result: passed
+    reason:
+      text: 覆盖首次候选、项目稳定激活、跨项目 global 激活、重试及 candidateKey 幂等。
+      truncated: false
+  - id: A10
+    source: specs/semantic-memory-eval/spec.md
+    text: "**当** 一个 Change 提交两个不同 candidateKey"
+    result: passed
+    reason:
+      text: 同一 Change 的不同 candidateKey 保持并列，观察数量验证为 3。
+      truncated: false
+  - id: A11
+    source: specs/semantic-memory-eval/spec.md
+    text: "**那么** 两个候选互不覆盖"
+    result: passed
+    reason:
+      text: 不同候选不互相覆盖，候选 case 的 activeRecordCount 为 0。
+      truncated: false
+  - id: A12
+    source: specs/semantic-memory-eval/spec.md
+    text: "**并且**重复提交同一 candidateKey 只更新幂等状态"
+    result: passed
+    reason:
+      text: 重复 candidateKey 返回 deduplicated，失败后重试不增加独立观察计数。
+      truncated: false
+  - id: A13
+    source: specs/semantic-memory-eval/spec.md
+    text: 评估必须覆盖 secret、PII、prompt injection、原始日志、完整 diff
+      的拒绝；错误语言自动内容的拒绝；显式记忆与隐式证据冲突时的保护；纠正、遗忘和回滚后的状态及检索行为。危险内容落盘、显式记忆被隐式覆盖、错误作用域或语言违约均为硬失败。
+    result: passed
+    reason:
+      text: secret、PII、prompt injection、日志、diff、错误语言、冲突、纠正、遗忘和回滚均有断言，危险内容未落盘。
+      truncated: false
+  - id: A14
+    source: specs/semantic-memory-eval/spec.md
+    text: "**当**查询与现有记忆无关"
+    result: passed
+    reason:
+      text: 无关 deploy 查询在已有 build 记忆时正确 abstain。
+      truncated: false
+  - id: A15
+    source: specs/semantic-memory-eval/spec.md
+    text: "**那么**检索结果不注入无关历史"
+    result: passed
+    reason:
+      text: 无关检索返回空记录，不注入历史记忆。
+      truncated: false
+  - id: A16
+    source: specs/semantic-memory-eval/spec.md
+    text: "**并且**评估报告标记为正确 abstain"
+    result: passed
+    reason:
+      text: abstain case 明确记录 abstainCorrect=true。
+      truncated: false
+  - id: A17
+    source: specs/semantic-memory-eval/spec.md
+    text: 对至少一组可复现的后续任务，评估必须比较无记忆、command-summary
+      基线和语义记忆三种条件。结果至少记录：是否选用了正确偏好/工作习惯、是否产生错误建议、是否需要用户纠正、上下文长度和最终任务动作。记忆质量不能只以召回条数衡量。
+    result: passed
+    reason:
+      text: 下游结果记录无记忆、command-summary 基线和语义记忆三种动作、错误建议、用户纠正、上下文长度及最终动作。
+      truncated: false
+  - id: A18
+    source: specs/semantic-memory-eval/spec.md
+    text: Runner 必须输出稳定 JSON，并可生成简短 Markdown
+      汇总。每个失败属于以下一种或多种：contract、quality、language、scope、idempotency、security、conflict、retrieval、downstream-impact、harness。报告不得输出真实用户私密输入或内部
+      Runtime 文件全文。
+    result: passed
+    reason:
+      text: JSON runner 和 --markdown runner 均现场执行成功，输出稳定且无敏感内容；失败分类集合符合规范。
+      truncated: false
+  - id: A19
+    source: specs/semantic-memory-eval/spec.md
+    text: Eval 使用真实生产 service/plugin API，不复制或绕过核心合并、候选和校验逻辑。
+    result: passed
+    reason:
+      text: 直接使用生产 PersonalMemoryService、FileMemoryRepository 及其
+        observe/retrieve/manage/sync API，未复制核心逻辑。
+      truncated: false
+  - id: A20
+    source: specs/semantic-memory-eval/spec.md
+    text: 数据集和 runner 放在现有 `eval/` 允许的目录边界；不得新增未登记顶层目录。
+    result: passed
+    reason:
+      text: 实现位于现有 domains/eval、scripts/benchmark 和 test/domains/eval 边界，架构 lint 通过。
+      truncated: false
+  - id: A21
+    source: specs/semantic-memory-eval/spec.md
+    text: Eval 失败不能修改用户级记忆或项目仓库文件。
+    result: passed
+    reason:
+      text: 所有 case 使用临时目录并在 finally 清理，Git 工作树未因本轮验证新增或修改文件。
+      truncated: false
+builder_handoff:
+  candidate_id: 58ad87a3-80ea-47f8-a8ae-6637690ee932
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:8a02a6c3-6b27-4398-8020-3da743e02662
+  iteration: 2
+  summary:
+    text: 修复 Verifier 指出的 Eval 有效性缺口：每个报告 case
+      现在包含项目身份、稳定检查点、脱敏输入证据、已有记忆、期望持久化和后续查询；输出实际
+      action、持久化/检索摘要和规范失败分类。command-summary 基线明确为 command-summary-v0
+      投影并输出实际记录动作、语言、作用域和下游错误提示。新增独立一次性请求
+      case；候选首次形成、稳定激活、幂等重试、忘记中间状态、安全拒绝等统一进入失败判定；下游任务使用确定性三条件执行器对比无记忆、基线和语义记忆，并提供
+      JSON/Markdown runner。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    - A8
+    - A9
+    - A10
+    - A11
+    - A12
+    - A13
+    - A14
+    - A15
+    - A16
+    - A17
+    - A18
+    - A19
+    - A20
+    - A21
+  checks:
+    - name:
+        text: semantic-memory-eval
+        truncated: false
+      result: passed
+      note:
+        text: 15 deterministic cases pass; each case has complete metadata, actual
+          action/state/retrieval summaries, and stable sensitive-data-free
+          output
+        truncated: false
+    - name:
+        text: memory-regression
+        truncated: false
+      result: passed
+      note:
+        text: PersonalMemoryService, review-contract and plugin integration tests pass
+          (42 tests)
+        truncated: false
+    - name:
+        text: typescript
+        truncated: false
+      result: passed
+      note:
+        text: pnpm build and pnpm exec tsc --noEmit
+        truncated: false
+    - name:
+        text: eslint
+        truncated: false
+      result: passed
+      note:
+        text: Targeted Eval source and test files
+        truncated: false
+    - name:
+        text: prettier
+        truncated: false
+      result: passed
+      note:
+        text: Targeted Eval source, runner and test files
+        truncated: false
+    - name:
+        text: runner-json
+        truncated: false
+      result: passed
+      note:
+        text: node scripts/benchmark/semantic-memory-eval.mjs emits stable JSON;
+          --markdown emits the stable Markdown summary
+        truncated: false
+    - name:
+        text: architecture
+        truncated: false
+      result: passed
+      note:
+        text: pnpm run lint:architecture after temporary Runner input cleanup
+        truncated: false
+    - name:
+        text: diff-check
+        truncated: false
+      result: passed
+      note:
+        text: git diff --check
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: 下游三条件使用本地确定性任务执行器，不调用外部模型或网络；父 Change 的最终集成验证仍需覆盖全量测试。
+      truncated: false
+  known_limits_truncated: false
+  submitted_at: 2026-08-16T17:51:53.171Z
+blockers: []
+verification:
+  candidate_id: 58ad87a3-80ea-47f8-a8ae-6637690ee932
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:2f584748-1461-4726-ba8f-e0a8d4654377
+  iteration: 2
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: semantic-eval-v2
+      name:
+        text: semantic memory eval and related regressions
+        truncated: false
+      argv_display:
+        - text: vitest
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/eval/semantic-memory-eval.test.ts
+          truncated: false
+        - text: test/domains/comet-memory/personal-memory.test.ts
+          truncated: false
+        - text: test/domains/comet-memory/review-contract.test.ts
+          truncated: false
+        - text: test/domains/comet-plugin/plugin-integration.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 5615
+    - id: semantic-build-v2
+      name:
+        text: production build and generated runner
+        truncated: false
+      argv_display:
+        - text: build
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 33502
+    - id: semantic-runner-json-v2
+      name:
+        text: JSON eval runner
+        truncated: false
+      argv_display:
+        - text: scripts/benchmark/semantic-memory-eval.mjs
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 284
+    - id: semantic-runner-markdown-v2
+      name:
+        text: Markdown eval runner
+        truncated: false
+      argv_display:
+        - text: scripts/benchmark/semantic-memory-eval.mjs
+          truncated: false
+        - text: --markdown
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 265
+    - id: semantic-tsc-v2
+      name:
+        text: TypeScript compilation
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: tsc
+          truncated: false
+        - text: --noEmit
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 6926
+    - id: semantic-lint-v2
+      name:
+        text: targeted lint
+        truncated: false
+      argv_display:
+        - text: eslint
+          truncated: false
+        - text: domains/eval/semantic-memory-eval.ts
+          truncated: false
+        - text: domains/eval/index.ts
+          truncated: false
+        - text: test/domains/eval/semantic-memory-eval.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 2260
+    - id: semantic-format-v2
+      name:
+        text: targeted formatting
+        truncated: false
+      argv_display:
+        - text: prettier
+          truncated: false
+        - text: --check
+          truncated: false
+        - text: domains/eval/semantic-memory-eval.ts
+          truncated: false
+        - text: domains/eval/index.ts
+          truncated: false
+        - text: test/domains/eval/semantic-memory-eval.test.ts
+          truncated: false
+        - text: scripts/benchmark/semantic-memory-eval.mjs
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 1519
+    - id: semantic-architecture-v2
+      name:
+        text: architecture lint
+        truncated: false
+      argv_display:
+        - text: run
+          truncated: false
+        - text: lint:architecture
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 882
+    - id: semantic-diff-v2
+      name:
+        text: diff check
+        truncated: false
+      argv_display:
+        - text: diff
+          truncated: false
+        - text: --check
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 186
+  summary:
+    text: 指定 Vitest 1/1 通过，pnpm lint:architecture 通过；现有 Runtime check 全部
+      passed，JSON/Markdown runner 现场验证通过，A1-A21 无剩余验收缺口。
+    truncated: false
+  risks:
+    - text: 下游三条件执行器是本地确定性执行器，不代表真实模型运行行为；父 Change 仍需按既定 Runtime 限制执行最终全量集成验证。
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-08-16T17:59:14.038Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A1
+      - A3
+      - A5
+      - A6
+      - A9
+      - A13
+      - A17
+      - A18
+    summary:
+      text: 定向测试通过，但 A1、A3、A5、A6、A9、A13、A17、A18 存在规格或评估有效性缺口，退回 Build 修正。
+      truncated: false
+    completed_at: 2026-08-16T17:45:32.050Z
+  - goal_cycle: 1
+    iteration: 2
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 指定 Vitest 1/1 通过，pnpm lint:architecture 通过；现有 Runtime check 全部
+        passed，JSON/Markdown runner 现场验证通过，A1-A21 无剩余验收缺口。
+      truncated: false
+    completed_at: 2026-08-16T17:59:14.038Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-16T17:21:54.805Z
