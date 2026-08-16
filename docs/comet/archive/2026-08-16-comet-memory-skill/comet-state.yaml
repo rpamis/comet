@@ -2,8 +2,8 @@ schema: comet.native.v4
 name: comet-memory-skill
 language: zh-CN
 phase: archive
-status: active
-state_version: 16
+status: done
+state_version: 17
 brief: brief.md
 spec_changes:
   - capability: comet-memory-skill
@@ -15,7 +15,7 @@ workspace:
   target_branch: beta20
   finish: merge
 loop:
-  stage: archive-ready
+  stage: done
   goal_cycle: 2
   iteration: 2
   attempt: 1
@@ -24,7 +24,7 @@ loop:
   no_progress_count: 0
   execution_failure_count: 0
   previous_unresolved_ids: []
-  next_action: archive
+  next_action: null
 acceptance:
   - id: A1
     source: brief.md
@@ -109,8 +109,7 @@ acceptance:
       truncated: false
   - id: A12
     source: specs/comet-memory-skill/spec.md
-    text:
-      合法 packet 触发语义评审 - **WHEN** Skill 收到合法且未超预算的 review packet - **THEN** 只基于
+    text: 合法 packet 触发语义评审 - **WHEN** Skill 收到合法且未超预算的 review packet - **THEN** 只基于
       packet 内的内容筛选长期可复用的个人偏好、工作习惯或已验证经验 - **AND** 不读取 packet 以外的文件、工具输出或会话历史
     result: passed
     reason:
@@ -118,8 +117,7 @@ acceptance:
       truncated: false
   - id: A13
     source: specs/comet-memory-skill/spec.md
-    text:
-      没有长期价值时跳过 - **WHEN** packet 只包含一次性命令、测试/提交摘要、Issue/PR 摘要、可从仓库重查的事实、猜测或噪声 -
+    text: 没有长期价值时跳过 - **WHEN** packet 只包含一次性命令、测试/提交摘要、Issue/PR 摘要、可从仓库重查的事实、猜测或噪声 -
       **THEN** Skill 返回 `comet.memory.actions.v1` 的单个 `skip` 动作 - **AND**
       不声称已经创建或更新记忆
     result: passed
@@ -128,8 +126,7 @@ acceptance:
       truncated: false
   - id: A14
     source: specs/comet-memory-skill/spec.md
-    text:
-      明确用户意图优先 - **WHEN** packet 的 user evidence 明确表达“记住”“以后都这样”“改成”或“忘掉” -
+    text: 明确用户意图优先 - **WHEN** packet 的 user evidence 明确表达“记住”“以后都这样”“改成”或“忘掉” -
       **THEN** Skill 优先返回对应的 `create`、`update` 或 `forget` 动作 - **AND**
       不用相反的隐式行为覆盖显式记忆
     result: passed
@@ -138,8 +135,7 @@ acceptance:
       truncated: false
   - id: A15
     source: specs/comet-memory-skill/spec.md
-    text:
-      无法可靠绑定时跳过 - **WHEN** 目标记忆、scope、证据、语言或长期价值无法从 packet 明确判断 - **THEN** Skill
+    text: 无法可靠绑定时跳过 - **WHEN** 目标记忆、scope、证据、语言或长期价值无法从 packet 明确判断 - **THEN** Skill
       返回 `skip` 或不产生动作 - **AND** 不猜测跨项目证据、不把 project 提升为 global、不生成 Runtime 内部
       ID
     result: passed
@@ -157,8 +153,7 @@ acceptance:
       truncated: false
   - id: A17
     source: specs/comet-memory-skill/spec.md
-    text:
-      后台复盘完成 - **WHEN** 后台评审创建候选或返回 skip - **THEN** Skill 只返回机器可消费的 action
+    text: 后台复盘完成 - **WHEN** 后台评审创建候选或返回 skip - **THEN** Skill 只返回机器可消费的 action
       envelope - **AND** 不向用户展示内部推理、证据计数或候选状态
     result: passed
     reason:
@@ -201,8 +196,7 @@ acceptance:
       truncated: false
   - id: A22
     source: specs/comet-memory-skill/spec.md
-    text:
-      Skill 的后台评审、候选形成和无内容跳过默认不输出内部过程。Skill 不得向用户显示 Runtime、candidate
+    text: Skill 的后台评审、候选形成和无内容跳过默认不输出内部过程。Skill 不得向用户显示 Runtime、candidate
       ID、evidence count 或原始 packet；显式确认和首次实际行为变化由外部 workflow/CLI 集成层负责。
     result: passed
     reason:
@@ -429,8 +423,7 @@ history:
       - A18
       - A20
     summary:
-      text:
-        独立只读 Verifier 发现 Native-only Skill 资产过滤和 action set 单一 scope/预算约束缺失，返回
+      text: 独立只读 Verifier 发现 Native-only Skill 资产过滤和 action set 单一 scope/预算约束缺失，返回
         Build 修复。当前 138 个契约测试、TypeScript、Prettier 和 git diff --check 均通过，但覆盖面不足。
       truncated: false
     completed_at: 2026-08-16T15:36:08.625Z
@@ -449,8 +442,8 @@ history:
     outcome: execution-error
     unresolved_ids: []
     summary:
-      text: 'Native Verifier response was invalid: Native verification cannot pass
-        before every required check succeeds'
+      text: "Native Verifier response was invalid: Native verification cannot pass
+        before every required check succeeds"
       truncated: false
     completed_at: 2026-08-16T15:54:49.199Z
   - goal_cycle: 2
@@ -459,8 +452,7 @@ history:
     outcome: recovery
     unresolved_ids: []
     summary:
-      text:
-        首次 Verifier 尝试因动态 Native 状态文件导致格式检查记录失败，且旧检查计划已解析，按恢复协议返回 Build
+      text: 首次 Verifier 尝试因动态 Native 状态文件导致格式检查记录失败，且旧检查计划已解析，按恢复协议返回 Build
         以提交新候选并只执行稳定源文件检查。实现与独立语义审查均通过。
       truncated: false
     completed_at: 2026-08-16T15:57:46.043Z
@@ -486,5 +478,5 @@ history_overflow:
     recovery: 0
 verification_result: pass
 verification_report: verification.md
-archived: false
+archived: true
 created_at: 2026-08-16T15:16:57.677Z
