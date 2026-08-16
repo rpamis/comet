@@ -1,0 +1,55 @@
+import { describe, expect, it } from 'vitest';
+
+import { runSemanticMemoryEval } from '../../../domains/eval/semantic-memory-eval.js';
+
+describe('semantic memory eval', () => {
+  it('compares the deterministic command-summary baseline with semantic memory', async () => {
+    const first = await runSemanticMemoryEval();
+    const second = await runSemanticMemoryEval();
+
+    expect(first).toEqual(second);
+    expect(first.schema).toBe('comet.semantic-memory.eval.v1');
+    expect(first.metrics.totalCases).toBeGreaterThanOrEqual(15);
+    expect(first.metrics.passedCases).toBe(first.metrics.totalCases);
+    expect(first.metrics.noiseSkipped).toBeGreaterThan(0);
+    expect(first.metrics.usefulActivated).toBeGreaterThanOrEqual(2);
+    expect(first.metrics.securityRejected).toBeGreaterThanOrEqual(1);
+    expect(first.metrics.idempotentRepeats).toBeGreaterThanOrEqual(1);
+    expect(first.metrics.scopeCorrect).toBe(true);
+    expect(first.metrics.languageCorrect).toBe(true);
+    expect(first.metrics.abstainCorrect).toBe(true);
+    expect(first.metrics.downstreamImpactCases).toBeGreaterThan(0);
+    expect(first.metrics.baselineNoiseRecords).toBeGreaterThan(first.metrics.semanticRecords);
+    expect(first.metrics.conflictProtected).toBe(true);
+    expect(first.metrics.globalEvidenceCorrect).toBe(true);
+    expect(first.metrics.pauseCorrect).toBe(true);
+    expect(first.metrics.syncFallbackCorrect).toBe(true);
+    expect(
+      first.cases.every(
+        (entry) =>
+          entry.input.projectIdentity !== undefined &&
+          entry.input.stableCheckpoint !== undefined &&
+          entry.input.inputEvidence !== undefined &&
+          entry.input.existingMemory !== undefined &&
+          entry.input.expectedPersistence !== undefined &&
+          entry.input.followUpQuery !== undefined &&
+          entry.semantic.actualAction === entry.input.expectedAction &&
+          entry.semantic.persistedState !== undefined &&
+          entry.semantic.retrievalSummary !== undefined &&
+          entry.baseline.model === 'command-summary-v0' &&
+          entry.baseline.actualAction === 'record-command-summary',
+      ),
+    ).toBe(true);
+    expect(first.cases.some((entry) => entry.id === 'skip-zh-one-time-request')).toBe(true);
+    expect(first.cases.every((entry) => entry.failureCategories.length === 0)).toBe(true);
+    expect(
+      first.cases.some((entry) => entry.semantic.downstream?.requiresUserCorrection === false),
+    ).toBe(true);
+    expect(first.markdown).toContain('Semantic Memory Eval');
+    expect(first.markdown).toContain('Baseline noise records');
+    expect(first.markdown).not.toMatch(/password|Bearer|sk-[A-Za-z0-9]/i);
+    expect(JSON.stringify(first)).not.toMatch(
+      /secret-value|person@example\.com|Ignore previous instructions/i,
+    );
+  });
+});

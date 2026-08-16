@@ -25,6 +25,14 @@ export {
   type StaticCollectOptions,
 } from './standalone-static-collect.js';
 export { loadUserEvalEnvironment } from './user-environment.js';
+export {
+  runSemanticMemoryEval,
+  SEMANTIC_MEMORY_EVAL_SCHEMA,
+  SEMANTIC_MEMORY_FAILURE_CATEGORIES,
+  type SemanticMemoryEvalCase,
+  type SemanticMemoryEvalMetrics,
+  type SemanticMemoryEvalReport,
+} from './semantic-memory-eval.js';
 
 export function resolveRepositoryEvalWorkspace(): RepositoryEvalWorkspace {
   const layout = readRepositoryLayout();
