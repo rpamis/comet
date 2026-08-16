@@ -17,7 +17,6 @@ Native stores the requirements, complete target specifications, current progress
 2. Run pagination commands from `nextPageArgs` only when the current phase needs the complete acceptance list. Run `show` or read the corresponding brief/Spec only when editing or checking formal content.
 3. When an active change already exists, enter the returned `workspace.projectRoot` and run `select`. Runtime scans registered Worktrees and prefers a workspace whose bound branch matches; ask the user only when multiple equally aligned candidates remain.
 4. Create a change only when no matching active change exists, using the artifact directory from configuration. `comet init` initializes `native.language` from the selected Skill language; after that, artifacts follow the project setting, and `--language` is only for an explicit user override.
-
 ### Memory and project-rule integration
 After entering the change workspace, the Agent automatically runs:
 
@@ -33,7 +32,6 @@ Task-end candidates can also be listed with `comet rules candidates --json`.
 Choose a lowercase kebab-case name, then use the [workspace selection reference](reference/workspace.md) to decide whether to use the current directory, create a branch, or create a worktree. Explicit parallel, simultaneous, or multi-session intent automatically selects `worktree` without asking for a three-way choice.
 
 Before creating the change, the CLI binds the branch or worktree, reuses a registered change branch, recreates a Worktree when its branch still exists but the registered Worktree was removed, maintains repository-local exclusions, validates configuration, and creates state that can be resumed across devices. Then enter the returned `preparation.projectRoot`; do not continue subsequent commands in the original directory.
-
 If preparation does not finish, keep the resources already created, show the failure reason from `preparation`, and continue with the recovery direction from the Runtime or user.
 ## Read on demand
 After confirming the phase, read only the needed reference:

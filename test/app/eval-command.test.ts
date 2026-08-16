@@ -27,9 +27,13 @@ const packagedEvalCwd = path.resolve(
   '../../eval',
 );
 
-vi.mock('child_process', () => ({
-  execFileSync,
-}));
+vi.mock('child_process', async (importOriginal) => {
+  const original = await importOriginal<typeof import('child_process')>();
+  return {
+    ...original,
+    execFileSync,
+  };
+});
 
 vi.mock('fs', async (importOriginal) => {
   const original = await importOriginal<typeof import('fs')>();

@@ -2,6 +2,17 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-beta.21] - 2026-08-17
+
+### Added
+
+- **Semantic personal memory**: Comet now keeps reusable personal preferences, collaboration habits, and verified experience through a bounded review at stable successful workflow checkpoints, while skipping one-off activity, repository facts, and sensitive content.
+- **Shared memory Skill**: Classic, Native, Hotfix, and Tweak now use the same fixed first-party `comet-memory` Skill with Chinese and English assets selected from the project language.
+
+### Changed
+
+- **Personal memory experience**: CLI, Dashboard, readable Markdown, and dedicated Git synchronization now share one authoritative memory state with localized output, explicit correction/forget/rollback controls, conflict protection, and non-blocking background failures.
+
 ## What's Changed [0.4.0-beta.20] - 2026-08-15
 
 ### Changed
