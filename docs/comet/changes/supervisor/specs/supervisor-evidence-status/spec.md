@@ -118,6 +118,16 @@
 - **Then** Runtime 与 Skill 在一次协调过程中持续推进
 - **And** 不要求用户重复回复“继续”
 
+### Scenario: 验证保证级别使用用户可理解的文案
+
+- **Given** verification state 包含 `host-attested`、`skill-coordinated`、`semantic-verification-unavailable` 或 `user-confirmed-degraded`
+- **When** Runtime 生成 verification report、Dashboard 或 CLI 帮助中的用户展示
+- **Then** 使用统一的中文用户文案说明验证是否独立、是否需要用户确认以及是否只有自动检查
+- **And** `skill-coordinated` 明确说明需要用户确认验证结果
+- **And** `semantic-verification-unavailable` 明确说明只完成了自动检查
+- **And** “验收通过”“可归档”和“已归档”不互相替代
+- **And** Portable State、status JSON 和旧状态读取继续保留原始机器枚举值
+
 ## 非目标
 
 - 新增 `comet supervisor` 命令族或把内部 `inspect/advance/finish` 暴露为产品协议。
