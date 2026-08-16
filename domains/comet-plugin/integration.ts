@@ -40,6 +40,7 @@ export interface CometLifecycleObservation {
   readonly text: string;
   readonly candidateKey?: string;
   readonly projectKey?: string;
+  readonly language?: MemoryLanguage;
   readonly tags?: readonly string[];
   readonly pathPatterns?: readonly string[];
   readonly taskTypes?: readonly string[];
@@ -76,6 +77,7 @@ export class CometPluginBridge {
   public constructor(
     private readonly runtime: PluginRuntime,
     private readonly projectId: string,
+    private readonly language: MemoryLanguage = 'zh-CN',
   ) {}
 
   public get pluginRuntime(): PluginRuntime {
@@ -84,6 +86,10 @@ export class CometPluginBridge {
 
   public get currentProjectId(): string {
     return this.projectId;
+  }
+
+  public get currentLanguage(): MemoryLanguage {
+    return this.language;
   }
 
   public async collectContext(
@@ -119,6 +125,7 @@ export class CometPluginBridge {
     const payload = {
       ...observation,
       projectKey: observation.projectKey ?? this.projectId,
+      language: observation.language ?? this.language,
       ...(observation.candidateKey ? { candidateKey: observation.candidateKey } : {}),
     };
     const source = {
@@ -132,7 +139,6 @@ export class CometPluginBridge {
       source,
       payload,
     };
-    await this.runtime.dispatch({ ...base, scope: 'user' });
     await this.runtime.dispatch({ ...base, scope: 'project', projectId: this.projectId });
     try {
       await this.syncMemory();
@@ -167,7 +173,7 @@ export class CometPluginBridge {
     return (await this.runtime.invoke(
       'comet.personal-memory',
       'retrieve',
-      { ...query, projectKey: query.projectKey ?? this.projectId },
+      scopedMemoryQuery(query, this.projectId),
       'user',
     )) as MemoryRetrieval;
   }
@@ -176,7 +182,7 @@ export class CometPluginBridge {
     return (await this.runtime.invoke(
       'comet.personal-memory',
       'manage',
-      { ...query, projectKey: query.projectKey ?? this.projectId },
+      scopedMemoryQuery(query, this.projectId),
       'user',
     )) as MemoryManagementView;
   }
@@ -334,7 +340,12 @@ export async function createDefaultCometPluginBridge(
     ],
   });
   await runtime.reconcileFirstParty();
-  return new CometPluginBridge(runtime, options.projectId);
+  return new CometPluginBridge(runtime, options.projectId, language);
+}
+
+function scopedMemoryQuery(query: MemoryQuery, projectId: string): MemoryQuery {
+  if (query.scope === 'global') return query;
+  return { ...query, projectKey: query.projectKey ?? projectId };
 }
 
 async function resolveProjectMemoryLanguage(projectRoot: string): Promise<MemoryLanguage> {

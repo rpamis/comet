@@ -91,6 +91,104 @@ describe('Comet plugin integration bridge', () => {
     });
   });
 
+  test('keeps lifecycle memory in the project scope with candidate and configured language', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-lifecycle-'));
+    const memoryRoot = path.join(root, 'memory');
+    const projectRoot = path.join(root, 'project');
+    await fs.mkdir(projectRoot, { recursive: true });
+    try {
+      const bridge = await createDefaultCometPluginBridge({
+        projectRoot,
+        memoryRoot,
+        projectId: 'demo-project',
+        language: 'zh-CN',
+        stateRoot: path.join(root, 'plugin-state'),
+      });
+      const observation = {
+        name: 'change.completed' as const,
+        workflow: 'hotfix',
+        changeId: 'change-scope-language',
+        success: true,
+        category: '操作习惯',
+        text: '提交前只暂存本次改动文件',
+        candidateKey: 'stage-scope',
+      };
+      await bridge.dispatchLifecycle(observation);
+      await bridge.dispatchLifecycle({ ...observation, changeId: 'change-scope-language-2' });
+
+      const state = JSON.parse(
+        await fs.readFile(path.join(memoryRoot, '.comet', 'runtime', 'memory-state.json'), 'utf8'),
+      ) as {
+        observations: Array<Record<string, unknown>>;
+      };
+      expect(state.observations).toEqual([
+        expect.objectContaining({
+          scope: 'project',
+          projectKey: 'demo-project',
+          candidateKey: 'stage-scope',
+        }),
+        expect.objectContaining({
+          scope: 'project',
+          projectKey: 'demo-project',
+          candidateKey: 'stage-scope',
+        }),
+      ]);
+      await expect(fs.stat(path.join(memoryRoot, 'profile.md'))).rejects.toThrow();
+      expect((await bridge.retrieve({ scope: 'global', task: '提交' })).records).toHaveLength(0);
+      expect((await bridge.retrieve({ scope: 'project', task: '提交' })).records).toHaveLength(1);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test('resolves lifecycle language from the active project configuration', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-language-'));
+    const memoryRoot = path.join(root, 'memory');
+    const projectRoot = path.join(root, 'project');
+    await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'workflows: [native]',
+        'native:',
+        '  artifact_root: docs',
+        '  language: en',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    try {
+      const bridge = await createDefaultCometPluginBridge({
+        projectRoot,
+        memoryRoot,
+        projectId: 'english-project',
+        stateRoot: path.join(root, 'plugin-state'),
+      });
+      for (const changeId of ['language-1', 'language-2']) {
+        await bridge.dispatchLifecycle({
+          name: 'verification.completed',
+          workflow: 'native',
+          changeId,
+          success: true,
+          category: 'Workflow habit',
+          text: 'Run tests before commit',
+          candidateKey: 'verify-before-commit',
+        });
+      }
+      const records = (await bridge.retrieve({ scope: 'project', task: 'tests commit' })).records;
+      expect(records).toHaveLength(1);
+      expect(records[0]).toMatchObject({
+        language: 'en',
+        scope: 'project',
+        projectKey: 'english-project',
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   test('checkpoints personal memory after a workflow observation', async () => {
     await withBridge(async (bridge) => {
       const sync = vi.spyOn(bridge, 'syncMemory').mockResolvedValue({

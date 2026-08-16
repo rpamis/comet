@@ -386,4 +386,69 @@ describe('semantic memory review contract', () => {
       ),
     ).toThrow('language');
   });
+
+  it('rejects an action set that mixes global and project scopes', () => {
+    const validated = validateMemoryReviewPacket(
+      packet({
+        evidence: [
+          ...packet().evidence,
+          {
+            key: 'global:preference:change-1',
+            scope: 'global',
+            projectIdentity: 'repo-a',
+            changeId: 'change-1',
+            success: true,
+            observedAt: '2026-08-14T00:00:00.000Z',
+          },
+        ],
+      }),
+    );
+    expect(() =>
+      validateMemoryReviewActions(
+        validated,
+        actionSet([
+          {
+            action: 'create',
+            language: 'zh-CN',
+            scope: 'global',
+            category: '个人偏好',
+            text: '使用中文回复',
+            evidenceKeys: ['global:preference:change-1'],
+          },
+          {
+            action: 'create',
+            language: 'zh-CN',
+            scope: 'project',
+            projectKey: 'project-a',
+            category: '协作习惯',
+            text: '提交前只暂存本次改动文件',
+            evidenceKeys: ['candidate:staging:change-1'],
+          },
+        ]),
+      ),
+    ).toThrow('scope');
+
+    expect(() =>
+      validateMemoryReviewActions(
+        validated,
+        actionSet([
+          {
+            action: 'skip',
+            language: 'zh-CN',
+            scope: 'global',
+            reason: '没有长期可复用内容',
+          },
+          {
+            action: 'create',
+            language: 'zh-CN',
+            scope: 'project',
+            projectKey: 'project-a',
+            category: '协作习惯',
+            text: '提交前只暂存本次改动文件',
+            evidenceKeys: ['candidate:staging:change-1'],
+          },
+        ]),
+      ),
+    ).toThrow('scope');
+  });
 });
