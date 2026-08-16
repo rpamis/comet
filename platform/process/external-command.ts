@@ -1,10 +1,14 @@
 import { execFileSync } from 'node:child_process';
+import path from 'node:path';
+
+import { assertSafeWindowsBatchArguments, resolveWindowsCommand } from './spawn-command.js';
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_MAX_BUFFER_BYTES = 8 * 1024 * 1024;
 
 export interface ExternalCommandOptions {
   cwd?: string;
+  env?: NodeJS.ProcessEnv;
   timeoutMs?: number;
   maxBufferBytes?: number;
 }
@@ -34,15 +38,25 @@ export function runExternalCommand(
   if (!Number.isSafeInteger(maxBufferBytes) || maxBufferBytes < 1) {
     throw new Error('External command max buffer must be a positive integer');
   }
+  const cwd = path.resolve(options.cwd ?? process.cwd());
+  const env = options.env ?? process.env;
+  const resolvedCommand =
+    process.platform === 'win32' ? resolveWindowsCommand(command, env, cwd) : command;
+  const extension = path.win32.extname(resolvedCommand).toLowerCase();
+  const isWindowsBatchCommand = extension === '.bat' || extension === '.cmd';
+  if (process.platform === 'win32' && isWindowsBatchCommand) {
+    assertSafeWindowsBatchArguments(args);
+  }
   try {
-    return execFileSync(command, [...args], {
-      ...(options.cwd ? { cwd: options.cwd } : {}),
+    return execFileSync(resolvedCommand, [...args], {
+      cwd,
+      env,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
       timeout: timeoutMs,
       maxBuffer: maxBufferBytes,
       windowsHide: true,
-      shell: false,
+      shell: process.platform === 'win32' && isWindowsBatchCommand,
     });
   } catch (error) {
     const stderr =

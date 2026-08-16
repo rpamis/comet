@@ -52,7 +52,11 @@ function windowsCommandCandidates(command: string, env: NodeJS.ProcessEnv, cwd: 
   );
 }
 
-function resolveWindowsCommand(command: string, env: NodeJS.ProcessEnv, cwd: string): string {
+export function resolveWindowsCommand(
+  command: string,
+  env: NodeJS.ProcessEnv,
+  cwd: string,
+): string {
   return (
     windowsCommandCandidates(command, env, cwd).find((candidate) => existsSync(candidate)) ??
     command
@@ -74,7 +78,7 @@ function powershellExecutable(env: NodeJS.ProcessEnv): string {
   return 'powershell.exe';
 }
 
-function assertSafeWindowsBatchArguments(args: readonly string[]): void {
+export function assertSafeWindowsBatchArguments(args: readonly string[]): void {
   if (args.some((argument) => WINDOWS_BATCH_UNSAFE_ARGUMENT.test(argument))) {
     throw new Error('Windows batch check arguments must not contain shell syntax');
   }
