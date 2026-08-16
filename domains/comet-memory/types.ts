@@ -88,6 +88,8 @@ export interface MemoryQuery {
   readonly task?: string;
   readonly path?: string;
   readonly operation?: string;
+  readonly category?: string;
+  readonly tags?: readonly string[];
   readonly query?: string;
   readonly maxEntries?: number;
   readonly maxBytes?: number;

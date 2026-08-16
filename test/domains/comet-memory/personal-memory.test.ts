@@ -481,13 +481,56 @@ describe('PersonalMemoryService', () => {
       await memories.remove(remembered.id);
       await writeFile(
         path.join(root, 'profile.md'),
-        '# 个人画像\n\n## 沟通偏好\n\n- 使用中文回复\n',
+        '# 个人画像\n\n## 沟通偏好\n\n-   使用   中文回复  \n',
       );
 
       const result = await memories.retrieve({ scope: 'global' });
       expect(result.records).not.toEqual(
         expect.arrayContaining([expect.objectContaining({ text: '使用中文回复' })]),
       );
+    });
+  });
+
+  it('rejects automatic observations whose language conflicts with user configuration', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      await expect(
+        memories.observe({
+          scope: 'project',
+          projectKey: 'project-a',
+          category: '沟通偏好',
+          text: 'use English responses',
+          language: 'zh-CN',
+          workflow: 'native',
+          changeId: 'change-1',
+          success: true,
+        }),
+      ).resolves.toMatchObject({ ignored: true, activated: false });
+    });
+  });
+
+  it('filters retrieval by category and tags independently from keyword search', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      await memories.remember({
+        scope: 'global',
+        category: '沟通偏好',
+        text: '使用中文回复',
+        tags: ['语言'],
+      });
+      await memories.remember({
+        scope: 'global',
+        category: '工作习惯',
+        text: '提交前只暂存本次改动文件',
+        tags: ['协作'],
+      });
+
+      expect(
+        (await memories.retrieve({ category: '沟通偏好', tags: ['语言'] })).records.map(
+          (record) => record.text,
+        ),
+      ).toEqual(['使用中文回复']);
+      expect((await memories.retrieve({ tags: ['缺失'] })).records).toEqual([]);
     });
   });
 

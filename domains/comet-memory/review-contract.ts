@@ -25,14 +25,17 @@ const DANGEROUS_PATTERNS = [
   /\b(?:api[_ -]?key|access[_ -]?token|password|passwd|secret|authorization)\s*[:=]\s*\S+/iu,
   /\b(?:sk|rk)-[a-z0-9]{16,}\b/iu,
   /\b(?:ghp|gho|github_pat|xox[baprs]|AIza)[-_][a-z0-9_-]{8,}\b/iu,
+  /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}\b/iu,
+  /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/u,
   /\b\d{3}-\d{2}-\d{4}\b/u,
   /\b\+?\d[\d ()-]{7,}\d\b/u,
   /\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b/u,
-  /\b(?:diff --git|@@\s+-\d|\+\+\+\s+[ab]\/|---\s+[ab]\/)/imu,
-  /\b(?:stack trace|traceback|stderr|stdout|debug log|npm warn|error log)\b/iu,
-  /(?:ignore|disregard|override|forget|do not follow)\s+(?:all\s+)?(?:previous|earlier|the)\s+(?:instructions?|rules?|policies?|system|prompt)/iu,
+  /\b(?:diff --git|git\s+(?:diff|log)|@@\s+-\d|\+\+\+\s+[ab]\/|---\s+[ab]\/)/imu,
+  /\b(?:stack trace|traceback|stderr|stdout|debug log|npm warn|npm ERR!|error log)\b/iu,
+  /(?:ignore|disregard|override|forget|do not follow)\s+(?:all\s+)?(?:my\s+|the\s+)?(?:prior|previous|earlier|above|following|these)?\s*(?:instructions?|rules?|policies?|system|prompt)/iu,
   /(?:modify|change|edit|rewrite|disable|reveal)\s+(?:the\s+)?(?:skill|agent instructions?|project rules?|system prompt|guard|policy)/iu,
-  /<\/?script\b|javascript:/iu,
+  /<\/?(?:script|iframe|object|embed|style|svg)\b|(?:onerror|onload|onclick)\s*=|data:text\/html/iu,
+  /javascript:/iu,
 ];
 
 export interface MemoryReviewValidationOptions {
@@ -59,9 +62,10 @@ export function validateMemoryReviewPacket(
   const changeId = requiredString(object.changeId, 'changeId');
   const createdAt = requiredTimestamp(object.createdAt, 'createdAt');
   const checkpoint = requiredString(object.checkpoint, 'checkpoint');
+  const budget = normalizeBudget(object.budget, options);
   const userEvidence = boundedStrings(object.userEvidence, 'userEvidence', 8, true);
   const evidence = asArray(object.evidence, 'evidence');
-  if (evidence.length > MEMORY_REVIEW_LIMITS.maxCollectionEntries) {
+  if (evidence.length > Math.min(budget.maxEvidence, MEMORY_REVIEW_LIMITS.maxEvidence)) {
     throw new Error('Review packet evidence exceeds the collection limit');
   }
   const normalizedEvidence = evidence.map((entry, index) => {
@@ -147,7 +151,6 @@ export function validateMemoryReviewPacket(
   if (memoryIds.size !== normalizedMemories.length) {
     throw new Error('Review packet memory IDs must be unique');
   }
-  const budget = normalizeBudget(object.budget, options);
   if (Buffer.byteLength(JSON.stringify(value), 'utf8') > budget.maxBytes) {
     throw new Error('Review packet exceeds its byte budget');
   }
@@ -172,9 +175,11 @@ export function validateMemoryReviewActions(
   value: unknown,
   options: MemoryReviewValidationOptions = {},
 ): MemoryReviewActionSet {
-  const actions = Array.isArray(value)
-    ? value
-    : asArray(asObject(value, 'review actions').actions, 'review actions.actions');
+  const envelope = asObject(value, 'review actions');
+  if (envelope.schema !== MEMORY_REVIEW_ACTIONS_SCHEMA) {
+    throw new Error(`Unsupported memory review action schema: ${String(envelope.schema)}`);
+  }
+  const actions = asArray(envelope.actions, 'review actions.actions');
   const maxActions = boundedLimit(
     options.maxActions ?? packet.budget.maxActions,
     MEMORY_REVIEW_LIMITS.maxActions,
@@ -198,6 +203,7 @@ export function validateMemoryReviewActions(
     if (scope === 'global' && projectKey !== undefined) {
       throw new Error(`actions[${index}] global action must not have a project key`);
     }
+    assertActionProjectContext(packet, scope, projectKey, index);
     const candidateKey = optionalSafeKey(action.candidateKey, `actions[${index}].candidateKey`);
     const actionEvidence =
       action.evidenceKeys === undefined
@@ -221,6 +227,7 @@ export function validateMemoryReviewActions(
       const targetId = requiredString(action.targetId, `actions[${index}].targetId`);
       const target = assertTarget(packet, memoryIds, targetId, index);
       assertTargetMatches(target, scope, projectKey, index);
+      assertTargetProjectContext(packet, target, index);
       assertTargetActive(target, index);
       validateActionEvidence(
         packet,
@@ -262,6 +269,7 @@ export function validateMemoryReviewActions(
     const targetId = requiredString(action.targetId, `actions[${index}].targetId`);
     const target = assertTarget(packet, memoryIds, targetId, index);
     assertTargetMatches(target, scope, projectKey, index);
+    assertTargetProjectContext(packet, target, index);
     assertTargetActive(target, index);
     const text = optionalString(action.text, `actions[${index}].text`);
     const category = optionalString(action.category, `actions[${index}].category`);
@@ -306,6 +314,14 @@ export function validateMemoryReviewActions(
 
 export function validateSafeMemoryText(value: string): void {
   validateSafeText(value, 'memory text');
+}
+
+export function validateMemoryLanguageText(
+  value: string,
+  language: MemoryLanguage,
+  field = 'memory text',
+): void {
+  validateLanguageText(value, language, field);
 }
 
 function normalizeBudget(
@@ -402,6 +418,35 @@ function assertTargetActive(target: MemoryReviewPacket['memories'][number], inde
   if (!target.active) throw new Error(`actions[${index}] target is not active`);
 }
 
+function assertTargetProjectContext(
+  packet: MemoryReviewPacket,
+  target: MemoryReviewPacket['memories'][number],
+  index: number,
+): void {
+  if (
+    target.scope === 'project' &&
+    packet.projectKey !== undefined &&
+    target.projectKey !== packet.projectKey
+  ) {
+    throw new Error(`actions[${index}] target project does not match packet context`);
+  }
+}
+
+function assertActionProjectContext(
+  packet: MemoryReviewPacket,
+  scope: MemoryScope | undefined,
+  projectKey: string | undefined,
+  index: number,
+): void {
+  if (
+    (scope === 'project' || projectKey !== undefined) &&
+    packet.projectKey !== undefined &&
+    projectKey !== packet.projectKey
+  ) {
+    throw new Error(`actions[${index}] project does not match packet context`);
+  }
+}
+
 function validateActionEvidence(
   packet: MemoryReviewPacket,
   evidenceKeys: readonly string[],
@@ -418,6 +463,13 @@ function validateActionEvidence(
       throw new Error(`actions[${index}] evidence scope does not match`);
     if (scope === 'project' && evidence.projectKey !== projectKey) {
       throw new Error(`actions[${index}] evidence project does not match`);
+    }
+    if (
+      scope === 'project' &&
+      packet.projectIdentity !== undefined &&
+      evidence.projectIdentity !== packet.projectIdentity
+    ) {
+      throw new Error(`actions[${index}] evidence identity does not match packet context`);
     }
     if (scope === 'global' && evidence.projectIdentity === undefined) {
       throw new Error(`actions[${index}] global evidence lacks project identity`);

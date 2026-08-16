@@ -21,7 +21,7 @@ import type {
   PersonalMemoryStatus,
 } from './types.js';
 import { hashMemoryText, memoryFilePath } from './repository.js';
-import { validateSafeMemoryText } from './review-contract.js';
+import { validateMemoryLanguageText, validateSafeMemoryText } from './review-contract.js';
 
 const DEFAULT_MAX_ENTRIES = 12;
 const DEFAULT_MAX_BYTES = 8 * 1024;
@@ -61,6 +61,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
 
   public async remember(input: MemoryInput): Promise<MemoryRecord> {
     validateInput(input);
+    validateOptionalInputLanguage(input);
     const source = input.source ?? { kind: 'user' };
     return this.repository.withLock(async () => {
       const state = await this.loadAndReconcile(input.scope, input.projectKey);
@@ -165,7 +166,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
         scope: current.scope,
         ...(current.projectKey === undefined ? {} : { projectKey: current.projectKey }),
         recordId: current.id,
-        textHash: hashMemoryText(current.text),
+        textHash: normalizedMemoryTextHash(current.text),
         removedAt: this.timestamp(),
       });
       await this.persist(state);
@@ -904,7 +905,7 @@ function reconcileMarkdown(
         scope: record.scope,
         ...(record.projectKey === undefined ? {} : { projectKey: record.projectKey }),
         recordId: record.id,
-        textHash: hashMemoryText(record.text),
+        textHash: normalizedMemoryTextHash(record.text),
         removedAt: timestamp,
       });
     }
@@ -1069,6 +1070,9 @@ function attributesMatch(record: StoredRecord, query: MemoryQuery): boolean {
     !matchesAny(record.operations, query.operation)
   )
     return false;
+  if (query.category !== undefined && !matchesAny([record.category], query.category)) return false;
+  if (query.tags !== undefined && !query.tags.every((tag) => matchesAny(record.tags, tag)))
+    return false;
   if (query.query !== undefined) {
     const terms = query.query.split(/\s+/u).map(normalizeText).filter(Boolean);
     if (terms.length > 0) {
@@ -1100,6 +1104,10 @@ function scoreRecord(record: StoredRecord, query: MemoryQuery): number {
   if (query.task !== undefined && matchesAny(record.taskTypes, query.task)) score += 25;
   if (query.path !== undefined && matchesAny(record.pathPatterns, query.path)) score += 25;
   if (query.operation !== undefined && matchesAny(record.operations, query.operation)) score += 25;
+  if (query.category !== undefined && matchesAny([record.category], query.category)) score += 20;
+  if (query.tags !== undefined) {
+    score += query.tags.filter((tag) => matchesAny(record.tags, tag)).length * 15;
+  }
   if (query.query !== undefined) {
     const terms = query.query.split(/\s+/u).map(normalizeText).filter(Boolean);
     const haystack = normalizeText([record.category, record.text, ...record.tags].join(' '));
@@ -1206,14 +1214,19 @@ function isTombstonedMarkdownText(
   projectKey: string | undefined,
   text: string,
 ): boolean {
-  const textHash = hashMemoryText(text);
+  const textHash = normalizedMemoryTextHash(text);
+  const rawHash = hashMemoryText(text);
   return tombstones.some(
     (entry) =>
       entry.scope === scope &&
       entry.projectKey === projectKey &&
       entry.textHash !== undefined &&
-      entry.textHash === textHash,
+      (entry.textHash === textHash || entry.textHash === rawHash),
   );
+}
+
+function normalizedMemoryTextHash(text: string): string {
+  return hashMemoryText(normalizeText(text));
 }
 
 function validateInput(input: MemoryInput): void {
@@ -1223,6 +1236,16 @@ function validateInput(input: MemoryInput): void {
     throw new Error('Project key is invalid');
   if (input.category.trim().length === 0 || input.text.trim().length === 0)
     throw new Error('Memory category and text are required');
+}
+
+function validateOptionalInputLanguage(input: MemoryInput): void {
+  if (input.language !== undefined) {
+    validateMemoryLanguageText(input.category, input.language, 'memory category');
+    validateMemoryLanguageText(input.text, input.language, 'memory text');
+    (input.tags ?? []).forEach((tag, index) =>
+      validateMemoryLanguageText(tag, input.language!, `memory tags[${index}]`),
+    );
+  }
 }
 
 function validateObservation(observation: MemoryObservation): void {
@@ -1253,6 +1276,17 @@ function isUsefulAutomaticObservation(observation: MemoryObservation): boolean {
       ...(observation.taskTypes ?? []),
       ...(observation.operations ?? []),
     ].forEach((value) => validateSafeMemoryText(value));
+    if (observation.language !== undefined) {
+      validateMemoryLanguageText(
+        observation.category,
+        observation.language,
+        'observation.category',
+      );
+      validateMemoryLanguageText(observation.text, observation.language, 'observation.text');
+      (observation.tags ?? []).forEach((tag, index) =>
+        validateMemoryLanguageText(tag, observation.language!, `observation.tags[${index}]`),
+      );
+    }
   } catch {
     return false;
   }
