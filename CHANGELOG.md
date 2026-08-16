@@ -2,17 +2,20 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.4.0-beta.19] - 2026-08-15
+## What's Changed [0.4.0-beta.19] - 2026-08-16
+
+### Added
+
+- **CodeBuddy rules support**: Comet now installs and refreshes Markdown workflow rules in CodeBuddy's `.codebuddy/rules/` directory.
+- **Fork pull request guidance**: First-time contributors opening pull requests from forks now receive the repository guidance comment through a trusted workflow.
+- **Pull request template validation**: Pull requests now receive an actionable comment and a failing check when required template sections or items are missing, or when checklist items are incomplete.
 
 ### Changed
 
 - **Dashboard artifact previews**: Fullscreen previews now close with Escape, keep long tables horizontally scrollable, preserve readable table headers, and use a larger directory navigation scale.
-- **Hook allow-path documentation**: The website now explains how to configure project-relative `hook.allow_paths` directories for guarded workflow phases.
 
 ### Fixed
 
-- **Fork pull request greetings**: First-time contributors now receive the repository guidance comment when opening a pull request from a fork, without weakening the read-only permissions of workflows that execute contributor code.
-- **Pull request template checks**: Pull requests now receive an actionable comment and a failing check when items from the repository template are missing or its checklist is incomplete.
 - **Native Archive**: Archive now respects Git ignore rules when staging workspace artifacts and keeps valid portable verification reports from being treated as incomplete migrations.
 
 ## What's Changed [0.4.0-beta.18] - 2026-08-13
