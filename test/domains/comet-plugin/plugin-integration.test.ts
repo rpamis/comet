@@ -30,6 +30,54 @@ async function withBridge(
 }
 
 describe('Comet plugin integration bridge', () => {
+  test('bridges bounded user evidence and supports an optional nonblocking host adapter', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-background-'));
+    const memoryRoot = path.join(root, 'memory');
+    const projectRoot = path.join(root, 'project');
+    let backgroundTask: (() => Promise<void>) | undefined;
+    await fs.mkdir(projectRoot, { recursive: true });
+    try {
+      const bridge = await createDefaultCometPluginBridge({
+        projectRoot,
+        memoryRoot,
+        projectId: 'demo-project',
+        stateRoot: path.join(root, 'plugin-state'),
+        runMemoryReviewInBackground: (task) => {
+          backgroundTask = task;
+        },
+      });
+      await bridge.dispatchLifecycle({
+        name: 'change.completed',
+        workflow: 'native',
+        changeId: 'background-1',
+        success: true,
+        category: '工作习惯',
+        text: '完成命令检查点',
+        userEvidence: ['提交前只暂存本次改动文件'],
+        candidateKey: 'staging',
+      });
+
+      expect(backgroundTask).toBeTypeOf('function');
+      expect((await bridge.retrieve({ task: '暂存改动' })).records).toHaveLength(0);
+      await backgroundTask?.();
+      expect((await bridge.retrieve({ task: '暂存改动' })).records).toHaveLength(0);
+      await bridge.dispatchLifecycle({
+        name: 'change.completed',
+        workflow: 'native',
+        changeId: 'background-2',
+        success: true,
+        category: '工作习惯',
+        text: '完成命令检查点',
+        userEvidence: ['提交前只暂存本次改动文件'],
+        candidateKey: 'staging',
+      });
+      await backgroundTask?.();
+      expect((await bridge.retrieve({ task: '暂存改动' })).records).toHaveLength(1);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   test('collects global and project context through the public runtime', async () => {
     await withBridge(async (bridge) => {
       await bridge.remember({

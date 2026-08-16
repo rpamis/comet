@@ -85,4 +85,34 @@ describe('personal memory commands', () => {
     });
     expect(status).toMatchObject({ learningEnabled: true });
   });
+
+  it('uses a Chinese default category while preserving direct user text', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'comet-memory-default-category-'));
+    roots.push(root);
+    const memoryRoot = path.join(root, 'memory');
+    const stateRoot = path.join(root, 'plugins');
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    await personalMemoryRememberCommand(root, {
+      memoryRoot,
+      stateRoot,
+      scope: 'global',
+      text: 'Keep the user supplied wording',
+      json: true,
+    });
+
+    const { createDefaultCometPluginBridge } =
+      await import('../../domains/comet-plugin/integration.js');
+    const bridge = await createDefaultCometPluginBridge({
+      projectRoot: root,
+      projectId: 'default-category-project',
+      memoryRoot,
+      stateRoot,
+    });
+    expect(await bridge.manage({ scope: 'global' })).toMatchObject({
+      records: [
+        expect.objectContaining({ category: '可复用偏好', text: 'Keep the user supplied wording' }),
+      ],
+    });
+  });
 });

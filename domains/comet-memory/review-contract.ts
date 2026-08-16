@@ -5,6 +5,7 @@ import type {
   MemoryReviewActionSet,
   MemoryReviewPacket,
   MemoryReviewMemorySummary,
+  MemoryReviewRequest,
   MemoryScope,
 } from './types.js';
 
@@ -68,6 +69,7 @@ export function validateMemoryReviewPacket(
   if (category !== undefined) validateLanguageText(category, language, 'category');
   const budget = normalizeBudget(object.budget, options);
   const userEvidence = boundedStrings(object.userEvidence, 'userEvidence', 8, true);
+  const explicitRequest = normalizeReviewRequest(object.explicitRequest, language);
   const evidence = asArray(object.evidence, 'evidence');
   if (evidence.length > Math.min(budget.maxEvidence, MEMORY_REVIEW_LIMITS.maxEvidence)) {
     throw new Error('Review packet evidence exceeds the collection limit');
@@ -186,10 +188,113 @@ export function validateMemoryReviewPacket(
     checkpoint,
     ...(category === undefined ? {} : { category }),
     userEvidence,
+    ...(explicitRequest === undefined ? {} : { explicitRequest }),
     evidence: normalizedEvidence,
     memories: normalizedMemories,
     budget,
   };
+}
+
+function normalizeReviewRequest(
+  value: unknown,
+  language: MemoryLanguage,
+): MemoryReviewRequest | undefined {
+  if (value === undefined) return undefined;
+  const request = asObject(value, 'explicitRequest');
+  const action = request.action;
+  if (action !== 'remember' && action !== 'correct' && action !== 'forget') {
+    throw new Error('explicitRequest.action is invalid');
+  }
+  const targetId = optionalString(request.targetId, 'explicitRequest.targetId');
+  const scope =
+    request.scope === undefined ? undefined : asScope(request.scope, 'explicitRequest.scope');
+  const projectKey = optionalProjectKey(request.projectKey);
+  if (scope === 'project' && projectKey === undefined) {
+    throw new Error('explicitRequest project action requires a project key');
+  }
+  if (scope === 'global' && projectKey !== undefined) {
+    throw new Error('explicitRequest global action must not have a project key');
+  }
+  const category = optionalString(request.category, 'explicitRequest.category');
+  const title = optionalString(request.title, 'explicitRequest.title');
+  const reason = optionalString(request.reason, 'explicitRequest.reason');
+  const text = optionalString(request.text, 'explicitRequest.text');
+  for (const [field, entry] of [
+    ['category', category],
+    ['title', title],
+    ['reason', reason],
+  ] as const) {
+    if (entry !== undefined) validateLanguageText(entry, language, `explicitRequest.${field}`);
+  }
+  if (text !== undefined) validateSafeText(text, 'explicitRequest.text');
+  const arrays = normalizeRequestArrays(request, language);
+  if (action === 'remember' && text === undefined) {
+    throw new Error('explicitRequest remember requires text');
+  }
+  if (action !== 'remember' && targetId === undefined) {
+    throw new Error(`explicitRequest ${action} requires targetId`);
+  }
+  if (
+    action === 'correct' &&
+    text === undefined &&
+    category === undefined &&
+    title === undefined &&
+    reason === undefined &&
+    Object.keys(arrays).length === 0
+  ) {
+    throw new Error('explicitRequest correct must change a memory field');
+  }
+  if (
+    action === 'forget' &&
+    (text !== undefined ||
+      category !== undefined ||
+      title !== undefined ||
+      reason !== undefined ||
+      Object.keys(arrays).length > 0)
+  ) {
+    throw new Error('explicitRequest forget must not change memory fields');
+  }
+  return {
+    action,
+    ...(targetId === undefined ? {} : { targetId }),
+    ...(scope === undefined ? {} : { scope }),
+    ...(projectKey === undefined ? {} : { projectKey }),
+    ...(category === undefined ? {} : { category }),
+    ...(title === undefined ? {} : { title }),
+    ...(reason === undefined ? {} : { reason }),
+    ...(text === undefined ? {} : { text }),
+    ...arrays,
+  };
+}
+
+function normalizeRequestArrays(
+  value: Record<string, unknown>,
+  language: MemoryLanguage,
+): {
+  tags?: string[];
+  pathPatterns?: string[];
+  taskTypes?: string[];
+  operations?: string[];
+} {
+  const result: {
+    tags?: string[];
+    pathPatterns?: string[];
+    taskTypes?: string[];
+    operations?: string[];
+  } = {};
+  for (const name of ['tags', 'pathPatterns', 'taskTypes', 'operations'] as const) {
+    if (value[name] === undefined) continue;
+    const entries = boundedStrings(value[name], `explicitRequest.${name}`, 16, false);
+    entries.forEach((entry, index) => {
+      if (name === 'tags') {
+        validateLanguageText(entry, language, `explicitRequest.${name}[${index}]`);
+      } else {
+        validateSafeText(entry, `explicitRequest.${name}[${index}]`);
+      }
+    });
+    result[name] = entries;
+  }
+  return result;
 }
 
 export function validateMemoryReviewActions(

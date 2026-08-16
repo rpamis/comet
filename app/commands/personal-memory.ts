@@ -78,7 +78,7 @@ export async function personalMemoryRememberCommand(
   const record = await bridge.remember({
     scope: options.scope ?? 'project',
     ...(options.scope === 'global' ? {} : { projectKey: bridge.currentProjectId }),
-    category: options.category ?? 'preference',
+    category: options.category ?? defaultMemoryCategory(language),
     text: requireText(options.text, '--text'),
     language,
   });
@@ -184,13 +184,14 @@ export async function personalMemoryObserveCommand(
   options: PersonalMemoryCommandOptions = {},
 ): Promise<unknown> {
   const bridge = await createBridge(targetPath, options);
+  const language = await resolveDisplayLanguage(targetPath, options);
   const observation: CometLifecycleObservation = {
     name: 'change.completed',
     workflow: requireText(options.workflow, '--workflow'),
     changeId: requireText(options.change, '--change'),
     candidateKey: requireText(options.candidateKey, '--candidate-key'),
     success: options.success !== false,
-    category: options.category ?? 'preference',
+    category: options.category ?? defaultMemoryCategory(language),
     text: requireText(options.text, '--text'),
   };
   await bridge.dispatchLifecycle(observation);
@@ -399,6 +400,10 @@ function memoryStatusLabel(status: string, language: MemoryLanguage): string {
 
 function localizedMessage(language: MemoryLanguage, chinese: string, english: string): string {
   return language === 'zh-CN' ? chinese : english;
+}
+
+function defaultMemoryCategory(language: MemoryLanguage): string {
+  return language === 'zh-CN' ? '可复用偏好' : 'Reusable preference';
 }
 
 async function resolveDisplayLanguage(

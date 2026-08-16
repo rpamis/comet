@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  reviewMemoryPacket,
   validateMemoryReviewActions,
   validateMemoryReviewPacket,
 } from '../../../domains/comet-memory/index.js';
@@ -157,6 +158,63 @@ describe('semantic memory review contract', () => {
       reason: '没有长期可复用内容',
       evidenceKeys: [],
     });
+  });
+
+  it('turns bounded explicit remember, correction and forget requests into actions', () => {
+    const existing = {
+      id: 'memory-1',
+      scope: 'project',
+      projectKey: 'project-a',
+      category: '协作习惯',
+      text: '提交前运行测试',
+      kind: 'explicit',
+      active: true,
+    } as const;
+    const remember = reviewMemoryPacket(
+      packet({
+        userEvidence: ['提交前只暂存本次改动文件'],
+        explicitRequest: {
+          action: 'remember',
+          scope: 'project',
+          projectKey: 'project-a',
+          category: '协作习惯',
+          text: '提交前只暂存本次改动文件',
+        },
+      }),
+    );
+    expect(remember.actions[0]).toMatchObject({
+      action: 'create',
+      scope: 'project',
+      projectKey: 'project-a',
+      category: '协作习惯',
+      text: '提交前只暂存本次改动文件',
+    });
+
+    const correction = reviewMemoryPacket(
+      packet({
+        userEvidence: ['提交前只运行 pnpm test'],
+        memories: [existing],
+        explicitRequest: {
+          action: 'correct',
+          targetId: 'memory-1',
+          text: '提交前只运行 pnpm test',
+        },
+      }),
+    );
+    expect(correction.actions[0]).toMatchObject({
+      action: 'update',
+      targetId: 'memory-1',
+      text: '提交前只运行 pnpm test',
+    });
+
+    const forget = reviewMemoryPacket(
+      packet({
+        userEvidence: [],
+        memories: [existing],
+        explicitRequest: { action: 'forget', targetId: 'memory-1' },
+      }),
+    );
+    expect(forget.actions[0]).toMatchObject({ action: 'forget', targetId: 'memory-1' });
   });
 
   it('binds action targets and evidence to the packet context', () => {

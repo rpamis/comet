@@ -36,6 +36,12 @@ describe('semantic memory eval', () => {
     expect(first.metrics.staleResurrectionRate).toBe(0);
     expect(first.metrics.timeoutRate).toBe(0);
     expect(first.metrics.degradationRate).toBe(0);
+    expect(first.metrics.latencyMs).toBeGreaterThanOrEqual(0);
+    expect(first.metrics.thresholds).toMatchObject({
+      minActionAccuracy: 1,
+      maxHarmfulOrNoisySaveRate: 0,
+      maxTimeoutRate: 0,
+    });
     expect(first.metrics.treatmentHashes.semanticReview).toMatch(/^sha256:/);
     expect(
       first.cases.every(
@@ -68,6 +74,10 @@ describe('semantic memory eval', () => {
     expect(first.markdown).toContain('Semantic Memory Eval');
     expect(first.markdown).toContain('Baseline noise records');
     expect(first.markdown).toContain('No-memory treatment');
+    expect(first.markdown).toContain('## Formation quality');
+    expect(first.markdown).toContain('## Retrieval quality');
+    expect(first.markdown).toContain('## Downstream behavior');
+    expect(first.markdown).toContain('## Frozen thresholds');
     expect(first.markdown).not.toMatch(/password|Bearer|sk-[A-Za-z0-9]/i);
     expect(JSON.stringify(first)).not.toMatch(
       /secret-value|person@example\.com|Ignore previous instructions/i,

@@ -149,7 +149,7 @@ memory
   .command('remember [path]')
   .description('手动记录一条个人记忆')
   .requiredOption('--text <text>', '记忆内容')
-  .option('--category <category>', '记忆类别', 'preference')
+  .option('--category <category>', '记忆类别')
   .addOption(
     new Option('--scope <scope>', '记忆范围').choices(['global', 'project']).default('project'),
   )
@@ -199,7 +199,7 @@ memory
   .requiredOption('--workflow <workflow>', '工作流类型')
   .requiredOption('--change <id>', 'Change ID')
   .requiredOption('--candidate-key <key>', '候选行为标识')
-  .option('--category <category>', '记忆类别', 'preference')
+  .option('--category <category>', '记忆类别')
   .option('--no-success', '将本次结果记录为失败')
   .option('--json', 'Output as JSON')
   .action(async (targetPath = '.', options) => {
