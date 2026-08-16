@@ -7,6 +7,9 @@ import {
   GitMemorySync,
   PersonalMemoryService,
   type MemoryInput,
+  type MemoryCorrection,
+  type MemoryLanguage,
+  type MemoryManagementView,
   type MemoryQuery,
   type MemoryRecord,
   type MemoryRetrieval,
@@ -22,6 +25,7 @@ import { getCurrentVersion } from '../../platform/version/version.js';
 import { JsonFilePluginStorageStore, JsonFileTextStore } from '../../platform/fs/plugin-store.js';
 import { JsonPluginStateStore, PluginRuntime } from './plugin-runtime.js';
 import type { PluginContextContribution, PluginEvent, PluginScopeContext } from './types.js';
+import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
 
 export interface CometLifecycleObservation {
   readonly name:
@@ -46,6 +50,7 @@ export interface CometLifecycleObservation {
 export interface CometPluginBridgeOptions {
   readonly projectRoot: string;
   readonly projectId: string;
+  readonly language?: MemoryLanguage;
   readonly memoryRoot?: string;
   readonly stateRoot?: string;
   readonly cometVersion?: string;
@@ -158,13 +163,44 @@ export class CometPluginBridge {
     return this.runtime.invoke('comet.personal-memory', 'status', {}, 'user');
   }
 
-  public async retrieve(query: Omit<MemoryQuery, 'projectKey'>): Promise<MemoryRetrieval> {
+  public async retrieve(query: MemoryQuery): Promise<MemoryRetrieval> {
     return (await this.runtime.invoke(
       'comet.personal-memory',
       'retrieve',
-      { ...query, projectKey: this.projectId },
+      { ...query, projectKey: query.projectKey ?? this.projectId },
       'user',
     )) as MemoryRetrieval;
+  }
+
+  public async manage(query: MemoryQuery = {}): Promise<MemoryManagementView> {
+    return (await this.runtime.invoke(
+      'comet.personal-memory',
+      'manage',
+      { ...query, projectKey: query.projectKey ?? this.projectId },
+      'user',
+    )) as MemoryManagementView;
+  }
+
+  public async correct(id: string, correction: MemoryCorrection): Promise<MemoryRecord> {
+    return (await this.runtime.invoke(
+      'comet.personal-memory',
+      'correct',
+      { id, correction },
+      'user',
+    )) as MemoryRecord;
+  }
+
+  public async forget(id: string, permanent = false): Promise<void> {
+    await this.runtime.invoke('comet.personal-memory', 'remove', { id, permanent }, 'user');
+  }
+
+  public async rollback(id: string): Promise<MemoryRecord> {
+    return (await this.runtime.invoke(
+      'comet.personal-memory',
+      'rollback',
+      { id },
+      'user',
+    )) as MemoryRecord;
   }
 
   public async addRule(text: string, targetPath?: string): Promise<unknown> {
@@ -258,14 +294,17 @@ export async function createDefaultCometPluginBridge(
   );
   const stateRoot = path.resolve(options.stateRoot ?? path.join(os.homedir(), '.comet', 'plugins'));
   const projectRoot = path.resolve(options.projectRoot);
+  const language = options.language ?? (await resolveProjectMemoryLanguage(projectRoot));
   const runtime = new PluginRuntime({
     cometVersion: options.cometVersion ?? getCurrentVersion(),
     store: new JsonPluginStateStore(new JsonFileTextStore(path.join(stateRoot, 'state.json'))),
     storage: new JsonFilePluginStorageStore(path.join(stateRoot, 'storage')),
     descriptors: [
       createPersonalMemoryPluginDescriptor({
+        language,
         createService: () =>
           new PersonalMemoryService({
+            language,
             repository: new FileMemoryRepository(memoryRoot, {
               git: new GitMemorySync(memoryRoot),
             }),
@@ -296,4 +335,16 @@ export async function createDefaultCometPluginBridge(
   });
   await runtime.reconcileFirstParty();
   return new CometPluginBridge(runtime, options.projectId);
+}
+
+async function resolveProjectMemoryLanguage(projectRoot: string): Promise<MemoryLanguage> {
+  try {
+    const config = await readWorkflowProjectConfig(projectRoot);
+    if (config?.default_workflow === 'classic') {
+      return config?.classic?.language ?? config?.native?.language ?? 'zh-CN';
+    }
+    return config?.native?.language ?? config?.classic?.language ?? 'zh-CN';
+  } catch {
+    return 'zh-CN';
+  }
 }

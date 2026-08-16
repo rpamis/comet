@@ -106,6 +106,18 @@ rules
 const memory = program.command('memory').description('查看和维护跨会话的个人记忆');
 
 memory
+  .command('list [path]')
+  .description('查看可管理的个人记忆及其状态')
+  .option('--query <text>', '关键词')
+  .addOption(new Option('--scope <scope>', '记忆范围').choices(['global', 'project']))
+  .option('--category <category>', '记忆类别')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { personalMemoryManageCommand } = await import('../commands/personal-memory.js');
+    await personalMemoryManageCommand(targetPath, options);
+  });
+
+memory
   .command('status [path]')
   .description('查看个人记忆状态和同步状态')
   .option('--json', 'Output as JSON')
@@ -117,13 +129,20 @@ memory
 memory
   .command('retrieve [path]')
   .description('按当前任务检索相关个人记忆')
+  .addOption(new Option('--scope <scope>', '记忆范围').choices(['global', 'project']))
+  .option('--project <key>', '项目记忆 key')
   .option('--task <text>', '任务描述')
   .option('--path <path>', '当前文件或目录')
+  .option('--operation <operation>', '当前操作')
+  .option('--category <category>', '记忆类别')
+  .option('--tag <tag>', '记忆标签', collect, [])
   .option('--query <text>', '关键词')
+  .option('--max-entries <count>', '最多返回条目数')
+  .option('--max-bytes <bytes>', '最多返回字节数')
   .option('--json', 'Output as JSON')
   .action(async (targetPath = '.', options) => {
     const { personalMemoryRetrieveCommand } = await import('../commands/personal-memory.js');
-    await personalMemoryRetrieveCommand(targetPath, options);
+    await personalMemoryRetrieveCommand(targetPath, { ...options, tags: options.tag });
   });
 
 memory
@@ -138,6 +157,39 @@ memory
   .action(async (targetPath = '.', options) => {
     const { personalMemoryRememberCommand } = await import('../commands/personal-memory.js');
     await personalMemoryRememberCommand(targetPath, options);
+  });
+
+memory
+  .command('correct [path]')
+  .description('纠正一条个人记忆')
+  .requiredOption('--id <id>', '记忆标识')
+  .option('--text <text>', '新的记忆内容')
+  .option('--category <category>', '新的记忆类别')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { personalMemoryCorrectCommand } = await import('../commands/personal-memory.js');
+    await personalMemoryCorrectCommand(targetPath, options);
+  });
+
+memory
+  .command('forget [path]')
+  .description('忘记一条个人记忆（默认保留回滚能力）')
+  .requiredOption('--id <id>', '记忆标识')
+  .option('--permanent', '永久删除且不可回滚')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { personalMemoryForgetCommand } = await import('../commands/personal-memory.js');
+    await personalMemoryForgetCommand(targetPath, options);
+  });
+
+memory
+  .command('rollback [path]')
+  .description('回滚一条个人记忆')
+  .requiredOption('--id <id>', '记忆标识')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { personalMemoryRollbackCommand } = await import('../commands/personal-memory.js');
+    await personalMemoryRollbackCommand(targetPath, options);
   });
 
 memory

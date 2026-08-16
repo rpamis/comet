@@ -102,6 +102,39 @@ export interface MemoryRetrieval {
   readonly disabled: boolean;
 }
 
+export type MemoryManagementStatus = 'active' | 'inactive' | 'conflict' | 'tombstoned';
+
+export interface MemoryManagementRecord {
+  readonly id: string;
+  readonly scope: MemoryScope;
+  readonly projectKey?: string;
+  readonly category: string;
+  readonly text: string;
+  readonly tags: readonly string[];
+  readonly pathPatterns: readonly string[];
+  readonly taskTypes: readonly string[];
+  readonly operations: readonly string[];
+  readonly language?: MemoryLanguage;
+  readonly kind: MemoryKind;
+  readonly status: MemoryManagementStatus;
+  readonly evidenceCount: number;
+  readonly sourceKind: MemorySourceKind;
+  readonly lastConfirmedAt: string;
+  readonly updatedAt: string;
+  readonly canRollback: boolean;
+}
+
+export interface MemoryManagementConflict {
+  readonly texts: readonly string[];
+  readonly updatedAt: string;
+}
+
+export interface MemoryManagementView {
+  readonly records: readonly MemoryManagementRecord[];
+  readonly conflicts: readonly MemoryManagementConflict[];
+  readonly truncated: boolean;
+}
+
 export interface MemorySyncResult {
   readonly status: 'synced' | 'local-only' | 'failed' | 'conflict';
   readonly message?: string;
@@ -295,6 +328,7 @@ export interface GitMemorySyncOptions {
 
 export interface PersonalMemoryOptions {
   readonly repository: MemoryRepository;
+  readonly language?: MemoryLanguage;
   readonly now?: () => Date;
   readonly maxEntries?: number;
   readonly maxBytes?: number;
@@ -312,6 +346,7 @@ export interface PersonalMemoryStatus {
 }
 
 export interface PersonalMemoryPluginOptions {
+  readonly language?: MemoryLanguage;
   readonly version?: string;
   readonly cometVersionRange?: (cometVersion: string) => boolean;
   readonly createService: (context: PluginContext) => PersonalMemoryServiceLike;
@@ -324,6 +359,7 @@ export interface PersonalMemoryServiceLike {
   rollback(id: string): Promise<MemoryRecord>;
   observe(observation: MemoryObservation): Promise<MemoryObservationResult>;
   retrieve(query: MemoryQuery): Promise<MemoryRetrieval>;
+  manage(query?: MemoryQuery): Promise<MemoryManagementView>;
   status(): Promise<PersonalMemoryStatus>;
   sync(): Promise<MemorySyncResult>;
   remote?(): Promise<string | null>;
