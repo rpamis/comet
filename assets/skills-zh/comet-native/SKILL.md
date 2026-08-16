@@ -17,7 +17,6 @@ Native 把需求、完整目标规格、当前进度和验收结论保存在项�
 2. 当前阶段需要完整验收列表时才执行 `nextPageArgs` 中的分页命令；需要编辑或核对正式正文时才运行 `show` 或读取对应 brief/Spec。
 3. active change 已存在时，进入返回的 `workspace.projectRoot` 并 `select`。Runtime 会扫描已登记 Worktree，优先返回绑定分支匹配的工作区；只有多个同样匹配的候选才让用户选择。
 4. 没有对应 active change 时才创建，并使用配置指定的产物目录。`comet init` 会按所选 Skill 语言初始化 `native.language`；之后产物跟随项目配置，只有用户明确要求覆盖时才传入 `--language`。
-
 ### 记忆与项目规则接入
 进入 change 工作区后，Agent 自动运行一次：
 
@@ -33,7 +32,6 @@ comet task <project-root> --task "<用户原始请求>" --phase build --json
 先确定小写 kebab-case 名称，再按[工作区选择参考](reference/workspace.md)决定使用当前目录、创建分支还是创建 worktree。用户明确说并行、同时处理或多个会话时自动选择 `worktree`，不再询问三种方式。
 
 CLI 会在创建 change 前完成分支或 worktree 绑定、复用已登记的 change 分支、在分支仍存在但登记 Worktree 已移除时重建 Worktree、维护仓库本地排除规则、核对配置并创建可跨设备恢复的状态。随后进入命令返回的 `preparation.projectRoot`；后续命令不得继续在原目录执行。
-
 如果准备没有完成，保留已经创建的资源，展示 `preparation` 中的失败原因，并按 Runtime 或用户给出的恢复方向继续。
 ## 按需读取
 确认 phase 后只读取需要的一份 reference：
