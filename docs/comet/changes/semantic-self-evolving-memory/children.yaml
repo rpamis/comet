@@ -148,3 +148,46 @@ children:
       - A14
       - A22
       - A23
+  - name: semantic-memory-review-repair
+    depends_on:
+      - semantic-memory-release
+    covers:
+      - A3
+      - A4
+      - A5
+      - A17
+      - A18
+      - A19
+      - A20
+      - A22
+      - A23
+      - A24
+      - A34
+      - A37
+      - A48
+      - A50
+      - A51
+      - A52
+      - A54
+      - A55
+      - A65
+      - A67
+      - A74
+      - A75
+      - A76
+      - A78
+      - A79
+      - A81
+      - A82
+      - A83
+      - A84
+      - A85
+      - A89
+      - A90
+      - A91
+      - A93
+      - A94
+      - A95
+      - A96
+      - A97
+      - A98
