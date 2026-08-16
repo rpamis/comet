@@ -1,0 +1,116 @@
+schema: comet.native.v4
+name: semantic-memory-review-repair
+language: zh-CN
+phase: archive
+status: done
+state_version: 8
+brief: brief.md
+spec_changes: []
+workspace:
+  isolation: worktree
+  change_branch: comet/semantic-memory-review-repair
+  target_branch: beta20
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: 生产自动路径与显式 observe 使用同一 review/validation/persistence 闭环。
+    result: passed
+    reason:
+      text: 自动事件与显式 observe 均经过 review packet、semantic review 和 action validation
+        后才持久化。
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: 自动生成的记忆和提示符合配置语言，并且无用内容不会增长状态或 Markdown。
+    result: passed
+    reason:
+      text: Runtime 执行有界内容、安全和语言校验；中文元数据可读，skip 不增长状态或 Markdown。
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: Eval 的三种 treatment、指标、阈值和评分证据可复现，失败可归因到具体质量类别。
+    result: passed
+    reason:
+      text: Eval 包含
+        no-memory、current-observe、semantic-review、provenance、指标、阈值、评分证据和失败分类。
+      truncated: false
+builder_handoff:
+  candidate_id: 281ba196-71dc-4059-9ec5-bab0e93be7da
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:78afcde5-d720-4d78-b4f4-1b5e2440558d
+  iteration: 1
+  summary:
+    text: 复核当前 beta20 中已接入的语义评审、动作校验、中文可读元数据和三 treatment Eval；本修复子任务未重复修改生产实现。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+  checks:
+    - name:
+        text: semantic-memory-targeted-tests
+        truncated: false
+      result: passed
+      note:
+        text: 4 个相关测试文件、45 个测试通过
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: 父级最终 Verify 仍需在集成工作区运行全量检查和 Eval。
+      truncated: false
+  known_limits_truncated: false
+  submitted_at: 2026-08-16T21:55:02.827Z
+blockers: []
+verification:
+  candidate_id: 281ba196-71dc-4059-9ec5-bab0e93be7da
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:1f08f45e-099f-4a11-b0f4-347d44d31c98
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks: []
+  summary:
+    text: 独立 Verifier 确认修复子任务的语义评审闭环和 Eval 结构满足 A1-A3。
+    truncated: false
+  risks:
+    - text: 父级最终 Verify 仍需在集成工作区完成全量检查和 Eval。
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-08-16T21:57:40.302Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 独立 Verifier 确认修复子任务的语义评审闭环和 Eval 结构满足 A1-A3。
+      truncated: false
+    completed_at: 2026-08-16T21:57:40.302Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-16T21:53:46.379Z
