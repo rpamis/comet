@@ -3,6 +3,8 @@ import type { PluginContext, PluginDescriptor } from '../comet-plugin/index.js';
 export type MemoryScope = 'global' | 'project';
 export type MemoryKind = 'explicit' | 'inferred';
 export type MemorySourceKind = 'user' | 'workflow' | 'review' | 'repository';
+export type MemoryLanguage = 'zh-CN' | 'en';
+export type MemoryReviewActionKind = 'create' | 'update' | 'forget' | 'skip';
 
 export interface MemorySource {
   readonly kind: MemorySourceKind;
@@ -15,6 +17,7 @@ export interface MemorySource {
 export interface MemoryInput {
   readonly scope: MemoryScope;
   readonly projectKey?: string;
+  readonly language?: MemoryLanguage;
   readonly category: string;
   readonly text: string;
   readonly tags?: readonly string[];
@@ -34,6 +37,7 @@ export interface MemoryRecord {
   readonly pathPatterns: readonly string[];
   readonly taskTypes: readonly string[];
   readonly operations: readonly string[];
+  readonly language?: MemoryLanguage;
   readonly kind: MemoryKind;
   readonly active: boolean;
   readonly source: MemorySource;
@@ -60,6 +64,10 @@ export interface MemoryObservation {
   readonly pathPatterns?: readonly string[];
   readonly taskTypes?: readonly string[];
   readonly operations?: readonly string[];
+  readonly language?: MemoryLanguage;
+  readonly projectIdentity?: string;
+  readonly candidateKey?: string;
+  readonly observedAt?: string;
   readonly workflow: string;
   readonly changeId: string;
   readonly success: boolean;
@@ -111,14 +119,18 @@ export interface MemoryRuntimeState {
   readonly evidence: Readonly<Record<string, readonly string[]>>;
   readonly observations: readonly MemoryStoredObservation[];
   readonly conflicts: readonly MemoryConflict[];
+  readonly tombstones?: readonly MemoryTombstone[];
   readonly settings: MemorySettings;
   readonly files: Readonly<Record<string, MemoryFileState>>;
 }
 
 export interface MemoryStoredObservation {
   readonly key: string;
+  readonly changeId: string;
   readonly scope: MemoryScope;
   readonly projectKey?: string;
+  readonly projectIdentity?: string;
+  readonly candidateKey: string;
   readonly identity: string;
   readonly text: string;
   readonly normalizedText: string;
@@ -130,7 +142,108 @@ export interface MemoryStoredObservation {
 export interface MemoryConflict {
   readonly identity: string;
   readonly texts: readonly string[];
+  readonly recordIds?: readonly string[];
   readonly updatedAt: string;
+}
+
+export interface MemoryTombstone {
+  readonly identity: string;
+  readonly scope: MemoryScope;
+  readonly projectKey?: string;
+  readonly recordId: string;
+  readonly removedAt: string;
+}
+
+export interface MemoryReviewBudget {
+  readonly maxActions: number;
+  readonly maxEvidence: number;
+  readonly maxBytes: number;
+}
+
+export interface MemoryReviewEvidence {
+  readonly key: string;
+  readonly projectIdentity?: string;
+  readonly projectKey?: string;
+  readonly changeId: string;
+  readonly success: boolean;
+  readonly text?: string;
+}
+
+export interface MemoryReviewMemorySummary {
+  readonly id: string;
+  readonly scope: MemoryScope;
+  readonly projectKey?: string;
+  readonly category: string;
+  readonly text: string;
+  readonly kind: MemoryKind;
+  readonly active: boolean;
+}
+
+export interface MemoryReviewPacket {
+  readonly schema: 'comet.memory.review.v1';
+  readonly language: MemoryLanguage;
+  readonly projectIdentity?: string;
+  readonly projectKey?: string;
+  readonly workflow: string;
+  readonly changeId: string;
+  readonly checkpoint: string;
+  readonly userEvidence: readonly string[];
+  readonly evidence: readonly MemoryReviewEvidence[];
+  readonly memories: readonly MemoryReviewMemorySummary[];
+  readonly budget: MemoryReviewBudget;
+}
+
+export interface MemoryReviewActionBase {
+  readonly action: MemoryReviewActionKind;
+  readonly language: MemoryLanguage;
+  readonly scope?: MemoryScope;
+  readonly projectKey?: string;
+  readonly candidateKey?: string;
+  readonly evidenceKeys?: readonly string[];
+  readonly reason?: string;
+}
+
+export interface MemoryReviewCreateAction extends MemoryReviewActionBase {
+  readonly action: 'create';
+  readonly scope: MemoryScope;
+  readonly category: string;
+  readonly text: string;
+  readonly tags?: readonly string[];
+  readonly pathPatterns?: readonly string[];
+  readonly taskTypes?: readonly string[];
+  readonly operations?: readonly string[];
+}
+
+export interface MemoryReviewUpdateAction extends MemoryReviewActionBase {
+  readonly action: 'update';
+  readonly targetId: string;
+  readonly text?: string;
+  readonly category?: string;
+  readonly tags?: readonly string[];
+  readonly pathPatterns?: readonly string[];
+  readonly taskTypes?: readonly string[];
+  readonly operations?: readonly string[];
+}
+
+export interface MemoryReviewForgetAction extends MemoryReviewActionBase {
+  readonly action: 'forget';
+  readonly targetId: string;
+}
+
+export interface MemoryReviewSkipAction extends MemoryReviewActionBase {
+  readonly action: 'skip';
+  readonly reason: string;
+}
+
+export type MemoryReviewAction =
+  | MemoryReviewCreateAction
+  | MemoryReviewUpdateAction
+  | MemoryReviewForgetAction
+  | MemoryReviewSkipAction;
+
+export interface MemoryReviewActionSet {
+  readonly schema: 'comet.memory.actions.v1';
+  readonly actions: readonly MemoryReviewAction[];
 }
 
 export interface MemorySettings {

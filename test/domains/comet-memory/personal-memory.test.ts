@@ -279,7 +279,7 @@ describe('PersonalMemoryService', () => {
     });
   });
 
-  it('lets a later stable behavior replace an older explicit preference', async () => {
+  it('preserves an explicit preference when later inferred behavior conflicts', async () => {
     await withTempRepository(async (root) => {
       const memories = service(root);
       const old = await memories.remember({
@@ -306,11 +306,167 @@ describe('PersonalMemoryService', () => {
         changeId: 'two',
         success: true,
       });
-      expect(result.activated).toBe(true);
-      expect((await memories.get(old.id))?.text).toBe('使用 npm run build');
+      expect(result).toMatchObject({ candidate: true, activated: false });
+      expect((await memories.get(old.id))?.text).toBe('使用 pnpm build');
+      expect((await memories.retrieve({ projectKey: 'project-a', task: 'build' })).records).toEqual(
+        expect.arrayContaining([expect.objectContaining({ text: '使用 pnpm build' })]),
+      );
       expect(
         (await memories.retrieve({ projectKey: 'project-a', task: 'build' })).records,
-      ).not.toEqual(expect.arrayContaining([expect.objectContaining({ text: '使用 pnpm build' })]));
+      ).not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ text: '使用 npm run build' })]),
+      );
+    });
+  });
+
+  it('keeps candidate keys independent while deduplicating the same candidate retry', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const base = {
+        scope: 'project' as const,
+        projectKey: 'project-a',
+        workflow: 'native',
+        success: true,
+      };
+      await expect(
+        memories.observe({
+          ...base,
+          category: '沟通偏好',
+          text: '使用中文回复',
+          changeId: 'change-1',
+          candidateKey: 'language',
+        }),
+      ).resolves.toMatchObject({ candidate: true, activated: false });
+      await expect(
+        memories.observe({
+          ...base,
+          category: '协作习惯',
+          text: '只暂存本次改动文件',
+          changeId: 'change-1',
+          candidateKey: 'staging',
+        }),
+      ).resolves.toMatchObject({ candidate: true, activated: false });
+      await expect(
+        memories.observe({
+          ...base,
+          category: '沟通偏好',
+          text: '使用中文回复',
+          changeId: 'change-1',
+          candidateKey: 'language',
+        }),
+      ).resolves.toMatchObject({ deduplicated: true });
+      await expect(
+        memories.observe({
+          ...base,
+          category: '沟通偏好',
+          text: '使用中文回复',
+          changeId: 'change-2',
+          candidateKey: 'language',
+        }),
+      ).resolves.toMatchObject({ activated: true });
+      await expect(
+        memories.observe({
+          ...base,
+          category: '协作习惯',
+          text: '只暂存本次改动文件',
+          changeId: 'change-2',
+          candidateKey: 'staging',
+        }),
+      ).resolves.toMatchObject({ activated: true });
+    });
+  });
+
+  it('requires cross-project evidence before activating an inferred global memory', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const base = {
+        scope: 'global' as const,
+        category: '沟通偏好',
+        text: '使用中文回复',
+        workflow: 'native',
+        success: true,
+        candidateKey: 'language',
+      };
+      await expect(
+        memories.observe({
+          ...base,
+          projectKey: 'project-a',
+          projectIdentity: 'repo-a',
+          changeId: 'change-1',
+        }),
+      ).resolves.toMatchObject({ candidate: true, activated: false });
+      await expect(
+        memories.observe({
+          ...base,
+          projectKey: 'project-a',
+          projectIdentity: 'repo-a',
+          changeId: 'change-2',
+        }),
+      ).resolves.toMatchObject({ candidate: true, activated: false });
+      await expect(
+        memories.observe({
+          ...base,
+          projectKey: 'project-b',
+          projectIdentity: 'repo-b',
+          changeId: 'change-3',
+        }),
+      ).resolves.toMatchObject({ candidate: true, activated: true });
+      const retrieved = await memories.retrieve({ scope: 'global' });
+      expect(retrieved.records[0]?.scope).toBe('global');
+      expect(retrieved.records[0]?.projectKey).toBeUndefined();
+    });
+  });
+
+  it('does not resurrect forgotten memory from old evidence but accepts later new evidence', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const remembered = await memories.remember({
+        scope: 'project',
+        projectKey: 'project-a',
+        category: '协作习惯',
+        text: '只暂存本次改动文件',
+      });
+      await memories.remove(remembered.id);
+
+      await expect(
+        memories.observe({
+          scope: 'project',
+          projectKey: 'project-a',
+          category: '协作习惯',
+          text: '只暂存本次改动文件',
+          workflow: 'native',
+          changeId: 'old-change',
+          candidateKey: 'staging',
+          observedAt: '2026-08-13T00:00:00.000Z',
+          success: true,
+        }),
+      ).resolves.toMatchObject({ ignored: true, activated: false });
+      await expect(
+        memories.observe({
+          scope: 'project',
+          projectKey: 'project-a',
+          category: '协作习惯',
+          text: '只暂存本次改动文件',
+          workflow: 'native',
+          changeId: 'new-change-1',
+          candidateKey: 'staging',
+          observedAt: '2026-08-15T00:00:00.000Z',
+          success: true,
+        }),
+      ).resolves.toMatchObject({ candidate: true, activated: false });
+      await expect(
+        memories.observe({
+          scope: 'project',
+          projectKey: 'project-a',
+          category: '协作习惯',
+          text: '只暂存本次改动文件',
+          workflow: 'native',
+          changeId: 'new-change-2',
+          candidateKey: 'staging',
+          observedAt: '2026-08-16T00:00:00.000Z',
+          success: true,
+        }),
+      ).resolves.toMatchObject({ candidate: true, activated: true });
     });
   });
 

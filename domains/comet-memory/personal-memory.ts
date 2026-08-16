@@ -11,14 +11,17 @@ import type {
   MemoryRepository,
   MemoryRetrieval,
   MemoryRuntimeState,
+  MemoryScope,
   MemorySettings,
   MemorySource,
   MemoryStoredObservation,
+  MemoryTombstone,
   PersonalMemoryOptions,
   PersonalMemoryServiceLike,
   PersonalMemoryStatus,
 } from './types.js';
 import { hashMemoryText, memoryFilePath } from './repository.js';
+import { validateSafeMemoryText } from './review-contract.js';
 
 const DEFAULT_MAX_ENTRIES = 12;
 const DEFAULT_MAX_BYTES = 8 * 1024;
@@ -76,12 +79,14 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
         };
         state.records = replaceRecord(state.records, refreshed);
         clearInferredCandidates(state, identity);
+        clearTombstone(state, identity);
         await this.persist(state);
         return cloneRecord(refreshed);
       }
 
       const record = createRecord(input, 'explicit', source, this.timestamp(), identity);
       clearInferredCandidates(state, identity);
+      clearTombstone(state, identity);
       state.records = replaceRecord(state.records, record);
       await this.writeRecordMarkdown(state, record);
       await this.persist(state);
@@ -105,6 +110,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
         'explicit',
       );
       state.records = replaceRecord(state.records, next);
+      clearTombstone(state, current.identity);
       await this.writeRecordMarkdown(state, next, current.text, current.category);
       await this.persist(state);
       return cloneRecord(next);
@@ -154,6 +160,13 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
         });
         delete state.evidence[id];
       }
+      state.tombstones = upsertTombstone(state.tombstones, {
+        identity: current.identity,
+        scope: current.scope,
+        ...(current.projectKey === undefined ? {} : { projectKey: current.projectKey }),
+        recordId: current.id,
+        removedAt: this.timestamp(),
+      });
       await this.persist(state);
     });
   }
@@ -169,6 +182,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
       state.history[id] = history.slice(0, -1);
       const next = { ...previous, id, active: true, updatedAt: this.timestamp() } as StoredRecord;
       state.records = replaceRecord(state.records, next);
+      clearTombstone(state, next.identity);
       await this.writeRecordMarkdown(
         state,
         next,
@@ -182,9 +196,20 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
 
   public async observe(observation: MemoryObservation): Promise<MemoryObservationResult> {
     validateObservation(observation);
+    if (observation.source?.kind !== 'user' && !isUsefulAutomaticObservation(observation)) {
+      return {
+        deduplicated: false,
+        ignored: true,
+        candidate: false,
+        activated: false,
+        record: null,
+      };
+    }
     return this.repository.withLock(async () => {
       const state = await this.loadAndReconcile(observation.scope, observation.projectKey);
-      const key = observationKey(observation);
+      const projectIdentity = observation.projectIdentity ?? observation.projectKey;
+      const candidateKey = observation.candidateKey ?? memoryIdentity(observation);
+      const key = observationKey(observation, projectIdentity, candidateKey);
       const previous = state.observations.find((entry) => entry.key === key);
       if (previous !== undefined && (previous.success || !observation.success)) {
         return {
@@ -203,14 +228,17 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
       };
       const stored: MemoryStoredObservation = {
         key,
+        changeId: observation.changeId.trim(),
         scope: observation.scope,
         projectKey: observation.projectKey,
+        ...(projectIdentity === undefined ? {} : { projectIdentity }),
+        candidateKey,
         identity: memoryIdentity(observation),
         text: observation.text,
         normalizedText: normalizeText(observation.text),
         success: observation.success,
         source,
-        observedAt: this.timestamp(),
+        observedAt: observation.observedAt ?? this.timestamp(),
       };
       state.observations =
         previous === undefined
@@ -233,8 +261,20 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
 
       const identity = stored.identity;
       const normalized = stored.normalizedText;
+      const tombstone = state.tombstones.find((entry) => entry.identity === identity);
+      if (tombstone !== undefined && stored.observedAt <= tombstone.removedAt) {
+        await this.persist(state);
+        return {
+          deduplicated: false,
+          ignored: true,
+          candidate: false,
+          activated: false,
+          record: null,
+        };
+      }
       const candidate = state.records.find(
         (entry) =>
+          (tombstone === undefined || entry.createdAt > tombstone.removedAt) &&
           !entry.active &&
           entry.kind === 'inferred' &&
           entry.identity === identity &&
@@ -243,49 +283,42 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
       const record =
         candidate ??
         (createRecord(
-          { ...observation, source },
+          observationInput(observation, source),
           'inferred',
           source,
-          this.timestamp(),
+          stored.observedAt,
           identity,
         ) as StoredRecord);
       state.records = candidate ? state.records : [...state.records, record];
       const evidence = new Set(state.evidence[record.id] ?? []);
       evidence.add(key);
       state.evidence[record.id] = [...evidence];
-      const conflicting = state.records.some(
-        (entry) =>
-          entry.id !== record.id &&
-          !entry.active &&
-          entry.identity === identity &&
-          normalizeText(entry.text) !== normalized &&
-          (state.evidence[entry.id]?.length ?? 0) > 0,
-      );
-      if (conflicting) {
-        state.conflicts = addConflict(state.conflicts, identity, state.records, this.timestamp());
-        await this.persist(state);
-        return {
-          deduplicated: false,
-          ignored: false,
-          candidate: true,
-          activated: false,
-          record: null,
-        };
-      }
-      if (evidence.size < 2) {
-        await this.persist(state);
-        return {
-          deduplicated: false,
-          ignored: false,
-          candidate: true,
-          activated: false,
-          record: null,
-        };
-      }
-
       const active = state.records.find((entry) => entry.active && entry.identity === identity) as
         | StoredRecord
         | undefined;
+      const conflicting = state.records.filter(
+        (entry) =>
+          entry.id !== record.id &&
+          entry.identity === identity &&
+          normalizeText(entry.text) !== normalized &&
+          (entry.active || (state.evidence[entry.id]?.length ?? 0) > 0),
+      );
+      if (conflicting.length > 0) {
+        state.conflicts = addConflict(
+          state.conflicts,
+          identity,
+          [...conflicting, record],
+          this.timestamp(),
+        );
+        await this.persist(state);
+        return {
+          deduplicated: false,
+          ignored: false,
+          candidate: true,
+          activated: false,
+          record: null,
+        };
+      }
       if (active !== undefined && normalizeText(active.text) === normalized) {
         const refreshed = addSource(active, source, this.timestamp());
         state.records = replaceRecord(state.records, refreshed);
@@ -298,34 +331,35 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
           record: cloneRecord(refreshed),
         };
       }
-      if (active !== undefined && active.id !== record.id) {
-        pushHistory(state, active);
-        const next = this.updateRecordValue(
-          active,
-          {
-            scope: record.scope,
-            projectKey: record.projectKey,
-            category: record.category,
-            text: record.text,
-            source: record.source,
-            tags: record.tags,
-            pathPatterns: record.pathPatterns,
-            taskTypes: record.taskTypes,
-            operations: record.operations,
-          },
-          'inferred',
-        );
-        state.records = replaceRecord(state.records, next);
-        state.records = state.records.filter((entry) => entry.id !== record.id);
-        delete state.evidence[record.id];
-        await this.writeRecordMarkdown(state, next, active.text, active.category);
+      const independentEvidence = independentEvidenceCount(
+        observation.scope,
+        state.observations.filter((entry) => evidence.has(entry.key)),
+      );
+      const requiredEvidence = observation.scope === 'global' ? 2 : 2;
+      if (independentEvidence < requiredEvidence) {
         await this.persist(state);
         return {
           deduplicated: false,
           ignored: false,
           candidate: true,
-          activated: true,
-          record: cloneRecord(next),
+          activated: false,
+          record: null,
+        };
+      }
+      if (active !== undefined && active.id !== record.id) {
+        state.conflicts = addConflict(
+          state.conflicts,
+          identity,
+          [active, record],
+          this.timestamp(),
+        );
+        await this.persist(state);
+        return {
+          deduplicated: false,
+          ignored: false,
+          candidate: true,
+          activated: false,
+          record: null,
         };
       }
 
@@ -340,6 +374,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
         updatedAt: this.timestamp(),
       } as StoredRecord;
       state.records = replaceRecord(state.records, activated);
+      clearTombstone(state, identity);
       await this.writeRecordMarkdown(state, activated);
       await this.persist(state);
       return {
@@ -369,6 +404,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
       const maxBytes = boundedPositive(query.maxBytes ?? this.maxBytes, this.maxBytes);
       const candidates = state.records
         .filter((entry) => entry.active)
+        .filter((entry) => !isConflictedInferred(state.conflicts, entry))
         .filter((entry) => scopeMatches(entry, query))
         .filter((entry) => attributesMatch(entry, query))
         .map((entry, index) => ({ record: entry, score: scoreRecord(entry, query), index }))
@@ -588,6 +624,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
       pathPatterns: input.pathPatterns ?? current.pathPatterns,
       taskTypes: input.taskTypes ?? current.taskTypes,
       operations: input.operations ?? current.operations,
+      language: input.language ?? current.language,
       source,
     };
     return {
@@ -614,12 +651,13 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
 
 interface MutableMemoryState extends Omit<
   MemoryRuntimeState,
-  'records' | 'history' | 'observations' | 'conflicts' | 'settings' | 'files'
+  'records' | 'history' | 'observations' | 'conflicts' | 'tombstones' | 'settings' | 'files'
 > {
   records: StoredRecord[];
   history: Record<string, StoredRecord[]>;
   observations: MemoryStoredObservation[];
   conflicts: MemoryConflict[];
+  tombstones: MemoryTombstone[];
   settings: MemorySettings;
   files: Record<string, { hash: string; observedAt: string }>;
   evidence: Record<string, string[]>;
@@ -630,19 +668,27 @@ function mutableState(raw: MemoryRuntimeState): MutableMemoryState {
     version: 1,
     records: raw.records.map((entry) => ({
       ...entry,
-      identity: (entry as StoredRecord).identity ?? memoryIdentity(entry),
+      identity: memoryIdentity(entry),
     })),
     history: Object.fromEntries(
       Object.entries(raw.history).map(([id, entries]) => [
         id,
         entries.map((entry) => ({
           ...entry,
-          identity: (entry as StoredRecord).identity ?? memoryIdentity(entry),
+          identity: memoryIdentity(entry),
         })),
       ]),
     ),
-    observations: [...raw.observations],
+    observations: raw.observations.map((entry) => ({
+      ...entry,
+      changeId: entry.changeId ?? entry.source.changeId ?? entry.key,
+      candidateKey: entry.candidateKey ?? entry.identity,
+      ...(entry.projectIdentity === undefined && entry.projectKey === undefined
+        ? {}
+        : { projectIdentity: entry.projectIdentity ?? entry.projectKey }),
+    })),
     conflicts: [...raw.conflicts],
+    tombstones: [...(raw.tombstones ?? [])],
     settings: {
       learningEnabled: raw.settings.learningEnabled,
       retrievalEnabled: raw.settings.retrievalEnabled,
@@ -692,6 +738,7 @@ function createRecord(
     pathPatterns: normalizeArray(input.pathPatterns),
     taskTypes: normalizeArray(input.taskTypes),
     operations: normalizeArray(input.operations),
+    ...(input.language === undefined ? {} : { language: input.language }),
     kind,
     active: kind === 'explicit',
     source,
@@ -763,7 +810,7 @@ function memoryIdentity(
 ): string {
   return JSON.stringify([
     input.scope,
-    input.projectKey ?? '',
+    input.scope === 'project' ? (input.projectKey ?? '') : '',
     normalizeText(input.category),
     normalizeArray(input.tags),
     normalizeArray(input.pathPatterns),
@@ -772,12 +819,33 @@ function memoryIdentity(
   ]);
 }
 
-function observationKey(observation: MemoryObservation): string {
+function observationKey(
+  observation: MemoryObservation,
+  projectIdentity: string | undefined,
+  candidateKey: string,
+): string {
   // Comet keeps a stable change id while a change is resumed or upgraded
   // between presets (for example hotfix/tweak -> full).  The workflow label
   // is retained as source metadata, but must not turn one change into two
   // independent observations.
-  return JSON.stringify([observation.projectKey ?? '', observation.changeId.trim()]);
+  return JSON.stringify([projectIdentity ?? '', observation.changeId.trim(), candidateKey]);
+}
+
+function observationInput(observation: MemoryObservation, source: MemorySource): MemoryInput {
+  return {
+    scope: observation.scope,
+    ...(observation.scope === 'project' && observation.projectKey !== undefined
+      ? { projectKey: observation.projectKey }
+      : {}),
+    ...(observation.language === undefined ? {} : { language: observation.language }),
+    category: observation.category,
+    text: observation.text,
+    tags: observation.tags,
+    pathPatterns: observation.pathPatterns,
+    taskTypes: observation.taskTypes,
+    operations: observation.operations,
+    source,
+  };
 }
 
 function fileState(content: string, timestamp: string): { hash: string; observedAt: string } {
@@ -1084,8 +1152,41 @@ function addConflict(
       records.filter((record) => record.identity === identity).map((record) => record.text),
     ),
   ].sort();
-  const next = { identity, texts, updatedAt: timestamp };
+  const recordIds = [...new Set(records.map((record) => record.id))].sort();
+  const next = { identity, texts, recordIds, updatedAt: timestamp };
   return [...conflicts.filter((conflict) => conflict.identity !== identity), next];
+}
+
+function isConflictedInferred(conflicts: readonly MemoryConflict[], record: StoredRecord): boolean {
+  if (record.kind !== 'inferred') return false;
+  return conflicts.some(
+    (conflict) =>
+      conflict.identity === record.identity &&
+      (conflict.recordIds === undefined || conflict.recordIds.includes(record.id)),
+  );
+}
+
+function independentEvidenceCount(
+  scope: MemoryScope,
+  observations: readonly MemoryStoredObservation[],
+): number {
+  if (scope === 'project') return new Set(observations.map((entry) => entry.changeId)).size;
+  return new Set(
+    observations
+      .map((entry) => entry.projectIdentity ?? entry.projectKey)
+      .filter((identity): identity is string => identity !== undefined && identity.length > 0),
+  ).size;
+}
+
+function upsertTombstone(
+  tombstones: readonly MemoryTombstone[],
+  next: MemoryTombstone,
+): MemoryTombstone[] {
+  return [...tombstones.filter((entry) => entry.identity !== next.identity), next];
+}
+
+function clearTombstone(state: MutableMemoryState, identity: string): void {
+  state.tombstones = state.tombstones.filter((entry) => entry.identity !== identity);
 }
 
 function validateInput(input: MemoryInput): void {
@@ -1101,4 +1202,37 @@ function validateObservation(observation: MemoryObservation): void {
   validateInput(observation);
   if (observation.workflow.trim().length === 0 || observation.changeId.trim().length === 0)
     throw new Error('Observation workflow and change ID are required');
+  if (
+    observation.candidateKey !== undefined &&
+    !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/u.test(observation.candidateKey)
+  ) {
+    throw new Error('Observation candidate key is invalid');
+  }
+  if (
+    observation.projectIdentity !== undefined &&
+    observation.projectIdentity.trim().length === 0
+  ) {
+    throw new Error('Observation project identity is invalid');
+  }
+}
+
+function isUsefulAutomaticObservation(observation: MemoryObservation): boolean {
+  try {
+    validateSafeMemoryText(observation.text);
+  } catch {
+    return false;
+  }
+  const normalized = normalizeText(observation.text);
+  if (Buffer.byteLength(normalized, 'utf8') < 8) return false;
+  if (
+    /^(?:运行|执行|完成|通过|失败|已完成)?\s*(?:测试|test|命令|command|commit|提交|pull request|pr|issue)(?:\s|$)/iu.test(
+      normalized,
+    )
+  ) {
+    return false;
+  }
+  if (/^(?:change|任务)\s*[:#-]?\s*\S+\s+(?:completed|完成|done)$/iu.test(normalized)) {
+    return false;
+  }
+  return true;
 }
