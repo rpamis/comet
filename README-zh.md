@@ -559,6 +559,19 @@ Native 可以同时保留多个 active change；`comet status` 会分别列出�
 
 `comet-state.yaml` 和 `.comet/runtime/native/` 中的机器状态由 Runtime 管理。需求改变时修改 brief 或拟议规格，Runtime 会回到 Shape；实现改变时回到 Build，再由新的 Verifier 验收。不要手改状态来跳过阶段。
 
+当仓库要求使用自有 PR 模板或校验脚本时，可在 `.comet/config.yaml` 中显式配置 Native 的仓库命令 provider：
+
+```yaml
+native:
+  finish:
+    pull_request:
+      provider: repository-command
+      command: [pwsh, -NoProfile, -File, scripts/comet-create-pr.ps1]
+      timeout_ms: 120000
+```
+
+选择 Archive 的 `pull-request` 收尾后，Comet 仍负责提交、推送、观察已有 PR、核对 base/head/head SHA、幂等恢复和安全清理；仓库命令只负责标题、正文、模板及仓库特有的远端校验。命令在项目根目录执行，通过 stdin 接收 `comet.native.pull-request-finish-input.v1` JSON，并必须在 stdout 返回 `comet.native.pull-request-finish-result.v1` JSON。未配置时继续使用兼容的 `gh pr create --fill` 行为。
+
 </details>
 
 <details>

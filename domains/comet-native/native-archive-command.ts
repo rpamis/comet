@@ -164,6 +164,7 @@ export async function nativeArchiveCommand(
       ? await prepareNativePortableWorkspaceFinish({
           paths: configured.paths,
           state,
+          pullRequestFinish: configured.config.native.finish?.pull_request,
         })
       : null;
     let result;
@@ -205,6 +206,7 @@ export async function nativeArchiveCommand(
         paths: configured.paths,
         state,
         archiveDir: result.archiveDir,
+        pullRequestFinish: configured.config.native.finish?.pull_request,
       });
     }
     let workspaceFinishResult = null;

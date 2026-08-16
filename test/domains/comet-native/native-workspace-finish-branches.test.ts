@@ -79,6 +79,7 @@ function plan(overrides: Record<string, unknown> = {}) {
     targetRoot: projectRoot,
     remote: null,
     isolation: 'branch' as const,
+    pullRequestFinish: null,
     ...overrides,
   };
 }
@@ -261,9 +262,26 @@ describe('Native archived workspace finish', () => {
   });
 
   it('publishes, opens a pull request, and cleans a detached change worktree', async () => {
-    external.runExternalCommand.mockImplementation((command: string, args: readonly string[]) =>
-      command === 'gh' && args[0] === 'pr' ? 'https://github.com/example/pr/1\n' : 'gh version 2',
-    );
+    let listCalls = 0;
+    external.runExternalCommand.mockImplementation((command: string, args: readonly string[]) => {
+      if (command !== 'gh') return '';
+      if (args[0] !== 'pr') return 'gh version 2';
+      const record = {
+        number: 1,
+        url: 'https://github.com/example/pr/1',
+        baseRefName: 'main',
+        headRefName: 'comet/change',
+        headRefOid: 'a'.repeat(40),
+        state: 'OPEN',
+      };
+      if (args[1] === 'list') {
+        listCalls += 1;
+        return JSON.stringify(listCalls === 1 ? [] : [record]);
+      }
+      if (args[1] === 'create') return `${record.url}\n`;
+      if (args[1] === 'view') return JSON.stringify(record);
+      throw new Error(`unexpected gh args: ${args.join(' ')}`);
+    });
     const result = await finishArchivedNativeWorkspace({
       paths,
       state,
@@ -276,9 +294,71 @@ describe('Native archived workspace finish', () => {
       status: 'completed',
       pushed: true,
       pullRequestUrl: 'https://github.com/example/pr/1',
+      pullRequest: { provider: 'github-fill', disposition: 'created', remoteVerified: true },
       cleanup: { performed: true },
     });
     expect(git.runGitCommand).toHaveBeenCalledWith(projectRoot, [
+      'worktree',
+      'remove',
+      projectRoot,
+    ]);
+  });
+
+  it('preserves the pull request and worktree when repository verification blocks finish', async () => {
+    const record = {
+      number: 7,
+      url: 'https://github.com/example/pr/7',
+      baseRefName: 'main',
+      headRefName: 'comet/change',
+      headRefOid: 'a'.repeat(40),
+      state: 'OPEN',
+    };
+    external.runExternalCommand.mockImplementation((command: string, args: readonly string[]) => {
+      if (command === 'gh' && args[1] === 'list') return JSON.stringify([record]);
+      if (command === 'pwsh') {
+        return JSON.stringify({
+          schema: 'comet.native.pull-request-finish-result.v1',
+          disposition: 'reused',
+          remoteVerified: false,
+          pullRequest: {
+            number: 7,
+            url: record.url,
+            baseBranch: 'main',
+            headBranch: 'comet/change',
+            headSha: 'a'.repeat(40),
+          },
+        });
+      }
+      throw new Error(`unexpected command: ${command} ${args.join(' ')}`);
+    });
+
+    const rejection = finishArchivedNativeWorkspace({
+      paths,
+      state,
+      name: state.name,
+      archiveDir: path.join(projectRoot, 'comet', 'archive', state.name),
+      transactionId: 'tx-provider-blocked',
+      plan: plan({
+        finish: 'pull-request',
+        remote: 'origin',
+        isolation: 'worktree',
+        pullRequestFinish: {
+          provider: 'repository-command',
+          command: ['pwsh', '-File', 'scripts/comet-create-pr.ps1'],
+          timeout_ms: 120_000,
+        },
+      }),
+    });
+    await expect(rejection).rejects.toMatchObject({
+      result: {
+        status: 'blocked',
+        pushed: true,
+        pullRequestUrl: record.url,
+        cleanup: { performed: false },
+        recoveryArgs: ['comet', 'native', 'archive', state.name, '--confirmed'],
+      },
+    });
+    expect(git.runGitCommand).not.toHaveBeenCalledWith(projectRoot, [
       'worktree',
       'remove',
       projectRoot,

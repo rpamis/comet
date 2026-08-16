@@ -592,6 +592,19 @@ Native can keep multiple active changes at the same time. `comet status` lists t
 
 Runtime owns `comet-state.yaml` and machine state under `.comet/runtime/native/`. Requirement edits return the change to Shape; implementation edits return it to Build before a fresh Verifier reviews the candidate. Do not hand-edit state to skip a phase.
 
+Repositories that require their own PR template or validation script can opt into a Native repository-command provider in `.comet/config.yaml`:
+
+```yaml
+native:
+  finish:
+    pull_request:
+      provider: repository-command
+      command: [pwsh, -NoProfile, -File, scripts/comet-create-pr.ps1]
+      timeout_ms: 120000
+```
+
+After a `pull-request` Archive finish is selected, Comet still owns commit, push, existing-PR observation, base/head/head-SHA verification, idempotent recovery, and safe cleanup. The repository command owns only title/body/template policy and repository-specific remote validation. It runs from the project root, receives `comet.native.pull-request-finish-input.v1` JSON on stdin, and must return `comet.native.pull-request-finish-result.v1` JSON on stdout. Projects without this configuration keep the compatible `gh pr create --fill` behavior.
+
 </details>
 
 <details>

@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-beta.20] - 2026-08-16
+
+### Added
+
+- **Repository-owned Native pull-request finish providers**: Projects can opt into a structured repository command for PR title, body, template, and policy validation while Comet retains commit, push, remote base/head/SHA verification, existing-PR reuse, recoverable failure state, and safe worktree cleanup.
+
 ## What's Changed [0.4.0-beta.19] - 2026-08-15
 
 ### Changed

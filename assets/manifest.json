@@ -1,5 +1,5 @@
 {
-  "version": "0.4.0-beta.19",
+  "version": "0.4.0-beta.20",
   "skills": [
     "comet/SKILL.md",
     "comet/agents/openai.yaml",
