@@ -21,6 +21,8 @@ const requiredContractMarkers = [
   'project',
   'candidateKey',
   'budget.maxActions',
+  'language',
+  'type',
 ];
 
 async function readSkill(root: (typeof languageRoots)[number]): Promise<string> {

@@ -25,8 +25,11 @@ disable-model-invocation: true
 
 只返回一个 JSON object，不要 Markdown、解释、内部推理或用户提示。动作集合的结构规则是：
 
+- 顶层字段必须且只能是 `schema` 和 `actions`；schema 字段名固定为 `schema`，值必须逐字为 `comet.memory.actions.v1`，禁止使用 `schemaVersion` 或其他 schema 值，顶层不得放 `language`。
 - 没有可安全保存的内容时，`actions` **只能有一个** `skip`；不要为不同原因追加多个 `skip`。
-- `skip` 只允许 `action`、`language`、`reason` 和可选的 packet `evidenceKeys`；绝不带 `scope`、`projectKey`、`candidateKey`、`targetId`、文件路径或 `target`。
+- 用户可见语言字段名称固定为 `language`（不是 `locale` 或其他别名），值必须来自 packet；不要改写机器字段名。
+- 每个动作的动作字段名称固定为 `action`（不是 `type`、`operation` 或其他别名）；动作值只能是 `create`、`update`、`forget`、`skip`。
+- `skip` 必须包含 `action: "skip"`、packet language 对应的 `language` 和非空 `reason`，还可带 packet `evidenceKeys`；绝不带 `scope`、`projectKey`、`candidateKey`、`targetId`、文件路径或 `target`。
 - `scope` 只能是 `global` 或 `project`，只能用于真正的 `create`、`update`、`forget` 动作；不存在 `any`、`local` 或其他值。
 - `actions` 的数量不得超过 packet 的 `budget.maxActions`；预算缺失、无效或无法满足时返回唯一 `skip`。除 `skip` 外，整个集合只能使用一个 scope。
 - `update`/`forget` 只能使用 packet 中现有记忆的 `targetId`，不能把用户文件路径、项目路径或候选文本当作 target。

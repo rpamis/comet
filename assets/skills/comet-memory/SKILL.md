@@ -25,8 +25,11 @@ Read only the Runtime-provided `comet.memory.review.v1` `MemoryReviewPacket`: co
 
 Return exactly one JSON object, with no Markdown, explanation, hidden reasoning, or user-facing message. Follow these action-shape rules:
 
+- The top-level fields must be exactly `schema` and `actions`; the schema field is named `schema`, its value must be exactly `comet.memory.actions.v1`, never `schemaVersion` or another schema value, and the top level must not contain `language`.
 - If nothing is safe to save, `actions` **must contain exactly one** `skip`; do not append multiple skips for different reasons.
-- `skip` may contain only `action`, `language`, `reason`, and optional packet `evidenceKeys`; never add `scope`, `projectKey`, `candidateKey`, `targetId`, a file path, or `target`.
+- The user-visible language field is named exactly `language` (never `locale` or another alias), and its value must come from the packet; do not rename machine fields.
+- Every action must use the exact field name `action` (never `type`, `operation`, or another alias); action values are limited to `create`, `update`, `forget`, and `skip`.
+- `skip` must contain `action: "skip"`, the packet language in `language`, and a non-empty `reason`; it may also contain packet `evidenceKeys`. Never add `scope`, `projectKey`, `candidateKey`, `targetId`, a file path, or `target`.
 - `scope` may only be `global` or `project`, and only for a real `create`, `update`, or `forget` action; never use `any`, `local`, or another value.
 - The number of `actions` must not exceed packet `budget.maxActions`; if the budget is missing, invalid, or cannot be satisfied, return the one `skip`. Apart from `skip`, the entire collection must use one scope.
 - `update`/`forget` may use only an existing packet memory `targetId`; never treat a user file path or candidate text as a target.
