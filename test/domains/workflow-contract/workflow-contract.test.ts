@@ -216,6 +216,9 @@ describe('workflow contract normalization', () => {
       'provider: github-fill\ncommand: [pwsh]',
       'provider: repository-command\ncommand: []',
       'provider: repository-command\ncommand: [pwsh]\ntimeout_ms: 600001',
+      "provider: repository-command\ncommand: ['/usr/bin/provider']",
+      "provider: repository-command\ncommand: ['C:\\\\tools\\\\provider.ps1']",
+      "provider: repository-command\ncommand: ['\\\\\\\\server\\\\share\\\\provider']",
     ]) {
       expect(() =>
         parseWorkflowProjectConfigDocument(
@@ -252,12 +255,18 @@ describe('workflow contract normalization', () => {
             include: ['**/*'],
             snapshot_extension: 'remove-with-retired-block',
           },
+          finish: {
+            pull_request: { provider: 'retired-provider' },
+            future_provider: { enabled: true },
+          },
           custom_extension: 'keep',
         },
       },
       config,
     );
     expect(merged).not.toHaveProperty('native.snapshot');
+    expect(merged).not.toHaveProperty('native.finish.pull_request');
+    expect(merged).toHaveProperty('native.finish.future_provider', { enabled: true });
     expect(merged).toHaveProperty('native.custom_extension', 'keep');
     expect(merged).toHaveProperty('hook.allow_paths', ['docs/team-notes']);
 

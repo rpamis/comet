@@ -568,6 +568,11 @@ function normalizeWorkflowNativeFinish(
     }
     return argument;
   });
+  if (path.posix.isAbsolute(command[0]) || path.win32.isAbsolute(command[0])) {
+    throw new Error(
+      'native.finish.pull_request.command[0] must be a bare executable name or a project-relative path',
+    );
+  }
   const timeoutMs =
     pullRequest.timeout_ms ?? DEFAULT_WORKFLOW_NATIVE_PULL_REQUEST_FINISH_TIMEOUT_MS;
   if (
@@ -890,7 +895,10 @@ export function mergeWorkflowProjectConfigDocument(
         },
       };
     } else {
-      delete native.finish;
+      const remainingFinish = { ...optionalRecord(existingNative.finish) };
+      delete remainingFinish.pull_request;
+      if (Object.keys(remainingFinish).length > 0) native.finish = remainingFinish;
+      else delete native.finish;
     }
     // Snapshot settings are retained by the parser as a legacy v1-v3 runtime
     // default, but Native v4 no longer persists them in user configuration.
@@ -1905,10 +1913,23 @@ function managedWorkflowConfigFields(source) {
             );
           }
         }
-        const timeoutMs = pullRequest.timeout_ms ?? 120000;
-        if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 600000) {
+        if (
+          path.posix.isAbsolute(pullRequest.command[0]) ||
+          path.win32.isAbsolute(pullRequest.command[0])
+        ) {
           throw new Error(
-            'native.finish.pull_request.timeout_ms must be an integer between 1 and 600000',
+            'native.finish.pull_request.command[0] must be a bare executable name or a project-relative path',
+          );
+        }
+        const timeoutMs =
+          pullRequest.timeout_ms ?? ${DEFAULT_WORKFLOW_NATIVE_PULL_REQUEST_FINISH_TIMEOUT_MS};
+        if (
+          !Number.isSafeInteger(timeoutMs) ||
+          timeoutMs < 1 ||
+          timeoutMs > ${MAX_WORKFLOW_NATIVE_PULL_REQUEST_FINISH_TIMEOUT_MS}
+        ) {
+          throw new Error(
+            'native.finish.pull_request.timeout_ms must be an integer between 1 and ${MAX_WORKFLOW_NATIVE_PULL_REQUEST_FINISH_TIMEOUT_MS}',
           );
         }
       }

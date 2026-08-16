@@ -1,3 +1,4 @@
+import os from 'node:os';
 import path from 'node:path';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -35,7 +36,7 @@ import type {
 } from '../../../domains/comet-native/native-types.js';
 import type { NativeWorkspaceIdentityV3 } from '../../../domains/comet-native/native-workspace.js';
 
-const projectRoot = path.resolve('D:/native-workspace-finish-test');
+const projectRoot = path.join(os.tmpdir(), 'native-workspace-finish-test');
 const paths: NativeProjectPaths = {
   projectRoot,
   configFile: path.join(projectRoot, '.comet', 'config.yaml'),
@@ -133,6 +134,27 @@ describe('Native workspace finish preparation', () => {
       ['--version'],
       expect.objectContaining({ timeoutMs: 10_000 }),
     );
+  });
+
+  it('rejects absolute repository-command executables before availability probing', async () => {
+    for (const executable of [
+      '/usr/bin/provider',
+      'C:\\tools\\provider.ps1',
+      '\\\\server\\share\\provider',
+    ]) {
+      await expect(
+        prepareNativeWorkspaceFinish({
+          paths,
+          state,
+          workspace: { ...identity(), finish: 'pull-request' },
+          pullRequestFinish: {
+            provider: 'repository-command',
+            command: [executable],
+            timeout_ms: 120_000,
+          },
+        }),
+      ).rejects.toThrow(/executable is not available/u);
+    }
   });
 
   it('rejects incomplete, conflicting, drifted, dirty, and unconfigured finishes', async () => {

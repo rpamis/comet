@@ -98,7 +98,7 @@ function pullRequestUrl(value: unknown, label: string): string {
 
 function gitObjectId(value: unknown, label: string): string {
   const objectId = nonEmptyString(value, label);
-  if (!/^[a-f0-9]{40,64}$/iu.test(objectId)) {
+  if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/iu.test(objectId)) {
     throw new Error(`${label} must be a Git object ID`);
   }
   return objectId.toLowerCase();
@@ -151,13 +151,12 @@ function parseRepositoryCommandOutput(source: string): RepositoryCommandProvider
   if (output.disposition !== 'created' && output.disposition !== 'reused') {
     throw new Error('pull request finish provider output.disposition must be created or reused');
   }
-  const pullRequest = providerPullRequestRecord(output.pullRequest);
   if (output.remoteVerified !== true) {
-    throw new NativePullRequestFinishError(
+    throw new Error(
       'pull request finish provider did not confirm repository-owned remote verification',
-      { ...pullRequest, state: 'OPEN' },
     );
   }
+  const pullRequest = providerPullRequestRecord(output.pullRequest);
   return {
     schema: 'comet.native.pull-request-finish-result.v1',
     disposition: output.disposition,
@@ -305,10 +304,17 @@ function createWithGithubFill(options: {
         .find((line) => /^https?:\/\//u.test(line));
       if (!url) throw new Error('GitHub CLI did not return a pull request URL');
       pullRequest = observeNativePullRequest(options);
-      if (!pullRequest || pullRequest.url !== url) {
+      if (!pullRequest) {
         throw new Error('GitHub CLI created a pull request that could not be observed uniquely');
       }
+      if (pullRequest.url !== url) {
+        throw new NativePullRequestFinishError(
+          'GitHub CLI returned a pull request URL that does not match the remotely observed pull request',
+          pullRequest,
+        );
+      }
     } catch (error) {
+      if (error instanceof NativePullRequestFinishError) throw error;
       const recovered = bestEffortObserve(options);
       if (!recovered) {
         throw new NativePullRequestFinishError((error as Error).message, null, { cause: error });
@@ -361,9 +367,10 @@ function createWithRepositoryCommand(options: {
     providerRecord.headBranch !== options.headBranch ||
     providerRecord.headSha !== gitObjectId(options.headSha, 'Native Archive head SHA')
   ) {
+    const recovered = bestEffortObserve(options) ?? options.existingPullRequest;
     throw new NativePullRequestFinishError(
       'Repository pull request finish provider returned a pull request outside the authorized base, head, or head SHA',
-      providerRecord,
+      recovered,
     );
   }
   const verified = verifyNativePullRequest({ ...options, pullRequest: providerRecord });

@@ -14,6 +14,19 @@ describe('external command provider', () => {
     ).toBe('ready');
   });
 
+  it('writes configured input to child stdin', () => {
+    expect(
+      runExternalCommand(
+        process.execPath,
+        [
+          '-e',
+          "process.stdin.setEncoding('utf8'); let input = ''; process.stdin.on('data', (chunk) => { input += chunk; }); process.stdin.on('end', () => process.stdout.write(input));",
+        ],
+        { input: 'hello from stdin', timeoutMs: 5_000 },
+      ),
+    ).toBe('hello from stdin');
+  });
+
   it('preserves stderr in a typed failure', () => {
     expect(() =>
       runExternalCommand(

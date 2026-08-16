@@ -1,3 +1,4 @@
+import os from 'node:os';
 import path from 'node:path';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -10,7 +11,7 @@ import {
   NativePullRequestFinishError,
 } from '../../../domains/comet-native/native-pull-request-finish.js';
 
-const projectRoot = path.resolve('D:/native-pull-request-finish-test');
+const projectRoot = path.join(os.tmpdir(), 'native-pull-request-finish-test');
 const headSha = 'a'.repeat(40);
 const pullRequest = {
   number: 17,
@@ -164,16 +165,7 @@ describe('Native pull request finish', () => {
       throw new Error(`unexpected command: ${command} ${args.join(' ')}`);
     });
 
-    expect(() =>
-      finishNativePullRequest({
-        ...options(),
-        config: {
-          provider: 'repository-command',
-          command: ['pwsh', '-File', 'scripts/comet-create-pr.ps1'],
-          timeout_ms: 120_000,
-        },
-      }),
-    ).toThrowError(NativePullRequestFinishError);
+    let caught: unknown;
     try {
       finishNativePullRequest({
         ...options(),
@@ -184,8 +176,109 @@ describe('Native pull request finish', () => {
         },
       });
     } catch (error) {
-      expect(error).toMatchObject({ pullRequest: { number: 17, url: pullRequest.url } });
+      caught = error;
     }
+    expect(caught).toBeInstanceOf(NativePullRequestFinishError);
+    expect(caught).toMatchObject({ pullRequest: { number: 17, url: pullRequest.url } });
+  });
+
+  it('does not expose an unverified provider pull request record', () => {
+    external.runExternalCommand.mockImplementation((command: string, args: readonly string[]) => {
+      if (command === 'gh' && args[1] === 'list') return '[]';
+      if (command === 'pwsh') {
+        return ghJson({
+          schema: 'comet.native.pull-request-finish-result.v1',
+          disposition: 'created',
+          remoteVerified: false,
+          pullRequest: {
+            number: 99,
+            url: 'https://attacker.example/pull/99',
+            baseBranch: 'main',
+            headBranch: 'comet/change',
+            headSha,
+          },
+        });
+      }
+      throw new Error(`unexpected command: ${command} ${args.join(' ')}`);
+    });
+
+    let caught: unknown;
+    try {
+      finishNativePullRequest({
+        ...options(),
+        config: {
+          provider: 'repository-command',
+          command: ['pwsh', '-File', 'scripts/comet-create-pr.ps1'],
+          timeout_ms: 120_000,
+        },
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(NativePullRequestFinishError);
+    expect(caught).toMatchObject({ pullRequest: null });
+  });
+
+  it('fails closed when github create output disagrees with the observed pull request URL', () => {
+    const observed = {
+      ...pullRequest,
+      number: 18,
+      url: 'https://github.com/example/repo/pull/18',
+    };
+    let listCalls = 0;
+    external.runExternalCommand.mockImplementation((_command: string, args: readonly string[]) => {
+      if (args[1] === 'list') {
+        listCalls += 1;
+        return listCalls === 1 ? '[]' : ghJson([observed]);
+      }
+      if (args[1] === 'create') return `${pullRequest.url}\n`;
+      throw new Error(`unexpected gh args: ${args.join(' ')}`);
+    });
+
+    let caught: unknown;
+    try {
+      finishNativePullRequest(options());
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(NativePullRequestFinishError);
+    expect(caught).toMatchObject({ pullRequest: { number: 18, url: observed.url } });
+    expect(caught).toHaveProperty(
+      'message',
+      'GitHub CLI returned a pull request URL that does not match the remotely observed pull request',
+    );
+  });
+
+  it('rejects Git object IDs whose length is neither SHA-1 nor SHA-256', () => {
+    external.runExternalCommand.mockImplementation((command: string, args: readonly string[]) => {
+      if (command === 'gh' && args[1] === 'list') return '[]';
+      if (command === 'pwsh') {
+        return ghJson({
+          schema: 'comet.native.pull-request-finish-result.v1',
+          disposition: 'created',
+          remoteVerified: true,
+          pullRequest: {
+            number: 17,
+            url: pullRequest.url,
+            baseBranch: 'main',
+            headBranch: 'comet/change',
+            headSha: 'a'.repeat(41),
+          },
+        });
+      }
+      throw new Error(`unexpected command: ${command} ${args.join(' ')}`);
+    });
+
+    expect(() =>
+      finishNativePullRequest({
+        ...options(),
+        config: {
+          provider: 'repository-command',
+          command: ['pwsh', '-File', 'scripts/comet-create-pr.ps1'],
+          timeout_ms: 120_000,
+        },
+      }),
+    ).toThrow(/Git object ID/u);
   });
 
   it('fails closed when the remote pull request points at another head SHA', () => {

@@ -603,7 +603,7 @@ native:
       timeout_ms: 120000
 ```
 
-After a `pull-request` Archive finish is selected, Comet still owns commit, push, existing-PR observation, base/head/head-SHA verification, idempotent recovery, and safe cleanup. The repository command owns only title/body/template policy and repository-specific remote validation. It runs from the project root, receives `comet.native.pull-request-finish-input.v1` JSON on stdin, and must return `comet.native.pull-request-finish-result.v1` JSON on stdout. Projects without this configuration keep the compatible `gh pr create --fill` behavior.
+After a `pull-request` Archive finish is selected, Comet still owns commit, push, existing-PR observation, base/head/head-SHA verification, idempotent recovery, and safe cleanup. The repository command owns only title/body/template policy and repository-specific remote validation. Its executable must be either a bare name resolved through PATH or a project-relative path. It runs from the project root, receives `comet.native.pull-request-finish-input.v1` JSON on stdin, and must return `comet.native.pull-request-finish-result.v1` JSON on stdout. GitHub CLI (`gh`) must still be installed and authenticated because Comet independently verifies remote state with `gh pr list` and `gh pr view`. Projects without this configuration keep the compatible `gh pr create --fill` behavior.
 
 </details>
 

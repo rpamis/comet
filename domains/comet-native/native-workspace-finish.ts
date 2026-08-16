@@ -124,11 +124,14 @@ function assertPullRequestProviderAvailable(
   if (!config) return;
   const executable = config.command[0];
   try {
-    if (path.isAbsolute(executable) || /[\\/]/u.test(executable)) {
-      const resolved = path.isAbsolute(executable)
-        ? path.resolve(executable)
-        : path.resolve(projectRoot, executable);
-      if (!path.isAbsolute(executable) && !pathContains(projectRoot, resolved)) {
+    const absoluteExecutable =
+      path.posix.isAbsolute(executable) || path.win32.isAbsolute(executable);
+    if (absoluteExecutable) {
+      throw new Error('configured executable must not be an absolute path');
+    }
+    if (/[\\/]/u.test(executable)) {
+      const resolved = path.resolve(projectRoot, executable);
+      if (!pathContains(projectRoot, resolved)) {
         throw new Error('configured executable escapes the project root');
       }
       accessSync(resolved, fsConstants.X_OK);

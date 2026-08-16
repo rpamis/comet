@@ -570,7 +570,7 @@ native:
       timeout_ms: 120000
 ```
 
-选择 Archive 的 `pull-request` 收尾后，Comet 仍负责提交、推送、观察已有 PR、核对 base/head/head SHA、幂等恢复和安全清理；仓库命令只负责标题、正文、模板及仓库特有的远端校验。命令在项目根目录执行，通过 stdin 接收 `comet.native.pull-request-finish-input.v1` JSON，并必须在 stdout 返回 `comet.native.pull-request-finish-result.v1` JSON。未配置时继续使用兼容的 `gh pr create --fill` 行为。
+选择 Archive 的 `pull-request` 收尾后，Comet 仍负责提交、推送、观察已有 PR、核对 base/head/head SHA、幂等恢复和安全清理；仓库命令只负责标题、正文、模板及仓库特有的远端校验。命令的可执行文件必须是 PATH 中的裸名称或项目内相对路径；它在项目根目录执行，通过 stdin 接收 `comet.native.pull-request-finish-input.v1` JSON，并必须在 stdout 返回 `comet.native.pull-request-finish-result.v1` JSON。即使使用 repository-command，仍须安装并认证 GitHub CLI (`gh`)，因为 Comet 会调用 `gh pr list` 和 `gh pr view` 独立核验远端状态。未配置时继续使用兼容的 `gh pr create --fill` 行为。
 
 </details>
 

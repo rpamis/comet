@@ -40,7 +40,7 @@ export function runExternalCommand(
       ...(options.cwd ? { cwd: options.cwd } : {}),
       ...(options.input !== undefined ? { input: options.input } : {}),
       encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: [options.input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
       timeout: timeoutMs,
       maxBuffer: maxBufferBytes,
       windowsHide: true,
