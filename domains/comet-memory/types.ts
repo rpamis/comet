@@ -154,6 +154,7 @@ export interface MemoryTombstone {
   readonly projectKey?: string;
   readonly recordId: string;
   readonly textHash?: string;
+  readonly reason?: 'user-remove' | 'markdown-delete';
   readonly removedAt: string;
 }
 
@@ -178,6 +179,7 @@ export interface MemoryReviewEvidence {
 export interface MemoryReviewMemorySummary {
   readonly id: string;
   readonly scope: MemoryScope;
+  readonly projectIdentity?: string;
   readonly projectKey?: string;
   readonly category: string;
   readonly text: string;

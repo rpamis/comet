@@ -140,6 +140,7 @@ describe('PersonalMemoryService', () => {
         category: '工作习惯',
         text: '只暂存本次改动文件',
         projectKey: 'project-a',
+        language: 'zh-CN' as const,
         workflow: 'native',
         success: true,
       };
@@ -177,6 +178,7 @@ describe('PersonalMemoryService', () => {
         projectKey: 'project-a',
         category: '工作习惯',
         text: '只暂存本次改动文件',
+        language: 'zh-CN' as const,
         success: true,
       };
 
@@ -200,6 +202,7 @@ describe('PersonalMemoryService', () => {
         projectKey: 'project-a',
         category: '工作习惯',
         text: '只暂存本次改动文件',
+        language: 'zh-CN' as const,
         workflow: 'native',
         changeId: 'change-1',
       };
@@ -264,6 +267,7 @@ describe('PersonalMemoryService', () => {
         projectKey: 'project-a',
         category: '构建',
         workflow: 'classic',
+        language: 'zh-CN' as const,
         success: true,
       };
       await memories.observe({ ...base, text: '使用 pnpm build', changeId: 'one' });
@@ -293,6 +297,7 @@ describe('PersonalMemoryService', () => {
         projectKey: 'project-a',
         category: '构建',
         text: '使用 npm run build',
+        language: 'zh-CN',
         workflow: 'native',
         changeId: 'one',
         success: true,
@@ -302,6 +307,7 @@ describe('PersonalMemoryService', () => {
         projectKey: 'project-a',
         category: '构建',
         text: '使用 npm run build',
+        language: 'zh-CN',
         workflow: 'native',
         changeId: 'two',
         success: true,
@@ -326,6 +332,7 @@ describe('PersonalMemoryService', () => {
         scope: 'project' as const,
         projectKey: 'project-a',
         workflow: 'native',
+        language: 'zh-CN' as const,
         success: true,
       };
       await expect(
@@ -383,6 +390,7 @@ describe('PersonalMemoryService', () => {
         scope: 'global' as const,
         category: '沟通偏好',
         text: '使用中文回复',
+        language: 'zh-CN' as const,
         workflow: 'native',
         success: true,
         candidateKey: 'language',
@@ -435,6 +443,7 @@ describe('PersonalMemoryService', () => {
           category: '协作习惯',
           text: '只暂存本次改动文件',
           workflow: 'native',
+          language: 'zh-CN',
           changeId: 'old-change',
           candidateKey: 'staging',
           observedAt: '2026-08-13T00:00:00.000Z',
@@ -448,6 +457,7 @@ describe('PersonalMemoryService', () => {
           category: '协作习惯',
           text: '只暂存本次改动文件',
           workflow: 'native',
+          language: 'zh-CN',
           changeId: 'new-change-1',
           candidateKey: 'staging',
           observedAt: '2026-08-15T00:00:00.000Z',
@@ -461,12 +471,62 @@ describe('PersonalMemoryService', () => {
           category: '协作习惯',
           text: '只暂存本次改动文件',
           workflow: 'native',
+          language: 'zh-CN',
           changeId: 'new-change-2',
           candidateKey: 'staging',
           observedAt: '2026-08-16T00:00:00.000Z',
           success: true,
         }),
       ).resolves.toMatchObject({ candidate: true, activated: true });
+    });
+  });
+
+  it('allows explicit correction to reopen a user-forgotten memory', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const record = await memories.remember({
+        scope: 'global',
+        category: '沟通偏好',
+        text: '使用中文回复',
+      });
+      await memories.remove(record.id);
+
+      const corrected = await memories.correct(record.id, { text: '始终使用中文回复' });
+      expect(corrected).toMatchObject({ active: true, kind: 'explicit' });
+      expect((await memories.retrieve({ scope: 'global' })).records).toEqual(
+        expect.arrayContaining([expect.objectContaining({ text: '始终使用中文回复' })]),
+      );
+    });
+  });
+
+  it('migrates legacy tombstones without a text hash before Markdown reconciliation', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const record = await memories.remember({
+        scope: 'global',
+        category: '沟通偏好',
+        text: '使用中文回复',
+      });
+      await memories.remove(record.id);
+      const stateFile = path.join(root, '.comet/runtime/memory-state.json');
+      const state = JSON.parse(await readFile(stateFile, 'utf8')) as {
+        tombstones: Array<Record<string, unknown>>;
+      };
+      state.tombstones = state.tombstones.map(({ textHash: _textHash, ...entry }) => entry);
+      await writeFile(stateFile, JSON.stringify(state));
+      await writeFile(
+        path.join(root, 'profile.md'),
+        '# 个人画像\n\n## 沟通偏好\n\n-   使用   中文回复  \n',
+      );
+
+      const result = await service(root).retrieve({ scope: 'global' });
+      expect(result.records).not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ text: '使用中文回复' })]),
+      );
+      const migrated = JSON.parse(await readFile(stateFile, 'utf8')) as {
+        tombstones: Array<{ textHash?: string }>;
+      };
+      expect(migrated.tombstones[0]?.textHash).toEqual(expect.any(String));
     });
   });
 
@@ -494,6 +554,17 @@ describe('PersonalMemoryService', () => {
   it('rejects automatic observations whose language conflicts with user configuration', async () => {
     await withTempRepository(async (root) => {
       const memories = service(root);
+      await expect(
+        memories.observe({
+          scope: 'project',
+          projectKey: 'project-a',
+          category: '沟通偏好',
+          text: '使用中文回复',
+          workflow: 'native',
+          changeId: 'missing-language',
+          success: true,
+        }),
+      ).resolves.toMatchObject({ ignored: true, activated: false });
       await expect(
         memories.observe({
           scope: 'project',

@@ -34,6 +34,8 @@ const DANGEROUS_PATTERNS = [
   /\b(?:stack trace|traceback|stderr|stdout|debug log|npm warn|npm ERR!|error log)\b/iu,
   /(?:ignore|disregard|override|forget|do not follow)\s+(?:all\s+)?(?:my\s+|the\s+)?(?:prior|previous|earlier|above|following|these)?\s*(?:instructions?|rules?|policies?|system|prompt)/iu,
   /(?:modify|change|edit|rewrite|disable|reveal)\s+(?:the\s+)?(?:skill|agent instructions?|project rules?|system prompt|guard|policy)/iu,
+  /(?:忽略|无视|跳过|不遵循|不要遵循).*(?:之前|先前|上面|以上|前面)?.*(?:指令|规则|提示|政策|系统)/u,
+  /(?:修改|更改|编辑|重写|禁用|绕过|泄露|显示).*(?:技能|skill|agent|代理|项目规则|系统提示|守卫|策略|规则)/iu,
   /<\/?(?:script|iframe|object|embed|style|svg)\b|(?:onerror|onload|onclick)\s*=|data:text\/html/iu,
   /javascript:/iu,
 ];
@@ -124,6 +126,10 @@ export function validateMemoryReviewPacket(
     const item = asObject(entry, `memories[${index}]`);
     const id = requiredString(item.id, `memories[${index}].id`);
     const scope = asScope(item.scope, `memories[${index}].scope`);
+    const memoryProjectIdentity = optionalString(
+      item.projectIdentity,
+      `memories[${index}].projectIdentity`,
+    );
     const memoryProjectKey = optionalProjectKey(item.projectKey);
     if (scope === 'project' && memoryProjectKey === undefined) {
       throw new Error(`memories[${index}] project memory requires a project key`);
@@ -140,6 +146,7 @@ export function validateMemoryReviewPacket(
     return {
       id,
       scope,
+      ...(memoryProjectIdentity === undefined ? {} : { projectIdentity: memoryProjectIdentity }),
       ...(memoryProjectKey === undefined ? {} : { projectKey: memoryProjectKey }),
       category,
       text,
@@ -430,6 +437,14 @@ function assertTargetProjectContext(
   ) {
     throw new Error(`actions[${index}] target project does not match packet context`);
   }
+  if (
+    target.scope === 'project' &&
+    packet.projectKey === undefined &&
+    packet.projectIdentity !== undefined &&
+    target.projectIdentity !== packet.projectIdentity
+  ) {
+    throw new Error(`actions[${index}] target identity does not match packet context`);
+  }
 }
 
 function assertActionProjectContext(
@@ -492,11 +507,12 @@ function validateLanguageText(value: string, language: MemoryLanguage, field: st
   const hasHan = /\p{Script=Han}/u.test(value);
   const hasLatin = /[A-Za-z]/u.test(value);
   const machineLike =
-    /[`/\\]|\b(?:git|npm|pnpm|yarn|node|comet)\b|\.(?:ts|js|json|md|yaml)\b/iu.test(value);
-  if (language === 'zh-CN' && hasLatin && !hasHan && !machineLike) {
+    /[`/\\]|\b(?:git|npm|pnpm|yarn|node|comet)\b|\.(?:ts|js|json|md|yaml)\b/iu.test(value) ||
+    /\b[A-Z][A-Z0-9_-]{1,}\b/u.test(value);
+  if (language === 'zh-CN' && hasLatin && !machineLike) {
     throw new Error(`${field} does not match zh-CN review language`);
   }
-  if (language === 'en' && hasHan && !machineLike && !/[A-Za-z]{2,}\s+[A-Za-z]{2,}/u.test(value)) {
+  if (language === 'en' && hasHan && !machineLike) {
     throw new Error(`${field} does not match en review language`);
   }
 }

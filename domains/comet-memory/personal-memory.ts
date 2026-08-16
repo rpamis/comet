@@ -61,7 +61,6 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
 
   public async remember(input: MemoryInput): Promise<MemoryRecord> {
     validateInput(input);
-    validateOptionalInputLanguage(input);
     const source = input.source ?? { kind: 'user' };
     return this.repository.withLock(async () => {
       const state = await this.loadAndReconcile(input.scope, input.projectKey);
@@ -102,7 +101,14 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
     return this.repository.withLock(async () => {
       const state = await this.loadAndReconcile();
       const current = state.records.find((entry) => entry.id === id) as StoredRecord | undefined;
-      if (current === undefined || !current.active) throw new Error(`Memory is not active: ${id}`);
+      const userRemoved =
+        current !== undefined &&
+        state.tombstones.some(
+          (entry) => entry.identity === current.identity && entry.reason === 'user-remove',
+        );
+      if (current === undefined || (!current.active && !userRemoved)) {
+        throw new Error(`Memory is not active: ${id}`);
+      }
       pushHistory(state, current);
       clearInferredCandidates(state, current.identity);
       const next = this.updateRecordValue(
@@ -167,6 +173,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
         ...(current.projectKey === undefined ? {} : { projectKey: current.projectKey }),
         recordId: current.id,
         textHash: normalizedMemoryTextHash(current.text),
+        reason: 'user-remove',
         removedAt: this.timestamp(),
       });
       await this.persist(state);
@@ -690,7 +697,7 @@ function mutableState(raw: MemoryRuntimeState): MutableMemoryState {
         : { projectIdentity: entry.projectIdentity ?? entry.projectKey }),
     })),
     conflicts: [...raw.conflicts],
-    tombstones: [...(raw.tombstones ?? [])],
+    tombstones: normalizeTombstones(raw),
     settings: {
       learningEnabled: raw.settings.learningEnabled,
       retrievalEnabled: raw.settings.retrievalEnabled,
@@ -906,6 +913,7 @@ function reconcileMarkdown(
         ...(record.projectKey === undefined ? {} : { projectKey: record.projectKey }),
         recordId: record.id,
         textHash: normalizedMemoryTextHash(record.text),
+        reason: 'markdown-delete',
         removedAt: timestamp,
       });
     }
@@ -1220,13 +1228,12 @@ function isTombstonedMarkdownText(
     (entry) =>
       entry.scope === scope &&
       entry.projectKey === projectKey &&
-      entry.textHash !== undefined &&
-      (entry.textHash === textHash || entry.textHash === rawHash),
+      (entry.textHash === undefined || entry.textHash === textHash || entry.textHash === rawHash),
   );
 }
 
 function normalizedMemoryTextHash(text: string): string {
-  return hashMemoryText(normalizeText(text));
+  return hashMemoryText(normalizeText(text).replace(/\s+/gu, ''));
 }
 
 function validateInput(input: MemoryInput): void {
@@ -1236,16 +1243,6 @@ function validateInput(input: MemoryInput): void {
     throw new Error('Project key is invalid');
   if (input.category.trim().length === 0 || input.text.trim().length === 0)
     throw new Error('Memory category and text are required');
-}
-
-function validateOptionalInputLanguage(input: MemoryInput): void {
-  if (input.language !== undefined) {
-    validateMemoryLanguageText(input.category, input.language, 'memory category');
-    validateMemoryLanguageText(input.text, input.language, 'memory text');
-    (input.tags ?? []).forEach((tag, index) =>
-      validateMemoryLanguageText(tag, input.language!, `memory tags[${index}]`),
-    );
-  }
 }
 
 function validateObservation(observation: MemoryObservation): void {
@@ -1267,6 +1264,7 @@ function validateObservation(observation: MemoryObservation): void {
 }
 
 function isUsefulAutomaticObservation(observation: MemoryObservation): boolean {
+  if (observation.language === undefined) return false;
   try {
     [
       observation.category,
@@ -1276,17 +1274,11 @@ function isUsefulAutomaticObservation(observation: MemoryObservation): boolean {
       ...(observation.taskTypes ?? []),
       ...(observation.operations ?? []),
     ].forEach((value) => validateSafeMemoryText(value));
-    if (observation.language !== undefined) {
-      validateMemoryLanguageText(
-        observation.category,
-        observation.language,
-        'observation.category',
-      );
-      validateMemoryLanguageText(observation.text, observation.language, 'observation.text');
-      (observation.tags ?? []).forEach((tag, index) =>
-        validateMemoryLanguageText(tag, observation.language!, `observation.tags[${index}]`),
-      );
-    }
+    validateMemoryLanguageText(observation.category, observation.language, 'observation.category');
+    validateMemoryLanguageText(observation.text, observation.language, 'observation.text');
+    (observation.tags ?? []).forEach((tag, index) =>
+      validateMemoryLanguageText(tag, observation.language!, `observation.tags[${index}]`),
+    );
   } catch {
     return false;
   }
@@ -1312,4 +1304,18 @@ function isUsefulAutomaticObservation(observation: MemoryObservation): boolean {
     return false;
   }
   return true;
+}
+
+function normalizeTombstones(raw: MemoryRuntimeState): MemoryTombstone[] {
+  const records = [...raw.records, ...Object.values(raw.history).flat()];
+  return (raw.tombstones ?? []).map((entry) => {
+    if (entry.textHash !== undefined) return { ...entry };
+    const record = records.find((candidate) => candidate.id === entry.recordId);
+    return record === undefined
+      ? { ...entry }
+      : {
+          ...entry,
+          textHash: normalizedMemoryTextHash(record.text),
+        };
+  });
 }
