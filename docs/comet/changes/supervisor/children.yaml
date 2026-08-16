@@ -90,3 +90,11 @@ children:
       - A73
       - A75
       - A78
+  - name: supervisor-display-copy-repair-merged
+    depends_on:
+      - supervisor-integration-core
+      - supervisor-agent-coordination
+      - supervisor-observability-recovery
+    covers:
+      - A30
+      - A78
