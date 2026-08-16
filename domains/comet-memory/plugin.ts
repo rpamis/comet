@@ -6,6 +6,7 @@ import type {
 } from '../comet-plugin/index.js';
 import type {
   MemoryInput,
+  MemoryQuery,
   MemoryObservation,
   PersonalMemoryPluginOptions,
   PersonalMemoryServiceLike,
@@ -41,13 +42,16 @@ async function createModule(
     ],
     dashboard: {
       id: 'personal-memory',
-      label: '个人记忆',
+      label: options.language === 'en' ? 'Personal Memory' : '个人记忆',
       route: '/plugins/personal-memory',
       load: async ({ projectId, invoke }) => ({
         projectKey: projectId,
         status: await invoke('status'),
         retrieval: await invoke('retrieve', { projectKey: projectId }),
+        management: await invoke('manage', { projectKey: projectId }),
         operations: [
+          'remember',
+          'manage',
           'correct',
           'remove',
           'rollback',
@@ -104,6 +108,8 @@ async function invokeCapability(
       return service.observe(asRecord<MemoryObservation>(input, 'observe'));
     case 'retrieve':
       return service.retrieve(asRecord(input, 'retrieve') as never);
+    case 'manage':
+      return service.manage(asRecord<MemoryQuery>(input, 'manage'));
     case 'status':
       return service.status();
     case 'sync':

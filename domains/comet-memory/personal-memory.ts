@@ -4,6 +4,10 @@ import type {
   MemoryConflict,
   MemoryCorrection,
   MemoryInput,
+  MemoryLanguage,
+  MemoryManagementConflict,
+  MemoryManagementRecord,
+  MemoryManagementView,
   MemoryObservation,
   MemoryObservationResult,
   MemoryQuery,
@@ -25,6 +29,8 @@ import { validateMemoryLanguageText, validateSafeMemoryText } from './review-con
 
 const DEFAULT_MAX_ENTRIES = 12;
 const DEFAULT_MAX_BYTES = 8 * 1024;
+const DEFAULT_MANAGEMENT_MAX_ENTRIES = 100;
+const DEFAULT_MANAGEMENT_MAX_BYTES = 32 * 1024;
 const MAX_SOURCES = 8;
 
 interface MarkdownBullet {
@@ -42,12 +48,14 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
   private readonly now: () => Date;
   private readonly maxEntries: number;
   private readonly maxBytes: number;
+  private readonly language: MemoryLanguage;
 
   public constructor(options: PersonalMemoryOptions) {
     this.repository = options.repository;
     this.now = options.now ?? (() => new Date());
     this.maxEntries = options.maxEntries ?? DEFAULT_MAX_ENTRIES;
     this.maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
+    this.language = options.language ?? 'zh-CN';
   }
 
   public async get(id: string): Promise<MemoryRecord | null> {
@@ -446,6 +454,71 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
     });
   }
 
+  public async manage(query: MemoryQuery = {}): Promise<MemoryManagementView> {
+    return this.repository.withLock(async () => {
+      const state = await this.loadAndReconcile(
+        query.scope === 'global' ? 'global' : query.scope === 'project' ? 'project' : undefined,
+        query.projectKey,
+      );
+      await this.persist(state);
+
+      const candidates = state.records
+        .filter((entry) => scopeMatches(entry, query))
+        .filter((entry) => attributesMatch(entry, query))
+        .sort(
+          (left, right) =>
+            right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id),
+        );
+      const maxEntries = boundedPositive(
+        query.maxEntries ?? DEFAULT_MANAGEMENT_MAX_ENTRIES,
+        DEFAULT_MANAGEMENT_MAX_ENTRIES,
+      );
+      const maxBytes = boundedPositive(
+        query.maxBytes ?? DEFAULT_MANAGEMENT_MAX_BYTES,
+        DEFAULT_MANAGEMENT_MAX_BYTES,
+      );
+      const candidateIds = new Set(candidates.map((record) => record.id));
+      const records: MemoryManagementRecord[] = [];
+      let bytes = 0;
+      let entryCount = 0;
+      let truncated = false;
+      for (const record of candidates) {
+        if (entryCount >= maxEntries) {
+          truncated = true;
+          break;
+        }
+        const next = projectManagementRecord(state, record);
+        const nextBytes = Buffer.byteLength(JSON.stringify(next), 'utf8');
+        if (bytes + nextBytes > maxBytes) {
+          truncated = true;
+          break;
+        }
+        records.push(next);
+        bytes += nextBytes;
+        entryCount += 1;
+      }
+
+      const conflicts: MemoryManagementConflict[] = [];
+      for (const conflict of state.conflicts) {
+        const next = projectManagementConflict(conflict, candidateIds);
+        if (next === null) continue;
+        if (entryCount >= maxEntries) {
+          truncated = true;
+          break;
+        }
+        const nextBytes = Buffer.byteLength(JSON.stringify(next), 'utf8');
+        if (bytes + nextBytes > maxBytes) {
+          truncated = true;
+          break;
+        }
+        conflicts.push(next);
+        bytes += nextBytes;
+        entryCount += 1;
+      }
+      return { records, conflicts, truncated };
+    });
+  }
+
   public async status(): Promise<PersonalMemoryStatus> {
     const status = await this.repository.withLock(async () => {
       const state = await this.loadAndReconcile();
@@ -592,8 +665,15 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
           record.category,
           previousCategory,
           record.scope,
+          this.language,
         )
-      : appendMarkdownBullet(existing ?? '', record.category, record.text, record.scope);
+      : appendMarkdownBullet(
+          existing ?? '',
+          record.category,
+          record.text,
+          record.scope,
+          this.language,
+        );
     if (next !== existing) {
       const confirmed = await this.readStableFile(state, file, record.scope, record.projectKey);
       if (confirmed !== existing) throw new Error(`Memory file changed during update: ${file}`);
@@ -723,6 +803,58 @@ function cloneRecord(record: MemoryRecord): MemoryRecord {
     operations: [...record.operations],
     source: { ...record.source },
     sources: record.sources.map((source) => ({ ...source })),
+  };
+}
+
+function projectManagementRecord(
+  state: MutableMemoryState,
+  record: StoredRecord,
+): MemoryManagementRecord {
+  const evidenceKeys = state.evidence[record.id] ?? [];
+  const evidenceDates = state.observations
+    .filter((entry) => evidenceKeys.includes(entry.key))
+    .map((entry) => entry.observedAt);
+  const tombstoned = state.tombstones.some(
+    (entry) => entry.recordId === record.id || entry.identity === record.identity,
+  );
+  const conflicted = isConflictedInferred(state.conflicts, record);
+  const status = tombstoned
+    ? ('tombstoned' as const)
+    : conflicted
+      ? ('conflict' as const)
+      : record.active
+        ? ('active' as const)
+        : ('inactive' as const);
+  return {
+    id: record.id,
+    scope: record.scope,
+    ...(record.projectKey === undefined ? {} : { projectKey: record.projectKey }),
+    category: record.category,
+    text: record.text,
+    tags: [...record.tags],
+    pathPatterns: [...record.pathPatterns],
+    taskTypes: [...record.taskTypes],
+    operations: [...record.operations],
+    ...(record.language === undefined ? {} : { language: record.language }),
+    kind: record.kind,
+    status,
+    evidenceCount: evidenceKeys.length,
+    sourceKind: record.source.kind,
+    lastConfirmedAt: [...evidenceDates, record.updatedAt].sort().at(-1) ?? record.updatedAt,
+    updatedAt: record.updatedAt,
+    canRollback: (state.history[record.id]?.length ?? 0) > 0,
+  };
+}
+
+function projectManagementConflict(
+  conflict: MemoryConflict,
+  candidateIds: ReadonlySet<string>,
+): MemoryManagementConflict | null {
+  const recordIds = [...(conflict.recordIds ?? [])].sort();
+  if (recordIds.length === 0 || !recordIds.some((id) => candidateIds.has(id))) return null;
+  return {
+    texts: [...conflict.texts],
+    updatedAt: conflict.updatedAt,
   };
 }
 
@@ -972,10 +1104,19 @@ function appendMarkdownBullet(
   category: string,
   text: string,
   scope: 'global' | 'project',
+  language: MemoryLanguage,
 ): string {
   const heading = `## ${category.trim()}`;
   if (content.trim().length === 0) {
-    return `${scope === 'global' ? '# 个人画像' : '# 项目记忆'}\n\n${heading}\n\n- ${text.trim()}\n`;
+    const title =
+      scope === 'global'
+        ? language === 'en'
+          ? '# Personal Profile'
+          : '# 个人画像'
+        : language === 'en'
+          ? '# Project Memory'
+          : '# 项目记忆';
+    return `${title}\n\n${heading}\n\n- ${text.trim()}\n`;
   }
   const lines = content.replace(/\r\n?/gu, '\n').split('\n');
   const headingIndex = lines.findIndex(
@@ -1005,6 +1146,7 @@ function replaceMarkdownBullet(
   category: string,
   previousCategory: string | undefined,
   scope: 'global' | 'project',
+  language: MemoryLanguage,
 ): string {
   const lines = content.replace(/\r\n?/gu, '\n').split('\n');
   const index = lines.findIndex((line) => {
@@ -1022,13 +1164,14 @@ function replaceMarkdownBullet(
         category,
         nextText,
         scope,
+        language,
       );
     }
     const marker = /^\s*([-*+])\s+/u.exec(lines[index] ?? '')?.[1] ?? '-';
     lines[index] = `${marker} ${nextText.trim()}`;
     return `${lines.join('\n').replace(/\n*$/u, '')}\n`;
   }
-  return appendMarkdownBullet(content, category, nextText, scope);
+  return appendMarkdownBullet(content, category, nextText, scope, language);
 }
 
 function removeMarkdownBullet(content: string, text: string, category?: string): string {
