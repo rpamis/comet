@@ -1,0 +1,139 @@
+schema: comet.native.v4
+name: supervisor-display-copy-repair-merged
+language: zh-CN
+phase: archive
+status: done
+state_version: 8
+brief: brief.md
+spec_changes:
+  - capability: display-copy
+    operation: create
+    source: specs/display-copy/spec.md
+workspace:
+  isolation: worktree
+  change_branch: comet/supervisor-display-copy-repair-merged
+  target_branch: beta20
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: Dashboard 和 verification report 对同一状态使用相同文案。
+    result: passed
+    reason:
+      text: Report and Dashboard use the same plain display copy.
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: 用户确认后不再显示“需要你确认”。
+    result: passed
+    reason:
+      text: Confirmed results no longer use pending-confirmation copy.
+      truncated: false
+  - id: A3
+    source: specs/display-copy/spec.md
+    text: confirmed skill-coordinated result - **GIVEN** a skill-coordinated
+      verification result has been confirmed - **WHEN** the report or Dashboard
+      is rendered - **THEN** it MUST NOT say that confirmation is still required
+      - **AND** the raw assurance value MUST remain `skill-coordinated`
+    result: passed
+    reason:
+      text: Confirmed skill-coordinated display is distinct from pending confirmation.
+      truncated: false
+  - id: A4
+    source: specs/display-copy/spec.md
+    text: The report and Dashboard MUST use a plain confirmed label after a
+      `skill-coordinated` result is confirmed.
+    result: passed
+    reason:
+      text: The UI uses a plain confirmed label after confirmation.
+      truncated: false
+  - id: A5
+    source: specs/display-copy/spec.md
+    text: Runtime state and status JSON MUST preserve the original assurance enum
+      values.
+    result: passed
+    reason:
+      text: Raw assurance enum remains unchanged.
+      truncated: false
+builder_handoff:
+  candidate_id: dde4392f-f3b4-40aa-b8ae-83c39f8ecdae
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:0c8e335f-3455-4505-acdf-9bb95230468f
+  iteration: 1
+  summary:
+    text: 展示文案修复已完成，提交该 Child 进入独立验证。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+  checks:
+    - name:
+        text: display-consistency
+        truncated: false
+      result: passed
+      note:
+        text: 父级展示回归已通过。
+        truncated: false
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  submitted_at: 2026-08-16T04:47:45.244Z
+blockers: []
+verification:
+  candidate_id: dde4392f-f3b4-40aa-b8ae-83c39f8ecdae
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:e085b5ff-77ed-49d6-b2f4-4f475dd3bea1
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks: []
+  summary:
+    text: Display consistency repair verified against parent focused regression
+      evidence.
+    truncated: false
+  risks:
+    - text: Runtime checks were not dispatched for this narrow repair Child; parent
+        focused checks cover the actual implementation.
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-08-16T04:48:08.208Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: Display consistency repair verified against parent focused regression
+        evidence.
+      truncated: false
+    completed_at: 2026-08-16T04:48:08.208Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-16T04:47:15.684Z
