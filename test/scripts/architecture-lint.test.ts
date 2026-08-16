@@ -96,6 +96,24 @@ async function makeMinimalRepository(): Promise<string> {
 }
 
 describe('architecture lint', () => {
+  it('ignores Git-ignored ZCode runtime files', async () => {
+    const root = await makeMinimalRepository();
+    await writeFile(root, '.gitignore', '.zcode\n');
+    await writeFile(root, '.zcode/skills/comet/scripts/runtime.mjs', 'export {};\n');
+
+    const result = spawnSync(
+      process.execPath,
+      [path.resolve('scripts', 'lint', 'architecture.mjs')],
+      {
+        cwd: root,
+        encoding: 'utf8',
+      },
+    );
+
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
+  });
+
   it('ignores LangSmith experiment logs without excluding LangSmith source', async () => {
     const root = await makeMinimalRepository();
     await writeFile(root, '.gitignore', 'logs\n');

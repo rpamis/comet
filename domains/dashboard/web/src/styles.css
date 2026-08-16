@@ -675,6 +675,7 @@ input {
   font-size: 16px;
   line-height: 1.75;
   color: #24292f;
+  overflow-x: auto;
   overflow-wrap: anywhere;
 }
 
@@ -723,6 +724,10 @@ input {
 .md-github p {
   margin: 12px 0;
   color: #24292f;
+}
+
+p.artifact-preview-path {
+  margin: 0;
 }
 
 .md-github ul,
@@ -832,6 +837,7 @@ input {
   background: #f6f8fa;
   font-weight: 560;
   color: #1f2328;
+  white-space: nowrap;
 }
 
 .md-github td {

@@ -265,6 +265,8 @@ export const PLATFORMS: Platform[] = [
     openspecToolId: 'codebuddy',
     supportsHooks: true,
     hookFormat: 'codebuddy',
+    rulesDir: 'rules',
+    rulesFormat: 'md',
   },
   {
     id: 'workbuddy',
