@@ -154,6 +154,9 @@ describe('Native workspace finish preparation', () => {
           },
         }),
       ).rejects.toThrow(/executable is not available/u);
+      expect(
+        external.runExternalCommand.mock.calls.some(([command]) => command === executable),
+      ).toBe(false);
     }
   });
 
@@ -297,11 +300,45 @@ describe('Native archived workspace finish', () => {
         state: 'OPEN',
       };
       if (args[1] === 'list') {
+        expect(args).toEqual([
+          'pr',
+          'list',
+          '--state',
+          'open',
+          '--base',
+          'main',
+          '--head',
+          'comet/change',
+          '--limit',
+          '2',
+          '--json',
+          'number,url,baseRefName,headRefName,headRefOid,state',
+        ]);
         listCalls += 1;
         return JSON.stringify(listCalls === 1 ? [] : [record]);
       }
-      if (args[1] === 'create') return `${record.url}\n`;
-      if (args[1] === 'view') return JSON.stringify(record);
+      if (args[1] === 'create') {
+        expect(args).toEqual([
+          'pr',
+          'create',
+          '--base',
+          'main',
+          '--head',
+          'comet/change',
+          '--fill',
+        ]);
+        return `${record.url}\n`;
+      }
+      if (args[1] === 'view') {
+        expect(args).toEqual([
+          'pr',
+          'view',
+          '1',
+          '--json',
+          'number,url,baseRefName,headRefName,headRefOid,state',
+        ]);
+        return JSON.stringify(record);
+      }
       throw new Error(`unexpected gh args: ${args.join(' ')}`);
     });
     const result = await finishArchivedNativeWorkspace({
@@ -376,6 +413,7 @@ describe('Native archived workspace finish', () => {
         status: 'blocked',
         pushed: true,
         pullRequestUrl: record.url,
+        message: expect.stringContaining('did not confirm repository-owned remote verification'),
         cleanup: { performed: false },
         recoveryArgs: ['comet', 'native', 'archive', state.name, '--confirmed'],
       },
