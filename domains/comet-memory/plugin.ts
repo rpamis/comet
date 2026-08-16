@@ -169,6 +169,9 @@ function observationFromEvent(event: PluginEvent): MemoryObservation | null {
     pathPatterns: strings(payload.pathPatterns),
     taskTypes: strings(payload.taskTypes),
     operations: strings(payload.operations),
+    language:
+      payload.language === 'en' || payload.language === 'zh-CN' ? payload.language : undefined,
+    candidateKey: typeof payload.candidateKey === 'string' ? payload.candidateKey : undefined,
     workflow,
     changeId,
     success: payload.success !== false,

@@ -1,0 +1,570 @@
+schema: comet.native.v4
+name: memory-workflow-integration
+language: zh-CN
+phase: archive
+status: done
+state_version: 11
+brief: brief.md
+spec_changes:
+  - capability: memory-workflow-integration
+    operation: create
+    source: specs/memory-workflow-integration/spec.md
+workspace:
+  isolation: worktree
+  change_branch: comet/memory-workflow-integration
+  target_branch: beta20
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 2
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 1
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: specs/memory-workflow-integration/spec.md
+    text: 系统必须在 Native 和 Classic 的稳定成功检查点调用同一个公开的生命周期 Bridge，并向 Personal Memory
+      传递以下字段：
+    result: passed
+    reason:
+      text: Native/Classic 均通过同一公开 lifecycle Bridge 接线。
+      truncated: false
+  - id: A2
+    source: specs/memory-workflow-integration/spec.md
+    text: "`workflow`：`native`、`classic` 或其 `full`/`hotfix`/`tweak` 语义标识；"
+    result: passed
+    reason:
+      text: workflow 默认值和 full/hotfix/tweak 覆盖值均保持。
+      truncated: false
+  - id: A3
+    source: specs/memory-workflow-integration/spec.md
+    text: "`changeId`：当前 change 的稳定标识；"
+    result: passed
+    reason:
+      text: Native/Classic facade 均传递稳定 changeId。
+      truncated: false
+  - id: A4
+    source: specs/memory-workflow-integration/spec.md
+    text: "`candidateKey`：当前候选或检查点的稳定关联键；"
+    result: passed
+    reason:
+      text: candidateKey 由 Bridge 传入并保留到 Personal Memory observation。
+      truncated: false
+  - id: A5
+    source: specs/memory-workflow-integration/spec.md
+    text: "`projectKey`：由稳定项目身份解析得到的当前项目键；"
+    result: passed
+    reason:
+      text: projectKey 来自稳定项目身份并写入事件 payload。
+      truncated: false
+  - id: A6
+    source: specs/memory-workflow-integration/spec.md
+    text: "`language`：当前 workflow 配置语言；"
+    result: passed
+    reason:
+      text: Bridge 从 active workflow 配置解析语言并注入 payload。
+      truncated: false
+  - id: A7
+    source: specs/memory-workflow-integration/spec.md
+    text: 检查点名称、成功结果、短摘要和操作类别。
+    result: passed
+    reason:
+      text: 事件包含名称、成功结果、摘要、类别和操作。
+      truncated: false
+  - id: A8
+    source: specs/memory-workflow-integration/spec.md
+    text: "事件是检查点摘要，不得扩展为逐工具调用的观察日志。成功检查点只在主命令成功后发出；失败命令不产生 `success: true` 的生命周期记忆。"
+    result: passed
+    reason:
+      text: 仅稳定检查点摘要接线，失败命令不发出成功记录。
+      truncated: false
+  - id: A9
+    source: specs/memory-workflow-integration/spec.md
+    text: "**当** Native facade 成功执行 `next`、`handoff`、`check` 或 `archive`"
+    result: passed
+    reason:
+      text: Native next/handoff/check/archive 成功检查点均接线。
+      truncated: false
+  - id: A10
+    source: specs/memory-workflow-integration/spec.md
+    text: "**那么** 通过 `recordCometWorkflowResult` 发出对应的
+      `task.completed`、`verification.completed` 或 `change.completed` 事件"
+    result: passed
+    reason:
+      text: Native 事件名称正确映射为 task/verification/change.completed。
+      truncated: false
+  - id: A11
+    source: specs/memory-workflow-integration/spec.md
+    text: "**并且** 事件保留 Native 的 workflow、changeId、candidateKey、projectKey 和配置语言"
+    result: passed
+    reason:
+      text: Native workflow、changeId、candidateKey、projectKey、language 保持。
+      truncated: false
+  - id: A12
+    source: specs/memory-workflow-integration/spec.md
+    text: "**当** Classic facade 成功执行 `state`、`guard`、`handoff`、`archive` 或现有工作区成功操作"
+    result: passed
+    reason:
+      text: Classic state/guard/handoff/archive/workspace 成功检查点均接线。
+      truncated: false
+  - id: A13
+    source: specs/memory-workflow-integration/spec.md
+    text: "**那么** 通过同一个 Bridge 发出对应生命周期事件"
+    result: passed
+    reason:
+      text: Classic 使用同一个公开 lifecycle Bridge。
+      truncated: false
+  - id: A14
+    source: specs/memory-workflow-integration/spec.md
+    text: "**并且** Classic 的状态机和归档语义不被 Native 接线改变"
+    result: passed
+    reason:
+      text: Classic 状态机和归档协议未改变。
+      truncated: false
+  - id: A15
+    source: specs/memory-workflow-integration/spec.md
+    text: "**当** 当前 workflow 是 `full`、`hotfix` 或 `tweak`"
+    result: passed
+    reason:
+      text: full/hotfix/tweak workflow 语义均可传递。
+      truncated: false
+  - id: A16
+    source: specs/memory-workflow-integration/spec.md
+    text: "**那么** 事件中的 workflow 标识必须保留该值"
+    result: passed
+    reason:
+      text: dispatchLifecycle 不重写调用方 workflow 标识。
+      truncated: false
+  - id: A17
+    source: specs/memory-workflow-integration/spec.md
+    text: "**并且** 不同候选的 `candidateKey` 不得相互覆盖或串联"
+    result: passed
+    reason:
+      text: candidateKey 纳入 observation 幂等键，候选不串联。
+      truncated: false
+  - id: A18
+    source: specs/memory-workflow-integration/spec.md
+    text: 工作流自动观察必须选择当前项目作用域并只 dispatch 一次 Personal Memory
+      观察。一次事件不得同时生成全局和项目两份记忆；跨项目的个人偏好只能由显式用户操作产生。Project Rules
+      现有上下文收集和能力调用语义必须保持不变。
+    result: passed
+    reason:
+      text: 自动生命周期只 dispatch 当前项目作用域，Project Rules 语义保持。
+      truncated: false
+  - id: A19
+    source: specs/memory-workflow-integration/spec.md
+    text: "**当** 一个成功检查点被 dispatch"
+    result: passed
+    reason:
+      text: 单个成功检查点只执行一次项目作用域 dispatch。
+      truncated: false
+  - id: A20
+    source: specs/memory-workflow-integration/spec.md
+    text: "**那么** Personal Memory 最多接收一条对应项目观察"
+    result: passed
+    reason:
+      text: Personal Memory 只接收对应项目观察。
+      truncated: false
+  - id: A21
+    source: specs/memory-workflow-integration/spec.md
+    text: "**并且** 全局记忆数量不因该检查点增加"
+    result: passed
+    reason:
+      text: 生命周期事件不会增加全局记忆。
+      truncated: false
+  - id: A22
+    source: specs/memory-workflow-integration/spec.md
+    text: Bridge 必须把解析出的项目语言写入 lifecycle payload；Personal Memory 插件从 payload 构造
+      `MemoryObservation` 时必须保留语言和
+      `candidateKey`。中文配置下自动记录的类别和摘要必须通过中文语言约束，英文配置下通过英文语言约束。缺失配置回退 `zh-CN`。
+    result: passed
+    reason:
+      text: language 和 candidateKey 端到端保持并受服务层语言约束。
+      truncated: false
+  - id: A23
+    source: specs/memory-workflow-integration/spec.md
+    text: "**当**项目默认 workflow 的语言是 `zh-CN` 且检查点成功"
+    result: passed
+    reason:
+      text: 缺失配置回退 zh-CN，中文观察可处理。
+      truncated: false
+  - id: A24
+    source: specs/memory-workflow-integration/spec.md
+    text: "**那么**自动观察使用 `zh-CN`，不因系统 locale 或宿主语言改变"
+    result: passed
+    reason:
+      text: zh-CN 来自项目配置或默认值，不依赖系统 locale。
+      truncated: false
+  - id: A25
+    source: specs/memory-workflow-integration/spec.md
+    text: "**当**项目默认 workflow 的语言是 `en` 且检查点成功"
+    result: passed
+    reason:
+      text: 英文项目配置可解析 en。
+      truncated: false
+  - id: A26
+    source: specs/memory-workflow-integration/spec.md
+    text: "**那么**自动观察使用 `en`"
+    result: passed
+    reason:
+      text: 英文 lifecycle observation 保留 en。
+      truncated: false
+  - id: A27
+    source: specs/memory-workflow-integration/spec.md
+    text: Personal Memory
+      Skill、宿主桥接、Git/远端同步和后台学习均为可选能力。能力不可用、超时、返回无效数据或抛出错误时，Bridge 必须吞掉该诊断并让
+      Native/Classic 保持原有状态、输出和退出码。不得用 catch 隐藏 workflow 主命令本身的失败。
+    result: passed
+    reason:
+      text: 插件、宿主桥接、同步和后台学习失败均为非阻塞。
+      truncated: false
+  - id: A28
+    source: specs/memory-workflow-integration/spec.md
+    text: "**当** lifecycle dispatch 或 memory sync 失败"
+    result: passed
+    reason:
+      text: dispatch 和 sync 失败均被隔离。
+      truncated: false
+  - id: A29
+    source: specs/memory-workflow-integration/spec.md
+    text: "**那么** workflow 命令仍按原逻辑返回"
+    result: passed
+    reason:
+      text: Native/Classic 主命令结果不受记忆接线影响。
+      truncated: false
+  - id: A30
+    source: specs/memory-workflow-integration/spec.md
+    text: "**并且**可通过已有 diagnostics 发现降级原因"
+    result: passed
+    reason:
+      text: PluginRuntime diagnostics 仍记录加载、事件和调用失败。
+      truncated: false
+  - id: A31
+    source: specs/memory-workflow-integration/spec.md
+    text: "`validateMemoryReviewActions` 必须在逐条 action 校验完成后执行 action-set 级别校验：一个
+      action-set 不得同时包含 `global` 和 `project` 作用域动作。未显式声明 scope 的 `skip`
+      不参与作用域集合；同一作用域的合法 action-set 继续通过。"
+    result: passed
+    reason:
+      text: 显式 scope 的 skip 会加入 actionScopes，并执行 action-set 级别校验。
+      truncated: false
+  - id: A32
+    source: specs/memory-workflow-integration/spec.md
+    text: "**当** action-set 同时包含全局动作和项目动作"
+    result: passed
+    reason:
+      text: global create 或显式 global skip 与 project action 混合均被识别。
+      truncated: false
+  - id: A33
+    source: specs/memory-workflow-integration/spec.md
+    text: "**那么** validator 必须拒绝整组动作"
+    result: passed
+    reason:
+      text: 混合作用域时 validator 拒绝整组 action-set。
+      truncated: false
+  - id: A34
+    source: specs/memory-workflow-integration/spec.md
+    text: "**并且**不能部分执行其中任一动作"
+    result: passed
+    reason:
+      text: 校验失败不返回可执行的部分动作，不能部分执行。
+      truncated: false
+  - id: A35
+    source: specs/memory-workflow-integration/spec.md
+    text: workflow facade 只能依赖 Entry/Plugin Bridge 的公开能力，不直接创建或调用 Personal Memory
+      Service。
+    result: passed
+    reason:
+      text: workflow facade 只依赖 Entry/Plugin Bridge 公开能力。
+      truncated: false
+  - id: A36
+    source: specs/memory-workflow-integration/spec.md
+    text: Native 和 Classic 的状态文件、phase、目录、Guard 和 archive 协议保持独立。
+    result: passed
+    reason:
+      text: Native/Classic 状态、phase、目录、Guard 和 archive 边界保持。
+      truncated: false
+  - id: A37
+    source: specs/memory-workflow-integration/spec.md
+    text: 不新增 scheduler、embedding、vector store 或逐工具调用日志。
+    result: passed
+    reason:
+      text: 未新增 scheduler、embedding、vector store 或逐工具日志。
+      truncated: false
+builder_handoff:
+  candidate_id: 47647604-8e91-42db-b0b8-122acf1715d1
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:f577f22d-556d-437b-8548-6c207b21274d
+  iteration: 2
+  summary:
+    text: 已修复 review action-set 对显式 scope skip 的遗漏：显式 global skip 会参与作用域一致性检查，和
+      project action 混合时整组拒绝；已补充回归用例。其余生命周期接线、语言、candidateKey、项目作用域去重和非阻塞行为保持不变。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    - A8
+    - A9
+    - A10
+    - A11
+    - A12
+    - A13
+    - A14
+    - A15
+    - A16
+    - A17
+    - A18
+    - A19
+    - A20
+    - A21
+    - A22
+    - A23
+    - A24
+    - A25
+    - A26
+    - A27
+    - A28
+    - A29
+    - A30
+    - A31
+    - A32
+    - A33
+    - A34
+    - A35
+    - A36
+    - A37
+  checks:
+    - name:
+        text: lifecycle and review regression tests
+        truncated: false
+      result: passed
+      note:
+        text: 33 tests passed across plugin integration, review contract, Native facade,
+          Classic facade, and task command
+        truncated: false
+    - name:
+        text: TypeScript typecheck
+        truncated: false
+      result: passed
+      note:
+        text: pnpm exec tsc --noEmit
+        truncated: false
+    - name:
+        text: ESLint
+        truncated: false
+      result: passed
+      note:
+        text: 受影响源码和测试文件
+        truncated: false
+    - name:
+        text: Prettier
+        truncated: false
+      result: passed
+      note:
+        text: 受影响源码和测试文件
+        truncated: false
+    - name:
+        text: entry runtime build
+        truncated: false
+      result: passed
+      note:
+        text: pnpm build:entry-runtime
+        truncated: false
+    - name:
+        text: git diff check
+        truncated: false
+      result: passed
+      note:
+        text: 无 whitespace 错误
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: 全量测试和最终 Supervisor Eval 尚未在本 child 执行。
+      truncated: false
+    - text: 自动生命周期仍只提供稳定检查点摘要；语义 review Skill 的最终评估由 Supervisor 后续 child 负责。
+      truncated: false
+  known_limits_truncated: false
+  submitted_at: 2026-08-16T17:11:46.868Z
+blockers: []
+verification:
+  candidate_id: 47647604-8e91-42db-b0b8-122acf1715d1
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:50222016-544b-4a76-8a99-47a42b084157
+  iteration: 2
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: lifecycle-tests
+      name:
+        text: lifecycle and review regression tests
+        truncated: false
+      argv_display:
+        - text: vitest
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/comet-plugin/plugin-integration.test.ts
+          truncated: false
+        - text: test/domains/comet-memory/review-contract.test.ts
+          truncated: false
+        - text: test/app/native-command.test.ts
+          truncated: false
+        - text: test/app/classic-command.test.ts
+          truncated: false
+        - text: test/app/comet-task-command.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 5202
+    - id: typecheck
+      name:
+        text: TypeScript typecheck
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: tsc
+          truncated: false
+        - text: --noEmit
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 6987
+    - id: lint
+      name:
+        text: ESLint affected files
+        truncated: false
+      argv_display:
+        - text: eslint
+          truncated: false
+        - text: domains/comet-entry/plugin-context.ts
+          truncated: false
+        - text: domains/comet-plugin/integration.ts
+          truncated: false
+        - text: domains/comet-memory/plugin.ts
+          truncated: false
+        - text: domains/comet-memory/review-contract.ts
+          truncated: false
+        - text: test/domains/comet-plugin/plugin-integration.test.ts
+          truncated: false
+        - text: test/domains/comet-memory/review-contract.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 2335
+    - id: format
+      name:
+        text: Prettier affected files
+        truncated: false
+      argv_display:
+        - text: prettier
+          truncated: false
+        - text: --check
+          truncated: false
+        - text: domains/comet-entry/plugin-context.ts
+          truncated: false
+        - text: domains/comet-plugin/integration.ts
+          truncated: false
+        - text: domains/comet-memory/plugin.ts
+          truncated: false
+        - text: domains/comet-memory/review-contract.ts
+          truncated: false
+        - text: test/domains/comet-plugin/plugin-integration.test.ts
+          truncated: false
+        - text: test/domains/comet-memory/review-contract.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 1620
+    - id: entry-runtime-build
+      name:
+        text: Entry runtime build
+        truncated: false
+      argv_display:
+        - text: build:entry-runtime
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 898
+    - id: diff-check
+      name:
+        text: Git diff check
+        truncated: false
+      argv_display:
+        - text: diff
+          truncated: false
+        - text: --check
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 133
+  summary:
+    text: 第二轮独立复核通过：显式 scope skip 的作用域一致性已修复，指定 33 个回归测试、TypeScript、受影响
+      ESLint/Prettier、Entry Runtime 构建和 git diff --check 全部通过。
+    truncated: false
+  risks:
+    - text: 未运行全量测试；本 child 已完成指定最小验证集。
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-08-16T17:20:41.661Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A31
+      - A32
+      - A33
+      - A34
+    summary:
+      text: 验证发现显式 scope 的 skip 未纳入 action-set 作用域一致性检查，已在当前工作区修复并补充回归用例，需要重新验证。
+      truncated: false
+    completed_at: 2026-08-16T17:10:54.384Z
+  - goal_cycle: 1
+    iteration: 2
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 第二轮独立复核通过：显式 scope skip 的作用域一致性已修复，指定 33 个回归测试、TypeScript、受影响
+        ESLint/Prettier、Entry Runtime 构建和 git diff --check 全部通过。
+      truncated: false
+    completed_at: 2026-08-16T17:20:41.661Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-16T16:47:02.278Z

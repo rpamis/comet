@@ -194,6 +194,7 @@ export function validateMemoryReviewActions(
   if (actions.length > maxActions) throw new Error('Memory review action count exceeds the limit');
   const evidenceKeys = new Set(packet.evidence.map((entry) => entry.key));
   const memoryIds = new Set(packet.memories.map((entry) => entry.id));
+  const actionScopes = new Set<MemoryScope>();
   const normalized: MemoryReviewAction[] = actions.map((value, index): MemoryReviewAction => {
     const action = asObject(value, `actions[${index}]`);
     const kind = action.action;
@@ -228,6 +229,7 @@ export function validateMemoryReviewActions(
     if (reason !== undefined) validateLanguageText(reason, language, `actions[${index}].reason`);
     if (kind === 'skip') {
       if (reason === undefined) throw new Error(`actions[${index}] skip requires a reason`);
+      if (scope !== undefined) actionScopes.add(scope);
       return { action: 'skip', language, reason, evidenceKeys: actionEvidence };
     }
     if (kind === 'forget') {
@@ -236,6 +238,7 @@ export function validateMemoryReviewActions(
       assertTargetMatches(target, scope, projectKey, index);
       assertTargetProjectContext(packet, target, index);
       assertTargetActive(target, index);
+      actionScopes.add(scope ?? target.scope);
       validateActionEvidence(
         packet,
         actionEvidence,
@@ -255,6 +258,7 @@ export function validateMemoryReviewActions(
     }
     if (kind === 'create') {
       if (scope === undefined) throw new Error(`actions[${index}] create requires a scope`);
+      actionScopes.add(scope);
       const category = requiredString(action.category, `actions[${index}].category`);
       const text = requiredString(action.text, `actions[${index}].text`);
       validateLanguageText(category, language, `actions[${index}].category`);
@@ -278,6 +282,7 @@ export function validateMemoryReviewActions(
     assertTargetMatches(target, scope, projectKey, index);
     assertTargetProjectContext(packet, target, index);
     assertTargetActive(target, index);
+    actionScopes.add(scope ?? target.scope);
     const text = optionalString(action.text, `actions[${index}].text`);
     const category = optionalString(action.category, `actions[${index}].category`);
     if (text === undefined && category === undefined && !hasArrayUpdate(action)) {
@@ -309,6 +314,9 @@ export function validateMemoryReviewActions(
       ...optionalArrays(action, language, index),
     };
   });
+  if (actionScopes.size > 1) {
+    throw new Error('Memory review action set must not mix global and project scopes');
+  }
   const maxBytes = boundedLimit(
     options.maxBytes ?? packet.budget.maxBytes,
     MEMORY_REVIEW_LIMITS.maxBytes,

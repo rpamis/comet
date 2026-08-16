@@ -40,18 +40,27 @@ export async function recordCometWorkflowResult(options: {
   readonly eventName?: CometLifecycleObservation['name'];
 }): Promise<void> {
   if (!options.changeId.trim()) return;
-  const bridge = await createBridge(options.projectRoot);
-  await bridge.dispatchLifecycle({
-    name:
-      options.eventName ?? (options.command === 'archive' ? 'change.completed' : 'task.completed'),
-    workflow: options.workflow,
-    changeId: options.changeId,
-    success: options.success,
-    category: 'workflow-operation',
-    text: (options.summary ?? `${options.workflow} ${options.command}`).slice(0, 1000),
-    candidateKey: `${options.workflow}:${options.command}`,
-    operations: [options.command],
-  });
+  try {
+    const bridge = await createBridge(options.projectRoot);
+    const language = bridge.currentLanguage;
+    const text =
+      options.summary?.trim() ||
+      (language === 'en' ? 'Command checkpoint completed' : '完成命令检查点');
+    await bridge.dispatchLifecycle({
+      name:
+        options.eventName ??
+        (options.command === 'archive' ? 'change.completed' : 'task.completed'),
+      workflow: options.workflow,
+      changeId: options.changeId,
+      success: options.success,
+      category: language === 'en' ? 'Workflow checkpoint' : '工作流检查点',
+      text: text.slice(0, 1000),
+      candidateKey: `${options.workflow}:${options.command}`,
+      operations: [options.command],
+    });
+  } catch {
+    // Memory learning is optional and must never block a workflow checkpoint.
+  }
 }
 
 async function createBridge(projectRoot: string) {
