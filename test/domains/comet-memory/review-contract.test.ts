@@ -13,15 +13,19 @@ function packet(overrides: Record<string, unknown> = {}) {
     projectKey: 'project-a',
     workflow: 'native',
     changeId: 'change-1',
+    createdAt: '2026-08-14T00:00:00.000Z',
     checkpoint: 'verification.completed',
     userEvidence: ['提交前只暂存本次改动文件'],
     evidence: [
       {
         key: 'candidate:staging:change-1',
+        scope: 'project',
         projectIdentity: 'repo-a',
         projectKey: 'project-a',
+        candidateKey: 'staging',
         changeId: 'change-1',
         success: true,
+        observedAt: '2026-08-14T00:00:00.000Z',
       },
     ],
     memories: [],
@@ -113,5 +117,95 @@ describe('semantic memory review contract', () => {
       reason: '没有长期可复用内容',
       evidenceKeys: [],
     });
+  });
+
+  it('binds action targets and evidence to the packet context', () => {
+    const validated = validateMemoryReviewPacket(
+      packet({
+        memories: [
+          {
+            id: 'memory-1',
+            scope: 'project',
+            projectKey: 'project-a',
+            category: '协作习惯',
+            text: '提交前只暂存本次改动文件',
+            kind: 'explicit',
+            active: true,
+          },
+        ],
+      }),
+    );
+    expect(() =>
+      validateMemoryReviewActions(validated, [
+        {
+          action: 'update',
+          language: 'zh-CN',
+          targetId: 'memory-1',
+          scope: 'global',
+          text: '提交前只暂存本次改动文件',
+          evidenceKeys: ['candidate:staging:change-1'],
+        },
+      ]),
+    ).toThrow('scope does not match');
+    expect(() =>
+      validateMemoryReviewActions(validated, [
+        {
+          action: 'create',
+          language: 'zh-CN',
+          scope: 'project',
+          projectKey: 'project-a',
+          candidateKey: 'other',
+          category: '协作习惯',
+          text: '提交前只暂存本次改动文件',
+          evidenceKeys: ['candidate:staging:change-1'],
+        },
+      ]),
+    ).toThrow('candidate does not match');
+    expect(() =>
+      validateMemoryReviewPacket(
+        packet({
+          evidence: [
+            {
+              key: 'future',
+              scope: 'project',
+              projectIdentity: 'repo-a',
+              projectKey: 'project-a',
+              changeId: 'change-1',
+              success: true,
+              observedAt: '2026-08-15T00:00:00.000Z',
+            },
+          ],
+        }),
+      ),
+    ).toThrow('freshness window');
+  });
+
+  it('validates tags and rejects unsafe automatic content variants', () => {
+    const validated = validateMemoryReviewPacket(packet());
+    expect(() =>
+      validateMemoryReviewActions(validated, [
+        {
+          action: 'create',
+          language: 'zh-CN',
+          scope: 'project',
+          projectKey: 'project-a',
+          category: '协作习惯',
+          text: '提交前只暂存本次改动文件',
+          tags: ['preference'],
+        },
+      ]),
+    ).toThrow('tags');
+    expect(() =>
+      validateMemoryReviewActions(validated, [
+        {
+          action: 'create',
+          language: 'zh-CN',
+          scope: 'project',
+          projectKey: 'project-a',
+          category: '协作习惯',
+          text: 'diff --git a/a.ts b/a.ts',
+        },
+      ]),
+    ).toThrow('unsafe');
   });
 });

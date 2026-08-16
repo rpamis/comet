@@ -470,6 +470,27 @@ describe('PersonalMemoryService', () => {
     });
   });
 
+  it('does not restore forgotten Markdown content from an old sync', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const remembered = await memories.remember({
+        scope: 'global',
+        category: '沟通偏好',
+        text: '使用中文回复',
+      });
+      await memories.remove(remembered.id);
+      await writeFile(
+        path.join(root, 'profile.md'),
+        '# 个人画像\n\n## 沟通偏好\n\n- 使用中文回复\n',
+      );
+
+      const result = await memories.retrieve({ scope: 'global' });
+      expect(result.records).not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ text: '使用中文回复' })]),
+      );
+    });
+  });
+
   it('retrieves bounded global and project context and supports independent pauses', async () => {
     await withTempRepository(async (root) => {
       const memories = service(root);

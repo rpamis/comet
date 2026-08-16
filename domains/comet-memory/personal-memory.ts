@@ -165,6 +165,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
         scope: current.scope,
         ...(current.projectKey === undefined ? {} : { projectKey: current.projectKey }),
         recordId: current.id,
+        textHash: hashMemoryText(current.text),
         removedAt: this.timestamp(),
       });
       await this.persist(state);
@@ -898,6 +899,14 @@ function reconcileMarkdown(
         updatedAt: timestamp,
       });
       delete state.evidence[record.id];
+      state.tombstones = upsertTombstone(state.tombstones, {
+        identity: record.identity,
+        scope: record.scope,
+        ...(record.projectKey === undefined ? {} : { projectKey: record.projectKey }),
+        recordId: record.id,
+        textHash: hashMemoryText(record.text),
+        removedAt: timestamp,
+      });
     }
   }
   const seen = new Set<string>();
@@ -905,6 +914,7 @@ function reconcileMarkdown(
     const normalized = normalizeText(bullet.text);
     if (seen.has(normalized)) continue;
     seen.add(normalized);
+    if (isTombstonedMarkdownText(state.tombstones, scope, projectKey, bullet.text)) continue;
     const matched = known.find(
       (record) => record.active && normalizeText(record.text) === normalized,
     ) as StoredRecord | undefined;
@@ -931,6 +941,7 @@ function reconcileMarkdown(
           sources: mergeSources(matched.sources, [{ kind: 'user' }]),
           updatedAt: timestamp,
         });
+        clearTombstone(state, matched.identity);
       }
       continue;
     }
@@ -940,9 +951,9 @@ function reconcileMarkdown(
       category: bullet.category,
       text: bullet.text,
     };
-    state.records.push(
-      createRecord(input, 'explicit', { kind: 'user' }, timestamp, memoryIdentity(input)),
-    );
+    const identity = memoryIdentity(input);
+    clearTombstone(state, identity);
+    state.records.push(createRecord(input, 'explicit', { kind: 'user' }, timestamp, identity));
   }
   state.files[file] = { hash, observedAt: timestamp };
 }
@@ -1189,6 +1200,22 @@ function clearTombstone(state: MutableMemoryState, identity: string): void {
   state.tombstones = state.tombstones.filter((entry) => entry.identity !== identity);
 }
 
+function isTombstonedMarkdownText(
+  tombstones: readonly MemoryTombstone[],
+  scope: MemoryScope,
+  projectKey: string | undefined,
+  text: string,
+): boolean {
+  const textHash = hashMemoryText(text);
+  return tombstones.some(
+    (entry) =>
+      entry.scope === scope &&
+      entry.projectKey === projectKey &&
+      entry.textHash !== undefined &&
+      entry.textHash === textHash,
+  );
+}
+
 function validateInput(input: MemoryInput): void {
   if (input.scope === 'project' && input.projectKey === undefined)
     throw new Error('Project memory requires a project key');
@@ -1218,12 +1245,28 @@ function validateObservation(observation: MemoryObservation): void {
 
 function isUsefulAutomaticObservation(observation: MemoryObservation): boolean {
   try {
-    validateSafeMemoryText(observation.text);
+    [
+      observation.category,
+      observation.text,
+      ...(observation.tags ?? []),
+      ...(observation.pathPatterns ?? []),
+      ...(observation.taskTypes ?? []),
+      ...(observation.operations ?? []),
+    ].forEach((value) => validateSafeMemoryText(value));
   } catch {
     return false;
   }
-  const normalized = normalizeText(observation.text);
+  const normalized = normalizeText(
+    [observation.category, observation.text, ...(observation.tags ?? [])].join(' '),
+  );
   if (Buffer.byteLength(normalized, 'utf8') < 8) return false;
+  if (
+    /(?:diff --git|@@\s+-\d|\+\+\+\s+[ab]\/|---\s+[ab]\/|stack trace|traceback|stderr|stdout|debug log|npm warn)/iu.test(
+      normalized,
+    )
+  ) {
+    return false;
+  }
   if (
     /^(?:运行|执行|完成|通过|失败|已完成)?\s*(?:测试|test|命令|command|commit|提交|pull request|pr|issue)(?:\s|$)/iu.test(
       normalized,

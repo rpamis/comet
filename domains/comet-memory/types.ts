@@ -151,6 +151,7 @@ export interface MemoryTombstone {
   readonly scope: MemoryScope;
   readonly projectKey?: string;
   readonly recordId: string;
+  readonly textHash?: string;
   readonly removedAt: string;
 }
 
@@ -162,10 +163,13 @@ export interface MemoryReviewBudget {
 
 export interface MemoryReviewEvidence {
   readonly key: string;
+  readonly scope: MemoryScope;
   readonly projectIdentity?: string;
   readonly projectKey?: string;
+  readonly candidateKey?: string;
   readonly changeId: string;
   readonly success: boolean;
+  readonly observedAt: string;
   readonly text?: string;
 }
 
@@ -186,6 +190,7 @@ export interface MemoryReviewPacket {
   readonly projectKey?: string;
   readonly workflow: string;
   readonly changeId: string;
+  readonly createdAt: string;
   readonly checkpoint: string;
   readonly userEvidence: readonly string[];
   readonly evidence: readonly MemoryReviewEvidence[];

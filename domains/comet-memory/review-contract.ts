@@ -17,15 +17,22 @@ export const MEMORY_REVIEW_LIMITS = {
   maxBytes: 12 * 1024,
   maxTextBytes: 2 * 1024,
   maxCollectionEntries: 32,
+  maxEvidenceAgeMs: 180 * 24 * 60 * 60 * 1000,
 } as const;
 
 const DANGEROUS_PATTERNS = [
   /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/iu,
   /\b(?:api[_ -]?key|access[_ -]?token|password|passwd|secret|authorization)\s*[:=]\s*\S+/iu,
   /\b(?:sk|rk)-[a-z0-9]{16,}\b/iu,
+  /\b(?:ghp|gho|github_pat|xox[baprs]|AIza)[-_][a-z0-9_-]{8,}\b/iu,
   /\b\d{3}-\d{2}-\d{4}\b/u,
-  /ignore\s+(?:all\s+)?previous\s+instructions/iu,
-  /(?:modify|change|edit|rewrite|disable)\s+(?:the\s+)?(?:skill|agent instructions?|project rules?|system prompt)/iu,
+  /\b\+?\d[\d ()-]{7,}\d\b/u,
+  /\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b/u,
+  /\b(?:diff --git|@@\s+-\d|\+\+\+\s+[ab]\/|---\s+[ab]\/)/imu,
+  /\b(?:stack trace|traceback|stderr|stdout|debug log|npm warn|error log)\b/iu,
+  /(?:ignore|disregard|override|forget|do not follow)\s+(?:all\s+)?(?:previous|earlier|the)\s+(?:instructions?|rules?|policies?|system|prompt)/iu,
+  /(?:modify|change|edit|rewrite|disable|reveal)\s+(?:the\s+)?(?:skill|agent instructions?|project rules?|system prompt|guard|policy)/iu,
+  /<\/?script\b|javascript:/iu,
 ];
 
 export interface MemoryReviewValidationOptions {
@@ -50,6 +57,7 @@ export function validateMemoryReviewPacket(
   }
   const workflow = requiredString(object.workflow, 'workflow');
   const changeId = requiredString(object.changeId, 'changeId');
+  const createdAt = requiredTimestamp(object.createdAt, 'createdAt');
   const checkpoint = requiredString(object.checkpoint, 'checkpoint');
   const userEvidence = boundedStrings(object.userEvidence, 'userEvidence', 8, true);
   const evidence = asArray(object.evidence, 'evidence');
@@ -59,6 +67,7 @@ export function validateMemoryReviewPacket(
   const normalizedEvidence = evidence.map((entry, index) => {
     const item = asObject(entry, `evidence[${index}]`);
     const key = requiredString(item.key, `evidence[${index}].key`);
+    const scope = asScope(item.scope, `evidence[${index}].scope`);
     const evidenceProjectKey = optionalProjectKey(item.projectKey);
     const evidenceProjectIdentity = optionalString(
       item.projectIdentity,
@@ -67,16 +76,35 @@ export function validateMemoryReviewPacket(
     if (evidenceProjectKey !== undefined && evidenceProjectIdentity === undefined) {
       throw new Error(`evidence[${index}] project key requires a stable project identity`);
     }
+    if (scope === 'project' && evidenceProjectKey === undefined) {
+      throw new Error(`evidence[${index}] project evidence requires a project key`);
+    }
+    if (scope === 'global' && evidenceProjectIdentity === undefined) {
+      throw new Error(`evidence[${index}] global evidence requires a project identity`);
+    }
+    const candidateKey = optionalSafeKey(item.candidateKey, `evidence[${index}].candidateKey`);
+    const evidenceChangeId = requiredString(item.changeId, `evidence[${index}].changeId`);
+    if (typeof item.success !== 'boolean') {
+      throw new Error(`evidence[${index}].success is invalid`);
+    }
+    const observedAt = requiredTimestamp(item.observedAt, `evidence[${index}].observedAt`);
+    const evidenceAge = Date.parse(createdAt) - Date.parse(observedAt);
+    if (evidenceAge < 0 || evidenceAge > MEMORY_REVIEW_LIMITS.maxEvidenceAgeMs) {
+      throw new Error(`evidence[${index}] is outside the freshness window`);
+    }
     const evidenceText = optionalString(item.text, `evidence[${index}].text`);
     if (evidenceText !== undefined) validateSafeText(evidenceText, `evidence[${index}].text`);
     return {
       key,
+      scope,
       ...(evidenceProjectIdentity === undefined
         ? {}
         : { projectIdentity: evidenceProjectIdentity }),
       ...(evidenceProjectKey === undefined ? {} : { projectKey: evidenceProjectKey }),
-      changeId: requiredString(item.changeId, `evidence[${index}].changeId`),
-      success: item.success === true,
+      ...(candidateKey === undefined ? {} : { candidateKey }),
+      changeId: evidenceChangeId,
+      success: item.success,
+      observedAt,
       ...(evidenceText === undefined ? {} : { text: evidenceText }),
     };
   });
@@ -99,14 +127,18 @@ export function validateMemoryReviewPacket(
     if (scope === 'global' && memoryProjectKey !== undefined) {
       throw new Error(`memories[${index}] global memory must not have a project key`);
     }
+    const category = requiredString(item.category, `memories[${index}].category`);
+    const text = requiredString(item.text, `memories[${index}].text`);
+    validateSafeText(category, `memories[${index}].category`);
+    validateSafeText(text, `memories[${index}].text`);
     const kind: MemoryKind =
       item.kind === 'explicit' || item.kind === 'inferred' ? item.kind : invalid('kind');
     return {
       id,
       scope,
       ...(memoryProjectKey === undefined ? {} : { projectKey: memoryProjectKey }),
-      category: requiredString(item.category, `memories[${index}].category`),
-      text: requiredString(item.text, `memories[${index}].text`),
+      category,
+      text,
       kind,
       active: item.active === true,
     };
@@ -126,6 +158,7 @@ export function validateMemoryReviewPacket(
     ...(projectKey === undefined ? {} : { projectKey }),
     workflow,
     changeId,
+    createdAt,
     checkpoint,
     userEvidence,
     evidence: normalizedEvidence,
@@ -186,7 +219,18 @@ export function validateMemoryReviewActions(
     }
     if (kind === 'forget') {
       const targetId = requiredString(action.targetId, `actions[${index}].targetId`);
-      assertTarget(memoryIds, targetId, index);
+      const target = assertTarget(packet, memoryIds, targetId, index);
+      assertTargetMatches(target, scope, projectKey, index);
+      assertTargetActive(target, index);
+      validateActionEvidence(
+        packet,
+        actionEvidence,
+        scope ?? target.scope,
+        projectKey ?? target.projectKey,
+        candidateKey,
+        index,
+        false,
+      );
       return {
         action: 'forget',
         language,
@@ -201,6 +245,7 @@ export function validateMemoryReviewActions(
       const text = requiredString(action.text, `actions[${index}].text`);
       validateLanguageText(category, language, `actions[${index}].category`);
       validateLanguageText(text, language, `actions[${index}].text`);
+      validateActionEvidence(packet, actionEvidence, scope, projectKey, candidateKey, index, true);
       return {
         action: 'create',
         language,
@@ -211,11 +256,13 @@ export function validateMemoryReviewActions(
         text,
         evidenceKeys: actionEvidence,
         ...(reason === undefined ? {} : { reason }),
-        ...optionalArrays(action),
+        ...optionalArrays(action, language, index),
       };
     }
     const targetId = requiredString(action.targetId, `actions[${index}].targetId`);
-    assertTarget(memoryIds, targetId, index);
+    const target = assertTarget(packet, memoryIds, targetId, index);
+    assertTargetMatches(target, scope, projectKey, index);
+    assertTargetActive(target, index);
     const text = optionalString(action.text, `actions[${index}].text`);
     const category = optionalString(action.category, `actions[${index}].category`);
     if (text === undefined && category === undefined && !hasArrayUpdate(action)) {
@@ -224,6 +271,15 @@ export function validateMemoryReviewActions(
     if (text !== undefined) validateLanguageText(text, language, `actions[${index}].text`);
     if (category !== undefined)
       validateLanguageText(category, language, `actions[${index}].category`);
+    validateActionEvidence(
+      packet,
+      actionEvidence,
+      scope ?? target.scope,
+      projectKey ?? target.projectKey,
+      candidateKey,
+      index,
+      true,
+    );
     return {
       action: 'update',
       language,
@@ -235,7 +291,7 @@ export function validateMemoryReviewActions(
       ...(category === undefined ? {} : { category }),
       evidenceKeys: actionEvidence,
       ...(reason === undefined ? {} : { reason }),
-      ...optionalArrays(action),
+      ...optionalArrays(action, language, index),
     };
   });
   const maxBytes = boundedLimit(
@@ -276,7 +332,11 @@ function normalizeBudget(
   return { maxActions, maxEvidence, maxBytes };
 }
 
-function optionalArrays(value: Record<string, unknown>): {
+function optionalArrays(
+  value: Record<string, unknown>,
+  language: MemoryLanguage,
+  actionIndex: number,
+): {
   tags?: string[];
   pathPatterns?: string[];
   taskTypes?: string[];
@@ -291,7 +351,13 @@ function optionalArrays(value: Record<string, unknown>): {
   for (const name of ['tags', 'pathPatterns', 'taskTypes', 'operations'] as const) {
     if (value[name] === undefined) continue;
     const values = boundedStrings(value[name], name, 16, false);
-    values.forEach((entry) => validateSafeText(entry, name));
+    values.forEach((entry, index) => {
+      if (name === 'tags') {
+        validateLanguageText(entry, language, `actions[${actionIndex}].tags[${index}]`);
+      } else {
+        validateSafeText(entry, name);
+      }
+    });
     result[name] = values;
   }
   return result;
@@ -303,8 +369,70 @@ function hasArrayUpdate(value: Record<string, unknown>): boolean {
   );
 }
 
-function assertTarget(ids: ReadonlySet<string>, targetId: string, index: number): void {
+function assertTarget(
+  packet: MemoryReviewPacket,
+  ids: ReadonlySet<string>,
+  targetId: string,
+  index: number,
+): MemoryReviewPacket['memories'][number] {
   if (!ids.has(targetId)) throw new Error(`actions[${index}] references an unknown target`);
+  const target = packet.memories.find((entry) => entry.id === targetId);
+  if (target === undefined) throw new Error(`actions[${index}] references an unknown target`);
+  return target;
+}
+
+function assertTargetMatches(
+  target: MemoryReviewPacket['memories'][number],
+  scope: MemoryScope | undefined,
+  projectKey: string | undefined,
+  index: number,
+): void {
+  if (scope !== undefined && scope !== target.scope) {
+    throw new Error(`actions[${index}] scope does not match target`);
+  }
+  if (projectKey !== undefined && projectKey !== target.projectKey) {
+    throw new Error(`actions[${index}] project key does not match target`);
+  }
+  if (target.scope === 'global' && projectKey !== undefined) {
+    throw new Error(`actions[${index}] global target must not have a project key`);
+  }
+}
+
+function assertTargetActive(target: MemoryReviewPacket['memories'][number], index: number): void {
+  if (!target.active) throw new Error(`actions[${index}] target is not active`);
+}
+
+function validateActionEvidence(
+  packet: MemoryReviewPacket,
+  evidenceKeys: readonly string[],
+  scope: MemoryScope,
+  projectKey: string | undefined,
+  candidateKey: string | undefined,
+  index: number,
+  requireSuccess: boolean,
+): void {
+  for (const key of evidenceKeys) {
+    const evidence = packet.evidence.find((entry) => entry.key === key);
+    if (evidence === undefined) throw new Error(`actions[${index}] references unknown evidence`);
+    if (evidence.scope !== scope)
+      throw new Error(`actions[${index}] evidence scope does not match`);
+    if (scope === 'project' && evidence.projectKey !== projectKey) {
+      throw new Error(`actions[${index}] evidence project does not match`);
+    }
+    if (scope === 'global' && evidence.projectIdentity === undefined) {
+      throw new Error(`actions[${index}] global evidence lacks project identity`);
+    }
+    if (candidateKey !== undefined && evidence.candidateKey !== candidateKey) {
+      throw new Error(`actions[${index}] evidence candidate does not match`);
+    }
+    if (requireSuccess && !evidence.success) {
+      throw new Error(`actions[${index}] requires successful evidence`);
+    }
+    const evidenceAge = Date.parse(packet.createdAt) - Date.parse(evidence.observedAt);
+    if (evidenceAge < 0 || evidenceAge > MEMORY_REVIEW_LIMITS.maxEvidenceAgeMs) {
+      throw new Error(`actions[${index}] evidence is outside the freshness window`);
+    }
+  }
 }
 
 function validateLanguageText(value: string, language: MemoryLanguage, field: string): void {
@@ -370,6 +498,12 @@ function requiredString(value: unknown, field: string): string {
   if (typeof value !== 'string' || value.trim().length === 0)
     throw new Error(`${field} is required`);
   return value.trim();
+}
+
+function requiredTimestamp(value: unknown, field: string): string {
+  const timestamp = requiredString(value, field);
+  if (!Number.isFinite(Date.parse(timestamp))) throw new Error(`${field} is invalid`);
+  return timestamp;
 }
 
 function requiredPositiveNumber(value: unknown, field: string): number {
