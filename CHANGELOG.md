@@ -7,6 +7,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Added
 
 - **CodeBuddy rules support**: Comet now installs and refreshes Markdown workflow rules in CodeBuddy's `.codebuddy/rules/` directory.
+- **On-demand change review**: The new `/comet-review` Skill reviews the current Native or Classic change against its implementation diff and existing evidence, reports prioritized correctness, security, edge-case, and coverage findings, and remains read-only without advancing or replacing Verify.
 - **Fork pull request guidance**: First-time contributors opening pull requests from forks now receive the repository guidance comment through a trusted workflow.
 - **Pull request template validation**: Pull requests now receive an actionable comment and a failing check when required template sections or items are missing, or when checklist items are incomplete.
 

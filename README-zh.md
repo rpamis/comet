@@ -480,6 +480,7 @@ comet eval ./my-skill --suite langsmith --html
 | `/comet`         | 共享入口 — 根据 `.comet/config.yaml` 转发到项目配置的 Native 或 Classic       |
 | `/comet-native`  | Native 永久入口 — Shape、Build、Verify、Archive，自包含且可恢复               |
 | `/comet-classic` | Classic 永久入口 — OpenSpec + Superpowers 五阶段工作流                        |
+| `/comet-review`  | 手动只读审查当前 Native 或 Classic change，不推进阶段也不替代 Verify          |
 | `/comet-open`    | Classic 阶段 1：打开变更（提案、设计、任务分解）                              |
 | `/comet-design`  | Classic 阶段 2：深度设计（头脑风暴、设计文档）                                |
 | `/comet-build`   | Classic 阶段 3：规划与构建（实现计划、代码提交）                              |

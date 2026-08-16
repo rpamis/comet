@@ -509,6 +509,7 @@ does not expand the backend command list; see the [Skill creation guide](docs/op
 | `/comet`         | Shared entry — routes to the configured Native or Classic workflow from `.comet/config.yaml` |
 | `/comet-native`  | Permanent Native entry — self-contained, recoverable Shape, Build, Verify, and Archive       |
 | `/comet-classic` | Permanent Classic entry — the five-phase OpenSpec + Superpowers workflow                     |
+| `/comet-review`  | Read-only manual review of the current Native or Classic change without advancing its phase  |
 | `/comet-open`    | Classic phase 1: Open a change (proposal, design, task breakdown)                            |
 | `/comet-design`  | Classic phase 2: Deep design (brainstorming, Design Doc)                                     |
 | `/comet-build`   | Classic phase 3: Plan and build (implementation plan, code commits)                          |

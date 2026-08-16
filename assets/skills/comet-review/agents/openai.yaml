@@ -1,0 +1,5 @@
+interface:
+  display_name: "Comet Manual Code Review"
+  short_description: "Review the current change without advancing its workflow"
+policy:
+  allow_implicit_invocation: false
