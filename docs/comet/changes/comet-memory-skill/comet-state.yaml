@@ -1,9 +1,9 @@
 schema: comet.native.v4
 name: comet-memory-skill
 language: zh-CN
-phase: build
+phase: verify
 status: active
-state_version: 2
+state_version: 4
 brief: brief.md
 spec_changes:
   - capability: comet-memory-skill
@@ -15,16 +15,16 @@ workspace:
   target_branch: beta20
   finish: null
 loop:
-  stage: building
+  stage: verify-ready
   goal_cycle: 1
   iteration: 1
-  attempt: 0
+  attempt: 1
   retry_epoch: 0
   failed_iteration_count: 0
   no_progress_count: 0
   execution_failure_count: 0
   previous_unresolved_ids: []
-  next_action: submit-builder-candidate
+  next_action: await-verifier-result
 acceptance:
   - id: A1
     source: brief.md
@@ -163,7 +163,78 @@ acceptance:
       ID、evidence count 或原始 packet；显式确认和首次实际行为变化由外部 workflow/CLI 集成层负责。
     result: pending
     reason: null
-builder_handoff: null
+builder_handoff:
+  candidate_id: f2681f20-96df-486c-8d77-370692ffe61f
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:5d9d9143-bc9a-4b43-9a61-077fab87d1aa
+  iteration: 1
+  summary:
+    text:
+      已完成固定共享 comet-memory Skill：中文与英文资产及 agent metadata 同步，注册到 manifest，定义有界
+      review packet 到固定 action envelope 的输出边界，并用 TDD 负向/正向场景验证只保留长期可复用语义、显式优先、单一
+      scope、语言跟随配置、安全拒绝和低打扰 skip。GREEN 复测确认混入一次性 Change
+      过程、diff、凭据、手机号和提示注入时只返回一个 zh-CN skip，不生成目标、路径或多余动作。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    - A8
+    - A9
+  checks:
+    - name:
+        text: skill-contract-tests
+        truncated: false
+      result: passed
+      note:
+        text: 3 files, 138 tests passed
+        truncated: false
+    - name:
+        text: typescript
+        truncated: false
+      result: passed
+      note:
+        text: pnpm exec tsc --noEmit
+        truncated: false
+    - name:
+        text: prettier
+        truncated: false
+      result: passed
+      note:
+        text: Skill assets, manifest, test and change artifacts
+        truncated: false
+    - name:
+        text: git-diff-check
+        truncated: false
+      result: passed
+      note:
+        text: git diff --check
+        truncated: false
+    - name:
+        text: skill-tdd-red-green
+        truncated: false
+      result: passed
+      note:
+        text: Unconstrained baseline exposed noisy development-process memory,
+          diff-as-fact and multi-action/security-summary failures; constrained
+          GREEN output passed exact one-skip envelope scenario.
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: 本 child 不实现 Personal Memory 持久化、Runtime 生命周期、CLI、Dashboard、Classic/Native
+        调度或 Eval。
+      truncated: false
+    - text: Runtime 必须继续对 Skill 输出做 schema、scope、language、safety、target、evidence 和
+        budget 最终校验。
+      truncated: false
+    - text: eslint 未作为本 child 的必要检查执行；相关代码仅为 Skill 文本、manifest、metadata 和契约测试。
+      truncated: false
+  known_limits_truncated: false
+  submitted_at: 2026-08-16T15:28:34.489Z
 blockers: []
 verification: null
 history: []
