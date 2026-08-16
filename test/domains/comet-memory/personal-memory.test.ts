@@ -140,6 +140,7 @@ describe('PersonalMemoryService', () => {
         category: '工作习惯',
         text: '只暂存本次改动文件',
         projectKey: 'project-a',
+        language: 'zh-CN' as const,
         workflow: 'native',
         success: true,
       };
@@ -177,6 +178,7 @@ describe('PersonalMemoryService', () => {
         projectKey: 'project-a',
         category: '工作习惯',
         text: '只暂存本次改动文件',
+        language: 'zh-CN' as const,
         success: true,
       };
 
@@ -200,6 +202,7 @@ describe('PersonalMemoryService', () => {
         projectKey: 'project-a',
         category: '工作习惯',
         text: '只暂存本次改动文件',
+        language: 'zh-CN' as const,
         workflow: 'native',
         changeId: 'change-1',
       };
@@ -264,6 +267,7 @@ describe('PersonalMemoryService', () => {
         projectKey: 'project-a',
         category: '构建',
         workflow: 'classic',
+        language: 'zh-CN' as const,
         success: true,
       };
       await memories.observe({ ...base, text: '使用 pnpm build', changeId: 'one' });
@@ -279,7 +283,7 @@ describe('PersonalMemoryService', () => {
     });
   });
 
-  it('lets a later stable behavior replace an older explicit preference', async () => {
+  it('preserves an explicit preference when later inferred behavior conflicts', async () => {
     await withTempRepository(async (root) => {
       const memories = service(root);
       const old = await memories.remember({
@@ -293,6 +297,7 @@ describe('PersonalMemoryService', () => {
         projectKey: 'project-a',
         category: '构建',
         text: '使用 npm run build',
+        language: 'zh-CN',
         workflow: 'native',
         changeId: 'one',
         success: true,
@@ -302,15 +307,301 @@ describe('PersonalMemoryService', () => {
         projectKey: 'project-a',
         category: '构建',
         text: '使用 npm run build',
+        language: 'zh-CN',
         workflow: 'native',
         changeId: 'two',
         success: true,
       });
-      expect(result.activated).toBe(true);
-      expect((await memories.get(old.id))?.text).toBe('使用 npm run build');
+      expect(result).toMatchObject({ candidate: true, activated: false });
+      expect((await memories.get(old.id))?.text).toBe('使用 pnpm build');
+      expect((await memories.retrieve({ projectKey: 'project-a', task: 'build' })).records).toEqual(
+        expect.arrayContaining([expect.objectContaining({ text: '使用 pnpm build' })]),
+      );
       expect(
         (await memories.retrieve({ projectKey: 'project-a', task: 'build' })).records,
-      ).not.toEqual(expect.arrayContaining([expect.objectContaining({ text: '使用 pnpm build' })]));
+      ).not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ text: '使用 npm run build' })]),
+      );
+    });
+  });
+
+  it('keeps candidate keys independent while deduplicating the same candidate retry', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const base = {
+        scope: 'project' as const,
+        projectKey: 'project-a',
+        workflow: 'native',
+        language: 'zh-CN' as const,
+        success: true,
+      };
+      await expect(
+        memories.observe({
+          ...base,
+          category: '沟通偏好',
+          text: '使用中文回复',
+          changeId: 'change-1',
+          candidateKey: 'language',
+        }),
+      ).resolves.toMatchObject({ candidate: true, activated: false });
+      await expect(
+        memories.observe({
+          ...base,
+          category: '协作习惯',
+          text: '只暂存本次改动文件',
+          changeId: 'change-1',
+          candidateKey: 'staging',
+        }),
+      ).resolves.toMatchObject({ candidate: true, activated: false });
+      await expect(
+        memories.observe({
+          ...base,
+          category: '沟通偏好',
+          text: '使用中文回复',
+          changeId: 'change-1',
+          candidateKey: 'language',
+        }),
+      ).resolves.toMatchObject({ deduplicated: true });
+      await expect(
+        memories.observe({
+          ...base,
+          category: '沟通偏好',
+          text: '使用中文回复',
+          changeId: 'change-2',
+          candidateKey: 'language',
+        }),
+      ).resolves.toMatchObject({ activated: true });
+      await expect(
+        memories.observe({
+          ...base,
+          category: '协作习惯',
+          text: '只暂存本次改动文件',
+          changeId: 'change-2',
+          candidateKey: 'staging',
+        }),
+      ).resolves.toMatchObject({ activated: true });
+    });
+  });
+
+  it('requires cross-project evidence before activating an inferred global memory', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const base = {
+        scope: 'global' as const,
+        category: '沟通偏好',
+        text: '使用中文回复',
+        language: 'zh-CN' as const,
+        workflow: 'native',
+        success: true,
+        candidateKey: 'language',
+      };
+      await expect(
+        memories.observe({
+          ...base,
+          projectKey: 'project-a',
+          projectIdentity: 'repo-a',
+          changeId: 'change-1',
+        }),
+      ).resolves.toMatchObject({ candidate: true, activated: false });
+      await expect(
+        memories.observe({
+          ...base,
+          projectKey: 'project-a',
+          projectIdentity: 'repo-a',
+          changeId: 'change-2',
+        }),
+      ).resolves.toMatchObject({ candidate: true, activated: false });
+      await expect(
+        memories.observe({
+          ...base,
+          projectKey: 'project-b',
+          projectIdentity: 'repo-b',
+          changeId: 'change-3',
+        }),
+      ).resolves.toMatchObject({ candidate: true, activated: true });
+      const retrieved = await memories.retrieve({ scope: 'global' });
+      expect(retrieved.records[0]?.scope).toBe('global');
+      expect(retrieved.records[0]?.projectKey).toBeUndefined();
+    });
+  });
+
+  it('does not resurrect forgotten memory from old evidence but accepts later new evidence', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const remembered = await memories.remember({
+        scope: 'project',
+        projectKey: 'project-a',
+        category: '协作习惯',
+        text: '只暂存本次改动文件',
+      });
+      await memories.remove(remembered.id);
+
+      await expect(
+        memories.observe({
+          scope: 'project',
+          projectKey: 'project-a',
+          category: '协作习惯',
+          text: '只暂存本次改动文件',
+          workflow: 'native',
+          language: 'zh-CN',
+          changeId: 'old-change',
+          candidateKey: 'staging',
+          observedAt: '2026-08-13T00:00:00.000Z',
+          success: true,
+        }),
+      ).resolves.toMatchObject({ ignored: true, activated: false });
+      await expect(
+        memories.observe({
+          scope: 'project',
+          projectKey: 'project-a',
+          category: '协作习惯',
+          text: '只暂存本次改动文件',
+          workflow: 'native',
+          language: 'zh-CN',
+          changeId: 'new-change-1',
+          candidateKey: 'staging',
+          observedAt: '2026-08-15T00:00:00.000Z',
+          success: true,
+        }),
+      ).resolves.toMatchObject({ candidate: true, activated: false });
+      await expect(
+        memories.observe({
+          scope: 'project',
+          projectKey: 'project-a',
+          category: '协作习惯',
+          text: '只暂存本次改动文件',
+          workflow: 'native',
+          language: 'zh-CN',
+          changeId: 'new-change-2',
+          candidateKey: 'staging',
+          observedAt: '2026-08-16T00:00:00.000Z',
+          success: true,
+        }),
+      ).resolves.toMatchObject({ candidate: true, activated: true });
+    });
+  });
+
+  it('allows explicit correction to reopen a user-forgotten memory', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const record = await memories.remember({
+        scope: 'global',
+        category: '沟通偏好',
+        text: '使用中文回复',
+      });
+      await memories.remove(record.id);
+
+      const corrected = await memories.correct(record.id, { text: '始终使用中文回复' });
+      expect(corrected).toMatchObject({ active: true, kind: 'explicit' });
+      expect((await memories.retrieve({ scope: 'global' })).records).toEqual(
+        expect.arrayContaining([expect.objectContaining({ text: '始终使用中文回复' })]),
+      );
+    });
+  });
+
+  it('migrates legacy tombstones without a text hash before Markdown reconciliation', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const record = await memories.remember({
+        scope: 'global',
+        category: '沟通偏好',
+        text: '使用中文回复',
+      });
+      await memories.remove(record.id);
+      const stateFile = path.join(root, '.comet/runtime/memory-state.json');
+      const state = JSON.parse(await readFile(stateFile, 'utf8')) as {
+        tombstones: Array<Record<string, unknown>>;
+      };
+      state.tombstones = state.tombstones.map(({ textHash: _textHash, ...entry }) => entry);
+      await writeFile(stateFile, JSON.stringify(state));
+      await writeFile(
+        path.join(root, 'profile.md'),
+        '# 个人画像\n\n## 沟通偏好\n\n-   使用   中文回复  \n',
+      );
+
+      const result = await service(root).retrieve({ scope: 'global' });
+      expect(result.records).not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ text: '使用中文回复' })]),
+      );
+      const migrated = JSON.parse(await readFile(stateFile, 'utf8')) as {
+        tombstones: Array<{ textHash?: string }>;
+      };
+      expect(migrated.tombstones[0]?.textHash).toEqual(expect.any(String));
+    });
+  });
+
+  it('does not restore forgotten Markdown content from an old sync', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const remembered = await memories.remember({
+        scope: 'global',
+        category: '沟通偏好',
+        text: '使用中文回复',
+      });
+      await memories.remove(remembered.id);
+      await writeFile(
+        path.join(root, 'profile.md'),
+        '# 个人画像\n\n## 沟通偏好\n\n-   使用   中文回复  \n',
+      );
+
+      const result = await memories.retrieve({ scope: 'global' });
+      expect(result.records).not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ text: '使用中文回复' })]),
+      );
+    });
+  });
+
+  it('rejects automatic observations whose language conflicts with user configuration', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      await expect(
+        memories.observe({
+          scope: 'project',
+          projectKey: 'project-a',
+          category: '沟通偏好',
+          text: '使用中文回复',
+          workflow: 'native',
+          changeId: 'missing-language',
+          success: true,
+        }),
+      ).resolves.toMatchObject({ ignored: true, activated: false });
+      await expect(
+        memories.observe({
+          scope: 'project',
+          projectKey: 'project-a',
+          category: '沟通偏好',
+          text: 'use English responses',
+          language: 'zh-CN',
+          workflow: 'native',
+          changeId: 'change-1',
+          success: true,
+        }),
+      ).resolves.toMatchObject({ ignored: true, activated: false });
+    });
+  });
+
+  it('filters retrieval by category and tags independently from keyword search', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      await memories.remember({
+        scope: 'global',
+        category: '沟通偏好',
+        text: '使用中文回复',
+        tags: ['语言'],
+      });
+      await memories.remember({
+        scope: 'global',
+        category: '工作习惯',
+        text: '提交前只暂存本次改动文件',
+        tags: ['协作'],
+      });
+
+      expect(
+        (await memories.retrieve({ category: '沟通偏好', tags: ['语言'] })).records.map(
+          (record) => record.text,
+        ),
+      ).toEqual(['使用中文回复']);
+      expect((await memories.retrieve({ tags: ['缺失'] })).records).toEqual([]);
     });
   });
 

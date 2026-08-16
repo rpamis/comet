@@ -1,0 +1,411 @@
+schema: comet.native.v4
+name: semantic-memory-domain
+language: zh-CN
+phase: archive
+status: done
+state_version: 17
+brief: brief.md
+spec_changes:
+  - capability: semantic-memory-domain
+    operation: create
+    source: specs/semantic-memory-domain/spec.md
+workspace:
+  isolation: worktree
+  change_branch: comet/semantic-memory-domain
+  target_branch: beta20
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 4
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 3
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: A1：`MemoryReviewPacket` 和 `MemoryReviewAction` 使用稳定版本、固定动作枚举和有界字段。
+    result: passed
+    reason:
+      text: Versioned packet/action schemas, fixed action enum and bounded fields are
+        enforced.
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: A2：Runtime 拒绝空字段、未知 action、非法 scope/projectKey、超预算、危险内容和不匹配的
+      target/evidence。
+    result: passed
+    reason:
+      text: Runtime validates empty fields, scope/project keys, budgets, safety,
+        target/evidence and freshness.
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: A3：显式记忆立即激活；隐式记忆第一次只形成候选，两个独立成功 Change 后才可激活。
+    result: passed
+    reason:
+      text: Explicit memories activate immediately and inferred memories require two
+        independent successful changes.
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: A4：同一 Change 的不同 `candidateKey` 分别计数；同一 Change、同一 `candidateKey` 重试只应用一次。
+    result: passed
+    reason:
+      text: candidateKey separates candidates and retries of the same change/candidate
+        are idempotent.
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: A5：同一项目的自动证据只能激活 project；global 自动激活至少需要两个不同项目的成功证据。
+    result: passed
+    reason:
+      text: Project evidence counts distinct changes and global evidence counts
+        distinct project identities.
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: A6：显式记忆与隐式相反证据冲突时，显式内容不改变，冲突内容不进入正常检索。
+    result: passed
+    reason:
+      text: Explicit memories are protected and conflicting inferred memories are
+        excluded from normal retrieval.
+      truncated: false
+  - id: A7
+    source: brief.md
+    text: A7：显式 forget 后旧观察、旧 evidence 和旧同步不能复活记录；用户显式 remember 可以重新建立内容。
+    result: passed
+    reason:
+      text: Explicit forget blocks old evidence and old sync, while explicit remember
+        can rebuild the content.
+      truncated: false
+  - id: A8
+    source: brief.md
+    text: A8：`zh-CN` 自动动作的正文和用户可见字段为中文，`en` 为英文；代码、路径和机器枚举可保留原文。
+    result: passed
+    reason:
+      text: Automatic observations require language and reject mismatched or clearly
+        mixed user-visible language.
+      truncated: false
+  - id: A9
+    source: brief.md
+    text: A9：自动评审拒绝一次性流水账、测试/提交摘要、日志、diff、secret、PII、提示注入和修改规则的内容。
+    result: passed
+    reason:
+      text: Automatic content filters cover summaries, logs, diffs, credentials, PII,
+        prompt injection and rule/Skill modification requests.
+      truncated: false
+  - id: A10
+    source: brief.md
+    text: A10：旧版 state、Markdown、历史和 Git 状态可读取并继续管理，不要求用户手工迁移。
+    result: passed
+    reason:
+      text: Legacy state, Markdown and history remain readable with safe defaults.
+      truncated: false
+  - id: A11
+    source: brief.md
+    text: A11：检索只返回 active、非冲突、未暂停、在条目数和字节数预算内的确定性结果。
+    result: passed
+    reason:
+      text: Retrieval remains active-only, conflict-free, pause-aware, deterministic
+        and bounded.
+      truncated: false
+  - id: A12
+    source: specs/semantic-memory-domain/spec.md
+    text: "`MemoryReviewPacket` 是 Runtime 交给固定 `comet-memory` Skill
+      的最小、版本化输入。它包含当前配置语言、稳定项目身份、workflow/change、可信检查点、少量用户证据、相关 active memory
+      和固定预算。它不包含完整 transcript、日志、diff、隐藏推理或未经筛选的仓库内容。"
+    result: passed
+    reason:
+      text: The review packet is minimal, versioned and budgeted.
+      truncated: false
+  - id: A13
+    source: specs/semantic-memory-domain/spec.md
+    text: "`MemoryReviewAction` 只能是 `create`、`update`、`forget` 或 `skip`。动作必须引用
+      packet 允许的 target/evidence，最多处理固定数量的动作和字节；`skip` 不产生状态变化。Runtime 在交给
+      Personal Memory 前校验 action 的 schema、scope、语言、长度、危险内容和 evidence 新鲜度。"
+    result: passed
+    reason:
+      text: Actions are bound to valid targets/evidence, including
+        projectIdentity-only packet context.
+      truncated: false
+  - id: A14
+    source: specs/semantic-memory-domain/spec.md
+    text: Observation 的幂等键由稳定 project identity、Change ID 和 candidateKey 构成。没有
+      candidateKey 的旧调用使用规范化语义身份作为兼容 fallback；新的调用必须提供稳定 candidateKey。同一 Change
+      可以有多个 candidateKey，但重试同一 candidateKey 不增加 evidence。
+    result: passed
+    reason:
+      text: The shared domain observation key includes project identity, change ID and
+        candidateKey.
+      truncated: false
+  - id: A15
+    source: specs/semantic-memory-domain/spec.md
+    text: 成功 observation 才能形成自动候选；失败、取消、普通工具调用和非稳定生命周期不会形成正向 evidence。项目 scope
+      的候选需要同一 project 中两个不同 Change ID 的成功证据。global scope 的候选需要两个不同 project
+      identity 的成功证据；同一项目重复成功不能激活 global。
+    result: passed
+    reason:
+      text: Successful evidence and project/global independence rules hold in the
+        shared domain.
+      truncated: false
+  - id: A16
+    source: specs/semantic-memory-domain/spec.md
+    text: 显式 record 始终高于隐式 record。隐式候选与 active explicit record
+      语义身份相同但正文不同，或者多个隐式正文互相矛盾时，Runtime 记录 conflict，不更新正文，也不把矛盾候选写入正常
+      retrieval。只有用户 remember/correct、Markdown 手动编辑或明确删除才能改变 explicit 内容。
+    result: passed
+    reason:
+      text: Explicit records remain authoritative and inferred conflicts are not
+        retrieved.
+      truncated: false
+  - id: A17
+    source: specs/semantic-memory-domain/spec.md
+    text: 软删除保存最小 tombstone。旧 observation、旧 evidence、旧同步内容在 tombstone
+      时间之前不得重新形成候选；删除后的新成功 Change 可以重新形成候选，满足独立证据后再激活。显式 remember/correct
+      会明确解除对应 tombstone。旧 state 没有新字段时使用安全默认值，已有记录、Markdown、history、remote
+      和同步语义保持不变。
+    result: passed
+    reason:
+      text: Legacy tombstones migrate hashes when possible, safely block unknown old
+        Markdown, and distinguish user-remove from Markdown-delete correction.
+      truncated: false
+  - id: A18
+    source: specs/semantic-memory-domain/spec.md
+    text: 领域校验拒绝空文本、未知枚举、越界 projectKey、过大 payload、secret、凭据、明显 PII、提示注入和要求修改
+      Skill/规则/系统的内容。自动正文与用户可见 category/tag/reason 使用 packet language；`zh-CN`
+      不能落盘明显英文自动动作，`en` 不能落盘明显中文自动动作。用户直接输入的 remember 文本保持原文，不由领域层静默翻译。
+    result: passed
+    reason:
+      text: Domain validation covers safety, language, budgets, enums and preserves
+        direct user input without translation.
+      truncated: false
+  - id: A19
+    source: specs/semantic-memory-domain/spec.md
+    text: 检索继续使用 scope、project、task、path、operation、tag、category 和关键词的确定性过滤与排序。只返回
+      active、无未解决 conflict、未暂停的记录，并严格遵守
+      maxEntries/maxBytes；没有可靠命中时返回空结果，不注入候选、tombstone 或内部证据。
+    result: passed
+    reason:
+      text: Category and tags are independent query filters with deterministic bounded
+        retrieval.
+      truncated: false
+builder_handoff:
+  candidate_id: 191a4f6e-65d9-4eb5-b88b-57a15423f501
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:175890c0-82ab-4d5f-a8f1-13d8915f149c
+  iteration: 4
+  summary:
+    text: 完成第四轮语义记忆 domain 修复：旧 tombstone 按 record/history 迁移规范化正文 hash，无法恢复正文的旧
+      tombstone 默认阻止 Markdown 复活；用户主动 forget 的软删除可通过 explicit correct
+      清除，Markdown 删除仍保持不可直接恢复；自动 observation 必须携带 language，zh-CN/en
+      混合语言过滤收紧；补充中文提示注入与修改 Skill/规则安全模式；identity-only packet 为 project target 增加
+      projectIdentity 绑定；补充 32 个回归测试。
+    truncated: false
+  addressed_acceptance_ids:
+    - A7
+    - A8
+    - A9
+    - A13
+    - A17
+    - A18
+  checks:
+    - name:
+        text: npx vitest run semantic memory domain tests
+        truncated: false
+      result: passed
+      note:
+        text: 2 test files and 32 tests passed.
+        truncated: false
+    - name:
+        text: pnpm exec tsc --noEmit
+        truncated: false
+      result: passed
+      note:
+        text: TypeScript compilation completed without errors.
+        truncated: false
+    - name:
+        text: npx prettier --check affected domain and test files
+        truncated: false
+      result: passed
+      note:
+        text: Affected domain and test files pass Prettier check.
+        truncated: false
+    - name:
+        text: pnpm exec eslint domains/comet-memory test/domains/comet-memory
+        truncated: false
+      result: not-run
+      note:
+        text: The current worktree dependency installation has no eslint executable.
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: Classic/Native lifecycle bridge, fixed comet-memory Skill, CLI/Dashboard
+        and release assets remain in later child changes.
+      truncated: false
+    - text: Lifecycle bridge must preserve candidateKey and include scope in
+        observation identity in its own integration child.
+      truncated: false
+  known_limits_truncated: false
+  submitted_at: 2026-08-16T15:08:39.877Z
+blockers: []
+verification:
+  candidate_id: 191a4f6e-65d9-4eb5-b88b-57a15423f501
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:19bb9448-9fe2-4150-9df4-4e74d89cae6d
+  iteration: 4
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: semantic-memory-domain-tests
+      name:
+        text: semantic memory domain tests
+        truncated: false
+      argv_display:
+        - text: vitest
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/comet-memory/personal-memory.test.ts
+          truncated: false
+        - text: test/domains/comet-memory/review-contract.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 4234
+    - id: semantic-memory-domain-typecheck
+      name:
+        text: semantic memory domain typecheck
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: tsc
+          truncated: false
+        - text: --noEmit
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 7159
+    - id: semantic-memory-domain-format
+      name:
+        text: semantic memory domain format
+        truncated: false
+      argv_display:
+        - text: prettier
+          truncated: false
+        - text: --check
+          truncated: false
+        - text: domains/comet-memory
+          truncated: false
+        - text: test/domains/comet-memory
+          truncated: false
+        - text: docs/comet/changes/semantic-memory-domain/brief.md
+          truncated: false
+        - text: docs/comet/changes/semantic-memory-domain/specs/semantic-memory-domain/spec.md
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 1985
+  summary:
+    text: All semantic-memory-domain acceptance items pass. The shared domain is
+      ready to merge; lifecycle bridge propagation remains explicitly deferred
+      to the integration child.
+    truncated: false
+  risks:
+    - text: Lifecycle bridge must preserve candidateKey and include scope/project
+        identity in its observation identity in the later integration child.
+      truncated: false
+    - text: The independent verifier did not edit the worktree.
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-08-16T15:15:30.708Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A2
+      - A7
+      - A8
+      - A9
+      - A13
+      - A17
+      - A18
+    summary:
+      text: 领域契约、候选幂等、作用域证据、冲突处理、检索和旧 state 迁移基本成立，但 A2、A7、A8、A9、A13、A17、A18
+        仍有明确可修复缺口，返回 Build。
+      truncated: false
+    completed_at: 2026-08-16T14:29:55.046Z
+  - goal_cycle: 1
+    iteration: 2
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A1
+      - A2
+      - A7
+      - A8
+      - A9
+      - A17
+      - A18
+      - A19
+    summary:
+      text: 基础候选、作用域、冲突、迁移和检索边界成立，但 A1、A2、A7、A8、A9、A17、A18、A19 仍有明确可修复缺口，返回 Build。
+      truncated: false
+    completed_at: 2026-08-16T14:43:44.510Z
+  - goal_cycle: 1
+    iteration: 3
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A7
+      - A8
+      - A9
+      - A13
+      - A17
+      - A18
+    summary:
+      text: Domain contract and retrieval behavior are mostly correct, but legacy
+        tombstone migration, deleted-memory correction semantics, strict
+        automatic language/safety filtering and identity-only target context
+        still require repair.
+      truncated: false
+    completed_at: 2026-08-16T15:01:09.278Z
+  - goal_cycle: 1
+    iteration: 4
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: All semantic-memory-domain acceptance items pass. The shared domain is
+        ready to merge; lifecycle bridge propagation remains explicitly deferred
+        to the integration child.
+      truncated: false
+    completed_at: 2026-08-16T15:15:30.708Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-16T14:08:59.865Z

@@ -52,6 +52,7 @@ export function emptyMemoryState(): MemoryRuntimeState {
     evidence: {},
     observations: [],
     conflicts: [],
+    tombstones: [],
     settings: {
       learningEnabled: true,
       retrievalEnabled: true,
@@ -335,6 +336,7 @@ function validateState(value: unknown): MemoryRuntimeState {
     evidence: candidate.evidence ?? {},
     observations: candidate.observations ?? [],
     conflicts: candidate.conflicts ?? [],
+    tombstones: candidate.tombstones ?? [],
     settings: {
       learningEnabled: candidate.settings?.learningEnabled ?? true,
       retrievalEnabled: candidate.settings?.retrievalEnabled ?? true,
