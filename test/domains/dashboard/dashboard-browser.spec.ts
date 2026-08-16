@@ -42,7 +42,7 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'document-native-resume' })).toBeVisible();
   await expect(page.getByLabel('Archive 已完成')).toHaveText('✓');
   await expect(page.getByText(/Build ↔ Verify Loop · 已完成/u)).toBeVisible();
-  await expect(page.getByText('用户确认降级通过', { exact: true })).toBeVisible();
+  await expect(page.getByText('你已确认接受不完整验证结果', { exact: true })).toBeVisible();
   await expect(page.getByText('归档只读', { exact: true }).first()).toBeVisible();
 
   const classicWorkflow = page.getByRole('menuitem', { name: 'Classic 工作流' });
@@ -622,7 +622,7 @@ test('fills a server-paged Native list when its footer is already visible', asyn
     builderHandoff: null,
     verification: {
       verdict: 'pass',
-      assurance: 'host-attested',
+      assurance: index === 0 ? 'skill-coordinated' : 'host-attested',
       summary: { text: '验证通过。', truncated: false },
       risks: [],
       risksTruncated: false,
@@ -740,6 +740,9 @@ test('fills a server-paged Native list when its footer is already visible', asyn
   await expect.poll(() => pageRequests.length).toBeGreaterThanOrEqual(2);
   await expect(list.locator('.native-change-row')).toHaveCount(8);
   await expect.poll(() => detailRequests).toContain('native-1');
+  await list.locator('.native-change-row').nth(0).click();
+  await expect(page.locator('.native-change-detail h3')).toHaveText('native-1');
+  await expect(page.getByText('已完成检查，验证结果已确认', { exact: true })).toBeVisible();
   await list.locator('.native-change-row').nth(1).click();
   await expect.poll(() => detailRequests).toContain('native-2');
   await expect(page.locator('.native-change-detail h3')).toHaveText('native-2');

@@ -76,8 +76,12 @@ describe('Native v4 public CLI surface', () => {
     }
   }
 
-  async function prepareBuild(name: string, acceptance: string[] = ['First behavior works.']) {
-    await runNativeCli(['new', name, ...projectArgs()]);
+  async function prepareBuild(
+    name: string,
+    acceptance: string[] = ['First behavior works.'],
+    language: 'en' | 'zh-CN' = 'en',
+  ) {
+    await runNativeCli(['new', name, '--language', language, ...projectArgs()]);
     const brief = `# Outcome
 Ship the requested behavior.
 # Scope
@@ -152,6 +156,11 @@ Run applicable focused checks.
     expect(next.stdout).toContain('continuation.runnerAction');
     expect(next.stdout).toContain('--runner-input <file>');
     expect(next.stdout).toContain('not trusted identity attestation');
+    expect(next.stdout).toContain('Checks completed, but your confirmation is required');
+    expect(next.stdout).toContain(
+      'Full verification was unavailable; only automatic checks completed',
+    );
+    expect(next.stdout).toContain('You accepted the incomplete verification result');
     expect(next.stdout).toContain('--retry-verifier');
     expect(next.stdout).toContain('--resolve-verifier-blocker');
     expect(next.stdout).toContain('verifier-unavailable');
@@ -269,10 +278,12 @@ Run applicable focused checks.
 
     for (const command of ['checkpoint', 'check', 'evidence', 'receipt']) {
       const result = json(await runNativeCli([command, '--json', ...projectArgs()]));
+      const expectedMessage =
+        command === 'check' ? 'change name is required' : `Unknown Native command: ${command}`;
       expect(result).toMatchObject({
         command,
         exitCode: 64,
-        error: { code: 'usage', message: `Unknown Native command: ${command}` },
+        error: { code: 'usage', message: expectedMessage },
       });
     }
   });
@@ -304,10 +315,11 @@ Run applicable focused checks.
 
   it('drives a complete skill-coordinated CLI loop to Archive with an explicit empty check plan', async () => {
     const name = 'skill-coordinated-loop';
-    const readyForBuilder = await prepareBuild(name, [
-      'First behavior works.',
-      'Second behavior works.',
-    ]);
+    const readyForBuilder = await prepareBuild(
+      name,
+      ['First behavior works.', 'Second behavior works.'],
+      'zh-CN',
+    );
     expect(readyForBuilder).toMatchObject({
       data: {
         continuation: {
@@ -434,8 +446,8 @@ Run applicable focused checks.
       path.join(projectRoot, 'docs', 'comet', 'changes', name, 'verification.md'),
       'utf8',
     );
-    expect(pendingReport).toContain('Result: **Passed, user confirmation required**');
-    expect(pendingReport).toContain('Assurance: **skill-coordinated**');
+    expect(pendingReport).toContain('结果: **验收通过，需要你确认**');
+    expect(pendingReport).toContain('验证情况: **已完成检查，但需要你确认验证结果**');
 
     const confirmed = json(
       await runNativeCli([
@@ -465,7 +477,7 @@ Run applicable focused checks.
         path.join(projectRoot, 'docs', 'comet', 'changes', name, 'verification.md'),
         'utf8',
       ),
-    ).toContain('Result: **Passed**');
+    ).toContain('结果: **验收通过，可归档**');
   });
 
   it.each([
@@ -474,7 +486,7 @@ Run applicable focused checks.
   ])(
     'requires user confirmation for degraded semantic verification ($name)',
     async ({ name, withCheck }) => {
-      await prepareBuild(name);
+      await prepareBuild(name, ['First behavior works.'], 'zh-CN');
       await runnerStep(name, builderHandoff(['A1']));
       const checks = withCheck
         ? [
@@ -541,11 +553,9 @@ Run applicable focused checks.
         'verification.md',
       );
       const pendingReport = await fs.readFile(reportFile, 'utf8');
-      expect(pendingReport).toContain(
-        'Result: **Semantic verification unavailable, user confirmation required**',
-      );
-      expect(pendingReport).toContain('Assurance: **semantic-verification-unavailable**');
-      expect(pendingReport).not.toContain('Assurance: **host-attested**');
+      expect(pendingReport).toContain('结果: **无法完成完整验证，只完成了自动检查**');
+      expect(pendingReport).toContain('验证情况: **无法完成完整验证，只完成了自动检查**');
+      expect(pendingReport).not.toContain('验证情况: **已完成独立验证**');
 
       const confirmed = json(
         await runNativeCli([
@@ -575,11 +585,9 @@ Run applicable focused checks.
         },
       });
       const confirmedReport = await fs.readFile(reportFile, 'utf8');
-      expect(confirmedReport).toContain(
-        'Result: **Passed with user-confirmed degraded assurance**',
-      );
-      expect(confirmedReport).toContain('Assurance: **user-confirmed-degraded**');
-      expect(confirmedReport).not.toContain('Assurance: **host-attested**');
+      expect(confirmedReport).toContain('结果: **验收通过，可归档**');
+      expect(confirmedReport).toContain('验证情况: **你已确认接受不完整验证结果**');
+      expect(confirmedReport).not.toContain('验证情况: **已完成独立验证**');
     },
   );
 

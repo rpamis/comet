@@ -41,16 +41,48 @@ const LOCAL_STAGE_LABELS = {
 };
 const VERIFICATION_LABELS = {
   pending: '待验证',
-  pass: '验证通过',
+  pass: '验收通过',
   fail: '验证失败',
   blocked: '验证阻塞',
 };
 const ASSURANCE_PRESENTATION = {
-  'host-attested': { label: '宿主身份校验', tone: 'ok' },
-  'skill-coordinated': { label: 'Skill 协调', tone: 'warn' },
-  'semantic-verification-unavailable': { label: '语义验收不可用', tone: 'danger' },
-  'user-confirmed-degraded': { label: '用户确认降级通过', tone: 'warn' },
+  'host-attested': {
+    label: '已完成独立验证',
+    description: '可信运行环境已经完成独立验证。',
+    tone: 'ok',
+  },
+  'skill-coordinated': {
+    label: '已完成检查，但需要你确认验证结果',
+    description: '检查已完成，但系统无法确认验证者是否独立，需要你确认。',
+    tone: 'warn',
+  },
+  'semantic-verification-unavailable': {
+    label: '无法完成完整验证，只完成了自动检查',
+    description: '没有可用的语义验证，当前只有 Runtime 自动检查结果。',
+    tone: 'danger',
+  },
+  'user-confirmed-degraded': {
+    label: '你已确认接受不完整验证结果',
+    description: '你已明确接受只有自动检查、缺少语义验证的结果。',
+    tone: 'warn',
+  },
 };
+function assurancePresentation(change) {
+  const assurance = change.verification?.assurance;
+  const presentation = ASSURANCE_PRESENTATION[assurance] ?? null;
+  if (
+    assurance === 'skill-coordinated' &&
+    (change.status === 'archived' ||
+      (change.phase === 'archive' && change.loop?.nextAction === 'archive'))
+  ) {
+    return {
+      ...presentation,
+      label: '已完成检查，验证结果已确认',
+      description: '检查已完成，你已经确认接受这次验证结果。',
+    };
+  }
+  return presentation;
+}
 const ACCEPTANCE_LABELS = {
   passed: '通过',
   failed: '失败',
@@ -954,13 +986,19 @@ function AcceptanceMetric({ label, value }) {
 
 function NativeVerificationCard({ change }) {
   const checks = change.checks ?? [];
-  const assurance = ASSURANCE_PRESENTATION[change.verification?.assurance] ?? null;
+  const assurance = assurancePresentation(change);
   return (
     <article className="rounded-xl border border-border-soft bg-bg px-5 py-4">
       <div className="flex items-center justify-between gap-3">
         <h4 className="text-sm font-semibold tracking-tight">检查结果</h4>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          {assurance && <Pill tone={assurance.tone}>{assurance.label}</Pill>}
+          {assurance && (
+            <Tooltip title={assurance.description}>
+              <span>
+                <Pill tone={assurance.tone}>{assurance.label}</Pill>
+              </span>
+            </Tooltip>
+          )}
           <Pill tone={verificationTone(change.verificationResult)}>
             {VERIFICATION_LABELS[change.verificationResult] ?? '状态未知'}
           </Pill>

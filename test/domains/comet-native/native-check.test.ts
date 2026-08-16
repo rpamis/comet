@@ -51,8 +51,8 @@ function json(result: Awaited<ReturnType<typeof runNativeCli>>): JsonEnvelope {
   return JSON.parse(result.stdout!) as JsonEnvelope;
 }
 
-// `check` is now an internal Runtime executor, not a public receipt command.
-// See native-check-executor.test.ts and native-portable-runtime.test.ts.
+// `check` remains a legacy-compatible public command while Runtime-owned
+// verification uses the internal executor directly.
 describe('Native check public seam (legacy)', () => {
   let projectRoot: string;
   const name = 'safe-check';
@@ -375,12 +375,12 @@ describe('Native check public seam (legacy)', () => {
     expect(await countReceipts()).toBe(beforeCount);
   });
 
-  it('rejects the retired public check command', async () => {
+  it('reports a missing legacy check change as invalid data', async () => {
     const result = json(await runNativeCli(['check', name, '--json', ...projectArgs()]));
     expect(result).toMatchObject({
       command: 'check',
-      exitCode: 64,
-      error: { code: 'usage' },
+      exitCode: 65,
+      error: { code: 'invalid-data' },
     });
   });
 });

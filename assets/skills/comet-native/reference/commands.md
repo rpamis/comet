@@ -39,7 +39,9 @@ The Runtime executes and records verification checks. Development checks listed 
 
 - Independent Verifier cannot start: first confirm that all applicable checks are listed and every Runtime check passes. Then report unavailable using the template and wait for the user to decide whether to accept degraded verification with command checks only and no independent semantic review.
 - Verifier is temporarily unable to decide (`semantic blocked`): if only user or external information is missing, execute the resolution action returned by the Runtime. If the implementation must change, return to Build.
-- A Skill-coordinated Verifier reports all items passed (`skill-coordinated pass`): when the Runtime requires user confirmation, explain the verification boundary once, then execute the returned command after confirmation.
+- A Skill-coordinated Verifier reports all items passed (`skill-coordinated pass`): checks completed, but the system cannot confirm that the verifier was independent. Runtime shows “Checks completed, but your confirmation is required”; execute the returned command only after confirmation.
+- If Runtime shows “Full verification was unavailable; only automatic checks completed”, no semantic verifier was available. Archive only after explicit user confirmation.
+- After the user accepts that incomplete result, Runtime shows “You accepted the incomplete verification result”; this records acceptance of the downgrade and does not turn it into independent verification.
 - Verifier task fails (`execution error`): submit the error using the template, then read the new `continuation`. The Runtime decides which checks to reuse and whether to retry.
 
 ## Diagnostics

@@ -86,8 +86,9 @@ describe('Native dashboard web source contracts', () => {
     expect(source).toContain('<DashboardWorkspaceRegion');
     expect(nativeSource).toContain('native-changes-explorer');
     expect(nativeSource).toContain('native-change-detail');
-    expect(nativeSource).toContain('语义验收不可用');
-    expect(nativeSource).toContain('用户确认降级通过');
+    expect(nativeSource).toContain('无法完成完整验证，只完成了自动检查');
+    expect(nativeSource).toContain('你已确认接受不完整验证结果');
+    expect(nativeSource).toContain('已完成检查，验证结果已确认');
     expect(source).not.toContain('<NativeWorkflowPanel native={snapshot.native} />');
   });
 

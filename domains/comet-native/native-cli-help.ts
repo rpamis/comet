@@ -149,7 +149,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       '  Supervisor task fields: supervisor-builder-result (child, runId, candidateCommit), supervisor-builder-failure (child, runId, reason), supervisor-verifier-result (child, runId, verdict, verification data), supervisor-reconnect (child, runId), supervisor-cancel (child, runId, reason), or supervisor-integrate (child, checks).',
     ],
     output:
-      'The portable state, explicit skill-coordinated label, Runtime-owned check results, complete verifierDispatch, bounded request-check response, continuation.runnerAction, and machine-readable continuation.inputOptions. This generic bridge is not trusted identity attestation: a passing result waits for explicit user confirmation before Archive.',
+      'The portable state, explicit skill-coordinated label, Runtime-owned check results, complete verifierDispatch, bounded request-check response, continuation.runnerAction, and machine-readable continuation.inputOptions. Human-readable verification statuses include "Host independently verified", "Checks completed, but your confirmation is required", "Full verification was unavailable; only automatic checks completed", and "You accepted the incomplete verification result". This generic bridge is not trusted identity attestation: a passing result waits for explicit user confirmation before Archive.',
     examples: [
       'comet native next session-timeout --summary "Shape confirmed" --confirmed',
       'comet native next session-timeout --summary "Implementation changed" --return-to-build',

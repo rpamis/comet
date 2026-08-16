@@ -20,10 +20,12 @@
 ### Task 1: Lock the report copy with failing tests
 
 **Files:**
+
 - Modify: `test/domains/comet-native/native-cli-v4-surface.test.ts`
 - Test: `test/domains/comet-native/native-cli-v4-surface.test.ts`
 
 **Interfaces:**
+
 - Consumes: existing `runnerStep`, `finalResponse`, and report assertions.
 - Produces: failing assertions for the four human-readable assurance labels and the three archive/verifier result distinctions.
 
@@ -44,10 +46,12 @@
 ### Task 2: Implement localized report copy and result distinctions
 
 **Files:**
+
 - Modify: `domains/comet-native/native-verification-report-v2.ts`
 - Test: `test/domains/comet-native/native-cli-v4-surface.test.ts`
 
 **Interfaces:**
+
 - Consumes: `NativePortableState`, current `verification.assurance`, `phase`, `loop.next_action`, and `archived` fields.
 - Produces: localized human-readable assurance labels and verdict labels; raw state values remain unchanged.
 
@@ -75,10 +79,12 @@
 ### Task 3: Synchronize Dashboard presentation copy
 
 **Files:**
+
 - Modify: `domains/dashboard/web/src/native-workflow-panel.jsx`
 - Modify: `test/domains/dashboard/dashboard-browser.spec.ts`
 
 **Interfaces:**
+
 - Consumes: unchanged Dashboard `verification.assurance` values from the adapter.
 - Produces: plain-language assurance pill labels and updated demo assertions; no changes to adapter payloads.
 
@@ -104,6 +110,7 @@
 ### Task 4: Update CLI/reference wording and generated assets
 
 **Files:**
+
 - Modify: `domains/comet-native/native-cli-help.ts`
 - Modify: `assets/skills-zh/comet-native/reference/commands.md`
 - Modify: `assets/skills/comet-native/reference/commands.md`
@@ -111,6 +118,7 @@
 - Generate: Native/Entry runtime assets through repository scripts.
 
 **Interfaces:**
+
 - Consumes: unchanged CLI protocol names and continuation fields.
 - Produces: help/reference copy that explains raw protocol names in plain language and generated bundles matching source.
 
@@ -137,6 +145,7 @@
 ### Task 5: Final verification and handoff
 
 **Files:**
+
 - Test: Native report, Dashboard adapter/browser, Entry/Skill contract suites, and TypeScript compilation.
 
 - [ ] **Step 1: Run the minimum related verification**

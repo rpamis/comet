@@ -87,7 +87,47 @@ describe('Native verification report projection', () => {
     expect(nativeVerificationReportStateVersion(report)).toBe(state.state_version);
     expect(report).toContain('| A1 | passed |');
     expect(report).toContain('Verification passed.');
+    expect(report).toContain(
+      'Verification status: **Checks completed, but your confirmation is required**',
+    );
     expect(report).not.toMatch(/sha-?256|receipt|snapshot|evidence hash/iu);
+  });
+
+  it.each([
+    ['host-attested', 'Host independently verified'],
+    ['skill-coordinated', 'Checks completed, but your confirmation is required'],
+    [
+      'semantic-verification-unavailable',
+      'Full verification was unavailable; only automatic checks completed',
+    ],
+    ['user-confirmed-degraded', 'You accepted the incomplete verification result'],
+  ] as const)('renders a plain-language label for %s', (assurance, label) => {
+    const state = passedState();
+    state.verification!.assurance = assurance;
+    expect(renderNativeVerificationReport(state)).toContain(`Verification status: **${label}**`);
+  });
+
+  it('does not keep the confirmation prompt after skill-coordinated acceptance', () => {
+    const state = passedState();
+    state.phase = 'archive';
+    state.loop.next_action = 'archive';
+    state.verification!.assurance = 'skill-coordinated';
+    expect(state.phase).toBe('archive');
+    expect(state.loop.next_action).toBe('archive');
+    expect(state.verification!.assurance).toBe('skill-coordinated');
+    expect(renderNativeVerificationReport(state)).toContain(
+      'Verification status: **Checks completed; result confirmed**',
+    );
+    expect(renderNativeVerificationReport({ ...state, archived: true })).toContain(
+      'Result: **Archived**',
+    );
+    expect(renderNativeVerificationReport({ ...state, archived: true })).not.toContain(
+      'your confirmation is required',
+    );
+    state.language = 'zh-CN';
+    expect(renderNativeVerificationReport(state)).toContain(
+      '验证情况: **已完成检查，验证结果已确认**',
+    );
   });
 
   it('rebuilds a missing or stale report without rerunning verification', async () => {

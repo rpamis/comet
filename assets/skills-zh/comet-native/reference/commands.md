@@ -39,7 +39,9 @@ Runtime 负责执行并记录验收检查。Builder 在 handoff 中列出的开�
 
 - 无法启动独立 Verifier：先确认适用检查已经列明，且 Runtime 检查全部通过；随后按模板报告 unavailable，等待用户决定是否接受只有命令检查、没有独立语义验收的降级结果。
 - Verifier 暂时无法判断（`semantic blocked`）：如果只缺用户或外部信息，执行 Runtime 返回的解决动作；如果需要修改实现，回到 Build。
-- 由 Skill 协调的 Verifier 判断全部通过（`skill-coordinated pass`）：Runtime 要求用户确认时解释一次验收边界，用户确认后执行返回的命令。
+- 由 Skill 协调的 Verifier 判断全部通过（`skill-coordinated pass`）：这表示检查已经完成，但系统无法确认验证者是否独立；Runtime 会显示“已完成检查，但需要你确认验证结果”，用户确认后再执行返回的命令。
+- 如果显示“无法完成完整验证，只完成了自动检查”，表示没有可用的语义验证，只有 Runtime 自动检查结果；只有用户明确确认后才能继续归档。
+- 用户确认接受这种不完整结果后，显示“你已确认接受不完整验证结果”；这只表示用户明确接受降级结果，不会把它改成独立验证。
 - Verifier 任务执行出错（`execution error`）：按模板提交错误，再读取新的 `continuation`。Runtime 决定复用哪些检查以及是否重试。
 
 ## 诊断
