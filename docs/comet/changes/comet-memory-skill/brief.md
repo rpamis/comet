@@ -39,6 +39,7 @@
 - `MemoryReviewActionSet` 必须使用 `comet.memory.actions.v1`，不得返回裸数组或未知动作。
 - `skip` 是正常成功结果，且不应暗示用户已经保存了记忆。
 - 只能输出一个动作 scope；global 自动推断必须尊重 packet 提供的跨项目证据，Skill 不自行创造证据。
+- `actions` 数量不得超过 packet `budget.maxActions`；除单个 `skip` 外，不得在同一 action set 混用 `global` 与 `project`。
 - 所有用户可见文字遵循 packet language；机器枚举 `schema/action/scope` 保持稳定英文。
 
 # 决策

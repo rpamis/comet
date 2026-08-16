@@ -1,5 +1,5 @@
 interface:
   display_name: "Comet 语义记忆评审"
-  short_description: "从有界评审包筛选可复用的个人记忆"
+  short_description: "评审 comet.memory.review.v1 并返回固定动作包"
 policy:
   allow_implicit_invocation: false

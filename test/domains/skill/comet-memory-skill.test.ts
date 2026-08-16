@@ -3,7 +3,11 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { getUserFacingSkillNames, readManifest } from '../../../domains/skill/platform-install.js';
+import {
+  getUserFacingSkillNames,
+  isManagedSkillPathForSelection,
+  readManifest,
+} from '../../../domains/skill/platform-install.js';
 
 const languageRoots = ['assets/skills', 'assets/skills-zh'] as const;
 const requiredContractMarkers = [
@@ -16,6 +20,7 @@ const requiredContractMarkers = [
   'global',
   'project',
   'candidateKey',
+  'budget.maxActions',
 ];
 
 async function readSkill(root: (typeof languageRoots)[number]): Promise<string> {
@@ -69,5 +74,18 @@ describe('comet-memory Skill assets', () => {
     expect(chinese).toContain('不写文件');
     expect(english).toContain('Explicit memory wins');
     expect(chinese).toContain('明确记忆优先');
+    expect(english).toContain('single scope');
+    expect(chinese).toContain('单一 scope');
+  });
+
+  it('keeps the shared Skill installed for every workflow selection', async () => {
+    const skillPaths = ['comet-memory/SKILL.md', 'comet-memory/agents/openai.yaml'];
+    for (const workflow of ['classic', 'native', 'both'] as const) {
+      for (const skillPath of skillPaths) {
+        expect(isManagedSkillPathForSelection(skillPath, workflow)).toBe(true);
+      }
+    }
+    expect(isManagedSkillPathForSelection('comet-native/SKILL.md', 'classic')).toBe(false);
+    expect(isManagedSkillPathForSelection('comet-classic/SKILL.md', 'native')).toBe(false);
   });
 });

@@ -52,7 +52,8 @@ function isNativeInstallSkillPath(skillPath: string): boolean {
     skillPath === 'comet/scripts/comet-entry-runtime.mjs' ||
     skillPath === 'comet/scripts/comet-hook-router.mjs' ||
     skillPath.startsWith('comet-native/') ||
-    skillPath.startsWith('comet-any/')
+    skillPath.startsWith('comet-any/') ||
+    skillPath.startsWith('comet-memory/')
   );
 }
 

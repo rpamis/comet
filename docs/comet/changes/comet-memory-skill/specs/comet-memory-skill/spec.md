@@ -36,7 +36,7 @@ Skill 必须只读取 Runtime 传入的 `comet.memory.review.v1` packet。Packet
 
 ### Requirement: 固定动作输出
 
-Skill 必须输出 versioned `comet.memory.actions.v1` envelope，动作只能是 `create`、`update`、`forget` 或 `skip`。动作必须使用 packet language，遵循单一 scope，不自行构造 target、evidence、candidateKey 或项目身份；Runtime 仍需在落盘前再次校验。
+Skill 必须输出 versioned `comet.memory.actions.v1` envelope，动作只能是 `create`、`update`、`forget` 或 `skip`。整个 action set 的动作数量不得超过 packet `budget.maxActions`，所有非 `skip` 动作必须使用同一个 `global` 或 `project` scope；Skill 不得自行构造 target、evidence、candidateKey 或项目身份，Runtime 仍需在落盘前再次校验。
 
 #### Scenario: 明确用户意图优先
 
