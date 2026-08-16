@@ -71,7 +71,14 @@ function run(command: string, args: string[], cwd: string, env: NodeJS.ProcessEn
 
 afterEach(async () => {
   await Promise.all(
-    temporary.splice(0).map((entry) => fs.rm(entry, { recursive: true, force: true })),
+    temporary.splice(0).map((entry) =>
+      fs.rm(entry, {
+        recursive: true,
+        force: true,
+        maxRetries: process.platform === 'win32' ? 8 : 0,
+        retryDelay: process.platform === 'win32' ? 100 : 0,
+      }),
+    ),
   );
 });
 

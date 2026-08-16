@@ -52,6 +52,9 @@ async function makePublishFixture(): Promise<string> {
   await writeFile(root, 'package.json', JSON.stringify(packageJson, null, 2));
   await writeFile(root, 'README.md', '# Comet publish fixture\n');
   await writeFile(root, 'eval/pyproject.toml', '[project]\nname = "comet-eval-fixture"\n');
+  for (const relativePath of ['eval/.npmignore', 'eval/local/.npmignore']) {
+    await writeFile(root, relativePath, await fs.readFile(relativePath, 'utf-8'));
+  }
   await writeFile(
     root,
     'eval/schemas/comet.eval/v1alpha1.schema.json',
@@ -174,5 +177,29 @@ describe('prepublish security check', () => {
 
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
     expect(result.stdout).toContain('[SECURITY] No secrets detected. Safe to publish.');
+  });
+
+  it('does not use a broad eval package entry that traverses derived pytest directories', async () => {
+    const packageJson = JSON.parse(await fs.readFile('package.json', 'utf-8')) as {
+      files?: string[];
+    };
+
+    expect(packageJson.files).not.toContain('eval');
+    expect(packageJson.files?.some((entry) => entry.startsWith('!eval'))).toBe(false);
+    expect(packageJson.files).toEqual(
+      expect.arrayContaining([
+        'eval/.env.example',
+        'eval/CLAUDE.md',
+        'eval/README.md',
+        'eval/pyproject.toml',
+        'eval/report-html-config.json',
+        'eval/simulator-instruction.md',
+        'eval/langfuse',
+        'eval/langsmith',
+        'eval/local',
+        'eval/scaffold',
+        'eval/schemas',
+      ]),
+    );
   });
 });

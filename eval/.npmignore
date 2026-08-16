@@ -1,0 +1,24 @@
+# Ignore runtime and test artifacts when the eval package is packed.
+.env*
+.venv/
+.uv-cache/
+.cache/
+.tmp/
+.comet/
+.ruff_cache/
+.pytest_cache/
+.pytest_cache*/
+.pytest-basetemp-*/
+.pytest-tmp-*/
+logs/
+.pytest*
+.pytest_*
+_pytest*/
+_eval*/
+**/.pytest*/
+**/.pytest-basetemp-*/
+**/.pytest-tmp-*/
+**/.pytest_*/
+**/__pycache__/
+**/.comet/
+**/logs/

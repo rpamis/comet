@@ -22,11 +22,14 @@ function runNode(
   env: NodeJS.ProcessEnv = {},
   timeout?: number,
 ) {
+  const isolatedHome = path.join(cwd, '.test-home');
   return spawnSync(process.execPath, [script, ...args], {
     cwd,
     encoding: 'utf-8',
     env: {
       ...process.env,
+      HOME: isolatedHome,
+      USERPROFILE: isolatedHome,
       COMET_RUNTIME_CLASSIC_ROOT: classicRuntimeRoot,
       COMET_CLASSIC_SKILL_ROOT: classicRuntimeRoot,
       ...env,
