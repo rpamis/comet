@@ -1,5 +1,15 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { App as AntApp, Button, ConfigProvider, Input, Select, Spin, Tooltip } from 'antd';
+import {
+  App as AntApp,
+  Button,
+  ConfigProvider,
+  Input,
+  Select,
+  Spin,
+  Switch,
+  Tag,
+  Tooltip,
+} from 'antd';
 import {
   Alert,
   Badge,
@@ -2231,11 +2241,15 @@ function PersonalMemoryCenter({ data, onInvoke }) {
   const [remoteUrl, setRemoteUrl] = useState('');
   const status = data?.status ?? {};
   const retrieval = data?.retrieval ?? {};
-  const records = retrieval.records ?? [];
+  const management = data?.management ?? {};
+  const records = management.records ?? retrieval.records ?? [];
+  const conflicts = management.conflicts ?? [];
   const notifications = data?.notifications ?? [];
   const projectKey = data?.projectKey;
   const learningPaused = projectKey && (status.pausedLearningProjects ?? []).includes(projectKey);
   const retrievalPaused = projectKey && (status.pausedRetrievalProjects ?? []).includes(projectKey);
+  const memoryFileCount = status.files?.length ?? 0;
+  const syncMessage = status.sync?.message ?? '本地记忆仓库已连接';
   return (
     <div className="mx-auto min-w-0 max-w-dashboard">
       <SectionHead title="个人记忆" hint="跨会话沉淀你的偏好与常用操作" />
@@ -2246,96 +2260,79 @@ function PersonalMemoryCenter({ data, onInvoke }) {
           ))}
         </div>
       )}
-      <div className="dashboard-plugin-toolbar">
-        <Button
-          size="small"
-          type={status.learningEnabled ? 'primary' : 'default'}
-          onClick={() => onInvoke('set-learning', { enabled: !status.learningEnabled })}
-        >
-          自动学习：{status.learningEnabled ? '开启' : '关闭'}
-        </Button>
-        <Button
-          size="small"
-          type={status.retrievalEnabled ? 'primary' : 'default'}
-          onClick={() => onInvoke('set-retrieval', { enabled: !status.retrievalEnabled })}
-        >
-          注入记忆：{status.retrievalEnabled ? '开启' : '关闭'}
-        </Button>
-        <Button size="small" onClick={() => onInvoke('sync', {})}>
-          同步记忆仓库
-        </Button>
-        <Button
-          size="small"
-          onClick={() =>
-            onInvoke('pause-project-learning', { projectKey, paused: !learningPaused })
-          }
-        >
-          项目学习：{learningPaused ? '暂停中' : '开启'}
-        </Button>
-        <Button
-          size="small"
-          onClick={() =>
-            onInvoke('pause-project-retrieval', { projectKey, paused: !retrievalPaused })
-          }
-        >
-          项目注入：{retrievalPaused ? '暂停中' : '开启'}
-        </Button>
-        <Input
-          size="small"
-          value={remoteUrl}
-          onChange={(event) => setRemoteUrl(event.target.value)}
-          placeholder={status.remote ?? '记忆仓库 Git remote'}
-          style={{ maxWidth: 280 }}
-        />
-        <Button
-          size="small"
-          disabled={!remoteUrl.trim()}
-          onClick={() => {
-            void onInvoke('configure-remote', { url: remoteUrl.trim() });
-            setRemoteUrl('');
-          }}
-        >
-          保存 remote
-        </Button>
-        <Button
-          size="small"
-          danger
-          onClick={() =>
-            Modal.confirm({
-              title: '卸载个人记忆插件？',
-              content: '记忆文件和历史会保留，之后可以重新安装。',
-              okText: '卸载',
-              cancelText: '取消',
-              onOk: () => onInvoke('lifecycle', { action: 'uninstall' }),
-            })
-          }
-        >
-          卸载插件
-        </Button>
-      </div>
-      <div className="dashboard-plugin-grid">
-        <AntCard size="small" title="当前画像">
-          <p className="text-sm text-muted">
-            {status.learningEnabled ? 'Comet 会自动沉淀稳定偏好。' : '自动学习已暂停。'}
-          </p>
-          <p className="mt-2 text-xs text-meta">
-            {status.files?.length ?? 0} 个记忆文件 ·{' '}
-            {status.remote ? `remote：${status.remote}` : '尚未配置 remote'} ·{' '}
-            {status.sync?.message ?? '本地记忆仓库已连接'}
-          </p>
-        </AntCard>
-        <AntCard size="small" title="本次项目可用记忆">
+      <section className="dashboard-memory-status" aria-label="个人记忆状态">
+        <div className="dashboard-memory-status-cell">
+          <div className="dashboard-memory-status-heading">
+            <span className="dashboard-memory-status-label">自动学习</span>
+            <Switch
+              size="small"
+              checked={Boolean(status.learningEnabled)}
+              aria-label="切换自动学习"
+              onChange={(enabled) => onInvoke('set-learning', { enabled })}
+            />
+          </div>
+          <span className="dashboard-memory-status-value">
+            {status.learningEnabled ? '会沉淀稳定偏好' : '已暂停自动沉淀'}
+          </span>
+        </div>
+        <div className="dashboard-memory-status-cell">
+          <div className="dashboard-memory-status-heading">
+            <span className="dashboard-memory-status-label">记忆注入</span>
+            <Switch
+              size="small"
+              checked={Boolean(status.retrievalEnabled)}
+              aria-label="切换记忆注入"
+              onChange={(enabled) => onInvoke('set-retrieval', { enabled })}
+            />
+          </div>
+          <span className="dashboard-memory-status-value">
+            {status.retrievalEnabled ? '任务中可使用已保存内容' : '已暂停任务注入'}
+          </span>
+        </div>
+        <div className="dashboard-memory-status-cell">
+          <span className="dashboard-memory-status-label">作用范围</span>
+          <span className="dashboard-memory-status-value">
+            {projectKey ? '当前项目' : '全局记忆'}
+          </span>
+          <span className="dashboard-memory-status-meta">
+            {projectKey ? '项目级偏好优先' : '跨项目共享'}
+          </span>
+        </div>
+        <div className="dashboard-memory-status-cell">
+          <span className="dashboard-memory-status-label">记忆文件</span>
+          <span className="dashboard-memory-status-value">{memoryFileCount} 个</span>
+          <span className="dashboard-memory-status-meta">
+            {status.remote ? '已配置 Git remote' : '仅保存在本地'}
+          </span>
+        </div>
+      </section>
+      <div className="dashboard-memory-layout">
+        <section className="dashboard-memory-list" aria-labelledby="dashboard-memory-list-title">
+          <div className="dashboard-memory-panel-head">
+            <div>
+              <h3 id="dashboard-memory-list-title">可用于当前项目的记忆</h3>
+              <p>{records.length > 0 ? `${records.length} 条已整理记忆` : '还没有匹配的记忆'}</p>
+            </div>
+            {conflicts.length > 0 && <Tag color="warning">{conflicts.length} 个冲突待确认</Tag>}
+          </div>
           {records.length === 0 ? (
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有匹配的记忆" />
           ) : (
-            <div className="space-y-3">
+            <div className="dashboard-memory-records">
               {records.map((record) => (
-                <div key={record.id} className="dashboard-plugin-record">
-                  <div>
-                    <strong>{record.category}</strong>
-                    <p className="mt-1 text-sm text-muted">{record.text}</p>
+                <div key={record.id} className="dashboard-memory-record">
+                  <div className="dashboard-memory-record-content">
+                    <div className="dashboard-memory-record-kicker">
+                      <Tag bordered={false}>{record.category}</Tag>
+                      <span>{record.scope === 'project' ? '项目记忆' : '全局记忆'}</span>
+                    </div>
+                    <p className="dashboard-memory-record-text">{record.text}</p>
+                    <div className="dashboard-memory-record-meta">
+                      <span>{record.evidenceCount ?? 0} 条证据</span>
+                      <span>更新于 {formatTimestamp(record.updatedAt)}</span>
+                    </div>
                   </div>
-                  <div className="flex shrink-0 gap-1">
+                  <div className="dashboard-memory-record-actions">
                     <Button
                       size="small"
                       onClick={() => {
@@ -2360,7 +2357,100 @@ function PersonalMemoryCenter({ data, onInvoke }) {
               ))}
             </div>
           )}
-        </AntCard>
+        </section>
+        <aside
+          className="dashboard-memory-settings"
+          aria-labelledby="dashboard-memory-settings-title"
+        >
+          <div className="dashboard-memory-panel-head">
+            <div>
+              <h3 id="dashboard-memory-settings-title">记忆设置</h3>
+              <p>控制当前项目的学习与同步</p>
+            </div>
+          </div>
+          <div className="dashboard-memory-setting">
+            <div className="dashboard-memory-setting-copy">
+              <strong>项目学习</strong>
+              <span>{learningPaused ? '当前项目暂停自动学习' : '允许当前项目沉淀新偏好'}</span>
+            </div>
+            <Button
+              size="small"
+              type={learningPaused ? 'default' : 'text'}
+              onClick={() =>
+                onInvoke('pause-project-learning', { projectKey, paused: !learningPaused })
+              }
+            >
+              {learningPaused ? '恢复' : '暂停'}
+            </Button>
+          </div>
+          <div className="dashboard-memory-setting">
+            <div className="dashboard-memory-setting-copy">
+              <strong>项目注入</strong>
+              <span>{retrievalPaused ? '当前项目不注入记忆' : '任务中可以使用已保存记忆'}</span>
+            </div>
+            <Button
+              size="small"
+              type={retrievalPaused ? 'default' : 'text'}
+              onClick={() =>
+                onInvoke('pause-project-retrieval', { projectKey, paused: !retrievalPaused })
+              }
+            >
+              {retrievalPaused ? '恢复' : '暂停'}
+            </Button>
+          </div>
+          <div className="dashboard-memory-setting dashboard-memory-setting-stack">
+            <div className="dashboard-memory-setting-copy">
+              <strong>同步仓库</strong>
+              <span>{status.remote ?? '尚未配置 Git remote'}</span>
+            </div>
+            <div className="dashboard-memory-remote-form">
+              <Input
+                size="small"
+                value={remoteUrl}
+                onChange={(event) => setRemoteUrl(event.target.value)}
+                placeholder="输入记忆仓库 remote"
+                aria-label="记忆仓库 Git remote"
+              />
+              <Button
+                size="small"
+                disabled={!remoteUrl.trim()}
+                onClick={() => {
+                  void onInvoke('configure-remote', { url: remoteUrl.trim() });
+                  setRemoteUrl('');
+                }}
+              >
+                保存
+              </Button>
+            </div>
+            <div className="dashboard-memory-sync-row">
+              <span>{syncMessage}</span>
+              <Button size="small" onClick={() => onInvoke('sync', {})}>
+                立即同步
+              </Button>
+            </div>
+          </div>
+          <div className="dashboard-memory-setting dashboard-memory-setting-danger">
+            <div className="dashboard-memory-setting-copy">
+              <strong>插件管理</strong>
+              <span>卸载后记忆文件和历史仍会保留</span>
+            </div>
+            <Button
+              size="small"
+              danger
+              onClick={() =>
+                Modal.confirm({
+                  title: '卸载个人记忆插件？',
+                  content: '记忆文件和历史会保留，之后可以重新安装。',
+                  okText: '卸载',
+                  cancelText: '取消',
+                  onOk: () => onInvoke('lifecycle', { action: 'uninstall' }),
+                })
+              }
+            >
+              卸载插件
+            </Button>
+          </div>
+        </aside>
       </div>
       <Modal
         open={editingRecord !== null}

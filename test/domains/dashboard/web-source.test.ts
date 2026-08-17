@@ -36,6 +36,20 @@ describe('dashboard web source contracts', () => {
     expect(source).not.toContain('xl:grid-cols-[320px_minmax(620px,940px)_320px]');
   });
 
+  it('keeps personal memory focused on records with grouped settings', async () => {
+    const source = await readDashboardSource();
+    const page = source.match(
+      /function PersonalMemoryCenter\([\s\S]*?\n}\n\nfunction AntSummaryCards/,
+    );
+
+    expect(page?.[0]).toContain('dashboard-memory-status');
+    expect(page?.[0]).toContain('dashboard-memory-layout');
+    expect(page?.[0]).toContain('dashboard-memory-list');
+    expect(page?.[0]).toContain('dashboard-memory-settings');
+    expect(page?.[0]).not.toContain('dashboard-plugin-toolbar');
+    expect(page?.[0]).not.toContain('dashboard-plugin-grid');
+  });
+
   it('uses the change-detail width to switch between stacked and two-column panels', async () => {
     const [source, styles] = await Promise.all([readDashboardSource(), readDashboardStyles()]);
 

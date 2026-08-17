@@ -14,6 +14,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Personal memory experience**: CLI, Dashboard, readable Markdown, and dedicated Git synchronization now share one authoritative memory state with localized output, explicit correction/forget/rollback controls, conflict protection, and non-blocking background failures.
 - **Dashboard startup performance**: Missing project registrations and stale, internal, or detached worktrees no longer trigger unnecessary Git and Native scans, while SQLite refreshes cached sources that are no longer valid.
 - **Personal memory startup**: The Dashboard first page no longer performs repository synchronization or loads unused management data; explicit synchronization remains available when requested.
+- **Personal memory Dashboard**: The personal memory page now puts readable memory records first and groups project controls, synchronization, and plugin management into a compact settings panel.
 
 ### Changed
 
