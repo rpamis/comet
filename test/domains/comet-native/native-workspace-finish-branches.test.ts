@@ -338,4 +338,34 @@ describe('Native archived workspace finish', () => {
     expect(git.runGitCommand).toHaveBeenCalledWith(projectRoot, ['merge', '--abort']);
     expect(git.runGitCommand).toHaveBeenCalledWith(projectRoot, ['switch', 'comet/change']);
   });
+
+  it('removes a clean change worktree after a successful merge', async () => {
+    const primaryRoot = path.resolve('D:/native-primary-worktree');
+    const targetRoot = path.resolve('D:/native-target-worktree');
+    const merge = plan({
+      finish: 'merge',
+      isolation: 'worktree',
+      primaryRoot,
+      targetRoot,
+    });
+
+    const result = await finishArchivedNativeWorkspace({
+      paths,
+      state,
+      name: state.name,
+      archiveDir: path.join(projectRoot, 'comet', 'archive', state.name),
+      transactionId: 'tx-6',
+      plan: merge,
+    });
+
+    expect(result).toMatchObject({
+      merged: true,
+      cleanup: { performed: true, reason: null },
+    });
+    expect(git.runGitCommand).toHaveBeenCalledWith(primaryRoot, [
+      'worktree',
+      'remove',
+      projectRoot,
+    ]);
+  });
 });

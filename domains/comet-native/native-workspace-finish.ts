@@ -279,6 +279,28 @@ function baseResult(plan: NativeWorkspaceFinishPlan): NativeWorkspaceFinishResul
   };
 }
 
+function cleanupMergedWorktree(plan: NativeWorkspaceFinishPlan): {
+  performed: boolean;
+  reason: string | null;
+} {
+  if (plan.isolation !== 'worktree') return { performed: false, reason: null };
+  if (pathContains(plan.changeRoot, process.cwd())) {
+    return {
+      performed: false,
+      reason: 'invocation-working-directory-is-the-change-worktree',
+    };
+  }
+  try {
+    runGitCommand(plan.primaryRoot, ['worktree', 'remove', plan.changeRoot]);
+    return { performed: true, reason: null };
+  } catch (error) {
+    return {
+      performed: false,
+      reason: `worktree-cleanup-failed: ${(error as Error).message}`,
+    };
+  }
+}
+
 export async function finishArchivedNativeWorkspace(options: {
   paths: NativeProjectPaths;
   state: NativeWorkspaceFinishState;
@@ -383,10 +405,7 @@ export async function finishArchivedNativeWorkspace(options: {
     runGitCommand(mergeRoot, ['merge', '--no-ff', '--no-edit', options.plan.changeBranch]);
     result.merged = true;
     result.targetRoot = mergeRoot;
-    result.cleanup = {
-      performed: false,
-      reason: 'post-merge-validation-required-before-cleanup',
-    };
+    result.cleanup = cleanupMergedWorktree(options.plan);
     return result;
   } catch (error) {
     if (switchedMergeRoot !== null) {
