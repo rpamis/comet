@@ -3,9 +3,9 @@ name: semantic-self-evolving-memory
 language: zh-CN
 phase: build
 status: active
-state_version: 29
+state_version: 34
 brief: brief.md
-children_contract_hash: 1b7458250b8bd6d6e10a6ad08e79f83361ef851026553fd72bbe3006bb110749
+children_contract_hash: fe159d0001ddbc95421bd159e3504c7df99fe38b62abe7f2fb27fa2e81804508
 spec_changes:
   - capability: comet-memory-skill
     operation: modify
@@ -23,7 +23,7 @@ workspace:
   finish: null
 loop:
   stage: building
-  goal_cycle: 4
+  goal_cycle: 5
   iteration: 1
   attempt: 0
   retry_epoch: 0
@@ -739,6 +739,47 @@ history:
       text: Native child declarations changed
       truncated: false
     completed_at: 2026-08-17T00:17:41.104Z
+  - goal_cycle: 4
+    iteration: 1
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A4
+      - A5
+      - A17
+      - A18
+      - A20
+      - A22
+      - A23
+      - A24
+      - A33
+      - A34
+      - A36
+      - A43
+      - A48
+      - A51
+      - A54
+      - A55
+      - A74
+      - A75
+      - A76
+      - A77
+      - A81
+      - A95
+    summary:
+      text: 当前实现完成了有界记忆状态、显式操作、永久遗忘、跨 workflow 证据和真实 semantic retrieve，但尚未达到目标的语义筛选、固定
+        Skill 执行和可信对照 Eval 基线。父 Change 返回 Build 修复，不进入 Archive。
+      truncated: false
+    completed_at: 2026-08-17T01:41:03.342Z
+  - goal_cycle: 4
+    iteration: 2
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native child declarations changed
+      truncated: false
+    completed_at: 2026-08-17T01:42:41.389Z
 history_overflow:
   dropped_entries: 0
   first_dropped_at: null

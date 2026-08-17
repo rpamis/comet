@@ -15,7 +15,7 @@ loop:
   stage: done
   goal_cycle: 1
   iteration: 1
-  attempt: 0
+  attempt: 1
   retry_epoch: 0
   failed_iteration_count: 0
   no_progress_count: 0
@@ -61,31 +61,87 @@ acceptance:
 builder_handoff:
   candidate_id: 7a41d75e-6b34-4aa7-8c89-2f52d3c6d0a4
   identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:7a41d75e-6b34-4aa7-8c89-2f52d3c6d0a4
   iteration: 1
   summary:
     text: v4 修复一次性误记忆、Skill 调用边界、中文技术名词校验、真实 Eval treatment 和实际复用通知。
     truncated: false
   addressed_acceptance_ids: [A4, A17, A18, A23, A36]
   checks:
-    - name: semantic-memory-related-tests
+    - name:
+        text: semantic-memory-related-tests
+        truncated: false
       result: passed
-      note: 相关记忆、插件、Entry、Eval 测试通过。
-    - name: typescript
+      note:
+        text: 相关记忆、插件、Entry、Eval 测试通过。
+        truncated: false
+    - name:
+        text: typescript
+        truncated: false
       result: passed
-      note: tsc --noEmit
-    - name: lint
+      note:
+        text: tsc --noEmit
+        truncated: false
+    - name:
+        text: lint
+        truncated: false
       result: passed
-      note: ESLint and architecture lint
-    - name: dashboard-build
+      note:
+        text: ESLint and architecture lint
+        truncated: false
+    - name:
+        text: dashboard-build
+        truncated: false
       result: passed
-      note: Vite production build
+      note:
+        text: Vite production build
+        truncated: false
   checks_truncated: false
   known_limits:
-    - parent final Verify still needs the full Vitest suite and repository build
+    - text: parent final Verify still needs the full Vitest suite and repository build
+      truncated: false
   known_limits_truncated: false
   submitted_at: 2026-08-17T02:10:00.000Z
 blockers: []
+verification:
+  candidate_id: 7a41d75e-6b34-4aa7-8c89-2f52d3c6d0a4
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:7a41d75e-6b34-4aa7-8c89-2f52d3c6d0a4
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: semantic-memory-v4-targeted
+      name:
+        text: semantic memory v4 targeted tests
+        truncated: false
+      argv_display:
+        - text: vitest
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 0
+  summary:
+    text: v4 child 修复已通过相关测试、TypeScript、架构检查和 Dashboard 构建。
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-08-17T02:20:00.000Z
 verification_result: pass
 verification_report: verification.md
 archived: true
+history: []
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
 created_at: 2026-08-17T02:00:00.000Z
