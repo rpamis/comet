@@ -12,12 +12,15 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Changed
 
 - **Personal memory experience**: CLI, Dashboard, readable Markdown, and dedicated Git synchronization now share one authoritative memory state with localized output, explicit correction/forget/rollback controls, conflict protection, and non-blocking background failures.
+- **Dashboard startup performance**: Missing project registrations and stale, internal, or detached worktrees no longer trigger unnecessary Git and Native scans, while SQLite refreshes cached sources that are no longer valid.
+- **Personal memory startup**: The Dashboard first page no longer performs repository synchronization or loads unused management data; explicit synchronization remains available when requested.
 
 ### Changed
 
 - **Native Supervisor workflow**: Supervisor Changes now coordinate Children through a dedicated integration workspace, independent Builder/Verifier task packages, dependency-aware `verified` and `integrated` states, and a final parent verification before target delivery.
 - **Native status and recovery**: Supervisor status exposes compact Child summaries, current task bindings, integration progress, and preserved verification evidence while keeping machine Runtime state under `.comet/runtime`.
 - **Native verification status copy**: Verification reports and Dashboard labels now explain independent verification, required confirmation, and automatic-check-only results in plain language without changing machine status values.
+- **Native worktree lifecycle**: A successfully merged Comet-created isolated change now removes its finished worktree while preserving the branch for normal Git workflows.
 
 ## What's Changed [0.4.0-beta.18] - 2026-08-13
 

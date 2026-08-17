@@ -141,6 +141,7 @@ async function createModule(
         projectKey: projectId,
         status: await invoke('status'),
         retrieval: await invoke('retrieve', { projectKey: projectId }),
+        management: await invoke('manage', { projectKey: projectId }),
         operations: [
           'remember',
           'manage',

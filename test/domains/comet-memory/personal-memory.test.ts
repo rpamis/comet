@@ -969,8 +969,9 @@ describe('PersonalMemoryService', () => {
       expect(data).toMatchObject({
         projectKey: 'project-a',
         retrieval: { records: [expect.objectContaining({ text: '使用中文回复' })] },
+        management: { records: [expect.objectContaining({ text: '使用中文回复' })] },
       });
-      expect(manage).not.toHaveBeenCalled();
+      expect(manage).toHaveBeenCalledTimes(1);
       expect(git.sync).not.toHaveBeenCalled();
     });
   });
