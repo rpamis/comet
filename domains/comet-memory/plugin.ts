@@ -15,12 +15,18 @@ import type {
   MemoryReviewPacket,
   MemoryReviewResult,
   MemoryReviewRequest,
+  PersonalMemoryProjectPolicy,
   PersonalMemoryPluginOptions,
   PersonalMemoryServiceLike,
 } from './types.js';
 import { invokeMemoryReviewSkill } from './skill-runtime.js';
 
 export const PERSONAL_MEMORY_PLUGIN_ID = 'comet.personal-memory';
+
+const DEFAULT_PROJECT_POLICY: PersonalMemoryProjectPolicy = {
+  learning: true,
+  retrieval: true,
+};
 
 export function createPersonalMemoryPluginDescriptor(
   options: PersonalMemoryPluginOptions,
@@ -40,6 +46,7 @@ async function createModule(
   options: PersonalMemoryPluginOptions,
 ): Promise<PluginModule> {
   const service = options.createService(context);
+  const projectPolicy = options.projectPolicy ?? DEFAULT_PROJECT_POLICY;
   const reviewNotices: string[] = [];
   const announcedConflicts = new Set<string>();
   const announcedRetrievals = new Set<string>();
@@ -139,6 +146,7 @@ async function createModule(
       route: '/plugins/personal-memory',
       load: async ({ projectId, invoke }) => ({
         projectKey: projectId,
+        policy: projectPolicy,
         status: await invoke('status'),
         retrieval: await invoke('retrieve', { projectKey: projectId }),
         management: await invoke('manage', { projectKey: projectId }),
@@ -160,6 +168,7 @@ async function createModule(
       }),
     },
     onEvent: async (event) => {
+      if (!projectPolicy.learning) return;
       const observation = observationFromEvent(event);
       if (observation !== null) {
         const review = async () => {
@@ -183,6 +192,7 @@ async function createModule(
       }
     },
     provideContext: async (request) => {
+      if (!projectPolicy.retrieval) return null;
       const retrieval = await retrieveWithNotice({
         projectKey: request.projectId ?? context.projectId,
         task: request.task,
@@ -197,6 +207,7 @@ async function createModule(
         capability,
         input,
         options.language,
+        projectPolicy,
         applyReview,
         retrieveWithNotice,
       ),
@@ -208,6 +219,7 @@ async function invokeCapability(
   capability: string,
   input: unknown,
   language: 'zh-CN' | 'en' | undefined,
+  projectPolicy: PersonalMemoryProjectPolicy,
   applyReview: (packet: MemoryReviewPacket) => Promise<MemoryReviewResult>,
   retrieveWithNotice: (query: MemoryQuery) => Promise<unknown>,
 ): Promise<unknown> {
@@ -253,6 +265,15 @@ async function invokeCapability(
       return service.rollback(asString(value.id, 'rollback.id'));
     }
     case 'observe': {
+      if (!projectPolicy.learning) {
+        return {
+          deduplicated: false,
+          ignored: true,
+          candidate: false,
+          activated: false,
+          record: null,
+        };
+      }
       const observation = asRecord<MemoryObservation>(input, 'observe');
       const packet = await reviewPacketFromObservation(
         service,

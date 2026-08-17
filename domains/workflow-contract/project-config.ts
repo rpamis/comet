@@ -7,6 +7,7 @@ import type {
   ProjectConfigLanguage,
   WorkflowClassicProjectConfig,
   WorkflowHookProjectConfig,
+  WorkflowMemoryProjectConfig,
   WorkflowNativeEnabledProjectConfig,
   WorkflowNativePendingRootMove,
   WorkflowNativeProjectConfig,
@@ -20,6 +21,10 @@ export const WORKFLOW_PROJECT_CONFIG_MAX_BYTES = 64 * 1024;
 export const MAX_WORKFLOW_SNAPSHOT_PATTERN_LENGTH = 1024;
 export const MAX_WORKFLOW_SNAPSHOT_PATTERN_WILDCARDS = 64;
 export const DEFAULT_WORKFLOW_NATIVE_MAX_VERIFY_FAILURES = 5;
+export const DEFAULT_WORKFLOW_MEMORY_PROJECT_CONFIG: WorkflowMemoryProjectConfig = {
+  learning: true,
+  retrieval: true,
+};
 
 // `comet init` installs the built-in Skills into every supported platform's
 // project-local Skill directory. A Native baseline describes the project being
@@ -139,6 +144,9 @@ type ProjectConfigCommentKey =
   | 'default_workflow'
   | 'workflows'
   | 'ambient_resume'
+  | 'memory'
+  | 'memory.learning'
+  | 'memory.retrieval'
   | 'hook'
   | 'hook.allow_paths'
   | 'native'
@@ -167,6 +175,11 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
     workflows: '# Workflows enabled in this project: native, classic, or both.',
     ambient_resume:
       '# Enables automatic recovery through the read-only Ambient Resume probe for both Native and Classic. Set false to disable it.\n# ambient_resume: true | false',
+    memory: '# Project policy for automatic personal-memory learning and retrieval.',
+    'memory.learning':
+      '# Allows workflow events in this project to form new personal memories automatically.\n# learning: true | false',
+    'memory.retrieval':
+      '# Allows personal memories to be injected into Agent context for this project.\n# retrieval: true | false',
     hook: '# Hook write policy shared by Native and Classic. Paths are project-relative.',
     'hook.allow_paths':
       '# Project-relative directories allowed during guarded phases. Use one path per list item; empty by default.',
@@ -211,6 +224,11 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
     workflows: '# 此项目启用的工作流，可填写 native、classic 或同时启用两者。',
     ambient_resume:
       '# 是否启用只读的环境感知恢复探针，同时作用于 Native 和 Classic；设为 false 可关闭自动工作流恢复。\n# ambient_resume: true | false',
+    memory: '# 当前项目的个人记忆自动学习与注入策略。',
+    'memory.learning':
+      '# 是否允许当前项目通过工作流事件自动沉淀新的个人记忆。\n# 可选值：true | false',
+    'memory.retrieval':
+      '# 是否允许当前项目把个人记忆自动注入 Agent 上下文。\n# 可选值：true | false',
     hook: '# Native 和 Classic 共享的 Hook 写入策略；路径必须是项目相对路径。',
     'hook.allow_paths': '# 在受保护阶段允许写入的项目相对目录；每项填写一个目录，默认为空。',
     native: '# Native 工作流配置，不会改变 Classic 的状态或行为。',
@@ -251,7 +269,7 @@ export function projectConfigComment(
 
 function commentKey(
   line: string,
-  block: 'native' | 'classic' | 'hook' | null,
+  block: 'native' | 'classic' | 'hook' | 'memory' | null,
   nativeNested: 'snapshot' | null,
 ): ProjectConfigCommentKey | null {
   const match = /^(\s*)([a-z_]+):/u.exec(line);
@@ -279,7 +297,7 @@ export function renderStructuredProjectConfig(
   language: ProjectConfigCommentLanguage,
 ): string {
   const output: string[] = [];
-  let block: 'native' | 'classic' | 'hook' | null = null;
+  let block: 'native' | 'classic' | 'hook' | 'memory' | null = null;
   let nativeNested: 'snapshot' | null = null;
   for (const line of stringify(value).trimEnd().split('\n')) {
     const key = commentKey(line, block, nativeNested);
@@ -294,6 +312,7 @@ export function renderStructuredProjectConfig(
       if (line.startsWith('native:')) block = 'native';
       else if (line.startsWith('classic:')) block = 'classic';
       else if (line.startsWith('hook:')) block = 'hook';
+      else if (line.startsWith('memory:')) block = 'memory';
       else block = null;
       nativeNested = null;
     } else if (/^ {2}[a-z_]+:/u.test(line) && block === 'native') {
@@ -607,6 +626,22 @@ function normalizeWorkflowHookProjectConfig(value: unknown): WorkflowHookProject
   };
 }
 
+function normalizeWorkflowMemoryProjectConfig(value: unknown): WorkflowMemoryProjectConfig {
+  if (value === undefined) {
+    return { ...DEFAULT_WORKFLOW_MEMORY_PROJECT_CONFIG };
+  }
+  const memory = projectConfigRecord(value, 'memory');
+  const learning = memory.learning ?? DEFAULT_WORKFLOW_MEMORY_PROJECT_CONFIG.learning;
+  const retrieval = memory.retrieval ?? DEFAULT_WORKFLOW_MEMORY_PROJECT_CONFIG.retrieval;
+  if (typeof learning !== 'boolean') {
+    throw new Error('memory.learning must be true or false');
+  }
+  if (typeof retrieval !== 'boolean') {
+    throw new Error('memory.retrieval must be true or false');
+  }
+  return { learning, retrieval };
+}
+
 function normalizeAmbientResume(value: unknown): boolean {
   const resolved = value ?? true;
   if (typeof resolved !== 'boolean') {
@@ -618,6 +653,7 @@ function normalizeAmbientResume(value: unknown): boolean {
 function normalizeWorkflowProjectConfig(
   root: Record<string, unknown>,
   hook: WorkflowHookProjectConfig | undefined,
+  memory: WorkflowMemoryProjectConfig,
   native: WorkflowNativeProjectConfig | undefined,
   classic: WorkflowClassicProjectConfig | undefined,
   ambientResume: boolean,
@@ -658,6 +694,7 @@ function normalizeWorkflowProjectConfig(
     workflows,
     ambient_resume: ambientResume,
     ...(hook ? { hook } : {}),
+    memory,
     ...(native ? { native } : {}),
     ...(classic ? { classic } : {}),
   };
@@ -687,6 +724,7 @@ export function parseWorkflowProjectConfigDocument(
   const ambientResume = normalizeAmbientResume(value.ambient_resume);
   const hook =
     value.hook === undefined ? undefined : normalizeWorkflowHookProjectConfig(value.hook);
+  const memory = normalizeWorkflowMemoryProjectConfig(value.memory);
   const native =
     value.native === undefined
       ? undefined
@@ -695,13 +733,22 @@ export function parseWorkflowProjectConfigDocument(
         });
   const classic =
     value.classic === undefined ? undefined : normalizeWorkflowClassicProjectConfig(value.classic);
-  const config = normalizeWorkflowProjectConfig(value, hook, native, classic, ambientResume, {
-    allowPartialProject: options.allowPartialProject ?? false,
-  });
+  const config = normalizeWorkflowProjectConfig(
+    value,
+    hook,
+    memory,
+    native,
+    classic,
+    ambientResume,
+    {
+      allowPartialProject: options.allowPartialProject ?? false,
+    },
+  );
   return {
     value,
     config,
     ambient_resume: ambientResume,
+    memory,
     ...(hook ? { hook } : {}),
     ...(native ? { native } : {}),
     ...(classic ? { classic } : {}),
@@ -736,6 +783,7 @@ export function workflowProjectConfigManagedValue(
     default_workflow: config.default_workflow,
     workflows: config.workflows ?? [config.default_workflow],
     ambient_resume: config.ambient_resume,
+    memory: config.memory ?? { ...DEFAULT_WORKFLOW_MEMORY_PROJECT_CONFIG },
     ...(config.hook
       ? {
           hook: {
@@ -799,6 +847,14 @@ export function mergeWorkflowProjectConfigDocument(
       allow_paths: [...validated.hook.allow_paths],
     };
   }
+  if (validated.memory) {
+    const existingMemory = optionalRecord(existing.memory);
+    output.memory = {
+      ...existingMemory,
+      learning: validated.memory.learning,
+      retrieval: validated.memory.retrieval,
+    };
+  }
   if (validated.native) {
     const existingNative = optionalRecord(existing.native);
     const native: Record<string, unknown> = {
@@ -848,6 +904,7 @@ export function defaultWorkflowProjectConfig(
     schema: 'comet.project.v1',
     default_workflow: 'native',
     ambient_resume: true,
+    memory: { ...DEFAULT_WORKFLOW_MEMORY_PROJECT_CONFIG },
     native: {
       artifact_root: normalizeWorkflowArtifactRoot(artifactRoot),
       language,
@@ -907,6 +964,19 @@ function normalizeClassicArtifactLayout(value, fallback = 'docs') {
     throw new Error('classic.artifact_layout must be legacy or docs');
   }
   return resolved;
+}
+
+function normalizeWorkflowMemoryProjectConfig(value) {
+  const memory = value === undefined ? {} : workflowConfigRecord(value, 'memory');
+  const learning = memory.learning ?? true;
+  const retrieval = memory.retrieval ?? true;
+  if (typeof learning !== 'boolean') {
+    throw new Error('memory.learning must be true or false');
+  }
+  if (typeof retrieval !== 'boolean') {
+    throw new Error('memory.retrieval must be true or false');
+  }
+  return { learning, retrieval };
 }
 
 function workflowPathInside(root, target) {
@@ -1770,6 +1840,7 @@ function managedWorkflowConfigFields(source) {
   if (root.ambient_resume !== undefined && typeof root.ambient_resume !== 'boolean') {
     throw new Error('ambient_resume must be true or false');
   }
+  const memory = normalizeWorkflowMemoryProjectConfig(root.memory);
 
   let nativeArtifactRoot = null;
   if (root.native !== undefined) {
@@ -1824,7 +1895,14 @@ function managedWorkflowConfigFields(source) {
   if (classicEnabled && classicArtifactLayout === null) {
     classicArtifactLayout = 'legacy';
   }
-  return { nativeArtifactRoot, classicArtifactLayout, nativeEnabled, classicEnabled };
+  return {
+    nativeArtifactRoot,
+    classicArtifactLayout,
+    nativeEnabled,
+    classicEnabled,
+    memoryLearning: memory.learning,
+    memoryRetrieval: memory.retrieval,
+  };
 }
 
 async function readWorkflowProjectPathConfig(projectRoot) {
@@ -1844,6 +1922,8 @@ async function readWorkflowProjectPathConfig(projectRoot) {
         classicArtifactLayout: null,
         nativeEnabled: false,
         classicEnabled: false,
+        memoryLearning: true,
+        memoryRetrieval: true,
       };
     }
     throw error;
@@ -1854,6 +1934,8 @@ async function readWorkflowProjectPathConfig(projectRoot) {
       classicArtifactLayout: null,
       nativeEnabled: false,
       classicEnabled: false,
+      memoryLearning: true,
+      memoryRetrieval: true,
     };
   }
   const source = await readWorkflowProtectedFile(

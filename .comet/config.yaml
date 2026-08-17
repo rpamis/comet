@@ -9,6 +9,14 @@ workflows:
 # 是否启用只读的环境感知恢复探针，同时作用于 Native 和 Classic；设为 false 可关闭自动工作流恢复。
 # ambient_resume: true | false
 ambient_resume: false
+# 当前项目的个人记忆自动学习与注入策略。
+memory:
+  # 是否允许当前项目通过工作流事件自动沉淀新的个人记忆。
+  # 可选值：true | false
+  learning: true
+  # 是否允许当前项目把个人记忆自动注入 Agent 上下文。
+  # 可选值：true | false
+  retrieval: true
 # Native 工作流配置，不会改变 Classic 的状态或行为。
 native:
   # Native 规格和 change 的存放根目录；运行时数据始终位于 .comet。

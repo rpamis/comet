@@ -2242,6 +2242,9 @@ function PersonalMemoryCenter({ data, onInvoke }) {
   const status = data?.status ?? {};
   const retrieval = data?.retrieval ?? {};
   const management = data?.management ?? {};
+  const policy = data?.policy ?? {};
+  const learningAllowed = policy.learning !== false;
+  const retrievalAllowed = policy.retrieval !== false;
   const records = management.records ?? retrieval.records ?? [];
   const conflicts = management.conflicts ?? [];
   const notifications = data?.notifications ?? [];
@@ -2272,7 +2275,11 @@ function PersonalMemoryCenter({ data, onInvoke }) {
             />
           </div>
           <span className="dashboard-memory-status-value">
-            {status.learningEnabled ? '会沉淀稳定偏好' : '已暂停自动沉淀'}
+            {!learningAllowed
+              ? '项目配置禁止当前项目学习'
+              : status.learningEnabled
+                ? '会沉淀稳定偏好'
+                : '已暂停自动沉淀'}
           </span>
         </div>
         <div className="dashboard-memory-status-cell">
@@ -2286,7 +2293,11 @@ function PersonalMemoryCenter({ data, onInvoke }) {
             />
           </div>
           <span className="dashboard-memory-status-value">
-            {status.retrievalEnabled ? '任务中可使用已保存内容' : '已暂停任务注入'}
+            {!retrievalAllowed
+              ? '项目配置禁止当前项目注入'
+              : status.retrievalEnabled
+                ? '任务中可使用已保存内容'
+                : '已暂停任务注入'}
           </span>
         </div>
         <div className="dashboard-memory-status-cell">
@@ -2371,10 +2382,17 @@ function PersonalMemoryCenter({ data, onInvoke }) {
           <div className="dashboard-memory-setting">
             <div className="dashboard-memory-setting-copy">
               <strong>项目学习</strong>
-              <span>{learningPaused ? '当前项目暂停自动学习' : '允许当前项目沉淀新偏好'}</span>
+              <span>
+                {!learningAllowed
+                  ? '项目配置已禁止自动学习'
+                  : learningPaused
+                    ? '当前项目暂停自动学习'
+                    : '允许当前项目沉淀新偏好'}
+              </span>
             </div>
             <Button
               size="small"
+              disabled={!projectKey || !learningAllowed}
               type={learningPaused ? 'default' : 'text'}
               onClick={() =>
                 onInvoke('pause-project-learning', { projectKey, paused: !learningPaused })
@@ -2386,10 +2404,17 @@ function PersonalMemoryCenter({ data, onInvoke }) {
           <div className="dashboard-memory-setting">
             <div className="dashboard-memory-setting-copy">
               <strong>项目注入</strong>
-              <span>{retrievalPaused ? '当前项目不注入记忆' : '任务中可以使用已保存记忆'}</span>
+              <span>
+                {!retrievalAllowed
+                  ? '项目配置已禁止自动注入'
+                  : retrievalPaused
+                    ? '当前项目不注入记忆'
+                    : '任务中可以使用已保存记忆'}
+              </span>
             </div>
             <Button
               size="small"
+              disabled={!projectKey || !retrievalAllowed}
               type={retrievalPaused ? 'default' : 'text'}
               onClick={() =>
                 onInvoke('pause-project-retrieval', { projectKey, paused: !retrievalPaused })

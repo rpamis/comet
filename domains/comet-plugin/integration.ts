@@ -21,6 +21,8 @@ import { JsonFilePluginStorageStore, JsonFileTextStore } from '../../platform/fs
 import { JsonPluginStateStore, PluginRuntime } from './plugin-runtime.js';
 import type { PluginContextContribution, PluginEvent, PluginScopeContext } from './types.js';
 import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
+import { DEFAULT_WORKFLOW_MEMORY_PROJECT_CONFIG } from '../workflow-contract/project-config.js';
+import type { WorkflowMemoryProjectConfig } from '../workflow-contract/types.js';
 
 export interface CometLifecycleObservation {
   readonly name:
@@ -252,6 +254,7 @@ export async function createDefaultCometPluginBridge(
   const stateRoot = path.resolve(options.stateRoot ?? path.join(os.homedir(), '.comet', 'plugins'));
   const projectRoot = path.resolve(options.projectRoot);
   const language = options.language ?? (await resolveProjectMemoryLanguage(projectRoot));
+  const projectPolicy = await resolveProjectMemoryPolicy(projectRoot);
   const runtime = new PluginRuntime({
     cometVersion: options.cometVersion ?? getCurrentVersion(),
     store: new JsonPluginStateStore(new JsonFileTextStore(path.join(stateRoot, 'state.json'))),
@@ -259,6 +262,7 @@ export async function createDefaultCometPluginBridge(
     descriptors: [
       createPersonalMemoryPluginDescriptor({
         language,
+        projectPolicy,
         ...(options.runMemoryReviewInBackground === undefined
           ? {}
           : { runReviewInBackground: options.runMemoryReviewInBackground }),
@@ -297,4 +301,11 @@ async function resolveProjectMemoryLanguage(projectRoot: string): Promise<Memory
   } catch {
     return 'zh-CN';
   }
+}
+
+async function resolveProjectMemoryPolicy(
+  projectRoot: string,
+): Promise<WorkflowMemoryProjectConfig> {
+  const config = await readWorkflowProjectConfig(projectRoot);
+  return config?.memory ?? { ...DEFAULT_WORKFLOW_MEMORY_PROJECT_CONFIG };
 }

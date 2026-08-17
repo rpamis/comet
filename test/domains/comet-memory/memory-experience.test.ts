@@ -119,6 +119,55 @@ describe('personal memory experience projection', () => {
     expect(loaded.operations).toContain('manage');
   });
 
+  it('projects the project memory policy to the Dashboard page', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-memory-experience-policy-'));
+    const projectRoot = path.join(root, 'project');
+    await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'workflows: [native]',
+        'memory:',
+        '  learning: false',
+        '  retrieval: true',
+        'native:',
+        '  artifact_root: docs',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    try {
+      const { createDefaultCometPluginBridge } =
+        await import('../../../domains/comet-plugin/integration.js');
+      const bridge = await createDefaultCometPluginBridge({
+        projectRoot,
+        projectId: 'policy-dashboard-project',
+        memoryRoot: path.join(root, 'memory'),
+        stateRoot: path.join(root, 'plugins'),
+      });
+      const page = (
+        await bridge.pluginRuntime.dashboardPages({
+          scope: 'project',
+          projectId: bridge.currentProjectId,
+        })
+      ).find((entry) => entry.pluginId === 'comet.personal-memory');
+      const loaded = (await page?.load?.({
+        projectId: bridge.currentProjectId,
+        invoke: (capability, input) =>
+          bridge.pluginRuntime.invoke('comet.personal-memory', capability, input, {
+            scope: 'project',
+            projectId: bridge.currentProjectId,
+          }),
+      })) as { policy: { learning: boolean; retrieval: boolean } };
+
+      expect(loaded.policy).toEqual({ learning: false, retrieval: true });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('uses the project config language for confirmations without translating direct text', async () => {
     vi.restoreAllMocks();
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-memory-experience-language-'));

@@ -37,6 +37,11 @@ export interface WorkflowHookProjectConfig {
   allow_paths: string[];
 }
 
+export interface WorkflowMemoryProjectConfig {
+  learning: boolean;
+  retrieval: boolean;
+}
+
 export interface WorkflowNativeProjectConfig {
   artifact_root: string;
   language: ProjectConfigLanguage;
@@ -61,6 +66,7 @@ export interface WorkflowProjectConfig {
   workflows?: CometProjectWorkflow[];
   ambient_resume: boolean;
   hook?: WorkflowHookProjectConfig;
+  memory?: WorkflowMemoryProjectConfig;
   native?: WorkflowNativeProjectConfig;
   classic?: WorkflowClassicProjectConfig;
 }
@@ -81,6 +87,7 @@ export interface ParsedWorkflowProjectConfigDocument {
   value: Record<string, unknown>;
   config: WorkflowProjectConfig | null;
   ambient_resume: boolean;
+  memory?: WorkflowMemoryProjectConfig;
   native?: WorkflowNativeProjectConfig;
   classic?: WorkflowClassicProjectConfig;
 }

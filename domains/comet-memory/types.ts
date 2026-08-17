@@ -390,6 +390,11 @@ export interface PersonalMemoryOptions {
   readonly maxBytes?: number;
 }
 
+export interface PersonalMemoryProjectPolicy {
+  readonly learning: boolean;
+  readonly retrieval: boolean;
+}
+
 export interface PersonalMemoryStatus {
   readonly learningEnabled: boolean;
   readonly retrievalEnabled: boolean;
@@ -403,6 +408,7 @@ export interface PersonalMemoryStatus {
 
 export interface PersonalMemoryPluginOptions {
   readonly language?: MemoryLanguage;
+  readonly projectPolicy?: PersonalMemoryProjectPolicy;
   readonly version?: string;
   readonly cometVersionRange?: (cometVersion: string) => boolean;
   readonly runReviewInBackground?: (task: () => Promise<void>) => void | Promise<void>;

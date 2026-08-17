@@ -34,6 +34,24 @@ The active project `language` in `.comet/config.yaml` controls the language of a
 
 Automatic observations default to the current project scope. Only an explicitly cross-project preference, or a preference you explicitly save globally, becomes global memory. Current-project retrieval can use applicable global and project memories, but one project’s experience is never silently promoted into a rule for every project.
 
+## Project policy
+
+Projects can set a shared upper bound for automatic personal-memory behavior in `.comet/config.yaml`:
+
+```yaml
+memory:
+  learning: true
+  retrieval: true
+```
+
+- `learning: false` prevents workflow checkpoints from forming new memories automatically in this project.
+- `retrieval: false` prevents personal memories from being injected into Agent context for this project.
+- Omitting the block or either field keeps the existing default of `true`.
+- These are project policies. A user’s Runtime switches and project pauses can further disable behavior, but cannot override a project policy set to `false`.
+- Explicit `comet memory remember`, `retrieve`, `manage`, correction, and forget operations remain available for user-directed memory management.
+
+Project policy is separate from plugin lifecycle. Uninstalling the Personal Memory plugin stops the plugin but does not edit this configuration or delete the memory repository.
+
 ## View and manage memory
 
 The CLI and Dashboard use the same authoritative memory state. A change made through either entry point is visible with the same result in the other.

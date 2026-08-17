@@ -30,6 +30,95 @@ async function withBridge(
 }
 
 describe('Comet plugin integration bridge', () => {
+  test('blocks automatic learning when the project policy disables it', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-memory-policy-learning-'));
+    const memoryRoot = path.join(root, 'memory');
+    const projectRoot = path.join(root, 'project');
+    await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'workflows: [native]',
+        'memory:',
+        '  learning: false',
+        '  retrieval: true',
+        'native:',
+        '  artifact_root: docs',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    try {
+      const bridge = await createDefaultCometPluginBridge({
+        projectRoot,
+        memoryRoot,
+        projectId: 'policy-learning-project',
+        stateRoot: path.join(root, 'plugin-state'),
+      });
+
+      await bridge.dispatchLifecycle({
+        name: 'verification.completed',
+        workflow: 'native',
+        changeId: 'policy-learning-1',
+        success: true,
+        category: '工作方式',
+        text: '验证后再提交',
+        candidateKey: 'verify-before-submit',
+      });
+
+      expect(
+        (await bridge.retrieve({ projectKey: 'policy-learning-project' })).records,
+      ).toHaveLength(0);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test('blocks automatic context injection when the project policy disables it', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-memory-policy-retrieval-'));
+    const memoryRoot = path.join(root, 'memory');
+    const projectRoot = path.join(root, 'project');
+    await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'workflows: [native]',
+        'memory:',
+        '  learning: true',
+        '  retrieval: false',
+        'native:',
+        '  artifact_root: docs',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    try {
+      const bridge = await createDefaultCometPluginBridge({
+        projectRoot,
+        memoryRoot,
+        projectId: 'policy-retrieval-project',
+        stateRoot: path.join(root, 'plugin-state'),
+      });
+      await bridge.remember({
+        scope: 'project',
+        projectKey: 'policy-retrieval-project',
+        category: '沟通偏好',
+        text: '使用中文回复',
+      });
+
+      expect(await bridge.collectContext({ task: '使用中文回复' })).toEqual([]);
+      expect(
+        (await bridge.retrieve({ projectKey: 'policy-retrieval-project' })).records,
+      ).toHaveLength(1);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   test('invokes the configured comet-memory Skill runner with a bounded packet', async () => {
     await withBridge(async (bridge) => {
       const calls: unknown[] = [];
