@@ -49,6 +49,7 @@ import {
   collectDashboardWorkspaceSources,
   dashboardWorkspaceIdentity,
   encodeDashboardChangeLocator,
+  isDashboardWorkspaceSourceEligible,
   parseDashboardChangeLocator,
   sameDashboardPath,
   type DashboardWorkspaceSource,
@@ -599,6 +600,12 @@ function isNativeDashboardIndex(value: unknown): value is NativeDashboardIndex {
   );
 }
 
+function hasInvalidCachedNativeSource(index: NativeDashboardIndex, projectRoot: string): boolean {
+  return [...index.active, ...index.archived, ...index.all].some(
+    (candidate) => !isDashboardWorkspaceSourceEligible(projectRoot, candidate.source.workspace),
+  );
+}
+
 async function readCachedNativeDashboardIndex(
   projectRoot: string,
 ): Promise<NativeDashboardIndex | null> {
@@ -718,6 +725,7 @@ async function buildNativeDashboardIndex(
   const root = path.resolve(projectRoot);
   const cached = await readCachedNativeDashboardIndex(root);
   if (cached) {
+    if (hasInvalidCachedNativeSource(cached, root)) return refreshNativeDashboardIndex(root);
     scheduleNativeDashboardRefresh(root);
     return cached;
   }

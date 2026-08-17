@@ -53,6 +53,17 @@ function isInternalRuntimeWorktree(projectRoot: string, primaryRoot: string): bo
   return relative === '.comet/runtime' || relative.startsWith('.comet/runtime/');
 }
 
+export function isDashboardWorkspaceSourceEligible(
+  requestedRoot: string,
+  source: Pick<DashboardWorkspaceSource, 'projectRoot' | 'branch' | 'current'>,
+): boolean {
+  const sourceRoot = path.resolve(source.projectRoot);
+  if (!isDirectory(sourceRoot)) return false;
+  if (source.current) return sameDashboardPath(sourceRoot, requestedRoot);
+  if (source.branch === null) return false;
+  return !isInternalRuntimeWorktree(sourceRoot, path.resolve(requestedRoot));
+}
+
 /**
  * Treat every registered worktree in one Git common repository as a Dashboard
  * discovery source. Non-Git projects retain the previous single-root behavior.
