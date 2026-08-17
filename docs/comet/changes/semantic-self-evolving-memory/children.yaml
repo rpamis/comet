@@ -242,3 +242,30 @@ children:
       - A77
       - A81
       - A95
+  - name: semantic-memory-review-repair-v5
+    depends_on:
+      - semantic-memory-review-repair-v4
+    covers:
+      - A4
+      - A5
+      - A17
+      - A18
+      - A20
+      - A22
+      - A23
+      - A24
+      - A33
+      - A34
+      - A36
+      - A43
+      - A48
+      - A51
+      - A54
+      - A55
+      - A74
+      - A75
+      - A76
+      - A77
+      - A81
+      - A91
+      - A95

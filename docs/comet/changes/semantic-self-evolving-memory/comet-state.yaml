@@ -3,9 +3,9 @@ name: semantic-self-evolving-memory
 language: zh-CN
 phase: build
 status: active
-state_version: 34
+state_version: 38
 brief: brief.md
-children_contract_hash: fe159d0001ddbc95421bd159e3504c7df99fe38b62abe7f2fb27fa2e81804508
+children_contract_hash: c00f58d0ae8c71d9fc96bf24c19112075d0a09f9e9712a8cb4fec5dc21126773
 spec_changes:
   - capability: comet-memory-skill
     operation: modify
@@ -23,7 +23,7 @@ workspace:
   finish: null
 loop:
   stage: building
-  goal_cycle: 5
+  goal_cycle: 6
   iteration: 1
   attempt: 0
   retry_epoch: 0
@@ -780,6 +780,24 @@ history:
       text: Native child declarations changed
       truncated: false
     completed_at: 2026-08-17T01:42:41.389Z
+  - goal_cycle: 5
+    iteration: 1
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 最终 Eval 发现 downstream 成功率口径把需要用户补充偏好的基线误判为成功；需要补充基线完成判定并重跑冻结阈值
+      truncated: false
+    completed_at: 2026-08-17T02:43:13.460Z
+  - goal_cycle: 5
+    iteration: 2
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native child declarations changed
+      truncated: false
+    completed_at: 2026-08-17T02:53:05.663Z
 history_overflow:
   dropped_entries: 0
   first_dropped_at: null
