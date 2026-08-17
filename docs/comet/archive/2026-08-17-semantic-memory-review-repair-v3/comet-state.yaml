@@ -1,0 +1,257 @@
+schema: comet.native.v4
+name: semantic-memory-review-repair-v3
+language: zh-CN
+phase: archive
+status: done
+state_version: 13
+brief: brief.md
+spec_changes: []
+workspace:
+  isolation: worktree
+  change_branch: comet/semantic-memory-review-repair-v3-native
+  target_branch: beta20
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 2
+  iteration: 2
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 1
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: CLI、Native、Classic 和 Eval 共享同一条有界记忆评审与证据闭环，且后续任务行为基于真实检索结果。
+    result: passed
+    reason:
+      text: CLI、Native、Classic、任务命令和插件显式操作均进入 review packet/action
+        校验与持久化路径，Native/Classic/Task 传递有界 userEvidence，Eval 下游实际调用 retrieve。
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: 中文配置下自动记忆的标题、理由、正文和标签通过语言校验；显式用户原文可按原语言保留。
+    result: passed
+    reason:
+      text: 自动动作遵守 zh-CN 语言和安全校验，显式用户请求保留直接原文边界。
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: 显式记住立即产生 active 记忆，纠正和忘记复用统一评审入口，永久忘记不会被后续自动流程恢复。
+    result: passed
+    reason:
+      text: remember/correct/forget 共用显式 review 入口；permanent forget 在当前提交 6084e195
+        中持久化 tombstone，删除时间之后的同 identity 自动观察仍被忽略，显式用户操作可主动清除。
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: Eval 真实检索后下游决策成功增量达到冻结阈值，延迟、超时和降级指标均通过。
+    result: passed
+    reason:
+      text: Eval 真实检索并执行下游决策，冻结阈值通过；下游成功增量 100%，延迟约 18.5ms，超时率和降级率均为 0。
+      truncated: false
+builder_handoff:
+  candidate_id: 58d03c68-f30e-4c4d-b6b2-26a3cd07df93
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:2cca742b-4faa-44b4-88fd-0a0e332635be
+  iteration: 2
+  summary:
+    text: v3 repair iteration 2 已完成：永久 forget 写入持久化 tombstone，后续自动 observe 对同一
+      identity 的新证据直接忽略；显式 remember/correct 仍可由用户主动清除 tombstone。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+  checks:
+    - name:
+        text: semantic memory targeted tests
+        truncated: false
+      result: passed
+      note:
+        text: 9 个文件，78 个测试通过，包含永久忘记后两次新观察均被忽略的回归测试
+        truncated: false
+    - name:
+        text: TypeScript
+        truncated: false
+      result: passed
+      note:
+        text: pnpm exec tsc --noEmit
+        truncated: false
+    - name:
+        text: lint and architecture
+        truncated: false
+      result: passed
+      note:
+        text: pnpm lint
+        truncated: false
+    - name:
+        text: build
+        truncated: false
+      result: passed
+      note:
+        text: pnpm build
+        truncated: false
+    - name:
+        text: semantic memory Eval
+        truncated: false
+      result: passed
+      note:
+        text: 阈值通过；下游影响案例 3 个，成功增量 100%，延迟约 18.5ms，无超时和降级
+        truncated: false
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  submitted_at: 2026-08-17T00:49:35.111Z
+blockers: []
+verification:
+  candidate_id: 58d03c68-f30e-4c4d-b6b2-26a3cd07df93
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:61dd7993-47d0-4dbc-86e2-6226a669f579
+  iteration: 2
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: semantic-memory-targeted-tests
+      name:
+        text: semantic memory targeted tests
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: vitest
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/comet-memory/personal-memory.test.ts
+          truncated: false
+        - text: test/domains/comet-memory/review-contract.test.ts
+          truncated: false
+        - text: test/domains/comet-memory/memory-experience.test.ts
+          truncated: false
+        - text: test/domains/comet-plugin/plugin-integration.test.ts
+          truncated: false
+        - text: test/app/personal-memory-command.test.ts
+          truncated: false
+        - text: test/app/native-command.test.ts
+          truncated: false
+        - text: test/app/classic-command.test.ts
+          truncated: false
+        - text: test/app/comet-task-command.test.ts
+          truncated: false
+        - text: test/domains/eval/semantic-memory-eval.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 7176
+    - id: semantic-memory-typecheck
+      name:
+        text: TypeScript noEmit
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: tsc
+          truncated: false
+        - text: --noEmit
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 7079
+    - id: semantic-memory-lint
+      name:
+        text: lint and architecture
+        truncated: false
+      argv_display:
+        - text: lint
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 8893
+    - id: semantic-memory-build
+      name:
+        text: runtime and asset build
+        truncated: false
+      argv_display:
+        - text: build
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 31339
+    - id: semantic-memory-eval
+      name:
+        text: semantic memory Eval
+        truncated: false
+      argv_display:
+        - text: scripts/benchmark/semantic-memory-eval.mjs
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 422
+  summary:
+    text: 当前 HEAD 已包含永久 tombstone 修复；Runtime 相关检查和 semantic-memory Eval 全部通过，A1-A4
+      均满足。
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-08-17T01:01:02.835Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native confirmed acceptance criteria changed
+      truncated: false
+    completed_at: 2026-08-17T00:38:47.221Z
+  - goal_cycle: 2
+    iteration: 1
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A3
+      - A4
+    summary:
+      text: A3 存在可达的用户可见一致性缺陷，需要回到 Build；A1/A2 通过，A4 待下一轮独立验证。
+      truncated: false
+    completed_at: 2026-08-17T00:46:41.458Z
+  - goal_cycle: 2
+    iteration: 2
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 当前 HEAD 已包含永久 tombstone 修复；Runtime 相关检查和 semantic-memory Eval 全部通过，A1-A4
+        均满足。
+      truncated: false
+    completed_at: 2026-08-17T01:01:02.835Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-17T00:33:44.076Z

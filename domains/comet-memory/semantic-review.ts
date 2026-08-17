@@ -79,6 +79,7 @@ function buildExplicitAction(
       action: 'forget',
       language,
       targetId: request.targetId,
+      ...(request.permanent === undefined ? {} : { permanent: request.permanent }),
       reason:
         request.reason ??
         (language === 'en' ? 'Requested directly by the user' : '由用户明确要求忘记'),

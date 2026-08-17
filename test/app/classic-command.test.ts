@@ -175,6 +175,9 @@ describe('Classic command facade', () => {
       expect.objectContaining({ task: '完成服务端改动', path: 'src/server.ts', phase: 'verify' }),
     );
     expect(stderr).toHaveBeenCalledWith(expect.stringContaining('服务端改动必须运行测试'));
+    expect(recordCometWorkflowResult).toHaveBeenCalledWith(
+      expect.objectContaining({ userEvidence: ['完成服务端改动'] }),
+    );
   });
 
   it('records Classic verification using the selected preset family', async () => {

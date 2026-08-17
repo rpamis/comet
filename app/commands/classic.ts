@@ -25,6 +25,7 @@ export async function runClassicFacade(
     result,
     integration.workflow,
     projectRoot,
+    integration.task,
   );
   if (result.exitCode === 0 && integration.ruleAction) {
     await emitCandidates(projectRoot, integration);
@@ -62,6 +63,7 @@ export async function runClassicGroupFacade(args: readonly string[]): Promise<nu
     result,
     integration.workflow,
     integration.projectRoot,
+    integration.task,
   );
   if (result.exitCode === 0 && integration.ruleAction) {
     await emitCandidates(integration.projectRoot, integration);
@@ -77,6 +79,7 @@ async function recordClassicResult(
   result: Awaited<ReturnType<typeof runClassicCli>>,
   workflowOverride?: string,
   projectRoot = process.cwd(),
+  userEvidence?: string,
 ): Promise<void> {
   if (
     result.exitCode !== 0 ||
@@ -97,6 +100,7 @@ async function recordClassicResult(
           : command === 'guard'
             ? 'verification.completed'
             : 'task.completed',
+      ...(userEvidence?.trim() ? { userEvidence: [userEvidence.trim()] } : {}),
     });
   } catch {
     // Plugin learning must never make a workflow command fail.

@@ -66,7 +66,8 @@ export function validateMemoryReviewPacket(
   const createdAt = requiredTimestamp(object.createdAt, 'createdAt');
   const checkpoint = requiredString(object.checkpoint, 'checkpoint');
   const category = optionalString(object.category, 'category');
-  if (category !== undefined) validateLanguageText(category, language, 'category');
+  if (category !== undefined && object.explicitRequest === undefined)
+    validateLanguageText(category, language, 'category');
   const budget = normalizeBudget(object.budget, options);
   const userEvidence = boundedStrings(object.userEvidence, 'userEvidence', 8, true);
   const explicitRequest = normalizeReviewRequest(object.explicitRequest, language);
@@ -105,7 +106,7 @@ export function validateMemoryReviewPacket(
     const evidenceText = optionalString(item.text, `evidence[${index}].text`);
     if (evidenceText !== undefined) validateSafeText(evidenceText, `evidence[${index}].text`);
     const evidenceCategory = optionalString(item.category, `evidence[${index}].category`);
-    if (evidenceCategory !== undefined)
+    if (evidenceCategory !== undefined && object.explicitRequest === undefined)
       validateLanguageText(evidenceCategory, language, `evidence[${index}].category`);
     const evidenceArrays = optionalEvidenceArrays(item, language, index);
     return {
@@ -206,6 +207,14 @@ function normalizeReviewRequest(
     throw new Error('explicitRequest.action is invalid');
   }
   const targetId = optionalString(request.targetId, 'explicitRequest.targetId');
+  const permanent =
+    request.permanent === undefined
+      ? undefined
+      : typeof request.permanent === 'boolean'
+        ? request.permanent
+        : (() => {
+            throw new Error('explicitRequest.permanent is invalid');
+          })();
   const scope =
     request.scope === undefined ? undefined : asScope(request.scope, 'explicitRequest.scope');
   const projectKey = optionalProjectKey(request.projectKey);
@@ -219,17 +228,13 @@ function normalizeReviewRequest(
   const title = optionalString(request.title, 'explicitRequest.title');
   const reason = optionalString(request.reason, 'explicitRequest.reason');
   const text = optionalString(request.text, 'explicitRequest.text');
-  for (const [field, entry] of [
-    ['category', category],
-    ['title', title],
-    ['reason', reason],
-  ] as const) {
-    if (entry !== undefined) validateLanguageText(entry, language, `explicitRequest.${field}`);
-  }
   if (text !== undefined) validateSafeText(text, 'explicitRequest.text');
-  const arrays = normalizeRequestArrays(request, language);
+  const arrays = normalizeRequestArrays(request, language, true);
   if (action === 'remember' && text === undefined) {
     throw new Error('explicitRequest remember requires text');
+  }
+  if (action !== 'forget' && permanent !== undefined) {
+    throw new Error(`explicitRequest ${action} must not set permanent`);
   }
   if (action !== 'remember' && targetId === undefined) {
     throw new Error(`explicitRequest ${action} requires targetId`);
@@ -257,6 +262,7 @@ function normalizeReviewRequest(
   return {
     action,
     ...(targetId === undefined ? {} : { targetId }),
+    ...(permanent === undefined ? {} : { permanent }),
     ...(scope === undefined ? {} : { scope }),
     ...(projectKey === undefined ? {} : { projectKey }),
     ...(category === undefined ? {} : { category }),
@@ -270,6 +276,7 @@ function normalizeReviewRequest(
 function normalizeRequestArrays(
   value: Record<string, unknown>,
   language: MemoryLanguage,
+  skipLanguageValidation = false,
 ): {
   tags?: string[];
   pathPatterns?: string[];
@@ -286,7 +293,7 @@ function normalizeRequestArrays(
     if (value[name] === undefined) continue;
     const entries = boundedStrings(value[name], `explicitRequest.${name}`, 16, false);
     entries.forEach((entry, index) => {
-      if (name === 'tags') {
+      if (name === 'tags' && !skipLanguageValidation) {
         validateLanguageText(entry, language, `explicitRequest.${name}[${index}]`);
       } else {
         validateSafeText(entry, `explicitRequest.${name}[${index}]`);
@@ -374,6 +381,7 @@ export function validateMemoryReviewActions(
         action: 'forget',
         language,
         targetId,
+        ...(typeof action.permanent === 'boolean' ? { permanent: action.permanent } : {}),
         evidenceKeys: actionEvidence,
         ...(reason === undefined ? {} : { reason }),
         ...(title === undefined ? {} : { title }),
@@ -384,8 +392,10 @@ export function validateMemoryReviewActions(
       actionScopes.add(scope);
       const category = requiredString(action.category, `actions[${index}].category`);
       const text = requiredString(action.text, `actions[${index}].text`);
-      validateLanguageText(category, language, `actions[${index}].category`);
-      validateLanguageText(text, language, `actions[${index}].text`);
+      if (packet.explicitRequest === undefined) {
+        validateLanguageText(category, language, `actions[${index}].category`);
+        validateLanguageText(text, language, `actions[${index}].text`);
+      }
       validateActionEvidence(packet, actionEvidence, scope, projectKey, candidateKey, index, true);
       return {
         action: 'create',
@@ -398,7 +408,7 @@ export function validateMemoryReviewActions(
         evidenceKeys: actionEvidence,
         ...(reason === undefined ? {} : { reason }),
         ...(title === undefined ? {} : { title }),
-        ...optionalArrays(action, language, index),
+        ...optionalArrays(action, language, index, packet.explicitRequest !== undefined),
       };
     }
     const targetId = requiredString(action.targetId, `actions[${index}].targetId`);
@@ -412,8 +422,9 @@ export function validateMemoryReviewActions(
     if (text === undefined && category === undefined && !hasArrayUpdate(action)) {
       throw new Error(`actions[${index}] update must change a memory field`);
     }
-    if (text !== undefined) validateLanguageText(text, language, `actions[${index}].text`);
-    if (category !== undefined)
+    if (packet.explicitRequest === undefined && text !== undefined)
+      validateLanguageText(text, language, `actions[${index}].text`);
+    if (packet.explicitRequest === undefined && category !== undefined)
       validateLanguageText(category, language, `actions[${index}].category`);
     validateActionEvidence(
       packet,
@@ -436,7 +447,7 @@ export function validateMemoryReviewActions(
       evidenceKeys: actionEvidence,
       ...(reason === undefined ? {} : { reason }),
       ...(title === undefined ? {} : { title }),
-      ...optionalArrays(action, language, index),
+      ...optionalArrays(action, language, index, packet.explicitRequest !== undefined),
     };
   });
   if (actionScopes.size > 1) {
@@ -492,6 +503,7 @@ function optionalArrays(
   value: Record<string, unknown>,
   language: MemoryLanguage,
   actionIndex: number,
+  skipLanguageValidation = false,
 ): {
   tags?: string[];
   pathPatterns?: string[];
@@ -508,7 +520,7 @@ function optionalArrays(
     if (value[name] === undefined) continue;
     const values = boundedStrings(value[name], name, 16, false);
     values.forEach((entry, index) => {
-      if (name === 'tags') {
+      if (name === 'tags' && !skipLanguageValidation) {
         validateLanguageText(entry, language, `actions[${actionIndex}].tags[${index}]`);
       } else {
         validateSafeText(entry, name);

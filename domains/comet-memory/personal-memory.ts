@@ -189,6 +189,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
         recordId: current.id,
         textHash: normalizedMemoryTextHash(current.text),
         reason: 'user-remove',
+        ...(options.permanent === true ? { permanent: true } : {}),
         removedAt: this.timestamp(),
       });
       await this.persist(state);
@@ -286,7 +287,10 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
       const identity = stored.identity;
       const normalized = stored.normalizedText;
       const tombstone = state.tombstones.find((entry) => entry.identity === identity);
-      if (tombstone !== undefined && stored.observedAt <= tombstone.removedAt) {
+      if (
+        tombstone?.permanent === true ||
+        (tombstone !== undefined && stored.observedAt <= tombstone.removedAt)
+      ) {
         await this.persist(state);
         return {
           deduplicated: false,
@@ -454,6 +458,33 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
       };
     }
     if (action.action === 'create') {
+      if (packet.explicitRequest?.action === 'remember') {
+        const record = await this.remember({
+          scope: action.scope,
+          ...(action.projectKey === undefined ? {} : { projectKey: action.projectKey }),
+          category: action.category,
+          text: action.text,
+          title: action.title,
+          reason: action.reason,
+          tags: action.tags,
+          pathPatterns: action.pathPatterns,
+          taskTypes: action.taskTypes,
+          operations: action.operations,
+          language: action.language,
+          source: { kind: 'user' },
+        });
+        return {
+          action: 'create',
+          persisted: true,
+          observation: {
+            deduplicated: false,
+            ignored: false,
+            candidate: false,
+            activated: true,
+            record,
+          },
+        };
+      }
       const observation = await this.observe({
         scope: action.scope,
         ...(action.projectKey === undefined ? {} : { projectKey: action.projectKey }),
@@ -516,7 +547,9 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
       };
     }
 
-    await this.remove(action.targetId);
+    await this.remove(action.targetId, {
+      permanent: action.permanent === true,
+    });
     return {
       action: 'forget',
       persisted: true,

@@ -7,7 +7,11 @@ describe('semantic memory eval', () => {
     const first = await runSemanticMemoryEval();
     const second = await runSemanticMemoryEval();
 
-    expect(first).toEqual(second);
+    expect(first.provenance).toEqual(second.provenance);
+    expect(first.metrics.treatmentHashes).toEqual(second.metrics.treatmentHashes);
+    expect(first.cases.map((entry) => stableSemantic(entry.semantic))).toEqual(
+      second.cases.map((entry) => stableSemantic(entry.semantic)),
+    );
     expect(first.schema).toBe('comet.semantic-memory.eval.v1');
     expect(first.provenance.skillHash).toMatch(/^sha256:/);
     expect(first.provenance.runtimeHash).toMatch(/^sha256:/);
@@ -36,7 +40,7 @@ describe('semantic memory eval', () => {
     expect(first.metrics.staleResurrectionRate).toBe(0);
     expect(first.metrics.timeoutRate).toBe(0);
     expect(first.metrics.degradationRate).toBe(0);
-    expect(first.metrics.latencyMs).toBeGreaterThanOrEqual(0);
+    expect(first.metrics.latencyMs).toBeGreaterThan(0);
     expect(first.metrics.thresholds).toMatchObject({
       minActionAccuracy: 1,
       maxHarmfulOrNoisySaveRate: 0,
@@ -71,6 +75,17 @@ describe('semantic memory eval', () => {
     expect(
       first.cases.some((entry) => entry.semantic.downstream?.requiresUserCorrection === false),
     ).toBe(true);
+    expect(
+      first.cases
+        .filter((entry) => entry.semantic.downstream !== undefined)
+        .every(
+          (entry) =>
+            (entry.semantic.downstream?.retrievalRecordCount ?? 0) > 0 &&
+            (entry.semantic.downstream?.noMemoryLatencyMs ?? 0) > 0 &&
+            (entry.semantic.downstream?.baselineLatencyMs ?? 0) > 0 &&
+            (entry.semantic.downstream?.semanticLatencyMs ?? 0) > 0,
+        ),
+    ).toBe(true);
     expect(first.markdown).toContain('Semantic Memory Eval');
     expect(first.markdown).toContain('Baseline noise records');
     expect(first.markdown).toContain('No-memory treatment');
@@ -84,3 +99,14 @@ describe('semantic memory eval', () => {
     );
   });
 });
+
+function stableSemantic<T extends { downstream?: Record<string, unknown> }>(semantic: T) {
+  if (semantic.downstream === undefined) return semantic;
+  const {
+    noMemoryLatencyMs: _noMemoryLatencyMs,
+    baselineLatencyMs: _baselineLatencyMs,
+    semanticLatencyMs: _semanticLatencyMs,
+    ...downstream
+  } = semantic.downstream;
+  return { ...semantic, downstream };
+}

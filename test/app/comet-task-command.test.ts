@@ -46,6 +46,7 @@ describe('ordinary Comet task host', () => {
         workflow: 'native',
         changeId: 'change-1',
         command: 'task',
+        userEvidence: ['修复接口'],
       }),
     );
     expect(result.context).toHaveLength(2);

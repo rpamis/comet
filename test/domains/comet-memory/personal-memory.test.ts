@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   FileMemoryRepository,
@@ -258,6 +258,49 @@ describe('PersonalMemoryService', () => {
 
       await memories.remove(record.id, { permanent: true });
       expect(await memories.get(record.id)).toBeNull();
+    });
+  });
+
+  it('keeps permanently forgotten memories from being reactivated by later observations', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const record = await memories.remember({
+        scope: 'project',
+        projectKey: 'project-a',
+        category: '构建',
+        text: '使用 pnpm build',
+      });
+
+      await memories.remove(record.id, { permanent: true });
+
+      const observation = {
+        scope: 'project' as const,
+        projectKey: 'project-a',
+        category: '构建',
+        text: '使用 pnpm build',
+        language: 'zh-CN' as const,
+        workflow: 'native',
+        success: true,
+      };
+      await expect(
+        memories.observe({
+          ...observation,
+          changeId: 'change-after-forget-1',
+          observedAt: '2026-08-15T00:00:00.000Z',
+        }),
+      ).resolves.toMatchObject({ ignored: true, candidate: false, activated: false });
+      await expect(
+        memories.observe({
+          ...observation,
+          changeId: 'change-after-forget-2',
+          observedAt: '2026-08-16T00:00:00.000Z',
+        }),
+      ).resolves.toMatchObject({ ignored: true, candidate: false, activated: false });
+
+      expect(await memories.get(record.id)).toBeNull();
+      expect((await memories.retrieve({ projectKey: 'project-a', task: 'build' })).records).toEqual(
+        [],
+      );
     });
   });
 
@@ -891,8 +934,10 @@ describe('PersonalMemoryService', () => {
 
   it('routes personal memory management actions through the plugin API', async () => {
     await withTempRepository(async (root) => {
+      const memoryService = service(root);
+      const reviewAndApply = vi.spyOn(memoryService, 'reviewAndApply');
       const descriptor = createPersonalMemoryPluginDescriptor({
-        createService: () => service(root),
+        createService: () => memoryService,
       });
       const runtime = new PluginRuntime({
         cometVersion: '1.0.0',
@@ -912,6 +957,13 @@ describe('PersonalMemoryService', () => {
       });
       await runtime.invoke('comet.personal-memory', 'remove', { id: record.id });
       await runtime.invoke('comet.personal-memory', 'rollback', { id: record.id });
+      expect(reviewAndApply).toHaveBeenCalledTimes(3);
+      expect(
+        reviewAndApply.mock.calls.map(
+          ([packet]) =>
+            (packet as { explicitRequest?: { action: string } }).explicitRequest?.action,
+        ),
+      ).toEqual(['remember', 'correct', 'forget']);
       await runtime.invoke('comet.personal-memory', 'set-learning', { enabled: false });
       await runtime.invoke('comet.personal-memory', 'set-retrieval', { enabled: false });
 
