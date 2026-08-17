@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   FileMemoryRepository,
@@ -891,8 +891,10 @@ describe('PersonalMemoryService', () => {
 
   it('routes personal memory management actions through the plugin API', async () => {
     await withTempRepository(async (root) => {
+      const memoryService = service(root);
+      const reviewAndApply = vi.spyOn(memoryService, 'reviewAndApply');
       const descriptor = createPersonalMemoryPluginDescriptor({
-        createService: () => service(root),
+        createService: () => memoryService,
       });
       const runtime = new PluginRuntime({
         cometVersion: '1.0.0',
@@ -912,6 +914,13 @@ describe('PersonalMemoryService', () => {
       });
       await runtime.invoke('comet.personal-memory', 'remove', { id: record.id });
       await runtime.invoke('comet.personal-memory', 'rollback', { id: record.id });
+      expect(reviewAndApply).toHaveBeenCalledTimes(3);
+      expect(
+        reviewAndApply.mock.calls.map(
+          ([packet]) =>
+            (packet as { explicitRequest?: { action: string } }).explicitRequest?.action,
+        ),
+      ).toEqual(['remember', 'correct', 'forget']);
       await runtime.invoke('comet.personal-memory', 'set-learning', { enabled: false });
       await runtime.invoke('comet.personal-memory', 'set-retrieval', { enabled: false });
 

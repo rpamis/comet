@@ -11,7 +11,7 @@ export async function runNativeFacade(args: readonly string[]): Promise<number> 
   const projectRoot = path.resolve(integration.projectRoot ?? process.cwd());
   await emitContext(projectRoot, integration);
   const result = await runNativeCli(integration.cliArgs);
-  await recordNativeResult(integration.cliArgs, result, integration.workflow);
+  await recordNativeResult(integration.cliArgs, result, integration.workflow, integration.task);
   if (result.exitCode === 0 && integration.ruleAction) {
     await emitCandidates(projectRoot, integration);
   }
@@ -25,6 +25,7 @@ async function recordNativeResult(
   args: readonly string[],
   result: Awaited<ReturnType<typeof runNativeCli>>,
   workflowOverride?: string,
+  userEvidence?: string,
 ): Promise<void> {
   if (result.exitCode !== 0) return;
   const command = args.find((value) => ['next', 'archive', 'handoff', 'check'].includes(value));
@@ -50,6 +51,7 @@ async function recordNativeResult(
           : command === 'check' || args.includes('--result')
             ? 'verification.completed'
             : 'task.completed',
+      ...(userEvidence?.trim() ? { userEvidence: [userEvidence.trim()] } : {}),
     });
   } catch {
     // Plugin learning must never make a workflow command fail.

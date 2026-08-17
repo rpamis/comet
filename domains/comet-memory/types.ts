@@ -214,6 +214,7 @@ export type MemoryReviewRequestAction = 'remember' | 'correct' | 'forget';
 export interface MemoryReviewRequest {
   readonly action: MemoryReviewRequestAction;
   readonly targetId?: string;
+  readonly permanent?: boolean;
   readonly scope?: MemoryScope;
   readonly projectKey?: string;
   readonly category?: string;
@@ -309,6 +310,7 @@ export interface MemoryReviewUpdateAction extends MemoryReviewActionBase {
 export interface MemoryReviewForgetAction extends MemoryReviewActionBase {
   readonly action: 'forget';
   readonly targetId: string;
+  readonly permanent?: boolean;
 }
 
 export interface MemoryReviewSkipAction extends MemoryReviewActionBase {
@@ -402,6 +404,7 @@ export interface PersonalMemoryPluginOptions {
 }
 
 export interface PersonalMemoryServiceLike {
+  get(id: string): Promise<MemoryRecord | null>;
   remember(input: MemoryInput): Promise<MemoryRecord>;
   correct(id: string, correction: MemoryCorrection): Promise<MemoryRecord>;
   remove(id: string, options?: { readonly permanent?: boolean }): Promise<void>;

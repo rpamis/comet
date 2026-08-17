@@ -38,6 +38,7 @@ export async function recordCometWorkflowResult(options: {
   readonly success: boolean;
   readonly summary?: string;
   readonly eventName?: CometLifecycleObservation['name'];
+  readonly userEvidence?: readonly string[];
 }): Promise<void> {
   if (!options.changeId.trim()) return;
   try {
@@ -57,6 +58,9 @@ export async function recordCometWorkflowResult(options: {
       text: text.slice(0, 1000),
       candidateKey: `${options.workflow}:${options.command}`,
       operations: [options.command],
+      ...(options.userEvidence === undefined || options.userEvidence.length === 0
+        ? {}
+        : { userEvidence: options.userEvidence.slice(0, 8) }),
     });
   } catch {
     // Memory learning is optional and must never block a workflow checkpoint.

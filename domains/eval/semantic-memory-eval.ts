@@ -11,6 +11,7 @@ import {
   type MemoryGitSync,
   type MemoryObservation,
   type MemoryObservationResult,
+  type MemoryQuery,
   type MemoryRuntimeState,
 } from '../comet-memory/index.js';
 import { createPersonalMemoryPluginDescriptor } from '../comet-memory/index.js';
@@ -109,6 +110,10 @@ interface SemanticResult {
     readonly noMemoryContextBytes: number;
     readonly baselineContextBytes: number;
     readonly contextBytes: number;
+    readonly retrievalRecordCount: number;
+    readonly noMemoryLatencyMs: number;
+    readonly baselineLatencyMs: number;
+    readonly semanticLatencyMs: number;
   };
 }
 
@@ -433,12 +438,14 @@ export async function runSemanticMemoryEval(): Promise<SemanticMemoryEvalReport>
   const timeoutRate = ratio(treatments, (entry) => entry.timeout);
   const degradationRate = ratio(treatments, (entry) => entry.degraded);
   const treatmentHashes = {
-    noMemory: hashText(JSON.stringify(results.map((entry) => entry.treatments.noMemory))),
+    noMemory: hashText(
+      JSON.stringify(results.map((entry) => stableTreatment(entry.treatments.noMemory))),
+    ),
     currentObserve: hashText(
-      JSON.stringify(results.map((entry) => entry.treatments.currentObserve)),
+      JSON.stringify(results.map((entry) => stableTreatment(entry.treatments.currentObserve))),
     ),
     semanticReview: hashText(
-      JSON.stringify(results.map((entry) => entry.treatments.semanticReview)),
+      JSON.stringify(results.map((entry) => stableTreatment(entry.treatments.semanticReview))),
     ),
   };
   const provenance = {
@@ -780,22 +787,61 @@ function commandSummaryBaseline(completedCheckpoints: number): BaselineResult {
   };
 }
 
-function runDownstreamTask(
-  memoryText: string,
+async function runDownstreamTask(
+  service: PersonalMemoryService,
+  query: MemoryQuery,
+  expectedText: string,
   baseline: BaselineResult,
-): NonNullable<SemanticResult['downstream']> {
-  const noMemoryAction = 'ask the user for the reusable preference';
-  const semanticAction = memoryText;
+): Promise<NonNullable<SemanticResult['downstream']>> {
+  const noMemory = decideFollowUp('', expectedText);
+  const baselineDecision = decideFollowUp(
+    baseline.downstreamAction ?? 'repeat command summary as task guidance',
+    expectedText,
+  );
+  const semanticStarted = performance.now();
+  const retrieval = await service.retrieve(query);
+  const semanticDecision = decideFollowUp(retrieval.text, expectedText, semanticStarted);
   return {
-    noMemoryAction,
+    noMemoryAction: noMemory.action,
     baselineAction: baseline.downstreamAction ?? 'repeat command summary as task guidance',
-    semanticAction,
-    semanticCorrect: semanticAction.length > 0,
-    wrongSuggestion: false,
-    requiresUserCorrection: false,
-    noMemoryContextBytes: Buffer.byteLength(noMemoryAction, 'utf8'),
+    semanticAction: semanticDecision.action,
+    semanticCorrect: semanticDecision.correct,
+    wrongSuggestion: semanticDecision.wrongSuggestion,
+    requiresUserCorrection: !semanticDecision.correct,
+    noMemoryContextBytes: noMemory.contextBytes,
     baselineContextBytes: baseline.downstreamContextBytes ?? 0,
-    contextBytes: Buffer.byteLength(semanticAction, 'utf8'),
+    contextBytes: semanticDecision.contextBytes,
+    retrievalRecordCount: retrieval.records.length,
+    noMemoryLatencyMs: noMemory.latencyMs,
+    baselineLatencyMs: baselineDecision.latencyMs,
+    semanticLatencyMs: semanticDecision.latencyMs,
+  };
+}
+
+function decideFollowUp(
+  context: string,
+  expectedText: string,
+  startedAt = performance.now(),
+): {
+  readonly action: string;
+  readonly correct: boolean;
+  readonly wrongSuggestion: boolean;
+  readonly contextBytes: number;
+  readonly latencyMs: number;
+} {
+  const trimmedContext = context.trim();
+  const correct = expectedText.length > 0 && trimmedContext.includes(expectedText);
+  const action = correct
+    ? `apply reusable preference: ${expectedText}`
+    : trimmedContext.length > 0
+      ? `follow supplied context: ${trimmedContext}`
+      : 'ask the user for the reusable preference';
+  return {
+    action,
+    correct,
+    wrongSuggestion: trimmedContext.length > 0 && !correct,
+    contextBytes: Buffer.byteLength(context, 'utf8'),
+    latencyMs: elapsedMilliseconds(startedAt),
   };
 }
 
@@ -858,15 +904,15 @@ function buildTreatments(
   semantic: SemanticResult,
   input: EvalInputSummary,
 ): SemanticMemoryEvalCase['treatments'] {
-  const noMemoryStarted = performance.now();
   const noMemoryAction = semantic.downstream?.noMemoryAction ?? '不注入记忆，请用户说明偏好';
-  const noMemoryLatencyMs = elapsedMilliseconds(noMemoryStarted);
-  const currentStarted = performance.now();
+  const noMemoryLatencyMs =
+    semantic.downstream?.noMemoryLatencyMs ?? elapsedMilliseconds(performance.now());
   const currentAction = baseline.downstreamAction ?? 'repeat command summary as task guidance';
-  const currentLatencyMs = elapsedMilliseconds(currentStarted);
-  const semanticStarted = performance.now();
+  const currentLatencyMs =
+    semantic.downstream?.baselineLatencyMs ?? elapsedMilliseconds(performance.now());
   const semanticAction = semantic.downstream?.semanticAction ?? semantic.actualAction ?? 'skip';
-  const semanticLatencyMs = elapsedMilliseconds(semanticStarted);
+  const semanticLatencyMs =
+    semantic.downstream?.semanticLatencyMs ?? elapsedMilliseconds(performance.now());
   return {
     noMemory: {
       name: 'no-memory',
@@ -915,8 +961,16 @@ function buildTreatments(
   };
 }
 
+function stableTreatment(
+  treatment: SemanticMemoryEvalTreatment,
+): Omit<SemanticMemoryEvalTreatment, 'latencyMs'> {
+  return Object.fromEntries(
+    Object.entries(treatment).filter(([key]) => key !== 'latencyMs'),
+  ) as Omit<SemanticMemoryEvalTreatment, 'latencyMs'>;
+}
+
 function elapsedMilliseconds(startedAt: number): number {
-  return Math.floor(Math.max(0, performance.now() - startedAt));
+  return Math.max(0.001, performance.now() - startedAt);
 }
 
 function ratio<T>(entries: readonly T[], predicate: (entry: T) => boolean): number {
@@ -1096,7 +1150,16 @@ async function runUsefulCase(
       firstCandidate: first.candidate,
       secondActivated: second.activated,
       downstreamImproved: second.activated && record?.text === text,
-      downstream: runDownstreamTask(text, commandSummaryBaseline(2)),
+      downstream: await runDownstreamTask(
+        service,
+        {
+          scope: 'project',
+          projectKey: `eval-${language}-${workflow}`,
+          task: 'staging',
+        },
+        text,
+        commandSummaryBaseline(2),
+      ),
     };
   });
 }
@@ -1505,7 +1568,12 @@ async function runGlobalEvidenceCase(): Promise<SemanticResult> {
       pauseCorrect: true,
       syncFallback: true,
       downstreamImproved: second.activated && record?.text === base.text,
-      downstream: runDownstreamTask(base.text, commandSummaryBaseline(2)),
+      downstream: await runDownstreamTask(
+        service,
+        { scope: 'global', task: 'communication' },
+        base.text,
+        commandSummaryBaseline(2),
+      ),
     };
   });
 }

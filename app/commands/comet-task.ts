@@ -50,6 +50,7 @@ export async function cometTaskCommand(
       success: true,
       summary: options.task,
       eventName: 'task.completed',
+      userEvidence: [options.task],
     });
     try {
       if (options.action) {

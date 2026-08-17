@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import type {
   PluginContext,
   PluginDescriptor,
@@ -6,6 +8,8 @@ import type {
 } from '../comet-plugin/index.js';
 import type {
   MemoryInput,
+  MemoryCorrection,
+  MemoryRecord,
   MemoryQuery,
   MemoryObservation,
   MemoryReviewPacket,
@@ -113,16 +117,37 @@ async function invokeCapability(
 ): Promise<unknown> {
   switch (capability) {
     case 'remember':
-      return service.remember(asRecord<MemoryInput>(input, 'remember'));
+      return reviewExplicitMemoryRequest(
+        service,
+        {
+          action: 'remember',
+          input: asRecord<MemoryInput>(input, 'remember'),
+        },
+        language,
+      );
     case 'correct': {
       const value = asObject(input, 'correct');
-      return service.correct(asString(value.id, 'correct.id'), value.correction as never);
+      return reviewExplicitMemoryRequest(
+        service,
+        {
+          action: 'correct',
+          id: asString(value.id, 'correct.id'),
+          correction: value.correction as never,
+        },
+        language,
+      );
     }
     case 'remove': {
       const value = asObject(input, 'remove');
-      return service.remove(asString(value.id, 'remove.id'), {
-        permanent: value.permanent === true,
-      });
+      return reviewExplicitMemoryRequest(
+        service,
+        {
+          action: 'forget',
+          id: asString(value.id, 'remove.id'),
+          permanent: value.permanent === true,
+        },
+        language,
+      );
     }
     case 'rollback': {
       const value = asObject(input, 'rollback');
@@ -177,6 +202,91 @@ async function invokeCapability(
     default:
       throw new Error(`Unknown personal memory capability: ${capability}`);
   }
+}
+
+async function reviewExplicitMemoryRequest(
+  service: PersonalMemoryServiceLike,
+  input:
+    | { readonly action: 'remember'; readonly input: MemoryInput }
+    | { readonly action: 'correct'; readonly id: string; readonly correction: MemoryCorrection }
+    | { readonly action: 'forget'; readonly id: string; readonly permanent: boolean },
+  language: 'zh-CN' | 'en' | undefined,
+): Promise<MemoryRecord | null | void> {
+  const target = input.action === 'remember' ? null : await service.get(input.id);
+  const request =
+    input.action === 'remember'
+      ? {
+          action: 'remember' as const,
+          scope: input.input.scope,
+          ...(input.input.projectKey === undefined ? {} : { projectKey: input.input.projectKey }),
+          ...(input.input.category === undefined ? {} : { category: input.input.category }),
+          ...(input.input.title === undefined ? {} : { title: input.input.title }),
+          ...(input.input.reason === undefined ? {} : { reason: input.input.reason }),
+          text: input.input.text,
+          ...(input.input.tags === undefined ? {} : { tags: input.input.tags }),
+          ...(input.input.pathPatterns === undefined
+            ? {}
+            : { pathPatterns: input.input.pathPatterns }),
+          ...(input.input.taskTypes === undefined ? {} : { taskTypes: input.input.taskTypes }),
+          ...(input.input.operations === undefined ? {} : { operations: input.input.operations }),
+        }
+      : input.action === 'correct'
+        ? {
+            action: 'correct' as const,
+            targetId: input.id,
+            ...(input.correction.text === undefined ? {} : { text: input.correction.text }),
+            ...(input.correction.category === undefined
+              ? {}
+              : { category: input.correction.category }),
+            ...(input.correction.title === undefined ? {} : { title: input.correction.title }),
+            ...(input.correction.reason === undefined ? {} : { reason: input.correction.reason }),
+            ...(input.correction.tags === undefined ? {} : { tags: input.correction.tags }),
+            ...(input.correction.pathPatterns === undefined
+              ? {}
+              : { pathPatterns: input.correction.pathPatterns }),
+            ...(input.correction.taskTypes === undefined
+              ? {}
+              : { taskTypes: input.correction.taskTypes }),
+            ...(input.correction.operations === undefined
+              ? {}
+              : { operations: input.correction.operations }),
+          }
+        : { action: 'forget' as const, targetId: input.id, permanent: input.permanent };
+  const scope =
+    target?.scope ?? (input.action === 'remember' ? input.input.scope : undefined) ?? 'project';
+  const projectKey =
+    scope === 'project'
+      ? (target?.projectKey ?? (input.action === 'remember' ? input.input.projectKey : undefined))
+      : undefined;
+  const category =
+    (input.action === 'remember' ? input.input.category : target?.category) ??
+    (language === 'en' ? 'Reusable preference' : '可复用偏好');
+  const text =
+    (input.action === 'remember'
+      ? input.input.text
+      : input.action === 'correct'
+        ? input.correction.text
+        : target?.text) ??
+    (language === 'en' ? 'Explicit personal memory request' : '用户明确的个人记忆操作');
+  const observation: MemoryObservation = {
+    scope,
+    ...(projectKey === undefined ? {} : { projectKey }),
+    projectIdentity: projectKey ?? 'comet-project',
+    category,
+    text,
+    language: input.action === 'remember' ? (input.input.language ?? language) : language,
+    workflow: 'cli',
+    changeId: `cli:${input.action}:${randomUUID()}`,
+    candidateKey: `cli:${input.action}`,
+    success: true,
+    userEvidence: [text],
+    explicitRequest: request,
+    source: { kind: 'user' },
+  };
+  const packet = await reviewPacketFromObservation(service, observation, 'memory.cli', language);
+  const result = await service.reviewAndApply(packet, reviewMemoryPacket(packet));
+  if (input.action === 'remember') return result.observation?.record ?? null;
+  if (input.action === 'correct') return await service.get(input.id);
 }
 
 function observationFromEvent(event: PluginEvent): MemoryObservation | null {
