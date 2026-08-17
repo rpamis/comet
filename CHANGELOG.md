@@ -2,7 +2,7 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.4.0-beta.21] - 2026-08-17
+## What's Changed [0.4.0-beta.20] - 2026-08-17
 
 ### Added
 
@@ -12,8 +12,6 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Changed
 
 - **Personal memory experience**: CLI, Dashboard, readable Markdown, and dedicated Git synchronization now share one authoritative memory state with localized output, explicit correction/forget/rollback controls, conflict protection, and non-blocking background failures.
-
-## What's Changed [0.4.0-beta.20] - 2026-08-15
 
 ### Changed
 
