@@ -11,8 +11,10 @@ export async function collectCometPluginContext(
   projectRoot: string,
   request: CometPluginContextRequest,
 ): Promise<readonly { readonly pluginId: string; readonly text: string }[]> {
-  const bridge = await createBridge(projectRoot);
+  const notices: string[] = [];
+  const bridge = await createBridge(projectRoot, (notice) => notices.push(notice));
   const contributions = await bridge.collectContext(request);
+  for (const notice of notices) process.stderr.write(`${notice}\n`);
   return contributions.map(({ pluginId, text }) => ({ pluginId: String(pluginId), text }));
 }
 
@@ -42,7 +44,8 @@ export async function recordCometWorkflowResult(options: {
 }): Promise<void> {
   if (!options.changeId.trim()) return;
   try {
-    const bridge = await createBridge(options.projectRoot);
+    const notices: string[] = [];
+    const bridge = await createBridge(options.projectRoot, (notice) => notices.push(notice));
     const language = bridge.currentLanguage;
     const text =
       options.summary?.trim() ||
@@ -62,15 +65,17 @@ export async function recordCometWorkflowResult(options: {
         ? {}
         : { userEvidence: options.userEvidence.slice(0, 8) }),
     });
+    for (const notice of notices) console.log(notice);
   } catch {
     // Memory learning is optional and must never block a workflow checkpoint.
   }
 }
 
-async function createBridge(projectRoot: string) {
+async function createBridge(projectRoot: string, onMemoryReviewNotice?: (notice: string) => void) {
   const resolved = path.resolve(projectRoot);
   return createDefaultCometPluginBridge({
     projectRoot: resolved,
     projectId: resolveStableProjectId(resolved),
+    ...(onMemoryReviewNotice === undefined ? {} : { onMemoryReviewNotice }),
   });
 }

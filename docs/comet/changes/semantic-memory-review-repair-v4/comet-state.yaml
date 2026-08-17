@@ -1,0 +1,91 @@
+schema: comet.native.v4
+name: semantic-memory-review-repair-v4
+language: zh-CN
+phase: archive
+status: done
+state_version: 6
+brief: brief.md
+spec_changes: []
+workspace:
+  isolation: worktree
+  change_branch: comet/semantic-memory-review-repair-v4
+  target_branch: beta20
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 0
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A4
+    source: brief.md
+    text: 一次性任务、命令摘要和测试摘要不形成自动长期记忆。
+    result: passed
+    reason:
+      text: Skill 评审路径增加一次性请求和非复用类别判断，并由 review-contract 回归测试覆盖。
+      truncated: false
+  - id: A17
+    source: brief.md
+    text: 生产插件通过独立 comet-memory Skill 调用边界运行评审，失败安全跳过。
+    result: passed
+    reason:
+      text: Personal Memory plugin 通过 MemoryReviewSkillRunner/invokeMemoryReviewSkill 调用，宿主 runner 和失败降级均有集成测试。
+      truncated: false
+  - id: A36
+    source: brief.md
+    text: zh-CN 自动记忆允许技术专有名词混排，用户可见自动字段仍使用中文。
+    result: passed
+    reason:
+      text: Dashboard、Ant Design 等技术名词通过 token-aware 校验，英文自然语言仍被拒绝。
+      truncated: false
+  - id: A18
+    source: brief.md
+    text: Eval 的 current-observe treatment 使用真实同任务 Runtime、持久化和检索结果。
+    result: passed
+    reason:
+      text: 每个案例在隔离 Personal Memory Runtime 中执行真实 observe/retrieve，并把真实结果用于 treatment 和下游比较。
+      truncated: false
+  - id: A23
+    source: brief.md
+    text: 首次实际复用和冲突通知可被 Workflow 与 Dashboard 消费。
+    result: passed
+    reason:
+      text: 插件通知队列接入 Entry Workflow callback 和 Dashboard 个人记忆页面，避免在候选形成时打扰用户。
+      truncated: false
+builder_handoff:
+  candidate_id: 7a41d75e-6b34-4aa7-8c89-2f52d3c6d0a4
+  identity_provider: skill-coordinated
+  iteration: 1
+  summary:
+    text: v4 修复一次性误记忆、Skill 调用边界、中文技术名词校验、真实 Eval treatment 和实际复用通知。
+    truncated: false
+  addressed_acceptance_ids: [A4, A17, A18, A23, A36]
+  checks:
+    - name: semantic-memory-related-tests
+      result: passed
+      note: 相关记忆、插件、Entry、Eval 测试通过。
+    - name: typescript
+      result: passed
+      note: tsc --noEmit
+    - name: lint
+      result: passed
+      note: ESLint and architecture lint
+    - name: dashboard-build
+      result: passed
+      note: Vite production build
+  checks_truncated: false
+  known_limits:
+    - parent final Verify still needs the full Vitest suite and repository build
+  known_limits_truncated: false
+  submitted_at: 2026-08-17T02:10:00.000Z
+blockers: []
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-17T02:00:00.000Z

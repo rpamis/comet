@@ -682,15 +682,51 @@ function validateLanguageText(value: string, language: MemoryLanguage, field: st
   validateSafeText(value, field);
   const hasHan = /\p{Script=Han}/u.test(value);
   const hasLatin = /[A-Za-z]/u.test(value);
+  const mixedTechnical = hasHan && hasLatin && containsTechnicalLatinTokens(value);
   const machineLike =
     /[`/\\]|\b(?:git|npm|pnpm|yarn|node|comet)\b|\.(?:ts|js|json|md|yaml)\b/iu.test(value) ||
     /\b[A-Z][A-Z0-9_-]{1,}\b/u.test(value);
-  if (language === 'zh-CN' && hasLatin && !machineLike) {
+  if (language === 'zh-CN' && hasLatin && !machineLike && !mixedTechnical) {
     throw new Error(`${field} does not match zh-CN review language`);
   }
   if (language === 'en' && hasHan && !machineLike) {
     throw new Error(`${field} does not match en review language`);
   }
+}
+
+const COMMON_TECHNICAL_TOKENS = new Set([
+  'Ant',
+  'API',
+  'CSS',
+  'Classic',
+  'Comet',
+  'Dashboard',
+  'Design',
+  'GitHub',
+  'HTML',
+  'JavaScript',
+  'Native',
+  'React',
+  'Tailwind',
+  'TypeScript',
+  'UI',
+  'URL',
+  'Vue',
+  'hooks',
+  'component',
+  'components',
+  'frontend',
+  'backend',
+]);
+
+function containsTechnicalLatinTokens(value: string): boolean {
+  const tokens = value.match(/[A-Za-z][A-Za-z0-9+.#-]*/gu) ?? [];
+  return (
+    tokens.length > 0 &&
+    tokens.every(
+      (token) => COMMON_TECHNICAL_TOKENS.has(token) || /^[A-Z]{2,}[0-9A-Z+.#-]*$/u.test(token),
+    )
+  );
 }
 
 function validateSafeText(value: string, field: string): void {

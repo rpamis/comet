@@ -445,6 +445,91 @@ describe('semantic memory review contract', () => {
     ).toThrow('language');
   });
 
+  it('allows Chinese memory text with technical proper nouns but rejects English prose', () => {
+    const technical = validateMemoryReviewPacket(
+      packet({
+        userEvidence: ['Dashboard 使用 Ant Design'],
+        evidence: [
+          {
+            ...packet().evidence[0],
+            text: 'Dashboard 使用 Ant Design',
+          },
+        ],
+      }),
+    );
+    expect(
+      validateMemoryReviewActions(
+        technical,
+        actionSet([
+          {
+            action: 'create',
+            language: 'zh-CN',
+            scope: 'project',
+            projectKey: 'project-a',
+            category: '界面偏好',
+            text: 'Dashboard 使用 Ant Design',
+            title: '界面实现偏好',
+            reason: '后续 Dashboard 任务可以复用',
+            evidenceKeys: ['candidate:staging:change-1'],
+          },
+        ]),
+      ).actions[0],
+    ).toMatchObject({ text: 'Dashboard 使用 Ant Design' });
+
+    expect(() =>
+      validateMemoryReviewActions(
+        validateMemoryReviewPacket(packet()),
+        actionSet([
+          {
+            action: 'create',
+            language: 'zh-CN',
+            scope: 'project',
+            projectKey: 'project-a',
+            category: '界面偏好',
+            text: 'Use English responses',
+            evidenceKeys: ['candidate:staging:change-1'],
+          },
+        ]),
+      ),
+    ).toThrow('language');
+  });
+
+  it('skips a one-time user task even when its evidence is present', () => {
+    const actions = reviewMemoryPacket(
+      packet({
+        category: '用户请求',
+        userEvidence: ['请帮我修复登录页面样式'],
+        evidence: [
+          {
+            ...packet().evidence[0],
+            text: '请帮我修复登录页面样式',
+            category: '用户请求',
+          },
+        ],
+      }),
+    );
+    expect(actions.actions).toEqual([
+      expect.objectContaining({ action: 'skip', language: 'zh-CN' }),
+    ]);
+
+    const currentTaskActions = reviewMemoryPacket(
+      packet({
+        category: '用户请求',
+        userEvidence: ['请帮我完成当前任务'],
+        evidence: [
+          {
+            ...packet().evidence[0],
+            text: '请帮我完成当前任务',
+            category: '用户请求',
+          },
+        ],
+      }),
+    );
+    expect(currentTaskActions.actions).toEqual([
+      expect.objectContaining({ action: 'skip', language: 'zh-CN' }),
+    ]);
+  });
+
   it('rejects an action set that mixes global and project scopes', () => {
     const validated = validateMemoryReviewPacket(
       packet({

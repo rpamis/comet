@@ -8,6 +8,9 @@ import {
 const NON_REUSABLE_TEXT =
   /(?:完成命令检查点|完成工作流检查点|本次请求|one-time request|test checkpoint|command checkpoint|(?:workflow|command|task|change)\s+(?:checkpoint\s+)?completed)/iu;
 
+const ONE_TIME_REQUEST =
+  /^(?:请(?:帮我)?|帮我|修复|实现|处理|解决).{0,120}(?:页面|样式|问题|bug|错误|命令|测试|提交|检查|本次|此次|这个|当前|文件|任务)$/iu;
+
 const INJECTION_OR_ARTIFACT =
   /(?:password|secret|token|api[_ -]?key|bearer|ignore previous|system prompt|private key|密码|密钥|令牌|忽略之前|系统提示)/iu;
 
@@ -20,9 +23,10 @@ export function reviewMemoryPacket(value: unknown): MemoryReviewActionSet {
     });
   }
   if (
-    packet.userEvidence.length === 0 &&
-    packet.category !== undefined &&
-    isNonReusableCategory(packet.category)
+    (packet.category !== undefined && isNonReusableCategory(packet.category)) ||
+    packet.userEvidence.some((entry) => isNonReusableText(entry)) ||
+    (packet.userEvidence.length === 0 &&
+      packet.evidence.some((entry) => entry.text !== undefined && isNonReusableText(entry.text)))
   ) {
     return validateMemoryReviewActions(packet, {
       schema: 'comet.memory.actions.v1',
@@ -140,6 +144,10 @@ function isNonReusableCategory(category: string): boolean {
     '日志',
     '输出',
     '安全',
+    '用户请求',
+    '一次性请求',
+    '一次性选择',
+    '任务请求',
     '工作流检查点',
     'checkpoint',
     'workflow checkpoint',
@@ -214,7 +222,7 @@ function firstUsefulText(
   ];
   for (const candidate of candidates) {
     const text = candidate.trim();
-    if (text.length < 4 || NON_REUSABLE_TEXT.test(text)) continue;
+    if (text.length < 4 || isNonReusableText(text)) continue;
     try {
       validateSafeMemoryText(text);
     } catch {
@@ -223,6 +231,10 @@ function firstUsefulText(
     return text;
   }
   return undefined;
+}
+
+function isNonReusableText(text: string): boolean {
+  return NON_REUSABLE_TEXT.test(text) || ONE_TIME_REQUEST.test(text.trim());
 }
 
 function skip(packet: MemoryReviewPacket, reason: string): Record<string, unknown> {

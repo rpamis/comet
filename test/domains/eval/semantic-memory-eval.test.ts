@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { runSemanticMemoryEval } from '../../../domains/eval/semantic-memory-eval.js';
 
 describe('semantic memory eval', () => {
-  it('compares the deterministic command-summary baseline with semantic memory', async () => {
+  it('compares the real current-observe baseline with semantic memory', async () => {
     const first = await runSemanticMemoryEval();
     const second = await runSemanticMemoryEval();
 
@@ -66,7 +66,7 @@ describe('semantic memory eval', () => {
           entry.persistenceDiff !== undefined &&
           entry.judge.mode === 'frozen-rubric-deterministic-judge' &&
           entry.scoringEvidence.length > 0 &&
-          entry.baseline.model === 'command-summary-v0' &&
+          entry.baseline.model === 'current-observe-runtime-v1' &&
           entry.baseline.actualAction === 'record-command-summary',
       ),
     ).toBe(true);

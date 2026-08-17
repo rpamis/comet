@@ -330,6 +330,11 @@ export interface MemoryReviewActionSet {
   readonly actions: readonly MemoryReviewAction[];
 }
 
+/** Host adapter for invoking the installed comet-memory Skill. */
+export type MemoryReviewSkillRunner = (
+  packet: MemoryReviewPacket,
+) => MemoryReviewActionSet | Promise<MemoryReviewActionSet>;
+
 export interface MemoryReviewResult {
   readonly action: MemoryReviewActionKind;
   readonly persisted: boolean;
@@ -401,6 +406,8 @@ export interface PersonalMemoryPluginOptions {
   readonly version?: string;
   readonly cometVersionRange?: (cometVersion: string) => boolean;
   readonly runReviewInBackground?: (task: () => Promise<void>) => void | Promise<void>;
+  readonly runMemoryReview?: MemoryReviewSkillRunner;
+  readonly onReviewNotice?: (notice: string) => void | Promise<void>;
   readonly createService: (context: PluginContext) => PersonalMemoryServiceLike;
 }
 

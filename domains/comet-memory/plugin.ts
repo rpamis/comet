@@ -13,11 +13,12 @@ import type {
   MemoryQuery,
   MemoryObservation,
   MemoryReviewPacket,
+  MemoryReviewResult,
   MemoryReviewRequest,
   PersonalMemoryPluginOptions,
   PersonalMemoryServiceLike,
 } from './types.js';
-import { reviewMemoryPacket } from './semantic-review.js';
+import { invokeMemoryReviewSkill } from './skill-runtime.js';
 
 export const PERSONAL_MEMORY_PLUGIN_ID = 'comet.personal-memory';
 
@@ -39,6 +40,91 @@ async function createModule(
   options: PersonalMemoryPluginOptions,
 ): Promise<PluginModule> {
   const service = options.createService(context);
+  const reviewNotices: string[] = [];
+  const announcedConflicts = new Set<string>();
+  const announcedRetrievals = new Set<string>();
+
+  const notify = async (message: string): Promise<void> => {
+    if (reviewNotices.length >= 8) reviewNotices.shift();
+    reviewNotices.push(message);
+    try {
+      await options.onReviewNotice?.(message);
+    } catch {
+      // Notice delivery is optional and must never affect the workflow.
+    }
+  };
+
+  const applyReview = async (packet: MemoryReviewPacket): Promise<MemoryReviewResult> => {
+    let result: MemoryReviewResult;
+    try {
+      const actions = await invokeMemoryReviewSkill(packet, options.runMemoryReview);
+      result = await service.reviewAndApply(packet, actions);
+    } catch {
+      return {
+        action: 'skip',
+        persisted: false,
+        reason:
+          packet.language === 'en'
+            ? 'Memory review was unavailable.'
+            : '记忆评审暂不可用，已跳过。',
+      };
+    }
+
+    const explicitAction = packet.explicitRequest?.action;
+    if (explicitAction !== undefined && result.persisted) {
+      await notify(
+        packet.language === 'en'
+          ? explicitAction === 'remember'
+            ? 'Personal memory saved.'
+            : explicitAction === 'correct'
+              ? 'Personal memory updated.'
+              : 'Personal memory forgotten.'
+          : explicitAction === 'remember'
+            ? '个人记忆已保存。'
+            : explicitAction === 'correct'
+              ? '个人记忆已更新。'
+              : '个人记忆已忘记。',
+      );
+    }
+
+    if (explicitAction === undefined && reviewHasCandidate(result)) {
+      try {
+        const management = await service.manage(
+          packet.projectKey === undefined
+            ? { scope: 'global' }
+            : { scope: 'project', projectKey: packet.projectKey },
+        );
+        for (const conflict of management.conflicts) {
+          const key = `${conflict.updatedAt}:${conflict.texts.join('\u0000')}`;
+          if (announcedConflicts.has(key)) continue;
+          announcedConflicts.add(key);
+          await notify(
+            packet.language === 'en'
+              ? 'Conflicting memory evidence needs your review.'
+              : '发现相互冲突的记忆证据，请在记忆管理中确认。',
+          );
+        }
+      } catch {
+        // Conflict inspection is advisory; persistence has already completed.
+      }
+    }
+    return result;
+  };
+
+  const retrieveWithNotice = async (query: MemoryQuery) => {
+    const retrieval = await service.retrieve(query);
+    const firstUse = retrieval.records.some((record) => !announcedRetrievals.has(record.id));
+    retrieval.records.forEach((record) => announcedRetrievals.add(record.id));
+    if (firstUse) {
+      await notify(
+        options.language === 'en'
+          ? 'A saved preference was applied to this task.'
+          : '这次任务已应用一条已保存的协作偏好。',
+      );
+    }
+    return retrieval;
+  };
+
   return {
     events: [
       'change.completed',
@@ -70,6 +156,7 @@ async function createModule(
           'pause-project-learning',
           'pause-project-retrieval',
         ],
+        notifications: reviewNotices.splice(0),
       }),
     },
     onEvent: async (event) => {
@@ -82,7 +169,7 @@ async function createModule(
             event.name,
             options.language,
           );
-          await service.reviewAndApply(packet, reviewMemoryPacket(packet));
+          await applyReview(packet);
         };
         if (options.runReviewInBackground !== undefined) {
           try {
@@ -96,7 +183,7 @@ async function createModule(
       }
     },
     provideContext: async (request) => {
-      const retrieval = await service.retrieve({
+      const retrieval = await retrieveWithNotice({
         projectKey: request.projectId ?? context.projectId,
         task: request.task,
         path: request.path,
@@ -105,7 +192,14 @@ async function createModule(
       return { text: retrieval.text, records: retrieval.records };
     },
     invoke: async (capability, input) =>
-      invokeCapability(service, capability, input, options.language),
+      invokeCapability(
+        service,
+        capability,
+        input,
+        options.language,
+        applyReview,
+        retrieveWithNotice,
+      ),
   };
 }
 
@@ -114,6 +208,8 @@ async function invokeCapability(
   capability: string,
   input: unknown,
   language: 'zh-CN' | 'en' | undefined,
+  applyReview: (packet: MemoryReviewPacket) => Promise<MemoryReviewResult>,
+  retrieveWithNotice: (query: MemoryQuery) => Promise<unknown>,
 ): Promise<unknown> {
   switch (capability) {
     case 'remember':
@@ -124,6 +220,7 @@ async function invokeCapability(
           input: asRecord<MemoryInput>(input, 'remember'),
         },
         language,
+        applyReview,
       );
     case 'correct': {
       const value = asObject(input, 'correct');
@@ -135,6 +232,7 @@ async function invokeCapability(
           correction: value.correction as never,
         },
         language,
+        applyReview,
       );
     }
     case 'remove': {
@@ -147,6 +245,7 @@ async function invokeCapability(
           permanent: value.permanent === true,
         },
         language,
+        applyReview,
       );
     }
     case 'rollback': {
@@ -161,10 +260,10 @@ async function invokeCapability(
         'memory.observe',
         language,
       );
-      return service.reviewAndApply(packet, reviewMemoryPacket(packet));
+      return applyReview(packet);
     }
     case 'retrieve':
-      return service.retrieve(asRecord(input, 'retrieve') as never);
+      return retrieveWithNotice(asRecord(input, 'retrieve') as MemoryQuery);
     case 'manage':
       return service.manage(asRecord<MemoryQuery>(input, 'manage'));
     case 'status':
@@ -211,6 +310,7 @@ async function reviewExplicitMemoryRequest(
     | { readonly action: 'correct'; readonly id: string; readonly correction: MemoryCorrection }
     | { readonly action: 'forget'; readonly id: string; readonly permanent: boolean },
   language: 'zh-CN' | 'en' | undefined,
+  applyReview: (packet: MemoryReviewPacket) => Promise<MemoryReviewResult>,
 ): Promise<MemoryRecord | null | void> {
   const target = input.action === 'remember' ? null : await service.get(input.id);
   const request =
@@ -284,9 +384,14 @@ async function reviewExplicitMemoryRequest(
     source: { kind: 'user' },
   };
   const packet = await reviewPacketFromObservation(service, observation, 'memory.cli', language);
-  const result = await service.reviewAndApply(packet, reviewMemoryPacket(packet));
+  const result = await applyReview(packet);
   if (input.action === 'remember') return result.observation?.record ?? null;
   if (input.action === 'correct') return await service.get(input.id);
+}
+
+function reviewHasCandidate(result: MemoryReviewResult): boolean {
+  if (result.observation?.candidate === true) return true;
+  return result.results?.some((entry) => reviewHasCandidate(entry)) ?? false;
 }
 
 function observationFromEvent(event: PluginEvent): MemoryObservation | null {
