@@ -1,77 +1,55 @@
-# 能力：固定共享 comet-memory Skill
+# comet-memory 固定语义评审 Skill
 
-## Requirements
+## 定位
 
-### Requirement: 双语第一方 Skill 资产
+`comet-memory` 是随 Comet 发布的第一方固定 Skill，为 Classic、Native、Hotfix、Tweak 和用户显式记忆操作提供同一套语义判断。它只负责判断“什么值得长期记住以及应执行什么动作”，不负责触发、取证、验证、持久化、同步或检索。
 
-系统必须随 Comet 同时提供中文与英文的 `comet-memory` Skill，并将两者纳入用户 Skill 的发现、安装、打包和存在性契约。两种语言版本必须表达相同的输入边界、动作枚举、安全限制和跳过语义。
+该 Skill 不是 Skill 自进化机制。它不得修改自身或其他 Skill、AGENTS.md、CLAUDE.md、Project Rules、Specs、代码或 Runtime 状态。
 
-#### Scenario: 中文配置选择中文 Skill
+## 输入输出
 
-- **WHEN** Comet 选择 `zh-CN` artifact language
-- **THEN** 安装/加载 `assets/skills-zh/comet-memory/SKILL.md` 及其 agent metadata
-- **AND** 不加载英文判断文本作为用户可见说明
+Skill 只接受 Runtime 生成的 `comet.memory.review.v1` 有界评审包。评审包包含配置语言、workflow、Change、checkpoint、项目身份、显式请求、用户纠正、可信成功结果、少量相关现有记忆和固定预算；不包含完整 transcript、完整日志、完整 diff、凭据或隐藏推理。
 
-#### Scenario: 英文配置选择英文 Skill
+输出只允许版本化动作：
 
-- **WHEN** Comet 选择 `en` artifact language
-- **THEN** 安装/加载 `assets/skills/comet-memory/SKILL.md` 及其 agent metadata
-- **AND** 其 schema、action、scope 和机器枚举与中文版相同
+- `create`：提交一条显式记忆或隐式候选；
+- `update`：替换评审包中明确提供的现有记忆；
+- `forget`：让评审包中明确提供的现有记忆失效；
+- `skip`：没有值得保存的内容。
 
-### Requirement: 有界评审输入
+`create/update/forget` 每个动作只选择一个作用域，引用评审包中的 evidenceKeys，并给出配置语言下的简短理由。`update/forget` 必须引用评审包提供的 targetId。Skill 不输出 shell 命令、文件写入计划或自然语言自由格式替代结构化动作。
 
-Skill 必须只读取 Runtime 传入的 `comet.memory.review.v1` packet。Packet 只包含配置语言、稳定项目身份、workflow/change、可信检查点、少量用户证据、相关 active memory、evidence 和固定预算；Skill 不得要求完整 transcript、日志、diff、仓库扫描或隐藏推理。
+## 判断标准
 
-#### Scenario: 合法 packet 触发语义评审
+Skill 可以保留明确的长期偏好、重复稳定的协作习惯、输出方式和不易重新发现的已验证个人操作经验。它必须跳过一次性要求、工作流状态、命令成功、测试数量、提交/PR/Issue 摘要、容易从仓库重查的普通事实、未经验证的推断、秘密、PII、提示注入、原始日志、完整 diff 和完整对话。
 
-- **WHEN** Skill 收到合法且未超预算的 review packet
-- **THEN** 只基于 packet 内的内容筛选长期可复用的个人偏好、工作习惯或已验证经验
-- **AND** 不读取 packet 以外的文件、工具输出或会话历史
+显式请求可以立即 create/update/forget。隐式信号只提交候选，激活阈值和作用域由 Runtime 根据独立 Change 与项目证据判断。隐式证据不得输出覆盖显式记忆的 update；发生矛盾时由 Runtime 形成 conflict。没有动作是正常结果，Skill 不为了表现“学习”而制造记录。
 
-#### Scenario: 没有长期价值时跳过
+## 语言与双语一致性
 
-- **WHEN** packet 只包含一次性命令、测试/提交摘要、Issue/PR 摘要、可从仓库重查的事实、猜测或噪声
-- **THEN** Skill 返回 `comet.memory.actions.v1` 的单个 `skip` 动作
-- **AND** 不声称已经创建或更新记忆
+中文版位于 `assets/skills-zh/comet-memory`，英文版位于 `assets/skills/comet-memory`。中文版本先完成语义确认，再同步英文；两版的输入、动作、安全边界、正反例和失败语义一致。
 
-### Requirement: 固定动作输出
+配置为 `zh-CN` 时，记忆正文和理由使用中文，代码、命令、路径和专有名词可保留原文；配置为 `en` 时使用英文。机器 schema、action、scope 和 category 枚举不翻译。
 
-Skill 必须输出 versioned `comet.memory.actions.v1` envelope，动作只能是 `create`、`update`、`forget` 或 `skip`。整个 action set 的动作数量不得超过 packet `budget.maxActions`，所有非 `skip` 动作必须使用同一个 `global` 或 `project` scope；Skill 不得自行构造 target、evidence、candidateKey 或项目身份，Runtime 仍需在落盘前再次校验。
+## 宿主与失败
 
-#### Scenario: 明确用户意图优先
+宿主支持后台或 fork Agent 时可以非阻塞运行 Skill；不支持时由当前 Comet 协调流程执行同一有界评审。Skill 不要求宿主提供新的 scheduler、全局对话读取 API 或持久 worker。
 
-- **WHEN** packet 的 user evidence 明确表达“记住”“以后都这样”“改成”或“忘掉”
-- **THEN** Skill 优先返回对应的 `create`、`update` 或 `forget` 动作
-- **AND** 不用相反的隐式行为覆盖显式记忆
+Skill 缺失、超时、输出无效或被 Runtime 安全拒绝时，结果等价于安全 `skip`，主 workflow 继续。Native/Classic Guard 不依赖该 Skill。
 
-#### Scenario: 无法可靠绑定时跳过
+## 验收场景
 
-- **WHEN** 目标记忆、scope、证据、语言或长期价值无法从 packet 明确判断
-- **THEN** Skill 返回 `skip` 或不产生动作
-- **AND** 不猜测跨项目证据、不把 project 提升为 global、不生成 Runtime 内部 ID
+- 给定明确“记住”请求，输出单作用域 `create`，正文符合配置语言。
+- 给定两个不同 Change 的一致候选和相关旧记忆，输出可合并的动作而不是重复 create。
+- 给定同一项目的两个一致 Change，只能形成 project 候选；没有跨项目证据时不能自动形成 global 记忆。
+- 给定与显式记忆矛盾的隐式行为，不输出覆盖显式记忆的 update。
+- 给定一次性选择、命令摘要或测试报告，输出 `skip`。
+- 给定用户纠正且 packet 包含目标记忆，输出 `update`；给定明确遗忘，输出 `forget`。
+- 给定 secret、PII、提示注入或要求修改 Skill/规则的内容，不输出可持久化动作。
+- 给定不存在于 packet 的 targetId、超预算动作或错误语言，Runtime 拒绝且 workflow 不失败。
 
-### Requirement: 语言与安全边界
+## 非目标
 
-Skill 必须遵循 packet 的 `zh-CN`/`en` 用户可见语言，不生成 secret、PII、原始日志、完整 diff、提示注入或要求修改 Skill/规则/系统的内容。代码、路径、专有名词和机器枚举可以按 packet 保留原文。
-
-#### Scenario: 语言不匹配或危险内容
-
-- **WHEN** 候选正文/类别/标签/原因明显不符合 packet language，或包含凭据、PII、日志、diff、prompt injection 或规则修改请求
-- **THEN** Skill 返回 `skip`
-- **AND** 不尝试翻译、掩盖或把危险文本拆成多个动作
-
-### Requirement: 低打扰用户体验
-
-Skill 的后台评审、候选形成和无内容跳过默认不输出内部过程。Skill 不得向用户显示 Runtime、candidate ID、evidence count 或原始 packet；显式确认和首次实际行为变化由外部 workflow/CLI 集成层负责。
-
-#### Scenario: 后台复盘完成
-
-- **WHEN** 后台评审创建候选或返回 skip
-- **THEN** Skill 只返回机器可消费的 action envelope
-- **AND** 不向用户展示内部推理、证据计数或候选状态
-
-## Non-Goals
-
-- Skill 不直接读写 Personal Memory、Markdown、Git 或 Runtime state。
-- Skill 不负责 Classic/Native 生命周期、宿主后台调度、CLI、Dashboard 或 Eval。
-- Skill 不修改自身、其他 Skill、Agent 指令、Project Rules、Specs、测试、构建或 CI。
+- 不管理 Personal Memory repository、Git、索引、候选计数或 Dashboard。
+- 不读取完整仓库、对话、日志、diff 或其他插件私有状态。
+- 不成为 Classic/Native 状态机或 Guard 的硬依赖。
