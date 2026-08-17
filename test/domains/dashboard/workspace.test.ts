@@ -70,6 +70,55 @@ describe('Dashboard workspace discovery', () => {
     });
   });
 
+  it('skips detached and missing secondary worktrees', async () => {
+    const parent = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-dashboard-stale-worktrees-'));
+    roots.push(parent);
+    const repo = path.join(parent, 'repo');
+    const branchWorktree = path.join(parent, 'branch-worktree');
+    const detachedWorktree = path.join(parent, 'detached-worktree');
+    await fs.mkdir(repo);
+    git(repo, ['init', '-q', '-b', 'main']);
+    git(repo, ['config', 'user.email', 'comet@test.local']);
+    git(repo, ['config', 'user.name', 'Comet Test']);
+    await fs.writeFile(path.join(repo, 'README.md'), '# Test\n');
+    git(repo, ['add', '.']);
+    git(repo, ['commit', '-q', '-m', 'test: seed']);
+    git(repo, ['worktree', 'add', '-q', '-b', 'feature/worktree', branchWorktree]);
+    git(repo, ['worktree', 'add', '-q', '--detach', detachedWorktree]);
+
+    await fs.rm(branchWorktree, { recursive: true, force: true });
+
+    const sources = collectDashboardWorkspaceSources(repo);
+
+    expect(sources).toEqual([
+      expect.objectContaining({
+        current: true,
+        branch: 'main',
+        projectRoot: path.resolve(repo),
+      }),
+    ]);
+  });
+
+  it('skips non-current worktrees under the internal runtime directory', async () => {
+    const parent = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-dashboard-runtime-worktrees-'));
+    roots.push(parent);
+    const repo = path.join(parent, 'repo');
+    const runtimeWorktree = path.join(repo, '.comet', 'runtime', 'verify');
+    await fs.mkdir(repo);
+    git(repo, ['init', '-q', '-b', 'main']);
+    git(repo, ['config', 'user.email', 'comet@test.local']);
+    git(repo, ['config', 'user.name', 'Comet Test']);
+    await fs.writeFile(path.join(repo, 'README.md'), '# Test\n');
+    git(repo, ['add', '.']);
+    git(repo, ['commit', '-q', '-m', 'test: seed']);
+    git(repo, ['worktree', 'add', '-q', '-b', 'verify/runtime', runtimeWorktree]);
+
+    const sources = collectDashboardWorkspaceSources(repo);
+
+    expect(sources).toHaveLength(1);
+    expect(sources[0]).toMatchObject({ current: true, projectRoot: path.resolve(repo) });
+  });
+
   it('round-trips an opaque locator without persisting the workspace path', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-dashboard-locator-'));
     roots.push(root);

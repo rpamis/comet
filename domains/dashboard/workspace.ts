@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 import { inspectGitWorktree, listGitWorktrees } from '../../platform/paths/git-worktree.js';
@@ -39,6 +40,19 @@ function workspaceLabel(projectRoot: string, branch: string | null): string {
   return branch ?? `detached:${path.basename(projectRoot)}`;
 }
 
+function isDirectory(projectRoot: string): boolean {
+  try {
+    return existsSync(projectRoot) && statSync(projectRoot).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function isInternalRuntimeWorktree(projectRoot: string, primaryRoot: string): boolean {
+  const relative = path.relative(primaryRoot, projectRoot).replaceAll('\\', '/').toLowerCase();
+  return relative === '.comet/runtime' || relative.startsWith('.comet/runtime/');
+}
+
 /**
  * Treat every registered worktree in one Git common repository as a Dashboard
  * discovery source. Non-Git projects retain the previous single-root behavior.
@@ -48,7 +62,15 @@ export function collectDashboardWorkspaceSources(projectRoot: string): Dashboard
   const requestedContext = inspectGitWorktree(requestedRoot);
   const currentRoot = requestedContext.currentWorktreeRoot ?? requestedRoot;
   const discovered = listGitWorktrees(requestedRoot);
-  const roots = discovered.length > 0 ? discovered.map(({ root }) => root) : [requestedRoot];
+  const primaryRoot = requestedContext.primaryWorktreeRoot ?? requestedRoot;
+  const eligible = discovered.filter(
+    (entry) =>
+      sameDashboardPath(entry.root, currentRoot) ||
+      (!entry.detached &&
+        isDirectory(entry.root) &&
+        !isInternalRuntimeWorktree(entry.root, primaryRoot)),
+  );
+  const roots = eligible.length > 0 ? eligible.map(({ root }) => root) : [requestedRoot];
   if (!roots.some((candidate) => sameDashboardPath(candidate, currentRoot))) {
     roots.push(currentRoot);
   }
@@ -61,7 +83,7 @@ export function collectDashboardWorkspaceSources(projectRoot: string): Dashboard
 
   return [...unique.values()]
     .map((candidate): DashboardWorkspaceSource => {
-      const discoveredEntry = discovered.find(({ root }) => sameDashboardPath(root, candidate));
+      const discoveredEntry = eligible.find(({ root }) => sameDashboardPath(root, candidate));
       const branch =
         discoveredEntry?.branch ??
         (sameDashboardPath(candidate, currentRoot) ? requestedContext.currentBranch : null);
