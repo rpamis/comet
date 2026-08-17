@@ -54,11 +54,9 @@ Workspace decisions happen in `/comet-open` and follow `comet-classic/reference/
 
 When multiple active changes exist and the user has not selected one, do not bind early; keep the existing `ask_user` decision point.
 
-### Memory and project-rule integration
+### Memory integration
 
-Task-end fallback: `comet rules candidates --json`.
-
-After binding a Classic workspace, the Agent automatically runs `comet task <project-root> --task "<original user request>" --phase build --json` and injects only matching memory and project-rule snippets. Workflow commands may carry `--comet-task`, `--comet-path`, and `--comet-phase`; the CLI strips these markers, selects, and displays relevant context. After a successful change, verification, or review it records `comet memory observe`; compiler, test, or linter evidence that identifies a project convention is recorded with `comet rules observe`, an existing project verification entrypoint can be run with `comet rules verify --max-attempts 3`, and failures are fixed from their diagnostics before rerunning. At the end it runs `comet task <project-root> --task "<original user request>" --complete --workflow <workflow> --change <change-id> --json`, which returns one summary with adopt/ignore/defer operations. When no Hook is available, the Skill calls these commands directly (or `comet memory context` for context-only fallback), so the user does not need to open the Dashboard or confirm each observation.
+After binding a Classic workspace, the Agent automatically runs `comet task <project-root> --task "<original user request>" --phase build --json` and injects only matching personal memory snippets. Workflow commands may carry `--comet-task`, `--comet-path`, and `--comet-phase`; the CLI strips these markers, selects, and displays relevant context. After a successful change, verification, or review it records `comet memory observe`; when a compiler, test, or linter fails, it reads the diagnostics, fixes the code, and reruns according to the workflow. At the end it runs `comet task <project-root> --task "<original user request>" --complete --workflow <workflow> --change <change-id> --json` to complete the personal-memory checkpoint. When no Hook is available, the Skill calls these commands directly (or `comet memory context` for context-only fallback), so the user does not need to open the Dashboard or confirm each observation.
 
 ### Comet Ambient Resume
 

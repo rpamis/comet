@@ -154,7 +154,7 @@ describe('Classic command facade', () => {
   it('automatically collects task context before a Classic command', async () => {
     const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     collectCometPluginContext.mockResolvedValue([
-      { pluginId: 'comet.project-rules', text: '服务端改动必须运行测试' },
+      { pluginId: 'comet.personal-memory', text: '使用中文回复' },
     ]);
     runClassicCli.mockResolvedValue({ exitCode: 0, stdout: 'done\n', stderr: '' });
     const { runClassicFacade } = await import('../../app/commands/classic.js');
@@ -174,7 +174,7 @@ describe('Classic command facade', () => {
       expect.any(String),
       expect.objectContaining({ task: '完成服务端改动', path: 'src/server.ts', phase: 'verify' }),
     );
-    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('服务端改动必须运行测试'));
+    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('使用中文回复'));
     expect(recordCometWorkflowResult).toHaveBeenCalledWith(
       expect.objectContaining({ userEvidence: ['完成服务端改动'] }),
     );

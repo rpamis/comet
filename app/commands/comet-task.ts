@@ -1,9 +1,7 @@
 import path from 'node:path';
 
 import {
-  applyCometProjectRuleAction,
   collectCometPluginContext,
-  collectCometProjectRuleCandidates,
   recordCometWorkflowResult,
 } from '../../domains/comet-entry/plugin-context.js';
 
@@ -14,15 +12,11 @@ export interface CometTaskCommandOptions {
   readonly complete?: boolean;
   readonly workflow?: string;
   readonly change?: string;
-  readonly action?: 'adopt' | 'ignore' | 'snooze' | 'restore';
-  readonly id?: string;
-  readonly text?: string;
   readonly json?: boolean;
 }
 
 export interface CometTaskCommandResult {
   readonly context: readonly { readonly pluginId: string; readonly text: string }[];
-  readonly candidates: unknown;
 }
 
 /**
@@ -40,7 +34,6 @@ export async function cometTaskCommand(
     ...(options.path ? { path: options.path } : {}),
     ...(options.phase ? { phase: options.phase } : {}),
   });
-  let candidates: unknown = null;
   if (options.complete) {
     await recordCometWorkflowResult({
       projectRoot,
@@ -52,30 +45,8 @@ export async function cometTaskCommand(
       eventName: 'task.completed',
       userEvidence: [options.task],
     });
-    try {
-      if (options.action) {
-        await applyCometProjectRuleAction(projectRoot, options.action, {
-          ...(options.id ? { id: options.id } : {}),
-          ...(options.text ? { text: options.text } : {}),
-        });
-      }
-      candidates = await collectCometProjectRuleCandidates(projectRoot);
-    } catch (error) {
-      candidates = {
-        summary: '项目规则插件暂不可用，基础任务已完成。',
-        candidates: [],
-        operations: [],
-        diagnostics: [
-          {
-            pluginId: 'comet.project-rules',
-            code: 'execution-failed',
-            message: error instanceof Error ? error.message : String(error),
-          },
-        ],
-      };
-    }
   }
-  const result = { context, candidates };
+  const result = { context };
   if (options.json) console.log(JSON.stringify(result, null, 2));
   else if (context.length > 0) console.log(context.map((entry) => `- ${entry.text}`).join('\n'));
   return result;

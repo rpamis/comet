@@ -17,17 +17,16 @@ Native 把需求、完整目标规格、当前进度和验收结论保存在项�
 2. 当前阶段需要完整验收列表时才执行 `nextPageArgs` 中的分页命令；需要编辑或核对正式正文时才运行 `show` 或读取对应 brief/Spec。
 3. active change 已存在时，进入返回的 `workspace.projectRoot` 并 `select`。Runtime 会扫描已登记 Worktree，优先返回绑定分支匹配的工作区；只有多个同样匹配的候选才让用户选择。
 4. 没有对应 active change 时才创建，并使用配置指定的产物目录。`comet init` 会按所选 Skill 语言初始化 `native.language`；之后产物跟随项目配置，只有用户明确要求覆盖时才传入 `--language`。
-### 记忆与项目规则接入
+### 记忆接入
 进入 change 工作区后，Agent 自动运行一次：
 
 ```text
 comet task <project-root> --task "<用户原始请求>" --phase build --json
 ```
 
-只把返回的相关记忆和项目规则加入当前任务上下文；命令不可用或没有内容时继续正常工作，不要求用户处理。工作流命令可带 `--comet-task`、`--comet-path`、`--comet-phase`，CLI 会自动选择上下文并在输出中显示相关片段。每次成功完成 change、验证或审查后，Agent 使用当前 workflow、change ID 和稳定行为摘要调用 `comet memory observe`，用于跨会话沉淀用户习惯。验证、编译或 linter 报告明确指出项目规则时，同时调用 `comet rules observe`；需要执行项目已有检查时调用 `comet rules verify --max-attempts 3`，失败则读取诊断、修复后重跑。任务结束调用 `comet task <project-root> --task "<用户原始请求>" --complete --workflow <workflow> --change <change-id> --json`，返回一条可读摘要和加入、忽略、稍后操作；规则候选在两次独立成功后自动出现，采用前才写入项目规则文件。
+只把返回的相关个人记忆加入当前任务上下文；命令不可用或没有内容时继续正常工作，不要求用户处理。工作流命令可带 `--comet-task`、`--comet-path`、`--comet-phase`，CLI 会自动选择上下文并在输出中显示相关片段。每次成功完成 change、验证或审查后，Agent 使用当前 workflow、change ID 和稳定行为摘要调用 `comet memory observe`，用于跨会话沉淀用户习惯。验证、编译或 linter 失败时，直接读取工具诊断、修复代码并按工作流要求重跑。任务结束调用 `comet task <project-root> --task "<用户原始请求>" --complete --workflow <workflow> --change <change-id> --json`，完成个人记忆检查点。
 
-没有 Hook 平台时，上述命令就是 Skill 的上下文和学习回退路径，底层仍可调用 `comet memory context`；有 Hook 时仍只注入当前任务匹配的片段，不全量加载规则。
-任务结束也可直接调用 `comet rules candidates --json` 查看候选摘要。
+没有 Hook 平台时，上述命令就是 Skill 的上下文和学习回退路径，底层仍可调用 `comet memory context`；有 Hook 时仍只注入当前任务匹配的个人记忆片段。
 ### 创建 change
 先确定小写 kebab-case 名称，再按[工作区选择参考](reference/workspace.md)决定使用当前目录、创建分支还是创建 worktree。用户明确说并行、同时处理或多个会话时自动选择 `worktree`，不再询问三种方式。
 

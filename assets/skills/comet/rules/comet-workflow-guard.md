@@ -32,10 +32,10 @@ Classic 旧项目没有新版配置时只按 Classic legacy fallback 处理，�
 
 Hook 会对多文件和 patch 目标整体裁决。无法归因的事件和仅位于项目外的目标保持中立；一旦写入已归属于本项目，当前阶段不允许普通项目写入、存在多个所有权候选，或 selection、状态与目标范围无法安全读取时会失败关闭。不要绕过 Hook；按拒绝信息恢复对应 workflow，只有所有权不明确时才重新选择当前 change。
 
-## 记忆与项目规则上下文
+## 个人记忆上下文
 
 只有当前仓库存在 `.comet/config.yaml` 且用户正在使用 Comet 时，才执行以下投递；普通未启用 Comet 的仓库保持中立，不创建文件、不阻止工具调用：
 
-- 任务开始或目标路径明确后运行 `comet memory context <project-root> --task "<task>" --json` 或 `comet rules context <project-root> --task "<task>" --path "<path>" --json`，只使用返回的相关片段，不全量复制规则。
-- 任务完成、验证或审查后由 Comet Skill 记录 `comet memory observe`；编译器、测试或 linter 明确指出规范时记录 `comet rules observe`，已有检查需要执行时运行 `comet rules verify`。
+- 任务开始或目标路径明确后运行 `comet memory context <project-root> --task "<task>" --json`，只使用返回的相关个人记忆片段。
+- 任务完成、验证或审查后由 Comet Skill 记录 `comet memory observe`；编译器、测试或 linter 失败时遵循工作流读取诊断并修复代码。
 - 命令不可用、项目未初始化或没有匹配片段时保持中立；插件失败不得伪装成项目检查失败。

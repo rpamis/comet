@@ -155,7 +155,7 @@ describe('skills', () => {
       );
     });
 
-    it('routes memory and project rules through every Comet entry skill', async () => {
+    it('routes personal memory through every Comet entry skill', async () => {
       const pairs = [
         ['comet', 'comet'],
         ['comet-native', 'comet-native'],
@@ -173,11 +173,9 @@ describe('skills', () => {
           'utf8',
         );
         expect(zh, `${name} zh`).toContain('comet memory context');
-        expect(zh, `${name} zh`).toContain('comet rules verify');
-        expect(zh, `${name} zh`).toContain('comet rules candidates');
+        expect(zh, `${name} zh`).not.toContain('comet rules');
         expect(en, `${name} en`).toContain('comet memory context');
-        expect(en, `${name} en`).toContain('comet rules verify');
-        expect(en, `${name} en`).toContain('comet rules candidates');
+        expect(en, `${name} en`).not.toContain('comet rules');
       }
     });
 
@@ -3225,7 +3223,7 @@ describe('skills', () => {
         expect(guard).toContain('Classic');
         expect(guard).toContain('Hook Router');
         expect(guard).toContain('comet memory context');
-        expect(guard).toContain('comet rules context');
+        expect(guard).not.toContain('comet rules context');
         expect(guard).toContain('.comet/config.yaml');
       }
       expect(zhGuard).toContain('先记录失败并通过 Native Runtime 回到 Build');
@@ -3244,7 +3242,7 @@ describe('skills', () => {
       expect(enGuard).toContain('targets that are entirely outside the project remain neutral');
       expect(enGuard).toContain('Once a write is attributed to this project');
       expect(enGuard).toContain('comet memory context');
-      expect(enGuard).toContain('comet rules context');
+      expect(enGuard).not.toContain('comet rules context');
       expect(enGuard).toContain('.comet/config.yaml');
 
       await expect(

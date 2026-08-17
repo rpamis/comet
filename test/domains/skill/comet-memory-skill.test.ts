@@ -53,7 +53,6 @@ describe('comet-memory Skill assets', () => {
       expect(content).toContain('name: comet-memory');
       for (const marker of requiredContractMarkers) expect(content).toContain(marker);
       expect(content).toContain('prompt injection');
-      expect(content).toContain('Project Rules');
       expect(content).toContain('skip');
       expect(content).not.toContain('profile.md');
       if (root === 'assets/skills-zh') {

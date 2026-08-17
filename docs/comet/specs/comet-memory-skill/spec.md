@@ -4,7 +4,7 @@
 
 `comet-memory` 是随 Comet 发布的第一方固定 Skill，为 Classic、Native、Hotfix、Tweak 和用户显式记忆操作提供同一套语义判断。它只负责判断“什么值得长期记住以及应执行什么动作”，不负责触发、取证、验证、持久化、同步或检索。
 
-该 Skill 不是 Skill 自进化机制。它不得修改自身或其他 Skill、AGENTS.md、CLAUDE.md、Project Rules、Specs、代码或 Runtime 状态。
+该 Skill 不是 Skill 自进化机制。它不得修改自身或其他 Skill、AGENTS.md、CLAUDE.md、项目指令、Specs、代码或 Runtime 状态。
 
 ## 输入输出
 

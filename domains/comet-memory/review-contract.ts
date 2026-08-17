@@ -34,9 +34,9 @@ const DANGEROUS_PATTERNS = [
   /\b(?:diff --git|git\s+(?:diff|log)|@@\s+-\d|\+\+\+\s+[ab]\/|---\s+[ab]\/)/imu,
   /\b(?:stack trace|traceback|stderr|stdout|debug log|npm warn|npm ERR!|error log)\b/iu,
   /(?:ignore|disregard|override|forget|do not follow)\s+(?:all\s+)?(?:my\s+|the\s+)?(?:prior|previous|earlier|above|following|these)?\s*(?:instructions?|rules?|policies?|system|prompt)/iu,
-  /(?:modify|change|edit|rewrite|disable|reveal)\s+(?:the\s+)?(?:skill|agent instructions?|project rules?|system prompt|guard|policy)/iu,
+  /(?:modify|change|edit|rewrite|disable|reveal)\s+(?:the\s+)?(?:skill|agent instructions?|project rules?|project policy files?|system prompt|guard|policy)/iu,
   /(?:忽略|无视|跳过|不遵循|不要遵循).*(?:之前|先前|上面|以上|前面)?.*(?:指令|规则|提示|政策|系统)/u,
-  /(?:修改|更改|编辑|重写|禁用|绕过|泄露|显示).*(?:技能|skill|agent|代理|项目规则|系统提示|守卫|策略|规则)/iu,
+  /(?:修改|更改|编辑|重写|禁用|绕过|泄露|显示).*(?:技能|skill|agent|代理|项目规范文件|项目规则|系统提示|守卫|策略|规则)/iu,
   /<\/?(?:script|iframe|object|embed|style|svg)\b|(?:onerror|onload|onclick)\s*=|data:text\/html/iu,
   /javascript:/iu,
 ];

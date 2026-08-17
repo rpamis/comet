@@ -74,7 +74,6 @@ describe('repository layout registry', () => {
       'eval',
       'factory',
       'integrations',
-      'project-rules',
       'skill',
       'workflow-contract',
     ]);

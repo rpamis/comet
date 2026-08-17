@@ -29,14 +29,14 @@ describe('Dashboard web state helpers', () => {
 
   it('keeps the plugin identity in dashboard API errors', async () => {
     const error = await dashboardResponseError(
-      new Response(JSON.stringify({ error: '能力执行失败', pluginId: 'comet.project-rules' }), {
+      new Response(JSON.stringify({ error: '能力执行失败', pluginId: 'comet.personal-memory' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       }),
     );
 
-    expect(error.message).toBe('插件 comet.project-rules：能力执行失败');
-    expect((error as Error & { pluginId?: string }).pluginId).toBe('comet.project-rules');
+    expect(error.message).toBe('插件 comet.personal-memory：能力执行失败');
+    expect((error as Error & { pluginId?: string }).pluginId).toBe('comet.personal-memory');
   });
 
   it('preserves loaded rows when an unchanged overview refreshes', () => {

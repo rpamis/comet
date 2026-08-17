@@ -10,7 +10,7 @@ First separate three kinds of information:
 - **User decision**: choices that materially change output, default behavior, failure results, scope, or irreversible impact. The user confirms these.
 - **Implementation choice**: algorithms, structures, and working methods that do not change the visible result. The Agent decides these.
 
-Ask the user only when ambiguity materially changes the visible result and cannot be determined reliably from the request, formal specifications, or project rules. Questions must come from real divergence; the Agent decides ordinary implementation details directly.
+Ask the user only when ambiguity materially changes the visible result and cannot be determined reliably from the request, formal specifications, project documentation, or existing agent instructions. Questions must come from real divergence; the Agent decides ordinary implementation details directly.
 
 Rewrite ambiguous behavior into comparable “input → output” or “trigger → result” form. Every question should contain:
 

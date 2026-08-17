@@ -5,7 +5,7 @@ import path from 'path';
 import { createDefaultDashboardPluginHostFactory } from '../../../domains/dashboard/default-plugin-host.js';
 
 describe('default dashboard plugin host', () => {
-  it('registers both first-party pages against the shared plugin runtime', async () => {
+  it('registers the personal memory page against the shared plugin runtime', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-default-plugin-host-'));
     const projectRoot = path.join(root, 'project');
     await fs.mkdir(projectRoot, { recursive: true });
@@ -18,12 +18,8 @@ describe('default dashboard plugin host', () => {
       expect(await host.list()).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ pluginId: 'comet.personal-memory', status: 'enabled' }),
-          expect.objectContaining({ pluginId: 'comet.project-rules', status: 'enabled' }),
         ]),
       );
-      await expect(host.get('comet.project-rules')).resolves.toMatchObject({
-        data: { initialized: false },
-      });
       await expect(host.get('comet.personal-memory')).resolves.toMatchObject({
         data: { status: { learningEnabled: true, retrievalEnabled: true } },
       });

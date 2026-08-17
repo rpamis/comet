@@ -55,5 +55,5 @@ package、lockfile、asset manifest 和发布元数据测试必须使用同一�
 ## Non-Goals
 
 - 不改变语义记忆 Runtime、Personal Memory domain、workflow bridge、Dashboard 或 Skill 的核心实现。
-- 不实现 Skill 自进化、自动修改 Skill/Agent/Project Rules、embedding、向量检索或团队规则升级。
+- 不实现 Skill 自进化、自动修改 Skill/Agent 指令、embedding、向量检索或团队规范升级。
 - 不修改 README、网站或外部 GitHub 状态。

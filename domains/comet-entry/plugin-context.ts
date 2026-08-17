@@ -18,20 +18,6 @@ export async function collectCometPluginContext(
   return contributions.map(({ pluginId, text }) => ({ pluginId: String(pluginId), text }));
 }
 
-export async function collectCometProjectRuleCandidates(projectRoot: string): Promise<unknown> {
-  const bridge = await createBridge(projectRoot);
-  return bridge.projectRulesAction('candidates');
-}
-
-export async function applyCometProjectRuleAction(
-  projectRoot: string,
-  action: 'adopt' | 'ignore' | 'snooze' | 'restore',
-  input: { readonly id?: string; readonly text?: string },
-): Promise<unknown> {
-  const bridge = await createBridge(projectRoot);
-  return bridge.projectRulesAction(action, input);
-}
-
 export async function recordCometWorkflowResult(options: {
   readonly projectRoot: string;
   readonly workflow: string;

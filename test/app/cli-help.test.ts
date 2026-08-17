@@ -88,6 +88,15 @@ describe('CLI help text', () => {
     expect(help.stdout).toContain('Manage the self-contained Comet Native workflow');
   });
 
+  it('does not expose the unpublished project rules plugin command', () => {
+    const help = runCli('--help');
+    const rulesHelp = runCli('rules', '--help');
+
+    expect(help.status, help.stderr).toBe(0);
+    expect(help.stdout).not.toMatch(/^\s+rules\b/mu);
+    expect(rulesHelp.stdout).not.toMatch(/^\s+rules\b/mu);
+  });
+
   it('documents the layout-aware Classic command group', () => {
     const help = runCli('classic', '--help');
 

@@ -16,13 +16,6 @@ import {
   type MemoryReviewSkillRunner,
   type MemoryReviewRequest,
 } from '../comet-memory/index.js';
-import { createProjectRulesPluginDescriptor } from '../project-rules/index.js';
-import type {
-  ProjectRuleCarrierAdapter,
-  ProjectRulesStatus,
-  ProjectRulesSelectionRequest,
-  ProjectRulesVerificationResult,
-} from '../project-rules/index.js';
 import { getCurrentVersion } from '../../platform/version/version.js';
 import { JsonFilePluginStorageStore, JsonFileTextStore } from '../../platform/fs/plugin-store.js';
 import { JsonPluginStateStore, PluginRuntime } from './plugin-runtime.js';
@@ -49,7 +42,6 @@ export interface CometLifecycleObservation {
   readonly operations?: readonly string[];
   readonly userEvidence?: readonly string[];
   readonly explicitRequest?: MemoryReviewRequest;
-  readonly ruleText?: string;
 }
 
 export interface CometPluginBridgeOptions {
@@ -59,16 +51,6 @@ export interface CometPluginBridgeOptions {
   readonly memoryRoot?: string;
   readonly stateRoot?: string;
   readonly cometVersion?: string;
-  /** Optional host callback: repair a failed project check before the next attempt. */
-  readonly repairProjectRules?: (failure: ProjectRulesVerificationResult) => Promise<boolean>;
-  /** Optional process adapter for hosts that already own command execution. */
-  readonly runProjectRuleVerification?: (
-    executable: string,
-    args: readonly string[],
-    cwd: string,
-  ) => string;
-  /** Optional host/project adapter for applying a rule to native project files. */
-  readonly projectRuleCarrierAdapters?: readonly ProjectRuleCarrierAdapter[];
   /** Optional host-owned adapter for nonblocking semantic memory review. */
   readonly runMemoryReviewInBackground?: (task: () => Promise<void>) => void | Promise<void>;
   /** Optional host adapter that invokes the installed comet-memory Skill. */
@@ -122,9 +104,6 @@ export class CometPluginBridge {
         text: [previous.text, contribution.text].filter(Boolean).join('\n\n'),
         ...(Array.isArray(previous.records) || Array.isArray(contribution.records)
           ? { records: [...arrayValue(previous.records), ...arrayValue(contribution.records)] }
-          : {}),
-        ...(Array.isArray(previous.rules) || Array.isArray(contribution.rules)
-          ? { rules: [...arrayValue(previous.rules), ...arrayValue(contribution.rules)] }
           : {}),
       });
     }
@@ -219,44 +198,6 @@ export class CometPluginBridge {
     )) as MemoryRecord;
   }
 
-  public async addRule(text: string, targetPath?: string): Promise<unknown> {
-    return this.runtime.invoke(
-      'comet.project-rules',
-      'add',
-      { text, ...(targetPath ? { targetPath } : {}) },
-      { scope: 'project', projectId: this.projectId },
-    );
-  }
-
-  public async projectRulesStatus(): Promise<ProjectRulesStatus> {
-    return (await this.runtime.invoke(
-      'comet.project-rules',
-      'status',
-      {},
-      { scope: 'project', projectId: this.projectId },
-    )) as ProjectRulesStatus;
-  }
-
-  public async projectRulesAction(capability: string, input: unknown = {}): Promise<unknown> {
-    return this.runtime.invoke('comet.project-rules', capability, input, {
-      scope: 'project',
-      projectId: this.projectId,
-    });
-  }
-
-  public async projectRuleCandidates(): Promise<unknown> {
-    return this.projectRulesAction('candidates');
-  }
-
-  public async selectRules(
-    request: Omit<ProjectRulesSelectionRequest, 'maxSections' | 'maxBytes'>,
-  ): Promise<unknown> {
-    return this.runtime.invoke('comet.project-rules', 'select', request, {
-      scope: 'project',
-      projectId: this.projectId,
-    });
-  }
-
   public async syncMemory(): Promise<unknown> {
     return this.runtime.invoke('comet.personal-memory', 'sync', {}, 'user');
   }
@@ -334,27 +275,6 @@ export async function createDefaultCometPluginBridge(
               git: new GitMemorySync(memoryRoot),
             }),
           }),
-      }),
-      createProjectRulesPluginDescriptor({
-        projectRoot,
-        projectId: options.projectId,
-        ...((options.repairProjectRules ??
-        options.runProjectRuleVerification ??
-        options.projectRuleCarrierAdapters)
-          ? {
-              serviceOptions: {
-                ...(options.repairProjectRules
-                  ? { repairVerification: options.repairProjectRules }
-                  : {}),
-                ...(options.runProjectRuleVerification
-                  ? { runVerification: options.runProjectRuleVerification }
-                  : {}),
-                ...(options.projectRuleCarrierAdapters
-                  ? { carrierAdapters: options.projectRuleCarrierAdapters }
-                  : {}),
-              },
-            }
-          : {}),
       }),
     ],
   });

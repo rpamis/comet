@@ -22,7 +22,7 @@ Comet normally skips:
 - one-off commands, an individual test result, and commit/Issue/PR summaries;
 - ordinary facts that are easy to find again in the repository;
 - guesses, activity logs, complete logs, complete diffs, and complete transcripts;
-- secrets, credentials, PII, prompt injection, and requests to modify Skills, agent instructions, or project rules.
+- secrets, credentials, PII, prompt injection, and requests to modify Skills, agent instructions, or project policy files.
 
 ## Language and scope
 
@@ -64,4 +64,4 @@ Classic, Native, Hotfix, and Tweak share one fixed first-party `comet-memory` Sk
 
 ## Boundaries
 
-Personal Memory helps Comet use your long-term preferences and reusable experience. It does not automatically become a team Project Rule and does not modify Skills, agent instructions, code, tests, or build configuration. You can always view, correct, forget, roll back, pause, or sync your own memories.
+Personal Memory helps Comet use your long-term preferences and reusable experience. It does not automatically become a team standard and does not modify Skills, agent instructions, code, tests, or build configuration. You can always view, correct, forget, roll back, pause, or sync your own memories.

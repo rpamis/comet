@@ -3,15 +3,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const runNativeCli = vi.fn();
 const recordCometWorkflowResult = vi.fn();
 const collectCometPluginContext = vi.fn();
-const collectCometProjectRuleCandidates = vi.fn();
-const applyCometProjectRuleAction = vi.fn();
 
 vi.mock('../../domains/comet-native/native-cli.js', () => ({ runNativeCli }));
 vi.mock('../../domains/comet-entry/plugin-context.js', () => ({
   recordCometWorkflowResult,
   collectCometPluginContext,
-  collectCometProjectRuleCandidates,
-  applyCometProjectRuleAction,
 }));
 
 describe('Native command facade', () => {
@@ -20,8 +16,6 @@ describe('Native command facade', () => {
     runNativeCli.mockReset();
     recordCometWorkflowResult.mockReset();
     collectCometPluginContext.mockReset();
-    collectCometProjectRuleCandidates.mockReset();
-    applyCometProjectRuleAction.mockReset();
   });
 
   it('forwards exact argv, stdout, stderr, and exit code', async () => {
@@ -141,38 +135,5 @@ describe('Native command facade', () => {
         workflow: 'native',
       }),
     );
-  });
-
-  it('does not redisplay rule candidates after every successful workflow command', async () => {
-    runNativeCli.mockResolvedValue({ exitCode: 0, stdout: 'done\n', stderr: '' });
-    const { runNativeFacade } = await import('../../app/commands/native.js');
-
-    await runNativeFacade(['next', 'change-name']);
-
-    expect(collectCometProjectRuleCandidates).not.toHaveBeenCalled();
-  });
-
-  it('handles a candidate action at the end of a host task', async () => {
-    runNativeCli.mockResolvedValue({ exitCode: 0, stdout: 'done\n', stderr: '' });
-    collectCometProjectRuleCandidates.mockResolvedValue({
-      summary: '当前没有待处理的项目规则候选。',
-      candidates: [],
-      operations: ['adopt', 'ignore', 'snooze', 'restore'],
-    });
-    const { runNativeFacade } = await import('../../app/commands/native.js');
-
-    await runNativeFacade([
-      'next',
-      'change-name',
-      '--comet-rule-action',
-      'ignore',
-      '--comet-rule-id',
-      'candidate-1',
-    ]);
-
-    expect(runNativeCli).toHaveBeenCalledWith(['next', 'change-name']);
-    expect(applyCometProjectRuleAction).toHaveBeenCalledWith(expect.any(String), 'ignore', {
-      id: 'candidate-1',
-    });
   });
 });

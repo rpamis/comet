@@ -63,12 +63,9 @@ program
   .requiredOption('--task <text>', '用户原始请求')
   .option('--path <path>', '当前任务目标路径')
   .option('--phase <phase>', '当前工作阶段，例如 build 或 verify')
-  .option('--complete', '记录成功任务并返回规则候选')
+  .option('--complete', '记录成功任务')
   .option('--workflow <workflow>', '工作流类型')
   .option('--change <id>', '当前 change ID')
-  .option('--action <action>', '任务结束时处理候选：adopt、ignore、snooze 或 restore')
-  .option('--id <id>', '候选 ID')
-  .option('--text <text>', '候选文本')
   .option('--json', 'Output as JSON')
   .action(async (targetPath = '.', options) => {
     const { cometTaskCommand } = await import('../commands/comet-task.js');
@@ -81,26 +78,13 @@ workflow
   .command('resolve [path]')
   .description('Resolve /comet to its permanent Native or Classic entry')
   .option('--activate', 'Create project configuration from global defaults when missing')
-  .option('--task <text>', '当前任务，用于自动选择记忆和项目规则上下文')
+  .option('--task <text>', '当前任务，用于自动选择个人记忆上下文')
   .option('--path <path>', '当前任务目标路径')
   .option('--phase <phase>', '当前工作阶段，例如 build 或 verify')
   .option('--json', 'Output as JSON')
   .action(async (targetPath = '.', options) => {
     const { workflowResolveCommand } = await import('../commands/workflow.js');
     await workflowResolveCommand(targetPath, options);
-  });
-
-const rules = program
-  .command('rules')
-  .description('Inspect and initialize project rules without creating a Comet change');
-
-rules
-  .command('init [path]')
-  .description('Initialize project rules scanning')
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { projectRulesInitCommand } = await import('../commands/project-rules.js');
-    await projectRulesInitCommand(targetPath, options);
   });
 
 const memory = program.command('memory').description('查看和维护跨会话的个人记忆');
@@ -209,7 +193,7 @@ memory
 
 memory
   .command('context [path]')
-  .description('为当前任务选择应注入的个人记忆和项目规则')
+  .description('为当前任务选择应注入的个人记忆')
   .requiredOption('--task <text>', '任务描述')
   .option('--path <path>', '当前文件或目录')
   .option('--phase <phase>', '验证阶段，例如 build 或 verify')
@@ -249,118 +233,6 @@ memory
   .action(async (targetPath = '.', options) => {
     const { personalMemoryPauseCommand } = await import('../commands/personal-memory.js');
     await personalMemoryPauseCommand(targetPath, options);
-  });
-
-rules
-  .command('scan [path]')
-  .description('Rescan project rules and verification entrypoints')
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { projectRulesScanCommand } = await import('../commands/project-rules.js');
-    await projectRulesScanCommand(targetPath, options);
-  });
-
-rules
-  .command('status [path]')
-  .description('Show project rules sources and candidates')
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { projectRulesStatusCommand } = await import('../commands/project-rules.js');
-    await projectRulesStatusCommand(targetPath, options);
-  });
-
-rules
-  .command('add [path]')
-  .description('手动追加一条项目规则')
-  .requiredOption('--text <text>', '规则内容')
-  .option('--target-path <path>', '规则 Markdown 文件', '.comet/rules/project.md')
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { projectRulesAddCommand } = await import('../commands/project-rules.js');
-    await projectRulesAddCommand(targetPath, options);
-  });
-
-rules
-  .command('observe [path]')
-  .description('记录一次验证结果中的项目规则')
-  .requiredOption('--text <text>', '规则内容')
-  .requiredOption('--workflow <workflow>', '工作流类型')
-  .requiredOption('--change <id>', 'Change ID')
-  .requiredOption('--candidate-key <key>', '候选规则标识')
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { projectRulesObserveCommand } = await import('../commands/project-rules.js');
-    await projectRulesObserveCommand(targetPath, options);
-  });
-
-rules
-  .command('candidates [path]')
-  .description('查看待处理的项目规则候选')
-  .addOption(
-    new Option('--action <action>', '直接处理候选').choices([
-      'adopt',
-      'ignore',
-      'snooze',
-      'restore',
-    ]),
-  )
-  .option('--id <id>', '候选 ID')
-  .option('--text <text>', '候选文本')
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { projectRulesCandidatesCommand } = await import('../commands/project-rules.js');
-    await projectRulesCandidatesCommand(targetPath, options);
-  });
-
-for (const action of ['adopt', 'ignore', 'snooze', 'restore'] as const) {
-  rules
-    .command(`${action} [path]`)
-    .description(`${action} 项目规则候选`)
-    .option('--id <id>', '候选 ID')
-    .option('--text <text>', '候选文本')
-    .option('--target-path <path>', '采用时写入的规则文件')
-    .option('--json', 'Output as JSON')
-    .action(async (targetPath = '.', options) => {
-      const { projectRulesCandidateActionCommand } = await import('../commands/project-rules.js');
-      await projectRulesCandidateActionCommand(action, targetPath, options);
-    });
-}
-
-rules
-  .command('context [path]')
-  .description('为当前任务选择相关项目规则')
-  .requiredOption('--task <text>', '任务描述')
-  .option('--path <path>', '当前文件或目录')
-  .option('--phase <phase>', '当前 workflow 阶段')
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { projectRulesContextCommand } = await import('../commands/project-rules.js');
-    await projectRulesContextCommand(targetPath, options);
-  });
-
-rules
-  .command('propose [path]')
-  .description('根据项目现有能力建议规则载体')
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { projectRulesProposeCommand } = await import('../commands/project-rules.js');
-    await projectRulesProposeCommand(targetPath, options);
-  });
-
-rules
-  .command('verify [path]')
-  .description('运行项目已存在的验证入口并返回结果')
-  .option('--max-attempts <n>', '失败后最多重跑次数', (value) => {
-    const attempts = Number.parseInt(value, 10);
-    if (!Number.isSafeInteger(attempts) || attempts < 1 || attempts > 3) {
-      throw new Error('max-attempts must be an integer between 1 and 3');
-    }
-    return attempts;
-  })
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { projectRulesVerifyCommand } = await import('../commands/project-rules.js');
-    await projectRulesVerifyCommand(targetPath, options);
   });
 
 program

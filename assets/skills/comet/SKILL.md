@@ -22,6 +22,6 @@ Once this Skill is loaded, treat the `/comet` entry as selected. Immediately per
 
    After the skill is loaded, pass the user's original request unchanged to the loaded entry Skill as its user input.
 
-The resolver selects context; use `comet memory context` if needed, then `comet rules verify` and `comet rules candidates`.
+The resolver selects context; use `comet memory context` if needed, then follow the loaded workflow Skill and record stable personal memory.
 
 Do not switch workflows based on task size, file count, active changes, or model judgment. Native and Classic changes, states, and artifacts always remain independent.

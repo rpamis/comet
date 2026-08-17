@@ -54,11 +54,9 @@ comet state select <change-name>
 
 多个 active change 且用户尚未明确选择时，不得提前绑定；继续按 `ask_user` 决策点等待选择。
 
-### 记忆与项目规则接入
+### 记忆接入
 
-任务结束回退命令：`comet rules candidates --json`。
-
-绑定 Classic 工作区后，Agent 自动运行 `comet task <project-root> --task "<用户原始请求>" --phase build --json`，只注入当前任务匹配的记忆和项目规则。工作流命令可带 `--comet-task`、`--comet-path`、`--comet-phase`，CLI 会自动选择并显示相关片段。成功完成 change、验证或审查后自动记录 `comet memory observe`；编译器、测试或 linter 明确指出的项目规范通过 `comet rules observe` 沉淀，需要执行项目已有检查时调用 `comet rules verify --max-attempts 3`，失败按诊断修复后重跑；任务结束调用 `comet task <project-root> --task "<用户原始请求>" --complete --workflow <workflow> --change <change-id> --json`，使用返回的一条摘要处理加入、忽略或稍后。没有 Hook 时由 Skill 直接调用这些命令（只取上下文时也可用 `comet memory context`），不要求用户打开 Dashboard 或手动确认。
+绑定 Classic 工作区后，Agent 自动运行 `comet task <project-root> --task "<用户原始请求>" --phase build --json`，只注入当前任务匹配的个人记忆。工作流命令可带 `--comet-task`、`--comet-path`、`--comet-phase`，CLI 会自动选择并显示相关片段。成功完成 change、验证或审查后自动记录 `comet memory observe`；编译器、测试或 linter 失败时直接读取诊断、修复代码并按工作流要求重跑；任务结束调用 `comet task <project-root> --task "<用户原始请求>" --complete --workflow <workflow> --change <change-id> --json`，完成个人记忆检查点。没有 Hook 时由 Skill 直接调用这些命令（只取上下文时也可用 `comet memory context`），不要求用户打开 Dashboard 或手动确认。
 
 ### Comet Ambient Resume
 

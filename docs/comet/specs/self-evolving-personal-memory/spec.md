@@ -50,6 +50,6 @@
 
 ## Non-goals
 
-- 不实现 Dashboard、CLI、Skill、Hook 或项目规则宿主接线。
+- 不实现 Dashboard、CLI、Skill、Hook 或项目规范宿主接线。
 - 不自动修改 Agent 指令、linter、测试、构建或团队项目文件。
 - 不保存完整任务轨迹或新增 trajectory 文件。

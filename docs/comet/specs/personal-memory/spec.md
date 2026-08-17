@@ -52,7 +52,7 @@ CLI、Dashboard、Skill 上下文、用户可读 Markdown 和 Git 同步使用�
 
 Runtime 在落盘前验证 schema、枚举、scope、targetId、candidateKey、evidenceKeys、长度、数量和语言。secret、凭据、明显 PII、提示注入、恶意 Markdown/HTML、越界路径和要求修改 Skill/规则/系统的内容必须拒绝。
 
-Personal Memory 不能修改 Skill、Agent 指令、Project Rules、Specs、linter、测试、构建或 CI，不能扩大 Agent 当前权限，也不能操作用户正在开发的项目仓库 remote。
+Personal Memory 不能修改 Skill、Agent 指令、项目规范文件、Specs、linter、测试、构建或 CI，不能扩大 Agent 当前权限，也不能操作用户正在开发的项目仓库 remote。
 
 ## 场景
 
@@ -86,7 +86,7 @@ Personal Memory 不能修改 Skill、Agent 指令、Project Rules、Specs、lint
 
 ## 非目标
 
-- 不实现 Skill 自进化或自动修改 Agent 指令与项目规则。
+- 不实现 Skill 自进化或自动修改 Agent 指令与项目规范文件。
 - 不保存完整会话、日志、diff、隐藏推理或无边界任务轨迹。
 - 不建设向量数据库、知识图谱、Comet 账户或托管记忆服务。
 - 不全局拦截 Comet workflow 之外的普通宿主聊天。
