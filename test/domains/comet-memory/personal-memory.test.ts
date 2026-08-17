@@ -932,6 +932,49 @@ describe('PersonalMemoryService', () => {
     });
   });
 
+  it('keeps the personal memory Dashboard page local and focused', async () => {
+    await withTempRepository(async (root) => {
+      const git = {
+        sync: vi.fn().mockResolvedValue({ status: 'local-only', retryable: false }),
+        remote: vi.fn().mockResolvedValue(null),
+      };
+      const memoryService = service(root, git);
+      await memoryService.remember({
+        scope: 'project',
+        projectKey: 'project-a',
+        category: '偏好',
+        text: '使用中文回复',
+      });
+      const manage = vi.spyOn(memoryService, 'manage');
+      const descriptor = createPersonalMemoryPluginDescriptor({
+        createService: () => memoryService,
+      });
+      const runtime = new PluginRuntime({
+        cometVersion: '1.0.0',
+        store: new MemoryPluginStateStore(),
+        descriptors: [descriptor],
+      });
+      await runtime.reconcileFirstParty();
+
+      const [page] = await runtime.dashboardPages({ scope: 'project', projectId: 'project-a' });
+      const data = await page!.load!({
+        projectId: 'project-a',
+        invoke: (capability, input) =>
+          runtime.invoke('comet.personal-memory', capability, input, {
+            scope: 'project',
+            projectId: 'project-a',
+          }),
+      });
+
+      expect(data).toMatchObject({
+        projectKey: 'project-a',
+        retrieval: { records: [expect.objectContaining({ text: '使用中文回复' })] },
+      });
+      expect(manage).not.toHaveBeenCalled();
+      expect(git.sync).not.toHaveBeenCalled();
+    });
+  });
+
   it('routes personal memory management actions through the plugin API', async () => {
     await withTempRepository(async (root) => {
       const memoryService = service(root);

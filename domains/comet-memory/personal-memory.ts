@@ -690,7 +690,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
     return {
       ...status,
       remote: redactRemote((await this.repository.remote?.()) ?? null),
-      sync: await this.repository.sync(),
+      sync: null,
     };
   }
 
