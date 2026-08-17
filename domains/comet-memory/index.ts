@@ -3,4 +3,5 @@ export * from './plugin.js';
 export * from './repository.js';
 export * from './review-contract.js';
 export * from './semantic-review.js';
+export * from './skill-runtime.js';
 export * from './types.js';

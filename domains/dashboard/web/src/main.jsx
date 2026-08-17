@@ -2235,12 +2235,20 @@ function PersonalMemoryCenter({ data, onInvoke }) {
   const status = data?.status ?? {};
   const retrieval = data?.retrieval ?? {};
   const records = retrieval.records ?? [];
+  const notifications = data?.notifications ?? [];
   const projectKey = data?.projectKey;
   const learningPaused = projectKey && (status.pausedLearningProjects ?? []).includes(projectKey);
   const retrievalPaused = projectKey && (status.pausedRetrievalProjects ?? []).includes(projectKey);
   return (
     <div className="mx-auto min-w-0 max-w-dashboard">
       <SectionHead title="个人记忆" hint="跨会话沉淀你的偏好与常用操作" />
+      {notifications.length > 0 && (
+        <div className="mb-3 space-y-2">
+          {notifications.map((notice, index) => (
+            <Alert key={`${notice}-${index}`} type="info" showIcon message={notice} />
+          ))}
+        </div>
+      )}
       <div className="dashboard-plugin-toolbar">
         <Button
           size="small"

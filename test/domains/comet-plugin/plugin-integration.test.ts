@@ -30,6 +30,124 @@ async function withBridge(
 }
 
 describe('Comet plugin integration bridge', () => {
+  test('invokes the configured comet-memory Skill runner with a bounded packet', async () => {
+    await withBridge(async (bridge) => {
+      const calls: unknown[] = [];
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-skill-runner-'));
+      try {
+        const skillBridge = await createDefaultCometPluginBridge({
+          projectRoot: root,
+          memoryRoot: path.join(root, 'memory'),
+          projectId: 'skill-project',
+          stateRoot: path.join(root, 'plugin-state'),
+          runMemoryReview: async (packet) => {
+            calls.push(packet);
+            return {
+              schema: 'comet.memory.actions.v1',
+              actions: [
+                {
+                  action: 'skip',
+                  language: packet.language,
+                  reason:
+                    packet.language === 'en' ? 'No reusable preference.' : '没有长期可复用内容',
+                },
+              ],
+            };
+          },
+        });
+        await skillBridge.dispatchLifecycle({
+          name: 'task.completed',
+          workflow: 'native',
+          changeId: 'skill-runner-1',
+          success: true,
+          category: '工作习惯',
+          text: '完成命令检查点',
+          userEvidence: ['请帮我修复登录页面样式'],
+          candidateKey: 'login',
+        });
+        expect(calls).toHaveLength(1);
+        expect(calls[0]).toMatchObject({
+          schema: 'comet.memory.review.v1',
+          language: 'zh-CN',
+          workflow: 'native',
+          changeId: 'skill-runner-1',
+        });
+        expect((await skillBridge.retrieve({ projectKey: 'skill-project' })).records).toHaveLength(
+          0,
+        );
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
+      expect((await bridge.retrieve({ projectKey: 'demo-project' })).records).toHaveLength(0);
+    });
+  });
+
+  test('exposes only first activation and conflict notices to the workflow caller', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-notices-'));
+    try {
+      const notices: string[] = [];
+      const bridge = await createDefaultCometPluginBridge({
+        projectRoot: root,
+        memoryRoot: path.join(root, 'memory'),
+        projectId: 'notice-project',
+        stateRoot: path.join(root, 'plugin-state'),
+        onMemoryReviewNotice: (notice) => notices.push(notice),
+      });
+      const observation = {
+        name: 'change.completed' as const,
+        workflow: 'native',
+        success: true,
+        category: '工作习惯',
+        text: '完成命令检查点',
+        userEvidence: ['提交前只暂存本次改动文件'],
+        candidateKey: 'staging',
+      };
+      await bridge.dispatchLifecycle({ ...observation, changeId: 'notice-1' });
+      await bridge.dispatchLifecycle({ ...observation, changeId: 'notice-2' });
+      expect(notices).toHaveLength(0);
+      await bridge.retrieve({ task: '暂存改动' });
+      expect(notices).toHaveLength(1);
+      expect(notices[0]).toContain('应用');
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test('treats an unavailable or invalid Skill response as a nonblocking skip', async () => {
+    await withBridge(async (bridge) => {
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-skill-failure-'));
+      try {
+        const failingBridge = await createDefaultCometPluginBridge({
+          projectRoot: root,
+          memoryRoot: path.join(root, 'memory'),
+          projectId: 'skill-failure-project',
+          stateRoot: path.join(root, 'plugin-state'),
+          runMemoryReview: async () => {
+            throw new Error('Skill host unavailable');
+          },
+        });
+        await expect(
+          failingBridge.dispatchLifecycle({
+            name: 'task.completed',
+            workflow: 'native',
+            changeId: 'skill-failure-1',
+            success: true,
+            category: '工作习惯',
+            text: '完成命令检查点',
+            userEvidence: ['提交前只暂存本次改动文件'],
+            candidateKey: 'staging',
+          }),
+        ).resolves.toBeUndefined();
+        expect(
+          (await failingBridge.retrieve({ projectKey: 'skill-failure-project' })).records,
+        ).toHaveLength(0);
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
+      expect((await bridge.retrieve({ projectKey: 'demo-project' })).records).toHaveLength(0);
+    });
+  });
+
   test('bridges bounded user evidence and supports an optional nonblocking host adapter', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-background-'));
     const memoryRoot = path.join(root, 'memory');

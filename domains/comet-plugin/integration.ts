@@ -13,6 +13,7 @@ import {
   type MemoryQuery,
   type MemoryRecord,
   type MemoryRetrieval,
+  type MemoryReviewSkillRunner,
   type MemoryReviewRequest,
 } from '../comet-memory/index.js';
 import { createProjectRulesPluginDescriptor } from '../project-rules/index.js';
@@ -70,6 +71,10 @@ export interface CometPluginBridgeOptions {
   readonly projectRuleCarrierAdapters?: readonly ProjectRuleCarrierAdapter[];
   /** Optional host-owned adapter for nonblocking semantic memory review. */
   readonly runMemoryReviewInBackground?: (task: () => Promise<void>) => void | Promise<void>;
+  /** Optional host adapter that invokes the installed comet-memory Skill. */
+  readonly runMemoryReview?: MemoryReviewSkillRunner;
+  /** Optional host callback for the small number of user-visible memory notices. */
+  readonly onMemoryReviewNotice?: (notice: string) => void | Promise<void>;
 }
 
 export interface CometPluginContextRequest {
@@ -316,6 +321,12 @@ export async function createDefaultCometPluginBridge(
         ...(options.runMemoryReviewInBackground === undefined
           ? {}
           : { runReviewInBackground: options.runMemoryReviewInBackground }),
+        ...(options.runMemoryReview === undefined
+          ? {}
+          : { runMemoryReview: options.runMemoryReview }),
+        ...(options.onMemoryReviewNotice === undefined
+          ? {}
+          : { onReviewNotice: options.onMemoryReviewNotice }),
         createService: () =>
           new PersonalMemoryService({
             language,

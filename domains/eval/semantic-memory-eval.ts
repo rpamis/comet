@@ -31,6 +31,10 @@ export const SEMANTIC_MEMORY_EVAL_PROVENANCE = {
   runtimeHash: hashFiles(
     '../comet-memory/semantic-review.ts',
     '../comet-memory/review-contract.ts',
+    '../comet-memory/skill-runtime.ts',
+    '../comet-memory/plugin.ts',
+    '../comet-memory/personal-memory.ts',
+    '../comet-plugin/integration.ts',
   ),
   datasetHash: hashText('semantic-memory-dataset-v1'),
   rubricHash: SEMANTIC_MEMORY_EVAL_RUBRIC_HASH,
@@ -60,7 +64,7 @@ function hashFiles(...relativePaths: string[]): string {
 interface BaselineResult {
   readonly records: number;
   readonly noiseRecords: number;
-  readonly model?: 'command-summary-v0';
+  readonly model?: 'current-observe-runtime-v1';
   readonly actualAction?: 'record-command-summary';
   readonly language?: 'zh-CN' | 'en';
   readonly scope?: 'project' | 'global';
@@ -292,7 +296,7 @@ interface CaseDefinition {
   readonly language: SemanticMemoryEvalCase['language'];
   readonly input: EvalInputSummary;
   readonly run: () => Promise<SemanticResult>;
-  readonly baseline: BaselineResult;
+  readonly baselineCheckpoints: number;
 }
 
 interface MemoryHarness {
@@ -389,6 +393,11 @@ async function semanticObserve(
 export async function runSemanticMemoryEval(): Promise<SemanticMemoryEvalReport> {
   const definitions = await createCaseDefinitions();
   const cases = definitions.map(async (definition) => {
+    const baseline = normalizeBaseline(
+      await runCurrentObserveBaseline(definition),
+      definition.language,
+      definition.input,
+    );
     const observed: SemanticResult = {
       conflictProtected: true,
       globalEvidenceCorrect: true,
@@ -411,9 +420,9 @@ export async function runSemanticMemoryEval(): Promise<SemanticMemoryEvalReport>
       preset: definition.preset,
       language: definition.language,
       input: normalizedInput,
-      baseline: normalizeBaseline(definition.baseline, definition.language, definition.input),
+      baseline,
       semantic,
-      treatments: buildTreatments(definition.baseline, semantic, normalizedInput),
+      treatments: buildTreatments(baseline, semantic, normalizedInput),
       persistenceDiff: {
         recordCountBefore: 0,
         recordCountAfter: semantic.persistedState?.recordCount ?? semantic.records,
@@ -458,6 +467,7 @@ export async function runSemanticMemoryEval(): Promise<SemanticMemoryEvalReport>
           preset: definition.preset,
           language: definition.language,
           input: definition.input,
+          baselineCheckpoints: definition.baselineCheckpoints,
         })),
       ),
     ),
@@ -592,8 +602,13 @@ async function createCaseDefinitions(): Promise<CaseDefinition[]> {
       workflow: 'native',
       preset: 'full',
       language: 'zh-CN',
-      input: { kind: 'reusable behavior', expectedAction: 'activate', query: 'staging' },
-      baseline: commandSummaryBaseline(2),
+      input: {
+        kind: 'reusable behavior',
+        expectedAction: 'activate',
+        query: 'staging',
+        inputEvidence: '只暂存本次改动文件',
+      },
+      baselineCheckpoints: 2,
       run: () => runUsefulCase('zh-CN', 'native', 'full', '只暂存本次改动文件', '工作习惯'),
     },
     {
@@ -601,8 +616,13 @@ async function createCaseDefinitions(): Promise<CaseDefinition[]> {
       workflow: 'classic',
       preset: 'hotfix',
       language: 'en',
-      input: { kind: 'reusable behavior', expectedAction: 'activate', query: 'staging' },
-      baseline: commandSummaryBaseline(2),
+      input: {
+        kind: 'reusable behavior',
+        expectedAction: 'activate',
+        query: 'staging',
+        inputEvidence: 'Stage only the files changed for this task before committing',
+      },
+      baselineCheckpoints: 2,
       run: () =>
         runUsefulCase(
           'en',
@@ -618,7 +638,7 @@ async function createCaseDefinitions(): Promise<CaseDefinition[]> {
       preset: 'tweak',
       language: 'zh-CN',
       input: { kind: 'one-time test summary', expectedAction: 'skip', query: 'none' },
-      baseline: commandSummaryBaseline(1),
+      baselineCheckpoints: 1,
       run: () => runNoiseCase('zh-CN', '测试', '执行'),
     },
     {
@@ -627,7 +647,7 @@ async function createCaseDefinitions(): Promise<CaseDefinition[]> {
       preset: 'tweak',
       language: 'en',
       input: { kind: 'one-time test summary', expectedAction: 'skip', query: 'none' },
-      baseline: commandSummaryBaseline(1),
+      baselineCheckpoints: 1,
       run: () => runNoiseCase('en', 'Test', 'checkpoint'),
     },
     {
@@ -639,9 +659,9 @@ async function createCaseDefinitions(): Promise<CaseDefinition[]> {
         kind: 'one-time user request',
         expectedAction: 'skip',
         query: 'none',
-        inputEvidence: 'single command-like request checkpoint',
+        inputEvidence: '本次请求只用于当前任务',
       },
-      baseline: commandSummaryBaseline(1),
+      baselineCheckpoints: 1,
       run: () => runNoiseCase('zh-CN', '命令', '本次请求'),
     },
     {
@@ -654,7 +674,7 @@ async function createCaseDefinitions(): Promise<CaseDefinition[]> {
         expectedAction: 'skip',
         query: 'none',
       },
-      baseline: commandSummaryBaseline(2),
+      baselineCheckpoints: 2,
       run: runSecurityCase,
     },
     {
@@ -667,7 +687,7 @@ async function createCaseDefinitions(): Promise<CaseDefinition[]> {
         expectedAction: 'candidate',
         query: 'none',
       },
-      baseline: commandSummaryBaseline(3),
+      baselineCheckpoints: 3,
       run: runIdempotencyCase,
     },
     {
@@ -676,7 +696,7 @@ async function createCaseDefinitions(): Promise<CaseDefinition[]> {
       preset: 'full',
       language: 'zh-CN',
       input: { kind: 'project scope', expectedAction: 'retrieve', query: 'commit' },
-      baseline: commandSummaryBaseline(1),
+      baselineCheckpoints: 1,
       run: runScopeCase,
     },
     {
@@ -685,7 +705,7 @@ async function createCaseDefinitions(): Promise<CaseDefinition[]> {
       preset: 'tweak',
       language: 'en',
       input: { kind: 'configured language', expectedAction: 'skip', query: 'global' },
-      baseline: commandSummaryBaseline(1),
+      baselineCheckpoints: 1,
       run: runLanguageCase,
     },
     {
@@ -694,7 +714,7 @@ async function createCaseDefinitions(): Promise<CaseDefinition[]> {
       preset: 'hotfix',
       language: 'zh-CN',
       input: { kind: 'irrelevant task', expectedAction: 'abstain', query: 'deploy' },
-      baseline: commandSummaryBaseline(1),
+      baselineCheckpoints: 1,
       run: runAbstainCase,
     },
     {
@@ -703,7 +723,7 @@ async function createCaseDefinitions(): Promise<CaseDefinition[]> {
       preset: 'full',
       language: 'zh-CN',
       input: { kind: 'correction, forget and rollback', expectedAction: 'manage', query: 'global' },
-      baseline: commandSummaryBaseline(1),
+      baselineCheckpoints: 1,
       run: runManagementCase,
     },
     {
@@ -716,7 +736,7 @@ async function createCaseDefinitions(): Promise<CaseDefinition[]> {
         expectedAction: 'skip',
         query: 'staging',
       },
-      baseline: commandSummaryBaseline(1),
+      baselineCheckpoints: 1,
       run: runStaleResurrectionCase,
     },
     {
@@ -729,7 +749,7 @@ async function createCaseDefinitions(): Promise<CaseDefinition[]> {
         expectedAction: 'retrieve',
         query: 'build',
       },
-      baseline: commandSummaryBaseline(2),
+      baselineCheckpoints: 2,
       run: runConflictCase,
     },
     {
@@ -742,7 +762,7 @@ async function createCaseDefinitions(): Promise<CaseDefinition[]> {
         expectedAction: 'activate',
         query: 'communication',
       },
-      baseline: commandSummaryBaseline(2),
+      baselineCheckpoints: 2,
       run: runGlobalEvidenceCase,
     },
     {
@@ -755,7 +775,7 @@ async function createCaseDefinitions(): Promise<CaseDefinition[]> {
         expectedAction: 'skip',
         query: 'none',
       },
-      baseline: commandSummaryBaseline(1),
+      baselineCheckpoints: 1,
       run: runPauseAndSyncCase,
     },
     {
@@ -768,32 +788,64 @@ async function createCaseDefinitions(): Promise<CaseDefinition[]> {
         expectedAction: 'skip',
         query: 'none',
       },
-      baseline: commandSummaryBaseline(5),
+      baselineCheckpoints: 5,
       run: runFactAndArtifactSkipCase,
     },
   ];
 }
 
-function commandSummaryBaseline(completedCheckpoints: number): BaselineResult {
-  const summaries = Array.from({ length: completedCheckpoints }, () => ({ noise: true }));
-  return {
-    records: summaries.length,
-    noiseRecords: summaries.filter((entry) => entry.noise).length,
-    model: 'command-summary-v0',
-    actualAction: 'record-command-summary',
-    downstreamAction: 'repeat command summary as task guidance',
-    downstreamWrongSuggestion: true,
-    downstreamContextBytes: Buffer.byteLength('repeat command summary as task guidance', 'utf8'),
-  };
+async function runCurrentObserveBaseline(definition: CaseDefinition): Promise<BaselineResult> {
+  return withHarness(definition.language, async ({ service, state }) => {
+    const global =
+      definition.input.kind.includes('global') || definition.input.kind.includes('cross-project');
+    const projectKey = global ? undefined : `baseline-${definition.id}`;
+    const projectIdentity = `eval://baseline/${definition.id}`;
+    const text =
+      definition.language === 'en' ? 'Workflow command summary completed' : '完成工作流命令摘要';
+    for (let index = 0; index < definition.baselineCheckpoints; index += 1) {
+      await service.observe({
+        scope: global ? 'global' : 'project',
+        ...(projectKey === undefined ? {} : { projectKey }),
+        projectIdentity,
+        category: definition.language === 'en' ? 'Workflow checkpoint' : '工作流检查点',
+        text,
+        language: definition.language,
+        taskTypes: definition.input.query === 'none' ? undefined : [definition.input.query],
+        workflow: definition.workflow,
+        changeId: `${definition.id}:baseline:${index + 1}`,
+        candidateKey: `baseline:${definition.id}`,
+        success: true,
+        source: { kind: 'workflow', workflow: definition.workflow },
+      });
+    }
+    const current = await state();
+    const retrieval = await service.retrieve({
+      scope: global ? 'global' : 'project',
+      ...(projectKey === undefined ? {} : { projectKey }),
+      task: definition.input.query === 'none' ? undefined : definition.input.query,
+    });
+    const downstream = decideFollowUp(retrieval.text, definition.input.inputEvidence ?? '');
+    return {
+      records: current.records.length,
+      noiseRecords: current.records.length,
+      model: 'current-observe-runtime-v1',
+      actualAction: 'record-command-summary',
+      downstreamAction: downstream.action,
+      downstreamWrongSuggestion: downstream.wrongSuggestion,
+      downstreamContextBytes: downstream.contextBytes,
+    };
+  });
 }
 
 async function runDownstreamTask(
   service: PersonalMemoryService,
   query: MemoryQuery,
   expectedText: string,
-  baseline: BaselineResult,
+  language: 'zh-CN' | 'en',
+  workflow: 'native' | 'classic',
 ): Promise<NonNullable<SemanticResult['downstream']>> {
   const noMemory = decideFollowUp('', expectedText);
+  const baseline = await runCurrentObserveForTask(language, workflow, query);
   const baselineDecision = decideFollowUp(
     baseline.downstreamAction ?? 'repeat command summary as task guidance',
     expectedText,
@@ -816,6 +868,52 @@ async function runDownstreamTask(
     baselineLatencyMs: baselineDecision.latencyMs,
     semanticLatencyMs: semanticDecision.latencyMs,
   };
+}
+
+async function runCurrentObserveForTask(
+  language: 'zh-CN' | 'en',
+  workflow: 'native' | 'classic',
+  query: MemoryQuery,
+): Promise<BaselineResult> {
+  return withHarness(language, async ({ service, state }) => {
+    const scope = query.scope ?? (query.projectKey === undefined ? 'global' : 'project');
+    const projectIdentity = `eval://current-observe/${workflow}`;
+    const projectKey =
+      scope === 'project' ? (query.projectKey ?? `current-observe-${workflow}`) : undefined;
+    const text = language === 'en' ? 'Workflow command summary completed' : '完成工作流命令摘要';
+    for (const changeId of ['baseline-one', 'baseline-two']) {
+      await service.observe({
+        scope,
+        ...(projectKey === undefined ? {} : { projectKey }),
+        projectIdentity,
+        category: language === 'en' ? 'Workflow checkpoint' : '工作流检查点',
+        text,
+        language,
+        taskTypes: query.task === undefined ? undefined : [query.task],
+        workflow,
+        changeId,
+        candidateKey: 'current-observe',
+        success: true,
+        source: { kind: 'workflow', workflow },
+      });
+    }
+    const current = await state();
+    const retrieval = await service.retrieve({
+      ...query,
+      scope,
+      ...(projectKey === undefined ? {} : { projectKey }),
+    });
+    const downstream = decideFollowUp(retrieval.text, '');
+    return {
+      records: current.records.length,
+      noiseRecords: current.records.length,
+      model: 'current-observe-runtime-v1',
+      actualAction: 'record-command-summary',
+      downstreamAction: downstream.action,
+      downstreamWrongSuggestion: downstream.wrongSuggestion,
+      downstreamContextBytes: downstream.contextBytes,
+    };
+  });
 }
 
 function decideFollowUp(
@@ -881,10 +979,15 @@ function normalizeBaseline(
 }
 
 function normalizeSemanticResult(result: SemanticResult, input: EvalInputSummary): SemanticResult {
-  const activeRecordCount = input.expectedAction === 'candidate' ? 0 : result.records;
+  const actualAction = result.actualAction ?? deriveActualAction(result);
+  const activeRecordCount =
+    result.persistedState?.activeRecordCount ??
+    (actualAction === 'activate' || actualAction === 'retrieve' || actualAction === 'manage'
+      ? result.records
+      : 0);
   return {
     ...result,
-    actualAction: result.actualAction ?? deriveActualAction(result, input.expectedAction),
+    actualAction,
     persistedState: result.persistedState ?? {
       recordCount: result.records,
       candidateCount: result.candidates,
@@ -1057,14 +1160,16 @@ function isHarmfulNoiseCase(entry: SemanticMemoryEvalCase): boolean {
   );
 }
 
-function deriveActualAction(result: SemanticResult, expected: EvalAction): EvalAction {
-  if (expected === 'manage') return 'manage';
-  if (result.activated) return 'activate';
+function deriveActualAction(result: SemanticResult): EvalAction {
+  if (result.forgetVerified === true) return 'manage';
   if (result.skipped) return 'skip';
-  if (expected === 'abstain' && result.abstainCorrect) return 'abstain';
-  if (result.idempotent || (expected === 'candidate' && result.candidates > 0)) return 'candidate';
+  if (result.activated || result.secondActivated) return 'activate';
+  if (result.retrieved && result.records > 0) return 'retrieve';
+  if (result.idempotent || result.firstCandidate || result.candidates > 0) return 'candidate';
+  if (result.records === 0 && result.abstainCorrect) return 'abstain';
   if (result.retrieved) return 'retrieve';
-  return expected;
+  if (result.abstainCorrect) return 'abstain';
+  return 'skip';
 }
 
 function classifyFailures(failures: readonly string[]): SemanticMemoryFailureCategory[] {
@@ -1158,7 +1263,8 @@ async function runUsefulCase(
           task: 'staging',
         },
         text,
-        commandSummaryBaseline(2),
+        language,
+        workflow,
       ),
     };
   });
@@ -1572,7 +1678,8 @@ async function runGlobalEvidenceCase(): Promise<SemanticResult> {
         service,
         { scope: 'global', task: 'communication' },
         base.text,
-        commandSummaryBaseline(2),
+        'en',
+        'classic',
       ),
     };
   });
