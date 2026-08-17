@@ -1,7 +1,14 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+
+const identity = vi.hoisted(() => ({
+  resolveStableProjectId: vi.fn(),
+  stableProjectId: vi.fn(),
+}));
+
+vi.mock('../../../platform/paths/project-identity.js', () => identity);
 
 import { collectDashboardProjectDirectory } from '../../../domains/dashboard/project-directory.js';
 import { getProjectRegistryPath } from '../../../platform/install/project-registry.js';
@@ -12,6 +19,11 @@ describe('collectDashboardProjectDirectory', () => {
   let currentProject: string;
 
   beforeEach(async () => {
+    vi.resetAllMocks();
+    identity.resolveStableProjectId.mockImplementation(
+      (projectPath: string) => `git:${projectPath}`,
+    );
+    identity.stableProjectId.mockImplementation((projectPath: string) => `path:${projectPath}`);
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-dashboard-project-directory-'));
     homeDir = path.join(tempDir, 'home');
     currentProject = path.join(tempDir, 'current-project');
@@ -74,8 +86,13 @@ describe('collectDashboardProjectDirectory', () => {
       'missing-project',
     ]);
     expect(directory.projects.at(-1)).toEqual(
-      expect.objectContaining({ availability: 'missing', isCurrent: false }),
+      expect.objectContaining({
+        availability: 'missing',
+        id: `path:${missingProject}`,
+        isCurrent: false,
+      }),
     );
+    expect(identity.resolveStableProjectId).toHaveBeenCalledTimes(2);
   });
 
   it('falls back to the launch project when the project index is invalid', async () => {

@@ -6,7 +6,7 @@ import {
   readProjectRegistry,
   type ProjectRegistryEntry,
 } from '../../platform/install/project-registry.js';
-import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
+import { resolveStableProjectId, stableProjectId } from '../../platform/paths/project-identity.js';
 
 export type DashboardProjectAvailability = 'available' | 'missing' | 'unreadable';
 
@@ -97,14 +97,20 @@ export async function collectDashboardProjectDirectory(
 
   const currentKey = canonicalKey(currentPath);
   const projects = await Promise.all(
-    [...candidates.entries()].map(async ([key, candidate]) => ({
-      id: projectId(candidate.path),
-      name: projectName(candidate.path),
-      path: candidate.path,
-      lastSeenAt: candidate.lastSeenAt,
-      availability: await availabilityOf(candidate.path),
-      isCurrent: key === currentKey,
-    })),
+    [...candidates.entries()].map(async ([key, candidate]) => {
+      const availability = await availabilityOf(candidate.path);
+      return {
+        id:
+          availability === 'available'
+            ? projectId(candidate.path)
+            : stableProjectId(candidate.path),
+        name: projectName(candidate.path),
+        path: candidate.path,
+        lastSeenAt: candidate.lastSeenAt,
+        availability,
+        isCurrent: key === currentKey,
+      };
+    }),
   );
   projects.sort(sortEntries);
 
