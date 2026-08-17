@@ -70,6 +70,7 @@ interface BaselineResult {
   readonly scope?: 'project' | 'global';
   readonly downstreamAction?: string;
   readonly downstreamWrongSuggestion?: boolean;
+  readonly downstreamRequiresUserCorrection?: boolean;
   readonly downstreamContextBytes?: number;
 }
 
@@ -832,6 +833,7 @@ async function runCurrentObserveBaseline(definition: CaseDefinition): Promise<Ba
       actualAction: 'record-command-summary',
       downstreamAction: downstream.action,
       downstreamWrongSuggestion: downstream.wrongSuggestion,
+      downstreamRequiresUserCorrection: downstream.requiresUserCorrection,
       downstreamContextBytes: downstream.contextBytes,
     };
   });
@@ -911,6 +913,7 @@ async function runCurrentObserveForTask(
       actualAction: 'record-command-summary',
       downstreamAction: downstream.action,
       downstreamWrongSuggestion: downstream.wrongSuggestion,
+      downstreamRequiresUserCorrection: downstream.requiresUserCorrection,
       downstreamContextBytes: downstream.contextBytes,
     };
   });
@@ -924,6 +927,7 @@ function decideFollowUp(
   readonly action: string;
   readonly correct: boolean;
   readonly wrongSuggestion: boolean;
+  readonly requiresUserCorrection: boolean;
   readonly contextBytes: number;
   readonly latencyMs: number;
 } {
@@ -938,6 +942,7 @@ function decideFollowUp(
     action,
     correct,
     wrongSuggestion: trimmedContext.length > 0 && !correct,
+    requiresUserCorrection: !correct,
     contextBytes: Buffer.byteLength(context, 'utf8'),
     latencyMs: elapsedMilliseconds(startedAt),
   };
@@ -1042,7 +1047,9 @@ function buildTreatments(
         currentLatencyMs > SEMANTIC_MEMORY_EVAL_THRESHOLDS.maxLatencyMs ||
         (baseline.downstreamWrongSuggestion === true &&
           (baseline.downstreamContextBytes ?? 0) > 4096),
-      correct: baseline.downstreamWrongSuggestion !== true,
+      correct:
+        baseline.downstreamWrongSuggestion !== true &&
+        baseline.downstreamRequiresUserCorrection !== true,
     },
     semanticReview: {
       name: 'semantic-review',

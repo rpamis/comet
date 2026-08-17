@@ -46,6 +46,15 @@ describe('semantic memory eval', () => {
       maxHarmfulOrNoisySaveRate: 0,
       maxTimeoutRate: 0,
     });
+    expect(first.metrics.thresholdsPassed).toBe(true);
+    expect(
+      first.cases.find((entry) => entry.id === 'require-cross-project-evidence-for-global')
+        ?.treatments.currentObserve.correct,
+    ).toBe(false);
+    expect(
+      first.cases.find((entry) => entry.id === 'require-cross-project-evidence-for-global')
+        ?.treatments.currentObserve.downstreamAction,
+    ).toBe('ask the user for the reusable preference');
     expect(first.metrics.treatmentHashes.semanticReview).toMatch(/^sha256:/);
     expect(
       first.cases.every(

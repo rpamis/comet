@@ -1,0 +1,241 @@
+schema: comet.native.v4
+name: semantic-memory-review-repair-v5
+language: zh-CN
+phase: archive
+status: done
+state_version: 8
+brief: brief.md
+spec_changes: []
+workspace:
+  isolation: worktree
+  change_branch: comet/semantic-memory-review-repair-v5
+  target_branch: beta20
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: Eval 的跨项目下游场景中，current-observe 的“请用户补充偏好”被计为失败，semantic-review 的复用被计为成功；
+    result: passed
+    reason:
+      text: current-observe 显式记录 downstreamRequiresUserCorrection；仍需用户补充偏好时
+        correct=false，跨项目回归断言覆盖该场景。
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: "`downstreamTaskSuccessDelta` 达到冻结的 1.0，`thresholdsPassed` 为 `true`；"
+    result: passed
+    reason:
+      text: 冻结阈值仍为 minDownstreamTaskSuccessDelta=1；Eval 16/16
+        通过，downstreamTaskSuccessDelta=1，thresholdsPassed=true。
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: 全部相关测试继续通过。
+    result: passed
+    reason:
+      text: Runtime 已执行并通过回归测试、Eval、完整 build、generated、format、lint 和 diff check。
+      truncated: false
+builder_handoff:
+  candidate_id: 73160390-7de5-4dd8-8fe5-fefdb092b179
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:0a075cd9-f72e-46bb-8afe-14abe02fb952
+  iteration: 1
+  summary:
+    text: 增加显式 downstreamRequiresUserCorrection 基线字段；current-observe
+      只要仍需用户补充偏好就计为未完成，保持冻结阈值不变。新增回归断言并确认 16/16 Eval
+      场景通过，downstreamTaskSuccessDelta=1、thresholdsPassed=true。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+  checks:
+    - name:
+        text: semantic-memory-eval-test
+        truncated: false
+      result: passed
+      note:
+        text: "vitest: 1 file, 1 test passed"
+        truncated: false
+    - name:
+        text: semantic-memory-eval
+        truncated: false
+      result: passed
+      note:
+        text: 16/16 cases passed; downstreamTaskSuccessDelta=1; thresholdsPassed=true
+        truncated: false
+    - name:
+        text: build
+        truncated: false
+      result: passed
+      note:
+        text: pnpm build completed successfully
+        truncated: false
+    - name:
+        text: prettier
+        truncated: false
+      result: passed
+      note:
+        text: All modified files use Prettier code style
+        truncated: false
+    - name:
+        text: eslint
+        truncated: false
+      result: passed
+      note:
+        text: No errors; existing unused-variable warnings only
+        truncated: false
+    - name:
+        text: diff-check
+        truncated: false
+      result: passed
+      note:
+        text: git diff --check
+        truncated: false
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  submitted_at: 2026-08-17T02:46:54.731Z
+blockers: []
+verification:
+  candidate_id: 73160390-7de5-4dd8-8fe5-fefdb092b179
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:4883d7b5-a25c-44db-8057-1b00169f6b3a
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: v5-eval-test
+      name:
+        text: semantic memory eval regression test
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: vitest
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/eval/semantic-memory-eval.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 3878
+    - id: v5-eval
+      name:
+        text: semantic memory eval
+        truncated: false
+      argv_display:
+        - text: scripts/benchmark/semantic-memory-eval.mjs
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 633
+    - id: v5-build
+      name:
+        text: full build
+        truncated: false
+      argv_display:
+        - text: build
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 30419
+    - id: v5-generated
+      name:
+        text: generated assets check
+        truncated: false
+      argv_display:
+        - text: check:generated
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 2060
+    - id: v5-format
+      name:
+        text: format check
+        truncated: false
+      argv_display:
+        - text: format:check
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 14694
+    - id: v5-lint
+      name:
+        text: lint
+        truncated: false
+      argv_display:
+        - text: lint
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 8439
+    - id: v5-diff
+      name:
+        text: diff check
+        truncated: false
+      argv_display:
+        - text: diff
+          truncated: false
+        - text: --check
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 194
+  summary:
+    text: 独立只读 Verifier 判定 v5 子修复通过；无实现阻塞。
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-08-17T02:52:28.300Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 独立只读 Verifier 判定 v5 子修复通过；无实现阻塞。
+      truncated: false
+    completed_at: 2026-08-17T02:52:28.300Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-17T02:43:42.095Z
