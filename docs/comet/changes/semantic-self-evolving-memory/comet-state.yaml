@@ -3,9 +3,9 @@ name: semantic-self-evolving-memory
 language: zh-CN
 phase: build
 status: active
-state_version: 20
+state_version: 29
 brief: brief.md
-children_contract_hash: 13305b964a40f68dc69676729cc983bb1c6fcf7400321698bc0d09e1fa0206e4
+children_contract_hash: 1b7458250b8bd6d6e10a6ad08e79f83361ef851026553fd72bbe3006bb110749
 spec_changes:
   - capability: comet-memory-skill
     operation: modify
@@ -23,7 +23,7 @@ workspace:
   finish: null
 loop:
   stage: building
-  goal_cycle: 3
+  goal_cycle: 4
   iteration: 1
   attempt: 0
   retry_epoch: 0
@@ -703,6 +703,42 @@ history:
       text: Native child declarations changed
       truncated: false
     completed_at: 2026-08-16T22:27:56.549Z
+  - goal_cycle: 3
+    iteration: 1
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 修复 Verify 计划中的本机权限残留导致的打包测试假失败，使用干净 worktree 重新执行完整检查
+      truncated: false
+    completed_at: 2026-08-16T23:57:26.702Z
+  - goal_cycle: 3
+    iteration: 2
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A19
+      - A20
+      - A24
+      - A51
+      - A91
+      - A93
+      - A95
+    summary:
+      text: 独立 verifier 发现 7 个必须修复的真实缺口：CLI 与 workflow 没有完全共享 explicit review
+        闭环，workflow 未传入用户证据，Eval 的 downstream 与 latency 仍是合成或不完整测量。先创建最小 repair
+        Child，再进入最终 Verify。
+      truncated: false
+    completed_at: 2026-08-17T00:12:22.820Z
+  - goal_cycle: 3
+    iteration: 3
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native child declarations changed
+      truncated: false
+    completed_at: 2026-08-17T00:17:41.104Z
 history_overflow:
   dropped_entries: 0
   first_dropped_at: null
