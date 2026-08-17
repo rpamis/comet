@@ -261,6 +261,49 @@ describe('PersonalMemoryService', () => {
     });
   });
 
+  it('keeps permanently forgotten memories from being reactivated by later observations', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const record = await memories.remember({
+        scope: 'project',
+        projectKey: 'project-a',
+        category: '构建',
+        text: '使用 pnpm build',
+      });
+
+      await memories.remove(record.id, { permanent: true });
+
+      const observation = {
+        scope: 'project' as const,
+        projectKey: 'project-a',
+        category: '构建',
+        text: '使用 pnpm build',
+        language: 'zh-CN' as const,
+        workflow: 'native',
+        success: true,
+      };
+      await expect(
+        memories.observe({
+          ...observation,
+          changeId: 'change-after-forget-1',
+          observedAt: '2026-08-15T00:00:00.000Z',
+        }),
+      ).resolves.toMatchObject({ ignored: true, candidate: false, activated: false });
+      await expect(
+        memories.observe({
+          ...observation,
+          changeId: 'change-after-forget-2',
+          observedAt: '2026-08-16T00:00:00.000Z',
+        }),
+      ).resolves.toMatchObject({ ignored: true, candidate: false, activated: false });
+
+      expect(await memories.get(record.id)).toBeNull();
+      expect((await memories.retrieve({ projectKey: 'project-a', task: 'build' })).records).toEqual(
+        [],
+      );
+    });
+  });
+
   it('requires two independent successful changes before inferred memory becomes active', async () => {
     await withTempRepository(async (root) => {
       const memories = service(root);

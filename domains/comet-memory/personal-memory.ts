@@ -189,6 +189,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
         recordId: current.id,
         textHash: normalizedMemoryTextHash(current.text),
         reason: 'user-remove',
+        ...(options.permanent === true ? { permanent: true } : {}),
         removedAt: this.timestamp(),
       });
       await this.persist(state);
@@ -286,7 +287,10 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
       const identity = stored.identity;
       const normalized = stored.normalizedText;
       const tombstone = state.tombstones.find((entry) => entry.identity === identity);
-      if (tombstone !== undefined && stored.observedAt <= tombstone.removedAt) {
+      if (
+        tombstone?.permanent === true ||
+        (tombstone !== undefined && stored.observedAt <= tombstone.removedAt)
+      ) {
         await this.persist(state);
         return {
           deduplicated: false,

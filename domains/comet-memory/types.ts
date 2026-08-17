@@ -200,6 +200,7 @@ export interface MemoryTombstone {
   readonly recordId: string;
   readonly textHash?: string;
   readonly reason?: 'user-remove' | 'markdown-delete';
+  readonly permanent?: boolean;
   readonly removedAt: string;
 }
 
