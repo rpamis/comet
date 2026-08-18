@@ -21,6 +21,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 - **Native Archive**: Archive now respects Git ignore rules when staging workspace artifacts and keeps valid portable verification reports from being treated as incomplete migrations.
 - **Windows Eval packaging**: Packaging no longer traverses ignored pytest and Eval runtime artifacts before applying the package boundary, so stale Windows test directories cannot make `pnpm pack` fail with `EPERM`.
+- **Windows Eval isolation**: Repeated `comet eval` runs no longer copy generated `.comet` caches and run artifacts into Skill workspaces, preventing deep-path `MAX_PATH` failures on Windows.
 
 ## What's Changed [0.4.0-beta.18] - 2026-08-13
 

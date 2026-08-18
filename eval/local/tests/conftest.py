@@ -1667,7 +1667,12 @@ def setup_test_context(test_dir):
         skill_dir.mkdir(parents=True, exist_ok=True)
 
         if source_dir and source_dir.is_dir():
-            shutil.copytree(source_dir, skill_dir, dirs_exist_ok=True)
+            shutil.copytree(
+                source_dir,
+                skill_dir,
+                dirs_exist_ok=True,
+                ignore=shutil.ignore_patterns(".comet"),
+            )
 
         shutil.copyfile(skill_file, skill_dir / "SKILL.md")
 

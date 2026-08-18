@@ -685,6 +685,31 @@ def test_setup_test_context_copies_full_skill_package_and_configures_040_hook(
     ]
 
 
+def test_setup_test_context_excludes_comet_runtime_state_from_skill_copy(
+    tmp_path: Path, setup_test_context
+):
+    source_dir = tmp_path / "comet-source"
+    source_dir.mkdir()
+    (source_dir / "SKILL.md").write_text("---\nname: comet\n---\n\nOriginal.", encoding="utf-8")
+    runtime_state = source_dir / ".comet" / "eval" / "cache" / "uv"
+    runtime_state.mkdir(parents=True)
+    (runtime_state / "long-wheel.lock").write_text("cached", encoding="utf-8")
+    (source_dir / ".comet" / "eval" / "runs").mkdir(parents=True)
+
+    setup_test_context(
+        skills={
+            "comet": {
+                "sections": ["---\nname: comet\n---\n\nGenerated."],
+                "source_dir": source_dir,
+            }
+        }
+    )
+
+    installed = tmp_path / ".claude" / "skills" / "comet"
+    assert (installed / "SKILL.md").exists()
+    assert not (installed / ".comet").exists()
+
+
 def test_setup_test_context_configures_039_shell_hook(tmp_path: Path, setup_test_context):
     source_dir = tmp_path / "comet-source"
     source_dir.mkdir()
