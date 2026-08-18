@@ -29,6 +29,28 @@ import type {
 
 const execFileAsync = promisify(execFile);
 
+async function renameAfterWindowsProcessRelease(
+  source: string,
+  destination: string,
+): Promise<void> {
+  const deadline = Date.now() + 3_000;
+  while (true) {
+    try {
+      await fs.rename(source, destination);
+      return;
+    } catch (error) {
+      if (
+        process.platform !== 'win32' ||
+        (error as NodeJS.ErrnoException).code !== 'EBUSY' ||
+        Date.now() >= deadline
+      ) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+}
+
 describe('Native VCS-independent content snapshots', () => {
   let projectRoot: string;
   let outsideRoot: string;
@@ -1063,7 +1085,7 @@ describe('Native VCS-independent content snapshots', () => {
     );
 
     const movedRoot = `${projectRoot}-after-git-timeout`;
-    await expect(fs.rename(projectRoot, movedRoot)).resolves.toBeUndefined();
+    await expect(renameAfterWindowsProcessRelease(projectRoot, movedRoot)).resolves.toBeUndefined();
     projectRoot = movedRoot;
     paths = await nativeProjectPaths(projectRoot, '.');
   });
@@ -1107,7 +1129,9 @@ describe('Native VCS-independent content snapshots', () => {
       );
       expect(results.every((result) => result.status === 'rejected')).toBe(true);
       const movedRoot = `${projectRoot}-moved`;
-      await expect(fs.rename(projectRoot, movedRoot)).resolves.toBeUndefined();
+      await expect(
+        renameAfterWindowsProcessRelease(projectRoot, movedRoot),
+      ).resolves.toBeUndefined();
       projectRoot = movedRoot;
       paths = await nativeProjectPaths(projectRoot, '.');
     },

@@ -412,6 +412,9 @@ function startNativeGitProcess(
     adapter.command,
     [...(adapter.argsPrefix ?? []), '-C', projectRoot, ...args],
     {
+      // Git must not inherit a caller's possibly stale or removed working directory. This is
+      // especially important for Hook/CLI calls that run alongside workspace-management code.
+      cwd: projectRoot,
       stdio: [input ? 'pipe' : 'ignore', 'pipe', 'pipe'],
       windowsHide: true,
       detached: process.platform !== 'win32',

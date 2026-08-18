@@ -24,6 +24,11 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Native verification status copy**: Verification reports and Dashboard labels now explain independent verification, required confirmation, and automatic-check-only results in plain language without changing machine status values.
 - **Native worktree lifecycle**: A successfully merged Comet-created isolated change now removes its finished worktree while preserving the branch for normal Git workflows.
 
+### Fixed
+
+- **Native Git snapshot reliability**: Native snapshot probes now run from the project root and tolerate short Windows process-handle release delays, avoiding failures when hooks and workspace operations run concurrently.
+- **Beta20 package metadata**: Published asset metadata now stays aligned with the beta20 package version instead of reporting the unreleased beta21 version.
+
 ## What's Changed [0.4.0-beta.18] - 2026-08-13
 
 ### Added

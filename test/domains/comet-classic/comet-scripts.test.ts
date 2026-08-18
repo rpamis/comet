@@ -22,11 +22,14 @@ function runNode(
   env: NodeJS.ProcessEnv = {},
   timeout?: number,
 ) {
+  const isolatedHome = path.join(cwd, '.fake-home');
   return spawnSync(process.execPath, [script, ...args], {
     cwd,
     encoding: 'utf-8',
     env: {
       ...process.env,
+      HOME: isolatedHome,
+      USERPROFILE: isolatedHome,
       COMET_RUNTIME_CLASSIC_ROOT: classicRuntimeRoot,
       COMET_CLASSIC_SKILL_ROOT: classicRuntimeRoot,
       ...env,
@@ -57,12 +60,15 @@ function canonicalProjectConfig(
 }
 
 function runHookGuard(cwd: string, script: string, stdin: string, env: NodeJS.ProcessEnv = {}) {
+  const isolatedHome = path.join(cwd, '.fake-home');
   return spawnSync(process.execPath, [script], {
     cwd,
     encoding: 'utf8',
     input: stdin,
     env: {
       ...process.env,
+      HOME: isolatedHome,
+      USERPROFILE: isolatedHome,
       COMET_RUNTIME_CLASSIC_ROOT: classicRuntimeRoot,
       COMET_CLASSIC_SKILL_ROOT: classicRuntimeRoot,
       ...env,
