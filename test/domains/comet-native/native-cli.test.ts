@@ -876,29 +876,29 @@ describe('Comet Native CLI dispatcher', () => {
     expect(JSON.stringify(result.data)).not.toContain('approval');
   });
 
-  it('returns Verify to Build only after a trusted Runner submitted the Builder candidate', async () => {
-    await runNativeCli(['new', 'return-to-build', ...projectArgs()]);
+  it('revises implementation only after a trusted Runner submitted the Builder candidate', async () => {
+    await runNativeCli(['new', 'revise-implementation', ...projectArgs()]);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
-    await fs.writeFile(path.join(paths.changesDir, 'return-to-build', 'brief.md'), brief);
+    await fs.writeFile(path.join(paths.changesDir, 'revise-implementation', 'brief.md'), brief);
 
     const invalidPhase = json(
       await runNativeCli([
         'next',
-        'return-to-build',
+        'revise-implementation',
         '--summary',
         'Shape cannot return to Build',
-        '--return-to-build',
+        '--revise-implementation',
         '--json',
         ...projectArgs(),
       ]),
     );
-    expect(invalidPhase).toMatchObject({ exitCode: 65, error: { code: 'invalid-data' } });
+    expect(invalidPhase).toMatchObject({ exitCode: 64, error: { code: 'usage' } });
 
     expect(
       (
         await runNativeCli([
           'next',
-          'return-to-build',
+          'revise-implementation',
           '--summary',
           'Shape is confirmed',
           '--confirmed',
@@ -909,20 +909,21 @@ describe('Comet Native CLI dispatcher', () => {
     const runner = createNativeRunnerChannel();
     await submitNativePortableBuilderCandidate({
       paths,
-      name: 'return-to-build',
+      name: 'revise-implementation',
       input: {
         identity: runner.captureExecutionIdentity({
           identityProvider: 'test-host',
-          executionRef: 'builder-return-to-build',
+          executionRef: 'builder-revise-implementation',
         }),
-        candidateId: 'candidate-return-to-build',
+        candidateId: 'candidate-revise-implementation',
         summary: 'Implemented the confirmed acceptance.',
         addressedAcceptanceIds: ['A1'],
       },
     });
 
     expect(
-      json(await runNativeCli(['status', 'return-to-build', '--json', ...projectArgs()])).data,
+      json(await runNativeCli(['status', 'revise-implementation', '--json', ...projectArgs()]))
+        .data,
     ).toMatchObject({
       phase: 'verify',
       continuation: { action: 'dispatch-verifier', runnerAction: { kind: 'dispatch-verifier' } },
@@ -930,10 +931,10 @@ describe('Comet Native CLI dispatcher', () => {
     const returned = json(
       await runNativeCli([
         'next',
-        'return-to-build',
+        'revise-implementation',
         '--summary',
         'Implementation changed after handoff',
-        '--return-to-build',
+        '--revise-implementation',
         '--json',
         ...projectArgs(),
       ]),
@@ -955,10 +956,10 @@ describe('Comet Native CLI dispatcher', () => {
     const mixed = json(
       await runNativeCli([
         'next',
-        'return-to-build',
+        'revise-implementation',
         '--summary',
         'Invalid mixed request',
-        '--return-to-build',
+        '--revise-implementation',
         '--confirmed',
         '--json',
         ...projectArgs(),

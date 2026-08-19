@@ -2,28 +2,17 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.4.0-beta.21] - 2026-08-18
-
-### Added
-
-- **Native Verify-to-Shape recovery**: `comet native next` now supports `--return-to-shape` from Verify or Archive when user-visible targets or acceptance criteria must change, invalidating the rejected candidate cycle before a fresh Shape confirmation.
-
-### Changed
-
-- **Native user-decision continuations**: Native await-user continuations now expose mutually exclusive command alternatives for accepting a candidate, returning to Build, or returning to Shape, and bind those decisions to the state version that produced them so stale continuation commands cannot confirm a later goal cycle.
-
-## What's Changed [0.4.0-beta.20] - 2026-08-16
+## What's Changed [0.4.0-beta.19] - 2026-08-15
 
 ### Added
 
 - **Repository-owned Native pull-request finish providers**: Projects can opt into a structured repository command for PR title, body, template, and policy validation while Comet retains commit, push, remote base/head/SHA verification, existing-PR reuse, recoverable failure state, and safe worktree cleanup.
 
-## What's Changed [0.4.0-beta.19] - 2026-08-15
-
 ### Changed
 
 - **Dashboard artifact previews**: Fullscreen previews now close with Escape, keep long tables horizontally scrollable, preserve readable table headers, and use a larger directory navigation scale.
 - **Hook allow-path documentation**: The website now explains how to configure project-relative `hook.allow_paths` directories for guarded workflow phases.
+- **Native verification decisions**: Native await-user continuations now let users accept the current result, revise the implementation, or revise requirements and acceptance criteria while invalidating stale Archive authorization from older goal cycles.
 - **On-demand change review**: The new `/comet-review` Skill reviews the current Native or Classic change against its implementation diff and existing evidence, reports prioritized correctness, security, edge-case, and coverage findings, and remains read-only without advancing or replacing Verify.
 
 ### Fixed

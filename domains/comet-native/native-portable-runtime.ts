@@ -113,10 +113,10 @@ export const NATIVE_PORTABLE_BRIEF_TEMPLATE = `# Outcome
 
 export type NativePortableExpectedContinuationAction =
   | 'confirm-shape'
-  | 'confirm-pass'
+  | 'accept-result'
   | 'confirm-verifier-unavailable'
-  | 'return-to-build'
-  | 'return-to-shape'
+  | 'revise-implementation'
+  | 'revise-requirements'
   | 'retry-verifier'
   | 'resolve-verifier-blocker';
 
@@ -1800,7 +1800,7 @@ export async function confirmNativePortableSkillCoordinatedPass(options: {
       assertNativePortableExpectedContinuationLocked({
         state,
         expected: options.expectedContinuation,
-        action: 'confirm-pass',
+        action: 'accept-result',
       });
       await ensureNativePortableAcceptanceCurrentLocked({ paths: options.paths, state });
       const next = confirmNativeSkillCoordinatedPass(state);
@@ -1939,7 +1939,7 @@ export async function returnNativePortableChangeToBuild(options: {
       assertNativePortableExpectedContinuationLocked({
         state,
         expected: options.expectedContinuation,
-        action: 'return-to-build',
+        action: 'revise-implementation',
       });
       if (state.phase === 'build') return state;
       const next = returnNativeCandidateToBuild({ state, reason: options.reason });
@@ -2086,10 +2086,10 @@ export async function returnNativePortableChangeToShape(options: {
       assertNativePortableExpectedContinuationLocked({
         state,
         expected: options.expectedContinuation,
-        action: 'return-to-shape',
+        action: 'revise-requirements',
       });
       if (options.allowedPhases && !options.allowedPhases.includes(state.phase)) {
-        throw new Error('--return-to-shape is only valid from Verify or Archive');
+        throw new Error('--revise-requirements is only valid from Verify');
       }
       if (state.phase === 'shape') return state;
       return returnNativePortableStateToShapeLocked({

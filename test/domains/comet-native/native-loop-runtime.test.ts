@@ -256,14 +256,14 @@ describe('Native portable Build/Verify loop', () => {
       requiredInputs: ['summary', 'user-decision'],
       commandAlternatives: expect.arrayContaining([
         expect.objectContaining({
-          name: 'return-to-build',
-          commandArgs: expect.arrayContaining(['--return-to-build']),
-          requiredInputs: ['summary', 'user-rejection'],
+          name: 'revise-implementation',
+          commandArgs: expect.arrayContaining(['--revise-implementation']),
+          requiredInputs: ['summary', 'user-decision'],
         }),
         expect.objectContaining({
-          name: 'return-to-shape',
-          commandArgs: expect.arrayContaining(['--return-to-shape']),
-          requiredInputs: ['summary', 'user-rejection'],
+          name: 'revise-requirements',
+          commandArgs: expect.arrayContaining(['--revise-requirements']),
+          requiredInputs: ['summary', 'user-decision'],
         }),
       ]),
     });

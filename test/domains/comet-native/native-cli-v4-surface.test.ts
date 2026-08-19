@@ -157,7 +157,10 @@ Run applicable focused checks.
     expect(next.stdout).toContain('not trusted identity attestation');
     expect(next.stdout).toContain('--retry-verifier');
     expect(next.stdout).toContain('--resolve-verifier-blocker');
-    expect(next.stdout).toContain('--return-to-shape');
+    expect(next.stdout).toContain('--accept-result');
+    expect(next.stdout).toContain('--revise-implementation');
+    expect(next.stdout).toContain('--revise-requirements');
+    expect(next.stdout).not.toContain('--return-to-shape');
     expect(next.stdout).toContain('verifier-unavailable');
     expect(archive.stdout).toContain('does not repeat verification');
     expect(status.stdout).toContain('local execution availability');
@@ -281,17 +284,17 @@ Run applicable focused checks.
     }
   });
 
-  it('rejects return-to-shape when combined with another public transition flag', async () => {
-    await prepareBuild('return-to-shape-mutual-exclusion');
+  it('rejects user-decision flags when combined with another public transition flag', async () => {
+    await prepareBuild('revise-requirements-mutual-exclusion');
 
     const result = json(
       await runNativeCli([
         'next',
-        'return-to-shape-mutual-exclusion',
+        'revise-requirements-mutual-exclusion',
         '--summary',
         'Ambiguous user decision',
-        '--return-to-shape',
-        '--return-to-build',
+        '--revise-requirements',
+        '--revise-implementation',
         '--json',
         ...projectArgs(),
       ]),
@@ -301,7 +304,7 @@ Run applicable focused checks.
       exitCode: 64,
       error: {
         code: 'usage',
-        message: expect.stringContaining('--return-to-shape'),
+        message: expect.stringContaining('--revise-requirements'),
       },
     });
   });
@@ -461,18 +464,25 @@ Run applicable focused checks.
           inputOptions: [expect.objectContaining({ name: 'summary', flag: '--summary' })],
           commandAlternatives: expect.arrayContaining([
             expect.objectContaining({
-              name: 'confirm-pass',
+              name: 'accept-result',
               stateVersion: expect.any(Number),
-              expectedAction: 'confirm-pass',
-              commandArgs: expect.arrayContaining(['--confirmed']),
-              requiredInputs: ['summary', 'user-confirmation'],
+              expectedAction: 'accept-result',
+              commandArgs: expect.arrayContaining(['--accept-result']),
+              requiredInputs: ['summary', 'user-decision'],
             }),
             expect.objectContaining({
-              name: 'return-to-shape',
+              name: 'revise-implementation',
               stateVersion: expect.any(Number),
-              expectedAction: 'return-to-shape',
-              commandArgs: expect.arrayContaining(['--return-to-shape']),
-              requiredInputs: ['summary', 'user-rejection'],
+              expectedAction: 'revise-implementation',
+              commandArgs: expect.arrayContaining(['--revise-implementation']),
+              requiredInputs: ['summary', 'user-decision'],
+            }),
+            expect.objectContaining({
+              name: 'revise-requirements',
+              stateVersion: expect.any(Number),
+              expectedAction: 'revise-requirements',
+              commandArgs: expect.arrayContaining(['--revise-requirements']),
+              requiredInputs: ['summary', 'user-decision'],
             }),
           ]),
         },
@@ -491,7 +501,7 @@ Run applicable focused checks.
         name,
         '--summary',
         'User accepts the Skill-coordinated verification boundary',
-        '--confirmed',
+        '--accept-result',
         '--json',
         ...projectArgs(),
       ]),
@@ -516,28 +526,28 @@ Run applicable focused checks.
     ).toContain('Result: **Passed**');
   });
 
-  it('returns a rejected skill-coordinated pass to Shape and starts a fresh candidate cycle', async () => {
-    const name = 'skill-pass-return-to-shape';
+  it('revises requirements after a rejected skill-coordinated pass and starts a fresh candidate cycle', async () => {
+    const name = 'skill-pass-revise-requirements';
     await prepareBuild(name, ['Original behavior works.']);
     const built = await runnerStep(name, builderHandoff(['A1']));
     const oldCandidateId = (built.data as { state: { builder_handoff: { candidate_id: string } } })
       .state.builder_handoff.candidate_id;
     await runnerStep(name, { kind: 'dispatch-verifier', checks: [] });
     const awaitingPassDecision = await runnerStep(name, finalResponse(1, 1, ['A1']));
-    const oldConfirmPassAlternative = (
+    const oldAcceptResultAlternative = (
       awaitingPassDecision.data as {
         continuation: {
           commandAlternatives: Array<{ name: string; commandArgs: string[] }>;
         };
       }
-    ).continuation.commandAlternatives.find(({ name }) => name === 'confirm-pass');
-    expect(oldConfirmPassAlternative).toMatchObject({
-      name: 'confirm-pass',
+    ).continuation.commandAlternatives.find(({ name }) => name === 'accept-result');
+    expect(oldAcceptResultAlternative).toMatchObject({
+      name: 'accept-result',
       commandArgs: expect.arrayContaining([
-        '--confirmed',
+        '--accept-result',
         '--expected-state-version',
         '--expected-action',
-        'confirm-pass',
+        'accept-result',
       ]),
     });
 
@@ -547,7 +557,7 @@ Run applicable focused checks.
         name,
         '--summary',
         'User-visible acceptance criteria changed',
-        '--return-to-shape',
+        '--revise-requirements',
         '--json',
         ...projectArgs(),
       ]),
@@ -576,9 +586,9 @@ Run applicable focused checks.
       },
     });
 
-    const staleConfirmPass = json(
+    const staleAcceptResult = json(
       await runNativeCli([
-        ...oldConfirmPassAlternative!.commandArgs
+        ...oldAcceptResultAlternative!.commandArgs
           .slice(2)
           .map((value) =>
             value === '<summary>' ? 'Delayed confirmation for an obsolete pass' : value,
@@ -587,7 +597,7 @@ Run applicable focused checks.
         ...projectArgs(),
       ]),
     );
-    expect(staleConfirmPass).toMatchObject({
+    expect(staleAcceptResult).toMatchObject({
       exitCode: 65,
       error: { message: expect.stringContaining('stale for state version') },
     });
@@ -1040,14 +1050,14 @@ Run applicable focused checks.
               requiredInputs: ['summary', 'user-resolution'],
             }),
             expect.objectContaining({
-              name: 'return-to-build',
-              commandArgs: expect.arrayContaining(['--return-to-build']),
-              requiredInputs: ['summary', 'user-rejection'],
+              name: 'revise-implementation',
+              commandArgs: expect.arrayContaining(['--revise-implementation']),
+              requiredInputs: ['summary', 'user-decision'],
             }),
             expect.objectContaining({
-              name: 'return-to-shape',
-              commandArgs: expect.arrayContaining(['--return-to-shape']),
-              requiredInputs: ['summary', 'user-rejection'],
+              name: 'revise-requirements',
+              commandArgs: expect.arrayContaining(['--revise-requirements']),
+              requiredInputs: ['summary', 'user-decision'],
             }),
           ]),
         },
@@ -1107,8 +1117,8 @@ Run applicable focused checks.
     });
   });
 
-  it('keeps explicit return-to-shape phase eligibility inside the runtime mutation lock', async () => {
-    const name = 'locked-return-to-shape';
+  it('keeps explicit revise-requirements phase eligibility inside the runtime mutation lock', async () => {
+    const name = 'locked-revise-requirements';
     await prepareBuild(name);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
 
@@ -1119,7 +1129,7 @@ Run applicable focused checks.
         reason: 'Attempt explicit Verify-only recovery while Build is current',
         allowedPhases: ['verify', 'archive'],
       }),
-    ).rejects.toThrow('--return-to-shape is only valid from Verify or Archive');
+    ).rejects.toThrow('--revise-requirements is only valid from Verify');
 
     const shown = json(await runNativeCli(['show', name, '--json', ...projectArgs()]));
     expect(shown).toMatchObject({

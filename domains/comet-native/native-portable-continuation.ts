@@ -110,6 +110,30 @@ function nativeNextDecisionAlternative(options: {
   };
 }
 
+function nativeNextRevisionAlternatives(options: {
+  change: string;
+  stateVersion: number;
+}): NativePortableCommandAlternative[] {
+  return [
+    nativeNextDecisionAlternative({
+      name: 'revise-implementation',
+      change: options.change,
+      stateVersion: options.stateVersion,
+      expectedAction: 'revise-implementation',
+      flag: '--revise-implementation',
+      confirmationInput: 'user-decision',
+    }),
+    nativeNextDecisionAlternative({
+      name: 'revise-requirements',
+      change: options.change,
+      stateVersion: options.stateVersion,
+      expectedAction: 'revise-requirements',
+      flag: '--revise-requirements',
+      confirmationInput: 'user-decision',
+    }),
+  ];
+}
+
 export function nativePortableContinuation(
   state: NativePortableState,
   children?: NativeChildrenInspection | null,
@@ -154,29 +178,17 @@ export function nativePortableContinuation(
         inputOptions: [textInput('summary', '--summary')],
         commandAlternatives: [
           nativeNextDecisionAlternative({
-            name: 'confirm-pass',
+            name: 'accept-result',
             change: state.name,
             stateVersion: state.state_version,
-            expectedAction: 'confirm-pass',
-            flag: '--confirmed',
-            confirmationInput: 'user-confirmation',
+            expectedAction: 'accept-result',
+            flag: '--accept-result',
+            confirmationInput: 'user-decision',
           }),
-          {
-            name: 'return-to-shape',
+          ...nativeNextRevisionAlternatives({
+            change: state.name,
             stateVersion: state.state_version,
-            expectedAction: 'return-to-shape',
-            commandArgs: boundNativeNextCommandArgs({
-              change: state.name,
-              stateVersion: state.state_version,
-              action: 'return-to-shape',
-              flag: '--return-to-shape',
-            }),
-            requiredInputs: ['summary', 'user-rejection'],
-            inputOptions: [
-              textInput('summary', '--summary'),
-              confirmationInput('return-to-shape', '--return-to-shape'),
-            ],
-          },
+          }),
         ],
         runnerAction: runner('none'),
       };
@@ -233,38 +245,10 @@ export function nativePortableContinuation(
             flag: '--resolve-verifier-blocker',
             confirmationInput: 'user-resolution',
           }),
-          {
-            name: 'return-to-build',
+          ...nativeNextRevisionAlternatives({
+            change: state.name,
             stateVersion: state.state_version,
-            expectedAction: 'return-to-build',
-            commandArgs: boundNativeNextCommandArgs({
-              change: state.name,
-              stateVersion: state.state_version,
-              action: 'return-to-build',
-              flag: '--return-to-build',
-            }),
-            requiredInputs: ['summary', 'user-rejection'],
-            inputOptions: [
-              textInput('summary', '--summary'),
-              confirmationInput('return-to-build', '--return-to-build'),
-            ],
-          },
-          {
-            name: 'return-to-shape',
-            stateVersion: state.state_version,
-            expectedAction: 'return-to-shape',
-            commandArgs: boundNativeNextCommandArgs({
-              change: state.name,
-              stateVersion: state.state_version,
-              action: 'return-to-shape',
-              flag: '--return-to-shape',
-            }),
-            requiredInputs: ['summary', 'user-rejection'],
-            inputOptions: [
-              textInput('summary', '--summary'),
-              confirmationInput('return-to-shape', '--return-to-shape'),
-            ],
-          },
+          }),
         ],
         runnerAction: runner('none'),
       };
@@ -277,40 +261,10 @@ export function nativePortableContinuation(
         commandArgs: null,
         requiredInputs: ['summary', 'user-decision'],
         inputOptions: [textInput('summary', '--summary')],
-        commandAlternatives: [
-          {
-            name: 'return-to-build',
-            stateVersion: state.state_version,
-            expectedAction: 'return-to-build',
-            commandArgs: boundNativeNextCommandArgs({
-              change: state.name,
-              stateVersion: state.state_version,
-              action: 'return-to-build',
-              flag: '--return-to-build',
-            }),
-            requiredInputs: ['summary', 'user-rejection'],
-            inputOptions: [
-              textInput('summary', '--summary'),
-              confirmationInput('return-to-build', '--return-to-build'),
-            ],
-          },
-          {
-            name: 'return-to-shape',
-            stateVersion: state.state_version,
-            expectedAction: 'return-to-shape',
-            commandArgs: boundNativeNextCommandArgs({
-              change: state.name,
-              stateVersion: state.state_version,
-              action: 'return-to-shape',
-              flag: '--return-to-shape',
-            }),
-            requiredInputs: ['summary', 'user-rejection'],
-            inputOptions: [
-              textInput('summary', '--summary'),
-              confirmationInput('return-to-shape', '--return-to-shape'),
-            ],
-          },
-        ],
+        commandAlternatives: nativeNextRevisionAlternatives({
+          change: state.name,
+          stateVersion: state.state_version,
+        }),
         runnerAction: runner('none'),
       };
     }

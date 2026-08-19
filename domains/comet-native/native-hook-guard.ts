@@ -383,7 +383,7 @@ export async function inspectNativeHookGuard(
     }
     return {
       allowed: false,
-      reason: `Native change ${state.name} is in ${state.phase}; implementation writes are only allowed in build. If this belongs to the current change, confirm the scope and run comet native next ${state.name} --summary "<reason>" --return-to-build; otherwise create or select a separate Native change`,
+      reason: `Native change ${state.name} is in ${state.phase}; implementation writes are only allowed in build. If this belongs to the current change, confirm the scope and run comet native next ${state.name} --summary "<reason>" --revise-implementation; otherwise create or select a separate Native change`,
       workflow: 'native',
       phase: state.phase,
       change: state.name,

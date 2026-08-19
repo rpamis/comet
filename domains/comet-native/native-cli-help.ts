@@ -129,14 +129,15 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
   },
   next: {
     usage:
-      'comet native next <change-name> --summary <text> [--confirmed|--return-to-build|--return-to-shape|--retry-verifier|--resolve-verifier-blocker]\n       comet native next <change-name> --runner-input <json-file>',
+      'comet native next <change-name> --summary <text> [--confirmed|--accept-result|--revise-implementation|--revise-requirements|--retry-verifier|--resolve-verifier-blocker]\n       comet native next <change-name> --runner-input <json-file>',
     purpose:
       'Confirm or recover an Agent boundary, advance parent child changes, or use one skill-coordinated JSON bridge for Builder handoff, check-plan dispatch, and Verifier response/error.',
     options: [
       '--summary <text>    Required transition or recovery summary.',
-      '--confirmed         Confirm Shape, a completed skill-coordinated pass, or an explicitly degraded verifier-unavailable fallback before Archive.',
-      '--return-to-build   Return Verify or Archive to Build after invalidation or user choice.',
-      '--return-to-shape   Return Verify or Archive to Shape when user-visible targets or acceptance criteria must change.',
+      '--confirmed         Confirm Shape or an explicitly degraded verifier-unavailable fallback before Archive.',
+      '--accept-result     Accept the current skill-coordinated Verify result and make it archive-ready.',
+      '--revise-implementation  Keep confirmed requirements unchanged and return Verify to Build for implementation revision.',
+      '--revise-requirements    Return Verify to Shape when user-visible goals or acceptance criteria must change.',
       '--retry-verifier    Retry a blocked Verifier execution when the continuation allows it.',
       '--resolve-verifier-blocker  Resolve a semantic Verifier blocker without changing the candidate, then dispatch a new attempt.',
       '--expected-state-version <n>  Continuation-issued guard that rejects stale public transition decisions.',
@@ -152,8 +153,9 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       'The portable state, explicit skill-coordinated label, Runtime-owned check results, complete verifierDispatch, bounded request-check response, continuation.runnerAction, and machine-readable continuation.inputOptions. This generic bridge is not trusted identity attestation: a passing result waits for explicit user confirmation before Archive.',
     examples: [
       'comet native next session-timeout --summary "Shape confirmed" --confirmed',
-      'comet native next session-timeout --summary "Implementation changed" --return-to-build',
-      'comet native next session-timeout --summary "Acceptance criteria changed" --return-to-shape',
+      'comet native next session-timeout --summary "Current result accepted" --accept-result',
+      'comet native next session-timeout --summary "Implementation needs revision" --revise-implementation',
+      'comet native next session-timeout --summary "Acceptance criteria changed" --revise-requirements',
       'comet native next session-timeout --summary "Retry verifier infrastructure" --retry-verifier',
       'comet native next session-timeout --summary "Retry semantic verification" --resolve-verifier-blocker',
       'comet native next session-timeout --runner-input <temporary-json-file>',

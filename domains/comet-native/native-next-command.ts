@@ -33,10 +33,10 @@ import type { NativeProjectPaths } from './native-types.js';
 
 const EXPECTED_CONTINUATION_ACTIONS = new Set<NativePortableExpectedContinuationAction>([
   'confirm-shape',
-  'confirm-pass',
+  'accept-result',
   'confirm-verifier-unavailable',
-  'return-to-build',
-  'return-to-shape',
+  'revise-implementation',
+  'revise-requirements',
   'retry-verifier',
   'resolve-verifier-blocker',
 ]);
@@ -85,17 +85,24 @@ export async function nativeNextCommand(
   const summary = takeOption(args, '--summary');
   const runnerInputFile = takeOption(args, '--runner-input');
   const confirmed = takeFlag(args, '--confirmed');
-  const returnToBuild = takeFlag(args, '--return-to-build');
-  const returnToShape = takeFlag(args, '--return-to-shape');
+  const acceptResult = takeFlag(args, '--accept-result');
+  const reviseImplementation = takeFlag(args, '--revise-implementation');
+  const reviseRequirements = takeFlag(args, '--revise-requirements');
   const retryVerifier = takeFlag(args, '--retry-verifier');
   const resolveVerifierBlocker = takeFlag(args, '--resolve-verifier-blocker');
   const expectedContinuation = expectedContinuationOption(args);
   if (
-    [confirmed, returnToBuild, returnToShape, retryVerifier, resolveVerifierBlocker].filter(Boolean)
-      .length > 1
+    [
+      confirmed,
+      acceptResult,
+      reviseImplementation,
+      reviseRequirements,
+      retryVerifier,
+      resolveVerifierBlocker,
+    ].filter(Boolean).length > 1
   ) {
     throw new NativeUsageError(
-      '--confirmed, --return-to-build, --return-to-shape, --retry-verifier, and --resolve-verifier-blocker are mutually exclusive',
+      '--confirmed, --accept-result, --revise-implementation, --revise-requirements, --retry-verifier, and --resolve-verifier-blocker are mutually exclusive',
     );
   }
   // Agent-authored Build/Verify completion fields retired with Native v4.
@@ -126,8 +133,9 @@ export async function nativeNextCommand(
     if (
       summary ||
       confirmed ||
-      returnToBuild ||
-      returnToShape ||
+      acceptResult ||
+      reviseImplementation ||
+      reviseRequirements ||
       retryVerifier ||
       resolveVerifierBlocker ||
       expectedContinuation
@@ -202,16 +210,6 @@ export async function nativeNextCommand(
     } else if (
       current.phase === 'verify' &&
       current.status === 'await-user' &&
-      current.loop.next_action === 'confirm-skill-coordinated-pass'
-    ) {
-      state = await confirmNativePortableSkillCoordinatedPass({
-        paths: configured.paths,
-        name,
-        expectedContinuation,
-      });
-    } else if (
-      current.phase === 'verify' &&
-      current.status === 'await-user' &&
       current.loop.next_action === 'confirm-verifier-unavailable'
     ) {
       state = await confirmNativePortableVerifierUnavailable({
@@ -222,25 +220,44 @@ export async function nativeNextCommand(
       });
     } else {
       throw new NativeUsageError(
-        '--confirmed is only valid in Shape, for an accepted Skill-coordinated pass, or for a user-accepted degraded verification fallback',
+        '--confirmed is only valid in Shape or for a user-accepted degraded verification fallback',
       );
     }
-  } else if (returnToBuild) {
+  } else if (acceptResult) {
+    if (
+      !expectedContinuation &&
+      (current.phase !== 'verify' ||
+        current.status !== 'await-user' ||
+        current.loop.next_action !== 'confirm-skill-coordinated-pass')
+    ) {
+      throw new NativeUsageError(
+        '--accept-result is only valid for a pending Verify pass decision',
+      );
+    }
+    state = await confirmNativePortableSkillCoordinatedPass({
+      paths: configured.paths,
+      name,
+      expectedContinuation,
+    });
+  } else if (reviseImplementation) {
+    if (current.phase !== 'verify') {
+      throw new NativeUsageError('--revise-implementation is only valid from Verify');
+    }
     state = await returnNativePortableChangeToBuild({
       paths: configured.paths,
       name,
       reason: summary,
       expectedContinuation,
     });
-  } else if (returnToShape) {
-    if (current.phase !== 'verify' && current.phase !== 'archive') {
-      throw new NativeUsageError('--return-to-shape is only valid from Verify or Archive');
+  } else if (reviseRequirements) {
+    if (current.phase !== 'verify') {
+      throw new NativeUsageError('--revise-requirements is only valid from Verify');
     }
     state = await returnNativePortableChangeToShape({
       paths: configured.paths,
       name,
       reason: summary,
-      allowedPhases: ['verify', 'archive'],
+      allowedPhases: ['verify'],
       expectedContinuation,
     });
   } else if (retryVerifier) {
