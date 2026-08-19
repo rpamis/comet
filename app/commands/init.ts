@@ -1124,8 +1124,7 @@ export async function initCommand(
       await syncCometProjectInstructions(
         projectPath,
         language.id,
-        includesWorkflow(workflowSelection, 'native') &&
-          (initialProjectConfigDocument?.ambient_resume ?? true),
+        initialProjectConfigDocument?.ambient_resume ?? true,
       );
 
       const successfulCometPlatforms = new Set(
