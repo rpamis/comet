@@ -2140,6 +2140,7 @@ describe('update command helpers', () => {
       expect.any(Function),
       undefined,
       [],
+      [],
     );
     await expect(fs.access(path.join(tmpDir, 'openspec'))).rejects.toMatchObject({
       code: 'ENOENT',
@@ -2214,6 +2215,7 @@ describe('update command helpers', () => {
       'docs',
       expect.any(Function),
       undefined,
+      [],
       [],
     );
     expect(mockedInstallSuperpowers).toHaveBeenCalledWith(tmpDir, 'project', ['claude'], true);
@@ -2355,6 +2357,7 @@ describe('update command helpers', () => {
       expect.any(Function),
       undefined,
       [],
+      [],
     );
     await expect(fs.access(path.join(tmpDir, 'docs', 'openspec'))).rejects.toMatchObject({
       code: 'ENOENT',
@@ -2440,6 +2443,7 @@ describe('update command helpers', () => {
       expect.any(Function),
       undefined,
       [],
+      [],
     );
   });
 
@@ -2481,6 +2485,7 @@ describe('update command helpers', () => {
       'docs',
       expect.any(Function),
       undefined,
+      [],
       [],
     );
     await expect(
@@ -2607,6 +2612,7 @@ describe('update command helpers', () => {
       expect.any(Function),
       undefined,
       [],
+      [],
     );
   });
 
@@ -2654,6 +2660,7 @@ describe('update command helpers', () => {
       'docs',
       expect.any(Function),
       undefined,
+      [],
       [],
     );
     await expect(fs.readFile(configPath)).resolves.toEqual(configBefore);
@@ -2786,6 +2793,7 @@ describe('update command helpers', () => {
       'legacy',
       undefined,
       undefined,
+      [],
       [],
     );
     await expect(fs.access(path.join(tmpDir, 'openspec'))).rejects.toMatchObject({

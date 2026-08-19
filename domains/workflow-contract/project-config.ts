@@ -45,6 +45,7 @@ const DEFAULT_WORKFLOW_NATIVE_MANAGED_SKILL_EXCLUDES = [
   '.forge/skills/**',
   '.gemini/skills/**',
   '.github/skills/**',
+  '.grok/skills/**',
   '.iflow/skills/**',
   '.junie/skills/**',
   '.kilocode/skills/**',
