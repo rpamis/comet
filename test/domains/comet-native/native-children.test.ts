@@ -73,6 +73,23 @@ children:
     covers: [A1]
 `;
 
+const READABLE_CHILDREN = `schema: comet.native.children.v2
+acceptance_index:
+  A1:
+    source: brief.md
+    text: The integrated result contains the first behavior.
+  A2:
+    source: brief.md
+    text: The integrated result contains the second behavior.
+children:
+  - name: child-a
+    depends_on: []
+    covers: [A1]
+  - name: child-b
+    depends_on: [child-a]
+    covers: [A2]
+`;
+
 const REORDERED_CHILDREN = `schema: comet.native.children.v1
 children:
   - name: child-a
@@ -287,6 +304,65 @@ children:
         ),
       ).toThrow(invalid.message);
     }
+  });
+
+  it('accepts a readable v2 acceptance index while retaining the v1 contract', () => {
+    const acceptance = [
+      { id: 'A1', source: 'brief.md', text: 'The integrated result contains the first behavior.' },
+      { id: 'A2', source: 'brief.md', text: 'The integrated result contains the second behavior.' },
+    ];
+
+    expect(
+      parseNativeChildrenContract(
+        READABLE_CHILDREN,
+        acceptance.map(({ id }) => id),
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        schema: 'comet.native.children.v2',
+        acceptance_index: {
+          A1: { source: acceptance[0].source, text: acceptance[0].text },
+          A2: { source: acceptance[1].source, text: acceptance[1].text },
+        },
+      }),
+    );
+    expect(
+      parseNativeChildrenContract(
+        CHILDREN,
+        acceptance.map(({ id }) => id),
+      ),
+    ).toMatchObject({
+      schema: 'comet.native.children.v1',
+    });
+  });
+
+  it('validates v2 index text against the full catalog while requiring only the child-facing subset', () => {
+    const acceptance = [
+      { id: 'A1', source: 'brief.md', text: 'The integrated result contains the first behavior.' },
+      { id: 'A2', source: 'brief.md', text: 'The integrated result contains the second behavior.' },
+      { id: 'A3', source: 'specs/demo/spec.md', text: 'The formal requirement is retained.' },
+    ];
+
+    expect(() =>
+      parseNativeChildrenContract(
+        READABLE_CHILDREN,
+        acceptance.map(({ id }) => id),
+        {
+          acceptanceCatalog: acceptance,
+          requiredAcceptanceIds: ['A1', 'A2'],
+        },
+      ),
+    ).not.toThrow();
+    expect(() =>
+      parseNativeChildrenContract(
+        READABLE_CHILDREN.replace(
+          'The integrated result contains the second behavior.',
+          'A changed behavior.',
+        ),
+        acceptance.map(({ id }) => id),
+        { acceptanceCatalog: acceptance, requiredAcceptanceIds: ['A1', 'A2'] },
+      ),
+    ).toThrow(/does not match the acceptance catalog/iu);
   });
 
   it('gates the parent on real child merges and starts dependents from the integrated HEAD', async () => {

@@ -252,6 +252,8 @@ describe('Comet Native Skills', () => {
         'brief.md',
         'children.yaml',
         'comet.native.children.v1',
+        'comet.native.children.v2',
+        'acceptance_index',
         'specs/<capability>/spec.md',
         'verification.md',
         '# Acceptance examples',

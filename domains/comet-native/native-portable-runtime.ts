@@ -9,6 +9,7 @@ import { readNativeBoundedTextFile } from './native-bounded-file.js';
 import {
   hashNativeParentContract,
   inspectNativeChildren,
+  nativeChildrenAcceptanceValidation,
   readNativeChildrenContract,
 } from './native-children.js';
 import {
@@ -373,6 +374,10 @@ export async function confirmNativePortableShape(options: {
       const children = await readNativeChildrenContract({
         changeDir: nativePortableChangeDir(options.paths, state.name),
         acceptanceIds: acceptance.map(({ id }) => id),
+        validation: nativeChildrenAcceptanceValidation({
+          ...state,
+          acceptance,
+        }),
       });
       if (children && state.workspace.change_branch === null) {
         throw new Error('Native parent changes require a Git integration branch');
@@ -456,6 +461,10 @@ export async function inspectNativePortableAcceptanceDrift(options: {
     children = await readNativeChildrenContract({
       changeDir: nativePortableChangeDir(options.paths, options.state.name),
       acceptanceIds: acceptance.map(({ id }) => id),
+      validation: nativeChildrenAcceptanceValidation({
+        ...options.state,
+        acceptance,
+      }),
     });
   } catch {
     return { drifted: true, reason: 'Native child declarations changed' };
@@ -497,6 +506,7 @@ export async function submitNativePortableBuilderCandidate(options: {
       const children = await readNativeChildrenContract({
         changeDir: nativePortableChangeDir(options.paths, state.name),
         acceptanceIds: state.acceptance.map(({ id }) => id),
+        validation: nativeChildrenAcceptanceValidation(state),
       });
       if (children || state.children_contract_hash) {
         throw new Error('Native parent Build advances child changes instead of a parent Builder');

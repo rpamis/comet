@@ -145,6 +145,51 @@ describe('Native portable Runtime vertical path', () => {
     });
   });
 
+  it('keeps v2 child plans readable while retaining the complete Runtime acceptance matrix', async () => {
+    await createNativePortableChange({ paths, name: 'readable-child-plan', language: 'en' });
+    const changeDir = nativePortableChangeDir(paths, 'readable-child-plan');
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      '# Acceptance examples\n- The first behavior is visible.\n- The second behavior is visible.\n',
+    );
+    await fs.mkdir(path.join(changeDir, 'specs', 'demo'));
+    await fs.writeFile(
+      path.join(changeDir, 'specs', 'demo', 'spec.md'),
+      '# Requirement: Demo\nThe Runtime MUST preserve the formal requirement.\n\n## Scenarios\n### Scenario: Formal behavior\n- **WHEN** the behavior is exercised\n- **THEN** the formal result is retained\n',
+    );
+    await fs.writeFile(
+      path.join(changeDir, 'children.yaml'),
+      `schema: comet.native.children.v2
+acceptance_index:
+  A1:
+    source: brief.md
+    text: The first behavior is visible.
+  A2:
+    source: brief.md
+    text: The second behavior is visible.
+children:
+  - name: demo-child
+    depends_on: []
+    covers: [A1, A2]
+`,
+    );
+    const stateFile = nativePortableStateFile(paths, 'readable-child-plan');
+    const initialState = await fs.readFile(stateFile, 'utf8');
+    await fs.writeFile(
+      stateFile,
+      initialState
+        .replace("isolation: 'current'", "isolation: 'branch'")
+        .replace('change_branch: null', 'change_branch: parent')
+        .replace('target_branch: null', 'target_branch: master'),
+    );
+
+    const state = await confirmNativePortableShape({ paths, name: 'readable-child-plan' });
+
+    expect(state.acceptance.length).toBeGreaterThan(2);
+    expect(state.acceptance.filter(({ source }) => source === 'brief.md')).toHaveLength(2);
+    expect(state.children_contract_hash).toEqual(expect.any(String));
+  });
+
   it('reruns a repeatable interrupted check instead of reusing its incomplete result', async () => {
     await createNativePortableChange({ paths, name: 'timeout-rerun', language: 'en' });
     const changeDir = nativePortableChangeDir(paths, 'timeout-rerun');

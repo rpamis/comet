@@ -38,7 +38,7 @@ CLI 会在创建 change 前完成分支或 worktree 绑定、复用已登记的 
 
 先调查能够从仓库、工具和运行环境确定的事实；彼此独立的事实可以交给 subagent 调查。按 `native.clarification_mode` 和澄清参考维护决策树，只把会改变用户可见结果、又无法可靠推断的决定交给用户。用户直接提供文件、附件、链接或本地路径作为需求来源时进入源文档完整覆盖模式：完整读取并记录 `complete`、`partial` 或 `unavailable` 状态，分块读取只改变读取顺序和工作记忆管理，不改变最终覆盖集合；`brief.md` 先保存完整来源需求和覆盖状态，再提出歧义、遗漏或隐含边界问题；可执行来源单元必须同时映射到完整目标 Spec 和至少一个验收 ID，背景、非目标或已废止内容只保留归类、理由和替代关系；修正后的旧单元标为 `superseded` 并指向替代单元；`partial`、`unavailable`、未映射或未确认内容保持 `[blocking]`。仅用于排错、取证、审查或实现参考的材料不自动触发，用途不明时先澄清；摘要不能替代来源覆盖映射。
 
-确认后的用户可见决定和重要约束立即同步到 Decisions、brief 和完整目标规格；普通实现选择保留在实现和测试中，只有影响用户可见行为时才进入正式需求。验收项必须具体、可观察且互不重复。大型需求需要拆分时，在 Supervisor Change 根目录维护 `children.yaml`，用 `depends_on` 表达真实先后关系，并用 `covers` 覆盖 Supervisor Change 验收项；数组顺序只用于稳定展示和同等就绪时的优先级。
+确认后的用户可见决定和重要约束立即同步到 Decisions、brief 和完整目标规格；普通实现选择保留在实现和测试中，只有影响用户可见行为时才进入正式需求。验收项必须具体、可观察且互不重复。大型需求需要拆分时，在 Supervisor Change 根目录维护 `children.yaml`，用 `depends_on` 表达真实先后关系，并用 `covers` 覆盖 Supervisor Change 的可读验收索引；数组顺序只用于稳定展示和同等就绪时的优先级。新建的 v2 `children.yaml` 只索引 brief 派生的父级验收项，`acceptance_index` 保存每个 ID 的来源和完整文字；Spec 派生的细粒度检查仍由 Runtime 的完整验收矩阵验证，不要求初始 child 计划重复列出。历史 v1 文件继续按原契约接受。
 
 大型需求在最终 Shape 确认前执行一次拆分检测：只有至少两个结果可独立实现和验证、验收项能完整映射且有真实依赖/并行价值时建议 Supervisor Change 模式；目标紧耦合、反复修改同一核心区域、协调成本更高或用户要求单 change 时保持单一 Native change；需求文字长、任务条目多本身不能触发拆分。
 建议拆分时，Skill 将 `children.yaml` 草案、执行波次和验收覆盖摘要放入一次 Shape 确认；用户可确认、调整或保持单 change。确认前不得创建子 change、worktree 或派发 Agent。
@@ -58,7 +58,7 @@ Build 和 Verify 组成一个有界验收循环（Loop）：Builder 提交候选
 
 确认一次 Supervisor Change Shape 即授权严格派生的子 change，不要求用户重复确认相同范围。Skill 只执行 Runtime continuation 返回的动作，并在每个 child 完成后重新读取 `readyChildren`，继续下一波；Supervisor Change 最后仍由 Verify 验证完整验收项。
 
-状态包含 `children` 时，当前 change 是 Supervisor Change：不要运行 Supervisor Change Builder，只推进 `readyChildren`。每个 child 都是普通 Native change，必须在独立 worktree 中创建，以 Supervisor Change 的 `workspace.changeBranch` 为目标分支；没有依赖的 child 可以并行 Build/Verify，但 Archive 必须逐个使用 `finish=merge` 合入 Supervisor Change 分支。先提交 Supervisor Change 契约基线以保持集成工作区干净；只有 child 的 Archive 已合入 Supervisor Change 分支才算 `done`，随后才从更新后的 Supervisor Change HEAD 创建依赖它的 child。全部 child 为 `done` 后，执行 Supervisor Change continuation 进入 Verify，由新的 Verifier 在最终集成分支上检查 Supervisor Change 的完整验收项。Supervisor Change Verify 未通过时不要重开已归档 child；按 `repair-child` 提示在 `children.yaml` 中追加覆盖失败验收项的唯一 repair child，重新确认 Supervisor Change Shape 后继续。
+状态包含 `children` 时，当前 change 是 Supervisor Change：不要运行 Supervisor Change Builder，只推进 `readyChildren`。每个 child 都是普通 Native change，必须在独立 worktree 中创建，以 Supervisor Change 的 `workspace.changeBranch` 为目标分支；没有依赖的 child 可以并行 Build/Verify，但 Archive 必须逐个使用 `finish=merge` 合入 Supervisor Change 分支。先提交 Supervisor Change 契约基线以保持集成工作区干净；只有 child 的 Archive 已合入 Supervisor Change 分支才算 `done`，随后才从更新后的 Supervisor Change HEAD 创建依赖它的 child。全部 child 为 `done` 后，执行 Supervisor Change continuation 进入 Verify，由新的 Verifier 在最终集成分支上检查 Supervisor Change 的完整验收项。Supervisor Change Verify 未通过时不要重开已归档 child；按 `repair-child` 提示在 v2 `acceptance_index` 中补充实际失败的 Spec 验收文字，并在 `children.yaml` 中追加覆盖这些失败验收项的唯一 repair child，重新确认 Supervisor Change Shape 后继续。
 
 需求变化时先判断归属：
 
