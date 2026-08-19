@@ -42,6 +42,20 @@ export interface WorkflowMemoryProjectConfig {
   retrieval: boolean;
 }
 
+export type WorkflowKnowledgeProvider = 'local' | 'remote';
+
+export interface WorkflowKnowledgeRemoteConfig {
+  endpoint: string;
+  token_env?: string;
+  scope?: string;
+  timeout_ms: number;
+}
+
+export interface WorkflowKnowledgeProjectConfig {
+  provider: WorkflowKnowledgeProvider;
+  remote?: WorkflowKnowledgeRemoteConfig;
+}
+
 export interface WorkflowNativeProjectConfig {
   artifact_root: string;
   language: ProjectConfigLanguage;
@@ -67,6 +81,7 @@ export interface WorkflowProjectConfig {
   ambient_resume: boolean;
   hook?: WorkflowHookProjectConfig;
   memory?: WorkflowMemoryProjectConfig;
+  knowledge?: WorkflowKnowledgeProjectConfig;
   native?: WorkflowNativeProjectConfig;
   classic?: WorkflowClassicProjectConfig;
 }
@@ -88,6 +103,7 @@ export interface ParsedWorkflowProjectConfigDocument {
   config: WorkflowProjectConfig | null;
   ambient_resume: boolean;
   memory?: WorkflowMemoryProjectConfig;
+  knowledge?: WorkflowKnowledgeProjectConfig;
   native?: WorkflowNativeProjectConfig;
   classic?: WorkflowClassicProjectConfig;
 }

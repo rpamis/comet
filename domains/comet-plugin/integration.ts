@@ -23,6 +23,9 @@ import type { PluginContextContribution, PluginEvent, PluginScopeContext } from 
 import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
 import { DEFAULT_WORKFLOW_MEMORY_PROJECT_CONFIG } from '../workflow-contract/project-config.js';
 import type { WorkflowMemoryProjectConfig } from '../workflow-contract/types.js';
+import { createProjectKnowledgePluginDescriptor } from '../project-knowledge/index.js';
+import type { WorkflowKnowledgeProjectConfig } from '../workflow-contract/types.js';
+import { DEFAULT_WORKFLOW_KNOWLEDGE_PROJECT_CONFIG } from '../workflow-contract/project-config.js';
 
 export interface CometLifecycleObservation {
   readonly name:
@@ -280,6 +283,11 @@ export async function createDefaultCometPluginBridge(
             }),
           }),
       }),
+      createProjectKnowledgePluginDescriptor({
+        projectRoot,
+        knowledgeConfig: await resolveProjectKnowledgeConfig(projectRoot),
+        language,
+      }),
     ],
   });
   await runtime.reconcileFirstParty();
@@ -308,4 +316,11 @@ async function resolveProjectMemoryPolicy(
 ): Promise<WorkflowMemoryProjectConfig> {
   const config = await readWorkflowProjectConfig(projectRoot);
   return config?.memory ?? { ...DEFAULT_WORKFLOW_MEMORY_PROJECT_CONFIG };
+}
+
+async function resolveProjectKnowledgeConfig(
+  projectRoot: string,
+): Promise<WorkflowKnowledgeProjectConfig> {
+  const config = await readWorkflowProjectConfig(projectRoot);
+  return config?.knowledge ?? { ...DEFAULT_WORKFLOW_KNOWLEDGE_PROJECT_CONFIG };
 }

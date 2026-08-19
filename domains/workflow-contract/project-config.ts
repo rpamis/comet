@@ -7,6 +7,8 @@ import type {
   ProjectConfigLanguage,
   WorkflowClassicProjectConfig,
   WorkflowHookProjectConfig,
+  WorkflowKnowledgeProjectConfig,
+  WorkflowKnowledgeRemoteConfig,
   WorkflowMemoryProjectConfig,
   WorkflowNativeEnabledProjectConfig,
   WorkflowNativePendingRootMove,
@@ -24,6 +26,9 @@ export const DEFAULT_WORKFLOW_NATIVE_MAX_VERIFY_FAILURES = 5;
 export const DEFAULT_WORKFLOW_MEMORY_PROJECT_CONFIG: WorkflowMemoryProjectConfig = {
   learning: true,
   retrieval: true,
+};
+export const DEFAULT_WORKFLOW_KNOWLEDGE_PROJECT_CONFIG: WorkflowKnowledgeProjectConfig = {
+  provider: 'local',
 };
 
 // `comet init` installs the built-in Skills into every supported platform's
@@ -147,6 +152,13 @@ type ProjectConfigCommentKey =
   | 'memory'
   | 'memory.learning'
   | 'memory.retrieval'
+  | 'knowledge'
+  | 'knowledge.provider'
+  | 'knowledge.remote'
+  | 'knowledge.remote.endpoint'
+  | 'knowledge.remote.token_env'
+  | 'knowledge.remote.scope'
+  | 'knowledge.remote.timeout_ms'
   | 'hook'
   | 'hook.allow_paths'
   | 'native'
@@ -180,6 +192,13 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
       '# Allows workflow events in this project to form new personal memories automatically.\n# learning: true | false',
     'memory.retrieval':
       '# Allows personal memories to be injected into Agent context for this project.\n# retrieval: true | false',
+    knowledge: '# Project knowledge retrieval provider used by ordinary Comet tasks.',
+    'knowledge.provider': '# Provider for project knowledge.\n# provider: local | remote',
+    'knowledge.remote': '# Fixed Comet Retrieval API v1 settings used when provider is remote.',
+    'knowledge.remote.endpoint': '# HTTPS endpoint; loopback HTTP is allowed.',
+    'knowledge.remote.token_env': '# Optional environment variable containing the bearer token.',
+    'knowledge.remote.scope': '# Optional opaque remote knowledge scope.',
+    'knowledge.remote.timeout_ms': '# Remote request timeout in milliseconds (100-30000).',
     hook: '# Hook write policy shared by Native and Classic. Paths are project-relative.',
     'hook.allow_paths':
       '# Project-relative directories allowed during guarded phases. Use one path per list item; empty by default.',
@@ -229,6 +248,13 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
       '# 是否允许当前项目通过工作流事件自动沉淀新的个人记忆。\n# 可选值：true | false',
     'memory.retrieval':
       '# 是否允许当前项目把个人记忆自动注入 Agent 上下文。\n# 可选值：true | false',
+    knowledge: '# 普通 Comet 任务使用的项目知识检索 Provider。',
+    'knowledge.provider': '# 项目知识 Provider。\n# 可选值：local | remote',
+    'knowledge.remote': '# provider 为 remote 时使用的固定 Comet Retrieval API v1 配置。',
+    'knowledge.remote.endpoint': '# HTTPS 地址；loopback 地址允许使用 HTTP。',
+    'knowledge.remote.token_env': '# 可选的 Bearer Token 环境变量名。',
+    'knowledge.remote.scope': '# 可选的不透明远端知识库范围。',
+    'knowledge.remote.timeout_ms': '# 远端请求超时时间（毫秒，100-30000）。',
     hook: '# Native 和 Classic 共享的 Hook 写入策略；路径必须是项目相对路径。',
     'hook.allow_paths': '# 在受保护阶段允许写入的项目相对目录；每项填写一个目录，默认为空。',
     native: '# Native 工作流配置，不会改变 Classic 的状态或行为。',
@@ -269,8 +295,9 @@ export function projectConfigComment(
 
 function commentKey(
   line: string,
-  block: 'native' | 'classic' | 'hook' | 'memory' | null,
+  block: 'native' | 'classic' | 'hook' | 'memory' | 'knowledge' | null,
   nativeNested: 'snapshot' | null,
+  knowledgeNested: 'remote' | null,
 ): ProjectConfigCommentKey | null {
   const match = /^(\s*)([a-z_]+):/u.exec(line);
   if (!match) return null;
@@ -280,6 +307,10 @@ function commentKey(
   if (indent === 2 && block) {
     const blockKey = `${block}.${key}` as ProjectConfigCommentKey;
     if (blockKey in COMMENTS.en) return blockKey;
+  }
+  if (indent === 4 && block === 'knowledge' && knowledgeNested === 'remote') {
+    const nestedKey = `knowledge.remote.${key}` as ProjectConfigCommentKey;
+    if (nestedKey in COMMENTS.en) return nestedKey;
   }
   if (indent === 2 && block === null && key === 'hook') return 'hook';
   if (indent === 2 && block === 'hook' && key === 'allow_paths') {
@@ -297,10 +328,11 @@ export function renderStructuredProjectConfig(
   language: ProjectConfigCommentLanguage,
 ): string {
   const output: string[] = [];
-  let block: 'native' | 'classic' | 'hook' | 'memory' | null = null;
+  let block: 'native' | 'classic' | 'hook' | 'memory' | 'knowledge' | null = null;
   let nativeNested: 'snapshot' | null = null;
+  let knowledgeNested: 'remote' | null = null;
   for (const line of stringify(value).trimEnd().split('\n')) {
-    const key = commentKey(line, block, nativeNested);
+    const key = commentKey(line, block, nativeNested, knowledgeNested);
     if (key) {
       const indent = line.match(/^\s*/u)?.[0] ?? '';
       for (const comment of projectConfigComment(key, language).split('\n')) {
@@ -313,10 +345,13 @@ export function renderStructuredProjectConfig(
       else if (line.startsWith('classic:')) block = 'classic';
       else if (line.startsWith('hook:')) block = 'hook';
       else if (line.startsWith('memory:')) block = 'memory';
+      else if (line.startsWith('knowledge:')) block = 'knowledge';
       else block = null;
       nativeNested = null;
-    } else if (/^ {2}[a-z_]+:/u.test(line) && block === 'native') {
-      nativeNested = line.startsWith('  snapshot:') ? 'snapshot' : null;
+      knowledgeNested = null;
+    } else if (/^ {2}[a-z_]+:/u.test(line)) {
+      if (block === 'native') nativeNested = line.startsWith('  snapshot:') ? 'snapshot' : null;
+      if (block === 'knowledge') knowledgeNested = line.startsWith('  remote:') ? 'remote' : null;
     }
   }
   output.push('');
@@ -642,6 +677,80 @@ function normalizeWorkflowMemoryProjectConfig(value: unknown): WorkflowMemoryPro
   return { learning, retrieval };
 }
 
+function projectKnowledgeRecord(value: unknown, label: string): Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`${label} must be a mapping`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function normalizeKnowledgeEndpoint(value: unknown): string {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error('knowledge.remote.endpoint must be a non-empty URL');
+  }
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error('knowledge.remote.endpoint must be a valid URL');
+  }
+  const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/gu, '');
+  const loopback = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) {
+    throw new Error('knowledge.remote.endpoint must use HTTPS (HTTP is allowed for loopback)');
+  }
+  return url.toString();
+}
+
+function normalizeKnowledgeRemote(value: unknown): WorkflowKnowledgeRemoteConfig {
+  const remote = projectKnowledgeRecord(value, 'knowledge.remote');
+  const endpoint = normalizeKnowledgeEndpoint(remote.endpoint);
+  const tokenEnv = remote.token_env;
+  if (
+    tokenEnv !== undefined &&
+    (typeof tokenEnv !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/u.test(tokenEnv))
+  ) {
+    throw new Error('knowledge.remote.token_env must be an environment variable name');
+  }
+  const scope = remote.scope;
+  if (scope !== undefined && (typeof scope !== 'string' || scope.length > 512)) {
+    throw new Error('knowledge.remote.scope must be a string of at most 512 characters');
+  }
+  const timeout = remote.timeout_ms ?? 5000;
+  if (
+    typeof timeout !== 'number' ||
+    !Number.isSafeInteger(timeout) ||
+    timeout < 100 ||
+    timeout > 30000
+  ) {
+    throw new Error('knowledge.remote.timeout_ms must be an integer between 100 and 30000');
+  }
+  return {
+    endpoint,
+    ...(tokenEnv === undefined ? {} : { token_env: tokenEnv }),
+    ...(scope === undefined ? {} : { scope }),
+    timeout_ms: timeout,
+  };
+}
+
+function normalizeWorkflowKnowledgeProjectConfig(value: unknown): WorkflowKnowledgeProjectConfig {
+  if (value === undefined) return { ...DEFAULT_WORKFLOW_KNOWLEDGE_PROJECT_CONFIG };
+  const knowledge = projectKnowledgeRecord(value, 'knowledge');
+  const provider = knowledge.provider ?? 'local';
+  if (provider !== 'local' && provider !== 'remote') {
+    throw new Error('knowledge.provider must be local or remote');
+  }
+  const remote =
+    knowledge.remote === undefined ? undefined : normalizeKnowledgeRemote(knowledge.remote);
+  if (provider === 'remote' && remote === undefined) {
+    throw new Error('knowledge.remote must be configured when knowledge.provider is remote');
+  }
+  return {
+    provider,
+    ...(remote === undefined ? {} : { remote }),
+  };
+}
+
 function normalizeAmbientResume(value: unknown): boolean {
   const resolved = value ?? true;
   if (typeof resolved !== 'boolean') {
@@ -654,6 +763,7 @@ function normalizeWorkflowProjectConfig(
   root: Record<string, unknown>,
   hook: WorkflowHookProjectConfig | undefined,
   memory: WorkflowMemoryProjectConfig,
+  knowledge: WorkflowKnowledgeProjectConfig,
   native: WorkflowNativeProjectConfig | undefined,
   classic: WorkflowClassicProjectConfig | undefined,
   ambientResume: boolean,
@@ -695,6 +805,7 @@ function normalizeWorkflowProjectConfig(
     ambient_resume: ambientResume,
     ...(hook ? { hook } : {}),
     memory,
+    knowledge,
     ...(native ? { native } : {}),
     ...(classic ? { classic } : {}),
   };
@@ -725,6 +836,7 @@ export function parseWorkflowProjectConfigDocument(
   const hook =
     value.hook === undefined ? undefined : normalizeWorkflowHookProjectConfig(value.hook);
   const memory = normalizeWorkflowMemoryProjectConfig(value.memory);
+  const knowledge = normalizeWorkflowKnowledgeProjectConfig(value.knowledge);
   const native =
     value.native === undefined
       ? undefined
@@ -737,6 +849,7 @@ export function parseWorkflowProjectConfigDocument(
     value,
     hook,
     memory,
+    knowledge,
     native,
     classic,
     ambientResume,
@@ -749,6 +862,7 @@ export function parseWorkflowProjectConfigDocument(
     config,
     ambient_resume: ambientResume,
     memory,
+    knowledge,
     ...(hook ? { hook } : {}),
     ...(native ? { native } : {}),
     ...(classic ? { classic } : {}),
@@ -784,6 +898,7 @@ export function workflowProjectConfigManagedValue(
     workflows: config.workflows ?? [config.default_workflow],
     ambient_resume: config.ambient_resume,
     memory: config.memory ?? { ...DEFAULT_WORKFLOW_MEMORY_PROJECT_CONFIG },
+    knowledge: config.knowledge ?? { ...DEFAULT_WORKFLOW_KNOWLEDGE_PROJECT_CONFIG },
     ...(config.hook
       ? {
           hook: {
@@ -855,6 +970,33 @@ export function mergeWorkflowProjectConfigDocument(
       retrieval: validated.memory.retrieval,
     };
   }
+  if (validated.knowledge) {
+    const existingKnowledge = optionalRecord(existing.knowledge);
+    const knowledge: Record<string, unknown> = {
+      ...existingKnowledge,
+      provider: validated.knowledge.provider,
+    };
+    if (validated.knowledge.remote) {
+      const existingRemote = optionalRecord(existingKnowledge.remote);
+      const remote: Record<string, unknown> = {
+        ...existingRemote,
+        endpoint: validated.knowledge.remote.endpoint,
+        timeout_ms: validated.knowledge.remote.timeout_ms,
+        ...(validated.knowledge.remote.token_env === undefined
+          ? {}
+          : { token_env: validated.knowledge.remote.token_env }),
+        ...(validated.knowledge.remote.scope === undefined
+          ? {}
+          : { scope: validated.knowledge.remote.scope }),
+      };
+      if (validated.knowledge.remote.token_env === undefined) delete remote.token_env;
+      if (validated.knowledge.remote.scope === undefined) delete remote.scope;
+      knowledge.remote = remote;
+    } else {
+      delete knowledge.remote;
+    }
+    output.knowledge = knowledge;
+  }
   if (validated.native) {
     const existingNative = optionalRecord(existing.native);
     const native: Record<string, unknown> = {
@@ -905,6 +1047,7 @@ export function defaultWorkflowProjectConfig(
     default_workflow: 'native',
     ambient_resume: true,
     memory: { ...DEFAULT_WORKFLOW_MEMORY_PROJECT_CONFIG },
+    knowledge: { ...DEFAULT_WORKFLOW_KNOWLEDGE_PROJECT_CONFIG },
     native: {
       artifact_root: normalizeWorkflowArtifactRoot(artifactRoot),
       language,
@@ -977,6 +1120,48 @@ function normalizeWorkflowMemoryProjectConfig(value) {
     throw new Error('memory.retrieval must be true or false');
   }
   return { learning, retrieval };
+}
+
+function normalizeWorkflowKnowledgeProjectConfig(value) {
+  if (value === undefined) return { provider: 'local' };
+  const knowledge = workflowConfigRecord(value, 'knowledge');
+  const provider = knowledge.provider ?? 'local';
+  if (provider !== 'local' && provider !== 'remote') {
+    throw new Error('knowledge.provider must be local or remote');
+  }
+  if (knowledge.remote === undefined) {
+    if (provider === 'remote') throw new Error('knowledge.remote must be configured when knowledge.provider is remote');
+    return { provider };
+  }
+  const remote = workflowConfigRecord(knowledge.remote, 'knowledge.remote');
+  if (typeof remote.endpoint !== 'string' || remote.endpoint.trim().length === 0) {
+    throw new Error('knowledge.remote.endpoint must be a non-empty URL');
+  }
+  let endpoint;
+  try { endpoint = new URL(remote.endpoint); } catch { throw new Error('knowledge.remote.endpoint must be a valid URL'); }
+  const loopback = ['localhost', '127.0.0.1', '::1'].includes(endpoint.hostname.toLowerCase().replace(/^\[|\]$/gu, ''));
+  if (endpoint.protocol !== 'https:' && !(endpoint.protocol === 'http:' && loopback)) {
+    throw new Error('knowledge.remote.endpoint must use HTTPS (HTTP is allowed for loopback)');
+  }
+  const timeout = remote.timeout_ms ?? 5000;
+  if (!Number.isSafeInteger(timeout) || timeout < 100 || timeout > 30000) {
+    throw new Error('knowledge.remote.timeout_ms must be an integer between 100 and 30000');
+  }
+  if (remote.token_env !== undefined && (typeof remote.token_env !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/u.test(remote.token_env))) {
+    throw new Error('knowledge.remote.token_env must be an environment variable name');
+  }
+  if (remote.scope !== undefined && (typeof remote.scope !== 'string' || remote.scope.length > 512)) {
+    throw new Error('knowledge.remote.scope must be a string of at most 512 characters');
+  }
+  return {
+    provider,
+    remote: {
+      endpoint: endpoint.toString(),
+      timeout_ms: timeout,
+      ...(remote.token_env === undefined ? {} : { token_env: remote.token_env }),
+      ...(remote.scope === undefined ? {} : { scope: remote.scope }),
+    },
+  };
 }
 
 function workflowPathInside(root, target) {
@@ -1841,6 +2026,7 @@ function managedWorkflowConfigFields(source) {
     throw new Error('ambient_resume must be true or false');
   }
   const memory = normalizeWorkflowMemoryProjectConfig(root.memory);
+  const knowledge = normalizeWorkflowKnowledgeProjectConfig(root.knowledge);
 
   let nativeArtifactRoot = null;
   if (root.native !== undefined) {
@@ -1902,6 +2088,8 @@ function managedWorkflowConfigFields(source) {
     classicEnabled,
     memoryLearning: memory.learning,
     memoryRetrieval: memory.retrieval,
+    knowledgeProvider: knowledge.provider,
+    knowledgeRemote: knowledge.remote ?? null,
   };
 }
 
@@ -1924,6 +2112,8 @@ async function readWorkflowProjectPathConfig(projectRoot) {
         classicEnabled: false,
         memoryLearning: true,
         memoryRetrieval: true,
+        knowledgeProvider: 'local',
+        knowledgeRemote: null,
       };
     }
     throw error;
@@ -1936,6 +2126,8 @@ async function readWorkflowProjectPathConfig(projectRoot) {
       classicEnabled: false,
       memoryLearning: true,
       memoryRetrieval: true,
+      knowledgeProvider: 'local',
+      knowledgeRemote: null,
     };
   }
   const source = await readWorkflowProtectedFile(

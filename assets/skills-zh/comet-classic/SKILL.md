@@ -56,7 +56,7 @@ comet state select <change-name>
 
 ### 记忆接入
 
-绑定 Classic 工作区后，Agent 自动运行 `comet task <project-root> --task "<用户原始请求>" --phase build --json`，只注入当前任务匹配的个人记忆。工作流命令可带 `--comet-task`、`--comet-path`、`--comet-phase`，CLI 会自动选择并显示相关片段。成功完成 change、验证或审查后自动记录 `comet memory observe`；编译器、测试或 linter 失败时直接读取诊断、修复代码并按工作流要求重跑；任务结束调用 `comet task <project-root> --task "<用户原始请求>" --complete --workflow <workflow> --change <change-id> --json`，完成个人记忆检查点。没有 Hook 时由 Skill 直接调用这些命令（只取上下文时也可用 `comet memory context`），不要求用户打开 Dashboard 或手动确认。
+绑定 Classic 工作区后，Agent 自动运行 `comet task <project-root> --task "<用户原始请求>" --phase build --json`，注入当前任务匹配的个人记忆和项目知识。工作流命令可带 `--comet-task`、`--comet-path`、`--comet-phase`，CLI 会自动选择并显示相关片段。成功完成 change、验证或审查后自动记录 `comet memory observe`；编译器、测试或 linter 失败时直接读取诊断、修复代码并按工作流要求重跑；任务结束调用 `comet task <project-root> --task "<用户原始请求>" --complete --workflow <workflow> --change <change-id> --json`，完成个人记忆检查点。没有 Hook 时由 Skill 直接调用这些命令（只取上下文时也可用 `comet memory context`），不要求用户打开 Dashboard 或手动确认。
 
 ### Comet Ambient Resume
 

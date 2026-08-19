@@ -79,6 +79,9 @@ describe('Native artifact root moves', () => {
         learning: true,
         retrieval: true,
       },
+      knowledge: {
+        provider: 'local',
+      },
       native: {
         artifact_root: to,
         language: 'en',
