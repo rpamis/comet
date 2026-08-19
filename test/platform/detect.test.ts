@@ -13,6 +13,7 @@ import {
   PLATFORMS,
   getPlatformSkillsDir,
   getPlatformSkillsDirs,
+  resolveOpenSpecMirrorPlatformIds,
   type Platform,
 } from '../../platform/install/platforms.js';
 
@@ -80,12 +81,14 @@ describe('detect', () => {
       expect(grok?.globalSkillsDir).toBe('.grok');
       expect(grok?.detectionPaths).toEqual(['.grok']);
       expect(grok?.openspecToolId).toBe('codex');
+      expect(grok?.openspecMirrorFrom).toBe('codex');
       expect(grok?.rulesDir).toBe('rules');
       expect(grok?.hookFormat).toBe('claude-code');
       expect(grok?.hookConfigFile).toBe('hooks/comet.json');
       expect(grok?.hookMatcher).toBe('Write|Edit|write|search_replace');
       expect(getPlatformSkillsDir(grok!, 'project')).toBe('.grok');
       expect(getPlatformSkillsDir(grok!, 'global')).toBe('.grok');
+      expect(resolveOpenSpecMirrorPlatformIds(['grok', 'codex', 'claude'])).toEqual(['grok']);
     });
 
     it('declares Kimi Code global skills under the user .kimi-code directory', () => {
@@ -112,6 +115,7 @@ describe('detect', () => {
       expect(zcode?.skillsDir).toBe('.zcode');
       expect(zcode?.globalSkillsDir).toBe('.zcode');
       expect(zcode?.openspecToolId).toBe('opencode');
+      expect(zcode?.openspecMirrorFrom).toBe('opencode');
       expect(zcode?.rulesDir).toBe('rules');
       expect(zcode?.rulesFormat).toBe('md');
     });

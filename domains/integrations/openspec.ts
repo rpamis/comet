@@ -2,7 +2,12 @@ import { execFileSync } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { PLATFORMS, getPlatformSkillsDir } from '../../platform/install/platforms.js';
+import {
+  PLATFORMS,
+  getOpenSpecGeneratorPlatform,
+  getOpenSpecMirrorPlatforms,
+  getPlatformSkillsDir,
+} from '../../platform/install/platforms.js';
 import { printCommandErrorDetails } from '../../platform/process/command-error.js';
 import { quoteArgsForShell } from '../../platform/process/shell-quote.js';
 import { atomicWriteContainedBytes } from '../workflow-contract/contained-atomic-write.js';
@@ -260,34 +265,47 @@ interface GeneratedToolCopy {
 
 async function resolveGeneratedToolCopies(
   stagingProject: string,
-  projectPath: string,
+  destBase: string,
+  scope: InstallScope,
   toolIds: readonly string[],
+  mirrorPlatformIds: readonly string[] = [],
+  selectedPlatformIds: readonly string[] = [],
 ): Promise<GeneratedToolCopy[]> {
   const copies: GeneratedToolCopy[] = [];
   const mergedDestinations = new Set<string>();
   for (const toolId of toolIds) {
-    const platform = PLATFORMS.find((candidate) => candidate.openspecToolId === toolId);
-    if (!platform) continue;
-    const destination = path.join(projectPath, platform.skillsDir);
-    if (mergedDestinations.has(destination)) continue;
+    const generator = getOpenSpecGeneratorPlatform(toolId);
+    if (!generator) continue;
     const candidateDirs = [
-      platform.openspecSkillsDir ?? platform.skillsDir,
-      ...(platform.legacySkillsDirs ?? []),
+      generator.openspecSkillsDir ?? generator.skillsDir,
+      ...(generator.legacySkillsDirs ?? []),
     ];
     const sourceDir = candidateDirs.find((dir) => fs.existsSync(path.join(stagingProject, dir)));
     if (!sourceDir) {
       throw new Error(
-        `OpenSpec generated no tool output for ${platform.id}: expected one of ${candidateDirs.join(', ')} under the staging project`,
+        `OpenSpec generated no tool output for ${generator.id}: expected one of ${candidateDirs.join(', ')} under the staging project`,
       );
     }
     const source = path.join(stagingProject, sourceDir);
     if (!(await hasGeneratedToolFiles(source))) {
       throw new Error(
-        `OpenSpec generated an empty tool output for ${platform.id}: ${sourceDir} contains no skills or commands`,
+        `OpenSpec generated an empty tool output for ${generator.id}: ${sourceDir} contains no skills or commands`,
       );
     }
-    copies.push({ source, destination });
-    mergedDestinations.add(destination);
+    const mirrors = getOpenSpecMirrorPlatforms(mirrorPlatformIds, generator.id);
+    const writeGenerator =
+      selectedPlatformIds.length > 0
+        ? selectedPlatformIds.includes(generator.id)
+        : mirrors.length === 0;
+    const destinations = [
+      ...(writeGenerator ? [path.join(destBase, getPlatformSkillsDir(generator, scope))] : []),
+      ...mirrors.map((platform) => path.join(destBase, getPlatformSkillsDir(platform, scope))),
+    ];
+    for (const destination of destinations) {
+      if (mergedDestinations.has(destination)) continue;
+      copies.push({ source, destination });
+      mergedDestinations.add(destination);
+    }
   }
   return copies;
 }
@@ -300,93 +318,36 @@ async function resolveGeneratedToolCopies(
  */
 async function preflightGeneratedToolDirectories(
   stagingProject: string,
-  projectPath: string,
+  destBase: string,
+  scope: InstallScope,
   toolIds: readonly string[],
+  mirrorPlatformIds: readonly string[] = [],
+  selectedPlatformIds: readonly string[] = [],
 ): Promise<GeneratedToolCopy[]> {
-  return resolveGeneratedToolCopies(stagingProject, projectPath, toolIds);
+  return resolveGeneratedToolCopies(
+    stagingProject,
+    destBase,
+    scope,
+    toolIds,
+    mirrorPlatformIds,
+    selectedPlatformIds,
+  );
 }
 
 async function mergeGeneratedToolDirectories(
   copies: readonly GeneratedToolCopy[],
   stagingProject: string,
-  projectPath: string,
-  toolIds: readonly string[],
-  mirrorOpenCodePlatformIds: readonly string[],
-  mirrorCodeBuddyPlatformIds: readonly string[],
+  destBase: string,
   projectMutationGuard?: ProjectMutationGuard,
-  mirrorCodexPlatformIds: readonly string[] = [],
 ): Promise<void> {
   for (const copy of copies) {
     await copyGeneratedToolDirectory(
       stagingProject,
       copy.source,
-      projectPath,
+      destBase,
       copy.destination,
       projectMutationGuard,
     );
-  }
-
-  if (toolIds.includes('opencode') && mirrorOpenCodePlatformIds.length > 0) {
-    const opencodePlatform = PLATFORMS.find((platform) => platform.id === 'opencode');
-    if (opencodePlatform) {
-      const source = path.join(stagingProject, opencodePlatform.skillsDir);
-      if (fs.existsSync(source)) {
-        for (const platformId of new Set(mirrorOpenCodePlatformIds)) {
-          const platform = PLATFORMS.find((candidate) => candidate.id === platformId);
-          if (!platform || platform.id === 'opencode') continue;
-          await copyGeneratedToolDirectory(
-            stagingProject,
-            source,
-            projectPath,
-            path.join(projectPath, getPlatformSkillsDir(platform, 'project')),
-            projectMutationGuard,
-          );
-        }
-      }
-    }
-  }
-
-  if (toolIds.includes('codebuddy') && mirrorCodeBuddyPlatformIds.length > 0) {
-    const codebuddyPlatform = PLATFORMS.find((platform) => platform.id === 'codebuddy');
-    if (codebuddyPlatform) {
-      const source = path.join(stagingProject, codebuddyPlatform.skillsDir);
-      if (fs.existsSync(source)) {
-        for (const platformId of new Set(mirrorCodeBuddyPlatformIds)) {
-          const platform = PLATFORMS.find((candidate) => candidate.id === platformId);
-          if (!platform || platform.id === 'codebuddy') continue;
-          await copyGeneratedToolDirectory(
-            stagingProject,
-            source,
-            projectPath,
-            path.join(projectPath, getPlatformSkillsDir(platform, 'project')),
-            projectMutationGuard,
-          );
-        }
-      }
-    }
-  }
-
-  if (toolIds.includes('codex') && mirrorCodexPlatformIds.length > 0) {
-    const codexPlatform = PLATFORMS.find((platform) => platform.id === 'codex');
-    if (codexPlatform) {
-      const source = path.join(
-        stagingProject,
-        codexPlatform.openspecSkillsDir ?? codexPlatform.skillsDir,
-      );
-      if (fs.existsSync(source)) {
-        for (const platformId of new Set(mirrorCodexPlatformIds)) {
-          const platform = PLATFORMS.find((candidate) => candidate.id === platformId);
-          if (!platform || platform.id === 'codex') continue;
-          await copyGeneratedToolDirectory(
-            stagingProject,
-            source,
-            projectPath,
-            path.join(projectPath, getPlatformSkillsDir(platform, 'project')),
-            projectMutationGuard,
-          );
-        }
-      }
-    }
   }
 }
 
@@ -715,8 +676,8 @@ function copyOpenSpecPaths(srcDir: string, destDir: string): void {
         fs.cpSync(srcPath, destPath, { recursive: true, force: true });
       }
     } catch (error) {
-      console.error(
-        `    Warning: failed to copy OpenSpec ${label} from ${from} to ${to}: ${(error as Error).message}`,
+      throw new Error(
+        `Failed to copy OpenSpec ${label} from ${from} to ${to}: ${(error as Error).message}`,
       );
     }
   }
@@ -727,13 +688,17 @@ async function installOpenSpec(
   toolIds: string[],
   scope: InstallScope,
   shouldInstallCli = true,
-  mirrorOpenCodePlatformIds: string[] = [],
+  mirrorPlatformIds: string[] = [],
   artifactLayout: 'legacy' | 'docs' = 'legacy',
   projectMutationGuard?: ProjectMutationGuard,
   failureObserver?: OpenSpecFailureObserver,
-  mirrorCodeBuddyPlatformIds: string[] = [],
-  mirrorCodexPlatformIds: string[] = [],
+  extraMirrorPlatformIds: string[] = [],
+  moreMirrorPlatformIds: string[] = [],
+  selectedPlatformIds: string[] = [],
 ): Promise<'installed' | 'failed' | 'skipped'> {
+  const allMirrorPlatformIds = [
+    ...new Set([...mirrorPlatformIds, ...extraMirrorPlatformIds, ...moreMirrorPlatformIds]),
+  ];
   if (scope === 'project') {
     try {
       await assertProjectMutationAllowed(projectMutationGuard, 'before');
@@ -764,24 +729,31 @@ async function installOpenSpec(
     configHome = openspecEnv.configHome;
 
     configBackup = writeAllWorkflowsToDefaultConfig();
+    const destBase = scope === 'global' ? os.homedir() : projectPath;
+    const usesStagedToolCopy =
+      toolIds.length > 0 && (scope === 'project' || allMirrorPlatformIds.length > 0);
+
+    if (usesStagedToolCopy) {
+      stagingProject = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-tools-'));
+      await runOpenSpecInit(
+        stagingProject,
+        toolIds,
+        openspecEnv.env,
+        scope === 'project' ? projectMutationGuard : undefined,
+        false,
+        false,
+      );
+      generatedToolCopies = await preflightGeneratedToolDirectories(
+        stagingProject,
+        destBase,
+        scope,
+        toolIds,
+        allMirrorPlatformIds,
+        selectedPlatformIds,
+      );
+    }
 
     if (scope === 'project') {
-      if (toolIds.length > 0) {
-        stagingProject = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-tools-'));
-        await runOpenSpecInit(
-          stagingProject,
-          toolIds,
-          openspecEnv.env,
-          projectMutationGuard,
-          false,
-          false,
-        );
-        generatedToolCopies = await preflightGeneratedToolDirectories(
-          stagingProject,
-          projectPath,
-          toolIds,
-        );
-      }
       await assertProjectMutationAllowed(projectMutationGuard, 'before');
       const artifactBase = artifactLayout === 'docs' ? path.join(projectPath, 'docs') : projectPath;
       let artifactMutationGuard = projectMutationGuard;
@@ -803,58 +775,18 @@ async function installOpenSpec(
         await mergeGeneratedToolDirectories(
           generatedToolCopies,
           stagingProject,
-          projectPath,
-          toolIds,
-          mirrorOpenCodePlatformIds,
-          mirrorCodeBuddyPlatformIds,
+          destBase,
           projectMutationGuard,
-          mirrorCodexPlatformIds,
         );
       }
       await assertProjectMutationAllowed(projectMutationGuard, 'after-external', true);
+    } else if (allMirrorPlatformIds.length > 0 && stagingProject && generatedToolCopies) {
+      await mergeGeneratedToolDirectories(generatedToolCopies, stagingProject, destBase);
     } else {
       await runOpenSpecInit(os.homedir(), toolIds, openspecEnv.env);
     }
 
-    const openspecWritesGlobal = scope === 'global';
-    const openspecTargetBase = openspecWritesGlobal ? os.homedir() : projectPath;
-
-    // Mirror OpenCode-compatible platforms first, before the opencode global
-    // migration potentially moves the source away.
-    if (
-      scope === 'global' &&
-      mirrorOpenCodePlatformIds.length > 0 &&
-      toolIds.includes('opencode')
-    ) {
-      mirrorOpenCodeCompatibleOpenSpecPaths(openspecTargetBase, scope, mirrorOpenCodePlatformIds);
-    }
-
-    if (
-      scope === 'global' &&
-      mirrorCodeBuddyPlatformIds.length > 0 &&
-      toolIds.includes('codebuddy')
-    ) {
-      const codebuddyPlatform = PLATFORMS.find((platform) => platform.id === 'codebuddy');
-      if (codebuddyPlatform) {
-        mirrorOpenCodeCompatibleOpenSpecPathsFromSource(
-          openspecTargetBase,
-          scope,
-          codebuddyPlatform.id,
-          mirrorCodeBuddyPlatformIds,
-        );
-      }
-    }
-
-    if (scope === 'global' && mirrorCodexPlatformIds.length > 0 && toolIds.includes('codex')) {
-      mirrorOpenCodeCompatibleOpenSpecPathsFromSource(
-        openspecTargetBase,
-        scope,
-        'codex',
-        mirrorCodexPlatformIds,
-      );
-    }
-
-    if (openspecWritesGlobal && toolIds.includes('opencode')) {
+    if (scope === 'global' && toolIds.includes('opencode')) {
       migrateOpenCodeOpenSpecPaths(os.homedir());
     }
 
@@ -875,24 +807,6 @@ async function installOpenSpec(
     if (stagingProject) {
       fs.rmSync(stagingProject, { recursive: true, force: true });
     }
-  }
-}
-
-function mirrorOpenCodeCompatibleOpenSpecPathsFromSource(
-  baseDir: string,
-  scope: InstallScope,
-  sourcePlatformId: string,
-  platformIds: string[],
-): void {
-  const sourcePlatform = PLATFORMS.find((platform) => platform.id === sourcePlatformId);
-  if (!sourcePlatform) return;
-
-  const srcDir = path.join(baseDir, getPlatformSkillsDir(sourcePlatform, scope));
-  for (const platformId of new Set(platformIds)) {
-    const platform = PLATFORMS.find((candidate) => candidate.id === platformId);
-    if (!platform || platform.id === sourcePlatformId) continue;
-    const destDir = path.join(baseDir, getPlatformSkillsDir(platform, scope));
-    copyOpenSpecPaths(srcDir, destDir);
   }
 }
 

@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from 'fs';
 import path from 'path';
-import { PLATFORMS } from '../../platform/install/platforms.js';
+import { getOpenSpecGeneratorPlatform } from '../../platform/install/platforms.js';
 
 /**
  * Strip the double quotes cmd.exe adds to arguments containing spaces or
@@ -19,10 +19,10 @@ export function unquoteWindowsArg(value: unknown): string {
  */
 export function stageOpenSpecSkills(targetPath: string, tools: string): void {
   for (const toolId of tools.split(',')) {
-    const platform = PLATFORMS.find((candidate) => candidate.openspecToolId === toolId);
+    const platform = getOpenSpecGeneratorPlatform(toolId);
     const generated = path.join(
       targetPath,
-      platform?.skillsDir ?? `.${toolId}`,
+      platform?.openspecSkillsDir ?? platform?.skillsDir ?? `.${toolId}`,
       'skills',
       'openspec-propose',
     );
