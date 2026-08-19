@@ -62,6 +62,7 @@ import type {
   NativeLocalCheckState,
   NativeLocalExecutionState,
   NativePortableCheckSummary,
+  NativePortablePhase,
   NativePortableSpecChange,
   NativePortableState,
   NativePortableWorkspace,
@@ -2005,12 +2006,16 @@ export async function returnNativePortableChangeToShape(options: {
   paths: NativeProjectPaths;
   name: string;
   reason: string;
+  allowedPhases?: readonly NativePortablePhase[];
 }): Promise<NativePortableState> {
   return withNativeMutationLock(
     options.paths,
     `return portable change ${options.name} to Shape`,
     async () => {
       const state = await readNativePortableChange(options.paths, options.name);
+      if (options.allowedPhases && !options.allowedPhases.includes(state.phase)) {
+        throw new Error('--return-to-shape is only valid from Verify or Archive');
+      }
       if (state.phase === 'shape') return state;
       return returnNativePortableStateToShapeLocked({
         paths: options.paths,

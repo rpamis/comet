@@ -196,6 +196,7 @@ export async function nativeNextCommand(
       paths: configured.paths,
       name,
       reason: summary,
+      allowedPhases: ['verify', 'archive'],
     });
   } else if (retryVerifier) {
     state = await retryNativePortableVerifier({ paths: configured.paths, name });

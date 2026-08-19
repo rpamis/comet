@@ -8,7 +8,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { readNativeLocalExecution } from '../../../domains/comet-native/native-local-execution.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
-import { nativeLocalExecutionFile } from '../../../domains/comet-native/native-portable-runtime.js';
+import {
+  nativeLocalExecutionFile,
+  returnNativePortableChangeToShape,
+} from '../../../domains/comet-native/native-portable-runtime.js';
 
 interface JsonEnvelope {
   command: string | null;
@@ -453,13 +456,19 @@ Run applicable focused checks.
         continuation: {
           disposition: 'await-user',
           action: 'confirm-skill-coordinated-pass',
+          commandArgs: null,
           requiredInputs: ['summary', 'user-decision'],
-          inputOptions: expect.arrayContaining([
-            expect.objectContaining({ name: 'confirmed', flag: '--confirmed', required: true }),
+          inputOptions: [expect.objectContaining({ name: 'summary', flag: '--summary' })],
+          commandAlternatives: expect.arrayContaining([
+            expect.objectContaining({
+              name: 'confirm-pass',
+              commandArgs: expect.arrayContaining(['--confirmed']),
+              requiredInputs: ['summary', 'user-confirmation'],
+            }),
             expect.objectContaining({
               name: 'return-to-shape',
-              flag: '--return-to-shape',
-              required: false,
+              commandArgs: expect.arrayContaining(['--return-to-shape']),
+              requiredInputs: ['summary', 'user-rejection'],
             }),
           ]),
         },
@@ -972,7 +981,29 @@ Run applicable focused checks.
           loop: { iteration: 1, attempt: 1, retry_epoch: 0 },
           blockers: [{ resolution_action: 'resolve-verifier-blocker' }],
         },
-        continuation: { action: 'resolve-verifier-blocker' },
+        continuation: {
+          action: 'resolve-verifier-blocker',
+          commandArgs: null,
+          requiredInputs: ['summary', 'user-decision'],
+          inputOptions: [expect.objectContaining({ name: 'summary', flag: '--summary' })],
+          commandAlternatives: expect.arrayContaining([
+            expect.objectContaining({
+              name: 'resolve-verifier-blocker',
+              commandArgs: expect.arrayContaining(['--resolve-verifier-blocker']),
+              requiredInputs: ['summary', 'user-resolution'],
+            }),
+            expect.objectContaining({
+              name: 'return-to-build',
+              commandArgs: expect.arrayContaining(['--return-to-build']),
+              requiredInputs: ['summary', 'user-rejection'],
+            }),
+            expect.objectContaining({
+              name: 'return-to-shape',
+              commandArgs: expect.arrayContaining(['--return-to-shape']),
+              requiredInputs: ['summary', 'user-rejection'],
+            }),
+          ]),
+        },
       },
     });
     const paths = await nativeProjectPaths(projectRoot, 'docs');
@@ -1026,6 +1057,33 @@ Run applicable focused checks.
     expect(await fs.readFile(counter, 'utf8')).toBe('1');
     expect(await readNativeLocalExecution(localFile)).toMatchObject({
       checks: [{ id: 'semantic-baseline', executionCount: 1, status: 'passed' }],
+    });
+  });
+
+  it('keeps explicit return-to-shape phase eligibility inside the runtime mutation lock', async () => {
+    const name = 'locked-return-to-shape';
+    await prepareBuild(name);
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+
+    await expect(
+      returnNativePortableChangeToShape({
+        paths,
+        name,
+        reason: 'Attempt explicit Verify-only recovery while Build is current',
+        allowedPhases: ['verify', 'archive'],
+      }),
+    ).rejects.toThrow('--return-to-shape is only valid from Verify or Archive');
+
+    const shown = json(await runNativeCli(['show', name, '--json', ...projectArgs()]));
+    expect(shown).toMatchObject({
+      exitCode: 0,
+      data: {
+        state: {
+          phase: 'build',
+          status: 'active',
+          loop: { next_action: 'submit-builder-candidate' },
+        },
+      },
     });
   });
 

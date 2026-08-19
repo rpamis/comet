@@ -1,6 +1,21 @@
 import type { NativeChildrenInspection } from './native-children.js';
 import type { NativePortableState } from './native-portable-types.js';
 
+type NativePortableContinuationInputOption = {
+  name: string;
+  flag: string;
+  valueKind: 'text' | 'confirmation' | 'json-file';
+  required: boolean;
+  template: unknown | null;
+};
+
+type NativePortableCommandAlternative = {
+  name: string;
+  commandArgs: string[];
+  requiredInputs: string[];
+  inputOptions: NativePortableContinuationInputOption[];
+};
+
 export interface NativePortableRunnerAction {
   kind: 'builder-handoff' | 'dispatch-verifier' | 'await-verifier' | 'retry-verifier' | 'none';
   candidateId: string | null;
@@ -32,14 +47,42 @@ export interface NativePortableContinuation {
     | 'none';
   commandArgs: string[] | null;
   requiredInputs: string[];
-  inputOptions: Array<{
-    name: string;
-    flag: string;
-    valueKind: 'text' | 'confirmation' | 'json-file';
-    required: boolean;
-    template: unknown | null;
-  }>;
+  inputOptions: NativePortableContinuationInputOption[];
+  commandAlternatives?: NativePortableCommandAlternative[];
   runnerAction: NativePortableRunnerAction;
+}
+
+function textInput(name: string, flag: string): NativePortableContinuationInputOption {
+  return { name, flag, valueKind: 'text', required: true, template: null };
+}
+
+function confirmationInput(name: string, flag: string): NativePortableContinuationInputOption {
+  return { name, flag, valueKind: 'confirmation', required: true, template: null };
+}
+
+function nativeNextDecisionAlternative(options: {
+  name: string;
+  change: string;
+  flag: string;
+  confirmationInput: string;
+}): NativePortableCommandAlternative {
+  return {
+    name: options.name,
+    commandArgs: [
+      'comet',
+      'native',
+      'next',
+      options.change,
+      '--summary',
+      '<summary>',
+      options.flag,
+    ],
+    requiredInputs: ['summary', options.confirmationInput],
+    inputOptions: [
+      textInput('summary', '--summary'),
+      confirmationInput(options.name, options.flag),
+    ],
+  };
 }
 
 export function nativePortableContinuation(
@@ -81,37 +124,32 @@ export function nativePortableContinuation(
         ...base,
         disposition: 'await-user',
         action: 'confirm-skill-coordinated-pass',
-        commandArgs: [
-          'comet',
-          'native',
-          'next',
-          state.name,
-          '--summary',
-          '<summary>',
-          '--confirmed',
-        ],
+        commandArgs: null,
         requiredInputs: ['summary', 'user-decision'],
-        inputOptions: [
-          {
-            name: 'summary',
-            flag: '--summary',
-            valueKind: 'text',
-            required: true,
-            template: null,
-          },
-          {
-            name: 'confirmed',
+        inputOptions: [textInput('summary', '--summary')],
+        commandAlternatives: [
+          nativeNextDecisionAlternative({
+            name: 'confirm-pass',
+            change: state.name,
             flag: '--confirmed',
-            valueKind: 'confirmation',
-            required: true,
-            template: null,
-          },
+            confirmationInput: 'user-confirmation',
+          }),
           {
             name: 'return-to-shape',
-            flag: '--return-to-shape',
-            valueKind: 'confirmation',
-            required: false,
-            template: null,
+            commandArgs: [
+              'comet',
+              'native',
+              'next',
+              state.name,
+              '--summary',
+              '<summary>',
+              '--return-to-shape',
+            ],
+            requiredInputs: ['summary', 'user-rejection'],
+            inputOptions: [
+              textInput('summary', '--summary'),
+              confirmationInput('return-to-shape', '--return-to-shape'),
+            ],
           },
         ],
         runnerAction: runner('none'),
@@ -160,37 +198,49 @@ export function nativePortableContinuation(
         ...base,
         disposition: 'await-user',
         action: 'resolve-verifier-blocker',
-        commandArgs: [
-          'comet',
-          'native',
-          'next',
-          state.name,
-          '--summary',
-          '<summary>',
-          '--resolve-verifier-blocker',
-        ],
-        requiredInputs: ['summary', 'user-resolution'],
-        inputOptions: [
-          {
-            name: 'summary',
-            flag: '--summary',
-            valueKind: 'text',
-            required: true,
-            template: null,
-          },
+        commandArgs: null,
+        requiredInputs: ['summary', 'user-decision'],
+        inputOptions: [textInput('summary', '--summary')],
+        commandAlternatives: [
+          nativeNextDecisionAlternative({
+            name: 'resolve-verifier-blocker',
+            change: state.name,
+            flag: '--resolve-verifier-blocker',
+            confirmationInput: 'user-resolution',
+          }),
           {
             name: 'return-to-build',
-            flag: '--return-to-build',
-            valueKind: 'confirmation',
-            required: false,
-            template: null,
+            commandArgs: [
+              'comet',
+              'native',
+              'next',
+              state.name,
+              '--summary',
+              '<summary>',
+              '--return-to-build',
+            ],
+            requiredInputs: ['summary', 'user-rejection'],
+            inputOptions: [
+              textInput('summary', '--summary'),
+              confirmationInput('return-to-build', '--return-to-build'),
+            ],
           },
           {
             name: 'return-to-shape',
-            flag: '--return-to-shape',
-            valueKind: 'confirmation',
-            required: false,
-            template: null,
+            commandArgs: [
+              'comet',
+              'native',
+              'next',
+              state.name,
+              '--summary',
+              '<summary>',
+              '--return-to-shape',
+            ],
+            requiredInputs: ['summary', 'user-rejection'],
+            inputOptions: [
+              textInput('summary', '--summary'),
+              confirmationInput('return-to-shape', '--return-to-shape'),
+            ],
           },
         ],
         runnerAction: runner('none'),
@@ -201,23 +251,43 @@ export function nativePortableContinuation(
         ...base,
         disposition: 'await-user',
         action: 'resolve-loop-stop',
-        commandArgs: [
-          'comet',
-          'native',
-          'next',
-          state.name,
-          '--return-to-build',
-          '--summary',
-          '<summary>',
-        ],
+        commandArgs: null,
         requiredInputs: ['summary', 'user-decision'],
-        inputOptions: [
+        inputOptions: [textInput('summary', '--summary')],
+        commandAlternatives: [
           {
-            name: 'summary',
-            flag: '--summary',
-            valueKind: 'text',
-            required: true,
-            template: null,
+            name: 'return-to-build',
+            commandArgs: [
+              'comet',
+              'native',
+              'next',
+              state.name,
+              '--summary',
+              '<summary>',
+              '--return-to-build',
+            ],
+            requiredInputs: ['summary', 'user-rejection'],
+            inputOptions: [
+              textInput('summary', '--summary'),
+              confirmationInput('return-to-build', '--return-to-build'),
+            ],
+          },
+          {
+            name: 'return-to-shape',
+            commandArgs: [
+              'comet',
+              'native',
+              'next',
+              state.name,
+              '--summary',
+              '<summary>',
+              '--return-to-shape',
+            ],
+            requiredInputs: ['summary', 'user-rejection'],
+            inputOptions: [
+              textInput('summary', '--summary'),
+              confirmationInput('return-to-shape', '--return-to-shape'),
+            ],
           },
         ],
         runnerAction: runner('none'),
