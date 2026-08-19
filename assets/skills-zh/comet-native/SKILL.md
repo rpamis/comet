@@ -84,7 +84,7 @@ Verifier 先读取验收项、brief、完整目标 Spec、实际实现和 Runtim
 
 Verifier 保持只读。如果现有检查不足，就在 Runtime 返回的 `inputOptions.template` 中列出还需要运行哪些检查，由 Runtime 执行并把结果返回给 Verifier。
 
-Verifier 最终必须逐项标记为通过（`passed`）、未通过（`failed`）或暂时无法验证（`blocked`），一项不能漏，也不能重复。未通过或无法验证时，写出下一轮 Build 可直接处理的原因。无法启动 Verifier、Verifier 执行出错或缺少外部信息时，按命令参考和最新 `continuation` 处理。
+Verifier 最终必须逐项标记为通过（`passed`）、未通过（`failed`）或暂时无法验证（`blocked`），一项不能漏，也不能重复。未通过或无法验证时，写出下一轮 Build 可直接处理的原因。无法启动 Verifier、Verifier 执行出错或缺少外部信息时，按命令参考和最新 `continuation` 处理。skill-coordinated Verifier 通过且 Runtime 等待用户决策时，只有用户接受当前结果才用 `--accept-result` 进入 Archive；如果用户要求修改实现或验收标准，分别使用 `--revise-implementation` 或 `--revise-requirements`。
 
 完成标准：Runtime 已接受完整的 Verifier 结果，并明确进入 Build、Archive、等待用户（`await-user`）、阻塞（`blocked`）或完成（`done`）中的一种状态。
 
