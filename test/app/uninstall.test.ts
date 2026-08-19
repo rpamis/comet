@@ -615,20 +615,20 @@ describe('uninstall', () => {
       ).rejects.toMatchObject({ code: 'ENOENT' });
     });
 
-    it('removes staged Superpowers from a Grok-only project install', async () => {
+    it('removes staged Superpowers from a Grok-only project install without CLI list or lockfile', async () => {
       const grokPlatform = PLATFORMS.find((platform) => platform.id === 'grok')!;
-      mockedExecFileSync.mockImplementation((_command, args) => {
-        if (args[1] === 'list') {
-          return JSON.stringify([
-            { name: 'brainstorming', source: 'obra/superpowers', agents: [] },
-          ]) as never;
-        }
-        return '' as never;
+      mockedExecFileSync.mockImplementation(() => {
+        throw new Error('skills CLI is not registered in the target project');
       });
       await fs.mkdir(path.join(tmpDir, '.grok', 'skills', 'brainstorming'), { recursive: true });
       await fs.writeFile(
         path.join(tmpDir, '.grok', 'skills', 'brainstorming', 'SKILL.md'),
         '# Brainstorming\n',
+        'utf8',
+      );
+      await fs.writeFile(
+        path.join(tmpDir, '.grok', '.comet-superpowers.json'),
+        JSON.stringify({ source: 'obra/superpowers', skills: ['brainstorming'] }),
         'utf8',
       );
 
@@ -638,19 +638,19 @@ describe('uninstall', () => {
       await expect(
         fs.access(path.join(tmpDir, '.grok', 'skills', 'brainstorming')),
       ).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(
+        fs.access(path.join(tmpDir, '.grok', '.comet-superpowers.json')),
+      ).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
     });
 
-    it('removes staged Superpowers from a Grok-only global install', async () => {
+    it('removes staged Superpowers from a Grok-only global install without CLI list or lockfile', async () => {
       const grokPlatform = PLATFORMS.find((platform) => platform.id === 'grok')!;
       const fakeHome = path.join(tmpDir, 'grok-global-home');
       const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
-      mockedExecFileSync.mockImplementation((_command, args) => {
-        if (args[1] === 'list') {
-          return JSON.stringify([
-            { name: 'writing-plans', source: 'obra/superpowers', agents: [] },
-          ]) as never;
-        }
-        return '' as never;
+      mockedExecFileSync.mockImplementation(() => {
+        throw new Error('skills CLI is not registered in the target location');
       });
       try {
         await fs.mkdir(path.join(fakeHome, '.grok', 'skills', 'writing-plans'), {
@@ -661,12 +661,20 @@ describe('uninstall', () => {
           '# Writing Plans\n',
           'utf8',
         );
+        await fs.writeFile(
+          path.join(fakeHome, '.grok', '.comet-superpowers.json'),
+          JSON.stringify({ source: 'obra/superpowers', skills: ['writing-plans'] }),
+          'utf8',
+        );
 
         const result = await removeSuperpowersSkillsForPlatforms(tmpDir, [grokPlatform], 'global');
 
         expect(result).toEqual({ removed: 1, failed: 0 });
         await expect(
           fs.access(path.join(fakeHome, '.grok', 'skills', 'writing-plans')),
+        ).rejects.toMatchObject({ code: 'ENOENT' });
+        await expect(
+          fs.access(path.join(fakeHome, '.grok', '.comet-superpowers.json')),
         ).rejects.toMatchObject({ code: 'ENOENT' });
       } finally {
         homedirSpy.mockRestore();

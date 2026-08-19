@@ -47,7 +47,11 @@ import {
 import type { CometWorkflow, InitWorkflowSelection } from '../comet-entry/types.js';
 import { removeCometProjectInstructions } from './project-instructions.js';
 import { readJsonObjectFile } from './json-object.js';
-import { SKILLS_AGENT_MAP } from '../integrations/superpowers.js';
+import {
+  SKILLS_AGENT_MAP,
+  readStagedSuperpowersSkillNames,
+  removeStagedSuperpowersManifests,
+} from '../integrations/superpowers.js';
 
 interface RemovalResult {
   removed: number;
@@ -978,7 +982,8 @@ async function removeSuperpowersSkillsForPlatforms(
       return { removed: 0, failed: 1 };
     }
   }
-  const names = new Set([...listedNames, ...lockedNames]);
+  const stagedNames = await readStagedSuperpowersSkillNames(baseDir, stagedCopyPlatforms, scope);
+  const names = new Set([...listedNames, ...lockedNames, ...stagedNames]);
   let failed = 0;
   if (agents.length > 0) {
     for (const name of names) {
@@ -1023,6 +1028,9 @@ async function removeSuperpowersSkillsForPlatforms(
     )
   ).filter(Boolean).length;
   if (remaining > 0) failed++;
+  if (stagedCopyPlatforms.length > 0 && remaining === 0) {
+    await removeStagedSuperpowersManifests(baseDir, stagedCopyPlatforms, scope);
+  }
   return { removed: names.size - remaining, failed };
 }
 

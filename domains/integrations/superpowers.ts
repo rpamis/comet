@@ -1,10 +1,14 @@
 import { execFileSync } from 'child_process';
 import os from 'os';
 import path from 'path';
-import { cp, mkdir, mkdtemp, readdir, rm } from 'fs/promises';
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'fs/promises';
 
 import { printCommandErrorDetails } from '../../platform/process/command-error.js';
-import { getPlatformSkillsDir, PLATFORMS } from '../../platform/install/platforms.js';
+import {
+  getPlatformSkillsDir,
+  PLATFORMS,
+  type Platform,
+} from '../../platform/install/platforms.js';
 import type { InstallScope } from '../../platform/install/types.js';
 
 const SKILLS_AGENT_MAP: Record<string, string | null> = {
@@ -59,6 +63,8 @@ const MIMOCODE_PLATFORM_ID = 'mimocode';
 const WORKBUDDY_PLATFORM_ID = 'workbuddy';
 const GROK_PLATFORM_ID = 'grok';
 const STAGE_AGENT = 'claude-code';
+const SUPERPOWERS_SOURCE = 'obra/superpowers';
+export const STAGED_SUPERPOWERS_MANIFEST_FILE = '.comet-superpowers.json';
 
 function buildSuperpowersInstallCommand(
   _projectPath: string,
@@ -129,15 +135,86 @@ function getNpxExecutable(platform: NodeJS.Platform = process.platform): string 
   return platform === 'win32' ? 'npx.cmd' : 'npx';
 }
 
-async function copyDirectoryContents(srcDir: string, destDir: string): Promise<void> {
+async function copyDirectoryContents(srcDir: string, destDir: string): Promise<string[]> {
   await mkdir(destDir, { recursive: true });
   const entries = await readdir(srcDir, { withFileTypes: true });
+  const skillNames: string[] = [];
   for (const entry of entries) {
     await cp(path.join(srcDir, entry.name), path.join(destDir, entry.name), {
       recursive: true,
       force: true,
       dereference: true,
     });
+    if (entry.isDirectory() && !entry.name.startsWith('.')) {
+      skillNames.push(entry.name);
+    }
+  }
+  return skillNames;
+}
+
+function getStagedSuperpowersManifestPath(baseDir: string, skillsRoot: string): string {
+  return path.join(baseDir, skillsRoot, STAGED_SUPERPOWERS_MANIFEST_FILE);
+}
+
+async function writeStagedSuperpowersManifest(
+  filePath: string,
+  skillNames: string[],
+): Promise<void> {
+  await writeFile(
+    filePath,
+    `${JSON.stringify(
+      {
+        source: SUPERPOWERS_SOURCE,
+        skills: [...new Set(skillNames)].sort(),
+      },
+      null,
+      2,
+    )}\n`,
+    'utf8',
+  );
+}
+
+async function readStagedSuperpowersSkillNames(
+  baseDir: string,
+  platforms: readonly Platform[],
+  scope: InstallScope,
+): Promise<string[]> {
+  const names = new Set<string>();
+  for (const platform of platforms) {
+    const filePath = getStagedSuperpowersManifestPath(
+      baseDir,
+      getPlatformSkillsDir(platform, scope),
+    );
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(await readFile(filePath, 'utf8')) as unknown;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      continue;
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
+    const record = parsed as Record<string, unknown>;
+    if (record.source !== SUPERPOWERS_SOURCE || !Array.isArray(record.skills)) continue;
+    for (const name of record.skills) {
+      if (typeof name !== 'string' || name.length === 0) continue;
+      if (name.includes('/') || name.includes('\\') || name === '.' || name === '..') continue;
+      names.add(name);
+    }
+  }
+  return [...names];
+}
+
+async function removeStagedSuperpowersManifests(
+  baseDir: string,
+  platforms: readonly Platform[],
+  scope: InstallScope,
+): Promise<void> {
+  for (const platform of platforms) {
+    const filePath = getStagedSuperpowersManifestPath(
+      baseDir,
+      getPlatformSkillsDir(platform, scope),
+    );
+    await rm(filePath, { force: true });
   }
 }
 
@@ -236,7 +313,11 @@ async function stageAndCopySuperpowers(
     const stagedSkillsDir = path.join(tempDir, '.claude', 'skills');
     const baseDir = scope === 'global' ? os.homedir() : projectPath;
     const platformSkillsDir = path.join(baseDir, getPlatformSkillsDir(platform, scope), 'skills');
-    await copyDirectoryContents(stagedSkillsDir, platformSkillsDir);
+    const skillNames = await copyDirectoryContents(stagedSkillsDir, platformSkillsDir);
+    await writeStagedSuperpowersManifest(
+      getStagedSuperpowersManifestPath(baseDir, getPlatformSkillsDir(platform, scope)),
+      skillNames,
+    );
     return 'installed';
   } catch (error) {
     console.error(`    ${label} Superpowers install failed: ${(error as Error).message}`);
@@ -323,5 +404,8 @@ export {
   buildMimoCodeSuperpowersStageCommand,
   buildWorkBuddySuperpowersStageCommand,
   buildGrokSuperpowersStageCommand,
+  getStagedSuperpowersManifestPath,
+  readStagedSuperpowersSkillNames,
+  removeStagedSuperpowersManifests,
   SKILLS_AGENT_MAP,
 };

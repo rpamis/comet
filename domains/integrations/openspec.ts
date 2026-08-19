@@ -678,6 +678,7 @@ function copyOpenSpecPaths(srcDir: string, destDir: string): void {
     } catch (error) {
       throw new Error(
         `Failed to copy OpenSpec ${label} from ${from} to ${to}: ${(error as Error).message}`,
+        { cause: error },
       );
     }
   }
