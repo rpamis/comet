@@ -161,9 +161,9 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm build:dashboard
-      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm exec playwright install --only-shell chromium
       - run: pnpm test:dashboard-e2e
       - name: Upload Playwright report
         if: failure()

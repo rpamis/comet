@@ -32,7 +32,14 @@ describe('CI workflows', () => {
     expect(packageJson.scripts?.['test:package-e2e']).toBe('node scripts/release/package-e2e.mjs');
 
     const ci = parse(workflow) as {
-      jobs?: Record<string, { needs?: string[]; strategy?: { matrix?: { os?: string[] } } }>;
+      jobs?: Record<
+        string,
+        {
+          needs?: string[];
+          strategy?: { matrix?: { os?: string[] } };
+          steps?: Array<{ run?: string }>;
+        }
+      >;
     };
     expect(ci.jobs?.['package-e2e']?.strategy?.matrix?.os).toEqual([
       'ubuntu-latest',
@@ -40,6 +47,12 @@ describe('CI workflows', () => {
       'windows-latest',
     ]);
     expect(ci.jobs?.['ci-required']?.needs).toContain('package-e2e');
+    expect(ci.jobs?.['dashboard-e2e']?.steps?.map((step) => step.run)).toContain(
+      'pnpm install --frozen-lockfile --ignore-scripts',
+    );
+    expect(ci.jobs?.['dashboard-e2e']?.steps?.map((step) => step.run)).toContain(
+      'pnpm exec playwright install --only-shell chromium',
+    );
   });
 
   it('pins third-party actions to immutable commit SHAs', async () => {
