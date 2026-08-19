@@ -51,13 +51,15 @@ export async function nativeNextCommand(
   const runnerInputFile = takeOption(args, '--runner-input');
   const confirmed = takeFlag(args, '--confirmed');
   const returnToBuild = takeFlag(args, '--return-to-build');
+  const returnToShape = takeFlag(args, '--return-to-shape');
   const retryVerifier = takeFlag(args, '--retry-verifier');
   const resolveVerifierBlocker = takeFlag(args, '--resolve-verifier-blocker');
   if (
-    [confirmed, returnToBuild, retryVerifier, resolveVerifierBlocker].filter(Boolean).length > 1
+    [confirmed, returnToBuild, returnToShape, retryVerifier, resolveVerifierBlocker].filter(Boolean)
+      .length > 1
   ) {
     throw new NativeUsageError(
-      '--confirmed, --return-to-build, --retry-verifier, and --resolve-verifier-blocker are mutually exclusive',
+      '--confirmed, --return-to-build, --return-to-shape, --retry-verifier, and --resolve-verifier-blocker are mutually exclusive',
     );
   }
   // Agent-authored Build/Verify completion fields retired with Native v4.
@@ -85,7 +87,14 @@ export async function nativeNextCommand(
   }
 
   if (runnerInputFile) {
-    if (summary || confirmed || returnToBuild || retryVerifier || resolveVerifierBlocker) {
+    if (
+      summary ||
+      confirmed ||
+      returnToBuild ||
+      returnToShape ||
+      retryVerifier ||
+      resolveVerifierBlocker
+    ) {
       throw new NativeUsageError(
         '--runner-input cannot be combined with --summary or Agent transition flags',
       );
@@ -175,6 +184,15 @@ export async function nativeNextCommand(
     }
   } else if (returnToBuild) {
     state = await returnNativePortableChangeToBuild({
+      paths: configured.paths,
+      name,
+      reason: summary,
+    });
+  } else if (returnToShape) {
+    if (current.phase !== 'verify' && current.phase !== 'archive') {
+      throw new NativeUsageError('--return-to-shape is only valid from Verify or Archive');
+    }
+    state = await returnNativePortableChangeToShape({
       paths: configured.paths,
       name,
       reason: summary,

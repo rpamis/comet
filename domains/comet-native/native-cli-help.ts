@@ -129,13 +129,14 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
   },
   next: {
     usage:
-      'comet native next <change-name> --summary <text> [--confirmed|--return-to-build|--retry-verifier|--resolve-verifier-blocker]\n       comet native next <change-name> --runner-input <json-file>',
+      'comet native next <change-name> --summary <text> [--confirmed|--return-to-build|--return-to-shape|--retry-verifier|--resolve-verifier-blocker]\n       comet native next <change-name> --runner-input <json-file>',
     purpose:
       'Confirm or recover an Agent boundary, advance parent child changes, or use one skill-coordinated JSON bridge for Builder handoff, check-plan dispatch, and Verifier response/error.',
     options: [
       '--summary <text>    Required transition or recovery summary.',
       '--confirmed         Confirm Shape, a completed skill-coordinated pass, or an explicitly degraded verifier-unavailable fallback before Archive.',
       '--return-to-build   Return Verify or Archive to Build after invalidation or user choice.',
+      '--return-to-shape   Return Verify or Archive to Shape when user-visible targets or acceptance criteria must change.',
       '--retry-verifier    Retry a blocked Verifier execution when the continuation allows it.',
       '--resolve-verifier-blocker  Resolve a semantic Verifier blocker without changing the candidate, then dispatch a new attempt.',
       '--runner-input <file>  Skill-coordinated JSON: builder-handoff, dispatch-verifier, verifier-response, verifier-execution-error, or verifier-unavailable. Identity/provider/execution/candidate fields are rejected.',
@@ -150,6 +151,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
     examples: [
       'comet native next session-timeout --summary "Shape confirmed" --confirmed',
       'comet native next session-timeout --summary "Implementation changed" --return-to-build',
+      'comet native next session-timeout --summary "Acceptance criteria changed" --return-to-shape',
       'comet native next session-timeout --summary "Retry verifier infrastructure" --retry-verifier',
       'comet native next session-timeout --summary "Retry semantic verification" --resolve-verifier-blocker',
       'comet native next session-timeout --runner-input <temporary-json-file>',

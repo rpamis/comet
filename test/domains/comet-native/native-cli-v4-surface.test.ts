@@ -154,6 +154,7 @@ Run applicable focused checks.
     expect(next.stdout).toContain('not trusted identity attestation');
     expect(next.stdout).toContain('--retry-verifier');
     expect(next.stdout).toContain('--resolve-verifier-blocker');
+    expect(next.stdout).toContain('--return-to-shape');
     expect(next.stdout).toContain('verifier-unavailable');
     expect(archive.stdout).toContain('does not repeat verification');
     expect(status.stdout).toContain('local execution availability');
@@ -275,6 +276,31 @@ Run applicable focused checks.
         error: { code: 'usage', message: `Unknown Native command: ${command}` },
       });
     }
+  });
+
+  it('rejects return-to-shape when combined with another public transition flag', async () => {
+    await prepareBuild('return-to-shape-mutual-exclusion');
+
+    const result = json(
+      await runNativeCli([
+        'next',
+        'return-to-shape-mutual-exclusion',
+        '--summary',
+        'Ambiguous user decision',
+        '--return-to-shape',
+        '--return-to-build',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+
+    expect(result).toMatchObject({
+      exitCode: 64,
+      error: {
+        code: 'usage',
+        message: expect.stringContaining('--return-to-shape'),
+      },
+    });
   });
 
   it('rejects caller-supplied identity, provider, execution, and candidate bindings', async () => {
@@ -427,6 +453,15 @@ Run applicable focused checks.
         continuation: {
           disposition: 'await-user',
           action: 'confirm-skill-coordinated-pass',
+          requiredInputs: ['summary', 'user-decision'],
+          inputOptions: expect.arrayContaining([
+            expect.objectContaining({ name: 'confirmed', flag: '--confirmed', required: true }),
+            expect.objectContaining({
+              name: 'return-to-shape',
+              flag: '--return-to-shape',
+              required: false,
+            }),
+          ]),
         },
       },
     });
@@ -466,6 +501,118 @@ Run applicable focused checks.
         'utf8',
       ),
     ).toContain('Result: **Passed**');
+  });
+
+  it('returns a rejected skill-coordinated pass to Shape and starts a fresh candidate cycle', async () => {
+    const name = 'skill-pass-return-to-shape';
+    await prepareBuild(name, ['Original behavior works.']);
+    const built = await runnerStep(name, builderHandoff(['A1']));
+    const oldCandidateId = (built.data as { state: { builder_handoff: { candidate_id: string } } })
+      .state.builder_handoff.candidate_id;
+    await runnerStep(name, { kind: 'dispatch-verifier', checks: [] });
+    await runnerStep(name, finalResponse(1, 1, ['A1']));
+
+    const returned = json(
+      await runNativeCli([
+        'next',
+        name,
+        '--summary',
+        'User-visible acceptance criteria changed',
+        '--return-to-shape',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(returned).toMatchObject({
+      exitCode: 0,
+      data: {
+        state: {
+          phase: 'shape',
+          status: 'active',
+          acceptance: [],
+          builder_handoff: null,
+          blockers: [],
+          verification: null,
+          verification_result: 'pending',
+          verification_report: null,
+          loop: {
+            stage: 'shape',
+            goal_cycle: 2,
+            iteration: 0,
+            attempt: 0,
+            next_action: 'confirm-shape',
+          },
+        },
+        continuation: { action: 'confirm-shape' },
+      },
+    });
+
+    const staleArchive = json(
+      await runNativeCli(['archive', name, '--dry-run', '--json', ...projectArgs()]),
+    );
+    expect(staleArchive).toMatchObject({
+      exitCode: 0,
+      data: {
+        ready: false,
+        continuation: { action: 'confirm-shape' },
+      },
+    });
+
+    const brief = `# Outcome
+Ship the updated requested behavior.
+# Scope
+Keep the implementation focused.
+# Non-goals
+No unrelated changes.
+# Acceptance examples
+- Updated behavior works.
+# Constraints and invariants
+Preserve existing behavior.
+# Decisions
+User rejected the previous pass because the acceptance criteria changed.
+# Open questions
+None.
+# Verification expectations
+Run applicable focused checks.
+`;
+    await fs.writeFile(path.join(projectRoot, 'docs', 'comet', 'changes', name, 'brief.md'), brief);
+    const reconfirmed = json(
+      await runNativeCli([
+        'next',
+        name,
+        '--summary',
+        'Updated Shape confirmed',
+        '--confirmed',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(reconfirmed).toMatchObject({
+      exitCode: 0,
+      data: {
+        state: {
+          phase: 'build',
+          acceptance: [{ id: 'A1', text: 'Updated behavior works.' }],
+          loop: { goal_cycle: 2, iteration: 1 },
+        },
+      },
+    });
+
+    const rebuilt = await runnerStep(name, builderHandoff(['A1']));
+    expect(rebuilt).toMatchObject({
+      exitCode: 0,
+      data: {
+        state: {
+          phase: 'verify',
+          builder_handoff: { candidate_id: expect.any(String) },
+          verification_result: 'pending',
+        },
+      },
+    });
+    expect(
+      (rebuilt.data as { state: { builder_handoff: { candidate_id: string } } }).state
+        .builder_handoff.candidate_id,
+    ).not.toBe(oldCandidateId);
   });
 
   it.each([

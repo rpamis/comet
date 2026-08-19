@@ -90,7 +90,7 @@ export function nativePortableContinuation(
           '<summary>',
           '--confirmed',
         ],
-        requiredInputs: ['summary', 'user-confirmation'],
+        requiredInputs: ['summary', 'user-decision'],
         inputOptions: [
           {
             name: 'summary',
@@ -104,6 +104,13 @@ export function nativePortableContinuation(
             flag: '--confirmed',
             valueKind: 'confirmation',
             required: true,
+            template: null,
+          },
+          {
+            name: 'return-to-shape',
+            flag: '--return-to-shape',
+            valueKind: 'confirmation',
+            required: false,
             template: null,
           },
         ],
@@ -169,6 +176,20 @@ export function nativePortableContinuation(
             flag: '--summary',
             valueKind: 'text',
             required: true,
+            template: null,
+          },
+          {
+            name: 'return-to-build',
+            flag: '--return-to-build',
+            valueKind: 'confirmation',
+            required: false,
+            template: null,
+          },
+          {
+            name: 'return-to-shape',
+            flag: '--return-to-shape',
+            valueKind: 'confirmation',
+            required: false,
             template: null,
           },
         ],

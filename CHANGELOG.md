@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-beta.21] - 2026-08-18
+
+### Added
+
+- **Native Verify-to-Shape recovery**: `comet native next` now supports `--return-to-shape` from Verify or Archive when user-visible targets or acceptance criteria must change, invalidating the rejected candidate cycle before a fresh Shape confirmation.
+
 ## What's Changed [0.4.0-beta.20] - 2026-08-16
 
 ### Added
