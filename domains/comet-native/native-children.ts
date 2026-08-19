@@ -281,11 +281,8 @@ export function parseNativeChildrenContract(
     const acceptanceIndex = parseAcceptanceIndex(root.acceptance_index);
     validateAcceptanceIndex(acceptanceIndex, acceptanceIds, options);
     if (acceptanceIds) {
-      validateCoverage(
-        children,
-        acceptanceIds,
-        options.requiredAcceptanceIds ?? Object.keys(acceptanceIndex),
-      );
+      const indexedAcceptanceIds = Object.keys(acceptanceIndex);
+      validateCoverage(children, indexedAcceptanceIds, indexedAcceptanceIds);
     }
     return { schema: NATIVE_CHILDREN_SCHEMA_V2, acceptance_index: acceptanceIndex, children };
   }

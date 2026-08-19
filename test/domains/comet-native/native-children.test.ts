@@ -363,6 +363,13 @@ children:
         { acceptanceCatalog: acceptance, requiredAcceptanceIds: ['A1', 'A2'] },
       ),
     ).toThrow(/does not match the acceptance catalog/iu);
+    expect(() =>
+      parseNativeChildrenContract(
+        READABLE_CHILDREN.replace('covers: [A1]', 'covers: [A1, A3]'),
+        acceptance.map(({ id }) => id),
+        { acceptanceCatalog: acceptance, requiredAcceptanceIds: ['A1', 'A2'] },
+      ),
+    ).toThrow(/unknown acceptance/iu);
   });
 
   it('gates the parent on real child merges and starts dependents from the integrated HEAD', async () => {
