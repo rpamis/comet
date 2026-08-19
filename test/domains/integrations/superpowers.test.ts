@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { execFileSync } from 'child_process';
-import { mkdirSync, mkdtempSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import path from 'path';
 import os from 'os';
 
@@ -54,6 +54,7 @@ describe('superpowers', () => {
     it('maps platforms to valid skills CLI agent ids', async () => {
       const { SKILLS_AGENT_MAP } = await import('../../../domains/integrations/superpowers.js');
       expect(SKILLS_AGENT_MAP['gemini']).toBe('gemini-cli');
+      expect(SKILLS_AGENT_MAP['grok']).toBeNull();
       expect(SKILLS_AGENT_MAP['qwen']).toBe('qwen-code');
       expect(SKILLS_AGENT_MAP['kiro']).toBe('kiro-cli');
       expect(SKILLS_AGENT_MAP['kimicode']).toBe('kimi-code-cli');
@@ -66,7 +67,7 @@ describe('superpowers', () => {
       expect(SKILLS_AGENT_MAP['mimocode']).toBeNull();
     });
 
-    it('has entries for all 34 platforms', async () => {
+    it('has entries for all 35 platforms', async () => {
       const { SKILLS_AGENT_MAP } = await import('../../../domains/integrations/superpowers.js');
       const platformIds = [
         'claude',
@@ -79,6 +80,7 @@ describe('superpowers', () => {
         'continue',
         'github-copilot',
         'gemini',
+        'grok',
         'amazon-q',
         'qwen',
         'kilocode',
@@ -107,7 +109,7 @@ describe('superpowers', () => {
       for (const id of platformIds) {
         expect(SKILLS_AGENT_MAP).toHaveProperty(id);
       }
-      expect(Object.keys(SKILLS_AGENT_MAP)).toHaveLength(34);
+      expect(Object.keys(SKILLS_AGENT_MAP)).toHaveLength(35);
     });
   });
 
@@ -134,6 +136,37 @@ describe('superpowers', () => {
       expect(args).toContain('claude-code');
       expect(args).toContain('cursor');
       expect(mockedExecFileSync.mock.calls[0][2]).toMatchObject({ timeout: 300_000 });
+    });
+
+    it('copies staged Grok Superpowers and writes a Comet install manifest', async () => {
+      const projectDir = mkdtempSync(path.join(os.tmpdir(), 'comet-superpowers-grok-'));
+      mockedExecFileSync.mockImplementation((_command, _args, options) => {
+        const cwd = (options as { cwd?: string } | undefined)?.cwd ?? projectDir;
+        mkdirSync(path.join(cwd, '.claude', 'skills', 'brainstorming'), { recursive: true });
+        writeFileSync(
+          path.join(cwd, '.claude', 'skills', 'brainstorming', 'SKILL.md'),
+          '# Brainstorming\n',
+        );
+        return Buffer.from('installed');
+      });
+
+      try {
+        const { installSuperpowersForPlatforms, getStagedSuperpowersManifestPath } =
+          await import('../../../domains/integrations/superpowers.js');
+        const result = await installSuperpowersForPlatforms(projectDir, 'project', ['grok']);
+
+        expect(result).toBe('installed');
+        expect(
+          existsSync(path.join(projectDir, '.grok', 'skills', 'brainstorming', 'SKILL.md')),
+        ).toBe(true);
+        const manifestPath = getStagedSuperpowersManifestPath(projectDir, '.grok');
+        expect(JSON.parse(readFileSync(manifestPath, 'utf8'))).toEqual({
+          source: 'obra/superpowers',
+          skills: ['brainstorming'],
+        });
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true });
+      }
     });
 
     it('builds command + args for install flags', async () => {

@@ -6,6 +6,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Added
 
+- **Grok platform support**: `comet init`, `comet update`, `comet doctor`, and `comet uninstall` now treat Grok as a first-class host. Skills, rules, and the Hook Router live under `.grok/skills/`, `.grok/rules/`, and `.grok/hooks/comet.json`. The Router recognizes `--platform grok` and matches Grok's native `write` / `search_replace` tools.
+- **Repository-owned Native pull-request finish providers**: Projects can opt into a structured repository command for PR title, body, template, and policy validation while Comet retains commit, push, remote base/head/SHA verification, existing-PR reuse, recoverable failure state, and safe worktree cleanup.
 - **CodeBuddy rules support**: Comet now installs and refreshes Markdown workflow rules in CodeBuddy's `.codebuddy/rules/` directory.
 - **On-demand change review**: The new `/comet-review` Skill reviews the current Native or Classic change against its implementation diff and existing evidence, reports prioritized correctness, security, edge-case, and coverage findings, and remains read-only without advancing or replacing Verify.
 - **Fork pull request guidance**: First-time contributors opening pull requests from forks now receive the repository guidance comment through a trusted workflow.
@@ -14,6 +16,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **Hook allow-path documentation**: The website now explains how to configure project-relative `hook.allow_paths` directories for guarded workflow phases.
 - **Native child plans**: New Supervisor Change child plans keep a readable parent acceptance index, while Runtime verification still retains the complete brief-and-Spec acceptance matrix; historical child-plan files remain compatible.
 - **Dashboard artifact previews**: Fullscreen previews now close with Escape, keep long tables horizontally scrollable, preserve readable table headers, and use a larger directory navigation scale.
 - **Native source requirements**: Files and links supplied as requirement sources now retain a complete coverage map in the Native brief, map every active executable requirement to both the target Spec and acceptance criteria, and keep incomplete or unavailable sources blocked for clarification.
@@ -21,9 +24,10 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Classic Ambient Resume**: `comet init` and `comet update` now keep the managed Ambient Resume instructions for Classic-only projects when `ambient_resume` is enabled, so re-running the commands no longer removes the block from `AGENTS.md` or `CLAUDE.md`.
 - **Native Archive**: Archive now respects Git ignore rules when staging workspace artifacts and keeps valid portable verification reports from being treated as incomplete migrations.
 - **Windows Eval packaging**: Packaging no longer traverses ignored pytest and Eval runtime artifacts before applying the package boundary, so stale Windows test directories cannot make `pnpm pack` fail with `EPERM`.
-- **Windows Eval isolation**: Repeated `comet eval` runs no longer copy generated `.comet` caches and run artifacts into Skill workspaces, preventing deep-path `MAX_PATH` failures on Windows.
+- **Windows Eval isolation**: Repeated `comet eval` runs no longer copy generated `.comet` caches, run artifacts, or the framework's own Runtime state into Skill workspaces, preventing nested-cache and deep-path `MAX_PATH` failures on Windows.
 - **Monorepo Dashboard workspaces**: Starting `comet dashboard` from a monorepo subdirectory that holds `.comet/config.yaml` now uses that subdirectory as the workspace root and maps sibling Git worktrees to the same subdirectory, so the change list is no longer empty when the Comet project root is not the worktree root.
 
 ## What's Changed [0.4.0-beta.18] - 2026-08-13

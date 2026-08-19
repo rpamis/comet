@@ -1499,13 +1499,23 @@ def _snapshot_dynamic_skill_package(test_dir: Path, skill_hints: dict[str, Any])
     snapshot_root = test_dir / "_eval_target_skills"
     snapshot_root.mkdir(parents=True, exist_ok=True)
     package_dest = snapshot_root / package_dir.name
-    shutil.copytree(package_dir, package_dest, dirs_exist_ok=True)
+    shutil.copytree(
+        package_dir,
+        package_dest,
+        dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns(".comet"),
+    )
 
     for node_skill in skill_hints.get("generated_node_skills") or []:
         node_source = package_dir.parent / node_skill
         if not (node_source / "SKILL.md").exists():
             continue
-        shutil.copytree(node_source, snapshot_root / node_skill, dirs_exist_ok=True)
+        shutil.copytree(
+            node_source,
+            snapshot_root / node_skill,
+            dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns(".comet"),
+        )
 
     return str(package_dest.relative_to(test_dir)).replace("\\", "/")
 

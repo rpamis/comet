@@ -185,6 +185,59 @@ describe('workflow contract normalization', () => {
     });
   });
 
+  it('normalizes repository-owned pull request finish providers and fails closed on invalid commands', () => {
+    const parsed = parseWorkflowProjectConfigDocument(
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'workflows: [native]',
+        'native:',
+        '  artifact_root: docs',
+        '  finish:',
+        '    pull_request:',
+        '      provider: repository-command',
+        '      command: [pwsh, -NoProfile, -File, scripts/comet-create-pr.ps1]',
+        '      timeout_ms: 120000',
+        '',
+      ].join('\n'),
+    );
+
+    expect(parsed.config?.native?.finish?.pull_request).toEqual({
+      provider: 'repository-command',
+      command: ['pwsh', '-NoProfile', '-File', 'scripts/comet-create-pr.ps1'],
+      timeout_ms: 120_000,
+    });
+    expect(workflowProjectConfigManagedValue(parsed.config!)).toHaveProperty(
+      'native.finish.pull_request.command',
+      ['pwsh', '-NoProfile', '-File', 'scripts/comet-create-pr.ps1'],
+    );
+
+    for (const invalid of [
+      'provider: github-fill\ncommand: [pwsh]',
+      'provider: repository-command\ncommand: []',
+      'provider: repository-command\ncommand: [pwsh]\ntimeout_ms: 600001',
+      "provider: repository-command\ncommand: ['/usr/bin/provider']",
+      "provider: repository-command\ncommand: ['C:\\\\tools\\\\provider.ps1']",
+      "provider: repository-command\ncommand: ['\\\\\\\\server\\\\share\\\\provider']",
+    ]) {
+      expect(() =>
+        parseWorkflowProjectConfigDocument(
+          [
+            'schema: comet.project.v1',
+            'default_workflow: native',
+            'workflows: [native]',
+            'native:',
+            '  artifact_root: docs',
+            '  finish:',
+            '    pull_request:',
+            ...invalid.split('\n').map((line) => `      ${line}`),
+            '',
+          ].join('\n'),
+        ),
+      ).toThrow(/native\.finish\.pull_request/u);
+    }
+  });
+
   it('keeps legacy snapshot parsing internal while omitting it from managed writes', () => {
     const config = defaultWorkflowProjectConfig('docs');
     config.native.snapshot.exclude = ['legacy/generated/**'];
@@ -202,12 +255,18 @@ describe('workflow contract normalization', () => {
             include: ['**/*'],
             snapshot_extension: 'remove-with-retired-block',
           },
+          finish: {
+            pull_request: { provider: 'retired-provider' },
+            future_provider: { enabled: true },
+          },
           custom_extension: 'keep',
         },
       },
       config,
     );
     expect(merged).not.toHaveProperty('native.snapshot');
+    expect(merged).not.toHaveProperty('native.finish.pull_request');
+    expect(merged).toHaveProperty('native.finish.future_provider', { enabled: true });
     expect(merged).toHaveProperty('native.custom_extension', 'keep');
     expect(merged).toHaveProperty('hook.allow_paths', ['docs/team-notes']);
 

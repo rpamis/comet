@@ -200,9 +200,93 @@ describe('openspec', () => {
             path.join(globalDir, '.workbuddy', 'skills', 'openspec-propose', 'SKILL.md'),
           ),
         ).toBe(true);
+        expect(fs.existsSync(path.join(projectDir, '.codebuddy'))).toBe(false);
+        expect(fs.existsSync(path.join(globalDir, '.codebuddy'))).toBe(false);
       } finally {
         homedirSpy.mockRestore();
         fs.rmSync(projectDir, { recursive: true, force: true });
+        fs.rmSync(globalDir, { recursive: true, force: true });
+      }
+    });
+
+    it('mirrors Codex-compatible OpenSpec output into Grok project and global roots', async () => {
+      const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-grok-project-'));
+      const globalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-grok-global-'));
+      const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(globalDir);
+      try {
+        const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
+
+        await expect(
+          installOpenSpec(
+            projectDir,
+            ['codex'],
+            'project',
+            false,
+            [],
+            'docs',
+            undefined,
+            undefined,
+            [],
+            ['grok'],
+          ),
+        ).resolves.toBe('installed');
+        await expect(
+          installOpenSpec(
+            projectDir,
+            ['codex'],
+            'global',
+            false,
+            [],
+            'legacy',
+            undefined,
+            undefined,
+            [],
+            ['grok'],
+          ),
+        ).resolves.toBe('installed');
+
+        expect(
+          fs.existsSync(path.join(projectDir, '.grok', 'skills', 'openspec-propose', 'SKILL.md')),
+        ).toBe(true);
+        expect(fs.existsSync(path.join(projectDir, '.agents'))).toBe(false);
+        expect(
+          fs.existsSync(path.join(globalDir, '.grok', 'skills', 'openspec-propose', 'SKILL.md')),
+        ).toBe(true);
+        expect(fs.existsSync(path.join(globalDir, '.agents'))).toBe(false);
+      } finally {
+        homedirSpy.mockRestore();
+        fs.rmSync(projectDir, { recursive: true, force: true });
+        fs.rmSync(globalDir, { recursive: true, force: true });
+      }
+    });
+
+    it('reports a failed global OpenSpec mirror copy as failed', async () => {
+      const globalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-grok-copy-fail-'));
+      const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(globalDir);
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      try {
+        fs.writeFileSync(path.join(globalDir, '.grok'), 'not a directory');
+        const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
+
+        await expect(
+          installOpenSpec(
+            globalDir,
+            ['codex'],
+            'global',
+            false,
+            ['grok'],
+            'legacy',
+            undefined,
+            undefined,
+            [],
+            [],
+            ['grok'],
+          ),
+        ).resolves.toBe('failed');
+        expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('OpenSpec init failed'));
+      } finally {
+        errorSpy.mockRestore();
+        homedirSpy.mockRestore();
         fs.rmSync(globalDir, { recursive: true, force: true });
       }
     });
@@ -773,9 +857,7 @@ describe('openspec', () => {
             if (
               replacement === 'after-guard' &&
               !replaced &&
-              fs.existsSync(
-                path.join(tmpDir, '.opencode', 'skills', 'openspec-new-change', 'SKILL.md'),
-              )
+              fs.existsSync(path.join(tmpDir, 'docs', 'openspec', 'config.yaml'))
             ) {
               replaceDestination();
             }

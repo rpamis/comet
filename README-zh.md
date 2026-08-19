@@ -439,7 +439,7 @@ comet eval ./my-skill --suite langsmith --html
 
 ## 支持平台
 
-`comet init` 支持 34 个 AI 编码平台：
+`comet init` 支持 35 个 AI 编码平台：
 
 <details>
 <summary>查看完整平台列表</summary>
@@ -463,6 +463,7 @@ comet eval ./my-skill --suite langsmith --html
 | ForgeCode          | `.forge/`     | Trae          | `.trae/`     |
 | Trae CN            | `.trae-cn/`   | ZCode         | `.zcode/`    |
 | MimoCode           | `.mimocode/`  | CoStrict      | `.cospec/`   |
+| Grok               | `.grok/`      |               |              |
 
 </details>
 
@@ -559,6 +560,19 @@ Shape 的 `clarification_mode` 可设为 `sequential` 或 `batch`，新项目默
 Native 可以同时保留多个 active change；`comet status` 会分别列出候选，`.comet/current-change.json` 只选择当前请求归属，不代表只能存在一个 change。选择缺失、失效或存在歧义时，恢复和写入都会停止并要求明确选择，不会猜测另一个 change 或切换到 Classic。
 
 `comet-state.yaml` 和 `.comet/runtime/native/` 中的机器状态由 Runtime 管理。需求改变时修改 brief 或拟议规格，Runtime 会回到 Shape；实现改变时回到 Build，再由新的 Verifier 验收。不要手改状态来跳过阶段。
+
+当仓库要求使用自有 PR 模板或校验脚本时，可在 `.comet/config.yaml` 中显式配置 Native 的仓库命令 provider：
+
+```yaml
+native:
+  finish:
+    pull_request:
+      provider: repository-command
+      command: [pwsh, -NoProfile, -File, scripts/comet-create-pr.ps1]
+      timeout_ms: 120000
+```
+
+选择 Archive 的 `pull-request` 收尾后，Comet 仍负责提交、推送、观察已有 PR、核对 base/head/head SHA、幂等恢复和安全清理；仓库命令只负责标题、正文、模板及仓库特有的远端校验。命令的可执行文件必须是 PATH 中的裸名称或项目内相对路径；它在项目根目录执行，通过 stdin 接收 `comet.native.pull-request-finish-input.v1` JSON，并必须在 stdout 返回 `comet.native.pull-request-finish-result.v1` JSON。即使使用 repository-command，仍须安装并认证 GitHub CLI (`gh`)，因为 Comet 会调用 `gh pr list` 和 `gh pr view` 独立核验远端状态。未配置时继续使用兼容的 `gh pr create --fill` 行为。
 
 </details>
 

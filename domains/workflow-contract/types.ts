@@ -33,6 +33,16 @@ export interface WorkflowNativeSnapshotConfig {
   max_duration_ms: number;
 }
 
+export interface WorkflowNativePullRequestFinishConfig {
+  provider: 'repository-command';
+  command: string[];
+  timeout_ms: number;
+}
+
+export interface WorkflowNativeFinishConfig {
+  pull_request?: WorkflowNativePullRequestFinishConfig;
+}
+
 export interface WorkflowHookProjectConfig {
   allow_paths: string[];
 }
@@ -44,6 +54,7 @@ export interface WorkflowNativeProjectConfig {
   archive_confirmation: WorkflowNativeArchiveConfirmation;
   max_verify_failures: number;
   snapshot: WorkflowNativeSnapshotConfig;
+  finish?: WorkflowNativeFinishConfig;
   pending_root_move?: WorkflowNativePendingRootMove;
 }
 

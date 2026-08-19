@@ -7,6 +7,7 @@ export interface ExternalCommandOptions {
   cwd?: string;
   timeoutMs?: number;
   maxBufferBytes?: number;
+  input?: string;
 }
 
 export class ExternalCommandError extends Error {
@@ -37,8 +38,9 @@ export function runExternalCommand(
   try {
     return execFileSync(command, [...args], {
       ...(options.cwd ? { cwd: options.cwd } : {}),
+      ...(options.input !== undefined ? { input: options.input } : {}),
       encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: [options.input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
       timeout: timeoutMs,
       maxBuffer: maxBufferBytes,
       windowsHide: true,

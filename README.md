@@ -468,7 +468,7 @@ does not expand the backend command list; see the [Skill creation guide](docs/op
 
 ## Supported Platforms
 
-`comet init` supports 34 AI coding platforms:
+`comet init` supports 35 AI coding platforms:
 
 <details>
 <summary>View full platform list</summary>
@@ -492,6 +492,7 @@ does not expand the backend command list; see the [Skill creation guide](docs/op
 | ForgeCode          | `.forge/`     | Trae          | `.trae/`     |
 | Trae CN            | `.trae-cn/`   | ZCode         | `.zcode/`    |
 | MimoCode           | `.mimocode/`  | CoStrict      | `.cospec/`   |
+| Grok               | `.grok/`      |               |              |
 
 </details>
 
@@ -592,6 +593,19 @@ Shape supports `clarification_mode: sequential` and `clarification_mode: batch`.
 Native can keep multiple active changes at the same time. `comet status` lists the candidates, while `.comet/current-change.json` selects ownership for the current request; it does not limit the project to one change. Missing, stale, or ambiguous selection stops resume and writes for an explicit choice instead of guessing another change or switching to Classic.
 
 Runtime owns `comet-state.yaml` and machine state under `.comet/runtime/native/`. Requirement edits return the change to Shape; implementation edits return it to Build before a fresh Verifier reviews the candidate. Do not hand-edit state to skip a phase.
+
+Repositories that require their own PR template or validation script can opt into a Native repository-command provider in `.comet/config.yaml`:
+
+```yaml
+native:
+  finish:
+    pull_request:
+      provider: repository-command
+      command: [pwsh, -NoProfile, -File, scripts/comet-create-pr.ps1]
+      timeout_ms: 120000
+```
+
+After a `pull-request` Archive finish is selected, Comet still owns commit, push, existing-PR observation, base/head/head-SHA verification, idempotent recovery, and safe cleanup. The repository command owns only title/body/template policy and repository-specific remote validation. Its executable must be either a bare name resolved through PATH or a project-relative path. It runs from the project root, receives `comet.native.pull-request-finish-input.v1` JSON on stdin, and must return `comet.native.pull-request-finish-result.v1` JSON on stdout. GitHub CLI (`gh`) must still be installed and authenticated because Comet independently verifies remote state with `gh pr list` and `gh pr view`. Projects without this configuration keep the compatible `gh pr create --fill` behavior.
 
 </details>
 
