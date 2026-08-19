@@ -492,7 +492,7 @@ does not expand the backend command list; see the [Skill creation guide](docs/op
 | ForgeCode          | `.forge/`     | Trae          | `.trae/`     |
 | Trae CN            | `.trae-cn/`   | ZCode         | `.zcode/`    |
 | MimoCode           | `.mimocode/`  | CoStrict      | `.cospec/`   |
-| Grok               | `.agents/`    |               |              |
+| Grok               | `.grok/`      |               |              |
 
 </details>
 

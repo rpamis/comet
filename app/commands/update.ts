@@ -1830,6 +1830,9 @@ async function updateSingleProject(
     const mirrorCodeBuddyPlatformIds = scopeTargets
       .map((target) => target.platform.id)
       .filter((id) => id === 'workbuddy');
+    const mirrorCodexPlatformIds = scopeTargets
+      .map((target) => target.platform.id)
+      .filter((id) => id === 'grok');
     const artifactLayout = scope === 'project' ? classicArtifactLayout : 'legacy';
     try {
       if (scope === 'project') {
@@ -1845,6 +1848,7 @@ async function updateSingleProject(
         scope === 'project' ? assertClassicProjectMutationAllowed : undefined,
         undefined,
         mirrorCodeBuddyPlatformIds,
+        mirrorCodexPlatformIds,
       );
       if (status === 'failed') {
         openSpecStatus = 'failed';

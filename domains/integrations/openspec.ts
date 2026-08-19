@@ -314,6 +314,7 @@ async function mergeGeneratedToolDirectories(
   mirrorOpenCodePlatformIds: readonly string[],
   mirrorCodeBuddyPlatformIds: readonly string[],
   projectMutationGuard?: ProjectMutationGuard,
+  mirrorCodexPlatformIds: readonly string[] = [],
 ): Promise<void> {
   for (const copy of copies) {
     await copyGeneratedToolDirectory(
@@ -353,6 +354,29 @@ async function mergeGeneratedToolDirectories(
         for (const platformId of new Set(mirrorCodeBuddyPlatformIds)) {
           const platform = PLATFORMS.find((candidate) => candidate.id === platformId);
           if (!platform || platform.id === 'codebuddy') continue;
+          await copyGeneratedToolDirectory(
+            stagingProject,
+            source,
+            projectPath,
+            path.join(projectPath, getPlatformSkillsDir(platform, 'project')),
+            projectMutationGuard,
+          );
+        }
+      }
+    }
+  }
+
+  if (toolIds.includes('codex') && mirrorCodexPlatformIds.length > 0) {
+    const codexPlatform = PLATFORMS.find((platform) => platform.id === 'codex');
+    if (codexPlatform) {
+      const source = path.join(
+        stagingProject,
+        codexPlatform.openspecSkillsDir ?? codexPlatform.skillsDir,
+      );
+      if (fs.existsSync(source)) {
+        for (const platformId of new Set(mirrorCodexPlatformIds)) {
+          const platform = PLATFORMS.find((candidate) => candidate.id === platformId);
+          if (!platform || platform.id === 'codex') continue;
           await copyGeneratedToolDirectory(
             stagingProject,
             source,
@@ -708,6 +732,7 @@ async function installOpenSpec(
   projectMutationGuard?: ProjectMutationGuard,
   failureObserver?: OpenSpecFailureObserver,
   mirrorCodeBuddyPlatformIds: string[] = [],
+  mirrorCodexPlatformIds: string[] = [],
 ): Promise<'installed' | 'failed' | 'skipped'> {
   if (scope === 'project') {
     try {
@@ -783,6 +808,7 @@ async function installOpenSpec(
           mirrorOpenCodePlatformIds,
           mirrorCodeBuddyPlatformIds,
           projectMutationGuard,
+          mirrorCodexPlatformIds,
         );
       }
       await assertProjectMutationAllowed(projectMutationGuard, 'after-external', true);
@@ -817,6 +843,15 @@ async function installOpenSpec(
           mirrorCodeBuddyPlatformIds,
         );
       }
+    }
+
+    if (scope === 'global' && mirrorCodexPlatformIds.length > 0 && toolIds.includes('codex')) {
+      mirrorOpenCodeCompatibleOpenSpecPathsFromSource(
+        openspecTargetBase,
+        scope,
+        'codex',
+        mirrorCodexPlatformIds,
+      );
     }
 
     if (openspecWritesGlobal && toolIds.includes('opencode')) {

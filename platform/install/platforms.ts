@@ -44,6 +44,8 @@ export interface Platform {
   hookConfigFile?: string;
   /** Historical hook config filenames checked during migration and uninstall. */
   legacyHookConfigFiles?: string[];
+  /** Installed PreToolUse matcher when it differs from the portable hook descriptor. */
+  hookMatcher?: string;
 }
 
 const PLATFORM_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
@@ -191,22 +193,17 @@ export const PLATFORMS: Platform[] = [
   {
     id: 'grok',
     name: 'Grok',
-    // Project Skills share Codex's .agents root; Grok also scans that directory.
-    // Global Skills and all Grok-owned config live under .grok.
-    skillsDir: '.agents',
+    skillsDir: '.grok',
     globalSkillsDir: '.grok',
-    configDir: '.grok',
-    globalConfigDir: '.grok',
     detectionPaths: ['.grok'],
-    // OpenSpec has no grok tool; reuse Codex so Classic skills land in .agents.
+    // OpenSpec has no grok tool; generate Codex output and mirror it into .grok.
     openspecToolId: 'codex',
-    openspecSkillsDir: '.agents',
-    rulesBaseDir: '.grok',
     rulesDir: 'rules',
     rulesFormat: 'md',
     supportsHooks: true,
     hookFormat: 'claude-code',
     hookConfigFile: 'hooks/comet.json',
+    hookMatcher: 'Write|Edit|write|search_replace',
   },
   {
     id: 'amazon-q',

@@ -54,7 +54,7 @@ describe('superpowers', () => {
     it('maps platforms to valid skills CLI agent ids', async () => {
       const { SKILLS_AGENT_MAP } = await import('../../../domains/integrations/superpowers.js');
       expect(SKILLS_AGENT_MAP['gemini']).toBe('gemini-cli');
-      expect(SKILLS_AGENT_MAP['grok']).toBe('codex');
+      expect(SKILLS_AGENT_MAP['grok']).toBeNull();
       expect(SKILLS_AGENT_MAP['qwen']).toBe('qwen-code');
       expect(SKILLS_AGENT_MAP['kiro']).toBe('kiro-cli');
       expect(SKILLS_AGENT_MAP['kimicode']).toBe('kimi-code-cli');

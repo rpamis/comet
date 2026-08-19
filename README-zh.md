@@ -463,7 +463,7 @@ comet eval ./my-skill --suite langsmith --html
 | ForgeCode          | `.forge/`     | Trae          | `.trae/`     |
 | Trae CN            | `.trae-cn/`   | ZCode         | `.zcode/`    |
 | MimoCode           | `.mimocode/`  | CoStrict      | `.cospec/`   |
-| Grok               | `.agents/`    |               |              |
+| Grok               | `.grok/`      |               |              |
 
 </details>
 

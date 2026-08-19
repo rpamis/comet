@@ -18,8 +18,8 @@ const SKILLS_AGENT_MAP: Record<string, string | null> = {
   continue: 'continue',
   'github-copilot': 'github-copilot',
   gemini: 'gemini-cli',
-  // Grok reads Superpowers from the shared .agents root that Codex owns.
-  grok: 'codex',
+  // Grok has no Skills CLI agent; stage through Claude and copy into .grok/skills.
+  grok: null,
   'amazon-q': 'universal',
   qwen: 'qwen-code',
   kilocode: 'kilo',
@@ -57,6 +57,7 @@ const LINGMA_PLATFORM_ID = 'lingma';
 const ZCODE_PLATFORM_ID = 'zcode';
 const MIMOCODE_PLATFORM_ID = 'mimocode';
 const WORKBUDDY_PLATFORM_ID = 'workbuddy';
+const GROK_PLATFORM_ID = 'grok';
 const STAGE_AGENT = 'claude-code';
 
 function buildSuperpowersInstallCommand(
@@ -111,6 +112,13 @@ function buildMimoCodeSuperpowersStageCommand(): { command: string; args: string
 }
 
 function buildWorkBuddySuperpowersStageCommand(): { command: string; args: string[] } {
+  return {
+    command: getNpxExecutable(),
+    args: ['skills', 'add', 'obra/superpowers', '-y', '--agent', STAGE_AGENT],
+  };
+}
+
+function buildGrokSuperpowersStageCommand(): { command: string; args: string[] } {
   return {
     command: getNpxExecutable(),
     args: ['skills', 'add', 'obra/superpowers', '-y', '--agent', STAGE_AGENT],
@@ -185,6 +193,19 @@ async function installSuperpowersForWorkBuddy(
   );
 }
 
+async function installSuperpowersForGrok(
+  projectPath: string,
+  scope: InstallScope,
+): Promise<'installed' | 'failed'> {
+  return stageAndCopySuperpowers(
+    GROK_PLATFORM_ID,
+    buildGrokSuperpowersStageCommand(),
+    projectPath,
+    scope,
+    'Grok',
+  );
+}
+
 /**
  * Shared staging flow for platforms whose agent is not supported by the skills CLI
  * (e.g. Lingma, WorkBuddy, ZCode, MimoCode). Superpowers are staged into a temp dir via
@@ -246,6 +267,7 @@ async function installSuperpowersForPlatforms(
   const shouldInstallZCode = platformIds.includes(ZCODE_PLATFORM_ID);
   const shouldInstallMimoCode = platformIds.includes(MIMOCODE_PLATFORM_ID);
   const shouldInstallWorkBuddy = platformIds.includes(WORKBUDDY_PLATFORM_ID);
+  const shouldInstallGrok = platformIds.includes(GROK_PLATFORM_ID);
   let failed = false;
 
   if (skillsCliPlatformIds.length > 0) {
@@ -285,6 +307,11 @@ async function installSuperpowersForPlatforms(
     if (workbuddyStatus === 'failed') failed = true;
   }
 
+  if (shouldInstallGrok) {
+    const grokStatus = await installSuperpowersForGrok(projectPath, scope);
+    if (grokStatus === 'failed') failed = true;
+  }
+
   return failed ? 'failed' : 'installed';
 }
 
@@ -295,5 +322,6 @@ export {
   buildZCodeSuperpowersStageCommand,
   buildMimoCodeSuperpowersStageCommand,
   buildWorkBuddySuperpowersStageCommand,
+  buildGrokSuperpowersStageCommand,
   SKILLS_AGENT_MAP,
 };

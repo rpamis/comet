@@ -718,6 +718,7 @@ export async function initCommand(
     ['zcode', 'mimocode'].includes(id),
   );
   const mirrorCodeBuddyPlatformIds = selectedPlatformIdsForOs.filter((id) => id === 'workbuddy');
+  const mirrorCodexPlatformIds = selectedPlatformIdsForOs.filter((id) => id === 'grok');
 
   const selectedNpmDeps = await selectNpmDeps(
     projectPath,
@@ -786,6 +787,7 @@ export async function initCommand(
           osFailureReason = error.message;
         },
         mirrorCodeBuddyPlatformIds,
+        mirrorCodexPlatformIds,
       );
       if (osGlobalStatus === 'installed' && requiresClassicArtifactRoot) {
         await assertClassicProjectMutationAllowed?.();

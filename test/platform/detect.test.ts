@@ -72,21 +72,19 @@ describe('detect', () => {
       expect(getPlatformSkillsDirs(codex!, 'global')).toEqual(['.agents', '.codex']);
     });
 
-    it('declares Grok project Skills on .agents and Grok-owned config under .grok', () => {
+    it('declares Grok Skills, rules, and hooks under the native .grok root', () => {
       const grok = PLATFORMS.find((platform) => platform.id === 'grok');
 
       expect(grok).toBeDefined();
-      expect(grok?.skillsDir).toBe('.agents');
+      expect(grok?.skillsDir).toBe('.grok');
       expect(grok?.globalSkillsDir).toBe('.grok');
-      expect(grok?.configDir).toBe('.grok');
-      expect(grok?.globalConfigDir).toBe('.grok');
       expect(grok?.detectionPaths).toEqual(['.grok']);
       expect(grok?.openspecToolId).toBe('codex');
-      expect(grok?.openspecSkillsDir).toBe('.agents');
-      expect(grok?.rulesBaseDir).toBe('.grok');
+      expect(grok?.rulesDir).toBe('rules');
       expect(grok?.hookFormat).toBe('claude-code');
       expect(grok?.hookConfigFile).toBe('hooks/comet.json');
-      expect(getPlatformSkillsDir(grok!, 'project')).toBe('.agents');
+      expect(grok?.hookMatcher).toBe('Write|Edit|write|search_replace');
+      expect(getPlatformSkillsDir(grok!, 'project')).toBe('.grok');
       expect(getPlatformSkillsDir(grok!, 'global')).toBe('.grok');
     });
 
