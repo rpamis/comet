@@ -65,7 +65,7 @@ export function collectDashboardWorkspaceSources(projectRoot: string): Dashboard
       ? requestedSubdir
       : null;
   const currentRoot = monorepoSubdir ? requestedRoot : worktreeRoot;
-  const discovered = listGitWorktreeRoots(requestedRoot).map((root) => {
+  const discovered = listGitWorktreeRoots(worktreeRoot).map((root) => {
     if (!monorepoSubdir) return root;
     const candidate = path.join(root, monorepoSubdir);
     return hasProjectConfig(candidate) ? candidate : root;
