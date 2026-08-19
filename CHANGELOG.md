@@ -24,6 +24,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Native Archive**: Archive now respects Git ignore rules when staging workspace artifacts and keeps valid portable verification reports from being treated as incomplete migrations.
 - **Windows Eval packaging**: Packaging no longer traverses ignored pytest and Eval runtime artifacts before applying the package boundary, so stale Windows test directories cannot make `pnpm pack` fail with `EPERM`.
 - **Windows Eval isolation**: Repeated `comet eval` runs no longer copy generated `.comet` caches and run artifacts into Skill workspaces, preventing deep-path `MAX_PATH` failures on Windows.
+- **Monorepo Dashboard workspaces**: Starting `comet dashboard` from a monorepo subdirectory that holds `.comet/config.yaml` now uses that subdirectory as the workspace root and maps sibling Git worktrees to the same subdirectory, so the change list is no longer empty when the Comet project root is not the worktree root.
 
 ## What's Changed [0.4.0-beta.18] - 2026-08-13
 

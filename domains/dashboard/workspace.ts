@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 import { inspectGitWorktree, listGitWorktreeRoots } from '../../platform/paths/git-worktree.js';
+import { PROJECT_CONFIG_FILE } from '../comet-native/native-paths.js';
 
 const DASHBOARD_CHANGE_LOCATOR_PREFIX = 'dashboard-change-v1';
 const WORKSPACE_ID_PATTERN = /^[a-f0-9]{64}$/u;
@@ -39,15 +41,35 @@ function workspaceLabel(projectRoot: string, branch: string | null): string {
   return branch ?? `detached:${path.basename(projectRoot)}`;
 }
 
+function hasProjectConfig(root: string): boolean {
+  return existsSync(path.join(root, ...PROJECT_CONFIG_FILE.split('/')));
+}
+
 /**
  * Treat every registered worktree in one Git common repository as a Dashboard
  * discovery source. Non-Git projects retain the previous single-root behavior.
+ * When the requested directory is a monorepo subdirectory that carries the
+ * Comet project config, the subdirectory (not the worktree root) is the
+ * workspace root, and sibling worktrees map to the same relative subdirectory.
  */
 export function collectDashboardWorkspaceSources(projectRoot: string): DashboardWorkspaceSource[] {
   const requestedRoot = path.resolve(projectRoot);
   const requestedContext = inspectGitWorktree(requestedRoot);
-  const currentRoot = requestedContext.currentWorktreeRoot ?? requestedRoot;
-  const discovered = listGitWorktreeRoots(requestedRoot);
+  const worktreeRoot = requestedContext.currentWorktreeRoot ?? requestedRoot;
+  const requestedSubdir = path.relative(worktreeRoot, requestedRoot);
+  const monorepoSubdir =
+    requestedSubdir !== '' &&
+    !requestedSubdir.startsWith('..') &&
+    !path.isAbsolute(requestedSubdir) &&
+    hasProjectConfig(requestedRoot)
+      ? requestedSubdir
+      : null;
+  const currentRoot = monorepoSubdir ? requestedRoot : worktreeRoot;
+  const discovered = listGitWorktreeRoots(worktreeRoot).map((root) => {
+    if (!monorepoSubdir) return root;
+    const candidate = path.join(root, monorepoSubdir);
+    return hasProjectConfig(candidate) ? candidate : root;
+  });
   const roots = discovered.length > 0 ? discovered : [requestedRoot];
   if (!roots.some((candidate) => sameDashboardPath(candidate, currentRoot))) {
     roots.push(currentRoot);
