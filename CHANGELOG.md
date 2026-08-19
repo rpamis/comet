@@ -15,6 +15,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Changed
 
 - **Dashboard artifact previews**: Fullscreen previews now close with Escape, keep long tables horizontally scrollable, preserve readable table headers, and use a larger directory navigation scale.
+- **Native source requirements**: Files and links supplied as requirement sources now retain a complete coverage map in the Native brief, map every active executable requirement to both the target Spec and acceptance criteria, and keep incomplete or unavailable sources blocked for clarification.
 - **Pull request title scopes**: Conventional PR titles now support Native, Classic, Hook, Dashboard, Platform, Workflow, Eval, and other repository areas, including titles such as `feat(native): ...`.
 
 ### Fixed

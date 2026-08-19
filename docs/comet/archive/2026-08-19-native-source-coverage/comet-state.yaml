@@ -1,0 +1,505 @@
+schema: comet.native.v4
+name: native-source-coverage
+language: zh-CN
+phase: archive
+status: done
+state_version: 20
+brief: brief.md
+spec_changes:
+  - capability: native-source-coverage
+    operation: create
+    source: specs/native-source-coverage/spec.md
+workspace:
+  isolation: current
+  change_branch: beta19
+  target_branch: beta19
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 3
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: A1：用户提供文件、附件、URL 或本地路径作为需求来源时，Shape 自动进入源文档完整覆盖模式；仅供排错、取证、审查或实现参考的材料不自动触发。
+    result: passed
+    reason:
+      text: 触发仅限正式需求来源，并明确排除排错、取证、审查和实现参考材料。
+      truncated: false
+  - id: A2
+    source: brief.md
+    text:
+      A2：`brief.md` 的 `# Scope` 包含唯一的来源覆盖映射，`# Open questions` 包含真实澄清问题；完整目标
+      Spec 不复制来源表，但完整覆盖全部当前有效的可执行语义。
+    result: passed
+    reason:
+      text: brief 保存唯一覆盖映射，完整目标 Spec 不复制来源历史表。
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: A3：每个当前有效的可执行来源单元都有完整目标 Spec 位置和至少一个验收
+      ID；背景、非目标和已废止内容只有归类、理由或替代关系，不制造无意义验收项。
+    result: passed
+    reason:
+      text: 有效可执行单元要求 Spec 与验收双重映射，非执行单元采用分类分支。
+      truncated: false
+  - id: A4
+    source: brief.md
+    text:
+      A4：每个来源记录读取状态；`partial`、`unavailable`、未完成双重映射或无法确认的边界保留 `[blocking]`，不进入
+      Build。
+    result: passed
+    reason:
+      text: 读取不完整、映射缺失和未确认边界均保持阻塞。
+      truncated: false
+  - id: A5
+    source: brief.md
+    text:
+      A5：用户补充或修正来源后，Decisions、覆盖映射、完整目标 Spec 和验收条件同步更新；旧语义标为 `superseded`
+      并指向替代单元，当前 Spec 只表达最新确认语义。
+    result: passed
+    reason:
+      text: 修正同步正式产物，旧语义以 superseded 指向替代单元。
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: A6：只有来源覆盖完整、所有验收 ID 可追溯且共享理解确认完成后，Native 才允许推进 Build。
+    result: passed
+    reason:
+      text: 完整覆盖、验收追溯和共享理解确认均为 Build 前置条件。
+      truncated: false
+  - id: A7
+    source: brief.md
+    text: A7：中英文 Skill、澄清参考、产物参考、双语言契约测试和独立 Agent 行为场景表达同一源文档完整覆盖流程。
+    result: passed
+    reason:
+      text: 中英文资产、双语言契约测试及两种语言各 5/5 guided Agent 行为样本一致。
+      truncated: false
+  - id: A8
+    source: specs/native-source-coverage/spec.md
+    text:
+      用户提供本地文件 - **WHEN** 用户直接提供一个文件或本地文档路径作为需求来源 - **THEN** Native
+      读取文件的全部可访问内容，并建立来源清单 - **AND** 将标题、段落、列表、表格、代码块、示例、约束和边界作为可追踪来源单元
+    result: passed
+    reason:
+      text: 文件和本地路径完整读取并拆分可追踪来源单元。
+      truncated: false
+  - id: A9
+    source: specs/native-source-coverage/spec.md
+    text:
+      用户提供链接 - **WHEN** 用户直接提供一个 URL 作为需求来源 - **THEN** Native 读取链接可访问的完整文档内容，并记录
+      URL 和可识别的章节/锚点 - **AND** 链接不可访问或内容不完整时保留 `[blocking]`，不得用推测内容替代
+    result: passed
+    reason:
+      text: 链接不可访问或内容不完整时阻塞且禁止推测。
+      truncated: false
+  - id: A10
+    source: specs/native-source-coverage/spec.md
+    text:
+      来源单元全部映射 - **WHEN** Shape 准备最终共享理解确认 - **THEN** 每个当前有效的可执行来源单元都能定位到完整目标
+      Spec 的章节或场景 - **AND** 每个可执行来源单元至少关联一个验收 ID - **AND**
+      每个背景、非目标或已废止来源单元都有明确归类、理由或替代关系，并且不要求 Spec 位置或验收 ID
+    result: passed
+    reason:
+      text: 不同来源分类采用正确的映射规则。
+      truncated: false
+  - id: A11
+    source: specs/native-source-coverage/spec.md
+    text:
+      来源单元未映射 - **WHEN** 任一当前有效的可执行来源单元缺少 Spec 位置或验收 ID，或者其他来源单元缺少归类和理由 -
+      **THEN** Native 将其作为 `[blocking]` 的覆盖缺口 - **AND** Native 不推进 Build
+    result: passed
+    reason:
+      text: 缺少双重映射、分类或理由时阻塞 Build。
+      truncated: false
+  - id: A12
+    source: specs/native-source-coverage/spec.md
+    text:
+      来源存在边界歧义 - **WHEN** 原始文件没有明确说明一个会改变用户可见结果的边界 - **THEN** Native
+      保留已经识别的原始要求，并提出带推荐和影响的澄清问题 - **AND** 该边界保持 `[blocking]`，直到用户明确回答或正式规则可靠确定
+    result: passed
+    reason:
+      text: 边界歧义保留原始要求并按澄清协议提问。
+      truncated: false
+  - id: A13
+    source: specs/native-source-coverage/spec.md
+    text: 用户补充边界 - **WHEN** 用户补充或修正来源范围、例外或验收要求 - **THEN** Native
+      更新同一覆盖映射、Decisions、brief、完整目标 Spec 和验收 ID - **AND** 被修正的旧单元标为 `superseded`
+      并指向替代单元，来源历史不被删除或隐藏 - **AND** 完整目标 Spec 和验收条件只表达最新确认的有效语义
+    result: passed
+    reason:
+      text: 补充或修正更新同一覆盖映射及正式产物。
+      truncated: false
+  - id: A14
+    source: specs/native-source-coverage/spec.md
+    text:
+      链接仅能部分读取 - **WHEN** URL 只能读取部分页面、附件或章节 - **THEN** 来源覆盖映射将读取状态记录为 `partial`
+      - **AND** 未读取范围保持 `[blocking]`，直到来源完整可用或用户明确提供缺失内容
+    result: passed
+    reason:
+      text: partial 状态及未读取范围阻塞规则完整。
+      truncated: false
+  - id: A15
+    source: specs/native-source-coverage/spec.md
+    text:
+      可执行来源进入验收 - **WHEN** 原始来源包含功能、约束、示例行为或失败边界 - **THEN** 完整目标 Spec
+      为其写出完整行为、场景和结果 - **AND** 验收条件为其提供至少一个可观察的验收 ID
+    result: passed
+    reason:
+      text: 功能、约束、示例和失败边界进入完整 Spec 与可观察验收。
+      truncated: false
+  - id: A16
+    source: specs/native-source-coverage/spec.md
+    text:
+      只有摘要没有覆盖表 - **WHEN** Agent 只能提供来源摘要，但不能说明原始内容单元的完整去向 - **THEN** Native 保持
+      Shape 阻塞 - **AND** Native 不把摘要当作完整 Spec 或验收条件
+    result: passed
+    reason:
+      text: 摘要不能替代覆盖映射，缺少覆盖表保持 Shape 阻塞。
+      truncated: false
+  - id: A17
+    source: specs/native-source-coverage/spec.md
+    text: 双语言契约验证 - **WHEN** 用户确认中文结果并完成英文同步 - **THEN** 中英文
+      Skill、澄清参考、产物参考、双语言契约测试和独立 Agent 行为场景共同表达源文档完整覆盖模式 - **AND**
+      英文资产不得改变已确认的触发、分类、映射或阻塞语义
+    result: passed
+    reason:
+      text: 中英文触发、分类、映射和阻塞语义一致，英文未改变已确认中文契约。
+      truncated: false
+  - id: A18
+    source: specs/native-source-coverage/spec.md
+    text:
+      Native 在用户直接提供文件、附件、链接或本地路径作为需求来源时，必须生成可追溯的完整需求闭环。原始来源的可执行语义进入完整目标 Spec
+      和验收条件；澄清只补充歧义、遗漏和隐含边界，不得用压缩摘要替代来源覆盖。
+    result: passed
+    reason:
+      text: 来源、澄清、完整 Spec 和验收形成闭环。
+      truncated: false
+  - id: A19
+    source: specs/native-source-coverage/spec.md
+    text:
+      当用户消息包含作为需求来源的文件、附件、URL、文档路径或其他明确外部来源时，Native MUST 在 Shape
+      识别该来源，并进入源文档完整覆盖模式。仅用于排错、取证、审查或实现参考的材料 MUST NOT 自动触发；用途无法可靠判断时 MUST
+      先澄清。分块、分页或分段读取 MAY 改变读取顺序，但 MUST 保持最终来源覆盖集合完整。
+    result: passed
+    reason:
+      text: 触发排除、用途不明澄清和分块读取语义完整。
+      truncated: false
+  - id: A20
+    source: specs/native-source-coverage/spec.md
+    text: Shape 形成的 `brief.md` MUST 包含唯一的来源覆盖映射。每个来源单元 MUST
+      具有来源定位、读取状态、保留语义、覆盖状态，以及按分类适用的 Spec 位置、验收 ID、归类理由或替代关系。完整目标 Spec MUST
+      完整表达所有当前有效的可执行来源语义，但 MUST NOT 重复来源路径和历史状态表。
+    result: passed
+    reason:
+      text: 覆盖字段完整，来源历史表只保存在 brief。
+      truncated: false
+  - id: A21
+    source: specs/native-source-coverage/spec.md
+    text: '`brief.md` MUST 作为持久化澄清产物：在 `# Scope` 下的 `## Source coverage`
+      先呈现已识别的完整来源需求和覆盖状态，再在 `# Open questions` 呈现按决策树整理的问题。问题 MUST
+      聚焦于真实歧义、遗漏或隐含边界；用户回答后 MUST 同步到 Decisions、来源覆盖映射、完整目标 Spec 和验收条件。'
+    result: passed
+    reason:
+      text: brief 的持久化澄清职责和问题职责清晰。
+      truncated: false
+  - id: A22
+    source: specs/native-source-coverage/spec.md
+    text: 每个来源 MUST 记录 `complete`、`partial` 或 `unavailable` 读取状态。`partial` 或
+      `unavailable` MUST 保持 `[blocking]`；Agent MUST NOT 将已读取片段的映射误报为完整覆盖。
+    result: passed
+    reason:
+      text: 三种读取状态及阻塞规则完整。
+      truncated: false
+  - id: A23
+    source: specs/native-source-coverage/spec.md
+    text:
+      完整目标 Spec MUST 描述来源在归档后应具有的完整行为，而不只是相对旧文本的变化。每个当前有效的可执行来源单元 MUST 同时进入完整目标
+      Spec 和至少一个验收 ID；背景、非目标和已废止来源只保留归类、理由或替代关系。验收条件 MUST
+      至少覆盖原始来源的全部当前有效可执行语义，并可以增加由澄清得到的边界条件。只有来源读取完整、分类完整、双重映射完整且共享理解确认完成后，Native
+      才能推进 Build。
+    result: passed
+    reason:
+      text: 完整目标 Spec 只表达当前有效行为并由验收完整覆盖。
+      truncated: false
+  - id: A24
+    source: specs/native-source-coverage/spec.md
+    text:
+      本轮 MUST 先更新中文 `comet-native` Skill、澄清参考、产物参考和中文契约测试。英文 Native 资产 MUST
+      在中文结果得到确认后再同步；同步完成后，中英文资产和双语言契约测试 MUST 保持同一触发条件、覆盖结构、分类分支、阻塞条件和验收语义。
+    result: passed
+    reason:
+      text: Runtime 历史证明中文先行，用户确认后才同步英文，最终双语言契约一致。
+      truncated: false
+builder_handoff:
+  candidate_id: da0bc310-cd43-4043-b6ab-2938beaf751a
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:cd5e681d-b1b2-48f7-be39-2db906fbde67
+  iteration: 1
+  summary:
+    text: 在已确认中文语义基础上同步英文 Native Skill、澄清参考和产物参考，扩展双语言契约测试，并追加用户可见 Changelog。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    - A8
+    - A9
+    - A10
+    - A11
+    - A12
+    - A13
+    - A14
+    - A15
+    - A16
+    - A17
+    - A18
+    - A19
+    - A20
+    - A21
+    - A22
+    - A23
+    - A24
+  checks:
+    - name:
+        text: focused-vitest
+        truncated: false
+      result: passed
+      note:
+        text: 4 files, 151 tests passed
+        truncated: false
+    - name:
+        text: prettier
+        truncated: false
+      result: passed
+      note:
+        text: all affected files matched Prettier style
+        truncated: false
+    - name:
+        text: issue-336-regression
+        truncated: false
+      result: passed
+      note:
+        text: 1 passed, 47 deselected
+        truncated: false
+    - name:
+        text: english-agent-behavior-eval
+        truncated: false
+      result: passed
+      note:
+        text: 5/5 guided English runs produced a source coverage map, dual mappings,
+          superseded corrections, and unavailable-source blocking
+        truncated: false
+    - name:
+        text: git-diff-check
+        truncated: false
+      result: passed
+      note: null
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  submitted_at: 2026-08-19T04:28:05.024Z
+blockers: []
+verification:
+  candidate_id: da0bc310-cd43-4043-b6ab-2938beaf751a
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:7edcb5b1-4a76-4aeb-8219-5ad1ddf85351
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: focused-vitest
+      name:
+        text: Native source coverage focused tests
+        truncated: false
+      argv_display:
+        - text: vitest
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/skill/native-source-coverage-contract.test.ts
+          truncated: false
+        - text: test/domains/skill/skills.test.ts
+          truncated: false
+        - text: test/domains/comet-native/native-skill.test.ts
+          truncated: false
+        - text: test/repository/native-runtime-assets.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 13486
+    - id: prettier
+      name:
+        text: Affected Markdown and test formatting
+        truncated: false
+      argv_display:
+        - text: prettier
+          truncated: false
+        - text: --check
+          truncated: false
+        - text: CHANGELOG.md
+          truncated: false
+        - text: assets/skills-zh/comet-native/SKILL.md
+          truncated: false
+        - text: assets/skills-zh/comet-native/reference/clarification.md
+          truncated: false
+        - text: assets/skills-zh/comet-native/reference/artifacts.md
+          truncated: false
+        - text: assets/skills/comet-native/SKILL.md
+          truncated: false
+        - text: assets/skills/comet-native/reference/clarification.md
+          truncated: false
+        - text: assets/skills/comet-native/reference/artifacts.md
+          truncated: false
+        - text: docs/comet/changes/native-source-coverage/brief.md
+          truncated: false
+        - text: docs/comet/changes/native-source-coverage/specs/native-source-coverage/spec.md
+          truncated: false
+        - text: test/domains/skill/native-source-coverage-contract.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 1746
+    - id: issue-336-regression
+      name:
+        text: Issue 336 excludes Comet runtime state from Eval Skill copies
+        truncated: false
+      argv_display:
+        - text: run
+          truncated: false
+        - text: pytest
+          truncated: false
+        - text: local/tests/scaffold/test_conftest_helpers.py
+          truncated: false
+        - text: -k
+          truncated: false
+        - text: excludes_comet_runtime_state_from_skill_copy
+          truncated: false
+        - text: -q
+          truncated: false
+      argv_truncated: false
+      cwd_ref: eval
+      status: passed
+      exit_code: 0
+      duration_ms: 1502
+    - id: diff-check
+      name:
+        text: Git whitespace check
+        truncated: false
+      argv_display:
+        - text: diff
+          truncated: false
+        - text: --check
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 166
+  summary:
+    text:
+      '最终只读审查未发现双语言语义漂移、触发过宽、映射逃逸、分类误验收或读取状态漏阻塞；Runtime 的 151 项 focused
+      tests、Prettier、Issue #336 Python 回归和 git diff 检查均通过。'
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-08-19T04:31:33.504Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 中文 Native Skill
+        已完成直接文件、附件、链接和本地路径的源文档完整覆盖模式；相关测试和格式检查通过，英文资产按约定等待中文结果确认后同步。
+      truncated: false
+    completed_at: 2026-08-18T16:21:00.564Z
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 审查发现来源分类、澄清产物、触发边界和验收映射存在矛盾，需要修正契约并补行为验证
+      truncated: false
+    completed_at: 2026-08-19T03:04:17.435Z
+  - goal_cycle: 1
+    iteration: 2
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native confirmed acceptance criteria changed
+      truncated: false
+    completed_at: 2026-08-19T03:15:43.264Z
+  - goal_cycle: 2
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text:
+        独立只读审查未发现与本 change 相关的矛盾、逃逸路径或范围偏移；Runtime 的 focused tests、Prettier 和 git
+        diff 检查均通过。
+      truncated: false
+    completed_at: 2026-08-19T03:19:42.739Z
+  - goal_cycle: 2
+    iteration: 1
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 用户已确认中文结果，按既定双语言流程补充英文资产并完成最终双语交付
+      truncated: false
+    completed_at: 2026-08-19T04:19:05.071Z
+  - goal_cycle: 2
+    iteration: 2
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native confirmed acceptance criteria changed
+      truncated: false
+    completed_at: 2026-08-19T04:22:54.034Z
+  - goal_cycle: 3
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text:
+        '最终只读审查未发现双语言语义漂移、触发过宽、映射逃逸、分类误验收或读取状态漏阻塞；Runtime 的 151 项 focused
+        tests、Prettier、Issue #336 Python 回归和 git diff 检查均通过。'
+      truncated: false
+    completed_at: 2026-08-19T04:31:33.504Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-18T16:12:42.566Z
