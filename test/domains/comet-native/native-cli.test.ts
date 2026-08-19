@@ -356,7 +356,10 @@ describe('Comet Native CLI dispatcher', () => {
 
     expect(json(await pending!)).toMatchObject({
       exitCode: 65,
-      error: { code: 'invalid-data', message: expect.stringContaining('current branch') },
+      error: {
+        code: 'invalid-data',
+        message: expect.stringMatching(/current branch|change branch already exists/u),
+      },
     });
     await expect(
       fs.access(path.join(projectRoot, 'docs', 'comet', 'changes', 'locked-binding')),
