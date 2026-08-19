@@ -168,11 +168,15 @@ export interface NativeChildrenValidationOptions {
   requiredAcceptanceIds?: readonly string[];
 }
 
+type NativeChildrenAcceptanceState = Pick<
+  NativePortableState,
+  'brief' | 'loop' | 'verification_result' | 'history'
+> & {
+  acceptance: readonly Pick<NativePortableAcceptanceState, 'id' | 'source' | 'text'>[];
+};
+
 export function nativeChildrenAcceptanceValidation(
-  state: Pick<
-    NativePortableState,
-    'acceptance' | 'brief' | 'loop' | 'verification_result' | 'history'
-  >,
+  state: NativeChildrenAcceptanceState,
 ): NativeChildrenValidationOptions {
   const requiredAcceptanceIds = new Set(
     state.acceptance.filter(({ source }) => source === state.brief).map(({ id }) => id),
