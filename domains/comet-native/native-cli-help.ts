@@ -139,6 +139,8 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       '--return-to-shape   Return Verify or Archive to Shape when user-visible targets or acceptance criteria must change.',
       '--retry-verifier    Retry a blocked Verifier execution when the continuation allows it.',
       '--resolve-verifier-blocker  Resolve a semantic Verifier blocker without changing the candidate, then dispatch a new attempt.',
+      '--expected-state-version <n>  Continuation-issued guard that rejects stale public transition decisions.',
+      '--expected-action <action>    Continuation-issued guard that binds the public transition decision to its intended action.',
       '--runner-input <file>  Skill-coordinated JSON: builder-handoff, dispatch-verifier, verifier-response, verifier-execution-error, or verifier-unavailable. Identity/provider/execution/candidate fields are rejected.',
       '  builder-handoff fields: kind, summary, addressed_acceptance_ids, checks, known_limits.',
       '  dispatch-verifier fields: kind, checks (an explicitly resolved plan; [] is allowed).',

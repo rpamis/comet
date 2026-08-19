@@ -10,7 +10,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
-- **Native user-decision continuations**: Native await-user continuations now expose mutually exclusive command alternatives for accepting a candidate, returning to Build, or returning to Shape, preventing clients from combining incompatible decision flags.
+- **Native user-decision continuations**: Native await-user continuations now expose mutually exclusive command alternatives for accepting a candidate, returning to Build, or returning to Shape, and bind those decisions to the state version that produced them so stale continuation commands cannot confirm a later goal cycle.
 
 ## What's Changed [0.4.0-beta.20] - 2026-08-16
 

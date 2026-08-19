@@ -1,4 +1,5 @@
 import type { NativeChildrenInspection } from './native-children.js';
+import type { NativePortableExpectedContinuationAction } from './native-portable-runtime.js';
 import type { NativePortableState } from './native-portable-types.js';
 
 type NativePortableContinuationInputOption = {
@@ -11,6 +12,8 @@ type NativePortableContinuationInputOption = {
 
 type NativePortableCommandAlternative = {
   name: string;
+  stateVersion: number;
+  expectedAction: NativePortableExpectedContinuationAction;
   commandArgs: string[];
   requiredInputs: string[];
   inputOptions: NativePortableContinuationInputOption[];
@@ -52,6 +55,27 @@ export interface NativePortableContinuation {
   runnerAction: NativePortableRunnerAction;
 }
 
+function boundNativeNextCommandArgs(options: {
+  change: string;
+  stateVersion: number;
+  action: NativePortableExpectedContinuationAction;
+  flag: string;
+}): string[] {
+  return [
+    'comet',
+    'native',
+    'next',
+    options.change,
+    '--summary',
+    '<summary>',
+    options.flag,
+    '--expected-state-version',
+    String(options.stateVersion),
+    '--expected-action',
+    options.action,
+  ];
+}
+
 function textInput(name: string, flag: string): NativePortableContinuationInputOption {
   return { name, flag, valueKind: 'text', required: true, template: null };
 }
@@ -63,20 +87,21 @@ function confirmationInput(name: string, flag: string): NativePortableContinuati
 function nativeNextDecisionAlternative(options: {
   name: string;
   change: string;
+  stateVersion: number;
+  expectedAction: NativePortableExpectedContinuationAction;
   flag: string;
   confirmationInput: string;
 }): NativePortableCommandAlternative {
   return {
     name: options.name,
-    commandArgs: [
-      'comet',
-      'native',
-      'next',
-      options.change,
-      '--summary',
-      '<summary>',
-      options.flag,
-    ],
+    stateVersion: options.stateVersion,
+    expectedAction: options.expectedAction,
+    commandArgs: boundNativeNextCommandArgs({
+      change: options.change,
+      stateVersion: options.stateVersion,
+      action: options.expectedAction,
+      flag: options.flag,
+    }),
     requiredInputs: ['summary', options.confirmationInput],
     inputOptions: [
       textInput('summary', '--summary'),
@@ -131,20 +156,21 @@ export function nativePortableContinuation(
           nativeNextDecisionAlternative({
             name: 'confirm-pass',
             change: state.name,
+            stateVersion: state.state_version,
+            expectedAction: 'confirm-pass',
             flag: '--confirmed',
             confirmationInput: 'user-confirmation',
           }),
           {
             name: 'return-to-shape',
-            commandArgs: [
-              'comet',
-              'native',
-              'next',
-              state.name,
-              '--summary',
-              '<summary>',
-              '--return-to-shape',
-            ],
+            stateVersion: state.state_version,
+            expectedAction: 'return-to-shape',
+            commandArgs: boundNativeNextCommandArgs({
+              change: state.name,
+              stateVersion: state.state_version,
+              action: 'return-to-shape',
+              flag: '--return-to-shape',
+            }),
             requiredInputs: ['summary', 'user-rejection'],
             inputOptions: [
               textInput('summary', '--summary'),
@@ -164,15 +190,12 @@ export function nativePortableContinuation(
         ...base,
         disposition: 'await-user',
         action: 'confirm-verifier-unavailable',
-        commandArgs: [
-          'comet',
-          'native',
-          'next',
-          state.name,
-          '--summary',
-          '<summary>',
-          '--confirmed',
-        ],
+        commandArgs: boundNativeNextCommandArgs({
+          change: state.name,
+          stateVersion: state.state_version,
+          action: 'confirm-verifier-unavailable',
+          flag: '--confirmed',
+        }),
         requiredInputs: ['summary', 'user-confirmation'],
         inputOptions: [
           {
@@ -205,20 +228,21 @@ export function nativePortableContinuation(
           nativeNextDecisionAlternative({
             name: 'resolve-verifier-blocker',
             change: state.name,
+            stateVersion: state.state_version,
+            expectedAction: 'resolve-verifier-blocker',
             flag: '--resolve-verifier-blocker',
             confirmationInput: 'user-resolution',
           }),
           {
             name: 'return-to-build',
-            commandArgs: [
-              'comet',
-              'native',
-              'next',
-              state.name,
-              '--summary',
-              '<summary>',
-              '--return-to-build',
-            ],
+            stateVersion: state.state_version,
+            expectedAction: 'return-to-build',
+            commandArgs: boundNativeNextCommandArgs({
+              change: state.name,
+              stateVersion: state.state_version,
+              action: 'return-to-build',
+              flag: '--return-to-build',
+            }),
             requiredInputs: ['summary', 'user-rejection'],
             inputOptions: [
               textInput('summary', '--summary'),
@@ -227,15 +251,14 @@ export function nativePortableContinuation(
           },
           {
             name: 'return-to-shape',
-            commandArgs: [
-              'comet',
-              'native',
-              'next',
-              state.name,
-              '--summary',
-              '<summary>',
-              '--return-to-shape',
-            ],
+            stateVersion: state.state_version,
+            expectedAction: 'return-to-shape',
+            commandArgs: boundNativeNextCommandArgs({
+              change: state.name,
+              stateVersion: state.state_version,
+              action: 'return-to-shape',
+              flag: '--return-to-shape',
+            }),
             requiredInputs: ['summary', 'user-rejection'],
             inputOptions: [
               textInput('summary', '--summary'),
@@ -257,15 +280,14 @@ export function nativePortableContinuation(
         commandAlternatives: [
           {
             name: 'return-to-build',
-            commandArgs: [
-              'comet',
-              'native',
-              'next',
-              state.name,
-              '--summary',
-              '<summary>',
-              '--return-to-build',
-            ],
+            stateVersion: state.state_version,
+            expectedAction: 'return-to-build',
+            commandArgs: boundNativeNextCommandArgs({
+              change: state.name,
+              stateVersion: state.state_version,
+              action: 'return-to-build',
+              flag: '--return-to-build',
+            }),
             requiredInputs: ['summary', 'user-rejection'],
             inputOptions: [
               textInput('summary', '--summary'),
@@ -274,15 +296,14 @@ export function nativePortableContinuation(
           },
           {
             name: 'return-to-shape',
-            commandArgs: [
-              'comet',
-              'native',
-              'next',
-              state.name,
-              '--summary',
-              '<summary>',
-              '--return-to-shape',
-            ],
+            stateVersion: state.state_version,
+            expectedAction: 'return-to-shape',
+            commandArgs: boundNativeNextCommandArgs({
+              change: state.name,
+              stateVersion: state.state_version,
+              action: 'return-to-shape',
+              flag: '--return-to-shape',
+            }),
             requiredInputs: ['summary', 'user-rejection'],
             inputOptions: [
               textInput('summary', '--summary'),
@@ -311,7 +332,12 @@ export function nativePortableContinuation(
       disposition: 'blocked',
       action: retry ? 'retry-verifier' : 'none',
       commandArgs: retry
-        ? ['comet', 'native', 'next', state.name, '--retry-verifier', '--summary', '<summary>']
+        ? boundNativeNextCommandArgs({
+            change: state.name,
+            stateVersion: state.state_version,
+            action: 'retry-verifier',
+            flag: '--retry-verifier',
+          })
         : null,
       requiredInputs: retry ? ['summary'] : ['repair-runtime'],
       inputOptions: retry
@@ -333,7 +359,12 @@ export function nativePortableContinuation(
       ...base,
       disposition: 'continue',
       action: 'confirm-shape',
-      commandArgs: ['comet', 'native', 'next', state.name, '--summary', '<summary>', '--confirmed'],
+      commandArgs: boundNativeNextCommandArgs({
+        change: state.name,
+        stateVersion: state.state_version,
+        action: 'confirm-shape',
+        flag: '--confirmed',
+      }),
       requiredInputs: ['summary', 'shared-understanding-confirmation'],
       inputOptions: [
         {

@@ -15,6 +15,8 @@ import {
   returnNativePortableChangeToBuild,
   returnNativePortableChangeToShape,
   retryNativePortableVerifier,
+  type NativePortableExpectedContinuation,
+  type NativePortableExpectedContinuationAction,
 } from './native-portable-runtime.js';
 import type { NativePortableState } from './native-portable-types.js';
 import {
@@ -28,6 +30,39 @@ import {
   type DispatchResult,
 } from './native-cli-shared.js';
 import type { NativeProjectPaths } from './native-types.js';
+
+const EXPECTED_CONTINUATION_ACTIONS = new Set<NativePortableExpectedContinuationAction>([
+  'confirm-shape',
+  'confirm-pass',
+  'confirm-verifier-unavailable',
+  'return-to-build',
+  'return-to-shape',
+  'retry-verifier',
+  'resolve-verifier-blocker',
+]);
+
+function expectedContinuationOption(
+  args: string[],
+): NativePortableExpectedContinuation | undefined {
+  const stateVersion = takeOption(args, '--expected-state-version');
+  const action = takeOption(args, '--expected-action');
+  if (stateVersion === undefined && action === undefined) return undefined;
+  if (stateVersion === undefined || action === undefined) {
+    throw new NativeUsageError(
+      '--expected-state-version and --expected-action must be provided together',
+    );
+  }
+  if (!/^[1-9]\d*$/u.test(stateVersion) || !Number.isSafeInteger(Number(stateVersion))) {
+    throw new NativeUsageError('--expected-state-version must be a positive integer');
+  }
+  if (!EXPECTED_CONTINUATION_ACTIONS.has(action as NativePortableExpectedContinuationAction)) {
+    throw new NativeUsageError('--expected-action is not a recognized Native continuation action');
+  }
+  return {
+    stateVersion: Number(stateVersion),
+    action: action as NativePortableExpectedContinuationAction,
+  };
+}
 
 async function portableParentView(paths: NativeProjectPaths, state: NativePortableState) {
   const children = await inspectNativeChildren({ paths, state });
@@ -54,6 +89,7 @@ export async function nativeNextCommand(
   const returnToShape = takeFlag(args, '--return-to-shape');
   const retryVerifier = takeFlag(args, '--retry-verifier');
   const resolveVerifierBlocker = takeFlag(args, '--resolve-verifier-blocker');
+  const expectedContinuation = expectedContinuationOption(args);
   if (
     [confirmed, returnToBuild, returnToShape, retryVerifier, resolveVerifierBlocker].filter(Boolean)
       .length > 1
@@ -93,10 +129,11 @@ export async function nativeNextCommand(
       returnToBuild ||
       returnToShape ||
       retryVerifier ||
-      resolveVerifierBlocker
+      resolveVerifierBlocker ||
+      expectedContinuation
     ) {
       throw new NativeUsageError(
-        '--runner-input cannot be combined with --summary or Agent transition flags',
+        '--runner-input cannot be combined with --summary, continuation expectations, or Agent transition flags',
       );
     }
     const recovery = await recoverNativePortableChange({
@@ -157,7 +194,11 @@ export async function nativeNextCommand(
   let state;
   if (confirmed) {
     if (current.phase === 'shape') {
-      state = await confirmNativePortableShape({ paths: configured.paths, name });
+      state = await confirmNativePortableShape({
+        paths: configured.paths,
+        name,
+        expectedContinuation,
+      });
     } else if (
       current.phase === 'verify' &&
       current.status === 'await-user' &&
@@ -166,6 +207,7 @@ export async function nativeNextCommand(
       state = await confirmNativePortableSkillCoordinatedPass({
         paths: configured.paths,
         name,
+        expectedContinuation,
       });
     } else if (
       current.phase === 'verify' &&
@@ -176,6 +218,7 @@ export async function nativeNextCommand(
         paths: configured.paths,
         name,
         summary,
+        expectedContinuation,
       });
     } else {
       throw new NativeUsageError(
@@ -187,6 +230,7 @@ export async function nativeNextCommand(
       paths: configured.paths,
       name,
       reason: summary,
+      expectedContinuation,
     });
   } else if (returnToShape) {
     if (current.phase !== 'verify' && current.phase !== 'archive') {
@@ -197,11 +241,20 @@ export async function nativeNextCommand(
       name,
       reason: summary,
       allowedPhases: ['verify', 'archive'],
+      expectedContinuation,
     });
   } else if (retryVerifier) {
-    state = await retryNativePortableVerifier({ paths: configured.paths, name });
+    state = await retryNativePortableVerifier({
+      paths: configured.paths,
+      name,
+      expectedContinuation,
+    });
   } else if (resolveVerifierBlocker) {
-    state = await resolveNativePortableVerifierBlocker({ paths: configured.paths, name });
+    state = await resolveNativePortableVerifierBlocker({
+      paths: configured.paths,
+      name,
+      expectedContinuation,
+    });
   } else {
     if (recovery.reason !== 'available') {
       return success('next', {

@@ -462,11 +462,15 @@ Run applicable focused checks.
           commandAlternatives: expect.arrayContaining([
             expect.objectContaining({
               name: 'confirm-pass',
+              stateVersion: expect.any(Number),
+              expectedAction: 'confirm-pass',
               commandArgs: expect.arrayContaining(['--confirmed']),
               requiredInputs: ['summary', 'user-confirmation'],
             }),
             expect.objectContaining({
               name: 'return-to-shape',
+              stateVersion: expect.any(Number),
+              expectedAction: 'return-to-shape',
               commandArgs: expect.arrayContaining(['--return-to-shape']),
               requiredInputs: ['summary', 'user-rejection'],
             }),
@@ -519,7 +523,23 @@ Run applicable focused checks.
     const oldCandidateId = (built.data as { state: { builder_handoff: { candidate_id: string } } })
       .state.builder_handoff.candidate_id;
     await runnerStep(name, { kind: 'dispatch-verifier', checks: [] });
-    await runnerStep(name, finalResponse(1, 1, ['A1']));
+    const awaitingPassDecision = await runnerStep(name, finalResponse(1, 1, ['A1']));
+    const oldConfirmPassAlternative = (
+      awaitingPassDecision.data as {
+        continuation: {
+          commandAlternatives: Array<{ name: string; commandArgs: string[] }>;
+        };
+      }
+    ).continuation.commandAlternatives.find(({ name }) => name === 'confirm-pass');
+    expect(oldConfirmPassAlternative).toMatchObject({
+      name: 'confirm-pass',
+      commandArgs: expect.arrayContaining([
+        '--confirmed',
+        '--expected-state-version',
+        '--expected-action',
+        'confirm-pass',
+      ]),
+    });
 
     const returned = json(
       await runNativeCli([
@@ -555,6 +575,33 @@ Run applicable focused checks.
         continuation: { action: 'confirm-shape' },
       },
     });
+
+    const staleConfirmPass = json(
+      await runNativeCli([
+        ...oldConfirmPassAlternative!.commandArgs
+          .slice(2)
+          .map((value) =>
+            value === '<summary>' ? 'Delayed confirmation for an obsolete pass' : value,
+          ),
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(staleConfirmPass).toMatchObject({
+      exitCode: 65,
+      error: { message: expect.stringContaining('stale for state version') },
+    });
+    expect(json(await runNativeCli(['show', name, '--json', ...projectArgs()])).data).toMatchObject(
+      {
+        state: {
+          phase: 'shape',
+          status: 'active',
+          acceptance: [],
+          builder_handoff: null,
+          loop: { next_action: 'confirm-shape' },
+        },
+      },
+    );
 
     const staleArchive = json(
       await runNativeCli(['archive', name, '--dry-run', '--json', ...projectArgs()]),
