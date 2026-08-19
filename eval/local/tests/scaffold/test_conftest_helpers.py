@@ -710,6 +710,30 @@ def test_setup_test_context_configures_039_shell_hook(tmp_path: Path, setup_test
     assert command == "bash /workspace/.claude/skills/comet/scripts/comet-hook-guard.sh"
 
 
+def test_setup_test_context_excludes_comet_runtime_state_from_skill_copy(
+    tmp_path: Path, setup_test_context
+):
+    source_dir = tmp_path / "comet-source"
+    source_dir.mkdir()
+    (source_dir / "SKILL.md").write_text("---\nname: comet\n---\n\nOriginal.", encoding="utf-8")
+    runtime_state = source_dir / ".comet" / "eval" / "cache" / "uv"
+    runtime_state.mkdir(parents=True)
+    (runtime_state / "long-wheel.lock").write_text("cached", encoding="utf-8")
+
+    setup_test_context(
+        skills={
+            "comet": {
+                "sections": ["---\nname: comet\n---\n\nGenerated."],
+                "source_dir": source_dir,
+            }
+        }
+    )
+
+    installed = tmp_path / ".claude" / "skills" / "comet"
+    assert (installed / "SKILL.md").exists()
+    assert not (installed / ".comet").exists()
+
+
 def test_codex_guard_uses_codex_hook_config_while_scripts_remain_under_agents(tmp_path: Path):
     command = "node /workspace/.agents/skills/comet/scripts/comet-hook-guard.mjs"
 
@@ -885,6 +909,38 @@ def test_snapshot_dynamic_skill_package_copies_package_and_node_skills(tmp_path:
     assert relative_package == "_eval_target_skills/manifest-skill"
     assert (test_dir / relative_package / "SKILL.md").exists()
     assert (test_dir / "_eval_target_skills" / "manifest-skill-open" / "SKILL.md").exists()
+
+
+def test_snapshot_dynamic_skill_package_excludes_comet_runtime_state(tmp_path: Path):
+    source_root = tmp_path / "source"
+    package = source_root / "manifest-skill"
+    package.mkdir(parents=True)
+    (package / "SKILL.md").write_text("---\nname: manifest-skill\n---\n\nBody.", encoding="utf-8")
+    package_cache = package / ".comet" / "eval" / "cache" / "uv"
+    package_cache.mkdir(parents=True)
+    (package_cache / "long-wheel.lock").write_text("cached", encoding="utf-8")
+    stage = source_root / "manifest-skill-open"
+    stage.mkdir()
+    (stage / "SKILL.md").write_text(
+        "---\nname: manifest-skill-open\n---\n\nStage.", encoding="utf-8"
+    )
+    (stage / ".comet" / "eval" / "runs").mkdir(parents=True)
+    test_dir = tmp_path / "workspace"
+    test_dir.mkdir()
+
+    relative_package = conftest._snapshot_dynamic_skill_package(
+        test_dir,
+        {
+            "path": str(package),
+            "generated_node_skills": ["manifest-skill-open"],
+        },
+    )
+
+    assert (test_dir / relative_package / "SKILL.md").exists()
+    assert not (test_dir / relative_package / ".comet").exists()
+    node_snapshot = test_dir / "_eval_target_skills" / "manifest-skill-open"
+    assert (node_snapshot / "SKILL.md").exists()
+    assert not (node_snapshot / ".comet").exists()
 
 
 def _workflow_overlay_validator():
