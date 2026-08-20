@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 
 test('shows Project Knowledge status and project pause transitions', async ({ page }) => {
   let paused = false;
+  let uninstalled = false;
   const projectKnowledgePage = () => ({
     pluginId: 'comet.project-knowledge',
     label: '项目知识',
@@ -77,11 +78,19 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
     }
     if (url.pathname.endsWith('/plugins/comet.project-knowledge/lifecycle')) {
       const body = route.request().postDataJSON() as { action?: string };
-      paused = body.action === 'disable';
+      if (body.action === 'uninstall') {
+        uninstalled = true;
+      } else {
+        paused = body.action === 'disable';
+      }
       await route.fulfill({ json: {} });
       return;
     }
     if (url.pathname.endsWith('/plugins/comet.project-knowledge')) {
+      if (uninstalled) {
+        await route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
+        return;
+      }
       await route.fulfill({ json: projectKnowledgePage() });
       return;
     }
@@ -89,17 +98,19 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
       const current = projectKnowledgePage();
       await route.fulfill({
         json: {
-          pages: [
-            {
-              pluginId: current.pluginId,
-              label: current.label,
-              route: current.route,
-              status: current.status,
-              globallyDisabled: current.globallyDisabled,
-              projectPaused: current.projectPaused,
-              diagnostics: current.diagnostics,
-            },
-          ],
+          pages: uninstalled
+            ? []
+            : [
+                {
+                  pluginId: current.pluginId,
+                  label: current.label,
+                  route: current.route,
+                  status: current.status,
+                  globallyDisabled: current.globallyDisabled,
+                  projectPaused: current.projectPaused,
+                  diagnostics: current.diagnostics,
+                },
+              ],
         },
       });
       return;
@@ -120,6 +131,15 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   await page.getByRole('button', { name: '重新启用' }).click();
   await expect(page.getByText('当前项目', { exact: true }).last()).toBeVisible();
   await expect(page.getByText('已启用', { exact: true }).last()).toBeVisible();
+
+  await page.getByRole('button', { name: '卸载插件' }).click();
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: /卸\s*载/u })
+    .click();
+  await expect(page.getByRole('heading', { name: '项目概览' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '项目知识' })).toHaveCount(0);
+  await expect(page.getByRole('menuitem', { name: '项目知识' })).toHaveCount(0);
 });
 
 test('loads the demo dashboard and previews an artifact', async ({ page }) => {

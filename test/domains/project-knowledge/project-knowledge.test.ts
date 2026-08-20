@@ -17,6 +17,7 @@ import {
   defaultWorkflowProjectConfig,
 } from '../../../domains/workflow-contract/project-config.js';
 import { createDefaultCometPluginBridge } from '../../../domains/comet-plugin/integration.js';
+import { MemoryPluginStorageStore } from '../../../domains/comet-plugin/plugin-runtime.js';
 import { runBoundedRipgrep } from '../../../platform/process/ripgrep.js';
 
 async function tempProject(): Promise<string> {
@@ -70,8 +71,12 @@ describe('project knowledge dashboard status', () => {
   });
 
   test('loads the dashboard snapshot through status without constructing a provider', async () => {
+    const storageStore = new MemoryPluginStorageStore();
     const module = await createProjectKnowledgeModule(
-      { reportDiagnostic: () => undefined } as never,
+      {
+        storage: await storageStore.open('comet.project-knowledge', 'project', 'status-project'),
+        reportDiagnostic: () => undefined,
+      } as never,
       { projectRoot: 'C:/project', knowledgeConfig: { provider: 'local' } },
     );
 
@@ -114,6 +119,62 @@ describe('project knowledge configuration', () => {
         ].join('\n'),
       ),
     ).toThrow(/HTTPS/u);
+  });
+
+  test('ignores stale Remote settings when the provider is Local', () => {
+    const config = parseWorkflowProjectConfigDocument(
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'workflows: [native]',
+        'knowledge:',
+        '  provider: local',
+        '  remote:',
+        '    endpoint: http://example.test/retrieve',
+        'native:',
+        '  artifact_root: docs',
+        '',
+      ].join('\n'),
+    ).config;
+
+    expect(config?.knowledge).toEqual({ provider: 'local' });
+  });
+
+  test('keeps recent diagnostics across project knowledge module instances', async () => {
+    const storageStore = new MemoryPluginStorageStore();
+    const createContext = async () =>
+      ({
+        storage: await storageStore.open(
+          'comet.project-knowledge',
+          'project',
+          'diagnostics-project',
+        ),
+        reportDiagnostic: () => undefined,
+      }) as never;
+    const options = {
+      projectRoot: process.cwd(),
+      knowledgeConfig: {
+        provider: 'remote' as const,
+        remote: {
+          endpoint: 'https://example.test/retrieve',
+          token_env: 'COMET_RAG_REVIEW_MISSING',
+          timeout_ms: 5000,
+        },
+      },
+    };
+
+    const firstModule = await createProjectKnowledgeModule(await createContext(), options);
+    await firstModule.provideContext?.({ task: 'retrieve project knowledge' });
+
+    const secondModule = await createProjectKnowledgeModule(await createContext(), options);
+    await expect(secondModule.invoke?.('status', {})).resolves.toMatchObject({
+      diagnostics: [
+        expect.objectContaining({
+          code: 'remote-token',
+          message: expect.stringContaining('COMET_RAG_REVIEW_MISSING'),
+        }),
+      ],
+    });
   });
 
   test('keeps generic terms below the strong-match threshold', () => {

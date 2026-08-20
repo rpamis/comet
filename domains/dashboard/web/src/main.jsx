@@ -804,7 +804,13 @@ function DashboardApp({ theme, onToggleTheme }) {
                         pluginSelection,
                         input.action,
                       );
-                      setPluginRefreshToken((value) => value + 1);
+                      if (input.action === 'uninstall') {
+                        setPluginSelection(null);
+                        setPluginPage(null);
+                        setPluginError(null);
+                      } else {
+                        setPluginRefreshToken((value) => value + 1);
+                      }
                       await reloadPluginPages();
                     } else {
                       await invokePlugin(pluginSelection, capability, input);

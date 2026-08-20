@@ -30,6 +30,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 - **Native Git snapshot reliability**: Native snapshot probes now run from the project root and tolerate short Windows process-handle release delays, avoiding failures when hooks and workspace operations run concurrently.
 - **Beta20 package metadata**: Published asset metadata now stays aligned with the beta20 package version instead of reporting the unreleased beta21 version.
+- **Project knowledge reliability**: Local configuration now ignores stale Remote settings, recent bounded diagnostics survive Dashboard reloads, and uninstall returns cleanly to the workflow view.
 
 ## What's Changed [0.4.0-beta.18] - 2026-08-13
 

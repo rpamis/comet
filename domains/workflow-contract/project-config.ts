@@ -740,15 +740,13 @@ function normalizeWorkflowKnowledgeProjectConfig(value: unknown): WorkflowKnowle
   if (provider !== 'local' && provider !== 'remote') {
     throw new Error('knowledge.provider must be local or remote');
   }
+  if (provider === 'local') return { provider };
   const remote =
     knowledge.remote === undefined ? undefined : normalizeKnowledgeRemote(knowledge.remote);
-  if (provider === 'remote' && remote === undefined) {
+  if (remote === undefined) {
     throw new Error('knowledge.remote must be configured when knowledge.provider is remote');
   }
-  return {
-    provider,
-    ...(remote === undefined ? {} : { remote }),
-  };
+  return { provider, remote };
 }
 
 function normalizeAmbientResume(value: unknown): boolean {
@@ -1129,10 +1127,8 @@ function normalizeWorkflowKnowledgeProjectConfig(value) {
   if (provider !== 'local' && provider !== 'remote') {
     throw new Error('knowledge.provider must be local or remote');
   }
-  if (knowledge.remote === undefined) {
-    if (provider === 'remote') throw new Error('knowledge.remote must be configured when knowledge.provider is remote');
-    return { provider };
-  }
+  if (provider === 'local') return { provider };
+  if (knowledge.remote === undefined) throw new Error('knowledge.remote must be configured when knowledge.provider is remote');
   const remote = workflowConfigRecord(knowledge.remote, 'knowledge.remote');
   if (typeof remote.endpoint !== 'string' || remote.endpoint.trim().length === 0) {
     throw new Error('knowledge.remote.endpoint must be a non-empty URL');

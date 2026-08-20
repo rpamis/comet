@@ -18,6 +18,7 @@ import type {
 } from './types.js';
 
 export const PROJECT_KNOWLEDGE_PLUGIN_ID = 'comet.project-knowledge';
+const MAX_RECENT_DIAGNOSTICS = 3;
 
 export function createProjectKnowledgeDashboardContribution(
   language: ProjectKnowledgePluginOptions['language'] = 'zh-CN',
@@ -49,11 +50,19 @@ async function createProjectKnowledgeModule(
 ): Promise<PluginModule> {
   let provider: ProjectKnowledgeProvider | null = null;
   let providerKey = '';
-  const recentDiagnostics: ProjectKnowledgeDashboardDiagnostic[] = [];
+  const recentDiagnostics = await readRecentDiagnostics(context.storage);
+  let diagnosticWrite = Promise.resolve();
+  const persistDiagnostics = (): void => {
+    const value = { diagnostics: [...recentDiagnostics] };
+    diagnosticWrite = diagnosticWrite
+      .then(() => context.storage.write(value))
+      .catch(() => undefined);
+  };
   const reportDiagnostic = (diagnostic: { code: string; message: string }): void => {
     const message = boundDiagnosticMessage(`[${diagnostic.code}] ${diagnostic.message}`);
     recentDiagnostics.push({ code: diagnostic.code, message });
-    while (recentDiagnostics.length > 3) recentDiagnostics.shift();
+    while (recentDiagnostics.length > MAX_RECENT_DIAGNOSTICS) recentDiagnostics.shift();
+    persistDiagnostics();
     context.reportDiagnostic({
       phase: 'context',
       code: 'execution-failed',
@@ -99,6 +108,7 @@ async function createProjectKnowledgeModule(
         providerKey = key;
       }
       const results = boundProjectKnowledgeResults(await provider.retrieve(query));
+      await diagnosticWrite;
       const text = renderProjectKnowledgeContext(results, options.language ?? 'zh-CN');
       if (!text) return null;
       return {
@@ -111,6 +121,34 @@ async function createProjectKnowledgeModule(
       };
     },
   };
+}
+
+async function readRecentDiagnostics(
+  storage: PluginContext['storage'],
+): Promise<ProjectKnowledgeDashboardDiagnostic[]> {
+  try {
+    const value = await storage.read();
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+    const diagnostics = (value as { diagnostics?: unknown }).diagnostics;
+    if (!Array.isArray(diagnostics)) return [];
+    return diagnostics
+      .map((diagnostic): ProjectKnowledgeDashboardDiagnostic | null => {
+        if (!diagnostic || typeof diagnostic !== 'object' || Array.isArray(diagnostic)) return null;
+        const code = (diagnostic as { code?: unknown }).code;
+        const message = (diagnostic as { message?: unknown }).message;
+        if (typeof code !== 'string' || typeof message !== 'string') return null;
+        const boundedCode = code.trim().slice(0, 64);
+        const boundedMessage = boundDiagnosticMessage(message);
+        if (!boundedCode || !boundedMessage) return null;
+        return { code: boundedCode, message: boundedMessage };
+      })
+      .filter(
+        (diagnostic): diagnostic is ProjectKnowledgeDashboardDiagnostic => diagnostic !== null,
+      )
+      .slice(-MAX_RECENT_DIAGNOSTICS);
+  } catch {
+    return [];
+  }
 }
 
 function boundDiagnosticMessage(message: string): string {
