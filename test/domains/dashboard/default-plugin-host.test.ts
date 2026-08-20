@@ -18,10 +18,25 @@ describe('default dashboard plugin host', () => {
       expect(await host.list()).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ pluginId: 'comet.personal-memory', status: 'enabled' }),
+          expect.objectContaining({
+            pluginId: 'comet.project-knowledge',
+            label: '项目知识',
+            route: '/plugins/project-knowledge',
+            status: 'enabled',
+            projectPaused: false,
+          }),
         ]),
       );
       await expect(host.get('comet.personal-memory')).resolves.toMatchObject({
         data: { status: { learningEnabled: true, retrievalEnabled: true } },
+      });
+      await expect(host.get('comet.project-knowledge')).resolves.toMatchObject({
+        data: {
+          provider: 'local',
+          configured: true,
+          retrieval: expect.stringContaining('不会维护索引'),
+          diagnostics: [],
+        },
       });
     } finally {
       await fs.rm(root, { recursive: true, force: true });
