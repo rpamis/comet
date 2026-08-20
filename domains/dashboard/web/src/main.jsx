@@ -30,6 +30,7 @@ import {
   CheckCircleOutlined,
   CheckOutlined,
   CopyOutlined,
+  DatabaseOutlined,
   FileTextOutlined,
   FlagOutlined,
   MenuOutlined,
@@ -2135,6 +2136,8 @@ function AntSidebar({
           icon:
             page.pluginId === 'comet.personal-memory' ? (
               <BulbOutlined />
+            ) : page.pluginId === 'comet.project-knowledge' ? (
+              <DatabaseOutlined />
             ) : (
               <SafetyCertificateOutlined />
             ),
@@ -2208,6 +2211,9 @@ function PluginCenterPage({ page, loading, error, onRetry, onInvoke }) {
     );
   }
   if (!page) return <LoadingState />;
+  if (page.pluginId === 'comet.project-knowledge') {
+    return <ProjectKnowledgeCenter page={page} data={page.data} onInvoke={onInvoke} />;
+  }
   if (page.status === 'disabled') {
     return (
       <div className="mx-auto max-w-dashboard">
@@ -2231,6 +2237,177 @@ function PluginCenterPage({ page, loading, error, onRetry, onInvoke }) {
     <div className="mx-auto max-w-dashboard">
       <SectionHead title={page.label} hint="插件中心" />
       <AntCard size="small">该插件暂未提供可视化中心页。</AntCard>
+    </div>
+  );
+}
+
+function ProjectKnowledgeCenter({ page, data, onInvoke }) {
+  const snapshot = data && typeof data === 'object' ? data : {};
+  const provider =
+    snapshot.provider === 'remote' ? 'Remote' : snapshot.provider === 'local' ? 'Local' : '—';
+  const configured =
+    typeof snapshot.configured === 'boolean'
+      ? snapshot.configured
+        ? '配置有效'
+        : '需要检查'
+      : '—';
+  const diagnostics =
+    Array.isArray(snapshot.diagnostics) && snapshot.diagnostics.length > 0
+      ? snapshot.diagnostics
+      : (page.diagnostics ?? []);
+  const disabled = page.status === 'disabled';
+  const remote = snapshot.remote;
+
+  return (
+    <div className="mx-auto min-w-0 max-w-dashboard">
+      <SectionHead title={page.label} hint="查看当前项目的文档召回 Provider 状态" />
+      {disabled && (
+        <Alert
+          className="mb-4"
+          type="info"
+          showIcon
+          message={page.projectPaused ? '当前项目已暂停项目知识' : '项目知识插件已停用'}
+          description={
+            page.projectPaused
+              ? '只影响当前项目，项目文件和插件配置仍然保留。'
+              : '插件状态和项目文件仍然保留，重新启用后即可继续使用。'
+          }
+          action={
+            <Button onClick={() => onInvoke('lifecycle', { action: 'enable' })}>重新启用</Button>
+          }
+        />
+      )}
+      <section className="dashboard-knowledge-status" aria-label="项目知识状态">
+        <div className="dashboard-knowledge-status-cell">
+          <span className="dashboard-knowledge-status-label">Provider</span>
+          <span className="dashboard-knowledge-status-value">{provider}</span>
+          <span className="dashboard-knowledge-status-meta">
+            {provider === 'Local'
+              ? '本地文档即时召回'
+              : provider === 'Remote'
+                ? '固定 Retrieval API v1'
+                : '未读取状态'}
+          </span>
+        </div>
+        <div className="dashboard-knowledge-status-cell">
+          <span className="dashboard-knowledge-status-label">插件状态</span>
+          <span className="dashboard-knowledge-status-value">
+            {page.globallyDisabled ? '全局停用' : disabled ? '已停用' : '已启用'}
+          </span>
+          <span className="dashboard-knowledge-status-meta">由 Plugin Runtime 管理</span>
+        </div>
+        <div className="dashboard-knowledge-status-cell">
+          <span className="dashboard-knowledge-status-label">当前项目</span>
+          <span className="dashboard-knowledge-status-value">
+            {page.projectPaused ? '已暂停' : '已启用'}
+          </span>
+          <span className="dashboard-knowledge-status-meta">仅影响这个项目的任务</span>
+        </div>
+        <div className="dashboard-knowledge-status-cell">
+          <span className="dashboard-knowledge-status-label">配置状态</span>
+          <span className="dashboard-knowledge-status-value">{configured}</span>
+          <span className="dashboard-knowledge-status-meta">页面不会发起检索请求</span>
+        </div>
+      </section>
+      <div className="dashboard-knowledge-layout">
+        <section
+          className="dashboard-knowledge-summary"
+          aria-labelledby="dashboard-knowledge-summary-title"
+        >
+          <div className="dashboard-knowledge-panel-head">
+            <div>
+              <h3 id="dashboard-knowledge-summary-title">配置摘要</h3>
+              <p>只展示安全字段，不编辑项目配置</p>
+            </div>
+            {provider !== '—' && <Tag bordered={false}>{provider}</Tag>}
+          </div>
+          {data === null || data === undefined ? (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="插件停用后不加载状态" />
+          ) : (
+            <div className="dashboard-knowledge-summary-body">
+              <p className="dashboard-knowledge-retrieval">{snapshot.retrieval}</p>
+              {provider === 'Remote' && remote ? (
+                <dl className="dashboard-knowledge-fields">
+                  <div>
+                    <dt>Endpoint</dt>
+                    <dd>{remote.endpoint || '未提供'}</dd>
+                  </div>
+                  <div>
+                    <dt>Scope</dt>
+                    <dd>{remote.scope || '未配置'}</dd>
+                  </div>
+                  <div>
+                    <dt>Timeout</dt>
+                    <dd>{remote.timeoutMs} ms</dd>
+                  </div>
+                  <div>
+                    <dt>Token 环境变量</dt>
+                    <dd>
+                      {remote.tokenEnv
+                        ? `${remote.tokenEnv} · ${remote.tokenConfigured ? '已提供' : '未提供'}`
+                        : '未配置（无需 token）'}
+                    </dd>
+                  </div>
+                </dl>
+              ) : null}
+            </div>
+          )}
+        </section>
+        <section
+          className="dashboard-knowledge-diagnostics"
+          aria-labelledby="dashboard-knowledge-diagnostics-title"
+        >
+          <div className="dashboard-knowledge-panel-head">
+            <div>
+              <h3 id="dashboard-knowledge-diagnostics-title">最近诊断</h3>
+              <p>只保留最近三条有界信息</p>
+            </div>
+            {diagnostics.length > 0 && <Tag color="warning">{diagnostics.length} 条</Tag>}
+          </div>
+          {diagnostics.length === 0 ? (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有新的诊断" />
+          ) : (
+            <div className="dashboard-knowledge-diagnostics-list">
+              {diagnostics.map((diagnostic, index) => {
+                const code = typeof diagnostic === 'string' ? '运行时' : diagnostic.code;
+                const message = typeof diagnostic === 'string' ? diagnostic : diagnostic.message;
+                return (
+                  <div className="dashboard-knowledge-diagnostic" key={`${code}-${index}`}>
+                    <Tag bordered={false}>{code}</Tag>
+                    <span>{message}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      </div>
+      {!disabled && (
+        <div className="dashboard-knowledge-actions" aria-label="项目知识插件操作">
+          <Button
+            size="small"
+            disabled={page.projectPaused}
+            onClick={() => onInvoke('lifecycle', { action: 'disable' })}
+          >
+            暂停当前项目
+          </Button>
+          <Button
+            size="small"
+            danger
+            onClick={() =>
+              Modal.confirm({
+                title: '卸载项目知识插件？',
+                content: '卸载只停止当前插件，不会删除项目文档或配置。',
+                okText: '卸载',
+                cancelText: '取消',
+                onOk: () => onInvoke('lifecycle', { action: 'uninstall' }),
+              })
+            }
+          >
+            卸载插件
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

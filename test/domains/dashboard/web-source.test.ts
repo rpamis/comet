@@ -50,6 +50,26 @@ describe('dashboard web source contracts', () => {
     expect(page?.[0]).not.toContain('dashboard-plugin-grid');
   });
 
+  it('keeps Project Knowledge read-only with bounded status and diagnostics', async () => {
+    const [source, styles] = await Promise.all([readDashboardSource(), readDashboardStyles()]);
+    const page = source.match(
+      /function ProjectKnowledgeCenter\([\s\S]*?\n}\n\nfunction PersonalMemoryCenter/,
+    );
+
+    expect(page?.[0]).toContain('dashboard-knowledge-status');
+    expect(page?.[0]).toContain('dashboard-knowledge-summary');
+    expect(page?.[0]).toContain('dashboard-knowledge-diagnostics');
+    expect(page?.[0]).toContain('tokenEnv');
+    expect(page?.[0]).toContain('tokenConfigured');
+    expect(page?.[0]).toContain("onInvoke('lifecycle', { action: 'disable' })");
+    expect(page?.[0]).toContain("onInvoke('lifecycle', { action: 'uninstall' })");
+    expect(page?.[0]).toContain('没有新的诊断');
+    expect(page?.[0]).not.toContain('<Input');
+    expect(page?.[0]).not.toContain('搜索');
+    expect(styles).toContain('.dashboard-knowledge-status');
+    expect(styles).toContain('.dashboard-knowledge-summary');
+  });
+
   it('uses the change-detail width to switch between stacked and two-column panels', async () => {
     const [source, styles] = await Promise.all([readDashboardSource(), readDashboardStyles()]);
 
