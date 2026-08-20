@@ -1,5 +1,127 @@
 import { expect, test } from '@playwright/test';
 
+test('shows Project Knowledge status and project pause transitions', async ({ page }) => {
+  let paused = false;
+  const projectKnowledgePage = () => ({
+    pluginId: 'comet.project-knowledge',
+    label: '项目知识',
+    route: '/plugins/project-knowledge',
+    status: paused ? 'disabled' : 'enabled',
+    globallyDisabled: false,
+    projectPaused: paused,
+    diagnostics: [],
+    data: paused
+      ? null
+      : {
+          provider: 'remote',
+          configured: true,
+          remote: {
+            endpoint: 'https://example.test/retrieve',
+            tokenEnv: 'COMET_KNOWLEDGE_TOKEN',
+            tokenConfigured: true,
+            scope: 'team-a',
+            timeoutMs: 1200,
+          },
+          retrieval: 'Remote 配置仅表示已配置，不代表最近一次请求成功。',
+          diagnostics: [],
+        },
+  });
+
+  await page.route('**/api/dashboard/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/dashboard/projects') {
+      await route.fulfill({
+        json: {
+          currentProjectId: 'fixture-project',
+          projects: [
+            {
+              id: 'fixture-project',
+              name: 'Fixture',
+              path: '/fixture',
+              lastSeenAt: null,
+              availability: 'available',
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/overview')) {
+      await route.fulfill({
+        json: {
+          project: { name: 'Fixture', path: '/fixture', generatedAt: '2026-08-20T00:00:00.000Z' },
+          summary: {
+            activeChanges: 0,
+            archivedChanges: 0,
+            verifyFailed: 0,
+            tasksIncomplete: 0,
+            dirtyFiles: 0,
+          },
+          initialChanges: { status: 'active', items: [], total: 0, nextCursor: null },
+          git: {
+            branch: 'main',
+            head: 'abc1234',
+            dirtyFiles: 0,
+            dirtyFileList: [],
+            recentCommits: [],
+          },
+          risks: [],
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/changes')) {
+      await route.fulfill({ json: { status: 'active', items: [], total: 0, nextCursor: null } });
+      return;
+    }
+    if (url.pathname.endsWith('/plugins/comet.project-knowledge/lifecycle')) {
+      const body = route.request().postDataJSON() as { action?: string };
+      paused = body.action === 'disable';
+      await route.fulfill({ json: {} });
+      return;
+    }
+    if (url.pathname.endsWith('/plugins/comet.project-knowledge')) {
+      await route.fulfill({ json: projectKnowledgePage() });
+      return;
+    }
+    if (url.pathname.endsWith('/plugins')) {
+      const current = projectKnowledgePage();
+      await route.fulfill({
+        json: {
+          pages: [
+            {
+              pluginId: current.pluginId,
+              label: current.label,
+              route: current.route,
+              status: current.status,
+              globallyDisabled: current.globallyDisabled,
+              projectPaused: current.projectPaused,
+              diagnostics: current.diagnostics,
+            },
+          ],
+        },
+      });
+      return;
+    }
+    await route.continue();
+  });
+
+  await page.goto('/');
+  await page.getByRole('menuitem', { name: '项目知识' }).click();
+  await expect(page.getByRole('heading', { name: '项目知识' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '配置摘要' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '最近诊断' })).toBeVisible();
+  await expect(page.getByText('COMET_KNOWLEDGE_TOKEN')).toBeVisible();
+  await expect(page.getByText('bearer-secret', { exact: true })).toHaveCount(0);
+
+  await page.getByRole('button', { name: '暂停当前项目' }).click();
+  await expect(page.getByText('当前项目已暂停项目知识', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '重新启用' }).click();
+  await expect(page.getByText('当前项目', { exact: true }).last()).toBeVisible();
+  await expect(page.getByText('已启用', { exact: true }).last()).toBeVisible();
+});
+
 test('loads the demo dashboard and previews an artifact', async ({ page }) => {
   const consoleErrors: string[] = [];
   page.on('console', (message) => {
