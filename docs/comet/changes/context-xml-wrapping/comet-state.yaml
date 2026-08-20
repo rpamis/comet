@@ -1,0 +1,186 @@
+schema: comet.native.v4
+name: context-xml-wrapping
+language: zh-CN
+phase: build
+status: active
+state_version: 2
+brief: brief.md
+spec_changes:
+  - capability: context-injection
+    operation: create
+    source: specs/context-injection/spec.md
+workspace:
+  isolation: worktree
+  change_branch: comet/context-xml-wrapping
+  target_branch: beta20
+  finish: null
+loop:
+  stage: building
+  goal_cycle: 1
+  iteration: 1
+  attempt: 0
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: submit-builder-candidate
+acceptance:
+  - id: A1
+    source: brief.md
+    text: A1：个人记忆贡献以单个 `<personal_memory>...</personal_memory>` 元素返回，正文和现有 Markdown
+      换行保留。
+    result: pending
+    reason: null
+  - id: A2
+    source: brief.md
+    text: A2：项目知识贡献以单个 `<project_knowledge>...</project_knowledge>` 元素返回，正文和来源引用保留。
+    result: pending
+    reason: null
+  - id: A3
+    source: brief.md
+    text: A3：贡献正文中的 `&`、`<`、`>`、`"`、`'` 被转义，生成的上下文可作为 XML 文本安全传递。
+    result: pending
+    reason: null
+  - id: A4
+    source: brief.md
+    text: A4：空贡献不生成空标签；未知插件贡献保持原文，且贡献数量和顺序不变。
+    result: pending
+    reason: null
+  - id: A5
+    source: brief.md
+    text: A5：个人记忆和项目知识仍沿用现有桥接、配置策略和非阻塞错误处理；相关测试覆盖包装边界且无既有回归。
+    result: pending
+    reason: null
+  - id: A6
+    source: specs/context-injection/spec.md
+    text: 统一插件上下文注入的外层结构，让 Agent 能区分用户偏好类个人记忆与项目证据类项目知识，同时不改变两类插件已有的召回行为。
+    result: pending
+    reason: null
+  - id: A7
+    source: specs/context-injection/spec.md
+    text: "`collectCometPluginContext` 先使用现有 `CometPluginBridge.collectContext`
+      获取已合并的插件贡献，再按稳定的插件 ID 转换返回文本："
+    result: pending
+    reason: null
+  - id: A8
+    source: specs/context-injection/spec.md
+    text: "`comet.personal-memory` → `<personal_memory>...</personal_memory>`；"
+    result: pending
+    reason: null
+  - id: A9
+    source: specs/context-injection/spec.md
+    text: "`comet.project-knowledge` → `<project_knowledge>...</project_knowledge>`；"
+    result: pending
+    reason: null
+  - id: A10
+    source: specs/context-injection/spec.md
+    text: 其他插件 ID → 原文本，不添加包装。
+    result: pending
+    reason: null
+  - id: A11
+    source: specs/context-injection/spec.md
+    text: 每个已知插件 ID 的贡献最多出现一个顶层元素。插件桥的合并、贡献顺序和返回数量保持不变。
+    result: pending
+    reason: null
+  - id: A12
+    source: specs/context-injection/spec.md
+    text: 包装体内保留插件生成的正文、Markdown 标记、来源引用和换行。正文中的下列字符必须转义，且按此顺序处理以避免二次解释：
+    result: pending
+    reason: null
+  - id: A13
+    source: specs/context-injection/spec.md
+    text: "| 字符 | XML 文本转义 |"
+    result: pending
+    reason: null
+  - id: A14
+    source: specs/context-injection/spec.md
+    text: "| `&` | `&amp;` |"
+    result: pending
+    reason: null
+  - id: A15
+    source: specs/context-injection/spec.md
+    text: "| `<` | `&lt;` |"
+    result: pending
+    reason: null
+  - id: A16
+    source: specs/context-injection/spec.md
+    text: "| `>` | `&gt;` |"
+    result: pending
+    reason: null
+  - id: A17
+    source: specs/context-injection/spec.md
+    text: '| `"` | `&quot;` |'
+    result: pending
+    reason: null
+  - id: A18
+    source: specs/context-injection/spec.md
+    text: "| `'` | `&apos;` |"
+    result: pending
+    reason: null
+  - id: A19
+    source: specs/context-injection/spec.md
+    text: 固定标签本身不接受用户输入，不能被正文内容闭合或改变。
+    result: pending
+    reason: null
+  - id: A20
+    source: specs/context-injection/spec.md
+    text: 如果已知插件贡献的正文为空或仅包含空白字符，保持该贡献为空文本并且不输出空标签。插件桥或单个 Provider
+      出错时继续使用现有非阻塞路径；本规格不改变诊断、配置或错误处理。
+    result: pending
+    reason: null
+  - id: A21
+    source: specs/context-injection/spec.md
+    text: Personal Memory 的检索开关、Project Knowledge 的 Local/Remote
+      配置、召回上限、排序、来源引用、Dashboard 页面和插件生命周期均保持既有行为。调用方仍接收原有贡献数组结构，只是两个已知插件的 `text`
+      字段增加稳定 XML 外层。
+    result: pending
+    reason: null
+  - id: A22
+    source: specs/context-injection/spec.md
+    text: "**Given** 个人记忆插件返回非空正文，**When** 任务收集插件上下文，**Then** 该正文恰好被一个
+      `<personal_memory>` 根元素包裹，正文内容和顺序不变。"
+    result: pending
+    reason: null
+  - id: A23
+    source: specs/context-injection/spec.md
+    text: "**Given** 项目知识插件返回非空正文，**When** 任务收集插件上下文，**Then** 该正文恰好被一个
+      `<project_knowledge>` 根元素包裹，来源引用和换行不丢失。"
+    result: pending
+    reason: null
+  - id: A24
+    source: specs/context-injection/spec.md
+    text: "**Given** 任一已知插件正文包含 `&`、`<`、`>`、`\"` 或 `'`，**When** 生成注入文本，**Then**
+      这些字符分别输出为 `&amp;`、`&lt;`、`&gt;`、`&quot;` 和 `&apos;`，且正文不能注入新的 XML 元素。"
+    result: pending
+    reason: null
+  - id: A25
+    source: specs/context-injection/spec.md
+    text: "**Given** 已知插件返回空白正文或未知插件返回文本，**When** 生成注入文本，**Then**
+      已知空白贡献不产生空标签，未知插件保持原文，贡献数组数量和顺序不变。"
+    result: pending
+    reason: null
+  - id: A26
+    source: specs/context-injection/spec.md
+    text: "**Given** 个人记忆或项目知识的配置、召回和失败路径，**When** 任务收集上下文，**Then**
+      仍使用既有策略和非阻塞错误处理，新增测试及受影响测试通过。"
+    result: pending
+    reason: null
+builder_handoff: null
+blockers: []
+verification: null
+history: []
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pending
+verification_report: null
+archived: false
+created_at: 2026-08-20T11:24:08.193Z
