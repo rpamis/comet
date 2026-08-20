@@ -308,6 +308,7 @@ export async function findNativeV1SupervisorParents(options: {
   const sources = await workspaceSources(options.paths);
   const candidates: NativeV1SupervisorParentCandidate[] = [];
   const blockers: string[] = [];
+  const matchingParents: string[] = [];
   for (const source of sources) {
     let entries: import('node:fs').Dirent[];
     try {
@@ -328,9 +329,6 @@ export async function findNativeV1SupervisorParents(options: {
         continue;
       }
       if (state.phase !== 'build' || state.status !== 'active') continue;
-      if (options.targetBranch === null || state.workspace.change_branch !== options.targetBranch) {
-        continue;
-      }
       const contract = await readNativeChildrenContract({
         changeDir,
         ...(state.acceptance.length > 0
@@ -339,6 +337,19 @@ export async function findNativeV1SupervisorParents(options: {
       });
       if (!contract || contract.contract.schema !== NATIVE_CHILDREN_SCHEMA) continue;
       if (!contract.contract.children.some(({ name }) => name === options.childName)) continue;
+      matchingParents.push(state.name);
+      if (options.targetBranch === null) {
+        blockers.push(
+          `Native Supervisor Child ${options.childName} has no target branch to match parent ${state.name}`,
+        );
+        continue;
+      }
+      if (state.workspace.target_branch !== options.targetBranch) {
+        blockers.push(
+          `Native Supervisor parent ${state.name} targets ${state.workspace.target_branch ?? '(missing)'}, not ${options.targetBranch}`,
+        );
+        continue;
+      }
       const binding = inspectGitWorktree(source.projectRoot);
       if (binding.currentBranch !== state.workspace.change_branch) {
         blockers.push(
@@ -348,17 +359,30 @@ export async function findNativeV1SupervisorParents(options: {
       }
       const parentPaths = source.paths;
       const inspection = await inspectNativeChildren({ paths: parentPaths, state });
-      if (inspection?.allDone && inspection.confirmed) {
+      if (!inspection) {
+        blockers.push(`Native Supervisor parent ${state.name} has no readable Child inspection`);
+      } else if (!inspection.confirmed) {
+        blockers.push(`Native Supervisor parent ${state.name} requires Shape confirmation`);
+      } else if (inspection.allDone) {
         candidates.push({ paths: parentPaths, state, inspection });
-      } else if (inspection?.children.some(({ message }) => message)) {
+      } else {
+        const incomplete = inspection.children
+          .filter(({ status }) => status !== 'done')
+          .map(({ name, status, message }) => `${name}=${status}${message ? ` (${message})` : ''}`)
+          .join(', ');
         blockers.push(
-          inspection.children.find(({ message }) => message)?.message ??
-            `Native Supervisor parent ${state.name} is not ready to advance`,
+          `Native Supervisor parent ${state.name} is not ready to advance: ${incomplete || 'Child facts are incomplete'}`,
         );
       }
     }
   }
-  if (candidates.length === 1) return { candidate: candidates[0], blockers };
+  if (matchingParents.length > 1) {
+    blockers.push(
+      `Native Supervisor Child ${options.childName} has multiple active parents: ${matchingParents.join(', ')}`,
+    );
+  }
+  if (candidates.length === 1 && blockers.length === 0)
+    return { candidate: candidates[0], blockers };
   if (candidates.length > 1) {
     blockers.push(
       `Native Supervisor Child ${options.childName} has multiple eligible parents: ${candidates

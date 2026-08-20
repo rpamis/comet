@@ -561,6 +561,48 @@ children:
     });
     expect(discoveredParent.candidate?.state.name).toBe('parent');
 
+    const pendingParentName = 'parent-pending';
+    const pendingParentDir = nativePortableChangeDir(parentPaths, pendingParentName);
+    await fs.cp(parentDir, pendingParentDir, { recursive: true });
+    const pendingParentState = await readNativePortableState(
+      path.join(pendingParentDir, 'comet-state.yaml'),
+    );
+    pendingParentState.name = pendingParentName;
+    const pendingChildrenSource = `${CHILDREN}  - name: child-pending\n    depends_on: []\n    covers: []\n`;
+    await fs.writeFile(path.join(pendingParentDir, 'children.yaml'), pendingChildrenSource);
+    pendingParentState.children_contract_hash = hashNativeParentContract({
+      acceptance: pendingParentState.acceptance,
+      children: parseNativeChildrenContract(
+        pendingChildrenSource,
+        pendingParentState.acceptance.map(({ id }) => id),
+      ),
+    });
+    await writeNativePortableState(
+      path.join(pendingParentDir, 'comet-state.yaml'),
+      pendingParentState,
+    );
+    const ambiguousParent = await findNativeV1SupervisorParents({
+      paths: parentPaths,
+      childName: 'child-c',
+      targetBranch: 'integration',
+    });
+    expect(ambiguousParent.candidate).toBeNull();
+    expect(ambiguousParent.blockers.join('\n')).toMatch(
+      /multiple active parents|parent-pending is not ready to advance/iu,
+    );
+    pendingParentState.workspace.target_branch = 'other';
+    await writeNativePortableState(
+      path.join(pendingParentDir, 'comet-state.yaml'),
+      pendingParentState,
+    );
+    const mismatchedParent = await findNativeV1SupervisorParents({
+      paths: parentPaths,
+      childName: 'child-c',
+      targetBranch: 'integration',
+    });
+    expect(mismatchedParent.candidate).toBeNull();
+    expect(mismatchedParent.blockers.join('\n')).toMatch(/targets other, not integration/iu);
+
     const integrated = await nativeNextCommand(
       ['parent', '--summary', 'Verify the final integrated parent result'],
       repository,
