@@ -13,6 +13,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **Task context boundaries**: Personal memory and project knowledge references are now wrapped in distinct XML elements so Agents can distinguish user preferences from project evidence.
 - **Personal memory project policy**: Projects can now allow or prohibit automatic memory learning and Agent context injection through the shared `memory` section in `.comet/config.yaml`, while explicit personal memory management remains available.
 - **Personal memory experience**: CLI, Dashboard, readable Markdown, and dedicated Git synchronization now share one authoritative memory state with localized output, explicit correction/forget/rollback controls, conflict protection, and non-blocking background failures.
 - **Dashboard startup performance**: Missing project registrations and stale, internal, or detached worktrees no longer trigger unnecessary Git and Native scans, while SQLite refreshes cached sources that are no longer valid.
