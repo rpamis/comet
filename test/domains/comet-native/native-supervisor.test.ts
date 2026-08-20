@@ -42,7 +42,12 @@ import {
   applyNativeRunnerInput,
   parseNativeRunnerInput,
 } from '../../../domains/comet-native/native-runner-input.js';
-import { createNativePortableChange } from '../../../domains/comet-native/native-portable-runtime.js';
+import {
+  confirmNativePortableShape,
+  createNativePortableChange,
+  nativePortableChangeDir,
+  tryAutoAdvanceNativeSupervisorParent,
+} from '../../../domains/comet-native/native-portable-runtime.js';
 
 const CONTRACT = parseNativeChildrenContract(`
 schema: comet.native.children.v2
@@ -56,6 +61,106 @@ children:
 `);
 
 describe('Native Supervisor v2 state', () => {
+  it('automatically advances the parent after the final integrated Child', async () => {
+    const repository = await fs.mkdtemp(path.join(process.cwd(), '.tmp-supervisor-auto-advance-'));
+    try {
+      const git = (args: string[]) =>
+        execFileSync('git', args, { cwd: repository, encoding: 'utf8' }).trim();
+      git(['init', '-b', 'main']);
+      git(['config', 'user.email', 'native@example.test']);
+      git(['config', 'user.name', 'Native Test']);
+      const config = defaultProjectConfig('docs', 'en');
+      config.workflows = ['native'];
+      config.default_workflow = 'native';
+      await writeProjectConfig(repository, config);
+      await fs.writeFile(path.join(repository, 'README.md'), 'seed\n');
+      git(['add', '.']);
+      git(['commit', '-m', 'seed']);
+      const paths = await nativeProjectPaths(repository, 'docs');
+      await ensureNativeDirectories(paths);
+      await createNativePortableChange({
+        paths,
+        name: 'parent',
+        language: 'en',
+        workspaceBinding: {
+          isolation: 'current',
+          changeBranch: 'main',
+          targetBranch: 'main',
+        },
+      });
+      const changeDir = nativePortableChangeDir(paths, 'parent');
+      await fs.writeFile(
+        path.join(changeDir, 'brief.md'),
+        '# Acceptance examples\n- The integrated behavior is available.\n',
+      );
+      await fs.mkdir(path.join(changeDir, 'specs', 'supervisor'), { recursive: true });
+      await fs.writeFile(
+        path.join(changeDir, 'specs', 'supervisor', 'spec.md'),
+        '# Requirement\n\nThe integrated behavior MUST be available.\n',
+      );
+      await fs.writeFile(
+        path.join(changeDir, 'children.yaml'),
+        'schema: comet.native.children.v2\nchildren:\n  - name: core\n    summary: Core behavior.\n    depends_on: []\n',
+      );
+      const shaped = await confirmNativePortableShape({ paths, name: 'parent' });
+      const supervisor = await readNativeSupervisorState(paths, 'parent');
+      expect(supervisor).not.toBeNull();
+      const targetCommit = git(['rev-parse', 'main']);
+      const verified = markNativeSupervisorChildVerified(supervisor!, {
+        name: 'core',
+        baseCommit: targetCommit,
+        verifiedCommit: targetCommit,
+        evidence: { summary: 'verified', checks: ['child test'] },
+      });
+      await writeNativeSupervisorState(
+        paths,
+        integrateNativeSupervisorChild(verified, {
+          name: 'core',
+          integrationCommit: targetCommit,
+          checks: [{ name: 'integration test', status: 'passed' }],
+        }),
+      );
+
+      const advanced = await tryAutoAdvanceNativeSupervisorParent({
+        paths,
+        name: shaped.name,
+        trigger: 'v2-integrate',
+      });
+      expect(advanced.parentAdvance).toMatchObject({
+        advanced: true,
+        parent: 'parent',
+        message: 'All Children are complete; the Supervisor parent is entering final verification.',
+      });
+      expect(advanced.state).toMatchObject({ phase: 'verify', status: 'active' });
+      const repeated = await tryAutoAdvanceNativeSupervisorParent({
+        paths,
+        name: 'parent',
+        trigger: 'recovery',
+      });
+      expect(repeated.parentAdvance.advanced).toBe(false);
+      expect(repeated.state.state_version).toBe(advanced.state.state_version);
+    } finally {
+      try {
+        execFileSync(
+          'git',
+          [
+            'worktree',
+            'remove',
+            '--force',
+            path.join(repository, '.worktrees', 'parent-integration'),
+          ],
+          {
+            cwd: repository,
+            stdio: 'ignore',
+          },
+        );
+      } catch {
+        // Preserve the assertion failure when setup did not reach a worktree.
+      }
+      await fs.rm(repository, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
+  });
+
   it('parses persisted coordination recovery inputs with strict run identity', () => {
     expect(
       parseNativeRunnerInput({

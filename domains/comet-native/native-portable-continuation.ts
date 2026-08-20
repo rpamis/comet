@@ -23,6 +23,7 @@ export interface NativePortableContinuation {
     | 'resolve-verifier-blocker'
     | 'resolve-loop-stop'
     | 'advance-children'
+    | 'advance-parent'
     | 'builder-handoff'
     | 'dispatch-verifier'
     | 'await-verifier'
@@ -299,7 +300,7 @@ export function nativePortableContinuation(
         return {
           ...base,
           disposition: 'continue',
-          action: 'advance-children',
+          action: 'advance-parent',
           commandArgs: ['comet', 'native', 'next', state.name, '--summary', '<summary>'],
           requiredInputs: ['summary'],
           inputOptions: [

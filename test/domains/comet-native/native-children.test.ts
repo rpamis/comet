@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { nativeArchiveCommand } from '../../../domains/comet-native/native-archive-command.js';
 import {
   hashNativeParentContract,
+  findNativeV1SupervisorParents,
   inspectNativeChildren,
   parseNativeChildrenContract,
 } from '../../../domains/comet-native/native-children.js';
@@ -553,6 +554,12 @@ children:
     git(repository, ['commit', '-m', 'record merged child projections']);
     const allDone = await inspectNativeChildren({ paths: parentPaths, state: parentAfterMerge });
     expect(allDone?.allDone).toBe(true);
+    const discoveredParent = await findNativeV1SupervisorParents({
+      paths: parentPaths,
+      childName: 'child-c',
+      targetBranch: 'integration',
+    });
+    expect(discoveredParent.candidate?.state.name).toBe('parent');
 
     const integrated = await nativeNextCommand(
       ['parent', '--summary', 'Verify the final integrated parent result'],

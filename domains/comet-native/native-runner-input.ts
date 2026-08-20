@@ -18,6 +18,7 @@ import {
   returnNativePortableChangeToBuild,
   submitNativePortableBuilderCandidate,
   submitNativePortableVerifierResult,
+  tryAutoAdvanceNativeSupervisorParent,
 } from './native-portable-runtime.js';
 import {
   applyNativeSupervisorBuilderResult,
@@ -778,16 +779,21 @@ export async function applyNativeRunnerInput(options: {
       name: input.child,
       checks: input.checks,
     });
+    const parentAdvance = await tryAutoAdvanceNativeSupervisorParent({
+      paths: options.paths,
+      name: options.name,
+      trigger: 'v2-integrate',
+    });
+    const finalState = parentAdvance.state;
     return {
-      state: await readNativePortableChange(options.paths, options.name),
+      state: finalState,
       supervisorState: state,
       supervisorTask: null,
       checks: input.checks,
       requestChecks: null,
       verifierDispatch: null,
-      continuation: nativePortableContinuation(
-        await readNativePortableChange(options.paths, options.name),
-      ),
+      parentAdvance: parentAdvance.parentAdvance,
+      continuation: nativePortableContinuation(finalState),
     };
   }
   if (

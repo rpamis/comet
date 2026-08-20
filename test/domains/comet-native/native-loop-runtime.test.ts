@@ -116,6 +116,28 @@ function resubmitRepair(
 }
 
 describe('Native portable Build/Verify loop', () => {
+  it('returns an automatic parent-advance continuation when every child is done', () => {
+    const state = confirmNativePortableAcceptance({
+      state: createNativePortableState({ name: 'parent-change', language: 'en' }),
+      acceptance: [{ id: 'A1', source: 'brief.md', text: 'Parent behavior works.' }],
+    });
+    const continuation = nativePortableContinuation(state, {
+      contractHash: 'contract',
+      confirmed: true,
+      parentBranch: 'comet/supervisor/parent/integration',
+      children: [],
+      readyChildren: [],
+      allDone: true,
+    });
+
+    expect(continuation).toMatchObject({
+      disposition: 'continue',
+      action: 'advance-parent',
+      requiredInputs: ['summary'],
+      commandArgs: ['comet', 'native', 'next', state.name, '--summary', '<summary>'],
+    });
+  });
+
   it('requires user confirmation before a package-local pass becomes archive-ready', () => {
     const { state, runner } = buildState();
     const result = applyNativeVerifierEnvelope({

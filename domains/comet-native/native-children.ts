@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { parseDocument } from 'yaml';
 
-import { listGitWorktreeRoots } from '../../platform/paths/git-worktree.js';
+import { inspectGitWorktree, listGitWorktreeRoots } from '../../platform/paths/git-worktree.js';
 import { runGitCommand } from '../../platform/process/git.js';
 
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
@@ -85,6 +85,12 @@ interface WorkspaceSource {
   projectRoot: string;
   paths: NativeProjectPaths;
   parent: boolean;
+}
+
+export interface NativeV1SupervisorParentCandidate {
+  paths: NativeProjectPaths;
+  state: NativePortableState;
+  inspection: NativeChildrenInspection;
 }
 
 interface ChildFact {
@@ -283,6 +289,84 @@ async function workspaceSources(paths: NativeProjectPaths): Promise<WorkspaceSou
     sources.push({ projectRoot: paths.projectRoot, paths, parent: true });
   }
   return sources;
+}
+
+/**
+ * Locate the unique active v1 Supervisor parent for a Child archive. v1 is
+ * intentionally discovered from its declared children contract and current
+ * Git binding; v2 Supervisor state is never inferred from this compatibility
+ * path.
+ */
+export async function findNativeV1SupervisorParents(options: {
+  paths: NativeProjectPaths;
+  childName: string;
+  targetBranch: string | null;
+}): Promise<{
+  candidate: NativeV1SupervisorParentCandidate | null;
+  blockers: string[];
+}> {
+  const sources = await workspaceSources(options.paths);
+  const candidates: NativeV1SupervisorParentCandidate[] = [];
+  const blockers: string[] = [];
+  for (const source of sources) {
+    let entries: import('node:fs').Dirent[];
+    try {
+      entries = await fs.readdir(source.paths.changesDir, { withFileTypes: true });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      throw error;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.isSymbolicLink() || entry.name === options.childName) {
+        continue;
+      }
+      const changeDir = path.join(source.paths.changesDir, entry.name);
+      let state: NativePortableState;
+      try {
+        state = await readNativePortableState(path.join(changeDir, 'comet-state.yaml'));
+      } catch {
+        continue;
+      }
+      if (state.phase !== 'build' || state.status !== 'active') continue;
+      if (options.targetBranch === null || state.workspace.change_branch !== options.targetBranch) {
+        continue;
+      }
+      const contract = await readNativeChildrenContract({
+        changeDir,
+        ...(state.acceptance.length > 0
+          ? { acceptanceIds: state.acceptance.map(({ id }) => id) }
+          : {}),
+      });
+      if (!contract || contract.contract.schema !== NATIVE_CHILDREN_SCHEMA) continue;
+      if (!contract.contract.children.some(({ name }) => name === options.childName)) continue;
+      const binding = inspectGitWorktree(source.projectRoot);
+      if (binding.currentBranch !== state.workspace.change_branch) {
+        blockers.push(
+          `Native Supervisor parent ${state.name} is not bound to branch ${state.workspace.change_branch}`,
+        );
+        continue;
+      }
+      const parentPaths = source.paths;
+      const inspection = await inspectNativeChildren({ paths: parentPaths, state });
+      if (inspection?.allDone && inspection.confirmed) {
+        candidates.push({ paths: parentPaths, state, inspection });
+      } else if (inspection?.children.some(({ message }) => message)) {
+        blockers.push(
+          inspection.children.find(({ message }) => message)?.message ??
+            `Native Supervisor parent ${state.name} is not ready to advance`,
+        );
+      }
+    }
+  }
+  if (candidates.length === 1) return { candidate: candidates[0], blockers };
+  if (candidates.length > 1) {
+    blockers.push(
+      `Native Supervisor Child ${options.childName} has multiple eligible parents: ${candidates
+        .map(({ state }) => state.name)
+        .join(', ')}`,
+    );
+  }
+  return { candidate: null, blockers };
 }
 
 async function readActiveChild(

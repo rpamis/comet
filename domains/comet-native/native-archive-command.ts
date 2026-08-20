@@ -12,6 +12,7 @@ import {
   isNativePortableChange,
   readNativePortableChange,
   setNativePortableWorkspaceFinish,
+  tryAutoAdvanceNativeV1SupervisorParent,
 } from './native-portable-runtime.js';
 import type { NativeWorkspaceFinish } from './native-workspace.js';
 import {
@@ -239,13 +240,22 @@ export async function nativeArchiveCommand(
         };
       }
     }
+    const parentAdvance =
+      workspaceFinishResult?.merged === true
+        ? await tryAutoAdvanceNativeV1SupervisorParent({
+            childPaths: configured.paths,
+            childState: result.state,
+          })
+        : null;
     return success(
       'archive',
       {
         ...result,
         workspaceFinish: result.state.workspace.finish,
         workspaceFinishResult,
-        continuation: nativePortableContinuation(result.state),
+        ...(parentAdvance ? { parentAdvance: parentAdvance.parentAdvance } : {}),
+        ...(parentAdvance?.parentState ? { parentState: parentAdvance.parentState } : {}),
+        continuation: nativePortableContinuation(parentAdvance?.parentState ?? result.state),
       },
       `Archived Native change ${name} to ${result.archiveDir}\n`,
     );
