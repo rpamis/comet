@@ -60,7 +60,12 @@ export function listBundlePlatformTargets(options: {
     const platformRoot = path.join(baseDir, getPlatformSkillsDir(platform, options.scope));
     const capabilities = new Set<BundleCapability>(['skills', 'scripts', 'references', 'assets']);
     if (platform.rulesDir && platform.rulesFormat) capabilities.add('rules');
-    if (platform.supportsHooks && platform.hookFormat) capabilities.add('hooks');
+    // OMP's Hook surface is an in-process TypeScript extension module. The
+    // Comet workflow Router has a dedicated bridge, while portable Bundle
+    // hook compilation remains limited to command-based host formats.
+    if (platform.supportsHooks && platform.hookFormat && platform.hookFormat !== 'omp') {
+      capabilities.add('hooks');
+    }
     if (platform.id === 'claude') capabilities.add('agents');
     return {
       id: platform.id,
@@ -162,7 +167,7 @@ export function planBundleHook(
 } | null {
   const format = target.platform.hookFormat;
   const destination = hookDestination(target, hook.id);
-  if (!target.layout.hooksSupported || !format || !destination) return null;
+  if (!target.layout.hooksSupported || !format || format === 'omp' || !destination) return null;
   if (!['before_tool', 'before_write'].includes(hook.event)) return null;
   const script = scripts.find((item) => item.id === hook.script);
   if (!script || !target.layout.scriptsRoot) return null;

@@ -6,6 +6,10 @@ export type PlatformTargetResolution = {
   native: boolean;
 };
 
+const PLATFORM_ID_ALIASES: Readonly<Record<string, string>> = {
+  omp: 'oh-my-pi',
+};
+
 export function resolvePlatformTarget(
   platformId: string,
   scope: InstallScope,
@@ -18,7 +22,8 @@ export function resolvePlatformTarget(
     throw new Error('--platform must contain only lowercase letters, numbers, and hyphens');
   }
 
-  const registered = PLATFORMS.find((platform) => platform.id === normalized);
+  const canonicalId = PLATFORM_ID_ALIASES[normalized] ?? normalized;
+  const registered = PLATFORMS.find((platform) => platform.id === canonicalId);
   if (registered) {
     return { platform: registered, native: true };
   }

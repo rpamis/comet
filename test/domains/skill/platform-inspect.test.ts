@@ -48,6 +48,8 @@ function hookConfigPath(baseDir: string, platformId: string): string {
       return path.join(baseDir, '.github', 'hooks', 'comet-guard.json');
     case 'kiro':
       return path.join(baseDir, '.kiro', 'hooks', 'comet-hook-router.kiro.hook');
+    case 'oh-my-pi':
+      return path.join(baseDir, '.omp', 'hooks', 'pre', 'comet-hook-router.ts');
     default:
       throw new Error(`missing Hook path fixture: ${platformId}`);
   }
@@ -85,6 +87,7 @@ describe('platform component inspection', () => {
     ['cursor', '.cursor/rules/comet-workflow-guard.mdc'],
     ['codex', '.codex/rules/comet-workflow-guard.md'],
     ['github-copilot', '.github/instructions/comet-workflow-guard.instructions.md'],
+    ['oh-my-pi', '.omp/rules/comet-workflow-guard.mdc'],
   ])(
     'returns the normalized language-independent Rule destination for %s',
     async (id, relative) => {
@@ -102,7 +105,7 @@ describe('platform component inspection', () => {
     expect(await fs.readdir(tmpDir)).toEqual([]);
   });
 
-  it.each(['claude', 'cursor', 'codex', 'github-copilot'])(
+  it.each(['claude', 'cursor', 'codex', 'github-copilot', 'oh-my-pi'])(
     'replaces both legacy %s Rules with one unified Rule while preserving user files',
     async (id) => {
       const target = platform(id);
@@ -141,6 +144,7 @@ describe('platform component inspection', () => {
     'trae-cn',
     'github-copilot',
     'kiro',
+    'oh-my-pi',
   ])('recognizes the managed Hook command in the %s format', async (id) => {
     const target = platform(id);
     await installManagedHookScripts(tmpDir, target);
@@ -173,13 +177,21 @@ describe('platform component inspection', () => {
     'trae-cn',
     'github-copilot',
     'kiro',
+    'oh-my-pi',
   ])('removes only the managed %s Router while preserving user configuration', async (id) => {
     const target = platform(id);
     const configPath = hookConfigPath(tmpDir, id);
-    if (id === 'kiro' || id === 'github-copilot') {
+    if (id === 'kiro' || id === 'github-copilot' || id === 'oh-my-pi') {
       await fs.mkdir(path.dirname(configPath), { recursive: true });
       await fs.writeFile(
-        path.join(path.dirname(configPath), id === 'kiro' ? 'personal.kiro.hook' : 'personal.json'),
+        path.join(
+          path.dirname(configPath),
+          id === 'kiro'
+            ? 'personal.kiro.hook'
+            : id === 'oh-my-pi'
+              ? 'personal.ts'
+              : 'personal.json',
+        ),
         '{"userSetting":"keep"}\n',
       );
     } else {
@@ -204,7 +216,9 @@ describe('platform component inspection', () => {
         ? path.join(path.dirname(configPath), 'personal.kiro.hook')
         : id === 'github-copilot'
           ? path.join(path.dirname(configPath), 'personal.json')
-          : configPath;
+          : id === 'oh-my-pi'
+            ? path.join(path.dirname(configPath), 'personal.ts')
+            : configPath;
     expect(await fs.readFile(preservedPath, 'utf8')).toContain('userSetting');
   });
 
@@ -462,6 +476,24 @@ describe('platform component inspection', () => {
     expect(result.present).toBe(false);
     expect(result.error).toContain('Invalid Hook JSON');
     expect(await fs.readFile(configPath, 'utf8')).toBe(malformed);
+  });
+
+  it('does not overwrite or remove a user-owned Oh My Pi Hook at the Comet path', async () => {
+    const target = platform('oh-my-pi');
+    const hookPath = hookConfigPath(tmpDir, target.id);
+    const userSource = 'export default function userHook() {}\n';
+    await fs.mkdir(path.dirname(hookPath), { recursive: true });
+    await fs.writeFile(hookPath, userSource, 'utf8');
+
+    await expect(installCometHooksForPlatform(tmpDir, target, 'project')).resolves.toMatchObject({
+      status: 'failed',
+      reason: expect.stringContaining('user-owned'),
+    });
+    await expect(removeCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
+      removed: 0,
+      failed: 0,
+    });
+    await expect(fs.readFile(hookPath, 'utf8')).resolves.toBe(userSource);
   });
 
   it('does not report a current Hook healthy when its manifest-owned script is missing', async () => {

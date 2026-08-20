@@ -15,6 +15,7 @@ import type { InstallScope } from '../../platform/install/types.js';
 
 const VALID_TOOL_IDS = new Set(PLATFORMS.map((p) => p.openspecToolId));
 const MINIMUM_OPENSPEC_VERSION = '1.5.0';
+const OH_MY_PI_MINIMUM_OPENSPEC_VERSION = '1.6.0';
 const ALL_OPENSPEC_WORKFLOWS = [
   'propose',
   'explore',
@@ -498,9 +499,12 @@ function parseSemanticVersion(value: string): SemanticVersion | null {
   };
 }
 
-function isOpenSpecVersionCompatible(versionOutput: string): boolean {
+function isOpenSpecVersionCompatible(
+  versionOutput: string,
+  minimumVersion = MINIMUM_OPENSPEC_VERSION,
+): boolean {
   const actual = parseSemanticVersion(versionOutput);
-  const minimum = parseSemanticVersion(MINIMUM_OPENSPEC_VERSION);
+  const minimum = parseSemanticVersion(minimumVersion);
   if (!actual || !minimum) return false;
   for (const field of ['major', 'minor', 'patch'] as const) {
     if (actual[field] > minimum[field]) return true;
@@ -533,14 +537,15 @@ export function isOpenSpecCliCompatible(): boolean {
 async function ensureOpenSpecCli(
   projectPath: string,
   shouldInstall = true,
+  minimumVersion = MINIMUM_OPENSPEC_VERSION,
 ): Promise<'ready' | 'missing' | 'incompatible' | 'failed'> {
   const alreadyInstalled = isCommandAvailable('openspec');
   if (!shouldInstall) {
     if (!alreadyInstalled) return 'missing';
     const version = getOpenSpecVersion();
-    if (version && isOpenSpecVersionCompatible(version)) return 'ready';
+    if (version && isOpenSpecVersionCompatible(version, minimumVersion)) return 'ready';
     console.error(
-      `    OpenSpec ${version || 'version unknown'} is incompatible; Comet requires >= ${MINIMUM_OPENSPEC_VERSION}. The OpenSpec upgrade was not selected; rerun comet init and select OpenSpec, or run: npm install -g @fission-ai/openspec@latest`,
+      `    OpenSpec ${version || 'version unknown'} is incompatible; Comet requires >= ${minimumVersion}. The OpenSpec upgrade was not selected; rerun comet init and select OpenSpec, or run: npm install -g @fission-ai/openspec@latest`,
     );
     return 'incompatible';
   }
@@ -564,14 +569,14 @@ async function ensureOpenSpecCli(
   } catch (error) {
     if (alreadyInstalled) {
       const version = getOpenSpecVersion();
-      if (version && isOpenSpecVersionCompatible(version)) {
+      if (version && isOpenSpecVersionCompatible(version, minimumVersion)) {
         console.warn(
           `    OpenSpec upgrade failed, using compatible existing version ${version}: ${(error as Error).message}`,
         );
         return 'ready';
       }
       console.error(
-        `    OpenSpec upgrade failed and existing ${version || 'version could not be read'} is incompatible; Comet requires >= ${MINIMUM_OPENSPEC_VERSION}.`,
+        `    OpenSpec upgrade failed and existing ${version || 'version could not be read'} is incompatible; Comet requires >= ${minimumVersion}.`,
       );
       printCommandErrorDetails(error);
       return 'incompatible';
@@ -717,7 +722,10 @@ async function installOpenSpec(
       throw error;
     }
   }
-  const cliStatus = await ensureOpenSpecCli(projectPath, shouldInstallCli);
+  const minimumVersion = toolIds.includes('oh-my-pi')
+    ? OH_MY_PI_MINIMUM_OPENSPEC_VERSION
+    : MINIMUM_OPENSPEC_VERSION;
+  const cliStatus = await ensureOpenSpecCli(projectPath, shouldInstallCli, minimumVersion);
   if (cliStatus === 'failed' || cliStatus === 'incompatible') {
     return 'failed';
   }

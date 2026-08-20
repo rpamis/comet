@@ -142,7 +142,7 @@
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.2",
-    "@fission-ai/openspec": "^1.5.0",
+    "@fission-ai/openspec": "^1.6.0",
     "@inquirer/ansi": "^2.0.5",
     "@inquirer/core": "^11.1.10",
     "@inquirer/figures": "^2.0.5",

@@ -1,4 +1,5 @@
 import path from 'path';
+import { readFile } from 'fs/promises';
 
 import {
   getPlatformConfigDir,
@@ -11,7 +12,10 @@ import {
   buildHookCommand,
   computeRuleDestPath,
   isManagedHookCommand,
+  OMP_HOOK_MARKER,
+  OMP_HOOK_RELATIVE_PATH,
   readManifest,
+  renderOmpHookModule,
 } from './platform-install.js';
 import { readJsonObjectFile } from './json-object.js';
 import type { InitWorkflowSelection } from '../comet-entry/types.js';
@@ -479,6 +483,33 @@ export async function inspectCometHooksForPlatform(
     case 'kiro':
       inspection = await inspectKiroHooks(platformBase, expectedHooks);
       break;
+    case 'omp': {
+      const hookPath = path.join(platformBase, ...OMP_HOOK_RELATIVE_PATH);
+      try {
+        if (!(await fileExists(hookPath))) {
+          inspection = { present: false };
+          break;
+        }
+        const content = await readFile(hookPath, 'utf8');
+        if (content === renderOmpHookModule()) {
+          inspection = { present: true };
+        } else if (content.includes(OMP_HOOK_MARKER)) {
+          inspection = {
+            present: false,
+            managedPresent: true,
+            error: `managed Oh My Pi Hook is outdated at ${hookPath}`,
+          };
+        } else {
+          inspection = { present: false };
+        }
+      } catch (error) {
+        inspection = {
+          present: false,
+          error: `Unable to inspect Oh My Pi Hook at ${hookPath}: ${(error as Error).message}`,
+        };
+      }
+      break;
+    }
   }
 
   if (!inspection.present) return inspection;

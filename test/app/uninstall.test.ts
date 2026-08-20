@@ -1503,6 +1503,40 @@ describe('uninstallCommand interactive selection', () => {
     ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
+  it('uninstalls Oh My Pi Skills, Rule, and managed Hook while preserving user Hooks', async () => {
+    const omp = PLATFORMS.find((platform) => platform.id === 'oh-my-pi')!;
+    const userHook = path.join(tmpDir, '.omp', 'hooks', 'pre', 'user-hook.ts');
+    await copyCometSkillsForPlatform(tmpDir, omp, true, 'skills', 'project');
+    await copyCometRulesForPlatform(tmpDir, omp, true, 'en', 'project');
+    await installCometHooksForPlatform(tmpDir, omp, 'project');
+    await fs.writeFile(userHook, 'export default function userHook() {}\n', 'utf8');
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let jsonOutput: string;
+    try {
+      await uninstallCommand(tmpDir, { force: true, json: true });
+      jsonOutput = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(JSON.parse(jsonOutput).targets).toEqual([
+      expect.objectContaining({
+        scope: 'project',
+        platform: 'oh-my-pi',
+        hooksRemoved: 1,
+        rulesRemoved: 1,
+      }),
+    ]);
+    await expect(fs.access(path.join(tmpDir, '.omp', 'skills', 'comet'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    await expect(
+      fs.access(path.join(tmpDir, '.omp', 'rules', 'comet-workflow-guard.mdc')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(fs.readFile(userHook, 'utf8')).resolves.toContain('userHook');
+  });
+
   it('does not apply project registry recovery targets to an explicit global uninstall', async () => {
     const fakeHome = path.join(tmpDir, 'global-scope-recovery-home');
     const opencode = PLATFORMS.find((platform) => platform.id === 'opencode')!;

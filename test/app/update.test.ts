@@ -548,6 +548,35 @@ describe('update command helpers', () => {
     expect(settings.hooks.PreToolUse).toEqual([expect.objectContaining({ matcher: 'Write|Edit' })]);
   });
 
+  it('updates Oh My Pi through the omp alias with native Skills, Rule, and Hook paths', async () => {
+    const projectDir = path.join(tmpDir, 'oh-my-pi-project');
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(projectDir, {
+        json: true,
+        skipNpm: true,
+        scope: 'project',
+        platform: 'omp',
+      });
+    } finally {
+      log.mockRestore();
+    }
+
+    await expect(
+      fs.access(path.join(projectDir, '.omp', 'skills', 'comet', 'SKILL.md')),
+    ).resolves.toBeUndefined();
+    const rule = await fs.readFile(
+      path.join(projectDir, '.omp', 'rules', 'comet-workflow-guard.mdc'),
+      'utf8',
+    );
+    expect(rule).toContain('alwaysApply: true');
+    const hook = await fs.readFile(
+      path.join(projectDir, '.omp', 'hooks', 'pre', 'comet-hook-router.ts'),
+      'utf8',
+    );
+    expect(hook).toContain("'--platform', 'oh-my-pi'");
+  });
+
   it('detects legacy global Pi skills so update can migrate them', async () => {
     const projectDir = path.join(tmpDir, 'project');
     const globalDir = path.join(tmpDir, 'home');

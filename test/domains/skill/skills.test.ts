@@ -943,6 +943,65 @@ describe('skills', () => {
       ).toBe(true);
     });
 
+    it('installs and removes the Oh My Pi Hook bridge without changing user Hooks', async () => {
+      const omp = PLATFORMS.find((candidate) => candidate.id === 'oh-my-pi')!;
+      const hooksDir = path.join(tmpDir, '.omp', 'hooks', 'pre');
+      const bridgePath = path.join(hooksDir, 'comet-hook-router.ts');
+      const userHookPath = path.join(hooksDir, 'user-hook.ts');
+      await fs.mkdir(hooksDir, { recursive: true });
+      await fs.writeFile(userHookPath, 'export default function userHook() {}\n', 'utf8');
+
+      await expect(installCometHooksForPlatform(tmpDir, omp, 'project', 'both')).resolves.toEqual({
+        status: 'installed',
+      });
+      const source = await fs.readFile(bridgePath, 'utf8');
+      expect(source).toContain("pi.on('tool_call'");
+      expect(source).toContain("'--platform', 'oh-my-pi'");
+      expect(source).toContain('tool_name: event.toolName');
+      expect(source).toContain('cwd: ctx.cwd');
+      expect(source).toContain('return { block: true, reason }');
+
+      await expect(removeCometHooksForPlatform(tmpDir, omp, 'project')).resolves.toEqual({
+        removed: 1,
+        failed: 0,
+      });
+      await expect(fs.access(bridgePath)).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(fs.readFile(userHookPath, 'utf8')).resolves.toContain('userHook');
+    });
+
+    it('installs the Oh My Pi user Hook under the agent root and discovers projects from ctx.cwd', async () => {
+      const omp = PLATFORMS.find((candidate) => candidate.id === 'oh-my-pi')!;
+      const bridgePath = path.join(tmpDir, '.omp', 'agent', 'hooks', 'pre', 'comet-hook-router.ts');
+
+      await expect(reconcileCometHooksForPlatform(tmpDir, omp, 'global', 'both')).resolves.toEqual({
+        status: 'installed',
+      });
+      const source = await fs.readFile(bridgePath, 'utf8');
+      expect(source).toContain('cwd: ctx.cwd');
+      expect(source).not.toContain("'--project-root'");
+
+      await expect(removeCometHooksForPlatform(tmpDir, omp, 'global')).resolves.toEqual({
+        removed: 1,
+        failed: 0,
+      });
+      await expect(fs.access(bridgePath)).rejects.toMatchObject({ code: 'ENOENT' });
+    });
+
+    it('installs the Oh My Pi workflow Rule as always-apply MDC', async () => {
+      const omp = PLATFORMS.find((candidate) => candidate.id === 'oh-my-pi')!;
+
+      await expect(copyCometRulesForPlatform(tmpDir, omp, true, 'en')).resolves.toMatchObject({
+        copied: 1,
+        failed: 0,
+      });
+      const rule = await fs.readFile(
+        path.join(tmpDir, '.omp', 'rules', 'comet-workflow-guard.mdc'),
+        'utf8',
+      );
+      expect(rule).toContain('alwaysApply: true');
+      expect(rule).toContain('description: comet workflow guard');
+    });
+
     it('returns failed when the Hook manifest cannot be read', async () => {
       const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
       readJsonMock.mockRejectedValueOnce(new Error('manifest unavailable'));

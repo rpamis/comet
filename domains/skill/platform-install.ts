@@ -49,6 +49,8 @@ type Manifest = {
 };
 
 const HOOK_ROUTER_SCRIPT = 'comet/scripts/comet-hook-router.mjs';
+export const OMP_HOOK_RELATIVE_PATH = ['hooks', 'pre', 'comet-hook-router.ts'] as const;
+export const OMP_HOOK_MARKER = '// Managed by Comet: Oh My Pi Hook Router bridge';
 const LEGACY_HOOK_SCRIPTS = [
   'comet/scripts/comet-hook-guard.mjs',
   'comet-native/scripts/comet-native-hook-guard.mjs',
@@ -69,6 +71,55 @@ const RETIRED_COMET_OWNED_SKILL_PATHS = [
 interface HookCommandContext {
   platformId: string;
   scope: InstallScope;
+}
+
+export function renderOmpHookModule(): string {
+  return [
+    OMP_HOOK_MARKER,
+    "import { spawn } from 'node:child_process';",
+    "import { dirname, resolve } from 'node:path';",
+    "import { fileURLToPath } from 'node:url';",
+    "import type { ExtensionAPI } from '@oh-my-pi/pi-coding-agent';",
+    '',
+    "const ompRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');",
+    "const router = resolve(ompRoot, 'skills/comet/scripts/comet-hook-router.mjs');",
+    '',
+    'function runRouter(payload: string): Promise<{ code: number; stderr: string }> {',
+    '  return new Promise((done) => {',
+    '    let settled = false;',
+    "    let stderr = '';",
+    '    const finish = (code: number, reason = stderr) => {',
+    '      if (settled) return;',
+    '      settled = true;',
+    '      done({ code, stderr: reason });',
+    '    };',
+    "    const child = spawn('node', [router, '--platform', 'oh-my-pi'], {",
+    "      stdio: ['pipe', 'pipe', 'pipe'],",
+    '      windowsHide: true,',
+    '    });',
+    '    child.stdout.resume();',
+    "    child.stderr.setEncoding('utf8');",
+    "    child.stderr.on('data', (chunk: string) => {",
+    '      if (stderr.length < 65_536) stderr += chunk;',
+    '    });',
+    "    child.on('error', (error) => finish(1, error.message));",
+    "    child.on('close', (code) => finish(code ?? 1));",
+    '    child.stdin.end(payload);',
+    '  });',
+    '}',
+    '',
+    'export default function cometHook(pi: ExtensionAPI): void {',
+    "  pi.on('tool_call', async (event, ctx) => {",
+    '    const result = await runRouter(',
+    '      JSON.stringify({ tool_name: event.toolName, tool_input: event.input, cwd: ctx.cwd }),',
+    '    );',
+    '    if (result.code === 0) return;',
+    "    const reason = result.stderr.trim() || 'Comet Hook Router blocked the tool call';",
+    '    return { block: true, reason };',
+    '  });',
+    '}',
+    '',
+  ].join('\n');
 }
 
 type HookInstallStatus = 'installed' | 'skipped' | 'failed';
@@ -1088,6 +1139,7 @@ ${content}`;
  *   'windsurf' — hooks.json with pre_write_code array
  *   'copilot' — hooks/*.json with preToolUse
  *   'kiro' — hooks/*.kiro.hook JSON files
+ *   'omp' — .omp/hooks/pre/comet-hook-router.ts extension module
  *   'trae' — hooks.json with version and PreToolUse grouped command hooks
  */
 async function installCometHooksForPlatform(
@@ -1106,7 +1158,7 @@ async function installCometHooksForPlatform(
     };
   }
 
-  if (scope === 'global' && platform.hookFormat !== 'trae') {
+  if (scope === 'global' && platform.hookFormat !== 'trae' && !platform.supportsGlobalHooks) {
     return {
       status: 'skipped',
       reason: 'blocking Hooks are project-scoped',
@@ -1197,6 +1249,21 @@ async function installCometHooksForPlatform(
           platformId: platform.id,
           scope,
         });
+      case 'omp': {
+        const hookPath = path.join(platformBase, ...OMP_HOOK_RELATIVE_PATH);
+        if (await fileExists(hookPath)) {
+          const existing = await readFile(hookPath, 'utf8');
+          if (!existing.includes(OMP_HOOK_MARKER)) {
+            return {
+              status: 'failed',
+              reason: `refusing to overwrite user-owned Oh My Pi Hook at ${hookPath}`,
+            };
+          }
+        }
+        await ensureDir(path.dirname(hookPath));
+        await writeFile(hookPath, renderOmpHookModule(), 'utf-8');
+        return { status: 'installed' };
+      }
       case 'trae':
         return await installTraeHooks(
           baseDir,

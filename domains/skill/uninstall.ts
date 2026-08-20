@@ -16,7 +16,7 @@ import {
   workflowProjectConfigIdentityEquals,
   type WorkflowProjectConfigIdentity,
 } from '../workflow-contract/project-config-reader.js';
-import { lstat, realpath, rename, rmdir, unlink, writeFile } from 'fs/promises';
+import { lstat, readFile, realpath, rename, rmdir, unlink, writeFile } from 'fs/promises';
 
 import {
   fileExists,
@@ -41,6 +41,8 @@ import {
   removeManagedCopilotHookEntries,
   removeManagedHooksFromJsonFile,
   getCentralSkillsDir,
+  OMP_HOOK_MARKER,
+  OMP_HOOK_RELATIVE_PATH,
   removeRetiredCometOwnedSkillPaths,
   RETIRED_COMET_OWNED_SKILL_PATHS,
 } from './platform-install.js';
@@ -1070,6 +1072,27 @@ async function removeCometHooksForPlatform(
         return await removeCopilotHooks(platformBase, scriptRelPaths);
       case 'kiro':
         return await removeKiroHooks(platformBase, scriptRelPaths);
+      case 'omp': {
+        const hookPath = path.join(platformBase, ...OMP_HOOK_RELATIVE_PATH);
+        let removed = 0;
+        let failed = 0;
+        try {
+          if (await fileExists(hookPath)) {
+            const content = await readFile(hookPath, 'utf8');
+            if (content.includes(OMP_HOOK_MARKER) && (await removeFile(hookPath))) removed++;
+          }
+        } catch {
+          failed++;
+        }
+        for (const directory of [path.dirname(hookPath), path.join(platformBase, 'hooks')]) {
+          try {
+            if (await isDirEmpty(directory)) await removeDir(directory);
+          } catch {
+            failed++;
+          }
+        }
+        return { removed, failed };
+      }
       default:
         return { removed: 0, failed: 0 };
     }

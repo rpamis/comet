@@ -89,7 +89,7 @@ function mockExternalSuccess(options: { openSpecConfig?: 'healthy' | 'missing' |
       return Buffer.from('/usr/bin/openspec');
     }
     if (cmd === 'openspec' && cmdArgs[0] === '--version') {
-      return Buffer.from('1.5.0');
+      return Buffer.from('1.6.0');
     }
     if (cmd === 'openspec' && cmdArgs[0] === 'init') {
       const targetPath = unquoteWindowsArg(cmdArgs[1]);
@@ -2468,7 +2468,7 @@ describe('comet init E2E', () => {
           initCommand(tmpDir, { yes: true, json: true }),
         );
 
-        expect((result.results as unknown[]).length).toBeGreaterThanOrEqual(34);
+        expect((result.results as unknown[]).length).toBeGreaterThanOrEqual(35);
 
         const manifest = await readManifest();
         const platformDirs = [
@@ -2495,6 +2495,7 @@ describe('comet init E2E', () => {
           '.factory',
           '.iflow',
           '.pi',
+          '.omp',
           '.qoder',
           '.agents',
           '.bob',
@@ -2527,6 +2528,12 @@ describe('comet init E2E', () => {
         ).rejects.toMatchObject({ code: 'ENOENT' });
         await expect(
           fs.access(path.join(tmpDir, '.pi', 'extensions', 'comet-commands.ts')),
+        ).resolves.toBeUndefined();
+        await expect(
+          fs.access(path.join(tmpDir, '.omp', 'hooks', 'pre', 'comet-hook-router.ts')),
+        ).resolves.toBeUndefined();
+        await expect(
+          fs.access(path.join(tmpDir, '.omp', 'rules', 'comet-workflow-guard.mdc')),
         ).resolves.toBeUndefined();
       } finally {
         homedirSpy.mockRestore();

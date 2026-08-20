@@ -35,6 +35,9 @@ const SKILLS_AGENT_MAP: Record<string, string | null> = {
   factory: 'droid',
   iflow: 'iflow-cli',
   pi: 'pi',
+  // The Skills CLI does not yet ship an Oh My Pi target. Stage through the
+  // portable Claude layout and copy into OMP's native skills root.
+  'oh-my-pi': null,
   qoder: 'qoder',
   antigravity: 'antigravity',
   // antigravity2 reuses the antigravity skills CLI agent (OpenSpec tool id is shared)
@@ -55,6 +58,7 @@ const LINGMA_PLATFORM_ID = 'lingma';
 const ZCODE_PLATFORM_ID = 'zcode';
 const MIMOCODE_PLATFORM_ID = 'mimocode';
 const WORKBUDDY_PLATFORM_ID = 'workbuddy';
+const OH_MY_PI_PLATFORM_ID = 'oh-my-pi';
 const STAGE_AGENT = 'claude-code';
 
 function buildSuperpowersInstallCommand(
@@ -109,6 +113,13 @@ function buildMimoCodeSuperpowersStageCommand(): { command: string; args: string
 }
 
 function buildWorkBuddySuperpowersStageCommand(): { command: string; args: string[] } {
+  return {
+    command: getNpxExecutable(),
+    args: ['skills', 'add', 'obra/superpowers', '-y', '--agent', STAGE_AGENT],
+  };
+}
+
+function buildOhMyPiSuperpowersStageCommand(): { command: string; args: string[] } {
   return {
     command: getNpxExecutable(),
     args: ['skills', 'add', 'obra/superpowers', '-y', '--agent', STAGE_AGENT],
@@ -183,9 +194,22 @@ async function installSuperpowersForWorkBuddy(
   );
 }
 
+async function installSuperpowersForOhMyPi(
+  projectPath: string,
+  scope: InstallScope,
+): Promise<'installed' | 'failed'> {
+  return stageAndCopySuperpowers(
+    OH_MY_PI_PLATFORM_ID,
+    buildOhMyPiSuperpowersStageCommand(),
+    projectPath,
+    scope,
+    'Oh My Pi',
+  );
+}
+
 /**
  * Shared staging flow for platforms whose agent is not supported by the skills CLI
- * (e.g. Lingma, WorkBuddy, ZCode, MimoCode). Superpowers are staged into a temp dir via
+ * (e.g. Lingma, WorkBuddy, Oh My Pi, ZCode, MimoCode). Superpowers are staged into a temp dir via
  * the claude-code agent and then copied into the target platform's skills directory.
  */
 async function stageAndCopySuperpowers(
@@ -244,6 +268,7 @@ async function installSuperpowersForPlatforms(
   const shouldInstallZCode = platformIds.includes(ZCODE_PLATFORM_ID);
   const shouldInstallMimoCode = platformIds.includes(MIMOCODE_PLATFORM_ID);
   const shouldInstallWorkBuddy = platformIds.includes(WORKBUDDY_PLATFORM_ID);
+  const shouldInstallOhMyPi = platformIds.includes(OH_MY_PI_PLATFORM_ID);
   let failed = false;
 
   if (skillsCliPlatformIds.length > 0) {
@@ -283,6 +308,11 @@ async function installSuperpowersForPlatforms(
     if (workbuddyStatus === 'failed') failed = true;
   }
 
+  if (shouldInstallOhMyPi) {
+    const ohMyPiStatus = await installSuperpowersForOhMyPi(projectPath, scope);
+    if (ohMyPiStatus === 'failed') failed = true;
+  }
+
   return failed ? 'failed' : 'installed';
 }
 
@@ -293,5 +323,6 @@ export {
   buildZCodeSuperpowersStageCommand,
   buildMimoCodeSuperpowersStageCommand,
   buildWorkBuddySuperpowersStageCommand,
+  buildOhMyPiSuperpowersStageCommand,
   SKILLS_AGENT_MAP,
 };

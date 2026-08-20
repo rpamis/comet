@@ -12,6 +12,15 @@ describe('resolvePlatformTarget', () => {
     });
   });
 
+  it('resolves omp as an alias for the native Oh My Pi platform', () => {
+    const omp = PLATFORMS.find((platform) => platform.id === 'oh-my-pi')!;
+
+    expect(resolvePlatformTarget('omp', 'global')).toEqual({
+      platform: omp,
+      native: true,
+    });
+  });
+
   it('creates a conservative project-scoped custom platform', () => {
     expect(resolvePlatformTarget('test', 'project')).toEqual({
       native: false,

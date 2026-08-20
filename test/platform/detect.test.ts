@@ -137,6 +137,22 @@ describe('detect', () => {
       expect(getPlatformSkillsDir(workbuddy!, 'project')).toBe('.workbuddy');
       expect(getPlatformSkillsDir(workbuddy!, 'global')).toBe('.workbuddy');
     });
+
+    it('declares Oh My Pi native project and user roots with Rules and Hooks', () => {
+      const omp = PLATFORMS.find((platform) => platform.id === 'oh-my-pi');
+
+      expect(omp).toBeDefined();
+      expect(omp?.skillsDir).toBe('.omp');
+      expect(omp?.globalSkillsDir).toBe('.omp/agent');
+      expect(omp?.openspecToolId).toBe('oh-my-pi');
+      expect(omp?.rulesDir).toBe('rules');
+      expect(omp?.rulesFormat).toBe('mdc');
+      expect(omp?.supportsHooks).toBe(true);
+      expect(omp?.supportsGlobalHooks).toBe(true);
+      expect(omp?.hookFormat).toBe('omp');
+      expect(getPlatformSkillsDir(omp!, 'project')).toBe('.omp');
+      expect(getPlatformSkillsDir(omp!, 'global')).toBe('.omp/agent');
+    });
   });
 
   describe('detectPlatforms', () => {
@@ -162,6 +178,14 @@ describe('detect', () => {
       await fs.mkdir(path.join(tmpDir, '.claude'));
       const detected = await detectPlatforms(tmpDir);
       expect(detected.has('claude')).toBe(true);
+    });
+
+    it('detects Oh My Pi from the native .omp directory', async () => {
+      await fs.mkdir(path.join(tmpDir, '.omp'));
+
+      const detected = await detectPlatforms(tmpDir);
+
+      expect(detected.has('oh-my-pi')).toBe(true);
     });
 
     it('detects github-copilot when copilot-instructions.md exists', async () => {

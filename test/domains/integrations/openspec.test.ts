@@ -17,7 +17,7 @@ function createStagedOpenSpecCliMock(): (command: string, args: readonly unknown
     if (command === 'where' || command === 'which') return Buffer.from('/usr/bin/openspec');
     if (command === 'npm' || command === 'npm.cmd') return Buffer.from('upgraded');
     if (command === 'openspec' && Array.isArray(args) && args[0] === '--version') {
-      return Buffer.from('1.5.0');
+      return Buffer.from('1.6.0');
     }
     if (command === 'openspec' && Array.isArray(args) && args[0] === 'init') {
       const target = unquoteWindowsArg(args[1]);
@@ -108,9 +108,38 @@ describe('openspec', () => {
       expect(result).toBe('failed');
       expect(mockedExecFileSync).toHaveBeenCalledTimes(3);
     });
+
+    it('requires OpenSpec 1.6 or newer only when Oh My Pi output is requested', async () => {
+      mockedExecFileSync.mockReturnValueOnce(Buffer.from('/usr/bin/openspec'));
+      mockedExecFileSync.mockReturnValueOnce(Buffer.from('1.5.0'));
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
+      const result = await installOpenSpec('/tmp/test', ['oh-my-pi'], 'project', false);
+
+      expect(result).toBe('failed');
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('requires >= 1.6.0'));
+      errorSpy.mockRestore();
+    });
   });
 
   describe('installOpenSpec', () => {
+    it('copies native Oh My Pi OpenSpec skills into .omp', async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-oh-my-pi-'));
+      try {
+        const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
+
+        await expect(installOpenSpec(tmpDir, ['oh-my-pi'], 'project', false)).resolves.toBe(
+          'installed',
+        );
+        expect(
+          fs.existsSync(path.join(tmpDir, '.omp', 'skills', 'openspec-propose', 'SKILL.md')),
+        ).toBe(true);
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
     it('separates project tool generation from the docs OpenSpec artifact root', async () => {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-docs-layout-'));
       try {

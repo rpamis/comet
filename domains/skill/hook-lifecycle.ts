@@ -26,6 +26,10 @@ export async function reconcileCometHooksForPlatform(
     };
   }
 
+  if (platform.supportsGlobalHooks) {
+    return installCometHooksForPlatform(baseDir, platform, scope, workflowSelection);
+  }
+
   const cleanup = await removeCometHooksForPlatform(baseDir, platform, scope);
   if (cleanup.failed > 0) {
     return {

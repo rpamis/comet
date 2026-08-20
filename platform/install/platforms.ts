@@ -29,6 +29,8 @@ export interface Platform {
   rulesFormat?: 'md' | 'mdc' | 'copilot';
   /** Whether this platform supports PreToolUse hooks. */
   supportsHooks?: boolean;
+  /** Whether a user-scoped Hook can safely discover the active project from the host request. */
+  supportsGlobalHooks?: boolean;
   /** Hook configuration format. Determines how installCometHooksForPlatform writes the hook config. */
   hookFormat?:
     | 'claude-code'
@@ -39,6 +41,7 @@ export interface Platform {
     | 'kiro'
     | 'qoder'
     | 'codebuddy'
+    | 'omp'
     | 'trae';
   /** Hook config filename relative to the platform config root when it differs from the format default. */
   hookConfigFile?: string;
@@ -287,6 +290,21 @@ export const PLATFORMS: Platform[] = [
     skillsDir: '.pi',
     globalSkillsDir: '.pi/agent',
     openspecToolId: 'pi',
+  },
+  {
+    id: 'oh-my-pi',
+    name: 'Oh My Pi',
+    skillsDir: '.omp',
+    globalSkillsDir: '.omp/agent',
+    openspecToolId: 'oh-my-pi',
+    rulesDir: 'rules',
+    // OMP reads both .md and .mdc rules. MDC gives the Comet guard an
+    // explicit alwaysApply contract instead of leaving an unconditioned rule
+    // in the rulebook.
+    rulesFormat: 'mdc',
+    supportsHooks: true,
+    supportsGlobalHooks: true,
+    hookFormat: 'omp',
   },
   {
     id: 'qoder',
