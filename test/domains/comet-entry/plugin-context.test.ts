@@ -30,18 +30,18 @@ describe('Comet plugin context XML boundaries', () => {
       },
     ]);
 
-    await expect(
-      collectCometPluginContext(process.cwd(), { task: '测试上下文' }),
-    ).resolves.toEqual([
-      {
-        pluginId: 'comet.personal-memory',
-        text: '<personal_memory>\n## 偏好\n- 使用 &amp; &lt;中文&gt; &quot;引号&quot; &apos;单引号&apos;\n</personal_memory>',
-      },
-      {
-        pluginId: 'comet.project-knowledge',
-        text: '<project_knowledge>\n## 项目知识参考\n- Source: docs/guide.md\n  &gt; 结论\n</project_knowledge>',
-      },
-    ]);
+    await expect(collectCometPluginContext(process.cwd(), { task: '测试上下文' })).resolves.toEqual(
+      [
+        {
+          pluginId: 'comet.personal-memory',
+          text: '<personal_memory>\n## 偏好\n- 使用 &amp; &lt;中文&gt; &quot;引号&quot; &apos;单引号&apos;\n</personal_memory>',
+        },
+        {
+          pluginId: 'comet.project-knowledge',
+          text: '<project_knowledge>\n## 项目知识参考\n- Source: docs/guide.md\n  &gt; 结论\n</project_knowledge>',
+        },
+      ],
+    );
   });
 
   test('keeps blank known contributions and unknown plugins compatible', async () => {
@@ -51,9 +51,7 @@ describe('Comet plugin context XML boundaries', () => {
       { pluginId: 'comet.personal-memory', text: 'memory' },
     ]);
 
-    await expect(
-      collectCometPluginContext(process.cwd(), { task: '兼容性' }),
-    ).resolves.toEqual([
+    await expect(collectCometPluginContext(process.cwd(), { task: '兼容性' })).resolves.toEqual([
       { pluginId: 'comet.project-knowledge', text: '  \n' },
       { pluginId: 'comet.other', text: 'raw & <text>' },
       {

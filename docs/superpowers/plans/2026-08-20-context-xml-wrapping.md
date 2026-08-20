@@ -22,10 +22,12 @@
 ### Task 1: Add failing context-boundary regression tests
 
 **Files:**
+
 - Create: `test/domains/comet-entry/plugin-context.test.ts`
 - Read-only dependency under test: `domains/comet-entry/plugin-context.ts`
 
 **Interfaces:**
+
 - Consumes: `collectCometPluginContext(projectRoot, request)` and the mocked `createDefaultCometPluginBridge()` result with `collectContext()` and `diagnostics()` methods.
 - Produces: Regression coverage for A1–A4 that the implementation task must satisfy.
 
@@ -55,9 +57,7 @@ test('wraps personal memory and project knowledge after bridge collection', asyn
     },
   ]);
 
-  await expect(
-    collectCometPluginContext('D:/repo', { task: '测试上下文' }),
-  ).resolves.toEqual([
+  await expect(collectCometPluginContext('D:/repo', { task: '测试上下文' })).resolves.toEqual([
     {
       pluginId: 'comet.personal-memory',
       text: '<personal_memory>\n## 偏好\n- 使用 &amp; &lt;中文&gt; &quot;引号&quot; &apos;单引号&apos;\n</personal_memory>',
@@ -76,9 +76,7 @@ test('keeps blank known contributions and unknown plugins compatible', async () 
     { pluginId: 'comet.personal-memory', text: 'memory' },
   ]);
 
-  await expect(
-    collectCometPluginContext('D:/repo', { task: '兼容性' }),
-  ).resolves.toEqual([
+  await expect(collectCometPluginContext('D:/repo', { task: '兼容性' })).resolves.toEqual([
     { pluginId: 'comet.project-knowledge', text: '  \n' },
     { pluginId: 'comet.other', text: 'raw & <text>' },
     {
@@ -107,10 +105,12 @@ git commit -m "test(entry): define XML context wrapper contract"
 ### Task 2: Implement the XML wrapping at the Entry boundary
 
 **Files:**
+
 - Modify: `domains/comet-entry/plugin-context.ts`
 - Test: `test/domains/comet-entry/plugin-context.test.ts`
 
 **Interfaces:**
+
 - Consumes: Bridge contributions shaped as `{ pluginId: string, text: string }`.
 - Produces: The same contribution array shape with fixed XML wrappers for the two known plugin IDs.
 
@@ -172,10 +172,12 @@ git commit -m "feat(entry): wrap memory contexts in XML"
 ### Task 3: Regenerate the Entry runtime and record the user-visible change
 
 **Files:**
+
 - Modify: `assets/skills/comet/scripts/comet-entry-runtime.mjs` (generated only)
 - Modify: `CHANGELOG.md` in the existing `0.4.0-beta.20` entry under `### Changed`
 
 **Interfaces:**
+
 - Consumes: The updated `domains/comet-entry/plugin-context.ts` source.
 - Produces: A synchronized published Entry runtime and a concise beta20 user-facing note.
 
@@ -205,9 +207,11 @@ git commit -m "chore: publish XML context boundaries"
 ### Task 4: Run proportionate verification and submit the Native candidate
 
 **Files:**
+
 - Verify: `domains/comet-entry/plugin-context.ts`, `test/domains/comet-entry/plugin-context.test.ts`, generated Entry runtime, and `CHANGELOG.md`
 
 **Interfaces:**
+
 - Consumes: The committed implementation and generated bundle.
 - Produces: Native Builder handoff with explicit checks mapped to A1–A26.
 
@@ -243,16 +247,50 @@ After the checks finish, write a temporary JSON file matching the Runtime contin
 {
   "kind": "builder-handoff",
   "summary": "Wrapped non-empty personal memory and project knowledge contributions in fixed XML tags at the shared Entry boundary; escaped XML text, preserved ordering and unknown plugins, and left retrieval/lifecycle behavior unchanged.",
-  "addressed_acceptance_ids": ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11", "A12", "A13", "A14", "A15", "A16", "A17", "A18", "A19", "A20", "A21", "A22", "A23", "A24", "A25", "A26"],
+  "addressed_acceptance_ids": [
+    "A1",
+    "A2",
+    "A3",
+    "A4",
+    "A5",
+    "A6",
+    "A7",
+    "A8",
+    "A9",
+    "A10",
+    "A11",
+    "A12",
+    "A13",
+    "A14",
+    "A15",
+    "A16",
+    "A17",
+    "A18",
+    "A19",
+    "A20",
+    "A21",
+    "A22",
+    "A23",
+    "A24",
+    "A25",
+    "A26"
+  ],
   "checks": [
-    {"name": "focused-context-and-command-vitest", "result": "passed", "note": "XML wrapper, escaping, empty/unknown contribution, Entry caller, and plugin bridge tests passed."},
-    {"name": "prettier-lint-build-generated", "result": "passed", "note": "Affected formatting, lint, full build, and generated Entry runtime checks passed."},
-    {"name": "full-vitest", "result": "passed", "note": "Full Vitest suite passed."},
-    {"name": "git-diff-check", "result": "passed", "note": "No whitespace errors."}
+    {
+      "name": "focused-context-and-command-vitest",
+      "result": "passed",
+      "note": "XML wrapper, escaping, empty/unknown contribution, Entry caller, and plugin bridge tests passed."
+    },
+    {
+      "name": "prettier-lint-build-generated",
+      "result": "passed",
+      "note": "Affected formatting, lint, full build, and generated Entry runtime checks passed."
+    },
+    { "name": "full-vitest", "result": "passed", "note": "Full Vitest suite passed." },
+    { "name": "git-diff-check", "result": "passed", "note": "No whitespace errors." }
   ],
   "known_limits": []
 }
 ```
 
 Run the Runtime continuation command returned by `comet native status context-xml-wrapping --details --json` with that file; do not edit `comet-state.yaml` manually.
-
