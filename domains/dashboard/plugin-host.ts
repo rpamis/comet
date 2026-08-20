@@ -22,6 +22,8 @@ export interface DashboardPluginPageSummary {
   readonly label: string;
   readonly route: string;
   readonly status: 'enabled' | 'disabled';
+  readonly globallyDisabled: boolean;
+  readonly projectPaused: boolean;
   readonly diagnostics: readonly string[];
 }
 
@@ -62,13 +64,16 @@ export class DashboardPluginHost {
       .map((page) => {
         const view = views.find((entry) => entry.id === page.pluginId);
         if (view === undefined || view.status === 'uninstalled') return null;
-        const disabled =
-          view.status === 'disabled' || view.disabledProjects.includes(this.projectId);
+        const globallyDisabled = view.status === 'disabled';
+        const projectPaused = view.disabledProjects.includes(this.projectId);
+        const disabled = globallyDisabled || projectPaused;
         return {
           pluginId: page.pluginId,
           label: page.label,
           route: page.route,
           status: disabled ? ('disabled' as const) : ('enabled' as const),
+          globallyDisabled,
+          projectPaused,
           diagnostics: diagnosticsFor(diagnostics, page.pluginId),
         };
       })

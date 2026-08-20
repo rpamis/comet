@@ -53,6 +53,8 @@ describe('DashboardPluginHost', () => {
         label: '测试页面',
         route: '/plugins/test-plugin',
         status: 'enabled',
+        globallyDisabled: false,
+        projectPaused: false,
       }),
     ]);
     await expect(host.get('test.plugin')).resolves.toMatchObject({
@@ -73,7 +75,12 @@ describe('DashboardPluginHost', () => {
     const host = new DashboardPluginHost({ runtime, projectId: 'project-1', pages: [page] });
 
     await expect(host.list()).resolves.toEqual([
-      expect.objectContaining({ pluginId: 'test.plugin', status: 'disabled' }),
+      expect.objectContaining({
+        pluginId: 'test.plugin',
+        status: 'disabled',
+        globallyDisabled: false,
+        projectPaused: true,
+      }),
     ]);
     await expect(host.get('test.plugin')).resolves.toMatchObject({
       pluginId: 'test.plugin',
@@ -110,9 +117,21 @@ describe('DashboardPluginHost', () => {
     await runtime.disable('test.plugin');
     const host = new DashboardPluginHost({ runtime, projectId: 'project-1', pages: [page] });
 
-    await expect(host.list()).resolves.toEqual([expect.objectContaining({ status: 'disabled' })]);
+    await expect(host.list()).resolves.toEqual([
+      expect.objectContaining({
+        status: 'disabled',
+        globallyDisabled: true,
+        projectPaused: false,
+      }),
+    ]);
     await host.lifecycle('test.plugin', 'enable');
-    await expect(host.list()).resolves.toEqual([expect.objectContaining({ status: 'enabled' })]);
+    await expect(host.list()).resolves.toEqual([
+      expect.objectContaining({
+        status: 'enabled',
+        globallyDisabled: false,
+        projectPaused: false,
+      }),
+    ]);
   });
 
   it('clears a project pause when global and project disable states overlap', async () => {
@@ -126,7 +145,21 @@ describe('DashboardPluginHost', () => {
     await runtime.disable('test.plugin');
     const host = new DashboardPluginHost({ runtime, projectId: 'project-1', pages: [page] });
 
+    await expect(host.list()).resolves.toEqual([
+      expect.objectContaining({
+        status: 'disabled',
+        globallyDisabled: true,
+        projectPaused: true,
+      }),
+    ]);
+
     await host.lifecycle('test.plugin', 'enable');
-    await expect(host.list()).resolves.toEqual([expect.objectContaining({ status: 'enabled' })]);
+    await expect(host.list()).resolves.toEqual([
+      expect.objectContaining({
+        status: 'enabled',
+        globallyDisabled: false,
+        projectPaused: false,
+      }),
+    ]);
   });
 });
