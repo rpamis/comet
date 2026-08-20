@@ -7,6 +7,8 @@ import {
   discoverProjectKnowledgeCorpus,
   LocalProjectKnowledgeProvider,
   RemoteProjectKnowledgeProvider,
+  createProjectKnowledgeDashboardSnapshot,
+  createProjectKnowledgeModule,
   createProjectKnowledgeQuery,
   renderProjectKnowledgeContext,
 } from '../../../domains/project-knowledge/index.js';
@@ -20,6 +22,66 @@ import { runBoundedRipgrep } from '../../../platform/process/ripgrep.js';
 async function tempProject(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), 'comet-project-knowledge-'));
 }
+
+describe('project knowledge dashboard status', () => {
+  test('returns a safe Local dashboard snapshot without provider work', () => {
+    expect(
+      createProjectKnowledgeDashboardSnapshot({
+        config: { provider: 'local' },
+        language: 'zh-CN',
+      }),
+    ).toEqual({
+      provider: 'local',
+      configured: true,
+      retrieval: expect.stringContaining('不会维护索引'),
+      diagnostics: [],
+    });
+  });
+
+  test('sanitizes Remote endpoint credentials and never returns token values', () => {
+    const snapshot = createProjectKnowledgeDashboardSnapshot({
+      config: {
+        provider: 'remote',
+        remote: {
+          endpoint: 'https://user:password@example.test/retrieve?token=secret',
+          token_env: 'COMET_KNOWLEDGE_TOKEN',
+          scope: 'team-a',
+          timeout_ms: 1200,
+        },
+      },
+      env: { COMET_KNOWLEDGE_TOKEN: 'bearer-secret' },
+      language: 'en',
+    });
+
+    expect(snapshot).toMatchObject({
+      provider: 'remote',
+      configured: true,
+      remote: {
+        endpoint: 'https://example.test/retrieve',
+        tokenEnv: 'COMET_KNOWLEDGE_TOKEN',
+        tokenConfigured: true,
+        scope: 'team-a',
+        timeoutMs: 1200,
+      },
+    });
+    expect(JSON.stringify(snapshot)).not.toContain('password');
+    expect(JSON.stringify(snapshot)).not.toContain('secret');
+    expect(JSON.stringify(snapshot)).not.toContain('bearer-secret');
+  });
+
+  test('loads the dashboard snapshot through status without constructing a provider', async () => {
+    const module = await createProjectKnowledgeModule(
+      { reportDiagnostic: () => undefined } as never,
+      { projectRoot: 'C:/project', knowledgeConfig: { provider: 'local' } },
+    );
+
+    await expect(module.invoke?.('status', {})).resolves.toMatchObject({
+      provider: 'local',
+      configured: true,
+      diagnostics: [],
+    });
+  });
+});
 
 describe('project knowledge configuration', () => {
   test('defaults to local and validates remote endpoint bounds', () => {

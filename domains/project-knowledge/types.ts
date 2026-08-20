@@ -69,6 +69,33 @@ export interface ProjectKnowledgePluginOptions {
   readonly cometVersionRange?: (cometVersion: string) => boolean;
 }
 
+export interface ProjectKnowledgeDashboardRemoteSummary {
+  readonly endpoint: string;
+  readonly tokenEnv?: string;
+  readonly tokenConfigured: boolean;
+  readonly scope?: string;
+  readonly timeoutMs: number;
+}
+
+export interface ProjectKnowledgeDashboardDiagnostic {
+  readonly code: string;
+  readonly message: string;
+}
+
+export interface ProjectKnowledgeDashboardSnapshot {
+  readonly provider: WorkflowKnowledgeProvider;
+  readonly configured: boolean;
+  readonly remote?: ProjectKnowledgeDashboardRemoteSummary;
+  readonly retrieval: string;
+  readonly diagnostics: readonly ProjectKnowledgeDashboardDiagnostic[];
+}
+
+export interface ProjectKnowledgeDashboardSnapshotOptions {
+  readonly config: WorkflowKnowledgeProjectConfig;
+  readonly language?: MemoryLanguage;
+  readonly env?: NodeJS.ProcessEnv;
+}
+
 export interface ProjectKnowledgePluginDescriptorFactory {
   (options: ProjectKnowledgePluginOptions): PluginDescriptor;
 }
