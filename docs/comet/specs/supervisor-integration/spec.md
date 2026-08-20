@@ -84,6 +84,36 @@
 - **Then** Runtime 拒绝进入并指出剩余 Child 与下一动作
 - **And** 不以 Child 已 verified 或 Agent 已完成代替 integrated
 
+### Scenario: v2 最后一个 Child 集成后自动进入父级 Verify
+
+- **Given** 父级处于 active Build，且当前 `supervisor-integrate` 使最后一个 Child 变为 `integrated`
+- **When** Runtime 重新投影全部 Child 并确认没有 repair blocker
+- **Then** Runtime 在同一 CLI 操作返回前自动完成父级 Build 并进入最终 Verify
+- **And** 只创建一个父级候选，返回自动推进结果和最终 Verifier continuation
+- **And** 不要求用户再次发出父级“推进”或范围确认
+
+### Scenario: v1 最后一个 Child Archive merge 后自动进入父级 Verify
+
+- **Given** active Supervisor v1 的 Child 使用既有独立 Archive 生命周期
+- **When** 最后一个声明 Child 完成 `finish=merge`，且归档状态已提交到唯一父级分支
+- **Then** Runtime 从分支绑定一致的权威工作区定位该父级并重新检查全部 Child
+- **And** 全部 Child 均为 `done` 时自动完成父级 Build 并进入最终 Verify
+- **And** detached、binding mismatch 或未合入的 Archive 不能形成完成事实
+
+### Scenario: 中断恢复补做父级推进
+
+- **Given** 全部 Child 已完成，但进程在父级 Build 状态写入前中断
+- **When** 下一次父级恢复或相关 Supervisor 推进重新读取 Portable State、父子声明和 Git 事实
+- **Then** Runtime 幂等补做父级 Build 完成并进入 Verify
+- **And** 父级已在 Verify、Archive 或 done 时不创建第二个候选或重复 Verifier
+
+### Scenario: 父级歧义或未完成事实阻止自动推进
+
+- **Given** v1 Child 对应零个或多个 active 父级、Child Archive 未合入父分支、父级绑定不一致，或仍有未完成/blocked Child
+- **When** Runtime 尝试自动接回父级
+- **Then** Runtime 不猜测父级、不提前进入 Verify
+- **And** 返回包含父级、分支或剩余 Child 事实的可恢复 blocker
+
 ### Scenario: 父级 Verify 在 integration worktree 验收完整目标
 
 - **Given** 所有当前 Child 已 integrated
@@ -114,6 +144,13 @@
 - **When** `native.archive_confirmation` 为 `automatic`
 - **Then** Skill 不再询问并继续最终交付
 - **And** 配置为 `required` 时最多请求一次最终确认
+
+### Scenario: Child 完成不会直接触发最终交付
+
+- **Given** Runtime 因全部 Child 完成而自动把父级推进到最终 Verify
+- **When** 父级尚未完成完整验证或 workspace finish 尚未授权
+- **Then** Runtime 不执行父级 Archive、target merge、push 或 PR
+- **And** 后续交付继续遵循父级验证结果、项目配置和用户授权
 
 ### Scenario: 父级唯一发布最终权威 Specs
 
@@ -157,3 +194,5 @@
 - 自动解决 Git merge conflict。
 - 在 Child 集成时修改真实 target 或独立发布最终 Specs。
 - 重复实现 Issue #313 的 Archive preview 修复。
+- 为自动推进增加后台 daemon、文件 watcher 或通用调度器。
+- 把 active 或 archived Supervisor v1 改写成 v2。

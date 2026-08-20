@@ -71,6 +71,21 @@
 - **And** 只有这些事实一致时才推进状态
 - **And** Agent 的文字摘要不直接成为 Runtime 事实
 
+### Scenario: 全部 Child 完成后自动切回父级
+
+- **Given** Runtime 已根据可信状态和 Git 事实确认全部 Child 完成
+- **When** Child 完成命令返回父级自动推进结果和 continuation
+- **Then** Native Skill 不要求用户再次说“推进”或重复确认范围
+- **And** 自动切换到父级上下文并继续派发最终 Verifier
+- **And** 明确通知用户“全部 Child 已完成，Supervisor 父级正在进行最终验证”
+
+### Scenario: 宿主中断时保留可恢复的父级下一步
+
+- **Given** Runtime 已把父级持久化为 Verify，但宿主无法立即启动最终 Verifier
+- **When** 当前协调任务结束或稍后恢复
+- **Then** continuation 明确指向父级最终 Verifier 动作
+- **And** 不把父级回退为 Build，也不以最后一个 Child 完成消息冒充整个 Supervisor 完成
+
 ### Scenario: 恢复时优先重连旧任务
 
 - **Given** 协调会话重启且某 Child 仍有有效任务
@@ -100,7 +115,15 @@
 - **And** Child Agent 不需要创建嵌套 Agent
 - **And** Runtime 不管理模型选择、消息路由或通用 Worker 生命周期
 
+### Scenario: 自动接回不绕过最终交付授权
+
+- **Given** Native Skill 已自动切回父级并完成最终 Verify
+- **When** 父级进入 Archive 或 workspace finish 边界
+- **Then** Skill 继续遵循现有项目配置、Runtime continuation 和用户授权
+- **And** 不因为 Child 自动接回而擅自 merge、push 或创建 PR
+
 ## 非目标
 
 - worker claim、lease、heartbeat、抢占、自动任务领取或通用 bounded-concurrency scheduler。
 - Agent Team、共享 mailbox、模型自动选择、exactly-once Agent execution 或 provider attestation。
+- 用 Skill 文本代替 Runtime 的父级完成判定或持久化状态转换。
