@@ -3,7 +3,7 @@ import {
   COMET_RESUME_PROBE_SCHEMA_VERSION,
   resolveCometResumeProbe,
 } from './classic-resume-probe.js';
-import { classicCommandProjectRoot, withClassicCommandContext } from './classic-command-context.js';
+import { classicCommandProjectRoot, withProjectContext } from './classic-command-context.js';
 
 function result(exitCode: number, stdout?: string, stderr?: string): ClassicCommandResult {
   return {
@@ -49,23 +49,22 @@ function parseStdinInput(source: string): unknown {
   }
 }
 
-export const classicResumeProbeCommand: ClassicCommandHandler = async (args, options) =>
-  withClassicCommandContext(options, async () => {
-    const [subcommand, input] = args;
-    if (subcommand !== 'probe') return usage();
+export const classicResumeProbeCommand: ClassicCommandHandler = withProjectContext(async (args) => {
+  const [subcommand, input] = args;
+  if (subcommand !== 'probe') return usage();
 
-    const fromStdin = input === '--stdin';
-    const source = fromStdin ? await readStdin() : input;
-    if (!source) return usage();
+  const fromStdin = input === '--stdin';
+  const source = fromStdin ? await readStdin() : input;
+  if (!source) return usage();
 
-    try {
-      const parsedInput = fromStdin ? parseStdinInput(source) : JSON.parse(source);
-      const resolution = await resolveCometResumeProbe(classicCommandProjectRoot(), parsedInput);
-      return result(0, `${JSON.stringify(resolution, null, 2)}\n`);
-    } catch (error) {
-      if (error instanceof SyntaxError) {
-        return result(1, undefined, `Invalid JSON: ${error.message}`);
-      }
-      return result(1, undefined, error instanceof Error ? error.message : String(error));
+  try {
+    const parsedInput = fromStdin ? parseStdinInput(source) : JSON.parse(source);
+    const resolution = await resolveCometResumeProbe(classicCommandProjectRoot(), parsedInput);
+    return result(0, `${JSON.stringify(resolution, null, 2)}\n`);
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return result(1, undefined, `Invalid JSON: ${error.message}`);
     }
-  });
+    return result(1, undefined, error instanceof Error ? error.message : String(error));
+  }
+});

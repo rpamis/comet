@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-beta.20] - 2026-08-20
+
+### Fixed
+
+- **Classic workspace command context**: `comet classic workspace prepare` and `comet classic workspace resolve` no longer fail with "Classic command project context is unavailable" for every isolation mode (`current`, `branch`, `worktree`), fixing the workspace preparation step of the Classic Open flow.
+
 ## What's Changed [0.4.0-beta.19] - 2026-08-20
 
 ### Added

@@ -28,7 +28,7 @@ import { assertClassicLayoutWritable, assertClassicLayoutReadable } from './clas
 import {
   classicCommandInvocationCwd,
   classicCommandProjectRoot,
-  withClassicCommandContext,
+  withProjectContext,
 } from './classic-command-context.js';
 import { resolveClassicStepId } from './classic-resolver.js';
 import { transitionClassicRuntimeRun, validateClassicRuntimeRun } from './classic-runtime-run.js';
@@ -1524,79 +1524,78 @@ async function clearSelection(output: CommandOutput): Promise<void> {
   output.stderr.push(green('[CLEARED] current change selection'));
 }
 
-export const classicStateCommand: ClassicCommandHandler = async (args, options) =>
-  withClassicCommandContext(options, async () => {
-    const output = new CommandOutput();
-    try {
-      const [subcommand, ...rest] = args;
-      await assertStateCommandWritable(subcommand);
-      if (subcommand === 'init') {
-        required(rest, 2, 'Usage: comet-state.mjs init <change-name> <workflow>');
-        const initOptions = rest.slice(2);
-        let isolation: string | null = null;
-        if (initOptions.length > 0) {
-          if (initOptions.length !== 2 || initOptions[0] !== '--isolation') {
-            fail('Usage: comet-state.mjs init <change-name> <workflow> [--isolation <mode>]');
-          }
-          isolation = initOptions[1];
+export const classicStateCommand: ClassicCommandHandler = withProjectContext(async (args) => {
+  const output = new CommandOutput();
+  try {
+    const [subcommand, ...rest] = args;
+    await assertStateCommandWritable(subcommand);
+    if (subcommand === 'init') {
+      required(rest, 2, 'Usage: comet-state.mjs init <change-name> <workflow>');
+      const initOptions = rest.slice(2);
+      let isolation: string | null = null;
+      if (initOptions.length > 0) {
+        if (initOptions.length !== 2 || initOptions[0] !== '--isolation') {
+          fail('Usage: comet-state.mjs init <change-name> <workflow> [--isolation <mode>]');
         }
-        await init(output, rest[0], rest[1], isolation);
-      } else if (subcommand === 'get') {
-        required(rest, 2, 'Usage: comet-state.mjs get <change-name> <field>');
-        validateChangeName(rest[0]);
-        output.stdout.push(await readField(rest[0], rest[1]));
-      } else if (subcommand === 'set') {
-        required(rest, 3, 'Usage: comet-state.mjs set <change-name> <field> <value>');
-        validateChangeName(rest[0]);
-        await setField(output, rest[0], rest[1], rest[2]);
-      } else if (subcommand === 'transition') {
-        required(rest, 2, 'Usage: comet-state.mjs transition <change-name> <event>');
-        await transition(output, rest[0], rest[1]);
-      } else if (subcommand === 'check') {
-        required(rest, 2, 'Usage: comet-state.mjs check <change-name> <phase> [--recover]');
-        if (rest[2] === '--recover') await recover(output, rest[0]);
-        else await check(output, rest[0], rest[1]);
-      } else if (subcommand === 'scale') {
-        required(rest, 1, 'Usage: comet-state.mjs scale <change-name>');
-        await scale(output, rest[0]);
-      } else if (subcommand === 'record-check') {
-        required(
-          rest,
-          2,
-          'Usage: comet state record-check <change> <build|verify> --command <text> --exit-code <int> [--cwd <path>]',
-        );
-        await recordCheck(output, rest[0], rest[1], rest.slice(2));
-      } else if (subcommand === 'task-checkoff') {
-        required(rest, 2, 'Usage: comet-state.mjs task-checkoff <file> <task-text>');
-        await taskCheckoff(output, rest[0], rest[1]);
-      } else if (subcommand === 'rebind') {
-        requiredExact(rest, 1, 'Usage: comet-state.mjs rebind <change-name>');
-        await rebind(output, rest[0]);
-      } else if (subcommand === 'select') {
-        requiredExact(rest, 1, 'Usage: comet-state.mjs select <change-name>');
-        await selectChange(output, rest[0]);
-      } else if (subcommand === 'current') {
-        requiredExact(rest, 0, 'Usage: comet-state.mjs current');
-        await currentChange(output);
-      } else if (subcommand === 'clear-selection') {
-        requiredExact(rest, 0, 'Usage: comet-state.mjs clear-selection');
-        await clearSelection(output);
-      } else if (subcommand === 'next') {
-        required(rest, 1, 'Usage: comet-state.mjs next <change-name>');
-        await next(output, rest[0]);
-      } else {
-        fail(`Unknown subcommand: ${subcommand ?? ''}`);
+        isolation = initOptions[1];
       }
-      return output.result();
-    } catch (error) {
-      if (!(error instanceof CommandFailure)) throw error;
-      // The frozen 0.3.8 shell calls red() once per line and never embeds newlines
-      // inside a single color call. Mirror that contract by wrapping each line of
-      // the message in its own span so multi-line errors (e.g. validateEnum) render
-      // as separate colored lines rather than one span across a newline.
-      if (error.message) {
-        for (const line of error.message.split('\n')) output.stderr.push(red(line));
-      }
-      return output.result(error.exitCode);
+      await init(output, rest[0], rest[1], isolation);
+    } else if (subcommand === 'get') {
+      required(rest, 2, 'Usage: comet-state.mjs get <change-name> <field>');
+      validateChangeName(rest[0]);
+      output.stdout.push(await readField(rest[0], rest[1]));
+    } else if (subcommand === 'set') {
+      required(rest, 3, 'Usage: comet-state.mjs set <change-name> <field> <value>');
+      validateChangeName(rest[0]);
+      await setField(output, rest[0], rest[1], rest[2]);
+    } else if (subcommand === 'transition') {
+      required(rest, 2, 'Usage: comet-state.mjs transition <change-name> <event>');
+      await transition(output, rest[0], rest[1]);
+    } else if (subcommand === 'check') {
+      required(rest, 2, 'Usage: comet-state.mjs check <change-name> <phase> [--recover]');
+      if (rest[2] === '--recover') await recover(output, rest[0]);
+      else await check(output, rest[0], rest[1]);
+    } else if (subcommand === 'scale') {
+      required(rest, 1, 'Usage: comet-state.mjs scale <change-name>');
+      await scale(output, rest[0]);
+    } else if (subcommand === 'record-check') {
+      required(
+        rest,
+        2,
+        'Usage: comet state record-check <change> <build|verify> --command <text> --exit-code <int> [--cwd <path>]',
+      );
+      await recordCheck(output, rest[0], rest[1], rest.slice(2));
+    } else if (subcommand === 'task-checkoff') {
+      required(rest, 2, 'Usage: comet-state.mjs task-checkoff <file> <task-text>');
+      await taskCheckoff(output, rest[0], rest[1]);
+    } else if (subcommand === 'rebind') {
+      requiredExact(rest, 1, 'Usage: comet-state.mjs rebind <change-name>');
+      await rebind(output, rest[0]);
+    } else if (subcommand === 'select') {
+      requiredExact(rest, 1, 'Usage: comet-state.mjs select <change-name>');
+      await selectChange(output, rest[0]);
+    } else if (subcommand === 'current') {
+      requiredExact(rest, 0, 'Usage: comet-state.mjs current');
+      await currentChange(output);
+    } else if (subcommand === 'clear-selection') {
+      requiredExact(rest, 0, 'Usage: comet-state.mjs clear-selection');
+      await clearSelection(output);
+    } else if (subcommand === 'next') {
+      required(rest, 1, 'Usage: comet-state.mjs next <change-name>');
+      await next(output, rest[0]);
+    } else {
+      fail(`Unknown subcommand: ${subcommand ?? ''}`);
     }
-  });
+    return output.result();
+  } catch (error) {
+    if (!(error instanceof CommandFailure)) throw error;
+    // The frozen 0.3.8 shell calls red() once per line and never embeds newlines
+    // inside a single color call. Mirror that contract by wrapping each line of
+    // the message in its own span so multi-line errors (e.g. validateEnum) render
+    // as separate colored lines rather than one span across a newline.
+    if (error.message) {
+      for (const line of error.message.split('\n')) output.stderr.push(red(line));
+    }
+    return output.result(error.exitCode);
+  }
+});

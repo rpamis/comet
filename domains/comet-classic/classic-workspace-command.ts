@@ -1,5 +1,5 @@
 import type { ClassicCommandHandler } from './classic-cli.js';
-import { classicCommandProjectRoot } from './classic-command-context.js';
+import { classicCommandProjectRoot, withProjectContext } from './classic-command-context.js';
 import {
   classicWorkspaceCommandResult,
   prepareClassicWorkspace,
@@ -22,7 +22,7 @@ function option(args: string[], name: string): string | undefined {
   return value;
 }
 
-export const classicWorkspaceCommand: ClassicCommandHandler = async (args) => {
+export const classicWorkspaceCommand: ClassicCommandHandler = withProjectContext(async (args) => {
   const [action, name, ...rest] = args;
   if (!action || !name) usage();
   if (action === 'resolve') {
@@ -52,4 +52,4 @@ export const classicWorkspaceCommand: ClassicCommandHandler = async (args) => {
       ...(worktreePath ? { worktreePath } : {}),
     }),
   );
-};
+});
