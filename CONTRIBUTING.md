@@ -266,11 +266,13 @@ domains/             # Business domain modules
 ├── eval/            # comet eval harness
 ├── factory/         # Skill creator artifact packaging
 ├── integrations/    # Third-party integrations (openspec / superpowers / codegraph)
+├── project-knowledge/ # Local/remote retrieval of Comet-managed project documents
 ├── skill/           # Skill install, discovery, preferences, snapshot
 └── workflow-contract/ # Cross-workflow contracts
 
 platform/            # Platform adaptation; domain code does not leak platform differences
 ├── fs/              # Filesystem utilities
+├── http/            # Bounded HTTP requests and response reads
 ├── install/         # Platform definitions, detection, install paths
 ├── paths/           # Repository layout resolution
 ├── process/         # Subprocesses, error handling, shell quoting

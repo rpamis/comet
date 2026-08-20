@@ -148,6 +148,7 @@
     "@inquirer/figures": "^2.0.5",
     "@inquirer/prompts": "^8.4.3",
     "@inquirer/type": "^4.0.5",
+    "@vscode/ripgrep": "^1.18.0",
     "ajv": "^8.17.1",
     "antd": "^6.5.2",
     "commander": "^14.0.0",

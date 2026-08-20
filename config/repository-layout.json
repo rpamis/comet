@@ -135,10 +135,11 @@
     "eval",
     "factory",
     "integrations",
+    "project-knowledge",
     "skill",
     "workflow-contract"
   ],
-  "platformModules": ["fs", "install", "paths", "process", "version"],
+  "platformModules": ["fs", "http", "install", "paths", "process", "version"],
   "scriptModules": ["benchmark", "build", "install", "lib", "lint", "release"],
   "allowedCodeFiles": ["bin/fast-runtime-router.js"],
   "testRoots": ["test"]

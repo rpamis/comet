@@ -3222,7 +3222,7 @@ describe('skills', () => {
         expect(guard).toContain('Native');
         expect(guard).toContain('Classic');
         expect(guard).toContain('Hook Router');
-        expect(guard).toContain('comet memory context');
+        expect(guard).toContain('comet task');
         expect(guard).not.toContain('comet rules context');
         expect(guard).toContain('.comet/config.yaml');
       }
@@ -3233,6 +3233,8 @@ describe('skills', () => {
       expect(zhGuard).toContain('普通写入权限不覆盖 brief 中未解决的 `[blocking]`');
       expect(zhGuard).toContain('无法归因的事件和仅位于项目外的目标保持中立');
       expect(zhGuard).toContain('一旦写入已归属于本项目');
+      expect(zhGuard).toContain('个人记忆和项目知识');
+      expect(enGuard).toContain('personal memory and project knowledge');
       expect(enGuard).toContain('record the failed result');
       expect(enGuard).toContain('return to Build before modifying the implementation');
       expect(enGuard).toContain('dot-prefixed project files');
@@ -3241,7 +3243,7 @@ describe('skills', () => {
       expect(enGuard).toContain('does not override unresolved `[blocking]` user decisions');
       expect(enGuard).toContain('targets that are entirely outside the project remain neutral');
       expect(enGuard).toContain('Once a write is attributed to this project');
-      expect(enGuard).toContain('comet memory context');
+      expect(enGuard).toContain('comet task');
       expect(enGuard).not.toContain('comet rules context');
       expect(enGuard).toContain('.comet/config.yaml');
 

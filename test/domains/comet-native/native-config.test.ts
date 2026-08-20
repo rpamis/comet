@@ -85,6 +85,9 @@ describe('Native project configuration', () => {
         learning: true,
         retrieval: true,
       },
+      knowledge: {
+        provider: 'local',
+      },
       native: {
         artifact_root: 'docs',
         language: 'en',

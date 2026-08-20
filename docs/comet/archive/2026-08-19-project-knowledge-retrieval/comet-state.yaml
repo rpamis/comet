@@ -1,0 +1,810 @@
+schema: comet.native.v4
+name: project-knowledge-retrieval
+language: zh-CN
+phase: archive
+status: done
+state_version: 11
+brief: brief.md
+spec_changes:
+  - capability: project-knowledge
+    operation: create
+    source: specs/project-knowledge/spec.md
+workspace:
+  isolation: worktree
+  change_branch: comet/project-knowledge-retrieval
+  target_branch: beta20
+  finish: keep
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 2
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 1
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: A1：缺少 `knowledge` 时按 Local 处理；`provider` 仅允许
+      `local|remote`，已知字段类型/取值错误拒绝配置，未知扩展字段保留。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: A2：Remote 必须有 HTTPS endpoint（loopback 可 HTTP），可选
+      token_env/scope/timeout_ms 且超时范围为 100–30000ms；Local 不读取 Remote 凭据。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: A3：语料发现只包含配置声明的 Native 当前/归档 Spec、Classic 配置布局的当前/归档 Spec，以及归档 Classic
+      Change 通过 `design_doc`/`plan`/`verification_report` 明确引用的 Superpowers
+      Markdown。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: A4：备用 OpenSpec 根、活跃 Change、源码、`.comet`、越界路径、符号链接逃逸和非普通文件均不被读取；不存在目录安全跳过。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: A5：查询从任务、可选相对目标路径和阶段生成最多 16 个固定字符串词，保留标识符/路径/数字并处理中文短语，不把用户文本解释为正则。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: A6：Local 优先 bundled rg，缺失时回退系统 rg；两者都不可用、超时或 JSON 损坏时返回空结果和非阻塞诊断。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A7
+    source: brief.md
+    text: A7：Local 单次最多一个 rg 进程、2000ms、1MiB JSON 输出、500 个 match；达到上限停止并仅处理完整候选。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A8
+    source: brief.md
+    text: A8：Local 片段按标题/段落提取并确定性排序；至少两个有意义词或一个明确标识符/完整短语才注入，否则 abstain。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A9
+    source: brief.md
+    text: A9：最终最多 4 个不同来源/标题、每段最多 1600 字符、总计最多 5000 字符；来源、标题和不可信资料边界稳定渲染并安全转义。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A10
+    source: brief.md
+    text: A10：Remote 请求包含 query、limit=4 和可选 scope；query
+      只含任务及相对路径/阶段，不含绝对路径、源码、个人记忆或本地正文。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A11
+    source: brief.md
+    text: A11：Remote 只接受合法 JSON `results`，校验 content/source/title/score、1MiB 响应、512
+      字符 source、200 字符 title、1600 字符片段和 5000 字符总量；服务端顺序保留，不重新解释 score。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A12
+    source: brief.md
+    text: A12：Remote 非 2xx、超时、重定向、认证/协议错误、超限或非法 JSON 只产生一次简短诊断，stdout 仍可解析、任务继续且不回退
+      Local。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A13
+    source: brief.md
+    text: A13：第一方插件默认注册，与 `comet.personal-memory` 并列；disable、project pause、explicit
+      uninstall 后不产生 Provider、网络或子进程活动，升级不静默恢复 explicitRemoval。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A14
+    source: brief.md
+    text: "A14：`CometPluginBridge.collectContext()` 同时返回个人记忆和项目知识，`comet task
+      --json` 顶层结构不变，仅增加独立 `pluginId: comet.project-knowledge` 贡献。"
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A15
+    source: brief.md
+    text: A15：Native 任务可召回 Classic/Superpowers 文档，Classic 任务可召回 Native
+      文档；Native、Classic、hotfix、tweak 不新增调用路径。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A16
+    source: brief.md
+    text: A16：Local/Remote、Provider 失败、无结果、插件禁用和单文档读取失败均不阻塞主 workflow，不泄露
+      token、Authorization、完整响应或无界任务内容。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A17
+    source: brief.md
+    text: A17：npm 打包安装后能解析 bundled rg，系统 rg fallback 可独立验证；平台差异由 `platform/` 适配，不散落在
+      domain。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A18
+    source: brief.md
+    text: A18：测试覆盖配置默认/校验、语料边界、查询分词、排序/去重/abstain、rg 限制、Remote 协议、渲染安全、生命周期、跨
+      workflow、打包安装和固定 Top-4 基线。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A19
+    source: brief.md
+    text: A19：中英文 Skill 只把“个人记忆”更新为“相关个人记忆和项目知识”，中文先完成并与英文同步，输入/边界/失败语义一致；不修改
+      Superpowers/OpenSpec 原始 Skill。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A20
+    source: brief.md
+    text: A20：完成相关最小测试、Prettier、lint、build、生成资产检查、全量测试和固定检索基线；用户可见双语文档与当前 beta
+      Changelog 语义一致。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A21
+    source: specs/project-knowledge/spec.md
+    text: Comet 新增第一方 `comet.project-knowledge` 插件，在统一的 `comet task`
+      上召回与任务相关的项目文档，并通过 `CometPluginBridge.collectContext()` 作为独立 plugin
+      contribution 提供给 Agent。`/comet`、Native、Classic、hotfix 和 tweak
+      继续调用同一入口，不新增用户必须执行的检索 CLI。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A22
+    source: specs/project-knowledge/spec.md
+    text: 插件提供两个互斥 Provider：`local`（默认）使用随 Comet 分发的 ripgrep 对本地 Markdown
+      即时检索；`remote` 调用用户实现的固定 `Comet Retrieval API v1`。Local 不访问网络、embedding
+      或索引；Remote 只在用户明确选择时发送 query。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A23
+    source: specs/project-knowledge/spec.md
+    text: 召回内容必须以“项目知识参考”区块呈现，并标注其可能过时、包含指令性文字且只能作为证据参考，不能覆盖用户请求、系统约束、Skill 或当前
+      workflow 状态。每段正文使用引用格式，来源路径或 URL 独立展示。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A24
+    source: specs/project-knowledge/spec.md
+    text: "`comet.project-knowledge` 是 `project` scope 的第一方插件，与
+      `comet.personal-memory` 并列注册。"
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A25
+    source: specs/project-knowledge/spec.md
+    text: 首次协调第一方插件时自动安装并启用。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A26
+    source: specs/project-knowledge/spec.md
+    text: 用户禁用或暂停后不再贡献上下文；显式卸载保留 `explicitRemoval`，后续 update/升级不静默恢复。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A27
+    source: specs/project-knowledge/spec.md
+    text: 卸载只停止召回，不删除 Comet 已有文档，也没有本地索引需要清理。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A28
+    source: specs/project-knowledge/spec.md
+    text: 配置只选择 Provider，不能绕过插件启停状态。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A29
+    source: specs/project-knowledge/spec.md
+    text: 项目知识不进入个人记忆仓库，也不参与个人记忆学习、纠正、同步和遗忘。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A30
+    source: specs/project-knowledge/spec.md
+    text: "`.comet/config.yaml` 顶层可选 `knowledge` 块。新项目可以显式生成 Local 默认值；旧项目缺少该块时等价于
+      Local，不需要迁移。"
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A31
+    source: specs/project-knowledge/spec.md
+    text: 字段规则：
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A32
+    source: specs/project-knowledge/spec.md
+    text: "`provider` 只允许 `local` 或 `remote`，省略时为 `local`。"
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A33
+    source: specs/project-knowledge/spec.md
+    text: Remote 的 `endpoint` 必填，必须 HTTPS；loopback 地址允许 HTTP。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A34
+    source: specs/project-knowledge/spec.md
+    text: "`token_env` 是环境变量名，不是密钥；存在且变量缺失时不发送未认证请求。"
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A35
+    source: specs/project-knowledge/spec.md
+    text: "`scope` 是不透明知识库标识，Comet 不解释其内容。"
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A36
+    source: specs/project-knowledge/spec.md
+    text: "`timeout_ms` 默认 5000，允许 100–30000 毫秒。"
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A37
+    source: specs/project-knowledge/spec.md
+    text: 已知字段类型/取值错误按现有项目配置规则拒绝；未知扩展字段继续保留。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A38
+    source: specs/project-knowledge/spec.md
+    text: Local 不读取 Remote 凭据；Provider 严格二选一。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A39
+    source: specs/project-knowledge/spec.md
+    text: 语料只包含 Comet 管理的用户可读 Markdown，不扫描源码、整个仓库或 `.comet` 机器状态。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A40
+    source: specs/project-knowledge/spec.md
+    text: 根据 `.comet/config.yaml` 声明的 workflow 和布局发现：
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A41
+    source: specs/project-knowledge/spec.md
+    text: 当前 Spec：`<native.artifact_root>/comet/specs/**/*.md`；
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A42
+    source: specs/project-knowledge/spec.md
+    text: 已归档 Change：`<native.artifact_root>/comet/archive/**/*.md`。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A43
+    source: specs/project-knowledge/spec.md
+    text: 配置布局对应的 `<openspec-root>/specs/**/*.md`；
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A44
+    source: specs/project-knowledge/spec.md
+    text: 配置布局对应的 `<openspec-root>/changes/archive/**/*.md`；
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A45
+    source: specs/project-knowledge/spec.md
+    text: 已归档 Classic Change 的 `.comet.yaml` 通过 `design_doc`、`plan` 或
+      `verification_report` 明确引用的 `docs/superpowers/specs/`、`plans/` 和
+      `reports/` Markdown。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A46
+    source: specs/project-knowledge/spec.md
+    text: Classic 只读取 `.comet/config.yaml` 所属的 `legacy` 或 `docs` 布局，不读取备用 OpenSpec
+      根。当前 workflow 不限制召回来源；同时声明 Native 和 Classic 时，两边构成同一语料集合。活跃 Change
+      不进入第一版语料，Superpowers
+      也不按目录全量扫描。所有根目录与命中文件必须通过路径保护，拒绝越界、符号链接逃逸和非普通文件；不存在目录安全跳过。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A47
+    source: specs/project-knowledge/spec.md
+    text: 优先解析 npm 包中的 `@vscode/ripgrep` 平台可执行文件；不可用时回退系统
+      `rg`，两者都不可用时记录可操作诊断并返回空结果，不临时下载。使用参数数组直接启动，不经过 shell。一次召回最多一个 `rg --json`
+      进程，默认 2000ms 超时，最多接收 1MiB JSON 输出和 500 个 match 事件；达到上限即终止并只排序完整候选。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A48
+    source: specs/project-knowledge/spec.md
+    text: 查询来自 `PluginContextRequest` 的任务文本、可选相对目标路径和可选阶段。最多生成 16
+      个固定字符串词：保留标识符、路径片段、英文词和数字；中文使用有限连续短语与二至四字片段；去重并删除明显停用词。ripgrep 使用
+      fixed-string、ignore-case 和 JSON 输出，用户文本不解释为正则。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A49
+    source: specs/project-knowledge/spec.md
+    text: Local 从命中行定位 Markdown
+      标题和相邻段落，一个文档同一标题只保留一个候选，正文按字符边界裁剪。确定性排序依次考虑：完整短语/明确标识符命中标题、文件名或正文；不同查询词覆盖率；目标路径关联；当前权威
+      Spec 优先于归档 Change 和 Superpowers；命中数、归档时间和稳定路径。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A50
+    source: specs/project-knowledge/spec.md
+    text: 只有至少两个有意义查询词，或一个明确标识符、路径或完整短语命中，才达到注入阈值；否则 abstain。最终最多四个不同来源或标题，每段最多 1600
+      字符，总文本最多 5000 字符。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A51
+    source: specs/project-knowledge/spec.md
+    text: Remote 不支持可编程映射、JSONPath、厂商 preset 或任意模板。Comet 定义固定文本检索协议，用户负责适配
+      RAGFlow、Dify、Elasticsearch、向量检索或其他服务。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A52
+    source: specs/project-knowledge/spec.md
+    text: 请求为：
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A53
+    source: specs/project-knowledge/spec.md
+    text: "未配置 token 时不发送 Authorization；未配置 scope 时省略 `scope`。query 首先是原始任务文本，有路径时追加
+      `Target path: <project-relative-path>`，有阶段时追加 `Phase:
+      <phase>`；不包含绝对路径、源码、个人记忆或本地文档正文。"
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A54
+    source: specs/project-knowledge/spec.md
+    text: 成功响应必须为 JSON：
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A55
+    source: specs/project-knowledge/spec.md
+    text: 每项 `content`、`source` 为非空字符串，`title` 与有限数值 `score` 可选。Comet 保留服务端顺序，不用
+      Local 排序器解释 score，只做结构校验、去重、裁剪和安全渲染。超过四项截断；响应最多 1MiB，source 最多 512
+      字符，title 最多 200 字符，单段最多 1600 字符，最终总计最多 5000 字符。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A56
+    source: specs/project-knowledge/spec.md
+    text: 2xx 且空 results 是正常无结果。非 2xx、超时、响应超限、非法 JSON 或字段不合法只记录 Remote 诊断；任务继续，不回退
+      Local。第一版不重试、不跟随 HTTP redirect，避免放大延迟、远端负载或转发 Authorization。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A57
+    source: specs/project-knowledge/spec.md
+    text: 新增 `domains/project-knowledge/` 并保持职责分离：
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A58
+    source: specs/project-knowledge/spec.md
+    text: "`ProjectKnowledgePlugin`：第一方 Plugin descriptor 与 `provideContext`；"
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A59
+    source: specs/project-knowledge/spec.md
+    text: "`ProjectKnowledgeCorpus`：Native、Classic、Superpowers 文档根解析；"
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A60
+    source: specs/project-knowledge/spec.md
+    text: "`ProjectKnowledgeQuery`：任务规范化和 Local/Remote query；"
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A61
+    source: specs/project-knowledge/spec.md
+    text: "`LocalProjectKnowledgeProvider`：ripgrep、JSON 命中、片段和排序；"
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A62
+    source: specs/project-knowledge/spec.md
+    text: "`RemoteProjectKnowledgeProvider`：Retrieval API v1；"
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A63
+    source: specs/project-knowledge/spec.md
+    text: "`ProjectKnowledgeRenderer`：去重、限额、来源和不可信资料边界。"
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A64
+    source: specs/project-knowledge/spec.md
+    text: 平台能力放在 `platform/`，包含 ripgrep 解析、安全进程启动/终止、受限普通文件读取和有界 HTTP。domain 不散落平台分支。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A65
+    source: specs/project-knowledge/spec.md
+    text: '`createDefaultCometPluginBridge()` 读取规范化 `knowledge` 配置，同时注册
+      personal-memory 与 project-knowledge。`collectCometPluginContext()` 保持
+      plugin ID 分开的贡献；`comet task --json` 顶层结构不变，仅新增 `pluginId:
+      "comet.project-knowledge"` 项。Native、Classic、hotfix、tweak 共用既有入口。'
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A66
+    source: specs/project-knowledge/spec.md
+    text: 中英文 Comet Skill 将“只注入个人记忆”更新为“注入相关个人记忆和项目知识”，仍调用同一个 `comet task`；项目知识是确定性
+      Runtime 能力，不增加需要 Agent 自行判断调用的新 Skill。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A67
+    source: specs/project-knowledge/spec.md
+    text: 无命中：正常空结果，不显示提示；
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A68
+    source: specs/project-knowledge/spec.md
+    text: 配置 schema 错误：指出 `knowledge` 并拒绝加载；缺少 Remote 环境变量时跳过召回并给诊断；
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A69
+    source: specs/project-knowledge/spec.md
+    text: Local 工具缺失、超时或非法输出：记录诊断，任务继续；
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A70
+    source: specs/project-knowledge/spec.md
+    text: Remote 超时、认证失败或协议错误：stderr 一次简短警告，JSON stdout 保持可解析，任务继续；
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A71
+    source: specs/project-knowledge/spec.md
+    text: 单文档不可读或被替换：跳过并保留诊断，不扩大路径范围；
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A72
+    source: specs/project-knowledge/spec.md
+    text: 插件禁用或卸载：不加载 Provider、不产生网络或子进程。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A73
+    source: specs/project-knowledge/spec.md
+    text: 诊断不得包含 token、Authorization、完整远端响应或超出必要范围的任务内容。Dashboard
+      第一版复用现有插件状态和诊断能力，不新增索引进度、搜索页或历史页。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A74
+    source: specs/project-knowledge/spec.md
+    text: 单元测试覆盖配置默认/校验/语言渲染、Native/Classic/归档 Superpowers 语料发现、备用根/活跃
+      Change/`.comet`/越界拒绝、分词/标识符/路径、排序/去重/abstain、Markdown 片段、4 段/5000
+      字符限制、bundled/system rg、缺失/超时/损坏 JSON、Remote 请求/响应/字节上限/无重试和不可信资料引用。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A75
+    source: specs/project-knowledge/spec.md
+    text: 集成测试覆盖插件默认启用、disable/pause/uninstall、Bridge 同时返回
+      personal-memory/project-knowledge、`comet task` 与
+      Native/Classic/hotfix/tweak、跨 workflow 召回、Remote 失败不回退 Local 且不破坏 JSON、npm
+      安装 bundled rg 和系统回退。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+  - id: A76
+    source: specs/project-knowledge/spec.md
+    text: 建立不依赖模型的固定小型语料和 Vitest 基线，覆盖精确术语、中文夹英文/路径、当前 Spec
+      权威排序、Native/Classic/Superpowers 跨来源、无关任务 abstain、Top-4
+      相关性和来源正确性。跨模块、Runtime、安装或发布资产变化后按仓库规则执行相关测试、格式、lint、build 和一次全量测试。
+    result: passed
+    reason:
+      text: 独立验收通过，未发现必须修复项。
+      truncated: false
+builder_handoff:
+  candidate_id: 893d8824-1d7d-49b3-8be6-0bfeed737e27
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:1e9683e6-3cb7-4df4-8421-568e77474341
+  iteration: 2
+  summary:
+    text: 修复上一轮独立验收指出的规则文案、Local/Remote 失败与边界覆盖、生命周期和固定 Top-4
+      基线；完成项目知识检索实现、生成资产与全量验证。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    - A8
+    - A9
+    - A10
+    - A11
+    - A12
+    - A13
+    - A14
+    - A15
+    - A16
+    - A17
+    - A18
+    - A19
+    - A20
+    - A21
+    - A22
+    - A23
+    - A24
+    - A25
+    - A26
+    - A27
+    - A28
+    - A29
+    - A30
+    - A31
+    - A32
+    - A33
+    - A34
+    - A35
+    - A36
+    - A37
+    - A38
+    - A39
+    - A40
+    - A41
+    - A42
+    - A43
+    - A44
+    - A45
+    - A46
+    - A47
+    - A48
+    - A49
+    - A50
+    - A51
+    - A52
+    - A53
+    - A54
+    - A55
+    - A56
+    - A57
+    - A58
+    - A59
+    - A60
+    - A61
+    - A62
+    - A63
+    - A64
+    - A65
+    - A66
+    - A67
+    - A68
+    - A69
+    - A70
+    - A71
+    - A72
+    - A73
+    - A74
+    - A75
+    - A76
+  checks:
+    - name:
+        text: project knowledge focused tests
+        truncated: false
+      result: passed
+      note:
+        text: 项目知识测试 21 项通过，并覆盖 Local/Remote 限制、失败诊断、生命周期、跨 workflow 和固定 Top-4 基线。
+        truncated: false
+    - name:
+        text: workflow/plugin/native/repository contract tests
+        truncated: false
+      result: passed
+      note:
+        text: 相关 Native 配置、插件、Skill、仓库布局契约测试通过。
+        truncated: false
+    - name:
+        text: pnpm exec tsc --noEmit
+        truncated: false
+      result: passed
+      note:
+        text: TypeScript 编译检查通过。
+        truncated: false
+    - name:
+        text: pnpm lint
+        truncated: false
+      result: passed
+      note:
+        text: ESLint 与架构 lint 通过。
+        truncated: false
+    - name:
+        text: pnpm build
+        truncated: false
+      result: passed
+      note:
+        text: Classic、Native、Entry、TypeScript、Dashboard 与生成资产构建通过。
+        truncated: false
+    - name:
+        text: pnpm test
+        truncated: false
+      result: passed
+      note:
+        text: 317 个测试文件通过；3907 个测试通过，57 个跳过。
+        truncated: false
+    - name:
+        text: git diff --check
+        truncated: false
+      result: passed
+      note:
+        text: 无空白错误。
+        truncated: false
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  submitted_at: 2026-08-19T18:41:55.402Z
+blockers: []
+verification:
+  candidate_id: 893d8824-1d7d-49b3-8be6-0bfeed737e27
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:d67b6f2d-2c51-4467-b29c-b7eab8313f52
+  iteration: 2
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks: []
+  summary:
+    text: 独立只读验收通过：实现、规则文案、Local/Remote 边界与失败语义、插件生命周期、跨 workflow
+      语料、生成资产、双语文档和验证覆盖均符合 A1-A76。
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-08-19T18:49:56.275Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A18
+      - A19
+      - A66
+      - A74
+      - A75
+      - A76
+    summary:
+      text: 核心实现路径和编译/最小测试通过，但规则文案残留旧个人记忆入口，且 RAG 测试覆盖不足；回退 Build 修复。
+      truncated: false
+    completed_at: 2026-08-19T18:04:21.584Z
+  - goal_cycle: 1
+    iteration: 2
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 独立只读验收通过：实现、规则文案、Local/Remote 边界与失败语义、插件生命周期、跨 workflow
+        语料、生成资产、双语文档和验证覆盖均符合 A1-A76。
+      truncated: false
+    completed_at: 2026-08-19T18:49:56.275Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-19T16:34:22.945Z

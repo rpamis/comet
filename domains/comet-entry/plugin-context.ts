@@ -15,6 +15,11 @@ export async function collectCometPluginContext(
   const bridge = await createBridge(projectRoot, (notice) => notices.push(notice));
   const contributions = await bridge.collectContext(request);
   for (const notice of notices) process.stderr.write(`${notice}\n`);
+  for (const diagnostic of await bridge.diagnostics()) {
+    if (diagnostic.pluginId !== 'comet.project-knowledge' || diagnostic.phase !== 'context')
+      continue;
+    process.stderr.write(`Project knowledge: ${diagnostic.message}\n`);
+  }
   return contributions.map(({ pluginId, text }) => ({ pluginId: String(pluginId), text }));
 }
 

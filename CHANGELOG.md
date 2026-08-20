@@ -8,6 +8,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 - **Semantic personal memory**: Comet now keeps reusable personal preferences, collaboration habits, and verified experience through a bounded review at stable successful workflow checkpoints, while skipping one-off activity, repository facts, and sensitive content.
 - **Shared memory Skill**: Classic, Native, Hotfix, and Tweak now use the same fixed first-party `comet-memory` Skill with Chinese and English assets selected from the project language.
+- **Project knowledge retrieval**: Ordinary `comet task` now contributes bounded, source-cited references from declared Native, Classic, and explicitly referenced archived Superpowers documents, with Local retrieval by default and an opt-in fixed Retrieval API v1 Remote provider.
 
 ### Changed
 

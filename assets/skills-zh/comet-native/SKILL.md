@@ -24,9 +24,9 @@ Native 把需求、完整目标规格、当前进度和验收结论保存在项�
 comet task <project-root> --task "<用户原始请求>" --phase build --json
 ```
 
-只把返回的相关个人记忆加入当前任务上下文；命令不可用或没有内容时继续正常工作，不要求用户处理。工作流命令可带 `--comet-task`、`--comet-path`、`--comet-phase`，CLI 会自动选择上下文并在输出中显示相关片段。每次成功完成 change、验证或审查后，Agent 使用当前 workflow、change ID 和稳定行为摘要调用 `comet memory observe`，用于跨会话沉淀用户习惯。验证、编译或 linter 失败时，直接读取工具诊断、修复代码并按工作流要求重跑。任务结束调用 `comet task <project-root> --task "<用户原始请求>" --complete --workflow <workflow> --change <change-id> --json`，完成个人记忆检查点。
+只把返回的相关个人记忆和项目知识加入当前任务上下文；命令不可用、没有内容或检索失败时继续正常工作，不要求用户处理。工作流命令可带 `--comet-task`、`--comet-path`、`--comet-phase`，CLI 会自动选择上下文并在输出中显示相关片段。每次成功完成 change、验证或审查后，Agent 使用当前 workflow、change ID 和稳定行为摘要调用 `comet memory observe`，用于跨会话沉淀用户习惯。验证、编译或 linter 失败时，直接读取工具诊断、修复代码并按工作流要求重跑。任务结束调用 `comet task <project-root> --task "<用户原始请求>" --complete --workflow <workflow> --change <change-id> --json`，完成个人记忆检查点。
 
-没有 Hook 平台时，上述命令就是 Skill 的上下文和学习回退路径，底层仍可调用 `comet memory context`；有 Hook 时仍只注入当前任务匹配的个人记忆片段。
+没有 Hook 平台时，上述命令就是 Skill 的上下文和学习回退路径，底层仍可调用 `comet memory context`；有 Hook 时仍只注入当前任务匹配的个人记忆和项目知识片段。
 ### 创建 change
 先确定小写 kebab-case 名称，再按[工作区选择参考](reference/workspace.md)决定使用当前目录、创建分支还是创建 worktree。用户明确说并行、同时处理或多个会话时自动选择 `worktree`，不再询问三种方式。
 
