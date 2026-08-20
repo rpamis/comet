@@ -1,12 +1,12 @@
 ---
-generated_from_state_version: 7
+generated_from_state_version: 8
 ---
 
 # 验证
 
 ## 当前结果
 
-- 结果: **验收通过，可归档**
+- 结果: **已归档**
 - 验证情况: **已完成检查，验证结果已确认**
 - 目标周期: 1
 - 迭代: 1
