@@ -31,6 +31,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Windows Eval packaging**: Packaging no longer traverses ignored pytest and Eval runtime artifacts before applying the package boundary, so stale Windows test directories cannot make `pnpm pack` fail with `EPERM`.
 - **Windows Eval isolation**: Repeated `comet eval` runs no longer copy generated `.comet` caches, run artifacts, or the framework's own Runtime state into Skill workspaces, preventing nested-cache and deep-path `MAX_PATH` failures on Windows.
 - **Monorepo Dashboard workspaces**: Starting `comet dashboard` from a monorepo subdirectory that holds `.comet/config.yaml` now uses that subdirectory as the workspace root and maps sibling Git worktrees to the same subdirectory, so the change list is no longer empty when the Comet project root is not the worktree root.
+- **Ambient Resume mid-flow replies**: Agents following the installed Ambient Resume instructions no longer stall a running Comet change after the user answers an in-flow question with a short option pick. The managed block now exempts replies to questions asked inside a Comet flow from the resume probe and clarifies that an `out_of_scope` result only blocks entering a workflow, never continuing one already in progress.
 
 ## What's Changed [0.4.0-beta.18] - 2026-08-13
 
