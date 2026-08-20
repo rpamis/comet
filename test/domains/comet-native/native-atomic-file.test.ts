@@ -19,6 +19,37 @@ describe('Native atomic file containment', () => {
     await fs.rm(outside, { recursive: true, force: true });
   });
 
+  it('commits a normal write even though writing changes size and ctime', async () => {
+    const target = path.join(root, 'state.json');
+    await atomicWriteText(target, '{"ok":true}\n', {
+      containedRoot: root,
+      beforeCommit: async () => {
+        await fs.realpath(root);
+        await fs.readdir(root);
+      },
+    });
+
+    expect(await fs.readFile(target, 'utf8')).toBe('{"ok":true}\n');
+    const leftovers = (await fs.readdir(root)).filter((entry) => entry.endsWith('.tmp'));
+    expect(leftovers).toEqual([]);
+  });
+
+  it('rejects a temporary file replaced before commit', async () => {
+    const target = path.join(root, 'state.json');
+    await expect(
+      atomicWriteText(target, 'original', {
+        containedRoot: root,
+        beforeCommit: async () => {
+          const temporary = (await fs.readdir(root)).find((entry) => entry.endsWith('.tmp'));
+          if (!temporary) throw new Error('temporary file not found before commit');
+          const temporaryPath = path.join(root, temporary);
+          await fs.unlink(temporaryPath);
+          await fs.writeFile(temporaryPath, 'tampered');
+        },
+      }),
+    ).rejects.toThrow(/temporary file changed before commit/u);
+  });
+
   it('never writes content after the final parent is replaced before temporary open', async () => {
     const parent = path.join(root, 'a', 'b');
     const displaced = path.join(root, 'a', 'b-displaced');
