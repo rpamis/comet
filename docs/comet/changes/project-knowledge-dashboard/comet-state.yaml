@@ -1,9 +1,9 @@
 schema: comet.native.v4
 name: project-knowledge-dashboard
 language: zh-CN
-phase: build
-status: active
-state_version: 2
+phase: verify
+status: await-user
+state_version: 8
 brief: brief.md
 spec_changes:
   - capability: dashboard
@@ -15,174 +15,500 @@ workspace:
   target_branch: beta20
   finish: null
 loop:
-  stage: building
+  stage: await-user
   goal_cycle: 1
-  iteration: 1
-  attempt: 0
+  iteration: 2
+  attempt: 1
   retry_epoch: 0
-  failed_iteration_count: 0
+  failed_iteration_count: 1
   no_progress_count: 0
   execution_failure_count: 0
   previous_unresolved_ids: []
-  next_action: submit-builder-candidate
+  next_action: confirm-skill-coordinated-pass
 acceptance:
   - id: A1
     source: brief.md
     text: A1：Dashboard 列出 `comet.project-knowledge`，标签为“项目知识”，路由为
       `/plugins/project-knowledge`，并与个人记忆处于同一插件中心。
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: Default Bridge exposes Project Knowledge beside Personal Memory at
+        /plugins/project-knowledge.
+      truncated: false
   - id: A2
     source: brief.md
-    text: "A2：Local 快照标记 `configured: true` 并明确“不维护索引”；Remote 快照显示
+    text: 'A2：Local 快照标记 `configured: true` 并明确“不维护索引”；Remote 快照显示
       endpoint、scope、timeout 和 token 环境变量名/是否存在，但不出现
-      token、Authorization、凭据、查询参数或 hash。"
-    result: pending
-    reason: null
+      token、Authorization、凭据、查询参数或 hash。'
+    result: passed
+    reason:
+      text: Local and Remote snapshots are bounded; Remote credentials, query, and
+        hash are removed and token values are not returned.
+      truncated: false
   - id: A3
     source: brief.md
     text: A3：插件页摘要区分 `enabled`、全局停用和当前项目暂停；暂停/恢复/卸载只调用现有 Dashboard lifecycle API。
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: The default host keeps the plugin-owned page visible for enabled, globally
+        disabled, and project-paused states; lifecycle uses existing host APIs.
+      truncated: false
   - id: A4
     source: brief.md
-    text: A4：状态页加载不构造 Local/Remote Provider、不调用网络、不启动子进程；最近诊断最多三条，每条有界且去除 Bearer
+    text:
+      A4：状态页加载不构造 Local/Remote Provider、不调用网络、不启动子进程；最近诊断最多三条，每条有界且去除 Bearer
       值，无诊断时显示空状态。
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: Status does not construct providers, read corpus, spawn ripgrep, or call
+        the network; diagnostics are bounded and redacted.
+      truncated: false
   - id: A5
     source: brief.md
     text: A5：页面展示 Provider、插件状态、项目暂停状态、配置有效性、Remote 安全摘要和检索语义，不显示搜索、索引、历史或配置编辑控件。
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: The page shows provider, plugin state, project pause, configuration, safe
+        Remote summary, retrieval semantics, and diagnostics without non-goal
+        controls.
+      truncated: false
   - id: A6
     source: brief.md
     text: A6：现有项目知识检索、插件禁用/暂停/卸载、个人记忆页面和已归档 `project-knowledge-retrieval` 产物保持行为不变。
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: Retrieval, lifecycle, Personal Memory, and archived
+        project-knowledge-retrieval behavior show no regression.
+      truncated: false
   - id: A7
     source: specs/dashboard/spec.md
     text: Dashboard 通过现有 `PluginRuntime.dashboardPages()` 发现第一方
       `comet.project-knowledge` 页面。插件模块提供 `status` capability
       返回可序列化状态快照；页面加载过程不得创建任何 Provider、读取项目语料、启动 ripgrep 或调用远端 HTTP。
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: Enabled state uses PluginRuntime.dashboardPages and the plugin status
+        capability; static metadata only preserves disabled/paused recovery.
+      truncated: false
   - id: A8
     source: specs/dashboard/spec.md
     text: 快照字段保持稳定且有界：
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: Snapshot fields are fixed and bounded.
+      truncated: false
   - id: A9
     source: specs/dashboard/spec.md
-    text: "`provider`：`local` 或 `remote`；"
-    result: pending
-    reason: null
+    text: '`provider`：`local` 或 `remote`；'
+    result: passed
+    reason:
+      text: Provider is local or remote.
+      truncated: false
   - id: A10
     source: specs/dashboard/spec.md
-    text: "`configured`：规范化 Provider 配置是否有效；"
-    result: pending
-    reason: null
+    text: '`configured`：规范化 Provider 配置是否有效；'
+    result: passed
+    reason:
+      text: Configured reflects normalized Local or Remote endpoint and timeout
+        validity.
+      truncated: false
   - id: A11
     source: specs/dashboard/spec.md
-    text: "`remote`：仅在 Remote 时返回脱敏 endpoint、可选 scope、timeout、token 环境变量名和环境变量是否存在；"
-    result: pending
-    reason: null
+    text: '`remote`：仅在 Remote 时返回脱敏 endpoint、可选 scope、timeout、token 环境变量名和环境变量是否存在；'
+    result: passed
+    reason:
+      text: Remote returns only sanitized endpoint, scope, timeout, token environment
+        name, and presence.
+      truncated: false
   - id: A12
     source: specs/dashboard/spec.md
-    text: "`retrieval`：说明当前 Provider 的行为；Local 必须说明不维护索引，Remote 必须说明配置不等于请求成功；"
-    result: pending
-    reason: null
+    text: '`retrieval`：说明当前 Provider 的行为；Local 必须说明不维护索引，Remote 必须说明配置不等于请求成功；'
+    result: passed
+    reason:
+      text: Local explains that it does not maintain an index and Remote distinguishes
+        configuration from request success.
+      truncated: false
   - id: A13
     source: specs/dashboard/spec.md
-    text: "`diagnostics`：最多三条 `{ code, message }`，消息最多 240 个字符并去除 Bearer 值。"
-    result: pending
-    reason: null
+    text: '`diagnostics`：最多三条 `{ code, message }`，消息最多 240 个字符并去除 Bearer 值。'
+    result: passed
+    reason:
+      text: Diagnostics are capped at three entries and 240 characters.
+      truncated: false
   - id: A14
     source: specs/dashboard/spec.md
     text: Remote endpoint 只保留协议、主机和路径，清除 username、password、query、hash。token
       环境变量的值永远不进入 page data；Remote 未配置 token 时显示未配置状态，不能为了展示状态发起未认证请求。
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: Endpoint credentials, query, and hash are removed; token values never
+        enter page data and status does not request the provider.
+      truncated: false
   - id: A15
     source: specs/dashboard/spec.md
-    text: 页面包含四格状态行：Provider、插件状态、当前项目暂停状态和配置有效性。配置摘要展示 Local/Remote
+    text:
+      页面包含四格状态行：Provider、插件状态、当前项目暂停状态和配置有效性。配置摘要展示 Local/Remote
       的安全字段；诊断区展示最近有界诊断或“没有新的诊断”空状态。页面只提供现有生命周期操作：启用、当前项目暂停/恢复和卸载。
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: The four status cells, safe summary, empty diagnostics state, and
+        lifecycle controls are present.
+      truncated: false
   - id: A16
     source: specs/dashboard/spec.md
-    text: "禁用页面不能调用插件 capability；`DashboardPluginHost` 继续返回 `data: null` 并拒绝
-      invoke。全局停用与当前项目暂停通过页面摘要中的 `globallyDisabled` 和 `projectPaused` 区分。"
-    result: pending
-    reason: null
+    text: '禁用页面不能调用插件 capability；`DashboardPluginHost` 继续返回 `data: null` 并拒绝
+      invoke。全局停用与当前项目暂停通过页面摘要中的 `globallyDisabled` 和 `projectPaused` 区分。'
+    result: passed
+    reason:
+      text: Disabled and paused pages remain reachable, host.get returns data:null,
+        and no capability is invoked.
+      truncated: false
   - id: A17
     source: specs/dashboard/spec.md
     text: "`lifecycle({ action: 'disable' })` 复用既有 project scope pause；"
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: Disable reuses project-scope pause.
+      truncated: false
   - id: A18
     source: specs/dashboard/spec.md
     text: "`lifecycle({ action: 'enable' })` 清除当前项目暂停，并在必要时恢复全局停用；"
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: Enable clears project pause and restores overlapping global disable state
+        through the existing Runtime API.
+      truncated: false
   - id: A19
     source: specs/dashboard/spec.md
     text: "`lifecycle({ action: 'uninstall' })` 复用既有显式卸载，保留文档和插件状态语义。"
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: Uninstall reuses existing explicit removal semantics.
+      truncated: false
   - id: A20
     source: specs/dashboard/spec.md
     text: 页面不实现第二套生命周期状态机，也不把配置错误变成 Dashboard mutation。
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: No second lifecycle state machine or Dashboard configuration mutation was
+        added.
+      truncated: false
   - id: A21
     source: specs/dashboard/spec.md
     text: 页面不显示 token、Authorization header、完整远端响应、绝对路径或本地文档正文。diagnostics
       仅复用插件已有短诊断并限制条数/长度；页面加载错误仍由 Dashboard host 错误边界转换，不能阻塞普通任务执行。
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: The page excludes tokens, Authorization headers, full responses, absolute
+        paths, and document contents; errors are bounded.
+      truncated: false
   - id: A22
     source: specs/dashboard/spec.md
-    text: "**Given** 默认 first-party bridge 已协调插件，**When** Dashboard 请求插件列表，**Then**
-      返回个人记忆和 `/plugins/project-knowledge` 项目知识页面。"
-    result: pending
-    reason: null
+    text: '**Given** 默认 first-party bridge 已协调插件，**When** Dashboard 请求插件列表，**Then**
+      返回个人记忆和 `/plugins/project-knowledge` 项目知识页面。'
+    result: passed
+    reason:
+      text: Enabled default discovery returns Personal Memory and Project Knowledge.
+      truncated: false
   - id: A23
     source: specs/dashboard/spec.md
-    text: "**Given** Local 或 Remote 规范化配置，**When** Dashboard 加载项目知识页面，**Then** 返回
+    text: '**Given** Local 或 Remote 规范化配置，**When** Dashboard 加载项目知识页面，**Then** 返回
       provider、configured、retrieval 和安全 remote 摘要，且不包含
-      token、凭据、query、hash、Authorization 或 Provider 请求副作用。"
-    result: pending
-    reason: null
+      token、凭据、query、hash、Authorization 或 Provider 请求副作用。'
+    result: passed
+    reason:
+      text: Local and Remote page data includes provider, configured, retrieval, and
+        safe summary without provider side effects.
+      truncated: false
   - id: A24
     source: specs/dashboard/spec.md
-    text: "**Given** 插件全局启用、全局停用或当前项目暂停，**When** Dashboard 获取页面，**Then**
+    text: '**Given** 插件全局启用、全局停用或当前项目暂停，**When** Dashboard 获取页面，**Then**
       `status`、`globallyDisabled`、`projectPaused` 与 Runtime
-      状态一致；disable/enable/uninstall 使用现有 host lifecycle API。"
-    result: pending
-    reason: null
+      状态一致；disable/enable/uninstall 使用现有 host lifecycle API。'
+    result: passed
+    reason:
+      text: Regression tests cover project pause and persisted global disable; list
+        flags, data:null, and enable recovery all pass.
+      truncated: false
   - id: A25
     source: specs/dashboard/spec.md
-    text: "**Given** 插件最近产生任意诊断，**When** Dashboard 获取页面，**Then** 最多返回三条、每条最多 240
-      个字符、Bearer 值被替换；没有诊断时页面显示空状态。"
-    result: pending
-    reason: null
+    text:
+      '**Given** 插件最近产生任意诊断，**When** Dashboard 获取页面，**Then** 最多返回三条、每条最多 240
+      个字符、Bearer 值被替换；没有诊断时页面显示空状态。'
+    result: passed
+    reason:
+      text: Diagnostics are capped, bounded, and redact Bearer and Authorization
+        values.
+      truncated: false
   - id: A26
     source: specs/dashboard/spec.md
-    text: "**Given** 用户打开项目知识页面，**Then**
-      页面只展示状态、配置摘要、检索语义、诊断和生命周期操作，不展示搜索、索引、embedding、监听器、历史或配置编辑控件。"
-    result: pending
-    reason: null
+    text: '**Given** 用户打开项目知识页面，**Then**
+      页面只展示状态、配置摘要、检索语义、诊断和生命周期操作，不展示搜索、索引、embedding、监听器、历史或配置编辑控件。'
+    result: passed
+    reason:
+      text: The page remains within the approved read-only MVP boundary.
+      truncated: false
   - id: A27
     source: specs/dashboard/spec.md
-    text: "**Given** 现有项目知识检索、个人记忆 Dashboard 和归档 `project-knowledge-retrieval`
-      Change，**When** 新页面实现并通过测试，**Then** 三者既有行为和归档产物保持不变。"
-    result: pending
-    reason: null
-builder_handoff: null
-blockers: []
-verification: null
-history: []
+    text: '**Given** 现有项目知识检索、个人记忆 Dashboard 和归档 `project-knowledge-retrieval`
+      Change，**When** 新页面实现并通过测试，**Then** 三者既有行为和归档产物保持不变。'
+    result: passed
+    reason:
+      text: Existing retrieval, Personal Memory Dashboard, and archived artifacts
+        remain compatible.
+      truncated: false
+builder_handoff:
+  candidate_id: 70d11957-a969-49ec-8857-4c1368ead9a7
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:4d8efbc6-8268-4908-aea4-35a37a945bf5
+  iteration: 2
+  summary:
+    text: Iteration 2 keeps the plugin-owned Project Knowledge Dashboard
+      contribution registered in the default host while Runtime status is
+      disabled or project-paused. The page now remains visible with safe status
+      flags and data:null until the existing lifecycle enable action restores
+      it; regression coverage covers both project pause and persisted global
+      disable.
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    - A8
+    - A9
+    - A10
+    - A11
+    - A12
+    - A13
+    - A14
+    - A15
+    - A16
+    - A17
+    - A18
+    - A19
+    - A20
+    - A21
+    - A22
+    - A23
+    - A24
+    - A25
+    - A26
+    - A27
+  checks:
+    - name:
+        text: focused-vitest
+        truncated: false
+      result: passed
+      note:
+        text: 5 affected suites passed; 63 tests passed, including paused and globally
+          disabled default-host recovery
+        truncated: false
+    - name:
+        text: dashboard-e2e
+        truncated: false
+      result: passed
+      note:
+        text: 25 Dashboard Playwright tests passed
+        truncated: false
+    - name:
+        text: prettier-eslint-build
+        truncated: false
+      result: passed
+      note:
+        text: Affected formatting, ESLint, and full pnpm build passed
+        truncated: false
+    - name:
+        text: git-diff-check
+        truncated: false
+      result: passed
+      note: null
+  checks_truncated: false
+  known_limits:
+    - text: Full Vitest will be rerun in the final verification pass after this
+        candidate is accepted.
+      truncated: false
+  known_limits_truncated: false
+  submitted_at: 2026-08-20T08:05:06.481Z
+blockers:
+  - owner: user
+    reason:
+      text: The generic Skill bridge cannot prove an independent Verifier execution;
+        user confirmation is required before Archive.
+      truncated: false
+    acceptance_ids: []
+    resolution_action: await-user
+verification:
+  candidate_id: 70d11957-a969-49ec-8857-4c1368ead9a7
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:e3af6819-7c14-4a45-8d84-f7ab89bb69e0
+  iteration: 2
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: project-knowledge-dashboard-tests
+      name:
+        text: Project Knowledge and Dashboard focused tests
+        truncated: false
+      argv_display:
+        - text: run
+          truncated: false
+        - text: test/domains/project-knowledge/project-knowledge.test.ts
+          truncated: false
+        - text: test/domains/dashboard/plugin-host.test.ts
+          truncated: false
+        - text: test/domains/dashboard/default-plugin-host.test.ts
+          truncated: false
+        - text: test/domains/dashboard/web-source.test.ts
+          truncated: false
+        - text: test/domains/dashboard/server.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 22447
+    - id: dashboard-e2e
+      name:
+        text: Dashboard browser tests
+        truncated: false
+      argv_display:
+        - text: test:dashboard-e2e
+          truncated: false
+        - text: --
+          truncated: false
+        - text: --reporter=line
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 18282
+    - id: format
+      name:
+        text: Affected source and test formatting
+        truncated: false
+      argv_display:
+        - text: --check
+          truncated: false
+        - text: CHANGELOG.md
+          truncated: false
+        - text: domains/project-knowledge/types.ts
+          truncated: false
+        - text: domains/project-knowledge/dashboard.ts
+          truncated: false
+        - text: domains/project-knowledge/index.ts
+          truncated: false
+        - text: domains/project-knowledge/plugin.ts
+          truncated: false
+        - text: domains/dashboard/plugin-host.ts
+          truncated: false
+        - text: domains/dashboard/default-plugin-host.ts
+          truncated: false
+        - text: domains/dashboard/web/src/main.jsx
+          truncated: false
+        - text: domains/dashboard/web/src/styles.css
+          truncated: false
+        - text: test/domains/project-knowledge/project-knowledge.test.ts
+          truncated: false
+        - text: test/domains/dashboard/plugin-host.test.ts
+          truncated: false
+        - text: test/domains/dashboard/default-plugin-host.test.ts
+          truncated: false
+        - text: test/domains/dashboard/web-source.test.ts
+          truncated: false
+        - text: test/domains/dashboard/dashboard-browser.spec.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 2043
+    - id: typecheck
+      name:
+        text: TypeScript typecheck
+        truncated: false
+      argv_display:
+        - text: --noEmit
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 6537
+    - id: generated-native-runtime
+      name:
+        text: Generated Native runtime assets
+        truncated: false
+      argv_display:
+        - text: scripts/build/build-native-runtime.mjs
+          truncated: false
+        - text: --check
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 607
+    - id: git-diff-check
+      name:
+        text: Git whitespace check
+        truncated: false
+      argv_display:
+        - text: diff
+          truncated: false
+        - text: --check
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 178
+  summary:
+    text: Independent verification confirms the lifecycle reachability defect from
+      iteration 1 is fixed. Project Knowledge remains visible while paused or
+      globally disabled, returns data:null without invoking capabilities, and
+      enable restores the page. No other A1-A27 blocker was found.
+    truncated: false
+  risks:
+    - text: Playwright emits existing Vite proxy ECONNREFUSED warnings for unmocked
+        fixture endpoints, but the complete 25-test Dashboard E2E suite passed
+        in Native Runtime checks.
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-08-20T08:09:37.285Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A3
+      - A16
+      - A24
+    summary:
+      text: 'Independent verification found one lifecycle reachability defect: the
+        default host dynamically discovers only active pages, so Project
+        Knowledge disappears when paused or globally disabled. All other
+        acceptance criteria passed.'
+      truncated: false
+    completed_at: 2026-08-20T08:02:39.393Z
+  - goal_cycle: 1
+    iteration: 2
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: Independent verification confirms the lifecycle reachability defect from
+        iteration 1 is fixed. Project Knowledge remains visible while paused or
+        globally disabled, returns data:null without invoking capabilities, and
+        enable restores the page. No other A1-A27 blocker was found.
+      truncated: false
+    completed_at: 2026-08-20T08:09:37.285Z
 history_overflow:
   dropped_entries: 0
   first_dropped_at: null
@@ -193,7 +519,7 @@ history_overflow:
     blocked: 0
     execution-error: 0
     recovery: 0
-verification_result: pending
-verification_report: null
+verification_result: pass
+verification_report: verification.md
 archived: false
 created_at: 2026-08-20T07:20:21.185Z

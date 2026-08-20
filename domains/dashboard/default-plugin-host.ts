@@ -1,6 +1,10 @@
 import os from 'node:os';
 import path from 'node:path';
 import { createDefaultCometPluginBridge } from '../comet-plugin/index.js';
+import {
+  createProjectKnowledgeDashboardContribution,
+  PROJECT_KNOWLEDGE_PLUGIN_ID,
+} from '../project-knowledge/index.js';
 import { DashboardPluginHost, type DashboardPluginHostFactory } from './plugin-host.js';
 import { getCurrentVersion } from '../../platform/version/version.js';
 
@@ -27,10 +31,20 @@ export function createDefaultDashboardPluginHostFactory(
       stateRoot,
       cometVersion,
     });
+    const projectKnowledgePage = createProjectKnowledgeDashboardContribution(
+      bridge.currentLanguage,
+    );
     return new DashboardPluginHost({
       runtime: bridge.pluginRuntime,
       projectId,
-      pages: [],
+      pages: [
+        {
+          pluginId: PROJECT_KNOWLEDGE_PLUGIN_ID,
+          label: projectKnowledgePage.label,
+          route: projectKnowledgePage.route,
+          ...(projectKnowledgePage.load ? { load: projectKnowledgePage.load } : {}),
+        },
+      ],
     });
   };
 }

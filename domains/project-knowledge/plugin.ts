@@ -1,4 +1,9 @@
-import type { PluginContext, PluginDescriptor, PluginModule } from '../comet-plugin/index.js';
+import type {
+  PluginContext,
+  PluginDashboardContribution,
+  PluginDescriptor,
+  PluginModule,
+} from '../comet-plugin/index.js';
 import { discoverProjectKnowledgeCorpus } from './corpus.js';
 import { createProjectKnowledgeDashboardSnapshot } from './dashboard.js';
 import { LocalProjectKnowledgeProvider } from './local-provider.js';
@@ -13,6 +18,17 @@ import type {
 } from './types.js';
 
 export const PROJECT_KNOWLEDGE_PLUGIN_ID = 'comet.project-knowledge';
+
+export function createProjectKnowledgeDashboardContribution(
+  language: ProjectKnowledgePluginOptions['language'] = 'zh-CN',
+): PluginDashboardContribution {
+  return {
+    id: 'project-knowledge',
+    label: language === 'en' ? 'Project Knowledge' : '项目知识',
+    route: '/plugins/project-knowledge',
+    load: async ({ invoke }) => invoke('status'),
+  };
+}
 
 export function createProjectKnowledgePluginDescriptor(
   options: ProjectKnowledgePluginOptions,
@@ -52,12 +68,7 @@ async function createProjectKnowledgeModule(
     diagnostics: [...recentDiagnostics],
   });
   return {
-    dashboard: {
-      id: 'project-knowledge',
-      label: options.language === 'en' ? 'Project Knowledge' : '项目知识',
-      route: '/plugins/project-knowledge',
-      load: async ({ invoke }) => invoke('status'),
-    },
+    dashboard: createProjectKnowledgeDashboardContribution(options.language),
     invoke: async (capability) => {
       if (capability !== 'status')
         throw new Error(`Unknown project knowledge capability: ${capability}`);
