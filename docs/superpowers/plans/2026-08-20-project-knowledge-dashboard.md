@@ -49,7 +49,7 @@
   Run:
 
   ```powershell
-  pnpm exec comet native new project-knowledge-dashboard --language zh-CN --isolation current --target-branch beta20 --json
+  pnpm exec comet native new project-knowledge-dashboard --language zh-CN --isolation current --json
   ```
 
   Expected: the Runtime reports `project-knowledge-dashboard` as the selected active change and does not create or modify the archived retrieval change.
