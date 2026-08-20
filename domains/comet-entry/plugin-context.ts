@@ -7,6 +7,26 @@ import {
 } from '../comet-plugin/index.js';
 import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
 
+const CONTEXT_TAGS: Readonly<Record<string, string>> = {
+  'comet.personal-memory': 'personal_memory',
+  'comet.project-knowledge': 'project_knowledge',
+};
+
+function escapeXmlText(text: string): string {
+  return text
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&apos;');
+}
+
+function wrapPluginContext(pluginId: string, text: string): string {
+  const tag = CONTEXT_TAGS[pluginId];
+  if (tag === undefined || text.trim().length === 0) return text;
+  return `<${tag}>\n${escapeXmlText(text)}\n</${tag}>`;
+}
+
 export async function collectCometPluginContext(
   projectRoot: string,
   request: CometPluginContextRequest,
@@ -20,7 +40,13 @@ export async function collectCometPluginContext(
       continue;
     process.stderr.write(`Project knowledge: ${diagnostic.message}\n`);
   }
-  return contributions.map(({ pluginId, text }) => ({ pluginId: String(pluginId), text }));
+  return contributions.map(({ pluginId, text }) => {
+    const normalizedPluginId = String(pluginId);
+    return {
+      pluginId: normalizedPluginId,
+      text: wrapPluginContext(normalizedPluginId, text),
+    };
+  });
 }
 
 export async function recordCometWorkflowResult(options: {

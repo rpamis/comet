@@ -1,0 +1,478 @@
+schema: comet.native.v4
+name: context-xml-wrapping
+language: zh-CN
+phase: archive
+status: done
+state_version: 8
+brief: brief.md
+spec_changes:
+  - capability: context-injection
+    operation: create
+    source: specs/context-injection/spec.md
+workspace:
+  isolation: worktree
+  change_branch: comet/context-xml-wrapping
+  target_branch: beta20
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: A1：个人记忆贡献以单个 `<personal_memory>...</personal_memory>` 元素返回，正文和现有 Markdown
+      换行保留。
+    result: passed
+    reason:
+      text: The fixed personal-memory mapping emits one personal_memory wrapper and
+        the focused test preserves Markdown and line breaks.
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: A2：项目知识贡献以单个 `<project_knowledge>...</project_knowledge>` 元素返回，正文和来源引用保留。
+    result: passed
+    reason:
+      text: The fixed project-knowledge mapping emits one project_knowledge wrapper
+        and preserves source citations and line breaks.
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: A3：贡献正文中的 `&`、`<`、`>`、`"`、`'` 被转义，生成的上下文可作为 XML 文本安全传递。
+    result: passed
+    reason:
+      text: The focused test verifies escaping of ampersand, angle brackets, double
+        quotes, and apostrophes inside known contribution text.
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: A4：空贡献不生成空标签；未知插件贡献保持原文，且贡献数量和顺序不变。
+    result: passed
+    reason:
+      text: Blank known contributions remain unwrapped, unknown plugin text remains
+        unchanged, and map preserves array order and cardinality.
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: A5：个人记忆和项目知识仍沿用现有桥接、配置策略和非阻塞错误处理；相关测试覆盖包装边界且无既有回归。
+    result: passed
+    reason:
+      text: The bridge, memory/project-knowledge policies, and non-blocking paths are
+        untouched; focused and full Vitest checks passed.
+      truncated: false
+  - id: A6
+    source: specs/context-injection/spec.md
+    text: 统一插件上下文注入的外层结构，让 Agent 能区分用户偏好类个人记忆与项目证据类项目知识，同时不改变两类插件已有的召回行为。
+    result: passed
+    reason:
+      text: The change is isolated to the shared Entry collection boundary and does
+        not modify retrieval modules, Dashboard, or lifecycle behavior.
+      truncated: false
+  - id: A7
+    source: specs/context-injection/spec.md
+    text: "`collectCometPluginContext` 先使用现有 `CometPluginBridge.collectContext`
+      获取已合并的插件贡献，再按稳定的插件 ID 转换返回文本："
+    result: passed
+    reason:
+      text: collectCometPluginContext calls bridge.collectContext first and transforms
+        only the returned contribution text.
+      truncated: false
+  - id: A8
+    source: specs/context-injection/spec.md
+    text: "`comet.personal-memory` → `<personal_memory>...</personal_memory>`；"
+    result: passed
+    reason:
+      text: comet.personal-memory is mapped to personal_memory by a fixed constant.
+      truncated: false
+  - id: A9
+    source: specs/context-injection/spec.md
+    text: "`comet.project-knowledge` → `<project_knowledge>...</project_knowledge>`；"
+    result: passed
+    reason:
+      text: comet.project-knowledge is mapped to project_knowledge by a fixed
+        constant.
+      truncated: false
+  - id: A10
+    source: specs/context-injection/spec.md
+    text: 其他插件 ID → 原文本，不添加包装。
+    result: passed
+    reason:
+      text: Plugin IDs absent from the fixed map return their original text without a
+        wrapper.
+      truncated: false
+  - id: A11
+    source: specs/context-injection/spec.md
+    text: 每个已知插件 ID 的贡献最多出现一个顶层元素。插件桥的合并、贡献顺序和返回数量保持不变。
+    result: passed
+    reason:
+      text: The existing bridge merge and contribution sequence are not changed; the
+        boundary performs a one-to-one map.
+      truncated: false
+  - id: A12
+    source: specs/context-injection/spec.md
+    text: 包装体内保留插件生成的正文、Markdown 标记、来源引用和换行。正文中的下列字符必须转义，且按此顺序处理以避免二次解释：
+    result: passed
+    reason:
+      text: Known contribution text is placed inside the wrapper after escaping,
+        preserving Markdown, citations, and newlines.
+      truncated: false
+  - id: A13
+    source: specs/context-injection/spec.md
+    text: "| 字符 | XML 文本转义 |"
+    result: passed
+    reason:
+      text: The implementation includes the complete XML text escape table required by
+        the Spec.
+      truncated: false
+  - id: A14
+    source: specs/context-injection/spec.md
+    text: "| `&` | `&amp;` |"
+    result: passed
+    reason:
+      text: Ampersands are escaped before the other replacements as amp.
+      truncated: false
+  - id: A15
+    source: specs/context-injection/spec.md
+    text: "| `<` | `&lt;` |"
+    result: passed
+    reason:
+      text: Less-than characters are escaped as lt.
+      truncated: false
+  - id: A16
+    source: specs/context-injection/spec.md
+    text: "| `>` | `&gt;` |"
+    result: passed
+    reason:
+      text: Greater-than characters are escaped as gt.
+      truncated: false
+  - id: A17
+    source: specs/context-injection/spec.md
+    text: '| `"` | `&quot;` |'
+    result: passed
+    reason:
+      text: Double quotes are escaped as quot.
+      truncated: false
+  - id: A18
+    source: specs/context-injection/spec.md
+    text: "| `'` | `&apos;` |"
+    result: passed
+    reason:
+      text: Apostrophes are escaped as apos.
+      truncated: false
+  - id: A19
+    source: specs/context-injection/spec.md
+    text: 固定标签本身不接受用户输入，不能被正文内容闭合或改变。
+    result: passed
+    reason:
+      text: Tag names come only from fixed constants and escaped body text cannot
+        close or create a wrapper element.
+      truncated: false
+  - id: A20
+    source: specs/context-injection/spec.md
+    text: 如果已知插件贡献的正文为空或仅包含空白字符，保持该贡献为空文本并且不输出空标签。插件桥或单个 Provider
+      出错时继续使用现有非阻塞路径；本规格不改变诊断、配置或错误处理。
+    result: passed
+    reason:
+      text: Whitespace-only known text produces no wrapper, while existing Provider
+        errors remain handled by the unchanged non-blocking bridge path.
+      truncated: false
+  - id: A21
+    source: specs/context-injection/spec.md
+    text: Personal Memory 的检索开关、Project Knowledge 的 Local/Remote
+      配置、召回上限、排序、来源引用、Dashboard 页面和插件生命周期均保持既有行为。调用方仍接收原有贡献数组结构，只是两个已知插件的 `text`
+      字段增加稳定 XML 外层。
+    result: passed
+    reason:
+      text: Memory settings, Local/Remote configuration, limits, ordering, citations,
+        Dashboard, lifecycle, and returned array shape remain unchanged apart
+        from known text wrappers.
+      truncated: false
+  - id: A22
+    source: specs/context-injection/spec.md
+    text: "**Given** 个人记忆插件返回非空正文，**When** 任务收集插件上下文，**Then** 该正文恰好被一个
+      `<personal_memory>` 根元素包裹，正文内容和顺序不变。"
+    result: passed
+    reason:
+      text: A1 behavior is directly covered by the focused Entry boundary test.
+      truncated: false
+  - id: A23
+    source: specs/context-injection/spec.md
+    text: "**Given** 项目知识插件返回非空正文，**When** 任务收集插件上下文，**Then** 该正文恰好被一个
+      `<project_knowledge>` 根元素包裹，来源引用和换行不丢失。"
+    result: passed
+    reason:
+      text: A2 behavior is directly covered by the focused Entry boundary test.
+      truncated: false
+  - id: A24
+    source: specs/context-injection/spec.md
+    text: "**Given** 任一已知插件正文包含 `&`、`<`、`>`、`\"` 或 `'`，**When** 生成注入文本，**Then**
+      这些字符分别输出为 `&amp;`、`&lt;`、`&gt;`、`&quot;` 和 `&apos;`，且正文不能注入新的 XML 元素。"
+    result: passed
+    reason:
+      text: A3 behavior is directly covered by the focused Entry boundary test and
+        full Vitest passed.
+      truncated: false
+  - id: A25
+    source: specs/context-injection/spec.md
+    text: "**Given** 已知插件返回空白正文或未知插件返回文本，**When** 生成注入文本，**Then**
+      已知空白贡献不产生空标签，未知插件保持原文，贡献数组数量和顺序不变。"
+    result: passed
+    reason:
+      text: A4 behavior is directly covered by the focused Entry boundary test.
+      truncated: false
+  - id: A26
+    source: specs/context-injection/spec.md
+    text: "**Given** 个人记忆或项目知识的配置、召回和失败路径，**When** 任务收集上下文，**Then**
+      仍使用既有策略和非阻塞错误处理，新增测试及受影响测试通过。"
+    result: passed
+    reason:
+      text: The Runtime focused and full Vitest checks passed, and lint, typecheck,
+        formatting, generated-asset, and diff checks all passed.
+      truncated: false
+builder_handoff:
+  candidate_id: 11016fcd-3ab4-42d9-a23f-55d83561d4f9
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:37a3b22a-afab-4174-8fa3-fda6c37ca3a8
+  iteration: 1
+  summary:
+    text: Wrapped non-empty personal memory and project knowledge contributions in
+      fixed XML tags at the shared Entry boundary; escaped XML text, preserved
+      ordering and unknown plugins, and left retrieval and lifecycle behavior
+      unchanged.
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    - A8
+    - A9
+    - A10
+    - A11
+    - A12
+    - A13
+    - A14
+    - A15
+    - A16
+    - A17
+    - A18
+    - A19
+    - A20
+    - A21
+    - A22
+    - A23
+    - A24
+    - A25
+    - A26
+  checks:
+    - name:
+        text: focused-context-and-command-vitest
+        truncated: false
+      result: passed
+      note:
+        text: XML wrapper, escaping, empty/unknown contribution, Entry caller, and
+          plugin bridge tests passed.
+        truncated: false
+    - name:
+        text: prettier-lint-build-generated
+        truncated: false
+      result: passed
+      note:
+        text: Affected formatting, lint, full build, and generated Entry runtime checks
+          passed.
+        truncated: false
+    - name:
+        text: full-vitest
+        truncated: false
+      result: passed
+      note:
+        text: 320 test files passed; 3928 tests passed and 57 skipped.
+        truncated: false
+    - name:
+        text: git-diff-check
+        truncated: false
+      result: passed
+      note:
+        text: No whitespace errors.
+        truncated: false
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  submitted_at: 2026-08-20T11:47:42.166Z
+blockers: []
+verification:
+  candidate_id: 11016fcd-3ab4-42d9-a23f-55d83561d4f9
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:e1748583-b465-483e-8791-69cca4f564df
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: context-boundary-focused-vitest
+      name:
+        text: Context boundary and affected caller tests
+        truncated: false
+      argv_display:
+        - text: run
+          truncated: false
+        - text: test/domains/comet-entry/plugin-context.test.ts
+          truncated: false
+        - text: test/app/comet-task-command.test.ts
+          truncated: false
+        - text: test/app/native-command.test.ts
+          truncated: false
+        - text: test/app/classic-command.test.ts
+          truncated: false
+        - text: test/domains/comet-plugin/plugin-integration.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 6339
+    - id: full-vitest
+      name:
+        text: Full Vitest regression suite
+        truncated: false
+      argv_display:
+        - text: run
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 710818
+    - id: lint
+      name:
+        text: ESLint and architecture lint
+        truncated: false
+      argv_display:
+        - text: app
+          truncated: false
+        - text: domains
+          truncated: false
+        - text: platform
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 8074
+    - id: typecheck
+      name:
+        text: TypeScript typecheck
+        truncated: false
+      argv_display:
+        - text: --noEmit
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 6591
+    - id: format
+      name:
+        text: Affected source and documentation formatting
+        truncated: false
+      argv_display:
+        - text: --check
+          truncated: false
+        - text: CHANGELOG.md
+          truncated: false
+        - text: domains/comet-entry/plugin-context.ts
+          truncated: false
+        - text: test/domains/comet-entry/plugin-context.test.ts
+          truncated: false
+        - text: docs/comet/changes/context-xml-wrapping/brief.md
+          truncated: false
+        - text: docs/comet/changes/context-xml-wrapping/specs/context-injection/spec.md
+          truncated: false
+        - text: docs/superpowers/plans/2026-08-20-context-xml-wrapping.md
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 1171
+    - id: generated-assets
+      name:
+        text: Generated runtime assets
+        truncated: false
+      argv_display:
+        - text: scripts/build/build-entry-runtime.mjs
+          truncated: false
+        - text: --check
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 219
+    - id: git-diff-check
+      name:
+        text: Git whitespace check
+        truncated: false
+      argv_display:
+        - text: diff
+          truncated: false
+        - text: --check
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 190
+  summary:
+    text: Independent source review plus Runtime checks confirm the two approved XML
+      context boundaries are implemented at the shared Entry boundary with safe
+      escaping, blank/unknown compatibility, unchanged retrieval behavior, and
+      no required fix.
+    truncated: false
+  risks:
+    - text: Unknown plugin contributions intentionally remain unescaped for
+        compatibility; the XML contract covers only the two named first-party
+        sources.
+      truncated: false
+    - text: Existing Windows CRLF and fixture warning output remains present, but all
+        Runtime checks completed successfully.
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-08-20T12:02:52.509Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: Independent source review plus Runtime checks confirm the two approved XML
+        context boundaries are implemented at the shared Entry boundary with
+        safe escaping, blank/unknown compatibility, unchanged retrieval
+        behavior, and no required fix.
+      truncated: false
+    completed_at: 2026-08-20T12:02:52.509Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-20T11:24:08.193Z
