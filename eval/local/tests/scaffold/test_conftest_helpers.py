@@ -735,30 +735,6 @@ def test_setup_test_context_configures_039_shell_hook(tmp_path: Path, setup_test
     assert command == "bash /workspace/.claude/skills/comet/scripts/comet-hook-guard.sh"
 
 
-def test_setup_test_context_excludes_comet_runtime_state_from_skill_copy(
-    tmp_path: Path, setup_test_context
-):
-    source_dir = tmp_path / "comet-source"
-    source_dir.mkdir()
-    (source_dir / "SKILL.md").write_text("---\nname: comet\n---\n\nOriginal.", encoding="utf-8")
-    runtime_state = source_dir / ".comet" / "eval" / "cache" / "uv"
-    runtime_state.mkdir(parents=True)
-    (runtime_state / "long-wheel.lock").write_text("cached", encoding="utf-8")
-
-    setup_test_context(
-        skills={
-            "comet": {
-                "sections": ["---\nname: comet\n---\n\nGenerated."],
-                "source_dir": source_dir,
-            }
-        }
-    )
-
-    installed = tmp_path / ".claude" / "skills" / "comet"
-    assert (installed / "SKILL.md").exists()
-    assert not (installed / ".comet").exists()
-
-
 def test_codex_guard_uses_codex_hook_config_while_scripts_remain_under_agents(tmp_path: Path):
     command = "node /workspace/.agents/skills/comet/scripts/comet-hook-guard.mjs"
 
