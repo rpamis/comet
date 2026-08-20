@@ -602,6 +602,13 @@ children:
     });
     expect(mismatchedParent.candidate).toBeNull();
     expect(mismatchedParent.blockers.join('\n')).toMatch(/targets other, not integration/iu);
+    const missingParent = await findNativeV1SupervisorParents({
+      paths: parentPaths,
+      childName: 'unknown-child',
+      targetBranch: 'integration',
+    });
+    expect(missingParent.candidate).toBeNull();
+    expect(missingParent.blockers.join('\n')).toMatch(/no active v1 parent declaring it/iu);
 
     const integrated = await nativeNextCommand(
       ['parent', '--summary', 'Verify the final integrated parent result'],
