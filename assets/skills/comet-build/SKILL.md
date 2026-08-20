@@ -240,6 +240,14 @@ When creating an independent change, must invoke `/comet-open`, not `/opsx:new` 
 - Do not sync to main spec in advance, sync uniformly during archiving
 - For small-scale incremental direct delta spec edits, note in commit message to facilitate design doc drift assessment during archiving
 
+**Handoff synchronization**: adding, modifying, or removing a delta spec expires the design handoff pack (`handoff_hash`). During Build you can regenerate it directly without reverting the current phase or step:
+
+```bash
+comet handoff <change-name> design --write
+```
+
+Regeneration rebuilds the handoff from the current OpenSpec artifacts and updates `handoff_hash`; it does not change the `phase` field or the Runtime `currentStep`, so you can continue in the Build phase after refreshing.
+
 ### 5. Context Management
 
 Build is the longest phase and may span many tasks. To support resume after context compaction:

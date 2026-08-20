@@ -24,6 +24,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Classic design handoff refresh after Spec Patch**: Running `comet handoff <change> design --write` after OpenSpec artifacts changed no longer fails with a stale-handoff error, so the design guard can pass and the Classic full workflow proceeds from Design to Build. Refreshing now rewrites stale context files even when a manually aligned hash would otherwise short-circuit success, regenerates the context pack when OpenSpec delta specs are added, changed, or removed, and remains available after the guard has advanced the phase to build.
 - **Classic Ambient Resume**: `comet init` and `comet update` now keep the managed Ambient Resume instructions for Classic-only projects when `ambient_resume` is enabled, so re-running the commands no longer removes the block from `AGENTS.md` or `CLAUDE.md`.
 - **Native Archive**: Archive now respects Git ignore rules when staging workspace artifacts and keeps valid portable verification reports from being treated as incomplete migrations.
 - **Windows Eval packaging**: Packaging no longer traverses ignored pytest and Eval runtime artifacts before applying the package boundary, so stale Windows test directories cannot make `pnpm pack` fail with `EPERM`.
