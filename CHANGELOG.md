@@ -14,6 +14,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **Supervisor completion flow**: When every Supervisor Child is complete, the parent now resumes automatically into final verification with an explicit next step, so users no longer need to manually ask the workflow to advance while final Archive and delivery authorization remain unchanged.
 - **Task context boundaries**: Personal memory and project knowledge references are now wrapped in distinct XML elements so Agents can distinguish user preferences from project evidence.
 - **Personal memory project policy**: Projects can now allow or prohibit automatic memory learning and Agent context injection through the shared `memory` section in `.comet/config.yaml`, while explicit personal memory management remains available.
 - **Personal memory experience**: CLI, Dashboard, readable Markdown, and dedicated Git synchronization now share one authoritative memory state with localized output, explicit correction/forget/rollback controls, conflict protection, and non-blocking background failures.

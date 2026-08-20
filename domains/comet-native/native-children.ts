@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { parseDocument } from 'yaml';
 
-import { listGitWorktreeRoots } from '../../platform/paths/git-worktree.js';
+import { inspectGitWorktree, listGitWorktreeRoots } from '../../platform/paths/git-worktree.js';
 import { runGitCommand } from '../../platform/process/git.js';
 
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
@@ -85,6 +85,12 @@ interface WorkspaceSource {
   projectRoot: string;
   paths: NativeProjectPaths;
   parent: boolean;
+}
+
+export interface NativeV1SupervisorParentCandidate {
+  paths: NativeProjectPaths;
+  state: NativePortableState;
+  inspection: NativeChildrenInspection;
 }
 
 interface ChildFact {
@@ -283,6 +289,133 @@ async function workspaceSources(paths: NativeProjectPaths): Promise<WorkspaceSou
     sources.push({ projectRoot: paths.projectRoot, paths, parent: true });
   }
   return sources;
+}
+
+/**
+ * Locate the unique active v1 Supervisor parent for a Child archive. v1 is
+ * intentionally discovered from its declared children contract and current
+ * Git binding; v2 Supervisor state is never inferred from this compatibility
+ * path.
+ */
+export async function findNativeV1SupervisorParents(options: {
+  paths: NativeProjectPaths;
+  childName: string;
+  targetBranch: string | null;
+}): Promise<{
+  candidate: NativeV1SupervisorParentCandidate | null;
+  blockers: string[];
+}> {
+  const sources = await workspaceSources(options.paths);
+  const candidates: NativeV1SupervisorParentCandidate[] = [];
+  const blockers: string[] = [];
+  const matchingParents = new Map<
+    string,
+    Array<{ source: WorkspaceSource; state: NativePortableState }>
+  >();
+  for (const source of sources) {
+    let entries: import('node:fs').Dirent[];
+    try {
+      entries = await fs.readdir(source.paths.changesDir, { withFileTypes: true });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      throw error;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.isSymbolicLink() || entry.name === options.childName) {
+        continue;
+      }
+      const changeDir = path.join(source.paths.changesDir, entry.name);
+      let state: NativePortableState;
+      try {
+        state = await readNativePortableState(path.join(changeDir, 'comet-state.yaml'));
+      } catch {
+        continue;
+      }
+      if (state.phase !== 'build' || state.status !== 'active') continue;
+      const contract = await readNativeChildrenContract({
+        changeDir,
+        ...(state.acceptance.length > 0
+          ? { acceptanceIds: state.acceptance.map(({ id }) => id) }
+          : {}),
+      });
+      if (!contract || contract.contract.schema !== NATIVE_CHILDREN_SCHEMA) continue;
+      if (!contract.contract.children.some(({ name }) => name === options.childName)) continue;
+      matchingParents.set(state.name, [
+        ...(matchingParents.get(state.name) ?? []),
+        { source, state },
+      ]);
+    }
+  }
+  for (const [parentName, records] of matchingParents) {
+    const targetRecords =
+      options.targetBranch === null
+        ? []
+        : records.filter(({ state }) => state.workspace.target_branch === options.targetBranch);
+    if (options.targetBranch === null) {
+      blockers.push(
+        `Native Supervisor Child ${options.childName} has no target branch to match parent ${parentName}`,
+      );
+      continue;
+    }
+    const boundRecord = targetRecords.find(
+      ({ source, state }) =>
+        inspectGitWorktree(source.projectRoot).currentBranch === state.workspace.change_branch,
+    );
+    if (!boundRecord) {
+      const targetRecord = records.find(
+        ({ state }) => state.workspace.target_branch !== options.targetBranch,
+      );
+      if (targetRecord) {
+        blockers.push(
+          `Native Supervisor parent ${parentName} targets ${targetRecord.state.workspace.target_branch ?? '(missing)'}, not ${options.targetBranch}`,
+        );
+      } else {
+        const state = targetRecords[0]?.state ?? records[0].state;
+        blockers.push(
+          `Native Supervisor parent ${parentName} is not bound to branch ${state.workspace.change_branch}`,
+        );
+      }
+      continue;
+    }
+    const { source, state } = boundRecord;
+    const parentPaths = source.paths;
+    const inspection = await inspectNativeChildren({ paths: parentPaths, state });
+    if (!inspection) {
+      blockers.push(`Native Supervisor parent ${parentName} has no readable Child inspection`);
+    } else if (!inspection.confirmed) {
+      blockers.push(`Native Supervisor parent ${parentName} requires Shape confirmation`);
+    } else if (inspection.allDone) {
+      candidates.push({ paths: parentPaths, state, inspection });
+    } else {
+      const incomplete = inspection.children
+        .filter(({ status }) => status !== 'done')
+        .map(({ name, status, message }) => `${name}=${status}${message ? ` (${message})` : ''}`)
+        .join(', ');
+      blockers.push(
+        `Native Supervisor parent ${parentName} is not ready to advance: ${incomplete || 'Child facts are incomplete'}`,
+      );
+    }
+  }
+  if (matchingParents.size === 0) {
+    blockers.push(
+      `Native Supervisor Child ${options.childName} has no active v1 parent declaring it`,
+    );
+  }
+  if (matchingParents.size > 1) {
+    blockers.push(
+      `Native Supervisor Child ${options.childName} has multiple active parents: ${[...matchingParents.keys()].join(', ')}`,
+    );
+  }
+  if (candidates.length === 1 && blockers.length === 0)
+    return { candidate: candidates[0], blockers };
+  if (candidates.length > 1) {
+    blockers.push(
+      `Native Supervisor Child ${options.childName} has multiple eligible parents: ${candidates
+        .map(({ state }) => state.name)
+        .join(', ')}`,
+    );
+  }
+  return { candidate: null, blockers };
 }
 
 async function readActiveChild(

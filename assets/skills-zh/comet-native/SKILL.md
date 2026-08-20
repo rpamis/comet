@@ -61,7 +61,7 @@ Build 和 Verify 组成一个有界验收循环（Loop）：Builder 提交候选
 
 确认一次 Supervisor Change Shape 即授权严格派生的 Child，不要求用户重复确认相同范围。Skill 只执行 Runtime continuation 返回的动作，并在每个任务完成后重新读取 `readyChildren`，继续下一波；Child 必须经过 `active → verified → integrated`，只有父级最终 Verify 和交付完成后才统一 `archived`。Supervisor Change 最后仍由 Verify 在 integration workspace 验证完整验收项。
 
-状态包含 `children` 时，当前 change 是 Supervisor Change：不要运行父级 Builder，只推进 Runtime 返回的 Supervisor 任务。每个 Child 都在独立 worktree 中实现，基线必须是当时的 integration HEAD；Builder 结果和 Verifier 结果都必须携带当前 `runId`，重复或迟到的回报一律拒绝。Verifier 通过后由父级串行合入 integration branch，并执行该 Child 对应的最小集成检查（原 `finish=merge` 边界由 Runtime 完成）；不得把 `verified`、Agent 完成消息或未提交文件当作 `integrated`。所有 Child integrated 后才进入父级最终 Verify，target 分支在最终交付前保持不变；若 target 外部漂移，Runtime 先把最新 target 带回 integration workspace，要求重新执行父级检查。失败时保留冲突/阻塞现场，按 Runtime 的 `repair-child` 处理，不重开已 integrated Child。
+状态包含 `children` 时，当前 change 是 Supervisor Change：不要运行父级 Builder，只推进 Runtime 返回的 Supervisor 任务。每个 Child 都在独立 worktree 中实现，基线必须是当时的 integration HEAD；Builder 结果和 Verifier 结果都必须携带当前 `runId`，重复或迟到的回报一律拒绝。Verifier 通过后由父级串行合入 integration branch，并执行该 Child 对应的最小集成检查（原 `finish=merge` 边界由 Runtime 完成）；不得把 `verified`、Agent 完成消息或未提交文件当作 `integrated`。所有 Child integrated 后才进入父级最终 Verify，target 分支在最终交付前保持不变；若 target 外部漂移，Runtime 先把最新 target 带回 integration workspace，要求重新执行父级检查。失败时保留冲突/阻塞现场，按 Runtime 的 `repair-child` 处理，不重开已 integrated Child。当 Runtime 返回 `parentAdvance` 时，Skill 立即消费该 continuation 并通知用户父级进入最终 Verify，不要求用户再次说“推进”；最终 Archive、workspace finish、merge、push 和 PR 仍按原授权边界处理。
 
 需求变化时先判断归属：
 

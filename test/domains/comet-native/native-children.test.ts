@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { nativeArchiveCommand } from '../../../domains/comet-native/native-archive-command.js';
 import {
   hashNativeParentContract,
+  findNativeV1SupervisorParents,
   inspectNativeChildren,
   parseNativeChildrenContract,
 } from '../../../domains/comet-native/native-children.js';
@@ -553,6 +554,61 @@ children:
     git(repository, ['commit', '-m', 'record merged child projections']);
     const allDone = await inspectNativeChildren({ paths: parentPaths, state: parentAfterMerge });
     expect(allDone?.allDone).toBe(true);
+    const discoveredParent = await findNativeV1SupervisorParents({
+      paths: parentPaths,
+      childName: 'child-c',
+      targetBranch: 'integration',
+    });
+    expect(discoveredParent.candidate?.state.name).toBe('parent');
+
+    const pendingParentName = 'parent-pending';
+    const pendingParentDir = nativePortableChangeDir(parentPaths, pendingParentName);
+    await fs.cp(parentDir, pendingParentDir, { recursive: true });
+    const pendingParentState = await readNativePortableState(
+      path.join(pendingParentDir, 'comet-state.yaml'),
+    );
+    pendingParentState.name = pendingParentName;
+    const pendingChildrenSource = `${CHILDREN}  - name: child-pending\n    depends_on: []\n    covers: []\n`;
+    await fs.writeFile(path.join(pendingParentDir, 'children.yaml'), pendingChildrenSource);
+    pendingParentState.children_contract_hash = hashNativeParentContract({
+      acceptance: pendingParentState.acceptance,
+      children: parseNativeChildrenContract(
+        pendingChildrenSource,
+        pendingParentState.acceptance.map(({ id }) => id),
+      ),
+    });
+    await writeNativePortableState(
+      path.join(pendingParentDir, 'comet-state.yaml'),
+      pendingParentState,
+    );
+    const ambiguousParent = await findNativeV1SupervisorParents({
+      paths: parentPaths,
+      childName: 'child-c',
+      targetBranch: 'integration',
+    });
+    expect(ambiguousParent.candidate).toBeNull();
+    expect(ambiguousParent.blockers.join('\n')).toMatch(
+      /multiple active parents|parent-pending is not ready to advance/iu,
+    );
+    pendingParentState.workspace.target_branch = 'other';
+    await writeNativePortableState(
+      path.join(pendingParentDir, 'comet-state.yaml'),
+      pendingParentState,
+    );
+    const mismatchedParent = await findNativeV1SupervisorParents({
+      paths: parentPaths,
+      childName: 'child-c',
+      targetBranch: 'integration',
+    });
+    expect(mismatchedParent.candidate).toBeNull();
+    expect(mismatchedParent.blockers.join('\n')).toMatch(/targets other, not integration/iu);
+    const missingParent = await findNativeV1SupervisorParents({
+      paths: parentPaths,
+      childName: 'unknown-child',
+      targetBranch: 'integration',
+    });
+    expect(missingParent.candidate).toBeNull();
+    expect(missingParent.blockers.join('\n')).toMatch(/no active v1 parent declaring it/iu);
 
     const integrated = await nativeNextCommand(
       ['parent', '--summary', 'Verify the final integrated parent result'],

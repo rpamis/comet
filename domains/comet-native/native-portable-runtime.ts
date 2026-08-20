@@ -7,6 +7,7 @@ import { inspectGitWorktree, resolveGitRef } from '../../platform/paths/git-work
 import { atomicWriteText } from './native-atomic-file.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
 import {
+  findNativeV1SupervisorParents,
   hashNativeParentContract,
   inspectNativeChildren,
   readNativeChildrenContract,
@@ -629,6 +630,109 @@ export async function completeNativePortableParentBuild(options: {
       return written;
     },
   );
+}
+
+export interface NativeSupervisorParentAdvance {
+  trigger: 'v2-integrate' | 'v1-archive' | 'recovery';
+  parent: string | null;
+  advanced: boolean;
+  message: string | null;
+  blocker: string | null;
+}
+
+/**
+ * Recompute the Supervisor Child projection and idempotently complete the
+ * parent Build. The caller owns the event-specific transaction; this boundary
+ * only writes the parent after all trusted Child facts are visible.
+ */
+export async function tryAutoAdvanceNativeSupervisorParent(options: {
+  paths: NativeProjectPaths;
+  name: string;
+  trigger: NativeSupervisorParentAdvance['trigger'];
+  summary?: string;
+}): Promise<{ state: NativePortableState; parentAdvance: NativeSupervisorParentAdvance }> {
+  const state = await readNativePortableChange(options.paths, options.name);
+  const base = {
+    trigger: options.trigger,
+    parent: options.name,
+    advanced: false,
+    message: null,
+    blocker: null,
+  } satisfies NativeSupervisorParentAdvance;
+  if (state.phase !== 'build' || state.status !== 'active') {
+    return { state, parentAdvance: base };
+  }
+  const children = await inspectNativeChildren({ paths: options.paths, state });
+  if (!children || !children.confirmed || !children.allDone) {
+    return {
+      state,
+      parentAdvance: {
+        ...base,
+        blocker:
+          children && !children.confirmed
+            ? 'Supervisor child declarations require Shape confirmation'
+            : null,
+      },
+    };
+  }
+  if (state.loop.stage === 'repairing' && state.verification_result === 'fail') {
+    return {
+      state,
+      parentAdvance: {
+        ...base,
+        blocker: 'Native parent verification failed; add and confirm a repair child',
+      },
+    };
+  }
+  const message =
+    state.language === 'zh-CN'
+      ? '全部 Child 已完成，Supervisor 父级正在进行最终验证'
+      : 'All Children are complete; the Supervisor parent is entering final verification.';
+  const next = await completeNativePortableParentBuild({
+    paths: options.paths,
+    name: options.name,
+    summary: options.summary ?? message,
+  });
+  return {
+    state: next,
+    parentAdvance: {
+      ...base,
+      advanced: true,
+      message,
+    },
+  };
+}
+
+export async function tryAutoAdvanceNativeV1SupervisorParent(options: {
+  childState: NativePortableState;
+  childPaths: NativeProjectPaths;
+}): Promise<{
+  parentAdvance: NativeSupervisorParentAdvance;
+  parentState: NativePortableState | null;
+}> {
+  const discovery = await findNativeV1SupervisorParents({
+    paths: options.childPaths,
+    childName: options.childState.name,
+    targetBranch: options.childState.workspace.target_branch,
+  });
+  if (!discovery.candidate) {
+    return {
+      parentState: null,
+      parentAdvance: {
+        trigger: 'v1-archive',
+        parent: null,
+        advanced: false,
+        message: null,
+        blocker: discovery.blockers.length > 0 ? discovery.blockers.join('; ') : null,
+      },
+    };
+  }
+  const result = await tryAutoAdvanceNativeSupervisorParent({
+    paths: discovery.candidate.paths,
+    name: discovery.candidate.state.name,
+    trigger: 'v1-archive',
+  });
+  return { parentState: result.state, parentAdvance: result.parentAdvance };
 }
 
 function localCheck(

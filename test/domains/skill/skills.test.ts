@@ -295,6 +295,23 @@ describe('skills', () => {
       expect(enMain).toContain('does not depend on any external Skill');
     });
 
+    it('requires Native Supervisor auto-advance to be consumed without a second user prompt', async () => {
+      const zhMain = await fs.readFile(
+        path.join(getAssetsDir(), 'skills-zh', 'comet-native', 'SKILL.md'),
+        'utf-8',
+      );
+      const enMain = await fs.readFile(
+        path.join(getAssetsDir(), 'skills', 'comet-native', 'SKILL.md'),
+        'utf-8',
+      );
+      expect(zhMain).toContain('parentAdvance');
+      expect(zhMain).toContain('不要求用户再次说“推进”');
+      expect(zhMain).toContain('最终 Archive、workspace finish、merge、push 和 PR');
+      expect(enMain).toContain('parentAdvance');
+      expect(enMain).toContain('without asking the user to say “advance”');
+      expect(enMain).toContain('final Archive, workspace finish, merge, push, and PR');
+    });
+
     it('requires clarification before Native Shape can modify implementation or enter Build', async () => {
       const zhMain = await fs.readFile(
         path.join(getAssetsDir(), 'skills-zh', 'comet-native', 'SKILL.md'),

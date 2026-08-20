@@ -1,0 +1,802 @@
+schema: comet.native.v4
+name: supervisor-parent-auto-advance
+language: zh-CN
+phase: archive
+status: done
+state_version: 18
+brief: brief.md
+spec_changes:
+  - capability: supervisor-agents
+    operation: modify
+    source: specs/supervisor-agents/spec.md
+  - capability: supervisor-integration
+    operation: modify
+    source: specs/supervisor-integration/spec.md
+workspace:
+  isolation: worktree
+  change_branch: comet/supervisor-parent-auto-advance
+  target_branch: beta20
+  finish: keep
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 3
+  attempt: 2
+  retry_epoch: 0
+  failed_iteration_count: 2
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: A1：Supervisor v2 最后一个 Child 成功集成后，同一次父级 Runtime 推进把父级从 `build` 转为
+      `verify`，返回自动推进结果和最终 Verifier continuation。
+    result: passed
+    reason:
+      text: Independent review and focused v2 regression passed
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: A2：Supervisor v1 最后一个 Child 完成 `finish=merge` Archive 后，Runtime
+      只在唯一、已确认且分支匹配的父级全部 Child 均完成时自动进入 `verify`。
+    result: passed
+    reason:
+      text: v1 archive discovery requires unique matching completed parent facts
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: A3：仍有 Child 处于 pending、ready、active、verified、blocked 或 needs-reverify
+      时，父级保持 `build`，不得提前进入最终 Verify。
+    result: passed
+    reason:
+      text: Incomplete Child facts keep parent in Build
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: A4：进程在最后一个 Child 完成后、父级状态写入前中断，下一次恢复只补做一次父级推进，不重复集成、归档或创建候选。
+    result: passed
+    reason:
+      text: Recovery reuses idempotent parent transition
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: A5：父级已经处于 `verify`、`archive` 或 `done` 时，重复 Child 回报或重复恢复保持幂等，不创建第二个父级候选或
+      Verifier。
+    result: passed
+    reason:
+      text: Repeated advancement is a no-op after Verify
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: A6：父级无法唯一解析、Child Archive 未合入父分支、绑定工作区不一致或存在 repair blocker
+      时，不猜测推进，并返回可见、可恢复的阻塞信息。
+    result: passed
+    reason:
+      text: Zero, ambiguous, incomplete, unmerged, and binding-mismatched v1 parent
+        facts return blockers
+      truncated: false
+  - id: A7
+    source: brief.md
+    text: A7：Native Skill 收到自动父级 continuation 后无需用户再次确认即切回父级并派发最终
+      Verifier；若宿主无法继续，父级至少已持久化为 `verify` 并显示明确下一步。
+    result: passed
+    reason:
+      text: Skill consumes parent continuation without a second confirmation
+      truncated: false
+  - id: A8
+    source: brief.md
+    text: A8：用户收到“全部 Child 已完成，Supervisor 父级正在进行最终验证”的明确通知；最终 Archive、merge、push 和
+      PR 行为仍遵循现有配置与用户授权。
+    result: passed
+    reason:
+      text: User notification stops at final Verify and preserves delivery
+        authorization
+      truncated: false
+  - id: A9
+    source: specs/supervisor-agents/spec.md
+    text: Runtime 只返回精简 Agent 任务包 - **Given** 父级有一个可执行的 Builder 或 Verifier 工作项 -
+      **When** continuation 向宿主请求执行 - **Then** 任务包只包含
+      `role`、`child`、`projectRoot`、`baseCommit` 和 `runId` - **And**
+      任务明确绑定当前父级事实与一个 Child worktree - **And** 临时传输文件由 Runtime 在
+      `.comet/runtime` 内创建、消费和清理
+    result: passed
+    reason:
+      text: Existing Supervisor task package contract remains intact
+      truncated: false
+  - id: A10
+    source: specs/supervisor-agents/spec.md
+    text: Builder 只推进指定 Child - **Given** Agent 收到角色为 `builder` 的任务包 - **When**
+      Agent 执行任务 - **Then** 它只在指定 Child worktree 中推进 Build - **And** 到达 Verifier
+      边界或遇到 blocker 后返回 - **And** 不自行推进父级集成或最终交付
+    result: passed
+    reason:
+      text: Builder remains bound to one Child
+      truncated: false
+  - id: A11
+    source: specs/supervisor-agents/spec.md
+    text: Verifier 是新的只读 Agent - **Given** Child 产生待验证候选 - **When** 父级派发角色为
+      `verifier` 的任务包 - **Then** 使用与 Builder 分离的新 Agent，只读验收指定候选 - **And**
+      不修改实现、不接受 Builder 自证，也不负责创建嵌套 Agent - **And** 独立性沿用 Native 现有可信宿主或
+      skill-coordinated 降级规则
+    result: passed
+    reason:
+      text: Independent read-only Verifier contract remains intact
+      truncated: false
+  - id: A12
+    source: specs/supervisor-agents/spec.md
+    text: 支持 Agent 的宿主并行派发无依赖任务 - **Given** 至少两个无依赖 Child 同时 ready，且当前会话提供原生 Agent
+      工具 - **When** 父级协调者派发 Builder 或 Verifier - **Then** 每个任务使用独立 Child
+      worktree，并可按宿主并发上限并行 - **And** 无法获得并发上限时最多同时派发两个 - **And** 并行不扩展到
+      integration branch 写入
+    result: passed
+    reason:
+      text: Bounded parallel dispatch remains unchanged
+      truncated: false
+  - id: A13
+    source: specs/supervisor-agents/spec.md
+    text: 不支持 Agent 时自动顺序降级 - **Given** 当前会话没有可用原生 Agent 工具 - **When** 父级仍有 ready
+      工作项 - **Then** 同一协调流程按稳定顺序逐项执行 Builder 和 Verifier - **And**
+      依赖、独立验证、串行集成和最终交付结果与并行模式一致 - **And** 不要求用户手工选择另一套流程
+    result: passed
+    reason:
+      text: Serial fallback remains unchanged
+      truncated: false
+  - id: A14
+    source: specs/supervisor-agents/spec.md
+    text: 平台注册表不硬编码多 Agent 能力 - **Given** 同一宿主可能通过会话配置启用或关闭 Agent - **When** Runtime
+      决定是否并行派发 - **Then** 能力来自当前会话实际可用工具 - **And** 不在 33 平台 canonical registry
+      中维护易漂移的 `supportsMultiAgent` 静态字段
+    result: passed
+    reason:
+      text: No static multi-agent registry field was added
+      truncated: false
+  - id: A15
+    source: specs/supervisor-agents/spec.md
+    text: 同一 Child 只有一个有效任务 - **Given** 某 Child 已有有效 Builder 或 Verifier 任务 -
+      **When** continuation 再次计算可执行工作 - **Then** 不为同一 Child 创建第二个有效任务 - **And**
+      其他无依赖 Child 仍可被派发
+    result: passed
+    reason:
+      text: Duplicate effective Child tasks remain rejected
+      truncated: false
+  - id: A16
+    source: specs/supervisor-agents/spec.md
+    text: runId 拒绝重复或迟到结果 - **Given** Runtime 已记录当前 Child、角色、父级状态、base commit 和
+      `runId` - **When** 收到重复完成、旧 `runId`、错误角色或不匹配基线的返回 - **Then** 该返回不能推进
+      verified、integrated 或父级状态 - **And** `runId` 只用于执行去重，不作为权限凭证或 Agent 身份证明
+    result: passed
+    reason:
+      text: Stale runId and mismatched results remain rejected
+      truncated: false
+  - id: A17
+    source: specs/supervisor-agents/spec.md
+    text: Agent 完成消息只唤醒协调者 - **Given** 宿主通知某 Agent 已完成 - **When** 父级继续推进 - **Then**
+      Runtime 重新读取 Portable State、Child 验证记录、verified commit 和 Git 关系 - **And**
+      只有这些事实一致时才推进状态 - **And** Agent 的文字摘要不直接成为 Runtime 事实
+    result: passed
+    reason:
+      text: Runtime rereads authoritative facts before progression
+      truncated: false
+  - id: A18
+    source: specs/supervisor-agents/spec.md
+    text: 全部 Child 完成后自动切回父级 - **Given** Runtime 已根据可信状态和 Git 事实确认全部 Child 完成 -
+      **When** Child 完成命令返回父级自动推进结果和 continuation - **Then** Native Skill
+      不要求用户再次说“推进”或重复确认范围 - **And** 自动切换到父级上下文并继续派发最终 Verifier - **And**
+      明确通知用户“全部 Child 已完成，Supervisor 父级正在进行最终验证”
+    result: passed
+    reason:
+      text: Automatic parent continuation and Skill contract tests passed
+      truncated: false
+  - id: A19
+    source: specs/supervisor-agents/spec.md
+    text: 宿主中断时保留可恢复的父级下一步 - **Given** Runtime 已把父级持久化为 Verify，但宿主无法立即启动最终 Verifier
+      - **When** 当前协调任务结束或稍后恢复 - **Then** continuation 明确指向父级最终 Verifier 动作 -
+      **And** 不把父级回退为 Build，也不以最后一个 Child 完成消息冒充整个 Supervisor 完成
+    result: passed
+    reason:
+      text: Verify persistence retains a recoverable Verifier continuation
+      truncated: false
+  - id: A20
+    source: specs/supervisor-agents/spec.md
+    text: 恢复时优先重连旧任务 - **Given** 协调会话重启且某 Child 仍有有效任务 - **When** 宿主提供可恢复的 Agent
+      运行标识 - **Then** 父级优先重新连接旧任务 - **And** 不因为会话重启重复派发已 verified 或 integrated 的
+      Child
+    result: passed
+    reason:
+      text: Reconnect behavior remains unchanged
+      truncated: false
+  - id: A21
+    source: specs/supervisor-agents/spec.md
+    text: 重新派发前确认旧任务已停止 - **Given** 旧 Agent 无法重连 - **When** 父级考虑为同一 Child 创建替代任务 -
+      **Then** 只有宿主确认旧任务已结束或取消后，Runtime 才失效旧 `runId` 并重新派发 - **And** 无法确认时只阻塞该
+      Child，不让两个 Agent 并发写同一 worktree
+    result: passed
+    reason:
+      text: Redispatch still requires old task stop confirmation
+      truncated: false
+  - id: A22
+    source: specs/supervisor-agents/spec.md
+    text: 单个 Agent 阻塞不冻结无依赖任务 - **Given** 一个 Agent 失败、等待外部授权或无法安全恢复 - **When** 其他无依赖
+      Child 仍有可执行工作 - **Then** Runtime 只阻塞受影响 Child并继续提供其他任务 - **And** 最终
+      integration branch 写入仍保持串行
+    result: passed
+    reason:
+      text: Independent ready work remains available around blockers
+      truncated: false
+  - id: A23
+    source: specs/supervisor-agents/spec.md
+    text: Agent 不需要共享协调基础设施 - **Given** 父级同时协调多个 Child - **When** Builder 和 Verifier
+      执行 - **Then** Agent 不共享 mailbox、宿主任务列表或直接通信 - **And** Child Agent 不需要创建嵌套
+      Agent - **And** Runtime 不管理模型选择、消息路由或通用 Worker 生命周期
+    result: passed
+    reason:
+      text: No shared mailbox or nested agent infrastructure was added
+      truncated: false
+  - id: A24
+    source: specs/supervisor-agents/spec.md
+    text: 自动接回不绕过最终交付授权 - **Given** Native Skill 已自动切回父级并完成最终 Verify - **When** 父级进入
+      Archive 或 workspace finish 边界 - **Then** Skill 继续遵循现有项目配置、Runtime
+      continuation 和用户授权 - **And** 不因为 Child 自动接回而擅自 merge、push 或创建 PR
+    result: passed
+    reason:
+      text: Final delivery authorization remains unchanged
+      truncated: false
+  - id: A25
+    source: specs/supervisor-integration/spec.md
+    text: Shape 确认后创建父级 integration workspace - **Given** 新 Supervisor v2 的 Shape
+      已确认 - **When** Runtime 开始父级实施 - **Then** Runtime 记录真实 target branch 的起始
+      commit - **And** 通过平台 Adapter 创建父级专用 integration branch/worktree - **And**
+      integration workspace 的身份和基线写入父级 Runtime 状态
+    result: passed
+    reason:
+      text: Shape creates and persists integration workspace facts
+      truncated: false
+  - id: A26
+    source: specs/supervisor-integration/spec.md
+    text: 父级最终交付前 target 保持不变 - **Given** integration workspace 已建立 - **When** 任意
+      Child 实现、验证或集成，或父级 Verify 尚未通过 - **Then** 所有组合结果只进入 integration branch -
+      **And** 真实 target branch 仍指向父级开始时记录的提交，除非外部产生可识别漂移
+    result: passed
+    reason:
+      text: Target remains unchanged before final delivery
+      truncated: false
+  - id: A27
+    source: specs/supervisor-integration/spec.md
+    text: ready Child 从当前 integration HEAD 创建 - **Given** 一个 Child 的全部依赖均已
+      integrated - **When** Runtime 将该 Child 变为 ready 并创建工作区 - **Then** Child
+      使用独立 branch/worktree - **And** 其 base commit 等于当时的 integration HEAD -
+      **And** 该基线包含所有依赖的 integration commit
+    result: passed
+    reason:
+      text: Ready Children use current integration HEAD
+      truncated: false
+  - id: A28
+    source: specs/supervisor-integration/spec.md
+    text: 缺少依赖提交时拒绝 Child 执行 - **Given** Child B 声明依赖 Child A - **When** A 尚未
+      integrated，或 B 的 base commit 不包含 A 的 integration commit - **Then** Runtime
+      拒绝启动、验证或集成 B - **And** 返回指出缺失依赖事实的可恢复 blocker
+    result: passed
+    reason:
+      text: Missing dependency commits block Child execution
+      truncated: false
+  - id: A29
+    source: specs/supervisor-integration/spec.md
+    text: Child Verify 绑定准确候选提交 - **Given** Builder 已提交 Child 的候选结果 - **When** 独立
+      Verifier 通过全部 Child 范围 - **Then** Runtime 记录准确的 verified commit 和结构化 Child
+      验证记录 - **And** Child 状态变为 `verified` - **And** Agent 文本结论或未提交工作区不能单独形成
+      verified 事实
+    result: passed
+    reason:
+      text: Verified commit and evidence remain required
+      truncated: false
+  - id: A30
+    source: specs/supervisor-integration/spec.md
+    text: verified 与 integrated 保持分离 - **Given** Child 已在准确 commit 上 verified -
+      **When** verified commit 尚未合入 integration branch 或合入后的检查尚未通过 - **Then**
+      Child 保持 `verified` 或进入明确 blocker - **And** 不显示为 `integrated`、`done` 或
+      `archived`
+    result: passed
+    reason:
+      text: Verified and integrated states remain separate
+      truncated: false
+  - id: A31
+    source: specs/supervisor-integration/spec.md
+    text: 父级串行集成 verified Child - **Given** 一个或多个 Child 已 verified 且依赖满足 - **When**
+      父级集成器推进队列 - **Then** Runtime 使用短事务锁、Git 引用比较更新和恢复记录逐个处理 - **And**
+      同一时刻最多执行一个 integration branch 写入 - **And** 每次只合入已记录的 verified commit
+    result: passed
+    reason:
+      text: Integration remains short-locked and serial
+      truncated: false
+  - id: A32
+    source: specs/supervisor-integration/spec.md
+    text: 同时完成 Verify 仍按稳定顺序集成 - **Given** 两个无依赖 Child 同时完成 Verify - **When**
+      父级选择下一项集成 - **Then** Runtime 使用确定性的稳定顺序串行处理 - **And** Agent
+      完成先后不改变依赖图或产生并发 merge
+    result: passed
+    reason:
+      text: Stable dependency order remains deterministic
+      truncated: false
+  - id: A33
+    source: specs/supervisor-integration/spec.md
+    text: 集成检查通过后记录 integrated - **Given** verified commit 已合入 integration branch -
+      **When** Git/状态不变量和该 Child 已确认实施责任对应的最小跨模块检查通过 - **Then** Runtime 记录 Child
+      名称、摘要、verified commit、integration commit、Child 验证记录和检查结果 - **And** Child
+      状态才变为 `integrated` - **And** 不在每次 Child 合入后重复运行完整父级检查
+    result: passed
+    reason:
+      text: Integration facts and checks precede integrated state
+      truncated: false
+  - id: A34
+    source: specs/supervisor-integration/spec.md
+    text: 集成冲突保留现场 - **Given** verified commit 与当前 integration HEAD 发生合并冲突 -
+      **When** 父级集成器尝试合入 - **Then** Runtime 停止该集成、保留可诊断现场并返回用户决定 blocker -
+      **And** 不自动解决冲突、不推进 Child 状态，也不修改真实 target
+    result: passed
+    reason:
+      text: Conflicts preserve the integration worktree
+      truncated: false
+  - id: A35
+    source: specs/supervisor-integration/spec.md
+    text: 全部 Child integrated 前拒绝父级 Verify - **Given** 至少一个已声明 Child 尚未 integrated
+      或处于 blocked - **When** 父级尝试进入最终 Verify - **Then** Runtime 拒绝进入并指出剩余 Child
+      与下一动作 - **And** 不以 Child 已 verified 或 Agent 已完成代替 integrated
+    result: passed
+    reason:
+      text: Parent Verify still requires all Children integrated
+      truncated: false
+  - id: A36
+    source: specs/supervisor-integration/spec.md
+    text: v2 最后一个 Child 集成后自动进入父级 Verify - **Given** 父级处于 active Build，且当前
+      `supervisor-integrate` 使最后一个 Child 变为 `integrated` - **When** Runtime
+      重新投影全部 Child 并确认没有 repair blocker - **Then** Runtime 在同一 CLI 操作返回前自动完成父级
+      Build 并进入最终 Verify - **And** 只创建一个父级候选，返回自动推进结果和最终 Verifier continuation -
+      **And** 不要求用户再次发出父级“推进”或范围确认
+    result: passed
+    reason:
+      text: v2 final Child integration auto-advance regression passed
+      truncated: false
+  - id: A37
+    source: specs/supervisor-integration/spec.md
+    text: v1 最后一个 Child Archive merge 后自动进入父级 Verify - **Given** active Supervisor
+      v1 的 Child 使用既有独立 Archive 生命周期 - **When** 最后一个声明 Child 完成
+      `finish=merge`，且归档状态已提交到唯一父级分支 - **Then** Runtime
+      从分支绑定一致的权威工作区定位该父级并重新检查全部 Child - **And** 全部 Child 均为 `done` 时自动完成父级 Build
+      并进入最终 Verify - **And** detached、binding mismatch 或未合入的 Archive 不能形成完成事实
+    result: passed
+    reason:
+      text: v1 final Child archive merge auto-advance path is guarded by Git facts
+      truncated: false
+  - id: A38
+    source: specs/supervisor-integration/spec.md
+    text: 中断恢复补做父级推进 - **Given** 全部 Child 已完成，但进程在父级 Build 状态写入前中断 - **When**
+      下一次父级恢复或相关 Supervisor 推进重新读取 Portable State、父子声明和 Git 事实 - **Then**
+      Runtime 幂等补做父级 Build 完成并进入 Verify - **And** 父级已在 Verify、Archive 或 done
+      时不创建第二个候选或重复 Verifier
+    result: passed
+    reason:
+      text: Recovery progression remains idempotent
+      truncated: false
+  - id: A39
+    source: specs/supervisor-integration/spec.md
+    text: 父级歧义或未完成事实阻止自动推进 - **Given** v1 Child 对应零个或多个 active 父级、Child Archive
+      未合入父分支、父级绑定不一致，或仍有未完成/blocked Child - **When** Runtime 尝试自动接回父级 - **Then**
+      Runtime 不猜测父级、不提前进入 Verify - **And** 返回包含父级、分支或剩余 Child 事实的可恢复 blocker
+    result: passed
+    reason:
+      text: Zero or multiple active parents and all incomplete/binding facts now
+        produce recoverable blockers
+      truncated: false
+  - id: A40
+    source: specs/supervisor-integration/spec.md
+    text: 父级 Verify 在 integration worktree 验收完整目标 - **Given** 所有当前 Child 已
+      integrated - **When** 父级进入最终 Verify - **Then** Verifier 读取完整 brief、全部目标
+      Specs、Child 验证记录和最终 integration HEAD - **And** 在 integration worktree
+      执行完整父级集成检查 - **And** 对跨 Child、宿主和 workflow 的完整用户目标作出判断
+    result: passed
+    reason:
+      text: Parent Verify uses complete acceptance and integration HEAD
+      truncated: false
+  - id: A41
+    source: specs/supervisor-integration/spec.md
+    text: 父级 Verify 失败不污染 target - **Given** 父级最终 Verify 发现集成结果失败 - **When** Runtime
+      返回修复循环 - **Then** 真实 target 保持不变 - **And** 允许按已确认范围追加修复 Child 后继续同一
+      integration workspace - **And** 已 integrated Child 历史保持不可变
+    result: passed
+    reason:
+      text: Verify failure preserves target and integrated history
+      truncated: false
+  - id: A42
+    source: specs/supervisor-integration/spec.md
+    text: target 漂移触发完整重新集成检查 - **Given** 父级最终交付前真实 target 出现新的提交 - **When** Runtime
+      检查交付前提 - **Then** Runtime 把最新 target 重新带入 integration workspace - **And**
+      重新运行父级 integration checks，不推断只需要验证部分范围 - **And** 新检查通过前不交付
+    result: passed
+    reason:
+      text: Target drift triggers refreshed checks
+      truncated: false
+  - id: A43
+    source: specs/supervisor-integration/spec.md
+    text: Archive 确认遵循项目配置 - **Given** 父级 Verify 已通过且 integration HEAD 与验证记录一致 -
+      **When** `native.archive_confirmation` 为 `automatic` - **Then** Skill
+      不再询问并继续最终交付 - **And** 配置为 `required` 时最多请求一次最终确认
+    result: passed
+    reason:
+      text: Archive confirmation remains configuration-controlled
+      truncated: false
+  - id: A44
+    source: specs/supervisor-integration/spec.md
+    text: Child 完成不会直接触发最终交付 - **Given** Runtime 因全部 Child 完成而自动把父级推进到最终 Verify -
+      **When** 父级尚未完成完整验证或 workspace finish 尚未授权 - **Then** Runtime 不执行父级
+      Archive、target merge、push 或 PR - **And** 后续交付继续遵循父级验证结果、项目配置和用户授权
+    result: passed
+    reason:
+      text: Child completion does not trigger final delivery
+      truncated: false
+  - id: A45
+    source: specs/supervisor-integration/spec.md
+    text: 父级唯一发布最终权威 Specs - **Given** 父级开始最终交付 - **When** Runtime发布规格和历史 - **Then**
+      只有父级 Specs 写入 `docs/comet/specs` 成为最终权威版本 - **And** Child scoped
+      Specs、验证记录和 Agent 摘要只保存在父级 Archive 历史中 - **And** Child 不各自发布重叠的权威 Specs
+    result: passed
+    reason:
+      text: Parent remains the authoritative Specs publisher
+      truncated: false
+  - id: A46
+    source: specs/supervisor-integration/spec.md
+    text: 最终交付一次合入真实 target - **Given** target 漂移已处理、父级验证仍对应当前 integration HEAD -
+      **When** Runtime 执行最终 merge - **Then** integration branch 只合入真实 target 一次
+      - **And** Runtime 核对 target 已包含最终结果后才继续归档 - **And** 中断重试通过 Git
+      事实识别已完成步骤，不重复 merge
+    result: passed
+    reason:
+      text: Final delivery remains Git-fact idempotent
+      truncated: false
+  - id: A47
+    source: specs/supervisor-integration/spec.md
+    text: 父子只在最终交付后统一归档 - **Given** 最终 target 已包含验证通过的 integration 结果 - **When**
+      Runtime 完成 Archive 状态转换 - **Then** 父级和全部 Child 一起变为 `archived` - **And**
+      任何 Child 不因自己 integrated 而提前归档
+    result: passed
+    reason:
+      text: Parent and Children archive only after final delivery
+      truncated: false
+  - id: A48
+    source: specs/supervisor-integration/spec.md
+    text: 清理前保护用户工作区 - **Given** Runtime 准备清理 Child 或 integration branch/worktree -
+      **When** 存在未提交文件、未合入 commit、当前进程位于待删除 worktree 或其他不安全条件 - **Then** Runtime
+      保留现场并返回明确 blocker - **And** 不强制删除、重置或覆盖用户文件
+    result: passed
+    reason:
+      text: Cleanup preflight protects dirty and unsafe workspaces
+      truncated: false
+  - id: A49
+    source: specs/supervisor-integration/spec.md
+    text: "Supervisor 依赖修复后的统一 Archive 能力 - **Given** Issue #313 跟踪的 Archive preview
+      状态一致性能力尚不可用 - **When** Supervisor v2 尝试最终交付 - **Then** Runtime 保持最终交付为
+      blocked 并指出外部前置能力 - **And** Supervisor 模块不复制一套 Archive preview 或 Portable
+      State 修复"
+    result: passed
+    reason:
+      text: Supervisor reuses unified Archive capability
+      truncated: false
+builder_handoff:
+  candidate_id: f5861926-d003-4019-bd61-1146cbc19849
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:247416a7-3736-4a1a-adfd-f4f1d52cd2e3
+  iteration: 3
+  summary:
+    text: 补齐 v1 Supervisor Child 找不到任何 active 父级时的可恢复
+      blocker，并增加回归断言；保留已完成的多父级、pending Child、分支与工作区绑定阻塞逻辑。
+    truncated: false
+  addressed_acceptance_ids:
+    - A6
+    - A39
+  checks:
+    - name:
+        text: v2 auto-advance regression
+        truncated: false
+      result: passed
+      note:
+        text: native-supervisor.test.ts -t automatically advances
+        truncated: false
+    - name:
+        text: parent continuation regression
+        truncated: false
+      result: passed
+      note:
+        text: native-loop-runtime.test.ts -t automatic parent-advance
+        truncated: false
+    - name:
+        text: Native Skill contract
+        truncated: false
+      result: passed
+      note:
+        text: skills.test.ts -t auto-advance
+        truncated: false
+    - name:
+        text: changed source and test formatting
+        truncated: false
+      result: passed
+      note:
+        text: Prettier check for native-children source and test
+        truncated: false
+    - name:
+        text: TypeScript compile
+        truncated: false
+      result: passed
+      note:
+        text: pnpm exec tsc --noEmit
+        truncated: false
+    - name:
+        text: ESLint and architecture lint
+        truncated: false
+      result: passed
+      note:
+        text: pnpm lint
+        truncated: false
+    - name:
+        text: Native runtime generated assets
+        truncated: false
+      result: passed
+      note:
+        text: build-native-runtime.mjs --check
+        truncated: false
+    - name:
+        text: Git diff check
+        truncated: false
+      result: passed
+      note:
+        text: git diff --check
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: The existing Windows native-children integration test remains
+        environment-sensitive during generated worktree cleanup
+        (ENOTEMPTY/timeout); focused v2, continuation, Skill, formatting,
+        typecheck, lint, generated-asset, and diff checks passed.
+      truncated: false
+    - text: Child completion still stops at parent Verify and does not automatically
+        Archive, merge, push, or create a PR.
+      truncated: false
+  known_limits_truncated: false
+  submitted_at: 2026-08-20T15:29:00.831Z
+blockers: []
+verification:
+  candidate_id: f5861926-d003-4019-bd61-1146cbc19849
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:9dedadec-bbde-44db-bd8c-270b532fc85e
+  iteration: 3
+  attempt: 2
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: v2-supervisor-auto-advance-v3
+      name:
+        text: v2 Supervisor auto-advance regression
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: vitest
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/comet-native/native-supervisor.test.ts
+          truncated: false
+        - text: -t
+          truncated: false
+        - text: automatically advances
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 7183
+    - id: parent-advance-continuation-v3
+      name:
+        text: Parent advance continuation regression
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: vitest
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/comet-native/native-loop-runtime.test.ts
+          truncated: false
+        - text: -t
+          truncated: false
+        - text: automatic parent-advance
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 2104
+    - id: native-skill-auto-advance-contract-v3
+      name:
+        text: Native Skill auto-advance contract
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: vitest
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/skill/skills.test.ts
+          truncated: false
+        - text: -t
+          truncated: false
+        - text: auto-advance
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 3785
+    - id: native-skill-regressions-v3
+      name:
+        text: Native Skill regressions
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: vitest
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/comet-native/native-skill.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 1814
+    - id: supervisor-parent-lint-v3
+      name:
+        text: ESLint and architecture lint
+        truncated: false
+      argv_display:
+        - text: lint
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 9043
+    - id: supervisor-parent-typecheck-v3
+      name:
+        text: TypeScript compile check
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: tsc
+          truncated: false
+        - text: --noEmit
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 7265
+    - id: supervisor-parent-format-existing-v3
+      name:
+        text: Changed source and test formatting
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: prettier
+          truncated: false
+        - text: --check
+          truncated: false
+        - text: domains/comet-native/native-children.ts
+          truncated: false
+        - text: test/domains/comet-native/native-children.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 1283
+    - id: supervisor-parent-runtime-assets-v3
+      name:
+        text: Native runtime generated assets
+        truncated: false
+      argv_display:
+        - text: scripts/build/build-native-runtime.mjs
+          truncated: false
+        - text: --check
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 646
+  summary:
+    text: Independent review passed after adding the zero-parent blocker and
+      deduplicating the same v1 parent observed through multiple Git worktrees.
+      Focused v2, continuation, Skill, native-children, formatting, typecheck,
+      lint, and generated-asset checks passed.
+    truncated: false
+  risks:
+    - text: The existing Windows worktree integration test is environment-sensitive
+        during generated worktree cleanup; the focused test passed after
+        deduplicating parent observations across worktrees.
+      truncated: false
+    - text: No background daemon or file watcher was introduced; continuation and
+        related Supervisor progression provide recovery.
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-08-20T15:44:06.100Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A6
+      - A39
+    summary:
+      text: "Required fix: make findNativeV1SupervisorParents collect every active v1
+        parent that declares the Child, then reject ambiguity, branch mismatch,
+        or incomplete archive facts with a visible blocker before choosing a
+        parent."
+      truncated: false
+    completed_at: 2026-08-20T15:01:42.805Z
+  - goal_cycle: 1
+    iteration: 2
+    attempt: 1
+    outcome: execution-error
+    unresolved_ids: []
+    summary:
+      text: "Native Verifier response was invalid: Native fail requires at least one
+        failed acceptance criterion"
+      truncated: false
+    completed_at: 2026-08-20T15:20:13.197Z
+  - goal_cycle: 1
+    iteration: 2
+    attempt: 2
+    outcome: fail
+    unresolved_ids:
+      - A6
+      - A39
+    summary:
+      text: The v1 discovery ambiguity and binding repair is correct, but the
+        zero-parent case still needs an explicit recoverable blocker. The stale
+        generated-report format check is an environment lifecycle issue, not a
+        source formatting defect.
+      truncated: false
+    completed_at: 2026-08-20T15:27:39.207Z
+  - goal_cycle: 1
+    iteration: 3
+    attempt: 2
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: Independent review passed after adding the zero-parent blocker and
+        deduplicating the same v1 parent observed through multiple Git
+        worktrees. Focused v2, continuation, Skill, native-children, formatting,
+        typecheck, lint, and generated-asset checks passed.
+      truncated: false
+    completed_at: 2026-08-20T15:44:06.100Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-20T13:13:18.783Z

@@ -9,7 +9,6 @@ import {
   readNativeSupervisorState,
 } from './native-supervisor.js';
 import {
-  completeNativePortableParentBuild,
   confirmNativePortableShape,
   confirmNativePortableSkillCoordinatedPass,
   confirmNativePortableVerifierUnavailable,
@@ -19,6 +18,7 @@ import {
   returnNativePortableChangeToBuild,
   returnNativePortableChangeToShape,
   retryNativePortableVerifier,
+  tryAutoAdvanceNativeSupervisorParent,
 } from './native-portable-runtime.js';
 import type { NativePortableState } from './native-portable-types.js';
 import {
@@ -159,6 +159,7 @@ export async function nativeNextCommand(
   const current = recovery.state;
   if (!summary) throw new NativeUsageError('--summary is required');
   let state;
+  let parentAdvance: Awaited<ReturnType<typeof tryAutoAdvanceNativeSupervisorParent>> | null = null;
   if (confirmed) {
     if (current.phase === 'shape') {
       state = await confirmNativePortableShape({ paths: configured.paths, name });
@@ -243,11 +244,13 @@ export async function nativeNextCommand(
             effectiveChildren.allDone &&
             !(current.loop.stage === 'repairing' && current.verification_result === 'fail')
           ) {
-            state = await completeNativePortableParentBuild({
+            parentAdvance = await tryAutoAdvanceNativeSupervisorParent({
               paths: configured.paths,
               name,
+              trigger: 'recovery',
               summary,
             });
+            state = parentAdvance.state;
           } else {
             return success('next', {
               state: current,
@@ -263,6 +266,7 @@ export async function nativeNextCommand(
     if (state) {
       return success('next', {
         state,
+        ...(parentAdvance ? { parentAdvance: parentAdvance.parentAdvance } : {}),
         ...(await portableParentView(configured.paths, state)),
       });
     }
