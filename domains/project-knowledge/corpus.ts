@@ -3,8 +3,11 @@ import path from 'node:path';
 import { parse } from 'yaml';
 
 import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
+import {
+  protectedProjectFileExists,
+  readProtectedProjectFile,
+} from '../workflow-contract/protected-project-path.js';
 import type { WorkflowProjectConfig } from '../workflow-contract/types.js';
-import { readFileRaceSafe } from '../../platform/fs/race-safe-read.js';
 import type {
   ProjectKnowledgeCorpusOptions,
   ProjectKnowledgeDiagnosticReporter,
@@ -136,7 +139,8 @@ async function discoverSuperpowers(
   for (const change of changes) {
     const state = path.join(change, '.comet.yaml');
     try {
-      const bytes = await readFileRaceSafe(state, MAX_REFERENCE_BYTES, {
+      const source = relativeSource(projectRoot, state);
+      const bytes = await readProtectedProjectFile(projectRoot, source, MAX_REFERENCE_BYTES, {
         label: `${relativeSource(projectRoot, state)} state`,
       });
       const parsed = parse(bytes.bytes.toString('utf8')) as Record<string, unknown>;
@@ -160,10 +164,7 @@ async function discoverSuperpowers(
   for (const relative of [...references].sort()) {
     const absolutePath = path.join(projectRoot, ...relative.split('/'));
     try {
-      const stat = await fs.lstat(absolutePath);
-      if (!stat.isFile() || stat.isSymbolicLink()) continue;
-      const real = await fs.realpath(absolutePath);
-      if (!isInside(projectRoot, real)) continue;
+      if (!(await protectedProjectFileExists(projectRoot, relative, { label: relative }))) continue;
       documents.push({ absolutePath, source: relative, kind: 'superpowers' });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
@@ -216,8 +217,9 @@ export async function discoverProjectKnowledgeCorpus(
     return [];
   }
   if (!config) return [];
+  const enabledWorkflows = new Set(config.workflows ?? [config.default_workflow]);
   const documents: ProjectKnowledgeDocument[] = [];
-  if (config.native) {
+  if (config.native && enabledWorkflows.has('native')) {
     const nativeRoot = path.join(projectRoot, config.native.artifact_root, 'comet');
     documents.push(
       ...(await walkMarkdown(
@@ -236,7 +238,7 @@ export async function discoverProjectKnowledgeCorpus(
       )),
     );
   }
-  if (config.classic) {
+  if (config.classic && enabledWorkflows.has('classic')) {
     const root = classicRoot(projectRoot, config.classic.artifact_layout ?? 'legacy');
     const archiveRoot = path.join(root, 'changes', 'archive');
     documents.push(

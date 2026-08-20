@@ -35,8 +35,8 @@ function relativePathOrUndefined(value: string | undefined): string | undefined 
 
 function removeAbsolutePaths(value: string): string {
   return value
-    .replace(/[A-Za-z]:[\\/][^\s]+/gu, '')
-    .replace(/(?:^|\s)\/[^\s]+/gu, ' ')
+    .replace(/(^|[\s([{"'])(?:[A-Za-z]:[\\/]|\\\\)[^\s)\]}>,;"']+/gu, '$1')
+    .replace(/(^|[\s([{"',;:])\/(?!\/)[^\s)\]}>,;"']+/gu, '$1')
     .replace(/\s+/gu, ' ')
     .trim();
 }

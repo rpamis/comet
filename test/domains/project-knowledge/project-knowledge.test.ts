@@ -63,6 +63,15 @@ describe('project knowledge configuration', () => {
       'CometHookGuard',
     );
   });
+
+  test('removes Windows, UNC, and punctuation-wrapped POSIX absolute paths from remote queries', () => {
+    const query = createProjectKnowledgeQuery({
+      task: 'Inspect C:\\secret\\file.ts, \\\\server\\share\\private.md and (/home/user/token.md)',
+    });
+
+    expect(query.remoteQuery).not.toMatch(/C:\\secret|server\\share|\/home\/user/u);
+    expect(query.remoteQuery).toContain('Inspect');
+  });
 });
 
 describe('project knowledge corpus and local provider', () => {
@@ -139,6 +148,38 @@ describe('project knowledge corpus and local provider', () => {
     }
   });
 
+  test('does not discover documents for workflows omitted from the enabled workflow list', async () => {
+    const root = await tempProject();
+    try {
+      await fs.mkdir(path.join(root, '.comet'), { recursive: true });
+      await fs.writeFile(
+        path.join(root, '.comet', 'config.yaml'),
+        [
+          'schema: comet.project.v1',
+          'default_workflow: native',
+          'workflows: [native]',
+          'native:',
+          '  artifact_root: docs',
+          'classic:',
+          '  artifact_layout: docs',
+          '',
+        ].join('\n'),
+      );
+      const native = path.join(root, 'docs/comet/specs/native.md');
+      const classic = path.join(root, 'docs/openspec/specs/classic.md');
+      await fs.mkdir(path.dirname(native), { recursive: true });
+      await fs.mkdir(path.dirname(classic), { recursive: true });
+      await fs.writeFile(native, '# Native\n\nEnabled workflow knowledge.');
+      await fs.writeFile(classic, '# Classic\n\nDisabled workflow knowledge.');
+
+      const corpus = await discoverProjectKnowledgeCorpus({ projectRoot: root });
+
+      expect(corpus.map((entry) => entry.source)).toEqual(['docs/comet/specs/native.md']);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   test('uses one bounded rg call, abstains on weak matches, and renders bounded references', async () => {
     const root = await tempProject();
     try {
@@ -177,6 +218,7 @@ describe('project knowledge corpus and local provider', () => {
       const results = await provider.retrieve(query);
       expect(calls).toHaveLength(1);
       expect(calls[0]).toContain('--fixed-strings');
+      expect(calls[0]).toContain('--iglob');
       expect(results[0]).toMatchObject({
         source: 'docs/comet/specs/knowledge.md',
         title: 'Retrieval',
@@ -322,6 +364,133 @@ describe('project knowledge failure and bounded retrieval contracts', () => {
     expect(diagnostics.filter((entry) => entry.code === 'local-invalid-json')).toHaveLength(1);
   });
 
+  test('keeps complete candidates when bounded output ends with partial JSON', async () => {
+    const root = await tempProject();
+    try {
+      const file = path.join(root, 'docs', 'knowledge.md');
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      await fs.writeFile(file, '# Retrieval\n\nProject knowledge bounded output.');
+      const diagnostics: { code: string; message: string }[] = [];
+      const provider = new LocalProjectKnowledgeProvider({
+        projectRoot: root,
+        corpus: [{ absolutePath: file, source: 'docs/knowledge.md', kind: 'native-spec' }],
+        reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+        runRipgrep: async () => ({
+          stdout: `${JSON.stringify({
+            type: 'match',
+            data: {
+              path: { text: 'docs/knowledge.md' },
+              line_number: 3,
+              lines: { text: 'Project knowledge bounded output.\n' },
+            },
+          })}\n{"type":"match"`,
+          stderr: '',
+          exitCode: null,
+          timedOut: false,
+          truncated: true,
+          matchLimitReached: false,
+        }),
+      });
+
+      const results = await provider.retrieve(
+        createProjectKnowledgeQuery({ task: 'project knowledge bounded output' }),
+      );
+
+      expect(results).toHaveLength(1);
+      expect(results[0]?.source).toBe('docs/knowledge.md');
+      expect(diagnostics.map((entry) => entry.code)).toEqual(['local-output-limit']);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test('reports a nonzero ripgrep exit instead of treating it as no results', async () => {
+    const diagnostics: { code: string; message: string }[] = [];
+    const provider = new LocalProjectKnowledgeProvider({
+      projectRoot: process.cwd(),
+      corpus: [
+        {
+          absolutePath: path.resolve('docs/comet/changes/project-knowledge-retrieval/brief.md'),
+          source: 'docs/comet/changes/project-knowledge-retrieval/brief.md',
+          kind: 'native-spec',
+        },
+      ],
+      reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+      runRipgrep: async () => ({
+        stdout: '',
+        stderr: 'permission denied',
+        exitCode: 2,
+        timedOut: false,
+        truncated: false,
+        matchLimitReached: false,
+      }),
+    });
+
+    await expect(
+      provider.retrieve(createProjectKnowledgeQuery({ task: 'project knowledge' })),
+    ).resolves.toEqual([]);
+    expect(diagnostics).toEqual([
+      {
+        code: 'local-tool',
+        message: 'Project knowledge local search failed with exit code 2.',
+      },
+    ]);
+  });
+
+  test('rejects a corpus file whose ancestor is replaced by a project-external link', async () => {
+    const root = await tempProject();
+    const outside = await tempProject();
+    try {
+      const directory = path.join(root, 'docs', 'comet', 'specs');
+      const file = path.join(directory, 'knowledge.md');
+      const outsideFile = path.join(outside, 'knowledge.md');
+      await fs.mkdir(directory, { recursive: true });
+      await fs.writeFile(file, '# Inside\n\nProject knowledge inside.');
+      await fs.writeFile(outsideFile, '# Outside\n\nProject knowledge outside secret.');
+      const diagnostics: { code: string; message: string }[] = [];
+      const provider = new LocalProjectKnowledgeProvider({
+        projectRoot: root,
+        corpus: [
+          {
+            absolutePath: file,
+            source: 'docs/comet/specs/knowledge.md',
+            kind: 'native-spec',
+          },
+        ],
+        reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+        runRipgrep: async () => {
+          await fs.rm(directory, { recursive: true, force: true });
+          await fs.symlink(outside, directory, process.platform === 'win32' ? 'junction' : 'dir');
+          return {
+            stdout: JSON.stringify({
+              type: 'match',
+              data: {
+                path: { text: 'docs/comet/specs/knowledge.md' },
+                line_number: 3,
+                lines: { text: 'Project knowledge outside secret.\n' },
+              },
+            }),
+            stderr: '',
+            exitCode: 0,
+            timedOut: false,
+            truncated: false,
+            matchLimitReached: false,
+          };
+        },
+      });
+
+      await expect(
+        provider.retrieve(
+          createProjectKnowledgeQuery({ task: 'project knowledge outside secret' }),
+        ),
+      ).resolves.toEqual([]);
+      expect(diagnostics.map((entry) => entry.code)).toContain('local-document');
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(outside, { recursive: true, force: true });
+    }
+  });
+
   test('reports a bounded local timeout without blocking the provider', async () => {
     const diagnostics: { code: string; message: string }[] = [];
     const document = {
@@ -361,7 +530,7 @@ describe('project knowledge failure and bounded retrieval contracts', () => {
       maxMatches: 500,
     });
     expect(output.truncated).toBe(true);
-    expect(Buffer.byteLength(output.stdout)).toBe(1024);
+    expect(output.stdout).toBe('');
 
     const timeout = await runBoundedRipgrep({
       cwd: process.cwd(),
@@ -389,6 +558,27 @@ describe('project knowledge failure and bounded retrieval contracts', () => {
         createProjectKnowledgeQuery({ task: 'project knowledge fallback' }),
       );
       expect(results[0]).toMatchObject({ source: 'docs/knowledge.md', title: 'Retrieval' });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test('searches Markdown extensions case-insensitively', async () => {
+    const root = await tempProject();
+    try {
+      const file = path.join(root, 'docs', 'KNOWLEDGE.MD');
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      await fs.writeFile(file, '# Retrieval\n\nProject knowledge uppercase extension.');
+      const provider = new LocalProjectKnowledgeProvider({
+        projectRoot: root,
+        corpus: [{ absolutePath: file, source: 'docs/KNOWLEDGE.MD', kind: 'native-spec' }],
+      });
+
+      const results = await provider.retrieve(
+        createProjectKnowledgeQuery({ task: 'project knowledge uppercase extension' }),
+      );
+
+      expect(results[0]).toMatchObject({ source: 'docs/KNOWLEDGE.MD', title: 'Retrieval' });
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }
@@ -559,6 +749,23 @@ describe('project knowledge failure and bounded retrieval contracts', () => {
     expect(bounded.reduce((total, entry) => total + entry.content.length, 0)).toBeLessThanOrEqual(
       5000,
     );
+    const rendered = renderProjectKnowledgeContext(results);
+    expect(rendered).not.toBeNull();
+    expect(rendered!.length).toBeLessThanOrEqual(5000);
+  });
+
+  test('escapes untrusted Markdown in source and title metadata', () => {
+    const rendered = renderProjectKnowledgeContext([
+      {
+        source: '![track](https://attacker.test/pixel)',
+        title: '[click](https://attacker.test)',
+        content: 'Safe evidence.',
+      },
+    ]);
+
+    expect(rendered).not.toContain('![track]');
+    expect(rendered).not.toContain('[click](https://attacker.test)');
+    expect(rendered).toContain('!\\[track\\]\\(https://attacker\\.test/pixel\\)');
   });
 
   test('keeps Native, Classic, and Superpowers order in a fixed retrieval baseline', async () => {

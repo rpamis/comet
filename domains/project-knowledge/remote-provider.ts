@@ -1,4 +1,8 @@
 import type { WorkflowKnowledgeRemoteConfig } from '../workflow-contract/types.js';
+import {
+  BoundedHttpRequestError,
+  runBoundedHttpRequest,
+} from '../../platform/http/bounded-request.js';
 import type {
   ProjectKnowledgeDiagnosticReporter,
   ProjectKnowledgeProvider,
@@ -32,35 +36,6 @@ function safeString(value: unknown, max: number, required: boolean): string | nu
   return text.slice(0, max);
 }
 
-async function responseBytes(response: Response): Promise<Uint8Array> {
-  if (!response.body) {
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.byteLength > MAX_RESPONSE_BYTES) throw new Error('response exceeds 1 MiB');
-    return bytes;
-  }
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  try {
-    for (;;) {
-      const next = await reader.read();
-      if (next.done) break;
-      total += next.value.byteLength;
-      if (total > MAX_RESPONSE_BYTES) throw new Error('response exceeds 1 MiB');
-      chunks.push(next.value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  const output = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    output.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return output;
-}
-
 export class RemoteProjectKnowledgeProvider implements ProjectKnowledgeProvider {
   private readonly options: RemoteProjectKnowledgeProviderOptions;
 
@@ -78,23 +53,25 @@ export class RemoteProjectKnowledgeProvider implements ProjectKnowledgeProvider 
       });
       return [];
     }
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.options.config.timeout_ms);
     try {
-      const fetcher = this.options.fetch ?? globalThis.fetch;
-      const response = await fetcher(this.options.config.endpoint, {
-        method: 'POST',
-        redirect: 'error',
-        signal: controller.signal,
-        headers: {
-          'content-type': 'application/json',
-          ...(token ? { authorization: `Bearer ${token}` } : {}),
+      const { response, bytes } = await runBoundedHttpRequest({
+        url: this.options.config.endpoint,
+        timeoutMs: this.options.config.timeout_ms,
+        maxResponseBytes: MAX_RESPONSE_BYTES,
+        fetch: this.options.fetch,
+        init: {
+          method: 'POST',
+          redirect: 'error',
+          headers: {
+            'content-type': 'application/json',
+            ...(token ? { authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            query: query.remoteQuery,
+            limit: 4,
+            ...(this.options.config.scope ? { scope: this.options.config.scope } : {}),
+          }),
         },
-        body: JSON.stringify({
-          query: query.remoteQuery,
-          limit: 4,
-          ...(this.options.config.scope ? { scope: this.options.config.scope } : {}),
-        }),
       });
       if (!response.ok) {
         this.options.reportDiagnostic?.({
@@ -103,7 +80,6 @@ export class RemoteProjectKnowledgeProvider implements ProjectKnowledgeProvider 
         });
         return [];
       }
-      const bytes = await responseBytes(response);
       let parsed: unknown;
       try {
         parsed = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
@@ -175,16 +151,15 @@ export class RemoteProjectKnowledgeProvider implements ProjectKnowledgeProvider 
         });
       }
       return results;
-    } catch {
+    } catch (error) {
       this.options.reportDiagnostic?.({
         code: 'remote-failed',
-        message: controller.signal.aborted
-          ? 'Remote project knowledge request timed out.'
-          : 'Remote project knowledge request failed.',
+        message:
+          error instanceof BoundedHttpRequestError && error.code === 'timeout'
+            ? 'Remote project knowledge request timed out.'
+            : 'Remote project knowledge request failed.',
       });
       return [];
-    } finally {
-      clearTimeout(timer);
     }
   }
 }

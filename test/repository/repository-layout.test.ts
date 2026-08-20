@@ -78,7 +78,14 @@ describe('repository layout registry', () => {
       'skill',
       'workflow-contract',
     ]);
-    expect(layout.platformModules).toEqual(['fs', 'install', 'paths', 'process', 'version']);
+    expect(layout.platformModules).toEqual([
+      'fs',
+      'http',
+      'install',
+      'paths',
+      'process',
+      'version',
+    ]);
     expect(layout.scriptModules).toEqual([
       'benchmark',
       'build',

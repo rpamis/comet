@@ -1,8 +1,8 @@
 import { createRequire } from 'node:module';
 import path from 'node:path';
 
-import { readFileRaceSafe } from '../../platform/fs/race-safe-read.js';
 import { runBoundedRipgrep, type RipgrepRunResult } from '../../platform/process/ripgrep.js';
+import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
 import { knowledgeDocumentKindRank } from './corpus.js';
 import { queryContainsTerm, queryHasStrongMatch } from './query.js';
 import type {
@@ -138,7 +138,7 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
       '--fixed-strings',
       '--ignore-case',
       '--no-messages',
-      '--glob',
+      '--iglob',
       '*.md',
       ...query.terms.flatMap((term) => ['-e', term]),
       '--',
@@ -173,6 +173,13 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
       });
       return [];
     }
+    if (run.exitCode !== null && run.exitCode > 1) {
+      this.reportDiagnostic?.({
+        code: 'local-tool',
+        message: `Project knowledge local search failed with exit code ${run.exitCode}.`,
+      });
+      return [];
+    }
     if (run.error || run.timedOut || run.truncated) {
       this.reportDiagnostic?.({
         code: run.timedOut ? 'local-timeout' : run.truncated ? 'local-output-limit' : 'local-tool',
@@ -183,12 +190,18 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
     }
     const candidates = new Map<string, LocalCandidate>();
     let invalidJson = false;
-    for (const line of run.stdout.split(/\r?\n/u)) {
+    const outputLines = run.stdout.split(/\r?\n/u);
+    for (const [index, line] of outputLines.entries()) {
       if (!line.trim()) continue;
       let event: unknown;
       try {
         event = JSON.parse(line) as unknown;
       } catch {
+        const incompleteBoundedTail =
+          index === outputLines.length - 1 &&
+          !/\r?\n$/u.test(run.stdout) &&
+          (run.truncated || run.timedOut || run.matchLimitReached);
+        if (incompleteBoundedTail) continue;
         if (!invalidJson) {
           this.reportDiagnostic?.({
             code: 'local-invalid-json',
@@ -204,11 +217,15 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
       if (!relative) continue;
       const document = documentForPath(this.options.projectRoot, relative, documents);
       if (!document) continue;
-      const absolutePath = path.resolve(document.absolutePath);
       let content: string;
       try {
         content = (
-          await readFileRaceSafe(absolutePath, MAX_DOCUMENT_BYTES, { label: document.source })
+          await readProtectedProjectFile(
+            this.options.projectRoot,
+            document.source,
+            MAX_DOCUMENT_BYTES,
+            { label: document.source },
+          )
         ).bytes.toString('utf8');
       } catch {
         this.reportDiagnostic?.({

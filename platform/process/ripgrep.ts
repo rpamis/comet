@@ -1,3 +1,5 @@
+import { StringDecoder } from 'node:string_decoder';
+
 import { spawnCommand } from './spawn-command.js';
 import { terminateProcessTree } from './terminate-process-tree.js';
 
@@ -30,9 +32,11 @@ export async function runBoundedRipgrep(options: RipgrepRunOptions): Promise<Rip
   const stdoutChunks: Buffer[] = [];
   const stderrChunks: Buffer[] = [];
   let stdoutBytes = 0;
+  let stdoutReceivedBytes = 0;
   let stderrBytes = 0;
   let matchEvents = 0;
   let stdoutPending = '';
+  const stdoutDecoder = new StringDecoder('utf8');
   let truncated = false;
   let matchLimitReached = false;
   let timedOut = false;
@@ -64,13 +68,14 @@ export async function runBoundedRipgrep(options: RipgrepRunOptions): Promise<Rip
   };
 
   const collectStdout = (chunk: Buffer): void => {
-    if (stdoutBytes >= options.maxOutputBytes || matchLimitReached) {
-      truncated ||= stdoutBytes >= options.maxOutputBytes;
+    if (stdoutReceivedBytes >= options.maxOutputBytes || matchLimitReached) {
+      truncated ||= stdoutReceivedBytes >= options.maxOutputBytes;
       return;
     }
-    const remaining = options.maxOutputBytes - stdoutBytes;
+    const remaining = options.maxOutputBytes - stdoutReceivedBytes;
     const bounded = chunk.subarray(0, remaining);
-    const text = stdoutPending + bounded.toString('utf8');
+    stdoutReceivedBytes += bounded.byteLength;
+    const text = stdoutPending + stdoutDecoder.write(bounded);
     const lines = text.split('\n');
     stdoutPending = lines.pop() ?? '';
     for (const line of lines) {
@@ -99,6 +104,7 @@ export async function runBoundedRipgrep(options: RipgrepRunOptions): Promise<Rip
     }
     if (bounded.byteLength < chunk.byteLength) {
       truncated = true;
+      stdoutPending = '';
       void terminate();
     }
   };
@@ -127,7 +133,13 @@ export async function runBoundedRipgrep(options: RipgrepRunOptions): Promise<Rip
     child.once('close', (code) => {
       settled = true;
       if (timer) clearTimeout(timer);
-      if (stdoutPending && !matchLimitReached && stdoutBytes < options.maxOutputBytes) {
+      stdoutPending += stdoutDecoder.end();
+      if (
+        stdoutPending &&
+        !truncated &&
+        !matchLimitReached &&
+        stdoutBytes < options.maxOutputBytes
+      ) {
         const bytes = Buffer.byteLength(stdoutPending, 'utf8');
         if (stdoutBytes + bytes <= options.maxOutputBytes) {
           stdoutChunks.push(Buffer.from(stdoutPending, 'utf8'));

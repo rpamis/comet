@@ -220,11 +220,13 @@ domains/             # 业务领域模块
 ├── eval/            # comet eval 评测
 ├── factory/         # Skill 创作工厂产物打包
 ├── integrations/    # 第三方集成（openspec / superpowers / codegraph）
+├── project-knowledge/ # Comet 管理的项目文档本地/远端召回
 ├── skill/           # Skill 安装、发现、偏好、snapshot
 └── workflow-contract/ # 跨 workflow 的契约
 
 platform/            # 平台适配层，domain 不直接散落平台差异
 ├── fs/              # 文件系统工具
+├── http/            # 有界 HTTP 请求与响应读取
 ├── install/         # 平台定义、检测、安装路径
 ├── paths/           # 仓库布局解析
 ├── process/         # 子进程、错误处理、shell quoting
