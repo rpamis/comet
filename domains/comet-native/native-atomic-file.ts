@@ -47,6 +47,19 @@ function sameFileIdentity(left: import('fs').Stats, right: import('fs').Stats): 
   );
 }
 
+function sameUnchangedFile(left: import('fs').Stats, right: import('fs').Stats): boolean {
+  // Linux may immediately reuse an inode after unlink, so object identity alone
+  // cannot prove that a path still names the post-write snapshot. These fields
+  // are safe to compare only after our own write has finished.
+  return (
+    sameFileIdentity(left, right) &&
+    left.birthtimeMs === right.birthtimeMs &&
+    left.ctimeMs === right.ctimeMs &&
+    left.mtimeMs === right.mtimeMs &&
+    left.size === right.size
+  );
+}
+
 async function captureDirectoryIdentity(directory: string): Promise<DirectoryIdentity> {
   const stat = await fs.lstat(directory);
   if (!stat.isDirectory() || stat.isSymbolicLink()) {
@@ -171,7 +184,7 @@ async function atomicWrite(
         !temporaryStat.isFile() ||
         temporaryStat.isSymbolicLink() ||
         !writtenIdentity ||
-        !sameFileIdentity(temporaryStat, writtenIdentity)
+        !sameUnchangedFile(temporaryStat, writtenIdentity)
       ) {
         throw new Error('Native atomic write temporary file changed before commit');
       }
