@@ -1,4 +1,5 @@
 import path from 'path';
+import { realpathSync } from 'fs';
 
 import { RaceSafeReadError, readFileRaceSafe } from '../../platform/fs/race-safe-read.js';
 import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
@@ -115,11 +116,20 @@ export function revisionOption(args: string[]): number | undefined {
 }
 
 function samePath(left: string, right: string): boolean {
-  const normalizedLeft = path.normalize(left);
-  const normalizedRight = path.normalize(right);
+  const normalizedLeft = path.normalize(pathIdentity(left));
+  const normalizedRight = path.normalize(pathIdentity(right));
   return process.platform === 'win32'
     ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
     : normalizedLeft === normalizedRight;
+}
+
+function pathIdentity(value: string): string {
+  const resolved = path.resolve(value);
+  try {
+    return realpathSync.native(resolved);
+  } catch {
+    return resolved;
+  }
 }
 
 /**
@@ -151,7 +161,9 @@ function explicitProjectRootFromCurrentWorktree(explicit: string): string {
     return requested;
   }
 
-  return current.currentWorktreeRoot;
+  return samePath(process.cwd(), current.currentWorktreeRoot)
+    ? path.resolve(process.cwd())
+    : current.currentWorktreeRoot;
 }
 
 export async function projectRootFrom(explicit: string | undefined): Promise<string> {

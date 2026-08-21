@@ -101,7 +101,7 @@ Completion criterion: state is `done`, and the user-authorized workspace finish 
 After every command, handle only the latest `continuation`:
 
 - `continue`: execute `commandArgs` and fill `inputOptions` from its template.
-- `await-user`: wait for the listed user decision.
+- `await-user`: wait for the listed user decision. With `commandAlternatives`, execute the matching complete `commandArgs`, preserve `--expected-state-version` plus `--expected-action`, and reread the latest `continuation` if the alternative is stale. Do not reconstruct an unguarded command.
 - `blocked`: resolve the listed blocker or recovery action first.
 - `done`: finish.
 

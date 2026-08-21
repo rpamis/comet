@@ -101,7 +101,7 @@ Verifier 最终必须逐项标记为通过（`passed`）、未通过（`failed`�
 每次命令后只处理最新的 `continuation`：
 
 - `continue`：执行 `commandArgs`，并按模板填写 `inputOptions`；
-- `await-user`：等待列出的用户决定；
+- `await-user`：等待列出的用户决定；如有 `commandAlternatives`，选择匹配项执行完整 `commandArgs`，保留 `--expected-state-version` 和 `--expected-action`。alternative 过期时重新读取最新 `continuation`，不得重构无 guard 命令；
 - `blocked`：先处理列出的阻塞原因或恢复动作；
 - `done`：结束。
 
