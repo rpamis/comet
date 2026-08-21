@@ -368,6 +368,28 @@ children:
     });
   });
 
+  it('rejects mixed v2 child-plan variants with an actionable format error', () => {
+    const indexedWithSummary = READABLE_CHILDREN.replace(
+      'depends_on: []\n    covers: [A1]',
+      'summary: Owns the first behavior.\n    depends_on: []',
+    );
+    expect(() => parseNativeChildrenContract(indexedWithSummary, ['A1', 'A2'])).toThrow(
+      /indexed v2 child .*fields are invalid/iu,
+    );
+
+    const summaryWithCovers = `
+schema: comet.native.children.v2
+children:
+  - name: integration-core
+    summary: Owns the parent integration branch.
+    depends_on: []
+    covers: [A1]
+    `;
+    expect(() => parseNativeChildrenContract(summaryWithCovers)).toThrow(
+      /summary v2 child .*fields are invalid/iu,
+    );
+  });
+
   it('validates v2 index text against the full catalog while requiring only the child-facing subset', () => {
     const acceptance = [
       { id: 'A1', source: 'brief.md', text: 'The integrated result contains the first behavior.' },

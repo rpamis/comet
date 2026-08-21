@@ -235,21 +235,12 @@ describe('update command helpers', () => {
     mockedSpawn.mockClear();
     mockedGetLatestVersion.mockClear();
     mockedInstallOpenSpec.mockReset();
-    mockedInstallOpenSpec.mockImplementation(
-      async (
-        projectPath,
-        _toolIds,
-        scope,
-        _shouldInstallCli,
-        _mirrorOpenCodePlatformIds,
-        artifactLayout,
-      ) => {
-        if (scope === 'project') {
-          await writeMockOpenSpecProject(projectPath, artifactLayout);
-        }
-        return 'installed';
-      },
-    );
+    mockedInstallOpenSpec.mockImplementation(async (projectPath, _toolIds, scope, options = {}) => {
+      if (scope === 'project') {
+        await writeMockOpenSpecProject(projectPath, options.artifactLayout ?? 'legacy');
+      }
+      return 'installed';
+    });
     mockedInstallSuperpowers.mockReset();
     mockedInstallSuperpowers.mockResolvedValue('installed');
     mockedSpawn.mockImplementation((_command, args, options) => {
@@ -2163,14 +2154,13 @@ describe('update command helpers', () => {
       tmpDir,
       ['claude'],
       'project',
-      true,
-      [],
-      'docs',
-      expect.any(Function),
-      undefined,
-      [],
-      [],
-      ['claude'],
+      expect.objectContaining({
+        shouldInstallCli: true,
+        mirrorPlatformIds: [],
+        artifactLayout: 'docs',
+        projectMutationGuard: expect.any(Function),
+        selectedPlatformIds: ['claude'],
+      }),
     );
     await expect(fs.access(path.join(tmpDir, 'openspec'))).rejects.toMatchObject({
       code: 'ENOENT',
@@ -2240,14 +2230,13 @@ describe('update command helpers', () => {
       tmpDir,
       ['claude'],
       'project',
-      true,
-      [],
-      'docs',
-      expect.any(Function),
-      undefined,
-      [],
-      [],
-      ['claude'],
+      expect.objectContaining({
+        shouldInstallCli: true,
+        mirrorPlatformIds: [],
+        artifactLayout: 'docs',
+        projectMutationGuard: expect.any(Function),
+        selectedPlatformIds: ['claude'],
+      }),
     );
     expect(mockedInstallSuperpowers).toHaveBeenCalledWith(tmpDir, 'project', ['claude'], true);
   });
@@ -2292,14 +2281,13 @@ describe('update command helpers', () => {
       tmpDir,
       ['claude'],
       'project',
-      true,
-      [],
-      'docs',
-      expect.any(Function),
-      undefined,
-      [],
-      [],
-      ['dsh'],
+      expect.objectContaining({
+        shouldInstallCli: true,
+        mirrorPlatformIds: [],
+        artifactLayout: 'docs',
+        projectMutationGuard: expect.any(Function),
+        selectedPlatformIds: ['dsh'],
+      }),
     );
     expect(mockedInstallSuperpowers).toHaveBeenCalledWith(tmpDir, 'project', ['dsh'], true);
   });
@@ -2312,16 +2300,13 @@ describe('update command helpers', () => {
       const configPath = path.join(tmpDir, '.comet', 'config.yaml');
       const configBefore = await fs.readFile(configPath, 'utf8');
       mockedInstallOpenSpec.mockImplementationOnce(
-        async (
-          projectPath,
-          _toolIds,
-          scope,
-          _shouldInstallCli,
-          _mirrorOpenCodePlatformIds,
-          artifactLayout,
-        ) => {
+        async (projectPath, _toolIds, scope, options = {}) => {
           if (scope === 'project') {
-            await writeMockOpenSpecProject(projectPath, artifactLayout, openSpecConfig);
+            await writeMockOpenSpecProject(
+              projectPath,
+              options.artifactLayout ?? 'legacy',
+              openSpecConfig,
+            );
           }
           return 'installed';
         },
@@ -2434,14 +2419,13 @@ describe('update command helpers', () => {
       tmpDir,
       ['claude'],
       'project',
-      true,
-      [],
-      'legacy',
-      expect.any(Function),
-      undefined,
-      [],
-      [],
-      ['claude'],
+      expect.objectContaining({
+        shouldInstallCli: true,
+        mirrorPlatformIds: [],
+        artifactLayout: 'legacy',
+        projectMutationGuard: expect.any(Function),
+        selectedPlatformIds: ['claude'],
+      }),
     );
     await expect(fs.access(path.join(tmpDir, 'docs', 'openspec'))).rejects.toMatchObject({
       code: 'ENOENT',
@@ -2521,14 +2505,13 @@ describe('update command helpers', () => {
       tmpDir,
       ['claude'],
       'project',
-      true,
-      [],
-      'docs',
-      expect.any(Function),
-      undefined,
-      [],
-      [],
-      ['claude'],
+      expect.objectContaining({
+        shouldInstallCli: true,
+        mirrorPlatformIds: [],
+        artifactLayout: 'docs',
+        projectMutationGuard: expect.any(Function),
+        selectedPlatformIds: ['claude'],
+      }),
     );
   });
 
@@ -2565,14 +2548,13 @@ describe('update command helpers', () => {
       tmpDir,
       ['claude'],
       'project',
-      true,
-      [],
-      'docs',
-      expect.any(Function),
-      undefined,
-      [],
-      [],
-      ['claude'],
+      expect.objectContaining({
+        shouldInstallCli: true,
+        mirrorPlatformIds: [],
+        artifactLayout: 'docs',
+        projectMutationGuard: expect.any(Function),
+        selectedPlatformIds: ['claude'],
+      }),
     );
     await expect(
       fs.readFile(path.join(tmpDir, 'openspec', 'legacy-marker.txt'), 'utf8'),
@@ -2692,14 +2674,13 @@ describe('update command helpers', () => {
       tmpDir,
       [],
       'project',
-      true,
-      [],
-      'docs',
-      expect.any(Function),
-      undefined,
-      [],
-      [],
-      [],
+      expect.objectContaining({
+        shouldInstallCli: true,
+        mirrorPlatformIds: [],
+        artifactLayout: 'docs',
+        projectMutationGuard: expect.any(Function),
+        selectedPlatformIds: [],
+      }),
     );
   });
 
@@ -2742,14 +2723,13 @@ describe('update command helpers', () => {
       tmpDir,
       [],
       'project',
-      true,
-      [],
-      'docs',
-      expect.any(Function),
-      undefined,
-      [],
-      [],
-      [],
+      expect.objectContaining({
+        shouldInstallCli: true,
+        mirrorPlatformIds: [],
+        artifactLayout: 'docs',
+        projectMutationGuard: expect.any(Function),
+        selectedPlatformIds: [],
+      }),
     );
     await expect(fs.readFile(configPath)).resolves.toEqual(configBefore);
   });
@@ -2876,14 +2856,13 @@ describe('update command helpers', () => {
       tmpDir,
       ['claude'],
       'global',
-      true,
-      [],
-      'legacy',
-      undefined,
-      undefined,
-      [],
-      [],
-      ['claude'],
+      expect.objectContaining({
+        shouldInstallCli: true,
+        mirrorPlatformIds: [],
+        artifactLayout: 'legacy',
+        projectMutationGuard: undefined,
+        selectedPlatformIds: ['claude'],
+      }),
     );
     await expect(fs.access(path.join(tmpDir, 'openspec'))).rejects.toMatchObject({
       code: 'ENOENT',

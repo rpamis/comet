@@ -9,10 +9,9 @@ vi.mock('../../../domains/integrations/openspec.js', () => ({
       projectRoot: string,
       _tools: string[],
       _scope: string,
-      _cli: boolean,
-      _mirrors: string[],
-      layout: string,
+      options: { artifactLayout?: string } = {},
     ) => {
+      const layout = options.artifactLayout ?? 'legacy';
       const root =
         layout === 'docs'
           ? path.join(projectRoot, 'docs', 'openspec')

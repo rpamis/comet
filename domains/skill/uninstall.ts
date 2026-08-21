@@ -1008,14 +1008,15 @@ async function removeSuperpowersSkillsForPlatforms(
       dshResult.failed++;
     }
   }
+  const genericPlatforms = platforms.filter((platform) => platform.id !== 'dsh');
   const agents = [
     ...new Set(
-      platforms
+      genericPlatforms
         .map((platform) => SKILLS_AGENT_MAP[platform.id])
         .filter((agent): agent is string => Boolean(agent)),
     ),
   ];
-  const stagedCopyPlatforms = platforms.filter((platform) => !SKILLS_AGENT_MAP[platform.id]);
+  const stagedCopyPlatforms = genericPlatforms.filter((platform) => !SKILLS_AGENT_MAP[platform.id]);
   if (agents.length === 0 && stagedCopyPlatforms.length === 0) {
     return dshResult;
   }
@@ -1068,7 +1069,7 @@ async function removeSuperpowersSkillsForPlatforms(
       baseDir,
       stagedCopyPlatforms.length > 0 && !options.removeSharedStorage
         ? stagedCopyPlatforms
-        : platforms,
+        : genericPlatforms,
       scope,
       [...names],
     );
@@ -1078,7 +1079,7 @@ async function removeSuperpowersSkillsForPlatforms(
   const remaining = (
     await Promise.all(
       [...names].map(async (name) => {
-        for (const platform of platforms) {
+        for (const platform of genericPlatforms) {
           for (const skillsDir of getPlatformSkillsDirs(platform, scope)) {
             if (await fileExists(path.join(baseDir, skillsDir, 'skills', name))) return true;
           }

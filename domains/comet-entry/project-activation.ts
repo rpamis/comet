@@ -64,15 +64,11 @@ async function ensureWorkflowDirectories(
   const mutationGuard = async () => {
     await assertClassicLayoutInitializationSafe(projectRoot, artifactLayout, permit);
   };
-  const status = await installOpenSpec(
-    projectRoot,
-    [],
-    'project',
-    false,
-    [],
+  const status = await installOpenSpec(projectRoot, [], 'project', {
+    shouldInstallCli: false,
     artifactLayout,
-    mutationGuard,
-  );
+    projectMutationGuard: mutationGuard,
+  });
   if (status !== 'installed') {
     throw new Error(
       'Classic project activation requires a compatible globally installed OpenSpec CLI',

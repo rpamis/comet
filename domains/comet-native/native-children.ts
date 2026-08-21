@@ -36,6 +36,8 @@ const V1_CHILD_KEYS = new Set(['name', 'depends_on', 'covers']);
 const V2_CHILD_KEYS = new Set(['name', 'summary', 'depends_on']);
 const CHILD_KEYS = new Set(['name', 'depends_on', 'covers']);
 
+type NativeChildrenContractVariant = 'v1' | 'summary-v2' | 'indexed-v2';
+
 export interface NativeChildDefinition {
   name: string;
   summary: string | null;
@@ -272,20 +274,24 @@ export function parseNativeChildrenContract(
   }
   const root = record(document.toJS({ mapAsMap: false }), 'Native children contract');
   const schema = root.schema;
-  if (schema === NATIVE_CHILDREN_V2_SCHEMA) {
-    exactKeys(
-      root,
-      'acceptance_index' in root ? ROOT_KEYS_V2 : ROOT_KEYS_V1,
-      'Native children contract',
-    );
-  } else {
-    exactKeys(root, ROOT_KEYS_V1, 'Native children contract');
-  }
   if (schema !== NATIVE_CHILDREN_SCHEMA && schema !== NATIVE_CHILDREN_V2_SCHEMA) {
+    exactKeys(root, ROOT_KEYS_V1, 'Native children contract');
     throw new Error(
       `Native children schema must be ${NATIVE_CHILDREN_SCHEMA} or ${NATIVE_CHILDREN_V2_SCHEMA}`,
     );
   }
+  const variant: NativeChildrenContractVariant =
+    schema === NATIVE_CHILDREN_SCHEMA
+      ? 'v1'
+      : 'acceptance_index' in root
+        ? 'indexed-v2'
+        : 'summary-v2';
+  const variantLabel = variant.replace('-', ' ');
+  exactKeys(
+    root,
+    variant === 'indexed-v2' ? ROOT_KEYS_V2 : ROOT_KEYS_V1,
+    'Native children contract',
+  );
   if (!Array.isArray(root.children) || root.children.length === 0) {
     throw new Error('Native children must be a non-empty array');
   }
@@ -293,17 +299,17 @@ export function parseNativeChildrenContract(
     const child = record(entry, `Native child ${index}`);
     exactKeys(
       child,
-      root.schema === NATIVE_CHILDREN_V2_SCHEMA
-        ? 'acceptance_index' in root
-          ? CHILD_KEYS
-          : V2_CHILD_KEYS
-        : V1_CHILD_KEYS,
-      `Native child ${index}`,
+      variant === 'indexed-v2'
+        ? CHILD_KEYS
+        : variant === 'summary-v2'
+          ? V2_CHILD_KEYS
+          : V1_CHILD_KEYS,
+      `Native ${variantLabel} child fields (child ${index})`,
     );
     if (typeof child.name !== 'string' || !NAME_PATTERN.test(child.name)) {
       throw new Error(`Native child ${index} name is invalid`);
     }
-    const readableV2 = root.schema === NATIVE_CHILDREN_V2_SCHEMA && !('acceptance_index' in root);
+    const readableV2 = variant === 'summary-v2';
     if (readableV2) {
       if (typeof child.summary !== 'string' || child.summary.trim().length === 0) {
         throw new Error(`Native child ${child.name} summary must be a non-empty string`);
@@ -317,11 +323,9 @@ export function parseNativeChildrenContract(
       summary: readableV2 ? (child.summary as string) : null,
       depends_on: stringList(child.depends_on, `Native child ${child.name} depends_on`),
       covers:
-        root.schema === NATIVE_CHILDREN_V2_SCHEMA && 'acceptance_index' in root
+        variant === 'indexed-v2' || variant === 'v1'
           ? stringList(child.covers, `Native child ${child.name} covers`)
-          : root.schema === NATIVE_CHILDREN_SCHEMA
-            ? stringList(child.covers, `Native child ${child.name} covers`)
-            : [],
+          : [],
     };
   });
   const names = children.map(({ name }) => name);
@@ -335,7 +339,7 @@ export function parseNativeChildrenContract(
   }
   assertAcyclic(children);
   if (schema === NATIVE_CHILDREN_SCHEMA_V2) {
-    if ('acceptance_index' in root) {
+    if (variant === 'indexed-v2') {
       const acceptanceIndex = parseAcceptanceIndex(root.acceptance_index);
       validateAcceptanceIndex(acceptanceIndex, acceptanceIds, options);
       const indexedAcceptanceIds = Object.keys(acceptanceIndex);

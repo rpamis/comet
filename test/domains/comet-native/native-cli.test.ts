@@ -776,6 +776,10 @@ describe('Comet Native CLI dispatcher', () => {
     const nextHelp = await runNativeCli(['next', '--help', ...projectArgs()]);
     expect(nextHelp.stdout).toContain('--confirmed');
     expect(nextHelp.stdout).toContain('--runner-input <file>');
+    expect(nextHelp.stdout).toContain(
+      '--max-parallel <n>] [--expected-state-version <n>] [--expected-action <action>]',
+    );
+    expect(nextHelp.stdout).toContain('Supervisor task operations');
     expect(nextHelp.stdout).toContain('skill-coordinated JSON');
     expect(nextHelp.stdout).toContain('Identity/provider/execution/candidate fields are rejected');
     expect(nextHelp.stdout).not.toMatch(/^\s+--(?:result|report|artifact)\b/mu);

@@ -770,22 +770,16 @@ export async function initCommand(
       }`,
     );
     try {
-      const openSpecArgs = [
-        projectPath,
-        osToolIds,
-        scope,
-        shouldInstallOpenSpecCli,
+      osGlobalStatus = await installOpenSpec(projectPath, osToolIds, scope, {
+        shouldInstallCli: shouldInstallOpenSpecCli,
         mirrorPlatformIds,
-        scope === 'project' ? workflowDecision?.classicArtifactLayout : 'legacy',
-        assertClassicProjectMutationAllowed,
-        (error: Error) => {
+        artifactLayout: scope === 'project' ? workflowDecision?.classicArtifactLayout : 'legacy',
+        projectMutationGuard: assertClassicProjectMutationAllowed,
+        failureObserver: (error: Error) => {
           osFailureReason = error.message;
         },
-        [],
-        [],
-        selectedPlatformIdsForOs,
-      ] as const;
-      osGlobalStatus = await installOpenSpec(...openSpecArgs);
+        selectedPlatformIds: selectedPlatformIdsForOs,
+      });
       if (osGlobalStatus === 'installed' && requiresClassicArtifactRoot) {
         await assertClassicProjectMutationAllowed?.();
         await assertClassicOpenSpecRootHealthy(

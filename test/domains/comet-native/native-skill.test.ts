@@ -93,7 +93,8 @@ describe('Comet Native Skills', () => {
           '`recoveryArgs`',
           '`children.yaml`',
           '`readyChildren`',
-          '`finish=merge`',
+          '原 `finish=merge` 边界由 Runtime 完成',
+          'Supervisor 任务',
           '`repair-child`',
         ],
       },
@@ -117,7 +118,8 @@ describe('Comet Native Skills', () => {
           '`recoveryArgs`',
           '`children.yaml`',
           '`readyChildren`',
-          '`finish=merge`',
+          'the former `finish=merge` boundary is owned by Runtime',
+          'Supervisor tasks',
           '`repair-child`',
         ],
       },
@@ -128,10 +130,29 @@ describe('Comet Native Skills', () => {
       for (const term of variant.required) {
         expect(skill, `${variant.language}: ${term}`).toContain(term);
       }
+      const statusMarker =
+        variant.language === 'zh' ? '状态包含 `children`' : 'When status contains `children`';
+      expect(skill.match(new RegExp(statusMarker, 'gu')) ?? []).toHaveLength(1);
+      expect(skill).not.toContain(
+        variant.language === 'zh'
+          ? 'Archive 必须逐个使用 `finish=merge` 合入 Supervisor Change 分支'
+          : 'Archive them one at a time with `finish=merge` into the Supervisor Change branch',
+      );
       expect(skill).not.toContain('git worktree list --porcelain');
       expect(skill).not.toContain('comet doctor --repair --scope project');
       expect(skill).not.toContain('scripts/comet-native-runtime.mjs');
       expect(skill).not.toContain('comet-native-<cmd>.mjs');
+    }
+  });
+
+  it('keeps clarification coverage aligned with repository and Agent sources', async () => {
+    const variants = [
+      { language: 'zh' as const, required: '项目文档、现有 Agent 指令' },
+      { language: 'en' as const, required: 'project documentation, existing Agent instructions' },
+    ];
+    for (const variant of variants) {
+      const clarification = await read(variant.language, 'reference/clarification.md');
+      expect(clarification).toContain(variant.required);
     }
   });
 

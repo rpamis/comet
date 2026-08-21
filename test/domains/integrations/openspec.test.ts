@@ -82,7 +82,9 @@ describe('openspec', () => {
 
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
-      const result = await installOpenSpec('/tmp/test', ['claude'], 'project', false);
+      const result = await installOpenSpec('/tmp/test', ['claude'], 'project', {
+        shouldInstallCli: false,
+      });
 
       expect(result).toBe('failed');
       expect(mockedExecFileSync).toHaveBeenCalledTimes(2);
@@ -115,7 +117,9 @@ describe('openspec', () => {
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
-      const result = await installOpenSpec('/tmp/test', ['oh-my-pi'], 'project', false);
+      const result = await installOpenSpec('/tmp/test', ['oh-my-pi'], 'project', {
+        shouldInstallCli: false,
+      });
 
       expect(result).toBe('failed');
       expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('requires >= 1.6.0'));
@@ -129,9 +133,11 @@ describe('openspec', () => {
       try {
         const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
 
-        await expect(installOpenSpec(tmpDir, ['oh-my-pi'], 'project', false)).resolves.toBe(
-          'installed',
-        );
+        await expect(
+          installOpenSpec(tmpDir, ['oh-my-pi'], 'project', {
+            shouldInstallCli: false,
+          }),
+        ).resolves.toBe('installed');
         expect(
           fs.existsSync(path.join(tmpDir, '.omp', 'skills', 'openspec-propose', 'SKILL.md')),
         ).toBe(true);
@@ -146,19 +152,16 @@ describe('openspec', () => {
         const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
 
         await expect(
-          installOpenSpec(
-            tmpDir,
-            ['claude'],
-            'project',
-            false,
-            [],
-            'legacy',
-            undefined,
-            undefined,
-            [],
-            [],
-            ['dsh'],
-          ),
+          installOpenSpec(tmpDir, ['claude'], 'project', {
+            shouldInstallCli: false,
+            mirrorPlatformIds: [],
+            artifactLayout: 'legacy',
+            projectMutationGuard: undefined,
+            failureObserver: undefined,
+            extraMirrorPlatformIds: [],
+            moreMirrorPlatformIds: [],
+            selectedPlatformIds: ['dsh'],
+          }),
         ).resolves.toBe('installed');
         expect(fs.existsSync(path.join(tmpDir, '.claude'))).toBe(false);
         expect(
@@ -177,19 +180,16 @@ describe('openspec', () => {
       try {
         const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
         await expect(
-          installOpenSpec(
-            homeDir,
-            ['claude'],
-            'global',
-            false,
-            [],
-            'legacy',
-            undefined,
-            undefined,
-            [],
-            [],
-            ['dsh'],
-          ),
+          installOpenSpec(homeDir, ['claude'], 'global', {
+            shouldInstallCli: false,
+            mirrorPlatformIds: [],
+            artifactLayout: 'legacy',
+            projectMutationGuard: undefined,
+            failureObserver: undefined,
+            extraMirrorPlatformIds: [],
+            moreMirrorPlatformIds: [],
+            selectedPlatformIds: ['dsh'],
+          }),
         ).resolves.toBe('installed');
         expect(fs.existsSync(path.join(homeDir, '.claude'))).toBe(false);
         expect(
@@ -229,7 +229,11 @@ describe('openspec', () => {
         });
 
         const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
-        const result = await installOpenSpec(tmpDir, ['claude'], 'project', false, [], 'docs');
+        const result = await installOpenSpec(tmpDir, ['claude'], 'project', {
+          shouldInstallCli: false,
+          mirrorPlatformIds: [],
+          artifactLayout: 'docs',
+        });
 
         expect(result).toBe('installed');
         expect(
@@ -254,30 +258,24 @@ describe('openspec', () => {
         const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
 
         await expect(
-          installOpenSpec(
-            projectDir,
-            ['codebuddy'],
-            'project',
-            false,
-            [],
-            'docs',
-            undefined,
-            undefined,
-            ['workbuddy'],
-          ),
+          installOpenSpec(projectDir, ['codebuddy'], 'project', {
+            shouldInstallCli: false,
+            mirrorPlatformIds: [],
+            artifactLayout: 'docs',
+            projectMutationGuard: undefined,
+            failureObserver: undefined,
+            extraMirrorPlatformIds: ['workbuddy'],
+          }),
         ).resolves.toBe('installed');
         await expect(
-          installOpenSpec(
-            projectDir,
-            ['codebuddy'],
-            'global',
-            false,
-            [],
-            'legacy',
-            undefined,
-            undefined,
-            ['workbuddy'],
-          ),
+          installOpenSpec(projectDir, ['codebuddy'], 'global', {
+            shouldInstallCli: false,
+            mirrorPlatformIds: [],
+            artifactLayout: 'legacy',
+            projectMutationGuard: undefined,
+            failureObserver: undefined,
+            extraMirrorPlatformIds: ['workbuddy'],
+          }),
         ).resolves.toBe('installed');
 
         expect(
@@ -307,32 +305,26 @@ describe('openspec', () => {
         const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
 
         await expect(
-          installOpenSpec(
-            projectDir,
-            ['codex'],
-            'project',
-            false,
-            [],
-            'docs',
-            undefined,
-            undefined,
-            [],
-            ['grok'],
-          ),
+          installOpenSpec(projectDir, ['codex'], 'project', {
+            shouldInstallCli: false,
+            mirrorPlatformIds: [],
+            artifactLayout: 'docs',
+            projectMutationGuard: undefined,
+            failureObserver: undefined,
+            extraMirrorPlatformIds: [],
+            moreMirrorPlatformIds: ['grok'],
+          }),
         ).resolves.toBe('installed');
         await expect(
-          installOpenSpec(
-            projectDir,
-            ['codex'],
-            'global',
-            false,
-            [],
-            'legacy',
-            undefined,
-            undefined,
-            [],
-            ['grok'],
-          ),
+          installOpenSpec(projectDir, ['codex'], 'global', {
+            shouldInstallCli: false,
+            mirrorPlatformIds: [],
+            artifactLayout: 'legacy',
+            projectMutationGuard: undefined,
+            failureObserver: undefined,
+            extraMirrorPlatformIds: [],
+            moreMirrorPlatformIds: ['grok'],
+          }),
         ).resolves.toBe('installed');
 
         expect(
@@ -359,19 +351,16 @@ describe('openspec', () => {
         const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
 
         await expect(
-          installOpenSpec(
-            globalDir,
-            ['codex'],
-            'global',
-            false,
-            ['grok'],
-            'legacy',
-            undefined,
-            undefined,
-            [],
-            [],
-            ['grok'],
-          ),
+          installOpenSpec(globalDir, ['codex'], 'global', {
+            shouldInstallCli: false,
+            mirrorPlatformIds: ['grok'],
+            artifactLayout: 'legacy',
+            projectMutationGuard: undefined,
+            failureObserver: undefined,
+            extraMirrorPlatformIds: [],
+            moreMirrorPlatformIds: [],
+            selectedPlatformIds: ['grok'],
+          }),
         ).resolves.toBe('failed');
         expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('OpenSpec init failed'));
       } finally {
@@ -407,7 +396,9 @@ describe('openspec', () => {
         });
 
         const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
-        const result = await installOpenSpec(tmpDir, ['codex'], 'project', false);
+        const result = await installOpenSpec(tmpDir, ['codex'], 'project', {
+          shouldInstallCli: false,
+        });
 
         expect(result).toBe('installed');
         await expect(
@@ -449,7 +440,9 @@ describe('openspec', () => {
         });
 
         const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
-        const result = await installOpenSpec(tmpDir, ['codex'], 'project', false);
+        const result = await installOpenSpec(tmpDir, ['codex'], 'project', {
+          shouldInstallCli: false,
+        });
 
         expect(result).toBe('installed');
         await expect(
@@ -483,16 +476,13 @@ describe('openspec', () => {
 
         const failures: Error[] = [];
         const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
-        const result = await installOpenSpec(
-          tmpDir,
-          ['codex'],
-          'project',
-          false,
-          [],
-          'legacy',
-          undefined,
-          (error) => failures.push(error),
-        );
+        const result = await installOpenSpec(tmpDir, ['codex'], 'project', {
+          shouldInstallCli: false,
+          mirrorPlatformIds: [],
+          artifactLayout: 'legacy',
+          projectMutationGuard: undefined,
+          failureObserver: (error) => failures.push(error),
+        });
 
         expect(result).toBe('failed');
         expect(failures[0]?.message).toContain('no tool output');
@@ -529,16 +519,13 @@ describe('openspec', () => {
 
         const failures: Error[] = [];
         const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
-        const result = await installOpenSpec(
-          tmpDir,
-          ['codex'],
-          'project',
-          false,
-          [],
-          'legacy',
-          undefined,
-          (error) => failures.push(error),
-        );
+        const result = await installOpenSpec(tmpDir, ['codex'], 'project', {
+          shouldInstallCli: false,
+          mirrorPlatformIds: [],
+          artifactLayout: 'legacy',
+          projectMutationGuard: undefined,
+          failureObserver: (error) => failures.push(error),
+        });
 
         expect(result).toBe('failed');
         expect(failures[0]?.message).toContain('empty tool output');
@@ -573,7 +560,9 @@ describe('openspec', () => {
         });
 
         const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
-        const result = await installOpenSpec(tmpDir, ['claude', 'codex'], 'project', false);
+        const result = await installOpenSpec(tmpDir, ['claude', 'codex'], 'project', {
+          shouldInstallCli: false,
+        });
 
         expect(result).toBe('failed');
         // No partial updates: the earlier platform and the artifact root stay untouched.
@@ -612,7 +601,9 @@ describe('openspec', () => {
         });
 
         const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
-        const result = await installOpenSpec(tmpDir, ['claude', 'codex'], 'project', false);
+        const result = await installOpenSpec(tmpDir, ['claude', 'codex'], 'project', {
+          shouldInstallCli: false,
+        });
 
         expect(result).toBe('failed');
         // No partial updates: the earlier platform and the artifact root stay untouched.
@@ -663,7 +654,11 @@ describe('openspec', () => {
         });
 
         const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
-        const result = await installOpenSpec(tmpDir, ['codex'], 'project', false, [], 'docs');
+        const result = await installOpenSpec(tmpDir, ['codex'], 'project', {
+          shouldInstallCli: false,
+          mirrorPlatformIds: [],
+          artifactLayout: 'docs',
+        });
 
         expect(result).toBe('installed');
         await expect(
@@ -713,7 +708,11 @@ describe('openspec', () => {
         });
 
         const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
-        const result = await installOpenSpec(tmpDir, ['claude'], 'project', false, [], 'legacy');
+        const result = await installOpenSpec(tmpDir, ['claude'], 'project', {
+          shouldInstallCli: false,
+          mirrorPlatformIds: [],
+          artifactLayout: 'legacy',
+        });
         const initCalls = mockedExecFileSync.mock.calls.filter(
           ([command, args]) => command === 'openspec' && Array.isArray(args) && args[0] === 'init',
         );
@@ -759,7 +758,11 @@ describe('openspec', () => {
         });
 
         const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
-        const result = await installOpenSpec(tmpDir, [], 'project', false, [], 'docs');
+        const result = await installOpenSpec(tmpDir, [], 'project', {
+          shouldInstallCli: false,
+          mirrorPlatformIds: [],
+          artifactLayout: 'docs',
+        });
 
         expect(result).toBe('installed');
         expect(
@@ -855,15 +858,12 @@ describe('openspec', () => {
           });
 
           const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
-          const result = await installOpenSpec(
-            tmpDir,
-            ['claude'],
-            'project',
-            false,
-            [],
-            'docs',
-            guard,
-          );
+          const result = await installOpenSpec(tmpDir, ['claude'], 'project', {
+            shouldInstallCli: false,
+            mirrorPlatformIds: [],
+            artifactLayout: 'docs',
+            projectMutationGuard: guard,
+          });
 
           expect(replaced).toBe(true);
           expect(result).toBe('failed');
@@ -954,15 +954,12 @@ describe('openspec', () => {
           });
 
           const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
-          const result = await installOpenSpec(
-            tmpDir,
-            ['opencode'],
-            'project',
-            false,
-            [platformId],
-            'docs',
-            guard,
-          );
+          const result = await installOpenSpec(tmpDir, ['opencode'], 'project', {
+            shouldInstallCli: false,
+            mirrorPlatformIds: [platformId],
+            artifactLayout: 'docs',
+            projectMutationGuard: guard,
+          });
 
           expect(replaced).toBe(true);
           expect(result).toBe('failed');
@@ -1049,15 +1046,12 @@ describe('openspec', () => {
           });
 
           const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
-          const result = await installOpenSpec(
-            tmpDir,
-            ['claude'],
-            'project',
-            false,
-            [],
-            'docs',
-            guard,
-          );
+          const result = await installOpenSpec(tmpDir, ['claude'], 'project', {
+            shouldInstallCli: false,
+            mirrorPlatformIds: [],
+            artifactLayout: 'docs',
+            projectMutationGuard: guard,
+          });
 
           expect(replaced).toBe(true);
           expect(result).toBe('failed');
@@ -1499,7 +1493,12 @@ describe('openspec', () => {
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
       await expect(
-        installOpenSpec('/tmp/test', ['claude'], 'project', false, [], 'legacy', guard),
+        installOpenSpec('/tmp/test', ['claude'], 'project', {
+          shouldInstallCli: false,
+          mirrorPlatformIds: [],
+          artifactLayout: 'legacy',
+          projectMutationGuard: guard,
+        }),
       ).rejects.toThrow(/before OpenSpec project mutation.*project config drifted/iu);
       expect(guard).toHaveBeenCalledTimes(1);
       expect(mockedExecFileSync).not.toHaveBeenCalled();
@@ -1522,7 +1521,12 @@ describe('openspec', () => {
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
       await expect(
-        installOpenSpec('/tmp/test', ['claude'], 'project', false, [], 'legacy', guard),
+        installOpenSpec('/tmp/test', ['claude'], 'project', {
+          shouldInstallCli: false,
+          mirrorPlatformIds: [],
+          artifactLayout: 'legacy',
+          projectMutationGuard: guard,
+        }),
       ).rejects.toThrow(/partial failure.*project config drifted/iu);
       expect(guard).toHaveBeenCalledTimes(3);
       expect(

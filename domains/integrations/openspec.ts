@@ -39,6 +39,17 @@ const ALL_OPENSPEC_WORKFLOWS = [
 type ProjectMutationGuard = () => void | Promise<void>;
 type OpenSpecFailureObserver = (error: Error) => void;
 
+export interface OpenSpecInstallOptions {
+  shouldInstallCli?: boolean;
+  mirrorPlatformIds?: readonly string[];
+  artifactLayout?: 'legacy' | 'docs';
+  projectMutationGuard?: ProjectMutationGuard;
+  failureObserver?: OpenSpecFailureObserver;
+  extraMirrorPlatformIds?: readonly string[];
+  moreMirrorPlatformIds?: readonly string[];
+  selectedPlatformIds?: readonly string[];
+}
+
 class ProjectMutationGuardError extends Error {
   override readonly name = 'ProjectMutationGuardError';
 }
@@ -737,15 +748,18 @@ async function installOpenSpec(
   projectPath: string,
   toolIds: readonly string[],
   scope: InstallScope,
-  shouldInstallCli = true,
-  mirrorPlatformIds: readonly string[] = [],
-  artifactLayout: 'legacy' | 'docs' = 'legacy',
-  projectMutationGuard?: ProjectMutationGuard,
-  failureObserver?: OpenSpecFailureObserver,
-  extraMirrorPlatformIds: readonly string[] = [],
-  moreMirrorPlatformIds: readonly string[] = [],
-  selectedPlatformIds: readonly string[] = [],
+  options: OpenSpecInstallOptions = {},
 ): Promise<'installed' | 'failed' | 'skipped'> {
+  const {
+    shouldInstallCli = true,
+    mirrorPlatformIds = [],
+    artifactLayout = 'legacy',
+    projectMutationGuard,
+    failureObserver,
+    extraMirrorPlatformIds = [],
+    moreMirrorPlatformIds = [],
+    selectedPlatformIds = [],
+  } = options;
   const allMirrorPlatformIds = [
     ...new Set([...mirrorPlatformIds, ...extraMirrorPlatformIds, ...moreMirrorPlatformIds]),
   ];

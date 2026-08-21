@@ -130,9 +130,9 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
   },
   next: {
     usage:
-      'comet native next <change-name> --summary <text> [--confirmed|--accept-result|--revise-implementation|--revise-requirements|--retry-verifier|--resolve-verifier-blocker]\n       comet native next <change-name> --runner-input <json-file>',
+      'comet native next <change-name> --summary <text> [--confirmed|--accept-result|--revise-implementation|--revise-requirements|--retry-verifier|--resolve-verifier-blocker] [--max-parallel <n>] [--expected-state-version <n>] [--expected-action <action>]\n       comet native next <change-name> --runner-input <json-file>',
     purpose:
-      'Confirm or recover an Agent boundary, advance parent child changes, or use one skill-coordinated JSON bridge for Builder handoff, check-plan dispatch, and Verifier response/error.',
+      'Confirm or recover an Agent boundary, advance parent child changes, handle Supervisor task operations, or use one skill-coordinated JSON bridge for Builder handoff, check-plan dispatch, and Verifier response/error.',
     options: [
       '--summary <text>    Required transition or recovery summary.',
       '--confirmed         Confirm Shape or an explicitly degraded verifier-unavailable fallback before Archive.',

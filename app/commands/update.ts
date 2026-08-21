@@ -1838,20 +1838,13 @@ async function updateSingleProject(
       if (scope === 'project') {
         await assertClassicProjectMutationAllowed?.();
       }
-      const openSpecArgs = [
-        projectPath,
-        toolIds,
-        scope,
-        !skipPackageSelfUpdate,
+      const status = await installOpenSpec(projectPath, toolIds, scope, {
+        shouldInstallCli: !skipPackageSelfUpdate,
         mirrorPlatformIds,
         artifactLayout,
-        scope === 'project' ? assertClassicProjectMutationAllowed : undefined,
-        undefined,
-        [],
-        [],
+        projectMutationGuard: scope === 'project' ? assertClassicProjectMutationAllowed : undefined,
         selectedPlatformIds,
-      ] as const;
-      const status = await installOpenSpec(...openSpecArgs);
+      });
       if (status === 'failed') {
         openSpecStatus = 'failed';
         openSpecReason = `OpenSpec ${scope} asset update failed`;

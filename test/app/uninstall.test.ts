@@ -643,6 +643,36 @@ describe('uninstall', () => {
       ).rejects.toMatchObject({ code: 'ENOENT' });
     });
 
+    it('preserves a user-owned dsh Skill when discovery data has the same name', async () => {
+      const dshPlatform = PLATFORMS.find((platform) => platform.id === 'dsh')!;
+      const skillPath = path.join(tmpDir, '.dsh', 'skills', 'brainstorming');
+      await fs.mkdir(skillPath, { recursive: true });
+      await fs.writeFile(path.join(skillPath, 'SKILL.md'), '# User-owned brainstorming\n', 'utf8');
+      await fs.writeFile(
+        path.join(tmpDir, '.dsh', 'skills', '.comet-ownership.json'),
+        JSON.stringify({ version: 1, openspec: [], superpowers: [] }),
+        'utf8',
+      );
+      await fs.writeFile(
+        path.join(tmpDir, 'skills-lock.json'),
+        JSON.stringify({ version: 1, skills: { brainstorming: { source: 'obra/superpowers' } } }),
+        'utf8',
+      );
+      mockedExecFileSync.mockImplementation((_command, args) => {
+        if (args[1] === 'list') {
+          return JSON.stringify([{ name: 'brainstorming', source: 'obra/superpowers' }]) as never;
+        }
+        return '' as never;
+      });
+
+      const result = await removeSuperpowersSkillsForPlatforms(tmpDir, [dshPlatform], 'project', {
+        removeSharedStorage: true,
+      });
+
+      expect(result).toEqual({ removed: 0, failed: 0 });
+      await expect(fs.access(skillPath)).resolves.toBeUndefined();
+    });
+
     it('removes staged Superpowers from a Grok-only project install without CLI list or lockfile', async () => {
       const grokPlatform = PLATFORMS.find((platform) => platform.id === 'grok')!;
       mockedExecFileSync.mockImplementation(() => {
