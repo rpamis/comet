@@ -1,3 +1,4 @@
 [submodule "website"]
 	path = website
 	url = https://github.com/rpamis/comet-website-docs
+	branch = master

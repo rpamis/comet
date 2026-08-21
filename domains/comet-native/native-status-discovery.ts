@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { realpathSync } from 'node:fs';
 
 import { listGitWorktreeRoots } from '../../platform/paths/git-worktree.js';
 
@@ -86,11 +87,20 @@ export interface NativeDiscoveredStatusPageProjection {
 }
 
 function samePath(left: string, right: string): boolean {
-  const normalizedLeft = path.normalize(left);
-  const normalizedRight = path.normalize(right);
+  const normalizedLeft = path.normalize(pathIdentity(left));
+  const normalizedRight = path.normalize(pathIdentity(right));
   return process.platform === 'win32'
     ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
     : normalizedLeft === normalizedRight;
+}
+
+function pathIdentity(value: string): string {
+  const resolved = path.resolve(value);
+  try {
+    return realpathSync.native(resolved);
+  } catch {
+    return resolved;
+  }
 }
 
 function displayCommandArgs(args: readonly string[]): string {
@@ -113,13 +123,20 @@ async function discoverChanges(
 }
 
 async function discoverSources(projectRoot: string): Promise<NativeWorkspaceSource[]> {
+  const requestedRoot = path.resolve(projectRoot);
   const roots = listGitWorktreeRoots(projectRoot);
-  const candidates = roots.length > 0 ? roots : [path.resolve(projectRoot)];
-  if (!candidates.some((candidate) => samePath(candidate, projectRoot))) {
-    candidates.push(path.resolve(projectRoot));
+  const candidates = roots.length > 0 ? roots : [requestedRoot];
+  if (!candidates.some((candidate) => samePath(candidate, requestedRoot))) {
+    candidates.push(requestedRoot);
   }
   const sources: NativeWorkspaceSource[] = [];
-  for (const candidate of [...new Set(candidates.map((value) => path.resolve(value)))].sort()) {
+  const seen = new Set<string>();
+  for (const candidatePath of candidates.map((value) => path.resolve(value)).sort()) {
+    const candidate = samePath(candidatePath, requestedRoot) ? requestedRoot : candidatePath;
+    const identity = pathIdentity(candidate);
+    const key = process.platform === 'win32' ? identity.toLowerCase() : identity;
+    if (seen.has(key)) continue;
+    seen.add(key);
     const config = await readProjectConfig(candidate);
     if (!config) continue;
     const paths = await nativeProjectPaths(candidate, config.native.artifact_root);

@@ -30,6 +30,8 @@ export const DEFAULT_WORKFLOW_MEMORY_PROJECT_CONFIG: WorkflowMemoryProjectConfig
 export const DEFAULT_WORKFLOW_KNOWLEDGE_PROJECT_CONFIG: WorkflowKnowledgeProjectConfig = {
   provider: 'local',
 };
+export const DEFAULT_WORKFLOW_NATIVE_PULL_REQUEST_FINISH_TIMEOUT_MS = 120_000;
+export const MAX_WORKFLOW_NATIVE_PULL_REQUEST_FINISH_TIMEOUT_MS = 600_000;
 
 // `comet init` installs the built-in Skills into every supported platform's
 // project-local Skill directory. A Native baseline describes the project being
@@ -54,6 +56,7 @@ const DEFAULT_WORKFLOW_NATIVE_MANAGED_SKILL_EXCLUDES = [
   '.forge/skills/**',
   '.gemini/skills/**',
   '.github/skills/**',
+  '.grok/skills/**',
   '.iflow/skills/**',
   '.junie/skills/**',
   '.kilocode/skills/**',
@@ -169,6 +172,7 @@ type ProjectConfigCommentKey =
   | 'native.clarification_mode'
   | 'native.archive_confirmation'
   | 'native.max_verify_failures'
+  | 'native.finish'
   | 'native.snapshot'
   | 'native.snapshot.include'
   | 'native.snapshot.exclude'
@@ -215,6 +219,8 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
       '# Controls whether Native archives automatically after a successful preview or waits for explicit user confirmation.\n# archive_confirmation: automatic | required',
     'native.max_verify_failures':
       '# Maximum failed Verify outcomes allowed for one confirmed acceptance target before Native stops the completion loop.',
+    'native.finish':
+      '# Optional repository-owned finish providers. Native keeps commit, push, generic remote verification, and recovery ownership.',
     'native.snapshot':
       '# Controls the auditable project scope and bounded work used by Native content snapshots.',
     'native.snapshot.include':
@@ -268,6 +274,8 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
       '# Native 归档检查成功后自动归档，或等待用户明确确认。\n# 可选值：automatic | required',
     'native.max_verify_failures':
       '# 同一个已确认验收目标最多允许的 Verify 失败次数；达到上限后停止完成循环。',
+    'native.finish':
+      '# 可选的仓库自有收尾 provider；提交、推送、通用远端核验和恢复仍由 Native 负责。',
     'native.snapshot': '# Native 内容快照使用的可审计项目范围与有界工作预算。',
     'native.snapshot.include': '# Native 快照纳入的项目相对路径；模式使用 /，支持 *、** 和 ?。',
     'native.snapshot.exclude': '# 从纳入范围中排除路径；新 change 会把排除策略绑定到 baseline。',
@@ -588,6 +596,60 @@ function normalizeWorkflowPendingRootMove(
   };
 }
 
+function normalizeWorkflowNativeFinish(
+  value: unknown,
+): WorkflowNativeProjectConfig['finish'] | undefined {
+  if (value === undefined) return undefined;
+  const finish = projectConfigRecord(value, 'native.finish');
+  if (finish.pull_request === undefined) return {};
+  const pullRequest = projectConfigRecord(finish.pull_request, 'native.finish.pull_request');
+  if (pullRequest.provider !== 'repository-command') {
+    throw new Error('native.finish.pull_request.provider must be repository-command');
+  }
+  if (!Array.isArray(pullRequest.command) || pullRequest.command.length === 0) {
+    throw new Error('native.finish.pull_request.command must be a non-empty array');
+  }
+  if (pullRequest.command.length > 64) {
+    throw new Error('native.finish.pull_request.command must contain at most 64 arguments');
+  }
+  const command = pullRequest.command.map((argument, index) => {
+    if (
+      typeof argument !== 'string' ||
+      argument.trim().length === 0 ||
+      argument.length > 4096 ||
+      /[\0\r\n]/u.test(argument)
+    ) {
+      throw new Error(
+        `native.finish.pull_request.command[${index}] must be a non-empty single-line string of at most 4096 characters`,
+      );
+    }
+    return argument;
+  });
+  if (path.posix.isAbsolute(command[0]) || path.win32.isAbsolute(command[0])) {
+    throw new Error(
+      'native.finish.pull_request.command[0] must be a bare executable name or a project-relative path',
+    );
+  }
+  const timeoutMs =
+    pullRequest.timeout_ms ?? DEFAULT_WORKFLOW_NATIVE_PULL_REQUEST_FINISH_TIMEOUT_MS;
+  if (
+    !Number.isSafeInteger(timeoutMs) ||
+    (timeoutMs as number) < 1 ||
+    (timeoutMs as number) > MAX_WORKFLOW_NATIVE_PULL_REQUEST_FINISH_TIMEOUT_MS
+  ) {
+    throw new Error(
+      `native.finish.pull_request.timeout_ms must be an integer between 1 and ${MAX_WORKFLOW_NATIVE_PULL_REQUEST_FINISH_TIMEOUT_MS}`,
+    );
+  }
+  return {
+    pull_request: {
+      provider: 'repository-command',
+      command,
+      timeout_ms: timeoutMs as number,
+    },
+  };
+}
+
 function normalizeWorkflowNativeProjectConfig(
   value: unknown,
   options: { allowMissingArtifactRoot?: boolean } = {},
@@ -612,6 +674,7 @@ function normalizeWorkflowNativeProjectConfig(
     throw new Error('native.max_verify_failures must be a positive integer');
   }
   const pending = normalizeWorkflowPendingRootMove(native.pending_root_move);
+  const finish = normalizeWorkflowNativeFinish(native.finish);
   return {
     artifact_root: normalizeWorkflowArtifactRoot(artifactRoot),
     language: projectConfigLanguage(native.language, 'en', 'native.language'),
@@ -619,6 +682,7 @@ function normalizeWorkflowNativeProjectConfig(
     archive_confirmation: archiveConfirmation,
     max_verify_failures: maxVerifyFailures as number,
     snapshot: normalizeWorkflowSnapshot(native.snapshot),
+    ...(finish ? { finish } : {}),
     ...(pending ? { pending_root_move: pending } : {}),
   };
 }
@@ -914,6 +978,17 @@ export function workflowProjectConfigManagedValue(
             clarification_mode: config.native.clarification_mode,
             archive_confirmation: config.native.archive_confirmation,
             max_verify_failures: config.native.max_verify_failures,
+            ...(config.native.finish?.pull_request
+              ? {
+                  finish: {
+                    pull_request: {
+                      provider: config.native.finish.pull_request.provider,
+                      command: [...config.native.finish.pull_request.command],
+                      timeout_ms: config.native.finish.pull_request.timeout_ms,
+                    },
+                  },
+                }
+              : {}),
             ...(config.native.pending_root_move
               ? {
                   pending_root_move: workflowPendingRootMoveValue(config.native.pending_root_move),
@@ -1007,6 +1082,23 @@ export function mergeWorkflowProjectConfigDocument(
       archive_confirmation: validated.native.archive_confirmation,
       max_verify_failures: validated.native.max_verify_failures,
     };
+    if (validated.native.finish?.pull_request) {
+      const existingFinish = optionalRecord(existingNative.finish);
+      native.finish = {
+        ...existingFinish,
+        pull_request: {
+          ...optionalRecord(existingFinish.pull_request),
+          provider: validated.native.finish.pull_request.provider,
+          command: [...validated.native.finish.pull_request.command],
+          timeout_ms: validated.native.finish.pull_request.timeout_ms,
+        },
+      };
+    } else {
+      const remainingFinish = { ...optionalRecord(existingNative.finish) };
+      delete remainingFinish.pull_request;
+      if (Object.keys(remainingFinish).length > 0) native.finish = remainingFinish;
+      else delete native.finish;
+    }
     // Snapshot settings are retained by the parser as a legacy v1-v3 runtime
     // default, but Native v4 no longer persists them in user configuration.
     delete native.snapshot;
@@ -2045,6 +2137,58 @@ function managedWorkflowConfigFields(source) {
     const maxVerifyFailures = native.max_verify_failures ?? 5;
     if (!Number.isSafeInteger(maxVerifyFailures) || maxVerifyFailures < 1) {
       throw new Error('native.max_verify_failures must be a positive integer');
+    }
+    if (native.finish !== undefined) {
+      const finish = workflowConfigRecord(native.finish, 'native.finish');
+      if (finish.pull_request !== undefined) {
+        const pullRequest = workflowConfigRecord(
+          finish.pull_request,
+          'native.finish.pull_request',
+        );
+        if (pullRequest.provider !== 'repository-command') {
+          throw new Error('native.finish.pull_request.provider must be repository-command');
+        }
+        if (!Array.isArray(pullRequest.command) || pullRequest.command.length === 0) {
+          throw new Error('native.finish.pull_request.command must be a non-empty array');
+        }
+        if (pullRequest.command.length > 64) {
+          throw new Error('native.finish.pull_request.command must contain at most 64 arguments');
+        }
+        for (let index = 0; index < pullRequest.command.length; index += 1) {
+          const argument = pullRequest.command[index];
+          if (
+            typeof argument !== 'string' ||
+            argument.trim().length === 0 ||
+            argument.length > 4096 ||
+            /[\0\r\n]/u.test(argument)
+          ) {
+            throw new Error(
+              'native.finish.pull_request.command[' +
+                index +
+                '] must be a non-empty single-line string of at most 4096 characters',
+            );
+          }
+        }
+        if (
+          path.posix.isAbsolute(pullRequest.command[0]) ||
+          path.win32.isAbsolute(pullRequest.command[0])
+        ) {
+          throw new Error(
+            'native.finish.pull_request.command[0] must be a bare executable name or a project-relative path',
+          );
+        }
+        const timeoutMs =
+          pullRequest.timeout_ms ?? ${DEFAULT_WORKFLOW_NATIVE_PULL_REQUEST_FINISH_TIMEOUT_MS};
+        if (
+          !Number.isSafeInteger(timeoutMs) ||
+          timeoutMs < 1 ||
+          timeoutMs > ${MAX_WORKFLOW_NATIVE_PULL_REQUEST_FINISH_TIMEOUT_MS}
+        ) {
+          throw new Error(
+            'native.finish.pull_request.timeout_ms must be an integer between 1 and ${MAX_WORKFLOW_NATIVE_PULL_REQUEST_FINISH_TIMEOUT_MS}',
+          );
+        }
+      }
     }
     validateWorkflowSnapshot(native.snapshot);
     validateWorkflowPendingRootMove(native.pending_root_move);

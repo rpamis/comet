@@ -13,7 +13,7 @@ comet native <group> <command> --help
 ## Next action returned by the Runtime
 
 - `disposition`: whether to continue, wait for the user, resolve a blocker, or finish.
-- `commandArgs`: the complete command arguments the Runtime requires.
+- `commandArgs` / `commandAlternatives`: complete command arguments from the Runtime. Alternatives are complete commands for mutually exclusive user decisions; execute the matching one and do not combine them.
 - `inputOptions`: fields and a JSON template for this command.
 - `workspace` / `preparation`: the actual working directory and change-creation result.
 - `stateVersion` / `loop`: the current state version and acceptance Loop progress.
@@ -21,11 +21,11 @@ comet native <group> <command> --help
 - `verifierDispatch`: inputs needed to start an independent Verifier.
 - `workspaceFinishResult` / `recoveryArgs`: the post-Archive workspace result and recovery command.
 
-Angle brackets in a template mark values to fill in. `await-user` means wait for the user's decision before running an advancing command. `localExecution: absent` means only that this machine has no currently running local task; it does not mean the change is damaged.
+Angle brackets in a template mark values to fill in. `await-user` means wait for the user's decision before running an advancing command. If `commandArgs` is `null` and `commandAlternatives` is present, confirm the user's decision, then execute the selected alternative's complete `commandArgs` while preserving `--expected-state-version` and `--expected-action`. If the command fails because the state or action binding is stale, reread the latest `continuation` and continue from the current state; do not construct an unguarded replacement command. `localExecution: absent` means only that this machine has no currently running local task; it does not mean the change is damaged.
 
 ## Fill command input
 
-Copy `inputOptions.template` into a temporary system JSON file, replace only the requested values, then execute `continuation.commandArgs`. Delete the temporary file afterward. Preserve the acceptance iteration, Verifier attempt, state version, and task identifiers already present in the template. Fill only the fields exposed by the template.
+Copy `inputOptions.template` into a temporary system JSON file, replace only the requested values, then execute `continuation.commandArgs` or the selected `commandAlternative.commandArgs`. Delete the temporary file afterward. Preserve the acceptance iteration, Verifier attempt, state version, and task identifiers already present in the template. Fill only the fields exposed by the template.
 
 - `builder-handoff`: submit the implementation summary for this round, addressed acceptance IDs, development checks the Builder actually ran, and known limitations. Leave acceptance conclusions to the Verifier.
 - `dispatch-verifier`: list the checks the Runtime should execute for the current candidate. Submit an empty list when no command-based check applies.

@@ -81,6 +81,44 @@ describe('Comet project instructions', () => {
     }
   });
 
+  it.each([
+    ['zh' as const, '非 Comet 的 Skill 或斜杠命令', '不要运行 resume probe，直接执行该 Skill'],
+    [
+      'en' as const,
+      'non-Comet skill or slash command through the host',
+      'execute the invoked skill directly',
+    ],
+  ])('exempts explicit non-Comet skill invocations in %s', async (language, ...markers) => {
+    await installCometProjectInstructions(tmpDir, language);
+
+    const content = await fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8');
+    for (const marker of markers) {
+      expect(content).toContain(marker);
+    }
+  });
+
+  it.each([
+    [
+      'zh' as const,
+      '正在等待用户回复你在流程中提出的问题',
+      '当作当前 change 的继续',
+      '绝不表示要暂停或退出一个已在进行的 Comet 流程',
+    ],
+    [
+      'en' as const,
+      'waiting for the user to answer a question you asked in that flow',
+      'continuation of the current change',
+      'never pauses or exits a Comet flow that is already in progress',
+    ],
+  ])('keeps mid-flow replies inside the running flow in %s', async (language, ...markers) => {
+    await installCometProjectInstructions(tmpDir, language);
+
+    const content = await fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8');
+    for (const marker of markers) {
+      expect(content).toContain(marker);
+    }
+  });
+
   it('removes only the managed block', async () => {
     const agents = path.join(tmpDir, 'AGENTS.md');
     await fs.writeFile(agents, '# User\n\nKeep me.\n', 'utf8');

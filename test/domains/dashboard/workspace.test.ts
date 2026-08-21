@@ -70,6 +70,71 @@ describe('Dashboard workspace discovery', () => {
     });
   });
 
+  it('uses the config-bearing monorepo subdirectory as the workspace root', async () => {
+    const parent = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), 'comet-dashboard-monorepo-')),
+    );
+    roots.push(parent);
+    const repo = path.join(parent, 'repo');
+    const secondary = path.join(parent, 'secondary');
+    await fs.mkdir(path.join(repo, 'dev', '.comet'), { recursive: true });
+    git(repo, ['init', '-q', '-b', 'main']);
+    git(repo, ['config', 'user.email', 'comet@test.local']);
+    git(repo, ['config', 'user.name', 'Comet Test']);
+    await fs.writeFile(
+      path.join(repo, 'dev', '.comet', 'config.yaml'),
+      'schema: comet.project.v1\n',
+    );
+    git(repo, ['add', '.']);
+    git(repo, ['commit', '-q', '-m', 'test: seed']);
+    git(repo, ['worktree', 'add', '-q', '-b', 'feature/worktree', secondary]);
+
+    const sources = collectDashboardWorkspaceSources(path.join(repo, 'dev'));
+    expect(sources).toHaveLength(2);
+    expect(sources[0]).toMatchObject({
+      current: true,
+      branch: 'main',
+      projectRoot: path.resolve(repo, 'dev'),
+    });
+    expect(sources[1]).toMatchObject({
+      current: false,
+      branch: 'feature/worktree',
+      projectRoot: path.resolve(secondary, 'dev'),
+    });
+  });
+
+  it('falls back to the worktree root when the mapped subdirectory has no config', async () => {
+    const parent = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), 'comet-dashboard-monorepo-fallback-')),
+    );
+    roots.push(parent);
+    const repo = path.join(parent, 'repo');
+    const secondary = path.join(parent, 'secondary');
+    await fs.mkdir(repo);
+    git(repo, ['init', '-q', '-b', 'main']);
+    git(repo, ['config', 'user.email', 'comet@test.local']);
+    git(repo, ['config', 'user.name', 'Comet Test']);
+    await fs.writeFile(path.join(repo, 'README.md'), '# Test\n');
+    git(repo, ['add', '.']);
+    git(repo, ['commit', '-q', '-m', 'test: seed']);
+    git(repo, ['worktree', 'add', '-q', '-b', 'feature/worktree', secondary]);
+    // Config exists only in the primary worktree, so secondary/dev has none.
+    await fs.mkdir(path.join(repo, 'dev', '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(repo, 'dev', '.comet', 'config.yaml'),
+      'schema: comet.project.v1\n',
+    );
+
+    const sources = collectDashboardWorkspaceSources(path.join(repo, 'dev'));
+    expect(sources[0]).toMatchObject({ current: true, projectRoot: path.resolve(repo, 'dev') });
+    expect(sources[1]).toMatchObject({ current: false, projectRoot: path.resolve(secondary) });
+
+    const plain = path.join(repo, 'plain');
+    await fs.mkdir(plain);
+    const fromPlain = collectDashboardWorkspaceSources(plain);
+    expect(fromPlain[0]).toMatchObject({ current: true, projectRoot: path.resolve(repo) });
+  });
+
   it('skips detached and missing secondary worktrees', async () => {
     const parent = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-dashboard-stale-worktrees-'));
     roots.push(parent);
@@ -85,17 +150,11 @@ describe('Dashboard workspace discovery', () => {
     git(repo, ['commit', '-q', '-m', 'test: seed']);
     git(repo, ['worktree', 'add', '-q', '-b', 'feature/worktree', branchWorktree]);
     git(repo, ['worktree', 'add', '-q', '--detach', detachedWorktree]);
-
     await fs.rm(branchWorktree, { recursive: true, force: true });
 
     const sources = collectDashboardWorkspaceSources(repo);
-
     expect(sources).toEqual([
-      expect.objectContaining({
-        current: true,
-        branch: 'main',
-        projectRoot: path.resolve(repo),
-      }),
+      expect.objectContaining({ current: true, branch: 'main', projectRoot: path.resolve(repo) }),
     ]);
   });
 
@@ -114,7 +173,6 @@ describe('Dashboard workspace discovery', () => {
     git(repo, ['worktree', 'add', '-q', '-b', 'verify/runtime', runtimeWorktree]);
 
     const sources = collectDashboardWorkspaceSources(repo);
-
     expect(sources).toHaveLength(1);
     expect(sources[0]).toMatchObject({ current: true, projectRoot: path.resolve(repo) });
   });

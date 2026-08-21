@@ -130,17 +130,21 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
   },
   next: {
     usage:
-      'comet native next <change-name> --summary <text> [--confirmed|--return-to-build|--retry-verifier|--resolve-verifier-blocker] [--max-parallel <n>]\n       comet native next <change-name> --runner-input <json-file>',
+      'comet native next <change-name> --summary <text> [--confirmed|--accept-result|--revise-implementation|--revise-requirements|--retry-verifier|--resolve-verifier-blocker]\n       comet native next <change-name> --runner-input <json-file>',
     purpose:
       'Confirm or recover an Agent boundary, advance parent child changes, or use one skill-coordinated JSON bridge for Builder handoff, check-plan dispatch, and Verifier response/error.',
     options: [
       '--summary <text>    Required transition or recovery summary.',
-      '--confirmed         Confirm Shape, a completed skill-coordinated pass, or an explicitly degraded verifier-unavailable fallback before Archive.',
-      '--return-to-build   Return Verify or Archive to Build after invalidation or user choice.',
+      '--confirmed         Confirm Shape or an explicitly degraded verifier-unavailable fallback before Archive.',
+      '--accept-result     Accept the current skill-coordinated Verify result and make it archive-ready.',
+      '--revise-implementation  Keep confirmed requirements unchanged and return Verify to Build for implementation revision.',
+      '--revise-requirements    Return Verify to Shape when user-visible goals or acceptance criteria must change.',
       '--retry-verifier    Retry a blocked Verifier execution when the continuation allows it.',
       '--resolve-verifier-blocker  Resolve a semantic Verifier blocker without changing the candidate, then dispatch a new attempt.',
       '--max-parallel <n>  Supervisor task concurrency cap; defaults to 2, use 1 for serial fallback.',
-      '--runner-input <file>  Skill-coordinated JSON: builder-handoff, dispatch-verifier, verifier-response, verifier-execution-error, verifier-unavailable, or Supervisor task operations. Identity/provider/execution/candidate fields are rejected.',
+      '--expected-state-version <n>  Continuation-issued guard that rejects stale public transition decisions.',
+      '--expected-action <action>    Continuation-issued guard that binds the public transition decision to its intended action.',
+      '--runner-input <file>  Skill-coordinated JSON: builder-handoff, dispatch-verifier, verifier-response, verifier-execution-error, or verifier-unavailable. Identity/provider/execution/candidate fields are rejected.',
       '  builder-handoff fields: kind, summary, addressed_acceptance_ids, checks, known_limits.',
       '  dispatch-verifier fields: kind, checks (an explicitly resolved plan; [] is allowed).',
       '  verifier-response fields: kind, response (request-checks or final-result).',
@@ -152,7 +156,9 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       'The portable state, explicit skill-coordinated label, Runtime-owned check results, complete verifierDispatch, bounded request-check response, continuation.runnerAction, and machine-readable continuation.inputOptions. Human-readable verification statuses include "Host independently verified", "Checks completed, but your confirmation is required", "Full verification was unavailable; only automatic checks completed", and "You accepted the incomplete verification result". This generic bridge is not trusted identity attestation: a passing result waits for explicit user confirmation before Archive.',
     examples: [
       'comet native next session-timeout --summary "Shape confirmed" --confirmed',
-      'comet native next session-timeout --summary "Implementation changed" --return-to-build',
+      'comet native next session-timeout --summary "Current result accepted" --accept-result',
+      'comet native next session-timeout --summary "Implementation needs revision" --revise-implementation',
+      'comet native next session-timeout --summary "Acceptance criteria changed" --revise-requirements',
       'comet native next session-timeout --summary "Retry verifier infrastructure" --retry-verifier',
       'comet native next session-timeout --summary "Retry semantic verification" --resolve-verifier-blocker',
       'comet native next session-timeout --runner-input <temporary-json-file>',

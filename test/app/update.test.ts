@@ -2169,6 +2169,8 @@ describe('update command helpers', () => {
       expect.any(Function),
       undefined,
       [],
+      [],
+      ['claude'],
     );
     await expect(fs.access(path.join(tmpDir, 'openspec'))).rejects.toMatchObject({
       code: 'ENOENT',
@@ -2244,6 +2246,8 @@ describe('update command helpers', () => {
       expect.any(Function),
       undefined,
       [],
+      [],
+      ['claude'],
     );
     expect(mockedInstallSuperpowers).toHaveBeenCalledWith(tmpDir, 'project', ['claude'], true);
   });
@@ -2294,8 +2298,8 @@ describe('update command helpers', () => {
       expect.any(Function),
       undefined,
       [],
+      [],
       ['dsh'],
-      false,
     );
     expect(mockedInstallSuperpowers).toHaveBeenCalledWith(tmpDir, 'project', ['dsh'], true);
   });
@@ -2436,6 +2440,8 @@ describe('update command helpers', () => {
       expect.any(Function),
       undefined,
       [],
+      [],
+      ['claude'],
     );
     await expect(fs.access(path.join(tmpDir, 'docs', 'openspec'))).rejects.toMatchObject({
       code: 'ENOENT',
@@ -2521,6 +2527,8 @@ describe('update command helpers', () => {
       expect.any(Function),
       undefined,
       [],
+      [],
+      ['claude'],
     );
   });
 
@@ -2563,6 +2571,8 @@ describe('update command helpers', () => {
       expect.any(Function),
       undefined,
       [],
+      [],
+      ['claude'],
     );
     await expect(
       fs.readFile(path.join(tmpDir, 'openspec', 'legacy-marker.txt'), 'utf8'),
@@ -2688,6 +2698,8 @@ describe('update command helpers', () => {
       expect.any(Function),
       undefined,
       [],
+      [],
+      [],
     );
   });
 
@@ -2735,6 +2747,8 @@ describe('update command helpers', () => {
       'docs',
       expect.any(Function),
       undefined,
+      [],
+      [],
       [],
     );
     await expect(fs.readFile(configPath)).resolves.toEqual(configBefore);
@@ -2868,6 +2882,8 @@ describe('update command helpers', () => {
       undefined,
       undefined,
       [],
+      [],
+      ['claude'],
     );
     await expect(fs.access(path.join(tmpDir, 'openspec'))).rejects.toMatchObject({
       code: 'ENOENT',
@@ -3605,6 +3621,36 @@ describe('update command helpers', () => {
     expect(claude).toContain('# User\n\nAlso keep this.');
     expect(agents).toContain('<comet-ambient-resume>');
     expect(claude).toContain('<comet-ambient-resume>');
+  });
+
+  it('installs ambient resume instructions for Classic-only projects', async () => {
+    await arrangeClassicDocsOpenSpecUpdate(tmpDir);
+    await fs.writeFile(path.join(tmpDir, 'AGENTS.md'), '# User\n\nKeep this.\n', 'utf8');
+    await fs.writeFile(path.join(tmpDir, 'CLAUDE.md'), '# User\n\nAlso keep this.\n', 'utf8');
+
+    const fakeHome = path.join(tmpDir, 'fake-home-classic-instructions');
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let json: string;
+    try {
+      await updateCommand(tmpDir, { json: true, skipNpm: true });
+      json = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    const result = JSON.parse(json);
+    expect(result.projectInstructions.updated).toBe(2);
+
+    const agents = await fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8');
+    const claude = await fs.readFile(path.join(tmpDir, 'CLAUDE.md'), 'utf8');
+    for (const content of [agents, claude]) {
+      expect(content).toContain('<comet-ambient-resume>');
+      expect(content).toContain('comet resume-probe . --stdin --json');
+    }
+    expect(agents).toContain('# User\n\nKeep this.');
+    expect(claude).toContain('# User\n\nAlso keep this.');
   });
 
   it('removes ambient resume instructions when the project disables the probe', async () => {

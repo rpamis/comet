@@ -12,8 +12,8 @@
   <a href="https://app.codecov.io/gh/rpamis/comet/tree/master"><img alt="codecov" src="https://img.shields.io/codecov/c/github/rpamis/comet/master?style=flat-square&label=coverage&color=%23E61A7A" /></a>
   <a href="https://deepwiki.com/rpamis/comet"><img alt="DeepWiki" src="https://img.shields.io/badge/DeepWiki-rpamis%2Fcomet-blue?style=flat-square" /></a>
   <a href="https://www.npmjs.com/package/@rpamis/comet"><img alt="npm version" src="https://img.shields.io/npm/v/@rpamis/comet?style=flat-square" /></a>
-  <a href="https://www.npmjs.com/package/@rpamis/comet"><img alt="npm download count" src="https://img.shields.io/npm/dm/@rpamis/comet?style=flat-square&label=Downloads/mo" /></a>
-  <a href="https://www.npmjs.com/package/@rpamis/comet"><img alt="npm weekly download count" src="https://img.shields.io/npm/dw/@rpamis/comet?style=flat-square&label=Downloads/wk" /></a>
+  <a href="https://www.npmjs.com/package/@rpamis/comet"><img alt="npm total download count" src="https://img.shields.io/npm/dt/@rpamis/comet?style=flat-square&label=Downloads" /></a>
+  <a href="https://www.npmjs.com/package/@rpamis/comet"><img alt="npm monthly download count" src="https://img.shields.io/npm/dm/@rpamis/comet?style=flat-square&label=Downloads/mo" /></a>
   <a href="https://docs.comet.rpamis.com/"><img alt="Comet Docs" src="https://img.shields.io/badge/Docs-docs.comet.rpamis.com-FFD700?style=flat-square" /></a>
   <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square" /></a>
   <a href="https://atomgit.com/rpamis/comet"><img alt="AtomGitStars" src="https://atomgit.com/rpamis/comet/star/badge.svg" /></a>
@@ -468,7 +468,7 @@ does not expand the backend command list; see the [Skill creation guide](docs/op
 
 ## Supported Platforms
 
-`comet init` supports 34 AI coding platforms:
+`comet init` supports 35 AI coding platforms:
 
 <details>
 <summary>View full platform list</summary>
@@ -492,6 +492,7 @@ does not expand the backend command list; see the [Skill creation guide](docs/op
 | ForgeCode          | `.forge/`     | Trae          | `.trae/`     |
 | Trae CN            | `.trae-cn/`   | ZCode         | `.zcode/`    |
 | MimoCode           | `.mimocode/`  | CoStrict      | `.cospec/`   |
+| Grok               | `.grok/`      |               |              |
 
 </details>
 
@@ -509,6 +510,7 @@ does not expand the backend command list; see the [Skill creation guide](docs/op
 | `/comet`         | Shared entry — routes to the configured Native or Classic workflow from `.comet/config.yaml` |
 | `/comet-native`  | Permanent Native entry — self-contained, recoverable Shape, Build, Verify, and Archive       |
 | `/comet-classic` | Permanent Classic entry — the five-phase OpenSpec + Superpowers workflow                     |
+| `/comet-review`  | Read-only manual review of the current Native or Classic change without advancing its phase  |
 | `/comet-open`    | Classic phase 1: Open a change (proposal, design, task breakdown)                            |
 | `/comet-design`  | Classic phase 2: Deep design (brainstorming, Design Doc)                                     |
 | `/comet-build`   | Classic phase 3: Plan and build (implementation plan, code commits)                          |
@@ -591,6 +593,19 @@ Shape supports `clarification_mode: sequential` and `clarification_mode: batch`.
 Native can keep multiple active changes at the same time. `comet status` lists the candidates, while `.comet/current-change.json` selects ownership for the current request; it does not limit the project to one change. Missing, stale, or ambiguous selection stops resume and writes for an explicit choice instead of guessing another change or switching to Classic.
 
 Runtime owns `comet-state.yaml` and machine state under `.comet/runtime/native/`. Requirement edits return the change to Shape; implementation edits return it to Build before a fresh Verifier reviews the candidate. Do not hand-edit state to skip a phase.
+
+Repositories that require their own PR template or validation script can opt into a Native repository-command provider in `.comet/config.yaml`:
+
+```yaml
+native:
+  finish:
+    pull_request:
+      provider: repository-command
+      command: [pwsh, -NoProfile, -File, scripts/comet-create-pr.ps1]
+      timeout_ms: 120000
+```
+
+After a `pull-request` Archive finish is selected, Comet still owns commit, push, existing-PR observation, base/head/head-SHA verification, idempotent recovery, and safe cleanup. The repository command owns only title/body/template policy and repository-specific remote validation. Its executable must be either a bare name resolved through PATH or a project-relative path. It runs from the project root, receives `comet.native.pull-request-finish-input.v1` JSON on stdin, and must return `comet.native.pull-request-finish-result.v1` JSON on stdout. GitHub CLI (`gh`) must still be installed and authenticated because Comet independently verifies remote state with `gh pr list` and `gh pr view`. Projects without this configuration keep the compatible `gh pr create --fill` behavior.
 
 </details>
 

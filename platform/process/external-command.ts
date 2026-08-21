@@ -11,6 +11,7 @@ export interface ExternalCommandOptions {
   env?: NodeJS.ProcessEnv;
   timeoutMs?: number;
   maxBufferBytes?: number;
+  input?: string;
 }
 
 export class ExternalCommandError extends Error {
@@ -51,8 +52,9 @@ export function runExternalCommand(
     return execFileSync(resolvedCommand, [...args], {
       cwd,
       env,
+      ...(options.input !== undefined ? { input: options.input } : {}),
       encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: [options.input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
       timeout: timeoutMs,
       maxBuffer: maxBufferBytes,
       windowsHide: true,

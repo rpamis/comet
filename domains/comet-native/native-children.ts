@@ -27,11 +27,14 @@ import type { NativeProjectPaths } from './native-types.js';
 export const NATIVE_CHILDREN_FILE = 'children.yaml';
 export const NATIVE_CHILDREN_SCHEMA = 'comet.native.children.v1' as const;
 export const NATIVE_CHILDREN_V2_SCHEMA = 'comet.native.children.v2' as const;
+export const NATIVE_CHILDREN_SCHEMA_V2 = NATIVE_CHILDREN_V2_SCHEMA;
 
 const NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
-const ROOT_KEYS = new Set(['schema', 'children']);
+const ROOT_KEYS_V1 = new Set(['schema', 'children']);
+const ROOT_KEYS_V2 = new Set(['schema', 'acceptance_index', 'children']);
 const V1_CHILD_KEYS = new Set(['name', 'depends_on', 'covers']);
 const V2_CHILD_KEYS = new Set(['name', 'summary', 'depends_on']);
+const CHILD_KEYS = new Set(['name', 'depends_on', 'covers']);
 
 export interface NativeChildDefinition {
   name: string;
@@ -40,8 +43,14 @@ export interface NativeChildDefinition {
   covers: string[];
 }
 
+export interface NativeChildAcceptanceIndexEntry {
+  source: string;
+  text: string;
+}
+
 export interface NativeChildrenContract {
-  schema: typeof NATIVE_CHILDREN_SCHEMA | typeof NATIVE_CHILDREN_V2_SCHEMA;
+  schema: typeof NATIVE_CHILDREN_SCHEMA | typeof NATIVE_CHILDREN_SCHEMA_V2;
+  acceptance_index?: Record<string, NativeChildAcceptanceIndexEntry>;
   children: NativeChildDefinition[];
 }
 
@@ -162,6 +171,7 @@ function assertAcyclic(children: readonly NativeChildDefinition[]): void {
 function validateCoverage(
   children: readonly NativeChildDefinition[],
   acceptanceIds: readonly string[],
+  requiredAcceptanceIds: readonly string[] = acceptanceIds,
 ): void {
   const known = new Set(acceptanceIds);
   for (const child of children) {
@@ -173,23 +183,105 @@ function validateCoverage(
     }
   }
   const covered = new Set(children.flatMap((child) => child.covers));
-  const missing = acceptanceIds.filter((id) => !covered.has(id));
+  const missing = requiredAcceptanceIds.filter((id) => !covered.has(id));
   if (missing.length > 0) {
     throw new Error(`Native children do not cover parent acceptance: ${missing.join(', ')}`);
+  }
+}
+
+export interface NativeChildrenValidationOptions {
+  acceptanceCatalog?: readonly Pick<NativePortableAcceptanceState, 'id' | 'source' | 'text'>[];
+  requiredAcceptanceIds?: readonly string[];
+}
+
+type NativeChildrenAcceptanceState = Pick<
+  NativePortableState,
+  'brief' | 'loop' | 'verification_result' | 'history'
+> & {
+  acceptance: readonly Pick<NativePortableAcceptanceState, 'id' | 'source' | 'text'>[];
+};
+
+export function nativeChildrenAcceptanceValidation(
+  state: NativeChildrenAcceptanceState,
+): NativeChildrenValidationOptions {
+  const requiredAcceptanceIds = new Set(
+    state.acceptance.filter(({ source }) => source === state.brief).map(({ id }) => id),
+  );
+  if (state.loop.stage === 'repairing' && state.verification_result === 'fail') {
+    const latestFailure = [...state.history].reverse().find(({ outcome }) => outcome === 'fail');
+    for (const id of latestFailure?.unresolved_ids ?? []) requiredAcceptanceIds.add(id);
+  }
+  return {
+    acceptanceCatalog: state.acceptance,
+    requiredAcceptanceIds: [...requiredAcceptanceIds],
+  };
+}
+
+function parseAcceptanceIndex(value: unknown): Record<string, NativeChildAcceptanceIndexEntry> {
+  const index = record(value, 'Native children acceptance_index');
+  const result: Record<string, NativeChildAcceptanceIndexEntry> = {};
+  for (const [id, entry] of Object.entries(index)) {
+    const item = record(entry, `Native children acceptance_index.${id}`);
+    exactKeys(item, new Set(['source', 'text']), `Native children acceptance_index.${id}`);
+    if (typeof item.source !== 'string' || item.source.length === 0) {
+      throw new Error(`Native children acceptance_index.${id}.source must be a non-empty string`);
+    }
+    if (typeof item.text !== 'string' || item.text.length === 0) {
+      throw new Error(`Native children acceptance_index.${id}.text must be a non-empty string`);
+    }
+    result[id] = { source: item.source, text: item.text };
+  }
+  return result;
+}
+
+function validateAcceptanceIndex(
+  index: Record<string, NativeChildAcceptanceIndexEntry>,
+  acceptanceIds: readonly string[] | undefined,
+  options: NativeChildrenValidationOptions,
+): void {
+  const required = options.requiredAcceptanceIds ?? acceptanceIds ?? [];
+  const actual = Object.keys(index);
+  const missing = required.filter((id) => !(id in index));
+  const extra = actual.filter((id) => !required.includes(id));
+  if (missing.length > 0 || extra.length > 0) {
+    throw new Error(
+      `Native children acceptance_index must match the required acceptance: missing ${missing.join(', ') || 'none'}; extra ${extra.join(', ') || 'none'}`,
+    );
+  }
+  const catalog = new Map((options.acceptanceCatalog ?? []).map((entry) => [entry.id, entry]));
+  for (const id of required) {
+    const expected = catalog.get(id);
+    if (!expected) continue;
+    const actualEntry = index[id];
+    if (actualEntry.source !== expected.source || actualEntry.text !== expected.text) {
+      throw new Error(
+        `Native children acceptance_index.${id} does not match the acceptance catalog`,
+      );
+    }
   }
 }
 
 export function parseNativeChildrenContract(
   source: string,
   acceptanceIds?: readonly string[],
+  options: NativeChildrenValidationOptions = {},
 ): NativeChildrenContract {
   const document = parseDocument(source, { uniqueKeys: true });
   if (document.errors.length > 0) {
     throw new Error(`Native children contract is invalid YAML: ${document.errors[0].message}`);
   }
   const root = record(document.toJS({ mapAsMap: false }), 'Native children contract');
-  exactKeys(root, ROOT_KEYS, 'Native children contract');
-  if (root.schema !== NATIVE_CHILDREN_SCHEMA && root.schema !== NATIVE_CHILDREN_V2_SCHEMA) {
+  const schema = root.schema;
+  if (schema === NATIVE_CHILDREN_V2_SCHEMA) {
+    exactKeys(
+      root,
+      'acceptance_index' in root ? ROOT_KEYS_V2 : ROOT_KEYS_V1,
+      'Native children contract',
+    );
+  } else {
+    exactKeys(root, ROOT_KEYS_V1, 'Native children contract');
+  }
+  if (schema !== NATIVE_CHILDREN_SCHEMA && schema !== NATIVE_CHILDREN_V2_SCHEMA) {
     throw new Error(
       `Native children schema must be ${NATIVE_CHILDREN_SCHEMA} or ${NATIVE_CHILDREN_V2_SCHEMA}`,
     );
@@ -201,13 +293,18 @@ export function parseNativeChildrenContract(
     const child = record(entry, `Native child ${index}`);
     exactKeys(
       child,
-      root.schema === NATIVE_CHILDREN_V2_SCHEMA ? V2_CHILD_KEYS : V1_CHILD_KEYS,
+      root.schema === NATIVE_CHILDREN_V2_SCHEMA
+        ? 'acceptance_index' in root
+          ? CHILD_KEYS
+          : V2_CHILD_KEYS
+        : V1_CHILD_KEYS,
       `Native child ${index}`,
     );
     if (typeof child.name !== 'string' || !NAME_PATTERN.test(child.name)) {
       throw new Error(`Native child ${index} name is invalid`);
     }
-    if (root.schema === NATIVE_CHILDREN_V2_SCHEMA) {
+    const readableV2 = root.schema === NATIVE_CHILDREN_V2_SCHEMA && !('acceptance_index' in root);
+    if (readableV2) {
       if (typeof child.summary !== 'string' || child.summary.trim().length === 0) {
         throw new Error(`Native child ${child.name} summary must be a non-empty string`);
       }
@@ -217,12 +314,14 @@ export function parseNativeChildrenContract(
     }
     return {
       name: child.name,
-      summary: root.schema === NATIVE_CHILDREN_V2_SCHEMA ? (child.summary as string) : null,
+      summary: readableV2 ? (child.summary as string) : null,
       depends_on: stringList(child.depends_on, `Native child ${child.name} depends_on`),
       covers:
-        root.schema === NATIVE_CHILDREN_V2_SCHEMA
-          ? []
-          : stringList(child.covers, `Native child ${child.name} covers`),
+        root.schema === NATIVE_CHILDREN_V2_SCHEMA && 'acceptance_index' in root
+          ? stringList(child.covers, `Native child ${child.name} covers`)
+          : root.schema === NATIVE_CHILDREN_SCHEMA
+            ? stringList(child.covers, `Native child ${child.name} covers`)
+            : [],
     };
   });
   const names = children.map(({ name }) => name);
@@ -235,15 +334,24 @@ export function parseNativeChildrenContract(
     }
   }
   assertAcyclic(children);
-  if (acceptanceIds && root.schema === NATIVE_CHILDREN_SCHEMA) {
-    validateCoverage(children, acceptanceIds);
+  if (schema === NATIVE_CHILDREN_SCHEMA_V2) {
+    if ('acceptance_index' in root) {
+      const acceptanceIndex = parseAcceptanceIndex(root.acceptance_index);
+      validateAcceptanceIndex(acceptanceIndex, acceptanceIds, options);
+      const indexedAcceptanceIds = Object.keys(acceptanceIndex);
+      validateCoverage(children, indexedAcceptanceIds, indexedAcceptanceIds);
+      return { schema: NATIVE_CHILDREN_V2_SCHEMA, acceptance_index: acceptanceIndex, children };
+    }
+    return { schema: NATIVE_CHILDREN_V2_SCHEMA, children };
   }
-  return { schema: root.schema, children };
+  if (acceptanceIds) validateCoverage(children, acceptanceIds);
+  return { schema: NATIVE_CHILDREN_SCHEMA, children };
 }
 
 export async function readNativeChildrenContract(options: {
   changeDir: string;
   acceptanceIds?: readonly string[];
+  validation?: NativeChildrenValidationOptions;
 }): Promise<NativeChildrenDocument | null> {
   const file = path.join(options.changeDir, NATIVE_CHILDREN_FILE);
   try {
@@ -257,7 +365,7 @@ export async function readNativeChildrenContract(options: {
     ref: NATIVE_CHILDREN_FILE,
   });
   return {
-    contract: parseNativeChildrenContract(source.text, options.acceptanceIds),
+    contract: parseNativeChildrenContract(source.text, options.acceptanceIds, options.validation),
     size: source.size,
   };
 }
@@ -528,6 +636,7 @@ export async function inspectNativeChildren(options: {
   const changeDir = path.join(options.paths.changesDir, options.state.name);
   const document = await readNativeChildrenContract({
     changeDir,
+    validation: nativeChildrenAcceptanceValidation(options.state),
     ...(options.state.acceptance.length > 0
       ? { acceptanceIds: options.state.acceptance.map(({ id }) => id) }
       : {}),

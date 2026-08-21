@@ -1,0 +1,340 @@
+schema: comet.native.v4
+name: fix-classic-workspace-command-context
+language: zh-CN
+phase: archive
+status: done
+state_version: 7
+brief: brief.md
+spec_changes: []
+workspace:
+  isolation: current
+  change_branch: fix/classic-workspace-command-context
+  target_branch: fix/classic-workspace-command-context
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: "A1: 在 Classic 项目根目录运行 `comet classic workspace prepare <name> --isolation
+      current --json`，返回 `exitCode: 0` 且包含 `projectRoot`，不再返回 `exitCode: 70` /
+      `Classic command project context is unavailable`。"
+    result: passed
+    reason:
+      text: "Manual CLI repro in a fresh temp Classic project: `node comet-runtime.mjs
+        workspace prepare probe-current --isolation current --json` returns
+        exitCode 0 with a populated projectRoot; no longer exitCode 70 /
+        'Classic command project context is unavailable'."
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: "A2: 同样命令分别用 `--isolation branch` 和 `--isolation worktree` 运行，均返回
+      `exitCode: 0`（不要求真实创建 branch/worktree 全部成功，但不得因 context 缺失而失败）。"
+    result: passed
+    reason:
+      text: Same manual repro with --isolation branch and --isolation worktree both
+        return exitCode 0 (branch created, worktree created and registered).
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: "A3: 运行 `comet classic workspace resolve <name> --json`，返回 `exitCode: 0` 且
+      `projectRoot` 与实际项目根目录一致。"
+    result: passed
+    reason:
+      text: classic-workspace-command.test.ts 'resolves a workspace without a
+        caller-established context' seeds a change and asserts
+        classicWorkspaceCommand(['resolve', name], options) returns exitCode 0
+        with projectRoot equal to the project root.
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: "A4: `classicWorkspaceCommand` 新增的单元测试覆盖 A1-A3 对应的 `resolve`/`prepare` ×
+      `current`/`branch`/`worktree` 组合，且全部通过。"
+    result: passed
+    reason:
+      text: test/domains/comet-classic/classic-workspace-command.test.ts covers
+        prepare x {current,branch,worktree} and resolve, calling the handler
+        directly with no context pre-established by the caller (reproducing the
+        original bug's call shape). All 5 tests pass.
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: "A5: `withProjectContext` 新增单元测试验证两种路径都成立：外部未建立 context 时调用会现场建立一次；已经处于
+      `withClassicCommandContext` 建立的 context 中再调用会直接复用而不重复解析。"
+    result: passed
+    reason:
+      text: "test/domains/comet-classic/classic-command-context.test.ts covers both
+        withProjectContext paths: establishing a context when none is active,
+        and reusing an already-active outer context instead of re-resolving from
+        the inner call's own options. Both tests pass."
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: "A6: `guard`/`state`/`handoff`/`validate`/`resume-probe` 五个已迁移到
+      `withProjectContext` 的
+      handler，其既有测试套件（`test/domains/comet-classic/`）在改写后无需修改断言即可继续通过，证明这次重构没有改变\
+      它们的行为。"
+    result: passed
+    reason:
+      text: classic-guard.test.ts, classic-handoff.test.ts, classic-state.test.ts,
+        classic-resume-probe-command.test.ts, and classic-resume-probe.test.ts
+        all pass unmodified after migrating their handlers to
+        withProjectContext, confirming no behavior change.
+      truncated: false
+  - id: A7
+    source: brief.md
+    text: "A7: `pnpm build:classic-runtime --check` 与 `npx vitest run
+      test/domains/comet-classic/comet-scripts.test.ts` 通过。"
+    result: passed
+    reason:
+      text: node scripts/build/build-classic-runtime.mjs --check passes
+        (comet-runtime.mjs and sibling launchers regenerated and fresh); npx
+        vitest run test/domains/comet-classic/comet-scripts.test.ts passes
+        220/221 (1 pre-existing skip).
+      truncated: false
+builder_handoff:
+  candidate_id: 530f0e70-a202-4501-bc74-d7d40819f566
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:2729756c-9e5e-462c-81f4-1e586ae5f224
+  iteration: 1
+  summary:
+    text: '新增 withProjectContext(handler)
+      高阶函数（domains/comet-classic/classic-command-context.ts），把"建立
+      AsyncLocalStorage context 再执行"收进类型层面强制的包装里。把
+      guard/state/handoff/validate/resume-probe/workspace 六个共享 context 的 Classic
+      command handler 统一迁移到 withProjectContext，其中 workspace 是本次 bug（issue
+      #335）的直接修复对象——原来它裸调 classicCommandProjectRoot() 却从不建立 context，必现 exit
+      70。archive/root/openspec/hook-guard 四个刻意不共享 context 的 handler 未改动。新增
+      test/domains/comet-classic/classic-workspace-command.test.ts（覆盖
+      resolve/prepare × current/branch/worktree，直接调用 handler、不预先建立
+      context，复现并验证修复）和 classic-command-context.test.ts（覆盖 withProjectContext
+      的建立/复用两条路径）。已跑 pnpm build:classic-runtime 重新生成 comet-runtime.mjs 等生成物。'
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+  checks:
+    - name:
+        text: npx vitest run test/domains/comet-classic/
+        truncated: false
+      result: passed
+      note:
+        text: 699 passed, 6 pre-existing failures (classic-contract.test.ts,
+          classic-hook-guard.test.ts, classic-openspec-command.test.ts x3,
+          classic-workspace.test.ts) confirmed present on clean master via git
+          stash baseline before any edit; unrelated to this change (macOS /var
+          vs /private/var realpath and spawnSync arg drift).
+        truncated: false
+    - name:
+        text: npx vitest run test/domains/comet-classic/comet-scripts.test.ts
+        truncated: false
+      result: passed
+      note:
+        text: 220 passed, 1 skipped.
+        truncated: false
+    - name:
+        text: pnpm build:classic-runtime && node scripts/build/build-classic-runtime.mjs
+          --check
+        truncated: false
+      result: passed
+      note:
+        text: Freshness check passes after rebuilding
+          assets/skills/comet/scripts/comet-runtime.mjs and sibling launchers.
+        truncated: false
+    - name:
+        text: npx tsc --noEmit -p tsconfig.json
+        truncated: false
+      result: passed
+      note:
+        text: No new errors; one pre-existing unrelated error in
+          domains/eval/standalone-static-collect.ts (missing smol-toml types)
+          confirmed present before this change.
+        truncated: false
+    - name:
+        text: pnpm lint (eslint app/ domains/ platform/)
+        truncated: false
+      result: passed
+      note: null
+    - name:
+        text: pnpm run lint:architecture
+        truncated: false
+      result: failed
+      note:
+        text: Fails only on a pre-existing untracked top-level 'openspec' directory
+          unrelated to this change; confirmed present on clean master before any
+          edit via git stash. Declared out of scope in brief Non-goals.
+        truncated: false
+    - name:
+        text: "manual CLI repro: node assets/skills/comet/scripts/comet-runtime.mjs
+          workspace prepare <name> --isolation <current|branch|worktree> --json"
+        truncated: false
+      result: passed
+      note:
+        text: "All three isolation modes return exitCode 0 in a fresh temp Classic
+          project, reproducing and confirming the issue #335 fix end to end
+          (previously all returned exitCode 70 / 'Classic command project
+          context is unavailable')."
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: pnpm run lint:architecture reports a pre-existing 'openspec is not an
+        allowed top-level repository entry' violation unrelated to this change
+        (present on master before any edit); not addressed per brief Non-goals.
+      truncated: false
+    - text: 6 pre-existing vitest failures in classic-contract.test.ts /
+        classic-hook-guard.test.ts / classic-openspec-command.test.ts /
+        classic-workspace.test.ts, confirmed present on master before this
+        change, unrelated to the fix.
+      truncated: false
+  known_limits_truncated: false
+  submitted_at: 2026-08-20T05:58:57.967Z
+blockers: []
+verification:
+  candidate_id: 530f0e70-a202-4501-bc74-d7d40819f566
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:7413d46d-bc63-4c9b-b4ea-a92c3aa49d35
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: vitest-classic-touched
+      name:
+        text: "vitest: handlers migrated to withProjectContext + their existing suites"
+        truncated: false
+      argv_display:
+        - text: vitest
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/comet-classic/classic-guard.test.ts
+          truncated: false
+        - text: test/domains/comet-classic/classic-handoff.test.ts
+          truncated: false
+        - text: test/domains/comet-classic/classic-state.test.ts
+          truncated: false
+        - text: test/domains/comet-classic/classic-resume-probe-command.test.ts
+          truncated: false
+        - text: test/domains/comet-classic/classic-resume-probe.test.ts
+          truncated: false
+        - text: test/domains/comet-classic/classic-workspace-command.test.ts
+          truncated: false
+        - text: test/domains/comet-classic/classic-command-context.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 7952
+    - id: vitest-classic-scripts-smoke
+      name:
+        text: "vitest: Classic launcher smoke suite (comet-scripts.test.ts)"
+        truncated: false
+      argv_display:
+        - text: vitest
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/comet-classic/comet-scripts.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 41942
+    - id: build-classic-runtime-check
+      name:
+        text: Classic runtime bundle freshness check
+        truncated: false
+      argv_display:
+        - text: scripts/build/build-classic-runtime.mjs
+          truncated: false
+        - text: --check
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 122
+    - id: eslint-touched-layers
+      name:
+        text: ESLint app/ domains/ platform/
+        truncated: false
+      argv_display:
+        - text: eslint
+          truncated: false
+        - text: app/
+          truncated: false
+        - text: domains/
+          truncated: false
+        - text: platform/
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 2996
+  summary:
+    text: "classicWorkspaceCommand (issue #335) and five sibling Classic command
+      handlers now share the withProjectContext wrapper, which always
+      establishes the command context before the handler body runs. All 7
+      acceptance criteria are met by targeted tests plus a manual end-to-end CLI
+      repro; two pre-existing, unrelated repo issues are called out as risks
+      rather than blockers."
+    truncated: false
+  risks:
+    - text: pnpm run lint:architecture fails on a pre-existing untracked top-level
+        'openspec' directory unrelated to this change (confirmed present on
+        clean master before any edit); not addressed, per brief Non-goals.
+      truncated: false
+    - text: 6 pre-existing vitest failures in classic-contract.test.ts /
+        classic-hook-guard.test.ts / classic-openspec-command.test.ts /
+        classic-workspace.test.ts are unrelated to this change (confirmed
+        present on clean master via git stash baseline) and were excluded from
+        the targeted check plan for that reason.
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-08-20T06:02:16.705Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: "classicWorkspaceCommand (issue #335) and five sibling Classic command
+        handlers now share the withProjectContext wrapper, which always
+        establishes the command context before the handler body runs. All 7
+        acceptance criteria are met by targeted tests plus a manual end-to-end
+        CLI repro; two pre-existing, unrelated repo issues are called out as
+        risks rather than blockers."
+      truncated: false
+    completed_at: 2026-08-20T06:02:16.705Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-20T05:36:05.869Z

@@ -34,17 +34,20 @@ If the `select` / `check` output is `BLOCKED` because `bound_branch` does not ma
 
 Create the implementation plan through a subagent, avoiding planning skill occupying main session context. Plan files and execution feedback must use the configured Comet artifact language from `comet state get <name> language`.
 
+Before dispatching, the main session fixes the full plan path `docs/superpowers/plans/<YYYY-MM-DD>-<change-name>.md` (e.g. `docs/superpowers/plans/2026-08-21-rename-alert.md`) and passes it into the instructions below verbatim.
+
 **Subagent instructions**:
 
 You are an implementation planning expert. Create an implementation plan based on the following inputs:
 
-1. **Immediately execute:** Use the Skill tool to load the Superpowers `writing-plans` skill. Skipping this step is prohibited. After the skill loads, ARGUMENTS must include: `Language: Use the configured Comet artifact language from comet state get <name> language`
+1. **Immediately execute:** Use the Skill tool to load the Superpowers `writing-plans` skill. Skipping this step is prohibited. After the skill loads, ARGUMENTS must include: `Language: Use the configured Comet artifact language from comet state get <name> language`. If the Skill tool is unavailable or the skill cannot be found, end immediately with a single-line final reply `SKILL_UNAVAILABLE`; do not retry and do not write the plan yourself without the skill
 2. Read the Design Doc (technical design document under `docs/superpowers/specs/`)
 3. Read `<classic-change-dir>/tasks.md` (task boundaries)
-4. Follow the skill's guidance to create the plan
+4. Follow the skill's guidance to create the plan; no user will answer you during the run, so skip steps that ask the user a question (such as the `writing-plans` Execution Handoff at the end) and do not ask the user anything
 
 Plan requirements:
-- Save to `docs/superpowers/plans/YYYY-MM-DD-<feature>.md`
+- Save to the plan path given in the instructions; do not change the file name
+- Cover only the tasks listed in tasks.md; do not expand scope
 - Reference design document, break down into executable tasks
 - **Plan file header must contain associated metadata**:
 
@@ -62,13 +65,17 @@ base-ref: <git rev-parse HEAD before implementation>
 git rev-parse HEAD
 ```
 
-Write the plan to file, then return the file path.
+After writing the plan to file, the last line of your final reply must be exactly:
+
+```
+PLAN_PATH: <relative path of the plan file>
+```
 
 **Execute subagent**: Dispatch the above task to a subagent.
 
 After the subagent completes:
-- If a valid file path is returned and the file exists, record it as the plan
-- If the subagent fails or returns an invalid path, fall back to loading the Superpowers `writing-plans` skill inline in the main session (degraded fallback)
+- Read the `PLAN_PATH:` line at the end of the reply; if the file exists, record it as the plan; if the line is missing, look for an existing valid path in the reply text
+- If the subagent reports `SKILL_UNAVAILABLE`, the dispatch fails, or no valid path can be obtained, fall back to loading the Superpowers `writing-plans` skill inline in the main session (degraded fallback), remember that dispatch is unavailable for this session, and go inline directly on later Step 1 entries
 
 ### 2. Update Plan Status and Jointly Confirm Workflow Configuration
 
@@ -239,6 +246,14 @@ When creating an independent change, must invoke `/comet-open`, not `/opsx:new` 
 - Each update should be committed with commit message explaining the change reason
 - Do not sync to main spec in advance, sync uniformly during archiving
 - For small-scale incremental direct delta spec edits, note in commit message to facilitate design doc drift assessment during archiving
+
+**Handoff synchronization**: adding, modifying, or removing a delta spec expires the design handoff pack (`handoff_hash`). During Build you can regenerate it directly without reverting the current phase or step:
+
+```bash
+comet handoff <change-name> design --write
+```
+
+Regeneration rebuilds the handoff from the current OpenSpec artifacts and updates `handoff_hash`; it does not change the `phase` field or the Runtime `currentStep`, so you can continue in the Build phase after refreshing.
 
 ### 5. Context Management
 

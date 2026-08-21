@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -143,6 +144,69 @@ describe('Native portable Runtime vertical path', () => {
       phase: 'build',
       acceptance: [{ id: 'A1', text: 'The large formal document remains valid.' }],
     });
+  });
+
+  it('keeps v2 child plans readable while retaining the complete Runtime acceptance matrix', async () => {
+    execFileSync('git', ['-C', root, 'init', '-b', 'master'], { stdio: 'ignore' });
+    await fs.writeFile(path.join(root, 'baseline.txt'), 'baseline\n');
+    execFileSync('git', ['-C', root, 'add', 'baseline.txt'], { stdio: 'ignore' });
+    execFileSync(
+      'git',
+      [
+        '-C',
+        root,
+        '-c',
+        'user.name=Comet Test',
+        '-c',
+        'user.email=comet-test@example.com',
+        'commit',
+        '-m',
+        'baseline',
+      ],
+      { stdio: 'ignore' },
+    );
+    await createNativePortableChange({ paths, name: 'readable-child-plan', language: 'en' });
+    const changeDir = nativePortableChangeDir(paths, 'readable-child-plan');
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      '# Acceptance examples\n- The first behavior is visible.\n- The second behavior is visible.\n',
+    );
+    await fs.mkdir(path.join(changeDir, 'specs', 'demo'));
+    await fs.writeFile(
+      path.join(changeDir, 'specs', 'demo', 'spec.md'),
+      '# Requirement: Demo\nThe Runtime MUST preserve the formal requirement.\n\n## Scenarios\n### Scenario: Formal behavior\n- **WHEN** the behavior is exercised\n- **THEN** the formal result is retained\n',
+    );
+    await fs.writeFile(
+      path.join(changeDir, 'children.yaml'),
+      `schema: comet.native.children.v2
+acceptance_index:
+  A1:
+    source: brief.md
+    text: The first behavior is visible.
+  A2:
+    source: brief.md
+    text: The second behavior is visible.
+children:
+  - name: demo-child
+    depends_on: []
+    covers: [A1, A2]
+`,
+    );
+    const stateFile = nativePortableStateFile(paths, 'readable-child-plan');
+    const initialState = await fs.readFile(stateFile, 'utf8');
+    await fs.writeFile(
+      stateFile,
+      initialState
+        .replace("isolation: 'current'", "isolation: 'branch'")
+        .replace('change_branch: null', 'change_branch: parent')
+        .replace('target_branch: null', 'target_branch: master'),
+    );
+
+    const state = await confirmNativePortableShape({ paths, name: 'readable-child-plan' });
+
+    expect(state.acceptance.length).toBeGreaterThan(2);
+    expect(state.acceptance.filter(({ source }) => source === 'brief.md')).toHaveLength(2);
+    expect(state.children_contract_hash).toEqual(expect.any(String));
   });
 
   it('reruns a repeatable interrupted check instead of reusing its incomplete result', async () => {

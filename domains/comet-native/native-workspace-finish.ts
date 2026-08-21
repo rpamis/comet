@@ -1,4 +1,4 @@
-import { promises as fs } from 'node:fs';
+import { accessSync, constants as fsConstants, promises as fs } from 'node:fs';
 import path from 'node:path';
 
 import { runExternalCommand } from '../../platform/process/external-command.js';
@@ -17,6 +17,12 @@ import { nativeSelectionFile } from './native-selection.js';
 import type { NativeChangeState, NativeProjectPaths } from './native-types.js';
 import type { NativeWorkspaceFinish, NativeWorkspaceIdentityV3 } from './native-workspace.js';
 import { inspectNativeWorkspaceBinding } from './native-workspace.js';
+import type { WorkflowNativePullRequestFinishConfig } from '../workflow-contract/types.js';
+import {
+  finishNativePullRequest,
+  NativePullRequestFinishError,
+  type NativePullRequestFinishOutcome,
+} from './native-pull-request-finish.js';
 
 export interface NativeWorkspaceFinishPlan {
   finish: NativeWorkspaceFinish;
@@ -27,6 +33,7 @@ export interface NativeWorkspaceFinishPlan {
   targetRoot: string | null;
   remote: string | null;
   isolation: 'branch' | 'worktree';
+  pullRequestFinish: WorkflowNativePullRequestFinishConfig | null;
 }
 
 export interface NativeWorkspaceFinishResult {
@@ -36,6 +43,7 @@ export interface NativeWorkspaceFinishResult {
   remote: string | null;
   pushed: boolean;
   pullRequestUrl: string | null;
+  pullRequest: NativePullRequestFinishOutcome | null;
   merged: boolean;
   targetRoot: string | null;
   cleanup: {
@@ -77,6 +85,27 @@ function pathCovered(candidate: string, allowed: readonly string[]): boolean {
   return allowed.some((entry) => candidate === entry || candidate.startsWith(`${entry}/`));
 }
 
+function gitPathList(output: string): string[] {
+  return output.split('\0').filter(Boolean);
+}
+
+function listTrackedPaths(projectRoot: string, candidate: string): string[] {
+  return gitPathList(runGitCommand(projectRoot, ['ls-files', '-z', '--', candidate]));
+}
+
+function listUntrackedNonIgnoredPaths(projectRoot: string, candidate: string): string[] {
+  return gitPathList(
+    runGitCommand(projectRoot, [
+      'ls-files',
+      '--others',
+      '--exclude-standard',
+      '-z',
+      '--',
+      candidate,
+    ]),
+  );
+}
+
 function assertGitIdentity(projectRoot: string): void {
   try {
     if (
@@ -109,10 +138,42 @@ function assertCommandAvailable(command: string, args: readonly string[]): void 
   }
 }
 
+function assertPullRequestProviderAvailable(
+  projectRoot: string,
+  config: WorkflowNativePullRequestFinishConfig | undefined,
+): void {
+  if (!config) return;
+  const executable = config.command[0];
+  try {
+    const absoluteExecutable =
+      path.posix.isAbsolute(executable) || path.win32.isAbsolute(executable);
+    if (absoluteExecutable) {
+      throw new Error('configured executable must not be an absolute path');
+    }
+    if (/[\\/]/u.test(executable)) {
+      const resolved = path.resolve(projectRoot, executable);
+      if (!pathContains(projectRoot, resolved)) {
+        throw new Error('configured executable escapes the project root');
+      }
+      accessSync(resolved, fsConstants.X_OK);
+      return;
+    }
+    runExternalCommand(process.platform === 'win32' ? 'where' : 'which', [executable], {
+      timeoutMs: 10_000,
+    });
+  } catch (error) {
+    throw new Error(
+      `Configured Native pull request finish executable is not available: ${executable}`,
+      { cause: error },
+    );
+  }
+}
+
 export async function prepareNativeWorkspaceFinish(options: {
   paths: NativeProjectPaths;
   state: NativeChangeState;
   workspace: NativeWorkspaceIdentityV3;
+  pullRequestFinish?: WorkflowNativePullRequestFinishConfig;
 }): Promise<NativeWorkspaceFinishPlan | null> {
   const { paths, workspace } = options;
   if (workspace.isolation === 'current') return null;
@@ -158,7 +219,10 @@ export async function prepareNativeWorkspaceFinish(options: {
     workspace.finish === 'push' || workspace.finish === 'pull-request'
       ? gitBranchRemote(paths.projectRoot, workspace.changeBranch)
       : null;
-  if (workspace.finish === 'pull-request') assertCommandAvailable('gh', ['--version']);
+  if (workspace.finish === 'pull-request') {
+    assertCommandAvailable('gh', ['--version']);
+    assertPullRequestProviderAvailable(paths.projectRoot, options.pullRequestFinish);
+  }
   return {
     finish: workspace.finish,
     changeRoot: paths.projectRoot,
@@ -168,6 +232,7 @@ export async function prepareNativeWorkspaceFinish(options: {
     targetRoot,
     remote,
     isolation: workspace.isolation,
+    pullRequestFinish: options.pullRequestFinish ?? null,
   };
 }
 
@@ -182,6 +247,7 @@ export async function prepareNativePortableWorkspaceFinish(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
   archiveDir?: string;
+  pullRequestFinish?: WorkflowNativePullRequestFinishConfig;
 }): Promise<NativeWorkspaceFinishPlan | null> {
   const { paths, state } = options;
   const workspace = state.workspace;
@@ -232,7 +298,10 @@ export async function prepareNativePortableWorkspaceFinish(options: {
     workspace.finish === 'push' || workspace.finish === 'pull-request'
       ? gitBranchRemote(paths.projectRoot, workspace.change_branch)
       : null;
-  if (workspace.finish === 'pull-request') assertCommandAvailable('gh', ['--version']);
+  if (workspace.finish === 'pull-request') {
+    assertCommandAvailable('gh', ['--version']);
+    assertPullRequestProviderAvailable(paths.projectRoot, options.pullRequestFinish);
+  }
   return {
     finish: workspace.finish,
     changeRoot: paths.projectRoot,
@@ -242,15 +311,8 @@ export async function prepareNativePortableWorkspaceFinish(options: {
     targetRoot,
     remote,
     isolation: workspace.isolation,
+    pullRequestFinish: options.pullRequestFinish ?? null,
   };
-}
-
-function runGh(projectRoot: string, args: readonly string[]): string {
-  try {
-    return runExternalCommand('gh', args, { cwd: projectRoot, timeoutMs: 60_000 }).trim();
-  } catch (error) {
-    throw new Error(`gh ${args.join(' ')} failed: ${(error as Error).message}`, { cause: error });
-  }
 }
 
 async function pathExists(target: string): Promise<boolean> {
@@ -271,6 +333,7 @@ function baseResult(plan: NativeWorkspaceFinishPlan): NativeWorkspaceFinishResul
     remote: plan.remote,
     pushed: false,
     pullRequestUrl: null,
+    pullRequest: null,
     merged: false,
     targetRoot: plan.targetRoot,
     cleanup: { performed: false, reason: null },
@@ -331,14 +394,23 @@ export async function finishArchivedNativeWorkspace(options: {
         `Native Archive produced or encountered paths outside the authorized finish scope: ${unexpected.slice(0, 20).join(', ')}${unexpected.length > 20 ? ', ...' : ''}`,
       );
     }
-    const stageable: string[] = [];
+    const trackedCandidates: string[] = [];
+    const untrackedPaths = new Set<string>();
     for (const candidate of allowedPaths) {
       const absolute = path.resolve(options.paths.projectRoot, ...candidate.split('/'));
-      const tracked = runGitCommand(options.plan.changeRoot, ['ls-files', '--', candidate]) !== '';
-      if ((await pathExists(absolute)) || tracked) stageable.push(candidate);
+      const tracked = listTrackedPaths(options.plan.changeRoot, candidate);
+      if (tracked.length > 0) trackedCandidates.push(candidate);
+      if (await pathExists(absolute)) {
+        for (const file of listUntrackedNonIgnoredPaths(options.plan.changeRoot, candidate)) {
+          untrackedPaths.add(file);
+        }
+      }
     }
-    if (stageable.length > 0) {
-      runGitCommand(options.plan.changeRoot, ['add', '-A', '--', ...stageable]);
+    if (trackedCandidates.length > 0) {
+      runGitCommand(options.plan.changeRoot, ['add', '-u', '--', ...trackedCandidates]);
+    }
+    if (untrackedPaths.size > 0) {
+      runGitCommand(options.plan.changeRoot, ['add', '--', ...untrackedPaths]);
     }
     const staged = runGitCommand(options.plan.changeRoot, [
       'diff',
@@ -368,21 +440,17 @@ export async function finishArchivedNativeWorkspace(options: {
       ]);
       result.pushed = true;
       if (options.plan.finish === 'pull-request') {
-        result.pullRequestUrl =
-          runGh(options.plan.changeRoot, [
-            'pr',
-            'create',
-            '--base',
-            options.plan.targetBranch,
-            '--head',
-            options.plan.changeBranch,
-            '--fill',
-          ])
-            .split(/\r?\n/u)
-            .find((line) => /^https?:\/\//u.test(line.trim())) ?? null;
-        if (!result.pullRequestUrl) {
-          throw new Error('GitHub CLI did not return a pull request URL');
-        }
+        result.pullRequest = finishNativePullRequest({
+          projectRoot: options.plan.changeRoot,
+          changeName: options.name,
+          transactionId: options.transactionId,
+          remote: options.plan.remote!,
+          baseBranch: options.plan.targetBranch,
+          headBranch: options.plan.changeBranch,
+          headSha: result.commit!,
+          config: options.plan.pullRequestFinish,
+        });
+        result.pullRequestUrl = result.pullRequest.pullRequest.url;
       }
       const cwdInsideChangeRoot = pathContains(options.plan.changeRoot, process.cwd());
       if (options.plan.isolation === 'worktree' && !cwdInsideChangeRoot) {
@@ -408,6 +476,9 @@ export async function finishArchivedNativeWorkspace(options: {
     result.cleanup = cleanupMergedWorktree(options.plan);
     return result;
   } catch (error) {
+    if (error instanceof NativePullRequestFinishError && error.pullRequest) {
+      result.pullRequestUrl = error.pullRequest.url;
+    }
     if (switchedMergeRoot !== null) {
       let restored: boolean;
       try {
@@ -429,9 +500,11 @@ export async function finishArchivedNativeWorkspace(options: {
     result.status = 'blocked';
     result.message = (error as Error).message;
     result.recoveryArgs =
-      options.plan.finish === 'merge' && result.targetRoot
-        ? ['git', '-C', result.targetRoot, 'status', '--short']
-        : ['git', '-C', options.plan.changeRoot, 'status', '--short'];
+      options.plan.finish === 'pull-request'
+        ? ['comet', 'native', 'archive', options.name, '--confirmed']
+        : options.plan.finish === 'merge' && result.targetRoot
+          ? ['git', '-C', result.targetRoot, 'status', '--short']
+          : ['git', '-C', options.plan.changeRoot, 'status', '--short'];
     throw new NativeWorkspaceFinishError(result);
   }
 }

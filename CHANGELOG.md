@@ -2,7 +2,7 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.4.0-beta.20] - 2026-08-17
+## What's Changed [0.4.0-rc.1] - 2026-08-21
 
 ### Added
 
@@ -12,6 +12,13 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Shared memory Skill**: Classic, Native, Hotfix, and Tweak now use the same fixed first-party `comet-memory` Skill with Chinese and English assets selected from the project language.
 - **Project knowledge retrieval**: Ordinary `comet task` now contributes bounded, source-cited references from declared Native, Classic, and explicitly referenced archived Superpowers documents, with Local retrieval by default and an opt-in fixed Retrieval API v1 Remote provider.
 - **Project Knowledge Dashboard**: Dashboard now shows the Local or Remote project-knowledge provider, safe Remote settings, bounded recent diagnostics, and existing enable, project-pause, resume, and uninstall actions beside Personal Memory.
+- **Grok platform support**: `comet init`, `comet update`, `comet doctor`, and `comet uninstall` now treat Grok as a first-class host. Skills, rules, and the Hook Router live under `.grok/skills/`, `.grok/rules/`, and `.grok/hooks/comet.json`. The Router recognizes `--platform grok` and matches Grok's native `write` / `search_replace` tools.
+- **Repository-owned Native pull-request finish providers**: Projects can opt into a structured repository command for PR title, body, template, and policy validation while Comet retains commit, push, remote base/head/SHA verification, existing-PR reuse, recoverable failure state, and safe worktree cleanup.
+- **CodeBuddy rules support**: Comet now installs and refreshes Markdown workflow rules in CodeBuddy's `.codebuddy/rules/` directory.
+- **On-demand change review**: The new `/comet-review` Skill reviews the current Native or Classic change against its implementation diff and existing evidence, reports prioritized correctness, security, edge-case, and coverage findings, and remains read-only without advancing or replacing Verify.
+- **Fork pull request guidance**: First-time contributors opening pull requests from forks now receive the repository guidance comment through a trusted workflow.
+- **Pull request template validation**: Pull requests now receive an actionable comment and a failing check when required template sections or items are missing, or when checklist items are incomplete.
+- **Issue triage labels**: New issues are automatically marked for triage and assigned a repository area label from their structured issue form selection.
 
 ### Changed
 
@@ -22,19 +29,35 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Dashboard startup performance**: Missing project registrations and stale, internal, or detached worktrees no longer trigger unnecessary Git and Native scans, while SQLite refreshes cached sources that are no longer valid.
 - **Personal memory startup**: The Dashboard first page no longer performs repository synchronization or loads unused management data; explicit synchronization remains available when requested.
 - **Personal memory Dashboard**: The personal memory page now puts readable memory records first and groups project controls, synchronization, and plugin management into a compact settings panel.
-
-### Changed
-
 - **Native Supervisor workflow**: Supervisor Changes now coordinate Children through a dedicated integration workspace, independent Builder/Verifier task packages, dependency-aware `verified` and `integrated` states, and a final parent verification before target delivery.
 - **Native status and recovery**: Supervisor status exposes compact Child summaries, current task bindings, integration progress, and preserved verification evidence while keeping machine Runtime state under `.comet/runtime`.
 - **Native verification status copy**: Verification reports and Dashboard labels now explain independent verification, required confirmation, and automatic-check-only results in plain language without changing machine status values.
 - **Native worktree lifecycle**: A successfully merged Comet-created isolated change now removes its finished worktree while preserving the branch for normal Git workflows.
+- **Hook allow-path documentation**: The website now explains how to configure project-relative `hook.allow_paths` directories for guarded workflow phases.
+- **Native child plans**: New Supervisor Change child plans keep a readable parent acceptance index, while Runtime verification still retains the complete brief-and-Spec acceptance matrix; historical child-plan files remain compatible.
+- **Dashboard artifact previews**: Fullscreen previews now close with Escape, keep long tables horizontally scrollable, preserve readable table headers, and use a larger directory navigation scale.
+- **Native source requirements**: Files and links supplied as requirement sources now retain a complete coverage map in the Native brief, map every active executable requirement to both the target Spec and acceptance criteria, and keep incomplete or unavailable sources blocked for clarification.
+- **Native verification decisions**: Native await-user continuations now let users accept the current result, revise the implementation, or revise requirements and acceptance criteria while invalidating stale Archive authorization from older goal cycles.
+- **Pull request title scopes**: Conventional PR titles now support Native, Classic, Hook, Dashboard, Platform, Workflow, Eval, and other repository areas, including titles such as `feat(native): ...`.
+- **Ambient Resume non-Comet skill exemption**: The managed Ambient Resume instructions in `AGENTS.md` and `CLAUDE.md` now exempt explicitly invoked non-Comet skills and slash commands from the resume probe, so unrelated plugin or tooling setup tasks no longer begin with a `comet resume-probe` call. Existing projects pick up the revised block through `comet update`.
 
 ### Fixed
 
 - **Native Git snapshot reliability**: Native snapshot probes now run from the project root and tolerate short Windows process-handle release delays, avoiding failures when hooks and workspace operations run concurrently.
 - **Beta20 package metadata**: Published asset metadata now stays aligned with the beta20 package version instead of reporting the unreleased beta21 version.
 - **Project knowledge reliability**: Local configuration now ignores stale Remote settings, recent bounded diagnostics survive Dashboard reloads, and uninstall returns cleanly to the workflow view.
+- **Windows init reliability**: `comet init` no longer aborts OpenSpec and Skills installation with "Contained atomic write temporary file changed before commit" on file systems without stable file identities, such as exFAT or FAT32 removable and network drives. The commit-time integrity check compared the temporary file against its pre-write snapshot, so comet's own write looked like tampering; it now compares against the post-write snapshot while symlink and directory-displacement detection are unchanged.
+- **Classic design handoff refresh after Spec Patch**: Running `comet handoff <change> design --write` after OpenSpec artifacts changed no longer fails with a stale-handoff error, so the design guard can pass and the Classic full workflow proceeds from Design to Build. Refreshing now rewrites stale context files even when a manually aligned hash would otherwise short-circuit success, regenerates the context pack when OpenSpec delta specs are added, changed, or removed, and remains available after the guard has advanced the phase to build.
+- **Classic Ambient Resume**: `comet init` and `comet update` now keep the managed Ambient Resume instructions for Classic-only projects when `ambient_resume` is enabled, so re-running the commands no longer removes the block from `AGENTS.md` or `CLAUDE.md`.
+- **Classic workspace command context**: `comet classic workspace prepare` and `comet classic workspace resolve` no longer fail with "Classic command project context is unavailable" for every isolation mode (`current`, `branch`, `worktree`), fixing the workspace preparation step of the Classic Open flow.
+- **Native Archive**: Archive now respects Git ignore rules when staging workspace artifacts and keeps valid portable verification reports from being treated as incomplete migrations.
+- **Windows Eval packaging**: Packaging no longer traverses ignored pytest and Eval runtime artifacts before applying the package boundary, so stale Windows test directories cannot make `pnpm pack` fail with `EPERM`.
+- **Windows Eval isolation**: Repeated `comet eval` runs no longer copy generated `.comet` caches, run artifacts, or the framework's own Runtime state into Skill workspaces, preventing nested-cache and deep-path `MAX_PATH` failures on Windows.
+- **Monorepo Dashboard workspaces**: Starting `comet dashboard` from a monorepo subdirectory that holds `.comet/config.yaml` now uses that subdirectory as the workspace root and maps sibling Git worktrees to the same subdirectory, so the change list is no longer empty when the Comet project root is not the worktree root.
+- **Ambient Resume mid-flow replies**: Agents following the installed Ambient Resume instructions no longer stall a running Comet change after the user answers an in-flow question with a short option pick. The managed block now exempts replies to questions asked inside a Comet flow from the resume probe and clarifies that an `out_of_scope` result only blocks entering a workflow, never continuing one already in progress.
+- **Windows stdin and file JSON parsing**: Runtime commands now strip a leading UTF-8 BOM before parsing JSON, so `comet-intent.mjs route --stdin` no longer fails with "Invalid JSON" when the frame JSON comes from Windows PowerShell 5.1 redirection or `Out-File`, which emit BOM-prefixed UTF-8 by default. The same tolerance covers `comet-resume-probe.mjs --stdin`, Hook payload parsing in `comet-hook-guard.mjs` and the Hook Router, and Native `evidence format` entries read from stdin or `--entries` files.
+- **Classic record-check step sync**: `comet state record-check` no longer fails with "Classic Run step mismatch" after the agent checks off the final tasks.md entry during Build. Checking off tasks advances the evidence-derived Run step without running a state command, which legitimately left the recorded step behind; record-check now re-syncs the Run projection before recording the check (printing a `[RECONCILED] currentStep ... -> ...` line and appending a trajectory transition) instead of blocking Build evidence, while genuine corruption — skill identity, snapshot, or migration marker mismatch — still fails hard.
+- **Classic Build plan offload**: The Build Step 1 plan-writing subagent no longer routinely degrades to the main session (#345). The dispatch prompt now tells the subagent to skip interactive skill steps such as the `writing-plans` Execution Handoff question, the full plan path is fixed by the main session before dispatch, and the subagent must end its reply with a `PLAN_PATH:` line that the coordinator reads first. Subagents without the Skill tool fail fast with `SKILL_UNAVAILABLE` instead of grinding, plans are scoped to tasks.md, and after any dispatch failure later Step 1 entries in the same session go inline directly.
 
 ## What's Changed [0.4.0-beta.18] - 2026-08-13
 

@@ -43,6 +43,23 @@ interface ActiveNativeContext {
   >;
 }
 
+function implementationWriteDeniedReason(state: {
+  name: string;
+  phase: NativeChangeState['phase'] | NativePortableState['phase'];
+}): string {
+  const prefix = `Native change ${state.name} is in ${state.phase}; implementation writes are only allowed in Build.`;
+  if (state.phase === 'shape') {
+    return `${prefix} Reread the latest continuation, complete requirement clarification, and execute the Shape confirmation command after user confirmation.`;
+  }
+  if (state.phase === 'verify') {
+    return `${prefix} Select and execute the matching commandAlternative from the latest continuation, preserving --expected-state-version and --expected-action.`;
+  }
+  if (state.phase === 'archive') {
+    return `${prefix} Continue finalizing the accepted result; do not run Verify-only revision commands from Archive.`;
+  }
+  return `${prefix} Create or select a separate Native change if this write belongs to different work.`;
+}
+
 async function inspectPortableWriteTargets(options: {
   projectRoot: string;
   paths: NativeProjectPaths;
@@ -176,7 +193,7 @@ async function inspectPortableWriteTargets(options: {
     }
     return {
       allowed: false,
-      reason: `Native change ${state.name} is in ${state.phase}; implementation writes are only allowed in Build`,
+      reason: implementationWriteDeniedReason(state),
       workflow: 'native',
       phase: state.phase,
       change: state.name,
@@ -383,7 +400,7 @@ export async function inspectNativeHookGuard(
     }
     return {
       allowed: false,
-      reason: `Native change ${state.name} is in ${state.phase}; implementation writes are only allowed in build. If this belongs to the current change, confirm the scope and run comet native next ${state.name} --summary "<reason>" --return-to-build; otherwise create or select a separate Native change`,
+      reason: implementationWriteDeniedReason(state),
       workflow: 'native',
       phase: state.phase,
       change: state.name,

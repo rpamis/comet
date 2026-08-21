@@ -1,0 +1,103 @@
+name: Issue Triage
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+
+jobs:
+  triage:
+    name: Apply issue triage labels
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@d746ffe35508b1917358783b479e04febd2b8f71 # v9.0.0
+        with:
+          script: |
+            const issue = context.payload.issue;
+            if (!issue) {
+              core.setFailed('Issue payload is missing.');
+              return;
+            }
+
+            const sections = new Map();
+            let currentHeading;
+            for (const line of (issue.body ?? '').replace(/\r\n/g, '\n').split('\n')) {
+              const heading = line.match(/^###\s+(.+?)\s*$/);
+              if (heading) {
+                currentHeading = heading[1].trim().replace(/^[^A-Za-z0-9]+/, '');
+                sections.set(currentHeading, []);
+                continue;
+              }
+              if (currentHeading) sections.get(currentHeading).push(line);
+            }
+
+            const selectedArea = ['Affected area', 'Primary area', 'Topic']
+              .flatMap((heading) => sections.get(heading) ?? [])
+              .join(' ')
+              .replace(/[`*_]/g, '')
+              .replace(/\s+/g, ' ')
+              .trim();
+
+            const areaRules = [
+              { label: 'area:native', pattern: /Native workflow runtime/i },
+              { label: 'area:classic', pattern: /Classic workflow runtime/i },
+              { label: 'area:hook', pattern: /Shared Hook|Hook Router/i },
+              { label: 'area:cli', pattern: /CLI command|user interaction/i },
+              { label: 'area:dashboard', pattern: /Dashboard/i },
+              { label: 'area:platform', pattern: /Platform adapter|installer/i },
+              { label: 'area:skills', pattern: /Skill domain|Bundled skills|assets/i },
+              { label: 'area:workflow', pattern: /Workflow contract/i },
+              { label: 'area:core', pattern: /Bundle authoring|Engine|Factory|Integrations/i },
+              { label: 'area:eval', pattern: /Eval/i },
+              { label: 'area:docs', pattern: /Documentation/i },
+              {
+                label: 'area:ci',
+                pattern: /Repository automation|CI \/ release \/ architecture checks/i,
+              },
+              { label: 'area:repo', pattern: /Tests \/ repository architecture/i },
+            ];
+            const targetArea = areaRules.find(({ pattern }) => pattern.test(selectedArea))?.label;
+            const managedAreaLabels = new Set(areaRules.map(({ label }) => label));
+
+            const labelsResponse = await github.rest.issues.listLabelsOnIssue({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              per_page: 100,
+            });
+            const currentLabels = labelsResponse.data.map(({ name }) => name);
+            const currentManagedAreas = currentLabels.filter((label) =>
+              managedAreaLabels.has(label),
+            );
+
+            for (const label of currentManagedAreas) {
+              if (label !== targetArea) {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  name: label,
+                });
+              }
+            }
+
+            const labelsToAdd = [];
+            if (targetArea && !currentLabels.includes(targetArea)) labelsToAdd.push(targetArea);
+            if (context.payload.action === 'opened' && !currentLabels.includes('needs-triage')) {
+              labelsToAdd.push('needs-triage');
+            }
+            if (labelsToAdd.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: labelsToAdd,
+              });
+            }
+
+            core.info(
+              `Issue #${issue.number}: selected area=${selectedArea || 'none'}, ` +
+                `applied area=${targetArea || 'none'}.`,
+            );

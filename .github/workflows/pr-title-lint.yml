@@ -32,6 +32,7 @@ jobs:
             cli
             commands
             core
+            app
             skills
             assets
             scripts
@@ -39,6 +40,20 @@ jobs:
             ci
             deps
             release
+            native
+            classic
+            hook
+            dashboard
+            platform
+            workflow
+            bundle
+            engine
+            factory
+            integrations
+            eval
+            repo
+            tests
+            website
           requireScope: false
           subjectPattern: ^.{1,72}$
           subjectPatternError: |

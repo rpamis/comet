@@ -8,7 +8,7 @@ describe('current Comet Bundle compatibility benchmark', () => {
       repoRoot: path.resolve('.'),
     });
 
-    expect(result.platforms).toBe(36);
+    expect(result.platforms).toBe(37);
     expect(result.skillContractRate).toBe(1);
     expect(result.ruleContractRate).toBe(1);
     expect(result.hookContractRate).toBe(1);

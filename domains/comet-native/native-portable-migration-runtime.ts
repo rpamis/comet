@@ -39,11 +39,12 @@ import { readNativeWorkspaceIdentity } from './native-workspace.js';
 
 const LEGACY_PROJECTION_FILES = [
   'evidence.md',
-  'verification.md',
   'repair.md',
   'archive.md',
   'checkpoint.md',
 ] as const;
+
+const LEGACY_VERIFICATION_REPORT = 'verification.md';
 
 async function exists(file: string): Promise<boolean> {
   try {
@@ -94,7 +95,12 @@ async function writeTransaction(
 async function cleanupLegacyMigrationArtifacts(
   paths: NativeProjectPaths,
   name: string,
+  options: { removeVerificationReport?: boolean } = {},
 ): Promise<void> {
+  const projectionFiles =
+    options.removeVerificationReport === false
+      ? LEGACY_PROJECTION_FILES
+      : [...LEGACY_PROJECTION_FILES, LEGACY_VERIFICATION_REPORT];
   await Promise.all([
     fs.rm(nativePreferredChangeRuntimeDir(paths, name), {
       recursive: true,
@@ -104,7 +110,7 @@ async function cleanupLegacyMigrationArtifacts(
       recursive: true,
       force: true,
     }),
-    ...LEGACY_PROJECTION_FILES.map((file) =>
+    ...projectionFiles.map((file) =>
       fs.rm(path.join(nativeChangeDir(paths, name), file), { force: true }),
     ),
   ]);
@@ -225,7 +231,9 @@ export async function migrateNativeLegacyChangeToPortable(options: {
         // The portable YAML is the durable migration boundary. If its journal was
         // lost after that write, finish the deterministic cleanup and recreate the
         // disposable local overlay instead of mistaking the migration for complete.
-        await cleanupLegacyMigrationArtifacts(options.paths, options.name);
+        await cleanupLegacyMigrationArtifacts(options.paths, options.name, {
+          removeVerificationReport: false,
+        });
         await rebuildLocalExecution(options.paths, portable);
         return portable;
       }

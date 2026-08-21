@@ -24,6 +24,12 @@ export interface Platform {
   openspecToolId: string;
   /** OpenSpec's generated tool root when it differs from Comet's canonical Skill root. */
   openspecSkillsDir?: string;
+  /**
+   * When set, OpenSpec output for `openspecToolId` is copied into this
+   * platform's Skill root. The generator platform's root is written only
+   * when that platform was also selected.
+   */
+  openspecMirrorFrom?: string;
   /** Platform's rules/instructions subdirectory relative to rulesBaseDir (defaults to baseDir). Omit if unsupported. */
   rulesDir?: string;
   /** Override base directory for rules. When set, rules go to rulesBaseDir/rulesDir instead of skillsDir/rulesDir. Useful when rules live outside the skills config dir (e.g., Cline's .clinerules/ is at project root, not inside .cline/). */
@@ -51,6 +57,8 @@ export interface Platform {
   hookConfigFile?: string;
   /** Historical hook config filenames checked during migration and uninstall. */
   legacyHookConfigFiles?: string[];
+  /** Installed PreToolUse matcher when it differs from the portable hook descriptor. */
+  hookMatcher?: string;
 }
 
 const PLATFORM_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
@@ -205,6 +213,22 @@ export const PLATFORMS: Platform[] = [
     hookFormat: 'gemini',
   },
   {
+    id: 'grok',
+    name: 'Grok',
+    skillsDir: '.grok',
+    globalSkillsDir: '.grok',
+    detectionPaths: ['.grok'],
+    // OpenSpec has no grok tool; generate Codex output and mirror it into .grok.
+    openspecToolId: 'codex',
+    openspecMirrorFrom: 'codex',
+    rulesDir: 'rules',
+    rulesFormat: 'md',
+    supportsHooks: true,
+    hookFormat: 'claude-code',
+    hookConfigFile: 'hooks/comet.json',
+    hookMatcher: 'Write|Edit|write|search_replace',
+  },
+  {
     id: 'amazon-q',
     name: 'Amazon Q Developer',
     skillsDir: '.amazonq',
@@ -281,6 +305,8 @@ export const PLATFORMS: Platform[] = [
     openspecToolId: 'codebuddy',
     supportsHooks: true,
     hookFormat: 'codebuddy',
+    rulesDir: 'rules',
+    rulesFormat: 'md',
   },
   {
     id: 'workbuddy',
@@ -290,6 +316,7 @@ export const PLATFORMS: Platform[] = [
     // WorkBuddy currently shares CodeBuddy's OpenSpec-compatible generated
     // Skill shape; Comet copies the generated output into .workbuddy below.
     openspecToolId: 'codebuddy',
+    openspecMirrorFrom: 'codebuddy',
     supportsHooks: true,
     hookFormat: 'codebuddy',
   },
@@ -381,6 +408,7 @@ export const PLATFORMS: Platform[] = [
     // opencode.ai config schema), so we reuse openspec's opencode support and migrate
     // the .opencode/{skills,commands} output to .zcode/ after install.
     openspecToolId: 'opencode',
+    openspecMirrorFrom: 'opencode',
     rulesDir: 'rules',
     rulesFormat: 'md',
   },
@@ -392,6 +420,7 @@ export const PLATFORMS: Platform[] = [
     // MimoCode is built on OpenCode and reads the same skills/commands shape
     // from its own config directory.
     openspecToolId: 'opencode',
+    openspecMirrorFrom: 'opencode',
     rulesDir: 'rules',
     rulesFormat: 'md',
   },
@@ -410,3 +439,28 @@ export const PLATFORMS: Platform[] = [
     hookConfigFile: 'hooks.json',
   },
 ];
+
+export function getOpenSpecGeneratorPlatform(toolId: string): Platform | undefined {
+  return (
+    PLATFORMS.find((platform) => platform.id === toolId) ??
+    PLATFORMS.find((platform) => platform.openspecToolId === toolId && !platform.openspecMirrorFrom)
+  );
+}
+
+export function resolveOpenSpecMirrorPlatformIds(selectedPlatformIds: readonly string[]): string[] {
+  return [...new Set(selectedPlatformIds)].filter((id) => {
+    const platform = PLATFORMS.find((candidate) => candidate.id === id);
+    return Boolean(platform?.openspecMirrorFrom);
+  });
+}
+
+export function getOpenSpecMirrorPlatforms(
+  mirrorPlatformIds: readonly string[],
+  generatorId: string,
+): Platform[] {
+  return [...new Set(mirrorPlatformIds)]
+    .map((id) => PLATFORMS.find((platform) => platform.id === id))
+    .filter((platform): platform is Platform =>
+      Boolean(platform?.openspecMirrorFrom === generatorId),
+    );
+}

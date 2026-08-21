@@ -315,11 +315,16 @@ export async function ensureStrictClassicRuntimeRun(changeDir: string): Promise<
   return ensureClassicRuntimeRun(changeDir);
 }
 
-export async function validateClassicRuntimeRun(
+interface ValidatedClassicRuntime {
+  classic: ClassicState;
+  run: RunState;
+  snapshotDir: string;
+}
+
+async function loadValidatedClassicRuntime(
   changeDir: string,
-  existingProjection?: ClassicStateProjection,
-): Promise<ClassicRunContext> {
-  const projection = existingProjection ?? (await readClassicState(changeDir, { migrate: false }));
+  projection: ClassicStateProjection,
+): Promise<ValidatedClassicRuntime> {
   const unknownKeys = Array.from(new Set(projection.unknownKeys)).sort();
   if (unknownKeys.length > 0) {
     throw new Error(`Invalid Classic state: unknown field(s): ${unknownKeys.join(', ')}`);
@@ -347,19 +352,83 @@ export async function validateClassicRuntimeRun(
       `Classic Run snapshot skill mismatch: expected ${projection.run.skill}, got ${snapshot.definition.metadata.name}`,
     );
   }
-  const evidence = await collectClassicEvidence(changeDir, projection);
-  const currentStep = resolveClassicStepId(projection.classic, evidence);
-  if (projection.run.currentStep !== currentStep) {
-    throw new Error(
-      `Classic Run step mismatch: expected ${currentStep}, got ${projection.run.currentStep}`,
-    );
-  }
   return {
     classic: projection.classic,
     run: projection.run,
-    evidence,
-    migrated: false,
     snapshotDir: path.join(changeDir, '.comet', 'skill-snapshots', projection.run.skillHash),
+  };
+}
+
+export async function validateClassicRuntimeRun(
+  changeDir: string,
+  existingProjection?: ClassicStateProjection,
+): Promise<ClassicRunContext> {
+  const projection = existingProjection ?? (await readClassicState(changeDir, { migrate: false }));
+  const validated = await loadValidatedClassicRuntime(changeDir, projection);
+  const evidence = await collectClassicEvidence(changeDir, projection);
+  const currentStep = resolveClassicStepId(validated.classic, evidence);
+  if (validated.run.currentStep !== currentStep) {
+    throw new Error(
+      `Classic Run step mismatch: expected ${currentStep}, got ${validated.run.currentStep}`,
+    );
+  }
+  return { ...validated, evidence, migrated: false };
+}
+
+export interface ClassicRuntimeReconciliation {
+  context: ClassicRunContext;
+  reconciled: boolean;
+  fromStep: string | null;
+}
+
+// Evidence edits (e.g. checking off the final tasks.md entry) advance the
+// derived step without a state command, so the recorded currentStep can lag
+// behind legitimate evidence progression. Re-sync it instead of failing like
+// validateClassicRuntimeRun, which exists to diagnose drift, not to block on it.
+export async function reconcileClassicRuntimeRun(
+  changeDir: string,
+  existingProjection?: ClassicStateProjection,
+): Promise<ClassicRuntimeReconciliation> {
+  const projection = existingProjection ?? (await readClassicState(changeDir, { migrate: false }));
+  const validated = await loadValidatedClassicRuntime(changeDir, projection);
+  const evidence = await collectClassicEvidence(changeDir, projection);
+  const currentStep = resolveClassicStepId(validated.classic, evidence);
+  if (validated.run.currentStep === currentStep) {
+    return {
+      context: { ...validated, evidence, migrated: false },
+      reconciled: false,
+      fromStep: null,
+    };
+  }
+  const reconciledRun: RunState = {
+    ...validated.run,
+    currentStep,
+    iteration: validated.run.iteration + 1,
+    status: currentStep === 'completed' ? 'completed' : 'running',
+  };
+  await writeClassicState(changeDir, {
+    classic: validated.classic,
+    run: reconciledRun,
+    unknownKeys: projection.unknownKeys,
+  });
+  const trajectory = await readTrajectory(changeDir, reconciledRun.trajectoryRef);
+  await appendTrajectory(changeDir, reconciledRun.trajectoryRef, {
+    sequence: trajectory.length + 1,
+    timestamp: new Date().toISOString(),
+    type: 'state_transitioned',
+    runId: reconciledRun.runId,
+    data: {
+      kind: 'classic',
+      fromStep: validated.run.currentStep,
+      toStep: currentStep,
+      source: 'record-check',
+      reason: 'evidence-reconcile',
+    },
+  });
+  return {
+    context: { ...validated, run: reconciledRun, evidence, migrated: false },
+    reconciled: true,
+    fromStep: validated.run.currentStep,
   };
 }
 

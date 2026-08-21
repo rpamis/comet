@@ -1,7 +1,9 @@
 name: Greetings
 
 on:
-  pull_request:
+  # Run the base branch workflow so forked PRs can receive the first-interaction comment.
+  # This workflow must never check out or execute pull request code.
+  pull_request_target:
     types: [opened]
 
 permissions:

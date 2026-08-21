@@ -377,6 +377,52 @@ describe('Native phase Hook guard', () => {
     });
   });
 
+  it('returns phase-specific guidance for legacy implementation writes outside Build', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+
+    const { paths: shapePaths } = await activeChange('shape', 'shape-write');
+    await selectNativeChange(shapePaths, 'shape-write');
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest('src/index.ts')),
+    ).resolves.toMatchObject({
+      allowed: false,
+      reason: expect.stringContaining('execute the Shape confirmation command'),
+    });
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest('src/index.ts')),
+    ).resolves.toMatchObject({
+      reason: expect.not.stringContaining('--revise-implementation'),
+    });
+
+    const { paths: verifyPaths } = await activeChange('verify', 'verify-write');
+    await selectNativeChange(verifyPaths, 'verify-write');
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest('src/index.ts')),
+    ).resolves.toMatchObject({
+      allowed: false,
+      reason: expect.stringContaining('commandAlternative'),
+    });
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest('src/index.ts')),
+    ).resolves.toMatchObject({
+      reason: expect.stringContaining('--expected-state-version'),
+    });
+
+    const { paths: archivePaths } = await activeChange('archive', 'archive-write');
+    await selectNativeChange(archivePaths, 'archive-write');
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest('src/index.ts')),
+    ).resolves.toMatchObject({
+      allowed: false,
+      reason: expect.stringContaining('Continue finalizing the accepted result'),
+    });
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest('src/index.ts')),
+    ).resolves.toMatchObject({
+      reason: expect.not.stringContaining('--revise-implementation'),
+    });
+  });
+
   it('returns a structured Copilot denial without relying on exit code 2', async () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
     await activeChange('shape', 'copilot-shape');
@@ -394,8 +440,11 @@ describe('Native phase Hook guard', () => {
       expect(result.exitCode).toBe(0);
       expect(JSON.parse(result.stdout ?? '')).toEqual({
         permissionDecision: 'deny',
-        permissionDecisionReason: expect.stringContaining('--return-to-build'),
+        permissionDecisionReason: expect.stringContaining('execute the Shape confirmation command'),
       });
+      expect(JSON.parse(result.stdout ?? '').permissionDecisionReason).not.toContain(
+        '--revise-implementation',
+      );
     } finally {
       if (previousFilePath === undefined) delete process.env.FILE_PATH;
       else process.env.FILE_PATH = previousFilePath;

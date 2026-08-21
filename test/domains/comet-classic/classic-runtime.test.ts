@@ -344,6 +344,69 @@ describe('Classic runtime CLI adapter', () => {
     }
   });
 
+  it('reconciles evidence-derived step drift when recording command checks', async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-record-check-reconcile-'));
+    temporaryDirectories.push(directory);
+    await seedClassicProject(directory);
+    const previous = process.cwd();
+    process.chdir(directory);
+    try {
+      const { runClassicCli } = await import('../../../domains/comet-classic/classic-cli.js');
+      expect(
+        (await runClassicCli(['state', 'init', 'demo', 'tweak', '--isolation', 'current']))
+          .exitCode,
+      ).toBe(0);
+      const changeDir = path.join(directory, 'openspec', 'changes', 'demo');
+      await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\nRename a label.\n');
+      await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [ ] Rename the label\n');
+      await ensureClassicRuntimeRun(changeDir);
+      expect((await runClassicCli(['state', 'transition', 'demo', 'open-complete'])).exitCode).toBe(
+        0,
+      );
+      await expect(readRunState(changeDir)).resolves.toMatchObject({
+        currentStep: 'tweak.build.execute',
+      });
+
+      // Checking off the final task advances the evidence-derived step without
+      // a state command; record-check must reconcile instead of failing.
+      await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] Rename the label\n');
+      const result = await runClassicCli([
+        'state',
+        'record-check',
+        'demo',
+        'build',
+        '--command',
+        'pnpm build',
+        '--exit-code',
+        '0',
+      ]);
+
+      expect(result).toMatchObject({ exitCode: 0 });
+      expect(result.stderr).toContain('[RECORDED] build exit=0 cwd=. command=pnpm build');
+      expect(result.stderr).toContain(
+        '[RECONCILED] currentStep tweak.build.execute -> tweak.build.complete',
+      );
+      await expect(readRunState(changeDir)).resolves.toMatchObject({
+        currentStep: 'tweak.build.complete',
+      });
+
+      const followUp = await runClassicCli([
+        'state',
+        'record-check',
+        'demo',
+        'build',
+        '--command',
+        'pnpm lint',
+        '--exit-code',
+        '0',
+      ]);
+      expect(followUp).toMatchObject({ exitCode: 0 });
+      expect(followUp.stderr).not.toContain('[RECONCILED]');
+    } finally {
+      process.chdir(previous);
+    }
+  });
+
   it('rejects record-check without a current Run without changing any files', async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-record-check-legacy-'));
     temporaryDirectories.push(directory);

@@ -19,7 +19,6 @@ Native 把需求、完整目标规格、当前进度和验收结论保存在项�
 4. 没有对应 active change 时才创建，并使用配置指定的产物目录。`comet init` 会按所选 Skill 语言初始化 `native.language`；之后产物跟随项目配置，只有用户明确要求覆盖时才传入 `--language`。
 ### 记忆接入
 进入 change 工作区后，Agent 自动运行一次：
-
 ```text
 comet task <project-root> --task "<用户原始请求>" --phase build --json
 ```
@@ -40,9 +39,9 @@ CLI 会在创建 change 前完成分支或 worktree 绑定、复用已登记的 
 - 正常推进时，直接执行 Runtime 在 `continuation` 中给出的命令。只有返回字段含义不清、命令输入被拒绝、无法启动 Verifier、Verifier 执行报错，或 Verifier 要求用户补充信息时，才读取[命令参考](reference/commands.md)；
 - 只有任务因进程中断、换设备后本机状态缺失、连续多轮没有进展、并发冲突、旧版本迁移失败或状态损坏而无法继续时，才读取[恢复参考](reference/recovery.md)。
 ## Shape
-先调查能够从仓库、工具和运行环境确定的事实；彼此独立的事实可以交给 subagent 调查。按 `native.clarification_mode` 和澄清参考维护决策树，只把会改变用户可见结果、又无法可靠推断的决定交给用户。
+先调查能够从仓库、工具和运行环境确定的事实；彼此独立的事实可以交给 subagent 调查。按 `native.clarification_mode` 和澄清参考维护决策树，只把会改变用户可见结果、又无法可靠推断的决定交给用户。用户直接提供文件、附件、链接或本地路径作为需求来源时进入源文档完整覆盖模式：完整读取并记录 `complete`、`partial` 或 `unavailable` 状态，分块读取只改变读取顺序和工作记忆管理，不改变最终覆盖集合；`brief.md` 先保存完整来源需求和覆盖状态，再提出歧义、遗漏或隐含边界问题；可执行来源单元必须同时映射到完整目标 Spec 和至少一个验收 ID，背景、非目标或已废止内容只保留归类、理由和替代关系；修正后的旧单元标为 `superseded` 并指向替代单元；`partial`、`unavailable`、未映射或未确认内容保持 `[blocking]`。仅用于排错、取证、审查或实现参考的材料不自动触发，用途不明时先澄清；摘要不能替代来源覆盖映射。
 
-确认后的用户可见决定和重要约束立即同步到 Decisions、brief 和完整目标规格；普通实现选择保留在实现和测试中，只有影响用户可见行为时才进入正式需求。验收项必须具体、可观察且互不重复。Supervisor Change 使用 `comet.native.children.v2` 时，`children.yaml` 只保存 Child 的 `name`、用户可读 `summary` 和真实 `depends_on`，不把 `covers`、`owns` 或位置型验收映射暴露给用户；Runtime 至少一个 beta 周期兼容读取 v1。
+确认后的用户可见决定和重要约束立即同步到 Decisions、brief 和完整目标规格；普通实现选择保留在实现和测试中，只有影响用户可见行为时才进入正式需求。验收项必须具体、可观察且互不重复。大型需求需要拆分时，在 Supervisor Change 根目录维护 `children.yaml`，用 `depends_on` 表达真实先后关系，并用 `covers` 覆盖 Supervisor Change 的可读验收索引；数组顺序只用于稳定展示和同等就绪时的优先级。新建的 v2 `children.yaml` 只索引 brief 派生的父级验收项，`acceptance_index` 保存每个 ID 的来源和完整文字；Spec 派生的细粒度检查仍由 Runtime 的完整验收矩阵验证，不要求初始 child 计划重复列出。历史 v1 文件继续按原契约接受。
 
 大型需求在最终 Shape 确认前执行一次拆分检测：只有至少两个结果可独立实现和验证、验收项能完整映射且有真实依赖/并行价值时建议 Supervisor Change 模式；目标紧耦合、反复修改同一核心区域、协调成本更高或用户要求单 change 时保持单一 Native change；需求文字长、任务条目多本身不能触发拆分。
 建议拆分时，Skill 将 `children.yaml` 草案、执行波次和验收覆盖摘要放入一次 Shape 确认；用户可确认、调整或保持单 change。确认前不得创建子 change、worktree 或派发 Agent。
@@ -61,12 +60,13 @@ Build 和 Verify 组成一个有界验收循环（Loop）：Builder 提交候选
 
 确认一次 Supervisor Change Shape 即授权严格派生的 Child，不要求用户重复确认相同范围。Skill 只执行 Runtime continuation 返回的动作，并在每个任务完成后重新读取 `readyChildren`，继续下一波；Child 必须经过 `active → verified → integrated`，只有父级最终 Verify 和交付完成后才统一 `archived`。Supervisor Change 最后仍由 Verify 在 integration workspace 验证完整验收项。
 
-状态包含 `children` 时，当前 change 是 Supervisor Change：不要运行父级 Builder，只推进 Runtime 返回的 Supervisor 任务。每个 Child 都在独立 worktree 中实现，基线必须是当时的 integration HEAD；Builder 结果和 Verifier 结果都必须携带当前 `runId`，重复或迟到的回报一律拒绝。Verifier 通过后由父级串行合入 integration branch，并执行该 Child 对应的最小集成检查（原 `finish=merge` 边界由 Runtime 完成）；不得把 `verified`、Agent 完成消息或未提交文件当作 `integrated`。所有 Child integrated 后才进入父级最终 Verify，target 分支在最终交付前保持不变；若 target 外部漂移，Runtime 先把最新 target 带回 integration workspace，要求重新执行父级检查。失败时保留冲突/阻塞现场，按 Runtime 的 `repair-child` 处理，不重开已 integrated Child。当 Runtime 返回 `parentAdvance` 时，Skill 立即消费该 continuation 并通知用户父级进入最终 Verify，不要求用户再次说“推进”；最终 Archive、workspace finish、merge、push 和 PR 仍按原授权边界处理。
+ 状态包含 `children` 时，当前 change 是 Supervisor Change：不要运行 Supervisor Change Builder，只推进 `readyChildren`。每个 child 都是普通 Native change，必须在独立 worktree 中创建，以 Supervisor Change 的 `workspace.changeBranch` 为目标分支；没有依赖的 child 可以并行 Build/Verify，但 Archive 必须逐个使用 `finish=merge` 合入 Supervisor Change 分支。先提交 Supervisor Change 契约基线以保持集成工作区干净；只有 child 的 Archive 已合入 Supervisor Change 分支才算 `done`，随后才从更新后的 Supervisor Change HEAD 创建依赖它的 child。全部 child 为 `done` 后，执行 Supervisor Change continuation 进入 Verify，由新的 Verifier 在最终集成分支上检查 Supervisor Change 的完整验收项。Supervisor Change Verify 未通过时不要重开已归档 child；按 `repair-child` 提示在 v2 `acceptance_index` 中补充实际失败的 Spec 验收文字，并在 `children.yaml` 中追加覆盖这些失败验收项的唯一 repair child，重新确认 Supervisor Change Shape 后继续。
+状态包含 `children` 时，当前 change 是 Supervisor Change：不要运行 Supervisor Change Builder，只推进 Runtime 返回的 `readyChildren` 和 Supervisor 任务。每个 child 都是普通 Native change，必须在独立 worktree 中创建，以 Supervisor Change 的 `workspace.changeBranch` 为目标分支；每个 Child 都基于当时的 integration HEAD 实现，Builder 和 Verifier 结果必须携带当前 `runId`，重复或迟到的回报一律拒绝。没有依赖的 child 可以并行 Build/Verify，但 Archive 必须逐个使用 `finish=merge` 合入 Supervisor Change 分支；只有 Child 经过 `active → verified → integrated` 且完成最小集成检查后才算 `done`，不得把 Agent 完成消息或未提交文件当作 `integrated`。全部 child 完成后，执行 Supervisor Change continuation 进入最终 Verify，由新的 Verifier 在最终集成分支上检查完整验收项；如果 Runtime 返回 `parentAdvance`，Skill 立即消费并通知用户父级进入最终 Verify，不要求用户再次说“推进”。Verify 失败时保留冲突/阻塞现场，不重开已归档或已 integrated Child，按 `repair-child` 在 v2 `acceptance_index` 补充实际失败的 Spec 验收文字并追加唯一 repair child，重新确认 Shape 后继续；target 分支在最终交付前保持不变，最终 Archive、workspace finish、merge、push 和 PR 仍按原授权边界处理。
 
 需求变化时先判断归属：
 
-- 当前需求只是实现有遗漏：从 Verify 或 Archive 使用 `--return-to-build` 回到 Build；
-- 用户可见行为或验收标准发生变化：回到 Shape，更新正式产物并重新确认；
+- 当前需求只是实现有遗漏：从 Verify 使用 `--revise-implementation` 保留已确认需求并回到 Build；
+- 用户可见行为或验收标准发生变化：从 Verify 使用 `--revise-requirements`，更新正式产物并重新确认 Shape；
 - 与当前需求无关：保留给另一个 change。
 
 用户明确补充当前范围时，按同一规则处理。
@@ -87,7 +87,7 @@ Verifier 先读取验收项、brief、完整目标 Spec、实际实现和 Runtim
 
 Verifier 保持只读。如果现有检查不足，就在 Runtime 返回的 `inputOptions.template` 中列出还需要运行哪些检查，由 Runtime 执行并把结果返回给 Verifier。
 
-Verifier 最终必须逐项标记为通过（`passed`）、未通过（`failed`）或暂时无法验证（`blocked`），一项不能漏，也不能重复。未通过或无法验证时，写出下一轮 Build 可直接处理的原因。无法启动 Verifier、Verifier 执行出错或缺少外部信息时，按命令参考和最新 `continuation` 处理。
+Verifier 最终必须逐项标记为通过（`passed`）、未通过（`failed`）或暂时无法验证（`blocked`），一项不能漏，也不能重复。未通过或无法验证时，写出下一轮 Build 可直接处理的原因。无法启动 Verifier、Verifier 执行出错或缺少外部信息时，按命令参考和最新 `continuation` 处理。skill-coordinated Verifier 通过且 Runtime 等待用户决策时，只有用户接受当前结果才用 `--accept-result` 进入 Archive；如果用户要求修改实现或验收标准，分别使用 `--revise-implementation` 或 `--revise-requirements`。
 
 完成标准：Runtime 已接受完整的 Verifier 结果，并明确进入 Build、Archive、等待用户（`await-user`）、阻塞（`blocked`）或完成（`done`）中的一种状态。
 
@@ -104,7 +104,7 @@ Verifier 最终必须逐项标记为通过（`passed`）、未通过（`failed`�
 每次命令后只处理最新的 `continuation`：
 
 - `continue`：执行 `commandArgs`，并按模板填写 `inputOptions`；
-- `await-user`：等待列出的用户决定；
+- `await-user`：等待列出的用户决定；如有 `commandAlternatives`，选择匹配项执行完整 `commandArgs`，保留 `--expected-state-version` 和 `--expected-action`。alternative 过期时重新读取最新 `continuation`，不得重构无 guard 命令；
 - `blocked`：先处理列出的阻塞原因或恢复动作；
 - `done`：结束。
 

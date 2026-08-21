@@ -34,17 +34,20 @@ comet state check <name> build
 
 通过 subagent 创建实施计划，避免 planning skill 占用主 session 上下文。计划文件和执行反馈必须使用 `comet state get <name> language` 读取到的 Comet 配置产物语言。
 
+派发前，主会话先确定完整计划路径 `docs/superpowers/plans/<YYYY-MM-DD>-<change-name>.md`（如 `docs/superpowers/plans/2026-08-21-rename-alert.md`），并在下方指令中原样传入。
+
 **Subagent 指令**：
 
 你是实施计划专家。基于以下输入创建实施计划：
 
-1. **立即执行：** 使用 Skill 工具加载 Superpowers `writing-plans` 技能。禁止跳过此步骤。技能加载后，ARGUMENTS 必须包含：`Language: 使用 comet state get <name> language 读取到的 Comet 配置产物语言输出`
+1. **立即执行：** 使用 Skill 工具加载 Superpowers `writing-plans` 技能。禁止跳过此步骤。技能加载后，ARGUMENTS 必须包含：`Language: 使用 comet state get <name> language 读取到的 Comet 配置产物语言输出`。若 Skill 工具不可用或找不到该技能，立即结束，最终回复只写一行 `SKILL_UNAVAILABLE`，不要重试，也不要在没有技能的情况下自行写计划
 2. 读取 Design Doc（`docs/superpowers/specs/` 下的技术设计文档）
 3. 读取 `<classic-change-dir>/tasks.md`（任务边界）
-4. 按技能指引创建计划
+4. 按技能指引创建计划；运行期间没有用户回答你，技能里向用户提问的步骤（如 `writing-plans` 结尾的 Execution Handoff）直接跳过，不要向用户提问
 
 计划要求：
-- 保存至 `docs/superpowers/plans/YYYY-MM-DD-<feature>.md`
+- 保存至指令中给定的计划路径，不更改文件名
+- 只覆盖 tasks.md 列出的任务，不扩展范围
 - 引用设计文档，拆分为可执行任务
 - **Plan 文件头必须包含关联元数据**：
 
@@ -62,13 +65,17 @@ base-ref: <git rev-parse HEAD before implementation>
 git rev-parse HEAD
 ```
 
-将计划写入文件后，返回文件路径。
+计划写入文件后，最终回复的最后一行固定为：
+
+```
+PLAN_PATH: <计划文件的相对路径>
+```
 
 **执行 subagent**：将上述任务派发给 subagent。
 
 Subagent 完成后：
-- 若返回有效文件路径且文件存在，记录为 plan
-- 若 subagent 失败或返回路径无效，在主 session 内联加载 Superpowers `writing-plans` 技能创建计划（降级回退）
+- 读取回复末尾的 `PLAN_PATH:` 行，文件存在即记录为 plan；没有该行时，再从回复文本中找已存在的有效路径
+- 子代理回报 `SKILL_UNAVAILABLE`、派发失败或拿不到有效路径时，在主 session 内联加载 Superpowers `writing-plans` 技能创建计划（降级回退），并记住本会话派发不可用，之后再进 Step 1 直接内联
 
 ### 2. 更新计划状态并联合确认工作方式
 
@@ -239,6 +246,14 @@ Open 阶段已经根据 `isolation` 准备好当前目录、分支或 Worktree�
 - 每次更新应提交，commit message 说明变更原因
 - 不提前同步到 main spec，归档时统一同步
 - 小规模增量直接改 delta spec 时，应在 commit message 中注明，便于归档时判断 design doc 漂移
+
+**handoff 同步**：delta spec 的增、改、删都会使设计交接包（`handoff_hash`）过期。Build 阶段可随时直接重新生成，无需回退当前 phase 或 step：
+
+```bash
+comet handoff <change-name> design --write
+```
+
+重新生成会从当前 OpenSpec artifacts 重建 handoff 并更新 `handoff_hash`，不会改变 `phase` 字段或 Runtime `currentStep`；刷新后可按 build 阶段继续推进。
 
 ### 5. 上下文管理
 

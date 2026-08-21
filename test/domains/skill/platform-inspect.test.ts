@@ -27,6 +27,8 @@ function hookConfigPath(baseDir: string, platformId: string): string {
       return path.join(baseDir, '.claude', 'settings.local.json');
     case 'codex':
       return path.join(baseDir, '.codex', 'hooks.json');
+    case 'grok':
+      return path.join(baseDir, '.grok', 'hooks', 'comet.json');
     case 'amazon-q':
       return path.join(baseDir, '.amazonq', 'settings.local.json');
     case 'qwen':
@@ -88,6 +90,7 @@ describe('platform component inspection', () => {
     ['claude', '.claude/rules/comet-workflow-guard.md'],
     ['cursor', '.cursor/rules/comet-workflow-guard.mdc'],
     ['codex', '.codex/rules/comet-workflow-guard.md'],
+    ['grok', '.grok/rules/comet-workflow-guard.md'],
     ['github-copilot', '.github/instructions/comet-workflow-guard.instructions.md'],
     ['oh-my-pi', '.omp/rules/comet-workflow-guard.mdc'],
     ['dsh', 'AGENTS.local.md'],
@@ -148,6 +151,7 @@ describe('platform component inspection', () => {
     'github-copilot',
     'kiro',
     'oh-my-pi',
+    'grok',
   ])('recognizes the managed Hook command in the %s format', async (id) => {
     const target = platform(id);
     await installManagedHookScripts(tmpDir, target);
@@ -195,18 +199,21 @@ describe('platform component inspection', () => {
     'github-copilot',
     'kiro',
     'oh-my-pi',
+    'grok',
   ])('removes only the managed %s Router while preserving user configuration', async (id) => {
     const target = platform(id);
     const configPath = hookConfigPath(tmpDir, id);
-    if (id === 'kiro' || id === 'github-copilot' || id === 'oh-my-pi') {
+    if (id === 'kiro' || id === 'github-copilot' || id === 'oh-my-pi' || id === 'grok') {
       await fs.mkdir(path.dirname(configPath), { recursive: true });
       await fs.writeFile(
         path.join(
           path.dirname(configPath),
           id === 'kiro'
             ? 'personal.kiro.hook'
-            : id === 'oh-my-pi'
-              ? 'personal.ts'
+            : id === 'oh-my-pi' || id === 'grok'
+              ? id === 'grok'
+                ? 'personal.json'
+                : 'personal.ts'
               : 'personal.json',
         ),
         '{"userSetting":"keep"}\n',
@@ -235,7 +242,9 @@ describe('platform component inspection', () => {
           ? path.join(path.dirname(configPath), 'personal.json')
           : id === 'oh-my-pi'
             ? path.join(path.dirname(configPath), 'personal.ts')
-            : configPath;
+            : id === 'grok'
+              ? path.join(path.dirname(configPath), 'personal.json')
+              : configPath;
     expect(await fs.readFile(preservedPath, 'utf8')).toContain('userSetting');
   });
 
@@ -278,6 +287,21 @@ describe('platform component inspection', () => {
     await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
       present: true,
       duplicatePresent: true,
+    });
+  });
+
+  it('installs the Grok Hook matcher that covers write and search_replace', async () => {
+    const target = platform('grok');
+    await installManagedHookScripts(tmpDir, target);
+    await expect(installCometHooksForPlatform(tmpDir, target, 'project')).resolves.toMatchObject({
+      status: 'installed',
+    });
+    const config = JSON.parse(await fs.readFile(hookConfigPath(tmpDir, 'grok'), 'utf8')) as {
+      hooks: { PreToolUse: Array<{ matcher: string }> };
+    };
+    expect(config.hooks.PreToolUse[0]?.matcher).toBe('Write|Edit|write|search_replace');
+    await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
+      present: true,
     });
   });
 
@@ -431,6 +455,7 @@ describe('platform component inspection', () => {
     'windsurf',
     'github-copilot',
     'kiro',
+    'grok',
   ])('does not accept an unmanaged command in an existing %s Hook config', async (id) => {
     const target = platform(id);
     await installManagedHookScripts(tmpDir, target);
@@ -460,6 +485,7 @@ describe('platform component inspection', () => {
     'windsurf',
     'github-copilot',
     'kiro',
+    'grok',
   ])('migrates a legacy managed %s Hook command to one Router', async (id) => {
     const target = platform(id);
     await installManagedHookScripts(tmpDir, target);

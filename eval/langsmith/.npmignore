@@ -1,0 +1,12 @@
+# Eval runs and caches are local artifacts, not package inputs.
+logs/
+.cache/
+.tmp/
+.comet/
+.pytest*/
+_pytest*/
+**/.pytest*/
+**/.pytest_*/
+**/.cache/
+**/.comet/
+**/__pycache__/

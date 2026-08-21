@@ -17,8 +17,10 @@ body:
       description: Which part of Comet is your question about?
       options:
         - CLI command / user interaction (`app/`)
+        - Native workflow runtime (`domains/comet-native`)
         - Bundle authoring (`domains/bundle`)
         - Classic workflow runtime (`domains/comet-classic`, `assets/skills/comet/scripts/`)
+        - Shared Hook / Hook Router (`domains/comet-entry`)
         - Dashboard (`domains/dashboard`)
         - Engine (`domains/engine`)
         - Eval (`domains/eval`)

@@ -1,0 +1,297 @@
+schema: comet.native.v4
+name: dashboard-preview-ux
+language: zh-CN
+phase: archive
+status: done
+state_version: 25
+brief: brief.md
+spec_changes:
+  - capability: dashboard-artifact-preview
+    operation: create
+    source: specs/dashboard-artifact-preview/spec.md
+workspace:
+  isolation: branch
+  change_branch: comet/dashboard-preview-ux
+  target_branch: master
+  finish: keep
+loop:
+  stage: done
+  goal_cycle: 2
+  iteration: 4
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: A1：预览中的表头始终单行显示；仅当表头无法在可用宽度内显示时，预览可横向滚动查看完整表头；正文保持原有换行规则。
+    result: passed
+    reason:
+      text: 表头不折行。
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: A2：全屏预览目录栏宽度为 250px；“目录”标题为 14px，目录链接为 16px。
+    result: passed
+    reason:
+      text: 窄宽度可横向查看完整表头。
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: A3：全屏预览打开时按 Esc 关闭整个产物预览；非全屏抽屉不会注册该快捷键。
+    result: passed
+    reason:
+      text: 仅表头新增不换行，正文行为保持不变。
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: A4：预览头部复制路径按钮与相邻路径文本在同一垂直中心线上；路径文本不保留段落默认上下外边距。
+    result: passed
+    reason:
+      text: 目录栏为 250px。
+      truncated: false
+  - id: A5
+    source: specs/dashboard-artifact-preview/spec.md
+    text: Dashboard displays artifact content in a side drawer and supports an
+      expanded fullscreen reading mode.
+    result: passed
+    reason:
+      text: 目录标题为 14px。
+      truncated: false
+  - id: A6
+    source: specs/dashboard-artifact-preview/spec.md
+    text: Rendered Markdown, YAML, and JSON preview tables keep header labels on one
+      line. When a header needs more horizontal space than its container, the
+      preview provides horizontal scrolling instead of wrapping the header
+      label. This does not change the existing wrapping behavior of table body
+      cells or force a table to expand to the width of its body content.
+    result: passed
+    reason:
+      text: 各层目录链接为 16px。
+      truncated: false
+  - id: A7
+    source: specs/dashboard-artifact-preview/spec.md
+    text: The table of contents is visible only while an artifact preview is
+      fullscreen and has headings. Its sidebar is 250px wide. The directory
+      label uses a 14px font size and each directory link uses a 16px font size.
+    result: passed
+    reason:
+      text: 全屏时 Escape 关闭整个预览。
+      truncated: false
+  - id: A8
+    source: specs/dashboard-artifact-preview/spec.md
+    text: While fullscreen artifact preview is active, pressing Escape closes the
+      artifact preview. The side-drawer preview does not install this Escape
+      shortcut.
+    result: passed
+    reason:
+      text: 非全屏不注册 Escape，目录仅全屏显示。
+      truncated: false
+  - id: A9
+    source: specs/dashboard-artifact-preview/spec.md
+    text: When a preview path is available, its copy button and path text share a
+      vertically centered layout in the preview header. The path text has no
+      paragraph margins that could displace it from the copy button.
+    result: passed
+    reason:
+      text: 路径行垂直居中，专用样式覆盖 AntD 段落外边距。
+      truncated: false
+builder_handoff:
+  candidate_id: e5f35db6-59f0-44d4-8014-47492a4932ce
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:bf21628d-6ee3-450e-98a4-4e1dc4d91dab
+  iteration: 4
+  summary:
+    text: 按用户要求移除 0.4.0-beta.19 版本与 Changelog；保留已完成人工视觉验收的看板预览修复。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    - A8
+    - A9
+  checks:
+    - name:
+        text: pnpm build
+        truncated: false
+      result: passed
+      note:
+        text: Passed with Node 22.22.3 via Corepack pnpm 10.18.3 after archive.
+        truncated: false
+    - name:
+        text: npx vitest run test/domains/dashboard/web-source.test.ts
+        truncated: false
+      result: passed
+      note:
+        text: 16 tests passed
+        truncated: false
+    - name:
+        text: npx prettier --check domains/dashboard/web/src/main.jsx
+          domains/dashboard/web/src/styles.css
+          test/domains/dashboard/web-source.test.ts
+        truncated: false
+      result: passed
+      note:
+        text: All changed source files are formatted
+        truncated: false
+    - name:
+        text: git diff --check
+        truncated: false
+      result: passed
+      note:
+        text: No whitespace errors
+        truncated: false
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  submitted_at: 2026-08-13T13:14:31.103Z
+blockers: []
+verification:
+  candidate_id: e5f35db6-59f0-44d4-8014-47492a4932ce
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:513b026a-29e8-4b8e-8b3c-c813a94d3d4e
+  iteration: 4
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: dashboard-web-source
+      name:
+        text: npx vitest run test/domains/dashboard/web-source.test.ts
+        truncated: false
+      argv_display:
+        - text: vitest
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/dashboard/web-source.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 27418
+    - id: supported-toolchain-build
+      name:
+        text: pnpm build
+        truncated: false
+      argv_display:
+        - text: pnpm
+          truncated: false
+        - text: build
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 11595
+  summary:
+    text: A1-A9 均通过；Node 22.22.3 与 Corepack pnpm 10.18.3 已完成 pnpm build；未新增 beta.19 版本或 Changelog。
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-08-13T13:27:49.000Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 独立 Verifier 确认 A1-A9 全部通过；Runtime 已执行 Dashboard Web 源码契约测试。
+      truncated: false
+    completed_at: 2026-08-13T12:18:52.477Z
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 需求收窄为仅禁止表格表头换行，不改变表格正文或整体表格宽度策略。
+      truncated: false
+    completed_at: 2026-08-13T12:23:37.486Z
+  - goal_cycle: 1
+    iteration: 2
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native confirmed acceptance criteria changed
+      truncated: false
+    completed_at: 2026-08-13T12:24:59.818Z
+  - goal_cycle: 2
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 独立 Verifier 确认 A1-A9 全部通过。
+      truncated: false
+    completed_at: 2026-08-13T12:33:25.334Z
+  - goal_cycle: 2
+    iteration: 1
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 实际样式中未分层 p 规则覆盖 Tailwind m-0；改用项目样式高优先级选择器显式清除路径段落外边距。
+      truncated: false
+    completed_at: 2026-08-13T12:44:12.470Z
+  - goal_cycle: 2
+    iteration: 2
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: A1-A9 均符合当前 brief 与 spec。
+      truncated: false
+    completed_at: 2026-08-13T12:49:04.976Z
+  - goal_cycle: 2
+    iteration: 2
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 补充已发布看板缺陷修复的版本与 Changelog 元数据。
+      truncated: false
+    completed_at: 2026-08-13T13:13:08.246Z
+  - goal_cycle: 2
+    iteration: 3
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 按用户要求不新增 0.4.0-beta.19 版本或 Changelog。
+      truncated: false
+    completed_at: 2026-08-13T13:13:53.623Z
+  - goal_cycle: 2
+    iteration: 4
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: A1-A9 均通过；未新增 beta.19 版本或 Changelog。
+      truncated: false
+    completed_at: 2026-08-13T13:16:12.432Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-13T12:05:30.984Z

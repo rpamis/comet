@@ -92,6 +92,20 @@ describe('Native CLI shared helpers', () => {
     await expect(readBoundedEvidenceStdin(4)).rejects.toThrow('exceed 4 bytes');
   });
 
+  it('strips a leading UTF-8 BOM from stdin and file sourced evidence entries', async () => {
+    const bom = String.fromCharCode(0xfeff);
+    vi.spyOn(process, 'stdin', 'get').mockReturnValue(
+      Readable.from([bom + '[1,2]']) as NodeJS.ReadStream,
+    );
+    await expect(readBoundedEvidenceStdin(20)).resolves.toBe('[1,2]');
+
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-cli-shared-'));
+    temporaryRoots.push(root);
+    const file = path.join(root, 'entries.json');
+    await fs.writeFile(file, bom + '[3,4]');
+    await expect(readBoundedEvidenceFile(file, 10)).resolves.toBe('[3,4]');
+  });
+
   it('maps domain errors to stable envelopes and renders JSON or text output', () => {
     const preflight = {
       ready: false,

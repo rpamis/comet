@@ -10,6 +10,7 @@ import {
   findNativeV1SupervisorParents,
   hashNativeParentContract,
   inspectNativeChildren,
+  nativeChildrenAcceptanceValidation,
   readNativeChildrenContract,
 } from './native-children.js';
 import {
@@ -71,6 +72,7 @@ import type {
   NativeLocalCheckState,
   NativeLocalExecutionState,
   NativePortableCheckSummary,
+  NativePortablePhase,
   NativePortableSpecChange,
   NativePortableState,
   NativePortableWorkspace,
@@ -104,6 +106,39 @@ export const NATIVE_PORTABLE_STATE_FILE = 'comet-state.yaml';
 export const NATIVE_LOCAL_EXECUTION_FILE = 'state.json';
 
 export const NATIVE_PORTABLE_BRIEF_TEMPLATE = nativeBriefTemplate('en');
+
+export type NativePortableExpectedContinuationAction =
+  | 'confirm-shape'
+  | 'accept-result'
+  | 'confirm-verifier-unavailable'
+  | 'revise-implementation'
+  | 'revise-requirements'
+  | 'retry-verifier'
+  | 'resolve-verifier-blocker';
+
+export interface NativePortableExpectedContinuation {
+  stateVersion: number;
+  action: NativePortableExpectedContinuationAction;
+}
+
+function assertNativePortableExpectedContinuationLocked(options: {
+  state: NativePortableState;
+  expected?: NativePortableExpectedContinuation;
+  action: NativePortableExpectedContinuationAction;
+}): void {
+  const expected = options.expected;
+  if (!expected) return;
+  if (options.state.state_version !== expected.stateVersion) {
+    throw new Error(
+      `Native continuation is stale for state version ${expected.stateVersion}; current state version is ${options.state.state_version}`,
+    );
+  }
+  if (expected.action !== options.action) {
+    throw new Error(
+      `Native continuation expected ${expected.action} cannot be used for ${options.action}`,
+    );
+  }
+}
 
 export function nativePortableChangeDir(paths: NativeProjectPaths, name: string): string {
   if (!NAME_PATTERN.test(name)) throw new Error(`Invalid Native change name: ${name}`);
@@ -356,12 +391,18 @@ async function readNativePortableAcceptance(options: {
 export async function confirmNativePortableShape(options: {
   paths: NativeProjectPaths;
   name: string;
+  expectedContinuation?: NativePortableExpectedContinuation;
 }): Promise<NativePortableState> {
   return withNativeMutationLock(
     options.paths,
     `confirm portable shape ${options.name}`,
     async () => {
       const state = await readNativePortableChange(options.paths, options.name);
+      assertNativePortableExpectedContinuationLocked({
+        state,
+        expected: options.expectedContinuation,
+        action: 'confirm-shape',
+      });
       const specChanges = await discoverNativePortableSpecChanges({ paths: options.paths, state });
       const acceptance = await readNativePortableAcceptance({
         paths: options.paths,
@@ -371,6 +412,10 @@ export async function confirmNativePortableShape(options: {
       const children = await readNativeChildrenContract({
         changeDir: nativePortableChangeDir(options.paths, state.name),
         acceptanceIds: acceptance.map(({ id }) => id),
+        validation: nativeChildrenAcceptanceValidation({
+          ...state,
+          acceptance,
+        }),
       });
       if (children && state.workspace.change_branch === null) {
         throw new Error('Native parent changes require a Git integration branch');
@@ -514,6 +559,10 @@ export async function inspectNativePortableAcceptanceDrift(options: {
     children = await readNativeChildrenContract({
       changeDir: nativePortableChangeDir(options.paths, options.state.name),
       acceptanceIds: acceptance.map(({ id }) => id),
+      validation: nativeChildrenAcceptanceValidation({
+        ...options.state,
+        acceptance,
+      }),
     });
   } catch {
     return { drifted: true, reason: 'Native child declarations changed' };
@@ -555,6 +604,7 @@ export async function submitNativePortableBuilderCandidate(options: {
       const children = await readNativeChildrenContract({
         changeDir: nativePortableChangeDir(options.paths, state.name),
         acceptanceIds: state.acceptance.map(({ id }) => id),
+        validation: nativeChildrenAcceptanceValidation(state),
       });
       if (children || state.children_contract_hash) {
         throw new Error('Native parent Build advances child changes instead of a parent Builder');
@@ -1922,12 +1972,18 @@ export async function recordNativePortableVerifierUnavailable(options: {
 export async function confirmNativePortableSkillCoordinatedPass(options: {
   paths: NativeProjectPaths;
   name: string;
+  expectedContinuation?: NativePortableExpectedContinuation;
 }): Promise<NativePortableState> {
   return withNativeMutationLock(
     options.paths,
     `confirm portable Skill-coordinated pass ${options.name}`,
     async () => {
       const state = await readNativePortableChange(options.paths, options.name);
+      assertNativePortableExpectedContinuationLocked({
+        state,
+        expected: options.expectedContinuation,
+        action: 'accept-result',
+      });
       await ensureNativePortableAcceptanceCurrentLocked({ paths: options.paths, state });
       const next = confirmNativeSkillCoordinatedPass(state);
       const written = await writePortableMutation({ paths: options.paths, previous: state, next });
@@ -1953,12 +2009,18 @@ export async function confirmNativePortableVerifierUnavailable(options: {
   paths: NativeProjectPaths;
   name: string;
   summary: string;
+  expectedContinuation?: NativePortableExpectedContinuation;
 }): Promise<NativePortableState> {
   return withNativeMutationLock(
     options.paths,
     `confirm unavailable portable verifier ${options.name}`,
     async () => {
       const state = await readNativePortableChange(options.paths, options.name);
+      assertNativePortableExpectedContinuationLocked({
+        state,
+        expected: options.expectedContinuation,
+        action: 'confirm-verifier-unavailable',
+      });
       await ensureNativePortableAcceptanceCurrentLocked({ paths: options.paths, state });
       const next = confirmNativeVerifierUnavailable({ state, summary: options.summary });
       const written = await writePortableMutation({ paths: options.paths, previous: state, next });
@@ -1983,12 +2045,18 @@ export async function confirmNativePortableVerifierUnavailable(options: {
 export async function resolveNativePortableVerifierBlocker(options: {
   paths: NativeProjectPaths;
   name: string;
+  expectedContinuation?: NativePortableExpectedContinuation;
 }): Promise<NativePortableState> {
   return withNativeMutationLock(
     options.paths,
     `resolve portable verifier blocker ${options.name}`,
     async () => {
       const state = await readNativePortableChange(options.paths, options.name);
+      assertNativePortableExpectedContinuationLocked({
+        state,
+        expected: options.expectedContinuation,
+        action: 'resolve-verifier-blocker',
+      });
       await ensureNativePortableAcceptanceCurrentLocked({ paths: options.paths, state });
       const local = await readCurrentLocalExecution({ paths: options.paths, state });
       const next = resolveNativeVerifierBlocker(state);
@@ -2010,12 +2078,18 @@ export async function resolveNativePortableVerifierBlocker(options: {
 export async function retryNativePortableVerifier(options: {
   paths: NativeProjectPaths;
   name: string;
+  expectedContinuation?: NativePortableExpectedContinuation;
 }): Promise<NativePortableState> {
   return withNativeMutationLock(
     options.paths,
     `retry portable verifier ${options.name}`,
     async () => {
       const state = await readNativePortableChange(options.paths, options.name);
+      assertNativePortableExpectedContinuationLocked({
+        state,
+        expected: options.expectedContinuation,
+        action: 'retry-verifier',
+      });
       const local = await readCurrentLocalExecution({ paths: options.paths, state });
       const next = retryNativeVerifier(state);
       const written = await writePortableMutation({ paths: options.paths, previous: state, next });
@@ -2037,12 +2111,18 @@ export async function returnNativePortableChangeToBuild(options: {
   paths: NativeProjectPaths;
   name: string;
   reason: string;
+  expectedContinuation?: NativePortableExpectedContinuation;
 }): Promise<NativePortableState> {
   return withNativeMutationLock(
     options.paths,
     `return portable change ${options.name} to Build`,
     async () => {
       const state = await readNativePortableChange(options.paths, options.name);
+      assertNativePortableExpectedContinuationLocked({
+        state,
+        expected: options.expectedContinuation,
+        action: 'revise-implementation',
+      });
       if (state.phase === 'build') return state;
       const next = returnNativeCandidateToBuild({ state, reason: options.reason });
       const written = await writePortableMutation({ paths: options.paths, previous: state, next });
@@ -2177,12 +2257,22 @@ export async function returnNativePortableChangeToShape(options: {
   paths: NativeProjectPaths;
   name: string;
   reason: string;
+  allowedPhases?: readonly NativePortablePhase[];
+  expectedContinuation?: NativePortableExpectedContinuation;
 }): Promise<NativePortableState> {
   return withNativeMutationLock(
     options.paths,
     `return portable change ${options.name} to Shape`,
     async () => {
       const state = await readNativePortableChange(options.paths, options.name);
+      assertNativePortableExpectedContinuationLocked({
+        state,
+        expected: options.expectedContinuation,
+        action: 'revise-requirements',
+      });
+      if (options.allowedPhases && !options.allowedPhases.includes(state.phase)) {
+        throw new Error('--revise-requirements is only valid from Verify');
+      }
       if (state.phase === 'shape') return state;
       return returnNativePortableStateToShapeLocked({
         paths: options.paths,

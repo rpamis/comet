@@ -1,11 +1,15 @@
 import { execFileSync } from 'child_process';
 import os from 'os';
 import path from 'path';
-import { cp, mkdir, mkdtemp, readdir, rm } from 'fs/promises';
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'fs/promises';
 
 import { printCommandErrorDetails } from '../../platform/process/command-error.js';
 import { fileExists } from '../../platform/fs/file-system.js';
-import { getPlatformSkillsDir, PLATFORMS } from '../../platform/install/platforms.js';
+import {
+  getPlatformSkillsDir,
+  PLATFORMS,
+  type Platform,
+} from '../../platform/install/platforms.js';
 import { addDshOwnedPaths, dshRootPath, readDshOwnedPaths } from '../skill/dsh-adapter.js';
 import type { InstallScope } from '../../platform/install/types.js';
 
@@ -20,6 +24,8 @@ const SKILLS_AGENT_MAP: Record<string, string | null> = {
   continue: 'continue',
   'github-copilot': 'github-copilot',
   gemini: 'gemini-cli',
+  // Grok has no Skills CLI agent; stage through Claude and copy into .grok/skills.
+  grok: null,
   'amazon-q': 'universal',
   qwen: 'qwen-code',
   kilocode: 'kilo',
@@ -65,7 +71,10 @@ const MIMOCODE_PLATFORM_ID = 'mimocode';
 const WORKBUDDY_PLATFORM_ID = 'workbuddy';
 const OH_MY_PI_PLATFORM_ID = 'oh-my-pi';
 const DSH_PLATFORM_ID = 'dsh';
+const GROK_PLATFORM_ID = 'grok';
 const STAGE_AGENT = 'claude-code';
+const SUPERPOWERS_SOURCE = 'obra/superpowers';
+export const STAGED_SUPERPOWERS_MANIFEST_FILE = '.comet-superpowers.json';
 
 function buildSuperpowersInstallCommand(
   _projectPath: string,
@@ -139,19 +148,97 @@ function buildDshSuperpowersStageCommand(): { command: string; args: string[] } 
   };
 }
 
+function buildGrokSuperpowersStageCommand(): { command: string; args: string[] } {
+  return {
+    command: getNpxExecutable(),
+    args: ['skills', 'add', 'obra/superpowers', '-y', '--agent', STAGE_AGENT],
+  };
+}
+
 function getNpxExecutable(platform: NodeJS.Platform = process.platform): string {
   return platform === 'win32' ? 'npx.cmd' : 'npx';
 }
 
-async function copyDirectoryContents(srcDir: string, destDir: string): Promise<void> {
+async function copyDirectoryContents(srcDir: string, destDir: string): Promise<string[]> {
   await mkdir(destDir, { recursive: true });
   const entries = await readdir(srcDir, { withFileTypes: true });
+  const skillNames: string[] = [];
   for (const entry of entries) {
     await cp(path.join(srcDir, entry.name), path.join(destDir, entry.name), {
       recursive: true,
       force: true,
       dereference: true,
     });
+    if (entry.isDirectory() && !entry.name.startsWith('.')) {
+      skillNames.push(entry.name);
+    }
+  }
+  return skillNames;
+}
+
+function getStagedSuperpowersManifestPath(baseDir: string, skillsRoot: string): string {
+  return path.join(baseDir, skillsRoot, STAGED_SUPERPOWERS_MANIFEST_FILE);
+}
+
+async function writeStagedSuperpowersManifest(
+  filePath: string,
+  skillNames: string[],
+): Promise<void> {
+  await writeFile(
+    filePath,
+    `${JSON.stringify(
+      {
+        source: SUPERPOWERS_SOURCE,
+        skills: [...new Set(skillNames)].sort(),
+      },
+      null,
+      2,
+    )}\n`,
+    'utf8',
+  );
+}
+
+async function readStagedSuperpowersSkillNames(
+  baseDir: string,
+  platforms: readonly Platform[],
+  scope: InstallScope,
+): Promise<string[]> {
+  const names = new Set<string>();
+  for (const platform of platforms) {
+    const filePath = getStagedSuperpowersManifestPath(
+      baseDir,
+      getPlatformSkillsDir(platform, scope),
+    );
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(await readFile(filePath, 'utf8')) as unknown;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      continue;
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
+    const record = parsed as Record<string, unknown>;
+    if (record.source !== SUPERPOWERS_SOURCE || !Array.isArray(record.skills)) continue;
+    for (const name of record.skills) {
+      if (typeof name !== 'string' || name.length === 0) continue;
+      if (name.includes('/') || name.includes('\\') || name === '.' || name === '..') continue;
+      names.add(name);
+    }
+  }
+  return [...names];
+}
+
+async function removeStagedSuperpowersManifests(
+  baseDir: string,
+  platforms: readonly Platform[],
+  scope: InstallScope,
+): Promise<void> {
+  for (const platform of platforms) {
+    const filePath = getStagedSuperpowersManifestPath(
+      baseDir,
+      getPlatformSkillsDir(platform, scope),
+    );
+    await rm(filePath, { force: true });
   }
 }
 
@@ -256,6 +343,19 @@ async function installSuperpowersForDsh(
   );
 }
 
+async function installSuperpowersForGrok(
+  projectPath: string,
+  scope: InstallScope,
+): Promise<'installed' | 'failed'> {
+  return stageAndCopySuperpowers(
+    GROK_PLATFORM_ID,
+    buildGrokSuperpowersStageCommand(),
+    projectPath,
+    scope,
+    'Grok',
+  );
+}
+
 /**
  * Shared staging flow for platforms whose agent is not supported by the skills CLI
  * (e.g. Lingma, WorkBuddy, Oh My Pi, ZCode, MimoCode). Superpowers are staged into a temp dir via
@@ -289,7 +389,11 @@ async function stageAndCopySuperpowers(
       await copyDshSuperpowersContents(stagedSkillsDir, baseDir, platform, scope);
     } else {
       const platformSkillsDir = path.join(baseDir, getPlatformSkillsDir(platform, scope), 'skills');
-      await copyDirectoryContents(stagedSkillsDir, platformSkillsDir);
+      const skillNames = await copyDirectoryContents(stagedSkillsDir, platformSkillsDir);
+      await writeStagedSuperpowersManifest(
+        getStagedSuperpowersManifestPath(baseDir, getPlatformSkillsDir(platform, scope)),
+        skillNames,
+      );
     }
     return 'installed';
   } catch (error) {
@@ -323,6 +427,7 @@ async function installSuperpowersForPlatforms(
   const shouldInstallWorkBuddy = platformIds.includes(WORKBUDDY_PLATFORM_ID);
   const shouldInstallOhMyPi = platformIds.includes(OH_MY_PI_PLATFORM_ID);
   const shouldInstallDsh = platformIds.includes(DSH_PLATFORM_ID);
+  const shouldInstallGrok = platformIds.includes(GROK_PLATFORM_ID);
   let failed = false;
 
   if (skillsCliPlatformIds.length > 0) {
@@ -372,6 +477,11 @@ async function installSuperpowersForPlatforms(
     if (dshStatus === 'failed') failed = true;
   }
 
+  if (shouldInstallGrok) {
+    const grokStatus = await installSuperpowersForGrok(projectPath, scope);
+    if (grokStatus === 'failed') failed = true;
+  }
+
   return failed ? 'failed' : 'installed';
 }
 
@@ -384,5 +494,9 @@ export {
   buildWorkBuddySuperpowersStageCommand,
   buildOhMyPiSuperpowersStageCommand,
   buildDshSuperpowersStageCommand,
+  buildGrokSuperpowersStageCommand,
+  getStagedSuperpowersManifestPath,
+  readStagedSuperpowersSkillNames,
+  removeStagedSuperpowersManifests,
   SKILLS_AGENT_MAP,
 };

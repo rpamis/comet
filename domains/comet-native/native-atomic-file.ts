@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import path from 'path';
 
-import { hasComparableNativeFileObject, sameNativeFileObject } from './native-file-identity.js';
+import { sameNativeFileObject } from './native-file-identity.js';
 
 export interface NativeAtomicWriteOptions {
   containedRoot?: string;
@@ -38,15 +38,24 @@ function sameDirectoryIdentity(identity: DirectoryIdentity, stat: import('fs').S
 }
 
 function sameFileIdentity(left: import('fs').Stats, right: import('fs').Stats): boolean {
-  const leftObject = { ...left, birthtime: left.birthtimeMs };
-  const rightObject = { ...right, birthtime: right.birthtimeMs };
-  if (hasComparableNativeFileObject(leftObject, rightObject)) {
-    return sameNativeFileObject(leftObject, rightObject);
-  }
+  // On file systems without stable file ids (exFAT, FAT, some network mounts)
+  // the comparison degrades to birthtime. ctime and size change with every
+  // legitimate write, so they cannot distinguish tampering from our own write.
+  return sameNativeFileObject(
+    { dev: left.dev, ino: left.ino, birthtime: left.birthtimeMs },
+    { dev: right.dev, ino: right.ino, birthtime: right.birthtimeMs },
+  );
+}
+
+function sameUnchangedFile(left: import('fs').Stats, right: import('fs').Stats): boolean {
+  // Linux may immediately reuse an inode after unlink, so object identity alone
+  // cannot prove that a path still names the post-write snapshot. These fields
+  // are safe to compare only after our own write has finished.
   return (
-    sameNativeFileObject(leftObject, rightObject) &&
+    sameFileIdentity(left, right) &&
     left.birthtimeMs === right.birthtimeMs &&
     left.ctimeMs === right.ctimeMs &&
+    left.mtimeMs === right.mtimeMs &&
     left.size === right.size
   );
 }
@@ -138,6 +147,7 @@ async function atomicWrite(
   const temporary = path.join(directory, `.${path.basename(file)}.${randomUUID()}.tmp`);
   let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
   let temporaryIdentity: import('fs').Stats | undefined;
+  let writtenIdentity: import('fs').Stats | undefined;
   try {
     await options.beforeTemporaryOpen?.();
     handle = await fs.open(temporary, 'wx');
@@ -160,7 +170,8 @@ async function atomicWrite(
     if (typeof content === 'string') await handle.writeFile(content, 'utf8');
     else await handle.writeFile(content);
     await handle.sync();
-    if (!sameFileIdentity(temporaryIdentity, await handle.stat())) {
+    writtenIdentity = await handle.stat();
+    if (!sameFileIdentity(temporaryIdentity, writtenIdentity)) {
       throw new Error('Native atomic write temporary file changed while writing');
     }
     await handle.close();
@@ -172,8 +183,8 @@ async function atomicWrite(
       if (
         !temporaryStat.isFile() ||
         temporaryStat.isSymbolicLink() ||
-        !temporaryIdentity ||
-        !sameFileIdentity(temporaryStat, temporaryIdentity)
+        !writtenIdentity ||
+        !sameUnchangedFile(temporaryStat, writtenIdentity)
       ) {
         throw new Error('Native atomic write temporary file changed before commit');
       }

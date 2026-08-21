@@ -49,6 +49,7 @@ async function readManifest() {
 function isNativeInstallSkillPath(skillPath: string): boolean {
   return (
     skillPath === 'comet/SKILL.md' ||
+    skillPath.startsWith('comet-review/') ||
     skillPath === 'comet/scripts/comet-entry-runtime.mjs' ||
     skillPath === 'comet/scripts/comet-hook-router.mjs' ||
     skillPath.startsWith('comet-native/') ||
@@ -508,6 +509,31 @@ describe('comet init E2E', () => {
     await expect(
       fs.access(path.join(tmpDir, '.comet', 'current-change.json')),
     ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('installs Ambient Resume instructions for Classic-only project init', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, 'AGENTS.md'), '# User\n\nKeep this.\n', 'utf8');
+    await fs.writeFile(path.join(tmpDir, 'CLAUDE.md'), '# User\n\nAlso keep this.\n', 'utf8');
+
+    const { initCommand } = await import('../../app/commands/init.js');
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, { yes: true, json: true, workflow: 'classic', language: 'en' }),
+    );
+
+    expect(result).toMatchObject({
+      workflow: 'classic',
+      initializedWorkflows: ['classic'],
+    });
+    const agents = await fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8');
+    const claude = await fs.readFile(path.join(tmpDir, 'CLAUDE.md'), 'utf8');
+    for (const content of [agents, claude]) {
+      expect(content).toContain('<comet-ambient-resume>');
+      expect(content).toContain('comet resume-probe . --stdin --json');
+    }
+    expect(agents).toContain('# User\n\nKeep this.');
+    expect(claude).toContain('# User\n\nAlso keep this.');
   });
 
   it('adds Classic with the docs layout when a Native-only project is reinitialized as Both', async () => {

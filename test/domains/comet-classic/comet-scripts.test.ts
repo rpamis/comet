@@ -22,7 +22,7 @@ function runNode(
   env: NodeJS.ProcessEnv = {},
   timeout?: number,
 ) {
-  const isolatedHome = path.join(cwd, '.fake-home');
+  const isolatedHome = path.join(cwd, '.test-home');
   return spawnSync(process.execPath, [script, ...args], {
     cwd,
     encoding: 'utf-8',

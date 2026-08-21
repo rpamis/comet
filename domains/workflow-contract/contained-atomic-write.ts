@@ -2,11 +2,7 @@ import { randomUUID } from 'crypto';
 import { constants as fsConstants, promises as fs } from 'fs';
 import path from 'path';
 
-import {
-  hasComparableFileObject,
-  sameFileObject,
-  type FileObjectIdentity,
-} from '../../platform/fs/file-identity.js';
+import { sameFileObject, type FileObjectIdentity } from '../../platform/fs/file-identity.js';
 
 export interface ContainedAtomicWriteOptions {
   containedRoot: string;
@@ -62,15 +58,21 @@ function sameDirectoryIdentity(identity: DirectoryIdentity, stat: import('fs').S
 }
 
 function sameFileIdentity(left: import('fs').Stats, right: import('fs').Stats): boolean {
-  const leftIdentity = statsIdentity(left);
-  const rightIdentity = statsIdentity(right);
-  if (hasComparableFileObject(leftIdentity, rightIdentity)) {
-    return sameFileObject(leftIdentity, rightIdentity);
-  }
+  // On file systems without stable file ids (exFAT, FAT, some network mounts)
+  // the comparison degrades to birthtime. ctime and size change with every
+  // legitimate write, so they cannot distinguish tampering from our own write.
+  return sameFileObject(statsIdentity(left), statsIdentity(right));
+}
+
+function sameUnchangedFile(left: import('fs').Stats, right: import('fs').Stats): boolean {
+  // Linux may immediately reuse an inode after unlink, so object identity alone
+  // cannot prove that a path still names the post-write snapshot. These fields
+  // are safe to compare only after our own write has finished.
   return (
-    sameFileObject(leftIdentity, rightIdentity) &&
+    sameFileIdentity(left, right) &&
     left.birthtimeMs === right.birthtimeMs &&
     left.ctimeMs === right.ctimeMs &&
+    left.mtimeMs === right.mtimeMs &&
     left.size === right.size
   );
 }
@@ -186,6 +188,7 @@ async function atomicWriteContained(
   const temporary = path.join(directory, `.${path.basename(file)}.${randomUUID()}.tmp`);
   let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
   let temporaryIdentity: import('fs').Stats | undefined;
+  let writtenIdentity: import('fs').Stats | undefined;
   try {
     await options.beforeTemporaryOpen?.();
     handle = await fs.open(temporary, 'wx');
@@ -207,7 +210,8 @@ async function atomicWriteContained(
     if (typeof content === 'string') await handle.writeFile(content, 'utf8');
     else await handle.writeFile(content);
     await handle.sync();
-    if (!sameFileIdentity(temporaryIdentity, await handle.stat())) {
+    writtenIdentity = await handle.stat();
+    if (!sameFileIdentity(temporaryIdentity, writtenIdentity)) {
       throw new Error('Contained atomic write temporary file changed while writing');
     }
     await handle.close();
@@ -219,7 +223,8 @@ async function atomicWriteContained(
     if (
       !temporaryStat.isFile() ||
       temporaryStat.isSymbolicLink() ||
-      !sameFileIdentity(temporaryStat, temporaryIdentity)
+      !writtenIdentity ||
+      !sameUnchangedFile(temporaryStat, writtenIdentity)
     ) {
       throw new Error('Contained atomic write temporary file changed before commit');
     }
@@ -307,7 +312,7 @@ export async function removeContainedFile(
   if (
     !current.isFile() ||
     current.isSymbolicLink() ||
-    !sameFileIdentity(identity, current) ||
+    !sameUnchangedFile(identity, current) ||
     currentRealPath !== realPath
   ) {
     throw new Error('Contained file removal target changed before removal');
