@@ -1,3 +1,4 @@
+import { stripUtf8Bom } from '../../platform/fs/strip-bom.js';
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
 import {
   COMET_RESUME_PROBE_SCHEMA_VERSION,
@@ -26,7 +27,7 @@ async function readStdin(): Promise<string> {
   for await (const chunk of process.stdin) {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
   }
-  return Buffer.concat(chunks).toString('utf8');
+  return stripUtf8Bom(Buffer.concat(chunks).toString('utf8'));
 }
 
 function rawUtteranceInput(utterance: string) {

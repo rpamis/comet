@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs';
 import path from 'path';
 
+import { stripUtf8Bom } from '../../platform/fs/strip-bom.js';
 import type { CometHookDecision, CometHookProcessOutput, CometHookRequest } from './hook-types.js';
 
 const WRITE_TOOL_NAMES = new Set([
@@ -148,7 +149,7 @@ export function parseCometHookRequest(source: string, filePath?: string): CometH
 
   let input: unknown;
   try {
-    input = JSON.parse(source) as unknown;
+    input = JSON.parse(stripUtf8Bom(source)) as unknown;
   } catch {
     const targets = patchTargets(source);
     if (targets.length > 0) {

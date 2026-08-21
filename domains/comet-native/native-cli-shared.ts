@@ -1,6 +1,7 @@
 import path from 'path';
 
 import { RaceSafeReadError, readFileRaceSafe } from '../../platform/fs/race-safe-read.js';
+import { stripUtf8Bom } from '../../platform/fs/strip-bom.js';
 import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
 
 import { NativeArchivePreflightError, NativeSpecConflictError } from './native-archive.js';
@@ -185,7 +186,7 @@ export async function readBoundedEvidenceFile(filePath: string, maxBytes: number
     const { bytes } = await readFileRaceSafe(filePath, maxBytes, {
       label: 'Acceptance evidence entries file',
     });
-    return bytes.toString('utf8');
+    return stripUtf8Bom(bytes.toString('utf8'));
   } catch (error) {
     if (error instanceof RaceSafeReadError) {
       if (error.reason === 'not-regular-file') {
@@ -217,7 +218,7 @@ export async function readBoundedEvidenceStdin(maxBytes: number): Promise<string
     }
     chunks.push(buffer);
   }
-  return Buffer.concat(chunks).toString('utf8');
+  return stripUtf8Bom(Buffer.concat(chunks).toString('utf8'));
 }
 
 export function errorResult(command: string | null, error: unknown): DispatchResult {

@@ -74,6 +74,17 @@ describe('Comet Hook platform adapter', () => {
     expect(PLATFORM_FIXTURES.map(({ id }) => id)).toEqual([...COMET_HOOK_PLATFORM_IDS]);
   });
 
+  it('parses a payload carrying a leading UTF-8 BOM', () => {
+    const source =
+      String.fromCharCode(0xfeff) +
+      JSON.stringify({ tool_name: 'Write', tool_input: { file_path: 'src/a.ts' } });
+    expect(parseCometHookRequest(source)).toEqual({
+      intent: 'write',
+      targets: ['src/a.ts'],
+      toolName: 'Write',
+    });
+  });
+
   it.each(PLATFORM_FIXTURES)('normalizes the $id native single-file payload', ({ id, single }) => {
     expect(parseCometHookRequest(JSON.stringify(single))).toMatchObject({
       intent: 'write',

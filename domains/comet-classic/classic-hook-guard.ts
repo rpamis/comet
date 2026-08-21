@@ -1,5 +1,6 @@
 import { promises as fs, readFileSync } from 'fs';
 import path from 'path';
+import { stripUtf8Bom } from '../../platform/fs/strip-bom.js';
 import { memoizedHookRead } from '../../platform/process/hook-read-cache.js';
 import {
   assertClassicLayoutWritable,
@@ -37,7 +38,7 @@ function allowed(message: string): ClassicCommandResult {
 function inputTarget(): string {
   if (process.env.FILE_PATH) return process.env.FILE_PATH;
   if (process.stdin.isTTY) return '';
-  const input = readFileSync(0, 'utf8');
+  const input = stripUtf8Bom(readFileSync(0, 'utf8'));
   if (!input) return '';
   try {
     const parsed = JSON.parse(input) as { tool_input?: { file_path?: unknown } };

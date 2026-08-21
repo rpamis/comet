@@ -134,6 +134,20 @@ describe('classicResumeProbeCommand', () => {
     });
   });
 
+  it('parses a stdin frame carrying a leading UTF-8 BOM instead of degrading to a raw utterance', async () => {
+    const result = await runWithStdin(String.fromCharCode(0xfeff) + SAMPLE_INPUT, () =>
+      classicResumeProbeCommand(['probe', '--stdin'], { json: false }),
+    );
+    const payload = JSON.parse(result.stdout ?? '');
+
+    expect(result.exitCode).toBe(0);
+    expect(payload).toMatchObject({
+      action: 'auto_resume',
+      changeName: 'cache-ttl',
+      phase: 'build',
+    });
+  });
+
   it('accepts a raw user request through `probe --stdin`', async () => {
     const result = await runWithStdin('continue cache-ttl', () =>
       classicResumeProbeCommand(['probe', '--stdin'], { json: false }),
