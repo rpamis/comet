@@ -5,6 +5,9 @@
  * Reference: OpenSpec/src/core/config.ts
  */
 
+import os from 'os';
+import path from 'path';
+
 import type { InstallScope } from './types.js';
 
 export interface Platform {
@@ -25,8 +28,8 @@ export interface Platform {
   rulesDir?: string;
   /** Override base directory for rules. When set, rules go to rulesBaseDir/rulesDir instead of skillsDir/rulesDir. Useful when rules live outside the skills config dir (e.g., Cline's .clinerules/ is at project root, not inside .cline/). */
   rulesBaseDir?: string;
-  /** Rule file format: 'md' = plain markdown, 'mdc' = Cursor MDC with frontmatter, 'copilot' = GitHub Copilot instructions format. */
-  rulesFormat?: 'md' | 'mdc' | 'copilot';
+  /** Rule file format: 'md' = plain markdown, 'mdc' = Cursor MDC with frontmatter, 'copilot' = GitHub Copilot instructions format, 'dsh' = managed AGENTS instruction block. */
+  rulesFormat?: 'md' | 'mdc' | 'copilot' | 'dsh';
   /** Whether this platform supports PreToolUse hooks. */
   supportsHooks?: boolean;
   /** Whether a user-scoped Hook can safely discover the active project from the host request. */
@@ -41,6 +44,7 @@ export interface Platform {
     | 'kiro'
     | 'qoder'
     | 'codebuddy'
+    | 'dsh'
     | 'omp'
     | 'trae';
   /** Hook config filename relative to the platform config root when it differs from the format default. */
@@ -56,10 +60,19 @@ export function isValidPlatformId(platformId: string): boolean {
 }
 
 export function getPlatformSkillsDir(platform: Platform, scope: InstallScope): string {
+  if (platform.id === 'dsh' && scope === 'global') {
+    const homeDir = path.resolve(os.homedir());
+    const dshHome = getDshHome(homeDir);
+    return path.relative(homeDir, dshHome) || '.';
+  }
   if (scope === 'global' && platform.globalSkillsDir) {
     return platform.globalSkillsDir;
   }
   return platform.skillsDir;
+}
+
+export function getDshHome(homeDir = os.homedir()): string {
+  return path.resolve(process.env.DSH_HOME || path.join(homeDir, '.dsh'));
 }
 
 export function getPlatformSkillsDirs(platform: Platform, scope: InstallScope): string[] {
@@ -381,5 +394,19 @@ export const PLATFORMS: Platform[] = [
     openspecToolId: 'opencode',
     rulesDir: 'rules',
     rulesFormat: 'md',
+  },
+  {
+    id: 'dsh',
+    name: 'DeepSeek Harness',
+    skillsDir: '.dsh',
+    globalSkillsDir: '.dsh',
+    // OpenSpec has no native dsh tool id. dsh consumes the Claude-shaped
+    // generated Skills through its official Claude-compatible environment.
+    openspecToolId: 'claude',
+    rulesFormat: 'dsh',
+    supportsHooks: true,
+    supportsGlobalHooks: true,
+    hookFormat: 'dsh',
+    hookConfigFile: 'hooks.json',
   },
 ];

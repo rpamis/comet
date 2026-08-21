@@ -614,6 +614,34 @@ describe('uninstall', () => {
         fs.access(path.join(tmpDir, '.agents', 'skills', 'brainstorming')),
       ).rejects.toMatchObject({ code: 'ENOENT' });
     });
+
+    it('removes standard Superpowers Skills from dsh without a Skills CLI agent', async () => {
+      const dshPlatform = PLATFORMS.find((platform) => platform.id === 'dsh')!;
+      for (const name of ['brainstorming', 'writing-plans', 'using-superpowers', 'personal']) {
+        await fs.mkdir(path.join(tmpDir, '.dsh', 'skills', name), { recursive: true });
+      }
+      await fs.writeFile(
+        path.join(tmpDir, '.dsh', 'skills', '.comet-ownership.json'),
+        JSON.stringify({
+          version: 1,
+          openspec: [],
+          superpowers: ['skills/brainstorming', 'skills/writing-plans', 'skills/using-superpowers'],
+        }),
+        'utf8',
+      );
+
+      const result = await removeSuperpowersSkillsForPlatforms(tmpDir, [dshPlatform], 'project', {
+        removeSharedStorage: true,
+      });
+
+      expect(result).toEqual({ removed: 3, failed: 0 });
+      await expect(
+        fs.access(path.join(tmpDir, '.dsh', 'skills', 'personal')),
+      ).resolves.toBeUndefined();
+      await expect(
+        fs.access(path.join(tmpDir, '.dsh', 'skills', 'brainstorming')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+    });
   });
 
   describe('removeCometRulesForPlatform', () => {

@@ -68,6 +68,7 @@ import { resolveHookWorkflowOwner } from '../../domains/comet-entry/hook-router.
 import type { InitWorkflowSelection } from '../../domains/comet-entry/types.js';
 import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
 import { projectCometHooksFromInstalledScope } from '../../domains/skill/project-hook-projection.js';
+import { hasDshInstruction } from '../../domains/skill/dsh-adapter.js';
 
 interface CheckResult {
   check: string;
@@ -681,12 +682,15 @@ function globalHookCheckResult(
     inspection.present || inspection.managedPresent === true || inspection.legacyPresent === true;
   return {
     check: `hooks: ${platform.name} (${scope})`,
-    status: globalHookPresent || inspection.error ? 'warn' : 'pass',
+    status:
+      globalHookPresent || inspection.error || inspection.activationRequired ? 'warn' : 'pass',
     message: inspection.error
       ? `${inspection.error} — run: comet doctor --repair --scope global`
-      : globalHookPresent
-        ? 'global blocking Hook remains — run: comet doctor --repair --scope global'
-        : 'no global blocking Hook present',
+      : inspection.activationRequired
+        ? 'Hook config and Cordis patch are present; the active dsh profile must load the official bridge'
+        : globalHookPresent
+          ? 'global blocking Hook remains — run: comet doctor --repair --scope global'
+          : 'no global blocking Hook present',
   };
 }
 
@@ -708,7 +712,13 @@ async function checkPlatformComponents(
     const inspectionErrors: string[] = [];
     for (const destination of ruleDestinations) {
       try {
-        if (await fileExists(destination)) present++;
+        if (
+          platform.rulesFormat === 'dsh'
+            ? await hasDshInstruction(baseDir, platform, scope)
+            : await fileExists(destination)
+        ) {
+          present++;
+        }
       } catch (error) {
         inspectionErrors.push(`${destination}: ${(error as Error).message}`);
       }
@@ -800,7 +810,8 @@ async function checkHookComponents(
       inspection.present &&
       !inspection.error &&
       !inspection.legacyPresent &&
-      !inspection.duplicatePresent
+      !inspection.duplicatePresent &&
+      !inspection.activationRequired
         ? 'pass'
         : 'warn',
     message:
@@ -813,7 +824,9 @@ async function checkHookComponents(
           ? `duplicate managed Router Hooks remain — run: comet doctor --repair --scope ${scope}`
           : inspection.present && inspection.legacyPresent
             ? `Router Hook and legacy managed Hook coexist — run: comet doctor --repair --scope ${scope}`
-            : `${inspection.error ?? 'managed Hook missing'} — run: comet update --scope ${scope}`,
+            : inspection.present && inspection.activationRequired
+              ? 'Hook config and Cordis patch are present; load the official bridge and run dsh with the project patch'
+              : `${inspection.error ?? 'managed Hook missing'} — run: comet update --scope ${scope}`,
   });
   return results;
 }

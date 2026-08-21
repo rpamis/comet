@@ -7,6 +7,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Added
 
 - **Oh My Pi platform support**: `comet init`, `comet update`, and `comet uninstall` now manage Comet and OpenSpec Skills in OMP's native project or user directories, install always-active Rules, and bridge project write checks through OMP Hooks; `--platform omp` is accepted as an alias for `oh-my-pi`.
+- **DeepSeek Harness platform support**: `comet init`, `comet update`, and `comet uninstall --platform dsh` now manage Comet Skills, Claude-shaped Classic OpenSpec Skills, Superpowers Skills, merged `AGENTS` instructions, and the dsh Hook bridge configuration in dsh's native project and `$DSH_HOME` roots.
 - **Semantic personal memory**: Comet now keeps reusable personal preferences, collaboration habits, and verified experience through a bounded review at stable successful workflow checkpoints, while skipping one-off activity, repository facts, and sensitive content.
 - **Shared memory Skill**: Classic, Native, Hotfix, and Tweak now use the same fixed first-party `comet-memory` Skill with Chinese and English assets selected from the project language.
 - **Project knowledge retrieval**: Ordinary `comet task` now contributes bounded, source-cited references from declared Native, Classic, and explicitly referenced archived Superpowers documents, with Local retrieval by default and an opt-in fixed Retrieval API v1 Remote provider.

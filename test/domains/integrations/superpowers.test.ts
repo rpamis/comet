@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { execFileSync } from 'child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import path from 'path';
 import os from 'os';
 
@@ -65,9 +65,10 @@ describe('superpowers', () => {
       expect(SKILLS_AGENT_MAP['zcode']).toBeNull();
       expect(SKILLS_AGENT_MAP['mimocode']).toBeNull();
       expect(SKILLS_AGENT_MAP['oh-my-pi']).toBeNull();
+      expect(SKILLS_AGENT_MAP['dsh']).toBeNull();
     });
 
-    it('has entries for all 35 platforms', async () => {
+    it('has entries for all 36 platforms', async () => {
       const { SKILLS_AGENT_MAP } = await import('../../../domains/integrations/superpowers.js');
       const platformIds = [
         'claude',
@@ -105,11 +106,12 @@ describe('superpowers', () => {
         'trae-cn',
         'zcode',
         'mimocode',
+        'dsh',
       ];
       for (const id of platformIds) {
         expect(SKILLS_AGENT_MAP).toHaveProperty(id);
       }
-      expect(Object.keys(SKILLS_AGENT_MAP)).toHaveLength(35);
+      expect(Object.keys(SKILLS_AGENT_MAP)).toHaveLength(36);
     });
   });
 
@@ -207,6 +209,16 @@ describe('superpowers', () => {
       });
     });
 
+    it('builds a staging command for dsh so skills can be copied into .dsh', async () => {
+      const { buildDshSuperpowersStageCommand } =
+        await import('../../../domains/integrations/superpowers.js');
+
+      expect(buildDshSuperpowersStageCommand()).toEqual({
+        command: process.platform === 'win32' ? 'npx.cmd' : 'npx',
+        args: ['skills', 'add', 'obra/superpowers', '-y', '--agent', 'claude-code'],
+      });
+    });
+
     it('installs ZCode superpowers via the claude-code staging flow', async () => {
       mockedExecFileSync.mockImplementation((command: unknown, args?: unknown, opts?: unknown) => {
         const cmd = String(command);
@@ -287,6 +299,53 @@ describe('superpowers', () => {
           installSuperpowersForPlatforms(projectPath, 'project', ['oh-my-pi']),
         ).resolves.toBe('installed');
         expect(existsSync(path.join(projectPath, '.omp', 'skills', 'brainstorming'))).toBe(true);
+      } finally {
+        rmSync(projectPath, { recursive: true, force: true });
+      }
+    });
+
+    it('installs dsh superpowers into the native .dsh skills root', async () => {
+      mockedExecFileSync.mockImplementation(
+        (_command: unknown, _args?: unknown, opts?: unknown) => {
+          const cwd = (opts as { cwd?: string } | undefined)?.cwd ?? os.tmpdir();
+          mkdirSync(path.join(cwd, '.claude', 'skills', 'brainstorming'), { recursive: true });
+          return Buffer.from('installed');
+        },
+      );
+      const projectPath = mkdtempSync(path.join(os.tmpdir(), 'comet-dsh-superpowers-'));
+      try {
+        const { installSuperpowersForPlatforms } =
+          await import('../../../domains/integrations/superpowers.js');
+
+        await expect(installSuperpowersForPlatforms(projectPath, 'project', ['dsh'])).resolves.toBe(
+          'installed',
+        );
+        expect(existsSync(path.join(projectPath, '.dsh', 'skills', 'brainstorming'))).toBe(true);
+      } finally {
+        rmSync(projectPath, { recursive: true, force: true });
+      }
+    });
+
+    it('does not overwrite a user-owned dsh Superpowers name', async () => {
+      mockedExecFileSync.mockImplementation(
+        (_command: unknown, _args?: unknown, opts?: unknown) => {
+          const cwd = (opts as { cwd?: string } | undefined)?.cwd ?? os.tmpdir();
+          mkdirSync(path.join(cwd, '.claude', 'skills', 'brainstorming'), { recursive: true });
+          return Buffer.from('installed');
+        },
+      );
+      const projectPath = mkdtempSync(path.join(os.tmpdir(), 'comet-dsh-superpowers-owned-'));
+      try {
+        const userSkill = path.join(projectPath, '.dsh', 'skills', 'brainstorming', 'SKILL.md');
+        mkdirSync(path.dirname(userSkill), { recursive: true });
+        writeFileSync(userSkill, '# User skill\n', 'utf8');
+
+        const { installSuperpowersForPlatforms } =
+          await import('../../../domains/integrations/superpowers.js');
+        await expect(installSuperpowersForPlatforms(projectPath, 'project', ['dsh'])).resolves.toBe(
+          'installed',
+        );
+        expect(readFileSync(userSkill, 'utf8')).toBe('# User skill\n');
       } finally {
         rmSync(projectPath, { recursive: true, force: true });
       }

@@ -10,6 +10,7 @@ import {
   ensureProtectedProjectDirectory,
   inspectProtectedProjectPath,
 } from '../workflow-contract/protected-project-path.js';
+import { addDshOwnedPaths, dshRootPath, readDshOwnedPaths } from '../skill/dsh-adapter.js';
 
 import type { InstallScope } from '../../platform/install/types.js';
 
@@ -314,6 +315,7 @@ async function mergeGeneratedToolDirectories(
   toolIds: readonly string[],
   mirrorOpenCodePlatformIds: readonly string[],
   mirrorCodeBuddyPlatformIds: readonly string[],
+  mirrorClaudePlatformIds: readonly string[],
   projectMutationGuard?: ProjectMutationGuard,
 ): Promise<void> {
   for (const copy of copies) {
@@ -361,6 +363,35 @@ async function mergeGeneratedToolDirectories(
             path.join(projectPath, getPlatformSkillsDir(platform, 'project')),
             projectMutationGuard,
           );
+        }
+      }
+    }
+  }
+
+  if (toolIds.includes('claude') && mirrorClaudePlatformIds.length > 0) {
+    const claudePlatform = PLATFORMS.find((platform) => platform.id === 'claude');
+    if (claudePlatform) {
+      const source = path.join(stagingProject, claudePlatform.skillsDir);
+      if (fs.existsSync(source)) {
+        for (const platformId of new Set(mirrorClaudePlatformIds)) {
+          const platform = PLATFORMS.find((candidate) => candidate.id === platformId);
+          if (!platform || platform.id === 'claude') continue;
+          if (platform.id === 'dsh') {
+            await copyDshOpenSpecPaths(
+              stagingProject,
+              projectPath,
+              'project',
+              projectMutationGuard,
+            );
+          } else {
+            await copyGeneratedToolDirectory(
+              stagingProject,
+              source,
+              projectPath,
+              path.join(projectPath, getPlatformSkillsDir(platform, 'project')),
+              projectMutationGuard,
+            );
+          }
         }
       }
     }
@@ -703,6 +734,49 @@ function copyOpenSpecPaths(srcDir: string, destDir: string): void {
   }
 }
 
+async function copyDshOpenSpecPaths(
+  sourceBaseDir: string,
+  destinationBaseDir: string,
+  scope: InstallScope,
+  projectMutationGuard?: ProjectMutationGuard,
+): Promise<void> {
+  const dshPlatform = PLATFORMS.find((platform) => platform.id === 'dsh');
+  const claudePlatform = PLATFORMS.find((platform) => platform.id === 'claude');
+  if (!dshPlatform || !claudePlatform) return;
+
+  const sourceRoot = path.join(sourceBaseDir, getPlatformSkillsDir(claudePlatform, scope));
+  const destinationRoot = dshRootPath(destinationBaseDir, dshPlatform, scope);
+  const owned = await readDshOwnedPaths(destinationBaseDir, dshPlatform, scope, 'openspec');
+  const copied: string[] = [];
+
+  for (const directory of ['skills', 'commands']) {
+    const sourceDirectory = path.join(sourceRoot, directory);
+    if (!fs.existsSync(sourceDirectory)) continue;
+    for (const entry of fs.readdirSync(sourceDirectory, { withFileTypes: true })) {
+      const relative = `${directory}/${entry.name}`;
+      const source = path.join(sourceDirectory, entry.name);
+      const destination = path.join(destinationRoot, directory, entry.name);
+      if (fs.existsSync(destination) && !owned.has(relative)) continue;
+
+      if (scope === 'project') {
+        await copyGeneratedToolDirectory(
+          sourceBaseDir,
+          source,
+          destinationBaseDir,
+          destination,
+          projectMutationGuard,
+        );
+      } else {
+        fs.mkdirSync(path.dirname(destination), { recursive: true });
+        fs.cpSync(source, destination, { recursive: true, force: true });
+      }
+      copied.push(relative);
+    }
+  }
+
+  await addDshOwnedPaths(destinationBaseDir, dshPlatform, scope, 'openspec', copied);
+}
+
 async function installOpenSpec(
   projectPath: string,
   toolIds: string[],
@@ -713,6 +787,8 @@ async function installOpenSpec(
   projectMutationGuard?: ProjectMutationGuard,
   failureObserver?: OpenSpecFailureObserver,
   mirrorCodeBuddyPlatformIds: string[] = [],
+  mirrorClaudePlatformIds: string[] = [],
+  copyClaudePlatform = mirrorClaudePlatformIds.length === 0,
 ): Promise<'installed' | 'failed' | 'skipped'> {
   if (scope === 'project') {
     try {
@@ -741,7 +817,9 @@ async function installOpenSpec(
   let configHome: string | undefined;
   let configBackup: ConfigBackup | null = null;
   let stagingProject: string | undefined;
+  let stagingGlobal: string | undefined;
   let generatedToolCopies: GeneratedToolCopy[] | undefined;
+  const dshOnlyClaudeMirror = mirrorClaudePlatformIds.length > 0 && !copyClaudePlatform;
   try {
     const openspecEnv = createOpenSpecAllWorkflowsEnv();
     configHome = openspecEnv.configHome;
@@ -764,6 +842,15 @@ async function installOpenSpec(
           projectPath,
           toolIds,
         );
+        if (dshOnlyClaudeMirror) {
+          const claudePlatform = PLATFORMS.find((platform) => platform.id === 'claude');
+          if (claudePlatform) {
+            const claudeDestination = path.resolve(projectPath, claudePlatform.skillsDir);
+            generatedToolCopies = generatedToolCopies.filter(
+              (copy) => path.resolve(copy.destination) !== claudeDestination,
+            );
+          }
+        }
       }
       await assertProjectMutationAllowed(projectMutationGuard, 'before');
       const artifactBase = artifactLayout === 'docs' ? path.join(projectPath, 'docs') : projectPath;
@@ -790,12 +877,18 @@ async function installOpenSpec(
           toolIds,
           mirrorOpenCodePlatformIds,
           mirrorCodeBuddyPlatformIds,
+          mirrorClaudePlatformIds,
           projectMutationGuard,
         );
       }
       await assertProjectMutationAllowed(projectMutationGuard, 'after-external', true);
     } else {
-      await runOpenSpecInit(os.homedir(), toolIds, openspecEnv.env);
+      if (dshOnlyClaudeMirror) {
+        stagingGlobal = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-global-tools-'));
+        await runOpenSpecInit(stagingGlobal, toolIds, openspecEnv.env, undefined, false, false);
+      } else {
+        await runOpenSpecInit(os.homedir(), toolIds, openspecEnv.env);
+      }
     }
 
     const openspecWritesGlobal = scope === 'global';
@@ -827,6 +920,23 @@ async function installOpenSpec(
       }
     }
 
+    if (scope === 'global' && mirrorClaudePlatformIds.length > 0 && toolIds.includes('claude')) {
+      const dshPlatformIds = mirrorClaudePlatformIds.filter((platformId) => platformId === 'dsh');
+      if (dshPlatformIds.length > 0) {
+        await copyDshOpenSpecPaths(stagingGlobal ?? openspecTargetBase, openspecTargetBase, scope);
+      }
+      const otherPlatformIds = mirrorClaudePlatformIds.filter((platformId) => platformId !== 'dsh');
+      if (otherPlatformIds.length > 0) {
+        mirrorOpenCodeCompatibleOpenSpecPathsFromSource(
+          stagingGlobal ?? openspecTargetBase,
+          scope,
+          'claude',
+          otherPlatformIds,
+          openspecTargetBase,
+        );
+      }
+    }
+
     if (openspecWritesGlobal && toolIds.includes('opencode')) {
       migrateOpenCodeOpenSpecPaths(os.homedir());
     }
@@ -848,6 +958,9 @@ async function installOpenSpec(
     if (stagingProject) {
       fs.rmSync(stagingProject, { recursive: true, force: true });
     }
+    if (stagingGlobal) {
+      fs.rmSync(stagingGlobal, { recursive: true, force: true });
+    }
   }
 }
 
@@ -856,6 +969,7 @@ function mirrorOpenCodeCompatibleOpenSpecPathsFromSource(
   scope: InstallScope,
   sourcePlatformId: string,
   platformIds: string[],
+  destinationBaseDir = baseDir,
 ): void {
   const sourcePlatform = PLATFORMS.find((platform) => platform.id === sourcePlatformId);
   if (!sourcePlatform) return;
@@ -864,7 +978,7 @@ function mirrorOpenCodeCompatibleOpenSpecPathsFromSource(
   for (const platformId of new Set(platformIds)) {
     const platform = PLATFORMS.find((candidate) => candidate.id === platformId);
     if (!platform || platform.id === sourcePlatformId) continue;
-    const destDir = path.join(baseDir, getPlatformSkillsDir(platform, scope));
+    const destDir = path.join(destinationBaseDir, getPlatformSkillsDir(platform, scope));
     copyOpenSpecPaths(srcDir, destDir);
   }
 }

@@ -4,7 +4,9 @@ import path from 'path';
 import { cp, mkdir, mkdtemp, readdir, rm } from 'fs/promises';
 
 import { printCommandErrorDetails } from '../../platform/process/command-error.js';
+import { fileExists } from '../../platform/fs/file-system.js';
 import { getPlatformSkillsDir, PLATFORMS } from '../../platform/install/platforms.js';
+import { addDshOwnedPaths, dshRootPath, readDshOwnedPaths } from '../skill/dsh-adapter.js';
 import type { InstallScope } from '../../platform/install/types.js';
 
 const SKILLS_AGENT_MAP: Record<string, string | null> = {
@@ -38,6 +40,9 @@ const SKILLS_AGENT_MAP: Record<string, string | null> = {
   // The Skills CLI does not yet ship an Oh My Pi target. Stage through the
   // portable Claude layout and copy into OMP's native skills root.
   'oh-my-pi': null,
+  // dsh has a native Skill root but no Skills CLI agent id. Stage through the
+  // portable Claude layout and copy into .dsh/skills.
+  dsh: null,
   qoder: 'qoder',
   antigravity: 'antigravity',
   // antigravity2 reuses the antigravity skills CLI agent (OpenSpec tool id is shared)
@@ -59,6 +64,7 @@ const ZCODE_PLATFORM_ID = 'zcode';
 const MIMOCODE_PLATFORM_ID = 'mimocode';
 const WORKBUDDY_PLATFORM_ID = 'workbuddy';
 const OH_MY_PI_PLATFORM_ID = 'oh-my-pi';
+const DSH_PLATFORM_ID = 'dsh';
 const STAGE_AGENT = 'claude-code';
 
 function buildSuperpowersInstallCommand(
@@ -126,6 +132,13 @@ function buildOhMyPiSuperpowersStageCommand(): { command: string; args: string[]
   };
 }
 
+function buildDshSuperpowersStageCommand(): { command: string; args: string[] } {
+  return {
+    command: getNpxExecutable(),
+    args: ['skills', 'add', 'obra/superpowers', '-y', '--agent', STAGE_AGENT],
+  };
+}
+
 function getNpxExecutable(platform: NodeJS.Platform = process.platform): string {
   return platform === 'win32' ? 'npx.cmd' : 'npx';
 }
@@ -140,6 +153,29 @@ async function copyDirectoryContents(srcDir: string, destDir: string): Promise<v
       dereference: true,
     });
   }
+}
+
+async function copyDshSuperpowersContents(
+  srcDir: string,
+  baseDir: string,
+  platform: (typeof PLATFORMS)[number],
+  scope: InstallScope,
+): Promise<void> {
+  const destDir = path.join(dshRootPath(baseDir, platform, scope), 'skills');
+  const owned = await readDshOwnedPaths(baseDir, platform, scope, 'superpowers');
+  const copied: string[] = [];
+  for (const entry of await readdir(srcDir, { withFileTypes: true })) {
+    const relative = `skills/${entry.name}`;
+    const destination = path.join(destDir, entry.name);
+    if ((await fileExists(destination)) && !owned.has(relative)) continue;
+    await cp(path.join(srcDir, entry.name), destination, {
+      recursive: true,
+      force: true,
+      dereference: true,
+    });
+    copied.push(relative);
+  }
+  await addDshOwnedPaths(baseDir, platform, scope, 'superpowers', copied);
 }
 
 async function installSuperpowersForLingma(
@@ -207,6 +243,19 @@ async function installSuperpowersForOhMyPi(
   );
 }
 
+async function installSuperpowersForDsh(
+  projectPath: string,
+  scope: InstallScope,
+): Promise<'installed' | 'failed'> {
+  return stageAndCopySuperpowers(
+    DSH_PLATFORM_ID,
+    buildDshSuperpowersStageCommand(),
+    projectPath,
+    scope,
+    'dsh',
+  );
+}
+
 /**
  * Shared staging flow for platforms whose agent is not supported by the skills CLI
  * (e.g. Lingma, WorkBuddy, Oh My Pi, ZCode, MimoCode). Superpowers are staged into a temp dir via
@@ -236,8 +285,12 @@ async function stageAndCopySuperpowers(
 
     const stagedSkillsDir = path.join(tempDir, '.claude', 'skills');
     const baseDir = scope === 'global' ? os.homedir() : projectPath;
-    const platformSkillsDir = path.join(baseDir, getPlatformSkillsDir(platform, scope), 'skills');
-    await copyDirectoryContents(stagedSkillsDir, platformSkillsDir);
+    if (platformId === DSH_PLATFORM_ID) {
+      await copyDshSuperpowersContents(stagedSkillsDir, baseDir, platform, scope);
+    } else {
+      const platformSkillsDir = path.join(baseDir, getPlatformSkillsDir(platform, scope), 'skills');
+      await copyDirectoryContents(stagedSkillsDir, platformSkillsDir);
+    }
     return 'installed';
   } catch (error) {
     console.error(`    ${label} Superpowers install failed: ${(error as Error).message}`);
@@ -269,6 +322,7 @@ async function installSuperpowersForPlatforms(
   const shouldInstallMimoCode = platformIds.includes(MIMOCODE_PLATFORM_ID);
   const shouldInstallWorkBuddy = platformIds.includes(WORKBUDDY_PLATFORM_ID);
   const shouldInstallOhMyPi = platformIds.includes(OH_MY_PI_PLATFORM_ID);
+  const shouldInstallDsh = platformIds.includes(DSH_PLATFORM_ID);
   let failed = false;
 
   if (skillsCliPlatformIds.length > 0) {
@@ -313,6 +367,11 @@ async function installSuperpowersForPlatforms(
     if (ohMyPiStatus === 'failed') failed = true;
   }
 
+  if (shouldInstallDsh) {
+    const dshStatus = await installSuperpowersForDsh(projectPath, scope);
+    if (dshStatus === 'failed') failed = true;
+  }
+
   return failed ? 'failed' : 'installed';
 }
 
@@ -324,5 +383,6 @@ export {
   buildMimoCodeSuperpowersStageCommand,
   buildWorkBuddySuperpowersStageCommand,
   buildOhMyPiSuperpowersStageCommand,
+  buildDshSuperpowersStageCommand,
   SKILLS_AGENT_MAP,
 };

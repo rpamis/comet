@@ -718,6 +718,7 @@ export async function initCommand(
     ['zcode', 'mimocode'].includes(id),
   );
   const mirrorCodeBuddyPlatformIds = selectedPlatformIdsForOs.filter((id) => id === 'workbuddy');
+  const mirrorClaudePlatformIds = selectedPlatformIdsForOs.filter((id) => id === 'dsh');
 
   const selectedNpmDeps = await selectNpmDeps(
     projectPath,
@@ -774,7 +775,7 @@ export async function initCommand(
       }`,
     );
     try {
-      osGlobalStatus = await installOpenSpec(
+      const openSpecArgs = [
         projectPath,
         osToolIds,
         scope,
@@ -782,11 +783,18 @@ export async function initCommand(
         mirrorOpenCodePlatformIds,
         scope === 'project' ? workflowDecision?.classicArtifactLayout : 'legacy',
         assertClassicProjectMutationAllowed,
-        (error) => {
+        (error: Error) => {
           osFailureReason = error.message;
         },
         mirrorCodeBuddyPlatformIds,
-      );
+      ] as const;
+      osGlobalStatus = await (mirrorClaudePlatformIds.length > 0
+        ? installOpenSpec(
+            ...openSpecArgs,
+            mirrorClaudePlatformIds,
+            selectedPlatformIdsForOs.includes('claude'),
+          )
+        : installOpenSpec(...openSpecArgs));
       if (osGlobalStatus === 'installed' && requiresClassicArtifactRoot) {
         await assertClassicProjectMutationAllowed?.();
         await assertClassicOpenSpecRootHealthy(
@@ -943,6 +951,9 @@ export async function initCommand(
         if (status === 'installed') {
           if (scope === 'project') projectRouterInstalled = true;
           log(`  Comet hooks -> ${platform.name}: ${t(lang, 'hooksInstalled')}`);
+          if (reason) {
+            log(`  Comet hooks -> ${platform.name}: ${reason}`);
+          }
           if (cleanupFailed > 0) {
             cmStatus = 'failed';
             platformFailures.push({

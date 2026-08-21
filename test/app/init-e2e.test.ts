@@ -79,9 +79,13 @@ function mockExternalSuccess(options: { openSpecConfig?: 'healthy' | 'missing' |
       cmdArgs.includes('claude-code')
     ) {
       const cwd = (opts as { cwd?: string } | undefined)?.cwd ?? os.tmpdir();
-      const stagedSkillsDir = path.join(cwd, '.claude', 'skills', 'comet');
+      const stagedSkill = cmdArgs.includes('obra/superpowers') ? 'brainstorming' : 'comet';
+      const stagedSkillsDir = path.join(cwd, '.claude', 'skills', stagedSkill);
       mkdirSync(stagedSkillsDir, { recursive: true });
-      writeFileSync(path.join(stagedSkillsDir, 'SKILL.md'), '# Lingma Comet\n');
+      writeFileSync(
+        path.join(stagedSkillsDir, 'SKILL.md'),
+        stagedSkill === 'brainstorming' ? '# Superpowers\n' : '# Lingma Comet\n',
+      );
       return Buffer.from('installed');
     }
 
@@ -2848,6 +2852,45 @@ describe('comet init E2E', () => {
       await expect(
         fs.access(path.join(fakeHome, '.zcode', 'rules', 'comet-workflow-guard.en.md')),
       ).rejects.toThrow();
+    },
+    INIT_E2E_TIMEOUT_MS,
+  );
+
+  it(
+    'installs dsh Classic dependencies and mirrors Claude-shaped OpenSpec Skills',
+    async () => {
+      mockExternalSuccess();
+      const fakeHome = path.join(tmpDir, 'dsh-classic-init-home');
+      await fs.mkdir(fakeHome, { recursive: true });
+      vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+
+      const { initCommand } = await import('../../app/commands/init.js');
+      const result = await captureJsonOutput(() =>
+        initCommand(tmpDir, {
+          yes: true,
+          json: true,
+          scope: 'project',
+          platform: 'dsh',
+          workflow: 'classic',
+          language: 'en',
+        }),
+      );
+
+      expect(result.selectedPlatforms).toEqual(['dsh']);
+      await expect(
+        fs.access(path.join(tmpDir, '.dsh', 'skills', 'openspec-propose', 'SKILL.md')),
+      ).resolves.toBeUndefined();
+      await expect(
+        fs.access(path.join(tmpDir, '.dsh', 'skills', 'brainstorming', 'SKILL.md')),
+      ).resolves.toBeUndefined();
+      await expect(fs.access(path.join(tmpDir, 'AGENTS.local.md'))).resolves.toBeUndefined();
+      await expect(fs.access(path.join(tmpDir, '.dsh', 'hooks.json'))).resolves.toBeUndefined();
+      await expect(
+        fs.access(path.join(tmpDir, '.dsh', 'cordis.patch.yml')),
+      ).resolves.toBeUndefined();
+      await expect(fs.access(path.join(tmpDir, '.claude'))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
     },
     INIT_E2E_TIMEOUT_MS,
   );

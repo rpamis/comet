@@ -7,6 +7,7 @@ import { loadBundle } from './load.js';
 import { compileBundleForPlatform } from './platform.js';
 import { listBundlePlatformTargets } from './bundle-platform.js';
 import { computeRuleDestPath } from '../skill/platform-install.js';
+import { dshInstructionPath } from '../skill/dsh-adapter.js';
 
 interface CurrentManifest {
   version: string;
@@ -229,7 +230,22 @@ export async function runCometBundleCompatibilityBenchmark(options: {
         locale: 'en',
       });
       for (const relative of current.rules ?? []) {
-        if (target.layout.rulesRoot && target.platform.rulesFormat) {
+        if (target.platform.rulesFormat === 'dsh') {
+          const destination = dshInstructionPath(
+            target.layout.baseDir,
+            target.platform,
+            target.layout.scope,
+          );
+          const actual = report.files.find(
+            (file) => file.kind === 'rule' && path.normalize(file.destination) === destination,
+          );
+          record(
+            rule,
+            Boolean(actual) &&
+              actual!.operation?.type === 'rule' &&
+              actual!.operation.format === target.platform.rulesFormat,
+          );
+        } else if (target.layout.rulesRoot && target.platform.rulesFormat) {
           const destination = computeRuleDestPath(
             target.layout.rulesRoot,
             path.basename(relative),

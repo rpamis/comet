@@ -55,6 +55,36 @@ describe('detect', () => {
   });
 
   describe('platform global skills directories', () => {
+    it('declares DeepSeek Harness roots and Claude-compatible Classic sources', () => {
+      const dsh = PLATFORMS.find((platform) => platform.id === 'dsh');
+
+      expect(dsh).toBeDefined();
+      expect(dsh?.skillsDir).toBe('.dsh');
+      expect(dsh?.globalSkillsDir).toBe('.dsh');
+      expect(dsh?.openspecToolId).toBe('claude');
+      expect(dsh?.rulesFormat).toBe('dsh');
+      expect(dsh?.supportsHooks).toBe(true);
+      expect(dsh?.supportsGlobalHooks).toBe(true);
+      expect(dsh?.hookFormat).toBe('dsh');
+      expect(dsh?.hookConfigFile).toBe('hooks.json');
+      expect(getPlatformSkillsDir(dsh!, 'project')).toBe('.dsh');
+      expect(getPlatformSkillsDir(dsh!, 'global')).toBe('.dsh');
+    });
+
+    it('uses DSH_HOME for the global dsh Skill root', async () => {
+      const dsh = PLATFORMS.find((platform) => platform.id === 'dsh')!;
+      const dshHome = path.join(tmpDir, 'custom-dsh-home');
+      vi.stubEnv('DSH_HOME', dshHome);
+
+      const globalSkillsRoot = path.join(
+        os.homedir(),
+        getPlatformSkillsDir(dsh, 'global'),
+        'skills',
+      );
+
+      expect(path.resolve(globalSkillsRoot)).toBe(path.join(dshHome, 'skills'));
+    });
+
     it('declares Codex canonical, compatibility, detection, and rules roots separately', () => {
       const codex = PLATFORMS.find((platform) => platform.id === 'codex');
 

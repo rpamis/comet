@@ -9,6 +9,12 @@ import type {
 import { copyFile, ensureDir, fileExists, writeFile } from '../../platform/fs/file-system.js';
 import { computeRuleDestPath, formatRuleContent } from '../skill/platform-install.js';
 import {
+  dshInstructionPath,
+  mergeDshInstruction,
+  reconcileDshCordisPatch,
+  removeDshCordisPatch,
+} from '../skill/dsh-adapter.js';
+import {
   getPlatformConfigDir,
   getPlatformSkillsDir,
   PLATFORMS,
@@ -59,7 +65,9 @@ export function listBundlePlatformTargets(options: {
   return PLATFORMS.map((platform) => {
     const platformRoot = path.join(baseDir, getPlatformSkillsDir(platform, options.scope));
     const capabilities = new Set<BundleCapability>(['skills', 'scripts', 'references', 'assets']);
-    if (platform.rulesDir && platform.rulesFormat) capabilities.add('rules');
+    if (platform.rulesFormat === 'dsh' || (platform.rulesDir && platform.rulesFormat)) {
+      capabilities.add('rules');
+    }
     // OMP's Hook surface is an in-process TypeScript extension module. The
     // Comet workflow Router has a dedicated bridge, while portable Bundle
     // hook compilation remains limited to command-based host formats.
@@ -92,7 +100,28 @@ export function planBundleRule(
   rule: BundleCompilerIr['rules'][number],
 ): PlatformInstallFile[] {
   const format = target.platform.rulesFormat;
-  if (!target.layout.rulesRoot || !format) return [];
+  if (!format) return [];
+  if (format === 'dsh') {
+    if (rule.mode === 'matched') return [];
+    return [
+      {
+        source: rule.source,
+        destination: dshInstructionPath(
+          target.layout.baseDir,
+          target.platform,
+          target.layout.scope,
+        ),
+        kind: 'rule',
+        operation: {
+          type: 'rule',
+          format,
+          mode: rule.mode,
+          ...(rule.match ? { match: rule.match } : {}),
+        },
+      },
+    ];
+  }
+  if (!target.layout.rulesRoot) return [];
   if (rule.mode === 'matched' && format === 'md') return [];
   return [
     {
@@ -284,6 +313,7 @@ async function applyHookInstallFile(file: PlatformInstallFile): Promise<void> {
 
   switch (operation.format) {
     case 'claude-code':
+    case 'dsh':
     case 'qwen':
     case 'qoder':
     case 'codebuddy': {
@@ -396,6 +426,30 @@ async function applyInstallFile(
   return 'written';
 }
 
+async function applyDshRuleFiles(
+  target: BundlePlatformTarget,
+  files: readonly PlatformInstallFile[],
+  overwrite: boolean,
+): Promise<'written' | 'skipped'> {
+  const content = (
+    await Promise.all(
+      files.map(async (file) => {
+        const raw = await fs.readFile(file.source, 'utf8');
+        return formatRuleContent(raw, path.basename(file.source), 'dsh');
+      }),
+    )
+  ).join('\n\n');
+  const result = await mergeDshInstruction(
+    target.layout.baseDir,
+    target.platform,
+    target.layout.scope,
+    content,
+    overwrite,
+  );
+  if (result.failed > 0) throw new Error('Failed to install dsh Bundle Rule');
+  return result.copied > 0 ? 'written' : 'skipped';
+}
+
 export async function applyPlatformInstallPlan(options: {
   target: BundlePlatformTarget;
   files: PlatformInstallFile[];
@@ -403,10 +457,43 @@ export async function applyPlatformInstallPlan(options: {
 }): Promise<{ written: string[]; skipped: string[] }> {
   const written: string[] = [];
   const skipped: string[] = [];
-  for (const file of options.files) {
-    const result = await applyInstallFile(file, options.overwrite);
-    if (result === 'written') written.push(file.destination);
-    else skipped.push(file.destination);
+  const dshRuleFiles =
+    options.target.platform.rulesFormat === 'dsh'
+      ? options.files.filter((file) => file.operation?.type === 'rule')
+      : [];
+  if (dshRuleFiles.length > 0) {
+    const result = await applyDshRuleFiles(options.target, dshRuleFiles, options.overwrite);
+    for (const file of dshRuleFiles) {
+      (result === 'written' ? written : skipped).push(file.destination);
+    }
+  }
+  const dshHookFiles =
+    options.target.platform.hookFormat === 'dsh'
+      ? options.files.filter((file) => file.operation?.type === 'hook')
+      : [];
+  if (dshHookFiles.length > 0) {
+    await reconcileDshCordisPatch(
+      options.target.layout.baseDir,
+      options.target.platform,
+      options.target.layout.scope,
+    );
+  }
+  try {
+    for (const file of options.files) {
+      if (dshRuleFiles.includes(file)) continue;
+      const result = await applyInstallFile(file, options.overwrite);
+      if (result === 'written') written.push(file.destination);
+      else skipped.push(file.destination);
+    }
+  } catch (error) {
+    if (dshHookFiles.length > 0) {
+      await removeDshCordisPatch(
+        options.target.layout.baseDir,
+        options.target.platform,
+        options.target.layout.scope,
+      );
+    }
+    throw error;
   }
   return { written, skipped };
 }

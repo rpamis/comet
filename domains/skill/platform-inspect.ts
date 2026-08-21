@@ -19,6 +19,7 @@ import {
 } from './platform-install.js';
 import { readJsonObjectFile } from './json-object.js';
 import type { InitWorkflowSelection } from '../comet-entry/types.js';
+import { dshInstructionPath, hasDshCordisPatch } from './dsh-adapter.js';
 
 export interface HookInspectionResult {
   present: boolean;
@@ -26,6 +27,8 @@ export interface HookInspectionResult {
   managedPresent?: boolean;
   legacyPresent?: boolean;
   duplicatePresent?: boolean;
+  /** dsh has the config/patch, but the active profile still needs the bridge loaded. */
+  activationRequired?: boolean;
   error?: string;
 }
 
@@ -56,6 +59,9 @@ export async function getPlatformRuleDestinations(
   scope: InstallScope,
   _workflowSelection: InitWorkflowSelection = 'classic',
 ): Promise<string[]> {
+  if (platform.rulesFormat === 'dsh') {
+    return [dshInstructionPath(baseDir, platform, scope)];
+  }
   if (!platform.rulesDir || !platform.rulesFormat) return [];
 
   const manifest = await readManifest();
@@ -76,6 +82,7 @@ export function getLegacyPlatformRuleDestinations(
   platform: Platform,
   scope: InstallScope,
 ): string[] {
+  if (platform.rulesFormat === 'dsh') return [];
   if (!platform.rulesDir || !platform.rulesFormat) return [];
   const rulesDestDir = path.join(getRulesBaseDir(baseDir, platform, scope), platform.rulesDir);
   return LEGACY_RULE_FILE_NAMES.map((fileName) =>
@@ -419,6 +426,28 @@ export async function inspectCometHooksForPlatform(
         }
       }
       break;
+    case 'dsh': {
+      inspection = await inspectSingleHookJson(
+        path.join(platformBase, platform.hookConfigFile ?? 'hooks.json'),
+        expectedHooks,
+        (config) => collectGroupedCommands(config, 'PreToolUse'),
+        (config, expected) => countGroupedHookMatches(config, 'PreToolUse', expected),
+      );
+      if (inspection.present && !(await hasDshCordisPatch(baseDir, platform, scope))) {
+        inspection = {
+          ...inspection,
+          present: false,
+          managedPresent: true,
+          error: 'dsh Cordis patch is missing the Comet Hook bridge row',
+        };
+      } else if (inspection.present) {
+        inspection = {
+          ...inspection,
+          activationRequired: true,
+        };
+      }
+      break;
+    }
     case 'qwen':
     case 'qoder':
     case 'codebuddy':
