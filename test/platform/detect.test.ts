@@ -13,6 +13,7 @@ import {
   PLATFORMS,
   getPlatformSkillsDir,
   getPlatformSkillsDirs,
+  resolveOpenSpecMirrorPlatformIds,
   type Platform,
 } from '../../platform/install/platforms.js';
 
@@ -72,6 +73,24 @@ describe('detect', () => {
       expect(getPlatformSkillsDirs(codex!, 'global')).toEqual(['.agents', '.codex']);
     });
 
+    it('declares Grok Skills, rules, and hooks under the native .grok root', () => {
+      const grok = PLATFORMS.find((platform) => platform.id === 'grok');
+
+      expect(grok).toBeDefined();
+      expect(grok?.skillsDir).toBe('.grok');
+      expect(grok?.globalSkillsDir).toBe('.grok');
+      expect(grok?.detectionPaths).toEqual(['.grok']);
+      expect(grok?.openspecToolId).toBe('codex');
+      expect(grok?.openspecMirrorFrom).toBe('codex');
+      expect(grok?.rulesDir).toBe('rules');
+      expect(grok?.hookFormat).toBe('claude-code');
+      expect(grok?.hookConfigFile).toBe('hooks/comet.json');
+      expect(grok?.hookMatcher).toBe('Write|Edit|write|search_replace');
+      expect(getPlatformSkillsDir(grok!, 'project')).toBe('.grok');
+      expect(getPlatformSkillsDir(grok!, 'global')).toBe('.grok');
+      expect(resolveOpenSpecMirrorPlatformIds(['grok', 'codex', 'claude'])).toEqual(['grok']);
+    });
+
     it('declares Kimi Code global skills under the user .kimi-code directory', () => {
       const kimicode = PLATFORMS.find((platform) => platform.id === 'kimicode');
 
@@ -96,6 +115,7 @@ describe('detect', () => {
       expect(zcode?.skillsDir).toBe('.zcode');
       expect(zcode?.globalSkillsDir).toBe('.zcode');
       expect(zcode?.openspecToolId).toBe('opencode');
+      expect(zcode?.openspecMirrorFrom).toBe('opencode');
       expect(zcode?.rulesDir).toBe('rules');
       expect(zcode?.rulesFormat).toBe('md');
     });
@@ -175,6 +195,12 @@ describe('detect', () => {
       await fs.mkdir(path.join(tmpDir, '.github'));
       const detected = await detectPlatforms(tmpDir);
       expect(detected.has('github-copilot')).toBe(false);
+    });
+
+    it('detects grok from the .grok config directory', async () => {
+      await fs.mkdir(path.join(tmpDir, '.grok'));
+      const detected = await detectPlatforms(tmpDir);
+      expect(detected.has('grok')).toBe(true);
     });
 
     it('detects multiple platforms', async () => {

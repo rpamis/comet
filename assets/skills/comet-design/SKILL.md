@@ -206,7 +206,7 @@ If Spec Patches need to be written back, also edit the corresponding `specs/*/sp
 
 ### 3. Update Comet State
 
-First record the design_doc path. If Spec Patches wrote back delta spec (added or modified `specs/*/spec.md`), must regenerate handoff to update hash:
+First record the design_doc path. If Spec Patches wrote back delta spec (added, modified, or removed `specs/*/spec.md`), must regenerate handoff to update hash:
 
 ```bash
 # Record design_doc path
@@ -219,7 +219,7 @@ comet handoff <change-name> design --write
 comet guard <change-name> design --apply
 ```
 
-If there are no delta spec changes, skip the handoff regeneration step. The state file updates automatically; no manual editing of other fields needed.
+Adding, modifying, or removing a delta spec changes the handoff hash, so deleting a delta spec also requires regenerating the handoff; otherwise the recorded `handoff_hash` no longer matches the current OpenSpec artifacts and the design guard blocks progress. If there are no delta spec changes, skip the handoff regeneration step. The state file updates automatically; no manual editing of other fields needed.
 
 ### 3a. Optional Active Context Compaction
 

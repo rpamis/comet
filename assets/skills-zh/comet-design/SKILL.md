@@ -207,7 +207,7 @@ canonical_spec: openspec
 
 ### 3. 更新 Comet 状态
 
-先记录 design_doc 路径。如果 Spec Patch 回写了 delta spec（新增或修改了 `specs/*/spec.md`），必须重新生成 handoff 以更新 hash：
+先记录 design_doc 路径。如果 Spec Patch 回写了 delta spec（新增、修改或删除了 `specs/*/spec.md`），必须重新生成 handoff 以更新 hash：
 
 ```bash
 # 记录 design_doc 路径
@@ -220,7 +220,7 @@ comet handoff <change-name> design --write
 comet guard <change-name> design --apply
 ```
 
-如果没有 delta spec 变更，跳过 handoff 重新生成步骤。状态文件自动更新，无需手动编辑其他字段。
+delta spec 的增、改、删都会改变 handoff hash，因此删除 delta spec 同样必须重新生成 handoff；否则记录的 `handoff_hash` 与当前 OpenSpec artifacts 不再匹配，design guard 将拒绝推进。如果没有 delta spec 变更，跳过 handoff 重新生成步骤。状态文件自动更新，无需手动编辑其他字段。
 
 ### 3a. 可选主动式上下文压缩
 

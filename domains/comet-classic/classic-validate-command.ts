@@ -4,7 +4,7 @@ import type { ClassicCommandHandler } from './classic-cli.js';
 import { openSpecChangeNameError, resolveClassicChangeDirectory } from './classic-paths.js';
 import { classicProjectTargetExists, readClassicProjectFile } from './classic-protected-path.js';
 import { CLASSIC_WIRE_KEYS, RUN_WIRE_KEYS } from './classic-state.js';
-import { classicCommandProjectRoot, withClassicCommandContext } from './classic-command-context.js';
+import { classicCommandProjectRoot, withProjectContext } from './classic-command-context.js';
 
 const GREEN = '\u001b[32m';
 const RED = '\u001b[31m';
@@ -59,125 +59,121 @@ function text(value: unknown): string {
   return typeof value === 'object' ? JSON.stringify(value) : String(value);
 }
 
-export const classicValidateCommand: ClassicCommandHandler = async (args, options) =>
-  withClassicCommandContext(options, async () => {
-    const name = args[0];
-    const nameError = openSpecChangeNameError(name);
-    if (nameError) {
-      return {
-        exitCode: 1,
-        stderr: color(RED, `ERROR: ${nameError}`),
-      };
-    }
-
-    const projectRoot = classicCommandProjectRoot();
-    const { directory, label } = await resolveClassicChangeDirectory(name, projectRoot);
-    const yamlFile = path.join(directory, '.comet.yaml');
-    const lines = [`[VALIDATE] ${label}/.comet.yaml`];
-    let errors = 0;
-    let warnings = 0;
-    const fail = (message: string) => {
-      errors += 1;
-      lines.push(color(RED, `  FAIL: ${message}`));
+export const classicValidateCommand: ClassicCommandHandler = withProjectContext(async (args) => {
+  const name = args[0];
+  const nameError = openSpecChangeNameError(name);
+  if (nameError) {
+    return {
+      exitCode: 1,
+      stderr: color(RED, `ERROR: ${nameError}`),
     };
-    const warn = (message: string) => {
-      warnings += 1;
-      lines.push(color(YELLOW, `  WARN: ${message}`));
-    };
+  }
 
-    let source: string;
-    try {
-      source = await readClassicProjectFile(projectRoot, yamlFile, {
-        label: `Classic state ${label}/.comet.yaml`,
-      });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        fail('.comet.yaml does not exist');
-        lines.push(
-          '',
-          color(RED, `${errors} error(s), ${warnings} warning(s) — validation FAILED`),
-        );
-        return { exitCode: 1, stderr: lines.join('\n') };
-      }
-      throw error;
-    }
+  const projectRoot = classicCommandProjectRoot();
+  const { directory, label } = await resolveClassicChangeDirectory(name, projectRoot);
+  const yamlFile = path.join(directory, '.comet.yaml');
+  const lines = [`[VALIDATE] ${label}/.comet.yaml`];
+  let errors = 0;
+  let warnings = 0;
+  const fail = (message: string) => {
+    errors += 1;
+    lines.push(color(RED, `  FAIL: ${message}`));
+  };
+  const warn = (message: string) => {
+    warnings += 1;
+    lines.push(color(YELLOW, `  WARN: ${message}`));
+  };
 
-    const document = parseDocument(source);
-    if (document.errors.length > 0 || !isMap(document.contents)) {
-      for (const error of document.errors) fail(error.message);
-      if (!isMap(document.contents)) fail('document root must be a mapping');
+  let source: string;
+  try {
+    source = await readClassicProjectFile(projectRoot, yamlFile, {
+      label: `Classic state ${label}/.comet.yaml`,
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      fail('.comet.yaml does not exist');
       lines.push('', color(RED, `${errors} error(s), ${warnings} warning(s) — validation FAILED`));
       return { exitCode: 1, stderr: lines.join('\n') };
     }
-    const record = document.toJS() as Record<string, unknown>;
+    throw error;
+  }
 
-    for (const field of REQUIRED) {
-      if (!Object.prototype.hasOwnProperty.call(record, field)) {
-        fail(`missing required field '${field}'`);
-      }
-    }
-    for (const [field, values] of Object.entries(ENUMS)) {
-      if (!Object.prototype.hasOwnProperty.call(record, field)) continue;
-      const value = text(record[field]);
-      if (!value) {
-        if (field === 'auto_transition') {
-          fail(`${field}='' is not valid. Expected: ${values.join(' ')}`);
-        }
-        continue;
-      }
-      if (!values.includes(value)) {
-        fail(`${field}='${value}' is not valid. Expected: ${values.join(' ')}`);
-      }
-    }
-    if (Object.prototype.hasOwnProperty.call(record, 'bound_branch')) {
-      const value = record.bound_branch;
-      if (value !== null && typeof value !== 'string') {
-        fail(`bound_branch='${text(value)}' is not a string or null`);
-      }
-    }
-    if (Object.prototype.hasOwnProperty.call(record, 'verify_failures')) {
-      const value = record.verify_failures;
-      if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
-        fail(`verify_failures='${text(value)}' is not a non-negative integer`);
-      }
-    }
-    for (const field of ['design_doc', 'plan', 'handoff_context', 'verification_report'] as const) {
-      const value = text(record[field]);
-      if (!value) continue;
-      if (/^(?:[A-Za-z]:|[\\/]|~)/u.test(value) || value.split(/[\\/]/u).includes('..')) {
-        fail(`${field}='${value}' must be a relative repository path`);
-        continue;
-      }
-      try {
-        if (
-          !(await classicProjectTargetExists(projectRoot, path.resolve(projectRoot, value), {
-            label: `${field} artifact pointer`,
-            expected: 'file',
-          }))
-        ) {
-          fail(`${field}='${value}' does not exist on disk`);
-        }
-      } catch (error) {
-        fail(
-          `${field}='${value}' is unsafe: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
-    }
-    for (const field of ['handoff_hash'] as const) {
-      const value = text(record[field]);
-      if (value && !/^[a-f0-9]{64}$/u.test(value)) {
-        fail(`${field}='${value}' is not a sha256 hex digest`);
-      }
-    }
-    for (const field of Object.keys(record)) {
-      if (!KNOWN_KEYS.has(field)) warn(`unknown field '${field}' found`);
-    }
+  const document = parseDocument(source);
+  if (document.errors.length > 0 || !isMap(document.contents)) {
+    for (const error of document.errors) fail(error.message);
+    if (!isMap(document.contents)) fail('document root must be a mapping');
+    lines.push('', color(RED, `${errors} error(s), ${warnings} warning(s) — validation FAILED`));
+    return { exitCode: 1, stderr: lines.join('\n') };
+  }
+  const record = document.toJS() as Record<string, unknown>;
 
-    lines.push('');
-    if (errors > 0) {
-      lines.push(color(RED, `${errors} error(s), ${warnings} warning(s) — validation FAILED`));
-      return { exitCode: 1, stderr: lines.join('\n') };
+  for (const field of REQUIRED) {
+    if (!Object.prototype.hasOwnProperty.call(record, field)) {
+      fail(`missing required field '${field}'`);
     }
-    lines.push(color(GREEN, `0 errors, ${warnings} warning(s) — validation PASSED`));
-    return { exitCode: 0, stderr: lines.join('\n') };
-  });
+  }
+  for (const [field, values] of Object.entries(ENUMS)) {
+    if (!Object.prototype.hasOwnProperty.call(record, field)) continue;
+    const value = text(record[field]);
+    if (!value) {
+      if (field === 'auto_transition') {
+        fail(`${field}='' is not valid. Expected: ${values.join(' ')}`);
+      }
+      continue;
+    }
+    if (!values.includes(value)) {
+      fail(`${field}='${value}' is not valid. Expected: ${values.join(' ')}`);
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(record, 'bound_branch')) {
+    const value = record.bound_branch;
+    if (value !== null && typeof value !== 'string') {
+      fail(`bound_branch='${text(value)}' is not a string or null`);
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(record, 'verify_failures')) {
+    const value = record.verify_failures;
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+      fail(`verify_failures='${text(value)}' is not a non-negative integer`);
+    }
+  }
+  for (const field of ['design_doc', 'plan', 'handoff_context', 'verification_report'] as const) {
+    const value = text(record[field]);
+    if (!value) continue;
+    if (/^(?:[A-Za-z]:|[\\/]|~)/u.test(value) || value.split(/[\\/]/u).includes('..')) {
+      fail(`${field}='${value}' must be a relative repository path`);
+      continue;
+    }
+    try {
+      if (
+        !(await classicProjectTargetExists(projectRoot, path.resolve(projectRoot, value), {
+          label: `${field} artifact pointer`,
+          expected: 'file',
+        }))
+      ) {
+        fail(`${field}='${value}' does not exist on disk`);
+      }
+    } catch (error) {
+      fail(
+        `${field}='${value}' is unsafe: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+  for (const field of ['handoff_hash'] as const) {
+    const value = text(record[field]);
+    if (value && !/^[a-f0-9]{64}$/u.test(value)) {
+      fail(`${field}='${value}' is not a sha256 hex digest`);
+    }
+  }
+  for (const field of Object.keys(record)) {
+    if (!KNOWN_KEYS.has(field)) warn(`unknown field '${field}' found`);
+  }
+
+  lines.push('');
+  if (errors > 0) {
+    lines.push(color(RED, `${errors} error(s), ${warnings} warning(s) — validation FAILED`));
+    return { exitCode: 1, stderr: lines.join('\n') };
+  }
+  lines.push(color(GREEN, `0 errors, ${warnings} warning(s) — validation PASSED`));
+  return { exitCode: 0, stderr: lines.join('\n') };
+});

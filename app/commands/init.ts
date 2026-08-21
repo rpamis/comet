@@ -5,6 +5,7 @@ import { platformSelectPrompt } from './platform-select-prompt.js';
 import {
   PLATFORMS,
   getPlatformSkillsDir,
+  resolveOpenSpecMirrorPlatformIds,
   type Platform,
 } from '../../platform/install/platforms.js';
 import {
@@ -709,15 +710,10 @@ export async function initCommand(
 
   const spPlatformIds = plans.filter((p) => p.spAction !== 'skip').map((p) => p.platform.id);
 
-  // OpenCode-compatible platforms reuse the opencode OpenSpec tool id; mirror
-  // the opencode output into their platform-specific config directories.
   const selectedPlatformIdsForOs = plans
     .filter((p) => p.osAction !== 'skip')
     .map((p) => p.platform.id);
-  const mirrorOpenCodePlatformIds = selectedPlatformIdsForOs.filter((id) =>
-    ['zcode', 'mimocode'].includes(id),
-  );
-  const mirrorCodeBuddyPlatformIds = selectedPlatformIdsForOs.filter((id) => id === 'workbuddy');
+  const mirrorPlatformIds = resolveOpenSpecMirrorPlatformIds(selectedPlatformIdsForOs);
 
   const selectedNpmDeps = await selectNpmDeps(
     projectPath,
@@ -779,13 +775,15 @@ export async function initCommand(
         osToolIds,
         scope,
         shouldInstallOpenSpecCli,
-        mirrorOpenCodePlatformIds,
+        mirrorPlatformIds,
         scope === 'project' ? workflowDecision?.classicArtifactLayout : 'legacy',
         assertClassicProjectMutationAllowed,
         (error) => {
           osFailureReason = error.message;
         },
-        mirrorCodeBuddyPlatformIds,
+        [],
+        [],
+        selectedPlatformIdsForOs,
       );
       if (osGlobalStatus === 'installed' && requiresClassicArtifactRoot) {
         await assertClassicProjectMutationAllowed?.();
@@ -1124,8 +1122,7 @@ export async function initCommand(
       await syncCometProjectInstructions(
         projectPath,
         language.id,
-        includesWorkflow(workflowSelection, 'native') &&
-          (initialProjectConfigDocument?.ambient_resume ?? true),
+        initialProjectConfigDocument?.ambient_resume ?? true,
       );
 
       const successfulCometPlatforms = new Set(

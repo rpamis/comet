@@ -34,6 +34,7 @@ import {
 import {
   getPlatformSkillsDir,
   getPlatformSkillsDirs,
+  resolveOpenSpecMirrorPlatformIds,
   type Platform,
 } from '../../platform/install/platforms.js';
 import { resolvePlatformTarget } from '../../platform/install/platform-targets.js';
@@ -1824,12 +1825,8 @@ async function updateSingleProject(
       scopeTargets.length === 0;
     if (scopeTargets.length === 0 && !requiresArtifactOnlyRefresh) continue;
     const toolIds = [...new Set(scopeTargets.map((target) => target.platform.openspecToolId))];
-    const mirrorOpenCodePlatformIds = scopeTargets
-      .map((target) => target.platform.id)
-      .filter((id) => id === 'zcode' || id === 'mimocode');
-    const mirrorCodeBuddyPlatformIds = scopeTargets
-      .map((target) => target.platform.id)
-      .filter((id) => id === 'workbuddy');
+    const selectedPlatformIds = scopeTargets.map((target) => target.platform.id);
+    const mirrorPlatformIds = resolveOpenSpecMirrorPlatformIds(selectedPlatformIds);
     const artifactLayout = scope === 'project' ? classicArtifactLayout : 'legacy';
     try {
       if (scope === 'project') {
@@ -1840,11 +1837,13 @@ async function updateSingleProject(
         toolIds,
         scope,
         !skipPackageSelfUpdate,
-        mirrorOpenCodePlatformIds,
+        mirrorPlatformIds,
         artifactLayout,
         scope === 'project' ? assertClassicProjectMutationAllowed : undefined,
         undefined,
-        mirrorCodeBuddyPlatformIds,
+        [],
+        [],
+        selectedPlatformIds,
       );
       if (status === 'failed') {
         openSpecStatus = 'failed';
@@ -1975,7 +1974,7 @@ async function updateSingleProject(
       const projectInstructionResult = await syncCometProjectInstructions(
         projectPath,
         projectLanguageId,
-        nativeProject && (projectConfigDocument?.ambient_resume ?? true),
+        projectConfigDocument?.ambient_resume ?? true,
       );
       projectInstructionsUpdated = projectInstructionResult.changed;
       if (projectInstructionsUpdated > 0) {

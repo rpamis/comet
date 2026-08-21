@@ -468,7 +468,7 @@ does not expand the backend command list; see the [Skill creation guide](docs/op
 
 ## Supported Platforms
 
-`comet init` supports 34 AI coding platforms:
+`comet init` supports 35 AI coding platforms:
 
 <details>
 <summary>View full platform list</summary>
@@ -492,6 +492,7 @@ does not expand the backend command list; see the [Skill creation guide](docs/op
 | ForgeCode          | `.forge/`     | Trae          | `.trae/`     |
 | Trae CN            | `.trae-cn/`   | ZCode         | `.zcode/`    |
 | MimoCode           | `.mimocode/`  | CoStrict      | `.cospec/`   |
+| Grok               | `.grok/`      |               |              |
 
 </details>
 

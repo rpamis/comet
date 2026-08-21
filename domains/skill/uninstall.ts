@@ -2,7 +2,7 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 import { execFileSync } from 'child_process';
 import type { BigIntStats } from 'fs';
-import { homedir } from 'os';
+import os from 'os';
 import {
   hasComparableFileObject,
   sameFileObject,
@@ -47,7 +47,11 @@ import {
 import type { CometWorkflow, InitWorkflowSelection } from '../comet-entry/types.js';
 import { removeCometProjectInstructions } from './project-instructions.js';
 import { readJsonObjectFile } from './json-object.js';
-import { SKILLS_AGENT_MAP } from '../integrations/superpowers.js';
+import {
+  SKILLS_AGENT_MAP,
+  readStagedSuperpowersSkillNames,
+  removeStagedSuperpowersManifests,
+} from '../integrations/superpowers.js';
 
 interface RemovalResult {
   removed: number;
@@ -950,9 +954,15 @@ async function removeSuperpowersSkillsForPlatforms(
         .filter((agent): agent is string => Boolean(agent)),
     ),
   ];
-  if (agents.length === 0) return { removed: 0, failed: 0 };
+  const stagedCopyPlatforms = platforms.filter((platform) => !SKILLS_AGENT_MAP[platform.id]);
+  if (agents.length === 0 && stagedCopyPlatforms.length === 0) {
+    return { removed: 0, failed: 0 };
+  }
   const command = process.platform === 'win32' ? 'npx.cmd' : 'npx';
   const scopeArgs = scope === 'global' ? ['--global'] : [];
+  const baseDir = scope === 'global' ? os.homedir() : projectPath;
+  const lockedNames = await readLockedSuperpowersSkillNames(projectPath);
+  let listedNames: string[] = [];
   try {
     const output = execFileSync(command, ['skills', 'list', '--json', ...scopeArgs], {
       cwd: projectPath,
@@ -964,13 +974,18 @@ async function removeSuperpowersSkillsForPlatforms(
       name?: unknown;
       source?: unknown;
     }>;
-    const names = new Set([
-      ...listed.flatMap((skill) =>
-        skill.source === 'obra/superpowers' && typeof skill.name === 'string' ? [skill.name] : [],
-      ),
-      ...(await readLockedSuperpowersSkillNames(projectPath)),
-    ]);
-    let failed = 0;
+    listedNames = listed.flatMap((skill) =>
+      skill.source === 'obra/superpowers' && typeof skill.name === 'string' ? [skill.name] : [],
+    );
+  } catch {
+    if (agents.length > 0 && lockedNames.length === 0 && stagedCopyPlatforms.length === 0) {
+      return { removed: 0, failed: 1 };
+    }
+  }
+  const stagedNames = await readStagedSuperpowersSkillNames(baseDir, stagedCopyPlatforms, scope);
+  const names = new Set([...listedNames, ...lockedNames, ...stagedNames]);
+  let failed = 0;
+  if (agents.length > 0) {
     for (const name of names) {
       try {
         execFileSync(
@@ -987,31 +1002,36 @@ async function removeSuperpowersSkillsForPlatforms(
         failed++;
       }
     }
-    const baseDir = scope === 'global' ? homedir() : projectPath;
-    if (options.removeSharedStorage) {
-      const fallbackResult = await removeSuperpowersSkillDirs(baseDir, platforms, scope, [
-        ...names,
-      ]);
-      failed += fallbackResult.failed;
-    }
-
-    const remaining = (
-      await Promise.all(
-        [...names].map(async (name) => {
-          for (const platform of platforms) {
-            for (const skillsDir of getPlatformSkillsDirs(platform, scope)) {
-              if (await fileExists(path.join(baseDir, skillsDir, 'skills', name))) return true;
-            }
-          }
-          return false;
-        }),
-      )
-    ).filter(Boolean).length;
-    if (remaining > 0) failed++;
-    return { removed: names.size - remaining, failed };
-  } catch {
-    return { removed: 0, failed: 1 };
   }
+  if (options.removeSharedStorage || stagedCopyPlatforms.length > 0) {
+    const fallbackResult = await removeSuperpowersSkillDirs(
+      baseDir,
+      stagedCopyPlatforms.length > 0 && !options.removeSharedStorage
+        ? stagedCopyPlatforms
+        : platforms,
+      scope,
+      [...names],
+    );
+    failed += fallbackResult.failed;
+  }
+
+  const remaining = (
+    await Promise.all(
+      [...names].map(async (name) => {
+        for (const platform of platforms) {
+          for (const skillsDir of getPlatformSkillsDirs(platform, scope)) {
+            if (await fileExists(path.join(baseDir, skillsDir, 'skills', name))) return true;
+          }
+        }
+        return false;
+      }),
+    )
+  ).filter(Boolean).length;
+  if (remaining > 0) failed++;
+  if (stagedCopyPlatforms.length > 0 && remaining === 0) {
+    await removeStagedSuperpowersManifests(baseDir, stagedCopyPlatforms, scope);
+  }
+  return { removed: names.size - remaining, failed };
 }
 
 async function removeCometHooksForPlatform(

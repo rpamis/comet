@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'async_hooks';
 import { promises as fs } from 'fs';
 import path from 'path';
 
+import type { ClassicCommandHandler } from './classic-cli.js';
 import { discoverClassicProject } from './classic-layout.js';
 
 export interface ClassicCommandContext {
@@ -63,4 +64,15 @@ export function classicCommandInvocationCwd(): string {
   const active = commandContext.getStore();
   if (!active) throw new Error('Classic command invocation context is unavailable');
   return active.invocationCwd;
+}
+
+/**
+ * Wraps a Classic command handler so its command context is always established
+ * before the handler body runs. Handlers that need `classicCommandProjectRoot()`
+ * or `classicCommandInvocationCwd()` must be exported through this wrapper instead
+ * of calling `withClassicCommandContext` by hand, so a handler can never consume
+ * the context without first establishing it.
+ */
+export function withProjectContext(handler: ClassicCommandHandler): ClassicCommandHandler {
+  return (args, options) => withClassicCommandContext(options, () => handler(args, options));
 }

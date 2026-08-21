@@ -439,7 +439,7 @@ comet eval ./my-skill --suite langsmith --html
 
 ## 支持平台
 
-`comet init` 支持 34 个 AI 编码平台：
+`comet init` 支持 35 个 AI 编码平台：
 
 <details>
 <summary>查看完整平台列表</summary>
@@ -463,6 +463,7 @@ comet eval ./my-skill --suite langsmith --html
 | ForgeCode          | `.forge/`     | Trae          | `.trae/`     |
 | Trae CN            | `.trae-cn/`   | ZCode         | `.zcode/`    |
 | MimoCode           | `.mimocode/`  | CoStrict      | `.cospec/`   |
+| Grok               | `.grok/`      |               |              |
 
 </details>
 
