@@ -62,8 +62,8 @@ When status contains `children`, the current change is a Supervisor Change: do n
 
 When requirements change, classify them first:
 
-- The current requirement was implemented incompletely: use `--return-to-build` from Verify or Archive to return to Build.
-- User-visible behavior or acceptance criteria changed: return to Shape, update the formal artifacts, and reconfirm.
+- The current requirement was implemented incompletely: use `--revise-implementation` from Verify to keep confirmed requirements and return to Build.
+- User-visible behavior or acceptance criteria changed: use `--revise-requirements` from Verify, update the formal artifacts, and reconfirm Shape.
 - The request is unrelated to the current requirement: keep it for another change.
 
 Apply the same rule when the user explicitly adds to the current scope.
@@ -84,7 +84,7 @@ The Verifier first reads the acceptance items, brief, complete target Specs, act
 
 The Verifier remains read-only. If existing checks are insufficient, list the additional checks in the `inputOptions.template` returned by the Runtime. The Runtime executes them and returns the results to the Verifier.
 
-The Verifier must finally mark every acceptance item exactly once as `passed`, `failed`, or `blocked`. For a failed or blocked item, provide a reason that the next Build round can act on directly. If the Verifier cannot be started, execution fails, or external information is missing, follow the command reference and the latest `continuation`.
+The Verifier must finally mark every acceptance item exactly once as `passed`, `failed`, or `blocked`. For a failed or blocked item, provide a reason that the next Build round can act on directly. If the Verifier cannot be started, execution fails, or external information is missing, follow the command reference and the latest `continuation`. When a skill-coordinated Verifier passes and Runtime waits for the user decision, use `--accept-result` to enter Archive only after the user accepts the current result; otherwise use `--revise-implementation` or `--revise-requirements`.
 
 Completion criterion: the Runtime has accepted the complete Verifier result and has explicitly entered one of Build, Archive, `await-user`, `blocked`, or `done`.
 
@@ -101,7 +101,7 @@ Completion criterion: state is `done`, and the user-authorized workspace finish 
 After every command, handle only the latest `continuation`:
 
 - `continue`: execute `commandArgs` and fill `inputOptions` from its template.
-- `await-user`: wait for the listed user decision.
+- `await-user`: wait for the listed user decision. With `commandAlternatives`, execute the matching complete `commandArgs`, preserve `--expected-state-version` plus `--expected-action`, and reread the latest `continuation` if the alternative is stale. Do not reconstruct an unguarded command.
 - `blocked`: resolve the listed blocker or recovery action first.
 - `done`: finish.
 

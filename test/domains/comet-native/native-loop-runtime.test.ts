@@ -252,16 +252,20 @@ describe('Native portable Build/Verify loop', () => {
     expect(nativePortableContinuation(state)).toMatchObject({
       disposition: 'await-user',
       action: 'resolve-loop-stop',
-      commandArgs: [
-        'comet',
-        'native',
-        'next',
-        state.name,
-        '--return-to-build',
-        '--summary',
-        '<summary>',
-      ],
+      commandArgs: null,
       requiredInputs: ['summary', 'user-decision'],
+      commandAlternatives: expect.arrayContaining([
+        expect.objectContaining({
+          name: 'revise-implementation',
+          commandArgs: expect.arrayContaining(['--revise-implementation']),
+          requiredInputs: ['summary', 'user-decision'],
+        }),
+        expect.objectContaining({
+          name: 'revise-requirements',
+          commandArgs: expect.arrayContaining(['--revise-requirements']),
+          requiredInputs: ['summary', 'user-decision'],
+        }),
+      ]),
     });
   });
 

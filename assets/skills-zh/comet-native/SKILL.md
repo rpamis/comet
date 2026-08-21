@@ -62,8 +62,8 @@ Build 和 Verify 组成一个有界验收循环（Loop）：Builder 提交候选
 
 需求变化时先判断归属：
 
-- 当前需求只是实现有遗漏：从 Verify 或 Archive 使用 `--return-to-build` 回到 Build；
-- 用户可见行为或验收标准发生变化：回到 Shape，更新正式产物并重新确认；
+- 当前需求只是实现有遗漏：从 Verify 使用 `--revise-implementation` 保留已确认需求并回到 Build；
+- 用户可见行为或验收标准发生变化：从 Verify 使用 `--revise-requirements`，更新正式产物并重新确认 Shape；
 - 与当前需求无关：保留给另一个 change。
 
 用户明确补充当前范围时，按同一规则处理。
@@ -84,7 +84,7 @@ Verifier 先读取验收项、brief、完整目标 Spec、实际实现和 Runtim
 
 Verifier 保持只读。如果现有检查不足，就在 Runtime 返回的 `inputOptions.template` 中列出还需要运行哪些检查，由 Runtime 执行并把结果返回给 Verifier。
 
-Verifier 最终必须逐项标记为通过（`passed`）、未通过（`failed`）或暂时无法验证（`blocked`），一项不能漏，也不能重复。未通过或无法验证时，写出下一轮 Build 可直接处理的原因。无法启动 Verifier、Verifier 执行出错或缺少外部信息时，按命令参考和最新 `continuation` 处理。
+Verifier 最终必须逐项标记为通过（`passed`）、未通过（`failed`）或暂时无法验证（`blocked`），一项不能漏，也不能重复。未通过或无法验证时，写出下一轮 Build 可直接处理的原因。无法启动 Verifier、Verifier 执行出错或缺少外部信息时，按命令参考和最新 `continuation` 处理。skill-coordinated Verifier 通过且 Runtime 等待用户决策时，只有用户接受当前结果才用 `--accept-result` 进入 Archive；如果用户要求修改实现或验收标准，分别使用 `--revise-implementation` 或 `--revise-requirements`。
 
 完成标准：Runtime 已接受完整的 Verifier 结果，并明确进入 Build、Archive、等待用户（`await-user`）、阻塞（`blocked`）或完成（`done`）中的一种状态。
 
@@ -101,7 +101,7 @@ Verifier 最终必须逐项标记为通过（`passed`）、未通过（`failed`�
 每次命令后只处理最新的 `continuation`：
 
 - `continue`：执行 `commandArgs`，并按模板填写 `inputOptions`；
-- `await-user`：等待列出的用户决定；
+- `await-user`：等待列出的用户决定；如有 `commandAlternatives`，选择匹配项执行完整 `commandArgs`，保留 `--expected-state-version` 和 `--expected-action`。alternative 过期时重新读取最新 `continuation`，不得重构无 guard 命令；
 - `blocked`：先处理列出的阻塞原因或恢复动作；
 - `done`：结束。
 

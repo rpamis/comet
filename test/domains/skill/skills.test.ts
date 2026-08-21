@@ -216,7 +216,9 @@ describe('skills', () => {
           'workspaceFinishResult',
           '[blocking]',
           '--confirmed',
-          '--return-to-build',
+          '--accept-result',
+          '--revise-implementation',
+          '--revise-requirements',
           languageDir === 'skills-zh' ? '决策树' : 'decision tree',
           languageDir === 'skills-zh' ? 'subagent' : 'subagents',
         ]) {

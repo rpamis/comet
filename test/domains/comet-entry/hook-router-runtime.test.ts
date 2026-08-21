@@ -163,7 +163,7 @@ describe('packaged Hook Router worktree isolation', () => {
 
     expect(result.status, result.stderr).toBe(2);
     expect(result.stderr).toContain('raw-patch-shape');
-    expect(result.stderr).toContain('only allowed in build');
+    expect(result.stderr).toContain('only allowed in Build');
   });
 
   it.each(['trae', 'trae-cn'] as const)(
@@ -183,7 +183,7 @@ describe('packaged Hook Router worktree isolation', () => {
 
       expect(result.status, result.stderr).toBe(2);
       expect(result.stderr).toContain(`${platform}-shape`);
-      expect(result.stderr).toContain('only allowed in build');
+      expect(result.stderr).toContain('only allowed in Build');
     },
   );
 

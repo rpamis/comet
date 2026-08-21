@@ -37,7 +37,7 @@ import {
 import {
   classicCommandInvocationCwd,
   classicCommandProjectRoot,
-  withClassicCommandContext,
+  withProjectContext,
 } from './classic-command-context.js';
 
 const GREEN = '\u001b[32m';
@@ -1007,8 +1007,8 @@ async function applyStateUpdate(
   output.stderr.push(green(message));
 }
 
-export const classicGuardCommand: ClassicCommandHandler = async (args, options) =>
-  withClassicCommandContext(options, async () => {
+export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
+  async (args, options) => {
     const output = new GuardOutput();
     const [change, phase, flag] = args;
     try {
@@ -1060,4 +1060,5 @@ export const classicGuardCommand: ClassicCommandHandler = async (args, options) 
       }
       throw error;
     }
-  });
+  },
+);
