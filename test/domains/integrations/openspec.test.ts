@@ -140,6 +140,66 @@ describe('openspec', () => {
       }
     });
 
+    it('mirrors Claude-compatible OpenSpec skills into the native dsh root', async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-dsh-'));
+      try {
+        const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
+
+        await expect(
+          installOpenSpec(
+            tmpDir,
+            ['claude'],
+            'project',
+            false,
+            [],
+            'legacy',
+            undefined,
+            undefined,
+            [],
+            ['dsh'],
+          ),
+        ).resolves.toBe('installed');
+        expect(fs.existsSync(path.join(tmpDir, '.claude'))).toBe(false);
+        expect(
+          fs.existsSync(path.join(tmpDir, '.dsh', 'skills', 'openspec-propose', 'SKILL.md')),
+        ).toBe(true);
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it('does not create a global Claude root for a dsh-only OpenSpec install', async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-dsh-global-'));
+      const homeDir = path.join(tmpDir, 'home');
+      fs.mkdirSync(homeDir, { recursive: true });
+      const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(homeDir);
+      try {
+        const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
+        await expect(
+          installOpenSpec(
+            homeDir,
+            ['claude'],
+            'global',
+            false,
+            [],
+            'legacy',
+            undefined,
+            undefined,
+            [],
+            ['dsh'],
+            false,
+          ),
+        ).resolves.toBe('installed');
+        expect(fs.existsSync(path.join(homeDir, '.claude'))).toBe(false);
+        expect(
+          fs.existsSync(path.join(homeDir, '.dsh', 'skills', 'openspec-propose', 'SKILL.md')),
+        ).toBe(true);
+      } finally {
+        homeSpy.mockRestore();
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
     it('separates project tool generation from the docs OpenSpec artifact root', async () => {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-docs-layout-'));
       try {

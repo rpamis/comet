@@ -21,6 +21,11 @@ import {
   type ClassicLayoutInitializationPermit,
 } from '../comet-classic/classic-layout-initialization.js';
 import {
+  mergeDshInstruction,
+  reconcileDshCordisPatch,
+  removeDshCordisPatch,
+} from './dsh-adapter.js';
+import {
   parseWorkflowProjectConfigDocument,
   projectConfigComment,
   renderStructuredProjectConfig,
@@ -1016,6 +1021,23 @@ async function copyCometRulesForPlatform(
   scope: InstallScope = 'project',
   workflowSelection: InitWorkflowSelection = 'classic',
 ): Promise<{ copied: number; skipped: number; failed: number }> {
+  if (platform.rulesFormat === 'dsh') {
+    const manifest = await readManifest();
+    const rulePaths = selectRulePathsForLanguage(manifest.rules ?? [], languageId);
+    if (rulePaths.length === 0) return { copied: 0, skipped: 0, failed: 0 };
+    const src = path.join(getAssetsDir(), 'skills', rulePaths[0]);
+    try {
+      if (!(await fileExists(src))) {
+        console.error(`    Rule source not found: ${rulePaths[0]}`);
+        return { copied: 0, skipped: 0, failed: 1 };
+      }
+      return mergeDshInstruction(baseDir, platform, scope, await readFile(src, 'utf8'), overwrite);
+    } catch (err) {
+      console.error(`    Failed to copy dsh instruction Rule: ${(err as Error).message}`);
+      return { copied: 0, skipped: 0, failed: 1 };
+    }
+  }
+
   if (!platform.rulesDir || !platform.rulesFormat) {
     return { copied: 0, skipped: 0, failed: 0 };
   }
@@ -1209,6 +1231,34 @@ async function installCometHooksForPlatform(
           }
         }
         return result;
+      }
+      case 'dsh': {
+        await reconcileDshCordisPatch(baseDir, platform, scope);
+        try {
+          const result = await installClaudeCodeHooks(
+            baseDir,
+            platformBase,
+            skillsDir,
+            hooksConfig,
+            platform.hookConfigFile ?? 'hooks.json',
+            platform.name,
+            { platformId: platform.id, scope },
+          );
+          if (result.status !== 'installed') {
+            await removeDshCordisPatch(baseDir, platform, scope);
+            return result;
+          }
+          return {
+            status: 'installed',
+            reason:
+              scope === 'project'
+                ? 'dsh Hook config installed; load the official bridge in a profile and run `dsh ... --patch .dsh/cordis.patch.yml` to activate it'
+                : 'dsh Hook config installed; load the official bridge in the active profile to activate it',
+          };
+        } catch (error) {
+          await removeDshCordisPatch(baseDir, platform, scope);
+          throw error;
+        }
       }
       case 'qwen':
       case 'qoder':

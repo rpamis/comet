@@ -49,6 +49,13 @@ import {
 import type { CometWorkflow, InitWorkflowSelection } from '../comet-entry/types.js';
 import { removeCometProjectInstructions } from './project-instructions.js';
 import { readJsonObjectFile } from './json-object.js';
+import {
+  dshRootPath,
+  readDshOwnedPaths,
+  removeDshCordisPatch,
+  removeDshInstruction,
+  removeDshOwnedPaths,
+} from './dsh-adapter.js';
 import { SKILLS_AGENT_MAP } from '../integrations/superpowers.js';
 
 interface RemovalResult {
@@ -67,7 +74,6 @@ const LEGACY_HOOK_SCRIPT_PATHS = [
   'comet/scripts/comet-hook-guard.mjs',
   'comet-native/scripts/comet-native-hook-guard.mjs',
 ] as const;
-
 type ManagedWorkingTree = {
   readonly [entry: string]: 'file' | ManagedWorkingTree;
 };
@@ -805,6 +811,9 @@ async function removeCometRulesForPlatform(
   platform: Platform,
   scope: InstallScope = 'project',
 ): Promise<RemovalResult> {
+  if (platform.rulesFormat === 'dsh') {
+    return removeDshInstruction(baseDir, platform, scope);
+  }
   if (!platform.rulesDir || !platform.rulesFormat) {
     return { removed: 0, failed: 0 };
   }
@@ -862,6 +871,26 @@ async function removeOpenSpecSkillsForPlatform(
   platform: Platform,
   scope: InstallScope = 'project',
 ): Promise<RemovalResult> {
+  if (platform.id === 'dsh') {
+    try {
+      const owned = await readDshOwnedPaths(baseDir, platform, scope, 'openspec');
+      let removed = 0;
+      for (const relative of owned) {
+        const target = path.join(dshRootPath(baseDir, platform, scope), ...relative.split('/'));
+        const stat = await lstat(target).catch((error: unknown) => {
+          if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+          throw error;
+        });
+        if (!stat) continue;
+        const didRemove = stat.isDirectory() ? await removeDir(target) : await removeFile(target);
+        if (didRemove) removed++;
+      }
+      await removeDshOwnedPaths(baseDir, platform, scope, 'openspec', owned);
+      return { removed, failed: 0 };
+    } catch {
+      return { removed: 0, failed: 1 };
+    }
+  }
   let removed = 0;
   let failed = 0;
   for (const skillsDir of getPlatformSkillsDirs(platform, scope)) {
@@ -945,6 +974,36 @@ async function removeSuperpowersSkillsForPlatforms(
   scope: InstallScope = 'project',
   options: { removeSharedStorage?: boolean } = {},
 ): Promise<RemovalResult> {
+  const dshPlatforms = platforms.filter((platform) => platform.id === 'dsh');
+  const baseDir = scope === 'global' ? homedir() : projectPath;
+  const dshResult: RemovalResult = { removed: 0, failed: 0 };
+  for (const platform of dshPlatforms) {
+    try {
+      const owned = await readDshOwnedPaths(baseDir, platform, scope, 'superpowers');
+      let removed = 0;
+      const removedPaths: string[] = [];
+      for (const relative of owned) {
+        if (!relative.startsWith('skills/')) continue;
+        const target = path.join(dshRootPath(baseDir, platform, scope), ...relative.split('/'));
+        const stat = await lstat(target).catch((error: unknown) => {
+          if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+          throw error;
+        });
+        if (!stat) {
+          removedPaths.push(relative);
+          continue;
+        }
+        if (await removeDir(target)) {
+          removed++;
+          removedPaths.push(relative);
+        }
+      }
+      await removeDshOwnedPaths(baseDir, platform, scope, 'superpowers', removedPaths);
+      dshResult.removed += removed;
+    } catch {
+      dshResult.failed++;
+    }
+  }
   const agents = [
     ...new Set(
       platforms
@@ -952,7 +1011,7 @@ async function removeSuperpowersSkillsForPlatforms(
         .filter((agent): agent is string => Boolean(agent)),
     ),
   ];
-  if (agents.length === 0) return { removed: 0, failed: 0 };
+  if (agents.length === 0) return dshResult;
   const command = process.platform === 'win32' ? 'npx.cmd' : 'npx';
   const scopeArgs = scope === 'global' ? ['--global'] : [];
   try {
@@ -989,7 +1048,6 @@ async function removeSuperpowersSkillsForPlatforms(
         failed++;
       }
     }
-    const baseDir = scope === 'global' ? homedir() : projectPath;
     if (options.removeSharedStorage) {
       const fallbackResult = await removeSuperpowersSkillDirs(baseDir, platforms, scope, [
         ...names,
@@ -1010,9 +1068,12 @@ async function removeSuperpowersSkillsForPlatforms(
       )
     ).filter(Boolean).length;
     if (remaining > 0) failed++;
-    return { removed: names.size - remaining, failed };
+    return {
+      removed: dshResult.removed + names.size - remaining,
+      failed: dshResult.failed + failed,
+    };
   } catch {
-    return { removed: 0, failed: 1 };
+    return { removed: dshResult.removed, failed: dshResult.failed + 1 };
   }
 }
 
@@ -1057,6 +1118,18 @@ async function removeCometHooksForPlatform(
           failed += result.failed;
         }
         return { removed, failed };
+      }
+      case 'dsh': {
+        const hookResult = await removeManagedHooksFromJsonFile(
+          path.join(platformBase, platform.hookConfigFile ?? 'hooks.json'),
+          scriptRelPaths,
+        );
+        if (hookResult.failed > 0) return hookResult;
+        const patchResult = await removeDshCordisPatch(baseDir, platform, scope);
+        return {
+          removed: hookResult.removed + patchResult.removed,
+          failed: patchResult.failed,
+        };
       }
       case 'qwen':
       case 'qoder':

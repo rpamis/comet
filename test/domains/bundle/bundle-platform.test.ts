@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import { promises as fs } from 'fs';
+import os from 'os';
 import path from 'path';
 import { compileBundleForPlatform } from '../../../domains/bundle/platform.js';
 import type { BundleCompilerIr } from '../../../domains/bundle/types.js';
-import { listBundlePlatformTargets } from '../../../domains/bundle/bundle-platform.js';
+import {
+  applyPlatformInstallPlan,
+  listBundlePlatformTargets,
+} from '../../../domains/bundle/bundle-platform.js';
 import { PLATFORMS } from '../../../platform/install/platforms.js';
 
 const projectRoot = path.resolve('test-project');
@@ -102,7 +107,7 @@ describe('Bundle platform compiler', () => {
 
   it('derives one dry-run target from every registered platform', async () => {
     expect(targets).toHaveLength(PLATFORMS.length);
-    expect(targets).toHaveLength(35);
+    expect(targets).toHaveLength(36);
 
     for (const target of targets) {
       const report = await compileBundleForPlatform(ir(), target, {
@@ -138,6 +143,56 @@ describe('Bundle platform compiler', () => {
         destination: path.join(projectRoot, '.claude', 'settings.local.json'),
       }),
     ]);
+  });
+
+  it('plans dsh Rules as a managed AGENTS.local.md overlay', async () => {
+    const dsh = targets.find((target) => target.id === 'dsh')!;
+
+    const report = await compileBundleForPlatform(ir(), dsh, {
+      projectRoot,
+      scope: 'project',
+      locale: 'zh',
+    });
+
+    expect(report.files).toContainEqual(
+      expect.objectContaining({
+        kind: 'rule',
+        destination: path.join(projectRoot, 'AGENTS.local.md'),
+        operation: expect.objectContaining({ format: 'dsh' }),
+      }),
+    );
+    expect(report.unsupported).not.toContainEqual(expect.objectContaining({ capability: 'rules' }));
+  });
+
+  it('applies dsh Bundle Rules through the managed instruction overlay', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-dsh-bundle-rule-'));
+    try {
+      const [dsh] = listBundlePlatformTargets({
+        projectRoot: root,
+        homeDir: path.join(root, 'home'),
+        scope: 'project',
+      }).filter((target) => target.id === 'dsh');
+      const ruleSource = path.join(root, 'workflow.md');
+      await fs.writeFile(ruleSource, '# Bundle Rule\n', 'utf8');
+      const sourceIr = ir();
+      sourceIr.rules[0] = { ...sourceIr.rules[0], source: ruleSource };
+      const report = await compileBundleForPlatform(sourceIr, dsh, {
+        projectRoot: root,
+        scope: 'project',
+        locale: 'zh',
+      });
+
+      await applyPlatformInstallPlan({
+        target: dsh,
+        files: report.files.filter((file) => file.kind === 'rule'),
+        overwrite: true,
+      });
+      await expect(fs.readFile(path.join(root, 'AGENTS.local.md'), 'utf8')).resolves.toContain(
+        '<!-- COMET:DSH:START -->',
+      );
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
   });
 
   it('plans Codex hooks in .codex/hooks.json while scripts remain under .agents', async () => {

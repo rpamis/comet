@@ -1707,10 +1707,13 @@ async function updateSingleProject(
       totalRulesFailed += ruleResult.failed;
       const ruleStatus =
         ruleResult.failed > 0 ? 'failed' : ruleResult.copied > 0 ? 'copied' : 'skipped';
+      const supportsRules =
+        target.platform.rulesFormat === 'dsh' ||
+        Boolean(target.platform.rulesDir && target.platform.rulesFormat);
       const ruleReason =
         ruleResult.failed > 0
           ? `${ruleResult.failed} Rule file(s) failed to install`
-          : !target.platform.rulesDir || !target.platform.rulesFormat
+          : !supportsRules
             ? 'platform does not support rules'
             : undefined;
       ruleTargetResults.push({
@@ -1771,6 +1774,9 @@ async function updateSingleProject(
       if (status === 'installed') {
         totalHooksInstalled++;
         log(`  Comet hooks -> ${target.platform.name}: ${t(lang, 'hooksUpdated')}`);
+        if (reason) {
+          log(`  Comet hooks -> ${target.platform.name}: ${reason}`);
+        }
         if (cleanupFailed > 0) {
           log(`  Comet hooks -> ${target.platform.name}: ${reason}`);
         }
@@ -1830,12 +1836,15 @@ async function updateSingleProject(
     const mirrorCodeBuddyPlatformIds = scopeTargets
       .map((target) => target.platform.id)
       .filter((id) => id === 'workbuddy');
+    const mirrorClaudePlatformIds = scopeTargets
+      .map((target) => target.platform.id)
+      .filter((id) => id === 'dsh');
     const artifactLayout = scope === 'project' ? classicArtifactLayout : 'legacy';
     try {
       if (scope === 'project') {
         await assertClassicProjectMutationAllowed?.();
       }
-      const status = await installOpenSpec(
+      const openSpecArgs = [
         projectPath,
         toolIds,
         scope,
@@ -1845,7 +1854,14 @@ async function updateSingleProject(
         scope === 'project' ? assertClassicProjectMutationAllowed : undefined,
         undefined,
         mirrorCodeBuddyPlatformIds,
-      );
+      ] as const;
+      const status = await (mirrorClaudePlatformIds.length > 0
+        ? installOpenSpec(
+            ...openSpecArgs,
+            mirrorClaudePlatformIds,
+            scopeTargets.some((target) => target.platform.id === 'claude'),
+          )
+        : installOpenSpec(...openSpecArgs));
       if (status === 'failed') {
         openSpecStatus = 'failed';
         openSpecReason = `OpenSpec ${scope} asset update failed`;

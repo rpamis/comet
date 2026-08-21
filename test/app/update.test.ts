@@ -2248,6 +2248,58 @@ describe('update command helpers', () => {
     expect(mockedInstallSuperpowers).toHaveBeenCalledWith(tmpDir, 'project', ['claude'], true);
   });
 
+  it('updates dsh Classic dependencies through the Claude-shaped OpenSpec contract', async () => {
+    const fakeHome = path.join(tmpDir, 'dsh-classic-dependencies-self-update-home');
+    await arrangeClassicDocsOpenSpecUpdate(tmpDir);
+    await fs.mkdir(path.join(tmpDir, '.dsh', 'skills', 'comet-classic'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.dsh', 'skills', 'comet-classic', 'SKILL.md'),
+      '# Comet Classic\n',
+      'utf8',
+    );
+    await fs.mkdir(path.join(tmpDir, '.dsh', 'skills', 'openspec-propose'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.dsh', 'skills', 'openspec-propose', 'SKILL.md'),
+      '# OpenSpec\n',
+      'utf8',
+    );
+    await fs.mkdir(path.join(tmpDir, '.dsh', 'skills', 'brainstorming'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.dsh', 'skills', 'brainstorming', 'SKILL.md'),
+      '# Brainstorming\n',
+      'utf8',
+    );
+
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(tmpDir, {
+        currentProject: true,
+        installMode: 'copy',
+        platform: 'dsh',
+        selfUpdate: true,
+      });
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    expect(mockedInstallOpenSpec).toHaveBeenCalledWith(
+      tmpDir,
+      ['claude'],
+      'project',
+      true,
+      [],
+      'docs',
+      expect.any(Function),
+      undefined,
+      [],
+      ['dsh'],
+      false,
+    );
+    expect(mockedInstallSuperpowers).toHaveBeenCalledWith(tmpDir, 'project', ['dsh'], true);
+  });
+
   it.each(['missing', 'corrupt'] as const)(
     'leaves project config unchanged when OpenSpec reports installed with a %s config',
     async (openSpecConfig) => {

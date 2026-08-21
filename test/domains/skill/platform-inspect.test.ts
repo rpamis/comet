@@ -50,6 +50,8 @@ function hookConfigPath(baseDir: string, platformId: string): string {
       return path.join(baseDir, '.kiro', 'hooks', 'comet-hook-router.kiro.hook');
     case 'oh-my-pi':
       return path.join(baseDir, '.omp', 'hooks', 'pre', 'comet-hook-router.ts');
+    case 'dsh':
+      return path.join(baseDir, '.dsh', 'hooks.json');
     default:
       throw new Error(`missing Hook path fixture: ${platformId}`);
   }
@@ -88,6 +90,7 @@ describe('platform component inspection', () => {
     ['codex', '.codex/rules/comet-workflow-guard.md'],
     ['github-copilot', '.github/instructions/comet-workflow-guard.instructions.md'],
     ['oh-my-pi', '.omp/rules/comet-workflow-guard.mdc'],
+    ['dsh', 'AGENTS.local.md'],
   ])(
     'returns the normalized language-independent Rule destination for %s',
     async (id, relative) => {
@@ -161,6 +164,20 @@ describe('platform component inspection', () => {
       present: true,
     });
     expect(await fs.readFile(configPath, 'utf8')).toBe(before);
+  });
+
+  it('reports dsh Hook config as awaiting the profile bridge', async () => {
+    const target = platform('dsh');
+    await installManagedHookScripts(tmpDir, target);
+    await expect(installCometHooksForPlatform(tmpDir, target, 'project')).resolves.toMatchObject({
+      status: 'installed',
+      reason: expect.stringContaining('--patch .dsh/cordis.patch.yml'),
+    });
+
+    await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toMatchObject({
+      present: true,
+      activationRequired: true,
+    });
   });
 
   it.each([

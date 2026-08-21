@@ -40,7 +40,10 @@ import {
   reconcileCometHooksForPlatform,
   reconcileProjectCometHooksForPlatform,
 } from '../../../domains/skill/hook-lifecycle.js';
-import { removeCometHooksForPlatform } from '../../../domains/skill/uninstall.js';
+import {
+  removeCometHooksForPlatform,
+  removeCometRulesForPlatform,
+} from '../../../domains/skill/uninstall.js';
 import { PLATFORMS, type Platform } from '../../../platform/install/platforms.js';
 import {
   artifactLanguageToSkillLanguage,
@@ -382,6 +385,29 @@ describe('skills', () => {
   });
 
   describe('copyCometRulesForPlatform', () => {
+    it('merges the dsh project instruction Rule into AGENTS.local.md', async () => {
+      const dsh = PLATFORMS.find((candidate) => candidate.id === 'dsh')!;
+      const instructionPath = path.join(tmpDir, 'AGENTS.local.md');
+      await fs.writeFile(instructionPath, '# User instructions\n\nKeep this text.\n', 'utf8');
+
+      await expect(
+        copyCometRulesForPlatform(tmpDir, dsh, true, 'en', 'project', 'classic'),
+      ).resolves.toEqual({ copied: 1, skipped: 0, failed: 0 });
+
+      const content = await fs.readFile(instructionPath, 'utf8');
+      expect(content).toContain('Keep this text.');
+      expect(content).toContain('<!-- COMET:DSH:START -->');
+      expect(content).toContain('<!-- COMET:DSH:END -->');
+
+      await expect(removeCometRulesForPlatform(tmpDir, dsh, 'project')).resolves.toEqual({
+        removed: 1,
+        failed: 0,
+      });
+      await expect(fs.readFile(instructionPath, 'utf8')).resolves.toBe(
+        '# User instructions\n\nKeep this text.\n',
+      );
+    });
+
     it('installs the unified workflow Rule for a Native project', async () => {
       const platform = PLATFORMS.find((candidate) => candidate.id === 'claude')!;
 
@@ -896,6 +922,26 @@ describe('skills', () => {
       expect(source).toContain('--platform /"codex/"');
       expect(source).not.toContain('comet/scripts/comet-hook-guard.mjs');
       expect(source).not.toContain('comet-native/scripts/comet-native-hook-guard.mjs');
+    });
+
+    it('installs dsh Claude-compatible Hooks and a project Cordis patch', async () => {
+      const dsh = PLATFORMS.find((candidate) => candidate.id === 'dsh')!;
+
+      await expect(
+        installCometHooksForPlatform(tmpDir, dsh, 'project', 'classic'),
+      ).resolves.toMatchObject({
+        status: 'installed',
+        reason: expect.stringContaining('--patch .dsh/cordis.patch.yml'),
+      });
+
+      const hooks = JSON.parse(
+        await fs.readFile(path.join(tmpDir, '.dsh', 'hooks.json'), 'utf8'),
+      ) as { hooks: { PreToolUse: Array<{ hooks: Array<{ command: string }> }> } };
+      expect(JSON.stringify(hooks)).toContain('comet/scripts/comet-hook-router.mjs');
+
+      const patch = await fs.readFile(path.join(tmpDir, '.dsh', 'cordis.patch.yml'), 'utf8');
+      expect(patch).toContain('dsh-hooks-claude-code');
+      expect(patch).toContain('./.dsh/hooks.json');
     });
 
     it('installs the Native Copilot Hook with a write matcher and structured denial output', async () => {

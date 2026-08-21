@@ -320,7 +320,7 @@ export interface PlatformInstallFile {
   operation?:
     | {
         type: 'rule';
-        format: 'md' | 'mdc' | 'copilot';
+        format: 'md' | 'mdc' | 'copilot' | 'dsh';
         mode: 'always' | 'matched';
         match?: string[];
       }
@@ -335,6 +335,7 @@ export interface PlatformInstallFile {
           | 'kiro'
           | 'qoder'
           | 'codebuddy'
+          | 'dsh'
           | 'trae';
         event: NormalizedHook['event'];
         matcher?: string;

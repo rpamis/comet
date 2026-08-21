@@ -4,8 +4,14 @@ import os from 'os';
 import path from 'path';
 
 import { PLATFORMS } from '../../../platform/install/platforms.js';
-import { installCometHooksForPlatform } from '../../../domains/skill/platform-install.js';
-import { removeCometHooksForPlatform } from '../../../domains/skill/uninstall.js';
+import {
+  copyCometRulesForPlatform,
+  installCometHooksForPlatform,
+} from '../../../domains/skill/platform-install.js';
+import {
+  removeCometHooksForPlatform,
+  removeCometRulesForPlatform,
+} from '../../../domains/skill/uninstall.js';
 
 describe('removeCometHooksForPlatform', () => {
   let tmpDir: string;
@@ -35,6 +41,34 @@ describe('removeCometHooksForPlatform', () => {
     const cleanedCanonical = JSON.parse(await fs.readFile(canonicalPath, 'utf8'));
     expect(cleanedCanonical.hooks.PreToolUse[0].hooks).toEqual([]);
     await expect(fs.readFile(legacyPath, 'utf8')).resolves.toBe(malformedLegacy);
+  });
+
+  it('removes only the dsh-managed instruction block and Hook patch row', async () => {
+    const dsh = PLATFORMS.find((platform) => platform.id === 'dsh')!;
+    const instructionPath = path.join(tmpDir, 'AGENTS.local.md');
+    await fs.writeFile(instructionPath, '# User instructions\n', 'utf8');
+
+    await copyCometRulesForPlatform(tmpDir, dsh, true, 'en', 'project', 'classic');
+    await installCometHooksForPlatform(tmpDir, dsh, 'project', 'classic');
+
+    const patchPath = path.join(tmpDir, '.dsh', 'cordis.patch.yml');
+    const patch = await fs.readFile(patchPath, 'utf8');
+    await fs.writeFile(
+      patchPath,
+      `${patch}- user-plugin: {}\n- dsh-hooks-claude-code:\n    configPath: ./.dsh/custom-hooks.json\n    projectDir: .\n`,
+      'utf8',
+    );
+
+    const hookResult = await removeCometHooksForPlatform(tmpDir, dsh, 'project');
+    expect(hookResult).toEqual({ removed: 2, failed: 0 });
+    expect(await fs.readFile(patchPath, 'utf8')).toContain('user-plugin');
+    expect(await fs.readFile(patchPath, 'utf8')).toContain('./.dsh/custom-hooks.json');
+
+    await expect(removeCometRulesForPlatform(tmpDir, dsh, 'project')).resolves.toEqual({
+      removed: 1,
+      failed: 0,
+    });
+    await expect(fs.readFile(instructionPath, 'utf8')).resolves.toBe('# User instructions\n');
   });
 
   it('counts unreadable historical Codex hook paths after canonical cleanup succeeds', async () => {
