@@ -34,7 +34,7 @@ Tweak 是 Comet 五阶段能力的预设工作流，不是独立的平行流程�
 
 恢复已有 tweak change 时，第一项状态操作必须是 `comet state select <change-name>`；创建新 change 时，在 `.comet.yaml` 初始化成功后立即运行该命令，再进入源码写入步骤。
 
-进入 tweak 工作区后，自动运行 `comet task <project-root> --task "<用户原始请求>" --phase build --json`，注入当前任务相关的个人记忆和项目知识；工作流命令可带 `--comet-task`、`--comet-path`、`--comet-phase`，CLI 会自动显示相关片段。完成、验证或审查后运行 `comet memory observe`；编译器、测试或 linter 失败时按诊断修复并重跑；任务结束运行 `comet task <project-root> --task "<用户原始请求>" --complete --workflow <workflow> --change <change-id> --json`，完成个人记忆检查点。没有 Hook 时由本 Skill 直接执行，单独取上下文仍可用 `comet memory context`。
+进入 tweak 工作区后，自动运行 `comet task <project-root> --task "<用户原始请求>" --phase build --json`，注入当前任务相关的个人记忆和项目知识；工作流命令可带 `--comet-task`、`--comet-path`、`--comet-phase`，CLI 会自动显示相关片段。仅当本轮对话出现可跨任务复用的用户偏好、项目约定或稳定协作方式时，才调用 `comet memory observe <project-root> --text "<偏好或约定>" --workflow <workflow> --change <change-id> --candidate-key <stable-topic-key> --json`；`--text` 只写该偏好或约定，不写任务摘要、实现进展、命令输出或测试结果，没有候选时不调用。编译器、测试或 linter 失败时按诊断修复并重跑；任务结束运行 `comet task <project-root> --task "<用户原始请求>" --complete --workflow <workflow> --change <change-id> --json`，这个命令只完成检查点和同步，不把原始任务保存为记忆。没有 Hook 时由本 Skill 直接执行，单独取上下文仍可用 `comet memory context`。
 
 ### 1. 快速开启（预设 open）
 

@@ -10,7 +10,7 @@ export async function runNativeFacade(args: readonly string[]): Promise<number> 
   const projectRoot = path.resolve(integration.projectRoot ?? process.cwd());
   await emitContext(projectRoot, integration);
   const result = await runNativeCli(integration.cliArgs);
-  await recordNativeResult(integration.cliArgs, result, integration.workflow, integration.task);
+  await recordNativeResult(integration.cliArgs, result, integration.workflow);
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr)
     process.stderr.write(result.stderr + (result.stderr.endsWith('\n') ? '' : '\n'));
@@ -21,7 +21,6 @@ async function recordNativeResult(
   args: readonly string[],
   result: Awaited<ReturnType<typeof runNativeCli>>,
   workflowOverride?: string,
-  userEvidence?: string,
 ): Promise<void> {
   if (result.exitCode !== 0) return;
   const command = args.find((value) => ['next', 'archive', 'handoff', 'check'].includes(value));
@@ -40,14 +39,12 @@ async function recordNativeResult(
       changeId: changeId ?? command,
       command,
       success: true,
-      summary: result.stdout,
       eventName:
         command === 'archive'
           ? 'change.completed'
           : command === 'check' || args.includes('--result')
             ? 'verification.completed'
             : 'task.completed',
-      ...(userEvidence?.trim() ? { userEvidence: [userEvidence.trim()] } : {}),
     });
   } catch {
     // Plugin learning must never make a workflow command fail.

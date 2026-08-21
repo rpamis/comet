@@ -37,5 +37,5 @@ The Hook evaluates multi-file and patch targets atomically. Unattributable event
 Only perform the following when `.comet/config.yaml` exists and the user is using Comet. An ordinary repository without an enabled Comet project remains neutral: do not create files and do not change tool-call results.
 
 - At task start or after the target path is known, run `comet task <project-root> --task "<task>" --phase "<phase>" --json`; use matching personal memory and project knowledge snippets.
-- After completion, verification, or review, the Comet Skill records `comet memory observe`; when a compiler, test, or linter fails, follow the workflow diagnostics to fix the code.
+- After completion, verification, or review, the Comet Skill runs `comet memory observe` only when the conversation contains a reusable user preference, project convention, or stable collaboration habit; never save a task summary, implementation progress, command output, or test result as personal memory. When a compiler, test, or linter fails, follow the workflow diagnostics to fix the code.
 - If the task-context command is unavailable, the project is not initialized, or no snippet matches, remain neutral; a plugin failure must not be presented as a project-check failure.

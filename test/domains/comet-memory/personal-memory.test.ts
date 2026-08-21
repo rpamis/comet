@@ -472,6 +472,7 @@ describe('PersonalMemoryService', () => {
         language: 'zh-CN',
         workflow: 'native',
         changeId: 'one',
+        candidateKey: 'build-command',
         success: true,
       });
       const result = await memories.observe({
@@ -482,6 +483,7 @@ describe('PersonalMemoryService', () => {
         language: 'zh-CN',
         workflow: 'native',
         changeId: 'two',
+        candidateKey: 'build-command',
         success: true,
       });
       expect(result).toMatchObject({ candidate: true, activated: false });
@@ -552,6 +554,132 @@ describe('PersonalMemoryService', () => {
           candidateKey: 'staging',
         }),
       ).resolves.toMatchObject({ activated: true });
+    });
+  });
+
+  it('keeps distinct preference keys independent when they share a category', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const base = {
+        scope: 'project' as const,
+        projectKey: 'project-a',
+        category: '协作偏好',
+        workflow: 'native',
+        language: 'zh-CN' as const,
+        success: true,
+      };
+
+      for (const changeId of ['change-1', 'change-2']) {
+        await memories.observe({
+          ...base,
+          text: '使用中文回复',
+          changeId,
+          candidateKey: 'response-language',
+        });
+        await memories.observe({
+          ...base,
+          text: '提交前只暂存本次改动文件',
+          changeId,
+          candidateKey: 'staging-scope',
+        });
+      }
+
+      const managed = await memories.manage({ projectKey: 'project-a' });
+      expect(managed.conflicts).toHaveLength(0);
+      expect(managed.records).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ text: '使用中文回复', status: 'active' }),
+          expect.objectContaining({ text: '提交前只暂存本次改动文件', status: 'active' }),
+        ]),
+      );
+    });
+  });
+
+  it('does not let a legacy tombstone without a text hash block unrelated preferences', async () => {
+    await withTempRepository(async (root) => {
+      const repository = new FileMemoryRepository(root);
+      const state = await repository.readState();
+      await repository.writeState({
+        ...state,
+        tombstones: [
+          {
+            identity: 'legacy-memory-identity',
+            scope: 'project',
+            projectKey: 'project-a',
+            recordId: 'missing-legacy-record',
+            reason: 'user-remove',
+            permanent: true,
+            removedAt: '2026-08-13T00:00:00.000Z',
+          },
+        ],
+      });
+      const memories = new PersonalMemoryService({
+        repository,
+        now: () => new Date('2026-08-14T00:00:00.000Z'),
+      });
+
+      await expect(
+        memories.observe({
+          scope: 'project',
+          projectKey: 'project-a',
+          category: '协作偏好',
+          text: '提交前只暂存本次改动文件',
+          language: 'zh-CN',
+          workflow: 'native',
+          changeId: 'new-change',
+          candidateKey: 'staging-scope',
+          success: true,
+        }),
+      ).resolves.toMatchObject({ ignored: false, candidate: true });
+    });
+  });
+
+  it('quarantines legacy workflow artifacts without deleting the stored record', async () => {
+    await withTempRepository(async (root) => {
+      const repository = new FileMemoryRepository(root);
+      const state = await repository.readState();
+      const timestamp = '2026-08-13T00:00:00.000Z';
+      const source = {
+        kind: 'workflow' as const,
+        label: 'task.completed',
+        workflow: 'native',
+        changeId: 'legacy-change',
+        projectKey: 'project-a',
+      };
+      await repository.writeText(
+        'projects/project-a.md',
+        '# Project memory\n\n## Workflow operation\n\n- Native task completed with changed files and verification output\n',
+      );
+      await repository.writeState({
+        ...state,
+        records: [
+          {
+            id: 'legacy-workflow-record',
+            scope: 'project',
+            projectKey: 'project-a',
+            category: 'Workflow operation',
+            text: 'Native task completed with changed files and verification output',
+            tags: [],
+            pathPatterns: [],
+            taskTypes: [],
+            operations: ['task'],
+            language: 'en',
+            kind: 'inferred',
+            active: true,
+            source,
+            sources: [source],
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          },
+        ],
+      });
+      const memories = new PersonalMemoryService({ repository });
+
+      expect((await memories.retrieve({ projectKey: 'project-a' })).records).toHaveLength(0);
+      expect((await memories.manage({ projectKey: 'project-a' })).records).toEqual([
+        expect.objectContaining({ id: 'legacy-workflow-record', status: 'inactive' }),
+      ]);
+      expect((await repository.readState()).records[0]?.active).toBe(true);
     });
   });
 

@@ -55,18 +55,13 @@ export async function recordCometWorkflowResult(options: {
   readonly changeId: string;
   readonly command: string;
   readonly success: boolean;
-  readonly summary?: string;
   readonly eventName?: CometLifecycleObservation['name'];
-  readonly userEvidence?: readonly string[];
 }): Promise<void> {
   if (!options.changeId.trim()) return;
   try {
     const notices: string[] = [];
     const bridge = await createBridge(options.projectRoot, (notice) => notices.push(notice));
     const language = bridge.currentLanguage;
-    const text =
-      options.summary?.trim() ||
-      (language === 'en' ? 'Command checkpoint completed' : '完成命令检查点');
     await bridge.dispatchLifecycle({
       name:
         options.eventName ??
@@ -75,12 +70,9 @@ export async function recordCometWorkflowResult(options: {
       changeId: options.changeId,
       success: options.success,
       category: language === 'en' ? 'Workflow checkpoint' : '工作流检查点',
-      text: text.slice(0, 1000),
+      text: language === 'en' ? 'Workflow checkpoint completed' : '完成工作流检查点',
       candidateKey: `${options.workflow}:${options.command}`,
       operations: [options.command],
-      ...(options.userEvidence === undefined || options.userEvidence.length === 0
-        ? {}
-        : { userEvidence: options.userEvidence.slice(0, 8) }),
     });
     for (const notice of notices) console.log(notice);
   } catch {

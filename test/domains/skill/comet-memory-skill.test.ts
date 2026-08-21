@@ -10,6 +10,7 @@ import {
 } from '../../../domains/skill/platform-install.js';
 
 const languageRoots = ['assets/skills', 'assets/skills-zh'] as const;
+const workflowSkills = ['comet-native', 'comet-classic', 'comet-hotfix', 'comet-tweak'] as const;
 const requiredContractMarkers = [
   'comet.memory.review.v1',
   'comet.memory.actions.v1',
@@ -88,5 +89,17 @@ describe('comet-memory Skill assets', () => {
     }
     expect(isManagedSkillPathForSelection('comet-native/SKILL.md', 'classic')).toBe(false);
     expect(isManagedSkillPathForSelection('comet-classic/SKILL.md', 'native')).toBe(false);
+  });
+
+  it('keeps workflow observations limited to reusable user information', async () => {
+    for (const skill of workflowSkills) {
+      const [english, chinese] = await Promise.all(
+        languageRoots.map((root) => fs.readFile(path.resolve(root, skill, 'SKILL.md'), 'utf8')),
+      );
+      expect(chinese).toContain('不写任务摘要、实现进展、命令输出或测试结果');
+      expect(english).toContain(
+        'never a task summary, implementation progress, command output, or test result',
+      );
+    }
   });
 });

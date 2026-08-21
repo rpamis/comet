@@ -178,8 +178,8 @@ memory
 
 memory
   .command('observe [path]')
-  .description('记录一次工作流成功结果，用于自动学习')
-  .requiredOption('--text <text>', '观察到的稳定行为')
+  .description('记录一次可跨任务复用的用户偏好或稳定协作方式')
+  .requiredOption('--text <text>', '只填写偏好或约定，不填写任务摘要、命令输出或测试结果')
   .requiredOption('--workflow <workflow>', '工作流类型')
   .requiredOption('--change <id>', 'Change ID')
   .requiredOption('--candidate-key <key>', '候选行为标识')

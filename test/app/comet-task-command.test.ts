@@ -36,9 +36,10 @@ describe('ordinary Comet task host', () => {
         workflow: 'native',
         changeId: 'change-1',
         command: 'task',
-        userEvidence: ['修复接口'],
       }),
     );
+    expect(recordCometWorkflowResult.mock.calls[0]?.[0]).not.toHaveProperty('summary');
+    expect(recordCometWorkflowResult.mock.calls[0]?.[0]).not.toHaveProperty('userEvidence');
     expect(result.context).toHaveLength(1);
   });
 });

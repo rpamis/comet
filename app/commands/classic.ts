@@ -24,7 +24,6 @@ export async function runClassicFacade(
     result,
     integration.workflow,
     projectRoot,
-    integration.task,
   );
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);
@@ -59,7 +58,6 @@ export async function runClassicGroupFacade(args: readonly string[]): Promise<nu
     result,
     integration.workflow,
     integration.projectRoot,
-    integration.task,
   );
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);
@@ -72,7 +70,6 @@ async function recordClassicResult(
   result: Awaited<ReturnType<typeof runClassicCli>>,
   workflowOverride?: string,
   projectRoot = process.cwd(),
-  userEvidence?: string,
 ): Promise<void> {
   if (
     result.exitCode !== 0 ||
@@ -86,14 +83,12 @@ async function recordClassicResult(
       changeId: classicChangeId(args, command),
       command,
       success: true,
-      summary: result.stdout,
       eventName:
         command === 'archive'
           ? 'change.completed'
           : command === 'guard'
             ? 'verification.completed'
             : 'task.completed',
-      ...(userEvidence?.trim() ? { userEvidence: [userEvidence.trim()] } : {}),
     });
   } catch {
     // Plugin learning must never make a workflow command fail.

@@ -117,9 +117,8 @@ describe('Native command facade', () => {
       expect.objectContaining({ task: '完成服务端改动', path: 'src/server.ts', phase: 'verify' }),
     );
     expect(stderr).toHaveBeenCalledWith(expect.stringContaining('使用中文回复'));
-    expect(recordCometWorkflowResult).toHaveBeenCalledWith(
-      expect.objectContaining({ userEvidence: ['完成服务端改动'] }),
-    );
+    expect(recordCometWorkflowResult.mock.calls[0]?.[0]).not.toHaveProperty('summary');
+    expect(recordCometWorkflowResult.mock.calls[0]?.[0]).not.toHaveProperty('userEvidence');
   });
 
   it('records verification commands as verification lifecycle events', async () => {

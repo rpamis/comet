@@ -26,6 +26,7 @@ export interface MemoryInput {
   readonly pathPatterns?: readonly string[];
   readonly taskTypes?: readonly string[];
   readonly operations?: readonly string[];
+  readonly candidateKey?: string;
   readonly source?: MemorySource;
 }
 
@@ -41,6 +42,7 @@ export interface MemoryRecord {
   readonly pathPatterns: readonly string[];
   readonly taskTypes: readonly string[];
   readonly operations: readonly string[];
+  readonly candidateKey?: string;
   readonly language?: MemoryLanguage;
   readonly kind: MemoryKind;
   readonly active: boolean;

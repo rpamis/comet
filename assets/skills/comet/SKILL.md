@@ -22,6 +22,6 @@ Once this Skill is loaded, treat the `/comet` entry as selected. Immediately per
 
    After the skill is loaded, pass the user's original request unchanged to the loaded entry Skill as its user input.
 
-The resolver selects task context, personal memory, and project knowledge; use `comet memory context` if needed, then follow the loaded workflow Skill and record stable personal memory.
+The resolver selects task context, personal memory, and project knowledge; use `comet memory context` if needed, then follow the loaded workflow Skill and record only reusable user preferences, project conventions, or stable collaboration habits as personal memory, never task summaries or Agent work progress.
 
 Do not switch workflows based on task size, file count, active changes, or model judgment. Native and Classic changes, states, and artifacts always remain independent.

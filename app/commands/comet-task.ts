@@ -41,9 +41,7 @@ export async function cometTaskCommand(
       changeId: requireText(options.change, '--change'),
       command: 'task',
       success: true,
-      summary: options.task,
       eventName: 'task.completed',
-      userEvidence: [options.task],
     });
   }
   const result = { context };

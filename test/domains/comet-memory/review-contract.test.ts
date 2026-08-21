@@ -530,6 +530,42 @@ describe('semantic memory review contract', () => {
     ]);
   });
 
+  it('skips completed-work summaries but keeps durable workflow preferences', () => {
+    const completedWork = reviewMemoryPacket(
+      packet({
+        category: '可复用偏好',
+        userEvidence: ['完成服务端改动'],
+        evidence: [
+          {
+            ...packet().evidence[0],
+            text: '完成服务端改动',
+            category: '可复用偏好',
+          },
+        ],
+      }),
+    );
+    expect(completedWork.actions).toEqual([
+      expect.objectContaining({ action: 'skip', language: 'zh-CN' }),
+    ]);
+
+    const durablePreference = reviewMemoryPacket(
+      packet({
+        category: '协作偏好',
+        userEvidence: ['完成修改后先运行相关测试'],
+        evidence: [
+          {
+            ...packet().evidence[0],
+            text: '完成修改后先运行相关测试',
+            category: '协作偏好',
+          },
+        ],
+      }),
+    );
+    expect(durablePreference.actions).toEqual([
+      expect.objectContaining({ action: 'create', text: '完成修改后先运行相关测试' }),
+    ]);
+  });
+
   it('rejects an action set that mixes global and project scopes', () => {
     const validated = validateMemoryReviewPacket(
       packet({

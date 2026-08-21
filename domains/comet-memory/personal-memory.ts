@@ -286,7 +286,16 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
 
       const identity = stored.identity;
       const normalized = stored.normalizedText;
-      const tombstone = state.tombstones.find((entry) => entry.identity === identity);
+      const normalizedTextHash = normalizedMemoryTextHash(stored.text);
+      const rawTextHash = hashMemoryText(stored.text);
+      const tombstone = state.tombstones.find(
+        (entry) =>
+          entry.identity === identity ||
+          (entry.scope === stored.scope &&
+            entry.projectKey === stored.projectKey &&
+            entry.textHash !== undefined &&
+            (entry.textHash === normalizedTextHash || entry.textHash === rawTextHash)),
+      );
       if (
         tombstone?.permanent === true ||
         (tombstone !== undefined && stored.observedAt <= tombstone.removedAt)
@@ -324,6 +333,45 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
       const active = state.records.find((entry) => entry.active && entry.identity === identity) as
         | StoredRecord
         | undefined;
+      const explicit = state.records.find(
+        (entry) =>
+          entry.active &&
+          entry.kind === 'explicit' &&
+          memoryShapeIdentity(entry) === memoryShapeIdentity(observation),
+      ) as StoredRecord | undefined;
+      if (explicit !== undefined) {
+        if (normalizeText(explicit.text) !== normalized) {
+          state.conflicts = addConflict(
+            state.conflicts,
+            identity,
+            [explicit, record],
+            this.timestamp(),
+          );
+          await this.persist(state);
+          return {
+            deduplicated: false,
+            ignored: false,
+            candidate: true,
+            activated: false,
+            record: null,
+          };
+        }
+        const refreshed = addSource(explicit, source, this.timestamp());
+        state.records = replaceRecord(
+          state.records.filter((entry) => entry.id !== record.id),
+          refreshed,
+        );
+        delete state.evidence[record.id];
+        state.conflicts = state.conflicts.filter((entry) => entry.identity !== identity);
+        await this.persist(state);
+        return {
+          deduplicated: false,
+          ignored: false,
+          candidate: false,
+          activated: false,
+          record: cloneRecord(refreshed),
+        };
+      }
       const conflicting = state.records.filter(
         (entry) =>
           entry.id !== record.id &&
@@ -574,6 +622,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
       const maxBytes = boundedPositive(query.maxBytes ?? this.maxBytes, this.maxBytes);
       const candidates = state.records
         .filter((entry) => entry.active)
+        .filter((entry) => !isLegacyWorkflowArtifact(entry))
         .filter((entry) => !isConflictedInferred(state.conflicts, entry))
         .filter((entry) => scopeMatches(entry, query))
         .filter((entry) => attributesMatch(entry, query))
@@ -868,6 +917,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
       pathPatterns: input.pathPatterns ?? current.pathPatterns,
       taskTypes: input.taskTypes ?? current.taskTypes,
       operations: input.operations ?? current.operations,
+      candidateKey: input.candidateKey ?? current.candidateKey,
       language: input.language ?? current.language,
       source,
     };
@@ -975,11 +1025,12 @@ function projectManagementRecord(
     (entry) => entry.recordId === record.id || entry.identity === record.identity,
   );
   const conflicted = isConflictedInferred(state.conflicts, record);
+  const quarantined = isLegacyWorkflowArtifact(record);
   const status = tombstoned
     ? ('tombstoned' as const)
     : conflicted
       ? ('conflict' as const)
-      : record.active
+      : record.active && !quarantined
         ? ('active' as const)
         : ('inactive' as const);
   return {
@@ -1040,6 +1091,7 @@ function createRecord(
     pathPatterns: normalizeArray(input.pathPatterns),
     taskTypes: normalizeArray(input.taskTypes),
     operations: normalizeArray(input.operations),
+    ...(input.candidateKey === undefined ? {} : { candidateKey: input.candidateKey }),
     ...(input.language === undefined ? {} : { language: input.language }),
     kind,
     active: kind === 'explicit',
@@ -1107,18 +1159,56 @@ function normalizeArray(values: readonly string[] | undefined): string[] {
 function memoryIdentity(
   input: Pick<
     MemoryInput,
-    'scope' | 'projectKey' | 'category' | 'tags' | 'pathPatterns' | 'taskTypes' | 'operations'
+    | 'scope'
+    | 'projectKey'
+    | 'category'
+    | 'tags'
+    | 'pathPatterns'
+    | 'taskTypes'
+    | 'operations'
+    | 'candidateKey'
   >,
 ): string {
+  const semanticIdentity =
+    input.candidateKey === undefined
+      ? ['category', normalizeText(input.category)]
+      : ['candidate', input.candidateKey];
   return JSON.stringify([
     input.scope,
     input.scope === 'project' ? (input.projectKey ?? '') : '',
-    normalizeText(input.category),
+    semanticIdentity,
     normalizeArray(input.tags),
     normalizeArray(input.pathPatterns),
     normalizeArray(input.taskTypes),
     normalizeArray(input.operations),
   ]);
+}
+
+function memoryShapeIdentity(
+  input: Pick<
+    MemoryInput,
+    'scope' | 'projectKey' | 'category' | 'tags' | 'pathPatterns' | 'taskTypes' | 'operations'
+  >,
+): string {
+  return memoryIdentity({ ...input, candidateKey: undefined });
+}
+
+function isLegacyWorkflowArtifact(record: MemoryRecord): boolean {
+  if (record.kind !== 'inferred' || record.candidateKey !== undefined) return false;
+  const lifecycleSource = record.sources.some(
+    (source) =>
+      (source.kind === 'workflow' || source.kind === 'review') &&
+      /^(?:task|change|verification|review)\.completed$/u.test(source.label ?? ''),
+  );
+  if (!lifecycleSource) return false;
+  return (
+    /^(?:(?:workflow|command|task|change)[- _:](?:operation|checkpoint|result|summary)|工作流(?:操作|检查点|结果|摘要))/iu.test(
+      record.category.trim(),
+    ) ||
+    /(?:完成(?:命令|工作流)检查点|(?:workflow|command|task|change)\s+(?:checkpoint\s+)?completed)/iu.test(
+      record.text,
+    )
+  );
 }
 
 function observationKey(
@@ -1148,6 +1238,7 @@ function observationInput(observation: MemoryObservation, source: MemorySource):
     pathPatterns: observation.pathPatterns,
     taskTypes: observation.taskTypes,
     operations: observation.operations,
+    candidateKey: observation.candidateKey,
     source,
   };
 }
@@ -1534,7 +1625,8 @@ function isTombstonedMarkdownText(
     (entry) =>
       entry.scope === scope &&
       entry.projectKey === projectKey &&
-      (entry.textHash === undefined || entry.textHash === textHash || entry.textHash === rawHash),
+      entry.textHash !== undefined &&
+      (entry.textHash === textHash || entry.textHash === rawHash),
   );
 }
 
@@ -1549,6 +1641,12 @@ function validateInput(input: MemoryInput, configuredLanguage?: MemoryLanguage):
     throw new Error('Project key is invalid');
   if (input.category.trim().length === 0 || input.text.trim().length === 0)
     throw new Error('Memory category and text are required');
+  if (
+    input.candidateKey !== undefined &&
+    !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/u.test(input.candidateKey)
+  ) {
+    throw new Error('Memory candidate key is invalid');
+  }
   validateSafeMemoryText(input.category);
   validateSafeMemoryText(input.text);
   for (const [field, value] of [
