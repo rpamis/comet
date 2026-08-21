@@ -6,32 +6,22 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Added
 
-- **Oh My Pi platform support**: `comet init`, `comet update`, and `comet uninstall` now manage Comet and OpenSpec Skills in OMP's native project or user directories, install always-active Rules, and bridge project write checks through OMP Hooks; `--platform omp` is accepted as an alias for `oh-my-pi`.
-- **DeepSeek Harness platform support**: `comet init`, `comet update`, and `comet uninstall --platform dsh` now manage Comet Skills, Claude-shaped Classic OpenSpec Skills, Superpowers Skills, merged `AGENTS` instructions, and the dsh Hook bridge configuration in dsh's native project and `$DSH_HOME` roots.
-- **Semantic personal memory**: Comet now keeps reusable personal preferences, collaboration habits, and verified experience through a bounded review at stable successful workflow checkpoints, while skipping one-off activity, repository facts, and sensitive content.
-- **Shared memory Skill**: Classic, Native, Hotfix, and Tweak now use the same fixed first-party `comet-memory` Skill with Chinese and English assets selected from the project language.
-- **Project knowledge retrieval**: Ordinary `comet task` now contributes bounded, source-cited references from declared Native, Classic, and explicitly referenced archived Superpowers documents, with Local retrieval by default and an opt-in fixed Retrieval API v1 Remote provider.
-- **Project Knowledge Dashboard**: Dashboard now shows the Local or Remote project-knowledge provider, safe Remote settings, bounded recent diagnostics, and existing enable, project-pause, resume, and uninstall actions beside Personal Memory.
+- **Oh My Pi and DeepSeek Harness support**: `comet init`, `comet update`, and `comet uninstall` now manage Comet's native Skills, Rules, and Hook integrations in both platforms' project and user environments.
+- **Personal memory**: Comet now learns reusable preferences and verified collaboration experience from successful checkpoints across Classic, Native, Hotfix, and Tweak, with the same state available through `comet memory` and Dashboard management.
+- **Personal Memory Dashboard**: Dashboard now provides readable memory records, correction, forget, rollback, conflict protection, and dedicated Git synchronization controls.
+- **Project knowledge**: `comet task` can retrieve bounded, source-cited context from Native, Classic, and explicitly referenced archived Superpowers documents. Local retrieval is enabled by default, with an optional Remote Retrieval API v1 provider.
+- **Project Knowledge Dashboard**: Dashboard now exposes the knowledge provider, safe Remote settings, persistent recent diagnostics, and project-level enable, pause, resume, and uninstall controls; stale Remote settings are ignored and uninstall returns cleanly to the workflow view.
 
 ### Changed
 
-- **Supervisor completion flow**: When every Supervisor Child is complete, the parent now resumes automatically into final verification with an explicit next step, so users no longer need to manually ask the workflow to advance while final Archive and delivery authorization remain unchanged.
-- **Task context boundaries**: Personal memory and project knowledge references are now wrapped in distinct XML elements so Agents can distinguish user preferences from project evidence.
-- **Personal memory project policy**: Projects can now allow or prohibit automatic memory learning and Agent context injection through the shared `memory` section in `.comet/config.yaml`, while explicit personal memory management remains available.
-- **Personal memory experience**: CLI, Dashboard, readable Markdown, and dedicated Git synchronization now share one authoritative memory state with localized output, explicit correction/forget/rollback controls, conflict protection, and non-blocking background failures.
-- **Dashboard startup performance**: Missing project registrations and stale, internal, or detached worktrees no longer trigger unnecessary Git and Native scans, while SQLite refreshes cached sources that are no longer valid.
-- **Personal memory startup**: The Dashboard first page no longer performs repository synchronization or loads unused management data; explicit synchronization remains available when requested.
-- **Personal memory Dashboard**: The personal memory page now puts readable memory records first and groups project controls, synchronization, and plugin management into a compact settings panel.
-- **Native Supervisor workflow**: Supervisor Changes now coordinate Children through a dedicated integration workspace, independent Builder/Verifier task packages, dependency-aware `verified` and `integrated` states, and a final parent verification before target delivery.
-- **Native status and recovery**: Supervisor status exposes compact Child summaries, current task bindings, integration progress, and preserved verification evidence while keeping machine Runtime state under `.comet/runtime`.
-- **Native verification status copy**: Verification reports and Dashboard labels now explain independent verification, required confirmation, and automatic-check-only results in plain language without changing machine status values.
-- **Native worktree lifecycle**: A successfully merged Comet-created isolated change now removes its finished worktree while preserving the branch for normal Git workflows.
+- **Native Supervisor workflow**: Supervisor Changes now coordinate dependent Children through an integration workspace, independent Builder/Verifier tasks, automatic parent advancement after Children complete, and final verification before delivery.
+- **Native status and verification**: Supervisor status, verification reports, and Dashboard labels now present child progress, task bindings, preserved evidence, and verification decisions in a clearer user-facing form.
+- **Dashboard and memory workflow**: Dashboard startup and workspace discovery avoid unnecessary scans, while personal memory opens directly to readable records and keeps synchronization explicit.
+- **Native worktree lifecycle**: After a successful merge, Comet removes its finished isolated worktree while preserving the branch for normal Git workflows.
 
 ### Fixed
 
-- **Native Git snapshot reliability**: Native snapshot probes now run from the project root and tolerate short Windows process-handle release delays, avoiding failures when hooks and workspace operations run concurrently.
-- **Project knowledge reliability**: Local configuration now ignores stale Remote settings, recent bounded diagnostics survive Dashboard reloads, and uninstall returns cleanly to the workflow view.
-
+- **Windows Native reliability**: Snapshot checks are more reliable when hooks and workspace operations run concurrently on Windows.
 
 ## What's Changed [0.4.0-beta.19] - 2026-08-21
 
