@@ -65,6 +65,7 @@ import {
 import './styles.css';
 
 const AUTO_REFRESH_MS = 30_000;
+const MEMORY_COLLAPSE_THRESHOLD = 240;
 const DASHBOARD_FONT_FAMILY =
   "'Segoe UI Variable', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif";
 const DASHBOARD_MONO_FONT_FAMILY = "Bahnschrift, 'Cascadia Mono', Consolas, monospace";
@@ -2147,23 +2148,32 @@ function AntSidebar({
       <Menu
         mode="inline"
         selectedKeys={pluginSelection ? [pluginSelection] : []}
-        items={pluginPages.map((page) => ({
-          key: page.pluginId,
-          icon:
-            page.pluginId === 'comet.personal-memory' ? (
-              <BulbOutlined />
-            ) : page.pluginId === 'comet.project-knowledge' ? (
-              <DatabaseOutlined />
-            ) : (
-              <SafetyCertificateOutlined />
+        items={pluginPages.map((page) => {
+          const statusLabel = page.globallyDisabled
+            ? '停用'
+            : page.projectPaused
+              ? '暂停'
+              : page.status === 'disabled'
+                ? '停用'
+                : null;
+          return {
+            key: page.pluginId,
+            icon:
+              page.pluginId === 'comet.personal-memory' ? (
+                <BulbOutlined />
+              ) : page.pluginId === 'comet.project-knowledge' ? (
+                <DatabaseOutlined />
+              ) : (
+                <SafetyCertificateOutlined />
+              ),
+            label: (
+              <span className="dashboard-plugin-menu-item">
+                <span>{page.label}</span>
+                {statusLabel ? <Badge status="default" text={statusLabel} /> : null}
+              </span>
             ),
-          label: (
-            <span className="dashboard-plugin-menu-item">
-              <span>{page.label}</span>
-              {page.status === 'disabled' ? <Badge status="default" text="停用" /> : null}
-            </span>
-          ),
-        }))}
+          };
+        })}
         onClick={({ key }) => {
           onPluginSelect(key);
           onClose();
@@ -2308,7 +2318,13 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
         <div className="dashboard-knowledge-status-cell">
           <span className="dashboard-knowledge-status-label">插件状态</span>
           <span className="dashboard-knowledge-status-value">
-            {page.globallyDisabled ? '全局停用' : disabled ? '已停用' : '已启用'}
+            {page.globallyDisabled
+              ? '全局停用'
+              : page.projectPaused
+                ? '已启用'
+                : disabled
+                  ? '已停用'
+                  : '已启用'}
           </span>
           <span className="dashboard-knowledge-status-meta">由 Plugin Runtime 管理</span>
         </div>
@@ -2338,7 +2354,10 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
             {provider !== '—' && <Tag bordered={false}>{provider}</Tag>}
           </div>
           {data === null || data === undefined ? (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="插件停用后不加载状态" />
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={page.projectPaused ? '当前项目暂停后不加载状态' : '插件停用后不加载状态'}
+            />
           ) : (
             <div className="dashboard-knowledge-summary-body">
               <p className="dashboard-knowledge-retrieval">{snapshot.retrieval}</p>
@@ -2432,6 +2451,7 @@ function PersonalMemoryCenter({ data, onInvoke }) {
   const [editingRecord, setEditingRecord] = useState(null);
   const [correctionText, setCorrectionText] = useState('');
   const [remoteUrl, setRemoteUrl] = useState('');
+  const [expandedRecordIds, setExpandedRecordIds] = useState(() => new Set());
   const status = data?.status ?? {};
   const retrieval = data?.retrieval ?? {};
   const management = data?.management ?? {};
@@ -2523,42 +2543,73 @@ function PersonalMemoryCenter({ data, onInvoke }) {
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有匹配的记忆" />
           ) : (
             <div className="dashboard-memory-records">
-              {records.map((record) => (
-                <div key={record.id} className="dashboard-memory-record">
-                  <div className="dashboard-memory-record-content">
-                    <div className="dashboard-memory-record-kicker">
-                      <Tag bordered={false}>{record.category}</Tag>
-                      <span>{record.scope === 'project' ? '项目记忆' : '全局记忆'}</span>
+              {records.map((record) => {
+                const text = typeof record.text === 'string' ? record.text : '';
+                const expandable = text.length > MEMORY_COLLAPSE_THRESHOLD;
+                const expanded = expandedRecordIds.has(record.id);
+                const visibleText =
+                  expandable && !expanded ? `${text.slice(0, MEMORY_COLLAPSE_THRESHOLD)}…` : text;
+                return (
+                  <div key={record.id} className="dashboard-memory-record">
+                    <div className="dashboard-memory-record-content">
+                      <div className="dashboard-memory-record-kicker">
+                        <Tag bordered={false}>{record.category}</Tag>
+                        <span>{record.scope === 'project' ? '项目记忆' : '全局记忆'}</span>
+                      </div>
+                      <p
+                        className={`dashboard-memory-record-text${
+                          expandable && !expanded ? ' is-collapsed' : ''
+                        }`}
+                      >
+                        {visibleText}
+                      </p>
+                      {expandable && (
+                        <Button
+                          className="dashboard-memory-record-text-toggle"
+                          size="small"
+                          type="link"
+                          aria-expanded={expanded}
+                          onClick={() =>
+                            setExpandedRecordIds((previous) => {
+                              const next = new Set(previous);
+                              if (next.has(record.id)) next.delete(record.id);
+                              else next.add(record.id);
+                              return next;
+                            })
+                          }
+                        >
+                          {expanded ? '收起完整记忆' : '展开完整记忆'}
+                        </Button>
+                      )}
+                      <div className="dashboard-memory-record-meta">
+                        <span>{record.evidenceCount ?? 0} 条证据</span>
+                        <span>更新于 {formatTimestamp(record.updatedAt)}</span>
+                      </div>
                     </div>
-                    <p className="dashboard-memory-record-text">{record.text}</p>
-                    <div className="dashboard-memory-record-meta">
-                      <span>{record.evidenceCount ?? 0} 条证据</span>
-                      <span>更新于 {formatTimestamp(record.updatedAt)}</span>
+                    <div className="dashboard-memory-record-actions">
+                      <Button
+                        size="small"
+                        onClick={() => {
+                          setEditingRecord(record);
+                          setCorrectionText(record.text);
+                        }}
+                      >
+                        纠正
+                      </Button>
+                      <Button size="small" onClick={() => onInvoke('rollback', { id: record.id })}>
+                        回滚
+                      </Button>
+                      <Button
+                        size="small"
+                        danger
+                        onClick={() => onInvoke('remove', { id: record.id })}
+                      >
+                        删除
+                      </Button>
                     </div>
                   </div>
-                  <div className="dashboard-memory-record-actions">
-                    <Button
-                      size="small"
-                      onClick={() => {
-                        setEditingRecord(record);
-                        setCorrectionText(record.text);
-                      }}
-                    >
-                      纠正
-                    </Button>
-                    <Button size="small" onClick={() => onInvoke('rollback', { id: record.id })}>
-                      回滚
-                    </Button>
-                    <Button
-                      size="small"
-                      danger
-                      onClick={() => onInvoke('remove', { id: record.id })}
-                    >
-                      删除
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>

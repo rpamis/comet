@@ -128,6 +128,16 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
 
   await page.getByRole('button', { name: '暂停当前项目' }).click();
   await expect(page.getByText('当前项目已暂停项目知识', { exact: true })).toBeVisible();
+  await expect(
+    page.locator('.dashboard-plugin-menu-item').filter({ hasText: '项目知识' }),
+  ).toHaveText('项目知识暂停');
+  await expect(
+    page
+      .getByLabel('项目知识状态')
+      .locator('.dashboard-knowledge-status-cell')
+      .filter({ hasText: '插件状态' }),
+  ).toContainText('已启用');
+  await expect(page.getByText('当前项目暂停后不加载状态', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '重新启用' }).click();
   await expect(page.getByText('当前项目', { exact: true }).last()).toBeVisible();
   await expect(page.getByText('已启用', { exact: true }).last()).toBeVisible();
@@ -140,6 +150,129 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   await expect(page.getByRole('heading', { name: '项目概览' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '项目知识' })).toHaveCount(0);
   await expect(page.getByRole('menuitem', { name: '项目知识' })).toHaveCount(0);
+});
+
+test('collapses long personal memory records until the user expands them', async ({ page }) => {
+  const record = {
+    id: 'long-memory',
+    category: 'preference',
+    scope: 'project',
+    text: '长记忆内容。'.repeat(80),
+    evidenceCount: 1,
+    updatedAt: '2026-08-20T00:00:00.000Z',
+  };
+  const personalMemoryPage = {
+    pluginId: 'comet.personal-memory',
+    label: '个人记忆',
+    route: '/plugins/personal-memory',
+    status: 'enabled',
+    globallyDisabled: false,
+    projectPaused: false,
+    diagnostics: [],
+    data: {
+      status: {
+        learningEnabled: true,
+        retrievalEnabled: true,
+        files: [],
+        pausedLearningProjects: [],
+        pausedRetrievalProjects: [],
+      },
+      retrieval: { records: [record] },
+      management: { conflicts: [] },
+      policy: { learning: true, retrieval: true },
+      projectKey: 'fixture-project',
+    },
+  };
+
+  await page.route('**/api/dashboard/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/dashboard/projects') {
+      await route.fulfill({
+        json: {
+          currentProjectId: 'fixture-project',
+          projects: [
+            {
+              id: 'fixture-project',
+              name: 'Fixture',
+              path: '/fixture',
+              lastSeenAt: null,
+              availability: 'available',
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/overview')) {
+      await route.fulfill({
+        json: {
+          project: { name: 'Fixture', path: '/fixture', generatedAt: '2026-08-20T00:00:00.000Z' },
+          summary: {
+            activeChanges: 0,
+            archivedChanges: 0,
+            verifyFailed: 0,
+            tasksIncomplete: 0,
+            dirtyFiles: 0,
+          },
+          initialChanges: { status: 'active', items: [], total: 0, nextCursor: null },
+          git: {
+            branch: 'main',
+            head: 'abc1234',
+            dirtyFiles: 0,
+            dirtyFileList: [],
+            recentCommits: [],
+          },
+          risks: [],
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/changes')) {
+      await route.fulfill({ json: { status: 'active', items: [], total: 0, nextCursor: null } });
+      return;
+    }
+    if (url.pathname.endsWith('/plugins/comet.personal-memory')) {
+      await route.fulfill({ json: personalMemoryPage });
+      return;
+    }
+    if (url.pathname.endsWith('/plugins')) {
+      await route.fulfill({
+        json: {
+          pages: [
+            {
+              pluginId: personalMemoryPage.pluginId,
+              label: personalMemoryPage.label,
+              route: personalMemoryPage.route,
+              status: personalMemoryPage.status,
+              globallyDisabled: personalMemoryPage.globallyDisabled,
+              projectPaused: personalMemoryPage.projectPaused,
+              diagnostics: personalMemoryPage.diagnostics,
+            },
+          ],
+        },
+      });
+      return;
+    }
+    await route.continue();
+  });
+
+  await page.goto('/');
+  await page.getByRole('menuitem', { name: '个人记忆' }).click();
+
+  const memoryText = page.locator('.dashboard-memory-record-text');
+  const toggle = page.getByRole('button', { name: '展开完整记忆' });
+  await expect(memoryText).toHaveClass(/is-collapsed/);
+  await expect(memoryText).toHaveText(`${record.text.slice(0, 240)}…`);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+  await toggle.click();
+  await expect(memoryText).not.toHaveClass(/is-collapsed/);
+  await expect(memoryText).toHaveText(record.text);
+  await expect(page.getByRole('button', { name: '收起完整记忆' })).toHaveAttribute(
+    'aria-expanded',
+    'true',
+  );
 });
 
 test('loads the demo dashboard and previews an artifact', async ({ page }) => {

@@ -17,6 +17,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Native Supervisor workflow**: Supervisor Changes now coordinate dependent Children through an integration workspace, independent Builder/Verifier tasks, automatic parent advancement after Children complete, and final verification before delivery.
 - **Native status and verification**: Supervisor status, verification reports, and Dashboard labels now present child progress, task bindings, preserved evidence, and verification decisions in a clearer user-facing form.
 - **Dashboard and memory workflow**: Dashboard startup and workspace discovery avoid unnecessary scans, while personal memory opens directly to readable records and keeps synchronization explicit.
+- **Dashboard memory readability**: Long Personal Memory entries now stay compact by default and can be expanded on demand, keeping the overview usable without hiding the saved content.
+- **Project Knowledge status**: A pause scoped to the current project now appears as “paused” instead of suggesting that the whole plugin is disabled.
 - **Native worktree lifecycle**: After a successful merge, Comet removes its finished isolated worktree while preserving the branch for normal Git workflows.
 
 ### Fixed

@@ -718,6 +718,20 @@ body {
   overflow-wrap: anywhere;
 }
 
+.dashboard-memory-record-text.is-collapsed {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+.dashboard-memory-record-text-toggle {
+  height: auto;
+  margin-top: 2px;
+  padding: 0;
+  font-size: 12px;
+}
+
 .dashboard-memory-record-meta {
   display: flex;
   flex-wrap: wrap;
