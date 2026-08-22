@@ -474,7 +474,7 @@ export class ProjectKnowledgeUnitRepository {
     options: ProjectKnowledgeUnitListOptions = {},
   ): Promise<readonly ProjectKnowledgeUnit[]> {
     const output: ProjectKnowledgeUnit[] = [];
-    const roots: readonly [string, ProjectKnowledgeUnitOrigin][] = [
+    const roots: ReadonlyArray<readonly [string, ProjectKnowledgeUnitOrigin]> = [
       [this.maintainedRoot, 'maintained'],
       [this.generatedRoot, 'generated'],
       ...(this.legacyGeneratedRoot && this.legacyGeneratedRoot !== this.generatedRoot
