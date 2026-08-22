@@ -278,6 +278,16 @@ function validUnitId(value: unknown): value is string {
   return typeof value === 'string' && /^[a-z0-9][a-z0-9._-]{1,127}$/u.test(value);
 }
 
+function unitSourcesWithinPacket(
+  unit: ProjectKnowledgeUnit,
+  packet: ProjectKnowledgeReviewPacket,
+): boolean {
+  const allowed = new Set(packet.sources.map((source) => source.source));
+  return [...unit.conclusions, ...unit.relations].every((entry) =>
+    entry.sources.every((source) => allowed.has(source.source)),
+  );
+}
+
 export class ProjectKnowledgeLearningService {
   private readonly projectRoot: string;
   private readonly repository: ProjectKnowledgeUnitRepository;
@@ -357,6 +367,14 @@ export class ProjectKnowledgeLearningService {
         const unit = validateProjectKnowledgeUnitShape(action.unit);
         if (unit.origin !== 'generated')
           throw new Error('generated review must use generated origin');
+        if (!unitSourcesWithinPacket(unit, packet)) {
+          report({
+            code: 'source-outside-packet',
+            message: '评审结论引用了本次有界来源包之外的文件，已跳过。',
+            source: unit.id,
+          });
+          continue;
+        }
         const sourceValidation = await validateProjectKnowledgeUnitSources(unit, {
           projectRoot: this.projectRoot,
         });

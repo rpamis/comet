@@ -546,7 +546,10 @@ export class ProjectKnowledgeUnitRepository {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
           this.reportDiagnostic?.({
             code: 'unit-directory',
-            message: `无法读取项目知识单元目录：${path.relative(this.projectRoot, root) || '.'}`,
+            message:
+              origin === 'maintained'
+                ? '无法读取项目维护知识单元目录。'
+                : '无法读取本地生成知识单元缓存。',
           });
         continue;
       }
@@ -652,6 +655,10 @@ export class ProjectKnowledgeUnitRepository {
     if (options.confirm !== true) throw new Error('share requires explicit confirmation');
     const unit = await this.read(id);
     if (unit === null) throw new Error(`项目知识单元不存在：${id}`);
+    const validation = await validateProjectKnowledgeUnitSources(unit, {
+      projectRoot: this.projectRoot,
+    });
+    if (!validation.valid) throw new Error('项目知识单元来源已变化或不可用');
     const shared = validateProjectKnowledgeUnitShape({
       ...unit,
       origin: 'maintained',

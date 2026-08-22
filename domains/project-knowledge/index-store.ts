@@ -16,6 +16,7 @@ const INDEX_SCHEMA = 'comet.project-knowledge.index.v1';
 const MAX_SOURCE_BYTES = 256 * 1024;
 const MAX_SECTION_CHARS = 16_000;
 const MAX_LEXICAL_TERMS = 256;
+const MAX_SYNC_MS = 2_000;
 
 export interface ProjectKnowledgeIndexOptions {
   readonly projectRoot: string;
@@ -304,6 +305,7 @@ export class ProjectKnowledgeIndexStore {
   async syncCorpus(
     corpus: readonly ProjectKnowledgeDocument[],
   ): Promise<ProjectKnowledgeIndexSyncResult> {
+    const deadline = Date.now() + MAX_SYNC_MS;
     await this.open();
     const database = this.requireDatabase();
     const known = new Map(
@@ -323,6 +325,14 @@ export class ProjectKnowledgeIndexStore {
     const refreshedSources: ProjectKnowledgeDocument[] = [];
     this.lastSyncReadBytes = 0;
     for (const document of corpus) {
+      if (Date.now() > deadline) {
+        this.reportDiagnostic?.({
+          code: 'index-budget',
+          message:
+            'Project knowledge index refresh reached its time budget; remaining sources were deferred.',
+        });
+        break;
+      }
       let stat;
       try {
         stat = await fs.lstat(document.absolutePath);
@@ -341,6 +351,7 @@ export class ProjectKnowledgeIndexStore {
           { label: document.source },
         );
         this.lastSyncReadBytes += read.bytes.length;
+        if (Date.now() > deadline) throw new Error('index refresh exceeded time budget');
         const afterRead = await fs.lstat(document.absolutePath);
         if (afterRead.size !== read.stat.size || afterRead.mtimeMs !== read.stat.mtimeMs) {
           throw new Error('source changed while it was being indexed');
@@ -349,6 +360,7 @@ export class ProjectKnowledgeIndexStore {
           document.source,
           read.bytes.toString('utf8'),
         );
+        if (Date.now() > deadline) throw new Error('index refresh exceeded time budget');
         this.applySourceDelta(
           database,
           document,

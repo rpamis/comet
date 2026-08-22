@@ -257,10 +257,14 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
           projectRoot: this.options.projectRoot,
           ...(this.options.changedPaths ? { changedPaths: this.options.changedPaths } : {}),
         });
-        const byId = new Map(existing.map((unit) => [unit.id, unit]));
+        const targetedRefresh = (this.options.changedPaths?.length ?? 0) > 0;
         for (const unit of generated) {
+          // A changed-path extraction is intentionally partial. Do not replace a
+          // workspace-wide deterministic unit with a view containing only the
+          // changed module; the next unhinted pass will rebuild it completely.
+          if (targetedRefresh) continue;
           const active = { ...unit, state: 'active' as const };
-          const current = byId.get(unit.id);
+          const current = existing.find((candidate) => candidate.id === unit.id);
           const currentComparable = current ? { ...current, sourceVersions: undefined } : {};
           if (
             current?.origin === 'generated' &&
