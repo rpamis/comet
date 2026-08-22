@@ -1,4 +1,5 @@
-import { readFile, stat } from 'node:fs/promises';
+import { mkdtemp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -23,6 +24,79 @@ const {
 } = await import('../../dist/domains/project-knowledge/index.js');
 
 const corpus = await discoverProjectKnowledgeCorpus({ projectRoot });
+
+async function runFixtureChecks() {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'comet-project-knowledge-eval-'));
+  const cache = await mkdtemp(path.join(os.tmpdir(), 'comet-project-knowledge-eval-cache-'));
+  const projects = [path.join(root, 'one'), path.join(root, 'two')];
+  try {
+    for (const [index, fixtureRoot] of projects.entries()) {
+      await mkdir(path.join(fixtureRoot, '.comet'), { recursive: true });
+      await mkdir(path.join(fixtureRoot, 'docs', 'comet', 'specs'), { recursive: true });
+      await writeFile(
+        path.join(fixtureRoot, '.comet', 'config.yaml'),
+        'schema: comet.project.v1\ndefault_workflow: native\nworkflows: [native]\nnative:\n  artifact_root: docs\n',
+      );
+      await writeFile(
+        path.join(fixtureRoot, 'docs', 'comet', 'specs', 'fixture.md'),
+        `# Fixture\n\nworkspace-${index + 1}-original\n`,
+      );
+    }
+    const providers = [];
+    for (const fixtureRoot of projects) {
+      const fixtureCorpus = await discoverProjectKnowledgeCorpus({ projectRoot: fixtureRoot });
+      providers.push(
+        new LocalProjectKnowledgeProvider({
+          projectRoot: fixtureRoot,
+          corpus: fixtureCorpus,
+          cacheRoot: cache,
+          indexEnabled: true,
+        }),
+      );
+    }
+    const first = await providers[0].retrieve(
+      createProjectKnowledgeQuery({ task: 'workspace-1-original' }),
+    );
+    const second = await providers[1].retrieve(
+      createProjectKnowledgeQuery({ task: 'workspace-2-original' }),
+    );
+    const isolated =
+      first.some((result) => result.content.includes('workspace-1-original')) &&
+      !first.some((result) => result.content.includes('workspace-2-original')) &&
+      second.some((result) => result.content.includes('workspace-2-original')) &&
+      !second.some((result) => result.content.includes('workspace-1-original'));
+
+    await writeFile(
+      path.join(projects[0], 'docs', 'comet', 'specs', 'fixture.md'),
+      '# Fixture\n\nworkspace-1-mutated\n',
+    );
+    const mutated = await providers[0].retrieve(
+      createProjectKnowledgeQuery({ task: 'workspace-1-mutated' }),
+    );
+    const mutationDetected = mutated.some((result) =>
+      result.content.includes('workspace-1-mutated'),
+    );
+
+    const databasePath = providers[0].indexStore?.databasePath;
+    if (databasePath) await writeFile(databasePath, 'not a sqlite database\n');
+    const recovered = await providers[0].retrieve(
+      createProjectKnowledgeQuery({ task: 'workspace-1-mutated' }),
+    );
+    const quarantined = databasePath
+      ? (await readdir(path.dirname(databasePath))).some((name) =>
+          name.startsWith(`${path.basename(databasePath)}.corrupt-`),
+        )
+      : false;
+    return {
+      isolated,
+      mutationDetected,
+      corruptIndexRecovered: quarantined && recovered.length >= 0,
+    };
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(cache, { recursive: true, force: true });
+  }
+}
 
 async function evaluate(indexEnabled, useRipgrep = true) {
   const provider = new LocalProjectKnowledgeProvider({
@@ -124,6 +198,7 @@ async function evaluate(indexEnabled, useRipgrep = true) {
 const ripgrep = await evaluate(false);
 const fts = await evaluate(true, false);
 const hybrid = await evaluate(true, true);
+const fixtureChecks = await runFixtureChecks();
 const report = {
   schema: dataset.schema,
   projectRoot,
@@ -131,9 +206,10 @@ const report = {
   ripgrep,
   fts,
   hybrid,
+  fixtureChecks,
   exactRecallNotRegressed: hybrid.exactRecallAt4 >= ripgrep.exactRecallAt4,
   hybridImprovesNdcgOverRipgrep: hybrid.nDcgAt4 > ripgrep.nDcgAt4,
-  workspaceScopedIndex: Boolean(hybrid.indexSizeBytes >= 0),
+  workspaceScopedIndex: fixtureChecks.isolated,
 };
 console.log(
   JSON.stringify(
@@ -155,7 +231,9 @@ if (
     !report.hybridImprovesNdcgOverRipgrep ||
     hybrid.forbiddenSourceCount > 0 ||
     hybrid.warmP95Ms > 200 ||
-    !report.workspaceScopedIndex)
+    !report.workspaceScopedIndex ||
+    !fixtureChecks.mutationDetected ||
+    !fixtureChecks.corruptIndexRecovered)
 ) {
   process.exitCode = 1;
 }
