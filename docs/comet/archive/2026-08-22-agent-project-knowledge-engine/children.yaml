@@ -1,0 +1,110 @@
+schema: comet.native.children.v2
+acceptance_index:
+  A1:
+    source: "brief.md"
+    text: "A1：`comet.project-knowledge` 继续作为 project-scope 第一方插件，通过既有 `comet task` 和 `CometPluginBridge.collectContext()` 提供独立贡献；Personal Memory 与 Project Knowledge 保持不同 plugin ID、预算和所有权。"
+  A2:
+    source: "brief.md"
+    text: "A2：`knowledge.provider: local` 在运行环境支持 FTS5 时使用 SQLite FTS5 + ripgrep 混合召回，不要求用户新增配置；FTS5 不可用时仍能使用现有 ripgrep 路径完成任务。"
+  A3:
+    source: "brief.md"
+    text: "A3：Local 索引位于用户缓存并与 Dashboard 数据库分离；repository identity 用于项目归属，workspace identity 隔离不同 worktree，数据库可删除后恢复且不提交 Git。"
+  A4:
+    source: "brief.md"
+    text: "A4：首期语料包含当前 Native/Classic Spec、Archive、明确引用的 Superpowers 文档、项目维护单元和确定性提取结果；SQLite section 读模型负责文档候选，项目知识单元在独立的受保护仓库中按结构化字段融合召回；不把完整源码、活跃任务机器状态、聊天记录或完整 Git 历史加入 FTS。"
+  A5:
+    source: "brief.md"
+    text: "A5：Markdown 按 heading section 建索引；标题、标题路径、来源、正文和中文 `lexical_terms` 使用可区分权重，中文二字术语、三字以上子串、英文标识符和路径均有固定回归覆盖。"
+  A6:
+    source: "brief.md"
+    text: "A6：查询规划分别保留 strong、phrase 和 weak 预算，显式标识符、路径、命令、错误码和完整中文术语不会被弱片段提前耗尽。"
+  A7:
+    source: "brief.md"
+    text: "A7：候选由 FTS terms、FTS trigram、ripgrep exact、变化文件 ripgrep 和有限关系扩展产生，经确定性融合、路径/来源/类型加权、去重和来源多样性控制后返回。"
+  A8:
+    source: "brief.md"
+    text: "A8：任务入口只定位可能变化的来源，不读取未变化文件正文；变化文件在事务外解析，短事务只写入新增、修改和删除的 section，项目知识单元在独立仓库中按 ID 做差异写入，未变化内容不复制或重写。"
+  A9:
+    source: "brief.md"
+    text: "A9：变化文件更新完成前，其较早内容不进入结果；查询继续返回未受影响的 SQLite 结果，并以限定到变化文件的 ripgrep 补充当前内容，单文件变化不触发整库复制。"
+  A10:
+    source: "brief.md"
+    text: "A10：首次无索引时在文件数、总字节和解析时间预算内建立索引；只有首次建库、索引结构/分词方式/语料根/workspace identity 变化或数据库损坏时才全量恢复，锁、损坏或迁移失败均不阻塞 workflow。"
+  A11:
+    source: "brief.md"
+    text: "A11：进入 Agent 上下文前核对来源范围、存在性、workspace 和单元状态；无可靠命中时返回空结果，最终仍遵守最多 4 个结果、每段 1600 字符和总计 5000 字符的有界输出。"
+  A12:
+    source: "brief.md"
+    text: "A12：Remote Retrieval API v1 的配置、HTTPS/loopback、token 环境变量、固定 POST JSON、响应限额、服务端排序、失败不回退 Local 和隐私边界保持兼容。"
+  A13:
+    source: "brief.md"
+    text: "A13：`comet knowledge status/query/rebuild` 提供索引状态、精确补充查询和显式恢复；`provideContext()` 仍为只读，不因任务前召回写项目文件。"
+  A14:
+    source: "brief.md"
+    text: "A14：Dashboard 显示 provider、repository/workspace、source/section/unit/relation 数量、更新时间、回退与损坏诊断和查询统计，不保存完整用户 query，也不在首期直接编辑项目知识。"
+  A15:
+    source: "brief.md"
+    text: "A15：固定 Retrieval Eval 覆盖标识符、中文自然语言、跨模块关系、归档冲突、worktree 分叉、来源修改/删除、错误项目和 no-gold；exact 子集 Recall@4 不低于修正后的 rg，全集 nDCG@4 至少提高 10%，错误来源注入和跨 workspace 串线为 0，warm p95 不超过 200ms；Agent A/B 另行记录真实任务探索成本。"
+  A16:
+    source: "brief.md"
+    text: "A16：项目知识对象统一命名为“项目知识单元（Project Knowledge Unit）”，包含稳定 ID、kind、title、summary、origin、state、适用路径/操作、带来源的结论、关系和验证方式。"
+  A17:
+    source: "brief.md"
+    text: "A17：项目知识单元状态只允许 `draft | active | retired`，来源只区分 `maintained | generated`；项目维护单元位于 `docs/comet/knowledge/units/`，自动生成单元只保存在用户缓存，除非用户明确共享。"
+  A18:
+    source: "brief.md"
+    text: "A18：确定性提取器可从仓库布局、manifest、构建/测试配置和有限 import/export/注册关系生成 `project-map`、`module-overview` 和 `build-test`，不需要模型或 API Key。"
+  A19:
+    source: "brief.md"
+    text: "A19：宿主语义评审可从有界来源包提出 `behavior-note`、`integration-path` 和 `change-impact` 的 create/update/retire 动作；语义评审产生的自动单元只有任务成功完成验证、每个结论都有当前来源且通过 Runtime 校验时才能在本地成为 active。确定性提取的 project-map、module-overview、build-test 只包含来源可直接支持的事实，来源核对通过后可作为低优先级 active。适配器不可用时不影响确定性索引和召回。"
+  A20:
+    source: "brief.md"
+    text: "A20：只有 active 单元进入 Agent 上下文；项目维护单元高于自动生成单元，当前 Spec/代码高于 Archive 和单元，draft/retired 不参与正常召回；语义评审单元不得以命令列表代替成功验证证据。"
+  A21:
+    source: "brief.md"
+    text: "A21：关系只支持受控类型和一跳扩展，必须带来源；关系不能单独把弱候选推入结果，也不预先建设通用图平台。"
+  A22:
+    source: "brief.md"
+    text: "A22：来源不存在、越界、发生变化或无法支持结论时，该知识单元不进入结果并给出有界诊断；Agent 最终仍打开当前来源并运行与风险相匹配的验证。"
+  A23:
+    source: "brief.md"
+    text: "A23：Personal Memory 保持 global/project 两种作用域；项目偏好按当前 project key 自动召回，不复制进 Project Knowledge。显式共享时必须去除个人信息、核对当前来源并由用户确认写入共享单元。"
+  A24:
+    source: "brief.md"
+    text: "A24：`verification.completed`、`change.completed` 和有结构化证据的 `task.completed` 可提交 changed hint 与有界评审包；完整聊天、命令输出、测试日志和 diff 不进入项目知识。"
+  A25:
+    source: "brief.md"
+    text: "A25：`comet knowledge units` 支持查看 active/draft/retired；list/get 为只读，share/retire 只在用户显式调用时写共享文件或更新本地生成单元。"
+  A26:
+    source: "brief.md"
+    text: "A26：Dashboard 提供单元详情、来源、关系、状态和诊断的只读视图；项目暂停、全局禁用或插件恢复行为继续遵守现有插件生命周期。"
+  A27:
+    source: "brief.md"
+    text: "A27：所有来源必须是项目相对路径并通过普通文件、符号链接逃逸、单文件、总文件、总字节和解析时长限制；索引与单元不保存 token、Authorization、环境变量值、个人对话或完整日志。"
+  A28:
+    source: "brief.md"
+    text: "A28：插件缺失、停用、卸载、索引失败、语义适配器失败、单文件不可读或无结果均不阻塞 Native、Classic、hotfix 或 tweak，也不会绕过 explicitRemoval。"
+  A29:
+    source: "brief.md"
+    text: "A29：正式 Project Knowledge Spec、两份调研输入、CLI/Dashboard 文案及必要的中英文用户文档保持一致；不修改 Superpowers/OpenSpec 原始 Skill，不引入已排除术语或规则能力。"
+  A30:
+    source: "brief.md"
+    text: "A30：按每个阶段先运行最小相关测试；最终通过相关 domain/platform/app 测试、Prettier、lint、build、生成资产检查、全量测试、固定 Retrieval Eval 和 Agent A/B，并按相对已发布版本的最终用户行为更新 Changelog 与版本。"
+  A31:
+    source: "brief.md"
+    text: "A31：两份 research 的产品边界、召回设计、知识生产、Personal Memory 分层、增量更新、失败隔离、CLI/Dashboard、评测、实施阶段和非目标，以及本轮对当前 rg Provider、Remote v1、Plugin Bridge、Personal Memory、规则能力移除、Dashboard SQLite 和本机 FTS5 的调查结论，均在仓库研究输入和完整规格覆盖矩阵中有明确落点和验收 ID；不存在仅保留在研究文档、未进入实现与验收的结论。"
+children:
+  - name: project-knowledge-hybrid-retrieval
+    depends_on: []
+    covers: [A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12, A13, A14, A15]
+  - name: project-knowledge-units
+    depends_on: [project-knowledge-hybrid-retrieval]
+    covers: [A16, A17, A18, A19, A20, A21, A22, A23, A24, A25, A26, A27, A28, A29, A30, A31]
+  - name: project-knowledge-learning-management
+    depends_on: [project-knowledge-units]
+    covers: []
+  - name: project-knowledge-closure
+    depends_on: [project-knowledge-learning-management]
+    covers: [A4, A8, A10, A15, A19, A20, A27, A29, A30, A31]
+
+
