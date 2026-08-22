@@ -235,6 +235,38 @@ memory
     await personalMemoryPauseCommand(targetPath, options);
   });
 
+const knowledge = program.command('knowledge').description('查看和查询当前项目的项目知识');
+
+knowledge
+  .command('status [path]')
+  .description('查看 Local 索引或 Remote Provider 状态')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { projectKnowledgeStatusCommand } = await import('../commands/project-knowledge.js');
+    await projectKnowledgeStatusCommand(targetPath, options);
+  });
+
+knowledge
+  .command('query [path]')
+  .description('使用更具体的任务描述补充查询项目知识')
+  .requiredOption('--query <text>', '查询或任务描述')
+  .option('--path <path>', '当前文件或目录')
+  .option('--operation <operation>', '当前操作')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { projectKnowledgeQueryCommand } = await import('../commands/project-knowledge.js');
+    await projectKnowledgeQueryCommand(targetPath, options);
+  });
+
+knowledge
+  .command('rebuild [path]')
+  .description('显式重建当前工作区的 Local 项目知识索引')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { projectKnowledgeRebuildCommand } = await import('../commands/project-knowledge.js');
+    await projectKnowledgeRebuildCommand(targetPath, options);
+  });
+
 program
   .command('resume-probe [path]')
   .description('Probe whether an active Comet workflow should resume')

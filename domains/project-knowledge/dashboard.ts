@@ -16,8 +16,8 @@ export function createProjectKnowledgeDashboardSnapshot(
       configured: true,
       retrieval:
         options.language === 'en'
-          ? 'Local reads bounded references from project-managed Markdown and does not maintain an index.'
-          : 'Local 从项目管理的 Markdown 中做有界召回，不会维护索引。',
+          ? 'Local uses a workspace-isolated section index with bounded ripgrep fallback.'
+          : 'Local 使用按工作区隔离的 section 索引，并保留有界 ripgrep 回退。',
       diagnostics: [],
     };
   }

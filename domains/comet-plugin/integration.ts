@@ -55,6 +55,7 @@ export interface CometPluginBridgeOptions {
   readonly language?: MemoryLanguage;
   readonly memoryRoot?: string;
   readonly stateRoot?: string;
+  readonly knowledgeCacheRoot?: string;
   readonly cometVersion?: string;
   /** Optional host-owned adapter for nonblocking semantic memory review. */
   readonly runMemoryReviewInBackground?: (task: () => Promise<void>) => void | Promise<void>;
@@ -287,6 +288,11 @@ export async function createDefaultCometPluginBridge(
         projectRoot,
         knowledgeConfig: await resolveProjectKnowledgeConfig(projectRoot),
         language,
+        ...(options.knowledgeCacheRoot
+          ? { cacheRoot: path.resolve(options.knowledgeCacheRoot) }
+          : options.stateRoot
+            ? { cacheRoot: path.join(stateRoot, 'knowledge-cache') }
+            : {}),
       }),
     ],
   });

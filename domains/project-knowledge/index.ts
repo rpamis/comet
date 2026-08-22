@@ -2,6 +2,7 @@ export * from './types.js';
 export * from './query.js';
 export * from './corpus.js';
 export * from './local-provider.js';
+export * from './index-store.js';
 export * from './remote-provider.js';
 export * from './renderer.js';
 export * from './dashboard.js';
