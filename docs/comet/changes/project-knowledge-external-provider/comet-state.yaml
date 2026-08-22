@@ -1,0 +1,529 @@
+schema: comet.native.v4
+name: project-knowledge-external-provider
+language: zh-CN
+phase: build
+status: active
+state_version: 2
+brief: brief.md
+spec_changes:
+  - capability: project-knowledge
+    operation: modify
+    source: specs/project-knowledge/spec.md
+workspace:
+  isolation: worktree
+  change_branch: comet/project-knowledge-external-provider
+  target_branch: 040rc1
+  finish: null
+loop:
+  stage: building
+  goal_cycle: 1
+  iteration: 1
+  attempt: 0
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: submit-builder-candidate
+acceptance:
+  - id: A1
+    source: brief.md
+    text: A1：任务不打开 Dashboard，成功验证后仍能自动形成并在下一次相关查询中召回来源有效的 active Record。
+    result: pending
+    reason: null
+  - id: A2
+    source: brief.md
+    text: A2：Local Record 和 workspace section 索引只存在用户数据目录；同一仓库 worktree 共享
+      Record，不同仓库默认隔离，项目目录不新增 Project Knowledge 文件。
+    result: pending
+    reason: null
+  - id: A3
+    source: brief.md
+    text: A3：Local/Remote 均实现 `status/query/apply`；Remote 使用
+      `comet.project-knowledge.provider.v1`，失败不读取或发送 Local 内容，也不回退 Local。
+    result: pending
+    reason: null
+  - id: A4
+    source: brief.md
+    text: A4：查询只注入 active 且来源仍有效的结果；最多四条、单条不超过 1,600 字符、总计不超过 5,000 字符，并显示来源。
+    result: pending
+    reason: null
+  - id: A5
+    source: brief.md
+    text: A5：来源删除、变化或 anchor 失效后，Record 变为 `needs-review`，立即停止注入；重新核对成功后可恢复 active。
+    result: pending
+    reason: null
+  - id: A6
+    source: brief.md
+    text: A6：用户纠正将 Record 标为 `authority=user`，后续 automatic upsert 不能覆盖用户正文；用户 forget
+      后旧来源不能直接复活同一自动内容。
+    result: pending
+    reason: null
+  - id: A7
+    source: brief.md
+    text: A7：CLI 提供 `list/get/correct/forget/query/rebuild/status`，所有读写均通过
+      Provider，且不再提供 `knowledge units` 或 `share`。
+    result: pending
+    reason: null
+  - id: A8
+    source: brief.md
+    text: A8：Dashboard 展示 Provider 状态、记录状态/来源/更新时间、查询预览、纠正/忘记/重新核对和诊断，并可编辑项目
+      `knowledge` Provider 配置。
+    result: pending
+    reason: null
+  - id: A9
+    source: brief.md
+    text: A9：Dashboard、CLI 和 workflow 读取同一份 Local/Remote 状态，任何入口都不是自动学习的必经步骤。
+    result: pending
+    reason: null
+  - id: A10
+    source: brief.md
+    text: A10：Remote 请求只包含有界任务、路径、阶段、操作和知识记录数据，不包含完整 transcript、diff、日志、凭据或 token 值。
+    result: pending
+    reason: null
+  - id: A11
+    source: brief.md
+    text: A11：`<project_knowledge>` 与 `<personal_memory>` 分开召回、分开失败、分开预算；Personal
+      Memory 的现有行为保持不变。
+    result: pending
+    reason: null
+  - id: A12
+    source: brief.md
+    text: A12：SQLite 损坏、锁超时、FTS 不可用、来源不可读、语义 reviewer 失败或 Remote 失败都不阻塞普通
+      workflow，并产生有界诊断。
+    result: pending
+    reason: null
+  - id: A13
+    source: brief.md
+    text: A13：中英文操作文档、正式 Spec、代码、测试和 `0.4.0-rc.1` Changelog 描述同一最终用户行为。
+    result: pending
+    reason: null
+  - id: A14
+    source: specs/project-knowledge/spec.md
+    text: "`comet.project-knowledge` is a project-scoped first-party capability for
+      source-backed understanding of the current project. It can provide bounded
+      context through the existing task context bridge and can be queried or
+      managed through the CLI and Dashboard."
+    result: pending
+    reason: null
+  - id: A15
+    source: specs/project-knowledge/spec.md
+    text: "Project Knowledge records describe the project itself: structure, module
+      responsibilities, verified behavior, integration paths, change impact, and
+      build/test practices. They are evidence only. Current source,
+      configuration, tests, workflow state, user requests, system constraints,
+      and Skills remain authoritative."
+    result: pending
+    reason: null
+  - id: A16
+    source: specs/project-knowledge/spec.md
+    text: Personal Memory is a separate capability. It stores user facts,
+      preferences, collaboration habits, and personal project experience. It has
+      separate storage, provider configuration, retrieval budget, context block,
+      and management actions. Personal Memory records are never copied into
+      Project Knowledge automatically.
+    result: pending
+    reason: null
+  - id: A17
+    source: specs/project-knowledge/spec.md
+    text: "The project configuration keeps the existing shape:"
+    result: pending
+    reason: null
+  - id: A18
+    source: specs/project-knowledge/spec.md
+    text: "`local` is the default. Local data belongs to the current user and is
+      stored outside the project. `remote` is optional for team sharing and uses
+      the configured endpoint, token environment-variable name, scope, and
+      timeout. Local and Remote are strictly mutually exclusive for a request.
+      Remote failure never reads Local as a fallback and never silently switches
+      providers."
+    result: pending
+    reason: null
+  - id: A19
+    source: specs/project-knowledge/spec.md
+    text: The Dashboard may update the project `knowledge` block through the
+      existing workflow-project configuration writer. It may display only the
+      token environment-variable name and whether that environment variable is
+      present; token values and Authorization headers never enter page data.
+    result: pending
+    reason: null
+  - id: A20
+    source: specs/project-knowledge/spec.md
+    text: "The internal object is a `ProjectKnowledgeRecord`:"
+    result: pending
+    reason: null
+  - id: A21
+    source: specs/project-knowledge/spec.md
+    text: stable record ID and stable repository/project ID;
+    result: pending
+    reason: null
+  - id: A22
+    source: specs/project-knowledge/spec.md
+    text: type, title, summary, applicable paths, and operations;
+    result: pending
+    reason: null
+  - id: A23
+    source: specs/project-knowledge/spec.md
+    text: conclusions with project-relative source and optional anchor references;
+    result: pending
+    reason: null
+  - id: A24
+    source: specs/project-knowledge/spec.md
+    text: optional one-hop relations and verification commands/results;
+    result: pending
+    reason: null
+  - id: A25
+    source: specs/project-knowledge/spec.md
+    text: state `active | needs-review | retired`;
+    result: pending
+    reason: null
+  - id: A26
+    source: specs/project-knowledge/spec.md
+    text: authority `automatic | user`;
+    result: pending
+    reason: null
+  - id: A27
+    source: specs/project-knowledge/spec.md
+    text: source versions and update time.
+    result: pending
+    reason: null
+  - id: A28
+    source: specs/project-knowledge/spec.md
+    text: The product does not expose `unit`, `origin`, `maintained`, `generated`,
+      or `draft` terminology. Records are stored in the user's data directory.
+      No Project Knowledge Markdown file or database file is created in the
+      project directory.
+    result: pending
+    reason: null
+  - id: A29
+    source: specs/project-knowledge/spec.md
+    text: "The domain depends on one provider contract:"
+    result: pending
+    reason: null
+  - id: A30
+    source: specs/project-knowledge/spec.md
+    text: "`query` supports bounded search, list, and get requests. `apply` supports
+      `upsert`, `correct`, `retire`, and `refresh`."
+    result: pending
+    reason: null
+  - id: A31
+    source: specs/project-knowledge/spec.md
+    text: All callers use this contract. The CLI, Dashboard, context bridge,
+      learning service, and Plugin Runtime do not access Local SQLite tables or
+      Remote HTTP directly.
+    result: pending
+    reason: null
+  - id: A32
+    source: specs/project-knowledge/spec.md
+    text: "Local Provider uses a repository-level SQLite database under the user's
+      data directory. The stable repository ID is the authority boundary: the
+      main checkout and linked worktrees of the same repository share Records.
+      The workspace ID partitions source documents, sections, and FTS
+      projections so branch contents are not mixed."
+    result: pending
+    reason: null
+  - id: A33
+    source: specs/project-knowledge/spec.md
+    text: The database contains the authoritative Record tables and a rebuildable
+      workspace section/FTS projection. It uses WAL, short transactions, a
+      bounded busy timeout, and existing source-read limits. A missing or
+      corrupt projection can be rebuilt without deleting valid Records. A
+      structure mismatch is rebuilt because this capability is not released and
+      has no legacy schema migration requirement.
+    result: pending
+    reason: null
+  - id: A34
+    source: specs/project-knowledge/spec.md
+    text: "Local query behavior is:"
+    result: pending
+    reason: null
+  - id: A35
+    source: specs/project-knowledge/spec.md
+    text: Build the bounded query from task, path, phase, and operation.
+    result: pending
+    reason: null
+  - id: A36
+    source: specs/project-knowledge/spec.md
+    text: Refresh changed corpus sources for the current workspace within the
+      existing time budget.
+    result: pending
+    reason: null
+  - id: A37
+    source: specs/project-knowledge/spec.md
+    text: Search active Records, section FTS, and bounded ripgrep fallback.
+    result: pending
+    reason: null
+  - id: A38
+    source: specs/project-knowledge/spec.md
+    text: Fuse candidates deterministically, apply path/source/type relevance, and
+      expand only sourced one-hop relations from already matched Records.
+    result: pending
+    reason: null
+  - id: A39
+    source: specs/project-knowledge/spec.md
+    text: Revalidate every Record source before returning it.
+    result: pending
+    reason: null
+  - id: A40
+    source: specs/project-knowledge/spec.md
+    text: Return only active, current, source-backed results and bounded diagnostics.
+    result: pending
+    reason: null
+  - id: A41
+    source: specs/project-knowledge/spec.md
+    text: If a source, anchor, or source fingerprint is no longer valid, the Record
+      becomes `needs-review` and is excluded from the current context. A
+      user-authority Record keeps its corrected text but also stops being
+      injected until its sources are current again.
+    result: pending
+    reason: null
+  - id: A42
+    source: specs/project-knowledge/spec.md
+    text: Remote uses `comet.project-knowledge.provider.v1`. `status`, `query`, and
+      `apply` are operations on the configured endpoint. The envelope includes
+      the operation, configured scope, stable project ID, and bounded operation
+      input.
+    result: pending
+    reason: null
+  - id: A43
+    source: specs/project-knowledge/spec.md
+    text: Remote query input may contain task text, project-relative path, phase,
+      operation, result limit, or a bounded list/get selector. Remote apply
+      input may contain Record conclusions, project-relative sources, applicable
+      paths, and verification data. It must not contain a complete transcript,
+      full diff, command log, credential, token value, or whole repository.
+    result: pending
+    reason: null
+  - id: A44
+    source: specs/project-knowledge/spec.md
+    text: Invalid responses, timeouts, non-success responses, and response-size
+      violations return an empty result or failed apply with a bounded
+      diagnostic. They never query Local or disclose Local project content to
+      Remote.
+    result: pending
+    reason: null
+  - id: A45
+    source: specs/project-knowledge/spec.md
+    text: The workflow sends bounded `verification.completed`, `change.completed`,
+      and structured `task.completed` events containing changed paths, artifact
+      references, verification commands/results, and success state. Full chat,
+      diff, logs, and command output are not persisted.
+    result: pending
+    reason: null
+  - id: A46
+    source: specs/project-knowledge/spec.md
+    text: Deterministic extraction and an optional semantic reviewer produce Record
+      mutations. Every reported verification result must succeed and every
+      conclusion source must still validate before an automatic upsert is
+      applied. Verified, current automatic Records become `active` immediately;
+      Dashboard confirmation is not required.
+    result: pending
+    reason: null
+  - id: A47
+    source: specs/project-knowledge/spec.md
+    text: Automatic updates with the same semantic identity update an existing
+      Record instead of creating duplicates. A retired automatic Record cannot
+      be reactivated from the same source versions; a new verified source
+      revision may create or update it. Automatic learning may not replace the
+      summary or conclusions of a user-authority Record; it may update source
+      state and mark the Record for review.
+    result: pending
+    reason: null
+  - id: A48
+    source: specs/project-knowledge/spec.md
+    text: Learning failures, reviewer failures, and provider failures are
+      non-blocking. The previous valid state remains available and the failure
+      is reported through bounded diagnostics.
+    result: pending
+    reason: null
+  - id: A49
+    source: specs/project-knowledge/spec.md
+    text: "The CLI provides:"
+    result: pending
+    reason: null
+  - id: A50
+    source: specs/project-knowledge/spec.md
+    text: "`correct` makes the user text authoritative and rechecks the existing
+      sources. `forget` retires the Record and preserves enough source identity
+      to prevent the same old automatic content from immediately returning.
+      `rebuild` refreshes the current Local workspace projection and asks the
+      selected Provider to refresh Records. There are no `knowledge units`,
+      `share`, `share-memory`, or project-file export commands."
+    result: pending
+    reason: null
+  - id: A51
+    source: specs/project-knowledge/spec.md
+    text: "The Dashboard provides the same management actions through the Plugin
+      Runtime: Provider configuration, provider status,
+      active/needs-review/retired lists, record summary, applicable paths,
+      sources, updated time, query preview, correct, forget, refresh, and
+      bounded diagnostics. It is not required for automatic learning or
+      retrieval."
+    result: pending
+    reason: null
+  - id: A52
+    source: specs/project-knowledge/spec.md
+    text: "Project Knowledge remains an independent context block:"
+    result: pending
+    reason: null
+  - id: A53
+    source: specs/project-knowledge/spec.md
+    text: "Only active, source-valid results are injected. The existing bounds
+      remain: at most four results, at most 1,600 characters per result, and at
+      most 5,000 characters total. Personal Memory continues to use its own
+      `<personal_memory>` block and budget."
+    result: pending
+    reason: null
+  - id: A54
+    source: specs/project-knowledge/spec.md
+    text: "Query failure: continue the task without Project Knowledge context."
+    result: pending
+    reason: null
+  - id: A55
+    source: specs/project-knowledge/spec.md
+    text: "Apply failure: preserve the previous state and report a bounded
+      diagnostic."
+    result: pending
+    reason: null
+  - id: A56
+    source: specs/project-knowledge/spec.md
+    text: "Remote failure: no Local fallback and no Local content disclosure."
+    result: pending
+    reason: null
+  - id: A57
+    source: specs/project-knowledge/spec.md
+    text: "Local projection failure: rebuild or use the existing bounded ripgrep
+      path while preserving valid authoritative Records."
+    result: pending
+    reason: null
+  - id: A58
+    source: specs/project-knowledge/spec.md
+    text: "Source invalidation: mark the Record `needs-review` and stop injection."
+    result: pending
+    reason: null
+  - id: A59
+    source: specs/project-knowledge/spec.md
+    text: "Provider disabled or uninstalled: do not query, learn, open SQLite, run
+      ripgrep, or send network requests; retain the state needed for explicit
+      recovery."
+    result: pending
+    reason: null
+  - id: A60
+    source: specs/project-knowledge/spec.md
+    text: Given a successful structured verification checkpoint with current
+      sources, when the checkpoint is processed, then an automatic Record
+      becomes active without a Dashboard confirmation and is available to the
+      next relevant query.
+    result: pending
+    reason: null
+  - id: A61
+    source: specs/project-knowledge/spec.md
+    text: Given two worktrees of one repository, when either worktree updates
+      Project Knowledge, then the Record authority is shared while each
+      worktree's source/section index remains isolated. No Project Knowledge
+      file is created in either project directory.
+    result: pending
+    reason: null
+  - id: A62
+    source: specs/project-knowledge/spec.md
+    text: Given Local or Remote configuration, when status, search/list/get, or
+      apply is requested, then the selected Provider handles it through
+      `status/query/apply`; Remote uses `comet.project-knowledge.provider.v1`
+      and does not fall back to Local.
+    result: pending
+    reason: null
+  - id: A63
+    source: specs/project-knowledge/spec.md
+    text: Given matching active Records and supporting project sources, when context
+      is collected, then only current source-backed results enter
+      `<project_knowledge>` within the existing 4/1,600/5,000 bounds and with
+      source references.
+    result: pending
+    reason: null
+  - id: A64
+    source: specs/project-knowledge/spec.md
+    text: Given a Record whose source, anchor, or fingerprint changes or disappears,
+      when the next query validates it, then the Record is `needs-review` and is
+      not injected until a current refresh succeeds.
+    result: pending
+    reason: null
+  - id: A65
+    source: specs/project-knowledge/spec.md
+    text: Given a user-corrected or forgotten Record, when later automatic learning
+      runs against old source versions, then the user's text is not overwritten
+      and a forgotten automatic Record is not immediately reactivated.
+    result: pending
+    reason: null
+  - id: A66
+    source: specs/project-knowledge/spec.md
+    text: Given a configured Provider, when the user runs the documented `comet
+      knowledge` commands, then the commands return bounded JSON/text and
+      perform management through Provider calls; `knowledge units` and `share`
+      are unavailable.
+    result: pending
+    reason: null
+  - id: A67
+    source: specs/project-knowledge/spec.md
+    text: Given a user opens the Project Knowledge Dashboard page, when they
+      configure Provider settings or manage a Record, then the page uses Plugin
+      Runtime capabilities, persists project configuration through the workflow
+      config writer, never displays token values, and does not become a
+      prerequisite for learning.
+    result: pending
+    reason: null
+  - id: A68
+    source: specs/project-knowledge/spec.md
+    text: Given Personal Memory has global or project records, when Project
+      Knowledge queries or learns, then the two capabilities retain separate
+      records, configuration, failure behavior, budgets, and context blocks.
+    result: pending
+    reason: null
+  - id: A69
+    source: specs/project-knowledge/spec.md
+    text: Given a Remote Provider, when query or apply runs, then the request
+      contains only bounded task/project identifiers and Record/source data, not
+      transcripts, full diffs, logs, credentials, or token values.
+    result: pending
+    reason: null
+  - id: A70
+    source: specs/project-knowledge/spec.md
+    text: Given an unavailable provider, damaged projection, unreadable source,
+      failed reviewer, or lock timeout, when a workflow checkpoint or query
+      runs, then the workflow continues, valid prior state remains usable where
+      possible, and a bounded diagnostic is available.
+    result: pending
+    reason: null
+  - id: A71
+    source: specs/project-knowledge/spec.md
+    text: Given the completed implementation, when users read the CLI, Dashboard,
+      operation docs, formal Spec, and `0.4.0-rc.1` Changelog, then they
+      describe the same external-storage, Local/Remote, automatic-learning and
+      management behavior.
+    result: pending
+    reason: null
+  - id: A72
+    source: specs/project-knowledge/spec.md
+    text: Given the source tree and active product documentation after
+      implementation, when the old Unit paths and symbols are searched, then no
+      Unit repository, Unit schema, `docs/comet/knowledge/units/`, `knowledge
+      units`, `share`, or `share-memory` product entry remains.
+    result: pending
+    reason: null
+builder_handoff: null
+blockers: []
+verification: null
+history: []
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pending
+verification_report: null
+archived: false
+created_at: 2026-08-22T14:44:58.444Z
