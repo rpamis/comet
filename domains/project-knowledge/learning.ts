@@ -360,6 +360,25 @@ export class ProjectKnowledgeLearningService {
           const current = await this.repository.read(action.unitId);
           if (current === null || current.origin !== 'generated')
             throw new Error('unit is not generated');
+          if (!unitSourcesWithinPacket(current, packet)) {
+            report({
+              code: 'source-outside-packet',
+              message: '退休动作与本次有界来源包无关，已跳过。',
+              source: current.id,
+            });
+            continue;
+          }
+          const currentValidation = await validateProjectKnowledgeUnitSources(current, {
+            projectRoot: this.projectRoot,
+          });
+          if (!currentValidation.valid) {
+            report({
+              code: 'source-invalid',
+              message: '待退休单元的来源无法通过当前项目校验。',
+              source: current.id,
+            });
+            continue;
+          }
           await this.repository.writeGenerated({ ...current, state: 'retired' });
           retired.push(current.id);
           continue;

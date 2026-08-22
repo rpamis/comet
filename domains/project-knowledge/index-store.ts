@@ -324,13 +324,15 @@ export class ProjectKnowledgeIndexStore {
     const changedSources: ProjectKnowledgeDocument[] = [];
     const refreshedSources: ProjectKnowledgeDocument[] = [];
     this.lastSyncReadBytes = 0;
-    for (const document of corpus) {
+    for (let index = 0; index < corpus.length; index += 1) {
+      const document = corpus[index];
       if (Date.now() > deadline) {
         this.reportDiagnostic?.({
           code: 'index-budget',
           message:
             'Project knowledge index refresh reached its time budget; remaining sources were deferred.',
         });
+        changedSources.push(...corpus.slice(index));
         break;
       }
       let stat;

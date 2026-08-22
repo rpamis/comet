@@ -170,6 +170,10 @@ async function createProjectKnowledgeModule(
                 reportDiagnostic,
               })
             : [];
+        const changedPaths = recentChangedHints.flatMap((hint) => [
+          ...hint.changedPaths,
+          ...hint.artifactRefs,
+        ]);
         provider =
           key === 'remote'
             ? new RemoteProjectKnowledgeProvider({
@@ -182,12 +186,13 @@ async function createProjectKnowledgeModule(
                 ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
                 reportDiagnostic,
                 unitRepository,
-                changedPaths: recentChangedHints.flatMap((hint) => [
-                  ...hint.changedPaths,
-                  ...hint.artifactRefs,
-                ]),
+                changedPaths,
               });
         providerKey = key;
+        if (changedPaths.length > 0) {
+          recentChangedHints.splice(0, recentChangedHints.length);
+          persistDiagnostics();
+        }
       }
       const results = boundProjectKnowledgeResults(await provider.retrieve(query));
       await diagnosticWrite;
