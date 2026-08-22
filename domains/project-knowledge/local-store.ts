@@ -312,7 +312,7 @@ export class ProjectKnowledgeLocalStore {
       return shared.database;
     }
     const database = new DatabaseSync(this.databasePath);
-    database.exec('PRAGMA journal_mode = DELETE; PRAGMA busy_timeout = 250;');
+    database.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 250;');
     ProjectKnowledgeLocalStore.sharedDatabases.set(this.databasePath, { database, refs: 1 });
     return database;
   }
