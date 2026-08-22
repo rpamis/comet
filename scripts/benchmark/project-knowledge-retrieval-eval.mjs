@@ -164,7 +164,7 @@ async function runFixtureChecks() {
     const databasePath = providers[0].indexStore?.databasePath;
     if (databasePath) await writeFile(databasePath, 'not a sqlite database\n');
     const recovered = await providers[0].retrieve(
-      createProjectKnowledgeQuery({ task: 'Workspace1Mutated' }),
+      createProjectKnowledgeQuery({ task: 'Workspace1Original' }),
     );
     const quarantined = databasePath
       ? (await readdir(path.dirname(databasePath))).some((name) =>
@@ -178,7 +178,7 @@ async function runFixtureChecks() {
       unitRelationRecall,
       unitDeletionDetected,
       corruptIndexRecovered:
-        quarantined && recovered.some((result) => result.content.includes('Workspace1Mutated')),
+        quarantined && recovered.some((result) => result.content.includes('Workspace1Original')),
     };
   } finally {
     await rm(root, { recursive: true, force: true });

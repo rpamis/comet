@@ -168,6 +168,10 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
         indexed = this.indexStore.search(query);
         indexSynced = true;
       } catch {
+        // A failed index cannot provide a trustworthy target list. Use the
+        // bounded corpus files for this request so recovery still returns
+        // current evidence instead of silently returning no context.
+        refreshedSources = [...this.options.corpus];
         this.reportDiagnostic?.({
           code: 'index-unavailable',
           message:

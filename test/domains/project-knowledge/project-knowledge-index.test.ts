@@ -181,4 +181,48 @@ describe('project knowledge section index', () => {
       await fs.rm(cacheRoot, { recursive: true, force: true });
     }
   });
+
+  test('serves current corpus content through rg in the same request as corruption recovery', async () => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const source = 'docs/comet/specs/recovery-fallback.md';
+    const file = path.join(root, ...source.split('/'));
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, '# Recovery\n\nCurrent fallback evidence.\n');
+    const first = new ProjectKnowledgeIndexStore({ projectRoot: root, cacheRoot });
+    await first.syncCorpus([{ absolutePath: file, source, kind: 'native-spec' }]);
+    first.close();
+    await fs.writeFile(first.databasePath, 'not a sqlite database');
+    const runRipgrep = vi.fn(async () => ({
+      stdout: JSON.stringify({
+        type: 'match',
+        data: {
+          path: { text: source },
+          line_number: 3,
+          lines: { text: 'Current fallback evidence.\n' },
+        },
+      }),
+      stderr: '',
+      exitCode: 0,
+      timedOut: false,
+      truncated: false,
+      matchLimitReached: false,
+    }));
+    const provider = new LocalProjectKnowledgeProvider({
+      projectRoot: root,
+      cacheRoot,
+      corpus: [{ absolutePath: file, source, kind: 'native-spec' }],
+      runRipgrep,
+    });
+    try {
+      const results = await provider.retrieve(
+        createProjectKnowledgeQuery({ task: 'Current fallback evidence' }),
+      );
+      expect(results[0]).toMatchObject({ source, title: 'Recovery' });
+      expect(runRipgrep).toHaveBeenCalled();
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
 });
