@@ -8,6 +8,7 @@ import {
   ProjectKnowledgeLearningService,
   ProjectKnowledgeUnitRepository,
   createProjectKnowledgeReviewPacket,
+  sanitizeProjectPreferenceForSharing,
   type ProjectKnowledgeReviewAction,
   type ProjectKnowledgeSemanticReviewer,
   type ProjectKnowledgeUnit,
@@ -183,5 +184,45 @@ describe('project knowledge learning', () => {
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }
+  });
+
+  test('skips review writes when a packet source changes during semantic review', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-learning-toctou-');
+    try {
+      await fs.mkdir(path.join(root, 'src'), { recursive: true });
+      await fs.writeFile(path.join(root, 'src', 'main.ts'), 'export const main = true;\n');
+      const repository = new ProjectKnowledgeUnitRepository({ projectRoot: root });
+      const service = new ProjectKnowledgeLearningService({
+        projectRoot: root,
+        repository,
+        reviewer: {
+          review: async () => {
+            await fs.writeFile(path.join(root, 'src', 'main.ts'), 'export const main = false;\n');
+            return [{ action: 'create', unit: generatedUnit() }];
+          },
+        },
+      });
+      const result = await service.processEvent(
+        event('verification.completed', {
+          changedPaths: ['src/main.ts'],
+          verificationResults: [{ command: 'pnpm test', success: true }],
+        }),
+      );
+      expect(result.skipped).toBe(true);
+      expect(result.diagnostics.map((entry) => entry.code)).toContain('source-changed');
+      await expect(repository.read('generated-behavior')).resolves.toBeNull();
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test('removes personal and authorization language before explicit sharing', () => {
+    const unit = sanitizeProjectPreferenceForSharing({
+      category: '提交偏好',
+      text: '我的偏好是允许自动推送，联系 me@example.com，token=secret。',
+    });
+    expect(unit.summary).not.toContain('me@example.com');
+    expect(unit.summary).not.toContain('token=secret');
+    expect(unit.summary).not.toContain('允许自动推送');
   });
 });

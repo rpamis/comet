@@ -255,6 +255,7 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
         const existing = await this.unitRepository.list({ origin: 'generated' });
         const generated = await extractDeterministicProjectUnits({
           projectRoot: this.options.projectRoot,
+          ...(this.options.changedPaths ? { changedPaths: this.options.changedPaths } : {}),
         });
         const byId = new Map(existing.map((unit) => [unit.id, unit]));
         for (const unit of generated) {

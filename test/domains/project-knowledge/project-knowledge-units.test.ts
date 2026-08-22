@@ -196,6 +196,42 @@ describe('project knowledge units', () => {
     }
   });
 
+  test('persists maintained source state without reading a shared legacy cache by default', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-maintained-state-');
+    const cache = await temporaryRoot('comet-project-knowledge-maintained-state-cache-');
+    try {
+      await fs.mkdir(path.join(root, 'src'), { recursive: true });
+      await fs.writeFile(path.join(root, 'src', 'main.ts'), 'export const main = true;\n');
+      await fs.writeFile(path.join(root, 'package.json'), '{}\n');
+      const first = new ProjectKnowledgeUnitRepository({ projectRoot: root, cacheRoot: cache });
+      await first.writeMaintained(maintainedUnit());
+      await fs.writeFile(path.join(root, 'src', 'main.ts'), 'export const main = false;\n');
+      const second = new ProjectKnowledgeUnitRepository({ projectRoot: root, cacheRoot: cache });
+      const persisted = await second.read('unit-main-flow');
+      expect(persisted?.sourceVersions?.length).toBeGreaterThan(0);
+      await expect(
+        validateProjectKnowledgeUnitSources(persisted!, { projectRoot: root }),
+      ).resolves.toMatchObject({ valid: false });
+
+      const legacyRoot = path.join(cache, 'project-knowledge', 'units');
+      await fs.mkdir(legacyRoot, { recursive: true });
+      await fs.writeFile(
+        path.join(legacyRoot, 'legacy-only.md'),
+        renderProjectKnowledgeUnit({ ...maintainedUnit(), id: 'legacy-only', origin: 'generated' }),
+      );
+      await expect(second.read('legacy-only')).resolves.toBeNull();
+      const cliRepository = new ProjectKnowledgeUnitRepository({
+        projectRoot: root,
+        cacheRoot: cache,
+        allowLegacyCacheRead: true,
+      });
+      await expect(cliRepository.read('legacy-only')).resolves.toMatchObject({ id: 'legacy-only' });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cache, { recursive: true, force: true });
+    }
+  });
+
   test('expands only sourced one-hop relations from already matched units', () => {
     const matched = maintainedUnit();
     const related = {

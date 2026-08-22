@@ -88,6 +88,8 @@ export interface ProjectKnowledgeUnitDiagnostic {
 export interface ProjectKnowledgeUnitRepositoryOptions {
   readonly projectRoot: string;
   readonly cacheRoot?: string;
+  /** Read the pre-workspace-qualified cache only for an explicit CLI migration path. */
+  readonly allowLegacyCacheRead?: boolean;
   readonly reportDiagnostic?: (diagnostic: ProjectKnowledgeUnitDiagnostic) => void;
 }
 
@@ -453,11 +455,14 @@ export class ProjectKnowledgeUnitRepository {
   readonly generatedRoot: string;
   private readonly projectRoot: string;
   private readonly legacyGeneratedRoot?: string;
+  private readonly allowLegacyCacheRead: boolean;
+  private readonly maintainedSourceStatePath: string;
   private readonly reportDiagnostic: ProjectKnowledgeUnitRepositoryOptions['reportDiagnostic'];
 
   constructor(options: ProjectKnowledgeUnitRepositoryOptions) {
     this.projectRoot = path.resolve(options.projectRoot);
     this.reportDiagnostic = options.reportDiagnostic;
+    this.allowLegacyCacheRead = options.allowLegacyCacheRead === true;
     this.maintainedRoot = path.join(this.projectRoot, 'docs', 'comet', 'knowledge', 'units');
     this.legacyGeneratedRoot = options.cacheRoot
       ? path.join(path.resolve(options.cacheRoot), 'project-knowledge', 'units')
@@ -468,16 +473,66 @@ export class ProjectKnowledgeUnitRepository {
       ),
       'units',
     );
+    this.maintainedSourceStatePath = path.join(
+      path.dirname(
+        resolveProjectKnowledgeCacheLocation(this.projectRoot, options.cacheRoot).databasePath,
+      ),
+      'maintained-source-state.json',
+    );
+  }
+
+  private async readMaintainedSourceState(): Promise<
+    ReadonlyMap<string, readonly ProjectKnowledgeUnitSourceVersion[]>
+  > {
+    try {
+      const stat = await fs.stat(this.maintainedSourceStatePath);
+      if (stat.size > 256 * 1024) return new Map();
+      const parsed: unknown = JSON.parse(
+        (await fs.readFile(this.maintainedSourceStatePath, 'utf8')) || '{}',
+      );
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return new Map();
+      const state = new Map<string, readonly ProjectKnowledgeUnitSourceVersion[]>();
+      for (const [id, value] of Object.entries(parsed)) {
+        if (!UNIT_ID.test(id) || !Array.isArray(value)) continue;
+        const versions = value.filter(
+          (entry): entry is ProjectKnowledgeUnitSourceVersion =>
+            Boolean(entry) &&
+            typeof entry === 'object' &&
+            typeof (entry as { source?: unknown }).source === 'string' &&
+            typeof (entry as { size?: unknown }).size === 'number' &&
+            typeof (entry as { modifiedAt?: unknown }).modifiedAt === 'number',
+        );
+        if (versions.length > 0) state.set(id, versions.slice(0, MAX_SOURCE_COUNT));
+      }
+      return state;
+    } catch {
+      return new Map();
+    }
+  }
+
+  private async persistMaintainedSourceState(
+    id: string,
+    versions: readonly ProjectKnowledgeUnitSourceVersion[],
+  ): Promise<void> {
+    const state = new Map(await this.readMaintainedSourceState());
+    if (versions.length > 0) state.set(id, versions);
+    else state.delete(id);
+    await fs.mkdir(path.dirname(this.maintainedSourceStatePath), { recursive: true });
+    const serialized = Object.fromEntries(state.entries());
+    await fs.writeFile(this.maintainedSourceStatePath, JSON.stringify(serialized), 'utf8');
   }
 
   async list(
     options: ProjectKnowledgeUnitListOptions = {},
   ): Promise<readonly ProjectKnowledgeUnit[]> {
     const output: ProjectKnowledgeUnit[] = [];
+    const maintainedSourceState = await this.readMaintainedSourceState();
     const roots: ReadonlyArray<readonly [string, ProjectKnowledgeUnitOrigin]> = [
       [this.maintainedRoot, 'maintained'],
       [this.generatedRoot, 'generated'],
-      ...(this.legacyGeneratedRoot && this.legacyGeneratedRoot !== this.generatedRoot
+      ...(this.allowLegacyCacheRead &&
+      this.legacyGeneratedRoot &&
+      this.legacyGeneratedRoot !== this.generatedRoot
         ? ([[this.legacyGeneratedRoot, 'generated']] as const)
         : []),
     ];
@@ -514,7 +569,11 @@ export class ProjectKnowledgeUnitRepository {
             if (stat.size > MAX_UNIT_BYTES) throw new Error('generated unit exceeds read budget');
             bytes = await fs.readFile(generatedPath);
           }
-          const unit = parseProjectKnowledgeUnit(bytes.toString('utf8'), relative);
+          const parsed = parseProjectKnowledgeUnit(bytes.toString('utf8'), relative);
+          const unit =
+            origin === 'maintained' && maintainedSourceState.has(parsed.id)
+              ? { ...parsed, sourceVersions: maintainedSourceState.get(parsed.id) }
+              : parsed;
           if (unit.origin !== origin || (options.state && unit.state !== options.state)) continue;
           if (seenIds.has(unit.id)) continue;
           if (origin === 'generated' && root !== this.generatedRoot) {
@@ -553,6 +612,10 @@ export class ProjectKnowledgeUnitRepository {
       renderProjectKnowledgeUnit(validated),
       'utf8',
     );
+    await this.persistMaintainedSourceState(
+      validated.id,
+      await captureProjectKnowledgeUnitSourceVersions(validated, this.projectRoot),
+    );
   }
 
   async writeGenerated(unit: ProjectKnowledgeUnit): Promise<void> {
@@ -586,7 +649,7 @@ export class ProjectKnowledgeUnitRepository {
     id: string,
     options: { readonly confirm?: boolean } = {},
   ): Promise<ProjectKnowledgeUnit> {
-    if (options.confirm === false) throw new Error('share requires explicit confirmation');
+    if (options.confirm !== true) throw new Error('share requires explicit confirmation');
     const unit = await this.read(id);
     if (unit === null) throw new Error(`项目知识单元不存在：${id}`);
     const shared = validateProjectKnowledgeUnitShape({

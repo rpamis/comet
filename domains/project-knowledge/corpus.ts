@@ -285,6 +285,7 @@ export async function discoverProjectKnowledgeCorpus(
         'classic-spec',
         undefined,
         options.reportDiagnostic,
+        budget,
       )),
       ...(await walkMarkdown(
         path.join(archiveRoot),
@@ -292,6 +293,7 @@ export async function discoverProjectKnowledgeCorpus(
         'classic-archive',
         undefined,
         options.reportDiagnostic,
+        budget,
       )),
       ...(await discoverSuperpowers(projectRoot, archiveRoot, options.reportDiagnostic, budget)),
     );

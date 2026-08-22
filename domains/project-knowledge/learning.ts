@@ -252,6 +252,28 @@ function isVerified(packet: ProjectKnowledgeReviewPacket): boolean {
   return results.length > 0 && results.every((entry) => entry.success === true);
 }
 
+async function reviewSourcesStillCurrent(
+  packet: ProjectKnowledgeReviewPacket,
+  projectRoot: string,
+): Promise<string | null> {
+  for (const source of packet.sources) {
+    try {
+      const inspected = await inspectProtectedProjectPath(projectRoot, source.source, {
+        label: source.source,
+        expected: 'file',
+      });
+      if (!inspected.exists) return source.source;
+      const stat = await fs.stat(inspected.target);
+      if (Number(stat.size) !== source.size || Number(stat.mtimeMs) !== source.modifiedAt) {
+        return source.source;
+      }
+    } catch {
+      return source.source;
+    }
+  }
+  return null;
+}
+
 function validUnitId(value: unknown): value is string {
   return typeof value === 'string' && /^[a-z0-9][a-z0-9._-]{1,127}$/u.test(value);
 }
@@ -293,6 +315,22 @@ export class ProjectKnowledgeLearningService {
       actions = await this.reviewer.review(packet);
     } catch {
       report({ code: 'reviewer-unavailable', message: '项目知识语义评审暂不可用，已跳过。' });
+      return {
+        skipped: true,
+        persisted: [],
+        activated: [],
+        retired: [],
+        changedHint: packet.changedHint,
+        diagnostics,
+      };
+    }
+    const changedSource = await reviewSourcesStillCurrent(packet, this.projectRoot);
+    if (changedSource !== null) {
+      report({
+        code: 'source-changed',
+        message: '语义评审期间项目来源发生变化，已跳过本次写入。',
+        source: changedSource,
+      });
       return {
         skipped: true,
         persisted: [],
@@ -377,6 +415,7 @@ export function sanitizeProjectPreferenceForSharing(
       .replace(/\b(?:I|me|my|mine|we|our|ours)\b/giu, '')
       .replace(/(?:我|我的|本人|我们|我们的)(?=偏好|习惯|项目|代码|要求)/gu, '')
       .replace(/(?:姓名|名字|用户名|作者)\s*[:：=]\s*[^\s，；;]+/gu, '[个人信息已移除]')
+      .replace(/(?:允许|可以|授权|自动)\s*(?:提交|推送|发布|删除|覆盖|执行)/gu, '[授权表述已移除]')
       .replace(/\s{2,}/gu, ' ')
       .trim();
   const text = stripPersonal(preference.text);

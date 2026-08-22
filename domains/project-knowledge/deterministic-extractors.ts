@@ -12,8 +12,15 @@ const MAX_READ_BYTES = 64 * 1024;
 const MAX_EXTRACTION_MS = 1_500;
 const MODULE_ROOTS = ['app', 'domains', 'platform', 'src', 'packages'] as const;
 
+class ExtractionDeadlineExceeded extends Error {}
+
+function checkDeadline(deadline: number): void {
+  if (Date.now() > deadline) throw new ExtractionDeadlineExceeded();
+}
+
 export interface DeterministicProjectUnitExtractionOptions {
   readonly projectRoot: string;
+  readonly changedPaths?: readonly string[];
 }
 
 function source(source: string, anchor?: string): ProjectKnowledgeUnitSource {
@@ -44,9 +51,14 @@ function unitBase(
   };
 }
 
-async function realProjectFiles(root: string, max = 200): Promise<string[]> {
+async function realProjectFiles(
+  root: string,
+  max = 200,
+  deadline = Number.POSITIVE_INFINITY,
+): Promise<string[]> {
   const result: string[] = [];
   const visit = async (directory: string): Promise<void> => {
+    checkDeadline(deadline);
     if (result.length >= max) return;
     let entries;
     try {
@@ -55,6 +67,7 @@ async function realProjectFiles(root: string, max = 200): Promise<string[]> {
       return;
     }
     for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+      checkDeadline(deadline);
       if (result.length >= max || entry.name.startsWith('.') || entry.name === 'node_modules')
         continue;
       const target = path.join(directory, entry.name);
@@ -70,6 +83,31 @@ async function realProjectFiles(root: string, max = 200): Promise<string[]> {
   return result;
 }
 
+async function changedProjectFiles(
+  root: string,
+  changedPaths: readonly string[],
+  max: number,
+  deadline: number,
+): Promise<string[]> {
+  const result: string[] = [];
+  for (const value of changedPaths.slice(0, max)) {
+    checkDeadline(deadline);
+    const relativePath = value.replaceAll('\\', '/').replace(/^\.\//u, '');
+    if (!relativePath || relativePath.split('/').some((part) => part === '..')) continue;
+    const target = path.resolve(root, relativePath);
+    try {
+      const stat = await fs.lstat(target);
+      if (stat.isSymbolicLink()) continue;
+      if (stat.isFile()) result.push(target);
+      else if (stat.isDirectory()) result.push(...(await realProjectFiles(target, max, deadline)));
+    } catch {
+      // Deleted paths are handled by the index and do not produce a unit source.
+    }
+    if (result.length >= max) break;
+  }
+  return result.slice(0, max);
+}
+
 function relative(root: string, file: string): string {
   return path.relative(root, file).replaceAll(path.sep, '/');
 }
@@ -77,8 +115,10 @@ function relative(root: string, file: string): string {
 async function firstExistingSource(
   root: string,
   candidates: readonly string[],
+  deadline = Number.POSITIVE_INFINITY,
 ): Promise<string | null> {
   for (const candidate of candidates) {
+    checkDeadline(deadline);
     try {
       const stat = await fs.lstat(path.join(root, ...candidate.split('/')));
       if (stat.isFile() && !stat.isSymbolicLink()) return candidate;
@@ -86,12 +126,17 @@ async function firstExistingSource(
       // Try the next bounded candidate.
     }
   }
-  const files = await realProjectFiles(root, 1);
+  const files = await realProjectFiles(root, 1, deadline);
   return files[0] ? relative(root, files[0]) : null;
 }
 
-async function readText(root: string, relativePath: string): Promise<string | null> {
+async function readText(
+  root: string,
+  relativePath: string,
+  deadline = Number.POSITIVE_INFINITY,
+): Promise<string | null> {
   try {
+    checkDeadline(deadline);
     return (
       await readProtectedProjectFile(root, relativePath, MAX_READ_BYTES, { label: relativePath })
     ).bytes.toString('utf8');
@@ -100,18 +145,25 @@ async function readText(root: string, relativePath: string): Promise<string | nu
   }
 }
 
-async function projectMapUnit(root: string): Promise<ProjectKnowledgeUnit> {
-  const manifest = await firstExistingSource(root, [
-    'package.json',
-    'pnpm-workspace.yaml',
-    'README.md',
-  ]);
-  const config = await firstExistingSource(root, [
-    '.comet/config.yaml',
-    'tsconfig.json',
-    'vite.config.ts',
-  ]);
-  const files = await realProjectFiles(root, 500);
+async function projectMapUnit(
+  root: string,
+  deadline: number,
+  changedPaths?: readonly string[],
+): Promise<ProjectKnowledgeUnit> {
+  const manifest = await firstExistingSource(
+    root,
+    ['package.json', 'pnpm-workspace.yaml', 'README.md'],
+    deadline,
+  );
+  const config = await firstExistingSource(
+    root,
+    ['.comet/config.yaml', 'tsconfig.json', 'vite.config.ts'],
+    deadline,
+  );
+  const files =
+    changedPaths && changedPaths.length > 0
+      ? await changedProjectFiles(root, changedPaths, 500, deadline)
+      : await realProjectFiles(root, 500, deadline);
   const directories = [
     ...new Set(files.map((file) => relative(root, file).split('/')[0]).filter(Boolean)),
   ].slice(0, 32);
@@ -119,7 +171,7 @@ async function projectMapUnit(root: string): Promise<ProjectKnowledgeUnit> {
     .filter((value): value is string => value !== null)
     .map((value) => source(value, 'root'));
   if (sources.length === 0) {
-    const fallback = await firstExistingSource(root, []);
+    const fallback = await firstExistingSource(root, [], deadline);
     if (fallback) sources.push(source(fallback));
   }
   return unitBase(
@@ -132,13 +184,31 @@ async function projectMapUnit(root: string): Promise<ProjectKnowledgeUnit> {
   );
 }
 
-async function moduleOverviewUnit(root: string): Promise<ProjectKnowledgeUnit> {
+async function moduleOverviewUnit(
+  root: string,
+  deadline: number,
+  changedPaths?: readonly string[],
+): Promise<ProjectKnowledgeUnit> {
   const files: string[] = [];
   for (const moduleRoot of MODULE_ROOTS) {
+    checkDeadline(deadline);
     try {
       const stat = await fs.lstat(path.join(root, moduleRoot));
       if (!stat.isDirectory() || stat.isSymbolicLink()) continue;
-      files.push(...(await realProjectFiles(path.join(root, moduleRoot), 48)));
+      if (changedPaths && changedPaths.length > 0) {
+        files.push(
+          ...(await changedProjectFiles(
+            root,
+            changedPaths.filter(
+              (changed) => changed === moduleRoot || changed.startsWith(`${moduleRoot}/`),
+            ),
+            48,
+            deadline,
+          )),
+        );
+      } else {
+        files.push(...(await realProjectFiles(path.join(root, moduleRoot), 48, deadline)));
+      }
     } catch {
       // Missing module root is normal.
     }
@@ -146,7 +216,12 @@ async function moduleOverviewUnit(root: string): Promise<ProjectKnowledgeUnit> {
   const selected = files
     .filter((file) => /\.(?:ts|tsx|js|jsx|mjs|py|go|java|rs)$/u.test(file))
     .slice(0, 24);
-  const sourceFiles = selected.length > 0 ? selected : await realProjectFiles(root, 1);
+  const sourceFiles =
+    selected.length > 0
+      ? selected
+      : changedPaths && changedPaths.length > 0
+        ? await changedProjectFiles(root, changedPaths, 1, deadline)
+        : await realProjectFiles(root, 1, deadline);
   const names = [
     ...new Set(sourceFiles.map((file) => relative(root, file).split('/').slice(0, 2).join('/'))),
   ].filter(Boolean);
@@ -158,7 +233,8 @@ async function moduleOverviewUnit(root: string): Promise<ProjectKnowledgeUnit> {
   const evidence: string[] = [];
   const registrationSources: ProjectKnowledgeUnitSource[] = [];
   for (const file of sourceFiles.slice(0, 6)) {
-    const text = await readText(root, relative(root, file));
+    checkDeadline(deadline);
+    const text = await readText(root, relative(root, file), deadline);
     if (!text) continue;
     const imports = [
       ...text.matchAll(/\b(?:import|export)\s+(?:[^;]*?\s+from\s+)?['"]([^'"]+)['"]/gu),
@@ -207,14 +283,13 @@ async function moduleOverviewUnit(root: string): Promise<ProjectKnowledgeUnit> {
   );
 }
 
-async function buildTestUnit(root: string): Promise<ProjectKnowledgeUnit> {
-  const manifestSource = await firstExistingSource(root, [
-    'package.json',
-    'pyproject.toml',
-    'Makefile',
-    'README.md',
-  ]);
-  const manifestText = manifestSource ? await readText(root, manifestSource) : null;
+async function buildTestUnit(root: string, deadline: number): Promise<ProjectKnowledgeUnit> {
+  const manifestSource = await firstExistingSource(
+    root,
+    ['package.json', 'pyproject.toml', 'Makefile', 'README.md'],
+    deadline,
+  );
+  const manifestText = manifestSource ? await readText(root, manifestSource, deadline) : null;
   const commands: string[] = [];
   if (manifestSource === 'package.json' && manifestText) {
     try {
@@ -257,16 +332,14 @@ export async function extractDeterministicProjectUnits(
   options: DeterministicProjectUnitExtractionOptions,
 ): Promise<readonly ProjectKnowledgeUnit[]> {
   const root = path.resolve(options.projectRoot);
-  let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<readonly ProjectKnowledgeUnit[]>((resolve) => {
-    timer = setTimeout(() => resolve([]), MAX_EXTRACTION_MS);
-  });
+  const deadline = Date.now() + MAX_EXTRACTION_MS;
+  const units: ProjectKnowledgeUnit[] = [];
   try {
-    return await Promise.race([
-      Promise.all([projectMapUnit(root), moduleOverviewUnit(root), buildTestUnit(root)]),
-      timeout,
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
+    units.push(await projectMapUnit(root, deadline, options.changedPaths));
+    units.push(await moduleOverviewUnit(root, deadline, options.changedPaths));
+    units.push(await buildTestUnit(root, deadline));
+  } catch (error) {
+    if (!(error instanceof ExtractionDeadlineExceeded)) throw error;
   }
+  return units;
 }

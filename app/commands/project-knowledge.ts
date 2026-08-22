@@ -183,7 +183,7 @@ export async function projectKnowledgeUnitsShareCommand(
   if (current === null) throw new Error(`项目知识单元不存在：${id}`);
   const validation = await validateProjectKnowledgeUnitSources(current, { projectRoot });
   if (!validation.valid) throw new Error('项目知识单元来源已变化或不可用，拒绝共享');
-  const unit = await repository.share(id);
+  const unit = await repository.share(id, { confirm: true });
   const result = { shared: true, unit };
   print(result, options);
   return result;
@@ -209,6 +209,7 @@ function projectKnowledgeUnitRepository(
   return new ProjectKnowledgeUnitRepository({
     projectRoot: path.resolve(targetPath),
     ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
+    allowLegacyCacheRead: true,
   });
 }
 
