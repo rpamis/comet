@@ -9,6 +9,15 @@ import type {
   WorkflowKnowledgeProvider,
 } from '../workflow-contract/types.js';
 import type { MemoryLanguage } from '../comet-memory/types.js';
+import type {
+  ProjectKnowledgeRecord,
+  ProjectKnowledgeRecordAuthority,
+  ProjectKnowledgeRecordConclusion,
+  ProjectKnowledgeRecordRelation,
+  ProjectKnowledgeRecordState,
+  ProjectKnowledgeRecordType,
+  ProjectKnowledgeRecordVerification,
+} from './records.js';
 import type { ProjectKnowledgeUnit } from './units.js';
 import type { ProjectKnowledgeChangedHint, ProjectKnowledgeSemanticReviewer } from './learning.js';
 
@@ -54,8 +63,120 @@ export interface ProjectKnowledgeDiagnostic {
 
 export type ProjectKnowledgeDiagnosticReporter = (diagnostic: ProjectKnowledgeDiagnostic) => void;
 
+export interface ProjectKnowledgeStatus {
+  readonly provider: WorkflowKnowledgeProvider;
+  readonly healthy: boolean;
+  readonly writable: boolean;
+  readonly recordCount?: number;
+  readonly updatedAt?: string;
+  readonly diagnostics: readonly ProjectKnowledgeDiagnostic[];
+}
+
+export interface ProjectKnowledgeSearchRequest {
+  readonly kind: 'search';
+  readonly query: ProjectKnowledgeQuery;
+  readonly limit?: number;
+}
+
+export interface ProjectKnowledgeListRequest {
+  readonly kind: 'list';
+  readonly projectId?: string;
+  readonly type?: ProjectKnowledgeRecordType;
+  readonly state?: ProjectKnowledgeRecordState;
+  readonly authority?: ProjectKnowledgeRecordAuthority;
+  readonly limit?: number;
+}
+
+export interface ProjectKnowledgeGetRequest {
+  readonly kind: 'get';
+  readonly id: string;
+  readonly projectId?: string;
+}
+
+export type ProjectKnowledgeQueryRequest =
+  | ProjectKnowledgeSearchRequest
+  | ProjectKnowledgeListRequest
+  | ProjectKnowledgeGetRequest;
+
+export interface ProjectKnowledgeSearchHit {
+  readonly record: ProjectKnowledgeRecord;
+  readonly score?: number;
+}
+
+export interface ProjectKnowledgeSearchResult {
+  readonly kind: 'search';
+  readonly hits: readonly ProjectKnowledgeSearchHit[];
+  readonly truncated: boolean;
+}
+
+export interface ProjectKnowledgeListResult {
+  readonly kind: 'list';
+  readonly records: readonly ProjectKnowledgeRecord[];
+  readonly truncated: boolean;
+}
+
+export interface ProjectKnowledgeGetResult {
+  readonly kind: 'get';
+  readonly record: ProjectKnowledgeRecord | null;
+}
+
+export type ProjectKnowledgeQueryResult =
+  | ProjectKnowledgeSearchResult
+  | ProjectKnowledgeListResult
+  | ProjectKnowledgeGetResult;
+
+export interface ProjectKnowledgeUpsertMutation {
+  readonly kind: 'upsert';
+  readonly record: ProjectKnowledgeRecord;
+}
+
+export interface ProjectKnowledgeCorrectMutation {
+  readonly kind: 'correct';
+  readonly id: string;
+  readonly projectId: string;
+  readonly title?: string;
+  readonly summary?: string;
+  readonly applicablePaths?: readonly string[];
+  readonly operations?: readonly string[];
+  readonly conclusions?: readonly ProjectKnowledgeRecordConclusion[];
+  readonly relations?: readonly ProjectKnowledgeRecordRelation[];
+  readonly verification?: readonly ProjectKnowledgeRecordVerification[];
+  readonly updatedAt: string;
+}
+
+export interface ProjectKnowledgeRetireMutation {
+  readonly kind: 'retire';
+  readonly id: string;
+  readonly projectId: string;
+  readonly updatedAt: string;
+  readonly reason?: string;
+}
+
+export interface ProjectKnowledgeRefreshMutation {
+  readonly kind: 'refresh';
+  readonly id?: string;
+  readonly projectId?: string;
+}
+
+export type ProjectKnowledgeMutation =
+  | ProjectKnowledgeUpsertMutation
+  | ProjectKnowledgeCorrectMutation
+  | ProjectKnowledgeRetireMutation
+  | ProjectKnowledgeRefreshMutation;
+
+export interface ProjectKnowledgeApplyResult {
+  readonly kind: ProjectKnowledgeMutation['kind'];
+  readonly changed: boolean;
+  readonly record?: ProjectKnowledgeRecord | null;
+  readonly records?: readonly ProjectKnowledgeRecord[];
+  readonly diagnostics: readonly ProjectKnowledgeDiagnostic[];
+}
+
 export interface ProjectKnowledgeProvider {
   retrieve(query: ProjectKnowledgeQuery): Promise<readonly ProjectKnowledgeResult[]>;
+  status?(): Promise<ProjectKnowledgeStatus>;
+  query?(request: ProjectKnowledgeQueryRequest): Promise<ProjectKnowledgeQueryResult>;
+  apply?(mutation: ProjectKnowledgeMutation): Promise<ProjectKnowledgeApplyResult>;
 }
 
 export interface ProjectKnowledgeCorpusOptions {

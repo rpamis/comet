@@ -1,0 +1,144 @@
+import { describe, expect, test } from 'vitest';
+
+import {
+  mergeProjectKnowledgeRecord,
+  parseProjectKnowledgeRecord,
+  type ProjectKnowledgeRecord,
+} from '../../../domains/project-knowledge/index.js';
+
+function sampleRecord(): ProjectKnowledgeRecord {
+  return {
+    id: 'record-main-flow',
+    projectId: 'comet-core',
+    type: 'module-overview',
+    state: 'active',
+    authority: 'automatic',
+    title: '主流程模块',
+    summary: '主流程负责协调入口与验证。',
+    applicablePaths: ['domains/project-knowledge/'],
+    operations: ['implement', 'verify'],
+    conclusions: [
+      {
+        text: '修改入口后必须同步验证 Provider 契约。',
+        sources: [{ source: 'domains/project-knowledge/types.ts', anchor: 'provider-contract' }],
+      },
+    ],
+    relations: [
+      {
+        type: 'validated-by',
+        targetId: 'record-build-test',
+        sources: [{ source: 'package.json', anchor: 'scripts' }],
+      },
+    ],
+    verification: [{ command: 'npx vitest run test/domains/project-knowledge/*.test.ts' }],
+    sourceVersions: [
+      {
+        source: 'domains/project-knowledge/types.ts',
+        size: 2048,
+        modifiedAt: 1_723_456_789_000,
+      },
+    ],
+    updatedAt: '2026-08-22T09:00:00.000Z',
+  };
+}
+
+describe('project knowledge records', () => {
+  test('parses a valid record without losing bounded data', () => {
+    const record = sampleRecord();
+
+    const parsed = parseProjectKnowledgeRecord(JSON.parse(JSON.stringify(record)));
+
+    expect(parsed).toEqual(record);
+  });
+
+  test('rejects invalid state, authority, and empty required text', () => {
+    expect(() =>
+      parseProjectKnowledgeRecord({
+        ...sampleRecord(),
+        state: 'draft',
+      }),
+    ).toThrow(/state/i);
+
+    expect(() =>
+      parseProjectKnowledgeRecord({
+        ...sampleRecord(),
+        authority: 'generated',
+      }),
+    ).toThrow(/authority/i);
+
+    expect(() =>
+      parseProjectKnowledgeRecord({
+        ...sampleRecord(),
+        title: '   ',
+      }),
+    ).toThrow(/title/i);
+  });
+
+  test('keeps user summary and conclusions when an automatic upsert is merged', () => {
+    const current = parseProjectKnowledgeRecord({
+      ...sampleRecord(),
+      authority: 'user',
+      summary: '用户维护的摘要',
+      conclusions: [
+        {
+          text: '用户维护的结论',
+          sources: [{ source: 'docs/knowledge.md', anchor: 'manual' }],
+        },
+      ],
+    });
+    const incoming = parseProjectKnowledgeRecord({
+      ...sampleRecord(),
+      summary: '自动生成的新摘要',
+      conclusions: [
+        {
+          text: '自动生成的新结论',
+          sources: [{ source: 'domains/project-knowledge/records.ts', anchor: 'merge' }],
+        },
+      ],
+      updatedAt: '2026-08-22T10:00:00.000Z',
+    });
+
+    const merged = mergeProjectKnowledgeRecord(current, incoming);
+
+    expect(merged.authority).toBe('user');
+    expect(merged.summary).toBe('用户维护的摘要');
+    expect(merged.conclusions).toEqual(current.conclusions);
+    expect(merged.updatedAt).toBe('2026-08-22T10:00:00.000Z');
+  });
+
+  test('rejects unsafe ids, excessive references, and malformed source versions', () => {
+    expect(() =>
+      parseProjectKnowledgeRecord({
+        ...sampleRecord(),
+        id: '../escape',
+      }),
+    ).toThrow(/id/i);
+
+    expect(() =>
+      parseProjectKnowledgeRecord({
+        ...sampleRecord(),
+        conclusions: [
+          {
+            text: 'too many sources',
+            sources: Array.from({ length: 33 }, (_, index) => ({
+              source: `docs/source-${index}.md`,
+            })),
+          },
+        ],
+      }),
+    ).toThrow(/sources/i);
+
+    expect(() =>
+      parseProjectKnowledgeRecord({
+        ...sampleRecord(),
+        sourceVersions: [
+          {
+            source: '/absolute/path.md',
+            size: -1,
+            modifiedAt: 'yesterday',
+          },
+        ],
+      }),
+    ).toThrow(/sourceVersions/i);
+  });
+});
