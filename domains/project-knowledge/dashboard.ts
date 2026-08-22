@@ -17,7 +17,7 @@ export function createProjectKnowledgeDashboardSnapshot(
       retrieval:
         options.language === 'en'
           ? 'Local uses a workspace-isolated section index with bounded ripgrep fallback.'
-          : 'Local 使用按工作区隔离的 section 索引，并保留有界 ripgrep 回退。',
+          : 'Local 使用按工作区隔离的 section 索引，并保留有界 ripgrep 回退；不会维护索引文件进入项目仓库。',
       diagnostics: [],
     };
   }
