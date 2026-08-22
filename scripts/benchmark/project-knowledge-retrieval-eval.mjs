@@ -161,9 +161,19 @@ async function runFixtureChecks() {
     );
     const unitDeletionDetected = !unitAfterDeletion.some((result) => result.unit !== undefined);
 
+    await writeFile(
+      path.join(projects[0], 'docs', 'comet', 'specs', 'fixture.md'),
+      '# Fixture\n\nWorkspace1Original\n',
+    );
     const databasePath = providers[0].indexStore?.databasePath;
     if (databasePath) await writeFile(databasePath, 'not a sqlite database\n');
-    const recovered = await providers[0].retrieve(
+    const recoveryProvider = new LocalProjectKnowledgeProvider({
+      projectRoot: projects[0],
+      corpus: await discoverProjectKnowledgeCorpus({ projectRoot: projects[0] }),
+      cacheRoot: cache,
+      indexEnabled: true,
+    });
+    const recovered = await recoveryProvider.retrieve(
       createProjectKnowledgeQuery({ task: 'Workspace1Original' }),
     );
     const quarantined = databasePath
