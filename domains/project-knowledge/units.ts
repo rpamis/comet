@@ -718,6 +718,7 @@ export async function captureProjectKnowledgeUnitSourceVersions(
   unit: ProjectKnowledgeUnit,
   projectRoot: string,
 ): Promise<readonly ProjectKnowledgeUnitSourceVersion[]> {
+  const deadline = Date.now() + 2_000;
   const references = [
     ...unit.conclusions.flatMap((conclusion) => conclusion.sources),
     ...unit.relations.flatMap((relation) => relation.sources),
@@ -725,6 +726,7 @@ export async function captureProjectKnowledgeUnitSourceVersions(
   const seen = new Set<string>();
   const versions: ProjectKnowledgeUnitSourceVersion[] = [];
   for (const reference of references) {
+    if (Date.now() > deadline) break;
     if (seen.has(reference.source)) continue;
     seen.add(reference.source);
     try {
@@ -751,12 +753,21 @@ export async function validateProjectKnowledgeUnitSources(
   options: ProjectKnowledgeUnitSourceValidationOptions,
 ): Promise<ProjectKnowledgeUnitSourceValidationResult> {
   const diagnostics: ProjectKnowledgeUnitDiagnostic[] = [];
+  const deadline = Date.now() + 2_000;
   const references = [
     ...unit.conclusions.flatMap((conclusion) => conclusion.sources),
     ...unit.relations.flatMap((relation) => relation.sources),
   ];
   let bytesRead = 0;
   for (const reference of references) {
+    if (Date.now() > deadline) {
+      diagnostics.push({
+        code: 'source-budget',
+        message: '项目知识单元来源校验超过时间限制。',
+        source: reference.source,
+      });
+      continue;
+    }
     if (bytesRead >= (options.maxTotalBytes ?? 512 * 1024)) {
       diagnostics.push({
         code: 'source-budget',
@@ -782,6 +793,14 @@ export async function validateProjectKnowledgeUnitSources(
         { label: reference.source },
       );
       bytesRead += read.bytes.length;
+      if (Date.now() > deadline) {
+        diagnostics.push({
+          code: 'source-budget',
+          message: '项目知识单元来源校验超过时间限制。',
+          source: reference.source,
+        });
+        continue;
+      }
       const stat = read.stat;
       const current = { size: Number(stat.size), modifiedAt: Number(stat.mtimeMs) };
       const content = read.bytes.toString('utf8');

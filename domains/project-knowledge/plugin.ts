@@ -162,6 +162,7 @@ async function createProjectKnowledgeModule(
     provideContext: async (request) => {
       const query = createProjectKnowledgeQuery(request);
       const key = options.knowledgeConfig.provider;
+      let targetedProvider = false;
       if (provider === null || providerKey !== key) {
         const corpus =
           key === 'local'
@@ -190,11 +191,18 @@ async function createProjectKnowledgeModule(
               });
         providerKey = key;
         if (changedPaths.length > 0) {
+          targetedProvider = true;
           recentChangedHints.splice(0, recentChangedHints.length);
           persistDiagnostics();
         }
       }
       const results = boundProjectKnowledgeResults(await provider.retrieve(query));
+      if (targetedProvider) {
+        // The hint is a one-request optimization. Recreate the provider on the
+        // next request so deterministic units can perform a complete refresh.
+        provider = null;
+        providerKey = '';
+      }
       await diagnosticWrite;
       const text = renderProjectKnowledgeContext(results, options.language ?? 'zh-CN');
       if (!text) return null;
