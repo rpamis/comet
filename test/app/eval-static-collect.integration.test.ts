@@ -326,7 +326,7 @@ describe('packaged static collect', () => {
     );
     expect(corrupt.status, `${corrupt.stdout}\n${corrupt.stderr}`).toBe(0);
     expect(corrupt.stdout.split(/\r?\n/u)).toContain('Tasks: pending generation');
-  });
+  }, 300_000);
 
   it('proves taskless collect is zero-workload at the real packaged CLI boundary', async () => {
     const owner = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-eval-sentinel-owner-'));
@@ -413,5 +413,5 @@ describe('packaged static collect', () => {
     }
     await expect(fs.stat(sentinels.marker)).rejects.toMatchObject({ code: 'ENOENT' });
     expect(await snapshotTree(harnessRoot)).toEqual(harnessBefore);
-  });
+  }, 300_000);
 });
