@@ -18,6 +18,7 @@ import {
   type MemoryReviewRequest,
 } from '../comet-memory/index.js';
 import { getCurrentVersion } from '../../platform/version/version.js';
+import { resolveProjectName } from '../../platform/paths/project-identity.js';
 import { JsonFilePluginStorageStore, JsonFileTextStore } from '../../platform/fs/plugin-store.js';
 import { JsonPluginStateStore, PluginRuntime } from './plugin-runtime.js';
 import type { PluginContextContribution, PluginEvent, PluginScopeContext } from './types.js';
@@ -310,6 +311,7 @@ export async function createDefaultCometPluginBridge(
   );
   const stateRoot = path.resolve(options.stateRoot ?? path.join(os.homedir(), '.comet', 'plugins'));
   const projectRoot = path.resolve(options.projectRoot);
+  const projectName = resolveProjectName(projectRoot);
   const language = options.language ?? (await resolveProjectMemoryLanguage(projectRoot));
   const projectPolicy = await resolveProjectMemoryPolicy(projectRoot);
   const runtime = new PluginRuntime({
@@ -334,6 +336,8 @@ export async function createDefaultCometPluginBridge(
             language,
             repository: new FileMemoryRepository(memoryRoot, {
               git: new GitMemorySync(memoryRoot),
+              projectKey: options.projectId,
+              projectName,
             }),
           }),
       }),

@@ -171,6 +171,7 @@ export interface MemoryRuntimeState {
   readonly tombstones?: readonly MemoryTombstone[];
   readonly settings: MemorySettings;
   readonly files: Readonly<Record<string, MemoryFileState>>;
+  readonly projectFiles?: Readonly<Record<string, string>>;
 }
 
 export interface MemoryStoredObservation {
@@ -368,12 +369,21 @@ export interface MemoryRepository {
   sync(): Promise<MemorySyncResult>;
   remote?(): Promise<string | null>;
   configureRemote?(url: string): Promise<void>;
+  projectFileBinding?(): MemoryProjectFileBinding | undefined;
+}
+
+export interface MemoryProjectFileBinding {
+  readonly projectKey: string;
+  readonly projectName: string;
+  readonly path: string;
 }
 
 export interface FileMemoryRepositoryOptions {
   readonly git?: MemoryGitSync;
   readonly lockTimeoutMs?: number;
   readonly lockRetryMs?: number;
+  readonly projectKey?: string;
+  readonly projectName?: string;
 }
 
 export interface GitMemorySyncOptions {

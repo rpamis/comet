@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -49,6 +49,102 @@ function service(root: string, git?: MemoryGitSync): PersonalMemoryService {
 }
 
 describe('PersonalMemoryService', () => {
+  it('stores project memory under a readable project name while retaining the internal project key', async () => {
+    await withTempRepository(async (root) => {
+      const repository = new FileMemoryRepository(root, {
+        projectKey: 'project-a',
+        projectName: 'Comet',
+      });
+      const memories = new PersonalMemoryService({
+        repository,
+        now: () => new Date('2026-08-14T00:00:00.000Z'),
+      });
+
+      await memories.remember({
+        scope: 'project',
+        projectKey: 'project-a',
+        category: '构建',
+        text: '使用 pnpm build',
+      });
+
+      await expect(readFile(path.join(root, 'projects', 'Comet.md'), 'utf8')).resolves.toContain(
+        '使用 pnpm build',
+      );
+      await expect(
+        readFile(path.join(root, 'projects', 'project-a.md'), 'utf8'),
+      ).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+      expect(
+        JSON.parse(
+          await readFile(path.join(root, '.comet', 'runtime', 'memory-state.json'), 'utf8'),
+        ),
+      ).toMatchObject({
+        projectFiles: { 'project-a': 'projects/Comet.md' },
+      });
+    });
+  });
+
+  it('does not read a legacy project-key file after switching to readable project names', async () => {
+    await withTempRepository(async (root) => {
+      await mkdir(path.join(root, 'projects'), { recursive: true });
+      await writeFile(
+        path.join(root, 'projects', 'project-a.md'),
+        '# 项目记忆\n\n## 构建\n\n- 使用 pnpm build\n',
+      );
+      const repository = new FileMemoryRepository(root, {
+        projectKey: 'project-a',
+        projectName: 'Comet',
+      });
+      const memories = new PersonalMemoryService({ repository });
+
+      await expect(
+        memories.retrieve({ scope: 'project', projectKey: 'project-a', task: '构建' }),
+      ).resolves.toMatchObject({ records: [] });
+
+      await expect(
+        readFile(path.join(root, 'projects', 'project-a.md'), 'utf8'),
+      ).resolves.toContain('使用 pnpm build');
+      await expect(readFile(path.join(root, 'projects', 'Comet.md'), 'utf8')).rejects.toMatchObject(
+        {
+          code: 'ENOENT',
+        },
+      );
+    });
+  });
+
+  it('shares one project memory file across worktrees with the same project identity', async () => {
+    await withTempRepository(async (root) => {
+      const first = new PersonalMemoryService({
+        repository: new FileMemoryRepository(root, {
+          projectKey: 'comet-project',
+          projectName: 'Comet',
+        }),
+      });
+      const second = new PersonalMemoryService({
+        repository: new FileMemoryRepository(root, {
+          projectKey: 'comet-project',
+          projectName: 'Comet',
+        }),
+      });
+
+      await first.remember({
+        scope: 'project',
+        projectKey: 'comet-project',
+        category: '协作偏好',
+        text: '先确认中文语义，再同步英文',
+      });
+
+      await expect(
+        second.retrieve({ scope: 'project', projectKey: 'comet-project', task: '中文语义' }),
+      ).resolves.toMatchObject({
+        records: expect.arrayContaining([
+          expect.objectContaining({ text: '先确认中文语义，再同步英文' }),
+        ]),
+      });
+    });
+  });
+
   it('rejects unsafe direct remember and correction input before persistence', async () => {
     await withTempRepository(async (root) => {
       const memories = service(root);

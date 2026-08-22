@@ -145,7 +145,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
       const current = state.records.find((entry) => entry.id === id) as StoredRecord | undefined;
       if (current === undefined) throw new Error(`Unknown memory: ${id}`);
       if (current.active) {
-        const path = memoryFilePath(current.scope, current.projectKey);
+        const path = this.resolveMemoryFilePath(state, current.scope, current.projectKey);
         const content = await this.readStableFile(state, path, current.scope, current.projectKey);
         const refreshed = state.records.find((entry) => entry.id === id) as
           | StoredRecord
@@ -816,14 +816,22 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
   ): Promise<MutableMemoryState> {
     const raw = await this.repository.readState();
     const state = mutableState(raw);
+    await this.prepareProjectFileBinding(state);
     const knownProjectKeys = new Set<string>();
+    for (const knownProjectKey of Object.keys(state.projectFiles)) {
+      knownProjectKeys.add(knownProjectKey);
+    }
+    const binding = this.repository.projectFileBinding?.();
+    if (binding !== undefined) knownProjectKeys.add(binding.projectKey);
     for (const record of state.records) {
       if (record.scope === 'project' && record.projectKey !== undefined)
         knownProjectKeys.add(record.projectKey);
     }
     for (const file of Object.keys(state.files)) {
       const match = /^projects\/([A-Za-z0-9][A-Za-z0-9._-]*)\.md$/u.exec(file);
-      if (match?.[1] !== undefined) knownProjectKeys.add(match[1]);
+      if (match?.[1] !== undefined && !Object.values(state.projectFiles).includes(file)) {
+        knownProjectKeys.add(match[1]);
+      }
     }
     const targets =
       scope === undefined
@@ -840,7 +848,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
         : [{ scope, ...(scope === 'project' ? { projectKey } : {}) }];
     for (const target of targets) {
       if (target.scope === 'project' && target.projectKey === undefined) continue;
-      const file = memoryFilePath(target.scope, target.projectKey);
+      const file = this.resolveMemoryFilePath(state, target.scope, target.projectKey);
       const content = await this.repository.readText(file);
       reconcileMarkdown(state, file, target.scope, target.projectKey, content, this.timestamp());
     }
@@ -851,13 +859,42 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
     await this.repository.writeState(state as MemoryRuntimeState);
   }
 
+  private resolveMemoryFilePath(
+    state: MutableMemoryState,
+    scope: 'global' | 'project',
+    projectKey: string | undefined,
+  ): string {
+    if (scope === 'global') return memoryFilePath(scope);
+    if (projectKey === undefined) throw new Error('Project memory requires a project key');
+    const binding = this.repository.projectFileBinding?.();
+    return (
+      state.projectFiles[projectKey] ??
+      (binding?.projectKey === projectKey ? binding.path : undefined) ??
+      memoryFilePath(scope, projectKey)
+    );
+  }
+
+  private async prepareProjectFileBinding(state: MutableMemoryState): Promise<void> {
+    const binding = this.repository.projectFileBinding?.();
+    if (binding === undefined) return;
+    const occupiedByAnotherProject = Object.entries(state.projectFiles).some(
+      ([projectKey, file]) => projectKey !== binding.projectKey && file === binding.path,
+    );
+    const projectPath = occupiedByAnotherProject
+      ? `projects/${binding.projectName}-${binding.projectKey.slice(-8)}.md`
+      : binding.path;
+    if (state.projectFiles[binding.projectKey] === undefined) {
+      state.projectFiles[binding.projectKey] = projectPath;
+    }
+  }
+
   private async writeRecordMarkdown(
     state: MutableMemoryState,
     record: StoredRecord,
     previousText?: string,
     previousCategory?: string,
   ): Promise<void> {
-    const file = memoryFilePath(record.scope, record.projectKey);
+    const file = this.resolveMemoryFilePath(state, record.scope, record.projectKey);
     const existing = await this.readStableFile(state, file, record.scope, record.projectKey);
     const next = previousText
       ? replaceMarkdownBullet(
@@ -882,6 +919,9 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
       await this.repository.writeText(file, next);
     }
     state.files[file] = fileState(next, this.timestamp());
+    if (record.scope === 'project' && record.projectKey !== undefined) {
+      state.projectFiles[record.projectKey] = file;
+    }
   }
 
   private async readStableFile(
@@ -947,7 +987,14 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
 
 interface MutableMemoryState extends Omit<
   MemoryRuntimeState,
-  'records' | 'history' | 'observations' | 'conflicts' | 'tombstones' | 'settings' | 'files'
+  | 'records'
+  | 'history'
+  | 'observations'
+  | 'conflicts'
+  | 'tombstones'
+  | 'settings'
+  | 'files'
+  | 'projectFiles'
 > {
   records: StoredRecord[];
   history: Record<string, StoredRecord[]>;
@@ -956,6 +1003,7 @@ interface MutableMemoryState extends Omit<
   tombstones: MemoryTombstone[];
   settings: MemorySettings;
   files: Record<string, { hash: string; observedAt: string }>;
+  projectFiles: Record<string, string>;
   evidence: Record<string, string[]>;
 }
 
@@ -997,6 +1045,7 @@ function mutableState(raw: MemoryRuntimeState): MutableMemoryState {
       ],
     },
     files: { ...raw.files },
+    projectFiles: { ...(raw.projectFiles ?? {}) },
     evidence: (raw as MemoryRuntimeState & { evidence?: Record<string, string[]> }).evidence ?? {},
   };
 }

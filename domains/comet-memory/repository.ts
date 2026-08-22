@@ -8,6 +8,7 @@ import type {
   FileMemoryRepositoryOptions,
   MemoryGitSync,
   GitMemorySyncOptions,
+  MemoryProjectFileBinding,
   MemoryRepository,
   MemoryRuntimeState,
   MemorySyncResult,
@@ -24,6 +25,14 @@ export function memoryFilePath(scope: 'global' | 'project', projectKey?: string)
     throw new Error('Project memory requires a safe project key');
   }
   return `projects/${projectKey}.md`;
+}
+
+export function projectMemoryFilePath(projectName: string): string {
+  const normalized = projectName.trim().replace(/[^A-Za-z0-9._-]+/gu, '-');
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(normalized)) {
+    throw new Error('Project memory name is invalid');
+  }
+  return `projects/${normalized}.md`;
 }
 
 export function hashMemoryText(content: string): string {
@@ -61,6 +70,7 @@ export function emptyMemoryState(): MemoryRuntimeState {
       pausedRetrievalProjects: [],
     },
     files: {},
+    projectFiles: {},
   };
 }
 
@@ -69,12 +79,25 @@ export class FileMemoryRepository implements MemoryRepository {
   private readonly git?: MemoryGitSync;
   private readonly lockTimeoutMs: number;
   private readonly lockRetryMs: number;
+  private readonly projectKey?: string;
+  private readonly projectName?: string;
 
   public constructor(root: string, options: FileMemoryRepositoryOptions = {}) {
     this.root = path.resolve(root);
     this.git = options.git;
     this.lockTimeoutMs = options.lockTimeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS;
     this.lockRetryMs = options.lockRetryMs ?? DEFAULT_LOCK_RETRY_MS;
+    this.projectKey = options.projectKey;
+    this.projectName = options.projectName;
+  }
+
+  public projectFileBinding(): MemoryProjectFileBinding | undefined {
+    if (this.projectKey === undefined || this.projectName === undefined) return undefined;
+    return {
+      projectKey: this.projectKey,
+      projectName: this.projectName,
+      path: projectMemoryFilePath(this.projectName),
+    };
   }
 
   public async readText(relativePath: string): Promise<string | null> {
@@ -351,5 +374,6 @@ function validateState(value: unknown): MemoryRuntimeState {
       ],
     },
     files: candidate.files ?? {},
+    projectFiles: candidate.projectFiles ?? {},
   };
 }

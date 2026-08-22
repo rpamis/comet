@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  resolveProjectName,
   resolveProjectIdentity,
   resolveStableProjectId,
   stableProjectId,
@@ -19,6 +20,7 @@ describe('project identity', () => {
     expect(resolveStableProjectId('D:/worktree-a', { runGit })).toBe(
       resolveStableProjectId('D:/worktree-b', { runGit }),
     );
+    expect(resolveProjectName('D:/worktree-a', { runGit })).toBe('comet');
   });
 
   it('uses the shared git directory before a path fallback', () => {

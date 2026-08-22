@@ -48,6 +48,37 @@ export function resolveStableProjectId(
   return stableProjectId(resolveProjectIdentity(projectRoot, options));
 }
 
+export function resolveProjectName(
+  projectRoot: string,
+  options: ProjectIdentityOptions = {},
+): string {
+  const root = path.resolve(projectRoot);
+  const run = options.runGit ?? runGitCommand;
+  try {
+    const remote = run(root, ['remote', 'get-url', 'origin']).trim();
+    if (remote) return readableProjectName(remote);
+  } catch {
+    // Continue with the shared Git directory when no origin is configured.
+  }
+  try {
+    const commonDir = run(root, ['rev-parse', '--git-common-dir']).trim();
+    if (commonDir) return readableProjectName(path.resolve(root, commonDir));
+  } catch {
+    // Continue with the current project path for non-Git directories.
+  }
+  return readableProjectName(root);
+}
+
+function readableProjectName(value: string): string {
+  const normalized = value
+    .trim()
+    .replace(/\\/gu, '/')
+    .replace(/\.git$/iu, '')
+    .replace(/\/+$/u, '');
+  const leaf = normalized.split(/[/:]/u).filter(Boolean).at(-1) ?? 'project';
+  return leaf.replace(/[^a-zA-Z0-9._-]+/gu, '-').replace(/^-+|-+$/gu, '') || 'project';
+}
+
 function normalizeIdentity(value: string): string {
   const normalized = value
     .trim()

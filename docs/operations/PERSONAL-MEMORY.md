@@ -7,7 +7,7 @@ Comet Personal Memory keeps reusable personal preferences, collaboration habits,
 - When you explicitly say “remember”, “always do this”, “change it to”, or “forget”, Comet acts immediately and gives a short confirmation or error.
 - A bounded background review runs at stable successful workflow checkpoints. When there is nothing durable to save, the review is skipped, or the same observation repeats, nothing is shown by default.
 - You see a short notice only when a memory first changes how a later task is handled or when a conflict needs attention.
-- Memory is kept in readable Markdown: global preferences in `profile.md` and project experience in `projects/<project-key>.md`. You can inspect and edit these files directly.
+- Memory is kept in readable Markdown: global preferences in `profile.md` and project experience normally uses a readable project name, such as `projects/comet.md`. Comet keeps an internal project key for precise association, so the main worktree and worktrees of the same repository use the same project memory. You can inspect and edit these files directly.
 
 ## What is worth remembering
 
@@ -70,9 +70,13 @@ comet memory status .
 
 `forget` keeps rollback history by default; permanent deletion requires the explicit `--permanent` option. Pausing project memory stops new learning and/or retrieval according to the pause settings, and resuming re-enables it. Retrieval returns only reliable matches in the current scope that have no unresolved conflict and are not paused.
 
+`--project` accepts the internal project key; commands for the current project can usually omit it.
+
 ## Markdown and synchronization
 
 Markdown is the user-readable management projection for viewing and editing personal memory. The system handles duplicates, history, conflicts, and retrieval boundaries automatically, so you do not need to maintain any other files. Manual edits or deletions are treated as user intent during the next management or retrieval operation, and background observations do not silently restore removed content.
+
+The current version uses only the readable project filename and does not read or migrate the not-yet-released `projects/<project-key>.md` format. The mapping between the internal project key and the project file is kept in `projectFiles` in `.comet/runtime/memory-state.json` under the personal-memory root. If different repositories use the same project name, Comet adds a short identifier to avoid mixing them.
 
 Personal Memory can sync through a dedicated Git remote. Without a remote, local recording, viewing, and retrieval continue to work. If the remote is unavailable, authentication fails, or synchronization conflicts, local memory remains available and you can retry with `comet memory sync`. Conflicts are not silently overwritten by the last writer; you can inspect, correct, or roll back the memory.
 
