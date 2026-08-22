@@ -43,6 +43,7 @@ export interface LocalProjectKnowledgeProviderOptions extends ProjectKnowledgePr
   /** Retrieval-eval seam for measuring the bounded rg baseline. */
   readonly indexEnabled?: boolean;
   readonly unitRepository?: ProjectKnowledgeUnitRepository;
+  readonly changedPaths?: readonly string[];
 }
 
 function bundledRipgrepPath(): string | null {
@@ -175,10 +176,19 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
         this.indexStore.close();
       }
     }
+    const hintedSources = this.options.changedPaths
+      ? this.options.corpus.filter((document) =>
+          this.options.changedPaths!.some(
+            (changed) =>
+              document.source === changed ||
+              document.source.startsWith(`${changed.replaceAll('\\', '/').replace(/\/$/u, '')}/`),
+          ),
+        )
+      : [];
     const exact =
       indexSynced && refreshedSources.length === 0 && this.options.runRipgrep === undefined
         ? []
-        : await this.retrieveWithRipgrep(query, refreshedSources);
+        : await this.retrieveWithRipgrep(query, [...refreshedSources, ...hintedSources]);
     const units = this.options.unitRepository ? await this.retrieveUnits(query) : [];
     const fused = new Map<string, { result: ProjectKnowledgeResult; score: number }>();
     for (const [channel, results] of [units, indexed, exact].entries()) {

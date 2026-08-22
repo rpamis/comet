@@ -182,6 +182,10 @@ async function createProjectKnowledgeModule(
                 ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
                 reportDiagnostic,
                 unitRepository,
+                changedPaths: recentChangedHints.flatMap((hint) => [
+                  ...hint.changedPaths,
+                  ...hint.artifactRefs,
+                ]),
               });
         providerKey = key;
       }

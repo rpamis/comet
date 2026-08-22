@@ -15,6 +15,9 @@ import type {
 } from './types.js';
 
 const MAX_REFERENCE_BYTES = 64 * 1024;
+const MAX_CORPUS_FILES = 512;
+const MAX_CORPUS_TOTAL_BYTES = 8 * 1024 * 1024;
+const MAX_CORPUS_DISCOVERY_MS = 2_000;
 const SUPERPOWER_ROOTS = new Set([
   'docs/superpowers/specs',
   'docs/superpowers/plans',
@@ -261,7 +264,45 @@ export async function discoverProjectKnowledgeCorpus(
   }
   const unique = new Map<string, ProjectKnowledgeDocument>();
   for (const document of documents) unique.set(document.source, document);
-  return [...unique.values()].sort((left, right) => left.source.localeCompare(right.source));
+  const bounded: ProjectKnowledgeDocument[] = [];
+  let totalBytes = 0;
+  const startedAt = Date.now();
+  for (const document of [...unique.values()].sort((left, right) =>
+    left.source.localeCompare(right.source),
+  )) {
+    if (bounded.length >= MAX_CORPUS_FILES) {
+      report(
+        options.reportDiagnostic,
+        'corpus-limit',
+        `Project knowledge corpus is limited to ${MAX_CORPUS_FILES} files`,
+      );
+      break;
+    }
+    if (Date.now() - startedAt > MAX_CORPUS_DISCOVERY_MS) {
+      report(
+        options.reportDiagnostic,
+        'corpus-timeout',
+        'Project knowledge corpus discovery exceeded its time budget',
+      );
+      break;
+    }
+    try {
+      const size = (await fs.stat(document.absolutePath)).size;
+      if (size > MAX_REFERENCE_BYTES || totalBytes + size > MAX_CORPUS_TOTAL_BYTES) {
+        report(
+          options.reportDiagnostic,
+          'corpus-bytes',
+          `Project knowledge corpus byte budget skipped ${document.source}`,
+        );
+        continue;
+      }
+      totalBytes += size;
+      bounded.push(document);
+    } catch {
+      report(options.reportDiagnostic, 'corpus-read', `Unable to inspect ${document.source}`);
+    }
+  }
+  return bounded;
 }
 
 export function knowledgeDocumentKindRank(kind: ProjectKnowledgeDocument['kind']): number {

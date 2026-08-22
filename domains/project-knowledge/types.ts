@@ -65,6 +65,8 @@ export interface ProjectKnowledgeCorpusOptions {
 
 export interface ProjectKnowledgeProviderOptions extends ProjectKnowledgeCorpusOptions {
   readonly corpus: readonly ProjectKnowledgeDocument[];
+  /** Recent lifecycle hints used to bound the ripgrep supplement. */
+  readonly changedPaths?: readonly string[];
 }
 
 export interface ProjectKnowledgePluginOptions {
