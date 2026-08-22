@@ -53,6 +53,7 @@ export interface ProjectKnowledgeResult {
   readonly title?: string;
   readonly score?: number;
   readonly document?: ProjectKnowledgeDocument;
+  readonly record?: ProjectKnowledgeRecord;
   readonly unit?: ProjectKnowledgeUnit;
 }
 
@@ -82,7 +83,7 @@ export interface ProjectKnowledgeListRequest {
   readonly kind: 'list';
   readonly projectId?: string;
   readonly type?: ProjectKnowledgeRecordType;
-  readonly state?: ProjectKnowledgeRecordState;
+  readonly state?: ProjectKnowledgeRecordState | 'all';
   readonly authority?: ProjectKnowledgeRecordAuthority;
   readonly limit?: number;
 }
@@ -106,18 +107,23 @@ export interface ProjectKnowledgeSearchHit {
 export interface ProjectKnowledgeSearchResult {
   readonly kind: 'search';
   readonly hits: readonly ProjectKnowledgeSearchHit[];
+  readonly results: readonly ProjectKnowledgeResult[];
+  readonly records: readonly ProjectKnowledgeRecord[];
   readonly truncated: boolean;
+  readonly diagnostics: readonly ProjectKnowledgeDiagnostic[];
 }
 
 export interface ProjectKnowledgeListResult {
   readonly kind: 'list';
   readonly records: readonly ProjectKnowledgeRecord[];
   readonly truncated: boolean;
+  readonly diagnostics: readonly ProjectKnowledgeDiagnostic[];
 }
 
 export interface ProjectKnowledgeGetResult {
   readonly kind: 'get';
   readonly record: ProjectKnowledgeRecord | null;
+  readonly diagnostics: readonly ProjectKnowledgeDiagnostic[];
 }
 
 export type ProjectKnowledgeQueryResult =

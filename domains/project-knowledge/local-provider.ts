@@ -5,6 +5,7 @@ import { runBoundedRipgrep, type RipgrepRunResult } from '../../platform/process
 import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
 import { knowledgeDocumentKindRank } from './corpus.js';
 import { ProjectKnowledgeIndexStore } from './index-store.js';
+import { ProjectKnowledgeLocalStore } from './local-store.js';
 import {
   ProjectKnowledgeUnitRepository,
   expandProjectKnowledgeRelations,
@@ -14,11 +15,16 @@ import { extractDeterministicProjectUnits } from './deterministic-extractors.js'
 import { queryContainsTerm, queryHasStrongMatch } from './query.js';
 import type {
   ProjectKnowledgeDocument,
+  ProjectKnowledgeApplyResult,
   ProjectKnowledgeDiagnosticReporter,
-  ProjectKnowledgeProvider,
+  ProjectKnowledgeLegacyProvider,
+  ProjectKnowledgeMutation,
   ProjectKnowledgeProviderOptions,
   ProjectKnowledgeQuery,
+  ProjectKnowledgeQueryRequest,
+  ProjectKnowledgeQueryResult,
   ProjectKnowledgeResult,
+  ProjectKnowledgeStatus,
 } from './types.js';
 
 const MAX_RG_OUTPUT_BYTES = 1024 * 1024;
@@ -40,6 +46,7 @@ export interface LocalProjectKnowledgeProviderOptions extends ProjectKnowledgePr
   readonly rgCommand?: string;
   readonly cacheRoot?: string;
   readonly indexStore?: ProjectKnowledgeIndexStore;
+  readonly localStore?: ProjectKnowledgeLocalStore;
   /** Retrieval-eval seam for measuring the bounded rg baseline. */
   readonly indexEnabled?: boolean;
   readonly unitRepository?: ProjectKnowledgeUnitRepository;
@@ -131,16 +138,18 @@ function candidateSort(
   return left.document.source.localeCompare(right.document.source);
 }
 
-export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
+export class LocalProjectKnowledgeProvider implements ProjectKnowledgeLegacyProvider {
   private readonly options: LocalProjectKnowledgeProviderOptions;
   private readonly reportDiagnostic: ProjectKnowledgeDiagnosticReporter | undefined;
   private readonly indexStore: ProjectKnowledgeIndexStore;
+  private localStore: ProjectKnowledgeLocalStore | null;
   private readonly unitRepository: ProjectKnowledgeUnitRepository;
   private deterministicUnitsReady = false;
 
   public constructor(options: LocalProjectKnowledgeProviderOptions) {
     this.options = options;
     this.reportDiagnostic = options.reportDiagnostic;
+    this.localStore = options.localStore ?? null;
     this.indexStore =
       options.indexStore ??
       new ProjectKnowledgeIndexStore({
@@ -155,6 +164,106 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
         ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
         reportDiagnostic: options.reportDiagnostic,
       });
+  }
+
+  private recordStore(): ProjectKnowledgeLocalStore {
+    return (this.localStore ??= new ProjectKnowledgeLocalStore({
+      projectRoot: this.options.projectRoot,
+      ...(this.options.cacheRoot ? { cacheRoot: this.options.cacheRoot } : {}),
+      ...(this.options.reportDiagnostic ? { reportDiagnostic: this.options.reportDiagnostic } : {}),
+    }));
+  }
+
+  public async status(): Promise<ProjectKnowledgeStatus> {
+    return this.recordStore().status();
+  }
+
+  public async query(request: ProjectKnowledgeQueryRequest): Promise<ProjectKnowledgeQueryResult> {
+    if (request.kind === 'list') {
+      const records = this.recordStore().list({
+        ...(request.projectId ? { projectId: request.projectId } : {}),
+        ...(request.type ? { type: request.type } : {}),
+        ...(request.state && request.state !== 'all' ? { state: request.state } : {}),
+        ...(request.authority ? { authority: request.authority } : {}),
+        ...(request.limit ? { limit: request.limit } : {}),
+      });
+      return {
+        kind: 'list',
+        records,
+        truncated: request.limit !== undefined && records.length >= request.limit,
+        diagnostics: [],
+      };
+    }
+    if (request.kind === 'get') {
+      const record = this.recordStore().read(request.id);
+      return {
+        kind: 'get',
+        record:
+          record && (!request.projectId || record.projectId === request.projectId) ? record : null,
+        diagnostics: [],
+      };
+    }
+
+    const diagnostics: Array<{ code: string; message: string }> = [];
+    await this.recordStore().apply({ kind: 'refresh' });
+    let sections: readonly ProjectKnowledgeResult[] = [];
+    let refreshedSources: readonly ProjectKnowledgeDocument[] = [];
+    let indexSynced = false;
+    if (this.options.indexEnabled !== false) {
+      try {
+        const sync = await this.recordStore().syncCorpus(this.options.corpus);
+        refreshedSources = [...sync.refreshedSources, ...sync.changedSources];
+        sections = this.recordStore().searchSections(request.query);
+        indexSynced = true;
+      } catch {
+        refreshedSources = [...this.options.corpus];
+        diagnostics.push({
+          code: 'index-unavailable',
+          message: 'Local project knowledge section index is unavailable.',
+        });
+      }
+    }
+    const exact =
+      indexSynced && refreshedSources.length === 0 && this.options.runRipgrep === undefined
+        ? []
+        : await this.retrieveWithRipgrep(request.query, [...refreshedSources]);
+    const recordResults = this.recordStore().searchRecords(request.query);
+    const results = new Map<string, ProjectKnowledgeResult>();
+    for (const result of [...recordResults, ...sections, ...exact]) {
+      const key = `${result.source}\u0000${result.title ?? ''}`;
+      if (!results.has(key)) results.set(key, result);
+    }
+    const bounded = [...results.values()].slice(0, 8);
+    const records = recordResults.flatMap((result) => (result.record ? [result.record] : []));
+    return {
+      kind: 'search',
+      hits: records.map((record) => ({ record })),
+      results: bounded,
+      records,
+      truncated: results.size > bounded.length,
+      diagnostics,
+    };
+  }
+
+  public async apply(mutation: ProjectKnowledgeMutation): Promise<ProjectKnowledgeApplyResult> {
+    const result = await this.recordStore().apply(mutation);
+    if (mutation.kind === 'refresh' && !mutation.id) {
+      try {
+        await this.recordStore().rebuildWorkspace(this.options.corpus);
+      } catch {
+        this.reportDiagnostic?.({
+          code: 'index-rebuild',
+          message: 'Local project knowledge workspace index could not be rebuilt.',
+        });
+      }
+    }
+    return result;
+  }
+
+  public close(): void {
+    this.indexStore.close();
+    this.localStore?.close();
+    this.localStore = null;
   }
 
   public async retrieve(query: ProjectKnowledgeQuery): Promise<readonly ProjectKnowledgeResult[]> {

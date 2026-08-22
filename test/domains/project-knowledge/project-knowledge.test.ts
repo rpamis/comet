@@ -88,6 +88,84 @@ describe('project knowledge dashboard status', () => {
   });
 });
 
+describe('local record provider contract', () => {
+  test('supports status, search/list management, and retirement without injecting retired records', async () => {
+    const root = await tempProject();
+    const storageRoot = await tempProject();
+    const source = path.join(root, 'docs', 'rule.md');
+    await fs.mkdir(path.dirname(source), { recursive: true });
+    await fs.writeFile(source, '# Rule\n\nPrefer focused tests.\n');
+    const stat = await fs.stat(source);
+    const provider = new LocalProjectKnowledgeProvider({
+      projectRoot: root,
+      cacheRoot: storageRoot,
+      corpus: [],
+    });
+    try {
+      await expect(
+        provider.apply({
+          kind: 'upsert',
+          record: {
+            id: 'record-focused-tests',
+            projectId: 'project-local-provider',
+            type: 'behavior-note',
+            state: 'active',
+            authority: 'automatic',
+            title: 'Focused tests',
+            summary: 'Prefer focused tests for small changes.',
+            applicablePaths: ['domains/'],
+            operations: ['verify'],
+            conclusions: [
+              {
+                text: 'Run focused tests first.',
+                sources: [{ source: 'docs/rule.md', anchor: 'rule' }],
+              },
+            ],
+            relations: [],
+            verification: [],
+            sourceVersions: [
+              { source: 'docs/rule.md', size: stat.size, modifiedAt: Math.trunc(stat.mtimeMs) },
+            ],
+            updatedAt: '2026-08-22T12:00:00.000Z',
+          },
+        }),
+      ).resolves.toMatchObject({ changed: true });
+      await expect(provider.status()).resolves.toMatchObject({
+        provider: 'local',
+        recordCount: 1,
+        healthy: true,
+      });
+      const search = await provider.query({
+        kind: 'search',
+        query: createProjectKnowledgeQuery({ task: 'focused tests' }),
+      });
+      expect(search.kind).toBe('search');
+      expect(search.records.map((record) => record.id)).toContain('record-focused-tests');
+      expect(search.results.some((result) => result.source === 'record:record-focused-tests')).toBe(
+        true,
+      );
+      await provider.apply({
+        kind: 'retire',
+        id: 'record-focused-tests',
+        projectId: 'project-local-provider',
+        updatedAt: '2026-08-22T12:01:00.000Z',
+      });
+      const listed = await provider.query({ kind: 'list', state: 'retired' });
+      expect(listed.kind).toBe('list');
+      expect(listed.records.map((record) => record.id)).toEqual(['record-focused-tests']);
+      const afterRetire = await provider.query({
+        kind: 'search',
+        query: createProjectKnowledgeQuery({ task: 'focused tests' }),
+      });
+      expect(afterRetire.records).toEqual([]);
+    } finally {
+      (provider as unknown as { close?: () => void }).close?.();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('project knowledge configuration', () => {
   test('defaults to local and validates remote endpoint bounds', () => {
     const config = parseWorkflowProjectConfigDocument(

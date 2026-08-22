@@ -22,7 +22,7 @@ import { validateProjectKnowledgeUnitShape } from './units.js';
 import type {
   ProjectKnowledgePluginOptions,
   ProjectKnowledgeDashboardDiagnostic,
-  ProjectKnowledgeProvider,
+  ProjectKnowledgeLegacyProvider,
   ProjectKnowledgeResult,
 } from './types.js';
 
@@ -57,7 +57,7 @@ async function createProjectKnowledgeModule(
   context: PluginContext,
   options: ProjectKnowledgePluginOptions,
 ): Promise<PluginModule> {
-  let provider: ProjectKnowledgeProvider | null = null;
+  let provider: ProjectKnowledgeLegacyProvider | null = null;
   let providerKey = '';
   const recentDiagnostics = await readRecentDiagnostics(context.storage);
   const recentChangedHints = await readRecentChangedHints(context.storage);

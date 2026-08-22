@@ -42,6 +42,7 @@ function deduplicate(results: readonly ProjectKnowledgeResult[]): ProjectKnowled
       ...(title ? { title } : {}),
       ...(result.score === undefined ? {} : { score: result.score }),
       ...(result.document ? { document: result.document } : {}),
+      ...(result.record ? { record: result.record } : {}),
       ...(result.unit ? { unit: result.unit } : {}),
     });
     total += content.length;

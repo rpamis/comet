@@ -5,7 +5,7 @@ import {
 } from '../../platform/http/bounded-request.js';
 import type {
   ProjectKnowledgeDiagnosticReporter,
-  ProjectKnowledgeProvider,
+  ProjectKnowledgeLegacyProvider,
   ProjectKnowledgeQuery,
   ProjectKnowledgeResult,
 } from './types.js';
@@ -36,7 +36,7 @@ function safeString(value: unknown, max: number, required: boolean): string | nu
   return text.slice(0, max);
 }
 
-export class RemoteProjectKnowledgeProvider implements ProjectKnowledgeProvider {
+export class RemoteProjectKnowledgeProvider implements ProjectKnowledgeLegacyProvider {
   private readonly options: RemoteProjectKnowledgeProviderOptions;
 
   public constructor(options: RemoteProjectKnowledgeProviderOptions) {

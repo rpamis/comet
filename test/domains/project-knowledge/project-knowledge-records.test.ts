@@ -63,6 +63,7 @@ const providerContractExample: ProjectKnowledgeProvider = {
     return {
       kind: 'get',
       record: null,
+      diagnostics: [],
     };
   },
   async apply(): Promise<ProjectKnowledgeApplyResult> {

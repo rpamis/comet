@@ -58,7 +58,9 @@ function sourceVersionsAreCurrent(projectRoot: string, record: ProjectKnowledgeR
     try {
       const current = statSync(path.join(projectRoot, ...version.source.split('/')));
       return (
-        current.isFile() && current.size === version.size && current.mtimeMs === version.modifiedAt
+        current.isFile() &&
+        current.size === version.size &&
+        Math.trunc(current.mtimeMs) === version.modifiedAt
       );
     } catch {
       return false;
@@ -196,6 +198,7 @@ export class ProjectKnowledgeLocalStore {
       .map(({ record, matches }) => ({
         source: `record:${record.id}`,
         title: record.title,
+        record,
         content:
           `${record.summary}\n${record.conclusions.map((conclusion) => conclusion.text).join('\n')}`.slice(
             0,
@@ -207,6 +210,16 @@ export class ProjectKnowledgeLocalStore {
 
   async apply(mutation: ProjectKnowledgeMutation): Promise<ProjectKnowledgeApplyResult> {
     if (mutation.kind === 'refresh') {
+      const candidates = this.list({ projectId: mutation.projectId });
+      for (const candidate of candidates) {
+        if (
+          candidate.state === 'active' &&
+          (!mutation.id || mutation.id === candidate.id) &&
+          !sourceVersionsAreCurrent(this.projectRoot, candidate)
+        ) {
+          this.write({ ...candidate, state: 'needs-review', updatedAt: new Date().toISOString() });
+        }
+      }
       const records = this.list({ projectId: mutation.projectId });
       return { kind: mutation.kind, changed: false, records, diagnostics: [] };
     }
