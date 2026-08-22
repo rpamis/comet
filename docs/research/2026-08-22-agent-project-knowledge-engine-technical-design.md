@@ -28,7 +28,7 @@ SQLite 是按 repository/workspace 隔离的用户缓存读模型，与 Dashboar
 
 ### 查询与召回
 
-查询规划提取 strong、phrase、weak 三组词。FTS terms 通道覆盖标题、标题路径、来源、英文标识符和中文术语；trigram 通道补充三字以上中文与 Unicode 子串；ripgrep 用于强匹配、生命周期 changed paths 指定的来源补充和 SQLite 失效回退。候选使用确定性融合，当前 Spec 高于维护单元和 Archive，维护单元高于自动单元，关系只对已经命中的单元做一跳扩展。
+查询规划提取 strong、phrase、weak 三组词。FTS terms 通道覆盖标题、标题路径、来源、英文标识符和中文术语；trigram 通道补充三字以上中文与 Unicode 子串；ripgrep 用于强匹配、生命周期 changed paths 指定的来源补充和 SQLite 失效回退。局部 changed paths 只用于补充当前来源和限制确定性提取范围，不会用局部视图覆盖全局项目概览；完整概览在无提示刷新时重建。候选使用确定性融合，当前 Spec 高于维护单元和 Archive，维护单元高于自动单元，关系只对已经命中的单元做一跳扩展。
 
 最终结果最多四段，每段最多 1600 字符，总计最多 5000 字符。所有项目来源在注入前必须通过相对路径、存在性、大小、anchor/行范围和当前元数据核对；没有可靠命中时返回空结果。
 
