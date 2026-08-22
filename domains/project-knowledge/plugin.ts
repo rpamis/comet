@@ -87,12 +87,38 @@ async function createProjectKnowledgeModule(
     ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
     reportDiagnostic,
   });
-  const learning = new ProjectKnowledgeLearningService({
-    projectRoot: options.projectRoot,
-    repository: unitRepository,
-    ...(options.semanticReviewer ? { reviewer: options.semanticReviewer } : {}),
-    reportDiagnostic,
-  });
+  const runDeterministicLearning = async (
+    event: Parameters<ProjectKnowledgeLearningService['processEvent']>[0],
+  ): Promise<void> => {
+    if (options.knowledgeConfig.provider !== 'local') {
+      reportDiagnostic({
+        code: 'remote-learning-unavailable',
+        message: 'Remote Provider 尚未提供学习写入接口，本次不回退到 Local。',
+      });
+      return;
+    }
+    const corpus = await discoverProjectKnowledgeCorpus({
+      projectRoot: options.projectRoot,
+      reportDiagnostic,
+    });
+    const learningProvider = new LocalProjectKnowledgeProvider({
+      projectRoot: options.projectRoot,
+      corpus,
+      ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
+      reportDiagnostic,
+    });
+    try {
+      const learning = new ProjectKnowledgeLearningService({
+        projectRoot: options.projectRoot,
+        provider: learningProvider,
+        ...(options.semanticReviewer ? { reviewer: options.semanticReviewer } : {}),
+        reportDiagnostic,
+      });
+      await learning.processEvent(event);
+    } finally {
+      learningProvider.close();
+    }
+  };
   const persistChangedHint = async (hint: ProjectKnowledgeChangedHint): Promise<void> => {
     recentChangedHints.push(hint);
     while (recentChangedHints.length > 8) recentChangedHints.shift();
@@ -141,29 +167,26 @@ async function createProjectKnowledgeModule(
     onEvent: async (event) => {
       const changedHint = createProjectKnowledgeChangedHint(event);
       if (changedHint !== null) await persistChangedHint(changedHint);
-      if (options.semanticReviewer !== undefined) {
-        const review = async (): Promise<void> => {
-          try {
-            await learning.processEvent(event);
-          } catch {
-            reportDiagnostic({
-              code: 'reviewer-unavailable',
-              message: '项目知识语义评审暂不可用，已跳过。',
-            });
-          }
-        };
-        if (options.runReviewInBackground !== undefined) {
-          void Promise.resolve(options.runReviewInBackground(review)).catch(() => {
-            reportDiagnostic({
-              code: 'reviewer-unavailable',
-              message: '项目知识语义评审暂不可用，已跳过。',
-            });
+      const learn = async (): Promise<void> => {
+        try {
+          await runDeterministicLearning(event);
+        } catch {
+          reportDiagnostic({
+            code: 'learning-failed',
+            message: '项目知识自动学习暂不可用，本次工作流事件不受影响。',
           });
-        } else {
-          // Optional semantic learning must not delay a Native/Classic
-          // checkpoint when the host has no scheduler adapter.
-          void review();
         }
+      };
+      if (options.runReviewInBackground !== undefined) {
+        void Promise.resolve(options.runReviewInBackground(learn)).catch(() => {
+          reportDiagnostic({
+            code: 'learning-failed',
+            message: '项目知识自动学习暂不可用，本次工作流事件不受影响。',
+          });
+        });
+      } else {
+        // Automatic learning is best effort and must not delay a checkpoint.
+        void learn();
       }
       // The next context request must see the latest changed-path hint so the
       // local provider can refresh only the affected sources.

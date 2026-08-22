@@ -2,6 +2,8 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
 import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
+import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
+import type { ProjectKnowledgeRecord, ProjectKnowledgeRecordSource } from './records.js';
 import {
   PROJECT_KNOWLEDGE_UNIT_SCHEMA,
   type ProjectKnowledgeUnit,
@@ -390,4 +392,77 @@ export async function extractDeterministicProjectUnits(
     if (!(error instanceof ExtractionDeadlineExceeded)) throw error;
   }
   return units;
+}
+
+export interface DeterministicProjectRecordExtractionOptions {
+  readonly projectRoot: string;
+  readonly changedPaths?: readonly string[];
+}
+
+async function sourceVersions(
+  root: string,
+  sources: readonly ProjectKnowledgeRecordSource[],
+): Promise<readonly ProjectKnowledgeRecord['sourceVersions'][number][]> {
+  const unique = [...new Map(sources.map((entry) => [entry.source, entry.source])).values()];
+  const versions: ProjectKnowledgeRecord['sourceVersions'][number][] = [];
+  for (const relativePath of unique.slice(0, 32)) {
+    try {
+      const inspected = await fs.lstat(path.join(root, ...relativePath.split('/')));
+      if (!inspected.isFile() || inspected.isSymbolicLink()) continue;
+      versions.push({
+        source: relativePath,
+        size: inspected.size,
+        modifiedAt: Math.trunc(inspected.mtimeMs),
+      });
+    } catch {
+      // The candidate is still bounded; current-source validation will reject
+      // it if a referenced file disappeared before persistence.
+    }
+  }
+  return versions;
+}
+
+export async function extractDeterministicProjectRecords(
+  options: DeterministicProjectRecordExtractionOptions,
+): Promise<readonly ProjectKnowledgeRecord[]> {
+  const root = path.resolve(options.projectRoot);
+  const units = await extractDeterministicProjectUnits({
+    projectRoot: root,
+    ...(options.changedPaths ? { changedPaths: options.changedPaths } : {}),
+  });
+  const projectId = resolveStableProjectId(root);
+  const updatedAt = new Date().toISOString();
+  const records: ProjectKnowledgeRecord[] = [];
+  for (const unit of units) {
+    const sources = [...unit.conclusions, ...unit.relations].flatMap((entry) => entry.sources);
+    const sourceVersions = await sourceVersionsForRecord(root, sources);
+    records.push({
+      id: unit.id,
+      projectId,
+      type: unit.kind,
+      state: 'active',
+      authority: 'automatic',
+      title: unit.title,
+      summary: unit.summary,
+      applicablePaths: unit.applicablePaths,
+      operations: unit.operations,
+      conclusions: unit.conclusions,
+      relations: unit.relations.map((relation) => ({
+        type: relation.type,
+        targetId: relation.target,
+        sources: relation.sources,
+      })),
+      verification: unit.verification,
+      sourceVersions,
+      updatedAt,
+    });
+  }
+  return records;
+}
+
+async function sourceVersionsForRecord(
+  root: string,
+  sources: readonly ProjectKnowledgeRecordSource[],
+): Promise<readonly ProjectKnowledgeRecord['sourceVersions'][number][]> {
+  return sourceVersions(root, sources);
 }

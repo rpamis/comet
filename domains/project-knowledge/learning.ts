@@ -6,12 +6,10 @@ import {
   inspectProtectedProjectPath,
   readProtectedProjectFile,
 } from '../workflow-contract/protected-project-path.js';
-import {
-  ProjectKnowledgeUnitRepository,
-  validateProjectKnowledgeUnitShape,
-  validateProjectKnowledgeUnitSources,
-  type ProjectKnowledgeUnit,
-} from './units.js';
+import { extractDeterministicProjectRecords } from './deterministic-extractors.js';
+import { validateProjectKnowledgeRecordShape, type ProjectKnowledgeRecord } from './records.js';
+import type { ProjectKnowledgeProvider } from './types.js';
+import type { ProjectKnowledgeUnit } from './units.js';
 
 const MAX_CHANGED_PATHS = 24;
 const MAX_ARTIFACT_REFS = 16;
@@ -67,7 +65,7 @@ export interface ProjectKnowledgeSemanticReviewer {
 
 export interface ProjectKnowledgeLearningOptions {
   readonly projectRoot: string;
-  readonly repository: ProjectKnowledgeUnitRepository;
+  readonly provider: ProjectKnowledgeProvider;
   readonly reviewer?: ProjectKnowledgeSemanticReviewer;
   readonly reportDiagnostic?: (diagnostic: ProjectKnowledgeLearningDiagnostic) => void;
 }
@@ -276,29 +274,50 @@ async function reviewSourcesStillCurrent(
   return null;
 }
 
-function validUnitId(value: unknown): value is string {
-  return typeof value === 'string' && /^[a-z0-9][a-z0-9._-]{1,127}$/u.test(value);
-}
-
-function unitSourcesWithinPacket(
-  unit: ProjectKnowledgeUnit,
+function recordSourcesWithinPacket(
+  record: ProjectKnowledgeRecord,
   packet: ProjectKnowledgeReviewPacket,
 ): boolean {
   const allowed = new Set(packet.sources.map((source) => source.source));
-  return [...unit.conclusions, ...unit.relations].every((entry) =>
+  return [...record.conclusions, ...record.relations].every((entry) =>
     entry.sources.every((source) => allowed.has(source.source)),
   );
 }
 
+async function recordSourcesStillCurrent(
+  record: ProjectKnowledgeRecord,
+  projectRoot: string,
+): Promise<string | null> {
+  for (const version of record.sourceVersions) {
+    try {
+      const inspected = await inspectProtectedProjectPath(projectRoot, version.source, {
+        label: version.source,
+        expected: 'file',
+      });
+      if (!inspected.exists) return version.source;
+      const stat = await fs.stat(inspected.target);
+      if (
+        Number(stat.size) !== version.size ||
+        Math.trunc(Number(stat.mtimeMs)) !== version.modifiedAt
+      ) {
+        return version.source;
+      }
+    } catch {
+      return version.source;
+    }
+  }
+  return null;
+}
+
 export class ProjectKnowledgeLearningService {
   private readonly projectRoot: string;
-  private readonly repository: ProjectKnowledgeUnitRepository;
+  private readonly provider: ProjectKnowledgeProvider;
   private readonly reviewer?: ProjectKnowledgeSemanticReviewer;
   private readonly reportDiagnostic?: ProjectKnowledgeLearningOptions['reportDiagnostic'];
 
   public constructor(options: ProjectKnowledgeLearningOptions) {
     this.projectRoot = path.resolve(options.projectRoot);
-    this.repository = options.repository;
+    this.provider = options.provider;
     this.reviewer = options.reviewer;
     this.reportDiagnostic = options.reportDiagnostic;
   }
@@ -312,7 +331,7 @@ export class ProjectKnowledgeLearningService {
     const packet = await createProjectKnowledgeReviewPacket(event, {
       projectRoot: this.projectRoot,
     });
-    if (packet === null || this.reviewer === undefined) {
+    if (packet === null || !isVerified(packet)) {
       return {
         skipped: true,
         persisted: [],
@@ -322,19 +341,17 @@ export class ProjectKnowledgeLearningService {
         diagnostics,
       };
     }
-    let actions: readonly ProjectKnowledgeReviewAction[];
-    try {
-      actions = await this.reviewer.review(packet);
-    } catch {
-      report({ code: 'reviewer-unavailable', message: '项目知识语义评审暂不可用，已跳过。' });
-      return {
-        skipped: true,
-        persisted: [],
-        activated: [],
-        retired: [],
-        changedHint: packet.changedHint,
-        diagnostics,
-      };
+    if (this.reviewer !== undefined) {
+      try {
+        // Semantic review is optional enrichment. It is deliberately not used
+        // as the source of truth and never gates deterministic learning.
+        await this.reviewer.review(packet);
+      } catch {
+        report({
+          code: 'reviewer-unavailable',
+          message: '项目知识语义评审暂不可用，已继续确定性学习。',
+        });
+      }
     }
     const changedSource = await reviewSourcesStillCurrent(packet, this.projectRoot);
     if (changedSource !== null) {
@@ -355,68 +372,48 @@ export class ProjectKnowledgeLearningService {
     const persisted: string[] = [];
     const activated: string[] = [];
     const retired: string[] = [];
-    for (const action of actions.slice(0, 16)) {
+    let candidates: readonly ProjectKnowledgeRecord[] = [];
+    try {
+      candidates = await extractDeterministicProjectRecords({
+        projectRoot: this.projectRoot,
+        changedPaths: packet.changedHint.changedPaths,
+      });
+    } catch {
+      report({
+        code: 'deterministic-extractor',
+        message: '确定性项目知识提取暂不可用，已跳过本次写入。',
+      });
+    }
+    for (const candidate of candidates.slice(0, 16)) {
       try {
-        if (action.action === 'retire') {
-          if (!validUnitId(action.unitId)) throw new Error('unit id is invalid');
-          const current = await this.repository.read(action.unitId);
-          if (current === null || current.origin !== 'generated')
-            throw new Error('unit is not generated');
-          if (!unitSourcesWithinPacket(current, packet)) {
-            report({
-              code: 'source-outside-packet',
-              message: '退休动作与本次有界来源包无关，已跳过。',
-              source: current.id,
-            });
-            continue;
-          }
-          const currentValidation = await validateProjectKnowledgeUnitSources(current, {
-            projectRoot: this.projectRoot,
-          });
-          if (!currentValidation.valid) {
-            report({
-              code: 'source-invalid',
-              message: '待退休单元的来源无法通过当前项目校验。',
-              source: current.id,
-            });
-            continue;
-          }
-          await this.repository.writeGenerated({ ...current, state: 'retired' });
-          retired.push(current.id);
-          continue;
-        }
-        const unit = validateProjectKnowledgeUnitShape(action.unit);
-        if (unit.origin !== 'generated')
-          throw new Error('generated review must use generated origin');
-        if (!unitSourcesWithinPacket(unit, packet)) {
+        const record = validateProjectKnowledgeRecordShape({
+          ...candidate,
+          state: 'active',
+          authority: 'automatic',
+        });
+        if (!recordSourcesWithinPacket(record, packet)) {
           report({
             code: 'source-outside-packet',
-            message: '评审结论引用了本次有界来源包之外的文件，已跳过。',
-            source: unit.id,
+            message: '确定性记录引用了本次有界来源包之外的文件，已跳过。',
+            source: record.id,
           });
           continue;
         }
-        const sourceValidation = await validateProjectKnowledgeUnitSources(unit, {
-          projectRoot: this.projectRoot,
-        });
-        if (!sourceValidation.valid) {
+        const changedRecordSource = await recordSourcesStillCurrent(record, this.projectRoot);
+        if (changedRecordSource !== null) {
           report({
-            code: 'source-invalid',
-            message: '评审结论的来源无法通过当前项目校验。',
-            source: unit.id,
+            code: 'source-changed',
+            message: '确定性记录校验期间项目来源发生变化，已跳过本次记录。',
+            source: changedRecordSource,
           });
           continue;
         }
-        const next: ProjectKnowledgeUnit = {
-          ...unit,
-          state: isVerified(packet) ? 'active' : 'draft',
-          origin: 'generated',
-        };
-        await this.repository.writeGenerated(next);
-        persisted.push(next.id);
-        if (next.state === 'active') activated.push(next.id);
+        const result = await this.provider.apply({ kind: 'upsert', record });
+        for (const diagnostic of result.diagnostics) report(diagnostic);
+        if (result.changed) persisted.push(record.id);
+        if (result.record?.state === 'active' && result.changed) activated.push(record.id);
       } catch {
-        report({ code: 'review-invalid', message: '项目知识语义评审输出未通过格式或来源校验。' });
+        report({ code: 'provider-write', message: '项目知识记录未能写入 Provider。' });
       }
     }
     return {
