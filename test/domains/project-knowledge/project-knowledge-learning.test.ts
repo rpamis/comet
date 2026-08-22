@@ -155,4 +155,33 @@ describe('project knowledge learning', () => {
       await fs.rm(root, { recursive: true, force: true });
     }
   });
+
+  test('does not activate a unit when any verification result fails or is unstructured', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-learning-mixed-');
+    try {
+      await fs.mkdir(path.join(root, 'src'), { recursive: true });
+      await fs.writeFile(path.join(root, 'src', 'main.ts'), 'export const main = true;\n');
+      const repository = new ProjectKnowledgeUnitRepository({ projectRoot: root });
+      const service = new ProjectKnowledgeLearningService({
+        projectRoot: root,
+        repository,
+        reviewer: { review: async () => [{ action: 'create', unit: generatedUnit() }] },
+      });
+      const result = await service.processEvent(
+        event('verification.completed', {
+          changedPaths: ['src/main.ts'],
+          verificationResults: [
+            { command: 'pnpm test', success: true },
+            { command: 'pnpm lint', success: false },
+          ],
+        }),
+      );
+      expect(result.activated).toEqual([]);
+      await expect(repository.read('generated-behavior')).resolves.toMatchObject({
+        state: 'draft',
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
 });

@@ -14,7 +14,7 @@ import { renderProjectKnowledgeContext, boundProjectKnowledgeResults } from './r
 import { ProjectKnowledgeLearningService, type ProjectKnowledgeChangedHint } from './learning.js';
 import { ProjectKnowledgeUnitRepository } from './units.js';
 import type { ProjectKnowledgeUnit } from './units.js';
-import { validateProjectKnowledgeUnitShape, validateProjectKnowledgeUnitSources } from './units.js';
+import { validateProjectKnowledgeUnitShape } from './units.js';
 import type {
   ProjectKnowledgePluginOptions,
   ProjectKnowledgeDashboardDiagnostic,
@@ -137,6 +137,10 @@ async function createProjectKnowledgeModule(
     onEvent: async (event) => {
       const result = await learning.processEvent(event);
       if (result.changedHint !== undefined) await persistChangedHint(result.changedHint);
+      // The next context request must see the latest changed-path hint so the
+      // local provider can refresh only the affected sources.
+      provider = null;
+      providerKey = '';
     },
     invoke: async (capability, input) => {
       if (capability !== 'status' && capability !== 'units' && capability !== 'share-memory')
@@ -150,12 +154,8 @@ async function createProjectKnowledgeModule(
         if (record.confirm !== true) throw new Error('share-memory requires confirmation');
         const unit = validateProjectKnowledgeUnitShape(record.unit);
         if (unit.origin !== 'maintained') throw new Error('shared unit must be maintained');
-        const validation = await validateProjectKnowledgeUnitSources(unit, {
-          projectRoot: options.projectRoot,
-        });
-        if (!validation.valid) throw new Error('shared unit sources are not current');
-        await unitRepository.writeMaintained(unit);
-        return { shared: true, unit };
+        const shared = await unitRepository.shareMaintained(unit, { confirm: true });
+        return { shared: true, unit: shared };
       }
       return snapshot;
     },

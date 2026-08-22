@@ -9,6 +9,7 @@ import {
 } from './units.js';
 
 const MAX_READ_BYTES = 64 * 1024;
+const MAX_EXTRACTION_MS = 1_500;
 const MODULE_ROOTS = ['app', 'domains', 'platform', 'src', 'packages'] as const;
 
 export interface DeterministicProjectUnitExtractionOptions {
@@ -155,6 +156,7 @@ async function moduleOverviewUnit(root: string): Promise<ProjectKnowledgeUnit> {
     .map((name) => `模块 ${name}`)
     .join('、');
   const evidence: string[] = [];
+  const registrationSources: ProjectKnowledgeUnitSource[] = [];
   for (const file of sourceFiles.slice(0, 6)) {
     const text = await readText(root, relative(root, file));
     if (!text) continue;
@@ -164,6 +166,9 @@ async function moduleOverviewUnit(root: string): Promise<ProjectKnowledgeUnit> {
       .map((match) => match[1])
       .slice(0, 4);
     if (imports.length > 0) evidence.push(`${relative(root, file)} 引用 ${imports.join('、')}`);
+    if (/\bregister[A-Z][A-Za-z0-9_$]*\s*\(/u.test(text)) {
+      registrationSources.push(source(relative(root, file), 'module'));
+    }
   }
   return unitBase(
     'generated-module-overview',
@@ -178,16 +183,26 @@ async function moduleOverviewUnit(root: string): Promise<ProjectKnowledgeUnit> {
     ],
     {
       applicablePaths: names.map((name) => `${name}/`),
-      relations:
-        sourceRefs.length > 0
+      relations: [
+        ...(sourceRefs.length > 0
           ? [
               {
-                type: 'depends-on',
+                type: 'depends-on' as const,
                 target: 'generated-project-map',
                 sources: sourceRefs.slice(0, 1),
               },
             ]
-          : [],
+          : []),
+        ...(registrationSources.length > 0
+          ? [
+              {
+                type: 'registers' as const,
+                target: 'generated-project-map',
+                sources: registrationSources.slice(0, 2),
+              },
+            ]
+          : []),
+      ],
     },
   );
 }
@@ -212,14 +227,25 @@ async function buildTestUnit(root: string): Promise<ProjectKnowledgeUnit> {
       // An invalid manifest remains a source diagnostic for later validation.
     }
   }
-  if (commands.length === 0) commands.push('pnpm test');
-  const references = manifestSource ? [source(manifestSource, 'scripts')] : [];
+  const references = [source(manifestSource ?? 'README.md', 'scripts')];
+  const summary =
+    commands.length > 0
+      ? `项目验证优先使用：${commands.join('、')}。`
+      : '项目未声明可从 manifest 直接识别的构建或测试命令，Agent 应先读取项目说明再选择验证方式。';
   return unitBase(
     'generated-build-test',
     'build-test',
     '构建与测试方式',
-    `项目验证优先使用：${commands.join('、')}。`,
-    [{ text: `建议按顺序运行：${commands.join('、')}。`, sources: references }],
+    summary,
+    [
+      {
+        text:
+          commands.length > 0
+            ? `建议按顺序运行：${commands.join('、')}。`
+            : '请先核对 README、项目配置和 CI 中记录的实际验证命令。',
+        sources: references,
+      },
+    ],
     {
       operations: ['build', 'test', 'verify'],
       verification: commands.map((command) => ({ command, expected: '成功' })),
@@ -231,5 +257,16 @@ export async function extractDeterministicProjectUnits(
   options: DeterministicProjectUnitExtractionOptions,
 ): Promise<readonly ProjectKnowledgeUnit[]> {
   const root = path.resolve(options.projectRoot);
-  return [await projectMapUnit(root), await moduleOverviewUnit(root), await buildTestUnit(root)];
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<readonly ProjectKnowledgeUnit[]>((resolve) => {
+    timer = setTimeout(() => resolve([]), MAX_EXTRACTION_MS);
+  });
+  try {
+    return await Promise.race([
+      Promise.all([projectMapUnit(root), moduleOverviewUnit(root), buildTestUnit(root)]),
+      timeout,
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }

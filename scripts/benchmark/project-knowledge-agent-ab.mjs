@@ -1,6 +1,14 @@
 import { readFile, writeFile } from 'node:fs/promises';
 
-const MODES = ['none', 'rg', 'hybrid', 'unit'];
+const MODES = ['none', 'rg', 'fts', 'hybrid', 'unit'];
+
+const REQUIRED_EVIDENCE_FIELDS = [
+  'snapshotId',
+  'model',
+  'promptVersion',
+  'worktreeId',
+  'supplementalQuerySet',
+];
 
 function numberOrZero(value) {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
@@ -59,12 +67,45 @@ export function summarizeAgentAB(runs) {
           ? hybrid.changeCoverage >= baseline.changeCoverage
           : null,
     },
+    evidence: evidenceSummary(runs),
+  };
+}
+
+function evidenceSummary(runs) {
+  const entries = Array.isArray(runs) ? runs : [];
+  const missing = new Set();
+  for (const field of REQUIRED_EVIDENCE_FIELDS) {
+    if (entries.some((entry) => entry && entry[field] !== undefined)) continue;
+    missing.add(field);
+  }
+  const snapshots = new Set(entries.map((entry) => entry?.snapshotId).filter(Boolean));
+  const models = new Set(entries.map((entry) => entry?.model).filter(Boolean));
+  const prompts = new Set(entries.map((entry) => entry?.promptVersion).filter(Boolean));
+  const worktrees = new Set(entries.map((entry) => entry?.worktreeId).filter(Boolean));
+  const supplemental = entries.filter((entry) => entry?.supplementalQuerySet !== undefined);
+  return {
+    decisionReady:
+      missing.size === 0 &&
+      snapshots.size === 1 &&
+      models.size === 1 &&
+      prompts.size === 1 &&
+      worktrees.size >= 2 &&
+      supplemental.length > 0,
+    missing: [...missing],
+    snapshotCount: snapshots.size,
+    modelCount: models.size,
+    promptVersionCount: prompts.size,
+    worktreeCount: worktrees.size,
+    supplementalQueryRuns: supplemental.length,
   };
 }
 
 export async function runAgentAB(inputPath, outputPath) {
   const input = JSON.parse(await readFile(inputPath, 'utf8'));
   const report = summarizeAgentAB(input.runs);
+  if (input.metadata && typeof input.metadata === 'object') {
+    report.metadata = input.metadata;
+  }
   if (outputPath) await writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
   return report;
 }

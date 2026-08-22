@@ -140,7 +140,6 @@ function verificationResults(value: unknown): ProjectKnowledgeVerificationResult
   if (!Array.isArray(value)) return [];
   return value
     .map((entry) => {
-      if (typeof entry === 'string') return { command: boundedString(entry), success: true };
       if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
       const command = boundedString((entry as { command?: unknown }).command);
       const success = (entry as { success?: unknown }).success;
@@ -249,7 +248,8 @@ export async function createProjectKnowledgeReviewPacket(
 
 function isVerified(packet: ProjectKnowledgeReviewPacket): boolean {
   if (!packet.success) return false;
-  return packet.changedHint.verificationResults.some((entry) => entry.success);
+  const results = packet.changedHint.verificationResults;
+  return results.length > 0 && results.every((entry) => entry.success === true);
 }
 
 function validUnitId(value: unknown): value is string {
@@ -367,7 +367,16 @@ export function sanitizeProjectPreferenceForSharing(
 ): ProjectKnowledgeUnit {
   const stripPersonal = (value: string): string =>
     value
-      .replace(/\b(?:I|me|my|mine|我|我的|本人)\b/giu, '')
+      .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/giu, '[email removed]')
+      .replace(/\b(?:bearer|basic)\s+[A-Z0-9._~+/=-]+/giu, '[credential removed]')
+      .replace(
+        /\b(?:api[_ -]?key|token|secret|password|passwd|credential|authorization)\s*[:=]\s*[^\s,;]+/giu,
+        '[credential removed]',
+      )
+      .replace(/(?:密钥|口令|密码|凭证|授权)\s*[:：=]\s*[^\s，；;]+/gu, '[凭证已移除]')
+      .replace(/\b(?:I|me|my|mine|we|our|ours)\b/giu, '')
+      .replace(/(?:我|我的|本人|我们|我们的)(?=偏好|习惯|项目|代码|要求)/gu, '')
+      .replace(/(?:姓名|名字|用户名|作者)\s*[:：=]\s*[^\s，；;]+/gu, '[个人信息已移除]')
       .replace(/\s{2,}/gu, ' ')
       .trim();
   const text = stripPersonal(preference.text);

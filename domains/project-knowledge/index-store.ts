@@ -10,6 +10,7 @@ import type {
   ProjectKnowledgeQuery,
   ProjectKnowledgeResult,
 } from './types.js';
+import type { ProjectKnowledgeUnit } from './units.js';
 
 const INDEX_SCHEMA = 'comet.project-knowledge.index.v1';
 const MAX_SOURCE_BYTES = 256 * 1024;
@@ -200,6 +201,7 @@ export class ProjectKnowledgeIndexStore {
   readonly databasePath: string;
   readonly repositoryId: string;
   readonly workspaceId: string;
+  lastSyncReadBytes = 0;
 
   private readonly projectRoot: string;
   private readonly reportDiagnostic: ProjectKnowledgeDiagnosticReporter | undefined;
@@ -227,6 +229,8 @@ export class ProjectKnowledgeIndexStore {
           'CREATE TABLE IF NOT EXISTS pk_sources (source TEXT PRIMARY KEY, kind TEXT NOT NULL, archived_at TEXT, size INTEGER NOT NULL, modified_at REAL NOT NULL, indexed_at TEXT NOT NULL);',
           'CREATE TABLE IF NOT EXISTS pk_sections (id INTEGER PRIMARY KEY, source TEXT NOT NULL REFERENCES pk_sources(source) ON DELETE CASCADE, anchor TEXT NOT NULL, title TEXT NOT NULL, heading_path TEXT NOT NULL, body TEXT NOT NULL, lexical_terms TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(source, anchor));',
           'CREATE INDEX IF NOT EXISTS pk_sections_source ON pk_sections(source);',
+          'CREATE TABLE IF NOT EXISTS pk_unit_relations (unit_id TEXT NOT NULL, relation_type TEXT NOT NULL, target_id TEXT NOT NULL, source TEXT NOT NULL, PRIMARY KEY(unit_id, relation_type, target_id, source));',
+          'CREATE INDEX IF NOT EXISTS pk_unit_relations_target ON pk_unit_relations(target_id);',
           "CREATE VIRTUAL TABLE IF NOT EXISTS pk_fts_terms USING fts5(source UNINDEXED, title, heading_path, body, lexical_terms, tokenize='unicode61');",
           "CREATE VIRTUAL TABLE IF NOT EXISTS pk_fts_trigram USING fts5(source UNINDEXED, title, heading_path, body, tokenize='trigram');",
         ].join('\n'),
@@ -276,6 +280,27 @@ export class ProjectKnowledgeIndexStore {
     this.database = null;
   }
 
+  async replaceUnitRelations(units: readonly ProjectKnowledgeUnit[]): Promise<void> {
+    await this.open();
+    const database = this.requireDatabase();
+    database.exec('DELETE FROM pk_unit_relations;');
+    const insert = database.prepare(
+      'INSERT INTO pk_unit_relations(unit_id, relation_type, target_id, source) VALUES (?, ?, ?, ?)',
+    );
+    for (const unit of units) {
+      for (const relation of unit.relations) {
+        for (const source of relation.sources) {
+          insert.run(unit.id, relation.type, relation.target, source.source);
+        }
+      }
+    }
+    setMeta(
+      database,
+      'unitRelationCount',
+      String(units.reduce((total, unit) => total + unit.relations.length, 0)),
+    );
+  }
+
   async syncCorpus(
     corpus: readonly ProjectKnowledgeDocument[],
   ): Promise<ProjectKnowledgeIndexSyncResult> {
@@ -296,6 +321,7 @@ export class ProjectKnowledgeIndexStore {
     }
     const changedSources: ProjectKnowledgeDocument[] = [];
     const refreshedSources: ProjectKnowledgeDocument[] = [];
+    this.lastSyncReadBytes = 0;
     for (const document of corpus) {
       let stat;
       try {
@@ -314,6 +340,7 @@ export class ProjectKnowledgeIndexStore {
           MAX_SOURCE_BYTES,
           { label: document.source },
         );
+        this.lastSyncReadBytes += read.bytes.length;
         const afterRead = await fs.lstat(document.absolutePath);
         if (afterRead.size !== read.stat.size || afterRead.mtimeMs !== read.stat.mtimeMs) {
           throw new Error('source changed while it was being indexed');

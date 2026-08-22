@@ -19,6 +19,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Dashboard and memory workflow**: Dashboard startup and workspace discovery avoid unnecessary scans, while personal memory opens directly to readable records and keeps synchronization explicit.
 - **Dashboard memory readability**: Long Personal Memory entries now stay compact by default and can be expanded on demand, keeping the overview usable without hiding the saved content.
 - **Project Knowledge status**: A pause scoped to the current project now appears as “paused” instead of suggesting that the whole plugin is disabled.
+- **Project Knowledge retrieval reliability**: Local retrieval now isolates generated knowledge by workspace, persists source state for restart-safe validation, bounds deterministic extraction, records unit relations in the SQLite projection, and requires every reported verification result to succeed before learned knowledge becomes active.
 - **Native worktree lifecycle**: After a successful merge, Comet removes its finished isolated worktree while preserving the branch for normal Git workflows.
 
 ### Fixed

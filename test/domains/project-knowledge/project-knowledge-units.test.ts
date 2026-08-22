@@ -168,6 +168,34 @@ describe('project knowledge units', () => {
     }
   });
 
+  test('persists generated source state so a new process rejects changed sources', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-source-state-');
+    const cache = await temporaryRoot('comet-project-knowledge-source-state-cache-');
+    try {
+      await fs.mkdir(path.join(root, 'src'), { recursive: true });
+      await fs.writeFile(path.join(root, 'src', 'main.ts'), 'export const main = true;\n');
+      await fs.writeFile(path.join(root, 'package.json'), '{"scripts":{"test":"vitest run"}}\n');
+      const first = new ProjectKnowledgeUnitRepository({ projectRoot: root, cacheRoot: cache });
+      await first.writeGenerated({
+        ...maintainedUnit(),
+        origin: 'generated',
+        id: 'generated-state',
+      });
+      await fs.writeFile(path.join(root, 'src', 'main.ts'), 'export const main = false;\n');
+      const second = new ProjectKnowledgeUnitRepository({ projectRoot: root, cacheRoot: cache });
+      const persisted = await second.read('generated-state');
+      expect(persisted?.sourceVersions?.length).toBeGreaterThan(0);
+      const validation = await validateProjectKnowledgeUnitSources(persisted!, {
+        projectRoot: root,
+      });
+      expect(validation.valid).toBe(false);
+      expect(validation.diagnostics.map((entry) => entry.code)).toContain('source-changed');
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cache, { recursive: true, force: true });
+    }
+  });
+
   test('expands only sourced one-hop relations from already matched units', () => {
     const matched = maintainedUnit();
     const related = {

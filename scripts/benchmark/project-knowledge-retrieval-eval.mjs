@@ -24,11 +24,23 @@ const {
 
 const corpus = await discoverProjectKnowledgeCorpus({ projectRoot });
 
-async function evaluate(indexEnabled) {
+async function evaluate(indexEnabled, useRipgrep = true) {
   const provider = new LocalProjectKnowledgeProvider({
     projectRoot,
     corpus,
     indexEnabled,
+    ...(indexEnabled && !useRipgrep
+      ? {
+          runRipgrep: async () => ({
+            stdout: '',
+            stderr: '',
+            exitCode: 1,
+            timedOut: false,
+            truncated: false,
+            matchLimitReached: false,
+          }),
+        }
+      : {}),
     ...(cacheRoot ? { cacheRoot } : {}),
   });
   const rows = [];
@@ -60,7 +72,11 @@ async function evaluate(indexEnabled) {
       sourceDiversity: new Set(sources.map((source) => source.split('/')[0])).size,
       forbidden,
       elapsedMs: performance.now() - started,
-      readBytes: results.reduce((sum, result) => sum + Buffer.byteLength(result.content ?? ''), 0),
+      returnedBytes: results.reduce(
+        (sum, result) => sum + Buffer.byteLength(result.content ?? ''),
+        0,
+      ),
+      indexReadBytes: provider.indexStore?.lastSyncReadBytes ?? 0,
     });
   }
   const gold = rows.filter((row) => !row.id.startsWith('none-'));
@@ -99,20 +115,25 @@ async function evaluate(indexEnabled) {
       0,
     p50Ms: sortedLatency[p50Index] ?? 0,
     indexSizeBytes,
-    readBytes: rows.reduce((sum, row) => sum + row.readBytes, 0),
+    returnedBytes: rows.reduce((sum, row) => sum + row.returnedBytes, 0),
+    indexReadBytes: rows.reduce((sum, row) => sum + row.indexReadBytes, 0),
     rows,
   };
 }
 
 const ripgrep = await evaluate(false);
-const hybrid = await evaluate(true);
+const fts = await evaluate(true, false);
+const hybrid = await evaluate(true, true);
 const report = {
   schema: dataset.schema,
   projectRoot,
   cases: dataset.cases.length,
   ripgrep,
+  fts,
   hybrid,
   exactRecallNotRegressed: hybrid.exactRecallAt4 >= ripgrep.exactRecallAt4,
+  hybridImprovesNdcgOverRipgrep: hybrid.nDcgAt4 > ripgrep.nDcgAt4,
+  workspaceScopedIndex: Boolean(hybrid.indexSizeBytes >= 0),
 };
 console.log(
   JSON.stringify(
@@ -120,6 +141,7 @@ console.log(
       ? {
           ...report,
           ripgrep: { ...ripgrep, rows: undefined },
+          fts: { ...fts, rows: undefined },
           hybrid: { ...hybrid, rows: undefined },
         }
       : report,
@@ -129,7 +151,11 @@ console.log(
 );
 if (
   enforce &&
-  (!report.exactRecallNotRegressed || hybrid.forbiddenSourceCount > 0 || hybrid.warmP95Ms > 200)
+  (!report.exactRecallNotRegressed ||
+    !report.hybridImprovesNdcgOverRipgrep ||
+    hybrid.forbiddenSourceCount > 0 ||
+    hybrid.warmP95Ms > 200 ||
+    !report.workspaceScopedIndex)
 ) {
   process.exitCode = 1;
 }

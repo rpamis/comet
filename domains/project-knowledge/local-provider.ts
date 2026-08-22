@@ -136,6 +136,7 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
   private readonly reportDiagnostic: ProjectKnowledgeDiagnosticReporter | undefined;
   private readonly indexStore: ProjectKnowledgeIndexStore;
   private readonly unitRepository: ProjectKnowledgeUnitRepository;
+  private deterministicUnitsReady = false;
 
   public constructor(options: LocalProjectKnowledgeProviderOptions) {
     this.options = options;
@@ -202,10 +203,10 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
           score:
             (previous?.score ?? 0) +
             1 / (60 + rank + 1) +
-            (channel === 2 ? 0.002 : channel === 0 ? 0.03 : 0) +
-            (result.unit?.origin === 'maintained' ? 0.02 : 0) +
+            (channel === 2 ? 0.002 : channel === 0 ? 0.025 : 0) +
+            (result.unit?.origin === 'maintained' ? 0.04 : result.unit ? 0.01 : 0) +
             (result.document?.kind.endsWith('-spec')
-              ? 0.04
+              ? 0.1
               : result.document?.kind.endsWith('-archive')
                 ? 0.01
                 : 0),
@@ -249,36 +250,50 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
   private async retrieveUnits(
     query: ProjectKnowledgeQuery,
   ): Promise<readonly ProjectKnowledgeResult[]> {
-    try {
-      const existing = await this.unitRepository.list({ origin: 'generated' });
-      const generated = await extractDeterministicProjectUnits({
-        projectRoot: this.options.projectRoot,
-      });
-      const byId = new Map(existing.map((unit) => [unit.id, unit]));
-      for (const unit of generated) {
-        const active = { ...unit, state: 'active' as const };
-        const current = byId.get(unit.id);
-        if (
-          current?.origin === 'generated' &&
-          current.state === 'active' &&
-          JSON.stringify(current) === JSON.stringify(active)
-        ) {
-          continue;
-        }
-        const validation = await validateProjectKnowledgeUnitSources(active, {
+    if (!this.deterministicUnitsReady) {
+      try {
+        const existing = await this.unitRepository.list({ origin: 'generated' });
+        const generated = await extractDeterministicProjectUnits({
           projectRoot: this.options.projectRoot,
         });
-        if (validation.valid) {
-          await this.unitRepository.writeGenerated(active);
+        const byId = new Map(existing.map((unit) => [unit.id, unit]));
+        for (const unit of generated) {
+          const active = { ...unit, state: 'active' as const };
+          const current = byId.get(unit.id);
+          const currentComparable = current ? { ...current, sourceVersions: undefined } : {};
+          if (
+            current?.origin === 'generated' &&
+            current.state === 'active' &&
+            JSON.stringify(currentComparable) === JSON.stringify(active)
+          ) {
+            continue;
+          }
+          const validation = await validateProjectKnowledgeUnitSources(active, {
+            projectRoot: this.options.projectRoot,
+          });
+          if (validation.valid) {
+            await this.unitRepository.writeGenerated(active);
+          }
         }
+        this.deterministicUnitsReady = true;
+      } catch {
+        this.reportDiagnostic?.({
+          code: 'deterministic-extractor',
+          message: 'Deterministic project knowledge extraction was skipped for this request.',
+        });
       }
-    } catch (error) {
-      this.reportDiagnostic?.({
-        code: 'deterministic-extractor',
-        message: `Deterministic project knowledge extraction was skipped: ${(error as Error).message}`,
-      });
     }
     const units = await this.unitRepository.list({ state: 'active' });
+    try {
+      await this.indexStore.replaceUnitRelations(units);
+      this.indexStore.close();
+    } catch {
+      this.reportDiagnostic?.({
+        code: 'unit-relations',
+        message: 'Project knowledge unit relations were not written to the local index.',
+      });
+      this.indexStore.close();
+    }
     const results: ProjectKnowledgeResult[] = [];
     for (const unit of units) {
       const searchable = [

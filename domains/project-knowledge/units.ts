@@ -40,6 +40,12 @@ export interface ProjectKnowledgeUnitSource {
   readonly lineEnd?: number;
 }
 
+export interface ProjectKnowledgeUnitSourceVersion {
+  readonly source: string;
+  readonly size: number;
+  readonly modifiedAt: number;
+}
+
 export interface ProjectKnowledgeUnitConclusion {
   readonly text: string;
   readonly sources: readonly ProjectKnowledgeUnitSource[];
@@ -69,6 +75,8 @@ export interface ProjectKnowledgeUnit {
   readonly conclusions: readonly ProjectKnowledgeUnitConclusion[];
   readonly relations: readonly ProjectKnowledgeUnitRelation[];
   readonly verification: readonly ProjectKnowledgeUnitVerification[];
+  /** Persisted for generated units so validation survives a process restart. */
+  readonly sourceVersions?: readonly ProjectKnowledgeUnitSourceVersion[];
 }
 
 export interface ProjectKnowledgeUnitDiagnostic {
@@ -239,6 +247,35 @@ function parseVerification(value: unknown): ProjectKnowledgeUnitVerification[] {
   });
 }
 
+function parseSourceVersions(value: unknown): ProjectKnowledgeUnitSourceVersion[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > MAX_TOTAL_SOURCE_COUNT)
+    throw new Error('source_versions must be a bounded list');
+  return value.map((entry, index) => {
+    const record = objectRecord(entry, `source_versions[${index}]`);
+    const source = boundedString(
+      record.source,
+      `source_versions[${index}].source`,
+      1024,
+    ).replaceAll('\\', '/');
+    if (
+      path.posix.isAbsolute(source) ||
+      path.win32.isAbsolute(source) ||
+      source.split('/').some((segment) => segment === '..') ||
+      source.includes('\0')
+    ) {
+      throw new Error(`source_versions[${index}].source must be project-relative`);
+    }
+    const size = record.size;
+    const modifiedAt = record.modified_at ?? record.modifiedAt;
+    if (!Number.isSafeInteger(size) || Number(size) < 0)
+      throw new Error(`source_versions[${index}].size must be a non-negative integer`);
+    if (typeof modifiedAt !== 'number' || !Number.isFinite(modifiedAt) || modifiedAt < 0)
+      throw new Error(`source_versions[${index}].modified_at must be a non-negative number`);
+    return { source, size: Number(size), modifiedAt: Number(modifiedAt) };
+  });
+}
+
 export function validateProjectKnowledgeUnitShape(value: unknown): ProjectKnowledgeUnit {
   const record = objectRecord(value, 'project knowledge unit');
   if (record.schema !== PROJECT_KNOWLEDGE_UNIT_SCHEMA)
@@ -278,6 +315,11 @@ export function validateProjectKnowledgeUnitShape(value: unknown): ProjectKnowle
     conclusions: conclusionsValue.map((entry, index) => parseConclusion(entry, index)),
     relations: relationsValue.map((entry, index) => parseRelation(entry, index)),
     verification: parseVerification(record.verification),
+    ...(record.source_versions === undefined && record.sourceVersions === undefined
+      ? {}
+      : {
+          sourceVersions: parseSourceVersions(record.source_versions ?? record.sourceVersions),
+        }),
   };
   const sourceCount =
     unit.conclusions.reduce((total, conclusion) => total + conclusion.sources.length, 0) +
@@ -349,6 +391,15 @@ export function renderProjectKnowledgeUnit(unit: ProjectKnowledgeUnit): string {
       })),
     })),
     ...(validated.verification.length > 0 ? { verification: [...validated.verification] } : {}),
+    ...(validated.sourceVersions && validated.sourceVersions.length > 0
+      ? {
+          source_versions: validated.sourceVersions.map((version) => ({
+            source: version.source,
+            size: version.size,
+            modified_at: version.modifiedAt,
+          })),
+        }
+      : {}),
   };
   const conclusionText = validated.conclusions
     .map((conclusion) => `- ${conclusion.text}`)
@@ -401,18 +452,22 @@ export class ProjectKnowledgeUnitRepository {
   readonly maintainedRoot: string;
   readonly generatedRoot: string;
   private readonly projectRoot: string;
+  private readonly legacyGeneratedRoot?: string;
   private readonly reportDiagnostic: ProjectKnowledgeUnitRepositoryOptions['reportDiagnostic'];
 
   constructor(options: ProjectKnowledgeUnitRepositoryOptions) {
     this.projectRoot = path.resolve(options.projectRoot);
     this.reportDiagnostic = options.reportDiagnostic;
     this.maintainedRoot = path.join(this.projectRoot, 'docs', 'comet', 'knowledge', 'units');
-    this.generatedRoot = options.cacheRoot
+    this.legacyGeneratedRoot = options.cacheRoot
       ? path.join(path.resolve(options.cacheRoot), 'project-knowledge', 'units')
-      : path.join(
-          path.dirname(resolveProjectKnowledgeCacheLocation(this.projectRoot).databasePath),
-          'units',
-        );
+      : undefined;
+    this.generatedRoot = path.join(
+      path.dirname(
+        resolveProjectKnowledgeCacheLocation(this.projectRoot, options.cacheRoot).databasePath,
+      ),
+      'units',
+    );
   }
 
   async list(
@@ -431,7 +486,7 @@ export class ProjectKnowledgeUnitRepository {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
           this.reportDiagnostic?.({
             code: 'unit-directory',
-            message: `无法读取项目知识单元目录：${root}`,
+            message: `无法读取项目知识单元目录：${path.relative(this.projectRoot, root) || '.'}`,
           });
         continue;
       }
@@ -491,15 +546,34 @@ export class ProjectKnowledgeUnitRepository {
     const validated = validateProjectKnowledgeUnitShape(unit);
     if (validated.origin !== 'generated')
       throw new Error('writeGenerated requires generated origin');
+    const sourceVersions = await captureProjectKnowledgeUnitSourceVersions(
+      validated,
+      this.projectRoot,
+    );
+    const persisted = sourceVersions.length > 0 ? { ...validated, sourceVersions } : validated;
     await fs.mkdir(this.generatedRoot, { recursive: true });
     await fs.writeFile(
-      path.join(this.generatedRoot, `${validated.id}.md`),
-      renderProjectKnowledgeUnit(validated),
+      path.join(this.generatedRoot, `${persisted.id}.md`),
+      renderProjectKnowledgeUnit(persisted),
       'utf8',
     );
+    if (this.legacyGeneratedRoot && this.legacyGeneratedRoot !== this.generatedRoot) {
+      // Keep the historical cache location observable for older integrations;
+      // reads always use the workspace-qualified directory above.
+      await fs.mkdir(this.legacyGeneratedRoot, { recursive: true });
+      await fs.writeFile(
+        path.join(this.legacyGeneratedRoot, `${persisted.id}.md`),
+        `<!-- workspace-qualified project knowledge: ${path.relative(this.legacyGeneratedRoot, this.generatedRoot).replaceAll('\\', '/')} -->\n`,
+        'utf8',
+      );
+    }
   }
 
-  async share(id: string): Promise<ProjectKnowledgeUnit> {
+  async share(
+    id: string,
+    options: { readonly confirm?: boolean } = {},
+  ): Promise<ProjectKnowledgeUnit> {
+    if (options.confirm === false) throw new Error('share requires explicit confirmation');
     const unit = await this.read(id);
     if (unit === null) throw new Error(`项目知识单元不存在：${id}`);
     const shared = validateProjectKnowledgeUnitShape({
@@ -512,6 +586,21 @@ export class ProjectKnowledgeUnitRepository {
       await this.writeGenerated({ ...unit, state: 'retired' });
     }
     return shared;
+  }
+
+  async shareMaintained(
+    unit: ProjectKnowledgeUnit,
+    options: { readonly confirm?: boolean } = {},
+  ): Promise<ProjectKnowledgeUnit> {
+    if (options.confirm !== true) throw new Error('share requires explicit confirmation');
+    const validated = validateProjectKnowledgeUnitShape(unit);
+    if (validated.origin !== 'maintained') throw new Error('shared unit must be maintained');
+    const validation = await validateProjectKnowledgeUnitSources(validated, {
+      projectRoot: this.projectRoot,
+    });
+    if (!validation.valid) throw new Error('shared unit sources are not current');
+    await this.writeMaintained(validated);
+    return validated;
   }
 
   async retire(id: string): Promise<ProjectKnowledgeUnit> {
@@ -537,7 +626,42 @@ export interface ProjectKnowledgeUnitSourceValidationResult {
   readonly diagnostics: readonly ProjectKnowledgeUnitDiagnostic[];
 }
 
-const validationBaseline = new Map<string, { size: number; modifiedAt: number; content: string }>();
+const validationObserved = new Map<
+  string,
+  { readonly size: number; readonly modifiedAt: number; readonly content: string }
+>();
+
+export async function captureProjectKnowledgeUnitSourceVersions(
+  unit: ProjectKnowledgeUnit,
+  projectRoot: string,
+): Promise<readonly ProjectKnowledgeUnitSourceVersion[]> {
+  const references = [
+    ...unit.conclusions.flatMap((conclusion) => conclusion.sources),
+    ...unit.relations.flatMap((relation) => relation.sources),
+  ];
+  const seen = new Set<string>();
+  const versions: ProjectKnowledgeUnitSourceVersion[] = [];
+  for (const reference of references) {
+    if (seen.has(reference.source)) continue;
+    seen.add(reference.source);
+    try {
+      const inspected = await inspectProtectedProjectPath(projectRoot, reference.source, {
+        label: reference.source,
+        expected: 'file',
+      });
+      if (!inspected.exists) continue;
+      const stat = await fs.stat(inspected.target);
+      versions.push({
+        source: reference.source,
+        size: Number(stat.size),
+        modifiedAt: Number(stat.mtimeMs),
+      });
+    } catch {
+      // Validation reports missing or inaccessible sources separately.
+    }
+  }
+  return versions;
+}
 
 export async function validateProjectKnowledgeUnitSources(
   unit: ProjectKnowledgeUnit,
@@ -576,16 +700,13 @@ export async function validateProjectKnowledgeUnitSources(
       );
       bytesRead += read.bytes.length;
       const stat = read.stat;
-      const current = {
-        size: Number(stat.size),
-        modifiedAt: Number(stat.mtimeMs),
-        content: read.bytes.toString('utf8'),
-      };
-      const lines = current.content.replaceAll('\r\n', '\n').split('\n');
+      const current = { size: Number(stat.size), modifiedAt: Number(stat.mtimeMs) };
+      const content = read.bytes.toString('utf8');
+      const lines = content.replaceAll('\r\n', '\n').split('\n');
       if (
         reference.anchor &&
         /\.mdx?$/iu.test(reference.source) &&
-        !sourceContainsAnchor(current.content, reference.anchor)
+        !sourceContainsAnchor(content, reference.anchor)
       ) {
         diagnostics.push({
           code: 'source-anchor-missing',
@@ -605,14 +726,11 @@ export async function validateProjectKnowledgeUnitSources(
         });
         continue;
       }
-      const baseline =
-        options.baseline?.get(reference.source) ??
-        validationBaseline.get(`${path.resolve(options.projectRoot)}\0${reference.source}`);
+      const persisted = unit.sourceVersions?.find((entry) => entry.source === reference.source);
+      const baseline = options.baseline?.get(reference.source) ?? persisted;
       if (
         baseline &&
-        (baseline.size !== current.size ||
-          baseline.modifiedAt !== current.modifiedAt ||
-          ('content' in baseline && baseline.content !== current.content))
+        (baseline.size !== current.size || baseline.modifiedAt !== current.modifiedAt)
       ) {
         diagnostics.push({
           code: 'source-changed',
@@ -621,7 +739,22 @@ export async function validateProjectKnowledgeUnitSources(
         });
         continue;
       }
-      validationBaseline.set(`${path.resolve(options.projectRoot)}\0${reference.source}`, current);
+      const observedKey = `${path.resolve(options.projectRoot)}\0${reference.source}`;
+      const observed = validationObserved.get(observedKey);
+      if (
+        observed &&
+        (observed.size !== current.size ||
+          observed.modifiedAt !== current.modifiedAt ||
+          observed.content !== content)
+      ) {
+        diagnostics.push({
+          code: 'source-changed',
+          message: '来源在知识单元生成后发生变化。',
+          source: reference.source,
+        });
+        continue;
+      }
+      validationObserved.set(observedKey, { ...current, content });
     } catch (error) {
       const code =
         (error as NodeJS.ErrnoException).code === 'ENOENT' ? 'source-missing' : 'source-path';

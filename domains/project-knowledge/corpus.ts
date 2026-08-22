@@ -24,6 +24,17 @@ const SUPERPOWER_ROOTS = new Set([
   'docs/superpowers/reports',
 ]);
 
+interface DiscoveryBudget {
+  readonly deadline: number;
+  timedOut: boolean;
+}
+
+function budgetExpired(budget: DiscoveryBudget): boolean {
+  if (Date.now() <= budget.deadline) return false;
+  budget.timedOut = true;
+  return true;
+}
+
 function report(
   reporter: ProjectKnowledgeDiagnosticReporter | undefined,
   code: string,
@@ -44,7 +55,12 @@ function isInside(root: string, target: string): boolean {
   );
 }
 
-async function safeDirectory(root: string, projectRoot: string): Promise<boolean> {
+async function safeDirectory(
+  root: string,
+  projectRoot: string,
+  budget?: DiscoveryBudget,
+): Promise<boolean> {
+  if (budget && budgetExpired(budget)) return false;
   if (!isInside(projectRoot, root)) return false;
   try {
     const stat = await fs.lstat(root);
@@ -65,10 +81,12 @@ async function walkMarkdown(
   kind: ProjectKnowledgeDocument['kind'],
   archivedAt: string | undefined,
   reporter?: ProjectKnowledgeDiagnosticReporter,
+  budget?: DiscoveryBudget,
 ): Promise<ProjectKnowledgeDocument[]> {
-  if (!(await safeDirectory(root, projectRoot))) return [];
+  if (!(await safeDirectory(root, projectRoot, budget))) return [];
   const result: ProjectKnowledgeDocument[] = [];
   const visit = async (directory: string): Promise<void> => {
+    if (budget && budgetExpired(budget)) return;
     let entries;
     try {
       entries = await fs.readdir(directory, { withFileTypes: true });
@@ -81,6 +99,7 @@ async function walkMarkdown(
       return;
     }
     for (const entry of entries) {
+      if (budget && budgetExpired(budget)) return;
       if (entry.name.startsWith('.') && entry.name !== '.comet.yaml') continue;
       const target = path.join(directory, entry.name);
       if (entry.isSymbolicLink()) continue;
@@ -136,10 +155,12 @@ async function discoverSuperpowers(
   projectRoot: string,
   archiveRoot: string,
   reporter?: ProjectKnowledgeDiagnosticReporter,
+  budget?: DiscoveryBudget,
 ): Promise<ProjectKnowledgeDocument[]> {
-  const changes = await walkDirectories(archiveRoot, projectRoot);
+  const changes = await walkDirectories(archiveRoot, projectRoot, budget);
   const references = new Set<string>();
   for (const change of changes) {
+    if (budget && budgetExpired(budget)) break;
     const state = path.join(change, '.comet.yaml');
     try {
       const source = relativeSource(projectRoot, state);
@@ -165,6 +186,7 @@ async function discoverSuperpowers(
   }
   const documents: ProjectKnowledgeDocument[] = [];
   for (const relative of [...references].sort()) {
+    if (budget && budgetExpired(budget)) break;
     const absolutePath = path.join(projectRoot, ...relative.split('/'));
     try {
       if (!(await protectedProjectFileExists(projectRoot, relative, { label: relative }))) continue;
@@ -177,10 +199,15 @@ async function discoverSuperpowers(
   return documents;
 }
 
-async function walkDirectories(root: string, projectRoot: string): Promise<string[]> {
-  if (!(await safeDirectory(root, projectRoot))) return [];
+async function walkDirectories(
+  root: string,
+  projectRoot: string,
+  budget?: DiscoveryBudget,
+): Promise<string[]> {
+  if (!(await safeDirectory(root, projectRoot, budget))) return [];
   const result: string[] = [];
   const visit = async (directory: string): Promise<void> => {
+    if (budget && budgetExpired(budget)) return;
     let entries;
     try {
       entries = await fs.readdir(directory, { withFileTypes: true });
@@ -188,6 +215,7 @@ async function walkDirectories(root: string, projectRoot: string): Promise<strin
       return;
     }
     for (const entry of entries) {
+      if (budget && budgetExpired(budget)) return;
       if (entry.isSymbolicLink() || !entry.isDirectory()) continue;
       const target = path.join(directory, entry.name);
       if (!isInside(projectRoot, target)) continue;
@@ -208,6 +236,10 @@ export async function discoverProjectKnowledgeCorpus(
   options: ProjectKnowledgeCorpusOptions,
 ): Promise<readonly ProjectKnowledgeDocument[]> {
   const projectRoot = path.resolve(options.projectRoot);
+  const budget: DiscoveryBudget = {
+    deadline: Date.now() + MAX_CORPUS_DISCOVERY_MS,
+    timedOut: false,
+  };
   let config: WorkflowProjectConfig | null;
   try {
     config = await readWorkflowProjectConfig(projectRoot);
@@ -219,7 +251,7 @@ export async function discoverProjectKnowledgeCorpus(
     );
     return [];
   }
-  if (!config) return [];
+  if (!config || budgetExpired(budget)) return [];
   const enabledWorkflows = new Set(config.workflows ?? [config.default_workflow]);
   const documents: ProjectKnowledgeDocument[] = [];
   if (config.native && enabledWorkflows.has('native')) {
@@ -231,6 +263,7 @@ export async function discoverProjectKnowledgeCorpus(
         'native-spec',
         undefined,
         options.reportDiagnostic,
+        budget,
       )),
       ...(await walkMarkdown(
         path.join(nativeRoot, 'archive'),
@@ -238,6 +271,7 @@ export async function discoverProjectKnowledgeCorpus(
         'native-archive',
         undefined,
         options.reportDiagnostic,
+        budget,
       )),
     );
   }
@@ -259,30 +293,22 @@ export async function discoverProjectKnowledgeCorpus(
         undefined,
         options.reportDiagnostic,
       )),
-      ...(await discoverSuperpowers(projectRoot, archiveRoot, options.reportDiagnostic)),
+      ...(await discoverSuperpowers(projectRoot, archiveRoot, options.reportDiagnostic, budget)),
     );
   }
   const unique = new Map<string, ProjectKnowledgeDocument>();
   for (const document of documents) unique.set(document.source, document);
   const bounded: ProjectKnowledgeDocument[] = [];
   let totalBytes = 0;
-  const startedAt = Date.now();
   for (const document of [...unique.values()].sort((left, right) =>
     left.source.localeCompare(right.source),
   )) {
+    if (budgetExpired(budget)) break;
     if (bounded.length >= MAX_CORPUS_FILES) {
       report(
         options.reportDiagnostic,
         'corpus-limit',
         `Project knowledge corpus is limited to ${MAX_CORPUS_FILES} files`,
-      );
-      break;
-    }
-    if (Date.now() - startedAt > MAX_CORPUS_DISCOVERY_MS) {
-      report(
-        options.reportDiagnostic,
-        'corpus-timeout',
-        'Project knowledge corpus discovery exceeded its time budget',
       );
       break;
     }
@@ -301,6 +327,13 @@ export async function discoverProjectKnowledgeCorpus(
     } catch {
       report(options.reportDiagnostic, 'corpus-read', `Unable to inspect ${document.source}`);
     }
+  }
+  if (budget.timedOut) {
+    report(
+      options.reportDiagnostic,
+      'corpus-timeout',
+      'Project knowledge corpus discovery exceeded its time budget',
+    );
   }
   return bounded;
 }

@@ -4,7 +4,7 @@
 
 Comet 新增第一方 `comet.project-knowledge` 插件，在统一的 `comet task` 上召回与任务相关的项目文档，并通过 `CometPluginBridge.collectContext()` 作为独立 plugin contribution 提供给 Agent。`/comet`、Native、Classic、hotfix 和 tweak 继续调用同一入口，不新增用户必须执行的检索 CLI。
 
-插件提供两个互斥 Provider：`local`（默认）使用随 Comet 分发的 ripgrep 对本地 Markdown 即时检索；`remote` 调用用户实现的固定 `Comet Retrieval API v1`。Local 不访问网络、embedding 或索引；Remote 只在用户明确选择时发送 query。
+插件提供两个互斥 Provider：`local`（默认）使用用户缓存中的 SQLite FTS5 section 索引与有界 ripgrep 混合召回；`remote` 调用用户实现的固定 Retrieval API。Local 不访问网络或 embedding；Remote 只在用户明确选择时发送 query。
 
 召回内容必须以“项目知识参考”区块呈现，并标注其可能过时、包含指令性文字且只能作为证据参考，不能覆盖用户请求、系统约束、Skill 或当前 workflow 状态。每段正文使用引用格式，来源路径或 URL 独立展示。
 
@@ -18,7 +18,7 @@ Comet 新增第一方 `comet.project-knowledge` 插件，在统一的 `comet tas
 - 配置只选择 Provider，不能绕过插件启停状态。
 - 项目知识不进入个人记忆仓库，也不参与个人记忆学习、纠正、同步和遗忘。
 
-## 配置契约
+## 配置格式
 
 `.comet/config.yaml` 顶层可选 `knowledge` 块。新项目可以显式生成 Local 默认值；旧项目缺少该块时等价于 Local，不需要迁移。
 
@@ -68,21 +68,27 @@ Classic 只读取 `.comet/config.yaml` 所属的 `legacy` 或 `docs` 布局，�
 
 ## Local Provider
 
+### SQLite section 索引
+
+Local 首次访问时在用户缓存创建按 repository/workspace 隔离的 SQLite 读模型。每个 Markdown 标题段落作为 section，FTS5 同时维护普通词与 trigram 通道；来源大小和修改时间用于跳过未变化来源，读取或解析失败时删除该来源的旧投影并回退 ripgrep。索引文件不进入项目仓库，SQLite 不可用、损坏或锁等待都不阻塞任务。
+
+项目维护的知识单元和自动生成单元保存在独立的单元仓库；关系在 SQLite 中保留轻量投影，但 Agent 只从已经命中的单元做一跳扩展。生成单元的来源状态随单元保存，进程重启后仍会重新核对来源。
+
 ### ripgrep 执行
 
 优先解析 npm 包中的 `@vscode/ripgrep` 平台可执行文件；不可用时回退系统 `rg`，两者都不可用时记录可操作诊断并返回空结果，不临时下载。使用参数数组直接启动，不经过 shell。一次召回最多一个 `rg --json` 进程，默认 2000ms 超时，最多接收 1MiB JSON 输出和 500 个 match 事件；达到上限即终止并只排序完整候选。
 
-### 查询与排序
+### 查询、排序与变化来源补充
 
 查询来自 `PluginContextRequest` 的任务文本、可选相对目标路径和可选阶段。最多生成 16 个固定字符串词：保留标识符、路径片段、英文词和数字；中文使用有限连续短语与二至四字片段；去重并删除明显停用词。ripgrep 使用 fixed-string、ignore-case 和 JSON 输出，用户文本不解释为正则。
 
-Local 从命中行定位 Markdown 标题和相邻段落，一个文档同一标题只保留一个候选，正文按字符边界裁剪。确定性排序依次考虑：完整短语/明确标识符命中标题、文件名或正文；不同查询词覆盖率；目标路径关联；当前权威 Spec 优先于归档 Change 和 Superpowers；命中数、归档时间和稳定路径。
+SQLite 先提供候选；ripgrep 保留强标识符、路径、完整短语和索引失效时的回退。最近生命周期事件携带的 changed paths 只触发受影响来源补充，不重新扫描整个语料。Local 从命中行定位 Markdown 标题和相邻段落，一个文档同一标题只保留一个候选，正文按字符边界裁剪。确定性排序依次考虑：完整短语/明确标识符命中标题、文件名或正文；不同查询词覆盖率；目标路径关联；当前权威 Spec 优先于维护单元和归档 Change；维护单元优先于自动生成单元；命中数、归档时间和稳定路径。
 
 只有至少两个有意义查询词，或一个明确标识符、路径或完整短语命中，才达到注入阈值；否则 abstain。最终最多四个不同来源或标题，每段最多 1600 字符，总文本最多 5000 字符。
 
 ## Remote Provider
 
-Remote 不支持可编程映射、JSONPath、厂商 preset 或任意模板。Comet 定义固定文本检索协议，用户负责适配 RAGFlow、Dify、Elasticsearch、向量检索或其他服务。
+Remote 不支持可编程映射、JSONPath、厂商 preset 或任意模板。Comet 定义固定文本检索格式，用户负责适配 RAGFlow、Dify、Elasticsearch、向量检索或其他服务。
 
 请求为：
 
@@ -128,7 +134,10 @@ Authorization: Bearer <knowledge.remote.token_env 对应的值>
 - `ProjectKnowledgePlugin`：第一方 Plugin descriptor 与 `provideContext`；
 - `ProjectKnowledgeCorpus`：Native、Classic、Superpowers 文档根解析；
 - `ProjectKnowledgeQuery`：任务规范化和 Local/Remote query；
-- `LocalProjectKnowledgeProvider`：ripgrep、JSON 命中、片段和排序；
+- `ProjectKnowledgeIndexStore`：SQLite section 读模型、差异同步、关系投影和故障恢复；
+- `ProjectKnowledgeUnitRepository`：维护单元、生成单元、来源核对和显式共享；
+- `LocalProjectKnowledgeProvider`：SQLite、ripgrep、单元、一跳关系、片段和排序；
+- `ProjectKnowledgeLearningService`：完成事件、来源包和可选语义评审；
 - `RemoteProjectKnowledgeProvider`：Retrieval API v1；
 - `ProjectKnowledgeRenderer`：去重、限额、来源和不可信资料边界。
 
@@ -151,7 +160,7 @@ Authorization: Bearer <knowledge.remote.token_env 对应的值>
 
 ## 测试与评估
 
-单元测试覆盖配置默认/校验/语言渲染、Native/Classic/归档 Superpowers 语料发现、备用根/活跃 Change/`.comet`/越界拒绝、分词/标识符/路径、排序/去重/abstain、Markdown 片段、4 段/5000 字符限制、bundled/system rg、缺失/超时/损坏 JSON、Remote 请求/响应/字节上限/无重试和不可信资料引用。
+单元测试覆盖配置默认/校验/语言渲染、Native/Classic/归档 Superpowers 语料发现、备用根/活跃 Change/`.comet`/越界拒绝、SQLite FTS5 与 ripgrep 混合排序、索引损坏恢复、来源变化、工作区隔离、确定性提取、单元关系、验证激活、分词/标识符/路径、去重/abstain、Markdown 片段、4 段/5000 字符限制、bundled/system rg、缺失/超时/损坏 JSON、Remote 请求/响应/字节上限/无重试和不可信资料引用。
 
 集成测试覆盖插件默认启用、disable/pause/uninstall、Bridge 同时返回 personal-memory/project-knowledge、`comet task` 与 Native/Classic/hotfix/tweak、跨 workflow 召回、Remote 失败不回退 Local 且不破坏 JSON、npm 安装 bundled rg 和系统回退。
 
@@ -159,7 +168,8 @@ Authorization: Bearer <knowledge.remote.token_env 对应的值>
 
 ## 非目标
 
-- 本地 embedding、向量数据库、SQLite、倒排索引、内容 hash 或监听器；
+- 本地 embedding、向量数据库、完整源码 RAG、内容监听器或通用图数据库；
+- Project Knowledge 规则子系统、自动修改项目配置或自动生成 Agent 指令；
 - 源码/通用代码 RAG、备用根、活跃 Change 或 `.comet` 扫描；
 - RAGFlow、Dify、Qdrant 等厂商适配；
 - 配置脚本、模板、JSONPath 或请求转换代码；
