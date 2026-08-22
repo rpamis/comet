@@ -1,12 +1,12 @@
 ---
-generated_from_state_version: 21
+generated_from_state_version: 22
 ---
 
 # 验证
 
 ## 当前结果
 
-- 结果: **验收通过，可归档**
+- 结果: **已归档**
 - 验证情况: **已完成检查，验证结果已确认**
 - 目标周期: 4
 - 迭代: 1
@@ -94,6 +94,14 @@ _无。_
 | 3 | 2 | 0 | recovery | — | Native child declarations changed | 2026-08-22T06:19:32.389Z |
 | 4 | 1 | 2 | pass | — | Supervisor 集成分支已完成 Project Knowledge 研究结论与实现闭环：SQLite FTS5 与有界 ripgrep 混合召回、项目知识单元、Personal Memory 项目作用域分层、来源核对、定向刷新、关系扩展、生命周期提示、显式共享、CLI/Dashboard、损坏恢复和评测均已验证。独立 code review 的三项重要问题已修复；无 Critical 问题。 | 2026-08-22T08:19:27.123Z |
 
+
+## Supervisor 分层证据
+
+- Child 验证: complete
+- 父级集成: complete
+- 父级检查: focused tests, native tests, typecheck, build
+- 未重跑: focused project knowledge tests passed, typecheck and build passed, unit and source validation tests passed, typecheck and build passed, learning, CLI and Dashboard tests passed, typecheck and build passed, research inputs and corpus bounds checked, focused regression passed
+- 未完成: —
 
 
 ## 结论
