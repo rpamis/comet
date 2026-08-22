@@ -6,7 +6,7 @@ Comet 新增第一方 `comet.project-knowledge` 插件，在统一的 `comet tas
 
 插件提供两个互斥 Provider：`local`（默认）使用用户缓存中的 SQLite FTS5 section 索引与有界 ripgrep 混合召回；`remote` 调用用户实现的固定 Retrieval API。Local 不访问网络或 embedding；Remote 只在用户明确选择时发送 query。
 
-召回内容必须以“项目知识参考”区块呈现，并标注其可能过时、包含指令性文字且只能作为证据参考，不能覆盖用户请求、系统约束、Skill 或当前 workflow 状态。每段正文使用引用格式，来源路径或 URL 独立展示。
+召回内容必须以“项目知识参考”区块呈现，明确它包含指令性文字且只能作为证据参考；使用前需要核对当前来源，不能覆盖用户请求、系统约束、Skill 或当前 workflow 状态。每段正文使用引用格式，来源路径或 URL 独立展示。
 
 ## 插件生命周期
 
