@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -104,6 +105,62 @@ describe('project knowledge section index', () => {
     } finally {
       store.close();
       await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps source and section counts scoped to the current workspace inside a shared repository database', async () => {
+    const root = await temporaryRoot();
+    const worktree = `${root}-worktree`;
+    const cacheRoot = await temporaryRoot();
+    try {
+      execFileSync('git', ['init', '--initial-branch=main'], { cwd: root, stdio: 'ignore' });
+      execFileSync('git', ['config', 'user.email', 'test@example.test'], { cwd: root });
+      execFileSync('git', ['config', 'user.name', 'Comet Test'], { cwd: root });
+      await fs.mkdir(path.join(root, 'docs'), { recursive: true });
+      await fs.writeFile(path.join(root, 'docs', 'knowledge.md'), '# Primary\n\nalpha source\n');
+      await fs.writeFile(path.join(root, 'README.md'), '# test\n');
+      execFileSync('git', ['add', 'README.md', 'docs/knowledge.md'], { cwd: root });
+      execFileSync('git', ['commit', '-m', 'test'], { cwd: root, stdio: 'ignore' });
+      execFileSync('git', ['worktree', 'add', '-b', 'index-other', worktree], {
+        cwd: root,
+        stdio: 'ignore',
+      });
+      await fs.writeFile(path.join(worktree, 'docs', 'knowledge.md'), '# Linked\n\nbeta source\n');
+
+      const primaryDocument = {
+        absolutePath: path.join(root, 'docs', 'knowledge.md'),
+        source: 'docs/knowledge.md',
+        kind: 'native-spec' as const,
+      };
+      const linkedDocument = {
+        absolutePath: path.join(worktree, 'docs', 'knowledge.md'),
+        source: 'docs/knowledge.md',
+        kind: 'native-spec' as const,
+      };
+      const primaryStore = new ProjectKnowledgeIndexStore({ projectRoot: root, cacheRoot });
+      const linkedStore = new ProjectKnowledgeIndexStore({ projectRoot: worktree, cacheRoot });
+
+      await primaryStore.syncCorpus([primaryDocument]);
+      await linkedStore.syncCorpus([linkedDocument]);
+
+      expect(primaryStore.status()).toMatchObject({ sourceCount: 1, sectionCount: 1 });
+      expect(linkedStore.status()).toMatchObject({ sourceCount: 1, sectionCount: 1 });
+      expect(primaryStore.databasePath).toBe(linkedStore.databasePath);
+
+      primaryStore.close();
+      linkedStore.close();
+    } finally {
+      try {
+        execFileSync('git', ['worktree', 'remove', '--force', worktree], {
+          cwd: root,
+          stdio: 'ignore',
+        });
+      } catch {
+        // Temporary-directory cleanup below is enough if Git cleanup fails.
+      }
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(worktree, { recursive: true, force: true });
       await fs.rm(cacheRoot, { recursive: true, force: true });
     }
   });
