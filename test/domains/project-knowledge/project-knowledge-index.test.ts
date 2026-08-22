@@ -206,7 +206,7 @@ describe('project knowledge section index', () => {
     }
   });
 
-  test('isolates a corrupt SQLite file so the next sync can recover', async () => {
+  test('rebuilds a corrupt derived FTS projection without moving the shared database', async () => {
     const root = await temporaryRoot();
     const cacheRoot = await temporaryRoot();
     const source = 'docs/comet/specs/recovery.md';
@@ -217,7 +217,9 @@ describe('project knowledge section index', () => {
     try {
       await first.syncCorpus([{ absolutePath: file, source, kind: 'native-spec' }]);
       first.close();
-      await fs.writeFile(first.databasePath, 'not a sqlite database');
+      const broken = new DatabaseSync(first.databasePath);
+      broken.exec('DROP TABLE pk_fts_terms; CREATE TABLE pk_fts_terms (broken TEXT);');
+      broken.close();
       const diagnostics: string[] = [];
       const corrupt = new ProjectKnowledgeIndexStore({
         projectRoot: root,
@@ -228,6 +230,7 @@ describe('project knowledge section index', () => {
         corrupt.syncCorpus([{ absolutePath: file, source, kind: 'native-spec' }]),
       ).rejects.toThrow();
       expect(diagnostics).toContain('index-recovered');
+      expect(await fs.access(first.databasePath)).toBeUndefined();
       await expect(
         corrupt.syncCorpus([{ absolutePath: file, source, kind: 'native-spec' }]),
       ).resolves.toMatchObject({ status: { available: true, sourceCount: 1 } });

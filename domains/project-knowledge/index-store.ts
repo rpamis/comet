@@ -265,23 +265,46 @@ export class ProjectKnowledgeIndexStore {
       database.prepare("SELECT rowid FROM pk_fts_terms WHERE pk_fts_terms MATCH 'probe'").all();
       this.database = database;
     } catch (error) {
+      let projectionRecovered = false;
+      if (database) {
+        try {
+          database.exec(
+            [
+              'DROP TABLE IF EXISTS pk_fts_terms;',
+              'DROP TABLE IF EXISTS pk_fts_trigram;',
+              'DROP TABLE IF EXISTS pk_sections;',
+              'DROP TABLE IF EXISTS pk_sources;',
+              'DROP TABLE IF EXISTS pk_unit_relations;',
+              'CREATE TABLE pk_sources (workspace_id TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, archived_at TEXT, size INTEGER NOT NULL, modified_at REAL NOT NULL, indexed_at TEXT NOT NULL, PRIMARY KEY(workspace_id, source));',
+              'CREATE TABLE pk_sections (id INTEGER PRIMARY KEY, workspace_id TEXT NOT NULL, source TEXT NOT NULL, anchor TEXT NOT NULL, title TEXT NOT NULL, heading_path TEXT NOT NULL, body TEXT NOT NULL, lexical_terms TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(workspace_id, source, anchor));',
+              'CREATE INDEX pk_sections_workspace_source ON pk_sections(workspace_id, source);',
+              'CREATE TABLE pk_unit_relations (unit_id TEXT NOT NULL, relation_type TEXT NOT NULL, target_id TEXT NOT NULL, source TEXT NOT NULL, PRIMARY KEY(unit_id, relation_type, target_id, source));',
+              'CREATE INDEX pk_unit_relations_target ON pk_unit_relations(target_id);',
+              "CREATE VIRTUAL TABLE pk_fts_terms USING fts5(workspace_id UNINDEXED, source UNINDEXED, title, heading_path, body, lexical_terms, tokenize='unicode61');",
+              "CREATE VIRTUAL TABLE pk_fts_trigram USING fts5(workspace_id UNINDEXED, source UNINDEXED, title, heading_path, body, tokenize='trigram');",
+            ].join('\n'),
+          );
+          setMeta(database, 'schema', INDEX_SCHEMA);
+          setMeta(database, 'repositoryId', this.repositoryId);
+          setMeta(database, 'tokenizer', 'unicode61+trigram');
+          projectionRecovered = true;
+          this.reportDiagnostic?.({
+            code: 'index-recovered',
+            message: 'Project knowledge section and FTS projection was rebuilt in place.',
+          });
+        } catch {
+          // Leave the shared database at its original path. If it cannot be
+          // opened, the provider can use its bounded fallback without moving
+          // or deleting the authoritative record table.
+        }
+      }
       database?.close();
-      // Keep a recoverable copy of a corrupt or incompatible projection. The
-      // current request may fall back to rg; the next request can then create
-      // a clean SQLite projection instead of repeatedly reopening the bad file.
-      try {
-        const quarantine = `${this.databasePath}.corrupt-${Date.now()}`;
-        await fs.rename(this.databasePath, quarantine);
-        await Promise.all(
-          ['-wal', '-shm'].map((suffix) => fs.rm(`${this.databasePath}${suffix}`, { force: true })),
-        );
+      if (!projectionRecovered) {
         this.reportDiagnostic?.({
-          code: 'index-recovered',
-          message: `Project knowledge index was isolated for recovery: ${path.basename(quarantine)}`,
+          code: 'index-unavailable',
+          message:
+            'Project knowledge section index is unavailable; authoritative records were retained.',
         });
-      } catch {
-        // A missing or inaccessible cache path is handled by the provider's
-        // bounded rg fallback.
       }
       throw error;
     }

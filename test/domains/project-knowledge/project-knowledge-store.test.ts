@@ -77,6 +77,7 @@ describe('project knowledge local store', () => {
         record: expect.objectContaining({
           id: initial.id,
           authority: 'user',
+          state: 'needs-review',
           summary: 'Always build before test for runtime touching changes.',
         }),
       });
@@ -109,8 +110,8 @@ describe('project knowledge local store', () => {
         record: expect.objectContaining({
           id: refreshed.id,
           state: 'active',
-          authority: 'user',
-          summary: 'Always build before test for runtime touching changes.',
+          authority: 'automatic',
+          summary: refreshed.summary,
         }),
       });
     } finally {

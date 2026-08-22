@@ -156,6 +156,26 @@ describe('project knowledge records', () => {
     expect(merged.updatedAt).toBe('2026-08-22T10:00:00.000Z');
   });
 
+  test('does not resurrect a retired user record with automatic content', () => {
+    const current = parseProjectKnowledgeRecord({
+      ...sampleRecord(),
+      state: 'retired',
+      authority: 'user',
+      summary: '已退役的用户摘要',
+    });
+    const incoming = parseProjectKnowledgeRecord({
+      ...sampleRecord(),
+      summary: '新来源版本的自动摘要',
+      sourceVersions: [{ source: 'docs/new-source.md', size: 4, modifiedAt: 2 }],
+    });
+
+    expect(mergeProjectKnowledgeRecord(current, incoming)).toMatchObject({
+      authority: 'automatic',
+      state: 'active',
+      summary: '新来源版本的自动摘要',
+    });
+  });
+
   test('rejects unsafe ids, excessive references, and malformed source versions', () => {
     expect(() =>
       parseProjectKnowledgeRecord({

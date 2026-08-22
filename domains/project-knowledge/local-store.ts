@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
@@ -52,6 +52,20 @@ function equalSourceVersions(left: ProjectKnowledgeRecord, right: ProjectKnowled
   return JSON.stringify(left.sourceVersions) === JSON.stringify(right.sourceVersions);
 }
 
+function sourceVersionsAreCurrent(projectRoot: string, record: ProjectKnowledgeRecord): boolean {
+  if (record.sourceVersions.length === 0) return false;
+  return record.sourceVersions.every((version) => {
+    try {
+      const current = statSync(path.join(projectRoot, ...version.source.split('/')));
+      return (
+        current.isFile() && current.size === version.size && current.mtimeMs === version.modifiedAt
+      );
+    } catch {
+      return false;
+    }
+  });
+}
+
 function recordSearchText(record: ProjectKnowledgeRecord): string {
   return [
     record.title,
@@ -83,13 +97,15 @@ export class ProjectKnowledgeLocalStore {
   readonly repositoryId: string;
   readonly workspaceId: string;
 
+  private readonly projectRoot: string;
   private database: DatabaseSync | null;
   private readonly indexStore: ProjectKnowledgeIndexStore;
   private closed = false;
 
   constructor(options: ProjectKnowledgeLocalStoreOptions) {
+    this.projectRoot = path.resolve(options.projectRoot);
     const location = resolveProjectKnowledgeStorageLocation(
-      options.projectRoot,
+      this.projectRoot,
       options.storageRoot ?? options.cacheRoot,
     );
     this.databasePath = location.databasePath;
@@ -204,7 +220,12 @@ export class ProjectKnowledgeLocalStore {
       ) {
         return { kind: mutation.kind, changed: false, record: current, diagnostics: [] };
       }
-      const next = current ? mergeProjectKnowledgeRecord(current, incoming) : incoming;
+      const next =
+        current?.state === 'retired' && incoming.authority === 'automatic'
+          ? incoming
+          : current
+            ? mergeProjectKnowledgeRecord(current, incoming)
+            : incoming;
       this.write(next);
       return {
         kind: mutation.kind,
@@ -247,7 +268,7 @@ export class ProjectKnowledgeLocalStore {
       ...(mutation.relations !== undefined ? { relations: mutation.relations } : {}),
       ...(mutation.verification !== undefined ? { verification: mutation.verification } : {}),
       authority: 'user',
-      state: 'active',
+      state: sourceVersionsAreCurrent(this.projectRoot, current) ? 'active' : 'needs-review',
       updatedAt: mutation.updatedAt,
     });
     this.write(next);

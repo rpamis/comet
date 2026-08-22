@@ -352,6 +352,9 @@ export function mergeProjectKnowledgeRecord(
   if (validatedCurrent.type !== validatedIncoming.type) {
     throw new Error('cannot merge records with different types');
   }
+  if (validatedCurrent.state === 'retired' && validatedIncoming.authority === 'automatic') {
+    return validatedIncoming;
+  }
   if (validatedCurrent.authority === 'user' && validatedIncoming.authority === 'automatic') {
     return validateProjectKnowledgeRecordShape({
       ...validatedIncoming,
