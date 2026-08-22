@@ -1,7 +1,11 @@
 import type { ProjectKnowledgeQuery } from './types.js';
 
 const MAX_TASK_CHARS = 2000;
-const MAX_TERMS = 16;
+export const PROJECT_KNOWLEDGE_QUERY_BUDGETS = {
+  strong: 8,
+  phrase: 8,
+  weak: 12,
+} as const;
 const EN_STOP_WORDS = new Set(
   'a an and are as at be by for from in is it of on or that the this to with you your'.split(' '),
 );
@@ -47,32 +51,32 @@ function addTerm(terms: string[], value: string): void {
   terms.push(normalized);
 }
 
-function addChineseTerms(terms: string[], text: string): void {
+function addChineseTerms(phrases: string[], weak: string[], text: string): void {
   for (const match of text.matchAll(/[\u3400-\u9fff]{2,}/gu)) {
     const value = match[0];
     if (ZH_STOP_WORDS.has(value)) continue;
-    addTerm(terms, value);
+    addTerm(phrases, value);
     for (let width = Math.min(4, value.length); width >= 2; width -= 1) {
       for (let index = 0; index + width <= value.length; index += width) {
         const chunk = value.slice(index, index + width);
-        if (!ZH_STOP_WORDS.has(chunk)) addTerm(terms, chunk);
+        if (!ZH_STOP_WORDS.has(chunk) && chunk !== value) addTerm(weak, chunk);
       }
     }
   }
 }
 
-function addLatinTerms(terms: string[], text: string): void {
+function addLatinTerms(strong: string[], weak: string[], text: string): void {
   for (const match of text.matchAll(/[A-Za-z][A-Za-z0-9_./:-]*/gu)) {
     const value = match[0].replace(/^[./:]+|[./:]+$/gu, '');
     if (!value) continue;
     const lower = value.toLowerCase();
     if (EN_STOP_WORDS.has(lower)) continue;
-    addTerm(terms, value);
+    addTerm(looksExplicit(value) ? strong : weak, value);
     if (value.includes('/')) {
-      for (const segment of value.split(/[/:.]/u)) addTerm(terms, segment);
+      for (const segment of value.split(/[/:.]/u)) addTerm(weak, segment);
     }
   }
-  for (const match of text.matchAll(/\b\d+(?:\.\d+)?\b/gu)) addTerm(terms, match[0]);
+  for (const match of text.matchAll(/\b\d+(?:\.\d+)?\b/gu)) addTerm(strong, match[0]);
 }
 
 function looksExplicit(value: string): boolean {
@@ -101,39 +105,54 @@ export function createProjectKnowledgeQuery(input: {
   readonly task: string;
   readonly path?: string;
   readonly phase?: string;
+  readonly operation?: string;
 }): ProjectKnowledgeQuery {
   const task = normalizedText(input.task);
   if (!task) throw new Error('Project knowledge task must not be empty');
   const targetPath = relativePathOrUndefined(input.path);
   const phase = input.phase ? normalizedText(input.phase, 128) : undefined;
-  const terms: string[] = [];
-  addChineseTerms(terms, task);
-  addLatinTerms(terms, task);
+  const operation = input.operation ? normalizedText(input.operation, 128) : undefined;
+  const strong: string[] = [];
+  const phrases: string[] = [];
+  const weak: string[] = [];
+  addChineseTerms(phrases, weak, task);
+  addLatinTerms(strong, weak, task);
   if (targetPath) {
-    addLatinTerms(terms, targetPath);
-    addChineseTerms(terms, targetPath);
+    addTerm(strong, targetPath);
+    addLatinTerms(strong, weak, targetPath);
+    addChineseTerms(phrases, weak, targetPath);
   }
   if (phase) {
-    addLatinTerms(terms, phase);
-    addChineseTerms(terms, phase);
+    addLatinTerms(strong, weak, phase);
+    addChineseTerms(phrases, weak, phase);
   }
-  const limited = terms.slice(0, MAX_TERMS);
+  if (operation) {
+    addLatinTerms(strong, weak, operation);
+    addChineseTerms(phrases, weak, operation);
+  }
   const phrase = taskPhrase(task);
-  const strongTerms = [
-    ...limited.filter((term) => looksExplicit(term)),
-    ...(phrase ? [phrase] : []),
-  ];
+  if (phrase) addTerm(phrases, phrase);
+  const strongTerms = strong.slice(0, PROJECT_KNOWLEDGE_QUERY_BUDGETS.strong);
+  const phraseTerms = phrases.slice(0, PROJECT_KNOWLEDGE_QUERY_BUDGETS.phrase);
+  const weakTerms = weak
+    .filter((term) => !strongTerms.includes(term) && !phraseTerms.includes(term))
+    .slice(0, PROJECT_KNOWLEDGE_QUERY_BUDGETS.weak);
+  const terms = [...strongTerms, ...phraseTerms, ...weakTerms];
   const remoteQuery = [
     removeAbsolutePaths(task),
     ...(targetPath ? [`Target path: ${targetPath}`] : []),
     ...(phase ? [`Phase: ${phase}`] : []),
+    ...(operation ? [`Operation: ${operation}`] : []),
   ].join('\n');
   return {
     task,
     ...(targetPath ? { path: targetPath } : {}),
     ...(phase ? { phase } : {}),
-    terms: limited,
+    ...(operation ? { operation } : {}),
+    terms,
     strongTerms,
+    phraseTerms,
+    weakTerms,
     remoteQuery,
   };
 }

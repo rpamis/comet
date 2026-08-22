@@ -2283,6 +2283,7 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
       : (page.diagnostics ?? []);
   const disabled = page.status === 'disabled';
   const remote = snapshot.remote;
+  const local = snapshot.local;
 
   return (
     <div className="mx-auto min-w-0 max-w-dashboard">
@@ -2309,7 +2310,9 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
           <span className="dashboard-knowledge-status-value">{provider}</span>
           <span className="dashboard-knowledge-status-meta">
             {provider === 'Local'
-              ? '本地文档即时召回'
+              ? local?.available
+                ? 'FTS5 + ripgrep 混合召回'
+                : 'ripgrep 回退可用'
               : provider === 'Remote'
                 ? '固定 Retrieval API v1'
                 : '未读取状态'}
@@ -2382,6 +2385,39 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
                         ? `${remote.tokenEnv} · ${remote.tokenConfigured ? '已提供' : '未提供'}`
                         : '未配置（无需 token）'}
                     </dd>
+                  </div>
+                </dl>
+              ) : provider === 'Local' && local ? (
+                <dl className="dashboard-knowledge-fields">
+                  <div>
+                    <dt>Repository</dt>
+                    <dd>{local.repositoryId}</dd>
+                  </div>
+                  <div>
+                    <dt>Workspace</dt>
+                    <dd>{local.workspaceId}</dd>
+                  </div>
+                  <div>
+                    <dt>来源 / Section</dt>
+                    <dd>
+                      {local.sourceCount} / {local.sectionCount}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>索引状态</dt>
+                    <dd>{local.available ? '可用' : '尚未建立或不可用'}</dd>
+                  </div>
+                  <div>
+                    <dt>最近查询</dt>
+                    <dd>
+                      {typeof local.lastQueryMs === 'number'
+                        ? `${local.lastQueryMs} ms · ${local.lastCandidateCount ?? 0} 个候选`
+                        : '尚无查询统计'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>候选通道</dt>
+                    <dd>{local.channels?.length ? local.channels.join(' + ') : '尚无'}</dd>
                   </div>
                 </dl>
               ) : null}

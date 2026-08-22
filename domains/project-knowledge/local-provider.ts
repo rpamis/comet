@@ -4,6 +4,7 @@ import path from 'node:path';
 import { runBoundedRipgrep, type RipgrepRunResult } from '../../platform/process/ripgrep.js';
 import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
 import { knowledgeDocumentKindRank } from './corpus.js';
+import { ProjectKnowledgeIndexStore } from './index-store.js';
 import { queryContainsTerm, queryHasStrongMatch } from './query.js';
 import type {
   ProjectKnowledgeDocument,
@@ -31,6 +32,10 @@ interface LocalCandidate extends ProjectKnowledgeResult {
 export interface LocalProjectKnowledgeProviderOptions extends ProjectKnowledgeProviderOptions {
   readonly runRipgrep?: (args: readonly string[]) => Promise<RipgrepRunResult>;
   readonly rgCommand?: string;
+  readonly cacheRoot?: string;
+  readonly indexStore?: ProjectKnowledgeIndexStore;
+  /** Retrieval-eval seam for measuring the bounded rg baseline. */
+  readonly indexEnabled?: boolean;
 }
 
 function bundledRipgrepPath(): string | null {
@@ -121,18 +126,95 @@ function candidateSort(
 export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
   private readonly options: LocalProjectKnowledgeProviderOptions;
   private readonly reportDiagnostic: ProjectKnowledgeDiagnosticReporter | undefined;
+  private readonly indexStore: ProjectKnowledgeIndexStore;
 
   public constructor(options: LocalProjectKnowledgeProviderOptions) {
     this.options = options;
     this.reportDiagnostic = options.reportDiagnostic;
+    this.indexStore =
+      options.indexStore ??
+      new ProjectKnowledgeIndexStore({
+        projectRoot: options.projectRoot,
+        ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
+        reportDiagnostic: options.reportDiagnostic,
+      });
   }
 
   public async retrieve(query: ProjectKnowledgeQuery): Promise<readonly ProjectKnowledgeResult[]> {
+    let indexed: readonly ProjectKnowledgeResult[] = [];
+    if (this.options.indexEnabled !== false) {
+      try {
+        await this.indexStore.syncCorpus(this.options.corpus);
+        indexed = this.indexStore.search(query);
+      } catch {
+        this.reportDiagnostic?.({
+          code: 'index-unavailable',
+          message:
+            'Project knowledge index is unavailable; bounded ripgrep retrieval remains active.',
+        });
+      } finally {
+        this.indexStore.close();
+      }
+    }
+    const exact = await this.retrieveWithRipgrep(query);
+    const fused = new Map<string, { result: ProjectKnowledgeResult; score: number }>();
+    for (const [channel, results] of [indexed, exact].entries()) {
+      results.forEach((result, rank) => {
+        const key = `${result.source}\u0000${result.title ?? ''}`;
+        const previous = fused.get(key);
+        fused.set(key, {
+          result: previous?.result ?? result,
+          score:
+            (previous?.score ?? 0) +
+            1 / (60 + rank + 1) +
+            (channel === 1 ? 0.002 : 0) +
+            (result.document?.kind.endsWith('-spec')
+              ? 0.04
+              : result.document?.kind.endsWith('-archive')
+                ? 0.01
+                : 0),
+        });
+      });
+    }
+    const ranked = [...fused.values()]
+      .sort(
+        (left, right) =>
+          right.score - left.score || left.result.source.localeCompare(right.result.source),
+      )
+      .slice(0, 8)
+      .map(({ result, score }) => ({ ...result, score }));
+    const validated: ProjectKnowledgeResult[] = [];
+    for (const result of ranked) {
+      try {
+        await readProtectedProjectFile(
+          this.options.projectRoot,
+          result.source,
+          MAX_DOCUMENT_BYTES,
+          {
+            label: result.source,
+          },
+        );
+        validated.push(result);
+      } catch {
+        this.reportDiagnostic?.({
+          code: 'local-document',
+          message: `Project knowledge document was skipped: ${result.source}`,
+        });
+      }
+    }
+    return validated;
+  }
+
+  private async retrieveWithRipgrep(
+    query: ProjectKnowledgeQuery,
+  ): Promise<readonly ProjectKnowledgeResult[]> {
     if (query.terms.length === 0 || this.options.corpus.length === 0) return [];
     const documents = new Map(
       this.options.corpus.map((document) => [path.resolve(document.absolutePath), document]),
     );
     const targets = this.searchTargets();
+    const exactTerms = [...query.strongTerms, ...query.phraseTerms].slice(0, 16);
+    if (exactTerms.length === 0) exactTerms.push(...query.weakTerms.slice(0, 4));
     const args = [
       '--json',
       '--fixed-strings',
@@ -140,7 +222,7 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
       '--no-messages',
       '--iglob',
       '*.md',
-      ...query.terms.flatMap((term) => ['-e', term]),
+      ...exactTerms.flatMap((term) => ['-e', term]),
       '--',
       ...targets,
     ];

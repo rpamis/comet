@@ -7,6 +7,7 @@ import type {
 import { discoverProjectKnowledgeCorpus } from './corpus.js';
 import { createProjectKnowledgeDashboardSnapshot } from './dashboard.js';
 import { LocalProjectKnowledgeProvider } from './local-provider.js';
+import { readProjectKnowledgeIndexStatus } from './index-store.js';
 import { createProjectKnowledgeQuery } from './query.js';
 import { RemoteProjectKnowledgeProvider } from './remote-provider.js';
 import { renderProjectKnowledgeContext, boundProjectKnowledgeResults } from './renderer.js';
@@ -69,13 +70,39 @@ async function createProjectKnowledgeModule(
       message,
     });
   };
-  const dashboardSnapshot = () => ({
-    ...createProjectKnowledgeDashboardSnapshot({
+  const dashboardSnapshot = async () => {
+    const snapshot = createProjectKnowledgeDashboardSnapshot({
       config: options.knowledgeConfig,
       language: options.language,
-    }),
-    diagnostics: [...recentDiagnostics],
-  });
+    });
+    if (options.knowledgeConfig.provider !== 'local') {
+      return { ...snapshot, diagnostics: [...recentDiagnostics] };
+    }
+    const status = await readProjectKnowledgeIndexStatus({
+      projectRoot: options.projectRoot,
+      ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
+    });
+    return {
+      ...snapshot,
+      local: {
+        available: status.available,
+        repositoryId: status.repositoryId,
+        workspaceId: status.workspaceId,
+        sourceCount: status.sourceCount,
+        sectionCount: status.sectionCount,
+        ...(status.updatedAt ? { updatedAt: status.updatedAt } : {}),
+        ...(status.lastQueryMs === undefined ? {} : { lastQueryMs: status.lastQueryMs }),
+        ...(status.lastCandidateCount === undefined
+          ? {}
+          : { lastCandidateCount: status.lastCandidateCount }),
+        channels: status.channels,
+      },
+      diagnostics: [
+        ...recentDiagnostics,
+        ...(status.diagnostic ? [{ code: 'index-status', message: status.diagnostic }] : []),
+      ].slice(-MAX_RECENT_DIAGNOSTICS),
+    };
+  };
   return {
     dashboard: createProjectKnowledgeDashboardContribution(options.language),
     invoke: async (capability) => {
@@ -103,6 +130,7 @@ async function createProjectKnowledgeModule(
             : new LocalProjectKnowledgeProvider({
                 projectRoot: options.projectRoot,
                 corpus,
+                ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
                 reportDiagnostic,
               });
         providerKey = key;

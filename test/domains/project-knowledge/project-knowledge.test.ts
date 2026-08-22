@@ -34,7 +34,7 @@ describe('project knowledge dashboard status', () => {
     ).toEqual({
       provider: 'local',
       configured: true,
-      retrieval: expect.stringContaining('不会维护索引'),
+      retrieval: expect.stringContaining('section 索引'),
       diagnostics: [],
     });
   });
@@ -180,7 +180,7 @@ describe('project knowledge configuration', () => {
   test('keeps generic terms below the strong-match threshold', () => {
     expect(createProjectKnowledgeQuery({ task: 'project' }).strongTerms).toEqual([]);
     expect(
-      createProjectKnowledgeQuery({ task: 'project knowledge retrieval' }).strongTerms,
+      createProjectKnowledgeQuery({ task: 'project knowledge retrieval' }).phraseTerms,
     ).toContain('project knowledge retrieval');
     expect(createProjectKnowledgeQuery({ task: 'CometHookGuard' }).strongTerms).toContain(
       'CometHookGuard',

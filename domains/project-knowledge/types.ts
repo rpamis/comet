@@ -28,8 +28,11 @@ export interface ProjectKnowledgeQuery {
   readonly task: string;
   readonly path?: string;
   readonly phase?: string;
+  readonly operation?: string;
   readonly terms: readonly string[];
   readonly strongTerms: readonly string[];
+  readonly phraseTerms: readonly string[];
+  readonly weakTerms: readonly string[];
   readonly remoteQuery: string;
 }
 
@@ -67,6 +70,7 @@ export interface ProjectKnowledgePluginOptions {
   readonly language?: MemoryLanguage;
   readonly version?: string;
   readonly cometVersionRange?: (cometVersion: string) => boolean;
+  readonly cacheRoot?: string;
 }
 
 export interface ProjectKnowledgeDashboardRemoteSummary {
@@ -86,6 +90,17 @@ export interface ProjectKnowledgeDashboardSnapshot {
   readonly provider: WorkflowKnowledgeProvider;
   readonly configured: boolean;
   readonly remote?: ProjectKnowledgeDashboardRemoteSummary;
+  readonly local?: {
+    readonly available: boolean;
+    readonly repositoryId: string;
+    readonly workspaceId: string;
+    readonly sourceCount: number;
+    readonly sectionCount: number;
+    readonly updatedAt?: string;
+    readonly lastQueryMs?: number;
+    readonly lastCandidateCount?: number;
+    readonly channels: readonly string[];
+  };
   readonly retrieval: string;
   readonly diagnostics: readonly ProjectKnowledgeDashboardDiagnostic[];
 }

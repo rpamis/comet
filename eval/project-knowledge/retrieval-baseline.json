@@ -1,0 +1,357 @@
+{
+  "schema": "comet.project-knowledge.retrieval-eval.v1",
+  "topK": 4,
+  "cases": [
+    {
+      "id": "exact-01",
+      "category": "exact",
+      "query": "comet.project-knowledge",
+      "goldSources": ["docs/comet/specs/project-knowledge/spec.md"]
+    },
+    {
+      "id": "exact-02",
+      "category": "exact",
+      "query": "comet.personal-memory",
+      "goldSources": ["docs/comet/specs/personal-memory/spec.md"]
+    },
+    {
+      "id": "exact-03",
+      "category": "exact",
+      "query": "CometPluginBridge collectContext",
+      "goldSources": ["docs/comet/specs/comet-plugin-runtime/spec.md"]
+    },
+    {
+      "id": "exact-04",
+      "category": "exact",
+      "query": "native.artifact_root",
+      "goldSources": ["docs/comet/specs/native-init-workspace-defaults/spec.md"]
+    },
+    {
+      "id": "exact-05",
+      "category": "exact",
+      "query": ".comet/runtime",
+      "goldSources": ["docs/comet/specs/native-runtime-storage/spec.md"]
+    },
+    {
+      "id": "exact-06",
+      "category": "exact",
+      "query": "ambient_resume",
+      "goldSources": ["docs/comet/specs/native-ambient-resume/spec.md"]
+    },
+    {
+      "id": "exact-07",
+      "category": "exact",
+      "query": "DashboardIndexStore",
+      "goldSources": ["docs/comet/specs/dashboard-sqlite-index/spec.md"]
+    },
+    {
+      "id": "exact-08",
+      "category": "exact",
+      "query": "explicitRemoval",
+      "goldSources": ["docs/comet/specs/comet-plugin-runtime/spec.md"]
+    },
+    {
+      "id": "exact-09",
+      "category": "exact",
+      "query": "comet memory rollback",
+      "goldSources": ["docs/comet/specs/personal-memory/spec.md"]
+    },
+    {
+      "id": "exact-10",
+      "category": "exact",
+      "query": "comet dashboard --json",
+      "goldSources": [
+        "docs/comet/specs/memory-dashboard/spec.md",
+        "docs/comet/specs/dashboard-artifact-preview/spec.md"
+      ]
+    },
+    {
+      "id": "exact-11",
+      "category": "exact",
+      "query": "verification.completed",
+      "goldSources": ["docs/comet/specs/memory-workflow-integration/spec.md"]
+    },
+    {
+      "id": "exact-12",
+      "category": "exact",
+      "query": "source_coverage",
+      "goldSources": ["docs/comet/specs/native-source-coverage/spec.md"]
+    },
+    {
+      "id": "exact-13",
+      "category": "exact",
+      "query": "parallel worktree",
+      "goldSources": ["docs/comet/specs/native-parallel-worktree-tests/spec.md"]
+    },
+    {
+      "id": "exact-14",
+      "category": "exact",
+      "query": "native completion loop",
+      "goldSources": ["docs/comet/specs/native-completion-loop/spec.md"]
+    },
+    {
+      "id": "exact-15",
+      "category": "exact",
+      "query": "workflow uninstall",
+      "goldSources": ["docs/comet/specs/workflow-uninstall/spec.md"]
+    },
+
+    {
+      "id": "zh-01",
+      "category": "chinese",
+      "query": "项目知识如何为任务主动提供上下文",
+      "goldSources": ["docs/comet/specs/project-knowledge/spec.md"]
+    },
+    {
+      "id": "zh-02",
+      "category": "chinese",
+      "query": "个人记忆如何区分全局和项目作用域",
+      "goldSources": ["docs/comet/specs/personal-memory/spec.md"]
+    },
+    {
+      "id": "zh-03",
+      "category": "chinese",
+      "query": "插件被用户卸载后为什么不能自动恢复",
+      "goldSources": ["docs/comet/specs/comet-plugin-runtime/spec.md"]
+    },
+    {
+      "id": "zh-04",
+      "category": "chinese",
+      "query": "Native 机器状态统一存放在哪里",
+      "goldSources": ["docs/comet/specs/native-runtime-storage/spec.md"]
+    },
+    {
+      "id": "zh-05",
+      "category": "chinese",
+      "query": "Dashboard 如何增量读取多个工作区",
+      "goldSources": ["docs/comet/specs/dashboard-sqlite-index/spec.md"]
+    },
+    {
+      "id": "zh-06",
+      "category": "chinese",
+      "query": "Native 并行变更如何隔离工作区",
+      "goldSources": [
+        "docs/comet/specs/native-parallel-worktree-tests/spec.md",
+        "docs/comet/specs/native-shape-workspace-isolation/spec.md"
+      ]
+    },
+    {
+      "id": "zh-07",
+      "category": "chinese",
+      "query": "没有明确恢复意图时是否自动继续变更",
+      "goldSources": ["docs/comet/specs/native-ambient-resume/spec.md"]
+    },
+    {
+      "id": "zh-08",
+      "category": "chinese",
+      "query": "项目初始化如何确定 Native 产物根目录",
+      "goldSources": ["docs/comet/specs/native-init-workspace-defaults/spec.md"]
+    },
+    {
+      "id": "zh-09",
+      "category": "chinese",
+      "query": "记忆冲突应该如何展示和纠正",
+      "goldSources": ["docs/comet/specs/memory-experience/spec.md"]
+    },
+    {
+      "id": "zh-10",
+      "category": "chinese",
+      "query": "如何验证语义记忆不会误写用户偏好",
+      "goldSources": ["docs/comet/specs/semantic-memory-eval/spec.md"]
+    },
+    {
+      "id": "zh-11",
+      "category": "chinese",
+      "query": "记忆能力发布前需要满足哪些条件",
+      "goldSources": ["docs/comet/specs/semantic-memory-release/spec.md"]
+    },
+    {
+      "id": "zh-12",
+      "category": "chinese",
+      "query": "Dashboard 怎样预览变更产物",
+      "goldSources": ["docs/comet/specs/dashboard-artifact-preview/spec.md"]
+    },
+    {
+      "id": "zh-13",
+      "category": "chinese",
+      "query": "Native 验收证据如何记录",
+      "goldSources": ["docs/comet/specs/native-verification-evidence/spec.md"]
+    },
+    {
+      "id": "zh-14",
+      "category": "chinese",
+      "query": "怎样避免个人记忆在失败任务后自动生效",
+      "goldSources": ["docs/comet/specs/self-evolving-personal-memory/spec.md"]
+    },
+    {
+      "id": "zh-15",
+      "category": "chinese",
+      "query": "上下文注入需要什么安全边界",
+      "goldSources": ["docs/comet/specs/context-injection/spec.md"]
+    },
+
+    {
+      "id": "cross-01",
+      "category": "cross-module",
+      "query": "Plugin Runtime 如何同时接入 Personal Memory 和 Project Knowledge",
+      "goldSources": [
+        "docs/comet/specs/comet-plugin-runtime/spec.md",
+        "docs/comet/specs/project-knowledge/spec.md",
+        "docs/comet/specs/personal-memory/spec.md"
+      ]
+    },
+    {
+      "id": "cross-02",
+      "category": "cross-module",
+      "query": "comet task 怎样合并记忆和项目知识",
+      "goldSources": [
+        "docs/comet/specs/memory-workflow-integration/spec.md",
+        "docs/comet/specs/project-knowledge/spec.md"
+      ]
+    },
+    {
+      "id": "cross-03",
+      "category": "cross-module",
+      "query": "Dashboard 插件页如何读取本地索引状态",
+      "goldSources": [
+        "docs/comet/specs/dashboard-sqlite-index/spec.md",
+        "docs/comet/specs/comet-plugin-runtime/spec.md"
+      ]
+    },
+    {
+      "id": "cross-04",
+      "category": "cross-module",
+      "query": "Native Shape 创建 worktree 后 Runtime 存放在哪里",
+      "goldSources": [
+        "docs/comet/specs/native-shape-workspace-isolation/spec.md",
+        "docs/comet/specs/native-runtime-storage/spec.md"
+      ]
+    },
+    {
+      "id": "cross-05",
+      "category": "cross-module",
+      "query": "并行 child 完成后 Supervisor 如何推进",
+      "goldSources": [
+        "docs/comet/specs/native-parallel-worktree-tests/spec.md",
+        "docs/comet/specs/native-completion-loop/spec.md"
+      ]
+    },
+    {
+      "id": "cross-06",
+      "category": "cross-module",
+      "query": "验证完成事件如何形成可复用记忆",
+      "goldSources": [
+        "docs/comet/specs/memory-workflow-integration/spec.md",
+        "docs/comet/specs/self-evolving-personal-memory/spec.md"
+      ]
+    },
+    {
+      "id": "cross-07",
+      "category": "cross-module",
+      "query": "记忆 Dashboard 如何遵守插件暂停状态",
+      "goldSources": [
+        "docs/comet/specs/memory-dashboard/spec.md",
+        "docs/comet/specs/comet-plugin-runtime/spec.md"
+      ]
+    },
+    {
+      "id": "cross-08",
+      "category": "cross-module",
+      "query": "Native 状态恢复与 ambient resume 如何协作",
+      "goldSources": [
+        "docs/comet/specs/supervisor-recovery/spec.md",
+        "docs/comet/specs/native-ambient-resume/spec.md"
+      ]
+    },
+    {
+      "id": "cross-09",
+      "category": "cross-module",
+      "query": "来源覆盖检查怎样进入 Native 验收证据",
+      "goldSources": [
+        "docs/comet/specs/native-source-coverage/spec.md",
+        "docs/comet/specs/native-verification-evidence/spec.md"
+      ]
+    },
+    {
+      "id": "cross-10",
+      "category": "cross-module",
+      "query": "项目知识与个人记忆为什么使用不同预算",
+      "goldSources": [
+        "docs/comet/specs/project-knowledge/spec.md",
+        "docs/comet/specs/personal-memory/spec.md"
+      ]
+    },
+
+    {
+      "id": "conflict-01",
+      "category": "archive-conflict",
+      "query": "当前 Dashboard SQLite index 行为",
+      "goldSources": ["docs/comet/specs/dashboard-sqlite-index/spec.md"],
+      "forbiddenSourcePrefixes": ["docs/comet/archive/"]
+    },
+    {
+      "id": "conflict-02",
+      "category": "archive-conflict",
+      "query": "当前 Native parallel worktree 测试要求",
+      "goldSources": ["docs/comet/specs/native-parallel-worktree-tests/spec.md"],
+      "forbiddenSourcePrefixes": ["docs/comet/archive/"]
+    },
+    {
+      "id": "conflict-03",
+      "category": "archive-conflict",
+      "query": "当前 personal memory 行为",
+      "goldSources": ["docs/comet/specs/personal-memory/spec.md"],
+      "forbiddenSourcePrefixes": ["docs/comet/archive/"]
+    },
+    {
+      "id": "conflict-04",
+      "category": "archive-conflict",
+      "query": "当前 Native runtime storage 规范",
+      "goldSources": ["docs/comet/specs/native-runtime-storage/spec.md"],
+      "forbiddenSourcePrefixes": ["docs/comet/archive/"]
+    },
+    {
+      "id": "conflict-05",
+      "category": "archive-conflict",
+      "query": "当前 Native completion loop",
+      "goldSources": ["docs/comet/specs/native-completion-loop/spec.md"],
+      "forbiddenSourcePrefixes": ["docs/comet/archive/"]
+    },
+
+    {
+      "id": "none-01",
+      "category": "no-gold",
+      "query": "quantum banana deployment topology",
+      "goldSources": [],
+      "expectedAbstain": true
+    },
+    {
+      "id": "none-02",
+      "category": "no-gold",
+      "query": "财务发票审批流程",
+      "goldSources": [],
+      "expectedAbstain": true
+    },
+    {
+      "id": "none-03",
+      "category": "no-gold",
+      "query": "Kubernetes service mesh rollout",
+      "goldSources": [],
+      "expectedAbstain": true
+    },
+    {
+      "id": "none-04",
+      "category": "no-gold",
+      "query": "移动端推送证书轮换",
+      "goldSources": [],
+      "expectedAbstain": true
+    },
+    {
+      "id": "none-05",
+      "category": "no-gold",
+      "query": "warehouse inventory reconciliation",
+      "goldSources": [],
+      "expectedAbstain": true
+    }
+  ]
+}
