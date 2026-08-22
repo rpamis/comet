@@ -474,10 +474,15 @@ export class ProjectKnowledgeUnitRepository {
     options: ProjectKnowledgeUnitListOptions = {},
   ): Promise<readonly ProjectKnowledgeUnit[]> {
     const output: ProjectKnowledgeUnit[] = [];
-    for (const [root, origin] of [
+    const roots: readonly [string, ProjectKnowledgeUnitOrigin][] = [
       [this.maintainedRoot, 'maintained'],
       [this.generatedRoot, 'generated'],
-    ] as const) {
+      ...(this.legacyGeneratedRoot && this.legacyGeneratedRoot !== this.generatedRoot
+        ? ([[this.legacyGeneratedRoot, 'generated']] as const)
+        : []),
+    ];
+    const seenIds = new Set<string>();
+    for (const [root, origin] of roots) {
       if (options.origin && options.origin !== origin) continue;
       let entries: Dirent[];
       try {
@@ -511,6 +516,14 @@ export class ProjectKnowledgeUnitRepository {
           }
           const unit = parseProjectKnowledgeUnit(bytes.toString('utf8'), relative);
           if (unit.origin !== origin || (options.state && unit.state !== options.state)) continue;
+          if (seenIds.has(unit.id)) continue;
+          if (origin === 'generated' && root !== this.generatedRoot) {
+            const validation = await validateProjectKnowledgeUnitSources(unit, {
+              projectRoot: this.projectRoot,
+            });
+            if (!validation.valid) continue;
+          }
+          seenIds.add(unit.id);
           output.push(unit);
         } catch {
           this.reportDiagnostic?.({
