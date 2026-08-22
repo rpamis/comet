@@ -122,6 +122,18 @@ function boundedList<T>(
   return value.map((entry, index) => parse(entry, index));
 }
 
+function requiredBoundedList<T>(
+  value: unknown,
+  label: string,
+  max: number,
+  parse: (entry: unknown, index: number) => T,
+): T[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > max) {
+    throw new Error(`${label} must be a non-empty bounded list`);
+  }
+  return value.map((entry, index) => parse(entry, index));
+}
+
 function safeProjectPath(value: unknown, label: string): string {
   const source = boundedString(value, label, MAX_PATH_LENGTH).replaceAll('\\', '/');
   if (
@@ -198,7 +210,7 @@ function parseConclusion(value: unknown, index: number): ProjectKnowledgeRecordC
   const record = objectRecord(value, `conclusions[${index}]`);
   return {
     text: boundedString(record.text, `conclusions[${index}].text`),
-    sources: boundedList(
+    sources: requiredBoundedList(
       record.sources,
       `conclusions[${index}].sources`,
       MAX_SOURCES_PER_ENTRY,
@@ -220,7 +232,7 @@ function parseRelation(value: unknown, index: number): ProjectKnowledgeRecordRel
   return {
     type,
     targetId: stableId(record.targetId, `relations[${index}].targetId`),
-    sources: boundedList(
+    sources: requiredBoundedList(
       record.sources,
       `relations[${index}].sources`,
       MAX_SOURCES_PER_ENTRY,

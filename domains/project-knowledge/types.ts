@@ -173,11 +173,30 @@ export interface ProjectKnowledgeApplyResult {
 }
 
 export interface ProjectKnowledgeProvider {
-  retrieve(query: ProjectKnowledgeQuery): Promise<readonly ProjectKnowledgeResult[]>;
-  status?(): Promise<ProjectKnowledgeStatus>;
-  query?(request: ProjectKnowledgeQueryRequest): Promise<ProjectKnowledgeQueryResult>;
-  apply?(mutation: ProjectKnowledgeMutation): Promise<ProjectKnowledgeApplyResult>;
+  status(): Promise<ProjectKnowledgeStatus>;
+  query(request: ProjectKnowledgeQueryRequest): Promise<ProjectKnowledgeQueryResult>;
+  apply(mutation: ProjectKnowledgeMutation): Promise<ProjectKnowledgeApplyResult>;
 }
+
+export interface ProjectKnowledgeLegacyProvider {
+  retrieve(query: ProjectKnowledgeQuery): Promise<readonly ProjectKnowledgeResult[]>;
+}
+
+export interface ProjectKnowledgeProviderAdapter {
+  readonly legacy: ProjectKnowledgeLegacyProvider;
+  readonly provider: ProjectKnowledgeProvider;
+}
+
+type LegacyProviderMustNotSatisfyMainContract =
+  ProjectKnowledgeLegacyProvider extends ProjectKnowledgeProvider ? false : true;
+const legacyProviderMustNotSatisfyMainContract: LegacyProviderMustNotSatisfyMainContract = true;
+
+type AdapterProviderMustSatisfyMainContract =
+  ProjectKnowledgeProviderAdapter['provider'] extends ProjectKnowledgeProvider ? true : false;
+const adapterProviderMustSatisfyMainContract: AdapterProviderMustSatisfyMainContract = true;
+
+void legacyProviderMustNotSatisfyMainContract;
+void adapterProviderMustSatisfyMainContract;
 
 export interface ProjectKnowledgeCorpusOptions {
   readonly projectRoot: string;
