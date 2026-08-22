@@ -2,9 +2,24 @@ import type { PluginContext, PluginDescriptor } from '../comet-plugin/index.js';
 
 export type MemoryScope = 'global' | 'project';
 export type MemoryKind = 'explicit' | 'inferred';
+export type MemoryClass =
+  | 'user-fact'
+  | 'user-preference'
+  | 'collaboration-habit'
+  | 'project-convention';
+
+export function isMemoryClass(value: unknown): value is MemoryClass {
+  return (
+    value === 'user-fact' ||
+    value === 'user-preference' ||
+    value === 'collaboration-habit' ||
+    value === 'project-convention'
+  );
+}
 export type MemorySourceKind = 'user' | 'workflow' | 'review' | 'repository';
 export type MemoryLanguage = 'zh-CN' | 'en';
 export type MemoryReviewActionKind = 'create' | 'update' | 'forget' | 'skip';
+export type MemoryQueryView = 'combined' | 'profile' | 'task' | 'manage';
 
 export interface MemorySource {
   readonly kind: MemorySourceKind;
@@ -17,6 +32,7 @@ export interface MemorySource {
 export interface MemoryInput {
   readonly scope: MemoryScope;
   readonly projectKey?: string;
+  readonly memoryClass?: MemoryClass;
   readonly language?: MemoryLanguage;
   readonly title?: string;
   readonly reason?: string;
@@ -34,6 +50,7 @@ export interface MemoryRecord {
   readonly id: string;
   readonly scope: MemoryScope;
   readonly projectKey?: string;
+  readonly memoryClass?: MemoryClass;
   readonly title?: string;
   readonly reason?: string;
   readonly category: string;
@@ -57,6 +74,7 @@ export interface MemoryCorrection {
   readonly reason?: string;
   readonly text?: string;
   readonly category?: string;
+  readonly memoryClass?: MemoryClass;
   readonly tags?: readonly string[];
   readonly pathPatterns?: readonly string[];
   readonly taskTypes?: readonly string[];
@@ -66,6 +84,7 @@ export interface MemoryCorrection {
 export interface MemoryObservation {
   readonly scope: MemoryScope;
   readonly projectKey?: string;
+  readonly memoryClass?: MemoryClass;
   readonly category: string;
   readonly text: string;
   readonly title?: string;
@@ -95,6 +114,7 @@ export interface MemoryObservationResult {
 }
 
 export interface MemoryQuery {
+  readonly view?: MemoryQueryView;
   readonly scope?: MemoryScope;
   readonly projectKey?: string;
   readonly task?: string;
@@ -105,6 +125,9 @@ export interface MemoryQuery {
   readonly query?: string;
   readonly maxEntries?: number;
   readonly maxBytes?: number;
+  readonly maxChars?: number;
+  readonly profileMaxChars?: number;
+  readonly taskMaxChars?: number;
 }
 
 export interface MemoryRetrieval {
@@ -112,6 +135,12 @@ export interface MemoryRetrieval {
   readonly text: string;
   readonly truncated: boolean;
   readonly disabled: boolean;
+  readonly profileRecords?: readonly MemoryRecord[];
+  readonly profileText?: string;
+  readonly taskRecords?: readonly MemoryRecord[];
+  readonly taskText?: string;
+  readonly profileTruncated?: boolean;
+  readonly taskTruncated?: boolean;
 }
 
 export type MemoryManagementStatus = 'active' | 'inactive' | 'conflict' | 'tombstoned';
@@ -120,6 +149,7 @@ export interface MemoryManagementRecord {
   readonly id: string;
   readonly scope: MemoryScope;
   readonly projectKey?: string;
+  readonly memoryClass?: MemoryClass;
   readonly title?: string;
   readonly reason?: string;
   readonly category: string;
@@ -221,6 +251,7 @@ export interface MemoryReviewRequest {
   readonly permanent?: boolean;
   readonly scope?: MemoryScope;
   readonly projectKey?: string;
+  readonly memoryClass?: MemoryClass;
   readonly category?: string;
   readonly title?: string;
   readonly reason?: string;
@@ -236,6 +267,7 @@ export interface MemoryReviewEvidence {
   readonly scope: MemoryScope;
   readonly projectIdentity?: string;
   readonly projectKey?: string;
+  readonly memoryClass?: MemoryClass;
   readonly candidateKey?: string;
   readonly changeId: string;
   readonly success: boolean;
@@ -253,6 +285,7 @@ export interface MemoryReviewMemorySummary {
   readonly scope: MemoryScope;
   readonly projectIdentity?: string;
   readonly projectKey?: string;
+  readonly memoryClass?: MemoryClass;
   readonly title?: string;
   readonly reason?: string;
   readonly category: string;
@@ -292,6 +325,7 @@ export interface MemoryReviewActionBase {
 export interface MemoryReviewCreateAction extends MemoryReviewActionBase {
   readonly action: 'create';
   readonly scope: MemoryScope;
+  readonly memoryClass?: MemoryClass;
   readonly category: string;
   readonly text: string;
   readonly tags?: readonly string[];
@@ -303,6 +337,7 @@ export interface MemoryReviewCreateAction extends MemoryReviewActionBase {
 export interface MemoryReviewUpdateAction extends MemoryReviewActionBase {
   readonly action: 'update';
   readonly targetId: string;
+  readonly memoryClass?: MemoryClass;
   readonly text?: string;
   readonly category?: string;
   readonly tags?: readonly string[];
@@ -400,6 +435,8 @@ export interface PersonalMemoryOptions {
   readonly now?: () => Date;
   readonly maxEntries?: number;
   readonly maxBytes?: number;
+  readonly profileMaxChars?: number;
+  readonly taskMaxChars?: number;
 }
 
 export interface PersonalMemoryProjectPolicy {
@@ -416,6 +453,50 @@ export interface PersonalMemoryStatus {
   readonly files: readonly string[];
   readonly remote: string | null;
   readonly sync: MemorySyncResult | null;
+  readonly provider?: MemoryProviderStatus;
+  readonly profile?: MemoryProfileStatus;
+}
+
+export interface MemoryProfileStatus {
+  readonly usedChars: number;
+  readonly maxChars: number;
+}
+
+export interface MemoryProviderStatus {
+  readonly provider: 'local' | 'remote';
+  readonly configured: boolean;
+  readonly endpoint?: string;
+  readonly profile?: string;
+  readonly tokenConfigured?: boolean;
+  readonly timeoutMs?: number;
+}
+
+export interface MemoryProviderQuery {
+  readonly view: MemoryQueryView;
+  readonly query: MemoryQuery;
+}
+
+export interface MemoryProviderMutation {
+  readonly operation: 'remember' | 'correct' | 'forget' | 'rollback' | 'observe' | 'review';
+  readonly input: unknown;
+}
+
+export interface PersonalMemoryProvider {
+  status(): Promise<PersonalMemoryStatus>;
+  query(request: MemoryProviderQuery): Promise<MemoryRetrieval | MemoryManagementView>;
+  apply(mutation: MemoryProviderMutation): Promise<unknown>;
+}
+
+export interface MemoryProviderConfig {
+  readonly provider: 'local' | 'remote';
+  readonly profileCharLimit: number;
+  readonly taskContextCharLimit: number;
+  readonly remote?: {
+    readonly endpoint: string;
+    readonly tokenEnv?: string;
+    readonly profile?: string;
+    readonly timeoutMs?: number;
+  };
 }
 
 export interface PersonalMemoryPluginOptions {
@@ -426,6 +507,8 @@ export interface PersonalMemoryPluginOptions {
   readonly runReviewInBackground?: (task: () => Promise<void>) => void | Promise<void>;
   readonly runMemoryReview?: MemoryReviewSkillRunner;
   readonly onReviewNotice?: (notice: string) => void | Promise<void>;
+  readonly getProviderConfig?: () => Promise<MemoryProviderConfig>;
+  readonly configureProvider?: (config: MemoryProviderConfig) => Promise<void>;
   readonly createService: (context: PluginContext) => PersonalMemoryServiceLike;
 }
 
@@ -443,6 +526,7 @@ export interface PersonalMemoryServiceLike {
   retrieve(query: MemoryQuery): Promise<MemoryRetrieval>;
   manage(query?: MemoryQuery): Promise<MemoryManagementView>;
   status(): Promise<PersonalMemoryStatus>;
+  testProvider?(): Promise<{ readonly ok: boolean; readonly message?: string }>;
   sync(): Promise<MemorySyncResult>;
   remote?(): Promise<string | null>;
   configureRemote?(url: string): Promise<void>;
@@ -450,6 +534,8 @@ export interface PersonalMemoryServiceLike {
   setRetrievalEnabled?(enabled: boolean): Promise<void>;
   pauseProjectLearning?(projectKey: string, paused: boolean): Promise<void>;
   pauseProjectRetrieval?(projectKey: string, paused: boolean): Promise<void>;
+  query?(request: MemoryProviderQuery): Promise<MemoryRetrieval | MemoryManagementView>;
+  apply?(mutation: MemoryProviderMutation): Promise<unknown>;
 }
 
 export type PersonalMemoryPluginDescriptorFactory = (

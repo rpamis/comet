@@ -1,6 +1,7 @@
 import type {
   MemoryKind,
   MemoryLanguage,
+  MemoryClass,
   MemoryReviewAction,
   MemoryReviewActionSet,
   MemoryReviewPacket,
@@ -8,6 +9,7 @@ import type {
   MemoryReviewRequest,
   MemoryScope,
 } from './types.js';
+import { isMemoryClass } from './types.js';
 
 export const MEMORY_REVIEW_PACKET_SCHEMA = 'comet.memory.review.v1' as const;
 export const MEMORY_REVIEW_ACTIONS_SCHEMA = 'comet.memory.actions.v1' as const;
@@ -106,6 +108,10 @@ export function validateMemoryReviewPacket(
     const evidenceText = optionalString(item.text, `evidence[${index}].text`);
     if (evidenceText !== undefined) validateSafeText(evidenceText, `evidence[${index}].text`);
     const evidenceCategory = optionalString(item.category, `evidence[${index}].category`);
+    const evidenceMemoryClass = optionalMemoryClass(
+      item.memoryClass,
+      `evidence[${index}].memoryClass`,
+    );
     if (evidenceCategory !== undefined && object.explicitRequest === undefined)
       validateLanguageText(evidenceCategory, language, `evidence[${index}].category`);
     const evidenceArrays = optionalEvidenceArrays(item, language, index);
@@ -122,6 +128,7 @@ export function validateMemoryReviewPacket(
       observedAt,
       ...(evidenceText === undefined ? {} : { text: evidenceText }),
       ...(evidenceCategory === undefined ? {} : { category: evidenceCategory }),
+      ...(evidenceMemoryClass === undefined ? {} : { memoryClass: evidenceMemoryClass }),
       ...evidenceArrays,
     };
   });
@@ -152,6 +159,7 @@ export function validateMemoryReviewPacket(
     const text = requiredString(item.text, `memories[${index}].text`);
     const title = optionalString(item.title, `memories[${index}].title`);
     const reason = optionalString(item.reason, `memories[${index}].reason`);
+    const memoryClass = optionalMemoryClass(item.memoryClass, `memories[${index}].memoryClass`);
     validateSafeText(category, `memories[${index}].category`);
     validateSafeText(text, `memories[${index}].text`);
     if (title !== undefined) validateLanguageText(title, language, `memories[${index}].title`);
@@ -167,6 +175,7 @@ export function validateMemoryReviewPacket(
       text,
       ...(title === undefined ? {} : { title }),
       ...(reason === undefined ? {} : { reason }),
+      ...(memoryClass === undefined ? {} : { memoryClass }),
       kind,
       active: item.active === true,
     };
@@ -225,6 +234,7 @@ function normalizeReviewRequest(
     throw new Error('explicitRequest global action must not have a project key');
   }
   const category = optionalString(request.category, 'explicitRequest.category');
+  const memoryClass = optionalMemoryClass(request.memoryClass, 'explicitRequest.memoryClass');
   const title = optionalString(request.title, 'explicitRequest.title');
   const reason = optionalString(request.reason, 'explicitRequest.reason');
   const text = optionalString(request.text, 'explicitRequest.text');
@@ -266,6 +276,7 @@ function normalizeReviewRequest(
     ...(scope === undefined ? {} : { scope }),
     ...(projectKey === undefined ? {} : { projectKey }),
     ...(category === undefined ? {} : { category }),
+    ...(memoryClass === undefined ? {} : { memoryClass }),
     ...(title === undefined ? {} : { title }),
     ...(reason === undefined ? {} : { reason }),
     ...(text === undefined ? {} : { text }),
@@ -356,6 +367,7 @@ export function validateMemoryReviewActions(
     if (reason !== undefined) validateLanguageText(reason, language, `actions[${index}].reason`);
     const title = optionalString(action.title, `actions[${index}].title`);
     if (title !== undefined) validateLanguageText(title, language, `actions[${index}].title`);
+    const memoryClass = optionalMemoryClass(action.memoryClass, `actions[${index}].memoryClass`);
     if (kind === 'skip') {
       if (reason === undefined) throw new Error(`actions[${index}] skip requires a reason`);
       if (scope !== undefined) actionScopes.add(scope);
@@ -408,6 +420,7 @@ export function validateMemoryReviewActions(
         evidenceKeys: actionEvidence,
         ...(reason === undefined ? {} : { reason }),
         ...(title === undefined ? {} : { title }),
+        ...(memoryClass === undefined ? {} : { memoryClass }),
         ...optionalArrays(action, language, index, packet.explicitRequest !== undefined),
       };
     }
@@ -447,6 +460,7 @@ export function validateMemoryReviewActions(
       evidenceKeys: actionEvidence,
       ...(reason === undefined ? {} : { reason }),
       ...(title === undefined ? {} : { title }),
+      ...(memoryClass === undefined ? {} : { memoryClass }),
       ...optionalArrays(action, language, index, packet.explicitRequest !== undefined),
     };
   });
@@ -804,6 +818,12 @@ function asLanguage(value: unknown, field: string): MemoryLanguage {
 
 function asScope(value: unknown, field: string): MemoryScope {
   if (value !== 'global' && value !== 'project') throw new Error(`${field} is invalid`);
+  return value;
+}
+
+function optionalMemoryClass(value: unknown, field: string): MemoryClass | undefined {
+  if (value === undefined) return undefined;
+  if (!isMemoryClass(value)) throw new Error(`${field} is invalid`);
   return value;
 }
 

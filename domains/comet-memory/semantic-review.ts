@@ -73,6 +73,7 @@ function buildExplicitAction(
       ...(projectKey === undefined ? {} : { projectKey }),
       category: request.category ?? localizedCategory(language),
       text,
+      ...(request.memoryClass === undefined ? {} : { memoryClass: request.memoryClass }),
       ...metadata,
       evidenceKeys: evidence.map((entry) => entry.key),
       ...copyRequestArrays(request),
@@ -106,6 +107,7 @@ function buildExplicitAction(
     ...metadata,
     ...(request.text === undefined ? {} : { text: request.text }),
     ...(request.category === undefined ? {} : { category: request.category }),
+    ...(request.memoryClass === undefined ? {} : { memoryClass: request.memoryClass }),
     evidenceKeys: evidence.map((entry) => entry.key),
     ...copyRequestArrays(request),
   };
@@ -201,6 +203,7 @@ function buildAction(packet: MemoryReviewPacket): Record<string, unknown> {
     ...(firstEvidence.candidateKey === undefined
       ? {}
       : { candidateKey: firstEvidence.candidateKey }),
+    ...(firstEvidence.memoryClass === undefined ? {} : { memoryClass: firstEvidence.memoryClass }),
     category: packet.category ?? firstEvidence.category ?? localizedCategory(packet.language),
     text,
     title: packet.language === 'en' ? 'Reusable workflow preference' : '可复用协作偏好',

@@ -45,6 +45,7 @@ describe('personal memory commands', () => {
       json: true,
     })) as { records: readonly { text: string }[] };
     expect(retrieved.records.map((record) => record.text)).toContain('使用简洁的中文说明');
+    expect(retrieved).toHaveProperty('profileText');
 
     const context = (await personalMemoryContextCommand(root, {
       memoryRoot,

@@ -8,6 +8,7 @@ Comet Personal Memory keeps reusable personal preferences, collaboration habits,
 - A bounded background review runs at stable successful workflow checkpoints. When there is nothing durable to save, the review is skipped, or the same observation repeats, nothing is shown by default.
 - You see a short notice only when a memory first changes how a later task is handled or when a conflict needs attention.
 - Memory is kept in readable Markdown: global preferences in `profile.md` and project experience normally uses a readable project name, such as `projects/comet.md`. Comet keeps an internal project key for precise association, so the main worktree and worktrees of the same repository use the same project memory. You can inspect and edit these files directly.
+- Comet presents a separate **User Profile** for durable user facts, preferences, and collaboration habits, then adds task-matched project memory below it. The profile and task context are bounded by character budgets rather than a fixed number of entries.
 
 ## What is worth remembering
 
@@ -51,6 +52,23 @@ memory:
 - Explicit `comet memory remember`, `retrieve`, `manage`, correction, and forget operations remain available for user-directed memory management.
 
 Project policy is separate from plugin lifecycle. Uninstalling the Personal Memory plugin stops the plugin but does not edit this configuration or delete the memory repository.
+
+## Provider settings
+
+Personal Memory uses a Local Provider by default. The user-level `~/.comet/config.yaml` can select a Remote Provider and set the two context budgets without changing project policy:
+
+```yaml
+personal_memory:
+  provider: remote
+  profile_char_limit: 2000
+  task_context_char_limit: 6000
+  remote:
+    endpoint: https://memory.example.test/provider
+    token_env: COMET_MEMORY_TOKEN
+    profile: default
+```
+
+The token value stays in the named environment variable; the config and Dashboard store only its name. The Dashboard can test the active Provider, save the selection, and edit the character budgets. A saved Provider selection is used when the Personal Memory page is loaded again. Remote requests use the versioned `comet.personal-memory.provider.v1` protocol.
 
 ## View and manage memory
 

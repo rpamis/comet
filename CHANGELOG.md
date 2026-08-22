@@ -7,8 +7,9 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Added
 
 - **Oh My Pi and DeepSeek Harness support**: `comet init`, `comet update`, and `comet uninstall` now manage Comet's native Skills, Rules, and Hook integrations in both platforms' project and user environments.
-- **Personal memory**: Comet now learns reusable user preferences, project conventions, and stable collaboration habits across Classic, Native, Hotfix, and Tweak while excluding routine task progress, command output, and Agent work records; the same state is available through `comet memory` and Dashboard management.
-- **Personal Memory Dashboard**: Dashboard now provides readable memory records, correction, forget, rollback, conflict protection, and dedicated Git synchronization controls.
+- **Personal memory**: Comet now keeps an independent User Profile for durable user facts, preferences, and collaboration habits, while matching project memory to the current task; routine task progress, command output, and Agent work records are not learned as personal preferences.
+- **Personal Memory providers**: Personal Memory now supports the built-in Local Provider and a configurable Remote Provider over the versioned `comet.personal-memory.provider.v1` protocol.
+- **Personal Memory Dashboard**: Dashboard now separates User Profile, project memory, and pending candidates or conflicts, and lets users configure Provider selection plus the Profile and task-context character budgets alongside correction, forget, rollback, and local Git synchronization.
 - **Project knowledge**: `comet task` now combines a workspace-isolated SQLite FTS5 read model, bounded ripgrep fallback, validated Project Knowledge Units, and one-hop related-unit expansion so Agents can reuse project structure and behavior context instead of repeatedly scanning the repository. Personal project preferences remain in Personal Memory, while explicit source-backed sharing is required before they become shared project knowledge.
 - **Project Knowledge Dashboard**: Dashboard now exposes the knowledge provider, safe Remote settings, persistent recent diagnostics, and project-level enable, pause, resume, and uninstall controls; stale Remote settings are ignored and uninstall returns cleanly to the workflow view.
 
