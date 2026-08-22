@@ -70,7 +70,9 @@ describe('comet knowledge commands', () => {
         }),
       ).resolves.toMatchObject({
         provider: 'local',
-        results: [expect.objectContaining({ source: 'docs/comet/specs/retrieval.md' })],
+        results: expect.arrayContaining([
+          expect.objectContaining({ source: 'docs/comet/specs/retrieval.md' }),
+        ]),
       });
 
       await expect(

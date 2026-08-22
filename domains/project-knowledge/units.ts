@@ -648,10 +648,14 @@ export class ProjectKnowledgeUnitRepository {
     const validated = validateProjectKnowledgeUnitShape(unit);
     if (validated.origin !== 'generated')
       throw new Error('writeGenerated requires generated origin');
-    const sourceVersions = await captureProjectKnowledgeUnitSourceVersions(
+    const captured = await captureProjectKnowledgeUnitSourceVersionsDetailed(
       validated,
       this.projectRoot,
     );
+    if (!captured.complete) {
+      throw new Error('project knowledge unit source capture exceeded its time budget');
+    }
+    const sourceVersions = captured.versions;
     const persisted = sourceVersions.length > 0 ? { ...validated, sourceVersions } : validated;
     await fs.mkdir(this.generatedRoot, { recursive: true });
     await fs.writeFile(
@@ -742,6 +746,18 @@ export async function captureProjectKnowledgeUnitSourceVersions(
   unit: ProjectKnowledgeUnit,
   projectRoot: string,
 ): Promise<readonly ProjectKnowledgeUnitSourceVersion[]> {
+  return (await captureProjectKnowledgeUnitSourceVersionsDetailed(unit, projectRoot)).versions;
+}
+
+interface ProjectKnowledgeUnitSourceCaptureResult {
+  readonly versions: readonly ProjectKnowledgeUnitSourceVersion[];
+  readonly complete: boolean;
+}
+
+async function captureProjectKnowledgeUnitSourceVersionsDetailed(
+  unit: ProjectKnowledgeUnit,
+  projectRoot: string,
+): Promise<ProjectKnowledgeUnitSourceCaptureResult> {
   const deadline = Date.now() + 2_000;
   const references = [
     ...unit.conclusions.flatMap((conclusion) => conclusion.sources),
@@ -749,8 +765,12 @@ export async function captureProjectKnowledgeUnitSourceVersions(
   ];
   const seen = new Set<string>();
   const versions: ProjectKnowledgeUnitSourceVersion[] = [];
+  let complete = true;
   for (const reference of references) {
-    if (Date.now() > deadline) break;
+    if (Date.now() > deadline) {
+      complete = false;
+      break;
+    }
     if (seen.has(reference.source)) continue;
     seen.add(reference.source);
     try {
@@ -769,7 +789,7 @@ export async function captureProjectKnowledgeUnitSourceVersions(
       // Validation reports missing or inaccessible sources separately.
     }
   }
-  return versions;
+  return { versions, complete };
 }
 
 export async function validateProjectKnowledgeUnitSources(

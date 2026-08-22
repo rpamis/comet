@@ -323,4 +323,55 @@ describe('project knowledge units', () => {
       await fs.rm(cache, { recursive: true, force: true });
     }
   });
+
+  test('does not reactivate a retired deterministic unit on the next refresh', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-unit-retire-');
+    const cache = await temporaryRoot('comet-project-knowledge-unit-retire-cache-');
+    try {
+      await fs.mkdir(path.join(root, 'src'), { recursive: true });
+      await fs.writeFile(path.join(root, 'src', 'main.ts'), 'export const ready = true;\n');
+      const repository = new ProjectKnowledgeUnitRepository({
+        projectRoot: root,
+        cacheRoot: cache,
+      });
+      const createProvider = () =>
+        new LocalProjectKnowledgeProvider({
+          projectRoot: root,
+          corpus: [],
+          indexEnabled: false,
+          unitRepository: repository,
+          runRipgrep: async () => ({
+            stdout: '',
+            stderr: '',
+            exitCode: 1,
+            timedOut: false,
+            truncated: false,
+            matchLimitReached: false,
+          }),
+        });
+      const query = {
+        task: '项目结构',
+        path: undefined,
+        phase: undefined,
+        operation: undefined,
+        terms: ['项目'],
+        strongTerms: [],
+        phraseTerms: [],
+        weakTerms: ['项目'],
+        remoteQuery: '项目结构',
+      };
+      await createProvider().retrieve(query);
+      await repository.retire('generated-project-map');
+      await createProvider().retrieve(query);
+      await expect(repository.read('generated-project-map')).resolves.toMatchObject({
+        state: 'retired',
+      });
+      await expect(repository.list({ state: 'active' })).resolves.not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: 'generated-project-map' })]),
+      );
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cache, { recursive: true, force: true });
+    }
+  });
 });

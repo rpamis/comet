@@ -269,6 +269,7 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
           if (targetedRefresh) continue;
           const active = { ...unit, state: 'active' as const };
           const current = existing.find((candidate) => candidate.id === unit.id);
+          if (current && current.state !== 'active') continue;
           const currentComparable = current ? { ...current, sourceVersions: undefined } : {};
           if (
             current?.origin === 'generated' &&
