@@ -14,8 +14,10 @@ import {
 } from '../comet-classic/classic-protected-path.js';
 import { readClassicState } from '../comet-classic/classic-store.js';
 import { assertNoPendingNativeRootMove } from '../comet-native/native-config.js';
-import { listNativeStatus } from '../comet-native/native-diagnostics.js';
+import { inspectNativeStatus, listNativeChangeNames } from '../comet-native/native-diagnostics.js';
 import { discoverNativeProject, nativeProjectPaths } from '../comet-native/native-paths.js';
+import { inspectNativePortableStatus } from '../comet-native/native-portable-status.js';
+import { isNativePortableChange } from '../comet-native/native-portable-runtime.js';
 import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
 import { resolveCometEntry } from './resolve-entry.js';
 import type { ChangeStatus, CometEntryResolution, CometProjectStatus } from './types.js';
@@ -90,6 +92,20 @@ function invalidClassicChange(name: string, error: unknown, done = 0, total = 0)
     commandChecks: null,
     error: error instanceof Error ? error.message : String(error),
   };
+}
+
+async function listConfiguredNativeStatus(
+  paths: Awaited<ReturnType<typeof nativeProjectPaths>>,
+  options: { clarificationMode: 'sequential' | 'batch'; maxVerifyFailures: number },
+): Promise<CometProjectStatus['workflows']['native']['changes']> {
+  const names = await listNativeChangeNames(paths);
+  return Promise.all(
+    names.map(async (name) =>
+      (await isNativePortableChange(paths, name))
+        ? inspectNativePortableStatus({ paths, name })
+        : inspectNativeStatus(paths, name, options),
+    ),
+  );
 }
 
 async function inspectOpenSpecChanges(
@@ -273,7 +289,7 @@ export async function inspectCometProjectStatus(startPath: string): Promise<Come
       await assertNoPendingNativeRootMove(projectRoot);
       const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
       native = {
-        changes: await listNativeStatus(paths, {
+        changes: await listConfiguredNativeStatus(paths, {
           clarificationMode: config.native.clarification_mode,
           maxVerifyFailures: config.native.max_verify_failures,
         }),

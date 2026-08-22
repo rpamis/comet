@@ -3,10 +3,16 @@ import { inspectCometProjectStatus } from '../../domains/comet-entry/project-sta
 import type { ChangeStatus, CometProjectStatus } from '../../domains/comet-entry/types.js';
 import { requiresBranchBinding } from '../../domains/comet-classic/classic-branch-binding.js';
 import type { RecordedCommandCheck } from '../../domains/comet-classic/classic-command-checks.js';
-import type { NativeStatusProjection } from '../../domains/comet-native/native-types.js';
+import type { NativePortableStatusProjection } from '../../domains/comet-native/native-portable-status.js';
 
 function formatMissingEvidence(missingEvidence: readonly string[]): string {
   return missingEvidence.join(', ');
+}
+
+function displayCommandArgs(args: readonly string[]): string {
+  return args
+    .map((value) => (/^[A-Za-z0-9_./:=+@-]+$/u.test(value) ? value : JSON.stringify(value)))
+    .join(' ');
 }
 
 function formatRuntimeCheckRecovery(
@@ -95,7 +101,11 @@ function displayNativeChanges(section: CometProjectStatus['workflows']['native']
     return;
   }
   for (let index = 0; index < section.changes.length; index++) {
-    const change: NativeStatusProjection = section.changes[index];
+    const change = section.changes[index];
+    if ('stateVersion' in change) {
+      displayPortableNativeChange(change, index + 1);
+      continue;
+    }
     console.log(`  ${index + 1}. ${change.name} [Native] [phase: ${change.phase}]`);
     console.log(
       `     approval: ${change.approval ?? 'pending'} | verification: ${change.verificationResult} | spec_changes: ${change.specChanges}`,
@@ -105,6 +115,20 @@ function displayNativeChanges(section: CometProjectStatus['workflows']['native']
     if (change.nextCommand) console.log(`     next: ${change.nextCommand}`);
     console.log();
   }
+}
+
+function displayPortableNativeChange(change: NativePortableStatusProjection, index: number): void {
+  console.log(`  ${index}. ${change.name} [Native] [phase: ${change.phase}]`);
+  console.log(
+    `     status: ${change.status} | verification: ${change.verificationResult} | acceptance: ${change.acceptance.passed}/${change.acceptance.total}`,
+  );
+  if (change.workspace.bindingState !== 'aligned') {
+    console.log(`     workspace: ${change.workspace.message ?? change.workspace.bindingState}`);
+  }
+  if (change.continuation.commandArgs) {
+    console.log(`     next: ${displayCommandArgs(change.continuation.commandArgs)}`);
+  }
+  console.log();
 }
 
 function displayDefaultEntry(defaultEntry: CometProjectStatus['defaultEntry']): void {

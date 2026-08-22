@@ -1,4 +1,5 @@
 import type { RecordedCommandCheck } from '../comet-classic/classic-command-checks.js';
+import type { NativePortableStatusProjection } from '../comet-native/native-portable-status.js';
 import type { NativeStatusProjection } from '../comet-native/native-types.js';
 
 export type CometWorkflow = 'native' | 'classic';
@@ -56,7 +57,10 @@ export interface CometProjectStatus {
   schema: 'comet.status.v2';
   defaultEntry: CometEntryResolution | { error: string };
   workflows: {
-    native: { changes: NativeStatusProjection[]; error?: string };
+    native: {
+      changes: Array<NativeStatusProjection | NativePortableStatusProjection>;
+      error?: string;
+    };
     classic: { changes: ChangeStatus[]; error?: string };
   };
   unmanagedOpenSpec: ChangeStatus[];

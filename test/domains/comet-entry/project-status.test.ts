@@ -14,6 +14,7 @@ import {
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import { createNativePortableChange } from '../../../domains/comet-native/native-portable-runtime.js';
 
 const VALID_BRIEF = `# Outcome
 Ship one outcome.
@@ -148,6 +149,25 @@ describe('Comet project status', () => {
         },
       },
     });
+  });
+
+  it('uses the portable status projection for Native v4 changes', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    const paths = await nativeProjectPaths(projectRoot, '.');
+    await createNativePortableChange({ paths, name: 'native-v4', language: 'en' });
+
+    const status = await inspectCometProjectStatus(projectRoot);
+
+    expect(status.workflows.native.changes).toEqual([
+      expect.objectContaining({
+        name: 'native-v4',
+        phase: 'shape',
+        status: 'active',
+        stateVersion: 1,
+        verificationResult: 'pending',
+        continuation: expect.objectContaining({ action: 'confirm-shape' }),
+      }),
+    ]);
   });
 
   it('keeps plain OpenSpec changes outside both Comet workflows', async () => {

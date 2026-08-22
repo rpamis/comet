@@ -26,6 +26,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Fixed
 
 - **Windows Native reliability**: Snapshot checks are more reliable when hooks and workspace operations run concurrently on Windows.
+- **Native status compatibility**: `comet status` now reads Native v4 Portable State changes instead of reporting them as invalid legacy schemas.
 
 ## What's Changed [0.4.0-beta.19] - 2026-08-21
 
