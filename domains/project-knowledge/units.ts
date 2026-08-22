@@ -1,0 +1,576 @@
+import { promises as fs } from 'node:fs';
+import type { Dirent } from 'node:fs';
+import path from 'node:path';
+import { parse, stringify } from 'yaml';
+
+import { resolveProjectKnowledgeCacheLocation } from '../../platform/paths/project-knowledge-cache.js';
+import {
+  ensureProtectedProjectDirectory,
+  inspectProtectedProjectPath,
+  readProtectedProjectFile,
+} from '../workflow-contract/protected-project-path.js';
+
+export const PROJECT_KNOWLEDGE_UNIT_SCHEMA = 'comet.project-knowledge.unit.v1' as const;
+
+export type ProjectKnowledgeUnitKind =
+  | 'project-map'
+  | 'module-overview'
+  | 'behavior-note'
+  | 'integration-path'
+  | 'change-impact'
+  | 'build-test';
+
+export type ProjectKnowledgeUnitState = 'draft' | 'active' | 'retired';
+export type ProjectKnowledgeUnitOrigin = 'maintained' | 'generated';
+
+export type ProjectKnowledgeRelationType =
+  | 'contains'
+  | 'depends-on'
+  | 'consumes'
+  | 'registers'
+  | 'propagates-to'
+  | 'generated-by'
+  | 'validated-by'
+  | 'supersedes';
+
+export interface ProjectKnowledgeUnitSource {
+  readonly source: string;
+  readonly anchor?: string;
+  readonly lineStart?: number;
+  readonly lineEnd?: number;
+}
+
+export interface ProjectKnowledgeUnitConclusion {
+  readonly text: string;
+  readonly sources: readonly ProjectKnowledgeUnitSource[];
+}
+
+export interface ProjectKnowledgeUnitRelation {
+  readonly type: ProjectKnowledgeRelationType;
+  readonly target: string;
+  readonly sources: readonly ProjectKnowledgeUnitSource[];
+}
+
+export interface ProjectKnowledgeUnitVerification {
+  readonly command: string;
+  readonly expected?: string;
+}
+
+export interface ProjectKnowledgeUnit {
+  readonly schema: typeof PROJECT_KNOWLEDGE_UNIT_SCHEMA;
+  readonly id: string;
+  readonly kind: ProjectKnowledgeUnitKind;
+  readonly state: ProjectKnowledgeUnitState;
+  readonly origin: ProjectKnowledgeUnitOrigin;
+  readonly title: string;
+  readonly summary: string;
+  readonly applicablePaths: readonly string[];
+  readonly operations: readonly string[];
+  readonly conclusions: readonly ProjectKnowledgeUnitConclusion[];
+  readonly relations: readonly ProjectKnowledgeUnitRelation[];
+  readonly verification: readonly ProjectKnowledgeUnitVerification[];
+}
+
+export interface ProjectKnowledgeUnitDiagnostic {
+  readonly code: string;
+  readonly message: string;
+  readonly source?: string;
+}
+
+export interface ProjectKnowledgeUnitRepositoryOptions {
+  readonly projectRoot: string;
+  readonly cacheRoot?: string;
+  readonly reportDiagnostic?: (diagnostic: ProjectKnowledgeUnitDiagnostic) => void;
+}
+
+export interface ProjectKnowledgeUnitListOptions {
+  readonly state?: ProjectKnowledgeUnitState;
+  readonly origin?: ProjectKnowledgeUnitOrigin;
+}
+
+const UNIT_ID = /^[a-z0-9][a-z0-9._-]{1,127}$/u;
+const MAX_UNIT_BYTES = 128 * 1024;
+const MAX_SOURCE_COUNT = 32;
+const MAX_TOTAL_SOURCE_COUNT = 128;
+const MAX_STRING = 2000;
+const UNIT_KINDS = new Set<ProjectKnowledgeUnitKind>([
+  'project-map',
+  'module-overview',
+  'behavior-note',
+  'integration-path',
+  'change-impact',
+  'build-test',
+]);
+const RELATION_TYPES = new Set<ProjectKnowledgeRelationType>([
+  'contains',
+  'depends-on',
+  'consumes',
+  'registers',
+  'propagates-to',
+  'generated-by',
+  'validated-by',
+  'supersedes',
+]);
+
+function objectRecord(value: unknown, label: string): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`${label} must be a mapping`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function boundedString(value: unknown, label: string, max = MAX_STRING): string {
+  if (typeof value !== 'string' || value.trim().length === 0 || value.length > max) {
+    throw new Error(`${label} must be a non-empty string of at most ${max} characters`);
+  }
+  return value.trim();
+}
+
+function stringList(value: unknown, label: string, max = 32): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > max)
+    throw new Error(`${label} must be a bounded list`);
+  return value.map((entry, index) => boundedString(entry, `${label}[${index}]`, 512));
+}
+
+function parseSource(value: unknown, label: string): ProjectKnowledgeUnitSource {
+  const record = objectRecord(value, label);
+  const source = boundedString(record.source, `${label}.source`, 1024).replaceAll('\\', '/');
+  if (
+    path.posix.isAbsolute(source) ||
+    path.win32.isAbsolute(source) ||
+    source.split('/').some((segment) => segment === '..') ||
+    source.includes('\0')
+  ) {
+    throw new Error(`${label}.source must be a project-relative path`);
+  }
+  const lineStart = record.line_start;
+  const lineEnd = record.line_end;
+  if (lineStart !== undefined && (!Number.isSafeInteger(lineStart) || Number(lineStart) < 1)) {
+    throw new Error(`${label}.line_start must be a positive integer`);
+  }
+  if (lineEnd !== undefined && (!Number.isSafeInteger(lineEnd) || Number(lineEnd) < 1)) {
+    throw new Error(`${label}.line_end must be a positive integer`);
+  }
+  if (lineStart !== undefined && lineEnd !== undefined && Number(lineEnd) < Number(lineStart)) {
+    throw new Error(`${label}.line_end must not precede line_start`);
+  }
+  return {
+    source,
+    ...(record.anchor === undefined
+      ? {}
+      : { anchor: boundedString(record.anchor, `${label}.anchor`, 512) }),
+    ...(lineStart === undefined ? {} : { lineStart: Number(lineStart) }),
+    ...(lineEnd === undefined ? {} : { lineEnd: Number(lineEnd) }),
+  };
+}
+
+function parseSources(value: unknown, label: string): ProjectKnowledgeUnitSource[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_SOURCE_COUNT) {
+    throw new Error(`${label} must contain between 1 and ${MAX_SOURCE_COUNT} sources`);
+  }
+  return value.map((entry, index) => parseSource(entry, `${label}[${index}]`));
+}
+
+function parseConclusion(value: unknown, index: number): ProjectKnowledgeUnitConclusion {
+  const record = objectRecord(value, `conclusions[${index}]`);
+  return {
+    text: boundedString(record.text, `conclusions[${index}].text`),
+    sources: parseSources(record.sources, `conclusions[${index}].sources`),
+  };
+}
+
+function parseRelation(value: unknown, index: number): ProjectKnowledgeUnitRelation {
+  const record = objectRecord(value, `relations[${index}]`);
+  const type = boundedString(
+    record.type,
+    `relations[${index}].type`,
+    64,
+  ) as ProjectKnowledgeRelationType;
+  if (!RELATION_TYPES.has(type)) throw new Error(`relations[${index}].type is unsupported`);
+  return {
+    type,
+    target: boundedString(record.target, `relations[${index}].target`, 128),
+    sources: parseSources(record.sources, `relations[${index}].sources`),
+  };
+}
+
+function parseVerification(value: unknown): ProjectKnowledgeUnitVerification[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 16)
+    throw new Error('verification must be a bounded list');
+  return value.map((entry, index) => {
+    const record = objectRecord(entry, `verification[${index}]`);
+    return {
+      command: boundedString(record.command, `verification[${index}].command`, 512),
+      ...(record.expected === undefined
+        ? {}
+        : { expected: boundedString(record.expected, `verification[${index}].expected`, 512) }),
+    };
+  });
+}
+
+export function validateProjectKnowledgeUnitShape(value: unknown): ProjectKnowledgeUnit {
+  const record = objectRecord(value, 'project knowledge unit');
+  if (record.schema !== PROJECT_KNOWLEDGE_UNIT_SCHEMA)
+    throw new Error('unit schema is unsupported');
+  const id = boundedString(record.id, 'id', 128);
+  if (!UNIT_ID.test(id)) throw new Error('id must use lowercase stable unit naming');
+  const kind = boundedString(record.kind, 'kind', 64) as ProjectKnowledgeUnitKind;
+  if (!UNIT_KINDS.has(kind)) throw new Error('kind is unsupported');
+  const state = boundedString(record.state, 'state', 16) as ProjectKnowledgeUnitState;
+  if (!['draft', 'active', 'retired'].includes(state)) throw new Error('state is unsupported');
+  const origin = boundedString(record.origin, 'origin', 16) as ProjectKnowledgeUnitOrigin;
+  if (!['maintained', 'generated'].includes(origin)) throw new Error('origin is unsupported');
+  const conclusionsValue = record.conclusions;
+  if (
+    !Array.isArray(conclusionsValue) ||
+    conclusionsValue.length === 0 ||
+    conclusionsValue.length > 32
+  ) {
+    throw new Error('conclusions must contain between 1 and 32 conclusions');
+  }
+  const relationsValue = record.relations;
+  if (!Array.isArray(relationsValue) || relationsValue.length > 16)
+    throw new Error('relations must be a bounded list');
+  const unit: ProjectKnowledgeUnit = {
+    schema: PROJECT_KNOWLEDGE_UNIT_SCHEMA,
+    id,
+    kind,
+    state,
+    origin,
+    title: boundedString(record.title, 'title', 200),
+    summary: boundedString(record.summary, 'summary', 1000),
+    applicablePaths: stringList(
+      record.applicable_paths ?? record.applicablePaths,
+      'applicable_paths',
+    ),
+    operations: stringList(record.operations, 'operations'),
+    conclusions: conclusionsValue.map((entry, index) => parseConclusion(entry, index)),
+    relations: relationsValue.map((entry, index) => parseRelation(entry, index)),
+    verification: parseVerification(record.verification),
+  };
+  const sourceCount =
+    unit.conclusions.reduce((total, conclusion) => total + conclusion.sources.length, 0) +
+    unit.relations.reduce((total, relation) => total + relation.sources.length, 0);
+  if (sourceCount > MAX_TOTAL_SOURCE_COUNT)
+    throw new Error('unit source references exceed the limit');
+  return unit;
+}
+
+function frontmatterAndBody(
+  markdown: string,
+  source: string,
+): { value: Record<string, unknown>; body: string } {
+  const normalized = markdown.replace(/^\uFEFF/u, '').replaceAll('\r\n', '\n');
+  if (!normalized.startsWith('---\n'))
+    throw new Error(`${source} must start with YAML frontmatter`);
+  const end = normalized.indexOf('\n---', 4);
+  if (end < 0) throw new Error(`${source} frontmatter is not closed`);
+  const frontmatter = normalized.slice(4, end);
+  return {
+    value: objectRecord(parse(frontmatter), `${source} frontmatter`),
+    body: normalized.slice(end + 4).trim(),
+  };
+}
+
+export function parseProjectKnowledgeUnit(
+  markdown: string,
+  source = 'project knowledge unit',
+): ProjectKnowledgeUnit {
+  const { value } = frontmatterAndBody(markdown, source);
+  return validateProjectKnowledgeUnitShape(value);
+}
+
+function bodySection(title: string, body: string): string {
+  return `## ${title}\n\n${body.trim() || '无补充说明。'}\n`;
+}
+
+export function renderProjectKnowledgeUnit(unit: ProjectKnowledgeUnit): string {
+  const validated = validateProjectKnowledgeUnitShape(unit);
+  const frontmatter = {
+    schema: validated.schema,
+    id: validated.id,
+    kind: validated.kind,
+    state: validated.state,
+    origin: validated.origin,
+    title: validated.title,
+    summary: validated.summary,
+    ...(validated.applicablePaths.length > 0
+      ? { applicable_paths: [...validated.applicablePaths] }
+      : {}),
+    ...(validated.operations.length > 0 ? { operations: [...validated.operations] } : {}),
+    conclusions: validated.conclusions.map((conclusion) => ({
+      text: conclusion.text,
+      sources: conclusion.sources.map((source) => ({
+        source: source.source,
+        ...(source.anchor === undefined ? {} : { anchor: source.anchor }),
+        ...(source.lineStart === undefined ? {} : { line_start: source.lineStart }),
+        ...(source.lineEnd === undefined ? {} : { line_end: source.lineEnd }),
+      })),
+    })),
+    relations: validated.relations.map((relation) => ({
+      type: relation.type,
+      target: relation.target,
+      sources: relation.sources.map((source) => ({
+        source: source.source,
+        ...(source.anchor === undefined ? {} : { anchor: source.anchor }),
+        ...(source.lineStart === undefined ? {} : { line_start: source.lineStart }),
+        ...(source.lineEnd === undefined ? {} : { line_end: source.lineEnd }),
+      })),
+    })),
+    ...(validated.verification.length > 0 ? { verification: [...validated.verification] } : {}),
+  };
+  const conclusionText = validated.conclusions
+    .map((conclusion) => `- ${conclusion.text}`)
+    .join('\n');
+  const relationText =
+    validated.relations.length === 0
+      ? '当前没有需要扩展的关系。'
+      : validated.relations.map((relation) => `- ${relation.type} → ${relation.target}`).join('\n');
+  const sourceText = [
+    ...new Set([
+      ...validated.conclusions.flatMap((conclusion) =>
+        conclusion.sources.map((source) => source.source),
+      ),
+      ...validated.relations.flatMap((relation) => relation.sources.map((source) => source.source)),
+    ]),
+  ]
+    .map((source) => `- ${source}`)
+    .join('\n');
+  const verificationText =
+    validated.verification.length === 0
+      ? '无额外验证命令。'
+      : validated.verification
+          .map((entry) => `- \`${entry.command}\`${entry.expected ? `：${entry.expected}` : ''}`)
+          .join('\n');
+  return [
+    '---',
+    stringify(frontmatter, { lineWidth: 0 }).trimEnd(),
+    '---',
+    '',
+    bodySection('职责或结论', conclusionText),
+    bodySection(
+      'Agent 何时使用',
+      validated.operations.length > 0
+        ? validated.operations.map((operation) => `- ${operation}`).join('\n')
+        : '根据适用路径和任务类型使用。',
+    ),
+    bodySection('行为语义或影响链', `${validated.summary}\n\n${relationText}`),
+    bodySection(
+      '修改时必须核对',
+      validated.applicablePaths.length > 0
+        ? validated.applicablePaths.map((value) => `- ${value}`).join('\n')
+        : '先核对来源和当前代码。',
+    ),
+    bodySection('来源', sourceText || '- 由单元内容指定。'),
+    bodySection('验证方式', verificationText),
+  ].join('\n');
+}
+
+export class ProjectKnowledgeUnitRepository {
+  readonly maintainedRoot: string;
+  readonly generatedRoot: string;
+  private readonly projectRoot: string;
+  private readonly reportDiagnostic: ProjectKnowledgeUnitRepositoryOptions['reportDiagnostic'];
+
+  constructor(options: ProjectKnowledgeUnitRepositoryOptions) {
+    this.projectRoot = path.resolve(options.projectRoot);
+    this.reportDiagnostic = options.reportDiagnostic;
+    this.maintainedRoot = path.join(this.projectRoot, 'docs', 'comet', 'knowledge', 'units');
+    this.generatedRoot = options.cacheRoot
+      ? path.join(path.resolve(options.cacheRoot), 'project-knowledge', 'units')
+      : path.join(
+          path.dirname(resolveProjectKnowledgeCacheLocation(this.projectRoot).databasePath),
+          'units',
+        );
+  }
+
+  async list(
+    options: ProjectKnowledgeUnitListOptions = {},
+  ): Promise<readonly ProjectKnowledgeUnit[]> {
+    const output: ProjectKnowledgeUnit[] = [];
+    for (const [root, origin] of [
+      [this.maintainedRoot, 'maintained'],
+      [this.generatedRoot, 'generated'],
+    ] as const) {
+      if (options.origin && options.origin !== origin) continue;
+      let entries: Dirent[];
+      try {
+        entries = await fs.readdir(root, { withFileTypes: true });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
+          this.reportDiagnostic?.({
+            code: 'unit-directory',
+            message: `无法读取项目知识单元目录：${root}`,
+          });
+        continue;
+      }
+      for (const entry of entries) {
+        if (!entry.isFile() || !entry.name.endsWith('.md') || entry.isSymbolicLink()) continue;
+        const relative = path
+          .relative(this.projectRoot, path.join(root, entry.name))
+          .replaceAll(path.sep, '/');
+        try {
+          const bytes =
+            origin === 'maintained'
+              ? await readProtectedProjectFile(this.projectRoot, relative, MAX_UNIT_BYTES, {
+                  label: relative,
+                })
+              : { bytes: await fs.readFile(path.join(root, entry.name)) };
+          const unit = parseProjectKnowledgeUnit(bytes.bytes.toString('utf8'), relative);
+          if (unit.origin !== origin || (options.state && unit.state !== options.state)) continue;
+          output.push(unit);
+        } catch {
+          this.reportDiagnostic?.({
+            code: 'unit-parse',
+            message: `跳过无法解析的项目知识单元：${entry.name}`,
+          });
+        }
+      }
+    }
+    return output.sort((left, right) => left.id.localeCompare(right.id));
+  }
+
+  async read(id: string): Promise<ProjectKnowledgeUnit | null> {
+    const unit = (await this.list()).find((candidate) => candidate.id === id);
+    return unit ?? null;
+  }
+
+  async writeMaintained(unit: ProjectKnowledgeUnit): Promise<void> {
+    const validated = validateProjectKnowledgeUnitShape(unit);
+    if (validated.origin !== 'maintained')
+      throw new Error('writeMaintained requires maintained origin');
+    await ensureProtectedProjectDirectory(this.projectRoot, 'docs/comet/knowledge/units', {
+      label: 'project knowledge units',
+    });
+    await fs.writeFile(
+      path.join(this.maintainedRoot, `${validated.id}.md`),
+      renderProjectKnowledgeUnit(validated),
+      'utf8',
+    );
+  }
+
+  async writeGenerated(unit: ProjectKnowledgeUnit): Promise<void> {
+    const validated = validateProjectKnowledgeUnitShape(unit);
+    if (validated.origin !== 'generated')
+      throw new Error('writeGenerated requires generated origin');
+    await fs.mkdir(this.generatedRoot, { recursive: true });
+    await fs.writeFile(
+      path.join(this.generatedRoot, `${validated.id}.md`),
+      renderProjectKnowledgeUnit(validated),
+      'utf8',
+    );
+  }
+}
+
+export interface ProjectKnowledgeUnitSourceValidationOptions {
+  readonly projectRoot: string;
+  readonly maxSourceBytes?: number;
+  readonly maxTotalBytes?: number;
+  readonly baseline?: ReadonlyMap<string, { readonly size: number; readonly modifiedAt: number }>;
+}
+
+export interface ProjectKnowledgeUnitSourceValidationResult {
+  readonly valid: boolean;
+  readonly bytesRead: number;
+  readonly diagnostics: readonly ProjectKnowledgeUnitDiagnostic[];
+}
+
+const validationBaseline = new Map<string, { size: number; modifiedAt: number; content: string }>();
+
+export async function validateProjectKnowledgeUnitSources(
+  unit: ProjectKnowledgeUnit,
+  options: ProjectKnowledgeUnitSourceValidationOptions,
+): Promise<ProjectKnowledgeUnitSourceValidationResult> {
+  const diagnostics: ProjectKnowledgeUnitDiagnostic[] = [];
+  const references = [
+    ...unit.conclusions.flatMap((conclusion) => conclusion.sources),
+    ...unit.relations.flatMap((relation) => relation.sources),
+  ];
+  let bytesRead = 0;
+  for (const reference of references) {
+    if (bytesRead >= (options.maxTotalBytes ?? 512 * 1024)) {
+      diagnostics.push({
+        code: 'source-budget',
+        message: '项目知识单元来源读取超过总字节限制。',
+        source: reference.source,
+      });
+      continue;
+    }
+    let inspected;
+    try {
+      inspected = await inspectProtectedProjectPath(options.projectRoot, reference.source, {
+        label: reference.source,
+        expected: 'file',
+      });
+      if (!inspected.exists) throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+      const read = await readProtectedProjectFile(
+        options.projectRoot,
+        reference.source,
+        Math.min(
+          options.maxSourceBytes ?? 64 * 1024,
+          (options.maxTotalBytes ?? 512 * 1024) - bytesRead,
+        ),
+        { label: reference.source },
+      );
+      bytesRead += read.bytes.length;
+      const stat = read.stat;
+      const current = {
+        size: Number(stat.size),
+        modifiedAt: Number(stat.mtimeMs),
+        content: read.bytes.toString('utf8'),
+      };
+      const baseline =
+        options.baseline?.get(reference.source) ??
+        validationBaseline.get(`${path.resolve(options.projectRoot)}\0${reference.source}`);
+      if (
+        baseline &&
+        (baseline.size !== current.size ||
+          baseline.modifiedAt !== current.modifiedAt ||
+          ('content' in baseline && baseline.content !== current.content))
+      ) {
+        diagnostics.push({
+          code: 'source-changed',
+          message: '来源在知识单元生成后发生变化。',
+          source: reference.source,
+        });
+        continue;
+      }
+      validationBaseline.set(`${path.resolve(options.projectRoot)}\0${reference.source}`, current);
+    } catch (error) {
+      const code =
+        (error as NodeJS.ErrnoException).code === 'ENOENT' ? 'source-missing' : 'source-path';
+      diagnostics.push({
+        code,
+        message: '项目知识单元来源无法通过当前项目路径校验。',
+        source: reference.source,
+      });
+    }
+  }
+  return { valid: diagnostics.length === 0 && unit.state !== 'retired', bytesRead, diagnostics };
+}
+
+export function expandProjectKnowledgeRelations(options: {
+  readonly units: readonly ProjectKnowledgeUnit[];
+  readonly matchedIds: readonly string[];
+  readonly maxPerUnit?: number;
+}): readonly ProjectKnowledgeUnit[] {
+  const byId = new Map(options.units.map((unit) => [unit.id, unit]));
+  const matched = new Set(options.matchedIds);
+  const expanded = new Map<string, ProjectKnowledgeUnit>();
+  const limit = Math.max(0, Math.min(options.maxPerUnit ?? 4, 4));
+  for (const matchedId of matched) {
+    const unit = byId.get(matchedId);
+    if (!unit || unit.state !== 'active') continue;
+    let count = 0;
+    for (const relation of unit.relations) {
+      if (count >= limit || relation.sources.length === 0) break;
+      const target = byId.get(relation.target);
+      if (!target || target.state !== 'active' || matched.has(target.id)) continue;
+      expanded.set(target.id, target);
+      count += 1;
+    }
+  }
+  return [...expanded.values()].sort((left, right) => left.id.localeCompare(right.id));
+}

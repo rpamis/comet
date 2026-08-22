@@ -5,6 +5,7 @@ import { runBoundedRipgrep, type RipgrepRunResult } from '../../platform/process
 import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
 import { knowledgeDocumentKindRank } from './corpus.js';
 import { ProjectKnowledgeIndexStore } from './index-store.js';
+import { ProjectKnowledgeUnitRepository, validateProjectKnowledgeUnitSources } from './units.js';
 import { queryContainsTerm, queryHasStrongMatch } from './query.js';
 import type {
   ProjectKnowledgeDocument,
@@ -36,6 +37,7 @@ export interface LocalProjectKnowledgeProviderOptions extends ProjectKnowledgePr
   readonly indexStore?: ProjectKnowledgeIndexStore;
   /** Retrieval-eval seam for measuring the bounded rg baseline. */
   readonly indexEnabled?: boolean;
+  readonly unitRepository?: ProjectKnowledgeUnitRepository;
 }
 
 function bundledRipgrepPath(): string | null {
@@ -127,6 +129,7 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
   private readonly options: LocalProjectKnowledgeProviderOptions;
   private readonly reportDiagnostic: ProjectKnowledgeDiagnosticReporter | undefined;
   private readonly indexStore: ProjectKnowledgeIndexStore;
+  private readonly unitRepository: ProjectKnowledgeUnitRepository;
 
   public constructor(options: LocalProjectKnowledgeProviderOptions) {
     this.options = options;
@@ -134,6 +137,13 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
     this.indexStore =
       options.indexStore ??
       new ProjectKnowledgeIndexStore({
+        projectRoot: options.projectRoot,
+        ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
+        reportDiagnostic: options.reportDiagnostic,
+      });
+    this.unitRepository =
+      options.unitRepository ??
+      new ProjectKnowledgeUnitRepository({
         projectRoot: options.projectRoot,
         ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
         reportDiagnostic: options.reportDiagnostic,
@@ -157,17 +167,21 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
       }
     }
     const exact = await this.retrieveWithRipgrep(query);
+    const units = await this.retrieveUnits(query);
     const fused = new Map<string, { result: ProjectKnowledgeResult; score: number }>();
-    for (const [channel, results] of [indexed, exact].entries()) {
+    for (const [channel, results] of [units, indexed, exact].entries()) {
       results.forEach((result, rank) => {
-        const key = `${result.source}\u0000${result.title ?? ''}`;
+        const key = result.unit
+          ? `unit\u0000${result.unit.id}`
+          : `${result.source}\u0000${result.title ?? ''}`;
         const previous = fused.get(key);
         fused.set(key, {
           result: previous?.result ?? result,
           score:
             (previous?.score ?? 0) +
             1 / (60 + rank + 1) +
-            (channel === 1 ? 0.002 : 0) +
+            (channel === 2 ? 0.002 : channel === 0 ? 0.08 : 0) +
+            (result.unit?.origin === 'maintained' ? 0.04 : 0) +
             (result.document?.kind.endsWith('-spec')
               ? 0.04
               : result.document?.kind.endsWith('-archive')
@@ -203,6 +217,49 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
       }
     }
     return validated;
+  }
+
+  private async retrieveUnits(
+    query: ProjectKnowledgeQuery,
+  ): Promise<readonly ProjectKnowledgeResult[]> {
+    const units = await this.unitRepository.list({ state: 'active' });
+    const results: ProjectKnowledgeResult[] = [];
+    for (const unit of units) {
+      const searchable = [
+        unit.id,
+        unit.kind,
+        unit.title,
+        unit.summary,
+        ...unit.applicablePaths,
+        ...unit.operations,
+        ...unit.conclusions.map((conclusion) => conclusion.text),
+      ].join('\n');
+      const matched = query.terms.filter((term) =>
+        searchable.toLocaleLowerCase().includes(term.toLocaleLowerCase()),
+      );
+      if (matched.length === 0) continue;
+      const validation = await validateProjectKnowledgeUnitSources(unit, {
+        projectRoot: this.options.projectRoot,
+      });
+      if (!validation.valid) {
+        for (const diagnostic of validation.diagnostics) {
+          this.reportDiagnostic?.({ code: diagnostic.code, message: diagnostic.message });
+        }
+        continue;
+      }
+      results.push({
+        source: `unit:${unit.id}`,
+        title: unit.title,
+        content:
+          `${unit.summary}\n\n${unit.conclusions.map((conclusion) => conclusion.text).join('\n')}`.slice(
+            0,
+            1600,
+          ),
+        score: matched.length / Math.max(1, query.terms.length),
+        unit,
+      });
+    }
+    return results.sort((left, right) => (right.score ?? 0) - (left.score ?? 0)).slice(0, 8);
   }
 
   private async retrieveWithRipgrep(

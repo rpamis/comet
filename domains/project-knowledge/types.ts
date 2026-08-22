@@ -9,6 +9,7 @@ import type {
   WorkflowKnowledgeProvider,
 } from '../workflow-contract/types.js';
 import type { MemoryLanguage } from '../comet-memory/types.js';
+import type { ProjectKnowledgeUnit } from './units.js';
 
 export type ProjectKnowledgeDocumentKind =
   | 'native-spec'
@@ -42,6 +43,7 @@ export interface ProjectKnowledgeResult {
   readonly title?: string;
   readonly score?: number;
   readonly document?: ProjectKnowledgeDocument;
+  readonly unit?: ProjectKnowledgeUnit;
 }
 
 export interface ProjectKnowledgeDiagnostic {
