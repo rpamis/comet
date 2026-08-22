@@ -8,6 +8,7 @@ import {
   LocalProjectKnowledgeProvider,
   ProjectKnowledgeIndexStore,
   ProjectKnowledgeUnitRepository,
+  validateProjectKnowledgeUnitSources,
   readProjectKnowledgeIndexStatus,
   RemoteProjectKnowledgeProvider,
   renderProjectKnowledgeContext,
@@ -18,6 +19,7 @@ import { DEFAULT_WORKFLOW_KNOWLEDGE_PROJECT_CONFIG } from '../../domains/workflo
 
 export interface ProjectKnowledgeCommandOptions {
   readonly json?: boolean;
+  readonly task?: string;
   readonly query?: string;
   readonly path?: string;
   readonly operation?: string;
@@ -73,7 +75,7 @@ export async function projectKnowledgeQueryCommand(
     diagnostics.push(diagnostic);
   };
   const query = createProjectKnowledgeQuery({
-    task: required(options.query, '--query'),
+    task: required(options.task ?? options.query, '--task'),
     ...(options.path ? { path: options.path } : {}),
     ...(options.operation ? { operation: options.operation } : {}),
   });
@@ -85,6 +87,11 @@ export async function projectKnowledgeQueryCommand(
           corpus: await discoverProjectKnowledgeCorpus({ projectRoot, reportDiagnostic }),
           ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
           reportDiagnostic,
+          unitRepository: new ProjectKnowledgeUnitRepository({
+            projectRoot,
+            ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
+            reportDiagnostic,
+          }),
         });
   const results = boundProjectKnowledgeResults(await provider.retrieve(query));
   const result = {
@@ -170,7 +177,12 @@ export async function projectKnowledgeUnitsShareCommand(
 ): Promise<unknown> {
   if (!options.confirm) throw new Error('share requires explicit --confirm');
   const id = required(options.id, '--id');
+  const projectRoot = path.resolve(targetPath);
   const repository = projectKnowledgeUnitRepository(targetPath, options);
+  const current = await repository.read(id);
+  if (current === null) throw new Error(`项目知识单元不存在：${id}`);
+  const validation = await validateProjectKnowledgeUnitSources(current, { projectRoot });
+  if (!validation.valid) throw new Error('项目知识单元来源已变化或不可用，拒绝共享');
   const unit = await repository.share(id);
   const result = { shared: true, unit };
   print(result, options);

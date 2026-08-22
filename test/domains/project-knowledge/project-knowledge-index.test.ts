@@ -148,4 +148,37 @@ describe('project knowledge section index', () => {
       await fs.rm(root, { recursive: true, force: true });
     }
   });
+
+  test('isolates a corrupt SQLite file so the next sync can recover', async () => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const source = 'docs/comet/specs/recovery.md';
+    const file = path.join(root, ...source.split('/'));
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, '# Recovery\n\nProject knowledge recovery.\n');
+    const first = new ProjectKnowledgeIndexStore({ projectRoot: root, cacheRoot });
+    try {
+      await first.syncCorpus([{ absolutePath: file, source, kind: 'native-spec' }]);
+      first.close();
+      await fs.writeFile(first.databasePath, 'not a sqlite database');
+      const diagnostics: string[] = [];
+      const corrupt = new ProjectKnowledgeIndexStore({
+        projectRoot: root,
+        cacheRoot,
+        reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic.code),
+      });
+      await expect(
+        corrupt.syncCorpus([{ absolutePath: file, source, kind: 'native-spec' }]),
+      ).rejects.toThrow();
+      expect(diagnostics).toContain('index-recovered');
+      await expect(
+        corrupt.syncCorpus([{ absolutePath: file, source, kind: 'native-spec' }]),
+      ).resolves.toMatchObject({ status: { available: true, sourceCount: 1 } });
+      corrupt.close();
+    } finally {
+      first.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
 });

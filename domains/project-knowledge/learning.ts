@@ -249,12 +249,7 @@ export async function createProjectKnowledgeReviewPacket(
 
 function isVerified(packet: ProjectKnowledgeReviewPacket): boolean {
   if (!packet.success) return false;
-  const results = packet.changedHint.verificationResults;
-  return (
-    packet.eventName === 'verification.completed' ||
-    results.some((entry) => entry.success) ||
-    packet.changedHint.verificationCommands.length > 0
-  );
+  return packet.changedHint.verificationResults.some((entry) => entry.success);
 }
 
 function validUnitId(value: unknown): value is string {

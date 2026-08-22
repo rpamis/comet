@@ -112,6 +112,32 @@ const RELATION_TYPES = new Set<ProjectKnowledgeRelationType>([
   'supersedes',
 ]);
 
+function sourceAnchorPart(value: string): string {
+  return value
+    .normalize('NFKC')
+    .toLocaleLowerCase()
+    .replace(/[^\p{Letter}\p{Number}._-]+/gu, '-')
+    .replace(/^-+|-+$/gu, '')
+    .slice(0, 100);
+}
+
+function sourceContainsAnchor(markdown: string, anchor: string): boolean {
+  const stack: string[] = [];
+  const occurrences = new Map<string, number>();
+  for (const line of markdown.replaceAll('\r\n', '\n').split('\n')) {
+    const match = /^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/u.exec(line);
+    if (!match) continue;
+    const level = match[1].length;
+    stack.length = level - 1;
+    stack[level - 1] = match[2].trim();
+    const base = stack.filter(Boolean).map(sourceAnchorPart).join('/');
+    const ordinal = (occurrences.get(base) ?? 0) + 1;
+    occurrences.set(base, ordinal);
+    if (anchor === (ordinal === 1 ? base : `${base}-${ordinal}`)) return true;
+  }
+  return anchor === 'document' && markdown.trim().length > 0;
+}
+
 function objectRecord(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`${label} must be a mapping`);
@@ -188,9 +214,12 @@ function parseRelation(value: unknown, index: number): ProjectKnowledgeUnitRelat
     64,
   ) as ProjectKnowledgeRelationType;
   if (!RELATION_TYPES.has(type)) throw new Error(`relations[${index}].type is unsupported`);
+  const target = boundedString(record.target, `relations[${index}].target`, 128);
+  if (!UNIT_ID.test(target))
+    throw new Error(`relations[${index}].target must use stable unit naming`);
   return {
     type,
-    target: boundedString(record.target, `relations[${index}].target`, 128),
+    target,
     sources: parseSources(record.sources, `relations[${index}].sources`),
   };
 }
@@ -412,13 +441,20 @@ export class ProjectKnowledgeUnitRepository {
           .relative(this.projectRoot, path.join(root, entry.name))
           .replaceAll(path.sep, '/');
         try {
-          const bytes =
-            origin === 'maintained'
-              ? await readProtectedProjectFile(this.projectRoot, relative, MAX_UNIT_BYTES, {
-                  label: relative,
-                })
-              : { bytes: await fs.readFile(path.join(root, entry.name)) };
-          const unit = parseProjectKnowledgeUnit(bytes.bytes.toString('utf8'), relative);
+          let bytes: Buffer;
+          if (origin === 'maintained') {
+            bytes = (
+              await readProtectedProjectFile(this.projectRoot, relative, MAX_UNIT_BYTES, {
+                label: relative,
+              })
+            ).bytes;
+          } else {
+            const generatedPath = path.join(root, entry.name);
+            const stat = await fs.stat(generatedPath);
+            if (stat.size > MAX_UNIT_BYTES) throw new Error('generated unit exceeds read budget');
+            bytes = await fs.readFile(generatedPath);
+          }
+          const unit = parseProjectKnowledgeUnit(bytes.toString('utf8'), relative);
           if (unit.origin !== origin || (options.state && unit.state !== options.state)) continue;
           output.push(unit);
         } catch {
@@ -545,6 +581,30 @@ export async function validateProjectKnowledgeUnitSources(
         modifiedAt: Number(stat.mtimeMs),
         content: read.bytes.toString('utf8'),
       };
+      const lines = current.content.replaceAll('\r\n', '\n').split('\n');
+      if (
+        reference.anchor &&
+        /\.mdx?$/iu.test(reference.source) &&
+        !sourceContainsAnchor(current.content, reference.anchor)
+      ) {
+        diagnostics.push({
+          code: 'source-anchor-missing',
+          message: '项目知识单元引用的章节锚点在当前来源中不存在。',
+          source: reference.source,
+        });
+        continue;
+      }
+      if (
+        (reference.lineStart !== undefined && reference.lineStart > lines.length) ||
+        (reference.lineEnd !== undefined && reference.lineEnd > lines.length)
+      ) {
+        diagnostics.push({
+          code: 'source-line-missing',
+          message: '项目知识单元引用的行范围超出当前来源。',
+          source: reference.source,
+        });
+        continue;
+      }
       const baseline =
         options.baseline?.get(reference.source) ??
         validationBaseline.get(`${path.resolve(options.projectRoot)}\0${reference.source}`);

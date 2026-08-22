@@ -71,27 +71,56 @@ async function recordClassicResult(
   workflowOverride?: string,
   projectRoot = process.cwd(),
 ): Promise<void> {
-  if (
-    result.exitCode !== 0 ||
-    !['state', 'guard', 'handoff', 'archive', 'workspace'].includes(command)
-  )
-    return;
+  if (!['state', 'guard', 'handoff', 'archive', 'workspace'].includes(command)) return;
+  if (result.exitCode !== 0 && command !== 'guard') return;
   try {
+    const verificationCommand = command === 'guard' ? 'comet classic guard' : undefined;
+    const evidence = lifecycleEvidence(result.stdout);
     await recordCometWorkflowResult({
       projectRoot,
       workflow: workflowOverride ?? (await inferClassicWorkflow(args, projectRoot, command)),
       changeId: classicChangeId(args, command),
       command,
-      success: true,
+      success: result.exitCode === 0,
       eventName:
         command === 'archive'
           ? 'change.completed'
           : command === 'guard'
             ? 'verification.completed'
             : 'task.completed',
+      ...(verificationCommand
+        ? {
+            verificationCommands: [verificationCommand],
+            verificationResults: [{ command: verificationCommand, success: result.exitCode === 0 }],
+          }
+        : {}),
+      ...(evidence.changedPaths.length > 0 ? { changedPaths: evidence.changedPaths } : {}),
+      ...(evidence.artifactRefs.length > 0 ? { artifactRefs: evidence.artifactRefs } : {}),
     });
   } catch {
     // Plugin learning must never make a workflow command fail.
+  }
+}
+
+function lifecycleEvidence(stdout: string | undefined): {
+  changedPaths: string[];
+  artifactRefs: string[];
+} {
+  if (!stdout?.trim()) return { changedPaths: [], artifactRefs: [] };
+  try {
+    const value = JSON.parse(stdout) as { data?: Record<string, unknown> };
+    const data = value.data;
+    if (!data || typeof data !== 'object') return { changedPaths: [], artifactRefs: [] };
+    const list = (candidate: unknown): string[] =>
+      Array.isArray(candidate)
+        ? candidate.filter((entry): entry is string => typeof entry === 'string').slice(0, 24)
+        : [];
+    return {
+      changedPaths: list(data.changedPaths),
+      artifactRefs: list(data.artifactRefs ?? data.artifacts),
+    };
+  } catch {
+    return { changedPaths: [], artifactRefs: [] };
   }
 }
 

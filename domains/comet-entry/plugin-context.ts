@@ -56,6 +56,13 @@ export async function recordCometWorkflowResult(options: {
   readonly command: string;
   readonly success: boolean;
   readonly eventName?: CometLifecycleObservation['name'];
+  readonly changedPaths?: readonly string[];
+  readonly artifactRefs?: readonly string[];
+  readonly verificationCommands?: readonly string[];
+  readonly verificationResults?: readonly {
+    readonly command: string;
+    readonly success: boolean;
+  }[];
 }): Promise<void> {
   if (!options.changeId.trim()) return;
   try {
@@ -73,6 +80,14 @@ export async function recordCometWorkflowResult(options: {
       text: language === 'en' ? 'Workflow checkpoint completed' : '完成工作流检查点',
       candidateKey: `${options.workflow}:${options.command}`,
       operations: [options.command],
+      ...(options.changedPaths === undefined ? {} : { changedPaths: options.changedPaths }),
+      ...(options.artifactRefs === undefined ? {} : { artifactRefs: options.artifactRefs }),
+      ...(options.verificationCommands === undefined
+        ? {}
+        : { verificationCommands: options.verificationCommands }),
+      ...(options.verificationResults === undefined
+        ? {}
+        : { verificationResults: options.verificationResults }),
     });
     for (const notice of notices) console.log(notice);
   } catch {

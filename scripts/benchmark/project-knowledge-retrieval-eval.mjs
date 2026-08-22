@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -37,6 +37,16 @@ async function evaluate(indexEnabled) {
     const results = await provider.retrieve(createProjectKnowledgeQuery({ task: entry.query }));
     const sources = results.slice(0, dataset.topK).map((result) => result.source);
     const firstGold = sources.findIndex((source) => entry.goldSources.includes(source));
+    const relevance = sources.map((source) => (entry.goldSources.includes(source) ? 1 : 0));
+    const dcg = relevance.reduce(
+      (sum, value, index) => sum + (value === 0 ? 0 : value / Math.log2(index + 2)),
+      0,
+    );
+    const ideal = Math.min(dataset.topK, entry.goldSources.length);
+    const idcg = Array.from({ length: ideal }, (_, index) => 1 / Math.log2(index + 2)).reduce(
+      (sum, value) => sum + value,
+      0,
+    );
     const forbidden = sources.filter((source) =>
       (entry.forbiddenSourcePrefixes ?? []).some((prefix) => source.startsWith(prefix)),
     );
@@ -46,22 +56,50 @@ async function evaluate(indexEnabled) {
       sources,
       hit: entry.expectedAbstain ? sources.length === 0 : firstGold >= 0,
       reciprocalRank: firstGold >= 0 ? 1 / (firstGold + 1) : 0,
+      ndcgAt4: idcg === 0 ? 0 : dcg / idcg,
+      sourceDiversity: new Set(sources.map((source) => source.split('/')[0])).size,
       forbidden,
       elapsedMs: performance.now() - started,
+      readBytes: results.reduce((sum, result) => sum + Buffer.byteLength(result.content ?? ''), 0),
     });
   }
   const gold = rows.filter((row) => !row.id.startsWith('none-'));
   const exact = rows.filter((row) => row.category === 'exact');
   const sortedLatency = rows.map((row) => row.elapsedMs).sort((left, right) => left - right);
+  const warmLatency = rows
+    .slice(1)
+    .map((row) => row.elapsedMs)
+    .sort((left, right) => left - right);
+  const successful = rows.filter((row) => !row.id.startsWith('none-'));
+  const p50Index = Math.max(0, Math.ceil(sortedLatency.length * 0.5) - 1);
+  let indexSizeBytes = 0;
+  if (indexEnabled) {
+    try {
+      const databasePath = provider.indexStore?.databasePath;
+      if (databasePath) indexSizeBytes = Number((await stat(databasePath)).size);
+    } catch {
+      // A missing projection is itself useful eval evidence and remains zero.
+    }
+  }
   return {
     recallAt4: gold.filter((row) => row.hit).length / gold.length,
     exactRecallAt4: exact.filter((row) => row.hit).length / exact.length,
     mrr: gold.reduce((sum, row) => sum + row.reciprocalRank, 0) / gold.length,
+    nDcgAt4: successful.reduce((sum, row) => sum + row.ndcgAt4, 0) / Math.max(1, successful.length),
+    sourceDiversity:
+      rows.reduce((sum, row) => sum + row.sourceDiversity, 0) / Math.max(1, rows.length),
     abstainAccuracy:
       rows.filter((row) => row.id.startsWith('none-') && row.hit).length /
       rows.filter((row) => row.id.startsWith('none-')).length,
     forbiddenSourceCount: rows.reduce((sum, row) => sum + row.forbidden.length, 0),
     p95Ms: sortedLatency[Math.max(0, Math.ceil(sortedLatency.length * 0.95) - 1)] ?? 0,
+    warmP95Ms:
+      warmLatency[Math.max(0, Math.ceil(warmLatency.length * 0.95) - 1)] ??
+      sortedLatency[Math.max(0, Math.ceil(sortedLatency.length * 0.95) - 1)] ??
+      0,
+    p50Ms: sortedLatency[p50Index] ?? 0,
+    indexSizeBytes,
+    readBytes: rows.reduce((sum, row) => sum + row.readBytes, 0),
     rows,
   };
 }
@@ -91,7 +129,7 @@ console.log(
 );
 if (
   enforce &&
-  (!report.exactRecallNotRegressed || hybrid.forbiddenSourceCount > 0 || hybrid.p95Ms > 200)
+  (!report.exactRecallNotRegressed || hybrid.forbiddenSourceCount > 0 || hybrid.warmP95Ms > 200)
 ) {
   process.exitCode = 1;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { summarizeAgentAB } from '../../../eval/project-knowledge/agent-ab.mjs';
+import { summarizeAgentAB } from '../../../scripts/benchmark/project-knowledge-agent-ab.mjs';
 
 describe('project knowledge Agent A/B harness', () => {
   test('compares success, exploration, and change coverage without storing transcripts', () => {

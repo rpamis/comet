@@ -15,7 +15,7 @@ After a task completes verification and its sources remain checkable, an optiona
 
 Comet can add bounded project-document references to ordinary `comet task` context through the first-party `comet.project-knowledge` plugin. Local retrieval is the default and maintains a workspace-isolated local read model over declared Native, Classic/OpenSpec, and explicitly referenced archived Superpowers Markdown without sending project content over the network.
 
-To use a retrieval service, select the fixed Retrieval API v1 contract in `.comet/config.yaml`:
+To use a retrieval service, select the fixed Retrieval API v1 interface in `.comet/config.yaml`:
 
 ```yaml
 knowledge:
@@ -28,3 +28,5 @@ knowledge:
 ```
 
 Remote requests contain only the task, optional project-relative target path, optional phase, a result limit of four, and the configured scope. Remote failures do not fall back to Local, so a task never silently mixes providers. Retrieved material is bounded, cites its source, and is advisory evidence that cannot override the request, system constraints, Skills, or workflow state.
+
+Local refreshes the user-cache SQLite FTS5 read model on first access and when sources change. A bounded ripgrep pass covers changed sources, while index corruption, lock waits, and unreadable files remain isolated to the current retrieval. Project knowledge units enter context only after their referenced files and Markdown anchors pass validation.

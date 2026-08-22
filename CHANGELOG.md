@@ -9,7 +9,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Oh My Pi and DeepSeek Harness support**: `comet init`, `comet update`, and `comet uninstall` now manage Comet's native Skills, Rules, and Hook integrations in both platforms' project and user environments.
 - **Personal memory**: Comet now learns reusable user preferences, project conventions, and stable collaboration habits across Classic, Native, Hotfix, and Tweak while excluding routine task progress, command output, and Agent work records; the same state is available through `comet memory` and Dashboard management.
 - **Personal Memory Dashboard**: Dashboard now provides readable memory records, correction, forget, rollback, conflict protection, and dedicated Git synchronization controls.
-- **Project knowledge**: `comet task` can retrieve bounded, source-cited context from Native, Classic, and explicitly referenced archived Superpowers documents. Local retrieval is enabled by default, with an optional Remote Retrieval API v1 provider.
+- **Project knowledge**: `comet task` now combines a workspace-isolated SQLite FTS5 read model, bounded ripgrep fallback, validated Project Knowledge Units, and one-hop related-unit expansion so Agents can reuse project structure and behavior context instead of repeatedly scanning the repository. Personal project preferences remain in Personal Memory, while explicit source-backed sharing is required before they become shared project knowledge.
 - **Project Knowledge Dashboard**: Dashboard now exposes the knowledge provider, safe Remote settings, persistent recent diagnostics, and project-level enable, pause, resume, and uninstall controls; stale Remote settings are ignored and uninstall returns cleanly to the workflow view.
 
 ### Changed

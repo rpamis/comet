@@ -176,7 +176,19 @@ async function moduleOverviewUnit(root: string): Promise<ProjectKnowledgeUnit> {
         sources: sourceRefs,
       },
     ],
-    { applicablePaths: names.map((name) => `${name}/`) },
+    {
+      applicablePaths: names.map((name) => `${name}/`),
+      relations:
+        sourceRefs.length > 0
+          ? [
+              {
+                type: 'depends-on',
+                target: 'generated-project-map',
+                sources: sourceRefs.slice(0, 1),
+              },
+            ]
+          : [],
+    },
   );
 }
 

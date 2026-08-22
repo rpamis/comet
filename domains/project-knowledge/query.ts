@@ -141,8 +141,8 @@ export function createProjectKnowledgeQuery(input: {
   const remoteQuery = [
     removeAbsolutePaths(task),
     ...(targetPath ? [`Target path: ${targetPath}`] : []),
-    ...(phase ? [`Phase: ${phase}`] : []),
-    ...(operation ? [`Operation: ${operation}`] : []),
+    ...(phase ? [`Phase: ${removeAbsolutePaths(phase)}`] : []),
+    ...(operation ? [`Operation: ${removeAbsolutePaths(operation)}`] : []),
   ].join('\n');
   return {
     task,

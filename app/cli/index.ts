@@ -249,7 +249,8 @@ knowledge
 knowledge
   .command('query [path]')
   .description('使用更具体的任务描述补充查询项目知识')
-  .requiredOption('--query <text>', '查询或任务描述')
+  .option('--task <text>', '查询或任务描述')
+  .option('--query <text>', '兼容旧版查询参数')
   .option('--path <path>', '当前文件或目录')
   .option('--operation <operation>', '当前操作')
   .option('--json', 'Output as JSON')

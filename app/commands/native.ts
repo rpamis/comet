@@ -22,9 +22,9 @@ async function recordNativeResult(
   result: Awaited<ReturnType<typeof runNativeCli>>,
   workflowOverride?: string,
 ): Promise<void> {
-  if (result.exitCode !== 0) return;
   const command = args.find((value) => ['next', 'archive', 'handoff', 'check'].includes(value));
   if (!command || !['next', 'archive', 'handoff', 'check'].includes(command)) return;
+  if (result.exitCode !== 0 && command !== 'check') return;
   const commandIndex = args.indexOf(command);
   const projectIndex = args.indexOf('--project-root');
   const projectRoot = projectIndex >= 0 ? args[projectIndex + 1] : process.cwd();
@@ -33,21 +33,53 @@ async function recordNativeResult(
     .slice(commandIndex + 1, projectIndex >= 0 ? projectIndex : args.length)
     .find((value) => !value.startsWith('--'));
   try {
+    const verificationCommand = command === 'check' ? 'comet native check' : undefined;
+    const evidence = lifecycleEvidence(result.stdout);
     await recordCometWorkflowResult({
       projectRoot: path.resolve(projectRoot),
       workflow: workflowOverride ?? 'native',
       changeId: changeId ?? command,
       command,
-      success: true,
+      success: result.exitCode === 0,
       eventName:
         command === 'archive'
           ? 'change.completed'
           : command === 'check' || args.includes('--result')
             ? 'verification.completed'
             : 'task.completed',
+      ...(verificationCommand
+        ? {
+            verificationCommands: [verificationCommand],
+            verificationResults: [{ command: verificationCommand, success: result.exitCode === 0 }],
+          }
+        : {}),
+      ...(evidence.changedPaths.length > 0 ? { changedPaths: evidence.changedPaths } : {}),
+      ...(evidence.artifactRefs.length > 0 ? { artifactRefs: evidence.artifactRefs } : {}),
     });
   } catch {
     // Plugin learning must never make a workflow command fail.
+  }
+}
+
+function lifecycleEvidence(stdout: string | undefined): {
+  changedPaths: string[];
+  artifactRefs: string[];
+} {
+  if (!stdout?.trim()) return { changedPaths: [], artifactRefs: [] };
+  try {
+    const value = JSON.parse(stdout) as { data?: Record<string, unknown> };
+    const data = value.data;
+    if (!data || typeof data !== 'object') return { changedPaths: [], artifactRefs: [] };
+    const list = (candidate: unknown): string[] =>
+      Array.isArray(candidate)
+        ? candidate.filter((entry): entry is string => typeof entry === 'string').slice(0, 24)
+        : [];
+    return {
+      changedPaths: list(data.changedPaths),
+      artifactRefs: list(data.artifactRefs ?? data.artifacts),
+    };
+  } catch {
+    return { changedPaths: [], artifactRefs: [] };
   }
 }
 

@@ -181,6 +181,7 @@ async function createProjectKnowledgeModule(
                 corpus,
                 ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
                 reportDiagnostic,
+                unitRepository,
               });
         providerKey = key;
       }

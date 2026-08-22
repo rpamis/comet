@@ -5,6 +5,7 @@ import path from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 import {
+  LocalProjectKnowledgeProvider,
   ProjectKnowledgeUnitRepository,
   extractDeterministicProjectUnits,
   expandProjectKnowledgeRelations,
@@ -187,5 +188,69 @@ describe('project knowledge units', () => {
       matchedIds: [matched.id],
     });
     expect(result.map((unit) => unit.id)).toEqual(['unit-build-test']);
+  });
+
+  test('recalls active units and their sourced relation through the Local provider', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-unit-provider-');
+    const cache = await temporaryRoot('comet-project-knowledge-unit-provider-cache-');
+    try {
+      await fs.mkdir(path.join(root, 'docs'), { recursive: true });
+      await fs.writeFile(
+        path.join(root, 'docs', 'architecture.md'),
+        '# main\n\n入口负责协调调用方。\n',
+      );
+      await fs.writeFile(path.join(root, 'package.json'), '{"scripts":{"test":"vitest run"}}\n');
+      const repository = new ProjectKnowledgeUnitRepository({
+        projectRoot: root,
+        cacheRoot: cache,
+      });
+      await repository.writeMaintained(maintainedUnit('docs/architecture.md'));
+      await repository.writeMaintained({
+        ...maintainedUnit('docs/architecture.md'),
+        id: 'unit-build-test',
+        kind: 'build-test',
+        title: '构建验证',
+        summary: '只记录构建与测试命令。',
+        conclusions: [
+          {
+            text: '运行测试命令确认结果。',
+            sources: [{ source: 'docs/architecture.md', anchor: 'main' }],
+          },
+        ],
+        relations: [],
+      });
+      const provider = new LocalProjectKnowledgeProvider({
+        projectRoot: root,
+        corpus: [],
+        indexEnabled: false,
+        unitRepository: repository,
+        runRipgrep: async () => ({
+          stdout: '',
+          stderr: '',
+          exitCode: 1,
+          timedOut: false,
+          truncated: false,
+          matchLimitReached: false,
+        }),
+      });
+      const results = await provider.retrieve({
+        task: '入口调用方',
+        path: undefined,
+        phase: undefined,
+        operation: undefined,
+        terms: ['入口', '调用方'],
+        strongTerms: [],
+        phraseTerms: [],
+        weakTerms: ['入口', '调用方'],
+        remoteQuery: '入口调用方',
+      });
+      expect(results.map((result) => result.unit?.id)).toEqual([
+        'unit-main-flow',
+        'unit-build-test',
+      ]);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cache, { recursive: true, force: true });
+    }
   });
 });

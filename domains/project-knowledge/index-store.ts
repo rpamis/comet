@@ -39,6 +39,8 @@ export interface ProjectKnowledgeIndexStatus {
 
 export interface ProjectKnowledgeIndexSyncResult {
   readonly changedSources: readonly ProjectKnowledgeDocument[];
+  /** Sources successfully refreshed during this sync; used to bound the rg fallback. */
+  readonly refreshedSources: readonly ProjectKnowledgeDocument[];
   readonly status: ProjectKnowledgeIndexStatus;
 }
 
@@ -215,8 +217,9 @@ export class ProjectKnowledgeIndexStore {
   async open(): Promise<void> {
     if (this.database) return;
     await fs.mkdir(path.dirname(this.databasePath), { recursive: true });
-    const database = new DatabaseSync(this.databasePath);
+    let database: DatabaseSync | null = null;
     try {
+      database = new DatabaseSync(this.databasePath);
       database.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 250;');
       database.exec(
         [
@@ -246,7 +249,24 @@ export class ProjectKnowledgeIndexStore {
       database.prepare("SELECT rowid FROM pk_fts_terms WHERE pk_fts_terms MATCH 'probe'").all();
       this.database = database;
     } catch (error) {
-      database.close();
+      database?.close();
+      // Keep a recoverable copy of a corrupt or incompatible projection. The
+      // current request may fall back to rg; the next request can then create
+      // a clean SQLite projection instead of repeatedly reopening the bad file.
+      try {
+        const quarantine = `${this.databasePath}.corrupt-${Date.now()}`;
+        await fs.rename(this.databasePath, quarantine);
+        await Promise.all(
+          ['-wal', '-shm'].map((suffix) => fs.rm(`${this.databasePath}${suffix}`, { force: true })),
+        );
+        this.reportDiagnostic?.({
+          code: 'index-recovered',
+          message: `Project knowledge index was isolated for recovery: ${path.basename(quarantine)}`,
+        });
+      } catch {
+        // A missing or inaccessible cache path is handled by the provider's
+        // bounded rg fallback.
+      }
       throw error;
     }
   }
@@ -275,6 +295,7 @@ export class ProjectKnowledgeIndexStore {
       if (!corpusSources.has(source)) this.removeSource(database, source);
     }
     const changedSources: ProjectKnowledgeDocument[] = [];
+    const refreshedSources: ProjectKnowledgeDocument[] = [];
     for (const document of corpus) {
       let stat;
       try {
@@ -293,6 +314,10 @@ export class ProjectKnowledgeIndexStore {
           MAX_SOURCE_BYTES,
           { label: document.source },
         );
+        const afterRead = await fs.lstat(document.absolutePath);
+        if (afterRead.size !== read.stat.size || afterRead.mtimeMs !== read.stat.mtimeMs) {
+          throw new Error('source changed while it was being indexed');
+        }
         const sections = parseProjectKnowledgeSections(
           document.source,
           read.bytes.toString('utf8'),
@@ -304,7 +329,16 @@ export class ProjectKnowledgeIndexStore {
           Number(read.stat.mtimeMs),
           sections,
         );
+        refreshedSources.push(document);
       } catch {
+        // A failed refresh must not leave the previous projection searchable.
+        if (previous) {
+          try {
+            this.removeSource(database, document.source);
+          } catch {
+            // Preserve the original bounded diagnostic below.
+          }
+        }
         changedSources.push(document);
         this.reportDiagnostic?.({
           code: 'index-source',
@@ -312,7 +346,7 @@ export class ProjectKnowledgeIndexStore {
         });
       }
     }
-    return { changedSources, status: this.status() };
+    return { changedSources, refreshedSources, status: this.status() };
   }
 
   search(query: ProjectKnowledgeQuery): readonly ProjectKnowledgeResult[] {

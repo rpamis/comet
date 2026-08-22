@@ -2486,13 +2486,32 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
                 {(local.units ?? []).slice(0, 12).map((unit) => (
                   <div className="dashboard-knowledge-diagnostic" key={unit.id}>
                     <Tag bordered={false}>{unit.state}</Tag>
-                    <span>
-                      <strong>{unit.title}</strong> · {unit.kind} · {unit.origin} · 来源{' '}
-                      {unit.conclusions?.reduce(
-                        (count, conclusion) => count + (conclusion.sources?.length ?? 0),
-                        0,
-                      ) ?? 0}
-                    </span>
+                    <div>
+                      <div>
+                        <strong>{unit.title}</strong> · {unit.kind} · {unit.origin}
+                      </div>
+                      <div>{unit.summary}</div>
+                      <div>
+                        来源：
+                        {(unit.conclusions ?? [])
+                          .flatMap((conclusion) => conclusion.sources ?? [])
+                          .map((source, index) => (
+                            <span key={`${unit.id}-source-${index}`}>
+                              {' '}
+                              {source.source}
+                              {source.anchor ? `#${source.anchor}` : ''}
+                            </span>
+                          ))}
+                      </div>
+                      <div>
+                        关系：
+                        {(unit.relations ?? []).length === 0
+                          ? '无'
+                          : (unit.relations ?? [])
+                              .map((relation) => `${relation.type} → ${relation.target}`)
+                              .join('、')}
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>

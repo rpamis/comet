@@ -50,6 +50,14 @@ export interface CometLifecycleObservation {
   readonly operations?: readonly string[];
   readonly userEvidence?: readonly string[];
   readonly explicitRequest?: MemoryReviewRequest;
+  /** Structured workflow evidence used by project knowledge learning. */
+  readonly changedPaths?: readonly string[];
+  readonly artifactRefs?: readonly string[];
+  readonly verificationCommands?: readonly string[];
+  readonly verificationResults?: readonly {
+    readonly command: string;
+    readonly success: boolean;
+  }[];
 }
 
 export interface CometPluginBridgeOptions {
