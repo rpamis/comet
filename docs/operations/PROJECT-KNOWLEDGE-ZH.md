@@ -1,6 +1,19 @@
 # 项目知识检索
 
-Comet 现在可以通过第一方 `comet.project-knowledge` 插件，把有界的项目文档引用加入普通 `comet task` 上下文。默认使用 Local，在声明的 Native、Classic/OpenSpec 文档和归档 Change 明确引用的 Superpowers Markdown 中即时检索；不会建立索引，也不会把项目内容发送到网络。
+## 项目知识单元
+
+Local 会在用户缓存中维护按工作区隔离的 SQLite 读模型，并保留 ripgrep 补充路径。项目维护的知识单元放在 `docs/comet/knowledge/units/`；自动生成内容默认只保存在本地缓存。只有用户明确确认后，生成内容才会写入项目目录。
+
+```text
+comet knowledge units list [path] [--state active|draft|retired]
+comet knowledge units get [path] --id <id>
+comet knowledge units share [path] --id <id> --confirm
+comet knowledge units retire [path] --id <id> --confirm
+```
+
+任务成功完成验证且来源仍可核对时，宿主可选的语义评审才能生成 `behavior-note`、`integration-path` 或 `change-impact`。评审不可用不会阻塞任务。个人记忆仍按当前项目自动召回，不会自动写入项目知识；共享个人项目偏好必须提供当前来源并由用户明确确认。
+
+Comet 现在可以通过第一方 `comet.project-knowledge` 插件，把有界的项目文档引用加入普通 `comet task` 上下文。默认使用 Local，在声明的 Native、Classic/OpenSpec 文档和归档 Change 明确引用的 Superpowers Markdown 中建立按工作区隔离的本地读模型；不会把项目内容发送到网络。
 
 如果要接入自己的检索服务，可在 `.comet/config.yaml` 中选择固定的 Retrieval API v1：
 

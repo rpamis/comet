@@ -462,6 +462,30 @@ export class ProjectKnowledgeUnitRepository {
       'utf8',
     );
   }
+
+  async share(id: string): Promise<ProjectKnowledgeUnit> {
+    const unit = await this.read(id);
+    if (unit === null) throw new Error(`项目知识单元不存在：${id}`);
+    const shared = validateProjectKnowledgeUnitShape({
+      ...unit,
+      origin: 'maintained',
+      state: unit.state === 'retired' ? 'draft' : unit.state,
+    });
+    await this.writeMaintained(shared);
+    if (unit.origin === 'generated') {
+      await this.writeGenerated({ ...unit, state: 'retired' });
+    }
+    return shared;
+  }
+
+  async retire(id: string): Promise<ProjectKnowledgeUnit> {
+    const unit = await this.read(id);
+    if (unit === null) throw new Error(`项目知识单元不存在：${id}`);
+    const retired = { ...unit, state: 'retired' as const };
+    if (unit.origin === 'maintained') await this.writeMaintained(retired);
+    else await this.writeGenerated(retired);
+    return retired;
+  }
 }
 
 export interface ProjectKnowledgeUnitSourceValidationOptions {

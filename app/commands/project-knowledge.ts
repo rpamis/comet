@@ -7,6 +7,7 @@ import {
   discoverProjectKnowledgeCorpus,
   LocalProjectKnowledgeProvider,
   ProjectKnowledgeIndexStore,
+  ProjectKnowledgeUnitRepository,
   readProjectKnowledgeIndexStatus,
   RemoteProjectKnowledgeProvider,
   renderProjectKnowledgeContext,
@@ -21,6 +22,10 @@ export interface ProjectKnowledgeCommandOptions {
   readonly path?: string;
   readonly operation?: string;
   readonly cacheRoot?: string;
+  readonly id?: string;
+  readonly state?: 'active' | 'draft' | 'retired';
+  readonly origin?: 'maintained' | 'generated';
+  readonly confirm?: boolean;
 }
 
 export async function projectKnowledgeStatusCommand(
@@ -133,6 +138,66 @@ export async function projectKnowledgeRebuildCommand(
   } finally {
     store.close();
   }
+}
+
+export async function projectKnowledgeUnitsListCommand(
+  targetPath = '.',
+  options: ProjectKnowledgeCommandOptions = {},
+): Promise<unknown> {
+  const repository = projectKnowledgeUnitRepository(targetPath, options);
+  const units = await repository.list({ state: options.state, origin: options.origin });
+  const result = { units };
+  print(result, options);
+  return result;
+}
+
+export async function projectKnowledgeUnitsGetCommand(
+  targetPath = '.',
+  options: ProjectKnowledgeCommandOptions = {},
+): Promise<unknown> {
+  const id = required(options.id, '--id');
+  const repository = projectKnowledgeUnitRepository(targetPath, options);
+  const unit = await repository.read(id);
+  if (unit === null) throw new Error(`项目知识单元不存在：${id}`);
+  const result = { unit };
+  print(result, options);
+  return result;
+}
+
+export async function projectKnowledgeUnitsShareCommand(
+  targetPath = '.',
+  options: ProjectKnowledgeCommandOptions = {},
+): Promise<unknown> {
+  if (!options.confirm) throw new Error('share requires explicit --confirm');
+  const id = required(options.id, '--id');
+  const repository = projectKnowledgeUnitRepository(targetPath, options);
+  const unit = await repository.share(id);
+  const result = { shared: true, unit };
+  print(result, options);
+  return result;
+}
+
+export async function projectKnowledgeUnitsRetireCommand(
+  targetPath = '.',
+  options: ProjectKnowledgeCommandOptions = {},
+): Promise<unknown> {
+  if (!options.confirm) throw new Error('retire requires explicit --confirm');
+  const id = required(options.id, '--id');
+  const repository = projectKnowledgeUnitRepository(targetPath, options);
+  const unit = await repository.retire(id);
+  const result = { retired: true, unit };
+  print(result, options);
+  return result;
+}
+
+function projectKnowledgeUnitRepository(
+  targetPath: string,
+  options: ProjectKnowledgeCommandOptions,
+): ProjectKnowledgeUnitRepository {
+  return new ProjectKnowledgeUnitRepository({
+    projectRoot: path.resolve(targetPath),
+    ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
+  });
 }
 
 async function knowledgeConfig(projectRoot: string) {

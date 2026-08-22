@@ -9,3 +9,4 @@ export * from './dashboard.js';
 export * from './plugin.js';
 export * from './units.js';
 export * from './deterministic-extractors.js';
+export * from './learning.js';
