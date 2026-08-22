@@ -267,6 +267,51 @@ knowledge
     await projectKnowledgeRebuildCommand(targetPath, options);
   });
 
+const knowledgeUnits = knowledge.command('units').description('查看和维护项目知识单元');
+
+knowledgeUnits
+  .command('list [path]')
+  .description('只读查看项目知识单元')
+  .addOption(new Option('--state <state>', '单元状态').choices(['active', 'draft', 'retired']))
+  .addOption(new Option('--origin <origin>', '单元来源').choices(['maintained', 'generated']))
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { projectKnowledgeUnitsListCommand } = await import('../commands/project-knowledge.js');
+    await projectKnowledgeUnitsListCommand(targetPath, options);
+  });
+
+knowledgeUnits
+  .command('get [path]')
+  .description('只读查看一个项目知识单元')
+  .requiredOption('--id <id>', '单元标识')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { projectKnowledgeUnitsGetCommand } = await import('../commands/project-knowledge.js');
+    await projectKnowledgeUnitsGetCommand(targetPath, options);
+  });
+
+knowledgeUnits
+  .command('share [path]')
+  .description('显式确认后将本地生成单元写入项目目录')
+  .requiredOption('--id <id>', '单元标识')
+  .requiredOption('--confirm', '确认写入项目知识目录')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { projectKnowledgeUnitsShareCommand } = await import('../commands/project-knowledge.js');
+    await projectKnowledgeUnitsShareCommand(targetPath, options);
+  });
+
+knowledgeUnits
+  .command('retire [path]')
+  .description('显式确认后停用一个项目知识单元')
+  .requiredOption('--id <id>', '单元标识')
+  .requiredOption('--confirm', '确认停用项目知识单元')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { projectKnowledgeUnitsRetireCommand } = await import('../commands/project-knowledge.js');
+    await projectKnowledgeUnitsRetireCommand(targetPath, options);
+  });
+
 program
   .command('resume-probe [path]')
   .description('Probe whether an active Comet workflow should resume')

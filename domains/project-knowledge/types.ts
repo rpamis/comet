@@ -10,6 +10,7 @@ import type {
 } from '../workflow-contract/types.js';
 import type { MemoryLanguage } from '../comet-memory/types.js';
 import type { ProjectKnowledgeUnit } from './units.js';
+import type { ProjectKnowledgeChangedHint, ProjectKnowledgeSemanticReviewer } from './learning.js';
 
 export type ProjectKnowledgeDocumentKind =
   | 'native-spec'
@@ -73,6 +74,7 @@ export interface ProjectKnowledgePluginOptions {
   readonly version?: string;
   readonly cometVersionRange?: (cometVersion: string) => boolean;
   readonly cacheRoot?: string;
+  readonly semanticReviewer?: ProjectKnowledgeSemanticReviewer;
 }
 
 export interface ProjectKnowledgeDashboardRemoteSummary {
@@ -102,6 +104,13 @@ export interface ProjectKnowledgeDashboardSnapshot {
     readonly lastQueryMs?: number;
     readonly lastCandidateCount?: number;
     readonly channels: readonly string[];
+    readonly unitCount?: number;
+    readonly activeUnitCount?: number;
+    readonly draftUnitCount?: number;
+    readonly retiredUnitCount?: number;
+    readonly relationCount?: number;
+    readonly units?: readonly ProjectKnowledgeUnit[];
+    readonly changedHints?: readonly ProjectKnowledgeChangedHint[];
   };
   readonly retrieval: string;
   readonly diagnostics: readonly ProjectKnowledgeDashboardDiagnostic[];

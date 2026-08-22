@@ -2453,6 +2453,53 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
           )}
         </section>
       </div>
+      {provider === 'Local' && local && (
+        <section
+          className="dashboard-knowledge-summary mt-4"
+          aria-labelledby="dashboard-knowledge-units-title"
+        >
+          <div className="dashboard-knowledge-panel-head">
+            <div>
+              <h3 id="dashboard-knowledge-units-title">项目知识单元</h3>
+              <p>只读查看状态、来源和受控关系</p>
+            </div>
+            <Tag bordered={false}>{local.unitCount ?? 0} 个</Tag>
+          </div>
+          <div className="dashboard-knowledge-summary-body">
+            <dl className="dashboard-knowledge-fields">
+              <div>
+                <dt>状态</dt>
+                <dd>
+                  active {local.activeUnitCount ?? 0} · draft {local.draftUnitCount ?? 0} · retired{' '}
+                  {local.retiredUnitCount ?? 0}
+                </dd>
+              </div>
+              <div>
+                <dt>关系</dt>
+                <dd>{local.relationCount ?? 0} 条有来源的一跳关系</dd>
+              </div>
+            </dl>
+            {(local.units ?? []).length === 0 ? (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚无项目知识单元" />
+            ) : (
+              <div className="dashboard-knowledge-diagnostics-list" aria-label="项目知识单元详情">
+                {(local.units ?? []).slice(0, 12).map((unit) => (
+                  <div className="dashboard-knowledge-diagnostic" key={unit.id}>
+                    <Tag bordered={false}>{unit.state}</Tag>
+                    <span>
+                      <strong>{unit.title}</strong> · {unit.kind} · {unit.origin} · 来源{' '}
+                      {unit.conclusions?.reduce(
+                        (count, conclusion) => count + (conclusion.sources?.length ?? 0),
+                        0,
+                      ) ?? 0}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
       {!disabled && (
         <div className="dashboard-knowledge-actions" aria-label="项目知识插件操作">
           <Button

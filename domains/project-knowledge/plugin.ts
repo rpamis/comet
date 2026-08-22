@@ -11,6 +11,10 @@ import { readProjectKnowledgeIndexStatus } from './index-store.js';
 import { createProjectKnowledgeQuery } from './query.js';
 import { RemoteProjectKnowledgeProvider } from './remote-provider.js';
 import { renderProjectKnowledgeContext, boundProjectKnowledgeResults } from './renderer.js';
+import { ProjectKnowledgeLearningService, type ProjectKnowledgeChangedHint } from './learning.js';
+import { ProjectKnowledgeUnitRepository } from './units.js';
+import type { ProjectKnowledgeUnit } from './units.js';
+import { validateProjectKnowledgeUnitShape, validateProjectKnowledgeUnitSources } from './units.js';
 import type {
   ProjectKnowledgePluginOptions,
   ProjectKnowledgeDashboardDiagnostic,
@@ -52,9 +56,13 @@ async function createProjectKnowledgeModule(
   let provider: ProjectKnowledgeProvider | null = null;
   let providerKey = '';
   const recentDiagnostics = await readRecentDiagnostics(context.storage);
+  const recentChangedHints = await readRecentChangedHints(context.storage);
   let diagnosticWrite = Promise.resolve();
   const persistDiagnostics = (): void => {
-    const value = { diagnostics: [...recentDiagnostics] };
+    const value = {
+      diagnostics: [...recentDiagnostics],
+      changedHints: [...recentChangedHints],
+    };
     diagnosticWrite = diagnosticWrite
       .then(() => context.storage.write(value))
       .catch(() => undefined);
@@ -68,6 +76,25 @@ async function createProjectKnowledgeModule(
       phase: 'context',
       code: 'execution-failed',
       message,
+    });
+  };
+  const unitRepository = new ProjectKnowledgeUnitRepository({
+    projectRoot: options.projectRoot,
+    ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
+    reportDiagnostic,
+  });
+  const learning = new ProjectKnowledgeLearningService({
+    projectRoot: options.projectRoot,
+    repository: unitRepository,
+    ...(options.semanticReviewer ? { reviewer: options.semanticReviewer } : {}),
+    reportDiagnostic,
+  });
+  const persistChangedHint = async (hint: ProjectKnowledgeChangedHint): Promise<void> => {
+    recentChangedHints.push(hint);
+    while (recentChangedHints.length > 8) recentChangedHints.shift();
+    await context.storage.write({
+      diagnostics: [...recentDiagnostics],
+      changedHints: [...recentChangedHints],
     });
   };
   const dashboardSnapshot = async () => {
@@ -96,6 +123,7 @@ async function createProjectKnowledgeModule(
           ? {}
           : { lastCandidateCount: status.lastCandidateCount }),
         channels: status.channels,
+        ...(await unitDashboardSummary(unitRepository, recentChangedHints)),
       },
       diagnostics: [
         ...recentDiagnostics,
@@ -105,10 +133,31 @@ async function createProjectKnowledgeModule(
   };
   return {
     dashboard: createProjectKnowledgeDashboardContribution(options.language),
-    invoke: async (capability) => {
-      if (capability !== 'status')
+    events: ['verification.completed', 'change.completed', 'task.completed'],
+    onEvent: async (event) => {
+      const result = await learning.processEvent(event);
+      if (result.changedHint !== undefined) await persistChangedHint(result.changedHint);
+    },
+    invoke: async (capability, input) => {
+      if (capability !== 'status' && capability !== 'units' && capability !== 'share-memory')
         throw new Error(`Unknown project knowledge capability: ${capability}`);
-      return dashboardSnapshot();
+      const snapshot = await dashboardSnapshot();
+      if (capability === 'units') {
+        return (snapshot as { local?: { units?: unknown } }).local?.units ?? [];
+      }
+      if (capability === 'share-memory') {
+        const record = input as { unit?: unknown; confirm?: unknown };
+        if (record.confirm !== true) throw new Error('share-memory requires confirmation');
+        const unit = validateProjectKnowledgeUnitShape(record.unit);
+        if (unit.origin !== 'maintained') throw new Error('shared unit must be maintained');
+        const validation = await validateProjectKnowledgeUnitSources(unit, {
+          projectRoot: options.projectRoot,
+        });
+        if (!validation.valid) throw new Error('shared unit sources are not current');
+        await unitRepository.writeMaintained(unit);
+        return { shared: true, unit };
+      }
+      return snapshot;
     },
     provideContext: async (request) => {
       const query = createProjectKnowledgeQuery(request);
@@ -177,6 +226,50 @@ async function readRecentDiagnostics(
   } catch {
     return [];
   }
+}
+
+async function readRecentChangedHints(
+  storage: PluginContext['storage'],
+): Promise<ProjectKnowledgeChangedHint[]> {
+  try {
+    const value = await storage.read();
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+    const hints = (value as { changedHints?: unknown }).changedHints;
+    if (!Array.isArray(hints)) return [];
+    return hints
+      .filter((hint): hint is ProjectKnowledgeChangedHint => {
+        if (!hint || typeof hint !== 'object' || Array.isArray(hint)) return false;
+        const value = hint as Partial<ProjectKnowledgeChangedHint>;
+        return typeof value.eventName === 'string' && typeof value.changeId === 'string';
+      })
+      .slice(-8);
+  } catch {
+    return [];
+  }
+}
+
+async function unitDashboardSummary(
+  repository: ProjectKnowledgeUnitRepository,
+  changedHints: readonly ProjectKnowledgeChangedHint[],
+): Promise<{
+  unitCount: number;
+  activeUnitCount: number;
+  draftUnitCount: number;
+  retiredUnitCount: number;
+  relationCount: number;
+  units: readonly ProjectKnowledgeUnit[];
+  changedHints: readonly ProjectKnowledgeChangedHint[];
+}> {
+  const units = await repository.list();
+  return {
+    unitCount: units.length,
+    activeUnitCount: units.filter((unit) => unit.state === 'active').length,
+    draftUnitCount: units.filter((unit) => unit.state === 'draft').length,
+    retiredUnitCount: units.filter((unit) => unit.state === 'retired').length,
+    relationCount: units.reduce((total, unit) => total + unit.relations.length, 0),
+    units,
+    changedHints,
+  };
 }
 
 function boundDiagnosticMessage(message: string): string {

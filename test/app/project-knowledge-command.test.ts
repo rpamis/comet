@@ -8,6 +8,10 @@ import {
   projectKnowledgeQueryCommand,
   projectKnowledgeRebuildCommand,
   projectKnowledgeStatusCommand,
+  projectKnowledgeUnitsGetCommand,
+  projectKnowledgeUnitsListCommand,
+  projectKnowledgeUnitsRetireCommand,
+  projectKnowledgeUnitsShareCommand,
 } from '../../app/commands/project-knowledge.js';
 
 async function projectFixture(): Promise<string> {
@@ -79,6 +83,65 @@ describe('comet knowledge commands', () => {
           channels: expect.arrayContaining(['fts-terms']),
         },
       });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('lists and reads units without writing, then requires explicit share and retire actions', async () => {
+    const root = await projectFixture();
+    const cacheRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'comet-knowledge-unit-command-cache-'),
+    );
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const unit = {
+        schema: 'comet.project-knowledge.unit.v1',
+        id: 'generated-command-unit',
+        kind: 'behavior-note',
+        state: 'active',
+        origin: 'generated',
+        title: '命令单元',
+        summary: '命令单元摘要。',
+        applicable_paths: ['src/'],
+        operations: ['verify'],
+        conclusions: [
+          { text: '先验证来源。', sources: [{ source: 'docs/comet/specs/retrieval.md' }] },
+        ],
+        relations: [],
+      };
+      const generatedRoot = path.join(cacheRoot, 'project-knowledge', 'units');
+      await fs.mkdir(generatedRoot, { recursive: true });
+      await fs.writeFile(
+        path.join(generatedRoot, `${unit.id}.md`),
+        `---\n${JSON.stringify(unit)}\n---\n`,
+      );
+      await expect(
+        projectKnowledgeUnitsListCommand(root, { json: true, cacheRoot }),
+      ).resolves.toMatchObject({ units: [expect.objectContaining({ id: unit.id })] });
+      await expect(
+        projectKnowledgeUnitsGetCommand(root, { json: true, cacheRoot, id: unit.id }),
+      ).resolves.toMatchObject({ unit: expect.objectContaining({ id: unit.id }) });
+      await expect(
+        projectKnowledgeUnitsShareCommand(root, { json: true, cacheRoot, id: unit.id }),
+      ).rejects.toThrow(/confirm/u);
+      await expect(
+        projectKnowledgeUnitsShareCommand(root, {
+          json: true,
+          cacheRoot,
+          id: unit.id,
+          confirm: true,
+        }),
+      ).resolves.toMatchObject({ unit: { origin: 'maintained' } });
+      await expect(
+        projectKnowledgeUnitsRetireCommand(root, {
+          json: true,
+          cacheRoot,
+          id: unit.id,
+          confirm: true,
+        }),
+      ).resolves.toMatchObject({ unit: { state: 'retired' } });
     } finally {
       await fs.rm(root, { recursive: true, force: true });
       await fs.rm(cacheRoot, { recursive: true, force: true });
