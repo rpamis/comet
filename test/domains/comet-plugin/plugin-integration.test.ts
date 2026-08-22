@@ -171,6 +171,48 @@ describe('Comet plugin integration bridge', () => {
     });
   });
 
+  test('does not persist workflow observations when no user evidence was supplied', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-agent-memory-filter-'));
+    try {
+      const bridge = await createDefaultCometPluginBridge({
+        projectRoot: root,
+        memoryRoot: path.join(root, 'memory'),
+        projectId: 'agent-memory-filter-project',
+        stateRoot: path.join(root, 'plugin-state'),
+        runMemoryReview: async (packet) => ({
+          schema: 'comet.memory.actions.v1',
+          actions: [
+            {
+              action: 'create',
+              language: packet.language,
+              scope: 'project',
+              projectKey: packet.projectKey,
+              category: '工作流操作',
+              text: '完成命令检查点',
+              candidateKey: 'agent-work-item',
+            },
+          ],
+        }),
+      });
+
+      await bridge.dispatchLifecycle({
+        name: 'task.completed',
+        workflow: 'native',
+        changeId: 'agent-memory-filter-1',
+        success: true,
+        category: '工作流操作',
+        text: '完成命令检查点',
+        candidateKey: 'agent-work-item',
+      });
+
+      expect((await bridge.manage({ projectKey: 'agent-memory-filter-project' })).records).toEqual(
+        [],
+      );
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   test('exposes only first activation and conflict notices to the workflow caller', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-notices-'));
     try {
@@ -237,6 +279,27 @@ describe('Comet plugin integration bridge', () => {
     });
   });
 
+  test('does not report an explicit memory request as saved when review fails', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-explicit-failure-'));
+    try {
+      const bridge = await createDefaultCometPluginBridge({
+        projectRoot: root,
+        memoryRoot: path.join(root, 'memory'),
+        projectId: 'explicit-failure-project',
+        stateRoot: path.join(root, 'plugin-state'),
+        runMemoryReview: async () => {
+          throw new Error('Skill host unavailable');
+        },
+      });
+
+      await expect(
+        bridge.remember({ scope: 'global', category: '沟通偏好', text: '使用中文回复' }),
+      ).rejects.toThrow('Skill host unavailable');
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   test('bridges bounded user evidence and supports an optional nonblocking host adapter', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-background-'));
     const memoryRoot = path.join(root, 'memory');
@@ -299,6 +362,10 @@ describe('Comet plugin integration bridge', () => {
 
       expect(contributions.map((entry) => entry.pluginId)).toEqual(['comet.personal-memory']);
       expect(contributions[0]?.text).toEqual(expect.stringContaining('使用中文回复'));
+      expect(contributions[0]?.text.match(/使用中文回复/gu)).toHaveLength(1);
+      expect(contributions[0]?.records?.map((record) => record.id)).toEqual([
+        ...new Set(contributions[0]?.records?.map((record) => record.id)),
+      ]);
     });
   });
 
@@ -322,6 +389,7 @@ describe('Comet plugin integration bridge', () => {
         success: true,
         category: '操作习惯',
         text: '提交前只暂存本次改动文件',
+        userEvidence: ['用户要求提交前只暂存本次改动文件'],
         candidateKey: 'stage-scope',
       };
       await bridge.dispatchLifecycle(observation);
@@ -385,6 +453,7 @@ describe('Comet plugin integration bridge', () => {
           success: true,
           category: 'Workflow habit',
           text: 'Run tests before commit',
+          userEvidence: ['I prefer running tests before commit'],
           candidateKey: 'verify-before-commit',
         });
       }
@@ -454,6 +523,7 @@ describe('Comet plugin integration bridge', () => {
           success: true,
           category: '工作方式',
           text: '验证后再提交',
+          userEvidence: ['以后验证后再提交'],
           candidateKey: 'verify-before-submit',
         });
       }

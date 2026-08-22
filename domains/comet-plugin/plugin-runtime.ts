@@ -260,6 +260,7 @@ export class PluginRuntime {
     capability: string,
     input: unknown,
     scope: PluginScopeTarget = 'user',
+    options: { readonly throwOnError?: boolean } = {},
   ): Promise<unknown> {
     const descriptor = this.requireDescriptor(id);
     const target = normalizeScopeTarget(scope);
@@ -281,6 +282,7 @@ export class PluginRuntime {
       return await active.module.invoke(capability, cloneValue(input));
     } catch (error) {
       this.recordExecutionFailure(descriptor.id, 'invoke', error);
+      if (options.throwOnError === true) throw error;
       return null;
     }
   }

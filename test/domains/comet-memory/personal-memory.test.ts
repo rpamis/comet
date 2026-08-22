@@ -755,6 +755,7 @@ describe('PersonalMemoryService', () => {
             projectKey: 'project-a',
             category: 'Workflow operation',
             text: 'Native task completed with changed files and verification output',
+            candidateKey: 'legacy-workflow',
             tags: [],
             pathPatterns: [],
             taskTypes: [],
@@ -775,7 +776,7 @@ describe('PersonalMemoryService', () => {
       expect((await memories.manage({ projectKey: 'project-a' })).records).toEqual([
         expect.objectContaining({ id: 'legacy-workflow-record', status: 'inactive' }),
       ]);
-      expect((await repository.readState()).records[0]?.active).toBe(true);
+      expect((await repository.readState()).records[0]?.active).toBe(false);
     });
   });
 
@@ -1248,6 +1249,33 @@ describe('PersonalMemoryService', () => {
     });
   });
 
+  it('routes plugin memory reads and writes through the Provider interface', async () => {
+    await withTempRepository(async (root) => {
+      const memoryService = service(root);
+      const query = vi.spyOn(memoryService, 'query');
+      const apply = vi.spyOn(memoryService, 'apply');
+      const descriptor = createPersonalMemoryPluginDescriptor({
+        createService: () => memoryService,
+      });
+      const runtime = new PluginRuntime({
+        cometVersion: '1.0.0',
+        store: new MemoryPluginStateStore(),
+        descriptors: [descriptor],
+      });
+      await runtime.reconcileFirstParty();
+
+      await runtime.invoke('comet.personal-memory', 'remember', {
+        scope: 'global',
+        category: '沟通偏好',
+        text: '使用中文回复',
+      });
+      await runtime.invoke('comet.personal-memory', 'retrieve', { view: 'combined' });
+
+      expect(apply).toHaveBeenCalledWith(expect.objectContaining({ operation: 'review' }));
+      expect(query).toHaveBeenCalledWith(expect.objectContaining({ view: 'combined' }));
+    });
+  });
+
   it('includes global profile when project plugin context is requested', async () => {
     await withTempRepository(async (root) => {
       const descriptor = createPersonalMemoryPluginDescriptor({
@@ -1282,6 +1310,125 @@ describe('PersonalMemoryService', () => {
       );
       expect(contexts[0]?.text).toContain('使用中文回复');
       expect(contexts[0]?.text).toContain('使用 pnpm build');
+    });
+  });
+
+  it('returns a stable User Profile separately from task-matched project memory', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      await memories.remember({
+        scope: 'global',
+        category: '用户事实',
+        text: '我是后端开发，时区是 GMT+8',
+      });
+      await memories.remember({
+        scope: 'global',
+        category: '沟通偏好',
+        text: '使用中文回答，先给结论',
+      });
+      await memories.remember({
+        scope: 'project',
+        projectKey: 'project-a',
+        category: '构建约定',
+        text: '当前项目使用 pnpm build',
+        taskTypes: ['build'],
+      });
+
+      const result = await memories.retrieve({
+        view: 'combined',
+        projectKey: 'project-a',
+        task: 'build',
+      });
+
+      expect(result.profileText).toContain('我是后端开发');
+      expect(result.profileText).toContain('使用中文回答');
+      expect(result.profileText).not.toContain('pnpm build');
+      expect(result.taskText).toContain('当前项目使用 pnpm build');
+      expect(result.text.indexOf(result.profileText)).toBeLessThan(
+        result.text.indexOf(result.taskText),
+      );
+    });
+  });
+
+  it('keeps durable user facts ahead of newer conversational preferences in the Profile', async () => {
+    await withTempRepository(async (root) => {
+      let current = new Date('2026-08-14T00:00:00.000Z');
+      const memories = new PersonalMemoryService({
+        repository: new FileMemoryRepository(root),
+        now: () => current,
+      });
+      await memories.remember({
+        scope: 'global',
+        memoryClass: 'user-fact',
+        category: '用户事实',
+        text: '我是后端开发',
+      });
+      current = new Date('2026-08-15T00:00:00.000Z');
+      await memories.remember({
+        scope: 'global',
+        memoryClass: 'user-preference',
+        category: '沟通偏好',
+        text: '回答简洁一些',
+      });
+
+      const result = await memories.retrieve({ view: 'profile' });
+
+      expect(result.profileText?.indexOf('我是后端开发')).toBeLessThan(
+        result.profileText?.indexOf('回答简洁一些') ?? -1,
+      );
+    });
+  });
+
+  it('keeps legacy workflow bullets out of active Markdown-imported memory', async () => {
+    await withTempRepository(async (root) => {
+      await writeFile(
+        path.join(root, 'profile.md'),
+        '# 个人画像\n\n## workflow-operation\n\n- change completed: ran tests and committed\n',
+      );
+      const memories = new PersonalMemoryService({ repository: new FileMemoryRepository(root) });
+
+      await expect(memories.retrieve({ view: 'profile' })).resolves.toMatchObject({ records: [] });
+      await expect(memories.manage({ scope: 'global' })).resolves.toMatchObject({
+        records: [expect.objectContaining({ status: 'inactive' })],
+      });
+    });
+  });
+
+  it('keeps an explicitly selected memory class when a record is corrected', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const record = await memories.remember({
+        scope: 'global',
+        memoryClass: 'user-preference',
+        category: '沟通偏好',
+        text: '先给结论',
+      });
+
+      const corrected = await memories.correct(record.id, {
+        memoryClass: 'user-fact',
+        text: '我的时区是 GMT+8',
+      });
+
+      expect(corrected.memoryClass).toBe('user-fact');
+      await expect(memories.get(record.id)).resolves.toMatchObject({ memoryClass: 'user-fact' });
+    });
+  });
+
+  it('reports Profile capacity instead of silently truncating an explicit memory', async () => {
+    await withTempRepository(async (root) => {
+      const memories = new PersonalMemoryService({
+        repository: new FileMemoryRepository(root),
+        profileMaxChars: 10,
+      });
+
+      await expect(
+        memories.remember({
+          scope: 'global',
+          category: '用户事实',
+          text: '这条用户事实无法放入当前容量',
+        }),
+      ).rejects.toThrow(/User Profile capacity.*10/u);
+      await expect(memories.manage({ scope: 'global' })).resolves.toMatchObject({ records: [] });
     });
   });
 });

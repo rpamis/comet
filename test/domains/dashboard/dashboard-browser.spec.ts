@@ -176,11 +176,31 @@ test('collapses long personal memory records until the user expands them', async
         files: [],
         pausedLearningProjects: [],
         pausedRetrievalProjects: [],
+        profile: { usedChars: 18, maxChars: 2000 },
+        provider: { provider: 'local', configured: true },
       },
-      retrieval: { records: [record] },
+      retrieval: {
+        records: [record],
+        profileRecords: [
+          {
+            id: 'profile-memory',
+            category: '沟通偏好',
+            memoryClass: 'user-preference',
+            scope: 'global',
+            text: '默认使用中文回复',
+            evidenceCount: 2,
+            updatedAt: '2026-08-20T00:00:00.000Z',
+          },
+        ],
+      },
       management: { conflicts: [] },
       policy: { learning: true, retrieval: true },
       projectKey: 'fixture-project',
+      providerConfig: {
+        provider: 'local',
+        profileCharLimit: 2000,
+        taskContextCharLimit: 6000,
+      },
     },
   };
 
@@ -260,7 +280,19 @@ test('collapses long personal memory records until the user expands them', async
   await page.goto('/');
   await page.getByRole('menuitem', { name: '个人记忆' }).click();
 
-  const memoryText = page.locator('.dashboard-memory-record-text');
+  await expect(page.getByRole('heading', { name: 'User Profile' })).toBeVisible();
+  await expect(page.getByText('默认使用中文回复', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '新增偏好' }).click();
+  const profileDialog = page.getByRole('dialog', { name: '新增 User Profile 偏好' });
+  await expect(profileDialog).toBeVisible();
+  await profileDialog.getByRole('button', { name: /取\s*消/u }).click();
+  await expect(
+    page.getByText('Provider 切换不会迁移或删除已有数据；保存后重新加载页面即可生效'),
+  ).toBeVisible();
+
+  const memoryText = page.locator(
+    'section[aria-labelledby="dashboard-memory-list-title"] .dashboard-memory-record-text',
+  );
   const toggle = page.getByRole('button', { name: '展开完整记忆' });
   await expect(memoryText).toHaveClass(/is-collapsed/);
   await expect(memoryText).toHaveText(`${record.text.slice(0, 240)}…`);

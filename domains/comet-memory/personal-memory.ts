@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 
 import type {
   MemoryConflict,
+  MemoryClass,
   MemoryCorrection,
   MemoryInput,
   MemoryLanguage,
@@ -10,6 +11,8 @@ import type {
   MemoryManagementView,
   MemoryObservation,
   MemoryObservationResult,
+  MemoryProviderMutation,
+  MemoryProviderQuery,
   MemoryQuery,
   MemoryReviewActionSet,
   MemoryReviewPacket,
@@ -24,6 +27,7 @@ import type {
   MemoryStoredObservation,
   MemoryTombstone,
   PersonalMemoryOptions,
+  PersonalMemoryProvider,
   PersonalMemoryServiceLike,
   PersonalMemoryStatus,
 } from './types.js';
@@ -37,6 +41,8 @@ import {
 
 const DEFAULT_MAX_ENTRIES = 12;
 const DEFAULT_MAX_BYTES = 8 * 1024;
+const DEFAULT_PROFILE_MAX_CHARS = 2000;
+const DEFAULT_TASK_MAX_CHARS = 6000;
 const DEFAULT_MANAGEMENT_MAX_ENTRIES = 100;
 const DEFAULT_MANAGEMENT_MAX_BYTES = 32 * 1024;
 const MAX_SOURCES = 8;
@@ -51,11 +57,13 @@ interface StoredRecord extends MemoryRecord {
   readonly identity: string;
 }
 
-export class PersonalMemoryService implements PersonalMemoryServiceLike {
+export class PersonalMemoryService implements PersonalMemoryServiceLike, PersonalMemoryProvider {
   private readonly repository: MemoryRepository;
   private readonly now: () => Date;
   private readonly maxEntries: number;
   private readonly maxBytes: number;
+  private readonly profileMaxChars: number;
+  private readonly taskMaxChars: number;
   private readonly language: MemoryLanguage;
 
   public constructor(options: PersonalMemoryOptions) {
@@ -63,6 +71,8 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
     this.now = options.now ?? (() => new Date());
     this.maxEntries = options.maxEntries ?? DEFAULT_MAX_ENTRIES;
     this.maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
+    this.profileMaxChars = options.profileMaxChars ?? DEFAULT_PROFILE_MAX_CHARS;
+    this.taskMaxChars = options.taskMaxChars ?? DEFAULT_TASK_MAX_CHARS;
     this.language = options.language ?? 'zh-CN';
   }
 
@@ -101,6 +111,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
       }
 
       const record = createRecord(input, 'explicit', source, this.timestamp(), identity);
+      ensureProfileCapacity(state, record, this.profileMaxChars);
       clearInferredCandidates(state, identity);
       clearTombstone(state, identity);
       state.records = replaceRecord(state.records, record);
@@ -131,6 +142,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
         { ...current, ...correction, source: { kind: 'user' } },
         'explicit',
       );
+      ensureProfileCapacity(state, next, this.profileMaxChars, current.id);
       state.records = replaceRecord(state.records, next);
       clearTombstone(state, current.identity);
       await this.writeRecordMarkdown(state, next, current.text, current.category);
@@ -449,6 +461,19 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
         sources: mergeSources(record.sources, candidateSources),
         updatedAt: this.timestamp(),
       } as StoredRecord;
+      if (
+        isUserProfileRecord(activated) &&
+        !profileFits(state, activated, this.profileMaxChars, record.id)
+      ) {
+        await this.persist(state);
+        return {
+          deduplicated: false,
+          ignored: false,
+          candidate: true,
+          activated: false,
+          record: null,
+        };
+      }
       state.records = replaceRecord(state.records, activated);
       clearTombstone(state, identity);
       await this.writeRecordMarkdown(state, activated);
@@ -494,6 +519,43 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
     };
   }
 
+  public async query(
+    request: MemoryProviderQuery,
+  ): Promise<MemoryRetrieval | MemoryManagementView> {
+    return request.view === 'manage'
+      ? this.manage(request.query)
+      : this.retrieve({ ...request.query, view: request.view });
+  }
+
+  public async apply(mutation: MemoryProviderMutation): Promise<unknown> {
+    switch (mutation.operation) {
+      case 'remember':
+        return this.remember(mutation.input as MemoryInput);
+      case 'correct': {
+        const input = mutation.input as {
+          readonly id: string;
+          readonly correction: MemoryCorrection;
+        };
+        return this.correct(input.id, input.correction);
+      }
+      case 'forget': {
+        const input = mutation.input as { readonly id: string; readonly permanent?: boolean };
+        return this.remove(input.id, { permanent: input.permanent });
+      }
+      case 'rollback':
+        return this.rollback((mutation.input as { readonly id: string }).id);
+      case 'observe':
+        return this.observe(mutation.input as MemoryObservation);
+      case 'review': {
+        const input = mutation.input as {
+          readonly packet: MemoryReviewPacket;
+          readonly actions: MemoryReviewActionSet;
+        };
+        return this.reviewAndApply(input.packet, input.actions);
+      }
+    }
+  }
+
   private async applyReviewAction(
     packet: MemoryReviewPacket,
     action: MemoryReviewActionSet['actions'][number],
@@ -512,6 +574,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
           ...(action.projectKey === undefined ? {} : { projectKey: action.projectKey }),
           category: action.category,
           text: action.text,
+          memoryClass: action.memoryClass,
           title: action.title,
           reason: action.reason,
           tags: action.tags,
@@ -538,6 +601,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
         ...(action.projectKey === undefined ? {} : { projectKey: action.projectKey }),
         category: action.category,
         text: action.text,
+        memoryClass: action.memoryClass,
         title: action.title,
         reason: action.reason,
         tags: action.tags,
@@ -586,6 +650,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
         ...(action.operations === undefined ? {} : { operations: action.operations }),
         ...(action.title === undefined ? {} : { title: action.title }),
         ...(action.reason === undefined ? {} : { reason: action.reason }),
+        ...(action.memoryClass === undefined ? {} : { memoryClass: action.memoryClass }),
       });
       return {
         action: 'update',
@@ -617,6 +682,14 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
         isProjectRetrievalPaused(state.settings, query.projectKey)
       ) {
         return { records: [], text: '', truncated: false, disabled: true };
+      }
+      if (query.view === 'combined' || query.view === 'profile' || query.view === 'task') {
+        return buildContextRetrieval(
+          state,
+          query,
+          query.profileMaxChars ?? this.profileMaxChars,
+          query.taskMaxChars ?? query.maxChars ?? this.taskMaxChars,
+        );
       }
       const maxEntries = boundedPositive(query.maxEntries ?? this.maxEntries, this.maxEntries);
       const maxBytes = boundedPositive(query.maxBytes ?? this.maxBytes, this.maxBytes);
@@ -734,6 +807,8 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
         files: Object.keys(state.files)
           .filter((file) => state.files[file]?.hash !== '')
           .sort(),
+        provider: { provider: 'local' as const, configured: true },
+        profile: { usedChars: profileUsedChars(state), maxChars: this.profileMaxChars },
       };
     });
     return {
@@ -745,6 +820,10 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
 
   public async sync() {
     return this.repository.sync();
+  }
+
+  public async testProvider(): Promise<{ readonly ok: boolean; readonly message: string }> {
+    return { ok: true, message: 'Local Provider is ready.' };
   }
 
   public async remote(): Promise<string | null> {
@@ -852,6 +931,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
       const content = await this.repository.readText(file);
       reconcileMarkdown(state, file, target.scope, target.projectKey, content, this.timestamp());
     }
+    migrateLegacyWorkflowRecords(state, this.timestamp());
     return state;
   }
 
@@ -949,6 +1029,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
     const nextInput: MemoryInput = {
       scope: input.scope,
       projectKey: input.projectKey,
+      memoryClass: input.memoryClass ?? current.memoryClass,
       title: input.title ?? current.title,
       reason: input.reason ?? current.reason,
       category: input.category ?? current.category,
@@ -964,6 +1045,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike {
     return {
       ...current,
       identity: memoryIdentity(nextInput),
+      memoryClass: nextInput.memoryClass,
       ...(nextInput.title === undefined ? {} : { title: nextInput.title }),
       ...(nextInput.reason === undefined ? {} : { reason: nextInput.reason }),
       category: nextInput.category,
@@ -1086,6 +1168,7 @@ function projectManagementRecord(
     id: record.id,
     scope: record.scope,
     ...(record.projectKey === undefined ? {} : { projectKey: record.projectKey }),
+    memoryClass: record.memoryClass ?? inferMemoryClass(record),
     ...(record.title === undefined ? {} : { title: record.title }),
     ...(record.reason === undefined ? {} : { reason: record.reason }),
     category: record.category,
@@ -1132,6 +1215,7 @@ function createRecord(
     identity,
     scope: input.scope,
     ...(input.projectKey === undefined ? {} : { projectKey: input.projectKey }),
+    memoryClass: input.memoryClass ?? inferMemoryClass(input),
     ...(input.title === undefined ? {} : { title: input.title.trim() }),
     ...(input.reason === undefined ? {} : { reason: input.reason.trim() }),
     category: input.category.trim(),
@@ -1210,6 +1294,7 @@ function memoryIdentity(
     MemoryInput,
     | 'scope'
     | 'projectKey'
+    | 'memoryClass'
     | 'category'
     | 'tags'
     | 'pathPatterns'
@@ -1225,6 +1310,7 @@ function memoryIdentity(
   return JSON.stringify([
     input.scope,
     input.scope === 'project' ? (input.projectKey ?? '') : '',
+    input.memoryClass ?? inferMemoryClass(input),
     semanticIdentity,
     normalizeArray(input.tags),
     normalizeArray(input.pathPatterns),
@@ -1236,27 +1322,49 @@ function memoryIdentity(
 function memoryShapeIdentity(
   input: Pick<
     MemoryInput,
-    'scope' | 'projectKey' | 'category' | 'tags' | 'pathPatterns' | 'taskTypes' | 'operations'
+    | 'scope'
+    | 'projectKey'
+    | 'memoryClass'
+    | 'category'
+    | 'tags'
+    | 'pathPatterns'
+    | 'taskTypes'
+    | 'operations'
   >,
 ): string {
   return memoryIdentity({ ...input, candidateKey: undefined });
 }
 
 function isLegacyWorkflowArtifact(record: MemoryRecord): boolean {
-  if (record.kind !== 'inferred' || record.candidateKey !== undefined) return false;
   const lifecycleSource = record.sources.some(
     (source) =>
-      (source.kind === 'workflow' || source.kind === 'review') &&
+      source.kind === 'workflow' &&
       /^(?:task|change|verification|review)\.completed$/u.test(source.label ?? ''),
   );
-  if (!lifecycleSource) return false;
+  return lifecycleSource && isLegacyWorkflowContent(record.category, record.text);
+}
+
+function isLegacyWorkflowContent(category: string, text: string): boolean {
+  if (/(?:workflow[- ]operation|工作流操作)/iu.test(category)) return true;
+  const content = `${category} ${text}`;
   return (
-    /^(?:(?:workflow|command|task|change)[- _:](?:operation|checkpoint|result|summary)|工作流(?:操作|检查点|结果|摘要))/iu.test(
-      record.category.trim(),
-    ) ||
-    /(?:完成(?:命令|工作流)检查点|(?:workflow|command|task|change)\s+(?:checkpoint\s+)?completed)/iu.test(
-      record.text,
-    )
+    /(?:task|change|verification|review|checkpoint|result|summary|任务|变更|检查点|结果|摘要)/iu.test(
+      content,
+    ) && /(?:completed|finished|output|summary|done|完成|输出|结果|摘要)/iu.test(content)
+  );
+}
+
+function migrateLegacyWorkflowRecords(state: MutableMemoryState, timestamp: string): void {
+  const legacy = state.records.filter(
+    (record) => record.active && isLegacyWorkflowArtifact(record),
+  );
+  for (const record of legacy) {
+    pushHistory(state, record);
+  }
+  if (legacy.length === 0) return;
+  const legacyIds = new Set(legacy.map((record) => record.id));
+  state.records = state.records.map((record) =>
+    legacyIds.has(record.id) ? { ...record, active: false, updatedAt: timestamp } : record,
   );
 }
 
@@ -1278,6 +1386,7 @@ function observationInput(observation: MemoryObservation, source: MemorySource):
     ...(observation.scope === 'project' && observation.projectKey !== undefined
       ? { projectKey: observation.projectKey }
       : {}),
+    memoryClass: observation.memoryClass ?? inferMemoryClass(observation),
     ...(observation.language === undefined ? {} : { language: observation.language }),
     ...(observation.title === undefined ? {} : { title: observation.title }),
     ...(observation.reason === undefined ? {} : { reason: observation.reason }),
@@ -1394,10 +1503,22 @@ function reconcileMarkdown(
       ...(projectKey ? { projectKey } : {}),
       category: bullet.category,
       text: bullet.text,
+      ...(isLegacyWorkflowContent(bullet.category, bullet.text)
+        ? { source: { kind: 'repository' as const, label: 'legacy-migration' } }
+        : {}),
     };
     const identity = memoryIdentity(input);
     clearTombstone(state, identity);
-    state.records.push(createRecord(input, 'explicit', { kind: 'user' }, timestamp, identity));
+    const record = createRecord(
+      input,
+      'explicit',
+      input.source ?? { kind: 'user' },
+      timestamp,
+      identity,
+    );
+    state.records.push(
+      isLegacyWorkflowContent(bullet.category, bullet.text) ? { ...record, active: false } : record,
+    );
   }
   state.files[file] = { hash, observedAt: timestamp };
 }
@@ -1496,6 +1617,175 @@ function removeMarkdownBullet(content: string, text: string, category?: string):
   if (index < 0) return content;
   lines.splice(index, 1);
   return `${lines.join('\n').replace(/\n*$/u, '')}\n`;
+}
+
+function buildContextRetrieval(
+  state: MutableMemoryState,
+  query: MemoryQuery,
+  profileMaxChars: number,
+  taskMaxChars: number,
+): MemoryRetrieval {
+  const active = state.records
+    .filter((entry) => entry.active)
+    .filter((entry) => !isLegacyWorkflowArtifact(entry))
+    .filter((entry) => !isConflictedInferred(state.conflicts, entry));
+  const profileCandidates = active
+    .filter(isUserProfileRecord)
+    .sort(
+      (left, right) =>
+        profilePriority(left) - profilePriority(right) || compareRecords(left, right, query),
+    );
+  const profileSelection = selectWithinChars(profileCandidates, profileMaxChars);
+  const profileIds = new Set(profileSelection.records.map((entry) => entry.id));
+
+  const taskSelection =
+    query.view === 'profile'
+      ? { records: [] as StoredRecord[], truncated: false }
+      : selectWithinChars(
+          active
+            .filter((entry) => !profileIds.has(entry.id))
+            .filter((entry) => scopeMatches(entry, query))
+            .filter((entry) => attributesMatch(entry, query))
+            .map((entry) => ({ record: entry, score: scoreRecord(entry, query) }))
+            .filter(({ score }) => score > 0 || query.query === undefined)
+            .sort(
+              (left, right) =>
+                right.score - left.score || compareRecords(left.record, right.record, query),
+            )
+            .map(({ record }) => record),
+          taskMaxChars,
+        );
+
+  const profileText = renderRetrieval(profileSelection.records);
+  const taskText = renderRetrieval(taskSelection.records);
+  const sections = [
+    profileText ? `## User Profile\n${profileText}` : '',
+    taskText ? `## Relevant personal memory\n${taskText}` : '',
+  ].filter(Boolean);
+  return {
+    records: [...profileSelection.records, ...taskSelection.records].map(cloneRecord),
+    text: sections.join('\n\n'),
+    truncated: profileSelection.truncated || taskSelection.truncated,
+    disabled: false,
+    profileRecords: profileSelection.records.map(cloneRecord),
+    profileText,
+    taskRecords: taskSelection.records.map(cloneRecord),
+    taskText,
+    profileTruncated: profileSelection.truncated,
+    taskTruncated: taskSelection.truncated,
+  };
+}
+
+function ensureProfileCapacity(
+  state: MutableMemoryState,
+  candidate: StoredRecord,
+  maxChars: number,
+  replacingId?: string,
+): void {
+  if (!isUserProfileRecord(candidate)) return;
+  if (profileFits(state, candidate, maxChars, replacingId)) return;
+  throw new Error(
+    `User Profile capacity is ${profileUsedChars(state)}/${maxChars} Unicode chars; ` +
+      '整理现有内容或提高 profile_char_limit before saving this memory',
+  );
+}
+
+function profileUsedChars(state: MutableMemoryState): number {
+  const records = state.records
+    .filter((entry) => entry.active)
+    .filter((entry) => !isLegacyWorkflowArtifact(entry))
+    .filter((entry) => !isConflictedInferred(state.conflicts, entry))
+    .filter(isUserProfileRecord)
+    .sort(
+      (left, right) =>
+        profilePriority(left) - profilePriority(right) ||
+        compareRecords(left, right, { view: 'profile' }),
+    );
+  return unicodeLength(renderRetrieval(records));
+}
+
+function profileFits(
+  state: MutableMemoryState,
+  candidate: StoredRecord,
+  maxChars: number,
+  replacingId?: string,
+): boolean {
+  const projectedState = {
+    ...state,
+    records: [
+      ...state.records.filter((entry) => entry.id !== replacingId && entry.id !== candidate.id),
+      candidate,
+    ],
+  };
+  const projected = buildContextRetrieval(
+    projectedState,
+    { view: 'profile' },
+    maxChars,
+    DEFAULT_TASK_MAX_CHARS,
+  );
+  return projected.profileRecords?.some((entry) => entry.id === candidate.id) === true;
+}
+
+function isUserProfileRecord(record: StoredRecord): boolean {
+  if (record.scope !== 'global') return false;
+  if (record.pathPatterns.length > 0 || record.taskTypes.length > 0 || record.operations.length > 0)
+    return false;
+  const memoryClass = record.memoryClass ?? inferMemoryClass(record);
+  return (
+    memoryClass === 'user-fact' ||
+    memoryClass === 'user-preference' ||
+    memoryClass === 'collaboration-habit'
+  );
+}
+
+function profilePriority(record: StoredRecord): number {
+  switch (record.memoryClass ?? inferMemoryClass(record)) {
+    case 'user-fact':
+      return 0;
+    case 'user-preference':
+      return 1;
+    case 'collaboration-habit':
+      return 2;
+    default:
+      return 3;
+  }
+}
+
+function inferMemoryClass(
+  value: Pick<MemoryInput, 'scope' | 'category' | 'memoryClass'>,
+): MemoryClass {
+  if (value.memoryClass !== undefined) return value.memoryClass;
+  if (value.scope === 'project') return 'project-convention';
+  if (/(?:用户事实|身份|姓名|角色|时区|user\s*fact|identity|timezone)/iu.test(value.category))
+    return 'user-fact';
+  if (/(?:协作|习惯|workflow|collaboration|habit)/iu.test(value.category))
+    return 'collaboration-habit';
+  return 'user-preference';
+}
+
+function selectWithinChars(
+  candidates: readonly StoredRecord[],
+  maxChars: number,
+): { records: StoredRecord[]; truncated: boolean } {
+  const records: StoredRecord[] = [];
+  let truncated = false;
+  for (const candidate of candidates) {
+    const next = [...records, candidate];
+    if (unicodeLength(renderRetrieval(next)) > boundedPositive(maxChars, DEFAULT_TASK_MAX_CHARS)) {
+      truncated = true;
+      continue;
+    }
+    records.push(candidate);
+  }
+  return { records, truncated };
+}
+
+function compareRecords(left: StoredRecord, right: StoredRecord, _query: MemoryQuery): number {
+  return right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id);
+}
+
+function unicodeLength(value: string): number {
+  return Array.from(value).length;
 }
 
 function scopeMatches(record: StoredRecord, query: MemoryQuery): boolean {

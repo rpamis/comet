@@ -53,6 +53,7 @@ export async function personalMemoryRetrieveCommand(
 ): Promise<unknown> {
   const bridge = await createBridge(targetPath, options);
   const retrieval = await bridge.retrieve({
+    view: 'combined',
     scope: options.scope,
     projectKey: options.project,
     task: options.task,

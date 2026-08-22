@@ -1,5 +1,7 @@
 export * from './personal-memory.js';
 export * from './plugin.js';
+export * from './provider-config.js';
+export * from './remote-provider.js';
 export * from './repository.js';
 export * from './review-contract.js';
 export * from './semantic-review.js';

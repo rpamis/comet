@@ -8,6 +8,7 @@ Comet 的个人记忆用于跨会话保留真正值得复用的个人偏好、�
 - 工作流在稳定成功检查点进行一次有界的后台复盘。没有形成可保存的内容、跳过复盘或重复观察时默认不打扰你。
 - 只有一条记忆第一次实际改变了后续处理方式，或出现需要你处理的冲突时，才会显示简短提示。
 - 记忆内容以可读 Markdown 保存：全局偏好在 `profile.md`，项目经验默认使用项目名保存，例如 `projects/comet.md`。系统另存内部 project key 用于准确关联；同一仓库的主工作区和 worktree 会使用同一份项目记忆。你可以直接查看和编辑这些文件。
+- Comet 会把稳定的用户事实、偏好和协作习惯单独展示为 **User Profile（用户档案）**，再在下面提供按当前任务匹配的项目记忆。两层都按字符容量控制，不按固定条目数裁剪。
 
 ## 什么值得记录
 
@@ -53,6 +54,23 @@ comet memory status .
 `forget` 默认保留回滚能力；永久删除需要显式使用 `--permanent`。暂停项目记忆后，新的学习和/或检索会按暂停设置停止，恢复后才继续。检索只返回当前作用域内有可靠匹配、没有未解决冲突且未被暂停的记忆。
 
 `--project` 接受内部 project key；对当前项目执行命令时通常可以省略它。
+
+## Provider 设置
+
+Personal Memory 默认使用 Local Provider。你可以在用户级 `~/.comet/config.yaml` 中选择 Remote Provider，并设置两层上下文容量；这不会改变项目策略：
+
+```yaml
+personal_memory:
+  provider: remote
+  profile_char_limit: 2000
+  task_context_char_limit: 6000
+  remote:
+    endpoint: https://memory.example.test/provider
+    token_env: COMET_MEMORY_TOKEN
+    profile: default
+```
+
+token 的值只放在指定的环境变量中，配置和 Dashboard 只保存变量名。Dashboard 可以测试当前 Provider、保存选择并调整字符容量；重新加载个人记忆页面后即可使用保存的 Provider。Remote 请求使用版本化的 `comet.personal-memory.provider.v1` 协议。
 
 ## Markdown 和同步
 

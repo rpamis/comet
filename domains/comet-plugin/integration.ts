@@ -6,6 +6,7 @@ import {
   FileMemoryRepository,
   GitMemorySync,
   PersonalMemoryService,
+  RemotePersonalMemoryService,
   type MemoryInput,
   type MemoryCorrection,
   type MemoryLanguage,
@@ -16,6 +17,9 @@ import {
   type MemoryRetrieval,
   type MemoryReviewSkillRunner,
   type MemoryReviewRequest,
+  type MemoryProviderConfig,
+  readPersonalMemoryConfig,
+  writePersonalMemoryConfig,
 } from '../comet-memory/index.js';
 import { getCurrentVersion } from '../../platform/version/version.js';
 import { resolveProjectName } from '../../platform/paths/project-identity.js';
@@ -66,6 +70,8 @@ export interface CometPluginBridgeOptions {
   readonly projectId: string;
   readonly language?: MemoryLanguage;
   readonly memoryRoot?: string;
+  /** Optional user-level Provider selection, primarily for hosts and tests. */
+  readonly memoryProviderConfig?: MemoryProviderConfig;
   readonly stateRoot?: string;
   readonly knowledgeCacheRoot?: string;
   readonly cometVersion?: string;
@@ -125,9 +131,14 @@ export class CometPluginBridge {
       }
       merged.set(String(contribution.pluginId), {
         ...previous,
-        text: [previous.text, contribution.text].filter(Boolean).join('\n\n'),
+        text: [...new Set([previous.text, contribution.text].filter(Boolean))].join('\n\n'),
         ...(Array.isArray(previous.records) || Array.isArray(contribution.records)
-          ? { records: [...arrayValue(previous.records), ...arrayValue(contribution.records)] }
+          ? {
+              records: deduplicateRecords([
+                ...arrayValue(previous.records),
+                ...arrayValue(contribution.records),
+              ]),
+            }
           : {}),
       });
     }
@@ -170,6 +181,7 @@ export class CometPluginBridge {
       'remember',
       { ...normalized, language: normalized.language ?? this.language },
       'user',
+      { throwOnError: true },
     )) as MemoryRecord | null;
   }
 
@@ -206,20 +218,20 @@ export class CometPluginBridge {
       'correct',
       { id, correction },
       'user',
+      { throwOnError: true },
     )) as MemoryRecord;
   }
 
   public async forget(id: string, permanent = false): Promise<void> {
-    await this.runtime.invoke('comet.personal-memory', 'remove', { id, permanent }, 'user');
+    await this.runtime.invoke('comet.personal-memory', 'remove', { id, permanent }, 'user', {
+      throwOnError: true,
+    });
   }
 
   public async rollback(id: string): Promise<MemoryRecord> {
-    return (await this.runtime.invoke(
-      'comet.personal-memory',
-      'rollback',
-      { id },
-      'user',
-    )) as MemoryRecord;
+    return (await this.runtime.invoke('comet.personal-memory', 'rollback', { id }, 'user', {
+      throwOnError: true,
+    })) as MemoryRecord;
   }
 
   public async syncMemory(): Promise<unknown> {
@@ -303,6 +315,18 @@ function arrayValue(value: unknown): readonly unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
+function deduplicateRecords(records: readonly unknown[]): readonly unknown[] {
+  const unique = new Map<string, unknown>();
+  for (const record of records) {
+    const key =
+      record !== null && typeof record === 'object' && 'id' in record
+        ? String((record as { id?: unknown }).id)
+        : JSON.stringify(record);
+    if (!unique.has(key)) unique.set(key, record);
+  }
+  return [...unique.values()];
+}
+
 export async function createDefaultCometPluginBridge(
   options: CometPluginBridgeOptions,
 ): Promise<CometPluginBridge> {
@@ -314,6 +338,8 @@ export async function createDefaultCometPluginBridge(
   const projectName = resolveProjectName(projectRoot);
   const language = options.language ?? (await resolveProjectMemoryLanguage(projectRoot));
   const projectPolicy = await resolveProjectMemoryPolicy(projectRoot);
+  const memoryProviderConfig =
+    options.memoryProviderConfig ?? (await readPersonalMemoryConfig(os.homedir()));
   const runtime = new PluginRuntime({
     cometVersion: options.cometVersion ?? getCurrentVersion(),
     store: new JsonPluginStateStore(new JsonFileTextStore(path.join(stateRoot, 'state.json'))),
@@ -331,15 +357,31 @@ export async function createDefaultCometPluginBridge(
         ...(options.onMemoryReviewNotice === undefined
           ? {}
           : { onReviewNotice: options.onMemoryReviewNotice }),
-        createService: () =>
-          new PersonalMemoryService({
+        getProviderConfig: () => readPersonalMemoryConfig(os.homedir()),
+        configureProvider: (config) => writePersonalMemoryConfig(os.homedir(), config),
+        createService: () => {
+          if (memoryProviderConfig.provider === 'remote') {
+            if (memoryProviderConfig.remote === undefined) {
+              throw new Error('Remote Provider endpoint is not configured');
+            }
+            return new RemotePersonalMemoryService({
+              ...memoryProviderConfig.remote,
+              profileCharLimit: memoryProviderConfig.profileCharLimit,
+              taskContextCharLimit: memoryProviderConfig.taskContextCharLimit,
+              projectKey: options.projectId,
+            });
+          }
+          return new PersonalMemoryService({
             language,
+            profileMaxChars: memoryProviderConfig.profileCharLimit,
+            taskMaxChars: memoryProviderConfig.taskContextCharLimit,
             repository: new FileMemoryRepository(memoryRoot, {
               git: new GitMemorySync(memoryRoot),
               projectKey: options.projectId,
               projectName,
             }),
-          }),
+          });
+        },
       }),
       createProjectKnowledgePluginDescriptor({
         projectRoot,

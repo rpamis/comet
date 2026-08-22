@@ -2098,6 +2098,14 @@ function formatFileSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function isUserProfileRecord(record) {
+  if (record.scope !== 'global') return false;
+  if ((record.pathPatterns ?? []).length > 0) return false;
+  if ((record.taskTypes ?? []).length > 0) return false;
+  if ((record.operations ?? []).length > 0) return false;
+  return ['user-fact', 'user-preference', 'collaboration-habit'].includes(record.memoryClass);
+}
+
 async function copyText(text) {
   if (navigator.clipboard?.writeText) {
     try {
@@ -2553,6 +2561,17 @@ function PersonalMemoryCenter({ data, onInvoke }) {
   const [editingRecord, setEditingRecord] = useState(null);
   const [correctionText, setCorrectionText] = useState('');
   const [remoteUrl, setRemoteUrl] = useState('');
+  const [providerMode, setProviderMode] = useState('local');
+  const [profileCharLimit, setProfileCharLimit] = useState('2000');
+  const [taskContextCharLimit, setTaskContextCharLimit] = useState('6000');
+  const [providerEndpoint, setProviderEndpoint] = useState('');
+  const [providerTokenEnv, setProviderTokenEnv] = useState('');
+  const [providerProfile, setProviderProfile] = useState('default');
+  const [providerTimeoutMs, setProviderTimeoutMs] = useState('5000');
+  const [showNewProfile, setShowNewProfile] = useState(false);
+  const [newProfileText, setNewProfileText] = useState('');
+  const [newProfileCategory, setNewProfileCategory] = useState('沟通偏好');
+  const [showPending, setShowPending] = useState(false);
   const [expandedRecordIds, setExpandedRecordIds] = useState(() => new Set());
   const status = data?.status ?? {};
   const retrieval = data?.retrieval ?? {};
@@ -2561,6 +2580,18 @@ function PersonalMemoryCenter({ data, onInvoke }) {
   const learningAllowed = policy.learning !== false;
   const retrievalAllowed = policy.retrieval !== false;
   const records = management.records ?? retrieval.records ?? [];
+  const profileRecords = retrieval.profileRecords ?? records.filter(isUserProfileRecord);
+  const projectRecords = records.filter(
+    (record) => record.scope === 'project' && !isUserProfileRecord(record),
+  );
+  const pendingRecords = records.filter(
+    (record) =>
+      record.status === 'conflict' || (record.kind === 'inferred' && record.status !== 'active'),
+  );
+  const displayRecords =
+    projectRecords.length > 0
+      ? projectRecords
+      : records.filter((record) => !isUserProfileRecord(record));
   const conflicts = management.conflicts ?? [];
   const notifications = data?.notifications ?? [];
   const projectKey = data?.projectKey;
@@ -2568,6 +2599,55 @@ function PersonalMemoryCenter({ data, onInvoke }) {
   const retrievalPaused = projectKey && (status.pausedRetrievalProjects ?? []).includes(projectKey);
   const memoryFileCount = status.files?.length ?? 0;
   const syncMessage = status.sync?.message ?? '本地记忆仓库已连接';
+  const provider = status.provider?.provider ?? 'local';
+
+  useEffect(() => {
+    const config = data?.providerConfig;
+    if (!config) return;
+    setProviderMode(config.provider ?? 'local');
+    setProfileCharLimit(String(config.profileCharLimit ?? 2000));
+    setTaskContextCharLimit(String(config.taskContextCharLimit ?? 6000));
+    setProviderEndpoint(config.remote?.endpoint ?? '');
+    setProviderTokenEnv(config.remote?.tokenEnv ?? '');
+    setProviderProfile(config.remote?.profile ?? 'default');
+    setProviderTimeoutMs(String(config.remote?.timeoutMs ?? 5000));
+  }, [data?.providerConfig]);
+
+  const saveProviderConfig = () => {
+    const profileLimit = Number(profileCharLimit);
+    const taskLimit = Number(taskContextCharLimit);
+    const timeoutMs = Number(providerTimeoutMs);
+    if (
+      !Number.isFinite(profileLimit) ||
+      profileLimit <= 0 ||
+      !Number.isFinite(taskLimit) ||
+      taskLimit <= 0 ||
+      (providerMode === 'remote' && (!Number.isFinite(timeoutMs) || timeoutMs <= 0))
+    ) {
+      return;
+    }
+    const config = {
+      provider: providerMode,
+      profileCharLimit: Math.round(profileLimit),
+      taskContextCharLimit: Math.round(taskLimit),
+      ...(providerMode === 'remote'
+        ? {
+            remote: {
+              endpoint: providerEndpoint.trim(),
+              ...(providerTokenEnv.trim() ? { tokenEnv: providerTokenEnv.trim() } : {}),
+              ...(providerProfile.trim() ? { profile: providerProfile.trim() } : {}),
+              timeoutMs: Math.round(timeoutMs),
+            },
+          }
+        : {}),
+    };
+    void onInvoke('configure-provider', config);
+  };
+  const profileUsage = status.profile
+    ? `${status.profile.usedChars} / ${status.profile.maxChars} 字符`
+    : provider === 'remote'
+      ? '由 Remote Provider 管理'
+      : '0 / 2000 字符';
   return (
     <div className="mx-auto min-w-0 max-w-dashboard">
       <SectionHead title="个人记忆" hint="跨会话沉淀你的偏好与常用操作" />
@@ -2628,24 +2708,88 @@ function PersonalMemoryCenter({ data, onInvoke }) {
           <span className="dashboard-memory-status-label">记忆文件</span>
           <span className="dashboard-memory-status-value">{memoryFileCount} 个</span>
           <span className="dashboard-memory-status-meta">
-            {status.remote ? '已配置 Git remote' : '仅保存在本地'}
+            {provider === 'remote'
+              ? 'Remote Provider'
+              : status.remote
+                ? '已配置 Git remote'
+                : '仅保存在本地'}
           </span>
         </div>
+      </section>
+      <section
+        className="dashboard-memory-list mb-4"
+        aria-labelledby="dashboard-memory-profile-title"
+      >
+        <div className="dashboard-memory-panel-head">
+          <div>
+            <h3 id="dashboard-memory-profile-title">User Profile</h3>
+            <p>
+              {profileRecords.length > 0
+                ? `${profileRecords.length} 条用户事实、偏好与协作习惯`
+                : '还没有形成稳定的用户偏好'}
+            </p>
+          </div>
+          <div className="dashboard-memory-panel-head-actions">
+            <span className="dashboard-memory-status-meta">{profileUsage}</span>
+            <Button size="small" onClick={() => setShowNewProfile(true)}>
+              新增偏好
+            </Button>
+          </div>
+        </div>
+        {profileRecords.length === 0 ? (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有稳定的用户偏好" />
+        ) : (
+          <div className="dashboard-memory-records">
+            {profileRecords.map((record) => (
+              <div key={record.id} className="dashboard-memory-record">
+                <div className="dashboard-memory-record-content">
+                  <div className="dashboard-memory-record-kicker">
+                    <Tag bordered={false}>{record.category}</Tag>
+                    <span>{record.memoryClass ?? 'user-preference'}</span>
+                  </div>
+                  <p className="dashboard-memory-record-text">{record.text}</p>
+                  <div className="dashboard-memory-record-meta">
+                    <span>{record.evidenceCount ?? 0} 条证据</span>
+                    <span>更新于 {formatTimestamp(record.updatedAt)}</span>
+                  </div>
+                </div>
+                <div className="dashboard-memory-record-actions">
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      setEditingRecord(record);
+                      setCorrectionText(record.text);
+                    }}
+                  >
+                    纠正
+                  </Button>
+                  <Button size="small" danger onClick={() => onInvoke('remove', { id: record.id })}>
+                    删除
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
       <div className="dashboard-memory-layout">
         <section className="dashboard-memory-list" aria-labelledby="dashboard-memory-list-title">
           <div className="dashboard-memory-panel-head">
             <div>
               <h3 id="dashboard-memory-list-title">可用于当前项目的记忆</h3>
-              <p>{records.length > 0 ? `${records.length} 条已整理记忆` : '还没有匹配的记忆'}</p>
+              <p>
+                {displayRecords.length > 0
+                  ? `${displayRecords.length} 条项目记忆`
+                  : '还没有匹配的项目记忆'}
+              </p>
             </div>
             {conflicts.length > 0 && <Tag color="warning">{conflicts.length} 个冲突待确认</Tag>}
           </div>
-          {records.length === 0 ? (
+          {displayRecords.length === 0 ? (
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有匹配的记忆" />
           ) : (
             <div className="dashboard-memory-records">
-              {records.map((record) => {
+              {displayRecords.map((record) => {
                 const text = typeof record.text === 'string' ? record.text : '';
                 const expandable = text.length > MEMORY_COLLAPSE_THRESHOLD;
                 const expanded = expandedRecordIds.has(record.id);
@@ -2771,35 +2915,127 @@ function PersonalMemoryCenter({ data, onInvoke }) {
           </div>
           <div className="dashboard-memory-setting dashboard-memory-setting-stack">
             <div className="dashboard-memory-setting-copy">
-              <strong>同步仓库</strong>
-              <span>{status.remote ?? '尚未配置 Git remote'}</span>
+              <strong>Provider</strong>
+              <span>
+                {provider === 'remote' ? '使用外部 Remote Provider' : '使用本地个人记忆存储'}
+              </span>
             </div>
+            <Select
+              size="small"
+              value={providerMode}
+              aria-label="个人记忆 Provider"
+              options={[
+                { value: 'local', label: 'Local Provider' },
+                { value: 'remote', label: 'Remote Provider' },
+              ]}
+              onChange={setProviderMode}
+            />
             <div className="dashboard-memory-remote-form">
               <Input
                 size="small"
-                value={remoteUrl}
-                onChange={(event) => setRemoteUrl(event.target.value)}
-                placeholder="输入记忆仓库 remote"
-                aria-label="记忆仓库 Git remote"
+                value={profileCharLimit}
+                onChange={(event) => setProfileCharLimit(event.target.value)}
+                placeholder="User Profile 字符上限"
+                aria-label="User Profile 字符上限"
               />
-              <Button
+              <Input
                 size="small"
-                disabled={!remoteUrl.trim()}
-                onClick={() => {
-                  void onInvoke('configure-remote', { url: remoteUrl.trim() });
-                  setRemoteUrl('');
-                }}
-              >
-                保存
-              </Button>
+                value={taskContextCharLimit}
+                onChange={(event) => setTaskContextCharLimit(event.target.value)}
+                placeholder="任务上下文字符上限"
+                aria-label="任务上下文字符上限"
+              />
             </div>
+            {providerMode === 'remote' && (
+              <>
+                <Input
+                  size="small"
+                  value={providerEndpoint}
+                  onChange={(event) => setProviderEndpoint(event.target.value)}
+                  placeholder="Remote Provider endpoint"
+                  aria-label="Remote Provider endpoint"
+                />
+                <div className="dashboard-memory-remote-form">
+                  <Input
+                    size="small"
+                    value={providerTokenEnv}
+                    onChange={(event) => setProviderTokenEnv(event.target.value)}
+                    placeholder="Token 环境变量（可选）"
+                    aria-label="Remote Provider token 环境变量"
+                  />
+                  <Input
+                    size="small"
+                    value={providerProfile}
+                    onChange={(event) => setProviderProfile(event.target.value)}
+                    placeholder="Profile"
+                    aria-label="Remote Provider profile"
+                  />
+                </div>
+                <Input
+                  size="small"
+                  value={providerTimeoutMs}
+                  onChange={(event) => setProviderTimeoutMs(event.target.value)}
+                  placeholder="请求超时（毫秒）"
+                  aria-label="Remote Provider 请求超时"
+                />
+              </>
+            )}
             <div className="dashboard-memory-sync-row">
-              <span>{syncMessage}</span>
-              <Button size="small" onClick={() => onInvoke('sync', {})}>
-                立即同步
-              </Button>
+              <span>Provider 切换不会迁移或删除已有数据；保存后重新加载页面即可生效</span>
+              <div className="dashboard-memory-remote-form">
+                <Button size="small" onClick={() => onInvoke('test-provider', {})}>
+                  测试连接
+                </Button>
+                <Button size="small" type="primary" onClick={saveProviderConfig}>
+                  保存配置
+                </Button>
+              </div>
             </div>
           </div>
+          {pendingRecords.length > 0 && (
+            <div className="dashboard-memory-setting">
+              <div className="dashboard-memory-setting-copy">
+                <strong>待确认记忆</strong>
+                <span>{pendingRecords.length} 条候选或冲突，不会自动注入</span>
+              </div>
+              <Button size="small" onClick={() => setShowPending(true)}>
+                查看待处理
+              </Button>
+            </div>
+          )}
+          {provider === 'local' && (
+            <div className="dashboard-memory-setting dashboard-memory-setting-stack">
+              <div className="dashboard-memory-setting-copy">
+                <strong>同步仓库</strong>
+                <span>{status.remote ?? '尚未配置 Git remote'}</span>
+              </div>
+              <div className="dashboard-memory-remote-form">
+                <Input
+                  size="small"
+                  value={remoteUrl}
+                  onChange={(event) => setRemoteUrl(event.target.value)}
+                  placeholder="输入记忆仓库 remote"
+                  aria-label="记忆仓库 Git remote"
+                />
+                <Button
+                  size="small"
+                  disabled={!remoteUrl.trim()}
+                  onClick={() => {
+                    void onInvoke('configure-remote', { url: remoteUrl.trim() });
+                    setRemoteUrl('');
+                  }}
+                >
+                  保存
+                </Button>
+              </div>
+              <div className="dashboard-memory-sync-row">
+                <span>{syncMessage}</span>
+                <Button size="small" onClick={() => onInvoke('sync', {})}>
+                  立即同步
+                </Button>
+              </div>
+            </div>
+          )}
           <div className="dashboard-memory-setting dashboard-memory-setting-danger">
             <div className="dashboard-memory-setting-copy">
               <strong>插件管理</strong>
@@ -2823,6 +3059,82 @@ function PersonalMemoryCenter({ data, onInvoke }) {
           </div>
         </aside>
       </div>
+      <Modal
+        open={showNewProfile}
+        title="新增 User Profile 偏好"
+        okText="保存"
+        cancelText="取消"
+        okButtonProps={{ disabled: newProfileText.trim().length === 0 }}
+        onCancel={() => setShowNewProfile(false)}
+        onOk={() => {
+          if (newProfileText.trim().length === 0) return;
+          void onInvoke('remember', {
+            scope: 'global',
+            memoryClass: 'user-preference',
+            category: newProfileCategory.trim() || '沟通偏好',
+            text: newProfileText.trim(),
+          });
+          setNewProfileText('');
+          setShowNewProfile(false);
+        }}
+      >
+        <Input
+          className="mb-3"
+          value={newProfileCategory}
+          onChange={(event) => setNewProfileCategory(event.target.value)}
+          placeholder="分类，例如：沟通偏好"
+          aria-label="User Profile 分类"
+        />
+        <Input.TextArea
+          value={newProfileText}
+          onChange={(event) => setNewProfileText(event.target.value)}
+          placeholder="例如：以后都用中文回答"
+          aria-label="User Profile 内容"
+          autoSize={{ minRows: 3, maxRows: 6 }}
+        />
+      </Modal>
+      <Modal
+        open={showPending}
+        title="待确认记忆"
+        footer={null}
+        onCancel={() => setShowPending(false)}
+      >
+        {pendingRecords.length === 0 ? (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有待确认内容" />
+        ) : (
+          <div className="dashboard-memory-records">
+            {pendingRecords.map((record) => (
+              <div key={record.id} className="dashboard-memory-record">
+                <div className="dashboard-memory-record-content">
+                  <div className="dashboard-memory-record-kicker">
+                    <Tag color="warning">{record.status ?? 'candidate'}</Tag>
+                    <span>{record.category}</span>
+                  </div>
+                  <p className="dashboard-memory-record-text">{record.text}</p>
+                </div>
+                {record.kind === 'inferred' && record.status !== 'active' && (
+                  <Button
+                    size="small"
+                    onClick={() =>
+                      onInvoke('remember', {
+                        scope: record.scope,
+                        ...(record.projectKey === undefined
+                          ? {}
+                          : { projectKey: record.projectKey }),
+                        memoryClass: record.memoryClass,
+                        category: record.category,
+                        text: record.text,
+                      })
+                    }
+                  >
+                    确认保存
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
       <Modal
         open={editingRecord !== null}
         title="纠正这条记忆"

@@ -9,16 +9,24 @@ import type {
 import type {
   MemoryInput,
   MemoryCorrection,
+  MemoryManagementView,
   MemoryRecord,
+  MemoryProviderMutation,
+  MemoryProviderQuery,
   MemoryQuery,
+  MemoryQueryView,
   MemoryObservation,
   MemoryReviewPacket,
   MemoryReviewResult,
   MemoryReviewRequest,
+  MemoryProviderConfig,
+  MemoryRetrieval,
+  PersonalMemoryProvider,
   PersonalMemoryProjectPolicy,
   PersonalMemoryPluginOptions,
   PersonalMemoryServiceLike,
 } from './types.js';
+import { isMemoryClass } from './types.js';
 import { invokeMemoryReviewSkill } from './skill-runtime.js';
 
 export const PERSONAL_MEMORY_PLUGIN_ID = 'comet.personal-memory';
@@ -46,6 +54,7 @@ async function createModule(
   options: PersonalMemoryPluginOptions,
 ): Promise<PluginModule> {
   const service = options.createService(context);
+  const provider = resolveProvider(service);
   const projectPolicy = options.projectPolicy ?? DEFAULT_PROJECT_POLICY;
   const reviewNotices: string[] = [];
   const announcedConflicts = new Set<string>();
@@ -65,8 +74,12 @@ async function createModule(
     let result: MemoryReviewResult;
     try {
       const actions = await invokeMemoryReviewSkill(packet, options.runMemoryReview);
-      result = await service.reviewAndApply(packet, actions);
-    } catch {
+      result = (await provider.apply({
+        operation: 'review',
+        input: { packet, actions },
+      })) as MemoryReviewResult;
+    } catch (error) {
+      if (packet.explicitRequest !== undefined) throw error;
       return {
         action: 'skip',
         persisted: false,
@@ -75,6 +88,10 @@ async function createModule(
             ? 'Memory review was unavailable.'
             : '记忆评审暂不可用，已跳过。',
       };
+    }
+
+    if (packet.explicitRequest !== undefined && !result.persisted) {
+      throw new Error(result.reason ?? 'Explicit personal memory request was not persisted.');
     }
 
     const explicitAction = packet.explicitRequest?.action;
@@ -96,11 +113,13 @@ async function createModule(
 
     if (explicitAction === undefined && reviewHasCandidate(result)) {
       try {
-        const management = await service.manage(
-          packet.projectKey === undefined
-            ? { scope: 'global' }
-            : { scope: 'project', projectKey: packet.projectKey },
-        );
+        const management = (await provider.query({
+          view: 'manage',
+          query:
+            packet.projectKey === undefined
+              ? { scope: 'global' }
+              : { scope: 'project', projectKey: packet.projectKey },
+        })) as MemoryManagementView;
         for (const conflict of management.conflicts) {
           const key = `${conflict.updatedAt}:${conflict.texts.join('\u0000')}`;
           if (announcedConflicts.has(key)) continue;
@@ -118,8 +137,16 @@ async function createModule(
     return result;
   };
 
-  const retrieveWithNotice = async (query: MemoryQuery) => {
-    const retrieval = await service.retrieve(query);
+  const retrieveWithNotice = async (query: MemoryQuery): Promise<MemoryRetrieval> => {
+    let retrieval;
+    try {
+      retrieval = (await provider.query({
+        view: retrievalView(query.view),
+        query,
+      })) as MemoryRetrieval;
+    } catch {
+      return { records: [], text: '', truncated: false, disabled: false };
+    }
     const firstUse = retrieval.records.some((record) => !announcedRetrievals.has(record.id));
     retrieval.records.forEach((record) => announcedRetrievals.add(record.id));
     if (firstUse) {
@@ -148,7 +175,8 @@ async function createModule(
         projectKey: projectId,
         policy: projectPolicy,
         status: await invoke('status'),
-        retrieval: await invoke('retrieve', { projectKey: projectId }),
+        providerConfig: await options.getProviderConfig?.(),
+        retrieval: await invoke('retrieve', { view: 'combined', projectKey: projectId }),
         management: await invoke('manage', { projectKey: projectId }),
         operations: [
           'remember',
@@ -163,6 +191,9 @@ async function createModule(
           'set-retrieval',
           'pause-project-learning',
           'pause-project-retrieval',
+          'get-provider-config',
+          'test-provider',
+          'configure-provider',
         ],
         notifications: reviewNotices.splice(0),
       }),
@@ -171,9 +202,16 @@ async function createModule(
       if (!projectPolicy.learning) return;
       const observation = observationFromEvent(event);
       if (observation !== null) {
+        if (
+          observation.source?.kind !== 'user' &&
+          (observation.userEvidence?.length ?? 0) === 0 &&
+          observation.explicitRequest === undefined
+        ) {
+          return;
+        }
         const review = async () => {
           const packet = await reviewPacketFromObservation(
-            service,
+            provider,
             observation,
             event.name,
             options.language,
@@ -194,6 +232,7 @@ async function createModule(
     provideContext: async (request) => {
       if (!projectPolicy.retrieval) return null;
       const retrieval = await retrieveWithNotice({
+        view: 'combined',
         projectKey: request.projectId ?? context.projectId,
         task: request.task,
         path: request.path,
@@ -203,6 +242,7 @@ async function createModule(
     },
     invoke: async (capability, input) =>
       invokeCapability(
+        provider,
         service,
         capability,
         input,
@@ -210,18 +250,23 @@ async function createModule(
         projectPolicy,
         applyReview,
         retrieveWithNotice,
+        options.getProviderConfig,
+        options.configureProvider,
       ),
   };
 }
 
 async function invokeCapability(
+  provider: PersonalMemoryProvider,
   service: PersonalMemoryServiceLike,
   capability: string,
   input: unknown,
   language: 'zh-CN' | 'en' | undefined,
   projectPolicy: PersonalMemoryProjectPolicy,
   applyReview: (packet: MemoryReviewPacket) => Promise<MemoryReviewResult>,
-  retrieveWithNotice: (query: MemoryQuery) => Promise<unknown>,
+  retrieveWithNotice: (query: MemoryQuery) => Promise<MemoryRetrieval>,
+  getProviderConfig?: () => Promise<MemoryProviderConfig>,
+  configureProvider?: (config: MemoryProviderConfig) => Promise<void>,
 ): Promise<unknown> {
   switch (capability) {
     case 'remember':
@@ -233,6 +278,7 @@ async function invokeCapability(
         },
         language,
         applyReview,
+        provider,
       );
     case 'correct': {
       const value = asObject(input, 'correct');
@@ -245,6 +291,7 @@ async function invokeCapability(
         },
         language,
         applyReview,
+        provider,
       );
     }
     case 'remove': {
@@ -258,11 +305,15 @@ async function invokeCapability(
         },
         language,
         applyReview,
+        provider,
       );
     }
     case 'rollback': {
       const value = asObject(input, 'rollback');
-      return service.rollback(asString(value.id, 'rollback.id'));
+      return provider.apply({
+        operation: 'rollback',
+        input: { id: asString(value.id, 'rollback.id') },
+      });
     }
     case 'observe': {
       if (!projectPolicy.learning) {
@@ -276,7 +327,7 @@ async function invokeCapability(
       }
       const observation = asRecord<MemoryObservation>(input, 'observe');
       const packet = await reviewPacketFromObservation(
-        service,
+        provider,
         observation,
         'memory.observe',
         language,
@@ -286,9 +337,21 @@ async function invokeCapability(
     case 'retrieve':
       return retrieveWithNotice(asRecord(input, 'retrieve') as MemoryQuery);
     case 'manage':
-      return service.manage(asRecord<MemoryQuery>(input, 'manage'));
+      return provider.query({
+        view: 'manage',
+        query: asRecord<MemoryQuery>(input, 'manage'),
+      });
     case 'status':
-      return service.status();
+      return provider.status();
+    case 'test-provider':
+      if (service.testProvider === undefined) throw new Error('Provider test is unavailable');
+      return service.testProvider();
+    case 'get-provider-config':
+      if (getProviderConfig === undefined) throw new Error('Provider settings are unavailable');
+      return getProviderConfig();
+    case 'configure-provider':
+      if (configureProvider === undefined) throw new Error('Provider settings are unavailable');
+      return configureProvider(asRecord<MemoryProviderConfig>(input, 'configure-provider'));
     case 'sync':
       return service.sync();
     case 'remote':
@@ -332,6 +395,7 @@ async function reviewExplicitMemoryRequest(
     | { readonly action: 'forget'; readonly id: string; readonly permanent: boolean },
   language: 'zh-CN' | 'en' | undefined,
   applyReview: (packet: MemoryReviewPacket) => Promise<MemoryReviewResult>,
+  provider: PersonalMemoryProvider,
 ): Promise<MemoryRecord | null | void> {
   const target = input.action === 'remember' ? null : await service.get(input.id);
   const request =
@@ -341,6 +405,9 @@ async function reviewExplicitMemoryRequest(
           scope: input.input.scope,
           ...(input.input.projectKey === undefined ? {} : { projectKey: input.input.projectKey }),
           ...(input.input.category === undefined ? {} : { category: input.input.category }),
+          ...(input.input.memoryClass === undefined
+            ? {}
+            : { memoryClass: input.input.memoryClass }),
           ...(input.input.title === undefined ? {} : { title: input.input.title }),
           ...(input.input.reason === undefined ? {} : { reason: input.input.reason }),
           text: input.input.text,
@@ -359,6 +426,9 @@ async function reviewExplicitMemoryRequest(
             ...(input.correction.category === undefined
               ? {}
               : { category: input.correction.category }),
+            ...(input.correction.memoryClass === undefined
+              ? {}
+              : { memoryClass: input.correction.memoryClass }),
             ...(input.correction.title === undefined ? {} : { title: input.correction.title }),
             ...(input.correction.reason === undefined ? {} : { reason: input.correction.reason }),
             ...(input.correction.tags === undefined ? {} : { tags: input.correction.tags }),
@@ -394,6 +464,11 @@ async function reviewExplicitMemoryRequest(
     ...(projectKey === undefined ? {} : { projectKey }),
     projectIdentity: projectKey ?? 'comet-project',
     category,
+    ...(input.action === 'remember' && input.input.memoryClass === undefined
+      ? {}
+      : input.action === 'remember'
+        ? { memoryClass: input.input.memoryClass }
+        : {}),
     text,
     language: input.action === 'remember' ? (input.input.language ?? language) : language,
     workflow: 'cli',
@@ -404,10 +479,55 @@ async function reviewExplicitMemoryRequest(
     explicitRequest: request,
     source: { kind: 'user' },
   };
-  const packet = await reviewPacketFromObservation(service, observation, 'memory.cli', language);
+  const packet = await reviewPacketFromObservation(provider, observation, 'memory.cli', language);
   const result = await applyReview(packet);
   if (input.action === 'remember') return result.observation?.record ?? null;
   if (input.action === 'correct') return await service.get(input.id);
+}
+
+function retrievalView(view: MemoryQueryView | undefined): Exclude<MemoryQueryView, 'manage'> {
+  return view === 'profile' || view === 'task' ? view : 'combined';
+}
+
+function resolveProvider(service: PersonalMemoryServiceLike): PersonalMemoryProvider {
+  if (service.query !== undefined && service.apply !== undefined) {
+    return service as PersonalMemoryProvider;
+  }
+  return {
+    status: () => service.status(),
+    query: async (request: MemoryProviderQuery) =>
+      request.view === 'manage'
+        ? service.manage(request.query)
+        : service.retrieve({ ...request.query, view: request.view }),
+    apply: async (mutation: MemoryProviderMutation) => {
+      switch (mutation.operation) {
+        case 'remember':
+          return service.remember(mutation.input as MemoryInput);
+        case 'correct': {
+          const input = mutation.input as {
+            readonly id: string;
+            readonly correction: MemoryCorrection;
+          };
+          return service.correct(input.id, input.correction);
+        }
+        case 'forget': {
+          const input = mutation.input as { readonly id: string; readonly permanent?: boolean };
+          return service.remove(input.id, { permanent: input.permanent });
+        }
+        case 'rollback':
+          return service.rollback((mutation.input as { readonly id: string }).id);
+        case 'observe':
+          return service.observe(mutation.input as MemoryObservation);
+        case 'review': {
+          const input = mutation.input as {
+            readonly packet: MemoryReviewPacket;
+            readonly actions: import('./types.js').MemoryReviewActionSet;
+          };
+          return service.reviewAndApply(input.packet, input.actions);
+        }
+      }
+    },
+  };
 }
 
 function reviewHasCandidate(result: MemoryReviewResult): boolean {
@@ -433,6 +553,7 @@ function observationFromEvent(event: PluginEvent): MemoryObservation | null {
       (typeof payload.projectKey === 'string' ? payload.projectKey : undefined),
     category: payload.category,
     text: payload.text,
+    memoryClass: isMemoryClass(payload.memoryClass) ? payload.memoryClass : undefined,
     title: typeof payload.title === 'string' ? payload.title : undefined,
     reason: typeof payload.reason === 'string' ? payload.reason : undefined,
     tags: strings(payload.tags),
@@ -463,7 +584,7 @@ function observationFromEvent(event: PluginEvent): MemoryObservation | null {
 }
 
 async function reviewPacketFromObservation(
-  service: PersonalMemoryServiceLike,
+  provider: PersonalMemoryProvider,
   observation: MemoryObservation,
   checkpoint: string,
   defaultLanguage: 'zh-CN' | 'en' | undefined,
@@ -474,11 +595,13 @@ async function reviewPacketFromObservation(
   const evidenceKey = [observation.workflow, observation.changeId, candidateKey ?? 'default'].join(
     ':',
   );
-  const management = await service.manage(
-    observation.scope === 'project' && observation.projectKey !== undefined
-      ? { scope: 'project', projectKey: observation.projectKey }
-      : { scope: 'global' },
-  );
+  const management = (await provider.query({
+    view: 'manage',
+    query:
+      observation.scope === 'project' && observation.projectKey !== undefined
+        ? { scope: 'project', projectKey: observation.projectKey }
+        : { scope: 'global' },
+  })) as MemoryManagementView;
   return {
     schema: 'comet.memory.review.v1',
     language: observation.language ?? defaultLanguage ?? 'zh-CN',
@@ -509,6 +632,7 @@ async function reviewPacketFromObservation(
         observedAt,
         text: observation.text,
         category: observation.category,
+        memoryClass: observation.memoryClass,
         tags: observation.tags,
         pathPatterns: observation.pathPatterns,
         taskTypes: observation.taskTypes,
@@ -521,6 +645,7 @@ async function reviewPacketFromObservation(
       ...(record.projectKey === undefined ? {} : { projectKey: record.projectKey }),
       ...(record.title === undefined ? {} : { title: record.title }),
       ...(record.reason === undefined ? {} : { reason: record.reason }),
+      ...(record.memoryClass === undefined ? {} : { memoryClass: record.memoryClass }),
       category: record.category,
       text: record.text,
       kind: record.kind,
