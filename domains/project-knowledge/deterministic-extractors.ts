@@ -164,12 +164,25 @@ async function projectMapUnit(
     changedPaths && changedPaths.length > 0
       ? await changedProjectFiles(root, changedPaths, 500, deadline)
       : await realProjectFiles(root, 500, deadline);
-  const directories = [
-    ...new Set(files.map((file) => relative(root, file).split('/')[0]).filter(Boolean)),
-  ].slice(0, 32);
+  const representatives = new Map<string, string>();
+  for (const file of files) {
+    const relativeFile = relative(root, file);
+    const directory = relativeFile.split('/')[0];
+    if (directory && !representatives.has(directory)) representatives.set(directory, relativeFile);
+  }
+  const representativeSources = [...representatives.entries()]
+    .slice(0, 30)
+    .map(([, file]) => source(file, 'root'));
+  const directories = [...representatives.keys()].slice(0, representativeSources.length);
   const sources = [manifest, config]
     .filter((value): value is string => value !== null)
-    .map((value) => source(value, 'root'));
+    .map((value) => source(value, 'root'))
+    .concat(representativeSources)
+    .filter(
+      (reference, index, values) =>
+        values.findIndex((candidate) => candidate.source === reference.source) === index,
+    )
+    .slice(0, 32);
   if (sources.length === 0) {
     const fallback = await firstExistingSource(root, [], deadline);
     if (fallback) sources.push(source(fallback));
@@ -225,7 +238,7 @@ async function moduleOverviewUnit(
   const names = [
     ...new Set(sourceFiles.map((file) => relative(root, file).split('/').slice(0, 2).join('/'))),
   ].filter(Boolean);
-  const sourceRefs = sourceFiles.slice(0, 8).map((file) => source(relative(root, file), 'module'));
+  const sourceRefs = sourceFiles.slice(0, 32).map((file) => source(relative(root, file), 'module'));
   const relationTargets = names
     .slice(0, 8)
     .map((name) => `模块 ${name}`)

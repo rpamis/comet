@@ -77,6 +77,8 @@ export interface ProjectKnowledgePluginOptions {
   readonly cometVersionRange?: (cometVersion: string) => boolean;
   readonly cacheRoot?: string;
   readonly semanticReviewer?: ProjectKnowledgeSemanticReviewer;
+  /** Host-owned boundary for review work that must not delay workflow events. */
+  readonly runReviewInBackground?: (task: () => Promise<void>) => void | Promise<void>;
 }
 
 export interface ProjectKnowledgeDashboardRemoteSummary {

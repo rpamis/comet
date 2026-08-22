@@ -38,6 +38,8 @@ export interface ProjectKnowledgeUnitSource {
   readonly anchor?: string;
   readonly lineStart?: number;
   readonly lineEnd?: number;
+  /** Small source-backed excerpt used for maintained units across workspaces. */
+  readonly evidence?: string;
 }
 
 export interface ProjectKnowledgeUnitSourceVersion {
@@ -148,6 +150,75 @@ function sourceContainsAnchor(markdown: string, anchor: string): boolean {
   return anchor === 'document' && markdown.trim().length > 0;
 }
 
+function sourceEvidence(markdown: string, reference: ProjectKnowledgeUnitSource): string {
+  const normalized = markdown.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+  const lines = normalized.split('\n');
+  if (reference.lineStart !== undefined) {
+    return lines
+      .slice(reference.lineStart - 1, reference.lineEnd ?? reference.lineStart)
+      .join('\n')
+      .trim()
+      .slice(0, 1024);
+  }
+  if (reference.anchor && /\.mdx?$/iu.test(reference.source)) {
+    const stack: string[] = [];
+    const occurrences = new Map<string, number>();
+    for (let index = 0; index < lines.length; index += 1) {
+      const match = /^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/u.exec(lines[index] ?? '');
+      if (!match) continue;
+      const level = match[1].length;
+      stack.length = level - 1;
+      stack[level - 1] = match[2].trim();
+      const base = stack.filter(Boolean).map(sourceAnchorPart).join('/');
+      const ordinal = (occurrences.get(base) ?? 0) + 1;
+      occurrences.set(base, ordinal);
+      const anchor = ordinal === 1 ? base : `${base}-${ordinal}`;
+      if (anchor !== reference.anchor) continue;
+      let end = index + 1;
+      while (end < lines.length && !/^\s{0,3}#{1,6}\s+/u.test(lines[end] ?? '')) end += 1;
+      return lines.slice(index, end).join('\n').trim().slice(0, 1024);
+    }
+  }
+  return normalized.trim().slice(0, 1024);
+}
+
+async function enrichUnitSources(
+  unit: ProjectKnowledgeUnit,
+  projectRoot: string,
+): Promise<ProjectKnowledgeUnit> {
+  const cache = new Map<string, string | null>();
+  const enrich = async (
+    reference: ProjectKnowledgeUnitSource,
+  ): Promise<ProjectKnowledgeUnitSource> => {
+    if (reference.evidence !== undefined) return reference;
+    if (!cache.has(reference.source)) {
+      try {
+        const read = await readProtectedProjectFile(projectRoot, reference.source, 64 * 1024, {
+          label: reference.source,
+        });
+        cache.set(reference.source, sourceEvidence(read.bytes.toString('utf8'), reference));
+      } catch {
+        cache.set(reference.source, null);
+      }
+    }
+    const evidence = cache.get(reference.source);
+    return evidence ? { ...reference, evidence } : reference;
+  };
+  const conclusions = await Promise.all(
+    unit.conclusions.map(async (conclusion) => ({
+      ...conclusion,
+      sources: await Promise.all(conclusion.sources.map(enrich)),
+    })),
+  );
+  const relations = await Promise.all(
+    unit.relations.map(async (relation) => ({
+      ...relation,
+      sources: await Promise.all(relation.sources.map(enrich)),
+    })),
+  );
+  return { ...unit, conclusions, relations };
+}
+
 function objectRecord(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`${label} must be a mapping`);
@@ -198,6 +269,9 @@ function parseSource(value: unknown, label: string): ProjectKnowledgeUnitSource 
       : { anchor: boundedString(record.anchor, `${label}.anchor`, 512) }),
     ...(lineStart === undefined ? {} : { lineStart: Number(lineStart) }),
     ...(lineEnd === undefined ? {} : { lineEnd: Number(lineEnd) }),
+    ...(record.evidence === undefined
+      ? {}
+      : { evidence: boundedString(record.evidence, `${label}.evidence`, 1024) }),
   };
 }
 
@@ -380,6 +454,7 @@ export function renderProjectKnowledgeUnit(unit: ProjectKnowledgeUnit): string {
         ...(source.anchor === undefined ? {} : { anchor: source.anchor }),
         ...(source.lineStart === undefined ? {} : { line_start: source.lineStart }),
         ...(source.lineEnd === undefined ? {} : { line_end: source.lineEnd }),
+        ...(source.evidence === undefined ? {} : { evidence: source.evidence }),
       })),
     })),
     relations: validated.relations.map((relation) => ({
@@ -390,6 +465,7 @@ export function renderProjectKnowledgeUnit(unit: ProjectKnowledgeUnit): string {
         ...(source.anchor === undefined ? {} : { anchor: source.anchor }),
         ...(source.lineStart === undefined ? {} : { line_start: source.lineStart }),
         ...(source.lineEnd === undefined ? {} : { line_end: source.lineEnd }),
+        ...(source.evidence === undefined ? {} : { evidence: source.evidence }),
       })),
     })),
     ...(validated.verification.length > 0 ? { verification: [...validated.verification] } : {}),
@@ -456,7 +532,6 @@ export class ProjectKnowledgeUnitRepository {
   private readonly projectRoot: string;
   private readonly legacyGeneratedRoot?: string;
   private readonly allowLegacyCacheRead: boolean;
-  private readonly maintainedSourceStatePath: string;
   private readonly reportDiagnostic: ProjectKnowledgeUnitRepositoryOptions['reportDiagnostic'];
 
   constructor(options: ProjectKnowledgeUnitRepositoryOptions) {
@@ -473,60 +548,12 @@ export class ProjectKnowledgeUnitRepository {
       ),
       'units',
     );
-    this.maintainedSourceStatePath = path.join(
-      path.dirname(
-        resolveProjectKnowledgeCacheLocation(this.projectRoot, options.cacheRoot).databasePath,
-      ),
-      'maintained-source-state.json',
-    );
-  }
-
-  private async readMaintainedSourceState(): Promise<
-    ReadonlyMap<string, readonly ProjectKnowledgeUnitSourceVersion[]>
-  > {
-    try {
-      const stat = await fs.stat(this.maintainedSourceStatePath);
-      if (stat.size > 256 * 1024) return new Map();
-      const parsed: unknown = JSON.parse(
-        (await fs.readFile(this.maintainedSourceStatePath, 'utf8')) || '{}',
-      );
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return new Map();
-      const state = new Map<string, readonly ProjectKnowledgeUnitSourceVersion[]>();
-      for (const [id, value] of Object.entries(parsed)) {
-        if (!UNIT_ID.test(id) || !Array.isArray(value)) continue;
-        const versions = value.filter(
-          (entry): entry is ProjectKnowledgeUnitSourceVersion =>
-            Boolean(entry) &&
-            typeof entry === 'object' &&
-            typeof (entry as { source?: unknown }).source === 'string' &&
-            typeof (entry as { size?: unknown }).size === 'number' &&
-            typeof (entry as { modifiedAt?: unknown }).modifiedAt === 'number',
-        );
-        if (versions.length > 0) state.set(id, versions.slice(0, MAX_SOURCE_COUNT));
-      }
-      return state;
-    } catch {
-      return new Map();
-    }
-  }
-
-  private async persistMaintainedSourceState(
-    id: string,
-    versions: readonly ProjectKnowledgeUnitSourceVersion[],
-  ): Promise<void> {
-    const state = new Map(await this.readMaintainedSourceState());
-    if (versions.length > 0) state.set(id, versions);
-    else state.delete(id);
-    await fs.mkdir(path.dirname(this.maintainedSourceStatePath), { recursive: true });
-    const serialized = Object.fromEntries(state.entries());
-    await fs.writeFile(this.maintainedSourceStatePath, JSON.stringify(serialized), 'utf8');
   }
 
   async list(
     options: ProjectKnowledgeUnitListOptions = {},
   ): Promise<readonly ProjectKnowledgeUnit[]> {
     const output: ProjectKnowledgeUnit[] = [];
-    const maintainedSourceState = await this.readMaintainedSourceState();
     const roots: ReadonlyArray<readonly [string, ProjectKnowledgeUnitOrigin]> = [
       [this.maintainedRoot, 'maintained'],
       [this.generatedRoot, 'generated'],
@@ -573,10 +600,7 @@ export class ProjectKnowledgeUnitRepository {
             bytes = await fs.readFile(generatedPath);
           }
           const parsed = parseProjectKnowledgeUnit(bytes.toString('utf8'), relative);
-          const unit =
-            origin === 'maintained' && maintainedSourceState.has(parsed.id)
-              ? { ...parsed, sourceVersions: maintainedSourceState.get(parsed.id) }
-              : parsed;
+          const unit = origin === 'maintained' ? { ...parsed, sourceVersions: undefined } : parsed;
           if (unit.origin !== origin || (options.state && unit.state !== options.state)) continue;
           if (seenIds.has(unit.id)) continue;
           if (origin === 'generated' && root !== this.generatedRoot) {
@@ -604,7 +628,10 @@ export class ProjectKnowledgeUnitRepository {
   }
 
   async writeMaintained(unit: ProjectKnowledgeUnit): Promise<void> {
-    const validated = validateProjectKnowledgeUnitShape(unit);
+    const validated = await enrichUnitSources(
+      validateProjectKnowledgeUnitShape({ ...unit, sourceVersions: undefined }),
+      this.projectRoot,
+    );
     if (validated.origin !== 'maintained')
       throw new Error('writeMaintained requires maintained origin');
     await ensureProtectedProjectDirectory(this.projectRoot, 'docs/comet/knowledge/units', {
@@ -614,10 +641,6 @@ export class ProjectKnowledgeUnitRepository {
       path.join(this.maintainedRoot, `${validated.id}.md`),
       renderProjectKnowledgeUnit(validated),
       'utf8',
-    );
-    await this.persistMaintainedSourceState(
-      validated.id,
-      await captureProjectKnowledgeUnitSourceVersions(validated, this.projectRoot),
     );
   }
 
@@ -663,6 +686,7 @@ export class ProjectKnowledgeUnitRepository {
       ...unit,
       origin: 'maintained',
       state: unit.state === 'retired' ? 'draft' : unit.state,
+      sourceVersions: undefined,
     });
     await this.writeMaintained(shared);
     if (unit.origin === 'generated') {
@@ -676,7 +700,7 @@ export class ProjectKnowledgeUnitRepository {
     options: { readonly confirm?: boolean } = {},
   ): Promise<ProjectKnowledgeUnit> {
     if (options.confirm !== true) throw new Error('share requires explicit confirmation');
-    const validated = validateProjectKnowledgeUnitShape(unit);
+    const validated = validateProjectKnowledgeUnitShape({ ...unit, sourceVersions: undefined });
     if (validated.origin !== 'maintained') throw new Error('shared unit must be maintained');
     const validation = await validateProjectKnowledgeUnitSources(validated, {
       projectRoot: this.projectRoot,
@@ -804,7 +828,19 @@ export async function validateProjectKnowledgeUnitSources(
       const stat = read.stat;
       const current = { size: Number(stat.size), modifiedAt: Number(stat.mtimeMs) };
       const content = read.bytes.toString('utf8');
+      const normalizedContent = content.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
       const lines = content.replaceAll('\r\n', '\n').split('\n');
+      if (
+        reference.evidence !== undefined &&
+        !normalizedContent.includes(reference.evidence.replaceAll('\r\n', '\n'))
+      ) {
+        diagnostics.push({
+          code: 'source-evidence-missing',
+          message: '项目知识单元引用的来源片段在当前文件中不存在。',
+          source: reference.source,
+        });
+        continue;
+      }
       if (
         reference.anchor &&
         /\.mdx?$/iu.test(reference.source) &&

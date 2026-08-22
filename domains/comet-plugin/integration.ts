@@ -76,6 +76,10 @@ export interface CometPluginBridgeOptions {
   readonly onMemoryReviewNotice?: (notice: string) => void | Promise<void>;
   /** Optional host-owned adapter for nonblocking project knowledge review. */
   readonly runProjectKnowledgeReview?: ProjectKnowledgeSemanticReviewer;
+  /** Optional host-owned scheduler for project knowledge semantic review. */
+  readonly runProjectKnowledgeReviewInBackground?: (
+    task: () => Promise<void>,
+  ) => void | Promise<void>;
 }
 
 export interface CometPluginContextRequest {
@@ -344,6 +348,9 @@ export async function createDefaultCometPluginBridge(
             : {}),
         ...(options.runProjectKnowledgeReview
           ? { semanticReviewer: options.runProjectKnowledgeReview }
+          : {}),
+        ...(options.runProjectKnowledgeReviewInBackground
+          ? { runReviewInBackground: options.runProjectKnowledgeReviewInBackground }
           : {}),
       }),
     ],

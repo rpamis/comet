@@ -11,7 +11,11 @@ import { readProjectKnowledgeIndexStatus } from './index-store.js';
 import { createProjectKnowledgeQuery } from './query.js';
 import { RemoteProjectKnowledgeProvider } from './remote-provider.js';
 import { renderProjectKnowledgeContext, boundProjectKnowledgeResults } from './renderer.js';
-import { ProjectKnowledgeLearningService, type ProjectKnowledgeChangedHint } from './learning.js';
+import {
+  createProjectKnowledgeChangedHint,
+  ProjectKnowledgeLearningService,
+  type ProjectKnowledgeChangedHint,
+} from './learning.js';
 import { ProjectKnowledgeUnitRepository } from './units.js';
 import type { ProjectKnowledgeUnit } from './units.js';
 import { validateProjectKnowledgeUnitShape } from './units.js';
@@ -135,8 +139,32 @@ async function createProjectKnowledgeModule(
     dashboard: createProjectKnowledgeDashboardContribution(options.language),
     events: ['verification.completed', 'change.completed', 'task.completed'],
     onEvent: async (event) => {
-      const result = await learning.processEvent(event);
-      if (result.changedHint !== undefined) await persistChangedHint(result.changedHint);
+      const changedHint = createProjectKnowledgeChangedHint(event);
+      if (changedHint !== null) await persistChangedHint(changedHint);
+      if (options.semanticReviewer !== undefined) {
+        const review = async (): Promise<void> => {
+          try {
+            await learning.processEvent(event);
+          } catch {
+            reportDiagnostic({
+              code: 'reviewer-unavailable',
+              message: '项目知识语义评审暂不可用，已跳过。',
+            });
+          }
+        };
+        if (options.runReviewInBackground !== undefined) {
+          void Promise.resolve(options.runReviewInBackground(review)).catch(() => {
+            reportDiagnostic({
+              code: 'reviewer-unavailable',
+              message: '项目知识语义评审暂不可用，已跳过。',
+            });
+          });
+        } else {
+          // Optional semantic learning must not delay a Native/Classic
+          // checkpoint when the host has no scheduler adapter.
+          void review();
+        }
+      }
       // The next context request must see the latest changed-path hint so the
       // local provider can refresh only the affected sources.
       provider = null;

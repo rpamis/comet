@@ -158,7 +158,9 @@ function eventValue(event: PluginEvent, key: string): unknown {
   return eventPayload(event)[key];
 }
 
-function createChangedHint(event: PluginEvent): ProjectKnowledgeChangedHint | null {
+export function createProjectKnowledgeChangedHint(
+  event: PluginEvent,
+): ProjectKnowledgeChangedHint | null {
   const changedPaths = boundedStringList(eventValue(event, 'changedPaths'), MAX_CHANGED_PATHS)
     .map(safeRelativePath)
     .filter((entry): entry is string => entry !== null);
@@ -201,7 +203,7 @@ export async function createProjectKnowledgeReviewPacket(
   if (!['verification.completed', 'change.completed', 'task.completed'].includes(event.name)) {
     return null;
   }
-  const changedHint = createChangedHint(event);
+  const changedHint = createProjectKnowledgeChangedHint(event);
   if (changedHint === null) return null;
   const sources = [...new Set([...changedHint.changedPaths, ...changedHint.artifactRefs])];
   const output: ProjectKnowledgeReviewSource[] = [];

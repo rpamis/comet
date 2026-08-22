@@ -434,6 +434,58 @@ test('registers project knowledge beside personal memory in the shared bridge', 
   }
 });
 
+test('persists lifecycle hints without waiting for semantic project review', async () => {
+  const root = await tempProject();
+  const scheduled: Array<() => Promise<void>> = [];
+  try {
+    await fs.mkdir(path.join(root, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(root, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'workflows: [native]',
+        'native:',
+        '  artifact_root: docs',
+        '',
+      ].join('\n'),
+    );
+    const bridge = await createDefaultCometPluginBridge({
+      projectRoot: root,
+      projectId: 'project-knowledge-review-boundary',
+      stateRoot: path.join(root, 'plugin-state'),
+      memoryRoot: path.join(root, 'memory'),
+      runProjectKnowledgeReview: { review: async () => [] },
+      runProjectKnowledgeReviewInBackground: (task) => {
+        scheduled.push(task);
+      },
+    });
+    await bridge.observe({
+      name: 'verification.completed',
+      workflow: 'native',
+      changeId: 'review-boundary',
+      success: true,
+      category: 'verification',
+      text: 'verified',
+      changedPaths: ['docs/comet/specs/project-knowledge.md'],
+      verificationCommands: ['pnpm test'],
+      verificationResults: [{ command: 'pnpm test', success: true }],
+    });
+    expect(scheduled).toHaveLength(1);
+    const status = await bridge.pluginRuntime.invoke(
+      'comet.project-knowledge',
+      'status',
+      {},
+      { scope: 'project', projectId: 'project-knowledge-review-boundary' },
+    );
+    expect(status).toMatchObject({
+      local: { changedHints: [expect.objectContaining({ changeId: 'review-boundary' })] },
+    });
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 describe('project knowledge failure and bounded retrieval contracts', () => {
   test('caps ripgrep match events at the configured limit', async () => {
     const line = JSON.stringify({

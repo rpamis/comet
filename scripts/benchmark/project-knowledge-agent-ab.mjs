@@ -14,6 +14,23 @@ function numberOrZero(value) {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
+function summaryStats(entries, field) {
+  const values = entries
+    .map((entry) => entry?.[field])
+    .filter((value) => typeof value === 'number' && Number.isFinite(value));
+  if (values.length === 0)
+    return { mean: null, standardDeviation: null, coefficientOfVariation: null };
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const variance =
+    values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / Math.max(1, values.length - 1);
+  const standardDeviation = Math.sqrt(variance);
+  return {
+    mean,
+    standardDeviation,
+    coefficientOfVariation: mean === 0 ? null : standardDeviation / Math.abs(mean),
+  };
+}
+
 export function summarizeAgentAB(runs) {
   const groups = new Map(MODES.map((mode) => [mode, []]));
   for (const run of Array.isArray(runs) ? runs : []) {
@@ -44,6 +61,14 @@ export function summarizeAgentAB(runs) {
       latencyMs: entries.reduce((sum, entry) => sum + numberOrZero(entry.latencyMs), 0) / count,
       anchoredByWrongKnowledge: entries.filter((entry) => entry.anchoredByWrongKnowledge === true)
         .length,
+      replications: count,
+      statistics: {
+        searchesBeforeEdit: summaryStats(entries, 'searchesBeforeEdit'),
+        changeCoverage: summaryStats(entries, 'changeCoverage'),
+        tokens: summaryStats(entries, 'tokens'),
+        toolCalls: summaryStats(entries, 'toolCalls'),
+        latencyMs: summaryStats(entries, 'latencyMs'),
+      },
     };
   }
   const baseline = modes.none.runs > 0 ? modes.none : modes.rg;
@@ -83,6 +108,9 @@ function evidenceSummary(runs) {
   const prompts = new Set(entries.map((entry) => entry?.promptVersion).filter(Boolean));
   const worktrees = new Set(entries.map((entry) => entry?.worktreeId).filter(Boolean));
   const supplemental = entries.filter((entry) => entry?.supplementalQuerySet !== undefined);
+  const replicationCounts = Object.fromEntries(
+    MODES.map((mode) => [mode, entries.filter((entry) => entry?.mode === mode).length]),
+  );
   return {
     decisionReady:
       missing.size === 0 &&
@@ -90,13 +118,16 @@ function evidenceSummary(runs) {
       models.size === 1 &&
       prompts.size === 1 &&
       worktrees.size >= 2 &&
-      supplemental.length > 0,
+      supplemental.length > 0 &&
+      MODES.every((mode) => (replicationCounts[mode] ?? 0) >= 3),
     missing: [...missing],
     snapshotCount: snapshots.size,
     modelCount: models.size,
     promptVersionCount: prompts.size,
     worktreeCount: worktrees.size,
     supplementalQueryRuns: supplemental.length,
+    replicationCounts,
+    minimumReplicationsMet: MODES.every((mode) => (replicationCounts[mode] ?? 0) >= 3),
   };
 }
 

@@ -30,6 +30,24 @@ export class JsonFileTextStore implements TextFileStore {
   }
 }
 
+class JsonFilePluginStorage {
+  private readonly store: TextFileStore;
+
+  public constructor(store: TextFileStore) {
+    this.store = store;
+  }
+
+  public async read(): Promise<unknown | null> {
+    const content = await this.store.read();
+    if (content === null || content.trim().length === 0) return null;
+    return JSON.parse(content) as unknown;
+  }
+
+  public async write(value: unknown): Promise<void> {
+    await this.store.write(JSON.stringify(value));
+  }
+}
+
 export class JsonFilePluginStorageStore {
   private readonly root: string;
 
@@ -37,9 +55,13 @@ export class JsonFilePluginStorageStore {
     this.root = path.resolve(root);
   }
 
-  public async open(pluginId: string, scope: string, projectId?: string): Promise<TextFileStore> {
+  public async open(
+    pluginId: string,
+    scope: string,
+    projectId?: string,
+  ): Promise<JsonFilePluginStorage> {
     const fileName = `${safeSegment(pluginId)}-${safeSegment(scope)}-${safeSegment(projectId ?? 'global')}.json`;
-    return new JsonFileTextStore(path.join(this.root, fileName));
+    return new JsonFilePluginStorage(new JsonFileTextStore(path.join(this.root, fileName)));
   }
 }
 

@@ -122,6 +122,12 @@ describe('project knowledge units', () => {
       expect(units.find((unit) => unit.kind === 'module-overview')?.conclusions[0]?.text).toContain(
         'feature',
       );
+      expect(units.find((unit) => unit.kind === 'project-map')?.conclusions[0]?.sources).toEqual(
+        expect.arrayContaining([expect.objectContaining({ source: 'src/feature/index.ts' })]),
+      );
+      expect(
+        units.find((unit) => unit.kind === 'module-overview')?.conclusions[0]?.sources.length,
+      ).toBeGreaterThanOrEqual(2);
       expect(units.every((unit) => unit.origin === 'generated' && unit.state === 'draft')).toBe(
         true,
       );
@@ -196,7 +202,7 @@ describe('project knowledge units', () => {
     }
   });
 
-  test('persists maintained source state without reading a shared legacy cache by default', async () => {
+  test('persists source evidence without reading a shared legacy cache by default', async () => {
     const root = await temporaryRoot('comet-project-knowledge-maintained-state-');
     const cache = await temporaryRoot('comet-project-knowledge-maintained-state-cache-');
     try {
@@ -208,7 +214,8 @@ describe('project knowledge units', () => {
       await fs.writeFile(path.join(root, 'src', 'main.ts'), 'export const main = false;\n');
       const second = new ProjectKnowledgeUnitRepository({ projectRoot: root, cacheRoot: cache });
       const persisted = await second.read('unit-main-flow');
-      expect(persisted?.sourceVersions?.length).toBeGreaterThan(0);
+      expect(persisted?.sourceVersions).toBeUndefined();
+      expect(persisted?.conclusions[0]?.sources[0]?.evidence).toContain('main = true');
       await expect(
         validateProjectKnowledgeUnitSources(persisted!, { projectRoot: root }),
       ).resolves.toMatchObject({ valid: false });
