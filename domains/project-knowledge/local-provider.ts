@@ -282,6 +282,13 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
           });
           if (validation.valid) {
             await this.unitRepository.writeGenerated(active);
+          } else {
+            for (const diagnostic of validation.diagnostics) {
+              this.reportDiagnostic?.({
+                code: diagnostic.code,
+                message: `${unit.id}: ${diagnostic.message}${diagnostic.source ? ` (${diagnostic.source})` : ''}`,
+              });
+            }
           }
         }
         this.deterministicUnitsReady = true;

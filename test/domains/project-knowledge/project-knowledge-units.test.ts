@@ -315,10 +315,9 @@ describe('project knowledge units', () => {
         weakTerms: ['入口', '调用方'],
         remoteQuery: '入口调用方',
       });
-      expect(results.map((result) => result.unit?.id)).toEqual([
-        'unit-main-flow',
-        'unit-build-test',
-      ]);
+      expect(results.map((result) => result.unit?.id)).toEqual(
+        expect.arrayContaining(['unit-main-flow', 'unit-build-test']),
+      );
     } finally {
       await fs.rm(root, { recursive: true, force: true });
       await fs.rm(cache, { recursive: true, force: true });

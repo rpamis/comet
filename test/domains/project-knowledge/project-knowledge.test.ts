@@ -486,6 +486,70 @@ test('persists lifecycle hints without waiting for semantic project review', asy
   }
 });
 
+test('refreshes complete deterministic project knowledge after a targeted hint', async () => {
+  const root = await tempProject();
+  try {
+    await fs.mkdir(path.join(root, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(root, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'workflows: [native]',
+        'native:',
+        '  artifact_root: docs',
+        '',
+      ].join('\n'),
+    );
+    await fs.mkdir(path.join(root, 'docs', 'comet', 'specs'), { recursive: true });
+    await fs.mkdir(path.join(root, 'src'), { recursive: true });
+    await fs.writeFile(
+      path.join(root, 'docs', 'comet', 'specs', 'project.md'),
+      '# Project\n\nProject knowledge source.\n',
+    );
+    await fs.writeFile(
+      path.join(root, 'src', 'main.ts'),
+      'export const projectKnowledge = true;\n',
+    );
+    const bridge = await createDefaultCometPluginBridge({
+      projectRoot: root,
+      projectId: 'project-knowledge-targeted-refresh',
+      stateRoot: path.join(root, 'plugin-state'),
+      memoryRoot: path.join(root, 'memory'),
+    });
+    await bridge.observe({
+      name: 'verification.completed',
+      workflow: 'native',
+      changeId: 'targeted-refresh',
+      success: true,
+      category: 'verification',
+      text: 'verified',
+      changedPaths: ['src/main.ts'],
+      verificationCommands: ['pnpm test'],
+      verificationResults: [{ command: 'pnpm test', success: true }],
+    });
+    await bridge.collectContext({ task: 'project structure' });
+    const targeted = (await bridge.pluginRuntime.invoke(
+      'comet.project-knowledge',
+      'units',
+      {},
+      { scope: 'project', projectId: 'project-knowledge-targeted-refresh' },
+    )) as readonly { id?: string }[];
+    expect(targeted.some((unit) => unit.id === 'generated-project-map')).toBe(false);
+
+    await bridge.collectContext({ task: 'project structure' });
+    const complete = (await bridge.pluginRuntime.invoke(
+      'comet.project-knowledge',
+      'units',
+      {},
+      { scope: 'project', projectId: 'project-knowledge-targeted-refresh' },
+    )) as readonly { id?: string }[];
+    expect(complete.some((unit) => unit.id === 'generated-project-map')).toBe(true);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 describe('project knowledge failure and bounded retrieval contracts', () => {
   test('caps ripgrep match events at the configured limit', async () => {
     const line = JSON.stringify({

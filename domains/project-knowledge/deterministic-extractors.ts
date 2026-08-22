@@ -11,6 +11,34 @@ import {
 const MAX_READ_BYTES = 64 * 1024;
 const MAX_EXTRACTION_MS = 1_500;
 const MODULE_ROOTS = ['app', 'domains', 'platform', 'src', 'packages'] as const;
+const SKIPPED_PROJECT_DIRECTORIES = new Set([
+  '.git',
+  '.comet',
+  'node_modules',
+  'plugin-state',
+  'dist',
+  'build',
+  'out',
+  'coverage',
+  'target',
+  '.cache',
+  'cache',
+  'tmp',
+  'temp',
+]);
+const SKIPPED_PROJECT_FILE_EXTENSIONS = new Set([
+  '.db',
+  '.sqlite',
+  '.sqlite3',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+  '.zip',
+  '.tar',
+  '.gz',
+]);
 
 class ExtractionDeadlineExceeded extends Error {}
 
@@ -68,13 +96,20 @@ async function realProjectFiles(
     }
     for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
       checkDeadline(deadline);
-      if (result.length >= max || entry.name.startsWith('.') || entry.name === 'node_modules')
+      if (
+        result.length >= max ||
+        entry.name.startsWith('.') ||
+        SKIPPED_PROJECT_DIRECTORIES.has(entry.name)
+      )
         continue;
       const target = path.join(directory, entry.name);
       if (entry.isSymbolicLink()) continue;
       if (entry.isDirectory()) {
         await visit(target);
-      } else if (entry.isFile()) {
+      } else if (
+        entry.isFile() &&
+        !SKIPPED_PROJECT_FILE_EXTENSIONS.has(path.extname(entry.name).toLocaleLowerCase())
+      ) {
         result.push(target);
       }
     }
@@ -172,11 +207,11 @@ async function projectMapUnit(
   }
   const representativeSources = [...representatives.entries()]
     .slice(0, 30)
-    .map(([, file]) => source(file, 'root'));
+    .map(([, file]) => source(file));
   const directories = [...representatives.keys()].slice(0, representativeSources.length);
   const sources = [manifest, config]
     .filter((value): value is string => value !== null)
-    .map((value) => source(value, 'root'))
+    .map((value) => source(value))
     .concat(representativeSources)
     .filter(
       (reference, index, values) =>
@@ -315,7 +350,7 @@ async function buildTestUnit(root: string, deadline: number): Promise<ProjectKno
       // An invalid manifest remains a source diagnostic for later validation.
     }
   }
-  const references = [source(manifestSource ?? 'README.md', 'scripts')];
+  const references = [source(manifestSource ?? 'README.md')];
   const summary =
     commands.length > 0
       ? `项目验证优先使用：${commands.join('、')}。`
