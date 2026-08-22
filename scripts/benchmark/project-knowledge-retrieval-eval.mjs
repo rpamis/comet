@@ -39,7 +39,7 @@ async function runFixtureChecks() {
       );
       await writeFile(
         path.join(fixtureRoot, 'docs', 'comet', 'specs', 'fixture.md'),
-        `# Fixture\n\nworkspace-${index + 1}-original\n`,
+        `# Fixture\n\nWorkspace${index + 1}Original\n`,
       );
     }
     const providers = [];
@@ -55,32 +55,30 @@ async function runFixtureChecks() {
       );
     }
     const first = await providers[0].retrieve(
-      createProjectKnowledgeQuery({ task: 'workspace-1-original' }),
+      createProjectKnowledgeQuery({ task: 'Workspace1Original' }),
     );
     const second = await providers[1].retrieve(
-      createProjectKnowledgeQuery({ task: 'workspace-2-original' }),
+      createProjectKnowledgeQuery({ task: 'Workspace2Original' }),
     );
     const isolated =
-      first.some((result) => result.content.includes('workspace-1-original')) &&
-      !first.some((result) => result.content.includes('workspace-2-original')) &&
-      second.some((result) => result.content.includes('workspace-2-original')) &&
-      !second.some((result) => result.content.includes('workspace-1-original'));
+      first.some((result) => result.content.includes('Workspace1Original')) &&
+      !first.some((result) => result.content.includes('Workspace2Original')) &&
+      second.some((result) => result.content.includes('Workspace2Original')) &&
+      !second.some((result) => result.content.includes('Workspace1Original'));
 
     await writeFile(
       path.join(projects[0], 'docs', 'comet', 'specs', 'fixture.md'),
-      '# Fixture\n\nworkspace-1-mutated\n',
+      '# Fixture\n\nWorkspace1Mutated\n',
     );
     const mutated = await providers[0].retrieve(
-      createProjectKnowledgeQuery({ task: 'workspace-1-mutated' }),
+      createProjectKnowledgeQuery({ task: 'Workspace1Mutated' }),
     );
-    const mutationDetected = mutated.some((result) =>
-      result.content.includes('workspace-1-mutated'),
-    );
+    const mutationDetected = mutated.some((result) => result.content.includes('Workspace1Mutated'));
 
     const databasePath = providers[0].indexStore?.databasePath;
     if (databasePath) await writeFile(databasePath, 'not a sqlite database\n');
     const recovered = await providers[0].retrieve(
-      createProjectKnowledgeQuery({ task: 'workspace-1-mutated' }),
+      createProjectKnowledgeQuery({ task: 'Workspace1Mutated' }),
     );
     const quarantined = databasePath
       ? (await readdir(path.dirname(databasePath))).some((name) =>
