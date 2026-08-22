@@ -211,6 +211,7 @@ export class ProjectKnowledgeLocalStore {
   async apply(mutation: ProjectKnowledgeMutation): Promise<ProjectKnowledgeApplyResult> {
     if (mutation.kind === 'refresh') {
       const candidates = this.list({ projectId: mutation.projectId });
+      let changed = false;
       for (const candidate of candidates) {
         if (
           candidate.state === 'active' &&
@@ -218,10 +219,11 @@ export class ProjectKnowledgeLocalStore {
           !sourceVersionsAreCurrent(this.projectRoot, candidate)
         ) {
           this.write({ ...candidate, state: 'needs-review', updatedAt: new Date().toISOString() });
+          changed = true;
         }
       }
       const records = this.list({ projectId: mutation.projectId });
-      return { kind: mutation.kind, changed: false, records, diagnostics: [] };
+      return { kind: mutation.kind, changed, records, diagnostics: [] };
     }
     const current = this.read(mutation.kind === 'upsert' ? mutation.record.id : mutation.id);
     if (mutation.kind === 'upsert') {

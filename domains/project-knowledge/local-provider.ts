@@ -228,8 +228,26 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeLegacyProv
         ? []
         : await this.retrieveWithRipgrep(request.query, [...refreshedSources]);
     const recordResults = this.recordStore().searchRecords(request.query);
+    const channels = [recordResults, sections, exact];
+    const fused = new Map<string, { result: ProjectKnowledgeResult; score: number }>();
+    for (const [channel, channelResults] of channels.entries()) {
+      channelResults.forEach((result, rank) => {
+        const key = `${result.source}\u0000${result.title ?? ''}`;
+        const previous = fused.get(key);
+        const score =
+          (previous?.score ?? 0) +
+          1 / (60 + rank + 1) +
+          (channel === 0 ? 0.025 : channel === 2 ? 0.002 : 0);
+        fused.set(key, { result: previous?.result ?? result, score });
+      });
+    }
     const results = new Map<string, ProjectKnowledgeResult>();
-    for (const result of [...recordResults, ...sections, ...exact]) {
+    for (const { result } of [...fused.values()]
+      .sort(
+        (left, right) =>
+          right.score - left.score || left.result.source.localeCompare(right.result.source),
+      )
+      .map(({ result, score }) => ({ result: { ...result, score }, score }))) {
       const key = `${result.source}\u0000${result.title ?? ''}`;
       if (!results.has(key)) results.set(key, result);
     }
