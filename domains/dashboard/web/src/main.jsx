@@ -459,7 +459,7 @@ function DashboardApp({ theme, onToggleTheme }) {
       if (!activeProjectId) return;
       const requestedProjectId = activeProjectId;
       const requestedPluginId = pluginId;
-      await invokeDashboardPlugin(requestedProjectId, pluginId, capability, input);
+      const result = await invokeDashboardPlugin(requestedProjectId, pluginId, capability, input);
       const [nextPage] = await Promise.all([
         fetchDashboardPluginPage(requestedProjectId, pluginId),
         reloadPluginPages(),
@@ -468,8 +468,9 @@ function DashboardApp({ theme, onToggleTheme }) {
         pluginProjectRef.current !== requestedProjectId ||
         pluginSelectionRef.current !== requestedPluginId
       )
-        return;
+        return result;
       setPluginPage(nextPage);
+      return result;
     },
     [activeProjectId, reloadPluginPages],
   );
@@ -1930,7 +1931,8 @@ async function invokeDashboardPlugin(projectId, pluginId, capability, input) {
     },
   );
   if (!res.ok) throw await dashboardResponseError(res);
-  return res.json();
+  const response = await res.json();
+  return response?.result;
 }
 
 async function lifecycleDashboardPlugin(projectId, pluginId, action) {

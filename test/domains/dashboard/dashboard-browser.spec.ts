@@ -110,6 +110,29 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
       await route.fulfill({ json: {} });
       return;
     }
+    if (url.pathname.endsWith('/plugins/comet.project-knowledge/invoke')) {
+      const body = route.request().postDataJSON() as { capability?: string };
+      expect(body.capability).toBe('query');
+      await route.fulfill({
+        json: {
+          result: {
+            kind: 'search',
+            hits: [],
+            records: [],
+            truncated: false,
+            diagnostics: [],
+            results: [
+              {
+                source: 'docs/rule.md#rule',
+                title: 'Focused tests',
+                content: 'Run focused tests first.',
+              },
+            ],
+          },
+        },
+      });
+      return;
+    }
     if (url.pathname.endsWith('/plugins/comet.project-knowledge')) {
       if (uninstalled) {
         await route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
@@ -150,6 +173,9 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   await expect(page.getByText('COMET_KNOWLEDGE_TOKEN')).toBeVisible();
   await expect(page.getByText('来源：docs/rule.md#rule')).toBeVisible();
   await expect(page.getByText(/更新于 2026-08-22/u)).toBeVisible();
+  await page.getByLabel('查询项目知识').fill('focused tests');
+  await page.getByRole('button', { name: /查\s*询/u }).click();
+  await expect(page.getByLabel('项目知识查询结果')).toContainText('Run focused tests first.');
   await expect(page.getByText('bearer-secret', { exact: true })).toHaveCount(0);
 
   await page.getByRole('button', { name: '暂停当前项目' }).click();

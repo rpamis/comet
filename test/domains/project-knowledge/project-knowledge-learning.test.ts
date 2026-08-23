@@ -9,6 +9,7 @@ import {
   LocalProjectKnowledgeProvider,
   ProjectKnowledgeLearningService,
   createProjectKnowledgeReviewPacket,
+  createProjectKnowledgeQuery,
   type ProjectKnowledgeRecord,
 } from '../../../domains/project-knowledge/index.js';
 import type { PluginEvent } from '../../../domains/comet-plugin/index.js';
@@ -103,6 +104,22 @@ describe('project knowledge learning', () => {
       const listed = await provider.query({ kind: 'list', state: 'active' });
       expect(listed.kind).toBe('list');
       expect(listed.records.map((record) => record.id)).toContain('generated-project-map');
+      await provider.query({
+        kind: 'search',
+        query: createProjectKnowledgeQuery({ task: 'module' }),
+      });
+      await expect(
+        provider.query({ kind: 'get', id: 'generated-module-overview' }),
+      ).resolves.toMatchObject({
+        record: expect.objectContaining({
+          state: 'active',
+          conclusions: [
+            expect.objectContaining({
+              sources: [expect.not.objectContaining({ anchor: 'module' })],
+            }),
+          ],
+        }),
+      });
     } finally {
       provider.close();
       await fs.rm(root, { recursive: true, force: true });
@@ -215,6 +232,73 @@ describe('project knowledge learning', () => {
       ).resolves.toMatchObject({ retired: [semanticRecord.id] });
       await expect(provider.query({ kind: 'get', id: semanticRecord.id })).resolves.toMatchObject({
         record: expect.objectContaining({ state: 'retired' }),
+      });
+    } finally {
+      provider.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('rejects semantic reviewer records whose source anchors are invalid', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-learning-review-anchor-');
+    const storageRoot = await temporaryRoot(
+      'comet-project-knowledge-learning-review-anchor-storage-',
+    );
+    const provider = await createProvider(root, storageRoot);
+    try {
+      await fs.mkdir(path.join(root, 'src'), { recursive: true });
+      const source = path.join(root, 'src', 'main.ts');
+      await fs.writeFile(source, 'export const main = true;\n');
+      const stat = await fs.stat(source);
+      const invalidId = 'semantic-invalid-anchor';
+      const service = new ProjectKnowledgeLearningService({
+        projectRoot: root,
+        provider,
+        reviewer: {
+          review: () => [
+            {
+              action: 'create',
+              record: {
+                id: invalidId,
+                projectId: 'learning-project',
+                type: 'module-overview',
+                state: 'active',
+                authority: 'automatic',
+                title: 'Invalid anchor',
+                summary: 'This semantic record references an anchor that does not exist.',
+                applicablePaths: ['src/'],
+                operations: ['implement'],
+                conclusions: [
+                  {
+                    text: 'The source anchor must exist.',
+                    sources: [{ source: 'src/main.ts', anchor: 'missing' }],
+                  },
+                ],
+                relations: [],
+                verification: [],
+                sourceVersions: [
+                  {
+                    source: 'src/main.ts',
+                    size: stat.size,
+                    modifiedAt: Math.trunc(stat.mtimeMs),
+                  },
+                ],
+                updatedAt: '2026-08-23T00:00:00.000Z',
+              },
+            },
+          ],
+        },
+      });
+
+      await expect(
+        service.processEvent(event('verification.completed', verifiedPayload())),
+      ).resolves.toMatchObject({
+        activated: expect.not.arrayContaining([invalidId]),
+        diagnostics: [expect.objectContaining({ code: 'source-changed', source: 'src/main.ts' })],
+      });
+      await expect(provider.query({ kind: 'get', id: invalidId })).resolves.toMatchObject({
+        record: null,
       });
     } finally {
       provider.close();

@@ -24,6 +24,7 @@ import {
   type ProjectKnowledgeIndexOptions,
 } from './index-store.js';
 import type { ProjectKnowledgeDocument } from './types.js';
+import { projectKnowledgeSourceReferenceMatchesText } from './source-validity.js';
 
 export interface ProjectKnowledgeLocalStoreOptions extends Omit<
   ProjectKnowledgeIndexOptions,
@@ -65,27 +66,6 @@ function recordSourceReferences(
   ];
 }
 
-function normalizeAnchor(value: string): string {
-  return value
-    .normalize('NFKC')
-    .toLocaleLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, '-')
-    .replace(/^-+|-+$/gu, '');
-}
-
-function sourceAnchorExists(text: string, anchor: string): boolean {
-  const expected = normalizeAnchor(anchor);
-  if (!expected) return false;
-  const headings = text
-    .split(/\r?\n/u)
-    .map((line) => /^#{1,6}\s+(.+?)(?:\s+#+)?$/u.exec(line)?.[1])
-    .filter((heading): heading is string => heading !== undefined);
-  if (headings.some((heading) => normalizeAnchor(heading) === expected)) return true;
-  return [...text.matchAll(/\b(?:id|name)\s*=\s*["']([^"']+)["']/giu)].some(
-    (match) => normalizeAnchor(match[1] ?? '') === expected,
-  );
-}
-
 function sourceReferenceIsCurrent(
   absolutePath: string,
   source: ProjectKnowledgeRecordSource,
@@ -107,19 +87,7 @@ function sourceReferenceIsCurrent(
     closeSync(descriptor);
   }
   const text = buffer.toString('utf8');
-  if (source.anchor !== undefined && !sourceAnchorExists(text, source.anchor)) {
-    return false;
-  }
-  if (source.lineStart !== undefined || source.lineEnd !== undefined) {
-    const lineCount = text.split(/\r?\n/u).length;
-    if (
-      (source.lineStart ?? 1) > lineCount ||
-      (source.lineEnd ?? source.lineStart ?? 1) > lineCount
-    ) {
-      return false;
-    }
-  }
-  return true;
+  return projectKnowledgeSourceReferenceMatchesText(text, source);
 }
 
 interface SourceInspection {
@@ -180,6 +148,10 @@ function inspectRecordSources(
 function recordResultSource(record: ProjectKnowledgeRecord): string {
   const source = recordSourceReferences(record)[0];
   if (source === undefined) return `record:${record.id}`;
+  return sourceReferenceLabel(source);
+}
+
+function sourceReferenceLabel(source: ProjectKnowledgeRecordSource): string {
   if (source.anchor !== undefined) return `${source.source}#${source.anchor}`;
   if (source.lineStart !== undefined) {
     return `${source.source}#L${source.lineStart}${source.lineEnd ? `-L${source.lineEnd}` : ''}`;
@@ -197,6 +169,47 @@ function recordSearchText(record: ProjectKnowledgeRecord): string {
   ]
     .join('\n')
     .toLocaleLowerCase();
+}
+
+const RECORD_TYPE_RANK: Readonly<Record<ProjectKnowledgeRecord['type'], number>> = {
+  'project-map': 0,
+  'module-overview': 1,
+  'integration-path': 2,
+  'behavior-note': 3,
+  'change-impact': 4,
+  'build-test': 5,
+};
+
+function normalizedProjectPath(value: string): string {
+  return value.replaceAll('\\', '/').replace(/^\.\//u, '').toLocaleLowerCase();
+}
+
+function recordHasPathAssociation(
+  record: ProjectKnowledgeRecord,
+  query: ProjectKnowledgeQuery,
+): boolean {
+  if (!query.path) return false;
+  const queryPath = normalizedProjectPath(query.path);
+  return [
+    ...record.applicablePaths,
+    ...recordSourceReferences(record).map((source) => source.source),
+  ]
+    .map(normalizedProjectPath)
+    .some(
+      (candidate) =>
+        candidate === queryPath ||
+        candidate.startsWith(`${queryPath}/`) ||
+        queryPath.startsWith(candidate.endsWith('/') ? candidate : `${candidate}/`),
+    );
+}
+
+function recordHasOperationAssociation(
+  record: ProjectKnowledgeRecord,
+  query: ProjectKnowledgeQuery,
+): boolean {
+  if (!query.operation) return false;
+  const operation = query.operation.toLocaleLowerCase();
+  return record.operations.some((candidate) => candidate.toLocaleLowerCase() === operation);
 }
 
 function toIndexStatus(status: ProjectKnowledgeIndexStatus): ProjectKnowledgeStatus {
@@ -302,29 +315,57 @@ export class ProjectKnowledgeLocalStore {
     const terms = [...query.terms, ...query.strongTerms, ...query.phraseTerms]
       .map((term) => term.toLocaleLowerCase())
       .filter(Boolean);
-    return this.list({ state: 'active' })
+    const activeRecords = this.list({ state: 'active' });
+    const direct = activeRecords
       .map((record) => {
         const text = recordSearchText(record);
         const matches = terms.filter((term) => text.includes(term)).length;
-        return { record, matches };
+        return {
+          record,
+          matches,
+          pathAssociation: recordHasPathAssociation(record, query),
+          operationAssociation: recordHasOperationAssociation(record, query),
+        };
       })
       .filter(({ matches }) => terms.length === 0 || matches > 0)
-      .sort(
-        (left, right) =>
-          right.matches - left.matches || left.record.id.localeCompare(right.record.id),
-      )
-      .slice(0, 40)
-      .map(({ record, matches }) => ({
-        source: recordResultSource(record),
-        title: record.title,
-        record,
-        content:
-          `${record.summary}\n${record.conclusions.map((conclusion) => conclusion.text).join('\n')}`.slice(
-            0,
-            1600,
-          ),
-        score: matches,
-      }));
+      .sort((left, right) => {
+        if (left.pathAssociation !== right.pathAssociation) return left.pathAssociation ? -1 : 1;
+        if (left.operationAssociation !== right.operationAssociation)
+          return left.operationAssociation ? -1 : 1;
+        if (left.matches !== right.matches) return right.matches - left.matches;
+        const type = RECORD_TYPE_RANK[left.record.type] - RECORD_TYPE_RANK[right.record.type];
+        if (type !== 0) return type;
+        const source = recordResultSource(left.record).localeCompare(
+          recordResultSource(right.record),
+        );
+        return source !== 0 ? source : left.record.id.localeCompare(right.record.id);
+      });
+    const recordsById = new Map(activeRecords.map((record) => [record.id, record]));
+    const ranked: Array<{
+      record: ProjectKnowledgeRecord;
+      matches: number;
+      relationSource?: ProjectKnowledgeRecordSource;
+    }> = direct.map(({ record, matches }) => ({ record, matches }));
+    const seen = new Set(ranked.map(({ record }) => record.id));
+    for (const { record } of direct) {
+      for (const relation of record.relations) {
+        const related = recordsById.get(relation.targetId);
+        if (!related || seen.has(related.id)) continue;
+        ranked.push({ record: related, matches: 0, relationSource: relation.sources[0] });
+        seen.add(related.id);
+      }
+    }
+    return ranked.slice(0, 40).map(({ record, matches, relationSource }) => ({
+      source: relationSource ? sourceReferenceLabel(relationSource) : recordResultSource(record),
+      title: record.title,
+      record,
+      content:
+        `${record.summary}\n${record.conclusions.map((conclusion) => conclusion.text).join('\n')}`.slice(
+          0,
+          1600,
+        ),
+      score: matches,
+    }));
   }
 
   async apply(mutation: ProjectKnowledgeMutation): Promise<ProjectKnowledgeApplyResult> {

@@ -8,6 +8,7 @@ import {
 } from '../workflow-contract/protected-project-path.js';
 import { extractDeterministicProjectRecords } from './deterministic-extractors.js';
 import { validateProjectKnowledgeRecordShape, type ProjectKnowledgeRecord } from './records.js';
+import { projectKnowledgeSourceReferenceMatchesText } from './source-validity.js';
 import type { ProjectKnowledgeProvider } from './types.js';
 
 const MAX_CHANGED_PATHS = 24;
@@ -18,6 +19,7 @@ const MAX_SOURCE_BYTES = 48 * 1024;
 const MAX_SOURCE_TOTAL_BYTES = 256 * 1024;
 const MAX_HINT_STRING = 512;
 const MAX_REVIEW_ACTIONS = 16;
+const MAX_SOURCE_VALIDATION_BYTES = 1024 * 1024;
 
 export interface ProjectKnowledgeChangedHint {
   readonly eventName: string;
@@ -294,6 +296,35 @@ async function recordSourcesStillCurrent(
       }
     } catch {
       return version.source;
+    }
+  }
+  const references = [
+    ...record.conclusions.flatMap((conclusion) => conclusion.sources),
+    ...record.relations.flatMap((relation) => relation.sources),
+  ];
+  const versionSources = new Set(record.sourceVersions.map((version) => version.source));
+  const referencesBySource = new Map<string, typeof references>();
+  for (const reference of references) {
+    if (!versionSources.has(reference.source)) return reference.source;
+    const current = referencesBySource.get(reference.source) ?? [];
+    referencesBySource.set(reference.source, [...current, reference]);
+  }
+  for (const [source, sourceReferences] of referencesBySource) {
+    try {
+      const text = (
+        await readProtectedProjectFile(projectRoot, source, MAX_SOURCE_VALIDATION_BYTES, {
+          label: source,
+        })
+      ).bytes.toString('utf8');
+      if (
+        !sourceReferences.every((reference) =>
+          projectKnowledgeSourceReferenceMatchesText(text, reference),
+        )
+      ) {
+        return source;
+      }
+    } catch {
+      return source;
     }
   }
   return null;

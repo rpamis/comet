@@ -181,6 +181,105 @@ describe('project knowledge local store', () => {
     }
   });
 
+  test('ranks path-associated matches first and expands only one relation hop with evidence', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-store-relations-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-storage-relations-');
+    let store: ProjectKnowledgeLocalStore | undefined;
+    const sourceFiles = {
+      direct: path.join(root, 'docs', 'process.md'),
+      other: path.join(root, 'docs', 'other.md'),
+      related: path.join(root, 'docs', 'related.md'),
+    };
+    try {
+      await fs.mkdir(path.join(root, 'docs'), { recursive: true });
+      await fs.writeFile(sourceFiles.direct, '# Build\n\nRuntime knowledge.\n');
+      await fs.writeFile(sourceFiles.other, '# Other\n\nRuntime knowledge.\n');
+      await fs.writeFile(sourceFiles.related, '# Related\n\nSupporting context.\n');
+      const versions = async (source: keyof typeof sourceFiles) => {
+        const stat = await fs.stat(sourceFiles[source]);
+        return [
+          {
+            source: `docs/${source === 'direct' ? 'process' : source}.md`,
+            size: stat.size,
+            modifiedAt: Math.trunc(stat.mtimeMs),
+          },
+        ];
+      };
+      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      const related = record({
+        id: 'record-related',
+        type: 'module-overview',
+        title: 'Related module',
+        summary: 'Supporting context without the direct term.',
+        applicablePaths: ['supporting/'],
+        operations: ['understand'],
+        conclusions: [
+          {
+            text: 'Supporting context.',
+            sources: [{ source: 'docs/related.md', anchor: 'related' }],
+          },
+        ],
+        sourceVersions: await versions('related'),
+      });
+      const direct = record({
+        id: 'record-direct',
+        type: 'behavior-note',
+        title: 'Runtime knowledge',
+        summary: 'Runtime knowledge for Project Knowledge work.',
+        applicablePaths: ['domains/project-knowledge/'],
+        conclusions: [
+          {
+            text: 'Runtime knowledge is verified.',
+            sources: [{ source: 'docs/process.md', anchor: 'build' }],
+          },
+        ],
+        relations: [
+          {
+            type: 'depends-on',
+            targetId: related.id,
+            sources: [{ source: 'docs/process.md', anchor: 'build' }],
+          },
+        ],
+        sourceVersions: await versions('direct'),
+      });
+      const other = record({
+        id: 'record-other',
+        type: 'project-map',
+        title: 'Runtime knowledge elsewhere',
+        summary: 'Runtime knowledge outside the requested path.',
+        applicablePaths: ['other/'],
+        conclusions: [
+          { text: 'Runtime knowledge.', sources: [{ source: 'docs/other.md', anchor: 'other' }] },
+        ],
+        sourceVersions: await versions('other'),
+      });
+      await store.apply({ kind: 'upsert', record: related });
+      await store.apply({ kind: 'upsert', record: direct });
+      await store.apply({ kind: 'upsert', record: other });
+
+      const results = store.searchRecords({
+        task: 'runtime knowledge',
+        path: 'domains/project-knowledge/local-store.ts',
+        phase: 'build',
+        operation: 'verify',
+        terms: ['runtime', 'knowledge'],
+        strongTerms: ['runtime'],
+        phraseTerms: ['runtime knowledge'],
+        weakTerms: ['knowledge'],
+        remoteQuery: 'runtime knowledge',
+      });
+      expect(results.map((result) => result.record?.id)).toEqual([direct.id, other.id, related.id]);
+      expect(results.at(-1)).toMatchObject({
+        source: 'docs/process.md#build',
+        record: expect.objectContaining({ id: related.id }),
+      });
+    } finally {
+      store?.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
   test('shares records across worktrees but isolates workspace section search', async () => {
     const root = await temporaryRoot('comet-project-knowledge-store-worktree-');
     const worktree = `${root}-worktree`;

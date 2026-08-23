@@ -279,7 +279,7 @@ async function moduleOverviewRecord(
   const names = [
     ...new Set(sourceFiles.map((file) => relative(root, file).split('/').slice(0, 2).join('/'))),
   ].filter(Boolean);
-  const sourceRefs = sourceFiles.slice(0, 32).map((file) => source(relative(root, file), 'module'));
+  const sourceRefs = sourceFiles.slice(0, 32).map((file) => source(relative(root, file)));
   const relationTargets = names
     .slice(0, 8)
     .map((name) => `模块 ${name}`)
@@ -297,7 +297,7 @@ async function moduleOverviewRecord(
       .slice(0, 4);
     if (imports.length > 0) evidence.push(`${relative(root, file)} 引用 ${imports.join('、')}`);
     if (/\bregister[A-Z][A-Za-z0-9_$]*\s*\(/u.test(text)) {
-      registrationSources.push(source(relative(root, file), 'module'));
+      registrationSources.push(source(relative(root, file)));
     }
   }
   return recordBase(
