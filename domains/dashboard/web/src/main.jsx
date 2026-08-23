@@ -155,6 +155,64 @@ const PROJECT_KNOWLEDGE_TYPE_OPTIONS = [
   { value: 'build-test', label: '构建与测试' },
 ];
 
+const PROJECT_KNOWLEDGE_CATEGORY_GROUPS = [
+  {
+    key: 'orientation',
+    label: '项目理解',
+    types: ['project-map', 'module-overview'],
+  },
+  {
+    key: 'engineering',
+    label: '工程约定',
+    types: ['behavior-note', 'build-test'],
+  },
+  {
+    key: 'integration',
+    label: '集成与影响',
+    types: ['integration-path', 'change-impact'],
+  },
+];
+
+const PROJECT_KNOWLEDGE_STATE_LABELS = {
+  active: '使用中',
+  'needs-review': '需要更新',
+  retired: '已归档',
+};
+
+function projectKnowledgeTypeLabel(type) {
+  return PROJECT_KNOWLEDGE_TYPE_OPTIONS.find((option) => option.value === type)?.label ?? '其他';
+}
+
+function projectKnowledgeStateLabel(state) {
+  return PROJECT_KNOWLEDGE_STATE_LABELS[state] ?? '待确认';
+}
+
+function projectKnowledgeVerificationLines(record) {
+  return (record?.verification ?? [])
+    .map((entry) =>
+      typeof entry === 'string'
+        ? entry
+        : (entry?.command ?? entry?.description ?? entry?.status ?? ''),
+    )
+    .filter(Boolean);
+}
+
+function projectKnowledgeDiagnosticCopy(diagnostic) {
+  const code = typeof diagnostic === 'string' ? '' : diagnostic?.code;
+  const message = typeof diagnostic === 'string' ? diagnostic : diagnostic?.message;
+  if (code === 'index-source') {
+    const source = message?.match(/source:\s*(.+)$/u)?.[1];
+    return {
+      label: '来源需要检查',
+      message: source ? `无法读取来源：${source}` : '发现无法读取或正在变化的知识来源。',
+    };
+  }
+  return {
+    label: code ? '运行诊断' : '需要关注',
+    message: message ?? '项目知识状态需要检查。',
+  };
+}
+
 function splitProjectKnowledgeLines(value) {
   return value
     .split(/\r?\n/u)
@@ -496,7 +554,7 @@ function DashboardApp({ theme, onToggleTheme }) {
         pluginSelectionRef.current === requestedPluginId
       ) {
         setPluginPage((current) =>
-          reconcilePluginInvocationResult(current, requestedPluginId, capability, result),
+          reconcilePluginInvocationResult(current, requestedPluginId, capability, result, input),
         );
       }
       const [nextPage] = await Promise.all([
@@ -509,7 +567,7 @@ function DashboardApp({ theme, onToggleTheme }) {
       )
         return result;
       setPluginPage(
-        reconcilePluginInvocationResult(nextPage, requestedPluginId, capability, result),
+        reconcilePluginInvocationResult(nextPage, requestedPluginId, capability, result, input),
       );
       return result;
     },
@@ -540,7 +598,31 @@ function DashboardApp({ theme, onToggleTheme }) {
         } else {
           result = await invokePlugin(pluginId, capability, input);
         }
-        toast('插件状态已更新');
+        if (pluginId === 'comet.project-knowledge' && capability === 'query') {
+          const count = Array.isArray(result?.results) ? result.results.length : 0;
+          toast(
+            count > 0 ? `检索完成，找到 ${count} 条项目知识` : '检索完成，未找到匹配的项目知识',
+          );
+        } else if (pluginId === 'comet.project-knowledge' && capability === 'create') {
+          toast('项目知识已新增');
+        } else if (pluginId === 'comet.project-knowledge' && capability === 'correct') {
+          toast(input?.restore ? '项目知识已更新并恢复使用' : '项目知识已更新');
+        } else if (pluginId === 'comet.project-knowledge' && capability === 'forget') {
+          toast('项目知识已归档，不再提供给 Agent');
+        } else if (pluginId === 'comet.project-knowledge' && capability === 'refresh') {
+          const refreshedRecord = Array.isArray(result?.records)
+            ? result.records.find((record) => record?.id === input?.id)
+            : null;
+          toast(
+            refreshedRecord?.state === 'active'
+              ? '来源检查完成，记录已恢复使用'
+              : refreshedRecord?.state === 'needs-review'
+                ? '来源仍需更新，请检查来源文件或定位信息'
+                : '项目知识已刷新',
+          );
+        } else {
+          toast(capability === 'lifecycle' ? '插件状态已更新' : '操作已完成');
+        }
         return result;
       } catch (error) {
         toast(`插件操作失败：${error.message}`, 'error');
@@ -878,7 +960,13 @@ function DashboardApp({ theme, onToggleTheme }) {
           onToggleTheme={onToggleTheme}
         />
         <div className="dashboard-content-shell">
-          <div className="dashboard-content-inner">
+          <div
+            className={`dashboard-content-inner${
+              pluginSelection === 'comet.project-knowledge'
+                ? ' dashboard-content-inner-project-knowledge'
+                : ''
+            }`}
+          >
             {!snapshot ? (
               <LoadingState />
             ) : settingsOpen ? (
@@ -2018,7 +2106,81 @@ function LoadingState() {
   );
 }
 
-function reconcilePluginInvocationResult(page, pluginId, capability, result) {
+function reconcilePluginInvocationResult(page, pluginId, capability, result, input) {
+  if (pluginId === 'comet.project-knowledge' && page?.pluginId === pluginId) {
+    if (
+      capability === 'query' &&
+      isDashboardRecord(page.data) &&
+      isDashboardRecord(result) &&
+      result.kind === 'search'
+    ) {
+      return {
+        ...page,
+        data: {
+          ...page.data,
+          queryPreview: {
+            ...result,
+            task: isDashboardRecord(input) && typeof input.task === 'string' ? input.task : '',
+          },
+        },
+      };
+    }
+    if (
+      (capability === 'create' || capability === 'correct' || capability === 'forget') &&
+      isDashboardRecord(page.data) &&
+      isDashboardRecord(result) &&
+      isDashboardRecord(result.record) &&
+      typeof result.record.id === 'string'
+    ) {
+      const records = Array.isArray(page.data.records) ? page.data.records : [];
+      const recordIndex = records.findIndex((record) => record?.id === result.record.id);
+      const nextRecords =
+        recordIndex === -1
+          ? [result.record, ...records]
+          : records.map((record, index) => (index === recordIndex ? result.record : record));
+      return {
+        ...page,
+        data: {
+          ...page.data,
+          records: nextRecords,
+          counts: {
+            active: nextRecords.filter((record) => record?.state === 'active').length,
+            needsReview: nextRecords.filter((record) => record?.state === 'needs-review').length,
+            retired: nextRecords.filter((record) => record?.state === 'retired').length,
+          },
+        },
+      };
+    }
+    if (
+      capability === 'refresh' &&
+      isDashboardRecord(page.data) &&
+      isDashboardRecord(result) &&
+      Array.isArray(result.records)
+    ) {
+      const refreshedRecords = result.records.filter(
+        (record) => isDashboardRecord(record) && typeof record.id === 'string',
+      );
+      const refreshedById = new Map(refreshedRecords.map((record) => [record.id, record]));
+      const records = Array.isArray(page.data.records) ? page.data.records : [];
+      const knownIds = new Set(records.map((record) => record?.id));
+      const nextRecords = [
+        ...records.map((record) => refreshedById.get(record?.id) ?? record),
+        ...refreshedRecords.filter((record) => !knownIds.has(record.id)),
+      ];
+      return {
+        ...page,
+        data: {
+          ...page.data,
+          records: nextRecords,
+          counts: {
+            active: nextRecords.filter((record) => record?.state === 'active').length,
+            needsReview: nextRecords.filter((record) => record?.state === 'needs-review').length,
+            retired: nextRecords.filter((record) => record?.state === 'retired').length,
+          },
+        },
+      };
+    }
+  }
   if (
     pluginId !== 'comet.personal-memory' ||
     capability !== 'correct' ||
@@ -2352,6 +2514,7 @@ function AntSidebar({
   const navigation = (
     <>
       <Menu
+        className="dashboard-sidebar-menu dashboard-workflow-menu"
         mode="inline"
         selectedKeys={settingsOpen ? [] : pluginSelection ? [pluginSelection] : [workflow]}
         items={[
@@ -2366,6 +2529,7 @@ function AntSidebar({
       />
       <div className="dashboard-sidebar-label dashboard-sidebar-label-spaced">插件中心</div>
       <Menu
+        className="dashboard-sidebar-menu dashboard-plugin-menu"
         mode="inline"
         selectedKeys={settingsOpen ? [] : pluginSelection ? [pluginSelection] : []}
         items={pluginPages.map((page) => {
@@ -2425,12 +2589,13 @@ function AntSidebar({
         <div className="flex h-full flex-col">
           <div className="dashboard-sidebar-brand flex items-center gap-2">
             <img src="/favicon.png" alt="Comet" className="size-7 rounded-[7px]" />
-            <div>
+            <div className="dashboard-sidebar-brand-copy">
               <strong>Comet Dashboard</strong>
-              <div className="text-xs text-meta">只读工作台</div>
+              <div className="text-xs text-meta">Agent 工作台</div>
             </div>
           </div>
           <div className="dashboard-sidebar-navigation">
+            <div className="dashboard-sidebar-label">工作区</div>
             <div className="dashboard-sidebar-feature">
               <AppstoreOutlined aria-hidden="true" />
               <span>变更工作区</span>
@@ -2439,6 +2604,7 @@ function AntSidebar({
             {navigation}
           </div>
           <div className="dashboard-sidebar-footer">
+            <div className="dashboard-sidebar-label dashboard-sidebar-footer-label">系统</div>
             {settingsButton}
             <div className="dashboard-sidebar-status">
               <div className="flex items-center gap-2 font-medium text-fg">
@@ -3201,11 +3367,473 @@ function ProjectKnowledgeSettings({ page, data, onInvoke }) {
   );
 }
 
+function openProjectKnowledgeCorrection(record, onInvoke) {
+  const restoring = record.state === 'retired';
+  Modal.confirm({
+    title: restoring ? '纠正并恢复项目知识' : '纠正项目知识记录',
+    content: (
+      <Input.TextArea
+        id="project-knowledge-correction"
+        defaultValue={record.summary}
+        placeholder="说明需要如何修正这条项目知识"
+        autoSize={{ minRows: 4, maxRows: 8 }}
+      />
+    ),
+    okText: restoring ? '保存并恢复' : '保存纠正',
+    cancelText: '取消',
+    onOk: () => {
+      const element = document.getElementById('project-knowledge-correction');
+      return onInvoke('correct', {
+        id: record.id,
+        text: element?.value ?? record.summary,
+        ...(restoring ? { restore: true } : {}),
+      });
+    },
+  });
+}
+
+function ProjectKnowledgeRegistry({
+  records,
+  visibleRecords,
+  selectedRecord,
+  selectedRecordId,
+  onSelectRecord,
+  recordSearchText,
+  onRecordSearchTextChange,
+  categoryFilter,
+  onCategoryFilterChange,
+  stateFilter,
+  onStateFilterChange,
+  sortOrder,
+  onSortOrderChange,
+  diagnostics,
+  provider,
+  onInvoke,
+}) {
+  const firstDiagnostic = diagnostics[0];
+  const diagnosticCopy = firstDiagnostic
+    ? projectKnowledgeDiagnosticCopy(firstDiagnostic)
+    : { label: '', message: '' };
+  const countedRecords =
+    stateFilter === 'all' ? records : records.filter((record) => record.state === stateFilter);
+
+  return (
+    <div className="dashboard-knowledge-registry">
+      <aside className="dashboard-knowledge-explorer" aria-label="知识分类">
+        <div className="dashboard-knowledge-explorer-search">
+          <Input
+            value={recordSearchText}
+            prefix={<SearchOutlined />}
+            placeholder="搜索分类或知识标题"
+            aria-label="搜索项目知识记录"
+            onChange={(event) => onRecordSearchTextChange(event.target.value)}
+          />
+        </div>
+        <button
+          type="button"
+          className={`dashboard-knowledge-category ${categoryFilter === 'all' ? 'is-active' : ''}`}
+          onClick={() => onCategoryFilterChange('all')}
+        >
+          <span>全部知识</span>
+          <span>{countedRecords.length}</span>
+        </button>
+        <div className="dashboard-knowledge-category-groups">
+          {PROJECT_KNOWLEDGE_CATEGORY_GROUPS.map((group) => (
+            <section key={group.key} aria-labelledby={`knowledge-category-${group.key}`}>
+              <h3 id={`knowledge-category-${group.key}`}>{group.label}</h3>
+              {group.types.map((type) => {
+                const count = countedRecords.filter((record) => record.type === type).length;
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    className={`dashboard-knowledge-category ${categoryFilter === type ? 'is-active' : ''}`}
+                    onClick={() => onCategoryFilterChange(type)}
+                  >
+                    <span>{projectKnowledgeTypeLabel(type)}</span>
+                    <span>{count}</span>
+                  </button>
+                );
+              })}
+            </section>
+          ))}
+        </div>
+        <div className="dashboard-knowledge-explorer-foot">
+          <span>知识提供方式</span>
+          <strong>{provider}</strong>
+        </div>
+      </aside>
+
+      <section className="dashboard-knowledge-ledger" aria-labelledby="knowledge-ledger-title">
+        <header className="dashboard-knowledge-ledger-toolbar">
+          <div>
+            <strong id="knowledge-ledger-title">共 {visibleRecords.length} 条</strong>
+            <Tooltip title="刷新项目知识">
+              <Button
+                type="text"
+                icon={<ReloadOutlined />}
+                aria-label="刷新项目知识"
+                onClick={() => onInvoke('refresh', {})}
+              />
+            </Tooltip>
+          </div>
+          <div>
+            <Select
+              value={sortOrder}
+              aria-label="项目知识排序"
+              onChange={onSortOrderChange}
+              options={[
+                { value: 'newest', label: '更新时间：最新' },
+                { value: 'oldest', label: '更新时间：最早' },
+              ]}
+            />
+            <Select
+              value={stateFilter}
+              aria-label="项目知识记录状态"
+              onChange={onStateFilterChange}
+              options={[
+                { value: 'active', label: '使用中' },
+                { value: 'needs-review', label: '需要更新' },
+                { value: 'retired', label: '已归档' },
+                { value: 'all', label: '全部记录' },
+              ]}
+            />
+          </div>
+        </header>
+        {diagnosticCopy.message && (
+          <div className="dashboard-knowledge-inline-warning" role="status">
+            <SafetyCertificateOutlined aria-hidden="true" />
+            <span>
+              <strong>{diagnosticCopy.label}</strong>
+              {diagnosticCopy.message}
+            </span>
+          </div>
+        )}
+        <div className="dashboard-knowledge-ledger-head" aria-hidden="true">
+          <span>知识标题与摘要</span>
+          <span>来源路径</span>
+          <span>验证状态</span>
+          <span>更新时间</span>
+        </div>
+        {visibleRecords.length === 0 ? (
+          <Empty
+            className="dashboard-knowledge-empty"
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description="没有符合当前条件的项目知识"
+          />
+        ) : (
+          <div className="dashboard-knowledge-ledger-rows" aria-label="项目知识记录列表">
+            {visibleRecords.slice(0, 100).map((record) => {
+              const sources = projectKnowledgeRecordSources(record);
+              const verification = projectKnowledgeVerificationLines(record);
+              const needsEvidence =
+                record.authority === 'user' && (sources.length === 0 || verification.length === 0);
+              return (
+                <button
+                  type="button"
+                  key={record.id}
+                  className={`dashboard-knowledge-ledger-row ${selectedRecordId === record.id ? 'is-selected' : ''}`}
+                  aria-pressed={selectedRecordId === record.id}
+                  onClick={() => onSelectRecord(record.id)}
+                >
+                  <span className="dashboard-knowledge-record-copy">
+                    <strong>{record.title}</strong>
+                    <span>{record.summary}</span>
+                    {needsEvidence && (
+                      <span className="dashboard-knowledge-row-warning">缺少来源或验证记录</span>
+                    )}
+                  </span>
+                  <span className="dashboard-knowledge-record-source">
+                    {sources[0] ?? '无来源'}
+                  </span>
+                  <span className={`dashboard-knowledge-record-state is-${record.state}`}>
+                    <span aria-hidden="true" />
+                    {projectKnowledgeStateLabel(record.state)}
+                  </span>
+                  <time dateTime={record.updatedAt}>{formatTimestamp(record.updatedAt)}</time>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <ProjectKnowledgeInspector record={selectedRecord} onInvoke={onInvoke} />
+    </div>
+  );
+}
+
+function ProjectKnowledgeInspector({ record, onInvoke }) {
+  if (!record) {
+    return (
+      <aside className="dashboard-knowledge-inspector is-empty" aria-label="记录详情">
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="选择一条记录查看详情" />
+      </aside>
+    );
+  }
+
+  const sources = projectKnowledgeRecordSources(record);
+  const verification = projectKnowledgeVerificationLines(record);
+  const applicablePaths = record.applicablePaths ?? [];
+  const operations = record.operations ?? [];
+  const needsEvidence =
+    record.authority === 'user' && (sources.length === 0 || verification.length === 0);
+
+  return (
+    <aside className="dashboard-knowledge-inspector" aria-label="记录详情">
+      <header>
+        <div>
+          <h3>{record.title}</h3>
+          <span className={`dashboard-knowledge-record-state is-${record.state}`}>
+            <span aria-hidden="true" />
+            {projectKnowledgeStateLabel(record.state)}
+          </span>
+        </div>
+        <p>{record.summary}</p>
+      </header>
+      {needsEvidence && (
+        <div className="dashboard-knowledge-inspector-warning" role="status">
+          <SafetyCertificateOutlined aria-hidden="true" />
+          <span>这条知识由用户手动确认，当前缺少来源或验证记录；建议补充证据，方便后续维护。</span>
+        </div>
+      )}
+      {record.state === 'needs-review' && (
+        <div className="dashboard-knowledge-inspector-warning" role="status">
+          <ReloadOutlined aria-hidden="true" />
+          <span>关联的来源文件或定位信息已发生变化。修复来源后，点击“重新检查来源”恢复使用。</span>
+        </div>
+      )}
+      <section>
+        <h4>应用条件</h4>
+        <dl>
+          <div>
+            <dt>知识类型</dt>
+            <dd>{projectKnowledgeTypeLabel(record.type)}</dd>
+          </div>
+          <div>
+            <dt>适用路径</dt>
+            <dd>{applicablePaths.length > 0 ? applicablePaths.join('、') : '当前项目'}</dd>
+          </div>
+          <div>
+            <dt>适用操作</dt>
+            <dd>{operations.length > 0 ? operations.join('、') : '全部任务'}</dd>
+          </div>
+        </dl>
+      </section>
+      <section>
+        <h4>来源与证据</h4>
+        {sources.length === 0 ? (
+          <p className="dashboard-knowledge-inspector-muted">尚未关联来源文件</p>
+        ) : (
+          <ul className="dashboard-knowledge-source-list">
+            {sources.map((source) => (
+              <li key={source}>
+                <FileTextOutlined aria-hidden="true" />
+                <code>{source}</code>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <section>
+        <h4>验证记录</h4>
+        {verification.length === 0 ? (
+          <p className="dashboard-knowledge-inspector-muted">尚未提供验证命令</p>
+        ) : (
+          <ul className="dashboard-knowledge-verification-list">
+            {verification.map((entry) => (
+              <li key={entry}>
+                <CheckCircleOutlined aria-hidden="true" />
+                <code>{entry}</code>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <section>
+        <h4>活动记录</h4>
+        <dl>
+          <div>
+            <dt>记录来源</dt>
+            <dd>{record.authority === 'user' ? '用户手动添加' : '系统自动整理'}</dd>
+          </div>
+          <div>
+            <dt>最近更新</dt>
+            <dd>{formatTimestamp(record.updatedAt)}</dd>
+          </div>
+          <div>
+            <dt>记录标识</dt>
+            <dd className="dashboard-knowledge-record-id">{record.id}</dd>
+          </div>
+        </dl>
+      </section>
+      <footer>
+        <Button
+          icon={<EditOutlined />}
+          onClick={() => openProjectKnowledgeCorrection(record, onInvoke)}
+        >
+          {record.state === 'retired' ? '纠正并恢复' : '纠正记录'}
+        </Button>
+        {record.state === 'needs-review' && (
+          <Button icon={<ReloadOutlined />} onClick={() => onInvoke('refresh', { id: record.id })}>
+            重新检查来源
+          </Button>
+        )}
+        {record.state !== 'retired' && (
+          <Button
+            danger
+            icon={<DeleteOutlined />}
+            onClick={() =>
+              Modal.confirm({
+                title: '归档这条项目知识？',
+                content: '归档后，这条记录不会再提供给当前项目的 Agent，但仍可在归档状态中查看。',
+                okText: '归档',
+                cancelText: '取消',
+                okButtonProps: { danger: true },
+                onOk: () => onInvoke('forget', { id: record.id }),
+              })
+            }
+          >
+            归档记录
+          </Button>
+        )}
+      </footer>
+    </aside>
+  );
+}
+
+function ProjectKnowledgeSources({ sourceEntries, provider }) {
+  return (
+    <section className="dashboard-knowledge-single-view" aria-labelledby="knowledge-sources-title">
+      <header>
+        <div>
+          <h3 id="knowledge-sources-title">数据来源</h3>
+          <p>检查当前项目知识关联的文件来源和收录情况</p>
+        </div>
+        <span>{provider}</span>
+      </header>
+      <div className="dashboard-knowledge-source-head" aria-hidden="true">
+        <span>来源路径</span>
+        <span>关联记录</span>
+        <span>收录状态</span>
+        <span>最近更新</span>
+      </div>
+      {sourceEntries.length === 0 ? (
+        <Empty
+          className="dashboard-knowledge-empty"
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description="尚未发现项目知识来源"
+        />
+      ) : (
+        <div className="dashboard-knowledge-source-rows" aria-label="项目知识数据来源列表">
+          {sourceEntries.map((entry) => {
+            const needsReview = entry.records.some((record) => record.state === 'needs-review');
+            return (
+              <div key={entry.source} className="dashboard-knowledge-source-row">
+                <span>
+                  <FileTextOutlined aria-hidden="true" />
+                  <code>{entry.source}</code>
+                </span>
+                <strong>{entry.records.length} 条</strong>
+                <span
+                  className={`dashboard-knowledge-record-state ${needsReview ? 'is-needs-review' : 'is-active'}`}
+                >
+                  <span aria-hidden="true" />
+                  {needsReview ? '需要更新' : '已收录'}
+                </span>
+                <time dateTime={entry.latestUpdatedAt}>
+                  {formatTimestamp(entry.latestUpdatedAt)}
+                </time>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ProjectKnowledgeQuery({
+  queryText,
+  onQueryTextChange,
+  queryResults,
+  queryCompleted,
+  queryPending,
+  onPreviewQuery,
+  retrieval,
+}) {
+  return (
+    <section className="dashboard-knowledge-query-view" aria-labelledby="knowledge-query-title">
+      <header>
+        <div>
+          <h3 id="knowledge-query-title">检索测试</h3>
+          <p>输入真实任务描述，检查 Agent 会得到哪些项目知识</p>
+        </div>
+      </header>
+      <div className="dashboard-knowledge-query-form">
+        <Input.TextArea
+          value={queryText}
+          aria-label="查询项目知识"
+          placeholder="例如：修改项目知识模块后应该运行哪些测试？"
+          disabled={queryPending}
+          autoSize={{ minRows: 4, maxRows: 8 }}
+          onChange={(event) => onQueryTextChange(event.target.value)}
+          onPressEnter={(event) => {
+            if (!event.shiftKey) {
+              event.preventDefault();
+              void onPreviewQuery();
+            }
+          }}
+        />
+        <Button
+          type="primary"
+          icon={<SearchOutlined />}
+          disabled={queryText.trim().length === 0 || queryPending}
+          loading={queryPending}
+          onClick={() => void onPreviewQuery()}
+        >
+          测试检索
+        </Button>
+      </div>
+      {retrieval && <p className="dashboard-knowledge-query-note">{retrieval}</p>}
+      <div className="dashboard-knowledge-query-results" aria-label="项目知识查询结果">
+        {queryResults.length === 0 ? (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={
+              queryPending
+                ? '正在检索当前项目知识…'
+                : queryCompleted
+                  ? '检索已完成，没有找到与当前任务匹配的项目知识'
+                  : '运行检索后在这里查看结果'
+            }
+          />
+        ) : (
+          queryResults.slice(0, 8).map((result, index) => (
+            <article key={`${result.source}-${index}`}>
+              <header>
+                <strong>{result.title ?? '项目知识结果'}</strong>
+                <code>{result.source}</code>
+              </header>
+              <p>{result.content}</p>
+            </article>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
 function ProjectKnowledgeCenter({ page, data, onInvoke }) {
   const snapshot = data && typeof data === 'object' ? data : {};
+  const [workspaceTab, setWorkspaceTab] = useState('records');
+  const [recordSearchText, setRecordSearchText] = useState('');
   const [queryText, setQueryText] = useState('');
-  const [queryResults, setQueryResults] = useState([]);
+  const [queryPending, setQueryPending] = useState(false);
   const [stateFilter, setStateFilter] = useState('active');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [sortOrder, setSortOrder] = useState('newest');
+  const [selectedRecordId, setSelectedRecordId] = useState(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createSaving, setCreateSaving] = useState(false);
   const [createDraft, setCreateDraft] = useState({
@@ -3217,17 +3845,88 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
     sources: '',
     verification: '',
   });
-  const records = Array.isArray(snapshot.records) ? snapshot.records : [];
-  const visibleRecords = records.filter(
-    (record) => stateFilter === 'all' || record.state === stateFilter,
+  const records = useMemo(
+    () => (Array.isArray(snapshot.records) ? snapshot.records : []),
+    [snapshot.records],
   );
+  const visibleRecords = useMemo(() => {
+    const search = recordSearchText.trim().toLocaleLowerCase('zh-CN');
+    const filtered = records.filter((record) => {
+      if (stateFilter !== 'all' && record.state !== stateFilter) return false;
+      if (categoryFilter !== 'all' && record.type !== categoryFilter) return false;
+      if (!search) return true;
+      const searchable = [
+        record.title,
+        record.summary,
+        record.id,
+        projectKnowledgeTypeLabel(record.type),
+        ...projectKnowledgeRecordSources(record),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLocaleLowerCase('zh-CN');
+      return searchable.includes(search);
+    });
+    return filtered.toSorted((left, right) => {
+      const delta =
+        new Date(right.updatedAt ?? 0).getTime() - new Date(left.updatedAt ?? 0).getTime();
+      return sortOrder === 'oldest' ? -delta : delta;
+    });
+  }, [categoryFilter, recordSearchText, records, sortOrder, stateFilter]);
+  const selectedRecord =
+    visibleRecords.find((record) => record.id === selectedRecordId) ?? visibleRecords[0] ?? null;
+  const sourceEntries = useMemo(() => {
+    const sourceMap = new Map();
+    for (const record of records) {
+      for (const source of projectKnowledgeRecordSources(record)) {
+        const current = sourceMap.get(source) ?? {
+          source,
+          records: [],
+          latestUpdatedAt: null,
+        };
+        current.records.push(record);
+        if (
+          !current.latestUpdatedAt ||
+          new Date(record.updatedAt ?? 0).getTime() >
+            new Date(current.latestUpdatedAt ?? 0).getTime()
+        ) {
+          current.latestUpdatedAt = record.updatedAt;
+        }
+        sourceMap.set(source, current);
+      }
+    }
+    return Array.from(sourceMap.values()).toSorted((left, right) =>
+      left.source.localeCompare(right.source, 'zh-CN'),
+    );
+  }, [records]);
+  useEffect(() => {
+    if (selectedRecord?.id && selectedRecord.id !== selectedRecordId) {
+      setSelectedRecordId(selectedRecord.id);
+    }
+  }, [selectedRecord, selectedRecordId]);
+  const queryPreview = isDashboardRecord(snapshot.queryPreview) ? snapshot.queryPreview : null;
+  const queryCompleted =
+    !queryPending && queryPreview?.kind === 'search' && queryPreview.task === queryText.trim();
+  const queryResults =
+    queryCompleted && Array.isArray(queryPreview.results) ? queryPreview.results : [];
   const previewQuery = async () => {
-    if (!queryText.trim()) return;
-    const result = await onInvoke('query', { task: queryText.trim() });
-    setQueryResults(result?.kind === 'search' ? (result.results ?? []) : []);
+    if (!queryText.trim() || queryPending) return;
+    setQueryPending(true);
+    try {
+      await onInvoke('query', { task: queryText.trim() });
+    } finally {
+      setQueryPending(false);
+    }
+  };
+  const updateQueryText = (value) => {
+    setQueryText(value);
   };
   const provider =
-    snapshot.provider === 'remote' ? 'Remote' : snapshot.provider === 'local' ? 'Local' : '—';
+    snapshot.provider === 'remote'
+      ? '远程提供器'
+      : snapshot.provider === 'local'
+        ? '本地提供器'
+        : '未读取';
   const configured =
     typeof snapshot.configured === 'boolean'
       ? snapshot.configured
@@ -3239,27 +3938,35 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
       ? snapshot.diagnostics
       : (page.diagnostics ?? []);
   const disabled = page.status === 'disabled';
-  const remote = snapshot.remote;
-  const local = snapshot.local;
+  const serviceHealthy = !disabled && configured !== '需要检查';
 
   return (
-    <div className="dashboard-tool-page dashboard-tool-page-knowledge mx-auto min-w-0 max-w-dashboard">
-      <PluginCenterHeader
-        icon={DatabaseOutlined}
-        title={page.label}
-        description="管理当前项目的知识来源、检索状态与可复用记录"
-        meta={[
-          { label: 'Provider', value: provider, tone: provider === '—' ? 'neutral' : 'accent' },
-          {
-            label: '状态',
-            value: disabled ? '已暂停' : configured,
-            tone: disabled || configured === '需要检查' ? 'warning' : 'success',
-          },
-        ]}
-      />
+    <div className="dashboard-tool-page dashboard-tool-page-knowledge min-w-0">
+      <header className="dashboard-knowledge-workspace-head">
+        <div className="min-w-0">
+          <div className="dashboard-knowledge-title-row">
+            <h2>{page.label}</h2>
+            <span
+              className={`dashboard-knowledge-service-state ${serviceHealthy ? 'is-healthy' : 'is-warning'}`}
+            >
+              <span className="dashboard-tool-state-dot" aria-hidden="true" />
+              {disabled ? '服务已暂停' : configured === '需要检查' ? '需要检查' : '服务正常'}
+            </span>
+          </div>
+          <p>管理当前项目的知识来源、检索状态与应用条件记录</p>
+        </div>
+        <Button
+          className="dashboard-knowledge-create-button"
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={() => setCreateOpen(true)}
+        >
+          新增项目知识
+        </Button>
+      </header>
       {disabled && (
         <Alert
-          className="mb-4"
+          className="dashboard-knowledge-paused-alert"
           type="info"
           showIcon
           message={page.projectPaused ? '当前项目已暂停项目知识' : '项目知识插件已停用'}
@@ -3273,287 +3980,67 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
           }
         />
       )}
-      <section className="dashboard-knowledge-status" aria-label="项目知识状态">
-        <div className="dashboard-knowledge-status-cell">
-          <span className="dashboard-knowledge-status-label">Provider</span>
-          <span className="dashboard-knowledge-status-value">
-            <span className="dashboard-tool-state-dot is-accent" aria-hidden="true" />
-            {provider}
-          </span>
-          <span className="dashboard-knowledge-status-meta">
-            {provider === 'Local'
-              ? local?.available
-                ? 'FTS5 + ripgrep 混合召回'
-                : 'ripgrep 回退可用'
-              : provider === 'Remote'
-                ? '固定 Retrieval API v1'
-                : '未读取状态'}
-          </span>
-        </div>
-        <div className="dashboard-knowledge-status-cell">
-          <span className="dashboard-knowledge-status-label">插件状态</span>
-          <span className="dashboard-knowledge-status-value">
-            <span
-              className={`dashboard-tool-state-dot ${disabled ? 'is-warning' : 'is-success'}`}
-              aria-hidden="true"
-            />
-            {page.globallyDisabled
-              ? '全局停用'
-              : page.projectPaused
-                ? '已启用'
-                : disabled
-                  ? '已停用'
-                  : '已启用'}
-          </span>
-          <span className="dashboard-knowledge-status-meta">由 Plugin Runtime 管理</span>
-        </div>
-        <div className="dashboard-knowledge-status-cell">
-          <span className="dashboard-knowledge-status-label">当前项目</span>
-          <span className="dashboard-knowledge-status-value">
-            <span
-              className={`dashboard-tool-state-dot ${page.projectPaused ? 'is-warning' : 'is-success'}`}
-              aria-hidden="true"
-            />
-            {page.projectPaused ? '已暂停' : '已启用'}
-          </span>
-          <span className="dashboard-knowledge-status-meta">仅影响这个项目的任务</span>
-        </div>
-        <div className="dashboard-knowledge-status-cell">
-          <span className="dashboard-knowledge-status-label">配置状态</span>
-          <span className="dashboard-knowledge-status-value">
-            <span
-              className={`dashboard-tool-state-dot ${configured === '需要检查' ? 'is-warning' : 'is-success'}`}
-              aria-hidden="true"
-            />
-            {configured}
-          </span>
-          <span className="dashboard-knowledge-status-meta">状态和记录由 Provider 提供</span>
-        </div>
-      </section>
-      <div className="dashboard-knowledge-layout">
-        <section
-          className="dashboard-knowledge-summary"
-          aria-labelledby="dashboard-knowledge-summary-title"
-        >
-          <div className="dashboard-knowledge-panel-head">
-            <div className="dashboard-tool-panel-title">
-              <span className="dashboard-tool-panel-icon" aria-hidden="true">
-                <DatabaseOutlined />
-              </span>
-              <div>
-                <h3 id="dashboard-knowledge-summary-title">知识概览</h3>
-                <p>当前项目可供 Agent 使用的来源有效记录</p>
-              </div>
-            </div>
-            {provider !== '—' && <Tag variant="filled">{provider}</Tag>}
-          </div>
-          {data === null || data === undefined ? (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={page.projectPaused ? '当前项目暂停后不加载状态' : '插件停用后不加载状态'}
-            />
-          ) : (
-            <div className="dashboard-knowledge-summary-body">
-              <p className="dashboard-knowledge-retrieval">{snapshot.retrieval}</p>
-              <div className="dashboard-knowledge-overview-metrics">
-                <div>
-                  <span>记录</span>
-                  <strong>
-                    {(snapshot.counts?.active ?? 0) +
-                      (snapshot.counts?.needsReview ?? 0) +
-                      (snapshot.counts?.retired ?? 0)}
-                  </strong>
-                </div>
-                <div>
-                  <span>来源</span>
-                  <strong>
-                    {provider === 'Local' ? (local?.sourceCount ?? 0) : (remote?.scope ?? '—')}
-                  </strong>
-                </div>
-                <div>
-                  <span>索引</span>
-                  <strong>
-                    {provider === 'Local' ? (local?.available ? '可用' : '待建立') : configured}
-                  </strong>
-                </div>
-              </div>
-            </div>
-          )}
-        </section>
-        <section
-          className="dashboard-knowledge-diagnostics"
-          aria-labelledby="dashboard-knowledge-diagnostics-title"
-        >
-          <div className="dashboard-knowledge-panel-head">
-            <div className="dashboard-tool-panel-title">
-              <span className="dashboard-tool-panel-icon is-warning" aria-hidden="true">
-                <SafetyCertificateOutlined />
-              </span>
-              <div>
-                <h3 id="dashboard-knowledge-diagnostics-title">运行诊断</h3>
-                <p>最近三条需要关注的有界信息</p>
-              </div>
-            </div>
-            {diagnostics.length > 0 && <Tag color="warning">{diagnostics.length} 条</Tag>}
-          </div>
-          {diagnostics.length === 0 ? (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有新的诊断" />
-          ) : (
-            <div className="dashboard-knowledge-diagnostics-list">
-              {diagnostics.map((diagnostic, index) => {
-                const code = typeof diagnostic === 'string' ? '运行时' : diagnostic.code;
-                const message = typeof diagnostic === 'string' ? diagnostic : diagnostic.message;
-                return (
-                  <div className="dashboard-knowledge-diagnostic" key={`${code}-${index}`}>
-                    <Tag variant="filled">{code}</Tag>
-                    <span>{message}</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
-      </div>
-      <section
-        className="dashboard-knowledge-summary dashboard-knowledge-records mt-4"
-        aria-labelledby="dashboard-knowledge-records-title"
-      >
-        <div className="dashboard-knowledge-panel-head">
-          <div className="dashboard-tool-panel-title">
-            <span className="dashboard-tool-panel-icon" aria-hidden="true">
-              <FileTextOutlined />
-            </span>
-            <div>
-              <h3 id="dashboard-knowledge-records-title">项目知识记录</h3>
-              <p>
-                active {snapshot.counts?.active ?? 0} · needs-review{' '}
-                {snapshot.counts?.needsReview ?? 0} · retired {snapshot.counts?.retired ?? 0}
-              </p>
-            </div>
-          </div>
-          <Select
-            size="small"
-            value={stateFilter}
-            aria-label="项目知识记录状态"
-            onChange={setStateFilter}
-            options={[
-              { value: 'active', label: 'Active' },
-              { value: 'needs-review', label: 'Needs review' },
-              { value: 'retired', label: 'Retired' },
-              { value: 'all', label: '全部' },
-            ]}
-          />
-        </div>
-        <div className="dashboard-knowledge-summary-body">
-          <div className="dashboard-knowledge-record-toolbar">
-            <Button
-              size="small"
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => setCreateOpen(true)}
-            >
-              新增项目知识
-            </Button>
-            <Input
-              size="small"
-              value={queryText}
-              onChange={(event) => setQueryText(event.target.value)}
-              onPressEnter={() => void previewQuery()}
-              placeholder="查询项目知识"
-              aria-label="查询项目知识"
-            />
-            <Button size="small" type="primary" onClick={() => void previewQuery()}>
-              查询
-            </Button>
-            <Button size="small" onClick={() => onInvoke('refresh', {})}>
-              重新核对
-            </Button>
-          </div>
-          {queryResults.length > 0 && (
-            <div className="dashboard-knowledge-diagnostics-list" aria-label="项目知识查询结果">
-              {queryResults.slice(0, 8).map((result, index) => (
-                <div className="dashboard-knowledge-diagnostic" key={`${result.source}-${index}`}>
-                  <Tag variant="filled">{result.title ?? result.source}</Tag>
-                  <span>{result.content}</span>
-                </div>
-              ))}
-            </div>
-          )}
-          {visibleRecords.length === 0 ? (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无记录" />
-          ) : (
-            <div className="dashboard-knowledge-diagnostics-list" aria-label="项目知识记录列表">
-              {visibleRecords.slice(0, 100).map((record) => {
-                const sources = projectKnowledgeRecordSources(record);
-                return (
-                  <div className="dashboard-knowledge-diagnostic" key={record.id}>
-                    <Tag variant="filled">{record.state}</Tag>
-                    <div className="min-w-0 flex-1">
-                      <strong>{record.title}</strong>
-                      {record.authority === 'user' && (
-                        <Tag className="ml-2" variant="filled">
-                          用户提供
-                        </Tag>
-                      )}
-                      {record.authority === 'user' &&
-                        (sources.length === 0 || (record.verification?.length ?? 0) === 0) && (
-                          <Tag className="ml-2" color="warning">
-                            未验证
-                          </Tag>
-                        )}
-                      <div>{record.summary}</div>
-                      {sources.length > 0 && (
-                        <div className="text-xs text-meta">来源：{sources.join(' · ')}</div>
-                      )}
-                      <div className="text-xs text-meta">
-                        {record.id} · {record.type} · 更新于 {formatTimestamp(record.updatedAt)}
-                      </div>
-                    </div>
-                    <div className="dashboard-knowledge-record-actions">
-                      <Button
-                        size="small"
-                        onClick={() =>
-                          Modal.confirm({
-                            title: '纠正项目知识记录',
-                            content: (
-                              <Input.TextArea
-                                id="project-knowledge-correction"
-                                autoSize={{ minRows: 3, maxRows: 6 }}
-                              />
-                            ),
-                            okText: '保存',
-                            cancelText: '取消',
-                            onOk: () => {
-                              const element = document.getElementById(
-                                'project-knowledge-correction',
-                              );
-                              return onInvoke('correct', {
-                                id: record.id,
-                                text: element?.value ?? record.summary,
-                              });
-                            },
-                          })
-                        }
-                      >
-                        纠正
-                      </Button>
-                      <Button size="small" onClick={() => onInvoke('forget', { id: record.id })}>
-                        忘记
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </section>
+      <nav className="dashboard-knowledge-tabs" aria-label="项目知识视图">
+        {[
+          ['records', '知识记录'],
+          ['sources', '数据来源'],
+          ['query', '检索测试'],
+        ].map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            className={workspaceTab === key ? 'is-active' : ''}
+            aria-current={workspaceTab === key ? 'page' : undefined}
+            onClick={() => setWorkspaceTab(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+      {workspaceTab === 'records' ? (
+        <ProjectKnowledgeRegistry
+          records={records}
+          visibleRecords={visibleRecords}
+          selectedRecord={selectedRecord}
+          selectedRecordId={selectedRecordId}
+          onSelectRecord={setSelectedRecordId}
+          recordSearchText={recordSearchText}
+          onRecordSearchTextChange={setRecordSearchText}
+          categoryFilter={categoryFilter}
+          onCategoryFilterChange={setCategoryFilter}
+          stateFilter={stateFilter}
+          onStateFilterChange={setStateFilter}
+          sortOrder={sortOrder}
+          onSortOrderChange={setSortOrder}
+          diagnostics={diagnostics}
+          provider={provider}
+          onInvoke={onInvoke}
+        />
+      ) : workspaceTab === 'sources' ? (
+        <ProjectKnowledgeSources sourceEntries={sourceEntries} provider={provider} />
+      ) : (
+        <ProjectKnowledgeQuery
+          queryText={queryText}
+          onQueryTextChange={updateQueryText}
+          queryResults={queryResults}
+          queryCompleted={queryCompleted}
+          queryPending={queryPending}
+          onPreviewQuery={previewQuery}
+          retrieval={snapshot.retrieval}
+        />
+      )}
       <Modal
+        rootClassName="dashboard-create-modal-root dashboard-project-knowledge-modal-root"
+        classNames={{
+          mask: 'dashboard-create-modal-mask',
+          container: 'dashboard-create-modal-content',
+        }}
+        centered
         open={createOpen}
         title="新增项目知识"
         okText="保存"
         cancelText="取消"
-        width={620}
+        width={720}
         okButtonProps={{
           disabled:
             createDraft.title.trim().length === 0 || createDraft.summary.trim().length === 0,
@@ -3593,7 +4080,7 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
           }
         }}
       >
-        <Form layout="vertical" component="div">
+        <Form className="dashboard-project-knowledge-create-form" layout="vertical" component="div">
           <Form.Item label="知识类型" required>
             <Select
               value={createDraft.type}
@@ -3615,6 +4102,7 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
             />
           </Form.Item>
           <Form.Item
+            className="dashboard-create-form-span"
             label="摘要"
             required
             htmlFor="dashboard-new-project-knowledge-summary"
@@ -3790,7 +4278,7 @@ function PersonalMemoryCenter({ data, onInvoke }) {
         </div>
       )}
       <section className="dashboard-memory-status" aria-label="个人记忆状态">
-        <div className="dashboard-memory-status-cell">
+        <div className="dashboard-memory-status-cell is-green">
           <span className="dashboard-memory-status-label">自动学习</span>
           <span className="dashboard-memory-status-value">
             <span
@@ -3804,7 +4292,7 @@ function PersonalMemoryCenter({ data, onInvoke }) {
                 : '已暂停自动沉淀'}
           </span>
         </div>
-        <div className="dashboard-memory-status-cell">
+        <div className="dashboard-memory-status-cell is-blue">
           <span className="dashboard-memory-status-label">记忆注入</span>
           <span className="dashboard-memory-status-value">
             <span
@@ -3818,7 +4306,7 @@ function PersonalMemoryCenter({ data, onInvoke }) {
                 : '已暂停任务注入'}
           </span>
         </div>
-        <div className="dashboard-memory-status-cell">
+        <div className="dashboard-memory-status-cell is-rose">
           <span className="dashboard-memory-status-label">作用范围</span>
           <span className="dashboard-memory-status-value">
             <span className="dashboard-tool-state-dot is-accent" aria-hidden="true" />
@@ -3828,7 +4316,7 @@ function PersonalMemoryCenter({ data, onInvoke }) {
             {projectKey ? '项目级偏好优先' : '跨项目共享'}
           </span>
         </div>
-        <div className="dashboard-memory-status-cell">
+        <div className="dashboard-memory-status-cell is-amber">
           <span className="dashboard-memory-status-label">记忆文件</span>
           <span className="dashboard-memory-status-value">
             <span className="dashboard-tool-state-dot is-success" aria-hidden="true" />
@@ -3843,87 +4331,92 @@ function PersonalMemoryCenter({ data, onInvoke }) {
           </span>
         </div>
       </section>
-      <section
-        className="dashboard-memory-list mb-4"
-        aria-labelledby="dashboard-memory-profile-title"
-      >
-        <div className="dashboard-memory-panel-head">
-          <div className="dashboard-tool-panel-title">
-            <span className="dashboard-tool-panel-icon" aria-hidden="true">
-              <UserOutlined />
-            </span>
-            <div>
-              <h3 id="dashboard-memory-profile-title">User Profile</h3>
-              <p>
-                {profileRecords.length > 0
-                  ? `${profileRecords.length} 条用户事实、偏好与协作习惯`
-                  : '还没有形成稳定的用户偏好'}
-              </p>
+      <div className="dashboard-memory-content dashboard-memory-board">
+        <section
+          className="dashboard-memory-list dashboard-memory-profile-list"
+          aria-labelledby="dashboard-memory-profile-title"
+        >
+          <div className="dashboard-memory-panel-head">
+            <div className="dashboard-tool-panel-title">
+              <span className="dashboard-tool-panel-icon" aria-hidden="true">
+                <UserOutlined />
+              </span>
+              <div>
+                <h3 id="dashboard-memory-profile-title">User Profile</h3>
+                <p>
+                  {profileRecords.length > 0
+                    ? `${profileRecords.length} 条用户事实、偏好与协作习惯`
+                    : '还没有形成稳定的用户偏好'}
+                </p>
+              </div>
+            </div>
+            <div className="dashboard-memory-panel-head-actions">
+              <span className="dashboard-tool-counter">{profileUsage}</span>
             </div>
           </div>
-          <div className="dashboard-memory-panel-head-actions">
-            <span className="dashboard-tool-counter">{profileUsage}</span>
-          </div>
-        </div>
-        {profileRecords.length === 0 ? (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有稳定的用户偏好" />
-        ) : (
-          <div className="dashboard-memory-records">
-            {profileRecords.map((record) => (
-              <div key={record.id} className="dashboard-memory-record">
-                <div className="dashboard-memory-record-main">
-                  <span className="dashboard-memory-record-mark" aria-hidden="true">
-                    <UserOutlined />
-                  </span>
-                  <div className="dashboard-memory-record-content">
-                    <div className="dashboard-memory-record-kicker">
-                      <Tag variant="filled">{record.category}</Tag>
-                      <span>{record.memoryClass ?? 'user-preference'}</span>
-                    </div>
-                    <p className="dashboard-memory-record-text">{record.text}</p>
-                    <div className="dashboard-memory-record-application">
-                      应用原因：{memoryApplicationReason(record)}
-                    </div>
-                    {record.reason && (
-                      <div className="dashboard-memory-record-note">记忆说明：{record.reason}</div>
-                    )}
-                    <div className="dashboard-memory-record-meta">
-                      <span>{record.evidenceCount ?? 0} 条证据</span>
-                      <span>更新于 {formatTimestamp(record.updatedAt)}</span>
+          {profileRecords.length === 0 ? (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有稳定的用户偏好" />
+          ) : (
+            <div className="dashboard-memory-records">
+              {profileRecords.map((record) => (
+                <div key={record.id} className="dashboard-memory-record">
+                  <div className="dashboard-memory-record-main">
+                    <span className="dashboard-memory-record-mark" aria-hidden="true">
+                      <UserOutlined />
+                    </span>
+                    <div className="dashboard-memory-record-content">
+                      <div className="dashboard-memory-record-kicker">
+                        <Tag variant="filled">{record.category}</Tag>
+                        <span>{record.memoryClass ?? 'user-preference'}</span>
+                      </div>
+                      <p className="dashboard-memory-record-text">{record.text}</p>
+                      <div className="dashboard-memory-record-application">
+                        应用原因：{memoryApplicationReason(record)}
+                      </div>
+                      {record.reason && (
+                        <div className="dashboard-memory-record-note">
+                          记忆说明：{record.reason}
+                        </div>
+                      )}
+                      <div className="dashboard-memory-record-meta">
+                        <span>{record.evidenceCount ?? 0} 条证据</span>
+                        <span>更新于 {formatTimestamp(record.updatedAt)}</span>
+                      </div>
                     </div>
                   </div>
+                  <div className="dashboard-memory-record-actions">
+                    <Tooltip title="纠正记忆">
+                      <Button
+                        size="small"
+                        type="text"
+                        icon={<EditOutlined />}
+                        aria-label="纠正记忆"
+                        onClick={() => {
+                          setEditingRecord(record);
+                          setCorrectionText(record.text);
+                        }}
+                      />
+                    </Tooltip>
+                    <Tooltip title="删除记忆">
+                      <Button
+                        size="small"
+                        type="text"
+                        danger
+                        icon={<DeleteOutlined />}
+                        aria-label="删除记忆"
+                        onClick={() => onInvoke('remove', { id: record.id })}
+                      />
+                    </Tooltip>
+                  </div>
                 </div>
-                <div className="dashboard-memory-record-actions">
-                  <Tooltip title="纠正记忆">
-                    <Button
-                      size="small"
-                      type="text"
-                      icon={<EditOutlined />}
-                      aria-label="纠正记忆"
-                      onClick={() => {
-                        setEditingRecord(record);
-                        setCorrectionText(record.text);
-                      }}
-                    />
-                  </Tooltip>
-                  <Tooltip title="删除记忆">
-                    <Button
-                      size="small"
-                      type="text"
-                      danger
-                      icon={<DeleteOutlined />}
-                      aria-label="删除记忆"
-                      onClick={() => onInvoke('remove', { id: record.id })}
-                    />
-                  </Tooltip>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-      <div className="dashboard-memory-content">
-        <section className="dashboard-memory-list" aria-labelledby="dashboard-memory-list-title">
+              ))}
+            </div>
+          )}
+        </section>
+        <section
+          className="dashboard-memory-list dashboard-memory-project-list"
+          aria-labelledby="dashboard-memory-list-title"
+        >
           <div className="dashboard-memory-panel-head">
             <div className="dashboard-tool-panel-title">
               <span className="dashboard-tool-panel-icon" aria-hidden="true">
@@ -4041,8 +4534,15 @@ function PersonalMemoryCenter({ data, onInvoke }) {
         </section>
       </div>
       <Modal
+        rootClassName="dashboard-create-modal-root"
+        classNames={{
+          mask: 'dashboard-create-modal-mask',
+          container: 'dashboard-create-modal-content',
+        }}
+        centered
+        width={560}
         open={showNewProfile}
-        title="新增 User Profile 偏好"
+        title="新增偏好"
         okText="保存"
         cancelText="取消"
         okButtonProps={{ disabled: newProfileText.trim().length === 0 }}
@@ -4088,6 +4588,13 @@ function PersonalMemoryCenter({ data, onInvoke }) {
         </Form>
       </Modal>
       <Modal
+        rootClassName="dashboard-create-modal-root"
+        classNames={{
+          mask: 'dashboard-create-modal-mask',
+          container: 'dashboard-create-modal-content',
+        }}
+        centered
+        width={560}
         open={showNewProjectMemory}
         title="新增项目记忆"
         okText="保存"

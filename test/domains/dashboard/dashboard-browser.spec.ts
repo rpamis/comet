@@ -1,8 +1,11 @@
 import { expect, test } from '@playwright/test';
 
 test('shows Project Knowledge status and project pause transitions', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize({ width: 1600, height: 900 });
   let paused = false;
   let uninstalled = false;
+  const queryTasks: string[] = [];
   const manualRecords: Array<Record<string, unknown>> = [];
   const baseRecord = {
     id: 'record-focused-tests',
@@ -47,7 +50,11 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
           },
           retrieval: 'Remote 配置仅表示已配置，不代表最近一次请求成功。',
           records: [baseRecord, ...manualRecords],
-          counts: { active: 1 + manualRecords.length, needsReview: 0, retired: 0 },
+          counts: {
+            active: 1 + manualRecords.filter((record) => record.state === 'active').length,
+            needsReview: manualRecords.filter((record) => record.state === 'needs-review').length,
+            retired: manualRecords.filter((record) => record.state === 'retired').length,
+          },
           diagnostics: [],
         },
   });
@@ -146,7 +153,61 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
         });
         return;
       }
+      if (body.capability === 'forget') {
+        const recordIndex = manualRecords.findIndex((record) => record.id === body.input?.id);
+        expect(recordIndex).toBeGreaterThanOrEqual(0);
+        manualRecords[recordIndex] = {
+          ...manualRecords[recordIndex],
+          state: 'retired',
+          updatedAt: '2026-08-23T12:30:00.000Z',
+        };
+        await route.fulfill({
+          json: {
+            result: {
+              kind: 'retire',
+              changed: true,
+              record: manualRecords[recordIndex],
+              diagnostics: [],
+            },
+          },
+        });
+        return;
+      }
+      if (body.capability === 'correct') {
+        const recordIndex = manualRecords.findIndex((record) => record.id === body.input?.id);
+        expect(recordIndex).toBeGreaterThanOrEqual(0);
+        expect(body.input?.restore).toBe(true);
+        manualRecords[recordIndex] = {
+          ...manualRecords[recordIndex],
+          state: 'active',
+          authority: 'user',
+          summary: String(body.input?.text ?? ''),
+          updatedAt: '2026-08-23T12:45:00.000Z',
+        };
+        await route.fulfill({
+          json: {
+            result: {
+              kind: 'correct',
+              changed: true,
+              record: manualRecords[recordIndex],
+              diagnostics: [],
+            },
+          },
+        });
+        return;
+      }
       expect(body.capability).toBe('query');
+      queryTasks.push(String(body.input?.task ?? ''));
+      const results =
+        body.input?.task === '1231'
+          ? []
+          : [
+              {
+                source: 'docs/rule.md#rule',
+                title: 'Focused tests',
+                content: 'Run focused tests first.',
+              },
+            ];
       await route.fulfill({
         json: {
           result: {
@@ -155,13 +216,7 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
             records: [],
             truncated: false,
             diagnostics: [],
-            results: [
-              {
-                source: 'docs/rule.md#rule',
-                title: 'Focused tests',
-                content: 'Run focused tests first.',
-              },
-            ],
+            results,
           },
         },
       });
@@ -202,18 +257,45 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   await page.goto('/');
   await page.getByRole('menuitem', { name: '项目知识' }).click();
   await expect(page.getByRole('heading', { name: '项目知识', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '知识概览' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '运行诊断' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: '项目知识视图' })).toBeVisible();
+  await expect(page.getByRole('complementary', { name: '知识分类' })).toBeVisible();
+  await expect(page.getByRole('complementary', { name: '记录详情' })).toBeVisible();
   await expect(page.getByText('COMET_KNOWLEDGE_TOKEN')).toHaveCount(0);
-  await expect(page.getByText('来源：docs/rule.md#rule')).toBeVisible();
-  await expect(page.getByText(/更新于 2026-08-22/u)).toBeVisible();
+  await expect(page.getByText('docs/rule.md#rule', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(/2026-08-22/u).first()).toBeVisible();
+  const registryBounds = await page.locator('.dashboard-knowledge-registry').boundingBox();
+  const workbenchBounds = await page.locator('.dashboard-workbench').boundingBox();
+  expect(registryBounds).not.toBeNull();
+  expect(workbenchBounds).not.toBeNull();
+  expect((registryBounds?.y ?? 0) + (registryBounds?.height ?? 0)).toBeLessThanOrEqual(
+    (workbenchBounds?.y ?? 0) + (workbenchBounds?.height ?? 0),
+  );
+  await expect(page.getByText('知识提供方式', { exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: '数据来源' }).click();
+  await expect(page.getByRole('heading', { name: '数据来源' })).toBeVisible();
+  await expect(page.getByLabel('项目知识数据来源列表')).toContainText('docs/rule.md#rule');
+
+  await page.getByRole('button', { name: '检索测试' }).click();
   await page.getByLabel('查询项目知识').fill('focused tests');
-  await page.getByRole('button', { name: /查\s*询/u }).click();
+  await page.getByRole('button', { name: '测试检索' }).click();
   await expect(page.getByLabel('项目知识查询结果')).toContainText('Run focused tests first.');
+  await page.getByLabel('查询项目知识').fill('1231');
+  await page.getByRole('button', { name: '测试检索' }).click();
+  await expect.poll(() => queryTasks).toEqual(['focused tests', '1231']);
+  await expect(page.getByLabel('项目知识查询结果')).toContainText(
+    '检索已完成，没有找到与当前任务匹配的项目知识',
+  );
+  await page.getByRole('button', { name: '知识记录' }).click();
 
   await page.getByRole('button', { name: '新增项目知识' }).click();
   const createDialog = page.getByRole('dialog');
   await expect(createDialog).toContainText('新增项目知识');
+  await expect(page.locator('.dashboard-create-modal-content')).toHaveCSS('border-radius', '10px');
+  await expect(createDialog.locator('.dashboard-project-knowledge-create-form')).toHaveCSS(
+    'display',
+    'grid',
+  );
   await createDialog.getByLabel('项目知识标题').fill('未文档化约定');
   await createDialog.getByLabel('项目知识摘要').fill('修改后先运行定向测试。');
   await createDialog.getByLabel('项目知识适用路径').fill('domains/');
@@ -221,8 +303,33 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   await createDialog.getByLabel('项目知识验证命令').fill('pnpm test --filter project-knowledge');
   await page.getByRole('button', { name: /保\s*存/u }).click();
   await expect(page.getByText('未文档化约定', { exact: true })).toBeVisible();
-  await expect(page.getByText('用户提供', { exact: true })).toBeVisible();
-  await expect(page.getByText('未验证', { exact: true })).toBeVisible();
+  await page.getByText('未文档化约定', { exact: true }).click();
+  await expect(page.getByText('用户手动添加', { exact: true })).toBeVisible();
+  await expect(page.getByText('缺少来源或验证记录', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '归档记录' }).click();
+  const archiveDialog = page.getByRole('dialog');
+  await expect(archiveDialog).toContainText('归档这条项目知识？');
+  await archiveDialog.getByRole('button', { name: /归\s*档/u }).click();
+  await expect(page.getByLabel('项目知识记录列表')).not.toContainText('未文档化约定');
+  await page.getByLabel('项目知识记录状态').click();
+  await page.locator('.ant-select-item-option').filter({ hasText: '已归档' }).click();
+  await expect(page.getByLabel('项目知识记录列表')).toContainText('未文档化约定');
+  await expect(
+    page.getByLabel('项目知识记录列表').getByText('已归档', { exact: true }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: '纠正并恢复' }).click();
+  const restoreDialog = page.getByRole('dialog');
+  await expect(restoreDialog).toContainText('纠正并恢复项目知识');
+  await restoreDialog.getByRole('textbox').fill('修改后先运行定向测试，并记录验证结果。');
+  await restoreDialog.getByRole('button', { name: /保存\s*并\s*恢复/u }).click();
+  await expect(page.getByText('项目知识已更新并恢复使用')).toBeVisible();
+  await expect(page.getByText('没有符合当前条件的项目知识')).toBeVisible();
+  await page.getByLabel('项目知识记录状态').click();
+  await page.locator('.ant-select-item-option').filter({ hasText: '使用中' }).click();
+  await expect(page.getByLabel('项目知识记录列表')).toContainText('未文档化约定');
+  await expect(page.getByLabel('项目知识记录列表')).toContainText(
+    '修改后先运行定向测试，并记录验证结果。',
+  );
 
   await page.getByRole('button', { name: '设置' }).click();
   await expect(page.getByRole('heading', { name: '项目知识设置' })).toBeVisible();
@@ -413,7 +520,7 @@ test('adds global or project memory and explains why saved memories are applied'
   ).toBeVisible();
   await page.getByRole('button', { name: '新增偏好' }).click();
 
-  const profileDialog = page.getByRole('dialog', { name: '新增 User Profile 偏好' });
+  const profileDialog = page.getByRole('dialog', { name: '新增偏好' });
   await expect(profileDialog.getByText('偏好内容', { exact: true })).toBeVisible();
   await expect(profileDialog.getByText('分类（可选）', { exact: true })).toBeVisible();
   const profileInput = profileDialog.getByLabel('偏好内容');
@@ -607,7 +714,7 @@ test('collapses long personal memory records until the user expands them', async
   await expect(page.getByRole('heading', { name: 'User Profile' })).toBeVisible();
   await expect(page.getByText('默认使用中文回复', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '新增偏好' }).click();
-  const profileDialog = page.getByRole('dialog', { name: '新增 User Profile 偏好' });
+  const profileDialog = page.getByRole('dialog', { name: '新增偏好' });
   await expect(profileDialog).toBeVisible();
   await profileDialog.getByRole('button', { name: /取\s*消/u }).click();
   const memoryText = page.locator(
@@ -1035,6 +1142,10 @@ test('uses the reference surface hierarchy across the workbench shell', async ({
   await expect(page.locator('.dashboard-sidebar')).toHaveCSS(
     'border-right-color',
     'rgb(237, 240, 244)',
+  );
+  await expect(page.locator('.dashboard-sidebar .ant-menu-item-selected')).toHaveCSS(
+    'background-color',
+    'rgb(231, 242, 255)',
   );
   await expect(page.locator('.ant-card').first()).toHaveCSS('box-shadow', /rgba\(31, 43, 64/);
 });

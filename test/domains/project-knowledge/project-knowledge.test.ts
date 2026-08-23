@@ -99,6 +99,52 @@ describe('project knowledge dashboard status', () => {
     });
   });
 
+  test('keeps concurrent dashboard status refreshes and test queries on independent stores', async () => {
+    const root = await tempProject();
+    const storageRoot = await tempProject();
+    const source = path.join(root, 'docs', 'retrieval.md');
+    await fs.mkdir(path.dirname(source), { recursive: true });
+    await fs.writeFile(source, '# Retrieval\n\nProject knowledge retrieval stays available.\n');
+    const storageStore = new MemoryPluginStorageStore();
+    const module = await createProjectKnowledgeModule(
+      {
+        storage: await storageStore.open(
+          'comet.project-knowledge',
+          'project',
+          'concurrent-dashboard-query',
+        ),
+        reportDiagnostic: () => undefined,
+      } as never,
+      { projectRoot: root, cacheRoot: storageRoot, knowledgeConfig: { provider: 'local' } },
+    );
+
+    try {
+      const results = await Promise.allSettled([
+        module.invoke?.('status', {}),
+        module.invoke?.('query', { task: 'project knowledge retrieval' }),
+      ]);
+      expect(results).toEqual([
+        expect.objectContaining({
+          status: 'fulfilled',
+          value: expect.objectContaining({ provider: 'local', configured: true }),
+        }),
+        expect.objectContaining({
+          status: 'fulfilled',
+          value: expect.objectContaining({ kind: 'search' }),
+        }),
+      ]);
+    } finally {
+      await module.dispose?.();
+      await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      await fs.rm(storageRoot, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 100,
+      });
+    }
+  });
+
   test('creates and lists a manually added user project knowledge record', async () => {
     const root = await tempProject();
     const storageRoot = await tempProject();

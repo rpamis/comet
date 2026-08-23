@@ -116,8 +116,6 @@ async function createProjectKnowledgeModule(
   context: PluginContext,
   options: ProjectKnowledgePluginOptions,
 ): Promise<PluginModule> {
-  let provider: ProjectKnowledgeProvider | null = null;
-  let providerKey = '';
   const recentDiagnostics = await readRecentDiagnostics(context.storage);
   const recentChangedHints = await readRecentChangedHints(context.storage);
   let diagnosticWrite = Promise.resolve();
@@ -193,19 +191,6 @@ async function createProjectKnowledgeModule(
       changedHints: [...recentChangedHints],
     });
   };
-  const getProvider = async (): Promise<ProjectKnowledgeProvider> => {
-    const key = options.knowledgeConfig.provider;
-    if (provider === null || providerKey !== key) {
-      provider = await createProvider();
-      providerKey = key;
-    }
-    return provider;
-  };
-  const clearProvider = (): void => {
-    if (provider instanceof LocalProjectKnowledgeProvider) provider.close();
-    provider = null;
-    providerKey = '';
-  };
   const dashboardSnapshot = async () => {
     let snapshotProvider: ProjectKnowledgeProvider | null = null;
     try {
@@ -273,9 +258,6 @@ async function createProjectKnowledgeModule(
   return {
     dashboard: createProjectKnowledgeDashboardContribution(options.language),
     events: ['verification.completed', 'change.completed', 'task.completed'],
-    dispose: async () => {
-      clearProvider();
-    },
     onEvent: async (event) => {
       const changedHint = createProjectKnowledgeChangedHint(event);
       if (changedHint !== null) await persistChangedHint(changedHint);
@@ -300,11 +282,9 @@ async function createProjectKnowledgeModule(
         // Automatic learning is best effort and must not delay a checkpoint.
         void learn();
       }
-      // The next context request must see the latest changed-path hint so the
-      // local provider can refresh only the affected sources.
-      clearProvider();
     },
     invoke: async (capability, input) => {
+      let activeProvider: ProjectKnowledgeProvider | null = null;
       try {
         const rawValue =
           input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
@@ -341,16 +321,15 @@ async function createProjectKnowledgeModule(
               },
             });
           }
-          clearProvider();
           return { configured: true };
         }
-        const activeProvider = await getProvider();
         const value = rawValue;
         const projectId = resolveStableProjectId(options.projectRoot);
         if (capability === 'status') return dashboardSnapshot();
+        activeProvider = await createProvider();
         if (capability === 'list') {
           const state = value.state;
-          return activeProvider.query({
+          return await activeProvider.query({
             kind: 'list',
             projectId,
             ...(state === 'active' ||
@@ -364,12 +343,12 @@ async function createProjectKnowledgeModule(
         }
         if (capability === 'get') {
           if (typeof value.id !== 'string' || !value.id.trim()) throw new Error('get requires id');
-          return activeProvider.query({ kind: 'get', id: value.id.trim(), projectId });
+          return await activeProvider.query({ kind: 'get', id: value.id.trim(), projectId });
         }
         if (capability === 'query') {
           if (typeof value.task !== 'string' || !value.task.trim())
             throw new Error('query requires task');
-          return activeProvider.query({
+          return await activeProvider.query({
             kind: 'search',
             query: createProjectKnowledgeQuery({
               task: value.task,
@@ -403,14 +382,14 @@ async function createProjectKnowledgeModule(
             },
             projectId,
           );
-          return activeProvider.apply({ kind: 'upsert', record });
+          return await activeProvider.apply({ kind: 'upsert', record });
         }
         if (capability === 'correct') {
           if (typeof value.id !== 'string' || !value.id.trim())
             throw new Error('correct requires id');
           if (typeof value.text !== 'string' || !value.text.trim())
             throw new Error('correct requires text');
-          return activeProvider.apply({
+          return await activeProvider.apply({
             kind: 'correct',
             id: value.id.trim(),
             projectId,
@@ -421,7 +400,7 @@ async function createProjectKnowledgeModule(
         if (capability === 'forget') {
           if (typeof value.id !== 'string' || !value.id.trim())
             throw new Error('forget requires id');
-          return activeProvider.apply({
+          return await activeProvider.apply({
             kind: 'retire',
             id: value.id.trim(),
             projectId,
@@ -429,17 +408,22 @@ async function createProjectKnowledgeModule(
           });
         }
         if (capability === 'refresh') {
-          return activeProvider.apply({ kind: 'refresh', projectId });
+          return await activeProvider.apply({
+            kind: 'refresh',
+            projectId,
+            ...(typeof value.id === 'string' && value.id.trim() ? { id: value.id.trim() } : {}),
+          });
         }
         throw new Error(`Unknown project knowledge capability: ${capability}`);
       } finally {
-        clearProvider();
+        if (activeProvider instanceof LocalProjectKnowledgeProvider) activeProvider.close();
       }
     },
     provideContext: async (request) => {
+      let activeProvider: ProjectKnowledgeProvider | null = null;
       try {
         const query = createProjectKnowledgeQuery(request);
-        const activeProvider = await getProvider();
+        activeProvider = await createProvider();
         const response = await activeProvider.query({ kind: 'search', query, limit: 8 });
         const results = boundProjectKnowledgeResults(
           response.kind === 'search' ? response.results : [],
@@ -460,7 +444,7 @@ async function createProjectKnowledgeModule(
           })),
         };
       } finally {
-        clearProvider();
+        if (activeProvider instanceof LocalProjectKnowledgeProvider) activeProvider.close();
       }
     },
   };

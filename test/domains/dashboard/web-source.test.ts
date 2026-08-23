@@ -45,6 +45,7 @@ describe('dashboard web source contracts', () => {
     expect(page?.[0]).toContain('dashboard-memory-status');
     expect(page?.[0]).toContain('dashboard-memory-list');
     expect(page?.[0]).toContain('dashboard-memory-content');
+    expect(page?.[0]).toContain('dashboard-memory-board');
     expect(page?.[0]).toContain('dashboard-tool-page-memory');
     expect(page?.[0]).toContain('dashboard-memory-record-main');
     expect(page?.[0]).not.toContain('dashboard-memory-settings');
@@ -53,38 +54,73 @@ describe('dashboard web source contracts', () => {
     expect(page?.[0]).not.toContain('dashboard-plugin-grid');
   });
 
-  it('exposes bounded Project Knowledge Provider and Record management controls', async () => {
+  it('exposes the Project Knowledge registry and bounded management controls', async () => {
     const [source, styles] = await Promise.all([readDashboardSource(), readDashboardStyles()]);
     const page = source.match(
-      /function ProjectKnowledgeCenter\([\s\S]*?\n}\n\nfunction PersonalMemoryCenter/,
+      /function projectKnowledgeDiagnosticCopy\([\s\S]*?\n}\n\nfunction PersonalMemoryCenter/,
     );
     const settings = source.match(
-      /function ProjectKnowledgeSettings\([\s\S]*?\n}\n\nfunction ProjectKnowledgeCenter/,
+      /function ProjectKnowledgeSettings\([\s\S]*?\n}\n\nfunction openProjectKnowledgeCorrection/,
     );
 
-    expect(page?.[0]).toContain('dashboard-knowledge-status');
-    expect(page?.[0]).toContain('dashboard-knowledge-summary');
-    expect(page?.[0]).toContain('dashboard-knowledge-diagnostics');
+    expect(page?.[0]).toContain('dashboard-knowledge-registry');
+    expect(page?.[0]).toContain('dashboard-knowledge-explorer');
+    expect(page?.[0]).toContain('dashboard-knowledge-ledger');
+    expect(page?.[0]).toContain('dashboard-knowledge-inspector');
+    expect(page?.[0]).toContain('dashboard-knowledge-tabs');
     expect(page?.[0]).toContain('dashboard-tool-page-knowledge');
-    expect(page?.[0]).toContain('知识概览');
+    expect(page?.[0]).toContain('知识记录');
+    expect(page?.[0]).toContain('数据来源');
+    expect(page?.[0]).toContain('检索测试');
     expect(page?.[0]).toContain("onInvoke('query'");
     expect(page?.[0]).toContain("onInvoke('correct'");
     expect(page?.[0]).toContain("onInvoke('forget'");
     expect(page?.[0]).toContain("onInvoke('refresh'");
     expect(page?.[0]).toContain('新增项目知识');
+    expect(page?.[0]).toContain('dashboard-create-modal-root');
+    expect(page?.[0]).toContain('dashboard-project-knowledge-create-form');
     expect(page?.[0]).toContain("onInvoke('create'");
     expect(settings?.[0]).toContain('tokenEnv');
     expect(settings?.[0]).toContain('tokenConfigured');
     expect(settings?.[0]).toContain('configure-provider');
     expect(settings?.[0]).toContain("onInvoke('lifecycle', { action: 'disable' })");
     expect(settings?.[0]).toContain("onInvoke('lifecycle', { action: 'uninstall' })");
-    expect(page?.[0]).toContain('没有新的诊断');
+    expect(page?.[0]).toContain('来源需要检查');
     expect(page?.[0]).toContain('<Input');
-    expect(page?.[0]).toContain('查询项目知识');
-    expect(styles).toContain('.dashboard-knowledge-status');
-    expect(styles).toContain('.dashboard-knowledge-summary');
+    expect(page?.[0]).toContain('测试检索');
+    expect(page?.[0]).toContain('检索已完成，没有找到与当前任务匹配的项目知识');
+    expect(source).toContain('检索完成，未找到匹配的项目知识');
+    expect(source).toContain('项目知识已归档，不再提供给 Agent');
+    expect(page?.[0]).toContain('归档记录');
+    expect(page?.[0]).toContain('但仍可在归档状态中查看');
+    expect(page?.[0]).toContain("const [stateFilter, setStateFilter] = useState('active')");
+    expect(page?.[0]).toContain('纠正并恢复');
+    expect(page?.[0]).toContain('重新检查来源');
+    expect(page?.[0]).toContain('建议补充证据，方便后续维护');
+    expect(source).toContain("capability === 'lifecycle' ? '插件状态已更新' : '操作已完成'");
+    expect(styles).toContain('.dashboard-knowledge-registry');
+    expect(styles).toContain('.dashboard-knowledge-ledger-row');
+    expect(styles).toContain('.dashboard-knowledge-inspector');
+    expect(source).toContain('dashboard-content-inner-project-knowledge');
+    expect(styles).toContain('.dashboard-content-inner-project-knowledge');
+    expect(styles).toContain('height: calc(100dvh - 232px)');
+    expect(styles).toMatch(
+      /@media \(min-width: 1181px\)[\s\S]*?\.dashboard-content-inner-project-knowledge\s*\{[\s\S]*?height: 100%;[\s\S]*?min-height: 0;/,
+    );
+    expect(styles).toMatch(
+      /\.dashboard-tool-page-knowledge\s*\{[\s\S]*?display: flex;[\s\S]*?height: 100%;[\s\S]*?flex-direction: column;/,
+    );
+    expect(styles).toMatch(
+      /\.dashboard-knowledge-registry,[\s\S]*?\.dashboard-knowledge-query-view\s*\{[\s\S]*?min-height: 0;[\s\S]*?height: auto;[\s\S]*?flex: 1 1 auto;/,
+    );
+    expect(styles).toContain('clamp(300px, 24vw, 390px)');
+    expect(styles).toContain('--dashboard-plugin-body-size: 14px');
+    expect(styles).toContain('--dashboard-navigation-font-size: 14px');
+    expect(styles).toMatch(/\.dashboard-workspace-region\s*\{\s*font-size: 13px;/);
+    expect(styles).toMatch(/\.native-changes-explorer\s*\{[\s\S]*?font-size: 14px;/);
     expect(styles).toContain('.dashboard-tool-header');
     expect(styles).toContain('.dashboard-tool-panel-title');
+    expect(styles).toContain('.dashboard-create-modal-content');
   });
 
   it('opens centralized plugin settings from the bottom of the sidebar', async () => {

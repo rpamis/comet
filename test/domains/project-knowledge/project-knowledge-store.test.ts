@@ -181,6 +181,50 @@ describe('project knowledge local store', () => {
     }
   });
 
+  test('keeps a user-confirmed record active when it intentionally has no source evidence', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-user-record-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-user-record-storage-');
+    let store: ProjectKnowledgeLocalStore | undefined;
+    try {
+      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      const manual = record({
+        id: 'manual-project-convention',
+        authority: 'user',
+        conclusions: [],
+        verification: [],
+        sourceVersions: [],
+      });
+      await store.apply({ kind: 'upsert', record: manual });
+
+      await expect(
+        store.apply({
+          kind: 'correct',
+          id: manual.id,
+          projectId: manual.projectId,
+          summary: 'Use the user-confirmed project convention.',
+          updatedAt: '2026-08-23T00:00:00.000Z',
+        }),
+      ).resolves.toMatchObject({
+        changed: true,
+        record: expect.objectContaining({
+          id: manual.id,
+          authority: 'user',
+          state: 'active',
+        }),
+      });
+
+      await expect(
+        store.apply({ kind: 'refresh', projectId: manual.projectId, id: manual.id }),
+      ).resolves.toMatchObject({
+        records: [expect.objectContaining({ id: manual.id, state: 'active' })],
+      });
+    } finally {
+      store?.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
   test('ranks path-associated matches first and expands only one relation hop with evidence', async () => {
     const root = await temporaryRoot('comet-project-knowledge-store-relations-');
     const storageRoot = await temporaryRoot('comet-project-knowledge-storage-relations-');

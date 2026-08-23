@@ -145,6 +145,10 @@ function inspectRecordSources(
   return { current: true, sourceVersions };
 }
 
+function recordUsesSourceEvidence(record: ProjectKnowledgeRecord): boolean {
+  return recordSourceReferences(record).length > 0 || record.sourceVersions.length > 0;
+}
+
 function recordResultSource(record: ProjectKnowledgeRecord): string {
   const source = recordSourceReferences(record)[0];
   if (source === undefined) return `record:${record.id}`;
@@ -380,7 +384,12 @@ export class ProjectKnowledgeLocalStore {
           candidate,
           candidate.state === 'needs-review',
         );
-        const state = inspection.current ? 'active' : 'needs-review';
+        const state =
+          candidate.authority === 'user' && !recordUsesSourceEvidence(candidate)
+            ? 'active'
+            : inspection.current
+              ? 'active'
+              : 'needs-review';
         if (
           state !== candidate.state ||
           (inspection.current &&
@@ -464,7 +473,12 @@ export class ProjectKnowledgeLocalStore {
     const inspection = inspectRecordSources(this.projectRoot, corrected, true);
     const next = parseProjectKnowledgeRecord({
       ...corrected,
-      state: inspection.current ? 'active' : 'needs-review',
+      state:
+        corrected.authority === 'user' && !recordUsesSourceEvidence(corrected)
+          ? 'active'
+          : inspection.current
+            ? 'active'
+            : 'needs-review',
       sourceVersions: inspection.current ? inspection.sourceVersions : corrected.sourceVersions,
     });
     this.write(next);
