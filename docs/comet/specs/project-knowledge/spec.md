@@ -1,70 +1,43 @@
-# Project Knowledge
+# Agent 项目知识
 
-## 目标
+## Requirement: 项目知识边界
 
-Project Knowledge 是项目范围的工程知识层，帮助 Agent 在任务开始和任务过程中找到有来源、可核对、长度有界的项目上下文。它不替代代码阅读、测试、配置或当前工作流，也不能授权任何提交、推送、删除、发布或绕过流程的动作。
+### Scenario: 项目知识与 Personal Memory 分离
 
-本期功能尚未对外发布，因此直接采用当前设计，不保留旧的 Unit、项目内知识文件、分享命令、兼容别名或迁移逻辑。
+`comet.project-knowledge` 是 project-scope 第一方能力，为 Agent 提供关于当前项目结构、模块职责、已验证行为、集成路径、改动影响以及构建/测试方式的可追溯、可核对和有界参考。它通过现有任务上下文桥接提供上下文，也允许 CLI 和 Dashboard 管理。
 
-## 产品边界
+项目知识只能作为证据参考，不能覆盖当前源码、配置、测试、用户请求、系统约束、Skill 或 Native/Classic workflow 状态。
 
-Project Knowledge 与 Personal Memory 是两个独立的上下文贡献：
+Personal Memory 是独立能力，保存用户事实、偏好、协作习惯和个人项目经验。它使用独立存储、Provider 配置、检索预算、上下文区块和管理动作。Personal Memory 记录不会自动复制为 Project Knowledge，Project Knowledge 也不会写入 Personal Memory。
 
-- Personal Memory 保存用户的 global/project 偏好和个人经验；
-- Project Knowledge 保存当前项目来源支持的工程事实；
-- 两者可以同时注入任务上下文，但不共用存储、状态、预算或管理动作；
-- 个人偏好不会自动写入 Project Knowledge，本期不提供“共享个人记忆”操作；
-- 已有的项目记忆仍由 Personal Memory 按 project key 管理，不受本设计替换。
+## Requirement: Provider 选择与所有权
 
-默认只维护用户本地数据。团队共享是可选的 Remote Provider，不要求用户在项目中维护额外文件。
+### Scenario: Local 默认、Remote 可选且严格二选一
 
-## 存储模型
-
-### Local Provider
-
-Local Provider 默认启用，在用户数据目录维护按 repository 和 workspace 隔离的 SQLite 数据库：
-
-- repository identity 用于识别同一项目；
-- workspace identity 用于隔离不同 worktree、分支和工作目录的内容；
-- 数据库是可删除、可重建的派生读模型，不是项目事实来源；
-- 数据库和缓存不进入 Git，不在项目目录生成 Project Knowledge 文件。
-
-Local 同时维护两类派生数据：
-
-1. Markdown section 索引：Native/Classic 文档、归档文档和允许的 Superpowers 文档；
-2. Project Knowledge records：由确定性提取、用户纠正和可选语义评审产生的结构化记录。
-
-section 索引使用 SQLite FTS5 和有界 ripgrep。索引损坏、锁等待、FTS5 不可用或读取失败时，本次任务可以仅使用有界 ripgrep，并报告无敏感信息的诊断。
-
-### Remote Provider
-
-Remote Provider 是可选的外部团队知识服务。`.comet/config.yaml` 只保存连接配置：
+项目配置继续使用：
 
 ```yaml
 knowledge:
-  provider: remote
-  remote:
-    endpoint: https://knowledge.example.com/provider
-    token_env: COMET_KNOWLEDGE_TOKEN
-    scope: team-project
-    timeout_ms: 5000
+  provider: local
 ```
 
-Local 和 Remote 严格二选一。Remote 请求使用固定 envelope：
+`local` 是默认 Provider，数据属于当前用户并保存在项目外。`remote` 是可选的团队共享 Provider，使用 endpoint、token 环境变量名、scope 和 timeout。一次请求只能选择一个 Provider；Remote 失败不读取 Local、不发送 Local 正文，也不静默切换到 Local。
 
-```json
-{
-  "schema": "comet.project-knowledge.provider.v1",
-  "operation": "status | query | apply",
-  "scope": "team-project",
-  "projectId": "stable-project-id",
-  "input": {}
-}
-```
+Dashboard 可以通过现有 workflow-project 配置写入链路更新 `knowledge` 块。页面只显示 token 环境变量名和是否存在，token 值和 Authorization header 永远不能进入页面数据。
 
-Remote 不接收本地文件正文、Personal Memory、token 值或完整日志。Remote 失败返回空结果和诊断，不回退 Local，不把两个 Provider 的结果混合。响应按固定大小、条数和记录 schema 解析。
+## Requirement: Project Knowledge Record
 
-Provider contract 为：
+### Scenario: Record 的状态、来源和权威
+
+内部对象是 `ProjectKnowledgeRecord`，包含稳定记录 ID、稳定 repository/project ID、类型、标题、摘要、适用路径、操作、带 project-relative source/anchor 的结论、可选一跳关系、验证信息、来源版本和更新时间。
+
+Record 状态只有 `active | needs-review | retired`，权威只有 `automatic | user`。产品不向用户暴露 `unit`、`origin`、`maintained`、`generated` 或 `draft` 术语。Record 存储在用户数据目录，项目目录不生成 Project Knowledge Markdown 或数据库文件。
+
+## Requirement: Provider contract
+
+### Scenario: 所有调用方使用 status/query/apply
+
+领域层只依赖：
 
 ```ts
 interface ProjectKnowledgeProvider {
@@ -74,119 +47,101 @@ interface ProjectKnowledgeProvider {
 }
 ```
 
-这个 contract 是未来外部知识服务适配器的稳定边界。本期不实现 mem0 接入，但未来适配器只需要实现这三类能力，不需要改变 Plugin、CLI 或 Dashboard 的调用方式。
+`query` 支持有界的 search、list 和 get；`apply` 支持 upsert、correct、retire 和 refresh。CLI、Dashboard、上下文桥接、学习服务和 Plugin Runtime 都只能通过该接口工作，不直接访问 SQLite 表或 Remote HTTP。
 
-## Record 模型
+## Requirement: Local Provider
 
-Project Knowledge record 是可独立召回、纠正和退役的最小工程事实：
+### Scenario: 仓库级 Record 与 workspace 级索引
 
-```ts
-interface ProjectKnowledgeRecord {
-  id: string;
-  projectId: string;
-  type:
-    | 'project-map'
-    | 'module-overview'
-    | 'behavior-note'
-    | 'integration-path'
-    | 'change-impact'
-    | 'build-test';
-  state: 'active' | 'needs-review' | 'retired';
-  authority: 'automatic' | 'user';
-  title: string;
-  summary: string;
-  applicablePaths: string[];
-  operations: string[];
-  conclusions: Array<{ text: string; sources: ProjectKnowledgeSource[] }>;
-  relations: Array<{ type: string; targetId: string; sources: ProjectKnowledgeSource[] }>;
-  verification: Array<{ command: string; expected?: string }>;
-  sourceVersions: Array<{ source: string; size: number; modifiedAt: number }>;
-  updatedAt: string;
-}
-```
+Local Provider 使用用户数据目录中按稳定 repository ID 隔离的 SQLite。主工作区和 linked worktree 共享 Record 权威状态；源码、文档 section 和 FTS 投影按 workspace ID 分区，避免不同分支的正文串线。
 
-所有来源使用项目相对路径和可选 anchor。Record 解析器限制 ID、字符串、路径、来源、关系、验证和总字节数；不接受绝对路径、符号链接逃逸、未界定的列表或任意 JSON。
+数据库包含权威 Record 表和可重建的 workspace section/FTS 投影，使用 WAL、短事务、有限 busy timeout 和现有来源读取上限。投影损坏或结构不兼容时重建可派生投影，不删除有效 Record；本功能未上线，不实现旧 schema 迁移。
 
-权威和状态规则：
+Local search 按以下顺序工作：构造 task/path/phase/operation 查询；在现有时间预算内刷新变化来源；搜索 active Record、section FTS 和有界 ripgrep；确定性融合并按路径、来源和类型排序；只从已命中的 Record 做带来源的一跳关系扩展；返回前重新核对每个来源。
 
-- 确定性学习产生 `automatic/active` record，前提是来源可核对；
-- 用户纠正产生 `user/active` 或 `user/needs-review` record；
-- 自动 upsert 不覆盖 user 的摘要、结论和适用信息；
-- 来源变化或删除时 active record 变成 `needs-review`；
-- 用户明确忘记后 record 为 retired；相同旧自动来源不会自动复活 retired record；
-- retired 和 needs-review record 可在 Dashboard/CLI 查看，但不会作为正常 active 结果注入。
+来源、anchor 或 fingerprint 不再有效时，Record 变为 `needs-review` 并排除当前上下文。用户权威 Record 保留纠正文案，但来源无效时同样停止注入。
 
-## 学习与刷新
+## Requirement: Remote Provider
 
-Plugin 订阅公共生命周期事件，在有界预算中提取：
+### Scenario: Remote 使用可扩展的 provider.v1 协议
 
-- `project-map`：目录、manifest 和项目配置概览；
-- `module-overview`：模块边界、入口和职责摘要；
-- `build-test`：构建、测试和验证入口；
-- 可选的语义 reviewer 只补充有来源的 `behavior-note`、`integration-path` 和 `change-impact`。
+Remote 使用 `comet.project-knowledge.provider.v1`。`status`、`query` 和 `apply` 都是配置 endpoint 上的 operation；请求包含 operation、scope、稳定 project ID 和有界输入。
 
-确定性提取不依赖 reviewer，任务成功后即可形成可查询的本地 record。Reviewer 是可选 enrichment，失败、超时或不可用不会阻塞生命周期事件。
+query 只发送有界 task、project-relative path、phase、operation、limit 或 list/get selector。apply 只发送 Record 结论、project-relative 来源、适用范围和验证信息，不发送完整 transcript、完整 diff、命令日志、凭据、token 值或整个仓库。
 
-每次刷新先核对 record 的 sourceVersions：
+无效响应、超时、非成功响应或超出响应大小限制时返回空结果或失败 apply 和有界诊断；不得查询 Local，也不得向 Remote 泄露 Local 项目正文。
 
-1. 当前来源仍存在且元数据一致，保持 active；
-2. 来源已变更或删除，标记 needs-review；
-3. 查询只返回当前 active record 和仍可读的 section；
-4. 下次确定性学习通过稳定 ID 合并，保留 user 权威字段。
+## Requirement: 自动学习
 
-## 上下文注入
+### Scenario: 成功验证后自动激活
 
-Plugin Bridge 在 `collectContext` 中调用当前 Provider：
+工作流只提交有界的 `verification.completed`、`change.completed` 和结构化 `task.completed` 事件，包含 changed paths、artifact refs、验证命令/结果和成功状态，不持久化完整聊天、diff、日志或命令输出。
 
-1. 从任务、目标路径、phase 和 operation 构造 bounded query；
-2. Provider 查询 records 和 section candidates；
-3. Local 通过 FTS terms、trigram、当前文件 ripgrep 和 record 搜索进行确定性融合；
-4. Renderer 限制来源、结果数、单段长度和总字符数；
-5. 以独立的 `Project knowledge references` 区块注入上下文。
+确定性提取器和可选语义 reviewer 产生 Record mutation。每个验证结果都成功、每个结论来源都仍有效时，automatic Record 直接成为 active，不要求用户打开或确认 Dashboard。相同语义身份执行更新而不是重复创建。
 
-最终内容最多 4 个结果，每段最多 1600 字符，总计最多 5000 字符；records 和文档 section 共享 Project Knowledge 自己的预算。Renderer 明确说明这些内容只是证据，不能覆盖用户请求、系统约束、Skill 或 workflow 状态。
+retired automatic Record 不能从相同 source versions 直接复活；新的可验证来源版本才可以形成新记录或更新。自动学习不得覆盖 user Record 的 summary/conclusions，只能更新来源状态并标记 needs-review。学习、reviewer 或 Provider 失败不阻塞 workflow，保留原有效状态并记录有界诊断。
 
-Personal Memory 由自己的 Plugin 在同一 Bridge 中独立召回。它使用自己的 global/project 过滤、预算和 profile 逻辑，不通过 Project Knowledge Provider，也不会被 Project Knowledge 的学习事件写入。
+## Requirement: 用户管理
 
-## CLI 与 Dashboard
+### Scenario: CLI 和明确用户操作
 
-CLI 只暴露当前产品模型：
+CLI 提供：
 
 ```text
-comet knowledge status
-comet knowledge query <task>
-comet knowledge list [--state active|needs-review|retired|all]
-comet knowledge get --id <id>
-comet knowledge correct --id <id> --text <text>
-comet knowledge forget --id <id>
-comet knowledge rebuild
+comet knowledge list [path]
+comet knowledge get [path] --id <id>
+comet knowledge correct [path] --id <id> --text <text>
+comet knowledge forget [path] --id <id>
+comet knowledge query [path] --task <task>
+comet knowledge rebuild [path]
+comet knowledge status [path]
 ```
 
-`status/query/list/get/rebuild` 通过 Provider 工作；`correct/forget` 通过 `apply` 工作。没有 `units`、`share`、`retire --confirm` 或项目文件写入命令。
+correct 使用户文本成为 user authority 并重新核对现有来源；来源仍无效时保留正文但维持 needs-review。forget retire Record 并保留足够 source identity，防止相同旧自动内容立即复活。rebuild 刷新当前 Local workspace 投影并请求选定 Provider refresh。不存在 `knowledge units`、`share`、`share-memory` 或项目文件导出命令。
 
-Dashboard 使用现有 Ant Design React 组件，提供：
+## Requirement: Dashboard
 
-- Local/Remote Provider 配置；
-- 健康、可写状态、record 数量、Local repository/workspace 和 section 统计；
-- active、needs-review、retired record 列表；
-- bounded 查询预览和刷新；
-- 用户纠正和忘记；
-- Remote endpoint、scope、timeout 和 token 环境变量名配置；
-- 有界诊断。
+### Scenario: Dashboard 配置 Provider 并管理记录
 
-Dashboard 不展示、不创建、不要求用户理解隐藏的项目知识文件；它是当前 Provider 的可感知管理入口。
+Dashboard 通过 Plugin Runtime 提供 Provider 配置、Provider 状态、active/needs-review/retired 列表、标题/摘要、适用路径、来源、更新时间、查询预览、correct、forget、refresh 和有界诊断。
 
-## 测试与验收
+Remote 配置表单只接受 endpoint、token 环境变量名、scope 和 timeout，永远不接受或展示 token 值。页面所有动作都调用 Provider capability，成功后重新加载页面；Dashboard 不是自动学习或检索的前置条件。现有 pause/resume/uninstall 生命周期继续由 Dashboard host 管理。
 
-最小验收覆盖：
+## Requirement: 上下文注入
 
-- Record parser、合并、user precedence、needs-review 和 retired 行为；
-- Local Provider 的 status/query/apply、workspace 隔离、来源变更/删除和索引回退；
-- Remote envelope、token 不泄漏、响应边界、HTTP/timeout/schema 诊断；
-- Plugin Bridge 的 Project Knowledge 独立注入和 Personal Memory 隔离；
-- CLI status/query/list/get/correct/forget/rebuild；
-- Dashboard Provider 配置、查询、刷新、纠正和忘记；
-- Native、Classic、Archive 语料发现以及最终 renderer 的 5000 字符边界；
-- 固定 Retrieval Eval 的 recall、abstain、来源正确性、延迟和 workspace 隔离。
+### Scenario: 只注入当前有效的项目知识
 
-非目标：本期不实现 embedding、向量数据库、通用图数据库、自动个人记忆共享、项目内知识文件、mem0 适配器或新的规则系统。
+Project Knowledge 继续使用独立的 `<project_knowledge>` 区块；它明确说明内容只是证据，不能覆盖用户请求、系统约束、Skill 或 workflow。只有 active 且来源有效的结果可以注入，并始终展示来源。
+
+保留现有边界：最多四条结果、单条最多 1,600 字符、总计最多 5,000 字符。Personal Memory 继续使用独立的 `<personal_memory>` 区块和独立预算。
+
+## Requirement: 失败隔离
+
+### Scenario: Provider 和索引失败不阻塞 workflow
+
+查询失败时任务继续且不注入 Project Knowledge；apply 失败时保留上一状态并记录诊断；Remote 失败不回退 Local；Local 投影损坏时重建或使用有界 ripgrep，同时保留有效 Record；来源失效时停止注入；Provider 被停用或卸载时不查询、不学习、不打开 SQLite、不运行 ripgrep、不发送网络请求。
+
+SQLite 锁超时、FTS 不可用、来源不可读和 reviewer 失败都使用有界诊断，不阻塞 Native、Classic、hotfix 或 tweak。
+
+## Requirement: 一致性与发布
+
+### Scenario: 文档、代码、测试和发布说明一致
+
+完成后，中英文操作文档、正式 Project Knowledge Spec、CLI、Dashboard、Provider 协议、自动学习、上下文注入和 `0.4.0-rc.1` Changelog 必须描述同一最终用户行为。Changelog 只写用户从 `0.4.0-beta.19` 升级可感知的最终行为，不写内部重构、开发过程或普通回归测试。
+
+最终验证覆盖相关 Vitest、Dashboard source/host/Playwright、format、lint、build、全量测试、Project Knowledge Retrieval Eval 和 Native Verify。旧 Unit 产品路径的删除必须有主动搜索证据。
+
+## Requirement: Legacy Unit 产品路径
+
+### Scenario: 未上线 Unit 模型完全移除
+
+由于该能力尚未正式上线，直接删除 Unit repository、Unit schema、Markdown renderer/parser、`docs/comet/knowledge/units/` 发现/写入逻辑、`maintained/generated/draft` 状态、`knowledge units`、`share` 和 `share-memory`。不提供旧格式迁移、兼容读取、别名或导出路径。
+
+历史 archive、research 和设计记录可以保留作为历史资料，但它们不能被活跃产品代码、CLI、Dashboard 或正式当前 Spec 当作运行时入口。
+
+## Non-goals
+
+- 不实现 Local/Remote 双写、自动同步、离线队列、能力协商或 Provider marketplace。
+- 不实现后台服务、embedding、向量数据库、通用图数据库或新的项目规则子系统。
+- 不把 Personal Memory 项目偏好自动复制为 Project Knowledge。
+- 不让 Project Knowledge 授权提交、推送、删除、发布或绕过 workflow。

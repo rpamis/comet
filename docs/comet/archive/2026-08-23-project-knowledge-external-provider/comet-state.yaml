@@ -2,8 +2,8 @@ schema: comet.native.v4
 name: project-knowledge-external-provider
 language: zh-CN
 phase: archive
-status: active
-state_version: 15
+status: done
+state_version: 16
 brief: brief.md
 spec_changes:
   - capability: project-knowledge
@@ -15,7 +15,7 @@ workspace:
   target_branch: 040rc1
   finish: merge
 loop:
-  stage: archive-ready
+  stage: done
   goal_cycle: 2
   iteration: 3
   attempt: 1
@@ -24,15 +24,14 @@ loop:
   no_progress_count: 0
   execution_failure_count: 0
   previous_unresolved_ids: []
-  next_action: archive
+  next_action: null
 acceptance:
   - id: A1
     source: brief.md
     text: A1：任务不打开 Dashboard，成功验证后仍能自动形成并在下一次相关查询中召回来源有效的 active Record。
     result: passed
     reason:
-      text:
-        成功且包含全部成功 verificationResults 的生命周期事件会触发确定性学习，生成 active Record；测试证明无需
+      text: 成功且包含全部成功 verificationResults 的生命周期事件会触发确定性学习，生成 active Record；测试证明无需
         Dashboard 即可写入、列出并在随后查询中召回。
       truncated: false
   - id: A2
@@ -58,8 +57,7 @@ acceptance:
     text: A4：查询只注入 active 且来源仍有效的结果；最多四条、单条不超过 1,600 字符、总计不超过 5,000 字符，并显示来源。
     result: passed
     reason:
-      text:
-        Local 搜索前刷新 Record 来源，只有 active Record 进入搜索；renderer 固定最多 4 条、单条 1600
+      text: Local 搜索前刷新 Record 来源，只有 active Record 进入搜索；renderer 固定最多 4 条、单条 1600
         字符、总计 5000 字符，并输出转义后的来源。
       truncated: false
   - id: A5
@@ -72,8 +70,7 @@ acceptance:
       truncated: false
   - id: A6
     source: brief.md
-    text:
-      A6：用户纠正将 Record 标为 `authority=user`，后续 automatic upsert 不能覆盖用户正文；用户 forget
+    text: A6：用户纠正将 Record 标为 `authority=user`，后续 automatic upsert 不能覆盖用户正文；用户 forget
       后旧来源不能直接复活同一自动内容。
     result: passed
     reason:
@@ -91,13 +88,11 @@ acceptance:
       truncated: false
   - id: A8
     source: brief.md
-    text:
-      A8：Dashboard 展示 Provider 状态、记录状态/来源/更新时间、查询预览、纠正/忘记/重新核对和诊断，并可编辑项目
+    text: A8：Dashboard 展示 Provider 状态、记录状态/来源/更新时间、查询预览、纠正/忘记/重新核对和诊断，并可编辑项目
       `knowledge` Provider 配置。
     result: passed
     reason:
-      text:
-        Dashboard 展示 Provider、状态、记录状态/来源/updatedAt、诊断、查询预览、correct/forget/refresh
+      text: Dashboard 展示 Provider、状态、记录状态/来源/updatedAt、诊断、查询预览、correct/forget/refresh
         和 Provider 配置。Playwright 真实点击查询按钮并断言解包后的结果正文可见。
       truncated: false
   - id: A9
@@ -122,19 +117,16 @@ acceptance:
       Memory 的现有行为保持不变。
     result: passed
     reason:
-      text:
-        Personal Memory 与 Project Knowledge 是两个独立 Plugin、Provider、存储和上下文贡献；Plugin
+      text: Personal Memory 与 Project Knowledge 是两个独立 Plugin、Provider、存储和上下文贡献；Plugin
         Runtime 逐插件隔离失败，二者各自执行各自的预算与渲染逻辑。
       truncated: false
   - id: A12
     source: brief.md
-    text:
-      A12：SQLite 损坏、锁超时、FTS 不可用、来源不可读、语义 reviewer 失败或 Remote 失败都不阻塞普通
+    text: A12：SQLite 损坏、锁超时、FTS 不可用、来源不可读、语义 reviewer 失败或 Remote 失败都不阻塞普通
       workflow，并产生有界诊断。
     result: passed
     reason:
-      text:
-        SQLite/Record store 打开失败降级为文档搜索，FTS 损坏可重建，ripgrep 超时/截断/缺失产生有界诊断；reviewer
+      text: SQLite/Record store 打开失败降级为文档搜索，FTS 损坏可重建，ripgrep 超时/截断/缺失产生有界诊断；reviewer
         和 Remote 失败被隔离且不抛出到 workflow。
       truncated: false
   - id: A13
@@ -199,8 +191,7 @@ acceptance:
       truncated: false
   - id: A18
     source: specs/project-knowledge/spec.md
-    text:
-      仓库级 Record 与 workspace 级索引 Local Provider 使用用户数据目录中按稳定 repository ID 隔离的
+    text: 仓库级 Record 与 workspace 级索引 Local Provider 使用用户数据目录中按稳定 repository ID 隔离的
       SQLite。主工作区和 linked worktree 共享 Record 权威状态；源码、文档 section 和 FTS 投影按
       workspace ID 分区，避免不同分支的正文串线。 数据库包含权威 Record 表和可重建的 workspace section/FTS
       投影，使用 WAL、短事务、有限 busy timeout 和现有来源读取上限。投影损坏或结构不兼容时重建可派生投影，不删除有效
@@ -226,14 +217,12 @@ acceptance:
       apply 和有界诊断；不得查询 Local，也不得向 Remote 泄露 Local 项目正文。
     result: passed
     reason:
-      text:
-        Remote v1 envelope 覆盖 status/query/apply；请求和响应大小、字段、条数及诊断均有界，超时、HTTP 和
+      text: Remote v1 envelope 覆盖 status/query/apply；请求和响应大小、字段、条数及诊断均有界，超时、HTTP 和
         schema 错误返回诊断，不接触 Local 内容。
       truncated: false
   - id: A20
     source: specs/project-knowledge/spec.md
-    text:
-      成功验证后自动激活 工作流只提交有界的 `verification.completed`、`change.completed` 和结构化
+    text: 成功验证后自动激活 工作流只提交有界的 `verification.completed`、`change.completed` 和结构化
       `task.completed` 事件，包含 changed paths、artifact
       refs、验证命令/结果和成功状态，不持久化完整聊天、diff、日志或命令输出。 确定性提取器和可选语义 reviewer 产生 Record
       mutation。每个验证结果都成功、每个结论来源都仍有效时，automatic Record 直接成为 active，不要求用户打开或确认
@@ -243,8 +232,7 @@ acceptance:
       workflow，保留原有效状态并记录有界诊断。
     result: passed
     reason:
-      text:
-        只有全部验证结果成功才学习。确定性与 reviewer Record 写入前会核对每个 sourceVersion、文件
+      text: 只有全部验证结果成功才学习。确定性与 reviewer Record 写入前会核对每个 sourceVersion、文件
         size/mtime，并要求所有 conclusion/relation 来源存在对应 sourceVersion 且
         anchor/行号有效；无效或未版本化引用会被拒绝。模块确定性记录已移除虚假的 module anchor。
       truncated: false
@@ -256,8 +244,7 @@ acceptance:
       refresh。不存在 `knowledge units`、`share`、`share-memory` 或项目文件导出命令。
     result: passed
     reason:
-      text:
-        CLI 提供规定的七个命令；correct 形成 user Record 并按来源决定 active/needs-review，forget
+      text: CLI 提供规定的七个命令；correct 形成 user Record 并按来源决定 active/needs-review，forget
         退役并阻止相同 fingerprint 复活，rebuild 同时刷新 Record 与 workspace 投影。
       truncated: false
   - id: A22
@@ -270,8 +257,7 @@ acceptance:
       生命周期继续由 Dashboard host 管理。
     result: passed
     reason:
-      text:
-        Dashboard 通过 Plugin Runtime capability 完成查询、配置和管理动作；成功调用后重新抓取页面。查询 invoke
+      text: Dashboard 通过 Plugin Runtime capability 完成查询、配置和管理动作；成功调用后重新抓取页面。查询 invoke
         响应现已正确解包并由 E2E 验证，记录来源与更新时间可见，token 值不进入页面。
       truncated: false
   - id: A23
@@ -294,8 +280,7 @@ acceptance:
       tweak。
     result: passed
     reason:
-      text:
-        query/apply/index/Remote/reviewer 失败均为有界诊断或空结果。Plugin 被暂停、停用或卸载后 Runtime
+      text: query/apply/index/Remote/reviewer 失败均为有界诊断或空结果。Plugin 被暂停、停用或卸载后 Runtime
         不调用 provideContext/onEvent，因此不会创建 Provider、打开 SQLite、运行 ripgrep 或发起网络请求。
       truncated: false
   - id: A25
@@ -314,8 +299,7 @@ acceptance:
       truncated: false
   - id: A26
     source: specs/project-knowledge/spec.md
-    text:
-      未上线 Unit 模型完全移除 由于该能力尚未正式上线，直接删除 Unit repository、Unit schema、Markdown
+    text: 未上线 Unit 模型完全移除 由于该能力尚未正式上线，直接删除 Unit repository、Unit schema、Markdown
       renderer/parser、`docs/comet/knowledge/units/`
       发现/写入逻辑、`maintained/generated/draft` 状态、`knowledge units`、`share` 和
       `share-memory`。不提供旧格式迁移、兼容读取、别名或导出路径。 历史 archive、research
@@ -332,11 +316,11 @@ builder_handoff:
   builder_execution_ref: skill-coordinated:builder:301a9e64-799e-44ba-bd2a-64f5174a5f1f
   iteration: 3
   summary:
-    text: 'Completed iteration 3 in commit ef08202f: Dashboard query now unwraps
+    text: "Completed iteration 3 in commit ef08202f: Dashboard query now unwraps
       plugin responses and is covered by click-through E2E; deterministic
       records use valid source references; Local retrieval ranks path and
       operation matches and expands one evidence-backed relation hop; learning
-      rejects invalid or unversioned source anchors before writes.'
+      rejects invalid or unversioned source anchors before writes."
     truncated: false
   addressed_acceptance_ids:
     - A8
@@ -478,8 +462,7 @@ verification:
       修改，工作区脏状态均按 commit diff/ancestry 与候选隔离。
     truncated: false
   risks:
-    - text:
-        040rc1 当前比候选共同基线多 2 个提交，候选多 15 个提交；merge-tree 显示 CHANGELOG.md、Dashboard
+    - text: 040rc1 当前比候选共同基线多 2 个提交，候选多 15 个提交；merge-tree 显示 CHANGELOG.md、Dashboard
         main.jsx/styles.css 和两份 Dashboard 测试 changed-in-both。合并时必须保留 040rc1 的
         Personal Memory 新增偏好/纠正即时刷新与新版 Dashboard 工作台，同时保留本候选的 Project Knowledge
         查询响应、Record 管理和文档语义，并在合并结果上重跑 Dashboard 与相关 Project Knowledge 验证。
@@ -535,8 +518,7 @@ history:
       - A22
       - A25
     summary:
-      text:
-        候选 b333c262 已修复真实来源显示、来源/anchor 刷新、needs-review 恢复、用户纠正重核、Reviewer 动作应用以及
+      text: 候选 b333c262 已修复真实来源显示、来源/anchor 刷新、needs-review 恢复、用户纠正重核、Reviewer 动作应用以及
         Dashboard 来源/更新时间，但独立复核发现 Dashboard 查询预览响应被吞、Local 一跳关系和路径/type
         排序未实现、确定性源码 anchor 无效。A8、A13、A18、A20、A22、A25 失败，应返回 Build 修复。legacy
         comet native check 对 v4 的拒绝属于旧 protocol 3 Runtime 基础设施限制；当前 portable
@@ -570,5 +552,5 @@ history_overflow:
     recovery: 0
 verification_result: pass
 verification_report: verification.md
-archived: false
+archived: true
 created_at: 2026-08-22T14:44:58.444Z
