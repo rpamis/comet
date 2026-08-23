@@ -35,28 +35,32 @@ If the `select` / `check` output is `BLOCKED` because `bound_branch` does not ma
 
 ### 1. Final Archive and Delivery Confirmation (Blocking Point)
 
-After entry verification passes, first read `comet state get <change-name> isolation`, then **follow the `comet-classic/reference/decision-point.md` protocol to pause and wait for the user to confirm whether to archive and deliver remotely now**. Must not run `comet state transition <change-name> archive-confirm` or `comet archive "<change-name>"` before user confirmation.
+After entry verification passes, first read `comet state get <change-name> isolation`, then **follow the `comet-classic/reference/decision-point.md` protocol to pause and wait for the user to confirm whether to archive now and how to handle the archive commit**. Must not run `comet state transition <change-name> archive-confirm` or `comet archive "<change-name>"` before user confirmation.
 
 Before confirmation, show the user a brief summary:
 - Change name
 - Verification report path and result
 - Current branch/workspace and attribution summary for pre-existing dirty changes
 - Irreversible actions this archive will perform: merge main specs with OpenSpec delta semantics, annotate design doc / plan, and move the change to the archive directory
-- Remote delivery to perform after archive: push the current bound branch only, or push and then create a PR
+- Archive commit handling after Archive: keep it local, push the current bound branch, or push and then create a PR
 
-The user confirmation question must be presented as a single-select question with these options:
-- "Confirm archive and push now" — complete archive, create the only archive commit, and push the current bound branch
-- "Confirm archive, push now, and create a PR" — complete archive, create the only archive commit, push the current bound branch, and create a PR
-- "Needs adjustment or re-verification" — do not archive; run `comet state transition <change-name> archive-reopen` to return to `phase: verify`, then invoke `/comet-verify`. If verification confirms fixes are needed, follow `/comet-verify`'s verification-failure decision flow back to `/comet-build`
-- "Do not archive yet" — do not run `archive-confirm` or the archive command; keep the active change, `phase: archive`, and `branch_status: pending`, then wait for the user to invoke `/comet-archive` again later
+The user confirmation question must be presented as a single-select question with every option below. Text fallback must use this table. A structured question must use Method as its short label and Actual effect as its description; do not shorten these into ambiguous choices:
 
-Only after the user selects one of the first two immediate-delivery choices, record that choice and immediately run:
+| Option | Method | Actual effect |
+| --- | --- | --- |
+| A | Archive locally (no push) | Complete Archive and create the only archive commit; keep it on the current bound branch without pushing or creating a PR |
+| B | "Confirm archive and push now" | Complete Archive and create the only archive commit, then push the current bound branch without creating a PR |
+| C | "Confirm archive, push now, and create a PR" | Complete Archive and create the only archive commit, push the current bound branch, then create a PR |
+| D | "Needs adjustment or re-verification" | Do not archive; run `comet state transition <change-name> archive-reopen` to return to `phase: verify`, then invoke `/comet-verify`; if fixes are needed, follow the verification-failure decision back to `/comet-build` |
+| E | "Do not archive yet" | Do not run `archive-confirm` or the archive command, commit, or push; keep the active change, `phase: archive`, and `branch_status: pending`, then wait to invoke `/comet-archive` later |
+
+Only after the user selects A, B, or C, record the archive-commit handling choice and immediately run:
 
 ```bash
 comet state transition <change-name> archive-confirm
 ```
 
-If the transition returns a non-zero exit code, report the error and stop. Only after the transition succeeds may Step 2 continue. After the user selects "Needs adjustment or re-verification", must first run the `archive-reopen` state transition; do not edit `.comet.yaml` manually. After the user selects "Do not archive yet", stop immediately; do not archive, commit, push, or set `branch_status` to `handled`.
+If the transition returns a non-zero exit code, report the error and stop. Only after the transition succeeds may Step 2 continue. After the user selects D, "Needs adjustment or re-verification", first run the `archive-reopen` state transition; do not edit `.comet.yaml` manually. After the user selects E, "Do not archive yet", stop immediately; do not archive, commit, push, or set `branch_status` to `handled`.
 
 ### 2. Execute Archive
 
@@ -97,14 +101,14 @@ The archive script only moves files and merges the spec; it does not commit. Aft
 - The main spec content merged via delta semantics
 - Archive metadata annotations on the design doc / plan
 
-First persist the confirmed delivery choice into archived state, then run the final archive guard:
+First persist the confirmed archive-commit handling choice into archived state, then run the final archive guard:
 
 ```bash
 comet state set <change-name> branch_status handled
 comet guard <change-name> archive
 ```
 
-Here, `handled` means only that the user confirmed how to deliver this complete archive commit remotely. It does not mean that push or PR creation has succeeded. Stop without committing or performing remote operations if the state write or guard fails.
+Here, `handled` means only that the user confirmed how to handle this complete archive commit, including keeping it local, pushing it, or pushing it and creating a PR. It does not mean that push or PR creation has succeeded. Stop without committing or performing remote operations if the state write or guard fails.
 
 After archive, read `git status --short` and compare it with the pre-archive dirty-worktree attribution baseline. Stage only paths attributable to this change: the original active path, actual archive path printed by the command, the archived `.comet.yaml` updated to `branch_status: handled`, main specs changed by this delta, and archive metadata on this Design Doc/Plan. Stop if any path cannot be attributed.
 
@@ -120,16 +124,17 @@ Stop if the commit fails or the staged diff contains unrelated paths.
 
 ### 5. Deliver the Archive Commit and Complete
 
-After the archive commit succeeds, perform only the remote delivery method the user confirmed in Step 1:
+After the archive commit succeeds, perform only the handling method the user confirmed in Step 1:
 
-- "Confirm archive and push now": push the current bound branch once.
-- "Confirm archive, push now, and create a PR": push the current bound branch once, then create a PR through the configured GitHub integration. The explicit Step 1 choice authorizes PR creation; do not substitute another branch disposition.
+- A, "Archive locally (no push)": perform no remote operation; keep the archive commit on the current bound branch.
+- B, "Confirm archive and push now": push the current bound branch once.
+- C, "Confirm archive, push now, and create a PR": push the current bound branch once, then create a PR through the configured GitHub integration. The explicit Step 1 choice authorizes PR creation; do not substitute another branch disposition.
 
-If push fails, report the error and retain the current selection record; do not clear selection or report completion. Within the current task, retry only that same push. If PR creation fails, the branch already contains the complete archive commit; report the error and retain the current selection record. Within the current task, retry only PR creation. Do not automatically switch, delete, rebase, or rewrite branches after failure.
+After the user selects B or C, if push fails, report the error and retain the current selection record; do not clear selection or report completion. Within the current task, retry only that same push. If PR creation fails, the branch already contains the complete archive commit; report the error and retain the current selection record. Within the current task, retry only PR creation. Do not automatically switch, delete, rebase, or rewrite branches after failure.
 
-Only after every remote delivery operation selected by the user succeeds may you run `comet state clear-selection` and report the Classic workflow complete.
+For A, the selected handling method is complete once the only archive commit succeeds. For B or C, wait until every selected remote operation succeeds. Only after the selected handling method completes may you run `comet state clear-selection` and report the Classic workflow complete.
 
-Archive no longer invokes Superpowers `finishing-a-development-branch`. Local merge, keeping a branch for later, or postponing push does not immediately produce final remote state, so the user must choose "Do not archive yet" in Step 1 rather than choosing it after archive.
+Archive no longer invokes Superpowers `finishing-a-development-branch` and does not offer local merge, switch, delete, or rebase operations. A user who wants to complete Archive locally must select A in Step 1; a user who is not ready to archive must select E.
 
 ## Exit Conditions
 
@@ -138,8 +143,8 @@ Archive no longer invokes Superpowers `finishing-a-development-branch`. Local me
 - Archived `.comet.yaml` contains `archived: true`
 - Archived `branch_status: handled` is included in the only archive commit
 - `comet guard <change-name> archive` passes
-- The only archive commit was pushed successfully using the delivery method confirmed before archive; if the user selected PR creation, the PR was created successfully
-- Current selection was cleared after remote delivery succeeded
+- The only archive commit was handled using the method confirmed before Archive: A keeps it local, B pushes it successfully, and C pushes it successfully and creates a PR
+- Current selection was cleared after the selected handling method completed
 
 The archive script moves `<classic-change-dir>/` to `<classic-archive-root>/YYYY-MM-DD-<name>/`.
 
@@ -151,4 +156,4 @@ Comet Classic workflow complete. To start new Classic work, invoke `/comet-class
 
 ## Context Compression Recovery
 
-Follow `comet-classic/reference/context-recovery.md` with phase set to `archive`. If `archived: true` and the archive directory exists, do not re-execute archive operations. Retry the same push or PR creation only when the current task context explicitly records the remote delivery method selected in Step 1. This Skill does not promise automatic recovery after the user leaves the flow and changes branch topology independently.
+Follow `comet-classic/reference/context-recovery.md` with phase set to `archive`. If `archived: true` and the archive directory exists, do not re-execute archive operations. Retry the same push or PR creation only when the current task context explicitly records B or C from Step 1; A performs no remote operation. This Skill does not promise automatic recovery after the user leaves the flow and changes branch topology independently.

@@ -157,6 +157,7 @@ Run applicable focused checks.
 
     expect(root.stdout).toContain('skill-coordinated');
     expect(next.stdout).toContain('continuation.runnerAction');
+    expect(next.stdout).toContain('continuation.userCommunication');
     expect(next.stdout).toContain('--runner-input <file>');
     expect(next.stdout).toContain('not trusted identity attestation');
     expect(next.stdout).toContain('Checks completed, but your confirmation is required');
@@ -754,6 +755,14 @@ Run applicable focused checks.
           continuation: {
             disposition: 'await-user',
             action: 'confirm-verifier-unavailable',
+            userCommunication: {
+              required: true,
+              message:
+                '由于独立验收服务暂时不可用，目前只能完成自动检查。你可以选择接受当前检查结果，或者等验收服务恢复后再重试。',
+              suggestedReply: null,
+              agentInstruction:
+                '向用户转述 message，并请用户明确选择是否接受只有自动检查的结果。不要把“继续”当作默认接受。',
+            },
           },
         },
       });
@@ -865,6 +874,51 @@ Run applicable focused checks.
       state_version: (before.data?.state as { state_version: number }).state_version,
       loop: { attempt: second.attempt, execution_failure_count: 1 },
     });
+  });
+
+  it('returns friendly localized guidance when Verifier infrastructure repeatedly fails', async () => {
+    const name = 'friendly-verifier-recovery';
+    await prepareBuild(name, ['The behavior remains safe during verification recovery.'], 'zh-CN');
+    await runnerStep(name, builderHandoff(['A1']));
+
+    let failed: JsonEnvelope | null = null;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const dispatched = await runnerStep(name, { kind: 'dispatch-verifier', checks: [] });
+      expect(dispatched.data?.continuation).toMatchObject({
+        action: 'await-verifier',
+        userCommunication: {
+          required: false,
+          message: null,
+          suggestedReply: null,
+        },
+      });
+      failed = await runnerStep(name, {
+        kind: 'verifier-execution-error',
+        summary: `Verifier worker ${attempt} ended without a response.`,
+      });
+    }
+
+    expect(failed).toMatchObject({
+      exitCode: 0,
+      data: {
+        state: { status: 'blocked', loop: { attempt: 3, execution_failure_count: 3 } },
+        continuation: {
+          disposition: 'blocked',
+          action: 'retry-verifier',
+          userCommunication: {
+            required: true,
+            message:
+              '由于独立验收任务连续几次没有正常返回结果，本次验收已暂停。你的代码和已经完成的检查都已安全保留。回复“继续”即可重新尝试，不需要处理文件或进程。',
+            suggestedReply: '继续',
+            agentInstruction:
+              '只向用户转述 message 和 suggestedReply，并等待用户回复。不要展示内部轮次、计数、路径或恢复步骤。',
+          },
+        },
+      },
+    });
+    const communication = (failed?.data?.continuation as { userCommunication: { message: string } })
+      .userCommunication;
+    expect(communication.message).not.toMatch(/attempt|requestCheckRounds|Runtime|Verifier/iu);
   });
 
   it('rejects verifier-unavailable while a resolved Runtime check failed', async () => {

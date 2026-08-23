@@ -317,6 +317,35 @@ describe('skills', () => {
       expect(enMain).toContain('final Archive, workspace finish, merge, push, and PR');
     });
 
+    it('presents Native Archive finish choices with their actual effects', async () => {
+      const zhMain = await fs.readFile(
+        path.join(getAssetsDir(), 'skills-zh', 'comet-native', 'SKILL.md'),
+        'utf-8',
+      );
+      const enMain = await fs.readFile(
+        path.join(getAssetsDir(), 'skills', 'comet-native', 'SKILL.md'),
+        'utf-8',
+      );
+      expect(zhMain).toContain('| 选项 | 方式 | 实际影响 |');
+      expect(zhMain).toContain(
+        '| A | 仅归档并保留工作区（`keep`） | 完成归档并在 change 分支创建归档提交；不合并、不推送、不创建 PR，保留当前分支和目录 |',
+      );
+      expect(zhMain).toContain('| B | 本地合并（`merge`） |');
+      expect(zhMain).toContain('| C | 归档并推送（`push`） |');
+      expect(zhMain).toContain('| D | 归档、推送并创建 PR（`pull-request`） |');
+      expect(zhMain).toContain('| E | 暂不归档 |');
+      expect(zhMain).toContain('`current` 不需要 workspace finish 选择');
+      expect(enMain).toContain('| Option | Method | Actual effect |');
+      expect(enMain).toContain(
+        '| A | Archive and keep workspace (`keep`) | Complete Archive and create an archive commit on the change branch; do not merge, push, or create a PR, and keep the current branch and directory |',
+      );
+      expect(enMain).toContain('| B | Merge locally (`merge`) |');
+      expect(enMain).toContain('| C | Archive and push (`push`) |');
+      expect(enMain).toContain('| D | Archive, push, and create a PR (`pull-request`) |');
+      expect(enMain).toContain('| E | Defer Archive |');
+      expect(enMain).toContain('`current` does not require a workspace finish choice');
+    });
+
     it('requires clarification before Native Shape can modify implementation or enter Build', async () => {
       const zhMain = await fs.readFile(
         path.join(getAssetsDir(), 'skills-zh', 'comet-native', 'SKILL.md'),
@@ -2300,13 +2329,17 @@ describe('skills', () => {
         '不得在用户确认前运行 `comet state transition <change-name> archive-confirm` 或 `comet archive "<change-name>"`',
       );
       expect(zhArchive).toContain('`comet-classic/reference/decision-point.md`');
+      expect(zhArchive).toContain('| 选项 | 方式 | 实际影响 |');
+      expect(zhArchive).toContain(
+        '| A | 仅归档（不推送） | 完成归档并创建唯一归档提交；提交只保留在当前绑定分支，不推送、不创建 PR |',
+      );
       expect(zhArchive).toContain('「确认归档并立即推送」');
       expect(zhArchive).toContain('「确认归档、立即推送并创建 PR」');
       expect(zhArchive).toContain('「需要调整或重新验证」');
       expect(zhArchive).toContain('「暂不归档」');
       expect(zhArchive).toContain('`comet state transition <change-name> archive-reopen`');
       expect(zhArchive).toContain(
-        '`handled` 只表示用户已经确认如何远端交付这次完整归档提交，不表示 push 或 PR 创建已经成功',
+        '`handled` 只表示用户已经确认如何处理这次完整归档提交，包括仅保留本地、推送或推送并创建 PR；不表示 push 或 PR 创建已经成功',
       );
       expect(zhArchive).toContain('归档阶段不再调用 Superpowers `finishing-a-development-branch`');
       expect(zhArchive).not.toContain('使用 Skill 工具加载 Superpowers');
@@ -2703,13 +2736,17 @@ describe('skills', () => {
         'Must not run `comet state transition <change-name> archive-confirm` or `comet archive "<change-name>"` before user confirmation',
       );
       expect(enArchive).toContain('`comet-classic/reference/decision-point.md`');
+      expect(enArchive).toContain('| Option | Method | Actual effect |');
+      expect(enArchive).toContain(
+        '| A | Archive locally (no push) | Complete Archive and create the only archive commit; keep it on the current bound branch without pushing or creating a PR |',
+      );
       expect(enArchive).toContain('"Confirm archive and push now"');
       expect(enArchive).toContain('"Confirm archive, push now, and create a PR"');
       expect(enArchive).toContain('Needs adjustment or re-verification');
       expect(enArchive).toContain('Do not archive yet');
       expect(enArchive).toContain('`comet state transition <change-name> archive-reopen`');
       expect(enArchive).toContain(
-        '`handled` means only that the user confirmed how to deliver this complete archive commit remotely. It does not mean that push or PR creation has succeeded',
+        '`handled` means only that the user confirmed how to handle this complete archive commit, including keeping it local, pushing it, or pushing it and creating a PR. It does not mean that push or PR creation has succeeded',
       );
       expect(enArchive).toContain(
         'Archive no longer invokes Superpowers `finishing-a-development-branch`',

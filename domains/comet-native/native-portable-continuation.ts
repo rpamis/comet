@@ -26,6 +26,13 @@ export interface NativePortableRunnerAction {
   attempt: number;
 }
 
+export interface NativePortableUserCommunication {
+  required: boolean;
+  message: string | null;
+  suggestedReply: string | null;
+  agentInstruction: string;
+}
+
 export interface NativePortableContinuation {
   schema: 'comet.native.continuation.v2';
   skill: 'comet-native';
@@ -54,6 +61,105 @@ export interface NativePortableContinuation {
   inputOptions: NativePortableContinuationInputOption[];
   commandAlternatives?: NativePortableCommandAlternative[];
   runnerAction: NativePortableRunnerAction;
+  userCommunication: NativePortableUserCommunication;
+}
+
+function localized(state: NativePortableState, english: string, chinese: string): string {
+  return state.language === 'zh-CN' ? chinese : english;
+}
+
+function nativePortableUserCommunication(
+  state: NativePortableState,
+): NativePortableUserCommunication {
+  const noUserUpdate = (agentInstruction: string): NativePortableUserCommunication => ({
+    required: false,
+    message: null,
+    suggestedReply: null,
+    agentInstruction,
+  });
+
+  if (
+    state.phase === 'verify' &&
+    state.status === 'active' &&
+    state.loop.stage === 'verify-ready'
+  ) {
+    return noUserUpdate(
+      localized(
+        state,
+        'The current candidate and completed checks are preserved. Continue with dispatch-verifier without asking the user to recover files, processes, or workflow state. If a brief status update is necessary, say only that verification is being retried and the code is unchanged.',
+        '当前候选和已经完成的检查都已保留。直接继续 dispatch-verifier，不要让用户恢复文件、进程或工作流状态。如果确实需要简短同步进度，只说明正在重新尝试验收且代码没有变化。',
+      ),
+    );
+  }
+
+  if (
+    state.phase === 'verify' &&
+    state.status === 'active' &&
+    state.loop.next_action === 'await-verifier-result'
+  ) {
+    return noUserUpdate(
+      localized(
+        state,
+        'Wait only while the dispatched Verifier task is still active. If it did not start, ended without a response, or is no longer available, immediately submit the matching verifier-unavailable or verifier-execution-error input. Do not ask the user to recover files or processes, and do not expose attempt or requestCheckRounds.',
+        '仅在已派发的独立验收任务仍在运行时等待。如果任务未启动、结束后没有返回结果或已经丢失，立即提交匹配的 verifier-unavailable 或 verifier-execution-error 输入。不要让用户恢复文件或进程，也不要向用户展示 attempt、requestCheckRounds 等机器状态。',
+      ),
+    );
+  }
+
+  if (
+    state.status === 'blocked' &&
+    state.blockers.some(({ resolution_action }) => resolution_action === 'retry-verifier')
+  ) {
+    return state.language === 'zh-CN'
+      ? {
+          required: true,
+          message:
+            '由于独立验收任务连续几次没有正常返回结果，本次验收已暂停。你的代码和已经完成的检查都已安全保留。回复“继续”即可重新尝试，不需要处理文件或进程。',
+          suggestedReply: '继续',
+          agentInstruction:
+            '只向用户转述 message 和 suggestedReply，并等待用户回复。不要展示内部轮次、计数、路径或恢复步骤。',
+        }
+      : {
+          required: true,
+          message:
+            'Verification paused because the independent verification task repeatedly ended without a result. Your code and completed checks are safely preserved. Reply “Continue” to retry; you do not need to manage files or processes.',
+          suggestedReply: 'Continue',
+          agentInstruction:
+            'Relay only message and suggestedReply to the user, then wait for that reply. Do not expose internal attempts, counters, paths, or recovery steps.',
+        };
+  }
+
+  if (
+    state.phase === 'verify' &&
+    state.status === 'await-user' &&
+    state.verification?.assurance === 'semantic-verification-unavailable'
+  ) {
+    return state.language === 'zh-CN'
+      ? {
+          required: true,
+          message:
+            '由于独立验收服务暂时不可用，目前只能完成自动检查。你可以选择接受当前检查结果，或者等验收服务恢复后再重试。',
+          suggestedReply: null,
+          agentInstruction:
+            '向用户转述 message，并请用户明确选择是否接受只有自动检查的结果。不要把“继续”当作默认接受。',
+        }
+      : {
+          required: true,
+          message:
+            'Because independent verification is temporarily unavailable, only the automatic checks could be completed. You can accept the current check results or wait and retry when verification is available.',
+          suggestedReply: null,
+          agentInstruction:
+            'Relay message and ask the user to explicitly choose whether to accept automatic checks only. Do not treat “Continue” as implicit acceptance.',
+        };
+  }
+
+  return noUserUpdate(
+    localized(
+      state,
+      'Follow the continuation action. Unless required is true, continue without asking the user to handle internal workflow state, and do not present machine fields as a user-facing explanation.',
+      '按 continuation 执行下一步。除非 required 为 true，否则继续推进，不要让用户处理内部工作流状态，也不要把机器字段作为面向用户的说明。',
+    ),
+  );
 }
 
 function boundNativeNextCommandArgs(options: {
@@ -147,6 +253,7 @@ export function nativePortableContinuation(
     status: state.status,
     stateVersion: state.state_version,
     inputOptions: [] as NativePortableContinuation['inputOptions'],
+    userCommunication: nativePortableUserCommunication(state),
   };
   const runner = (kind: NativePortableRunnerAction['kind']): NativePortableRunnerAction => ({
     kind,

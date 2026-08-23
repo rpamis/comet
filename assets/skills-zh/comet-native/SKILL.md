@@ -23,13 +23,9 @@ Native 把需求、完整目标规格、当前进度和验收结论保存在项�
 comet task <project-root> --task "<用户原始请求>" --phase build --json
 ```
 
-只把返回的相关个人记忆和项目知识加入当前任务上下文；命令不可用、没有内容或检索失败时继续正常工作，不要求用户处理。工作流命令可带 `--comet-task`、`--comet-path`、`--comet-phase`，CLI 会自动选择上下文并在输出中显示相关片段。仅当本轮对话出现可跨任务复用的用户偏好、项目约定或稳定协作方式时，Agent 才调用 `comet memory observe <project-root> --text "<偏好或约定>" --workflow <workflow> --change <change-id> --candidate-key <stable-topic-key> --json`；`--text` 只写该偏好或约定，不写任务摘要、实现进展、命令输出或测试结果，没有候选时不调用。验证、编译或 linter 失败时，直接读取工具诊断、修复代码并按工作流要求重跑。任务结束调用 `comet task <project-root> --task "<用户原始请求>" --complete --workflow <workflow> --change <change-id> --json`，这个命令只完成检查点和同步，不把原始任务保存为记忆。
-
-没有 Hook 平台时，上述命令就是 Skill 的上下文和学习回退路径，底层仍可调用 `comet memory context`；有 Hook 时仍只注入当前任务匹配的个人记忆和项目知识片段。
+只把返回的相关个人记忆和项目知识加入当前任务上下文；命令不可用、没有内容或检索失败时继续正常工作，不要求用户处理。工作流命令可带 `--comet-task`、`--comet-path`、`--comet-phase`，CLI 会自动选择上下文并在输出中显示相关片段。仅当本轮对话出现可跨任务复用的用户偏好、项目约定或稳定协作方式时，Agent 才调用 `comet memory observe <project-root> --text "<偏好或约定>" --workflow <workflow> --change <change-id> --candidate-key <stable-topic-key> --json`；`--text` 只写该偏好或约定，不写任务摘要、实现进展、命令输出或测试结果，没有候选时不调用。验证、编译或 linter 失败时，直接读取工具诊断、修复代码并按工作流要求重跑。任务结束调用 `comet task <project-root> --task "<用户原始请求>" --complete --workflow <workflow> --change <change-id> --json`，这个命令只完成检查点和同步，不把原始任务保存为记忆。没有 Hook 平台时，上述命令就是 Skill 的上下文和学习回退路径，底层仍可调用 `comet memory context`；有 Hook 时仍只注入当前任务匹配的个人记忆和项目知识片段。
 ### 创建 change
-先确定小写 kebab-case 名称，再按[工作区选择参考](reference/workspace.md)决定使用当前目录、创建分支还是创建 worktree。用户明确说并行、同时处理或多个会话时自动选择 `worktree`，不再询问三种方式。
-
-CLI 会在创建 change 前完成分支或 worktree 绑定、复用已登记的 change 分支、在分支仍存在但登记 Worktree 已移除时重建 Worktree、维护仓库本地排除规则、核对配置并创建可跨设备恢复的状态。随后进入命令返回的 `preparation.projectRoot`；后续命令不得继续在原目录执行。
+先确定小写 kebab-case 名称，再按[工作区选择参考](reference/workspace.md)决定使用当前目录、创建分支还是创建 worktree。用户明确说并行、同时处理或多个会话时自动选择 `worktree`，不再询问三种方式。CLI 会在创建 change 前完成分支或 worktree 绑定、复用已登记的 change 分支、在分支仍存在但登记 Worktree 已移除时重建 Worktree、维护仓库本地排除规则、核对配置并创建可跨设备恢复的状态。随后进入命令返回的 `preparation.projectRoot`；后续命令不得继续在原目录执行。
 如果准备没有完成，保留已经创建的资源，展示 `preparation` 中的失败原因，并按 Runtime 或用户给出的恢复方向继续。
 ## 按需读取
 确认 phase 后只读取需要的一份 reference：
@@ -50,9 +46,7 @@ CLI 会在创建 change 前完成分支或 worktree 绑定、复用已登记的 
 未解决问题保持 `[blocking]`；有阻塞项时不修改项目实现。完成标准：所有会影响用户可见结果的选择和未明说的假设均已处理，没有 `[blocking]`，用户明确确认目标、范围、关键决定、验收项和非目标，并且 Runtime 已进入 Build。只有用户明确确认后才使用后续指令中含 `--confirmed` 的命令推进。
 
 ## Build ↔ Verify Loop
-Build 和 Verify 组成一个有界验收循环（Loop）：Builder 提交候选，Runtime 执行必要检查，再由新的只读 Verifier 验收。验收未通过时回到 Build，完成修改并提交下一轮候选；全部通过时进入 Archive。
-
-`iteration` 表示实现候选的轮次，`attempt` 表示同一候选启动 Verifier 的次数。连续失败、没有实际进展或 Verifier 多次执行出错时，Runtime 会在预算上限处进入等待用户或阻塞状态。所有计数都由 Runtime 更新，Agent 只执行最新 `continuation`。
+Build 和 Verify 组成一个有界验收循环（Loop）：Builder 提交候选，Runtime 执行必要检查，再由新的只读 Verifier 验收。验收未通过时回到 Build，完成修改并提交下一轮候选；全部通过时进入 Archive。`iteration` 表示实现候选的轮次，`attempt` 表示同一候选启动 Verifier 的次数。连续失败、没有实际进展或 Verifier 多次执行出错时，Runtime 会在预算上限处进入等待用户或阻塞状态。所有计数都由 Runtime 更新，Agent 只执行最新 `continuation`。
 
 ## Build
 
@@ -71,21 +65,15 @@ Build 和 Verify 组成一个有界验收循环（Loop）：Builder 提交候选
 
 用户明确补充当前范围时，按同一规则处理。
 
-候选完成后，按 Runtime 在 `continuation` 中提供的输入模板提交一份精简的 Builder 交接摘要，包括：本轮做了什么、处理了哪些验收项、实际运行或没有运行哪些开发期检查，以及还有哪些已知限制。
-
-这份 handoff 保存在 `comet-state.yaml` 中，不会生成单独文件，也不代表已经验收通过。Runtime 会把它交给 Verifier，Builder 提交一次即可。
+候选完成后，按 Runtime 在 `continuation` 中提供的输入模板提交一份精简的 Builder 交接摘要，包括：本轮做了什么、处理了哪些验收项、实际运行或没有运行哪些开发期检查，以及还有哪些已知限制。这份 handoff 保存在 `comet-state.yaml` 中，不会生成单独文件，也不代表已经验收通过。Runtime 会把它交给 Verifier，Builder 提交一次即可。
 
 完成标准：实现和相关检查达到可验收状态，完整验收项已重新核对，Runtime 接受 handoff 并进入 Verify。
 
 ## Verify
 
-Runtime 要求启动 Verifier（`dispatch-verifier`）时，先把当前候选需要运行的测试和检查命令填入 `inputOptions.template`，由 Runtime 统一执行。Runtime 会复用已经完成的检查；是否重试或补充检查，以最新 `continuation` 为准。
+Runtime 要求启动 Verifier（`dispatch-verifier`）时，先把当前候选需要运行的测试和检查命令填入 `inputOptions.template`，由 Runtime 统一执行。Runtime 会复用已经完成的检查；是否重试或补充检查，以最新 `continuation` 为准。Runtime 返回 `verifierDispatch` 后，立即启动一个新的只读 Verifier subagent。平台不支持 subagent 时，启动一个与 Builder 会话分开的新 Agent 任务。
 
-Runtime 返回 `verifierDispatch` 后，立即启动一个新的只读 Verifier subagent。平台不支持 subagent 时，启动一个与 Builder 会话分开的新 Agent 任务。
-
-Verifier 先读取验收项、brief、完整目标 Spec、实际实现和 Runtime 检查结果，最后再把 Builder handoff 当作调查线索，保持验收判断独立。
-
-Verifier 保持只读。如果现有检查不足，就在 Runtime 返回的 `inputOptions.template` 中列出还需要运行哪些检查，由 Runtime 执行并把结果返回给 Verifier。
+Verifier 先读取验收项、brief、完整目标 Spec、实际实现和 Runtime 检查结果，最后再把 Builder handoff 当作调查线索，保持验收判断独立。Verifier 保持只读。如果现有检查不足，就在 Runtime 返回的 `inputOptions.template` 中列出还需要运行哪些检查，由 Runtime 执行并把结果返回给 Verifier。
 
 Verifier 最终必须逐项标记为通过（`passed`）、未通过（`failed`）或暂时无法验证（`blocked`），一项不能漏，也不能重复。未通过或无法验证时，写出下一轮 Build 可直接处理的原因。无法启动 Verifier、Verifier 执行出错或缺少外部信息时，按命令参考和最新 `continuation` 处理。skill-coordinated Verifier 通过且 Runtime 等待用户决策时，只有用户接受当前结果才用 `--accept-result` 进入 Archive；如果用户要求修改实现或验收标准，分别使用 `--revise-implementation` 或 `--revise-requirements`。
 
@@ -93,7 +81,19 @@ Verifier 最终必须逐项标记为通过（`passed`）、未通过（`failed`�
 
 ## Archive
 
-只有 `continuation` 允许 Archive 时才继续。Archive 直接使用已经接受的验收结果。`branch` 或 `worktree` 需要收尾选择时，一次展示实际 change 分支、目标分支和目录，让用户选择合并（merge）、推送（push）、创建 PR、保留工作区（keep）或暂不归档。普通 change 归档完成后，如果存在已归档且干净的 change worktree，向用户提供清理选项；只有用户确认后才执行 `git worktree remove`，脏或仍被使用的 worktree 必须保留。Supervisor 最终交付后，Runtime 只自动清理确认干净且不再使用的 Child/integration worktree 与分支；发现脏文件、当前进程仍在其中或 Git 步骤未完成时保留现场并返回 blocker，绝不强制删除。
+只有 `continuation` 允许 Archive 时才继续。Archive 直接使用已经接受的验收结果。`current` 不需要 workspace finish 选择：展示当前分支和目录，说明不会执行 merge、push 或创建 PR，再按最新 `continuation` 继续。
+
+`branch` 或 `worktree` 需要收尾选择时，一次展示实际 change 分支、目标分支和目录，并以单选题提供以下全部选项。文本提问必须使用下表；结构化提问必须将“方式”作为短标签、“实际影响”作为说明，不得只显示 `merge`、`push`、`pull-request` 或 `keep`：
+
+| 选项 | 方式 | 实际影响 |
+| --- | --- | --- |
+| A | 仅归档并保留工作区（`keep`） | 完成归档并在 change 分支创建归档提交；不合并、不推送、不创建 PR，保留当前分支和目录 |
+| B | 本地合并（`merge`） | 完成归档并创建归档提交，再把 change 分支本地合并到目标分支；不推送、不创建 PR |
+| C | 归档并推送（`push`） | 完成归档并创建归档提交，再推送 change 分支；不合并到目标分支、不创建 PR |
+| D | 归档、推送并创建 PR（`pull-request`） | 完成归档并创建归档提交，推送 change 分支，再以目标分支为 base 创建 PR |
+| E | 暂不归档 | 不执行归档或 workspace finish，保留当前 active change 和工作区，等待稍后继续 |
+
+用户选择 A、B、C 或 D 后，按 `keep`、`merge`、`push` 或 `pull-request` 的映射执行 Runtime 返回的完整命令；选择 E 后停止，不执行归档命令。选择 A 表示明确保留当前分支和目录，同一次归档不得再删除该 worktree。其他普通 change 归档完成后，如果存在已归档且干净的 change worktree，向用户提供清理选项；已被 Runtime 清理的无需重复询问。只有用户确认后才执行 `git worktree remove`，脏或仍被使用的 worktree 必须保留。Supervisor 最终交付后，Runtime 只自动清理确认干净且不再使用的 Child/integration worktree 与分支；发现脏文件、当前进程仍在其中或 Git 步骤未完成时保留现场并返回 blocker，绝不强制删除。
 
 只提交属于当前 change 的实现和正式产物，保留其他用户改动。执行 Runtime 返回的 `commandArgs`，再检查工作区收尾结果 `workspaceFinishResult`；结果为阻塞（`blocked`）时保留现场，并执行 `recoveryArgs` 中的恢复命令。
 

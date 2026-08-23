@@ -310,6 +310,11 @@ describe('Native portable Build/Verify loop', () => {
 
   it('blocks after three execution errors without consuming semantic failure budgets', () => {
     let { state } = buildState();
+    expect(nativePortableContinuation(state).userCommunication).toMatchObject({
+      required: false,
+      message: null,
+      suggestedReply: null,
+    });
     for (let index = 0; index < 3; index += 1) {
       state = recordNativeVerifierExecutionError({
         state,
@@ -319,6 +324,14 @@ describe('Native portable Build/Verify loop', () => {
         expect(() =>
           recordNativeVerifierExecutionError({ state, summary: 'Stale duplicate error.' }),
         ).toThrow('active Verify attempt');
+        expect(nativePortableContinuation(state).userCommunication).toMatchObject({
+          required: false,
+          message: null,
+          suggestedReply: null,
+          agentInstruction: expect.stringContaining(
+            'Continue with dispatch-verifier without asking the user',
+          ),
+        });
         state = reserveNativeVerifierAttempt(state);
       }
     }
@@ -333,6 +346,14 @@ describe('Native portable Build/Verify loop', () => {
         failed_iteration_count: 0,
         no_progress_count: 0,
       },
+    });
+    expect(nativePortableContinuation(state).userCommunication).toEqual({
+      required: true,
+      message:
+        'Verification paused because the independent verification task repeatedly ended without a result. Your code and completed checks are safely preserved. Reply “Continue” to retry; you do not need to manage files or processes.',
+      suggestedReply: 'Continue',
+      agentInstruction:
+        'Relay only message and suggestedReply to the user, then wait for that reply. Do not expose internal attempts, counters, paths, or recovery steps.',
     });
     const retried = retryNativeVerifier(state);
     expect(retried.loop).toMatchObject({

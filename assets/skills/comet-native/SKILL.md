@@ -23,13 +23,9 @@ After entering the change workspace, the Agent automatically runs:
 comet task <project-root> --task "<original user request>" --phase build --json
 ```
 
-Relevant personal memory and project knowledge snippets are added to the current task context. Workflow commands may carry `--comet-task`, `--comet-path`, and `--comet-phase`; the CLI strips these markers, selects context, and prints the relevant snippets. If context is unavailable, empty, or retrieval fails, continue normally. Only when the conversation contains a reusable user preference, project convention, or stable collaboration habit does the Agent run `comet memory observe <project-root> --text "<preference or convention>" --workflow <workflow> --change <change-id> --candidate-key <stable-topic-key> --json`; `--text` contains only that preference or convention, never a task summary, implementation progress, command output, or test result, and the command is skipped when there is no candidate. When a compiler, test, or linter fails, read its diagnostics, fix the code, and rerun it according to the workflow. At task end, run `comet task <project-root> --task "<original user request>" --complete --workflow <workflow> --change <change-id> --json`; this only completes the checkpoint and sync and never saves the original task as memory.
-
-Without a Hook platform, these commands are the Skill fallback for context and learning; the lower-level `comet memory context` command remains available. With a Hook, inject only task-relevant personal memory and project knowledge snippets.
+Relevant personal memory and project knowledge snippets are added to the current task context. Workflow commands may carry `--comet-task`, `--comet-path`, and `--comet-phase`; the CLI strips these markers, selects context, and prints the relevant snippets. If context is unavailable, empty, or retrieval fails, continue normally. Only when the conversation contains a reusable user preference, project convention, or stable collaboration habit does the Agent run `comet memory observe <project-root> --text "<preference or convention>" --workflow <workflow> --change <change-id> --candidate-key <stable-topic-key> --json`; `--text` contains only that preference or convention, never a task summary, implementation progress, command output, or test result, and the command is skipped when there is no candidate. When a compiler, test, or linter fails, read its diagnostics, fix the code, and rerun it according to the workflow. At task end, run `comet task <project-root> --task "<original user request>" --complete --workflow <workflow> --change <change-id> --json`; this only completes the checkpoint and sync and never saves the original task as memory. Without a Hook platform, these commands are the Skill fallback for context and learning; the lower-level `comet memory context` command remains available. With a Hook, inject only task-relevant personal memory and project knowledge snippets.
 ### Create a change
-Choose a lowercase kebab-case name, then use the [workspace selection reference](reference/workspace.md) to decide whether to use the current directory, create a branch, or create a worktree. Explicit parallel, simultaneous, or multi-session intent automatically selects `worktree` without asking for a three-way choice.
-
-Before creating the change, the CLI binds the branch or worktree, reuses a registered change branch, recreates a Worktree when its branch still exists but the registered Worktree was removed, maintains repository-local exclusions, validates configuration, and creates state that can be resumed across devices. Then enter the returned `preparation.projectRoot`; do not continue subsequent commands in the original directory.
+Choose a lowercase kebab-case name, then use the [workspace selection reference](reference/workspace.md) to decide whether to use the current directory, create a branch, or create a worktree. Explicit parallel, simultaneous, or multi-session intent automatically selects `worktree` without asking for a three-way choice. Before creating the change, the CLI binds the branch or worktree, reuses a registered change branch, recreates a Worktree when its branch still exists but the registered Worktree was removed, maintains repository-local exclusions, validates configuration, and creates state that can be resumed across devices. Then enter the returned `preparation.projectRoot`; do not continue subsequent commands in the original directory.
 If preparation does not finish, keep the resources already created, show the failure reason from `preparation`, and continue with the recovery direction from the Runtime or user.
 ## Read on demand
 After confirming the phase, read only the needed reference:
@@ -50,9 +46,7 @@ On `/comet-native` resume, continue from Runtime state and do not duplicate exis
 Keep unresolved questions `[blocking]`; do not modify implementation while a blocker remains. Completion criterion: every choice that affects the visible result and every unstated assumption has been handled, no `[blocking]` item remains, the user has explicitly confirmed the outcome, scope, key decisions, acceptance items, and non-goals, and the Runtime has entered Build. Advance with the continuation containing `--confirmed` only after explicit user confirmation.
 
 ## Build ↔ Verify Loop
-Build and Verify form a bounded acceptance Loop: the Builder submits a candidate, the Runtime runs the necessary checks, and a fresh read-only Verifier evaluates it. If verification does not pass, return to Build, make the changes, and submit the next candidate. When every item passes, enter Archive.
-
-`iteration` is the implementation-candidate round. `attempt` is the number of times a Verifier has been started for the same candidate. Repeated failures, no meaningful progress, or repeated Verifier execution errors cause the Runtime to enter an await-user or blocked state at its configured budget. The Runtime updates all counters; the Agent follows only the latest `continuation`.
+Build and Verify form a bounded acceptance Loop: the Builder submits a candidate, the Runtime runs the necessary checks, and a fresh read-only Verifier evaluates it. If verification does not pass, return to Build, make the changes, and submit the next candidate. When every item passes, enter Archive. `iteration` is the implementation-candidate round. `attempt` is the number of times a Verifier has been started for the same candidate. Repeated failures, no meaningful progress, or repeated Verifier execution errors cause the Runtime to enter an await-user or blocked state at its configured budget. The Runtime updates all counters; the Agent follows only the latest `continuation`.
 
 ## Build
 
@@ -71,21 +65,15 @@ When requirements change, classify them first:
 
 Apply the same rule when the user explicitly adds to the current scope.
 
-When the candidate is ready, use the input template in Runtime `continuation` to submit a concise Builder handoff: what changed in this round, which acceptance items were addressed, which development-time checks were or were not actually run, and any known limitations.
-
-The handoff is stored in `comet-state.yaml`; it does not create a separate file and does not mean verification passed. The Runtime gives it to the Verifier, and the Builder submits it once.
+When the candidate is ready, use the input template in Runtime `continuation` to submit a concise Builder handoff: what changed in this round, which acceptance items were addressed, which development-time checks were or were not actually run, and any known limitations. The handoff is stored in `comet-state.yaml`; it does not create a separate file and does not mean verification passed. The Runtime gives it to the Verifier, and the Builder submits it once.
 
 Completion criterion: the implementation and relevant checks are ready for verification, the complete acceptance list has been rechecked, and the Runtime accepts the handoff and enters Verify.
 
 ## Verify
 
-When the Runtime requests `dispatch-verifier`, first fill `inputOptions.template` with the tests and check commands needed for the current candidate, then let the Runtime execute them. The Runtime reuses completed checks. Follow the latest `continuation` for any retry or additional check.
+When the Runtime requests `dispatch-verifier`, first fill `inputOptions.template` with the tests and check commands needed for the current candidate, then let the Runtime execute them. The Runtime reuses completed checks. Follow the latest `continuation` for any retry or additional check. After the Runtime returns `verifierDispatch`, immediately start a fresh read-only Verifier subagent. If the platform does not support subagents, start a new Agent task separate from the Builder session.
 
-After the Runtime returns `verifierDispatch`, immediately start a fresh read-only Verifier subagent. If the platform does not support subagents, start a new Agent task separate from the Builder session.
-
-The Verifier first reads the acceptance items, brief, complete target Specs, actual implementation, and Runtime check results. It reads the Builder handoff last, as an investigation lead, so the verification judgment remains independent.
-
-The Verifier remains read-only. If existing checks are insufficient, list the additional checks in the `inputOptions.template` returned by the Runtime. The Runtime executes them and returns the results to the Verifier.
+The Verifier first reads the acceptance items, brief, complete target Specs, actual implementation, and Runtime check results. It reads the Builder handoff last, as an investigation lead, so the verification judgment remains independent. The Verifier remains read-only. If existing checks are insufficient, list the additional checks in the `inputOptions.template` returned by the Runtime. The Runtime executes them and returns the results to the Verifier.
 
 The Verifier must finally mark every acceptance item exactly once as `passed`, `failed`, or `blocked`. For a failed or blocked item, provide a reason that the next Build round can act on directly. If the Verifier cannot be started, execution fails, or external information is missing, follow the command reference and the latest `continuation`. When a skill-coordinated Verifier passes and Runtime waits for the user decision, use `--accept-result` to enter Archive only after the user accepts the current result; otherwise use `--revise-implementation` or `--revise-requirements`.
 
@@ -93,7 +81,19 @@ Completion criterion: the Runtime has accepted the complete Verifier result and 
 
 ## Archive
 
-Continue only when `continuation` permits Archive. Archive uses the accepted verification result directly. When a `branch` or `worktree` needs a finish decision, show the actual change branch, target branch, and directory together, then let the user choose merge, push, create a PR, keep the workspace, or defer Archive. After Archive, if a clean worktree belongs to an archived change, offer cleanup; only run `git worktree remove` after user confirmation, and keep dirty or still-used worktrees for ordinary changes. After Supervisor final delivery, Runtime automatically cleans only confirmed-clean, unused Child/integration worktrees and branches; dirty files, a process still running inside a worktree, or an incomplete Git step preserve the worktree and return a blocker, never a forced deletion.
+Continue only when `continuation` permits Archive. Archive uses the accepted verification result directly. `current` does not require a workspace finish choice: show the current branch and directory, explain that no merge, push, or PR creation will run, then follow the latest `continuation`.
+
+When `branch` or `worktree` requires a finish decision, show the actual change branch, target branch, and directory together, then present every option below as a single choice. Text fallback must use this table. A structured question must use Method as its short label and Actual effect as its description; do not show only `merge`, `push`, `pull-request`, or `keep`:
+
+| Option | Method | Actual effect |
+| --- | --- | --- |
+| A | Archive and keep workspace (`keep`) | Complete Archive and create an archive commit on the change branch; do not merge, push, or create a PR, and keep the current branch and directory |
+| B | Merge locally (`merge`) | Complete Archive and create an archive commit, then merge the change branch locally into the target branch without pushing or creating a PR |
+| C | Archive and push (`push`) | Complete Archive and create an archive commit, then push the change branch without merging into the target branch or creating a PR |
+| D | Archive, push, and create a PR (`pull-request`) | Complete Archive and create an archive commit, push the change branch, then create a PR with the target branch as its base |
+| E | Defer Archive | Do not run Archive or workspace finish; keep the current active change and workspace for later |
+
+After the user selects A, B, C, or D, map it to `keep`, `merge`, `push`, or `pull-request` and execute the complete command returned by Runtime. After E, stop without running Archive. A explicitly preserves the current branch and directory, so do not remove that worktree during the same Archive. For other ordinary changes: After Archive, if a clean worktree belongs to an archived change, offer cleanup; do not ask again if Runtime already removed it, only run `git worktree remove` after user confirmation, and keep dirty or still-used worktrees. After Supervisor final delivery, Runtime automatically cleans only confirmed-clean, unused Child/integration worktrees and branches; dirty files, a process still running inside a worktree, or an incomplete Git step preserve the worktree and return a blocker, never a forced deletion.
 
 Commit only the implementation and formal artifacts that belong to the current change, preserving other user changes. Execute the returned `commandArgs`, then inspect `workspaceFinishResult`. If it is `blocked`, preserve the workspace and run the recovery command in `recoveryArgs`.
 
