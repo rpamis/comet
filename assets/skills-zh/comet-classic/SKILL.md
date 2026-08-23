@@ -56,7 +56,7 @@ comet state select <change-name>
 
 ### 记忆接入
 
-绑定 Classic 工作区后，Agent 自动运行 `comet task <project-root> --task "<用户原始请求>" --phase build --json`，注入当前任务匹配的个人记忆和项目知识。工作流命令可带 `--comet-task`、`--comet-path`、`--comet-phase`，CLI 会自动选择并显示相关片段。仅当本轮对话出现可跨任务复用的用户偏好、项目约定或稳定协作方式时，Agent 才调用 `comet memory observe <project-root> --text "<偏好或约定>" --workflow <workflow> --change <change-id> --candidate-key <stable-topic-key> --json`；`--text` 只写该偏好或约定，不写任务摘要、实现进展、命令输出或测试结果，没有候选时不调用。编译器、测试或 linter 失败时直接读取诊断、修复代码并按工作流要求重跑；任务结束调用 `comet task <project-root> --task "<用户原始请求>" --complete --workflow <workflow> --change <change-id> --json`，这个命令只完成检查点和同步，不把原始任务保存为记忆。没有 Hook 时由 Skill 直接调用这些命令（只取上下文时也可用 `comet memory context`），不要求用户打开 Dashboard 或手动确认。
+绑定 Classic 工作区并读取 `.comet.yaml` 当前 `phase` 后，Agent 自动运行 `comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --json`，注入当前任务匹配的个人记忆和项目知识。工作流命令可带 `--comet-task`、`--comet-path`、`--comet-phase`，CLI 会自动选择并显示相关片段。仅当本轮对话出现可跨任务复用的用户偏好、项目约定或稳定协作方式时，Agent 才调用 `comet memory observe <project-root> --text "<偏好或约定>" --workflow <workflow> --change <change-id> --candidate-key <stable-topic-key> --json`；`--text` 只写该偏好或约定，不写任务摘要、实现进展、命令输出或测试结果，没有候选时不调用。编译器、测试或 linter 失败时直接读取诊断、修复代码并按工作流要求重跑；任务结束调用 `comet task <project-root> --task "<用户原始请求>" --complete --workflow <workflow> --change <change-id> --json`，这个命令只完成检查点和同步，不把原始任务保存为记忆。没有 Hook 时由 Skill 直接调用这些命令（只取上下文时也可用 `comet memory context`），不要求用户打开 Dashboard 或手动确认。
 
 ### Comet Ambient Resume
 

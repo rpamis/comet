@@ -3395,7 +3395,9 @@ describe('skills', () => {
       expect(zhGuard).toContain('无法归因的事件和仅位于项目外的目标保持中立');
       expect(zhGuard).toContain('一旦写入已归属于本项目');
       expect(zhGuard).toContain('个人记忆和项目知识');
+      expect(zhGuard).toContain('| Classic | Open、Design、Verify、Archive | Build |');
       expect(enGuard).toContain('personal memory and project knowledge');
+      expect(enGuard).toContain('| Classic | Open, Design, Verify, Archive | Build |');
       expect(enGuard).toContain('record the failed result');
       expect(enGuard).toContain('return to Build before modifying the implementation');
       expect(enGuard).toContain('dot-prefixed project files');

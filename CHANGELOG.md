@@ -28,6 +28,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Classic verification repairs**: Classic Verify now keeps ordinary implementation writes in Build while leaving verification reports and workflow state writable, so repair attempts follow the tracked verification loop instead of bypassing it.
 - **Windows Native reliability**: Snapshot checks are more reliable when hooks and workspace operations run concurrently on Windows.
 - **Native status compatibility**: `comet status` now reads Native v4 Portable State changes instead of reporting them as invalid legacy schemas.
 - **Native change state size handling**: Native change discovery no longer rejects valid large Portable or legacy state documents at an arbitrary 256 KiB limit, so Supervisor child worktrees can handle large requirements without forcing users to shorten or split them.

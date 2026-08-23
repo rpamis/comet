@@ -10,7 +10,7 @@ Once this Skill is loaded, treat the `/comet` entry as selected; do not re-evalu
 1. Run the Comet CLI installed on PATH:
 
    ```text
-   comet workflow resolve . --activate --json --task "<original user request>"
+   comet workflow resolve . --activate --json
    ```
 
    If project config is missing, this snapshots global defaults and creates project artifact directories. Later global changes do not rewrite it.
@@ -22,6 +22,6 @@ Once this Skill is loaded, treat the `/comet` entry as selected; do not re-evalu
 
    After the skill is loaded, pass the user's original request unchanged to the loaded entry Skill.
 
-Resolver selects task, personal memory, and project knowledge; use `comet memory context` if needed; follow Skill. Record reusable preferences, conventions, habits as memory—not task summaries or Agent progress.
+Resolver only selects workflow. The returned Skill binds the workspace, reads its phase, and loads task context, personal memory, and project knowledge, using `comet memory context` when needed.
 
 Do not switch workflows based on task size, file count, active changes, or model judgment. Native and Classic changes, states, and artifacts always remain independent.

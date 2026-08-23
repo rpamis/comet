@@ -1,8 +1,9 @@
 # Comet 阶段感知（防漂移规则）
 
-> 此规则每轮注入，防止长上下文时遗忘 Comet 流程状态。
-> Hook 平台额外执行 `comet-hook-guard.mjs` 进行硬性拦截；
-> 此 Rule 是所有平台通用的软性防线。
+> 内部 Classic 编写参考，不随当前 manifest 安装；用户环境使用 `comet-workflow-guard.md`。
+>
+> 此参考用于维护 Classic Skill、Runtime 和旧安装清理契约，不作为常驻 Rule 注入。
+> 当前平台统一安装 `comet-workflow-guard.md`，支持 Hook 的平台由 Hook Router 路由 Classic Guard。
 
 ## 全局规则
 
