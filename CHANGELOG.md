@@ -38,6 +38,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Personal Memory correction refresh**: Dashboard now shows a successfully corrected memory immediately and prevents a lagging page reload from restoring the previous content.
 - **Personal Memory scope recovery**: Dashboard now repairs legacy global records that carried a project key, so adding or correcting a global preference no longer fails validation.
 - **Personal Memory review sizing**: Explicit saves and corrections no longer serialize unrelated memory records into the review packet, so they remain usable as the memory collection grows.
+- **Personal Memory deletion**: Removing a project memory now hides it immediately and treats repeated delete requests as no-ops, avoiding stale-record errors.
 - **Dashboard plugin loading**: Personal Memory, Project Knowledge, and Settings reuse short-lived project plugin hosts and skip unnecessary Project Knowledge corpus discovery for status pages, reducing repeated initialization work.
 
 ## What's Changed [0.4.0-beta.19] - 2026-08-21

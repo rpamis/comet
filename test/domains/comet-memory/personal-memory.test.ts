@@ -1295,6 +1295,52 @@ describe('PersonalMemoryService', () => {
     });
   });
 
+  it('treats repeated explicit forgets as an idempotent operation', async () => {
+    await withTempRepository(async (root) => {
+      const memoryService = service(root);
+      const descriptor = createPersonalMemoryPluginDescriptor({
+        createService: () => memoryService,
+      });
+      const runtime = new PluginRuntime({
+        cometVersion: '1.0.0',
+        store: new MemoryPluginStateStore(),
+        descriptors: [descriptor],
+      });
+      await runtime.reconcileFirstParty();
+
+      const record = (await runtime.invoke(
+        'comet.personal-memory',
+        'remember',
+        {
+          scope: 'project',
+          projectKey: 'project-a',
+          category: '项目约定',
+          text: '删除操作应当可以安全重复执行',
+        },
+        'user',
+        { throwOnError: true },
+      )) as { id: string };
+      await runtime.invoke(
+        'comet.personal-memory',
+        'remove',
+        { id: record.id },
+        { scope: 'project', projectId: 'project-a' },
+        { throwOnError: true },
+      );
+
+      await expect(
+        runtime.invoke(
+          'comet.personal-memory',
+          'remove',
+          { id: record.id },
+          { scope: 'project', projectId: 'project-a' },
+          { throwOnError: true },
+        ),
+      ).resolves.toBeUndefined();
+      await expect(memoryService.get(record.id)).resolves.toMatchObject({ active: false });
+    });
+  });
+
   it('routes plugin memory reads and writes through the Provider interface', async () => {
     await withTempRepository(async (root) => {
       const memoryService = service(root);

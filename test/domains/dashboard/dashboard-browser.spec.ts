@@ -309,6 +309,7 @@ test('adds global or project memory and explains why saved memories are applied'
       const body = route.request().postDataJSON() as {
         capability: string;
         input: {
+          id?: string;
           scope: string;
           memoryClass: string;
           category: string;
@@ -317,9 +318,16 @@ test('adds global or project memory and explains why saved memories are applied'
       };
       rememberRequest = body;
       const targetRecords = body.input.scope === 'project' ? projectRecords : profileRecords;
+      if (body.capability === 'remove') {
+        const target = projectRecords.find((record) => record.id === body.input.id);
+        if (target) target.status = 'inactive';
+        await route.fulfill({ json: { result: null } });
+        return;
+      }
       targetRecords.push({
         id: 'new-profile-memory',
         ...body.input,
+        status: 'active',
         evidenceCount: 1,
         updatedAt: '2026-08-23T00:00:00.000Z',
       });
@@ -413,6 +421,12 @@ test('adds global or project memory and explains why saved memories are applied'
       .getByText('这个项目优先使用最小相关测试', { exact: true }),
   ).toBeVisible();
   await expect(page.getByText('应用原因：当前项目范围匹配', { exact: true })).toBeVisible();
+
+  const projectSection = page.locator('section[aria-labelledby="dashboard-memory-list-title"]');
+  await projectSection.getByLabel('删除记忆').click();
+  await expect(
+    projectSection.getByText('这个项目优先使用最小相关测试', { exact: true }),
+  ).toHaveCount(0);
 });
 
 test('collapses long personal memory records until the user expands them', async ({ page }) => {

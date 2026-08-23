@@ -2281,6 +2281,10 @@ function isUserProfileRecord(record) {
   return ['user-fact', 'user-preference', 'collaboration-habit'].includes(record.memoryClass);
 }
 
+function isActiveMemoryRecord(record) {
+  return record.status === undefined ? record.active !== false : record.status === 'active';
+}
+
 function memoryApplicationReason(record) {
   if (isUserProfileRecord(record)) return '全局 User Profile，任务开始时自动加载';
   if (record.scope === 'project') {
@@ -3519,7 +3523,7 @@ function PersonalMemoryCenter({ data, onInvoke }) {
   const policy = data?.policy ?? {};
   const learningAllowed = policy.learning !== false;
   const retrievalAllowed = policy.retrieval !== false;
-  const records = management.records ?? retrieval.records ?? [];
+  const records = (management.records ?? retrieval.records ?? []).filter(isActiveMemoryRecord);
   const profileRecords = retrieval.profileRecords ?? records.filter(isUserProfileRecord);
   const projectRecords = records.filter(
     (record) => record.scope === 'project' && !isUserProfileRecord(record),

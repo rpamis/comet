@@ -398,6 +398,10 @@ async function reviewExplicitMemoryRequest(
   provider: PersonalMemoryProvider,
 ): Promise<MemoryRecord | null | void> {
   const target = input.action === 'remember' ? null : await service.get(input.id);
+  if (input.action === 'forget' && target !== null && !target.active) {
+    await service.remove(input.id, { permanent: input.permanent });
+    return;
+  }
   const request =
     input.action === 'remember'
       ? {
