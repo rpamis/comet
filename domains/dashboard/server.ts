@@ -34,6 +34,49 @@ export interface DashboardServerHandle {
 
 const DEFAULT_PORT = 4321;
 const PORT_RETRY_LIMIT = 50;
+const DASHBOARD_PLUGIN_HOST_CACHE_MS = 1000;
+
+type DashboardPluginHostInstance = Awaited<ReturnType<DashboardPluginHostFactory>>;
+
+interface DashboardPluginHostAccess {
+  readonly get: DashboardPluginHostFactory;
+  readonly invalidate: (projectId: string) => void;
+}
+
+function createDashboardPluginHostAccess(
+  factory: DashboardPluginHostFactory | undefined,
+): DashboardPluginHostAccess | undefined {
+  if (factory === undefined) return undefined;
+  const hosts = new Map<
+    string,
+    { readonly promise: Promise<DashboardPluginHostInstance>; expiresAt: number }
+  >();
+  const get: DashboardPluginHostFactory = (projectId, projectPath) => {
+    const existing = hosts.get(projectId);
+    if (existing !== undefined && existing.expiresAt > Date.now()) return existing.promise;
+    if (existing !== undefined) hosts.delete(projectId);
+    const pending = Promise.resolve(factory(projectId, projectPath));
+    const entry = { promise: pending, expiresAt: Number.POSITIVE_INFINITY };
+    hosts.set(projectId, entry);
+    void pending.then(
+      () => {
+        if (hosts.get(projectId) === entry) {
+          entry.expiresAt = Date.now() + DASHBOARD_PLUGIN_HOST_CACHE_MS;
+        }
+      },
+      () => {
+        if (hosts.get(projectId) === entry) hosts.delete(projectId);
+      },
+    );
+    return pending;
+  };
+  return {
+    get,
+    invalidate: (projectId) => {
+      hosts.delete(projectId);
+    },
+  };
+}
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -61,9 +104,10 @@ export async function startDashboardServer(
   const webRoot = options.webRoot ?? defaultWebRoot();
   const requestedPort = options.port ?? DEFAULT_PORT;
   const port = requestedPort === 0 ? 0 : await findAvailablePort(requestedPort);
+  const pluginHostAccess = createDashboardPluginHostAccess(options.pluginHost);
 
   const server = http.createServer((req, res) => {
-    handleRequest(req, res, options.projectPath, webRoot, options.pluginHost).catch((error) => {
+    handleRequest(req, res, options.projectPath, webRoot, pluginHostAccess).catch((error) => {
       if (
         error instanceof DashboardChangeQueryError ||
         error instanceof NativeDashboardQueryError
@@ -108,7 +152,7 @@ async function handleRequest(
   res: http.ServerResponse,
   projectPath: string,
   webRoot: string,
-  pluginHost?: DashboardPluginHostFactory,
+  pluginHostAccess?: DashboardPluginHostAccess,
 ): Promise<void> {
   if (!req.url) {
     respondError(res, 400, 'Bad request');
@@ -237,7 +281,7 @@ async function handleRequest(
     }
 
     if (subpath === '/plugins' || subpath.startsWith('/plugins/')) {
-      await handlePluginRequest(req, res, project, subpath, pluginHost);
+      await handlePluginRequest(req, res, project, subpath, pluginHostAccess);
       return;
     }
 
@@ -259,13 +303,13 @@ async function handlePluginRequest(
   res: http.ServerResponse,
   project: { id: string; path: string },
   subpath: string,
-  pluginHostFactory?: DashboardPluginHostFactory,
+  pluginHostAccess?: DashboardPluginHostAccess,
 ): Promise<void> {
-  if (pluginHostFactory === undefined) {
+  if (pluginHostAccess === undefined) {
     respondJson(res, req.method ?? 'GET', 503, { error: 'Dashboard plugins are unavailable' });
     return;
   }
-  const host = await pluginHostFactory(project.id, project.path);
+  const host = await pluginHostAccess.get(project.id, project.path);
   const segments = subpath
     .split('/')
     .filter((segment) => segment.length > 0)
@@ -301,8 +345,12 @@ async function handlePluginRequest(
     if (typeof value.capability !== 'string' || value.capability.trim().length === 0) {
       throw new DashboardPluginHostError('Plugin capability is required', 400, pluginId);
     }
-    const result = await host.invoke(pluginId, value.capability, value.input);
-    respondJson(res, req.method, 200, { result });
+    try {
+      const result = await host.invoke(pluginId, value.capability, value.input);
+      respondJson(res, req.method, 200, { result });
+    } finally {
+      pluginHostAccess.invalidate(project.id);
+    }
     return;
   }
   if (segments[2] === 'lifecycle') {
@@ -310,8 +358,12 @@ async function handlePluginRequest(
     if (value.action !== 'enable' && value.action !== 'disable' && value.action !== 'uninstall') {
       throw new DashboardPluginHostError('Plugin lifecycle action is invalid', 400, pluginId);
     }
-    await host.lifecycle(pluginId, value.action);
-    respondJson(res, req.method, 200, { ok: true });
+    try {
+      await host.lifecycle(pluginId, value.action);
+      respondJson(res, req.method, 200, { ok: true });
+    } finally {
+      pluginHostAccess.invalidate(project.id);
+    }
     return;
   }
   respondJson(res, req.method, 404, { error: 'Not found' });

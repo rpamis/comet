@@ -119,6 +119,61 @@ describe('personal memory experience projection', () => {
     expect(loaded.operations).toContain('manage');
   });
 
+  it('repairs legacy global records with a project key before explicit Dashboard actions', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-memory-experience-legacy-global-'));
+    const memoryRoot = path.join(root, 'memory');
+    const repository = new FileMemoryRepository(memoryRoot);
+    const legacyService = new PersonalMemoryService({ repository });
+    const legacy = await legacyService.remember({
+      scope: 'global',
+      category: '沟通偏好',
+      text: '旧版记录',
+    });
+    const state = await repository.readState();
+    await repository.writeState({
+      ...state,
+      records: state.records.map((record) => ({ ...record, projectKey: 'legacy-project' })),
+    });
+    const projectRoot = path.join(root, 'project');
+    await fs.mkdir(projectRoot, { recursive: true });
+
+    const { createDefaultCometPluginBridge } =
+      await import('../../../domains/comet-plugin/integration.js');
+    const bridge = await createDefaultCometPluginBridge({
+      projectRoot,
+      projectId: 'legacy-global-project',
+      memoryRoot,
+      stateRoot: path.join(root, 'plugins'),
+    });
+
+    await expect(
+      bridge.pluginRuntime.invoke(
+        'comet.personal-memory',
+        'remember',
+        {
+          scope: 'global',
+          category: '新增偏好',
+          text: '新版本记录',
+        },
+        { scope: 'project', projectId: 'legacy-global-project' },
+        { throwOnError: true },
+      ),
+    ).resolves.toMatchObject({ text: '新版本记录', scope: 'global' });
+
+    await expect(
+      bridge.pluginRuntime.invoke(
+        'comet.personal-memory',
+        'correct',
+        { id: legacy.id, correction: { text: '修复后的记录' } },
+        { scope: 'project', projectId: 'legacy-global-project' },
+        { throwOnError: true },
+      ),
+    ).resolves.toMatchObject({ text: '修复后的记录', scope: 'global' });
+
+    const repaired = await repository.readState();
+    expect(repaired.records[0]).not.toHaveProperty('projectKey');
+  });
+
   it('projects the project memory policy to the Dashboard page', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-memory-experience-policy-'));
     const projectRoot = path.join(root, 'project');

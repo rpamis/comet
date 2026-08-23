@@ -1184,6 +1184,20 @@ body {
   -webkit-line-clamp: 4;
 }
 
+.dashboard-memory-record-application {
+  margin-top: 7px;
+  color: var(--color-accent);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.dashboard-memory-record-note {
+  margin-top: 3px;
+  color: var(--color-meta);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .dashboard-memory-record-text-toggle {
   height: auto;
   margin-top: 2px;

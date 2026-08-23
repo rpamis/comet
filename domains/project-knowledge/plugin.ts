@@ -84,10 +84,12 @@ async function createProjectKnowledgeModule(
       message,
     });
   };
-  const createProvider = async (): Promise<ProjectKnowledgeProvider> => {
+  const createProvider = async (
+    providerOptions: { readonly discoverCorpus?: boolean } = {},
+  ): Promise<ProjectKnowledgeProvider> => {
     const key = options.knowledgeConfig.provider;
     const corpus =
-      key === 'local'
+      key === 'local' && providerOptions.discoverCorpus !== false
         ? await discoverProjectKnowledgeCorpus({
             projectRoot: options.projectRoot,
             reportDiagnostic,
@@ -150,7 +152,7 @@ async function createProjectKnowledgeModule(
         config: options.knowledgeConfig,
         language: options.language,
       });
-      snapshotProvider = await createProvider();
+      snapshotProvider = await createProvider({ discoverCorpus: false });
       const activeProvider = snapshotProvider;
       const status = await activeProvider.status();
       const recordsResult = await activeProvider.query({ kind: 'list', state: 'all', limit: 100 });

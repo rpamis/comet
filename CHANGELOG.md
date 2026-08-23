@@ -10,6 +10,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Personal memory**: Comet now keeps an independent User Profile for durable user facts, preferences, and collaboration habits, while matching project memory to the current task; routine task progress, command output, and Agent work records are not learned as personal preferences.
 - **Personal Memory providers**: Personal Memory now supports the built-in Local Provider and a configurable Remote Provider over the versioned `comet.personal-memory.provider.v1` protocol.
 - **Personal Memory Dashboard**: Dashboard now separates User Profile, project memory, and pending candidates or conflicts, and lets users configure Provider selection plus the Profile and task-context character budgets alongside correction, forget, rollback, and local Git synchronization.
+- **Personal Memory project entry**: Dashboard now lets users add current-project memories separately from the global User Profile and explains why each displayed memory is applied.
 - **Project knowledge**: `comet task` now combines a workspace-isolated Local Provider, bounded SQLite FTS5 and ripgrep search, and source-backed Project Knowledge records so Agents can reuse project structure and behavior context instead of repeatedly scanning the repository. An optional Remote Provider lets teams share records through an external service, while personal preferences remain in Personal Memory and project knowledge stays outside the repository by default.
 - **Project Knowledge Dashboard**: Dashboard now exposes Local/Remote Provider configuration, health and diagnostics, searchable active/review-needed/retired records, refresh, correction, and forget actions alongside project-level enable, pause, resume, and uninstall controls.
 
@@ -35,6 +36,9 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Archive delivery choices**: Classic Archive once again supports completing the archive commit locally without pushing or creating a PR, while Classic and Native now show every archive and workspace-finish option with its concrete Git impact.
 - **Personal Memory profile entry**: Dashboard now distinguishes the required preference content from its optional category and focuses the content field when adding a User Profile preference, preventing the prefilled category from being mistaken for the preference itself.
 - **Personal Memory correction refresh**: Dashboard now shows a successfully corrected memory immediately and prevents a lagging page reload from restoring the previous content.
+- **Personal Memory scope recovery**: Dashboard now repairs legacy global records that carried a project key, so adding or correcting a global preference no longer fails validation.
+- **Personal Memory review sizing**: Explicit saves and corrections no longer serialize unrelated memory records into the review packet, so they remain usable as the memory collection grows.
+- **Dashboard plugin loading**: Personal Memory, Project Knowledge, and Settings reuse short-lived project plugin hosts and skip unnecessary Project Knowledge corpus discovery for status pages, reducing repeated initialization work.
 
 ## What's Changed [0.4.0-beta.19] - 2026-08-21
 

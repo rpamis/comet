@@ -94,11 +94,15 @@ describe('Dashboard plugin HTTP API', () => {
         load: async ({ invoke }) => ({ value: await invoke('echo', { ok: true }) }),
       },
     ];
+    let hostFactoryCalls = 0;
     const server = await startDashboardServer({
       projectPath,
       port: 0,
       webRoot,
-      pluginHost: async (projectId) => new DashboardPluginHost({ runtime, projectId, pages }),
+      pluginHost: async (projectId) => {
+        hostFactoryCalls += 1;
+        return new DashboardPluginHost({ runtime, projectId, pages });
+      },
     });
     close = server.close;
 
@@ -112,6 +116,7 @@ describe('Dashboard plugin HTTP API', () => {
       pages: [expect.objectContaining({ pluginId: 'test.dashboard', status: 'enabled' })],
     });
     const page = await request(server.port, `${base}/plugins/test.dashboard`);
+    expect(hostFactoryCalls).toBe(1);
     expect(page.status).toBe(200);
     expect(JSON.parse(page.body)).toMatchObject({ data: { value: { ok: true } } });
     const invoke = await request(server.port, `${base}/plugins/test.dashboard/invoke`, 'POST', {

@@ -1249,6 +1249,52 @@ describe('PersonalMemoryService', () => {
     });
   });
 
+  it('saves explicit memory without serializing unrelated records into the review packet', async () => {
+    await withTempRepository(async (root) => {
+      const memoryService = service(root);
+      for (let index = 0; index < 16; index += 1) {
+        await memoryService.remember({
+          scope: 'global',
+          memoryClass: 'user-preference',
+          category: `偏好${index}`,
+          text: `保持这条协作偏好内容足够具体，避免在项目操作中重复确认。${'请保持一致。'.repeat(16)}`,
+          operations: ['build'],
+        });
+      }
+      const descriptor = createPersonalMemoryPluginDescriptor({
+        createService: () => memoryService,
+      });
+      const runtime = new PluginRuntime({
+        cometVersion: '1.0.0',
+        store: new MemoryPluginStateStore(),
+        descriptors: [descriptor],
+      });
+      await runtime.reconcileFirstParty();
+
+      const record = (await runtime.invoke(
+        'comet.personal-memory',
+        'remember',
+        {
+          scope: 'global',
+          category: '沟通偏好',
+          text: '保存新的全局偏好',
+        },
+        'user',
+        { throwOnError: true },
+      )) as { id: string };
+      expect(record).toEqual(expect.objectContaining({ id: expect.any(String) }));
+      await expect(
+        runtime.invoke(
+          'comet.personal-memory',
+          'correct',
+          { id: record.id, correction: { text: '更新后的全局偏好' } },
+          'user',
+          { throwOnError: true },
+        ),
+      ).resolves.toEqual(expect.objectContaining({ id: record.id, text: '更新后的全局偏好' }));
+    });
+  });
+
   it('routes plugin memory reads and writes through the Provider interface', async () => {
     await withTempRepository(async (root) => {
       const memoryService = service(root);

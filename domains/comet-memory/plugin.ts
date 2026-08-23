@@ -479,7 +479,13 @@ async function reviewExplicitMemoryRequest(
     explicitRequest: request,
     source: { kind: 'user' },
   };
-  const packet = await reviewPacketFromObservation(provider, observation, 'memory.cli', language);
+  const packet = await reviewPacketFromObservation(
+    provider,
+    observation,
+    'memory.cli',
+    language,
+    target,
+  );
   const result = await applyReview(packet);
   if (input.action === 'remember') return result.observation?.record ?? null;
   if (input.action === 'correct') return await service.get(input.id);
@@ -588,6 +594,7 @@ async function reviewPacketFromObservation(
   observation: MemoryObservation,
   checkpoint: string,
   defaultLanguage: 'zh-CN' | 'en' | undefined,
+  targetRecord?: MemoryRecord | null,
 ): Promise<MemoryReviewPacket> {
   const projectIdentity = observation.projectIdentity ?? observation.projectKey ?? 'comet-project';
   const observedAt = observation.observedAt ?? new Date().toISOString();
@@ -639,17 +646,24 @@ async function reviewPacketFromObservation(
         operations: observation.operations,
       },
     ],
-    memories: management.records.slice(0, 16).map((record) => ({
+    memories: (observation.explicitRequest === undefined
+      ? management.records.slice(0, 16)
+      : targetRecord === undefined || targetRecord === null
+        ? []
+        : [targetRecord]
+    ).map((record) => ({
       id: record.id,
       scope: record.scope,
-      ...(record.projectKey === undefined ? {} : { projectKey: record.projectKey }),
+      ...(record.scope === 'project' && record.projectKey !== undefined
+        ? { projectKey: record.projectKey }
+        : {}),
       ...(record.title === undefined ? {} : { title: record.title }),
       ...(record.reason === undefined ? {} : { reason: record.reason }),
       ...(record.memoryClass === undefined ? {} : { memoryClass: record.memoryClass }),
       category: record.category,
       text: record.text,
       kind: record.kind,
-      active: record.status === 'active',
+      active: 'status' in record ? record.status === 'active' : record.active,
     })),
     budget: { maxActions: 4, maxEvidence: 8, maxBytes: 4096 },
   };

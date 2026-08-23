@@ -1090,20 +1090,19 @@ interface MutableMemoryState extends Omit<
 }
 
 function mutableState(raw: MemoryRuntimeState): MutableMemoryState {
+  const normalizeRecord = (entry: MemoryRecord): StoredRecord => {
+    if (entry.scope === 'global' && entry.projectKey !== undefined) {
+      const { projectKey, ...withoutProjectKey } = entry;
+      void projectKey;
+      return { ...withoutProjectKey, identity: memoryIdentity(withoutProjectKey) };
+    }
+    return { ...entry, identity: memoryIdentity(entry) };
+  };
   return {
     version: 1,
-    records: raw.records.map((entry) => ({
-      ...entry,
-      identity: memoryIdentity(entry),
-    })),
+    records: raw.records.map(normalizeRecord),
     history: Object.fromEntries(
-      Object.entries(raw.history).map(([id, entries]) => [
-        id,
-        entries.map((entry) => ({
-          ...entry,
-          identity: memoryIdentity(entry),
-        })),
-      ]),
+      Object.entries(raw.history).map(([id, entries]) => [id, entries.map(normalizeRecord)]),
     ),
     observations: raw.observations.map((entry) => ({
       ...entry,

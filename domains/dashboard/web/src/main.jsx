@@ -2281,6 +2281,21 @@ function isUserProfileRecord(record) {
   return ['user-fact', 'user-preference', 'collaboration-habit'].includes(record.memoryClass);
 }
 
+function memoryApplicationReason(record) {
+  if (isUserProfileRecord(record)) return '全局 User Profile，任务开始时自动加载';
+  if (record.scope === 'project') {
+    const selectors = [
+      ...((record.pathPatterns ?? []).length > 0 ? ['路径'] : []),
+      ...((record.taskTypes ?? []).length > 0 ? ['任务类型'] : []),
+      ...((record.operations ?? []).length > 0 ? ['操作'] : []),
+    ];
+    return selectors.length > 0
+      ? `当前项目范围匹配（${selectors.join('、')}）`
+      : '当前项目范围匹配';
+  }
+  return '任务匹配的个人记忆';
+}
+
 async function copyText(text) {
   if (navigator.clipboard?.writeText) {
     try {
@@ -3494,6 +3509,9 @@ function PersonalMemoryCenter({ data, onInvoke }) {
   const [showNewProfile, setShowNewProfile] = useState(false);
   const [newProfileText, setNewProfileText] = useState('');
   const [newProfileCategory, setNewProfileCategory] = useState('沟通偏好');
+  const [showNewProjectMemory, setShowNewProjectMemory] = useState(false);
+  const [newProjectMemoryText, setNewProjectMemoryText] = useState('');
+  const [newProjectMemoryCategory, setNewProjectMemoryCategory] = useState('项目约定');
   const [expandedRecordIds, setExpandedRecordIds] = useState(() => new Set());
   const status = data?.status ?? {};
   const retrieval = data?.retrieval ?? {};
@@ -3544,14 +3562,24 @@ function PersonalMemoryCenter({ data, onInvoke }) {
           },
         ]}
         actions={
-          <Button
-            size="small"
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => setShowNewProfile(true)}
-          >
-            新增偏好
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="small"
+              icon={<PlusOutlined />}
+              disabled={!projectKey}
+              onClick={() => setShowNewProjectMemory(true)}
+            >
+              新增项目记忆
+            </Button>
+            <Button
+              size="small"
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => setShowNewProfile(true)}
+            >
+              新增偏好
+            </Button>
+          </div>
         }
       />
       {notifications.length > 0 && (
@@ -3653,6 +3681,12 @@ function PersonalMemoryCenter({ data, onInvoke }) {
                       <span>{record.memoryClass ?? 'user-preference'}</span>
                     </div>
                     <p className="dashboard-memory-record-text">{record.text}</p>
+                    <div className="dashboard-memory-record-application">
+                      应用原因：{memoryApplicationReason(record)}
+                    </div>
+                    {record.reason && (
+                      <div className="dashboard-memory-record-note">记忆说明：{record.reason}</div>
+                    )}
                     <div className="dashboard-memory-record-meta">
                       <span>{record.evidenceCount ?? 0} 条证据</span>
                       <span>更新于 {formatTimestamp(record.updatedAt)}</span>
@@ -3734,6 +3768,14 @@ function PersonalMemoryCenter({ data, onInvoke }) {
                         >
                           {visibleText}
                         </p>
+                        <div className="dashboard-memory-record-application">
+                          应用原因：{memoryApplicationReason(record)}
+                        </div>
+                        {record.reason && (
+                          <div className="dashboard-memory-record-note">
+                            记忆说明：{record.reason}
+                          </div>
+                        )}
                         {expandable && (
                           <Button
                             className="dashboard-memory-record-text-toggle"
@@ -3840,6 +3882,59 @@ function PersonalMemoryCenter({ data, onInvoke }) {
               value={newProfileCategory}
               onChange={(event) => setNewProfileCategory(event.target.value)}
               placeholder="例如：沟通偏好"
+              aria-label="分类（可选）"
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        open={showNewProjectMemory}
+        title="新增项目记忆"
+        okText="保存"
+        cancelText="取消"
+        okButtonProps={{ disabled: newProjectMemoryText.trim().length === 0 }}
+        onCancel={() => setShowNewProjectMemory(false)}
+        onOk={() => {
+          if (!projectKey || newProjectMemoryText.trim().length === 0) return;
+          void onInvoke('remember', {
+            scope: 'project',
+            projectKey,
+            memoryClass: 'project-convention',
+            category: newProjectMemoryCategory.trim() || '项目约定',
+            text: newProjectMemoryText.trim(),
+          });
+          setNewProjectMemoryText('');
+          setNewProjectMemoryCategory('项目约定');
+          setShowNewProjectMemory(false);
+        }}
+      >
+        <Form layout="vertical" component="div">
+          <Form.Item
+            label="记忆内容"
+            required
+            htmlFor="dashboard-new-project-memory-content"
+            extra="只记录以后在当前项目中仍然有用的个人经验或项目协作偏好"
+          >
+            <Input.TextArea
+              id="dashboard-new-project-memory-content"
+              value={newProjectMemoryText}
+              onChange={(event) => setNewProjectMemoryText(event.target.value)}
+              placeholder="例如：这个项目优先使用最小相关测试"
+              aria-label="记忆内容"
+              autoFocus
+              autoSize={{ minRows: 3, maxRows: 6 }}
+            />
+          </Form.Item>
+          <Form.Item
+            className="mb-0"
+            label="分类（可选）"
+            htmlFor="dashboard-new-project-memory-category"
+          >
+            <Input
+              id="dashboard-new-project-memory-category"
+              value={newProjectMemoryCategory}
+              onChange={(event) => setNewProjectMemoryCategory(event.target.value)}
+              placeholder="例如：项目约定"
               aria-label="分类（可选）"
             />
           </Form.Item>

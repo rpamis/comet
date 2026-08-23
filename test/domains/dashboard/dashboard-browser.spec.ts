@@ -211,7 +211,7 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   await expect(page.getByRole('menuitem', { name: '项目知识' })).toHaveCount(0);
 });
 
-test('adds a User Profile preference with an explicit form and refreshes the saved record', async ({
+test('adds global or project memory and explains why saved memories are applied', async ({
   page,
 }) => {
   const profileRecords = [
@@ -225,6 +225,7 @@ test('adds a User Profile preference with an explicit form and refreshes the sav
       updatedAt: '2026-08-20T00:00:00.000Z',
     },
   ];
+  const projectRecords: Array<Record<string, unknown>> = [];
   const personalMemoryPage = {
     pluginId: 'comet.personal-memory',
     label: '个人记忆',
@@ -243,8 +244,8 @@ test('adds a User Profile preference with an explicit form and refreshes the sav
         profile: { usedChars: 18, maxChars: 2000 },
         provider: { provider: 'local', configured: true },
       },
-      retrieval: { records: [], profileRecords },
-      management: { records: [], conflicts: [] },
+      retrieval: { records: projectRecords, profileRecords },
+      management: { records: projectRecords, conflicts: [] },
       policy: { learning: true, retrieval: true },
       projectKey: 'fixture-project',
       providerConfig: {
@@ -315,7 +316,8 @@ test('adds a User Profile preference with an explicit form and refreshes the sav
         };
       };
       rememberRequest = body;
-      profileRecords.push({
+      const targetRecords = body.input.scope === 'project' ? projectRecords : profileRecords;
+      targetRecords.push({
         id: 'new-profile-memory',
         ...body.input,
         evidenceCount: 1,
@@ -351,6 +353,9 @@ test('adds a User Profile preference with an explicit form and refreshes the sav
 
   await page.goto('/');
   await page.getByRole('menuitem', { name: '个人记忆' }).click();
+  await expect(
+    page.getByText('应用原因：全局 User Profile，任务开始时自动加载', { exact: true }),
+  ).toBeVisible();
   await page.getByRole('button', { name: '新增偏好' }).click();
 
   const profileDialog = page.getByRole('dialog', { name: '新增 User Profile 偏好' });
@@ -380,6 +385,34 @@ test('adds a User Profile preference with an explicit form and refreshes the sav
       .getByLabel('User Profile', { exact: true })
       .getByText('提交前先运行最小相关测试', { exact: true }),
   ).toBeVisible();
+
+  await page.getByRole('button', { name: '新增项目记忆' }).click();
+  const projectDialog = page.getByRole('dialog', { name: '新增项目记忆' });
+  await expect(projectDialog.getByText('记忆内容', { exact: true })).toBeVisible();
+  await expect(projectDialog.getByText('分类（可选）', { exact: true })).toBeVisible();
+  const projectInput = projectDialog.getByLabel('记忆内容');
+  await expect(projectInput).toBeFocused();
+  await projectInput.fill('这个项目优先使用最小相关测试');
+  await projectDialog.getByRole('button', { name: /保\s*存/u }).click();
+
+  await expect
+    .poll(() => rememberRequest)
+    .toEqual({
+      capability: 'remember',
+      input: {
+        scope: 'project',
+        projectKey: 'fixture-project',
+        memoryClass: 'project-convention',
+        category: '项目约定',
+        text: '这个项目优先使用最小相关测试',
+      },
+    });
+  await expect(
+    page
+      .locator('section[aria-labelledby="dashboard-memory-list-title"]')
+      .getByText('这个项目优先使用最小相关测试', { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText('应用原因：当前项目范围匹配', { exact: true })).toBeVisible();
 });
 
 test('collapses long personal memory records until the user expands them', async ({ page }) => {
