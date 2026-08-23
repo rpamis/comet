@@ -17,8 +17,10 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 - **Native Supervisor workflow**: Supervisor Changes now coordinate dependent Children through an integration workspace, independent Builder/Verifier tasks, automatic parent advancement after Children complete, and final verification before delivery.
 - **Native status and verification**: Supervisor status, verification reports, and Dashboard labels now present child progress, task bindings, preserved evidence, and verification decisions in a clearer user-facing form.
+- **Native verification guidance**: Native CLI continuations now include localized, user-ready recovery messages and explicit Agent relay instructions, so temporary Verifier failures are explained without exposing Runtime counters or asking users to manage files or processes.
 - **Dashboard and memory workflow**: Dashboard startup and workspace discovery avoid unnecessary scans, while personal memory opens directly to readable records and keeps synchronization explicit.
 - **Dashboard memory readability**: Long Personal Memory entries now stay compact by default and can be expanded on demand, keeping the overview usable without hiding the saved content.
+- **Memory and knowledge workspaces**: Personal Memory and Project Knowledge now use the same compact workbench language as Native and Classic, with restrained plugin headers, divided status rows, readable record lists, and a sidebar Settings entry for centralized plugin configuration.
 - **Project Knowledge status**: A pause scoped to the current project now appears as “paused” instead of suggesting that the whole plugin is disabled.
 - **Project Knowledge retrieval reliability**: Local retrieval now isolates generated knowledge by workspace, persists source state for restart-safe validation, bounds deterministic extraction, records unit relations in the SQLite projection, and requires every reported verification result to succeed before learned knowledge becomes active.
 - **Personal Memory project files**: Project memory now uses a readable project name for its Markdown file while retaining an internal project identity, so a repository and its worktrees share one memory file.
@@ -29,6 +31,9 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Windows Native reliability**: Snapshot checks are more reliable when hooks and workspace operations run concurrently on Windows.
 - **Native status compatibility**: `comet status` now reads Native v4 Portable State changes instead of reporting them as invalid legacy schemas.
 - **Native change state size handling**: Native change discovery no longer rejects valid large Portable or legacy state documents at an arbitrary 256 KiB limit, so Supervisor child worktrees can handle large requirements without forcing users to shorten or split them.
+- **Archive delivery choices**: Classic Archive once again supports completing the archive commit locally without pushing or creating a PR, while Classic and Native now show every archive and workspace-finish option with its concrete Git impact.
+- **Personal Memory profile entry**: Dashboard now distinguishes the required preference content from its optional category and focuses the content field when adding a User Profile preference, preventing the prefilled category from being mistaken for the preference itself.
+- **Personal Memory correction refresh**: Dashboard now shows a successfully corrected memory immediately and prevents a lagging page reload from restoring the previous content.
 
 ## What's Changed [0.4.0-beta.19] - 2026-08-21
 

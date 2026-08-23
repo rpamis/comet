@@ -3,6 +3,7 @@ import {
   App as AntApp,
   Button,
   ConfigProvider,
+  Form,
   Input,
   Select,
   Spin,
@@ -31,14 +32,21 @@ import {
   CheckOutlined,
   CopyOutlined,
   DatabaseOutlined,
+  DeleteOutlined,
+  EditOutlined,
   FileTextOutlined,
   FlagOutlined,
   MenuOutlined,
   MoonOutlined,
+  PlusOutlined,
   ReloadOutlined,
   SafetyCertificateOutlined,
   SearchOutlined,
+  SettingOutlined,
   SunOutlined,
+  SyncOutlined,
+  UndoOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
 import 'antd/dist/reset.css';
 import { createRoot } from 'react-dom/client';
@@ -178,6 +186,8 @@ function DashboardApp({ theme, onToggleTheme }) {
   const [activeProjectId, setActiveProjectId] = useState(null);
   const [workflow, setWorkflow] = useState('classic');
   const [pluginSelection, setPluginSelection] = useState(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState('comet.personal-memory');
   const [pluginPages, setPluginPages] = useState([]);
   const [pluginPage, setPluginPage] = useState(null);
   const [pluginLoading, setPluginLoading] = useState(false);
@@ -220,11 +230,12 @@ function DashboardApp({ theme, onToggleTheme }) {
   const queryRef = useRef(query);
   const tabRef = useRef(tab);
   const workflowRef = useRef(workflow);
+  const activePluginPageId = settingsOpen ? settingsSection : pluginSelection;
   queryRef.current = query;
   tabRef.current = tab;
   workflowRef.current = workflow;
   nativeSelectedDetailRef.current = nativeSelectedDetail;
-  pluginSelectionRef.current = pluginSelection;
+  pluginSelectionRef.current = activePluginPageId;
   pluginProjectRef.current = activeProjectId;
 
   useEffect(() => {
@@ -407,9 +418,12 @@ function DashboardApp({ theme, onToggleTheme }) {
     try {
       const nextPages = await fetchDashboardPluginPages(requestedProjectId);
       if (pluginProjectRef.current !== requestedProjectId) return;
-      setPluginPages(nextPages.pages ?? []);
+      const availablePages = nextPages.pages ?? [];
+      setPluginPages(availablePages);
+      return availablePages;
     } catch (error) {
       toast(`插件页面加载失败：${error.message}`, 'error');
+      return undefined;
     }
   }, [activeProjectId, toast, useDemo]);
 
@@ -417,6 +431,7 @@ function DashboardApp({ theme, onToggleTheme }) {
     if (useDemo || !activeProjectId) return undefined;
     let cancelled = false;
     setPluginSelection(null);
+    setSettingsOpen(false);
     setPluginPage(null);
     setPluginError(null);
     void fetchDashboardPluginPages(activeProjectId)
@@ -432,11 +447,11 @@ function DashboardApp({ theme, onToggleTheme }) {
   }, [activeProjectId, toast, useDemo]);
 
   useEffect(() => {
-    if (useDemo || !activeProjectId || !pluginSelection) return undefined;
+    if (useDemo || !activeProjectId || !activePluginPageId) return undefined;
     let cancelled = false;
     setPluginLoading(true);
     setPluginError(null);
-    void fetchDashboardPluginPage(activeProjectId, pluginSelection)
+    void fetchDashboardPluginPage(activeProjectId, activePluginPageId)
       .then((page) => {
         if (!cancelled) setPluginPage(page);
       })
@@ -452,14 +467,28 @@ function DashboardApp({ theme, onToggleTheme }) {
     return () => {
       cancelled = true;
     };
-  }, [activeProjectId, pluginRefreshToken, pluginSelection, useDemo]);
+  }, [activePluginPageId, activeProjectId, pluginRefreshToken, settingsOpen, useDemo]);
 
   const invokePlugin = useCallback(
     async (pluginId, capability, input) => {
       if (!activeProjectId) return;
       const requestedProjectId = activeProjectId;
       const requestedPluginId = pluginId;
-      await invokeDashboardPlugin(requestedProjectId, pluginId, capability, input);
+      const invocation = await invokeDashboardPlugin(
+        requestedProjectId,
+        pluginId,
+        capability,
+        input,
+      );
+      const result = invocation?.result;
+      if (
+        pluginProjectRef.current === requestedProjectId &&
+        pluginSelectionRef.current === requestedPluginId
+      ) {
+        setPluginPage((current) =>
+          reconcilePluginInvocationResult(current, requestedPluginId, capability, result),
+        );
+      }
       const [nextPage] = await Promise.all([
         fetchDashboardPluginPage(requestedProjectId, pluginId),
         reloadPluginPages(),
@@ -469,9 +498,46 @@ function DashboardApp({ theme, onToggleTheme }) {
         pluginSelectionRef.current !== requestedPluginId
       )
         return;
-      setPluginPage(nextPage);
+      setPluginPage(
+        reconcilePluginInvocationResult(nextPage, requestedPluginId, capability, result),
+      );
+      return result;
     },
     [activeProjectId, reloadPluginPages],
+  );
+
+  const invokeActivePlugin = useCallback(
+    async (pluginId, capability, input) => {
+      try {
+        let result;
+        if (capability === 'lifecycle') {
+          await lifecycleDashboardPlugin(activeProjectId, pluginId, input.action);
+          if (input.action === 'uninstall') {
+            const nextPages = (await reloadPluginPages()) ?? [];
+            setPluginPage(null);
+            setPluginError(null);
+            if (settingsOpen) {
+              const nextSection = nextPages.find((page) => page.pluginId !== pluginId)?.pluginId;
+              if (nextSection) setSettingsSection(nextSection);
+              else setSettingsOpen(false);
+            } else {
+              setPluginSelection(null);
+            }
+          } else {
+            setPluginRefreshToken((value) => value + 1);
+            await reloadPluginPages();
+          }
+        } else {
+          result = await invokePlugin(pluginId, capability, input);
+        }
+        toast('插件状态已更新');
+        return result;
+      } catch (error) {
+        toast(`插件操作失败：${error.message}`, 'error');
+        return undefined;
+      }
+    },
+    [activeProjectId, invokePlugin, reloadPluginPages, settingsOpen, toast],
   );
 
   const loadPage = useCallback(
@@ -722,10 +788,27 @@ function DashboardApp({ theme, onToggleTheme }) {
       <AntSidebar
         open={railOpen}
         workflow={workflow}
-        onWorkflow={setWorkflow}
+        onWorkflow={(nextWorkflow) => {
+          setSettingsOpen(false);
+          setWorkflow(nextWorkflow);
+        }}
         pluginPages={pluginPages}
         pluginSelection={pluginSelection}
+        settingsOpen={settingsOpen}
+        onSettings={() => {
+          const preferredSection =
+            pluginSelection ??
+            pluginPages.find((page) => page.pluginId === 'comet.personal-memory')?.pluginId ??
+            pluginPages[0]?.pluginId ??
+            null;
+          setSettingsSection(preferredSection);
+          setSettingsOpen(true);
+          setPluginSelection(null);
+          setPluginPage(null);
+          setPluginError(null);
+        }}
         onPluginSelect={(pluginId) => {
+          setSettingsOpen(false);
           setPluginSelection(pluginId);
           setPluginPage(null);
           setPluginError(null);
@@ -765,6 +848,7 @@ function DashboardApp({ theme, onToggleTheme }) {
             setSelectedDetail(null);
             setDetailError(null);
             setQuery('');
+            setSettingsOpen(false);
             setPluginSelection(null);
             setPluginPages([]);
             setPluginPage(null);
@@ -778,7 +862,7 @@ function DashboardApp({ theme, onToggleTheme }) {
           onRefresh={async () => {
             await refresh(true);
             await reloadPluginPages();
-            if (pluginSelection) setPluginRefreshToken((value) => value + 1);
+            if (activePluginPageId) setPluginRefreshToken((value) => value + 1);
           }}
           theme={theme}
           onToggleTheme={onToggleTheme}
@@ -787,6 +871,27 @@ function DashboardApp({ theme, onToggleTheme }) {
           <div className="dashboard-content-inner">
             {!snapshot ? (
               <LoadingState />
+            ) : settingsOpen ? (
+              <DashboardSettingsPage
+                section={settingsSection}
+                pages={pluginPages}
+                page={pluginPage}
+                loading={pluginLoading}
+                error={pluginError}
+                onSection={(pluginId) => {
+                  setSettingsSection(pluginId);
+                  setPluginPage(null);
+                  setPluginError(null);
+                }}
+                onRetry={() => {
+                  setPluginPage(null);
+                  setPluginError(null);
+                  setPluginRefreshToken((value) => value + 1);
+                }}
+                onInvoke={(capability, input) =>
+                  invokeActivePlugin(settingsSection, capability, input)
+                }
+              />
             ) : pluginSelection ? (
               <PluginCenterPage
                 page={pluginPage}
@@ -797,30 +902,9 @@ function DashboardApp({ theme, onToggleTheme }) {
                   setPluginError(null);
                   setPluginRefreshToken((value) => value + 1);
                 }}
-                onInvoke={async (capability, input) => {
-                  try {
-                    if (capability === 'lifecycle') {
-                      await lifecycleDashboardPlugin(
-                        activeProjectId,
-                        pluginSelection,
-                        input.action,
-                      );
-                      if (input.action === 'uninstall') {
-                        setPluginSelection(null);
-                        setPluginPage(null);
-                        setPluginError(null);
-                      } else {
-                        setPluginRefreshToken((value) => value + 1);
-                      }
-                      await reloadPluginPages();
-                    } else {
-                      await invokePlugin(pluginSelection, capability, input);
-                    }
-                    toast('插件状态已更新');
-                  } catch (error) {
-                    toast(`插件操作失败：${error.message}`, 'error');
-                  }
-                }}
+                onInvoke={(capability, input) =>
+                  invokeActivePlugin(pluginSelection, capability, input)
+                }
               />
             ) : workflow === 'native' ? (
               <NativeWorkflowPanel
@@ -1071,6 +1155,35 @@ function SectionHead({ title, hint }) {
       </h2>
       <span className="dashboard-section-hint text-[13px] leading-5 text-muted">{hint}</span>
     </div>
+  );
+}
+
+function PluginCenterHeader({ icon: Icon, title, description, meta = [], actions = null }) {
+  return (
+    <header className="dashboard-tool-header">
+      <div className="dashboard-tool-heading">
+        <span className="dashboard-tool-icon" aria-hidden="true">
+          <Icon />
+        </span>
+        <div className="dashboard-tool-heading-copy">
+          <span className="dashboard-tool-eyebrow">插件中心</span>
+          <div className="dashboard-tool-title-row">
+            <h2>{title}</h2>
+            {meta.map((item) => (
+              <span
+                key={`${item.label}-${item.value}`}
+                className={`dashboard-tool-chip dashboard-tool-chip-${item.tone ?? 'neutral'}`}
+              >
+                <span className="dashboard-tool-chip-label">{item.label}</span>
+                {item.value}
+              </span>
+            ))}
+          </div>
+          <p>{description}</p>
+        </div>
+      </div>
+      {actions && <div className="dashboard-tool-actions">{actions}</div>}
+    </header>
   );
 }
 
@@ -1895,6 +2008,55 @@ function LoadingState() {
   );
 }
 
+function reconcilePluginInvocationResult(page, pluginId, capability, result) {
+  if (
+    pluginId !== 'comet.personal-memory' ||
+    capability !== 'correct' ||
+    page?.pluginId !== pluginId ||
+    !isDashboardRecord(page.data) ||
+    !isDashboardRecord(result) ||
+    typeof result.id !== 'string'
+  ) {
+    return page;
+  }
+
+  const retrieval = reconcileDashboardMemoryRecords(page.data.retrieval, result);
+  const management = reconcileDashboardMemoryRecords(page.data.management, result);
+  if (retrieval === page.data.retrieval && management === page.data.management) return page;
+  return {
+    ...page,
+    data: {
+      ...page.data,
+      retrieval,
+      management,
+    },
+  };
+}
+
+function reconcileDashboardMemoryRecords(collection, correctedRecord) {
+  if (!isDashboardRecord(collection)) return collection;
+  const updates = {};
+  let changed = false;
+  for (const key of ['records', 'profileRecords', 'taskRecords']) {
+    const records = collection[key];
+    if (!Array.isArray(records)) continue;
+    let matched = false;
+    const nextRecords = records.map((record) => {
+      if (!isDashboardRecord(record) || record.id !== correctedRecord.id) return record;
+      matched = true;
+      return { ...record, ...correctedRecord };
+    });
+    if (!matched) continue;
+    updates[key] = nextRecords;
+    changed = true;
+  }
+  return changed ? { ...collection, ...updates } : collection;
+}
+
+function isDashboardRecord(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 async function fetchDashboardProjects() {
   const res = await fetch('/api/dashboard/projects', { cache: 'no-store' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -2134,6 +2296,8 @@ function AntSidebar({
   onWorkflow,
   pluginPages,
   pluginSelection,
+  settingsOpen,
+  onSettings,
   onPluginSelect,
   onClose,
 }) {
@@ -2141,7 +2305,7 @@ function AntSidebar({
     <>
       <Menu
         mode="inline"
-        selectedKeys={pluginSelection ? [pluginSelection] : [workflow]}
+        selectedKeys={settingsOpen ? [] : pluginSelection ? [pluginSelection] : [workflow]}
         items={[
           { key: 'classic', icon: <BranchesOutlined />, label: 'Classic 工作流' },
           { key: 'native', icon: <FileTextOutlined />, label: 'Native 工作流' },
@@ -2155,7 +2319,7 @@ function AntSidebar({
       <div className="dashboard-sidebar-label dashboard-sidebar-label-spaced">插件中心</div>
       <Menu
         mode="inline"
-        selectedKeys={pluginSelection ? [pluginSelection] : []}
+        selectedKeys={settingsOpen ? [] : pluginSelection ? [pluginSelection] : []}
         items={pluginPages.map((page) => {
           const statusLabel = page.globallyDisabled
             ? '停用'
@@ -2189,6 +2353,20 @@ function AntSidebar({
       />
     </>
   );
+  const settingsButton = (
+    <button
+      type="button"
+      className={`dashboard-sidebar-settings${settingsOpen ? ' is-active' : ''}`}
+      aria-pressed={settingsOpen}
+      onClick={() => {
+        onSettings();
+        onClose();
+      }}
+    >
+      <SettingOutlined aria-hidden="true" />
+      <span>设置</span>
+    </button>
+  );
   return (
     <>
       <Layout.Sider
@@ -2212,17 +2390,23 @@ function AntSidebar({
             <div className="dashboard-sidebar-label">工作流</div>
             {navigation}
           </div>
-          <div className="dashboard-sidebar-status">
-            <div className="flex items-center gap-2 font-medium text-fg">
-              <BulbOutlined aria-hidden="true" />
-              工作台状态
+          <div className="dashboard-sidebar-footer">
+            {settingsButton}
+            <div className="dashboard-sidebar-status">
+              <div className="flex items-center gap-2 font-medium text-fg">
+                <BulbOutlined aria-hidden="true" />
+                工作台状态
+              </div>
+              <div className="mt-2 text-xs text-meta">只读连接 · 自动同步</div>
             </div>
-            <div className="mt-2 text-xs text-meta">只读连接 · 自动同步</div>
           </div>
         </div>
       </Layout.Sider>
       <Drawer title="Comet 工作台" placement="left" open={open} onClose={onClose} size={280}>
-        {navigation}
+        <div className="dashboard-mobile-navigation">
+          {navigation}
+          <div className="dashboard-mobile-settings">{settingsButton}</div>
+        </div>
       </Drawer>
     </>
   );
@@ -2275,291 +2459,86 @@ function PluginCenterPage({ page, loading, error, onRetry, onInvoke }) {
   );
 }
 
-function ProjectKnowledgeCenter({ page, data, onInvoke }) {
-  const snapshot = data && typeof data === 'object' ? data : {};
-  const provider =
-    snapshot.provider === 'remote' ? 'Remote' : snapshot.provider === 'local' ? 'Local' : '—';
-  const configured =
-    typeof snapshot.configured === 'boolean'
-      ? snapshot.configured
-        ? '配置有效'
-        : '需要检查'
-      : '—';
-  const diagnostics =
-    Array.isArray(snapshot.diagnostics) && snapshot.diagnostics.length > 0
-      ? snapshot.diagnostics
-      : (page.diagnostics ?? []);
-  const disabled = page.status === 'disabled';
-  const remote = snapshot.remote;
-  const local = snapshot.local;
-
+function DashboardSettingsPage({
+  section,
+  pages,
+  page,
+  loading,
+  error,
+  onSection,
+  onRetry,
+  onInvoke,
+}) {
+  const settingsPages = pages.filter((item) =>
+    ['comet.personal-memory', 'comet.project-knowledge'].includes(item.pluginId),
+  );
   return (
-    <div className="mx-auto min-w-0 max-w-dashboard">
-      <SectionHead title={page.label} hint="查看当前项目的文档召回 Provider 状态" />
-      {disabled && (
-        <Alert
-          className="mb-4"
-          type="info"
-          showIcon
-          message={page.projectPaused ? '当前项目已暂停项目知识' : '项目知识插件已停用'}
-          description={
-            page.projectPaused
-              ? '只影响当前项目，项目文件和插件配置仍然保留。'
-              : '插件状态和项目文件仍然保留，重新启用后即可继续使用。'
-          }
-          action={
-            <Button onClick={() => onInvoke('lifecycle', { action: 'enable' })}>重新启用</Button>
-          }
-        />
-      )}
-      <section className="dashboard-knowledge-status" aria-label="项目知识状态">
-        <div className="dashboard-knowledge-status-cell">
-          <span className="dashboard-knowledge-status-label">Provider</span>
-          <span className="dashboard-knowledge-status-value">{provider}</span>
-          <span className="dashboard-knowledge-status-meta">
-            {provider === 'Local'
-              ? local?.available
-                ? 'FTS5 + ripgrep 混合召回'
-                : 'ripgrep 回退可用'
-              : provider === 'Remote'
-                ? '固定 Retrieval API v1'
-                : '未读取状态'}
-          </span>
-        </div>
-        <div className="dashboard-knowledge-status-cell">
-          <span className="dashboard-knowledge-status-label">插件状态</span>
-          <span className="dashboard-knowledge-status-value">
-            {page.globallyDisabled
-              ? '全局停用'
-              : page.projectPaused
-                ? '已启用'
-                : disabled
-                  ? '已停用'
-                  : '已启用'}
-          </span>
-          <span className="dashboard-knowledge-status-meta">由 Plugin Runtime 管理</span>
-        </div>
-        <div className="dashboard-knowledge-status-cell">
-          <span className="dashboard-knowledge-status-label">当前项目</span>
-          <span className="dashboard-knowledge-status-value">
-            {page.projectPaused ? '已暂停' : '已启用'}
-          </span>
-          <span className="dashboard-knowledge-status-meta">仅影响这个项目的任务</span>
-        </div>
-        <div className="dashboard-knowledge-status-cell">
-          <span className="dashboard-knowledge-status-label">配置状态</span>
-          <span className="dashboard-knowledge-status-value">{configured}</span>
-          <span className="dashboard-knowledge-status-meta">页面不会发起检索请求</span>
-        </div>
-      </section>
-      <div className="dashboard-knowledge-layout">
-        <section
-          className="dashboard-knowledge-summary"
-          aria-labelledby="dashboard-knowledge-summary-title"
-        >
-          <div className="dashboard-knowledge-panel-head">
-            <div>
-              <h3 id="dashboard-knowledge-summary-title">配置摘要</h3>
-              <p>只展示安全字段，不编辑项目配置</p>
-            </div>
-            {provider !== '—' && <Tag bordered={false}>{provider}</Tag>}
-          </div>
-          {data === null || data === undefined ? (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={page.projectPaused ? '当前项目暂停后不加载状态' : '插件停用后不加载状态'}
+    <div className="dashboard-tool-page dashboard-settings-page mx-auto min-w-0 max-w-dashboard">
+      <PluginCenterHeader
+        icon={SettingOutlined}
+        title="设置"
+        description="管理 Dashboard 插件的项目行为、Provider 与本地同步"
+        meta={[{ label: '范围', value: '当前项目', tone: 'neutral' }]}
+      />
+      <div className="dashboard-settings-shell">
+        <aside className="dashboard-settings-navigation" aria-label="设置分类">
+          <div className="dashboard-settings-navigation-label">插件设置</div>
+          <Menu
+            mode="inline"
+            selectedKeys={section ? [section] : []}
+            items={settingsPages.map((item) => ({
+              key: item.pluginId,
+              icon:
+                item.pluginId === 'comet.personal-memory' ? <UserOutlined /> : <DatabaseOutlined />,
+              label: item.label,
+            }))}
+            onClick={({ key }) => onSection(key)}
+          />
+        </aside>
+        <section className="dashboard-settings-main" aria-live="polite">
+          {loading && !page ? (
+            <LoadingState />
+          ) : error && !page ? (
+            <Alert
+              type="error"
+              showIcon
+              message="设置加载失败"
+              description={error}
+              action={<Button onClick={onRetry}>重试</Button>}
             />
+          ) : !page ? (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前没有可配置的插件" />
+          ) : page.pluginId === 'comet.personal-memory' ? (
+            <PersonalMemorySettings page={page} data={page.data} onInvoke={onInvoke} />
+          ) : page.pluginId === 'comet.project-knowledge' ? (
+            <ProjectKnowledgeSettings page={page} data={page.data} onInvoke={onInvoke} />
           ) : (
-            <div className="dashboard-knowledge-summary-body">
-              <p className="dashboard-knowledge-retrieval">{snapshot.retrieval}</p>
-              {provider === 'Remote' && remote ? (
-                <dl className="dashboard-knowledge-fields">
-                  <div>
-                    <dt>Endpoint</dt>
-                    <dd>{remote.endpoint || '未提供'}</dd>
-                  </div>
-                  <div>
-                    <dt>Scope</dt>
-                    <dd>{remote.scope || '未配置'}</dd>
-                  </div>
-                  <div>
-                    <dt>Timeout</dt>
-                    <dd>{remote.timeoutMs} ms</dd>
-                  </div>
-                  <div>
-                    <dt>Token 环境变量</dt>
-                    <dd>
-                      {remote.tokenEnv
-                        ? `${remote.tokenEnv} · ${remote.tokenConfigured ? '已提供' : '未提供'}`
-                        : '未配置（无需 token）'}
-                    </dd>
-                  </div>
-                </dl>
-              ) : provider === 'Local' && local ? (
-                <dl className="dashboard-knowledge-fields">
-                  <div>
-                    <dt>Repository</dt>
-                    <dd>{local.repositoryId}</dd>
-                  </div>
-                  <div>
-                    <dt>Workspace</dt>
-                    <dd>{local.workspaceId}</dd>
-                  </div>
-                  <div>
-                    <dt>来源 / Section</dt>
-                    <dd>
-                      {local.sourceCount} / {local.sectionCount}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>索引状态</dt>
-                    <dd>{local.available ? '可用' : '尚未建立或不可用'}</dd>
-                  </div>
-                  <div>
-                    <dt>最近查询</dt>
-                    <dd>
-                      {typeof local.lastQueryMs === 'number'
-                        ? `${local.lastQueryMs} ms · ${local.lastCandidateCount ?? 0} 个候选`
-                        : '尚无查询统计'}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>候选通道</dt>
-                    <dd>{local.channels?.length ? local.channels.join(' + ') : '尚无'}</dd>
-                  </div>
-                </dl>
-              ) : null}
-            </div>
-          )}
-        </section>
-        <section
-          className="dashboard-knowledge-diagnostics"
-          aria-labelledby="dashboard-knowledge-diagnostics-title"
-        >
-          <div className="dashboard-knowledge-panel-head">
-            <div>
-              <h3 id="dashboard-knowledge-diagnostics-title">最近诊断</h3>
-              <p>只保留最近三条有界信息</p>
-            </div>
-            {diagnostics.length > 0 && <Tag color="warning">{diagnostics.length} 条</Tag>}
-          </div>
-          {diagnostics.length === 0 ? (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有新的诊断" />
-          ) : (
-            <div className="dashboard-knowledge-diagnostics-list">
-              {diagnostics.map((diagnostic, index) => {
-                const code = typeof diagnostic === 'string' ? '运行时' : diagnostic.code;
-                const message = typeof diagnostic === 'string' ? diagnostic : diagnostic.message;
-                return (
-                  <div className="dashboard-knowledge-diagnostic" key={`${code}-${index}`}>
-                    <Tag bordered={false}>{code}</Tag>
-                    <span>{message}</span>
-                  </div>
-                );
-              })}
-            </div>
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该插件暂未提供设置页" />
           )}
         </section>
       </div>
-      {provider === 'Local' && local && (
-        <section
-          className="dashboard-knowledge-summary mt-4"
-          aria-labelledby="dashboard-knowledge-units-title"
-        >
-          <div className="dashboard-knowledge-panel-head">
-            <div>
-              <h3 id="dashboard-knowledge-units-title">项目知识单元</h3>
-              <p>只读查看状态、来源和受控关系</p>
-            </div>
-            <Tag bordered={false}>{local.unitCount ?? 0} 个</Tag>
-          </div>
-          <div className="dashboard-knowledge-summary-body">
-            <dl className="dashboard-knowledge-fields">
-              <div>
-                <dt>状态</dt>
-                <dd>
-                  active {local.activeUnitCount ?? 0} · draft {local.draftUnitCount ?? 0} · retired{' '}
-                  {local.retiredUnitCount ?? 0}
-                </dd>
-              </div>
-              <div>
-                <dt>关系</dt>
-                <dd>{local.relationCount ?? 0} 条有来源的一跳关系</dd>
-              </div>
-            </dl>
-            {(local.units ?? []).length === 0 ? (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚无项目知识单元" />
-            ) : (
-              <div className="dashboard-knowledge-diagnostics-list" aria-label="项目知识单元详情">
-                {(local.units ?? []).slice(0, 12).map((unit) => (
-                  <div className="dashboard-knowledge-diagnostic" key={unit.id}>
-                    <Tag bordered={false}>{unit.state}</Tag>
-                    <div>
-                      <div>
-                        <strong>{unit.title}</strong> · {unit.kind} · {unit.origin}
-                      </div>
-                      <div>{unit.summary}</div>
-                      <div>
-                        来源：
-                        {(unit.conclusions ?? [])
-                          .flatMap((conclusion) => conclusion.sources ?? [])
-                          .map((source, index) => (
-                            <span key={`${unit.id}-source-${index}`}>
-                              {' '}
-                              {source.source}
-                              {source.anchor ? `#${source.anchor}` : ''}
-                            </span>
-                          ))}
-                      </div>
-                      <div>
-                        关系：
-                        {(unit.relations ?? []).length === 0
-                          ? '无'
-                          : (unit.relations ?? [])
-                              .map((relation) => `${relation.type} → ${relation.target}`)
-                              .join('、')}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </section>
-      )}
-      {!disabled && (
-        <div className="dashboard-knowledge-actions" aria-label="项目知识插件操作">
-          <Button
-            size="small"
-            disabled={page.projectPaused}
-            onClick={() => onInvoke('lifecycle', { action: 'disable' })}
-          >
-            暂停当前项目
-          </Button>
-          <Button
-            size="small"
-            danger
-            onClick={() =>
-              Modal.confirm({
-                title: '卸载项目知识插件？',
-                content: '卸载只停止当前插件，不会删除项目文档或配置。',
-                okText: '卸载',
-                cancelText: '取消',
-                onOk: () => onInvoke('lifecycle', { action: 'uninstall' }),
-              })
-            }
-          >
-            卸载插件
-          </Button>
-        </div>
-      )}
     </div>
   );
 }
 
-function PersonalMemoryCenter({ data, onInvoke }) {
-  const [editingRecord, setEditingRecord] = useState(null);
-  const [correctionText, setCorrectionText] = useState('');
+function SettingsSectionHead({ icon: Icon, title, description, status }) {
+  return (
+    <div className="dashboard-settings-section-head">
+      <span className="dashboard-tool-panel-icon" aria-hidden="true">
+        <Icon />
+      </span>
+      <div>
+        <div className="dashboard-settings-section-title-row">
+          <h3>{title}</h3>
+          {status && <span className="dashboard-tool-counter">{status}</span>}
+        </div>
+        <p>{description}</p>
+      </div>
+    </div>
+  );
+}
+
+function PersonalMemorySettings({ page, data, onInvoke }) {
   const [remoteUrl, setRemoteUrl] = useState('');
   const [providerMode, setProviderMode] = useState('local');
   const [profileCharLimit, setProfileCharLimit] = useState('2000');
@@ -2568,36 +2547,21 @@ function PersonalMemoryCenter({ data, onInvoke }) {
   const [providerTokenEnv, setProviderTokenEnv] = useState('');
   const [providerProfile, setProviderProfile] = useState('default');
   const [providerTimeoutMs, setProviderTimeoutMs] = useState('5000');
-  const [showNewProfile, setShowNewProfile] = useState(false);
-  const [newProfileText, setNewProfileText] = useState('');
-  const [newProfileCategory, setNewProfileCategory] = useState('沟通偏好');
   const [showPending, setShowPending] = useState(false);
-  const [expandedRecordIds, setExpandedRecordIds] = useState(() => new Set());
   const status = data?.status ?? {};
   const retrieval = data?.retrieval ?? {};
   const management = data?.management ?? {};
   const policy = data?.policy ?? {};
-  const learningAllowed = policy.learning !== false;
-  const retrievalAllowed = policy.retrieval !== false;
   const records = management.records ?? retrieval.records ?? [];
-  const profileRecords = retrieval.profileRecords ?? records.filter(isUserProfileRecord);
-  const projectRecords = records.filter(
-    (record) => record.scope === 'project' && !isUserProfileRecord(record),
-  );
   const pendingRecords = records.filter(
     (record) =>
       record.status === 'conflict' || (record.kind === 'inferred' && record.status !== 'active'),
   );
-  const displayRecords =
-    projectRecords.length > 0
-      ? projectRecords
-      : records.filter((record) => !isUserProfileRecord(record));
-  const conflicts = management.conflicts ?? [];
-  const notifications = data?.notifications ?? [];
   const projectKey = data?.projectKey;
+  const learningAllowed = policy.learning !== false;
+  const retrievalAllowed = policy.retrieval !== false;
   const learningPaused = projectKey && (status.pausedLearningProjects ?? []).includes(projectKey);
   const retrievalPaused = projectKey && (status.pausedRetrievalProjects ?? []).includes(projectKey);
-  const memoryFileCount = status.files?.length ?? 0;
   const syncMessage = status.sync?.message ?? '本地记忆仓库已连接';
   const provider = status.provider?.provider ?? 'local';
 
@@ -2626,7 +2590,7 @@ function PersonalMemoryCenter({ data, onInvoke }) {
     ) {
       return;
     }
-    const config = {
+    void onInvoke('configure-provider', {
       provider: providerMode,
       profileCharLimit: Math.round(profileLimit),
       taskContextCharLimit: Math.round(taskLimit),
@@ -2640,459 +2604,261 @@ function PersonalMemoryCenter({ data, onInvoke }) {
             },
           }
         : {}),
-    };
-    void onInvoke('configure-provider', config);
+    });
   };
-  const profileUsage = status.profile
-    ? `${status.profile.usedChars} / ${status.profile.maxChars} 字符`
-    : provider === 'remote'
-      ? '由 Remote Provider 管理'
-      : '0 / 2000 字符';
+
   return (
-    <div className="mx-auto min-w-0 max-w-dashboard">
-      <SectionHead title="个人记忆" hint="跨会话沉淀你的偏好与常用操作" />
-      {notifications.length > 0 && (
-        <div className="mb-3 space-y-2">
-          {notifications.map((notice, index) => (
-            <Alert key={`${notice}-${index}`} type="info" showIcon message={notice} />
-          ))}
-        </div>
+    <div className="dashboard-settings-stack">
+      <SettingsSectionHead
+        icon={UserOutlined}
+        title="个人记忆设置"
+        description="控制当前项目的学习、注入、Provider 与同步"
+        status={page.status === 'disabled' ? '已停用' : provider === 'remote' ? 'Remote' : 'Local'}
+      />
+      {page.status === 'disabled' && (
+        <Alert
+          type="info"
+          showIcon
+          message="个人记忆插件已停用"
+          description="记忆文件和历史仍然保留，重新启用后即可继续使用。"
+          action={
+            <Button onClick={() => onInvoke('lifecycle', { action: 'enable' })}>重新启用</Button>
+          }
+        />
       )}
-      <section className="dashboard-memory-status" aria-label="个人记忆状态">
-        <div className="dashboard-memory-status-cell">
-          <div className="dashboard-memory-status-heading">
-            <span className="dashboard-memory-status-label">自动学习</span>
-            <Switch
-              size="small"
-              checked={Boolean(status.learningEnabled)}
-              aria-label="切换自动学习"
-              onChange={(enabled) => onInvoke('set-learning', { enabled })}
-            />
-          </div>
-          <span className="dashboard-memory-status-value">
-            {!learningAllowed
-              ? '项目配置禁止当前项目学习'
-              : status.learningEnabled
-                ? '会沉淀稳定偏好'
-                : '已暂停自动沉淀'}
-          </span>
-        </div>
-        <div className="dashboard-memory-status-cell">
-          <div className="dashboard-memory-status-heading">
-            <span className="dashboard-memory-status-label">记忆注入</span>
-            <Switch
-              size="small"
-              checked={Boolean(status.retrievalEnabled)}
-              aria-label="切换记忆注入"
-              onChange={(enabled) => onInvoke('set-retrieval', { enabled })}
-            />
-          </div>
-          <span className="dashboard-memory-status-value">
-            {!retrievalAllowed
-              ? '项目配置禁止当前项目注入'
-              : status.retrievalEnabled
-                ? '任务中可使用已保存内容'
-                : '已暂停任务注入'}
-          </span>
-        </div>
-        <div className="dashboard-memory-status-cell">
-          <span className="dashboard-memory-status-label">作用范围</span>
-          <span className="dashboard-memory-status-value">
-            {projectKey ? '当前项目' : '全局记忆'}
-          </span>
-          <span className="dashboard-memory-status-meta">
-            {projectKey ? '项目级偏好优先' : '跨项目共享'}
-          </span>
-        </div>
-        <div className="dashboard-memory-status-cell">
-          <span className="dashboard-memory-status-label">记忆文件</span>
-          <span className="dashboard-memory-status-value">{memoryFileCount} 个</span>
-          <span className="dashboard-memory-status-meta">
-            {provider === 'remote'
-              ? 'Remote Provider'
-              : status.remote
-                ? '已配置 Git remote'
-                : '仅保存在本地'}
-          </span>
-        </div>
-      </section>
-      <section
-        className="dashboard-memory-list mb-4"
-        aria-labelledby="dashboard-memory-profile-title"
-      >
-        <div className="dashboard-memory-panel-head">
-          <div>
-            <h3 id="dashboard-memory-profile-title">User Profile</h3>
-            <p>
-              {profileRecords.length > 0
-                ? `${profileRecords.length} 条用户事实、偏好与协作习惯`
-                : '还没有形成稳定的用户偏好'}
-            </p>
-          </div>
-          <div className="dashboard-memory-panel-head-actions">
-            <span className="dashboard-memory-status-meta">{profileUsage}</span>
-            <Button size="small" onClick={() => setShowNewProfile(true)}>
-              新增偏好
-            </Button>
-          </div>
-        </div>
-        {profileRecords.length === 0 ? (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有稳定的用户偏好" />
-        ) : (
-          <div className="dashboard-memory-records">
-            {profileRecords.map((record) => (
-              <div key={record.id} className="dashboard-memory-record">
-                <div className="dashboard-memory-record-content">
-                  <div className="dashboard-memory-record-kicker">
-                    <Tag bordered={false}>{record.category}</Tag>
-                    <span>{record.memoryClass ?? 'user-preference'}</span>
-                  </div>
-                  <p className="dashboard-memory-record-text">{record.text}</p>
-                  <div className="dashboard-memory-record-meta">
-                    <span>{record.evidenceCount ?? 0} 条证据</span>
-                    <span>更新于 {formatTimestamp(record.updatedAt)}</span>
-                  </div>
-                </div>
-                <div className="dashboard-memory-record-actions">
-                  <Button
-                    size="small"
-                    onClick={() => {
-                      setEditingRecord(record);
-                      setCorrectionText(record.text);
-                    }}
-                  >
-                    纠正
-                  </Button>
-                  <Button size="small" danger onClick={() => onInvoke('remove', { id: record.id })}>
-                    删除
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-      <div className="dashboard-memory-layout">
-        <section className="dashboard-memory-list" aria-labelledby="dashboard-memory-list-title">
-          <div className="dashboard-memory-panel-head">
-            <div>
-              <h3 id="dashboard-memory-list-title">可用于当前项目的记忆</h3>
-              <p>
-                {displayRecords.length > 0
-                  ? `${displayRecords.length} 条项目记忆`
-                  : '还没有匹配的项目记忆'}
-              </p>
-            </div>
-            {conflicts.length > 0 && <Tag color="warning">{conflicts.length} 个冲突待确认</Tag>}
-          </div>
-          {displayRecords.length === 0 ? (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有匹配的记忆" />
-          ) : (
-            <div className="dashboard-memory-records">
-              {displayRecords.map((record) => {
-                const text = typeof record.text === 'string' ? record.text : '';
-                const expandable = text.length > MEMORY_COLLAPSE_THRESHOLD;
-                const expanded = expandedRecordIds.has(record.id);
-                const visibleText =
-                  expandable && !expanded ? `${text.slice(0, MEMORY_COLLAPSE_THRESHOLD)}…` : text;
-                return (
-                  <div key={record.id} className="dashboard-memory-record">
-                    <div className="dashboard-memory-record-content">
-                      <div className="dashboard-memory-record-kicker">
-                        <Tag bordered={false}>{record.category}</Tag>
-                        <span>{record.scope === 'project' ? '项目记忆' : '全局记忆'}</span>
-                      </div>
-                      <p
-                        className={`dashboard-memory-record-text${
-                          expandable && !expanded ? ' is-collapsed' : ''
-                        }`}
-                      >
-                        {visibleText}
-                      </p>
-                      {expandable && (
-                        <Button
-                          className="dashboard-memory-record-text-toggle"
-                          size="small"
-                          type="link"
-                          aria-expanded={expanded}
-                          onClick={() =>
-                            setExpandedRecordIds((previous) => {
-                              const next = new Set(previous);
-                              if (next.has(record.id)) next.delete(record.id);
-                              else next.add(record.id);
-                              return next;
-                            })
-                          }
-                        >
-                          {expanded ? '收起完整记忆' : '展开完整记忆'}
-                        </Button>
-                      )}
-                      <div className="dashboard-memory-record-meta">
-                        <span>{record.evidenceCount ?? 0} 条证据</span>
-                        <span>更新于 {formatTimestamp(record.updatedAt)}</span>
-                      </div>
-                    </div>
-                    <div className="dashboard-memory-record-actions">
-                      <Button
-                        size="small"
-                        onClick={() => {
-                          setEditingRecord(record);
-                          setCorrectionText(record.text);
-                        }}
-                      >
-                        纠正
-                      </Button>
-                      <Button size="small" onClick={() => onInvoke('rollback', { id: record.id })}>
-                        回滚
-                      </Button>
-                      <Button
-                        size="small"
-                        danger
-                        onClick={() => onInvoke('remove', { id: record.id })}
-                      >
-                        删除
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
-        <aside
-          className="dashboard-memory-settings"
-          aria-labelledby="dashboard-memory-settings-title"
-        >
-          <div className="dashboard-memory-panel-head">
-            <div>
-              <h3 id="dashboard-memory-settings-title">记忆设置</h3>
-              <p>控制当前项目的学习与同步</p>
-            </div>
-          </div>
-          <div className="dashboard-memory-setting">
-            <div className="dashboard-memory-setting-copy">
-              <strong>项目学习</strong>
-              <span>
-                {!learningAllowed
-                  ? '项目配置已禁止自动学习'
-                  : learningPaused
-                    ? '当前项目暂停自动学习'
-                    : '允许当前项目沉淀新偏好'}
-              </span>
-            </div>
-            <Button
-              size="small"
-              disabled={!projectKey || !learningAllowed}
-              type={learningPaused ? 'default' : 'text'}
-              onClick={() =>
-                onInvoke('pause-project-learning', { projectKey, paused: !learningPaused })
-              }
-            >
-              {learningPaused ? '恢复' : '暂停'}
-            </Button>
-          </div>
-          <div className="dashboard-memory-setting">
-            <div className="dashboard-memory-setting-copy">
-              <strong>项目注入</strong>
-              <span>
-                {!retrievalAllowed
-                  ? '项目配置已禁止自动注入'
-                  : retrievalPaused
-                    ? '当前项目不注入记忆'
-                    : '任务中可以使用已保存记忆'}
-              </span>
-            </div>
-            <Button
-              size="small"
-              disabled={!projectKey || !retrievalAllowed}
-              type={retrievalPaused ? 'default' : 'text'}
-              onClick={() =>
-                onInvoke('pause-project-retrieval', { projectKey, paused: !retrievalPaused })
-              }
-            >
-              {retrievalPaused ? '恢复' : '暂停'}
-            </Button>
-          </div>
-          <div className="dashboard-memory-setting dashboard-memory-setting-stack">
-            <div className="dashboard-memory-setting-copy">
-              <strong>Provider</strong>
-              <span>
-                {provider === 'remote' ? '使用外部 Remote Provider' : '使用本地个人记忆存储'}
-              </span>
-            </div>
-            <Select
-              size="small"
-              value={providerMode}
-              aria-label="个人记忆 Provider"
-              options={[
-                { value: 'local', label: 'Local Provider' },
-                { value: 'remote', label: 'Remote Provider' },
-              ]}
-              onChange={setProviderMode}
-            />
-            <div className="dashboard-memory-remote-form">
-              <Input
-                size="small"
-                value={profileCharLimit}
-                onChange={(event) => setProfileCharLimit(event.target.value)}
-                placeholder="User Profile 字符上限"
-                aria-label="User Profile 字符上限"
-              />
-              <Input
-                size="small"
-                value={taskContextCharLimit}
-                onChange={(event) => setTaskContextCharLimit(event.target.value)}
-                placeholder="任务上下文字符上限"
-                aria-label="任务上下文字符上限"
-              />
-            </div>
-            {providerMode === 'remote' && (
-              <>
-                <Input
-                  size="small"
-                  value={providerEndpoint}
-                  onChange={(event) => setProviderEndpoint(event.target.value)}
-                  placeholder="Remote Provider endpoint"
-                  aria-label="Remote Provider endpoint"
-                />
-                <div className="dashboard-memory-remote-form">
-                  <Input
-                    size="small"
-                    value={providerTokenEnv}
-                    onChange={(event) => setProviderTokenEnv(event.target.value)}
-                    placeholder="Token 环境变量（可选）"
-                    aria-label="Remote Provider token 环境变量"
-                  />
-                  <Input
-                    size="small"
-                    value={providerProfile}
-                    onChange={(event) => setProviderProfile(event.target.value)}
-                    placeholder="Profile"
-                    aria-label="Remote Provider profile"
-                  />
-                </div>
-                <Input
-                  size="small"
-                  value={providerTimeoutMs}
-                  onChange={(event) => setProviderTimeoutMs(event.target.value)}
-                  placeholder="请求超时（毫秒）"
-                  aria-label="Remote Provider 请求超时"
-                />
-              </>
-            )}
-            <div className="dashboard-memory-sync-row">
-              <span>Provider 切换不会迁移或删除已有数据；保存后重新加载页面即可生效</span>
-              <div className="dashboard-memory-remote-form">
-                <Button size="small" onClick={() => onInvoke('test-provider', {})}>
-                  测试连接
-                </Button>
-                <Button size="small" type="primary" onClick={saveProviderConfig}>
-                  保存配置
-                </Button>
+      {page.status !== 'disabled' && (
+        <>
+          <section className="dashboard-settings-panel" aria-labelledby="memory-global-settings">
+            <div className="dashboard-settings-panel-head">
+              <div>
+                <h4 id="memory-global-settings">全局能力</h4>
+                <p>控制个人记忆是否学习新偏好并写入任务上下文</p>
               </div>
             </div>
-          </div>
-          {pendingRecords.length > 0 && (
             <div className="dashboard-memory-setting">
               <div className="dashboard-memory-setting-copy">
-                <strong>待确认记忆</strong>
-                <span>{pendingRecords.length} 条候选或冲突，不会自动注入</span>
+                <strong>自动学习</strong>
+                <span>{status.learningEnabled ? '会沉淀稳定偏好' : '已暂停自动沉淀'}</span>
               </div>
-              <Button size="small" onClick={() => setShowPending(true)}>
-                查看待处理
-              </Button>
+              <Switch
+                size="small"
+                checked={Boolean(status.learningEnabled)}
+                aria-label="切换自动学习"
+                onChange={(enabled) => onInvoke('set-learning', { enabled })}
+              />
             </div>
-          )}
-          {provider === 'local' && (
+            <div className="dashboard-memory-setting">
+              <div className="dashboard-memory-setting-copy">
+                <strong>记忆注入</strong>
+                <span>{status.retrievalEnabled ? '任务中可使用已保存内容' : '已暂停任务注入'}</span>
+              </div>
+              <Switch
+                size="small"
+                checked={Boolean(status.retrievalEnabled)}
+                aria-label="切换记忆注入"
+                onChange={(enabled) => onInvoke('set-retrieval', { enabled })}
+              />
+            </div>
+          </section>
+          <section className="dashboard-settings-panel" aria-labelledby="memory-project-settings">
+            <div className="dashboard-settings-panel-head">
+              <div>
+                <h4 id="memory-project-settings">当前项目</h4>
+                <p>单独暂停这个项目的学习或任务注入</p>
+              </div>
+            </div>
+            <div className="dashboard-memory-setting">
+              <div className="dashboard-memory-setting-copy">
+                <strong>项目学习</strong>
+                <span>
+                  {!learningAllowed
+                    ? '项目配置已禁止自动学习'
+                    : learningPaused
+                      ? '当前项目暂停自动学习'
+                      : '允许当前项目沉淀新偏好'}
+                </span>
+              </div>
+              <Switch
+                size="small"
+                checked={Boolean(projectKey && learningAllowed && !learningPaused)}
+                disabled={!projectKey || !learningAllowed}
+                aria-label="切换当前项目学习"
+                onChange={(enabled) =>
+                  onInvoke('pause-project-learning', { projectKey, paused: !enabled })
+                }
+              />
+            </div>
+            <div className="dashboard-memory-setting">
+              <div className="dashboard-memory-setting-copy">
+                <strong>项目注入</strong>
+                <span>
+                  {!retrievalAllowed
+                    ? '项目配置已禁止自动注入'
+                    : retrievalPaused
+                      ? '当前项目不注入记忆'
+                      : '任务中可以使用已保存记忆'}
+                </span>
+              </div>
+              <Switch
+                size="small"
+                checked={Boolean(projectKey && retrievalAllowed && !retrievalPaused)}
+                disabled={!projectKey || !retrievalAllowed}
+                aria-label="切换当前项目记忆注入"
+                onChange={(enabled) =>
+                  onInvoke('pause-project-retrieval', { projectKey, paused: !enabled })
+                }
+              />
+            </div>
+          </section>
+          <section className="dashboard-settings-panel" aria-labelledby="memory-provider-settings">
+            <div className="dashboard-settings-panel-head">
+              <div>
+                <h4 id="memory-provider-settings">Provider 与上下文</h4>
+                <p>选择存储来源，并限制写入任务的上下文大小</p>
+              </div>
+              {pendingRecords.length > 0 && (
+                <Button size="small" onClick={() => setShowPending(true)}>
+                  {pendingRecords.length} 条待确认
+                </Button>
+              )}
+            </div>
             <div className="dashboard-memory-setting dashboard-memory-setting-stack">
               <div className="dashboard-memory-setting-copy">
-                <strong>同步仓库</strong>
-                <span>{status.remote ?? '尚未配置 Git remote'}</span>
+                <strong>Provider</strong>
+                <span>
+                  {provider === 'remote' ? '使用外部 Remote Provider' : '使用本地个人记忆存储'}
+                </span>
               </div>
+              <Select
+                value={providerMode}
+                aria-label="个人记忆 Provider"
+                options={[
+                  { value: 'local', label: 'Local Provider' },
+                  { value: 'remote', label: 'Remote Provider' },
+                ]}
+                onChange={setProviderMode}
+              />
               <div className="dashboard-memory-remote-form">
                 <Input
-                  size="small"
-                  value={remoteUrl}
-                  onChange={(event) => setRemoteUrl(event.target.value)}
-                  placeholder="输入记忆仓库 remote"
-                  aria-label="记忆仓库 Git remote"
+                  value={profileCharLimit}
+                  onChange={(event) => setProfileCharLimit(event.target.value)}
+                  placeholder="User Profile 字符上限"
+                  aria-label="User Profile 字符上限"
                 />
-                <Button
-                  size="small"
-                  disabled={!remoteUrl.trim()}
-                  onClick={() => {
-                    void onInvoke('configure-remote', { url: remoteUrl.trim() });
-                    setRemoteUrl('');
-                  }}
-                >
-                  保存
-                </Button>
+                <Input
+                  value={taskContextCharLimit}
+                  onChange={(event) => setTaskContextCharLimit(event.target.value)}
+                  placeholder="任务上下文字符上限"
+                  aria-label="任务上下文字符上限"
+                />
               </div>
+              {providerMode === 'remote' && (
+                <>
+                  <Input
+                    value={providerEndpoint}
+                    onChange={(event) => setProviderEndpoint(event.target.value)}
+                    placeholder="Remote Provider endpoint"
+                    aria-label="Remote Provider endpoint"
+                  />
+                  <div className="dashboard-memory-remote-form">
+                    <Input
+                      value={providerTokenEnv}
+                      onChange={(event) => setProviderTokenEnv(event.target.value)}
+                      placeholder="Token 环境变量（可选）"
+                      aria-label="Remote Provider token 环境变量"
+                    />
+                    <Input
+                      value={providerProfile}
+                      onChange={(event) => setProviderProfile(event.target.value)}
+                      placeholder="Profile"
+                      aria-label="Remote Provider profile"
+                    />
+                  </div>
+                  <Input
+                    value={providerTimeoutMs}
+                    onChange={(event) => setProviderTimeoutMs(event.target.value)}
+                    placeholder="请求超时（毫秒）"
+                    aria-label="Remote Provider 请求超时"
+                  />
+                </>
+              )}
               <div className="dashboard-memory-sync-row">
-                <span>{syncMessage}</span>
-                <Button size="small" onClick={() => onInvoke('sync', {})}>
-                  立即同步
-                </Button>
+                <span>Provider 切换不会迁移或删除已有数据；保存后重新加载页面即可生效</span>
+                <div className="dashboard-memory-remote-form">
+                  <Button onClick={() => onInvoke('test-provider', {})}>测试连接</Button>
+                  <Button type="primary" onClick={saveProviderConfig}>
+                    保存配置
+                  </Button>
+                </div>
               </div>
             </div>
+          </section>
+          {provider === 'local' && (
+            <section className="dashboard-settings-panel" aria-labelledby="memory-sync-settings">
+              <div className="dashboard-settings-panel-head">
+                <div>
+                  <h4 id="memory-sync-settings">本地同步</h4>
+                  <p>把本地记忆仓库连接到你控制的 Git remote</p>
+                </div>
+              </div>
+              <div className="dashboard-memory-setting dashboard-memory-setting-stack">
+                <div className="dashboard-memory-setting-copy">
+                  <strong>同步仓库</strong>
+                  <span>{status.remote ?? '尚未配置 Git remote'}</span>
+                </div>
+                <div className="dashboard-memory-remote-form">
+                  <Input
+                    value={remoteUrl}
+                    onChange={(event) => setRemoteUrl(event.target.value)}
+                    placeholder="输入记忆仓库 remote"
+                    aria-label="记忆仓库 Git remote"
+                  />
+                  <Button
+                    disabled={!remoteUrl.trim()}
+                    onClick={() => {
+                      void onInvoke('configure-remote', { url: remoteUrl.trim() });
+                      setRemoteUrl('');
+                    }}
+                  >
+                    保存
+                  </Button>
+                </div>
+                <div className="dashboard-memory-sync-row">
+                  <span>{syncMessage}</span>
+                  <Button icon={<SyncOutlined />} onClick={() => onInvoke('sync', {})}>
+                    立即同步
+                  </Button>
+                </div>
+              </div>
+            </section>
           )}
-          <div className="dashboard-memory-setting dashboard-memory-setting-danger">
-            <div className="dashboard-memory-setting-copy">
-              <strong>插件管理</strong>
-              <span>卸载后记忆文件和历史仍会保留</span>
-            </div>
-            <Button
-              size="small"
-              danger
-              onClick={() =>
-                Modal.confirm({
-                  title: '卸载个人记忆插件？',
-                  content: '记忆文件和历史会保留，之后可以重新安装。',
-                  okText: '卸载',
-                  cancelText: '取消',
-                  onOk: () => onInvoke('lifecycle', { action: 'uninstall' }),
-                })
-              }
-            >
-              卸载插件
-            </Button>
-          </div>
-        </aside>
-      </div>
-      <Modal
-        open={showNewProfile}
-        title="新增 User Profile 偏好"
-        okText="保存"
-        cancelText="取消"
-        okButtonProps={{ disabled: newProfileText.trim().length === 0 }}
-        onCancel={() => setShowNewProfile(false)}
-        onOk={() => {
-          if (newProfileText.trim().length === 0) return;
-          void onInvoke('remember', {
-            scope: 'global',
-            memoryClass: 'user-preference',
-            category: newProfileCategory.trim() || '沟通偏好',
-            text: newProfileText.trim(),
-          });
-          setNewProfileText('');
-          setShowNewProfile(false);
-        }}
+        </>
+      )}
+      <section
+        className="dashboard-settings-panel dashboard-settings-danger"
+        aria-labelledby="memory-plugin-settings"
       >
-        <Input
-          className="mb-3"
-          value={newProfileCategory}
-          onChange={(event) => setNewProfileCategory(event.target.value)}
-          placeholder="分类，例如：沟通偏好"
-          aria-label="User Profile 分类"
-        />
-        <Input.TextArea
-          value={newProfileText}
-          onChange={(event) => setNewProfileText(event.target.value)}
-          placeholder="例如：以后都用中文回答"
-          aria-label="User Profile 内容"
-          autoSize={{ minRows: 3, maxRows: 6 }}
-        />
-      </Modal>
+        <div className="dashboard-settings-panel-head">
+          <div>
+            <h4 id="memory-plugin-settings">插件管理</h4>
+            <p>卸载后记忆文件和历史仍会保留</p>
+          </div>
+          <Button
+            danger
+            onClick={() =>
+              Modal.confirm({
+                title: '卸载个人记忆插件？',
+                content: '记忆文件和历史会保留，之后可以重新安装。',
+                okText: '卸载',
+                cancelText: '取消',
+                onOk: () => onInvoke('lifecycle', { action: 'uninstall' }),
+              })
+            }
+          >
+            卸载插件
+          </Button>
+        </div>
+      </section>
       <Modal
         open={showPending}
         title="待确认记忆"
@@ -3135,20 +2901,825 @@ function PersonalMemoryCenter({ data, onInvoke }) {
           </div>
         )}
       </Modal>
+    </div>
+  );
+}
+
+function ProjectKnowledgeSettings({ page, data, onInvoke }) {
+  const snapshot = data && typeof data === 'object' ? data : {};
+  const provider =
+    snapshot.provider === 'remote' ? 'Remote' : snapshot.provider === 'local' ? 'Local' : '—';
+  const configured =
+    typeof snapshot.configured === 'boolean'
+      ? snapshot.configured
+        ? '配置有效'
+        : '需要检查'
+      : '—';
+  const remote = snapshot.remote;
+  const local = snapshot.local;
+  const disabled = page.status === 'disabled';
+
+  return (
+    <div className="dashboard-settings-stack">
+      <SettingsSectionHead
+        icon={DatabaseOutlined}
+        title="项目知识设置"
+        description="管理当前项目的检索 Provider 与插件生命周期"
+        status={disabled ? '已暂停' : provider}
+      />
+      {disabled && (
+        <Alert
+          type="info"
+          showIcon
+          message={page.projectPaused ? '当前项目已暂停项目知识' : '项目知识插件已停用'}
+          description="项目文件和插件配置仍然保留。"
+          action={
+            <Button onClick={() => onInvoke('lifecycle', { action: 'enable' })}>重新启用</Button>
+          }
+        />
+      )}
+      {!disabled && (
+        <section className="dashboard-settings-panel" aria-labelledby="knowledge-provider-settings">
+          <div className="dashboard-settings-panel-head">
+            <div>
+              <h4 id="knowledge-provider-settings">Provider 配置</h4>
+              <p>只读展示安全字段，不会在此发起检索</p>
+            </div>
+            <Tag>{provider}</Tag>
+          </div>
+          <div className="dashboard-knowledge-summary-body">
+            <p className="dashboard-knowledge-retrieval">{snapshot.retrieval}</p>
+            {provider === 'Remote' && remote ? (
+              <dl className="dashboard-knowledge-fields">
+                <div>
+                  <dt>Endpoint</dt>
+                  <dd>{remote.endpoint || '未提供'}</dd>
+                </div>
+                <div>
+                  <dt>Scope</dt>
+                  <dd>{remote.scope || '未配置'}</dd>
+                </div>
+                <div>
+                  <dt>Timeout</dt>
+                  <dd>{remote.timeoutMs} ms</dd>
+                </div>
+                <div>
+                  <dt>Token 环境变量</dt>
+                  <dd>
+                    {remote.tokenEnv
+                      ? `${remote.tokenEnv} · ${remote.tokenConfigured ? '已提供' : '未提供'}`
+                      : '未配置（无需 token）'}
+                  </dd>
+                </div>
+              </dl>
+            ) : provider === 'Local' && local ? (
+              <dl className="dashboard-knowledge-fields">
+                <div>
+                  <dt>Repository</dt>
+                  <dd>{local.repositoryId}</dd>
+                </div>
+                <div>
+                  <dt>Workspace</dt>
+                  <dd>{local.workspaceId}</dd>
+                </div>
+                <div>
+                  <dt>来源 / Section</dt>
+                  <dd>
+                    {local.sourceCount} / {local.sectionCount}
+                  </dd>
+                </div>
+                <div>
+                  <dt>索引状态</dt>
+                  <dd>{local.available ? '可用' : '尚未建立或不可用'}</dd>
+                </div>
+                <div>
+                  <dt>最近查询</dt>
+                  <dd>
+                    {typeof local.lastQueryMs === 'number'
+                      ? `${local.lastQueryMs} ms · ${local.lastCandidateCount ?? 0} 个候选`
+                      : '尚无查询统计'}
+                  </dd>
+                </div>
+                <div>
+                  <dt>候选通道</dt>
+                  <dd>{local.channels?.length ? local.channels.join(' + ') : '尚无'}</dd>
+                </div>
+              </dl>
+            ) : null}
+          </div>
+        </section>
+      )}
+      <section className="dashboard-settings-panel" aria-labelledby="knowledge-project-settings">
+        <div className="dashboard-settings-panel-head">
+          <div>
+            <h4 id="knowledge-project-settings">当前项目</h4>
+            <p>项目级暂停不会删除知识文件或影响其他项目</p>
+          </div>
+          {!disabled && (
+            <Button onClick={() => onInvoke('lifecycle', { action: 'disable' })}>
+              暂停当前项目
+            </Button>
+          )}
+        </div>
+        <div className="dashboard-settings-facts">
+          <div>
+            <span>插件状态</span>
+            <strong>
+              {page.globallyDisabled
+                ? '全局停用'
+                : page.projectPaused
+                  ? '已启用'
+                  : disabled
+                    ? '已停用'
+                    : '已启用'}
+            </strong>
+          </div>
+          <div>
+            <span>当前项目</span>
+            <strong>{page.projectPaused ? '已暂停' : '已启用'}</strong>
+          </div>
+          <div>
+            <span>配置状态</span>
+            <strong>{configured}</strong>
+          </div>
+        </div>
+      </section>
+      <section
+        className="dashboard-settings-panel dashboard-settings-danger"
+        aria-labelledby="knowledge-plugin-settings"
+      >
+        <div className="dashboard-settings-panel-head">
+          <div>
+            <h4 id="knowledge-plugin-settings">插件管理</h4>
+            <p>卸载只停止插件，不会删除项目文档或配置</p>
+          </div>
+          <Button
+            danger
+            onClick={() =>
+              Modal.confirm({
+                title: '卸载项目知识插件？',
+                content: '卸载只停止当前插件，不会删除项目文档或配置。',
+                okText: '卸载',
+                cancelText: '取消',
+                onOk: () => onInvoke('lifecycle', { action: 'uninstall' }),
+              })
+            }
+          >
+            卸载插件
+          </Button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ProjectKnowledgeCenter({ page, data, onInvoke }) {
+  const snapshot = data && typeof data === 'object' ? data : {};
+  const provider =
+    snapshot.provider === 'remote' ? 'Remote' : snapshot.provider === 'local' ? 'Local' : '—';
+  const configured =
+    typeof snapshot.configured === 'boolean'
+      ? snapshot.configured
+        ? '配置有效'
+        : '需要检查'
+      : '—';
+  const diagnostics =
+    Array.isArray(snapshot.diagnostics) && snapshot.diagnostics.length > 0
+      ? snapshot.diagnostics
+      : (page.diagnostics ?? []);
+  const disabled = page.status === 'disabled';
+  const remote = snapshot.remote;
+  const local = snapshot.local;
+
+  return (
+    <div className="dashboard-tool-page dashboard-tool-page-knowledge mx-auto min-w-0 max-w-dashboard">
+      <PluginCenterHeader
+        icon={DatabaseOutlined}
+        title={page.label}
+        description="管理当前项目的知识来源、检索状态与可复用知识单元"
+        meta={[
+          { label: 'Provider', value: provider, tone: provider === '—' ? 'neutral' : 'accent' },
+          {
+            label: '状态',
+            value: disabled ? '已暂停' : configured,
+            tone: disabled || configured === '需要检查' ? 'warning' : 'success',
+          },
+        ]}
+      />
+      {disabled && (
+        <Alert
+          className="mb-4"
+          type="info"
+          showIcon
+          message={page.projectPaused ? '当前项目已暂停项目知识' : '项目知识插件已停用'}
+          description={
+            page.projectPaused
+              ? '只影响当前项目，项目文件和插件配置仍然保留。'
+              : '插件状态和项目文件仍然保留，重新启用后即可继续使用。'
+          }
+          action={
+            <Button onClick={() => onInvoke('lifecycle', { action: 'enable' })}>重新启用</Button>
+          }
+        />
+      )}
+      <section className="dashboard-knowledge-status" aria-label="项目知识状态">
+        <div className="dashboard-knowledge-status-cell">
+          <span className="dashboard-knowledge-status-label">Provider</span>
+          <span className="dashboard-knowledge-status-value">
+            <span className="dashboard-tool-state-dot is-accent" aria-hidden="true" />
+            {provider}
+          </span>
+          <span className="dashboard-knowledge-status-meta">
+            {provider === 'Local'
+              ? local?.available
+                ? 'FTS5 + ripgrep 混合召回'
+                : 'ripgrep 回退可用'
+              : provider === 'Remote'
+                ? '固定 Retrieval API v1'
+                : '未读取状态'}
+          </span>
+        </div>
+        <div className="dashboard-knowledge-status-cell">
+          <span className="dashboard-knowledge-status-label">插件状态</span>
+          <span className="dashboard-knowledge-status-value">
+            <span
+              className={`dashboard-tool-state-dot ${disabled ? 'is-warning' : 'is-success'}`}
+              aria-hidden="true"
+            />
+            {page.globallyDisabled
+              ? '全局停用'
+              : page.projectPaused
+                ? '已启用'
+                : disabled
+                  ? '已停用'
+                  : '已启用'}
+          </span>
+          <span className="dashboard-knowledge-status-meta">由 Plugin Runtime 管理</span>
+        </div>
+        <div className="dashboard-knowledge-status-cell">
+          <span className="dashboard-knowledge-status-label">当前项目</span>
+          <span className="dashboard-knowledge-status-value">
+            <span
+              className={`dashboard-tool-state-dot ${page.projectPaused ? 'is-warning' : 'is-success'}`}
+              aria-hidden="true"
+            />
+            {page.projectPaused ? '已暂停' : '已启用'}
+          </span>
+          <span className="dashboard-knowledge-status-meta">仅影响这个项目的任务</span>
+        </div>
+        <div className="dashboard-knowledge-status-cell">
+          <span className="dashboard-knowledge-status-label">配置状态</span>
+          <span className="dashboard-knowledge-status-value">
+            <span
+              className={`dashboard-tool-state-dot ${configured === '需要检查' ? 'is-warning' : 'is-success'}`}
+              aria-hidden="true"
+            />
+            {configured}
+          </span>
+          <span className="dashboard-knowledge-status-meta">页面不会发起检索请求</span>
+        </div>
+      </section>
+      <div className="dashboard-knowledge-layout">
+        <section
+          className="dashboard-knowledge-summary"
+          aria-labelledby="dashboard-knowledge-summary-title"
+        >
+          <div className="dashboard-knowledge-panel-head">
+            <div className="dashboard-tool-panel-title">
+              <span className="dashboard-tool-panel-icon" aria-hidden="true">
+                <DatabaseOutlined />
+              </span>
+              <div>
+                <h3 id="dashboard-knowledge-summary-title">知识概览</h3>
+                <p>当前项目可供 Agent 使用的知识状态</p>
+              </div>
+            </div>
+            {provider !== '—' && <Tag variant="filled">{provider}</Tag>}
+          </div>
+          {data === null || data === undefined ? (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={page.projectPaused ? '当前项目暂停后不加载状态' : '插件停用后不加载状态'}
+            />
+          ) : (
+            <div className="dashboard-knowledge-summary-body">
+              <p className="dashboard-knowledge-retrieval">{snapshot.retrieval}</p>
+              <div className="dashboard-knowledge-overview-metrics">
+                <div>
+                  <span>知识单元</span>
+                  <strong>{provider === 'Local' ? (local?.unitCount ?? 0) : 'Remote'}</strong>
+                </div>
+                <div>
+                  <span>来源</span>
+                  <strong>
+                    {provider === 'Local' ? (local?.sourceCount ?? 0) : (remote?.scope ?? '—')}
+                  </strong>
+                </div>
+                <div>
+                  <span>索引</span>
+                  <strong>
+                    {provider === 'Local' ? (local?.available ? '可用' : '待建立') : configured}
+                  </strong>
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+        <section
+          className="dashboard-knowledge-diagnostics"
+          aria-labelledby="dashboard-knowledge-diagnostics-title"
+        >
+          <div className="dashboard-knowledge-panel-head">
+            <div className="dashboard-tool-panel-title">
+              <span className="dashboard-tool-panel-icon is-warning" aria-hidden="true">
+                <SafetyCertificateOutlined />
+              </span>
+              <div>
+                <h3 id="dashboard-knowledge-diagnostics-title">运行诊断</h3>
+                <p>最近三条需要关注的有界信息</p>
+              </div>
+            </div>
+            {diagnostics.length > 0 && <Tag color="warning">{diagnostics.length} 条</Tag>}
+          </div>
+          {diagnostics.length === 0 ? (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有新的诊断" />
+          ) : (
+            <div className="dashboard-knowledge-diagnostics-list">
+              {diagnostics.map((diagnostic, index) => {
+                const code = typeof diagnostic === 'string' ? '运行时' : diagnostic.code;
+                const message = typeof diagnostic === 'string' ? diagnostic : diagnostic.message;
+                return (
+                  <div className="dashboard-knowledge-diagnostic" key={`${code}-${index}`}>
+                    <Tag variant="filled">{code}</Tag>
+                    <span>{message}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      </div>
+      {provider === 'Local' && local && (
+        <section
+          className="dashboard-knowledge-summary dashboard-knowledge-units mt-4"
+          aria-labelledby="dashboard-knowledge-units-title"
+        >
+          <div className="dashboard-knowledge-panel-head">
+            <div className="dashboard-tool-panel-title">
+              <span className="dashboard-tool-panel-icon" aria-hidden="true">
+                <FileTextOutlined />
+              </span>
+              <div>
+                <h3 id="dashboard-knowledge-units-title">项目知识单元</h3>
+                <p>查看已沉淀的结构、结论、来源与一跳关系</p>
+              </div>
+            </div>
+            <Tag variant="filled">{local.unitCount ?? 0} 个</Tag>
+          </div>
+          <div className="dashboard-knowledge-summary-body">
+            <dl className="dashboard-knowledge-fields">
+              <div>
+                <dt>状态</dt>
+                <dd>
+                  active {local.activeUnitCount ?? 0} · draft {local.draftUnitCount ?? 0} · retired{' '}
+                  {local.retiredUnitCount ?? 0}
+                </dd>
+              </div>
+              <div>
+                <dt>关系</dt>
+                <dd>{local.relationCount ?? 0} 条有来源的一跳关系</dd>
+              </div>
+            </dl>
+            {(local.units ?? []).length === 0 ? (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚无项目知识单元" />
+            ) : (
+              <div className="dashboard-knowledge-unit-list" aria-label="项目知识单元详情">
+                {(local.units ?? []).slice(0, 12).map((unit) => (
+                  <div className="dashboard-knowledge-unit" key={unit.id}>
+                    <span className="dashboard-knowledge-unit-mark" aria-hidden="true">
+                      <FileTextOutlined />
+                    </span>
+                    <div className="dashboard-knowledge-unit-main">
+                      <div className="dashboard-knowledge-unit-title">
+                        <strong>{unit.title}</strong>
+                        <Tag variant="filled">{unit.state}</Tag>
+                      </div>
+                      <div className="dashboard-knowledge-unit-meta">
+                        {unit.kind} · {unit.origin}
+                      </div>
+                      <p>{unit.summary}</p>
+                      <div className="dashboard-knowledge-unit-footnote">
+                        来源：
+                        {(unit.conclusions ?? [])
+                          .flatMap((conclusion) => conclusion.sources ?? [])
+                          .map((source, index) => (
+                            <span key={`${unit.id}-source-${index}`}>
+                              {' '}
+                              {source.source}
+                              {source.anchor ? `#${source.anchor}` : ''}
+                            </span>
+                          ))}
+                      </div>
+                      <div className="dashboard-knowledge-unit-footnote">
+                        关系：
+                        {(unit.relations ?? []).length === 0
+                          ? '无'
+                          : (unit.relations ?? [])
+                              .map((relation) => `${relation.type} → ${relation.target}`)
+                              .join('、')}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function PersonalMemoryCenter({ data, onInvoke }) {
+  const [editingRecord, setEditingRecord] = useState(null);
+  const [correctionText, setCorrectionText] = useState('');
+  const [correctionSaving, setCorrectionSaving] = useState(false);
+  const [showNewProfile, setShowNewProfile] = useState(false);
+  const [newProfileText, setNewProfileText] = useState('');
+  const [newProfileCategory, setNewProfileCategory] = useState('沟通偏好');
+  const [expandedRecordIds, setExpandedRecordIds] = useState(() => new Set());
+  const status = data?.status ?? {};
+  const retrieval = data?.retrieval ?? {};
+  const management = data?.management ?? {};
+  const policy = data?.policy ?? {};
+  const learningAllowed = policy.learning !== false;
+  const retrievalAllowed = policy.retrieval !== false;
+  const records = management.records ?? retrieval.records ?? [];
+  const profileRecords = retrieval.profileRecords ?? records.filter(isUserProfileRecord);
+  const projectRecords = records.filter(
+    (record) => record.scope === 'project' && !isUserProfileRecord(record),
+  );
+  const displayRecords =
+    projectRecords.length > 0
+      ? projectRecords
+      : records.filter((record) => !isUserProfileRecord(record));
+  const conflicts = management.conflicts ?? [];
+  const notifications = data?.notifications ?? [];
+  const projectKey = data?.projectKey;
+  const memoryFileCount = status.files?.length ?? 0;
+  const provider = status.provider?.provider ?? 'local';
+  const profileUsage = status.profile
+    ? `${status.profile.usedChars} / ${status.profile.maxChars} 字符`
+    : provider === 'remote'
+      ? '由 Remote Provider 管理'
+      : '0 / 2000 字符';
+  return (
+    <div className="dashboard-tool-page dashboard-tool-page-memory mx-auto min-w-0 max-w-dashboard">
+      <PluginCenterHeader
+        icon={UserOutlined}
+        title="个人记忆"
+        description="集中管理跨会话偏好、项目经验与任务上下文"
+        meta={[
+          {
+            label: 'Provider',
+            value: provider === 'remote' ? 'Remote' : 'Local',
+            tone: 'accent',
+          },
+          {
+            label: '范围',
+            value: projectKey ? '当前项目' : '全局',
+            tone: 'neutral',
+          },
+          {
+            label: '记录',
+            value: `${profileRecords.length + displayRecords.length}`,
+            tone: 'success',
+          },
+        ]}
+        actions={
+          <Button
+            size="small"
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => setShowNewProfile(true)}
+          >
+            新增偏好
+          </Button>
+        }
+      />
+      {notifications.length > 0 && (
+        <div className="mb-3 space-y-2">
+          {notifications.map((notice, index) => (
+            <Alert key={`${notice}-${index}`} type="info" showIcon message={notice} />
+          ))}
+        </div>
+      )}
+      <section className="dashboard-memory-status" aria-label="个人记忆状态">
+        <div className="dashboard-memory-status-cell">
+          <span className="dashboard-memory-status-label">自动学习</span>
+          <span className="dashboard-memory-status-value">
+            <span
+              className={`dashboard-tool-state-dot ${status.learningEnabled ? 'is-success' : 'is-muted'}`}
+              aria-hidden="true"
+            />
+            {!learningAllowed
+              ? '项目配置禁止当前项目学习'
+              : status.learningEnabled
+                ? '会沉淀稳定偏好'
+                : '已暂停自动沉淀'}
+          </span>
+        </div>
+        <div className="dashboard-memory-status-cell">
+          <span className="dashboard-memory-status-label">记忆注入</span>
+          <span className="dashboard-memory-status-value">
+            <span
+              className={`dashboard-tool-state-dot ${status.retrievalEnabled ? 'is-accent' : 'is-muted'}`}
+              aria-hidden="true"
+            />
+            {!retrievalAllowed
+              ? '项目配置禁止当前项目注入'
+              : status.retrievalEnabled
+                ? '任务中可使用已保存内容'
+                : '已暂停任务注入'}
+          </span>
+        </div>
+        <div className="dashboard-memory-status-cell">
+          <span className="dashboard-memory-status-label">作用范围</span>
+          <span className="dashboard-memory-status-value">
+            <span className="dashboard-tool-state-dot is-accent" aria-hidden="true" />
+            {projectKey ? '当前项目' : '全局记忆'}
+          </span>
+          <span className="dashboard-memory-status-meta">
+            {projectKey ? '项目级偏好优先' : '跨项目共享'}
+          </span>
+        </div>
+        <div className="dashboard-memory-status-cell">
+          <span className="dashboard-memory-status-label">记忆文件</span>
+          <span className="dashboard-memory-status-value">
+            <span className="dashboard-tool-state-dot is-success" aria-hidden="true" />
+            {memoryFileCount} 个
+          </span>
+          <span className="dashboard-memory-status-meta">
+            {provider === 'remote'
+              ? 'Remote Provider'
+              : status.remote
+                ? '已配置 Git remote'
+                : '仅保存在本地'}
+          </span>
+        </div>
+      </section>
+      <section
+        className="dashboard-memory-list mb-4"
+        aria-labelledby="dashboard-memory-profile-title"
+      >
+        <div className="dashboard-memory-panel-head">
+          <div className="dashboard-tool-panel-title">
+            <span className="dashboard-tool-panel-icon" aria-hidden="true">
+              <UserOutlined />
+            </span>
+            <div>
+              <h3 id="dashboard-memory-profile-title">User Profile</h3>
+              <p>
+                {profileRecords.length > 0
+                  ? `${profileRecords.length} 条用户事实、偏好与协作习惯`
+                  : '还没有形成稳定的用户偏好'}
+              </p>
+            </div>
+          </div>
+          <div className="dashboard-memory-panel-head-actions">
+            <span className="dashboard-tool-counter">{profileUsage}</span>
+          </div>
+        </div>
+        {profileRecords.length === 0 ? (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有稳定的用户偏好" />
+        ) : (
+          <div className="dashboard-memory-records">
+            {profileRecords.map((record) => (
+              <div key={record.id} className="dashboard-memory-record">
+                <div className="dashboard-memory-record-main">
+                  <span className="dashboard-memory-record-mark" aria-hidden="true">
+                    <UserOutlined />
+                  </span>
+                  <div className="dashboard-memory-record-content">
+                    <div className="dashboard-memory-record-kicker">
+                      <Tag variant="filled">{record.category}</Tag>
+                      <span>{record.memoryClass ?? 'user-preference'}</span>
+                    </div>
+                    <p className="dashboard-memory-record-text">{record.text}</p>
+                    <div className="dashboard-memory-record-meta">
+                      <span>{record.evidenceCount ?? 0} 条证据</span>
+                      <span>更新于 {formatTimestamp(record.updatedAt)}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="dashboard-memory-record-actions">
+                  <Tooltip title="纠正记忆">
+                    <Button
+                      size="small"
+                      type="text"
+                      icon={<EditOutlined />}
+                      aria-label="纠正记忆"
+                      onClick={() => {
+                        setEditingRecord(record);
+                        setCorrectionText(record.text);
+                      }}
+                    />
+                  </Tooltip>
+                  <Tooltip title="删除记忆">
+                    <Button
+                      size="small"
+                      type="text"
+                      danger
+                      icon={<DeleteOutlined />}
+                      aria-label="删除记忆"
+                      onClick={() => onInvoke('remove', { id: record.id })}
+                    />
+                  </Tooltip>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+      <div className="dashboard-memory-content">
+        <section className="dashboard-memory-list" aria-labelledby="dashboard-memory-list-title">
+          <div className="dashboard-memory-panel-head">
+            <div className="dashboard-tool-panel-title">
+              <span className="dashboard-tool-panel-icon" aria-hidden="true">
+                <DatabaseOutlined />
+              </span>
+              <div>
+                <h3 id="dashboard-memory-list-title">当前项目记忆</h3>
+                <p>
+                  {displayRecords.length > 0
+                    ? `${displayRecords.length} 条可用于当前任务的记忆`
+                    : '还没有匹配的项目记忆'}
+                </p>
+              </div>
+            </div>
+            {conflicts.length > 0 && <Tag color="warning">{conflicts.length} 个冲突待确认</Tag>}
+          </div>
+          {displayRecords.length === 0 ? (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有匹配的记忆" />
+          ) : (
+            <div className="dashboard-memory-records">
+              {displayRecords.map((record) => {
+                const text = typeof record.text === 'string' ? record.text : '';
+                const expandable = text.length > MEMORY_COLLAPSE_THRESHOLD;
+                const expanded = expandedRecordIds.has(record.id);
+                const visibleText =
+                  expandable && !expanded ? `${text.slice(0, MEMORY_COLLAPSE_THRESHOLD)}…` : text;
+                return (
+                  <div key={record.id} className="dashboard-memory-record">
+                    <div className="dashboard-memory-record-main">
+                      <span className="dashboard-memory-record-mark" aria-hidden="true">
+                        <DatabaseOutlined />
+                      </span>
+                      <div className="dashboard-memory-record-content">
+                        <div className="dashboard-memory-record-kicker">
+                          <Tag variant="filled">{record.category}</Tag>
+                          <span>{record.scope === 'project' ? '项目记忆' : '全局记忆'}</span>
+                        </div>
+                        <p
+                          className={`dashboard-memory-record-text${
+                            expandable && !expanded ? ' is-collapsed' : ''
+                          }`}
+                        >
+                          {visibleText}
+                        </p>
+                        {expandable && (
+                          <Button
+                            className="dashboard-memory-record-text-toggle"
+                            size="small"
+                            type="link"
+                            aria-expanded={expanded}
+                            onClick={() =>
+                              setExpandedRecordIds((previous) => {
+                                const next = new Set(previous);
+                                if (next.has(record.id)) next.delete(record.id);
+                                else next.add(record.id);
+                                return next;
+                              })
+                            }
+                          >
+                            {expanded ? '收起完整记忆' : '展开完整记忆'}
+                          </Button>
+                        )}
+                        <div className="dashboard-memory-record-meta">
+                          <span>{record.evidenceCount ?? 0} 条证据</span>
+                          <span>更新于 {formatTimestamp(record.updatedAt)}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="dashboard-memory-record-actions">
+                      <Tooltip title="纠正记忆">
+                        <Button
+                          size="small"
+                          type="text"
+                          icon={<EditOutlined />}
+                          aria-label="纠正记忆"
+                          onClick={() => {
+                            setEditingRecord(record);
+                            setCorrectionText(record.text);
+                          }}
+                        />
+                      </Tooltip>
+                      <Tooltip title="回滚记忆">
+                        <Button
+                          size="small"
+                          type="text"
+                          icon={<UndoOutlined />}
+                          aria-label="回滚记忆"
+                          onClick={() => onInvoke('rollback', { id: record.id })}
+                        />
+                      </Tooltip>
+                      <Tooltip title="删除记忆">
+                        <Button
+                          size="small"
+                          type="text"
+                          danger
+                          icon={<DeleteOutlined />}
+                          aria-label="删除记忆"
+                          onClick={() => onInvoke('remove', { id: record.id })}
+                        />
+                      </Tooltip>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      </div>
+      <Modal
+        open={showNewProfile}
+        title="新增 User Profile 偏好"
+        okText="保存"
+        cancelText="取消"
+        okButtonProps={{ disabled: newProfileText.trim().length === 0 }}
+        onCancel={() => setShowNewProfile(false)}
+        onOk={() => {
+          if (newProfileText.trim().length === 0) return;
+          void onInvoke('remember', {
+            scope: 'global',
+            memoryClass: 'user-preference',
+            category: newProfileCategory.trim() || '沟通偏好',
+            text: newProfileText.trim(),
+          });
+          setNewProfileText('');
+          setShowNewProfile(false);
+        }}
+      >
+        <Form layout="vertical" component="div">
+          <Form.Item
+            label="偏好内容"
+            required
+            htmlFor="dashboard-new-profile-content"
+            extra="记录可在后续任务中复用的稳定偏好"
+          >
+            <Input.TextArea
+              id="dashboard-new-profile-content"
+              value={newProfileText}
+              onChange={(event) => setNewProfileText(event.target.value)}
+              placeholder="例如：以后都用中文回答"
+              aria-label="偏好内容"
+              autoFocus
+              autoSize={{ minRows: 3, maxRows: 6 }}
+            />
+          </Form.Item>
+          <Form.Item className="mb-0" label="分类（可选）" htmlFor="dashboard-new-profile-category">
+            <Input
+              id="dashboard-new-profile-category"
+              value={newProfileCategory}
+              onChange={(event) => setNewProfileCategory(event.target.value)}
+              placeholder="例如：沟通偏好"
+              aria-label="分类（可选）"
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
       <Modal
         open={editingRecord !== null}
         title="纠正这条记忆"
         okText="保存"
         cancelText="取消"
-        okButtonProps={{ disabled: correctionText.trim().length === 0 }}
+        okButtonProps={{
+          disabled: correctionText.trim().length === 0,
+          loading: correctionSaving,
+        }}
         onCancel={() => setEditingRecord(null)}
-        onOk={() => {
+        onOk={async () => {
           if (!editingRecord || correctionText.trim().length === 0) return;
-          void onInvoke('correct', {
-            id: editingRecord.id,
-            correction: { text: correctionText.trim() },
-          });
-          setEditingRecord(null);
+          setCorrectionSaving(true);
+          try {
+            const corrected = await onInvoke('correct', {
+              id: editingRecord.id,
+              correction: { text: correctionText.trim() },
+            });
+            if (corrected !== undefined) setEditingRecord(null);
+          } finally {
+            setCorrectionSaving(false);
+          }
         }}
       >
         <Input.TextArea

@@ -43,9 +43,12 @@ describe('dashboard web source contracts', () => {
     );
 
     expect(page?.[0]).toContain('dashboard-memory-status');
-    expect(page?.[0]).toContain('dashboard-memory-layout');
     expect(page?.[0]).toContain('dashboard-memory-list');
-    expect(page?.[0]).toContain('dashboard-memory-settings');
+    expect(page?.[0]).toContain('dashboard-memory-content');
+    expect(page?.[0]).toContain('dashboard-tool-page-memory');
+    expect(page?.[0]).toContain('dashboard-memory-record-main');
+    expect(page?.[0]).not.toContain('dashboard-memory-settings');
+    expect(page?.[0]).not.toContain('个人记忆 Provider');
     expect(page?.[0]).not.toContain('dashboard-plugin-toolbar');
     expect(page?.[0]).not.toContain('dashboard-plugin-grid');
   });
@@ -59,15 +62,32 @@ describe('dashboard web source contracts', () => {
     expect(page?.[0]).toContain('dashboard-knowledge-status');
     expect(page?.[0]).toContain('dashboard-knowledge-summary');
     expect(page?.[0]).toContain('dashboard-knowledge-diagnostics');
-    expect(page?.[0]).toContain('tokenEnv');
-    expect(page?.[0]).toContain('tokenConfigured');
-    expect(page?.[0]).toContain("onInvoke('lifecycle', { action: 'disable' })");
-    expect(page?.[0]).toContain("onInvoke('lifecycle', { action: 'uninstall' })");
+    expect(page?.[0]).toContain('dashboard-tool-page-knowledge');
+    expect(page?.[0]).toContain('dashboard-knowledge-unit-list');
+    expect(page?.[0]).toContain('知识概览');
     expect(page?.[0]).toContain('没有新的诊断');
     expect(page?.[0]).not.toContain('<Input');
     expect(page?.[0]).not.toContain('搜索');
     expect(styles).toContain('.dashboard-knowledge-status');
     expect(styles).toContain('.dashboard-knowledge-summary');
+    expect(styles).toContain('.dashboard-tool-header');
+    expect(styles).toContain('.dashboard-tool-panel-title');
+  });
+
+  it('opens centralized plugin settings from the bottom of the sidebar', async () => {
+    const [source, styles] = await Promise.all([readDashboardSource(), readDashboardStyles()]);
+
+    expect(source).toContain('const [settingsOpen, setSettingsOpen] = useState(false)');
+    expect(source).toContain('className={`dashboard-sidebar-settings${settingsOpen');
+    expect(source).toContain('function DashboardSettingsPage');
+    expect(source).toContain('function PersonalMemorySettings');
+    expect(source).toContain('function ProjectKnowledgeSettings');
+    expect(source).toContain('aria-label="设置分类"');
+    expect(source).toContain('个人记忆 Provider');
+    expect(source).toContain('tokenConfigured');
+    expect(styles).toContain('.dashboard-sidebar-settings');
+    expect(styles).toContain('.dashboard-settings-shell');
+    expect(styles).toContain('.dashboard-settings-panel');
   });
 
   it('uses the change-detail width to switch between stacked and two-column panels', async () => {

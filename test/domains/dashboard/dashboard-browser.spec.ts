@@ -121,8 +121,13 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   await page.goto('/');
   await page.getByRole('menuitem', { name: '项目知识' }).click();
   await expect(page.getByRole('heading', { name: '项目知识' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '配置摘要' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '最近诊断' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '知识概览' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '运行诊断' })).toBeVisible();
+  await expect(page.getByText('COMET_KNOWLEDGE_TOKEN')).toHaveCount(0);
+
+  await page.getByRole('button', { name: '设置' }).click();
+  await expect(page.getByRole('heading', { name: '项目知识设置' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Provider 配置' })).toBeVisible();
   await expect(page.getByText('COMET_KNOWLEDGE_TOKEN')).toBeVisible();
   await expect(page.getByText('bearer-secret', { exact: true })).toHaveCount(0);
 
@@ -131,16 +136,17 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   await expect(
     page.locator('.dashboard-plugin-menu-item').filter({ hasText: '项目知识' }),
   ).toHaveText('项目知识暂停');
+  const projectSettings = page.getByRole('region', { name: '当前项目' });
   await expect(
-    page
-      .getByLabel('项目知识状态')
-      .locator('.dashboard-knowledge-status-cell')
-      .filter({ hasText: '插件状态' }),
+    projectSettings.locator('.dashboard-settings-facts > div').filter({ hasText: '插件状态' }),
   ).toContainText('已启用');
-  await expect(page.getByText('当前项目暂停后不加载状态', { exact: true })).toBeVisible();
+  await expect(
+    projectSettings.locator('.dashboard-settings-facts > div').filter({ hasText: '当前项目' }),
+  ).toContainText('已暂停');
+  await expect(page.getByRole('heading', { name: 'Provider 配置' })).toHaveCount(0);
   await page.getByRole('button', { name: '重新启用' }).click();
-  await expect(page.getByText('当前项目', { exact: true }).last()).toBeVisible();
-  await expect(page.getByText('已启用', { exact: true }).last()).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Provider 配置' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '暂停当前项目' })).toBeVisible();
 
   await page.getByRole('button', { name: '卸载插件' }).click();
   await page
@@ -148,8 +154,179 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
     .getByRole('button', { name: /卸\s*载/u })
     .click();
   await expect(page.getByRole('heading', { name: '项目概览' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '项目知识' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '项目知识设置' })).toHaveCount(0);
   await expect(page.getByRole('menuitem', { name: '项目知识' })).toHaveCount(0);
+});
+
+test('adds a User Profile preference with an explicit form and refreshes the saved record', async ({
+  page,
+}) => {
+  const profileRecords = [
+    {
+      id: 'profile-memory',
+      category: '沟通偏好',
+      memoryClass: 'user-preference',
+      scope: 'global',
+      text: '默认使用中文回复',
+      evidenceCount: 2,
+      updatedAt: '2026-08-20T00:00:00.000Z',
+    },
+  ];
+  const personalMemoryPage = {
+    pluginId: 'comet.personal-memory',
+    label: '个人记忆',
+    route: '/plugins/personal-memory',
+    status: 'enabled',
+    globallyDisabled: false,
+    projectPaused: false,
+    diagnostics: [],
+    data: {
+      status: {
+        learningEnabled: true,
+        retrievalEnabled: true,
+        files: [],
+        pausedLearningProjects: [],
+        pausedRetrievalProjects: [],
+        profile: { usedChars: 18, maxChars: 2000 },
+        provider: { provider: 'local', configured: true },
+      },
+      retrieval: { records: [], profileRecords },
+      management: { records: [], conflicts: [] },
+      policy: { learning: true, retrieval: true },
+      projectKey: 'fixture-project',
+      providerConfig: {
+        provider: 'local',
+        profileCharLimit: 2000,
+        taskContextCharLimit: 6000,
+      },
+    },
+  };
+  let rememberRequest: unknown;
+
+  await page.route('**/api/dashboard/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/dashboard/projects') {
+      await route.fulfill({
+        json: {
+          currentProjectId: 'fixture-project',
+          projects: [
+            {
+              id: 'fixture-project',
+              name: 'Fixture',
+              path: '/fixture',
+              lastSeenAt: null,
+              availability: 'available',
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/overview')) {
+      await route.fulfill({
+        json: {
+          project: { name: 'Fixture', path: '/fixture', generatedAt: '2026-08-23T00:00:00.000Z' },
+          summary: {
+            activeChanges: 0,
+            archivedChanges: 0,
+            verifyFailed: 0,
+            tasksIncomplete: 0,
+            dirtyFiles: 0,
+          },
+          initialChanges: { status: 'active', items: [], total: 0, nextCursor: null },
+          git: {
+            branch: 'main',
+            head: 'abc1234',
+            dirtyFiles: 0,
+            dirtyFileList: [],
+            recentCommits: [],
+          },
+          risks: [],
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/changes')) {
+      await route.fulfill({ json: { status: 'active', items: [], total: 0, nextCursor: null } });
+      return;
+    }
+    if (url.pathname.endsWith('/plugins/comet.personal-memory/invoke')) {
+      const body = route.request().postDataJSON() as {
+        capability: string;
+        input: {
+          scope: string;
+          memoryClass: string;
+          category: string;
+          text: string;
+        };
+      };
+      rememberRequest = body;
+      profileRecords.push({
+        id: 'new-profile-memory',
+        ...body.input,
+        evidenceCount: 1,
+        updatedAt: '2026-08-23T00:00:00.000Z',
+      });
+      await route.fulfill({ json: { result: { id: 'new-profile-memory' } } });
+      return;
+    }
+    if (url.pathname.endsWith('/plugins/comet.personal-memory')) {
+      await route.fulfill({ json: personalMemoryPage });
+      return;
+    }
+    if (url.pathname.endsWith('/plugins')) {
+      await route.fulfill({
+        json: {
+          pages: [
+            {
+              pluginId: personalMemoryPage.pluginId,
+              label: personalMemoryPage.label,
+              route: personalMemoryPage.route,
+              status: personalMemoryPage.status,
+              globallyDisabled: personalMemoryPage.globallyDisabled,
+              projectPaused: personalMemoryPage.projectPaused,
+              diagnostics: personalMemoryPage.diagnostics,
+            },
+          ],
+        },
+      });
+      return;
+    }
+    await route.continue();
+  });
+
+  await page.goto('/');
+  await page.getByRole('menuitem', { name: '个人记忆' }).click();
+  await page.getByRole('button', { name: '新增偏好' }).click();
+
+  const profileDialog = page.getByRole('dialog', { name: '新增 User Profile 偏好' });
+  await expect(profileDialog.getByText('偏好内容', { exact: true })).toBeVisible();
+  await expect(profileDialog.getByText('分类（可选）', { exact: true })).toBeVisible();
+  const profileInput = profileDialog.getByLabel('偏好内容');
+  await expect(profileInput).toBeFocused();
+  await expect(profileDialog.getByRole('button', { name: /保\s*存/u })).toBeDisabled();
+
+  await profileInput.fill('提交前先运行最小相关测试');
+  await profileDialog.getByRole('button', { name: /保\s*存/u }).click();
+
+  await expect(profileDialog).toBeHidden();
+  await expect
+    .poll(() => rememberRequest)
+    .toEqual({
+      capability: 'remember',
+      input: {
+        scope: 'global',
+        memoryClass: 'user-preference',
+        category: '沟通偏好',
+        text: '提交前先运行最小相关测试',
+      },
+    });
+  await expect(
+    page
+      .getByLabel('User Profile', { exact: true })
+      .getByText('提交前先运行最小相关测试', { exact: true }),
+  ).toBeVisible();
 });
 
 test('collapses long personal memory records until the user expands them', async ({ page }) => {
@@ -286,10 +463,6 @@ test('collapses long personal memory records until the user expands them', async
   const profileDialog = page.getByRole('dialog', { name: '新增 User Profile 偏好' });
   await expect(profileDialog).toBeVisible();
   await profileDialog.getByRole('button', { name: /取\s*消/u }).click();
-  await expect(
-    page.getByText('Provider 切换不会迁移或删除已有数据；保存后重新加载页面即可生效'),
-  ).toBeVisible();
-
   const memoryText = page.locator(
     'section[aria-labelledby="dashboard-memory-list-title"] .dashboard-memory-record-text',
   );
@@ -305,6 +478,160 @@ test('collapses long personal memory records until the user expands them', async
     'aria-expanded',
     'true',
   );
+
+  await page.getByRole('button', { name: '设置' }).click();
+  await expect(page.getByRole('heading', { name: '个人记忆设置' })).toBeVisible();
+  await expect(
+    page.getByText('Provider 切换不会迁移或删除已有数据；保存后重新加载页面即可生效'),
+  ).toBeVisible();
+});
+
+test('shows a corrected personal memory immediately after persistence succeeds', async ({
+  page,
+}) => {
+  const originalRecord = {
+    id: 'memory-to-correct',
+    category: '协作偏好',
+    scope: 'project',
+    text: '纠正前的项目记忆',
+    evidenceCount: 1,
+    updatedAt: '2026-08-20T00:00:00.000Z',
+  };
+  let correctedRecord: typeof originalRecord | null = null;
+  let postCorrectionSnapshotReads = 0;
+  const pageSnapshot = (record: typeof originalRecord) => ({
+    pluginId: 'comet.personal-memory',
+    label: '个人记忆',
+    route: '/plugins/personal-memory',
+    status: 'enabled',
+    globallyDisabled: false,
+    projectPaused: false,
+    diagnostics: [],
+    data: {
+      status: {
+        learningEnabled: true,
+        retrievalEnabled: true,
+        files: [],
+        profile: { usedChars: 0, maxChars: 2000 },
+        provider: { provider: 'local', configured: true },
+      },
+      retrieval: { records: [record], profileRecords: [] },
+      management: { records: [record], conflicts: [] },
+      policy: { learning: true, retrieval: true },
+      projectKey: 'fixture-project',
+    },
+  });
+
+  await page.route('**/api/dashboard/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/dashboard/projects') {
+      await route.fulfill({
+        json: {
+          currentProjectId: 'fixture-project',
+          projects: [
+            {
+              id: 'fixture-project',
+              name: 'Fixture',
+              path: '/fixture',
+              lastSeenAt: null,
+              availability: 'available',
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/overview')) {
+      await route.fulfill({
+        json: {
+          project: { name: 'Fixture', path: '/fixture', generatedAt: '2026-08-20T00:00:00.000Z' },
+          summary: {
+            activeChanges: 0,
+            archivedChanges: 0,
+            verifyFailed: 0,
+            tasksIncomplete: 0,
+            dirtyFiles: 0,
+          },
+          initialChanges: { status: 'active', items: [], total: 0, nextCursor: null },
+          git: {
+            branch: 'main',
+            head: 'abc1234',
+            dirtyFiles: 0,
+            dirtyFileList: [],
+            recentCommits: [],
+          },
+          risks: [],
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/changes')) {
+      await route.fulfill({ json: { status: 'active', items: [], total: 0, nextCursor: null } });
+      return;
+    }
+    if (url.pathname.endsWith('/plugins/comet.personal-memory/invoke')) {
+      const body = route.request().postDataJSON() as {
+        capability?: string;
+        input?: { id?: string; correction?: { text?: string } };
+      };
+      if (
+        body.capability === 'correct' &&
+        body.input?.id === originalRecord.id &&
+        typeof body.input.correction?.text === 'string'
+      ) {
+        correctedRecord = {
+          ...originalRecord,
+          text: body.input.correction.text,
+          updatedAt: '2026-08-23T00:00:00.000Z',
+        };
+      }
+      await route.fulfill({ json: { result: correctedRecord ?? originalRecord } });
+      return;
+    }
+    if (url.pathname.endsWith('/plugins/comet.personal-memory')) {
+      const snapshotRecord =
+        correctedRecord !== null && postCorrectionSnapshotReads++ > 0
+          ? correctedRecord
+          : originalRecord;
+      await route.fulfill({ json: pageSnapshot(snapshotRecord) });
+      return;
+    }
+    if (url.pathname.endsWith('/plugins')) {
+      const snapshot = pageSnapshot(originalRecord);
+      await route.fulfill({
+        json: {
+          pages: [
+            {
+              pluginId: snapshot.pluginId,
+              label: snapshot.label,
+              route: snapshot.route,
+              status: snapshot.status,
+              globallyDisabled: snapshot.globallyDisabled,
+              projectPaused: snapshot.projectPaused,
+              diagnostics: snapshot.diagnostics,
+            },
+          ],
+        },
+      });
+      return;
+    }
+    await route.continue();
+  });
+
+  await page.goto('/');
+  await page.getByRole('menuitem', { name: '个人记忆' }).click();
+  const projectMemory = page.getByLabel('当前项目记忆');
+  await expect(projectMemory.getByText(originalRecord.text, { exact: true })).toBeVisible();
+
+  await projectMemory.getByRole('button', { name: '纠正记忆' }).click();
+  const correctionDialog = page.getByRole('dialog', { name: '纠正这条记忆' });
+  await correctionDialog.getByRole('textbox').fill('纠正后的项目记忆');
+  await correctionDialog.getByRole('button', { name: /保\s*存/u }).click();
+
+  await expect(correctionDialog).toBeHidden();
+  await expect(projectMemory.getByText('纠正后的项目记忆', { exact: true })).toBeVisible();
+  await expect(projectMemory.getByText(originalRecord.text, { exact: true })).toHaveCount(0);
 });
 
 test('loads the demo dashboard and previews an artifact', async ({ page }) => {
