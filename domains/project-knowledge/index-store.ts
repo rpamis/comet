@@ -10,7 +10,6 @@ import type {
   ProjectKnowledgeQuery,
   ProjectKnowledgeResult,
 } from './types.js';
-import type { ProjectKnowledgeUnit } from './units.js';
 
 const INDEX_SCHEMA = 'comet.project-knowledge.index.v2';
 const MAX_SOURCE_BYTES = 256 * 1024;
@@ -239,7 +238,6 @@ export class ProjectKnowledgeIndexStore {
             'DROP TABLE IF EXISTS pk_fts_trigram;',
             'DROP TABLE IF EXISTS pk_sections;',
             'DROP TABLE IF EXISTS pk_sources;',
-            'DROP TABLE IF EXISTS pk_unit_relations;',
           ].join('\n'),
         );
         database.prepare("DELETE FROM pk_meta WHERE key IN ('schema', 'workspaceId')").run();
@@ -249,8 +247,6 @@ export class ProjectKnowledgeIndexStore {
           'CREATE TABLE IF NOT EXISTS pk_sources (workspace_id TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, archived_at TEXT, size INTEGER NOT NULL, modified_at REAL NOT NULL, indexed_at TEXT NOT NULL, PRIMARY KEY(workspace_id, source));',
           'CREATE TABLE IF NOT EXISTS pk_sections (id INTEGER PRIMARY KEY, workspace_id TEXT NOT NULL, source TEXT NOT NULL, anchor TEXT NOT NULL, title TEXT NOT NULL, heading_path TEXT NOT NULL, body TEXT NOT NULL, lexical_terms TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(workspace_id, source, anchor));',
           'CREATE INDEX IF NOT EXISTS pk_sections_workspace_source ON pk_sections(workspace_id, source);',
-          'CREATE TABLE IF NOT EXISTS pk_unit_relations (unit_id TEXT NOT NULL, relation_type TEXT NOT NULL, target_id TEXT NOT NULL, source TEXT NOT NULL, PRIMARY KEY(unit_id, relation_type, target_id, source));',
-          'CREATE INDEX IF NOT EXISTS pk_unit_relations_target ON pk_unit_relations(target_id);',
           "CREATE VIRTUAL TABLE IF NOT EXISTS pk_fts_terms USING fts5(workspace_id UNINDEXED, source UNINDEXED, title, heading_path, body, lexical_terms, tokenize='unicode61');",
           "CREATE VIRTUAL TABLE IF NOT EXISTS pk_fts_trigram USING fts5(workspace_id UNINDEXED, source UNINDEXED, title, heading_path, body, tokenize='trigram');",
         ].join('\n'),
@@ -274,12 +270,9 @@ export class ProjectKnowledgeIndexStore {
               'DROP TABLE IF EXISTS pk_fts_trigram;',
               'DROP TABLE IF EXISTS pk_sections;',
               'DROP TABLE IF EXISTS pk_sources;',
-              'DROP TABLE IF EXISTS pk_unit_relations;',
               'CREATE TABLE pk_sources (workspace_id TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, archived_at TEXT, size INTEGER NOT NULL, modified_at REAL NOT NULL, indexed_at TEXT NOT NULL, PRIMARY KEY(workspace_id, source));',
               'CREATE TABLE pk_sections (id INTEGER PRIMARY KEY, workspace_id TEXT NOT NULL, source TEXT NOT NULL, anchor TEXT NOT NULL, title TEXT NOT NULL, heading_path TEXT NOT NULL, body TEXT NOT NULL, lexical_terms TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(workspace_id, source, anchor));',
               'CREATE INDEX pk_sections_workspace_source ON pk_sections(workspace_id, source);',
-              'CREATE TABLE pk_unit_relations (unit_id TEXT NOT NULL, relation_type TEXT NOT NULL, target_id TEXT NOT NULL, source TEXT NOT NULL, PRIMARY KEY(unit_id, relation_type, target_id, source));',
-              'CREATE INDEX pk_unit_relations_target ON pk_unit_relations(target_id);',
               "CREATE VIRTUAL TABLE pk_fts_terms USING fts5(workspace_id UNINDEXED, source UNINDEXED, title, heading_path, body, lexical_terms, tokenize='unicode61');",
               "CREATE VIRTUAL TABLE pk_fts_trigram USING fts5(workspace_id UNINDEXED, source UNINDEXED, title, heading_path, body, tokenize='trigram');",
             ].join('\n'),
@@ -313,27 +306,6 @@ export class ProjectKnowledgeIndexStore {
   close(): void {
     this.database?.close();
     this.database = null;
-  }
-
-  async replaceUnitRelations(units: readonly ProjectKnowledgeUnit[]): Promise<void> {
-    await this.open();
-    const database = this.requireDatabase();
-    database.exec('DELETE FROM pk_unit_relations;');
-    const insert = database.prepare(
-      'INSERT INTO pk_unit_relations(unit_id, relation_type, target_id, source) VALUES (?, ?, ?, ?)',
-    );
-    for (const unit of units) {
-      for (const relation of unit.relations) {
-        for (const source of relation.sources) {
-          insert.run(unit.id, relation.type, relation.target, source.source);
-        }
-      }
-    }
-    setMeta(
-      database,
-      'unitRelationCount',
-      String(units.reduce((total, unit) => total + unit.relations.length, 0)),
-    );
   }
 
   async syncCorpus(

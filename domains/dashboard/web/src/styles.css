@@ -975,6 +975,25 @@ body {
   margin-top: 16px;
 }
 
+.dashboard-knowledge-record-toolbar,
+.dashboard-knowledge-provider-form,
+.dashboard-knowledge-record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.dashboard-knowledge-record-toolbar .ant-input,
+.dashboard-knowledge-provider-form .ant-input {
+  min-width: 180px;
+  flex: 1 1 180px;
+}
+
+.dashboard-knowledge-record-actions {
+  justify-content: flex-end;
+}
+
 @media (max-width: 760px) {
   .dashboard-plugin-grid {
     grid-template-columns: minmax(0, 1fr);

@@ -5,14 +5,6 @@ import {
   parseProjectKnowledgeRecord,
   type ProjectKnowledgeRecord,
 } from '../../../domains/project-knowledge/records.js';
-import type {
-  ProjectKnowledgeApplyResult,
-  ProjectKnowledgeGetResult,
-  ProjectKnowledgeLegacyProvider,
-  ProjectKnowledgeProvider,
-  ProjectKnowledgeProviderAdapter,
-  ProjectKnowledgeStatus,
-} from '../../../domains/project-knowledge/types.js';
 
 function sampleRecord(): ProjectKnowledgeRecord {
   return {
@@ -49,49 +41,6 @@ function sampleRecord(): ProjectKnowledgeRecord {
     updatedAt: '2026-08-22T09:00:00.000Z',
   };
 }
-
-const providerContractExample: ProjectKnowledgeProvider = {
-  async status(): Promise<ProjectKnowledgeStatus> {
-    return {
-      provider: 'local',
-      healthy: true,
-      writable: true,
-      diagnostics: [],
-    };
-  },
-  async query(): Promise<ProjectKnowledgeGetResult> {
-    return {
-      kind: 'get',
-      record: null,
-      diagnostics: [],
-    };
-  },
-  async apply(): Promise<ProjectKnowledgeApplyResult> {
-    return {
-      kind: 'refresh',
-      changed: false,
-      diagnostics: [],
-    };
-  },
-};
-
-const legacyProviderExample: ProjectKnowledgeLegacyProvider = {
-  async retrieve() {
-    return [];
-  },
-};
-
-const providerAdapterExample: ProjectKnowledgeProviderAdapter = {
-  legacy: legacyProviderExample,
-  provider: providerContractExample,
-};
-
-void providerAdapterExample;
-
-// @ts-expect-error retrieve-only legacy providers must not satisfy the main Provider contract
-const invalidProviderContract: ProjectKnowledgeProvider = legacyProviderExample;
-
-void invalidProviderContract;
 
 describe('project knowledge records', () => {
   test('parses a valid record without losing bounded data', () => {

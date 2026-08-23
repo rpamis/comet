@@ -9,7 +9,6 @@ import {
 import { extractDeterministicProjectRecords } from './deterministic-extractors.js';
 import { validateProjectKnowledgeRecordShape, type ProjectKnowledgeRecord } from './records.js';
 import type { ProjectKnowledgeProvider } from './types.js';
-import type { ProjectKnowledgeUnit } from './units.js';
 
 const MAX_CHANGED_PATHS = 24;
 const MAX_ARTIFACT_REFS = 16;
@@ -54,8 +53,8 @@ export interface ProjectKnowledgeReviewPacket {
 }
 
 export type ProjectKnowledgeReviewAction =
-  | { readonly action: 'create' | 'update'; readonly unit: unknown }
-  | { readonly action: 'retire'; readonly unitId: string };
+  | { readonly action: 'create' | 'update'; readonly record: unknown }
+  | { readonly action: 'retire'; readonly recordId: string };
 
 export interface ProjectKnowledgeSemanticReviewer {
   review(
@@ -274,16 +273,6 @@ async function reviewSourcesStillCurrent(
   return null;
 }
 
-function recordSourcesWithinPacket(
-  record: ProjectKnowledgeRecord,
-  packet: ProjectKnowledgeReviewPacket,
-): boolean {
-  const allowed = new Set(packet.sources.map((source) => source.source));
-  return [...record.conclusions, ...record.relations].every((entry) =>
-    entry.sources.every((source) => allowed.has(source.source)),
-  );
-}
-
 async function recordSourcesStillCurrent(
   record: ProjectKnowledgeRecord,
   projectRoot: string,
@@ -391,14 +380,6 @@ export class ProjectKnowledgeLearningService {
           state: 'active',
           authority: 'automatic',
         });
-        if (!recordSourcesWithinPacket(record, packet)) {
-          report({
-            code: 'source-outside-packet',
-            message: '确定性记录引用了本次有界来源包之外的文件，已跳过。',
-            source: record.id,
-          });
-          continue;
-        }
         const changedRecordSource = await recordSourcesStillCurrent(record, this.projectRoot);
         if (changedRecordSource !== null) {
           report({
@@ -425,56 +406,6 @@ export class ProjectKnowledgeLearningService {
       diagnostics,
     };
   }
-}
-
-export interface ProjectKnowledgeSharedPreference {
-  readonly category: string;
-  readonly text: string;
-  readonly title?: string;
-  readonly pathPatterns?: readonly string[];
-  readonly operations?: readonly string[];
-  readonly sources?: readonly { readonly source: string; readonly anchor?: string }[];
-}
-
-export function sanitizeProjectPreferenceForSharing(
-  preference: ProjectKnowledgeSharedPreference,
-): ProjectKnowledgeUnit {
-  const stripPersonal = (value: string): string =>
-    value
-      .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/giu, '[email removed]')
-      .replace(/\b(?:bearer|basic)\s+[A-Z0-9._~+/=-]+/giu, '[credential removed]')
-      .replace(
-        /\b(?:api[_ -]?key|token|secret|password|passwd|credential|authorization)\s*[:=]\s*[^\s,;]+/giu,
-        '[credential removed]',
-      )
-      .replace(/(?:密钥|口令|密码|凭证|授权)\s*[:：=]\s*[^\s，；;]+/gu, '[凭证已移除]')
-      .replace(/\b(?:I|me|my|mine|we|our|ours)\b/giu, '')
-      .replace(/(?:我|我的|本人|我们|我们的)(?=偏好|习惯|项目|代码|要求)/gu, '')
-      .replace(/(?:姓名|名字|用户名|作者)\s*[:：=]\s*[^\s，；;]+/gu, '[个人信息已移除]')
-      .replace(/(?:允许|可以|授权|自动)\s*(?:提交|推送|发布|删除|覆盖|执行)/gu, '[授权表述已移除]')
-      .replace(/\s{2,}/gu, ' ')
-      .trim();
-  const text = stripPersonal(preference.text);
-  if (!text) throw new Error('个人项目偏好在去除个人信息后为空');
-  return {
-    schema: 'comet.project-knowledge.unit.v1',
-    id: `shared-${Date.now().toString(36)}`,
-    kind: 'behavior-note',
-    state: 'draft',
-    origin: 'maintained',
-    title: stripPersonal(preference.title ?? preference.category),
-    summary: text,
-    applicablePaths: [...(preference.pathPatterns ?? [])].slice(0, 32),
-    operations: [...(preference.operations ?? [])].slice(0, 32),
-    conclusions: [
-      {
-        text,
-        sources: (preference.sources ?? []).slice(0, 8),
-      },
-    ],
-    relations: [],
-    verification: [],
-  };
 }
 
 export async function projectKnowledgeLearningSourceExists(

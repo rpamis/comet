@@ -18,8 +18,7 @@ import type {
   ProjectKnowledgeRecordType,
   ProjectKnowledgeRecordVerification,
 } from './records.js';
-import type { ProjectKnowledgeUnit } from './units.js';
-import type { ProjectKnowledgeChangedHint, ProjectKnowledgeSemanticReviewer } from './learning.js';
+import type { ProjectKnowledgeSemanticReviewer } from './learning.js';
 
 export type ProjectKnowledgeDocumentKind =
   | 'native-spec'
@@ -54,7 +53,6 @@ export interface ProjectKnowledgeResult {
   readonly score?: number;
   readonly document?: ProjectKnowledgeDocument;
   readonly record?: ProjectKnowledgeRecord;
-  readonly unit?: ProjectKnowledgeUnit;
 }
 
 export interface ProjectKnowledgeDiagnostic {
@@ -184,26 +182,6 @@ export interface ProjectKnowledgeProvider {
   apply(mutation: ProjectKnowledgeMutation): Promise<ProjectKnowledgeApplyResult>;
 }
 
-export interface ProjectKnowledgeLegacyProvider {
-  retrieve(query: ProjectKnowledgeQuery): Promise<readonly ProjectKnowledgeResult[]>;
-}
-
-export interface ProjectKnowledgeProviderAdapter {
-  readonly legacy: ProjectKnowledgeLegacyProvider;
-  readonly provider: ProjectKnowledgeProvider;
-}
-
-type LegacyProviderMustNotSatisfyMainContract =
-  ProjectKnowledgeLegacyProvider extends ProjectKnowledgeProvider ? false : true;
-const legacyProviderMustNotSatisfyMainContract: LegacyProviderMustNotSatisfyMainContract = true;
-
-type AdapterProviderMustSatisfyMainContract =
-  ProjectKnowledgeProviderAdapter['provider'] extends ProjectKnowledgeProvider ? true : false;
-const adapterProviderMustSatisfyMainContract: AdapterProviderMustSatisfyMainContract = true;
-
-void legacyProviderMustNotSatisfyMainContract;
-void adapterProviderMustSatisfyMainContract;
-
 export interface ProjectKnowledgeCorpusOptions {
   readonly projectRoot: string;
   readonly reportDiagnostic?: ProjectKnowledgeDiagnosticReporter;
@@ -211,8 +189,6 @@ export interface ProjectKnowledgeCorpusOptions {
 
 export interface ProjectKnowledgeProviderOptions extends ProjectKnowledgeCorpusOptions {
   readonly corpus: readonly ProjectKnowledgeDocument[];
-  /** Recent lifecycle hints used to bound the ripgrep supplement. */
-  readonly changedPaths?: readonly string[];
 }
 
 export interface ProjectKnowledgePluginOptions {
@@ -223,6 +199,7 @@ export interface ProjectKnowledgePluginOptions {
   readonly cometVersionRange?: (cometVersion: string) => boolean;
   readonly cacheRoot?: string;
   readonly semanticReviewer?: ProjectKnowledgeSemanticReviewer;
+  readonly updateKnowledgeConfig?: (config: WorkflowKnowledgeProjectConfig) => void | Promise<void>;
   /** Host-owned boundary for review work that must not delay workflow events. */
   readonly runReviewInBackground?: (task: () => Promise<void>) => void | Promise<void>;
 }
@@ -251,18 +228,16 @@ export interface ProjectKnowledgeDashboardSnapshot {
     readonly sourceCount: number;
     readonly sectionCount: number;
     readonly updatedAt?: string;
-    readonly lastQueryMs?: number;
-    readonly lastCandidateCount?: number;
     readonly channels: readonly string[];
-    readonly unitCount?: number;
-    readonly activeUnitCount?: number;
-    readonly draftUnitCount?: number;
-    readonly retiredUnitCount?: number;
-    readonly relationCount?: number;
-    readonly units?: readonly ProjectKnowledgeUnit[];
-    readonly changedHints?: readonly ProjectKnowledgeChangedHint[];
   };
   readonly retrieval: string;
+  readonly status?: ProjectKnowledgeStatus;
+  readonly records?: readonly ProjectKnowledgeRecord[];
+  readonly counts?: {
+    readonly active: number;
+    readonly needsReview: number;
+    readonly retired: number;
+  };
   readonly diagnostics: readonly ProjectKnowledgeDashboardDiagnostic[];
 }
 

@@ -5,17 +5,23 @@ import path from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 import {
+  projectKnowledgeCorrectCommand,
+  projectKnowledgeForgetCommand,
+  projectKnowledgeGetCommand,
+  projectKnowledgeListCommand,
   projectKnowledgeQueryCommand,
   projectKnowledgeRebuildCommand,
   projectKnowledgeStatusCommand,
-  projectKnowledgeUnitsGetCommand,
-  projectKnowledgeUnitsListCommand,
-  projectKnowledgeUnitsRetireCommand,
-  projectKnowledgeUnitsShareCommand,
 } from '../../app/commands/project-knowledge.js';
+import {
+  LocalProjectKnowledgeProvider,
+  type ProjectKnowledgeRecord,
+} from '../../domains/project-knowledge/index.js';
+import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
 
-async function projectFixture(): Promise<string> {
+async function projectFixture(): Promise<{ root: string; cacheRoot: string; source: string }> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-knowledge-command-'));
+  const cacheRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-knowledge-command-cache-'));
   await fs.mkdir(path.join(root, '.comet'), { recursive: true });
   await fs.writeFile(
     path.join(root, '.comet', 'config.yaml'),
@@ -30,59 +36,47 @@ async function projectFixture(): Promise<string> {
       '',
     ].join('\n'),
   );
-  const file = path.join(root, 'docs', 'comet', 'specs', 'retrieval.md');
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(file, '# 混合召回\n\n项目知识使用 SQLite FTS5 和 ripgrep。\n');
-  return root;
+  const source = path.join(root, 'docs', 'comet', 'specs', 'retrieval.md');
+  await fs.mkdir(path.dirname(source), { recursive: true });
+  await fs.writeFile(source, '# 混合召回\n\n项目知识使用 SQLite FTS5 和 ripgrep。\n');
+  return { root, cacheRoot, source };
 }
 
 afterEach(() => vi.restoreAllMocks());
 
 describe('comet knowledge commands', () => {
-  test('reports empty status, rebuilds, and performs a supplemental query', async () => {
-    const root = await projectFixture();
-    const cacheRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-knowledge-command-cache-'));
+  test('reports status, refreshes, and queries through the Local Provider', async () => {
+    const { root, cacheRoot } = await projectFixture();
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
     try {
       await expect(
         projectKnowledgeStatusCommand(root, { json: true, cacheRoot }),
       ).resolves.toMatchObject({
         provider: 'local',
-        index: { available: false, sources: 0, sections: 0 },
+        status: { healthy: true, writable: true },
       });
 
       await expect(
         projectKnowledgeRebuildCommand(root, { json: true, cacheRoot }),
       ).resolves.toMatchObject({
         provider: 'local',
-        rebuilt: true,
-        sources: 1,
-        sections: 1,
+        result: { kind: 'refresh' },
       });
 
       await expect(
         projectKnowledgeQueryCommand(root, {
           json: true,
           cacheRoot,
-          query: 'SQLite FTS5 项目知识混合召回',
+          task: 'SQLite FTS5 项目知识混合召回',
           path: 'docs/comet/specs',
           operation: 'verify',
         }),
       ).resolves.toMatchObject({
-        provider: 'local',
-        results: expect.arrayContaining([
-          expect.objectContaining({ source: 'docs/comet/specs/retrieval.md' }),
-        ]),
-      });
-
-      await expect(
-        projectKnowledgeStatusCommand(root, { json: true, cacheRoot }),
-      ).resolves.toMatchObject({
-        index: {
-          available: true,
-          sources: 1,
-          sections: 1,
-          channels: expect.arrayContaining(['fts-terms']),
+        result: {
+          kind: 'search',
+          results: expect.arrayContaining([
+            expect.objectContaining({ source: 'docs/comet/specs/retrieval.md' }),
+          ]),
         },
       });
     } finally {
@@ -91,59 +85,61 @@ describe('comet knowledge commands', () => {
     }
   });
 
-  test('lists and reads units without writing, then requires explicit share and retire actions', async () => {
-    const root = await projectFixture();
-    const cacheRoot = await fs.mkdtemp(
-      path.join(os.tmpdir(), 'comet-knowledge-unit-command-cache-'),
-    );
+  test('lists, gets, corrects, and forgets Records without project files', async () => {
+    const { root, cacheRoot, source } = await projectFixture();
+    const stat = await fs.stat(source);
+    const record: ProjectKnowledgeRecord = {
+      id: 'record-command',
+      projectId: resolveStableProjectId(root),
+      type: 'behavior-note',
+      state: 'active',
+      authority: 'automatic',
+      title: '命令记录',
+      summary: '命令记录摘要。',
+      applicablePaths: ['docs/'],
+      operations: ['verify'],
+      conclusions: [
+        { text: '先验证来源。', sources: [{ source: 'docs/comet/specs/retrieval.md' }] },
+      ],
+      relations: [],
+      verification: [],
+      sourceVersions: [
+        {
+          source: 'docs/comet/specs/retrieval.md',
+          size: stat.size,
+          modifiedAt: Math.trunc(stat.mtimeMs),
+        },
+      ],
+      updatedAt: '2026-08-23T00:00:00.000Z',
+    };
+    const seed = new LocalProjectKnowledgeProvider({
+      projectRoot: root,
+      cacheRoot,
+      corpus: [],
+    });
+    await seed.apply({ kind: 'upsert', record });
+    seed.close();
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
     try {
-      const unit = {
-        schema: 'comet.project-knowledge.unit.v1',
-        id: 'generated-command-unit',
-        kind: 'behavior-note',
-        state: 'active',
-        origin: 'generated',
-        title: '命令单元',
-        summary: '命令单元摘要。',
-        applicable_paths: ['src/'],
-        operations: ['verify'],
-        conclusions: [
-          { text: '先验证来源。', sources: [{ source: 'docs/comet/specs/retrieval.md' }] },
-        ],
-        relations: [],
-      };
-      const generatedRoot = path.join(cacheRoot, 'project-knowledge', 'units');
-      await fs.mkdir(generatedRoot, { recursive: true });
-      await fs.writeFile(
-        path.join(generatedRoot, `${unit.id}.md`),
-        `---\n${JSON.stringify(unit)}\n---\n`,
-      );
       await expect(
-        projectKnowledgeUnitsListCommand(root, { json: true, cacheRoot }),
-      ).resolves.toMatchObject({ units: [expect.objectContaining({ id: unit.id })] });
+        projectKnowledgeListCommand(root, { json: true, cacheRoot, state: 'all' }),
+      ).resolves.toMatchObject({
+        result: { records: [expect.objectContaining({ id: record.id })] },
+      });
       await expect(
-        projectKnowledgeUnitsGetCommand(root, { json: true, cacheRoot, id: unit.id }),
-      ).resolves.toMatchObject({ unit: expect.objectContaining({ id: unit.id }) });
+        projectKnowledgeGetCommand(root, { json: true, cacheRoot, id: record.id }),
+      ).resolves.toMatchObject({ result: { record: { id: record.id } } });
       await expect(
-        projectKnowledgeUnitsShareCommand(root, { json: true, cacheRoot, id: unit.id }),
-      ).rejects.toThrow(/confirm/u);
-      await expect(
-        projectKnowledgeUnitsShareCommand(root, {
+        projectKnowledgeCorrectCommand(root, {
           json: true,
           cacheRoot,
-          id: unit.id,
-          confirm: true,
+          id: record.id,
+          text: '用户纠正后的说明。',
         }),
-      ).resolves.toMatchObject({ unit: { origin: 'maintained' } });
+      ).resolves.toMatchObject({ result: { record: { authority: 'user' } } });
       await expect(
-        projectKnowledgeUnitsRetireCommand(root, {
-          json: true,
-          cacheRoot,
-          id: unit.id,
-          confirm: true,
-        }),
-      ).resolves.toMatchObject({ unit: { state: 'retired' } });
+        projectKnowledgeForgetCommand(root, { json: true, cacheRoot, id: record.id }),
+      ).resolves.toMatchObject({ result: { record: { state: 'retired' } } });
     } finally {
       await fs.rm(root, { recursive: true, force: true });
       await fs.rm(cacheRoot, { recursive: true, force: true });

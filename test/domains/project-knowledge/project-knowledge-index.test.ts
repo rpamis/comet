@@ -196,12 +196,15 @@ describe('project knowledge section index', () => {
       })),
     });
     try {
-      const results = await provider.retrieve(
-        createProjectKnowledgeQuery({ task: 'Project knowledge exact fallback' }),
-      );
+      const response = await provider.query({
+        kind: 'search',
+        query: createProjectKnowledgeQuery({ task: 'Project knowledge exact fallback' }),
+      });
+      const results = response.kind === 'search' ? response.results : [];
       expect(results[0]).toMatchObject({ source, title: 'Fallback' });
       expect(diagnostics).toContain('index-unavailable');
     } finally {
+      provider.close();
       await fs.rm(root, { recursive: true, force: true });
     }
   });
@@ -252,7 +255,9 @@ describe('project knowledge section index', () => {
     const first = new ProjectKnowledgeIndexStore({ projectRoot: root, cacheRoot });
     await first.syncCorpus([{ absolutePath: file, source, kind: 'native-spec' }]);
     first.close();
-    await fs.writeFile(first.databasePath, 'not a sqlite database');
+    const broken = new DatabaseSync(first.databasePath);
+    broken.exec('DROP TABLE pk_fts_terms; CREATE TABLE pk_fts_terms (broken TEXT);');
+    broken.close();
     const runRipgrep = vi.fn(async () => ({
       stdout: JSON.stringify({
         type: 'match',
@@ -275,12 +280,15 @@ describe('project knowledge section index', () => {
       runRipgrep,
     });
     try {
-      const results = await provider.retrieve(
-        createProjectKnowledgeQuery({ task: 'Current fallback evidence' }),
-      );
+      const response = await provider.query({
+        kind: 'search',
+        query: createProjectKnowledgeQuery({ task: 'Current fallback evidence' }),
+      });
+      const results = response.kind === 'search' ? response.results : [];
       expect(results[0]).toMatchObject({ source, title: 'Recovery' });
       expect(runRipgrep).toHaveBeenCalled();
     } finally {
+      provider.close();
       await fs.rm(root, { recursive: true, force: true });
       await fs.rm(cacheRoot, { recursive: true, force: true });
     }

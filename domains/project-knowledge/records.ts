@@ -1,11 +1,23 @@
 import path from 'node:path';
 
-import type { ProjectKnowledgeRelationType, ProjectKnowledgeUnitKind } from './units.js';
-
-export type ProjectKnowledgeRecordType = ProjectKnowledgeUnitKind;
+export type ProjectKnowledgeRecordType =
+  | 'project-map'
+  | 'module-overview'
+  | 'behavior-note'
+  | 'integration-path'
+  | 'change-impact'
+  | 'build-test';
 export type ProjectKnowledgeRecordState = 'active' | 'needs-review' | 'retired';
 export type ProjectKnowledgeRecordAuthority = 'automatic' | 'user';
-export type ProjectKnowledgeRecordRelationType = ProjectKnowledgeRelationType;
+export type ProjectKnowledgeRecordRelationType =
+  | 'contains'
+  | 'depends-on'
+  | 'consumes'
+  | 'registers'
+  | 'propagates-to'
+  | 'generated-by'
+  | 'validated-by'
+  | 'supersedes';
 
 export interface ProjectKnowledgeRecordSource {
   readonly source: string;

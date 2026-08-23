@@ -7,7 +7,6 @@ import type {
 import { discoverProjectKnowledgeCorpus } from './corpus.js';
 import { createProjectKnowledgeDashboardSnapshot } from './dashboard.js';
 import { LocalProjectKnowledgeProvider } from './local-provider.js';
-import { readProjectKnowledgeIndexStatus } from './index-store.js';
 import { createProjectKnowledgeQuery } from './query.js';
 import { RemoteProjectKnowledgeProvider } from './remote-provider.js';
 import { renderProjectKnowledgeContext, boundProjectKnowledgeResults } from './renderer.js';
@@ -16,15 +15,14 @@ import {
   ProjectKnowledgeLearningService,
   type ProjectKnowledgeChangedHint,
 } from './learning.js';
-import { ProjectKnowledgeUnitRepository } from './units.js';
-import type { ProjectKnowledgeUnit } from './units.js';
-import { validateProjectKnowledgeUnitShape } from './units.js';
 import type {
   ProjectKnowledgePluginOptions,
   ProjectKnowledgeDashboardDiagnostic,
-  ProjectKnowledgeLegacyProvider,
+  ProjectKnowledgeProvider,
   ProjectKnowledgeResult,
 } from './types.js';
+import { resolveProjectKnowledgeStorageLocation } from '../../platform/paths/project-knowledge-storage.js';
+import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
 
 export const PROJECT_KNOWLEDGE_PLUGIN_ID = 'comet.project-knowledge';
 const MAX_RECENT_DIAGNOSTICS = 3;
@@ -57,7 +55,7 @@ async function createProjectKnowledgeModule(
   context: PluginContext,
   options: ProjectKnowledgePluginOptions,
 ): Promise<PluginModule> {
-  let provider: ProjectKnowledgeLegacyProvider | null = null;
+  let provider: ProjectKnowledgeProvider | null = null;
   let providerKey = '';
   const recentDiagnostics = await readRecentDiagnostics(context.storage);
   const recentChangedHints = await readRecentChangedHints(context.storage);
@@ -73,6 +71,10 @@ async function createProjectKnowledgeModule(
   };
   const reportDiagnostic = (diagnostic: { code: string; message: string }): void => {
     const message = boundDiagnosticMessage(`[${diagnostic.code}] ${diagnostic.message}`);
+    const duplicate = recentDiagnostics.some(
+      (entry) => entry.code === diagnostic.code && entry.message === message,
+    );
+    if (duplicate) return;
     recentDiagnostics.push({ code: diagnostic.code, message });
     while (recentDiagnostics.length > MAX_RECENT_DIAGNOSTICS) recentDiagnostics.shift();
     persistDiagnostics();
@@ -82,31 +84,32 @@ async function createProjectKnowledgeModule(
       message,
     });
   };
-  const unitRepository = new ProjectKnowledgeUnitRepository({
-    projectRoot: options.projectRoot,
-    ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
-    reportDiagnostic,
-  });
+  const createProvider = async (): Promise<ProjectKnowledgeProvider> => {
+    const key = options.knowledgeConfig.provider;
+    const corpus =
+      key === 'local'
+        ? await discoverProjectKnowledgeCorpus({
+            projectRoot: options.projectRoot,
+            reportDiagnostic,
+          })
+        : [];
+    return key === 'remote'
+      ? new RemoteProjectKnowledgeProvider({
+          config: options.knowledgeConfig.remote!,
+          projectRoot: options.projectRoot,
+          reportDiagnostic,
+        })
+      : new LocalProjectKnowledgeProvider({
+          projectRoot: options.projectRoot,
+          corpus,
+          ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
+          reportDiagnostic,
+        });
+  };
   const runDeterministicLearning = async (
     event: Parameters<ProjectKnowledgeLearningService['processEvent']>[0],
   ): Promise<void> => {
-    if (options.knowledgeConfig.provider !== 'local') {
-      reportDiagnostic({
-        code: 'remote-learning-unavailable',
-        message: 'Remote Provider 尚未提供学习写入接口，本次不回退到 Local。',
-      });
-      return;
-    }
-    const corpus = await discoverProjectKnowledgeCorpus({
-      projectRoot: options.projectRoot,
-      reportDiagnostic,
-    });
-    const learningProvider = new LocalProjectKnowledgeProvider({
-      projectRoot: options.projectRoot,
-      corpus,
-      ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
-      reportDiagnostic,
-    });
+    const learningProvider = await createProvider();
     try {
       const learning = new ProjectKnowledgeLearningService({
         projectRoot: options.projectRoot,
@@ -116,7 +119,7 @@ async function createProjectKnowledgeModule(
       });
       await learning.processEvent(event);
     } finally {
-      learningProvider.close();
+      if (learningProvider instanceof LocalProjectKnowledgeProvider) learningProvider.close();
     }
   };
   const persistChangedHint = async (hint: ProjectKnowledgeChangedHint): Promise<void> => {
@@ -127,43 +130,89 @@ async function createProjectKnowledgeModule(
       changedHints: [...recentChangedHints],
     });
   };
-  const dashboardSnapshot = async () => {
-    const snapshot = createProjectKnowledgeDashboardSnapshot({
-      config: options.knowledgeConfig,
-      language: options.language,
-    });
-    if (options.knowledgeConfig.provider !== 'local') {
-      return { ...snapshot, diagnostics: [...recentDiagnostics] };
+  const getProvider = async (): Promise<ProjectKnowledgeProvider> => {
+    const key = options.knowledgeConfig.provider;
+    if (provider === null || providerKey !== key) {
+      provider = await createProvider();
+      providerKey = key;
     }
-    const status = await readProjectKnowledgeIndexStatus({
-      projectRoot: options.projectRoot,
-      ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
-    });
-    return {
-      ...snapshot,
-      local: {
-        available: status.available,
-        repositoryId: status.repositoryId,
-        workspaceId: status.workspaceId,
-        sourceCount: status.sourceCount,
-        sectionCount: status.sectionCount,
-        ...(status.updatedAt ? { updatedAt: status.updatedAt } : {}),
-        ...(status.lastQueryMs === undefined ? {} : { lastQueryMs: status.lastQueryMs }),
-        ...(status.lastCandidateCount === undefined
-          ? {}
-          : { lastCandidateCount: status.lastCandidateCount }),
-        channels: status.channels,
-        ...(await unitDashboardSummary(unitRepository, recentChangedHints)),
-      },
-      diagnostics: [
+    return provider;
+  };
+  const clearProvider = (): void => {
+    if (provider instanceof LocalProjectKnowledgeProvider) provider.close();
+    provider = null;
+    providerKey = '';
+  };
+  const dashboardSnapshot = async () => {
+    let snapshotProvider: ProjectKnowledgeProvider | null = null;
+    try {
+      const snapshot = createProjectKnowledgeDashboardSnapshot({
+        config: options.knowledgeConfig,
+        language: options.language,
+      });
+      snapshotProvider = await createProvider();
+      const activeProvider = snapshotProvider;
+      const status = await activeProvider.status();
+      const recordsResult = await activeProvider.query({ kind: 'list', state: 'all', limit: 100 });
+      const records = recordsResult.kind === 'list' ? recordsResult.records : [];
+      const localIndexStatus =
+        snapshotProvider instanceof LocalProjectKnowledgeProvider
+          ? await snapshotProvider.indexStatus()
+          : null;
+      const location = resolveProjectKnowledgeStorageLocation(
+        options.projectRoot,
+        options.cacheRoot,
+      );
+      const diagnostics = [
         ...recentDiagnostics,
-        ...(status.diagnostic ? [{ code: 'index-status', message: status.diagnostic }] : []),
-      ].slice(-MAX_RECENT_DIAGNOSTICS),
-    };
+        ...status.diagnostics,
+        ...(recordsResult.kind === 'list' ? recordsResult.diagnostics : []),
+      ].filter((diagnostic, index, all) => {
+        const normalized = diagnostic.message.replace(/^\[[^\]]+\]\s*/u, '');
+        return (
+          all.findIndex(
+            (candidate) =>
+              candidate.code === diagnostic.code &&
+              candidate.message.replace(/^\[[^\]]+\]\s*/u, '') === normalized,
+          ) === index
+        );
+      });
+      const result = {
+        ...snapshot,
+        status,
+        records,
+        counts: {
+          active: records.filter((record) => record.state === 'active').length,
+          needsReview: records.filter((record) => record.state === 'needs-review').length,
+          retired: records.filter((record) => record.state === 'retired').length,
+        },
+        local:
+          options.knowledgeConfig.provider === 'local'
+            ? {
+                available: status.healthy,
+                repositoryId: location.repositoryId,
+                workspaceId: location.workspaceId,
+                sourceCount: localIndexStatus?.sourceCount ?? 0,
+                sectionCount: localIndexStatus?.sectionCount ?? 0,
+                ...((localIndexStatus?.updatedAt ?? status.updatedAt)
+                  ? { updatedAt: localIndexStatus?.updatedAt ?? status.updatedAt }
+                  : {}),
+                channels: localIndexStatus?.channels ?? ['records', 'sections'],
+              }
+            : undefined,
+        diagnostics: diagnostics.slice(-MAX_RECENT_DIAGNOSTICS),
+      };
+      return result;
+    } finally {
+      if (snapshotProvider instanceof LocalProjectKnowledgeProvider) snapshotProvider.close();
+    }
   };
   return {
     dashboard: createProjectKnowledgeDashboardContribution(options.language),
     events: ['verification.completed', 'change.completed', 'task.completed'],
+    dispose: async () => {
+      clearProvider();
+    },
     onEvent: async (event) => {
       const changedHint = createProjectKnowledgeChangedHint(event);
       if (changedHint !== null) await persistChangedHint(changedHint);
@@ -190,81 +239,141 @@ async function createProjectKnowledgeModule(
       }
       // The next context request must see the latest changed-path hint so the
       // local provider can refresh only the affected sources.
-      provider = null;
-      providerKey = '';
+      clearProvider();
     },
     invoke: async (capability, input) => {
-      if (capability !== 'status' && capability !== 'units' && capability !== 'share-memory')
+      try {
+        const rawValue =
+          input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
+        if (capability === 'configure-provider') {
+          if (options.updateKnowledgeConfig === undefined)
+            throw new Error('Project Knowledge configuration is read-only in this host');
+          const providerValue = rawValue.provider;
+          if (providerValue !== 'local' && providerValue !== 'remote')
+            throw new Error('provider must be local or remote');
+          if (providerValue === 'local') {
+            await options.updateKnowledgeConfig({ provider: 'local' });
+          } else {
+            const remoteValue = rawValue.remote;
+            if (!remoteValue || typeof remoteValue !== 'object' || Array.isArray(remoteValue))
+              throw new Error('remote provider configuration is required');
+            const remote = remoteValue as Record<string, unknown>;
+            if (typeof remote.endpoint !== 'string' || !remote.endpoint.trim())
+              throw new Error('remote endpoint is required');
+            const timeoutMs =
+              typeof remote.timeoutMs === 'number' ? remote.timeoutMs : remote.timeout_ms;
+            if (typeof timeoutMs !== 'number' || !Number.isSafeInteger(timeoutMs))
+              throw new Error('remote timeout must be an integer');
+            await options.updateKnowledgeConfig({
+              provider: 'remote',
+              remote: {
+                endpoint: remote.endpoint.trim(),
+                ...(typeof remote.tokenEnv === 'string' && remote.tokenEnv.trim()
+                  ? { token_env: remote.tokenEnv.trim() }
+                  : {}),
+                ...(typeof remote.scope === 'string' && remote.scope.trim()
+                  ? { scope: remote.scope.trim() }
+                  : {}),
+                timeout_ms: timeoutMs,
+              },
+            });
+          }
+          clearProvider();
+          return { configured: true };
+        }
+        const activeProvider = await getProvider();
+        const value = rawValue;
+        const projectId = resolveStableProjectId(options.projectRoot);
+        if (capability === 'status') return dashboardSnapshot();
+        if (capability === 'list') {
+          const state = value.state;
+          return activeProvider.query({
+            kind: 'list',
+            projectId,
+            ...(state === 'active' ||
+            state === 'needs-review' ||
+            state === 'retired' ||
+            state === 'all'
+              ? { state }
+              : { state: 'all' }),
+            limit: typeof value.limit === 'number' ? Math.min(500, Math.max(1, value.limit)) : 100,
+          });
+        }
+        if (capability === 'get') {
+          if (typeof value.id !== 'string' || !value.id.trim()) throw new Error('get requires id');
+          return activeProvider.query({ kind: 'get', id: value.id.trim(), projectId });
+        }
+        if (capability === 'query') {
+          if (typeof value.task !== 'string' || !value.task.trim())
+            throw new Error('query requires task');
+          return activeProvider.query({
+            kind: 'search',
+            query: createProjectKnowledgeQuery({
+              task: value.task,
+              ...(typeof value.path === 'string' ? { path: value.path } : {}),
+              ...(typeof value.phase === 'string' ? { phase: value.phase } : {}),
+              ...(typeof value.operation === 'string' ? { operation: value.operation } : {}),
+            }),
+            limit: 8,
+          });
+        }
+        if (capability === 'correct') {
+          if (typeof value.id !== 'string' || !value.id.trim())
+            throw new Error('correct requires id');
+          if (typeof value.text !== 'string' || !value.text.trim())
+            throw new Error('correct requires text');
+          return activeProvider.apply({
+            kind: 'correct',
+            id: value.id.trim(),
+            projectId,
+            summary: value.text.trim().slice(0, 2000),
+            updatedAt: new Date().toISOString(),
+          });
+        }
+        if (capability === 'forget') {
+          if (typeof value.id !== 'string' || !value.id.trim())
+            throw new Error('forget requires id');
+          return activeProvider.apply({
+            kind: 'retire',
+            id: value.id.trim(),
+            projectId,
+            updatedAt: new Date().toISOString(),
+          });
+        }
+        if (capability === 'refresh') {
+          return activeProvider.apply({ kind: 'refresh', projectId });
+        }
         throw new Error(`Unknown project knowledge capability: ${capability}`);
-      const snapshot = await dashboardSnapshot();
-      if (capability === 'units') {
-        return (snapshot as { local?: { units?: unknown } }).local?.units ?? [];
+      } finally {
+        clearProvider();
       }
-      if (capability === 'share-memory') {
-        const record = input as { unit?: unknown; confirm?: unknown };
-        if (record.confirm !== true) throw new Error('share-memory requires confirmation');
-        const unit = validateProjectKnowledgeUnitShape(record.unit);
-        if (unit.origin !== 'maintained') throw new Error('shared unit must be maintained');
-        const shared = await unitRepository.shareMaintained(unit, { confirm: true });
-        return { shared: true, unit: shared };
-      }
-      return snapshot;
     },
     provideContext: async (request) => {
-      const query = createProjectKnowledgeQuery(request);
-      const key = options.knowledgeConfig.provider;
-      let targetedProvider = false;
-      if (provider === null || providerKey !== key) {
-        const corpus =
-          key === 'local'
-            ? await discoverProjectKnowledgeCorpus({
-                projectRoot: options.projectRoot,
-                reportDiagnostic,
-              })
-            : [];
-        const changedPaths = recentChangedHints.flatMap((hint) => [
-          ...hint.changedPaths,
-          ...hint.artifactRefs,
-        ]);
-        provider =
-          key === 'remote'
-            ? new RemoteProjectKnowledgeProvider({
-                config: options.knowledgeConfig.remote!,
-                reportDiagnostic,
-              })
-            : new LocalProjectKnowledgeProvider({
-                projectRoot: options.projectRoot,
-                corpus,
-                ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
-                reportDiagnostic,
-                unitRepository,
-                changedPaths,
-              });
-        providerKey = key;
-        if (changedPaths.length > 0) {
-          targetedProvider = true;
+      try {
+        const query = createProjectKnowledgeQuery(request);
+        const activeProvider = await getProvider();
+        const response = await activeProvider.query({ kind: 'search', query, limit: 8 });
+        const results = boundProjectKnowledgeResults(
+          response.kind === 'search' ? response.results : [],
+        );
+        if (recentChangedHints.length > 0) {
           recentChangedHints.splice(0, recentChangedHints.length);
           persistDiagnostics();
         }
+        await diagnosticWrite;
+        const text = renderProjectKnowledgeContext(results, options.language ?? 'zh-CN');
+        if (!text) return null;
+        return {
+          text,
+          records: results.map((result: ProjectKnowledgeResult) => ({
+            source: result.source,
+            ...(result.title ? { title: result.title } : {}),
+            content: result.content,
+          })),
+        };
+      } finally {
+        clearProvider();
       }
-      const results = boundProjectKnowledgeResults(await provider.retrieve(query));
-      if (targetedProvider) {
-        // The hint is a one-request optimization. Recreate the provider on the
-        // next request so deterministic units can perform a complete refresh.
-        provider = null;
-        providerKey = '';
-      }
-      await diagnosticWrite;
-      const text = renderProjectKnowledgeContext(results, options.language ?? 'zh-CN');
-      if (!text) return null;
-      return {
-        text,
-        records: results.map((result: ProjectKnowledgeResult) => ({
-          source: result.source,
-          ...(result.title ? { title: result.title } : {}),
-          content: result.content,
-        })),
-      };
     },
   };
 }
@@ -315,30 +424,6 @@ async function readRecentChangedHints(
   } catch {
     return [];
   }
-}
-
-async function unitDashboardSummary(
-  repository: ProjectKnowledgeUnitRepository,
-  changedHints: readonly ProjectKnowledgeChangedHint[],
-): Promise<{
-  unitCount: number;
-  activeUnitCount: number;
-  draftUnitCount: number;
-  retiredUnitCount: number;
-  relationCount: number;
-  units: readonly ProjectKnowledgeUnit[];
-  changedHints: readonly ProjectKnowledgeChangedHint[];
-}> {
-  const units = await repository.list();
-  return {
-    unitCount: units.length,
-    activeUnitCount: units.filter((unit) => unit.state === 'active').length,
-    draftUnitCount: units.filter((unit) => unit.state === 'draft').length,
-    retiredUnitCount: units.filter((unit) => unit.state === 'retired').length,
-    relationCount: units.reduce((total, unit) => total + unit.relations.length, 0),
-    units,
-    changedHints,
-  };
 }
 
 function boundDiagnosticMessage(message: string): string {

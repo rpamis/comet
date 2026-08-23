@@ -11,7 +11,6 @@ import {
   type MemoryCorrection,
   type MemoryLanguage,
   type MemoryManagementView,
-  type MemoryManagementRecord,
   type MemoryQuery,
   type MemoryRecord,
   type MemoryRetrieval,
@@ -27,13 +26,13 @@ import { JsonFilePluginStorageStore, JsonFileTextStore } from '../../platform/fs
 import { JsonPluginStateStore, PluginRuntime } from './plugin-runtime.js';
 import type { PluginContextContribution, PluginEvent, PluginScopeContext } from './types.js';
 import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
+import { writeWorkflowProjectConfig } from '../workflow-contract/project-config-writer.js';
 import { DEFAULT_WORKFLOW_MEMORY_PROJECT_CONFIG } from '../workflow-contract/project-config.js';
 import type { WorkflowMemoryProjectConfig } from '../workflow-contract/types.js';
 import { createProjectKnowledgePluginDescriptor } from '../project-knowledge/index.js';
 import type { WorkflowKnowledgeProjectConfig } from '../workflow-contract/types.js';
 import { DEFAULT_WORKFLOW_KNOWLEDGE_PROJECT_CONFIG } from '../workflow-contract/project-config.js';
 import type { ProjectKnowledgeSemanticReviewer } from '../project-knowledge/learning.js';
-import { sanitizeProjectPreferenceForSharing } from '../project-knowledge/learning.js';
 
 export interface CometLifecycleObservation {
   readonly name:
@@ -270,45 +269,9 @@ export class CometPluginBridge {
     );
   }
 
-  public async shareProjectPreference(
-    memoryId: string,
-    options: {
-      readonly confirm: boolean;
-      readonly sources: readonly { readonly source: string; readonly anchor?: string }[];
-    },
-  ): Promise<unknown> {
-    if (!options.confirm)
-      throw new Error('Sharing a personal project preference requires confirmation');
-    const management = await this.manage({ scope: 'project' });
-    const record = management.records.find((entry) => entry.id === memoryId);
-    if (record === undefined) throw new Error(`Personal memory is not found: ${memoryId}`);
-    const preference = memoryManagementRecordToPreference(record, options.sources);
-    const unit = sanitizeProjectPreferenceForSharing(preference);
-    return this.runtime.invoke(
-      'comet.project-knowledge',
-      'share-memory',
-      { unit, confirm: options.confirm },
-      { scope: 'project', projectId: this.projectId },
-    );
-  }
-
   public async diagnostics(): Promise<ReturnType<PluginRuntime['diagnostics']>> {
     return this.runtime.diagnostics();
   }
-}
-
-function memoryManagementRecordToPreference(
-  record: MemoryManagementRecord,
-  sources: readonly { readonly source: string; readonly anchor?: string }[],
-): Parameters<typeof sanitizeProjectPreferenceForSharing>[0] {
-  return {
-    category: record.category,
-    text: record.text,
-    ...(record.title === undefined ? {} : { title: record.title }),
-    pathPatterns: record.pathPatterns,
-    operations: record.operations,
-    sources,
-  };
 }
 
 function arrayValue(value: unknown): readonly unknown[] {
@@ -386,6 +349,11 @@ export async function createDefaultCometPluginBridge(
       createProjectKnowledgePluginDescriptor({
         projectRoot,
         knowledgeConfig: await resolveProjectKnowledgeConfig(projectRoot),
+        updateKnowledgeConfig: async (knowledge) => {
+          const current = await readWorkflowProjectConfig(projectRoot);
+          if (current === null) throw new Error('Project config is not available');
+          await writeWorkflowProjectConfig(projectRoot, { ...current, knowledge });
+        },
         language,
         ...(options.knowledgeCacheRoot
           ? { cacheRoot: path.resolve(options.knowledgeCacheRoot) }

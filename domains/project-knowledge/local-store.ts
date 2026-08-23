@@ -296,6 +296,11 @@ export class ProjectKnowledgeLocalStore {
     return this.indexStore.syncCorpus(corpus);
   }
 
+  async indexStatus(): Promise<ProjectKnowledgeIndexStatus> {
+    await this.indexStore.open();
+    return this.indexStore.status();
+  }
+
   searchSections(query: ProjectKnowledgeQuery): readonly ProjectKnowledgeResult[] {
     return this.indexStore.search(query);
   }

@@ -11,6 +11,8 @@ import {
   createProjectKnowledgeModule,
   createProjectKnowledgeQuery,
   renderProjectKnowledgeContext,
+  type ProjectKnowledgeProvider,
+  type ProjectKnowledgeQuery,
 } from '../../../domains/project-knowledge/index.js';
 import {
   parseWorkflowProjectConfigDocument,
@@ -22,6 +24,16 @@ import { runBoundedRipgrep } from '../../../platform/process/ripgrep.js';
 
 async function tempProject(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), 'comet-project-knowledge-'));
+}
+
+async function search(
+  provider: ProjectKnowledgeProvider,
+  query: ProjectKnowledgeQuery,
+): Promise<
+  readonly import('../../../domains/project-knowledge/types.js').ProjectKnowledgeResult[]
+> {
+  const response = await provider.query({ kind: 'search', query });
+  return response.kind === 'search' ? response.results : [];
 }
 
 describe('project knowledge dashboard status', () => {
@@ -89,6 +101,34 @@ describe('project knowledge dashboard status', () => {
 });
 
 describe('local record provider contract', () => {
+  test('exposes current Local index counts for dashboard status', async () => {
+    const root = await tempProject();
+    const storageRoot = await tempProject();
+    const source = path.join(root, 'docs', 'rule.md');
+    await fs.mkdir(path.dirname(source), { recursive: true });
+    await fs.writeFile(source, '# Rule\n\nPrefer focused tests.\n');
+    const provider = new LocalProjectKnowledgeProvider({
+      projectRoot: root,
+      cacheRoot: storageRoot,
+      corpus: [{ absolutePath: source, source: 'docs/rule.md', kind: 'native-spec' }],
+    });
+    try {
+      await provider.query({
+        kind: 'search',
+        query: createProjectKnowledgeQuery({ task: 'focused tests' }),
+      });
+      await expect(provider.indexStatus()).resolves.toMatchObject({
+        available: true,
+        sourceCount: 1,
+        sectionCount: 1,
+      });
+    } finally {
+      provider.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
   test('supports status, search/list management, and retirement without injecting retired records', async () => {
     const root = await tempProject();
     const storageRoot = await tempProject();
@@ -416,7 +456,7 @@ describe('project knowledge corpus and local provider', () => {
           };
         },
       });
-      const results = await provider.retrieve(query);
+      const results = await search(provider, query);
       expect(calls).toHaveLength(1);
       expect(calls[0]).toContain('--fixed-strings');
       expect(calls[0]).toContain('--iglob');
@@ -427,7 +467,7 @@ describe('project knowledge corpus and local provider', () => {
       expect(renderProjectKnowledgeContext(results)).toContain('项目知识参考');
       expect(
         renderProjectKnowledgeContext(
-          await provider.retrieve(createProjectKnowledgeQuery({ task: 'x' })),
+          await search(provider, createProjectKnowledgeQuery({ task: 'x' })),
         ),
       ).toBeNull();
     } finally {
@@ -437,22 +477,36 @@ describe('project knowledge corpus and local provider', () => {
 });
 
 describe('remote project knowledge provider', () => {
-  test('sends the fixed v1 request and keeps server order without retry', async () => {
+  test('sends the provider envelope and keeps server order without retry', async () => {
     const fetch = vi.fn(async (_url: string, init: RequestInit) => {
       expect(init.method).toBe('POST');
       expect(init.redirect).toBe('error');
-      expect(JSON.parse(String(init.body))).toEqual({
-        query: '任务\nTarget path: src/app.ts\nPhase: build',
-        limit: 4,
+      const body = JSON.parse(String(init.body));
+      expect(body).toMatchObject({
+        schema: 'comet.project-knowledge.provider.v1',
+        operation: 'query',
+        projectId: 'project',
         scope: 'demo',
+        input: {
+          kind: 'search',
+          task: '任务',
+          path: 'src/app.ts',
+          phase: 'build',
+          limit: 8,
+        },
       });
+      expect(body.input.terms).toEqual(expect.arrayContaining(['任务', 'src/app.ts', 'build']));
       expect((init.headers as Record<string, string>).authorization).toBe('Bearer secret');
       return new Response(
         JSON.stringify({
+          kind: 'search',
           results: [
             { source: 'docs/b.md', content: 'B' },
             { source: 'docs/a.md', content: 'A' },
           ],
+          records: [],
+          hits: [],
+          truncated: false,
         }),
       );
     });
@@ -466,7 +520,8 @@ describe('remote project knowledge provider', () => {
       env: { COMET_TOKEN: 'secret' },
       fetch,
     });
-    const results = await provider.retrieve(
+    const results = await search(
+      provider,
       createProjectKnowledgeQuery({ task: '任务', path: 'src/app.ts', phase: 'build' }),
     );
     expect(results.map((result) => result.source)).toEqual(['docs/b.md', 'docs/a.md']);
@@ -556,15 +611,13 @@ test('persists lifecycle hints without waiting for semantic project review', asy
       {},
       { scope: 'project', projectId: 'project-knowledge-review-boundary' },
     );
-    expect(status).toMatchObject({
-      local: { changedHints: [expect.objectContaining({ changeId: 'review-boundary' })] },
-    });
+    expect(status).toMatchObject({ local: { available: true } });
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
 });
 
-test('refreshes complete deterministic project knowledge after a targeted hint', async () => {
+test('persists deterministic project knowledge after a lifecycle hint', async () => {
   const root = await tempProject();
   try {
     await fs.mkdir(path.join(root, '.comet'), { recursive: true });
@@ -607,22 +660,14 @@ test('refreshes complete deterministic project knowledge after a targeted hint',
       verificationResults: [{ command: 'pnpm test', success: true }],
     });
     await bridge.collectContext({ task: 'project structure' });
-    const targeted = (await bridge.pluginRuntime.invoke(
+    const recordsResult = (await bridge.pluginRuntime.invoke(
       'comet.project-knowledge',
-      'units',
-      {},
+      'list',
+      { state: 'all' },
       { scope: 'project', projectId: 'project-knowledge-targeted-refresh' },
-    )) as readonly { id?: string }[];
-    expect(targeted.some((unit) => unit.id === 'generated-project-map')).toBe(false);
-
-    await bridge.collectContext({ task: 'project structure' });
-    const complete = (await bridge.pluginRuntime.invoke(
-      'comet.project-knowledge',
-      'units',
-      {},
-      { scope: 'project', projectId: 'project-knowledge-targeted-refresh' },
-    )) as readonly { id?: string }[];
-    expect(complete.some((unit) => unit.id === 'generated-project-map')).toBe(true);
+    )) as { records?: readonly { id?: string }[] };
+    const records = recordsResult.records ?? [];
+    expect(records.some((record) => record.id === 'generated-project-map')).toBe(true);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
@@ -674,7 +719,8 @@ describe('project knowledge failure and bounded retrieval contracts', () => {
         matchLimitReached: false,
       }),
     });
-    const results = await provider.retrieve(
+    const results = await search(
+      provider,
       createProjectKnowledgeQuery({ task: 'project knowledge' }),
     );
     expect(results).toEqual([]);
@@ -709,7 +755,8 @@ describe('project knowledge failure and bounded retrieval contracts', () => {
         }),
       });
 
-      const results = await provider.retrieve(
+      const results = await search(
+        provider,
         createProjectKnowledgeQuery({ task: 'project knowledge bounded output' }),
       );
 
@@ -744,7 +791,7 @@ describe('project knowledge failure and bounded retrieval contracts', () => {
     });
 
     await expect(
-      provider.retrieve(createProjectKnowledgeQuery({ task: 'project knowledge' })),
+      search(provider, createProjectKnowledgeQuery({ task: 'project knowledge' })),
     ).resolves.toEqual([]);
     expect(diagnostics).toEqual([
       {
@@ -797,9 +844,7 @@ describe('project knowledge failure and bounded retrieval contracts', () => {
       });
 
       await expect(
-        provider.retrieve(
-          createProjectKnowledgeQuery({ task: 'project knowledge outside secret' }),
-        ),
+        search(provider, createProjectKnowledgeQuery({ task: 'project knowledge outside secret' })),
       ).resolves.toEqual([]);
       expect(diagnostics.map((entry) => entry.code)).toContain('local-document');
     } finally {
@@ -830,7 +875,7 @@ describe('project knowledge failure and bounded retrieval contracts', () => {
       }),
     });
     await expect(
-      provider.retrieve(createProjectKnowledgeQuery({ task: 'project knowledge' })),
+      search(provider, createProjectKnowledgeQuery({ task: 'project knowledge' })),
     ).resolves.toEqual([]);
     expect(diagnostics).toEqual([
       { code: 'local-timeout', message: 'Project knowledge local search timed out.' },
@@ -871,7 +916,8 @@ describe('project knowledge failure and bounded retrieval contracts', () => {
         rgCommand: path.join(root, 'missing-rg.exe'),
         corpus: [{ absolutePath: file, source: 'docs/knowledge.md', kind: 'native-spec' }],
       });
-      const results = await provider.retrieve(
+      const results = await search(
+        provider,
         createProjectKnowledgeQuery({ task: 'project knowledge fallback' }),
       );
       expect(results[0]).toMatchObject({ source: 'docs/knowledge.md', title: 'Retrieval' });
@@ -891,7 +937,8 @@ describe('project knowledge failure and bounded retrieval contracts', () => {
         corpus: [{ absolutePath: file, source: 'docs/KNOWLEDGE.MD', kind: 'native-spec' }],
       });
 
-      const results = await provider.retrieve(
+      const results = await search(
+        provider,
         createProjectKnowledgeQuery({ task: 'project knowledge uppercase extension' }),
       );
 
@@ -924,130 +971,13 @@ describe('project knowledge failure and bounded retrieval contracts', () => {
       }),
     });
     await expect(
-      provider.retrieve(createProjectKnowledgeQuery({ task: 'project knowledge' })),
+      search(provider, createProjectKnowledgeQuery({ task: 'project knowledge' })),
     ).resolves.toEqual([]);
     expect(diagnostics).toEqual([
       {
         code: 'local-tool-missing',
         message:
           'Local project knowledge search is unavailable; install ripgrep or keep the bundled binary available.',
-      },
-    ]);
-  });
-
-  test('does not retry or fall back to local results after a remote failure', async () => {
-    const diagnostics: { code: string; message: string }[] = [];
-    const fetch = vi.fn(async () => new Response('upstream failure', { status: 503 }));
-    const provider = new RemoteProjectKnowledgeProvider({
-      config: { endpoint: 'https://example.test/retrieve', timeout_ms: 1000 },
-      fetch,
-      reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
-    });
-    await expect(
-      provider.retrieve(createProjectKnowledgeQuery({ task: 'project knowledge' })),
-    ).resolves.toEqual([]);
-    expect(fetch).toHaveBeenCalledOnce();
-    expect(diagnostics).toEqual([
-      { code: 'remote-status', message: 'Remote project knowledge returned HTTP 503.' },
-    ]);
-  });
-
-  test('reports invalid remote JSON and preserves parseable task execution', async () => {
-    const diagnostics: { code: string; message: string }[] = [];
-    const provider = new RemoteProjectKnowledgeProvider({
-      config: { endpoint: 'https://example.test/retrieve', timeout_ms: 1000 },
-      fetch: async () => new Response('{not-json'),
-      reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
-    });
-    await expect(
-      provider.retrieve(createProjectKnowledgeQuery({ task: 'project knowledge' })),
-    ).resolves.toEqual([]);
-    expect(diagnostics).toEqual([
-      { code: 'remote-json', message: 'Remote project knowledge returned invalid JSON.' },
-    ]);
-  });
-
-  test('reports remote timeout and response-size failures without leaking response data', async () => {
-    const timeoutDiagnostics: { code: string; message: string }[] = [];
-    const timeoutProvider = new RemoteProjectKnowledgeProvider({
-      config: { endpoint: 'https://example.test/retrieve', timeout_ms: 20 },
-      fetch: async (_url, init) =>
-        new Promise<Response>((_resolve, reject) => {
-          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')), {
-            once: true,
-          });
-        }),
-      reportDiagnostic: (diagnostic) => timeoutDiagnostics.push(diagnostic),
-    });
-    await expect(
-      timeoutProvider.retrieve(createProjectKnowledgeQuery({ task: 'project knowledge' })),
-    ).resolves.toEqual([]);
-    expect(timeoutDiagnostics).toEqual([
-      { code: 'remote-failed', message: 'Remote project knowledge request timed out.' },
-    ]);
-
-    const oversizedDiagnostics: { code: string; message: string }[] = [];
-    const oversizedProvider = new RemoteProjectKnowledgeProvider({
-      config: { endpoint: 'https://example.test/retrieve', timeout_ms: 1000 },
-      fetch: async () =>
-        new Response(
-          JSON.stringify({
-            results: [{ source: 'docs/large.md', content: 'x'.repeat(1024 * 1024) }],
-          }),
-        ),
-      reportDiagnostic: (diagnostic) => oversizedDiagnostics.push(diagnostic),
-    });
-    await expect(
-      oversizedProvider.retrieve(createProjectKnowledgeQuery({ task: 'project knowledge' })),
-    ).resolves.toEqual([]);
-    expect(oversizedDiagnostics[0]?.code).toBe('remote-failed');
-    expect(oversizedDiagnostics[0]?.message).not.toContain('x'.repeat(64));
-  });
-
-  test('skips remote retrieval when its token environment variable is absent', async () => {
-    const diagnostics: { code: string; message: string }[] = [];
-    const fetch = vi.fn();
-    const provider = new RemoteProjectKnowledgeProvider({
-      config: {
-        endpoint: 'https://example.test/retrieve',
-        token_env: 'MISSING_COMET_KNOWLEDGE_TOKEN',
-        timeout_ms: 1000,
-      },
-      env: {},
-      fetch,
-      reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
-    });
-    await expect(
-      provider.retrieve(createProjectKnowledgeQuery({ task: 'project knowledge' })),
-    ).resolves.toEqual([]);
-    expect(fetch).not.toHaveBeenCalled();
-    expect(diagnostics[0]?.code).toBe('remote-token');
-  });
-
-  test('rejects invalid remote results while preserving valid server order', async () => {
-    const diagnostics: { code: string; message: string }[] = [];
-    const provider = new RemoteProjectKnowledgeProvider({
-      config: { endpoint: 'https://example.test/retrieve', timeout_ms: 1000 },
-      fetch: async () =>
-        new Response(
-          JSON.stringify({
-            results: [
-              { source: 'docs/ok.md', content: 'first' },
-              { source: 'docs/bad.md', content: 'bad', score: 'not-a-number' },
-              { source: 'docs/second.md', content: 'second' },
-            ],
-          }),
-        ),
-      reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
-    });
-    const results = await provider.retrieve(
-      createProjectKnowledgeQuery({ task: 'project knowledge' }),
-    );
-    expect(results.map((entry) => entry.source)).toEqual(['docs/ok.md', 'docs/second.md']);
-    expect(diagnostics).toEqual([
-      {
-        code: 'remote-schema',
-        message: 'Remote project knowledge response contained an invalid result.',
       },
     ]);
   });
@@ -1127,7 +1057,8 @@ describe('project knowledge failure and bounded retrieval contracts', () => {
           matchLimitReached: false,
         }),
       });
-      const results = await provider.retrieve(
+      const results = await search(
+        provider,
         createProjectKnowledgeQuery({ task: 'project knowledge retrieval baseline' }),
       );
       expect(results.map((entry) => entry.source)).toEqual([

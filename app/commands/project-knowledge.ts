@@ -1,33 +1,28 @@
 import path from 'node:path';
 
 import {
-  boundProjectKnowledgeResults,
-  createProjectKnowledgeDashboardSnapshot,
-  createProjectKnowledgeQuery,
   discoverProjectKnowledgeCorpus,
   LocalProjectKnowledgeProvider,
-  ProjectKnowledgeIndexStore,
-  ProjectKnowledgeUnitRepository,
-  validateProjectKnowledgeUnitSources,
-  readProjectKnowledgeIndexStatus,
   RemoteProjectKnowledgeProvider,
-  renderProjectKnowledgeContext,
+  createProjectKnowledgeQuery,
   type ProjectKnowledgeDiagnostic,
+  type ProjectKnowledgeProvider,
 } from '../../domains/project-knowledge/index.js';
+import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
 import { readWorkflowProjectConfig } from '../../domains/workflow-contract/project-config-reader.js';
 import { DEFAULT_WORKFLOW_KNOWLEDGE_PROJECT_CONFIG } from '../../domains/workflow-contract/project-config.js';
 
 export interface ProjectKnowledgeCommandOptions {
   readonly json?: boolean;
   readonly task?: string;
-  readonly query?: string;
   readonly path?: string;
   readonly operation?: string;
+  readonly phase?: string;
   readonly cacheRoot?: string;
   readonly id?: string;
-  readonly state?: 'active' | 'draft' | 'retired';
-  readonly origin?: 'maintained' | 'generated';
-  readonly confirm?: boolean;
+  readonly text?: string;
+  readonly state?: 'active' | 'needs-review' | 'retired' | 'all';
+  readonly limit?: number;
 }
 
 export async function projectKnowledgeStatusCommand(
@@ -35,33 +30,20 @@ export async function projectKnowledgeStatusCommand(
   options: ProjectKnowledgeCommandOptions = {},
 ): Promise<unknown> {
   const projectRoot = path.resolve(targetPath);
-  const config = await knowledgeConfig(projectRoot);
-  const base = createProjectKnowledgeDashboardSnapshot({ config });
-  if (config.provider === 'remote') {
-    print(base, options);
-    return base;
+  const diagnostics: ProjectKnowledgeDiagnostic[] = [];
+  const provider = await createProvider(projectRoot, options, diagnostics);
+  try {
+    const status = await provider.status();
+    const result = {
+      provider: status.provider,
+      status,
+      diagnostics: [...diagnostics, ...status.diagnostics],
+    };
+    print(result, options);
+    return result;
+  } finally {
+    closeProvider(provider);
   }
-  const status = await readProjectKnowledgeIndexStatus({
-    projectRoot,
-    ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
-  });
-  const result = {
-    ...base,
-    index: {
-      available: status.available,
-      repositoryId: status.repositoryId,
-      workspaceId: status.workspaceId,
-      sources: status.sourceCount,
-      sections: status.sectionCount,
-      updatedAt: status.updatedAt ?? null,
-      lastQueryMs: status.lastQueryMs ?? null,
-      lastCandidateCount: status.lastCandidateCount ?? null,
-      channels: status.channels,
-    },
-    diagnostics: status.diagnostic ? [status.diagnostic] : [],
-  };
-  print(result, options);
-  return result;
 }
 
 export async function projectKnowledgeQueryCommand(
@@ -69,44 +51,112 @@ export async function projectKnowledgeQueryCommand(
   options: ProjectKnowledgeCommandOptions = {},
 ): Promise<unknown> {
   const projectRoot = path.resolve(targetPath);
-  const config = await knowledgeConfig(projectRoot);
   const diagnostics: ProjectKnowledgeDiagnostic[] = [];
-  const reportDiagnostic = (diagnostic: ProjectKnowledgeDiagnostic): void => {
-    diagnostics.push(diagnostic);
-  };
-  const query = createProjectKnowledgeQuery({
-    task: required(options.task ?? options.query, '--task'),
-    ...(options.path ? { path: options.path } : {}),
-    ...(options.operation ? { operation: options.operation } : {}),
-  });
-  const provider =
-    config.provider === 'remote'
-      ? new RemoteProjectKnowledgeProvider({ config: config.remote!, reportDiagnostic })
-      : new LocalProjectKnowledgeProvider({
-          projectRoot,
-          corpus: await discoverProjectKnowledgeCorpus({ projectRoot, reportDiagnostic }),
-          ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
-          reportDiagnostic,
-          unitRepository: new ProjectKnowledgeUnitRepository({
-            projectRoot,
-            ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
-            reportDiagnostic,
-          }),
-        });
-  const results = boundProjectKnowledgeResults(await provider.retrieve(query));
-  const result = {
-    provider: config.provider,
-    results: results.map(({ source, title, content, score }) => ({
-      source,
-      ...(title ? { title } : {}),
-      content,
-      ...(score === undefined ? {} : { score }),
-    })),
-    diagnostics,
-  };
-  if (options.json) print(result, options);
-  else console.log(renderProjectKnowledgeContext(results) ?? '没有匹配的项目知识。');
-  return result;
+  const provider = await createProvider(projectRoot, options, diagnostics);
+  try {
+    const result = await provider.query({
+      kind: 'search',
+      query: createProjectKnowledgeQuery({
+        task: required(options.task, '--task'),
+        path: options.path,
+        phase: options.phase,
+        operation: options.operation,
+      }),
+      limit: options.limit,
+    });
+    const output = { provider: providerName(provider), result, diagnostics };
+    if (options.json) print(output, options);
+    else
+      console.log(
+        result.kind === 'search' ? JSON.stringify(result.results, null, 2) : '没有匹配的项目知识。',
+      );
+    return output;
+  } finally {
+    closeProvider(provider);
+  }
+}
+
+export async function projectKnowledgeListCommand(
+  targetPath = '.',
+  options: ProjectKnowledgeCommandOptions = {},
+): Promise<unknown> {
+  const projectRoot = path.resolve(targetPath);
+  const diagnostics: ProjectKnowledgeDiagnostic[] = [];
+  const provider = await createProvider(projectRoot, options, diagnostics);
+  try {
+    const result = await provider.query({
+      kind: 'list',
+      state: options.state ?? 'active',
+      limit: options.limit,
+    });
+    const output = { provider: providerName(provider), result, diagnostics };
+    print(output, options);
+    return output;
+  } finally {
+    closeProvider(provider);
+  }
+}
+
+export async function projectKnowledgeGetCommand(
+  targetPath = '.',
+  options: ProjectKnowledgeCommandOptions = {},
+): Promise<unknown> {
+  const projectRoot = path.resolve(targetPath);
+  const diagnostics: ProjectKnowledgeDiagnostic[] = [];
+  const provider = await createProvider(projectRoot, options, diagnostics);
+  try {
+    const result = await provider.query({ kind: 'get', id: required(options.id, '--id') });
+    const output = { provider: providerName(provider), result, diagnostics };
+    print(output, options);
+    return output;
+  } finally {
+    closeProvider(provider);
+  }
+}
+
+export async function projectKnowledgeCorrectCommand(
+  targetPath = '.',
+  options: ProjectKnowledgeCommandOptions = {},
+): Promise<unknown> {
+  const projectRoot = path.resolve(targetPath);
+  const diagnostics: ProjectKnowledgeDiagnostic[] = [];
+  const provider = await createProvider(projectRoot, options, diagnostics);
+  try {
+    const result = await provider.apply({
+      kind: 'correct',
+      id: required(options.id, '--id'),
+      projectId: resolveStableProjectId(projectRoot),
+      summary: required(options.text, '--text'),
+      updatedAt: new Date().toISOString(),
+    });
+    const output = { provider: providerName(provider), result, diagnostics };
+    print(output, options);
+    return output;
+  } finally {
+    closeProvider(provider);
+  }
+}
+
+export async function projectKnowledgeForgetCommand(
+  targetPath = '.',
+  options: ProjectKnowledgeCommandOptions = {},
+): Promise<unknown> {
+  const projectRoot = path.resolve(targetPath);
+  const diagnostics: ProjectKnowledgeDiagnostic[] = [];
+  const provider = await createProvider(projectRoot, options, diagnostics);
+  try {
+    const result = await provider.apply({
+      kind: 'retire',
+      id: required(options.id, '--id'),
+      projectId: resolveStableProjectId(projectRoot),
+      updatedAt: new Date().toISOString(),
+    });
+    const output = { provider: providerName(provider), result, diagnostics };
+    print(output, options);
+    return output;
+  } finally {
+    closeProvider(provider);
+  }
 }
 
 export async function projectKnowledgeRebuildCommand(
@@ -114,102 +164,39 @@ export async function projectKnowledgeRebuildCommand(
   options: ProjectKnowledgeCommandOptions = {},
 ): Promise<unknown> {
   const projectRoot = path.resolve(targetPath);
-  const config = await knowledgeConfig(projectRoot);
-  if (config.provider !== 'local') {
-    throw new Error('comet knowledge rebuild is only available for the Local provider');
-  }
   const diagnostics: ProjectKnowledgeDiagnostic[] = [];
-  const corpus = await discoverProjectKnowledgeCorpus({
-    projectRoot,
-    reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
-  });
-  const store = new ProjectKnowledgeIndexStore({
-    projectRoot,
-    ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
-    reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
-  });
+  const provider = await createProvider(projectRoot, options, diagnostics);
   try {
-    const status = await store.rebuild(corpus);
-    const result = {
-      provider: 'local',
-      rebuilt: true,
-      repositoryId: status.repositoryId,
-      workspaceId: status.workspaceId,
-      sources: status.sourceCount,
-      sections: status.sectionCount,
-      updatedAt: status.updatedAt ?? null,
-      diagnostics,
-    };
-    print(result, options);
-    return result;
+    const result = await provider.apply({ kind: 'refresh' });
+    const output = { provider: providerName(provider), result, diagnostics };
+    print(output, options);
+    return output;
   } finally {
-    store.close();
+    closeProvider(provider);
   }
 }
 
-export async function projectKnowledgeUnitsListCommand(
-  targetPath = '.',
-  options: ProjectKnowledgeCommandOptions = {},
-): Promise<unknown> {
-  const repository = projectKnowledgeUnitRepository(targetPath, options);
-  const units = await repository.list({ state: options.state, origin: options.origin });
-  const result = { units };
-  print(result, options);
-  return result;
-}
-
-export async function projectKnowledgeUnitsGetCommand(
-  targetPath = '.',
-  options: ProjectKnowledgeCommandOptions = {},
-): Promise<unknown> {
-  const id = required(options.id, '--id');
-  const repository = projectKnowledgeUnitRepository(targetPath, options);
-  const unit = await repository.read(id);
-  if (unit === null) throw new Error(`项目知识单元不存在：${id}`);
-  const result = { unit };
-  print(result, options);
-  return result;
-}
-
-export async function projectKnowledgeUnitsShareCommand(
-  targetPath = '.',
-  options: ProjectKnowledgeCommandOptions = {},
-): Promise<unknown> {
-  if (!options.confirm) throw new Error('share requires explicit --confirm');
-  const id = required(options.id, '--id');
-  const projectRoot = path.resolve(targetPath);
-  const repository = projectKnowledgeUnitRepository(targetPath, options);
-  const current = await repository.read(id);
-  if (current === null) throw new Error(`项目知识单元不存在：${id}`);
-  const validation = await validateProjectKnowledgeUnitSources(current, { projectRoot });
-  if (!validation.valid) throw new Error('项目知识单元来源已变化或不可用，拒绝共享');
-  const unit = await repository.share(id, { confirm: true });
-  const result = { shared: true, unit };
-  print(result, options);
-  return result;
-}
-
-export async function projectKnowledgeUnitsRetireCommand(
-  targetPath = '.',
-  options: ProjectKnowledgeCommandOptions = {},
-): Promise<unknown> {
-  if (!options.confirm) throw new Error('retire requires explicit --confirm');
-  const id = required(options.id, '--id');
-  const repository = projectKnowledgeUnitRepository(targetPath, options);
-  const unit = await repository.retire(id);
-  const result = { retired: true, unit };
-  print(result, options);
-  return result;
-}
-
-function projectKnowledgeUnitRepository(
-  targetPath: string,
+async function createProvider(
+  projectRoot: string,
   options: ProjectKnowledgeCommandOptions,
-): ProjectKnowledgeUnitRepository {
-  return new ProjectKnowledgeUnitRepository({
-    projectRoot: path.resolve(targetPath),
+  diagnostics: ProjectKnowledgeDiagnostic[],
+): Promise<ProjectKnowledgeProvider> {
+  const config = await knowledgeConfig(projectRoot);
+  if (config.provider === 'remote') {
+    return new RemoteProjectKnowledgeProvider({
+      config: config.remote!,
+      projectRoot,
+      reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+    });
+  }
+  return new LocalProjectKnowledgeProvider({
+    projectRoot,
+    corpus: await discoverProjectKnowledgeCorpus({
+      projectRoot,
+      reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+    }),
     ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
-    allowLegacyCacheRead: true,
+    reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
   });
 }
 
@@ -218,12 +205,19 @@ async function knowledgeConfig(projectRoot: string) {
   return config?.knowledge ?? { ...DEFAULT_WORKFLOW_KNOWLEDGE_PROJECT_CONFIG };
 }
 
+function closeProvider(provider: ProjectKnowledgeProvider): void {
+  if (provider instanceof LocalProjectKnowledgeProvider) provider.close();
+}
+
+function providerName(provider: ProjectKnowledgeProvider): 'local' | 'remote' {
+  return provider instanceof LocalProjectKnowledgeProvider ? 'local' : 'remote';
+}
+
 function required(value: string | undefined, option: string): string {
   if (!value?.trim()) throw new Error(`${option} must not be empty`);
   return value.trim();
 }
 
-function print(value: unknown, options: ProjectKnowledgeCommandOptions): void {
-  if (options.json) console.log(JSON.stringify(value, null, 2));
-  else console.log(JSON.stringify(value, null, 2));
+function print(value: unknown, _options: ProjectKnowledgeCommandOptions): void {
+  console.log(JSON.stringify(value, null, 2));
 }

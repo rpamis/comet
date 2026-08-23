@@ -50,7 +50,7 @@ describe('dashboard web source contracts', () => {
     expect(page?.[0]).not.toContain('dashboard-plugin-grid');
   });
 
-  it('keeps Project Knowledge read-only with bounded status and diagnostics', async () => {
+  it('exposes bounded Project Knowledge Provider and Record management controls', async () => {
     const [source, styles] = await Promise.all([readDashboardSource(), readDashboardStyles()]);
     const page = source.match(
       /function ProjectKnowledgeCenter\([\s\S]*?\n}\n\nfunction PersonalMemoryCenter/,
@@ -61,11 +61,16 @@ describe('dashboard web source contracts', () => {
     expect(page?.[0]).toContain('dashboard-knowledge-diagnostics');
     expect(page?.[0]).toContain('tokenEnv');
     expect(page?.[0]).toContain('tokenConfigured');
+    expect(page?.[0]).toContain('configure-provider');
+    expect(page?.[0]).toContain("onInvoke('query'");
+    expect(page?.[0]).toContain("onInvoke('correct'");
+    expect(page?.[0]).toContain("onInvoke('forget'");
+    expect(page?.[0]).toContain("onInvoke('refresh'");
     expect(page?.[0]).toContain("onInvoke('lifecycle', { action: 'disable' })");
     expect(page?.[0]).toContain("onInvoke('lifecycle', { action: 'uninstall' })");
     expect(page?.[0]).toContain('没有新的诊断');
-    expect(page?.[0]).not.toContain('<Input');
-    expect(page?.[0]).not.toContain('搜索');
+    expect(page?.[0]).toContain('<Input');
+    expect(page?.[0]).toContain('查询项目知识');
     expect(styles).toContain('.dashboard-knowledge-status');
     expect(styles).toContain('.dashboard-knowledge-summary');
   });
