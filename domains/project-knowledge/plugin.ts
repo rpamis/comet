@@ -8,6 +8,12 @@ import { discoverProjectKnowledgeCorpus } from './corpus.js';
 import { createProjectKnowledgeDashboardSnapshot } from './dashboard.js';
 import { LocalProjectKnowledgeProvider } from './local-provider.js';
 import { createProjectKnowledgeQuery } from './query.js';
+import {
+  createUserProjectKnowledgeRecord,
+  type ProjectKnowledgeRecordSource,
+  type ProjectKnowledgeRecordType,
+  type ProjectKnowledgeRecordVerification,
+} from './records.js';
 import { RemoteProjectKnowledgeProvider } from './remote-provider.js';
 import { renderProjectKnowledgeContext, boundProjectKnowledgeResults } from './renderer.js';
 import {
@@ -26,6 +32,61 @@ import { resolveStableProjectId } from '../../platform/paths/project-identity.js
 
 export const PROJECT_KNOWLEDGE_PLUGIN_ID = 'comet.project-knowledge';
 const MAX_RECENT_DIAGNOSTICS = 3;
+
+const PROJECT_KNOWLEDGE_RECORD_TYPES = new Set<ProjectKnowledgeRecordType>([
+  'project-map',
+  'module-overview',
+  'behavior-note',
+  'integration-path',
+  'change-impact',
+  'build-test',
+]);
+
+function stringList(value: unknown, label: string): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new Error(`${label} must be an array`);
+  return value.map((entry, index) => {
+    if (typeof entry !== 'string' || !entry.trim())
+      throw new Error(`${label}[${index}] must be a non-empty string`);
+    return entry.trim();
+  });
+}
+
+function recordSources(value: unknown): ProjectKnowledgeRecordSource[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new Error('sources must be an array');
+  return value.map((entry, index) => {
+    if (typeof entry === 'string' && entry.trim()) return { source: entry.trim() };
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry))
+      throw new Error(`sources[${index}] must be a source object or string`);
+    const source = (entry as { source?: unknown }).source;
+    if (typeof source !== 'string' || !source.trim())
+      throw new Error(`sources[${index}].source must be a non-empty string`);
+    const anchor = (entry as { anchor?: unknown }).anchor;
+    return {
+      source: source.trim(),
+      ...(typeof anchor === 'string' && anchor.trim() ? { anchor: anchor.trim() } : {}),
+    };
+  });
+}
+
+function recordVerification(value: unknown): ProjectKnowledgeRecordVerification[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new Error('verification must be an array');
+  return value.map((entry, index) => {
+    if (typeof entry === 'string' && entry.trim()) return { command: entry.trim() };
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry))
+      throw new Error(`verification[${index}] must be a command object or string`);
+    const command = (entry as { command?: unknown }).command;
+    if (typeof command !== 'string' || !command.trim())
+      throw new Error(`verification[${index}].command must be a non-empty string`);
+    const expected = (entry as { expected?: unknown }).expected;
+    return {
+      command: command.trim(),
+      ...(typeof expected === 'string' && expected.trim() ? { expected: expected.trim() } : {}),
+    };
+  });
+}
 
 export function createProjectKnowledgeDashboardContribution(
   language: ProjectKnowledgePluginOptions['language'] = 'zh-CN',
@@ -318,6 +379,31 @@ async function createProjectKnowledgeModule(
             }),
             limit: 8,
           });
+        }
+        if (capability === 'create') {
+          const type = value.type;
+          if (
+            typeof type !== 'string' ||
+            !PROJECT_KNOWLEDGE_RECORD_TYPES.has(type as ProjectKnowledgeRecordType)
+          )
+            throw new Error('create requires a supported type');
+          if (typeof value.title !== 'string' || !value.title.trim())
+            throw new Error('create requires title');
+          if (typeof value.summary !== 'string' || !value.summary.trim())
+            throw new Error('create requires summary');
+          const record = createUserProjectKnowledgeRecord(
+            {
+              type: type as ProjectKnowledgeRecordType,
+              title: value.title.trim(),
+              summary: value.summary.trim(),
+              applicablePaths: stringList(value.applicablePaths, 'applicablePaths'),
+              operations: stringList(value.operations, 'operations'),
+              sources: recordSources(value.sources),
+              verification: recordVerification(value.verification),
+            },
+            projectId,
+          );
+          return activeProvider.apply({ kind: 'upsert', record });
         }
         if (capability === 'correct') {
           if (typeof value.id !== 'string' || !value.id.trim())

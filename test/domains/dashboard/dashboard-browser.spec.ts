@@ -3,6 +3,28 @@ import { expect, test } from '@playwright/test';
 test('shows Project Knowledge status and project pause transitions', async ({ page }) => {
   let paused = false;
   let uninstalled = false;
+  const manualRecords: Array<Record<string, unknown>> = [];
+  const baseRecord = {
+    id: 'record-focused-tests',
+    projectId: 'fixture-project',
+    type: 'behavior-note',
+    state: 'active',
+    authority: 'automatic',
+    title: 'Focused tests',
+    summary: 'Prefer focused tests for small changes.',
+    applicablePaths: ['domains/'],
+    operations: ['verify'],
+    conclusions: [
+      {
+        text: 'Run focused tests first.',
+        sources: [{ source: 'docs/rule.md', anchor: 'rule' }],
+      },
+    ],
+    relations: [],
+    verification: [],
+    sourceVersions: [],
+    updatedAt: '2026-08-22T12:00:00.000Z',
+  };
   const projectKnowledgePage = () => ({
     pluginId: 'comet.project-knowledge',
     label: '项目知识',
@@ -24,30 +46,8 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
             timeoutMs: 1200,
           },
           retrieval: 'Remote 配置仅表示已配置，不代表最近一次请求成功。',
-          records: [
-            {
-              id: 'record-focused-tests',
-              projectId: 'fixture-project',
-              type: 'behavior-note',
-              state: 'active',
-              authority: 'automatic',
-              title: 'Focused tests',
-              summary: 'Prefer focused tests for small changes.',
-              applicablePaths: ['domains/'],
-              operations: ['verify'],
-              conclusions: [
-                {
-                  text: 'Run focused tests first.',
-                  sources: [{ source: 'docs/rule.md', anchor: 'rule' }],
-                },
-              ],
-              relations: [],
-              verification: [],
-              sourceVersions: [],
-              updatedAt: '2026-08-22T12:00:00.000Z',
-            },
-          ],
-          counts: { active: 1, needsReview: 0, retired: 0 },
+          records: [baseRecord, ...manualRecords],
+          counts: { active: 1 + manualRecords.length, needsReview: 0, retired: 0 },
           diagnostics: [],
         },
   });
@@ -111,7 +111,41 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
       return;
     }
     if (url.pathname.endsWith('/plugins/comet.project-knowledge/invoke')) {
-      const body = route.request().postDataJSON() as { capability?: string };
+      const body = route.request().postDataJSON() as {
+        capability?: string;
+        input?: Record<string, unknown>;
+      };
+      if (body.capability === 'create') {
+        expect(body.input).toMatchObject({
+          type: 'behavior-note',
+          title: '未文档化约定',
+          summary: '修改后先运行定向测试。',
+          applicablePaths: ['domains/'],
+          operations: ['verify'],
+          sources: [],
+          verification: ['pnpm test --filter project-knowledge'],
+        });
+        manualRecords.push({
+          id: 'manual-undocumented-convention',
+          projectId: 'fixture-project',
+          type: 'behavior-note',
+          state: 'active',
+          authority: 'user',
+          title: '未文档化约定',
+          summary: '修改后先运行定向测试。',
+          applicablePaths: ['domains/'],
+          operations: ['verify'],
+          conclusions: [],
+          relations: [],
+          verification: [{ command: 'pnpm test --filter project-knowledge' }],
+          sourceVersions: [],
+          updatedAt: '2026-08-23T12:00:00.000Z',
+        });
+        await route.fulfill({
+          json: { result: { kind: 'upsert', changed: true, record: manualRecords.at(-1) } },
+        });
+        return;
+      }
       expect(body.capability).toBe('query');
       await route.fulfill({
         json: {
@@ -176,6 +210,19 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   await page.getByLabel('查询项目知识').fill('focused tests');
   await page.getByRole('button', { name: /查\s*询/u }).click();
   await expect(page.getByLabel('项目知识查询结果')).toContainText('Run focused tests first.');
+
+  await page.getByRole('button', { name: '新增项目知识' }).click();
+  const createDialog = page.getByRole('dialog');
+  await expect(createDialog).toContainText('新增项目知识');
+  await createDialog.getByLabel('项目知识标题').fill('未文档化约定');
+  await createDialog.getByLabel('项目知识摘要').fill('修改后先运行定向测试。');
+  await createDialog.getByLabel('项目知识适用路径').fill('domains/');
+  await createDialog.getByLabel('项目知识适用操作').fill('verify');
+  await createDialog.getByLabel('项目知识验证命令').fill('pnpm test --filter project-knowledge');
+  await page.getByRole('button', { name: /保\s*存/u }).click();
+  await expect(page.getByText('未文档化约定', { exact: true })).toBeVisible();
+  await expect(page.getByText('用户提供', { exact: true })).toBeVisible();
+  await expect(page.getByText('未验证', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: '设置' }).click();
   await expect(page.getByRole('heading', { name: '项目知识设置' })).toBeVisible();

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 
 import {
+  createUserProjectKnowledgeRecord,
   mergeProjectKnowledgeRecord,
   parseProjectKnowledgeRecord,
   type ProjectKnowledgeRecord,
@@ -43,6 +44,44 @@ function sampleRecord(): ProjectKnowledgeRecord {
 }
 
 describe('project knowledge records', () => {
+  test('creates a user record from structured input and preserves optional evidence', () => {
+    const record = createUserProjectKnowledgeRecord(
+      {
+        type: 'behavior-note',
+        title: '构建约定',
+        summary: '修改后先运行定向测试。',
+        applicablePaths: ['domains/'],
+        operations: ['verify'],
+        sources: [{ source: 'docs/rules.md', anchor: 'focused-tests' }],
+        verification: [{ command: 'pnpm test --filter project-knowledge' }],
+      },
+      'comet-core',
+      '2026-08-23T10:00:00.000Z',
+      'manual-build-convention',
+    );
+
+    expect(record).toMatchObject({
+      id: 'manual-build-convention',
+      projectId: 'comet-core',
+      type: 'behavior-note',
+      state: 'active',
+      authority: 'user',
+      title: '构建约定',
+      summary: '修改后先运行定向测试。',
+      applicablePaths: ['domains/'],
+      operations: ['verify'],
+      conclusions: [
+        {
+          text: '修改后先运行定向测试。',
+          sources: [{ source: 'docs/rules.md', anchor: 'focused-tests' }],
+        },
+      ],
+      verification: [{ command: 'pnpm test --filter project-knowledge' }],
+      sourceVersions: [],
+      updatedAt: '2026-08-23T10:00:00.000Z',
+    });
+  });
+
   test('parses a valid record without losing bounded data', () => {
     const record = sampleRecord();
 

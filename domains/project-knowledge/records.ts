@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 
 export type ProjectKnowledgeRecordType =
@@ -64,6 +65,16 @@ export interface ProjectKnowledgeRecord {
   readonly verification: readonly ProjectKnowledgeRecordVerification[];
   readonly sourceVersions: readonly ProjectKnowledgeRecordSourceVersion[];
   readonly updatedAt: string;
+}
+
+export interface ProjectKnowledgeUserRecordInput {
+  readonly type: ProjectKnowledgeRecordType;
+  readonly title: string;
+  readonly summary: string;
+  readonly applicablePaths?: readonly string[];
+  readonly operations?: readonly string[];
+  readonly sources?: readonly ProjectKnowledgeRecordSource[];
+  readonly verification?: readonly ProjectKnowledgeRecordVerification[];
 }
 
 const RECORD_ID = /^[a-z0-9][a-z0-9._-]{1,127}$/u;
@@ -347,6 +358,31 @@ export function validateProjectKnowledgeRecordShape(value: unknown): ProjectKnow
 
 export function parseProjectKnowledgeRecord(value: unknown): ProjectKnowledgeRecord {
   return validateProjectKnowledgeRecordShape(value);
+}
+
+export function createUserProjectKnowledgeRecord(
+  input: ProjectKnowledgeUserRecordInput,
+  projectId: string,
+  updatedAt = new Date().toISOString(),
+  id = `manual-${randomUUID()}`,
+): ProjectKnowledgeRecord {
+  const sources = input.sources ?? [];
+  return validateProjectKnowledgeRecordShape({
+    id,
+    projectId,
+    type: input.type,
+    state: 'active',
+    authority: 'user',
+    title: input.title,
+    summary: input.summary,
+    applicablePaths: input.applicablePaths ?? [],
+    operations: input.operations ?? [],
+    conclusions: sources.length > 0 ? [{ text: input.summary, sources }] : [],
+    relations: [],
+    verification: input.verification ?? [],
+    sourceVersions: [],
+    updatedAt,
+  });
 }
 
 export function mergeProjectKnowledgeRecord(

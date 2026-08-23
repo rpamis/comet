@@ -146,6 +146,22 @@ const VERIFY_TONE = {
   unknown: 'neutral',
 };
 
+const PROJECT_KNOWLEDGE_TYPE_OPTIONS = [
+  { value: 'project-map', label: '项目地图' },
+  { value: 'module-overview', label: '模块说明' },
+  { value: 'behavior-note', label: '行为约定' },
+  { value: 'integration-path', label: '集成路径' },
+  { value: 'change-impact', label: '变更影响' },
+  { value: 'build-test', label: '构建与测试' },
+];
+
+function splitProjectKnowledgeLines(value) {
+  return value
+    .split(/\r?\n/u)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
 function App() {
   const { theme, toggle: toggleTheme } = useTheme();
 
@@ -3190,6 +3206,17 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
   const [queryText, setQueryText] = useState('');
   const [queryResults, setQueryResults] = useState([]);
   const [stateFilter, setStateFilter] = useState('active');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createSaving, setCreateSaving] = useState(false);
+  const [createDraft, setCreateDraft] = useState({
+    type: 'behavior-note',
+    title: '',
+    summary: '',
+    applicablePaths: '',
+    operations: '',
+    sources: '',
+    verification: '',
+  });
   const records = Array.isArray(snapshot.records) ? snapshot.records : [];
   const visibleRecords = records.filter(
     (record) => stateFilter === 'all' || record.state === stateFilter,
@@ -3419,6 +3446,14 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
         </div>
         <div className="dashboard-knowledge-summary-body">
           <div className="dashboard-knowledge-record-toolbar">
+            <Button
+              size="small"
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => setCreateOpen(true)}
+            >
+              新增项目知识
+            </Button>
             <Input
               size="small"
               value={queryText}
@@ -3455,6 +3490,17 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
                     <Tag variant="filled">{record.state}</Tag>
                     <div className="min-w-0 flex-1">
                       <strong>{record.title}</strong>
+                      {record.authority === 'user' && (
+                        <Tag className="ml-2" variant="filled">
+                          用户提供
+                        </Tag>
+                      )}
+                      {record.authority === 'user' &&
+                        (sources.length === 0 || (record.verification?.length ?? 0) === 0) && (
+                          <Tag className="ml-2" color="warning">
+                            未验证
+                          </Tag>
+                        )}
                       <div>{record.summary}</div>
                       {sources.length > 0 && (
                         <div className="text-xs text-meta">来源：{sources.join(' · ')}</div>
@@ -3502,6 +3548,156 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
           )}
         </div>
       </section>
+      <Modal
+        open={createOpen}
+        title="新增项目知识"
+        okText="保存"
+        cancelText="取消"
+        width={620}
+        okButtonProps={{
+          disabled:
+            createDraft.title.trim().length === 0 || createDraft.summary.trim().length === 0,
+          loading: createSaving,
+        }}
+        onCancel={() => {
+          if (!createSaving) setCreateOpen(false);
+        }}
+        onOk={async () => {
+          if (createDraft.title.trim().length === 0 || createDraft.summary.trim().length === 0)
+            return;
+          setCreateSaving(true);
+          try {
+            const result = await onInvoke('create', {
+              type: createDraft.type,
+              title: createDraft.title.trim(),
+              summary: createDraft.summary.trim(),
+              applicablePaths: splitProjectKnowledgeLines(createDraft.applicablePaths),
+              operations: splitProjectKnowledgeLines(createDraft.operations),
+              sources: splitProjectKnowledgeLines(createDraft.sources),
+              verification: splitProjectKnowledgeLines(createDraft.verification),
+            });
+            if (result !== undefined) {
+              setCreateOpen(false);
+              setCreateDraft({
+                type: 'behavior-note',
+                title: '',
+                summary: '',
+                applicablePaths: '',
+                operations: '',
+                sources: '',
+                verification: '',
+              });
+            }
+          } finally {
+            setCreateSaving(false);
+          }
+        }}
+      >
+        <Form layout="vertical" component="div">
+          <Form.Item label="知识类型" required>
+            <Select
+              value={createDraft.type}
+              options={PROJECT_KNOWLEDGE_TYPE_OPTIONS}
+              onChange={(type) => setCreateDraft((draft) => ({ ...draft, type }))}
+              aria-label="知识类型"
+            />
+          </Form.Item>
+          <Form.Item label="标题" required htmlFor="dashboard-new-project-knowledge-title">
+            <Input
+              id="dashboard-new-project-knowledge-title"
+              value={createDraft.title}
+              onChange={(event) =>
+                setCreateDraft((draft) => ({ ...draft, title: event.target.value }))
+              }
+              placeholder="例如：构建与测试约定"
+              aria-label="项目知识标题"
+              autoFocus
+            />
+          </Form.Item>
+          <Form.Item
+            label="摘要"
+            required
+            htmlFor="dashboard-new-project-knowledge-summary"
+            extra="这段内容会作为项目知识提供给当前项目的 Agent。"
+          >
+            <Input.TextArea
+              id="dashboard-new-project-knowledge-summary"
+              value={createDraft.summary}
+              onChange={(event) =>
+                setCreateDraft((draft) => ({ ...draft, summary: event.target.value }))
+              }
+              placeholder="例如：修改 domains/ 后先运行对应的定向测试。"
+              aria-label="项目知识摘要"
+              autoSize={{ minRows: 3, maxRows: 6 }}
+            />
+          </Form.Item>
+          <Form.Item
+            label="适用路径（可选）"
+            htmlFor="dashboard-new-project-knowledge-paths"
+            extra="每行一个项目相对路径。"
+          >
+            <Input.TextArea
+              id="dashboard-new-project-knowledge-paths"
+              value={createDraft.applicablePaths}
+              onChange={(event) =>
+                setCreateDraft((draft) => ({ ...draft, applicablePaths: event.target.value }))
+              }
+              placeholder={'例如：\ndomains/project-knowledge/'}
+              aria-label="项目知识适用路径"
+              autoSize={{ minRows: 2, maxRows: 4 }}
+            />
+          </Form.Item>
+          <Form.Item
+            label="适用操作（可选）"
+            htmlFor="dashboard-new-project-knowledge-operations"
+            extra="每行一个操作，例如 build、verify。"
+          >
+            <Input.TextArea
+              id="dashboard-new-project-knowledge-operations"
+              value={createDraft.operations}
+              onChange={(event) =>
+                setCreateDraft((draft) => ({ ...draft, operations: event.target.value }))
+              }
+              placeholder={'例如：\nverify'}
+              aria-label="项目知识适用操作"
+              autoSize={{ minRows: 2, maxRows: 4 }}
+            />
+          </Form.Item>
+          <Form.Item
+            label="来源（可选）"
+            htmlFor="dashboard-new-project-knowledge-sources"
+            extra="每行一个项目相对文件路径；没有来源的记录会标记为未验证。"
+          >
+            <Input.TextArea
+              id="dashboard-new-project-knowledge-sources"
+              value={createDraft.sources}
+              onChange={(event) =>
+                setCreateDraft((draft) => ({ ...draft, sources: event.target.value }))
+              }
+              placeholder={'例如：\ndocs/project-rules.md'}
+              aria-label="项目知识来源"
+              autoSize={{ minRows: 2, maxRows: 4 }}
+            />
+          </Form.Item>
+          <Form.Item
+            className="mb-0"
+            label="验证命令（可选）"
+            htmlFor="dashboard-new-project-knowledge-verification"
+            extra="每行一个命令，用来说明如何验证这条知识。"
+          >
+            <Input.TextArea
+              id="dashboard-new-project-knowledge-verification"
+              value={createDraft.verification}
+              onChange={(event) =>
+                setCreateDraft((draft) => ({ ...draft, verification: event.target.value }))
+              }
+              placeholder={'例如：\npnpm test --filter project-knowledge'}
+              aria-label="项目知识验证命令"
+              autoSize={{ minRows: 2, maxRows: 4 }}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }

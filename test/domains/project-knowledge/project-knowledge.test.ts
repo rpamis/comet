@@ -98,6 +98,56 @@ describe('project knowledge dashboard status', () => {
       diagnostics: [],
     });
   });
+
+  test('creates and lists a manually added user project knowledge record', async () => {
+    const root = await tempProject();
+    const storageRoot = await tempProject();
+    const storageStore = new MemoryPluginStorageStore();
+    const module = await createProjectKnowledgeModule(
+      {
+        storage: await storageStore.open(
+          'comet.project-knowledge',
+          'project',
+          'manual-create-project',
+        ),
+        reportDiagnostic: () => undefined,
+      } as never,
+      { projectRoot: root, cacheRoot: storageRoot, knowledgeConfig: { provider: 'local' } },
+    );
+
+    try {
+      await expect(
+        module.invoke?.('create', { type: 'behavior-note', summary: '缺少标题' }),
+      ).rejects.toThrow(/title/u);
+      await expect(
+        module.invoke?.('create', {
+          type: 'behavior-note',
+          title: '构建约定',
+          summary: '修改后先运行定向测试。',
+          applicablePaths: ['domains/'],
+          operations: ['verify'],
+          sources: [{ source: 'docs/rules.md', anchor: 'focused-tests' }],
+          verification: [{ command: 'pnpm test --filter project-knowledge' }],
+        }),
+      ).resolves.toMatchObject({ kind: 'upsert', changed: true });
+
+      const listed = await module.invoke?.('list', { state: 'active' });
+      expect(listed).toMatchObject({
+        kind: 'list',
+        records: [
+          expect.objectContaining({
+            authority: 'user',
+            title: '构建约定',
+            summary: '修改后先运行定向测试。',
+          }),
+        ],
+      });
+    } finally {
+      await module.dispose?.();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('local record provider contract', () => {

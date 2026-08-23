@@ -71,6 +71,8 @@ describe('dashboard web source contracts', () => {
     expect(page?.[0]).toContain("onInvoke('correct'");
     expect(page?.[0]).toContain("onInvoke('forget'");
     expect(page?.[0]).toContain("onInvoke('refresh'");
+    expect(page?.[0]).toContain('新增项目知识');
+    expect(page?.[0]).toContain("onInvoke('create'");
     expect(settings?.[0]).toContain('tokenEnv');
     expect(settings?.[0]).toContain('tokenConfigured');
     expect(settings?.[0]).toContain('configure-provider');
