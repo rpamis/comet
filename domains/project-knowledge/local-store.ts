@@ -1,4 +1,4 @@
-import { mkdirSync, statSync } from 'node:fs';
+import { closeSync, mkdirSync, openSync, readSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
@@ -14,6 +14,8 @@ import {
   mergeProjectKnowledgeRecord,
   parseProjectKnowledgeRecord,
   type ProjectKnowledgeRecord,
+  type ProjectKnowledgeRecordSource,
+  type ProjectKnowledgeRecordSourceVersion,
 } from './records.js';
 import {
   ProjectKnowledgeIndexStore,
@@ -48,24 +50,141 @@ interface SharedDatabaseEntry {
   refs: number;
 }
 
+const MAX_SOURCE_VALIDATION_BYTES = 1024 * 1024;
+
 function equalSourceVersions(left: ProjectKnowledgeRecord, right: ProjectKnowledgeRecord): boolean {
   return JSON.stringify(left.sourceVersions) === JSON.stringify(right.sourceVersions);
 }
 
-function sourceVersionsAreCurrent(projectRoot: string, record: ProjectKnowledgeRecord): boolean {
-  if (record.sourceVersions.length === 0) return false;
-  return record.sourceVersions.every((version) => {
-    try {
-      const current = statSync(path.join(projectRoot, ...version.source.split('/')));
-      return (
-        current.isFile() &&
-        current.size === version.size &&
-        Math.trunc(current.mtimeMs) === version.modifiedAt
-      );
-    } catch {
+function recordSourceReferences(
+  record: ProjectKnowledgeRecord,
+): readonly ProjectKnowledgeRecordSource[] {
+  return [
+    ...record.conclusions.flatMap((conclusion) => conclusion.sources),
+    ...record.relations.flatMap((relation) => relation.sources),
+  ];
+}
+
+function normalizeAnchor(value: string): string {
+  return value
+    .normalize('NFKC')
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/^-+|-+$/gu, '');
+}
+
+function sourceAnchorExists(text: string, anchor: string): boolean {
+  const expected = normalizeAnchor(anchor);
+  if (!expected) return false;
+  const headings = text
+    .split(/\r?\n/u)
+    .map((line) => /^#{1,6}\s+(.+?)(?:\s+#+)?$/u.exec(line)?.[1])
+    .filter((heading): heading is string => heading !== undefined);
+  if (headings.some((heading) => normalizeAnchor(heading) === expected)) return true;
+  return [...text.matchAll(/\b(?:id|name)\s*=\s*["']([^"']+)["']/giu)].some(
+    (match) => normalizeAnchor(match[1] ?? '') === expected,
+  );
+}
+
+function sourceReferenceIsCurrent(
+  absolutePath: string,
+  source: ProjectKnowledgeRecordSource,
+): boolean {
+  if (
+    source.anchor === undefined &&
+    source.lineStart === undefined &&
+    source.lineEnd === undefined
+  ) {
+    return true;
+  }
+  const stat = statSync(absolutePath);
+  const byteLength = Math.min(Number(stat.size), MAX_SOURCE_VALIDATION_BYTES);
+  const buffer = Buffer.alloc(byteLength);
+  const descriptor = openSync(absolutePath, 'r');
+  try {
+    readSync(descriptor, buffer, 0, byteLength, 0);
+  } finally {
+    closeSync(descriptor);
+  }
+  const text = buffer.toString('utf8');
+  if (source.anchor !== undefined && !sourceAnchorExists(text, source.anchor)) {
+    return false;
+  }
+  if (source.lineStart !== undefined || source.lineEnd !== undefined) {
+    const lineCount = text.split(/\r?\n/u).length;
+    if (
+      (source.lineStart ?? 1) > lineCount ||
+      (source.lineEnd ?? source.lineStart ?? 1) > lineCount
+    ) {
       return false;
     }
-  });
+  }
+  return true;
+}
+
+interface SourceInspection {
+  readonly current: boolean;
+  readonly sourceVersions: readonly ProjectKnowledgeRecordSourceVersion[];
+}
+
+function inspectRecordSources(
+  projectRoot: string,
+  record: ProjectKnowledgeRecord,
+  acceptCurrentVersions: boolean,
+): SourceInspection {
+  const references = recordSourceReferences(record);
+  const referenceSources = new Set(references.map((reference) => reference.source));
+  const sources = [
+    ...referenceSources,
+    ...record.sourceVersions
+      .map((version) => version.source)
+      .filter((source) => !referenceSources.has(source)),
+  ];
+  if (sources.length === 0) return { current: false, sourceVersions: record.sourceVersions };
+  const storedVersions = new Map(record.sourceVersions.map((version) => [version.source, version]));
+  const sourceVersions: ProjectKnowledgeRecordSourceVersion[] = [];
+  for (const source of sources) {
+    try {
+      const absolutePath = path.join(projectRoot, ...source.split('/'));
+      const current = statSync(absolutePath);
+      if (!current.isFile()) return { current: false, sourceVersions: record.sourceVersions };
+      const version = {
+        source,
+        size: current.size,
+        modifiedAt: Math.trunc(current.mtimeMs),
+      };
+      sourceVersions.push(version);
+      if (
+        !references
+          .filter((reference) => reference.source === source)
+          .every((reference) => sourceReferenceIsCurrent(absolutePath, reference))
+      ) {
+        return { current: false, sourceVersions: record.sourceVersions };
+      }
+      const stored = storedVersions.get(source);
+      if (
+        !acceptCurrentVersions &&
+        (stored === undefined ||
+          stored.size !== version.size ||
+          stored.modifiedAt !== version.modifiedAt)
+      ) {
+        return { current: false, sourceVersions: record.sourceVersions };
+      }
+    } catch {
+      return { current: false, sourceVersions: record.sourceVersions };
+    }
+  }
+  return { current: true, sourceVersions };
+}
+
+function recordResultSource(record: ProjectKnowledgeRecord): string {
+  const source = recordSourceReferences(record)[0];
+  if (source === undefined) return `record:${record.id}`;
+  if (source.anchor !== undefined) return `${source.source}#${source.anchor}`;
+  if (source.lineStart !== undefined) {
+    return `${source.source}#L${source.lineStart}${source.lineEnd ? `-L${source.lineEnd}` : ''}`;
+  }
+  return source.source;
 }
 
 function recordSearchText(record: ProjectKnowledgeRecord): string {
@@ -196,7 +315,7 @@ export class ProjectKnowledgeLocalStore {
       )
       .slice(0, 40)
       .map(({ record, matches }) => ({
-        source: `record:${record.id}`,
+        source: recordResultSource(record),
         title: record.title,
         record,
         content:
@@ -213,12 +332,27 @@ export class ProjectKnowledgeLocalStore {
       const candidates = this.list({ projectId: mutation.projectId });
       let changed = false;
       for (const candidate of candidates) {
+        if (candidate.state === 'retired' || (mutation.id && mutation.id !== candidate.id))
+          continue;
+        const inspection = inspectRecordSources(
+          this.projectRoot,
+          candidate,
+          candidate.state === 'needs-review',
+        );
+        const state = inspection.current ? 'active' : 'needs-review';
         if (
-          candidate.state === 'active' &&
-          (!mutation.id || mutation.id === candidate.id) &&
-          !sourceVersionsAreCurrent(this.projectRoot, candidate)
+          state !== candidate.state ||
+          (inspection.current &&
+            JSON.stringify(inspection.sourceVersions) !== JSON.stringify(candidate.sourceVersions))
         ) {
-          this.write({ ...candidate, state: 'needs-review', updatedAt: new Date().toISOString() });
+          this.write({
+            ...candidate,
+            state,
+            sourceVersions: inspection.current
+              ? inspection.sourceVersions
+              : candidate.sourceVersions,
+            updatedAt: new Date().toISOString(),
+          });
           changed = true;
         }
       }
@@ -271,7 +405,7 @@ export class ProjectKnowledgeLocalStore {
       this.write(next);
       return { kind: mutation.kind, changed: true, record: next, diagnostics: [] };
     }
-    const next = parseProjectKnowledgeRecord({
+    const corrected = parseProjectKnowledgeRecord({
       ...current,
       ...(mutation.title !== undefined ? { title: mutation.title } : {}),
       ...(mutation.summary !== undefined ? { summary: mutation.summary } : {}),
@@ -283,8 +417,14 @@ export class ProjectKnowledgeLocalStore {
       ...(mutation.relations !== undefined ? { relations: mutation.relations } : {}),
       ...(mutation.verification !== undefined ? { verification: mutation.verification } : {}),
       authority: 'user',
-      state: sourceVersionsAreCurrent(this.projectRoot, current) ? 'active' : 'needs-review',
+      state: 'active',
       updatedAt: mutation.updatedAt,
+    });
+    const inspection = inspectRecordSources(this.projectRoot, corrected, true);
+    const next = parseProjectKnowledgeRecord({
+      ...corrected,
+      state: inspection.current ? 'active' : 'needs-review',
+      sourceVersions: inspection.current ? inspection.sourceVersions : corrected.sourceVersions,
     });
     this.write(next);
     return { kind: mutation.kind, changed: true, record: next, diagnostics: [] };

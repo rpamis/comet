@@ -17,6 +17,7 @@ const MAX_VERIFICATION_RESULTS = 16;
 const MAX_SOURCE_BYTES = 48 * 1024;
 const MAX_SOURCE_TOTAL_BYTES = 256 * 1024;
 const MAX_HINT_STRING = 512;
+const MAX_REVIEW_ACTIONS = 16;
 
 export interface ProjectKnowledgeChangedHint {
   readonly eventName: string;
@@ -330,11 +331,11 @@ export class ProjectKnowledgeLearningService {
         diagnostics,
       };
     }
+    let reviewActions: readonly ProjectKnowledgeReviewAction[] = [];
     if (this.reviewer !== undefined) {
       try {
-        // Semantic review is optional enrichment. It is deliberately not used
-        // as the source of truth and never gates deterministic learning.
-        await this.reviewer.review(packet);
+        const reviewed = await this.reviewer.review(packet);
+        reviewActions = Array.isArray(reviewed) ? reviewed.slice(0, MAX_REVIEW_ACTIONS) : [];
       } catch {
         report({
           code: 'reviewer-unavailable',
@@ -395,6 +396,44 @@ export class ProjectKnowledgeLearningService {
         if (result.record?.state === 'active' && result.changed) activated.push(record.id);
       } catch {
         report({ code: 'provider-write', message: '项目知识记录未能写入 Provider。' });
+      }
+    }
+    for (const action of reviewActions) {
+      try {
+        if (action.action === 'retire') {
+          const current = await this.provider.query({ kind: 'get', id: action.recordId });
+          if (current.kind !== 'get' || current.record === null) continue;
+          const result = await this.provider.apply({
+            kind: 'retire',
+            id: current.record.id,
+            projectId: current.record.projectId,
+            updatedAt: new Date().toISOString(),
+            reason: 'semantic-review',
+          });
+          for (const diagnostic of result.diagnostics) report(diagnostic);
+          if (result.changed) retired.push(current.record.id);
+          continue;
+        }
+        const record = validateProjectKnowledgeRecordShape({
+          ...(action.record as Record<string, unknown>),
+          state: 'active',
+          authority: 'automatic',
+        });
+        const changedRecordSource = await recordSourcesStillCurrent(record, this.projectRoot);
+        if (changedRecordSource !== null) {
+          report({
+            code: 'source-changed',
+            message: '语义记录校验期间项目来源发生变化，已跳过本次记录。',
+            source: changedRecordSource,
+          });
+          continue;
+        }
+        const result = await this.provider.apply({ kind: 'upsert', record });
+        for (const diagnostic of result.diagnostics) report(diagnostic);
+        if (result.changed) persisted.push(record.id);
+        if (result.record?.state === 'active' && result.changed) activated.push(record.id);
+      } catch {
+        report({ code: 'review-action-invalid', message: '语义评审动作无效，已跳过该动作。' });
       }
     }
     return {

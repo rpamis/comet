@@ -2093,6 +2093,24 @@ function formatTimestamp(iso) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function projectKnowledgeRecordSources(record) {
+  const references = [
+    ...(record.conclusions ?? []).flatMap((conclusion) => conclusion.sources ?? []),
+    ...(record.relations ?? []).flatMap((relation) => relation.sources ?? []),
+  ];
+  return [
+    ...new Set(
+      references.map((source) => {
+        if (source.anchor) return `${source.source}#${source.anchor}`;
+        if (source.lineStart) {
+          return `${source.source}#L${source.lineStart}${source.lineEnd ? `-L${source.lineEnd}` : ''}`;
+        }
+        return source.source;
+      }),
+    ),
+  ];
+}
+
 function formatFileSize(bytes) {
   if (bytes == null) return null;
   if (bytes < 1024) return `${bytes} B`;
@@ -2396,7 +2414,7 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
         <div className="dashboard-knowledge-status-cell">
           <span className="dashboard-knowledge-status-label">配置状态</span>
           <span className="dashboard-knowledge-status-value">{configured}</span>
-            <span className="dashboard-knowledge-status-meta">状态和记录由 Provider 提供</span>
+          <span className="dashboard-knowledge-status-meta">状态和记录由 Provider 提供</span>
         </div>
       </section>
       <div className="dashboard-knowledge-layout">
@@ -2556,48 +2574,56 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无记录" />
           ) : (
             <div className="dashboard-knowledge-diagnostics-list" aria-label="项目知识记录列表">
-              {visibleRecords.slice(0, 100).map((record) => (
-                <div className="dashboard-knowledge-diagnostic" key={record.id}>
-                  <Tag bordered={false}>{record.state}</Tag>
-                  <div className="min-w-0 flex-1">
-                    <strong>{record.title}</strong>
-                    <div>{record.summary}</div>
-                    <div className="text-xs text-meta">
-                      {record.id} · {record.type}
+              {visibleRecords.slice(0, 100).map((record) => {
+                const sources = projectKnowledgeRecordSources(record);
+                return (
+                  <div className="dashboard-knowledge-diagnostic" key={record.id}>
+                    <Tag bordered={false}>{record.state}</Tag>
+                    <div className="min-w-0 flex-1">
+                      <strong>{record.title}</strong>
+                      <div>{record.summary}</div>
+                      {sources.length > 0 && (
+                        <div className="text-xs text-meta">来源：{sources.join(' · ')}</div>
+                      )}
+                      <div className="text-xs text-meta">
+                        {record.id} · {record.type} · 更新于 {formatTimestamp(record.updatedAt)}
+                      </div>
+                    </div>
+                    <div className="dashboard-knowledge-record-actions">
+                      <Button
+                        size="small"
+                        onClick={() =>
+                          Modal.confirm({
+                            title: '纠正项目知识记录',
+                            content: (
+                              <Input.TextArea
+                                id="project-knowledge-correction"
+                                autoSize={{ minRows: 3, maxRows: 6 }}
+                              />
+                            ),
+                            okText: '保存',
+                            cancelText: '取消',
+                            onOk: () => {
+                              const element = document.getElementById(
+                                'project-knowledge-correction',
+                              );
+                              return onInvoke('correct', {
+                                id: record.id,
+                                text: element?.value ?? record.summary,
+                              });
+                            },
+                          })
+                        }
+                      >
+                        纠正
+                      </Button>
+                      <Button size="small" onClick={() => onInvoke('forget', { id: record.id })}>
+                        忘记
+                      </Button>
                     </div>
                   </div>
-                  <div className="dashboard-knowledge-record-actions">
-                    <Button
-                      size="small"
-                      onClick={() =>
-                        Modal.confirm({
-                          title: '纠正项目知识记录',
-                          content: (
-                            <Input.TextArea
-                              id="project-knowledge-correction"
-                              autoSize={{ minRows: 3, maxRows: 6 }}
-                            />
-                          ),
-                          okText: '保存',
-                          cancelText: '取消',
-                          onOk: () => {
-                            const element = document.getElementById('project-knowledge-correction');
-                            return onInvoke('correct', {
-                              id: record.id,
-                              text: element?.value ?? record.summary,
-                            });
-                          },
-                        })
-                      }
-                    >
-                      纠正
-                    </Button>
-                    <Button size="small" onClick={() => onInvoke('forget', { id: record.id })}>
-                      忘记
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

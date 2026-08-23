@@ -144,6 +144,85 @@ describe('project knowledge learning', () => {
     }
   });
 
+  test('applies bounded semantic reviewer create, update, and retire actions', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-learning-review-actions-');
+    const storageRoot = await temporaryRoot(
+      'comet-project-knowledge-learning-review-actions-storage-',
+    );
+    const provider = await createProvider(root, storageRoot);
+    try {
+      await fs.mkdir(path.join(root, 'src'), { recursive: true });
+      const source = path.join(root, 'src', 'main.ts');
+      await fs.writeFile(source, 'export const main = true;\n');
+      const stat = await fs.stat(source);
+      let action: 'create' | 'update' | 'retire' = 'create';
+      const semanticRecord: ProjectKnowledgeRecord = {
+        id: 'semantic-main-module',
+        projectId: 'learning-project',
+        type: 'module-overview',
+        state: 'active',
+        authority: 'automatic',
+        title: 'Main module',
+        summary: 'Created by semantic review.',
+        applicablePaths: ['src/'],
+        operations: ['implement'],
+        conclusions: [
+          { text: 'The main module exports main.', sources: [{ source: 'src/main.ts' }] },
+        ],
+        relations: [],
+        verification: [],
+        sourceVersions: [
+          { source: 'src/main.ts', size: stat.size, modifiedAt: Math.trunc(stat.mtimeMs) },
+        ],
+        updatedAt: '2026-08-23T00:00:00.000Z',
+      };
+      const service = new ProjectKnowledgeLearningService({
+        projectRoot: root,
+        provider,
+        reviewer: {
+          review: () =>
+            action === 'retire'
+              ? [{ action: 'retire', recordId: semanticRecord.id }]
+              : [
+                  {
+                    action,
+                    record: {
+                      ...semanticRecord,
+                      summary:
+                        action === 'update'
+                          ? 'Updated by semantic review.'
+                          : semanticRecord.summary,
+                    },
+                  },
+                ],
+        },
+      });
+
+      await expect(
+        service.processEvent(event('verification.completed', verifiedPayload())),
+      ).resolves.toMatchObject({ activated: expect.arrayContaining([semanticRecord.id]) });
+      action = 'update';
+      await service.processEvent(event('verification.completed', verifiedPayload()));
+      await expect(provider.query({ kind: 'get', id: semanticRecord.id })).resolves.toMatchObject({
+        record: expect.objectContaining({
+          summary: 'Updated by semantic review.',
+          state: 'active',
+        }),
+      });
+      action = 'retire';
+      await expect(
+        service.processEvent(event('verification.completed', verifiedPayload())),
+      ).resolves.toMatchObject({ retired: [semanticRecord.id] });
+      await expect(provider.query({ kind: 'get', id: semanticRecord.id })).resolves.toMatchObject({
+        record: expect.objectContaining({ state: 'retired' }),
+      });
+    } finally {
+      provider.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
   test('does not write when a packet source changes during optional enrichment', async () => {
     const root = await temporaryRoot('comet-project-knowledge-learning-toctou-');
     const storageRoot = await temporaryRoot('comet-project-knowledge-learning-toctou-storage-');

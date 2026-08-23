@@ -47,8 +47,17 @@ describe('project knowledge local store', () => {
     await fs.mkdir(path.dirname(sourceFile), { recursive: true });
     await fs.writeFile(sourceFile, '# Build\n\nRun build before test.\n');
     try {
+      const initialStat = await fs.stat(sourceFile);
       first = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
-      const initial = record();
+      const initial = record({
+        sourceVersions: [
+          {
+            source: 'docs/process.md',
+            size: initialStat.size,
+            modifiedAt: Math.trunc(initialStat.mtimeMs),
+          },
+        ],
+      });
       await expect(first.apply({ kind: 'upsert', record: initial })).resolves.toMatchObject({
         changed: true,
         record: expect.objectContaining({ id: initial.id, state: 'active' }),
@@ -77,7 +86,7 @@ describe('project knowledge local store', () => {
         record: expect.objectContaining({
           id: initial.id,
           authority: 'user',
-          state: 'needs-review',
+          state: 'active',
           summary: 'Always build before test for runtime touching changes.',
         }),
       });
@@ -117,6 +126,56 @@ describe('project knowledge local store', () => {
     } finally {
       reopened?.close();
       first?.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('marks stale records for review and restores them only after anchors validate', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-store-refresh-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-storage-refresh-');
+    const sourceFile = path.join(root, 'docs', 'process.md');
+    let store: ProjectKnowledgeLocalStore | undefined;
+    await fs.mkdir(path.dirname(sourceFile), { recursive: true });
+    await fs.writeFile(sourceFile, '# Build\n\nRun build before test.\n');
+    try {
+      const initialStat = await fs.stat(sourceFile);
+      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      const initial = record({
+        sourceVersions: [
+          {
+            source: 'docs/process.md',
+            size: initialStat.size,
+            modifiedAt: Math.trunc(initialStat.mtimeMs),
+          },
+        ],
+      });
+      await store.apply({ kind: 'upsert', record: initial });
+
+      await fs.writeFile(sourceFile, '# Build\n\nRun focused build and tests.\n');
+      await expect(
+        store.apply({ kind: 'refresh', projectId: initial.projectId, id: initial.id }),
+      ).resolves.toMatchObject({
+        changed: true,
+        records: [expect.objectContaining({ id: initial.id, state: 'needs-review' })],
+      });
+      await expect(
+        store.apply({ kind: 'refresh', projectId: initial.projectId, id: initial.id }),
+      ).resolves.toMatchObject({
+        changed: true,
+        records: [expect.objectContaining({ id: initial.id, state: 'active' })],
+      });
+
+      await fs.writeFile(sourceFile, '# Test\n\nThe build anchor was removed.\n');
+      await store.apply({ kind: 'refresh', projectId: initial.projectId, id: initial.id });
+      await expect(
+        store.apply({ kind: 'refresh', projectId: initial.projectId, id: initial.id }),
+      ).resolves.toMatchObject({
+        changed: false,
+        records: [expect.objectContaining({ id: initial.id, state: 'needs-review' })],
+      });
+    } finally {
+      store?.close();
       await fs.rm(root, { recursive: true, force: true });
       await fs.rm(storageRoot, { recursive: true, force: true });
     }

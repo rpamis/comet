@@ -181,9 +181,7 @@ describe('local record provider contract', () => {
       });
       expect(search.kind).toBe('search');
       expect(search.records.map((record) => record.id)).toContain('record-focused-tests');
-      expect(search.results.some((result) => result.source === 'record:record-focused-tests')).toBe(
-        true,
-      );
+      expect(search.results.some((result) => result.source === 'docs/rule.md#rule')).toBe(true);
       await provider.apply({
         kind: 'retire',
         id: 'record-focused-tests',
