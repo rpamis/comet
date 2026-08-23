@@ -1,6 +1,6 @@
 # Native clarification reference
 
-You must read this file after entering Shape. Do not modify project implementation or advance to Build until problem classification, the silent-assumption check, and shared-understanding confirmation are complete.
+You must read this file after entering Shape. Do not modify project implementation or advance to Build until deciding whether questions are needed, checking unstated assumptions, and completing final requirements confirmation.
 
 ## Whether to ask
 
@@ -10,8 +10,9 @@ First separate three kinds of information:
 - **User decision**: choices that materially change output, default behavior, failure results, scope, or irreversible impact. The user confirms these.
 - **Implementation choice**: algorithms, structures, and working methods that do not change the visible result. The Agent decides these.
 
-Ask the user only when ambiguity materially changes the visible result and cannot be determined reliably from the request, formal specifications, project documentation, existing Agent instructions, or project rules. Questions must come from real divergence; the Agent decides ordinary implementation details directly. When the user directly supplies a file, attachment, link, or local path as a requirements source, `brief.md` is the durable clarification artifact: first present the complete source requirements and coverage states in `## Source coverage` under `# Scope`, then ask about ambiguity, omissions, or implicit boundaries in `# Open questions`. Materials supplied only for debugging, evidence, review, or implementation reference do not trigger this mode automatically; clarify an unclear purpose first. Split the source into units by headings, paragraphs, lists, tables, code blocks, examples, constraints, links, and boundaries, recording read and coverage states. Executable source units must enter both the complete target Spec and at least one acceptance ID; background and non-goal units retain only a classification and reason and do not require an acceptance ID. When the user corrects the source, mark the old unit `superseded` and link its replacement. Inaccessible links, unparseable files, partially read sources, or unmapped executable units remain `[blocking]`; chunking does not reduce the final coverage set, and a summary cannot replace the source coverage map.
-
+Ask the user only when ambiguity materially changes the visible result and cannot be determined reliably from the request, formal specifications, project documentation, existing Agent instructions, or project rules. Questions must come from real divergence; the Agent decides ordinary implementation details directly.
+- When the user directly supplies a file, attachment, link, or local path as a requirements source, first record `## Source coverage` under `# Scope` in `brief.md`, then ask about ambiguity, omissions, or implicit boundaries in `# Open questions`. Materials supplied for debugging, evidence, review, or implementation reference do not trigger this mode automatically; clarify an unclear purpose first.
+- Split the source into units by headings, paragraphs, lists, tables, code blocks, examples, constraints, links, and boundaries. Every executable unit maps to the complete target Spec and at least one acceptance ID; inaccessible, unparseable, partially read, or unmapped content remains `[blocking]`. Chunking does not reduce final coverage, and a summary cannot replace the source coverage map.
 Rewrite ambiguous behavior into comparable “input → output” or “trigger → result” form. Every question should contain:
 
 - Question: the user-visible difference to decide.
@@ -21,7 +22,6 @@ Rewrite ambiguous behavior into comparable “input → output” or “trigger 
 ## How to ask the user
 
 Pause at a user decision point and wait for an explicit choice. If only one valid option exists, explain why and adopt it directly. Use a text question for open-ended questions or when the options cannot be listed accurately.
-
 When two or more clear, mutually exclusive, executable options exist and the platform provides `AskUserQuestion`, prefer a structured question:
 
 - Sequential mode submits one single-choice or multiple-choice question at a time.
@@ -76,4 +76,4 @@ Begin final confirmation only when every identified branch has been handled, no 
 4. Wait for explicit user confirmation.
 5. After confirmation, remove the blocker and advance with `--confirmed`.
 
-The initial request is not final shared-understanding confirmation. If the user adds to or rejects the summary, update the formal artifacts and continue clarifying.
+The initial request does not replace final confirmation. If the user adds to or rejects the confirmation summary, update the formal artifacts and continue clarifying.

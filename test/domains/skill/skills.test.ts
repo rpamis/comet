@@ -249,7 +249,7 @@ describe('skills', () => {
           languageDir === 'skills-zh' ? '决策树' : 'decision tree',
           languageDir === 'skills-zh' ? 'subagent' : 'subagents',
           'comet.native.children.v2',
-          'integration workspace',
+          languageDir === 'skills-zh' ? '集成 worktree' : 'integration worktree',
         ]) {
           expect(allContent, `${languageDir}: ${required}`).toContain(required);
         }
@@ -311,9 +311,9 @@ describe('skills', () => {
       );
       expect(zhMain).toContain('parentAdvance');
       expect(zhMain).toContain('不要求用户再次说“推进”');
-      expect(zhMain).toContain('最终 Archive、workspace finish、merge、push 和 PR');
+      expect(zhMain).toContain('最终 Archive、工作区收尾、merge、push 和 PR');
       expect(enMain).toContain('parentAdvance');
-      expect(enMain).toContain('without asking the user to say “advance”');
+      expect(enMain).toContain('without asking them to say “advance” again');
       expect(enMain).toContain('final Archive, workspace finish, merge, push, and PR');
     });
 
@@ -334,7 +334,7 @@ describe('skills', () => {
       expect(zhMain).toContain('| C | 归档并推送（`push`） |');
       expect(zhMain).toContain('| D | 归档、推送并创建 PR（`pull-request`） |');
       expect(zhMain).toContain('| E | 暂不归档 |');
-      expect(zhMain).toContain('`current` 不需要 workspace finish 选择');
+      expect(zhMain).toContain('`current` 不需要选择工作区收尾方式');
       expect(enMain).toContain('| Option | Method | Actual effect |');
       expect(enMain).toContain(
         '| A | Archive and keep workspace (`keep`) | Complete Archive and create an archive commit on the change branch; do not merge, push, or create a PR, and keep the current branch and directory |',
@@ -372,13 +372,13 @@ describe('skills', () => {
       ];
       expect(zhSectionOffsets.every((offset) => offset >= 0)).toBe(true);
       expect(zhSectionOffsets).toEqual([...zhSectionOffsets].sort((left, right) => left - right));
-      expect(zhMain).toContain('确认 phase 后只读取需要的一份 reference');
+      expect(zhMain).toContain('确认当前阶段（`phase`）后，按当前动作读取必要的参考文件');
       expect(zhMain).toContain('Shape：必须读取并执行[澄清参考]');
       expect(zhMain).toContain('未解决问题保持 `[blocking]`；有阻塞项时不修改项目实现');
       expect(zhMain).toContain('只有用户明确确认后才使用后续指令中含 `--confirmed` 的命令推进');
       expect(zhClarification).toContain('进入 Shape 后必须读取本文件');
       expect(zhClarification).toContain(
-        '完成问题判定、静默假设检查和共享理解确认前，不得修改项目实现或推进到 Build',
+        '完成是否需要提问的判断、检查未明说的假设和最终需求确认前，不得修改项目实现或推进到 Build',
       );
       expect(zhClarification).toContain('一次只提出一个当前可提问节点并等待回答');
 
@@ -390,7 +390,9 @@ describe('skills', () => {
       ];
       expect(enSectionOffsets.every((offset) => offset >= 0)).toBe(true);
       expect(enSectionOffsets).toEqual([...enSectionOffsets].sort((left, right) => left - right));
-      expect(enMain).toContain('After confirming the phase, read only the needed reference');
+      expect(enMain).toContain(
+        'After confirming the current `phase`, read the references needed for the current action',
+      );
       expect(enMain).toContain('Shape: always read and execute the [clarification reference]');
       expect(enMain).toContain(
         'Keep unresolved questions `[blocking]`; do not modify implementation while a blocker remains',
@@ -400,7 +402,7 @@ describe('skills', () => {
       );
       expect(enClarification).toContain('You must read this file after entering Shape');
       expect(enClarification).toContain(
-        'Do not modify project implementation or advance to Build until problem classification, the silent-assumption check, and shared-understanding confirmation are complete',
+        'Do not modify project implementation or advance to Build until deciding whether questions are needed, checking unstated assumptions, and completing final requirements confirmation',
       );
       expect(enClarification).toContain('Ask exactly one currently askable node and wait');
     });

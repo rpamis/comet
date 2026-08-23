@@ -1,10 +1,10 @@
 # Native recovery reference
 
-Read this file only when the Runtime reports an interrupted local task, missing Runtime files, repeated lack of progress, a concurrency conflict, failed legacy migration, or damaged state.
+Read this file only when the Runtime reports interrupted local execution, missing Runtime files, repeated lack of progress, a concurrency conflict, failed legacy migration, or damaged state.
 
 ## General principles
 
-Stop modifying the project, then rerun `status --details --json` and read-only `doctor`. Execute only a recovery action explicitly returned by `continuation` or `doctor`. Always leave portable state, local tasks, locks, and transactions to the Runtime. If safe automatic recovery cannot be determined, preserve the workspace and wait for the user.
+Stop modifying the project, then rerun `status --details --json` and read-only `doctor`. Execute only a recovery action explicitly returned by `continuation` or `doctor`. Always leave portable state, local execution state, locks, and transactions to the Runtime. If safe automatic recovery cannot be determined, preserve the workspace and wait for the user.
 
 ## Workspace
 
@@ -14,7 +14,7 @@ If the project root, branch, workspace type, or Git state differs from the recor
 
 If the original directory or branch is truly lost, the user decides which recovery directory to use, whether to rebuild from a trusted backup, or whether to abandon the change.
 
-## Stable state and local tasks
+## Stable state and local execution
 
 `comet-state.yaml` records the last workflow state that can be resumed safely. Local `state.json` only says what this machine is executing. If it is missing, stale, or belongs to an old task, the Runtime rebuilds it from YAML, the brief, and target Specs. Local state cannot overwrite newer YAML.
 
@@ -38,7 +38,7 @@ To resume on a new device with no chat history, obtain the same synchronized pro
 
 Stop progression on the old device before synchronizing. A Git conflict or two different contents for the same state version enters a blocked state for the user to resolve.
 
-Unsynchronized code from the old device cannot be recovered from workflow state, and a subagent task cannot continue across devices. The new device creates local tasks from the workspace, acceptance Loop, verification result, blockers, Builder handoff, and next action in YAML. If the synchronized implementation is incomplete, the new Verifier reports the gap and returns to Build.
+Unsynchronized code from the old device cannot be recovered from workflow state, and a subagent task cannot continue across devices. The new device creates new local execution tasks from the workspace, acceptance Loop, verification result, blockers, Builder handoff, and next action in YAML. If the synchronized implementation is incomplete, the new Verifier reports the gap and returns to Build.
 
 Reverification of Verify or archive-ready state on a new device is recovery: it does not increment the implementation iteration, failure count, or stagnation count. Only actually starting a new Verifier increments the Verifier attempt. Completed Shape and Build work are not repeated, and the Runtime does not scan the whole project to guess progress.
 

@@ -1,12 +1,12 @@
 # Native 恢复参考
 
-只在 Runtime 报告本机任务中断、Runtime 文件缺失、连续多轮没有进展、并发冲突、旧版本迁移失败或状态损坏时读取。
+只在 Runtime 报告本机执行中断、Runtime 文件缺失、连续多轮没有进展、并发冲突、旧版本迁移失败或状态损坏时读取。
 
 ## 通用原则
 
-先停止修改项目，再重新运行 `status --details --json` 和只读 `doctor`。只执行 `continuation` 或 `doctor` 明确返回的恢复动作。跨设备状态、本机任务、锁和事务始终交给 Runtime 管理；无法确定自动恢复是否安全时，保留现场并等待用户。
+先停止修改项目，再重新运行 `status --details --json` 和只读 `doctor`。只执行 `continuation` 或 `doctor` 明确返回的恢复动作。跨设备状态、本机执行状态、锁和事务始终交给 Runtime 管理；无法确定自动恢复是否安全时，保留现场并等待用户。
 
-## Workspace
+## 工作区
 
 `status` 会跨已登记的 worktree 查找与当前绑定一致的 change，并返回实际工作目录 `workspace.projectRoot`。进入该目录并重新执行 `select`。恢复应沿用找到的 change 和工作目录，不复制 change，也不在其他目录重建同名 change。
 
@@ -14,12 +14,12 @@
 
 原目录或分支确实丢失时，由用户决定使用哪个恢复目录、是否从可信备份重建，或是否放弃 change。
 
-## 稳定状态与本机任务
+## 稳定状态与本机执行状态
 
 `comet-state.yaml` 记录最后一个可以安全恢复的工作流状态。本机 `state.json` 只说明这台机器正在执行什么；如果它缺失、版本落后或属于旧任务，Runtime 会根据 YAML、brief 和目标 Spec 重建。本机状态不能覆盖版本更新的 YAML。
 
 - Shape：保持 Shape，继续澄清或确认。
-- Build：如果 Runtime 显示 `repairing`，表示 Verify 未通过后已返回 Build。普通 change 保持当前验收轮次并继续修改；Supervisor Change 按 `repair-child` 追加覆盖失败验收项、尚未完成的 child，不重开已经归档的 child。
+- Build：如果 Runtime 显示 `repairing`，表示 Verify 未通过后已返回 Build。普通 change 保持当前验收轮次并继续修改；Supervisor Change 按 `repair-child` 追加覆盖失败验收项、尚未完成的子任务，不重新打开已经归档的子任务。
 - Verify（`verify-ready`）：重新运行当前候选的必要检查，并启动新的 Verifier；旧设备上的通过结果不再沿用。
 - Archive（`archive-ready`）：先安全返回 Verify，把验收结果重置为待检查（`pending`），再验收已经同步到新设备的实现。
 - 等待用户或阻塞（`await-user` / `blocked`）：恢复原来的阻塞原因、负责处理的人和允许动作，等待对应条件满足后再继续。
@@ -38,7 +38,7 @@
 
 先停止旧设备上的推进并完成同步。发现 Git 冲突，或同一状态版本出现两份不同内容时，进入阻塞状态并交给用户处理。
 
-旧设备上尚未同步的代码无法随工作流状态恢复，同一个 subagent 任务也不能跨设备继续。新设备根据 YAML 中的工作目录、验收循环、验收结果、阻塞原因、Builder handoff 和下一步创建新的本机任务；如果同步后的实现不完整，新的 Verifier 会指出缺口并返回 Build。
+旧设备上尚未同步的代码无法随工作流状态恢复，同一个 subagent 任务也不能跨设备继续。新设备根据 YAML 中的工作目录、验收循环、验收结果、阻塞原因、Builder handoff 和下一步创建新的本机执行任务；如果同步后的实现不完整，新的 Verifier 会指出缺口并返回 Build。
 
 Verify 或待归档状态在新设备上重新验收，属于恢复过程：它不会增加验收轮次、失败轮次或停滞计数；只有实际启动新的 Verifier 时，Verifier 尝试次数才增加。已经完成的 Shape 和 Build 不会重做，Runtime 也不会扫描整个项目来猜测进度。
 

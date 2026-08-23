@@ -17,7 +17,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
-- **Native Supervisor workflow**: Supervisor Changes now coordinate dependent Children through an integration workspace, independent Builder/Verifier tasks, automatic parent advancement after Children complete, and final verification before delivery.
+- **Native Supervisor workflow**: Supervisor Changes now let users choose multi-session coordination or single-session progression after decomposition. Codex can assign ready Children to independent sessions and Claude Code to Agent Team members, while Runtime retains dependency, worktree, verification, ordered integration, automatic parent advancement, and final-delivery control.
 - **Native status and verification**: Supervisor status, verification reports, and Dashboard labels now present child progress, task bindings, preserved evidence, and verification decisions in a clearer user-facing form.
 - **Native verification guidance**: Native CLI continuations now include localized, user-ready recovery messages and explicit Agent relay instructions, so temporary Verifier failures are explained without exposing Runtime counters or asking users to manage files or processes.
 - **Dashboard and memory workflow**: Dashboard startup and workspace discovery avoid unnecessary scans, while personal memory opens directly to readable records and keeps synchronization explicit.
