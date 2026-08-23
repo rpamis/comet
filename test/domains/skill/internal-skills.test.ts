@@ -47,7 +47,9 @@ describe('internal Skill assets', () => {
       fs.readFile(path.resolve('assets/skills/comet/rules/comet-phase-guard.en.md'), 'utf8'),
     ]);
     expect(chineseRule).toContain('多个 active change');
+    expect(chineseRule).toContain('不随当前 manifest 安装');
     expect(englishRule).toContain('multiple active changes');
+    expect(englishRule).toContain('not installed by the current manifest');
 
     const [chineseBuild, englishBuild] = await Promise.all([
       fs.readFile(path.resolve('assets/skills-zh/comet-build/SKILL.md'), 'utf8'),
@@ -64,6 +66,16 @@ describe('internal Skill assets', () => {
       'comet/scripts/runtime.mjs',
       'comet/runtime/classic/skill.yaml',
     ]);
+  });
+
+  it('keeps the bilingual Hotfix execution summary aligned', async () => {
+    const [chinese, english] = await Promise.all([
+      fs.readFile(path.resolve('assets/skills-zh/comet-hotfix/SKILL.md'), 'utf8'),
+      fs.readFile(path.resolve('assets/skills/comet-hotfix/SKILL.md'), 'utf8'),
+    ]);
+
+    expect(chinese).toContain('open → build → 根因消除检查 → verify → archive');
+    expect(english).toContain('open → build → root cause check → verify → archive');
   });
 
   it('excludes internal Skills from user-facing command names', () => {

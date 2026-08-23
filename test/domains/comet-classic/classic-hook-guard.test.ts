@@ -589,6 +589,17 @@ describe('Classic hook guard command', () => {
     expect(result.stderr).toContain('Current phase: open');
   });
 
+  it('blocks implementation writes during verify so repairs return through build', async () => {
+    const dir = await makeProject();
+    await seedChange(dir, 'verify-change', 'verify');
+
+    const result = run(dir, 'hook-guard', [], hookInput(path.join(dir, 'src', 'feature.ts')));
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('Current phase: verify');
+    expect(result.stderr).toContain('return to build before repairing implementation');
+  });
+
   it('keeps single-change source guard behavior without a selection', async () => {
     const dir = await makeProject();
     await seedChange(dir, 'design-change', 'design');

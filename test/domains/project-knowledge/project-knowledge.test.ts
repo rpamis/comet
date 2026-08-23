@@ -1141,4 +1141,24 @@ describe('project knowledge failure and bounded retrieval contracts', () => {
     expect(english).toContain('personal memory and project knowledge');
     expect(english).not.toContain('comet memory context');
   });
+
+  test('injects task context once after workspace binding with the current phase', async () => {
+    const [chineseEntry, englishEntry] = await Promise.all([
+      fs.readFile(path.resolve('assets/skills-zh/comet/SKILL.md'), 'utf8'),
+      fs.readFile(path.resolve('assets/skills/comet/SKILL.md'), 'utf8'),
+    ]);
+    expect(chineseEntry).not.toContain('--task "<用户原始请求>"');
+    expect(englishEntry).not.toContain('--task "<original user request>"');
+
+    for (const skill of ['comet-native', 'comet-classic', 'comet-hotfix', 'comet-tweak']) {
+      const [chinese, english] = await Promise.all([
+        fs.readFile(path.resolve('assets/skills-zh', skill, 'SKILL.md'), 'utf8'),
+        fs.readFile(path.resolve('assets/skills', skill, 'SKILL.md'), 'utf8'),
+      ]);
+      expect(chinese, `${skill} Chinese phase context`).toContain('--phase "<phase>"');
+      expect(english, `${skill} English phase context`).toContain('--phase "<phase>"');
+      expect(chinese, `${skill} Chinese phase context`).not.toContain('--phase build');
+      expect(english, `${skill} English phase context`).not.toContain('--phase build');
+    }
+  });
 });

@@ -18,9 +18,10 @@ Classic 旧项目没有新版配置时只按 Classic legacy fallback 处理，�
 | Workflow | 禁止普通实现写入 | 允许普通实现写入 |
 | --- | --- | --- |
 | Native | Shape、Verify、Archive | Build |
-| Classic | Open、Design、Archive | Build、Verify |
+| Classic | Open、Design、Verify、Archive | Build |
 
 - Native 的 Verify 保持只读：Runtime 执行必要检查，新的 Verifier execution 独立验收全部条目；发现实现问题时，先记录失败并通过 Native Runtime 回到 Build，再修改实现。点号开头的普通项目文件不因名称而自动成为跨阶段白名单。
+- Classic 的 Verify 只写验证报告、tasks 和状态等阶段产物；发现实现问题时先执行 `verify-fail` 回到 Build，再修改普通项目实现。
 - Native Build 的普通写入权限不覆盖 brief 中未解决的 `[blocking]` 用户决定；出现新决定时按 Native Skill 暂停实现并重新确认。
 - 当前 workflow 是 Native：恢复 `/comet-native`，由可携带状态中的 Loop、blocker 和下一动作继续；本机 execution 缺失不代表 change 损坏。
 - 当前 workflow 是 Classic：恢复 `/comet-classic`，由 Classic 状态、确认点和阶段协议继续。

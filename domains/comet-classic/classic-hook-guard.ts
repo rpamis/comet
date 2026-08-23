@@ -573,11 +573,17 @@ function blocked(relativePath: string, phase: ClassicPhase): ClassicCommandResul
             '  ALLOWED: run brainstorming, create the Design Doc, and run guard',
             '  NEXT: finish the Design Doc, then run comet guard <change-name> design --apply to enter build',
           ]
-        : [
-            '  BLOCKED: source writes are not allowed during archive',
-            '  This phase does not allow source writes',
-            '  ALLOWED: confirm archive state and run the archive script',
-          ];
+        : phase === 'verify'
+          ? [
+              '  BLOCKED: implementation writes are not allowed during verify',
+              '  This phase allows verification artifacts, tasks, and state updates only',
+              '  NEXT: run verify-fail and return to build before repairing implementation',
+            ]
+          : [
+              '  BLOCKED: source writes are not allowed during archive',
+              '  This phase does not allow source writes',
+              '  ALLOWED: confirm archive state and run the archive script',
+            ];
   return result(
     2,
     [
@@ -870,7 +876,7 @@ async function inspectClassicHookTarget(
       return blockedPlanNotReady(relativePath, governing, planReadiness, projectRoot, layout);
     }
   }
-  if (phase === 'build' || phase === 'verify') {
+  if (phase === 'build') {
     return allowed(`${relativePath} (phase: ${phase})`);
   }
   return blocked(relativePath, phase);

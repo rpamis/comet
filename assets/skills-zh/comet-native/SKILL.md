@@ -18,9 +18,9 @@ Native 把需求、完整目标规格、当前进度和验收结论保存在项�
 3. active change 已存在时，进入返回的 `workspace.projectRoot` 并 `select`。Runtime 会扫描已登记 Worktree，优先返回绑定分支匹配的工作区；只有多个同样匹配的候选才让用户选择。
 4. 没有对应 active change 时才创建，并使用配置指定的产物目录。`comet init` 会按所选 Skill 语言初始化 `native.language`；之后产物跟随项目配置，只有用户明确要求覆盖时才传入 `--language`。
 ### 记忆接入
-进入 change 工作区后，Agent 自动运行一次：
+进入 change 工作区并读取 Runtime 当前 `phase` 后，Agent 自动运行一次：
 ```text
-comet task <project-root> --task "<用户原始请求>" --phase build --json
+comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --json
 ```
 
 只把返回的相关个人记忆和项目知识加入当前任务上下文；命令不可用、没有内容或检索失败时继续正常工作，不要求用户处理。工作流命令可带 `--comet-task`、`--comet-path`、`--comet-phase`，CLI 会自动选择上下文并在输出中显示相关片段。仅当本轮对话出现可跨任务复用的用户偏好、项目约定或稳定协作方式时，Agent 才调用 `comet memory observe <project-root> --text "<偏好或约定>" --workflow <workflow> --change <change-id> --candidate-key <stable-topic-key> --json`；`--text` 只写该偏好或约定，不写任务摘要、实现进展、命令输出或测试结果，没有候选时不调用。验证、编译或 linter 失败时，直接读取工具诊断、修复代码并按工作流要求重跑。任务结束调用 `comet task <project-root> --task "<用户原始请求>" --complete --workflow <workflow> --change <change-id> --json`，这个命令只完成检查点和同步，不把原始任务保存为记忆。

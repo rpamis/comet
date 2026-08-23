@@ -1,8 +1,9 @@
 # Comet Phase Awareness (Anti-Drift Rules)
 
-> This rule is injected every round to prevent forgetting Comet workflow state during long context.
-> The Hook platform additionally executes `comet-hook-guard.mjs` for hard interception;
-> this Rule is a universal soft defense line for all platforms.
+> Internal Classic authoring reference; it is not installed by the current manifest. User environments use `comet-workflow-guard.en.md`.
+>
+> This reference maintains Classic Skill, Runtime, and old-install cleanup contracts; it is not injected as a persistent Rule.
+> Current platforms install `comet-workflow-guard.en.md`, and Hook platforms route the Classic Guard through the Hook Router.
 
 ## Global Rules
 

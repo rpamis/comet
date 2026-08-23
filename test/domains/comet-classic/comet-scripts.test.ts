@@ -5813,7 +5813,7 @@ describe('comet scripts', () => {
       expect(result.status).toBe(0);
     }, 20_000);
 
-    it('allows source code writes in verify phase', async () => {
+    it('blocks source code writes in verify phase', async () => {
       await createChange(
         tmpDir,
         'test-hook',
@@ -5848,7 +5848,9 @@ describe('comet scripts', () => {
 
       const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
 
-      expect(result.status).toBe(0);
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('Current phase: verify');
+      expect(result.stderr).toContain('return to build before repairing implementation');
     }, 20_000);
 
     it('blocks source code writes in archive phase', async () => {
