@@ -248,10 +248,10 @@ knowledge
 
 knowledge
   .command('query [path]')
-  .description('使用更具体的任务描述补充查询项目知识')
+  .description('查询项目知识记录与来源')
   .option('--task <text>', '查询或任务描述')
-  .option('--query <text>', '兼容旧版查询参数')
   .option('--path <path>', '当前文件或目录')
+  .option('--phase <phase>', '当前阶段')
   .option('--operation <operation>', '当前操作')
   .option('--json', 'Output as JSON')
   .action(async (targetPath = '.', options) => {
@@ -261,56 +261,54 @@ knowledge
 
 knowledge
   .command('rebuild [path]')
-  .description('显式重建当前工作区的 Local 项目知识索引')
+  .description('重新核对当前项目知识来源')
   .option('--json', 'Output as JSON')
   .action(async (targetPath = '.', options) => {
     const { projectKnowledgeRebuildCommand } = await import('../commands/project-knowledge.js');
     await projectKnowledgeRebuildCommand(targetPath, options);
   });
 
-const knowledgeUnits = knowledge.command('units').description('查看和维护项目知识单元');
-
-knowledgeUnits
+knowledge
   .command('list [path]')
-  .description('只读查看项目知识单元')
-  .addOption(new Option('--state <state>', '单元状态').choices(['active', 'draft', 'retired']))
-  .addOption(new Option('--origin <origin>', '单元来源').choices(['maintained', 'generated']))
+  .description('列出项目知识记录')
+  .addOption(
+    new Option('--state <state>', '记录状态').choices(['active', 'needs-review', 'retired', 'all']),
+  )
   .option('--json', 'Output as JSON')
   .action(async (targetPath = '.', options) => {
-    const { projectKnowledgeUnitsListCommand } = await import('../commands/project-knowledge.js');
-    await projectKnowledgeUnitsListCommand(targetPath, options);
+    const { projectKnowledgeListCommand } = await import('../commands/project-knowledge.js');
+    await projectKnowledgeListCommand(targetPath, options);
   });
 
-knowledgeUnits
+knowledge
   .command('get [path]')
-  .description('只读查看一个项目知识单元')
-  .requiredOption('--id <id>', '单元标识')
+  .description('查看一条项目知识记录')
+  .requiredOption('--id <id>', '记录标识')
   .option('--json', 'Output as JSON')
   .action(async (targetPath = '.', options) => {
-    const { projectKnowledgeUnitsGetCommand } = await import('../commands/project-knowledge.js');
-    await projectKnowledgeUnitsGetCommand(targetPath, options);
+    const { projectKnowledgeGetCommand } = await import('../commands/project-knowledge.js');
+    await projectKnowledgeGetCommand(targetPath, options);
   });
 
-knowledgeUnits
-  .command('share [path]')
-  .description('显式确认后将本地生成单元写入项目目录')
-  .requiredOption('--id <id>', '单元标识')
-  .requiredOption('--confirm', '确认写入项目知识目录')
+knowledge
+  .command('correct [path]')
+  .description('纠正一条项目知识记录')
+  .requiredOption('--id <id>', '记录标识')
+  .requiredOption('--text <text>', '新的记录说明')
   .option('--json', 'Output as JSON')
   .action(async (targetPath = '.', options) => {
-    const { projectKnowledgeUnitsShareCommand } = await import('../commands/project-knowledge.js');
-    await projectKnowledgeUnitsShareCommand(targetPath, options);
+    const { projectKnowledgeCorrectCommand } = await import('../commands/project-knowledge.js');
+    await projectKnowledgeCorrectCommand(targetPath, options);
   });
 
-knowledgeUnits
-  .command('retire [path]')
-  .description('显式确认后停用一个项目知识单元')
-  .requiredOption('--id <id>', '单元标识')
-  .requiredOption('--confirm', '确认停用项目知识单元')
+knowledge
+  .command('forget [path]')
+  .description('忘记一条项目知识记录')
+  .requiredOption('--id <id>', '记录标识')
   .option('--json', 'Output as JSON')
   .action(async (targetPath = '.', options) => {
-    const { projectKnowledgeUnitsRetireCommand } = await import('../commands/project-knowledge.js');
-    await projectKnowledgeUnitsRetireCommand(targetPath, options);
+    const { projectKnowledgeForgetCommand } = await import('../commands/project-knowledge.js');
+    await projectKnowledgeForgetCommand(targetPath, options);
   });
 
 program

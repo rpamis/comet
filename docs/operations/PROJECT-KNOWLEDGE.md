@@ -1,32 +1,55 @@
-# Project knowledge retrieval
+# Project Knowledge
 
-## Project knowledge units
+Project Knowledge is the engineering knowledge layer for the current project. It records project structure, module responsibilities, behavior, integration paths, change impact, and verification guidance so the Agent can find relevant context when a task starts or needs it. Code, configuration, tests, and current workflow state remain authoritative.
 
-Local retrieval maintains a workspace-isolated SQLite read model in the user cache and keeps ripgrep as a bounded supplement. Maintained units live under `docs/comet/knowledge/units/`; generated units remain local until the user explicitly confirms sharing.
+## Storage and providers
 
-```text
-comet knowledge units list [path] [--state active|draft|retired]
-comet knowledge units get [path] --id <id>
-comet knowledge units share [path] --id <id> --confirm
-comet knowledge units retire [path] --id <id> --confirm
-```
+Local Provider is the default. Project Knowledge is stored in a user-data SQLite database isolated by project and workspace. It does not create knowledge files in the project or modify the repository. Local indexes Comet-managed Native/Classic documents, archived documents, and bounded deterministic project-structure facts, with bounded ripgrep used to supplement current file content.
 
-After a task completes verification and its sources remain checkable, an optional host semantic reviewer may propose `behavior-note`, `integration-path`, or `change-impact` units. Reviewer failures never block the task. Personal Memory continues to retrieve project preferences for the current project and never copies them into Project Knowledge automatically; sharing a preference requires current sources and explicit confirmation.
-
-Comet can add bounded project-document references to ordinary `comet task` context through the first-party `comet.project-knowledge` plugin. Local retrieval is the default and maintains a workspace-isolated local read model over declared Native, Classic/OpenSpec, and explicitly referenced archived Superpowers Markdown without sending project content over the network.
-
-To use a retrieval service, select the fixed Retrieval API v1 interface in `.comet/config.yaml`:
+An optional Remote Provider lets a team share records through an external Project Knowledge service:
 
 ```yaml
 knowledge:
   provider: remote
   remote:
-    endpoint: https://rag.example.com/comet/retrieve
-    token_env: COMET_RAG_TOKEN
+    endpoint: https://knowledge.example.com/provider
+    token_env: COMET_KNOWLEDGE_TOKEN
     scope: team-project
     timeout_ms: 5000
 ```
 
-Remote requests contain only the task, optional project-relative target path, optional phase, a result limit of four, and the configured scope. Remote failures do not fall back to Local, so a task never silently mixes providers. Retrieved material is bounded, cites its source, and is advisory evidence that cannot override the request, system constraints, Skills, or workflow state.
+Local and Remote are mutually exclusive. Remote receives only the task, project-relative path, phase, operation, and bounded query parameters; tokens are read from the environment only. A Remote failure does not silently fall back to Local, so one task never mixes two providers' results.
 
-Local refreshes the user-cache SQLite FTS5 read model on first access and when sources change. A bounded ripgrep pass covers changed sources, while index corruption, lock waits, and unreadable files remain isolated to the current retrieval. Project knowledge units enter context only after their referenced files and Markdown anchors pass validation.
+The provider contract has three operations: `status` reports health, `query` searches/lists/reads records, and `apply` creates, corrects, retires, or refreshes records. This contract leaves a stable place for a future mem0-backed provider, but this release does not implement a mem0 adapter.
+
+## Records and learning
+
+A Project Knowledge record is a source-backed engineering fact with a stable ID, type, state, authority, summary, applicable paths, operations, sourced conclusions, relations, and verification guidance.
+
+- Local lifecycle events trigger bounded deterministic learning; structure, module, and build/test records become active when their sources can be checked.
+- An optional semantic reviewer may enrich sourced behavior, integration, and impact records. Reviewer unavailability never blocks the task.
+- User corrections use `user` authority. Automatic learning does not overwrite user-maintained summaries or conclusions.
+- A changed or deleted source moves a record to `needs-review`; stale facts are not injected into context.
+- Personal Memory remains independently managed. Personal preferences are not copied into Project Knowledge, and this release has no “share personal memory” operation.
+
+## Context injection
+
+During task context collection, the Plugin Bridge calls the active provider with a bounded search and renders records and document sections as a separate Project Knowledge reference. Personal Memory and Project Knowledge keep separate storage, budgets, and management operations; both may be injected without writing into each other.
+
+Injected content is bounded by source, count, and total characters and is explicitly marked as advisory evidence. It cannot override the user request, system constraints, Skills, or workflow state. No empty placeholder is injected when there is no reliable match.
+
+## User operations
+
+The CLI provides:
+
+```text
+comet knowledge status
+comet knowledge query <task>
+comet knowledge list [--state active|needs-review|retired|all]
+comet knowledge get --id <id>
+comet knowledge correct --id <id> --text <text>
+comet knowledge forget --id <id>
+comet knowledge rebuild
+```
+
+Dashboard provides the same scope of status, record list, query preview, provider configuration, correction, forgetting, and refresh. Remote configuration stores only the endpoint, scope, timeout, and token environment-variable name; it never stores the token value.

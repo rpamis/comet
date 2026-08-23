@@ -5,40 +5,17 @@ import path from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 import {
+  extractDeterministicProjectRecords,
+  LocalProjectKnowledgeProvider,
   ProjectKnowledgeLearningService,
-  ProjectKnowledgeUnitRepository,
   createProjectKnowledgeReviewPacket,
-  sanitizeProjectPreferenceForSharing,
-  type ProjectKnowledgeReviewAction,
-  type ProjectKnowledgeSemanticReviewer,
-  type ProjectKnowledgeUnit,
+  createProjectKnowledgeQuery,
+  type ProjectKnowledgeRecord,
 } from '../../../domains/project-knowledge/index.js';
 import type { PluginEvent } from '../../../domains/comet-plugin/index.js';
 
 async function temporaryRoot(prefix: string): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), prefix));
-}
-
-function generatedUnit(state: ProjectKnowledgeUnit['state'] = 'draft'): ProjectKnowledgeUnit {
-  return {
-    schema: 'comet.project-knowledge.unit.v1',
-    id: 'generated-behavior',
-    kind: 'behavior-note',
-    state,
-    origin: 'generated',
-    title: '验证后的行为',
-    summary: '完成验证后可以复用的行为语义。',
-    applicablePaths: ['src/'],
-    operations: ['implement', 'verify'],
-    conclusions: [
-      {
-        text: '入口完成验证后必须同步检查调用方。',
-        sources: [{ source: 'src/main.ts', anchor: 'main' }],
-      },
-    ],
-    relations: [],
-    verification: [{ command: 'pnpm test', expected: '成功' }],
-  };
 }
 
 function event(name: PluginEvent['name'], payload: Record<string, unknown> = {}): PluginEvent {
@@ -61,6 +38,25 @@ function event(name: PluginEvent['name'], payload: Record<string, unknown> = {})
   };
 }
 
+async function createProvider(
+  root: string,
+  storageRoot: string,
+): Promise<LocalProjectKnowledgeProvider> {
+  return new LocalProjectKnowledgeProvider({
+    projectRoot: root,
+    cacheRoot: storageRoot,
+    corpus: [],
+  });
+}
+
+function verifiedPayload(): Record<string, unknown> {
+  return {
+    changedPaths: ['src/main.ts'],
+    verificationCommands: ['pnpm test'],
+    verificationResults: [{ command: 'pnpm test', success: true }],
+  };
+}
+
 describe('project knowledge learning', () => {
   test('creates a bounded review packet only for structured lifecycle evidence', async () => {
     const root = await temporaryRoot('comet-project-knowledge-learning-packet-');
@@ -70,9 +66,7 @@ describe('project knowledge learning', () => {
       const packet = await createProjectKnowledgeReviewPacket(
         event('change.completed', {
           operation: 'implement',
-          changedPaths: ['src/main.ts'],
-          verificationCommands: ['pnpm test'],
-          verificationResults: [{ command: 'pnpm test', success: true }],
+          ...verifiedPayload(),
           chat: '不要读取这段聊天',
           diff: '不要读取这段 diff',
         }),
@@ -93,136 +87,314 @@ describe('project knowledge learning', () => {
     }
   });
 
-  test('activates generated units only after successful verification and current-source checks', async () => {
+  test('writes active records without a semantic reviewer and makes them queryable', async () => {
     const root = await temporaryRoot('comet-project-knowledge-learning-service-');
-    const cache = await temporaryRoot('comet-project-knowledge-learning-cache-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-learning-storage-');
+    const provider = await createProvider(root, storageRoot);
     try {
       await fs.mkdir(path.join(root, 'src'), { recursive: true });
       await fs.writeFile(path.join(root, 'src', 'main.ts'), 'export const main = true;\n');
-      const repository = new ProjectKnowledgeUnitRepository({
+      const service = new ProjectKnowledgeLearningService({
         projectRoot: root,
-        cacheRoot: cache,
+        provider,
       });
-      const reviewer: ProjectKnowledgeSemanticReviewer = {
-        review: async (): Promise<readonly ProjectKnowledgeReviewAction[]> => [
-          { action: 'create', unit: generatedUnit() },
+      const result = await service.processEvent(event('verification.completed', verifiedPayload()));
+      expect(result.skipped).toBe(false);
+      expect(result.activated).toContain('generated-project-map');
+      const listed = await provider.query({ kind: 'list', state: 'active' });
+      expect(listed.kind).toBe('list');
+      expect(listed.records.map((record) => record.id)).toContain('generated-project-map');
+      await provider.query({
+        kind: 'search',
+        query: createProjectKnowledgeQuery({ task: 'module' }),
+      });
+      await expect(
+        provider.query({ kind: 'get', id: 'generated-module-overview' }),
+      ).resolves.toMatchObject({
+        record: expect.objectContaining({
+          state: 'active',
+          conclusions: [
+            expect.objectContaining({
+              sources: [expect.not.objectContaining({ anchor: 'module' })],
+            }),
+          ],
+        }),
+      });
+    } finally {
+      provider.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('does not write failed or unstructured verification events', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-learning-failure-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-learning-failure-storage-');
+    const provider = await createProvider(root, storageRoot);
+    try {
+      await fs.mkdir(path.join(root, 'src'), { recursive: true });
+      await fs.writeFile(path.join(root, 'src', 'main.ts'), 'export const main = true;\n');
+      const service = new ProjectKnowledgeLearningService({ projectRoot: root, provider });
+      await expect(
+        service.processEvent(
+          event('change.completed', {
+            ...verifiedPayload(),
+            success: false,
+          }),
+        ),
+      ).resolves.toMatchObject({ skipped: true, activated: [] });
+      await expect(
+        service.processEvent(
+          event('verification.completed', {
+            changedPaths: ['src/main.ts'],
+            verificationResults: [{ command: 'pnpm test', success: false }],
+          }),
+        ),
+      ).resolves.toMatchObject({ skipped: true, activated: [] });
+      await expect(provider.query({ kind: 'list', state: 'all' })).resolves.toMatchObject({
+        records: [],
+      });
+    } finally {
+      provider.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('applies bounded semantic reviewer create, update, and retire actions', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-learning-review-actions-');
+    const storageRoot = await temporaryRoot(
+      'comet-project-knowledge-learning-review-actions-storage-',
+    );
+    const provider = await createProvider(root, storageRoot);
+    try {
+      await fs.mkdir(path.join(root, 'src'), { recursive: true });
+      const source = path.join(root, 'src', 'main.ts');
+      await fs.writeFile(source, 'export const main = true;\n');
+      const stat = await fs.stat(source);
+      let action: 'create' | 'update' | 'retire' = 'create';
+      const semanticRecord: ProjectKnowledgeRecord = {
+        id: 'semantic-main-module',
+        projectId: 'learning-project',
+        type: 'module-overview',
+        state: 'active',
+        authority: 'automatic',
+        title: 'Main module',
+        summary: 'Created by semantic review.',
+        applicablePaths: ['src/'],
+        operations: ['implement'],
+        conclusions: [
+          { text: 'The main module exports main.', sources: [{ source: 'src/main.ts' }] },
         ],
+        relations: [],
+        verification: [],
+        sourceVersions: [
+          { source: 'src/main.ts', size: stat.size, modifiedAt: Math.trunc(stat.mtimeMs) },
+        ],
+        updatedAt: '2026-08-23T00:00:00.000Z',
       };
       const service = new ProjectKnowledgeLearningService({
         projectRoot: root,
-        repository,
-        reviewer,
-      });
-      const result = await service.processEvent(
-        event('verification.completed', {
-          changedPaths: ['src/main.ts'],
-          verificationCommands: ['pnpm test'],
-          verificationResults: [{ command: 'pnpm test', success: true }],
-        }),
-      );
-      expect(result.activated).toEqual(['generated-behavior']);
-      await expect(repository.read('generated-behavior')).resolves.toMatchObject({
-        state: 'active',
-        origin: 'generated',
-      });
-    } finally {
-      await fs.rm(root, { recursive: true, force: true });
-      await fs.rm(cache, { recursive: true, force: true });
-    }
-  });
-
-  test('keeps adapter failure and unverified events non-blocking', async () => {
-    const root = await temporaryRoot('comet-project-knowledge-learning-failure-');
-    try {
-      await fs.mkdir(path.join(root, 'src'), { recursive: true });
-      await fs.writeFile(path.join(root, 'src', 'main.ts'), 'export const main = true;\n');
-      const repository = new ProjectKnowledgeUnitRepository({ projectRoot: root });
-      const service = new ProjectKnowledgeLearningService({
-        projectRoot: root,
-        repository,
+        provider,
         reviewer: {
-          review: async () => {
-            throw new Error('adapter unavailable');
-          },
+          review: () =>
+            action === 'retire'
+              ? [{ action: 'retire', recordId: semanticRecord.id }]
+              : [
+                  {
+                    action,
+                    record: {
+                      ...semanticRecord,
+                      summary:
+                        action === 'update'
+                          ? 'Updated by semantic review.'
+                          : semanticRecord.summary,
+                    },
+                  },
+                ],
         },
       });
+
       await expect(
-        service.processEvent(
-          event('change.completed', { changedPaths: ['src/main.ts'], success: false }),
-        ),
-      ).resolves.toMatchObject({ skipped: true, activated: [] });
-      await expect(repository.list({ origin: 'generated' })).resolves.toEqual([]);
-    } finally {
-      await fs.rm(root, { recursive: true, force: true });
-    }
-  });
-
-  test('does not activate a unit when any verification result fails or is unstructured', async () => {
-    const root = await temporaryRoot('comet-project-knowledge-learning-mixed-');
-    try {
-      await fs.mkdir(path.join(root, 'src'), { recursive: true });
-      await fs.writeFile(path.join(root, 'src', 'main.ts'), 'export const main = true;\n');
-      const repository = new ProjectKnowledgeUnitRepository({ projectRoot: root });
-      const service = new ProjectKnowledgeLearningService({
-        projectRoot: root,
-        repository,
-        reviewer: { review: async () => [{ action: 'create', unit: generatedUnit() }] },
-      });
-      const result = await service.processEvent(
-        event('verification.completed', {
-          changedPaths: ['src/main.ts'],
-          verificationResults: [
-            { command: 'pnpm test', success: true },
-            { command: 'pnpm lint', success: false },
-          ],
+        service.processEvent(event('verification.completed', verifiedPayload())),
+      ).resolves.toMatchObject({ activated: expect.arrayContaining([semanticRecord.id]) });
+      action = 'update';
+      await service.processEvent(event('verification.completed', verifiedPayload()));
+      await expect(provider.query({ kind: 'get', id: semanticRecord.id })).resolves.toMatchObject({
+        record: expect.objectContaining({
+          summary: 'Updated by semantic review.',
+          state: 'active',
         }),
-      );
-      expect(result.activated).toEqual([]);
-      await expect(repository.read('generated-behavior')).resolves.toMatchObject({
-        state: 'draft',
+      });
+      action = 'retire';
+      await expect(
+        service.processEvent(event('verification.completed', verifiedPayload())),
+      ).resolves.toMatchObject({ retired: [semanticRecord.id] });
+      await expect(provider.query({ kind: 'get', id: semanticRecord.id })).resolves.toMatchObject({
+        record: expect.objectContaining({ state: 'retired' }),
       });
     } finally {
+      provider.close();
       await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
     }
   });
 
-  test('skips review writes when a packet source changes during semantic review', async () => {
+  test('rejects semantic reviewer records whose source anchors are invalid', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-learning-review-anchor-');
+    const storageRoot = await temporaryRoot(
+      'comet-project-knowledge-learning-review-anchor-storage-',
+    );
+    const provider = await createProvider(root, storageRoot);
+    try {
+      await fs.mkdir(path.join(root, 'src'), { recursive: true });
+      const source = path.join(root, 'src', 'main.ts');
+      await fs.writeFile(source, 'export const main = true;\n');
+      const stat = await fs.stat(source);
+      const invalidId = 'semantic-invalid-anchor';
+      const service = new ProjectKnowledgeLearningService({
+        projectRoot: root,
+        provider,
+        reviewer: {
+          review: () => [
+            {
+              action: 'create',
+              record: {
+                id: invalidId,
+                projectId: 'learning-project',
+                type: 'module-overview',
+                state: 'active',
+                authority: 'automatic',
+                title: 'Invalid anchor',
+                summary: 'This semantic record references an anchor that does not exist.',
+                applicablePaths: ['src/'],
+                operations: ['implement'],
+                conclusions: [
+                  {
+                    text: 'The source anchor must exist.',
+                    sources: [{ source: 'src/main.ts', anchor: 'missing' }],
+                  },
+                ],
+                relations: [],
+                verification: [],
+                sourceVersions: [
+                  {
+                    source: 'src/main.ts',
+                    size: stat.size,
+                    modifiedAt: Math.trunc(stat.mtimeMs),
+                  },
+                ],
+                updatedAt: '2026-08-23T00:00:00.000Z',
+              },
+            },
+          ],
+        },
+      });
+
+      await expect(
+        service.processEvent(event('verification.completed', verifiedPayload())),
+      ).resolves.toMatchObject({
+        activated: expect.not.arrayContaining([invalidId]),
+        diagnostics: [expect.objectContaining({ code: 'source-changed', source: 'src/main.ts' })],
+      });
+      await expect(provider.query({ kind: 'get', id: invalidId })).resolves.toMatchObject({
+        record: null,
+      });
+    } finally {
+      provider.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('does not write when a packet source changes during optional enrichment', async () => {
     const root = await temporaryRoot('comet-project-knowledge-learning-toctou-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-learning-toctou-storage-');
+    const provider = await createProvider(root, storageRoot);
     try {
       await fs.mkdir(path.join(root, 'src'), { recursive: true });
       await fs.writeFile(path.join(root, 'src', 'main.ts'), 'export const main = true;\n');
-      const repository = new ProjectKnowledgeUnitRepository({ projectRoot: root });
       const service = new ProjectKnowledgeLearningService({
         projectRoot: root,
-        repository,
+        provider,
         reviewer: {
           review: async () => {
             await fs.writeFile(path.join(root, 'src', 'main.ts'), 'export const main = false;\n');
-            return [{ action: 'create', unit: generatedUnit() }];
+            return [];
           },
         },
       });
-      const result = await service.processEvent(
-        event('verification.completed', {
-          changedPaths: ['src/main.ts'],
-          verificationResults: [{ command: 'pnpm test', success: true }],
-        }),
-      );
+      const result = await service.processEvent(event('verification.completed', verifiedPayload()));
       expect(result.skipped).toBe(true);
       expect(result.diagnostics.map((entry) => entry.code)).toContain('source-changed');
-      await expect(repository.read('generated-behavior')).resolves.toBeNull();
+      await expect(provider.query({ kind: 'list', state: 'all' })).resolves.toMatchObject({
+        records: [],
+      });
     } finally {
+      provider.close();
       await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
     }
   });
 
-  test('removes personal and authorization language before explicit sharing', () => {
-    const unit = sanitizeProjectPreferenceForSharing({
-      category: '提交偏好',
-      text: '我的偏好是允许自动推送，联系 me@example.com，token=secret。',
-    });
-    expect(unit.summary).not.toContain('me@example.com');
-    expect(unit.summary).not.toContain('token=secret');
-    expect(unit.summary).not.toContain('允许自动推送');
+  test('does not overwrite user-authored content with automatic learning', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-learning-user-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-learning-user-storage-');
+    const provider = await createProvider(root, storageRoot);
+    try {
+      await fs.mkdir(path.join(root, 'src'), { recursive: true });
+      await fs.writeFile(path.join(root, 'src', 'main.ts'), 'export const main = true;\n');
+      const candidate = (await extractDeterministicProjectRecords({ projectRoot: root })).find(
+        (record) => record.id === 'generated-project-map',
+      )!;
+      const userRecord: ProjectKnowledgeRecord = {
+        ...candidate,
+        authority: 'user',
+        summary: '用户明确维护的项目说明。',
+        conclusions: [{ text: '必须先阅读用户规则。', sources: candidate.conclusions[0]!.sources }],
+      };
+      await provider.apply({ kind: 'upsert', record: userRecord });
+      const service = new ProjectKnowledgeLearningService({ projectRoot: root, provider });
+      await service.processEvent(event('verification.completed', verifiedPayload()));
+      await expect(provider.query({ kind: 'get', id: candidate.id })).resolves.toMatchObject({
+        record: expect.objectContaining({
+          authority: 'user',
+          summary: '用户明确维护的项目说明。',
+        }),
+      });
+    } finally {
+      provider.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('does not resurrect a forgotten record with the same source fingerprint', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-learning-retired-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-learning-retired-storage-');
+    const provider = await createProvider(root, storageRoot);
+    try {
+      await fs.mkdir(path.join(root, 'src'), { recursive: true });
+      await fs.writeFile(path.join(root, 'src', 'main.ts'), 'export const main = true;\n');
+      const candidate = (await extractDeterministicProjectRecords({ projectRoot: root })).find(
+        (record) => record.id === 'generated-project-map',
+      )!;
+      await provider.apply({ kind: 'upsert', record: candidate });
+      await provider.apply({
+        kind: 'retire',
+        id: candidate.id,
+        projectId: candidate.projectId,
+        updatedAt: new Date().toISOString(),
+      });
+      const service = new ProjectKnowledgeLearningService({ projectRoot: root, provider });
+      await service.processEvent(event('verification.completed', verifiedPayload()));
+      await expect(provider.query({ kind: 'get', id: candidate.id })).resolves.toMatchObject({
+        record: expect.objectContaining({ state: 'retired' }),
+      });
+    } finally {
+      provider.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
   });
 });

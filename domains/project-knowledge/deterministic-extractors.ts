@@ -2,11 +2,13 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
 import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
-import {
-  PROJECT_KNOWLEDGE_UNIT_SCHEMA,
-  type ProjectKnowledgeUnit,
-  type ProjectKnowledgeUnitSource,
-} from './units.js';
+import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
+import type {
+  ProjectKnowledgeRecord,
+  ProjectKnowledgeRecordConclusion,
+  ProjectKnowledgeRecordSource,
+  ProjectKnowledgeRecordType,
+} from './records.js';
 
 const MAX_READ_BYTES = 64 * 1024;
 const MAX_EXTRACTION_MS = 1_500;
@@ -46,29 +48,33 @@ function checkDeadline(deadline: number): void {
   if (Date.now() > deadline) throw new ExtractionDeadlineExceeded();
 }
 
-export interface DeterministicProjectUnitExtractionOptions {
+export interface DeterministicProjectRecordExtractionOptions {
   readonly projectRoot: string;
   readonly changedPaths?: readonly string[];
 }
 
-function source(source: string, anchor?: string): ProjectKnowledgeUnitSource {
+type ProjectKnowledgeRecordDraft = Omit<
+  ProjectKnowledgeRecord,
+  'projectId' | 'state' | 'authority' | 'sourceVersions' | 'updatedAt'
+>;
+
+function source(source: string, anchor?: string): ProjectKnowledgeRecordSource {
   return { source, ...(anchor === undefined ? {} : { anchor }) };
 }
 
-function unitBase(
+function recordBase(
   id: string,
-  kind: ProjectKnowledgeUnit['kind'],
+  type: ProjectKnowledgeRecordType,
   title: string,
   summary: string,
-  conclusions: ProjectKnowledgeUnit['conclusions'],
-  options: Partial<ProjectKnowledgeUnit> = {},
-): ProjectKnowledgeUnit {
+  conclusions: readonly ProjectKnowledgeRecordConclusion[],
+  options: Partial<
+    Omit<ProjectKnowledgeRecordDraft, 'id' | 'type' | 'title' | 'summary' | 'conclusions'>
+  > = {},
+): ProjectKnowledgeRecordDraft {
   return {
-    schema: PROJECT_KNOWLEDGE_UNIT_SCHEMA,
     id,
-    kind,
-    state: 'draft',
-    origin: 'generated',
+    type,
     title,
     summary,
     applicablePaths: options.applicablePaths ?? [],
@@ -136,7 +142,7 @@ async function changedProjectFiles(
       if (stat.isFile()) result.push(target);
       else if (stat.isDirectory()) result.push(...(await realProjectFiles(target, max, deadline)));
     } catch {
-      // Deleted paths are handled by the index and do not produce a unit source.
+      // Deleted paths are handled by the index and do not produce a record source.
     }
     if (result.length >= max) break;
   }
@@ -180,11 +186,11 @@ async function readText(
   }
 }
 
-async function projectMapUnit(
+async function projectMapRecord(
   root: string,
   deadline: number,
   changedPaths?: readonly string[],
-): Promise<ProjectKnowledgeUnit> {
+): Promise<ProjectKnowledgeRecordDraft> {
   const manifest = await firstExistingSource(
     root,
     ['package.json', 'pnpm-workspace.yaml', 'README.md'],
@@ -222,7 +228,7 @@ async function projectMapUnit(
     const fallback = await firstExistingSource(root, [], deadline);
     if (fallback) sources.push(source(fallback));
   }
-  return unitBase(
+  return recordBase(
     'generated-project-map',
     'project-map',
     '项目结构概览',
@@ -232,11 +238,11 @@ async function projectMapUnit(
   );
 }
 
-async function moduleOverviewUnit(
+async function moduleOverviewRecord(
   root: string,
   deadline: number,
   changedPaths?: readonly string[],
-): Promise<ProjectKnowledgeUnit> {
+): Promise<ProjectKnowledgeRecordDraft> {
   const files: string[] = [];
   for (const moduleRoot of MODULE_ROOTS) {
     checkDeadline(deadline);
@@ -273,13 +279,13 @@ async function moduleOverviewUnit(
   const names = [
     ...new Set(sourceFiles.map((file) => relative(root, file).split('/').slice(0, 2).join('/'))),
   ].filter(Boolean);
-  const sourceRefs = sourceFiles.slice(0, 32).map((file) => source(relative(root, file), 'module'));
+  const sourceRefs = sourceFiles.slice(0, 32).map((file) => source(relative(root, file)));
   const relationTargets = names
     .slice(0, 8)
     .map((name) => `模块 ${name}`)
     .join('、');
   const evidence: string[] = [];
-  const registrationSources: ProjectKnowledgeUnitSource[] = [];
+  const registrationSources: ProjectKnowledgeRecordSource[] = [];
   for (const file of sourceFiles.slice(0, 6)) {
     checkDeadline(deadline);
     const text = await readText(root, relative(root, file), deadline);
@@ -291,10 +297,10 @@ async function moduleOverviewUnit(
       .slice(0, 4);
     if (imports.length > 0) evidence.push(`${relative(root, file)} 引用 ${imports.join('、')}`);
     if (/\bregister[A-Z][A-Za-z0-9_$]*\s*\(/u.test(text)) {
-      registrationSources.push(source(relative(root, file), 'module'));
+      registrationSources.push(source(relative(root, file)));
     }
   }
-  return unitBase(
+  return recordBase(
     'generated-module-overview',
     'module-overview',
     '模块职责与依赖概览',
@@ -312,7 +318,7 @@ async function moduleOverviewUnit(
           ? [
               {
                 type: 'depends-on' as const,
-                target: 'generated-project-map',
+                targetId: 'generated-project-map',
                 sources: sourceRefs.slice(0, 1),
               },
             ]
@@ -321,7 +327,7 @@ async function moduleOverviewUnit(
           ? [
               {
                 type: 'registers' as const,
-                target: 'generated-project-map',
+                targetId: 'generated-project-map',
                 sources: registrationSources.slice(0, 2),
               },
             ]
@@ -331,7 +337,10 @@ async function moduleOverviewUnit(
   );
 }
 
-async function buildTestUnit(root: string, deadline: number): Promise<ProjectKnowledgeUnit> {
+async function buildTestRecord(
+  root: string,
+  deadline: number,
+): Promise<ProjectKnowledgeRecordDraft> {
   const manifestSource = await firstExistingSource(
     root,
     ['package.json', 'pyproject.toml', 'Makefile', 'README.md'],
@@ -355,7 +364,7 @@ async function buildTestUnit(root: string, deadline: number): Promise<ProjectKno
     commands.length > 0
       ? `项目验证优先使用：${commands.join('、')}。`
       : '项目未声明可从 manifest 直接识别的构建或测试命令，Agent 应先读取项目说明再选择验证方式。';
-  return unitBase(
+  return recordBase(
     'generated-build-test',
     'build-test',
     '构建与测试方式',
@@ -376,18 +385,64 @@ async function buildTestUnit(root: string, deadline: number): Promise<ProjectKno
   );
 }
 
-export async function extractDeterministicProjectUnits(
-  options: DeterministicProjectUnitExtractionOptions,
-): Promise<readonly ProjectKnowledgeUnit[]> {
+async function extractDraftRecords(
+  options: DeterministicProjectRecordExtractionOptions,
+): Promise<readonly ProjectKnowledgeRecordDraft[]> {
   const root = path.resolve(options.projectRoot);
   const deadline = Date.now() + MAX_EXTRACTION_MS;
-  const units: ProjectKnowledgeUnit[] = [];
+  const records: ProjectKnowledgeRecordDraft[] = [];
   try {
-    units.push(await projectMapUnit(root, deadline, options.changedPaths));
-    units.push(await moduleOverviewUnit(root, deadline, options.changedPaths));
-    units.push(await buildTestUnit(root, deadline));
+    records.push(await projectMapRecord(root, deadline, options.changedPaths));
+    records.push(await moduleOverviewRecord(root, deadline, options.changedPaths));
+    records.push(await buildTestRecord(root, deadline));
   } catch (error) {
     if (!(error instanceof ExtractionDeadlineExceeded)) throw error;
   }
-  return units;
+  return records;
+}
+
+async function sourceVersions(
+  root: string,
+  sources: readonly ProjectKnowledgeRecordSource[],
+): Promise<readonly ProjectKnowledgeRecord['sourceVersions'][number][]> {
+  const unique = [...new Map(sources.map((entry) => [entry.source, entry.source])).values()];
+  const versions: ProjectKnowledgeRecord['sourceVersions'][number][] = [];
+  for (const relativePath of unique.slice(0, 32)) {
+    try {
+      const inspected = await fs.lstat(path.join(root, ...relativePath.split('/')));
+      if (!inspected.isFile() || inspected.isSymbolicLink()) continue;
+      versions.push({
+        source: relativePath,
+        size: inspected.size,
+        modifiedAt: Math.trunc(inspected.mtimeMs),
+      });
+    } catch {
+      // The candidate is still bounded; current-source validation will reject
+      // it if a referenced file disappeared before persistence.
+    }
+  }
+  return versions;
+}
+
+export async function extractDeterministicProjectRecords(
+  options: DeterministicProjectRecordExtractionOptions,
+): Promise<readonly ProjectKnowledgeRecord[]> {
+  const root = path.resolve(options.projectRoot);
+  const drafts = await extractDraftRecords(options);
+  const projectId = resolveStableProjectId(root);
+  const updatedAt = new Date().toISOString();
+  const records: ProjectKnowledgeRecord[] = [];
+  for (const draft of drafts) {
+    const sources = [...draft.conclusions, ...draft.relations].flatMap((entry) => entry.sources);
+    const fingerprints = await sourceVersions(root, sources);
+    records.push({
+      ...draft,
+      projectId,
+      state: 'active',
+      authority: 'automatic',
+      sourceVersions: fingerprints,
+      updatedAt,
+    });
+  }
+  return records;
 }

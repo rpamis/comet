@@ -1,6 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises';
 
-const MODES = ['none', 'rg', 'fts', 'hybrid', 'unit'];
+const MODES = ['none', 'rg', 'fts', 'hybrid'];
 
 const REQUIRED_EVIDENCE_FIELDS = [
   'snapshotId',

@@ -474,13 +474,7 @@ function DashboardApp({ theme, onToggleTheme }) {
       if (!activeProjectId) return;
       const requestedProjectId = activeProjectId;
       const requestedPluginId = pluginId;
-      const invocation = await invokeDashboardPlugin(
-        requestedProjectId,
-        pluginId,
-        capability,
-        input,
-      );
-      const result = invocation?.result;
+      const result = await invokeDashboardPlugin(requestedProjectId, pluginId, capability, input);
       if (
         pluginProjectRef.current === requestedProjectId &&
         pluginSelectionRef.current === requestedPluginId
@@ -497,7 +491,7 @@ function DashboardApp({ theme, onToggleTheme }) {
         pluginProjectRef.current !== requestedProjectId ||
         pluginSelectionRef.current !== requestedPluginId
       )
-        return;
+        return result;
       setPluginPage(
         reconcilePluginInvocationResult(nextPage, requestedPluginId, capability, result),
       );
@@ -2090,7 +2084,8 @@ async function invokeDashboardPlugin(projectId, pluginId, capability, input) {
     },
   );
   if (!res.ok) throw await dashboardResponseError(res);
-  return res.json();
+  const response = await res.json();
+  return response?.result;
 }
 
 async function lifecycleDashboardPlugin(projectId, pluginId, action) {
@@ -2251,6 +2246,24 @@ function formatTimestamp(iso) {
   if (Number.isNaN(d.getTime())) return iso;
   const pad = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function projectKnowledgeRecordSources(record) {
+  const references = [
+    ...(record.conclusions ?? []).flatMap((conclusion) => conclusion.sources ?? []),
+    ...(record.relations ?? []).flatMap((relation) => relation.sources ?? []),
+  ];
+  return [
+    ...new Set(
+      references.map((source) => {
+        if (source.anchor) return `${source.source}#${source.anchor}`;
+        if (source.lineStart) {
+          return `${source.source}#L${source.lineStart}${source.lineEnd ? `-L${source.lineEnd}` : ''}`;
+        }
+        return source.source;
+      }),
+    ),
+  ];
 }
 
 function formatFileSize(bytes) {
@@ -2907,6 +2920,39 @@ function PersonalMemorySettings({ page, data, onInvoke }) {
 
 function ProjectKnowledgeSettings({ page, data, onInvoke }) {
   const snapshot = data && typeof data === 'object' ? data : {};
+  const [providerMode, setProviderMode] = useState(snapshot.provider ?? 'local');
+  const [endpoint, setEndpoint] = useState(snapshot.remote?.endpoint ?? '');
+  const [tokenEnv, setTokenEnv] = useState(snapshot.remote?.tokenEnv ?? '');
+  const [scope, setScope] = useState(snapshot.remote?.scope ?? '');
+  const [timeoutMs, setTimeoutMs] = useState(String(snapshot.remote?.timeoutMs ?? 5000));
+  useEffect(() => {
+    setProviderMode(snapshot.provider ?? 'local');
+    setEndpoint(snapshot.remote?.endpoint ?? '');
+    setTokenEnv(snapshot.remote?.tokenEnv ?? '');
+    setScope(snapshot.remote?.scope ?? '');
+    setTimeoutMs(String(snapshot.remote?.timeoutMs ?? 5000));
+  }, [
+    snapshot.provider,
+    snapshot.remote?.endpoint,
+    snapshot.remote?.tokenEnv,
+    snapshot.remote?.scope,
+    snapshot.remote?.timeoutMs,
+  ]);
+  const saveProvider = async () => {
+    await onInvoke('configure-provider', {
+      provider: providerMode,
+      ...(providerMode === 'remote'
+        ? {
+            remote: {
+              endpoint,
+              tokenEnv,
+              scope,
+              timeoutMs: Number(timeoutMs),
+            },
+          }
+        : {}),
+    });
+  };
   const provider =
     snapshot.provider === 'remote' ? 'Remote' : snapshot.provider === 'local' ? 'Local' : '—';
   const configured =
@@ -2943,11 +2989,58 @@ function ProjectKnowledgeSettings({ page, data, onInvoke }) {
           <div className="dashboard-settings-panel-head">
             <div>
               <h4 id="knowledge-provider-settings">Provider 配置</h4>
-              <p>只读展示安全字段，不会在此发起检索</p>
+              <p>Remote 只保存 endpoint、scope、超时和 token 环境变量名</p>
             </div>
             <Tag>{provider}</Tag>
           </div>
           <div className="dashboard-knowledge-summary-body">
+            <div className="dashboard-knowledge-provider-form">
+              <Select
+                size="small"
+                value={providerMode}
+                aria-label="项目知识 Provider"
+                onChange={setProviderMode}
+                options={[
+                  { value: 'local', label: 'Local Provider' },
+                  { value: 'remote', label: 'Remote Provider' },
+                ]}
+              />
+              {providerMode === 'remote' && (
+                <>
+                  <Input
+                    size="small"
+                    value={endpoint}
+                    onChange={(event) => setEndpoint(event.target.value)}
+                    placeholder="Remote endpoint"
+                    aria-label="项目知识 Remote endpoint"
+                  />
+                  <Input
+                    size="small"
+                    value={tokenEnv}
+                    onChange={(event) => setTokenEnv(event.target.value)}
+                    placeholder="Token 环境变量名"
+                    aria-label="项目知识 Token 环境变量名"
+                  />
+                  <Input
+                    size="small"
+                    value={scope}
+                    onChange={(event) => setScope(event.target.value)}
+                    placeholder="Scope（可选）"
+                    aria-label="项目知识 scope"
+                  />
+                  <Input
+                    size="small"
+                    value={timeoutMs}
+                    onChange={(event) => setTimeoutMs(event.target.value)}
+                    placeholder="超时毫秒"
+                    aria-label="项目知识超时"
+                  />
+                </>
+              )}
+              <Button size="small" type="primary" onClick={() => void saveProvider()}>
+                保存 Provider
+              </Button>
+            </div>
             <p className="dashboard-knowledge-retrieval">{snapshot.retrieval}</p>
             {provider === 'Remote' && remote ? (
               <dl className="dashboard-knowledge-fields">
@@ -3075,6 +3168,18 @@ function ProjectKnowledgeSettings({ page, data, onInvoke }) {
 
 function ProjectKnowledgeCenter({ page, data, onInvoke }) {
   const snapshot = data && typeof data === 'object' ? data : {};
+  const [queryText, setQueryText] = useState('');
+  const [queryResults, setQueryResults] = useState([]);
+  const [stateFilter, setStateFilter] = useState('active');
+  const records = Array.isArray(snapshot.records) ? snapshot.records : [];
+  const visibleRecords = records.filter(
+    (record) => stateFilter === 'all' || record.state === stateFilter,
+  );
+  const previewQuery = async () => {
+    if (!queryText.trim()) return;
+    const result = await onInvoke('query', { task: queryText.trim() });
+    setQueryResults(result?.kind === 'search' ? (result.results ?? []) : []);
+  };
   const provider =
     snapshot.provider === 'remote' ? 'Remote' : snapshot.provider === 'local' ? 'Local' : '—';
   const configured =
@@ -3096,7 +3201,7 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
       <PluginCenterHeader
         icon={DatabaseOutlined}
         title={page.label}
-        description="管理当前项目的知识来源、检索状态与可复用知识单元"
+        description="管理当前项目的知识来源、检索状态与可复用记录"
         meta={[
           { label: 'Provider', value: provider, tone: provider === '—' ? 'neutral' : 'accent' },
           {
@@ -3176,7 +3281,7 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
             />
             {configured}
           </span>
-          <span className="dashboard-knowledge-status-meta">页面不会发起检索请求</span>
+          <span className="dashboard-knowledge-status-meta">状态和记录由 Provider 提供</span>
         </div>
       </section>
       <div className="dashboard-knowledge-layout">
@@ -3191,7 +3296,7 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
               </span>
               <div>
                 <h3 id="dashboard-knowledge-summary-title">知识概览</h3>
-                <p>当前项目可供 Agent 使用的知识状态</p>
+                <p>当前项目可供 Agent 使用的来源有效记录</p>
               </div>
             </div>
             {provider !== '—' && <Tag variant="filled">{provider}</Tag>}
@@ -3206,8 +3311,12 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
               <p className="dashboard-knowledge-retrieval">{snapshot.retrieval}</p>
               <div className="dashboard-knowledge-overview-metrics">
                 <div>
-                  <span>知识单元</span>
-                  <strong>{provider === 'Local' ? (local?.unitCount ?? 0) : 'Remote'}</strong>
+                  <span>记录</span>
+                  <strong>
+                    {(snapshot.counts?.active ?? 0) +
+                      (snapshot.counts?.needsReview ?? 0) +
+                      (snapshot.counts?.retired ?? 0)}
+                  </strong>
                 </div>
                 <div>
                   <span>来源</span>
@@ -3259,83 +3368,121 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
           )}
         </section>
       </div>
-      {provider === 'Local' && local && (
-        <section
-          className="dashboard-knowledge-summary dashboard-knowledge-units mt-4"
-          aria-labelledby="dashboard-knowledge-units-title"
-        >
-          <div className="dashboard-knowledge-panel-head">
-            <div className="dashboard-tool-panel-title">
-              <span className="dashboard-tool-panel-icon" aria-hidden="true">
-                <FileTextOutlined />
-              </span>
-              <div>
-                <h3 id="dashboard-knowledge-units-title">项目知识单元</h3>
-                <p>查看已沉淀的结构、结论、来源与一跳关系</p>
-              </div>
+      <section
+        className="dashboard-knowledge-summary dashboard-knowledge-records mt-4"
+        aria-labelledby="dashboard-knowledge-records-title"
+      >
+        <div className="dashboard-knowledge-panel-head">
+          <div className="dashboard-tool-panel-title">
+            <span className="dashboard-tool-panel-icon" aria-hidden="true">
+              <FileTextOutlined />
+            </span>
+            <div>
+              <h3 id="dashboard-knowledge-records-title">项目知识记录</h3>
+              <p>
+                active {snapshot.counts?.active ?? 0} · needs-review{' '}
+                {snapshot.counts?.needsReview ?? 0} · retired {snapshot.counts?.retired ?? 0}
+              </p>
             </div>
-            <Tag variant="filled">{local.unitCount ?? 0} 个</Tag>
           </div>
-          <div className="dashboard-knowledge-summary-body">
-            <dl className="dashboard-knowledge-fields">
-              <div>
-                <dt>状态</dt>
-                <dd>
-                  active {local.activeUnitCount ?? 0} · draft {local.draftUnitCount ?? 0} · retired{' '}
-                  {local.retiredUnitCount ?? 0}
-                </dd>
-              </div>
-              <div>
-                <dt>关系</dt>
-                <dd>{local.relationCount ?? 0} 条有来源的一跳关系</dd>
-              </div>
-            </dl>
-            {(local.units ?? []).length === 0 ? (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚无项目知识单元" />
-            ) : (
-              <div className="dashboard-knowledge-unit-list" aria-label="项目知识单元详情">
-                {(local.units ?? []).slice(0, 12).map((unit) => (
-                  <div className="dashboard-knowledge-unit" key={unit.id}>
-                    <span className="dashboard-knowledge-unit-mark" aria-hidden="true">
-                      <FileTextOutlined />
-                    </span>
-                    <div className="dashboard-knowledge-unit-main">
-                      <div className="dashboard-knowledge-unit-title">
-                        <strong>{unit.title}</strong>
-                        <Tag variant="filled">{unit.state}</Tag>
-                      </div>
-                      <div className="dashboard-knowledge-unit-meta">
-                        {unit.kind} · {unit.origin}
-                      </div>
-                      <p>{unit.summary}</p>
-                      <div className="dashboard-knowledge-unit-footnote">
-                        来源：
-                        {(unit.conclusions ?? [])
-                          .flatMap((conclusion) => conclusion.sources ?? [])
-                          .map((source, index) => (
-                            <span key={`${unit.id}-source-${index}`}>
-                              {' '}
-                              {source.source}
-                              {source.anchor ? `#${source.anchor}` : ''}
-                            </span>
-                          ))}
-                      </div>
-                      <div className="dashboard-knowledge-unit-footnote">
-                        关系：
-                        {(unit.relations ?? []).length === 0
-                          ? '无'
-                          : (unit.relations ?? [])
-                              .map((relation) => `${relation.type} → ${relation.target}`)
-                              .join('、')}
+          <Select
+            size="small"
+            value={stateFilter}
+            aria-label="项目知识记录状态"
+            onChange={setStateFilter}
+            options={[
+              { value: 'active', label: 'Active' },
+              { value: 'needs-review', label: 'Needs review' },
+              { value: 'retired', label: 'Retired' },
+              { value: 'all', label: '全部' },
+            ]}
+          />
+        </div>
+        <div className="dashboard-knowledge-summary-body">
+          <div className="dashboard-knowledge-record-toolbar">
+            <Input
+              size="small"
+              value={queryText}
+              onChange={(event) => setQueryText(event.target.value)}
+              onPressEnter={() => void previewQuery()}
+              placeholder="查询项目知识"
+              aria-label="查询项目知识"
+            />
+            <Button size="small" type="primary" onClick={() => void previewQuery()}>
+              查询
+            </Button>
+            <Button size="small" onClick={() => onInvoke('refresh', {})}>
+              重新核对
+            </Button>
+          </div>
+          {queryResults.length > 0 && (
+            <div className="dashboard-knowledge-diagnostics-list" aria-label="项目知识查询结果">
+              {queryResults.slice(0, 8).map((result, index) => (
+                <div className="dashboard-knowledge-diagnostic" key={`${result.source}-${index}`}>
+                  <Tag variant="filled">{result.title ?? result.source}</Tag>
+                  <span>{result.content}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {visibleRecords.length === 0 ? (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无记录" />
+          ) : (
+            <div className="dashboard-knowledge-diagnostics-list" aria-label="项目知识记录列表">
+              {visibleRecords.slice(0, 100).map((record) => {
+                const sources = projectKnowledgeRecordSources(record);
+                return (
+                  <div className="dashboard-knowledge-diagnostic" key={record.id}>
+                    <Tag variant="filled">{record.state}</Tag>
+                    <div className="min-w-0 flex-1">
+                      <strong>{record.title}</strong>
+                      <div>{record.summary}</div>
+                      {sources.length > 0 && (
+                        <div className="text-xs text-meta">来源：{sources.join(' · ')}</div>
+                      )}
+                      <div className="text-xs text-meta">
+                        {record.id} · {record.type} · 更新于 {formatTimestamp(record.updatedAt)}
                       </div>
                     </div>
+                    <div className="dashboard-knowledge-record-actions">
+                      <Button
+                        size="small"
+                        onClick={() =>
+                          Modal.confirm({
+                            title: '纠正项目知识记录',
+                            content: (
+                              <Input.TextArea
+                                id="project-knowledge-correction"
+                                autoSize={{ minRows: 3, maxRows: 6 }}
+                              />
+                            ),
+                            okText: '保存',
+                            cancelText: '取消',
+                            onOk: () => {
+                              const element = document.getElementById(
+                                'project-knowledge-correction',
+                              );
+                              return onInvoke('correct', {
+                                id: record.id,
+                                text: element?.value ?? record.summary,
+                              });
+                            },
+                          })
+                        }
+                      >
+                        纠正
+                      </Button>
+                      <Button size="small" onClick={() => onInvoke('forget', { id: record.id })}>
+                        忘记
+                      </Button>
+                    </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </section>
-      )}
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </section>
     </div>
   );
 }

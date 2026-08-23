@@ -9,8 +9,16 @@ import type {
   WorkflowKnowledgeProvider,
 } from '../workflow-contract/types.js';
 import type { MemoryLanguage } from '../comet-memory/types.js';
-import type { ProjectKnowledgeUnit } from './units.js';
-import type { ProjectKnowledgeChangedHint, ProjectKnowledgeSemanticReviewer } from './learning.js';
+import type {
+  ProjectKnowledgeRecord,
+  ProjectKnowledgeRecordAuthority,
+  ProjectKnowledgeRecordConclusion,
+  ProjectKnowledgeRecordRelation,
+  ProjectKnowledgeRecordState,
+  ProjectKnowledgeRecordType,
+  ProjectKnowledgeRecordVerification,
+} from './records.js';
+import type { ProjectKnowledgeSemanticReviewer } from './learning.js';
 
 export type ProjectKnowledgeDocumentKind =
   | 'native-spec'
@@ -44,7 +52,7 @@ export interface ProjectKnowledgeResult {
   readonly title?: string;
   readonly score?: number;
   readonly document?: ProjectKnowledgeDocument;
-  readonly unit?: ProjectKnowledgeUnit;
+  readonly record?: ProjectKnowledgeRecord;
 }
 
 export interface ProjectKnowledgeDiagnostic {
@@ -54,8 +62,124 @@ export interface ProjectKnowledgeDiagnostic {
 
 export type ProjectKnowledgeDiagnosticReporter = (diagnostic: ProjectKnowledgeDiagnostic) => void;
 
+export interface ProjectKnowledgeStatus {
+  readonly provider: WorkflowKnowledgeProvider;
+  readonly healthy: boolean;
+  readonly writable: boolean;
+  readonly recordCount?: number;
+  readonly updatedAt?: string;
+  readonly diagnostics: readonly ProjectKnowledgeDiagnostic[];
+}
+
+export interface ProjectKnowledgeSearchRequest {
+  readonly kind: 'search';
+  readonly query: ProjectKnowledgeQuery;
+  readonly limit?: number;
+}
+
+export interface ProjectKnowledgeListRequest {
+  readonly kind: 'list';
+  readonly projectId?: string;
+  readonly type?: ProjectKnowledgeRecordType;
+  readonly state?: ProjectKnowledgeRecordState | 'all';
+  readonly authority?: ProjectKnowledgeRecordAuthority;
+  readonly limit?: number;
+}
+
+export interface ProjectKnowledgeGetRequest {
+  readonly kind: 'get';
+  readonly id: string;
+  readonly projectId?: string;
+}
+
+export type ProjectKnowledgeQueryRequest =
+  | ProjectKnowledgeSearchRequest
+  | ProjectKnowledgeListRequest
+  | ProjectKnowledgeGetRequest;
+
+export interface ProjectKnowledgeSearchHit {
+  readonly record: ProjectKnowledgeRecord;
+  readonly score?: number;
+}
+
+export interface ProjectKnowledgeSearchResult {
+  readonly kind: 'search';
+  readonly hits: readonly ProjectKnowledgeSearchHit[];
+  readonly results: readonly ProjectKnowledgeResult[];
+  readonly records: readonly ProjectKnowledgeRecord[];
+  readonly truncated: boolean;
+  readonly diagnostics: readonly ProjectKnowledgeDiagnostic[];
+}
+
+export interface ProjectKnowledgeListResult {
+  readonly kind: 'list';
+  readonly records: readonly ProjectKnowledgeRecord[];
+  readonly truncated: boolean;
+  readonly diagnostics: readonly ProjectKnowledgeDiagnostic[];
+}
+
+export interface ProjectKnowledgeGetResult {
+  readonly kind: 'get';
+  readonly record: ProjectKnowledgeRecord | null;
+  readonly diagnostics: readonly ProjectKnowledgeDiagnostic[];
+}
+
+export type ProjectKnowledgeQueryResult =
+  | ProjectKnowledgeSearchResult
+  | ProjectKnowledgeListResult
+  | ProjectKnowledgeGetResult;
+
+export interface ProjectKnowledgeUpsertMutation {
+  readonly kind: 'upsert';
+  readonly record: ProjectKnowledgeRecord;
+}
+
+export interface ProjectKnowledgeCorrectMutation {
+  readonly kind: 'correct';
+  readonly id: string;
+  readonly projectId: string;
+  readonly title?: string;
+  readonly summary?: string;
+  readonly applicablePaths?: readonly string[];
+  readonly operations?: readonly string[];
+  readonly conclusions?: readonly ProjectKnowledgeRecordConclusion[];
+  readonly relations?: readonly ProjectKnowledgeRecordRelation[];
+  readonly verification?: readonly ProjectKnowledgeRecordVerification[];
+  readonly updatedAt: string;
+}
+
+export interface ProjectKnowledgeRetireMutation {
+  readonly kind: 'retire';
+  readonly id: string;
+  readonly projectId: string;
+  readonly updatedAt: string;
+  readonly reason?: string;
+}
+
+export interface ProjectKnowledgeRefreshMutation {
+  readonly kind: 'refresh';
+  readonly id?: string;
+  readonly projectId?: string;
+}
+
+export type ProjectKnowledgeMutation =
+  | ProjectKnowledgeUpsertMutation
+  | ProjectKnowledgeCorrectMutation
+  | ProjectKnowledgeRetireMutation
+  | ProjectKnowledgeRefreshMutation;
+
+export interface ProjectKnowledgeApplyResult {
+  readonly kind: ProjectKnowledgeMutation['kind'];
+  readonly changed: boolean;
+  readonly record?: ProjectKnowledgeRecord | null;
+  readonly records?: readonly ProjectKnowledgeRecord[];
+  readonly diagnostics: readonly ProjectKnowledgeDiagnostic[];
+}
+
 export interface ProjectKnowledgeProvider {
-  retrieve(query: ProjectKnowledgeQuery): Promise<readonly ProjectKnowledgeResult[]>;
+  status(): Promise<ProjectKnowledgeStatus>;
+  query(request: ProjectKnowledgeQueryRequest): Promise<ProjectKnowledgeQueryResult>;
+  apply(mutation: ProjectKnowledgeMutation): Promise<ProjectKnowledgeApplyResult>;
 }
 
 export interface ProjectKnowledgeCorpusOptions {
@@ -65,8 +189,6 @@ export interface ProjectKnowledgeCorpusOptions {
 
 export interface ProjectKnowledgeProviderOptions extends ProjectKnowledgeCorpusOptions {
   readonly corpus: readonly ProjectKnowledgeDocument[];
-  /** Recent lifecycle hints used to bound the ripgrep supplement. */
-  readonly changedPaths?: readonly string[];
 }
 
 export interface ProjectKnowledgePluginOptions {
@@ -77,6 +199,7 @@ export interface ProjectKnowledgePluginOptions {
   readonly cometVersionRange?: (cometVersion: string) => boolean;
   readonly cacheRoot?: string;
   readonly semanticReviewer?: ProjectKnowledgeSemanticReviewer;
+  readonly updateKnowledgeConfig?: (config: WorkflowKnowledgeProjectConfig) => void | Promise<void>;
   /** Host-owned boundary for review work that must not delay workflow events. */
   readonly runReviewInBackground?: (task: () => Promise<void>) => void | Promise<void>;
 }
@@ -105,18 +228,16 @@ export interface ProjectKnowledgeDashboardSnapshot {
     readonly sourceCount: number;
     readonly sectionCount: number;
     readonly updatedAt?: string;
-    readonly lastQueryMs?: number;
-    readonly lastCandidateCount?: number;
     readonly channels: readonly string[];
-    readonly unitCount?: number;
-    readonly activeUnitCount?: number;
-    readonly draftUnitCount?: number;
-    readonly retiredUnitCount?: number;
-    readonly relationCount?: number;
-    readonly units?: readonly ProjectKnowledgeUnit[];
-    readonly changedHints?: readonly ProjectKnowledgeChangedHint[];
   };
   readonly retrieval: string;
+  readonly status?: ProjectKnowledgeStatus;
+  readonly records?: readonly ProjectKnowledgeRecord[];
+  readonly counts?: {
+    readonly active: number;
+    readonly needsReview: number;
+    readonly retired: number;
+  };
   readonly diagnostics: readonly ProjectKnowledgeDashboardDiagnostic[];
 }
 

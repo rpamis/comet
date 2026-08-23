@@ -3,13 +3,13 @@ import path from 'node:path';
 
 import { resolveStableProjectId, stableProjectId } from './project-identity.js';
 
-export interface ProjectKnowledgeCacheLocation {
+export interface ProjectKnowledgeStorageLocation {
   readonly repositoryId: string;
   readonly workspaceId: string;
   readonly databasePath: string;
 }
 
-export function defaultProjectKnowledgeCacheRoot(): string {
+export function defaultProjectKnowledgeStorageRoot(): string {
   if (process.platform === 'win32') {
     return process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local');
   }
@@ -17,10 +17,10 @@ export function defaultProjectKnowledgeCacheRoot(): string {
   return process.env.XDG_CACHE_HOME ?? path.join(os.homedir(), '.cache');
 }
 
-export function resolveProjectKnowledgeCacheLocation(
+export function resolveProjectKnowledgeStorageLocation(
   projectRoot: string,
-  cacheRoot = defaultProjectKnowledgeCacheRoot(),
-): ProjectKnowledgeCacheLocation {
+  storageRoot = defaultProjectKnowledgeStorageRoot(),
+): ProjectKnowledgeStorageLocation {
   const root = path.resolve(projectRoot);
   const repositoryId = resolveStableProjectId(root);
   const workspaceId = stableProjectId(`workspace:${root}`);
@@ -29,11 +29,11 @@ export function resolveProjectKnowledgeCacheLocation(
     repositoryId,
     workspaceId,
     databasePath: path.join(
-      cacheRoot,
+      storageRoot,
       productDirectory,
       'project-knowledge',
       repositoryId,
-      `${workspaceId}.sqlite`,
+      'knowledge.sqlite',
     ),
   };
 }

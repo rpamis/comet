@@ -17,7 +17,7 @@ export function createProjectKnowledgeDashboardSnapshot(
       retrieval:
         options.language === 'en'
           ? 'Local uses a workspace-isolated section index with bounded ripgrep fallback.'
-          : 'Local 使用按工作区隔离的 section 索引，并保留有界 ripgrep 回退；不会维护索引文件进入项目仓库。',
+          : 'Local 使用按工作区隔离的 section 索引与项目外 Record 存储；不会在项目中生成知识文件。',
       diagnostics: [],
     };
   }
@@ -46,8 +46,8 @@ export function createProjectKnowledgeDashboardSnapshot(
     ...(remoteSummary === undefined ? {} : { remote: remoteSummary }),
     retrieval:
       options.language === 'en'
-        ? 'Remote uses the configured Retrieval API v1 settings; showing this configuration does not prove that the latest request succeeded.'
-        : 'Remote 使用已配置的 Retrieval API v1 设置；展示这些配置不代表最近一次请求成功。',
+        ? 'Remote uses the configured Project Knowledge Provider v1 settings; status reports the latest provider health.'
+        : 'Remote 使用已配置的 Project Knowledge Provider v1；状态会显示最近一次 Provider 健康情况。',
     diagnostics: [],
   };
 }

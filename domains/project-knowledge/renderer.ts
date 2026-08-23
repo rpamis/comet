@@ -24,7 +24,7 @@ function escapeMarkdownInline(value: string): string {
 function deduplicate(results: readonly ProjectKnowledgeResult[]): ProjectKnowledgeResult[] {
   const seen = new Set<string>();
   const output: ProjectKnowledgeResult[] = [];
-  let unitCount = 0;
+  let recordCount = 0;
   let documentCount = 0;
   let total = 0;
   for (const result of results) {
@@ -34,7 +34,7 @@ function deduplicate(results: readonly ProjectKnowledgeResult[]): ProjectKnowled
     if (!source || !content) continue;
     const key = `${source}\u0000${title ?? ''}`;
     if (seen.has(key) || total + content.length > MAX_TOTAL_CHARS) continue;
-    if (result.unit ? unitCount >= 2 : unitCount > 0 && documentCount >= 2) continue;
+    if (result.record ? recordCount >= 2 : recordCount > 0 && documentCount >= 2) continue;
     seen.add(key);
     output.push({
       content,
@@ -42,10 +42,10 @@ function deduplicate(results: readonly ProjectKnowledgeResult[]): ProjectKnowled
       ...(title ? { title } : {}),
       ...(result.score === undefined ? {} : { score: result.score }),
       ...(result.document ? { document: result.document } : {}),
-      ...(result.unit ? { unit: result.unit } : {}),
+      ...(result.record ? { record: result.record } : {}),
     });
     total += content.length;
-    if (result.unit) unitCount += 1;
+    if (result.record) recordCount += 1;
     else documentCount += 1;
     if (output.length >= MAX_RESULTS) break;
   }

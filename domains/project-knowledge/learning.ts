@@ -6,12 +6,10 @@ import {
   inspectProtectedProjectPath,
   readProtectedProjectFile,
 } from '../workflow-contract/protected-project-path.js';
-import {
-  ProjectKnowledgeUnitRepository,
-  validateProjectKnowledgeUnitShape,
-  validateProjectKnowledgeUnitSources,
-  type ProjectKnowledgeUnit,
-} from './units.js';
+import { extractDeterministicProjectRecords } from './deterministic-extractors.js';
+import { validateProjectKnowledgeRecordShape, type ProjectKnowledgeRecord } from './records.js';
+import { projectKnowledgeSourceReferenceMatchesText } from './source-validity.js';
+import type { ProjectKnowledgeProvider } from './types.js';
 
 const MAX_CHANGED_PATHS = 24;
 const MAX_ARTIFACT_REFS = 16;
@@ -20,6 +18,8 @@ const MAX_VERIFICATION_RESULTS = 16;
 const MAX_SOURCE_BYTES = 48 * 1024;
 const MAX_SOURCE_TOTAL_BYTES = 256 * 1024;
 const MAX_HINT_STRING = 512;
+const MAX_REVIEW_ACTIONS = 16;
+const MAX_SOURCE_VALIDATION_BYTES = 1024 * 1024;
 
 export interface ProjectKnowledgeChangedHint {
   readonly eventName: string;
@@ -56,8 +56,8 @@ export interface ProjectKnowledgeReviewPacket {
 }
 
 export type ProjectKnowledgeReviewAction =
-  | { readonly action: 'create' | 'update'; readonly unit: unknown }
-  | { readonly action: 'retire'; readonly unitId: string };
+  | { readonly action: 'create' | 'update'; readonly record: unknown }
+  | { readonly action: 'retire'; readonly recordId: string };
 
 export interface ProjectKnowledgeSemanticReviewer {
   review(
@@ -67,7 +67,7 @@ export interface ProjectKnowledgeSemanticReviewer {
 
 export interface ProjectKnowledgeLearningOptions {
   readonly projectRoot: string;
-  readonly repository: ProjectKnowledgeUnitRepository;
+  readonly provider: ProjectKnowledgeProvider;
   readonly reviewer?: ProjectKnowledgeSemanticReviewer;
   readonly reportDiagnostic?: (diagnostic: ProjectKnowledgeLearningDiagnostic) => void;
 }
@@ -276,29 +276,69 @@ async function reviewSourcesStillCurrent(
   return null;
 }
 
-function validUnitId(value: unknown): value is string {
-  return typeof value === 'string' && /^[a-z0-9][a-z0-9._-]{1,127}$/u.test(value);
-}
-
-function unitSourcesWithinPacket(
-  unit: ProjectKnowledgeUnit,
-  packet: ProjectKnowledgeReviewPacket,
-): boolean {
-  const allowed = new Set(packet.sources.map((source) => source.source));
-  return [...unit.conclusions, ...unit.relations].every((entry) =>
-    entry.sources.every((source) => allowed.has(source.source)),
-  );
+async function recordSourcesStillCurrent(
+  record: ProjectKnowledgeRecord,
+  projectRoot: string,
+): Promise<string | null> {
+  for (const version of record.sourceVersions) {
+    try {
+      const inspected = await inspectProtectedProjectPath(projectRoot, version.source, {
+        label: version.source,
+        expected: 'file',
+      });
+      if (!inspected.exists) return version.source;
+      const stat = await fs.stat(inspected.target);
+      if (
+        Number(stat.size) !== version.size ||
+        Math.trunc(Number(stat.mtimeMs)) !== version.modifiedAt
+      ) {
+        return version.source;
+      }
+    } catch {
+      return version.source;
+    }
+  }
+  const references = [
+    ...record.conclusions.flatMap((conclusion) => conclusion.sources),
+    ...record.relations.flatMap((relation) => relation.sources),
+  ];
+  const versionSources = new Set(record.sourceVersions.map((version) => version.source));
+  const referencesBySource = new Map<string, typeof references>();
+  for (const reference of references) {
+    if (!versionSources.has(reference.source)) return reference.source;
+    const current = referencesBySource.get(reference.source) ?? [];
+    referencesBySource.set(reference.source, [...current, reference]);
+  }
+  for (const [source, sourceReferences] of referencesBySource) {
+    try {
+      const text = (
+        await readProtectedProjectFile(projectRoot, source, MAX_SOURCE_VALIDATION_BYTES, {
+          label: source,
+        })
+      ).bytes.toString('utf8');
+      if (
+        !sourceReferences.every((reference) =>
+          projectKnowledgeSourceReferenceMatchesText(text, reference),
+        )
+      ) {
+        return source;
+      }
+    } catch {
+      return source;
+    }
+  }
+  return null;
 }
 
 export class ProjectKnowledgeLearningService {
   private readonly projectRoot: string;
-  private readonly repository: ProjectKnowledgeUnitRepository;
+  private readonly provider: ProjectKnowledgeProvider;
   private readonly reviewer?: ProjectKnowledgeSemanticReviewer;
   private readonly reportDiagnostic?: ProjectKnowledgeLearningOptions['reportDiagnostic'];
 
   public constructor(options: ProjectKnowledgeLearningOptions) {
     this.projectRoot = path.resolve(options.projectRoot);
-    this.repository = options.repository;
+    this.provider = options.provider;
     this.reviewer = options.reviewer;
     this.reportDiagnostic = options.reportDiagnostic;
   }
@@ -312,7 +352,7 @@ export class ProjectKnowledgeLearningService {
     const packet = await createProjectKnowledgeReviewPacket(event, {
       projectRoot: this.projectRoot,
     });
-    if (packet === null || this.reviewer === undefined) {
+    if (packet === null || !isVerified(packet)) {
       return {
         skipped: true,
         persisted: [],
@@ -322,19 +362,17 @@ export class ProjectKnowledgeLearningService {
         diagnostics,
       };
     }
-    let actions: readonly ProjectKnowledgeReviewAction[];
-    try {
-      actions = await this.reviewer.review(packet);
-    } catch {
-      report({ code: 'reviewer-unavailable', message: '项目知识语义评审暂不可用，已跳过。' });
-      return {
-        skipped: true,
-        persisted: [],
-        activated: [],
-        retired: [],
-        changedHint: packet.changedHint,
-        diagnostics,
-      };
+    let reviewActions: readonly ProjectKnowledgeReviewAction[] = [];
+    if (this.reviewer !== undefined) {
+      try {
+        const reviewed = await this.reviewer.review(packet);
+        reviewActions = Array.isArray(reviewed) ? reviewed.slice(0, MAX_REVIEW_ACTIONS) : [];
+      } catch {
+        report({
+          code: 'reviewer-unavailable',
+          message: '项目知识语义评审暂不可用，已继续确定性学习。',
+        });
+      }
     }
     const changedSource = await reviewSourcesStillCurrent(packet, this.projectRoot);
     if (changedSource !== null) {
@@ -355,68 +393,78 @@ export class ProjectKnowledgeLearningService {
     const persisted: string[] = [];
     const activated: string[] = [];
     const retired: string[] = [];
-    for (const action of actions.slice(0, 16)) {
+    let candidates: readonly ProjectKnowledgeRecord[] = [];
+    try {
+      candidates = await extractDeterministicProjectRecords({
+        projectRoot: this.projectRoot,
+        changedPaths: packet.changedHint.changedPaths,
+      });
+    } catch {
+      report({
+        code: 'deterministic-extractor',
+        message: '确定性项目知识提取暂不可用，已跳过本次写入。',
+      });
+    }
+    for (const candidate of candidates.slice(0, 16)) {
+      try {
+        const record = validateProjectKnowledgeRecordShape({
+          ...candidate,
+          state: 'active',
+          authority: 'automatic',
+        });
+        const changedRecordSource = await recordSourcesStillCurrent(record, this.projectRoot);
+        if (changedRecordSource !== null) {
+          report({
+            code: 'source-changed',
+            message: '确定性记录校验期间项目来源发生变化，已跳过本次记录。',
+            source: changedRecordSource,
+          });
+          continue;
+        }
+        const result = await this.provider.apply({ kind: 'upsert', record });
+        for (const diagnostic of result.diagnostics) report(diagnostic);
+        if (result.changed) persisted.push(record.id);
+        if (result.record?.state === 'active' && result.changed) activated.push(record.id);
+      } catch {
+        report({ code: 'provider-write', message: '项目知识记录未能写入 Provider。' });
+      }
+    }
+    for (const action of reviewActions) {
       try {
         if (action.action === 'retire') {
-          if (!validUnitId(action.unitId)) throw new Error('unit id is invalid');
-          const current = await this.repository.read(action.unitId);
-          if (current === null || current.origin !== 'generated')
-            throw new Error('unit is not generated');
-          if (!unitSourcesWithinPacket(current, packet)) {
-            report({
-              code: 'source-outside-packet',
-              message: '退休动作与本次有界来源包无关，已跳过。',
-              source: current.id,
-            });
-            continue;
-          }
-          const currentValidation = await validateProjectKnowledgeUnitSources(current, {
-            projectRoot: this.projectRoot,
+          const current = await this.provider.query({ kind: 'get', id: action.recordId });
+          if (current.kind !== 'get' || current.record === null) continue;
+          const result = await this.provider.apply({
+            kind: 'retire',
+            id: current.record.id,
+            projectId: current.record.projectId,
+            updatedAt: new Date().toISOString(),
+            reason: 'semantic-review',
           });
-          if (!currentValidation.valid) {
-            report({
-              code: 'source-invalid',
-              message: '待退休单元的来源无法通过当前项目校验。',
-              source: current.id,
-            });
-            continue;
-          }
-          await this.repository.writeGenerated({ ...current, state: 'retired' });
-          retired.push(current.id);
+          for (const diagnostic of result.diagnostics) report(diagnostic);
+          if (result.changed) retired.push(current.record.id);
           continue;
         }
-        const unit = validateProjectKnowledgeUnitShape(action.unit);
-        if (unit.origin !== 'generated')
-          throw new Error('generated review must use generated origin');
-        if (!unitSourcesWithinPacket(unit, packet)) {
-          report({
-            code: 'source-outside-packet',
-            message: '评审结论引用了本次有界来源包之外的文件，已跳过。',
-            source: unit.id,
-          });
-          continue;
-        }
-        const sourceValidation = await validateProjectKnowledgeUnitSources(unit, {
-          projectRoot: this.projectRoot,
+        const record = validateProjectKnowledgeRecordShape({
+          ...(action.record as Record<string, unknown>),
+          state: 'active',
+          authority: 'automatic',
         });
-        if (!sourceValidation.valid) {
+        const changedRecordSource = await recordSourcesStillCurrent(record, this.projectRoot);
+        if (changedRecordSource !== null) {
           report({
-            code: 'source-invalid',
-            message: '评审结论的来源无法通过当前项目校验。',
-            source: unit.id,
+            code: 'source-changed',
+            message: '语义记录校验期间项目来源发生变化，已跳过本次记录。',
+            source: changedRecordSource,
           });
           continue;
         }
-        const next: ProjectKnowledgeUnit = {
-          ...unit,
-          state: isVerified(packet) ? 'active' : 'draft',
-          origin: 'generated',
-        };
-        await this.repository.writeGenerated(next);
-        persisted.push(next.id);
-        if (next.state === 'active') activated.push(next.id);
+        const result = await this.provider.apply({ kind: 'upsert', record });
+        for (const diagnostic of result.diagnostics) report(diagnostic);
+        if (result.changed) persisted.push(record.id);
+        if (result.record?.state === 'active' && result.changed) activated.push(record.id);
       } catch {
-        report({ code: 'review-invalid', message: '项目知识语义评审输出未通过格式或来源校验。' });
+        report({ code: 'review-action-invalid', message: '语义评审动作无效，已跳过该动作。' });
       }
     }
     return {
@@ -428,56 +476,6 @@ export class ProjectKnowledgeLearningService {
       diagnostics,
     };
   }
-}
-
-export interface ProjectKnowledgeSharedPreference {
-  readonly category: string;
-  readonly text: string;
-  readonly title?: string;
-  readonly pathPatterns?: readonly string[];
-  readonly operations?: readonly string[];
-  readonly sources?: readonly { readonly source: string; readonly anchor?: string }[];
-}
-
-export function sanitizeProjectPreferenceForSharing(
-  preference: ProjectKnowledgeSharedPreference,
-): ProjectKnowledgeUnit {
-  const stripPersonal = (value: string): string =>
-    value
-      .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/giu, '[email removed]')
-      .replace(/\b(?:bearer|basic)\s+[A-Z0-9._~+/=-]+/giu, '[credential removed]')
-      .replace(
-        /\b(?:api[_ -]?key|token|secret|password|passwd|credential|authorization)\s*[:=]\s*[^\s,;]+/giu,
-        '[credential removed]',
-      )
-      .replace(/(?:密钥|口令|密码|凭证|授权)\s*[:：=]\s*[^\s，；;]+/gu, '[凭证已移除]')
-      .replace(/\b(?:I|me|my|mine|we|our|ours)\b/giu, '')
-      .replace(/(?:我|我的|本人|我们|我们的)(?=偏好|习惯|项目|代码|要求)/gu, '')
-      .replace(/(?:姓名|名字|用户名|作者)\s*[:：=]\s*[^\s，；;]+/gu, '[个人信息已移除]')
-      .replace(/(?:允许|可以|授权|自动)\s*(?:提交|推送|发布|删除|覆盖|执行)/gu, '[授权表述已移除]')
-      .replace(/\s{2,}/gu, ' ')
-      .trim();
-  const text = stripPersonal(preference.text);
-  if (!text) throw new Error('个人项目偏好在去除个人信息后为空');
-  return {
-    schema: 'comet.project-knowledge.unit.v1',
-    id: `shared-${Date.now().toString(36)}`,
-    kind: 'behavior-note',
-    state: 'draft',
-    origin: 'maintained',
-    title: stripPersonal(preference.title ?? preference.category),
-    summary: text,
-    applicablePaths: [...(preference.pathPatterns ?? [])].slice(0, 32),
-    operations: [...(preference.operations ?? [])].slice(0, 32),
-    conclusions: [
-      {
-        text,
-        sources: (preference.sources ?? []).slice(0, 8),
-      },
-    ],
-    relations: [],
-    verification: [],
-  };
 }
 
 export async function projectKnowledgeLearningSourceExists(

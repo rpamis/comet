@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-import { resolveProjectKnowledgeCacheLocation } from '../../platform/paths/project-knowledge-cache.js';
+import { resolveProjectKnowledgeStorageLocation } from '../../platform/paths/project-knowledge-storage.js';
 import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
 import type {
   ProjectKnowledgeDocument,
@@ -10,9 +10,8 @@ import type {
   ProjectKnowledgeQuery,
   ProjectKnowledgeResult,
 } from './types.js';
-import type { ProjectKnowledgeUnit } from './units.js';
 
-const INDEX_SCHEMA = 'comet.project-knowledge.index.v1';
+const INDEX_SCHEMA = 'comet.project-knowledge.index.v2';
 const MAX_SOURCE_BYTES = 256 * 1024;
 const MAX_SECTION_CHARS = 16_000;
 const MAX_LEXICAL_TERMS = 256;
@@ -21,6 +20,7 @@ const MAX_SYNC_MS = 2_000;
 export interface ProjectKnowledgeIndexOptions {
   readonly projectRoot: string;
   readonly cacheRoot?: string;
+  readonly storageRoot?: string;
   readonly reportDiagnostic?: ProjectKnowledgeDiagnosticReporter;
 }
 
@@ -211,7 +211,10 @@ export class ProjectKnowledgeIndexStore {
   constructor(options: ProjectKnowledgeIndexOptions) {
     this.projectRoot = path.resolve(options.projectRoot);
     this.reportDiagnostic = options.reportDiagnostic;
-    const location = resolveProjectKnowledgeCacheLocation(this.projectRoot, options.cacheRoot);
+    const location = resolveProjectKnowledgeStorageLocation(
+      this.projectRoot,
+      options.storageRoot ?? options.cacheRoot,
+    );
     this.databasePath = location.databasePath;
     this.repositoryId = location.repositoryId;
     this.workspaceId = location.workspaceId;
@@ -225,52 +228,76 @@ export class ProjectKnowledgeIndexStore {
       database = new DatabaseSync(this.databasePath);
       database.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 250;');
       database.exec(
+        'CREATE TABLE IF NOT EXISTS pk_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);',
+      );
+      const existingMeta = metaMap(database);
+      if (existingMeta.size > 0 && existingMeta.get('schema') !== INDEX_SCHEMA) {
+        database.exec(
+          [
+            'DROP TABLE IF EXISTS pk_fts_terms;',
+            'DROP TABLE IF EXISTS pk_fts_trigram;',
+            'DROP TABLE IF EXISTS pk_sections;',
+            'DROP TABLE IF EXISTS pk_sources;',
+          ].join('\n'),
+        );
+        database.prepare("DELETE FROM pk_meta WHERE key IN ('schema', 'workspaceId')").run();
+      }
+      database.exec(
         [
-          'CREATE TABLE IF NOT EXISTS pk_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);',
-          'CREATE TABLE IF NOT EXISTS pk_sources (source TEXT PRIMARY KEY, kind TEXT NOT NULL, archived_at TEXT, size INTEGER NOT NULL, modified_at REAL NOT NULL, indexed_at TEXT NOT NULL);',
-          'CREATE TABLE IF NOT EXISTS pk_sections (id INTEGER PRIMARY KEY, source TEXT NOT NULL REFERENCES pk_sources(source) ON DELETE CASCADE, anchor TEXT NOT NULL, title TEXT NOT NULL, heading_path TEXT NOT NULL, body TEXT NOT NULL, lexical_terms TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(source, anchor));',
-          'CREATE INDEX IF NOT EXISTS pk_sections_source ON pk_sections(source);',
-          'CREATE TABLE IF NOT EXISTS pk_unit_relations (unit_id TEXT NOT NULL, relation_type TEXT NOT NULL, target_id TEXT NOT NULL, source TEXT NOT NULL, PRIMARY KEY(unit_id, relation_type, target_id, source));',
-          'CREATE INDEX IF NOT EXISTS pk_unit_relations_target ON pk_unit_relations(target_id);',
-          "CREATE VIRTUAL TABLE IF NOT EXISTS pk_fts_terms USING fts5(source UNINDEXED, title, heading_path, body, lexical_terms, tokenize='unicode61');",
-          "CREATE VIRTUAL TABLE IF NOT EXISTS pk_fts_trigram USING fts5(source UNINDEXED, title, heading_path, body, tokenize='trigram');",
+          'CREATE TABLE IF NOT EXISTS pk_sources (workspace_id TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, archived_at TEXT, size INTEGER NOT NULL, modified_at REAL NOT NULL, indexed_at TEXT NOT NULL, PRIMARY KEY(workspace_id, source));',
+          'CREATE TABLE IF NOT EXISTS pk_sections (id INTEGER PRIMARY KEY, workspace_id TEXT NOT NULL, source TEXT NOT NULL, anchor TEXT NOT NULL, title TEXT NOT NULL, heading_path TEXT NOT NULL, body TEXT NOT NULL, lexical_terms TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(workspace_id, source, anchor));',
+          'CREATE INDEX IF NOT EXISTS pk_sections_workspace_source ON pk_sections(workspace_id, source);',
+          "CREATE VIRTUAL TABLE IF NOT EXISTS pk_fts_terms USING fts5(workspace_id UNINDEXED, source UNINDEXED, title, heading_path, body, lexical_terms, tokenize='unicode61');",
+          "CREATE VIRTUAL TABLE IF NOT EXISTS pk_fts_trigram USING fts5(workspace_id UNINDEXED, source UNINDEXED, title, heading_path, body, tokenize='trigram');",
         ].join('\n'),
       );
       const meta = metaMap(database);
-      if (meta.size > 0) {
-        if (
-          meta.get('schema') !== INDEX_SCHEMA ||
-          meta.get('repositoryId') !== this.repositoryId ||
-          meta.get('workspaceId') !== this.workspaceId
-        ) {
-          throw new Error('Project knowledge index identity or structure is incompatible');
-        }
-      } else {
-        setMeta(database, 'schema', INDEX_SCHEMA);
-        setMeta(database, 'repositoryId', this.repositoryId);
-        setMeta(database, 'workspaceId', this.workspaceId);
-        setMeta(database, 'tokenizer', 'unicode61+trigram');
+      if (meta.get('repositoryId') && meta.get('repositoryId') !== this.repositoryId) {
+        throw new Error('Project knowledge index identity or structure is incompatible');
       }
+      setMeta(database, 'schema', INDEX_SCHEMA);
+      setMeta(database, 'repositoryId', this.repositoryId);
+      setMeta(database, 'tokenizer', 'unicode61+trigram');
       database.prepare("SELECT rowid FROM pk_fts_terms WHERE pk_fts_terms MATCH 'probe'").all();
       this.database = database;
     } catch (error) {
+      let projectionRecovered = false;
+      if (database) {
+        try {
+          database.exec(
+            [
+              'DROP TABLE IF EXISTS pk_fts_terms;',
+              'DROP TABLE IF EXISTS pk_fts_trigram;',
+              'DROP TABLE IF EXISTS pk_sections;',
+              'DROP TABLE IF EXISTS pk_sources;',
+              'CREATE TABLE pk_sources (workspace_id TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, archived_at TEXT, size INTEGER NOT NULL, modified_at REAL NOT NULL, indexed_at TEXT NOT NULL, PRIMARY KEY(workspace_id, source));',
+              'CREATE TABLE pk_sections (id INTEGER PRIMARY KEY, workspace_id TEXT NOT NULL, source TEXT NOT NULL, anchor TEXT NOT NULL, title TEXT NOT NULL, heading_path TEXT NOT NULL, body TEXT NOT NULL, lexical_terms TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(workspace_id, source, anchor));',
+              'CREATE INDEX pk_sections_workspace_source ON pk_sections(workspace_id, source);',
+              "CREATE VIRTUAL TABLE pk_fts_terms USING fts5(workspace_id UNINDEXED, source UNINDEXED, title, heading_path, body, lexical_terms, tokenize='unicode61');",
+              "CREATE VIRTUAL TABLE pk_fts_trigram USING fts5(workspace_id UNINDEXED, source UNINDEXED, title, heading_path, body, tokenize='trigram');",
+            ].join('\n'),
+          );
+          setMeta(database, 'schema', INDEX_SCHEMA);
+          setMeta(database, 'repositoryId', this.repositoryId);
+          setMeta(database, 'tokenizer', 'unicode61+trigram');
+          projectionRecovered = true;
+          this.reportDiagnostic?.({
+            code: 'index-recovered',
+            message: 'Project knowledge section and FTS projection was rebuilt in place.',
+          });
+        } catch {
+          // Leave the shared database at its original path. If it cannot be
+          // opened, the provider can use its bounded fallback without moving
+          // or deleting the authoritative record table.
+        }
+      }
       database?.close();
-      // Keep a recoverable copy of a corrupt or incompatible projection. The
-      // current request may fall back to rg; the next request can then create
-      // a clean SQLite projection instead of repeatedly reopening the bad file.
-      try {
-        const quarantine = `${this.databasePath}.corrupt-${Date.now()}`;
-        await fs.rename(this.databasePath, quarantine);
-        await Promise.all(
-          ['-wal', '-shm'].map((suffix) => fs.rm(`${this.databasePath}${suffix}`, { force: true })),
-        );
+      if (!projectionRecovered) {
         this.reportDiagnostic?.({
-          code: 'index-recovered',
-          message: `Project knowledge index was isolated for recovery: ${path.basename(quarantine)}`,
+          code: 'index-unavailable',
+          message:
+            'Project knowledge section index is unavailable; authoritative records were retained.',
         });
-      } catch {
-        // A missing or inaccessible cache path is handled by the provider's
-        // bounded rg fallback.
       }
       throw error;
     }
@@ -281,27 +308,6 @@ export class ProjectKnowledgeIndexStore {
     this.database = null;
   }
 
-  async replaceUnitRelations(units: readonly ProjectKnowledgeUnit[]): Promise<void> {
-    await this.open();
-    const database = this.requireDatabase();
-    database.exec('DELETE FROM pk_unit_relations;');
-    const insert = database.prepare(
-      'INSERT INTO pk_unit_relations(unit_id, relation_type, target_id, source) VALUES (?, ?, ?, ?)',
-    );
-    for (const unit of units) {
-      for (const relation of unit.relations) {
-        for (const source of relation.sources) {
-          insert.run(unit.id, relation.type, relation.target, source.source);
-        }
-      }
-    }
-    setMeta(
-      database,
-      'unitRelationCount',
-      String(units.reduce((total, unit) => total + unit.relations.length, 0)),
-    );
-  }
-
   async syncCorpus(
     corpus: readonly ProjectKnowledgeDocument[],
   ): Promise<ProjectKnowledgeIndexSyncResult> {
@@ -310,7 +316,9 @@ export class ProjectKnowledgeIndexStore {
     const database = this.requireDatabase();
     const known = new Map(
       (
-        database.prepare('SELECT source, size, modified_at FROM pk_sources').all() as Array<{
+        database
+          .prepare('SELECT source, size, modified_at FROM pk_sources WHERE workspace_id = ?')
+          .all(this.workspaceId) as Array<{
           source: string;
           size: number;
           modified_at: number;
@@ -319,7 +327,7 @@ export class ProjectKnowledgeIndexStore {
     );
     const corpusSources = new Set(corpus.map((document) => document.source));
     for (const source of known.keys()) {
-      if (!corpusSources.has(source)) this.removeSource(database, source);
+      if (!corpusSources.has(source)) this.removeSource(database, this.workspaceId, source);
     }
     const changedSources: ProjectKnowledgeDocument[] = [];
     const refreshedSources: ProjectKnowledgeDocument[] = [];
@@ -339,7 +347,8 @@ export class ProjectKnowledgeIndexStore {
       try {
         stat = await fs.lstat(document.absolutePath);
       } catch {
-        if (known.has(document.source)) this.removeSource(database, document.source);
+        if (known.has(document.source))
+          this.removeSource(database, this.workspaceId, document.source);
         continue;
       }
       const previous = known.get(document.source);
@@ -375,7 +384,7 @@ export class ProjectKnowledgeIndexStore {
         // A failed refresh must not leave the previous projection searchable.
         if (previous) {
           try {
-            this.removeSource(database, document.source);
+            this.removeSource(database, this.workspaceId, document.source);
           } catch {
             // Preserve the original bounded diagnostic below.
           }
@@ -396,14 +405,17 @@ export class ProjectKnowledgeIndexStore {
     const channels: Array<{ name: string; rows: SearchRow[] }> = [];
     const terms = ftsExpression([...query.strongTerms, ...query.phraseTerms, ...query.weakTerms]);
     if (terms)
-      channels.push({ name: 'fts-terms', rows: this.searchChannel(database, 'terms', terms, 40) });
+      channels.push({
+        name: 'fts-terms',
+        rows: this.searchChannel(database, this.workspaceId, 'terms', terms, 40),
+      });
     const trigram = ftsExpression(
       [...query.phraseTerms, ...query.weakTerms].filter((term) => [...term].length >= 3),
     );
     if (trigram)
       channels.push({
         name: 'fts-trigram',
-        rows: this.searchChannel(database, 'trigram', trigram, 20),
+        rows: this.searchChannel(database, this.workspaceId, 'trigram', trigram, 20),
       });
 
     const fused = new Map<number, { row: SearchRow; score: number; channels: Set<string> }>();
@@ -473,12 +485,22 @@ export class ProjectKnowledgeIndexStore {
     const database = this.requireDatabase();
     const meta = metaMap(database);
     const sourceCount = countValue(
-      (database.prepare('SELECT COUNT(*) AS count FROM pk_sources').get() as { count?: unknown })
-        .count,
+      (
+        database
+          .prepare('SELECT COUNT(*) AS count FROM pk_sources WHERE workspace_id = ?')
+          .get(this.workspaceId) as {
+          count?: unknown;
+        }
+      ).count,
     );
     const sectionCount = countValue(
-      (database.prepare('SELECT COUNT(*) AS count FROM pk_sections').get() as { count?: unknown })
-        .count,
+      (
+        database
+          .prepare('SELECT COUNT(*) AS count FROM pk_sections WHERE workspace_id = ?')
+          .get(this.workspaceId) as {
+          count?: unknown;
+        }
+      ).count,
     );
     return {
       schema: INDEX_SCHEMA,
@@ -500,11 +522,9 @@ export class ProjectKnowledgeIndexStore {
   }
 
   async rebuild(corpus: readonly ProjectKnowledgeDocument[]): Promise<ProjectKnowledgeIndexStatus> {
-    this.close();
-    for (const suffix of ['', '-wal', '-shm']) {
-      await fs.rm(`${this.databasePath}${suffix}`, { force: true });
-    }
     await this.open();
+    const database = this.requireDatabase();
+    this.removeWorkspace(database);
     return (await this.syncCorpus(corpus)).status;
   }
 
@@ -520,16 +540,24 @@ export class ProjectKnowledgeIndexStore {
     try {
       database
         .prepare(
-          'INSERT INTO pk_sources(source, kind, archived_at, size, modified_at, indexed_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(source) DO UPDATE SET kind = excluded.kind, archived_at = excluded.archived_at, size = excluded.size, modified_at = excluded.modified_at, indexed_at = excluded.indexed_at',
+          'INSERT INTO pk_sources(workspace_id, source, kind, archived_at, size, modified_at, indexed_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(workspace_id, source) DO UPDATE SET kind = excluded.kind, archived_at = excluded.archived_at, size = excluded.size, modified_at = excluded.modified_at, indexed_at = excluded.indexed_at',
         )
-        .run(document.source, document.kind, document.archivedAt ?? null, size, modifiedAt, now);
+        .run(
+          this.workspaceId,
+          document.source,
+          document.kind,
+          document.archivedAt ?? null,
+          size,
+          modifiedAt,
+          now,
+        );
       const existing = new Map(
         (
           database
             .prepare(
-              'SELECT id, anchor, title, heading_path, body, lexical_terms FROM pk_sections WHERE source = ?',
+              'SELECT id, anchor, title, heading_path, body, lexical_terms FROM pk_sections WHERE workspace_id = ? AND source = ?',
             )
-            .all(document.source) as unknown as IndexedSectionRow[]
+            .all(this.workspaceId, document.source) as unknown as IndexedSectionRow[]
         ).map((row) => [row.anchor, row]),
       );
       const incoming = new Set(sections.map((section) => section.anchor));
@@ -561,9 +589,10 @@ export class ProjectKnowledgeIndexStore {
         } else {
           const result = database
             .prepare(
-              'INSERT INTO pk_sections(source, anchor, title, heading_path, body, lexical_terms, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+              'INSERT INTO pk_sections(workspace_id, source, anchor, title, heading_path, body, lexical_terms, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
             )
             .run(
+              this.workspaceId,
               document.source,
               section.anchor,
               section.title,
@@ -576,10 +605,11 @@ export class ProjectKnowledgeIndexStore {
         }
         database
           .prepare(
-            'INSERT INTO pk_fts_terms(rowid, source, title, heading_path, body, lexical_terms) VALUES (?, ?, ?, ?, ?, ?)',
+            'INSERT INTO pk_fts_terms(rowid, workspace_id, source, title, heading_path, body, lexical_terms) VALUES (?, ?, ?, ?, ?, ?, ?)',
           )
           .run(
             id,
+            this.workspaceId,
             document.source,
             section.title,
             section.headingPath,
@@ -588,9 +618,16 @@ export class ProjectKnowledgeIndexStore {
           );
         database
           .prepare(
-            'INSERT INTO pk_fts_trigram(rowid, source, title, heading_path, body) VALUES (?, ?, ?, ?, ?)',
+            'INSERT INTO pk_fts_trigram(rowid, workspace_id, source, title, heading_path, body) VALUES (?, ?, ?, ?, ?, ?)',
           )
-          .run(id, document.source, section.title, section.headingPath, section.body);
+          .run(
+            id,
+            this.workspaceId,
+            document.source,
+            section.title,
+            section.headingPath,
+            section.body,
+          );
       }
       setMeta(database, 'updatedAt', now);
       database.exec('COMMIT;');
@@ -600,10 +637,10 @@ export class ProjectKnowledgeIndexStore {
     }
   }
 
-  private removeSource(database: DatabaseSync, source: string): void {
+  private removeSource(database: DatabaseSync, workspaceId: string, source: string): void {
     const rows = database
-      .prepare('SELECT id FROM pk_sections WHERE source = ?')
-      .all(source) as Array<{
+      .prepare('SELECT id FROM pk_sections WHERE workspace_id = ? AND source = ?')
+      .all(workspaceId, source) as Array<{
       id: number;
     }>;
     database.exec('BEGIN IMMEDIATE;');
@@ -612,9 +649,32 @@ export class ProjectKnowledgeIndexStore {
         database.prepare('DELETE FROM pk_fts_terms WHERE rowid = ?').run(id);
         database.prepare('DELETE FROM pk_fts_trigram WHERE rowid = ?').run(id);
       }
-      database.prepare('DELETE FROM pk_sections WHERE source = ?').run(source);
-      database.prepare('DELETE FROM pk_sources WHERE source = ?').run(source);
+      database
+        .prepare('DELETE FROM pk_sections WHERE workspace_id = ? AND source = ?')
+        .run(workspaceId, source);
+      database
+        .prepare('DELETE FROM pk_sources WHERE workspace_id = ? AND source = ?')
+        .run(workspaceId, source);
       setMeta(database, 'updatedAt', new Date().toISOString());
+      database.exec('COMMIT;');
+    } catch (error) {
+      database.exec('ROLLBACK;');
+      throw error;
+    }
+  }
+
+  private removeWorkspace(database: DatabaseSync): void {
+    const rows = database
+      .prepare('SELECT id FROM pk_sections WHERE workspace_id = ?')
+      .all(this.workspaceId) as Array<{ id: number }>;
+    database.exec('BEGIN IMMEDIATE;');
+    try {
+      for (const { id } of rows) {
+        database.prepare('DELETE FROM pk_fts_terms WHERE rowid = ?').run(id);
+        database.prepare('DELETE FROM pk_fts_trigram WHERE rowid = ?').run(id);
+      }
+      database.prepare('DELETE FROM pk_sections WHERE workspace_id = ?').run(this.workspaceId);
+      database.prepare('DELETE FROM pk_sources WHERE workspace_id = ?').run(this.workspaceId);
       database.exec('COMMIT;');
     } catch (error) {
       database.exec('ROLLBACK;');
@@ -624,17 +684,19 @@ export class ProjectKnowledgeIndexStore {
 
   private searchChannel(
     database: DatabaseSync,
+    workspaceId: string,
     channel: 'terms' | 'trigram',
     expression: string,
     limit: number,
   ): SearchRow[] {
     const table = channel === 'terms' ? 'pk_fts_terms' : 'pk_fts_trigram';
-    const weights = channel === 'terms' ? '1.0, 3.0, 2.0, 0.8, 1.5' : '1.0, 2.5, 1.8, 0.7';
+    const weights =
+      channel === 'terms' ? '0.0, 0.0, 1.0, 3.0, 2.0, 0.8, 1.5' : '0.0, 0.0, 1.0, 2.5, 1.8, 0.7';
     return database
       .prepare(
-        `SELECT s.id, s.source, p.kind, p.archived_at, s.title, s.heading_path, s.body, bm25(${table}, ${weights}) AS rank FROM ${table} JOIN pk_sections s ON s.id = ${table}.rowid JOIN pk_sources p ON p.source = s.source WHERE ${table} MATCH ? ORDER BY rank LIMIT ?`,
+        `SELECT s.id, s.source, p.kind, p.archived_at, s.title, s.heading_path, s.body, bm25(${table}, ${weights}) AS rank FROM ${table} JOIN pk_sections s ON s.id = ${table}.rowid JOIN pk_sources p ON p.workspace_id = s.workspace_id AND p.source = s.source WHERE ${table} MATCH ? AND s.workspace_id = ? ORDER BY rank LIMIT ?`,
       )
-      .all(expression, limit) as unknown as SearchRow[];
+      .all(expression, workspaceId, limit) as unknown as SearchRow[];
   }
 
   private requireDatabase(): DatabaseSync {
@@ -652,20 +714,26 @@ export async function readProjectKnowledgeIndexStatus(
     const database = new DatabaseSync(store.databasePath, { readOnly: true });
     try {
       const meta = metaMap(database);
-      if (
-        meta.get('schema') !== INDEX_SCHEMA ||
-        meta.get('repositoryId') !== store.repositoryId ||
-        meta.get('workspaceId') !== store.workspaceId
-      ) {
+      if (meta.get('schema') !== INDEX_SCHEMA || meta.get('repositoryId') !== store.repositoryId) {
         throw new Error('Project knowledge index identity or structure is incompatible');
       }
       const sourceCount = countValue(
-        (database.prepare('SELECT COUNT(*) AS count FROM pk_sources').get() as { count?: unknown })
-          .count,
+        (
+          database
+            .prepare('SELECT COUNT(*) AS count FROM pk_sources WHERE workspace_id = ?')
+            .get(store.workspaceId) as {
+            count?: unknown;
+          }
+        ).count,
       );
       const sectionCount = countValue(
-        (database.prepare('SELECT COUNT(*) AS count FROM pk_sections').get() as { count?: unknown })
-          .count,
+        (
+          database
+            .prepare('SELECT COUNT(*) AS count FROM pk_sections WHERE workspace_id = ?')
+            .get(store.workspaceId) as {
+            count?: unknown;
+          }
+        ).count,
       );
       return {
         schema: INDEX_SCHEMA,

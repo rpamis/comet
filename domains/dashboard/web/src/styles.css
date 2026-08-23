@@ -1468,96 +1468,31 @@ body {
   font-size: 11px;
 }
 
-.dashboard-knowledge-unit-list {
-  margin-top: 15px;
-  border-top: 1px solid var(--color-border-soft);
-}
-
-.dashboard-knowledge-unit {
-  display: flex;
-  align-items: flex-start;
-  gap: 11px;
-  padding: 14px 0;
-  border-bottom: 1px solid var(--color-border-soft);
-}
-
-.dashboard-knowledge-unit:last-child {
-  padding-bottom: 0;
-  border-bottom: 0;
-}
-
-.dashboard-knowledge-unit-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  flex: 0 0 28px;
-  border-radius: 7px;
-  background: var(--color-accent-softer);
-  color: var(--color-accent);
-  font-size: 12px;
-}
-
-.dashboard-knowledge-unit-main {
-  min-width: 0;
-  flex: 1;
-}
-
-.dashboard-knowledge-unit-title {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 7px;
-  color: var(--color-fg);
-  font-size: 13px;
-}
-
-.dashboard-knowledge-unit-title .ant-tag {
-  margin: 0;
-  background: var(--color-ok-soft);
-  color: var(--color-success);
-  font-size: 10px;
-}
-
-.dashboard-knowledge-unit-meta,
-.dashboard-knowledge-unit-footnote {
-  margin-top: 3px;
-  color: var(--color-meta);
-  font-size: 11px;
-  line-height: 1.5;
-}
-
-.dashboard-knowledge-unit-main p {
-  margin: 7px 0 0;
-  color: var(--color-fg-2);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.dashboard-knowledge-units .dashboard-knowledge-fields {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.dashboard-knowledge-units .dashboard-knowledge-fields div {
-  display: block;
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: var(--color-surface-warm);
-}
-
-.dashboard-knowledge-units .dashboard-knowledge-fields dd {
-  margin-top: 4px;
-  font-family: var(--font-ui);
-  font-size: 12px;
-}
-
 .dashboard-knowledge-actions {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
   margin-top: 16px;
+}
+
+.dashboard-knowledge-record-toolbar,
+.dashboard-knowledge-provider-form,
+.dashboard-knowledge-record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.dashboard-knowledge-record-toolbar .ant-input,
+.dashboard-knowledge-provider-form .ant-input {
+  min-width: 180px;
+  flex: 1 1 180px;
+}
+
+.dashboard-knowledge-record-actions {
+  justify-content: flex-end;
 }
 
 @media (max-width: 760px) {
@@ -1746,14 +1681,6 @@ body {
 
   .dashboard-knowledge-fields div {
     grid-template-columns: minmax(90px, 0.4fr) minmax(0, 1fr);
-  }
-
-  .dashboard-knowledge-units .dashboard-knowledge-fields {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .dashboard-knowledge-units .dashboard-knowledge-fields div {
-    display: block;
   }
 
   .dashboard-memory-remote-form,

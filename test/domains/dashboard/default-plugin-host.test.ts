@@ -34,7 +34,7 @@ describe('default dashboard plugin host', () => {
         data: {
           provider: 'local',
           configured: true,
-          retrieval: expect.stringContaining('不会维护索引'),
+          retrieval: expect.stringContaining('不会在项目中生成知识文件'),
           diagnostics: [],
         },
       });

@@ -4,21 +4,21 @@ import path from 'node:path';
 import { runBoundedRipgrep, type RipgrepRunResult } from '../../platform/process/ripgrep.js';
 import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
 import { knowledgeDocumentKindRank } from './corpus.js';
-import { ProjectKnowledgeIndexStore } from './index-store.js';
-import {
-  ProjectKnowledgeUnitRepository,
-  expandProjectKnowledgeRelations,
-  validateProjectKnowledgeUnitSources,
-} from './units.js';
-import { extractDeterministicProjectUnits } from './deterministic-extractors.js';
+import type { ProjectKnowledgeIndexStatus } from './index-store.js';
+import { ProjectKnowledgeLocalStore } from './local-store.js';
 import { queryContainsTerm, queryHasStrongMatch } from './query.js';
 import type {
   ProjectKnowledgeDocument,
+  ProjectKnowledgeApplyResult,
   ProjectKnowledgeDiagnosticReporter,
   ProjectKnowledgeProvider,
+  ProjectKnowledgeMutation,
   ProjectKnowledgeProviderOptions,
   ProjectKnowledgeQuery,
+  ProjectKnowledgeQueryRequest,
+  ProjectKnowledgeQueryResult,
   ProjectKnowledgeResult,
+  ProjectKnowledgeStatus,
 } from './types.js';
 
 const MAX_RG_OUTPUT_BYTES = 1024 * 1024;
@@ -39,11 +39,9 @@ export interface LocalProjectKnowledgeProviderOptions extends ProjectKnowledgePr
   readonly runRipgrep?: (args: readonly string[]) => Promise<RipgrepRunResult>;
   readonly rgCommand?: string;
   readonly cacheRoot?: string;
-  readonly indexStore?: ProjectKnowledgeIndexStore;
+  readonly localStore?: ProjectKnowledgeLocalStore;
   /** Retrieval-eval seam for measuring the bounded rg baseline. */
   readonly indexEnabled?: boolean;
-  readonly unitRepository?: ProjectKnowledgeUnitRepository;
-  readonly changedPaths?: readonly string[];
 }
 
 function bundledRipgrepPath(): string | null {
@@ -134,242 +132,214 @@ function candidateSort(
 export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
   private readonly options: LocalProjectKnowledgeProviderOptions;
   private readonly reportDiagnostic: ProjectKnowledgeDiagnosticReporter | undefined;
-  private readonly indexStore: ProjectKnowledgeIndexStore;
-  private readonly unitRepository: ProjectKnowledgeUnitRepository;
-  private deterministicUnitsReady = false;
+  private localStore: ProjectKnowledgeLocalStore | null;
+  private recordStoreError: { code: string; message: string } | null = null;
 
   public constructor(options: LocalProjectKnowledgeProviderOptions) {
     this.options = options;
     this.reportDiagnostic = options.reportDiagnostic;
-    this.indexStore =
-      options.indexStore ??
-      new ProjectKnowledgeIndexStore({
-        projectRoot: options.projectRoot,
-        ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
-        reportDiagnostic: options.reportDiagnostic,
-      });
-    this.unitRepository =
-      options.unitRepository ??
-      new ProjectKnowledgeUnitRepository({
-        projectRoot: options.projectRoot,
-        ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
-        reportDiagnostic: options.reportDiagnostic,
-      });
+    this.localStore = options.localStore ?? null;
   }
 
-  public async retrieve(query: ProjectKnowledgeQuery): Promise<readonly ProjectKnowledgeResult[]> {
-    let indexed: readonly ProjectKnowledgeResult[] = [];
+  private recordStore(): ProjectKnowledgeLocalStore | null {
+    if (this.localStore) return this.localStore;
+    if (this.recordStoreError) return null;
+    try {
+      return (this.localStore ??= new ProjectKnowledgeLocalStore({
+        projectRoot: this.options.projectRoot,
+        ...(this.options.cacheRoot ? { cacheRoot: this.options.cacheRoot } : {}),
+        ...(this.options.reportDiagnostic
+          ? { reportDiagnostic: this.options.reportDiagnostic }
+          : {}),
+      }));
+    } catch {
+      this.recordStoreError = {
+        code: 'records-unavailable',
+        message: 'Local project knowledge records are unavailable; using document search only.',
+      };
+      this.reportDiagnostic?.(this.recordStoreError);
+      return null;
+    }
+  }
+
+  public async status(): Promise<ProjectKnowledgeStatus> {
+    const store = this.recordStore();
+    if (!store) {
+      return {
+        provider: 'local',
+        healthy: false,
+        writable: false,
+        diagnostics: [this.recordStoreError!],
+      };
+    }
+    return store.status();
+  }
+
+  public async indexStatus(): Promise<ProjectKnowledgeIndexStatus | null> {
+    const store = this.recordStore();
+    if (!store) return null;
+    try {
+      return await store.indexStatus();
+    } catch {
+      this.reportDiagnostic?.({
+        code: 'index-unavailable',
+        message: 'Local project knowledge section index is unavailable.',
+      });
+      return null;
+    }
+  }
+
+  public async query(request: ProjectKnowledgeQueryRequest): Promise<ProjectKnowledgeQueryResult> {
+    const store = this.recordStore();
+    if (request.kind === 'list') {
+      const records =
+        store?.list({
+          ...(request.projectId ? { projectId: request.projectId } : {}),
+          ...(request.type ? { type: request.type } : {}),
+          ...(request.state && request.state !== 'all' ? { state: request.state } : {}),
+          ...(request.authority ? { authority: request.authority } : {}),
+          ...(request.limit ? { limit: request.limit } : {}),
+        }) ?? [];
+      return {
+        kind: 'list',
+        records,
+        truncated: request.limit !== undefined && records.length >= request.limit,
+        diagnostics: store ? [] : [this.recordStoreError!],
+      };
+    }
+    if (request.kind === 'get') {
+      const record = store?.read(request.id) ?? null;
+      return {
+        kind: 'get',
+        record:
+          record && (!request.projectId || record.projectId === request.projectId) ? record : null,
+        diagnostics: store ? [] : [this.recordStoreError!],
+      };
+    }
+
+    const diagnostics: Array<{ code: string; message: string }> = [];
+    if (store) await store.apply({ kind: 'refresh' });
+    else {
+      diagnostics.push(this.recordStoreError!);
+      const indexDiagnostic = {
+        code: 'index-unavailable',
+        message: 'Local project knowledge section index is unavailable.',
+      };
+      diagnostics.push(indexDiagnostic);
+      this.reportDiagnostic?.(indexDiagnostic);
+    }
+    let sections: readonly ProjectKnowledgeResult[] = [];
     let refreshedSources: readonly ProjectKnowledgeDocument[] = [];
     let indexSynced = false;
-    if (this.options.indexEnabled !== false) {
+    if (this.options.indexEnabled !== false && store) {
       try {
-        const sync = await this.indexStore.syncCorpus(this.options.corpus);
+        const sync = await store.syncCorpus(this.options.corpus);
         refreshedSources = [...sync.refreshedSources, ...sync.changedSources];
-        indexed = this.indexStore.search(query);
+        sections = await this.readCurrentSections(store.searchSections(request.query), diagnostics);
         indexSynced = true;
       } catch {
-        // A failed index cannot provide a trustworthy target list. Use the
-        // bounded corpus files for this request so recovery still returns
-        // current evidence instead of silently returning no context.
         refreshedSources = [...this.options.corpus];
-        this.reportDiagnostic?.({
+        diagnostics.push({
           code: 'index-unavailable',
-          message:
-            'Project knowledge index is unavailable; bounded ripgrep retrieval remains active.',
+          message: 'Local project knowledge section index is unavailable.',
         });
-      } finally {
-        this.indexStore.close();
       }
     }
-    const hintedSources = this.options.changedPaths
-      ? this.options.corpus.filter((document) =>
-          this.options.changedPaths!.some(
-            (changed) =>
-              document.source === changed ||
-              document.source.startsWith(`${changed.replaceAll('\\', '/').replace(/\/$/u, '')}/`),
-          ),
-        )
-      : [];
     const exact =
       indexSynced && refreshedSources.length === 0 && this.options.runRipgrep === undefined
         ? []
-        : await this.retrieveWithRipgrep(query, [...refreshedSources, ...hintedSources]);
-    const units = this.options.unitRepository ? await this.retrieveUnits(query) : [];
+        : await this.searchWithRipgrep(request.query, [...refreshedSources]);
+    sections = await this.readCurrentSections(sections, diagnostics);
+    const recordResults = store?.searchRecords(request.query) ?? [];
+    const channels = [recordResults, sections, exact];
     const fused = new Map<string, { result: ProjectKnowledgeResult; score: number }>();
-    for (const [channel, results] of [units, indexed, exact].entries()) {
-      results.forEach((result, rank) => {
-        const key = result.unit
-          ? `unit\u0000${result.unit.id}`
-          : `${result.source}\u0000${result.title ?? ''}`;
+    for (const [channel, channelResults] of channels.entries()) {
+      channelResults.forEach((result, rank) => {
+        const key = `${result.source}\u0000${result.title ?? ''}`;
         const previous = fused.get(key);
-        fused.set(key, {
-          result: previous?.result ?? result,
-          score:
-            (previous?.score ?? 0) +
-            1 / (60 + rank + 1) +
-            (channel === 2 ? 0.002 : channel === 0 ? 0.025 : 0) +
-            (result.unit?.origin === 'maintained' ? 0.04 : result.unit ? 0.01 : 0) +
-            (result.document?.kind.endsWith('-spec')
-              ? 0.1
-              : result.document?.kind.endsWith('-archive')
-                ? 0.01
-                : 0),
-        });
+        const score =
+          (previous?.score ?? 0) +
+          1 / (60 + rank + 1) +
+          (channel === 0 ? 0.025 : channel === 2 ? 0.002 : 0);
+        fused.set(key, { result: previous?.result ?? result, score });
       });
     }
-    const ranked = [...fused.values()]
+    const results = new Map<string, ProjectKnowledgeResult>();
+    for (const { result } of [...fused.values()]
       .sort(
         (left, right) =>
           right.score - left.score || left.result.source.localeCompare(right.result.source),
       )
-      .slice(0, 8)
-      .map(({ result, score }) => ({ ...result, score }));
-    const validated: ProjectKnowledgeResult[] = [];
-    for (const result of ranked) {
+      .map(({ result, score }) => ({ result: { ...result, score }, score }))) {
+      const key = `${result.source}\u0000${result.title ?? ''}`;
+      if (!results.has(key)) results.set(key, result);
+    }
+    const bounded = [...results.values()].slice(0, 8);
+    const records = recordResults.flatMap((result) => (result.record ? [result.record] : []));
+    return {
+      kind: 'search',
+      hits: records.map((record) => ({ record })),
+      results: bounded,
+      records,
+      truncated: results.size > bounded.length,
+      diagnostics,
+    };
+  }
+
+  public async apply(mutation: ProjectKnowledgeMutation): Promise<ProjectKnowledgeApplyResult> {
+    const store = this.recordStore();
+    if (!store) {
+      return {
+        kind: mutation.kind,
+        changed: false,
+        diagnostics: [this.recordStoreError!],
+      };
+    }
+    const result = await store.apply(mutation);
+    if (mutation.kind === 'refresh' && !mutation.id) {
       try {
-        if (result.unit) {
-          const validation = await validateProjectKnowledgeUnitSources(result.unit, {
-            projectRoot: this.options.projectRoot,
-          });
-          if (!validation.valid) throw new Error('project knowledge unit source is not current');
-        } else {
-          await readProtectedProjectFile(
-            this.options.projectRoot,
-            result.source,
-            MAX_DOCUMENT_BYTES,
-            { label: result.source },
-          );
-        }
-        validated.push(result);
+        await store.rebuildWorkspace(this.options.corpus);
       } catch {
         this.reportDiagnostic?.({
-          code: 'local-document',
-          message: `Project knowledge document was skipped: ${result.source}`,
+          code: 'index-rebuild',
+          message: 'Local project knowledge workspace index could not be rebuilt.',
         });
       }
     }
-    return validated;
+    return result;
   }
 
-  private async retrieveUnits(
-    query: ProjectKnowledgeQuery,
+  public close(): void {
+    this.localStore?.close();
+    this.localStore = null;
+  }
+
+  private async readCurrentSections(
+    sections: readonly ProjectKnowledgeResult[],
+    diagnostics: Array<{ code: string; message: string }>,
   ): Promise<readonly ProjectKnowledgeResult[]> {
-    if (!this.deterministicUnitsReady) {
-      try {
-        const existing = await this.unitRepository.list({ origin: 'generated' });
-        const generated = await extractDeterministicProjectUnits({
-          projectRoot: this.options.projectRoot,
-          ...(this.options.changedPaths ? { changedPaths: this.options.changedPaths } : {}),
-        });
-        const targetedRefresh = (this.options.changedPaths?.length ?? 0) > 0;
-        for (const unit of generated) {
-          // A changed-path extraction is intentionally partial. Do not replace a
-          // workspace-wide deterministic unit with a view containing only the
-          // changed module; the next unhinted pass will rebuild it completely.
-          if (targetedRefresh) continue;
-          const active = { ...unit, state: 'active' as const };
-          const current = existing.find((candidate) => candidate.id === unit.id);
-          if (current && current.state !== 'active') continue;
-          const currentComparable = current ? { ...current, sourceVersions: undefined } : {};
-          if (
-            current?.origin === 'generated' &&
-            current.state === 'active' &&
-            JSON.stringify(currentComparable) === JSON.stringify(active)
-          ) {
-            continue;
-          }
-          const validation = await validateProjectKnowledgeUnitSources(active, {
-            projectRoot: this.options.projectRoot,
+    const checked = await Promise.all(
+      sections.map(async (section) => {
+        const source = section.document?.source;
+        if (!source) return section;
+        try {
+          await readProtectedProjectFile(this.options.projectRoot, source, MAX_DOCUMENT_BYTES, {
+            label: source,
           });
-          if (validation.valid) {
-            await this.unitRepository.writeGenerated(active);
-          } else {
-            for (const diagnostic of validation.diagnostics) {
-              this.reportDiagnostic?.({
-                code: diagnostic.code,
-                message: `${unit.id}: ${diagnostic.message}${diagnostic.source ? ` (${diagnostic.source})` : ''}`,
-              });
-            }
-          }
+          return section;
+        } catch {
+          diagnostics.push({
+            code: 'local-document',
+            message: 'Local project knowledge source is unavailable.',
+          });
+          return null;
         }
-        this.deterministicUnitsReady = true;
-      } catch {
-        this.reportDiagnostic?.({
-          code: 'deterministic-extractor',
-          message: 'Deterministic project knowledge extraction was skipped for this request.',
-        });
-      }
-    }
-    const units = await this.unitRepository.list({ state: 'active' });
-    try {
-      await this.indexStore.replaceUnitRelations(units);
-      this.indexStore.close();
-    } catch {
-      this.reportDiagnostic?.({
-        code: 'unit-relations',
-        message: 'Project knowledge unit relations were not written to the local index.',
-      });
-      this.indexStore.close();
-    }
-    const results: ProjectKnowledgeResult[] = [];
-    for (const unit of units) {
-      const searchable = [
-        unit.id,
-        unit.kind,
-        unit.title,
-        unit.summary,
-        ...unit.applicablePaths,
-        ...unit.operations,
-        ...unit.conclusions.map((conclusion) => conclusion.text),
-      ].join('\n');
-      const matched = query.terms.filter((term) =>
-        searchable.toLocaleLowerCase().includes(term.toLocaleLowerCase()),
-      );
-      if (matched.length === 0) continue;
-      const validation = await validateProjectKnowledgeUnitSources(unit, {
-        projectRoot: this.options.projectRoot,
-      });
-      if (!validation.valid) {
-        for (const diagnostic of validation.diagnostics) {
-          this.reportDiagnostic?.({ code: diagnostic.code, message: diagnostic.message });
-        }
-        continue;
-      }
-      results.push({
-        source: `unit:${unit.id}`,
-        title: unit.title,
-        content:
-          `${unit.summary}\n\n${unit.conclusions.map((conclusion) => conclusion.text).join('\n')}`.slice(
-            0,
-            1600,
-          ),
-        score: matched.length / Math.max(1, query.terms.length),
-        unit,
-      });
-    }
-    const matchedIds = results.map((result) => result.unit?.id).filter((id): id is string => !!id);
-    const related = expandProjectKnowledgeRelations({
-      units,
-      matchedIds,
-    });
-    for (const unit of related) {
-      if (results.some((result) => result.unit?.id === unit.id)) continue;
-      results.push({
-        source: `unit:${unit.id}`,
-        title: unit.title,
-        content:
-          `${unit.summary}\n\n${unit.conclusions.map((conclusion) => conclusion.text).join('\n')}`.slice(
-            0,
-            1600,
-          ),
-        score: 0.2,
-        unit,
-      });
-    }
-    return results.sort((left, right) => (right.score ?? 0) - (left.score ?? 0)).slice(0, 8);
+      }),
+    );
+    return checked.filter((section): section is ProjectKnowledgeResult => section !== null);
   }
 
-  private async retrieveWithRipgrep(
+  private async searchWithRipgrep(
     query: ProjectKnowledgeQuery,
     refreshedSources: readonly ProjectKnowledgeDocument[] = [],
   ): Promise<readonly ProjectKnowledgeResult[]> {

@@ -24,6 +24,30 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
             timeoutMs: 1200,
           },
           retrieval: 'Remote 配置仅表示已配置，不代表最近一次请求成功。',
+          records: [
+            {
+              id: 'record-focused-tests',
+              projectId: 'fixture-project',
+              type: 'behavior-note',
+              state: 'active',
+              authority: 'automatic',
+              title: 'Focused tests',
+              summary: 'Prefer focused tests for small changes.',
+              applicablePaths: ['domains/'],
+              operations: ['verify'],
+              conclusions: [
+                {
+                  text: 'Run focused tests first.',
+                  sources: [{ source: 'docs/rule.md', anchor: 'rule' }],
+                },
+              ],
+              relations: [],
+              verification: [],
+              sourceVersions: [],
+              updatedAt: '2026-08-22T12:00:00.000Z',
+            },
+          ],
+          counts: { active: 1, needsReview: 0, retired: 0 },
           diagnostics: [],
         },
   });
@@ -86,6 +110,29 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
       await route.fulfill({ json: {} });
       return;
     }
+    if (url.pathname.endsWith('/plugins/comet.project-knowledge/invoke')) {
+      const body = route.request().postDataJSON() as { capability?: string };
+      expect(body.capability).toBe('query');
+      await route.fulfill({
+        json: {
+          result: {
+            kind: 'search',
+            hits: [],
+            records: [],
+            truncated: false,
+            diagnostics: [],
+            results: [
+              {
+                source: 'docs/rule.md#rule',
+                title: 'Focused tests',
+                content: 'Run focused tests first.',
+              },
+            ],
+          },
+        },
+      });
+      return;
+    }
     if (url.pathname.endsWith('/plugins/comet.project-knowledge')) {
       if (uninstalled) {
         await route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
@@ -120,15 +167,21 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
 
   await page.goto('/');
   await page.getByRole('menuitem', { name: '项目知识' }).click();
-  await expect(page.getByRole('heading', { name: '项目知识' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '项目知识', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: '知识概览' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '运行诊断' })).toBeVisible();
   await expect(page.getByText('COMET_KNOWLEDGE_TOKEN')).toHaveCount(0);
+  await expect(page.getByText('来源：docs/rule.md#rule')).toBeVisible();
+  await expect(page.getByText(/更新于 2026-08-22/u)).toBeVisible();
+  await page.getByLabel('查询项目知识').fill('focused tests');
+  await page.getByRole('button', { name: /查\s*询/u }).click();
+  await expect(page.getByLabel('项目知识查询结果')).toContainText('Run focused tests first.');
 
   await page.getByRole('button', { name: '设置' }).click();
   await expect(page.getByRole('heading', { name: '项目知识设置' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Provider 配置' })).toBeVisible();
   await expect(page.getByText('COMET_KNOWLEDGE_TOKEN')).toBeVisible();
+  await expect(page.getByRole('button', { name: '保存 Provider' })).toBeVisible();
   await expect(page.getByText('bearer-secret', { exact: true })).toHaveCount(0);
 
   await page.getByRole('button', { name: '暂停当前项目' }).click();

@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -108,6 +109,62 @@ describe('project knowledge section index', () => {
     }
   });
 
+  test('keeps source and section counts scoped to the current workspace inside a shared repository database', async () => {
+    const root = await temporaryRoot();
+    const worktree = `${root}-worktree`;
+    const cacheRoot = await temporaryRoot();
+    try {
+      execFileSync('git', ['init', '--initial-branch=main'], { cwd: root, stdio: 'ignore' });
+      execFileSync('git', ['config', 'user.email', 'test@example.test'], { cwd: root });
+      execFileSync('git', ['config', 'user.name', 'Comet Test'], { cwd: root });
+      await fs.mkdir(path.join(root, 'docs'), { recursive: true });
+      await fs.writeFile(path.join(root, 'docs', 'knowledge.md'), '# Primary\n\nalpha source\n');
+      await fs.writeFile(path.join(root, 'README.md'), '# test\n');
+      execFileSync('git', ['add', 'README.md', 'docs/knowledge.md'], { cwd: root });
+      execFileSync('git', ['commit', '-m', 'test'], { cwd: root, stdio: 'ignore' });
+      execFileSync('git', ['worktree', 'add', '-b', 'index-other', worktree], {
+        cwd: root,
+        stdio: 'ignore',
+      });
+      await fs.writeFile(path.join(worktree, 'docs', 'knowledge.md'), '# Linked\n\nbeta source\n');
+
+      const primaryDocument = {
+        absolutePath: path.join(root, 'docs', 'knowledge.md'),
+        source: 'docs/knowledge.md',
+        kind: 'native-spec' as const,
+      };
+      const linkedDocument = {
+        absolutePath: path.join(worktree, 'docs', 'knowledge.md'),
+        source: 'docs/knowledge.md',
+        kind: 'native-spec' as const,
+      };
+      const primaryStore = new ProjectKnowledgeIndexStore({ projectRoot: root, cacheRoot });
+      const linkedStore = new ProjectKnowledgeIndexStore({ projectRoot: worktree, cacheRoot });
+
+      await primaryStore.syncCorpus([primaryDocument]);
+      await linkedStore.syncCorpus([linkedDocument]);
+
+      expect(primaryStore.status()).toMatchObject({ sourceCount: 1, sectionCount: 1 });
+      expect(linkedStore.status()).toMatchObject({ sourceCount: 1, sectionCount: 1 });
+      expect(primaryStore.databasePath).toBe(linkedStore.databasePath);
+
+      primaryStore.close();
+      linkedStore.close();
+    } finally {
+      try {
+        execFileSync('git', ['worktree', 'remove', '--force', worktree], {
+          cwd: root,
+          stdio: 'ignore',
+        });
+      } catch {
+        // Temporary-directory cleanup below is enough if Git cleanup fails.
+      }
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(worktree, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
   test('falls back to bounded ripgrep when the index cannot open', async () => {
     const root = await temporaryRoot();
     const cacheFile = path.join(root, 'not-a-directory');
@@ -139,17 +196,20 @@ describe('project knowledge section index', () => {
       })),
     });
     try {
-      const results = await provider.retrieve(
-        createProjectKnowledgeQuery({ task: 'Project knowledge exact fallback' }),
-      );
+      const response = await provider.query({
+        kind: 'search',
+        query: createProjectKnowledgeQuery({ task: 'Project knowledge exact fallback' }),
+      });
+      const results = response.kind === 'search' ? response.results : [];
       expect(results[0]).toMatchObject({ source, title: 'Fallback' });
       expect(diagnostics).toContain('index-unavailable');
     } finally {
+      provider.close();
       await fs.rm(root, { recursive: true, force: true });
     }
   });
 
-  test('isolates a corrupt SQLite file so the next sync can recover', async () => {
+  test('rebuilds a corrupt derived FTS projection without moving the shared database', async () => {
     const root = await temporaryRoot();
     const cacheRoot = await temporaryRoot();
     const source = 'docs/comet/specs/recovery.md';
@@ -160,7 +220,9 @@ describe('project knowledge section index', () => {
     try {
       await first.syncCorpus([{ absolutePath: file, source, kind: 'native-spec' }]);
       first.close();
-      await fs.writeFile(first.databasePath, 'not a sqlite database');
+      const broken = new DatabaseSync(first.databasePath);
+      broken.exec('DROP TABLE pk_fts_terms; CREATE TABLE pk_fts_terms (broken TEXT);');
+      broken.close();
       const diagnostics: string[] = [];
       const corrupt = new ProjectKnowledgeIndexStore({
         projectRoot: root,
@@ -171,6 +233,7 @@ describe('project knowledge section index', () => {
         corrupt.syncCorpus([{ absolutePath: file, source, kind: 'native-spec' }]),
       ).rejects.toThrow();
       expect(diagnostics).toContain('index-recovered');
+      expect(await fs.access(first.databasePath)).toBeUndefined();
       await expect(
         corrupt.syncCorpus([{ absolutePath: file, source, kind: 'native-spec' }]),
       ).resolves.toMatchObject({ status: { available: true, sourceCount: 1 } });
@@ -192,7 +255,9 @@ describe('project knowledge section index', () => {
     const first = new ProjectKnowledgeIndexStore({ projectRoot: root, cacheRoot });
     await first.syncCorpus([{ absolutePath: file, source, kind: 'native-spec' }]);
     first.close();
-    await fs.writeFile(first.databasePath, 'not a sqlite database');
+    const broken = new DatabaseSync(first.databasePath);
+    broken.exec('DROP TABLE pk_fts_terms; CREATE TABLE pk_fts_terms (broken TEXT);');
+    broken.close();
     const runRipgrep = vi.fn(async () => ({
       stdout: JSON.stringify({
         type: 'match',
@@ -215,12 +280,15 @@ describe('project knowledge section index', () => {
       runRipgrep,
     });
     try {
-      const results = await provider.retrieve(
-        createProjectKnowledgeQuery({ task: 'Current fallback evidence' }),
-      );
+      const response = await provider.query({
+        kind: 'search',
+        query: createProjectKnowledgeQuery({ task: 'Current fallback evidence' }),
+      });
+      const results = response.kind === 'search' ? response.results : [];
       expect(results[0]).toMatchObject({ source, title: 'Recovery' });
       expect(runRipgrep).toHaveBeenCalled();
     } finally {
+      provider.close();
       await fs.rm(root, { recursive: true, force: true });
       await fs.rm(cacheRoot, { recursive: true, force: true });
     }
