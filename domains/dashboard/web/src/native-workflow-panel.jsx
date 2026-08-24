@@ -322,6 +322,8 @@ export function NativeWorkflowPanel({
   }, [onSelect, selectedSummary]);
   const selected = serverPaged ? selectedDetail : selectedSummary;
   const hasNativeChanges = Boolean(native && native.totalChangeCount > 0);
+  const isEmptyView = !pageLoading && visibleChanges.length === 0;
+  const isLoadingEmptyView = pageLoading && visibleChanges.length === 0;
 
   return (
     <div className="mx-auto min-w-0 max-w-dashboard">
@@ -337,7 +339,11 @@ export function NativeWorkflowPanel({
       <NativeSummaryCards native={native} loadedChanges={visibleChanges} />
       <SectionHead title="Native 变更工作区" hint="查看循环、验收、阻塞与恢复状态" />
       {!native || !hasNativeChanges ? (
-        <EmptyState />
+        <NativeWorkspaceEmptyState native={native} emptyProject />
+      ) : isLoadingEmptyView ? (
+        <NativeWorkspaceLoadingState native={native} tab={tab} onTab={onTab} />
+      ) : isEmptyView ? (
+        <NativeWorkspaceEmptyState native={native} tab={tab} query={query} onTab={onTab} />
       ) : (
         <DashboardWorkspaceRegion
           stableFrame
@@ -387,30 +393,96 @@ export function NativeWorkflowPanel({
   );
 }
 
-function NativeWorkspaceEmptyState({ native, tab, query, onTab }) {
-  const hasArchivedChanges = (native?.archivedChangeCount ?? 0) > 0;
-  const showArchiveShortcut = tab === 'active' && !query.trim() && hasArchivedChanges;
+function NativeWorkspaceTabs({ native, tab, onTab }) {
+  const tabs = [
+    ['active', '活跃', native?.activeChangeCount ?? 0],
+    ['archived', '已归档', native?.archivedChangeCount ?? 0],
+    ['all', '全部', native?.totalChangeCount ?? 0],
+  ];
   return (
-    <section className="native-workspace-empty flex min-h-[360px] items-center justify-center rounded-lg bg-bg p-8 text-center shadow-raised xl:col-span-1 2xl:col-span-2">
-      <div className="max-w-sm">
-        <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-accent-softer text-xl text-accent">
-          ◇
+    <div className="native-workspace-empty-tabs" role="tablist" aria-label="Native 变更范围">
+      {tabs.map(([value, label, count]) => (
+        <button
+          key={value}
+          type="button"
+          role="tab"
+          aria-selected={tab === value}
+          className={`native-change-tab ${tab === value ? 'active' : ''}`}
+          onClick={() => onTab?.(value)}
+        >
+          {label}
+          <span className="native-workspace-tab-count">{count}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function NativeWorkspaceFrame({ native, tab, onTab, children }) {
+  return (
+    <section className="native-workspace-empty overflow-hidden rounded-lg bg-bg shadow-raised">
+      <div className="native-workspace-empty-header">
+        <div>
+          <h3>变更记录</h3>
+          <p>浏览 Native change 的执行与归档状态</p>
+        </div>
+        <span className="native-workspace-empty-total">共 {native?.totalChangeCount ?? 0} 条</span>
+      </div>
+      {tab ? <NativeWorkspaceTabs native={native} tab={tab} onTab={onTab} /> : null}
+      {children}
+    </section>
+  );
+}
+
+function NativeWorkspaceLoadingState({ native, tab, onTab }) {
+  return (
+    <NativeWorkspaceFrame native={native} tab={tab} onTab={onTab}>
+      <div className="native-workspace-empty-body" aria-live="polite">
+        <Spin aria-label="正在加载 Native 变更列表" />
+        <p className="mt-3 text-sm text-muted">正在加载变更记录…</p>
+      </div>
+    </NativeWorkspaceFrame>
+  );
+}
+
+function NativeWorkspaceEmptyState({ native, tab, query = '', onTab, emptyProject = false }) {
+  const hasArchivedChanges = (native?.archivedChangeCount ?? 0) > 0;
+  const hasActiveChanges = (native?.activeChangeCount ?? 0) > 0;
+  const showArchiveShortcut = tab === 'active' && !query.trim() && hasArchivedChanges;
+  const showActiveShortcut = tab === 'archived' && !query.trim() && hasActiveChanges;
+  const title = emptyProject
+    ? '还没有 Native change'
+    : showArchiveShortcut
+      ? '当前没有活跃的 Native change'
+      : showActiveShortcut
+        ? '还没有已归档的 Native change'
+        : '没有匹配的 Native change';
+  const description = emptyProject
+    ? '启动 Native 工作流后，变更进度、验收结果和恢复状态会集中显示在这里。'
+    : showArchiveShortcut
+      ? '当前工作区没有进行中的变更，你可以继续查看已归档的历史记录。'
+      : showActiveShortcut
+        ? '当前还没有归档记录，你可以返回查看正在进行的变更。'
+        : '调整顶部搜索条件，或切换变更范围后再试。';
+  return (
+    <NativeWorkspaceFrame native={native} tab={emptyProject ? null : tab} onTab={onTab}>
+      <div className="native-workspace-empty-body text-center">
+        <span className="native-workspace-empty-icon" aria-hidden="true">
+          <FlagOutlined />
         </span>
-        <h3 className="mt-5 text-lg font-semibold tracking-tight">
-          {showArchiveShortcut ? '当前没有活跃的 Native change' : '没有匹配的 Native change'}
-        </h3>
-        <p className="mt-2 text-sm leading-relaxed text-muted">
-          {showArchiveShortcut
-            ? '当前 Native 工作均已归档，可查看只读历史。'
-            : '调整搜索条件或切换筛选后重试。'}
-        </p>
-        {showArchiveShortcut && (
-          <Button className="mt-5" type="primary" onClick={() => onTab('archived')}>
+        <h3 className="mt-5 text-lg font-semibold tracking-tight">{title}</h3>
+        <p className="mt-2 max-w-md text-sm leading-relaxed text-muted">{description}</p>
+        {showArchiveShortcut ? (
+          <Button className="mt-5" type="primary" onClick={() => onTab?.('archived')}>
             查看已归档变更
           </Button>
-        )}
+        ) : showActiveShortcut ? (
+          <Button className="mt-5" type="primary" onClick={() => onTab?.('active')}>
+            查看活跃变更
+          </Button>
+        ) : null}
       </div>
-    </section>
+    </NativeWorkspaceFrame>
   );
 }
 
@@ -1303,15 +1375,6 @@ function Pill({ tone = 'neutral', children }) {
     >
       <span className="break-words">{children}</span>
     </span>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div className="rounded-lg bg-bg p-12 text-center shadow-raised">
-      <div className="text-lg font-semibold">当前没有 Native change</div>
-      <p className="mt-2 text-sm text-muted">Native 状态出现后会在这里展示。</p>
-    </div>
   );
 }
 

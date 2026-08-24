@@ -256,7 +256,7 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
 
   await page.goto('/');
   await page.getByRole('menuitem', { name: '项目知识' }).click();
-  await expect(page.getByRole('heading', { name: '项目知识', exact: true })).toBeVisible();
+  await expect(page.getByLabel('项目规则状态与操作')).toBeVisible();
   await expect(page.getByRole('navigation', { name: '项目知识视图' })).toBeVisible();
   await expect(page.getByRole('complementary', { name: '知识分类' })).toBeVisible();
   await expect(page.getByRole('complementary', { name: '记录详情' })).toBeVisible();
@@ -332,36 +332,35 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   );
 
   await page.getByRole('button', { name: '设置' }).click();
-  await expect(page.getByRole('heading', { name: '项目知识设置' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Provider 配置' })).toBeVisible();
+  const settingsDialog = page.getByRole('dialog', { name: /Comet 设置/u });
+  await expect(settingsDialog.getByLabel('项目规则设置')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Provider 与检索' })).toBeVisible();
   await expect(page.getByText('COMET_KNOWLEDGE_TOKEN')).toBeVisible();
-  await expect(page.getByRole('button', { name: '保存 Provider' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '保存配置' })).toBeVisible();
   await expect(page.getByText('bearer-secret', { exact: true })).toHaveCount(0);
 
-  await page.getByRole('button', { name: '暂停当前项目' }).click();
-  await expect(page.getByText('当前项目已暂停项目知识', { exact: true })).toBeVisible();
+  await page.getByRole('switch', { name: '切换当前项目知识检索' }).click();
+  await expect(settingsDialog.getByText('当前项目已暂停项目知识', { exact: true })).toBeVisible();
   await expect(
     page.locator('.dashboard-plugin-menu-item').filter({ hasText: '项目知识' }),
   ).toHaveText('项目知识暂停');
-  const projectSettings = page.getByRole('region', { name: '当前项目' });
+  const projectSettings = settingsDialog.getByRole('region', { name: '当前项目' });
+  await expect(projectSettings).toContainText('当前项目已暂停向 Agent 提供知识');
   await expect(
-    projectSettings.locator('.dashboard-settings-facts > div').filter({ hasText: '插件状态' }),
-  ).toContainText('已启用');
-  await expect(
-    projectSettings.locator('.dashboard-settings-facts > div').filter({ hasText: '当前项目' }),
-  ).toContainText('已暂停');
-  await expect(page.getByRole('heading', { name: 'Provider 配置' })).toHaveCount(0);
-  await page.getByRole('button', { name: '重新启用' }).click();
-  await expect(page.getByRole('heading', { name: 'Provider 配置' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '暂停当前项目' })).toBeVisible();
+    projectSettings.getByRole('switch', { name: '切换当前项目知识检索' }),
+  ).not.toBeChecked();
+  await expect(page.getByRole('heading', { name: 'Provider 与检索' })).toHaveCount(0);
+  await page.getByRole('switch', { name: '切换当前项目知识检索' }).click();
+  await expect(page.getByRole('heading', { name: 'Provider 与检索' })).toBeVisible();
+  await expect(page.getByRole('switch', { name: '切换当前项目知识检索' })).toBeChecked();
 
   await page.getByRole('button', { name: '卸载插件' }).click();
   await page
-    .getByRole('dialog')
+    .getByRole('dialog', { name: '卸载项目知识插件？' })
     .getByRole('button', { name: /卸\s*载/u })
     .click();
   await expect(page.getByRole('heading', { name: '项目概览' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '项目知识设置' })).toHaveCount(0);
+  await expect(page.getByLabel('项目规则设置')).toHaveCount(0);
   await expect(page.getByRole('menuitem', { name: '项目知识' })).toHaveCount(0);
 });
 
@@ -516,7 +515,7 @@ test('adds global or project memory and explains why saved memories are applied'
   await page.goto('/');
   await page.getByRole('menuitem', { name: '个人记忆' }).click();
   await expect(
-    page.getByText('应用原因：全局 User Profile，任务开始时自动加载', { exact: true }),
+    page.getByText('为什么应用：全局 User Profile，任务开始时自动加载', { exact: true }),
   ).toBeVisible();
   await page.getByRole('button', { name: '新增偏好' }).click();
 
@@ -544,7 +543,7 @@ test('adds global or project memory and explains why saved memories are applied'
     });
   await expect(
     page
-      .getByLabel('User Profile', { exact: true })
+      .getByRole('region', { name: '个人记忆列表' })
       .getByText('提交前先运行最小相关测试', { exact: true }),
   ).toBeVisible();
 
@@ -571,16 +570,22 @@ test('adds global or project memory and explains why saved memories are applied'
     });
   await expect(
     page
-      .locator('section[aria-labelledby="dashboard-memory-list-title"]')
+      .getByRole('region', { name: '个人记忆列表' })
       .getByText('这个项目优先使用最小相关测试', { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText('应用原因：当前项目范围匹配', { exact: true })).toBeVisible();
+  await expect(page.getByText('为什么应用：当前项目范围匹配', { exact: true })).toBeVisible();
 
-  const projectSection = page.locator('section[aria-labelledby="dashboard-memory-list-title"]');
-  await projectSection.getByLabel('删除记忆').click();
-  await expect(
-    projectSection.getByText('这个项目优先使用最小相关测试', { exact: true }),
-  ).toHaveCount(0);
+  const projectSection = page.getByRole('region', { name: '个人记忆列表' });
+  await projectSection
+    .locator('.dashboard-memory-table-row')
+    .filter({ hasText: '这个项目优先使用最小相关测试' })
+    .getByLabel('删除记忆')
+    .click();
+  const archivedProjectMemory = projectSection
+    .locator('.dashboard-memory-table-row')
+    .filter({ hasText: '这个项目优先使用最小相关测试' });
+  await expect(archivedProjectMemory).toContainText('已归档');
+  await expect(page.getByRole('button', { name: '当前项目 0' })).toBeVisible();
 });
 
 test('collapses long personal memory records until the user expands them', async ({ page }) => {
@@ -711,16 +716,22 @@ test('collapses long personal memory records until the user expands them', async
   await page.goto('/');
   await page.getByRole('menuitem', { name: '个人记忆' }).click();
 
-  await expect(page.getByRole('heading', { name: 'User Profile' })).toBeVisible();
-  await expect(page.getByText('默认使用中文回复', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('个人记忆状态与操作')).toBeVisible();
+  await expect(
+    page
+      .getByRole('region', { name: '个人记忆列表' })
+      .getByText('默认使用中文回复', { exact: true }),
+  ).toBeVisible();
   await page.getByRole('button', { name: '新增偏好' }).click();
   const profileDialog = page.getByRole('dialog', { name: '新增偏好' });
   await expect(profileDialog).toBeVisible();
   await profileDialog.getByRole('button', { name: /取\s*消/u }).click();
-  const memoryText = page.locator(
-    'section[aria-labelledby="dashboard-memory-list-title"] .dashboard-memory-record-text',
-  );
-  const toggle = page.getByRole('button', { name: '展开完整记忆' });
+  const memoryText = page
+    .getByRole('region', { name: '个人记忆列表' })
+    .locator('.dashboard-memory-table-row')
+    .filter({ hasText: '长记忆内容。长记忆内容。' })
+    .locator('.dashboard-memory-table-copy > p');
+  const toggle = page.getByRole('button', { name: '展开完整记忆', exact: true });
   await expect(memoryText).toHaveClass(/is-collapsed/);
   await expect(memoryText).toHaveText(`${record.text.slice(0, 240)}…`);
   await expect(toggle).toHaveAttribute('aria-expanded', 'false');
@@ -728,13 +739,13 @@ test('collapses long personal memory records until the user expands them', async
   await toggle.click();
   await expect(memoryText).not.toHaveClass(/is-collapsed/);
   await expect(memoryText).toHaveText(record.text);
-  await expect(page.getByRole('button', { name: '收起完整记忆' })).toHaveAttribute(
+  await expect(page.getByRole('button', { name: '收起完整记忆', exact: true })).toHaveAttribute(
     'aria-expanded',
     'true',
   );
 
   await page.getByRole('button', { name: '设置' }).click();
-  await expect(page.getByRole('heading', { name: '个人记忆设置' })).toBeVisible();
+  await expect(page.getByLabel('个人记忆设置')).toBeVisible();
   await expect(
     page.getByText('Provider 切换不会迁移或删除已有数据；保存后重新加载页面即可生效'),
   ).toBeVisible();
@@ -875,17 +886,18 @@ test('shows a corrected personal memory immediately after persistence succeeds',
 
   await page.goto('/');
   await page.getByRole('menuitem', { name: '个人记忆' }).click();
-  const projectMemory = page.getByLabel('当前项目记忆');
-  await expect(projectMemory.getByText(originalRecord.text, { exact: true })).toBeVisible();
+  const projectMemory = page.getByRole('region', { name: '个人记忆列表' });
+  const projectMemoryRow = projectMemory.locator('.dashboard-memory-table-row').first();
+  await expect(projectMemoryRow.getByText(originalRecord.text, { exact: true })).toBeVisible();
 
-  await projectMemory.getByRole('button', { name: '纠正记忆' }).click();
+  await projectMemoryRow.getByRole('button', { name: '纠正记忆', exact: true }).click();
   const correctionDialog = page.getByRole('dialog', { name: '纠正这条记忆' });
   await correctionDialog.getByRole('textbox').fill('纠正后的项目记忆');
   await correctionDialog.getByRole('button', { name: /保\s*存/u }).click();
 
   await expect(correctionDialog).toBeHidden();
-  await expect(projectMemory.getByText('纠正后的项目记忆', { exact: true })).toBeVisible();
-  await expect(projectMemory.getByText(originalRecord.text, { exact: true })).toHaveCount(0);
+  await expect(projectMemoryRow.getByText('纠正后的项目记忆', { exact: true })).toBeVisible();
+  await expect(projectMemoryRow.getByText(originalRecord.text, { exact: true })).toHaveCount(0);
 });
 
 test('loads the demo dashboard and previews an artifact', async ({ page }) => {
@@ -1619,17 +1631,19 @@ test('fills a server-paged Native list when its footer is already visible', asyn
   await page.goto('/');
   await page.getByRole('button', { name: '打开导航' }).click();
   await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
+  await expect(page.locator('.native-workspace-empty')).toBeVisible();
+  await expect(page.locator('.native-changes-explorer')).toHaveCount(0);
+  await expect(page.locator('.dashboard-workspace-right')).toHaveCount(0);
   await page.getByRole('tab', { name: '已归档' }).click();
 
-  const list = page.locator('.native-change-list');
   await expect
     .poll(() => pageRequests.filter((request) => request.includes('status=archived')).length)
     .toBeGreaterThanOrEqual(1);
-  await expect(page.locator('.native-changes-count')).toHaveText('8');
-  await expect(list.locator('.ant-spin')).toBeVisible();
-  await expect(list.getByText('暂无已归档变更')).toHaveCount(0);
+  await expect(page.locator('.native-workspace-empty .ant-spin')).toBeVisible();
   releaseFirstPage();
   await expect.poll(() => pageRequests.length).toBeGreaterThanOrEqual(2);
+  const list = page.locator('.native-change-list');
+  await expect(page.locator('.native-changes-count')).toHaveText('8');
   await expect(list.locator('.native-change-row')).toHaveCount(8);
   await expect.poll(() => detailRequests).toContain('native-1');
   await list.locator('.native-change-row').nth(0).click();

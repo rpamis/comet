@@ -67,6 +67,12 @@ describe('dashboard web source contracts', () => {
     );
     expect(page?.[0]).toContain('dashboard-plugin-primary-action');
     expect(page?.[0]).toContain('dashboard-plugin-secondary-action');
+    expect(page?.[0]).not.toContain('icon={UserOutlined}');
+    expect(source).toContain('dashboard-content-shell-plugin-center');
+    expect(styles).toContain('Plugin workspaces belong to the Dashboard canvas');
+    expect(styles).toMatch(
+      /\.dashboard-memory-table-row\.is-selected,[\s\S]*?background: color-mix\([\s\S]*?box-shadow: inset 2px 0 var\(--color-fg-2\);/,
+    );
   });
 
   it('exposes the Project Knowledge registry and bounded management controls', async () => {
@@ -173,6 +179,7 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain("label: '项目规则'");
     expect(source).toContain("label: 'Comet 配置'");
     expect(source).toContain('统一管理个人记忆、项目规则与工作流配置');
+    expect(source).not.toContain('dashboard-settings-modal-icon');
     expect(source).toContain('个人记忆 Provider');
     expect(source).toContain('tokenConfigured');
     expect(source).toContain('Comet 默认工作流');
@@ -189,6 +196,9 @@ describe('dashboard web source contracts', () => {
     expect(styles).toContain('.dashboard-settings-modal.is-fullscreen');
     expect(styles).toContain('.dashboard-plugin-primary-action');
     expect(styles).toContain('.dashboard-plugin-secondary-action');
+    expect(styles).toContain(
+      '.dashboard-settings-modal .dashboard-settings-navigation .ant-menu-item-selected',
+    );
     expect(styles).toContain('height: 100dvh');
   });
 
@@ -198,19 +208,33 @@ describe('dashboard web source contracts', () => {
     expect(source).not.toContain('<span>变更工作区</span>');
     expect(source).not.toContain('只读连接 · 自动同步');
     expect(source).toContain('const [sidebarCollapsed, setSidebarCollapsed] = useState(false)');
-    expect(source).toContain('collapsedWidth={0}');
-    expect(source).toContain('aria-label="收起侧边栏"');
-    expect(source).toContain('aria-label="展开侧边栏"');
+    expect(source).toContain('collapsedWidth={64}');
+    expect(source).toContain('inlineCollapsed={collapsed}');
+    expect(source).not.toContain('aria-hidden={collapsed}\n        inert={collapsed}');
+    expect(source).toContain("aria-label={collapsed ? '展开侧边栏' : '收起侧边栏'}");
     expect(source).toContain('className="dashboard-sidebar-group"');
     expect(source).toContain('inlineIndent={12}');
     expect(styles).toContain('.dashboard-sidebar-group + .dashboard-sidebar-group');
     expect(styles).toContain('.dashboard-workbench.is-sidebar-collapsed');
+    expect(styles).toContain('--rail-w: 64px');
+    expect(styles).toContain('.ant-menu-inline-collapsed');
     expect(styles).toMatch(
       /\.dashboard-sidebar \.ant-menu-item\s*\{[\s\S]*?width: 100%;[\s\S]*?height: 38px;[\s\S]*?padding-inline: 11px !important;/,
     );
     expect(styles).toMatch(
       /\.dashboard-sidebar-settings\s*\{[\s\S]*?width: 100%;[\s\S]*?min-height: 38px;[\s\S]*?padding-inline: 11px;/,
     );
+  });
+
+  it('lets plugin navigation carry the page title while the canvas starts with state and actions', async () => {
+    const [source, styles] = await Promise.all([readDashboardSource(), readDashboardStyles()]);
+
+    expect(source).toContain('className="dashboard-plugin-context-bar"');
+    expect(source).not.toContain('title="个人记忆"');
+    expect(source).toContain('aria-label="项目规则状态与操作"');
+    expect(source).not.toContain('<h2>{page.label}</h2>');
+    expect(styles).toContain('.dashboard-plugin-context-bar');
+    expect(styles).toContain('--dashboard-plugin-body-size: 13px');
   });
 
   it('uses the change-detail width to switch between stacked and two-column panels', async () => {

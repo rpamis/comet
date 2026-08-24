@@ -136,7 +136,7 @@ body {
   }
 
   .dashboard-workbench.is-sidebar-collapsed {
-    --rail-w: 0px;
+    --rail-w: 64px;
   }
 }
 
@@ -161,6 +161,11 @@ body {
   width: 100%;
   max-width: none;
   margin-inline: 0;
+}
+
+.dashboard-content-shell-plugin-center {
+  padding-bottom: 0;
+  background: var(--color-bg);
 }
 
 .dashboard-workbench
@@ -3858,13 +3863,7 @@ body {
 }
 
 .dashboard-workbench.is-sidebar-collapsed .dashboard-sidebar-content {
-  opacity: 0;
-  pointer-events: none;
-  transform: translateX(-14px);
-}
-
-.dashboard-workbench.is-sidebar-collapsed .dashboard-sidebar {
-  border-right-color: transparent !important;
+  width: 64px;
 }
 
 .dashboard-sidebar-brand {
@@ -3908,6 +3907,29 @@ body {
   border-radius: 0 3px 3px 0;
   background: #2f83e8;
   content: '';
+}
+
+.dashboard-sidebar .dashboard-plugin-menu .ant-menu-item-selected {
+  background: color-mix(in oklab, var(--color-surface-warm) 88%, var(--color-bg)) !important;
+  color: var(--color-fg) !important;
+}
+
+.dashboard-sidebar .dashboard-plugin-menu .ant-menu-item-selected::before {
+  display: none;
+}
+
+.dashboard-sidebar-menu:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.dashboard-sidebar .dashboard-sidebar-menu:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.dashboard-sidebar-menu .ant-menu-item:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--color-border);
 }
 
 .dashboard-sidebar .ant-menu-light .ant-menu-item:hover:not(.ant-menu-item-selected) {
@@ -4305,6 +4327,92 @@ body {
   border-radius: 15px;
   background: var(--color-bg);
   box-shadow: var(--shadow-card);
+}
+
+.native-workspace-empty {
+  min-height: clamp(360px, 50dvh, 560px);
+  border: 1px solid var(--color-border);
+  border-radius: 15px;
+  box-shadow: 0 10px 30px rgba(31, 43, 64, 0.035);
+}
+
+.native-workspace-empty-header {
+  display: flex;
+  min-height: 72px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--color-border-soft);
+}
+
+.native-workspace-empty-header h3 {
+  margin: 0;
+  color: var(--color-fg);
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 22px;
+}
+
+.native-workspace-empty-header p {
+  margin: 2px 0 0;
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.native-workspace-empty-total {
+  flex: none;
+  color: var(--color-meta);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.native-workspace-empty-tabs {
+  display: flex;
+  height: 48px;
+  align-items: flex-end;
+  gap: 28px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--color-border-soft);
+}
+
+.native-workspace-empty-tabs .native-change-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.native-workspace-tab-count {
+  color: var(--color-meta);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.native-workspace-empty-tabs .native-change-tab.active .native-workspace-tab-count {
+  color: currentColor;
+}
+
+.native-workspace-empty-body {
+  display: flex;
+  min-height: 300px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  padding: 48px 24px 64px;
+}
+
+.native-workspace-empty-icon {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  border: 1px solid rgba(47, 133, 255, 0.14);
+  border-radius: 16px;
+  background: var(--color-accent-softer);
+  color: var(--color-accent);
+  font-size: 21px;
 }
 
 .native-changes-explorer {
@@ -5255,6 +5363,12 @@ body {
   background: #1b2d48 !important;
 }
 
+:root[data-theme='dark'] .dashboard-sidebar .dashboard-plugin-menu .ant-menu-item-selected,
+:host[data-theme='dark'] .dashboard-sidebar .dashboard-plugin-menu .ant-menu-item-selected {
+  color: var(--color-fg) !important;
+  background: color-mix(in oklab, var(--color-surface-warm) 88%, var(--color-bg)) !important;
+}
+
 :root[data-theme='dark'] .dashboard-tool-page-memory,
 :root[data-theme='dark'] .dashboard-tool-page-knowledge,
 :host[data-theme='dark'] .dashboard-tool-page-memory,
@@ -5899,6 +6013,103 @@ body {
   overflow-wrap: anywhere;
 }
 
+/* Plugin workspaces belong to the Dashboard canvas. Keep hierarchy in spacing
+   and dividers instead of nested cards, tinted rails, or competing accents. */
+.dashboard-tool-page-memory,
+.dashboard-tool-page-knowledge {
+  color: var(--color-fg);
+}
+
+.dashboard-tool-page-memory .dashboard-tool-header,
+.dashboard-tool-page-knowledge .dashboard-tool-header {
+  margin-bottom: 0;
+  padding-top: 0;
+  border-bottom-color: var(--color-border-soft);
+}
+
+.dashboard-tool-page-memory .dashboard-tool-heading,
+.dashboard-tool-page-knowledge .dashboard-tool-heading {
+  gap: 0;
+}
+
+.dashboard-tool-page-memory .dashboard-tool-chip {
+  min-height: auto;
+  padding: 0 0 0 8px;
+  border: 0;
+  border-left: 1px solid var(--color-border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-muted);
+  font-weight: 540;
+}
+
+.dashboard-tool-page-memory .dashboard-tool-chip-label {
+  color: var(--color-meta);
+}
+
+.dashboard-tool-page-memory .ant-btn-primary,
+.dashboard-tool-page-knowledge .ant-btn-primary,
+.dashboard-settings-modal .ant-btn-primary {
+  border-color: var(--color-fg) !important;
+  background: var(--color-fg) !important;
+  color: var(--color-bg) !important;
+  box-shadow: none !important;
+}
+
+.dashboard-memory-workspace,
+.dashboard-knowledge-registry {
+  background: transparent;
+}
+
+.dashboard-memory-filter-rail,
+.dashboard-memory-inspector,
+.dashboard-knowledge-explorer,
+.dashboard-knowledge-inspector {
+  background: transparent;
+}
+
+.dashboard-memory-filter-rail nav button:hover,
+.dashboard-memory-filter-rail nav button.is-active,
+.dashboard-knowledge-category:hover,
+.dashboard-knowledge-category:focus-visible,
+.dashboard-knowledge-category.is-active {
+  background: color-mix(in oklab, var(--color-surface-warm) 84%, var(--color-bg));
+  color: var(--color-fg);
+}
+
+.dashboard-memory-filter-rail nav button.is-active,
+.dashboard-knowledge-category.is-active {
+  font-weight: 620;
+}
+
+.dashboard-knowledge-category.is-active {
+  border-left-color: transparent;
+}
+
+.dashboard-memory-table-row:hover,
+.dashboard-memory-table-row:focus-visible,
+.dashboard-knowledge-ledger-row:hover,
+.dashboard-knowledge-ledger-row:focus-visible {
+  background: color-mix(in oklab, var(--color-surface-warm) 58%, var(--color-bg));
+}
+
+.dashboard-memory-table-row.is-selected,
+.dashboard-knowledge-ledger-row.is-selected {
+  background: color-mix(in oklab, var(--color-surface-warm) 92%, var(--color-bg));
+  box-shadow: inset 2px 0 var(--color-fg-2);
+}
+
+.dashboard-memory-table-head,
+.dashboard-memory-group-title,
+.dashboard-knowledge-ledger-head {
+  background: transparent;
+}
+
+.dashboard-memory-filter-search .ant-input-affix-wrapper,
+.dashboard-knowledge-explorer-search .ant-input-affix-wrapper {
+  background: transparent;
+}
+
 /* Settings stays in context instead of replacing the active workspace. */
 .dashboard-settings-modal-root .ant-modal-mask {
   background: rgba(20, 29, 43, 0.28) !important;
@@ -5930,7 +6141,7 @@ body {
   border: 1px solid var(--color-border);
   border-radius: 14px;
   background: var(--color-bg);
-  box-shadow: 0 24px 64px rgba(20, 29, 43, 0.2);
+  box-shadow: 0 22px 54px rgba(20, 29, 43, 0.18);
   transition:
     height 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
     max-height 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
@@ -5961,7 +6172,7 @@ body {
   display: flex;
   align-items: center;
   min-width: 0;
-  gap: 12px;
+  gap: 0;
 }
 
 .dashboard-settings-modal-expand {
@@ -5992,19 +6203,6 @@ body {
 .dashboard-settings-modal-footer .ant-btn-primary {
   min-height: 36px;
   padding-inline: 16px;
-}
-
-.dashboard-settings-modal-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 38px;
-  height: 38px;
-  flex: 0 0 38px;
-  border-radius: 10px;
-  background: var(--color-accent-soft);
-  color: var(--color-accent);
-  font-size: 18px;
 }
 
 .dashboard-settings-modal-title-row {
@@ -6057,7 +6255,12 @@ body {
   border-right: 1px solid var(--color-border-soft);
   border-radius: 0;
   box-shadow: none;
-  background: color-mix(in oklab, var(--color-surface-warm) 38%, var(--color-bg));
+  background: var(--color-bg);
+}
+
+.dashboard-settings-modal .dashboard-settings-navigation .ant-menu-item-selected {
+  background: color-mix(in oklab, var(--color-surface-warm) 90%, var(--color-bg)) !important;
+  color: var(--color-fg) !important;
 }
 
 .dashboard-settings-modal .dashboard-settings-navigation .ant-menu:focus-visible {
@@ -6323,6 +6526,149 @@ body {
 
 .dashboard-settings-modal.is-fullscreen .dashboard-settings-shell {
   height: 100%;
+}
+
+/* The selected navigation item already names plugin and settings pages. Keep
+   their canvas focused on state and actions instead of repeating page titles. */
+.dashboard-plugin-context-bar,
+.dashboard-knowledge-workspace-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 58px;
+  gap: 16px;
+  padding: 10px 0 12px;
+  border-bottom: 1px solid var(--color-border-soft);
+}
+
+.dashboard-plugin-context-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  min-width: 0;
+  gap: 0;
+}
+
+.dashboard-plugin-context-meta .dashboard-tool-chip:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.dashboard-knowledge-workspace-head .dashboard-knowledge-service-state {
+  margin: 0;
+}
+
+/* Compact settings typography keeps the modal subordinate to the workspace. */
+.dashboard-settings-modal .dashboard-settings-page {
+  --dashboard-plugin-caption-size: 11px;
+  --dashboard-plugin-supporting-size: 12px;
+  --dashboard-plugin-body-size: 13px;
+  --dashboard-plugin-section-size: 14px;
+}
+
+.dashboard-settings-modal-title-row > strong {
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.dashboard-settings-modal-title p {
+  font-size: 12px;
+}
+
+.dashboard-settings-modal .dashboard-settings-navigation .ant-menu-item {
+  height: 36px;
+  font-size: 13px;
+  line-height: 36px;
+}
+
+.dashboard-settings-modal .dashboard-settings-section-head {
+  display: flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 10px 0 12px;
+  gap: 10px;
+}
+
+.dashboard-settings-modal .dashboard-settings-section-head p {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dashboard-settings-modal .dashboard-settings-panel-head {
+  min-height: 46px;
+  padding-block: 11px 7px;
+}
+
+.dashboard-settings-modal .dashboard-settings-panel-head h4 {
+  font-size: 14px;
+}
+
+.dashboard-settings-modal .dashboard-memory-setting {
+  min-height: 52px;
+}
+
+/* Desktop collapse keeps a functional Codex-like icon rail instead of
+   removing navigation from the screen. */
+@media (min-width: 1024px) {
+  .dashboard-workbench.is-sidebar-collapsed .dashboard-sidebar {
+    border-right-color: var(--color-border-soft) !important;
+  }
+
+  .dashboard-workbench.is-sidebar-collapsed .dashboard-sidebar-brand {
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .dashboard-workbench.is-sidebar-collapsed .dashboard-sidebar-brand > img,
+  .dashboard-workbench.is-sidebar-collapsed .dashboard-sidebar-brand-copy,
+  .dashboard-workbench.is-sidebar-collapsed .dashboard-sidebar-label,
+  .dashboard-workbench.is-sidebar-collapsed .dashboard-sidebar-settings > span {
+    display: none;
+  }
+
+  .dashboard-workbench.is-sidebar-collapsed .dashboard-sidebar-collapse {
+    margin: 0;
+  }
+
+  .dashboard-workbench.is-sidebar-collapsed .dashboard-sidebar-navigation {
+    padding-inline: 8px;
+  }
+
+  .dashboard-workbench.is-sidebar-collapsed .dashboard-sidebar-group + .dashboard-sidebar-group {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--color-border-soft);
+  }
+
+  .dashboard-workbench.is-sidebar-collapsed .dashboard-sidebar .ant-menu-inline-collapsed {
+    width: 48px;
+  }
+
+  .dashboard-workbench.is-sidebar-collapsed .dashboard-sidebar .ant-menu-item {
+    width: 40px;
+    height: 40px;
+    margin: 2px 4px;
+    padding-inline: calc(50% - 8px) !important;
+    line-height: 40px;
+  }
+
+  .dashboard-workbench.is-sidebar-collapsed .dashboard-sidebar .ant-menu-item::before {
+    display: none;
+  }
+
+  .dashboard-workbench.is-sidebar-collapsed .dashboard-sidebar-footer {
+    padding-inline: 8px;
+  }
+
+  .dashboard-workbench.is-sidebar-collapsed .dashboard-sidebar-settings {
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    margin-inline: 4px;
+    padding: 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

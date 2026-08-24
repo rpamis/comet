@@ -328,7 +328,6 @@ function DashboardApp({ theme, onToggleTheme }) {
   const nativePageRequestRef = useRef(null);
   const nativeDetailRequestRef = useRef(null);
   const detailRequestRef = useRef(null);
-  const sidebarRestoreRef = useRef(null);
   const selectedIdRef = useRef(null);
   const pagesRef = useRef({ active: null, archived: null, all: null });
   const nativePagesRef = useRef({ active: null, archived: null, all: null });
@@ -754,6 +753,11 @@ function DashboardApp({ theme, onToggleTheme }) {
             if (surface === 'settings') {
               setSettingsPage(null);
               setSettingsError(null);
+              if (pluginSelectionRef.current === pluginId) {
+                setPluginPage(null);
+                setPluginError(null);
+                setPluginSelection(null);
+              }
               const nextSection = nextPages.find((page) => page.pluginId !== pluginId)?.pluginId;
               if (nextSection) setSettingsSection(nextSection);
               else setSettingsOpen(false);
@@ -1046,12 +1050,6 @@ function DashboardApp({ theme, onToggleTheme }) {
 
   const selectTab = useCallback((nextTab) => setTab(nextTab), []);
 
-  useEffect(() => {
-    if (!sidebarCollapsed) return undefined;
-    const frame = window.requestAnimationFrame(() => sidebarRestoreRef.current?.focus());
-    return () => window.cancelAnimationFrame(frame);
-  }, [sidebarCollapsed]);
-
   return (
     <main
       className={`dashboard-workbench min-h-screen bg-surface text-fg antialiased lg:grid lg:grid-cols-[var(--rail-w)_1fr]${
@@ -1098,6 +1096,7 @@ function DashboardApp({ theme, onToggleTheme }) {
           setPluginError(null);
         }}
         onCollapse={() => setSidebarCollapsed(true)}
+        onExpand={() => setSidebarCollapsed(false)}
         onClose={() => setRailOpen(false)}
       />
       {railOpen && (
@@ -1145,9 +1144,6 @@ function DashboardApp({ theme, onToggleTheme }) {
           query={query}
           onQuery={setQuery}
           onMenu={() => setRailOpen(true)}
-          sidebarCollapsed={sidebarCollapsed}
-          sidebarRestoreRef={sidebarRestoreRef}
-          onSidebarExpand={() => setSidebarCollapsed(false)}
           onRefresh={async () => {
             await refresh(true);
             await reloadPluginPages();
@@ -1156,7 +1152,11 @@ function DashboardApp({ theme, onToggleTheme }) {
           theme={theme}
           onToggleTheme={onToggleTheme}
         />
-        <div className="dashboard-content-shell">
+        <div
+          className={`dashboard-content-shell${
+            pluginSelection ? ' dashboard-content-shell-plugin-center' : ''
+          }`}
+        >
           <div
             className={`dashboard-content-inner${
               pluginSelection ? ' dashboard-content-inner-plugin-center' : ''
@@ -1300,9 +1300,6 @@ function Topbar({
   activeProjectId,
   onProjectSelect,
   onMenu,
-  sidebarCollapsed,
-  sidebarRestoreRef,
-  onSidebarExpand,
   onRefresh,
   theme,
   onToggleTheme,
@@ -1317,18 +1314,6 @@ function Topbar({
         aria-label="打开导航"
       />
       <div className="comet-header-context">
-        {sidebarCollapsed ? (
-          <Tooltip title="展开侧边栏" placement="bottom">
-            <Button
-              className="comet-sidebar-restore !hidden lg:!inline-flex"
-              type="text"
-              ref={sidebarRestoreRef}
-              icon={<MenuUnfoldOutlined />}
-              onClick={onSidebarExpand}
-              aria-label="展开侧边栏"
-            />
-          </Tooltip>
-        ) : null}
         <Select
           className="comet-project-select"
           value={activeProjectId ?? undefined}
@@ -1505,29 +1490,19 @@ function SectionHead({ title, hint }) {
   );
 }
 
-function PluginCenterHeader({ icon: Icon, title, description, meta = [], actions = null }) {
+function PluginCenterHeader({ meta = [], actions = null }) {
   return (
-    <header className="dashboard-tool-header">
-      <div className="dashboard-tool-heading">
-        <span className="dashboard-tool-icon" aria-hidden="true">
-          <Icon />
-        </span>
-        <div className="dashboard-tool-heading-copy">
-          <span className="dashboard-tool-eyebrow">插件中心</span>
-          <div className="dashboard-tool-title-row">
-            <h2>{title}</h2>
-            {meta.map((item) => (
-              <span
-                key={`${item.label}-${item.value}`}
-                className={`dashboard-tool-chip dashboard-tool-chip-${item.tone ?? 'neutral'}`}
-              >
-                <span className="dashboard-tool-chip-label">{item.label}</span>
-                {item.value}
-              </span>
-            ))}
-          </div>
-          <p>{description}</p>
-        </div>
+    <header className="dashboard-plugin-context-bar" aria-label="个人记忆状态与操作">
+      <div className="dashboard-plugin-context-meta">
+        {meta.map((item) => (
+          <span
+            key={`${item.label}-${item.value}`}
+            className={`dashboard-tool-chip dashboard-tool-chip-${item.tone ?? 'neutral'}`}
+          >
+            <span className="dashboard-tool-chip-label">{item.label}</span>
+            {item.value}
+          </span>
+        ))}
       </div>
       {actions && <div className="dashboard-tool-actions">{actions}</div>}
     </header>
@@ -2779,6 +2754,7 @@ function AntSidebar({
   onSettings,
   onPluginSelect,
   onCollapse,
+  onExpand,
   onClose,
 }) {
   const navigation = (
@@ -2788,6 +2764,7 @@ function AntSidebar({
         <Menu
           className="dashboard-sidebar-menu dashboard-workflow-menu"
           mode="inline"
+          inlineCollapsed={collapsed}
           inlineIndent={12}
           selectedKeys={pluginSelection ? [] : [workflow]}
           items={[
@@ -2806,6 +2783,7 @@ function AntSidebar({
         <Menu
           className="dashboard-sidebar-menu dashboard-plugin-menu"
           mode="inline"
+          inlineCollapsed={collapsed}
           inlineIndent={12}
           selectedKeys={pluginSelection ? [pluginSelection] : []}
           items={pluginPages.map((page) => {
@@ -2848,6 +2826,8 @@ function AntSidebar({
       type="button"
       className={`dashboard-sidebar-settings${settingsOpen ? ' is-active' : ''}`}
       aria-pressed={settingsOpen}
+      aria-label="设置"
+      title="设置"
       disabled={!settingsReady}
       onClick={() => {
         onSettings();
@@ -2864,33 +2844,36 @@ function AntSidebar({
         className="dashboard-sidebar !hidden !bg-bg lg:!block"
         width={228}
         collapsed={collapsed}
-        collapsedWidth={0}
+        collapsedWidth={64}
         collapsible
         trigger={null}
-        aria-hidden={collapsed}
-        inert={collapsed}
         theme="light"
       >
         <div className="dashboard-sidebar-content flex h-full flex-col">
           <div className="dashboard-sidebar-brand flex items-center gap-2">
             <img src="/favicon.png" alt="Comet" className="size-7 rounded-[7px]" />
-            <div className="dashboard-sidebar-brand-copy">
+            <div className="dashboard-sidebar-brand-copy" aria-hidden={collapsed}>
               <strong>Comet Dashboard</strong>
               <div className="text-xs text-meta">Agent 工作台</div>
             </div>
-            <Tooltip title="收起侧边栏" placement="right">
+            <Tooltip title={collapsed ? '展开侧边栏' : '收起侧边栏'} placement="right">
               <Button
                 className="dashboard-sidebar-collapse"
                 type="text"
-                icon={<MenuFoldOutlined />}
-                onClick={onCollapse}
-                aria-label="收起侧边栏"
+                icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+                onClick={collapsed ? onExpand : onCollapse}
+                aria-label={collapsed ? '展开侧边栏' : '收起侧边栏'}
               />
             </Tooltip>
           </div>
           <div className="dashboard-sidebar-navigation">{navigation}</div>
           <div className="dashboard-sidebar-footer">
-            <div className="dashboard-sidebar-label dashboard-sidebar-footer-label">系统</div>
+            <div
+              className="dashboard-sidebar-label dashboard-sidebar-footer-label"
+              aria-hidden={collapsed}
+            >
+              系统
+            </div>
             {settingsButton}
           </div>
         </div>
@@ -2994,9 +2977,6 @@ function DashboardSettingsOverlay({
       title={
         <div className="dashboard-settings-modal-title">
           <div className="dashboard-settings-modal-title-copy">
-            <span className="dashboard-settings-modal-icon" aria-hidden="true">
-              <SettingOutlined />
-            </span>
             <div>
               <div className="dashboard-settings-modal-title-row">
                 <strong>Comet 设置</strong>
@@ -3117,17 +3097,12 @@ function DashboardSettingsPage({
 
 function SettingsSectionHead({ icon: Icon, title, description, status }) {
   return (
-    <div className="dashboard-settings-section-head">
+    <div className="dashboard-settings-section-head" aria-label={title}>
       <span className="dashboard-tool-panel-icon" aria-hidden="true">
         <Icon />
       </span>
-      <div>
-        <div className="dashboard-settings-section-title-row">
-          <h3>{title}</h3>
-          {status && <span className="dashboard-tool-counter">{status}</span>}
-        </div>
-        <p>{description}</p>
-      </div>
+      <p>{description}</p>
+      {status && <span className="dashboard-tool-counter">{status}</span>}
     </div>
   );
 }
@@ -4695,19 +4670,13 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
 
   return (
     <div className="dashboard-tool-page dashboard-tool-page-knowledge min-w-0">
-      <header className="dashboard-knowledge-workspace-head">
-        <div className="min-w-0">
-          <div className="dashboard-knowledge-title-row">
-            <h2>{page.label}</h2>
-            <span
-              className={`dashboard-knowledge-service-state ${serviceHealthy ? 'is-healthy' : 'is-warning'}`}
-            >
-              <span className="dashboard-tool-state-dot" aria-hidden="true" />
-              {disabled ? '服务已暂停' : configured === '需要检查' ? '需要检查' : '服务正常'}
-            </span>
-          </div>
-          <p>管理当前项目的知识来源、检索状态与应用条件记录</p>
-        </div>
+      <header className="dashboard-knowledge-workspace-head" aria-label="项目规则状态与操作">
+        <span
+          className={`dashboard-knowledge-service-state ${serviceHealthy ? 'is-healthy' : 'is-warning'}`}
+        >
+          <span className="dashboard-tool-state-dot" aria-hidden="true" />
+          {disabled ? '服务已暂停' : configured === '需要检查' ? '需要检查' : '服务正常'}
+        </span>
         <Button
           className="dashboard-knowledge-create-button dashboard-plugin-primary-action"
           type="primary"
@@ -5163,9 +5132,6 @@ function PersonalMemoryCenter({ data, onInvoke }) {
   return (
     <div className="dashboard-tool-page dashboard-tool-page-memory min-w-0">
       <PluginCenterHeader
-        icon={UserOutlined}
-        title="个人记忆"
-        description="集中管理跨会话偏好、项目经验与任务上下文"
         meta={[
           {
             label: 'Provider',
