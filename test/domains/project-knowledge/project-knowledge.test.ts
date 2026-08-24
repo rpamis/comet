@@ -352,6 +352,47 @@ describe('project knowledge configuration', () => {
     expect(config?.knowledge).toEqual({ provider: 'local' });
   });
 
+  test('preserves local include patterns when Dashboard switches Provider', async () => {
+    const root = await tempProject();
+    const storageStore = new MemoryPluginStorageStore();
+    let updated: unknown;
+    try {
+      const module = await createProjectKnowledgeModule(
+        {
+          storage: await storageStore.open(
+            'comet.project-knowledge',
+            'project',
+            'provider-switch-project',
+          ),
+          reportDiagnostic: () => undefined,
+        } as never,
+        {
+          projectRoot: root,
+          knowledgeConfig: {
+            provider: 'local',
+            local: { include: ['docs/architecture/**/*.md'] },
+          },
+          updateKnowledgeConfig: async (config) => {
+            updated = config;
+          },
+        },
+      );
+
+      await module.invoke?.('configure-provider', {
+        provider: 'remote',
+        remote: { endpoint: 'https://example.test/retrieve', timeoutMs: 1200 },
+      });
+
+      expect(updated).toEqual({
+        provider: 'remote',
+        local: { include: ['docs/architecture/**/*.md'] },
+        remote: { endpoint: 'https://example.test/retrieve', timeout_ms: 1200 },
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   test('keeps recent diagnostics across project knowledge module instances', async () => {
     const storageStore = new MemoryPluginStorageStore();
     const createContext = async () =>
@@ -510,6 +551,65 @@ describe('project knowledge corpus and local provider', () => {
       const corpus = await discoverProjectKnowledgeCorpus({ projectRoot: root });
 
       expect(corpus.map((entry) => entry.source)).toEqual(['docs/comet/specs/native.md']);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test('appends configured local Markdown glob documents and deduplicates matches', async () => {
+    const root = await tempProject();
+    try {
+      await fs.mkdir(path.join(root, '.comet'), { recursive: true });
+      await fs.writeFile(
+        path.join(root, '.comet', 'config.yaml'),
+        [
+          'schema: comet.project.v1',
+          'default_workflow: native',
+          'workflows: [native]',
+          'knowledge:',
+          '  provider: local',
+          '  local:',
+          '    include:',
+          '      - docs/architecture/**/*.md',
+          '      - docs/architecture/**/*.md',
+          '      - docs/comet/specs/**/*.md',
+          '      - packages/*/README.MD',
+          'native:',
+          '  artifact_root: docs',
+          '',
+        ].join('\n'),
+      );
+      const files = [
+        'docs/comet/specs/native.md',
+        'docs/architecture/decisions/adr.md',
+        'docs/architecture/overview.md',
+        'packages/core/README.MD',
+        'packages/core/notes.txt',
+      ];
+      for (const file of files) {
+        await fs.mkdir(path.dirname(path.join(root, file)), { recursive: true });
+        await fs.writeFile(path.join(root, file), `# ${file}\n\nCustom project knowledge.\n`);
+      }
+
+      const corpus = await discoverProjectKnowledgeCorpus({ projectRoot: root });
+
+      expect(corpus.map((entry) => entry.source)).toEqual([
+        'docs/architecture/decisions/adr.md',
+        'docs/architecture/overview.md',
+        'docs/comet/specs/native.md',
+        'packages/core/README.MD',
+      ]);
+      expect(
+        corpus
+          .filter((entry) => entry.source.includes('architecture'))
+          .every((entry) => entry.kind === 'custom'),
+      ).toBe(true);
+      expect(corpus.find((entry) => entry.source === 'packages/core/README.MD')?.kind).toBe(
+        'custom',
+      );
+      expect(corpus.find((entry) => entry.source === 'docs/comet/specs/native.md')?.kind).toBe(
+        'native-spec',
+      );
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }

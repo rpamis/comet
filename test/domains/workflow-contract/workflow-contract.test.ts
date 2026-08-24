@@ -117,6 +117,61 @@ describe('workflow contract normalization', () => {
     expect(merged.extension).toEqual({ keep: true });
   });
 
+  it('normalizes and round-trips custom local project knowledge include patterns', () => {
+    const parsed = parseWorkflowProjectConfigDocument(
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'workflows: [native]',
+        'knowledge:',
+        '  provider: local',
+        '  local:',
+        '    include:',
+        '      - docs/architecture/**/*.md',
+        '      - docs/architecture/**/*.md',
+        '      - packages/*/README.MD',
+        'native:',
+        '  artifact_root: docs',
+        '',
+      ].join('\n'),
+    );
+
+    expect(parsed.config?.knowledge).toEqual({
+      provider: 'local',
+      local: { include: ['docs/architecture/**/*.md', 'packages/*/README.MD'] },
+    });
+    expect(mergeWorkflowProjectConfigDocument(parsed.value, parsed.config!).knowledge).toEqual({
+      provider: 'local',
+      local: { include: ['docs/architecture/**/*.md', 'packages/*/README.MD'] },
+    });
+  });
+
+  it.each([
+    ['absolute', '/docs/**/*.md'],
+    ['parent traversal', '../docs/**/*.md'],
+    ['backslash', 'docs\\**\\*.md'],
+    ['empty', ''],
+    ['non-markdown', 'docs/**/*.txt'],
+  ])('rejects unsafe custom knowledge include pattern: %s', (_label, pattern) => {
+    expect(() =>
+      parseWorkflowProjectConfigDocument(
+        [
+          'schema: comet.project.v1',
+          'default_workflow: native',
+          'workflows: [native]',
+          'knowledge:',
+          '  provider: local',
+          '  local:',
+          '    include:',
+          pattern.includes('\\') ? `      - ${pattern}` : `      - "${pattern}"`,
+          'native:',
+          '  artifact_root: docs',
+          '',
+        ].join('\n'),
+      ),
+    ).toThrow(/knowledge\.local\.include\[0\]/u);
+  });
+
   it('normalizes project-local Hook allow paths and rejects unsafe paths', () => {
     const parsed = parseWorkflowProjectConfigDocument(
       [

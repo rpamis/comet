@@ -1278,6 +1278,16 @@ function DashboardApp({ theme, onToggleTheme }) {
           }}
           onSaveConfig={async (config) => {
             if (!activeProjectId || !settingsConfig) return;
+            const previousKnowledge = settingsConfig.knowledge ?? {
+              provider: 'local',
+              localInclude: [],
+            };
+            const nextKnowledge = config.knowledge ?? previousKnowledge;
+            const knowledgePathsChanged =
+              nextKnowledge.provider === 'local' &&
+              (previousKnowledge.provider !== 'local' ||
+                JSON.stringify(nextKnowledge.localInclude ?? []) !==
+                  JSON.stringify(previousKnowledge.localInclude ?? []));
             try {
               const next = await saveDashboardProjectConfig(activeProjectId, {
                 expectedRevision: settingsConfig.revision,
@@ -1285,6 +1295,12 @@ function DashboardApp({ theme, onToggleTheme }) {
               });
               projectConfigCacheRef.current.set(activeProjectId, next);
               setSettingsConfig(next);
+              if (knowledgePathsChanged) {
+                await invokeActivePlugin('comet.project-knowledge', 'refresh', {}, 'settings');
+                if (pluginSelectionRef.current === 'comet.project-knowledge') {
+                  setPluginRefreshToken((value) => value + 1);
+                }
+              }
               toast('Comet 配置已保存');
               await refresh(false);
             } catch (error) {
@@ -3124,6 +3140,10 @@ function toCometConfigDraft(data) {
     workflows: [...data.workflows],
     ambientResume: data.ambientResume,
     hookAllowPaths: data.hookAllowPaths.join('\n'),
+    knowledge: {
+      provider: data.knowledge?.provider ?? 'local',
+      localInclude: [...(data.knowledge?.localInclude ?? [])],
+    },
     native: {
       ...data.native,
       maxVerifyFailures: String(data.native.maxVerifyFailures),
@@ -3154,6 +3174,12 @@ function CometConfigSettings({ data, onSave }) {
       classic: { ...current.classic, [key]: value },
     }));
   };
+  const setKnowledge = (localInclude) => {
+    setDraft((current) => ({
+      ...current,
+      knowledge: { ...current.knowledge, localInclude },
+    }));
+  };
   const save = async () => {
     if (draft.workflows.length === 0) {
       setSaveError('至少需要启用一个工作流。');
@@ -3175,6 +3201,10 @@ function CometConfigSettings({ data, onSave }) {
           .split(/\r?\n/u)
           .map((item) => item.trim())
           .filter(Boolean),
+        knowledge: {
+          provider: draft.knowledge.provider,
+          localInclude: draft.knowledge.localInclude.filter((item) => item.trim()),
+        },
         native: { ...draft.native, maxVerifyFailures },
         classic: draft.classic,
       });
@@ -3266,6 +3296,66 @@ function CometConfigSettings({ data, onSave }) {
               setDraft((current) => ({ ...current, hookAllowPaths: event.target.value }))
             }
           />
+        </div>
+      </section>
+
+      <section className="dashboard-settings-panel" aria-labelledby="comet-knowledge-settings">
+        <div className="dashboard-settings-panel-head">
+          <div>
+            <h4 id="comet-knowledge-settings">项目知识文档</h4>
+            <p>在内置 Spec 与 Archive 之外，追加当前项目要参与 Local 检索的 Markdown 文档</p>
+          </div>
+          <Tag color={draft.knowledge.provider === 'local' ? 'success' : 'default'}>
+            {draft.knowledge.provider === 'local' ? 'Local 生效' : 'Remote 使用中'}
+          </Tag>
+        </div>
+        <div className="dashboard-memory-setting dashboard-memory-setting-stack">
+          <div className="dashboard-memory-setting-copy">
+            <strong>额外知识文档路径</strong>
+            <span>
+              每项填写一个项目相对 glob，例如 docs/architecture/**/*.md；只读取 Markdown 文件
+            </span>
+          </div>
+          <div className="dashboard-knowledge-config-patterns">
+            {draft.knowledge.localInclude.map((pattern, index) => (
+              <div className="dashboard-knowledge-config-pattern-row" key={`${index}-${pattern}`}>
+                <Input
+                  value={pattern}
+                  disabled={draft.knowledge.provider !== 'local'}
+                  aria-label={`额外知识文档路径 ${index + 1}`}
+                  placeholder="例如：docs/architecture/**/*.md"
+                  onChange={(event) => {
+                    const next = [...draft.knowledge.localInclude];
+                    next[index] = event.target.value;
+                    setKnowledge(next);
+                  }}
+                />
+                <Button
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  disabled={draft.knowledge.provider !== 'local'}
+                  aria-label={`删除额外知识文档路径 ${index + 1}`}
+                  onClick={() =>
+                    setKnowledge(draft.knowledge.localInclude.filter((_, item) => item !== index))
+                  }
+                />
+              </div>
+            ))}
+            <Button
+              type="dashed"
+              icon={<PlusOutlined />}
+              disabled={draft.knowledge.provider !== 'local'}
+              onClick={() => setKnowledge([...draft.knowledge.localInclude, ''])}
+            >
+              添加文档路径
+            </Button>
+          </div>
+          <span className="dashboard-settings-help-text">
+            {draft.knowledge.provider === 'local'
+              ? '保存后会刷新本地语料；没有匹配文件的合法路径会保留并显示为暂无来源。'
+              : '当前使用 Remote Provider；这些本地路径会保留，但不会被读取或上传。'}
+          </span>
         </div>
       </section>
 
@@ -4634,10 +4724,24 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
         sourceMap.set(source, current);
       }
     }
+    for (const source of Array.isArray(snapshot.local?.sources) ? snapshot.local.sources : []) {
+      const current = sourceMap.get(source.source) ?? {
+        source: source.source,
+        records: [],
+        latestUpdatedAt: null,
+      };
+      if (
+        !current.latestUpdatedAt ||
+        new Date(source.updatedAt ?? 0).getTime() > new Date(current.latestUpdatedAt ?? 0).getTime()
+      ) {
+        current.latestUpdatedAt = source.updatedAt;
+      }
+      sourceMap.set(source.source, current);
+    }
     return Array.from(sourceMap.values()).toSorted((left, right) =>
       left.source.localeCompare(right.source, 'zh-CN'),
     );
-  }, [records]);
+  }, [records, snapshot.local?.sources]);
   useEffect(() => {
     if (selectedRecord?.id && selectedRecord.id !== selectedRecordId) {
       setSelectedRecordId(selectedRecord.id);

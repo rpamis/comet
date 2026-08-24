@@ -31,12 +31,20 @@ export interface ProjectKnowledgeIndexStatus {
   readonly repositoryId: string;
   readonly workspaceId: string;
   readonly sourceCount: number;
+  readonly sources: readonly ProjectKnowledgeIndexSource[];
   readonly sectionCount: number;
   readonly updatedAt?: string;
   readonly lastQueryMs?: number;
   readonly lastCandidateCount?: number;
   readonly channels: readonly string[];
   readonly diagnostic?: string;
+}
+
+export interface ProjectKnowledgeIndexSource {
+  readonly source: string;
+  readonly kind: ProjectKnowledgeDocument['kind'];
+  readonly archivedAt?: string;
+  readonly updatedAt: string;
 }
 
 export interface ProjectKnowledgeIndexSyncResult {
@@ -484,6 +492,23 @@ export class ProjectKnowledgeIndexStore {
   status(): ProjectKnowledgeIndexStatus {
     const database = this.requireDatabase();
     const meta = metaMap(database);
+    const sources = (
+      database
+        .prepare(
+          'SELECT source, kind, archived_at, indexed_at FROM pk_sources WHERE workspace_id = ? ORDER BY source',
+        )
+        .all(this.workspaceId) as Array<{
+        source: string;
+        kind: ProjectKnowledgeDocument['kind'];
+        archived_at: string | null;
+        indexed_at: string;
+      }>
+    ).map((row) => ({
+      source: row.source,
+      kind: row.kind,
+      ...(row.archived_at ? { archivedAt: row.archived_at } : {}),
+      updatedAt: row.indexed_at,
+    }));
     const sourceCount = countValue(
       (
         database
@@ -509,6 +534,7 @@ export class ProjectKnowledgeIndexStore {
       repositoryId: this.repositoryId,
       workspaceId: this.workspaceId,
       sourceCount,
+      sources,
       sectionCount,
       ...(meta.get('updatedAt') ? { updatedAt: meta.get('updatedAt') } : {}),
       ...(Number.isFinite(Number(meta.get('lastQueryMs')))
@@ -735,6 +761,23 @@ export async function readProjectKnowledgeIndexStatus(
           }
         ).count,
       );
+      const sources = (
+        database
+          .prepare(
+            'SELECT source, kind, archived_at, indexed_at FROM pk_sources WHERE workspace_id = ? ORDER BY source',
+          )
+          .all(store.workspaceId) as Array<{
+          source: string;
+          kind: ProjectKnowledgeDocument['kind'];
+          archived_at: string | null;
+          indexed_at: string;
+        }>
+      ).map((row) => ({
+        source: row.source,
+        kind: row.kind,
+        ...(row.archived_at ? { archivedAt: row.archived_at } : {}),
+        updatedAt: row.indexed_at,
+      }));
       return {
         schema: INDEX_SCHEMA,
         available: true,
@@ -742,6 +785,7 @@ export async function readProjectKnowledgeIndexStatus(
         repositoryId: store.repositoryId,
         workspaceId: store.workspaceId,
         sourceCount,
+        sources,
         sectionCount,
         ...(meta.get('updatedAt') ? { updatedAt: meta.get('updatedAt') } : {}),
         ...(Number.isFinite(Number(meta.get('lastQueryMs')))
@@ -764,6 +808,7 @@ export async function readProjectKnowledgeIndexStatus(
       repositoryId: store.repositoryId,
       workspaceId: store.workspaceId,
       sourceCount: 0,
+      sources: [],
       sectionCount: 0,
       channels: [],
       ...(missing ? {} : { diagnostic: 'Project knowledge index is unavailable or incompatible.' }),

@@ -25,7 +25,8 @@ export type ProjectKnowledgeDocumentKind =
   | 'native-archive'
   | 'classic-spec'
   | 'classic-archive'
-  | 'superpowers';
+  | 'superpowers'
+  | 'custom';
 
 export interface ProjectKnowledgeDocument {
   readonly absolutePath: string;
@@ -226,6 +227,12 @@ export interface ProjectKnowledgeDashboardSnapshot {
     readonly repositoryId: string;
     readonly workspaceId: string;
     readonly sourceCount: number;
+    readonly sources: readonly {
+      readonly source: string;
+      readonly kind: ProjectKnowledgeDocument['kind'];
+      readonly archivedAt?: string;
+      readonly updatedAt: string;
+    }[];
     readonly sectionCount: number;
     readonly updatedAt?: string;
     readonly channels: readonly string[];

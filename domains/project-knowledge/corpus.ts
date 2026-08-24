@@ -29,6 +29,8 @@ interface DiscoveryBudget {
   timedOut: boolean;
 }
 
+type MarkdownMatcher = (source: string) => boolean;
+
 function budgetExpired(budget: DiscoveryBudget): boolean {
   if (Date.now() <= budget.deadline) return false;
   budget.timedOut = true;
@@ -82,6 +84,7 @@ async function walkMarkdown(
   archivedAt: string | undefined,
   reporter?: ProjectKnowledgeDiagnosticReporter,
   budget?: DiscoveryBudget,
+  matcher?: MarkdownMatcher,
 ): Promise<ProjectKnowledgeDocument[]> {
   if (!(await safeDirectory(root, projectRoot, budget))) return [];
   const result: ProjectKnowledgeDocument[] = [];
@@ -109,9 +112,11 @@ async function walkMarkdown(
       }
       if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.md')) continue;
       if (!isInside(projectRoot, target)) continue;
+      const source = relativeSource(projectRoot, target);
+      if (matcher && !matcher(source)) continue;
       result.push({
         absolutePath: target,
-        source: relativeSource(projectRoot, target),
+        source,
         kind,
         ...((archivedAt ?? archiveDateFromPath(target))
           ? { archivedAt: archivedAt ?? archiveDateFromPath(target) }
@@ -121,6 +126,68 @@ async function walkMarkdown(
   };
   await visit(root);
   return result;
+}
+
+function globRegExp(pattern: string): RegExp {
+  let source = '^';
+  for (let index = 0; index < pattern.length; index += 1) {
+    const character = pattern[index];
+    if (character === '*') {
+      if (pattern[index + 1] === '*') {
+        if (pattern[index + 2] === '/') {
+          source += '(?:[^/]+/)*';
+          index += 2;
+        } else {
+          source += '.*';
+          index += 1;
+        }
+      } else {
+        source += '[^/]*';
+      }
+    } else if (character === '?') {
+      source += '[^/]';
+    } else {
+      source += character.replace(/[\\^$+?.()|[\]{}]/gu, '\\$&');
+    }
+  }
+  return new RegExp(`${source}$`, 'iu');
+}
+
+function customCorpusRoot(projectRoot: string, pattern: string): string {
+  const segments = pattern.split('/');
+  const wildcardIndex = segments.findIndex((segment) => /[*?]/u.test(segment));
+  const literalSegments =
+    wildcardIndex === -1 ? segments.slice(0, -1) : segments.slice(0, wildcardIndex);
+  return path.join(projectRoot, ...literalSegments);
+}
+
+async function discoverCustomMarkdown(
+  projectRoot: string,
+  patterns: readonly string[],
+  reporter?: ProjectKnowledgeDiagnosticReporter,
+  budget?: DiscoveryBudget,
+): Promise<ProjectKnowledgeDocument[]> {
+  const documents: ProjectKnowledgeDocument[] = [];
+  const matchers = patterns.map((pattern) => globRegExp(pattern));
+  const roots = new Map<string, MarkdownMatcher>();
+  for (const [index, pattern] of patterns.entries()) {
+    const root = customCorpusRoot(projectRoot, pattern);
+    const matcher = matchers[index];
+    const previous = roots.get(root);
+    roots.set(
+      root,
+      previous
+        ? (source) => previous(source) || matcher.test(source)
+        : (source) => matcher.test(source),
+    );
+  }
+  for (const [root, matcher] of roots) {
+    documents.push(
+      ...(await walkMarkdown(root, projectRoot, 'custom', undefined, reporter, budget, matcher)),
+    );
+    if (budget && budgetExpired(budget)) break;
+  }
+  return documents;
 }
 
 function classicRoot(projectRoot: string, layout: 'legacy' | 'docs'): string {
@@ -298,8 +365,26 @@ export async function discoverProjectKnowledgeCorpus(
       ...(await discoverSuperpowers(projectRoot, archiveRoot, options.reportDiagnostic, budget)),
     );
   }
+  if (config.knowledge?.provider === 'local' && config.knowledge.local?.include.length) {
+    documents.push(
+      ...(await discoverCustomMarkdown(
+        projectRoot,
+        config.knowledge.local.include,
+        options.reportDiagnostic,
+        budget,
+      )),
+    );
+  }
   const unique = new Map<string, ProjectKnowledgeDocument>();
-  for (const document of documents) unique.set(document.source, document);
+  for (const document of documents) {
+    const existing = unique.get(document.source);
+    if (
+      existing === undefined ||
+      knowledgeDocumentKindRank(document.kind) < knowledgeDocumentKindRank(existing.kind)
+    ) {
+      unique.set(document.source, document);
+    }
+  }
   const bounded: ProjectKnowledgeDocument[] = [];
   let totalBytes = 0;
   for (const document of [...unique.values()].sort((left, right) =>
@@ -345,5 +430,7 @@ export function knowledgeDocumentKindRank(kind: ProjectKnowledgeDocument['kind']
     ? 0
     : kind === 'native-archive' || kind === 'classic-archive'
       ? 1
-      : 2;
+      : kind === 'custom'
+        ? 2
+        : 3;
 }

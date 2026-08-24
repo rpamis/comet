@@ -17,6 +17,7 @@ import type {
   CometProjectWorkflow,
   ProjectConfigLanguage,
   WorkflowClassicProjectConfig,
+  WorkflowKnowledgeProjectConfig,
   WorkflowNativeProjectConfig,
   WorkflowProjectConfig,
 } from '../workflow-contract/types.js';
@@ -47,6 +48,11 @@ export interface DashboardClassicConfigSettings {
   autoTransition: boolean;
 }
 
+export interface DashboardKnowledgeConfigSettings {
+  provider: 'local' | 'remote';
+  localInclude: string[];
+}
+
 export interface DashboardProjectConfigSettings {
   path: typeof WORKFLOW_PROJECT_CONFIG_PATH;
   revision: string;
@@ -55,13 +61,16 @@ export interface DashboardProjectConfigSettings {
   workflows: CometProjectWorkflow[];
   ambientResume: boolean;
   hookAllowPaths: string[];
+  knowledge: DashboardKnowledgeConfigSettings;
   native: DashboardNativeConfigSettings;
   classic: DashboardClassicConfigSettings;
 }
 
 interface DashboardProjectConfigUpdate {
   expectedRevision: string;
-  config: Omit<DashboardProjectConfigSettings, 'path' | 'revision' | 'schema'>;
+  config: Omit<DashboardProjectConfigSettings, 'path' | 'revision' | 'schema' | 'knowledge'> & {
+    knowledge?: DashboardKnowledgeConfigSettings;
+  };
 }
 
 function record(value: unknown, label: string): Record<string, unknown> {
@@ -116,11 +125,29 @@ function relativePathList(value: unknown): string[] {
   return [...new Set(value.map((item) => item.trim()).filter(Boolean))];
 }
 
+function knowledgeIncludeList(value: unknown): string[] {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+    throw new DashboardProjectConfigError('knowledge.local.include must be a string array', 400);
+  }
+  return [...new Set(value.map((item) => item.trim()).filter(Boolean))];
+}
+
+function dashboardKnowledgeSettings(
+  config: WorkflowProjectConfig,
+): DashboardKnowledgeConfigSettings {
+  return {
+    provider: config.knowledge?.provider ?? 'local',
+    localInclude: [...(config.knowledge?.local?.include ?? [])],
+  };
+}
+
 function parseUpdate(value: unknown): DashboardProjectConfigUpdate {
   const body = record(value, 'Dashboard project config update');
   const config = record(body.config, 'config');
   const native = record(config.native, 'config.native');
   const classic = record(config.classic, 'config.classic');
+  const knowledgeValue =
+    config.knowledge === undefined ? undefined : record(config.knowledge, 'config.knowledge');
   const workflows = workflowList(config.workflows);
   const defaultWorkflow = enumValue(
     config.defaultWorkflow,
@@ -137,6 +164,18 @@ function parseUpdate(value: unknown): DashboardProjectConfigUpdate {
       workflows,
       ambientResume: requiredBoolean(config.ambientResume, 'ambientResume'),
       hookAllowPaths: relativePathList(config.hookAllowPaths),
+      ...(knowledgeValue === undefined
+        ? {}
+        : {
+            knowledge: {
+              provider: enumValue(
+                knowledgeValue.provider,
+                ['local', 'remote'] as const,
+                'knowledge.provider',
+              ),
+              localInclude: knowledgeIncludeList((knowledgeValue.localInclude ?? []) as unknown),
+            },
+          }),
       native: {
         artifactRoot: requiredString(native.artifactRoot, 'native.artifactRoot'),
         language: enumValue(native.language, ['en', 'zh-CN'] as const, 'native.language'),
@@ -209,6 +248,7 @@ function toDashboardSettings(
     workflows: [...(config.workflows ?? [config.default_workflow])],
     ambientResume: config.ambient_resume,
     hookAllowPaths: [...(config.hook?.allow_paths ?? [])],
+    knowledge: dashboardKnowledgeSettings(config),
     native: nativeSettings(config),
     classic: classicSettings(config),
   };
@@ -261,6 +301,23 @@ function nextClassicConfig(
   };
 }
 
+function nextKnowledgeConfig(
+  current: WorkflowKnowledgeProjectConfig | undefined,
+  input: DashboardKnowledgeConfigSettings | undefined,
+): WorkflowKnowledgeProjectConfig {
+  const existing = current ?? { provider: 'local' as const };
+  if (input === undefined) return existing;
+  const withoutLocal = { ...existing };
+  delete withoutLocal.local;
+  return {
+    ...withoutLocal,
+    provider: input.provider,
+    ...(input.localInclude.length > 0
+      ? { local: { ...(existing.local ?? {}), include: [...input.localInclude] } }
+      : {}),
+  };
+}
+
 export async function updateDashboardProjectConfigSettings(
   projectRoot: string,
   value: unknown,
@@ -293,6 +350,7 @@ export async function updateDashboardProjectConfigSettings(
     workflows: update.config.workflows,
     ambient_resume: update.config.ambientResume,
     hook: { allow_paths: update.config.hookAllowPaths },
+    knowledge: nextKnowledgeConfig(current.knowledge, update.config.knowledge),
     native: nextNativeConfig(current.native, update.config.native),
     classic: nextClassicConfig(current.classic, update.config.classic),
   };

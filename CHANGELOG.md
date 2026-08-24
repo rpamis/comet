@@ -14,6 +14,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Project knowledge**: `comet task` now combines a workspace-isolated Local Provider, bounded SQLite FTS5 and ripgrep search, and source-backed Project Knowledge records so Agents can reuse project structure and behavior context instead of repeatedly scanning the repository. An optional Remote Provider lets teams share records through an external service, while personal preferences remain in Personal Memory and project knowledge stays outside the repository by default.
 - **Project Knowledge Dashboard**: Dashboard now exposes Local/Remote Provider configuration, health and diagnostics, searchable active/review-needed/retired records, refresh, correction, and forget actions alongside project-level enable, pause, resume, and uninstall controls.
 - **Manual Project Knowledge**: Dashboard now lets users add structured, user-provided project knowledge with optional scope, source, and verification details, so undocumented project conventions can be shared with the Agent without being mixed into Personal Memory.
+- **Custom Project Knowledge sources**: Local Project Knowledge can now append multiple project-relative Markdown glob patterns from `.comet/config.yaml` or the Dashboard, while preserving the built-in Native, Classic, and Superpowers corpus and showing matched files in the data-source view.
 
 ### Changed
 

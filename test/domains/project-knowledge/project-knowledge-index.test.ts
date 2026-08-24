@@ -59,7 +59,12 @@ describe('project knowledge section index', () => {
       ]);
 
       const first = await store.syncCorpus([document]);
-      expect(first.status).toMatchObject({ sourceCount: 1, sectionCount: 2, available: true });
+      expect(first.status).toMatchObject({
+        sourceCount: 1,
+        sectionCount: 2,
+        available: true,
+        sources: [{ source, kind: 'native-spec' }],
+      });
       store.close();
       const before = new DatabaseSync(store.databasePath, { readOnly: true });
       const stable = before

@@ -1330,6 +1330,31 @@ body {
   margin-top: 11px;
 }
 
+.dashboard-knowledge-config-patterns {
+  display: grid;
+  gap: 8px;
+  margin-top: 11px;
+}
+
+.dashboard-knowledge-config-pattern-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dashboard-knowledge-config-pattern-row .ant-input {
+  min-width: 0;
+  flex: 1;
+}
+
+.dashboard-settings-help-text {
+  display: block;
+  margin-top: 10px;
+  color: var(--color-meta);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .dashboard-settings-value {
   max-width: min(48%, 320px);
   color: var(--color-fg-2);

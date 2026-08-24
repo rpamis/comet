@@ -1,0 +1,684 @@
+schema: comet.native.v4
+name: custom-project-knowledge-paths
+language: zh-CN
+phase: archive
+status: done
+state_version: 7
+brief: brief.md
+spec_changes:
+  - capability: project-knowledge-custom-corpus
+    operation: create
+    source: specs/project-knowledge-custom-corpus/spec.md
+workspace:
+  isolation: current
+  change_branch: 040rc1
+  target_branch: 040rc1
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: "A1: 未配置 `knowledge.local.include` 的项目行为和 YAML 结构保持不变。"
+    result: passed
+    reason:
+      text: 缺省配置行为保持不变，聚焦测试通过。
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: "A2: 多个合法 glob 可以追加匹配 Markdown 文件，结果与内置语料一起参与 Local 检索。"
+    result: passed
+    reason:
+      text: Local corpus 追加多个 glob 并进入检索链路。
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: "A3: `*`、`**`、`?`、多模式去重和大小写不敏感的 `.md` 扩展名按约定工作。"
+    result: passed
+    reason:
+      text: 支持 *、**、?、大小写不敏感 .md 与 Map 去重。
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: "A4: 绝对路径、反斜杠、`..`、空模式和非 Markdown 模式被拒绝，并指出具体配置项。"
+    result: passed
+    reason:
+      text: 配置层拒绝绝对路径、反斜杠、..、空值和非 Markdown。
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: "A5: 符号链接或越界真实路径不会进入语料；无匹配模式不会阻断其他来源。"
+    result: passed
+    reason:
+      text: 安全路径检查跳过越界/符号链接，无匹配正常降级。
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: "A6: Remote Provider 不读取自定义本地路径，切换 Provider 不删除该配置。"
+    result: passed
+    reason:
+      text: Remote 不发现本地自定义文档，切换时保留配置。
+      truncated: false
+  - id: A7
+    source: brief.md
+    text: "A7: Dashboard 可新增、删除、保存、重新加载多个模式；Remote 时字段保留但禁用并说明仅 Local 生效。"
+    result: passed
+    reason:
+      text: Dashboard 可编辑数组，Remote 保留但禁用。
+      truncated: false
+  - id: A8
+    source: brief.md
+    text: "A8: 保存或刷新后，Dashboard 数据来源能展示匹配到的自定义文档。"
+    result: passed
+    reason:
+      text: 保存后刷新索引并在来源列表展示自定义文档。
+      truncated: false
+  - id: A9
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: Local Project Knowledge Provider 在保留内置 Native、Classic 和 Superpowers
+      来源的基础上，允许项目维护者通过配置追加多个项目相对 glob，把指定 Markdown 文档纳入本地知识检索。Dashboard
+      总设置提供同一配置的可视化管理入口。
+    result: passed
+    reason:
+      text: 配置、语料、索引、插件和 Dashboard 全链路实现。
+      truncated: false
+  - id: A10
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 项目配置支持：
+    result: passed
+    reason:
+      text: 支持 knowledge.local.include 配置结构。
+      truncated: false
+  - id: A11
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: "`knowledge.local.include` 是字符串数组，缺失时等同于空数组。空数组不写入
+      YAML，表示不追加自定义来源。配置更新须保留未知字段，并沿用现有 `.comet/config.yaml` revision 并发保护。"
+    result: passed
+    reason:
+      text: 数组缺省为空，空数组省略 YAML，保留未知字段和 revision。
+      truncated: false
+  - id: A12
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 每个模式必须满足：
+    result: passed
+    reason:
+      text: 模式规则集中在统一归一化校验函数。
+      truncated: false
+  - id: A13
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 是项目相对路径；
+    result: passed
+    reason:
+      text: 限制为项目相对路径。
+      truncated: false
+  - id: A14
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 使用 `/` 分隔符；
+    result: passed
+    reason:
+      text: 反斜杠被拒绝并使用正斜杠。
+      truncated: false
+  - id: A15
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 支持 `*`、`**` 和 `?`；
+    result: passed
+    reason:
+      text: glob matcher 实现 *、**、?。
+      truncated: false
+  - id: A16
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 不含绝对路径、反斜杠、空字符串、NUL 或 `..` 路径段；
+    result: passed
+    reason:
+      text: 拒绝绝对路径、反斜杠、空段、.、.. 和 NUL。
+      truncated: false
+  - id: A17
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 以 `.md` 结尾，扩展名匹配不区分大小写。
+    result: passed
+    reason:
+      text: .md 扩展名检查和匹配均不区分大小写。
+      truncated: false
+  - id: A18
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 标准化时去除空白、过滤空项、去重并保留首次出现顺序。目录本身不是有效文档模式；用户须显式填写 `dir/**/*.md`。
+    result: passed
+    reason:
+      text: trim、过滤空项、按首次顺序去重，目录需显式 glob。
+      truncated: false
+  - id: A19
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: Local Provider 按以下顺序建立语料：
+    result: passed
+    reason:
+      text: 按 Native、Classic、Superpowers、自定义顺序建立语料。
+      truncated: false
+  - id: A20
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 发现当前已启用 Native 的 `<native.artifact_root>/comet/specs/**/*.md` 和
+      `archive/**/*.md`。
+    result: passed
+    reason:
+      text: Native specs/archive 来源保持。
+      truncated: false
+  - id: A21
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 发现当前已启用 Classic 布局的 `openspec/specs/**/*.md`、`changes/archive/**/*.md`，或
+      `docs/openspec` 对应路径。
+    result: passed
+    reason:
+      text: Classic legacy/docs 来源保持。
+      truncated: false
+  - id: A22
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 发现归档 Classic Change 的 `.comet.yaml` 明确引用的 Superpowers 文档。
+    result: passed
+    reason:
+      text: 归档 Classic 的 Superpowers 来源保持。
+      truncated: false
+  - id: A23
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 匹配 `knowledge.local.include` 中的每个模式。
+    result: passed
+    reason:
+      text: Local provider 下发现每个自定义模式。
+      truncated: false
+  - id: A24
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 将所有来源按项目相对路径合并，重复文件只保留一个文档对象。
+    result: passed
+    reason:
+      text: 按 source 合并并按 kind rank 保留内置来源优先。
+      truncated: false
+  - id: A25
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 自定义文档使用独立的自定义来源类型，保留相对 `source` 和绝对读取路径，进入现有索引同步、FTS
+      检索、排序、去重和上下文格式化流程。自定义来源不创建或修改项目内的 Comet 知识文件。
+    result: passed
+    reason:
+      text: custom 文档带相对 source 和绝对路径，进入索引/FTS 流程。
+      truncated: false
+  - id: A26
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 发现安全规则：
+    result: passed
+    reason:
+      text: 安全发现规则由路径和文件检查统一执行。
+      truncated: false
+  - id: A27
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 只接受普通 Markdown 文件；
+    result: passed
+    reason:
+      text: 仅接受普通 Markdown 文件。
+      truncated: false
+  - id: A28
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 不跟随符号链接；
+    result: passed
+    reason:
+      text: 目录和文件符号链接均跳过。
+      truncated: false
+  - id: A29
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 匹配和读取前确认真实路径位于项目根目录内；
+    result: passed
+    reason:
+      text: 读取前确认真实路径位于项目根目录。
+      truncated: false
+  - id: A30
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 文件消失或读取失败时记录有界诊断，其他来源继续工作；
+    result: passed
+    reason:
+      text: 读取失败记录有界诊断并继续其他来源。
+      truncated: false
+  - id: A31
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 无匹配模式是正常状态，不产生失败结果。
+    result: passed
+    reason:
+      text: 无匹配模式返回空结果，不产生失败。
+      truncated: false
+  - id: A32
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 自定义语料继续使用现有的最大文件数、单文件大小、总字节数和发现时间边界。超出边界的文件按现有诊断方式跳过，不引入第二套预算。
+    result: passed
+    reason:
+      text: 复用现有时间、文件数、单文件和总字节预算。
+      truncated: false
+  - id: A33
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 当 `knowledge.provider` 为 `local` 时，自定义来源参与 status、rebuild、list、query 和
+      Dashboard 数据来源展示。当 Provider 为 `remote`
+      时，保留并显示配置，但不读取本地自定义路径、不上传本地文档，也不静默回退到 Local。切换回 Local 后，下次索引或查询重新发现这些来源。
+    result: passed
+    reason:
+      text: Local 使用 custom sources；Remote 不建本地 corpus。
+      truncated: false
+  - id: A34
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: Dashboard 总设置中的项目知识配置区域提供“额外知识文档”列表：
+    result: passed
+    reason:
+      text: 总设置增加额外知识文档区域。
+      truncated: false
+  - id: A35
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 每项编辑一个 glob；
+    result: passed
+    reason:
+      text: 每个输入项对应一个 glob。
+      truncated: false
+  - id: A36
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 支持添加和删除项；
+    result: passed
+    reason:
+      text: 提供新增和删除数组项操作。
+      truncated: false
+  - id: A37
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 提供 Markdown glob 示例；
+    result: passed
+    reason:
+      text: 提供 Markdown glob 示例和 placeholder。
+      truncated: false
+  - id: A38
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 服务端返回具体模式的校验错误；
+    result: passed
+    reason:
+      text: 服务端错误包含具体 include 索引。
+      truncated: false
+  - id: A39
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: Local Provider 下可编辑并保存；
+    result: passed
+    reason:
+      text: Local provider 下可编辑并保存。
+      truncated: false
+  - id: A40
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: Remote Provider 下保留内容但禁用编辑，提示“仅本地 Provider 生效”；
+    result: passed
+    reason:
+      text: Remote 下禁用编辑并提示仅本地生效。
+      truncated: false
+  - id: A41
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 保存成功后刷新配置、Local 索引和来源列表；
+    result: passed
+    reason:
+      text: 保存后刷新配置、Local 索引和来源列表。
+      truncated: false
+  - id: A42
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 未匹配的合法模式显示为已保存但尚未发现文档。
+    result: passed
+    reason:
+      text: 合法未匹配模式保留并提示暂无来源。
+      truncated: false
+  - id: A43
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: Dashboard 使用现有 Ant Design 表单、项目设置接口和 revision 校验，不新增独立插件生命周期或侧边栏入口。
+    result: passed
+    reason:
+      text: 复用 AntD、项目设置接口和 revision 保护。
+      truncated: false
+  - id: A44
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 没有 `knowledge.local.include` 的项目行为不变。
+    result: passed
+    reason:
+      text: 无 include 时不进入自定义发现。
+      truncated: false
+  - id: A45
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 自定义来源不覆盖 Native、Classic 或 Superpowers 内置来源。
+    result: passed
+    reason:
+      text: 内置来源优先级确保不被 custom 覆盖。
+      truncated: false
+  - id: A46
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 项目知识仍是检索上下文，不覆盖系统约束、用户要求、宿主 Rule、Skill 或当前工作流状态。
+    result: passed
+    reason:
+      text: 仅扩展项目知识检索，不改变系统或工作流优先级。
+      truncated: false
+  - id: A47
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: 用户显式配置的 `AGENTS.md` 或其他 Rule Markdown 文件可作为额外文档读取，但不会因此改变宿主 Rule 的加载或优先级。
+    result: passed
+    reason:
+      text: 显式配置的 Rule Markdown 作为文档读取，不改变宿主 Rule。
+      truncated: false
+  - id: A48
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: A1 未配置字段时配置解析、默认值和现有语料结果不变。
+    result: passed
+    reason:
+      text: 未配置字段的解析和既有结果保持。
+      truncated: false
+  - id: A49
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: A2 合法多模式追加结果进入 Local 索引并可被任务查询命中。
+    result: passed
+    reason:
+      text: 多模式结果进入 Local 索引并可查询。
+      truncated: false
+  - id: A50
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: A3 glob 运算覆盖 `*`、`**`、`?`、扩展名大小写和重复结果。
+    result: passed
+    reason:
+      text: glob、扩展名和重复结果均有覆盖。
+      truncated: false
+  - id: A51
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: A4 不安全或非 Markdown 模式在配置层拒绝。
+    result: passed
+    reason:
+      text: 非法模式在配置层拒绝。
+      truncated: false
+  - id: A52
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: A5 越界、符号链接、消失文件和无匹配场景安全降级。
+    result: passed
+    reason:
+      text: 越界、符号链接、消失文件和无匹配安全降级。
+      truncated: false
+  - id: A53
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: A6 Remote Provider 不访问自定义本地文档并保留配置。
+    result: passed
+    reason:
+      text: Remote 保留配置且不访问本地文档。
+      truncated: false
+  - id: A54
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: A7 Dashboard 能完整编辑、校验、保存和重载数组。
+    result: passed
+    reason:
+      text: Dashboard 能编辑、校验、保存和重载数组。
+      truncated: false
+  - id: A55
+    source: specs/project-knowledge-custom-corpus/spec.md
+    text: A8 来源面板显示自定义文档的项目相对路径和状态。
+    result: passed
+    reason:
+      text: 来源面板展示自定义文档项目相对路径和状态。
+      truncated: false
+builder_handoff:
+  candidate_id: 6459ab01-7366-436a-b9c6-40f628a0c485
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:e287d26d-0d0f-46b9-ae26-ecc2410c69ad
+  iteration: 1
+  summary:
+    text: 已实现 knowledge.local.include：配置契约支持多条项目相对 Markdown glob，Local
+      语料追加并安全去重，索引状态输出来源，Dashboard 总设置可编辑并在 Local 路径变化后刷新索引，Remote 保留配置但不读取本地文件。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    - A8
+    - A9
+    - A10
+    - A11
+    - A12
+    - A13
+    - A14
+    - A15
+    - A16
+    - A17
+    - A18
+    - A19
+    - A20
+    - A21
+    - A22
+    - A23
+    - A24
+    - A25
+    - A26
+    - A27
+    - A28
+    - A29
+    - A30
+    - A31
+    - A32
+    - A33
+    - A34
+    - A35
+    - A36
+    - A37
+    - A38
+    - A39
+    - A40
+    - A41
+    - A42
+    - A43
+    - A44
+    - A45
+    - A46
+    - A47
+    - A48
+    - A49
+    - A50
+    - A51
+    - A52
+    - A53
+    - A54
+    - A55
+  checks:
+    - name:
+        text: focused project knowledge, workflow contract, Dashboard settings tests
+        truncated: false
+      result: passed
+      note:
+        text: 4 files, 90 tests passed
+        truncated: false
+    - name:
+        text: TypeScript compilation
+        truncated: false
+      result: passed
+      note:
+        text: pnpm exec tsc --noEmit
+        truncated: false
+    - name:
+        text: Dashboard production build
+        truncated: false
+      result: passed
+      note:
+        text: pnpm build:dashboard
+        truncated: false
+    - name:
+        text: runtime generation consistency
+        truncated: false
+      result: passed
+      note:
+        text: pnpm check:generated
+        truncated: false
+    - name:
+        text: full test suite
+        truncated: false
+      result: failed
+      note:
+        text: Existing native-source-coverage-contract assertions fail on current
+          branch; the in-flight run also loaded the pre-dedupe candidate and
+          reported the overlapping-source assertion before the final fix.
+        truncated: false
+    - name:
+        text: Dashboard browser regression
+        truncated: false
+      result: failed
+      note:
+        text: 28/29 passed; existing dark-surface test cannot find
+          .dashboard-sidebar-feature.
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: Full repository test suite still has four pre-existing Native
+        source-coverage contract failures and one stale in-flight corpus
+        assertion; the focused feature suite passes after the final dedupe fix.
+      truncated: false
+    - text: The browser suite has one pre-existing dark-theme selector failure
+        unrelated to this feature.
+      truncated: false
+    - text: The repository-local .codex-remote-attachments directory is preserved and
+        causes the top-level architecture lint to reject the dirty workspace.
+      truncated: false
+  known_limits_truncated: false
+  submitted_at: 2026-08-24T09:15:43.896Z
+blockers: []
+verification:
+  candidate_id: 6459ab01-7366-436a-b9c6-40f628a0c485
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:2079a015-29fa-4e38-9818-12056d15d2a7
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: custom-project-knowledge-focused
+      name:
+        text: custom Project Knowledge and settings tests
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: vitest
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/project-knowledge/project-knowledge.test.ts
+          truncated: false
+        - text: test/domains/project-knowledge/project-knowledge-index.test.ts
+          truncated: false
+        - text: test/domains/workflow-contract/workflow-contract.test.ts
+          truncated: false
+        - text: test/domains/dashboard/project-config-settings.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 16566
+    - id: custom-project-knowledge-typescript
+      name:
+        text: TypeScript compilation
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: tsc
+          truncated: false
+        - text: --noEmit
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 7454
+    - id: custom-project-knowledge-dashboard-build
+      name:
+        text: Dashboard production build
+        truncated: false
+      argv_display:
+        - text: build:dashboard
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 18892
+    - id: custom-project-knowledge-generated
+      name:
+        text: runtime generation consistency
+        truncated: false
+      argv_display:
+        - text: check:generated
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 1931
+    - id: custom-project-knowledge-format
+      name:
+        text: format check
+        truncated: false
+      argv_display:
+        - text: format:check
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 17751
+    - id: custom-project-knowledge-diff
+      name:
+        text: git diff whitespace check
+        truncated: false
+      argv_display:
+        - text: diff
+          truncated: false
+        - text: --check
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 288
+  summary:
+    text: 只读验收通过：聚焦 4 个 Vitest 文件 90/90 通过，TypeScript、Dashboard 构建、生成物一致性、格式和 diff
+      检查均通过；配置、安全校验、glob 语料追加、Remote 保留、索引来源和 Dashboard 刷新链路均符合规格。
+    truncated: false
+  risks:
+    - text: 完整 pnpm test 有当前分支既有 Native source-coverage 合约失败。
+      truncated: false
+    - text: Dashboard 浏览器套件有与本功能无关的 dark-theme selector 失败。
+      truncated: false
+    - text: 工作区包含用户既有未提交修改及 .codex-remote-attachments，未触碰。
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-08-24T09:30:24.225Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 只读验收通过：聚焦 4 个 Vitest 文件 90/90 通过，TypeScript、Dashboard 构建、生成物一致性、格式和 diff
+        检查均通过；配置、安全校验、glob 语料追加、Remote 保留、索引来源和 Dashboard 刷新链路均符合规格。
+      truncated: false
+    completed_at: 2026-08-24T09:30:24.225Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-24T08:32:27.290Z

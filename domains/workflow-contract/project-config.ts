@@ -8,6 +8,7 @@ import type {
   WorkflowClassicProjectConfig,
   WorkflowHookProjectConfig,
   WorkflowKnowledgeProjectConfig,
+  WorkflowKnowledgeLocalConfig,
   WorkflowKnowledgeRemoteConfig,
   WorkflowMemoryProjectConfig,
   WorkflowNativeEnabledProjectConfig,
@@ -22,6 +23,8 @@ export type ProjectConfigCommentLanguage = 'en' | 'zh-CN';
 export const WORKFLOW_PROJECT_CONFIG_MAX_BYTES = 64 * 1024;
 export const MAX_WORKFLOW_SNAPSHOT_PATTERN_LENGTH = 1024;
 export const MAX_WORKFLOW_SNAPSHOT_PATTERN_WILDCARDS = 64;
+export const MAX_WORKFLOW_KNOWLEDGE_INCLUDE_PATTERN_LENGTH = 1024;
+export const MAX_WORKFLOW_KNOWLEDGE_INCLUDE_PATTERN_WILDCARDS = 64;
 export const DEFAULT_WORKFLOW_NATIVE_MAX_VERIFY_FAILURES = 5;
 export const DEFAULT_WORKFLOW_MEMORY_PROJECT_CONFIG: WorkflowMemoryProjectConfig = {
   learning: true,
@@ -159,6 +162,8 @@ type ProjectConfigCommentKey =
   | 'memory.retrieval'
   | 'knowledge'
   | 'knowledge.provider'
+  | 'knowledge.local'
+  | 'knowledge.local.include'
   | 'knowledge.remote'
   | 'knowledge.remote.endpoint'
   | 'knowledge.remote.token_env'
@@ -200,6 +205,9 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
       '# Allows personal memories to be injected into Agent context for this project.\n# retrieval: true | false',
     knowledge: '# Project knowledge retrieval provider used by ordinary Comet tasks.',
     'knowledge.provider': '# Provider for project knowledge.\n# provider: local | remote',
+    'knowledge.local': '# Additional project-relative Markdown globs used by the local provider.',
+    'knowledge.local.include':
+      '# One project-relative Markdown glob per list item; appended to the built-in corpus.',
     'knowledge.remote': '# Fixed Comet Retrieval API v1 settings used when provider is remote.',
     'knowledge.remote.endpoint': '# HTTPS endpoint; loopback HTTP is allowed.',
     'knowledge.remote.token_env': '# Optional environment variable containing the bearer token.',
@@ -258,6 +266,8 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
       '# 是否允许当前项目把个人记忆自动注入 Agent 上下文。\n# 可选值：true | false',
     knowledge: '# 普通 Comet 任务使用的项目知识检索 Provider。',
     'knowledge.provider': '# 项目知识 Provider。\n# 可选值：local | remote',
+    'knowledge.local': '# Local Provider 额外加载的项目相对 Markdown 路径。',
+    'knowledge.local.include': '# 每项填写一个项目相对 Markdown glob；会追加到内置语料。',
     'knowledge.remote': '# provider 为 remote 时使用的固定 Comet Retrieval API v1 配置。',
     'knowledge.remote.endpoint': '# HTTPS 地址；loopback 地址允许使用 HTTP。',
     'knowledge.remote.token_env': '# 可选的 Bearer Token 环境变量名。',
@@ -307,7 +317,7 @@ function commentKey(
   line: string,
   block: 'native' | 'classic' | 'hook' | 'memory' | 'knowledge' | null,
   nativeNested: 'snapshot' | null,
-  knowledgeNested: 'remote' | null,
+  knowledgeNested: 'local' | 'remote' | null,
 ): ProjectConfigCommentKey | null {
   const match = /^(\s*)([a-z_]+):/u.exec(line);
   if (!match) return null;
@@ -320,6 +330,10 @@ function commentKey(
   }
   if (indent === 4 && block === 'knowledge' && knowledgeNested === 'remote') {
     const nestedKey = `knowledge.remote.${key}` as ProjectConfigCommentKey;
+    if (nestedKey in COMMENTS.en) return nestedKey;
+  }
+  if (indent === 4 && block === 'knowledge' && knowledgeNested === 'local') {
+    const nestedKey = `knowledge.local.${key}` as ProjectConfigCommentKey;
     if (nestedKey in COMMENTS.en) return nestedKey;
   }
   if (indent === 2 && block === null && key === 'hook') return 'hook';
@@ -340,7 +354,7 @@ export function renderStructuredProjectConfig(
   const output: string[] = [];
   let block: 'native' | 'classic' | 'hook' | 'memory' | 'knowledge' | null = null;
   let nativeNested: 'snapshot' | null = null;
-  let knowledgeNested: 'remote' | null = null;
+  let knowledgeNested: 'local' | 'remote' | null = null;
   for (const line of stringify(value).trimEnd().split('\n')) {
     const key = commentKey(line, block, nativeNested, knowledgeNested);
     if (key) {
@@ -361,7 +375,13 @@ export function renderStructuredProjectConfig(
       knowledgeNested = null;
     } else if (/^ {2}[a-z_]+:/u.test(line)) {
       if (block === 'native') nativeNested = line.startsWith('  snapshot:') ? 'snapshot' : null;
-      if (block === 'knowledge') knowledgeNested = line.startsWith('  remote:') ? 'remote' : null;
+      if (block === 'knowledge') {
+        knowledgeNested = line.startsWith('  local:')
+          ? 'local'
+          : line.startsWith('  remote:')
+            ? 'remote'
+            : null;
+      }
     }
   }
   output.push('');
@@ -750,6 +770,58 @@ function projectKnowledgeRecord(value: unknown, label: string): Record<string, u
   return value as Record<string, unknown>;
 }
 
+function normalizeKnowledgeIncludePattern(value: unknown, label: string): string {
+  if (typeof value !== 'string') throw new Error(`${label} must be a string`);
+  const pattern = value.trim();
+  if (
+    pattern.length === 0 ||
+    pattern.includes('\\') ||
+    pattern.includes('\0') ||
+    path.posix.isAbsolute(pattern) ||
+    path.win32.isAbsolute(pattern) ||
+    pattern.startsWith('~') ||
+    pattern.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')
+  ) {
+    throw new Error(`${label} must be a safe project-relative glob`);
+  }
+  if (!pattern.toLowerCase().endsWith('.md')) {
+    throw new Error(`${label} must target a Markdown file ending in .md`);
+  }
+  if (pattern.length > MAX_WORKFLOW_KNOWLEDGE_INCLUDE_PATTERN_LENGTH) {
+    throw new Error(`${label} exceeds ${MAX_WORKFLOW_KNOWLEDGE_INCLUDE_PATTERN_LENGTH} characters`);
+  }
+  let wildcardTokens = 0;
+  for (let index = 0; index < pattern.length; index += 1) {
+    if (pattern[index] === '?') {
+      wildcardTokens += 1;
+    } else if (pattern[index] === '*') {
+      wildcardTokens += 1;
+      if (pattern[index + 1] === '*') index += 1;
+    }
+  }
+  if (wildcardTokens > MAX_WORKFLOW_KNOWLEDGE_INCLUDE_PATTERN_WILDCARDS) {
+    throw new Error(
+      `${label} contains more than ${MAX_WORKFLOW_KNOWLEDGE_INCLUDE_PATTERN_WILDCARDS} wildcard tokens`,
+    );
+  }
+  return pattern;
+}
+
+function normalizeKnowledgeLocal(value: unknown): WorkflowKnowledgeLocalConfig {
+  const local = projectKnowledgeRecord(value, 'knowledge.local');
+  const include = local.include ?? [];
+  if (!Array.isArray(include)) throw new Error('knowledge.local.include must be an array');
+  return {
+    include: [
+      ...new Set(
+        include.map((pattern, index) =>
+          normalizeKnowledgeIncludePattern(pattern, `knowledge.local.include[${index}]`),
+        ),
+      ),
+    ],
+  };
+}
+
 function normalizeKnowledgeEndpoint(value: unknown): string {
   if (typeof value !== 'string' || value.trim().length === 0) {
     throw new Error('knowledge.remote.endpoint must be a non-empty URL');
@@ -806,13 +878,15 @@ function normalizeWorkflowKnowledgeProjectConfig(value: unknown): WorkflowKnowle
   if (provider !== 'local' && provider !== 'remote') {
     throw new Error('knowledge.provider must be local or remote');
   }
-  if (provider === 'local') return { provider };
+  const local =
+    knowledge.local === undefined ? undefined : normalizeKnowledgeLocal(knowledge.local);
+  if (provider === 'local') return { provider, ...(local ? { local } : {}) };
   const remote =
     knowledge.remote === undefined ? undefined : normalizeKnowledgeRemote(knowledge.remote);
   if (remote === undefined) {
     throw new Error('knowledge.remote must be configured when knowledge.provider is remote');
   }
-  return { provider, remote };
+  return { provider, ...(local ? { local } : {}), remote };
 }
 
 function normalizeAmbientResume(value: unknown): boolean {
@@ -956,13 +1030,31 @@ function workflowPendingRootMoveValue(
 export function workflowProjectConfigManagedValue(
   config: WorkflowProjectConfig,
 ): Record<string, unknown> {
+  const knowledge = config.knowledge ?? { ...DEFAULT_WORKFLOW_KNOWLEDGE_PROJECT_CONFIG };
   return {
     schema: config.schema,
     default_workflow: config.default_workflow,
     workflows: config.workflows ?? [config.default_workflow],
     ambient_resume: config.ambient_resume,
     memory: config.memory ?? { ...DEFAULT_WORKFLOW_MEMORY_PROJECT_CONFIG },
-    knowledge: config.knowledge ?? { ...DEFAULT_WORKFLOW_KNOWLEDGE_PROJECT_CONFIG },
+    knowledge: {
+      provider: knowledge.provider,
+      ...(knowledge.local && knowledge.local.include.length > 0
+        ? { local: { include: [...knowledge.local.include] } }
+        : {}),
+      ...(knowledge.remote
+        ? {
+            remote: {
+              endpoint: knowledge.remote.endpoint,
+              timeout_ms: knowledge.remote.timeout_ms,
+              ...(knowledge.remote.token_env === undefined
+                ? {}
+                : { token_env: knowledge.remote.token_env }),
+              ...(knowledge.remote.scope === undefined ? {} : { scope: knowledge.remote.scope }),
+            },
+          }
+        : {}),
+    },
     ...(config.hook
       ? {
           hook: {
@@ -1051,6 +1143,14 @@ export function mergeWorkflowProjectConfigDocument(
       ...existingKnowledge,
       provider: validated.knowledge.provider,
     };
+    if (validated.knowledge.local && validated.knowledge.local.include.length > 0) {
+      knowledge.local = {
+        ...optionalRecord(existingKnowledge.local),
+        include: [...validated.knowledge.local.include],
+      };
+    } else {
+      delete knowledge.local;
+    }
     if (validated.knowledge.remote) {
       const existingRemote = optionalRecord(existingKnowledge.remote);
       const remote: Record<string, unknown> = {
@@ -1214,6 +1314,45 @@ function normalizeWorkflowMemoryProjectConfig(value) {
   return { learning, retrieval };
 }
 
+function normalizeWorkflowKnowledgeIncludePattern(value, label) {
+  if (typeof value !== 'string') throw new Error(label + ' must be a string');
+  const pattern = value.trim();
+  if (
+    pattern.length === 0 ||
+    pattern.includes('\\') ||
+    pattern.includes('\0') ||
+    path.posix.isAbsolute(pattern) ||
+    path.win32.isAbsolute(pattern) ||
+    pattern.startsWith('~') ||
+    pattern.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')
+  ) {
+    throw new Error(label + ' must be a safe project-relative glob');
+  }
+  if (!pattern.toLowerCase().endsWith('.md')) {
+    throw new Error(label + ' must target a Markdown file ending in .md');
+  }
+  if (pattern.length > 1024) throw new Error(label + ' exceeds 1024 characters');
+  let wildcardTokens = 0;
+  for (let index = 0; index < pattern.length; index += 1) {
+    if (pattern[index] === '?') wildcardTokens += 1;
+    else if (pattern[index] === '*') {
+      wildcardTokens += 1;
+      if (pattern[index + 1] === '*') index += 1;
+    }
+  }
+  if (wildcardTokens > 64) throw new Error(label + ' contains more than 64 wildcard tokens');
+  return pattern;
+}
+
+function normalizeWorkflowKnowledgeLocal(value) {
+  const local = workflowConfigRecord(value, 'knowledge.local');
+  const include = local.include ?? [];
+  if (!Array.isArray(include)) throw new Error('knowledge.local.include must be an array');
+  return {
+    include: [...new Set(include.map((pattern, index) => normalizeWorkflowKnowledgeIncludePattern(pattern, 'knowledge.local.include[' + index + ']')))],
+  };
+}
+
 function normalizeWorkflowKnowledgeProjectConfig(value) {
   if (value === undefined) return { provider: 'local' };
   const knowledge = workflowConfigRecord(value, 'knowledge');
@@ -1221,7 +1360,8 @@ function normalizeWorkflowKnowledgeProjectConfig(value) {
   if (provider !== 'local' && provider !== 'remote') {
     throw new Error('knowledge.provider must be local or remote');
   }
-  if (provider === 'local') return { provider };
+  const local = knowledge.local === undefined ? undefined : normalizeWorkflowKnowledgeLocal(knowledge.local);
+  if (provider === 'local') return { provider, ...(local === undefined ? {} : { local }) };
   if (knowledge.remote === undefined) throw new Error('knowledge.remote must be configured when knowledge.provider is remote');
   const remote = workflowConfigRecord(knowledge.remote, 'knowledge.remote');
   if (typeof remote.endpoint !== 'string' || remote.endpoint.trim().length === 0) {
@@ -1245,6 +1385,7 @@ function normalizeWorkflowKnowledgeProjectConfig(value) {
   }
   return {
     provider,
+    ...(local === undefined ? {} : { local }),
     remote: {
       endpoint: endpoint.toString(),
       timeout_ms: timeout,

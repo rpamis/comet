@@ -241,6 +241,7 @@ async function createProjectKnowledgeModule(
                 repositoryId: location.repositoryId,
                 workspaceId: location.workspaceId,
                 sourceCount: localIndexStatus?.sourceCount ?? 0,
+                sources: localIndexStatus?.sources ?? [],
                 sectionCount: localIndexStatus?.sectionCount ?? 0,
                 ...((localIndexStatus?.updatedAt ?? status.updatedAt)
                   ? { updatedAt: localIndexStatus?.updatedAt ?? status.updatedAt }
@@ -295,7 +296,12 @@ async function createProjectKnowledgeModule(
           if (providerValue !== 'local' && providerValue !== 'remote')
             throw new Error('provider must be local or remote');
           if (providerValue === 'local') {
-            await options.updateKnowledgeConfig({ provider: 'local' });
+            await options.updateKnowledgeConfig({
+              provider: 'local',
+              ...(options.knowledgeConfig.local
+                ? { local: { include: [...options.knowledgeConfig.local.include] } }
+                : {}),
+            });
           } else {
             const remoteValue = rawValue.remote;
             if (!remoteValue || typeof remoteValue !== 'object' || Array.isArray(remoteValue))
@@ -309,6 +315,9 @@ async function createProjectKnowledgeModule(
               throw new Error('remote timeout must be an integer');
             await options.updateKnowledgeConfig({
               provider: 'remote',
+              ...(options.knowledgeConfig.local
+                ? { local: { include: [...options.knowledgeConfig.local.include] } }
+                : {}),
               remote: {
                 endpoint: remote.endpoint.trim(),
                 ...(typeof remote.tokenEnv === 'string' && remote.tokenEnv.trim()

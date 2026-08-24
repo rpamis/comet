@@ -115,4 +115,59 @@ describe('Dashboard project config settings', () => {
       statusCode: 409,
     });
   });
+
+  it('loads and saves additional local knowledge include patterns', async () => {
+    const current = parseWorkflowProjectConfigDocument(
+      await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8'),
+    ).config!;
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      renderStructuredProjectConfig(
+        mergeWorkflowProjectConfigDocument(
+          {},
+          {
+            ...current,
+            knowledge: {
+              provider: 'local',
+              local: { include: ['docs/**/*.md'] },
+            },
+          },
+        ),
+        'zh-CN',
+      ),
+      'utf8',
+    );
+
+    const loaded = await collectDashboardProjectConfigSettings(projectRoot);
+    expect(loaded.knowledge).toEqual({ provider: 'local', localInclude: ['docs/**/*.md'] });
+
+    const saved = await updateDashboardProjectConfigSettings(projectRoot, {
+      expectedRevision: loaded.revision,
+      config: {
+        defaultWorkflow: loaded.defaultWorkflow,
+        workflows: loaded.workflows,
+        ambientResume: loaded.ambientResume,
+        hookAllowPaths: loaded.hookAllowPaths,
+        knowledge: {
+          provider: 'local',
+          localInclude: ['docs/architecture/**/*.md', 'packages/*/README.md'],
+        },
+        native: loaded.native,
+        classic: loaded.classic,
+      },
+    });
+
+    expect(saved.knowledge).toEqual({
+      provider: 'local',
+      localInclude: ['docs/architecture/**/*.md', 'packages/*/README.md'],
+    });
+    expect(
+      parseWorkflowProjectConfigDocument(
+        await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8'),
+      ).config?.knowledge,
+    ).toEqual({
+      provider: 'local',
+      local: { include: ['docs/architecture/**/*.md', 'packages/*/README.md'] },
+    });
+  });
 });

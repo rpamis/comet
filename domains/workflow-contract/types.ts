@@ -61,8 +61,13 @@ export interface WorkflowKnowledgeRemoteConfig {
   timeout_ms: number;
 }
 
+export interface WorkflowKnowledgeLocalConfig {
+  include: string[];
+}
+
 export interface WorkflowKnowledgeProjectConfig {
   provider: WorkflowKnowledgeProvider;
+  local?: WorkflowKnowledgeLocalConfig;
   remote?: WorkflowKnowledgeRemoteConfig;
 }
 
