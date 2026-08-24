@@ -25,7 +25,6 @@ import {
   Tabs,
 } from 'antd';
 import {
-  AppstoreOutlined,
   BranchesOutlined,
   BulbOutlined,
   CheckCircleOutlined,
@@ -36,7 +35,11 @@ import {
   EditOutlined,
   FileTextOutlined,
   FlagOutlined,
+  FullscreenExitOutlined,
+  FullscreenOutlined,
+  MenuFoldOutlined,
   MenuOutlined,
+  MenuUnfoldOutlined,
   MoonOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -262,12 +265,18 @@ function DashboardApp({ theme, onToggleTheme }) {
   const [pluginSelection, setPluginSelection] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState('comet.personal-memory');
+  const [settingsPage, setSettingsPage] = useState(null);
+  const [settingsConfig, setSettingsConfig] = useState(null);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsError, setSettingsError] = useState(null);
   const [pluginPages, setPluginPages] = useState([]);
   const [pluginPage, setPluginPage] = useState(null);
   const [pluginLoading, setPluginLoading] = useState(false);
   const [pluginError, setPluginError] = useState(null);
   const [pluginRefreshToken, setPluginRefreshToken] = useState(0);
   const pluginSelectionRef = useRef(null);
+  const settingsSectionRef = useRef(settingsSection);
+  const settingsOpenRef = useRef(settingsOpen);
   const pluginProjectRef = useRef(null);
   const [projects, setProjects] = useState([]);
   const [projectsReady, setProjectsReady] = useState(false);
@@ -286,12 +295,14 @@ function DashboardApp({ theme, onToggleTheme }) {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [railOpen, setRailOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [artifact, setArtifact] = useState(null);
   const snapshotRequestRef = useRef(null);
   const pageRequestRef = useRef(null);
   const nativePageRequestRef = useRef(null);
   const nativeDetailRequestRef = useRef(null);
   const detailRequestRef = useRef(null);
+  const sidebarRestoreRef = useRef(null);
   const selectedIdRef = useRef(null);
   const pagesRef = useRef({ active: null, archived: null, all: null });
   const nativePagesRef = useRef({ active: null, archived: null, all: null });
@@ -304,12 +315,14 @@ function DashboardApp({ theme, onToggleTheme }) {
   const queryRef = useRef(query);
   const tabRef = useRef(tab);
   const workflowRef = useRef(workflow);
-  const activePluginPageId = settingsOpen ? settingsSection : pluginSelection;
+  const activePluginPageId = pluginSelection;
   queryRef.current = query;
   tabRef.current = tab;
   workflowRef.current = workflow;
   nativeSelectedDetailRef.current = nativeSelectedDetail;
-  pluginSelectionRef.current = activePluginPageId;
+  pluginSelectionRef.current = pluginSelection;
+  settingsSectionRef.current = settingsSection;
+  settingsOpenRef.current = settingsOpen;
   pluginProjectRef.current = activeProjectId;
 
   useEffect(() => {
@@ -506,6 +519,8 @@ function DashboardApp({ theme, onToggleTheme }) {
     let cancelled = false;
     setPluginSelection(null);
     setSettingsOpen(false);
+    setSettingsPage(null);
+    setSettingsError(null);
     setPluginPage(null);
     setPluginError(null);
     void fetchDashboardPluginPages(activeProjectId)
@@ -521,11 +536,11 @@ function DashboardApp({ theme, onToggleTheme }) {
   }, [activeProjectId, toast, useDemo]);
 
   useEffect(() => {
-    if (useDemo || !activeProjectId || !activePluginPageId) return undefined;
+    if (useDemo || !activeProjectId || !pluginSelection) return undefined;
     let cancelled = false;
     setPluginLoading(true);
     setPluginError(null);
-    void fetchDashboardPluginPage(activeProjectId, activePluginPageId)
+    void fetchDashboardPluginPage(activeProjectId, pluginSelection)
       .then((page) => {
         if (!cancelled) setPluginPage(page);
       })
@@ -541,19 +556,52 @@ function DashboardApp({ theme, onToggleTheme }) {
     return () => {
       cancelled = true;
     };
-  }, [activePluginPageId, activeProjectId, pluginRefreshToken, settingsOpen, useDemo]);
+  }, [activeProjectId, pluginRefreshToken, pluginSelection, useDemo]);
+
+  useEffect(() => {
+    if (useDemo || !activeProjectId || !settingsOpen || !settingsSection) return undefined;
+    let cancelled = false;
+    setSettingsLoading(true);
+    setSettingsError(null);
+    const request =
+      settingsSection === 'comet.config'
+        ? fetchDashboardProjectConfig(activeProjectId)
+        : fetchDashboardPluginPage(activeProjectId, settingsSection);
+    void request
+      .then((result) => {
+        if (cancelled) return;
+        if (settingsSection === 'comet.config') setSettingsConfig(result);
+        else setSettingsPage(result);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          if (settingsSection === 'comet.config') setSettingsConfig(null);
+          else setSettingsPage(null);
+          setSettingsError(error instanceof Error ? error.message : String(error));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setSettingsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProjectId, pluginRefreshToken, settingsOpen, settingsSection, useDemo]);
 
   const invokePlugin = useCallback(
-    async (pluginId, capability, input) => {
+    async (pluginId, capability, input, surface = 'page') => {
       if (!activeProjectId) return;
       const requestedProjectId = activeProjectId;
       const requestedPluginId = pluginId;
       const result = await invokeDashboardPlugin(requestedProjectId, pluginId, capability, input);
-      if (
+      const surfaceIsCurrent = () =>
         pluginProjectRef.current === requestedProjectId &&
-        pluginSelectionRef.current === requestedPluginId
-      ) {
-        setPluginPage((current) =>
+        (surface === 'settings'
+          ? settingsOpenRef.current && settingsSectionRef.current === requestedPluginId
+          : pluginSelectionRef.current === requestedPluginId);
+      const setSurfacePage = surface === 'settings' ? setSettingsPage : setPluginPage;
+      if (surfaceIsCurrent()) {
+        setSurfacePage((current) =>
           reconcilePluginInvocationResult(current, requestedPluginId, capability, result, input),
         );
       }
@@ -561,12 +609,8 @@ function DashboardApp({ theme, onToggleTheme }) {
         fetchDashboardPluginPage(requestedProjectId, pluginId),
         reloadPluginPages(),
       ]);
-      if (
-        pluginProjectRef.current !== requestedProjectId ||
-        pluginSelectionRef.current !== requestedPluginId
-      )
-        return result;
-      setPluginPage(
+      if (!surfaceIsCurrent()) return result;
+      setSurfacePage(
         reconcilePluginInvocationResult(nextPage, requestedPluginId, capability, result, input),
       );
       return result;
@@ -575,20 +619,22 @@ function DashboardApp({ theme, onToggleTheme }) {
   );
 
   const invokeActivePlugin = useCallback(
-    async (pluginId, capability, input) => {
+    async (pluginId, capability, input, surface = 'page') => {
       try {
         let result;
         if (capability === 'lifecycle') {
           await lifecycleDashboardPlugin(activeProjectId, pluginId, input.action);
           if (input.action === 'uninstall') {
             const nextPages = (await reloadPluginPages()) ?? [];
-            setPluginPage(null);
-            setPluginError(null);
-            if (settingsOpen) {
+            if (surface === 'settings') {
+              setSettingsPage(null);
+              setSettingsError(null);
               const nextSection = nextPages.find((page) => page.pluginId !== pluginId)?.pluginId;
               if (nextSection) setSettingsSection(nextSection);
               else setSettingsOpen(false);
             } else {
+              setPluginPage(null);
+              setPluginError(null);
               setPluginSelection(null);
             }
           } else {
@@ -596,7 +642,7 @@ function DashboardApp({ theme, onToggleTheme }) {
             await reloadPluginPages();
           }
         } else {
-          result = await invokePlugin(pluginId, capability, input);
+          result = await invokePlugin(pluginId, capability, input, surface);
         }
         if (pluginId === 'comet.project-knowledge' && capability === 'query') {
           const count = Array.isArray(result?.results) ? result.results.length : 0;
@@ -629,7 +675,7 @@ function DashboardApp({ theme, onToggleTheme }) {
         return undefined;
       }
     },
-    [activeProjectId, invokePlugin, reloadPluginPages, settingsOpen, toast],
+    [activeProjectId, invokePlugin, reloadPluginPages, toast],
   );
 
   const loadPage = useCallback(
@@ -875,10 +921,21 @@ function DashboardApp({ theme, onToggleTheme }) {
 
   const selectTab = useCallback((nextTab) => setTab(nextTab), []);
 
+  useEffect(() => {
+    if (!sidebarCollapsed) return undefined;
+    const frame = window.requestAnimationFrame(() => sidebarRestoreRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [sidebarCollapsed]);
+
   return (
-    <main className="dashboard-workbench min-h-screen bg-surface text-fg antialiased lg:grid lg:grid-cols-[var(--rail-w)_1fr]">
+    <main
+      className={`dashboard-workbench min-h-screen bg-surface text-fg antialiased lg:grid lg:grid-cols-[var(--rail-w)_1fr]${
+        sidebarCollapsed ? ' is-sidebar-collapsed' : ''
+      }`}
+    >
       <AntSidebar
         open={railOpen}
+        collapsed={sidebarCollapsed}
         workflow={workflow}
         onWorkflow={(nextWorkflow) => {
           setSettingsOpen(false);
@@ -895,9 +952,9 @@ function DashboardApp({ theme, onToggleTheme }) {
             null;
           setSettingsSection(preferredSection);
           setSettingsOpen(true);
-          setPluginSelection(null);
-          setPluginPage(null);
-          setPluginError(null);
+          setSettingsPage(null);
+          setSettingsConfig(null);
+          setSettingsError(null);
         }}
         onPluginSelect={(pluginId) => {
           setSettingsOpen(false);
@@ -905,6 +962,7 @@ function DashboardApp({ theme, onToggleTheme }) {
           setPluginPage(null);
           setPluginError(null);
         }}
+        onCollapse={() => setSidebarCollapsed(true)}
         onClose={() => setRailOpen(false)}
       />
       {railOpen && (
@@ -945,12 +1003,16 @@ function DashboardApp({ theme, onToggleTheme }) {
             setPluginPages([]);
             setPluginPage(null);
             setPluginError(null);
+            setSettingsConfig(null);
             setRailOpen(false);
           }}
           loading={loading}
           query={query}
           onQuery={setQuery}
           onMenu={() => setRailOpen(true)}
+          sidebarCollapsed={sidebarCollapsed}
+          sidebarRestoreRef={sidebarRestoreRef}
+          onSidebarExpand={() => setSidebarCollapsed(false)}
           onRefresh={async () => {
             await refresh(true);
             await reloadPluginPages();
@@ -969,27 +1031,6 @@ function DashboardApp({ theme, onToggleTheme }) {
           >
             {!snapshot ? (
               <LoadingState />
-            ) : settingsOpen ? (
-              <DashboardSettingsPage
-                section={settingsSection}
-                pages={pluginPages}
-                page={pluginPage}
-                loading={pluginLoading}
-                error={pluginError}
-                onSection={(pluginId) => {
-                  setSettingsSection(pluginId);
-                  setPluginPage(null);
-                  setPluginError(null);
-                }}
-                onRetry={() => {
-                  setPluginPage(null);
-                  setPluginError(null);
-                  setPluginRefreshToken((value) => value + 1);
-                }}
-                onInvoke={(capability, input) =>
-                  invokeActivePlugin(settingsSection, capability, input)
-                }
-              />
             ) : pluginSelection ? (
               <PluginCenterPage
                 page={pluginPage}
@@ -1051,6 +1092,46 @@ function DashboardApp({ theme, onToggleTheme }) {
             )}
           </div>
         </div>
+        <DashboardSettingsOverlay
+          open={settingsOpen}
+          section={settingsSection}
+          pages={pluginPages}
+          page={settingsPage}
+          config={settingsConfig}
+          loading={settingsLoading}
+          error={settingsError}
+          onClose={() => setSettingsOpen(false)}
+          onSection={(pluginId) => {
+            setSettingsSection(pluginId);
+            setSettingsPage(null);
+            setSettingsConfig(null);
+            setSettingsError(null);
+          }}
+          onRetry={() => {
+            setSettingsPage(null);
+            setSettingsConfig(null);
+            setSettingsError(null);
+            setPluginRefreshToken((value) => value + 1);
+          }}
+          onSaveConfig={async (config) => {
+            if (!activeProjectId || !settingsConfig) return;
+            try {
+              const next = await saveDashboardProjectConfig(activeProjectId, {
+                expectedRevision: settingsConfig.revision,
+                config,
+              });
+              setSettingsConfig(next);
+              toast('Comet 配置已保存');
+              await refresh(false);
+            } catch (error) {
+              toast(error instanceof Error ? error.message : String(error), 'error');
+              throw error;
+            }
+          }}
+          onInvoke={(capability, input) =>
+            invokeActivePlugin(settingsSection, capability, input, 'settings')
+          }
+        />
       </section>
       <ArtifactDrawer artifact={artifact} onClose={() => setArtifact(null)} />
     </main>
@@ -1066,6 +1147,9 @@ function Topbar({
   activeProjectId,
   onProjectSelect,
   onMenu,
+  sidebarCollapsed,
+  sidebarRestoreRef,
+  onSidebarExpand,
   onRefresh,
   theme,
   onToggleTheme,
@@ -1080,6 +1164,18 @@ function Topbar({
         aria-label="打开导航"
       />
       <div className="comet-header-context">
+        {sidebarCollapsed ? (
+          <Tooltip title="展开侧边栏" placement="bottom">
+            <Button
+              className="comet-sidebar-restore !hidden lg:!inline-flex"
+              type="text"
+              ref={sidebarRestoreRef}
+              icon={<MenuUnfoldOutlined />}
+              onClick={onSidebarExpand}
+              aria-label="展开侧边栏"
+            />
+          </Tooltip>
+        ) : null}
         <Select
           className="comet-project-select"
           value={activeProjectId ?? undefined}
@@ -2252,6 +2348,24 @@ async function fetchDashboardPluginPage(projectId, pluginId) {
   return res.json();
 }
 
+async function fetchDashboardProjectConfig(projectId) {
+  const res = await fetch(`/api/dashboard/projects/${encodeURIComponent(projectId)}/config`, {
+    cache: 'no-store',
+  });
+  if (!res.ok) throw await dashboardResponseError(res);
+  return res.json();
+}
+
+async function saveDashboardProjectConfig(projectId, input) {
+  const res = await fetch(`/api/dashboard/projects/${encodeURIComponent(projectId)}/config`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw await dashboardResponseError(res);
+  return res.json();
+}
+
 async function invokeDashboardPlugin(projectId, pluginId, capability, input) {
   const res = await fetch(
     `/api/dashboard/projects/${encodeURIComponent(projectId)}/plugins/${encodeURIComponent(pluginId)}/invoke`,
@@ -2502,6 +2616,7 @@ async function copyText(text) {
 createRoot(document.getElementById('root')).render(<App />);
 function AntSidebar({
   open,
+  collapsed,
   workflow,
   onWorkflow,
   pluginPages,
@@ -2509,60 +2624,68 @@ function AntSidebar({
   settingsOpen,
   onSettings,
   onPluginSelect,
+  onCollapse,
   onClose,
 }) {
   const navigation = (
     <>
-      <Menu
-        className="dashboard-sidebar-menu dashboard-workflow-menu"
-        mode="inline"
-        selectedKeys={settingsOpen ? [] : pluginSelection ? [pluginSelection] : [workflow]}
-        items={[
-          { key: 'classic', icon: <BranchesOutlined />, label: 'Classic 工作流' },
-          { key: 'native', icon: <FileTextOutlined />, label: 'Native 工作流' },
-        ]}
-        onClick={({ key }) => {
-          onPluginSelect(null);
-          onWorkflow(key);
-          onClose();
-        }}
-      />
-      <div className="dashboard-sidebar-label dashboard-sidebar-label-spaced">插件中心</div>
-      <Menu
-        className="dashboard-sidebar-menu dashboard-plugin-menu"
-        mode="inline"
-        selectedKeys={settingsOpen ? [] : pluginSelection ? [pluginSelection] : []}
-        items={pluginPages.map((page) => {
-          const statusLabel = page.globallyDisabled
-            ? '停用'
-            : page.projectPaused
-              ? '暂停'
-              : page.status === 'disabled'
-                ? '停用'
-                : null;
-          return {
-            key: page.pluginId,
-            icon:
-              page.pluginId === 'comet.personal-memory' ? (
-                <BulbOutlined />
-              ) : page.pluginId === 'comet.project-knowledge' ? (
-                <DatabaseOutlined />
-              ) : (
-                <SafetyCertificateOutlined />
+      <div className="dashboard-sidebar-group">
+        <div className="dashboard-sidebar-label">工作流</div>
+        <Menu
+          className="dashboard-sidebar-menu dashboard-workflow-menu"
+          mode="inline"
+          inlineIndent={12}
+          selectedKeys={pluginSelection ? [] : [workflow]}
+          items={[
+            { key: 'classic', icon: <BranchesOutlined />, label: 'Classic 工作流' },
+            { key: 'native', icon: <FileTextOutlined />, label: 'Native 工作流' },
+          ]}
+          onClick={({ key }) => {
+            onPluginSelect(null);
+            onWorkflow(key);
+            onClose();
+          }}
+        />
+      </div>
+      <div className="dashboard-sidebar-group">
+        <div className="dashboard-sidebar-label">插件中心</div>
+        <Menu
+          className="dashboard-sidebar-menu dashboard-plugin-menu"
+          mode="inline"
+          inlineIndent={12}
+          selectedKeys={pluginSelection ? [pluginSelection] : []}
+          items={pluginPages.map((page) => {
+            const statusLabel = page.globallyDisabled
+              ? '停用'
+              : page.projectPaused
+                ? '暂停'
+                : page.status === 'disabled'
+                  ? '停用'
+                  : null;
+            return {
+              key: page.pluginId,
+              icon:
+                page.pluginId === 'comet.personal-memory' ? (
+                  <BulbOutlined />
+                ) : page.pluginId === 'comet.project-knowledge' ? (
+                  <DatabaseOutlined />
+                ) : (
+                  <SafetyCertificateOutlined />
+                ),
+              label: (
+                <span className="dashboard-plugin-menu-item">
+                  <span>{page.label}</span>
+                  {statusLabel ? <Badge status="default" text={statusLabel} /> : null}
+                </span>
               ),
-            label: (
-              <span className="dashboard-plugin-menu-item">
-                <span>{page.label}</span>
-                {statusLabel ? <Badge status="default" text={statusLabel} /> : null}
-              </span>
-            ),
-          };
-        })}
-        onClick={({ key }) => {
-          onPluginSelect(key);
-          onClose();
-        }}
-      />
+            };
+          })}
+          onClick={({ key }) => {
+            onPluginSelect(key);
+            onClose();
+          }}
+        />
+      </div>
     </>
   );
   const settingsButton = (
@@ -2584,42 +2707,45 @@ function AntSidebar({
       <Layout.Sider
         className="dashboard-sidebar !hidden !bg-bg lg:!block"
         width={228}
+        collapsed={collapsed}
+        collapsedWidth={0}
+        collapsible
+        trigger={null}
+        aria-hidden={collapsed}
+        inert={collapsed}
         theme="light"
       >
-        <div className="flex h-full flex-col">
+        <div className="dashboard-sidebar-content flex h-full flex-col">
           <div className="dashboard-sidebar-brand flex items-center gap-2">
             <img src="/favicon.png" alt="Comet" className="size-7 rounded-[7px]" />
             <div className="dashboard-sidebar-brand-copy">
               <strong>Comet Dashboard</strong>
               <div className="text-xs text-meta">Agent 工作台</div>
             </div>
+            <Tooltip title="收起侧边栏" placement="right">
+              <Button
+                className="dashboard-sidebar-collapse"
+                type="text"
+                icon={<MenuFoldOutlined />}
+                onClick={onCollapse}
+                aria-label="收起侧边栏"
+              />
+            </Tooltip>
           </div>
-          <div className="dashboard-sidebar-navigation">
-            <div className="dashboard-sidebar-label">工作区</div>
-            <div className="dashboard-sidebar-feature">
-              <AppstoreOutlined aria-hidden="true" />
-              <span>变更工作区</span>
-            </div>
-            <div className="dashboard-sidebar-label">工作流</div>
-            {navigation}
-          </div>
+          <div className="dashboard-sidebar-navigation">{navigation}</div>
           <div className="dashboard-sidebar-footer">
             <div className="dashboard-sidebar-label dashboard-sidebar-footer-label">系统</div>
             {settingsButton}
-            <div className="dashboard-sidebar-status">
-              <div className="flex items-center gap-2 font-medium text-fg">
-                <BulbOutlined aria-hidden="true" />
-                工作台状态
-              </div>
-              <div className="mt-2 text-xs text-meta">只读连接 · 自动同步</div>
-            </div>
           </div>
         </div>
       </Layout.Sider>
       <Drawer title="Comet 工作台" placement="left" open={open} onClose={onClose} size={280}>
         <div className="dashboard-mobile-navigation">
           {navigation}
-          <div className="dashboard-mobile-settings">{settingsButton}</div>
+          <div className="dashboard-mobile-settings">
+            <div className="dashboard-sidebar-label">系统</div>
+            {settingsButton}
+          </div>
         </div>
       </Drawer>
     </>
@@ -2673,46 +2799,140 @@ function PluginCenterPage({ page, loading, error, onRetry, onInvoke }) {
   );
 }
 
+function DashboardSettingsOverlay({
+  open,
+  section,
+  pages,
+  page,
+  config,
+  loading,
+  error,
+  onClose,
+  onSection,
+  onRetry,
+  onSaveConfig,
+  onInvoke,
+}) {
+  const [fullscreen, setFullscreen] = useState(false);
+
+  useEffect(() => {
+    if (!open) setFullscreen(false);
+  }, [open]);
+
+  const closeSettings = () => {
+    setFullscreen(false);
+    onClose();
+  };
+
+  return (
+    <Modal
+      rootClassName={`dashboard-settings-modal-root${fullscreen ? ' is-fullscreen' : ''}`}
+      className={`dashboard-settings-modal${fullscreen ? ' is-fullscreen' : ''}`}
+      centered
+      width={fullscreen ? '100vw' : 920}
+      open={open}
+      keyboard
+      mask={{ closable: true }}
+      destroyOnHidden
+      onCancel={closeSettings}
+      title={
+        <div className="dashboard-settings-modal-title">
+          <div className="dashboard-settings-modal-title-copy">
+            <span className="dashboard-settings-modal-icon" aria-hidden="true">
+              <SettingOutlined />
+            </span>
+            <div>
+              <div className="dashboard-settings-modal-title-row">
+                <strong>Comet 设置</strong>
+                <span className="dashboard-tool-counter">当前项目</span>
+              </div>
+              <p>统一管理个人记忆、项目规则与工作流配置</p>
+            </div>
+          </div>
+          <Tooltip title={fullscreen ? '退出全屏' : '全屏显示'} placement="bottom">
+            <Button
+              className="dashboard-settings-modal-expand"
+              type="text"
+              icon={fullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
+              aria-label={fullscreen ? '退出全屏设置' : '全屏显示设置'}
+              aria-pressed={fullscreen}
+              onClick={() => setFullscreen((value) => !value)}
+            />
+          </Tooltip>
+        </div>
+      }
+      footer={
+        <div className="dashboard-settings-modal-footer">
+          <span>点击背景可关闭设置</span>
+          <div>
+            <Button type="primary" onClick={closeSettings}>
+              完成
+            </Button>
+          </div>
+        </div>
+      }
+    >
+      <DashboardSettingsPage
+        section={section}
+        pages={pages}
+        page={page}
+        config={config}
+        loading={loading}
+        error={error}
+        onSection={onSection}
+        onRetry={onRetry}
+        onSaveConfig={onSaveConfig}
+        onInvoke={onInvoke}
+      />
+    </Modal>
+  );
+}
+
 function DashboardSettingsPage({
   section,
   pages,
   page,
+  config,
   loading,
   error,
   onSection,
   onRetry,
+  onSaveConfig,
   onInvoke,
 }) {
-  const settingsPages = pages.filter((item) =>
-    ['comet.personal-memory', 'comet.project-knowledge'].includes(item.pluginId),
-  );
+  const installedPlugins = new Set(pages.map((item) => item.pluginId));
+  const settingsPages = [
+    {
+      key: 'comet.personal-memory',
+      icon: <UserOutlined />,
+      label: '个人记忆',
+      disabled: !installedPlugins.has('comet.personal-memory'),
+    },
+    {
+      key: 'comet.project-knowledge',
+      icon: <DatabaseOutlined />,
+      label: '项目规则',
+      disabled: !installedPlugins.has('comet.project-knowledge'),
+    },
+    { key: 'comet.config', icon: <SettingOutlined />, label: 'Comet 配置' },
+  ];
+  const currentData = section === 'comet.config' ? config : page;
   return (
-    <div className="dashboard-tool-page dashboard-settings-page mx-auto min-w-0 max-w-dashboard">
-      <PluginCenterHeader
-        icon={SettingOutlined}
-        title="设置"
-        description="管理 Dashboard 插件的项目行为、Provider 与本地同步"
-        meta={[{ label: '范围', value: '当前项目', tone: 'neutral' }]}
-      />
+    <div className="dashboard-tool-page dashboard-settings-page min-w-0">
       <div className="dashboard-settings-shell">
         <aside className="dashboard-settings-navigation" aria-label="设置分类">
-          <div className="dashboard-settings-navigation-label">插件设置</div>
+          <div className="dashboard-settings-navigation-label">设置中心</div>
           <Menu
             mode="inline"
             selectedKeys={section ? [section] : []}
-            items={settingsPages.map((item) => ({
-              key: item.pluginId,
-              icon:
-                item.pluginId === 'comet.personal-memory' ? <UserOutlined /> : <DatabaseOutlined />,
-              label: item.label,
-            }))}
+            items={settingsPages}
             onClick={({ key }) => onSection(key)}
           />
         </aside>
         <section className="dashboard-settings-main" aria-live="polite">
-          {loading && !page ? (
+          {loading && !currentData ? (
             <LoadingState />
-          ) : error && !page ? (
+          ) : error && !currentData ? (
             <Alert
               type="error"
               showIcon
@@ -2720,8 +2940,10 @@ function DashboardSettingsPage({
               description={error}
               action={<Button onClick={onRetry}>重试</Button>}
             />
+          ) : section === 'comet.config' && config ? (
+            <CometConfigSettings data={config} onSave={onSaveConfig} />
           ) : !page ? (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前没有可配置的插件" />
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前设置不可用" />
           ) : page.pluginId === 'comet.personal-memory' ? (
             <PersonalMemorySettings page={page} data={page.data} onInvoke={onInvoke} />
           ) : page.pluginId === 'comet.project-knowledge' ? (
@@ -2748,6 +2970,348 @@ function SettingsSectionHead({ icon: Icon, title, description, status }) {
         </div>
         <p>{description}</p>
       </div>
+    </div>
+  );
+}
+
+function toCometConfigDraft(data) {
+  return {
+    defaultWorkflow: data.defaultWorkflow,
+    workflows: [...data.workflows],
+    ambientResume: data.ambientResume,
+    hookAllowPaths: data.hookAllowPaths.join('\n'),
+    native: {
+      ...data.native,
+      maxVerifyFailures: String(data.native.maxVerifyFailures),
+    },
+    classic: { ...data.classic },
+  };
+}
+
+function CometConfigSettings({ data, onSave }) {
+  const [draft, setDraft] = useState(() => toCometConfigDraft(data));
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+
+  useEffect(() => {
+    setDraft(toCometConfigDraft(data));
+    setSaveError(null);
+  }, [data.revision]);
+
+  const setNative = (key, value) => {
+    setDraft((current) => ({
+      ...current,
+      native: { ...current.native, [key]: value },
+    }));
+  };
+  const setClassic = (key, value) => {
+    setDraft((current) => ({
+      ...current,
+      classic: { ...current.classic, [key]: value },
+    }));
+  };
+  const save = async () => {
+    if (draft.workflows.length === 0) {
+      setSaveError('至少需要启用一个工作流。');
+      return;
+    }
+    const maxVerifyFailures = Number(draft.native.maxVerifyFailures);
+    if (!Number.isSafeInteger(maxVerifyFailures) || maxVerifyFailures <= 0) {
+      setSaveError('Verify 失败上限必须是正整数。');
+      return;
+    }
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await onSave({
+        defaultWorkflow: draft.defaultWorkflow,
+        workflows: draft.workflows,
+        ambientResume: draft.ambientResume,
+        hookAllowPaths: draft.hookAllowPaths
+          .split(/\r?\n/u)
+          .map((item) => item.trim())
+          .filter(Boolean),
+        native: { ...draft.native, maxVerifyFailures },
+        classic: draft.classic,
+      });
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const workflowOptions = [
+    { value: 'native', label: 'Native' },
+    { value: 'classic', label: 'Classic' },
+  ];
+  return (
+    <div className="dashboard-settings-stack">
+      <SettingsSectionHead
+        icon={SettingOutlined}
+        title="Comet 配置"
+        description="编辑当前项目的工作流、恢复策略与产物设置"
+        status={data.schema}
+      />
+      {saveError && <Alert type="error" showIcon message="配置保存失败" description={saveError} />}
+      <section className="dashboard-settings-panel" aria-labelledby="comet-workflow-settings">
+        <div className="dashboard-settings-panel-head">
+          <div>
+            <h4 id="comet-workflow-settings">工作流与恢复</h4>
+            <p>控制 `/comet` 的默认入口、可用工作流和自动恢复行为</p>
+          </div>
+        </div>
+        <div className="dashboard-memory-setting">
+          <div className="dashboard-memory-setting-copy">
+            <strong>默认工作流</strong>
+            <span>运行 `/comet` 且没有明确指定模式时使用</span>
+          </div>
+          <Select
+            className="dashboard-config-control"
+            value={draft.defaultWorkflow}
+            aria-label="Comet 默认工作流"
+            options={workflowOptions.filter((item) => draft.workflows.includes(item.value))}
+            onChange={(defaultWorkflow) => setDraft((current) => ({ ...current, defaultWorkflow }))}
+          />
+        </div>
+        <div className="dashboard-memory-setting">
+          <div className="dashboard-memory-setting-copy">
+            <strong>启用的工作流</strong>
+            <span>可以同时保留 Native 与 Classic</span>
+          </div>
+          <Select
+            mode="multiple"
+            className="dashboard-config-control dashboard-config-control-wide"
+            value={draft.workflows}
+            aria-label="Comet 启用的工作流"
+            options={workflowOptions}
+            onChange={(workflows) =>
+              setDraft((current) => ({
+                ...current,
+                workflows,
+                defaultWorkflow: workflows.includes(current.defaultWorkflow)
+                  ? current.defaultWorkflow
+                  : (workflows[0] ?? current.defaultWorkflow),
+              }))
+            }
+          />
+        </div>
+        <div className="dashboard-memory-setting">
+          <div className="dashboard-memory-setting-copy">
+            <strong>环境感知恢复</strong>
+            <span>在任务开始前运行只读探针，发现可恢复的 Native 或 Classic change</span>
+          </div>
+          <Switch
+            size="small"
+            checked={draft.ambientResume}
+            aria-label="切换环境感知恢复"
+            onChange={(ambientResume) => setDraft((current) => ({ ...current, ambientResume }))}
+          />
+        </div>
+        <div className="dashboard-memory-setting dashboard-memory-setting-stack">
+          <div className="dashboard-memory-setting-copy">
+            <strong>Hook 允许写入路径</strong>
+            <span>每行一个项目相对目录；留空时继续遵循工作流阶段保护</span>
+          </div>
+          <Input.TextArea
+            rows={3}
+            value={draft.hookAllowPaths}
+            aria-label="Hook 允许写入路径"
+            placeholder={'例如：\ndocs/generated\nreports'}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, hookAllowPaths: event.target.value }))
+            }
+          />
+        </div>
+      </section>
+
+      <section className="dashboard-settings-panel" aria-labelledby="comet-native-settings">
+        <div className="dashboard-settings-panel-head">
+          <div>
+            <h4 id="comet-native-settings">Native 工作流</h4>
+            <p>控制 Native 产物位置、语言、澄清与归档策略</p>
+          </div>
+          <Tag color={draft.workflows.includes('native') ? 'success' : 'default'}>
+            {draft.workflows.includes('native') ? '已启用' : '未启用'}
+          </Tag>
+        </div>
+        <div className="dashboard-memory-setting">
+          <div className="dashboard-memory-setting-copy">
+            <strong>产物根目录</strong>
+            <span>修改后会改变 Native specs 与 changes 的发现位置</span>
+          </div>
+          <Input
+            className="dashboard-config-control dashboard-config-control-wide"
+            value={draft.native.artifactRoot}
+            aria-label="Native 产物根目录"
+            onChange={(event) => setNative('artifactRoot', event.target.value)}
+          />
+        </div>
+        <div className="dashboard-memory-setting">
+          <div className="dashboard-memory-setting-copy">
+            <strong>产物语言</strong>
+            <span>Native 生成的需求、规格与验证文档语言</span>
+          </div>
+          <Select
+            className="dashboard-config-control"
+            value={draft.native.language}
+            aria-label="Native 产物语言"
+            options={[
+              { value: 'zh-CN', label: '简体中文' },
+              { value: 'en', label: 'English' },
+            ]}
+            onChange={(value) => setNative('language', value)}
+          />
+        </div>
+        <div className="dashboard-memory-setting">
+          <div className="dashboard-memory-setting-copy">
+            <strong>澄清方式</strong>
+            <span>批量收集问题，或每轮只处理一个问题</span>
+          </div>
+          <Select
+            className="dashboard-config-control"
+            value={draft.native.clarificationMode}
+            aria-label="Native 澄清方式"
+            options={[
+              { value: 'batch', label: '批量询问' },
+              { value: 'sequential', label: '逐个询问' },
+            ]}
+            onChange={(value) => setNative('clarificationMode', value)}
+          />
+        </div>
+        <div className="dashboard-memory-setting">
+          <div className="dashboard-memory-setting-copy">
+            <strong>归档确认</strong>
+            <span>验证通过后自动归档，或等待用户明确确认</span>
+          </div>
+          <Select
+            className="dashboard-config-control"
+            value={draft.native.archiveConfirmation}
+            aria-label="Native 归档确认"
+            options={[
+              { value: 'automatic', label: '自动归档' },
+              { value: 'required', label: '需要确认' },
+            ]}
+            onChange={(value) => setNative('archiveConfirmation', value)}
+          />
+        </div>
+        <div className="dashboard-memory-setting">
+          <div className="dashboard-memory-setting-copy">
+            <strong>Verify 失败上限</strong>
+            <span>同一验收目标达到上限后停止完成循环</span>
+          </div>
+          <Input
+            className="dashboard-config-control"
+            inputMode="numeric"
+            value={draft.native.maxVerifyFailures}
+            aria-label="Native Verify 失败上限"
+            onChange={(event) => setNative('maxVerifyFailures', event.target.value)}
+          />
+        </div>
+      </section>
+
+      <section className="dashboard-settings-panel" aria-labelledby="comet-classic-settings">
+        <div className="dashboard-settings-panel-head">
+          <div>
+            <h4 id="comet-classic-settings">Classic 工作流</h4>
+            <p>控制 Classic 产物布局、语言、压缩与审查深度</p>
+          </div>
+          <Tag color={draft.workflows.includes('classic') ? 'success' : 'default'}>
+            {draft.workflows.includes('classic') ? '已启用' : '未启用'}
+          </Tag>
+        </div>
+        <div className="dashboard-memory-setting">
+          <div className="dashboard-memory-setting-copy">
+            <strong>产物布局</strong>
+            <span>选择根目录兼容布局或 docs 标准布局</span>
+          </div>
+          <Select
+            className="dashboard-config-control"
+            value={draft.classic.artifactLayout}
+            aria-label="Classic 产物布局"
+            options={[
+              { value: 'docs', label: 'docs' },
+              { value: 'legacy', label: 'legacy' },
+            ]}
+            onChange={(value) => setClassic('artifactLayout', value)}
+          />
+        </div>
+        <div className="dashboard-memory-setting">
+          <div className="dashboard-memory-setting-copy">
+            <strong>产物语言</strong>
+            <span>Classic change 文档使用的语言</span>
+          </div>
+          <Select
+            className="dashboard-config-control"
+            value={draft.classic.language}
+            aria-label="Classic 产物语言"
+            options={[
+              { value: 'zh-CN', label: '简体中文' },
+              { value: 'en', label: 'English' },
+            ]}
+            onChange={(value) => setClassic('language', value)}
+          />
+        </div>
+        <div className="dashboard-memory-setting">
+          <div className="dashboard-memory-setting-copy">
+            <strong>上下文压缩</strong>
+            <span>为新建 Classic change 启用 beta 压缩能力</span>
+          </div>
+          <Select
+            className="dashboard-config-control"
+            value={draft.classic.contextCompression}
+            aria-label="Classic 上下文压缩"
+            options={[
+              { value: 'off', label: '关闭' },
+              { value: 'beta', label: 'Beta' },
+            ]}
+            onChange={(value) => setClassic('contextCompression', value)}
+          />
+        </div>
+        <div className="dashboard-memory-setting">
+          <div className="dashboard-memory-setting-copy">
+            <strong>审查深度</strong>
+            <span>控制新建 Classic change 的默认审查强度</span>
+          </div>
+          <Select
+            className="dashboard-config-control"
+            value={draft.classic.reviewMode}
+            aria-label="Classic 审查深度"
+            options={[
+              { value: 'off', label: '关闭' },
+              { value: 'standard', label: '标准' },
+              { value: 'thorough', label: '深入' },
+            ]}
+            onChange={(value) => setClassic('reviewMode', value)}
+          />
+        </div>
+        <div className="dashboard-memory-setting">
+          <div className="dashboard-memory-setting-copy">
+            <strong>自动进入下一阶段</strong>
+            <span>当前阶段通过后自动进入 Classic 的下一阶段</span>
+          </div>
+          <Switch
+            size="small"
+            checked={draft.classic.autoTransition}
+            aria-label="切换 Classic 自动进入下一阶段"
+            onChange={(value) => setClassic('autoTransition', value)}
+          />
+        </div>
+      </section>
+
+      <section className="dashboard-settings-panel" aria-labelledby="comet-config-file">
+        <div className="dashboard-settings-panel-head dashboard-config-save-row">
+          <div>
+            <h4 id="comet-config-file">配置文件</h4>
+            <p>
+              保存到 <code>{data.path}</code>；未知扩展字段会原样保留
+            </p>
+          </div>
+          <Button type="primary" loading={saving} onClick={save}>
+            保存 Comet 配置
+          </Button>
+        </div>
+      </section>
     </div>
   );
 }
@@ -3170,8 +3734,8 @@ function ProjectKnowledgeSettings({ page, data, onInvoke }) {
     <div className="dashboard-settings-stack">
       <SettingsSectionHead
         icon={DatabaseOutlined}
-        title="项目知识设置"
-        description="管理当前项目的检索 Provider 与插件生命周期"
+        title="项目规则设置"
+        description="管理当前项目的知识检索、Provider 与插件生命周期"
         status={disabled ? '已暂停' : provider}
       />
       {disabled && (
@@ -3186,18 +3750,27 @@ function ProjectKnowledgeSettings({ page, data, onInvoke }) {
         />
       )}
       {!disabled && (
-        <section className="dashboard-settings-panel" aria-labelledby="knowledge-provider-settings">
-          <div className="dashboard-settings-panel-head">
-            <div>
-              <h4 id="knowledge-provider-settings">Provider 配置</h4>
-              <p>Remote 只保存 endpoint、scope、超时和 token 环境变量名</p>
+        <>
+          <section
+            className="dashboard-settings-panel"
+            aria-labelledby="knowledge-provider-settings"
+          >
+            <div className="dashboard-settings-panel-head">
+              <div>
+                <h4 id="knowledge-provider-settings">Provider 与检索</h4>
+                <p>选择项目知识来源，并控制 Agent 使用的检索服务</p>
+              </div>
             </div>
-            <Tag>{provider}</Tag>
-          </div>
-          <div className="dashboard-knowledge-summary-body">
-            <div className="dashboard-knowledge-provider-form">
+            <div className="dashboard-memory-setting dashboard-memory-setting-stack">
+              <div className="dashboard-memory-setting-copy">
+                <strong>Provider</strong>
+                <span>
+                  {providerMode === 'remote'
+                    ? '使用团队或外部 Remote Provider'
+                    : '使用当前设备上的本地项目知识索引'}
+                </span>
+              </div>
               <Select
-                size="small"
                 value={providerMode}
                 aria-label="项目知识 Provider"
                 onChange={setProviderMode}
@@ -3207,135 +3780,157 @@ function ProjectKnowledgeSettings({ page, data, onInvoke }) {
                 ]}
               />
               {providerMode === 'remote' && (
-                <>
+                <div className="dashboard-knowledge-settings-fields">
                   <Input
-                    size="small"
                     value={endpoint}
                     onChange={(event) => setEndpoint(event.target.value)}
                     placeholder="Remote endpoint"
                     aria-label="项目知识 Remote endpoint"
                   />
+                  <div className="dashboard-memory-remote-form">
+                    <Input
+                      value={tokenEnv}
+                      onChange={(event) => setTokenEnv(event.target.value)}
+                      placeholder="Token 环境变量名"
+                      aria-label="项目知识 Token 环境变量名"
+                    />
+                    <Input
+                      value={scope}
+                      onChange={(event) => setScope(event.target.value)}
+                      placeholder="Scope（可选）"
+                      aria-label="项目知识 scope"
+                    />
+                  </div>
                   <Input
-                    size="small"
-                    value={tokenEnv}
-                    onChange={(event) => setTokenEnv(event.target.value)}
-                    placeholder="Token 环境变量名"
-                    aria-label="项目知识 Token 环境变量名"
-                  />
-                  <Input
-                    size="small"
-                    value={scope}
-                    onChange={(event) => setScope(event.target.value)}
-                    placeholder="Scope（可选）"
-                    aria-label="项目知识 scope"
-                  />
-                  <Input
-                    size="small"
                     value={timeoutMs}
                     onChange={(event) => setTimeoutMs(event.target.value)}
-                    placeholder="超时毫秒"
+                    placeholder="请求超时（毫秒）"
                     aria-label="项目知识超时"
                   />
-                </>
+                </div>
               )}
-              <Button size="small" type="primary" onClick={() => void saveProvider()}>
-                保存 Provider
-              </Button>
+              <div className="dashboard-memory-sync-row">
+                <span>
+                  {providerMode === snapshot.provider && snapshot.retrieval
+                    ? snapshot.retrieval
+                    : 'Provider 切换不会删除现有项目知识；保存后重新加载配置即可生效'}
+                </span>
+                <Button type="primary" onClick={() => void saveProvider()}>
+                  保存配置
+                </Button>
+              </div>
             </div>
-            <p className="dashboard-knowledge-retrieval">{snapshot.retrieval}</p>
-            {provider === 'Remote' && remote ? (
-              <dl className="dashboard-knowledge-fields">
+          </section>
+          {providerMode === 'local' && local && (
+            <section
+              className="dashboard-settings-panel"
+              aria-labelledby="knowledge-index-settings"
+            >
+              <div className="dashboard-settings-panel-head">
                 <div>
-                  <dt>Endpoint</dt>
-                  <dd>{remote.endpoint || '未提供'}</dd>
+                  <h4 id="knowledge-index-settings">本地索引</h4>
+                  <p>查看当前项目隔离的知识索引和最近检索状态</p>
                 </div>
-                <div>
-                  <dt>Scope</dt>
-                  <dd>{remote.scope || '未配置'}</dd>
+              </div>
+              <div className="dashboard-memory-setting">
+                <div className="dashboard-memory-setting-copy">
+                  <strong>索引状态</strong>
+                  <span>
+                    {local.sourceCount} 个来源 · {local.sectionCount} 个知识片段
+                  </span>
                 </div>
-                <div>
-                  <dt>Timeout</dt>
-                  <dd>{remote.timeoutMs} ms</dd>
+                <Tag color={local.available ? 'success' : 'warning'}>
+                  {local.available ? '可用' : '需要建立'}
+                </Tag>
+              </div>
+              <div className="dashboard-memory-setting">
+                <div className="dashboard-memory-setting-copy">
+                  <strong>项目身份</strong>
+                  <span>{local.repositoryId}</span>
                 </div>
-                <div>
-                  <dt>Token 环境变量</dt>
-                  <dd>
-                    {remote.tokenEnv
-                      ? `${remote.tokenEnv} · ${remote.tokenConfigured ? '已提供' : '未提供'}`
-                      : '未配置（无需 token）'}
-                  </dd>
-                </div>
-              </dl>
-            ) : provider === 'Local' && local ? (
-              <dl className="dashboard-knowledge-fields">
-                <div>
-                  <dt>Repository</dt>
-                  <dd>{local.repositoryId}</dd>
-                </div>
-                <div>
-                  <dt>Workspace</dt>
-                  <dd>{local.workspaceId}</dd>
-                </div>
-                <div>
-                  <dt>来源 / Section</dt>
-                  <dd>
-                    {local.sourceCount} / {local.sectionCount}
-                  </dd>
-                </div>
-                <div>
-                  <dt>索引状态</dt>
-                  <dd>{local.available ? '可用' : '尚未建立或不可用'}</dd>
-                </div>
-                <div>
-                  <dt>最近查询</dt>
-                  <dd>
+                <span className="dashboard-settings-value">{local.workspaceId}</span>
+              </div>
+              <div className="dashboard-memory-setting">
+                <div className="dashboard-memory-setting-copy">
+                  <strong>最近查询</strong>
+                  <span>
                     {typeof local.lastQueryMs === 'number'
                       ? `${local.lastQueryMs} ms · ${local.lastCandidateCount ?? 0} 个候选`
                       : '尚无查询统计'}
-                  </dd>
+                  </span>
                 </div>
+                <span className="dashboard-settings-value">
+                  {local.channels?.length ? local.channels.join(' + ') : '尚无候选通道'}
+                </span>
+              </div>
+            </section>
+          )}
+          {providerMode === 'remote' && remote && (
+            <section
+              className="dashboard-settings-panel"
+              aria-labelledby="knowledge-remote-settings"
+            >
+              <div className="dashboard-settings-panel-head">
                 <div>
-                  <dt>候选通道</dt>
-                  <dd>{local.channels?.length ? local.channels.join(' + ') : '尚无'}</dd>
+                  <h4 id="knowledge-remote-settings">Remote 连接</h4>
+                  <p>只保存连接信息和 token 环境变量名，不保存 token 内容</p>
                 </div>
-              </dl>
-            ) : null}
-          </div>
-        </section>
+              </div>
+              <div className="dashboard-memory-setting">
+                <div className="dashboard-memory-setting-copy">
+                  <strong>Endpoint</strong>
+                  <span>{remote.endpoint || '未提供'}</span>
+                </div>
+                <Tag>{remote.scope || '默认 Scope'}</Tag>
+              </div>
+              <div className="dashboard-memory-setting">
+                <div className="dashboard-memory-setting-copy">
+                  <strong>鉴权与超时</strong>
+                  <span>
+                    {remote.tokenEnv
+                      ? `${remote.tokenEnv} · ${remote.tokenConfigured ? '已提供' : '未提供'}`
+                      : '无需 token'}
+                  </span>
+                </div>
+                <span className="dashboard-settings-value">{remote.timeoutMs} ms</span>
+              </div>
+            </section>
+          )}
+        </>
       )}
       <section className="dashboard-settings-panel" aria-labelledby="knowledge-project-settings">
         <div className="dashboard-settings-panel-head">
           <div>
             <h4 id="knowledge-project-settings">当前项目</h4>
-            <p>项目级暂停不会删除知识文件或影响其他项目</p>
+            <p>单独控制这个项目是否为 Agent 提供项目知识</p>
           </div>
-          {!disabled && (
-            <Button onClick={() => onInvoke('lifecycle', { action: 'disable' })}>
-              暂停当前项目
-            </Button>
-          )}
         </div>
-        <div className="dashboard-settings-facts">
-          <div>
-            <span>插件状态</span>
-            <strong>
+        <div className="dashboard-memory-setting">
+          <div className="dashboard-memory-setting-copy">
+            <strong>项目知识检索</strong>
+            <span>
               {page.globallyDisabled
-                ? '全局停用'
-                : page.projectPaused
-                  ? '已启用'
-                  : disabled
-                    ? '已停用'
-                    : '已启用'}
-            </strong>
+                ? '插件已全局停用'
+                : page.projectPaused || disabled
+                  ? '当前项目已暂停向 Agent 提供知识'
+                  : 'Agent 可以检索当前项目的知识记录'}
+            </span>
           </div>
-          <div>
-            <span>当前项目</span>
-            <strong>{page.projectPaused ? '已暂停' : '已启用'}</strong>
+          <Switch
+            size="small"
+            checked={!disabled}
+            aria-label="切换当前项目知识检索"
+            onChange={(enabled) =>
+              onInvoke('lifecycle', { action: enabled ? 'enable' : 'disable' })
+            }
+          />
+        </div>
+        <div className="dashboard-memory-setting">
+          <div className="dashboard-memory-setting-copy">
+            <strong>配置状态</strong>
+            <span>Provider 和索引配置是否满足当前检索要求</span>
           </div>
-          <div>
-            <span>配置状态</span>
-            <strong>{configured}</strong>
-          </div>
+          <Tag color={configured === '配置有效' ? 'success' : 'warning'}>{configured}</Tag>
         </div>
       </section>
       <section
@@ -4201,14 +4796,17 @@ function PersonalMemoryCenter({ data, onInvoke }) {
   const [newProjectMemoryText, setNewProjectMemoryText] = useState('');
   const [newProjectMemoryCategory, setNewProjectMemoryCategory] = useState('项目约定');
   const [expandedRecordIds, setExpandedRecordIds] = useState(() => new Set());
+  const [memoryQuery, setMemoryQuery] = useState('');
+  const [memoryFilter, setMemoryFilter] = useState('all');
+  const [selectedMemoryId, setSelectedMemoryId] = useState(null);
   const status = data?.status ?? {};
   const retrieval = data?.retrieval ?? {};
   const management = data?.management ?? {};
-  const policy = data?.policy ?? {};
-  const learningAllowed = policy.learning !== false;
-  const retrievalAllowed = policy.retrieval !== false;
-  const records = (management.records ?? retrieval.records ?? []).filter(isActiveMemoryRecord);
-  const profileRecords = retrieval.profileRecords ?? records.filter(isUserProfileRecord);
+  const managedRecords = management.records ?? retrieval.records ?? [];
+  const records = managedRecords.filter(isActiveMemoryRecord);
+  const profileRecords = (retrieval.profileRecords ?? records.filter(isUserProfileRecord)).filter(
+    isActiveMemoryRecord,
+  );
   const projectRecords = records.filter(
     (record) => record.scope === 'project' && !isUserProfileRecord(record),
   );
@@ -4216,7 +4814,14 @@ function PersonalMemoryCenter({ data, onInvoke }) {
     projectRecords.length > 0
       ? projectRecords
       : records.filter((record) => !isUserProfileRecord(record));
-  const conflicts = management.conflicts ?? [];
+  const pendingRecords = managedRecords.filter(
+    (record) => record.status === 'conflict' || record.status === 'candidate',
+  );
+  const archivedRecords = managedRecords.filter(
+    (record) => !isActiveMemoryRecord(record) && !pendingRecords.includes(record),
+  );
+  const totalMemoryRecordCount =
+    profileRecords.length + displayRecords.length + pendingRecords.length + archivedRecords.length;
   const notifications = data?.notifications ?? [];
   const projectKey = data?.projectKey;
   const memoryFileCount = status.files?.length ?? 0;
@@ -4226,6 +4831,177 @@ function PersonalMemoryCenter({ data, onInvoke }) {
     : provider === 'remote'
       ? '由 Remote Provider 管理'
       : '0 / 2000 字符';
+  const normalizedMemoryQuery = memoryQuery.trim().toLocaleLowerCase();
+  const matchesMemoryQuery = (record) =>
+    normalizedMemoryQuery.length === 0 ||
+    [record.text, record.category, record.memoryClass, record.reason]
+      .filter(Boolean)
+      .some((value) => String(value).toLocaleLowerCase().includes(normalizedMemoryQuery));
+  const memoryGroups = [
+    {
+      key: 'profile',
+      title: '我的偏好',
+      records: profileRecords.filter(matchesMemoryQuery),
+    },
+    {
+      key: 'project',
+      title: '项目记忆动态',
+      records: displayRecords.filter(matchesMemoryQuery),
+    },
+    {
+      key: 'pending',
+      title: '待确认记忆',
+      records: pendingRecords.filter(matchesMemoryQuery),
+    },
+    {
+      key: 'archived',
+      title: '已归档记忆',
+      records: archivedRecords.filter(matchesMemoryQuery),
+    },
+  ].filter(
+    (group) => group.records.length > 0 && (memoryFilter === 'all' || memoryFilter === group.key),
+  );
+  const visibleMemoryRecords = memoryGroups.flatMap((group) => group.records);
+  const selectedRecord =
+    visibleMemoryRecords.find((record) => record.id === selectedMemoryId) ??
+    visibleMemoryRecords[0] ??
+    null;
+  const visibleMemoryKey = visibleMemoryRecords.map((record) => record.id).join('|');
+
+  useEffect(() => {
+    if (selectedRecord?.id !== selectedMemoryId) setSelectedMemoryId(selectedRecord?.id ?? null);
+  }, [selectedMemoryId, selectedRecord?.id, visibleMemoryKey]);
+
+  const selectMemoryRecord = (record) => setSelectedMemoryId(record.id);
+  const toggleMemoryRecord = (recordId) => {
+    setExpandedRecordIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(recordId)) next.delete(recordId);
+      else next.add(recordId);
+      return next;
+    });
+  };
+
+  const renderMemoryRecord = (record, groupKey) => {
+    const text = typeof record.text === 'string' ? record.text : '';
+    const expandable = text.length > MEMORY_COLLAPSE_THRESHOLD;
+    const expanded = expandedRecordIds.has(record.id);
+    const visibleText =
+      expandable && !expanded ? `${text.slice(0, MEMORY_COLLAPSE_THRESHOLD)}…` : text;
+    const isSelected = selectedRecord?.id === record.id;
+    const active = isActiveMemoryRecord(record);
+    const statusLabel = active
+      ? '已应用'
+      : record.status === 'conflict' || record.status === 'candidate'
+        ? '待确认'
+        : '已归档';
+    return (
+      <div
+        key={record.id}
+        className={`dashboard-memory-table-row${isSelected ? ' is-selected' : ''}`}
+        role="button"
+        tabIndex={0}
+        aria-pressed={isSelected}
+        onClick={() => selectMemoryRecord(record)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            selectMemoryRecord(record);
+          }
+        }}
+      >
+        <div className="dashboard-memory-table-copy">
+          <div className="dashboard-memory-table-title-row">
+            <strong>{record.category || (groupKey === 'profile' ? '个人偏好' : '项目记忆')}</strong>
+            <span>
+              {groupKey === 'profile'
+                ? '个人偏好'
+                : record.scope === 'project'
+                  ? '项目记忆'
+                  : '全局记忆'}
+            </span>
+          </div>
+          <p className={expandable && !expanded ? 'is-collapsed' : ''}>{visibleText}</p>
+          <button
+            type="button"
+            className="dashboard-memory-why"
+            onClick={(event) => {
+              event.stopPropagation();
+              selectMemoryRecord(record);
+            }}
+          >
+            为什么应用：{memoryApplicationReason(record)}
+          </button>
+          {expandable && (
+            <Button
+              className="dashboard-memory-record-text-toggle"
+              size="small"
+              type="link"
+              aria-expanded={expanded}
+              onClick={(event) => {
+                event.stopPropagation();
+                toggleMemoryRecord(record.id);
+              }}
+            >
+              {expanded ? '收起完整记忆' : '展开完整记忆'}
+            </Button>
+          )}
+        </div>
+        <div className="dashboard-memory-table-scope">
+          {record.scope === 'project' ? '当前项目' : '全局'}
+        </div>
+        <div className={`dashboard-memory-table-status${active ? ' is-active' : ''}`}>
+          <span aria-hidden="true" />
+          {statusLabel}
+        </div>
+        <div className="dashboard-memory-table-time">{formatTimestamp(record.updatedAt)}</div>
+        <div className="dashboard-memory-record-actions">
+          <Tooltip title="纠正记忆">
+            <Button
+              size="small"
+              type="text"
+              icon={<EditOutlined />}
+              aria-label="纠正记忆"
+              onClick={(event) => {
+                event.stopPropagation();
+                setEditingRecord(record);
+                setCorrectionText(record.text);
+              }}
+            />
+          </Tooltip>
+          {groupKey !== 'profile' && active && (
+            <Tooltip title="回滚记忆">
+              <Button
+                size="small"
+                type="text"
+                icon={<UndoOutlined />}
+                aria-label="回滚记忆"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onInvoke('rollback', { id: record.id });
+                }}
+              />
+            </Tooltip>
+          )}
+          {active && (
+            <Tooltip title="删除记忆">
+              <Button
+                size="small"
+                type="text"
+                danger
+                icon={<DeleteOutlined />}
+                aria-label="删除记忆"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onInvoke('remove', { id: record.id });
+                }}
+              />
+            </Tooltip>
+          )}
+        </div>
+      </div>
+    );
+  };
   return (
     <div className="dashboard-tool-page dashboard-tool-page-memory mx-auto min-w-0 max-w-dashboard">
       <PluginCenterHeader
@@ -4245,7 +5021,7 @@ function PersonalMemoryCenter({ data, onInvoke }) {
           },
           {
             label: '记录',
-            value: `${profileRecords.length + displayRecords.length}`,
+            value: `${totalMemoryRecordCount}`,
             tone: 'success',
           },
         ]}
@@ -4277,261 +5053,169 @@ function PersonalMemoryCenter({ data, onInvoke }) {
           ))}
         </div>
       )}
-      <section className="dashboard-memory-status" aria-label="个人记忆状态">
-        <div className="dashboard-memory-status-cell is-green">
-          <span className="dashboard-memory-status-label">自动学习</span>
-          <span className="dashboard-memory-status-value">
-            <span
-              className={`dashboard-tool-state-dot ${status.learningEnabled ? 'is-success' : 'is-muted'}`}
-              aria-hidden="true"
+      <div className="dashboard-memory-workspace">
+        <aside className="dashboard-memory-filter-rail" aria-label="记忆筛选">
+          <div className="dashboard-memory-filter-search">
+            <Input
+              value={memoryQuery}
+              prefix={<SearchOutlined />}
+              allowClear
+              placeholder="搜索记忆…"
+              aria-label="搜索个人记忆"
+              onChange={(event) => setMemoryQuery(event.target.value)}
             />
-            {!learningAllowed
-              ? '项目配置禁止当前项目学习'
-              : status.learningEnabled
-                ? '会沉淀稳定偏好'
-                : '已暂停自动沉淀'}
-          </span>
-        </div>
-        <div className="dashboard-memory-status-cell is-blue">
-          <span className="dashboard-memory-status-label">记忆注入</span>
-          <span className="dashboard-memory-status-value">
-            <span
-              className={`dashboard-tool-state-dot ${status.retrievalEnabled ? 'is-accent' : 'is-muted'}`}
-              aria-hidden="true"
-            />
-            {!retrievalAllowed
-              ? '项目配置禁止当前项目注入'
-              : status.retrievalEnabled
-                ? '任务中可使用已保存内容'
-                : '已暂停任务注入'}
-          </span>
-        </div>
-        <div className="dashboard-memory-status-cell is-rose">
-          <span className="dashboard-memory-status-label">作用范围</span>
-          <span className="dashboard-memory-status-value">
-            <span className="dashboard-tool-state-dot is-accent" aria-hidden="true" />
-            {projectKey ? '当前项目' : '全局记忆'}
-          </span>
-          <span className="dashboard-memory-status-meta">
-            {projectKey ? '项目级偏好优先' : '跨项目共享'}
-          </span>
-        </div>
-        <div className="dashboard-memory-status-cell is-amber">
-          <span className="dashboard-memory-status-label">记忆文件</span>
-          <span className="dashboard-memory-status-value">
-            <span className="dashboard-tool-state-dot is-success" aria-hidden="true" />
-            {memoryFileCount} 个
-          </span>
-          <span className="dashboard-memory-status-meta">
-            {provider === 'remote'
-              ? 'Remote Provider'
-              : status.remote
-                ? '已配置 Git remote'
-                : '仅保存在本地'}
-          </span>
-        </div>
-      </section>
-      <div className="dashboard-memory-content dashboard-memory-board">
-        <section
-          className="dashboard-memory-list dashboard-memory-profile-list"
-          aria-labelledby="dashboard-memory-profile-title"
-        >
-          <div className="dashboard-memory-panel-head">
-            <div className="dashboard-tool-panel-title">
-              <span className="dashboard-tool-panel-icon" aria-hidden="true">
-                <UserOutlined />
-              </span>
-              <div>
-                <h3 id="dashboard-memory-profile-title">User Profile</h3>
-                <p>
-                  {profileRecords.length > 0
-                    ? `${profileRecords.length} 条用户事实、偏好与协作习惯`
-                    : '还没有形成稳定的用户偏好'}
-                </p>
-              </div>
-            </div>
-            <div className="dashboard-memory-panel-head-actions">
-              <span className="dashboard-tool-counter">{profileUsage}</span>
-            </div>
           </div>
-          {profileRecords.length === 0 ? (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有稳定的用户偏好" />
-          ) : (
-            <div className="dashboard-memory-records">
-              {profileRecords.map((record) => (
-                <div key={record.id} className="dashboard-memory-record">
-                  <div className="dashboard-memory-record-main">
-                    <span className="dashboard-memory-record-mark" aria-hidden="true">
-                      <UserOutlined />
-                    </span>
-                    <div className="dashboard-memory-record-content">
-                      <div className="dashboard-memory-record-kicker">
-                        <Tag variant="filled">{record.category}</Tag>
-                        <span>{record.memoryClass ?? 'user-preference'}</span>
-                      </div>
-                      <p className="dashboard-memory-record-text">{record.text}</p>
-                      <div className="dashboard-memory-record-application">
-                        应用原因：{memoryApplicationReason(record)}
-                      </div>
-                      {record.reason && (
-                        <div className="dashboard-memory-record-note">
-                          记忆说明：{record.reason}
-                        </div>
-                      )}
-                      <div className="dashboard-memory-record-meta">
-                        <span>{record.evidenceCount ?? 0} 条证据</span>
-                        <span>更新于 {formatTimestamp(record.updatedAt)}</span>
-                      </div>
-                    </div>
+          <nav>
+            {[
+              ['all', '全部记忆', totalMemoryRecordCount],
+              ['profile', '个人偏好', profileRecords.length],
+              ['project', '当前项目', displayRecords.length],
+              ['pending', '待确认', pendingRecords.length],
+              ['archived', '已归档', archivedRecords.length],
+            ].map(([key, label, count]) => (
+              <button
+                key={key}
+                type="button"
+                className={memoryFilter === key ? 'is-active' : ''}
+                aria-pressed={memoryFilter === key}
+                onClick={() => setMemoryFilter(key)}
+              >
+                <span>{label}</span>
+                <strong>{count}</strong>
+              </button>
+            ))}
+          </nav>
+          <div className="dashboard-memory-filter-summary">
+            <div>
+              <span
+                className={`dashboard-tool-state-dot ${status.learningEnabled ? 'is-success' : 'is-muted'}`}
+              />
+              自动学习{status.learningEnabled ? '已开启' : '已暂停'}
+            </div>
+            <div>
+              <span
+                className={`dashboard-tool-state-dot ${status.retrievalEnabled ? 'is-accent' : 'is-muted'}`}
+              />
+              任务注入{status.retrievalEnabled ? '已开启' : '已暂停'}
+            </div>
+            <span>{profileUsage}</span>
+            <span>{memoryFileCount} 个记忆文件</span>
+          </div>
+        </aside>
+        <section className="dashboard-memory-registry" aria-label="个人记忆列表">
+          <div className="dashboard-memory-registry-toolbar">
+            <div>
+              <strong>
+                {memoryFilter === 'all'
+                  ? '全部记忆'
+                  : memoryFilter === 'profile'
+                    ? '个人偏好'
+                    : memoryFilter === 'project'
+                      ? '当前项目'
+                      : memoryFilter === 'pending'
+                        ? '待确认'
+                        : '已归档'}
+              </strong>
+              <span>{visibleMemoryRecords.length} 条</span>
+            </div>
+            <Select
+              size="small"
+              value="updated"
+              aria-label="记忆排序方式"
+              options={[{ value: 'updated', label: '最近更新' }]}
+            />
+          </div>
+          <div className="dashboard-memory-table-head" aria-hidden="true">
+            <span>记忆内容</span>
+            <span>作用范围</span>
+            <span>状态</span>
+            <span>更新时间</span>
+            <span />
+          </div>
+          <div className="dashboard-memory-table-body">
+            {visibleMemoryRecords.length === 0 ? (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={memoryQuery.trim() ? '没有匹配的个人记忆' : '当前分类还没有记忆'}
+              />
+            ) : (
+              memoryGroups.map((group) => (
+                <section key={group.key} className="dashboard-memory-group">
+                  <div className="dashboard-memory-group-title">
+                    <strong>{group.title}</strong>
+                    <span>{group.records.length}</span>
                   </div>
-                  <div className="dashboard-memory-record-actions">
-                    <Tooltip title="纠正记忆">
-                      <Button
-                        size="small"
-                        type="text"
-                        icon={<EditOutlined />}
-                        aria-label="纠正记忆"
-                        onClick={() => {
-                          setEditingRecord(record);
-                          setCorrectionText(record.text);
-                        }}
-                      />
-                    </Tooltip>
-                    <Tooltip title="删除记忆">
-                      <Button
-                        size="small"
-                        type="text"
-                        danger
-                        icon={<DeleteOutlined />}
-                        aria-label="删除记忆"
-                        onClick={() => onInvoke('remove', { id: record.id })}
-                      />
-                    </Tooltip>
+                  {group.records.map((record) => renderMemoryRecord(record, group.key))}
+                </section>
+              ))
+            )}
+          </div>
+        </section>
+        <aside className="dashboard-memory-inspector" aria-label="记忆应用详情">
+          {selectedRecord ? (
+            <>
+              <div className="dashboard-memory-inspector-head">
+                <span>{isUserProfileRecord(selectedRecord) ? '个人偏好' : '项目记忆'}</span>
+                <strong>这条记忆为什么被应用</strong>
+                <p>{selectedRecord.text}</p>
+              </div>
+              <section>
+                <h4>匹配的上下文</h4>
+                <div className="dashboard-memory-inspector-list">
+                  <div>
+                    <span>匹配规则</span>
+                    <strong>{memoryApplicationReason(selectedRecord)}</strong>
+                  </div>
+                  {(selectedRecord.taskTypes ?? []).length > 0 && (
+                    <div>
+                      <span>任务类型</span>
+                      <strong>{selectedRecord.taskTypes.join('、')}</strong>
+                    </div>
+                  )}
+                  {(selectedRecord.pathPatterns ?? []).length > 0 && (
+                    <div>
+                      <span>路径范围</span>
+                      <strong>{selectedRecord.pathPatterns.join('、')}</strong>
+                    </div>
+                  )}
+                </div>
+              </section>
+              <section>
+                <h4>作用范围</h4>
+                <div className="dashboard-memory-inspector-list">
+                  <div>
+                    <span>范围类型</span>
+                    <strong>
+                      {selectedRecord.scope === 'project' ? '当前项目' : '所有项目与对话'}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>状态</span>
+                    <strong>
+                      {isActiveMemoryRecord(selectedRecord) ? '已应用' : '当前不使用'}
+                    </strong>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </section>
-        <section
-          className="dashboard-memory-list dashboard-memory-project-list"
-          aria-labelledby="dashboard-memory-list-title"
-        >
-          <div className="dashboard-memory-panel-head">
-            <div className="dashboard-tool-panel-title">
-              <span className="dashboard-tool-panel-icon" aria-hidden="true">
-                <DatabaseOutlined />
-              </span>
-              <div>
-                <h3 id="dashboard-memory-list-title">当前项目记忆</h3>
-                <p>
-                  {displayRecords.length > 0
-                    ? `${displayRecords.length} 条可用于当前任务的记忆`
-                    : '还没有匹配的项目记忆'}
-                </p>
-              </div>
-            </div>
-            {conflicts.length > 0 && <Tag color="warning">{conflicts.length} 个冲突待确认</Tag>}
-          </div>
-          {displayRecords.length === 0 ? (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有匹配的记忆" />
-          ) : (
-            <div className="dashboard-memory-records">
-              {displayRecords.map((record) => {
-                const text = typeof record.text === 'string' ? record.text : '';
-                const expandable = text.length > MEMORY_COLLAPSE_THRESHOLD;
-                const expanded = expandedRecordIds.has(record.id);
-                const visibleText =
-                  expandable && !expanded ? `${text.slice(0, MEMORY_COLLAPSE_THRESHOLD)}…` : text;
-                return (
-                  <div key={record.id} className="dashboard-memory-record">
-                    <div className="dashboard-memory-record-main">
-                      <span className="dashboard-memory-record-mark" aria-hidden="true">
-                        <DatabaseOutlined />
-                      </span>
-                      <div className="dashboard-memory-record-content">
-                        <div className="dashboard-memory-record-kicker">
-                          <Tag variant="filled">{record.category}</Tag>
-                          <span>{record.scope === 'project' ? '项目记忆' : '全局记忆'}</span>
-                        </div>
-                        <p
-                          className={`dashboard-memory-record-text${
-                            expandable && !expanded ? ' is-collapsed' : ''
-                          }`}
-                        >
-                          {visibleText}
-                        </p>
-                        <div className="dashboard-memory-record-application">
-                          应用原因：{memoryApplicationReason(record)}
-                        </div>
-                        {record.reason && (
-                          <div className="dashboard-memory-record-note">
-                            记忆说明：{record.reason}
-                          </div>
-                        )}
-                        {expandable && (
-                          <Button
-                            className="dashboard-memory-record-text-toggle"
-                            size="small"
-                            type="link"
-                            aria-expanded={expanded}
-                            onClick={() =>
-                              setExpandedRecordIds((previous) => {
-                                const next = new Set(previous);
-                                if (next.has(record.id)) next.delete(record.id);
-                                else next.add(record.id);
-                                return next;
-                              })
-                            }
-                          >
-                            {expanded ? '收起完整记忆' : '展开完整记忆'}
-                          </Button>
-                        )}
-                        <div className="dashboard-memory-record-meta">
-                          <span>{record.evidenceCount ?? 0} 条证据</span>
-                          <span>更新于 {formatTimestamp(record.updatedAt)}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="dashboard-memory-record-actions">
-                      <Tooltip title="纠正记忆">
-                        <Button
-                          size="small"
-                          type="text"
-                          icon={<EditOutlined />}
-                          aria-label="纠正记忆"
-                          onClick={() => {
-                            setEditingRecord(record);
-                            setCorrectionText(record.text);
-                          }}
-                        />
-                      </Tooltip>
-                      <Tooltip title="回滚记忆">
-                        <Button
-                          size="small"
-                          type="text"
-                          icon={<UndoOutlined />}
-                          aria-label="回滚记忆"
-                          onClick={() => onInvoke('rollback', { id: record.id })}
-                        />
-                      </Tooltip>
-                      <Tooltip title="删除记忆">
-                        <Button
-                          size="small"
-                          type="text"
-                          danger
-                          icon={<DeleteOutlined />}
-                          aria-label="删除记忆"
-                          onClick={() => onInvoke('remove', { id: record.id })}
-                        />
-                      </Tooltip>
-                    </div>
+              </section>
+              <section>
+                <h4>证据来源</h4>
+                <div className="dashboard-memory-inspector-list">
+                  <div>
+                    <span>证据数量</span>
+                    <strong>{selectedRecord.evidenceCount ?? 0} 条</strong>
                   </div>
-                );
-              })}
-            </div>
+                  <div>
+                    <span>最近更新</span>
+                    <strong>{formatTimestamp(selectedRecord.updatedAt)}</strong>
+                  </div>
+                </div>
+                {selectedRecord.reason && <p>{selectedRecord.reason}</p>}
+              </section>
+            </>
+          ) : (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="选择一条记忆查看应用原因" />
           )}
-        </section>
+        </aside>
       </div>
       <Modal
         rootClassName="dashboard-create-modal-root"

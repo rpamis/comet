@@ -36,22 +36,28 @@ describe('dashboard web source contracts', () => {
     expect(source).not.toContain('xl:grid-cols-[320px_minmax(620px,940px)_320px]');
   });
 
-  it('keeps personal memory focused on records with grouped settings', async () => {
-    const source = await readDashboardSource();
+  it('keeps personal memory focused on searchable records and application reasons', async () => {
+    const [source, styles] = await Promise.all([readDashboardSource(), readDashboardStyles()]);
     const page = source.match(
       /function PersonalMemoryCenter\([\s\S]*?\n}\n\nfunction AntSummaryCards/,
     );
 
-    expect(page?.[0]).toContain('dashboard-memory-status');
-    expect(page?.[0]).toContain('dashboard-memory-list');
-    expect(page?.[0]).toContain('dashboard-memory-content');
-    expect(page?.[0]).toContain('dashboard-memory-board');
+    expect(page?.[0]).toContain('dashboard-memory-workspace');
+    expect(page?.[0]).toContain('dashboard-memory-filter-rail');
+    expect(page?.[0]).toContain('dashboard-memory-registry');
+    expect(page?.[0]).toContain('dashboard-memory-inspector');
+    expect(page?.[0]).toContain('这条记忆为什么被应用');
+    expect(page?.[0]).toContain('为什么应用：');
+    expect(page?.[0]).toContain('totalMemoryRecordCount');
+    expect(page?.[0]).toContain("group.records.length > 0 && (memoryFilter === 'all'");
     expect(page?.[0]).toContain('dashboard-tool-page-memory');
-    expect(page?.[0]).toContain('dashboard-memory-record-main');
     expect(page?.[0]).not.toContain('dashboard-memory-settings');
     expect(page?.[0]).not.toContain('个人记忆 Provider');
     expect(page?.[0]).not.toContain('dashboard-plugin-toolbar');
     expect(page?.[0]).not.toContain('dashboard-plugin-grid');
+    expect(styles).toContain('.dashboard-memory-workspace');
+    expect(styles).toContain('.dashboard-memory-table-row.is-selected');
+    expect(styles).toContain('.dashboard-memory-inspector');
   });
 
   it('exposes the Project Knowledge registry and bounded management controls', async () => {
@@ -83,8 +89,14 @@ describe('dashboard web source contracts', () => {
     expect(settings?.[0]).toContain('tokenEnv');
     expect(settings?.[0]).toContain('tokenConfigured');
     expect(settings?.[0]).toContain('configure-provider');
-    expect(settings?.[0]).toContain("onInvoke('lifecycle', { action: 'disable' })");
+    expect(settings?.[0]).toContain('Provider 与检索');
+    expect(settings?.[0]).toContain('本地索引');
+    expect(settings?.[0]).toContain('aria-label="切换当前项目知识检索"');
+    expect(settings?.[0]).toContain("action: enabled ? 'enable' : 'disable'");
+    expect(settings?.[0]).toContain('保存配置');
     expect(settings?.[0]).toContain("onInvoke('lifecycle', { action: 'uninstall' })");
+    expect(styles).toContain('.dashboard-knowledge-settings-fields');
+    expect(styles).toContain('.dashboard-settings-value');
     expect(page?.[0]).toContain('来源需要检查');
     expect(page?.[0]).toContain('<Input');
     expect(page?.[0]).toContain('测试检索');
@@ -127,16 +139,57 @@ describe('dashboard web source contracts', () => {
     const [source, styles] = await Promise.all([readDashboardSource(), readDashboardStyles()]);
 
     expect(source).toContain('const [settingsOpen, setSettingsOpen] = useState(false)');
+    expect(source).toContain('const [settingsPage, setSettingsPage] = useState(null)');
+    expect(source).toContain('const [settingsConfig, setSettingsConfig] = useState(null)');
     expect(source).toContain('className={`dashboard-sidebar-settings${settingsOpen');
+    expect(source).toContain('function DashboardSettingsOverlay');
+    expect(source).toContain('const [fullscreen, setFullscreen] = useState(false)');
+    expect(source).toContain("aria-label={fullscreen ? '退出全屏设置' : '全屏显示设置'}");
+    expect(source).toContain('mask={{ closable: true }}');
     expect(source).toContain('function DashboardSettingsPage');
     expect(source).toContain('function PersonalMemorySettings');
     expect(source).toContain('function ProjectKnowledgeSettings');
+    expect(source).toContain('function CometConfigSettings');
     expect(source).toContain('aria-label="设置分类"');
+    expect(source).toContain("label: '项目规则'");
+    expect(source).toContain("label: 'Comet 配置'");
+    expect(source).toContain('统一管理个人记忆、项目规则与工作流配置');
     expect(source).toContain('个人记忆 Provider');
     expect(source).toContain('tokenConfigured');
+    expect(source).toContain('Comet 默认工作流');
+    expect(source).toContain('Hook 允许写入路径');
+    expect(source).toContain('保存 Comet 配置');
+    expect(source).toContain('/config`');
     expect(styles).toContain('.dashboard-sidebar-settings');
     expect(styles).toContain('.dashboard-settings-shell');
     expect(styles).toContain('.dashboard-settings-panel');
+    expect(styles).toContain('.dashboard-config-control');
+    expect(styles).toContain('.dashboard-settings-modal-root .ant-modal-mask');
+    expect(styles).toContain('backdrop-filter: blur(8px)');
+    expect(styles).toContain('.dashboard-settings-modal-footer');
+    expect(styles).toContain('.dashboard-settings-modal.is-fullscreen');
+    expect(styles).toContain('height: 100dvh');
+  });
+
+  it('keeps the sidebar navigation compact and free of read-only helper rows', async () => {
+    const [source, styles] = await Promise.all([readDashboardSource(), readDashboardStyles()]);
+
+    expect(source).not.toContain('<span>变更工作区</span>');
+    expect(source).not.toContain('只读连接 · 自动同步');
+    expect(source).toContain('const [sidebarCollapsed, setSidebarCollapsed] = useState(false)');
+    expect(source).toContain('collapsedWidth={0}');
+    expect(source).toContain('aria-label="收起侧边栏"');
+    expect(source).toContain('aria-label="展开侧边栏"');
+    expect(source).toContain('className="dashboard-sidebar-group"');
+    expect(source).toContain('inlineIndent={12}');
+    expect(styles).toContain('.dashboard-sidebar-group + .dashboard-sidebar-group');
+    expect(styles).toContain('.dashboard-workbench.is-sidebar-collapsed');
+    expect(styles).toMatch(
+      /\.dashboard-sidebar \.ant-menu-item\s*\{[\s\S]*?width: 100%;[\s\S]*?height: 38px;[\s\S]*?padding-inline: 11px !important;/,
+    );
+    expect(styles).toMatch(
+      /\.dashboard-sidebar-settings\s*\{[\s\S]*?width: 100%;[\s\S]*?min-height: 38px;[\s\S]*?padding-inline: 11px;/,
+    );
   });
 
   it('uses the change-detail width to switch between stacked and two-column panels', async () => {

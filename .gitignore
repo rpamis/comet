@@ -15,6 +15,9 @@ coverage
 *.lcov
 .nyc_output
 
+# Local Product Design QA report
+/design-qa.md
+
 # Dependency directories
 node_modules/
 

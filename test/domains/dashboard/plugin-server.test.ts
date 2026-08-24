@@ -7,6 +7,10 @@ import {
   DashboardPluginHost,
   type DashboardPluginPageRegistration,
 } from '../../../domains/dashboard/plugin-host.js';
+import {
+  defaultProjectConfig,
+  writeProjectConfig,
+} from '../../../domains/comet-native/native-config.js';
 import { MemoryPluginStateStore, PluginRuntime } from '../../../domains/comet-plugin/index.js';
 import { startDashboardServer } from '../../../domains/dashboard/server.js';
 
@@ -194,6 +198,44 @@ describe('Dashboard plugin HTTP API', () => {
     expect(JSON.parse(response.body)).toEqual({
       error: 'Plugin capability is required',
       pluginId: 'missing',
+    });
+  });
+
+  it('loads and updates the current project Comet configuration', async () => {
+    await writeProjectConfig(projectPath, defaultProjectConfig('docs'));
+    const server = await startDashboardServer({ projectPath, port: 0, webRoot });
+    close = server.close;
+    const directory = JSON.parse((await request(server.port, '/api/dashboard/projects')).body) as {
+      currentProjectId: string;
+    };
+    const endpoint = `/api/dashboard/projects/${directory.currentProjectId}/config`;
+    const loadedResponse = await request(server.port, endpoint);
+    expect(loadedResponse.status).toBe(200);
+    const loaded = JSON.parse(loadedResponse.body) as {
+      revision: string;
+      defaultWorkflow: 'native' | 'classic';
+      workflows: Array<'native' | 'classic'>;
+      ambientResume: boolean;
+      hookAllowPaths: string[];
+      native: Record<string, unknown>;
+      classic: Record<string, unknown>;
+    };
+
+    const updatedResponse = await request(server.port, endpoint, 'POST', {
+      expectedRevision: loaded.revision,
+      config: {
+        defaultWorkflow: loaded.defaultWorkflow,
+        workflows: loaded.workflows,
+        ambientResume: false,
+        hookAllowPaths: ['docs/generated'],
+        native: loaded.native,
+        classic: loaded.classic,
+      },
+    });
+    expect(updatedResponse.status).toBe(200);
+    expect(JSON.parse(updatedResponse.body)).toMatchObject({
+      ambientResume: false,
+      hookAllowPaths: ['docs/generated'],
     });
   });
 });

@@ -15,6 +15,11 @@ import {
   collectNativeDashboardChangePage,
   NativeDashboardQueryError,
 } from './native-collector.js';
+import {
+  collectDashboardProjectConfigSettings,
+  DashboardProjectConfigError,
+  updateDashboardProjectConfigSettings,
+} from './project-config-settings.js';
 import { collectDashboardProjectDirectory, findDashboardProject } from './project-directory.js';
 import { DashboardPluginHostError, type DashboardPluginHostFactory } from './plugin-host.js';
 import type { DashboardChangeTab } from './types.js';
@@ -122,6 +127,10 @@ export async function startDashboardServer(
         });
         return;
       }
+      if (error instanceof DashboardProjectConfigError) {
+        respondJson(res, req.method ?? 'GET', error.statusCode, { error: error.message });
+        return;
+      }
       respondError(res, 500, `Internal server error: ${(error as Error).message}`);
     });
   });
@@ -163,10 +172,11 @@ async function handleRequest(
   const pathname = url.pathname;
 
   const isPluginRequest = pathname.includes('/plugins');
+  const isProjectConfigRequest = pathname.endsWith('/config');
   if (
     req.method !== 'GET' &&
     req.method !== 'HEAD' &&
-    !(req.method === 'POST' && isPluginRequest)
+    !(req.method === 'POST' && (isPluginRequest || isProjectConfigRequest))
   ) {
     respondError(res, 405, 'Method not allowed');
     return;
@@ -277,6 +287,29 @@ async function handleRequest(
         return;
       }
       respondJson(res, req.method, 200, detail);
+      return;
+    }
+
+    if (subpath === '/config') {
+      if (req.method === 'GET' || req.method === 'HEAD') {
+        respondJson(
+          res,
+          req.method,
+          200,
+          await collectDashboardProjectConfigSettings(project.path),
+        );
+        return;
+      }
+      if (req.method === 'POST') {
+        respondJson(
+          res,
+          req.method,
+          200,
+          await updateDashboardProjectConfigSettings(project.path, await readJsonBody(req)),
+        );
+        return;
+      }
+      respondError(res, 405, 'Method not allowed');
       return;
     }
 
