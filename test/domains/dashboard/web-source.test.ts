@@ -56,8 +56,17 @@ describe('dashboard web source contracts', () => {
     expect(page?.[0]).not.toContain('dashboard-plugin-toolbar');
     expect(page?.[0]).not.toContain('dashboard-plugin-grid');
     expect(styles).toContain('.dashboard-memory-workspace');
+    expect(styles).toMatch(/\.dashboard-memory-workspace\s*\{[\s\S]*?border: 0;/);
     expect(styles).toContain('.dashboard-memory-table-row.is-selected');
     expect(styles).toContain('.dashboard-memory-inspector');
+    expect(styles).toMatch(
+      /@media \(min-width: 1181px\)[\s\S]*?\.dashboard-tool-page-memory\s*\{[\s\S]*?height: 100%;[\s\S]*?flex-direction: column;/,
+    );
+    expect(styles).toMatch(
+      /\.dashboard-tool-page-memory \.dashboard-memory-workspace\s*\{[\s\S]*?min-height: 0;[\s\S]*?flex: 1 1 auto;/,
+    );
+    expect(page?.[0]).toContain('dashboard-plugin-primary-action');
+    expect(page?.[0]).toContain('dashboard-plugin-secondary-action');
   });
 
   it('exposes the Project Knowledge registry and bounded management controls', async () => {
@@ -111,9 +120,11 @@ describe('dashboard web source contracts', () => {
     expect(page?.[0]).toContain('建议补充证据，方便后续维护');
     expect(source).toContain("capability === 'lifecycle' ? '插件状态已更新' : '操作已完成'");
     expect(styles).toContain('.dashboard-knowledge-registry');
+    expect(styles).toMatch(/\.dashboard-knowledge-registry\s*\{[\s\S]*?border: 0;/);
     expect(styles).toContain('.dashboard-knowledge-ledger-row');
     expect(styles).toContain('.dashboard-knowledge-inspector');
     expect(source).toContain('dashboard-content-inner-project-knowledge');
+    expect(source).toContain('dashboard-content-inner-plugin-center');
     expect(styles).toContain('.dashboard-content-inner-project-knowledge');
     expect(styles).toContain('height: calc(100dvh - 232px)');
     expect(styles).toMatch(
@@ -141,6 +152,14 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain('const [settingsOpen, setSettingsOpen] = useState(false)');
     expect(source).toContain('const [settingsPage, setSettingsPage] = useState(null)');
     expect(source).toContain('const [settingsConfig, setSettingsConfig] = useState(null)');
+    expect(source).toContain('DASHBOARD_PLUGIN_NAV_PLACEHOLDERS');
+    expect(source).toContain('loadCachedPluginPage');
+    expect(source).toContain('loadCachedProjectConfig');
+    expect(source).toContain('preloadDashboardSettings');
+    expect(source).toContain('await preloadDashboardSettings(activeProjectId, availablePages)');
+    expect(source).toContain('settingsReady={pluginPages.some((page) => !page.pending)}');
+    expect(source).toContain('disabled={!settingsReady}');
+    expect(source).toContain('pages.filter((item) => !item.pending)');
     expect(source).toContain('className={`dashboard-sidebar-settings${settingsOpen');
     expect(source).toContain('function DashboardSettingsOverlay');
     expect(source).toContain('const [fullscreen, setFullscreen] = useState(false)');
@@ -168,6 +187,8 @@ describe('dashboard web source contracts', () => {
     expect(styles).toContain('backdrop-filter: blur(8px)');
     expect(styles).toContain('.dashboard-settings-modal-footer');
     expect(styles).toContain('.dashboard-settings-modal.is-fullscreen');
+    expect(styles).toContain('.dashboard-plugin-primary-action');
+    expect(styles).toContain('.dashboard-plugin-secondary-action');
     expect(styles).toContain('height: 100dvh');
   });
 

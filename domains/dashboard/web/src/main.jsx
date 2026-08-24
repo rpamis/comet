@@ -80,6 +80,28 @@ const MEMORY_COLLAPSE_THRESHOLD = 240;
 const DASHBOARD_FONT_FAMILY =
   "'Segoe UI Variable', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif";
 const DASHBOARD_MONO_FONT_FAMILY = "Bahnschrift, 'Cascadia Mono', Consolas, monospace";
+const DASHBOARD_PLUGIN_NAV_PLACEHOLDERS = Object.freeze([
+  {
+    pluginId: 'comet.personal-memory',
+    label: '个人记忆',
+    route: '/plugins/personal-memory',
+    status: 'loading',
+    pending: true,
+    globallyDisabled: false,
+    projectPaused: false,
+    diagnostics: [],
+  },
+  {
+    pluginId: 'comet.project-knowledge',
+    label: '项目知识',
+    route: '/plugins/project-knowledge',
+    status: 'loading',
+    pending: true,
+    globallyDisabled: false,
+    projectPaused: false,
+    diagnostics: [],
+  },
+]);
 
 function useTheme() {
   const [theme, setTheme] = useState(() => {
@@ -269,7 +291,7 @@ function DashboardApp({ theme, onToggleTheme }) {
   const [settingsConfig, setSettingsConfig] = useState(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsError, setSettingsError] = useState(null);
-  const [pluginPages, setPluginPages] = useState([]);
+  const [pluginPages, setPluginPages] = useState(DASHBOARD_PLUGIN_NAV_PLACEHOLDERS);
   const [pluginPage, setPluginPage] = useState(null);
   const [pluginLoading, setPluginLoading] = useState(false);
   const [pluginError, setPluginError] = useState(null);
@@ -278,6 +300,10 @@ function DashboardApp({ theme, onToggleTheme }) {
   const settingsSectionRef = useRef(settingsSection);
   const settingsOpenRef = useRef(settingsOpen);
   const pluginProjectRef = useRef(null);
+  const pluginPageCacheRef = useRef(new Map());
+  const pluginPageRequestRef = useRef(new Map());
+  const projectConfigCacheRef = useRef(new Map());
+  const projectConfigRequestRef = useRef(new Map());
   const [projects, setProjects] = useState([]);
   const [projectsReady, setProjectsReady] = useState(false);
   const [pages, setPages] = useState({ active: null, archived: null, all: null });
@@ -499,6 +525,61 @@ function DashboardApp({ theme, onToggleTheme }) {
     };
   }, [useDemo]);
 
+  const loadCachedPluginPage = useCallback(async (projectId, pluginId, force = false) => {
+    const cacheKey = `${projectId}:${pluginId}`;
+    const cached = pluginPageCacheRef.current.get(cacheKey);
+    if (!force && cached) return cached;
+    const pending = pluginPageRequestRef.current.get(cacheKey);
+    if (pending) return pending;
+    const request = fetchDashboardPluginPage(projectId, pluginId)
+      .then((page) => {
+        pluginPageCacheRef.current.set(cacheKey, page);
+        return page;
+      })
+      .finally(() => {
+        if (pluginPageRequestRef.current.get(cacheKey) === request) {
+          pluginPageRequestRef.current.delete(cacheKey);
+        }
+      });
+    pluginPageRequestRef.current.set(cacheKey, request);
+    return request;
+  }, []);
+
+  const readCachedPluginPage = useCallback(
+    (projectId, pluginId) => pluginPageCacheRef.current.get(`${projectId}:${pluginId}`) ?? null,
+    [],
+  );
+
+  const loadCachedProjectConfig = useCallback(async (projectId, force = false) => {
+    const cached = projectConfigCacheRef.current.get(projectId);
+    if (!force && cached) return cached;
+    const pending = projectConfigRequestRef.current.get(projectId);
+    if (pending) return pending;
+    const request = fetchDashboardProjectConfig(projectId)
+      .then((config) => {
+        projectConfigCacheRef.current.set(projectId, config);
+        return config;
+      })
+      .finally(() => {
+        if (projectConfigRequestRef.current.get(projectId) === request) {
+          projectConfigRequestRef.current.delete(projectId);
+        }
+      });
+    projectConfigRequestRef.current.set(projectId, request);
+    return request;
+  }, []);
+
+  const preloadDashboardSettings = useCallback(
+    (projectId, pages) => {
+      const requests = pages
+        .filter((page) => !page.pending)
+        .map((page) => loadCachedPluginPage(projectId, page.pluginId));
+      requests.push(loadCachedProjectConfig(projectId));
+      return Promise.allSettled(requests);
+    },
+    [loadCachedPluginPage, loadCachedProjectConfig],
+  );
+
   const reloadPluginPages = useCallback(async () => {
     if (useDemo || !activeProjectId) return;
     const requestedProjectId = activeProjectId;
@@ -507,12 +588,18 @@ function DashboardApp({ theme, onToggleTheme }) {
       if (pluginProjectRef.current !== requestedProjectId) return;
       const availablePages = nextPages.pages ?? [];
       setPluginPages(availablePages);
+      void preloadDashboardSettings(requestedProjectId, availablePages);
       return availablePages;
     } catch (error) {
       toast(`插件页面加载失败：${error.message}`, 'error');
       return undefined;
     }
-  }, [activeProjectId, toast, useDemo]);
+  }, [activeProjectId, preloadDashboardSettings, toast, useDemo]);
+
+  useEffect(() => {
+    if (useDemo || !activeProjectId) return;
+    void loadCachedProjectConfig(activeProjectId).catch(() => undefined);
+  }, [activeProjectId, loadCachedProjectConfig, useDemo]);
 
   useEffect(() => {
     if (useDemo || !activeProjectId) return undefined;
@@ -521,11 +608,16 @@ function DashboardApp({ theme, onToggleTheme }) {
     setSettingsOpen(false);
     setSettingsPage(null);
     setSettingsError(null);
+    setPluginPages(DASHBOARD_PLUGIN_NAV_PLACEHOLDERS);
     setPluginPage(null);
     setPluginError(null);
     void fetchDashboardPluginPages(activeProjectId)
-      .then((response) => {
-        if (!cancelled) setPluginPages(response.pages ?? []);
+      .then(async (response) => {
+        if (cancelled) return;
+        const availablePages = response.pages ?? [];
+        await preloadDashboardSettings(activeProjectId, availablePages);
+        if (cancelled) return;
+        setPluginPages(availablePages);
       })
       .catch((error) => {
         if (!cancelled) toast(`插件页面加载失败：${error.message}`, 'error');
@@ -533,14 +625,16 @@ function DashboardApp({ theme, onToggleTheme }) {
     return () => {
       cancelled = true;
     };
-  }, [activeProjectId, toast, useDemo]);
+  }, [activeProjectId, preloadDashboardSettings, toast, useDemo]);
 
   useEffect(() => {
     if (useDemo || !activeProjectId || !pluginSelection) return undefined;
     let cancelled = false;
-    setPluginLoading(true);
+    const cachedPage = readCachedPluginPage(activeProjectId, pluginSelection);
+    if (cachedPage) setPluginPage(cachedPage);
+    setPluginLoading(!cachedPage);
     setPluginError(null);
-    void fetchDashboardPluginPage(activeProjectId, pluginSelection)
+    void loadCachedPluginPage(activeProjectId, pluginSelection, Boolean(cachedPage))
       .then((page) => {
         if (!cancelled) setPluginPage(page);
       })
@@ -556,17 +650,33 @@ function DashboardApp({ theme, onToggleTheme }) {
     return () => {
       cancelled = true;
     };
-  }, [activeProjectId, pluginRefreshToken, pluginSelection, useDemo]);
+  }, [
+    activeProjectId,
+    loadCachedPluginPage,
+    pluginRefreshToken,
+    pluginSelection,
+    readCachedPluginPage,
+    useDemo,
+  ]);
 
   useEffect(() => {
     if (useDemo || !activeProjectId || !settingsOpen || !settingsSection) return undefined;
     let cancelled = false;
-    setSettingsLoading(true);
+    const cached =
+      settingsSection === 'comet.config'
+        ? (projectConfigCacheRef.current.get(activeProjectId) ?? null)
+        : readCachedPluginPage(activeProjectId, settingsSection);
+    if (settingsSection === 'comet.config') {
+      if (cached) setSettingsConfig(cached);
+    } else if (cached) {
+      setSettingsPage(cached);
+    }
+    setSettingsLoading(!cached);
     setSettingsError(null);
     const request =
       settingsSection === 'comet.config'
-        ? fetchDashboardProjectConfig(activeProjectId)
-        : fetchDashboardPluginPage(activeProjectId, settingsSection);
+        ? loadCachedProjectConfig(activeProjectId, Boolean(cached))
+        : loadCachedPluginPage(activeProjectId, settingsSection, Boolean(cached));
     void request
       .then((result) => {
         if (cancelled) return;
@@ -586,7 +696,16 @@ function DashboardApp({ theme, onToggleTheme }) {
     return () => {
       cancelled = true;
     };
-  }, [activeProjectId, pluginRefreshToken, settingsOpen, settingsSection, useDemo]);
+  }, [
+    activeProjectId,
+    loadCachedPluginPage,
+    loadCachedProjectConfig,
+    pluginRefreshToken,
+    readCachedPluginPage,
+    settingsOpen,
+    settingsSection,
+    useDemo,
+  ]);
 
   const invokePlugin = useCallback(
     async (pluginId, capability, input, surface = 'page') => {
@@ -606,16 +725,22 @@ function DashboardApp({ theme, onToggleTheme }) {
         );
       }
       const [nextPage] = await Promise.all([
-        fetchDashboardPluginPage(requestedProjectId, pluginId),
+        loadCachedPluginPage(requestedProjectId, pluginId, true),
         reloadPluginPages(),
       ]);
       if (!surfaceIsCurrent()) return result;
-      setSurfacePage(
-        reconcilePluginInvocationResult(nextPage, requestedPluginId, capability, result, input),
+      const reconciledPage = reconcilePluginInvocationResult(
+        nextPage,
+        requestedPluginId,
+        capability,
+        result,
+        input,
       );
+      pluginPageCacheRef.current.set(`${requestedProjectId}:${requestedPluginId}`, reconciledPage);
+      setSurfacePage(reconciledPage);
       return result;
     },
-    [activeProjectId, reloadPluginPages],
+    [activeProjectId, loadCachedPluginPage, reloadPluginPages],
   );
 
   const invokeActivePlugin = useCallback(
@@ -942,24 +1067,34 @@ function DashboardApp({ theme, onToggleTheme }) {
           setWorkflow(nextWorkflow);
         }}
         pluginPages={pluginPages}
+        settingsReady={pluginPages.some((page) => !page.pending)}
         pluginSelection={pluginSelection}
         settingsOpen={settingsOpen}
         onSettings={() => {
           const preferredSection =
             pluginSelection ??
-            pluginPages.find((page) => page.pluginId === 'comet.personal-memory')?.pluginId ??
-            pluginPages[0]?.pluginId ??
+            pluginPages.find((page) => page.pluginId === 'comet.personal-memory' && !page.pending)
+              ?.pluginId ??
+            pluginPages.find((page) => !page.pending)?.pluginId ??
             null;
+          const cachedPage =
+            activeProjectId && preferredSection && preferredSection !== 'comet.config'
+              ? readCachedPluginPage(activeProjectId, preferredSection)
+              : null;
           setSettingsSection(preferredSection);
           setSettingsOpen(true);
-          setSettingsPage(null);
-          setSettingsConfig(null);
+          setSettingsPage(cachedPage);
+          setSettingsConfig(
+            activeProjectId ? (projectConfigCacheRef.current.get(activeProjectId) ?? null) : null,
+          );
           setSettingsError(null);
         }}
         onPluginSelect={(pluginId) => {
           setSettingsOpen(false);
           setPluginSelection(pluginId);
-          setPluginPage(null);
+          setPluginPage(
+            activeProjectId && pluginId ? readCachedPluginPage(activeProjectId, pluginId) : null,
+          );
           setPluginError(null);
         }}
         onCollapse={() => setSidebarCollapsed(true)}
@@ -1000,7 +1135,7 @@ function DashboardApp({ theme, onToggleTheme }) {
             setQuery('');
             setSettingsOpen(false);
             setPluginSelection(null);
-            setPluginPages([]);
+            setPluginPages(DASHBOARD_PLUGIN_NAV_PLACEHOLDERS);
             setPluginPage(null);
             setPluginError(null);
             setSettingsConfig(null);
@@ -1024,6 +1159,8 @@ function DashboardApp({ theme, onToggleTheme }) {
         <div className="dashboard-content-shell">
           <div
             className={`dashboard-content-inner${
+              pluginSelection ? ' dashboard-content-inner-plugin-center' : ''
+            }${
               pluginSelection === 'comet.project-knowledge'
                 ? ' dashboard-content-inner-project-knowledge'
                 : ''
@@ -1103,11 +1240,26 @@ function DashboardApp({ theme, onToggleTheme }) {
           onClose={() => setSettingsOpen(false)}
           onSection={(pluginId) => {
             setSettingsSection(pluginId);
-            setSettingsPage(null);
-            setSettingsConfig(null);
+            setSettingsPage(
+              activeProjectId && pluginId !== 'comet.config'
+                ? readCachedPluginPage(activeProjectId, pluginId)
+                : null,
+            );
+            setSettingsConfig(
+              activeProjectId && pluginId === 'comet.config'
+                ? (projectConfigCacheRef.current.get(activeProjectId) ?? null)
+                : null,
+            );
             setSettingsError(null);
           }}
           onRetry={() => {
+            if (activeProjectId) {
+              if (settingsSection === 'comet.config') {
+                projectConfigCacheRef.current.delete(activeProjectId);
+              } else if (settingsSection) {
+                pluginPageCacheRef.current.delete(`${activeProjectId}:${settingsSection}`);
+              }
+            }
             setSettingsPage(null);
             setSettingsConfig(null);
             setSettingsError(null);
@@ -1120,6 +1272,7 @@ function DashboardApp({ theme, onToggleTheme }) {
                 expectedRevision: settingsConfig.revision,
                 config,
               });
+              projectConfigCacheRef.current.set(activeProjectId, next);
               setSettingsConfig(next);
               toast('Comet 配置已保存');
               await refresh(false);
@@ -2620,6 +2773,7 @@ function AntSidebar({
   workflow,
   onWorkflow,
   pluginPages,
+  settingsReady,
   pluginSelection,
   settingsOpen,
   onSettings,
@@ -2664,6 +2818,7 @@ function AntSidebar({
                   : null;
             return {
               key: page.pluginId,
+              disabled: Boolean(page.pending),
               icon:
                 page.pluginId === 'comet.personal-memory' ? (
                   <BulbOutlined />
@@ -2673,7 +2828,7 @@ function AntSidebar({
                   <SafetyCertificateOutlined />
                 ),
               label: (
-                <span className="dashboard-plugin-menu-item">
+                <span className={`dashboard-plugin-menu-item${page.pending ? ' is-loading' : ''}`}>
                   <span>{page.label}</span>
                   {statusLabel ? <Badge status="default" text={statusLabel} /> : null}
                 </span>
@@ -2693,6 +2848,7 @@ function AntSidebar({
       type="button"
       className={`dashboard-sidebar-settings${settingsOpen ? ' is-active' : ''}`}
       aria-pressed={settingsOpen}
+      disabled={!settingsReady}
       onClick={() => {
         onSettings();
         onClose();
@@ -2900,7 +3056,9 @@ function DashboardSettingsPage({
   onSaveConfig,
   onInvoke,
 }) {
-  const installedPlugins = new Set(pages.map((item) => item.pluginId));
+  const installedPlugins = new Set(
+    pages.filter((item) => !item.pending).map((item) => item.pluginId),
+  );
   const settingsPages = [
     {
       key: 'comet.personal-memory',
@@ -4551,7 +4709,7 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
           <p>管理当前项目的知识来源、检索状态与应用条件记录</p>
         </div>
         <Button
-          className="dashboard-knowledge-create-button"
+          className="dashboard-knowledge-create-button dashboard-plugin-primary-action"
           type="primary"
           icon={<PlusOutlined />}
           onClick={() => setCreateOpen(true)}
@@ -5003,7 +5161,7 @@ function PersonalMemoryCenter({ data, onInvoke }) {
     );
   };
   return (
-    <div className="dashboard-tool-page dashboard-tool-page-memory mx-auto min-w-0 max-w-dashboard">
+    <div className="dashboard-tool-page dashboard-tool-page-memory min-w-0">
       <PluginCenterHeader
         icon={UserOutlined}
         title="个人记忆"
@@ -5028,7 +5186,7 @@ function PersonalMemoryCenter({ data, onInvoke }) {
         actions={
           <div className="flex items-center gap-2">
             <Button
-              size="small"
+              className="dashboard-plugin-secondary-action"
               icon={<PlusOutlined />}
               disabled={!projectKey}
               onClick={() => setShowNewProjectMemory(true)}
@@ -5036,7 +5194,7 @@ function PersonalMemoryCenter({ data, onInvoke }) {
               新增项目记忆
             </Button>
             <Button
-              size="small"
+              className="dashboard-plugin-primary-action"
               type="primary"
               icon={<PlusOutlined />}
               onClick={() => setShowNewProfile(true)}

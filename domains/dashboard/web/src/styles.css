@@ -157,6 +157,12 @@ body {
   margin-inline: 0;
 }
 
+.dashboard-content-inner-plugin-center {
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+}
+
 .dashboard-workbench
   :where(
     .ant-alert,
@@ -592,6 +598,10 @@ body {
   width: 100%;
 }
 
+.dashboard-plugin-menu .ant-menu-item-disabled:has(.dashboard-plugin-menu-item.is-loading) {
+  opacity: 0.84;
+}
+
 .dashboard-plugin-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -656,6 +666,16 @@ body {
   background: var(--color-accent-soft);
   color: var(--color-accent-active);
   font-weight: 620;
+}
+
+.dashboard-sidebar-settings:disabled {
+  opacity: 0.58;
+  cursor: default;
+}
+
+.dashboard-sidebar-settings:disabled:hover {
+  background: transparent;
+  color: var(--color-fg-2);
 }
 
 .dashboard-mobile-navigation {
@@ -1900,9 +1920,8 @@ body {
   min-height: 520px;
   height: calc(100dvh - 232px);
   overflow: hidden;
-  border: 1px solid var(--color-border);
-  border-top: 0;
-  border-radius: 0 0 8px 8px;
+  border: 0;
+  border-radius: 0;
   background: var(--color-bg);
 }
 
@@ -2376,8 +2395,8 @@ body {
 .dashboard-knowledge-query-view {
   min-height: 540px;
   overflow: hidden;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border: 0;
+  border-radius: 0;
   background: var(--color-bg);
 }
 
@@ -5428,9 +5447,31 @@ body {
    three-pane registry from the actual content row instead of the viewport so
    its provider footer stays inside the first screen. */
 @media (min-width: 1181px) {
+  .dashboard-content-inner-plugin-center {
+    height: 100%;
+    min-height: 0;
+  }
+
   .dashboard-content-inner-project-knowledge {
     height: 100%;
     min-height: 0;
+  }
+
+  .dashboard-tool-page-memory {
+    display: flex;
+    height: 100%;
+    min-height: 0;
+    flex-direction: column;
+  }
+
+  .dashboard-tool-page-memory .dashboard-tool-header {
+    flex: 0 0 auto;
+  }
+
+  .dashboard-tool-page-memory .dashboard-memory-workspace {
+    min-height: 0;
+    height: auto;
+    flex: 1 1 auto;
   }
 
   .dashboard-tool-page-knowledge {
@@ -5461,10 +5502,10 @@ body {
   grid-template-columns: minmax(168px, 0.5fr) minmax(480px, 1.75fr) minmax(270px, 0.82fr);
   min-height: clamp(560px, calc(100dvh - 244px), 760px);
   overflow: hidden;
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
+  border: 0;
+  border-radius: 0;
   background: var(--color-bg);
-  box-shadow: 0 1px 2px rgba(15, 24, 39, 0.025);
+  box-shadow: none;
 }
 
 .dashboard-memory-filter-rail,
@@ -5757,6 +5798,36 @@ body {
 .dashboard-memory-table-row .dashboard-memory-record-actions {
   align-items: center;
   padding: 0;
+  gap: 3px;
+  opacity: 1;
+}
+
+.dashboard-tool-page-memory .ant-btn:not(.ant-btn-link),
+.dashboard-tool-page-knowledge .ant-btn:not(.ant-btn-link) {
+  border-radius: 8px;
+}
+
+.dashboard-tool-page-memory .ant-btn:not(.ant-btn-link):not(.ant-btn-text),
+.dashboard-tool-page-knowledge .ant-btn:not(.ant-btn-link):not(.ant-btn-text) {
+  min-height: 34px;
+  padding-inline: 12px;
+  font-weight: 590;
+}
+
+.dashboard-plugin-primary-action,
+.dashboard-plugin-secondary-action {
+  min-height: 36px !important;
+  padding-inline: 14px !important;
+  border-radius: 8px !important;
+  font-weight: 620 !important;
+}
+
+.dashboard-memory-record-actions .ant-btn.ant-btn-text,
+.dashboard-knowledge-ledger-toolbar .ant-btn {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0;
 }
 
 .dashboard-memory-inspector {
@@ -5909,6 +5980,18 @@ body {
 .dashboard-settings-modal-expand:hover {
   background: var(--color-surface-warm) !important;
   color: var(--color-fg) !important;
+}
+
+.dashboard-settings-modal .ant-btn:not(.dashboard-settings-modal-expand):not(.ant-btn-link) {
+  min-height: 34px;
+  padding-inline: 12px;
+  border-radius: 8px;
+  font-weight: 590;
+}
+
+.dashboard-settings-modal-footer .ant-btn-primary {
+  min-height: 36px;
+  padding-inline: 16px;
 }
 
 .dashboard-settings-modal-icon {
