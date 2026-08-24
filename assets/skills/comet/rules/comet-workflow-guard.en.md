@@ -21,8 +21,10 @@ A legacy Classic project without the current project schema uses only the Classi
 | Classic | Open, Design, Verify, Archive | Build |
 
 - Native Verify remains read-only: Runtime executes required checks and a new Verifier execution independently covers every acceptance item. When it exposes an implementation problem, record the failed result and use the Native Runtime to return to Build before modifying the implementation. Ordinary dot-prefixed project files do not become cross-phase allowlisted paths merely because of their names.
-- Classic Verify writes only phase artifacts such as the verification report, tasks, and state. When it exposes an implementation problem, run `verify-fail` to return to Build before modifying ordinary project implementation.
+- Classic Verify writes only the verification report and state. It does not modify tasks or ordinary project implementation; run `verify-fail` to return to Build before updating task state or repairing implementation.
 - Ordinary write permission in Native Build does not override unresolved `[blocking]` user decisions in the brief. When a new decision appears, follow the Native Skill to pause implementation and reconfirm.
+- When Native state contains `children`, ordinary Build write permission belongs only to child worktrees listed in Runtime `readyChildren`; do not run a Supervisor Change Builder or implement child work in the parent worktree.
+- A Classic full workflow allows ordinary implementation writes in Build only after state records a Design Doc and its implementation plan exists and is ready. Hotfix and tweak continue to follow their preset phase protocols.
 - For Native ownership, resume `/comet-native` and continue from the portable state's Loop, blockers, and next action. A missing local execution does not mean the change is damaged.
 - For Classic ownership, resume `/comet-classic` and continue from Classic state, decision points, and phase rules.
 - Never convert a Native change into a Classic change or vice versa. Switching workflows means selecting a separate change.
@@ -32,6 +34,8 @@ A legacy Classic project without the current project schema uses only the Classi
 Each platform must install exactly one Comet Hook Router. One write event may invoke at most one workflow Guard; do not run separate Native and Classic Hooks.
 
 The Hook evaluates multi-file and patch targets atomically. Unattributable events and targets that are entirely outside the project remain neutral. Once a write is attributed to this project, it fails closed when the current phase blocks ordinary project writes, multiple ownership candidates exist, or the selection, state, or target scope cannot be read safely. Never bypass the Hook; follow its denial message to resume the owning workflow, and select a current change only when ownership is ambiguous.
+
+The phase table governs only ordinary implementation writes. Before phase evaluation, the Classic Hook always allows `.comet` configuration, the `.superpowers` workspace, root Markdown files, and `hook.allow_paths`. These are explicit control or configuration allowlists: they do not widen phase permissions or permit task updates during Verify.
 
 ## Personal memory and project knowledge context
 

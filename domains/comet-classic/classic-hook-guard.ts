@@ -548,8 +548,8 @@ function openSpecAllowed(
   if (phase === 'build' && (relativePath.endsWith('/tasks.md') || stateFile || specs)) {
     return `${relativePath} (phase: build, spec/tasks)`;
   }
-  if (phase === 'verify' && (relativePath.endsWith('/tasks.md') || stateFile)) {
-    return `${relativePath} (phase: verify, tasks/state)`;
+  if (phase === 'verify' && stateFile) {
+    return `${relativePath} (phase: verify, state)`;
   }
   if (phase === 'archive' && stateFile) {
     return `${relativePath} (phase: archive, state)`;
@@ -576,7 +576,7 @@ function blocked(relativePath: string, phase: ClassicPhase): ClassicCommandResul
         : phase === 'verify'
           ? [
               '  BLOCKED: implementation writes are not allowed during verify',
-              '  This phase allows verification artifacts, tasks, and state updates only',
+              '  This phase allows verification reports and state updates only',
               '  NEXT: run verify-fail and return to build before repairing implementation',
             ]
           : [

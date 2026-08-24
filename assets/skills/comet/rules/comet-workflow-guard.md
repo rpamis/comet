@@ -21,8 +21,10 @@ Classic 旧项目没有新版配置时只按 Classic legacy fallback 处理，�
 | Classic | Open、Design、Verify、Archive | Build |
 
 - Native 的 Verify 保持只读：Runtime 执行必要检查，新的 Verifier execution 独立验收全部条目；发现实现问题时，先记录失败并通过 Native Runtime 回到 Build，再修改实现。点号开头的普通项目文件不因名称而自动成为跨阶段白名单。
-- Classic 的 Verify 只写验证报告、tasks 和状态等阶段产物；发现实现问题时先执行 `verify-fail` 回到 Build，再修改普通项目实现。
+- Classic 的 Verify 只写验证报告和状态等阶段产物，不修改 tasks 或普通项目实现；需要更新任务状态或修复实现时，先执行 `verify-fail` 回到 Build。
 - Native Build 的普通写入权限不覆盖 brief 中未解决的 `[blocking]` 用户决定；出现新决定时按 Native Skill 暂停实现并重新确认。
+- Native 状态包含 `children` 时，Build 的普通写入权限只属于 Runtime `readyChildren` 中列出的子任务工作区；不得运行 Supervisor Change Builder，也不得在父级工作区实现子任务。
+- Classic full workflow 只有在状态已记录 Design Doc 且实施计划存在并可用后，才允许在 Build 进行普通实现写入；hotfix 和 tweak 继续服从各自的 preset 阶段协议。
 - 当前 workflow 是 Native：恢复 `/comet-native`，由可携带状态中的 Loop、blocker 和下一动作继续；本机 execution 缺失不代表 change 损坏。
 - 当前 workflow 是 Classic：恢复 `/comet-classic`，由 Classic 状态、确认点和阶段协议继续。
 - 不要把 Native change 转换成 Classic change，或反向转换；切换 workflow 必须选择另一个独立 change。
@@ -32,6 +34,8 @@ Classic 旧项目没有新版配置时只按 Classic legacy fallback 处理，�
 平台只应安装一个 Comet Hook Router。一次写入事件最多进入一个 workflow Guard；不得分别运行 Native 和 Classic Hook。
 
 Hook 会对多文件和 patch 目标整体裁决。无法归因的事件和仅位于项目外的目标保持中立；一旦写入已归属于本项目，当前阶段不允许普通项目写入、存在多个所有权候选，或 selection、状态与目标范围无法安全读取时会失败关闭。不要绕过 Hook；按拒绝信息恢复对应 workflow，只有所有权不明确时才重新选择当前 change。
+
+阶段表只约束普通实现写入。Classic Hook 在阶段判断前固定放行 `.comet` 配置、`.superpowers` 工作区、根目录 Markdown 和 `hook.allow_paths`；这些是显式控制或配置白名单，不扩大阶段权限，也不允许在 Verify 更新 tasks。
 
 ## 个人记忆和项目知识上下文
 

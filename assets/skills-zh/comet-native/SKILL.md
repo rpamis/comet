@@ -24,7 +24,7 @@ comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --json
 ```
 
 - 只把返回的相关个人记忆和项目知识加入当前上下文；命令不可用、没有内容或检索失败时继续工作，不要求用户处理。工作流命令可带 `--comet-task`、`--comet-path` 和 `--comet-phase`，由 CLI 选择并显示相关上下文。
-- 只有出现可跨任务复用的用户偏好、项目约定或稳定协作方式时，才调用 `comet memory observe <project-root> --text "<偏好或约定>" --workflow <workflow> --change <change-id> --candidate-key <stable-topic-key> --json`；`--text` 只写偏好或约定，不写任务摘要、进展、命令输出或测试结果。
+- 只有出现可跨任务复用的用户偏好、项目约定或稳定协作方式时，才调用 `comet memory observe <project-root> --text "<偏好或约定>" --workflow <workflow> --change <change-id> --candidate-key <stable-topic-key> --json`；`--text` 只写偏好或约定，不写任务摘要、实现进展、命令输出或测试结果。
 - 验证、编译或 linter 失败时直接按诊断修复并重跑。任务结束调用 `comet task <project-root> --task "<用户原始请求>" --complete --workflow <workflow> --change <change-id> --json`，只完成检查点和同步，不保存原始任务。没有 Hook 平台时，这些命令作为回退路径，底层仍可调用 `comet memory context`；有 Hook 时仍只注入当前任务相关的片段。
 ### 创建 change
 先确定小写 kebab-case 名称，再按[工作区选择参考](reference/workspace.md)决定使用当前目录、创建分支还是创建 worktree。用户明确说并行、同时处理或多个会话时自动选择 `worktree`，不再询问三种方式。CLI 会在创建 change 前完成分支或 worktree 绑定，复用或重建已登记的 change worktree，维护仓库本地排除规则，核对配置并创建可跨设备恢复的状态。随后进入命令返回的 `preparation.projectRoot`；后续命令不得继续在原目录执行。

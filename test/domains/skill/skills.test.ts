@@ -3398,8 +3398,22 @@ describe('skills', () => {
       expect(zhGuard).toContain('一旦写入已归属于本项目');
       expect(zhGuard).toContain('个人记忆和项目知识');
       expect(zhGuard).toContain('| Classic | Open、Design、Verify、Archive | Build |');
+      expect(zhGuard).toContain('Classic 的 Verify 只写验证报告和状态等阶段产物');
+      expect(zhGuard).toContain('不修改 tasks 或普通项目实现');
+      expect(zhGuard).toContain('状态包含 `children` 时');
+      expect(zhGuard).toContain('不得运行 Supervisor Change Builder');
+      expect(zhGuard).toContain('状态已记录 Design Doc 且实施计划存在并可用');
+      expect(zhGuard).toContain('Classic Hook 在阶段判断前固定放行');
       expect(enGuard).toContain('personal memory and project knowledge');
       expect(enGuard).toContain('| Classic | Open, Design, Verify, Archive | Build |');
+      expect(enGuard).toContain('Classic Verify writes only the verification report and state');
+      expect(enGuard).toContain('It does not modify tasks or ordinary project implementation');
+      expect(enGuard).toContain('When Native state contains `children`');
+      expect(enGuard).toContain('do not run a Supervisor Change Builder');
+      expect(enGuard).toContain(
+        'records a Design Doc and its implementation plan exists and is ready',
+      );
+      expect(enGuard).toContain('Before phase evaluation, the Classic Hook always allows');
       expect(enGuard).toContain('record the failed result');
       expect(enGuard).toContain('return to Build before modifying the implementation');
       expect(enGuard).toContain('dot-prefixed project files');
