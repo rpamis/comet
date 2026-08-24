@@ -958,11 +958,6 @@ function DashboardApp({ theme, onToggleTheme }) {
     [activeProjectId, toast, useDemo],
   );
 
-  useEffect(() => {
-    if (useDemo || workflow !== 'native' || !snapshot?.native || nativePages[tab]) return;
-    void loadNativePage(tab);
-  }, [loadNativePage, nativePages, snapshot, tab, useDemo, workflow]);
-
   const selected = selectedDetail;
   const visible = useMemo(
     () => (useDemo ? filterChanges(snapshot, tab, query) : (pages[tab]?.items ?? [])),
@@ -977,9 +972,22 @@ function DashboardApp({ theme, onToggleTheme }) {
       : tab === 'archived'
         ? (snapshot?.native?.archivedChangeCount ?? 0)
         : (snapshot?.native?.totalChangeCount ?? 0);
+  const nativeViewKnownEmpty = !useDemo && Boolean(snapshot?.native) && nativeOverviewTotal === 0;
   const nativeVisibleTotal = useDemo
     ? (snapshot?.native?.changes?.length ?? 0)
     : (nativePage?.total ?? nativeOverviewTotal);
+
+  useEffect(() => {
+    if (
+      useDemo ||
+      workflow !== 'native' ||
+      !snapshot?.native ||
+      nativePages[tab] ||
+      nativeViewKnownEmpty
+    )
+      return;
+    void loadNativePage(tab);
+  }, [loadNativePage, nativePages, nativeViewKnownEmpty, snapshot, tab, useDemo, workflow]);
 
   const selectChange = useCallback(
     async (id) => {
@@ -1062,6 +1070,7 @@ function DashboardApp({ theme, onToggleTheme }) {
         workflow={workflow}
         onWorkflow={(nextWorkflow) => {
           setSettingsOpen(false);
+          if (nextWorkflow !== workflow) setTab('active');
           setWorkflow(nextWorkflow);
         }}
         pluginPages={pluginPages}
@@ -1192,7 +1201,9 @@ function DashboardApp({ theme, onToggleTheme }) {
                 pagedChanges={useDemo ? null : (nativePage?.items ?? [])}
                 total={nativeVisibleTotal}
                 hasMore={Boolean(nativePage?.nextCursor)}
-                pageLoading={nativePageLoading === tab || (!useDemo && !nativePage)}
+                pageLoading={
+                  !nativeViewKnownEmpty && (nativePageLoading === tab || (!useDemo && !nativePage))
+                }
                 onLoadMore={() => loadNativePage(tab, true)}
                 selectedDetail={nativeSelectedDetail}
                 detailLoading={nativeDetailLoading}

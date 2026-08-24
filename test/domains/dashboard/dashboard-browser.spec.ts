@@ -1272,6 +1272,98 @@ test('keeps a useful center-panel empty state when the Native change filter has 
   expect(emptyBox.width).toBeGreaterThan(700);
 });
 
+test('opens Native on its active view without loading a list that the overview proves is empty', async ({
+  page,
+}) => {
+  const nativePageRequests: string[] = [];
+  await page.route('**/api/dashboard/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/dashboard/projects') {
+      await route.fulfill({
+        json: {
+          currentProjectId: 'fixture-project',
+          projects: [
+            {
+              id: 'fixture-project',
+              name: 'Fixture',
+              path: '/fixture',
+              lastSeenAt: null,
+              availability: 'available',
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/overview')) {
+      await route.fulfill({
+        json: {
+          project: { name: 'Fixture', path: '/fixture', generatedAt: '2026-08-24T00:00:00.000Z' },
+          summary: {
+            activeChanges: 0,
+            archivedChanges: 1,
+            verifyFailed: 0,
+            tasksIncomplete: 0,
+            dirtyFiles: 0,
+          },
+          initialChanges: { status: 'active', items: [], total: 0, nextCursor: null },
+          native: {
+            schema: 'comet.dashboard.native.v2',
+            generatedAt: '2026-08-24T00:00:00.000Z',
+            totalChangeCount: 1,
+            visibleChangeCount: 0,
+            archivedChangeCount: 1,
+            changes: [],
+            activeChangeCount: 0,
+            omittedChangeCount: 1,
+            changesTruncated: true,
+          },
+          git: {
+            branch: 'main',
+            head: 'abc1234',
+            dirtyFiles: 0,
+            dirtyFileList: [],
+            recentCommits: [],
+          },
+          risks: [],
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/changes')) {
+      await route.fulfill({
+        json: { status: 'archived', items: [], total: 1, nextCursor: null },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/native-changes')) {
+      nativePageRequests.push(url.search);
+      await route.fulfill({
+        json: {
+          status: url.searchParams.get('status'),
+          items: [],
+          total: url.searchParams.get('status') === 'archived' ? 1 : 0,
+          nextCursor: null,
+        },
+      });
+      return;
+    }
+    await route.continue();
+  });
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  await page.getByRole('tab', { name: '已归档' }).click();
+  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
+
+  await expect(page.getByRole('tab', { name: '活跃' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('heading', { name: '当前没有活跃的 Native change' })).toBeVisible();
+  await expect(page.locator('.native-workspace-empty .ant-spin')).toHaveCount(0);
+  await expect(page.locator('.dashboard-workspace-region')).toHaveCount(0);
+  expect(nativePageRequests).toEqual([]);
+});
+
 test('pins the desktop workbench frame while rich content scrolls in the center pane', async ({
   page,
 }) => {
@@ -1546,8 +1638,12 @@ test('fills a server-paged Native list when its footer is already visible', asyn
   const pageRequests: string[] = [];
   const detailRequests: string[] = [];
   let releaseFirstPage = () => {};
+  let releaseFirstDetail = () => {};
   const firstPageGate = new Promise<void>((resolve) => {
     releaseFirstPage = resolve;
+  });
+  const firstDetailGate = new Promise<void>((resolve) => {
+    releaseFirstDetail = resolve;
   });
   await page.route('**/api/dashboard/**', async (route) => {
     const url = new URL(route.request().url());
@@ -1621,6 +1717,7 @@ test('fills a server-paged Native list when its footer is already visible', asyn
     if (url.pathname.endsWith('/native-change')) {
       const name = url.searchParams.get('changeName');
       detailRequests.push(name ?? '');
+      if (name === 'native-1') await firstDetailGate;
       await route.fulfill({ json: nativeItems.find((change) => change.name === name) });
       return;
     }
@@ -1646,9 +1743,28 @@ test('fills a server-paged Native list when its footer is already visible', asyn
   await expect(page.locator('.native-changes-count')).toHaveText('8');
   await expect(list.locator('.native-change-row')).toHaveCount(8);
   await expect.poll(() => detailRequests).toContain('native-1');
+  await expect(page.locator('.native-change-detail-skeleton')).toBeVisible();
+  await expect(page.locator('.native-side-panel-skeleton')).toBeVisible();
+  await expect(page.getByText('正在加载 Native 变更详情…')).toHaveCount(0);
+  const [loadingCenter, loadingRight] = await Promise.all([
+    page.locator('.dashboard-workspace-center').boundingBox(),
+    page.locator('.dashboard-workspace-right').boundingBox(),
+  ]);
+  releaseFirstDetail();
   await list.locator('.native-change-row').nth(0).click();
   await expect(page.locator('.native-change-detail h3')).toHaveText('native-1');
   await expect(page.getByText('已完成检查，验证结果已确认', { exact: true })).toBeVisible();
+  const [loadedCenter, loadedRight] = await Promise.all([
+    page.locator('.dashboard-workspace-center').boundingBox(),
+    page.locator('.dashboard-workspace-right').boundingBox(),
+  ]);
+  if (!loadingCenter || !loadingRight || !loadedCenter || !loadedRight) {
+    throw new Error('Expected Native loading and loaded workspace bounds');
+  }
+  expect(Math.abs(loadedCenter.x - loadingCenter.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(loadedCenter.width - loadingCenter.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(loadedRight.x - loadingRight.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(loadedRight.width - loadingRight.width)).toBeLessThanOrEqual(1);
   await list.locator('.native-change-row').nth(1).click();
   await expect.poll(() => detailRequests).toContain('native-2');
   await expect(page.locator('.native-change-detail h3')).toHaveText('native-2');

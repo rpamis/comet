@@ -11,7 +11,7 @@ import {
   SafetyCertificateOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import { Button, Spin, Tooltip } from 'antd';
+import { Button, Skeleton, Spin, Tooltip } from 'antd';
 import { useAnimatedNumber } from './use-animated-number.js';
 import { DashboardWorkspaceRegion } from './workspace-layout.jsx';
 
@@ -321,6 +321,7 @@ export function NativeWorkflowPanel({
     if (selectedSummary) onSelect?.(selectedSummary);
   }, [onSelect, selectedSummary]);
   const selected = serverPaged ? selectedDetail : selectedSummary;
+  const detailPending = Boolean(selectedSummary && !selected && (detailLoading || !detailError));
   const hasNativeChanges = Boolean(native && native.totalChangeCount > 0);
   const isEmptyView = !pageLoading && visibleChanges.length === 0;
   const isLoadingEmptyView = pageLoading && visibleChanges.length === 0;
@@ -371,10 +372,8 @@ export function NativeWorkflowPanel({
                 onPreview={onPreview}
                 onCopyChangeName={onCopyChangeName}
               />
-            ) : selectedSummary && (detailLoading || !detailError) ? (
-              <div className="native-change-detail dashboard-change-detail-loading min-w-0 rounded-lg border border-border bg-bg p-10 text-center text-sm text-muted shadow-raised">
-                正在加载 Native 变更详情…
-              </div>
+            ) : detailPending ? (
+              <NativeChangeDetailSkeleton />
             ) : detailError ? (
               <div className="native-change-detail dashboard-change-detail-loading min-w-0 rounded-lg border border-border bg-bg p-10 text-center text-sm text-danger shadow-raised">
                 <p role="alert">Native 变更详情加载失败：{detailError.reason}</p>
@@ -386,7 +385,13 @@ export function NativeWorkflowPanel({
               <NativeWorkspaceEmptyState native={native} tab={tab} query={query} onTab={onTab} />
             )
           }
-          right={selected ? <NativeSidePanel change={selected} git={git} /> : null}
+          right={
+            selected ? (
+              <NativeSidePanel change={selected} git={git} />
+            ) : detailPending ? (
+              <NativeSidePanelSkeleton />
+            ) : null
+          }
         />
       )}
     </div>
@@ -885,6 +890,28 @@ function NativeChangeDetail({ change, onPreview, onCopyChangeName }) {
   );
 }
 
+function NativeChangeDetailSkeleton() {
+  return (
+    <section
+      className="native-change-detail native-change-detail-skeleton min-w-0 rounded-lg border border-border bg-bg shadow-raised"
+      aria-label="正在加载 Native 变更详情"
+      aria-busy="true"
+    >
+      <div className="border-b border-border-soft px-5 py-5">
+        <Skeleton active title={{ width: '38%' }} paragraph={{ rows: 1, width: '58%' }} />
+      </div>
+      <div className="space-y-6 p-5">
+        <Skeleton active title={{ width: '24%' }} paragraph={{ rows: 3 }} />
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Skeleton active title={{ width: '42%' }} paragraph={{ rows: 4 }} />
+          <Skeleton active title={{ width: '42%' }} paragraph={{ rows: 4 }} />
+        </div>
+        <Skeleton active title={{ width: '28%' }} paragraph={{ rows: 4 }} />
+      </div>
+    </section>
+  );
+}
+
 function NativeLoopRecoveryCard({ change }) {
   const loop = change.loop;
   const local = change.localExecution;
@@ -1347,6 +1374,22 @@ function NativeSidePanel({ change, git }) {
           </dl>
         </section>
       )}
+    </aside>
+  );
+}
+
+function NativeSidePanelSkeleton() {
+  return (
+    <aside
+      className="native-side-panel-skeleton space-y-5"
+      aria-label="正在加载 Native 变更侧栏"
+      aria-busy="true"
+    >
+      {[3, 2, 3].map((rows, index) => (
+        <section key={index} className="rounded-lg bg-bg p-5 shadow-raised">
+          <Skeleton active title={{ width: '42%' }} paragraph={{ rows }} />
+        </section>
+      ))}
     </aside>
   );
 }
