@@ -30,20 +30,18 @@ If the `select` / `check` output is `BLOCKED` because `bound_branch` does not ma
 
 **Idempotency**: All build phase operations can be safely re-executed. Read `.comet.yaml` `phase` to confirm build, read the plan header `base-ref`, then parse tasks.md checkboxes in document order and resume from the first unchecked task. Already-committed tasks must not be re-committed.
 
-### 1. Create Plan (Subagent Offload)
+### 1. Create Plan (Inline)
 
-Create the implementation plan through a subagent, avoiding planning skill occupying main session context. Plan files and execution feedback must use the configured Comet artifact language from `comet state get <name> language`.
+Create the implementation plan directly in the main session so the plan result remains visible in the current flow. The plan file must use the configured Comet artifact language from `comet state get <name> language`.
 
-Before dispatching, the main session fixes the full plan path `docs/superpowers/plans/<YYYY-MM-DD>-<change-name>.md` (e.g. `docs/superpowers/plans/2026-08-21-rename-alert.md`) and passes it into the instructions below verbatim.
+The main session fixes the full plan path `docs/superpowers/plans/<YYYY-MM-DD>-<change-name>.md` (e.g. `docs/superpowers/plans/2026-08-21-rename-alert.md`) before creating the plan and uses that path throughout.
 
-**Subagent instructions**:
+**Plan creation steps**:
 
-You are an implementation planning expert. Create an implementation plan based on the following inputs:
-
-1. **Immediately execute:** Use the Skill tool to load the Superpowers `writing-plans` skill. Skipping this step is prohibited. After the skill loads, ARGUMENTS must include: `Language: Use the configured Comet artifact language from comet state get <name> language`. If the Skill tool is unavailable or the skill cannot be found, end immediately with a single-line final reply `SKILL_UNAVAILABLE`; do not retry and do not write the plan yourself without the skill
+1. **Immediately execute:** Load the Superpowers `writing-plans` skill inline in the main session. Skipping this step is prohibited. Use the Skill tool with ARGUMENTS containing: `Language: Use the configured Comet artifact language from comet state get <name> language`. If the Skill tool is unavailable or the skill cannot be found, stop and report that the skill is missing; do not bypass the skill or write the plan without it
 2. Read the Design Doc (technical design document under `docs/superpowers/specs/`)
 3. Read `<classic-change-dir>/tasks.md` (task boundaries)
-4. Follow the skill's guidance to create the plan; no user will answer you during the run, so skip steps that ask the user a question (such as the `writing-plans` Execution Handoff at the end) and do not ask the user anything
+4. Follow the skill's guidance to create the plan directly in the main session; no user will answer you during the run, so skip steps that ask the user a question (such as the `writing-plans` Execution Handoff at the end) and do not ask the user anything
 
 Plan requirements:
 - Save to the plan path given in the instructions; do not change the file name
@@ -65,17 +63,7 @@ base-ref: <git rev-parse HEAD before implementation>
 git rev-parse HEAD
 ```
 
-After writing the plan to file, the last line of your final reply must be exactly:
-
-```
-PLAN_PATH: <relative path of the plan file>
-```
-
-**Execute subagent**: Dispatch the above task to a subagent.
-
-After the subagent completes:
-- Read the `PLAN_PATH:` line at the end of the reply; if the file exists, record it as the plan; if the line is missing, look for an existing valid path in the reply text
-- If the subagent reports `SKILL_UNAVAILABLE`, the dispatch fails, or no valid path can be obtained, fall back to loading the Superpowers `writing-plans` skill inline in the main session (degraded fallback), remember that dispatch is unavailable for this session, and go inline directly on later Step 1 entries
+After writing the plan, the main session verifies that the path exists and runs Step 2's `comet state set <name> plan ...` to record it. If plan creation fails, stop Build and report the failure; do not switch to another plan-generation method or write a replacement without the loaded skill.
 
 ### 2. Update Plan Status and Jointly Confirm Workflow Configuration
 

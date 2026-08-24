@@ -3018,7 +3018,7 @@ describe('skills', () => {
         'Language: 使用 `comet state get <name> language` 读取到的 Comet 配置产物语言输出',
       );
       expect(zhSkills['comet-build']).toContain(
-        '计划文件和执行反馈必须使用 `comet state get <name> language` 读取到的 Comet 配置产物语言',
+        '计划文件必须使用 `comet state get <name> language` 读取到的 Comet 配置产物语言',
       );
       expect(zhSkills['comet-build']).toContain('ARGUMENTS 必须包含与 Step 1 相同的 Language 约束');
       expect(zhSkills['comet-verify']).toContain(
@@ -3041,7 +3041,7 @@ describe('skills', () => {
         'Language: Use the configured Comet artifact language from `comet state get <name> language`',
       );
       expect(enSkills['comet-build']).toContain(
-        'Plan files and execution feedback must use the configured Comet artifact language from `comet state get <name> language`',
+        'The plan file must use the configured Comet artifact language from `comet state get <name> language`',
       );
       expect(enSkills['comet-build']).toContain(
         'ARGUMENTS must include the same Language constraint as Step 1',
@@ -3062,6 +3062,39 @@ describe('skills', () => {
   });
 
   describe('Comet build subagent dispatch safeguards', () => {
+    it('creates the implementation plan inline instead of dispatching a planning subagent', async () => {
+      const zhBuild = await fs.readFile(
+        path.resolve('assets', 'skills-zh', 'comet-build', 'SKILL.md'),
+        'utf-8',
+      );
+      const enBuild = await fs.readFile(
+        path.resolve('assets', 'skills', 'comet-build', 'SKILL.md'),
+        'utf-8',
+      );
+      const zhPlanSection = zhBuild.slice(zhBuild.indexOf('### 1.'), zhBuild.indexOf('### 2.'));
+      const enPlanSection = enBuild.slice(enBuild.indexOf('### 1.'), enBuild.indexOf('### 2.'));
+
+      expect(zhPlanSection).toContain('主会话内联加载 Superpowers `writing-plans` 技能');
+      expect(zhPlanSection).toContain('主会话直接创建实施计划');
+      expect(zhPlanSection).not.toContain('通过 subagent 创建实施计划');
+      expect(zhPlanSection).not.toContain('**Subagent 指令**');
+      expect(zhPlanSection).not.toContain('**执行 subagent**');
+      expect(zhPlanSection).not.toContain('子代理回报');
+      expect(zhPlanSection).not.toContain('subagent');
+
+      expect(enPlanSection).toContain(
+        'Load the Superpowers `writing-plans` skill inline in the main session',
+      );
+      expect(enPlanSection).toContain(
+        'Create the implementation plan directly in the main session',
+      );
+      expect(enPlanSection).not.toContain('Create the implementation plan through a subagent');
+      expect(enPlanSection).not.toContain('**Subagent instructions**');
+      expect(enPlanSection).not.toContain('**Execute subagent**');
+      expect(enPlanSection).not.toContain('After the subagent completes');
+      expect(enPlanSection).not.toContain('subagent');
+    });
+
     it('composes the Superpowers loop with the Chinese Comet dispatch contract', async () => {
       const zhBuild = await fs.readFile(
         path.resolve('assets', 'skills-zh', 'comet-build', 'SKILL.md'),

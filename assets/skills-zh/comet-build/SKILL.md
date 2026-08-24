@@ -30,20 +30,18 @@ comet state check <name> build
 
 **幂等性**：build 阶段所有操作可安全重复执行。读取 `.comet.yaml` 的 `phase` 字段确认仍在 build 阶段，读取 plan 文件头的 `base-ref`，再按文档顺序解析 tasks.md 的复选框，从第一个未勾选任务继续执行。已提交的任务不得重复提交。
 
-### 1. 制定计划（Subagent Offload）
+### 1. 制定计划（主会话内联）
 
-通过 subagent 创建实施计划，避免 planning skill 占用主 session 上下文。计划文件和执行反馈必须使用 `comet state get <name> language` 读取到的 Comet 配置产物语言。
+主会话直接创建实施计划，确保计划生成结果在当前流程中可见。计划文件必须使用 `comet state get <name> language` 读取到的 Comet 配置产物语言。
 
-派发前，主会话先确定完整计划路径 `docs/superpowers/plans/<YYYY-MM-DD>-<change-name>.md`（如 `docs/superpowers/plans/2026-08-21-rename-alert.md`），并在下方指令中原样传入。
+主会话先确定完整计划路径 `docs/superpowers/plans/<YYYY-MM-DD>-<change-name>.md`（如 `docs/superpowers/plans/2026-08-21-rename-alert.md`），后续始终使用该路径。
 
-**Subagent 指令**：
+**计划创建步骤**：
 
-你是实施计划专家。基于以下输入创建实施计划：
-
-1. **立即执行：** 使用 Skill 工具加载 Superpowers `writing-plans` 技能。禁止跳过此步骤。技能加载后，ARGUMENTS 必须包含：`Language: 使用 comet state get <name> language 读取到的 Comet 配置产物语言输出`。若 Skill 工具不可用或找不到该技能，立即结束，最终回复只写一行 `SKILL_UNAVAILABLE`，不要重试，也不要在没有技能的情况下自行写计划
+1. **立即执行：** 主会话内联加载 Superpowers `writing-plans` 技能。禁止跳过此步骤。技能加载后，使用 Skill 工具并在 ARGUMENTS 中包含：`Language: 使用 comet state get <name> language 读取到的 Comet 配置产物语言输出`。若 Skill 工具不可用或找不到该技能，立即停止并报告缺少该技能，不要绕过技能自行写计划
 2. 读取 Design Doc（`docs/superpowers/specs/` 下的技术设计文档）
 3. 读取 `<classic-change-dir>/tasks.md`（任务边界）
-4. 按技能指引创建计划；运行期间没有用户回答你，技能里向用户提问的步骤（如 `writing-plans` 结尾的 Execution Handoff）直接跳过，不要向用户提问
+4. 按技能指引由主会话直接创建计划；运行期间没有用户回答你，技能里向用户提问的步骤（如 `writing-plans` 结尾的 Execution Handoff）直接跳过，不要向用户提问
 
 计划要求：
 - 保存至指令中给定的计划路径，不更改文件名
@@ -65,17 +63,7 @@ base-ref: <git rev-parse HEAD before implementation>
 git rev-parse HEAD
 ```
 
-计划写入文件后，最终回复的最后一行固定为：
-
-```
-PLAN_PATH: <计划文件的相对路径>
-```
-
-**执行 subagent**：将上述任务派发给 subagent。
-
-Subagent 完成后：
-- 读取回复末尾的 `PLAN_PATH:` 行，文件存在即记录为 plan；没有该行时，再从回复文本中找已存在的有效路径
-- 子代理回报 `SKILL_UNAVAILABLE`、派发失败或拿不到有效路径时，在主 session 内联加载 Superpowers `writing-plans` 技能创建计划（降级回退），并记住本会话派发不可用，之后再进 Step 1 直接内联
+计划写入后，主会话确认该路径存在，再运行 Step 2 的 `comet state set <name> plan ...` 记录计划路径。计划生成失败时停止 Build 并报告失败原因，不得切换其他计划生成方式，也不得在未加载技能时自行补写计划。
 
 ### 2. 更新计划状态并联合确认工作方式
 

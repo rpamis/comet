@@ -31,6 +31,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Classic build planning**: Classic Build now loads `writing-plans` directly in the main session instead of dispatching a planning subagent that can fail without returning a plan.
 - **Classic verification repairs**: Classic Verify now keeps ordinary implementation writes in Build while leaving verification reports and workflow state writable, so repair attempts follow the tracked verification loop instead of bypassing it.
 - **Windows Native reliability**: Snapshot checks are more reliable when hooks and workspace operations run concurrently on Windows.
 - **Native status compatibility**: `comet status` now reads Native v4 Portable State changes instead of reporting them as invalid legacy schemas.
