@@ -1750,6 +1750,40 @@ describe('comet init E2E', () => {
     INIT_E2E_TIMEOUT_MS,
   );
 
+  it.each([
+    { workflow: 'native' as const, expected: ['codegraph'] },
+    { workflow: 'both' as const, expected: ['openspec', 'superpowers', 'codegraph'] },
+  ])(
+    'offers the CodeGraph dependency for $workflow initialization',
+    async ({ workflow, expected }) => {
+      mockExternalSuccess();
+      await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
+      const fakeHome = path.join(tmpDir, 'fake-home');
+      await fs.mkdir(fakeHome, { recursive: true });
+
+      const { checkbox, select } = await import('@inquirer/prompts');
+      const { platformSelectPrompt } = await import('../../app/commands/platform-select-prompt.js');
+      vi.mocked(select).mockResolvedValueOnce(workflow);
+      if (workflow === 'both') vi.mocked(select).mockResolvedValueOnce('copy');
+      vi.mocked(platformSelectPrompt).mockResolvedValue(['codex']);
+      vi.mocked(checkbox).mockResolvedValue([]);
+
+      const { initCommand } = await import('../../app/commands/init.js');
+      await captureTextOutput(() =>
+        initCommand(tmpDir, {
+          scope: 'global',
+          language: 'en',
+        }),
+      );
+
+      const prompt = vi.mocked(checkbox).mock.calls[0]?.[0] as {
+        choices: Array<{ value: string }>;
+      };
+      expect(prompt.choices.map((choice) => choice.value)).toEqual(expected);
+    },
+    INIT_E2E_TIMEOUT_MS,
+  );
+
   it('leaves project workflow state untouched when every Comet asset copy fails', async () => {
     mockExternalSuccess();
     await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });

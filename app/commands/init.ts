@@ -321,19 +321,22 @@ async function selectNpmDeps(
   spPlatformIds: string[],
   options: InitOptions,
   lang: string,
-  workflow: CometWorkflow,
+  workflowSelection: InitWorkflowSelection,
 ): Promise<Set<NpmDepId>> {
-  if (workflow === 'native') return new Set();
-
-  const openSpecInstalled = isCommandAvailable('openspec');
-  const openSpecRequired = workflow === 'classic' && !isOpenSpecCliCompatible();
+  const includesClassic = includesWorkflow(workflowSelection, 'classic');
+  const openSpecInstalled = includesClassic && isCommandAvailable('openspec');
+  const openSpecRequired = includesClassic && !isOpenSpecCliCompatible();
   const codegraphInstalled =
     hasCodegraphProjectIndex(projectPath) || resolveCodegraphCommand() !== null;
   const superpowersInstalled = spPlatformIds.length === 0 ? true : undefined;
 
   const states: NpmDepState[] = [
-    { id: 'openspec', installed: openSpecInstalled, required: openSpecRequired },
-    { id: 'superpowers', installed: Boolean(superpowersInstalled) },
+    ...(includesClassic
+      ? [
+          { id: 'openspec' as const, installed: openSpecInstalled, required: openSpecRequired },
+          { id: 'superpowers' as const, installed: Boolean(superpowersInstalled) },
+        ]
+      : []),
     { id: 'codegraph', installed: codegraphInstalled },
   ];
 
@@ -720,7 +723,7 @@ export async function initCommand(
     spPlatformIds,
     options,
     lang,
-    includesWorkflow(workflowSelection, 'classic') ? 'classic' : 'native',
+    workflowSelection,
   );
   const shouldInstallOpenSpecCli = selectedNpmDeps.has('openspec');
   const shouldInstallSuperpowers = selectedNpmDeps.has('superpowers');

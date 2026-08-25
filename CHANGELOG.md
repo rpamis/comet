@@ -19,6 +19,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **Native CodeGraph setup**: `comet init` now offers CodeGraph when Native or Both is selected, while keeping OpenSpec and Superpowers limited to Classic-enabled setups.
 - **Native Supervisor workflow**: Supervisor Changes now let users choose multi-session coordination or single-session progression after decomposition. Codex can assign ready Children to independent sessions and Claude Code to Agent Team members, while Runtime retains dependency, worktree, verification, ordered integration, automatic parent advancement, and final-delivery control.
 - **Native status and verification**: Supervisor status, verification reports, and Dashboard labels now present child progress, task bindings, preserved evidence, and verification decisions in a clearer user-facing form; empty Native views now use one complete workspace state instead of showing vacant explorer and detail columns.
 - **Native verification guidance**: Native CLI continuations now include localized, user-ready recovery messages and explicit Agent relay instructions, so temporary Verifier failures are explained without exposing Runtime counters or asking users to manage files or processes.
