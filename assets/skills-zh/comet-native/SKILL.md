@@ -20,12 +20,12 @@ Native 把需求、完整目标规格、当前进度和验收结论保存在项�
 ### 记忆接入
 进入 change 工作区并读取 Runtime 当前 `phase` 后，Agent 自动运行一次：
 ```text
-comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --json
+comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --session "<本次任务稳定标识>" --json
 ```
-
-- 只把返回的相关个人记忆和项目知识加入当前上下文；命令不可用、没有内容或检索失败时继续工作，不要求用户处理。工作流命令可带 `--comet-task`、`--comet-path` 和 `--comet-phase`，由 CLI 选择并显示相关上下文。
-- 只有出现可跨任务复用的用户偏好、项目约定或稳定协作方式时，才调用 `comet memory observe <project-root> --text "<偏好或约定>" --workflow <workflow> --change <change-id> --candidate-key <stable-topic-key> --json`；`--text` 只写偏好或约定，不写任务摘要、实现进展、命令输出或测试结果。
-- 验证、编译或 linter 失败时直接按诊断修复并重跑。任务结束调用 `comet task <project-root> --task "<用户原始请求>" --complete --workflow <workflow> --change <change-id> --json`，只完成检查点和同步，不保存原始任务。没有 Hook 平台时，这些命令作为回退路径，底层仍可调用 `comet memory context`；有 Hook 时仍只注入当前任务相关的片段。
+- 只把返回 JSON 的 `text` 加入当前上下文。`manifest`（注入文本中的 `<context_manifest>`）是 Context Manifest，只包含摘要、应用原因和稳定 ID；当前任务需要正文、来源或验证方式时，运行 `comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --session "<同一标识>" --expand-context "<id>" --json`。路径、操作或阶段变化时，以同一 `--session` 和新的 `--path`、`--operation`、`--phase` 重新选择；未变化内容不会重复投递。
+- 若 `<active_policies>` 中包含 `<verification command="...">`，把这些命令加入当前 Verify 的实际检查，并记录真实结果；只有成功执行过的命令才能让对应策略进入强制执行状态。
+- 只有用户明确要求长期记住偏好或项目约定时，才调用 `comet memory remember <project-root> --text "<偏好或约定>" --scope global|project --json` 并立即作为显式记忆生效；没有明确长期要求但出现可跨任务复用的稳定协作方式时，才调用 `comet memory observe <project-root> --text "<协作方式>" --workflow <workflow> --change <change-id> --candidate-key <stable-topic-key> --json`。两者都不得写任务摘要、实现进展、命令输出或测试结果。
+- 实际采用某条上下文后，从 JSON 的 `applications[].applicationId`（Hook 文本中的 `application_id`）取得标识，并在结果明确时运行 `comet task <project-root> --task "<用户原始请求>" --application "<application-id>" --outcome used-successfully|ignored|overridden|corrected|contributed-to-failure --json`；不得为未实际使用的条目回写成功。验证、编译或 linter 失败时直接按诊断修复并重跑。任务结束仍调用 `comet task <project-root> --task "<用户原始请求>" --complete --workflow <workflow> --change <change-id> --json` 记录工作流检查点。命令不可用、没有内容或自动检索失败时继续工作；无 Hook 平台由本 Skill 使用以上同一接口，`comet memory context` 只作为兼容入口。
 ### 创建 change
 先确定小写 kebab-case 名称，再按[工作区选择参考](reference/workspace.md)决定使用当前目录、创建分支还是创建 worktree。用户明确说并行、同时处理或多个会话时自动选择 `worktree`，不再询问三种方式。CLI 会在创建 change 前完成分支或 worktree 绑定，复用或重建已登记的 change worktree，维护仓库本地排除规则，核对配置并创建可跨设备恢复的状态。随后进入命令返回的 `preparation.projectRoot`；后续命令不得继续在原目录执行。
 如果准备没有完成，保留已经创建的资源，展示 `preparation` 中的失败原因，并按 Runtime 或用户给出的恢复方向继续。
@@ -37,7 +37,7 @@ comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --json
 - 正常推进时，直接执行 Runtime 在 `continuation` 中给出的命令。只有返回字段含义不清、命令输入被拒绝、无法启动 Verifier、Verifier 执行报错，或 Verifier 要求用户补充信息时，才读取[命令参考](reference/commands.md)；
 - 只有任务因进程中断、换设备后本机状态缺失、连续多轮没有进展、并发冲突、旧版本迁移失败或状态损坏而无法继续时，才读取[恢复参考](reference/recovery.md)。
 ## Shape
-先调查能够从仓库、工具和运行环境确定的事实；彼此独立的事实可以交给 subagent 调查。按 `native.clarification_mode` 和澄清参考维护决策树，只把会改变用户可见结果、又无法可靠推断的决定交给用户。用户直接提供文件、附件、链接或本地路径作为需求来源时，按澄清参考和产物参考完成来源覆盖；排错、取证、审查或实现参考材料不自动触发，用途不明时先澄清。
+先调查能够从仓库、工具和运行环境确定的事实；彼此独立的事实可以交给 subagent 调查。按 `native.clarification_mode` 和澄清参考维护决策树，只把会改变用户可见结果、又无法可靠推断的决定交给用户。用户直接提供文件、附件、链接或本地路径作为需求来源时进入源文档完整覆盖模式：完整读取并记录 `complete`、`partial` 或 `unavailable` 状态，分块读取只改变读取顺序和工作记忆管理，不改变最终覆盖集合；`brief.md` 先保存完整来源需求和覆盖状态，再提出歧义、遗漏或隐含边界问题；可执行来源单元必须同时映射到完整目标 Spec 和至少一个验收 ID，背景、非目标或已废止内容只保留归类、理由和替代关系；修正后的旧单元标为 `superseded` 并指向替代单元；`partial`、`unavailable`、未映射或未确认内容保持 `[blocking]`。仅用于排错、取证、审查或实现参考的材料不自动触发，用途不明时先澄清；摘要不能替代来源覆盖映射。
 确认后的用户可见决定和重要约束立即同步到 Decisions、brief 和完整目标规格；普通实现选择只有影响用户可见行为时才进入正式需求。验收项必须具体、可观察且互不重复。大型需求需要拆分时，在 Supervisor Change 根目录维护 `children.yaml`；依赖、验收映射和版本兼容规则以产物参考为准。
 大型需求在最终 Shape 确认前执行一次拆分检测：只有至少两个结果可独立实现和验证、每项验收都能明确分配给子任务，并且确实存在先后依赖或并行价值时，才建议使用 Supervisor Change；目标紧密相关、需要反复修改同一核心区域、协调成本更高或用户要求单个 Native Change 时，不进行拆分；需求文字长、任务条目多本身不能触发拆分。
 建议拆分时，Skill 将 `children.yaml` 草案、子任务依赖和先后顺序、每项验收由哪个子任务负责，以及推进方式，一并放入最终 Shape 确认；用户可以调整拆分、继续使用单个 Native Change，或从以下方式中选择其一：

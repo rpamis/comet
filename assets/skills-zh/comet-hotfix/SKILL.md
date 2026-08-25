@@ -31,7 +31,7 @@ disable-model-invocation: true
 
 恢复已有 hotfix change 时，第一项状态操作必须是 `comet state select <change-name>`；创建新 change 时，在 `.comet.yaml` 初始化成功后立即运行该命令，再进入源码写入步骤。
 
-进入 hotfix 工作区并读取当前状态 `phase` 后，自动运行 `comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --json`，注入当前任务相关的个人记忆和项目知识；工作流命令可带 `--comet-task`、`--comet-path`、`--comet-phase`，CLI 会自动显示相关片段。仅当本轮对话出现可跨任务复用的用户偏好、项目约定或稳定协作方式时，才调用 `comet memory observe <project-root> --text "<偏好或约定>" --workflow <workflow> --change <change-id> --candidate-key <stable-topic-key> --json`；`--text` 只写该偏好或约定，不写任务摘要、实现进展、命令输出或测试结果，没有候选时不调用。编译器、测试或 linter 失败时按诊断修复并重跑；任务结束运行 `comet task <project-root> --task "<用户原始请求>" --complete --workflow <workflow> --change <change-id> --json`，这个命令只完成检查点和同步，不把原始任务保存为记忆。没有 Hook 时由本 Skill 直接执行，单独取上下文仍可用 `comet memory context`。
+进入 hotfix 工作区并读取当前状态 `phase` 后，运行 `comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --session "<本次任务稳定标识>" --json`。只注入返回的 `text`；Context Manifest（`manifest` / `<context_manifest>`）只含摘要、应用原因和稳定 ID，需要正文、来源或验证方式时增加 `--expand-context "<id>"`，路径、操作或阶段变化时以同一 `--session` 重新选择。用户明确要求长期记住时调用 `comet memory remember ... --scope global|project`；仅对隐式但可复用的稳定协作方式调用 `comet memory observe`，不得保存任务摘要、进展、命令输出或测试结果。实际使用条目且结果明确后，用 `applications[].applicationId`（Hook 文本中的 `application_id`）运行 `comet task <project-root> --task "<用户原始请求>" --application "<application-id>" --outcome used-successfully|ignored|overridden|corrected|contributed-to-failure --json`。任务结束仍运行带 `--complete --workflow <workflow> --change <change-id>` 的 `comet task`。无 Hook 时由本 Skill 使用相同接口，`comet memory context` 只作为兼容入口；插件失败不阻断修复。
 
 ### 1. 快速开启（预设 open）
 

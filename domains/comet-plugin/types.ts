@@ -1,39 +1,30 @@
+import type {
+  AgentContextCandidate,
+  AgentLearningConsolidationRequest,
+  AgentReflectionOutput,
+  AgentReflectionRequest,
+  AgentExperienceEvent,
+  AgentExperienceEventType,
+} from '../agent-learning/index.js';
+
 export type PluginKind = 'first-party' | 'third-party';
 export type PluginScope = 'user' | 'project';
 export type PluginStatus = 'enabled' | 'disabled' | 'uninstalled';
 export type PluginActionSource = 'user' | 'system';
-export type PluginEventSourceKind = 'workflow' | 'system';
 
 export interface PluginScopeContext {
   readonly scope: PluginScope;
   readonly projectId?: string;
 }
 
-export interface PluginEventSource {
-  readonly kind: PluginEventSourceKind;
-  readonly name: string;
-  readonly change?: string;
-  readonly projectId?: string;
-}
-
-export interface PluginEvent {
-  readonly name: string;
-  readonly scope: PluginScope;
-  readonly projectId?: string;
-  readonly source: PluginEventSource;
-  readonly payload: Readonly<Record<string, unknown>>;
-}
-
 export interface PluginContextRequest {
   readonly task: string;
   readonly path?: string;
   readonly phase?: string;
+  readonly operation?: string;
+  readonly sessionId?: string;
+  readonly charBudget?: number;
   readonly projectId?: string;
-}
-
-export interface PluginContextContribution {
-  readonly text: string;
-  readonly [key: string]: unknown;
 }
 
 export interface PluginDashboardContext {
@@ -56,12 +47,14 @@ export interface PluginDiagnostic {
   readonly pluginId: string;
   readonly code: 'missing' | 'incompatible' | 'execution-failed';
   readonly phase: 'load' | 'event' | 'context' | 'dashboard' | 'invoke';
+  readonly source?: string;
   readonly message: string;
 }
 
 export interface PluginStorage {
   read(): Promise<unknown | null>;
   write(value: unknown): Promise<void>;
+  withLock?<T>(operation: () => Promise<T>): Promise<T>;
 }
 
 export interface PluginStorageStore {
@@ -79,11 +72,26 @@ export interface PluginContext {
 }
 
 export interface PluginModule {
-  readonly events?: readonly string[];
-  readonly onEvent?: (event: PluginEvent) => void | Promise<void>;
+  readonly events?: readonly AgentExperienceEventType[];
+  /** First-party learning path; Reflection is pure and returns normalized Deltas. */
+  readonly reflect?: (
+    request: AgentReflectionRequest,
+  ) => AgentReflectionOutput | Promise<AgentReflectionOutput>;
+  /** Provider-owned durable consolidation for a single idempotent Delta. */
+  readonly consolidate?: (request: AgentLearningConsolidationRequest) => void | Promise<void>;
+  /** Event callback for non-learning plugins. */
+  readonly onEvent?: (event: AgentExperienceEvent) => void | Promise<void>;
   readonly provideContext?: (
     request: PluginContextRequest,
-  ) => PluginContextContribution | null | Promise<PluginContextContribution | null>;
+  ) =>
+    | readonly AgentContextCandidate[]
+    | AgentContextCandidate
+    | null
+    | Promise<readonly AgentContextCandidate[] | AgentContextCandidate | null>;
+  readonly resolveContext?: (
+    id: string,
+    request: PluginContextRequest,
+  ) => AgentContextCandidate | null | Promise<AgentContextCandidate | null>;
   readonly dashboard?: PluginDashboardContribution;
   readonly invoke?: (capability: string, input: unknown) => unknown | Promise<unknown>;
   readonly dispose?: () => void | Promise<void>;

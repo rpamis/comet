@@ -4,6 +4,8 @@ import { constants as fsConstants, promises as fs } from 'node:fs';
 import { promisify } from 'node:util';
 import path from 'node:path';
 
+import { withRecoverableFileLock } from '../../platform/fs/plugin-store.js';
+
 import type {
   FileMemoryRepositoryOptions,
   MemoryGitSync,
@@ -55,7 +57,7 @@ export function deriveProjectKey(identity: string): string {
 
 export function emptyMemoryState(): MemoryRuntimeState {
   return {
-    version: 1,
+    version: 3,
     records: [],
     history: {},
     evidence: {},
@@ -71,6 +73,10 @@ export function emptyMemoryState(): MemoryRuntimeState {
     },
     files: {},
     projectFiles: {},
+    appliedMutationIds: [],
+    applicationOutcomes: {},
+    feedbackState: {},
+    pendingFileProjections: {},
   };
 }
 
@@ -150,33 +156,10 @@ export class FileMemoryRepository implements MemoryRepository {
     const runtimeDirectory = path.join(this.root, '.comet', 'runtime');
     await fs.mkdir(runtimeDirectory, { recursive: true });
     const lock = path.join(runtimeDirectory, '.memory.lock');
-    const started = Date.now();
-    let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
-    while (handle === undefined) {
-      try {
-        handle = await fs.open(lock, 'wx');
-        await handle.writeFile(`${process.pid}\n`, 'utf8');
-      } catch (error) {
-        await handle?.close();
-        handle = undefined;
-        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-        if (Date.now() - started >= this.lockTimeoutMs) {
-          try {
-            const stat = await fs.stat(lock);
-            if (Date.now() - stat.mtimeMs >= this.lockTimeoutMs) await fs.rm(lock, { force: true });
-          } catch (statError) {
-            if ((statError as NodeJS.ErrnoException).code !== 'ENOENT') throw statError;
-          }
-        }
-        await new Promise((resolve) => setTimeout(resolve, this.lockRetryMs));
-      }
-    }
-    try {
-      return await operation();
-    } finally {
-      await handle.close();
-      await fs.rm(lock, { force: true });
-    }
+    return withRecoverableFileLock(lock, operation, {
+      timeoutMs: this.lockTimeoutMs,
+      retryMs: this.lockRetryMs,
+    });
   }
 
   public async sync(): Promise<MemorySyncResult> {
@@ -348,12 +331,13 @@ function validateState(value: unknown): MemoryRuntimeState {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('Memory runtime state must be an object');
   }
-  const candidate = value as Partial<MemoryRuntimeState>;
-  if (candidate.version !== 1 || !Array.isArray(candidate.records)) {
+  const candidate = value as Partial<MemoryRuntimeState> & { version?: unknown };
+  if (candidate.version !== 3) return emptyMemoryState();
+  if (!Array.isArray(candidate.records)) {
     throw new Error('Memory runtime state version or records are invalid');
   }
   return {
-    version: 1,
+    version: 3,
     records: candidate.records,
     history: candidate.history ?? {},
     evidence: candidate.evidence ?? {},
@@ -375,5 +359,9 @@ function validateState(value: unknown): MemoryRuntimeState {
     },
     files: candidate.files ?? {},
     projectFiles: candidate.projectFiles ?? {},
+    appliedMutationIds: [...(candidate.appliedMutationIds ?? [])],
+    applicationOutcomes: { ...(candidate.applicationOutcomes ?? {}) },
+    feedbackState: { ...(candidate.feedbackState ?? {}) },
+    pendingFileProjections: { ...(candidate.pendingFileProjections ?? {}) },
   };
 }

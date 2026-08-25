@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   JsonPluginStateStore,
@@ -6,8 +6,58 @@ import {
   MemoryPluginStateStore,
   PluginRuntime,
   type PluginDescriptor,
-  type PluginEvent,
 } from '../../../domains/comet-plugin/index.js';
+import {
+  AGENT_EXPERIENCE_SCHEMA,
+  AgentExperienceJournal,
+  MemoryAgentExperienceJournalStore,
+  reflectionEvents,
+  type AgentContextCandidate,
+  type AgentExperienceEvent,
+} from '../../../domains/agent-learning/index.js';
+
+function experience(
+  type: AgentExperienceEvent['type'],
+  options: {
+    readonly scope?: AgentExperienceEvent['scope'];
+    readonly projectId?: string;
+    readonly changeId?: string;
+  } = {},
+): AgentExperienceEvent {
+  const scope = options.scope ?? 'user';
+  const changeId = options.changeId ?? 'one';
+  return {
+    schema: AGENT_EXPERIENCE_SCHEMA,
+    eventId: `event:${scope}:${changeId}`,
+    episodeId: `episode:${scope}:${changeId}`,
+    occurredAt: '2026-08-24T00:00:00.000Z',
+    type,
+    actor: 'workflow',
+    scope,
+    ...(scope === 'project' ? { projectId: options.projectId ?? 'project-a' } : {}),
+    source: { kind: 'workflow', name: 'native', workflow: 'native', changeId },
+    context: { workflow: 'native', changeId },
+    evidence: [],
+  };
+}
+
+function contextCandidate(summary: string, id = 'candidate'): AgentContextCandidate {
+  return {
+    id,
+    owner: 'fixture',
+    scope: 'project',
+    memoryType: 'personal-episode',
+    kind: 'test',
+    state: 'proven',
+    authority: 'inferred',
+    title: summary,
+    summary,
+    content: summary,
+    selectors: {},
+    sources: [{ type: 'inference' }],
+    verification: [],
+  };
+}
 
 function descriptor(
   id: string,
@@ -26,6 +76,104 @@ function descriptor(
 }
 
 describe('PluginRuntime', () => {
+  it('returns after durable capture without waiting for background Reflection', async () => {
+    let releaseReflection: (() => void) | undefined;
+    const reflectionGate = new Promise<void>((resolve) => {
+      releaseReflection = resolve;
+    });
+    const runtime = new PluginRuntime({
+      cometVersion: '1.0.0',
+      store: new MemoryPluginStateStore(),
+      descriptors: [
+        descriptor('memory', 'first-party', {
+          create: () => ({
+            events: ['episode.completed'],
+            onEvent: () => reflectionGate,
+          }),
+        }),
+      ],
+    });
+    await runtime.reconcileFirstParty();
+
+    const dispatched = runtime.dispatch(experience('episode.completed'));
+    const completion = await Promise.race([
+      dispatched.then(() => 'returned' as const),
+      new Promise<'blocked'>((resolve) => setTimeout(() => resolve('blocked'), 25)),
+    ]);
+
+    releaseReflection?.();
+    await dispatched;
+    expect(completion).toBe('returned');
+  });
+
+  it('records source-aware diagnostics when an Experience Event envelope is invalid', async () => {
+    const runtime = new PluginRuntime({
+      cometVersion: '1.0.0',
+      store: new MemoryPluginStateStore(),
+      descriptors: [],
+    });
+    const invalid = {
+      ...experience('episode.completed'),
+      schema: 'comet.agent-experience.invalid',
+      source: { kind: 'workflow', name: 'classic', workflow: 'classic' },
+    } as unknown as AgentExperienceEvent;
+
+    await expect(runtime.dispatch(invalid)).rejects.toThrow(/schema/iu);
+    expect(runtime.diagnostics()).toEqual([
+      expect.objectContaining({
+        pluginId: 'comet.agent-learning',
+        code: 'execution-failed',
+        phase: 'event',
+        source: 'classic',
+        message: expect.stringContaining('classic'),
+      }),
+    ]);
+  });
+
+  it('replays user-scope learning from the shared user Journal after switching projects', async () => {
+    const userJournal = new AgentExperienceJournal(new MemoryAgentExperienceJournalStore());
+    const projectAJournal = new AgentExperienceJournal(new MemoryAgentExperienceJournalStore());
+    const projectBJournal = new AgentExperienceJournal(new MemoryAgentExperienceJournalStore());
+    let failReflection = true;
+    const received: string[] = [];
+    const learner = descriptor('memory', 'first-party', {
+      create: () => ({
+        events: ['episode.completed'],
+        onEvent: (event) => {
+          if (failReflection) throw new Error('temporary reflection failure');
+          received.push(event.eventId);
+        },
+      }),
+    });
+    const runtimeA = new PluginRuntime({
+      cometVersion: '1.0.0',
+      store: new MemoryPluginStateStore(),
+      descriptors: [learner],
+      journals: { user: userJournal, project: projectAJournal },
+    });
+    await runtimeA.reconcileFirstParty();
+    const event = experience('episode.completed', { changeId: 'shared-user-event' });
+    await runtimeA.dispatch(event);
+    expect(await userJournal.pending()).toEqual([
+      expect.objectContaining({ eventId: event.eventId }),
+    ]);
+    expect(await projectAJournal.list()).toEqual([]);
+
+    failReflection = false;
+    const runtimeB = new PluginRuntime({
+      cometVersion: '1.0.0',
+      store: new MemoryPluginStateStore(),
+      descriptors: [learner],
+      journals: { user: userJournal, project: projectBJournal },
+    });
+    await runtimeB.reconcileFirstParty();
+    await runtimeB.collectContext({ task: 'resume user learning' }, 'user');
+
+    await vi.waitFor(() => expect(received).toEqual([event.eventId]));
+    await vi.waitFor(async () => expect(await userJournal.pending()).toEqual([]));
+    expect(await projectBJournal.list()).toEqual([]);
+  });
+
   it('persists lifecycle state through a JSON state adapter', async () => {
     let content: string | null = null;
     const file = {
@@ -63,7 +211,7 @@ describe('PluginRuntime', () => {
         descriptor('rules', 'first-party'),
         descriptor('external', 'third-party', {
           create: () => ({
-            onEvent: (event) => events.push(event.name),
+            onEvent: (event) => events.push(event.type),
             invoke: (capability, input) => ({ capability, input }),
           }),
         }),
@@ -83,13 +231,8 @@ describe('PluginRuntime', () => {
     });
     await runtime.install('external');
     expect((await runtime.get('external'))?.status).toBe('enabled');
-    await runtime.dispatch({
-      name: 'plugin.event',
-      scope: 'user',
-      source: { kind: 'system', name: 'test' },
-      payload: { value: 1 },
-    });
-    expect(events).toEqual(['plugin.event']);
+    await runtime.dispatch(experience('episode.completed'));
+    await vi.waitFor(() => expect(events).toEqual(['episode.completed']));
     await expect(runtime.invoke('external', 'echo', { value: 1 })).resolves.toEqual({
       capability: 'echo',
       input: { value: 1 },
@@ -135,7 +278,7 @@ describe('PluginRuntime', () => {
   });
 
   it('delivers immutable events, scoped context, and dashboard contributions through one public runtime', async () => {
-    const seen: PluginEvent[] = [];
+    const seen: AgentExperienceEvent[] = [];
     const runtime = new PluginRuntime({
       cometVersion: '1.0.0',
       store: new MemoryPluginStateStore(),
@@ -143,7 +286,7 @@ describe('PluginRuntime', () => {
         descriptor('memory', 'first-party', {
           create: () => ({
             onEvent: (event) => seen.push(event),
-            provideContext: () => ({ text: 'memory context' }),
+            provideContext: () => contextCandidate('memory context'),
             dashboard: { id: 'memory-page', label: 'Personal memory', route: '/memory' },
           }),
         }),
@@ -151,23 +294,86 @@ describe('PluginRuntime', () => {
     });
     await runtime.reconcileFirstParty();
 
-    const payload = { change: 'one' };
-    await runtime.dispatch({
-      name: 'change.completed',
-      scope: 'user',
-      source: { kind: 'workflow', name: 'native', change: 'one' },
-      payload,
+    const event = experience('episode.completed');
+    await runtime.dispatch(event);
+    await vi.waitFor(() => expect(seen).toHaveLength(1));
+    expect(seen[0]?.context).toEqual({ workflow: 'native', changeId: 'one' });
+    expect(seen[0]?.source).toEqual({
+      kind: 'workflow',
+      name: 'native',
+      workflow: 'native',
+      changeId: 'one',
     });
-    payload.change = 'mutated';
-    expect(seen[0]?.payload).toEqual({ change: 'one' });
-    expect(seen[0]?.source).toEqual({ kind: 'workflow', name: 'native', change: 'one' });
 
     await expect(runtime.collectContext({ task: 'build' }, 'user')).resolves.toEqual([
-      { pluginId: 'memory', text: 'memory context' },
+      expect.objectContaining({ owner: 'memory', summary: 'memory context' }),
     ]);
     await expect(runtime.dashboardPages('user')).resolves.toEqual([
       { pluginId: 'memory', id: 'memory-page', label: 'Personal memory', route: '/memory' },
     ]);
+  });
+
+  it('resolves an expansion through its owning plugin when candidate IDs collide', async () => {
+    const runtime = new PluginRuntime({
+      cometVersion: '1.0.0',
+      store: new MemoryPluginStateStore(),
+      descriptors: [
+        descriptor('plugin-a', 'first-party', {
+          create: () => ({ resolveContext: () => contextCandidate('from A', 'shared') }),
+        }),
+        descriptor('plugin-b', 'first-party', {
+          create: () => ({ resolveContext: () => contextCandidate('from B', 'shared') }),
+        }),
+      ],
+    });
+    await runtime.reconcileFirstParty();
+
+    await expect(
+      runtime.resolveContext('shared', { task: 'inspect' }, 'user'),
+    ).resolves.toHaveLength(2);
+    await expect(
+      runtime.resolveContext('shared', { task: 'inspect' }, 'user', 'plugin-b'),
+    ).resolves.toEqual([expect.objectContaining({ owner: 'plugin-b', summary: 'from B' })]);
+  });
+
+  it('delivers large first-party learning evidence in bounded reflection chunks once', async () => {
+    const evidenceChunks: string[][] = [];
+    const runtime = new PluginRuntime({
+      cometVersion: '1.0.0',
+      store: new MemoryPluginStateStore(),
+      descriptors: [
+        descriptor('memory', 'first-party', {
+          create: () => ({
+            reflect: async (request) => {
+              evidenceChunks.push(
+                reflectionEvents(request).flatMap((entry) =>
+                  entry.evidence.map((evidence) => evidence.id),
+                ),
+              );
+              return [];
+            },
+            consolidate: async () => {},
+          }),
+        }),
+      ],
+    });
+    await runtime.reconcileFirstParty();
+    const event = {
+      ...experience('episode.completed'),
+      evidence: Array.from({ length: 35 }, (_, index) => ({
+        id: `evidence-${index}`,
+        kind: 'source' as const,
+        summary: `large evidence ${index} ${'内容'.repeat(2_000)}`,
+      })),
+    };
+
+    await runtime.dispatch(event);
+    await runtime.dispatch(event);
+
+    await vi.waitFor(() =>
+      expect(evidenceChunks.map((chunk) => chunk.length)).toEqual([16, 16, 3]),
+    );
+    expect(evidenceChunks.flat()).toEqual(event.evidence.map((evidence) => evidence.id));
   });
 
   it('isolates incompatible and failing plugins while healthy plugins continue', async () => {
@@ -177,7 +383,7 @@ describe('PluginRuntime', () => {
       descriptors: [
         descriptor('healthy', 'first-party', {
           create: () => ({
-            provideContext: () => ({ text: 'ok' }),
+            provideContext: () => contextCandidate('ok', 'healthy-candidate'),
             dashboard: { id: 'healthy-page', label: 'Healthy', route: '/healthy' },
           }),
         }),
@@ -202,7 +408,7 @@ describe('PluginRuntime', () => {
     await runtime.reconcileFirstParty();
 
     await expect(runtime.collectContext({ task: 'build' }, 'user')).resolves.toEqual([
-      { pluginId: 'healthy', text: 'ok' },
+      expect.objectContaining({ owner: 'healthy', summary: 'ok' }),
     ]);
     await expect(runtime.dashboardPages('user')).resolves.toEqual([
       { pluginId: 'healthy', id: 'healthy-page', label: 'Healthy', route: '/healthy' },
@@ -262,11 +468,13 @@ describe('PluginRuntime', () => {
             expect(context.config).toEqual({ mode: 'safe', nested: { level: 'strict' } });
             await context.storage.write({ owner: 'memory' });
             return {
-              events: ['change.completed'],
-              onEvent: (event) => seen.push(`${event.source.name}:${event.payload.change}`),
-              provideContext: async (request) => ({
-                text: `${request.projectId}:${(await context.storage.read())?.owner}`,
-              }),
+              events: ['episode.completed'],
+              onEvent: (event) => seen.push(`${event.source.name}:${event.context.changeId}`),
+              provideContext: async (request) =>
+                contextCandidate(
+                  `${request.projectId}:${(await context.storage.read())?.owner}`,
+                  'project-memory',
+                ),
             };
           },
         }),
@@ -276,7 +484,7 @@ describe('PluginRuntime', () => {
             expect(context.config).toEqual({ mode: 'strict' });
             await context.storage.write({ owner: 'rules' });
             return {
-              onEvent: (event) => seen.push(`${event.source.name}:${event.payload.change}`),
+              onEvent: (event) => seen.push(`${event.source.name}:${event.context.changeId}`),
               invoke: (capability, input) =>
                 capability === 'check' ? { capability, input, owner: 'rules' } : null,
             };
@@ -286,14 +494,10 @@ describe('PluginRuntime', () => {
     });
     await runtime.reconcileFirstParty();
 
-    await runtime.dispatch({
-      name: 'change.completed',
-      scope: 'project',
-      projectId: 'project-a',
-      source: { kind: 'workflow', name: 'native', projectId: 'project-a' },
-      payload: { change: 'one' },
-    });
-    expect(seen).toEqual(['native:one', 'native:one']);
+    await runtime.dispatch(
+      experience('episode.completed', { scope: 'project', projectId: 'project-a' }),
+    );
+    await vi.waitFor(() => expect(seen).toEqual(['native:one', 'native:one']));
     await expect(
       runtime.collectContext(
         { task: 'build', projectId: 'project-a' },
@@ -302,7 +506,7 @@ describe('PluginRuntime', () => {
           projectId: 'project-a',
         },
       ),
-    ).resolves.toEqual([{ pluginId: 'memory', text: 'project-a:memory' }]);
+    ).resolves.toEqual([expect.objectContaining({ owner: 'memory', summary: 'project-a:memory' })]);
     expect(
       await runtime.invoke(
         'rules',
@@ -320,30 +524,32 @@ describe('PluginRuntime', () => {
       status: 'enabled',
       disabledProjects: ['project-a'],
     });
-    await runtime.dispatch({
-      name: 'change.completed',
-      scope: 'project',
-      projectId: 'project-a',
-      source: { kind: 'workflow', name: 'native', projectId: 'project-a' },
-      payload: { change: 'two' },
-    });
-    expect(seen).toEqual(['native:one', 'native:one', 'native:two']);
+    await runtime.dispatch(
+      experience('episode.completed', {
+        scope: 'project',
+        projectId: 'project-a',
+        changeId: 'two',
+      }),
+    );
+    await vi.waitFor(() => expect(seen).toEqual(['native:one', 'native:one', 'native:two']));
 
     await runtime.enable('rules', { scope: 'project', projectId: 'project-a' });
-    await runtime.dispatch({
-      name: 'change.completed',
-      scope: 'project',
-      projectId: 'project-a',
-      source: { kind: 'workflow', name: 'native', projectId: 'project-a' },
-      payload: { change: 'three' },
-    });
-    expect(seen).toEqual([
-      'native:one',
-      'native:one',
-      'native:two',
-      'native:three',
-      'native:three',
-    ]);
+    await runtime.dispatch(
+      experience('episode.completed', {
+        scope: 'project',
+        projectId: 'project-a',
+        changeId: 'three',
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(seen).toEqual([
+        'native:one',
+        'native:one',
+        'native:two',
+        'native:three',
+        'native:three',
+      ]),
+    );
     await runtime.configure('rules', { mode: 'evaluate' });
     expect(runtime.getConfig('rules')).toEqual({ mode: 'evaluate' });
   });
@@ -360,7 +566,7 @@ describe('PluginRuntime', () => {
             creates += 1;
             const version = creates;
             return {
-              provideContext: () => ({ text: `version-${version}` }),
+              provideContext: () => contextCandidate(`version-${version}`, `version-${version}`),
               dispose: () => {
                 disposals += 1;
               },
@@ -371,12 +577,12 @@ describe('PluginRuntime', () => {
     });
     await runtime.reconcileFirstParty();
     await expect(runtime.collectContext({ task: 'before' }, 'user')).resolves.toEqual([
-      { pluginId: 'memory', text: 'version-1' },
+      expect.objectContaining({ owner: 'memory', summary: 'version-1' }),
     ]);
 
     await runtime.update('memory');
     await expect(runtime.collectContext({ task: 'after' }, 'user')).resolves.toEqual([
-      { pluginId: 'memory', text: 'version-2' },
+      expect.objectContaining({ owner: 'memory', summary: 'version-2' }),
     ]);
     expect(disposals).toBe(1);
   });

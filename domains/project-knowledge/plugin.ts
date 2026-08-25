@@ -1,21 +1,33 @@
+import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+
 import type {
   PluginContext,
   PluginDashboardContribution,
   PluginDescriptor,
   PluginModule,
 } from '../comet-plugin/index.js';
+import {
+  compileProjectPolicy,
+  contextOutcomeTargetIds,
+  reflectionEvents,
+  type AgentContextCandidate,
+  type AgentLearningDelta,
+  type ProjectPolicyActivation,
+  type ProjectPolicyKind,
+} from '../agent-learning/index.js';
 import { discoverProjectKnowledgeCorpus } from './corpus.js';
 import { createProjectKnowledgeDashboardSnapshot } from './dashboard.js';
 import { LocalProjectKnowledgeProvider } from './local-provider.js';
 import { createProjectKnowledgeQuery } from './query.js';
 import {
   createUserProjectKnowledgeRecord,
+  type ProjectKnowledgeRecord,
   type ProjectKnowledgeRecordSource,
   type ProjectKnowledgeRecordType,
   type ProjectKnowledgeRecordVerification,
 } from './records.js';
 import { RemoteProjectKnowledgeProvider } from './remote-provider.js';
-import { renderProjectKnowledgeContext, boundProjectKnowledgeResults } from './renderer.js';
 import {
   createProjectKnowledgeChangedHint,
   ProjectKnowledgeLearningService,
@@ -34,12 +46,22 @@ export const PROJECT_KNOWLEDGE_PLUGIN_ID = 'comet.project-knowledge';
 const MAX_RECENT_DIAGNOSTICS = 3;
 
 const PROJECT_KNOWLEDGE_RECORD_TYPES = new Set<ProjectKnowledgeRecordType>([
-  'project-map',
-  'module-overview',
-  'behavior-note',
-  'integration-path',
-  'change-impact',
-  'build-test',
+  'topology',
+  'fact',
+  'dependency',
+  'decision',
+  'pattern',
+  'procedure',
+  'constraint',
+  'failure-resolution',
+]);
+
+const PROJECT_POLICY_TYPES = new Set<ProjectPolicyKind>([
+  'decision',
+  'pattern',
+  'procedure',
+  'constraint',
+  'failure-resolution',
 ]);
 
 function stringList(value: unknown, label: string): string[] {
@@ -167,21 +189,49 @@ async function createProjectKnowledgeModule(
           reportDiagnostic,
         });
   };
-  const runDeterministicLearning = async (
+  const reflectProjectKnowledge = async (
     event: Parameters<ProjectKnowledgeLearningService['processEvent']>[0],
-  ): Promise<void> => {
+  ) => {
     const learningProvider = await createProvider();
     try {
       const learning = new ProjectKnowledgeLearningService({
         projectRoot: options.projectRoot,
         provider: learningProvider,
+        language: options.language,
         ...(options.semanticReviewer ? { reviewer: options.semanticReviewer } : {}),
         reportDiagnostic,
       });
-      await learning.processEvent(event);
+      return await learning.reflectEvent(event);
     } finally {
       if (learningProvider instanceof LocalProjectKnowledgeProvider) learningProvider.close();
     }
+  };
+  const ensureProjectModel = async (provider: ProjectKnowledgeProvider): Promise<void> => {
+    const projectId = resolveStableProjectId(options.projectRoot);
+    const listed = await provider.query({ kind: 'list', projectId, state: 'all', limit: 500 });
+    if (
+      listed.kind === 'list' &&
+      listed.records.some(
+        (record) =>
+          record.state !== 'superseded' && ['topology', 'fact', 'dependency'].includes(record.type),
+      )
+    ) {
+      return;
+    }
+    const corpus =
+      options.knowledgeConfig.provider === 'local'
+        ? await discoverProjectKnowledgeCorpus({
+            projectRoot: options.projectRoot,
+            reportDiagnostic,
+          })
+        : [];
+    const learning = new ProjectKnowledgeLearningService({
+      projectRoot: options.projectRoot,
+      provider,
+      language: options.language,
+      reportDiagnostic,
+    });
+    await learning.bootstrapProjectModel(corpus.map((document) => document.source));
   };
   const persistChangedHint = async (hint: ProjectKnowledgeChangedHint): Promise<void> => {
     recentChangedHints.push(hint);
@@ -203,6 +253,16 @@ async function createProjectKnowledgeModule(
       const status = await activeProvider.status();
       const recordsResult = await activeProvider.query({ kind: 'list', state: 'all', limit: 100 });
       const records = recordsResult.kind === 'list' ? recordsResult.records : [];
+      const applications = (await options.listContextApplications?.()) ?? [];
+      const dashboardRecords = records.map((record) => ({
+        ...record,
+        ...contextApplicationProjection(record.id, applications),
+        ...(projectPolicyActivation(record) === undefined
+          ? {}
+          : { activation: projectPolicyActivation(record) }),
+      }));
+      const currentManifest = latestApplicationBatch(applications, PROJECT_KNOWLEDGE_PLUGIN_ID);
+      const recordsById = new Map(dashboardRecords.map((record) => [record.id, record]));
       const localIndexStatus =
         snapshotProvider instanceof LocalProjectKnowledgeProvider
           ? await snapshotProvider.indexStatus()
@@ -228,12 +288,61 @@ async function createProjectKnowledgeModule(
       const result = {
         ...snapshot,
         status,
-        records,
+        records: dashboardRecords,
         counts: {
-          active: records.filter((record) => record.state === 'active').length,
-          needsReview: records.filter((record) => record.state === 'needs-review').length,
-          retired: records.filter((record) => record.state === 'retired').length,
+          trial: records.filter((record) => record.state === 'trial').length,
+          proven: records.filter((record) => record.state === 'proven').length,
+          enforced: records.filter((record) => record.state === 'enforced').length,
+          superseded: records.filter((record) => record.state === 'superseded').length,
         },
+        manifestPreview: currentManifest.flatMap((application) => {
+          const record = recordsById.get(application.candidateId);
+          const history = applications.filter(
+            (entry) =>
+              entry.owner === PROJECT_KNOWLEDGE_PLUGIN_ID &&
+              entry.candidateId === application.candidateId,
+          );
+          if (
+            record === undefined &&
+            (application.candidateTitle === undefined ||
+              application.candidateSummary === undefined ||
+              application.candidateState === undefined)
+          ) {
+            return [];
+          }
+          return [
+            {
+              id: record?.id ?? application.candidateId,
+              memoryType:
+                record === undefined
+                  ? application.memoryType === 'project-model'
+                    ? 'project-model'
+                    : 'project-policy'
+                  : ['topology', 'fact', 'dependency'].includes(record.type)
+                    ? 'project-model'
+                    : 'project-policy',
+              state: record?.state ?? application.candidateState!,
+              title: record?.title ?? application.candidateTitle!,
+              summary: record?.summary ?? application.candidateSummary!,
+              whyApplied: application.whyApplied,
+              applicationCount: record?.applicationCount ?? history.length,
+              successCount:
+                record?.successCount ??
+                history.filter((entry) => entry.outcome === 'used-successfully').length,
+              failureCount:
+                record?.failureCount ??
+                history.filter(
+                  (entry) =>
+                    entry.outcome === 'corrected' || entry.outcome === 'contributed-to-failure',
+                ).length,
+              delivery: application.delivery,
+              appliedAt: application.appliedAt,
+              ...(application.outcome === undefined ? {} : { outcome: application.outcome }),
+              lastApplication: application,
+              ...(record?.activation === undefined ? {} : { activation: record.activation }),
+            },
+          ];
+        }),
         local:
           options.knowledgeConfig.provider === 'local'
             ? {
@@ -258,30 +367,77 @@ async function createProjectKnowledgeModule(
   };
   return {
     dashboard: createProjectKnowledgeDashboardContribution(options.language),
-    events: ['verification.completed', 'change.completed', 'task.completed'],
-    onEvent: async (event) => {
-      const changedHint = createProjectKnowledgeChangedHint(event);
-      if (changedHint !== null) await persistChangedHint(changedHint);
-      const learn = async (): Promise<void> => {
-        try {
-          await runDeterministicLearning(event);
-        } catch {
-          reportDiagnostic({
-            code: 'learning-failed',
-            message: '项目知识自动学习暂不可用，本次工作流事件不受影响。',
+    events: [
+      'verification.completed',
+      'review.resolved',
+      'failure.resolved',
+      'change.archived',
+      'repository.changed',
+      'context.outcome',
+    ],
+    reflect: async (request) => {
+      const deltas: AgentLearningDelta[] = [];
+      let deferred = false;
+      for (const event of reflectionEvents(request)) {
+        if (event.type === 'context.outcome' && event.outcome !== undefined) {
+          for (const id of contextOutcomeTargetIds(
+            event.outcome.unitIds,
+            PROJECT_KNOWLEDGE_PLUGIN_ID,
+          )) {
+            deltas.push({
+              action: 'update',
+              owner: PROJECT_KNOWLEDGE_PLUGIN_ID,
+              targetId: id,
+              memoryType: 'project-policy',
+              kind: 'application-feedback',
+              statement: event.outcome.summary ?? `Context outcome: ${event.outcome.status}`,
+              applicability: projectExperienceApplicability(event),
+              evidence: event.evidence,
+              ...(event.outcome.applicationId === undefined || event.outcome.revision === undefined
+                ? {}
+                : {
+                    feedback: {
+                      applicationId: event.outcome.applicationId,
+                      status: event.outcome.status,
+                      ...(event.outcome.previousStatus === undefined
+                        ? {}
+                        : { previousStatus: event.outcome.previousStatus }),
+                      revision: event.outcome.revision,
+                    },
+                  }),
+              recommendedState:
+                event.outcome.status === 'corrected' ||
+                event.outcome.status === 'contributed-to-failure'
+                  ? 'superseded'
+                  : 'proven',
+            });
+          }
+          continue;
+        }
+        const changedHint = createProjectKnowledgeChangedHint(event);
+        if (changedHint !== null) await persistChangedHint(changedHint);
+        const result = await reflectProjectKnowledge(event);
+        deferred ||= result.deferred;
+        deltas.push(...result.deltas);
+      }
+      return { deltas, deferred };
+    },
+    consolidate: async ({ deltas }) => {
+      let consolidationProvider: ProjectKnowledgeProvider | null = null;
+      try {
+        consolidationProvider = await createProvider({ discoverCorpus: false });
+        for (const { delta, idempotencyKey } of deltas) {
+          await consolidationProvider.apply({
+            kind: 'experience-delta',
+            delta,
+            idempotencyKey,
+            updatedAt: new Date().toISOString(),
           });
         }
-      };
-      if (options.runReviewInBackground !== undefined) {
-        void Promise.resolve(options.runReviewInBackground(learn)).catch(() => {
-          reportDiagnostic({
-            code: 'learning-failed',
-            message: '项目知识自动学习暂不可用，本次工作流事件不受影响。',
-          });
-        });
-      } else {
-        // Automatic learning is best effort and must not delay a checkpoint.
-        void learn();
+      } finally {
+        if (consolidationProvider instanceof LocalProjectKnowledgeProvider) {
+          consolidationProvider.close();
+        }
       }
     },
     invoke: async (capability, input) => {
@@ -341,9 +497,10 @@ async function createProjectKnowledgeModule(
           return await activeProvider.query({
             kind: 'list',
             projectId,
-            ...(state === 'active' ||
-            state === 'needs-review' ||
-            state === 'retired' ||
+            ...(state === 'trial' ||
+            state === 'proven' ||
+            state === 'enforced' ||
+            state === 'superseded' ||
             state === 'all'
               ? { state }
               : { state: 'all' }),
@@ -386,6 +543,7 @@ async function createProjectKnowledgeModule(
               summary: value.summary.trim(),
               applicablePaths: stringList(value.applicablePaths, 'applicablePaths'),
               operations: stringList(value.operations, 'operations'),
+              phases: stringList(value.phases, 'phases'),
               sources: recordSources(value.sources),
               verification: recordVerification(value.verification),
             },
@@ -410,9 +568,32 @@ async function createProjectKnowledgeModule(
           if (typeof value.id !== 'string' || !value.id.trim())
             throw new Error('forget requires id');
           return await activeProvider.apply({
-            kind: 'retire',
+            kind: 'supersede',
             id: value.id.trim(),
             projectId,
+            updatedAt: new Date().toISOString(),
+          });
+        }
+        if (capability === 'feedback') {
+          if (typeof value.id !== 'string' || !value.id.trim())
+            throw new Error('feedback requires id');
+          if (
+            ![
+              'used-successfully',
+              'ignored',
+              'overridden',
+              'corrected',
+              'contributed-to-failure',
+            ].includes(String(value.outcome))
+          ) {
+            throw new Error('feedback requires a supported outcome');
+          }
+          return await activeProvider.apply({
+            kind: 'feedback',
+            id: value.id.trim(),
+            projectId,
+            outcome:
+              value.outcome as import('../agent-learning/index.js').AgentContextOutcomeStatus,
             updatedAt: new Date().toISOString(),
           });
         }
@@ -433,30 +614,214 @@ async function createProjectKnowledgeModule(
       try {
         const query = createProjectKnowledgeQuery(request);
         activeProvider = await createProvider();
+        await ensureProjectModel(activeProvider);
         const response = await activeProvider.query({ kind: 'search', query, limit: 8 });
-        const results = boundProjectKnowledgeResults(
-          response.kind === 'search' ? response.results : [],
-        );
+        const results = response.kind === 'search' ? response.results : [];
         if (recentChangedHints.length > 0) {
           recentChangedHints.splice(0, recentChangedHints.length);
           persistDiagnostics();
         }
         await diagnosticWrite;
-        const text = renderProjectKnowledgeContext(results, options.language ?? 'zh-CN');
-        if (!text) return null;
-        return {
-          text,
-          records: results.map((result: ProjectKnowledgeResult) => ({
-            source: result.source,
-            ...(result.title ? { title: result.title } : {}),
-            content: result.content,
-          })),
-        };
+        if (results.length === 0) return null;
+        return results.map((result) =>
+          projectKnowledgeContextCandidate(result, request.projectId, options.language),
+        );
       } finally {
         if (activeProvider instanceof LocalProjectKnowledgeProvider) activeProvider.close();
       }
     },
+    resolveContext: async (id, request) => {
+      let activeProvider: ProjectKnowledgeProvider | null = null;
+      try {
+        activeProvider = await createProvider({ discoverCorpus: false });
+        const projectId = resolveStableProjectId(options.projectRoot);
+        const response = await activeProvider.query({ kind: 'expand', id, projectId });
+        if (response.kind === 'expand' && response.record !== null) {
+          return projectKnowledgeContextCandidate(
+            {
+              source: `record:${response.record.id}`,
+              title: response.record.title,
+              content: response.record.summary,
+              record: response.record,
+            },
+            request.projectId,
+            options.language,
+          );
+        }
+      } finally {
+        if (activeProvider instanceof LocalProjectKnowledgeProvider) activeProvider.close();
+      }
+      if (!id.startsWith('document-') || options.knowledgeConfig.provider !== 'local') return null;
+      const corpus = await discoverProjectKnowledgeCorpus({
+        projectRoot: options.projectRoot,
+        reportDiagnostic,
+      });
+      const document = corpus.find(
+        (entry) =>
+          `document-${createHash('sha256').update(entry.source).digest('hex').slice(0, 24)}` === id,
+      );
+      if (document === undefined) return null;
+      return projectKnowledgeContextCandidate(
+        {
+          source: document.source,
+          title: document.source,
+          content: await readFile(document.absolutePath, 'utf8'),
+          document,
+        },
+        request.projectId,
+        options.language,
+      );
+    },
   };
+}
+
+function contextApplicationProjection(
+  candidateId: string,
+  applications: readonly import('../agent-learning/index.js').AgentContextApplicationRecord[],
+): {
+  readonly contextApplicationCount?: number;
+  readonly lastApplication?: import('../agent-learning/index.js').AgentContextApplicationRecord;
+  readonly applicationHistory?: readonly import('../agent-learning/index.js').AgentContextApplicationRecord[];
+} {
+  const matches = applications
+    .filter(
+      (application) =>
+        application.owner === PROJECT_KNOWLEDGE_PLUGIN_ID &&
+        application.candidateId === candidateId,
+    )
+    .sort((left, right) => right.appliedAt.localeCompare(left.appliedAt));
+  return matches[0] === undefined
+    ? {}
+    : {
+        contextApplicationCount: matches.length,
+        lastApplication: matches[0],
+        applicationHistory: matches,
+      };
+}
+
+function latestApplicationBatch(
+  applications: readonly import('../agent-learning/index.js').AgentContextApplicationRecord[],
+  owner: string,
+): readonly import('../agent-learning/index.js').AgentContextApplicationRecord[] {
+  const ordered = applications
+    .filter((application) => application.owner === owner)
+    .sort((left, right) => right.appliedAt.localeCompare(left.appliedAt));
+  const episodeId = ordered[0]?.episodeId;
+  return episodeId === undefined
+    ? []
+    : ordered
+        .filter((application) => application.episodeId === episodeId)
+        .sort((left, right) => left.applicationId.localeCompare(right.applicationId));
+}
+
+function projectExperienceApplicability(
+  event: import('../agent-learning/index.js').AgentExperienceEvent,
+) {
+  return {
+    ...(event.projectId === undefined ? {} : { projectId: event.projectId }),
+    ...(event.context.paths === undefined ? {} : { paths: event.context.paths }),
+    ...(event.context.operation === undefined ? {} : { operations: [event.context.operation] }),
+    ...(event.context.phase === undefined ? {} : { phases: [event.context.phase] }),
+    ...(event.context.task === undefined ? {} : { tasks: [event.context.task] }),
+  };
+}
+
+function projectKnowledgeContextCandidate(
+  result: ProjectKnowledgeResult,
+  projectId: string | undefined,
+  language: 'zh-CN' | 'en' | undefined,
+): AgentContextCandidate {
+  const record = result.record;
+  if (record !== undefined) {
+    const policy = isProjectPolicyType(record.type);
+    const activation = projectPolicyActivation(record);
+    return {
+      id: record.id,
+      owner: PROJECT_KNOWLEDGE_PLUGIN_ID,
+      scope: 'project',
+      memoryType: policy ? 'project-policy' : 'project-model',
+      kind: record.type,
+      state: record.state,
+      authority: record.authority === 'automatic' ? 'inferred' : record.authority,
+      title: record.title,
+      summary: record.summary,
+      content: record.summary,
+      selectors: {
+        projectId: record.projectId,
+        paths: record.applicablePaths,
+        operations: record.operations,
+        phases: record.phases ?? [],
+      },
+      sources: record.conclusions.flatMap((conclusion) =>
+        conclusion.sources.map((source) => ({
+          type: 'repository' as const,
+          source: source.source,
+          anchor: source.anchor,
+        })),
+      ),
+      verification: record.verification,
+      ...(activation?.kind === 'verification'
+        ? {
+            priority: 120,
+            matchReasons: [
+              language === 'en'
+                ? 'This project policy is enforced by an existing verification command.'
+                : '当前策略由项目验证命令强制执行',
+            ],
+          }
+        : activation?.kind === 'skill-candidate'
+          ? {
+              priority: 20,
+              matchReasons: [
+                language === 'en'
+                  ? 'This stable multi-step procedure can become a Skill after user confirmation.'
+                  : '该流程已形成稳定的多步骤程序，可在用户确认后整理为 Skill。',
+              ],
+            }
+          : {}),
+    };
+  }
+  const id = `document-${createHash('sha256').update(result.source).digest('hex').slice(0, 24)}`;
+  return {
+    id,
+    owner: PROJECT_KNOWLEDGE_PLUGIN_ID,
+    scope: 'project',
+    memoryType: 'project-model',
+    kind: 'fact',
+    state: 'proven',
+    authority: 'repository',
+    title: result.title ?? result.source,
+    summary: result.content.slice(0, 1000),
+    content: result.content,
+    selectors: { ...(projectId === undefined ? {} : { projectId }) },
+    sources: [{ type: 'repository', source: result.source }],
+    verification: [],
+  };
+}
+
+function projectPolicyActivation(
+  record: ProjectKnowledgeRecord,
+): ProjectPolicyActivation | undefined {
+  if (!isProjectPolicyType(record.type)) return undefined;
+  const steps =
+    record.type === 'procedure'
+      ? [...record.conclusions.map((entry) => entry.text), ...record.summary.split(/\r?\n/u)]
+          .map((entry) => entry.replace(/^\s*(?:\d+[.)]|[-*])\s*/u, '').trim())
+          .filter(Boolean)
+      : undefined;
+  return compileProjectPolicy({
+    kind: record.type,
+    state: record.state,
+    verification: record.verification,
+    ...(steps === undefined ? {} : { steps }),
+    applicationCount: record.applicationCount,
+    successCount: record.successCount,
+    failureCount: record.failureCount,
+  });
+}
+
+function isProjectPolicyType(type: ProjectKnowledgeRecordType): type is ProjectPolicyKind {
+  return PROJECT_POLICY_TYPES.has(type as ProjectPolicyKind);
 }
 
 async function readRecentDiagnostics(

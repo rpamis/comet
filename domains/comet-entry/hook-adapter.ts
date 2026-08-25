@@ -77,6 +77,30 @@ function readWorkingDirectory(input: Record<string, unknown>): string | undefine
   return undefined;
 }
 
+function readSessionId(input: Record<string, unknown>): string | undefined {
+  for (const key of ['session_id', 'sessionId', 'conversation_id', 'conversationId'] as const) {
+    const value = input[key];
+    if (typeof value === 'string' && value.trim()) return value.trim().slice(0, 256);
+  }
+  return undefined;
+}
+
+function readHookEventName(input: Record<string, unknown>): string | undefined {
+  for (const key of ['hook_event_name', 'hookEventName', 'event_name', 'eventName'] as const) {
+    const value = input[key];
+    if (typeof value === 'string' && value.trim()) return normalizedToolName(value);
+  }
+  return undefined;
+}
+
+function readTask(input: Record<string, unknown>): string | undefined {
+  for (const key of ['task', 'prompt', 'user_prompt', 'userPrompt'] as const) {
+    const value = input[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
 function parseJsonValue(value: unknown): unknown {
   if (typeof value !== 'string') return value;
   const source = value.trim();
@@ -163,23 +187,50 @@ export function parseCometHookRequest(source: string, filePath?: string): CometH
   const toolName = readToolName(input);
   const targets = collectTargets(input, readToolArguments(input));
   const cwd = readWorkingDirectory(input);
+  const sessionId = readSessionId(input);
+  if (readHookEventName(input) === 'beforeagentstart') {
+    const task = readTask(input);
+    return {
+      intent: 'context',
+      targets: [],
+      toolName: null,
+      ...(task ? { task } : {}),
+      ...(cwd ? { cwd } : {}),
+      ...(sessionId ? { sessionId } : {}),
+    };
+  }
   if (toolName && WRITE_TOOL_NAMES.has(normalizedToolName(toolName))) {
     return {
       intent: targets.length > 0 ? 'write' : 'unknown',
       targets,
       toolName,
       ...(cwd ? { cwd } : {}),
+      ...(sessionId ? { sessionId } : {}),
     };
   }
   if (toolName && NON_WRITE_TOOL_NAMES.has(normalizedToolName(toolName))) {
-    return { intent: 'non-write', targets: [], toolName, ...(cwd ? { cwd } : {}) };
+    return {
+      intent: 'non-write',
+      targets: [],
+      toolName,
+      ...(cwd ? { cwd } : {}),
+      ...(sessionId ? { sessionId } : {}),
+    };
   }
-  if (toolName) return { intent: 'unknown', targets, toolName, ...(cwd ? { cwd } : {}) };
+  if (toolName)
+    return {
+      intent: 'unknown',
+      targets,
+      toolName,
+      ...(cwd ? { cwd } : {}),
+      ...(sessionId ? { sessionId } : {}),
+    };
   return {
     intent: targets.length > 0 ? 'write' : 'unknown',
     targets,
     toolName: null,
     ...(cwd ? { cwd } : {}),
+    ...(sessionId ? { sessionId } : {}),
   };
 }
 
@@ -209,11 +260,23 @@ export function renderCometHookDecision(
     return {
       exitCode: 0,
       stdout: decision.allowed
-        ? '{}\n'
+        ? `${JSON.stringify(decision.context ? { additionalContext: decision.context } : {})}\n`
         : `${JSON.stringify({
             permissionDecision: 'deny',
             permissionDecisionReason: decision.reason,
           })}\n`,
+      stderr: '',
+    };
+  }
+  if (decision.allowed && decision.context) {
+    return {
+      exitCode: 0,
+      stdout: `${JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          additionalContext: decision.context,
+        },
+      })}\n`,
       stderr: '',
     };
   }

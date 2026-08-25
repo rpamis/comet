@@ -1,5 +1,6 @@
 export * from './classic-archive.js';
 export * from './classic-evidence.js';
+export * from './classic-experience.js';
 export * from './classic-diagnostics.js';
 export * from './classic-cli.js';
 export * from './classic-current-change.js';

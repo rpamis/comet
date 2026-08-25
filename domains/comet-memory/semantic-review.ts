@@ -15,7 +15,7 @@ const COMPLETED_WORK_SUMMARY =
   /^(?:(?:本次|已经|已)\s*)?(?:完成|实现|修复|处理|解决|更新|新增|添加|移除|删除|重构|验证|合并|提交|推送|构建|发布|优化|调整|改为|改成|completed|implemented|fixed|resolved|updated|added|removed|deleted|refactored|verified|merged|committed|pushed|built|released|optimized|changed)\s*.{2,200}$/iu;
 
 const DURABLE_PREFERENCE_CUE =
-  /(?:偏好|习惯|约定|以后|后续|始终|总是|默认|每次|必须|不得|不要|避免|优先|只|统一|保持|提交前|写入前|发布前|运行前|(?:完成|修改|实现|验证)后(?:先|再|应|要|必须)|prefer|preference|always|never|by default|every time|must(?:\s+not)?|avoid|before|after|when|keep)/iu;
+  /(?:偏好|习惯|约定|以后|后续|始终|总是|默认|每次|必须|不得|不要|避免|优先|只|统一|保持|提交前|写入前|发布前|运行前|(?:完成|修改|实现|验证)后(?:先|再|应|要|必须|运行|执行)|prefer|preference|always|never|by default|every time|must(?:\s+not)?|avoid|before|after|when|keep)/iu;
 
 const INJECTION_OR_ARTIFACT =
   /(?:password|secret|token|api[_ -]?key|bearer|ignore previous|system prompt|private key|密码|密钥|令牌|忽略之前|系统提示)/iu;
@@ -128,7 +128,7 @@ function matchingEvidence(
 
 function copyRequestArrays(request: MemoryReviewRequest): Record<string, readonly string[]> {
   return Object.fromEntries(
-    (['tags', 'pathPatterns', 'taskTypes', 'operations'] as const)
+    (['tags', 'pathPatterns', 'taskTypes', 'operations', 'phases'] as const)
       .filter((name) => request[name] !== undefined)
       .map((name) => [name, request[name] as readonly string[]]),
   );

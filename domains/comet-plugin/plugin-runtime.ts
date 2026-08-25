@@ -1,10 +1,17 @@
+import {
+  AgentExperienceJournal,
+  AgentLearningCoordinator,
+  MemoryAgentExperienceJournalStore,
+  validateAgentContextCandidate,
+  validateAgentExperienceEvent,
+  type AgentContextCandidate,
+  type AgentExperienceEvent,
+} from '../agent-learning/index.js';
 import type {
-  PluginContextContribution,
   PluginContextRequest,
   PluginDashboardPage,
   PluginDescriptor,
   PluginDiagnostic,
-  PluginEvent,
   PluginModule,
   PluginActionSource,
   PluginScope,
@@ -99,6 +106,13 @@ export interface PluginRuntimeOptions {
   readonly storage?: PluginStorageStore;
   readonly config?: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
   readonly descriptors: readonly PluginDescriptor[];
+  readonly journal?: AgentExperienceJournal;
+  /** Scope-specific journals keep user learning recoverable across projects. */
+  readonly journals?: {
+    readonly user: AgentExperienceJournal;
+    readonly project: AgentExperienceJournal;
+  };
+  readonly scheduleLearning?: (task: () => Promise<void>) => void | Promise<void>;
   readonly now?: () => Date;
 }
 
@@ -116,6 +130,8 @@ export class PluginRuntime {
   private readonly config: Record<string, Record<string, unknown>>;
   private readonly descriptors: ReadonlyMap<string, PluginDescriptor>;
   private readonly now: () => Date;
+  private readonly learningByScope: Readonly<Record<'user' | 'project', AgentLearningCoordinator>>;
+  private readonly learningCoordinators: readonly AgentLearningCoordinator[];
   private readonly active = new Map<string, ActivePlugin>();
   private readonly diagnosticEntries: PluginDiagnostic[] = [];
   private state: PluginState | null = null;
@@ -136,6 +152,28 @@ export class PluginRuntime {
     );
     this.descriptors = descriptors;
     this.now = options.now ?? (() => new Date());
+    const fallbackJournal =
+      options.journal ?? new AgentExperienceJournal(new MemoryAgentExperienceJournalStore());
+    const userJournal = options.journals?.user ?? fallbackJournal;
+    const projectJournal = options.journals?.project ?? fallbackJournal;
+    const coordinatorFor = (journal: AgentExperienceJournal) =>
+      new AgentLearningCoordinator({
+        journal,
+        learners: (event) => this.learningAdapters(event),
+        // Capture is durable before scheduling. Hosts may provide a scheduler, while
+        // short-lived CLI processes return immediately and replay unfinished work later.
+        schedule: options.scheduleLearning ?? ((task) => void task()),
+        onDiagnostic: (message) => {
+          const pluginId = message.split(' reflection', 1)[0] || 'comet.agent-learning';
+          this.recordExecutionFailure(pluginId, 'event', new Error(message));
+        },
+      });
+    const userLearning = coordinatorFor(userJournal);
+    const projectLearning =
+      userJournal === projectJournal ? userLearning : coordinatorFor(projectJournal);
+    this.learningByScope = { user: userLearning, project: projectLearning };
+    this.learningCoordinators =
+      userLearning === projectLearning ? [userLearning] : [userLearning, projectLearning];
   }
 
   public async reconcileFirstParty(): Promise<void> {
@@ -287,33 +325,72 @@ export class PluginRuntime {
     }
   }
 
-  public async dispatch(event: PluginEvent): Promise<void> {
-    const eventCopy = freezeEvent(event);
+  public async dispatch(value: AgentExperienceEvent): Promise<void> {
+    let event: AgentExperienceEvent;
+    try {
+      event = validateAgentExperienceEvent(value);
+    } catch (error) {
+      const source = experienceSourceName(value);
+      const message = error instanceof Error ? error.message : String(error);
+      this.diagnosticEntries.push({
+        pluginId: 'comet.agent-learning',
+        code: 'execution-failed',
+        phase: 'event',
+        source,
+        message: `Invalid Agent Experience Event from ${source}: ${message}`,
+      });
+      throw error;
+    }
+    await this.replayPendingLearning();
+    await this.learningByScope[event.scope].capture(event);
+  }
+
+  private async learningAdapters(event: AgentExperienceEvent) {
     const target = { scope: event.scope, projectId: event.projectId };
     await this.loadScope(target);
-    for (const active of this.active.values()) {
-      if (
-        active.scope !== event.scope ||
-        active.projectId !== event.projectId ||
-        active.module.onEvent === undefined ||
-        (active.module.events !== undefined && !active.module.events.includes(event.name))
+    return [...this.active.values()]
+      .filter(
+        (active) =>
+          active.scope === event.scope &&
+          active.projectId === event.projectId &&
+          (active.module.reflect !== undefined || active.module.onEvent !== undefined) &&
+          (active.module.events === undefined || active.module.events.includes(event.type)),
       )
-        continue;
-      try {
-        await active.module.onEvent(eventCopy);
-      } catch (error) {
-        this.recordExecutionFailure(active.descriptor.id, 'event', error);
-      }
-    }
+      .map((active) => ({
+        owner: active.descriptor.id,
+        supports: () => true,
+        reflect: async (request: import('../agent-learning/index.js').AgentReflectionRequest) => {
+          if (active.module.reflect !== undefined) {
+            return active.module.reflect(request);
+          }
+          // Generic subscribers receive every event in the merged episode once.
+          // Learning plugins use onReflection so evidence remains chunked.
+          if (request.evidenceOffset === 0) {
+            for (const current of request.events) {
+              await active.module.onEvent?.(freezeEvent(current));
+            }
+          }
+          return [];
+        },
+        consolidate: async (
+          request: import('../agent-learning/index.js').AgentLearningConsolidationRequest,
+        ) => {
+          if (active.module.consolidate === undefined) {
+            throw new Error(`Plugin ${active.descriptor.id} cannot consolidate Learning Deltas`);
+          }
+          await active.module.consolidate(request);
+        },
+      }));
   }
 
   public async collectContext(
     request: PluginContextRequest,
     scope: PluginScopeTarget,
-  ): Promise<PluginContextContribution[]> {
+  ): Promise<AgentContextCandidate[]> {
+    await this.replayPendingLearning();
     const target = normalizeScopeTarget(scope);
     await this.loadScope(target);
-    const contributions: PluginContextContribution[] = [];
+    const candidates: AgentContextCandidate[] = [];
     for (const active of this.active.values()) {
       if (
         active.scope !== target.scope ||
@@ -323,13 +400,52 @@ export class PluginRuntime {
         continue;
       try {
         const contribution = await active.module.provideContext({ ...request });
-        if (contribution !== null)
-          contributions.push({ pluginId: active.descriptor.id, ...contribution });
+        if (contribution === null) continue;
+        for (const value of Array.isArray(contribution) ? contribution : [contribution]) {
+          candidates.push(
+            validateAgentContextCandidate({
+              ...value,
+              owner: active.descriptor.id,
+            }),
+          );
+        }
       } catch (error) {
         this.recordExecutionFailure(active.descriptor.id, 'context', error);
       }
     }
-    return contributions;
+    return candidates;
+  }
+
+  private async replayPendingLearning(): Promise<void> {
+    for (const coordinator of this.learningCoordinators) await coordinator.replayPending();
+  }
+
+  public async resolveContext(
+    id: string,
+    request: PluginContextRequest,
+    scope: PluginScopeTarget,
+    owner?: string,
+  ): Promise<AgentContextCandidate[]> {
+    const target = normalizeScopeTarget(scope);
+    await this.loadScope(target);
+    const candidates: AgentContextCandidate[] = [];
+    for (const active of this.active.values()) {
+      if (
+        active.scope !== target.scope ||
+        active.projectId !== target.projectId ||
+        (owner !== undefined && active.descriptor.id !== owner) ||
+        active.module.resolveContext === undefined
+      )
+        continue;
+      try {
+        const value = await active.module.resolveContext(id, { ...request });
+        if (value === null) continue;
+        candidates.push(validateAgentContextCandidate({ ...value, owner: active.descriptor.id }));
+      } catch (error) {
+        this.recordExecutionFailure(active.descriptor.id, 'context', error);
+      }
+    }
+    return candidates;
   }
 
   public async dashboardPages(scope: PluginScopeTarget): Promise<PluginDashboardPage[]> {
@@ -592,6 +708,14 @@ export class PluginRuntimeError extends Error {
   }
 }
 
+function experienceSourceName(value: unknown): string {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return 'unknown';
+  const source = (value as { readonly source?: unknown }).source;
+  if (source === null || typeof source !== 'object' || Array.isArray(source)) return 'unknown';
+  const name = (source as { readonly name?: unknown }).name;
+  return typeof name === 'string' && name.trim() ? name.trim().slice(0, 128) : 'unknown';
+}
+
 function cloneState(state: PluginState): PluginState {
   return {
     plugins: state.plugins.map((record) => ({
@@ -640,16 +764,8 @@ function validateState(value: unknown): PluginState {
   };
 }
 
-function freezeEvent(event: PluginEvent): PluginEvent {
-  const payload = cloneAndFreeze(event.payload) as Readonly<Record<string, unknown>>;
-  const source = cloneAndFreeze(event.source) as PluginEvent['source'];
-  return Object.freeze({
-    name: event.name,
-    scope: event.scope,
-    projectId: event.projectId,
-    source,
-    payload,
-  });
+function freezeEvent(event: AgentExperienceEvent): AgentExperienceEvent {
+  return cloneAndFreeze(event) as AgentExperienceEvent;
 }
 
 function cloneAndFreeze(value: unknown): unknown {

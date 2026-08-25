@@ -1,9 +1,9 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
 
 import { resolveProjectKnowledgeStorageLocation } from '../../platform/paths/project-knowledge-storage.js';
 import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
+import { openProjectKnowledgeDatabase, type ProjectKnowledgeDatabase } from './sqlite.js';
 import type {
   ProjectKnowledgeDocument,
   ProjectKnowledgeDiagnosticReporter,
@@ -86,7 +86,7 @@ function countValue(value: unknown): number {
   return typeof value === 'number' ? value : typeof value === 'bigint' ? Number(value) : 0;
 }
 
-function metaMap(database: DatabaseSync): Map<string, string> {
+function metaMap(database: ProjectKnowledgeDatabase): Map<string, string> {
   const rows = database.prepare('SELECT key, value FROM pk_meta').all() as Array<{
     key: string;
     value: string;
@@ -94,7 +94,7 @@ function metaMap(database: DatabaseSync): Map<string, string> {
   return new Map(rows.map(({ key, value }) => [key, value]));
 }
 
-function setMeta(database: DatabaseSync, key: string, value: string): void {
+function setMeta(database: ProjectKnowledgeDatabase, key: string, value: string): void {
   database
     .prepare(
       'INSERT INTO pk_meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
@@ -214,7 +214,7 @@ export class ProjectKnowledgeIndexStore {
 
   private readonly projectRoot: string;
   private readonly reportDiagnostic: ProjectKnowledgeDiagnosticReporter | undefined;
-  private database: DatabaseSync | null = null;
+  private database: ProjectKnowledgeDatabase | null = null;
 
   constructor(options: ProjectKnowledgeIndexOptions) {
     this.projectRoot = path.resolve(options.projectRoot);
@@ -231,9 +231,9 @@ export class ProjectKnowledgeIndexStore {
   async open(): Promise<void> {
     if (this.database) return;
     await fs.mkdir(path.dirname(this.databasePath), { recursive: true });
-    let database: DatabaseSync | null = null;
+    let database: ProjectKnowledgeDatabase | null = null;
     try {
-      database = new DatabaseSync(this.databasePath);
+      database = openProjectKnowledgeDatabase(this.databasePath);
       database.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 250;');
       database.exec(
         'CREATE TABLE IF NOT EXISTS pk_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);',
@@ -555,7 +555,7 @@ export class ProjectKnowledgeIndexStore {
   }
 
   private applySourceDelta(
-    database: DatabaseSync,
+    database: ProjectKnowledgeDatabase,
     document: ProjectKnowledgeDocument,
     size: number,
     modifiedAt: number,
@@ -663,7 +663,11 @@ export class ProjectKnowledgeIndexStore {
     }
   }
 
-  private removeSource(database: DatabaseSync, workspaceId: string, source: string): void {
+  private removeSource(
+    database: ProjectKnowledgeDatabase,
+    workspaceId: string,
+    source: string,
+  ): void {
     const rows = database
       .prepare('SELECT id FROM pk_sections WHERE workspace_id = ? AND source = ?')
       .all(workspaceId, source) as Array<{
@@ -689,7 +693,7 @@ export class ProjectKnowledgeIndexStore {
     }
   }
 
-  private removeWorkspace(database: DatabaseSync): void {
+  private removeWorkspace(database: ProjectKnowledgeDatabase): void {
     const rows = database
       .prepare('SELECT id FROM pk_sections WHERE workspace_id = ?')
       .all(this.workspaceId) as Array<{ id: number }>;
@@ -709,7 +713,7 @@ export class ProjectKnowledgeIndexStore {
   }
 
   private searchChannel(
-    database: DatabaseSync,
+    database: ProjectKnowledgeDatabase,
     workspaceId: string,
     channel: 'terms' | 'trigram',
     expression: string,
@@ -725,7 +729,7 @@ export class ProjectKnowledgeIndexStore {
       .all(expression, workspaceId, limit) as unknown as SearchRow[];
   }
 
-  private requireDatabase(): DatabaseSync {
+  private requireDatabase(): ProjectKnowledgeDatabase {
     if (!this.database) throw new Error('Project knowledge index is not open');
     return this.database;
   }
@@ -737,7 +741,7 @@ export async function readProjectKnowledgeIndexStatus(
   const store = new ProjectKnowledgeIndexStore(options);
   try {
     await fs.access(store.databasePath);
-    const database = new DatabaseSync(store.databasePath, { readOnly: true });
+    const database = openProjectKnowledgeDatabase(store.databasePath, { readOnly: true });
     try {
       const meta = metaMap(database);
       if (meta.get('schema') !== INDEX_SCHEMA || meta.get('repositoryId') !== store.repositoryId) {

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 
 import {
   projectKnowledgeCorrectCommand,
+  projectKnowledgeFeedbackCommand,
   projectKnowledgeForgetCommand,
   projectKnowledgeGetCommand,
   projectKnowledgeListCommand,
@@ -91,8 +92,8 @@ describe('comet knowledge commands', () => {
     const record: ProjectKnowledgeRecord = {
       id: 'record-command',
       projectId: resolveStableProjectId(root),
-      type: 'behavior-note',
-      state: 'active',
+      type: 'pattern',
+      state: 'proven',
       authority: 'automatic',
       title: '命令记录',
       summary: '命令记录摘要。',
@@ -110,6 +111,9 @@ describe('comet knowledge commands', () => {
           modifiedAt: Math.trunc(stat.mtimeMs),
         },
       ],
+      applicationCount: 0,
+      successCount: 0,
+      failureCount: 0,
       updatedAt: '2026-08-23T00:00:00.000Z',
     };
     const seed = new LocalProjectKnowledgeProvider({
@@ -138,8 +142,24 @@ describe('comet knowledge commands', () => {
         }),
       ).resolves.toMatchObject({ result: { record: { authority: 'user' } } });
       await expect(
+        projectKnowledgeFeedbackCommand(root, {
+          json: true,
+          cacheRoot,
+          id: record.id,
+          outcome: 'used-successfully',
+        }),
+      ).resolves.toMatchObject({
+        result: {
+          record: {
+            id: record.id,
+            applicationCount: 1,
+            successCount: 1,
+          },
+        },
+      });
+      await expect(
         projectKnowledgeForgetCommand(root, { json: true, cacheRoot, id: record.id }),
-      ).resolves.toMatchObject({ result: { record: { state: 'retired' } } });
+      ).resolves.toMatchObject({ result: { record: { state: 'superseded' } } });
     } finally {
       await fs.rm(root, { recursive: true, force: true });
       await fs.rm(cacheRoot, { recursive: true, force: true });

@@ -10,6 +10,7 @@ import {
   PersonalMemoryService,
   createPersonalMemoryPluginDescriptor,
   type MemoryGitSync,
+  type MemoryRuntimeState,
 } from '../../../domains/comet-memory/index.js';
 import { MemoryPluginStateStore, PluginRuntime } from '../../../domains/comet-plugin/index.js';
 
@@ -29,6 +30,25 @@ class EditOnReadRepository extends FileMemoryRepository {
     this.reads += 1;
     if (this.reads === this.editAtRead) await this.edit();
     return content;
+  }
+}
+
+class FailNthStateWriteRepository extends FileMemoryRepository {
+  private writesUntilFailure: number | null = null;
+
+  public failStateWriteIn(writes: number): void {
+    this.writesUntilFailure = writes;
+  }
+
+  public override async writeState(state: MemoryRuntimeState): Promise<void> {
+    if (this.writesUntilFailure !== null) {
+      this.writesUntilFailure -= 1;
+      if (this.writesUntilFailure === 0) {
+        this.writesUntilFailure = null;
+        throw new Error('injected state write failure');
+      }
+    }
+    await super.writeState(state);
   }
 }
 
@@ -384,14 +404,14 @@ describe('PersonalMemoryService', () => {
           changeId: 'change-after-forget-1',
           observedAt: '2026-08-15T00:00:00.000Z',
         }),
-      ).resolves.toMatchObject({ ignored: true, candidate: false, activated: false });
+      ).resolves.toMatchObject({ ignored: true, candidate: false, promoted: false });
       await expect(
         memories.observe({
           ...observation,
           changeId: 'change-after-forget-2',
           observedAt: '2026-08-16T00:00:00.000Z',
         }),
-      ).resolves.toMatchObject({ ignored: true, candidate: false, activated: false });
+      ).resolves.toMatchObject({ ignored: true, candidate: false, promoted: false });
 
       expect(await memories.get(record.id)).toBeNull();
       expect((await memories.retrieve({ projectKey: 'project-a', task: 'build' })).records).toEqual(
@@ -415,26 +435,421 @@ describe('PersonalMemoryService', () => {
 
       await expect(
         memories.observe({ ...observation, changeId: 'change-1' }),
-      ).resolves.toMatchObject({ candidate: true, activated: false });
+      ).resolves.toMatchObject({ candidate: true, promoted: false });
+      expect((await memories.manage({ projectKey: 'project-a' })).records).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            text: observation.text,
+            kind: 'inferred',
+            memoryType: 'collaboration-policy',
+            status: 'trial',
+          }),
+        ]),
+      );
       await expect(
         memories.observe({ ...observation, changeId: 'change-1' }),
-      ).resolves.toMatchObject({ deduplicated: true, activated: false });
+      ).resolves.toMatchObject({ deduplicated: true, promoted: false });
       await expect(
         memories.observe({ ...observation, changeId: 'failed', success: false }),
-      ).resolves.toMatchObject({ candidate: false, activated: false });
+      ).resolves.toMatchObject({ candidate: false, promoted: false });
       await expect(
         memories.observe({ ...observation, changeId: 'change-2' }),
-      ).resolves.toMatchObject({ candidate: true, activated: true });
+      ).resolves.toMatchObject({ candidate: true, promoted: true });
 
       const result = await memories.retrieve({ projectKey: 'project-a', task: 'work' });
       expect(result.records).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ text: observation.text, kind: 'inferred', active: true }),
+          expect.objectContaining({ text: observation.text, kind: 'inferred', state: 'proven' }),
         ]),
       );
       expect(await readFile(path.join(root, 'projects/project-a.md'), 'utf8')).toContain(
         observation.text,
       );
+    });
+  });
+
+  it('supersedes inferred memory after it contributes to a failed outcome', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const observation = {
+        scope: 'project' as const,
+        category: '工作习惯',
+        text: '所有改动都跳过最小相关测试',
+        projectKey: 'project-a',
+        language: 'zh-CN' as const,
+        workflow: 'native',
+        success: true,
+      };
+
+      await memories.observe({ ...observation, changeId: 'change-1' });
+      const promoted = await memories.observe({ ...observation, changeId: 'change-2' });
+      expect(promoted.record).toMatchObject({ kind: 'inferred', state: 'proven' });
+
+      await expect(
+        memories.recordApplicationOutcome(promoted.record!.id, 'contributed-to-failure'),
+      ).resolves.toMatchObject({
+        state: 'superseded',
+        applicationCount: 1,
+        successCount: 0,
+        failureCount: 1,
+      });
+      const file = path.join(root, 'projects/project-a.md');
+      expect(await readFile(file, 'utf8')).not.toContain(observation.text);
+      await writeFile(file, `${await readFile(file, 'utf8')}\n## 其他\n\n- 保留无关内容\n`);
+      await expect(memories.manage({ projectKey: 'project-a' })).resolves.toMatchObject({
+        records: expect.arrayContaining([
+          expect.objectContaining({ id: promoted.record!.id, status: 'tombstoned' }),
+        ]),
+      });
+      expect(
+        (await memories.retrieve({ projectKey: 'project-a' })).records.map((record) => record.id),
+      ).not.toContain(promoted.record!.id);
+    });
+  });
+
+  it('restores inferred memory when a newer outcome revision replaces negative feedback', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const observation = {
+        scope: 'project' as const,
+        category: '工作习惯',
+        text: '修改解析器后运行聚焦测试',
+        projectKey: 'project-a',
+        language: 'zh-CN' as const,
+        workflow: 'native',
+        success: true,
+        changeId: 'feedback-revision-change',
+      };
+      await memories.observe(observation);
+      const trial = (await memories.manage({ projectKey: 'project-a' })).records.find(
+        (record) => record.text === observation.text,
+      );
+      expect(trial).toMatchObject({ status: 'trial' });
+
+      await expect(
+        memories.recordApplicationOutcome(trial!.id, 'corrected', {
+          applicationId: 'memory-application-revision',
+          revision: 1,
+          idempotencyKey: 'memory-feedback-revision-1',
+        }),
+      ).resolves.toMatchObject({ state: 'superseded', applicationCount: 1, failureCount: 1 });
+      await expect(
+        memories.recordApplicationOutcome(trial!.id, 'used-successfully', {
+          applicationId: 'memory-application-revision',
+          revision: 2,
+          previousOutcome: 'corrected',
+          idempotencyKey: 'memory-feedback-revision-2',
+        }),
+      ).resolves.toMatchObject({
+        state: 'proven',
+        applicationCount: 1,
+        successCount: 1,
+        failureCount: 0,
+      });
+      expect(await readFile(path.join(root, 'projects', 'project-a.md'), 'utf8')).toContain(
+        observation.text,
+      );
+    });
+  });
+
+  it('reports explicit writes as successful after their authoritative state commit', async () => {
+    await withTempRepository(async (root) => {
+      const repository = new FailNthStateWriteRepository(root);
+      const memories = new PersonalMemoryService({
+        repository,
+        now: () => new Date('2026-08-14T00:00:00.000Z'),
+      });
+
+      repository.failStateWriteIn(2);
+      const record = await memories.remember({
+        scope: 'global',
+        category: '沟通偏好',
+        text: '使用中文回复',
+      });
+      expect(record).toMatchObject({ text: '使用中文回复', state: 'proven' });
+      expect(await readFile(path.join(root, 'profile.md'), 'utf8')).toContain('使用中文回复');
+      expect(
+        JSON.parse(
+          await readFile(path.join(root, '.comet', 'runtime', 'memory-state.json'), 'utf8'),
+        ),
+      ).toMatchObject({
+        records: [expect.objectContaining({ id: record.id, text: '使用中文回复' })],
+        pendingFileProjections: { 'profile.md': expect.any(Object) },
+      });
+
+      await expect(memories.get(record.id)).resolves.toMatchObject({ id: record.id });
+      repository.failStateWriteIn(2);
+      await expect(
+        memories.correct(record.id, { text: '始终使用中文回复' }),
+      ).resolves.toMatchObject({
+        id: record.id,
+        text: '始终使用中文回复',
+        state: 'proven',
+      });
+      expect(await readFile(path.join(root, 'profile.md'), 'utf8')).toContain('始终使用中文回复');
+      expect(
+        JSON.parse(
+          await readFile(path.join(root, '.comet', 'runtime', 'memory-state.json'), 'utf8'),
+        ),
+      ).toMatchObject({
+        records: [expect.objectContaining({ id: record.id, text: '始终使用中文回复' })],
+        pendingFileProjections: { 'profile.md': expect.any(Object) },
+      });
+
+      await expect(memories.get(record.id)).resolves.toMatchObject({
+        id: record.id,
+        text: '始终使用中文回复',
+      });
+      expect(
+        JSON.parse(
+          await readFile(path.join(root, '.comet', 'runtime', 'memory-state.json'), 'utf8'),
+        ),
+      ).toMatchObject({ pendingFileProjections: {} });
+    });
+  });
+
+  it('preserves user Markdown edits made after a projection cleanup failure', async () => {
+    await withTempRepository(async (root) => {
+      const repository = new FailNthStateWriteRepository(root);
+      const memories = new PersonalMemoryService({ repository });
+      repository.failStateWriteIn(2);
+      const record = await memories.remember({
+        scope: 'global',
+        category: '沟通偏好',
+        text: '使用中文回复',
+      });
+      const file = path.join(root, 'profile.md');
+      await writeFile(file, `${await readFile(file, 'utf8')}\n## 工作习惯\n\n- 保留用户手工编辑\n`);
+
+      await expect(memories.get(record.id)).resolves.toMatchObject({ id: record.id });
+      expect(await readFile(file, 'utf8')).toContain('保留用户手工编辑');
+      await expect(memories.manage({ scope: 'global' })).resolves.toMatchObject({
+        records: expect.arrayContaining([
+          expect.objectContaining({ text: '使用中文回复' }),
+          expect.objectContaining({ text: '保留用户手工编辑' }),
+        ]),
+      });
+      expect(
+        JSON.parse(
+          await readFile(path.join(root, '.comet', 'runtime', 'memory-state.json'), 'utf8'),
+        ),
+      ).toMatchObject({ pendingFileProjections: {} });
+    });
+  });
+
+  it('leaves explicit memory unchanged when its authoritative state commit fails', async () => {
+    await withTempRepository(async (root) => {
+      const repository = new FailNthStateWriteRepository(root);
+      const memories = new PersonalMemoryService({ repository });
+      repository.failStateWriteIn(1);
+
+      await expect(
+        memories.remember({
+          scope: 'global',
+          category: '沟通偏好',
+          text: '使用中文回复',
+        }),
+      ).rejects.toThrow('injected state write failure');
+      await expect(readFile(path.join(root, 'profile.md'), 'utf8')).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+      await expect(repository.readState()).resolves.toMatchObject({
+        records: [],
+        pendingFileProjections: {},
+      });
+    });
+  });
+
+  it('replays a pending Markdown projection when an update crashes after writing the file', async () => {
+    await withTempRepository(async (root) => {
+      const repository = new FailNthStateWriteRepository(root);
+      const memories = new PersonalMemoryService({
+        repository,
+        now: () => new Date('2026-08-14T00:00:00.000Z'),
+      });
+      const original = await memories.remember({
+        scope: 'global',
+        category: '构建',
+        text: '使用 npm run build',
+      });
+      const update = {
+        operation: 'experience-delta',
+        input: {
+          idempotencyKey: 'crash-safe-memory-update',
+          delta: {
+            action: 'update',
+            owner: 'personal-memory',
+            targetId: original.id,
+            memoryType: 'collaboration-policy',
+            kind: 'build-policy',
+            statement: '使用 pnpm build',
+            applicability: {},
+            evidence: [],
+            recommendedState: 'proven',
+          },
+        },
+      } as const;
+
+      repository.failStateWriteIn(2);
+      await expect(memories.apply(update)).resolves.toMatchObject({
+        changed: true,
+        record: { id: original.id, text: '使用 pnpm build' },
+      });
+      expect(await readFile(path.join(root, 'profile.md'), 'utf8')).toContain('使用 pnpm build');
+      expect(
+        JSON.parse(
+          await readFile(path.join(root, '.comet', 'runtime', 'memory-state.json'), 'utf8'),
+        ),
+      ).toMatchObject({
+        records: [expect.objectContaining({ id: original.id, text: '使用 pnpm build' })],
+        appliedMutationIds: ['crash-safe-memory-update'],
+        pendingFileProjections: { 'profile.md': expect.objectContaining({ scope: 'global' }) },
+      });
+
+      await expect(memories.apply(update)).resolves.toEqual({ changed: false });
+      await expect(memories.get(original.id)).resolves.toMatchObject({
+        id: original.id,
+        text: '使用 pnpm build',
+        state: 'proven',
+      });
+      expect(
+        JSON.parse(
+          await readFile(path.join(root, '.comet', 'runtime', 'memory-state.json'), 'utf8'),
+        ),
+      ).toMatchObject({ pendingFileProjections: {} });
+    });
+  });
+
+  it('replays a pending Markdown projection when negative feedback crashes after file removal', async () => {
+    await withTempRepository(async (root) => {
+      const repository = new FailNthStateWriteRepository(root);
+      const memories = new PersonalMemoryService({
+        repository,
+        now: () => new Date('2026-08-14T00:00:00.000Z'),
+      });
+      const observation = {
+        scope: 'project' as const,
+        projectKey: 'project-a',
+        category: '工作习惯',
+        text: '修改解析器后运行聚焦测试',
+        language: 'zh-CN' as const,
+        workflow: 'native',
+        success: true,
+      };
+      await memories.observe({ ...observation, changeId: 'projection-evidence-1' });
+      const promoted = await memories.observe({
+        ...observation,
+        changeId: 'projection-evidence-2',
+      });
+      const record = promoted.record!;
+      const feedback = {
+        operation: 'experience-delta',
+        input: {
+          idempotencyKey: 'crash-safe-negative-feedback',
+          delta: {
+            action: 'noop',
+            owner: 'personal-memory',
+            targetId: record.id,
+            memoryType: 'collaboration-policy',
+            kind: 'collaboration-habit',
+            statement: record.text,
+            applicability: { projectId: 'project-a' },
+            evidence: [],
+            feedback: {
+              applicationId: 'crash-safe-application',
+              status: 'corrected',
+              revision: 1,
+            },
+            recommendedState: 'superseded',
+          },
+        },
+      } as const;
+
+      repository.failStateWriteIn(2);
+      await expect(memories.apply(feedback)).resolves.toMatchObject({
+        changed: true,
+        record: { id: record.id, state: 'superseded' },
+      });
+      expect(await readFile(path.join(root, 'projects', 'project-a.md'), 'utf8')).not.toContain(
+        record.text,
+      );
+      expect(
+        JSON.parse(
+          await readFile(path.join(root, '.comet', 'runtime', 'memory-state.json'), 'utf8'),
+        ),
+      ).toMatchObject({
+        records: [
+          expect.objectContaining({
+            id: record.id,
+            state: 'superseded',
+            applicationCount: 1,
+            failureCount: 1,
+          }),
+        ],
+        appliedMutationIds: ['crash-safe-negative-feedback'],
+        pendingFileProjections: {
+          'projects/project-a.md': expect.objectContaining({
+            scope: 'project',
+            projectKey: 'project-a',
+          }),
+        },
+      });
+
+      await expect(memories.apply(feedback)).resolves.toEqual({ changed: false });
+      await expect(memories.get(record.id)).resolves.toMatchObject({
+        id: record.id,
+        state: 'superseded',
+        applicationCount: 1,
+        failureCount: 1,
+      });
+      const recoveredState = JSON.parse(
+        await readFile(path.join(root, '.comet', 'runtime', 'memory-state.json'), 'utf8'),
+      ) as { records: Array<{ id: string }>; pendingFileProjections: Record<string, unknown> };
+      expect(recoveredState.records.filter((entry) => entry.id === record.id)).toHaveLength(1);
+      expect(recoveredState.pendingFileProjections).toEqual({});
+    });
+  });
+
+  it('recovers the personal-memory lock left by a terminated process', async () => {
+    await withTempRepository(async (root) => {
+      const runtimeRoot = path.join(root, '.comet', 'runtime');
+      const lock = path.join(runtimeRoot, '.memory.lock');
+      await mkdir(runtimeRoot, { recursive: true });
+      await writeFile(
+        lock,
+        JSON.stringify({ pid: 2_147_483_647, nonce: 'terminated', createdAt: 1 }),
+        'utf8',
+      );
+
+      await expect(
+        service(root).remember({
+          scope: 'global',
+          category: '沟通偏好',
+          text: '使用中文回复',
+        }),
+      ).resolves.toMatchObject({ text: '使用中文回复' });
+      await expect(readFile(lock, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+    });
+  });
+
+  it('keeps explicit memory authoritative while recording failed outcomes', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const record = await memories.remember({
+        scope: 'global',
+        category: '沟通偏好',
+        text: '始终使用中文回复',
+      });
+
+      await expect(
+        memories.recordApplicationOutcome(record.id, 'contributed-to-failure'),
+      ).resolves.toMatchObject({
+        kind: 'explicit',
+        state: 'proven',
+        applicationCount: 1,
+        successCount: 0,
+        failureCount: 1,
+      });
     });
   });
 
@@ -452,13 +867,13 @@ describe('PersonalMemoryService', () => {
 
       await expect(
         memories.observe({ ...base, workflow: 'hotfix', changeId: 'change-1' }),
-      ).resolves.toMatchObject({ candidate: true, activated: false });
+      ).resolves.toMatchObject({ candidate: true, promoted: false });
       await expect(
         memories.observe({ ...base, workflow: 'native', changeId: 'change-1' }),
-      ).resolves.toMatchObject({ deduplicated: true, activated: false });
+      ).resolves.toMatchObject({ deduplicated: true, promoted: false });
       await expect(
         memories.observe({ ...base, workflow: 'tweak', changeId: 'change-2' }),
-      ).resolves.toMatchObject({ candidate: true, activated: true });
+      ).resolves.toMatchObject({ candidate: true, promoted: true });
     });
   });
 
@@ -477,16 +892,16 @@ describe('PersonalMemoryService', () => {
 
       await expect(memories.observe({ ...base, success: false })).resolves.toMatchObject({
         candidate: false,
-        activated: false,
+        promoted: false,
       });
       await expect(memories.observe({ ...base, success: true })).resolves.toMatchObject({
         deduplicated: false,
         candidate: true,
-        activated: false,
+        promoted: false,
       });
       await expect(
         memories.observe({ ...base, changeId: 'change-2', success: true }),
-      ).resolves.toMatchObject({ candidate: true, activated: true });
+      ).resolves.toMatchObject({ candidate: true, promoted: true });
     });
   });
 
@@ -503,7 +918,7 @@ describe('PersonalMemoryService', () => {
       await writeFile(file, '# 项目记忆\n\n## 构建\n\n- 使用 npm run build\n');
 
       await expect(memories.correct(record.id, { text: '使用 gradle build' })).rejects.toThrow(
-        `Memory is not active: ${record.id}`,
+        `Memory is not available: ${record.id}`,
       );
       expect(await readFile(file, 'utf8')).toContain('使用 npm run build');
     });
@@ -544,7 +959,7 @@ describe('PersonalMemoryService', () => {
         text: '使用 npm run build',
         changeId: 'two',
       });
-      expect(result.activated).toBe(false);
+      expect(result.promoted).toBe(false);
       expect(
         (await memories.retrieve({ projectKey: 'project-a', task: 'build' })).records,
       ).toHaveLength(0);
@@ -582,7 +997,7 @@ describe('PersonalMemoryService', () => {
         candidateKey: 'build-command',
         success: true,
       });
-      expect(result).toMatchObject({ candidate: true, activated: false });
+      expect(result).toMatchObject({ candidate: true, promoted: false });
       expect((await memories.get(old.id))?.text).toBe('使用 pnpm build');
       expect((await memories.retrieve({ projectKey: 'project-a', task: 'build' })).records).toEqual(
         expect.arrayContaining([expect.objectContaining({ text: '使用 pnpm build' })]),
@@ -613,7 +1028,7 @@ describe('PersonalMemoryService', () => {
           changeId: 'change-1',
           candidateKey: 'language',
         }),
-      ).resolves.toMatchObject({ candidate: true, activated: false });
+      ).resolves.toMatchObject({ candidate: true, promoted: false });
       await expect(
         memories.observe({
           ...base,
@@ -622,7 +1037,7 @@ describe('PersonalMemoryService', () => {
           changeId: 'change-1',
           candidateKey: 'staging',
         }),
-      ).resolves.toMatchObject({ candidate: true, activated: false });
+      ).resolves.toMatchObject({ candidate: true, promoted: false });
       await expect(
         memories.observe({
           ...base,
@@ -640,7 +1055,7 @@ describe('PersonalMemoryService', () => {
           changeId: 'change-2',
           candidateKey: 'language',
         }),
-      ).resolves.toMatchObject({ activated: true });
+      ).resolves.toMatchObject({ promoted: true });
       await expect(
         memories.observe({
           ...base,
@@ -649,7 +1064,7 @@ describe('PersonalMemoryService', () => {
           changeId: 'change-2',
           candidateKey: 'staging',
         }),
-      ).resolves.toMatchObject({ activated: true });
+      ).resolves.toMatchObject({ promoted: true });
     });
   });
 
@@ -684,8 +1099,8 @@ describe('PersonalMemoryService', () => {
       expect(managed.conflicts).toHaveLength(0);
       expect(managed.records).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ text: '使用中文回复', status: 'active' }),
-          expect.objectContaining({ text: '提交前只暂存本次改动文件', status: 'active' }),
+          expect.objectContaining({ text: '使用中文回复', status: 'proven' }),
+          expect.objectContaining({ text: '提交前只暂存本次改动文件', status: 'proven' }),
         ]),
       );
     });
@@ -730,7 +1145,7 @@ describe('PersonalMemoryService', () => {
     });
   });
 
-  it('quarantines legacy workflow artifacts without deleting the stored record', async () => {
+  it('does not run content-based migration against the current memory schema', async () => {
     await withTempRepository(async (root) => {
       const repository = new FileMemoryRepository(root);
       const state = await repository.readState();
@@ -762,7 +1177,11 @@ describe('PersonalMemoryService', () => {
             operations: ['task'],
             language: 'en',
             kind: 'inferred',
-            active: true,
+            memoryType: 'personal-episode',
+            state: 'proven',
+            applicationCount: 0,
+            successCount: 0,
+            failureCount: 0,
             source,
             sources: [source],
             createdAt: timestamp,
@@ -772,15 +1191,17 @@ describe('PersonalMemoryService', () => {
       });
       const memories = new PersonalMemoryService({ repository });
 
-      expect((await memories.retrieve({ projectKey: 'project-a' })).records).toHaveLength(0);
-      expect((await memories.manage({ projectKey: 'project-a' })).records).toEqual([
-        expect.objectContaining({ id: 'legacy-workflow-record', status: 'inactive' }),
+      expect((await memories.retrieve({ projectKey: 'project-a' })).records).toEqual([
+        expect.objectContaining({ id: 'legacy-workflow-record', state: 'proven' }),
       ]);
-      expect((await repository.readState()).records[0]?.active).toBe(false);
+      expect((await memories.manage({ projectKey: 'project-a' })).records).toEqual([
+        expect.objectContaining({ id: 'legacy-workflow-record', status: 'proven' }),
+      ]);
+      expect((await repository.readState()).records[0]?.state).toBe('proven');
     });
   });
 
-  it('requires cross-project evidence before activating an inferred global memory', async () => {
+  it('retrieves a reusable inferred global memory as trial before cross-project promotion', async () => {
     await withTempRepository(async (root) => {
       const memories = service(root);
       const base = {
@@ -799,7 +1220,10 @@ describe('PersonalMemoryService', () => {
           projectIdentity: 'repo-a',
           changeId: 'change-1',
         }),
-      ).resolves.toMatchObject({ candidate: true, activated: false });
+      ).resolves.toMatchObject({ candidate: true, promoted: false });
+      expect((await memories.retrieve({ scope: 'global' })).records).toEqual([
+        expect.objectContaining({ state: 'trial', text: '使用中文回复' }),
+      ]);
       await expect(
         memories.observe({
           ...base,
@@ -807,7 +1231,7 @@ describe('PersonalMemoryService', () => {
           projectIdentity: 'repo-a',
           changeId: 'change-2',
         }),
-      ).resolves.toMatchObject({ candidate: true, activated: false });
+      ).resolves.toMatchObject({ candidate: true, promoted: false });
       await expect(
         memories.observe({
           ...base,
@@ -815,10 +1239,136 @@ describe('PersonalMemoryService', () => {
           projectIdentity: 'repo-b',
           changeId: 'change-3',
         }),
-      ).resolves.toMatchObject({ candidate: true, activated: true });
+      ).resolves.toMatchObject({ candidate: true, promoted: true });
       const retrieved = await memories.retrieve({ scope: 'global' });
       expect(retrieved.records[0]?.scope).toBe('global');
       expect(retrieved.records[0]?.projectKey).toBeUndefined();
+    });
+  });
+
+  it('persists structured Personal Episode fields without hidden reasoning', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+
+      await memories.observe({
+        scope: 'project',
+        projectKey: 'project-a',
+        memoryType: 'personal-episode',
+        category: '失败恢复',
+        text: '先刷新失效索引，再重新运行检索。',
+        title: '索引恢复经验',
+        reason: '失败已解决',
+        language: 'zh-CN',
+        workflow: 'native',
+        changeId: 'repair-index',
+        candidateKey: 'repair-index',
+        success: true,
+        evidence: [
+          {
+            id: 'failure-index',
+            kind: 'failure',
+            summary: '索引失效导致检索失败，刷新后复验成功。',
+            success: true,
+          },
+        ],
+      });
+
+      const episode = (await memories.manage({ projectKey: 'project-a' })).records.find(
+        (record) => record.memoryType === 'personal-episode',
+      );
+      expect(episode?.episode).toEqual({
+        situation: '索引恢复经验',
+        actionSummary: '索引失效导致检索失败，刷新后复验成功。',
+        outcome: '成功',
+        lesson: '先刷新失效索引，再重新运行检索。',
+      });
+    });
+  });
+
+  it('ranks proven Personal Memory ahead of newer trial records before applying the context budget', async () => {
+    await withTempRepository(async (root) => {
+      let current = new Date('2026-08-14T00:00:00.000Z');
+      const memories = new PersonalMemoryService({
+        repository: new FileMemoryRepository(root),
+        now: () => current,
+        taskMaxChars: 38,
+      });
+      const base = {
+        scope: 'project' as const,
+        projectKey: 'project-a',
+        language: 'en' as const,
+        workflow: 'native',
+        success: true,
+        taskTypes: ['build'],
+      };
+
+      await memories.observe({
+        ...base,
+        category: 'Build',
+        text: 'Use proven build rule',
+        changeId: 'proven-change',
+        candidateKey: 'proven-build',
+      });
+      const proven = (await memories.manage({ projectKey: 'project-a' })).records.find(
+        (record) => record.text === 'Use proven build rule',
+      );
+      await memories.recordApplicationOutcome(proven!.id, 'used-successfully');
+
+      current = new Date('2026-08-15T00:00:00.000Z');
+      await memories.observe({
+        ...base,
+        category: 'Build',
+        text: 'Use newer trial rule',
+        changeId: 'trial-change',
+        candidateKey: 'trial-build',
+      });
+
+      const retrieval = await memories.retrieve({
+        view: 'task',
+        projectKey: 'project-a',
+        task: 'build',
+      });
+      expect(retrieval.taskRecords?.map((record) => record.text)).toEqual([
+        'Use proven build rule',
+      ]);
+    });
+  });
+
+  it('keeps Personal Episodes out of the directly injected Core Profile section', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      await memories.remember({
+        scope: 'global',
+        category: '沟通偏好',
+        text: '始终使用中文回复。',
+      });
+      await memories.observe({
+        scope: 'global',
+        memoryType: 'personal-episode',
+        category: '审查经验',
+        text: '先给风险摘要，再展开具体问题。',
+        workflow: 'native',
+        changeId: 'review-episode',
+        candidateKey: 'review-episode',
+        success: true,
+        source: { kind: 'user' },
+        evidence: [
+          {
+            id: 'review-episode-evidence',
+            kind: 'user',
+            summary: '用户接受了先摘要后展开的审查方式。',
+            success: true,
+          },
+        ],
+      });
+
+      const retrieval = await memories.retrieve({ view: 'combined' });
+      expect(retrieval.profileRecords?.map((record) => record.memoryType)).toEqual([
+        'core-profile',
+      ]);
+      expect(retrieval.taskRecords?.map((record) => record.memoryType)).toContain(
+        'personal-episode',
+      );
     });
   });
 
@@ -846,7 +1396,7 @@ describe('PersonalMemoryService', () => {
           observedAt: '2026-08-13T00:00:00.000Z',
           success: true,
         }),
-      ).resolves.toMatchObject({ ignored: true, activated: false });
+      ).resolves.toMatchObject({ ignored: true, promoted: false });
       await expect(
         memories.observe({
           scope: 'project',
@@ -860,7 +1410,7 @@ describe('PersonalMemoryService', () => {
           observedAt: '2026-08-15T00:00:00.000Z',
           success: true,
         }),
-      ).resolves.toMatchObject({ candidate: true, activated: false });
+      ).resolves.toMatchObject({ candidate: true, promoted: false });
       await expect(
         memories.observe({
           scope: 'project',
@@ -874,7 +1424,7 @@ describe('PersonalMemoryService', () => {
           observedAt: '2026-08-16T00:00:00.000Z',
           success: true,
         }),
-      ).resolves.toMatchObject({ candidate: true, activated: true });
+      ).resolves.toMatchObject({ candidate: true, promoted: true });
     });
   });
 
@@ -889,14 +1439,14 @@ describe('PersonalMemoryService', () => {
       await memories.remove(record.id);
 
       const corrected = await memories.correct(record.id, { text: '始终使用中文回复' });
-      expect(corrected).toMatchObject({ active: true, kind: 'explicit' });
+      expect(corrected).toMatchObject({ state: 'proven', kind: 'explicit' });
       expect((await memories.retrieve({ scope: 'global' })).records).toEqual(
         expect.arrayContaining([expect.objectContaining({ text: '始终使用中文回复' })]),
       );
     });
   });
 
-  it('migrates legacy tombstones without a text hash before Markdown reconciliation', async () => {
+  it('rebuilds the current read model from readable Markdown instead of migrating old state', async () => {
     await withTempRepository(async (root) => {
       const memories = service(root);
       const record = await memories.remember({
@@ -906,10 +1456,8 @@ describe('PersonalMemoryService', () => {
       });
       await memories.remove(record.id);
       const stateFile = path.join(root, '.comet/runtime/memory-state.json');
-      const state = JSON.parse(await readFile(stateFile, 'utf8')) as {
-        tombstones: Array<Record<string, unknown>>;
-      };
-      state.tombstones = state.tombstones.map(({ textHash: _textHash, ...entry }) => entry);
+      const state = JSON.parse(await readFile(stateFile, 'utf8')) as Record<string, unknown>;
+      state.version = 2;
       await writeFile(stateFile, JSON.stringify(state));
       await writeFile(
         path.join(root, 'profile.md'),
@@ -917,13 +1465,8 @@ describe('PersonalMemoryService', () => {
       );
 
       const result = await service(root).retrieve({ scope: 'global' });
-      expect(result.records).not.toEqual(
-        expect.arrayContaining([expect.objectContaining({ text: '使用中文回复' })]),
-      );
-      const migrated = JSON.parse(await readFile(stateFile, 'utf8')) as {
-        tombstones: Array<{ textHash?: string }>;
-      };
-      expect(migrated.tombstones[0]?.textHash).toEqual(expect.any(String));
+      expect(result.records.map((record) => record.text)).toContain('使用   中文回复');
+      expect(JSON.parse(await readFile(stateFile, 'utf8'))).toMatchObject({ version: 3 });
     });
   });
 
@@ -961,7 +1504,7 @@ describe('PersonalMemoryService', () => {
           changeId: 'missing-language',
           success: true,
         }),
-      ).resolves.toMatchObject({ ignored: true, activated: false });
+      ).resolves.toMatchObject({ ignored: true, promoted: false });
       await expect(
         memories.observe({
           scope: 'project',
@@ -973,7 +1516,7 @@ describe('PersonalMemoryService', () => {
           changeId: 'change-1',
           success: true,
         }),
-      ).resolves.toMatchObject({ ignored: true, activated: false });
+      ).resolves.toMatchObject({ ignored: true, promoted: false });
     });
   });
 
@@ -1058,6 +1601,89 @@ describe('PersonalMemoryService', () => {
     });
   });
 
+  it('keeps phase selectors and exposes manifest, expand, and experience-delta provider seams', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const record = await memories.remember({
+        scope: 'project',
+        projectKey: 'project-a',
+        category: '验收协作',
+        text: '验收阶段先运行聚焦测试。',
+        phases: ['verify'],
+        source: { kind: 'user' },
+      });
+
+      await expect(
+        memories.retrieve({
+          scope: 'project',
+          projectKey: 'project-a',
+          task: '运行测试',
+          phase: 'build',
+        }),
+      ).resolves.toMatchObject({ records: [] });
+      await expect(
+        memories.retrieve({
+          scope: 'project',
+          projectKey: 'project-a',
+          task: '运行测试',
+          phase: 'verify',
+        }),
+      ).resolves.toMatchObject({
+        records: [
+          expect.objectContaining({
+            id: record.id,
+            phases: ['verify'],
+            authority: 'explicit',
+            evidence: [expect.objectContaining({ kind: 'user' })],
+          }),
+        ],
+      });
+
+      await expect(
+        memories.query({
+          view: 'manifest',
+          query: { scope: 'project', projectKey: 'project-a', phase: 'verify' },
+        }),
+      ).resolves.toMatchObject({
+        kind: 'manifest',
+        items: [expect.objectContaining({ id: record.id, phases: ['verify'] })],
+      });
+      await expect(
+        memories.query({
+          view: 'expand',
+          query: { id: record.id, projectKey: 'project-a' },
+        }),
+      ).resolves.toMatchObject({ kind: 'expand', record: { id: record.id } });
+      await expect(
+        memories.query({
+          view: 'expand',
+          query: { id: record.id, projectKey: 'project-b' },
+        }),
+      ).resolves.toEqual({ kind: 'expand', record: null });
+
+      const forgetDelta = {
+        operation: 'experience-delta',
+        input: {
+          idempotencyKey: 'forget-project-policy',
+          delta: {
+            action: 'forget',
+            owner: 'personal-memory',
+            targetId: record.id,
+            memoryType: 'collaboration-policy',
+            kind: 'project-convention',
+            statement: record.text,
+            applicability: { projectId: 'project-a', phases: ['verify'] },
+            evidence: [],
+            recommendedState: 'superseded',
+          },
+        },
+      } as const;
+      await expect(memories.apply(forgetDelta)).resolves.toMatchObject({ changed: true });
+      await expect(memories.get(record.id)).resolves.toBeNull();
+      await expect(memories.apply(forgetDelta)).resolves.toEqual({ changed: false });
+    });
+  });
+
   it('filters keyword retrieval instead of returning unrelated records', async () => {
     await withTempRepository(async (root) => {
       const memories = service(root);
@@ -1085,7 +1711,7 @@ describe('PersonalMemoryService', () => {
       expect(content).toContain('提交前运行测试');
       expect(
         JSON.parse(await readFile(path.join(root, '.comet/runtime/memory-state.json'), 'utf8')),
-      ).toMatchObject({ version: 1 });
+      ).toMatchObject({ version: 3 });
     });
   });
 
@@ -1150,7 +1776,7 @@ describe('PersonalMemoryService', () => {
         text: '使用中文回复',
       });
       await expect(runtime.collectContext({ task: '聊天' }, 'user')).resolves.toEqual(
-        expect.arrayContaining([expect.objectContaining({ pluginId: descriptor.id })]),
+        expect.arrayContaining([expect.objectContaining({ owner: descriptor.id })]),
       );
       await runtime.disable(descriptor.id);
       expect(await runtime.get(descriptor.id)).toMatchObject({ status: 'disabled' });
@@ -1337,7 +1963,7 @@ describe('PersonalMemoryService', () => {
           { throwOnError: true },
         ),
       ).resolves.toBeUndefined();
-      await expect(memoryService.get(record.id)).resolves.toMatchObject({ active: false });
+      await expect(memoryService.get(record.id)).resolves.toMatchObject({ state: 'superseded' });
     });
   });
 
@@ -1400,8 +2026,9 @@ describe('PersonalMemoryService', () => {
         { task: 'build', projectId: 'project-a' },
         { scope: 'project', projectId: 'project-a' },
       );
-      expect(contexts[0]?.text).toContain('使用中文回复');
-      expect(contexts[0]?.text).toContain('使用 pnpm build');
+      expect(contexts.map((candidate) => candidate.content)).toEqual(
+        expect.arrayContaining(['使用中文回复', '使用 pnpm build']),
+      );
     });
   });
 
@@ -1471,7 +2098,7 @@ describe('PersonalMemoryService', () => {
     });
   });
 
-  it('keeps legacy workflow bullets out of active Markdown-imported memory', async () => {
+  it('treats user-readable Markdown as authoritative without legacy content heuristics', async () => {
     await withTempRepository(async (root) => {
       await writeFile(
         path.join(root, 'profile.md'),
@@ -1479,9 +2106,17 @@ describe('PersonalMemoryService', () => {
       );
       const memories = new PersonalMemoryService({ repository: new FileMemoryRepository(root) });
 
-      await expect(memories.retrieve({ view: 'profile' })).resolves.toMatchObject({ records: [] });
+      await expect(memories.retrieve({ view: 'combined' })).resolves.toMatchObject({
+        profileRecords: [],
+        taskRecords: [
+          expect.objectContaining({
+            memoryType: 'collaboration-policy',
+            state: 'proven',
+          }),
+        ],
+      });
       await expect(memories.manage({ scope: 'global' })).resolves.toMatchObject({
-        records: [expect.objectContaining({ status: 'inactive' })],
+        records: [expect.objectContaining({ status: 'proven' })],
       });
     });
   });
@@ -1506,7 +2141,7 @@ describe('PersonalMemoryService', () => {
     });
   });
 
-  it('reports Profile capacity instead of silently truncating an explicit memory', async () => {
+  it('stores explicit memory independently from the injection budget', async () => {
     await withTempRepository(async (root) => {
       const memories = new PersonalMemoryService({
         repository: new FileMemoryRepository(root),
@@ -1519,8 +2154,14 @@ describe('PersonalMemoryService', () => {
           category: '用户事实',
           text: '这条用户事实无法放入当前容量',
         }),
-      ).rejects.toThrow(/User Profile capacity.*10/u);
-      await expect(memories.manage({ scope: 'global' })).resolves.toMatchObject({ records: [] });
+      ).resolves.toMatchObject({ state: 'proven' });
+      await expect(memories.manage({ scope: 'global' })).resolves.toMatchObject({
+        records: [expect.objectContaining({ text: '这条用户事实无法放入当前容量' })],
+      });
+      await expect(memories.retrieve({ view: 'profile' })).resolves.toMatchObject({
+        records: [],
+        truncated: true,
+      });
     });
   });
 });

@@ -4,6 +4,7 @@ import {
   runBoundedHttpRequest,
 } from '../../platform/http/bounded-request.js';
 import type { WorkflowKnowledgeRemoteConfig } from '../workflow-contract/types.js';
+import type { AgentLearningDelta } from '../agent-learning/index.js';
 import { parseProjectKnowledgeRecord, type ProjectKnowledgeRecord } from './records.js';
 import type {
   ProjectKnowledgeApplyResult,
@@ -24,6 +25,8 @@ const MAX_TITLE_CHARS = 200;
 const MAX_CONTENT_CHARS = 1600;
 const MAX_TOTAL_CHARS = 5000;
 const MAX_DIAGNOSTICS = 8;
+const MAX_REQUEST_BYTES = 512 * 1024;
+const MAX_DELTA_EVIDENCE = 32;
 
 export interface RemoteProjectKnowledgeProviderOptions {
   readonly config: WorkflowKnowledgeRemoteConfig;
@@ -40,6 +43,13 @@ interface RemoteEnvelope {
   readonly scope?: string;
   readonly projectId: string;
   readonly input: unknown;
+}
+
+interface RemoteResponseEnvelope {
+  readonly schema: 'comet.project-knowledge.provider.v1';
+  readonly operation: RemoteEnvelope['operation'];
+  readonly projectId: string;
+  readonly result: unknown;
 }
 
 function safeString(value: unknown, max: number, required = false): string | null {
@@ -95,9 +105,73 @@ function sanitizeRecord(record: ProjectKnowledgeRecord): ProjectKnowledgeRecord 
 }
 
 function sanitizeMutation(mutation: ProjectKnowledgeMutation): ProjectKnowledgeMutation {
-  return mutation.kind === 'upsert'
-    ? { kind: 'upsert', record: sanitizeRecord(mutation.record) }
-    : mutation;
+  if (mutation.kind === 'upsert')
+    return { kind: 'upsert', record: sanitizeRecord(mutation.record) };
+  if (mutation.kind !== 'experience-delta') return mutation;
+  const delta = mutation.delta;
+  let payload = delta.payload;
+  if (payload?.kind === 'record') {
+    payload = {
+      kind: 'record',
+      record: sanitizeRecord(parseProjectKnowledgeRecord(payload.record)),
+    };
+  } else if (payload?.kind === 'verify') {
+    payload = {
+      kind: 'verify',
+      projectId: safeString(payload.projectId, 128) ?? '',
+      commands: boundedStrings(payload.commands, 16, 2000),
+      ...(typeof payload.updatedAt === 'string'
+        ? { updatedAt: payload.updatedAt.slice(0, 64) }
+        : {}),
+    };
+  } else if (payload !== undefined) {
+    payload = undefined;
+  }
+  const { payload: _payload, ...deltaWithoutPayload } = delta;
+  void _payload;
+  const sanitized: AgentLearningDelta = {
+    ...deltaWithoutPayload,
+    statement: safeString(delta.statement, 4000) ?? '',
+    ...(delta.title === undefined ? {} : { title: safeString(delta.title, 512) ?? '' }),
+    applicability: {
+      ...(delta.applicability.projectId === undefined
+        ? {}
+        : { projectId: safeString(delta.applicability.projectId, 128) ?? '' }),
+      ...(delta.applicability.paths === undefined
+        ? {}
+        : { paths: boundedStrings(delta.applicability.paths, 32, 512) }),
+      ...(delta.applicability.operations === undefined
+        ? {}
+        : { operations: boundedStrings(delta.applicability.operations, 16, 128) }),
+      ...(delta.applicability.phases === undefined
+        ? {}
+        : { phases: boundedStrings(delta.applicability.phases, 16, 128) }),
+      ...(delta.applicability.tasks === undefined
+        ? {}
+        : { tasks: boundedStrings(delta.applicability.tasks, 16, 512) }),
+    },
+    evidence: delta.evidence.slice(0, MAX_DELTA_EVIDENCE).map((entry) => ({
+      ...entry,
+      summary: safeString(entry.summary, 1000) ?? '',
+      ...(entry.source === undefined ? {} : { source: safeString(entry.source, 512) ?? '' }),
+      ...(entry.anchor === undefined ? {} : { anchor: safeString(entry.anchor, 256) ?? '' }),
+      ...(entry.command === undefined ? {} : { command: safeString(entry.command, 2000) ?? '' }),
+    })),
+    ...(payload === undefined ? {} : { payload }),
+  };
+  return {
+    ...mutation,
+    idempotencyKey: safeString(mutation.idempotencyKey, 256, true) ?? 'invalid',
+    delta: sanitized,
+  };
+}
+
+function boundedStrings(value: unknown, maxEntries: number, maxChars: number): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => safeString(entry, maxChars))
+    .filter((entry): entry is string => Boolean(entry))
+    .slice(0, maxEntries);
 }
 
 function boundedQueryInput(request: ProjectKnowledgeQueryRequest): Record<string, unknown> {
@@ -126,6 +200,21 @@ function boundedQueryInput(request: ProjectKnowledgeQueryRequest): Record<string
       limit: Math.max(1, Math.min(500, request.limit ?? 100)),
     };
   }
+  if (request.kind === 'manifest') {
+    return {
+      kind: 'manifest',
+      ...(request.projectId ? { projectId: safeString(request.projectId, 128) } : {}),
+      ...(request.state ? { state: request.state } : {}),
+      limit: Math.max(1, Math.min(500, request.limit ?? 100)),
+    };
+  }
+  if (request.kind === 'expand') {
+    return {
+      kind: 'expand',
+      id: safeString(request.id, 128) ?? '',
+      ...(request.projectId ? { projectId: safeString(request.projectId, 128) } : {}),
+    };
+  }
   return {
     kind: 'get',
     id: safeString(request.id, 128) ?? '',
@@ -133,12 +222,18 @@ function boundedQueryInput(request: ProjectKnowledgeQueryRequest): Record<string
   };
 }
 
-function parseRecordList(value: unknown, reportInvalid: () => void): ProjectKnowledgeRecord[] {
+function parseRecordList(
+  value: unknown,
+  reportInvalid: () => void,
+  expectedProjectId: string,
+): ProjectKnowledgeRecord[] {
   if (!Array.isArray(value)) return [];
   const records: ProjectKnowledgeRecord[] = [];
   for (const entry of value.slice(0, 500)) {
     try {
-      records.push(parseProjectKnowledgeRecord(entry));
+      const record = parseProjectKnowledgeRecord(entry);
+      if (record.projectId !== expectedProjectId) throw new Error('Project mismatch');
+      records.push(record);
     } catch {
       reportInvalid();
     }
@@ -146,7 +241,11 @@ function parseRecordList(value: unknown, reportInvalid: () => void): ProjectKnow
   return records;
 }
 
-function parseResult(value: unknown, reportInvalid: () => void): ProjectKnowledgeResult | null {
+function parseResult(
+  value: unknown,
+  reportInvalid: () => void,
+  expectedProjectId: string,
+): ProjectKnowledgeResult | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     reportInvalid();
     return null;
@@ -176,6 +275,7 @@ function parseResult(value: unknown, reportInvalid: () => void): ProjectKnowledg
   if (rawRecord !== undefined) {
     try {
       record = parseProjectKnowledgeRecord(rawRecord);
+      if (record.projectId !== expectedProjectId) throw new Error('Project mismatch');
     } catch {
       reportInvalid();
       return null;
@@ -224,6 +324,7 @@ function parseQueryResult(
   value: unknown,
   request: ProjectKnowledgeQueryRequest,
   reportInvalid: () => void,
+  expectedProjectId: string,
 ): ProjectKnowledgeQueryResult | null {
   const raw =
     value && typeof value === 'object' && !Array.isArray(value) && 'result' in value
@@ -238,7 +339,11 @@ function parseQueryResult(
   if (kind === 'list') {
     return {
       kind: 'list',
-      records: parseRecordList((raw as { records?: unknown }).records, reportInvalid),
+      records: parseRecordList(
+        (raw as { records?: unknown }).records,
+        reportInvalid,
+        expectedProjectId,
+      ),
       truncated: (raw as { truncated?: unknown }).truncated === true,
       diagnostics,
     };
@@ -249,11 +354,107 @@ function parseQueryResult(
     if (rawRecord !== null && rawRecord !== undefined) {
       try {
         record = parseProjectKnowledgeRecord(rawRecord);
+        if (record.projectId !== expectedProjectId) throw new Error('Project mismatch');
       } catch {
         reportInvalid();
       }
     }
     return { kind: 'get', record, diagnostics };
+  }
+  if (kind === 'expand') {
+    const rawRecord = (raw as { record?: unknown }).record;
+    let record: ProjectKnowledgeRecord | null = null;
+    if (rawRecord !== null && rawRecord !== undefined) {
+      try {
+        record = parseProjectKnowledgeRecord(rawRecord);
+        if (record.projectId !== expectedProjectId) throw new Error('Project mismatch');
+      } catch {
+        reportInvalid();
+      }
+    }
+    return { kind: 'expand', record, diagnostics };
+  }
+  if (kind === 'manifest') {
+    const items = Array.isArray((raw as { items?: unknown }).items)
+      ? (raw as { items: unknown[] }).items.slice(0, 500).flatMap((entry) => {
+          if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+            reportInvalid();
+            return [];
+          }
+          const item = entry as Record<string, unknown>;
+          const id = safeString(item.id, 128, true);
+          const title = safeString(item.title, MAX_TITLE_CHARS, true);
+          const summary = safeString(item.summary, MAX_CONTENT_CHARS, true);
+          const type = item.type;
+          const memoryType = item.memoryType;
+          const state = item.state;
+          const authority = item.authority;
+          if (
+            !id ||
+            !title ||
+            !summary ||
+            ![
+              'topology',
+              'fact',
+              'dependency',
+              'decision',
+              'pattern',
+              'procedure',
+              'constraint',
+              'failure-resolution',
+            ].includes(String(type)) ||
+            (memoryType !== 'project-model' && memoryType !== 'project-policy') ||
+            !['trial', 'proven', 'enforced', 'superseded'].includes(String(state)) ||
+            !['automatic', 'user', 'repository'].includes(String(authority))
+          ) {
+            reportInvalid();
+            return [];
+          }
+          const strings = (value: unknown): string[] =>
+            Array.isArray(value)
+              ? value
+                  .map((candidate) => safeString(candidate, 1024))
+                  .filter((candidate): candidate is string => candidate !== null)
+              : [];
+          const verification = Array.isArray(item.verification)
+            ? item.verification.slice(0, 16).flatMap((candidate) => {
+                if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+                  reportInvalid();
+                  return [];
+                }
+                const command = safeString(
+                  (candidate as { command?: unknown }).command,
+                  4000,
+                  true,
+                );
+                const expected = safeString((candidate as { expected?: unknown }).expected, 2000);
+                return command ? [{ command, ...(expected === null ? {} : { expected }) }] : [];
+              })
+            : [];
+          return [
+            {
+              id,
+              memoryType: memoryType as 'project-model' | 'project-policy',
+              type: type as import('./records.js').ProjectKnowledgeRecordType,
+              state: state as import('./records.js').ProjectKnowledgeRecordState,
+              authority: authority as import('./records.js').ProjectKnowledgeRecordAuthority,
+              title,
+              summary,
+              applicablePaths: strings(item.applicablePaths),
+              operations: strings(item.operations),
+              phases: strings(item.phases),
+              sourceTypes: strings(item.sourceTypes),
+              verification,
+            },
+          ];
+        })
+      : [];
+    return {
+      kind: 'manifest',
+      items,
+      truncated: (raw as { truncated?: unknown }).truncated === true,
+      diagnostics,
+    };
   }
   const results: ProjectKnowledgeResult[] = [];
   let total = 0;
@@ -261,14 +462,18 @@ function parseQueryResult(
   for (const entry of Array.isArray((raw as { results?: unknown }).results)
     ? ((raw as { results: unknown[] }).results ?? []).slice(0, 16)
     : []) {
-    const result = parseResult(entry, reportInvalid);
+    const result = parseResult(entry, reportInvalid, expectedProjectId);
     if (!result || seen.has(`${result.source}\u0000${result.title ?? ''}`)) continue;
     if (total + result.content.length > MAX_TOTAL_CHARS) break;
     seen.add(`${result.source}\u0000${result.title ?? ''}`);
     total += result.content.length;
     results.push(result);
   }
-  const records = parseRecordList((raw as { records?: unknown }).records, reportInvalid);
+  const records = parseRecordList(
+    (raw as { records?: unknown }).records,
+    reportInvalid,
+    expectedProjectId,
+  );
   const hits: ProjectKnowledgeSearchHit[] = Array.isArray((raw as { hits?: unknown }).hits)
     ? ((raw as { hits: unknown[] }).hits ?? []).slice(0, 40).flatMap((entry) => {
         if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
@@ -277,6 +482,7 @@ function parseQueryResult(
         }
         try {
           const record = parseProjectKnowledgeRecord((entry as { record?: unknown }).record);
+          if (record.projectId !== expectedProjectId) throw new Error('Project mismatch');
           const score = (entry as { score?: unknown }).score;
           if (score !== undefined && (typeof score !== 'number' || !Number.isFinite(score))) {
             reportInvalid();
@@ -303,6 +509,7 @@ function parseApplyResult(
   value: unknown,
   mutation: ProjectKnowledgeMutation,
   reportInvalid: () => void,
+  expectedProjectId: string,
 ): ProjectKnowledgeApplyResult | null {
   const raw =
     value && typeof value === 'object' && !Array.isArray(value) && 'result' in value
@@ -318,6 +525,7 @@ function parseApplyResult(
   else if (rawRecord !== undefined) {
     try {
       record = parseProjectKnowledgeRecord(rawRecord);
+      if (record.projectId !== expectedProjectId) throw new Error('Project mismatch');
     } catch {
       reportInvalid();
     }
@@ -327,7 +535,13 @@ function parseApplyResult(
     changed: (raw as { changed?: unknown }).changed === true,
     ...(record === undefined ? {} : { record }),
     ...(Array.isArray((raw as { records?: unknown }).records)
-      ? { records: parseRecordList((raw as { records: unknown }).records, reportInvalid) }
+      ? {
+          records: parseRecordList(
+            (raw as { records: unknown }).records,
+            reportInvalid,
+            expectedProjectId,
+          ),
+        }
       : {}),
     diagnostics: boundedDiagnostics((raw as { diagnostics?: unknown }).diagnostics),
   };
@@ -387,6 +601,8 @@ export class RemoteProjectKnowledgeProvider implements ProjectKnowledgeProvider 
   }
 
   public async query(request: ProjectKnowledgeQueryRequest): Promise<ProjectKnowledgeQueryResult> {
+    const expectedProjectId =
+      request.kind === 'search' ? this.projectId : (request.projectId ?? this.projectId);
     const result = await this.request(
       'query',
       boundedQueryInput(request),
@@ -394,9 +610,14 @@ export class RemoteProjectKnowledgeProvider implements ProjectKnowledgeProvider 
     );
     if (result === null) return emptyQueryResult(request);
     const invalid = { value: false };
-    const parsed = parseQueryResult(result, request, () => {
-      invalid.value = true;
-    });
+    const parsed = parseQueryResult(
+      result,
+      request,
+      () => {
+        invalid.value = true;
+      },
+      expectedProjectId,
+    );
     if (!parsed || invalid.value) {
       this.report('remote-schema', 'Remote Project Knowledge query 响应包含无效数据。');
       return emptyQueryResult(request);
@@ -405,10 +626,20 @@ export class RemoteProjectKnowledgeProvider implements ProjectKnowledgeProvider 
   }
 
   public async apply(mutation: ProjectKnowledgeMutation): Promise<ProjectKnowledgeApplyResult> {
+    const expectedProjectId =
+      (mutation.kind === 'upsert'
+        ? mutation.record.projectId
+        : mutation.kind === 'experience-delta'
+          ? mutation.delta.applicability.projectId
+          : mutation.projectId) ?? this.projectId;
     const result = await this.request(
       'apply',
       sanitizeMutation(mutation),
-      mutation.kind === 'upsert' ? mutation.record.projectId : mutation.projectId,
+      mutation.kind === 'upsert'
+        ? mutation.record.projectId
+        : mutation.kind === 'experience-delta'
+          ? mutation.delta.applicability.projectId
+          : mutation.projectId,
     );
     if (result === null) {
       return {
@@ -418,9 +649,14 @@ export class RemoteProjectKnowledgeProvider implements ProjectKnowledgeProvider 
       };
     }
     const invalid = { value: false };
-    const parsed = parseApplyResult(result, mutation, () => {
-      invalid.value = true;
-    });
+    const parsed = parseApplyResult(
+      result,
+      mutation,
+      () => {
+        invalid.value = true;
+      },
+      expectedProjectId,
+    );
     if (!parsed || invalid.value) {
       this.report('remote-schema', 'Remote Project Knowledge apply 响应格式无效。');
       return {
@@ -452,6 +688,11 @@ export class RemoteProjectKnowledgeProvider implements ProjectKnowledgeProvider 
       projectId: safeString(projectId, 128, true) ?? this.projectId,
       input,
     };
+    const serializedBody = JSON.stringify(body);
+    if (new TextEncoder().encode(serializedBody).byteLength > MAX_REQUEST_BYTES) {
+      this.report('remote-request-size', 'Remote Project Knowledge 请求超过大小限制。');
+      return null;
+    }
     try {
       const { response, bytes } = await runBoundedHttpRequest({
         url: this.options.config.endpoint,
@@ -465,7 +706,7 @@ export class RemoteProjectKnowledgeProvider implements ProjectKnowledgeProvider 
             'content-type': 'application/json',
             ...(token ? { authorization: `Bearer ${token}` } : {}),
           },
-          body: JSON.stringify(body),
+          body: serializedBody,
         },
       });
       if (!response.ok) {
@@ -473,7 +714,12 @@ export class RemoteProjectKnowledgeProvider implements ProjectKnowledgeProvider 
         return null;
       }
       try {
-        return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+        const value = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+        if (!isRemoteResponseEnvelope(value, operation, body.projectId)) {
+          this.report('remote-schema', 'Remote Project Knowledge 响应 envelope 无效。');
+          return null;
+        }
+        return value.result;
       } catch {
         this.report('remote-json', 'Remote Project Knowledge 返回了无效 JSON。');
         return null;
@@ -499,12 +745,33 @@ export class RemoteProjectKnowledgeProvider implements ProjectKnowledgeProvider 
   }
 }
 
+function isRemoteResponseEnvelope(
+  value: unknown,
+  operation: RemoteEnvelope['operation'],
+  projectId: string,
+): value is RemoteResponseEnvelope {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const envelope = value as Partial<RemoteResponseEnvelope>;
+  return (
+    envelope.schema === 'comet.project-knowledge.provider.v1' &&
+    envelope.operation === operation &&
+    envelope.projectId === projectId &&
+    Object.prototype.hasOwnProperty.call(envelope, 'result')
+  );
+}
+
 function emptyQueryResult(request: ProjectKnowledgeQueryRequest): ProjectKnowledgeQueryResult {
   if (request.kind === 'list') {
     return { kind: 'list', records: [], truncated: false, diagnostics: noServerDiagnostics() };
   }
   if (request.kind === 'get') {
     return { kind: 'get', record: null, diagnostics: noServerDiagnostics() };
+  }
+  if (request.kind === 'expand') {
+    return { kind: 'expand', record: null, diagnostics: noServerDiagnostics() };
+  }
+  if (request.kind === 'manifest') {
+    return { kind: 'manifest', items: [], truncated: false, diagnostics: noServerDiagnostics() };
   }
   return {
     kind: 'search',

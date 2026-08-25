@@ -7,6 +7,7 @@ import { describe, expect, test } from 'vitest';
 
 import { ProjectKnowledgeLocalStore } from '../../../domains/project-knowledge/local-store.js';
 import type { ProjectKnowledgeRecord } from '../../../domains/project-knowledge/records.js';
+import { openProjectKnowledgeDatabase } from '../../../domains/project-knowledge/sqlite.js';
 
 async function temporaryRoot(prefix: string): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), prefix));
@@ -16,8 +17,8 @@ function record(overrides: Partial<ProjectKnowledgeRecord> = {}): ProjectKnowled
   return {
     id: 'record-build-test',
     projectId: 'project-comet',
-    type: 'build-test',
-    state: 'active',
+    type: 'procedure',
+    state: 'proven',
     authority: 'automatic',
     title: 'Build and test contract',
     summary: 'Run build before test when touching runtime assets.',
@@ -32,13 +33,41 @@ function record(overrides: Partial<ProjectKnowledgeRecord> = {}): ProjectKnowled
     relations: [],
     verification: [{ command: 'pnpm test', expected: 'pass' }],
     sourceVersions: [{ source: 'docs/process.md', size: 100, modifiedAt: 1 }],
+    applicationCount: 0,
+    successCount: 0,
+    failureCount: 0,
     updatedAt: '2026-08-22T00:00:00.000Z',
     ...overrides,
   };
 }
 
 describe('project knowledge local store', () => {
-  test('persists records across store instances and blocks unchanged automatic resurrection after retire', async () => {
+  test('rebuilds the derived record table when its machine schema is obsolete', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-schema-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-schema-storage-');
+    let store: ProjectKnowledgeLocalStore | undefined;
+    try {
+      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      await store.apply({ kind: 'upsert', record: record() });
+      const databasePath = store.databasePath;
+      store.close();
+      store = undefined;
+
+      const database = openProjectKnowledgeDatabase(databasePath);
+      database.prepare("DELETE FROM pk_meta WHERE key = 'schema_version'").run();
+      database.close();
+
+      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      expect(store.list()).toEqual([]);
+      expect(store.status()).toMatchObject({ recordCount: 0 });
+    } finally {
+      store?.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('persists records and blocks unchanged automatic resurrection after supersede', async () => {
     const root = await temporaryRoot('comet-project-knowledge-store-');
     const storageRoot = await temporaryRoot('comet-project-knowledge-storage-');
     const sourceFile = path.join(root, 'docs', 'process.md');
@@ -60,7 +89,7 @@ describe('project knowledge local store', () => {
       });
       await expect(first.apply({ kind: 'upsert', record: initial })).resolves.toMatchObject({
         changed: true,
-        record: expect.objectContaining({ id: initial.id, state: 'active' }),
+        record: expect.objectContaining({ id: initial.id, state: 'proven' }),
       });
       first.close();
       first = undefined;
@@ -86,14 +115,14 @@ describe('project knowledge local store', () => {
         record: expect.objectContaining({
           id: initial.id,
           authority: 'user',
-          state: 'active',
+          state: 'proven',
           summary: 'Always build before test for runtime touching changes.',
         }),
       });
 
       await expect(
         reopened.apply({
-          kind: 'retire',
+          kind: 'supersede',
           id: initial.id,
           projectId: initial.projectId,
           updatedAt: '2026-08-22T00:02:00.000Z',
@@ -101,12 +130,12 @@ describe('project knowledge local store', () => {
         }),
       ).resolves.toMatchObject({
         changed: true,
-        record: expect.objectContaining({ id: initial.id, state: 'retired' }),
+        record: expect.objectContaining({ id: initial.id, state: 'superseded' }),
       });
 
       await expect(reopened.apply({ kind: 'upsert', record: initial })).resolves.toMatchObject({
         changed: false,
-        record: expect.objectContaining({ id: initial.id, state: 'retired' }),
+        record: expect.objectContaining({ id: initial.id, state: 'superseded' }),
       });
 
       const refreshed = record({
@@ -114,15 +143,18 @@ describe('project knowledge local store', () => {
         sourceVersions: [{ source: 'docs/process.md', size: 101, modifiedAt: 2 }],
         updatedAt: '2026-08-22T00:03:00.000Z',
       });
-      await expect(reopened.apply({ kind: 'upsert', record: refreshed })).resolves.toMatchObject({
+      const versioned = await reopened.apply({ kind: 'upsert', record: refreshed });
+      expect(versioned).toMatchObject({
         changed: true,
         record: expect.objectContaining({
-          id: refreshed.id,
-          state: 'active',
+          state: 'proven',
           authority: 'automatic',
           summary: refreshed.summary,
+          relations: [expect.objectContaining({ type: 'supersedes', targetId: initial.id })],
         }),
       });
+      expect(versioned.record?.id).toMatch(/^record-build-test-v-/u);
+      expect(reopened.read(initial.id)).toMatchObject({ state: 'superseded' });
     } finally {
       reopened?.close();
       first?.close();
@@ -131,7 +163,7 @@ describe('project knowledge local store', () => {
     }
   });
 
-  test('marks stale records for review and restores them only after anchors validate', async () => {
+  test('supersedes stale records and creates a new version after relearning', async () => {
     const root = await temporaryRoot('comet-project-knowledge-store-refresh-');
     const storageRoot = await temporaryRoot('comet-project-knowledge-storage-refresh-');
     const sourceFile = path.join(root, 'docs', 'process.md');
@@ -157,23 +189,35 @@ describe('project knowledge local store', () => {
         store.apply({ kind: 'refresh', projectId: initial.projectId, id: initial.id }),
       ).resolves.toMatchObject({
         changed: true,
-        records: [expect.objectContaining({ id: initial.id, state: 'needs-review' })],
+        records: [expect.objectContaining({ id: initial.id, state: 'superseded' })],
       });
-      await expect(
-        store.apply({ kind: 'refresh', projectId: initial.projectId, id: initial.id }),
-      ).resolves.toMatchObject({
+      const changedStat = await fs.stat(sourceFile);
+      const relearned = record({
+        summary: 'Run focused build and tests.',
+        conclusions: [
+          {
+            text: 'Run focused build and tests.',
+            sources: [{ source: 'docs/process.md', anchor: 'build' }],
+          },
+        ],
+        sourceVersions: [
+          {
+            source: 'docs/process.md',
+            size: changedStat.size,
+            modifiedAt: Math.trunc(changedStat.mtimeMs),
+          },
+        ],
+      });
+      const versioned = await store.apply({ kind: 'upsert', record: relearned });
+      expect(versioned).toMatchObject({
         changed: true,
-        records: [expect.objectContaining({ id: initial.id, state: 'active' })],
+        record: expect.objectContaining({
+          state: 'proven',
+          relations: [expect.objectContaining({ type: 'supersedes', targetId: initial.id })],
+        }),
       });
-
-      await fs.writeFile(sourceFile, '# Test\n\nThe build anchor was removed.\n');
-      await store.apply({ kind: 'refresh', projectId: initial.projectId, id: initial.id });
-      await expect(
-        store.apply({ kind: 'refresh', projectId: initial.projectId, id: initial.id }),
-      ).resolves.toMatchObject({
-        changed: false,
-        records: [expect.objectContaining({ id: initial.id, state: 'needs-review' })],
-      });
+      expect(versioned.record?.id).not.toBe(initial.id);
+      expect(store.read(initial.id)).toMatchObject({ state: 'superseded' });
     } finally {
       store?.close();
       await fs.rm(root, { recursive: true, force: true });
@@ -181,7 +225,42 @@ describe('project knowledge local store', () => {
     }
   });
 
-  test('keeps a user-confirmed record active when it intentionally has no source evidence', async () => {
+  test('keeps version lineage within the relation bound when relearning a dense record', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-version-relations-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-version-relations-storage-');
+    let store: ProjectKnowledgeLocalStore | undefined;
+    try {
+      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      const initial = record({ state: 'superseded' });
+      await store.apply({ kind: 'upsert', record: initial });
+      const incoming = record({
+        summary: 'Relearned dense knowledge.',
+        sourceVersions: [{ source: 'docs/process.md', size: 101, modifiedAt: 2 }],
+        relations: Array.from({ length: 16 }, (_, index) => ({
+          type: 'depends-on' as const,
+          targetId: `related-${index}`,
+          sources: [{ source: 'docs/process.md' }],
+        })),
+      });
+
+      const versioned = await store.apply({ kind: 'upsert', record: incoming });
+      expect(versioned).toMatchObject({
+        changed: true,
+        record: expect.objectContaining({
+          relations: expect.arrayContaining([
+            expect.objectContaining({ type: 'supersedes', targetId: initial.id }),
+          ]),
+        }),
+      });
+      expect(versioned.record?.relations).toHaveLength(16);
+    } finally {
+      store?.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps a user-confirmed record proven when it intentionally has no source evidence', async () => {
     const root = await temporaryRoot('comet-project-knowledge-user-record-');
     const storageRoot = await temporaryRoot('comet-project-knowledge-user-record-storage-');
     let store: ProjectKnowledgeLocalStore | undefined;
@@ -209,14 +288,368 @@ describe('project knowledge local store', () => {
         record: expect.objectContaining({
           id: manual.id,
           authority: 'user',
-          state: 'active',
+          state: 'proven',
         }),
       });
 
       await expect(
         store.apply({ kind: 'refresh', projectId: manual.projectId, id: manual.id }),
       ).resolves.toMatchObject({
-        records: [expect.objectContaining({ id: manual.id, state: 'active' })],
+        records: [expect.objectContaining({ id: manual.id, state: 'proven' })],
+      });
+    } finally {
+      store?.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('supersedes an enforced constraint when its package script disappears', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-command-refresh-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-command-refresh-storage-');
+    let store: ProjectKnowledgeLocalStore | undefined;
+    try {
+      await fs.writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ scripts: { test: 'vitest run' } }),
+      );
+      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      const constraint = record({
+        id: 'manual-test-constraint',
+        type: 'constraint',
+        state: 'enforced',
+        authority: 'user',
+        conclusions: [],
+        verification: [{ command: 'pnpm run test', expected: 'pass' }],
+        sourceVersions: [],
+      });
+      await store.apply({ kind: 'upsert', record: constraint });
+      await expect(
+        store.apply({ kind: 'refresh', projectId: constraint.projectId, id: constraint.id }),
+      ).resolves.toMatchObject({
+        changed: false,
+        records: [expect.objectContaining({ state: 'enforced' })],
+      });
+
+      await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({ scripts: {} }));
+      await expect(
+        store.apply({ kind: 'refresh', projectId: constraint.projectId, id: constraint.id }),
+      ).resolves.toMatchObject({
+        changed: true,
+        records: [expect.objectContaining({ state: 'superseded' })],
+      });
+    } finally {
+      store?.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps non-package verification commands unless their executable is confirmed missing', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-command-markers-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-command-markers-storage-');
+    let store: ProjectKnowledgeLocalStore | undefined;
+    try {
+      const sourcePath = path.join(root, 'docs', 'build.md');
+      await fs.mkdir(path.dirname(sourcePath), { recursive: true });
+      await fs.writeFile(sourcePath, '# Build\n\nRun Maven tests.\n');
+      await fs.writeFile(path.join(root, 'pom.xml'), '<project />\n');
+      const sourceStat = await fs.stat(sourcePath);
+      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      const constraint = record({
+        id: 'maven-constraint',
+        type: 'constraint',
+        state: 'enforced',
+        conclusions: [
+          {
+            text: 'Run Maven tests.',
+            sources: [{ source: 'docs/build.md' }],
+          },
+        ],
+        verification: [{ command: 'mvn test', expected: 'pass' }],
+        sourceVersions: [
+          {
+            source: 'docs/build.md',
+            size: sourceStat.size,
+            modifiedAt: Math.trunc(sourceStat.mtimeMs),
+          },
+        ],
+      });
+      await store.apply({ kind: 'upsert', record: constraint });
+      await fs.rm(path.join(root, 'pom.xml'));
+
+      await expect(
+        store.apply({ kind: 'refresh', projectId: constraint.projectId, id: constraint.id }),
+      ).resolves.toMatchObject({
+        changed: false,
+        records: [expect.objectContaining({ id: constraint.id, state: 'enforced' })],
+      });
+
+      const proven = record({
+        id: 'pytest-constraint',
+        type: 'constraint',
+        state: 'proven',
+        conclusions: [],
+        verification: [{ command: 'pytest -q', expected: 'pass' }],
+        sourceVersions: [],
+      });
+      await store.apply({ kind: 'upsert', record: proven });
+      await expect(
+        store.apply({
+          kind: 'verify',
+          projectId: proven.projectId,
+          commands: ['pytest -q'],
+          updatedAt: '2026-08-23T00:06:00.000Z',
+        }),
+      ).resolves.toMatchObject({
+        records: expect.arrayContaining([
+          expect.objectContaining({ id: proven.id, state: 'enforced' }),
+        ]),
+      });
+    } finally {
+      store?.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('downgrades a corrected constraint when its verification command is removed', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-corrected-command-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-corrected-command-storage-');
+    let store: ProjectKnowledgeLocalStore | undefined;
+    try {
+      await fs.writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ scripts: { test: 'vitest run' } }),
+      );
+      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      const constraint = record({
+        id: 'manual-corrected-constraint',
+        type: 'constraint',
+        state: 'enforced',
+        authority: 'user',
+        conclusions: [],
+        verification: [{ command: 'pnpm run test', expected: 'pass' }],
+        sourceVersions: [],
+      });
+      await store.apply({ kind: 'upsert', record: constraint });
+
+      await expect(
+        store.apply({
+          kind: 'correct',
+          id: constraint.id,
+          projectId: constraint.projectId,
+          verification: [],
+          updatedAt: '2026-08-23T00:02:00.000Z',
+        }),
+      ).resolves.toMatchObject({
+        changed: true,
+        record: expect.objectContaining({ state: 'proven', verification: [] }),
+      });
+    } finally {
+      store?.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('enforces a proven constraint only after its declared current command succeeds', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-verified-constraint-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-verified-constraint-storage-');
+    let store: ProjectKnowledgeLocalStore | undefined;
+    try {
+      await fs.writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ scripts: { test: 'vitest run', lint: 'eslint .' } }),
+      );
+      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      const constraint = record({
+        id: 'proven-test-constraint',
+        type: 'constraint',
+        state: 'proven',
+        conclusions: [],
+        verification: [{ command: 'pnpm test', expected: 'pass' }],
+        sourceVersions: [],
+      });
+      await store.apply({ kind: 'upsert', record: constraint });
+
+      await expect(
+        store.apply({
+          kind: 'verify',
+          projectId: constraint.projectId,
+          commands: ['unknown command'],
+          updatedAt: '2026-08-23T00:03:00.000Z',
+        }),
+      ).resolves.toMatchObject({ changed: false });
+      await expect(
+        store.apply({
+          kind: 'verify',
+          projectId: constraint.projectId,
+          commands: ['pnpm test'],
+          updatedAt: '2026-08-23T00:04:00.000Z',
+        }),
+      ).resolves.toMatchObject({
+        changed: true,
+        records: expect.arrayContaining([
+          expect.objectContaining({ id: constraint.id, state: 'enforced' }),
+        ]),
+      });
+
+      const lintConstraint = record({
+        id: 'proven-lint-constraint',
+        type: 'constraint',
+        state: 'proven',
+        conclusions: [],
+        verification: [{ command: 'pnpm lint', expected: 'pass' }],
+        sourceVersions: [],
+      });
+      await store.apply({ kind: 'upsert', record: lintConstraint });
+      await expect(
+        store.apply({
+          kind: 'verify',
+          projectId: lintConstraint.projectId,
+          commands: ['pnpm lint'],
+          updatedAt: '2026-08-23T00:05:00.000Z',
+        }),
+      ).resolves.toMatchObject({
+        changed: true,
+        records: expect.arrayContaining([
+          expect.objectContaining({ id: lintConstraint.id, state: 'enforced' }),
+        ]),
+      });
+    } finally {
+      store?.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('supersedes automatic knowledge after it contributes to a failed outcome', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-feedback-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-feedback-storage-');
+    let store: ProjectKnowledgeLocalStore | undefined;
+    try {
+      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      const automatic = record({ state: 'trial' });
+      await store.apply({ kind: 'upsert', record: automatic });
+
+      await expect(
+        store.apply({
+          kind: 'feedback',
+          id: automatic.id,
+          projectId: automatic.projectId,
+          outcome: 'contributed-to-failure',
+          updatedAt: '2026-08-23T00:01:00.000Z',
+        }),
+      ).resolves.toMatchObject({
+        changed: true,
+        record: expect.objectContaining({
+          state: 'superseded',
+          applicationCount: 1,
+          successCount: 0,
+          failureCount: 1,
+        }),
+      });
+    } finally {
+      store?.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps user knowledge authoritative while recording failed outcomes', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-user-feedback-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-user-feedback-storage-');
+    let store: ProjectKnowledgeLocalStore | undefined;
+    try {
+      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      const manual = record({ id: 'manual-rule', authority: 'user' });
+      await store.apply({ kind: 'upsert', record: manual });
+
+      await expect(
+        store.apply({
+          kind: 'feedback',
+          id: manual.id,
+          projectId: manual.projectId,
+          outcome: 'contributed-to-failure',
+          updatedAt: '2026-08-23T00:01:00.000Z',
+        }),
+      ).resolves.toMatchObject({
+        changed: true,
+        record: expect.objectContaining({
+          authority: 'user',
+          state: 'proven',
+          applicationCount: 1,
+          successCount: 0,
+          failureCount: 1,
+        }),
+      });
+    } finally {
+      store?.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('applies one outcome revision atomically and replaces its previous counters', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-feedback-revision-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-feedback-revision-storage-');
+    let store: ProjectKnowledgeLocalStore | undefined;
+    try {
+      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      const automatic = record({ id: 'revision-rule', state: 'trial' });
+      await store.apply({ kind: 'upsert', record: automatic });
+
+      const first = {
+        kind: 'feedback' as const,
+        id: automatic.id,
+        projectId: automatic.projectId,
+        outcome: 'used-successfully' as const,
+        applicationId: 'application-revision',
+        revision: 1,
+        idempotencyKey: 'feedback-revision-1',
+        updatedAt: '2026-08-23T00:01:00.000Z',
+      };
+      await expect(store.apply(first)).resolves.toMatchObject({
+        changed: true,
+        record: expect.objectContaining({ applicationCount: 1, successCount: 1, failureCount: 0 }),
+      });
+      await expect(store.apply(first)).resolves.toMatchObject({ changed: false });
+      await expect(
+        store.apply({
+          ...first,
+          outcome: 'corrected',
+          previousOutcome: 'used-successfully',
+          revision: 2,
+          idempotencyKey: 'feedback-revision-2',
+          updatedAt: '2026-08-23T00:02:00.000Z',
+        }),
+      ).resolves.toMatchObject({
+        changed: true,
+        record: expect.objectContaining({
+          state: 'superseded',
+          applicationCount: 1,
+          successCount: 0,
+          failureCount: 1,
+        }),
+      });
+      await expect(
+        store.apply({
+          ...first,
+          outcome: 'used-successfully',
+          previousOutcome: 'corrected',
+          revision: 3,
+          idempotencyKey: 'feedback-revision-3',
+          updatedAt: '2026-08-23T00:03:00.000Z',
+        }),
+      ).resolves.toMatchObject({
+        changed: true,
+        record: expect.objectContaining({
+          state: 'proven',
+          applicationCount: 1,
+          successCount: 1,
+          failureCount: 0,
+        }),
       });
     } finally {
       store?.close();
@@ -252,11 +685,11 @@ describe('project knowledge local store', () => {
       store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
       const related = record({
         id: 'record-related',
-        type: 'module-overview',
+        type: 'dependency',
         title: 'Related module',
         summary: 'Supporting context without the direct term.',
-        applicablePaths: ['supporting/'],
-        operations: ['understand'],
+        applicablePaths: [],
+        operations: ['verify'],
         conclusions: [
           {
             text: 'Supporting context.',
@@ -267,10 +700,11 @@ describe('project knowledge local store', () => {
       });
       const direct = record({
         id: 'record-direct',
-        type: 'behavior-note',
+        type: 'pattern',
         title: 'Runtime knowledge',
         summary: 'Runtime knowledge for Project Knowledge work.',
         applicablePaths: ['domains/project-knowledge/'],
+        operations: ['verify'],
         conclusions: [
           {
             text: 'Runtime knowledge is verified.',
@@ -288,10 +722,11 @@ describe('project knowledge local store', () => {
       });
       const other = record({
         id: 'record-other',
-        type: 'project-map',
+        type: 'topology',
         title: 'Runtime knowledge elsewhere',
         summary: 'Runtime knowledge outside the requested path.',
-        applicablePaths: ['other/'],
+        applicablePaths: [],
+        operations: ['verify'],
         conclusions: [
           { text: 'Runtime knowledge.', sources: [{ source: 'docs/other.md', anchor: 'other' }] },
         ],
@@ -317,6 +752,124 @@ describe('project knowledge local store', () => {
         source: 'docs/process.md#build',
         record: expect.objectContaining({ id: related.id }),
       });
+    } finally {
+      store?.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('applies path, operation, and phase selectors before ranking or top-N', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-selectors-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-selectors-storage-');
+    let store: ProjectKnowledgeLocalStore | undefined;
+    try {
+      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      const selected = record({
+        id: 'record-strict-selector',
+        title: 'Selector target',
+        summary: 'Selector target for build verification.',
+        applicablePaths: ['src/**/*.ts'],
+        operations: ['build'],
+        phases: ['verify'],
+        conclusions: [],
+        sourceVersions: [],
+      });
+      const unscoped = record({
+        id: 'record-unscoped-selector',
+        title: 'Selector target fallback',
+        summary: 'Selector target without applicability constraints.',
+        applicablePaths: [],
+        operations: [],
+        phases: [],
+        conclusions: [],
+        sourceVersions: [],
+      });
+      await store.apply({ kind: 'upsert', record: selected });
+      await store.apply({ kind: 'upsert', record: unscoped });
+      const query = {
+        task: 'selector target',
+        terms: ['selector', 'target'],
+        strongTerms: ['selector'],
+        phraseTerms: ['selector target'],
+        weakTerms: [],
+        remoteQuery: 'selector target',
+      };
+
+      expect(
+        store
+          .searchRecords({
+            ...query,
+            path: 'src/features/dashboard.ts',
+            operation: 'build',
+            phase: 'verify',
+          })
+          .map((entry) => entry.record?.id),
+      ).toContain(selected.id);
+      for (const mismatch of [
+        { path: 'test/dashboard.test.ts', operation: 'build', phase: 'verify' },
+        { path: 'src/features/dashboard.ts', operation: 'publish', phase: 'verify' },
+        { path: 'src/features/dashboard.ts', operation: 'build', phase: 'archive' },
+      ]) {
+        expect(
+          store.searchRecords({ ...query, ...mismatch }).map((entry) => entry.record?.id),
+        ).not.toContain(selected.id);
+      }
+    } finally {
+      store?.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('ranks lifecycle authority and application feedback before lexical and path bonuses', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-ranking-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-ranking-storage-');
+    let store: ProjectKnowledgeLocalStore | undefined;
+    try {
+      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      const trial = record({
+        id: 'record-trial-path-match',
+        state: 'trial',
+        authority: 'automatic',
+        title: 'Build build build rule',
+        summary: 'Build rule for the exact requested path.',
+        applicablePaths: ['src/**'],
+        operations: ['build'],
+        conclusions: [],
+        sourceVersions: [],
+        updatedAt: '2026-08-24T00:00:00.000Z',
+      });
+      const enforced = record({
+        id: 'record-enforced-contract',
+        state: 'enforced',
+        authority: 'repository',
+        title: 'Build contract',
+        summary: 'Build contract validated repeatedly.',
+        applicablePaths: [],
+        operations: [],
+        conclusions: [],
+        sourceVersions: [],
+        applicationCount: 4,
+        successCount: 4,
+        verification: [{ command: 'pnpm build', expected: 'pass' }],
+        updatedAt: '2026-08-20T00:00:00.000Z',
+      });
+      await store.apply({ kind: 'upsert', record: trial });
+      await store.apply({ kind: 'upsert', record: enforced });
+
+      const results = store.searchRecords({
+        task: 'build',
+        path: 'src/app.ts',
+        operation: 'build',
+        terms: ['build'],
+        strongTerms: ['build'],
+        phraseTerms: [],
+        weakTerms: [],
+        remoteQuery: 'build',
+      });
+
+      expect(results[0]?.record?.id).toBe(enforced.id);
     } finally {
       store?.close();
       await fs.rm(root, { recursive: true, force: true });
@@ -355,7 +908,7 @@ describe('project knowledge local store', () => {
       linkedStore = new ProjectKnowledgeLocalStore({ projectRoot: worktree, storageRoot });
       const shared = record({
         id: 'record-shared',
-        type: 'module-overview',
+        type: 'dependency',
         title: 'Shared repository record',
         summary: 'Visible to both worktrees.',
       });

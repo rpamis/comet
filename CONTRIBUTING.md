@@ -257,9 +257,11 @@ app/                 # CLI entry and command orchestration. Composes domain/plat
 └── commands/        # comet init / status / doctor / update / bundle / publish / skill / creator / eval / dashboard ...
 
 domains/             # Business domain modules
+├── agent-learning/  # Shared Experience, Reflection, context selection, and application feedback
 ├── bundle/          # Skill bundle compilation, publishing, loading
 ├── comet-classic/   # Classic workflow (state / guard / handoff / archive / intent / hook-guard)
 ├── comet-entry/     # Shared Native/Classic entry, selection, and Hook Router
+├── comet-memory/    # Personal-memory formation, retrieval, and provider contracts
 ├── comet-native/    # Native workflow (change / state / evidence / archive / guard)
 ├── dashboard/       # comet dashboard backend + frontend (web/)
 ├── engine/          # Generic execution engine (loop / state / guardrails / evals)

@@ -40,7 +40,7 @@ function actionSet(actions: readonly unknown[]) {
 }
 
 describe('semantic memory review contract', () => {
-  it('validates a bounded packet and action set', () => {
+  it('validates a versioned packet and action set', () => {
     const validated = validateMemoryReviewPacket(packet());
     expect(
       validateMemoryReviewActions(
@@ -61,10 +61,10 @@ describe('semantic memory review contract', () => {
     ).toMatchObject({ schema: 'comet.memory.actions.v1', actions: [{ action: 'create' }] });
   });
 
-  it('requires the versioned action envelope and enforces the packet evidence budget', () => {
+  it('requires the versioned action envelope without treating budget hints as storage limits', () => {
     const validated = validateMemoryReviewPacket(packet());
     expect(() => validateMemoryReviewActions(validated, [])).toThrow('object');
-    expect(() =>
+    expect(
       validateMemoryReviewPacket(
         packet({
           budget: { maxActions: 4, maxEvidence: 1, maxBytes: 4096 },
@@ -82,11 +82,39 @@ describe('semantic memory review contract', () => {
             },
           ],
         }),
-      ),
-    ).toThrow('collection limit');
+      ).evidence,
+    ).toHaveLength(2);
   });
 
-  it('rejects invalid targets, mismatched language, unsafe content and oversized budgets', () => {
+  it('accepts valid review content larger than the injection budget', () => {
+    const text = '以后所有任务都先给结论，再说明必要细节。'.repeat(2_000);
+    const largePacket = packet({
+      userEvidence: [text],
+      explicitRequest: {
+        action: 'remember',
+        scope: 'global',
+        category: '沟通偏好',
+        text,
+      },
+      evidence: [
+        {
+          key: 'explicit:large-preference',
+          scope: 'global',
+          projectIdentity: 'repo-a',
+          changeId: 'change-1',
+          success: true,
+          observedAt: '2026-08-14T00:00:00.000Z',
+          text,
+        },
+      ],
+      budget: { maxActions: 4, maxEvidence: 8, maxBytes: 1024 },
+    });
+
+    expect(Buffer.byteLength(JSON.stringify(largePacket), 'utf8')).toBeGreaterThan(1024);
+    expect(() => validateMemoryReviewPacket(largePacket)).not.toThrow();
+  });
+
+  it('rejects invalid targets, mismatched language and unsafe content but accepts large budgets', () => {
     const validated = validateMemoryReviewPacket(
       packet({
         memories: [
@@ -97,7 +125,8 @@ describe('semantic memory review contract', () => {
             category: '协作习惯',
             text: '提交前只暂存本次改动文件',
             kind: 'explicit',
-            active: true,
+            memoryType: 'collaboration-policy',
+            state: 'proven',
           },
         ],
       }),
@@ -138,11 +167,11 @@ describe('semantic memory review contract', () => {
         ]),
       ),
     ).toThrow('unsafe');
-    expect(() =>
+    expect(
       validateMemoryReviewPacket(
         packet({ budget: { maxActions: 100, maxEvidence: 8, maxBytes: 4096 } }),
-      ),
-    ).toThrow('budget');
+      ).budget.maxActions,
+    ).toBe(100);
   });
 
   it('accepts a skip action without changing memory state', () => {
@@ -168,7 +197,8 @@ describe('semantic memory review contract', () => {
       category: '协作习惯',
       text: '提交前运行测试',
       kind: 'explicit',
-      active: true,
+      memoryType: 'collaboration-policy',
+      state: 'proven',
     } as const;
     const remember = reviewMemoryPacket(
       packet({
@@ -228,7 +258,8 @@ describe('semantic memory review contract', () => {
             category: '协作习惯',
             text: '提交前只暂存本次改动文件',
             kind: 'explicit',
-            active: true,
+            memoryType: 'collaboration-policy',
+            state: 'proven',
           },
         ],
       }),
@@ -293,7 +324,8 @@ describe('semantic memory review contract', () => {
             category: '协作习惯',
             text: '提交前只暂存本次改动文件',
             kind: 'explicit',
-            active: true,
+            memoryType: 'collaboration-policy',
+            state: 'proven',
           },
         ],
       }),
@@ -358,7 +390,8 @@ describe('semantic memory review contract', () => {
             category: '协作习惯',
             text: '提交前只暂存本次改动文件',
             kind: 'explicit',
-            active: true,
+            memoryType: 'collaboration-policy',
+            state: 'proven',
           },
         ],
       }),

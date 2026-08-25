@@ -2,14 +2,17 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 
 export type ProjectKnowledgeRecordType =
-  | 'project-map'
-  | 'module-overview'
-  | 'behavior-note'
-  | 'integration-path'
-  | 'change-impact'
-  | 'build-test';
-export type ProjectKnowledgeRecordState = 'active' | 'needs-review' | 'retired';
-export type ProjectKnowledgeRecordAuthority = 'automatic' | 'user';
+  | 'topology'
+  | 'fact'
+  | 'dependency'
+  | 'decision'
+  | 'pattern'
+  | 'procedure'
+  | 'constraint'
+  | 'failure-resolution';
+export type ProjectKnowledgeRecordFamily = 'project-model' | 'project-policy';
+export type ProjectKnowledgeRecordState = 'trial' | 'proven' | 'enforced' | 'superseded';
+export type ProjectKnowledgeRecordAuthority = 'automatic' | 'user' | 'repository';
 export type ProjectKnowledgeRecordRelationType =
   | 'contains'
   | 'depends-on'
@@ -60,10 +63,15 @@ export interface ProjectKnowledgeRecord {
   readonly summary: string;
   readonly applicablePaths: readonly string[];
   readonly operations: readonly string[];
+  readonly phases?: readonly string[];
   readonly conclusions: readonly ProjectKnowledgeRecordConclusion[];
   readonly relations: readonly ProjectKnowledgeRecordRelation[];
   readonly verification: readonly ProjectKnowledgeRecordVerification[];
   readonly sourceVersions: readonly ProjectKnowledgeRecordSourceVersion[];
+  readonly applicationCount: number;
+  readonly successCount: number;
+  readonly failureCount: number;
+  readonly lastAppliedAt?: string;
   readonly updatedAt: string;
 }
 
@@ -73,6 +81,7 @@ export interface ProjectKnowledgeUserRecordInput {
   readonly summary: string;
   readonly applicablePaths?: readonly string[];
   readonly operations?: readonly string[];
+  readonly phases?: readonly string[];
   readonly sources?: readonly ProjectKnowledgeRecordSource[];
   readonly verification?: readonly ProjectKnowledgeRecordVerification[];
 }
@@ -90,15 +99,26 @@ const MAX_TOTAL_REFERENCES = 128;
 const MAX_SOURCE_VERSIONS = 32;
 
 const RECORD_TYPES = new Set<ProjectKnowledgeRecordType>([
-  'project-map',
-  'module-overview',
-  'behavior-note',
-  'integration-path',
-  'change-impact',
-  'build-test',
+  'topology',
+  'fact',
+  'dependency',
+  'decision',
+  'pattern',
+  'procedure',
+  'constraint',
+  'failure-resolution',
 ]);
-const RECORD_STATES = new Set<ProjectKnowledgeRecordState>(['active', 'needs-review', 'retired']);
-const RECORD_AUTHORITIES = new Set<ProjectKnowledgeRecordAuthority>(['automatic', 'user']);
+const RECORD_STATES = new Set<ProjectKnowledgeRecordState>([
+  'trial',
+  'proven',
+  'enforced',
+  'superseded',
+]);
+const RECORD_AUTHORITIES = new Set<ProjectKnowledgeRecordAuthority>([
+  'automatic',
+  'user',
+  'repository',
+]);
 const RELATION_TYPES = new Set<ProjectKnowledgeRecordRelationType>([
   'contains',
   'depends-on',
@@ -220,12 +240,14 @@ function parseSource(value: unknown, label: string): ProjectKnowledgeRecordSourc
   ) {
     throw new Error(`${label}.lineEnd must be greater than or equal to lineStart`);
   }
+  const anchor = optionalBoundedString(record.anchor, `${label}.anchor`, 256);
+  const evidence = optionalBoundedString(record.evidence, `${label}.evidence`, 1024);
   return {
     source: safeProjectPath(record.source, `${label}.source`),
-    anchor: optionalBoundedString(record.anchor, `${label}.anchor`, 256),
-    lineStart: parsedLineStart,
-    lineEnd: parsedLineEnd,
-    evidence: optionalBoundedString(record.evidence, `${label}.evidence`, 1024),
+    ...(anchor === undefined ? {} : { anchor }),
+    ...(parsedLineStart === undefined ? {} : { lineStart: parsedLineStart }),
+    ...(parsedLineEnd === undefined ? {} : { lineEnd: parsedLineEnd }),
+    ...(evidence === undefined ? {} : { evidence }),
   };
 }
 
@@ -266,9 +288,10 @@ function parseRelation(value: unknown, index: number): ProjectKnowledgeRecordRel
 
 function parseVerification(value: unknown, index: number): ProjectKnowledgeRecordVerification {
   const record = objectRecord(value, `verification[${index}]`);
+  const expected = optionalBoundedString(record.expected, `verification[${index}].expected`);
   return {
     command: boundedString(record.command, `verification[${index}].command`),
-    expected: optionalBoundedString(record.expected, `verification[${index}].expected`),
+    ...(expected === undefined ? {} : { expected }),
   };
 }
 
@@ -343,6 +366,7 @@ export function validateProjectKnowledgeRecordShape(value: unknown): ProjectKnow
     summary: boundedString(record.summary, 'summary'),
     applicablePaths: pathList(record.applicablePaths, 'applicablePaths'),
     operations: stringList(record.operations, 'operations'),
+    phases: stringList(record.phases, 'phases'),
     conclusions,
     relations,
     verification: boundedList(
@@ -352,6 +376,12 @@ export function validateProjectKnowledgeRecordShape(value: unknown): ProjectKnow
       parseVerification,
     ),
     sourceVersions,
+    applicationCount: nonNegativeInteger(record.applicationCount, 'applicationCount'),
+    successCount: nonNegativeInteger(record.successCount, 'successCount'),
+    failureCount: nonNegativeInteger(record.failureCount, 'failureCount'),
+    ...(record.lastAppliedAt === undefined
+      ? {}
+      : { lastAppliedAt: parseUpdatedAt(record.lastAppliedAt) }),
     updatedAt: parseUpdatedAt(record.updatedAt),
   };
 }
@@ -371,16 +401,20 @@ export function createUserProjectKnowledgeRecord(
     id,
     projectId,
     type: input.type,
-    state: 'active',
+    state: 'proven',
     authority: 'user',
     title: input.title,
     summary: input.summary,
     applicablePaths: input.applicablePaths ?? [],
     operations: input.operations ?? [],
+    phases: input.phases ?? [],
     conclusions: sources.length > 0 ? [{ text: input.summary, sources }] : [],
     relations: [],
     verification: input.verification ?? [],
     sourceVersions: [],
+    applicationCount: 0,
+    successCount: 0,
+    failureCount: 0,
     updatedAt,
   });
 }
@@ -400,16 +434,37 @@ export function mergeProjectKnowledgeRecord(
   if (validatedCurrent.type !== validatedIncoming.type) {
     throw new Error('cannot merge records with different types');
   }
-  if (validatedCurrent.state === 'retired' && validatedIncoming.authority === 'automatic') {
+  if (validatedCurrent.state === 'superseded' && validatedIncoming.authority !== 'user') {
     return validatedIncoming;
   }
-  if (validatedCurrent.authority === 'user' && validatedIncoming.authority === 'automatic') {
+  if (validatedCurrent.authority === 'user' && validatedIncoming.authority !== 'user') {
     return validateProjectKnowledgeRecordShape({
       ...validatedIncoming,
       authority: 'user',
+      state: validatedCurrent.state,
+      title: validatedCurrent.title,
       summary: validatedCurrent.summary,
+      applicablePaths: validatedCurrent.applicablePaths,
+      operations: validatedCurrent.operations,
+      phases: validatedCurrent.phases ?? [],
       conclusions: validatedCurrent.conclusions,
+      relations: validatedCurrent.relations,
+      verification: validatedCurrent.verification,
+      applicationCount: validatedCurrent.applicationCount,
+      successCount: validatedCurrent.successCount,
+      failureCount: validatedCurrent.failureCount,
+      ...(validatedCurrent.lastAppliedAt === undefined
+        ? {}
+        : { lastAppliedAt: validatedCurrent.lastAppliedAt }),
     });
   }
   return validatedIncoming;
+}
+
+export function projectKnowledgeRecordFamily(
+  type: ProjectKnowledgeRecordType,
+): ProjectKnowledgeRecordFamily {
+  return type === 'topology' || type === 'fact' || type === 'dependency'
+    ? 'project-model'
+    : 'project-policy';
 }

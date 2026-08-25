@@ -15,6 +15,7 @@ import { readCachedProjectConfig } from './entry-reads.js';
 import { scopeCometHookTargets } from '../workflow-contract/hook-target-scope.js';
 import type { CometHookDecision, CometHookRequest } from './hook-types.js';
 import type { CometWorkflow } from './types.js';
+import { collectCometPluginContext } from './plugin-context.js';
 
 // Wrap the hot reads so that within one Hook decision the router and the
 // delegated Classic/Native Guard share a single config + selection read
@@ -60,6 +61,7 @@ interface HookRouterDependencies {
   inspectNative: typeof inspectNativeHookGuard;
   inspectClassic: typeof inspectClassicHookGuard;
   scopeTargets?: typeof scopeCometHookTargets;
+  collectContext?: typeof collectCometPluginContext;
 }
 
 const DEFAULT_DEPENDENCIES: HookRouterDependencies = {
@@ -67,6 +69,7 @@ const DEFAULT_DEPENDENCIES: HookRouterDependencies = {
   listClassic: listActiveClassicHookChanges,
   inspectNative: inspectNativeHookGuard,
   inspectClassic: inspectClassicHookGuard,
+  collectContext: collectCometPluginContext,
 };
 
 function enabledWorkflows(
@@ -217,6 +220,22 @@ export async function inspectCometHook(
   request: CometHookRequest,
   dependencies: HookRouterDependencies = DEFAULT_DEPENDENCIES,
 ): Promise<CometHookDecision> {
+  if (request.intent === 'context') {
+    try {
+      const [context] = await (dependencies.collectContext ?? collectCometPluginContext)(
+        projectRoot,
+        {
+          task: request.task?.trim() || 'Current agent task',
+          ...(request.sessionId === undefined ? {} : { sessionId: request.sessionId }),
+        },
+      );
+      return context?.text
+        ? { allowed: true, reason: 'Comet context selected', context: context.text }
+        : { allowed: true, reason: 'No matching Comet context' };
+    } catch {
+      return { allowed: true, reason: 'Comet context is temporarily unavailable' };
+    }
+  }
   if (request.intent === 'non-write') {
     return { allowed: true, reason: 'Hook event is not a write' };
   }
@@ -266,9 +285,25 @@ export async function inspectCometHook(
     }
 
     const owner = resolution.owner;
-    return owner.workflow === 'native'
+    const decision = await (owner.workflow === 'native'
       ? dependencies.inspectNative(projectRoot, projectRequest, owner.name)
-      : dependencies.inspectClassic(projectRoot, owner.name, projectRequest);
+      : dependencies.inspectClassic(projectRoot, owner.name, projectRequest));
+    if (!decision.allowed) return decision;
+    try {
+      const [context] = await (dependencies.collectContext ?? collectCometPluginContext)(
+        projectRoot,
+        {
+          task: `${request.toolName ?? 'write'} ${projectRequest.targets.join(' ')}`,
+          path: projectRequest.targets[0],
+          operation: request.toolName ?? 'write',
+          phase: owner.phase,
+          ...(request.sessionId === undefined ? {} : { sessionId: request.sessionId }),
+        },
+      );
+      return context?.text ? { ...decision, context: context.text } : decision;
+    } catch {
+      return decision;
+    }
   } catch (error) {
     return {
       allowed: false,

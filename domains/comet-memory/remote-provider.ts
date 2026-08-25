@@ -1,13 +1,20 @@
 import type {
+  AgentContextOutcomeStatus,
+  AgentExperienceEvidence,
+} from '../agent-learning/index.js';
+import type {
   MemoryCorrection,
+  MemoryApplicationFeedback,
   MemoryInput,
   MemoryManagementRecord,
   MemoryManagementView,
+  MemoryManifestView,
   MemoryObservation,
   MemoryObservationResult,
   MemoryProviderConfig,
   MemoryProviderMutation,
   MemoryProviderQuery,
+  MemoryProviderQueryResult,
   MemoryQuery,
   MemoryRecord,
   MemoryReviewActionSet,
@@ -20,6 +27,10 @@ import type {
   PersonalMemoryStatus,
 } from './types.js';
 import { isMemoryClass } from './types.js';
+import { runBoundedHttpRequest } from '../../platform/http/bounded-request.js';
+
+const MAX_REMOTE_RESPONSE_BYTES = 1024 * 1024;
+const MAX_REMOTE_REQUEST_BYTES = 512 * 1024;
 
 export interface RemotePersonalMemoryServiceOptions extends Partial<
   Pick<MemoryProviderConfig, 'profileCharLimit' | 'taskContextCharLimit'>
@@ -73,12 +84,20 @@ export class RemotePersonalMemoryService
     };
   }
 
-  public async query(
-    request: MemoryProviderQuery,
-  ): Promise<MemoryRetrieval | MemoryManagementView> {
-    return request.view === 'manage'
-      ? this.manage(request.query)
-      : this.retrieve({ ...request.query, view: request.view });
+  public async query(request: MemoryProviderQuery): Promise<MemoryProviderQueryResult> {
+    if (request.view === 'manage') return this.manage(request.query);
+    if (request.view === 'expand') {
+      if (!request.query.id) throw new Error('Memory expand requires an id');
+      return { kind: 'expand', record: await this.get(request.query.id) };
+    }
+    if (request.view === 'manifest') {
+      const result = await this.request<unknown>('query', {
+        view: 'manifest',
+        query: { ...request.query, projectKey: request.query.projectKey ?? this.projectKey },
+      });
+      return normalizeManifest(result, request.query.projectKey ?? this.projectKey);
+    }
+    return this.retrieve({ ...request.query, view: request.view });
   }
 
   public async apply(mutation: MemoryProviderMutation): Promise<unknown> {
@@ -129,6 +148,23 @@ export class RemotePersonalMemoryService
       input: { id },
     });
     return requireMutationRecord(result, this.projectKey);
+  }
+
+  public async recordApplicationOutcome(
+    id: string,
+    outcome: AgentContextOutcomeStatus,
+    options: Omit<MemoryApplicationFeedback, 'id' | 'outcome'> = {},
+  ): Promise<MemoryRecord | null> {
+    const result = await this.request<unknown>('apply', {
+      operation: 'feedback',
+      input: { id, outcome, ...options },
+    });
+    if (!isRecord(result) || (result.record !== null && !isRecord(result.record))) {
+      throw new Error('Remote Provider returned an invalid memory feedback result');
+    }
+    return result.record === null
+      ? null
+      : normalizeMemoryRecord(result.record, this.projectKey, false);
   }
 
   public async observe(observation: MemoryObservation): Promise<MemoryObservationResult> {
@@ -228,28 +264,36 @@ export class RemotePersonalMemoryService
     const token = this.tokenEnv === undefined ? undefined : process.env[this.tokenEnv];
     const headers: Record<string, string> = { 'content-type': 'application/json' };
     if (token) headers.authorization = `Bearer ${token}`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
-    try {
-      const response = await this.fetchImpl(this.endpoint, {
+    const body = JSON.stringify({
+      schema: 'comet.personal-memory.provider.v1',
+      operation,
+      profile: this.profile,
+      ...(this.projectKey === undefined ? {} : { projectKey: this.projectKey }),
+      payload,
+    });
+    if (new TextEncoder().encode(body).byteLength > MAX_REMOTE_REQUEST_BYTES) {
+      throw new Error('Remote Personal Memory request exceeds byte limit');
+    }
+    const { response, bytes } = await runBoundedHttpRequest({
+      url: this.endpoint,
+      timeoutMs: this.timeoutMs,
+      maxResponseBytes: MAX_REMOTE_RESPONSE_BYTES,
+      fetch: this.fetchImpl,
+      init: {
         method: 'POST',
         headers,
-        body: JSON.stringify({
-          schema: 'comet.personal-memory.provider.v1',
-          operation,
-          profile: this.profile,
-          ...(this.projectKey === undefined ? {} : { projectKey: this.projectKey }),
-          payload,
-        }),
-        signal: controller.signal,
-      });
-      if (!response.ok) throw new Error(`Remote Provider request failed (${response.status})`);
-      const body = (await response.json()) as unknown;
-      if (!isRecord(body)) throw new Error('Remote Provider returned an invalid response');
-      return (isRecord(body.result) ? body.result : body) as T;
-    } finally {
-      clearTimeout(timeout);
+        body,
+      },
+    });
+    if (!response.ok) throw new Error(`Remote Provider request failed (${response.status})`);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+    } catch (error) {
+      throw new Error('Remote Provider returned invalid JSON', { cause: error });
     }
+    if (!isRecord(parsed)) throw new Error('Remote Provider returned an invalid response');
+    return (isRecord(parsed.result) ? parsed.result : parsed) as T;
   }
 }
 
@@ -269,7 +313,73 @@ function normalizeMutationResult(
       return normalizeReviewResult(value, projectKey);
     case 'forget':
       return normalizeAcknowledgement(value);
+    case 'feedback':
+      if (!isRecord(value) || (value.record !== null && !isRecord(value.record))) {
+        throw new Error('Remote Provider returned an invalid memory feedback result');
+      }
+      return value.record === null ? null : normalizeMemoryRecord(value.record, projectKey, false);
+    case 'experience-delta':
+      if (!isRecord(value) || typeof value.changed !== 'boolean') {
+        throw new Error('Remote Provider returned an invalid Learning Delta result');
+      }
+      return {
+        changed: value.changed,
+        ...(value.record === undefined || value.record === null
+          ? { record: null }
+          : { record: normalizeMemoryRecord(value.record, projectKey, false) }),
+      };
   }
+}
+
+function normalizeManifest(value: unknown, projectKey?: string): MemoryManifestView {
+  if (!isRecord(value) || value.kind !== 'manifest' || !Array.isArray(value.items)) {
+    throw new Error('Remote Provider returned an invalid memory manifest');
+  }
+  return {
+    kind: 'manifest',
+    truncated: value.truncated === true,
+    items: value.items.map((entry) => {
+      if (
+        !isRecord(entry) ||
+        typeof entry.id !== 'string' ||
+        typeof entry.memoryType !== 'string' ||
+        typeof entry.state !== 'string' ||
+        (entry.authority !== 'explicit' && entry.authority !== 'inferred') ||
+        typeof entry.title !== 'string' ||
+        typeof entry.summary !== 'string' ||
+        (entry.scope !== 'global' && entry.scope !== 'project') ||
+        !stringArray(entry.pathPatterns) ||
+        !stringArray(entry.taskTypes) ||
+        !stringArray(entry.operations) ||
+        !stringArray(entry.phases) ||
+        !Array.isArray(entry.evidence) ||
+        !entry.evidence.every(isExperienceEvidence)
+      ) {
+        throw new Error('Remote Provider returned an invalid memory manifest item');
+      }
+      return {
+        id: entry.id,
+        memoryType: entry.memoryType as MemoryManifestView['items'][number]['memoryType'],
+        state: entry.state as MemoryManifestView['items'][number]['state'],
+        authority: entry.authority,
+        title: entry.title,
+        summary: entry.summary,
+        scope: entry.scope,
+        ...(entry.scope === 'project'
+          ? { projectKey: String(entry.projectKey ?? projectKey ?? '') }
+          : {}),
+        pathPatterns: entry.pathPatterns,
+        taskTypes: entry.taskTypes,
+        operations: entry.operations,
+        phases: entry.phases,
+        evidence: entry.evidence.map(normalizeExperienceEvidence),
+      };
+    }),
+  };
+}
+
+function stringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
 }
 
 function requireMutationRecord(value: unknown, projectKey?: string): MemoryRecord {
@@ -285,7 +395,7 @@ function normalizeObservationResult(value: unknown, projectKey?: string): Memory
     typeof value.deduplicated !== 'boolean' ||
     typeof value.ignored !== 'boolean' ||
     typeof value.candidate !== 'boolean' ||
-    typeof value.activated !== 'boolean' ||
+    typeof value.promoted !== 'boolean' ||
     (value.record !== null && value.record !== undefined && !isRecord(value.record))
   ) {
     throw new Error('Remote Provider returned an invalid observation result');
@@ -294,7 +404,7 @@ function normalizeObservationResult(value: unknown, projectKey?: string): Memory
     deduplicated: value.deduplicated,
     ignored: value.ignored,
     candidate: value.candidate,
-    activated: value.activated,
+    promoted: value.promoted,
     record:
       value.record === null || value.record === undefined
         ? null
@@ -365,7 +475,7 @@ function normalizeRetrieval(value: unknown, projectKey?: string): MemoryRetrieva
 function normalizeMemoryRecord(
   value: unknown,
   projectKey?: string,
-  requireActive = true,
+  requireApplicable = true,
 ): MemoryRecord {
   if (!isRecord(value)) throw new Error('Remote Provider returned an invalid memory record');
   const scope = value.scope;
@@ -381,15 +491,28 @@ function normalizeMemoryRecord(
     !Array.isArray(value.pathPatterns) ||
     !Array.isArray(value.taskTypes) ||
     !Array.isArray(value.operations) ||
+    !Array.isArray(value.phases) ||
+    !Array.isArray(value.evidence) ||
     !value.tags.every((entry) => typeof entry === 'string') ||
     !value.pathPatterns.every((entry) => typeof entry === 'string') ||
     !value.taskTypes.every((entry) => typeof entry === 'string') ||
     !value.operations.every((entry) => typeof entry === 'string') ||
+    !value.phases.every((entry) => typeof entry === 'string') ||
+    !value.evidence.every(isExperienceEvidence) ||
     (value.memoryClass !== undefined && !isMemoryClass(value.memoryClass)) ||
     (value.language !== undefined && value.language !== 'zh-CN' && value.language !== 'en') ||
     (value.kind !== 'explicit' && value.kind !== 'inferred') ||
-    typeof value.active !== 'boolean' ||
-    (requireActive && value.active !== true) ||
+    (value.authority !== 'explicit' && value.authority !== 'inferred') ||
+    (value.memoryType !== 'core-profile' &&
+      value.memoryType !== 'collaboration-policy' &&
+      value.memoryType !== 'personal-episode') ||
+    ((value.memoryType === 'personal-episode' || value.episode !== undefined) &&
+      !isPersonalEpisodeDetails(value.episode)) ||
+    (value.state !== 'trial' && value.state !== 'proven' && value.state !== 'superseded') ||
+    (requireApplicable && value.state === 'superseded') ||
+    typeof value.applicationCount !== 'number' ||
+    typeof value.successCount !== 'number' ||
+    typeof value.failureCount !== 'number' ||
     !normalizeSource(value.source) ||
     !Array.isArray(value.sources) ||
     !value.sources.every((entry) => normalizeSource(entry)) ||
@@ -461,17 +584,31 @@ function normalizeManagementRecord(value: unknown, projectKey?: string): MemoryM
     !Array.isArray(value.pathPatterns) ||
     !Array.isArray(value.taskTypes) ||
     !Array.isArray(value.operations) ||
+    !Array.isArray(value.phases) ||
+    !Array.isArray(value.evidence) ||
     !value.tags.every((entry) => typeof entry === 'string') ||
     !value.pathPatterns.every((entry) => typeof entry === 'string') ||
     !value.taskTypes.every((entry) => typeof entry === 'string') ||
     !value.operations.every((entry) => typeof entry === 'string') ||
+    !value.phases.every((entry) => typeof entry === 'string') ||
+    !value.evidence.every(isExperienceEvidence) ||
     (value.memoryClass !== undefined && !isMemoryClass(value.memoryClass)) ||
     (value.language !== undefined && value.language !== 'zh-CN' && value.language !== 'en') ||
     (value.kind !== 'explicit' && value.kind !== 'inferred') ||
-    (value.status !== 'active' &&
-      value.status !== 'inactive' &&
+    (value.authority !== 'explicit' && value.authority !== 'inferred') ||
+    (value.status !== 'trial' &&
+      value.status !== 'proven' &&
+      value.status !== 'superseded' &&
       value.status !== 'conflict' &&
       value.status !== 'tombstoned') ||
+    (value.memoryType !== 'core-profile' &&
+      value.memoryType !== 'collaboration-policy' &&
+      value.memoryType !== 'personal-episode') ||
+    ((value.memoryType === 'personal-episode' || value.episode !== undefined) &&
+      !isPersonalEpisodeDetails(value.episode)) ||
+    typeof value.applicationCount !== 'number' ||
+    typeof value.successCount !== 'number' ||
+    typeof value.failureCount !== 'number' ||
     typeof value.evidenceCount !== 'number' ||
     value.evidenceCount < 0 ||
     (value.sourceKind !== 'user' &&
@@ -489,6 +626,49 @@ function normalizeManagementRecord(value: unknown, projectKey?: string): MemoryM
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isPersonalEpisodeDetails(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.situation === 'string' &&
+    value.situation.trim().length > 0 &&
+    typeof value.actionSummary === 'string' &&
+    value.actionSummary.trim().length > 0 &&
+    typeof value.outcome === 'string' &&
+    value.outcome.trim().length > 0 &&
+    typeof value.lesson === 'string' &&
+    value.lesson.trim().length > 0
+  );
+}
+
+function isExperienceEvidence(value: unknown): value is AgentExperienceEvidence {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    ['user', 'source', 'verification', 'review', 'failure', 'outcome'].includes(
+      String(value.kind),
+    ) &&
+    typeof value.summary === 'string' &&
+    (value.source === undefined || typeof value.source === 'string') &&
+    (value.anchor === undefined || typeof value.anchor === 'string') &&
+    (value.digest === undefined || typeof value.digest === 'string') &&
+    (value.command === undefined || typeof value.command === 'string') &&
+    (value.success === undefined || typeof value.success === 'boolean')
+  );
+}
+
+function normalizeExperienceEvidence(value: AgentExperienceEvidence): AgentExperienceEvidence {
+  return {
+    id: value.id,
+    kind: value.kind,
+    summary: value.summary,
+    ...(value.source === undefined ? {} : { source: value.source }),
+    ...(value.anchor === undefined ? {} : { anchor: value.anchor }),
+    ...(value.digest === undefined ? {} : { digest: value.digest }),
+    ...(value.command === undefined ? {} : { command: value.command }),
+    ...(value.success === undefined ? {} : { success: value.success }),
+  };
 }
 
 function redactEndpoint(value: string): string {

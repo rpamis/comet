@@ -1,9 +1,8 @@
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 
-import {
-  createDefaultCometPluginBridge,
-  type CometLifecycleObservation,
-} from '../../domains/comet-plugin/index.js';
+import { createDefaultCometPluginBridge } from '../../domains/comet-plugin/index.js';
+import { AGENT_EXPERIENCE_SCHEMA } from '../../domains/agent-learning/index.js';
 import type { MemoryLanguage } from '../../domains/comet-memory/index.js';
 import { readWorkflowProjectConfig } from '../../domains/workflow-contract/project-config-reader.js';
 import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
@@ -58,6 +57,7 @@ export async function personalMemoryRetrieveCommand(
     projectKey: options.project,
     task: options.task,
     path: options.path,
+    phase: options.phase,
     operation: options.operation,
     category: options.category,
     tags: options.tags,
@@ -186,16 +186,46 @@ export async function personalMemoryObserveCommand(
 ): Promise<unknown> {
   const bridge = await createBridge(targetPath, options);
   const language = await resolveDisplayLanguage(targetPath, options);
-  const observation: CometLifecycleObservation = {
-    name: 'change.completed',
-    workflow: requireText(options.workflow, '--workflow'),
-    changeId: requireText(options.change, '--change'),
-    candidateKey: requireText(options.candidateKey, '--candidate-key'),
-    success: options.success !== false,
-    category: options.category ?? defaultMemoryCategory(language),
-    text: requireText(options.text, '--text'),
-  };
-  await bridge.dispatchLifecycle(observation);
+  const workflow = requireText(options.workflow, '--workflow');
+  const changeId = requireText(options.change, '--change');
+  const candidateKey = requireText(options.candidateKey, '--candidate-key');
+  const text = requireText(options.text, '--text');
+  const success = options.success !== false;
+  const identity = createHash('sha256')
+    .update(`${workflow}:${changeId}:${candidateKey}`)
+    .digest('hex');
+  await bridge.dispatchExperience({
+    schema: AGENT_EXPERIENCE_SCHEMA,
+    eventId: `memory-observe:${identity}`,
+    episodeId: `workflow:${createHash('sha256').update(`${workflow}:${changeId}`).digest('hex')}`,
+    occurredAt: new Date().toISOString(),
+    type: 'episode.completed',
+    actor: 'workflow',
+    scope: 'project',
+    projectId: bridge.currentProjectId,
+    source: { kind: 'workflow', name: workflow, workflow, changeId },
+    context: { workflow, changeId },
+    signal: {
+      kind: 'acceptance',
+      explicit: false,
+      longTerm: true,
+      text,
+      category: options.category ?? defaultMemoryCategory(language),
+    },
+    evidence: [
+      {
+        id: candidateKey,
+        kind: 'outcome',
+        summary: text,
+        success,
+        digest: createHash('sha256').update(text).digest('hex'),
+      },
+    ],
+    outcome: {
+      status: success ? 'used-successfully' : 'contributed-to-failure',
+      summary: options.category ?? defaultMemoryCategory(language),
+    },
+  });
   const status = await bridge.status();
   print(status, options);
   return status;
@@ -210,6 +240,7 @@ export async function personalMemoryContextCommand(
     task: requireText(options.task, '--task'),
     path: options.path,
     phase: options.phase,
+    operation: options.operation,
   });
   print(context, options);
   return context;
@@ -385,14 +416,16 @@ function memoryStatusLabel(status: string, language: MemoryLanguage): string {
   return (
     (language === 'zh-CN'
       ? {
-          active: '生效',
-          inactive: '已停用',
+          trial: '试用中',
+          proven: '已验证',
+          superseded: '已替代',
           conflict: '待确认',
           tombstoned: '已忘记',
         }
       : {
-          active: 'active',
-          inactive: 'inactive',
+          trial: 'trial',
+          proven: 'proven',
+          superseded: 'superseded',
           conflict: 'conflict',
           tombstoned: 'forgotten',
         })[status] ?? status

@@ -12,28 +12,86 @@ import {
   createProjectKnowledgeQuery,
   type ProjectKnowledgeRecord,
 } from '../../../domains/project-knowledge/index.js';
-import type { PluginEvent } from '../../../domains/comet-plugin/index.js';
+import {
+  AGENT_EXPERIENCE_SCHEMA,
+  type AgentExperienceEvent,
+} from '../../../domains/agent-learning/index.js';
 
 async function temporaryRoot(prefix: string): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), prefix));
 }
 
-function event(name: PluginEvent['name'], payload: Record<string, unknown> = {}): PluginEvent {
+function event(
+  type: AgentExperienceEvent['type'],
+  payload: Record<string, unknown> = {},
+): AgentExperienceEvent {
+  const changedPaths = Array.isArray(payload.changedPaths)
+    ? payload.changedPaths.filter((entry): entry is string => typeof entry === 'string')
+    : [];
+  const verificationValues = Array.isArray(payload.verificationResults)
+    ? payload.verificationResults
+    : [];
+  const verificationCommands = Array.isArray(payload.verificationCommands)
+    ? payload.verificationCommands.filter((entry): entry is string => typeof entry === 'string')
+    : [];
+  const evidence = [
+    ...verificationValues.flatMap((entry, index) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return [];
+      const value = entry as { command?: unknown; success?: unknown };
+      if (typeof value.command !== 'string' || typeof value.success !== 'boolean') return [];
+      return [
+        {
+          id: `verification-${index}`,
+          kind: 'verification' as const,
+          summary: value.command,
+          command: value.command,
+          success: value.success,
+        },
+      ];
+    }),
+    ...verificationCommands
+      .filter(
+        (command) =>
+          !verificationValues.some(
+            (entry) =>
+              entry !== null &&
+              typeof entry === 'object' &&
+              !Array.isArray(entry) &&
+              (entry as { command?: unknown }).command === command,
+          ),
+      )
+      .map((command, index) => ({
+        id: `verification-command-${index}`,
+        kind: 'verification' as const,
+        summary: command,
+        command,
+      })),
+  ];
   return {
-    name,
+    schema: AGENT_EXPERIENCE_SCHEMA,
+    eventId:
+      typeof payload.eventId === 'string' ? payload.eventId : `event:${type}:change-learning`,
+    episodeId: 'episode:change-learning',
+    occurredAt: '2026-08-24T00:00:00.000Z',
+    type,
+    actor: 'workflow',
     scope: 'project',
     projectId: 'learning-project',
     source: {
       kind: 'workflow',
       name: 'native',
-      change: 'change-learning',
-      projectId: 'learning-project',
-    },
-    payload: {
       workflow: 'native',
       changeId: 'change-learning',
-      success: true,
-      ...payload,
+    },
+    context: {
+      workflow: 'native',
+      changeId: 'change-learning',
+      paths: changedPaths,
+      ...(typeof payload.operation === 'string' ? { operation: payload.operation } : {}),
+    },
+    evidence,
+    outcome: {
+      status: payload.success === false ? 'contributed-to-failure' : 'used-successfully',
     },
   };
 }
@@ -58,13 +116,59 @@ function verifiedPayload(): Record<string, unknown> {
 }
 
 describe('project knowledge learning', () => {
-  test('creates a bounded review packet only for structured lifecycle evidence', async () => {
+  test('bootstraps the first-use Project Model from code, config, and custom knowledge sources', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-bootstrap-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-bootstrap-storage-');
+    const provider = await createProvider(root, storageRoot);
+    try {
+      await fs.mkdir(path.join(root, 'src'), { recursive: true });
+      await fs.mkdir(path.join(root, 'docs', 'custom'), { recursive: true });
+      await fs.writeFile(
+        path.join(root, 'src', 'main.ts'),
+        "import { helper } from './helper.js';\nexport const main = helper;\n",
+      );
+      await fs.writeFile(path.join(root, 'src', 'helper.ts'), 'export const helper = true;\n');
+      await fs.writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ scripts: { build: 'tsc', test: 'vitest run' } }),
+      );
+      await fs.writeFile(
+        path.join(root, 'docs', 'custom', 'architecture.md'),
+        '# Architecture\n\nCustom project knowledge.\n',
+      );
+
+      const result = await new ProjectKnowledgeLearningService({
+        projectRoot: root,
+        provider,
+      }).bootstrapProjectModel(['docs/custom/architecture.md']);
+      const listed = await provider.query({ kind: 'list', state: 'all', limit: 100 });
+      const records = listed.kind === 'list' ? listed.records : [];
+
+      expect(result.skipped).toBe(false);
+      expect(records.map((record) => record.type)).toEqual(
+        expect.arrayContaining(['topology', 'fact', 'dependency']),
+      );
+      expect(records.find((record) => record.id === 'generated-knowledge-corpus')).toMatchObject({
+        conclusions: [
+          expect.objectContaining({
+            sources: [expect.objectContaining({ source: 'docs/custom/architecture.md' })],
+          }),
+        ],
+      });
+    } finally {
+      provider.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('creates a review packet only for structured lifecycle evidence', async () => {
     const root = await temporaryRoot('comet-project-knowledge-learning-packet-');
     try {
       await fs.mkdir(path.join(root, 'src'), { recursive: true });
       await fs.writeFile(path.join(root, 'src', 'main.ts'), 'export const main = true;\n');
       const packet = await createProjectKnowledgeReviewPacket(
-        event('change.completed', {
+        event('verification.completed', {
           operation: 'implement',
           ...verifiedPayload(),
           chat: '不要读取这段聊天',
@@ -73,21 +177,21 @@ describe('project knowledge learning', () => {
         { projectRoot: root },
       );
       expect(packet).toMatchObject({
-        eventName: 'change.completed',
+        eventName: 'verification.completed',
         changedHint: { changedPaths: ['src/main.ts'] },
         sources: [{ source: 'src/main.ts', text: 'export const main = true;\n' }],
       });
       expect(JSON.stringify(packet)).not.toContain('聊天');
       expect(JSON.stringify(packet)).not.toContain('diff');
       await expect(
-        createProjectKnowledgeReviewPacket(event('task.completed'), { projectRoot: root }),
+        createProjectKnowledgeReviewPacket(event('episode.completed'), { projectRoot: root }),
       ).resolves.toBeNull();
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }
   });
 
-  test('writes active records without a semantic reviewer and makes them queryable', async () => {
+  test('writes proven records without a semantic reviewer and makes them queryable', async () => {
     const root = await temporaryRoot('comet-project-knowledge-learning-service-');
     const storageRoot = await temporaryRoot('comet-project-knowledge-learning-storage-');
     const provider = await createProvider(root, storageRoot);
@@ -100,8 +204,8 @@ describe('project knowledge learning', () => {
       });
       const result = await service.processEvent(event('verification.completed', verifiedPayload()));
       expect(result.skipped).toBe(false);
-      expect(result.activated).toContain('generated-project-map');
-      const listed = await provider.query({ kind: 'list', state: 'active' });
+      expect(result.proven).toContain('generated-project-map');
+      const listed = await provider.query({ kind: 'list', state: 'proven' });
       expect(listed.kind).toBe('list');
       expect(listed.records.map((record) => record.id)).toContain('generated-project-map');
       await provider.query({
@@ -112,13 +216,47 @@ describe('project knowledge learning', () => {
         provider.query({ kind: 'get', id: 'generated-module-overview' }),
       ).resolves.toMatchObject({
         record: expect.objectContaining({
-          state: 'active',
+          state: 'proven',
           conclusions: [
             expect.objectContaining({
               sources: [expect.not.objectContaining({ anchor: 'module' })],
             }),
           ],
         }),
+      });
+    } finally {
+      provider.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('returns deterministic deltas while deferring unavailable semantic review', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-deferred-review-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-deferred-review-storage-');
+    const provider = await createProvider(root, storageRoot);
+    try {
+      await fs.mkdir(path.join(root, 'src'), { recursive: true });
+      await fs.writeFile(path.join(root, 'src', 'main.ts'), 'export const main = true;\n');
+      const service = new ProjectKnowledgeLearningService({
+        projectRoot: root,
+        provider,
+        reviewer: {
+          review: async () => {
+            throw new Error('semantic reviewer unavailable');
+          },
+        },
+      });
+
+      await expect(
+        service.reflectEvent(event('verification.completed', verifiedPayload())),
+      ).resolves.toMatchObject({
+        skipped: false,
+        deferred: true,
+        deltas: expect.arrayContaining([
+          expect.objectContaining({ owner: 'comet.project-knowledge' }),
+        ]),
+        diagnostics: [expect.objectContaining({ code: 'reviewer-unavailable' })],
       });
     } finally {
       provider.close();
@@ -137,12 +275,12 @@ describe('project knowledge learning', () => {
       const service = new ProjectKnowledgeLearningService({ projectRoot: root, provider });
       await expect(
         service.processEvent(
-          event('change.completed', {
+          event('verification.completed', {
             ...verifiedPayload(),
             success: false,
           }),
         ),
-      ).resolves.toMatchObject({ skipped: true, activated: [] });
+      ).resolves.toMatchObject({ skipped: true, proven: [] });
       await expect(
         service.processEvent(
           event('verification.completed', {
@@ -150,7 +288,7 @@ describe('project knowledge learning', () => {
             verificationResults: [{ command: 'pnpm test', success: false }],
           }),
         ),
-      ).resolves.toMatchObject({ skipped: true, activated: [] });
+      ).resolves.toMatchObject({ skipped: true, proven: [] });
       await expect(provider.query({ kind: 'list', state: 'all' })).resolves.toMatchObject({
         records: [],
       });
@@ -161,7 +299,7 @@ describe('project knowledge learning', () => {
     }
   });
 
-  test('applies bounded semantic reviewer create, update, and retire actions', async () => {
+  test('applies semantic reviewer create, update, and supersede actions', async () => {
     const root = await temporaryRoot('comet-project-knowledge-learning-review-actions-');
     const storageRoot = await temporaryRoot(
       'comet-project-knowledge-learning-review-actions-storage-',
@@ -172,12 +310,12 @@ describe('project knowledge learning', () => {
       const source = path.join(root, 'src', 'main.ts');
       await fs.writeFile(source, 'export const main = true;\n');
       const stat = await fs.stat(source);
-      let action: 'create' | 'update' | 'retire' = 'create';
+      let action: 'create' | 'update' | 'supersede' = 'create';
       const semanticRecord: ProjectKnowledgeRecord = {
         id: 'semantic-main-module',
         projectId: 'learning-project',
-        type: 'module-overview',
-        state: 'active',
+        type: 'dependency',
+        state: 'trial',
         authority: 'automatic',
         title: 'Main module',
         summary: 'Created by semantic review.',
@@ -191,6 +329,9 @@ describe('project knowledge learning', () => {
         sourceVersions: [
           { source: 'src/main.ts', size: stat.size, modifiedAt: Math.trunc(stat.mtimeMs) },
         ],
+        applicationCount: 0,
+        successCount: 0,
+        failureCount: 0,
         updatedAt: '2026-08-23T00:00:00.000Z',
       };
       const service = new ProjectKnowledgeLearningService({
@@ -198,8 +339,8 @@ describe('project knowledge learning', () => {
         provider,
         reviewer: {
           review: () =>
-            action === 'retire'
-              ? [{ action: 'retire', recordId: semanticRecord.id }]
+            action === 'supersede'
+              ? [{ action: 'supersede', recordId: semanticRecord.id }]
               : [
                   {
                     action,
@@ -217,21 +358,159 @@ describe('project knowledge learning', () => {
 
       await expect(
         service.processEvent(event('verification.completed', verifiedPayload())),
-      ).resolves.toMatchObject({ activated: expect.arrayContaining([semanticRecord.id]) });
+      ).resolves.toMatchObject({ persisted: expect.arrayContaining([semanticRecord.id]) });
       action = 'update';
-      await service.processEvent(event('verification.completed', verifiedPayload()));
+      await service.processEvent(
+        event('verification.completed', { ...verifiedPayload(), eventId: 'semantic-update' }),
+      );
       await expect(provider.query({ kind: 'get', id: semanticRecord.id })).resolves.toMatchObject({
         record: expect.objectContaining({
           summary: 'Updated by semantic review.',
-          state: 'active',
+          state: 'trial',
         }),
       });
-      action = 'retire';
+      action = 'supersede';
       await expect(
-        service.processEvent(event('verification.completed', verifiedPayload())),
-      ).resolves.toMatchObject({ retired: [semanticRecord.id] });
+        service.processEvent(
+          event('verification.completed', { ...verifiedPayload(), eventId: 'semantic-supersede' }),
+        ),
+      ).resolves.toMatchObject({ superseded: [semanticRecord.id] });
       await expect(provider.query({ kind: 'get', id: semanticRecord.id })).resolves.toMatchObject({
-        record: expect.objectContaining({ state: 'retired' }),
+        record: expect.objectContaining({ state: 'superseded' }),
+      });
+    } finally {
+      provider.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('forms project policies from review, failure, verification, and archive experience', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-policy-events-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-policy-events-storage-');
+    const provider = await createProvider(root, storageRoot);
+    try {
+      await fs.mkdir(path.join(root, 'src'), { recursive: true });
+      const source = path.join(root, 'src', 'main.ts');
+      await fs.writeFile(source, 'export const main = true;\n');
+      const stat = await fs.stat(source);
+      const policyTypes = {
+        'review.resolved': 'decision',
+        'failure.resolved': 'failure-resolution',
+        'verification.completed': 'constraint',
+        'change.archived': 'procedure',
+      } as const;
+      const service = new ProjectKnowledgeLearningService({
+        projectRoot: root,
+        provider,
+        reviewer: {
+          review: (packet) => {
+            const type = policyTypes[packet.eventName as keyof typeof policyTypes];
+            if (type === undefined) return [];
+            const records: ProjectKnowledgeRecord[] = [
+              {
+                id: `policy-${type}`,
+                projectId: 'learning-project',
+                type,
+                state: 'trial',
+                authority: 'automatic',
+                title: `${type} policy`,
+                summary: `Learned ${type} policy.`,
+                applicablePaths: ['src/'],
+                operations: [packet.operation ?? 'implement'],
+                conclusions: [
+                  {
+                    text: `Apply the ${type} policy.`,
+                    sources: [{ source: 'src/main.ts' }],
+                  },
+                ],
+                relations: [],
+                verification:
+                  type === 'constraint' ? [{ command: 'pnpm test', expected: 'pass' }] : [],
+                sourceVersions: [
+                  {
+                    source: 'src/main.ts',
+                    size: stat.size,
+                    modifiedAt: Math.trunc(stat.mtimeMs),
+                  },
+                ],
+                applicationCount: 0,
+                successCount: 0,
+                failureCount: 0,
+                updatedAt: '2026-08-24T00:00:00.000Z',
+              },
+            ];
+            if (packet.eventName === 'review.resolved') {
+              records.push({
+                ...records[0]!,
+                id: 'policy-pattern',
+                type: 'pattern',
+                title: 'pattern policy',
+                summary: 'Learned pattern policy.',
+              });
+            }
+            return records.map((record) => ({ action: 'create' as const, record }));
+          },
+        },
+      });
+
+      for (const type of Object.keys(policyTypes) as (keyof typeof policyTypes)[]) {
+        const result = await service.processEvent(event(type, verifiedPayload()));
+        expect(result.persisted).toContain(`policy-${policyTypes[type]}`);
+      }
+
+      const listed = await provider.query({ kind: 'list', state: 'all' });
+      expect(listed.kind).toBe('list');
+      expect(listed.records.map((record) => record.type)).toEqual(
+        expect.arrayContaining([
+          'decision',
+          'pattern',
+          'failure-resolution',
+          'constraint',
+          'procedure',
+        ]),
+      );
+      expect(listed.records.find((record) => record.id === 'policy-constraint')).toMatchObject({
+        state: 'trial',
+        verification: [{ command: 'pnpm test', expected: 'pass' }],
+      });
+    } finally {
+      provider.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('creates baseline project policies without a semantic reviewer and enforces proven checks', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-baseline-policy-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-baseline-policy-storage-');
+    const provider = await createProvider(root, storageRoot);
+    try {
+      await fs.mkdir(path.join(root, 'src'), { recursive: true });
+      await fs.writeFile(path.join(root, 'src', 'main.ts'), 'export const main = true;\n');
+      await fs.writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ scripts: { test: 'vitest run' } }),
+      );
+      const service = new ProjectKnowledgeLearningService({ projectRoot: root, provider });
+
+      for (const type of [
+        'review.resolved',
+        'failure.resolved',
+        'verification.completed',
+        'change.archived',
+      ] as const) {
+        await service.processEvent(event(type, verifiedPayload()));
+      }
+
+      const listed = await provider.query({ kind: 'list', state: 'all' });
+      expect(listed.kind).toBe('list');
+      expect(listed.records.map((record) => record.type)).toEqual(
+        expect.arrayContaining(['decision', 'failure-resolution', 'constraint', 'procedure']),
+      );
+      expect(listed.records.find((record) => record.type === 'constraint')).toMatchObject({
+        state: 'enforced',
+        verification: [{ command: 'pnpm test', expected: 'pass' }],
       });
     } finally {
       provider.close();
@@ -262,8 +541,8 @@ describe('project knowledge learning', () => {
               record: {
                 id: invalidId,
                 projectId: 'learning-project',
-                type: 'module-overview',
-                state: 'active',
+                type: 'dependency',
+                state: 'trial',
                 authority: 'automatic',
                 title: 'Invalid anchor',
                 summary: 'This semantic record references an anchor that does not exist.',
@@ -284,6 +563,9 @@ describe('project knowledge learning', () => {
                     modifiedAt: Math.trunc(stat.mtimeMs),
                   },
                 ],
+                applicationCount: 0,
+                successCount: 0,
+                failureCount: 0,
                 updatedAt: '2026-08-23T00:00:00.000Z',
               },
             },
@@ -294,7 +576,7 @@ describe('project knowledge learning', () => {
       await expect(
         service.processEvent(event('verification.completed', verifiedPayload())),
       ).resolves.toMatchObject({
-        activated: expect.not.arrayContaining([invalidId]),
+        persisted: expect.not.arrayContaining([invalidId]),
         diagnostics: [expect.objectContaining({ code: 'source-changed', source: 'src/main.ts' })],
       });
       await expect(provider.query({ kind: 'get', id: invalidId })).resolves.toMatchObject({
@@ -381,7 +663,7 @@ describe('project knowledge learning', () => {
       )!;
       await provider.apply({ kind: 'upsert', record: candidate });
       await provider.apply({
-        kind: 'retire',
+        kind: 'supersede',
         id: candidate.id,
         projectId: candidate.projectId,
         updatedAt: new Date().toISOString(),
@@ -389,7 +671,7 @@ describe('project knowledge learning', () => {
       const service = new ProjectKnowledgeLearningService({ projectRoot: root, provider });
       await service.processEvent(event('verification.completed', verifiedPayload()));
       await expect(provider.query({ kind: 'get', id: candidate.id })).resolves.toMatchObject({
-        record: expect.objectContaining({ state: 'retired' }),
+        record: expect.objectContaining({ state: 'superseded' }),
       });
     } finally {
       provider.close();

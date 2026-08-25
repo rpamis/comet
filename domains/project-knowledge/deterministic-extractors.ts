@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
 import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
+import type { MemoryLanguage } from '../comet-memory/types.js';
 import type {
   ProjectKnowledgeRecord,
   ProjectKnowledgeRecordConclusion,
@@ -51,11 +52,21 @@ function checkDeadline(deadline: number): void {
 export interface DeterministicProjectRecordExtractionOptions {
   readonly projectRoot: string;
   readonly changedPaths?: readonly string[];
+  readonly knowledgeSources?: readonly string[];
+  readonly language?: MemoryLanguage;
 }
 
 type ProjectKnowledgeRecordDraft = Omit<
   ProjectKnowledgeRecord,
-  'projectId' | 'state' | 'authority' | 'sourceVersions' | 'updatedAt'
+  | 'projectId'
+  | 'state'
+  | 'authority'
+  | 'sourceVersions'
+  | 'applicationCount'
+  | 'successCount'
+  | 'failureCount'
+  | 'lastAppliedAt'
+  | 'updatedAt'
 >;
 
 function source(source: string, anchor?: string): ProjectKnowledgeRecordSource {
@@ -78,7 +89,8 @@ function recordBase(
     title,
     summary,
     applicablePaths: options.applicablePaths ?? [],
-    operations: options.operations ?? ['understand', 'verify'],
+    operations: options.operations ?? [],
+    phases: options.phases ?? [],
     conclusions,
     relations: options.relations ?? [],
     verification: options.verification ?? [],
@@ -190,6 +202,7 @@ async function projectMapRecord(
   root: string,
   deadline: number,
   changedPaths?: readonly string[],
+  language: MemoryLanguage = 'zh-CN',
 ): Promise<ProjectKnowledgeRecordDraft> {
   const manifest = await firstExistingSource(
     root,
@@ -230,10 +243,20 @@ async function projectMapRecord(
   }
   return recordBase(
     'generated-project-map',
-    'project-map',
-    '项目结构概览',
-    '从仓库目录、项目配置和 manifest 生成的项目入口与分层概览。',
-    [{ text: `项目包含主要目录：${directories.join('、') || '待从当前项目确认'}。`, sources }],
+    'topology',
+    language === 'en' ? 'Project structure overview' : '项目结构概览',
+    language === 'en'
+      ? 'Project entry points and layers derived from repository directories, configuration, and manifests.'
+      : '从仓库目录、项目配置和 manifest 生成的项目入口与分层概览。',
+    [
+      {
+        text:
+          language === 'en'
+            ? `Primary project directories: ${directories.join(', ') || 'to be confirmed from the current project'}.`
+            : `项目包含主要目录：${directories.join('、') || '待从当前项目确认'}。`,
+        sources,
+      },
+    ],
     { applicablePaths: directories.map((directory) => `${directory}/`) },
   );
 }
@@ -242,6 +265,7 @@ async function moduleOverviewRecord(
   root: string,
   deadline: number,
   changedPaths?: readonly string[],
+  language: MemoryLanguage = 'zh-CN',
 ): Promise<ProjectKnowledgeRecordDraft> {
   const files: string[] = [];
   for (const moduleRoot of MODULE_ROOTS) {
@@ -282,8 +306,8 @@ async function moduleOverviewRecord(
   const sourceRefs = sourceFiles.slice(0, 32).map((file) => source(relative(root, file)));
   const relationTargets = names
     .slice(0, 8)
-    .map((name) => `模块 ${name}`)
-    .join('、');
+    .map((name) => (language === 'en' ? `module ${name}` : `模块 ${name}`))
+    .join(language === 'en' ? ', ' : '、');
   const evidence: string[] = [];
   const registrationSources: ProjectKnowledgeRecordSource[] = [];
   for (const file of sourceFiles.slice(0, 6)) {
@@ -295,19 +319,29 @@ async function moduleOverviewRecord(
     ]
       .map((match) => match[1])
       .slice(0, 4);
-    if (imports.length > 0) evidence.push(`${relative(root, file)} 引用 ${imports.join('、')}`);
+    if (imports.length > 0)
+      evidence.push(
+        language === 'en'
+          ? `${relative(root, file)} imports ${imports.join(', ')}`
+          : `${relative(root, file)} 引用 ${imports.join('、')}`,
+      );
     if (/\bregister[A-Z][A-Za-z0-9_$]*\s*\(/u.test(text)) {
       registrationSources.push(source(relative(root, file)));
     }
   }
   return recordBase(
     'generated-module-overview',
-    'module-overview',
-    '模块职责与依赖概览',
-    '从有限源码文件的 import/export 关系生成模块边界提示，不索引完整源码正文。',
+    'dependency',
+    language === 'en' ? 'Module responsibilities and dependencies' : '模块职责与依赖概览',
+    language === 'en'
+      ? 'Module boundaries derived from bounded import/export relationships without indexing complete source files.'
+      : '从有限源码文件的 import/export 关系生成模块边界提示，不索引完整源码正文。',
     [
       {
-        text: `当前可识别模块：${relationTargets || '请先核对仓库布局'}。${evidence.length > 0 ? ` ${evidence.join('；')}` : ''}`,
+        text:
+          language === 'en'
+            ? `Recognized modules: ${relationTargets || 'inspect the repository layout first'}.${evidence.length > 0 ? ` ${evidence.join('; ')}` : ''}`
+            : `当前可识别模块：${relationTargets || '请先核对仓库布局'}。${evidence.length > 0 ? ` ${evidence.join('；')}` : ''}`,
         sources: sourceRefs,
       },
     ],
@@ -340,6 +374,7 @@ async function moduleOverviewRecord(
 async function buildTestRecord(
   root: string,
   deadline: number,
+  language: MemoryLanguage = 'zh-CN',
 ): Promise<ProjectKnowledgeRecordDraft> {
   const manifestSource = await firstExistingSource(
     root,
@@ -362,26 +397,69 @@ async function buildTestRecord(
   const references = [source(manifestSource ?? 'README.md')];
   const summary =
     commands.length > 0
-      ? `项目验证优先使用：${commands.join('、')}。`
-      : '项目未声明可从 manifest 直接识别的构建或测试命令，Agent 应先读取项目说明再选择验证方式。';
+      ? language === 'en'
+        ? `Preferred project verification commands: ${commands.join(', ')}.`
+        : `项目验证优先使用：${commands.join('、')}。`
+      : language === 'en'
+        ? 'No build or test command is directly discoverable from the manifest; inspect the project documentation before choosing verification.'
+        : '项目未声明可从 manifest 直接识别的构建或测试命令，Agent 应先读取项目说明再选择验证方式。';
   return recordBase(
     'generated-build-test',
-    'build-test',
-    '构建与测试方式',
+    'procedure',
+    language === 'en' ? 'Build and test workflow' : '构建与测试方式',
     summary,
     [
       {
         text:
           commands.length > 0
-            ? `建议按顺序运行：${commands.join('、')}。`
-            : '请先核对 README、项目配置和 CI 中记录的实际验证命令。',
+            ? language === 'en'
+              ? `Run in order: ${commands.join(', ')}.`
+              : `建议按顺序运行：${commands.join('、')}。`
+            : language === 'en'
+              ? 'Inspect README, project configuration, and CI for the actual verification commands.'
+              : '请先核对 README、项目配置和 CI 中记录的实际验证命令。',
         sources: references,
       },
     ],
     {
       operations: ['build', 'test', 'verify'],
-      verification: commands.map((command) => ({ command, expected: '成功' })),
+      verification: commands.map((command) => ({
+        command,
+        expected: language === 'en' ? 'pass' : '成功',
+      })),
     },
+  );
+}
+
+function knowledgeCorpusRecord(
+  sources: readonly string[],
+  language: MemoryLanguage = 'zh-CN',
+): ProjectKnowledgeRecordDraft | null {
+  const normalized = [
+    ...new Set(
+      sources
+        .map((entry) => entry.replaceAll('\\', '/').replace(/^\.\//u, '').trim())
+        .filter(Boolean),
+    ),
+  ].slice(0, 24);
+  if (normalized.length === 0) return null;
+  const references = normalized.map((entry) => source(entry));
+  return recordBase(
+    'generated-knowledge-corpus',
+    'fact',
+    language === 'en' ? 'Project knowledge document sources' : '项目知识文档来源',
+    language === 'en'
+      ? 'Traceable knowledge sources derived from built-in project documents and user-configured Markdown paths.'
+      : '从项目内置文档和用户配置的 Markdown 路径生成的可核对知识来源。',
+    [
+      {
+        text:
+          language === 'en'
+            ? `Current project knowledge documents: ${normalized.join(', ')}.`
+            : `当前项目知识文档：${normalized.join('、')}。`,
+        sources: references,
+      },
+    ],
   );
 }
 
@@ -392,9 +470,15 @@ async function extractDraftRecords(
   const deadline = Date.now() + MAX_EXTRACTION_MS;
   const records: ProjectKnowledgeRecordDraft[] = [];
   try {
-    records.push(await projectMapRecord(root, deadline, options.changedPaths));
-    records.push(await moduleOverviewRecord(root, deadline, options.changedPaths));
-    records.push(await buildTestRecord(root, deadline));
+    records.push(
+      await projectMapRecord(root, deadline, options.changedPaths, options.language ?? 'zh-CN'),
+    );
+    records.push(
+      await moduleOverviewRecord(root, deadline, options.changedPaths, options.language ?? 'zh-CN'),
+    );
+    records.push(await buildTestRecord(root, deadline, options.language ?? 'zh-CN'));
+    const corpus = knowledgeCorpusRecord(options.knowledgeSources ?? [], options.language);
+    if (corpus !== null) records.push(corpus);
   } catch (error) {
     if (!(error instanceof ExtractionDeadlineExceeded)) throw error;
   }
@@ -438,9 +522,12 @@ export async function extractDeterministicProjectRecords(
     records.push({
       ...draft,
       projectId,
-      state: 'active',
-      authority: 'automatic',
+      state: 'proven',
+      authority: 'repository',
       sourceVersions: fingerprints,
+      applicationCount: 0,
+      successCount: 0,
+      failureCount: 0,
       updatedAt,
     });
   }

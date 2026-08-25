@@ -1,12 +1,20 @@
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 
+import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
 import { runBoundedRipgrep, type RipgrepRunResult } from '../../platform/process/ripgrep.js';
 import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
 import { knowledgeDocumentKindRank } from './corpus.js';
 import type { ProjectKnowledgeIndexStatus } from './index-store.js';
 import { ProjectKnowledgeLocalStore } from './local-store.js';
 import { queryContainsTerm, queryHasStrongMatch } from './query.js';
+import {
+  parseProjectKnowledgeRecord,
+  projectKnowledgeRecordFamily,
+  type ProjectKnowledgeRecord,
+  type ProjectKnowledgeRecordType,
+} from './records.js';
 import type {
   ProjectKnowledgeDocument,
   ProjectKnowledgeApplyResult,
@@ -191,6 +199,63 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
 
   public async query(request: ProjectKnowledgeQueryRequest): Promise<ProjectKnowledgeQueryResult> {
     const store = this.recordStore();
+    if (request.kind === 'manifest') {
+      const records =
+        store?.list({
+          ...(request.projectId ? { projectId: request.projectId } : {}),
+          ...(request.state && request.state !== 'all' ? { state: request.state } : {}),
+          limit: request.limit ?? 100,
+        }) ?? [];
+      const active =
+        request.state === 'all'
+          ? records
+          : records.filter((record) => record.state !== 'superseded');
+      return {
+        kind: 'manifest',
+        items: active.map((record) => ({
+          id: record.id,
+          memoryType: projectKnowledgeRecordFamily(record.type),
+          type: record.type,
+          state: record.state,
+          authority: record.authority,
+          title: record.title,
+          summary: record.summary,
+          applicablePaths: [...record.applicablePaths],
+          operations: [...record.operations],
+          phases: [...(record.phases ?? [])],
+          sourceTypes: [
+            ...new Set(
+              record.conclusions.flatMap((conclusion) =>
+                conclusion.sources.map((source) => source.source),
+              ),
+            ),
+          ],
+          verification: record.verification.map((verification) => ({ ...verification })),
+        })),
+        truncated: request.limit !== undefined && records.length >= request.limit,
+        diagnostics: store ? [] : [this.recordStoreError!],
+      };
+    }
+    if (request.kind === 'expand') {
+      if (store) {
+        await store.apply({
+          kind: 'refresh',
+          id: request.id,
+          ...(request.projectId === undefined ? {} : { projectId: request.projectId }),
+        });
+      }
+      const record = store?.read(request.id) ?? null;
+      return {
+        kind: 'expand',
+        record:
+          record &&
+          record.state !== 'superseded' &&
+          (!request.projectId || record.projectId === request.projectId)
+            ? record
+            : null,
+        diagnostics: store ? [] : [this.recordStoreError!],
+      };
+    }
     if (request.kind === 'list') {
       const records =
         store?.list({
@@ -260,7 +325,7 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
         const score =
           (previous?.score ?? 0) +
           1 / (60 + rank + 1) +
-          (channel === 0 ? 0.025 : channel === 2 ? 0.002 : 0);
+          (channel === 1 ? 0.025 : channel === 2 ? 0.03 : 0);
         fused.set(key, { result: previous?.result ?? result, score });
       });
     }
@@ -274,7 +339,8 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
       const key = `${result.source}\u0000${result.title ?? ''}`;
       if (!results.has(key)) results.set(key, result);
     }
-    const bounded = [...results.values()].slice(0, 8);
+    const limit = Math.max(1, Math.min(40, request.limit ?? 8));
+    const bounded = [...results.values()].slice(0, limit);
     const records = recordResults.flatMap((result) => (result.record ? [result.record] : []));
     return {
       kind: 'search',
@@ -295,7 +361,38 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
         diagnostics: [this.recordStoreError!],
       };
     }
-    const result = await store.apply(mutation);
+    if (
+      mutation.kind === 'experience-delta' &&
+      (await store.mutationApplied(mutation.idempotencyKey))
+    ) {
+      return {
+        kind: mutation.kind,
+        changed: false,
+        ...(mutation.delta.targetId === undefined
+          ? {}
+          : { record: store.read(mutation.delta.targetId) }),
+        diagnostics: [],
+      };
+    }
+    const normalizedMutation =
+      mutation.kind === 'experience-delta'
+        ? projectKnowledgeMutationFromDelta(
+            mutation,
+            store.read(mutation.delta.targetId ?? ''),
+            resolveStableProjectId(this.options.projectRoot),
+          )
+        : mutation;
+    if (normalizedMutation === null) {
+      return { kind: mutation.kind, changed: false, diagnostics: [] };
+    }
+    const result = await store.apply(
+      mutation.kind === 'experience-delta' && normalizedMutation.kind === 'feedback'
+        ? { ...normalizedMutation, idempotencyKey: mutation.idempotencyKey }
+        : normalizedMutation,
+    );
+    if (mutation.kind === 'experience-delta') {
+      await store.markMutationApplied(mutation.idempotencyKey, mutation.updatedAt);
+    }
     if (mutation.kind === 'refresh' && !mutation.id) {
       try {
         await store.rebuildWorkspace(this.options.corpus);
@@ -306,7 +403,7 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
         });
       }
     }
-    return result;
+    return mutation.kind === 'experience-delta' ? { ...result, kind: mutation.kind } : result;
   }
 
   public close(): void {
@@ -506,6 +603,140 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
     }
     return [...directories, ...files].map((value) => value.replaceAll(path.sep, '/')).sort();
   }
+}
+
+function projectKnowledgeMutationFromDelta(
+  mutation: Extract<ProjectKnowledgeMutation, { readonly kind: 'experience-delta' }>,
+  current: ProjectKnowledgeRecord | null,
+  fallbackProjectId: string,
+): Exclude<ProjectKnowledgeMutation, { readonly kind: 'experience-delta' }> | null {
+  const { delta, updatedAt } = mutation;
+  if (delta.owner !== 'project-knowledge' && delta.owner !== 'comet.project-knowledge') {
+    throw new Error('Learning Delta owner does not match Project Knowledge');
+  }
+  if (delta.feedback !== undefined) {
+    if (!delta.targetId) throw new Error('Learning Delta feedback target is required');
+    return {
+      kind: 'feedback',
+      id: delta.targetId,
+      projectId: delta.applicability.projectId ?? current?.projectId ?? fallbackProjectId,
+      outcome: delta.feedback.status,
+      ...(delta.feedback.previousStatus === undefined
+        ? {}
+        : { previousOutcome: delta.feedback.previousStatus }),
+      applicationId: delta.feedback.applicationId,
+      revision: delta.feedback.revision,
+      updatedAt,
+    };
+  }
+  if (delta.payload?.kind === 'record') {
+    return {
+      kind: 'upsert',
+      record: parseProjectKnowledgeRecord(delta.payload.record),
+    };
+  }
+  if (delta.payload?.kind === 'verify') {
+    const payload = delta.payload as {
+      readonly projectId?: unknown;
+      readonly commands?: unknown;
+      readonly updatedAt?: unknown;
+    };
+    if (
+      typeof payload.projectId !== 'string' ||
+      !Array.isArray(payload.commands) ||
+      !payload.commands.every((command) => typeof command === 'string')
+    ) {
+      throw new Error('Learning Delta verification payload is invalid');
+    }
+    return {
+      kind: 'verify',
+      projectId: payload.projectId,
+      commands: payload.commands,
+      updatedAt: typeof payload.updatedAt === 'string' ? payload.updatedAt : updatedAt,
+    };
+  }
+  if (delta.action === 'noop') return null;
+  const projectId = delta.applicability.projectId ?? current?.projectId ?? fallbackProjectId;
+  if (delta.action === 'supersede' || delta.action === 'forget') {
+    if (!delta.targetId) throw new Error('Learning Delta target is required');
+    return {
+      kind: 'supersede',
+      id: delta.targetId,
+      projectId,
+      updatedAt,
+      reason: delta.statement,
+    };
+  }
+  const type = projectKnowledgeTypeFromDelta(delta.kind, delta.memoryType, current?.type);
+  const authority =
+    delta.authority === 'user' || delta.authority === 'explicit'
+      ? ('user' as const)
+      : delta.authority === 'repository'
+        ? ('repository' as const)
+        : ('automatic' as const);
+  const state =
+    delta.recommendedState === 'enforced' && (delta.verification?.length ?? 0) === 0
+      ? ('proven' as const)
+      : delta.recommendedState;
+  const id =
+    delta.targetId ??
+    `learned-${createHash('sha256')
+      .update(`${projectId}\u0000${type}\u0000${delta.statement}`)
+      .digest('hex')
+      .slice(0, 24)}`;
+  const sources = delta.evidence.flatMap((entry) =>
+    entry.source
+      ? [
+          {
+            source: entry.source,
+            ...(entry.anchor === undefined ? {} : { anchor: entry.anchor }),
+            evidence: entry.summary,
+          },
+        ]
+      : [],
+  );
+  const record = parseProjectKnowledgeRecord({
+    id,
+    projectId,
+    type,
+    state,
+    authority,
+    title: delta.title ?? delta.statement.slice(0, 200),
+    summary: delta.statement,
+    applicablePaths: delta.applicability.paths ?? current?.applicablePaths ?? [],
+    operations: delta.applicability.operations ?? current?.operations ?? [],
+    phases: delta.applicability.phases ?? current?.phases ?? [],
+    conclusions: sources.length > 0 ? [{ text: delta.statement, sources }] : [],
+    relations: current?.relations ?? [],
+    verification: delta.verification ?? current?.verification ?? [],
+    sourceVersions: current?.sourceVersions ?? [],
+    applicationCount: current?.applicationCount ?? 0,
+    successCount: current?.successCount ?? 0,
+    failureCount: current?.failureCount ?? 0,
+    ...(current?.lastAppliedAt === undefined ? {} : { lastAppliedAt: current.lastAppliedAt }),
+    updatedAt,
+  });
+  return { kind: 'upsert', record };
+}
+
+function projectKnowledgeTypeFromDelta(
+  kind: string,
+  memoryType: import('../agent-learning/index.js').AgentMemoryType,
+  current?: ProjectKnowledgeRecordType,
+): ProjectKnowledgeRecordType {
+  const known = new Set<ProjectKnowledgeRecordType>([
+    'topology',
+    'fact',
+    'dependency',
+    'decision',
+    'pattern',
+    'procedure',
+    'constraint',
+    'failure-resolution',
+  ]);
+  if (known.has(kind as ProjectKnowledgeRecordType)) return kind as ProjectKnowledgeRecordType;
+  if (current !== undefined) return current;
+  return memoryType === 'project-model' ? 'fact' : 'pattern';
 }
 
 export { MAX_RG_MATCHES, MAX_RG_OUTPUT_BYTES };

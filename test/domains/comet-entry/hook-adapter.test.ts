@@ -168,6 +168,27 @@ describe('Comet Hook platform adapter', () => {
     ).toEqual({ intent: 'write', targets: ['src/a.ts'], toolName: 'Write' });
   });
 
+  it('recognizes an agent-start task as a context request', () => {
+    const cwd = path.resolve('omp-project');
+    expect(
+      parseCometHookRequest(
+        JSON.stringify({
+          hook_event_name: 'before_agent_start',
+          task: 'Implement the dashboard',
+          cwd,
+          session_id: 'session-file',
+        }),
+      ),
+    ).toEqual({
+      intent: 'context',
+      targets: [],
+      toolName: null,
+      task: 'Implement the dashboard',
+      cwd,
+      sessionId: 'session-file',
+    });
+  });
+
   it('collects every target atomically and fails unknown writes closed', () => {
     expect(
       parseCometHookRequest(

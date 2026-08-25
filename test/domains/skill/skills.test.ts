@@ -182,6 +182,44 @@ describe('skills', () => {
       }
     });
 
+    it('teaches every Chinese Comet entry the progressive context lifecycle', async () => {
+      for (const skill of [
+        'comet',
+        'comet-native',
+        'comet-classic',
+        'comet-hotfix',
+        'comet-tweak',
+      ]) {
+        const content = await fs.readFile(
+          path.join(getAssetsDir(), 'skills-zh', skill, 'SKILL.md'),
+          'utf8',
+        );
+        expect(content, `${skill} zh`).toContain('Context Manifest');
+        expect(content, `${skill} zh`).toContain('--expand-context');
+        expect(content, `${skill} zh`).toContain('--application');
+        expect(content, `${skill} zh`).toContain('--outcome');
+      }
+    });
+
+    it('teaches every English Comet entry the progressive context lifecycle', async () => {
+      for (const skill of [
+        'comet',
+        'comet-native',
+        'comet-classic',
+        'comet-hotfix',
+        'comet-tweak',
+      ]) {
+        const content = await fs.readFile(
+          path.join(getAssetsDir(), 'skills', skill, 'SKILL.md'),
+          'utf8',
+        );
+        expect(content, `${skill} en`).toContain('Context Manifest');
+        expect(content, `${skill} en`).toContain('--expand-context');
+        expect(content, `${skill} en`).toContain('--application');
+        expect(content, `${skill} en`).toContain('--outcome');
+      }
+    });
+
     it('rejects zh and en-US as artifact language values', () => {
       expect(() => resolveArtifactLanguage('zh')).toThrow('Invalid artifact language');
       expect(() => resolveArtifactLanguage('en-US')).toThrow('Invalid artifact language');
@@ -3430,6 +3468,10 @@ describe('skills', () => {
       expect(zhGuard).toContain('无法归因的事件和仅位于项目外的目标保持中立');
       expect(zhGuard).toContain('一旦写入已归属于本项目');
       expect(zhGuard).toContain('个人记忆和项目知识');
+      expect(zhGuard).toContain('Context Manifest');
+      expect(zhGuard).toContain('--expand-context');
+      expect(zhGuard).toContain('--application');
+      expect(zhGuard).toContain('--outcome');
       expect(zhGuard).toContain('| Classic | Open、Design、Verify、Archive | Build |');
       expect(zhGuard).toContain('Classic 的 Verify 只写验证报告和状态等阶段产物');
       expect(zhGuard).toContain('不修改 tasks 或普通项目实现');
@@ -3438,6 +3480,10 @@ describe('skills', () => {
       expect(zhGuard).toContain('状态已记录 Design Doc 且实施计划存在并可用');
       expect(zhGuard).toContain('Classic Hook 在阶段判断前固定放行');
       expect(enGuard).toContain('personal memory and project knowledge');
+      expect(enGuard).toContain('Context Manifest');
+      expect(enGuard).toContain('--expand-context');
+      expect(enGuard).toContain('--application');
+      expect(enGuard).toContain('--outcome');
       expect(enGuard).toContain('| Classic | Open, Design, Verify, Archive | Build |');
       expect(enGuard).toContain('Classic Verify writes only the verification report and state');
       expect(enGuard).toContain('It does not modify tasks or ordinary project implementation');

@@ -15,11 +15,6 @@ export const MEMORY_REVIEW_PACKET_SCHEMA = 'comet.memory.review.v1' as const;
 export const MEMORY_REVIEW_ACTIONS_SCHEMA = 'comet.memory.actions.v1' as const;
 
 export const MEMORY_REVIEW_LIMITS = {
-  maxActions: 8,
-  maxEvidence: 16,
-  maxBytes: 12 * 1024,
-  maxTextBytes: 2 * 1024,
-  maxCollectionEntries: 32,
   maxEvidenceAgeMs: 180 * 24 * 60 * 60 * 1000,
 } as const;
 
@@ -74,9 +69,6 @@ export function validateMemoryReviewPacket(
   const userEvidence = boundedStrings(object.userEvidence, 'userEvidence', 8, true);
   const explicitRequest = normalizeReviewRequest(object.explicitRequest, language);
   const evidence = asArray(object.evidence, 'evidence');
-  if (evidence.length > Math.min(budget.maxEvidence, MEMORY_REVIEW_LIMITS.maxEvidence)) {
-    throw new Error('Review packet evidence exceeds the collection limit');
-  }
   const normalizedEvidence = evidence.map((entry, index) => {
     const item = asObject(entry, `evidence[${index}]`);
     const key = requiredString(item.key, `evidence[${index}].key`);
@@ -137,9 +129,6 @@ export function validateMemoryReviewPacket(
     throw new Error('Review packet evidence keys must be unique');
   }
   const memories = asArray(object.memories, 'memories');
-  if (memories.length > MEMORY_REVIEW_LIMITS.maxCollectionEntries) {
-    throw new Error('Review packet memories exceeds the collection limit');
-  }
   const normalizedMemories: MemoryReviewMemorySummary[] = memories.map((entry, index) => {
     const item = asObject(entry, `memories[${index}]`);
     const id = requiredString(item.id, `memories[${index}].id`);
@@ -166,6 +155,16 @@ export function validateMemoryReviewPacket(
     if (reason !== undefined) validateLanguageText(reason, language, `memories[${index}].reason`);
     const kind: MemoryKind =
       item.kind === 'explicit' || item.kind === 'inferred' ? item.kind : invalid('kind');
+    const memoryType =
+      item.memoryType === 'core-profile' ||
+      item.memoryType === 'collaboration-policy' ||
+      item.memoryType === 'personal-episode'
+        ? item.memoryType
+        : invalid('memoryType');
+    const state =
+      item.state === 'trial' || item.state === 'proven' || item.state === 'superseded'
+        ? item.state
+        : invalid('state');
     return {
       id,
       scope,
@@ -177,15 +176,13 @@ export function validateMemoryReviewPacket(
       ...(reason === undefined ? {} : { reason }),
       ...(memoryClass === undefined ? {} : { memoryClass }),
       kind,
-      active: item.active === true,
+      memoryType,
+      state,
     };
   });
   const memoryIds = new Set(normalizedMemories.map((entry) => entry.id));
   if (memoryIds.size !== normalizedMemories.length) {
     throw new Error('Review packet memory IDs must be unique');
-  }
-  if (Buffer.byteLength(JSON.stringify(value), 'utf8') > budget.maxBytes) {
-    throw new Error('Review packet exceeds its byte budget');
   }
   return {
     schema: MEMORY_REVIEW_PACKET_SCHEMA,
@@ -293,14 +290,16 @@ function normalizeRequestArrays(
   pathPatterns?: string[];
   taskTypes?: string[];
   operations?: string[];
+  phases?: string[];
 } {
   const result: {
     tags?: string[];
     pathPatterns?: string[];
     taskTypes?: string[];
     operations?: string[];
+    phases?: string[];
   } = {};
-  for (const name of ['tags', 'pathPatterns', 'taskTypes', 'operations'] as const) {
+  for (const name of ['tags', 'pathPatterns', 'taskTypes', 'operations', 'phases'] as const) {
     if (value[name] === undefined) continue;
     const entries = boundedStrings(value[name], `explicitRequest.${name}`, 16, false);
     entries.forEach((entry, index) => {
@@ -325,11 +324,7 @@ export function validateMemoryReviewActions(
     throw new Error(`Unsupported memory review action schema: ${String(envelope.schema)}`);
   }
   const actions = asArray(envelope.actions, 'review actions.actions');
-  const maxActions = boundedLimit(
-    options.maxActions ?? packet.budget.maxActions,
-    MEMORY_REVIEW_LIMITS.maxActions,
-  );
-  if (actions.length > maxActions) throw new Error('Memory review action count exceeds the limit');
+  void options;
   const evidenceKeys = new Set(packet.evidence.map((entry) => entry.key));
   const memoryIds = new Set(packet.memories.map((entry) => entry.id));
   const actionScopes = new Set<MemoryScope>();
@@ -357,7 +352,7 @@ export function validateMemoryReviewActions(
         : boundedStrings(
             action.evidenceKeys,
             `actions[${index}].evidenceKeys`,
-            Math.min(packet.budget.maxEvidence, MEMORY_REVIEW_LIMITS.maxEvidence),
+            packet.evidence.length,
             false,
           );
     for (const key of actionEvidence) {
@@ -467,13 +462,6 @@ export function validateMemoryReviewActions(
   if (actionScopes.size > 1) {
     throw new Error('Memory review action set must not mix global and project scopes');
   }
-  const maxBytes = boundedLimit(
-    options.maxBytes ?? packet.budget.maxBytes,
-    MEMORY_REVIEW_LIMITS.maxBytes,
-  );
-  if (Buffer.byteLength(JSON.stringify(normalized), 'utf8') > maxBytes) {
-    throw new Error('Memory review actions exceed the byte budget');
-  }
   return { schema: MEMORY_REVIEW_ACTIONS_SCHEMA, actions: normalized };
 }
 
@@ -498,18 +486,10 @@ function normalizeBudget(
   maxBytes: number;
 } {
   const budget = asObject(value, 'budget');
-  const maxActions = boundedLimit(
-    requiredPositiveNumber(budget.maxActions, 'budget.maxActions'),
-    options.maxActions ?? MEMORY_REVIEW_LIMITS.maxActions,
-  );
-  const maxEvidence = boundedLimit(
-    requiredPositiveNumber(budget.maxEvidence, 'budget.maxEvidence'),
-    options.maxEvidence ?? MEMORY_REVIEW_LIMITS.maxEvidence,
-  );
-  const maxBytes = boundedLimit(
-    requiredPositiveNumber(budget.maxBytes, 'budget.maxBytes'),
-    options.maxBytes ?? MEMORY_REVIEW_LIMITS.maxBytes,
-  );
+  void options;
+  const maxActions = requiredPositiveNumber(budget.maxActions, 'budget.maxActions');
+  const maxEvidence = requiredPositiveNumber(budget.maxEvidence, 'budget.maxEvidence');
+  const maxBytes = requiredPositiveNumber(budget.maxBytes, 'budget.maxBytes');
   return { maxActions, maxEvidence, maxBytes };
 }
 
@@ -523,14 +503,16 @@ function optionalArrays(
   pathPatterns?: string[];
   taskTypes?: string[];
   operations?: string[];
+  phases?: string[];
 } {
   const result: {
     tags?: string[];
     pathPatterns?: string[];
     taskTypes?: string[];
     operations?: string[];
+    phases?: string[];
   } = {};
-  for (const name of ['tags', 'pathPatterns', 'taskTypes', 'operations'] as const) {
+  for (const name of ['tags', 'pathPatterns', 'taskTypes', 'operations', 'phases'] as const) {
     if (value[name] === undefined) continue;
     const values = boundedStrings(value[name], name, 16, false);
     values.forEach((entry, index) => {
@@ -554,14 +536,16 @@ function optionalEvidenceArrays(
   pathPatterns?: string[];
   taskTypes?: string[];
   operations?: string[];
+  phases?: string[];
 } {
   const result: {
     tags?: string[];
     pathPatterns?: string[];
     taskTypes?: string[];
     operations?: string[];
+    phases?: string[];
   } = {};
-  for (const name of ['tags', 'pathPatterns', 'taskTypes', 'operations'] as const) {
+  for (const name of ['tags', 'pathPatterns', 'taskTypes', 'operations', 'phases'] as const) {
     if (value[name] === undefined) continue;
     const values = boundedStrings(value[name], `evidence[${evidenceIndex}].${name}`, 16, false);
     values.forEach((entry, index) => {
@@ -577,7 +561,7 @@ function optionalEvidenceArrays(
 }
 
 function hasArrayUpdate(value: Record<string, unknown>): boolean {
-  return ['tags', 'pathPatterns', 'taskTypes', 'operations'].some(
+  return ['tags', 'pathPatterns', 'taskTypes', 'operations', 'phases'].some(
     (name) => value[name] !== undefined,
   );
 }
@@ -612,7 +596,9 @@ function assertTargetMatches(
 }
 
 function assertTargetActive(target: MemoryReviewPacket['memories'][number], index: number): void {
-  if (!target.active) throw new Error(`actions[${index}] target is not active`);
+  if (target.state === 'superseded') {
+    throw new Error(`actions[${index}] target is superseded`);
+  }
 }
 
 function assertTargetProjectContext(
@@ -745,9 +731,6 @@ function containsTechnicalLatinTokens(value: string): boolean {
 
 function validateSafeText(value: string, field: string): void {
   if (value.trim().length === 0) throw new Error(`${field} must not be empty`);
-  if (Buffer.byteLength(value, 'utf8') > MEMORY_REVIEW_LIMITS.maxTextBytes) {
-    throw new Error(`${field} exceeds the text budget`);
-  }
   if (DANGEROUS_PATTERNS.some((pattern) => pattern.test(value))) {
     throw new Error(`${field} contains unsafe or non-memory content`);
   }
@@ -756,13 +739,12 @@ function validateSafeText(value: string, field: string): void {
 function boundedStrings(
   value: unknown,
   field: string,
-  max: number,
+  _max: number,
   validateText: boolean,
 ): string[] {
   const values = asArray(value, field).map((entry, index) =>
     requiredString(entry, `${field}[${index}]`),
   );
-  if (values.length > max) throw new Error(`${field} exceeds the collection limit`);
   if (validateText) values.forEach((entry) => validateSafeText(entry, field));
   return values;
 }
@@ -804,11 +786,6 @@ function requiredPositiveNumber(value: unknown, field: string): number {
   if (!Number.isSafeInteger(value) || (value as number) <= 0)
     throw new Error(`${field} is invalid`);
   return value as number;
-}
-
-function boundedLimit(value: number, maximum: number): number {
-  if (value <= 0 || value > maximum) throw new Error('Review budget exceeds the configured limit');
-  return value;
 }
 
 function asLanguage(value: unknown, field: string): MemoryLanguage {

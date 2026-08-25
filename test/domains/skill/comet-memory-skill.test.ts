@@ -96,10 +96,14 @@ describe('comet-memory Skill assets', () => {
       const [english, chinese] = await Promise.all(
         languageRoots.map((root) => fs.readFile(path.resolve(root, skill, 'SKILL.md'), 'utf8')),
       );
-      expect(chinese).toContain('不写任务摘要、实现进展、命令输出或测试结果');
-      expect(english).toContain(
-        'never a task summary, implementation progress, command output, or test result',
-      );
+      for (const marker of ['任务摘要', '进展', '命令输出', '测试结果']) {
+        expect(chinese).toContain(marker);
+      }
+      expect(chinese).toMatch(/不写|不得(?:保存|写)/u);
+      for (const marker of ['task summar', 'progress', 'command output', 'test result']) {
+        expect(english).toContain(marker);
+      }
+      expect(english).toMatch(/never|neither command may save/iu);
     }
   });
 });

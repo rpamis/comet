@@ -10,8 +10,8 @@ function record(): ProjectKnowledgeRecord {
   return {
     id: 'record-remote',
     projectId: 'comet-remote',
-    type: 'behavior-note',
-    state: 'active',
+    type: 'pattern',
+    state: 'proven',
     authority: 'automatic',
     title: 'Remote rule',
     summary: 'Use focused verification.',
@@ -26,6 +26,9 @@ function record(): ProjectKnowledgeRecord {
     relations: [],
     verification: [],
     sourceVersions: [{ source: 'docs/rule.md', size: 10, modifiedAt: 1 }],
+    applicationCount: 0,
+    successCount: 0,
+    failureCount: 0,
     updatedAt: '2026-08-23T00:00:00.000Z',
   };
 }
@@ -46,7 +49,19 @@ function provider(
     env: options.env,
     fetch: async (url, init) => {
       requests.push({ url, init });
-      return new Response(JSON.stringify(body), { status: 200 });
+      const request = JSON.parse(String(init?.body)) as {
+        operation: 'status' | 'query' | 'apply';
+        projectId: string;
+      };
+      return new Response(
+        JSON.stringify({
+          schema: 'comet.project-knowledge.provider.v1',
+          operation: request.operation,
+          projectId: request.projectId,
+          result: body,
+        }),
+        { status: 200 },
+      );
     },
   });
   return { instance, requests };
@@ -114,6 +129,146 @@ describe('remote project knowledge provider contract', () => {
       records: [expect.objectContaining({ id: 'record-remote' })],
       diagnostics: [{ code: 'server-note', message: 'bounded' }],
     });
+  });
+
+  test('rejects records returned for a different project', async () => {
+    const foreign = { ...record(), projectId: 'another-project' };
+    const queryProvider = provider({
+      kind: 'list',
+      records: [foreign],
+      truncated: false,
+      diagnostics: [],
+    });
+    await expect(queryProvider.instance.query({ kind: 'list', state: 'all' })).resolves.toEqual(
+      expect.objectContaining({ kind: 'list', records: [] }),
+    );
+
+    const applyProvider = provider({
+      kind: 'upsert',
+      changed: true,
+      record: foreign,
+      diagnostics: [],
+    });
+    await expect(
+      applyProvider.instance.apply({ kind: 'upsert', record: record() }),
+    ).resolves.toMatchObject({
+      kind: 'upsert',
+      changed: false,
+      diagnostics: [expect.objectContaining({ code: 'remote-schema' })],
+    });
+  });
+
+  test('rejects a foreign response envelope before accepting manifest or search content', async () => {
+    const diagnostics: { code: string; message: string }[] = [];
+    const instance = new RemoteProjectKnowledgeProvider({
+      config: { endpoint: 'https://knowledge.example.test/provider', timeout_ms: 500 },
+      projectId: 'comet-remote',
+      fetch: async (_url, init) => {
+        const request = JSON.parse(String(init?.body)) as { operation: string };
+        return new Response(
+          JSON.stringify({
+            schema: 'comet.project-knowledge.provider.v1',
+            operation: request.operation,
+            projectId: 'another-project',
+            result: {
+              kind: 'manifest',
+              items: [
+                {
+                  id: 'foreign',
+                  memoryType: 'project-policy',
+                  type: 'pattern',
+                  state: 'proven',
+                  authority: 'automatic',
+                  title: 'Foreign rule',
+                  summary: 'Must not cross the project boundary.',
+                },
+              ],
+            },
+          }),
+        );
+      },
+      reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+    });
+
+    await expect(
+      instance.query({ kind: 'manifest', projectId: 'comet-remote' }),
+    ).resolves.toMatchObject({ kind: 'manifest', items: [] });
+    expect(diagnostics).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'remote-schema' })]),
+    );
+  });
+
+  test('keeps manifest, expand, and Learning Delta operations on the Remote Provider seam', async () => {
+    const manifestProvider = provider({
+      kind: 'manifest',
+      items: [
+        {
+          id: 'record-remote',
+          memoryType: 'project-policy',
+          type: 'pattern',
+          state: 'proven',
+          authority: 'automatic',
+          title: 'Remote rule',
+          summary: 'Use focused verification.',
+          applicablePaths: ['domains/'],
+          operations: ['verify'],
+          phases: ['build'],
+          sourceTypes: ['docs/rule.md'],
+          verification: [],
+        },
+      ],
+      truncated: false,
+      diagnostics: [],
+    });
+    await expect(
+      manifestProvider.instance.query({ kind: 'manifest', projectId: 'comet-remote' }),
+    ).resolves.toMatchObject({
+      kind: 'manifest',
+      items: [expect.objectContaining({ id: 'record-remote', phases: ['build'] })],
+    });
+
+    const expandProvider = provider({ kind: 'expand', record: record(), diagnostics: [] });
+    await expect(
+      expandProvider.instance.query({
+        kind: 'expand',
+        id: 'record-remote',
+        projectId: 'comet-remote',
+      }),
+    ).resolves.toMatchObject({ kind: 'expand', record: { id: 'record-remote' } });
+
+    const deltaProvider = provider({
+      kind: 'experience-delta',
+      changed: true,
+      record: { ...record(), state: 'superseded' },
+      diagnostics: [],
+    });
+    await expect(
+      deltaProvider.instance.apply({
+        kind: 'experience-delta',
+        idempotencyKey: 'remote-record-supersede',
+        delta: {
+          action: 'supersede',
+          owner: 'project-knowledge',
+          targetId: 'record-remote',
+          memoryType: 'project-policy',
+          kind: 'pattern',
+          statement: 'The policy was replaced.',
+          applicability: { projectId: 'comet-remote' },
+          evidence: [],
+          recommendedState: 'superseded',
+        },
+        updatedAt: '2026-08-24T00:00:00.000Z',
+      }),
+    ).resolves.toMatchObject({ kind: 'experience-delta', changed: true });
+
+    const inputs = [manifestProvider, expandProvider, deltaProvider].map(({ requests }) =>
+      JSON.parse(String(requests[0]!.init?.body)),
+    );
+    expect(inputs.map((entry) => entry.input.kind)).toEqual([
+      'manifest',
+      'expand',
+      'experience-delta',
+    ]);
   });
 
   test('does not send a token value and reports missing token without fetching', async () => {

@@ -18,12 +18,74 @@ import {
   parseWorkflowProjectConfigDocument,
   defaultWorkflowProjectConfig,
 } from '../../../domains/workflow-contract/project-config.js';
-import { createDefaultCometPluginBridge } from '../../../domains/comet-plugin/integration.js';
+import { createDefaultCometPluginBridge as createProductionCometPluginBridge } from '../../../domains/comet-plugin/integration.js';
+import {
+  AGENT_EXPERIENCE_SCHEMA,
+  type AgentExperienceEvent,
+} from '../../../domains/agent-learning/index.js';
 import { MemoryPluginStorageStore } from '../../../domains/comet-plugin/plugin-runtime.js';
 import { runBoundedRipgrep } from '../../../platform/process/ripgrep.js';
 
+function createDefaultCometPluginBridge(
+  options: Parameters<typeof createProductionCometPluginBridge>[0],
+): ReturnType<typeof createProductionCometPluginBridge> {
+  return createProductionCometPluginBridge({
+    // Result-oriented integration tests await Reflection deterministically. Tests of
+    // nonblocking host scheduling override this option with their own queue.
+    scheduleLearning: (task) => task(),
+    ...options,
+  });
+}
+
 async function tempProject(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), 'comet-project-knowledge-'));
+}
+
+function projectExperience(options: {
+  projectId: string;
+  changeId: string;
+  changedPaths: readonly string[];
+}): AgentExperienceEvent {
+  return {
+    schema: AGENT_EXPERIENCE_SCHEMA,
+    eventId: `verification:${options.changeId}`,
+    episodeId: `workflow:native:${options.changeId}`,
+    occurredAt: '2026-08-24T00:00:00.000Z',
+    type: 'verification.completed',
+    actor: 'workflow',
+    scope: 'project',
+    projectId: options.projectId,
+    source: {
+      kind: 'workflow',
+      name: 'native',
+      workflow: 'native',
+      changeId: options.changeId,
+      command: 'check',
+    },
+    context: {
+      workflow: 'native',
+      changeId: options.changeId,
+      phase: 'verify',
+      paths: options.changedPaths,
+      operation: 'check',
+    },
+    evidence: [
+      ...options.changedPaths.map((source, index) => ({
+        id: `source-${index}`,
+        kind: 'source' as const,
+        summary: `Changed source: ${source}`,
+        source,
+      })),
+      {
+        id: 'verification-0',
+        kind: 'verification',
+        summary: 'pnpm test: passed',
+        command: 'pnpm test',
+        success: true,
+      },
+    ],
+    outcome: { status: 'used-successfully', summary: 'verified' },
+  };
 }
 
 async function search(
@@ -163,11 +225,11 @@ describe('project knowledge dashboard status', () => {
 
     try {
       await expect(
-        module.invoke?.('create', { type: 'behavior-note', summary: '缺少标题' }),
+        module.invoke?.('create', { type: 'pattern', summary: '缺少标题' }),
       ).rejects.toThrow(/title/u);
       await expect(
         module.invoke?.('create', {
-          type: 'behavior-note',
+          type: 'pattern',
           title: '构建约定',
           summary: '修改后先运行定向测试。',
           applicablePaths: ['domains/'],
@@ -177,7 +239,7 @@ describe('project knowledge dashboard status', () => {
         }),
       ).resolves.toMatchObject({ kind: 'upsert', changed: true });
 
-      const listed = await module.invoke?.('list', { state: 'active' });
+      const listed = await module.invoke?.('list', { state: 'proven' });
       expect(listed).toMatchObject({
         kind: 'list',
         records: [
@@ -197,6 +259,61 @@ describe('project knowledge dashboard status', () => {
 });
 
 describe('local record provider contract', () => {
+  test('keeps current indexed project documents in the candidate set beside many trial records', async () => {
+    const root = await tempProject();
+    const storageRoot = await tempProject();
+    const source = path.join(root, 'docs', 'current.md');
+    await fs.mkdir(path.dirname(source), { recursive: true });
+    await fs.writeFile(
+      source,
+      '# Current configuration\n\nUse the current configuration contract.\n',
+    );
+    const provider = new LocalProjectKnowledgeProvider({
+      projectRoot: root,
+      cacheRoot: storageRoot,
+      corpus: [{ absolutePath: source, source: 'docs/current.md', kind: 'custom' }],
+    });
+    try {
+      for (let index = 0; index < 9; index += 1) {
+        await provider.apply({
+          kind: 'upsert',
+          record: {
+            id: `trial-record-${index}`,
+            projectId: 'project-local-provider',
+            type: 'fact',
+            state: 'trial',
+            authority: 'automatic',
+            title: `Current configuration guess ${index}`,
+            summary: 'Current configuration inferred candidate.',
+            applicablePaths: [],
+            operations: [],
+            conclusions: [],
+            relations: [],
+            verification: [],
+            sourceVersions: [],
+            applicationCount: 0,
+            successCount: 0,
+            failureCount: 0,
+            updatedAt: `2026-08-24T00:00:0${index}.000Z`,
+          },
+        });
+      }
+
+      const response = await provider.query({
+        kind: 'search',
+        query: createProjectKnowledgeQuery({ task: 'current configuration' }),
+        limit: 8,
+      });
+
+      expect(response.kind).toBe('search');
+      expect(response.results.some((result) => result.source === 'docs/current.md')).toBe(true);
+    } finally {
+      provider.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
   test('exposes current Local index counts for dashboard status', async () => {
     const root = await tempProject();
     const storageRoot = await tempProject();
@@ -225,7 +342,7 @@ describe('local record provider contract', () => {
     }
   });
 
-  test('supports status, search/list management, and retirement without injecting retired records', async () => {
+  test('supports status, search/list management, and superseding without injecting old records', async () => {
     const root = await tempProject();
     const storageRoot = await tempProject();
     const source = path.join(root, 'docs', 'rule.md');
@@ -244,8 +361,8 @@ describe('local record provider contract', () => {
           record: {
             id: 'record-focused-tests',
             projectId: 'project-local-provider',
-            type: 'behavior-note',
-            state: 'active',
+            type: 'pattern',
+            state: 'proven',
             authority: 'automatic',
             title: 'Focused tests',
             summary: 'Prefer focused tests for small changes.',
@@ -262,6 +379,9 @@ describe('local record provider contract', () => {
             sourceVersions: [
               { source: 'docs/rule.md', size: stat.size, modifiedAt: Math.trunc(stat.mtimeMs) },
             ],
+            applicationCount: 0,
+            successCount: 0,
+            failureCount: 0,
             updatedAt: '2026-08-22T12:00:00.000Z',
           },
         }),
@@ -273,18 +393,54 @@ describe('local record provider contract', () => {
       });
       const search = await provider.query({
         kind: 'search',
-        query: createProjectKnowledgeQuery({ task: 'focused tests' }),
+        query: createProjectKnowledgeQuery({
+          task: 'focused tests',
+          path: 'domains/project-knowledge/plugin.ts',
+          operation: 'verify',
+        }),
       });
       expect(search.kind).toBe('search');
       expect(search.records.map((record) => record.id)).toContain('record-focused-tests');
       expect(search.results.some((result) => result.source === 'docs/rule.md#rule')).toBe(true);
+      await expect(
+        provider.query({ kind: 'manifest', projectId: 'project-local-provider' }),
+      ).resolves.toMatchObject({
+        kind: 'manifest',
+        items: [
+          expect.objectContaining({
+            id: 'record-focused-tests',
+            memoryType: 'project-policy',
+            state: 'proven',
+          }),
+        ],
+      });
+      await expect(
+        provider.query({
+          kind: 'expand',
+          id: 'record-focused-tests',
+          projectId: 'project-local-provider',
+        }),
+      ).resolves.toMatchObject({
+        kind: 'expand',
+        record: { id: 'record-focused-tests' },
+      });
       await provider.apply({
-        kind: 'retire',
-        id: 'record-focused-tests',
-        projectId: 'project-local-provider',
+        kind: 'experience-delta',
+        idempotencyKey: 'record-focused-tests-supersede',
+        delta: {
+          action: 'supersede',
+          owner: 'project-knowledge',
+          targetId: 'record-focused-tests',
+          memoryType: 'project-policy',
+          kind: 'pattern',
+          statement: 'Focused tests are no longer the current project decision.',
+          applicability: { projectId: 'project-local-provider' },
+          evidence: [],
+          recommendedState: 'superseded',
+        },
         updatedAt: '2026-08-22T12:01:00.000Z',
       });
-      const listed = await provider.query({ kind: 'list', state: 'retired' });
+      const listed = await provider.query({ kind: 'list', state: 'superseded' });
       expect(listed.kind).toBe('list');
       expect(listed.records.map((record) => record.id)).toEqual(['record-focused-tests']);
       const afterRetire = await provider.query({
@@ -393,6 +549,99 @@ describe('project knowledge configuration', () => {
     }
   });
 
+  test('keeps manual constraints proven and exposes stable procedures as Skill candidates', async () => {
+    const root = await tempProject();
+    const storageRoot = await tempProject();
+    const storageStore = new MemoryPluginStorageStore();
+    try {
+      await fs.writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ scripts: { lint: 'eslint .' } }),
+      );
+      const module = await createProjectKnowledgeModule(
+        {
+          storage: await storageStore.open(
+            'comet.project-knowledge',
+            'project',
+            'policy-activation-project',
+          ),
+          reportDiagnostic: () => undefined,
+        } as never,
+        { projectRoot: root, cacheRoot: storageRoot, knowledgeConfig: { provider: 'local' } },
+      );
+
+      await module.invoke?.('create', {
+        type: 'constraint',
+        title: 'Runtime validation policy',
+        summary: 'Runtime validation must run the repository lint command.',
+        applicablePaths: ['domains/agent-learning/'],
+        operations: ['verify'],
+        verification: [{ command: 'pnpm lint', expected: 'pass' }],
+      });
+      await module.invoke?.('create', {
+        type: 'procedure',
+        title: 'Release coordination procedure',
+        summary: 'Inspect release state.\nBuild release assets.\nVerify the release candidate.',
+        operations: ['release'],
+      });
+
+      const verificationCandidates = await module.provideContext?.({
+        task: 'runtime validation policy',
+        path: 'domains/agent-learning/types.ts',
+        operation: 'verify',
+      });
+      expect(verificationCandidates).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: 'constraint',
+            state: 'proven',
+            verification: [{ command: 'pnpm lint', expected: 'pass' }],
+          }),
+        ]),
+      );
+      expect(
+        (verificationCandidates as readonly Record<string, unknown>[]).find(
+          (candidate) => candidate.kind === 'constraint',
+        ),
+      ).not.toHaveProperty('priority');
+
+      const procedureBeforeReuse = await module.provideContext?.({
+        task: 'release coordination procedure',
+        operation: 'release',
+      });
+      const procedure = (procedureBeforeReuse as readonly { id: string; kind: string }[]).find(
+        (candidate) => candidate.kind === 'procedure',
+      );
+      expect(procedure).toBeDefined();
+      expect(procedure).not.toHaveProperty('priority');
+      await module.invoke?.('feedback', {
+        id: procedure!.id,
+        outcome: 'used-successfully',
+      });
+      await module.invoke?.('feedback', {
+        id: procedure!.id,
+        outcome: 'used-successfully',
+      });
+      const procedureAfterReuse = await module.provideContext?.({
+        task: 'release coordination procedure',
+        operation: 'release',
+      });
+      expect(procedureAfterReuse).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: 'procedure',
+            state: 'proven',
+            priority: 20,
+            matchReasons: [expect.stringContaining('Skill')],
+          }),
+        ]),
+      );
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
   test('keeps recent diagnostics across project knowledge module instances', async () => {
     const storageStore = new MemoryPluginStorageStore();
     const createContext = async () =>
@@ -421,12 +670,12 @@ describe('project knowledge configuration', () => {
 
     const secondModule = await createProjectKnowledgeModule(await createContext(), options);
     await expect(secondModule.invoke?.('status', {})).resolves.toMatchObject({
-      diagnostics: [
+      diagnostics: expect.arrayContaining([
         expect.objectContaining({
           code: 'remote-token',
           message: expect.stringContaining('COMET_RAG_REVIEW_MISSING'),
         }),
-      ],
+      ]),
     });
   });
 
@@ -693,14 +942,19 @@ describe('remote project knowledge provider', () => {
       expect((init.headers as Record<string, string>).authorization).toBe('Bearer secret');
       return new Response(
         JSON.stringify({
-          kind: 'search',
-          results: [
-            { source: 'docs/b.md', content: 'B' },
-            { source: 'docs/a.md', content: 'A' },
-          ],
-          records: [],
-          hits: [],
-          truncated: false,
+          schema: 'comet.project-knowledge.provider.v1',
+          operation: 'query',
+          projectId: 'project',
+          result: {
+            kind: 'search',
+            results: [
+              { source: 'docs/b.md', content: 'B' },
+              { source: 'docs/a.md', content: 'A' },
+            ],
+            records: [],
+            hits: [],
+            truncated: false,
+          },
         }),
       );
     });
@@ -749,10 +1003,26 @@ test('registers project knowledge beside personal memory in the shared bridge', 
       memoryRoot: path.join(root, 'memory'),
     });
     const contributions = await bridge.collectContext({ task: 'project knowledge bridge' });
-    expect(contributions.map((entry) => entry.pluginId)).toContain('comet.project-knowledge');
-    expect(
-      contributions.find((entry) => entry.pluginId === 'comet.project-knowledge')?.text,
-    ).toContain('项目知识参考');
+    expect(contributions.map((entry) => entry.pluginId)).toContain('comet.context-director');
+    expect(contributions[0]?.text).toContain('<agent_context>');
+    expect(contributions[0]?.manifest).toEqual(
+      expect.arrayContaining([expect.objectContaining({ owner: 'comet.project-knowledge' })]),
+    );
+    const dashboardSnapshot = (await bridge.pluginRuntime.invoke(
+      'comet.project-knowledge',
+      'status',
+      {},
+      { scope: 'project', projectId: bridge.currentProjectId },
+    )) as { manifestPreview?: readonly { id: string; whyApplied: string; appliedAt: string }[] };
+    expect(dashboardSnapshot.manifestPreview).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: expect.any(String),
+          whyApplied: expect.any(String),
+          appliedAt: expect.any(String),
+        }),
+      ]),
+    );
     expect((await bridge.pluginRuntime.list()).map((entry) => entry.id)).toContain(
       'comet.project-knowledge',
     );
@@ -761,7 +1031,7 @@ test('registers project knowledge beside personal memory in the shared bridge', 
   }
 });
 
-test('persists lifecycle hints without waiting for semantic project review', async () => {
+test('keeps Agent Experience pending until scheduled project Reflection finishes', async () => {
   const root = await tempProject();
   const scheduled: Array<() => Promise<void>> = [];
   try {
@@ -783,22 +1053,29 @@ test('persists lifecycle hints without waiting for semantic project review', asy
       stateRoot: path.join(root, 'plugin-state'),
       memoryRoot: path.join(root, 'memory'),
       runProjectKnowledgeReview: { review: async () => [] },
-      runProjectKnowledgeReviewInBackground: (task) => {
+      scheduleLearning: (task) => {
         scheduled.push(task);
       },
     });
-    await bridge.observe({
-      name: 'verification.completed',
-      workflow: 'native',
-      changeId: 'review-boundary',
-      success: true,
-      category: 'verification',
-      text: 'verified',
-      changedPaths: ['docs/comet/specs/project-knowledge.md'],
-      verificationCommands: ['pnpm test'],
-      verificationResults: [{ command: 'pnpm test', success: true }],
-    });
+    await bridge.observe(
+      projectExperience({
+        projectId: 'project-knowledge-review-boundary',
+        changeId: 'review-boundary',
+        changedPaths: ['docs/comet/specs/project-knowledge.md'],
+      }),
+    );
     expect(scheduled).toHaveLength(1);
+    const journalPath = path.join(
+      root,
+      'plugin-state',
+      'storage',
+      'comet.agent-learning-project-project-knowledge-review-boundary.json',
+    );
+    expect(JSON.parse(await fs.readFile(journalPath, 'utf8'))).toMatchObject({
+      reflections: {
+        'verification:review-boundary': { status: 'pending' },
+      },
+    });
     const status = await bridge.pluginRuntime.invoke(
       'comet.project-knowledge',
       'status',
@@ -806,12 +1083,18 @@ test('persists lifecycle hints without waiting for semantic project review', asy
       { scope: 'project', projectId: 'project-knowledge-review-boundary' },
     );
     expect(status).toMatchObject({ local: { available: true } });
+    await scheduled[0]?.();
+    expect(JSON.parse(await fs.readFile(journalPath, 'utf8'))).toMatchObject({
+      reflections: {
+        'verification:review-boundary': { status: 'processed' },
+      },
+    });
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
 });
 
-test('persists deterministic project knowledge after a lifecycle hint', async () => {
+test('persists deterministic project knowledge after an Agent Experience hint', async () => {
   const root = await tempProject();
   try {
     await fs.mkdir(path.join(root, '.comet'), { recursive: true });
@@ -842,17 +1125,13 @@ test('persists deterministic project knowledge after a lifecycle hint', async ()
       stateRoot: path.join(root, 'plugin-state'),
       memoryRoot: path.join(root, 'memory'),
     });
-    await bridge.observe({
-      name: 'verification.completed',
-      workflow: 'native',
-      changeId: 'targeted-refresh',
-      success: true,
-      category: 'verification',
-      text: 'verified',
-      changedPaths: ['src/main.ts'],
-      verificationCommands: ['pnpm test'],
-      verificationResults: [{ command: 'pnpm test', success: true }],
-    });
+    await bridge.observe(
+      projectExperience({
+        projectId: 'project-knowledge-targeted-refresh',
+        changeId: 'targeted-refresh',
+        changedPaths: ['src/main.ts'],
+      }),
+    );
     await bridge.collectContext({ task: 'project structure' });
     const recordsResult = (await bridge.pluginRuntime.invoke(
       'comet.project-knowledge',
@@ -1293,20 +1572,20 @@ describe('project knowledge failure and bounded retrieval contracts', () => {
       const target = { scope: 'project' as const, projectId: 'lifecycle-project' };
       await bridge.pluginRuntime.disable('comet.project-knowledge', target);
       expect(
-        (await bridge.collectContext({ task: 'project knowledge lifecycle' })).some(
-          (entry) => entry.pluginId === 'comet.project-knowledge',
+        (await bridge.collectContext({ task: 'project knowledge lifecycle' })).some((entry) =>
+          entry.applications.some((application) => application.owner === 'comet.project-knowledge'),
         ),
       ).toBe(false);
       await bridge.pluginRuntime.enable('comet.project-knowledge', target);
       expect(
-        (await bridge.collectContext({ task: 'project knowledge lifecycle' })).some(
-          (entry) => entry.pluginId === 'comet.project-knowledge',
+        (await bridge.collectContext({ task: 'project knowledge lifecycle' })).some((entry) =>
+          entry.applications.some((application) => application.owner === 'comet.project-knowledge'),
         ),
       ).toBe(true);
       await bridge.pluginRuntime.uninstall('comet.project-knowledge');
       expect(
-        (await bridge.collectContext({ task: 'project knowledge lifecycle' })).some(
-          (entry) => entry.pluginId === 'comet.project-knowledge',
+        (await bridge.collectContext({ task: 'project knowledge lifecycle' })).some((entry) =>
+          entry.applications.some((application) => application.owner === 'comet.project-knowledge'),
         ),
       ).toBe(false);
       await expect(bridge.pluginRuntime.update('comet.project-knowledge')).rejects.toMatchObject({

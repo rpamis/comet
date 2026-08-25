@@ -11,13 +11,14 @@ function sampleRecord(): ProjectKnowledgeRecord {
   return {
     id: 'record-main-flow',
     projectId: 'comet-core',
-    type: 'module-overview',
-    state: 'active',
+    type: 'dependency',
+    state: 'proven',
     authority: 'automatic',
     title: '主流程模块',
     summary: '主流程负责协调入口与验证。',
     applicablePaths: ['domains/project-knowledge/'],
     operations: ['implement', 'verify'],
+    phases: [],
     conclusions: [
       {
         text: '修改入口后必须同步验证 Provider 契约。',
@@ -39,6 +40,9 @@ function sampleRecord(): ProjectKnowledgeRecord {
         modifiedAt: 1_723_456_789_000,
       },
     ],
+    applicationCount: 0,
+    successCount: 0,
+    failureCount: 0,
     updatedAt: '2026-08-22T09:00:00.000Z',
   };
 }
@@ -47,7 +51,7 @@ describe('project knowledge records', () => {
   test('creates a user record from structured input and preserves optional evidence', () => {
     const record = createUserProjectKnowledgeRecord(
       {
-        type: 'behavior-note',
+        type: 'pattern',
         title: '构建约定',
         summary: '修改后先运行定向测试。',
         applicablePaths: ['domains/'],
@@ -63,8 +67,8 @@ describe('project knowledge records', () => {
     expect(record).toMatchObject({
       id: 'manual-build-convention',
       projectId: 'comet-core',
-      type: 'behavior-note',
-      state: 'active',
+      type: 'pattern',
+      state: 'proven',
       authority: 'user',
       title: '构建约定',
       summary: '修改后先运行定向测试。',
@@ -145,10 +149,10 @@ describe('project knowledge records', () => {
     expect(merged.updatedAt).toBe('2026-08-22T10:00:00.000Z');
   });
 
-  test('does not resurrect a retired user record with automatic content', () => {
+  test('accepts changed automatic evidence after a record was superseded', () => {
     const current = parseProjectKnowledgeRecord({
       ...sampleRecord(),
-      state: 'retired',
+      state: 'superseded',
       authority: 'user',
       summary: '已退役的用户摘要',
     });
@@ -160,7 +164,7 @@ describe('project knowledge records', () => {
 
     expect(mergeProjectKnowledgeRecord(current, incoming)).toMatchObject({
       authority: 'automatic',
-      state: 'active',
+      state: 'proven',
       summary: '新来源版本的自动摘要',
     });
   });

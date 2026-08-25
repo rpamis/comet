@@ -63,6 +63,7 @@ describe('repository layout registry', () => {
     expect(layout.sourceRoots).toEqual(['app', 'domains', 'platform']);
     expect(layout.appModules).toEqual(['cli', 'commands']);
     expect(layout.domainModules).toEqual([
+      'agent-learning',
       'bundle',
       'comet-classic',
       'comet-entry',

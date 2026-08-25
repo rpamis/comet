@@ -48,6 +48,13 @@ describe('dashboard web source contracts', () => {
     expect(page?.[0]).toContain('dashboard-memory-inspector');
     expect(page?.[0]).toContain('这条记忆为什么被应用');
     expect(page?.[0]).toContain('为什么应用：');
+    expect(page?.[0]).toContain('items={data?.manifestPreview}');
+    expect(page?.[0]).toContain('selectedRecord.applicationHistory');
+    expect(page?.[0]).toContain("selectedRecord.memoryType === 'personal-episode'");
+    expect(page?.[0]).toContain('情景摘要');
+    expect(page?.[0]).toContain('selectedRecord.episode.actionSummary');
+    expect(source).toContain('最近一次实际 Context Manifest');
+    expect(source).toContain('这里只展示最近真实投递给 Agent 的内容');
     expect(page?.[0]).toContain('totalMemoryRecordCount');
     expect(page?.[0]).toContain("group.records.length > 0 && (memoryFilter === 'all'");
     expect(page?.[0]).toContain('dashboard-tool-page-memory');
@@ -59,6 +66,7 @@ describe('dashboard web source contracts', () => {
     expect(styles).toMatch(/\.dashboard-memory-workspace\s*\{[\s\S]*?border: 0;/);
     expect(styles).toContain('.dashboard-memory-table-row.is-selected');
     expect(styles).toContain('.dashboard-memory-inspector');
+    expect(styles).toContain('.dashboard-context-application-history');
     expect(styles).toMatch(
       /@media \(min-width: 1181px\)[\s\S]*?\.dashboard-tool-page-memory\s*\{[\s\S]*?height: 100%;[\s\S]*?flex-direction: column;/,
     );
@@ -89,6 +97,7 @@ describe('dashboard web source contracts', () => {
     expect(page?.[0]).toContain('dashboard-knowledge-ledger');
     expect(page?.[0]).toContain('dashboard-knowledge-inspector');
     expect(page?.[0]).toContain('dashboard-knowledge-tabs');
+    expect(page?.[0]).toContain('items={snapshot.manifestPreview}');
     expect(page?.[0]).toContain('dashboard-tool-page-knowledge');
     expect(page?.[0]).toContain('知识记录');
     expect(page?.[0]).toContain('数据来源');
@@ -117,10 +126,13 @@ describe('dashboard web source contracts', () => {
     expect(page?.[0]).toContain('测试检索');
     expect(page?.[0]).toContain('检索已完成，没有找到与当前任务匹配的项目知识');
     expect(source).toContain('检索完成，未找到匹配的项目知识');
-    expect(source).toContain('项目知识已归档，不再提供给 Agent');
-    expect(page?.[0]).toContain('归档记录');
-    expect(page?.[0]).toContain('但仍可在归档状态中查看');
-    expect(page?.[0]).toContain("const [stateFilter, setStateFilter] = useState('active')");
+    expect(source).toContain('项目知识已标记为已替代，不再提供给 Agent');
+    expect(source).toContain('来源或验证入口已变化，记录已替代并停止应用');
+    expect(source).toContain('Skill 候选（仅建议）');
+    expect(source).toContain('项目验证命令约束');
+    expect(page?.[0]).toContain('标记已替代');
+    expect(page?.[0]).toContain('仍会保留在历史记录中');
+    expect(page?.[0]).toContain("const [stateFilter, setStateFilter] = useState('proven')");
     expect(page?.[0]).toContain('纠正并恢复');
     expect(page?.[0]).toContain('重新检查来源');
     expect(page?.[0]).toContain('建议补充证据，方便后续维护');
@@ -150,6 +162,8 @@ describe('dashboard web source contracts', () => {
     expect(styles).toContain('.dashboard-tool-header');
     expect(styles).toContain('.dashboard-tool-panel-title');
     expect(styles).toContain('.dashboard-create-modal-content');
+    expect(styles).toContain('.dashboard-context-manifest');
+    expect(styles).toContain('.dashboard-context-manifest-item');
   });
 
   it('opens centralized plugin settings from the bottom of the sidebar', async () => {
@@ -162,7 +176,7 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain('loadCachedPluginPage');
     expect(source).toContain('loadCachedProjectConfig');
     expect(source).toContain('preloadDashboardSettings');
-    expect(source).toContain('await preloadDashboardSettings(activeProjectId, availablePages)');
+    expect(source).toContain('void preloadDashboardSettings(activeProjectId, availablePages)');
     expect(source).toContain('settingsReady={pluginPages.some((page) => !page.pending)}');
     expect(source).toContain('disabled={!settingsReady}');
     expect(source).toContain('pages.filter((item) => !item.pending)');

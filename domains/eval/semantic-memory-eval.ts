@@ -376,7 +376,7 @@ async function semanticObserve(
         deduplicated: false,
         ignored: !result.persisted,
         candidate: false,
-        activated: false,
+        promoted: false,
         record: null,
       }
     );
@@ -385,7 +385,7 @@ async function semanticObserve(
       deduplicated: false,
       ignored: true,
       candidate: false,
-      activated: false,
+      promoted: false,
       record: null,
     };
   }
@@ -754,7 +754,7 @@ async function createCaseDefinitions(): Promise<CaseDefinition[]> {
       run: runConflictCase,
     },
     {
-      id: 'require-cross-project-evidence-for-global',
+      id: 'allow-global-trial-before-cross-project-promotion',
       workflow: 'classic',
       preset: 'hotfix',
       language: 'en',
@@ -1252,7 +1252,7 @@ async function runUsefulCase(
       records: retrieved.records.length,
       candidates: Number(first.candidate) + Number(second.candidate),
       skipped: false,
-      activated: second.activated,
+      activated: second.promoted,
       retrieved: record?.text === text,
       idempotent: false,
       scopeCorrect: record?.scope === 'project',
@@ -1260,8 +1260,8 @@ async function runUsefulCase(
       abstainCorrect: true,
       securityRejected: false,
       firstCandidate: first.candidate,
-      secondActivated: second.activated,
-      downstreamImproved: second.activated && record?.text === text,
+      secondActivated: second.promoted,
+      downstreamImproved: second.promoted && record?.text === text,
       downstream: await runDownstreamTask(
         service,
         {
@@ -1298,7 +1298,7 @@ async function runNoiseCase(
       records: current.records.length,
       candidates: current.observations.length,
       skipped: result.ignored,
-      activated: result.activated,
+      activated: result.promoted,
       retrieved: false,
       idempotent: false,
       scopeCorrect: current.records.length === 0,
@@ -1564,15 +1564,15 @@ async function runStaleResurrectionCase(): Promise<SemanticResult> {
     });
     const current = await state();
     return {
-      records: current.records.filter((entry) => entry.active).length,
+      records: current.records.filter((entry) => entry.state !== 'superseded').length,
       candidates: current.observations.length,
       skipped: replay.ignored,
-      activated: replay.activated,
+      activated: replay.promoted,
       retrieved: false,
       idempotent: false,
       scopeCorrect: current.records.every((entry) => entry.projectKey === 'stale-eval'),
       languageCorrect: replay.ignored,
-      abstainCorrect: current.records.every((entry) => !entry.active),
+      abstainCorrect: current.records.every((entry) => entry.state === 'superseded'),
       securityRejected: false,
       downstreamImproved: false,
     };
@@ -1626,7 +1626,7 @@ async function runConflictCase(): Promise<SemanticResult> {
       securityRejected: false,
       conflictProtected:
         second.candidate &&
-        !second.activated &&
+        !second.promoted &&
         retrieved.records.every((entry) => entry.text !== '使用 npm 构建') &&
         managed.conflicts.length > 0,
       globalEvidenceCorrect: true,
@@ -1666,21 +1666,29 @@ async function runGlobalEvidenceCase(): Promise<SemanticResult> {
       records: retrieved.records.length,
       candidates: Number(first.candidate) + Number(second.candidate),
       skipped: false,
-      activated: second.activated,
+      activated: second.promoted,
       retrieved: record?.text === base.text,
       idempotent: false,
       scopeCorrect: record?.scope === 'global',
       languageCorrect: record?.language === 'en',
-      abstainCorrect: beforeCrossProject.records.length === 0,
+      abstainCorrect:
+        beforeCrossProject.records.length === 1 &&
+        beforeCrossProject.records[0]?.text === base.text &&
+        beforeCrossProject.records[0]?.state === 'trial',
       securityRejected: false,
       firstCandidate: first.candidate,
-      secondActivated: second.activated,
+      secondActivated: second.promoted,
       conflictProtected: true,
       globalEvidenceCorrect:
-        first.candidate && !first.activated && second.activated && record?.scope === 'global',
+        first.candidate &&
+        !first.promoted &&
+        beforeCrossProject.records[0]?.state === 'trial' &&
+        second.promoted &&
+        record?.state === 'proven' &&
+        record.scope === 'global',
       pauseCorrect: true,
       syncFallback: true,
-      downstreamImproved: second.activated && record?.text === base.text,
+      downstreamImproved: second.promoted && record?.text === base.text,
       downstream: await runDownstreamTask(
         service,
         { scope: 'global', task: 'communication' },
@@ -1877,7 +1885,7 @@ function renderSemanticMemoryEvalMarkdown(
     `- Abstention correctness: ${metrics.abstainCorrect ? 'PASS' : 'FAIL'}`,
     `- Stale-memory resurrection rate: ${(metrics.staleResurrectionRate * 100).toFixed(1)}%`,
     `- Conflict protection: ${metrics.conflictProtected ? 'PASS' : 'FAIL'}`,
-    `- Global evidence threshold: ${metrics.globalEvidenceCorrect ? 'PASS' : 'FAIL'}`,
+    `- Global trial and promotion lifecycle: ${metrics.globalEvidenceCorrect ? 'PASS' : 'FAIL'}`,
     '',
     '## Downstream behavior',
     '',

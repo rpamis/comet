@@ -38,6 +38,14 @@ export {
   SEMANTIC_MEMORY_EVAL_CONFIG_VERSION,
   SEMANTIC_MEMORY_EVAL_THRESHOLDS,
 } from './semantic-memory-eval-config.js';
+export {
+  AGENT_LEARNING_EVAL_SCHEMA,
+  runAgentLearningEval,
+  type AgentLearningEvalReport,
+  type AgentLearningFormationEvalCase,
+  type AgentLearningFormationCaseId,
+  type AgentLearningRetrievalEvalMetrics,
+} from './agent-learning-eval.js';
 
 export function resolveRepositoryEvalWorkspace(): RepositoryEvalWorkspace {
   const layout = readRepositoryLayout();

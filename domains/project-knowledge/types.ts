@@ -5,6 +5,11 @@ import type {
   PluginModule,
 } from '../comet-plugin/index.js';
 import type {
+  AgentLearningDelta,
+  AgentContextApplicationRecord,
+  AgentContextOutcomeStatus,
+} from '../agent-learning/index.js';
+import type {
   WorkflowKnowledgeProjectConfig,
   WorkflowKnowledgeProvider,
 } from '../workflow-contract/types.js';
@@ -93,10 +98,25 @@ export interface ProjectKnowledgeGetRequest {
   readonly projectId?: string;
 }
 
+export interface ProjectKnowledgeManifestRequest {
+  readonly kind: 'manifest';
+  readonly projectId?: string;
+  readonly state?: ProjectKnowledgeRecordState | 'all';
+  readonly limit?: number;
+}
+
+export interface ProjectKnowledgeExpandRequest {
+  readonly kind: 'expand';
+  readonly id: string;
+  readonly projectId?: string;
+}
+
 export type ProjectKnowledgeQueryRequest =
   | ProjectKnowledgeSearchRequest
   | ProjectKnowledgeListRequest
-  | ProjectKnowledgeGetRequest;
+  | ProjectKnowledgeGetRequest
+  | ProjectKnowledgeManifestRequest
+  | ProjectKnowledgeExpandRequest;
 
 export interface ProjectKnowledgeSearchHit {
   readonly record: ProjectKnowledgeRecord;
@@ -125,10 +145,40 @@ export interface ProjectKnowledgeGetResult {
   readonly diagnostics: readonly ProjectKnowledgeDiagnostic[];
 }
 
+export interface ProjectKnowledgeManifestItem {
+  readonly id: string;
+  readonly memoryType: 'project-model' | 'project-policy';
+  readonly type: ProjectKnowledgeRecordType;
+  readonly state: ProjectKnowledgeRecordState;
+  readonly authority: ProjectKnowledgeRecordAuthority;
+  readonly title: string;
+  readonly summary: string;
+  readonly applicablePaths: readonly string[];
+  readonly operations: readonly string[];
+  readonly phases: readonly string[];
+  readonly sourceTypes: readonly string[];
+  readonly verification: readonly ProjectKnowledgeRecordVerification[];
+}
+
+export interface ProjectKnowledgeManifestResult {
+  readonly kind: 'manifest';
+  readonly items: readonly ProjectKnowledgeManifestItem[];
+  readonly truncated: boolean;
+  readonly diagnostics: readonly ProjectKnowledgeDiagnostic[];
+}
+
+export interface ProjectKnowledgeExpandResult {
+  readonly kind: 'expand';
+  readonly record: ProjectKnowledgeRecord | null;
+  readonly diagnostics: readonly ProjectKnowledgeDiagnostic[];
+}
+
 export type ProjectKnowledgeQueryResult =
   | ProjectKnowledgeSearchResult
   | ProjectKnowledgeListResult
-  | ProjectKnowledgeGetResult;
+  | ProjectKnowledgeGetResult
+  | ProjectKnowledgeManifestResult
+  | ProjectKnowledgeExpandResult;
 
 export interface ProjectKnowledgeUpsertMutation {
   readonly kind: 'upsert';
@@ -143,14 +193,15 @@ export interface ProjectKnowledgeCorrectMutation {
   readonly summary?: string;
   readonly applicablePaths?: readonly string[];
   readonly operations?: readonly string[];
+  readonly phases?: readonly string[];
   readonly conclusions?: readonly ProjectKnowledgeRecordConclusion[];
   readonly relations?: readonly ProjectKnowledgeRecordRelation[];
   readonly verification?: readonly ProjectKnowledgeRecordVerification[];
   readonly updatedAt: string;
 }
 
-export interface ProjectKnowledgeRetireMutation {
-  readonly kind: 'retire';
+export interface ProjectKnowledgeSupersedeMutation {
+  readonly kind: 'supersede';
   readonly id: string;
   readonly projectId: string;
   readonly updatedAt: string;
@@ -163,11 +214,40 @@ export interface ProjectKnowledgeRefreshMutation {
   readonly projectId?: string;
 }
 
+export interface ProjectKnowledgeFeedbackMutation {
+  readonly kind: 'feedback';
+  readonly id: string;
+  readonly projectId: string;
+  readonly outcome: AgentContextOutcomeStatus;
+  readonly previousOutcome?: AgentContextOutcomeStatus;
+  readonly applicationId?: string;
+  readonly revision?: number;
+  readonly idempotencyKey?: string;
+  readonly updatedAt: string;
+}
+
+export interface ProjectKnowledgeVerifyMutation {
+  readonly kind: 'verify';
+  readonly projectId: string;
+  readonly commands: readonly string[];
+  readonly updatedAt: string;
+}
+
+export interface ProjectKnowledgeExperienceDeltaMutation {
+  readonly kind: 'experience-delta';
+  readonly delta: AgentLearningDelta;
+  readonly idempotencyKey: string;
+  readonly updatedAt: string;
+}
+
 export type ProjectKnowledgeMutation =
   | ProjectKnowledgeUpsertMutation
   | ProjectKnowledgeCorrectMutation
-  | ProjectKnowledgeRetireMutation
-  | ProjectKnowledgeRefreshMutation;
+  | ProjectKnowledgeSupersedeMutation
+  | ProjectKnowledgeRefreshMutation
+  | ProjectKnowledgeFeedbackMutation
+  | ProjectKnowledgeVerifyMutation
+  | ProjectKnowledgeExperienceDeltaMutation;
 
 export interface ProjectKnowledgeApplyResult {
   readonly kind: ProjectKnowledgeMutation['kind'];
@@ -201,8 +281,9 @@ export interface ProjectKnowledgePluginOptions {
   readonly cacheRoot?: string;
   readonly semanticReviewer?: ProjectKnowledgeSemanticReviewer;
   readonly updateKnowledgeConfig?: (config: WorkflowKnowledgeProjectConfig) => void | Promise<void>;
-  /** Host-owned boundary for review work that must not delay workflow events. */
-  readonly runReviewInBackground?: (task: () => Promise<void>) => void | Promise<void>;
+  readonly listContextApplications?: (
+    candidateId?: string,
+  ) => Promise<readonly AgentContextApplicationRecord[]>;
 }
 
 export interface ProjectKnowledgeDashboardRemoteSummary {
@@ -239,12 +320,32 @@ export interface ProjectKnowledgeDashboardSnapshot {
   };
   readonly retrieval: string;
   readonly status?: ProjectKnowledgeStatus;
-  readonly records?: readonly ProjectKnowledgeRecord[];
+  readonly records?: readonly (ProjectKnowledgeRecord & {
+    readonly contextApplicationCount?: number;
+    readonly lastApplication?: AgentContextApplicationRecord;
+    readonly applicationHistory?: readonly AgentContextApplicationRecord[];
+  })[];
   readonly counts?: {
-    readonly active: number;
-    readonly needsReview: number;
-    readonly retired: number;
+    readonly trial: number;
+    readonly proven: number;
+    readonly enforced: number;
+    readonly superseded: number;
   };
+  readonly manifestPreview?: readonly {
+    readonly id: string;
+    readonly memoryType: 'project-model' | 'project-policy';
+    readonly state: ProjectKnowledgeRecordState;
+    readonly title: string;
+    readonly summary: string;
+    readonly whyApplied: string;
+    readonly applicationCount: number;
+    readonly successCount: number;
+    readonly failureCount: number;
+    readonly delivery: AgentContextApplicationRecord['delivery'];
+    readonly appliedAt: string;
+    readonly outcome?: AgentContextOutcomeStatus;
+    readonly lastApplication: AgentContextApplicationRecord;
+  }[];
   readonly diagnostics: readonly ProjectKnowledgeDashboardDiagnostic[];
 }
 

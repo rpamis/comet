@@ -54,7 +54,7 @@ describe('personal memory commands', () => {
       phase: 'verify',
       json: true,
     })) as readonly { pluginId: string }[];
-    expect(context.map((entry) => entry.pluginId)).toContain('comet.personal-memory');
+    expect(context.map((entry) => entry.pluginId)).toContain('comet.context-director');
 
     const status = (await personalMemoryStatusCommand(root, {
       memoryRoot,
@@ -72,19 +72,27 @@ describe('personal memory commands', () => {
       memoryRoot: path.join(root, 'memory'),
       stateRoot: path.join(root, 'plugins'),
       text: '完成后运行项目验证命令',
-      category: 'habit',
+      category: '工作习惯',
       workflow: 'native',
       candidateKey: 'verification-command',
       change: 'change-a',
     };
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
     await personalMemoryObserveCommand(root, { ...options, json: true });
-    const status = await personalMemoryObserveCommand(root, {
+    await personalMemoryObserveCommand(root, {
       ...options,
       change: 'change-b',
       json: true,
     });
-    expect(status).toMatchObject({ learningEnabled: true });
+    const retrieved = (await personalMemoryRetrieveCommand(root, {
+      memoryRoot: options.memoryRoot,
+      stateRoot: options.stateRoot,
+      task: '运行项目验证命令',
+      json: true,
+    })) as { records: readonly { text: string; state: string }[] };
+    expect(retrieved.records).toEqual(
+      expect.arrayContaining([expect.objectContaining({ text: options.text, state: 'proven' })]),
+    );
   });
 
   it('uses a Chinese default category while preserving direct user text', async () => {

@@ -40,8 +40,21 @@ describe('personal memory provider', () => {
                 pathPatterns: [],
                 taskTypes: ['build'],
                 operations: [],
+                phases: [],
                 kind: 'explicit',
-                active: true,
+                authority: 'explicit',
+                evidence: [
+                  {
+                    id: 'remote-evidence-1',
+                    kind: 'user',
+                    summary: 'User confirmed the build command.',
+                  },
+                ],
+                memoryType: 'collaboration-policy',
+                state: 'proven',
+                applicationCount: 0,
+                successCount: 0,
+                failureCount: 0,
                 source: { kind: 'user' },
                 sources: [{ kind: 'user' }],
                 createdAt: '2026-08-22T00:00:00.000Z',
@@ -95,6 +108,162 @@ describe('personal memory provider', () => {
     await expect(service.retrieve({ view: 'combined' })).rejects.toThrow(
       'Remote Provider returned an invalid memory record',
     );
+  });
+
+  test('requires structured fields on Remote Provider Personal Episodes', async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            result: {
+              records: [
+                {
+                  id: 'remote-episode',
+                  scope: 'global',
+                  category: 'failure-recovery',
+                  text: 'Refresh the stale index before retrying retrieval.',
+                  tags: [],
+                  pathPatterns: [],
+                  taskTypes: [],
+                  operations: [],
+                  phases: [],
+                  kind: 'inferred',
+                  authority: 'inferred',
+                  evidence: [
+                    {
+                      id: 'remote-episode-evidence',
+                      kind: 'failure',
+                      summary: 'Retrieval recovered after refreshing the index.',
+                      success: true,
+                    },
+                  ],
+                  memoryType: 'personal-episode',
+                  state: 'trial',
+                  applicationCount: 0,
+                  successCount: 0,
+                  failureCount: 0,
+                  source: { kind: 'workflow' },
+                  sources: [{ kind: 'workflow' }],
+                  createdAt: '2026-08-24T00:00:00.000Z',
+                  updatedAt: '2026-08-24T00:00:00.000Z',
+                },
+              ],
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+    );
+    const service = new RemotePersonalMemoryService({
+      endpoint: 'https://memory.example.test/provider',
+      fetchImpl,
+    });
+
+    await expect(service.retrieve({ view: 'combined' })).rejects.toThrow(
+      'Remote Provider returned an invalid memory record',
+    );
+  });
+
+  test('keeps manifest, expand, and Learning Delta operations on the Remote Provider seam', async () => {
+    const record = {
+      id: 'remote-policy',
+      scope: 'project',
+      projectKey: 'remote-project',
+      category: '验证协作',
+      text: '验证阶段先运行聚焦测试',
+      tags: [],
+      pathPatterns: ['domains/'],
+      taskTypes: ['test'],
+      operations: ['verify'],
+      phases: ['verify'],
+      kind: 'explicit',
+      authority: 'explicit',
+      evidence: [{ id: 'evidence-1', kind: 'user', summary: 'User confirmed this policy.' }],
+      memoryType: 'collaboration-policy',
+      state: 'proven',
+      applicationCount: 0,
+      successCount: 0,
+      failureCount: 0,
+      source: { kind: 'user' },
+      sources: [{ kind: 'user' }],
+      createdAt: '2026-08-24T00:00:00.000Z',
+      updatedAt: '2026-08-24T00:00:00.000Z',
+    };
+    const operations: string[] = [];
+    const service = new RemotePersonalMemoryService({
+      endpoint: 'https://memory.example.test/provider',
+      projectKey: 'remote-project',
+      fetchImpl: async (_input, init) => {
+        const body = JSON.parse(String(init?.body)) as {
+          operation: string;
+          payload: { view?: string; operation?: string };
+        };
+        operations.push(body.payload.view ?? body.payload.operation ?? body.operation);
+        if (body.payload.view === 'manifest') {
+          return new Response(
+            JSON.stringify({
+              result: {
+                kind: 'manifest',
+                items: [
+                  {
+                    id: record.id,
+                    memoryType: record.memoryType,
+                    state: record.state,
+                    authority: record.authority,
+                    title: record.category,
+                    summary: record.text,
+                    scope: record.scope,
+                    projectKey: record.projectKey,
+                    pathPatterns: record.pathPatterns,
+                    taskTypes: record.taskTypes,
+                    operations: record.operations,
+                    phases: record.phases,
+                    evidence: record.evidence,
+                  },
+                ],
+                truncated: false,
+              },
+            }),
+          );
+        }
+        if (body.operation === 'get') {
+          return new Response(JSON.stringify({ result: { record } }));
+        }
+        return new Response(JSON.stringify({ result: { changed: true, record: null } }));
+      },
+    });
+
+    await expect(
+      service.query({
+        view: 'manifest',
+        query: { projectKey: 'remote-project', phase: 'verify' },
+      }),
+    ).resolves.toMatchObject({
+      kind: 'manifest',
+      items: [expect.objectContaining({ id: 'remote-policy', phases: ['verify'] })],
+    });
+    await expect(
+      service.query({ view: 'expand', query: { id: 'remote-policy' } }),
+    ).resolves.toMatchObject({ kind: 'expand', record: { id: 'remote-policy' } });
+    await expect(
+      service.apply({
+        operation: 'experience-delta',
+        input: {
+          idempotencyKey: 'remote-policy-supersede',
+          delta: {
+            action: 'supersede',
+            owner: 'personal-memory',
+            targetId: 'remote-policy',
+            memoryType: 'collaboration-policy',
+            kind: 'project-convention',
+            statement: 'The policy was replaced.',
+            applicability: { projectId: 'remote-project', phases: ['verify'] },
+            evidence: [],
+            recommendedState: 'superseded',
+          },
+        },
+      }),
+    ).resolves.toMatchObject({ changed: true, record: null });
+    expect(operations).toEqual(['manifest', 'get', 'experience-delta']);
   });
 
   test('rejects a Remote Provider management record that is not normalized', async () => {

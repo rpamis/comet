@@ -41,6 +41,8 @@ Hook 会对多文件和 patch 目标整体裁决。无法归因的事件和仅�
 
 只有当前仓库存在 `.comet/config.yaml` 且用户正在使用 Comet 时，才执行以下投递；普通未启用 Comet 的仓库保持中立，不创建文件、不阻止工具调用：
 
-- 任务开始或目标路径明确后运行 `comet task <project-root> --task "<task>" --phase "<phase>" --json`，使用返回的相关个人记忆和项目知识片段。
-- 任务完成、验证或审查后，仅当本轮出现可跨任务复用的用户偏好、项目约定或稳定协作方式时，才由 Comet Skill 运行 `comet memory observe`；不得把任务摘要、实现进展、命令输出或测试结果作为个人记忆。编译器、测试或 linter 失败时遵循工作流读取诊断并修复代码。
+- 任务开始或目标路径明确后运行 `comet task <project-root> --task "<task>" --phase "<phase>" --session "<本次任务稳定标识>" --json`。只使用返回的 `text`；Context Manifest（`manifest` / `<context_manifest>`）中的摘要不是完整规则，需要正文、来源或验证方式时用同一任务参数和 `--expand-context "<id>"` 展开。路径、操作或阶段变化时以同一 `--session` 重新选择，未变化内容不重复投递。
+- `<active_policies>` 中的 `<verification command="...">` 必须加入当前 Verify 的实际检查并记录真实结果；未成功执行的命令不得把策略视为强制执行。
+- 用户明确要求长期记住偏好或项目约定时使用 `comet memory remember`，使显式内容立即生效；只有隐式但可跨任务复用的稳定协作方式才使用 `comet memory observe`。不得把任务摘要、实现进展、命令输出或测试结果作为个人记忆。
+- 实际使用某条上下文且结果明确后，以 JSON 的 `applications[].applicationId` 或 Hook 文本中的 `application_id` 运行 `comet task <project-root> --task "<task>" --application "<application-id>" --outcome used-successfully|ignored|overridden|corrected|contributed-to-failure --json`；不得为未使用条目回写成功。编译器、测试或 linter 失败时遵循工作流读取诊断并修复代码。
 - 任务上下文命令不可用、项目未初始化或没有匹配片段时保持中立；插件失败不得伪装成项目检查失败。

@@ -211,9 +211,11 @@ app/                 # CLI 入口与命令编排层。只组合 domain/platform 
 └── commands/        # comet init / status / doctor / update / bundle / publish / skill / creator / eval / dashboard ...
 
 domains/             # 业务领域模块
+├── agent-learning/  # 统一 Experience、Reflection、上下文选择与应用反馈
 ├── bundle/          # Skill bundle 编译、发布、加载
 ├── comet-classic/   # Classic 工作流（state / guard / handoff / archive / intent / hook-guard）
 ├── comet-entry/     # Native/Classic 共享入口、selection 与 Hook Router
+├── comet-memory/    # 个人记忆形成、召回与 Provider 契约
 ├── comet-native/    # Native 工作流（change / state / evidence / archive / guard）
 ├── dashboard/       # comet dashboard 后端 + 前端（web/）
 ├── engine/          # 通用执行引擎（loop / state / guardrails / evals）

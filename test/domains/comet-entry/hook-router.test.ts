@@ -53,6 +53,72 @@ describe('Comet Hook Router', () => {
     expect(inspectClassic).not.toHaveBeenCalled();
   });
 
+  it('selects task context before an agent starts without requiring an active change', async () => {
+    const collectContext = vi.fn(async () => [
+      {
+        pluginId: 'comet.context-director' as const,
+        text: '<agent_context><core_memory>Use Chinese</core_memory></agent_context>',
+        episodeId: 'context:one',
+        manifest: [],
+        applications: [],
+      },
+    ]);
+    const listNative = vi.fn(async () => {
+      throw new Error('workflow state must not be read');
+    });
+
+    const decision = await inspectCometHook(
+      root,
+      {
+        intent: 'context',
+        targets: [],
+        toolName: null,
+        task: 'Implement the dashboard',
+        sessionId: 'omp-session',
+      },
+      {
+        listNative,
+        listClassic: vi.fn(async () => []),
+        inspectNative: vi.fn(),
+        inspectClassic: vi.fn(),
+        collectContext,
+      },
+    );
+
+    expect(decision).toMatchObject({
+      allowed: true,
+      context: expect.stringContaining('<core_memory>'),
+    });
+    expect(collectContext).toHaveBeenCalledWith(root, {
+      task: 'Implement the dashboard',
+      sessionId: 'omp-session',
+    });
+    expect(listNative).not.toHaveBeenCalled();
+  });
+
+  it('does not invent a cross-task session id when the host omits one', async () => {
+    const collectContext = vi.fn(async () => []);
+
+    await inspectCometHook(
+      root,
+      {
+        intent: 'context',
+        targets: [],
+        toolName: null,
+        task: 'Independent task',
+      },
+      {
+        listNative: vi.fn(async () => []),
+        listClassic: vi.fn(async () => []),
+        inspectNative: vi.fn(),
+        inspectClassic: vi.fn(),
+        collectContext,
+      },
+    );
+
+    expect(collectContext).toHaveBeenCalledWith(root, { task: 'Independent task' });
+  });
+
   it('stays neutral for project-external targets without reading Comet state', async () => {
     const externalTarget = path.join(os.tmpdir(), `comet-memory-${path.basename(root)}.md`);
     const listNative = vi.fn(async () => {
@@ -124,6 +190,7 @@ describe('Comet Hook Router', () => {
         listClassic: async () => [],
         inspectNative,
         inspectClassic,
+        collectContext: async () => [],
       },
     );
 
@@ -159,12 +226,69 @@ describe('Comet Hook Router', () => {
         ],
         inspectNative,
         inspectClassic,
+        collectContext: async () => [],
       },
     );
 
     expect(decision).toEqual({ allowed: true, reason: 'native' });
     expect(inspectNative).toHaveBeenCalledOnce();
     expect(inspectClassic).not.toHaveBeenCalled();
+  });
+
+  it('injects the same progressive Context Manifest and application ids through the Hook', async () => {
+    await configureBoth();
+    await writeCometCurrentSelection(root, {
+      schema: 'comet.selection.v2',
+      workflow: 'native',
+      change: 'native-change',
+      branch: null,
+    });
+    const collectContext = vi.fn(async () => [
+      {
+        pluginId: 'comet.context-director' as const,
+        text: [
+          '<agent_context>',
+          '<context_manifest>',
+          '<item id="policy-1" application_id="application-1"><why_applied>当前路径匹配</why_applied></item>',
+          '</context_manifest>',
+          '</agent_context>',
+        ].join('\n'),
+        episodeId: 'context:one',
+        manifest: [],
+        applications: [],
+      },
+    ]);
+
+    const decision = await inspectCometHook(
+      root,
+      {
+        intent: 'write',
+        targets: ['src/app.ts'],
+        toolName: 'Edit',
+        sessionId: 'session-1',
+      },
+      {
+        listNative: async () => [
+          { workflow: 'native', name: 'native-change', phase: 'build' as const },
+        ],
+        listClassic: async () => [],
+        inspectNative: async () => ({ allowed: true, reason: 'native' }),
+        inspectClassic: vi.fn(),
+        collectContext,
+      },
+    );
+
+    expect(decision).toMatchObject({
+      allowed: true,
+      context: expect.stringContaining('application_id="application-1"'),
+    });
+    expect(collectContext).toHaveBeenCalledWith(root, {
+      task: 'Edit src/app.ts',
+      path: 'src/app.ts',
+      operation: 'Edit',
+      phase: 'build',
+      sessionId: 'session-1',
+    });
   });
 
   it('does not enumerate Classic state when Native owns the current selection', async () => {
@@ -244,6 +368,7 @@ describe('Comet Hook Router', () => {
         ],
         inspectNative,
         inspectClassic,
+        collectContext: async () => [],
       },
     );
 

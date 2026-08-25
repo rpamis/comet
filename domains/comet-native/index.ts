@@ -11,6 +11,7 @@ export * from './native-config.js';
 export * from './native-diagnostics.js';
 export * from './native-doctor.js';
 export * from './native-evidence-retention.js';
+export * from './native-experience.js';
 export * from './native-continuation.js';
 export * from './native-findings.js';
 export * from './native-guards.js';

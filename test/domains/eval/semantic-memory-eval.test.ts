@@ -18,6 +18,7 @@ describe('semantic memory eval', () => {
     expect(first.provenance.datasetHash).toMatch(/^sha256:/);
     expect(first.provenance.rubricHash).toMatch(/^sha256:/);
     expect(first.metrics.totalCases).toBeGreaterThanOrEqual(15);
+    expect(first.cases.filter((entry) => !entry.passed)).toEqual([]);
     expect(first.metrics.passedCases).toBe(first.metrics.totalCases);
     expect(first.metrics.noiseSkipped).toBeGreaterThan(0);
     expect(first.metrics.usefulActivated).toBeGreaterThanOrEqual(2);
@@ -48,13 +49,13 @@ describe('semantic memory eval', () => {
     });
     expect(first.metrics.thresholdsPassed).toBe(true);
     expect(
-      first.cases.find((entry) => entry.id === 'require-cross-project-evidence-for-global')
+      first.cases.find((entry) => entry.id === 'allow-global-trial-before-cross-project-promotion')
         ?.treatments.currentObserve.correct,
     ).toBe(false);
     expect(
-      first.cases.find((entry) => entry.id === 'require-cross-project-evidence-for-global')
+      first.cases.find((entry) => entry.id === 'allow-global-trial-before-cross-project-promotion')
         ?.treatments.currentObserve.downstreamAction,
-    ).toBe('ask the user for the reusable preference');
+    ).toContain('Workflow command summary completed');
     expect(first.metrics.treatmentHashes.semanticReview).toMatch(/^sha256:/);
     expect(
       first.cases.every(

@@ -28,7 +28,7 @@ describe('personal memory experience projection', () => {
     expect(view.records[0]).toMatchObject({
       id: record.id,
       text: '使用中文回复',
-      status: 'active',
+      status: 'proven',
       evidenceCount: 0,
       sourceKind: 'user',
       canRollback: false,
@@ -91,12 +91,14 @@ describe('personal memory experience projection', () => {
       memoryRoot: path.join(root, 'memory'),
       stateRoot: path.join(root, 'plugins'),
     });
-    await bridge.remember({
+    const remembered = await bridge.remember({
       scope: 'project',
       projectKey: 'repo-dashboard',
       category: '偏好',
       text: 'Dashboard 也显示中文记忆',
     });
+    await bridge.collectContext({ task: 'Dashboard 也显示中文记忆' });
+    await bridge.collectContext({ task: '再次应用 Dashboard 中文记忆' });
 
     const pages = await bridge.pluginRuntime.dashboardPages({
       scope: 'project',
@@ -111,12 +113,126 @@ describe('personal memory experience projection', () => {
           scope: 'project',
           projectId: bridge.currentProjectId,
         }),
-    })) as { management: { records: readonly { text: string }[] }; operations: readonly string[] };
+    })) as {
+      management: {
+        records: readonly {
+          id: string;
+          text: string;
+          lastApplication?: { whyApplied: string; delivery: string };
+          applicationHistory?: readonly { applicationId: string; task: string }[];
+        }[];
+      };
+      manifestPreview: readonly {
+        id: string;
+        whyApplied: string;
+        delivery: string;
+        appliedAt: string;
+      }[];
+      operations: readonly string[];
+    };
 
     expect(loaded.management.records.map((entry) => entry.text)).toContain(
       'Dashboard 也显示中文记忆',
     );
+    expect(loaded.management.records.find((entry) => entry.id === remembered!.id)).toMatchObject({
+      lastApplication: {
+        whyApplied: expect.stringContaining('用户明确要求'),
+        delivery: 'full',
+      },
+      applicationHistory: [
+        expect.objectContaining({ task: '再次应用 Dashboard 中文记忆' }),
+        expect.objectContaining({ task: 'Dashboard 也显示中文记忆' }),
+      ],
+    });
+    expect(loaded.manifestPreview).toEqual([
+      expect.objectContaining({
+        id: remembered!.id,
+        whyApplied: expect.stringContaining('用户明确要求'),
+        delivery: 'full',
+        appliedAt: expect.any(String),
+      }),
+    ]);
     expect(loaded.operations).toContain('manage');
+  });
+
+  it('shows global memory application history across projects without leaking project history', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-memory-global-history-'));
+    const memoryRoot = path.join(root, 'memory');
+    const stateRoot = path.join(root, 'plugins');
+    const projectA = path.join(root, 'project-a');
+    const projectB = path.join(root, 'project-b');
+    await Promise.all([
+      fs.mkdir(projectA, { recursive: true }),
+      fs.mkdir(projectB, { recursive: true }),
+    ]);
+    try {
+      const { createDefaultCometPluginBridge } =
+        await import('../../../domains/comet-plugin/integration.js');
+      const bridgeA = await createDefaultCometPluginBridge({
+        projectRoot: projectA,
+        projectId: 'project-a',
+        memoryRoot,
+        stateRoot,
+      });
+      const global = await bridgeA.remember({
+        scope: 'global',
+        category: '沟通偏好',
+        text: '所有项目都使用中文',
+      });
+      const projectOnly = await bridgeA.remember({
+        scope: 'project',
+        category: '协作偏好',
+        text: '只属于项目 A',
+      });
+      await bridgeA.collectContext({
+        task: '项目 A：所有项目都使用中文',
+        sessionId: 'project-a-session',
+      });
+
+      const bridgeB = await createDefaultCometPluginBridge({
+        projectRoot: projectB,
+        projectId: 'project-b',
+        memoryRoot,
+        stateRoot,
+      });
+      await bridgeB.collectContext({
+        task: '项目 B：所有项目都使用中文',
+        sessionId: 'project-b-session',
+      });
+      const page = (
+        await bridgeB.pluginRuntime.dashboardPages({ scope: 'project', projectId: 'project-b' })
+      ).find((entry) => entry.pluginId === 'comet.personal-memory');
+      const loaded = (await page?.load?.({
+        projectId: 'project-b',
+        invoke: (capability, input) =>
+          bridgeB.pluginRuntime.invoke('comet.personal-memory', capability, input, {
+            scope: 'project',
+            projectId: 'project-b',
+          }),
+      })) as {
+        management: {
+          records: readonly {
+            id: string;
+            applicationHistory?: readonly { task: string; projectId?: string }[];
+          }[];
+        };
+      };
+
+      expect(
+        loaded.management.records.find((record) => record.id === global!.id)?.applicationHistory,
+      ).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ task: '项目 A：所有项目都使用中文' }),
+          expect.objectContaining({ task: '项目 B：所有项目都使用中文' }),
+        ]),
+      );
+      expect(
+        loaded.management.records.find((record) => record.id === global!.id)?.applicationHistory,
+      ).toHaveLength(2);
+      expect(loaded.management.records.map((record) => record.id)).not.toContain(projectOnly!.id);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
   });
 
   it('repairs legacy global records with a project key before explicit Dashboard actions', async () => {

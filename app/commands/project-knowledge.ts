@@ -11,6 +11,7 @@ import {
 import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
 import { readWorkflowProjectConfig } from '../../domains/workflow-contract/project-config-reader.js';
 import { DEFAULT_WORKFLOW_KNOWLEDGE_PROJECT_CONFIG } from '../../domains/workflow-contract/project-config.js';
+import type { AgentContextOutcomeStatus } from '../../domains/agent-learning/index.js';
 
 export interface ProjectKnowledgeCommandOptions {
   readonly json?: boolean;
@@ -21,8 +22,9 @@ export interface ProjectKnowledgeCommandOptions {
   readonly cacheRoot?: string;
   readonly id?: string;
   readonly text?: string;
-  readonly state?: 'active' | 'needs-review' | 'retired' | 'all';
+  readonly state?: 'trial' | 'proven' | 'enforced' | 'superseded' | 'all';
   readonly limit?: number;
+  readonly outcome?: AgentContextOutcomeStatus;
 }
 
 export async function projectKnowledgeStatusCommand(
@@ -86,7 +88,7 @@ export async function projectKnowledgeListCommand(
   try {
     const result = await provider.query({
       kind: 'list',
-      state: options.state ?? 'active',
+      state: options.state ?? 'proven',
       limit: options.limit,
     });
     const output = { provider: providerName(provider), result, diagnostics };
@@ -146,7 +148,7 @@ export async function projectKnowledgeForgetCommand(
   const provider = await createProvider(projectRoot, options, diagnostics);
   try {
     const result = await provider.apply({
-      kind: 'retire',
+      kind: 'supersede',
       id: required(options.id, '--id'),
       projectId: resolveStableProjectId(projectRoot),
       updatedAt: new Date().toISOString(),
@@ -168,6 +170,29 @@ export async function projectKnowledgeRebuildCommand(
   const provider = await createProvider(projectRoot, options, diagnostics);
   try {
     const result = await provider.apply({ kind: 'refresh' });
+    const output = { provider: providerName(provider), result, diagnostics };
+    print(output, options);
+    return output;
+  } finally {
+    closeProvider(provider);
+  }
+}
+
+export async function projectKnowledgeFeedbackCommand(
+  targetPath = '.',
+  options: ProjectKnowledgeCommandOptions = {},
+): Promise<unknown> {
+  const projectRoot = path.resolve(targetPath);
+  const diagnostics: ProjectKnowledgeDiagnostic[] = [];
+  const provider = await createProvider(projectRoot, options, diagnostics);
+  try {
+    const result = await provider.apply({
+      kind: 'feedback',
+      id: required(options.id, '--id'),
+      projectId: resolveStableProjectId(projectRoot),
+      outcome: requiredOutcome(options.outcome),
+      updatedAt: new Date().toISOString(),
+    });
     const output = { provider: providerName(provider), result, diagnostics };
     print(output, options);
     return output;
@@ -216,6 +241,11 @@ function providerName(provider: ProjectKnowledgeProvider): 'local' | 'remote' {
 function required(value: string | undefined, option: string): string {
   if (!value?.trim()) throw new Error(`${option} must not be empty`);
   return value.trim();
+}
+
+function requiredOutcome(value: AgentContextOutcomeStatus | undefined): AgentContextOutcomeStatus {
+  if (value === undefined) throw new Error('--outcome must not be empty');
+  return value;
 }
 
 function print(value: unknown, _options: ProjectKnowledgeCommandOptions): void {

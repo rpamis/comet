@@ -1,78 +1,39 @@
 # Comet Personal Memory
 
-Comet Personal Memory keeps reusable personal preferences, collaboration habits, and verified experience across sessions. It is not an activity log and does not store every command, test result, or full conversation.
+Comet Personal Memory keeps genuinely reusable user preferences and collaboration experience across tasks. It is not a chat transcript or activity log, and it does not store complete conversations, tool output, diffs, hidden reasoning, or facts that are easy to rediscover in the repository.
 
-## What you will experience
+## Three memory layers
 
-- When you explicitly say “remember”, “always do this”, “change it to”, or “forget”, Comet acts immediately and gives a short confirmation or error.
-- A bounded background review runs at stable successful workflow checkpoints. When there is nothing durable to save, the review is skipped, or the same observation repeats, nothing is shown by default.
-- You see a short notice only when a memory first changes how a later task is handled or when a conflict needs attention.
-- Memory is kept in readable Markdown: global preferences in `profile.md` and project experience normally uses a readable project name, such as `projects/comet.md`. Comet keeps an internal project key for precise association, so the main worktree and worktrees of the same repository use the same project memory. You can inspect and edit these files directly.
-- Comet presents a separate **User Profile** for durable user facts, preferences, and collaboration habits, then adds task-matched project memory below it. The profile and task context are bounded by character budgets rather than a fixed number of entries.
+- **Core Profile**: stable language, role, technical background, communication, and output preferences.
+- **Collaboration Policy**: personal working practices selected by project, path, task type, operation, or phase.
+- **Personal Episode**: a compact successful, corrected, or failed situation with a situation, action summary, outcome, and lesson, used for background reflection or on-demand expansion.
 
-## What is worth remembering
+An explicit “remember”, “always do this”, or correction is stored immediately as `proven` and can affect the next task. A request limited to “this time” or “this task” is not persisted. Reusable experience inferred from real feedback starts as low-priority `trial`; one successful application can promote it to `proven`, while rejection, correction, or a contributed failure can rewrite it or mark it `superseded`. Forgetting writes a separate tombstone, so replaying old events cannot restore forgotten content.
 
-Good candidates include:
+## Automatic learning and task use
 
-- long-term preferences for output, language, or collaboration;
-- personal working habits validated across multiple successful tasks;
-- project-specific experience that is likely to be useful again.
+Classic, Native, Hotfix, and Tweak write structured user signals, task outcomes, verification, Review, and Archive results to the same Experience Journal. Journal capture is the fast path; semantic Reflection runs in bounded background batches, never rejects valid content because of Review Packet size, and does not block the primary workflow. Explicit user signals still use a deterministic immediate path when semantic services are unavailable.
 
-Comet normally skips:
+At task start, the Context Director keeps only the full Core Profile and a small set of directly relevant `proven` collaboration policies resident. Other relevant memories enter the Context Manifest with a stable ID, title, summary, source type, and actual `whyApplied`. The Agent expands an ID only when it needs full content, sources, or verification:
 
-- one-off commands, an individual test result, and commit/Issue/PR summaries;
-- ordinary facts that are easy to find again in the repository;
-- guesses, activity logs, complete logs, complete diffs, and complete transcripts;
-- secrets, credentials, PII, prompt injection, and requests to modify Skills, agent instructions, or project policy files.
-
-## Language and scope
-
-The active project `language` in `.comet/config.yaml` controls the language of automatically generated memory:
-
-- `zh-CN`: generated text, titles, categories, tags, and reasons are in Chinese;
-- `en`: the same content is in English;
-- memory text entered directly through the CLI remains in the original language and is not silently translated.
-
-Automatic observations default to the current project scope. Only an explicitly cross-project preference, or a preference you explicitly save globally, becomes global memory. Current-project retrieval can use applicable global and project memories, but one project’s experience is never silently promoted into a rule for every project.
-
-## Project policy
-
-Projects can set a shared upper bound for automatic personal-memory behavior in `.comet/config.yaml`:
-
-```yaml
-memory:
-  learning: true
-  retrieval: true
+```text
+comet task . --task "implement a new CLI command" --phase build --session <stable-session-id> --json
+comet task . --task "implement a new CLI command" --phase build --session <same-id> --expand-context <id> --json
 ```
 
-- `learning: false` prevents workflow checkpoints from forming new memories automatically in this project.
-- `retrieval: false` prevents personal memories from being injected into Agent context for this project.
-- Omitting the block or either field keeps the existing default of `true`.
-- These are project policies. A user’s Runtime switches and project pauses can further disable behavior, but cannot override a project policy set to `false`.
-- Explicit `comet memory remember`, `retrieve`, `manage`, correction, and forget operations remain available for user-directed memory management.
+When the path, operation, or phase changes, the same session selects again without redelivering unchanged content. After actually using a memory, the Agent records its application outcome. `used-successfully` can strengthen or promote it; `ignored`, `overridden`, `corrected`, and `contributed-to-failure` affect later ranking, rewriting, or supersession.
 
-Project policy is separate from plugin lifecycle. Uninstalling the Personal Memory plugin stops the plugin but does not edit this configuration or delete the memory repository.
+The current user request and system constraints always outrank Personal Memory, and Project Policy outranks a personal project habit. Memory never grants authority to commit, push, delete, or publish and never becomes a team rule automatically.
 
-## Provider settings
+## Dashboard experience
 
-Personal Memory uses a Local Provider by default. The user-level `~/.comet/config.yaml` can select a Remote Provider and set the two context budgets without changing project policy:
+The Personal Memory workspace directly provides Core Profile, Collaboration Policy, Personal Episode, and history/forgotten views without repeating the same large title shown in the sidebar. Each record shows `trial`, `proven`, or `superseded`, its scope, evidence summary, recent outcome, and why it was applied. Users can add, correct, forget, roll back, and expand records. The current Context Manifest is previewable and the full application history is expandable.
 
-```yaml
-personal_memory:
-  provider: remote
-  profile_char_limit: 2000
-  task_context_char_limit: 6000
-  remote:
-    endpoint: https://memory.example.test/provider
-    token_env: COMET_MEMORY_TOKEN
-    profile: default
-```
+The page renders its cached snapshot first and refreshes in the background; Reflection does not block first paint. The unified settings panel configures only Provider, learning, retrieval, synchronization, and per-injection context budgets. It does not present storage size or Review Packet size as a user capacity limit.
 
-The token value stays in the named environment variable; the config and Dashboard store only its name. The Dashboard can test the active Provider, save the selection, and edit the character budgets. A saved Provider selection is used when the Personal Memory page is loaded again. Remote requests use the versioned `comet.personal-memory.provider.v1` protocol.
+## View and manage
 
-## View and manage memory
-
-The CLI and Dashboard use the same authoritative memory state. A change made through either entry point is visible with the same result in the other.
+CLI, Dashboard, Skill, and Hook use the same authoritative state:
 
 ```text
 comet memory list .
@@ -86,22 +47,33 @@ comet memory sync .
 comet memory status .
 ```
 
-`forget` keeps rollback history by default; permanent deletion requires the explicit `--permanent` option. Pausing project memory stops new learning and/or retrieval according to the pause settings, and resuming re-enables it. Retrieval returns only reliable matches in the current scope that have no unresolved conflict and are not paused.
+Use `remember` for an explicit long-term user preference; it takes effect immediately. `observe` is only for an implicit, stable collaboration practice that the Agent found reusable across tasks and must not contain task summaries, progress, command output, or test results. `forget` keeps rollback history by default; permanent deletion requires the explicit `--permanent` flag.
 
-`--project` accepts the internal project key; commands for the current project can usually omit it.
+## Configuration, providers, and storage
 
-## Markdown and synchronization
+The project `.comet/config.yaml` controls automatic learning and retrieval:
 
-Markdown is the user-readable management projection for viewing and editing personal memory. The system handles duplicates, history, conflicts, and retrieval boundaries automatically, so you do not need to maintain any other files. Manual edits or deletions are treated as user intent during the next management or retrieval operation, and background observations do not silently restore removed content.
+```yaml
+memory:
+  learning: true
+  retrieval: true
+```
 
-The current version uses only the readable project filename and does not read or migrate the not-yet-released `projects/<project-key>.md` format. The mapping between the internal project key and the project file is kept in `projectFiles` in `.comet/runtime/memory-state.json` under the personal-memory root. If different repositories use the same project name, Comet adds a short identifier to avoid mixing them.
+Disabling learning does not delete existing records, and disabling retrieval does not prevent Dashboard or explicit management operations. The user-level `~/.comet/config.yaml` selects the Local or Remote Provider and configures per-injection budgets:
 
-Personal Memory can sync through a dedicated Git remote. Without a remote, local recording, viewing, and retrieval continue to work. If the remote is unavailable, authentication fails, or synchronization conflicts, local memory remains available and you can retry with `comet memory sync`. Conflicts are not silently overwritten by the last writer; you can inspect, correct, or roll back the memory.
+```yaml
+personal_memory:
+  provider: remote
+  profile_char_limit: 2000
+  task_context_char_limit: 6000
+  remote:
+    endpoint: https://memory.example.test/provider
+    token_env: COMET_MEMORY_TOKEN
+    profile: default
+```
 
-## Classic and Native
+Character budgets determine only how much full text stays resident in one Agent Context. Overflow becomes Manifest items; it does not reject saves, truncate authoritative records, or produce byte-budget errors. Providers have no fixed record count or user-visible total-capacity limit.
 
-Classic, Native, Hotfix, and Tweak share one fixed first-party `comet-memory` Skill and Personal Memory capability. Workflows provide only small, trusted checkpoint facts; the memory reviewer does not scan the full repository, read the full conversation, or modify any Skill. If memory is unavailable or a background operation fails, the primary workflow still completes according to its normal behavior.
+The Local Provider retains readable `profile.md`, `projects/<project-key>.md`, user-level Runtime state, and optional private Git synchronization. Markdown is the management projection and rebuildable input. A repository's main workspace and worktrees share a stable project identity, while different repositories remain isolated. Remote uses a fixed versioned protocol, and token values stay only in environment variables. A Remote failure does not silently switch to Local.
 
-## Boundaries
-
-Personal Memory helps Comet use your long-term preferences and reusable experience. It does not automatically become a team standard and does not modify Skills, agent instructions, code, tests, or build configuration. You can always view, correct, forget, roll back, pause, or sync your own memories.
+Explicit add, correct, forget, rollback, expand, or settings failures return their real error and preserve prior state. Background capture, Reflection, feedback, or retrieval failures record diagnostics while the current workflow continues.

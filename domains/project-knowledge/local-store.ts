@@ -1,6 +1,6 @@
-import { closeSync, mkdirSync, openSync, readSync, statSync } from 'node:fs';
+import { closeSync, mkdirSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
 
 import { resolveProjectKnowledgeStorageLocation } from '../../platform/paths/project-knowledge-storage.js';
 import type {
@@ -25,6 +25,7 @@ import {
 } from './index-store.js';
 import type { ProjectKnowledgeDocument } from './types.js';
 import { projectKnowledgeSourceReferenceMatchesText } from './source-validity.js';
+import { openProjectKnowledgeDatabase, type ProjectKnowledgeDatabase } from './sqlite.js';
 
 export interface ProjectKnowledgeLocalStoreOptions extends Omit<
   ProjectKnowledgeIndexOptions,
@@ -47,11 +48,12 @@ interface StoredRecordRow {
 }
 
 interface SharedDatabaseEntry {
-  database: DatabaseSync | null;
+  database: ProjectKnowledgeDatabase | null;
   refs: number;
 }
 
 const MAX_SOURCE_VALIDATION_BYTES = 1024 * 1024;
+const PROJECT_KNOWLEDGE_SCHEMA_VERSION = '4';
 
 function equalSourceVersions(left: ProjectKnowledgeRecord, right: ProjectKnowledgeRecord): boolean {
   return JSON.stringify(left.sourceVersions) === JSON.stringify(right.sourceVersions);
@@ -149,6 +151,94 @@ function recordUsesSourceEvidence(record: ProjectKnowledgeRecord): boolean {
   return recordSourceReferences(record).length > 0 || record.sourceVersions.length > 0;
 }
 
+function verificationCommandsAreAvailable(
+  projectRoot: string,
+  record: ProjectKnowledgeRecord,
+): boolean {
+  return record.verification.every(
+    (entry) => verificationCommandStatus(projectRoot, entry.command) !== 'missing',
+  );
+}
+
+function verificationCommandsAreConfirmed(
+  projectRoot: string,
+  record: ProjectKnowledgeRecord,
+): boolean {
+  return (
+    record.verification.length > 0 &&
+    record.verification.every(
+      (entry) => verificationCommandStatus(projectRoot, entry.command) === 'current',
+    )
+  );
+}
+
+type VerificationCommandStatus = 'current' | 'missing' | 'unknown';
+
+function verificationCommandStatus(
+  projectRoot: string,
+  command: string,
+): VerificationCommandStatus {
+  const normalized = command.trim().replace(/\s+/gu, ' ');
+  if (/^comet (?:native check|classic guard)(?:\s|$)/u.test(normalized)) return 'current';
+  const explicitRun = /^(?:pnpm|npm|yarn|bun) run ([A-Za-z0-9:_-]+)(?:\s|$)/u.exec(normalized);
+  const directScript = /^(?:pnpm|yarn) ([A-Za-z0-9:_-]+)(?:\s|$)/u.exec(normalized);
+  const npmLifecycle = /^npm (test|start|stop|restart)(?:\s|$)/u.exec(normalized);
+  const scriptName = explicitRun?.[1] ?? directScript?.[1] ?? npmLifecycle?.[1];
+  if (scriptName !== undefined) {
+    try {
+      const manifest = JSON.parse(readFileSync(path.join(projectRoot, 'package.json'), 'utf8')) as {
+        scripts?: Record<string, unknown>;
+      };
+      return typeof manifest.scripts?.[scriptName] === 'string' ? 'current' : 'missing';
+    } catch {
+      return 'missing';
+    }
+  }
+
+  const executable = normalized.split(' ')[0]?.replaceAll('\\', '/') ?? '';
+  if (/^(?:\.\/)?(?:mvnw(?:\.cmd)?|gradlew(?:\.bat)?)$/iu.test(executable)) {
+    return projectFileExists(projectRoot, executable.replace(/^\.\//u, '')) ? 'current' : 'missing';
+  }
+  if (/^\.\/[A-Za-z0-9._/-]+$/u.test(executable)) {
+    return projectFileExists(projectRoot, executable.slice(2)) ? 'current' : 'missing';
+  }
+  if (/^(?:mvn|mvn\.cmd)$/iu.test(executable)) {
+    return projectFileExists(projectRoot, 'pom.xml') ? 'current' : 'unknown';
+  }
+  if (/^(?:gradle|gradle\.bat)$/iu.test(executable)) {
+    return ['build.gradle', 'build.gradle.kts', 'settings.gradle', 'settings.gradle.kts'].some(
+      (marker) => projectFileExists(projectRoot, marker),
+    )
+      ? 'current'
+      : 'unknown';
+  }
+  if (
+    executable === 'pytest' ||
+    (/^(?:python|python3|py)$/iu.test(executable) && /^\S+ -m pytest(?:\s|$)/u.test(normalized))
+  ) {
+    return ['pyproject.toml', 'pytest.ini', 'setup.cfg', 'tox.ini'].some((marker) =>
+      projectFileExists(projectRoot, marker),
+    )
+      ? 'current'
+      : 'unknown';
+  }
+  return 'unknown';
+}
+
+function projectFileExists(projectRoot: string, relativePath: string): boolean {
+  try {
+    return statSync(path.join(projectRoot, ...relativePath.split('/'))).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function negativeProjectKnowledgeOutcome(
+  outcome: import('../agent-learning/index.js').AgentContextOutcomeStatus | undefined,
+): boolean {
+  return outcome === 'corrected' || outcome === 'contributed-to-failure';
+}
+
 function recordResultSource(record: ProjectKnowledgeRecord): string {
   const source = recordSourceReferences(record)[0];
   if (source === undefined) return `record:${record.id}`;
@@ -169,6 +259,7 @@ function recordSearchText(record: ProjectKnowledgeRecord): string {
     record.summary,
     ...record.applicablePaths,
     ...record.operations,
+    ...(record.phases ?? []),
     ...record.conclusions.map((conclusion) => conclusion.text),
   ]
     .join('\n')
@@ -176,12 +267,14 @@ function recordSearchText(record: ProjectKnowledgeRecord): string {
 }
 
 const RECORD_TYPE_RANK: Readonly<Record<ProjectKnowledgeRecord['type'], number>> = {
-  'project-map': 0,
-  'module-overview': 1,
-  'integration-path': 2,
-  'behavior-note': 3,
-  'change-impact': 4,
-  'build-test': 5,
+  topology: 0,
+  fact: 1,
+  dependency: 2,
+  constraint: 3,
+  decision: 4,
+  pattern: 5,
+  procedure: 6,
+  'failure-resolution': 7,
 };
 
 function normalizedProjectPath(value: string): string {
@@ -207,6 +300,43 @@ function recordHasPathAssociation(
     );
 }
 
+function recordMatchesApplicablePath(
+  record: ProjectKnowledgeRecord,
+  query: ProjectKnowledgeQuery,
+): boolean {
+  if (!query.path) return false;
+  const queryPath = normalizedProjectPath(query.path);
+  return record.applicablePaths
+    .map(normalizedProjectPath)
+    .some((candidate) => projectPathSelectorMatches(candidate, queryPath));
+}
+
+function projectPathSelectorMatches(selector: string, projectPath: string): boolean {
+  if (!/[?*]/u.test(selector)) {
+    return (
+      selector === projectPath ||
+      projectPath.startsWith(selector.endsWith('/') ? selector : `${selector}/`)
+    );
+  }
+  let pattern = '^';
+  for (let index = 0; index < selector.length; index += 1) {
+    const character = selector[index]!;
+    const next = selector[index + 1];
+    if (character === '*' && next === '*') {
+      if (selector[index + 2] === '/') {
+        pattern += '(?:.*/)?';
+        index += 2;
+      } else {
+        pattern += '.*';
+        index += 1;
+      }
+    } else if (character === '*') pattern += '[^/]*';
+    else if (character === '?') pattern += '[^/]';
+    else pattern += character.replace(/[\\^$.*+?()[\]{}|]/gu, '\\$&');
+  }
+  return new RegExp(`${pattern}$`, 'u').test(projectPath);
+}
+
 function recordHasOperationAssociation(
   record: ProjectKnowledgeRecord,
   query: ProjectKnowledgeQuery,
@@ -214,6 +344,37 @@ function recordHasOperationAssociation(
   if (!query.operation) return false;
   const operation = query.operation.toLocaleLowerCase();
   return record.operations.some((candidate) => candidate.toLocaleLowerCase() === operation);
+}
+
+function recordMatchesSelectors(
+  record: ProjectKnowledgeRecord,
+  query: ProjectKnowledgeQuery,
+): boolean {
+  if (record.applicablePaths.length > 0) {
+    if (!query.path || !recordMatchesApplicablePath(record, query)) return false;
+  }
+  if (record.operations.length > 0) {
+    if (!query.operation || !recordHasOperationAssociation(record, query)) return false;
+  }
+  const phases = record.phases ?? [];
+  if (phases.length > 0) {
+    if (!query.phase) return false;
+    const phase = query.phase.toLocaleLowerCase();
+    if (!phases.some((candidate) => candidate.toLocaleLowerCase() === phase)) return false;
+  }
+  return true;
+}
+
+function recordLifecycleRank(record: ProjectKnowledgeRecord): number {
+  return record.state === 'enforced' ? 3 : record.state === 'proven' ? 2 : 1;
+}
+
+function recordAuthorityRank(record: ProjectKnowledgeRecord): number {
+  return record.authority === 'user' ? 3 : record.authority === 'repository' ? 2 : 1;
+}
+
+function recordFeedbackRank(record: ProjectKnowledgeRecord): number {
+  return Math.min(record.successCount, 10) * 4 - Math.min(record.failureCount, 10) * 8;
 }
 
 function toIndexStatus(status: ProjectKnowledgeIndexStatus): ProjectKnowledgeStatus {
@@ -236,7 +397,7 @@ export class ProjectKnowledgeLocalStore {
   readonly workspaceId: string;
 
   private readonly projectRoot: string;
-  private database: DatabaseSync | null;
+  private database: ProjectKnowledgeDatabase | null;
   private readonly indexStore: ProjectKnowledgeIndexStore;
   private closed = false;
 
@@ -251,13 +412,7 @@ export class ProjectKnowledgeLocalStore {
     this.workspaceId = location.workspaceId;
     mkdirSync(path.dirname(this.databasePath), { recursive: true });
     this.database = this.acquireDatabase();
-    this.database.exec(
-      [
-        'CREATE TABLE IF NOT EXISTS pk_records (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, type TEXT NOT NULL, state TEXT NOT NULL, authority TEXT NOT NULL, payload_json TEXT NOT NULL, source_versions_json TEXT NOT NULL, updated_at TEXT NOT NULL);',
-        'CREATE INDEX IF NOT EXISTS pk_records_project ON pk_records(project_id);',
-        'CREATE INDEX IF NOT EXISTS pk_records_state ON pk_records(state, authority);',
-      ].join('\n'),
-    );
+    this.initializeSchema();
     this.indexStore = new ProjectKnowledgeIndexStore({
       projectRoot: options.projectRoot,
       ...(options.storageRoot ? { cacheRoot: options.storageRoot } : {}),
@@ -319,8 +474,10 @@ export class ProjectKnowledgeLocalStore {
     const terms = [...query.terms, ...query.strongTerms, ...query.phraseTerms]
       .map((term) => term.toLocaleLowerCase())
       .filter(Boolean);
-    const activeRecords = this.list({ state: 'active' });
-    const direct = activeRecords
+    const applicableRecords = this.list().filter(
+      (record) => record.state !== 'superseded' && recordMatchesSelectors(record, query),
+    );
+    const direct = applicableRecords
       .map((record) => {
         const text = recordSearchText(record);
         const matches = terms.filter((term) => text.includes(term)).length;
@@ -333,6 +490,12 @@ export class ProjectKnowledgeLocalStore {
       })
       .filter(({ matches }) => terms.length === 0 || matches > 0)
       .sort((left, right) => {
+        const lifecycle = recordLifecycleRank(right.record) - recordLifecycleRank(left.record);
+        if (lifecycle !== 0) return lifecycle;
+        const authority = recordAuthorityRank(right.record) - recordAuthorityRank(left.record);
+        if (authority !== 0) return authority;
+        const feedback = recordFeedbackRank(right.record) - recordFeedbackRank(left.record);
+        if (feedback !== 0) return feedback;
         if (left.pathAssociation !== right.pathAssociation) return left.pathAssociation ? -1 : 1;
         if (left.operationAssociation !== right.operationAssociation)
           return left.operationAssociation ? -1 : 1;
@@ -344,7 +507,7 @@ export class ProjectKnowledgeLocalStore {
         );
         return source !== 0 ? source : left.record.id.localeCompare(right.record.id);
       });
-    const recordsById = new Map(activeRecords.map((record) => [record.id, record]));
+    const recordsById = new Map(applicableRecords.map((record) => [record.id, record]));
     const ranked: Array<{
       record: ProjectKnowledgeRecord;
       matches: number;
@@ -372,24 +535,28 @@ export class ProjectKnowledgeLocalStore {
     }));
   }
 
-  async apply(mutation: ProjectKnowledgeMutation): Promise<ProjectKnowledgeApplyResult> {
+  async apply(
+    mutation: Exclude<ProjectKnowledgeMutation, { readonly kind: 'experience-delta' }>,
+  ): Promise<ProjectKnowledgeApplyResult> {
     if (mutation.kind === 'refresh') {
       const candidates = this.list({ projectId: mutation.projectId });
       let changed = false;
       for (const candidate of candidates) {
-        if (candidate.state === 'retired' || (mutation.id && mutation.id !== candidate.id))
+        if (candidate.state === 'superseded' || (mutation.id && mutation.id !== candidate.id))
           continue;
-        const inspection = inspectRecordSources(
-          this.projectRoot,
-          candidate,
-          candidate.state === 'needs-review',
-        );
-        const state =
-          candidate.authority === 'user' && !recordUsesSourceEvidence(candidate)
-            ? 'active'
+        const inspection = inspectRecordSources(this.projectRoot, candidate, false);
+        const verificationCurrent = verificationCommandsAreAvailable(this.projectRoot, candidate);
+        const state: ProjectKnowledgeRecord['state'] = !verificationCurrent
+          ? 'superseded'
+          : candidate.authority === 'user' && !recordUsesSourceEvidence(candidate)
+            ? candidate.state === 'enforced'
+              ? 'enforced'
+              : 'proven'
             : inspection.current
-              ? 'active'
-              : 'needs-review';
+              ? candidate.state === 'enforced'
+                ? 'enforced'
+                : 'proven'
+              : 'superseded';
         if (
           state !== candidate.state ||
           (inspection.current &&
@@ -409,22 +576,64 @@ export class ProjectKnowledgeLocalStore {
       const records = this.list({ projectId: mutation.projectId });
       return { kind: mutation.kind, changed, records, diagnostics: [] };
     }
+    if (mutation.kind === 'verify') {
+      const successful = new Set(mutation.commands.map((command) => command.trim()));
+      const candidates = this.list({ projectId: mutation.projectId, type: 'constraint' });
+      let changed = false;
+      for (const candidate of candidates) {
+        if (
+          candidate.state === 'superseded' ||
+          candidate.verification.length === 0 ||
+          !candidate.verification.every(
+            (entry) =>
+              successful.has(entry.command.trim()) &&
+              verificationCommandStatus(this.projectRoot, entry.command) !== 'missing',
+          )
+        )
+          continue;
+        if (candidate.state !== 'enforced') {
+          this.write({ ...candidate, state: 'enforced', updatedAt: mutation.updatedAt });
+          changed = true;
+        }
+      }
+      return {
+        kind: mutation.kind,
+        changed,
+        records: this.list({ projectId: mutation.projectId }),
+        diagnostics: [],
+      };
+    }
+    if (mutation.kind === 'feedback') return this.applyFeedback(mutation);
     const current = this.read(mutation.kind === 'upsert' ? mutation.record.id : mutation.id);
     if (mutation.kind === 'upsert') {
-      const incoming = parseProjectKnowledgeRecord(mutation.record);
+      const parsedIncoming = parseProjectKnowledgeRecord(mutation.record);
+      const incoming =
+        parsedIncoming.state === 'enforced' &&
+        !verificationCommandsAreConfirmed(this.projectRoot, parsedIncoming)
+          ? parseProjectKnowledgeRecord({ ...parsedIncoming, state: 'proven' })
+          : parsedIncoming;
       if (
-        current?.state === 'retired' &&
-        incoming.authority === 'automatic' &&
+        current?.state === 'superseded' &&
+        incoming.authority !== 'user' &&
         equalSourceVersions(current, incoming)
       ) {
         return { kind: mutation.kind, changed: false, record: current, diagnostics: [] };
       }
-      const next =
-        current?.state === 'retired' && incoming.authority === 'automatic'
-          ? incoming
-          : current
-            ? mergeProjectKnowledgeRecord(current, incoming)
-            : incoming;
+      if (current?.state === 'superseded' && incoming.authority !== 'user') {
+        const versioned = versionProjectKnowledgeRecord(current, incoming);
+        const existingVersion = this.read(versioned.id);
+        const next = existingVersion
+          ? mergeProjectKnowledgeRecord(existingVersion, versioned)
+          : versioned;
+        this.write(next);
+        return {
+          kind: mutation.kind,
+          changed: !existingVersion || JSON.stringify(existingVersion) !== JSON.stringify(next),
+          record: next,
+          diagnostics: [],
+        };
+      }
+      const next = current ? mergeProjectKnowledgeRecord(current, incoming) : incoming;
       this.write(next);
       return {
         kind: mutation.kind,
@@ -446,16 +655,16 @@ export class ProjectKnowledgeLocalStore {
         ],
       };
     }
-    if (mutation.kind === 'retire') {
+    if (mutation.kind === 'supersede') {
       const next = parseProjectKnowledgeRecord({
         ...current,
-        state: 'retired',
+        state: 'superseded',
         updatedAt: mutation.updatedAt,
       });
       this.write(next);
       return { kind: mutation.kind, changed: true, record: next, diagnostics: [] };
     }
-    const corrected = parseProjectKnowledgeRecord({
+    const correctedBase = parseProjectKnowledgeRecord({
       ...current,
       ...(mutation.title !== undefined ? { title: mutation.title } : {}),
       ...(mutation.summary !== undefined ? { summary: mutation.summary } : {}),
@@ -463,22 +672,24 @@ export class ProjectKnowledgeLocalStore {
         ? { applicablePaths: mutation.applicablePaths }
         : {}),
       ...(mutation.operations !== undefined ? { operations: mutation.operations } : {}),
+      ...(mutation.phases !== undefined ? { phases: mutation.phases } : {}),
       ...(mutation.conclusions !== undefined ? { conclusions: mutation.conclusions } : {}),
       ...(mutation.relations !== undefined ? { relations: mutation.relations } : {}),
       ...(mutation.verification !== undefined ? { verification: mutation.verification } : {}),
       authority: 'user',
-      state: 'active',
+      state: 'proven',
       updatedAt: mutation.updatedAt,
     });
+    const corrected = parseProjectKnowledgeRecord({ ...correctedBase, state: 'proven' });
     const inspection = inspectRecordSources(this.projectRoot, corrected, true);
     const next = parseProjectKnowledgeRecord({
       ...corrected,
       state:
         corrected.authority === 'user' && !recordUsesSourceEvidence(corrected)
-          ? 'active'
+          ? corrected.state
           : inspection.current
-            ? 'active'
-            : 'needs-review',
+            ? corrected.state
+            : 'trial',
       sourceVersions: inspection.current ? inspection.sourceVersions : corrected.sourceVersions,
     });
     this.write(next);
@@ -489,6 +700,30 @@ export class ProjectKnowledgeLocalStore {
     corpus: readonly ProjectKnowledgeDocument[],
   ): Promise<ProjectKnowledgeIndexSyncResult> {
     return this.indexStore.syncCorpus(corpus);
+  }
+
+  async mutationApplied(idempotencyKey: string): Promise<boolean> {
+    return Boolean(
+      this.requireDatabase()
+        .prepare('SELECT mutation_key FROM pk_applied_mutations WHERE mutation_key = ?')
+        .get(idempotencyKey),
+    );
+  }
+
+  async markMutationApplied(idempotencyKey: string, appliedAt: string): Promise<void> {
+    const database = this.requireDatabase();
+    database.exec('BEGIN IMMEDIATE;');
+    try {
+      database
+        .prepare(
+          'INSERT OR IGNORE INTO pk_applied_mutations(mutation_key, applied_at) VALUES (?, ?)',
+        )
+        .run(idempotencyKey, appliedAt);
+      database.exec('COMMIT;');
+    } catch (error) {
+      database.exec('ROLLBACK;');
+      throw error;
+    }
   }
 
   async indexStatus(): Promise<ProjectKnowledgeIndexStatus> {
@@ -515,24 +750,10 @@ export class ProjectKnowledgeLocalStore {
   }
 
   private write(record: ProjectKnowledgeRecord): void {
-    const payload = JSON.stringify(record);
     const database = this.requireDatabase();
     database.exec('BEGIN IMMEDIATE;');
     try {
-      database
-        .prepare(
-          'INSERT INTO pk_records(id, project_id, type, state, authority, payload_json, source_versions_json, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET project_id = excluded.project_id, type = excluded.type, state = excluded.state, authority = excluded.authority, payload_json = excluded.payload_json, source_versions_json = excluded.source_versions_json, updated_at = excluded.updated_at',
-        )
-        .run(
-          record.id,
-          record.projectId,
-          record.type,
-          record.state,
-          record.authority,
-          payload,
-          JSON.stringify(record.sourceVersions),
-          record.updatedAt,
-        );
+      this.writeRecord(database, record);
       database.exec('COMMIT;');
     } catch (error) {
       database.exec('ROLLBACK;');
@@ -540,14 +761,217 @@ export class ProjectKnowledgeLocalStore {
     }
   }
 
-  private acquireDatabase(): DatabaseSync {
+  private applyFeedback(
+    mutation: Extract<ProjectKnowledgeMutation, { readonly kind: 'feedback' }>,
+  ): ProjectKnowledgeApplyResult {
+    const database = this.requireDatabase();
+    database.exec('BEGIN IMMEDIATE;');
+    try {
+      if (
+        mutation.idempotencyKey !== undefined &&
+        database
+          .prepare('SELECT mutation_key FROM pk_applied_mutations WHERE mutation_key = ?')
+          .get(mutation.idempotencyKey)
+      ) {
+        const current = this.read(mutation.id);
+        database.exec('COMMIT;');
+        return { kind: mutation.kind, changed: false, record: current, diagnostics: [] };
+      }
+      const current = this.read(mutation.id);
+      if (!current || current.projectId !== mutation.projectId) {
+        database.exec('COMMIT;');
+        return {
+          kind: mutation.kind,
+          changed: false,
+          record: null,
+          diagnostics: [
+            {
+              code: 'record-not-found',
+              message: `Project knowledge record not found: ${mutation.id}`,
+            },
+          ],
+        };
+      }
+      const successful = mutation.outcome === 'used-successfully';
+      const failed = negativeProjectKnowledgeOutcome(mutation.outcome);
+      const storedOutcome =
+        mutation.applicationId === undefined
+          ? undefined
+          : (database
+              .prepare(
+                'SELECT status, revision FROM pk_application_outcomes WHERE record_id = ? AND application_id = ?',
+              )
+              .get(current.id, mutation.applicationId) as
+              | {
+                  status: import('../agent-learning/index.js').AgentContextOutcomeStatus;
+                  revision: number;
+                }
+              | undefined);
+      const revision = mutation.revision ?? (storedOutcome?.revision ?? 0) + 1;
+      if (storedOutcome !== undefined && revision <= storedOutcome.revision) {
+        if (mutation.idempotencyKey !== undefined) {
+          database
+            .prepare(
+              'INSERT OR IGNORE INTO pk_applied_mutations(mutation_key, applied_at) VALUES (?, ?)',
+            )
+            .run(mutation.idempotencyKey, mutation.updatedAt);
+        }
+        database.exec('COMMIT;');
+        return { kind: mutation.kind, changed: false, record: current, diagnostics: [] };
+      }
+      const previousOutcome =
+        storedOutcome?.status ??
+        (mutation.applicationId === undefined ? mutation.previousOutcome : undefined);
+      const previousSuccessful = previousOutcome === 'used-successfully';
+      const previousFailed = negativeProjectKnowledgeOutcome(previousOutcome);
+      if (mutation.applicationId !== undefined) {
+        database
+          .prepare(
+            [
+              'INSERT INTO pk_application_outcomes(record_id, application_id, status, revision)',
+              'VALUES (?, ?, ?, ?)',
+              'ON CONFLICT(record_id, application_id) DO UPDATE SET status = excluded.status, revision = excluded.revision',
+            ].join(' '),
+          )
+          .run(current.id, mutation.applicationId, mutation.outcome, revision);
+      }
+      const feedbackState = database
+        .prepare('SELECT base_state FROM pk_feedback_state WHERE record_id = ?')
+        .get(current.id) as { base_state: ProjectKnowledgeRecord['state'] } | undefined;
+      if (
+        current.authority === 'automatic' &&
+        failed &&
+        current.state !== 'superseded' &&
+        feedbackState === undefined
+      ) {
+        database
+          .prepare('INSERT INTO pk_feedback_state(record_id, base_state) VALUES (?, ?)')
+          .run(current.id, current.state);
+      }
+      const negativeOutcomeCount = (
+        database
+          .prepare(
+            "SELECT COUNT(*) AS count FROM pk_application_outcomes WHERE record_id = ? AND status IN ('corrected', 'contributed-to-failure')",
+          )
+          .get(current.id) as { count: number }
+      ).count;
+      const shouldRestore =
+        !failed && feedbackState !== undefined && Number(negativeOutcomeCount) === 0;
+      const restoredState = shouldRestore ? feedbackState.base_state : current.state;
+      const next = parseProjectKnowledgeRecord({
+        ...current,
+        state:
+          current.authority === 'automatic' && failed
+            ? 'superseded'
+            : restoredState === 'trial' && successful
+              ? 'proven'
+              : restoredState,
+        applicationCount:
+          current.applicationCount +
+          Number(
+            mutation.applicationId === undefined
+              ? mutation.previousOutcome === undefined
+              : storedOutcome === undefined,
+          ),
+        successCount: Math.max(
+          0,
+          current.successCount + Number(successful) - Number(previousSuccessful),
+        ),
+        failureCount: Math.max(0, current.failureCount + Number(failed) - Number(previousFailed)),
+        lastAppliedAt: mutation.updatedAt,
+        updatedAt: mutation.updatedAt,
+      });
+      this.writeRecord(database, next);
+      if (shouldRestore) {
+        database.prepare('DELETE FROM pk_feedback_state WHERE record_id = ?').run(current.id);
+      }
+      if (mutation.idempotencyKey !== undefined) {
+        database
+          .prepare(
+            'INSERT OR IGNORE INTO pk_applied_mutations(mutation_key, applied_at) VALUES (?, ?)',
+          )
+          .run(mutation.idempotencyKey, mutation.updatedAt);
+      }
+      database.exec('COMMIT;');
+      return { kind: mutation.kind, changed: true, record: next, diagnostics: [] };
+    } catch (error) {
+      database.exec('ROLLBACK;');
+      throw error;
+    }
+  }
+
+  private writeRecord(database: ProjectKnowledgeDatabase, record: ProjectKnowledgeRecord): void {
+    database
+      .prepare(
+        'INSERT INTO pk_records(id, project_id, type, state, authority, payload_json, source_versions_json, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET project_id = excluded.project_id, type = excluded.type, state = excluded.state, authority = excluded.authority, payload_json = excluded.payload_json, source_versions_json = excluded.source_versions_json, updated_at = excluded.updated_at',
+      )
+      .run(
+        record.id,
+        record.projectId,
+        record.type,
+        record.state,
+        record.authority,
+        JSON.stringify(record),
+        JSON.stringify(record.sourceVersions),
+        record.updatedAt,
+      );
+  }
+
+  private initializeSchema(): void {
+    const database = this.requireDatabase();
+    database.exec(
+      'CREATE TABLE IF NOT EXISTS pk_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);',
+    );
+    const metadata = database
+      .prepare("SELECT value FROM pk_meta WHERE key = 'schema_version'")
+      .get() as { value?: string } | undefined;
+    if (metadata?.value === PROJECT_KNOWLEDGE_SCHEMA_VERSION) {
+      this.createRecordSchema(database);
+      return;
+    }
+    database.exec('BEGIN IMMEDIATE;');
+    try {
+      database.exec(
+        [
+          'DROP TABLE IF EXISTS pk_records;',
+          'DROP TABLE IF EXISTS pk_applied_mutations;',
+          'DROP TABLE IF EXISTS pk_application_outcomes;',
+          'DROP TABLE IF EXISTS pk_feedback_state;',
+          'DELETE FROM pk_meta;',
+        ].join('\n'),
+      );
+      this.createRecordSchema(database);
+      database
+        .prepare("INSERT INTO pk_meta(key, value) VALUES ('schema_version', ?)")
+        .run(PROJECT_KNOWLEDGE_SCHEMA_VERSION);
+      database.exec('COMMIT;');
+    } catch (error) {
+      database.exec('ROLLBACK;');
+      throw error;
+    }
+  }
+
+  private createRecordSchema(database: ProjectKnowledgeDatabase): void {
+    database.exec(
+      [
+        'CREATE TABLE IF NOT EXISTS pk_records (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, type TEXT NOT NULL, state TEXT NOT NULL, authority TEXT NOT NULL, payload_json TEXT NOT NULL, source_versions_json TEXT NOT NULL, updated_at TEXT NOT NULL);',
+        'CREATE INDEX IF NOT EXISTS pk_records_project ON pk_records(project_id);',
+        'CREATE INDEX IF NOT EXISTS pk_records_state ON pk_records(state, authority);',
+        'CREATE TABLE IF NOT EXISTS pk_applied_mutations (mutation_key TEXT PRIMARY KEY, applied_at TEXT NOT NULL);',
+        'CREATE TABLE IF NOT EXISTS pk_application_outcomes (record_id TEXT NOT NULL, application_id TEXT NOT NULL, status TEXT NOT NULL, revision INTEGER NOT NULL, PRIMARY KEY(record_id, application_id));',
+        'CREATE TABLE IF NOT EXISTS pk_feedback_state (record_id TEXT PRIMARY KEY, base_state TEXT NOT NULL);',
+      ].join('\n'),
+    );
+  }
+
+  private acquireDatabase(): ProjectKnowledgeDatabase {
     const shared = ProjectKnowledgeLocalStore.sharedDatabases.get(this.databasePath);
     if (shared) {
       shared.refs += 1;
       if (!shared.database) throw new Error('Project knowledge local store database is closed');
       return shared.database;
     }
-    const database = new DatabaseSync(this.databasePath);
+    const database = openProjectKnowledgeDatabase(this.databasePath);
     database.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 250;');
     ProjectKnowledgeLocalStore.sharedDatabases.set(this.databasePath, { database, refs: 1 });
     return database;
@@ -564,8 +988,47 @@ export class ProjectKnowledgeLocalStore {
     database?.close();
   }
 
-  private requireDatabase(): DatabaseSync {
+  private requireDatabase(): ProjectKnowledgeDatabase {
     if (!this.database) throw new Error('Project knowledge local store is closed');
     return this.database;
   }
+}
+
+function versionProjectKnowledgeRecord(
+  superseded: ProjectKnowledgeRecord,
+  incoming: ProjectKnowledgeRecord,
+): ProjectKnowledgeRecord {
+  const signature = createHash('sha256')
+    .update(
+      JSON.stringify({
+        type: incoming.type,
+        title: incoming.title,
+        summary: incoming.summary,
+        conclusions: incoming.conclusions,
+        verification: incoming.verification,
+        sourceVersions: incoming.sourceVersions,
+      }),
+    )
+    .digest('hex')
+    .slice(0, 12);
+  const id = `${incoming.id.slice(0, 112)}-v-${signature}`;
+  const source =
+    recordSourceReferences(incoming)[0] ??
+    (incoming.sourceVersions[0] === undefined
+      ? undefined
+      : { source: incoming.sourceVersions[0].source });
+  const retainedRelations = incoming.relations.filter(
+    (relation) => relation.type !== 'supersedes' || relation.targetId !== superseded.id,
+  );
+  return parseProjectKnowledgeRecord({
+    ...incoming,
+    id,
+    relations:
+      source === undefined
+        ? incoming.relations
+        : [
+            ...retainedRelations.slice(0, 15),
+            { type: 'supersedes', targetId: superseded.id, sources: [source] },
+          ],
+  });
 }

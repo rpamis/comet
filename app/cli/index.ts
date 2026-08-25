@@ -63,6 +63,20 @@ program
   .requiredOption('--task <text>', '用户原始请求')
   .option('--path <path>', '当前任务目标路径')
   .option('--phase <phase>', '当前工作阶段，例如 build 或 verify')
+  .option('--operation <operation>', '当前操作，例如 edit、review 或 verify')
+  .option('--session <id>', '当前 Agent 会话标识，用于避免重复注入')
+  .option('--context-budget <characters>', '本次注入的字符预算')
+  .option('--expand-context <id>', '按 Context Manifest 标识渐进加载完整内容')
+  .option('--application <id>', '记录一次上下文应用结果')
+  .addOption(
+    new Option('--outcome <outcome>', '上下文应用结果').choices([
+      'used-successfully',
+      'ignored',
+      'overridden',
+      'corrected',
+      'contributed-to-failure',
+    ]),
+  )
   .option('--complete', '记录成功任务')
   .option('--workflow <workflow>', '工作流类型')
   .option('--change <id>', '当前 change ID')
@@ -197,6 +211,7 @@ memory
   .requiredOption('--task <text>', '任务描述')
   .option('--path <path>', '当前文件或目录')
   .option('--phase <phase>', '验证阶段，例如 build 或 verify')
+  .option('--operation <operation>', '当前操作，例如 edit、review 或 verify')
   .option('--json', 'Output as JSON')
   .action(async (targetPath = '.', options) => {
     const { personalMemoryContextCommand } = await import('../commands/personal-memory.js');
@@ -272,7 +287,13 @@ knowledge
   .command('list [path]')
   .description('列出项目知识记录')
   .addOption(
-    new Option('--state <state>', '记录状态').choices(['active', 'needs-review', 'retired', 'all']),
+    new Option('--state <state>', '记录状态').choices([
+      'trial',
+      'proven',
+      'enforced',
+      'superseded',
+      'all',
+    ]),
   )
   .option('--json', 'Output as JSON')
   .action(async (targetPath = '.', options) => {
@@ -309,6 +330,25 @@ knowledge
   .action(async (targetPath = '.', options) => {
     const { projectKnowledgeForgetCommand } = await import('../commands/project-knowledge.js');
     await projectKnowledgeForgetCommand(targetPath, options);
+  });
+
+knowledge
+  .command('feedback [path]')
+  .description('记录一条项目知识在真实任务中的应用结果')
+  .requiredOption('--id <id>', '记录标识')
+  .addOption(
+    new Option('--outcome <outcome>', '应用结果').choices([
+      'used-successfully',
+      'ignored',
+      'overridden',
+      'corrected',
+      'contributed-to-failure',
+    ]),
+  )
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { projectKnowledgeFeedbackCommand } = await import('../commands/project-knowledge.js');
+    await projectKnowledgeFeedbackCommand(targetPath, options);
   });
 
 program

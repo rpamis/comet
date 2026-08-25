@@ -1,5 +1,6 @@
 import os from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 
 import {
   createPersonalMemoryPluginDescriptor,
@@ -15,7 +16,6 @@ import {
   type MemoryRecord,
   type MemoryRetrieval,
   type MemoryReviewSkillRunner,
-  type MemoryReviewRequest,
   type MemoryProviderConfig,
   readPersonalMemoryConfig,
   writePersonalMemoryConfig,
@@ -24,7 +24,23 @@ import { getCurrentVersion } from '../../platform/version/version.js';
 import { resolveProjectName } from '../../platform/paths/project-identity.js';
 import { JsonFilePluginStorageStore, JsonFileTextStore } from '../../platform/fs/plugin-store.js';
 import { JsonPluginStateStore, PluginRuntime } from './plugin-runtime.js';
-import type { PluginContextContribution, PluginEvent, PluginScopeContext } from './types.js';
+import type { PluginScopeContext } from './types.js';
+import {
+  AGENT_EXPERIENCE_SCHEMA,
+  AgentExperienceJournal,
+  ContextDirector,
+  contextExpansionId,
+  parseContextExpansionId,
+  StorageAgentContextApplicationStore,
+  StorageAgentExperienceJournalStore,
+  type AgentContextApplicationStore,
+  type AgentContextApplicationRecord,
+  type AgentContextCandidate,
+  type AgentContextExpansion,
+  type AgentContextManifestItem,
+  type AgentContextOutcomeStatus,
+  type AgentExperienceEvent,
+} from '../agent-learning/index.js';
 import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
 import { writeWorkflowProjectConfig } from '../workflow-contract/project-config-writer.js';
 import { DEFAULT_WORKFLOW_MEMORY_PROJECT_CONFIG } from '../workflow-contract/project-config.js';
@@ -33,36 +49,6 @@ import { createProjectKnowledgePluginDescriptor } from '../project-knowledge/ind
 import type { WorkflowKnowledgeProjectConfig } from '../workflow-contract/types.js';
 import { DEFAULT_WORKFLOW_KNOWLEDGE_PROJECT_CONFIG } from '../workflow-contract/project-config.js';
 import type { ProjectKnowledgeSemanticReviewer } from '../project-knowledge/learning.js';
-
-export interface CometLifecycleObservation {
-  readonly name:
-    | 'change.completed'
-    | 'task.completed'
-    | 'review.completed'
-    | 'verification.completed';
-  readonly workflow: string;
-  readonly changeId: string;
-  readonly success: boolean;
-  readonly category: string;
-  readonly text: string;
-  readonly candidateKey?: string;
-  readonly projectKey?: string;
-  readonly language?: MemoryLanguage;
-  readonly tags?: readonly string[];
-  readonly pathPatterns?: readonly string[];
-  readonly taskTypes?: readonly string[];
-  readonly operations?: readonly string[];
-  readonly userEvidence?: readonly string[];
-  readonly explicitRequest?: MemoryReviewRequest;
-  /** Structured workflow evidence used by project knowledge learning. */
-  readonly changedPaths?: readonly string[];
-  readonly artifactRefs?: readonly string[];
-  readonly verificationCommands?: readonly string[];
-  readonly verificationResults?: readonly {
-    readonly command: string;
-    readonly success: boolean;
-  }[];
-}
 
 export interface CometPluginBridgeOptions {
   readonly projectRoot: string;
@@ -74,24 +60,31 @@ export interface CometPluginBridgeOptions {
   readonly stateRoot?: string;
   readonly knowledgeCacheRoot?: string;
   readonly cometVersion?: string;
-  /** Optional host-owned adapter for nonblocking semantic memory review. */
-  readonly runMemoryReviewInBackground?: (task: () => Promise<void>) => void | Promise<void>;
+  /** Host-owned scheduler for the durable Reflection queue. */
+  readonly scheduleLearning?: (task: () => Promise<void>) => void | Promise<void>;
   /** Optional host adapter that invokes the installed comet-memory Skill. */
   readonly runMemoryReview?: MemoryReviewSkillRunner;
   /** Optional host callback for the small number of user-visible memory notices. */
   readonly onMemoryReviewNotice?: (notice: string) => void | Promise<void>;
   /** Optional host-owned adapter for nonblocking project knowledge review. */
   readonly runProjectKnowledgeReview?: ProjectKnowledgeSemanticReviewer;
-  /** Optional host-owned scheduler for project knowledge semantic review. */
-  readonly runProjectKnowledgeReviewInBackground?: (
-    task: () => Promise<void>,
-  ) => void | Promise<void>;
 }
 
 export interface CometPluginContextRequest {
   readonly task: string;
   readonly path?: string;
   readonly phase?: string;
+  readonly operation?: string;
+  readonly sessionId?: string;
+  readonly charBudget?: number;
+}
+
+export interface CometPluginContextContribution {
+  readonly pluginId: 'comet.context-director';
+  readonly text: string;
+  readonly episodeId: string;
+  readonly manifest: readonly AgentContextManifestItem[];
+  readonly applications: readonly AgentContextApplicationRecord[];
 }
 
 export class CometPluginBridge {
@@ -99,6 +92,8 @@ export class CometPluginBridge {
     private readonly runtime: PluginRuntime,
     private readonly projectId: string,
     private readonly language: MemoryLanguage = 'zh-CN',
+    private readonly contextDirector: ContextDirector = new ContextDirector(),
+    private readonly applicationStore?: AgentContextApplicationStore,
   ) {}
 
   public get pluginRuntime(): PluginRuntime {
@@ -115,54 +110,131 @@ export class CometPluginBridge {
 
   public async collectContext(
     request: CometPluginContextRequest,
-  ): Promise<PluginContextContribution[]> {
+  ): Promise<CometPluginContextContribution[]> {
+    const candidates = await this.collectCandidates(request);
+    const selection = await this.contextDirector.select(candidates, {
+      ...request,
+      projectId: this.projectId,
+      language: this.language,
+    });
+    if (!selection.text) return [];
+    await this.recordContextApplications(selection.applications);
+    return [
+      {
+        pluginId: 'comet.context-director',
+        text: selection.text,
+        episodeId: selection.episodeId,
+        manifest: selection.manifest,
+        applications: selection.applications,
+      },
+    ];
+  }
+
+  public async expandContext(
+    id: string,
+    request: CometPluginContextRequest,
+  ): Promise<AgentContextExpansion | null> {
+    const target: PluginScopeContext = { scope: 'project', projectId: this.projectId };
+    const selector = parseContextExpansionId(id);
+    const candidateId = selector?.candidateId ?? id;
+    const [global, project] = await Promise.all([
+      this.runtime.resolveContext(
+        candidateId,
+        { ...request, projectId: this.projectId },
+        'user',
+        selector?.owner,
+      ),
+      this.runtime.resolveContext(
+        candidateId,
+        { ...request, projectId: this.projectId },
+        target,
+        selector?.owner,
+      ),
+    ]);
+    const candidates = [
+      ...new Map(
+        [...global, ...project].map((candidate) => [
+          `${candidate.owner}:${candidate.id}`,
+          candidate,
+        ]),
+      ).values(),
+    ];
+    return this.contextDirector.expand(candidates, id, {
+      ...request,
+      projectId: this.projectId,
+      language: this.language,
+    });
+  }
+
+  public async recordContextOutcome(
+    applicationId: string,
+    outcome: AgentContextOutcomeStatus,
+  ): Promise<void> {
+    const update = await this.contextDirector.recordOutcome(applicationId, outcome, this.projectId);
+    if (update === null) throw new Error(`Unknown context application: ${applicationId}`);
+    await this.flushContextApplicationOutbox();
+  }
+
+  private async collectCandidates(
+    request: CometPluginContextRequest,
+  ): Promise<AgentContextCandidate[]> {
     const target: PluginScopeContext = { scope: 'project', projectId: this.projectId };
     const [global, project] = await Promise.all([
       this.runtime.collectContext({ ...request, projectId: this.projectId }, 'user'),
       this.runtime.collectContext({ ...request, projectId: this.projectId }, target),
     ]);
-    const merged = new Map<string, PluginContextContribution>();
-    for (const contribution of [...global, ...project]) {
-      const previous = merged.get(String(contribution.pluginId));
-      if (previous === undefined) {
-        merged.set(String(contribution.pluginId), contribution);
-        continue;
-      }
-      merged.set(String(contribution.pluginId), {
-        ...previous,
-        text: [...new Set([previous.text, contribution.text].filter(Boolean))].join('\n\n'),
-        ...(Array.isArray(previous.records) || Array.isArray(contribution.records)
-          ? {
-              records: deduplicateRecords([
-                ...arrayValue(previous.records),
-                ...arrayValue(contribution.records),
-              ]),
-            }
-          : {}),
-      });
+    const merged = new Map<string, AgentContextCandidate>();
+    for (const candidate of [...global, ...project]) {
+      const key = `${candidate.owner}:${candidate.id}`;
+      if (!merged.has(key)) merged.set(key, candidate);
     }
     return [...merged.values()];
   }
 
-  public async dispatchLifecycle(observation: CometLifecycleObservation): Promise<void> {
-    const payload = {
-      ...observation,
-      projectKey: observation.projectKey ?? this.projectId,
-      language: observation.language ?? this.language,
-      ...(observation.candidateKey ? { candidateKey: observation.candidateKey } : {}),
-    };
-    const source = {
-      kind: 'workflow' as const,
-      name: observation.workflow,
-      change: observation.changeId,
-      projectId: this.projectId,
-    };
-    const base: Omit<PluginEvent, 'scope' | 'projectId'> = {
-      name: observation.name,
-      source,
-      payload,
-    };
-    await this.runtime.dispatch({ ...base, scope: 'project', projectId: this.projectId });
+  private async recordContextApplications(
+    _applications: readonly AgentContextApplicationRecord[],
+  ): Promise<void> {
+    await this.flushContextApplicationOutbox();
+  }
+
+  /** Replay persisted Context application/outcome events into the idempotent Journal. */
+  public async flushContextApplicationOutbox(): Promise<void> {
+    if (this.applicationStore === undefined) return;
+    const applications = (await this.applicationStore.list()).filter(
+      (application) => application.scope === 'user' || application.projectId === this.projectId,
+    );
+    for (const application of applications) {
+      let applicationEventReady = application.appliedEventDispatchedAt !== undefined;
+      if (application.appliedEventDispatchedAt === undefined) {
+        try {
+          await this.runtime.dispatch(contextAppliedEvent(application, this.projectId));
+          await this.applicationStore.markAppliedEventDispatched(application.applicationId);
+          applicationEventReady = true;
+        } catch {
+          // The durable outbox entry remains pending and will be retried on the next bridge use.
+        }
+      }
+      if (!applicationEventReady) continue;
+      for (const outcomeEvent of application.outcomeEvents ?? []) {
+        if (outcomeEvent.dispatchedAt !== undefined) continue;
+        try {
+          await this.runtime.dispatch(
+            contextOutcomeEvent(application, outcomeEvent, this.projectId),
+          );
+          await this.applicationStore.markOutcomeEventDispatched(
+            application.applicationId,
+            outcomeEvent.revision,
+          );
+        } catch {
+          // Later revisions stay queued until the missing earlier revision is captured.
+          break;
+        }
+      }
+    }
+  }
+
+  public async dispatchExperience(event: AgentExperienceEvent): Promise<void> {
+    await this.runtime.dispatch(event);
     try {
       await this.syncMemory();
     } catch {
@@ -171,10 +243,7 @@ export class CometPluginBridge {
   }
 
   public async remember(input: MemoryInput): Promise<MemoryRecord | null> {
-    const normalized =
-      input.scope === 'project' && input.projectKey === undefined
-        ? { ...input, projectKey: this.projectId }
-        : input;
+    const normalized = scopedMemoryInput(input, this.projectId);
     return (await this.runtime.invoke(
       'comet.personal-memory',
       'remember',
@@ -184,8 +253,8 @@ export class CometPluginBridge {
     )) as MemoryRecord | null;
   }
 
-  public async observe(input: CometLifecycleObservation): Promise<unknown> {
-    await this.dispatchLifecycle(input);
+  public async observe(input: AgentExperienceEvent): Promise<unknown> {
+    await this.dispatchExperience(input);
     return this.runtime.invoke('comet.personal-memory', 'status', {}, 'user');
   }
 
@@ -215,22 +284,30 @@ export class CometPluginBridge {
     return (await this.runtime.invoke(
       'comet.personal-memory',
       'correct',
-      { id, correction },
+      { id, correction, projectKey: this.projectId },
       'user',
       { throwOnError: true },
     )) as MemoryRecord;
   }
 
   public async forget(id: string, permanent = false): Promise<void> {
-    await this.runtime.invoke('comet.personal-memory', 'remove', { id, permanent }, 'user', {
-      throwOnError: true,
-    });
+    await this.runtime.invoke(
+      'comet.personal-memory',
+      'remove',
+      { id, permanent, projectKey: this.projectId },
+      'user',
+      { throwOnError: true },
+    );
   }
 
   public async rollback(id: string): Promise<MemoryRecord> {
-    return (await this.runtime.invoke('comet.personal-memory', 'rollback', { id }, 'user', {
-      throwOnError: true,
-    })) as MemoryRecord;
+    return (await this.runtime.invoke(
+      'comet.personal-memory',
+      'rollback',
+      { id, projectKey: this.projectId },
+      'user',
+      { throwOnError: true },
+    )) as MemoryRecord;
   }
 
   public async syncMemory(): Promise<unknown> {
@@ -249,6 +326,7 @@ export class CometPluginBridge {
     paused: boolean,
     projectKey = this.projectId,
   ): Promise<unknown> {
+    assertCurrentProjectKey(projectKey, this.projectId, 'pause-project-learning');
     return this.runtime.invoke(
       'comet.personal-memory',
       'pause-project-learning',
@@ -261,6 +339,7 @@ export class CometPluginBridge {
     paused: boolean,
     projectKey = this.projectId,
   ): Promise<unknown> {
+    assertCurrentProjectKey(projectKey, this.projectId, 'pause-project-retrieval');
     return this.runtime.invoke(
       'comet.personal-memory',
       'pause-project-retrieval',
@@ -272,22 +351,6 @@ export class CometPluginBridge {
   public async diagnostics(): Promise<ReturnType<PluginRuntime['diagnostics']>> {
     return this.runtime.diagnostics();
   }
-}
-
-function arrayValue(value: unknown): readonly unknown[] {
-  return Array.isArray(value) ? value : [];
-}
-
-function deduplicateRecords(records: readonly unknown[]): readonly unknown[] {
-  const unique = new Map<string, unknown>();
-  for (const record of records) {
-    const key =
-      record !== null && typeof record === 'object' && 'id' in record
-        ? String((record as { id?: unknown }).id)
-        : JSON.stringify(record);
-    if (!unique.has(key)) unique.set(key, record);
-  }
-  return [...unique.values()];
 }
 
 export async function createDefaultCometPluginBridge(
@@ -303,17 +366,35 @@ export async function createDefaultCometPluginBridge(
   const projectPolicy = await resolveProjectMemoryPolicy(projectRoot);
   const memoryProviderConfig =
     options.memoryProviderConfig ?? (await readPersonalMemoryConfig(os.homedir()));
+  const storage = new JsonFilePluginStorageStore(path.join(stateRoot, 'storage'));
+  const userJournal = new AgentExperienceJournal(
+    new StorageAgentExperienceJournalStore(await storage.open('comet.agent-learning', 'user')),
+  );
+  const projectJournal = new AgentExperienceJournal(
+    new StorageAgentExperienceJournalStore(
+      await storage.open('comet.agent-learning', 'project', options.projectId),
+    ),
+  );
+  const applicationStore = new StorageAgentContextApplicationStore(
+    await storage.open('comet.agent-context', 'user'),
+  );
+  const contextDirector = new ContextDirector({
+    applications: applicationStore,
+    defaultCharBudget: memoryProviderConfig.taskContextCharLimit,
+  });
   const runtime = new PluginRuntime({
     cometVersion: options.cometVersion ?? getCurrentVersion(),
     store: new JsonPluginStateStore(new JsonFileTextStore(path.join(stateRoot, 'state.json'))),
-    storage: new JsonFilePluginStorageStore(path.join(stateRoot, 'storage')),
+    storage,
+    journals: { user: userJournal, project: projectJournal },
+    ...(options.scheduleLearning === undefined
+      ? {}
+      : { scheduleLearning: options.scheduleLearning }),
     descriptors: [
       createPersonalMemoryPluginDescriptor({
+        projectId: options.projectId,
         language,
         projectPolicy,
-        ...(options.runMemoryReviewInBackground === undefined
-          ? {}
-          : { runReviewInBackground: options.runMemoryReviewInBackground }),
         ...(options.runMemoryReview === undefined
           ? {}
           : { runMemoryReview: options.runMemoryReview }),
@@ -322,6 +403,12 @@ export async function createDefaultCometPluginBridge(
           : { onReviewNotice: options.onMemoryReviewNotice }),
         getProviderConfig: () => readPersonalMemoryConfig(os.homedir()),
         configureProvider: (config) => writePersonalMemoryConfig(os.homedir(), config),
+        listContextApplications: async (candidateId) =>
+          (await applicationStore.list(candidateId)).filter(
+            (application) =>
+              application.owner === 'comet.personal-memory' &&
+              (application.scope === 'user' || application.projectId === options.projectId),
+          ),
         createService: () => {
           if (memoryProviderConfig.provider === 'remote') {
             if (memoryProviderConfig.remote === undefined) {
@@ -355,6 +442,13 @@ export async function createDefaultCometPluginBridge(
           await writeWorkflowProjectConfig(projectRoot, { ...current, knowledge });
         },
         language,
+        listContextApplications: async (candidateId) =>
+          (await applicationStore.list(candidateId)).filter(
+            (application) =>
+              application.owner === 'comet.project-knowledge' &&
+              application.scope === 'project' &&
+              application.projectId === options.projectId,
+          ),
         ...(options.knowledgeCacheRoot
           ? { cacheRoot: path.resolve(options.knowledgeCacheRoot) }
           : options.stateRoot
@@ -363,19 +457,114 @@ export async function createDefaultCometPluginBridge(
         ...(options.runProjectKnowledgeReview
           ? { semanticReviewer: options.runProjectKnowledgeReview }
           : {}),
-        ...(options.runProjectKnowledgeReviewInBackground
-          ? { runReviewInBackground: options.runProjectKnowledgeReviewInBackground }
-          : {}),
       }),
     ],
   });
   await runtime.reconcileFirstParty();
-  return new CometPluginBridge(runtime, options.projectId, language);
+  const bridge = new CometPluginBridge(
+    runtime,
+    options.projectId,
+    language,
+    contextDirector,
+    applicationStore,
+  );
+  await bridge.flushContextApplicationOutbox();
+  return bridge;
+}
+
+function contextAppliedEvent(
+  application: AgentContextApplicationRecord,
+  fallbackProjectId: string,
+): AgentExperienceEvent {
+  return {
+    schema: AGENT_EXPERIENCE_SCHEMA,
+    eventId: `context-applied:${application.applicationId}`,
+    episodeId: application.episodeId,
+    occurredAt: application.appliedAt,
+    type: 'context.applied',
+    actor: 'agent',
+    scope: application.scope,
+    ...(application.scope === 'project'
+      ? { projectId: application.projectId ?? fallbackProjectId }
+      : {}),
+    source: { kind: 'system', name: 'context-director' },
+    context: {
+      task: application.task,
+      ...(application.path === undefined ? {} : { paths: [application.path] }),
+      ...(application.operation === undefined ? {} : { operation: application.operation }),
+      ...(application.phase === undefined ? {} : { phase: application.phase }),
+    },
+    evidence: [
+      {
+        id: application.candidateId,
+        kind: 'outcome',
+        summary: application.whyApplied,
+        digest: application.candidateDigest,
+      },
+    ],
+  };
+}
+
+function contextOutcomeEvent(
+  application: AgentContextApplicationRecord,
+  outcomeEvent: NonNullable<AgentContextApplicationRecord['outcomeEvents']>[number],
+  fallbackProjectId: string,
+): AgentExperienceEvent {
+  const outcomeId = createHash('sha256')
+    .update(`${application.applicationId}:${outcomeEvent.revision}:${outcomeEvent.status}`)
+    .digest('hex');
+  return {
+    schema: AGENT_EXPERIENCE_SCHEMA,
+    eventId: `context-outcome:${outcomeId}`,
+    episodeId: application.episodeId,
+    occurredAt: outcomeEvent.occurredAt,
+    type: 'context.outcome',
+    actor: 'agent',
+    scope: application.scope,
+    ...(application.scope === 'project'
+      ? { projectId: application.projectId ?? fallbackProjectId }
+      : {}),
+    source: { kind: 'system', name: 'context-director' },
+    context: {},
+    evidence: [],
+    outcome: {
+      status: outcomeEvent.status,
+      ...(outcomeEvent.previousStatus === undefined
+        ? {}
+        : { previousStatus: outcomeEvent.previousStatus }),
+      revision: outcomeEvent.revision,
+      applicationId: application.applicationId,
+      unitIds: [contextExpansionId(application.owner, application.candidateId)],
+    },
+  };
 }
 
 function scopedMemoryQuery(query: MemoryQuery, projectId: string): MemoryQuery {
-  if (query.scope === 'global') return query;
+  if (query.projectKey !== undefined) {
+    assertCurrentProjectKey(query.projectKey, projectId, 'memory-query');
+  }
+  if (query.scope === 'global') {
+    const { projectKey, ...globalQuery } = query;
+    void projectKey;
+    return globalQuery;
+  }
   return { ...query, projectKey: query.projectKey ?? projectId };
+}
+
+function scopedMemoryInput(input: MemoryInput, projectId: string): MemoryInput {
+  if (input.projectKey !== undefined) {
+    assertCurrentProjectKey(input.projectKey, projectId, 'remember');
+  }
+  if (input.scope === 'project') return { ...input, projectKey: projectId };
+  const { projectKey, ...globalInput } = input;
+  void projectKey;
+  return globalInput;
+}
+
+function assertCurrentProjectKey(requested: string, current: string, capability: string): void {
+  if (requested !== current) {
+    throw new Error(`${capability}.projectKey does not match the current project`);
+  }
 }
 
 async function resolveProjectMemoryLanguage(projectRoot: string): Promise<MemoryLanguage> {

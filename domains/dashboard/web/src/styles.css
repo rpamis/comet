@@ -1478,6 +1478,106 @@ body {
   white-space: nowrap;
 }
 
+.dashboard-context-manifest {
+  display: grid;
+  gap: 9px;
+  margin: 0 0 12px;
+  padding: 10px 2px 11px;
+  border-block: 1px solid var(--color-border-soft);
+}
+
+.dashboard-context-manifest > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--color-meta);
+  font-size: 11px;
+}
+
+.dashboard-context-manifest > header div {
+  display: grid;
+  gap: 2px;
+}
+
+.dashboard-context-manifest > header strong {
+  color: var(--color-fg-2);
+  font-size: 12px;
+  font-weight: 620;
+}
+
+.dashboard-context-manifest > p {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.dashboard-context-manifest-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 6px 16px;
+}
+
+.dashboard-context-manifest-items article {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+  padding: 8px 0;
+}
+
+.dashboard-context-manifest-items article > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.dashboard-context-manifest-items article > div strong,
+.dashboard-context-manifest-items article > div span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-context-manifest-items article > div strong {
+  color: var(--color-fg-2);
+  font-size: 12px;
+  font-weight: 620;
+}
+
+.dashboard-context-manifest-items article > div span {
+  color: var(--color-muted);
+  font-size: 11px;
+}
+
+.dashboard-context-manifest-items dl {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 5px 12px;
+  margin: 0;
+}
+
+.dashboard-context-manifest-items dl div {
+  display: flex;
+  min-width: 0;
+  gap: 4px;
+  color: var(--color-meta);
+  font-size: 10px;
+}
+
+.dashboard-context-manifest-items dt,
+.dashboard-context-manifest-items dd {
+  margin: 0;
+}
+
+.dashboard-context-manifest-items dd {
+  max-width: 220px;
+  overflow: hidden;
+  color: var(--color-fg-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .dashboard-knowledge-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.3fr) minmax(300px, 0.7fr);
@@ -2248,15 +2348,19 @@ body {
   background: var(--color-meta);
 }
 
-.dashboard-knowledge-record-state.is-active > span {
+.dashboard-knowledge-record-state.is-proven > span {
   background: var(--knowledge-success);
 }
 
-.dashboard-knowledge-record-state.is-needs-review > span {
+.dashboard-knowledge-record-state.is-trial > span {
   background: var(--knowledge-warning);
 }
 
-.dashboard-knowledge-record-state.is-retired > span {
+.dashboard-knowledge-record-state.is-enforced > span {
+  background: var(--color-accent-active);
+}
+
+.dashboard-knowledge-record-state.is-superseded > span {
   background: #8b95a5;
 }
 
@@ -2339,6 +2443,64 @@ body {
 .dashboard-knowledge-inspector dd {
   min-width: 0;
   overflow-wrap: anywhere;
+  color: var(--color-fg-2);
+}
+
+.dashboard-context-application-history {
+  display: grid;
+  gap: 8px;
+}
+
+.dashboard-context-application-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.dashboard-context-application-history-head h4 {
+  margin: 0;
+}
+
+.dashboard-context-application-history-head .ant-btn {
+  height: 26px;
+  padding-inline: 7px;
+  color: var(--color-accent);
+  font-size: 11px;
+}
+
+.dashboard-context-application-history article {
+  display: grid;
+  gap: 4px;
+  padding: 9px 10px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 8px;
+  background: var(--color-surface-warm);
+}
+
+.dashboard-context-application-history article > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dashboard-context-application-history strong,
+.dashboard-context-application-history time,
+.dashboard-context-application-history p,
+.dashboard-context-application-history span {
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.dashboard-context-application-history time,
+.dashboard-context-application-history span {
+  color: var(--color-muted);
+}
+
+.dashboard-context-application-history p {
+  margin: 0;
   color: var(--color-fg-2);
 }
 
@@ -5930,8 +6092,16 @@ body {
   background: var(--color-meta);
 }
 
-.dashboard-memory-table-status.is-active > span {
+.dashboard-memory-table-status.is-proven > span {
   background: var(--color-success);
+}
+
+.dashboard-memory-table-status.is-trial > span {
+  background: var(--knowledge-warning);
+}
+
+.dashboard-memory-table-status.is-conflict > span {
+  background: var(--color-danger);
 }
 
 .dashboard-memory-table-row .dashboard-memory-record-actions {

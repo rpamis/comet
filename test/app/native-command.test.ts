@@ -130,8 +130,64 @@ describe('Native command facade', () => {
     expect(recordCometWorkflowResult).toHaveBeenCalledWith(
       expect.objectContaining({
         command: 'check',
-        eventName: 'verification.completed',
+        eventType: 'verification.completed',
         workflow: 'native',
+      }),
+    );
+  });
+
+  it('records accepted review and recovered failure events from Native state', async () => {
+    runNativeCli.mockResolvedValue({
+      exitCode: 0,
+      stdout: JSON.stringify({
+        data: {
+          change: {
+            phase: 'archive',
+            verification: { verdict: 'pass', summary: 'Focused checks now pass.' },
+            history: [{ outcome: 'fail' }, { outcome: 'pass' }],
+          },
+        },
+      }),
+      stderr: '',
+    });
+    const { runNativeFacade } = await import('../../app/commands/native.js');
+
+    await runNativeFacade(['next', 'change-name', '--result', 'result.json']);
+
+    expect(recordCometWorkflowResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'review.resolved',
+        summary: 'Focused checks now pass.',
+      }),
+    );
+    expect(recordCometWorkflowResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'failure.resolved',
+        summary: 'Focused checks now pass.',
+      }),
+    );
+  });
+
+  it('records accepted review events from raw Native JSON output', async () => {
+    runNativeCli.mockResolvedValue({
+      exitCode: 0,
+      stdout: JSON.stringify({
+        change: {
+          phase: 'archive',
+          verification: { verdict: 'pass', summary: 'Raw Native result passed.' },
+          history: [],
+        },
+      }),
+      stderr: '',
+    });
+    const { runNativeFacade } = await import('../../app/commands/native.js');
+
+    await runNativeFacade(['next', 'change-name', '--result', 'result.json']);
+
+    expect(recordCometWorkflowResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'review.resolved',
+        summary: 'Raw Native result passed.',
       }),
     );
   });

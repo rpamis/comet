@@ -1,9 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
 
+import type { AgentExperienceEvidence } from '../agent-learning/index.js';
+
 import type {
   MemoryConflict,
   MemoryClass,
   MemoryCorrection,
+  MemoryFileProjection,
   MemoryInput,
   MemoryLanguage,
   MemoryManagementConflict,
@@ -26,11 +29,13 @@ import type {
   MemorySource,
   MemoryStoredObservation,
   MemoryTombstone,
+  PersonalEpisodeDetails,
   PersonalMemoryOptions,
   PersonalMemoryProvider,
   PersonalMemoryServiceLike,
   PersonalMemoryStatus,
 } from './types.js';
+import { isMemoryClass } from './types.js';
 import { hashMemoryText, memoryFilePath } from './repository.js';
 import {
   validateMemoryLanguageText,
@@ -90,17 +95,28 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
     const source = input.source ?? { kind: 'user' };
     return this.repository.withLock(async () => {
       const state = await this.loadAndReconcile(input.scope, input.projectKey);
-      const identity = memoryIdentity(input);
+      const normalizedInput: MemoryInput = {
+        ...input,
+        memoryType: input.memoryType ?? inferPersonalMemoryType(input, 'explicit'),
+      };
+      const identity = memoryIdentity(normalizedInput);
       const normalized = normalizeText(input.text);
       const existing = state.records.find(
         (entry) =>
-          entry.active && entry.identity === identity && normalizeText(entry.text) === normalized,
+          entry.state !== 'superseded' &&
+          entry.identity === identity &&
+          normalizeText(entry.text) === normalized,
       ) as StoredRecord | undefined;
       if (existing !== undefined) {
         const refreshed = {
           ...addSource(existing, source, this.timestamp()),
           kind: 'explicit' as const,
-          active: true,
+          authority: 'explicit' as const,
+          memoryType: normalizedInput.memoryType!,
+          ...(normalizedInput.memoryType === 'personal-episode'
+            ? { episode: normalizePersonalEpisode(normalizedInput.episode, normalizedInput) }
+            : { episode: undefined }),
+          state: 'proven' as const,
           source,
         };
         state.records = replaceRecord(state.records, refreshed);
@@ -110,18 +126,20 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
         return cloneRecord(refreshed);
       }
 
-      const record = createRecord(input, 'explicit', source, this.timestamp(), identity);
-      ensureProfileCapacity(state, record, this.profileMaxChars);
+      const record = createRecord(normalizedInput, 'explicit', source, this.timestamp(), identity);
       clearInferredCandidates(state, identity);
       clearTombstone(state, identity);
       state.records = replaceRecord(state.records, record);
       await this.writeRecordMarkdown(state, record);
-      await this.persist(state);
       return cloneRecord(record);
     });
   }
 
-  public async correct(id: string, correction: MemoryCorrection): Promise<MemoryRecord> {
+  public async correct(
+    id: string,
+    correction: MemoryCorrection,
+    options: { readonly idempotencyKey?: string } = {},
+  ): Promise<MemoryRecord> {
     validateCorrection(correction);
     return this.repository.withLock(async () => {
       const state = await this.loadAndReconcile();
@@ -131,10 +149,26 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
         state.tombstones.some(
           (entry) => entry.identity === current.identity && entry.reason === 'user-remove',
         );
-      if (current === undefined || (!current.active && !userRemoved)) {
-        throw new Error(`Memory is not active: ${id}`);
+      if (current === undefined || (current.state === 'superseded' && !userRemoved)) {
+        throw new Error(`Memory is not available: ${id}`);
+      }
+      if (
+        options.idempotencyKey !== undefined &&
+        state.appliedMutationIds.includes(options.idempotencyKey)
+      ) {
+        return cloneRecord(current);
       }
       validateCorrection(correction);
+      if (memoryCorrectionIsUnchanged(current, correction)) {
+        if (options.idempotencyKey !== undefined) {
+          state.appliedMutationIds = appendBoundedMutationId(
+            state.appliedMutationIds,
+            options.idempotencyKey,
+          );
+          await this.persist(state);
+        }
+        return cloneRecord(current);
+      }
       pushHistory(state, current);
       clearInferredCandidates(state, current.identity);
       const next = this.updateRecordValue(
@@ -142,27 +176,42 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
         { ...current, ...correction, source: { kind: 'user' } },
         'explicit',
       );
-      ensureProfileCapacity(state, next, this.profileMaxChars, current.id);
       state.records = replaceRecord(state.records, next);
       clearTombstone(state, current.identity);
+      if (options.idempotencyKey !== undefined) {
+        state.appliedMutationIds = appendBoundedMutationId(
+          state.appliedMutationIds,
+          options.idempotencyKey,
+        );
+      }
       await this.writeRecordMarkdown(state, next, current.text, current.category);
-      await this.persist(state);
       return cloneRecord(next);
     });
   }
 
-  public async remove(id: string, options: { readonly permanent?: boolean } = {}): Promise<void> {
+  public async remove(
+    id: string,
+    options: { readonly permanent?: boolean; readonly idempotencyKey?: string } = {},
+  ): Promise<void> {
     await this.repository.withLock(async () => {
       const state = await this.loadAndReconcile();
+      if (
+        options.idempotencyKey !== undefined &&
+        state.appliedMutationIds.includes(options.idempotencyKey)
+      )
+        return;
       const current = state.records.find((entry) => entry.id === id) as StoredRecord | undefined;
       if (current === undefined) throw new Error(`Unknown memory: ${id}`);
-      if (current.active) {
+      let removalProjection:
+        | { readonly file: string; readonly projection: MemoryFileProjection }
+        | undefined;
+      if (current.state !== 'superseded') {
         const path = this.resolveMemoryFilePath(state, current.scope, current.projectKey);
         const content = await this.readStableFile(state, path, current.scope, current.projectKey);
         const refreshed = state.records.find((entry) => entry.id === id) as
           | StoredRecord
           | undefined;
-        if (refreshed?.active) {
+        if (refreshed !== undefined && refreshed.state !== 'superseded') {
           pushHistory(state, refreshed);
           if (content !== null) {
             const nextContent = removeMarkdownBullet(content, current.text, current.category);
@@ -176,9 +225,17 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
               if (confirmed !== content) {
                 throw new Error(`Memory file changed during update: ${path}`);
               }
-              await this.repository.writeText(path, nextContent);
             }
-            state.files[path] = fileState(nextContent, this.timestamp());
+            removalProjection = {
+              file: path,
+              projection: {
+                content: nextContent,
+                baseHash: memoryFileHash(content),
+                scope: refreshed.scope,
+                ...(refreshed.projectKey === undefined ? {} : { projectKey: refreshed.projectKey }),
+                queuedAt: this.timestamp(),
+              },
+            };
           }
         }
       }
@@ -189,7 +246,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
       } else {
         state.records = replaceRecord(state.records, {
           ...current,
-          active: false,
+          state: 'superseded',
           updatedAt: this.timestamp(),
         });
         delete state.evidence[id];
@@ -204,7 +261,21 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
         ...(options.permanent === true ? { permanent: true } : {}),
         removedAt: this.timestamp(),
       });
-      await this.persist(state);
+      if (options.idempotencyKey !== undefined) {
+        state.appliedMutationIds = appendBoundedMutationId(
+          state.appliedMutationIds,
+          options.idempotencyKey,
+        );
+      }
+      if (removalProjection === undefined) {
+        await this.persist(state);
+      } else {
+        await this.persistWithFileProjection(
+          state,
+          removalProjection.file,
+          removalProjection.projection,
+        );
+      }
     });
   }
 
@@ -217,16 +288,165 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
       if (current === undefined || previous === undefined)
         throw new Error(`No rollback available: ${id}`);
       state.history[id] = history.slice(0, -1);
-      const next = { ...previous, id, active: true, updatedAt: this.timestamp() } as StoredRecord;
+      const next = {
+        ...previous,
+        id,
+        state: 'proven',
+        updatedAt: this.timestamp(),
+      } as StoredRecord;
       state.records = replaceRecord(state.records, next);
       clearTombstone(state, next.identity);
       await this.writeRecordMarkdown(
         state,
         next,
-        current.active ? current.text : undefined,
-        current.active ? current.category : undefined,
+        current.state !== 'superseded' ? current.text : undefined,
+        current.state !== 'superseded' ? current.category : undefined,
       );
-      await this.persist(state);
+      return cloneRecord(next);
+    });
+  }
+
+  public async recordApplicationOutcome(
+    id: string,
+    outcome: import('../agent-learning/index.js').AgentContextOutcomeStatus,
+    options: Omit<import('./types.js').MemoryApplicationFeedback, 'id' | 'outcome'> = {},
+  ): Promise<MemoryRecord | null> {
+    return this.repository.withLock(async () => {
+      const state = await this.loadAndReconcile();
+      const current = state.records.find((entry) => entry.id === id) as StoredRecord | undefined;
+      if (current === undefined) return null;
+      if (
+        options.idempotencyKey !== undefined &&
+        state.appliedMutationIds.includes(options.idempotencyKey)
+      ) {
+        return cloneRecord(current);
+      }
+      const applicationId = options.applicationId;
+      const storedOutcome =
+        applicationId === undefined ? undefined : state.applicationOutcomes[applicationId];
+      if (storedOutcome !== undefined && storedOutcome.recordId !== id) {
+        throw new Error(`Context application ${applicationId} belongs to another memory record`);
+      }
+      const revision = options.revision ?? (storedOutcome?.revision ?? 0) + 1;
+      if (storedOutcome !== undefined && revision <= storedOutcome.revision) {
+        if (options.idempotencyKey !== undefined) {
+          state.appliedMutationIds = appendBoundedMutationId(
+            state.appliedMutationIds,
+            options.idempotencyKey,
+          );
+          await this.persist(state);
+        }
+        return cloneRecord(current);
+      }
+      const feedbackState = state.feedbackState[id];
+      if (current.state === 'superseded' && feedbackState === undefined) return null;
+      const successful = outcome === 'used-successfully';
+      const failed = negativeContextOutcome(outcome);
+      const previousSuccessful = storedOutcome?.status === 'used-successfully';
+      const previousFailed = negativeContextOutcome(storedOutcome?.status);
+      if (applicationId !== undefined) {
+        state.applicationOutcomes[applicationId] = { recordId: id, status: outcome, revision };
+      }
+      const hasOtherNegativeOutcome = Object.entries(state.applicationOutcomes).some(
+        ([candidateApplicationId, value]) =>
+          candidateApplicationId !== applicationId &&
+          value.recordId === id &&
+          negativeContextOutcome(value.status),
+      );
+      const shouldRestore =
+        current.kind === 'inferred' &&
+        !failed &&
+        feedbackState !== undefined &&
+        !hasOtherNegativeOutcome;
+      const updatedAt = this.timestamp();
+      const next = {
+        ...current,
+        state:
+          current.kind === 'inferred' && failed
+            ? ('superseded' as const)
+            : shouldRestore
+              ? successful && feedbackState.baseState === 'trial'
+                ? ('proven' as const)
+                : feedbackState.baseState
+              : current.state === 'trial' && successful
+                ? ('proven' as const)
+                : current.state,
+        applicationCount: current.applicationCount + Number(storedOutcome === undefined),
+        successCount: Math.max(
+          0,
+          current.successCount + Number(successful) - Number(previousSuccessful),
+        ),
+        failureCount: Math.max(0, current.failureCount + Number(failed) - Number(previousFailed)),
+        lastAppliedAt: updatedAt,
+        updatedAt,
+      } as StoredRecord;
+      state.records = replaceRecord(state.records, next);
+      if (options.idempotencyKey !== undefined) {
+        state.appliedMutationIds = appendBoundedMutationId(
+          state.appliedMutationIds,
+          options.idempotencyKey,
+        );
+      }
+      let removalProjection:
+        | { readonly file: string; readonly projection: MemoryFileProjection }
+        | undefined;
+      if (current.kind === 'inferred' && failed && feedbackState === undefined) {
+        state.feedbackState[id] = {
+          baseState: current.state === 'trial' ? 'trial' : 'proven',
+        };
+        const file = this.resolveMemoryFilePath(state, current.scope, current.projectKey);
+        const content = await this.readStableFile(state, file, current.scope, current.projectKey);
+        if (content !== null) {
+          const nextContent = removeMarkdownBullet(content, current.text, current.category);
+          if (nextContent !== content) {
+            const confirmed = await this.readStableFile(
+              state,
+              file,
+              current.scope,
+              current.projectKey,
+            );
+            if (confirmed !== content) {
+              throw new Error(`Memory file changed during update: ${file}`);
+            }
+          }
+          removalProjection = {
+            file,
+            projection: {
+              content: nextContent,
+              baseHash: memoryFileHash(content),
+              scope: current.scope,
+              ...(current.projectKey === undefined ? {} : { projectKey: current.projectKey }),
+              queuedAt: this.timestamp(),
+            },
+          };
+        }
+        state.tombstones = upsertTombstone(state.tombstones, {
+          identity: current.identity,
+          scope: current.scope,
+          ...(current.projectKey === undefined ? {} : { projectKey: current.projectKey }),
+          recordId: current.id,
+          textHash: normalizedMemoryTextHash(current.text),
+          reason: 'negative-feedback',
+          removedAt: this.timestamp(),
+        });
+      }
+      if (shouldRestore) {
+        delete state.feedbackState[id];
+        state.tombstones = state.tombstones.filter(
+          (entry) => !(entry.recordId === id && entry.reason === 'negative-feedback'),
+        );
+        await this.writeRecordMarkdown(state, next);
+      } else if (current.state === 'trial' && next.state === 'proven') {
+        await this.writeRecordMarkdown(state, next);
+      } else if (removalProjection !== undefined) {
+        await this.persistWithFileProjection(
+          state,
+          removalProjection.file,
+          removalProjection.projection,
+        );
+      } else {
+        await this.persist(state);
+      }
       return cloneRecord(next);
     });
   }
@@ -238,22 +458,26 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
         deduplicated: false,
         ignored: true,
         candidate: false,
-        activated: false,
+        promoted: false,
         record: null,
       };
     }
     return this.repository.withLock(async () => {
       const state = await this.loadAndReconcile(observation.scope, observation.projectKey);
       const projectIdentity = observation.projectIdentity ?? observation.projectKey;
-      const candidateKey = observation.candidateKey ?? memoryIdentity(observation);
-      const key = observationKey(observation, projectIdentity, candidateKey);
+      const normalizedObservation: MemoryObservation = {
+        ...observation,
+        memoryType: observation.memoryType ?? inferPersonalMemoryType(observation, 'inferred'),
+      };
+      const candidateKey = observation.candidateKey ?? memoryIdentity(normalizedObservation);
+      const key = observationKey(normalizedObservation, projectIdentity, candidateKey);
       const previous = state.observations.find((entry) => entry.key === key);
       if (previous !== undefined && (previous.success || !observation.success)) {
         return {
           deduplicated: true,
           ignored: false,
           candidate: false,
-          activated: false,
+          promoted: false,
           record: null,
         };
       }
@@ -270,7 +494,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
         projectKey: observation.projectKey,
         ...(projectIdentity === undefined ? {} : { projectIdentity }),
         candidateKey,
-        identity: memoryIdentity(observation),
+        identity: memoryIdentity(normalizedObservation),
         text: observation.text,
         normalizedText: normalizeText(observation.text),
         success: observation.success,
@@ -291,7 +515,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
           deduplicated: false,
           ignored: !state.settings.learningEnabled || paused,
           candidate: false,
-          activated: false,
+          promoted: false,
           record: null,
         };
       }
@@ -317,14 +541,14 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
           deduplicated: false,
           ignored: true,
           candidate: false,
-          activated: false,
+          promoted: false,
           record: null,
         };
       }
       const candidate = state.records.find(
         (entry) =>
           (tombstone === undefined || entry.createdAt > tombstone.removedAt) &&
-          !entry.active &&
+          entry.state === 'trial' &&
           entry.kind === 'inferred' &&
           entry.identity === identity &&
           normalizeText(entry.text) === normalized,
@@ -332,7 +556,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
       const record =
         candidate ??
         (createRecord(
-          observationInput(observation, source),
+          observationInput(normalizedObservation, source),
           'inferred',
           source,
           stored.observedAt,
@@ -342,14 +566,14 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
       const evidence = new Set(state.evidence[record.id] ?? []);
       evidence.add(key);
       state.evidence[record.id] = [...evidence];
-      const active = state.records.find((entry) => entry.active && entry.identity === identity) as
-        | StoredRecord
-        | undefined;
+      const active = state.records.find(
+        (entry) => entry.state === 'proven' && entry.identity === identity,
+      ) as StoredRecord | undefined;
       const explicit = state.records.find(
         (entry) =>
-          entry.active &&
+          entry.state !== 'superseded' &&
           entry.kind === 'explicit' &&
-          memoryShapeIdentity(entry) === memoryShapeIdentity(observation),
+          memoryShapeIdentity(entry) === memoryShapeIdentity(normalizedObservation),
       ) as StoredRecord | undefined;
       if (explicit !== undefined) {
         if (normalizeText(explicit.text) !== normalized) {
@@ -364,7 +588,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
             deduplicated: false,
             ignored: false,
             candidate: true,
-            activated: false,
+            promoted: false,
             record: null,
           };
         }
@@ -380,7 +604,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
           deduplicated: false,
           ignored: false,
           candidate: false,
-          activated: false,
+          promoted: false,
           record: cloneRecord(refreshed),
         };
       }
@@ -389,7 +613,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
           entry.id !== record.id &&
           entry.identity === identity &&
           normalizeText(entry.text) !== normalized &&
-          (entry.active || (state.evidence[entry.id]?.length ?? 0) > 0),
+          (entry.state !== 'superseded' || (state.evidence[entry.id]?.length ?? 0) > 0),
       );
       if (conflicting.length > 0) {
         state.conflicts = addConflict(
@@ -403,7 +627,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
           deduplicated: false,
           ignored: false,
           candidate: true,
-          activated: false,
+          promoted: false,
           record: null,
         };
       }
@@ -415,7 +639,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
           deduplicated: false,
           ignored: false,
           candidate: false,
-          activated: false,
+          promoted: false,
           record: cloneRecord(refreshed),
         };
       }
@@ -430,7 +654,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
           deduplicated: false,
           ignored: false,
           candidate: true,
-          activated: false,
+          promoted: false,
           record: null,
         };
       }
@@ -446,7 +670,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
           deduplicated: false,
           ignored: false,
           candidate: true,
-          activated: false,
+          promoted: false,
           record: null,
         };
       }
@@ -454,36 +678,22 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
       const candidateSources = state.observations
         .filter((entry) => evidence.has(entry.key))
         .map((entry) => entry.source);
-      const activated = {
+      const promoted = {
         ...record,
-        active: true,
+        state: 'proven',
         source: candidateSources[0] ?? record.source,
         sources: mergeSources(record.sources, candidateSources),
         updatedAt: this.timestamp(),
       } as StoredRecord;
-      if (
-        isUserProfileRecord(activated) &&
-        !profileFits(state, activated, this.profileMaxChars, record.id)
-      ) {
-        await this.persist(state);
-        return {
-          deduplicated: false,
-          ignored: false,
-          candidate: true,
-          activated: false,
-          record: null,
-        };
-      }
-      state.records = replaceRecord(state.records, activated);
+      state.records = replaceRecord(state.records, promoted);
       clearTombstone(state, identity);
-      await this.writeRecordMarkdown(state, activated);
-      await this.persist(state);
+      await this.writeRecordMarkdown(state, promoted);
       return {
         deduplicated: false,
         ignored: false,
         candidate: true,
-        activated: true,
-        record: cloneRecord(activated),
+        promoted: true,
+        record: cloneRecord(promoted),
       };
     });
   }
@@ -521,10 +731,41 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
 
   public async query(
     request: MemoryProviderQuery,
-  ): Promise<MemoryRetrieval | MemoryManagementView> {
-    return request.view === 'manage'
-      ? this.manage(request.query)
-      : this.retrieve({ ...request.query, view: request.view });
+  ): Promise<import('./types.js').MemoryProviderQueryResult> {
+    if (request.view === 'manage') return this.manage(request.query);
+    if (request.view === 'expand') {
+      if (!request.query.id) throw new Error('Memory expand requires an id');
+      const record = await this.get(request.query.id);
+      const available =
+        record !== null &&
+        (record.scope === 'global' ||
+          (request.query.projectKey !== undefined &&
+            record.projectKey === request.query.projectKey));
+      return { kind: 'expand', record: available ? record : null };
+    }
+    if (request.view === 'manifest') {
+      const retrieval = await this.retrieve({ ...request.query, view: 'task' });
+      return {
+        kind: 'manifest',
+        truncated: retrieval.truncated,
+        items: retrieval.records.map((record) => ({
+          id: record.id,
+          memoryType: record.memoryType,
+          state: record.state,
+          authority: record.authority,
+          title: record.title ?? record.category,
+          summary: record.text,
+          scope: record.scope,
+          ...(record.projectKey === undefined ? {} : { projectKey: record.projectKey }),
+          pathPatterns: [...record.pathPatterns],
+          taskTypes: [...record.taskTypes],
+          operations: [...record.operations],
+          phases: [...record.phases],
+          evidence: record.evidence.map(cloneExperienceEvidence),
+        })),
+      };
+    }
+    return this.retrieve({ ...request.query, view: request.view });
   }
 
   public async apply(mutation: MemoryProviderMutation): Promise<unknown> {
@@ -553,7 +794,150 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
         };
         return this.reviewAndApply(input.packet, input.actions);
       }
+      case 'feedback': {
+        const input = mutation.input as import('./types.js').MemoryApplicationFeedback;
+        return this.recordApplicationOutcome(input.id, input.outcome, {
+          ...(input.previousOutcome === undefined
+            ? {}
+            : { previousOutcome: input.previousOutcome }),
+          ...(input.applicationId === undefined ? {} : { applicationId: input.applicationId }),
+          ...(input.revision === undefined ? {} : { revision: input.revision }),
+          ...(input.idempotencyKey === undefined ? {} : { idempotencyKey: input.idempotencyKey }),
+        });
+      }
+      case 'experience-delta':
+        return this.applyExperienceDelta(mutation.input.delta, mutation.input.idempotencyKey);
     }
+  }
+
+  private async applyExperienceDelta(
+    delta: import('../agent-learning/index.js').AgentLearningDelta,
+    idempotencyKey: string,
+  ): Promise<unknown> {
+    if (delta.owner !== 'personal-memory' && delta.owner !== 'comet.personal-memory') {
+      throw new Error('Learning Delta owner does not match Personal Memory');
+    }
+    if (await this.mutationWasApplied(idempotencyKey)) return { changed: false };
+    if (delta.feedback !== undefined) {
+      if (!delta.targetId) throw new Error('Learning Delta feedback target is required');
+      const record = await this.recordApplicationOutcome(delta.targetId, delta.feedback.status, {
+        previousOutcome: delta.feedback.previousStatus,
+        applicationId: delta.feedback.applicationId,
+        revision: delta.feedback.revision,
+        idempotencyKey,
+      });
+      return { changed: record !== null, record };
+    }
+    if (delta.action === 'noop') {
+      await this.markMutationApplied(idempotencyKey);
+      return { changed: false };
+    }
+    if (delta.action === 'forget' || delta.action === 'supersede') {
+      if (!delta.targetId) throw new Error('Learning Delta target is required');
+      await this.remove(delta.targetId, {
+        permanent: delta.action === 'forget',
+        idempotencyKey,
+      });
+      return { changed: true, record: null };
+    }
+    if (delta.action === 'update') {
+      if (!delta.targetId) throw new Error('Learning Delta target is required');
+      const record = await this.correct(
+        delta.targetId,
+        {
+          ...(delta.title === undefined ? {} : { title: delta.title }),
+          text: delta.statement,
+          category: delta.kind,
+          pathPatterns: delta.applicability.paths,
+          taskTypes: delta.applicability.tasks,
+          operations: delta.applicability.operations,
+          phases: delta.applicability.phases,
+        },
+        { idempotencyKey },
+      );
+      return { changed: true, record };
+    }
+    const scope = delta.applicability.projectId === undefined ? 'global' : 'project';
+    const actionPayload = delta.payload?.kind === 'memory-action' ? delta.payload : undefined;
+    const candidateKey =
+      typeof actionPayload?.candidateKey === 'string' ? actionPayload.candidateKey : idempotencyKey;
+    const language =
+      actionPayload?.language === 'en' || actionPayload?.language === 'zh-CN'
+        ? actionPayload.language
+        : undefined;
+    const memoryClass = isMemoryClass(actionPayload?.memoryClass)
+      ? actionPayload.memoryClass
+      : undefined;
+    const memoryType = isPersonalMemoryType(delta.memoryType) ? delta.memoryType : undefined;
+    const reason = typeof actionPayload?.reason === 'string' ? actionPayload.reason : undefined;
+    const episode = personalEpisodeFromPayload(actionPayload?.episode);
+    const record =
+      delta.authority === 'explicit' || delta.authority === 'user'
+        ? await this.remember({
+            scope,
+            ...(delta.applicability.projectId === undefined
+              ? {}
+              : { projectKey: delta.applicability.projectId }),
+            category: delta.kind,
+            ...(delta.title === undefined ? {} : { title: delta.title }),
+            text: delta.statement,
+            pathPatterns: delta.applicability.paths,
+            taskTypes: delta.applicability.tasks,
+            operations: delta.applicability.operations,
+            phases: delta.applicability.phases,
+            evidence: delta.evidence,
+            candidateKey,
+            ...(language === undefined ? {} : { language }),
+            ...(memoryClass === undefined ? {} : { memoryClass }),
+            ...(memoryType === undefined ? {} : { memoryType }),
+            ...(episode === undefined ? {} : { episode }),
+            ...(reason === undefined ? {} : { reason }),
+            source: { kind: 'user' },
+          })
+        : (
+            await this.observe({
+              scope,
+              ...(delta.applicability.projectId === undefined
+                ? {}
+                : { projectKey: delta.applicability.projectId }),
+              category: delta.kind,
+              ...(delta.title === undefined ? {} : { title: delta.title }),
+              text: delta.statement,
+              pathPatterns: delta.applicability.paths,
+              taskTypes: delta.applicability.tasks,
+              operations: delta.applicability.operations,
+              phases: delta.applicability.phases,
+              evidence: delta.evidence,
+              candidateKey,
+              ...(language === undefined ? {} : { language }),
+              ...(memoryClass === undefined ? {} : { memoryClass }),
+              ...(memoryType === undefined ? {} : { memoryType }),
+              ...(episode === undefined ? {} : { episode }),
+              ...(reason === undefined ? {} : { reason }),
+              workflow: 'agent-learning',
+              changeId: idempotencyKey,
+              success: delta.recommendedState !== 'superseded',
+              source: { kind: delta.authority === 'repository' ? 'repository' : 'workflow' },
+            })
+          ).record;
+    await this.markMutationApplied(idempotencyKey);
+    return { changed: record !== null, record };
+  }
+
+  private async mutationWasApplied(idempotencyKey: string): Promise<boolean> {
+    return this.repository.withLock(async () => {
+      const state = await this.loadAndReconcile();
+      return state.appliedMutationIds.includes(idempotencyKey);
+    });
+  }
+
+  private async markMutationApplied(idempotencyKey: string): Promise<void> {
+    await this.repository.withLock(async () => {
+      const state = await this.loadAndReconcile();
+      if (state.appliedMutationIds.includes(idempotencyKey)) return;
+      state.appliedMutationIds = appendBoundedMutationId(state.appliedMutationIds, idempotencyKey);
+      await this.persist(state);
+    });
   }
 
   private async applyReviewAction(
@@ -581,6 +965,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
           pathPatterns: action.pathPatterns,
           taskTypes: action.taskTypes,
           operations: action.operations,
+          phases: action.phases,
           language: action.language,
           source: { kind: 'user' },
         });
@@ -591,7 +976,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
             deduplicated: false,
             ignored: false,
             candidate: false,
-            activated: true,
+            promoted: true,
             record,
           },
         };
@@ -608,6 +993,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
         pathPatterns: action.pathPatterns,
         taskTypes: action.taskTypes,
         operations: action.operations,
+        phases: action.phases,
         language: action.language,
         projectIdentity: packet.projectIdentity,
         candidateKey: action.candidateKey,
@@ -627,8 +1013,8 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
         action: 'create',
         persisted:
           !observation.ignored &&
-          (observation.deduplicated || observation.candidate || observation.activated),
-        ...(observation.activated
+          (observation.deduplicated || observation.candidate || observation.promoted),
+        ...(observation.promoted
           ? {
               notification:
                 action.language === 'en'
@@ -648,6 +1034,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
         ...(action.pathPatterns === undefined ? {} : { pathPatterns: action.pathPatterns }),
         ...(action.taskTypes === undefined ? {} : { taskTypes: action.taskTypes }),
         ...(action.operations === undefined ? {} : { operations: action.operations }),
+        ...(action.phases === undefined ? {} : { phases: action.phases }),
         ...(action.title === undefined ? {} : { title: action.title }),
         ...(action.reason === undefined ? {} : { reason: action.reason }),
         ...(action.memoryClass === undefined ? {} : { memoryClass: action.memoryClass }),
@@ -694,8 +1081,11 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
       const maxEntries = boundedPositive(query.maxEntries ?? this.maxEntries, this.maxEntries);
       const maxBytes = boundedPositive(query.maxBytes ?? this.maxBytes, this.maxBytes);
       const candidates = state.records
-        .filter((entry) => entry.active)
-        .filter((entry) => !isLegacyWorkflowArtifact(entry))
+        .filter(
+          (entry) =>
+            entry.state !== 'superseded' &&
+            (entry.state !== 'trial' || trialIsEligibleForRetrieval(state, entry)),
+        )
         .filter((entry) => !isConflictedInferred(state.conflicts, entry))
         .filter((entry) => scopeMatches(entry, query))
         .filter((entry) => attributesMatch(entry, query))
@@ -895,6 +1285,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
   ): Promise<MutableMemoryState> {
     const raw = await this.repository.readState();
     const state = mutableState(raw);
+    await this.flushPendingFileProjections(state);
     await this.prepareProjectFileBinding(state);
     const knownProjectKeys = new Set<string>();
     for (const knownProjectKey of Object.keys(state.projectFiles)) {
@@ -931,7 +1322,6 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
       const content = await this.repository.readText(file);
       reconcileMarkdown(state, file, target.scope, target.projectKey, content, this.timestamp());
     }
-    migrateLegacyWorkflowRecords(state, this.timestamp());
     return state;
   }
 
@@ -996,12 +1386,48 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
     if (next !== existing) {
       const confirmed = await this.readStableFile(state, file, record.scope, record.projectKey);
       if (confirmed !== existing) throw new Error(`Memory file changed during update: ${file}`);
-      await this.repository.writeText(file, next);
     }
-    state.files[file] = fileState(next, this.timestamp());
-    if (record.scope === 'project' && record.projectKey !== undefined) {
-      state.projectFiles[record.projectKey] = file;
+    await this.persistWithFileProjection(state, file, {
+      content: next,
+      baseHash: memoryFileHash(existing),
+      scope: record.scope,
+      ...(record.projectKey === undefined ? {} : { projectKey: record.projectKey }),
+      queuedAt: this.timestamp(),
+    });
+  }
+
+  private async persistWithFileProjection(
+    state: MutableMemoryState,
+    file: string,
+    projection: MemoryFileProjection,
+  ): Promise<void> {
+    state.pendingFileProjections[file] = projection;
+    state.files[file] = fileState(projection.content, projection.queuedAt);
+    if (projection.scope === 'project' && projection.projectKey !== undefined) {
+      state.projectFiles[projection.projectKey] = file;
     }
+    await this.persist(state);
+    try {
+      await this.flushPendingFileProjections(state);
+    } catch {
+      // The mutation and its idempotency key are already authoritative. The durable
+      // projection remains pending on disk and is replayed before the next reconcile.
+    }
+  }
+
+  private async flushPendingFileProjections(state: MutableMemoryState): Promise<void> {
+    const pending = Object.entries(state.pendingFileProjections);
+    if (pending.length === 0) return;
+    for (const [file, projection] of pending) {
+      const current = await this.repository.readText(file);
+      const currentHash = memoryFileHash(current);
+      const targetHash = hashMemoryText(projection.content);
+      if (currentHash !== targetHash && currentHash === projection.baseHash) {
+        await this.repository.writeText(file, projection.content);
+      }
+    }
+    for (const [file] of pending) delete state.pendingFileProjections[file];
+    await this.persist(state);
   }
 
   private async readStableFile(
@@ -1034,10 +1460,13 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
       reason: input.reason ?? current.reason,
       category: input.category ?? current.category,
       text: input.text ?? current.text,
+      memoryType: input.memoryType ?? current.memoryType,
       tags: input.tags ?? current.tags,
       pathPatterns: input.pathPatterns ?? current.pathPatterns,
       taskTypes: input.taskTypes ?? current.taskTypes,
       operations: input.operations ?? current.operations,
+      phases: input.phases ?? current.phases,
+      episode: input.episode ?? current.episode,
       candidateKey: input.candidateKey ?? current.candidateKey,
       language: input.language ?? current.language,
       source,
@@ -1054,10 +1483,20 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
       pathPatterns: normalizeArray(nextInput.pathPatterns),
       taskTypes: normalizeArray(nextInput.taskTypes),
       operations: normalizeArray(nextInput.operations),
+      phases: normalizeArray(nextInput.phases),
       kind,
-      active: true,
+      authority: kind,
+      state: 'proven',
       source,
       sources: mergeSources(current.sources, [source]),
+      evidence: mergeMemoryEvidence(
+        current.evidence,
+        normalizeMemoryEvidence(nextInput.evidence, source, nextInput.text, this.timestamp()),
+      ),
+      memoryType: nextInput.memoryType ?? current.memoryType,
+      ...((nextInput.memoryType ?? current.memoryType) === 'personal-episode'
+        ? { episode: normalizePersonalEpisode(nextInput.episode, nextInput) }
+        : { episode: undefined }),
       updatedAt: this.timestamp(),
     };
   }
@@ -1077,6 +1516,10 @@ interface MutableMemoryState extends Omit<
   | 'settings'
   | 'files'
   | 'projectFiles'
+  | 'appliedMutationIds'
+  | 'applicationOutcomes'
+  | 'feedbackState'
+  | 'pendingFileProjections'
 > {
   records: StoredRecord[];
   history: Record<string, StoredRecord[]>;
@@ -1087,19 +1530,44 @@ interface MutableMemoryState extends Omit<
   files: Record<string, { hash: string; observedAt: string }>;
   projectFiles: Record<string, string>;
   evidence: Record<string, string[]>;
+  appliedMutationIds: string[];
+  applicationOutcomes: Record<
+    string,
+    {
+      recordId: string;
+      status: import('../agent-learning/index.js').AgentContextOutcomeStatus;
+      revision: number;
+    }
+  >;
+  feedbackState: Record<
+    string,
+    { baseState: Exclude<import('./types.js').MemoryLifecycleState, 'superseded'> }
+  >;
+  pendingFileProjections: Record<string, MemoryFileProjection>;
 }
 
 function mutableState(raw: MemoryRuntimeState): MutableMemoryState {
   const normalizeRecord = (entry: MemoryRecord): StoredRecord => {
+    const memoryType = entry.memoryType ?? inferPersonalMemoryType(entry, entry.kind);
+    const normalized = {
+      ...entry,
+      phases: [...(entry.phases ?? [])],
+      authority: entry.authority ?? entry.kind,
+      evidence: (entry.evidence ?? []).map(cloneExperienceEvidence),
+      memoryType,
+      ...(memoryType === 'personal-episode'
+        ? { episode: normalizePersonalEpisode(entry.episode, entry) }
+        : {}),
+    };
     if (entry.scope === 'global' && entry.projectKey !== undefined) {
-      const { projectKey, ...withoutProjectKey } = entry;
+      const { projectKey, ...withoutProjectKey } = normalized;
       void projectKey;
       return { ...withoutProjectKey, identity: memoryIdentity(withoutProjectKey) };
     }
-    return { ...entry, identity: memoryIdentity(entry) };
+    return { ...normalized, identity: memoryIdentity(normalized) };
   };
   return {
-    version: 1,
+    version: 3,
     records: raw.records.map(normalizeRecord),
     history: Object.fromEntries(
       Object.entries(raw.history).map(([id, entries]) => [id, entries.map(normalizeRecord)]),
@@ -1128,7 +1596,22 @@ function mutableState(raw: MemoryRuntimeState): MutableMemoryState {
     files: { ...raw.files },
     projectFiles: { ...(raw.projectFiles ?? {}) },
     evidence: (raw as MemoryRuntimeState & { evidence?: Record<string, string[]> }).evidence ?? {},
+    appliedMutationIds: [...(raw.appliedMutationIds ?? [])],
+    applicationOutcomes: { ...(raw.applicationOutcomes ?? {}) },
+    feedbackState: { ...(raw.feedbackState ?? {}) },
+    pendingFileProjections: { ...(raw.pendingFileProjections ?? {}) },
   };
+}
+
+function negativeContextOutcome(
+  outcome: import('../agent-learning/index.js').AgentContextOutcomeStatus | undefined,
+): boolean {
+  return outcome === 'corrected' || outcome === 'contributed-to-failure';
+}
+
+function appendBoundedMutationId(ids: readonly string[], id: string): string[] {
+  if (ids.includes(id)) return [...ids];
+  return [...ids, id].slice(-10_000);
 }
 
 function cloneRecord(record: MemoryRecord): MemoryRecord {
@@ -1138,6 +1621,9 @@ function cloneRecord(record: MemoryRecord): MemoryRecord {
     pathPatterns: [...record.pathPatterns],
     taskTypes: [...record.taskTypes],
     operations: [...record.operations],
+    phases: [...record.phases],
+    evidence: record.evidence.map(cloneExperienceEvidence),
+    ...(record.episode === undefined ? {} : { episode: { ...record.episode } }),
     source: { ...record.source },
     sources: record.sources.map((source) => ({ ...source })),
   };
@@ -1155,14 +1641,11 @@ function projectManagementRecord(
     (entry) => entry.recordId === record.id || entry.identity === record.identity,
   );
   const conflicted = isConflictedInferred(state.conflicts, record);
-  const quarantined = isLegacyWorkflowArtifact(record);
   const status = tombstoned
     ? ('tombstoned' as const)
     : conflicted
       ? ('conflict' as const)
-      : record.active && !quarantined
-        ? ('active' as const)
-        : ('inactive' as const);
+      : record.state;
   return {
     id: record.id,
     scope: record.scope,
@@ -1176,8 +1659,17 @@ function projectManagementRecord(
     pathPatterns: [...record.pathPatterns],
     taskTypes: [...record.taskTypes],
     operations: [...record.operations],
+    phases: [...record.phases],
     ...(record.language === undefined ? {} : { language: record.language }),
     kind: record.kind,
+    authority: record.authority,
+    evidence: record.evidence.map(cloneExperienceEvidence),
+    ...(record.episode === undefined ? {} : { episode: { ...record.episode } }),
+    memoryType: record.memoryType,
+    applicationCount: record.applicationCount,
+    successCount: record.successCount,
+    failureCount: record.failureCount,
+    ...(record.lastAppliedAt === undefined ? {} : { lastAppliedAt: record.lastAppliedAt }),
     status,
     evidenceCount: evidenceKeys.length,
     sourceKind: record.source.kind,
@@ -1206,6 +1698,7 @@ function createRecord(
   timestamp: string,
   identity: string,
 ): StoredRecord {
+  const memoryType = input.memoryType ?? inferPersonalMemoryType(input, kind);
   return {
     id: createHash('sha256')
       .update(`${identity}\n${normalizeText(input.text)}\n${randomUUID()}`)
@@ -1223,10 +1716,20 @@ function createRecord(
     pathPatterns: normalizeArray(input.pathPatterns),
     taskTypes: normalizeArray(input.taskTypes),
     operations: normalizeArray(input.operations),
+    phases: normalizeArray(input.phases),
     ...(input.candidateKey === undefined ? {} : { candidateKey: input.candidateKey }),
     ...(input.language === undefined ? {} : { language: input.language }),
     kind,
-    active: kind === 'explicit',
+    authority: kind,
+    evidence: normalizeMemoryEvidence(input.evidence, source, input.text, timestamp),
+    memoryType,
+    ...(memoryType === 'personal-episode'
+      ? { episode: normalizePersonalEpisode(input.episode, input) }
+      : {}),
+    state: kind === 'explicit' ? 'proven' : 'trial',
+    applicationCount: 0,
+    successCount: 0,
+    failureCount: 0,
     source,
     sources: [source],
     createdAt: timestamp,
@@ -1239,6 +1742,10 @@ function addSource(record: StoredRecord, source: MemorySource, timestamp: string
     ...record,
     source: record.source,
     sources: mergeSources(record.sources, [source]),
+    evidence: mergeMemoryEvidence(
+      record.evidence,
+      normalizeMemoryEvidence(undefined, source, record.text, timestamp),
+    ),
     updatedAt: timestamp,
   };
 }
@@ -1253,6 +1760,50 @@ function mergeSources(
     result.push(source);
   }
   return result.slice(-MAX_SOURCES);
+}
+
+function normalizeMemoryEvidence(
+  values: readonly AgentExperienceEvidence[] | undefined,
+  source: MemorySource,
+  text: string,
+  _timestamp: string,
+): AgentExperienceEvidence[] {
+  const sourceLabel = source.label ?? source.changeId ?? source.workflow ?? source.projectKey;
+  const digest = createHash('sha256')
+    .update(JSON.stringify({ source, text: normalizeText(text) }))
+    .digest('hex');
+  const inferred: AgentExperienceEvidence = {
+    id: `memory-evidence:${digest.slice(0, 20)}`,
+    kind:
+      source.kind === 'user'
+        ? 'user'
+        : source.kind === 'repository'
+          ? 'source'
+          : source.kind === 'review'
+            ? 'review'
+            : 'outcome',
+    summary: text.slice(0, 500),
+    ...(sourceLabel === undefined ? {} : { source: sourceLabel }),
+    digest,
+    success: true,
+  };
+  return mergeMemoryEvidence(values ?? [], [inferred]);
+}
+
+function mergeMemoryEvidence(
+  current: readonly AgentExperienceEvidence[],
+  additions: readonly AgentExperienceEvidence[],
+): AgentExperienceEvidence[] {
+  const merged = new Map<string, AgentExperienceEvidence>();
+  for (const evidence of [...current, ...additions]) {
+    const clone = cloneExperienceEvidence(evidence);
+    merged.set(clone.digest ?? clone.id, clone);
+  }
+  return [...merged.values()].slice(-32);
+}
+
+function cloneExperienceEvidence(evidence: AgentExperienceEvidence): AgentExperienceEvidence {
+  return { ...evidence };
 }
 
 function replaceRecord(records: readonly StoredRecord[], next: StoredRecord): StoredRecord[] {
@@ -1271,7 +1822,7 @@ function pushHistory(state: MutableMemoryState, record: StoredRecord): void {
 
 function clearInferredCandidates(state: MutableMemoryState, identity: string): void {
   const candidates = state.records.filter(
-    (entry) => entry.identity === identity && entry.kind === 'inferred' && !entry.active,
+    (entry) => entry.identity === identity && entry.kind === 'inferred' && entry.state === 'trial',
   );
   for (const candidate of candidates) {
     state.records = state.records.filter((entry) => entry.id !== candidate.id);
@@ -1293,12 +1844,14 @@ function memoryIdentity(
     MemoryInput,
     | 'scope'
     | 'projectKey'
+    | 'memoryType'
     | 'memoryClass'
     | 'category'
     | 'tags'
     | 'pathPatterns'
     | 'taskTypes'
     | 'operations'
+    | 'phases'
     | 'candidateKey'
   >,
 ): string {
@@ -1309,12 +1862,14 @@ function memoryIdentity(
   return JSON.stringify([
     input.scope,
     input.scope === 'project' ? (input.projectKey ?? '') : '',
+    input.memoryType ?? '',
     input.memoryClass ?? inferMemoryClass(input),
     semanticIdentity,
     normalizeArray(input.tags),
     normalizeArray(input.pathPatterns),
     normalizeArray(input.taskTypes),
     normalizeArray(input.operations),
+    normalizeArray(input.phases),
   ]);
 }
 
@@ -1323,48 +1878,17 @@ function memoryShapeIdentity(
     MemoryInput,
     | 'scope'
     | 'projectKey'
+    | 'memoryType'
     | 'memoryClass'
     | 'category'
     | 'tags'
     | 'pathPatterns'
     | 'taskTypes'
     | 'operations'
+    | 'phases'
   >,
 ): string {
   return memoryIdentity({ ...input, candidateKey: undefined });
-}
-
-function isLegacyWorkflowArtifact(record: MemoryRecord): boolean {
-  const lifecycleSource = record.sources.some(
-    (source) =>
-      source.kind === 'workflow' &&
-      /^(?:task|change|verification|review)\.completed$/u.test(source.label ?? ''),
-  );
-  return lifecycleSource && isLegacyWorkflowContent(record.category, record.text);
-}
-
-function isLegacyWorkflowContent(category: string, text: string): boolean {
-  if (/(?:workflow[- ]operation|工作流操作)/iu.test(category)) return true;
-  const content = `${category} ${text}`;
-  return (
-    /(?:task|change|verification|review|checkpoint|result|summary|任务|变更|检查点|结果|摘要)/iu.test(
-      content,
-    ) && /(?:completed|finished|output|summary|done|完成|输出|结果|摘要)/iu.test(content)
-  );
-}
-
-function migrateLegacyWorkflowRecords(state: MutableMemoryState, timestamp: string): void {
-  const legacy = state.records.filter(
-    (record) => record.active && isLegacyWorkflowArtifact(record),
-  );
-  for (const record of legacy) {
-    pushHistory(state, record);
-  }
-  if (legacy.length === 0) return;
-  const legacyIds = new Set(legacy.map((record) => record.id));
-  state.records = state.records.map((record) =>
-    legacyIds.has(record.id) ? { ...record, active: false, updatedAt: timestamp } : record,
-  );
 }
 
 function observationKey(
@@ -1385,6 +1909,7 @@ function observationInput(observation: MemoryObservation, source: MemorySource):
     ...(observation.scope === 'project' && observation.projectKey !== undefined
       ? { projectKey: observation.projectKey }
       : {}),
+    ...(observation.memoryType === undefined ? {} : { memoryType: observation.memoryType }),
     memoryClass: observation.memoryClass ?? inferMemoryClass(observation),
     ...(observation.language === undefined ? {} : { language: observation.language }),
     ...(observation.title === undefined ? {} : { title: observation.title }),
@@ -1395,6 +1920,9 @@ function observationInput(observation: MemoryObservation, source: MemorySource):
     pathPatterns: observation.pathPatterns,
     taskTypes: observation.taskTypes,
     operations: observation.operations,
+    phases: observation.phases,
+    evidence: observation.evidence,
+    episode: observation.episode,
     candidateKey: observation.candidateKey,
     source,
   };
@@ -1438,7 +1966,7 @@ function reconcileMarkdown(
     (entry) => entry.scope === scope && entry.projectKey === projectKey,
   );
   for (const record of known) {
-    if (!record.active) continue;
+    if (record.state === 'superseded') continue;
     const stillPresent = bullets.some(
       (bullet) => normalizeText(bullet.text) === normalizeText(record.text),
     );
@@ -1446,7 +1974,7 @@ function reconcileMarkdown(
       pushHistory(state, record);
       state.records = replaceRecord(state.records, {
         ...record,
-        active: false,
+        state: 'superseded',
         updatedAt: timestamp,
       });
       delete state.evidence[record.id];
@@ -1468,7 +1996,7 @@ function reconcileMarkdown(
     seen.add(normalized);
     if (isTombstonedMarkdownText(state.tombstones, scope, projectKey, bullet.text)) continue;
     const matched = known.find(
-      (record) => record.active && normalizeText(record.text) === normalized,
+      (record) => record.state !== 'superseded' && normalizeText(record.text) === normalized,
     ) as StoredRecord | undefined;
     if (matched !== undefined) {
       if (normalizeText(matched.category) !== normalizeText(bullet.category)) {
@@ -1476,6 +2004,8 @@ function reconcileMarkdown(
         const input: MemoryInput = {
           scope,
           ...(projectKey ? { projectKey } : {}),
+          memoryType: matched.memoryType,
+          memoryClass: matched.memoryClass,
           category: bullet.category,
           text: bullet.text,
           tags: matched.tags,
@@ -1500,11 +2030,9 @@ function reconcileMarkdown(
     const input: MemoryInput = {
       scope,
       ...(projectKey ? { projectKey } : {}),
+      memoryType: inferPersonalMemoryType({ scope, category: bullet.category }, 'explicit'),
       category: bullet.category,
       text: bullet.text,
-      ...(isLegacyWorkflowContent(bullet.category, bullet.text)
-        ? { source: { kind: 'repository' as const, label: 'legacy-migration' } }
-        : {}),
     };
     const identity = memoryIdentity(input);
     clearTombstone(state, identity);
@@ -1515,9 +2043,7 @@ function reconcileMarkdown(
       timestamp,
       identity,
     );
-    state.records.push(
-      isLegacyWorkflowContent(bullet.category, bullet.text) ? { ...record, active: false } : record,
-    );
+    state.records.push(record);
   }
   state.files[file] = { hash, observedAt: timestamp };
 }
@@ -1625,8 +2151,11 @@ function buildContextRetrieval(
   taskMaxChars: number,
 ): MemoryRetrieval {
   const active = state.records
-    .filter((entry) => entry.active)
-    .filter((entry) => !isLegacyWorkflowArtifact(entry))
+    .filter(
+      (entry) =>
+        entry.state !== 'superseded' &&
+        (entry.state !== 'trial' || trialIsEligibleForRetrieval(state, entry)),
+    )
     .filter((entry) => !isConflictedInferred(state.conflicts, entry));
   const profileCandidates = active
     .filter(isUserProfileRecord)
@@ -1675,24 +2204,14 @@ function buildContextRetrieval(
   };
 }
 
-function ensureProfileCapacity(
-  state: MutableMemoryState,
-  candidate: StoredRecord,
-  maxChars: number,
-  replacingId?: string,
-): void {
-  if (!isUserProfileRecord(candidate)) return;
-  if (profileFits(state, candidate, maxChars, replacingId)) return;
-  throw new Error(
-    `User Profile capacity is ${profileUsedChars(state)}/${maxChars} Unicode chars; ` +
-      '整理现有内容或提高 profile_char_limit before saving this memory',
-  );
+function trialIsEligibleForRetrieval(state: MutableMemoryState, record: StoredRecord): boolean {
+  const evidenceKeys = state.evidence[record.id] ?? [];
+  return evidenceKeys.length > 0;
 }
 
 function profileUsedChars(state: MutableMemoryState): number {
   const records = state.records
-    .filter((entry) => entry.active)
-    .filter((entry) => !isLegacyWorkflowArtifact(entry))
+    .filter((entry) => entry.state !== 'superseded')
     .filter((entry) => !isConflictedInferred(state.conflicts, entry))
     .filter(isUserProfileRecord)
     .sort(
@@ -1703,31 +2222,14 @@ function profileUsedChars(state: MutableMemoryState): number {
   return unicodeLength(renderRetrieval(records));
 }
 
-function profileFits(
-  state: MutableMemoryState,
-  candidate: StoredRecord,
-  maxChars: number,
-  replacingId?: string,
-): boolean {
-  const projectedState = {
-    ...state,
-    records: [
-      ...state.records.filter((entry) => entry.id !== replacingId && entry.id !== candidate.id),
-      candidate,
-    ],
-  };
-  const projected = buildContextRetrieval(
-    projectedState,
-    { view: 'profile' },
-    maxChars,
-    DEFAULT_TASK_MAX_CHARS,
-  );
-  return projected.profileRecords?.some((entry) => entry.id === candidate.id) === true;
-}
-
 function isUserProfileRecord(record: StoredRecord): boolean {
-  if (record.scope !== 'global') return false;
-  if (record.pathPatterns.length > 0 || record.taskTypes.length > 0 || record.operations.length > 0)
+  if (record.scope !== 'global' || record.memoryType !== 'core-profile') return false;
+  if (
+    record.pathPatterns.length > 0 ||
+    record.taskTypes.length > 0 ||
+    record.operations.length > 0 ||
+    record.phases.length > 0
+  )
     return false;
   const memoryClass = record.memoryClass ?? inferMemoryClass(record);
   return (
@@ -1760,6 +2262,46 @@ function inferMemoryClass(
   if (/(?:协作|习惯|workflow|collaboration|habit)/iu.test(value.category))
     return 'collaboration-habit';
   return 'user-preference';
+}
+
+function inferPersonalMemoryType(
+  value: Pick<MemoryInput, 'scope' | 'category' | 'memoryClass'>,
+  kind: 'explicit' | 'inferred',
+): MemoryRecord['memoryType'] {
+  const memoryClass = value.memoryClass ?? inferMemoryClass(value);
+  if (kind === 'inferred') {
+    return memoryClass === 'collaboration-habit' || memoryClass === 'project-convention'
+      ? 'collaboration-policy'
+      : 'personal-episode';
+  }
+  return memoryClass === 'user-fact' || memoryClass === 'user-preference'
+    ? 'core-profile'
+    : 'collaboration-policy';
+}
+
+function isPersonalMemoryType(value: unknown): value is MemoryRecord['memoryType'] {
+  return (
+    value === 'core-profile' || value === 'collaboration-policy' || value === 'personal-episode'
+  );
+}
+
+function personalEpisodeFromPayload(value: unknown): PersonalEpisodeDetails | undefined {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const candidate = value as Partial<Record<keyof PersonalEpisodeDetails, unknown>>;
+  if (
+    typeof candidate.situation !== 'string' ||
+    typeof candidate.actionSummary !== 'string' ||
+    typeof candidate.outcome !== 'string' ||
+    typeof candidate.lesson !== 'string'
+  ) {
+    return undefined;
+  }
+  return {
+    situation: candidate.situation,
+    actionSummary: candidate.actionSummary,
+    outcome: candidate.outcome,
+    lesson: candidate.lesson,
+  };
 }
 
 function selectWithinChars(
@@ -1813,6 +2355,11 @@ function attributesMatch(record: StoredRecord, query: MemoryQuery): boolean {
     !matchesAny(record.operations, query.operation)
   )
     return false;
+  if (
+    record.phases.length > 0 &&
+    (query.phase === undefined || !matchesAny(record.phases, query.phase))
+  )
+    return false;
   if (query.category !== undefined && !matchesAny([record.category], query.category)) return false;
   if (query.tags !== undefined && !query.tags.every((tag) => matchesAny(record.tags, tag)))
     return false;
@@ -1843,10 +2390,14 @@ function escapeRegExp(value: string): string {
 
 function scoreRecord(record: StoredRecord, query: MemoryQuery): number {
   let score = record.kind === 'explicit' ? 100 : 60;
+  score += record.state === 'proven' ? 200 : 0;
+  score += Math.min(record.successCount, 5) * 20;
+  score -= Math.min(record.failureCount, 5) * 40;
   if (record.scope === 'project') score += 50;
   if (query.task !== undefined && matchesAny(record.taskTypes, query.task)) score += 25;
   if (query.path !== undefined && matchesAny(record.pathPatterns, query.path)) score += 25;
   if (query.operation !== undefined && matchesAny(record.operations, query.operation)) score += 25;
+  if (query.phase !== undefined && matchesAny(record.phases, query.phase)) score += 25;
   if (query.category !== undefined && matchesAny([record.category], query.category)) score += 20;
   if (query.tags !== undefined) {
     score += query.tags.filter((tag) => matchesAny(record.tags, tag)).length * 15;
@@ -1857,6 +2408,36 @@ function scoreRecord(record: StoredRecord, query: MemoryQuery): number {
     for (const term of terms) if (haystack.includes(term)) score += 10;
   }
   return score;
+}
+
+function normalizePersonalEpisode(
+  episode: PersonalEpisodeDetails | undefined,
+  record: Pick<MemoryInput, 'title' | 'category' | 'text' | 'reason' | 'language' | 'evidence'>,
+): PersonalEpisodeDetails {
+  const evidence = record.evidence ?? [];
+  const evidenceSummary = evidence
+    .map((entry) => entry.summary.trim())
+    .filter(Boolean)
+    .join('；');
+  const successful = evidence.some((entry) => entry.success === true);
+  const failed = evidence.some((entry) => entry.success === false);
+  const english = record.language === 'en';
+  return {
+    situation: episode?.situation.trim() || record.title?.trim() || record.category.trim(),
+    actionSummary: episode?.actionSummary.trim() || evidenceSummary || record.text.trim(),
+    outcome:
+      episode?.outcome.trim() ||
+      (failed
+        ? english
+          ? 'Unsuccessful'
+          : '未成功'
+        : successful
+          ? english
+            ? 'Successful'
+            : '成功'
+          : record.reason?.trim() || (english ? 'Observed' : '已记录')),
+    lesson: episode?.lesson.trim() || record.text.trim(),
+  };
 }
 
 function renderRetrieval(records: readonly MemoryRecord[]): string {
@@ -1999,6 +2580,7 @@ function validateInput(input: MemoryInput, configuredLanguage?: MemoryLanguage):
     }
   }
   validateMemoryArrays(input);
+  validatePersonalEpisode(input.episode, configuredLanguage);
 }
 
 function validateCorrection(correction: MemoryCorrection, language?: MemoryLanguage): void {
@@ -2017,16 +2599,52 @@ function validateCorrection(correction: MemoryCorrection, language?: MemoryLangu
     }
   }
   validateMemoryArrays(correction);
+  validatePersonalEpisode(correction.episode, language);
+}
+
+function memoryCorrectionIsUnchanged(record: MemoryRecord, correction: MemoryCorrection): boolean {
+  return (
+    (correction.title === undefined || correction.title === record.title) &&
+    (correction.reason === undefined || correction.reason === record.reason) &&
+    (correction.text === undefined || correction.text === record.text) &&
+    (correction.category === undefined || correction.category === record.category) &&
+    (correction.memoryType === undefined || correction.memoryType === record.memoryType) &&
+    (correction.memoryClass === undefined || correction.memoryClass === record.memoryClass) &&
+    (correction.tags === undefined || equalStrings(correction.tags, record.tags)) &&
+    (correction.pathPatterns === undefined ||
+      equalStrings(correction.pathPatterns, record.pathPatterns)) &&
+    (correction.taskTypes === undefined || equalStrings(correction.taskTypes, record.taskTypes)) &&
+    (correction.operations === undefined ||
+      equalStrings(correction.operations, record.operations)) &&
+    (correction.phases === undefined || equalStrings(correction.phases, record.phases))
+  );
+}
+
+function validatePersonalEpisode(
+  episode: PersonalEpisodeDetails | undefined,
+  language?: MemoryLanguage,
+): void {
+  if (episode === undefined) return;
+  for (const [field, value] of Object.entries(episode)) {
+    if (value.trim().length === 0) throw new Error(`Memory episode ${field} must not be empty`);
+    validateSafeMemoryText(value);
+    if (language !== undefined) validateMemoryLanguageText(value, language, `episode.${field}`);
+  }
+}
+
+function equalStrings(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function validateMemoryArrays(
-  input: Pick<MemoryInput, 'tags' | 'pathPatterns' | 'taskTypes' | 'operations'>,
+  input: Pick<MemoryInput, 'tags' | 'pathPatterns' | 'taskTypes' | 'operations' | 'phases'>,
 ): void {
   for (const [field, values] of [
     ['tags', input.tags],
     ['pathPatterns', input.pathPatterns],
     ['taskTypes', input.taskTypes],
     ['operations', input.operations],
+    ['phases', input.phases],
   ] as const) {
     if (values === undefined) continue;
     if (values.length > 32) throw new Error(`Memory ${field} exceeds the collection limit`);
@@ -2064,6 +2682,7 @@ function isUsefulAutomaticObservation(observation: MemoryObservation): boolean {
       ...(observation.pathPatterns ?? []),
       ...(observation.taskTypes ?? []),
       ...(observation.operations ?? []),
+      ...(observation.phases ?? []),
     ].forEach((value) => validateSafeMemoryText(value));
     validateMemoryLanguageText(observation.category, observation.language, 'observation.category');
     validateMemoryLanguageText(observation.text, observation.language, 'observation.text');

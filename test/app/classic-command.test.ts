@@ -188,7 +188,7 @@ describe('Classic command facade', () => {
     expect(recordCometWorkflowResult).toHaveBeenCalledWith(
       expect.objectContaining({
         command: 'guard',
-        eventName: 'verification.completed',
+        eventType: 'verification.completed',
         workflow: 'hotfix',
       }),
     );

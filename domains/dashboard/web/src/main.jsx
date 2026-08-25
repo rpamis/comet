@@ -103,6 +103,33 @@ const DASHBOARD_PLUGIN_NAV_PLACEHOLDERS = Object.freeze([
   },
 ]);
 
+const DASHBOARD_CACHE_VERSION = 1;
+
+function readDashboardCache(key) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) ?? 'null');
+    return parsed?.version === DASHBOARD_CACHE_VERSION ? parsed.value : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeDashboardCache(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify({ version: DASHBOARD_CACHE_VERSION, value }));
+  } catch {
+    // Cache persistence is an optimization; private browsing may reject it.
+  }
+}
+
+function pluginPageStorageKey(projectId, pluginId) {
+  return `comet-dashboard-plugin:${projectId}:${pluginId}`;
+}
+
+function projectConfigStorageKey(projectId) {
+  return `comet-dashboard-config:${projectId}`;
+}
+
 function useTheme() {
   const [theme, setTheme] = useState(() => {
     const stored = localStorage.getItem('comet-theme');
@@ -172,37 +199,37 @@ const VERIFY_TONE = {
 };
 
 const PROJECT_KNOWLEDGE_TYPE_OPTIONS = [
-  { value: 'project-map', label: '项目地图' },
-  { value: 'module-overview', label: '模块说明' },
-  { value: 'behavior-note', label: '行为约定' },
-  { value: 'integration-path', label: '集成路径' },
-  { value: 'change-impact', label: '变更影响' },
-  { value: 'build-test', label: '构建与测试' },
+  { value: 'topology', label: '项目拓扑' },
+  { value: 'fact', label: '项目事实' },
+  { value: 'dependency', label: '依赖关系' },
+  { value: 'decision', label: '技术决策' },
+  { value: 'pattern', label: '工程模式' },
+  { value: 'procedure', label: '操作流程' },
+  { value: 'constraint', label: '强制约束' },
+  { value: 'failure-resolution', label: '故障处理' },
 ];
 
 const PROJECT_KNOWLEDGE_CATEGORY_GROUPS = [
   {
-    key: 'orientation',
-    label: '项目理解',
-    types: ['project-map', 'module-overview'],
+    key: 'model',
+    label: '项目模型',
+    types: ['topology', 'fact', 'dependency'],
   },
   {
-    key: 'engineering',
-    label: '工程约定',
-    types: ['behavior-note', 'build-test'],
-  },
-  {
-    key: 'integration',
-    label: '集成与影响',
-    types: ['integration-path', 'change-impact'],
+    key: 'policy',
+    label: '项目策略',
+    types: ['decision', 'pattern', 'procedure', 'constraint', 'failure-resolution'],
   },
 ];
 
 const PROJECT_KNOWLEDGE_STATE_LABELS = {
-  active: '使用中',
-  'needs-review': '需要更新',
-  retired: '已归档',
+  trial: '试用中',
+  proven: '已验证',
+  enforced: '强制执行',
+  superseded: '已替代',
 };
+
+const PROJECT_MODEL_TYPES = new Set(['topology', 'fact', 'dependency']);
 
 function projectKnowledgeTypeLabel(type) {
   return PROJECT_KNOWLEDGE_TYPE_OPTIONS.find((option) => option.value === type)?.label ?? '其他';
@@ -210,6 +237,13 @@ function projectKnowledgeTypeLabel(type) {
 
 function projectKnowledgeStateLabel(state) {
   return PROJECT_KNOWLEDGE_STATE_LABELS[state] ?? '待确认';
+}
+
+function projectPolicyActivationLabel(activation) {
+  if (activation?.kind === 'verification') return '项目验证命令约束';
+  if (activation?.kind === 'skill-candidate') return 'Skill 候选（仅建议）';
+  if (activation?.kind === 'context') return '上下文指导';
+  return null;
 }
 
 function projectKnowledgeVerificationLines(record) {
@@ -526,13 +560,18 @@ function DashboardApp({ theme, onToggleTheme }) {
 
   const loadCachedPluginPage = useCallback(async (projectId, pluginId, force = false) => {
     const cacheKey = `${projectId}:${pluginId}`;
-    const cached = pluginPageCacheRef.current.get(cacheKey);
+    let cached = pluginPageCacheRef.current.get(cacheKey);
+    if (!cached) {
+      cached = readDashboardCache(pluginPageStorageKey(projectId, pluginId));
+      if (cached) pluginPageCacheRef.current.set(cacheKey, cached);
+    }
     if (!force && cached) return cached;
     const pending = pluginPageRequestRef.current.get(cacheKey);
     if (pending) return pending;
     const request = fetchDashboardPluginPage(projectId, pluginId)
       .then((page) => {
         pluginPageCacheRef.current.set(cacheKey, page);
+        writeDashboardCache(pluginPageStorageKey(projectId, pluginId), page);
         return page;
       })
       .finally(() => {
@@ -544,19 +583,28 @@ function DashboardApp({ theme, onToggleTheme }) {
     return request;
   }, []);
 
-  const readCachedPluginPage = useCallback(
-    (projectId, pluginId) => pluginPageCacheRef.current.get(`${projectId}:${pluginId}`) ?? null,
-    [],
-  );
+  const readCachedPluginPage = useCallback((projectId, pluginId) => {
+    const cacheKey = `${projectId}:${pluginId}`;
+    const memory = pluginPageCacheRef.current.get(cacheKey);
+    if (memory) return memory;
+    const persisted = readDashboardCache(pluginPageStorageKey(projectId, pluginId));
+    if (persisted) pluginPageCacheRef.current.set(cacheKey, persisted);
+    return persisted;
+  }, []);
 
   const loadCachedProjectConfig = useCallback(async (projectId, force = false) => {
-    const cached = projectConfigCacheRef.current.get(projectId);
+    let cached = projectConfigCacheRef.current.get(projectId);
+    if (!cached) {
+      cached = readDashboardCache(projectConfigStorageKey(projectId));
+      if (cached) projectConfigCacheRef.current.set(projectId, cached);
+    }
     if (!force && cached) return cached;
     const pending = projectConfigRequestRef.current.get(projectId);
     if (pending) return pending;
     const request = fetchDashboardProjectConfig(projectId)
       .then((config) => {
         projectConfigCacheRef.current.set(projectId, config);
+        writeDashboardCache(projectConfigStorageKey(projectId), config);
         return config;
       })
       .finally(() => {
@@ -614,9 +662,8 @@ function DashboardApp({ theme, onToggleTheme }) {
       .then(async (response) => {
         if (cancelled) return;
         const availablePages = response.pages ?? [];
-        await preloadDashboardSettings(activeProjectId, availablePages);
-        if (cancelled) return;
         setPluginPages(availablePages);
+        void preloadDashboardSettings(activeProjectId, availablePages);
       })
       .catch((error) => {
         if (!cancelled) toast(`插件页面加载失败：${error.message}`, 'error');
@@ -736,6 +783,10 @@ function DashboardApp({ theme, onToggleTheme }) {
         input,
       );
       pluginPageCacheRef.current.set(`${requestedProjectId}:${requestedPluginId}`, reconciledPage);
+      writeDashboardCache(
+        pluginPageStorageKey(requestedProjectId, requestedPluginId),
+        reconciledPage,
+      );
       setSurfacePage(reconciledPage);
       return result;
     },
@@ -783,17 +834,19 @@ function DashboardApp({ theme, onToggleTheme }) {
         } else if (pluginId === 'comet.project-knowledge' && capability === 'correct') {
           toast(input?.restore ? '项目知识已更新并恢复使用' : '项目知识已更新');
         } else if (pluginId === 'comet.project-knowledge' && capability === 'forget') {
-          toast('项目知识已归档，不再提供给 Agent');
+          toast('项目知识已标记为已替代，不再提供给 Agent');
         } else if (pluginId === 'comet.project-knowledge' && capability === 'refresh') {
           const refreshedRecord = Array.isArray(result?.records)
             ? result.records.find((record) => record?.id === input?.id)
             : null;
           toast(
-            refreshedRecord?.state === 'active'
-              ? '来源检查完成，记录已恢复使用'
-              : refreshedRecord?.state === 'needs-review'
-                ? '来源仍需更新，请检查来源文件或定位信息'
-                : '项目知识已刷新',
+            refreshedRecord?.state === 'proven' || refreshedRecord?.state === 'enforced'
+              ? '来源检查完成，记录已验证'
+              : refreshedRecord?.state === 'trial'
+                ? '来源仍需核对，记录继续保持试用状态'
+                : refreshedRecord?.state === 'superseded'
+                  ? '来源或验证入口已变化，记录已替代并停止应用'
+                  : '项目知识已刷新',
           );
         } else {
           toast(capability === 'lifecycle' ? '插件状态已更新' : '操作已完成');
@@ -914,14 +967,6 @@ function DashboardApp({ theme, onToggleTheme }) {
     async (change) => {
       if (!change) return;
       setNativeDetailError(null);
-      if (
-        nativeSelectedDetailRef.current &&
-        nativeDashboardChangeKey(nativeSelectedDetailRef.current) !==
-          nativeDashboardChangeKey(change)
-      ) {
-        nativeSelectedDetailRef.current = null;
-        setNativeSelectedDetail(null);
-      }
       if (useDemo) {
         setNativeSelectedDetail(change);
         nativeSelectedDetailRef.current = change;
@@ -1294,6 +1339,7 @@ function DashboardApp({ theme, onToggleTheme }) {
                 config,
               });
               projectConfigCacheRef.current.set(activeProjectId, next);
+              writeDashboardCache(projectConfigStorageKey(activeProjectId), next);
               setSettingsConfig(next);
               if (knowledgePathsChanged) {
                 await invokeActivePlugin('comet.project-knowledge', 'refresh', {}, 'settings');
@@ -2395,9 +2441,10 @@ function reconcilePluginInvocationResult(page, pluginId, capability, result, inp
           ...page.data,
           records: nextRecords,
           counts: {
-            active: nextRecords.filter((record) => record?.state === 'active').length,
-            needsReview: nextRecords.filter((record) => record?.state === 'needs-review').length,
-            retired: nextRecords.filter((record) => record?.state === 'retired').length,
+            trial: nextRecords.filter((record) => record?.state === 'trial').length,
+            proven: nextRecords.filter((record) => record?.state === 'proven').length,
+            enforced: nextRecords.filter((record) => record?.state === 'enforced').length,
+            superseded: nextRecords.filter((record) => record?.state === 'superseded').length,
           },
         },
       };
@@ -2424,9 +2471,10 @@ function reconcilePluginInvocationResult(page, pluginId, capability, result, inp
           ...page.data,
           records: nextRecords,
           counts: {
-            active: nextRecords.filter((record) => record?.state === 'active').length,
-            needsReview: nextRecords.filter((record) => record?.state === 'needs-review').length,
-            retired: nextRecords.filter((record) => record?.state === 'retired').length,
+            trial: nextRecords.filter((record) => record?.state === 'trial').length,
+            proven: nextRecords.filter((record) => record?.state === 'proven').length,
+            enforced: nextRecords.filter((record) => record?.state === 'enforced').length,
+            superseded: nextRecords.filter((record) => record?.state === 'superseded').length,
           },
         },
       };
@@ -2721,30 +2769,45 @@ function formatFileSize(bytes) {
 }
 
 function isUserProfileRecord(record) {
-  if (record.scope !== 'global') return false;
-  if ((record.pathPatterns ?? []).length > 0) return false;
-  if ((record.taskTypes ?? []).length > 0) return false;
-  if ((record.operations ?? []).length > 0) return false;
-  return ['user-fact', 'user-preference', 'collaboration-habit'].includes(record.memoryClass);
+  return record.memoryType === 'core-profile';
 }
 
 function isActiveMemoryRecord(record) {
-  return record.status === undefined ? record.active !== false : record.status === 'active';
+  const state = record.status ?? record.state;
+  return state === 'trial' || state === 'proven';
+}
+
+function personalMemoryStateLabel(record) {
+  const state = record.status ?? record.state;
+  if (state === 'trial') return '试用中';
+  if (state === 'proven') return '已验证';
+  if (state === 'conflict') return '存在冲突';
+  if (state === 'tombstoned') return '已忘记';
+  return '已替代';
+}
+
+function personalMemoryTypeLabel(record) {
+  if (record.memoryType === 'core-profile') return '核心画像';
+  if (record.memoryType === 'collaboration-policy') return '协作策略';
+  return '情景记录';
 }
 
 function memoryApplicationReason(record) {
-  if (isUserProfileRecord(record)) return '全局 User Profile，任务开始时自动加载';
-  if (record.scope === 'project') {
-    const selectors = [
-      ...((record.pathPatterns ?? []).length > 0 ? ['路径'] : []),
-      ...((record.taskTypes ?? []).length > 0 ? ['任务类型'] : []),
-      ...((record.operations ?? []).length > 0 ? ['操作'] : []),
-    ];
-    return selectors.length > 0
-      ? `当前项目范围匹配（${selectors.join('、')}）`
-      : '当前项目范围匹配';
-  }
-  return '任务匹配的个人记忆';
+  return record.lastApplication?.whyApplied ?? '尚未应用';
+}
+
+function contextDeliveryLabel(application) {
+  if (!application) return '尚未应用';
+  return application.delivery === 'full' ? '完整注入' : 'Manifest 摘要';
+}
+
+function contextOutcomeLabel(outcome) {
+  if (!outcome) return '尚未反馈结果';
+  if (outcome === 'used-successfully') return '应用成功';
+  if (outcome === 'ignored') return '未使用';
+  if (outcome === 'overridden') return '已被覆盖';
+  if (outcome === 'corrected') return '已纠正';
+  return '导致失败';
 }
 
 async function copyText(text) {
@@ -3567,7 +3630,7 @@ function PersonalMemorySettings({ page, data, onInvoke }) {
   const records = management.records ?? retrieval.records ?? [];
   const pendingRecords = records.filter(
     (record) =>
-      record.status === 'conflict' || (record.kind === 'inferred' && record.status !== 'active'),
+      record.status === 'conflict' || (record.kind === 'inferred' && record.status === 'trial'),
   );
   const projectKey = data?.projectKey;
   const learningAllowed = policy.learning !== false;
@@ -3726,7 +3789,7 @@ function PersonalMemorySettings({ page, data, onInvoke }) {
             <div className="dashboard-settings-panel-head">
               <div>
                 <h4 id="memory-provider-settings">Provider 与上下文</h4>
-                <p>选择存储来源，并限制写入任务的上下文大小</p>
+                <p>选择存储来源，并设置注入到 Agent 的上下文预算</p>
               </div>
               {pendingRecords.length > 0 && (
                 <Button size="small" onClick={() => setShowPending(true)}>
@@ -3754,14 +3817,14 @@ function PersonalMemorySettings({ page, data, onInvoke }) {
                 <Input
                   value={profileCharLimit}
                   onChange={(event) => setProfileCharLimit(event.target.value)}
-                  placeholder="User Profile 字符上限"
-                  aria-label="User Profile 字符上限"
+                  placeholder="核心画像注入预算"
+                  aria-label="核心画像注入预算"
                 />
                 <Input
                   value={taskContextCharLimit}
                   onChange={(event) => setTaskContextCharLimit(event.target.value)}
-                  placeholder="任务上下文字符上限"
-                  aria-label="任务上下文字符上限"
+                  placeholder="任务上下文注入预算"
+                  aria-label="任务上下文注入预算"
                 />
               </div>
               {providerMode === 'remote' && (
@@ -3890,7 +3953,7 @@ function PersonalMemorySettings({ page, data, onInvoke }) {
                   </div>
                   <p className="dashboard-memory-record-text">{record.text}</p>
                 </div>
-                {record.kind === 'inferred' && record.status !== 'active' && (
+                {record.kind === 'inferred' && record.status === 'trial' && (
                   <Button
                     size="small"
                     onClick={() =>
@@ -4197,7 +4260,7 @@ function ProjectKnowledgeSettings({ page, data, onInvoke }) {
 }
 
 function openProjectKnowledgeCorrection(record, onInvoke) {
-  const restoring = record.state === 'retired';
+  const restoring = record.state === 'superseded';
   Modal.confirm({
     title: restoring ? '纠正并恢复项目知识' : '纠正项目知识记录',
     content: (
@@ -4321,9 +4384,10 @@ function ProjectKnowledgeRegistry({
               aria-label="项目知识记录状态"
               onChange={onStateFilterChange}
               options={[
-                { value: 'active', label: '使用中' },
-                { value: 'needs-review', label: '需要更新' },
-                { value: 'retired', label: '已归档' },
+                { value: 'trial', label: '试用中' },
+                { value: 'proven', label: '已验证' },
+                { value: 'enforced', label: '强制执行' },
+                { value: 'superseded', label: '已替代' },
                 { value: 'all', label: '全部记录' },
               ]}
             />
@@ -4392,6 +4456,42 @@ function ProjectKnowledgeRegistry({
   );
 }
 
+function ContextApplicationHistory({ applications = [], recordId }) {
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => setExpanded(false), [recordId]);
+  if (applications.length === 0) return null;
+  const visible = expanded ? applications : applications.slice(0, 6);
+  return (
+    <section>
+      <div className="dashboard-context-application-history-head">
+        <h4>应用历史</h4>
+        {applications.length > 6 && (
+          <Button
+            type="text"
+            size="small"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((value) => !value)}
+          >
+            {expanded ? '收起' : `查看全部 ${applications.length} 条`}
+          </Button>
+        )}
+      </div>
+      <div className="dashboard-context-application-history">
+        {visible.map((application) => (
+          <article key={application.applicationId}>
+            <div>
+              <strong>{application.task || '未命名任务'}</strong>
+              <time dateTime={application.appliedAt}>{formatTimestamp(application.appliedAt)}</time>
+            </div>
+            <p>{application.whyApplied}</p>
+            <span>{contextOutcomeLabel(application.outcome)}</span>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function ProjectKnowledgeInspector({ record, onInvoke }) {
   if (!record) {
     return (
@@ -4426,12 +4526,43 @@ function ProjectKnowledgeInspector({ record, onInvoke }) {
           <span>这条知识由用户手动确认，当前缺少来源或验证记录；建议补充证据，方便后续维护。</span>
         </div>
       )}
-      {record.state === 'needs-review' && (
+      {record.state === 'trial' && (
         <div className="dashboard-knowledge-inspector-warning" role="status">
           <ReloadOutlined aria-hidden="true" />
-          <span>关联的来源文件或定位信息已发生变化。修复来源后，点击“重新检查来源”恢复使用。</span>
+          <span>这条知识正在试用，Agent 会按相关性谨慎召回；成功应用后会提升为已验证。</span>
         </div>
       )}
+      <section>
+        <h4>最近一次应用</h4>
+        <dl>
+          <div>
+            <dt>为什么匹配</dt>
+            <dd>{record.lastApplication?.whyApplied ?? '尚未应用'}</dd>
+          </div>
+          <div>
+            <dt>加载方式</dt>
+            <dd>{contextDeliveryLabel(record.lastApplication)}</dd>
+          </div>
+          {record.lastApplication && (
+            <>
+              <div>
+                <dt>最近应用</dt>
+                <dd>{formatTimestamp(record.lastApplication.appliedAt)}</dd>
+              </div>
+              <div>
+                <dt>应用结果</dt>
+                <dd>{contextOutcomeLabel(record.lastApplication.outcome)}</dd>
+              </div>
+            </>
+          )}
+          {projectPolicyActivationLabel(record.activation) && (
+            <div>
+              <dt>策略激活</dt>
+              <dd>{projectPolicyActivationLabel(record.activation)}</dd>
+            </div>
+          )}
+        </dl>
+      </section>
       <section>
         <h4>应用条件</h4>
         <dl>
@@ -4447,8 +4578,16 @@ function ProjectKnowledgeInspector({ record, onInvoke }) {
             <dt>适用操作</dt>
             <dd>{operations.length > 0 ? operations.join('、') : '全部任务'}</dd>
           </div>
+          <div>
+            <dt>适用阶段</dt>
+            <dd>{(record.phases ?? []).length > 0 ? record.phases.join('、') : '全部阶段'}</dd>
+          </div>
         </dl>
       </section>
+      <ContextApplicationHistory
+        applications={record.applicationHistory ?? []}
+        recordId={record.id}
+      />
       <section>
         <h4>来源与证据</h4>
         {sources.length === 0 ? (
@@ -4491,6 +4630,13 @@ function ProjectKnowledgeInspector({ record, onInvoke }) {
             <dd>{formatTimestamp(record.updatedAt)}</dd>
           </div>
           <div>
+            <dt>应用效果</dt>
+            <dd>
+              已应用 {record.applicationCount ?? 0} 次 · 成功 {record.successCount ?? 0} 次 · 需修正{' '}
+              {record.failureCount ?? 0} 次
+            </dd>
+          </div>
+          <div>
             <dt>记录标识</dt>
             <dd className="dashboard-knowledge-record-id">{record.id}</dd>
           </div>
@@ -4501,29 +4647,29 @@ function ProjectKnowledgeInspector({ record, onInvoke }) {
           icon={<EditOutlined />}
           onClick={() => openProjectKnowledgeCorrection(record, onInvoke)}
         >
-          {record.state === 'retired' ? '纠正并恢复' : '纠正记录'}
+          {record.state === 'superseded' ? '纠正并恢复' : '纠正记录'}
         </Button>
-        {record.state === 'needs-review' && (
+        {record.state === 'trial' && (
           <Button icon={<ReloadOutlined />} onClick={() => onInvoke('refresh', { id: record.id })}>
             重新检查来源
           </Button>
         )}
-        {record.state !== 'retired' && (
+        {record.state !== 'superseded' && (
           <Button
             danger
             icon={<DeleteOutlined />}
             onClick={() =>
               Modal.confirm({
-                title: '归档这条项目知识？',
-                content: '归档后，这条记录不会再提供给当前项目的 Agent，但仍可在归档状态中查看。',
-                okText: '归档',
+                title: '将这条项目知识标记为已替代？',
+                content: '标记后不再向 Agent 提供，但仍会保留在历史记录中。',
+                okText: '标记已替代',
                 cancelText: '取消',
                 okButtonProps: { danger: true },
                 onOk: () => onInvoke('forget', { id: record.id }),
               })
             }
           >
-            归档记录
+            标记已替代
           </Button>
         )}
       </footer>
@@ -4556,7 +4702,7 @@ function ProjectKnowledgeSources({ sourceEntries, provider }) {
       ) : (
         <div className="dashboard-knowledge-source-rows" aria-label="项目知识数据来源列表">
           {sourceEntries.map((entry) => {
-            const needsReview = entry.records.some((record) => record.state === 'needs-review');
+            const needsReview = entry.records.some((record) => record.state === 'trial');
             return (
               <div key={entry.source} className="dashboard-knowledge-source-row">
                 <span>
@@ -4565,10 +4711,10 @@ function ProjectKnowledgeSources({ sourceEntries, provider }) {
                 </span>
                 <strong>{entry.records.length} 条</strong>
                 <span
-                  className={`dashboard-knowledge-record-state ${needsReview ? 'is-needs-review' : 'is-active'}`}
+                  className={`dashboard-knowledge-record-state ${needsReview ? 'is-trial' : 'is-proven'}`}
                 >
                   <span aria-hidden="true" />
-                  {needsReview ? '需要更新' : '已收录'}
+                  {needsReview ? '试用中' : '已收录'}
                 </span>
                 <time dateTime={entry.latestUpdatedAt}>
                   {formatTimestamp(entry.latestUpdatedAt)}
@@ -4653,24 +4799,71 @@ function ProjectKnowledgeQuery({
   );
 }
 
+function ContextManifestPreview({ items, emptyLabel }) {
+  const manifest = Array.isArray(items) ? items : [];
+  const latestAt = manifest[0]?.appliedAt ?? manifest[0]?.lastApplication?.appliedAt;
+  return (
+    <section className="dashboard-context-manifest" aria-label="最近一次 Context Manifest">
+      <header>
+        <div>
+          <strong>最近一次实际 Context Manifest</strong>
+          <span>这里只展示最近真实投递给 Agent 的内容</span>
+        </div>
+        <span>
+          {manifest.length} 条{latestAt ? ` · ${formatTimestamp(latestAt)}` : ''}
+        </span>
+      </header>
+      {manifest.length === 0 ? (
+        <p>{emptyLabel}</p>
+      ) : (
+        <div className="dashboard-context-manifest-items">
+          {manifest.slice(0, 8).map((item) => (
+            <article key={item.id}>
+              <div>
+                <strong>{item.title}</strong>
+                <span>{item.summary}</span>
+              </div>
+              <dl>
+                <div>
+                  <dt>应用原因</dt>
+                  <dd>{item.whyApplied}</dd>
+                </div>
+                <div>
+                  <dt>加载方式</dt>
+                  <dd>{contextDeliveryLabel(item.lastApplication ?? item)}</dd>
+                </div>
+                <div>
+                  <dt>结果</dt>
+                  <dd>{contextOutcomeLabel(item.outcome ?? item.lastApplication?.outcome)}</dd>
+                </div>
+              </dl>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function ProjectKnowledgeCenter({ page, data, onInvoke }) {
   const snapshot = data && typeof data === 'object' ? data : {};
-  const [workspaceTab, setWorkspaceTab] = useState('records');
+  const [workspaceTab, setWorkspaceTab] = useState('model');
   const [recordSearchText, setRecordSearchText] = useState('');
   const [queryText, setQueryText] = useState('');
   const [queryPending, setQueryPending] = useState(false);
-  const [stateFilter, setStateFilter] = useState('active');
+  const [stateFilter, setStateFilter] = useState('proven');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [sortOrder, setSortOrder] = useState('newest');
   const [selectedRecordId, setSelectedRecordId] = useState(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createSaving, setCreateSaving] = useState(false);
   const [createDraft, setCreateDraft] = useState({
-    type: 'behavior-note',
+    type: 'constraint',
     title: '',
     summary: '',
     applicablePaths: '',
     operations: '',
+    phases: '',
     sources: '',
     verification: '',
   });
@@ -4678,9 +4871,18 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
     () => (Array.isArray(snapshot.records) ? snapshot.records : []),
     [snapshot.records],
   );
+  const workspaceRecords = useMemo(
+    () =>
+      workspaceTab === 'model'
+        ? records.filter((record) => PROJECT_MODEL_TYPES.has(record.type))
+        : workspaceTab === 'policy'
+          ? records.filter((record) => !PROJECT_MODEL_TYPES.has(record.type))
+          : records,
+    [records, workspaceTab],
+  );
   const visibleRecords = useMemo(() => {
     const search = recordSearchText.trim().toLocaleLowerCase('zh-CN');
-    const filtered = records.filter((record) => {
+    const filtered = workspaceRecords.filter((record) => {
       if (stateFilter !== 'all' && record.state !== stateFilter) return false;
       if (categoryFilter !== 'all' && record.type !== categoryFilter) return false;
       if (!search) return true;
@@ -4701,7 +4903,7 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
         new Date(right.updatedAt ?? 0).getTime() - new Date(left.updatedAt ?? 0).getTime();
       return sortOrder === 'oldest' ? -delta : delta;
     });
-  }, [categoryFilter, recordSearchText, records, sortOrder, stateFilter]);
+  }, [categoryFilter, recordSearchText, sortOrder, stateFilter, workspaceRecords]);
   const selectedRecord =
     visibleRecords.find((record) => record.id === selectedRecordId) ?? visibleRecords[0] ?? null;
   const sourceEntries = useMemo(() => {
@@ -4817,9 +5019,14 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
           }
         />
       )}
+      <ContextManifestPreview
+        items={snapshot.manifestPreview}
+        emptyLabel="最近还没有向 Agent 提供项目知识"
+      />
       <nav className="dashboard-knowledge-tabs" aria-label="项目知识视图">
         {[
-          ['records', '知识记录'],
+          ['model', '项目模型'],
+          ['policy', '项目策略'],
           ['sources', '数据来源'],
           ['query', '检索测试'],
         ].map(([key, label]) => (
@@ -4834,9 +5041,9 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
           </button>
         ))}
       </nav>
-      {workspaceTab === 'records' ? (
+      {workspaceTab === 'model' || workspaceTab === 'policy' ? (
         <ProjectKnowledgeRegistry
-          records={records}
+          records={workspaceRecords}
           visibleRecords={visibleRecords}
           selectedRecord={selectedRecord}
           selectedRecordId={selectedRecordId}
@@ -4897,17 +5104,19 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
               summary: createDraft.summary.trim(),
               applicablePaths: splitProjectKnowledgeLines(createDraft.applicablePaths),
               operations: splitProjectKnowledgeLines(createDraft.operations),
+              phases: splitProjectKnowledgeLines(createDraft.phases),
               sources: splitProjectKnowledgeLines(createDraft.sources),
               verification: splitProjectKnowledgeLines(createDraft.verification),
             });
             if (result !== undefined) {
               setCreateOpen(false);
               setCreateDraft({
-                type: 'behavior-note',
+                type: 'constraint',
                 title: '',
                 summary: '',
                 applicablePaths: '',
                 operations: '',
+                phases: '',
                 sources: '',
                 verification: '',
               });
@@ -4989,6 +5198,22 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
             />
           </Form.Item>
           <Form.Item
+            label="适用阶段（可选）"
+            htmlFor="dashboard-new-project-knowledge-phases"
+            extra="每行一个阶段，例如 build、verify。"
+          >
+            <Input.TextArea
+              id="dashboard-new-project-knowledge-phases"
+              value={createDraft.phases}
+              onChange={(event) =>
+                setCreateDraft((draft) => ({ ...draft, phases: event.target.value }))
+              }
+              placeholder={'例如：\nverify'}
+              aria-label="项目知识适用阶段"
+              autoSize={{ minRows: 2, maxRows: 4 }}
+            />
+          </Form.Item>
+          <Form.Item
             label="来源（可选）"
             htmlFor="dashboard-new-project-knowledge-sources"
             extra="每行一个项目相对文件路径；没有来源的记录会标记为未验证。"
@@ -5045,31 +5270,20 @@ function PersonalMemoryCenter({ data, onInvoke }) {
   const retrieval = data?.retrieval ?? {};
   const management = data?.management ?? {};
   const managedRecords = management.records ?? retrieval.records ?? [];
-  const records = managedRecords.filter(isActiveMemoryRecord);
-  const profileRecords = (retrieval.profileRecords ?? records.filter(isUserProfileRecord)).filter(
-    isActiveMemoryRecord,
+  const liveRecords = managedRecords.filter(isActiveMemoryRecord);
+  const coreRecords = liveRecords.filter((record) => record.memoryType === 'core-profile');
+  const policyRecords = liveRecords.filter(
+    (record) => record.memoryType === 'collaboration-policy',
   );
-  const projectRecords = records.filter(
-    (record) => record.scope === 'project' && !isUserProfileRecord(record),
-  );
-  const displayRecords =
-    projectRecords.length > 0
-      ? projectRecords
-      : records.filter((record) => !isUserProfileRecord(record));
-  const pendingRecords = managedRecords.filter(
-    (record) => record.status === 'conflict' || record.status === 'candidate',
-  );
-  const archivedRecords = managedRecords.filter(
-    (record) => !isActiveMemoryRecord(record) && !pendingRecords.includes(record),
-  );
-  const totalMemoryRecordCount =
-    profileRecords.length + displayRecords.length + pendingRecords.length + archivedRecords.length;
+  const episodeRecords = liveRecords.filter((record) => record.memoryType === 'personal-episode');
+  const historyRecords = managedRecords.filter((record) => !isActiveMemoryRecord(record));
+  const totalMemoryRecordCount = managedRecords.length;
   const notifications = data?.notifications ?? [];
   const projectKey = data?.projectKey;
   const memoryFileCount = status.files?.length ?? 0;
   const provider = status.provider?.provider ?? 'local';
   const profileUsage = status.profile
-    ? `${status.profile.usedChars} / ${status.profile.maxChars} 字符`
+    ? `核心画像 ${status.profile.usedChars} 字符 · 单次注入预算 ${status.profile.maxChars}`
     : provider === 'remote'
       ? '由 Remote Provider 管理'
       : '0 / 2000 字符';
@@ -5082,23 +5296,23 @@ function PersonalMemoryCenter({ data, onInvoke }) {
   const memoryGroups = [
     {
       key: 'profile',
-      title: '我的偏好',
-      records: profileRecords.filter(matchesMemoryQuery),
+      title: '核心画像',
+      records: coreRecords.filter(matchesMemoryQuery),
     },
     {
-      key: 'project',
-      title: '项目记忆动态',
-      records: displayRecords.filter(matchesMemoryQuery),
+      key: 'policy',
+      title: '协作策略',
+      records: policyRecords.filter(matchesMemoryQuery),
     },
     {
-      key: 'pending',
-      title: '待确认记忆',
-      records: pendingRecords.filter(matchesMemoryQuery),
+      key: 'episode',
+      title: '情景记录',
+      records: episodeRecords.filter(matchesMemoryQuery),
     },
     {
-      key: 'archived',
-      title: '已归档记忆',
-      records: archivedRecords.filter(matchesMemoryQuery),
+      key: 'history',
+      title: '历史记录',
+      records: historyRecords.filter(matchesMemoryQuery),
     },
   ].filter(
     (group) => group.records.length > 0 && (memoryFilter === 'all' || memoryFilter === group.key),
@@ -5132,11 +5346,7 @@ function PersonalMemoryCenter({ data, onInvoke }) {
       expandable && !expanded ? `${text.slice(0, MEMORY_COLLAPSE_THRESHOLD)}…` : text;
     const isSelected = selectedRecord?.id === record.id;
     const active = isActiveMemoryRecord(record);
-    const statusLabel = active
-      ? '已应用'
-      : record.status === 'conflict' || record.status === 'candidate'
-        ? '待确认'
-        : '已归档';
+    const statusLabel = personalMemoryStateLabel(record);
     return (
       <div
         key={record.id}
@@ -5154,14 +5364,8 @@ function PersonalMemoryCenter({ data, onInvoke }) {
       >
         <div className="dashboard-memory-table-copy">
           <div className="dashboard-memory-table-title-row">
-            <strong>{record.category || (groupKey === 'profile' ? '个人偏好' : '项目记忆')}</strong>
-            <span>
-              {groupKey === 'profile'
-                ? '个人偏好'
-                : record.scope === 'project'
-                  ? '项目记忆'
-                  : '全局记忆'}
-            </span>
+            <strong>{record.category || personalMemoryTypeLabel(record)}</strong>
+            <span>{personalMemoryTypeLabel(record)}</span>
           </div>
           <p className={expandable && !expanded ? 'is-collapsed' : ''}>{visibleText}</p>
           <button
@@ -5192,7 +5396,9 @@ function PersonalMemoryCenter({ data, onInvoke }) {
         <div className="dashboard-memory-table-scope">
           {record.scope === 'project' ? '当前项目' : '全局'}
         </div>
-        <div className={`dashboard-memory-table-status${active ? ' is-active' : ''}`}>
+        <div
+          className={`dashboard-memory-table-status is-${record.status ?? record.state ?? 'superseded'}`}
+        >
           <span aria-hidden="true" />
           {statusLabel}
         </div>
@@ -5292,6 +5498,10 @@ function PersonalMemoryCenter({ data, onInvoke }) {
           ))}
         </div>
       )}
+      <ContextManifestPreview
+        items={data?.manifestPreview}
+        emptyLabel="最近还没有向 Agent 提供个人记忆"
+      />
       <div className="dashboard-memory-workspace">
         <aside className="dashboard-memory-filter-rail" aria-label="记忆筛选">
           <div className="dashboard-memory-filter-search">
@@ -5307,10 +5517,10 @@ function PersonalMemoryCenter({ data, onInvoke }) {
           <nav>
             {[
               ['all', '全部记忆', totalMemoryRecordCount],
-              ['profile', '个人偏好', profileRecords.length],
-              ['project', '当前项目', displayRecords.length],
-              ['pending', '待确认', pendingRecords.length],
-              ['archived', '已归档', archivedRecords.length],
+              ['profile', '核心画像', coreRecords.length],
+              ['policy', '协作策略', policyRecords.length],
+              ['episode', '情景记录', episodeRecords.length],
+              ['history', '历史记录', historyRecords.length],
             ].map(([key, label, count]) => (
               <button
                 key={key}
@@ -5348,12 +5558,12 @@ function PersonalMemoryCenter({ data, onInvoke }) {
                 {memoryFilter === 'all'
                   ? '全部记忆'
                   : memoryFilter === 'profile'
-                    ? '个人偏好'
-                    : memoryFilter === 'project'
-                      ? '当前项目'
-                      : memoryFilter === 'pending'
-                        ? '待确认'
-                        : '已归档'}
+                    ? '核心画像'
+                    : memoryFilter === 'policy'
+                      ? '协作策略'
+                      : memoryFilter === 'episode'
+                        ? '情景记录'
+                        : '历史记录'}
               </strong>
               <span>{visibleMemoryRecords.length} 条</span>
             </div>
@@ -5394,7 +5604,7 @@ function PersonalMemoryCenter({ data, onInvoke }) {
           {selectedRecord ? (
             <>
               <div className="dashboard-memory-inspector-head">
-                <span>{isUserProfileRecord(selectedRecord) ? '个人偏好' : '项目记忆'}</span>
+                <span>{personalMemoryTypeLabel(selectedRecord)}</span>
                 <strong>这条记忆为什么被应用</strong>
                 <p>{selectedRecord.text}</p>
               </div>
@@ -5417,8 +5627,74 @@ function PersonalMemoryCenter({ data, onInvoke }) {
                       <strong>{selectedRecord.pathPatterns.join('、')}</strong>
                     </div>
                   )}
+                  {(selectedRecord.operations ?? []).length > 0 && (
+                    <div>
+                      <span>适用操作</span>
+                      <strong>{selectedRecord.operations.join('、')}</strong>
+                    </div>
+                  )}
+                  {(selectedRecord.phases ?? []).length > 0 && (
+                    <div>
+                      <span>适用阶段</span>
+                      <strong>{selectedRecord.phases.join('、')}</strong>
+                    </div>
+                  )}
                 </div>
               </section>
+              <section>
+                <h4>最近一次应用</h4>
+                <div className="dashboard-memory-inspector-list">
+                  <div>
+                    <span>记忆标识</span>
+                    <strong>{selectedRecord.id}</strong>
+                  </div>
+                  <div>
+                    <span>加载方式</span>
+                    <strong>{contextDeliveryLabel(selectedRecord.lastApplication)}</strong>
+                  </div>
+                  {selectedRecord.lastApplication && (
+                    <>
+                      <div>
+                        <span>最近应用</span>
+                        <strong>{formatTimestamp(selectedRecord.lastApplication.appliedAt)}</strong>
+                      </div>
+                      <div>
+                        <span>应用结果</span>
+                        <strong>
+                          {contextOutcomeLabel(selectedRecord.lastApplication.outcome)}
+                        </strong>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </section>
+              {selectedRecord.memoryType === 'personal-episode' && selectedRecord.episode && (
+                <section>
+                  <h4>情景摘要</h4>
+                  <div className="dashboard-memory-inspector-list">
+                    <div>
+                      <span>发生情境</span>
+                      <strong>{selectedRecord.episode.situation}</strong>
+                    </div>
+                    <div>
+                      <span>采取动作</span>
+                      <strong>{selectedRecord.episode.actionSummary}</strong>
+                    </div>
+                    <div>
+                      <span>实际结果</span>
+                      <strong>{selectedRecord.episode.outcome}</strong>
+                    </div>
+                    <div>
+                      <span>可复用经验</span>
+                      <strong>{selectedRecord.episode.lesson}</strong>
+                    </div>
+                  </div>
+                </section>
+              )}
+              <ContextApplicationHistory
+                applications={selectedRecord.applicationHistory ?? []}
+                recordId={selectedRecord.id}
+              />
               <section>
                 <h4>作用范围</h4>
                 <div className="dashboard-memory-inspector-list">
@@ -5430,8 +5706,12 @@ function PersonalMemoryCenter({ data, onInvoke }) {
                   </div>
                   <div>
                     <span>状态</span>
+                    <strong>{personalMemoryStateLabel(selectedRecord)}</strong>
+                  </div>
+                  <div>
+                    <span>形成方式</span>
                     <strong>
-                      {isActiveMemoryRecord(selectedRecord) ? '已应用' : '当前不使用'}
+                      {selectedRecord.authority === 'explicit' ? '用户明确确认' : '任务经验推断'}
                     </strong>
                   </div>
                 </div>
@@ -5446,6 +5726,14 @@ function PersonalMemoryCenter({ data, onInvoke }) {
                   <div>
                     <span>最近更新</span>
                     <strong>{formatTimestamp(selectedRecord.updatedAt)}</strong>
+                  </div>
+                  <div>
+                    <span>应用效果</span>
+                    <strong>
+                      {selectedRecord.applicationCount ?? 0} 次 · 成功{' '}
+                      {selectedRecord.successCount ?? 0} 次 · 需修正{' '}
+                      {selectedRecord.failureCount ?? 0} 次
+                    </strong>
                   </div>
                 </div>
                 {selectedRecord.reason && <p>{selectedRecord.reason}</p>}

@@ -1,5 +1,9 @@
 import { runNativeCli } from '../../domains/comet-native/native-cli.js';
 import {
+  parseNativeLifecycleEvidence,
+  parseNativeOutcomeEvidence,
+} from '../../domains/comet-native/native-experience.js';
+import {
   collectCometPluginContext,
   recordCometWorkflowResult,
 } from '../../domains/comet-entry/plugin-context.js';
@@ -34,19 +38,19 @@ async function recordNativeResult(
     .find((value) => !value.startsWith('--'));
   try {
     const verificationCommand = command === 'check' ? 'comet native check' : undefined;
-    const evidence = lifecycleEvidence(result.stdout);
-    await recordCometWorkflowResult({
+    const evidence = parseNativeLifecycleEvidence(result.stdout);
+    const base: Parameters<typeof recordCometWorkflowResult>[0] = {
       projectRoot: path.resolve(projectRoot),
       workflow: workflowOverride ?? 'native',
       changeId: changeId ?? command,
       command,
       success: result.exitCode === 0,
-      eventName:
+      eventType:
         command === 'archive'
-          ? 'change.completed'
+          ? 'change.archived'
           : command === 'check' || args.includes('--result')
             ? 'verification.completed'
-            : 'task.completed',
+            : 'episode.completed',
       ...(verificationCommand
         ? {
             verificationCommands: [verificationCommand],
@@ -55,31 +59,25 @@ async function recordNativeResult(
         : {}),
       ...(evidence.changedPaths.length > 0 ? { changedPaths: evidence.changedPaths } : {}),
       ...(evidence.artifactRefs.length > 0 ? { artifactRefs: evidence.artifactRefs } : {}),
-    });
+    };
+    await recordCometWorkflowResult(base);
+    const outcome = parseNativeOutcomeEvidence(result.stdout);
+    if (result.exitCode === 0 && outcome.reviewResolved) {
+      await recordCometWorkflowResult({
+        ...base,
+        eventType: 'review.resolved',
+        summary: outcome.summary ?? 'Native verifier accepted the change.',
+      });
+    }
+    if (result.exitCode === 0 && outcome.failureResolved) {
+      await recordCometWorkflowResult({
+        ...base,
+        eventType: 'failure.resolved',
+        summary: outcome.summary ?? 'A previous Native verification failure was resolved.',
+      });
+    }
   } catch {
     // Plugin learning must never make a workflow command fail.
-  }
-}
-
-function lifecycleEvidence(stdout: string | undefined): {
-  changedPaths: string[];
-  artifactRefs: string[];
-} {
-  if (!stdout?.trim()) return { changedPaths: [], artifactRefs: [] };
-  try {
-    const value = JSON.parse(stdout) as { data?: Record<string, unknown> };
-    const data = value.data;
-    if (!data || typeof data !== 'object') return { changedPaths: [], artifactRefs: [] };
-    const list = (candidate: unknown): string[] =>
-      Array.isArray(candidate)
-        ? candidate.filter((entry): entry is string => typeof entry === 'string').slice(0, 24)
-        : [];
-    return {
-      changedPaths: list(data.changedPaths),
-      artifactRefs: list(data.artifactRefs ?? data.artifacts),
-    };
-  } catch {
-    return { changedPaths: [], artifactRefs: [] };
   }
 }
 

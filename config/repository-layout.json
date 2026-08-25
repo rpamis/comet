@@ -124,6 +124,7 @@
   "sourceRoots": ["app", "domains", "platform"],
   "appModules": ["cli", "commands"],
   "domainModules": [
+    "agent-learning",
     "bundle",
     "comet-classic",
     "comet-entry",
