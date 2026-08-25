@@ -6,6 +6,7 @@ import {
   confirmNativePortableAcceptance,
   recordNativeVerifierExecutionError,
   reserveNativeVerifierAttempt,
+  returnNativeCandidateToBuild,
   retryNativeVerifier,
   submitNativeBuilderCandidate,
 } from '../../../domains/comet-native/native-loop-runtime.js';
@@ -56,6 +57,11 @@ function buildState(identityProvider = 'test-host'): {
       candidateId: `candidate-${state.loop.iteration}`,
       summary: 'Implemented the candidate.',
       addressedAcceptanceIds: ['A1', 'A2'],
+      review: {
+        status: 'passed',
+        summary: 'A read-only reviewer found no blocking issues.',
+        reviewerExecutionRef: 'reviewer-1',
+      },
     },
   });
   state = reserveNativeVerifierAttempt(state);
@@ -67,6 +73,7 @@ function envelope(
   state: NativePortableState,
   verdict: 'pass' | 'fail' | 'blocked',
   unresolved: string[] = [],
+  acceptanceIds = state.acceptance.filter(({ result }) => result === 'pending').map(({ id }) => id),
 ) {
   return runner.envelopeVerifierResponse({
     candidateId: state.builder_handoff!.candidate_id,
@@ -80,7 +87,7 @@ function envelope(
         iteration: state.loop.iteration,
         attempt: state.loop.attempt,
         verdict,
-        acceptance: state.acceptance.map(({ id }) => ({
+        acceptance: acceptanceIds.map((id) => ({
           id,
           result: unresolved.includes(id)
             ? verdict === 'blocked'
@@ -110,13 +117,128 @@ function resubmitRepair(
       candidateId: `candidate-${state.loop.iteration}`,
       summary: 'Tried a new repair hypothesis.',
       addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
+      review: {
+        status: 'passed',
+        summary: 'A fresh read-only review passed after the repair.',
+        reviewerExecutionRef: `reviewer-${state.loop.iteration}`,
+      },
     },
   });
   return reserveNativeVerifierAttempt(submitted);
 }
 
 describe('Native portable Build/Verify loop', () => {
-  it('returns an automatic parent-advance continuation when every child is done', () => {
+  it('requires a passed read-only review from a different execution before Verify', () => {
+    const runner = createNativeRunnerChannel();
+    const state = confirmNativePortableAcceptance({
+      state: createNativePortableState({ name: 'reviewed-change', language: 'en' }),
+      acceptance: [{ id: 'A1', source: 'brief.md', text: 'Reviewed behavior works.' }],
+    });
+    const identity = runner.captureExecutionIdentity({
+      identityProvider: 'test-host',
+      executionRef: 'builder-review-gate',
+    });
+
+    expect(() =>
+      submitNativeBuilderCandidate({
+        state,
+        input: {
+          identity,
+          summary: 'Candidate without a separate review.',
+          addressedAcceptanceIds: ['A1'],
+          review: {
+            status: 'passed',
+            summary: 'Review passed.',
+            reviewerExecutionRef: 'builder-review-gate',
+          },
+        },
+      }),
+    ).toThrow('reviewer execution ref must differ');
+
+    expect(() =>
+      submitNativeBuilderCandidate({
+        state,
+        input: {
+          identity,
+          summary: 'Candidate without review evidence.',
+          addressedAcceptanceIds: ['A1'],
+        } as never,
+      }),
+    ).toThrow('requires a passed read-only review');
+
+    const reviewed = submitNativeBuilderCandidate({
+      state,
+      input: {
+        identity,
+        summary: 'Candidate with a valid review.',
+        addressedAcceptanceIds: ['A1'],
+        review: {
+          status: 'passed',
+          summary: 'Independent review passed.',
+          reviewerExecutionRef: 'reviewer-valid',
+        },
+      },
+    });
+    expect(() =>
+      reserveNativeVerifierAttempt({
+        ...reviewed,
+        builder_handoff: { ...reviewed.builder_handoff!, review: null },
+      }),
+    ).toThrow('requires a reviewed Builder candidate');
+  });
+
+  it('requires a fresh review after a candidate returns to Build', () => {
+    const prepared = buildState();
+    const failed = applyNativeVerifierEnvelope({
+      state: prepared.state,
+      envelope: envelope(prepared.runner, prepared.state, 'fail', ['A2']),
+      checks,
+      maxVerifyFailures: 5,
+    }).state;
+
+    expect(() =>
+      submitNativeBuilderCandidate({
+        state: failed,
+        input: {
+          identity: prepared.runner.captureExecutionIdentity({
+            identityProvider: 'test-host',
+            executionRef: 'builder-2',
+          }),
+          summary: 'Repaired A2.',
+          addressedAcceptanceIds: ['A2'],
+          review: {
+            status: 'passed',
+            summary: 'Reused the prior review.',
+            reviewerExecutionRef: 'reviewer-1',
+          },
+        },
+      }),
+    ).toThrow('fresh read-only review');
+  });
+
+  it('keeps passed scenarios when a blocked candidate returns to Build', () => {
+    const prepared = buildState();
+    const blocked = applyNativeVerifierEnvelope({
+      state: prepared.state,
+      envelope: envelope(prepared.runner, prepared.state, 'blocked', ['A2']),
+      checks,
+      maxVerifyFailures: 5,
+    }).state;
+
+    const repairing = returnNativeCandidateToBuild({
+      state: blocked,
+      reason: 'Resolve the blocked A2 implementation.',
+    });
+
+    expect(repairing.acceptance).toMatchObject([
+      { id: 'A1', result: 'passed' },
+      { id: 'A2', result: 'pending' },
+    ]);
+    expect(repairing.builder_handoff?.review?.reviewer_execution_ref).toBe('reviewer-1');
+    expect(repairing.loop.previous_unresolved_ids).toEqual(['A2']);
+  });
+
+  it('requires a reviewed parent handoff when every child is done', () => {
     const state = confirmNativePortableAcceptance({
       state: createNativePortableState({ name: 'parent-change', language: 'en' }),
       acceptance: [{ id: 'A1', source: 'brief.md', text: 'Parent behavior works.' }],
@@ -132,9 +254,16 @@ describe('Native portable Build/Verify loop', () => {
 
     expect(continuation).toMatchObject({
       disposition: 'continue',
-      action: 'advance-parent',
-      requiredInputs: ['summary'],
-      commandArgs: ['comet', 'native', 'next', state.name, '--summary', '<summary>'],
+      action: 'builder-handoff',
+      requiredInputs: ['builder-handoff-json-file'],
+      commandArgs: [
+        'comet',
+        'native',
+        'next',
+        state.name,
+        '--runner-input',
+        '<temporary-json-file>',
+      ],
     });
   });
 
@@ -205,6 +334,106 @@ describe('Native portable Build/Verify loop', () => {
         failed_iteration_count: 1,
         previous_unresolved_ids: ['A2'],
       },
+    });
+  });
+
+  it('checks only affected scenarios during repair, then requires one final full verification', () => {
+    const prepared = buildState();
+    const { runner } = prepared;
+    let state = applyNativeVerifierEnvelope({
+      state: prepared.state,
+      envelope: envelope(runner, prepared.state, 'fail', ['A2']),
+      checks,
+      maxVerifyFailures: 5,
+    }).state;
+
+    state = submitNativeBuilderCandidate({
+      state,
+      input: {
+        identity: runner.captureExecutionIdentity({
+          identityProvider: state.builder_handoff!.identity_provider,
+          executionRef: 'builder-repair-2',
+        }),
+        candidateId: 'candidate-repair-2',
+        summary: 'Repaired the failing scenario.',
+        addressedAcceptanceIds: ['A2'],
+        review: {
+          status: 'passed',
+          summary: 'The repair passed read-only review.',
+          reviewerExecutionRef: 'reviewer-repair-2',
+        },
+      },
+    });
+    expect(state.acceptance).toMatchObject([
+      { id: 'A1', result: 'passed' },
+      { id: 'A2', result: 'pending' },
+    ]);
+
+    state = reserveNativeVerifierAttempt(state);
+    state = applyNativeVerifierEnvelope({
+      state,
+      envelope: envelope(runner, state, 'pass', [], ['A2']),
+      checks,
+      maxVerifyFailures: 5,
+    }).state;
+    expect(state).toMatchObject({
+      phase: 'verify',
+      status: 'active',
+      verification_result: 'pending',
+      loop: { stage: 'verify-ready', next_action: 'run-final-full-verification' },
+    });
+    expect(state.acceptance.every(({ result }) => result === 'pending')).toBe(true);
+
+    state = reserveNativeVerifierAttempt(state);
+    state = applyNativeVerifierEnvelope({
+      state,
+      envelope: envelope(runner, state, 'pass', [], ['A1', 'A2']),
+      checks,
+      maxVerifyFailures: 5,
+    }).state;
+    expect(state).toMatchObject({
+      phase: 'verify',
+      status: 'await-user',
+      verification_result: 'pass',
+      loop: { stage: 'await-user', next_action: 'confirm-skill-coordinated-pass' },
+    });
+  });
+
+  it('runs a new final full verification even when the repair scope already contains every item', () => {
+    const prepared = buildState();
+    let state = applyNativeVerifierEnvelope({
+      state: prepared.state,
+      envelope: envelope(prepared.runner, prepared.state, 'fail', ['A1', 'A2']),
+      checks,
+      maxVerifyFailures: 5,
+    }).state;
+
+    state = resubmitRepair(prepared.runner, state);
+    state = applyNativeVerifierEnvelope({
+      state,
+      envelope: envelope(prepared.runner, state, 'pass', [], ['A1', 'A2']),
+      checks,
+      maxVerifyFailures: 5,
+    }).state;
+
+    expect(state).toMatchObject({
+      phase: 'verify',
+      status: 'active',
+      verification_result: 'pending',
+      loop: { stage: 'verify-ready', next_action: 'run-final-full-verification' },
+    });
+
+    state = reserveNativeVerifierAttempt(state);
+    state = applyNativeVerifierEnvelope({
+      state,
+      envelope: envelope(prepared.runner, state, 'pass', [], ['A1', 'A2']),
+      checks,
+      maxVerifyFailures: 5,
+    }).state;
+    expect(state).toMatchObject({
+      status: 'await-user',
+      verification_result: 'pass',
+      loop: { next_action: 'confirm-skill-coordinated-pass' },
     });
   });
 

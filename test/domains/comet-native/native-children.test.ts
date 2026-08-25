@@ -30,6 +30,7 @@ import {
   dispatchNativePortableVerifier,
   executeNativePortableCheckPlan,
   nativePortableChangeDir,
+  readNativePortableChange,
   submitNativePortableBuilderCandidate,
   submitNativePortableVerifierResult,
 } from '../../../domains/comet-native/native-portable-runtime.js';
@@ -150,6 +151,11 @@ async function verifyChild(options: {
       candidateId,
       summary: 'Implemented the child behavior.',
       addressedAcceptanceIds: options.state.acceptance.map(({ id }) => id),
+      review: {
+        status: 'passed',
+        summary: 'Independent child review passed.',
+        reviewerExecutionRef: `${name}-reviewer`,
+      },
     },
   });
   const executed = await executeNativePortableCheckPlan({ paths, name, plans: [] });
@@ -462,7 +468,8 @@ children:
       ['parent', '--summary', 'Confirm the parent contract', '--confirmed'],
       repository,
     );
-    const parentState = data(parentConfirmed).state!;
+    expect(data(parentConfirmed).state).toMatchObject({ phase: 'build' });
+    const parentState = await readNativePortableChange(parentPaths, 'parent');
     expect(parentState).toMatchObject({
       phase: 'build',
       workspace: { change_branch: 'integration' },
@@ -479,11 +486,7 @@ children:
     await expect(
       inspectNativePortableStatus({ paths: parentPaths, name: 'parent' }),
     ).resolves.toMatchObject({
-      children: [
-        { name: 'child-a', status: 'ready' },
-        { name: 'child-b', status: 'pending' },
-        { name: 'child-c', status: 'ready' },
-      ],
+      childSummary: { total: 3, ready: 2, pending: 1 },
       readyChildren: ['child-a', 'child-c'],
     });
 
@@ -518,6 +521,11 @@ children:
           }),
           summary: 'A parent Builder must not run.',
           addressedAcceptanceIds: parentState.acceptance.map(({ id }) => id),
+          review: {
+            status: 'passed',
+            summary: 'Independent parent review passed.',
+            reviewerExecutionRef: 'parent-reviewer-early',
+          },
         },
       }),
     ).rejects.toThrow(/parent Build advances child changes/iu);
@@ -715,15 +723,33 @@ children:
     expect(missingParent.candidate).toBeNull();
     expect(missingParent.blockers.join('\n')).toMatch(/no active v1 parent declaring it/iu);
 
+    const parentReviewInput = path.join(repository, 'parent-review-input.json');
+    await fs.writeFile(
+      parentReviewInput,
+      JSON.stringify({
+        kind: 'builder-handoff',
+        summary: 'Reviewed the final integrated parent result.',
+        addressed_acceptance_ids: parentState.acceptance.map(({ id }) => id),
+        checks: [],
+        known_limits: [],
+        review: {
+          status: 'passed',
+          summary: 'Independent parent code review passed.',
+          reviewer_execution_ref: 'parent-reviewer',
+        },
+      }),
+    );
     const integrated = await nativeNextCommand(
-      ['parent', '--summary', 'Verify the final integrated parent result'],
+      ['parent', '--runner-input', parentReviewInput],
       repository,
     );
-    const integratedState = data(integrated).state!;
+    expect(data(integrated).state).toMatchObject({ phase: 'verify' });
+    const integratedState = await readNativePortableChange(parentPaths, 'parent');
     expect(integratedState).toMatchObject({
       phase: 'verify',
       builder_handoff: {
         addressed_acceptance_ids: parentState.acceptance.map(({ id }) => id),
+        review: { reviewer_execution_ref: 'parent-reviewer' },
       },
     });
     expect(integratedState.acceptance.map(({ id, text }) => ({ id, text }))).toEqual(
@@ -799,7 +825,10 @@ children:
       ['parent', '--summary', 'Reorder completed children without repairing'],
       repository,
     );
-    expect(data(bypassAttempt).state).toMatchObject({ phase: 'shape', acceptance: [] });
+    expect(data(bypassAttempt).state).toMatchObject({
+      phase: 'shape',
+      acceptance: { total: 0 },
+    });
     await expect(
       nativeNextCommand(
         ['parent', '--summary', 'Try to reconfirm without a repair child', '--confirmed'],
@@ -817,12 +846,12 @@ children:
       ['parent', '--summary', 'Confirm the repair child plan', '--confirmed'],
       repository,
     );
-    expect(data(replanned).state).toMatchObject({
-      phase: 'build',
+    expect(data(replanned)).toMatchObject({
+      state: { phase: 'build' },
+      readyChildren: ['repair-parent-a1'],
+    });
+    await expect(readNativePortableChange(parentPaths, 'parent')).resolves.toMatchObject({
       children_contract_hash: expect.stringMatching(/^[a-f0-9]{64}$/u),
     });
-    expect(data(replanned).children).toContainEqual(
-      expect.objectContaining({ name: 'repair-parent-a1', status: 'ready' }),
-    );
   }, 120_000);
 });

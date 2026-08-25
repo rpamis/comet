@@ -232,6 +232,11 @@ describe('Native portable state', () => {
         checks_truncated: false,
         known_limits: [],
         known_limits_truncated: false,
+        review: {
+          status: 'passed',
+          summary: toNativePortableText('Read-only review passed.'),
+          reviewer_execution_ref: 'reviewer-1',
+        },
         submitted_at: '2026-08-09T00:01:00.000Z',
       },
       verification: {

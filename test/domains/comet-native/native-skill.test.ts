@@ -92,7 +92,11 @@ describe('Comet Native Skills', () => {
           '`workspaceFinishResult`',
           '`recoveryArgs`',
           '`children.yaml`',
+          '`childSummary`',
           '`readyChildren`',
+          '`review.status=passed`',
+          '`scopeIds`',
+          '最终全量验证',
           '原先通过 `finish=merge` 完成的合入步骤现由 Runtime 负责',
           'Supervisor 统筹动作',
           '`repair-child`',
@@ -117,7 +121,11 @@ describe('Comet Native Skills', () => {
           '`workspaceFinishResult`',
           '`recoveryArgs`',
           '`children.yaml`',
+          '`childSummary`',
           '`readyChildren`',
+          '`review.status=passed`',
+          '`scopeIds`',
+          'final full verification',
           'Runtime now owns the integration step formerly performed through `finish=merge`',
           'Supervisor coordination actions',
           '`repair-child`',
@@ -131,7 +139,9 @@ describe('Comet Native Skills', () => {
         expect(skill, `${variant.language}: ${term}`).toContain(term);
       }
       const statusMarker =
-        variant.language === 'zh' ? '状态包含 `children`' : 'When status contains `children`';
+        variant.language === 'zh'
+          ? '状态包含 `childSummary`'
+          : 'When status contains `childSummary`';
       expect(skill.match(new RegExp(statusMarker, 'gu')) ?? []).toHaveLength(1);
       expect(skill).not.toContain(
         variant.language === 'zh'
@@ -375,7 +385,7 @@ describe('Comet Native Skills', () => {
         'workspace',
         'preparation',
         'nextPageArgs',
-        'children',
+        'childSummary',
         'readyChildren',
         'workspaceFinishResult',
       ]) {

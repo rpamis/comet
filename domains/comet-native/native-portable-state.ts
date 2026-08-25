@@ -327,6 +327,7 @@ function parseBuilderHandoff(value: unknown): NativeBuilderHandoff {
       'checks_truncated',
       'known_limits',
       'known_limits_truncated',
+      'review',
       'submitted_at',
     ]),
     label,
@@ -336,6 +337,17 @@ function parseBuilderHandoff(value: unknown): NativeBuilderHandoff {
     `${label}.addressed_acceptance_ids`,
   );
   assertUnique(addressed_acceptance_ids, `${label}.addressed_acceptance_ids`);
+  const review =
+    root.review === null || root.review === undefined
+      ? null
+      : record(root.review, `${label}.review`);
+  if (review) {
+    rejectUnknown(
+      review,
+      new Set(['status', 'summary', 'reviewer_execution_ref']),
+      `${label}.review`,
+    );
+  }
   return {
     candidate_id: stringValue(root.candidate_id, `${label}.candidate_id`),
     identity_provider: stringValue(root.identity_provider, `${label}.identity_provider`),
@@ -355,6 +367,16 @@ function parseBuilderHandoff(value: unknown): NativeBuilderHandoff {
       root.known_limits_truncated,
       `${label}.known_limits_truncated`,
     ),
+    review: review
+      ? {
+          status: enumValue(review.status, ['passed'] as const, `${label}.review.status`),
+          summary: parsePortableText(review.summary, `${label}.review.summary`),
+          reviewer_execution_ref: stringValue(
+            review.reviewer_execution_ref,
+            `${label}.review.reviewer_execution_ref`,
+          ),
+        }
+      : null,
     submitted_at: timestamp(root.submitted_at, `${label}.submitted_at`),
   };
 }
@@ -582,6 +604,12 @@ function assertReferences(state: NativePortableState): void {
         state.builder_handoff.iteration === state.loop.iteration - 1);
     if (!allowedIteration) {
       throw new Error('Native builder handoff iteration is not current or the prior repair result');
+    }
+    if (
+      state.builder_handoff.review?.reviewer_execution_ref ===
+      state.builder_handoff.builder_execution_ref
+    ) {
+      throw new Error('Native reviewer execution ref must differ from the Builder execution ref');
     }
   }
   if (state.verification) {

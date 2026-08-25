@@ -136,6 +136,7 @@ function assertCompleted(result: NativeProcessResult, label: string): void {
 async function submitBuilderHandoff(
   name: string,
   projectRoot: string,
+  reviewerExecutionRef = `reviewer-${name}`,
 ): Promise<NativeProcessResult> {
   const input = path.join(projectRoot, `.runner-input-${name}.json`);
   await fs.writeFile(
@@ -146,6 +147,11 @@ async function submitBuilderHandoff(
       addressed_acceptance_ids: ['A1'],
       checks: [],
       known_limits: [],
+      review: {
+        status: 'passed',
+        summary: 'Read-only review passed.',
+        reviewer_execution_ref: reviewerExecutionRef,
+      },
     }),
   );
   try {
@@ -300,7 +306,11 @@ describe('Native parallel linked-worktree Runtime', () => {
       fs.readFile(path.join(untouchedWorktree.root, BUSINESS_SOURCE), 'utf8'),
     ).resolves.toBe('export const value = "parallel-beta-implementation";\n');
 
-    const rebuilt = await submitBuilderHandoff(editedWorktree.name, editedWorktree.root);
+    const rebuilt = await submitBuilderHandoff(
+      editedWorktree.name,
+      editedWorktree.root,
+      `reviewer-${editedWorktree.name}-repair`,
+    );
     assertCompleted(rebuilt, 'rebuild edited worktree');
     expect(rebuilt.data?.state?.phase).toBe('verify');
     await expect(

@@ -93,13 +93,12 @@ describe('Comet Native isolation boundaries', () => {
       '\n',
     );
 
-    expect(verification).toContain('builder_execution_ref');
-    expect(verification).toContain('verifier_execution_ref');
-    expect(verification).toContain('每个已知验收 ID 恰好返回一次');
-    expect(verification).toContain('Archive 不重新分派 Verifier');
-    expect(loop).toContain('Build ↔ Verify');
-    expect(loop).toContain('连续三个 attempt');
-    expect(loop).toContain('native.max_verify_failures');
+    expect(verification).toContain('reviewer execution ref 必须与 Builder execution ref 不同');
+    expect(verification).toContain('Runtime 拒绝 scope 内缺失、重复或未知 ID');
+    expect(verification).toContain('Archive 不重新运行检查或 Verifier');
+    expect(loop).toContain('Native 的 Build 与 Verify 循环');
+    expect(loop).toContain('连续无进展和总失败轮次继续使用现有停止上限');
+    expect(loop).toContain('修复范围通过后自动进入最终全量 Verify');
     expect(storage).toContain('一个 active change 只有一份可携带权威：`comet-state.yaml`');
     expect(storage).toContain('│   ├── state.json');
     expect(storage).toContain('Archive 不重新运行必要检查或 Verifier');

@@ -3,7 +3,6 @@ import path from 'node:path';
 import {
   deriveBriefAcceptanceCriteria,
   deriveSpecAcceptanceCriteria,
-  deriveSpecMandatoryAcceptanceCriteria,
   normalizeNativeAcceptanceText,
 } from './native-acceptance.js';
 
@@ -78,12 +77,6 @@ export function buildNativePortableAcceptance(options: {
       ...deriveSpecAcceptanceCriteria(spec.markdown, source, Number.MAX_SAFE_INTEGER, 'none').map(
         ({ text }) => ({ source, text }),
       ),
-      ...deriveSpecMandatoryAcceptanceCriteria(
-        spec.markdown,
-        source,
-        Number.MAX_SAFE_INTEGER,
-        'none',
-      ).map(({ text }) => ({ source, text })),
     );
   }
 

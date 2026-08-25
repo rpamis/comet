@@ -114,10 +114,10 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       'Discover portable stable boundaries, parent child readiness, or the exact next Runner action.',
     options: [
       '--cursor <token>  Continue a status-list page, or a named details/history page.',
-      '--details         Include acceptance, Spec, workspace, and report details.',
+      '--details         Include one fixed-size page of acceptance, Spec, handoff, verification, history, workspace, and report details.',
     ],
     output:
-      'A v2 status page or one portable Loop projection with local execution availability and continuation.runnerAction; parent changes also expose children and readyChildren.',
+      'A compact v2 status page or one compact Loop projection with local execution availability. Use --details and --cursor to read fixed-size detail pages; parent changes expose childSummary and readyChildren.',
     examples: [
       'comet native status --json',
       'comet native status session-timeout --details --json',
@@ -145,7 +145,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       '--expected-state-version <n>  Continuation-issued guard that rejects stale public transition decisions.',
       '--expected-action <action>    Continuation-issued guard that binds the public transition decision to its intended action.',
       '--runner-input <file>  Skill-coordinated JSON: builder-handoff, dispatch-verifier, verifier-response, verifier-execution-error, or verifier-unavailable. Identity/provider/execution/candidate fields are rejected.',
-      '  builder-handoff fields: kind, summary, addressed_acceptance_ids, checks, known_limits.',
+      '  builder-handoff fields: kind, summary, addressed_acceptance_ids, checks, known_limits, review. review fields: status=passed, summary, reviewer_execution_ref from a separate read-only review.',
       '  dispatch-verifier fields: kind, checks (an explicitly resolved plan; [] is allowed).',
       '  verifier-response fields: kind, response (request-checks or final-result).',
       '  verifier-execution-error fields: kind, summary, stateVersion, iteration, attempt, verifierExecutionRef copied from verifierDispatch.',
@@ -153,7 +153,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       '  Supervisor task fields: supervisor-builder-result (child, runId, candidateCommit), supervisor-builder-failure (child, runId, reason), supervisor-verifier-result (child, runId, verdict, verification data), supervisor-reconnect (child, runId), supervisor-cancel (child, runId, reason), or supervisor-integrate (child, checks).',
     ],
     output:
-      'The portable state, explicit skill-coordinated label, Runtime-owned check results, complete verifierDispatch, bounded request-check response, continuation.runnerAction, machine-readable continuation.inputOptions, and continuation.userCommunication with a user-ready message and Agent relay guidance. Human-readable verification statuses include "Host independently verified", "Checks completed, but your confirmation is required", "Full verification was unavailable; only automatic checks completed", and "You accepted the incomplete verification result". This generic bridge is not trusted identity attestation: a passing result waits for explicit user confirmation before Archive.',
+      'A compact portable state summary, explicit skill-coordinated label, Runtime-owned check results, scoped verifierDispatch, bounded request-check response, continuation.runnerAction, machine-readable continuation.inputOptions, and continuation.userCommunication with a user-ready message and Agent relay guidance. Read acceptance text and other long fields from paged status --details output. Human-readable verification statuses include "Host independently verified", "Checks completed, but your confirmation is required", "Full verification was unavailable; only automatic checks completed", and "You accepted the incomplete verification result". This generic bridge is not trusted identity attestation: a passing result waits for explicit user confirmation before Archive.',
     examples: [
       'comet native next session-timeout --summary "Shape confirmed" --confirmed',
       'comet native next session-timeout --summary "Current result accepted" --accept-result',

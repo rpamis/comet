@@ -483,19 +483,37 @@ export function nativePortableContinuation(
         return {
           ...base,
           disposition: 'continue',
-          action: 'advance-parent',
-          commandArgs: ['comet', 'native', 'next', state.name, '--summary', '<summary>'],
-          requiredInputs: ['summary'],
+          action: 'builder-handoff',
+          commandArgs: [
+            'comet',
+            'native',
+            'next',
+            state.name,
+            '--runner-input',
+            '<temporary-json-file>',
+          ],
+          requiredInputs: ['builder-handoff-json-file'],
           inputOptions: [
             {
-              name: 'summary',
-              flag: '--summary',
-              valueKind: 'text',
+              name: 'runner-input',
+              flag: '--runner-input',
+              valueKind: 'json-file',
               required: true,
-              template: null,
+              template: {
+                kind: 'builder-handoff',
+                summary: '<summary>',
+                addressed_acceptance_ids: ['<acceptance-id>'],
+                checks: [{ name: '<check-name>', result: 'not-run', note: null }],
+                known_limits: [],
+                review: {
+                  status: 'passed',
+                  summary: '<review-summary>',
+                  reviewer_execution_ref: '<reviewer-execution-ref>',
+                },
+              },
             },
           ],
-          runnerAction: runner('none'),
+          runnerAction: runner('builder-handoff'),
         };
       }
       const blocked = children.children.some(
@@ -539,6 +557,11 @@ export function nativePortableContinuation(
             addressed_acceptance_ids: ['<acceptance-id>'],
             checks: [{ name: '<check-name>', result: 'not-run', note: null }],
             known_limits: [],
+            review: {
+              status: 'passed',
+              summary: '<review-summary>',
+              reviewer_execution_ref: '<reviewer-execution-ref>',
+            },
           },
         },
       ],

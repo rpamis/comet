@@ -115,6 +115,12 @@ Run applicable focused checks.
       ]),
     );
     expect(confirmed).toMatchObject({ exitCode: 0, data: { state: { phase: 'build' } } });
+    expect(confirmed.data?.state).toMatchObject({
+      acceptance: { total: acceptance.length, pending: acceptance.length },
+    });
+    expect(confirmed.data?.state).not.toHaveProperty('builder_handoff');
+    expect(confirmed.data?.state).not.toHaveProperty('history');
+    expect(JSON.stringify(confirmed.data?.state)).not.toContain(acceptance[0]);
     return confirmed;
   }
 
@@ -125,6 +131,11 @@ Run applicable focused checks.
       addressed_acceptance_ids: addressedAcceptanceIds,
       checks: [],
       known_limits: [],
+      review: {
+        status: 'passed',
+        summary: 'A read-only reviewer found no blocking issues.',
+        reviewer_execution_ref: `reviewer-${runnerInputSequence + 1}`,
+      },
     };
   }
 
@@ -187,6 +198,42 @@ Run applicable focused checks.
 
     const retiredSpec = json(await runNativeCli(['spec', 'rebase', '--help', '--json']));
     expect(retiredSpec).toMatchObject({ exitCode: 64, error: { code: 'usage' } });
+  });
+
+  it.each([
+    { name: 'compact-recovery-default', runnerInput: false },
+    { name: 'compact-recovery-runner', runnerInput: true },
+  ])('keeps successful $name next output compact', async ({ name, runnerInput }) => {
+    await prepareBuild(name, ['Recovery output stays compact.']);
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    await fs.writeFile(nativeLocalExecutionFile(paths, name), '{invalid-json');
+
+    const recovered = runnerInput
+      ? await runnerStep(name, builderHandoff(['A1']))
+      : json(
+          await runNativeCli([
+            'next',
+            name,
+            '--summary',
+            'Resume after recovery',
+            '--json',
+            ...projectArgs(),
+          ]),
+        );
+
+    expect(recovered.error).toBeUndefined();
+    expect(recovered).toMatchObject({
+      exitCode: 0,
+      data: {
+        state: { phase: 'build' },
+        recovery: { action: 'resume-stable-boundary', reason: 'invalid' },
+        continuation: { action: 'builder-handoff' },
+      },
+    });
+    expect(recovered.data?.state).not.toHaveProperty('builder_handoff');
+    expect(recovered.data?.state).not.toHaveProperty('history');
+    expect(recovered.data?.recovery).not.toHaveProperty('state');
+    expect(recovered.data?.recovery).not.toHaveProperty('local');
   });
 
   it('returns v4 continuations and rejects retired Agent-authored verification inputs', async () => {
@@ -339,6 +386,14 @@ Run applicable focused checks.
       });
     }
 
+    const withoutReview = { ...builderHandoff(['A1']) } as Record<string, unknown>;
+    delete withoutReview.review;
+    const missingReview = await runnerStep('reject-forged-runner-fields', withoutReview);
+    expect(missingReview).toMatchObject({
+      exitCode: 65,
+      error: { code: 'invalid-data', message: expect.stringContaining('fields are invalid') },
+    });
+
     expect(
       json(
         await runNativeCli(['status', 'reject-forged-runner-fields', '--json', ...projectArgs()]),
@@ -366,6 +421,11 @@ Run applicable focused checks.
                 summary: '<summary>',
                 addressed_acceptance_ids: ['<acceptance-id>'],
                 known_limits: [],
+                review: {
+                  status: 'passed',
+                  summary: '<review-summary>',
+                  reviewer_execution_ref: '<reviewer-execution-ref>',
+                },
               },
             },
           ],
@@ -380,7 +440,6 @@ Run applicable focused checks.
         coordination: 'skill-coordinated',
         state: {
           phase: 'verify',
-          builder_handoff: { candidate_id: expect.any(String) },
           loop: { iteration: 1, attempt: 0 },
         },
         continuation: {
@@ -406,13 +465,12 @@ Run applicable focused checks.
           attempt: 1,
           briefRef: 'brief.md',
           specRefs: [],
-          acceptance: [
-            { id: 'A1', source: 'brief.md', text: 'First behavior works.' },
-            { id: 'A2', source: 'brief.md', text: 'Second behavior works.' },
-          ],
-          builderHandoff: {
-            summary: { text: 'Implemented the confirmed behavior.' },
-            addressedAcceptanceIds: ['A1', 'A2'],
+          acceptanceCount: 2,
+          scopeIds: ['A1', 'A2'],
+          detailsPageArgs: ['comet', 'native', 'status', name, '--details', '--json'],
+          builderReview: {
+            status: 'passed',
+            summary: { text: 'A read-only reviewer found no blocking issues.' },
           },
           runtimeChecks: [],
         },
@@ -421,6 +479,9 @@ Run applicable focused checks.
     const dispatch = (dispatched.data as { verifierDispatch: Record<string, unknown> })
       .verifierDispatch;
     expect(JSON.stringify(dispatch)).not.toMatch(/identity|provider/iu);
+    expect(dispatch).not.toHaveProperty('acceptance');
+    expect(dispatch).not.toHaveProperty('builderHandoff');
+    expect(JSON.stringify(dispatch)).not.toContain('First behavior works.');
     expect(dispatch).toMatchObject({
       stateVersion: expect.any(Number),
       verifierExecutionRef: expect.stringContaining('skill-coordinated:verifier:'),
@@ -453,12 +514,11 @@ Run applicable focused checks.
           phase: 'verify',
           status: 'await-user',
           verification_result: 'pass',
-          verification: { checks: [] },
           blockers: [
             {
               owner: 'user',
               resolution_action: 'await-user',
-              reason: { text: expect.stringContaining('cannot prove') },
+              reason: expect.stringContaining('cannot prove'),
             },
           ],
           loop: {
@@ -501,6 +561,10 @@ Run applicable focused checks.
         },
       },
     });
+    expect(awaitingConfirmation.data).not.toHaveProperty('response');
+    expect(awaitingConfirmation.data).not.toHaveProperty('supervisorState');
+    expect(JSON.stringify(awaitingConfirmation.data)).not.toContain('Observed A1.');
+    expect(JSON.stringify(awaitingConfirmation.data)).not.toContain('Observed A2.');
     const pendingReport = await fs.readFile(
       path.join(projectRoot, 'docs', 'comet', 'changes', name, 'verification.md'),
       'utf8',
@@ -539,12 +603,91 @@ Run applicable focused checks.
     ).toContain('结果: **验收通过，可归档**');
   });
 
+  it('verifies only the repair scope, reuses checks, then runs one final full verification', async () => {
+    const name = 'scoped-repair-verification';
+    const counter = path.join(projectRoot, 'repair-check-count.txt');
+    const checkPlan = {
+      kind: 'dispatch-verifier',
+      checks: [
+        {
+          id: 'focused-check',
+          name: 'Focused check',
+          executable: process.execPath,
+          argv: [
+            '-e',
+            "const fs=require('node:fs');const f=process.argv[1];let n=0;try{n=Number(fs.readFileSync(f,'utf8'))}catch{}fs.writeFileSync(f,String(n+1))",
+            counter,
+          ],
+          cwdRef: '.',
+          timeoutMs: 10_000,
+          repeatable: true,
+        },
+      ],
+    };
+    await prepareBuild(name, ['First behavior works.', 'Second behavior works.']);
+    await runnerStep(name, builderHandoff(['A1', 'A2']));
+    await runnerStep(name, checkPlan);
+    const failed = await runnerStep(name, {
+      kind: 'verifier-response',
+      response: {
+        kind: 'final-result',
+        result: {
+          iteration: 1,
+          attempt: 1,
+          verdict: 'fail',
+          acceptance: [
+            { id: 'A1', result: 'passed', reason: 'Observed A1.' },
+            { id: 'A2', result: 'failed', reason: 'A2 still fails.' },
+          ],
+          risks: [],
+          summary: 'A2 needs repair.',
+        },
+      },
+    });
+    expect(failed.data?.state).toMatchObject({
+      phase: 'build',
+      loop: { stage: 'repairing', previous_unresolved_ids: ['A2'] },
+    });
+
+    await runnerStep(name, builderHandoff(['A2']));
+    const repairDispatch = await runnerStep(name, checkPlan);
+    expect(
+      (repairDispatch.data as { verifierDispatch: { scopeIds: string[] } }).verifierDispatch
+        .scopeIds,
+    ).toEqual(['A2']);
+    expect(await fs.readFile(counter, 'utf8')).toBe('2');
+    const repairPass = await runnerStep(name, finalResponse(2, 1, ['A2']));
+    expect(repairPass.data?.state).toMatchObject({
+      phase: 'verify',
+      status: 'active',
+      acceptance: { total: 2, pending: 2 },
+      loop: { stage: 'verify-ready', next_action: 'run-final-full-verification' },
+    });
+
+    const finalDispatch = await runnerStep(name, checkPlan);
+    expect(
+      (finalDispatch.data as { verifierDispatch: { scopeIds: string[] } }).verifierDispatch
+        .scopeIds,
+    ).toEqual(['A1', 'A2']);
+    expect(await fs.readFile(counter, 'utf8')).toBe('2');
+    const finalPass = await runnerStep(name, finalResponse(2, 2, ['A1', 'A2']));
+    expect(finalPass.data?.state).toMatchObject({
+      phase: 'verify',
+      status: 'await-user',
+      verification_result: 'pass',
+      loop: { next_action: 'confirm-skill-coordinated-pass' },
+    });
+  });
+
   it('revises requirements after a rejected skill-coordinated pass and starts a fresh candidate cycle', async () => {
     const name = 'skill-pass-revise-requirements';
     await prepareBuild(name, ['Original behavior works.']);
-    const built = await runnerStep(name, builderHandoff(['A1']));
-    const oldCandidateId = (built.data as { state: { builder_handoff: { candidate_id: string } } })
-      .state.builder_handoff.candidate_id;
+    await runnerStep(name, builderHandoff(['A1']));
+    const oldCandidateId = (
+      json(await runNativeCli(['show', name, '--json', ...projectArgs()])).data as {
+        state: { builder_handoff: { candidate_id: string } };
+      }
+    ).state.builder_handoff.candidate_id;
     await runnerStep(name, { kind: 'dispatch-verifier', checks: [] });
     const awaitingPassDecision = await runnerStep(name, finalResponse(1, 1, ['A1']));
     const oldAcceptResultAlternative = (
@@ -581,12 +724,9 @@ Run applicable focused checks.
         state: {
           phase: 'shape',
           status: 'active',
-          acceptance: [],
-          builder_handoff: null,
+          acceptance: { total: 0 },
           blockers: [],
-          verification: null,
           verification_result: 'pending',
-          verification_report: null,
           loop: {
             stage: 'shape',
             goal_cycle: 2,
@@ -671,7 +811,7 @@ Run applicable focused checks.
       data: {
         state: {
           phase: 'build',
-          acceptance: [{ id: 'A1', text: 'Updated behavior works.' }],
+          acceptance: { total: 1, pending: 1 },
           loop: { goal_cycle: 2, iteration: 1 },
         },
       },
@@ -683,15 +823,16 @@ Run applicable focused checks.
       data: {
         state: {
           phase: 'verify',
-          builder_handoff: { candidate_id: expect.any(String) },
           verification_result: 'pending',
         },
       },
     });
-    expect(
-      (rebuilt.data as { state: { builder_handoff: { candidate_id: string } } }).state
-        .builder_handoff.candidate_id,
-    ).not.toBe(oldCandidateId);
+    const newCandidateId = (
+      json(await runNativeCli(['show', name, '--json', ...projectArgs()])).data as {
+        state: { builder_handoff: { candidate_id: string } };
+      }
+    ).state.builder_handoff.candidate_id;
+    expect(newCandidateId).not.toBe(oldCandidateId);
   });
 
   it.each([
@@ -739,11 +880,6 @@ Run applicable focused checks.
             phase: 'verify',
             status: 'await-user',
             verification_result: 'blocked',
-            verification: {
-              assurance: 'semantic-verification-unavailable',
-              verdict: 'blocked',
-              checks: withCheck ? [{ id: 'runtime-pass', status: 'passed' }] : [],
-            },
             blockers: [
               {
                 owner: 'user',
@@ -797,11 +933,7 @@ Run applicable focused checks.
             phase: 'archive',
             status: 'active',
             verification_result: 'pass',
-            verification: {
-              assurance: 'user-confirmed-degraded',
-              verdict: 'pass',
-            },
-            acceptance: [{ id: 'A1', result: 'passed' }],
+            acceptance: { total: 1, passed: 1 },
             loop: { stage: 'archive-ready', next_action: 'archive' },
           },
         },
@@ -1033,6 +1165,12 @@ Run applicable focused checks.
             attempt: firstDispatch.attempt,
             next_action: 'confirm-skill-coordinated-pass',
           },
+        },
+      },
+    });
+    expect(json(await runNativeCli(['show', name, '--json', ...projectArgs()])).data).toMatchObject(
+      {
+        state: {
           verification: {
             checks: [
               { id: 'initial-focused', name: { text: 'Initial focused check' } },
@@ -1041,7 +1179,7 @@ Run applicable focused checks.
           },
         },
       },
-    });
+    );
     const changeDir = path.join(projectRoot, 'docs', 'comet', 'changes', name);
     const portableYaml = await fs.readFile(path.join(changeDir, 'comet-state.yaml'), 'utf8');
     const report = await fs.readFile(path.join(changeDir, 'verification.md'), 'utf8');
@@ -1150,7 +1288,6 @@ Run applicable focused checks.
           phase: 'verify',
           status: 'active',
           verification_result: 'pending',
-          verification: null,
           loop: {
             stage: 'verify-ready',
             iteration: 1,

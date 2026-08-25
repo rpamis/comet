@@ -18,7 +18,7 @@ import {
   returnNativePortableChangeToBuild,
   submitNativePortableBuilderCandidate,
   submitNativePortableVerifierResult,
-  tryAutoAdvanceNativeSupervisorParent,
+  inspectNativeSupervisorParentReviewReadiness,
 } from './native-portable-runtime.js';
 import {
   applyNativeSupervisorBuilderResult,
@@ -53,6 +53,11 @@ interface RunnerBuilderInput {
     note: string | null;
   }>;
   known_limits: string[];
+  review: {
+    status: 'passed';
+    summary: string;
+    reviewer_execution_ref: string;
+  };
 }
 
 interface RunnerDispatchInput {
@@ -280,9 +285,14 @@ export function parseNativeRunnerInput(value: unknown): NativeRunnerInput {
   if (input.kind === 'builder-handoff') {
     exactKeys(
       input,
-      ['kind', 'summary', 'addressed_acceptance_ids', 'checks', 'known_limits'],
+      ['kind', 'summary', 'addressed_acceptance_ids', 'checks', 'known_limits', 'review'],
       'Native Runner Builder input',
     );
+    const review = record(input.review, 'Native Builder review');
+    exactKeys(review, ['status', 'summary', 'reviewer_execution_ref'], 'Native Builder review');
+    if (review.status !== 'passed') {
+      throw new Error('Native Builder review status must be passed');
+    }
     return {
       kind: 'builder-handoff',
       summary: text(input.summary, 'Native Builder summary'),
@@ -292,6 +302,14 @@ export function parseNativeRunnerInput(value: unknown): NativeRunnerInput {
       ),
       checks: builderChecks(input.checks),
       known_limits: strings(input.known_limits, 'Native Builder known limits'),
+      review: {
+        status: 'passed',
+        summary: text(review.summary, 'Native Builder review summary'),
+        reviewer_execution_ref: text(
+          review.reviewer_execution_ref,
+          'Native Builder reviewer execution ref',
+        ),
+      },
     };
   }
   if (input.kind === 'dispatch-verifier') {
@@ -489,24 +507,10 @@ function assertSkillCoordinatedCandidate(state: NativePortableState): NativeBuil
       'Native candidate is owned by a host identity adapter and cannot use the generic Skill coordination bridge',
     );
   }
+  if (!state.builder_handoff.review) {
+    throw new Error('Native Skill coordination requires a passed read-only review');
+  }
   return state.builder_handoff;
-}
-
-function publicBuilderHandoff(handoff: NativeBuilderHandoff) {
-  return {
-    iteration: handoff.iteration,
-    summary: handoff.summary,
-    addressedAcceptanceIds: [...handoff.addressed_acceptance_ids],
-    checks: handoff.checks.map((check) => ({
-      name: check.name,
-      result: check.result,
-      note: check.note,
-    })),
-    checksTruncated: handoff.checks_truncated,
-    knownLimits: handoff.known_limits.map((entry) => ({ ...entry })),
-    knownLimitsTruncated: handoff.known_limits_truncated,
-    submittedAt: handoff.submitted_at,
-  };
 }
 
 function verifierDispatch(
@@ -515,6 +519,12 @@ function verifierDispatch(
   verifierExecutionRef: string,
 ) {
   const handoff = assertSkillCoordinatedCandidate(state);
+  if (!handoff.review) {
+    throw new Error('Native Skill coordination requires a passed read-only review');
+  }
+  const scopeIds = state.acceptance
+    .filter(({ result }) => result === 'pending')
+    .map(({ id }) => id);
   return {
     coordination: NATIVE_SKILL_COORDINATION,
     change: state.name,
@@ -529,12 +539,13 @@ function verifierDispatch(
       operation,
       ref: source,
     })),
-    acceptance: state.acceptance.map(({ id, source, text: acceptanceText }) => ({
-      id,
-      source,
-      text: acceptanceText,
-    })),
-    builderHandoff: publicBuilderHandoff(handoff),
+    acceptanceCount: state.acceptance.length,
+    scopeIds,
+    detailsPageArgs: ['comet', 'native', 'status', state.name, '--details', '--json'],
+    builderReview: {
+      status: handoff.review.status,
+      summary: handoff.review.summary,
+    },
     runtimeChecks: checks.map((check) => ({ ...check })),
   };
 }
@@ -576,6 +587,10 @@ export async function applyNativeRunnerInput(options: {
   const supervisorParentVerification =
     supervisor !== null &&
     portableBeforeInput?.phase === 'verify' &&
+    supervisor.children.every(({ status }) => status === 'integrated' || status === 'archived');
+  const supervisorParentReview =
+    supervisor !== null &&
+    portableBeforeInput?.phase === 'build' &&
     supervisor.children.every(({ status }) => status === 'integrated' || status === 'archived');
   if (supervisor && input.kind === 'supervisor-builder-result') {
     return withNativeMutationLock(
@@ -779,7 +794,7 @@ export async function applyNativeRunnerInput(options: {
       name: input.child,
       checks: input.checks,
     });
-    const parentAdvance = await tryAutoAdvanceNativeSupervisorParent({
+    const parentAdvance = await inspectNativeSupervisorParentReviewReadiness({
       paths: options.paths,
       name: options.name,
       trigger: 'v2-integrate',
@@ -808,7 +823,8 @@ export async function applyNativeRunnerInput(options: {
       input.kind === 'supervisor-reconnect' ||
       input.kind === 'supervisor-cancel' ||
       input.kind === 'supervisor-verifier-result') &&
-    !supervisorParentVerification
+    !supervisorParentVerification &&
+    !(input.kind === 'builder-handoff' && supervisorParentReview)
   ) {
     throw new Error(
       'Native Supervisor accepts only Supervisor task result inputs until every Child is integrated',
@@ -829,6 +845,11 @@ export async function applyNativeRunnerInput(options: {
         addressedAcceptanceIds: input.addressed_acceptance_ids,
         checks: input.checks,
         knownLimits: input.known_limits,
+        review: {
+          status: input.review.status,
+          summary: input.review.summary,
+          reviewerExecutionRef: input.review.reviewer_execution_ref,
+        },
       },
     });
     return {
@@ -863,19 +884,29 @@ export async function applyNativeRunnerInput(options: {
       };
     }
     assertSkillCoordinatedCandidate(ready);
-    const executed = await executeNativePortableCheckPlan({
-      paths: options.paths,
-      name: options.name,
-      plans: input.checks,
-      ...(supervisorParentVerification && supervisor
-        ? { projectRoot: supervisor.integration.worktree }
-        : {}),
-    });
+    const reusableChecks =
+      ready.loop.next_action === 'run-final-full-verification' &&
+      ready.verification?.verdict === 'pass' &&
+      ready.verification.checks.every(({ status }) => status === 'passed')
+        ? ready.verification.checks
+        : null;
+    const executedChecks =
+      reusableChecks ??
+      (
+        await executeNativePortableCheckPlan({
+          paths: options.paths,
+          name: options.name,
+          plans: input.checks,
+          ...(supervisorParentVerification && supervisor
+            ? { projectRoot: supervisor.integration.worktree }
+            : {}),
+        })
+      ).checks;
     const verifierExecutionRef = skillExecutionRef('verifier');
     const state = await dispatchNativePortableVerifier({
       paths: options.paths,
       name: options.name,
-      checks: executed.checks,
+      checks: executedChecks,
       verifierExecutionId: verifierExecutionRef,
       ...(supervisorParentVerification && supervisor
         ? { projectRoot: supervisor.integration.worktree }
@@ -883,9 +914,9 @@ export async function applyNativeRunnerInput(options: {
     });
     return {
       state,
-      checks: executed.checks,
+      checks: executedChecks,
       requestChecks: null,
-      verifierDispatch: verifierDispatch(state, executed.checks, verifierExecutionRef),
+      verifierDispatch: verifierDispatch(state, executedChecks, verifierExecutionRef),
       continuation: nativePortableContinuation(state),
     };
   }

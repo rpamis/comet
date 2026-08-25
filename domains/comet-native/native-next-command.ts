@@ -1,7 +1,11 @@
 import { inspectNativeChildren } from './native-children.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
 import { migrateNativeLegacyChangeToPortable } from './native-portable-migration-runtime.js';
-import { recoverNativePortableChange } from './native-portable-recovery.js';
+import {
+  recoverNativePortableChange,
+  type NativePortableRecoveryResult,
+} from './native-portable-recovery.js';
+import { nativePortableStateSummary } from './native-portable-summary.js';
 import { applyNativeRunnerInput, readNativeRunnerInput } from './native-runner-input.js';
 import { NATIVE_SKILL_COORDINATION } from './native-runner-protocol.js';
 import {
@@ -18,7 +22,7 @@ import {
   returnNativePortableChangeToBuild,
   returnNativePortableChangeToShape,
   retryNativePortableVerifier,
-  tryAutoAdvanceNativeSupervisorParent,
+  inspectNativeSupervisorParentReviewReadiness,
   type NativePortableExpectedContinuation,
   type NativePortableExpectedContinuationAction,
 } from './native-portable-runtime.js';
@@ -73,11 +77,30 @@ async function portableParentView(paths: NativeProjectPaths, state: NativePortab
   return {
     ...(children
       ? {
-          children: children.children,
+          childSummary: children.children.reduce<Record<string, number>>(
+            (summary, child) => ({ ...summary, [child.status]: (summary[child.status] ?? 0) + 1 }),
+            { total: children.children.length },
+          ),
           readyChildren: children.readyChildren,
         }
       : {}),
     continuation: nativePortableContinuation(state, children),
+  };
+}
+
+function compactRunnerResult<T extends { state: NativePortableState }>(result: T) {
+  return Object.fromEntries(
+    Object.entries(result).filter(
+      ([key]) => key !== 'state' && key !== 'response' && key !== 'supervisorState',
+    ),
+  ) as Omit<T, 'state' | 'response' | 'supervisorState'>;
+}
+
+function compactRecoveryResult(recovery: NativePortableRecoveryResult) {
+  return {
+    action: recovery.action,
+    reason: recovery.reason,
+    message: recovery.message,
   };
 }
 
@@ -132,7 +155,7 @@ export async function nativeNextCommand(
       name,
     });
     return success('next', {
-      state,
+      state: nativePortableStateSummary(state),
       migration: { completed: true, summary },
       continuation: nativePortableContinuation(state),
     });
@@ -165,8 +188,8 @@ export async function nativeNextCommand(
       recovery.reason !== 'available'
     ) {
       return success('next', {
-        state: current,
-        recovery,
+        state: nativePortableStateSummary(current),
+        recovery: compactRecoveryResult(recovery),
         ...(await portableParentView(configured.paths, current)),
       });
     }
@@ -182,15 +205,13 @@ export async function nativeNextCommand(
           reason: drift.reason ?? 'Native confirmed requirements changed',
         });
         return success('next', {
-          state,
+          state: nativePortableStateSummary(state),
           ...(await portableParentView(configured.paths, state)),
         });
       }
       const supervisor = await readNativeSupervisorState(configured.paths, name);
-      if (
-        (await inspectNativeChildren({ paths: configured.paths, state: current })) &&
-        !supervisor
-      ) {
+      const children = await inspectNativeChildren({ paths: configured.paths, state: current });
+      if (children && !children.allDone && !supervisor) {
         throw new NativeUsageError(
           'Native parent Build advances child changes and does not accept a Builder handoff',
         );
@@ -204,7 +225,8 @@ export async function nativeNextCommand(
       maxVerifyFailures: configured.config.native.max_verify_failures,
     });
     return success('next', {
-      ...result,
+      ...compactRunnerResult(result),
+      state: nativePortableStateSummary(result.state),
       ...(await portableParentView(configured.paths, result.state)),
       coordination: NATIVE_SKILL_COORDINATION,
     });
@@ -213,7 +235,9 @@ export async function nativeNextCommand(
   const current = recovery.state;
   if (!summary) throw new NativeUsageError('--summary is required');
   let state;
-  let parentAdvance: Awaited<ReturnType<typeof tryAutoAdvanceNativeSupervisorParent>> | null = null;
+  let parentAdvance: Awaited<
+    ReturnType<typeof inspectNativeSupervisorParentReviewReadiness>
+  > | null = null;
   if (confirmed) {
     if (current.phase === 'shape') {
       state = await confirmNativePortableShape({
@@ -289,8 +313,8 @@ export async function nativeNextCommand(
   } else {
     if (recovery.reason !== 'available') {
       return success('next', {
-        state: current,
-        recovery,
+        state: nativePortableStateSummary(current),
+        recovery: compactRecoveryResult(recovery),
         ...(await portableParentView(configured.paths, current)),
       });
     }
@@ -333,17 +357,22 @@ export async function nativeNextCommand(
             effectiveChildren.allDone &&
             !(current.loop.stage === 'repairing' && current.verification_result === 'fail')
           ) {
-            parentAdvance = await tryAutoAdvanceNativeSupervisorParent({
+            parentAdvance = await inspectNativeSupervisorParentReviewReadiness({
               paths: configured.paths,
               name,
               trigger: 'recovery',
-              summary,
             });
             state = parentAdvance.state;
           } else {
             return success('next', {
-              state: current,
-              children: effectiveChildren.children,
+              state: nativePortableStateSummary(current),
+              childSummary: effectiveChildren.children.reduce<Record<string, number>>(
+                (childSummary, child) => ({
+                  ...childSummary,
+                  [child.status]: (childSummary[child.status] ?? 0) + 1,
+                }),
+                { total: effectiveChildren.children.length },
+              ),
               readyChildren: effectiveChildren.readyChildren,
               ...(supervisorTasks.length > 0 ? { supervisorTasks } : {}),
               continuation: nativePortableContinuation(current, effectiveChildren),
@@ -354,7 +383,7 @@ export async function nativeNextCommand(
     }
     if (state) {
       return success('next', {
-        state,
+        state: nativePortableStateSummary(state),
         ...(parentAdvance ? { parentAdvance: parentAdvance.parentAdvance } : {}),
         ...(await portableParentView(configured.paths, state)),
       });
@@ -362,7 +391,10 @@ export async function nativeNextCommand(
     return {
       command: 'next',
       exitCode: 65,
-      data: { state: current, continuation: nativePortableContinuation(current) },
+      data: {
+        state: nativePortableStateSummary(current),
+        continuation: nativePortableContinuation(current),
+      },
       error: {
         code: 'invalid-data',
         message:
@@ -371,7 +403,7 @@ export async function nativeNextCommand(
     };
   }
   return success('next', {
-    state,
+    state: nativePortableStateSummary(state),
     ...(await portableParentView(configured.paths, state)),
   });
 }

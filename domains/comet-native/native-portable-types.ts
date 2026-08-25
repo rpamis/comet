@@ -82,6 +82,11 @@ export interface NativeBuilderHandoff {
   checks_truncated: boolean;
   known_limits: NativePortableText[];
   known_limits_truncated: boolean;
+  review: {
+    status: 'passed';
+    summary: NativePortableText;
+    reviewer_execution_ref: string;
+  } | null;
   submitted_at: string;
 }
 

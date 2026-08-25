@@ -30,6 +30,11 @@ export interface NativeBuilderCandidateInput {
   addressedAcceptanceIds: string[];
   checks?: Array<{ name: string; result: 'passed' | 'failed' | 'not-run'; note?: string | null }>;
   knownLimits?: string[];
+  review: {
+    status: 'passed';
+    summary: string;
+    reviewerExecutionRef: string;
+  };
   candidateId?: string;
   now?: Date;
 }
@@ -55,6 +60,10 @@ function pendingAcceptance(
   acceptance: readonly NativePortableAcceptanceState[],
 ): NativePortableAcceptanceState[] {
   return acceptance.map((entry) => ({ ...entry, result: 'pending', reason: null }));
+}
+
+function pendingAcceptanceIds(state: NativePortableState): string[] {
+  return state.acceptance.filter(({ result }) => result === 'pending').map(({ id }) => id);
 }
 
 function builderChecks(checks: NativeBuilderCandidateInput['checks']): NativeBuilderCheckSummary[] {
@@ -123,11 +132,32 @@ export function submitNativeBuilderCandidate(options: {
   if (!isNativeTrustedExecutionIdentity(input.identity)) {
     throw new Error('Native Builder identity must come from the trusted Runner channel');
   }
+  if (!input.review || input.review.status !== 'passed') {
+    throw new Error('Native Builder candidate requires a passed read-only review');
+  }
+  if (input.review.reviewerExecutionRef === input.identity.executionRef) {
+    throw new Error('Native reviewer execution ref must differ from the Builder execution ref');
+  }
+  if (
+    state.loop.stage === 'repairing' &&
+    state.builder_handoff?.review?.reviewer_execution_ref === input.review.reviewerExecutionRef
+  ) {
+    throw new Error('Native repaired candidate requires a fresh read-only review');
+  }
   const addressed = uniqueKnownIds(
     input.addressedAcceptanceIds,
     state.acceptance,
     'Native Builder addressed acceptance',
   );
+  const repairScope = new Set([...state.loop.previous_unresolved_ids, ...addressed]);
+  const acceptance =
+    state.loop.stage === 'repairing' && state.loop.previous_unresolved_ids.length > 0
+      ? state.acceptance.map((entry) =>
+          repairScope.has(entry.id)
+            ? { ...entry, result: 'pending' as const, reason: null }
+            : entry,
+        )
+      : pendingAcceptance(state.acceptance);
   const now = (input.now ?? new Date()).toISOString();
   return parseNativePortableState({
     ...state,
@@ -137,7 +167,7 @@ export function submitNativeBuilderCandidate(options: {
     verification_report: null,
     verification: null,
     blockers: [],
-    acceptance: pendingAcceptance(state.acceptance),
+    acceptance,
     builder_handoff: {
       candidate_id: input.candidateId ?? randomUUID(),
       identity_provider: input.identity.identityProvider,
@@ -149,6 +179,11 @@ export function submitNativeBuilderCandidate(options: {
       checks_truncated: false,
       known_limits: (input.knownLimits ?? []).map((entry) => toNativePortableText(entry)),
       known_limits_truncated: false,
+      review: {
+        status: 'passed',
+        summary: toNativePortableText(input.review.summary),
+        reviewer_execution_ref: input.review.reviewerExecutionRef,
+      },
       submitted_at: now,
     },
     loop: {
@@ -167,13 +202,15 @@ export function reserveNativeVerifierAttempt(stateInput: NativePortableState): N
     state.phase !== 'verify' ||
     state.status !== 'active' ||
     state.loop.stage !== 'verify-ready' ||
-    state.builder_handoff === null
+    state.builder_handoff === null ||
+    state.builder_handoff.review === null
   ) {
-    throw new Error('Native Verifier attempt is not ready to dispatch');
+    throw new Error('Native Verifier attempt requires a reviewed Builder candidate');
   }
   return parseNativePortableState({
     ...state,
     state_version: nextVersion(state),
+    verification: null,
     loop: {
       ...state.loop,
       attempt: state.loop.attempt + 1,
@@ -229,6 +266,10 @@ export function applyNativeVerifierEnvelope(options: {
   if (state.phase !== 'verify' || state.builder_handoff === null || state.loop.attempt < 1) {
     throw new Error('Native change is not awaiting a Verifier result');
   }
+  const scopeIds = pendingAcceptanceIds(state);
+  if (scopeIds.length === 0) {
+    throw new Error('Native Verifier attempt has no pending acceptance scenarios');
+  }
   const response = validateNativeTrustedVerifierEnvelope({
     envelope: options.envelope,
     binding: {
@@ -237,7 +278,7 @@ export function applyNativeVerifierEnvelope(options: {
       builderExecutionRef: state.builder_handoff.builder_execution_ref,
       iteration: state.loop.iteration,
       attempt: state.loop.attempt,
-      acceptanceIds: state.acceptance.map(({ id }) => id),
+      acceptanceIds: scopeIds,
       requiredChecksPassed: options.checks.every(({ status }) => status === 'passed'),
     },
   });
@@ -249,7 +290,8 @@ export function applyNativeVerifierEnvelope(options: {
   const completedAt = (options.now ?? new Date()).toISOString();
   const acceptanceById = new Map(response.result.acceptance.map((entry) => [entry.id, entry]));
   const acceptance = state.acceptance.map((entry) => {
-    const result = acceptanceById.get(entry.id)!;
+    const result = acceptanceById.get(entry.id);
+    if (!result) return entry;
     return {
       ...entry,
       result: result.result,
@@ -268,6 +310,37 @@ export function applyNativeVerifierEnvelope(options: {
   });
 
   if (response.result.verdict === 'pass') {
+    if (state.loop.previous_unresolved_ids.length > 0) {
+      const withHistory = appendNativePortableHistory(
+        { ...state, acceptance, verification } as NativePortableState,
+        historyEntry({
+          state,
+          outcome: 'recovery',
+          summary: `Repair verification passed for ${scopeIds.join(', ')}; final full verification is required.`,
+          completedAt,
+        }),
+      );
+      return {
+        response,
+        state: parseNativePortableState({
+          ...withHistory,
+          state_version: nextVersion(state),
+          status: 'active',
+          verification_result: 'pending',
+          verification_report: null,
+          blockers: [],
+          acceptance: pendingAcceptance(acceptance),
+          loop: {
+            ...state.loop,
+            stage: 'verify-ready',
+            execution_failure_count: 0,
+            previous_unresolved_ids: [],
+            no_progress_count: 0,
+            next_action: 'run-final-full-verification',
+          },
+        }),
+      };
+    }
     const withHistory = appendNativePortableHistory(
       { ...state, acceptance, verification } as NativePortableState,
       historyEntry({
@@ -469,7 +542,7 @@ export function recordNativeVerifierUnavailable(options: {
     );
   }
   const completedAt = (options.now ?? new Date()).toISOString();
-  const acceptanceIds = state.acceptance.map(({ id }) => id);
+  const acceptanceIds = pendingAcceptanceIds(state);
   const withHistory = appendNativePortableHistory(
     state,
     historyEntry({
@@ -604,7 +677,11 @@ export function resolveNativeVerifierBlocker(stateInput: NativePortableState): N
     verification_result: 'pending',
     verification_report: null,
     verification: null,
-    acceptance: pendingAcceptance(state.acceptance),
+    acceptance: state.acceptance.map((entry) =>
+      entry.result === 'failed' || entry.result === 'blocked'
+        ? { ...entry, result: 'pending' as const, reason: null }
+        : entry,
+    ),
     blockers: [],
     loop: {
       ...state.loop,
@@ -708,6 +785,15 @@ export function returnNativeCandidateToBuild(options: {
       completedAt,
     }),
   );
+  const unresolvedIds = new Set(state.loop.previous_unresolved_ids);
+  const acceptance =
+    unresolvedIds.size === 0
+      ? pendingAcceptance(state.acceptance)
+      : state.acceptance.map((entry) =>
+          unresolvedIds.has(entry.id)
+            ? { ...entry, result: 'pending' as const, reason: null }
+            : entry,
+        );
   return parseNativePortableState({
     ...withHistory,
     phase: 'build',
@@ -716,9 +802,9 @@ export function returnNativeCandidateToBuild(options: {
     verification_result: 'pending',
     verification_report: null,
     verification: null,
-    builder_handoff: null,
+    builder_handoff: state.builder_handoff,
     blockers: [],
-    acceptance: pendingAcceptance(state.acceptance),
+    acceptance,
     loop: {
       ...state.loop,
       stage: 'repairing',

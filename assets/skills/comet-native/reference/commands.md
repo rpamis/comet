@@ -17,8 +17,8 @@ comet native <group> <command> --help
 - `inputOptions`: fields and a JSON template for this command.
 - `workspace` / `preparation`: the actual working directory and change-creation result.
 - `stateVersion` / `loop`: the current state version and acceptance Loop progress.
-- `acceptance` / `children` / `readyChildren` / `supervisor` / `nextPageArgs`: the acceptance summary, Supervisor Change child summaries, currently ready children, the integration branch and current task-package summary, and the command for the next page.
-- `verifierDispatch`: inputs needed to start an independent Verifier.
+- `acceptance` / `childSummary` / `readyChildren` / `supervisor` / `details.nextPageArgs`: acceptance counts, Supervisor Change child counts, currently ready children, the integration branch and current task-package summary, and the next detail-page command.
+- `verifierDispatch`: current `scopeIds`, counts, content refs, detail-page args, review summary, and check results needed to start an independent Verifier.
 - `workspaceFinishResult` / `recoveryArgs`: the post-Archive workspace result and recovery command.
 
 Angle brackets in a template mark values to fill in. `await-user` means wait for the user's decision before running an advancing command. If `commandArgs` is `null` and `commandAlternatives` is present, confirm the user's decision, then execute the selected alternative's complete `commandArgs` while preserving `--expected-state-version` and `--expected-action`. If the command fails because the state or action binding is stale, reread the latest `continuation` and continue from the current state; do not construct an unguarded replacement command. `localExecution: absent` means only that this machine has no currently running local task; it does not mean the change is damaged.
@@ -27,9 +27,9 @@ Angle brackets in a template mark values to fill in. `await-user` means wait for
 
 Copy `inputOptions.template` into a temporary system JSON file, replace only the requested values, then execute `continuation.commandArgs` or the selected `commandAlternative.commandArgs`. Delete the temporary file afterward. Preserve the acceptance iteration, Verifier attempt, state version, and task identifiers already present in the template. Fill only the fields exposed by the template.
 
-- `builder-handoff`: submit the implementation summary for this round, addressed acceptance IDs, development checks the Builder actually ran, and known limitations. Leave acceptance conclusions to the Verifier.
+- `builder-handoff`: submit the implementation summary for this round, addressed acceptance IDs, development checks the Builder actually ran, known limitations, and `review.status=passed`, `review.summary`, and `review.reviewer_execution_ref` from a fresh read-only code review. Leave acceptance conclusions to the Verifier.
 - `dispatch-verifier`: list the checks the Runtime should execute for the current candidate. Submit an empty list when no command-based check applies.
-- `verifier-response`: request additional checks or submit a final result that covers every acceptance ID.
+- `verifier-response`: request additional checks or submit a result covering exactly the current `scopeIds`. After a repair scope passes, Runtime requests one final full verification covering every acceptance scenario.
 - Supervisor task operations use `supervisor-builder-result`, `supervisor-builder-failure`, `supervisor-verifier-result`, `supervisor-reconnect`, `supervisor-cancel`, and `supervisor-integrate`; Builder, Verifier, reconnect, and cancel operations carry the current Runtime task package's `runId`, and stale, wrong-role, or duplicate results are rejected. `supervisor-integrate` uses the verified child and integration checks without a `runId`. Use `comet native next <change> --max-parallel 1` to run in order; the default cap is 2.
 - `verifier-execution-error` / `verifier-unavailable`: report that the Verifier task failed or could not start. Preserve the task-binding fields from the template so a late message from an old task cannot affect a new Verifier.
 

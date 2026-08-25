@@ -63,6 +63,7 @@ function resetAcceptance(state: NativePortableState): NativePortableState['accep
 function reverifyAfterMissingRuntime(
   state: NativePortableState,
   reason: string,
+  reverifyAll: boolean,
 ): NativePortableState {
   const completedAt = new Date().toISOString();
   const historical =
@@ -82,7 +83,7 @@ function reverifyAfterMissingRuntime(
     phase: 'verify',
     status: 'active',
     state_version: state.state_version + 1,
-    acceptance: resetAcceptance(state),
+    acceptance: reverifyAll ? resetAcceptance(state) : state.acceptance,
     verification: null,
     verification_result: 'pending',
     verification_report: null,
@@ -235,6 +236,7 @@ export async function recoverNativePortableChange(options: {
           lostArchivePass
             ? 'Local Runtime was unavailable at Archive ready; the synchronized implementation must be verified again.'
             : 'The previous Verifier execution was unavailable; dispatch a new attempt from the stable Verify boundary.',
+          lostArchivePass,
         );
         state = await compareAndSwapNativePortableState({
           file: nativePortableStateFile(options.paths, state.name),

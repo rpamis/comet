@@ -54,6 +54,14 @@ function json(result: Awaited<ReturnType<typeof runNativeCli>>): JsonEnvelope {
   return JSON.parse(result.stdout!) as JsonEnvelope;
 }
 
+function passedReview(reviewerExecutionRef: string) {
+  return {
+    status: 'passed' as const,
+    summary: 'Independent read-only review passed.',
+    reviewerExecutionRef,
+  };
+}
+
 describe('Comet Native CLI dispatcher', () => {
   let projectRoot: string;
   const projectArgs = () => ['--project-root', projectRoot] as const;
@@ -603,25 +611,10 @@ describe('Comet Native CLI dispatcher', () => {
       exitCode: 0,
       data: {
         state: {
-          schema: 'comet.native.v4',
+          schema: 'comet.native.state-summary.v1',
           phase: 'build',
           state_version: 2,
-          spec_changes: [
-            {
-              capability: 'sentence-counting',
-              operation: 'create',
-              source: 'specs/sentence-counting/spec.md',
-            },
-          ],
-          acceptance: [
-            { id: 'A1', source: 'brief.md', text: 'Two sentences return two.', result: 'pending' },
-            {
-              id: 'A2',
-              source: 'specs/sentence-counting/spec.md',
-              text: 'Count sentences by punctuation.',
-              result: 'pending',
-            },
-          ],
+          acceptance: { total: 1, pending: 1, passed: 0, failed: 0, blocked: 0 },
         },
         continuation: {
           action: 'builder-handoff',
@@ -645,13 +638,21 @@ describe('Comet Native CLI dispatcher', () => {
     expect(status.data).toMatchObject({
       schema: 'comet.native.status.v2',
       phase: 'build',
-      acceptance: { total: 2, pending: 2, passed: 0, failed: 0, blocked: 0 },
+      acceptance: { total: 1, pending: 1, passed: 0, failed: 0, blocked: 0 },
       details: {
-        acceptance: [
-          { id: 'A1', text: 'Two sentences return two.' },
-          { id: 'A2', text: 'Count sentences by punctuation.' },
-        ],
-        specChanges: [{ capability: 'sentence-counting', operation: 'create' }],
+        items: expect.arrayContaining([
+          expect.objectContaining({
+            kind: 'acceptance',
+            value: expect.objectContaining({ id: 'A1', text: 'Two sentences return two.' }),
+          }),
+          expect.objectContaining({
+            kind: 'spec-change',
+            value: expect.objectContaining({
+              capability: 'sentence-counting',
+              operation: 'create',
+            }),
+          }),
+        ]),
       },
       continuation: { action: 'builder-handoff', runnerAction: { kind: 'builder-handoff' } },
     });
@@ -682,7 +683,7 @@ describe('Comet Native CLI dispatcher', () => {
     ]);
   });
 
-  it('returns every A1..An acceptance item directly instead of paginating derived IDs', async () => {
+  it('returns acceptance scenarios through the typed details page', async () => {
     await runNativeCli(['new', 'complete-acceptance', ...projectArgs()]);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const changeDir = path.join(paths.changesDir, 'complete-acceptance');
@@ -718,13 +719,20 @@ describe('Comet Native CLI dispatcher', () => {
     );
     const data = status.data as {
       acceptance: { total: number };
-      details: { acceptance: Array<{ id: string; text: string }> };
+      details: {
+        items: Array<{ kind: string; value: { id?: string; text?: string } }>;
+        nextCursor: string | null;
+      };
     };
+    const acceptanceItems = data.details.items
+      .filter(({ kind }) => kind === 'acceptance')
+      .map(({ value }) => value);
     expect(data.acceptance.total).toBe(17);
-    expect(data.details.acceptance.map(({ id }) => id)).toEqual(
+    expect(acceptanceItems.map(({ id }) => id)).toEqual(
       Array.from({ length: 17 }, (_, index) => `A${index + 1}`),
     );
-    expect(data.details.acceptance.at(-1)?.text).toBe('Acceptance outcome 17 is observable.');
+    expect(acceptanceItems.at(-1)?.text).toBe('Acceptance outcome 17 is observable.');
+    expect(data.details.nextCursor).toBeNull();
 
     const oldPagination = json(
       await runNativeCli([
@@ -831,7 +839,7 @@ describe('Comet Native CLI dispatcher', () => {
       exitCode: 65,
       error: { code: 'invalid-data' },
       data: {
-        state: { schema: 'comet.native.v4', phase: 'shape' },
+        state: { schema: 'comet.native.state-summary.v1', phase: 'shape' },
         continuation: {
           schema: 'comet.native.continuation.v2',
           disposition: 'continue',
@@ -873,7 +881,7 @@ describe('Comet Native CLI dispatcher', () => {
         state: {
           phase: 'build',
           loop: { stage: 'building', iteration: 1, next_action: 'submit-builder-candidate' },
-          acceptance: [{ id: 'A1', result: 'pending' }],
+          acceptance: { total: 1, pending: 1 },
         },
         continuation: { action: 'builder-handoff', runnerAction: { kind: 'builder-handoff' } },
       },
@@ -923,6 +931,7 @@ describe('Comet Native CLI dispatcher', () => {
         candidateId: 'candidate-revise-implementation',
         summary: 'Implemented the confirmed acceptance.',
         addressedAcceptanceIds: ['A1'],
+        review: passedReview('reviewer-revise-implementation'),
       },
     });
 
@@ -950,11 +959,19 @@ describe('Comet Native CLI dispatcher', () => {
         state: {
           phase: 'build',
           verification_result: 'pending',
-          builder_handoff: null,
           loop: { stage: 'repairing', iteration: 2, attempt: 0 },
-          history: [expect.objectContaining({ outcome: 'recovery' })],
         },
         continuation: { action: 'repair', runnerAction: { kind: 'builder-handoff' } },
+      },
+    });
+    expect(
+      json(await runNativeCli(['show', 'revise-implementation', '--json', ...projectArgs()])).data,
+    ).toMatchObject({
+      state: {
+        builder_handoff: {
+          review: { reviewer_execution_ref: 'reviewer-revise-implementation' },
+        },
+        history: [expect.objectContaining({ outcome: 'recovery' })],
       },
     });
 
@@ -1262,11 +1279,10 @@ describe('Comet Native CLI dispatcher', () => {
       exitCode: 0,
       data: {
         state: {
-          schema: 'comet.native.v4',
+          schema: 'comet.native.state-summary.v1',
           phase: 'build',
           verification_result: 'pending',
-          builder_handoff: null,
-          acceptance: [{ id: 'A1', result: 'pending' }],
+          acceptance: { total: 1, pending: 1 },
           loop: { iteration: 1, attempt: 0 },
         },
         migration: {

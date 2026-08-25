@@ -33,6 +33,14 @@ import {
 import { createNativeRunnerChannel } from '../../../domains/comet-native/native-runner-protocol.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
 
+function passedReview(reviewerExecutionRef: string) {
+  return {
+    status: 'passed' as const,
+    summary: 'Independent read-only review passed.',
+    reviewerExecutionRef,
+  };
+}
+
 describe('Native portable Runtime vertical path', () => {
   let root: string;
   let paths: NativeProjectPaths;
@@ -229,6 +237,7 @@ children:
         candidateId: 'timeout-candidate',
         summary: 'Implemented.',
         addressedAcceptanceIds: ['A1'],
+        review: passedReview('timeout-reviewer'),
       },
     });
     const plan = {
@@ -278,6 +287,7 @@ Ship the behavior.
         candidateId: 'candidate-1',
         summary: 'Implemented the behavior.',
         addressedAcceptanceIds: ['A1'],
+        review: passedReview('reviewer-1'),
       },
     });
     const executed = await executeNativePortableCheckPlan({
@@ -370,6 +380,7 @@ Ship the behavior.
         candidateId: 'drift-candidate',
         summary: 'Implemented.',
         addressedAcceptanceIds: ['A1'],
+        review: passedReview('drift-reviewer'),
       },
     });
     const executed = await executeNativePortableCheckPlan({ paths, name: state.name, plans: [] });
@@ -447,6 +458,7 @@ Ship the behavior.
         candidateId: 'candidate-request-checks',
         summary: 'Implemented the requested behavior.',
         addressedAcceptanceIds: ['A1'],
+        review: passedReview('request-checks-reviewer'),
       },
     });
     const baselinePlan = {
@@ -612,6 +624,7 @@ Ship the behavior.
         candidateId: 'lock-candidate',
         summary: 'Implemented.',
         addressedAcceptanceIds: ['A1'],
+        review: passedReview('lock-reviewer'),
       },
     });
     const baseline = await executeNativePortableCheckPlan({ paths, name: state.name, plans: [] });
@@ -700,6 +713,7 @@ Ship the behavior.
         candidateId: 'candidate-invalid-requests',
         summary: 'Implemented the behavior.',
         addressedAcceptanceIds: ['A1'],
+        review: passedReview('invalid-requests-reviewer'),
       },
     });
     const baselinePlan = {
@@ -889,6 +903,7 @@ Ship the behavior.
         candidateId: 'late-candidate',
         summary: 'Implemented.',
         addressedAcceptanceIds: ['A1'],
+        review: passedReview('late-reviewer'),
       },
     });
     const executed = await executeNativePortableCheckPlan({ paths, name: state.name, plans: [] });
@@ -974,6 +989,7 @@ Ship the behavior.
         candidateId: 'candidate-repeat-request',
         summary: 'Implemented the behavior.',
         addressedAcceptanceIds: ['A1'],
+        review: passedReview('repeat-request-reviewer'),
       },
     });
     const plan = {
@@ -1065,6 +1081,7 @@ Ship the behavior.
         candidateId: 'candidate-runtime-owned',
         summary: 'Implemented the behavior.',
         addressedAcceptanceIds: ['A1'],
+        review: passedReview('runtime-owned-reviewer'),
       },
     });
     const executed = await executeNativePortableCheckPlan({

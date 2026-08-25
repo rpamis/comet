@@ -1,0 +1,479 @@
+schema: comet.native.v4
+name: optimize-native-verification-loop
+language: zh-CN
+phase: archive
+status: done
+state_version: 19
+brief: brief.md
+spec_changes:
+  - capability: native-completion-loop
+    operation: modify
+    source: specs/native-completion-loop/spec.md
+  - capability: native-status-output
+    operation: create
+    source: specs/native-status-output/spec.md
+  - capability: native-verification-evidence
+    operation: modify
+    source: specs/native-verification-evidence/spec.md
+workspace:
+  isolation: current
+  change_branch: 040rc1
+  target_branch: 040rc1
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 2
+  iteration: 3
+  attempt: 2
+  retry_epoch: 0
+  failed_iteration_count: 2
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text:
+      默认查询一个包含大量验收和历史的 Native change 时，JSON 只包含阶段、状态版本、循环摘要、验收计数、未解决
+      ID、工作区摘要和下一动作；不包含完整验收文字、完整历史、Builder 交接正文或完整验证结果。
+    result: passed
+    reason:
+      text: Default status is compact and omits long state fields.
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: 请求详情时，Runtime 返回固定大小的一页详情和下一页命令；连续翻页能够稳定读取全部验收及历史，不重复、不遗漏。
+    result: passed
+    reason:
+      text: Details use stable 32-item pages without duplicate or missing items.
+      truncated: false
+  - id: A3
+    source: brief.md
+    text:
+      Builder 没有提供通过的独立代码审查，或审查任务与 Builder 是同一个执行标识时，Runtime 拒绝候选；有效审查通过后才能进入
+      Verify。
+    result: passed
+    reason:
+      text: A valid independent review is required before Verify.
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: 修复轮只向新的 Verifier 提供上一轮未解决项与 Builder 标记受影响项；这些项通过后，Runtime
+      自动安排一次新的全量验收，最终全量通过后才允许归档。
+    result: passed
+    reason:
+      text: Repair verification is scoped and followed by a final full pass.
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: 目标 Spec 中一个 `Scenario:` 标题及其 Given/When/Then/And 正文形成一个验收项；Scenario
+      外的说明文字不增加验收项。
+    result: passed
+    reason:
+      text: Acceptance uses brief examples and explicit Scenario blocks only.
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: 中英文 Skill 都要求先审查再提交候选、修复轮按影响范围复验、最终全量验收，并且默认不重复读取详细状态。
+    result: passed
+    reason:
+      text: Chinese and English Skills describe the same optimized flow.
+      truncated: false
+  - id: A7
+    source: specs/native-completion-loop/spec.md
+    text:
+      首个候选进入全量 Verify - **Given** Shape 已确认且 Builder 完成首轮实现 - **When** 通过代码审查的
+      handoff 被 Runtime 接受 - **Then** iteration 为 1，verification scope 包含全部验收项 -
+      **And** Runtime 执行必要检查后分派新的只读 Verifier
+    result: passed
+    reason:
+      text: The first reviewed candidate enters full verification.
+      truncated: false
+  - id: A8
+    source: specs/native-completion-loop/spec.md
+    text: Verify 失败返回有界修复范围 - **Given** Verifier 对当前 scope 返回 failed 或 blocked 项 -
+      **When** Runtime 返回 Build - **Then** portable 状态保留上一轮未解决 ID、对应原因和其余已通过结果 -
+      **And** iteration 增加，attempt 重置，下一动作说明修复这些项并标记其他受影响项 - **And** 只有有效 Verify
+      fail 消耗失败轮次预算
+    result: passed
+    reason:
+      text: Verify failure preserves results and returns to a bounded repair
+        iteration.
+      truncated: false
+  - id: A9
+    source: specs/native-completion-loop/spec.md
+    text: Builder 声明本轮受影响项 - **Given** change 处于 repairing - **When** Builder 提交新的
+      handoff - **Then** `addressed_acceptance_ids` 可以包含本轮修复项及可能受修改影响的已通过项 -
+      **And** Runtime 自动加入全部上一轮未解决项 - **And** 未列入并集的 passed 项不进入本轮修复 Verifier
+    result: passed
+    reason:
+      text: Repair scope combines unresolved and addressed IDs.
+      truncated: false
+  - id: A10
+    source: specs/native-completion-loop/spec.md
+    text: 修复范围未通过继续收敛 - **Given** 新 Verifier 只判断当前修复 scope - **When** scope 仍有
+      failed 或 blocked - **Then** Runtime 更新这些结果并再次返回 Build - **And**
+      进展判断只比较新的未解决集合 - **And** 连续无进展和总失败轮次继续使用现有停止上限
+    result: passed
+    reason:
+      text: Repeated repair failures update only the current scope and retain loop
+        limits.
+      truncated: false
+  - id: A11
+    source: specs/native-completion-loop/spec.md
+    text:
+      修复范围通过后自动进入最终全量 Verify - **Given** 当前候选的修复 scope 小于全部验收且已经全部 passed -
+      **When** Runtime 接受结果 - **Then** 不进入 Archive，也不要求用户重复确认 - **And** Runtime
+      将全部验收准备为 pending，增加 attempt，并分派新的独立 Verifier - **And** 同一候选的已成功检查可以复用
+    result: passed
+    reason:
+      text: Repair success automatically prepares a separate final full verification.
+      truncated: false
+  - id: A12
+    source: specs/native-completion-loop/spec.md
+    text: 最终全量结果决定 Archive - **Given** 最终 Verifier 的 scope 等于全部验收项 - **When**
+      全部验收和必要检查均 passed - **Then** Runtime 形成最终 pass 并按
+      `native.archive_confirmation` 进入 Archive 或一次用户确认 - **And**
+      任一项失败、阻塞或缺失都不能归档 - **And** Archive 本身不增加 iteration 或重新验收
+    result: passed
+    reason:
+      text: Only a complete final pass permits Archive.
+      truncated: false
+  - id: A13
+    source: specs/native-completion-loop/spec.md
+    text:
+      恢复保持当前验证范围 - **Given** 本机进程在修复范围 Verify 或最终全量 Verify 中断 - **When** Runtime
+      从 portable 状态恢复 - **Then** 保留当前 iteration、候选和待验证范围 - **And** 重新分派新的
+      attempt，不把中断计为实现失败 - **And** 不恢复已经失效的 Builder 审查或旧候选结果
+    result: passed
+    reason:
+      text: Interrupted repair verification preserves its pending scope and passed
+        results outside it.
+      truncated: false
+  - id: A14
+    source: specs/native-completion-loop/spec.md
+    text:
+      Dashboard 与 Runner 显示真实阶段 - **Given** change 处于代码审查、修复范围 Verify 或最终全量
+      Verify - **When** Dashboard 或 Runner 读取紧凑状态 - **Then** 使用 Build/Verify 既有
+      phase 和明确 next action 表达当前工作 - **And** 修复范围通过不显示为最终验收通过或可归档
+    result: passed
+    reason:
+      text: Compact state exposes the real Build or Verify next action.
+      truncated: false
+  - id: A15
+    source: specs/native-status-output/spec.md
+    text:
+      默认 status 返回紧凑摘要 - **Given** 一个 change 包含大量验收、历史、Builder 交接和验证结果 -
+      **When** 客户端请求命名 change 的默认 `native status` - **Then**
+      响应只包含名称、phase、status、stateVersion、循环摘要、验收计数、未解决
+      ID、verificationResult、阻塞摘要、工作区摘要、本机操作摘要和 continuation - **And** 不内联验收正文、完整
+      Builder 交接、完整验证结果或历史列表 - **And** Supervisor 默认状态不内联全部 Child 详情，只保留有界摘要与
+      ready Child 名称
+    result: passed
+    reason:
+      text: Default status and Supervisor output remain compact and bounded.
+      truncated: false
+  - id: A16
+    source: specs/native-status-output/spec.md
+    text:
+      details 使用固定大小分页 - **Given** 验收、历史、Builder 交接或验证详情超过一页 - **When** 客户端请求
+      `native status <change> --details` - **Then** Runtime
+      返回稳定顺序的一页带类型详情项、当前状态版本、可选下一页 cursor 和完整下一页命令参数 - **And**
+      后续页面不会重复或遗漏同一状态版本的数据 - **And** cursor 与当前状态版本不匹配时返回清晰的过期提示
+    result: passed
+    reason:
+      text: Detail cursors bind to current portable and Supervisor state versions.
+      truncated: false
+  - id: A17
+    source: specs/native-status-output/spec.md
+    text:
+      next 不复制完整 portable state - **Given** Runtime 执行任意会改变 Native 状态的 `next` 动作
+      - **When** CLI 返回成功结果 - **Then** 结果包含与默认 status 相同的紧凑 state 摘要及最新
+      continuation - **And** 不把 `comet-state.yaml` 中的完整
+      acceptance、history、Builder handoff 或 verification 复制到响应
+    result: passed
+    reason:
+      text: Every successful next path returns a compact top-level state; recovery
+        output contains action, reason, and message only.
+      truncated: false
+  - id: A18
+    source: specs/native-status-output/spec.md
+    text: Verifier 按范围读取验收详情 - **Given** Runtime 准备分派一个新的 Verifier - **When** 生成
+      verifierDispatch - **Then** 分派内容包含当前验收范围 ID、验收总数、brief/Spec
+      引用、详情页读取命令、Builder 审查摘要和 Runtime 检查摘要 - **And** 不内联完整验收正文 - **And**
+      Verifier 可以通过详情页读取当前状态版本对应的全部范围内容
+    result: passed
+    reason:
+      text: Verifier dispatch carries scope IDs and references without inline
+        acceptance text.
+      truncated: false
+  - id: A19
+    source: specs/native-status-output/spec.md
+    text:
+      帮助和 Skill 默认使用紧凑入口 - **Given** Agent 创建、恢复或推进 Native change - **When** 中英文
+      Skill 或 CLI 帮助指导其读取状态 - **Then** 默认使用紧凑 status/next 结果 - **And** 只有
+      Shape、Review、Verify 或诊断确实需要正文时才读取 details 分页
+    result: passed
+    reason:
+      text: Help and Skills default to compact status and next output.
+      truncated: false
+  - id: A20
+    source: specs/native-verification-evidence/spec.md
+    text:
+      Shape 只生成场景级验收 - **Given** brief 包含验收示例，目标 Spec 同时包含说明文字、列表、表格和显式
+      `Scenario:` 块 - **When** Runtime 确认 Shape - **Then** 每个 brief
+      顶层验收示例形成一个验收项 - **And** 每个 `Scenario:` 标题与其完整正文形成一个验收项 - **And** Scenario
+      外的说明、列表和表格保留在 Spec 中但不单独生成验收项 - **And** Runtime 按稳定来源顺序分配 `A1..An`
+    result: passed
+    reason:
+      text: Scenario-level extraction assigns stable sequential IDs and ignores
+        descriptive prose.
+      truncated: false
+  - id: A21
+    source: specs/native-verification-evidence/spec.md
+    text:
+      Builder 候选必须先通过只读代码审查 - **Given** Builder 已完成本轮实现与最小相关检查 - **When** 提交
+      Builder handoff - **Then** handoff 必须包含状态为 passed 的 review、简短审查摘要和
+      reviewer execution ref - **And** reviewer execution ref 必须与 Builder
+      execution ref 不同 - **And** 缺失、未通过或角色未分离的 review 被拒绝，change 留在 Build
+    result: passed
+    reason:
+      text: Builder handoff requires a passed review from a different execution ref.
+      truncated: false
+  - id: A22
+    source: specs/native-verification-evidence/spec.md
+    text:
+      修复后重新审查 - **Given** Verifier 将候选返回 Build - **When** Builder 修复任一失败或受影响场景 -
+      **Then** 下一份 handoff 必须提供新的通过审查 - **And** 上一轮 handoff 中的 review
+      不能代替当前修复结果的审查
+    result: passed
+    reason:
+      text: Each repaired candidate requires a fresh review.
+      truncated: false
+  - id: A23
+    source: specs/native-verification-evidence/spec.md
+    text:
+      首轮 Verifier 判断全部验收 - **Given** 当前目标周期的首个候选已通过代码审查和必要检查 - **When** Runtime
+      分派 Verifier - **Then** verification scope 包含全部验收 ID - **And** Verifier
+      只需为该 scope 中的每个 ID 返回一次 passed、failed 或 blocked - **And** Runtime 拒绝 scope
+      内缺失、重复或未知 ID
+    result: passed
+    reason:
+      text: First verification covers every acceptance ID exactly once.
+      truncated: false
+  - id: A24
+    source: specs/native-verification-evidence/spec.md
+    text:
+      修复轮 Verifier 只判断影响范围 - **Given** 上一轮存在 failed 或 blocked 项，且其他项已经 passed -
+      **When** Builder 提交修复候选并列出 `addressed_acceptance_ids` - **Then**
+      verification scope 是上一轮未解决 ID 与 addressed ID 的并集 - **And** scope
+      外已通过结果继续保留 - **And** Verifier dispatch 只列出 scope ID，并通过详情页命令提供正文
+    result: passed
+    reason:
+      text: Repair dispatch contains only pending affected IDs.
+      truncated: false
+  - id: A25
+    source: specs/native-verification-evidence/spec.md
+    text:
+      修复范围通过后执行最终全量验收 - **Given** 修复轮 scope 小于全部验收且该 scope 全部 passed - **When**
+      Runtime 接受 Verifier 结果 - **Then** change 留在 Verify 并准备一个新的全量 Verifier
+      attempt - **And** Runtime 复用同一候选已经成功的必要检查 - **And** 只有新的全量 Verifier 判断全部场景
+      passed 后才能形成最终 pass
+    result: passed
+    reason:
+      text: Repair success creates a new final full attempt and reuses successful
+        checks.
+      truncated: false
+  - id: A26
+    source: specs/native-verification-evidence/spec.md
+    text:
+      必要检查与结果边界保持不变 - **Given** Runtime 执行用户确认的检查或 Verifier 请求的补充检查 - **When**
+      检查失败、超时、中断或无法启动 - **Then** Agent 的摘要不能把它改成 passed - **And**
+      同一候选中已经成功且输入未变化的检查可以复用 - **And** Archive 不重新运行检查或 Verifier
+    result: passed
+    reason:
+      text: Runtime checks remain authoritative and Archive does not rerun them.
+      truncated: false
+  - id: A27
+    source: specs/native-verification-evidence/spec.md
+    text: 中英文流程保持一致 - **Given** Native Runtime、Skill、参考和帮助文字完成更新 - **When**
+      比较中文和英文资产 - **Then** 两种语言都要求场景级验收、候选前代码审查、修复范围复验和最终全量 Verifier - **And**
+      生成的 Native Runtime 与源码行为一致
+    result: passed
+    reason:
+      text: Bilingual assets and generated Native Runtime match the implementation.
+      truncated: false
+builder_handoff:
+  candidate_id: 777245b9-5705-421a-a2e5-5cc6e4ddf8c7
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:6666e42e-53c0-441f-9f67-6b18a8d82f33
+  iteration: 3
+  summary:
+    text: Fixed A17 by projecting successful Native next recovery results to action,
+      reason, and message only. Both ordinary summary-driven and runner-input
+      recovery paths keep the compact top-level state and continuation without
+      nesting the complete portable or local execution state.
+    truncated: false
+  addressed_acceptance_ids:
+    - A17
+  checks:
+    - name:
+        text: Recovery output red-green regression
+        truncated: false
+      result: passed
+      note:
+        text: Both recovery branches failed on nested recovery.state before the fix and
+          passed after it
+        truncated: false
+    - name:
+        text: CLI status and recovery regressions
+        truncated: false
+      result: passed
+      note:
+        text: 3 files, 31 tests passed
+        truncated: false
+    - name:
+        text: Generated Runtime consistency
+        truncated: false
+      result: passed
+      note:
+        text: pnpm check:generated exited 0
+        truncated: false
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  review:
+    status: passed
+    summary:
+      text: 'A17 passed read-only review: every successful Native next recovery
+        response now projects only action, reason, and message while retaining
+        the compact top-level state and actionable continuation.'
+      truncated: false
+    reviewer_execution_ref: codex-native-a17-recovery-output-review-20260825-r1
+  submitted_at: 2026-08-25T03:49:04.939Z
+blockers: []
+verification:
+  candidate_id: 777245b9-5705-421a-a2e5-5cc6e4ddf8c7
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:a413ee05-63b2-4d48-bc1e-83aa35d3dc6e
+  iteration: 3
+  attempt: 2
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: native-recovery-output-regressions
+      name:
+        text: Native recovery output regressions
+        truncated: false
+      argv_display:
+        - text: node_modules/vitest/vitest.mjs
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/comet-native/native-cli-v4-surface.test.ts
+          truncated: false
+        - text: -t
+          truncated: false
+        - text: keeps successful
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 9905
+    - id: native-generated-assets
+      name:
+        text: Native generated asset consistency
+        truncated: false
+      argv_display:
+        - text: scripts/build/build-native-runtime.mjs
+          truncated: false
+        - text: --check
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 596
+  summary:
+    text: Final full independent verification passed all 27 acceptance items after
+      the A13 and A17 repairs.
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-08-25T03:59:51.972Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native confirmed acceptance criteria changed
+      truncated: false
+    completed_at: 2026-08-25T02:23:10.341Z
+  - goal_cycle: 2
+    iteration: 1
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A13
+    summary:
+      text: Independent verification found one recovery-scope defect in A13; the other
+        26 acceptance items passed.
+      truncated: false
+    completed_at: 2026-08-25T03:24:56.897Z
+  - goal_cycle: 2
+    iteration: 2
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Repair verification passed for A13; final full verification is required.
+      truncated: false
+    completed_at: 2026-08-25T03:33:49.754Z
+  - goal_cycle: 2
+    iteration: 2
+    attempt: 2
+    outcome: fail
+    unresolved_ids:
+      - A17
+    summary:
+      text: Final full verification found one compact-output defect in A17; the other
+        26 items passed.
+      truncated: false
+    completed_at: 2026-08-25T03:42:21.979Z
+  - goal_cycle: 2
+    iteration: 3
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Repair verification passed for A17; final full verification is required.
+      truncated: false
+    completed_at: 2026-08-25T03:53:11.291Z
+  - goal_cycle: 2
+    iteration: 3
+    attempt: 2
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: Final full independent verification passed all 27 acceptance items after
+        the A13 and A17 repairs.
+      truncated: false
+    completed_at: 2026-08-25T03:59:51.972Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-25T01:27:27.111Z

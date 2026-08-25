@@ -46,7 +46,7 @@ import {
   confirmNativePortableShape,
   createNativePortableChange,
   nativePortableChangeDir,
-  tryAutoAdvanceNativeSupervisorParent,
+  inspectNativeSupervisorParentReviewReadiness,
 } from '../../../domains/comet-native/native-portable-runtime.js';
 
 const CONTRACT = parseNativeChildrenContract(`
@@ -121,24 +121,48 @@ describe('Native Supervisor v2 state', () => {
         }),
       );
 
-      const advanced = await tryAutoAdvanceNativeSupervisorParent({
+      const advanced = await inspectNativeSupervisorParentReviewReadiness({
         paths,
         name: shaped.name,
         trigger: 'v2-integrate',
       });
       expect(advanced.parentAdvance).toMatchObject({
-        advanced: true,
+        advanced: false,
         parent: 'parent',
-        message: 'All Children are complete; the Supervisor parent is entering final verification.',
+        message:
+          'All Children are complete; the Supervisor parent candidate needs an independent code review before verification.',
       });
-      expect(advanced.state).toMatchObject({ phase: 'verify', status: 'active' });
-      const repeated = await tryAutoAdvanceNativeSupervisorParent({
+      expect(advanced.state).toMatchObject({ phase: 'build', status: 'active' });
+
+      const reviewed = await applyNativeRunnerInput({
+        paths,
+        name: 'parent',
+        maxVerifyFailures: 5,
+        input: parseNativeRunnerInput({
+          kind: 'builder-handoff',
+          summary: 'Reviewed the integrated parent candidate.',
+          addressed_acceptance_ids: ['A1'],
+          checks: [],
+          known_limits: [],
+          review: {
+            status: 'passed',
+            summary: 'An independent reviewer inspected the integrated parent diff.',
+            reviewer_execution_ref: 'parent-review-run-1',
+          },
+        }),
+      });
+      expect(reviewed.state).toMatchObject({ phase: 'verify', status: 'active' });
+      expect(reviewed.state.builder_handoff?.review).toMatchObject({
+        status: 'passed',
+        reviewer_execution_ref: 'parent-review-run-1',
+      });
+      const repeated = await inspectNativeSupervisorParentReviewReadiness({
         paths,
         name: 'parent',
         trigger: 'recovery',
       });
       expect(repeated.parentAdvance.advanced).toBe(false);
-      expect(repeated.state.state_version).toBe(advanced.state.state_version);
+      expect(repeated.state.state_version).toBe(reviewed.state.state_version);
     } finally {
       try {
         execFileSync(

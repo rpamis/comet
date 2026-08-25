@@ -42,6 +42,11 @@ describe('Native verification report projection', () => {
         candidateId: 'candidate',
         summary: 'Built it.',
         addressedAcceptanceIds: ['A1'],
+        review: {
+          status: 'passed',
+          summary: 'Read-only review passed.',
+          reviewerExecutionRef: 'reviewer',
+        },
       },
     });
     state = reserveNativeVerifierAttempt(state);

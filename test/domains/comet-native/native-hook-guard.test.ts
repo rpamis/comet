@@ -32,6 +32,14 @@ import {
 } from '../../../domains/comet-native/native-portable-runtime.js';
 import { createNativeRunnerChannel } from '../../../domains/comet-native/native-runner-protocol.js';
 
+function passedReview(reviewerExecutionRef: string) {
+  return {
+    status: 'passed' as const,
+    summary: 'Independent read-only review passed.',
+    reviewerExecutionRef,
+  };
+}
+
 describe('Native phase Hook guard', () => {
   let projectRoot: string;
 
@@ -291,6 +299,7 @@ describe('Native phase Hook guard', () => {
         candidateId: 'candidate',
         summary: 'Built.',
         addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
+        review: passedReview('runtime-owned-state-reviewer'),
       },
     });
 
@@ -319,7 +328,9 @@ describe('Native phase Hook guard', () => {
     });
     await expect(readNativePortableChange(paths, state.name)).resolves.toMatchObject({
       phase: 'build',
-      builder_handoff: null,
+      builder_handoff: {
+        review: { reviewer_execution_ref: 'runtime-owned-state-reviewer' },
+      },
       verification: null,
     });
   });
@@ -339,6 +350,7 @@ describe('Native phase Hook guard', () => {
         candidateId: 'candidate',
         summary: 'Built.',
         addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
+        review: passedReview('concurrent-guard-reviewer'),
       },
     });
 
@@ -354,7 +366,9 @@ describe('Native phase Hook guard', () => {
     await expect(readNativePortableChange(paths, state.name)).resolves.toMatchObject({
       phase: 'build',
       loop: { iteration: 2 },
-      builder_handoff: null,
+      builder_handoff: {
+        review: { reviewer_execution_ref: 'concurrent-guard-reviewer' },
+      },
     });
   });
 

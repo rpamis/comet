@@ -32,6 +32,14 @@ import type { NativeProjectPaths } from '../../../domains/comet-native/native-ty
 const FORBIDDEN_V4_ARTIFACT =
   /(?:^|[\\/_-])(snapshot|scope|receipt|evidence|trajectory|checkpoint)(?:$|[.\\/_-])/iu;
 
+function passedReview(reviewerExecutionRef: string) {
+  return {
+    status: 'passed' as const,
+    summary: 'Independent read-only review passed.',
+    reviewerExecutionRef,
+  };
+}
+
 describe('Native v4 verification-loop regression eval', () => {
   let root: string;
   let paths: NativeProjectPaths;
@@ -121,6 +129,7 @@ Ship a command whose output remains valid at every supported diagnostic size.
         summary: 'Everything is complete and all acceptance criteria pass.',
         addressedAcceptanceIds: ['A1', 'A2'],
         checks: [{ name: 'Builder self-check', result: 'passed' }],
+        review: passedReview('reviewer-confident-1'),
       },
     });
 
@@ -231,6 +240,7 @@ Ship a command whose output remains valid at every supported diagnostic size.
         candidateId: 'candidate-2',
         summary: 'Repaired the Archive behavior reported by the independent Verifier.',
         addressedAcceptanceIds: ['A1', 'A2'],
+        review: passedReview('reviewer-repair-2'),
       },
     });
     const byteSizes = new Map([
@@ -322,19 +332,64 @@ Ship a command whose output remains valid at every supported diagnostic size.
     });
     expect(passed.state).toMatchObject({
       phase: 'verify',
+      status: 'active',
+      verification_result: 'pending',
+      loop: {
+        stage: 'verify-ready',
+        iteration: 2,
+        attempt: 1,
+        next_action: 'run-final-full-verification',
+      },
+    });
+
+    await dispatchNativePortableVerifier({
+      paths,
+      name,
+      checks: finalChecks.checks,
+      verifierExecutionId: 'verifier-final-full',
+    });
+    const finalPass = await submitNativePortableVerifierResult({
+      paths,
+      name,
+      checks: finalChecks.checks,
+      maxVerifyFailures: 5,
+      envelope: runner.envelopeVerifierResponse({
+        candidateId: 'candidate-2',
+        identity: runner.captureExecutionIdentity({
+          identityProvider: 'regression-host',
+          executionRef: 'verifier-final-full',
+        }),
+        payload: {
+          kind: 'final-result',
+          result: {
+            iteration: 2,
+            attempt: 2,
+            verdict: 'pass',
+            acceptance: [
+              { id: 'A1', result: 'passed', reason: 'All three long-output checks passed.' },
+              { id: 'A2', result: 'passed', reason: 'Archive no longer reruns verification.' },
+            ],
+            risks: [],
+            summary: 'The final full verification passed every acceptance criterion.',
+          },
+        },
+      }),
+    });
+    expect(finalPass.state).toMatchObject({
+      phase: 'verify',
       status: 'await-user',
       verification_result: 'pass',
-      loop: { stage: 'await-user', iteration: 2, attempt: 1 },
+      loop: { stage: 'await-user', iteration: 2, attempt: 2 },
     });
     expect(
-      passed.state.verification?.checks.map(({ id, duration_ms }) => ({ id, duration_ms })),
+      finalPass.state.verification?.checks.map(({ id, duration_ms }) => ({ id, duration_ms })),
     ).toEqual(finalChecks.checks.map(({ id, duration_ms }) => ({ id, duration_ms })));
     await expectNoLegacyVerificationArtifacts();
 
     const confirmed = await confirmNativePortableSkillCoordinatedPass({ paths, name });
     expect(confirmed).toMatchObject({
       phase: 'archive',
-      loop: { stage: 'archive-ready', iteration: 2, attempt: 1 },
+      loop: { stage: 'archive-ready', iteration: 2, attempt: 2 },
     });
 
     const countsBeforeArchive = await readCounters();

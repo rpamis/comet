@@ -39,6 +39,14 @@ import { createNativeRunnerChannel } from '../../../domains/comet-native/native-
 import { writeNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
 
+function passedReview(reviewerExecutionRef: string) {
+  return {
+    status: 'passed' as const,
+    summary: 'Independent read-only review passed.',
+    reviewerExecutionRef,
+  };
+}
+
 describe('Native portable Archive', () => {
   let root: string;
   let paths: NativeProjectPaths;
@@ -69,6 +77,7 @@ describe('Native portable Archive', () => {
         candidateId: `${name}-candidate`,
         summary: 'Implemented.',
         addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
+        review: passedReview(`${name}-reviewer`),
       },
     });
     const executed = await executeNativePortableCheckPlan({

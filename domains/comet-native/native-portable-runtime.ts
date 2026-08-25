@@ -78,7 +78,6 @@ import type {
   NativePortableWorkspace,
 } from './native-portable-types.js';
 import {
-  createNativeRunnerChannel,
   isNativeTrustedVerifierEnvelope,
   type NativeTrustedVerifierEnvelope,
 } from './native-runner-protocol.js';
@@ -607,66 +606,15 @@ export async function submitNativePortableBuilderCandidate(options: {
         validation: nativeChildrenAcceptanceValidation(state),
       });
       if (children || state.children_contract_hash) {
-        throw new Error('Native parent Build advances child changes instead of a parent Builder');
+        const childStatus = await inspectNativeChildren({ paths: options.paths, state });
+        if (!childStatus?.confirmed || !childStatus.allDone) {
+          throw new Error('Native parent Build advances child changes before parent review');
+        }
+        if (state.loop.stage === 'repairing' && state.verification_result === 'fail') {
+          throw new Error('Native parent verification failed; complete the repair child first');
+        }
       }
       const next = submitNativeBuilderCandidate({ state, input: options.input });
-      const written = await writePortableMutation({ paths: options.paths, previous: state, next });
-      await writeNativeLocalExecution(
-        nativeLocalExecutionFile(options.paths, state.name),
-        rebuildNativeLocalExecution({
-          portableState: written,
-          projectRoot: options.paths.projectRoot,
-          branch: currentBranch(options.paths.projectRoot),
-        }),
-        { containedRoot: options.paths.runtimeDir },
-      );
-      return written;
-    },
-  );
-}
-
-export async function completeNativePortableParentBuild(options: {
-  paths: NativeProjectPaths;
-  name: string;
-  summary: string;
-}): Promise<NativePortableState> {
-  return withNativeMutationLock(
-    options.paths,
-    `complete portable parent Build ${options.name}`,
-    async () => {
-      const state = await readNativePortableChange(options.paths, options.name);
-      if (state.phase !== 'build' || state.status !== 'active') {
-        throw new Error('Native parent integration can only complete from active Build');
-      }
-      await ensureNativePortableAcceptanceCurrentLocked({ paths: options.paths, state });
-      const children = await inspectNativeChildren({ paths: options.paths, state });
-      if (!children || !state.children_contract_hash) {
-        throw new Error(`Native change ${state.name} has no confirmed child contract`);
-      }
-      if (!children.confirmed) {
-        throw new Error('Native parent child declarations require Shape confirmation');
-      }
-      if (!children.allDone) {
-        throw new Error('Native parent cannot enter Verify before every child is merged');
-      }
-      if (state.loop.stage === 'repairing' && state.verification_result === 'fail') {
-        throw new Error('Native parent verification failed; add and confirm a repair child');
-      }
-      const runner = createNativeRunnerChannel();
-      const identity = runner.captureExecutionIdentity({
-        identityProvider: 'skill-coordinated',
-        executionRef: `native-parent-integration:${randomUUID()}`,
-      });
-      const next = submitNativeBuilderCandidate({
-        state,
-        input: {
-          identity,
-          summary: options.summary,
-          addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
-          checks: [],
-          knownLimits: [],
-        },
-      });
       const written = await writePortableMutation({ paths: options.paths, previous: state, next });
       await writeNativeLocalExecution(
         nativeLocalExecutionFile(options.paths, state.name),
@@ -691,15 +639,13 @@ export interface NativeSupervisorParentAdvance {
 }
 
 /**
- * Recompute the Supervisor Child projection and idempotently complete the
- * parent Build. The caller owns the event-specific transaction; this boundary
- * only writes the parent after all trusted Child facts are visible.
+ * Recompute whether every Child is integrated and the parent is ready for an
+ * independent reviewed handoff. This inspection does not advance the phase.
  */
-export async function tryAutoAdvanceNativeSupervisorParent(options: {
+export async function inspectNativeSupervisorParentReviewReadiness(options: {
   paths: NativeProjectPaths;
   name: string;
   trigger: NativeSupervisorParentAdvance['trigger'];
-  summary?: string;
 }): Promise<{ state: NativePortableState; parentAdvance: NativeSupervisorParentAdvance }> {
   const state = await readNativePortableChange(options.paths, options.name);
   const base = {
@@ -736,18 +682,12 @@ export async function tryAutoAdvanceNativeSupervisorParent(options: {
   }
   const message =
     state.language === 'zh-CN'
-      ? '全部 Child 已完成，Supervisor 父级正在进行最终验证'
-      : 'All Children are complete; the Supervisor parent is entering final verification.';
-  const next = await completeNativePortableParentBuild({
-    paths: options.paths,
-    name: options.name,
-    summary: options.summary ?? message,
-  });
+      ? '全部 Child 已完成；Supervisor 父级候选需要独立代码审查后再进入验证'
+      : 'All Children are complete; the Supervisor parent candidate needs an independent code review before verification.';
   return {
-    state: next,
+    state,
     parentAdvance: {
       ...base,
-      advanced: true,
       message,
     },
   };
@@ -777,7 +717,7 @@ export async function tryAutoAdvanceNativeV1SupervisorParent(options: {
       },
     };
   }
-  const result = await tryAutoAdvanceNativeSupervisorParent({
+  const result = await inspectNativeSupervisorParentReviewReadiness({
     paths: discovery.candidate.paths,
     name: discovery.candidate.state.name,
     trigger: 'v1-archive',
@@ -1818,7 +1758,8 @@ export async function submitNativePortableVerifierResult(options: {
       });
       await writeNativeLocalExecution(
         nativeLocalExecutionFile(options.paths, state.name),
-        written.loop.next_action === 'resolve-verifier-blocker'
+        written.loop.next_action === 'resolve-verifier-blocker' ||
+          written.loop.next_action === 'run-final-full-verification'
           ? preservedLocalChecksForVersion({
               local,
               state: written,

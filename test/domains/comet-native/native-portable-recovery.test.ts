@@ -102,6 +102,11 @@ describe('Native portable recovery', () => {
           checks_truncated: false,
           known_limits: [],
           known_limits_truncated: false,
+          review: {
+            status: 'passed',
+            summary: toNativePortableText('Read-only review passed.'),
+            reviewer_execution_ref: 'reviewer',
+          },
           submitted_at: new Date().toISOString(),
         },
         verification: {
@@ -175,6 +180,11 @@ describe('Native portable recovery', () => {
         candidateId: 'candidate',
         summary: 'Built.',
         addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
+        review: {
+          status: 'passed',
+          summary: 'Read-only review passed.',
+          reviewerExecutionRef: 'reviewer-execution',
+        },
       },
     });
     const resolved = await executeNativePortableCheckPlan({
@@ -222,6 +232,114 @@ describe('Native portable recovery', () => {
     });
   });
 
+  it('preserves the current repair scope when a running Verifier is lost', async () => {
+    const name = 'recover-repair-verifier';
+    await createNativePortableChange({ paths, name, language: 'en' });
+    await fs.writeFile(
+      path.join(paths.changesDir, name, 'brief.md'),
+      '# Acceptance examples\n- Recovery keeps completed results.\n- Recovery retries the current repair scope.\n',
+    );
+    let state = await confirmNativePortableShape({ paths, name });
+    const runner = createNativeRunnerChannel();
+    state = await submitNativePortableBuilderCandidate({
+      paths,
+      name,
+      input: {
+        identity: runner.captureExecutionIdentity({
+          identityProvider: 'test-host',
+          executionRef: 'initial-builder',
+        }),
+        candidateId: 'initial-candidate',
+        summary: 'Built the initial candidate.',
+        addressedAcceptanceIds: ['A1', 'A2'],
+        review: {
+          status: 'passed',
+          summary: 'Initial read-only review passed.',
+          reviewerExecutionRef: 'initial-reviewer',
+        },
+      },
+    });
+    const checks = await executeNativePortableCheckPlan({ paths, name, plans: [] });
+    state = await dispatchNativePortableVerifier({
+      paths,
+      name,
+      checks: checks.checks,
+      verifierExecutionId: 'initial-verifier',
+    });
+    state = (
+      await submitNativePortableVerifierResult({
+        paths,
+        name,
+        checks: checks.checks,
+        maxVerifyFailures: 5,
+        envelope: runner.envelopeVerifierResponse({
+          candidateId: state.builder_handoff!.candidate_id,
+          identity: runner.captureExecutionIdentity({
+            identityProvider: 'test-host',
+            executionRef: 'initial-verifier',
+          }),
+          payload: {
+            kind: 'final-result',
+            result: {
+              iteration: 1,
+              attempt: 1,
+              verdict: 'fail',
+              acceptance: [
+                { id: 'A1', result: 'passed', reason: 'Already verified.' },
+                { id: 'A2', result: 'failed', reason: 'Needs repair.' },
+              ],
+              risks: [],
+              summary: 'One item needs repair.',
+            },
+          },
+        }),
+      })
+    ).state;
+    state = await submitNativePortableBuilderCandidate({
+      paths,
+      name,
+      input: {
+        identity: runner.captureExecutionIdentity({
+          identityProvider: 'test-host',
+          executionRef: 'repair-builder',
+        }),
+        candidateId: 'repair-candidate',
+        summary: 'Repaired the failed item.',
+        addressedAcceptanceIds: ['A2'],
+        review: {
+          status: 'passed',
+          summary: 'Repair read-only review passed.',
+          reviewerExecutionRef: 'repair-reviewer',
+        },
+      },
+    });
+    const repairChecks = await executeNativePortableCheckPlan({ paths, name, plans: [] });
+    state = await dispatchNativePortableVerifier({
+      paths,
+      name,
+      checks: repairChecks.checks,
+      verifierExecutionId: 'lost-repair-verifier',
+    });
+    expect(state.acceptance.map(({ id, result }) => ({ id, result }))).toEqual([
+      { id: 'A1', result: 'passed' },
+      { id: 'A2', result: 'pending' },
+    ]);
+
+    const recovered = await recoverNativePortableChange({ paths, name });
+    expect(recovered).toMatchObject({
+      action: 'reverify',
+      reason: 'interrupted',
+      state: {
+        phase: 'verify',
+        loop: { stage: 'verify-ready', iteration: 2, attempt: 1 },
+      },
+    });
+    expect(recovered.state.acceptance.map(({ id, result }) => ({ id, result }))).toEqual([
+      { id: 'A1', result: 'passed' },
+      { id: 'A2', result: 'pending' },
+    ]);
+  });
+
   it('rebuilds a missing verification report from matching portable state', async () => {
     let state = await createBuild('recover-report');
     const runner = createNativeRunnerChannel();
@@ -235,6 +353,11 @@ describe('Native portable recovery', () => {
         }),
         summary: 'Built.',
         addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
+        review: {
+          status: 'passed',
+          summary: 'Read-only review passed.',
+          reviewerExecutionRef: 'report-reviewer',
+        },
       },
     });
     const resolved = await executeNativePortableCheckPlan({
