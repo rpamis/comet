@@ -12,6 +12,7 @@ import {
   listGitWorktreeRoots,
   resolveGitRef,
 } from '../../platform/paths/git-worktree.js';
+import { resolvePortablePath } from '../../platform/paths/portable-path.js';
 import { gitWorktreeIsClean, runGitCommand } from '../../platform/process/git.js';
 import {
   prepareNativeWorkspace,
@@ -135,7 +136,7 @@ export function nativeSupervisorIntegrationWorktree(projectRoot: string, parent:
   if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u.test(parent)) {
     throw new Error(`Invalid Native Supervisor parent name: ${parent}`);
   }
-  return path.join(path.resolve(projectRoot), '.worktrees', `${parent}-integration`);
+  return resolvePortablePath(projectRoot, '.worktrees', `${parent}-integration`);
 }
 
 export function nativeSupervisorChildWorktree(
@@ -149,7 +150,7 @@ export function nativeSupervisorChildWorktree(
   ) {
     throw new Error('Native Supervisor parent and child names are invalid');
   }
-  return path.join(path.resolve(projectRoot), '.worktrees', `${parent}-${child}`);
+  return resolvePortablePath(projectRoot, '.worktrees', `${parent}-${child}`);
 }
 
 export async function prepareNativeSupervisorIntegrationWorkspace(options: {

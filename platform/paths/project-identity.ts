@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import path from 'node:path';
 
 import { runGitCommand } from '../process/git.js';
+import { resolvePortablePath } from './portable-path.js';
 
 export interface ProjectIdentityOptions {
   readonly runGit?: (projectRoot: string, args: readonly string[]) => string;
@@ -16,7 +16,7 @@ export function resolveProjectIdentity(
   projectRoot: string,
   options: ProjectIdentityOptions = {},
 ): string {
-  const root = path.resolve(projectRoot);
+  const root = resolvePortablePath(projectRoot);
   const run = options.runGit ?? runGitCommand;
   try {
     const remote = run(root, ['remote', 'get-url', 'origin']).trim();
@@ -26,7 +26,7 @@ export function resolveProjectIdentity(
   }
   try {
     const commonDir = run(root, ['rev-parse', '--git-common-dir']).trim();
-    if (commonDir) return normalizeIdentity(path.resolve(root, commonDir));
+    if (commonDir) return normalizeIdentity(resolvePortablePath(root, commonDir));
   } catch {
     // Continue with the canonical project path for non-Git directories.
   }
@@ -52,7 +52,7 @@ export function resolveProjectName(
   projectRoot: string,
   options: ProjectIdentityOptions = {},
 ): string {
-  const root = path.resolve(projectRoot);
+  const root = resolvePortablePath(projectRoot);
   const run = options.runGit ?? runGitCommand;
   try {
     const remote = run(root, ['remote', 'get-url', 'origin']).trim();
@@ -62,7 +62,7 @@ export function resolveProjectName(
   }
   try {
     const commonDir = run(root, ['rev-parse', '--git-common-dir']).trim();
-    if (commonDir) return readableProjectName(path.resolve(root, commonDir));
+    if (commonDir) return readableProjectName(resolvePortablePath(root, commonDir));
   } catch {
     // Continue with the current project path for non-Git directories.
   }
