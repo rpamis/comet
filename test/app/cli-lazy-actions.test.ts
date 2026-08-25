@@ -3,7 +3,28 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const statusCommand = vi.fn(async () => undefined);
 const initCommand = vi.fn(async () => undefined);
+const cometTaskCommand = vi.fn(async () => undefined);
 const workflowResolveCommand = vi.fn(async () => undefined);
+const personalMemoryManageCommand = vi.fn(async () => undefined);
+const personalMemoryStatusCommand = vi.fn(async () => undefined);
+const personalMemoryRetrieveCommand = vi.fn(async () => undefined);
+const personalMemoryRememberCommand = vi.fn(async () => undefined);
+const personalMemoryCorrectCommand = vi.fn(async () => undefined);
+const personalMemoryForgetCommand = vi.fn(async () => undefined);
+const personalMemoryRollbackCommand = vi.fn(async () => undefined);
+const personalMemoryObserveCommand = vi.fn(async () => undefined);
+const personalMemoryContextCommand = vi.fn(async () => undefined);
+const personalMemorySyncCommand = vi.fn(async () => undefined);
+const personalMemoryRemoteCommand = vi.fn(async () => undefined);
+const personalMemoryPauseCommand = vi.fn(async () => undefined);
+const projectKnowledgeStatusCommand = vi.fn(async () => undefined);
+const projectKnowledgeQueryCommand = vi.fn(async () => undefined);
+const projectKnowledgeRebuildCommand = vi.fn(async () => undefined);
+const projectKnowledgeListCommand = vi.fn(async () => undefined);
+const projectKnowledgeGetCommand = vi.fn(async () => undefined);
+const projectKnowledgeCorrectCommand = vi.fn(async () => undefined);
+const projectKnowledgeForgetCommand = vi.fn(async () => undefined);
+const projectKnowledgeFeedbackCommand = vi.fn(async () => undefined);
 const resumeProbeCommand = vi.fn(async () => undefined);
 const dashboardCommand = vi.fn(async () => undefined);
 const doctorCommand = vi.fn(async () => undefined);
@@ -45,7 +66,32 @@ const bundleDistributeCommand = vi.fn(async () => undefined);
 
 vi.mock('../../app/commands/init.js', () => ({ initCommand }));
 vi.mock('../../app/commands/status.js', () => ({ statusCommand }));
+vi.mock('../../app/commands/comet-task.js', () => ({ cometTaskCommand }));
 vi.mock('../../app/commands/workflow.js', () => ({ workflowResolveCommand }));
+vi.mock('../../app/commands/personal-memory.js', () => ({
+  personalMemoryManageCommand,
+  personalMemoryStatusCommand,
+  personalMemoryRetrieveCommand,
+  personalMemoryRememberCommand,
+  personalMemoryCorrectCommand,
+  personalMemoryForgetCommand,
+  personalMemoryRollbackCommand,
+  personalMemoryObserveCommand,
+  personalMemoryContextCommand,
+  personalMemorySyncCommand,
+  personalMemoryRemoteCommand,
+  personalMemoryPauseCommand,
+}));
+vi.mock('../../app/commands/project-knowledge.js', () => ({
+  projectKnowledgeStatusCommand,
+  projectKnowledgeQueryCommand,
+  projectKnowledgeRebuildCommand,
+  projectKnowledgeListCommand,
+  projectKnowledgeGetCommand,
+  projectKnowledgeCorrectCommand,
+  projectKnowledgeForgetCommand,
+  projectKnowledgeFeedbackCommand,
+}));
 vi.mock('../../app/commands/resume-probe.js', () => ({ resumeProbeCommand }));
 vi.mock('../../app/commands/dashboard.js', () => ({ dashboardCommand }));
 vi.mock('../../app/commands/doctor.js', () => ({ doctorCommand }));
@@ -115,7 +161,81 @@ describe('CLI lazy command actions', () => {
   it('loads and dispatches every deferred command group when invoked', async () => {
     await runAction(['init', 'project'], initCommand);
     await runAction(['status', 'project'], statusCommand);
+    await runAction(['task', 'project', '--task', 'verify the change'], cometTaskCommand);
     await runAction(['workflow', 'resolve', 'project'], workflowResolveCommand);
+    await runAction(['memory', 'list', 'project'], personalMemoryManageCommand);
+    await runAction(['memory', 'status', 'project'], personalMemoryStatusCommand);
+    await runAction(['memory', 'retrieve', 'project'], personalMemoryRetrieveCommand);
+    await runAction(
+      ['memory', 'remember', 'project', '--text', 'prefer concise output'],
+      personalMemoryRememberCommand,
+    );
+    await runAction(
+      ['memory', 'correct', 'project', '--id', 'memory-id'],
+      personalMemoryCorrectCommand,
+    );
+    await runAction(
+      ['memory', 'forget', 'project', '--id', 'memory-id'],
+      personalMemoryForgetCommand,
+    );
+    await runAction(
+      ['memory', 'rollback', 'project', '--id', 'memory-id'],
+      personalMemoryRollbackCommand,
+    );
+    await runAction(
+      [
+        'memory',
+        'observe',
+        'project',
+        '--text',
+        'run verification',
+        '--workflow',
+        'native',
+        '--change',
+        'change-a',
+        '--candidate-key',
+        'verification',
+      ],
+      personalMemoryObserveCommand,
+    );
+    await runAction(
+      ['memory', 'context', 'project', '--task', 'verify the change'],
+      personalMemoryContextCommand,
+    );
+    await runAction(['memory', 'sync', 'project'], personalMemorySyncCommand);
+    await runAction(['memory', 'remote', 'project'], personalMemoryRemoteCommand);
+    await runAction(['memory', 'pause', 'project'], personalMemoryPauseCommand);
+    await runAction(['knowledge', 'status', 'project'], projectKnowledgeStatusCommand);
+    await runAction(
+      ['knowledge', 'query', 'project', '--task', 'find project guidance'],
+      projectKnowledgeQueryCommand,
+    );
+    await runAction(['knowledge', 'rebuild', 'project'], projectKnowledgeRebuildCommand);
+    await runAction(['knowledge', 'list', 'project'], projectKnowledgeListCommand);
+    await runAction(
+      ['knowledge', 'get', 'project', '--id', 'knowledge-id'],
+      projectKnowledgeGetCommand,
+    );
+    await runAction(
+      ['knowledge', 'correct', 'project', '--id', 'knowledge-id', '--text', 'updated guidance'],
+      projectKnowledgeCorrectCommand,
+    );
+    await runAction(
+      ['knowledge', 'forget', 'project', '--id', 'knowledge-id'],
+      projectKnowledgeForgetCommand,
+    );
+    await runAction(
+      [
+        'knowledge',
+        'feedback',
+        'project',
+        '--id',
+        'knowledge-id',
+        '--outcome',
+        'used-successfully',
+      ],
+      projectKnowledgeFeedbackCommand,
+    );
     await runAction(['resume-probe', 'project'], resumeProbeCommand);
     await runAction(['dashboard', 'project', '--port', '0'], dashboardCommand);
     await runAction(['doctor', 'project'], doctorCommand);

@@ -9,6 +9,12 @@ import {
   writeProjectConfig,
 } from '../../domains/comet-native/native-config.js';
 
+const { collectCometPluginContext } = vi.hoisted(() => ({
+  collectCometPluginContext: vi.fn(async () => [] as readonly { readonly text: string }[]),
+}));
+
+vi.mock('../../domains/comet-entry/plugin-context.js', () => ({ collectCometPluginContext }));
+
 describe('workflow resolve command', () => {
   let projectRoot: string;
 
@@ -73,6 +79,26 @@ describe('workflow resolve command', () => {
       /Invalid \.comet\/config\.yaml/u,
     );
     expect(log).not.toHaveBeenCalled();
+  });
+
+  it('prints best-effort task context before the human-readable resolution', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    collectCometPluginContext.mockResolvedValue([
+      { text: 'Use the project verification command.' },
+    ]);
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    await workflowResolveCommand(projectRoot, {
+      task: 'verify this change',
+      path: 'src/example.ts',
+      phase: 'verify',
+    });
+
+    expect(stderr).toHaveBeenCalledWith(
+      'Comet context:\n- Use the project verification command.\n',
+    );
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('workflow: native'));
   });
 
   it('registers the nested workflow resolve command in Commander', async () => {

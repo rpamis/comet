@@ -6,10 +6,17 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   personalMemoryContextCommand,
+  personalMemoryCorrectCommand,
+  personalMemoryForgetCommand,
+  personalMemoryManageCommand,
   personalMemoryObserveCommand,
+  personalMemoryPauseCommand,
+  personalMemoryRemoteCommand,
   personalMemoryRememberCommand,
   personalMemoryRetrieveCommand,
   personalMemoryStatusCommand,
+  personalMemoryRollbackCommand,
+  personalMemorySyncCommand,
 } from '../../app/commands/personal-memory.js';
 
 describe('personal memory commands', () => {
@@ -123,5 +130,156 @@ describe('personal memory commands', () => {
         expect.objectContaining({ category: '可复用偏好', text: 'Keep the user supplied wording' }),
       ],
     });
+  });
+
+  it('supports memory management, lifecycle, sync, and pause controls', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'comet-memory-management-cli-'));
+    roots.push(root);
+    const memoryRoot = path.join(root, 'memory');
+    const stateRoot = path.join(root, 'plugins');
+    const logs: string[] = [];
+    vi.spyOn(console, 'log').mockImplementation((message?: unknown) =>
+      logs.push(String(message ?? '')),
+    );
+
+    const record = (await personalMemoryRememberCommand(root, {
+      memoryRoot,
+      stateRoot,
+      text: '使用简洁输出',
+      category: '偏好',
+      json: true,
+    })) as { id: string };
+
+    const managed = (await personalMemoryManageCommand(root, {
+      memoryRoot,
+      stateRoot,
+      language: 'en',
+    })) as { records: readonly { text: string }[] };
+    expect(managed.records).toEqual(
+      expect.arrayContaining([expect.objectContaining({ text: '使用简洁输出' })]),
+    );
+    await personalMemoryRetrieveCommand(root, {
+      memoryRoot,
+      stateRoot,
+      language: 'en',
+      task: '使用简洁输出',
+    });
+
+    await personalMemoryCorrectCommand(root, {
+      memoryRoot,
+      stateRoot,
+      language: 'en',
+      id: record.id,
+      text: '使用简洁解释',
+      json: true,
+    });
+    await personalMemoryForgetCommand(root, {
+      memoryRoot,
+      stateRoot,
+      language: 'en',
+      id: record.id,
+      json: true,
+    });
+    await personalMemoryRollbackCommand(root, {
+      memoryRoot,
+      stateRoot,
+      language: 'en',
+      id: record.id,
+      json: true,
+    });
+    await personalMemoryPauseCommand(root, {
+      memoryRoot,
+      stateRoot,
+      learning: true,
+      language: 'en',
+      json: true,
+    });
+    await personalMemoryPauseCommand(root, {
+      memoryRoot,
+      stateRoot,
+      resume: true,
+      language: 'en',
+      json: true,
+    });
+
+    const remote = await personalMemoryRemoteCommand(root, {
+      memoryRoot,
+      stateRoot,
+      language: 'en',
+      set: 'https://example.invalid/comet-memory.git',
+      json: true,
+    });
+    expect(remote).toBeDefined();
+    const sync = await personalMemorySyncCommand(root, {
+      memoryRoot,
+      stateRoot,
+      language: 'en',
+    });
+    expect(sync).toBeDefined();
+    expect(logs.length).toBeGreaterThan(0);
+  });
+
+  it('prints empty and paused retrieval states and validates command input', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'comet-memory-retrieval-cli-'));
+    roots.push(root);
+    const memoryRoot = path.join(root, 'memory');
+    const stateRoot = path.join(root, 'plugins');
+    const logs: string[] = [];
+    vi.spyOn(console, 'log').mockImplementation((message?: unknown) =>
+      logs.push(String(message ?? '')),
+    );
+
+    await personalMemoryManageCommand(root, {
+      memoryRoot,
+      stateRoot,
+      language: 'en',
+    });
+    expect(logs).toContain('No matching personal memories.');
+
+    await personalMemoryRetrieveCommand(root, {
+      memoryRoot,
+      stateRoot,
+      language: 'en',
+      task: 'find a missing memory',
+      maxEntries: '2',
+      maxBytes: 'not-a-number',
+    });
+    expect(logs).toContain('No matching personal memory.');
+
+    await personalMemoryPauseCommand(root, {
+      memoryRoot,
+      stateRoot,
+      learning: true,
+      retrieval: true,
+      language: 'en',
+      json: true,
+    });
+    await personalMemoryRetrieveCommand(root, {
+      memoryRoot,
+      stateRoot,
+      language: 'en',
+      task: 'find a paused memory',
+    });
+    expect(logs).toContain('Personal memory retrieval is paused.');
+
+    await personalMemoryContextCommand(root, {
+      memoryRoot,
+      stateRoot,
+      language: 'en',
+      task: 'select context',
+    });
+    await personalMemoryStatusCommand(root, {
+      memoryRoot,
+      stateRoot,
+      language: 'en',
+    });
+    await expect(
+      personalMemoryCorrectCommand(root, {
+        memoryRoot,
+        stateRoot,
+        id: 'missing-id',
+        json: true,
+      }),
+    ).rejects.toThrow('At least one of --text or --category is required');
   });
 });

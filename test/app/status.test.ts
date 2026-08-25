@@ -11,6 +11,7 @@ import {
   writeProjectConfig,
 } from '../../domains/comet-native/native-config.js';
 import { nativeProjectPaths } from '../../domains/comet-native/native-paths.js';
+import { createNativePortableChange } from '../../domains/comet-native/native-portable-runtime.js';
 
 const stateScript = path.resolve('assets', 'skills', 'comet', 'scripts', 'comet-state.mjs');
 
@@ -592,5 +593,26 @@ describe('status command', () => {
     expect(output).toContain('native-text [Native] [phase: shape]');
     expect(output).toContain('Classic Changes:');
     expect(output).toContain('Unmanaged OpenSpec Changes:');
+  });
+
+  it('renders the compact Native portable projection in text output', async () => {
+    await writeProjectConfig(tmpDir, defaultProjectConfig('.'));
+    const paths = await nativeProjectPaths(tmpDir, '.');
+    await createNativePortableChange({ paths, name: 'portable-text', language: 'en' });
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let output: string;
+    try {
+      await statusCommand(tmpDir);
+      output = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(output).toContain('portable-text [Native] [phase: shape]');
+    expect(output).toContain('status: active | verification: pending | acceptance: 0/0');
+    expect(output).toContain(
+      'next: comet native next portable-text --summary "<summary>" --confirmed --expected-state-version 1 --expected-action confirm-shape',
+    );
   });
 });
