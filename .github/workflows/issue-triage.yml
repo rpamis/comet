@@ -21,44 +21,105 @@ jobs:
               return;
             }
 
-            const sections = new Map();
-            let currentHeading;
-            for (const line of (issue.body ?? '').replace(/\r\n/g, '\n').split('\n')) {
-              const heading = line.match(/^###\s+(.+?)\s*$/);
-              if (heading) {
-                currentHeading = heading[1].trim().replace(/^[^A-Za-z0-9]+/, '');
-                sections.set(currentHeading, []);
-                continue;
+            const classifyIssueArea = (issue) => {
+              const sections = new Map();
+              let currentHeading;
+              for (const line of (issue.body ?? '').replace(/\r\n/g, '\n').split('\n')) {
+                const heading = line.match(/^###\s+(.+?)\s*$/);
+                if (heading) {
+                  currentHeading = heading[1].trim().replace(/^[^A-Za-z0-9]+/, '');
+                  sections.set(currentHeading, []);
+                  continue;
+                }
+                if (currentHeading) sections.get(currentHeading).push(line);
               }
-              if (currentHeading) sections.get(currentHeading).push(line);
-            }
 
-            const selectedArea = ['Affected area', 'Primary area', 'Topic']
-              .flatMap((heading) => sections.get(heading) ?? [])
-              .join(' ')
-              .replace(/[`*_]/g, '')
-              .replace(/\s+/g, ' ')
-              .trim();
+              const selectedArea = ['Affected area', 'Primary area', 'Topic']
+                .flatMap((heading) => sections.get(heading) ?? [])
+                .join(' ')
+                .replace(/[`*_]/g, '')
+                .replace(/\s+/g, ' ')
+                .trim();
 
-            const areaRules = [
-              { label: 'area:native', pattern: /Native workflow runtime/i },
-              { label: 'area:classic', pattern: /Classic workflow runtime/i },
-              { label: 'area:hook', pattern: /Shared Hook|Hook Router/i },
-              { label: 'area:cli', pattern: /CLI command|user interaction/i },
-              { label: 'area:dashboard', pattern: /Dashboard/i },
-              { label: 'area:platform', pattern: /Platform adapter|installer/i },
-              { label: 'area:skills', pattern: /Skill domain|Bundled skills|assets/i },
-              { label: 'area:workflow', pattern: /Workflow contract/i },
-              { label: 'area:core', pattern: /Bundle authoring|Engine|Factory|Integrations/i },
-              { label: 'area:eval', pattern: /Eval/i },
-              { label: 'area:docs', pattern: /Documentation/i },
-              {
-                label: 'area:ci',
-                pattern: /Repository automation|CI \/ release \/ architecture checks/i,
-              },
-              { label: 'area:repo', pattern: /Tests \/ repository architecture/i },
-            ];
-            const targetArea = areaRules.find(({ pattern }) => pattern.test(selectedArea))?.label;
+              const areaRules = [
+                { label: 'area:native', pattern: /Native workflow runtime/i },
+                { label: 'area:classic', pattern: /Classic workflow runtime/i },
+                { label: 'area:hook', pattern: /Shared Hook|Hook Router/i },
+                { label: 'area:cli', pattern: /CLI command|user interaction/i },
+                { label: 'area:dashboard', pattern: /Dashboard/i },
+                { label: 'area:platform', pattern: /Platform adapter|installer/i },
+                { label: 'area:skills', pattern: /Skill domain|Bundled skills|assets/i },
+                { label: 'area:workflow', pattern: /Workflow contract/i },
+                { label: 'area:core', pattern: /Bundle authoring|Engine|Factory|Integrations/i },
+                { label: 'area:eval', pattern: /Eval/i },
+                { label: 'area:docs', pattern: /Documentation/i },
+                {
+                  label: 'area:ci',
+                  pattern: /Repository automation|CI \/ release \/ architecture checks/i,
+                },
+                { label: 'area:repo', pattern: /Tests \/ repository architecture/i },
+              ];
+              const formTargetArea = areaRules.find(({ pattern }) => pattern.test(selectedArea))?.label;
+              if (formTargetArea) return { areaRules, selectedArea, targetArea: formTargetArea };
+
+              const contentRules = [
+                {
+                  label: 'area:native',
+                  signals: [
+                    {
+                      pattern: /\b(?:native|portable(?:\s+v\d+(?:\.\d+)?)?|supervisor)\b/i,
+                      score: 3,
+                    },
+                  ],
+                },
+                {
+                  label: 'area:classic',
+                  signals: [{ pattern: /\b(?:classic|openspec)\b/i, score: 3 }],
+                },
+                {
+                  label: 'area:hook',
+                  signals: [{ pattern: /\b(?:hook|router)\b/i, score: 3 }],
+                },
+                {
+                  label: 'area:cli',
+                  signals: [
+                    { pattern: /\bresume-probe\b/i, score: 4 },
+                    { pattern: /\b(?:comet\s+)?cli\b/i, score: 2 },
+                    { pattern: /\b(?:cli\s+command|command\s+line)\b/i, score: 3 },
+                    { pattern: /\bcommand\b/i, score: 1 },
+                  ],
+                },
+                {
+                  label: 'area:dashboard',
+                  signals: [{ pattern: /\bdashboard\b/i, score: 3 }],
+                },
+                {
+                  label: 'area:core',
+                  signals: [{ pattern: /\b(?:codegraph|mcp|integrations?)\b/i, score: 4 }],
+                },
+              ];
+              const issueTitle = issue.title ?? '';
+              const issueBody = issue.body ?? '';
+              const scores = contentRules
+                .map(({ label, signals }) => ({
+                  label,
+                  score: signals.reduce(
+                    (total, { pattern, score }) =>
+                      total + (pattern.test(issueTitle) ? score * 2 : 0) + (pattern.test(issueBody) ? score : 0),
+                    0,
+                  ),
+                }))
+                .filter(({ score }) => score > 0)
+                .sort((left, right) => right.score - left.score);
+              const [topScore, nextScore] = scores;
+              const targetArea =
+                topScore?.score >= 3 && (!nextScore || topScore.score > nextScore.score)
+                  ? topScore.label
+                  : undefined;
+
+              return { areaRules, selectedArea, targetArea };
+            };
+            const { areaRules, selectedArea, targetArea } = classifyIssueArea(issue);
             const managedAreaLabels = new Set(areaRules.map(({ label }) => label));
 
             const labelsResponse = await github.rest.issues.listLabelsOnIssue({

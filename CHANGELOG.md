@@ -33,6 +33,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Issue triage fallback**: Issues without a recognized form area now infer a unique repository area from their title and body, while ambiguous reports remain marked for manual triage.
 - **Classic build planning**: Classic Build now loads `writing-plans` directly in the main session instead of dispatching a planning subagent that can fail without returning a plan.
 - **Classic verification repairs**: Classic Verify now keeps ordinary implementation writes in Build while leaving verification reports and workflow state writable, so repair attempts follow the tracked verification loop instead of bypassing it.
 - **Windows Native reliability**: Snapshot checks are more reliable when hooks and workspace operations run concurrently on Windows.

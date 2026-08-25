@@ -1,9 +1,43 @@
 import { promises as fs } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 
 async function readWorkflow(name: string): Promise<string> {
   return (await fs.readFile(`.github/workflows/${name}`, 'utf8')).replace(/\r\n/g, '\n');
+}
+
+type IssueTriageResult = {
+  selectedArea: string;
+  targetArea?: string;
+};
+
+async function readIssueClassifier(): Promise<string> {
+  const workflow = parse(await readWorkflow('issue-triage.yml')) as {
+    jobs?: {
+      triage?: {
+        steps?: Array<{ with?: { script?: string } }>;
+      };
+    };
+  };
+  const script = workflow.jobs?.triage?.steps?.[0]?.with?.script;
+  if (typeof script !== 'string') throw new Error('Issue triage script is missing.');
+
+  const startMarker = 'const classifyIssueArea = (issue) => {';
+  const endMarker = 'const { areaRules, selectedArea, targetArea } = classifyIssueArea(issue);';
+  const start = script.indexOf(startMarker);
+  const end = script.indexOf(endMarker);
+  if (start < 0 || end <= start) throw new Error('Issue classifier markers are missing.');
+  return script.slice(start, end);
+}
+
+function classifyIssue(
+  classifier: string,
+  issue: { title: string; body: string },
+): IssueTriageResult {
+  return runInNewContext(`${classifier}\nclassifyIssueArea(issue);`, {
+    issue,
+  }) as IssueTriageResult;
 }
 
 describe('CI workflows', () => {
@@ -159,6 +193,87 @@ describe('CI workflows', () => {
       expect(form).toContain('Native workflow runtime');
       expect(form).toContain('Shared Hook / Hook Router');
     }
+  });
+
+  it('infers unique area labels from real unstructured issue reports', async () => {
+    const classifier = await readIssueClassifier();
+    const cases = [
+      {
+        number: 354,
+        title: 'Question: 从mac换到windows工作后遇到问题（即使更新到最新版本也无效）',
+        body: [
+          '### ❓ Question',
+          '',
+          '暂时无法开始代码分析：仓库要求先执行只读命令 `comet resume-probe . --stdin --json`，但当前 Comet CLI 返回：',
+          '',
+          '```text',
+          "error: unknown command 'resume-probe'",
+          '```',
+          '',
+          '由于没有返回可用的 `nextCommand`，按仓库约定不能猜测或绕过工作流继续。请先更新/修复项目使用的 Comet CLI；完成后我再继续追踪工具调用循环。',
+          '',
+          '### 🎯 Topic',
+          '',
+          'None',
+        ].join('\n'),
+        expected: 'area:cli',
+      },
+      {
+        number: 351,
+        title: 'fix(native): avoid legacy 256 KiB limit for Portable v4 child discovery',
+        body: [
+          '## Summary',
+          'Creating a Native Supervisor child in a linked Git worktree could fail when the parent Portable v4 state document exceeded the arbitrary 256 KiB change-document limit.',
+          '',
+          '## Root cause',
+          '`listActiveNativeChangesOwnedByWorkspace()` calls `inspectNativeChangeStateDocument()`, whose document reader imposed `NATIVE_CHANGE_DOCUMENT_MAX_BYTES = 256 * 1024`.',
+          '',
+          '## Scope',
+          'Native Runtime status/discovery and Supervisor child-worktree creation only. Classic behavior is out of scope.',
+        ].join('\n'),
+        expected: 'area:native',
+      },
+      {
+        number: 352,
+        title: 'feat: 明确区分 CodeGraph CLI、项目索引与 MCP 注册状态',
+        body: [
+          '## Problem',
+          'Comet currently exposes CodeGraph integration, but the following states are separate:',
+          '',
+          '1. CodeGraph CLI is installed.',
+          '2. The project has a usable `.codegraph` index.',
+          '3. CodeGraph MCP is registered with a specific agent, such as Codex CLI.',
+          '',
+          '## Proposed solution',
+          'Please make the CodeGraph CLI, project index, and MCP registration states explicit.',
+        ].join('\n'),
+        expected: 'area:core',
+      },
+    ];
+
+    for (const issue of cases) {
+      expect(classifyIssue(classifier, issue).targetArea, `Issue #${issue.number}`).toBe(
+        issue.expected,
+      );
+    }
+  });
+
+  it('keeps ambiguous content unclassified and gives form selections priority', async () => {
+    const classifier = await readIssueClassifier();
+
+    expect(
+      classifyIssue(classifier, {
+        title: 'Native and Classic workflow compatibility',
+        body: '## Summary\nThis report covers both Native and Classic workflows.',
+      }).targetArea,
+    ).toBeUndefined();
+
+    expect(
+      classifyIssue(classifier, {
+        title: 'Native issue with a dashboard symptom',
+        body: '### 🎯 Affected area\n\nDashboard',
+      }).targetArea,
+    ).toBe('area:dashboard');
   });
 
   it('keeps the maintenance task template backed by an existing task label', async () => {
