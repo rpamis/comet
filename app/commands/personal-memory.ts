@@ -184,7 +184,10 @@ export async function personalMemoryObserveCommand(
   targetPath = '.',
   options: PersonalMemoryCommandOptions = {},
 ): Promise<unknown> {
-  const bridge = await createBridge(targetPath, options);
+  // A direct CLI observation must finish its local Reflection before the
+  // command returns; otherwise a follow-up observation or retrieval can race
+  // the durable background task and expose a stale trial candidate.
+  const bridge = await createBridge(targetPath, options, true);
   const language = await resolveDisplayLanguage(targetPath, options);
   const workflow = requireText(options.workflow, '--workflow');
   const changeId = requireText(options.change, '--change');
@@ -296,11 +299,16 @@ export async function personalMemoryPauseCommand(
   return result;
 }
 
-async function createBridge(targetPath: string, options: PersonalMemoryCommandOptions) {
+async function createBridge(
+  targetPath: string,
+  options: PersonalMemoryCommandOptions,
+  waitForLearning = false,
+) {
   const projectRoot = path.resolve(targetPath);
   return createDefaultCometPluginBridge({
     projectRoot,
     projectId: resolveStableProjectId(projectRoot),
+    ...(waitForLearning ? { scheduleLearning: (task: () => Promise<void>) => task() } : {}),
     ...(options.memoryRoot ? { memoryRoot: options.memoryRoot } : {}),
     ...(options.stateRoot ? { stateRoot: options.stateRoot } : {}),
   });
