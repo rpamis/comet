@@ -469,7 +469,7 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   await expect(page.getByRole('menuitem', { name: '项目知识' })).toHaveCount(0);
 });
 
-test('adds global or project memory and explains why saved memories are applied', async ({
+test('adds global or project memory, explains application, and permanently deletes records', async ({
   page,
 }) => {
   const profileRecords = [
@@ -563,6 +563,7 @@ test('adds global or project memory and explains why saved memories are applied'
     },
   };
   let rememberRequest: unknown;
+  let removeRequest: unknown;
 
   await page.route('**/api/dashboard/**', async (route) => {
     const url = new URL(route.request().url());
@@ -617,22 +618,35 @@ test('adds global or project memory and explains why saved memories are applied'
         capability: string;
         input: {
           id?: string;
-          scope: string;
+          permanent?: boolean;
+          scope?: string;
           memoryClass: string;
           category: string;
           text: string;
         };
       };
       rememberRequest = body;
-      const targetRecords = body.input.scope === 'project' ? projectRecords : profileRecords;
+      const existingRecord = managedRecords.find((record) => record.id === body.input.id);
+      const targetRecords =
+        existingRecord?.scope === 'project' || body.input.scope === 'project'
+          ? projectRecords
+          : profileRecords;
       if (body.capability === 'remove') {
-        const target = projectRecords.find((record) => record.id === body.input.id);
-        if (target) target.status = 'superseded';
+        removeRequest = body;
+        if (body.input.permanent === true) {
+          const targetIndex = targetRecords.findIndex((record) => record.id === body.input.id);
+          if (targetIndex >= 0) targetRecords.splice(targetIndex, 1);
+          const managedIndex = managedRecords.findIndex((record) => record.id === body.input.id);
+          if (managedIndex >= 0) managedRecords.splice(managedIndex, 1);
+        } else {
+          const target = targetRecords.find((record) => record.id === body.input.id);
+          if (target) target.status = 'superseded';
+        }
         await route.fulfill({ json: { result: null } });
         return;
       }
       const addedRecord = {
-        id: 'new-profile-memory',
+        id: body.input.scope === 'project' ? 'new-project-memory' : 'new-profile-memory',
         ...body.input,
         memoryType: body.input.scope === 'project' ? 'collaboration-policy' : 'core-profile',
         status: 'proven',
@@ -682,10 +696,10 @@ test('adds global or project memory and explains why saved memories are applied'
   await expect(page.getByLabel('记忆应用详情')).toContainText('回答项目问题');
   await page.getByRole('button', { name: '新增偏好' }).click();
 
-  const profileDialog = page.getByRole('dialog', { name: '新增偏好' });
-  await expect(profileDialog.getByText('偏好内容', { exact: true })).toBeVisible();
-  await expect(profileDialog.getByText('分类（可选）', { exact: true })).toBeVisible();
+  const profileDialog = page.getByRole('dialog').last();
   const profileInput = profileDialog.getByLabel('偏好内容');
+  await expect(profileInput).toBeVisible();
+  await expect(profileDialog.getByLabel('分类（可选）')).toBeVisible();
   await expect(profileInput).toBeFocused();
   await expect(profileDialog.getByRole('button', { name: /保\s*存/u })).toBeDisabled();
 
@@ -711,10 +725,10 @@ test('adds global or project memory and explains why saved memories are applied'
   ).toBeVisible();
 
   await page.getByRole('button', { name: '新增项目记忆' }).click();
-  const projectDialog = page.getByRole('dialog', { name: '新增项目记忆' });
-  await expect(projectDialog.getByText('记忆内容', { exact: true })).toBeVisible();
-  await expect(projectDialog.getByText('分类（可选）', { exact: true })).toBeVisible();
+  const projectDialog = page.getByRole('dialog').last();
   const projectInput = projectDialog.getByLabel('记忆内容');
+  await expect(projectInput).toBeVisible();
+  await expect(projectDialog.getByLabel('分类（可选）')).toBeVisible();
   await expect(projectInput).toBeFocused();
   await projectInput.fill('这个项目优先使用最小相关测试');
   await projectDialog.getByRole('button', { name: /保\s*存/u }).click();
@@ -750,11 +764,19 @@ test('adds global or project memory and explains why saved memories are applied'
     .filter({ hasText: '这个项目优先使用最小相关测试' })
     .getByLabel('删除记忆')
     .click();
-  const archivedProjectMemory = projectSection
-    .locator('.dashboard-memory-table-row')
-    .filter({ hasText: '这个项目优先使用最小相关测试' });
-  await expect(archivedProjectMemory).toContainText('已替代');
+  await expect
+    .poll(() => removeRequest)
+    .toMatchObject({
+      capability: 'remove',
+      input: expect.objectContaining({ permanent: true }),
+    });
+  await expect(
+    projectSection
+      .locator('.dashboard-memory-table-row')
+      .filter({ hasText: '这个项目优先使用最小相关测试' }),
+  ).toHaveCount(0);
   await expect(page.getByRole('button', { name: '协作策略 0' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '历史记录 0' })).toBeVisible();
 });
 
 test('collapses long personal memory records until the user expands them', async ({ page }) => {

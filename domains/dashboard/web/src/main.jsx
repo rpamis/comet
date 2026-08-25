@@ -5482,7 +5482,7 @@ function PersonalMemoryCenter({ data, onInvoke }) {
                 aria-label="删除记忆"
                 onClick={(event) => {
                   event.stopPropagation();
-                  onInvoke('remove', { id: record.id });
+                  onInvoke('remove', { id: record.id, permanent: true });
                 }}
               />
             </Tooltip>
