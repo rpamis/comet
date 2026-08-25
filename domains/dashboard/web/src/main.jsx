@@ -2796,9 +2796,18 @@ function memoryApplicationReason(record) {
   return record.lastApplication?.whyApplied ?? '尚未应用';
 }
 
+function contextMemorySourceLabel(memoryType) {
+  if (memoryType === 'core-profile') return '个人偏好';
+  if (memoryType === 'collaboration-policy') return '协作规则';
+  if (memoryType === 'personal-episode') return '过往经验';
+  if (memoryType === 'project-model') return '项目模型';
+  if (memoryType === 'project-policy') return '项目策略';
+  return '相关记忆';
+}
+
 function contextDeliveryLabel(application) {
   if (!application) return '尚未应用';
-  return application.delivery === 'full' ? '完整注入' : 'Manifest 摘要';
+  return application.delivery === 'full' ? '完整内容' : '摘要提示';
 }
 
 function contextOutcomeLabel(outcome) {
@@ -3788,8 +3797,8 @@ function PersonalMemorySettings({ page, data, onInvoke }) {
           <section className="dashboard-settings-panel" aria-labelledby="memory-provider-settings">
             <div className="dashboard-settings-panel-head">
               <div>
-                <h4 id="memory-provider-settings">Provider 与上下文</h4>
-                <p>选择存储来源，并设置注入到 Agent 的上下文预算</p>
+                <h4 id="memory-provider-settings">记忆注入</h4>
+                <p>控制哪些个人记忆会提供给 Agent，以及一次最多提供多少文字</p>
               </div>
               {pendingRecords.length > 0 && (
                 <Button size="small" onClick={() => setShowPending(true)}>
@@ -3799,34 +3808,43 @@ function PersonalMemorySettings({ page, data, onInvoke }) {
             </div>
             <div className="dashboard-memory-setting dashboard-memory-setting-stack">
               <div className="dashboard-memory-setting-copy">
-                <strong>Provider</strong>
-                <span>
-                  {provider === 'remote' ? '使用外部 Remote Provider' : '使用本地个人记忆存储'}
-                </span>
+                <strong>存储方式</strong>
+                <span>{provider === 'remote' ? '使用外部记忆服务' : '使用本地个人记忆存储'}</span>
               </div>
               <Select
                 value={providerMode}
-                aria-label="个人记忆 Provider"
+                aria-label="个人记忆存储方式"
                 options={[
-                  { value: 'local', label: 'Local Provider' },
-                  { value: 'remote', label: 'Remote Provider' },
+                  { value: 'local', label: '本地存储' },
+                  { value: 'remote', label: '远程存储' },
                 ]}
                 onChange={setProviderMode}
               />
               <div className="dashboard-memory-remote-form">
-                <Input
-                  value={profileCharLimit}
-                  onChange={(event) => setProfileCharLimit(event.target.value)}
-                  placeholder="核心画像注入预算"
-                  aria-label="核心画像注入预算"
-                />
-                <Input
-                  value={taskContextCharLimit}
-                  onChange={(event) => setTaskContextCharLimit(event.target.value)}
-                  placeholder="任务上下文注入预算"
-                  aria-label="任务上下文注入预算"
-                />
+                <div className="dashboard-memory-budget-field">
+                  <label htmlFor="dashboard-memory-profile-budget">稳定偏好最多带入</label>
+                  <Input
+                    id="dashboard-memory-profile-budget"
+                    value={profileCharLimit}
+                    addonAfter="字符"
+                    onChange={(event) => setProfileCharLimit(event.target.value)}
+                    aria-label="稳定偏好最多带入字符数"
+                  />
+                  <span>例如：你偏好的语言、协作习惯和长期要求。</span>
+                </div>
+                <div className="dashboard-memory-budget-field">
+                  <label htmlFor="dashboard-memory-task-budget">当前任务相关记忆最多带入</label>
+                  <Input
+                    id="dashboard-memory-task-budget"
+                    value={taskContextCharLimit}
+                    addonAfter="字符"
+                    onChange={(event) => setTaskContextCharLimit(event.target.value)}
+                    aria-label="当前任务相关记忆最多带入字符数"
+                  />
+                  <span>例如：与当前项目、路径和操作有关的记忆。</span>
+                </div>
               </div>
+              <p className="dashboard-memory-budget-note">这是注入上限，不是记忆条数或存储容量。</p>
               {providerMode === 'remote' && (
                 <>
                   <Input
@@ -4289,6 +4307,8 @@ function ProjectKnowledgeRegistry({
   visibleRecords,
   selectedRecord,
   selectedRecordId,
+  workspaceLabel,
+  workspaceDescription,
   onSelectRecord,
   recordSearchText,
   onRecordSearchTextChange,
@@ -4332,7 +4352,10 @@ function ProjectKnowledgeRegistry({
         <div className="dashboard-knowledge-category-groups">
           {PROJECT_KNOWLEDGE_CATEGORY_GROUPS.map((group) => (
             <section key={group.key} aria-labelledby={`knowledge-category-${group.key}`}>
-              <h3 id={`knowledge-category-${group.key}`}>{group.label}</h3>
+              <h3 id={`knowledge-category-${group.key}`}>
+                <span>{group.label}</span>
+                <small>内置</small>
+              </h3>
               {group.types.map((type) => {
                 const count = countedRecords.filter((record) => record.type === type).length;
                 return (
@@ -4359,7 +4382,10 @@ function ProjectKnowledgeRegistry({
       <section className="dashboard-knowledge-ledger" aria-labelledby="knowledge-ledger-title">
         <header className="dashboard-knowledge-ledger-toolbar">
           <div>
-            <strong id="knowledge-ledger-title">共 {visibleRecords.length} 条</strong>
+            <strong id="knowledge-ledger-title">{workspaceLabel}</strong>
+            <span className="dashboard-knowledge-ledger-toolbar-meta">
+              {visibleRecords.length} 条 · {workspaceDescription}
+            </span>
             <Tooltip title="刷新项目知识">
               <Button
                 type="text"
@@ -4801,15 +4827,18 @@ function ProjectKnowledgeQuery({
 
 function ContextManifestPreview({ items, emptyLabel }) {
   const manifest = Array.isArray(items) ? items : [];
-  const latestAt = manifest[0]?.appliedAt ?? manifest[0]?.lastApplication?.appliedAt;
+  const latestApplication = manifest[0]?.lastApplication ?? manifest[0];
+  const latestAt = latestApplication?.appliedAt;
+  const latestTask = latestApplication?.task;
   return (
-    <section className="dashboard-context-manifest" aria-label="最近一次 Context Manifest">
+    <section className="dashboard-context-manifest" aria-label="最近一次任务使用的记忆">
       <header>
         <div>
-          <strong>最近一次实际 Context Manifest</strong>
-          <span>这里只展示最近真实投递给 Agent 的内容</span>
+          <strong>最近一次任务使用的记忆</strong>
+          <span>这里只展示真正提供给 Agent 的内容，不是全部已保存记忆</span>
         </div>
         <span>
+          {latestTask ? `任务：${latestTask} · ` : ''}
           {manifest.length} 条{latestAt ? ` · ${formatTimestamp(latestAt)}` : ''}
         </span>
       </header>
@@ -4821,15 +4850,17 @@ function ContextManifestPreview({ items, emptyLabel }) {
             <article key={item.id}>
               <div>
                 <strong>{item.title}</strong>
-                <span>{item.summary}</span>
+                <span>
+                  {contextMemorySourceLabel(item.memoryType)} · {item.summary}
+                </span>
               </div>
               <dl>
                 <div>
-                  <dt>应用原因</dt>
+                  <dt>为什么使用</dt>
                   <dd>{item.whyApplied}</dd>
                 </div>
                 <div>
-                  <dt>加载方式</dt>
+                  <dt>提供内容</dt>
                   <dd>{contextDeliveryLabel(item.lastApplication ?? item)}</dd>
                 </div>
                 <div>
@@ -4949,6 +4980,10 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
       setSelectedRecordId(selectedRecord.id);
     }
   }, [selectedRecord, selectedRecordId]);
+  useEffect(() => {
+    setCategoryFilter('all');
+    setSelectedRecordId(null);
+  }, [workspaceTab]);
   const queryPreview = isDashboardRecord(snapshot.queryPreview) ? snapshot.queryPreview : null;
   const queryCompleted =
     !queryPending && queryPreview?.kind === 'search' && queryPreview.task === queryText.trim();
@@ -5023,7 +5058,7 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
         items={snapshot.manifestPreview}
         emptyLabel="最近还没有向 Agent 提供项目知识"
       />
-      <nav className="dashboard-knowledge-tabs" aria-label="项目知识视图">
+      <nav className="dashboard-knowledge-tabs" role="tablist" aria-label="项目知识视图">
         {[
           ['model', '项目模型'],
           ['policy', '项目策略'],
@@ -5033,8 +5068,10 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
           <button
             key={key}
             type="button"
+            role="tab"
+            aria-selected={workspaceTab === key}
+            tabIndex={workspaceTab === key ? 0 : -1}
             className={workspaceTab === key ? 'is-active' : ''}
-            aria-current={workspaceTab === key ? 'page' : undefined}
             onClick={() => setWorkspaceTab(key)}
           >
             {label}
@@ -5047,6 +5084,10 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
           visibleRecords={visibleRecords}
           selectedRecord={selectedRecord}
           selectedRecordId={selectedRecordId}
+          workspaceLabel={workspaceTab === 'model' ? '项目模型' : '项目策略'}
+          workspaceDescription={
+            workspaceTab === 'model' ? '结构、事实与依赖关系' : '决策、流程、约束与故障处理'
+          }
           onSelectRecord={setSelectedRecordId}
           recordSearchText={recordSearchText}
           onRecordSearchTextChange={setRecordSearchText}

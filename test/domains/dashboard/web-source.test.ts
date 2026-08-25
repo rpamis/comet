@@ -53,8 +53,9 @@ describe('dashboard web source contracts', () => {
     expect(page?.[0]).toContain("selectedRecord.memoryType === 'personal-episode'");
     expect(page?.[0]).toContain('情景摘要');
     expect(page?.[0]).toContain('selectedRecord.episode.actionSummary');
-    expect(source).toContain('最近一次实际 Context Manifest');
-    expect(source).toContain('这里只展示最近真实投递给 Agent 的内容');
+    expect(source).toContain('最近一次任务使用的记忆');
+    expect(source).toContain('这里只展示真正提供给 Agent 的内容');
+    expect(source).toContain('为什么使用');
     expect(page?.[0]).toContain('totalMemoryRecordCount');
     expect(page?.[0]).toContain("group.records.length > 0 && (memoryFilter === 'all'");
     expect(page?.[0]).toContain('dashboard-tool-page-memory');
@@ -81,6 +82,15 @@ describe('dashboard web source contracts', () => {
     expect(styles).toMatch(
       /\.dashboard-memory-table-row\.is-selected,[\s\S]*?background: color-mix\([\s\S]*?box-shadow: inset 2px 0 var\(--color-fg-2\);/,
     );
+  });
+
+  it('explains personal memory budgets in plain language', async () => {
+    const source = await readDashboardSource();
+
+    expect(source).toContain('稳定偏好最多带入');
+    expect(source).toContain('当前任务相关记忆最多带入');
+    expect(source).toContain('不是记忆条数或存储容量');
+    expect(source).toContain('addonAfter="字符"');
   });
 
   it('exposes the Project Knowledge registry and bounded management controls', async () => {
@@ -194,7 +204,7 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain("label: 'Comet 配置'");
     expect(source).toContain('统一管理个人记忆、项目规则与工作流配置');
     expect(source).not.toContain('dashboard-settings-modal-icon');
-    expect(source).toContain('个人记忆 Provider');
+    expect(source).toContain('个人记忆存储方式');
     expect(source).toContain('tokenConfigured');
     expect(source).toContain('Comet 默认工作流');
     expect(source).toContain('Hook 允许写入路径');

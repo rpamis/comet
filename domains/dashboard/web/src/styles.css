@@ -1391,6 +1391,30 @@ body {
   margin-top: 11px;
 }
 
+.dashboard-memory-budget-field {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 4px;
+}
+
+.dashboard-memory-budget-field label {
+  color: var(--color-fg-2);
+  font-size: 12px;
+  font-weight: 580;
+}
+
+.dashboard-memory-budget-field > span,
+.dashboard-memory-budget-note {
+  color: var(--color-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.dashboard-memory-budget-note {
+  margin: 7px 0 0;
+}
+
 .dashboard-memory-remote-form .ant-input {
   min-width: 0;
   flex: 1;
@@ -2085,12 +2109,23 @@ body {
 }
 
 .dashboard-knowledge-category-groups h3 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   margin: 0;
   padding: 9px 14px 5px;
   color: var(--color-meta);
   font-size: 11px;
   font-weight: 650;
   letter-spacing: 0.025em;
+}
+
+.dashboard-knowledge-category-groups h3 small {
+  color: var(--color-meta);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0;
 }
 
 .dashboard-knowledge-category {
@@ -2185,6 +2220,11 @@ body {
   color: var(--color-fg-2);
   font-size: 12px;
   font-weight: 620;
+}
+
+.dashboard-knowledge-ledger-toolbar-meta {
+  color: var(--color-muted);
+  font-size: 11px;
 }
 
 .dashboard-knowledge-ledger-toolbar .ant-btn {

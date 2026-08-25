@@ -54,6 +54,28 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
     ],
     updatedAt: '2026-08-22T12:00:00.000Z',
   };
+  const policyRecord = {
+    id: 'record-policy-checks',
+    projectId: 'fixture-project',
+    type: 'constraint',
+    state: 'proven',
+    authority: 'repository',
+    title: 'Policy checks',
+    summary: 'Run the project checks before delivery.',
+    applicablePaths: ['domains/'],
+    operations: ['verify'],
+    conclusions: [
+      {
+        text: 'Run project checks before delivery.',
+        sources: [{ source: 'docs/policy.md', anchor: 'checks' }],
+      },
+    ],
+    relations: [],
+    verification: [],
+    sourceVersions: [],
+    applicationHistory: [],
+    updatedAt: '2026-08-23T12:00:00.000Z',
+  };
   const projectKnowledgePage = () => ({
     pluginId: 'comet.project-knowledge',
     label: '项目知识',
@@ -75,7 +97,7 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
             timeoutMs: 1200,
           },
           retrieval: 'Remote 配置仅表示已配置，不代表最近一次请求成功。',
-          records: [baseRecord, ...manualRecords],
+          records: [baseRecord, policyRecord, ...manualRecords],
           manifestPreview: [
             {
               id: baseRecord.id,
@@ -85,11 +107,18 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
               delivery: 'manifest',
               appliedAt: '2026-08-23T08:00:00.000Z',
               outcome: 'used-successfully',
+              lastApplication: {
+                task: '复核项目测试策略',
+                whyApplied: '当前任务与验证阶段匹配',
+                delivery: 'manifest',
+                appliedAt: '2026-08-23T08:00:00.000Z',
+                outcome: 'used-successfully',
+              },
             },
           ],
           counts: {
             trial: manualRecords.filter((record) => record.state === 'trial').length,
-            proven: 1 + manualRecords.filter((record) => record.state === 'proven').length,
+            proven: 2 + manualRecords.filter((record) => record.state === 'proven').length,
             enforced: manualRecords.filter((record) => record.state === 'enforced').length,
             superseded: manualRecords.filter((record) => record.state === 'superseded').length,
           },
@@ -294,14 +323,16 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
 
   await page.goto('/');
   await page.getByRole('menuitem', { name: '项目知识' }).click();
-  const projectManifest = page.getByRole('region', { name: '最近一次 Context Manifest' });
+  const projectManifest = page.getByRole('region', { name: '最近一次任务使用的记忆' });
   await expect(projectManifest).toContainText('Focused tests');
+  await expect(projectManifest).toContainText('任务：复核项目测试策略');
   await expect(projectManifest).toContainText('当前任务与验证阶段匹配');
   await expect(projectManifest).toContainText('应用成功');
   await expect(page.getByLabel('项目规则状态与操作')).toBeVisible();
-  await expect(page.getByRole('navigation', { name: '项目知识视图' })).toBeVisible();
+  await expect(page.getByRole('tablist', { name: '项目知识视图' })).toBeVisible();
   await expect(page.getByRole('complementary', { name: '知识分类' })).toBeVisible();
   await expect(page.getByRole('complementary', { name: '记录详情' })).toBeVisible();
+  await expect(page.getByText('内置', { exact: true })).toHaveCount(2);
   await expect(page.getByText('COMET_KNOWLEDGE_TOKEN')).toHaveCount(0);
   await expect(page.getByText('docs/rule.md#rule', { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('complementary', { name: '记录详情' })).toContainText(
@@ -328,11 +359,21 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   );
   await expect(page.getByText('知识提供方式', { exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: '数据来源' }).click();
+  await page.getByRole('tab', { name: '项目模型' }).click();
+  await page.getByRole('button', { name: /项目拓扑/u }).click();
+  await page.getByRole('tab', { name: '项目策略' }).click();
+  await expect(page.getByLabel('项目知识记录列表')).toContainText('Policy checks');
+  await expect(page.getByLabel('项目知识记录列表')).not.toContainText('Focused tests');
+  await expect(page.getByRole('tab', { name: '项目策略' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+
+  await page.getByRole('tab', { name: '数据来源' }).click();
   await expect(page.getByRole('heading', { name: '数据来源' })).toBeVisible();
   await expect(page.getByLabel('项目知识数据来源列表')).toContainText('docs/rule.md#rule');
 
-  await page.getByRole('button', { name: '检索测试' }).click();
+  await page.getByRole('tab', { name: '检索测试' }).click();
   await page.getByLabel('查询项目知识').fill('focused tests');
   await page.getByRole('button', { name: '测试检索' }).click();
   await expect(page.getByLabel('项目知识查询结果')).toContainText('Run focused tests first.');
@@ -342,7 +383,7 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   await expect(page.getByLabel('项目知识查询结果')).toContainText(
     '检索已完成，没有找到与当前任务匹配的项目知识',
   );
-  await page.getByRole('button', { name: '项目模型' }).click();
+  await page.getByRole('tab', { name: '项目模型' }).click();
 
   await page.getByRole('button', { name: '新增项目知识' }).click();
   const createDialog = page.getByRole('dialog');
@@ -358,7 +399,7 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   await createDialog.getByLabel('项目知识适用操作').fill('verify');
   await createDialog.getByLabel('项目知识验证命令').fill('pnpm test --filter project-knowledge');
   await page.getByRole('button', { name: /保\s*存/u }).click();
-  await page.getByRole('button', { name: '项目策略' }).click();
+  await page.getByRole('tab', { name: '项目策略' }).click();
   await page.getByLabel('项目知识记录状态').click();
   await page.locator('.ant-select-item-option').filter({ hasText: '强制执行' }).click();
   const manualRecordButton = page
@@ -510,6 +551,13 @@ test('adds global or project memory and explains why saved memories are applied'
           delivery: 'manifest',
           appliedAt: '2026-08-23T00:00:00.000Z',
           outcome: 'used-successfully',
+          lastApplication: {
+            task: '撰写发布说明',
+            whyApplied: '用户明确设置',
+            delivery: 'manifest',
+            appliedAt: '2026-08-23T00:00:00.000Z',
+            outcome: 'used-successfully',
+          },
         },
       ],
     },
@@ -623,8 +671,9 @@ test('adds global or project memory and explains why saved memories are applied'
 
   await page.goto('/');
   await page.getByRole('menuitem', { name: '个人记忆' }).click();
-  const memoryManifest = page.getByRole('region', { name: '最近一次 Context Manifest' });
+  const memoryManifest = page.getByRole('region', { name: '最近一次任务使用的记忆' });
   await expect(memoryManifest).toContainText('默认使用中文回复');
+  await expect(memoryManifest).toContainText('任务：撰写发布说明');
   await expect(memoryManifest).toContainText('用户明确设置');
   await expect(memoryManifest).toContainText('应用成功');
   await expect(page.getByText('为什么应用：用户明确设置', { exact: true })).toBeVisible();
