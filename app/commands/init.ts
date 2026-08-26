@@ -75,7 +75,7 @@ import { installSuperpowersForPlatforms } from '../../domains/integrations/super
 import {
   hasCodegraphProjectIndex,
   initializeCodegraphProject,
-  inspectCodegraphIndex,
+  inspectCodegraphIntegration,
   installCodegraph,
   resolveCodegraphCommand,
 } from '../../domains/integrations/codegraph.js';
@@ -1034,7 +1034,24 @@ export async function initCommand(
       options.codegraph === 'init'
         ? await initializeCodegraphProject(projectPath, true, options.json === true)
         : await installCodegraph(projectPath, scope, true, options.json === true);
-    log(`  CodeGraph: ${cgGlobalStatus}`);
+    if (!options.json) {
+      log(
+        `  CodeGraph CLI: ${
+          cgGlobalStatus === 'failed' ? 'failed' : 'installed or already available'
+        }`,
+      );
+      log(
+        `  CodeGraph MCP: ${
+          options.codegraph === 'init'
+            ? lang === 'zh'
+              ? '未修改（仅初始化项目索引）'
+              : 'unchanged (project index only)'
+            : lang === 'zh'
+              ? `已执行自动检测 Agent，范围：${scope}`
+              : `auto-detected Agents, scope: ${scope}`
+        }`,
+      );
+    }
     for (const r of results) {
       r.codegraph = cgGlobalStatus;
       if (cgGlobalStatus === 'failed') {
@@ -1057,26 +1074,36 @@ export async function initCommand(
       ? {
           requested: 'skip' as const,
           status: 'skipped' as const,
+          cliStatus: 'skipped' as const,
+          indexStatus: 'skipped' as const,
+          mcpStatus: 'not_detected' as const,
+          agents: [],
+          effectiveForAgent: {},
           repairable: false,
           remediation: null,
           detail: 'CodeGraph setup explicitly skipped',
         }
-      : scope === 'project'
-        ? {
-            requested: options.codegraph ?? ('auto' as const),
-            ...inspectCodegraphIndex(projectPath),
-          }
-        : {
-            requested: options.codegraph ?? ('auto' as const),
-            status: resolveCodegraphCommand() ? ('cli_ready' as const) : ('cli_missing' as const),
-            repairable: false,
-            remediation: resolveCodegraphCommand()
-              ? null
-              : 'npm install -g @colbymchenry/codegraph',
-            detail: resolveCodegraphCommand()
-              ? 'CodeGraph CLI is installed; project indexes are not part of global scope'
-              : 'CodeGraph CLI is not installed',
-          };
+      : {
+          requested: options.codegraph ?? ('auto' as const),
+          ...inspectCodegraphIntegration(projectPath, scope),
+        };
+
+  if (!options.json && options.codegraph !== 'skip') {
+    const agentSummary =
+      codegraph.agents.length === 0
+        ? lang === 'zh'
+          ? '未检测到受支持的 Agent 配置'
+          : 'no supported Agent configuration detected'
+        : codegraph.agents
+            .map(
+              (agent) =>
+                `${agent.name}: ${agent.registered ? 'registered' : 'not registered'} (${agent.scope})`,
+            )
+            .join('; ');
+    log(`  CodeGraph CLI: ${codegraph.cliStatus}`);
+    log(`  CodeGraph project index: ${codegraph.indexStatus}`);
+    log(`  CodeGraph MCP: ${codegraph.mcpStatus} — ${agentSummary}`);
+  }
 
   let projectConfigCreated = false;
   let projectConfigUpdated = false;

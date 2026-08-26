@@ -280,6 +280,7 @@ Comet Eval的自动化双Agent架构能够在线上与LangSmith/LangFuse环境�
 
 检查项目级/全局安装、工作目录、已安装技能、脚本、CodeGraph 索引，以及活跃 change 的诊断信息。`comet doctor` 会对畸形
 `.comet.yaml` 报告 diagnostic 状态，对有效 change 报告 current step / runtime mode，并指出哪些运行时证据缺失导致无法安全恢复。在 Git secondary worktree 中，它会分别报告当前 worktree、primary worktree 与 global fallback 的安装状态；primary 中被忽略的资产只用于分类，不会跨 worktree 执行。
+CodeGraph 诊断会分别展示 CLI 是否已安装、当前项目索引是否最新、MCP 是否已注册到受支持的 Agent，以及每个 Agent 是否真正具备有效能力；项目索引正常不代表某个 Agent 已注册 MCP。
 
 | 选项              | 描述                                                                         |
 | ----------------- | ---------------------------------------------------------------------------- |

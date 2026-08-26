@@ -778,14 +778,13 @@ async function createNativeChangeLocked(options: {
   }
 }
 
-export const NATIVE_CHANGE_DOCUMENT_MAX_BYTES = 256 * 1024;
-
 async function readChangeDocumentFile(file: string, root = path.dirname(file)): Promise<unknown> {
   const ref = path.relative(root, file).split(path.sep).join('/');
   const source = await readNativeBoundedTextFile({
     root,
     ref,
-    maxBytes: NATIVE_CHANGE_DOCUMENT_MAX_BYTES,
+    maxBytes: null,
+    includeHash: false,
   });
   const document = parseDocument(source.text, { uniqueKeys: true });
   if (document.errors.length > 0) {

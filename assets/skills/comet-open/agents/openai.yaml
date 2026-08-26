@@ -2,4 +2,4 @@ interface:
   display_name: "Comet Classic Phase 1: Open"
   short_description: "Open an OpenSpec change and stand up its artifacts"
 policy:
-  allow_implicit_invocation: false
+  allow_implicit_invocation: true

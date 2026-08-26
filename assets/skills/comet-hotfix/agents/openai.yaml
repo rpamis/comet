@@ -2,4 +2,4 @@ interface:
   display_name: "Comet Classic Preset: Hotfix"
   short_description: "Fix an existing behavior bug via a short open-build-verify-archive flow"
 policy:
-  allow_implicit_invocation: false
+  allow_implicit_invocation: true

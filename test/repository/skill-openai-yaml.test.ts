@@ -12,9 +12,19 @@ type OpenAiYaml = {
 
 const languageRoots = ['assets/skills', 'assets/skills-zh'] as const;
 
-// Skills that must stay model-invocable: the ambient resume probe and the
-// /comet CLI resolver rely on the model being able to load these entries.
-const modelInvocableSkills = new Set(['comet', 'comet-classic', 'comet-native']);
+// The root workflow and its phase/preset entries must be model-invocable so
+// /comet can dispatch them without requiring a second manual slash command.
+const implicitlyInvocableSkills = new Set([
+  'comet-open',
+  'comet-design',
+  'comet-build',
+  'comet-verify',
+  'comet-archive',
+  'comet-hotfix',
+  'comet-tweak',
+]);
+const alwaysModelInvocableSkills = new Set(['comet', 'comet-classic', 'comet-native']);
+const explicitOnlySkills = new Set(['comet-review', 'comet-any']);
 
 async function readSkillFrontmatter(skillRoot: string, skillName: string): Promise<Set<string>> {
   const content = await fs.readFile(path.resolve(skillRoot, skillName, 'SKILL.md'), 'utf8');
@@ -76,7 +86,14 @@ describe('Skill openai.yaml platform metadata', () => {
     const skillNames = getUserFacingSkillNames(manifest);
 
     for (const skillName of skillNames) {
-      const shouldBeExplicitOnly = !modelInvocableSkills.has(skillName);
+      const shouldBeImplicitlyInvocable =
+        implicitlyInvocableSkills.has(skillName) || alwaysModelInvocableSkills.has(skillName);
+      const shouldBeExplicitOnly = explicitOnlySkills.has(skillName);
+
+      expect(
+        shouldBeImplicitlyInvocable || shouldBeExplicitOnly,
+        `${skillName} has an invocation policy classification`,
+      ).toBe(true);
 
       for (const root of languageRoots) {
         const frontmatter = await readSkillFrontmatter(root, skillName);
@@ -91,11 +108,11 @@ describe('Skill openai.yaml platform metadata', () => {
         );
         const doc = parseYaml(raw) as OpenAiYaml;
 
-        if (shouldBeExplicitOnly) {
+        if (shouldBeExplicitOnly || implicitlyInvocableSkills.has(skillName)) {
           expect(
             doc.policy?.allow_implicit_invocation,
-            `${root}/${skillName} allows implicit invocation only for model-invocable entries`,
-          ).toBe(false);
+            `${root}/${skillName} invocation policy`,
+          ).toBe(shouldBeImplicitlyInvocable);
         } else {
           expect(
             doc.policy,

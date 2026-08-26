@@ -1,7 +1,6 @@
 ---
 name: comet-build
 description: "Phase 3 of Comet Classic — recover or create the implementation plan and execute its tasks."
-disable-model-invocation: true
 ---
 
 # Comet Phase 3: Plan and Build (Build)

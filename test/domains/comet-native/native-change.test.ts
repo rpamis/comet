@@ -16,7 +16,6 @@ import {
   createNativeChange,
   inspectNativeChangeValue,
   listNativeChanges,
-  NATIVE_CHANGE_DOCUMENT_MAX_BYTES,
   NativeChangeRevisionConflictError,
   nativeChangeDocument,
   nativeV2ChangeDocument,
@@ -502,21 +501,28 @@ describe('Native change store', () => {
     expect(await readNativeChange(paths, state.name)).toEqual(state);
   });
 
-  it('fails closed before parsing an oversized change document', async () => {
+  it('reads an oversized valid change document without an arbitrary size limit', async () => {
     const state = await createNativeChange({
       paths,
       name: 'oversized-change',
       language: 'en',
       verificationProtocol: 'legacy-v1',
     });
+    const oversizedState = {
+      ...state,
+      spec_changes: Array.from({ length: 6000 }, (_, index) => ({
+        capability: `capability-${index}`,
+        operation: 'create' as const,
+        source: `specs/capability-${index}/spec.md`,
+        base_hash: null,
+      })),
+    };
     await fs.writeFile(
       path.join(paths.changesDir, state.name, 'comet-state.yaml'),
-      'x'.repeat(NATIVE_CHANGE_DOCUMENT_MAX_BYTES + 1),
+      stringify(nativeChangeDocument(oversizedState)),
     );
 
-    await expect(readNativeChange(paths, state.name)).rejects.toThrow(
-      `exceeds ${NATIVE_CHANGE_DOCUMENT_MAX_BYTES} bytes`,
-    );
+    await expect(readNativeChange(paths, state.name)).resolves.toEqual(oversizedState);
   });
 
   it('rejects a stale change write instead of silently overwriting a newer revision', async () => {

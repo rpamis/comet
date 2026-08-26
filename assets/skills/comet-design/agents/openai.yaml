@@ -2,4 +2,4 @@ interface:
   display_name: "Comet Classic Phase 2: Design"
   short_description: "Produce the deep technical Design Doc for a change"
 policy:
-  allow_implicit_invocation: false
+  allow_implicit_invocation: true

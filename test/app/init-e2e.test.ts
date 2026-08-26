@@ -222,6 +222,11 @@ describe('comet init E2E', () => {
     expect(output.codegraph).toMatchObject({
       requested: 'init',
       status: 'index_ready',
+      cliStatus: 'installed',
+      indexStatus: 'current',
+      mcpStatus: expect.any(String),
+      agents: expect.any(Array),
+      effectiveForAgent: expect.any(Object),
       repairable: false,
       remediation: null,
     });
@@ -252,9 +257,14 @@ describe('comet init E2E', () => {
       }),
     );
 
-    expect(output.codegraph).toEqual({
+    expect(output.codegraph).toMatchObject({
       requested: 'skip',
       status: 'skipped',
+      cliStatus: 'skipped',
+      indexStatus: 'skipped',
+      mcpStatus: 'not_detected',
+      agents: [],
+      effectiveForAgent: {},
       repairable: false,
       remediation: null,
       detail: 'CodeGraph setup explicitly skipped',

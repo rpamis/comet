@@ -2,6 +2,17 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-beta.20] - 2026-08-27
+
+### Changed
+
+- **CodeGraph diagnostics**: `comet init` and `comet doctor` now distinguish the CodeGraph CLI installation, current project index, Agent MCP registration, and effective Agent capability instead of presenting them as one combined status.
+- **Classic workflow dispatch**: `/comet` can now implicitly invoke the Classic phase and preset Skills it needs to continue a workflow, including on hosts that support model-invoked Skills such as Qwen Code.
+
+### Fixed
+
+- **Native Portable child discovery**: valid Portable v4 change documents larger than 256 KiB are no longer rejected by an arbitrary reader limit during linked-worktree child discovery.
+
 ## What's Changed [0.4.0-beta.19] - 2026-08-21
 
 ### Added

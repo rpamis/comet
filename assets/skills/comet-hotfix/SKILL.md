@@ -1,7 +1,6 @@
 ---
 name: comet-hotfix
 description: "Comet preset — fix an existing behavior bug through a short open-build-verify-archive flow."
-disable-model-invocation: true
 ---
 
 # Comet Preset Path: Hotfix

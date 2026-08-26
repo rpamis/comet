@@ -1,7 +1,6 @@
 ---
 name: comet-verify
 description: "Phase 4 of Comet Classic — verify a change, record evidence, and drive repair loops."
-disable-model-invocation: true
 ---
 
 # Comet Phase 4: Verify
