@@ -1510,6 +1510,7 @@ test('gives the workbench restrained surface depth and interactive card feedback
 test('keeps the redesigned header focused on controls rather than helper copy', async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto('/?demo');
 
   const header = page.locator('.comet-workbench-header');
@@ -1519,24 +1520,37 @@ test('keeps the redesigned header focused on controls rather than helper copy', 
   await expect(header).toHaveCSS('min-height', '68px');
   await expect(header.locator('.ant-segmented')).toHaveCount(0);
   const search = header.locator('.comet-header-search');
-  await expect(search).toHaveCSS('position', 'absolute');
-  await expect(search).toHaveCSS('width', '360px');
+  const mainWorkspace = page.locator('.dashboard-workbench > section');
+  await expect(search).toHaveCSS('position', 'static');
+  await expect(search).toHaveCSS('max-width', '420px');
   await expect(page.locator('.comet-header-search .ant-input-affix-wrapper')).toHaveCSS(
     'min-height',
     '40px',
   );
   await expect(page.getByRole('button', { name: '立即刷新' })).toHaveText('');
 
-  const [searchBox, workbenchBox] = await Promise.all([
-    search.boundingBox(),
-    page.locator('.dashboard-workbench').boundingBox(),
-  ]);
-  if (!searchBox || !workbenchBox) {
-    throw new Error('Expected the search field and workbench to have measurable bounds');
-  }
-  expect(
-    Math.abs(searchBox.x + searchBox.width / 2 - (workbenchBox.x + workbenchBox.width / 2)),
-  ).toBeLessThanOrEqual(1);
+  const expectSearchCenteredInMainWorkspace = async () => {
+    const [searchBox, mainWorkspaceBox] = await Promise.all([
+      search.boundingBox(),
+      mainWorkspace.boundingBox(),
+    ]);
+    if (!searchBox || !mainWorkspaceBox) {
+      throw new Error('Expected the search field and main workspace to have measurable bounds');
+    }
+    expect(Math.abs(searchBox.width - 420)).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(
+        searchBox.x + searchBox.width / 2 - (mainWorkspaceBox.x + mainWorkspaceBox.width / 2),
+      ),
+    ).toBeLessThanOrEqual(1);
+  };
+
+  await expectSearchCenteredInMainWorkspace();
+
+  await page.getByRole('button', { name: '收起侧边栏' }).click();
+  await page.waitForTimeout(260);
+  await expect(page.getByRole('button', { name: '展开侧边栏' })).toBeVisible();
+  await expectSearchCenteredInMainWorkspace();
 });
 
 test('uses restrained corners for the two Header search controls', async ({ page }) => {

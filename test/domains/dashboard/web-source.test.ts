@@ -45,12 +45,11 @@ describe('dashboard web source contracts', () => {
 
   it('centers the header search within the main workspace without rail compensation', async () => {
     const styles = await readDashboardStyles();
-
-    expect(styles).toContain(
-      'grid-template-columns: minmax(0, 1fr) minmax(260px, 420px) minmax(0, 1fr);',
+    const desktopHeaderLayout = styles.match(
+      /@media \(min-width: 1024px\)\s*\{[\s\S]*?\.comet-workbench-header\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)\s+minmax\(260px,\s*420px\)\s+minmax\(0,\s*1fr\);[\s\S]*?}\s*[\s\S]*?\.comet-header-search\s*\{[\s\S]*?grid-column:\s*2;[\s\S]*?position:\s*static;[\s\S]*?max-width:\s*420px;[\s\S]*?}\s*[\s\S]*?\.comet-header-actions\s*\{[\s\S]*?grid-column:\s*3;[\s\S]*?margin-left:\s*0;[\s\S]*?}\s*}/,
     );
-    expect(styles).toContain('.comet-header-search {\n    grid-column: 2;');
-    expect(styles).toContain('.comet-header-actions {\n    grid-column: 3;');
+
+    expect(desktopHeaderLayout).toBeTruthy();
     expect(styles).not.toContain('left: calc(50% - (var(--rail-w) / 2));');
     expect(styles).not.toContain('.dashboard-workbench.is-sidebar-collapsed .comet-header-search');
   });
