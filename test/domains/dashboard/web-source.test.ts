@@ -91,30 +91,6 @@ describe('dashboard web source contracts', () => {
     );
   });
 
-  it('keeps Personal Memory and Project Knowledge as separate center workspaces', async () => {
-    const source = await readDashboardSource();
-    const styles = await readDashboardStyles();
-    const projectPage = source.match(
-      /function ProjectKnowledgeCenter\([\s\S]*?\n}\n\nfunction PersonalMemoryCenter/,
-    );
-    const memoryPage = source.match(/function PersonalMemoryCenter\([\s\S]*?\n}\n\nfunction/);
-
-    expect(projectPage?.[0]).toContain('className="dashboard-plugin-center-heading"');
-    expect(projectPage?.[0]).toContain('项目知识');
-    expect(projectPage?.[0]).toContain('证据工作台');
-    expect(projectPage?.[0]).toContain('aria-label="项目知识状态与操作"');
-    expect(memoryPage?.[0]).toContain('个人记忆');
-    expect(memoryPage?.[0]).toContain('长期理解与偏好');
-    expect(memoryPage?.[0]).toContain('dashboard-memory-category-icon');
-    expect(source).toContain('dashboard-context-manifest--knowledge');
-    expect(source).toContain('dashboard-context-manifest--memory');
-    expect(source).toContain('className="dashboard-plugin-center-heading"');
-    expect(styles).toContain('.dashboard-plugin-center-heading');
-    expect(styles).toContain('.dashboard-context-manifest--knowledge');
-    expect(styles).toContain('.dashboard-context-manifest--memory');
-    expect(styles).toContain('.dashboard-memory-category-icon');
-  });
-
   it('explains personal memory budgets in plain language', async () => {
     const source = await readDashboardSource();
 
@@ -319,12 +295,12 @@ describe('dashboard web source contracts', () => {
     );
   });
 
-  it('keeps plugin page titles in the content canvas without changing global navigation', async () => {
+  it('lets plugin navigation carry the page title while the canvas starts with state and actions', async () => {
     const [source, styles] = await Promise.all([readDashboardSource(), readDashboardStyles()]);
 
     expect(source).toContain('className="dashboard-plugin-context-bar"');
-    expect(source).toContain('title="个人记忆"');
-    expect(source).toContain('aria-label="项目知识状态与操作"');
+    expect(source).not.toContain('title="个人记忆"');
+    expect(source).toContain('aria-label="项目规则状态与操作"');
     expect(source).not.toContain('<h2>{page.label}</h2>');
     expect(styles).toContain('.dashboard-plugin-context-bar');
     expect(styles).toContain('--dashboard-plugin-body-size: 13px');
