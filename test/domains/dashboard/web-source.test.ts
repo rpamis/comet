@@ -54,6 +54,18 @@ describe('dashboard web source contracts', () => {
     expect(styles).not.toContain('.dashboard-workbench.is-sidebar-collapsed .comet-header-search');
   });
 
+  it('keeps the desktop project selector compact while preserving responsive mobile width', async () => {
+    const styles = await readDashboardStyles();
+    const desktopProjectSelector = styles.match(
+      /@media \(min-width: 1024px\)\s*\{[\s\S]*?\.comet-header-context\s*\{[\s\S]*?grid-column:\s*1;[\s\S]*?width:\s*180px;[\s\S]*?max-width:\s*100%;[\s\S]*?flex:\s*0 0 auto;[\s\S]*?}[\s\S]*?\.comet-project-select\s*\{[\s\S]*?flex:\s*0 0 180px;[\s\S]*?width:\s*180px;[\s\S]*?max-width:\s*100%;[\s\S]*?}/,
+    );
+
+    expect(desktopProjectSelector).toBeTruthy();
+    expect(styles).toContain('flex: 1 1 auto;');
+    expect(styles).toContain('width: 100%;');
+    expect(styles).not.toContain('width: min(292px, 100%);');
+  });
+
   it('keeps personal memory focused on searchable records and application reasons', async () => {
     const [source, styles] = await Promise.all([readDashboardSource(), readDashboardStyles()]);
     const page = source.match(

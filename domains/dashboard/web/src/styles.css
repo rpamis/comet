@@ -4566,8 +4566,15 @@ body {
 
   .comet-header-context {
     grid-column: 1;
-    width: min(292px, 100%);
-    flex: 0 1 auto;
+    width: 180px;
+    max-width: 100%;
+    flex: 0 0 auto;
+  }
+
+  .comet-project-select {
+    flex: 0 0 180px;
+    width: 180px;
+    max-width: 100%;
   }
 
   .comet-header-search {
