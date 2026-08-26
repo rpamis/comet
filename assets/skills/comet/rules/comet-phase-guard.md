@@ -74,9 +74,9 @@ Hook 硬拦截仅豁免 Classic layout resolver 返回的当前阶段合法产�
 
 - **open**: artifact 最终审视（同时确认 change 名称与范围）；只有目标/范围仍有互斥选择或大型 PRD 拆分时增加前置决策
 - **design**: brainstorming 方案确认（确认前不得创建 Design Doc）
-- **build**: 能力预检后，在一个联合决策中选择 plan-ready 暂停或所有可执行的 `isolation` / `build_mode` / `tdd_mode` / `review_mode`；选择 branch 时同时确认分支名，另含 spec 大规模变更确认、预设升级判定
+- **build**: plan 写入后只提供一个联合决策，一次确认是否继续、执行方式、TDD 模式和代码审查模式；工作区已由 Open 准备并绑定，缺失 isolation 返回 Open；范围扩张需重新设计/拆分，或预设升级时另行等待用户
 - **verify**: 接受 WARNING/SUGGESTION 偏差、Spec 漂移处理，或超过自动修复上限后的继续/停止策略
-- **archive**: 归档前最终确认，以及归档提交后的 branch handling 选择
+- **archive**: 在归档前一个最终确认中同时选择是否归档及归档提交的交付方式
 
 ## Design 阶段专项
 
@@ -88,7 +88,7 @@ Hook 硬拦截仅豁免 Classic layout resolver 返回的当前阶段合法产�
 
 ## Build 阶段专项
 
-1. plan 创建后，展示本工作流支持的全部选择并只发起一个联合决策：暂停，或一次性提交工作区/执行/TDD/审查配置及条件性的分支名
+1. plan 创建后按 `comet-build` 的联合决策协议一次性展示暂停选项、执行方式、TDD 模式和代码审查模式；只有用户明确选择继续并给出完整配置后，才写入 `build_mode`、`tdd_mode` 和 `review_mode`；选择暂停时写入 `build_pause: plan-ready`
 2. 每个 task 验收后必须: tasks.md 打勾 → git commit（不得积攒）。`subagent-driven-development` 必须按当前 `review_mode` 完成验收，再由协调者按任务唯一文本定向勾选和验证；不得用未完成任务总表代替当前任务验证
 3. 遇到失败必须加载 **systematic-debugging** skill，根因未定位前不得提出源码修复
 4. spec 变更分级: 小改直接编辑 | 中改加载 brainstorming | 大改暂停等用户确认拆分

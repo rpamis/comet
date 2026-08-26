@@ -2940,7 +2940,9 @@ describe('comet scripts', () => {
     expect(guard.status).not.toBe(0);
     expect(guard.stderr).toContain('[FAIL] subagent dispatch confirmed');
     expect(guard.stderr).toContain('subagent_dispatch must be confirmed');
-    expect(guard.stderr).toContain('record the selected subagent-driven execution');
+    expect(guard.stderr).toContain(
+      'resume /comet-build and use the single joint decision to confirm the supported execution configuration',
+    );
     expect(guard.stderr).not.toContain('real background subagent');
     expect(transition.status).not.toBe(0);
     expect(transition.stderr).toContain('subagent_dispatch must be confirmed');
@@ -4571,7 +4573,9 @@ describe('comet scripts', () => {
       expect(result.stdout).toContain('isolation: PENDING');
       expect(result.stdout).toContain('build_mode: PENDING');
       expect(result.stdout).toContain('Tasks: 1/2 done, 1 pending');
-      expect(result.stdout).toContain("current platform's user confirmation mechanism");
+      expect(result.stdout).toContain(
+        'Isolation is missing. Resume /comet-open to resolve and prepare the workspace; Build must not choose or create it.',
+      );
     });
 
     it('outputs plan-ready pause recovery context for build phase', async () => {
@@ -4605,7 +4609,9 @@ describe('comet scripts', () => {
       expect(result.status).toBe(0);
       expect(result.stdout).toContain('build_pause: DONE (plan-ready)');
       expect(result.stdout).toContain('Plan-ready pause');
-      expect(result.stdout).toContain('choose isolation, build mode, TDD mode, and review mode');
+      expect(result.stdout).toContain(
+        'workspace isolation is missing. Resume /comet-open to resolve and prepare the workspace without regenerating the plan',
+      );
     });
 
     it('outputs review mode selection guidance when recovering build phase', async () => {
@@ -4642,8 +4648,9 @@ describe('comet scripts', () => {
 
       expect(result.status).toBe(0);
       expect(result.stdout).toContain('review_mode: PENDING');
-      expect(result.stdout).toContain('Review mode not selected');
-      expect(result.stdout).toContain('ask user for off, standard, or thorough');
+      expect(result.stdout).toContain(
+        'Review mode is missing. Resume /comet-build and use the single joint decision to choose the supported code-review mode.',
+      );
     });
 
     it('outputs subagent dispatch guidance when recovering build phase with pending tasks', async () => {
@@ -4778,8 +4785,9 @@ describe('comet scripts', () => {
       expect(result.status).toBe(0);
       expect(result.stdout).toContain('subagent_dispatch: PENDING');
       expect(result.stdout).toContain('Selected subagent execution is not recorded');
-      expect(result.stdout).toContain('comet state set <change-name> subagent_dispatch confirmed');
-      expect(result.stdout).toContain('through subagent execution');
+      expect(result.stdout).toContain(
+        'Resume /comet-build and use the single joint decision to confirm the supported execution configuration.',
+      );
     });
 
     it('keeps subagent dispatch guidance when plan-ready pause is stale', async () => {
@@ -4817,7 +4825,7 @@ describe('comet scripts', () => {
       ]);
 
       expect(result.status).toBe(0);
-      expect(result.stdout).toContain('Plan-ready pause is stale');
+      expect(result.stdout).toContain('Resume the explicit plan-ready pause');
       expect(result.stdout).toContain('dispatch a subagent');
       expect(result.stdout).toContain(
         'Do not execute the pending task directly in the main window',

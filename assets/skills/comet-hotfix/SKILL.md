@@ -166,7 +166,7 @@ The following genuine user decisions still pause:
 
 1. Encountering an upgrade-assessment signal (see "Upgrade Assessment" section). **Pause, present the choices, and wait for the user to explicitly choose**: continue the hotfix flow, or upgrade to the full `/comet-classic` workflow
 2. Verify-phase acceptance of WARNING/SUGGESTION deviations, Spec drift handling, or strategy after the automatic repair limit; the first 3 clearly repairable failures close automatically
-3. Final archive confirmation and the branch-handling decision after the archive commit
+3. One final pre-archive confirmation chooses whether to archive and how to deliver the archive commit
 
 Execution order: quick open → direct build → root cause check → verification → archive → complete
 

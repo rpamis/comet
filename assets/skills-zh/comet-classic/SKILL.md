@@ -135,18 +135,17 @@ comet resume-probe . --stdin --json
 **断点恢复规则**：
 - 每次恢复上下文时，先重新执行 Step 0 和 Step 1，不依赖对话历史判断阶段
 - 只要存在 active change 且工作区有未提交改动，必须按 `comet-classic/reference/dirty-worktree.md` 协议处理。该协议定义了检查步骤、归因分类和禁令，本文件不重复
-- 若 `phase: build`，先检查 `build_pause`、`plan`、`isolation`、`build_mode`、`tdd_mode` 和 `review_mode`（详见下方）：
-  - 若 `build_pause: plan-ready` 但 `isolation`、`build_mode`、`tdd_mode` 和 `review_mode` 都已经设置，则视为 stale pause：先输出 `[COMET] 检测到 stale pause（build_pause=plan-ready 但 isolation/build_mode/tdd_mode/review_mode 已设置），自动清除并继续`，再运行 `comet state set <name> build_pause null`，然后读取 tasks.md 的下一个未勾选任务并按 `build_mode` 恢复执行
-  - 若 `build_pause: plan-ready` 且 plan 文件存在，但 `isolation`、`build_mode`、`tdd_mode` 或 `review_mode` 尚未设置，回到 `/comet-build` 的 plan-ready 恢复点，提示用户继续补齐/确认工作区隔离、执行方式、TDD 模式和代码审查模式，不重新生成 plan
+- 若 `phase: build`，先检查 `build_pause`、`plan`、`isolation`、`build_mode`、`subagent_dispatch`、`tdd_mode` 和 `review_mode`：
+  - 若 `build_pause: plan-ready` 且 plan 文件存在，回到 `/comet-build`，重新发起同一个联合决策；只有用户给出完整配置后才清除暂停。不重新生成 plan
   - 若 `build_pause: plan-ready` 但 plan 文件缺失，回到 `/comet-build` 处理状态损坏或重新生成 plan
   - 若旧 change 的 `isolation` 未设置，先回到 `/comet-open` 执行 workspace resolve/prepare；不得在 Build 首次决定工作区
-  - 若 `build_mode`、`tdd_mode` 或 `review_mode` 未设置，回到 `/comet-build` 对应步骤补充后再执行
+  - 若 `build_mode`、`tdd_mode` 或 `review_mode` 未设置，或 `build_mode: subagent-driven-development` 但 `subagent_dispatch` 未设置，回到 `/comet-build` 完成同一个联合决策；不得按计划或历史快照自动补齐
   - 若均已设置，读取 tasks.md 的下一个未勾选任务，并按 `build_mode` 恢复执行：
     - 若 `build_mode: subagent-driven-development`，不得在主窗口直接执行任务；必须回到 `/comet-build` 的后台 subagent 调度规则，由主窗口只做协调
     - 其他执行方式按 `/comet-build` 的对应规则继续
 - 若 `verify_result: fail`，读取 `verify_failures`：未超过 3 次时直接调用 `/comet-build` 继续已记录的修复循环，不重复询问；超过自动修复上限时回到 `/comet-verify` 的例外决策点。只有接受 WARNING/SUGGESTION 偏差或超限后的继续/停止策略需要用户选择
 - 若 `phase: open` 但 OpenSpec `applyRequires` 已完整，先运行 `comet guard <change-name> open --apply` 修正状态，再继续判定
-- 若 `phase: archive`，只允许调用 `/comet-archive`；归档前先等待最终确认，归档后精确提交归档改动，再处理分支并运行 archive guard
+- 若 `phase: archive`，只允许调用 `/comet-archive`；归档与交付方式合并为同一个最终确认，确认后归档、精确提交并执行已选交付方式
 
 **Step 2: 阶段判定**（按顺序，命中即停）
 
@@ -171,7 +170,7 @@ hotfix/tweak 的范围判定采用三层分工，避免「用纯文件数当硬�
 
 **升级决策点（用户二选一）**：
 - 继续预设轻量流程（用户确认范围可控）
-- 升级为完整 `/comet-classic`（使用 `comet state transition <name> preset-escalate` 合法回退到 design 阶段，同时清除预设专属的 build 配置；补 Design Doc 后重新联合选择完整工作方式）
+- 升级为完整 `/comet-classic`（使用 `comet state transition <name> preset-escalate` 合法回退到 design 阶段，同时清除预设专属的 build 配置；补 Design Doc 后由 Build 重新发起完整联合配置决策）
 
 详细判定规则见 `comet-hotfix` / `comet-tweak` 各自的「升级判定」章节。
 
@@ -204,13 +203,12 @@ hotfix/tweak 的范围判定采用三层分工，避免「用纯文件数当硬�
 2. open 阶段 proposal/design/tasks 最终审视确认（同时确认 change 名称与范围；清晰请求不做前置摘要/命名确认）
 3. brainstorming 确认设计方案
 4. open 阶段工作区决策：明确并行自动使用 Worktree；未指定隔离方式且需要决策时，将合法的 `current`、`branch`、`worktree` 作为单选项展示
-5. build 阶段一次性联合选择 plan-ready 暂停、执行方式、TDD 模式和代码审查模式
+5. build 阶段 plan-ready 联合决策：暂停，或一次性确认执行方式、TDD 模式和代码审查模式
 6. verify 阶段接受 WARNING/SUGGESTION 偏差、处理 Spec 漂移，或第 4 次失败后选择继续修复/停止；前 3 次明确可修复失败自动闭环
-7. archive 阶段执行归档脚本前的最终确认
-8. 归档改动精确提交后选择 finishing-branch 分支处理方式
-9. 遇到升级判定信号（hotfix/tweak → 用户二选一：继续预设流程 / 升级完整流程）
-10. build 阶段范围扩张需重新设计或拆分新 change
-11. open 阶段大型 PRD 是否拆分为多个 changes
+7. archive 阶段在一个最终确认中同时选择是否归档及归档提交的交付方式
+8. 遇到升级判定信号（hotfix/tweak → 用户二选一：继续预设流程 / 升级完整流程）
+9. build 阶段范围扩张需重新设计或拆分新 change
+10. open 阶段大型 PRD 是否拆分为多个 changes
 
 agent 不应跳过这些决策点；其他明确无歧义的阶段衔接必须自动继续推进，不得中途退出。到达决策点时，**禁止跳过用户确认或自动选择——必须提出明确选项并获取用户选择后才能继续**。
 
@@ -235,7 +233,7 @@ agent 不应跳过这些决策点；其他明确无歧义的阶段衔接必须�
 | `/comet-design` | 2. 深度设计 | Superpowers | Design Doc、delta spec |
 | `/comet-build` | 3. 计划与构建 | Superpowers | 实施计划、代码提交 |
 | `/comet-verify` | 4. 验证 | Both | 验证报告 |
-| `/comet-archive` | 5. 归档与收尾 | OpenSpec | delta→main spec 同步、design doc 标注、归档提交、分支处理 |
+| `/comet-archive` | 5. 归档与收尾 | OpenSpec | delta→main spec 同步、design doc 标注、归档提交与交付 |
 | `/comet-hotfix` | 预设路径 | Both | 快速修复（跳过 brainstorming） |
 | `/comet-tweak` | 预设路径 | Both | 串联 OpenSpec 的中等改动（delta spec 为一等公民，跳过 brainstorming 和完整 plan） |
 
@@ -268,7 +266,7 @@ agent 不应跳过这些决策点；其他明确无歧义的阶段衔接必须�
 
 ### 状态机硬约束
 
-- full workflow 的 `build → verify` 前，`isolation` 必须是 `branch` 或 `worktree`；hotfix/tweak 可如实使用 `current`
+- full workflow 的 `isolation` 可为 `current`、`branch` 或 `worktree`，并且必须在 `build → verify` 前完成绑定
 - `build → verify` 前，`build_mode` 必须已选择
 - `build_mode: subagent-driven-development` 必须同时有 `subagent_dispatch: confirmed`
 - full workflow 离开 build 阶段前 `tdd_mode` 必须已选择为 `tdd` 或 `direct`

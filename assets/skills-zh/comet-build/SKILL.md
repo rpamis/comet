@@ -30,18 +30,18 @@ comet state check <name> build
 
 **幂等性**：build 阶段所有操作可安全重复执行。读取 `.comet.yaml` 的 `phase` 字段确认仍在 build 阶段，读取 plan 文件头的 `base-ref`，再按文档顺序解析 tasks.md 的复选框，从第一个未勾选任务继续执行。已提交的任务不得重复提交。
 
-### 1. 制定计划（主会话内联）
+### 1. 制定计划
 
-主会话直接创建实施计划，确保计划生成结果在当前流程中可见。计划文件必须使用 `comet state get <name> language` 读取到的 Comet 配置产物语言。
+使用 `writing-plans` Skill 创建实施计划。计划必须使用 `comet state get <name> language` 读取到的 Comet 配置产物语言，并保存至固定路径 `docs/superpowers/plans/<YYYY-MM-DD>-<change-name>.md`（如 `docs/superpowers/plans/2026-08-21-rename-alert.md`）。
 
-主会话先确定完整计划路径 `docs/superpowers/plans/<YYYY-MM-DD>-<change-name>.md`（如 `docs/superpowers/plans/2026-08-21-rename-alert.md`），后续始终使用该路径。
+调用 Skill 时提供以下输入：
 
-**计划创建步骤**：
+1. 产物语言：`comet state get <name> language` 的解析结果
+2. Design Doc（`docs/superpowers/specs/` 下的技术设计文档）
+3. `<classic-change-dir>/tasks.md`（任务边界）
+4. 固定计划路径和 `git rev-parse HEAD` 的结果
 
-1. **立即执行：** 主会话内联加载 Superpowers `writing-plans` 技能。禁止跳过此步骤。技能加载后，使用 Skill 工具并在 ARGUMENTS 中包含：`Language: 使用 comet state get <name> language 读取到的 Comet 配置产物语言输出`。若 Skill 工具不可用或找不到该技能，立即停止并报告缺少该技能，不要绕过技能自行写计划
-2. 读取 Design Doc（`docs/superpowers/specs/` 下的技术设计文档）
-3. 读取 `<classic-change-dir>/tasks.md`（任务边界）
-4. 按技能指引由主会话直接创建计划；运行期间没有用户回答你，技能里向用户提问的步骤（如 `writing-plans` 结尾的 Execution Handoff）直接跳过，不要向用户提问
+只使用 `writing-plans` 的计划编写与自检流程；计划完成后返回 Comet Build，由 Comet 统一处理后续执行配置。若 Skill 加载或计划生成失败，停止 Build 并报告原因。
 
 计划要求：
 - 保存至指令中给定的计划路径，不更改文件名
@@ -63,9 +63,9 @@ base-ref: <git rev-parse HEAD before implementation>
 git rev-parse HEAD
 ```
 
-计划写入后，主会话确认该路径存在，再运行 Step 2 的 `comet state set <name> plan ...` 记录计划路径。计划生成失败时停止 Build 并报告失败原因，不得切换其他计划生成方式，也不得在未加载技能时自行补写计划。
+计划写入后确认该路径存在，再运行 Step 2 的 `comet state set <name> plan ...` 记录计划路径。
 
-### 2. 更新计划状态并联合确认工作方式
+### 2. 记录计划并联合确认工作方式
 
 先记录 plan 路径：
 
@@ -151,8 +151,8 @@ comet state get <name> isolation
 | 选项 | 含义 | 适用场景 |
 |------|------|---------|
 | `off` | 不自动派发代码审查 | 文档、配置、文案、小范围低风险任务 |
-| `standard` | 默认不为每任务派发 reviewer，仅当任务命中风险信号时派发每任务 reviewer，外加一次最终轻量代码审查 | 默认推荐，适合大多数普通改动 |
-| `thorough` | 为每个任务派发每任务 reviewer（spec + quality），外加一次最终完整审查 | 高风险、多模块、架构或安全相关改动 |
+| `standard` | 任务命中风险信号时派发任务级审查，并在 Verify 执行一次最终整合审查 | 默认推荐，适合大多数普通改动 |
+| `thorough` | 每个任务派发任务级审查，并在 Verify 执行一次最终整合审查 | 高风险、多模块、架构或安全相关改动 |
 
 运行 `comet state set <name> review_mode <off|standard|thorough>`
 
@@ -191,19 +191,13 @@ Open 阶段已经根据 `isolation` 准备好当前目录、分支或 Worktree�
 
 若 `tdd_mode: direct`：按正常流程执行，不强制 TDD。
 
-**`executing-plans` review gate**：
+**Build 审查边界**：Build 只保留任务级或分段审查，Verify 负责整个 change 的唯一最终集成代码审查。
 
-在 `executing-plans` 下，主会话直接执行任务（没有隔离的 implementer subagent），因此不存在 `subagent-driven-development` 那样的每任务 reviewer。代码审查针对已完成的 diff 进行，并按 `review_mode` 分级：
+- `executing-plans` + `off|standard`：Build 不额外请求整个 change 的最终审查；完成任务验收后进入 Verify
+- `executing-plans` + `thorough`：每完成 3 个任务请求一次分段审查，只覆盖该段 diff；总任务数不超过 3 时不在 Build 额外审查
+- `subagent-driven-development`：按 `comet-classic/reference/subagent-dispatch.md` 执行 `review_mode` 对应的任务级审查，不在全部任务结束后追加 final reviewer
 
-- **`review_mode: off`**：不自动代码审查。不加载 `requesting-code-review`。在验证报告草稿或 tasks.md 中记录跳过原因。
-- **`review_mode: standard`**：在所有计划任务完成后、运行 build → verify 阶段守卫前，使用 Skill 工具加载 Superpowers `requesting-code-review` 技能一次，请求一次轻量代码审查（正确性、安全、边界），范围覆盖整个 change。
-- **`review_mode: thorough`**：除最终那次审查外，按任务分段每 3 个任务请求一次分段代码审查（范围限于该段的 diff）。若总任务数 ≤ 3，跳过执行中分段，只做最终审查。每次分段审查用 `requesting-code-review` 针对该段的提交区间进行。这是 `executing-plans` 下最接近 `subagent-driven-development` 每任务审查的等价物，因为它没有隔离的 implementer 可供逐任务审查。
-
-要求（适用于 `standard` 和 `thorough`）：
-- `requesting-code-review` 技能必须在 `comet guard <change-name> build --apply` 之前加载
-- 若当前为 `standard` 或 `thorough` 且加载 `requesting-code-review` 失败，必须停止并请用户选择：解决错误后重试，或明确切换为 `review_mode: off` 并记录原因。用户未明确切换前不得跳过 review gate 或继续 guard
-- CRITICAL review 发现（安全漏洞、数据丢失风险、构建/测试失败）必须先修复，不得带入 verify
-- 非 CRITICAL review 发现如选择接受，必须在 tasks.md、commit body、验证报告草稿或其他持久产物中记录接受原因和影响范围
+分段或任务级审查发现 CRITICAL/IMPORTANT 问题时必须在 Build 修复；加载所需审查 Skill 失败时停止并报告，不能静默跳过。非 CRITICAL 发现如被接受，在持久产物中记录原因和影响范围。
 
 ### 3b. 执行中异常调试（异常调试协议）
 
@@ -262,7 +256,7 @@ Build 是最长阶段，可能跨越大量任务。为支持上下文压缩后�
 - `build_mode` 已写为 `subagent-driven-development`、`executing-plans` 或带显式 override 的 `direct`；若为 `subagent-driven-development`，`subagent_dispatch` 必须为 `confirmed`
 - `tdd_mode` 已写为 `tdd` 或 `direct`
 - `review_mode` 已写为 `off`、`standard` 或 `thorough`
-- 已按所选 `review_mode` 完成"执行计划"章节中 executing-plans review gate 规定的代码审查：`standard` 或 `thorough` 下已请求代码审查且 CRITICAL review 发现已修复、非 CRITICAL review 发现已记录接受理由；`review_mode: off` 下已在持久产物中记录跳过自动代码审查的原因
+- 已完成 `review_mode` 要求的任务级或分段审查；不在 Build 重复 Verify 的最终集成审查
 - **阶段守卫**：运行 `comet guard <change-name> build --apply`，全部 PASS 后由守卫推进到 `phase: verify`（此步骤更新 `phase` 字段，与 `auto_transition` 无关）
 
 Guard 会运行自动探测到的项目构建检查（检测到时使用 `npm run build`、Maven 或 Cargo）。构建失败时 guard 会打印失败命令输出，作为排查证据。

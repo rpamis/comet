@@ -30,18 +30,18 @@ If the `select` / `check` output is `BLOCKED` because `bound_branch` does not ma
 
 **Idempotency**: All build phase operations can be safely re-executed. Read `.comet.yaml` `phase` to confirm build, read the plan header `base-ref`, then parse tasks.md checkboxes in document order and resume from the first unchecked task. Already-committed tasks must not be re-committed.
 
-### 1. Create Plan (Inline)
+### 1. Create Plan
 
-Create the implementation plan directly in the main session so the plan result remains visible in the current flow. The plan file must use the configured Comet artifact language from `comet state get <name> language`.
+Use the `writing-plans` Skill to create the implementation plan. The plan must use the configured Comet artifact language from `comet state get <name> language` and be saved to the fixed path `docs/superpowers/plans/<YYYY-MM-DD>-<change-name>.md` (for example, `docs/superpowers/plans/2026-08-21-rename-alert.md`).
 
-The main session fixes the full plan path `docs/superpowers/plans/<YYYY-MM-DD>-<change-name>.md` (e.g. `docs/superpowers/plans/2026-08-21-rename-alert.md`) before creating the plan and uses that path throughout.
+Provide these inputs when invoking the Skill:
 
-**Plan creation steps**:
+1. Artifact language: the resolved result of `comet state get <name> language`
+2. The Design Doc (technical design document under `docs/superpowers/specs/`)
+3. `<classic-change-dir>/tasks.md` (task boundaries)
+4. The fixed plan path and the result of `git rev-parse HEAD`
 
-1. **Immediately execute:** Load the Superpowers `writing-plans` skill inline in the main session. Skipping this step is prohibited. Use the Skill tool with ARGUMENTS containing: `Language: Use the configured Comet artifact language from comet state get <name> language`. If the Skill tool is unavailable or the skill cannot be found, stop and report that the skill is missing; do not bypass the skill or write the plan without it
-2. Read the Design Doc (technical design document under `docs/superpowers/specs/`)
-3. Read `<classic-change-dir>/tasks.md` (task boundaries)
-4. Follow the skill's guidance to create the plan directly in the main session; no user will answer you during the run, so skip steps that ask the user a question (such as the `writing-plans` Execution Handoff at the end) and do not ask the user anything
+Use only the `writing-plans` plan-writing and self-review flow; return to Comet Build after the plan is complete, where Comet owns the subsequent execution configuration. If the Skill fails to load or the plan cannot be created, stop Build and report the reason.
 
 Plan requirements:
 - Save to the plan path given in the instructions; do not change the file name
@@ -63,9 +63,9 @@ base-ref: <git rev-parse HEAD before implementation>
 git rev-parse HEAD
 ```
 
-After writing the plan, the main session verifies that the path exists and runs Step 2's `comet state set <name> plan ...` to record it. If plan creation fails, stop Build and report the failure; do not switch to another plan-generation method or write a replacement without the loaded skill.
+After writing the plan, verify that the path exists and run Step 2's `comet state set <name> plan ...` to record it.
 
-### 2. Update Plan Status and Jointly Confirm Workflow Configuration
+### 2. Record the Plan and Jointly Confirm the Workflow Configuration
 
 Record plan path:
 
@@ -75,18 +75,18 @@ comet state set <name> plan docs/superpowers/plans/YYYY-MM-DD-feature.md
 
 No manual phase update needed — guard auto-transitions when exit conditions are met.
 
-When presenting the joint decision, provide only the execution method, TDD mode, and code-review mode supported by this workflow. The workspace was prepared and bound during Open; if the change has no valid isolation, return to `/comet-open` instead of creating or switching a workspace in Build.
+When presenting the joint decision, show only execution methods, TDD modes, and code-review modes supported by this workflow. The workspace was prepared and bound during Open; if the change has no valid isolation, return to `/comet-open` instead of creating or switching a workspace in Build.
 
-After recording the plan, provide exactly **one joint decision point** that collects whether to continue now, execution method, TDD mode, and code review mode. Do not ask continue/pause first and then create another configuration blocker.
+After the plan is written, provide exactly **one joint decision point** that collects whether to continue now, the execution method, TDD mode, and code-review mode. Do not ask whether to continue or pause first and then create a second configuration blocker.
 
-| Option | Behavior | Description |
-|--------|----------|-------------|
-| A | Continue with configuration | Provide all Step 3 execution, TDD, and review choices in the same response |
-| B | Pause to switch model | Record `build_pause: plan-ready`, stop this `/comet-build` invocation, and allow the user to resume later from `/comet-classic` or `/comet-build` |
+| Option | Behavior | Details |
+|------|------|------|
+| A | Continue and commit the configuration | Choose the Step 3 execution, TDD, and review configuration in the same response |
+| B | Pause to switch model | Record `build_pause: plan-ready`, stop this `/comet-build` invocation, and let the user resume later from `/comet-classic` or `/comet-build` |
 
-This is a user decision point. **Follow `comet-classic/reference/decision-point.md` once and show the plan summary, pause option, and every executable Step 3 setting together**. Do not auto-select or write the pause into `build_mode`.
+This is a user decision point. **Use `comet-classic/reference/decision-point.md` to present the plan summary, pause option, and every executable Step 3 configuration in one response.** Do not auto-select, and never write the pause into `build_mode`.
 
-When the user chooses to continue and supplies complete configuration:
+When the user chooses to continue and provides the complete configuration:
 
 ```bash
 comet state set <name> build_pause null
@@ -102,13 +102,13 @@ After setting `build_pause: plan-ready`, stop the current invocation. Do not cho
 
 ### 3. Apply the Confirmed Workflow Configuration
 
-If resuming with `build_pause: plan-ready` and the `plan` file exists, do not rerun `writing-plans`. Reissue the same joint Step 2 decision and clear the pause only after the user supplies complete configuration:
+If resuming with `build_pause: plan-ready` and the `plan` file exists, do not rerun `writing-plans`. Reissue the same joint decision from Step 2; clear the pause only after the user provides the complete configuration:
 
 ```bash
 comet state set <name> build_pause null
 ```
 
-Then apply the execution method, TDD mode, and code review mode below.
+Then apply this section's execution method, TDD mode, and code-review mode.
 
 The plan is in the workspace prepared during Open. First verify the existing binding:
 
@@ -118,47 +118,47 @@ comet state get <name> isolation
 
 If the result is empty, stop Build and return to `/comet-open` for workspace resolve/prepare; do not make the first current/branch/worktree choice or create a workspace here.
 
-**Execution Method**:
+**Execution method**:
 
-| Option | Skill | Applicable Scenario |
-|------|------|-------------------|
-| A | Superpowers `subagent-driven-development` | Independent tasks, high complexity; each task runs in an isolated implementer subagent with review driven by `review_mode` |
-| B | Superpowers `executing-plans` | The main session executes the plan sequentially; suitable for fewer or tightly coupled tasks |
+| Option | Skill | Applicable scenario |
+|------|------|---------|
+| A | Superpowers `subagent-driven-development` | Independent, complex tasks; each task runs in an isolated implementer subagent, with review driven by `review_mode` |
+| B | Superpowers `executing-plans` | The main session executes tasks in plan order; suitable for fewer or tightly coupled tasks |
 
-**Execution method recommendation rules**:
-- Task count ≥ 3 → Recommend A
-- Task count ≤ 2 and no cross-module dependencies → Recommend B
-- From hotfix path → Recommend B
+**Execution-method recommendations**:
+- 3 or more tasks → recommend A
+- 2 or fewer tasks with no cross-module dependency → recommend B
+- From a hotfix path → recommend B
 
-The execution, TDD, and review tables are part of the Step 2 joint decision and do not create another pause. Recommendations never replace user confirmation.
+Execution method, TDD, and review tables are one Step 2 joint decision; do not create a separate pause. Recommendations must not replace the user's choice.
 
-After user selection, update only the execution method, TDD mode, and code-review mode fields; preserve the `isolation` and `bound_branch` established during Open.
+After the user chooses, update only the execution method, TDD mode, and code-review mode fields; preserve the `isolation` and `bound_branch` established during Open.
 
 - If the user chooses `executing-plans`: run `comet state set <name> subagent_dispatch null`, then run `comet state set <name> build_mode executing-plans`
-- If the user chooses `subagent-driven-development`: run `comet state set <name> subagent_dispatch confirmed` to record the selected subagent execution, then run `comet state set <name> build_mode subagent-driven-development`
+- If the user chooses `subagent-driven-development`: first run `comet state set <name> subagent_dispatch confirmed` to record the user's subagent choice, then run `comet state set <name> build_mode subagent-driven-development`
 
-**TDD Mode**:
+**TDD mode**:
 
-| Option | Meaning | Applicable Scenario |
-|--------|---------|---------------------|
-| `tdd` | Write a failing test first for each task, then implement | Recommended. Changes involving business logic, new features, APIs |
-| `direct` | Implementation-first, no per-task Red-Green-Refactor requirement | Still requires relevant tests and bug-regression evidence; hotfix/tweak presets default to `direct` |
+| Option | Meaning | Applicable scenario |
+|------|------|---------|
+| `tdd` | Write a failing test before implementation for each task | Recommended for business logic, features, or APIs |
+| `direct` | Implementation-first; no per-task Red-Green-Refactor requirement | Still run relevant tests and retain regression evidence for bug fixes; hotfix/tweak presets default to `direct` |
 
 Run `comet state set <name> tdd_mode <tdd|direct>`
 
-**Code Review Mode**:
+**Code-review mode**:
 
-| Option | Meaning | Applicable Scenario |
-|--------|---------|---------------------|
-| `off` | No automatic code review dispatch | Documentation, configuration, copywriting, small low-risk tasks |
-| `standard` | No per-task reviewer by default; dispatch a per-task reviewer only when a task hits a risk signal, plus one final lightweight code review | Default recommended, suits most ordinary changes |
-| `thorough` | Dispatch a per-task reviewer (spec + quality) on every task, plus one final complete review | High-risk, multi-module, architecture or security-related changes |
+| Option | Meaning | Applicable scenario |
+|------|------|---------|
+| `off` | Do not automatically dispatch code review | Docs, configuration, copy, or small low-risk tasks |
+| `standard` | Dispatch task-level review when risk signals are present, and run one final integrated review in Verify | Recommended default for most ordinary changes |
+| `thorough` | Dispatch task-level review for every task, and run one final integrated review in Verify | High-risk, multi-module, architectural, or security-related changes |
 
 Run `comet state set <name> review_mode <off|standard|thorough>`
 
 `isolation` is a script-enforced hard constraint. Full workflow must write `current`, `branch`, or `worktree` during Open and complete the corresponding workspace preparation and `bound_branch` binding before entering Build; if it is missing, Build may only stop and return to Open for repair.
 
-`subagent_dispatch` is a script-enforced hard constraint that records the user's selected subagent execution. `build_mode: subagent-driven-development` requires `subagent_dispatch: confirmed` before leaving the build phase, otherwise both `comet guard build --apply` and `comet state transition build-complete` will fail; it is not a capability check.
+`subagent_dispatch` is a script-enforced hard constraint that records the user's subagent execution choice. `build_mode: subagent-driven-development` requires `subagent_dispatch: confirmed` before leaving the build phase, otherwise both `comet guard build --apply` and `comet state transition build-complete` will fail; it is not a capability check.
 
 `tdd_mode` is a script-enforced hard constraint. Full workflow must have `tdd_mode` selected as `tdd` or `direct` before leaving the build phase, otherwise both `comet guard build --apply` and `comet state transition build-complete` will fail.
 
@@ -191,19 +191,13 @@ If `tdd_mode: tdd`:
 
 If `tdd_mode: direct`: Follow normal flow, no enforced TDD.
 
-**`executing-plans` review gate**:
+**Build review boundary**: Build keeps only task-level or segmented reviews. Verify owns the only final integrated code review for the entire change.
 
-Under `executing-plans`, the main session executes tasks directly (no isolated implementer subagent), so there is no per-task reviewer as in `subagent-driven-development`. Code review is done against completed diffs and scales with `review_mode`:
+- `executing-plans` + `off|standard`: do not request a whole-change final review in Build; enter Verify after task acceptance
+- `executing-plans` + `thorough`: request one segmented review after every 3 completed tasks, limited to that segment's diff; when total tasks are 3 or fewer, add no Build review
+- `subagent-driven-development`: follow `comet-classic/reference/subagent-dispatch.md` for task-level review under the selected `review_mode`; do not append a final reviewer after all tasks complete
 
-- **`review_mode: off`**: No automatic code review. Do not load `requesting-code-review`. Record the skip reason in the verification report draft or tasks.md.
-- **`review_mode: standard`**: After all planned tasks are complete and before the build → verify phase guard, use the Skill tool to load the Superpowers `requesting-code-review` skill once and request one lightweight code review (correctness, security, edge cases) scoped to the whole change.
-- **`review_mode: thorough`**: In addition to the single final review, request one segmented code review per task segment (every 3 tasks, scoped to that segment's diff). If total tasks ≤ 3, skip the mid-execution segments and only do the final review. Each segment review uses `requesting-code-review` against the segment's commit range. This is the closest equivalent to `subagent-driven-development`'s per-task review that `executing-plans` can offer, since it has no isolated implementer to review per task.
-
-Requirements (apply to `standard` and `thorough`):
-- the `requesting-code-review` skill must be loaded before `comet guard <change-name> build --apply`
-- if loading `requesting-code-review` fails under `standard` or `thorough`, stop and ask the user to resolve the error and retry, or explicitly switch to `review_mode: off` with a recorded reason; never skip the gate or continue guard before that explicit switch
-- CRITICAL review findings (security vulnerabilities, data loss risk, build/test failures) must be fixed first and must not be carried into verify
-- if non-CRITICAL review findings are accepted, record the acceptance reason and impact scope in tasks.md, the commit body, a verification report draft, or another durable artifact
+Fix CRITICAL/IMPORTANT findings from task-level or segmented review in Build. If a required review Skill cannot load, stop and report the failure instead of silently skipping it. Record the reason and impact scope for accepted non-CRITICAL findings in a durable artifact.
 
 ### 3b. In-Execution Debugging (Debug Gate)
 
@@ -262,7 +256,7 @@ Build is the longest phase and may span many tasks. To support resume after cont
 - `build_mode` has been written as `subagent-driven-development`, `executing-plans`, or `direct` with explicit override; if `subagent-driven-development`, `subagent_dispatch` must be `confirmed`
 - `tdd_mode` has been written as `tdd` or `direct`
 - `review_mode` has been written as `off`, `standard`, or `thorough`
-- Code review has been completed per the `executing-plans` review gate (Section "Execute plan") for the chosen `review_mode`: under `standard` or `thorough`, code review has been requested and CRITICAL review findings fixed or non-CRITICAL acceptance rationale recorded; under `review_mode: off`, the reason for skipping automatic code review has been recorded in a persistent artifact
+- Task-level or segmented review required by `review_mode` is complete; Build does not duplicate Verify's final integrated review
 - **Phase guard**: Run `comet guard <change-name> build --apply`; after all PASS, state advances to `phase: verify`
 
 Guard runs the inferred project build check (`npm run build`, Maven, or Cargo when detected). When the inferred command fails, guard prints the command output as evidence for debugging.

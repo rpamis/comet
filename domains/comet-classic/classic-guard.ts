@@ -596,7 +596,7 @@ async function subagentDispatchConfirmed(changeDir: string, change: string): Pro
   if (buildMode !== 'subagent-driven-development') return pass();
   if (subagentDispatch === 'confirmed') return pass();
   return fail(
-    `subagent_dispatch must be confirmed before using build_mode=subagent-driven-development\nNext: record the selected subagent-driven execution, then run:\n  comet state set ${change} subagent_dispatch confirmed`,
+    `subagent_dispatch must be confirmed after the user selects subagent-driven-development\nNext: resume /comet-build and use the single joint decision to confirm the supported execution configuration for ${change}`,
   );
 }
 

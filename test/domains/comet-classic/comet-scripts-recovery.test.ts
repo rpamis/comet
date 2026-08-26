@@ -121,7 +121,9 @@ describe('check --recover', () => {
     expect(result.stdout).toContain('isolation: PENDING');
     expect(result.stdout).toContain('build_mode: PENDING');
     expect(result.stdout).toContain('Tasks: 1/2 done, 1 pending');
-    expect(result.stdout).toContain("current platform's user confirmation mechanism");
+    expect(result.stdout).toContain(
+      'Isolation is missing. Resume /comet-open to resolve and prepare the workspace; Build must not choose or create it.',
+    );
   });
 
   it('returns full build recovery to plan creation when configuration is already selected', async () => {
@@ -240,7 +242,47 @@ describe('check --recover', () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('build_pause: DONE (plan-ready)');
     expect(result.stdout).toContain('Plan-ready pause');
-    expect(result.stdout).toContain('choose isolation, build mode, TDD mode, and review mode');
+    expect(result.stdout).toContain(
+      'workspace isolation is missing. Resume /comet-open to resolve and prepare the workspace without regenerating the plan',
+    );
+  });
+
+  it('returns to the single joint Build decision when plan-ready config is incomplete', async () => {
+    await writeFile(
+      path.join(tmpDir, 'docs', 'superpowers', 'plans', 'pause-config-plan.md'),
+      'plan\n',
+    );
+    await createChange(
+      tmpDir,
+      'recover-plan-ready-config',
+      [
+        'workflow: full',
+        'phase: build',
+        'build_mode: null',
+        'build_pause: plan-ready',
+        'tdd_mode: null',
+        'review_mode: null',
+        'isolation: branch',
+        'verify_mode: null',
+        'design_doc: null',
+        'plan: docs/superpowers/plans/pause-config-plan.md',
+        'verify_result: pending',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+
+    const result = runNode(tmpDir, stateScript, [
+      'check',
+      'recover-plan-ready-config',
+      'build',
+      '--recover',
+    ]);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(
+      'Plan-ready pause detected. Resume /comet-build and use the single joint decision to choose the supported execution, TDD, and code-review configuration without regenerating the plan.',
+    );
   });
 
   it('outputs subagent dispatch guidance when recovering build phase with pending tasks', async () => {

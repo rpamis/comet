@@ -44,6 +44,8 @@ comet state scale <change-name>
 
 脚本自动统计任务数、增量规格数、变更文件数，判断使用 light 或 full 验证模式，并设置 verify_mode 字段。判定规则（满足任一即 full）：任务数 > 3、delta spec 能力数 > 1、变更文件数 > 8。
 
+`comet state scale` 会自行从 plan 的 `base-ref` 解析提交基线，并在 plan 不可用时回退到状态中的 `base_ref`；Verify 不再重复读取 plan frontmatter 或手工拼接第二套规模评估。
+
 验证开始前，按 `comet-classic/reference/dirty-worktree.md` 协议检查并处理未提交改动。verify 阶段的特殊处理：
 
 1. 若 dirty diff 明确属于当前 change，它就是本次验证输入；继续验证，但不在 verify 阶段修改或提交实现、测试、tasks、delta spec 或 Design Doc
@@ -55,21 +57,6 @@ comet state scale <change-name>
 
 ```bash
 comet state transition <change-name> verify-fail
-```
-
-注意：如果 build 阶段每个任务都已提交，脚本基于工作区 diff 的文件数可能低估改动规模。此时必须读取 plan 文件头的 `base-ref` 并用提交区间复核：
-
-```bash
-comet state get <change-name> plan
-git diff --stat <从 plan frontmatter 读取的 base-ref>...HEAD
-```
-
-第一条命令返回 plan 路径；使用文件读取工具解析其 frontmatter 中唯一的 `base-ref`，确认它是有效提交后再代入第二条命令。不得依赖 POSIX 文本管道。
-
-若提交区间显示改动超过轻量阈值（> 8 个文件、跨模块协调、或 delta spec 超过 1 个 capability），手动设置为完整验证：
-
-```bash
-comet state set <change-name> verify_mode full
 ```
 
 **覆盖机制**：如 agent 或用户认为自动评估结果不合适，可随时通过 `comet state set <change-name> verify_mode <light|full>` 手动覆盖。
@@ -108,7 +95,12 @@ comet handoff <change-name> --hash-only
 
 **立即执行：** 使用 Skill 工具加载 Superpowers `verification-before-completion` 技能。禁止跳过此步骤。
 
-技能加载后，按 verify_mode 分支执行：
+Verify 负责整个 change 的唯一最终集成代码审查。Build 只保留任务级或分段审查；在按 `verify_mode` 分支执行前，先对包含 Build 审查修复在内的最终 diff 执行一次集成审查：
+
+- `review_mode: off`：跳过自动代码审查，并在验证报告中记录原因
+- `review_mode: standard|thorough`：使用 Skill 工具加载 Superpowers `requesting-code-review` 一次，范围覆盖整个 change，聚焦正确性、安全和边界条件；不重复派发第二次 final reviewer
+
+集成审查发现 CRITICAL/IMPORTANT 问题时按 Step 1b 返回 Build；非 CRITICAL 偏差按 Step 1b 的取舍规则处理。然后按 `verify_mode` 分支执行：
 
 ### 2a. 轻量验证（小改动）
 
@@ -119,7 +111,7 @@ comet handoff <change-name> --hash-only
 3. 编译通过（执行项目对应的构建命令，如 `npm run build`、`mvn compile`、`cargo build` 等）
 4. 相关测试通过
 5. 无明显安全问题（无硬编码密钥、无新增 unsafe 操作）
-6. 代码审查策略：当 `review_mode: standard` 或 `thorough` 时，必须使用 Skill 工具加载 Superpowers `requesting-code-review` 技能，请求只检查正确性、安全、边界条件的轻量代码审查；当 `review_mode: off` 时跳过自动代码审查，并在验证报告中记录跳过原因
+6. 最终集成代码审查已通过，或 `review_mode: off` 的跳过原因已记录
 
 若项目没有可自动探测的验证命令，用户或 Agent 必须先自行运行真实验证命令，再单独记录验证证据：
 
@@ -129,9 +121,7 @@ comet state record-check <change-name> verify --command "<实际运行的验证�
 
 `--command` 只记录命令文本，Comet **绝不会执行该文本**。verify 与 build 证据彼此独立，不能互相替代；即使兼容流程使用 `COMET_SKIP_BUILD=1`，也不能把该绕过标记视为可审计的验证或构建证据。
 
-简化代码审查的输入应限定为本次改动 diff、tasks.md 和必要的测试结果；审查范围只覆盖实现正确性、安全风险和边界条件，不执行 spec 覆盖率、Design Doc 一致性或漂移检查。若审查发现 CRITICAL 或 IMPORTANT 问题，按 Step 1b 的自动修复/重试规则处理。`review_mode: off` 只跳过自动 code review，不跳过构建、测试、安全检查或异常调试协议。
-
-**与 build 阶段审查的去重**：若 build 阶段（`executing-plans` 或 `subagent-driven-development`）已按 `review_mode` 对同一 diff 完成最终代码审查，verify 的这次轻量审查聚焦「实现是否符合 spec/tasks 的正确性」与「build 之后新增的改动」，不重复评审 build 已审过且未变化的 diff。
+集成代码审查的输入限定为本次改动 diff、tasks.md 和必要测试结果；它不替代 spec 覆盖率、Design Doc 一致性或漂移检查。`review_mode: off` 只跳过自动 code review，不跳过构建、测试、安全检查或异常调试协议。
 
 **通过标准**：6 项全部 OK，无 CRITICAL 或 IMPORTANT 问题。
 

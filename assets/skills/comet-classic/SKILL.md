@@ -135,18 +135,17 @@ Prefer reading `<classic-change-dir>/.comet.yaml`. If not available, fall back t
 **Resume rules**:
 - On every context resume, rerun Step 0 and Step 1; do not trust conversation history for phase detection
 - If there is an active change and the worktree has uncommitted changes, handle them through `comet-classic/reference/dirty-worktree.md`. That protocol defines checks, attribution, and prohibitions; this file does not repeat them
-- If `phase: build`, first check `build_pause`, `plan`, `isolation`, `build_mode`, `tdd_mode`, and `review_mode` (see details below):
-  - If `build_pause: plan-ready` but `isolation`, `build_mode`, `tdd_mode`, and `review_mode` are all already set, treat as stale pause: first output `[COMET] Detected stale pause (build_pause=plan-ready but isolation/build_mode/tdd_mode/review_mode are set), auto-clearing and continuing`, then run `comet state set <name> build_pause null`, then read the next unchecked task from tasks.md and resume execution per `build_mode`
-  - If `build_pause: plan-ready` and the plan file exists, but `isolation`, `build_mode`, `tdd_mode`, or `review_mode` is not yet set, return to the `/comet-build` plan-ready resume point, prompt the user to complete/confirm workspace isolation, execution method, TDD mode, and code review mode, and do not regenerate the plan
+- If `phase: build`, first check `build_pause`, `plan`, `isolation`, `build_mode`, `subagent_dispatch`, `tdd_mode`, and `review_mode`:
+  - If `build_pause: plan-ready` and the plan file exists, return to `/comet-build` and reissue the same joint decision; clear the pause only after the user provides the complete configuration. Do not regenerate the plan
   - If `build_pause: plan-ready` but the plan file is missing, return to `/comet-build` to handle corrupted state or regenerate the plan
   - If an older change has no `isolation`, return to `/comet-open` for workspace resolve/prepare; do not make the first workspace decision in Build
-  - If `build_mode`, `tdd_mode`, or `review_mode` is unset, return to the corresponding `/comet-build` step to supplement before executing
+  - If `build_mode`, `tdd_mode`, or `review_mode` is unset, or `build_mode: subagent-driven-development` has no `subagent_dispatch`, return to `/comet-build` and complete the same joint decision; do not fill values automatically from the plan or historical snapshot
   - If all are set, read the next unchecked task from tasks.md and continue:
     - If `build_mode: subagent-driven-development`, do not execute tasks directly in the main window; return to `/comet-build`'s background subagent dispatch rules, main window only coordinates
     - Other execution modes follow `/comet-build`'s corresponding rules
 - If `verify_result: fail`, read `verify_failures`. At 3 or fewer failures, invoke `/comet-build` directly to continue the recorded repair loop without re-asking. Above the automatic limit, return to `/comet-verify` for the exception decision. User input is required only to accept a WARNING/SUGGESTION deviation or choose a strategy after the retry limit
 - If `phase: open` but OpenSpec `applyRequires` is complete, run `comet guard <change-name> open --apply` to repair state, then continue detection
-- If `phase: archive`, only invoke `/comet-archive`; confirm first, archive, commit exact archive paths, then handle the branch and run the archive guard
+- If `phase: archive`, only invoke `/comet-archive`. Archive and delivery method are combined into one final confirmation; after confirmation, archive, commit exact paths, and perform the selected delivery
 
 **Step 2: Phase Determination** (check in order, first match wins)
 
@@ -171,7 +170,7 @@ hotfix/tweak scope assessment uses a three-layer division of labor, avoiding "us
 
 **Upgrade decision point (user chooses one of two)**:
 - Continue the preset lightweight flow (user confirms scope is manageable)
-- Upgrade to full `/comet-classic` (use `comet state transition <name> preset-escalate` to legally rewind to design and clear preset-only build settings; after the Design Doc, choose the full workflow configuration again in one joint decision)
+- Upgrade to full `/comet-classic` (use `comet state transition <name> preset-escalate` to legally rewind to design and clear preset-only build settings; after the Design Doc, let Build reissue the full joint configuration decision)
 
 See the "Upgrade Assessment" section of each `comet-hotfix` / `comet-tweak` for detailed rules.
 
@@ -204,13 +203,12 @@ Nodes requiring user participation (pause only at these nodes):
 2. Open-phase final proposal/design/tasks review, including the change name and scope; clear requests have no pre-artifact summary/name confirmation
 3. Confirm the design approach during brainstorming
 4. Open-phase workspace decision: explicit parallel intent automatically uses a Worktree; when isolation is unclear, present the legal `current`, `branch`, and `worktree` choices as one decision
-5. One joint build decision: plan-ready pause, execution method, TDD mode, and code review mode
+5. One joint Build decision at plan-ready: pause, or choose the execution method, TDD mode, and code-review mode together
 6. Verify-phase acceptance of WARNING/SUGGESTION deviations, Spec drift handling, or continue/stop after the 4th failure; the first 3 clearly repairable failures close automatically
-7. Archive phase final confirmation before running the archive script
-8. Choose finishing-branch handling after exact archive changes are committed
-9. Encounter an upgrade-assessment signal (hotfix/tweak → user chooses one of two: continue preset / upgrade to full workflow)
-10. Build phase scope expansion requiring redesign or new change split
-11. Open phase large PRD split confirmation
+7. One Archive confirmation that chooses both whether to archive and how to deliver the archive commit
+8. Encounter an upgrade-assessment signal (hotfix/tweak → user chooses one of two: continue preset / upgrade to full workflow)
+9. Build phase scope expansion requiring redesign or new change split
+10. Open phase large PRD split confirmation
 
 Agents should not skip these decision points; other unambiguous phase transitions must proceed automatically, must not exit midway. At decision points, **must not skip user confirmation or choose automatically — ask clear options and wait for the user's explicit choice before continuing**.
 
@@ -235,7 +233,7 @@ Agents should not skip these decision points; other unambiguous phase transition
 | `/comet-design` | 2. Deep Design | Superpowers | Design Doc, delta spec |
 | `/comet-build` | 3. Plan and Build | Superpowers | Implementation plan, code commits |
 | `/comet-verify` | 4. Verify | Both | Verification report |
-| `/comet-archive` | 5. Archive and Close | OpenSpec | delta→main spec sync, design doc markup, archive commit, branch handling |
+| `/comet-archive` | 5. Archive and Close | OpenSpec | delta→main spec sync, design doc markup, archive commit and delivery |
 | `/comet-hotfix` | Preset path | Both | Quick fix (skip brainstorming) |
 | `/comet-tweak` | Preset path | Both | OpenSpec-chained medium change (delta spec is first-class, skip brainstorming and full plan) |
 
@@ -260,7 +258,7 @@ Agents should not skip these decision points; other unambiguous phase transition
 
 ### State Machine Hard Constraints
 
-- Before full-workflow `build → verify`, `isolation` must be `branch` or `worktree`; hotfix/tweak may truthfully use `current`
+- Full-workflow `isolation` may be `current`, `branch`, or `worktree`, and must be bound before `build → verify`
 - Before `build → verify`, `build_mode` must be selected
 - `build_mode: subagent-driven-development` must also have `subagent_dispatch: confirmed`
 - Before full workflow leaves build phase, `tdd_mode` must be selected as `tdd` or `direct`

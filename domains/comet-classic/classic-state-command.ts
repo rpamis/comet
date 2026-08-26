@@ -1136,16 +1136,18 @@ function resolveBuildRecoveryAction(
   planPending: number,
 ): string {
   const planReady = planReadiness.status === 'ready';
-  const missingWorkflowChoices =
-    workflow === 'full' && (isMissingStateValue(tdd) || isMissingStateValue(review));
+  const missingBuildConfiguration =
+    isMissingStateValue(buildMode) ||
+    (workflow === 'full' && (isMissingStateValue(tdd) || isMissingStateValue(review))) ||
+    (buildMode === 'subagent-driven-development' && isMissingStateValue(subagentDispatch));
   if (
     pause === 'plan-ready' &&
     planReady &&
-    (isMissingStateValue(isolation) || isMissingStateValue(buildMode) || missingWorkflowChoices)
+    (isMissingStateValue(isolation) || missingBuildConfiguration)
   ) {
-    return workflow === 'full'
-      ? 'Recovery action: Plan-ready pause detected. Ask the user whether to continue, then choose isolation, build mode, TDD mode, and review mode without regenerating the plan.'
-      : 'Recovery action: Plan-ready pause detected. Ask the user whether to continue, then choose isolation and build mode without regenerating the plan.';
+    return isMissingStateValue(isolation)
+      ? 'Recovery action: Plan-ready pause detected, but workspace isolation is missing. Resume /comet-open to resolve and prepare the workspace without regenerating the plan.'
+      : 'Recovery action: Plan-ready pause detected. Resume /comet-build and use the single joint decision to choose the supported execution, TDD, and code-review configuration without regenerating the plan.';
   }
   if (workflow === 'full' && !planReady) {
     return buildPlanRecoveryAction(name, changeDirectory, planReadiness);
@@ -1153,25 +1155,28 @@ function resolveBuildRecoveryAction(
   if (pause === 'plan-ready') {
     if (buildMode === 'subagent-driven-development' && (pending > 0 || planPending > 0)) {
       return subagentDispatch === 'confirmed'
-        ? 'Recovery action: Plan-ready pause is stale because build decisions are already selected. Clear build_pause to null, then inspect the first unchecked task (OpenSpec or plan additions) against recent git history/diff. If implemented, check it off; otherwise dispatch a subagent. Do not execute the pending task directly in the main window.'
-        : 'Recovery action: Plan-ready pause is stale and selected subagent execution is not recorded. Run comet state set <change-name> subagent_dispatch confirmed, then continue from the first unchecked task through subagent execution.';
+        ? 'Recovery action: Resume the explicit plan-ready pause by clearing build_pause to null, then inspect the first unchecked task (OpenSpec or plan additions) against recent git history/diff. If implemented, check it off; otherwise dispatch a subagent. Do not execute the pending task directly in the main window.'
+        : 'Recovery action: Resume the explicit plan-ready pause by clearing build_pause to null, record the selected subagent policy with comet state set <change-name> subagent_dispatch confirmed, then continue through subagent execution.';
     }
     if (pending > 0 || planPending > 0) {
-      return 'Recovery action: Plan-ready pause is stale because build decisions are already selected. Clear build_pause to null, then continue from the first unchecked task.';
+      return 'Recovery action: Resume the explicit plan-ready pause by clearing build_pause to null, then continue from the first unchecked task.';
     }
-    return 'Recovery action: Plan-ready pause is stale and all tasks are done. Clear build_pause to null, then run guard to transition to verify.';
+    return 'Recovery action: Resume the explicit plan-ready pause by clearing build_pause to null, then run guard to transition to verify because all tasks are done.';
   }
   if (isMissingStateValue(isolation)) {
-    return "Recovery action: Isolation not selected. Use the current platform's user confirmation mechanism to ask user for branch/worktree choice.";
+    return 'Recovery action: Isolation is missing. Resume /comet-open to resolve and prepare the workspace; Build must not choose or create it.';
   }
   if (isMissingStateValue(buildMode)) {
-    return "Recovery action: Build mode not selected. Use the current platform's user confirmation mechanism to ask user for execution method.";
+    return 'Recovery action: Build mode is missing. Resume /comet-build and use the single joint decision to choose the supported execution method.';
   }
   if (workflow === 'full' && isMissingStateValue(tdd)) {
-    return "Recovery action: TDD mode not selected. Use the current platform's user confirmation mechanism to ask user for tdd or direct.";
+    return 'Recovery action: TDD mode is missing. Resume /comet-build and use the single joint decision to choose tdd or direct.';
   }
   if (workflow === 'full' && isMissingStateValue(review)) {
-    return "Recovery action: Review mode not selected. Use the current platform's user confirmation mechanism to ask user for off, standard, or thorough.";
+    return 'Recovery action: Review mode is missing. Resume /comet-build and use the single joint decision to choose the supported code-review mode.';
+  }
+  if (buildMode === 'subagent-driven-development' && isMissingStateValue(subagentDispatch)) {
+    return 'Recovery action: Selected subagent execution is not recorded. Resume /comet-build and use the single joint decision to confirm the supported execution configuration.';
   }
   if (pending > 0) {
     if (buildMode === 'subagent-driven-development') {
