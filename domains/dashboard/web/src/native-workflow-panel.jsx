@@ -11,7 +11,7 @@ import {
   SafetyCertificateOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import { Button, Skeleton, Spin, Tooltip } from 'antd';
+import { Button, Skeleton, Tooltip } from 'antd';
 import { useAnimatedNumber } from './use-animated-number.js';
 import { DashboardWorkspaceRegion } from './workspace-layout.jsx';
 
@@ -667,9 +667,7 @@ function NativeChangesExplorer({
         >
           {changes.length === 0 ? (
             pageLoading ? (
-              <div className="flex justify-center py-8">
-                <Spin aria-label="正在加载 Native 变更列表" />
-              </div>
+              <NativeChangeListSkeleton />
             ) : (
               <div className="py-8 text-center text-sm text-muted">
                 {tab === 'active'
@@ -786,18 +784,37 @@ function NativeChangesExplorer({
               );
             })
           )}
-          {hasMore && (
+          {hasMore && changes.length > 0 && (
             <div
               ref={loadMoreRef}
               className="py-2 text-center text-xs text-meta"
               aria-live="polite"
             >
-              继续下滑加载更多
+              {pageLoading ? <NativeChangeListSkeleton compact /> : '继续下滑加载更多'}
             </div>
           )}
         </div>
       </div>
     </aside>
+  );
+}
+
+function NativeChangeListSkeleton({ compact = false }) {
+  return (
+    <div
+      className={`native-change-list-skeleton ${compact ? 'is-compact' : ''}`}
+      aria-label={compact ? '正在加载更多 Native 变更' : '正在加载 Native 变更列表'}
+      aria-busy="true"
+    >
+      <Skeleton
+        active
+        title={{ width: compact ? '36%' : '48%' }}
+        paragraph={{
+          rows: compact ? 1 : 6,
+          width: compact ? '72%' : ['76%', '58%', '88%', '66%', '82%', '54%'],
+        }}
+      />
+    </div>
   );
 }
 

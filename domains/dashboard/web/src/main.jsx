@@ -6,7 +6,7 @@ import {
   Form,
   Input,
   Select,
-  Spin,
+  Skeleton,
   Switch,
   Tag,
   Tooltip,
@@ -1118,7 +1118,6 @@ function DashboardApp({ theme, onToggleTheme }) {
           setWorkflow(nextWorkflow);
         }}
         pluginPages={pluginPages}
-        settingsReady={pluginPages.some((page) => !page.pending)}
         pluginSelection={pluginSelection}
         settingsOpen={settingsOpen}
         onSettings={() => {
@@ -1127,7 +1126,7 @@ function DashboardApp({ theme, onToggleTheme }) {
             pluginPages.find((page) => page.pluginId === 'comet.personal-memory' && !page.pending)
               ?.pluginId ??
             pluginPages.find((page) => !page.pending)?.pluginId ??
-            null;
+            'comet.config';
           const cachedPage =
             activeProjectId && preferredSection && preferredSection !== 'comet.config'
               ? readCachedPluginPage(activeProjectId, preferredSection)
@@ -1510,9 +1509,7 @@ function Dashboard({
               ) : selected ? (
                 <AntChangeDetail change={selected} onPreview={onPreview} />
               ) : detailPending ? (
-                <div className="change-detail dashboard-change-detail-loading min-w-0 rounded-lg bg-bg p-10 text-center text-sm text-muted shadow-raised">
-                  正在加载变更详情…
-                </div>
+                <ClassicWorkspaceLoadingDetail />
               ) : detailError ? (
                 <div className="change-detail min-w-0 rounded-lg bg-bg p-10 text-center text-sm text-danger shadow-raised">
                   <p role="alert">变更详情加载失败：{detailError.message}</p>
@@ -2315,9 +2312,12 @@ function ArtifactDrawer({ artifact, onClose }) {
             ].join(' ')}
           >
             {loadState.status === 'loading' && (
-              <p className="py-10 text-center text-sm text-muted" aria-live="polite">
-                正在加载...
-              </p>
+              <DashboardLineSkeleton
+                className="dashboard-artifact-loading"
+                label="正在加载产物文件"
+                rows={8}
+                titleWidth="34%"
+              />
             )}
             {loadState.status === 'empty' && (
               <p className="py-10 text-center text-sm text-muted" aria-live="polite">
@@ -2415,7 +2415,11 @@ function ProjectKnowledgeDetailsModal({ item, open, onClose }) {
               <section>
                 <h3>项目知识内容</h3>
                 {contentPreview.status === 'loading' && (
-                  <p className="dashboard-project-knowledge-detail-state">正在渲染项目知识内容…</p>
+                  <DashboardLineSkeleton
+                    className="dashboard-project-knowledge-detail-loading"
+                    label="正在渲染项目知识内容"
+                    rows={6}
+                  />
                 )}
                 {contentPreview.status === 'empty' && (
                   <p className="dashboard-project-knowledge-detail-state">暂无可展示内容</p>
@@ -2642,17 +2646,19 @@ function ProjectKnowledgeSourcePreviewModal({
               <section>
                 <h4>文件原文</h4>
                 {sourceReadPending ? (
-                  <div className="dashboard-knowledge-source-detail-state">
-                    <Spin size="small" />
-                    <span>正在读取来源文件…</span>
-                  </div>
+                  <DashboardLineSkeleton
+                    className="dashboard-knowledge-source-loading"
+                    label="正在读取来源文件"
+                    rows={6}
+                  />
                 ) : sourceReadError ? (
                   <Alert type="warning" showIcon message={sourceReadError} />
                 ) : loadState.status === 'loading' ? (
-                  <div className="dashboard-knowledge-source-detail-state">
-                    <Spin size="small" />
-                    <span>正在渲染来源文件…</span>
-                  </div>
+                  <DashboardLineSkeleton
+                    className="dashboard-knowledge-source-loading"
+                    label="正在渲染来源文件"
+                    rows={6}
+                  />
                 ) : loadState.status === 'error' ? (
                   <p role="alert" className="text-danger">
                     {loadState.message}
@@ -2788,34 +2794,62 @@ function ClassicWorkspaceEmptySidePanel() {
 
 function ClassicWorkspaceLoadingDetail() {
   return (
-    <AntCard
-      className="change-detail classic-change-detail-empty min-w-0"
-      title={<h3 className="m-0 text-sm font-semibold">正在加载 Classic 变更</h3>}
+    <section
+      className="change-detail classic-change-detail-skeleton min-w-0 rounded-lg border border-border bg-bg shadow-raised"
+      aria-label="正在加载 Classic 变更详情"
+      aria-busy="true"
     >
-      <div className="dashboard-workspace-empty-detail" aria-live="polite">
-        <Spin aria-label="正在加载 Classic 变更列表" />
-        <p>正在读取当前范围的变更记录…</p>
+      <div className="border-b border-border-soft px-5 py-5">
+        <DashboardLineSkeleton label="正在加载 Classic 变更标题" rows={2} titleWidth="38%" />
       </div>
-    </AntCard>
+      <div className="space-y-6 p-5">
+        <DashboardLineSkeleton label="正在加载 Classic 变更内容" rows={7} titleWidth="24%" />
+      </div>
+    </section>
   );
 }
 
 function ClassicWorkspaceLoadingSidePanel() {
   return (
-    <aside className="dashboard-workspace-side-empty" aria-label="正在加载 Classic 变更状态">
-      <div aria-live="polite">
-        <Spin aria-label="正在加载 Classic 变更状态详情" />
-        <h3>正在加载变更状态</h3>
-        <p>变更记录载入后，这里会显示执行状态、验证结果和 Git 摘要。</p>
-      </div>
+    <aside
+      className="classic-side-panel-skeleton space-y-5"
+      aria-label="正在加载 Classic 变更状态"
+      aria-busy="true"
+    >
+      {[3, 2, 3].map((rows, index) => (
+        <section key={index} className="rounded-lg bg-bg p-5 shadow-raised">
+          <DashboardLineSkeleton
+            label={`正在加载 Classic 侧栏第 ${index + 1} 组`}
+            rows={rows}
+            titleWidth="42%"
+          />
+        </section>
+      ))}
     </aside>
+  );
+}
+
+function DashboardLineSkeleton({ className = '', label, rows = 4, titleWidth = null }) {
+  const widths = ['52%', '78%', '66%', '92%', '72%', '58%', '84%', '64%'].slice(0, rows);
+  return (
+    <div
+      className={`dashboard-line-skeleton ${className}`.trim()}
+      aria-label={label}
+      aria-busy="true"
+    >
+      <Skeleton
+        active
+        title={titleWidth ? { width: titleWidth } : false}
+        paragraph={{ rows, width: widths }}
+      />
+    </div>
   );
 }
 
 function LoadingState() {
   return (
-    <div className="mx-auto max-w-dashboard rounded-lg bg-bg p-10 text-center text-sm text-muted shadow-raised">
-      正在加载 dashboard...
+    <div className="dashboard-loading-state mx-auto max-w-dashboard rounded-lg bg-bg p-8 shadow-raised">
+      <DashboardLineSkeleton label="正在加载 Dashboard" rows={6} titleWidth="28%" />
     </div>
   );
 }
@@ -3299,7 +3333,6 @@ function AntSidebar({
   workflow,
   onWorkflow,
   pluginPages,
-  settingsReady,
   pluginSelection,
   settingsOpen,
   onSettings,
@@ -3379,14 +3412,13 @@ function AntSidebar({
       aria-pressed={settingsOpen}
       aria-label="设置"
       title="设置"
-      disabled={!settingsReady}
       onClick={() => {
         onSettings();
         onClose();
       }}
     >
       <SettingOutlined aria-hidden="true" />
-      <span>设置</span>
+      <span className="dashboard-sidebar-settings-label">设置</span>
     </button>
   );
   return (
@@ -6757,8 +6789,17 @@ function DashboardChangeList({ visible, selectedId, onSelect, hasMore, pageLoadi
 
   return (
     <div ref={listRef} className="dashboard-change-list" onScroll={handleScroll}>
-      {visible.length === 0 && !pageLoading ? (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无变更" />
+      {visible.length === 0 ? (
+        pageLoading ? (
+          <DashboardLineSkeleton
+            className="dashboard-change-list-skeleton"
+            label="正在加载 Classic 变更列表"
+            rows={6}
+            titleWidth="48%"
+          />
+        ) : (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无变更" />
+        )
       ) : (
         visible.map((change) => (
           <div
@@ -6802,7 +6843,15 @@ function DashboardChangeList({ visible, selectedId, onSelect, hasMore, pageLoadi
         ))
       )}
       <div ref={sentinelRef} className="py-2 text-center text-xs text-meta" aria-live="polite">
-        {pageLoading ? <Spin size="small" /> : hasMore ? '继续下滑加载更多' : null}
+        {pageLoading && visible.length > 0 ? (
+          <DashboardLineSkeleton
+            className="dashboard-change-list-more-skeleton"
+            label="正在加载更多 Classic 变更"
+            rows={1}
+          />
+        ) : hasMore ? (
+          '继续下滑加载更多'
+        ) : null}
       </div>
     </div>
   );

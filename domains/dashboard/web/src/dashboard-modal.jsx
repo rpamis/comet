@@ -1,22 +1,33 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Modal, Tooltip } from 'antd';
 import { FullscreenExitOutlined, FullscreenOutlined } from '@ant-design/icons';
 
 export function useDashboardModalState(open) {
   const [fullscreen, setFullscreen] = useState(false);
+  const fullscreenRef = useRef(false);
 
   useEffect(() => {
-    if (!open) setFullscreen(false);
+    if (!open) {
+      fullscreenRef.current = false;
+      setFullscreen(false);
+    }
   }, [open]);
 
-  const toggleFullscreen = () => setFullscreen((value) => !value);
-  const requestClose = (onClose) => {
-    if (fullscreen) {
+  const toggleFullscreen = useCallback(() => {
+    setFullscreen((value) => {
+      const next = !value;
+      fullscreenRef.current = next;
+      return next;
+    });
+  }, []);
+  const requestClose = useCallback((onClose) => {
+    if (fullscreenRef.current) {
+      fullscreenRef.current = false;
       setFullscreen(false);
       return;
     }
     onClose();
-  };
+  }, []);
 
   return { fullscreen, toggleFullscreen, requestClose };
 }

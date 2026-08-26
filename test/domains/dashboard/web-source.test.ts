@@ -198,10 +198,14 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain('loadCachedProjectConfig');
     expect(source).toContain('preloadDashboardSettings');
     expect(source).toContain('void preloadDashboardSettings(activeProjectId, availablePages)');
-    expect(source).toContain('settingsReady={pluginPages.some((page) => !page.pending)}');
-    expect(source).toContain('disabled={!settingsReady}');
+    expect(source).not.toContain('settingsReady={pluginPages.some((page) => !page.pending)}');
+    expect(source).not.toContain('disabled={!settingsReady}');
+    expect(source).toMatch(
+      /pluginPages\.find\(\(page\) => !page\.pending\)\?\.pluginId\s*\?\?\s*'comet\.config'/u,
+    );
     expect(source).toContain('pages.filter((item) => !item.pending)');
     expect(source).toContain('className={`dashboard-sidebar-settings${settingsOpen');
+    expect(source).toContain('className="dashboard-sidebar-settings-label"');
     expect(source).toContain('function DashboardSettingsOverlay');
     expect(source).toContain(
       "import { DashboardModal, useDashboardModalState } from './dashboard-modal.jsx'",
@@ -210,6 +214,8 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain("aria-label={fullscreen ? '退出全屏' : '全屏展示'}");
     expect(modal).toContain('mask={{ closable: true }}');
     expect(modal).toContain('dashboard-settings-modal-title-row');
+    expect(modal).toContain('const fullscreenRef = useRef(false)');
+    expect(modal).toContain('if (fullscreenRef.current)');
     expect(source).toContain('function DashboardSettingsPage');
     expect(source).toContain('function PersonalMemorySettings');
     expect(source).toContain('function ProjectKnowledgeSettings');
@@ -226,6 +232,7 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain('保存 Comet 配置');
     expect(source).toContain('/config`');
     expect(styles).toContain('.dashboard-sidebar-settings');
+    expect(styles).toContain('.dashboard-sidebar-settings-label');
     expect(styles).toContain('.dashboard-settings-shell');
     expect(styles).toContain('.dashboard-settings-panel');
     expect(styles).toContain('.dashboard-config-control');
@@ -239,6 +246,19 @@ describe('dashboard web source contracts', () => {
       '.dashboard-settings-modal .dashboard-settings-navigation .ant-menu-item-selected',
     );
     expect(styles).toContain('height: 100dvh');
+  });
+
+  it('uses line skeletons for Dashboard loading surfaces', async () => {
+    const source = await readDashboardSource();
+
+    expect(source).toContain('DashboardLineSkeleton');
+    expect(source).toContain('dashboard-change-list-skeleton');
+    expect(source).toContain('classic-change-detail-skeleton');
+    expect(source).toContain('classic-side-panel-skeleton');
+    expect(source).toContain('dashboard-artifact-loading');
+    expect(source).toContain('dashboard-project-knowledge-detail-loading');
+    expect(source).not.toContain('<Spin');
+    expect(source).not.toContain('正在加载...');
   });
 
   it('keeps the sidebar navigation compact and free of read-only helper rows', async () => {
@@ -454,7 +474,7 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain('new URLSearchParams({ changeLocator: changeId })');
     expect(source).toContain('change.workspace && !change.workspace.current');
     expect(source).toContain('onScroll={handleScroll}');
-    expect(source).toContain('正在加载变更详情');
+    expect(source).toContain('正在加载 Classic 变更详情');
     expect(source).not.toContain('async function fetchSnapshot');
 
     expect(await readDashboardStyles()).toContain(

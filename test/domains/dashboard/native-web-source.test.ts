@@ -105,6 +105,8 @@ describe('Native dashboard web source contracts', () => {
     expect(source).toContain('<NativeEmptySidePanel />');
     expect(source).toContain('<NativeChangeDetailSkeleton />');
     expect(source).toContain('<NativeSidePanelSkeleton />');
+    expect(source).toContain('native-change-list-skeleton');
+    expect(source).not.toContain('<Spin');
     expect(source).not.toContain('NativeWorkspaceLoadingState');
     expect(source).toContain('当前没有活跃的 Native change');
     expect(styles).toContain('.native-change-detail-empty');

@@ -555,6 +555,19 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
     'docs/rule.md',
   );
   await expect(sourcePreview.locator('button[aria-label="Close"]')).toHaveCount(0);
+  await page.waitForTimeout(400);
+  const [sourceHeaderBox, sourceExpandBox] = await Promise.all([
+    sourcePreview.locator('.ant-modal-header').boundingBox(),
+    sourcePreview.getByRole('button', { name: '全屏展示' }).boundingBox(),
+  ]);
+  if (!sourceHeaderBox || !sourceExpandBox) {
+    throw new Error('Expected the source preview header and fullscreen button bounds');
+  }
+  expect(
+    Math.abs(
+      sourceHeaderBox.x + sourceHeaderBox.width - (sourceExpandBox.x + sourceExpandBox.width) - 20,
+    ),
+  ).toBeLessThanOrEqual(2);
   await expect(sourcePreview.getByRole('heading', { name: 'Rule', level: 1 })).toBeVisible();
   await expect(sourcePreview).toContainText('Run focused tests first.');
   await expect(sourcePreview).not.toContainText('# Rule');
@@ -1658,6 +1671,11 @@ test('keeps the desktop sidebar transition unified and settings reachable when c
   await expect(page.getByRole('button', { name: '展开侧边栏' })).toBeVisible();
   await expect(settings).toHaveCSS('width', '40px');
   await expect(settings).toBeInViewport();
+  await expect(settings).toBeEnabled();
+  await expect(settings.locator('.anticon-setting')).toBeVisible();
+  await expect(settings.locator('.dashboard-sidebar-settings-label')).toBeHidden();
+  await settings.click();
+  await expect(page.getByRole('dialog', { name: /Comet 设置/u })).toBeVisible();
 });
 
 test('keeps collapsed sidebar menu icons aligned with their expanded positions', async ({
@@ -1887,10 +1905,16 @@ test('keeps Classic and Native three-pane workspaces during empty and loading vi
   await expect
     .poll(() => classicPageRequests.filter((request) => request.includes('status=archived')).length)
     .toBeGreaterThanOrEqual(1);
-  await expect(page.getByRole('heading', { name: '正在加载 Classic 变更' })).toBeVisible();
+  await expect(page.locator('.classic-change-detail-skeleton')).toBeVisible();
   await expect(
     page.getByRole('complementary', { name: '正在加载 Classic 变更状态', exact: true }),
   ).toBeVisible();
+  const classicSideSkeletons = page.locator('.classic-side-panel-skeleton .ant-skeleton');
+  await expect(classicSideSkeletons).toHaveCount(3);
+  for (const skeleton of await classicSideSkeletons.all()) {
+    await expect(skeleton).toBeVisible();
+  }
+  await expect(page.locator('.classic-changes-explorer .ant-spin')).toHaveCount(0);
   await expect(page.locator('.dashboard-workspace-region')).toHaveCount(1);
   releaseClassicArchive();
   await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
@@ -2276,7 +2300,8 @@ test('fills a server-paged Native list when its footer is already visible', asyn
     .poll(() => pageRequests.filter((request) => request.includes('status=archived')).length)
     .toBeGreaterThanOrEqual(1);
   await expect(page.locator('.native-workspace-empty')).toHaveCount(0);
-  await expect(page.locator('.native-change-list .ant-spin')).toBeVisible();
+  await expect(page.locator('.native-change-list-skeleton')).toBeVisible();
+  await expect(page.locator('.native-change-list .ant-spin')).toHaveCount(0);
   await expect(page.locator('.native-change-detail-skeleton')).toBeVisible();
   await expect(page.locator('.native-side-panel-skeleton')).toBeVisible();
   releaseFirstPage();
