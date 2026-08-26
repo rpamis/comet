@@ -551,6 +551,7 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   await page.getByRole('button', { name: '查看来源：docs/rule.md' }).click();
   const sourcePreview = page.getByRole('dialog', { name: /项目知识来源详情/u });
   await expect(sourcePreview).toContainText('docs/rule.md');
+  expect(await page.locator('.ant-message').allTextContents()).not.toContain('操作已完成');
   await expect(sourcePreview.locator('.dashboard-settings-modal-title-row')).not.toContainText(
     'docs/rule.md',
   );
@@ -1672,6 +1673,7 @@ test('keeps the desktop sidebar transition unified and settings reachable when c
   await expect(settings).toHaveCSS('width', '40px');
   await expect(settings).toBeInViewport();
   await expect(settings).toBeEnabled();
+  await expect(sidebar.locator('.dashboard-sidebar-footer-label')).toHaveCSS('display', 'none');
   await expect(settings.locator('.anticon-setting')).toBeVisible();
   await expect(settings.locator('.dashboard-sidebar-settings-label')).toBeHidden();
   await settings.click();

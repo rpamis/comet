@@ -736,6 +736,50 @@ describe('project knowledge configuration', () => {
     });
   });
 
+  test('clears a recovered local search-tool diagnostic after a successful query', async () => {
+    const root = await tempProject();
+    const cacheRoot = await tempProject();
+    const source = path.join(root, 'docs', 'retrieval.md');
+    await fs.mkdir(path.dirname(source), { recursive: true });
+    await fs.writeFile(source, '# Retrieval\n\nProject knowledge retrieval stays available.\n');
+    const storageStore = new MemoryPluginStorageStore();
+    const storage = await storageStore.open(
+      'comet.project-knowledge',
+      'project',
+      'recovered-local-tool-diagnostic',
+    );
+    await storage.write({
+      diagnostics: [
+        {
+          code: 'local-tool-missing',
+          message:
+            '[local-tool-missing] Local project knowledge search is unavailable; install ripgrep or keep the bundled binary available.',
+        },
+      ],
+    });
+    const module = await createProjectKnowledgeModule(
+      { storage, reportDiagnostic: () => undefined } as never,
+      { projectRoot: root, cacheRoot, knowledgeConfig: { provider: 'local' } },
+    );
+
+    try {
+      await expect(
+        module.invoke?.('query', { task: 'project knowledge retrieval' }),
+      ).resolves.toMatchObject({
+        kind: 'search',
+      });
+      await expect(module.invoke?.('status', {})).resolves.toMatchObject({
+        diagnostics: expect.not.arrayContaining([
+          expect.objectContaining({ code: 'local-tool-missing' }),
+        ]),
+      });
+    } finally {
+      await module.dispose?.();
+      await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      await fs.rm(cacheRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
+  });
+
   test('keeps generic terms below the strong-match threshold', () => {
     expect(createProjectKnowledgeQuery({ task: 'project' }).strongTerms).toEqual([]);
     expect(

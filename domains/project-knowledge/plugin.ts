@@ -37,6 +37,7 @@ import type {
   ProjectKnowledgePluginOptions,
   ProjectKnowledgeDashboardDiagnostic,
   ProjectKnowledgeProvider,
+  ProjectKnowledgeQueryResult,
   ProjectKnowledgeResult,
 } from './types.js';
 import { resolveProjectKnowledgeStorageLocation } from '../../platform/paths/project-knowledge-storage.js';
@@ -167,6 +168,17 @@ async function createProjectKnowledgeModule(
       code: 'execution-failed',
       message,
     });
+  };
+  const clearDiagnostic = (code: string): void => {
+    const retained = recentDiagnostics.filter((entry) => entry.code !== code);
+    if (retained.length === recentDiagnostics.length) return;
+    recentDiagnostics.splice(0, recentDiagnostics.length, ...retained);
+    persistDiagnostics();
+  };
+  const clearRecoveredLocalSearchDiagnostic = (response: ProjectKnowledgeQueryResult): void => {
+    if (options.knowledgeConfig.provider !== 'local' || response.kind !== 'search') return;
+    if (response.diagnostics.some((diagnostic) => diagnostic.code === 'local-tool-missing')) return;
+    clearDiagnostic('local-tool-missing');
   };
   const createProvider = async (
     providerOptions: { readonly discoverCorpus?: boolean } = {},
@@ -547,7 +559,7 @@ async function createProjectKnowledgeModule(
         if (capability === 'query') {
           if (typeof value.task !== 'string' || !value.task.trim())
             throw new Error('query requires task');
-          return await activeProvider.query({
+          const response = await activeProvider.query({
             kind: 'search',
             query: createProjectKnowledgeQuery({
               task: value.task,
@@ -557,6 +569,8 @@ async function createProjectKnowledgeModule(
             }),
             limit: 8,
           });
+          clearRecoveredLocalSearchDiagnostic(response);
+          return response;
         }
         if (capability === 'create') {
           const type = value.type;
@@ -649,6 +663,7 @@ async function createProjectKnowledgeModule(
         activeProvider = await createProvider();
         await ensureProjectModel(activeProvider);
         const response = await activeProvider.query({ kind: 'search', query, limit: 8 });
+        clearRecoveredLocalSearchDiagnostic(response);
         const results = response.kind === 'search' ? response.results : [];
         if (recentChangedHints.length > 0) {
           recentChangedHints.splice(0, recentChangedHints.length);

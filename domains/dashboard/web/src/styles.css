@@ -7626,6 +7626,10 @@ body {
     padding-inline: 8px;
   }
 
+  .dashboard-workbench.is-sidebar-collapsed .dashboard-sidebar-footer-label {
+    display: none;
+  }
+
   .dashboard-workbench.is-sidebar-collapsed .dashboard-sidebar-settings {
     justify-content: center;
     width: 40px;

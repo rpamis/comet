@@ -847,7 +847,7 @@ function DashboardApp({ theme, onToggleTheme }) {
                   ? '来源或验证入口已变化，记录已替代并停止应用'
                   : '项目知识已刷新',
           );
-        } else {
+        } else if (capability !== 'read-source') {
           toast(capability === 'lifecycle' ? '插件状态已更新' : '操作已完成');
         }
         return result;
