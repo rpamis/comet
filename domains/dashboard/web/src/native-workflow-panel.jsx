@@ -324,7 +324,7 @@ export function NativeWorkflowPanel({
   const detailPending = Boolean(selectedSummary && !selected && (detailLoading || !detailError));
   const hasNativeChanges = Boolean(native && native.totalChangeCount > 0);
   const isEmptyView = !pageLoading && visibleChanges.length === 0;
-  const isLoadingEmptyView = pageLoading && visibleChanges.length === 0;
+  const isLoadingView = pageLoading && visibleChanges.length === 0;
 
   return (
     <div className="mx-auto min-w-0 max-w-dashboard">
@@ -339,118 +339,68 @@ export function NativeWorkflowPanel({
       <NativeWorkflowSuggestion change={selected ?? selectedSummary} />
       <NativeSummaryCards native={native} loadedChanges={visibleChanges} />
       <SectionHead title="Native 变更工作区" hint="查看循环、验收、阻塞与恢复状态" />
-      {!native || !hasNativeChanges ? (
-        <NativeWorkspaceEmptyState native={native} emptyProject />
-      ) : isLoadingEmptyView ? (
-        <NativeWorkspaceLoadingState native={native} tab={tab} onTab={onTab} />
-      ) : isEmptyView ? (
-        <NativeWorkspaceEmptyState native={native} tab={tab} query={query} onTab={onTab} />
-      ) : (
-        <DashboardWorkspaceRegion
-          stableFrame
-          leftClassName="native-workspace-left"
-          left={
-            <NativeChangesExplorer
-              changes={visibleChanges}
-              total={serverPaged ? (total ?? sourceChanges.length) : sourceChanges.length}
-              selectedKey={selectedSummary ? changeKey(selectedSummary) : null}
-              query={query}
+      <DashboardWorkspaceRegion
+        stableFrame
+        leftClassName="native-workspace-left"
+        left={
+          <NativeChangesExplorer
+            changes={visibleChanges}
+            total={serverPaged ? (total ?? sourceChanges.length) : sourceChanges.length}
+            selectedKey={selectedSummary ? changeKey(selectedSummary) : null}
+            query={query}
+            tab={tab}
+            onTab={onTab}
+            onSelect={(change) => setSelectedKey(changeKey(change))}
+            listRef={listRef}
+            loadMoreRef={loadMoreRef}
+            hasMore={hasMoreChanges}
+            pageLoading={pageLoading}
+            onScroll={handleListScroll}
+          />
+        }
+        center={
+          isEmptyView ? (
+            <NativeEmptyChangeDetail
+              native={native}
               tab={tab}
+              query={query}
               onTab={onTab}
-              onSelect={(change) => setSelectedKey(changeKey(change))}
-              listRef={listRef}
-              loadMoreRef={loadMoreRef}
-              hasMore={hasMoreChanges}
-              pageLoading={pageLoading}
-              onScroll={handleListScroll}
+              emptyProject={!hasNativeChanges}
             />
-          }
-          center={
-            selected ? (
-              <NativeChangeDetail
-                change={selected}
-                onPreview={onPreview}
-                onCopyChangeName={onCopyChangeName}
-              />
-            ) : detailPending ? (
-              <NativeChangeDetailSkeleton />
-            ) : detailError ? (
-              <div className="native-change-detail dashboard-change-detail-loading min-w-0 rounded-lg border border-border bg-bg p-10 text-center text-sm text-danger shadow-raised">
-                <p role="alert">Native 变更详情加载失败：{detailError.reason}</p>
-                <Button className="mt-4" onClick={onRetryDetail}>
-                  重新加载
-                </Button>
-              </div>
-            ) : (
-              <NativeWorkspaceEmptyState native={native} tab={tab} query={query} onTab={onTab} />
-            )
-          }
-          right={
-            selected ? (
-              <NativeSidePanel change={selected} git={git} />
-            ) : detailPending ? (
-              <NativeSidePanelSkeleton />
-            ) : null
-          }
-        />
-      )}
+          ) : isLoadingView || detailPending ? (
+            <NativeChangeDetailSkeleton />
+          ) : selected ? (
+            <NativeChangeDetail
+              change={selected}
+              onPreview={onPreview}
+              onCopyChangeName={onCopyChangeName}
+            />
+          ) : detailError ? (
+            <div className="native-change-detail dashboard-change-detail-loading min-w-0 rounded-lg border border-border bg-bg p-10 text-center text-sm text-danger shadow-raised">
+              <p role="alert">Native 变更详情加载失败：{detailError.reason}</p>
+              <Button className="mt-4" onClick={onRetryDetail}>
+                重新加载
+              </Button>
+            </div>
+          ) : (
+            <NativeEmptyChangeDetail native={native} tab={tab} query={query} onTab={onTab} />
+          )
+        }
+        right={
+          isEmptyView ? (
+            <NativeEmptySidePanel />
+          ) : isLoadingView || detailPending ? (
+            <NativeSidePanelSkeleton />
+          ) : selected ? (
+            <NativeSidePanel change={selected} git={git} />
+          ) : null
+        }
+      />
     </div>
   );
 }
 
-function NativeWorkspaceTabs({ native, tab, onTab }) {
-  const tabs = [
-    ['active', '活跃', native?.activeChangeCount ?? 0],
-    ['archived', '已归档', native?.archivedChangeCount ?? 0],
-    ['all', '全部', native?.totalChangeCount ?? 0],
-  ];
-  return (
-    <div className="native-workspace-empty-tabs" role="tablist" aria-label="Native 变更范围">
-      {tabs.map(([value, label, count]) => (
-        <button
-          key={value}
-          type="button"
-          role="tab"
-          aria-selected={tab === value}
-          className={`native-change-tab ${tab === value ? 'active' : ''}`}
-          onClick={() => onTab?.(value)}
-        >
-          {label}
-          <span className="native-workspace-tab-count">{count}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function NativeWorkspaceFrame({ native, tab, onTab, children }) {
-  return (
-    <section className="native-workspace-empty overflow-hidden rounded-lg bg-bg shadow-raised">
-      <div className="native-workspace-empty-header">
-        <div>
-          <h3>变更记录</h3>
-          <p>浏览 Native change 的执行与归档状态</p>
-        </div>
-        <span className="native-workspace-empty-total">共 {native?.totalChangeCount ?? 0} 条</span>
-      </div>
-      {tab ? <NativeWorkspaceTabs native={native} tab={tab} onTab={onTab} /> : null}
-      {children}
-    </section>
-  );
-}
-
-function NativeWorkspaceLoadingState({ native, tab, onTab }) {
-  return (
-    <NativeWorkspaceFrame native={native} tab={tab} onTab={onTab}>
-      <div className="native-workspace-empty-body" aria-live="polite">
-        <Spin aria-label="正在加载 Native 变更列表" />
-        <p className="mt-3 text-sm text-muted">正在加载变更记录…</p>
-      </div>
-    </NativeWorkspaceFrame>
-  );
-}
-
-function NativeWorkspaceEmptyState({ native, tab, query = '', onTab, emptyProject = false }) {
+function NativeEmptyChangeDetail({ native, tab, query = '', onTab, emptyProject = false }) {
   const hasArchivedChanges = (native?.archivedChangeCount ?? 0) > 0;
   const hasActiveChanges = (native?.activeChangeCount ?? 0) > 0;
   const showArchiveShortcut = tab === 'active' && !query.trim() && hasArchivedChanges;
@@ -470,8 +420,8 @@ function NativeWorkspaceEmptyState({ native, tab, query = '', onTab, emptyProjec
         ? '当前还没有归档记录，你可以返回查看正在进行的变更。'
         : '调整顶部搜索条件，或切换变更范围后再试。';
   return (
-    <NativeWorkspaceFrame native={native} tab={emptyProject ? null : tab} onTab={onTab}>
-      <div className="native-workspace-empty-body text-center">
+    <section className="native-change-detail native-change-detail-empty min-w-0 rounded-lg border border-border bg-bg shadow-raised">
+      <div className="dashboard-workspace-empty-detail text-center">
         <span className="native-workspace-empty-icon" aria-hidden="true">
           <FlagOutlined />
         </span>
@@ -487,7 +437,21 @@ function NativeWorkspaceEmptyState({ native, tab, query = '', onTab, emptyProjec
           </Button>
         ) : null}
       </div>
-    </NativeWorkspaceFrame>
+    </section>
+  );
+}
+
+function NativeEmptySidePanel() {
+  return (
+    <aside className="dashboard-workspace-side-empty" aria-label="Native 变更状态">
+      <div>
+        <span className="native-workspace-empty-icon" aria-hidden="true">
+          <FlagOutlined />
+        </span>
+        <h3>暂无变更数据</h3>
+        <p>选择或创建 Native change 后，这里会显示恢复状态、阻塞信息和 Git 摘要。</p>
+      </div>
+    </aside>
   );
 }
 

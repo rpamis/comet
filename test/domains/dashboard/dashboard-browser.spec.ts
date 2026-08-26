@@ -14,7 +14,7 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
     state: 'proven',
     authority: 'automatic',
     title: 'Focused tests',
-    summary: 'Prefer focused tests for small changes.',
+    summary: '## 使用建议\n\nPrefer focused tests for small changes.',
     applicablePaths: ['domains/'],
     operations: ['verify'],
     conclusions: [
@@ -38,7 +38,7 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
       {
         applicationId: 'application-focused-tests-1',
         task: '实现项目知识检索',
-        whyApplied: '当前路径与项目策略匹配',
+        whyApplied: '当前路径与项目规范匹配',
         delivery: 'expanded',
         appliedAt: '2026-08-22T08:00:00.000Z',
         outcome: 'used-successfully',
@@ -97,10 +97,47 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
             timeoutMs: 1200,
           },
           retrieval: 'Remote 配置仅表示已配置，不代表最近一次请求成功。',
+          local: {
+            available: true,
+            repositoryId: 'fixture-repository',
+            workspaceId: 'fixture-workspace',
+            sourceCount: 124,
+            sources: [
+              {
+                source: 'docs/rule.md',
+                kind: 'custom',
+                updatedAt: '2026-08-23T12:00:00.000Z',
+              },
+              {
+                source: 'docs/policy.md',
+                kind: 'custom',
+                updatedAt: '2026-08-23T12:00:00.000Z',
+              },
+              {
+                source: 'docs/legacy.md',
+                kind: 'classic-archive',
+                updatedAt: '2026-08-21T12:00:00.000Z',
+              },
+              {
+                source: 'docs/verification.json',
+                kind: 'native-archive',
+                updatedAt: '2026-08-20T12:00:00.000Z',
+              },
+              ...Array.from({ length: 120 }, (_, index) => ({
+                source: `docs/generated/source-${String(index + 5).padStart(3, '0')}.md`,
+                kind: 'custom',
+                updatedAt: '2026-08-19T12:00:00.000Z',
+              })),
+            ],
+            sectionCount: 4,
+            updatedAt: '2026-08-23T12:00:00.000Z',
+            channels: ['records', 'sections'],
+          },
           records: [baseRecord, policyRecord, ...manualRecords],
           manifestPreview: [
             {
               id: baseRecord.id,
+              memoryType: 'project-model',
               title: baseRecord.title,
               summary: baseRecord.summary,
               whyApplied: '当前任务与验证阶段匹配',
@@ -112,6 +149,23 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
                 whyApplied: '当前任务与验证阶段匹配',
                 delivery: 'manifest',
                 appliedAt: '2026-08-23T08:00:00.000Z',
+                outcome: 'used-successfully',
+              },
+            },
+            {
+              id: policyRecord.id,
+              memoryType: 'project-policy',
+              title: policyRecord.title,
+              summary: policyRecord.summary,
+              whyApplied: '当前项目与验证操作匹配',
+              delivery: 'expanded',
+              appliedAt: '2026-08-23T07:00:00.000Z',
+              outcome: 'used-successfully',
+              lastApplication: {
+                task: '复核项目规范',
+                whyApplied: '当前项目与验证操作匹配',
+                delivery: 'expanded',
+                appliedAt: '2026-08-23T07:00:00.000Z',
                 outcome: 'used-successfully',
               },
             },
@@ -189,6 +243,26 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
         capability?: string;
         input?: Record<string, unknown>;
       };
+      if (body.capability === 'read-source') {
+        const source = body.input?.source;
+        expect(['docs/rule.md', 'docs/verification.json']).toContain(source);
+        const isJson = source === 'docs/verification.json';
+        await route.fulfill({
+          json: {
+            result: {
+              kind: 'source',
+              source,
+              content: isJson
+                ? '{\n  "status": "passed",\n  "acceptance_id": "acceptance-1"\n}\n'
+                : '# Rule\n\nRun focused tests first.\n',
+              size: isJson ? 67 : 33,
+              modifiedAt: '2026-08-23T12:00:00.000Z',
+              truncated: false,
+            },
+          },
+        });
+        return;
+      }
       if (body.capability === 'create') {
         expect(body.input).toMatchObject({
           type: 'constraint',
@@ -323,11 +397,67 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
 
   await page.goto('/');
   await page.getByRole('menuitem', { name: '项目知识' }).click();
-  const projectManifest = page.getByRole('region', { name: '最近一次任务使用的记忆' });
+  const projectManifest = page.getByRole('region', { name: '最近一次任务使用的项目知识' });
   await expect(projectManifest).toContainText('Focused tests');
   await expect(projectManifest).toContainText('任务：复核项目测试策略');
   await expect(projectManifest).toContainText('当前任务与验证阶段匹配');
   await expect(projectManifest).toContainText('应用成功');
+  await expect(projectManifest).not.toContainText('## 使用建议');
+  const focusedManifestToggle = projectManifest.getByRole('button', {
+    name: '查看项目知识详情：Focused tests',
+  });
+  await focusedManifestToggle.click();
+  const focusedManifestDetail = projectManifest.getByRole('region', {
+    name: '项目知识详情：Focused tests',
+  });
+  await expect(focusedManifestDetail).toHaveCount(0);
+  const focusedManifestDialog = page.getByRole('dialog', {
+    name: /项目知识详情.*Focused tests/u,
+  });
+  await expect(focusedManifestDialog).toBeVisible();
+  await expect(focusedManifestDialog.locator('button[aria-label="Close"]')).toHaveCount(0);
+  await expect(focusedManifestDialog.getByRole('button', { name: '全屏展示' })).toBeVisible();
+  await expect(
+    focusedManifestDialog
+      .locator('.dashboard-settings-modal-title-row')
+      .getByRole('button', { name: '全屏展示' }),
+  ).toHaveCount(0);
+  await expect(focusedManifestDialog).toContainText('项目知识内容');
+  await expect(
+    focusedManifestDialog.getByRole('heading', { name: '使用建议', level: 2 }),
+  ).toBeVisible();
+  await expect(focusedManifestDialog).toContainText('Prefer focused tests for small changes.');
+  await expect(focusedManifestDialog).not.toContainText('## 使用建议');
+  const focusedPreviewContainer = focusedManifestDialog.locator('.ant-modal-container');
+  await expect(focusedPreviewContainer).toHaveCSS('transition-duration', /0\.36s/u);
+  await expect(focusedPreviewContainer).toHaveCSS(
+    'transition-timing-function',
+    /cubic-bezier\(0\.22, 1, 0\.36, 1\)/u,
+  );
+  await expect(focusedManifestDialog).toContainText('为什么使用');
+  await expect(focusedManifestDialog).toContainText('提供给 Agent 的内容');
+  await expect(focusedManifestDialog).toContainText('项目事实');
+  await focusedManifestDialog.getByRole('button', { name: '全屏展示' }).click();
+  await expect(focusedManifestDialog.getByRole('button', { name: '退出全屏' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(focusedManifestDialog).toBeVisible();
+  await expect(focusedManifestDialog.getByRole('button', { name: '全屏展示' })).toBeVisible();
+  await page
+    .locator('.dashboard-knowledge-preview-modal-root .ant-modal-wrap')
+    .click({ position: { x: 5, y: 5 } });
+  await expect(focusedManifestDialog).toBeHidden();
+  const policyManifestToggle = projectManifest.getByRole('button', {
+    name: '查看项目知识详情：Policy checks',
+  });
+  await policyManifestToggle.click();
+  const policyManifestDialog = page.getByRole('dialog', {
+    name: /项目知识详情.*Policy checks/u,
+  });
+  await expect(policyManifestDialog).toContainText('Run the project checks before delivery.');
+  await page
+    .locator('.dashboard-knowledge-preview-modal-root .ant-modal-wrap')
+    .click({ position: { x: 5, y: 5 } });
+  await expect(policyManifestDialog).toBeHidden();
   await expect(page.getByLabel('项目规则状态与操作')).toBeVisible();
   await expect(page.getByRole('tablist', { name: '项目知识视图' })).toBeVisible();
   await expect(page.getByRole('complementary', { name: '知识分类' })).toBeVisible();
@@ -359,19 +489,97 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   );
   await expect(page.getByText('知识提供方式', { exact: true })).toBeVisible();
 
-  await page.getByRole('tab', { name: '项目模型' }).click();
+  await page.getByRole('tab', { name: '项目事实' }).click();
   await page.getByRole('button', { name: /项目拓扑/u }).click();
-  await page.getByRole('tab', { name: '项目策略' }).click();
+  await page.getByRole('tab', { name: '项目规范' }).click();
   await expect(page.getByLabel('项目知识记录列表')).toContainText('Policy checks');
   await expect(page.getByLabel('项目知识记录列表')).not.toContainText('Focused tests');
-  await expect(page.getByRole('tab', { name: '项目策略' })).toHaveAttribute(
+  await expect(page.getByRole('tab', { name: '项目规范' })).toHaveAttribute(
     'aria-selected',
     'true',
   );
 
   await page.getByRole('tab', { name: '数据来源' }).click();
   await expect(page.getByRole('heading', { name: '数据来源' })).toBeVisible();
-  await expect(page.getByLabel('项目知识数据来源列表')).toContainText('docs/rule.md#rule');
+  await expect(page.getByLabel('项目知识数据来源列表')).toContainText('docs/rule.md');
+  await expect(page.getByLabel('搜索项目知识来源')).toBeVisible();
+  await expect(page.getByText('共 124 个来源', { exact: true })).toBeVisible();
+  const sourceList = page.getByLabel('项目知识数据来源列表');
+  await expect(sourceList.getByRole('button')).toHaveCount(124);
+  const sourceRows = page.locator('.dashboard-knowledge-source-rows');
+  await expect
+    .poll(() => sourceRows.evaluate((element) => element.scrollHeight > element.clientHeight))
+    .toBe(true);
+  const sourceHeaderFirstColumn = await page
+    .locator('.dashboard-knowledge-source-head > span')
+    .first()
+    .boundingBox();
+  const sourceRowFirstColumn = await sourceList
+    .getByRole('button')
+    .first()
+    .locator('span')
+    .first()
+    .boundingBox();
+  expect(sourceHeaderFirstColumn).not.toBeNull();
+  expect(sourceRowFirstColumn).not.toBeNull();
+  expect(
+    Math.abs((sourceHeaderFirstColumn?.x ?? 0) - (sourceRowFirstColumn?.x ?? 0)),
+  ).toBeLessThanOrEqual(1);
+  const sourceHeaderRelatedColumn = await page
+    .locator('.dashboard-knowledge-source-head > span')
+    .nth(1)
+    .boundingBox();
+  const sourceRowRelatedColumn = await sourceList
+    .getByRole('button')
+    .first()
+    .locator('strong')
+    .boundingBox();
+  expect(sourceHeaderRelatedColumn).not.toBeNull();
+  expect(sourceRowRelatedColumn).not.toBeNull();
+  expect(
+    Math.abs((sourceHeaderRelatedColumn?.x ?? 0) - (sourceRowRelatedColumn?.x ?? 0)),
+  ).toBeLessThanOrEqual(1);
+  await sourceRows.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect(
+    sourceList.getByRole('button', { name: '查看来源：docs/generated/source-124.md' }),
+  ).toBeVisible();
+  await page.getByLabel('搜索项目知识来源').fill('rule.md');
+  await expect(page.getByLabel('项目知识数据来源列表')).toContainText('docs/rule.md');
+  await expect(page.getByLabel('项目知识数据来源列表')).not.toContainText('docs/policy.md');
+  await page.getByRole('button', { name: '查看来源：docs/rule.md' }).click();
+  const sourcePreview = page.getByRole('dialog', { name: /项目知识来源详情/u });
+  await expect(sourcePreview).toContainText('docs/rule.md');
+  await expect(sourcePreview.locator('.dashboard-settings-modal-title-row')).not.toContainText(
+    'docs/rule.md',
+  );
+  await expect(sourcePreview.locator('button[aria-label="Close"]')).toHaveCount(0);
+  await expect(sourcePreview.getByRole('heading', { name: 'Rule', level: 1 })).toBeVisible();
+  await expect(sourcePreview).toContainText('Run focused tests first.');
+  await expect(sourcePreview).not.toContainText('# Rule');
+  await expect(sourcePreview.locator('.ant-modal-container')).toHaveCSS(
+    'transition-duration',
+    /0\.36s/u,
+  );
+  await sourcePreview.getByRole('button', { name: '全屏展示' }).click();
+  await expect(sourcePreview.getByRole('button', { name: '退出全屏' })).toBeVisible();
+  await sourcePreview.getByRole('button', { name: '退出全屏' }).click();
+  await expect(sourcePreview.getByRole('button', { name: '全屏展示' })).toBeVisible();
+  await page
+    .locator('.dashboard-knowledge-preview-modal-root .ant-modal-wrap')
+    .click({ position: { x: 5, y: 5 } });
+  await expect(sourcePreview).toBeHidden();
+  await page.getByLabel('搜索项目知识来源').fill('verification.json');
+  await page.getByRole('button', { name: '查看来源：docs/verification.json' }).click();
+  const jsonPreview = page.getByRole('dialog', { name: /项目知识来源详情/u });
+  await expect(jsonPreview.getByRole('table')).toBeVisible();
+  await expect(jsonPreview.getByText('acceptance_id', { exact: true })).toBeVisible();
+  await expect(jsonPreview.getByText('acceptance-1', { exact: true })).toBeVisible();
+  await expect(jsonPreview.locator('button[aria-label="Close"]')).toHaveCount(0);
+  await page
+    .locator('.dashboard-knowledge-preview-modal-root .ant-modal-wrap')
+    .click({ position: { x: 5, y: 5 } });
 
   await page.getByRole('tab', { name: '检索测试' }).click();
   await page.getByLabel('查询项目知识').fill('focused tests');
@@ -383,11 +591,19 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   await expect(page.getByLabel('项目知识查询结果')).toContainText(
     '检索已完成，没有找到与当前任务匹配的项目知识',
   );
-  await page.getByRole('tab', { name: '项目模型' }).click();
+  await page.getByRole('tab', { name: '项目事实' }).click();
 
   await page.getByRole('button', { name: '新增项目知识' }).click();
   const createDialog = page.getByRole('dialog');
   await expect(createDialog).toContainText('新增项目知识');
+  await expect(createDialog.locator('button[aria-label="Close"]')).toHaveCount(0);
+  await expect(createDialog.getByRole('button', { name: '全屏展示' })).toBeVisible();
+  await createDialog.getByRole('button', { name: '全屏展示' }).click();
+  await expect(createDialog.getByRole('button', { name: '退出全屏' })).toBeVisible();
+  await createDialog.getByLabel('项目知识标题').fill('暂存标题');
+  await createDialog.getByRole('button', { name: '退出全屏' }).click();
+  await expect(createDialog.getByRole('button', { name: '全屏展示' })).toBeVisible();
+  await expect(createDialog.getByLabel('项目知识标题')).toHaveValue('暂存标题');
   await expect(page.locator('.dashboard-create-modal-content')).toHaveCSS('border-radius', '10px');
   await expect(createDialog.locator('.dashboard-project-knowledge-create-form')).toHaveCSS(
     'display',
@@ -399,7 +615,7 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   await createDialog.getByLabel('项目知识适用操作').fill('verify');
   await createDialog.getByLabel('项目知识验证命令').fill('pnpm test --filter project-knowledge');
   await page.getByRole('button', { name: /保\s*存/u }).click();
-  await page.getByRole('tab', { name: '项目策略' }).click();
+  await page.getByRole('tab', { name: '项目规范' }).click();
   await page.getByLabel('项目知识记录状态').click();
   await page.locator('.ant-select-item-option').filter({ hasText: '强制执行' }).click();
   const manualRecordButton = page
@@ -438,6 +654,12 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
 
   await page.getByRole('button', { name: '设置' }).click();
   const settingsDialog = page.getByRole('dialog', { name: /Comet 设置/u });
+  await expect(settingsDialog.locator('button[aria-label="Close"]')).toHaveCount(0);
+  await expect(settingsDialog.getByRole('button', { name: '全屏展示' })).toBeVisible();
+  await settingsDialog.getByRole('button', { name: '全屏展示' }).click();
+  await expect(settingsDialog.getByRole('button', { name: '退出全屏' })).toBeVisible();
+  await settingsDialog.getByRole('button', { name: '退出全屏' }).click();
+  await expect(settingsDialog.getByRole('button', { name: '全屏展示' })).toBeVisible();
   await expect(settingsDialog.getByLabel('项目规则设置')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Provider 与检索' })).toBeVisible();
   await expect(page.getByText('COMET_KNOWLEDGE_TOKEN')).toBeVisible();
@@ -690,6 +912,11 @@ test('adds global or project memory, explains application, and permanently delet
   await expect(memoryManifest).toContainText('任务：撰写发布说明');
   await expect(memoryManifest).toContainText('用户明确设置');
   await expect(memoryManifest).toContainText('应用成功');
+  const manifestMemoryButton = memoryManifest.getByRole('button', {
+    name: /查看记忆详情：沟通偏好/u,
+  });
+  await expect(manifestMemoryButton).toBeVisible();
+  await manifestMemoryButton.click();
   await expect(page.getByText('为什么应用：用户明确设置', { exact: true })).toBeVisible();
   await expect(page.getByLabel('记忆应用详情')).toContainText('应用成功');
   await expect(page.getByLabel('记忆应用详情')).toContainText('撰写发布说明');
@@ -697,6 +924,8 @@ test('adds global or project memory, explains application, and permanently delet
   await page.getByRole('button', { name: '新增偏好' }).click();
 
   const profileDialog = page.getByRole('dialog').last();
+  await expect(profileDialog.locator('button[aria-label="Close"]')).toHaveCount(0);
+  await expect(profileDialog.getByRole('button', { name: '全屏展示' })).toBeVisible();
   const profileInput = profileDialog.getByLabel('偏好内容');
   await expect(profileInput).toBeVisible();
   await expect(profileDialog.getByLabel('分类（可选）')).toBeVisible();
@@ -777,6 +1006,20 @@ test('adds global or project memory, explains application, and permanently delet
   ).toHaveCount(0);
   await expect(page.getByRole('button', { name: '协作策略 0' })).toBeVisible();
   await expect(page.getByRole('button', { name: '历史记录 0' })).toBeVisible();
+
+  const profileSection = page.getByRole('region', { name: '个人记忆列表' });
+  await profileSection
+    .locator('.dashboard-memory-table-row')
+    .filter({ hasText: '默认使用中文回复' })
+    .getByLabel('删除记忆')
+    .click();
+  await expect
+    .poll(() => removeRequest)
+    .toMatchObject({
+      capability: 'remove',
+      input: expect.objectContaining({ id: 'profile-memory', permanent: true }),
+    });
+  await expect(memoryManifest).not.toContainText('默认使用中文回复');
 });
 
 test('collapses long personal memory records until the user expands them', async ({ page }) => {
@@ -1103,6 +1346,8 @@ test('shows a corrected personal memory immediately after persistence succeeds',
 
   await projectMemoryRow.getByRole('button', { name: '纠正记忆', exact: true }).click();
   const correctionDialog = page.getByRole('dialog', { name: '纠正这条记忆' });
+  await expect(correctionDialog.locator('button[aria-label="Close"]')).toHaveCount(0);
+  await expect(correctionDialog.getByRole('button', { name: '全屏展示' })).toBeVisible();
   await correctionDialog.getByRole('textbox').fill('纠正后的项目记忆');
   await correctionDialog.getByRole('button', { name: /保\s*存/u }).click();
 
@@ -1146,8 +1391,17 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
 
   await page.getByRole('button', { name: '需求简报' }).click();
   await expect(page.getByRole('heading', { name: '需求简报' })).toBeVisible();
+  await expect(
+    page.locator('.dashboard-artifact-preview-panel > header > .dashboard-artifact-preview-expand'),
+  ).toBeVisible();
   await expect(page.getByText('Ship a fast, recoverable Native dashboard.')).toBeVisible();
-  await page.getByRole('button', { name: '关闭产物预览' }).last().click();
+  await expect(page.getByRole('button', { name: '关闭产物预览' })).toHaveCount(0);
+  await page.getByRole('button', { name: '全屏展示' }).click();
+  await expect(page.getByRole('button', { name: '退出全屏' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: '全屏展示' })).toBeVisible();
+  await page.locator('.dashboard-artifact-preview-backdrop').click();
+  await expect(page.getByRole('heading', { name: '需求简报' })).toBeHidden();
 
   await page.getByRole('tab', { name: '已归档', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'document-native-resume' })).toBeVisible();
@@ -1168,8 +1422,10 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '提案', level: 2 })).toBeVisible();
   await page.getByRole('button', { name: '全屏展示' }).click();
   await expect(page.getByRole('button', { name: '退出全屏' })).toBeVisible();
-  await page.getByRole('button', { name: '退出全屏' }).click();
-  await page.getByRole('button', { name: '关闭产物预览' }).last().click();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: '全屏展示' })).toBeVisible();
+  await page.locator('.dashboard-artifact-preview-backdrop').click();
+  await expect(page.getByRole('heading', { name: '提案', level: 2 })).toBeHidden();
 
   expect(consoleErrors).toEqual([]);
 });
@@ -1373,6 +1629,57 @@ test('uses the reference surface hierarchy across the workbench shell', async ({
   await expect(page.locator('.ant-card').first()).toHaveCSS('box-shadow', /rgba\(31, 43, 64/);
 });
 
+test('keeps the desktop sidebar transition unified and settings reachable when collapsed', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await page.goto('/?demo');
+
+  const workbench = page.locator('.dashboard-workbench');
+  const sidebar = page.locator('.dashboard-sidebar');
+  const sidebarContent = sidebar.locator('.dashboard-sidebar-content');
+  const footer = sidebar.locator('.dashboard-sidebar-footer');
+  const settings = sidebar.locator('.dashboard-sidebar-settings');
+
+  await expect(workbench).toHaveCSS('transition-duration', '0.22s');
+  await expect(sidebar).toHaveCSS('transition-property', 'none');
+  await expect(footer).toHaveCSS('flex-shrink', '0');
+  await expect(settings).toBeInViewport();
+
+  await page.getByRole('button', { name: '收起侧边栏' }).click();
+  await page.waitForTimeout(60);
+
+  const [sidebarWidth, sidebarContentWidth] = await Promise.all([
+    sidebar.evaluate((element) => element.getBoundingClientRect().width),
+    sidebarContent.evaluate((element) => element.getBoundingClientRect().width),
+  ]);
+  expect(Math.abs(sidebarWidth - sidebarContentWidth)).toBeLessThanOrEqual(1);
+
+  await expect(page.getByRole('button', { name: '展开侧边栏' })).toBeVisible();
+  await expect(settings).toHaveCSS('width', '40px');
+  await expect(settings).toBeInViewport();
+});
+
+test('keeps collapsed sidebar menu icons aligned with their expanded positions', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await page.goto('/?demo');
+
+  const workflowIconItem = page.locator('.dashboard-workflow-menu .ant-menu-item').first();
+  const expandedTop = await workflowIconItem.evaluate(
+    (element) => element.getBoundingClientRect().top,
+  );
+
+  await page.getByRole('button', { name: '收起侧边栏' }).click();
+  await page.waitForTimeout(260);
+
+  const collapsedTop = await workflowIconItem.evaluate(
+    (element) => element.getBoundingClientRect().top,
+  );
+  expect(Math.abs(collapsedTop - expandedTop)).toBeLessThanOrEqual(1);
+});
+
 test('uses the reference dashboard rhythm for suggestions and grouped metrics', async ({
   page,
 }) => {
@@ -1483,10 +1790,15 @@ test('keeps a useful center-panel empty state when the Native change filter has 
   expect(emptyBox.width).toBeGreaterThan(700);
 });
 
-test('opens Native on its active view without loading a list that the overview proves is empty', async ({
+test('keeps Classic and Native three-pane workspaces during empty and loading views', async ({
   page,
 }) => {
   const nativePageRequests: string[] = [];
+  const classicPageRequests: string[] = [];
+  let releaseClassicArchive = () => {};
+  const classicArchiveGate = new Promise<void>((resolve) => {
+    releaseClassicArchive = resolve;
+  });
   await page.route('**/api/dashboard/**', async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === '/api/dashboard/projects') {
@@ -1543,6 +1855,8 @@ test('opens Native on its active view without loading a list that the overview p
       return;
     }
     if (url.pathname.endsWith('/changes')) {
+      classicPageRequests.push(url.search);
+      if (url.searchParams.get('status') === 'archived') await classicArchiveGate;
       await route.fulfill({
         json: { status: 'archived', items: [], total: 1, nextCursor: null },
       });
@@ -1565,13 +1879,27 @@ test('opens Native on its active view without loading a list that the overview p
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
+  await expect(page.getByRole('heading', { name: '当前没有活跃的 Classic change' })).toBeVisible();
+  await expect(page.locator('.dashboard-workspace-region')).toHaveCount(1);
+  await expect(page.locator('.classic-changes-explorer')).toHaveCount(1);
+  await expect(page.getByLabel('Classic 变更状态')).toBeVisible();
   await page.getByRole('tab', { name: '已归档' }).click();
+  await expect
+    .poll(() => classicPageRequests.filter((request) => request.includes('status=archived')).length)
+    .toBeGreaterThanOrEqual(1);
+  await expect(page.getByRole('heading', { name: '正在加载 Classic 变更' })).toBeVisible();
+  await expect(
+    page.getByRole('complementary', { name: '正在加载 Classic 变更状态', exact: true }),
+  ).toBeVisible();
+  await expect(page.locator('.dashboard-workspace-region')).toHaveCount(1);
+  releaseClassicArchive();
   await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
 
   await expect(page.getByRole('tab', { name: '活跃' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('heading', { name: '当前没有活跃的 Native change' })).toBeVisible();
-  await expect(page.locator('.native-workspace-empty .ant-spin')).toHaveCount(0);
-  await expect(page.locator('.dashboard-workspace-region')).toHaveCount(0);
+  await expect(page.locator('.native-changes-explorer')).toHaveCount(1);
+  await expect(page.getByLabel('Native 变更状态')).toBeVisible();
+  await expect(page.locator('.dashboard-workspace-region')).toHaveCount(1);
   expect(nativePageRequests).toEqual([]);
 });
 
@@ -1939,15 +2267,18 @@ test('fills a server-paged Native list when its footer is already visible', asyn
   await page.goto('/');
   await page.getByRole('button', { name: '打开导航' }).click();
   await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
-  await expect(page.locator('.native-workspace-empty')).toBeVisible();
-  await expect(page.locator('.native-changes-explorer')).toHaveCount(0);
-  await expect(page.locator('.dashboard-workspace-right')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '当前没有活跃的 Native change' })).toBeVisible();
+  await expect(page.locator('.native-changes-explorer')).toHaveCount(1);
+  await expect(page.locator('.dashboard-workspace-right')).toHaveCount(1);
   await page.getByRole('tab', { name: '已归档' }).click();
 
   await expect
     .poll(() => pageRequests.filter((request) => request.includes('status=archived')).length)
     .toBeGreaterThanOrEqual(1);
-  await expect(page.locator('.native-workspace-empty .ant-spin')).toBeVisible();
+  await expect(page.locator('.native-workspace-empty')).toHaveCount(0);
+  await expect(page.locator('.native-change-list .ant-spin')).toBeVisible();
+  await expect(page.locator('.native-change-detail-skeleton')).toBeVisible();
+  await expect(page.locator('.native-side-panel-skeleton')).toBeVisible();
   releaseFirstPage();
   await expect.poll(() => pageRequests.length).toBeGreaterThanOrEqual(2);
   const list = page.locator('.native-change-list');

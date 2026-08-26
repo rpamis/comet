@@ -6,6 +6,13 @@ async function readDashboardSource(): Promise<string> {
   return fs.readFile(path.resolve('domains', 'dashboard', 'web', 'src', 'main.jsx'), 'utf8');
 }
 
+async function readDashboardModalSource(): Promise<string> {
+  return fs.readFile(
+    path.resolve('domains', 'dashboard', 'web', 'src', 'dashboard-modal.jsx'),
+    'utf8',
+  );
+}
+
 async function readDashboardStyles(): Promise<string> {
   return fs.readFile(path.resolve('domains', 'dashboard', 'web', 'src', 'styles.css'), 'utf8');
 }
@@ -177,7 +184,11 @@ describe('dashboard web source contracts', () => {
   });
 
   it('opens centralized plugin settings from the bottom of the sidebar', async () => {
-    const [source, styles] = await Promise.all([readDashboardSource(), readDashboardStyles()]);
+    const [source, modal, styles] = await Promise.all([
+      readDashboardSource(),
+      readDashboardModalSource(),
+      readDashboardStyles(),
+    ]);
 
     expect(source).toContain('const [settingsOpen, setSettingsOpen] = useState(false)');
     expect(source).toContain('const [settingsPage, setSettingsPage] = useState(null)');
@@ -192,9 +203,13 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain('pages.filter((item) => !item.pending)');
     expect(source).toContain('className={`dashboard-sidebar-settings${settingsOpen');
     expect(source).toContain('function DashboardSettingsOverlay');
-    expect(source).toContain('const [fullscreen, setFullscreen] = useState(false)');
-    expect(source).toContain("aria-label={fullscreen ? '退出全屏设置' : '全屏显示设置'}");
-    expect(source).toContain('mask={{ closable: true }}');
+    expect(source).toContain(
+      "import { DashboardModal, useDashboardModalState } from './dashboard-modal.jsx'",
+    );
+    expect(source).toContain('<DashboardModal');
+    expect(source).toContain("aria-label={fullscreen ? '退出全屏' : '全屏展示'}");
+    expect(modal).toContain('mask={{ closable: true }}');
+    expect(modal).toContain('dashboard-settings-modal-title-row');
     expect(source).toContain('function DashboardSettingsPage');
     expect(source).toContain('function PersonalMemorySettings');
     expect(source).toContain('function ProjectKnowledgeSettings');
@@ -247,6 +262,16 @@ describe('dashboard web source contracts', () => {
     );
     expect(styles).toMatch(
       /\.dashboard-sidebar-settings\s*\{[\s\S]*?width: 100%;[\s\S]*?min-height: 38px;[\s\S]*?padding-inline: 11px;/,
+    );
+    expect(styles).toMatch(
+      /\.dashboard-sidebar\s*\{[\s\S]*?width: 100% !important;[\s\S]*?min-width: 0 !important;[\s\S]*?transition: none !important;/,
+    );
+    expect(styles).toMatch(
+      /\.dashboard-sidebar-navigation\s*\{[\s\S]*?flex: 1 1 auto;[\s\S]*?overflow-y: auto;/,
+    );
+    expect(styles).toMatch(/\.dashboard-sidebar-footer\s*\{[\s\S]*?flex: 0 0 auto;/);
+    expect(styles).toMatch(
+      /\.dashboard-workbench\.is-sidebar-collapsed \.dashboard-sidebar-content\s*\{[^}]*?width: 100%;[^}]*?transition: none;/,
     );
   });
 
@@ -311,9 +336,10 @@ describe('dashboard web source contracts', () => {
   it('keeps the artifact table of contents behind fullscreen preview only', async () => {
     const source = await readDashboardSource();
 
-    expect(source).toContain('const [isFullscreen, setIsFullscreen] = useState(false)');
-    expect(source).toContain("aria-label={isFullscreen ? '退出全屏' : '全屏展示'}");
-    expect(source).toContain('{isFullscreen && toc.length > 0 && (');
+    expect(source).toContain('useDashboardModalState(Boolean(artifact))');
+    expect(source).toContain('dashboard-artifact-preview-expand');
+    expect(source).toContain("aria-label={fullscreen ? '退出全屏' : '全屏展示'}");
+    expect(source).toContain('{fullscreen && toc.length > 0 && (');
     expect(source).not.toContain('{toc.length > 0 && (');
   });
 
@@ -341,7 +367,7 @@ describe('dashboard web source contracts', () => {
   it('closes only fullscreen preview with Escape', async () => {
     const source = await readDashboardSource();
 
-    expect(source).toContain("if (event.key === 'Escape') onClose();");
+    expect(source).toContain("if (event.key === 'Escape') requestClose(onClose);");
     expect(source).toContain("window.addEventListener('keydown', onKeyDown)");
     expect(source).toContain("window.removeEventListener('keydown', onKeyDown)");
   });
@@ -400,6 +426,20 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain('当前没有 Classic change');
     expect(source).toContain('Classic 变更出现后会在这里展示。');
     expect(source).not.toContain('当前无 Comet 迭代。');
+  });
+
+  it('keeps Classic detail and inspector frames visible when the selected view is empty', async () => {
+    const [source, styles] = await Promise.all([readDashboardSource(), readDashboardStyles()]);
+
+    expect(source).toContain('const isEmptyView = !pageLoading && visible.length === 0');
+    expect(source).toContain('const isLoadingView = pageLoading && visible.length === 0');
+    expect(source).toContain('<ClassicWorkspaceEmptyDetail');
+    expect(source).toContain('<ClassicWorkspaceEmptySidePanel />');
+    expect(source).toContain('<ClassicWorkspaceLoadingDetail />');
+    expect(source).toContain('<ClassicWorkspaceLoadingSidePanel />');
+    expect(source).toContain('当前没有活跃的 Classic change');
+    expect(styles).toContain('.classic-change-detail-empty');
+    expect(styles).toContain('.dashboard-workspace-side-empty');
   });
 
   it('loads change rows in pages and fetches full details on selection', async () => {

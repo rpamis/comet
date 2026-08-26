@@ -35,8 +35,6 @@ import {
   EditOutlined,
   FileTextOutlined,
   FlagOutlined,
-  FullscreenExitOutlined,
-  FullscreenOutlined,
   MenuFoldOutlined,
   MenuOutlined,
   MenuUnfoldOutlined,
@@ -61,6 +59,7 @@ import {
   runMermaid,
 } from './markdown-preview.js';
 import { NativeWorkflowPanel } from './native-workflow-panel.jsx';
+import { DashboardModal, useDashboardModalState } from './dashboard-modal.jsx';
 import { useAnimatedNumber } from './use-animated-number.js';
 import { DashboardWorkspaceRegion } from './workspace-layout.jsx';
 import {
@@ -212,12 +211,12 @@ const PROJECT_KNOWLEDGE_TYPE_OPTIONS = [
 const PROJECT_KNOWLEDGE_CATEGORY_GROUPS = [
   {
     key: 'model',
-    label: '项目模型',
+    label: '项目事实',
     types: ['topology', 'fact', 'dependency'],
   },
   {
     key: 'policy',
-    label: '项目策略',
+    label: '项目规范',
     types: ['decision', 'pattern', 'procedure', 'constraint', 'failure-resolution'],
   },
 ];
@@ -1468,6 +1467,8 @@ function Dashboard({
     selectedDetailId: selected?.id ?? null,
     failedDetailId: detailError?.id ?? null,
   });
+  const isEmptyView = !pageLoading && visible.length === 0;
+  const isLoadingView = pageLoading && visible.length === 0;
   return (
     <div className="mx-auto min-w-0 max-w-dashboard">
       <SectionHead
@@ -1482,8 +1483,6 @@ function Dashboard({
       <SectionHead title="变更工作区" hint="查看文件产物与项目进度" />
       {snapshot.classicError && !hasClassicChanges ? (
         <ClassicErrorState error={snapshot.classicError} />
-      ) : !hasClassicChanges ? (
-        <EmptyState />
       ) : (
         <>
           {classicWarning ? <ClassicWarning error={snapshot.classicError} /> : null}
@@ -1504,7 +1503,11 @@ function Dashboard({
               />
             }
             center={
-              selected ? (
+              isEmptyView ? (
+                <ClassicWorkspaceEmptyDetail snapshot={snapshot} tab={tab} onTab={onTab} />
+              ) : isLoadingView ? (
+                <ClassicWorkspaceLoadingDetail />
+              ) : selected ? (
                 <AntChangeDetail change={selected} onPreview={onPreview} />
               ) : detailPending ? (
                 <div className="change-detail dashboard-change-detail-loading min-w-0 rounded-lg bg-bg p-10 text-center text-sm text-muted shadow-raised">
@@ -1520,7 +1523,11 @@ function Dashboard({
               ) : null
             }
             right={
-              selected ? (
+              isEmptyView ? (
+                <ClassicWorkspaceEmptySidePanel />
+              ) : isLoadingView ? (
+                <ClassicWorkspaceLoadingSidePanel />
+              ) : selected ? (
                 <SidePanel change={selected} git={snapshot.git} onPreview={onPreview} />
               ) : null
             }
@@ -2003,17 +2010,14 @@ function KeyValue({ k, v }) {
 
 function ArtifactDrawer({ artifact, onClose }) {
   const [loadState, setLoadState] = useState({ status: 'idle' });
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const { fullscreen, toggleFullscreen, requestClose } = useDashboardModalState(Boolean(artifact));
   const [toc, setToc] = useState([]);
   const [activeTocId, setActiveTocId] = useState('');
   const articleRef = useRef(null);
   const contentScrollRef = useRef(null);
 
   useEffect(() => {
-    if (!artifact) {
-      setIsFullscreen(false);
-      return;
-    }
+    if (!artifact) return;
     const scrollY = window.scrollY;
     const previousBodyStyle = {
       position: document.body.style.position,
@@ -2028,7 +2032,6 @@ function ArtifactDrawer({ artifact, onClose }) {
     document.body.style.right = '0';
     document.body.style.width = '100%';
     return () => {
-      setIsFullscreen(false);
       document.body.style.position = previousBodyStyle.position;
       document.body.style.top = previousBodyStyle.top;
       document.body.style.left = previousBodyStyle.left;
@@ -2112,7 +2115,7 @@ function ArtifactDrawer({ artifact, onClose }) {
   }, [loadState]);
 
   useEffect(() => {
-    if (!isFullscreen) return;
+    if (!fullscreen) return;
     const scrollEl = contentScrollRef.current;
     const article = articleRef.current;
     if (!scrollEl || !article || toc.length === 0) return;
@@ -2133,42 +2136,48 @@ function ArtifactDrawer({ artifact, onClose }) {
 
     scrollEl.addEventListener('scroll', onScroll, { passive: true });
     return () => scrollEl.removeEventListener('scroll', onScroll);
-  }, [toc, isFullscreen]);
+  }, [toc, fullscreen]);
 
   useEffect(() => {
-    if (!isFullscreen) return undefined;
+    if (!fullscreen) return undefined;
 
     const onKeyDown = (event) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') requestClose(onClose);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isFullscreen, onClose]);
+  }, [fullscreen, onClose, requestClose]);
 
   if (!artifact) return null;
   const preview = artifact.preview;
   return (
     <div
       className={
-        isFullscreen
-          ? 'fixed inset-0 z-[90] flex'
-          : 'fixed inset-0 z-[90] grid grid-cols-[minmax(0,1fr)_minmax(360px,760px)] max-sm:grid-cols-1'
+        fullscreen
+          ? 'dashboard-artifact-preview-overlay is-fullscreen fixed inset-0 z-[90] flex'
+          : 'dashboard-artifact-preview-overlay fixed inset-0 z-[90] grid grid-cols-[minmax(0,1fr)_minmax(360px,760px)] max-sm:grid-cols-1'
       }
     >
-      {!isFullscreen && (
-        <button aria-label="关闭产物预览" className="bg-black/30 max-sm:hidden" onClick={onClose} />
+      {!fullscreen && (
+        <button
+          aria-label="产物预览背景"
+          className="dashboard-artifact-preview-backdrop bg-black/30 max-sm:hidden"
+          onClick={() => requestClose(onClose)}
+        />
       )}
       <section
         className={[
-          'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-bg',
-          isFullscreen
-            ? 'h-full w-full'
+          'dashboard-artifact-preview-panel flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-bg',
+          fullscreen
+            ? 'is-fullscreen h-full w-full'
             : 'border-l border-border shadow-[-20px_0_44px_rgba(0,0,0,0.12)]',
         ].join(' ')}
       >
         <header className="flex items-start gap-3 border-b border-border-soft p-5">
           <div className="min-w-0 flex-1">
-            <h2 className="text-xl font-bold">{artifact.name}</h2>
+            <div className="flex min-w-0 items-center gap-2">
+              <h2 className="min-w-0 truncate text-xl font-bold">{artifact.name}</h2>
+            </div>
             <div className="mt-1 flex items-center gap-1.5">
               {preview?.path && (
                 <button
@@ -2212,58 +2221,50 @@ function ArtifactDrawer({ artifact, onClose }) {
               </div>
             )}
           </div>
-          <div className="flex shrink-0 items-center gap-1">
-            <button
-              type="button"
-              className="grid size-10 place-items-center rounded-xl text-fg-2 hover:bg-surface"
-              onClick={() => setIsFullscreen((value) => !value)}
-              aria-label={isFullscreen ? '退出全屏' : '全屏展示'}
-            >
-              {isFullscreen ? (
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="size-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                  aria-hidden="true"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25"
-                  />
-                </svg>
-              ) : (
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="size-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                  aria-hidden="true"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"
-                  />
-                </svg>
-              )}
-            </button>
-            <button
-              className="grid size-10 place-items-center rounded-xl text-fg-2 hover:bg-surface"
-              onClick={onClose}
-              aria-label="关闭产物预览"
-            >
-              ×
-            </button>
-          </div>
+          <button
+            type="button"
+            className="dashboard-artifact-preview-expand grid size-8 shrink-0 place-items-center rounded-lg text-fg-2 hover:bg-surface"
+            onClick={toggleFullscreen}
+            aria-label={fullscreen ? '退出全屏' : '全屏展示'}
+            aria-pressed={fullscreen}
+          >
+            {fullscreen ? (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="size-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25"
+                />
+              </svg>
+            ) : (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="size-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m-4.5 0L15 9m5.25 11.25h-4.5m4.5 0v-4.5m4.5 4.5L15 15"
+                />
+              </svg>
+            )}
+          </button>
         </header>
         <div className="flex min-h-0 flex-1 overflow-hidden">
-          {isFullscreen && toc.length > 0 && (
+          {fullscreen && toc.length > 0 && (
             <nav
               aria-label="文档目录"
               className="hidden w-[250px] shrink-0 overflow-y-auto border-r border-border-soft bg-surface px-3 py-4 sm:block"
@@ -2310,7 +2311,7 @@ function ArtifactDrawer({ artifact, onClose }) {
             ref={contentScrollRef}
             className={[
               'min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain',
-              isFullscreen ? 'px-12 py-6' : 'p-5',
+              fullscreen ? 'px-12 py-6' : 'p-5',
             ].join(' ')}
           >
             {loadState.status === 'loading' && (
@@ -2339,6 +2340,347 @@ function ArtifactDrawer({ artifact, onClose }) {
         </div>
       </section>
     </div>
+  );
+}
+
+function ProjectKnowledgePreviewModal({
+  open,
+  title,
+  subtitle,
+  description,
+  ariaLabel,
+  onClose,
+  children,
+}) {
+  return (
+    <DashboardModal
+      rootClassName="dashboard-settings-modal-root dashboard-knowledge-preview-modal-root"
+      className="dashboard-settings-modal dashboard-knowledge-preview-modal"
+      width={900}
+      open={open}
+      ariaLabel={ariaLabel}
+      title={title}
+      subtitle={subtitle}
+      description={description}
+      onClose={onClose}
+      footer={null}
+    >
+      {({ fullscreen }) => children({ fullscreen })}
+    </DashboardModal>
+  );
+}
+
+function ProjectKnowledgeDetailsModal({ item, open, onClose }) {
+  const [contentPreview, setContentPreview] = useState({ status: 'idle' });
+
+  useEffect(() => {
+    if (!item) {
+      setContentPreview({ status: 'idle' });
+      return;
+    }
+    let cancelled = false;
+    setContentPreview({ status: 'loading' });
+    void renderMarkdown(item.summary || '')
+      .then((html) => {
+        if (cancelled) return;
+        setContentPreview(html.trim() ? { status: 'success', html } : { status: 'empty' });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setContentPreview({
+          status: 'error',
+          message: error instanceof Error ? error.message : '项目知识内容渲染失败，请重试',
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [item]);
+
+  if (!item) return null;
+
+  return (
+    <ProjectKnowledgePreviewModal
+      open={open}
+      title="项目知识详情"
+      subtitle={item.title}
+      description="查看本次任务实际提供给 Agent 的项目知识和应用上下文"
+      ariaLabel={`项目知识详情：${item.title}`}
+      onClose={onClose}
+    >
+      {() => (
+        <div className="dashboard-knowledge-preview-content">
+          <div className="dashboard-knowledge-preview-scroll">
+            <div className="dashboard-project-knowledge-detail">
+              <section>
+                <h3>项目知识内容</h3>
+                {contentPreview.status === 'loading' && (
+                  <p className="dashboard-project-knowledge-detail-state">正在渲染项目知识内容…</p>
+                )}
+                {contentPreview.status === 'empty' && (
+                  <p className="dashboard-project-knowledge-detail-state">暂无可展示内容</p>
+                )}
+                {contentPreview.status === 'error' && (
+                  <p role="alert" className="dashboard-project-knowledge-detail-state is-error">
+                    {contentPreview.message}
+                  </p>
+                )}
+                {contentPreview.status === 'success' && (
+                  <article
+                    className="md-github dashboard-project-knowledge-detail-content"
+                    dangerouslySetInnerHTML={{ __html: contentPreview.html }}
+                  />
+                )}
+              </section>
+              <dl>
+                <div>
+                  <dt>项目知识类型</dt>
+                  <dd>{contextMemorySourceLabel(item.memoryType)}</dd>
+                </div>
+                <div>
+                  <dt>为什么使用</dt>
+                  <dd>{item.whyApplied || '未记录应用原因'}</dd>
+                </div>
+                <div>
+                  <dt>提供给 Agent 的内容</dt>
+                  <dd>{contextDeliveryLabel(item.lastApplication ?? item)}</dd>
+                </div>
+                <div>
+                  <dt>应用结果</dt>
+                  <dd>{contextOutcomeLabel(item.outcome ?? item.lastApplication?.outcome)}</dd>
+                </div>
+                <div>
+                  <dt>最近应用</dt>
+                  <dd>{formatTimestamp(item.lastApplication?.appliedAt ?? item.appliedAt)}</dd>
+                </div>
+              </dl>
+            </div>
+          </div>
+        </div>
+      )}
+    </ProjectKnowledgePreviewModal>
+  );
+}
+
+function projectKnowledgeSourcePreviewKind(source) {
+  if (/\.json$/i.test(source ?? '')) return 'json';
+  if (/\.ya?ml$/i.test(source ?? '')) return 'yaml';
+  if (/\.mdx?$/i.test(source ?? '')) return 'markdown';
+  return 'text';
+}
+
+async function renderProjectKnowledgeSource(content, kind) {
+  const raw = String(content ?? '');
+  if (!raw.trim()) return '';
+  if (kind === 'json') return renderJsonPreview(raw);
+  if (kind === 'yaml') return renderYamlTable(raw);
+  if (kind === 'text') {
+    return renderMarkdown(['```text', raw.replace(/\n$/, ''), '```'].join('\n'));
+  }
+  return renderMarkdown(raw);
+}
+
+function ProjectKnowledgeSourcePreviewModal({
+  selectedSource,
+  sourceContent,
+  sourceReadPending,
+  sourceReadError,
+  onClose,
+  onSelectRecord,
+}) {
+  const [loadState, setLoadState] = useState({ status: 'idle' });
+  const [toc, setToc] = useState([]);
+  const [activeTocId, setActiveTocId] = useState('');
+  const articleRef = useRef(null);
+  const contentScrollRef = useRef(null);
+  const sourcePath = selectedSource?.source ?? '';
+  const previewKind = projectKnowledgeSourcePreviewKind(sourcePath);
+
+  useEffect(() => {
+    if (!selectedSource || sourceReadPending || sourceReadError || !sourceContent) {
+      setLoadState({ status: 'idle' });
+      return;
+    }
+    let cancelled = false;
+    const raw = String(sourceContent.content ?? '');
+    if (!raw.trim()) {
+      setLoadState({ status: 'empty' });
+      return;
+    }
+    setLoadState({ status: 'loading' });
+    void renderProjectKnowledgeSource(raw, previewKind)
+      .then((html) => {
+        if (cancelled) return;
+        if (!html.trim()) {
+          setLoadState({ status: 'empty' });
+          return;
+        }
+        setLoadState({
+          status: 'success',
+          html: sourceContent.truncated
+            ? `${html}<p><em>内容过长，已截取前 256KB。</em></p>`
+            : html,
+        });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setLoadState({
+          status: 'error',
+          message: error instanceof Error ? error.message : '来源文件预览渲染失败，请重试',
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [previewKind, selectedSource, sourceContent, sourceReadError, sourceReadPending]);
+
+  useEffect(() => {
+    if (loadState.status === 'success' && articleRef.current) {
+      runMermaid(articleRef.current);
+      const items = extractToc(articleRef.current);
+      setToc(items);
+      setActiveTocId(items[0]?.id ?? '');
+    } else {
+      setToc([]);
+      setActiveTocId('');
+    }
+  }, [loadState]);
+
+  useEffect(() => {
+    const scrollEl = contentScrollRef.current;
+    const article = articleRef.current;
+    if (!scrollEl || !article || toc.length === 0) return undefined;
+    const onScroll = () => {
+      const headings = toc.map(({ id }) => document.getElementById(id)).filter(Boolean);
+      let current = headings[0]?.id ?? '';
+      for (const heading of headings) {
+        const rect = heading.getBoundingClientRect();
+        const containerRect = scrollEl.getBoundingClientRect();
+        if (rect.top - containerRect.top <= 80) current = heading.id;
+      }
+      setActiveTocId(current);
+    };
+    scrollEl.addEventListener('scroll', onScroll, { passive: true });
+    return () => scrollEl.removeEventListener('scroll', onScroll);
+  }, [toc]);
+
+  if (!selectedSource) return null;
+  const updatedAt = sourceContent?.modifiedAt ?? selectedSource.latestUpdatedAt;
+
+  return (
+    <ProjectKnowledgePreviewModal
+      open
+      title="项目知识来源详情"
+      description="查看项目知识关联文件的渲染结果和来源上下文"
+      ariaLabel="项目知识来源详情"
+      onClose={onClose}
+    >
+      {({ fullscreen }) => (
+        <div className="dashboard-knowledge-preview-content">
+          {fullscreen && toc.length > 0 && (
+            <nav aria-label="文档目录" className="dashboard-knowledge-preview-toc">
+              <p>目录</p>
+              <ul>
+                {toc.map((item) => (
+                  <li key={item.id}>
+                    <a
+                      href={`#${item.id}`}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        const target = document.getElementById(item.id);
+                        const scrollEl = contentScrollRef.current;
+                        if (!target || !scrollEl) return;
+                        const top =
+                          target.getBoundingClientRect().top -
+                          scrollEl.getBoundingClientRect().top +
+                          scrollEl.scrollTop -
+                          16;
+                        scrollEl.scrollTo({ top, behavior: 'smooth' });
+                        setActiveTocId(item.id);
+                      }}
+                      className={activeTocId === item.id ? 'is-active' : ''}
+                    >
+                      {item.text}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          )}
+          <div
+            ref={contentScrollRef}
+            className={`dashboard-knowledge-preview-scroll${fullscreen ? ' is-fullscreen' : ''}`}
+          >
+            <div className="dashboard-knowledge-source-detail">
+              <header>
+                <code>{selectedSource.source}</code>
+                <span>{selectedSource.kind ?? '项目知识来源'}</span>
+              </header>
+              <dl>
+                <div>
+                  <dt>关联记录</dt>
+                  <dd>{selectedSource.records.length} 条</dd>
+                </div>
+                <div>
+                  <dt>最近更新</dt>
+                  <dd>{updatedAt ? formatTimestamp(updatedAt) : '—'}</dd>
+                </div>
+              </dl>
+              {selectedSource.records.length > 0 && (
+                <section>
+                  <h4>关联项目知识</h4>
+                  <div className="dashboard-knowledge-source-related">
+                    {selectedSource.records.map((record) => (
+                      <button key={record.id} type="button" onClick={() => onSelectRecord(record)}>
+                        <strong>{record.title}</strong>
+                        <span>{record.summary}</span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
+              <section>
+                <h4>文件原文</h4>
+                {sourceReadPending ? (
+                  <div className="dashboard-knowledge-source-detail-state">
+                    <Spin size="small" />
+                    <span>正在读取来源文件…</span>
+                  </div>
+                ) : sourceReadError ? (
+                  <Alert type="warning" showIcon message={sourceReadError} />
+                ) : loadState.status === 'loading' ? (
+                  <div className="dashboard-knowledge-source-detail-state">
+                    <Spin size="small" />
+                    <span>正在渲染来源文件…</span>
+                  </div>
+                ) : loadState.status === 'error' ? (
+                  <p role="alert" className="text-danger">
+                    {loadState.message}
+                  </p>
+                ) : loadState.status === 'empty' ? (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="来源文件为空" />
+                ) : loadState.status === 'success' ? (
+                  <article
+                    ref={articleRef}
+                    className="md-github dashboard-knowledge-source-rendered-content"
+                    dangerouslySetInnerHTML={{ __html: loadState.html }}
+                  />
+                ) : (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未读取来源文件" />
+                )}
+                {sourceContent && (
+                  <div className="dashboard-knowledge-source-detail-meta">
+                    <span>{formatFileSize(sourceContent.size)}</span>
+                    <span>{formatTimestamp(sourceContent.modifiedAt)}</span>
+                    {sourceContent.truncated && <span>内容已截断</span>}
+                  </div>
+                )}
+              </section>
+            </div>
+          </div>
+        </div>
+      )}
+    </ProjectKnowledgePreviewModal>
   );
 }
 
@@ -2386,12 +2728,87 @@ function ClassicErrorState({ error }) {
   );
 }
 
-function EmptyState() {
+function ClassicWorkspaceEmptyDetail({ snapshot, tab, onTab }) {
+  const hasClassicChanges = snapshot.summary.activeChanges + snapshot.summary.archivedChanges > 0;
+  const hasArchivedChanges = snapshot.summary.archivedChanges > 0;
+  const hasActiveChanges = snapshot.summary.activeChanges > 0;
+  const showArchiveShortcut = tab === 'active' && hasArchivedChanges;
+  const showActiveShortcut = tab === 'archived' && hasActiveChanges;
+  const title = !hasClassicChanges
+    ? '当前没有 Classic change'
+    : showArchiveShortcut
+      ? '当前没有活跃的 Classic change'
+      : showActiveShortcut
+        ? '还没有已归档的 Classic change'
+        : '当前范围没有可展示的 Classic change';
+  const description = !hasClassicChanges
+    ? 'Classic 变更出现后会在这里展示。'
+    : showArchiveShortcut
+      ? '当前工作区没有进行中的变更，你可以继续查看已归档的历史记录。'
+      : showActiveShortcut
+        ? '当前还没有归档记录，你可以返回查看正在进行的变更。'
+        : '调整顶部搜索条件，或切换变更范围后再试。';
   return (
-    <section className="rounded-lg bg-bg p-12 text-center shadow-raised">
-      <h3 className="text-lg font-semibold tracking-tight">当前没有 Classic change</h3>
-      <p className="mt-2 text-sm text-muted">Classic 变更出现后会在这里展示。</p>
-    </section>
+    <AntCard
+      className="change-detail classic-change-detail-empty min-w-0"
+      title={<h3 className="m-0 text-sm font-semibold">{title}</h3>}
+    >
+      <div className="dashboard-workspace-empty-detail text-center">
+        <span className="native-workspace-empty-icon" aria-hidden="true">
+          <FlagOutlined />
+        </span>
+        <p>{description}</p>
+        {showArchiveShortcut ? (
+          <Button className="mt-5" type="primary" onClick={() => onTab('archived')}>
+            查看已归档变更
+          </Button>
+        ) : showActiveShortcut ? (
+          <Button className="mt-5" type="primary" onClick={() => onTab('active')}>
+            查看活跃变更
+          </Button>
+        ) : null}
+      </div>
+    </AntCard>
+  );
+}
+
+function ClassicWorkspaceEmptySidePanel() {
+  return (
+    <aside className="dashboard-workspace-side-empty" aria-label="Classic 变更状态">
+      <div>
+        <span className="native-workspace-empty-icon" aria-hidden="true">
+          <FlagOutlined />
+        </span>
+        <h3>暂无变更数据</h3>
+        <p>选择或创建 Classic change 后，这里会显示执行状态、验证结果和 Git 摘要。</p>
+      </div>
+    </aside>
+  );
+}
+
+function ClassicWorkspaceLoadingDetail() {
+  return (
+    <AntCard
+      className="change-detail classic-change-detail-empty min-w-0"
+      title={<h3 className="m-0 text-sm font-semibold">正在加载 Classic 变更</h3>}
+    >
+      <div className="dashboard-workspace-empty-detail" aria-live="polite">
+        <Spin aria-label="正在加载 Classic 变更列表" />
+        <p>正在读取当前范围的变更记录…</p>
+      </div>
+    </AntCard>
+  );
+}
+
+function ClassicWorkspaceLoadingSidePanel() {
+  return (
+    <aside className="dashboard-workspace-side-empty" aria-label="正在加载 Classic 变更状态">
+      <div aria-live="polite">
+        <Spin aria-label="正在加载 Classic 变更状态详情" />
+        <h3>正在加载变更状态</h3>
+        <p>变更记录载入后，这里会显示执行状态、验证结果和 Git 摘要。</p>
+      </div>
+    </aside>
   );
 }
 
@@ -2404,6 +2821,23 @@ function LoadingState() {
 }
 
 function reconcilePluginInvocationResult(page, pluginId, capability, result, input) {
+  if (
+    pluginId === 'comet.personal-memory' &&
+    capability === 'remove' &&
+    page?.pluginId === pluginId &&
+    isDashboardRecord(page.data) &&
+    isDashboardRecord(input) &&
+    typeof input.id === 'string' &&
+    Array.isArray(page.data.manifestPreview)
+  ) {
+    return {
+      ...page,
+      data: {
+        ...page.data,
+        manifestPreview: page.data.manifestPreview.filter((item) => item?.id !== input.id),
+      },
+    };
+  }
   if (pluginId === 'comet.project-knowledge' && page?.pluginId === pluginId) {
     if (
       capability === 'query' &&
@@ -2761,6 +3195,11 @@ function projectKnowledgeRecordSources(record) {
   ];
 }
 
+function projectKnowledgeSourcePath(source) {
+  const anchorStart = source.indexOf('#');
+  return anchorStart === -1 ? source : source.slice(0, anchorStart);
+}
+
 function formatFileSize(bytes) {
   if (bytes == null) return null;
   if (bytes < 1024) return `${bytes} B`;
@@ -2800,9 +3239,22 @@ function contextMemorySourceLabel(memoryType) {
   if (memoryType === 'core-profile') return '个人偏好';
   if (memoryType === 'collaboration-policy') return '协作规则';
   if (memoryType === 'personal-episode') return '过往经验';
-  if (memoryType === 'project-model') return '项目模型';
-  if (memoryType === 'project-policy') return '项目策略';
+  if (memoryType === 'project-model') return '项目事实';
+  if (memoryType === 'project-policy') return '项目规范';
   return '相关记忆';
+}
+
+function formatContextManifestPreview(value) {
+  return String(value ?? '')
+    .replace(/```[\s\S]*?```/g, (block) => block.replace(/^```[^\n]*\n?|\n?```$/g, ''))
+    .replace(/^\s{0,3}#{1,6}\s*/gm, '')
+    .replace(/^\s*\|?[\s:-]+(?:\|[\s:-]+)+\|?\s*$/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/[`*_~]/g, '')
+    .replace(/\|/g, ' · ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function contextDeliveryLabel(application) {
@@ -3051,56 +3503,21 @@ function DashboardSettingsOverlay({
   onSaveConfig,
   onInvoke,
 }) {
-  const [fullscreen, setFullscreen] = useState(false);
-
-  useEffect(() => {
-    if (!open) setFullscreen(false);
-  }, [open]);
-
-  const closeSettings = () => {
-    setFullscreen(false);
-    onClose();
-  };
-
   return (
-    <Modal
-      rootClassName={`dashboard-settings-modal-root${fullscreen ? ' is-fullscreen' : ''}`}
-      className={`dashboard-settings-modal${fullscreen ? ' is-fullscreen' : ''}`}
-      centered
-      width={fullscreen ? '100vw' : 920}
+    <DashboardModal
+      rootClassName="dashboard-settings-modal-root"
+      className="dashboard-settings-modal"
+      width={920}
       open={open}
-      keyboard
-      mask={{ closable: true }}
-      destroyOnHidden
-      onCancel={closeSettings}
-      title={
-        <div className="dashboard-settings-modal-title">
-          <div className="dashboard-settings-modal-title-copy">
-            <div>
-              <div className="dashboard-settings-modal-title-row">
-                <strong>Comet 设置</strong>
-                <span className="dashboard-tool-counter">当前项目</span>
-              </div>
-              <p>统一管理个人记忆、项目规则与工作流配置</p>
-            </div>
-          </div>
-          <Tooltip title={fullscreen ? '退出全屏' : '全屏显示'} placement="bottom">
-            <Button
-              className="dashboard-settings-modal-expand"
-              type="text"
-              icon={fullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
-              aria-label={fullscreen ? '退出全屏设置' : '全屏显示设置'}
-              aria-pressed={fullscreen}
-              onClick={() => setFullscreen((value) => !value)}
-            />
-          </Tooltip>
-        </div>
-      }
+      title="Comet 设置"
+      subtitle="当前项目"
+      description="统一管理个人记忆、项目规则与工作流配置"
+      onClose={onClose}
       footer={
         <div className="dashboard-settings-modal-footer">
-          <span>点击背景可关闭设置</span>
+          <span>点击背景可关闭或还原设置</span>
           <div>
-            <Button type="primary" onClick={closeSettings}>
+            <Button type="primary" onClick={onClose}>
               完成
             </Button>
           </div>
@@ -3119,7 +3536,7 @@ function DashboardSettingsOverlay({
         onSaveConfig={onSaveConfig}
         onInvoke={onInvoke}
       />
-    </Modal>
+    </DashboardModal>
   );
 }
 
@@ -3952,11 +4369,11 @@ function PersonalMemorySettings({ page, data, onInvoke }) {
           </Button>
         </div>
       </section>
-      <Modal
+      <DashboardModal
         open={showPending}
         title="待确认记忆"
         footer={null}
-        onCancel={() => setShowPending(false)}
+        onClose={() => setShowPending(false)}
       >
         {pendingRecords.length === 0 ? (
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有待确认内容" />
@@ -3993,7 +4410,7 @@ function PersonalMemorySettings({ page, data, onInvoke }) {
             ))}
           </div>
         )}
-      </Modal>
+      </DashboardModal>
     </div>
   );
 }
@@ -4703,9 +5120,25 @@ function ProjectKnowledgeInspector({ record, onInvoke }) {
   );
 }
 
-function ProjectKnowledgeSources({ sourceEntries, provider }) {
+function ProjectKnowledgeSources({
+  sourceEntries,
+  totalSourceCount,
+  provider,
+  searchText,
+  onSearchTextChange,
+  selectedSource,
+  sourceContent,
+  sourceReadPending,
+  sourceReadError,
+  onSelectSource,
+  onCloseSource,
+  onSelectRecord,
+}) {
   return (
-    <section className="dashboard-knowledge-single-view" aria-labelledby="knowledge-sources-title">
+    <section
+      className="dashboard-knowledge-single-view dashboard-knowledge-source-view"
+      aria-labelledby="knowledge-sources-title"
+    >
       <header>
         <div>
           <h3 id="knowledge-sources-title">数据来源</h3>
@@ -4713,11 +5146,19 @@ function ProjectKnowledgeSources({ sourceEntries, provider }) {
         </div>
         <span>{provider}</span>
       </header>
-      <div className="dashboard-knowledge-source-head" aria-hidden="true">
-        <span>来源路径</span>
-        <span>关联记录</span>
-        <span>收录状态</span>
-        <span>最近更新</span>
+      <div className="dashboard-knowledge-source-toolbar">
+        <Input
+          value={searchText}
+          prefix={<SearchOutlined />}
+          allowClear
+          placeholder="搜索来源路径、类型或关联知识…"
+          aria-label="搜索项目知识来源"
+          onChange={(event) => onSearchTextChange(event.target.value)}
+        />
+        <span>
+          共 {totalSourceCount} 个来源
+          {searchText.trim() ? ` · 匹配 ${sourceEntries.length} 个` : ''}
+        </span>
       </div>
       {sourceEntries.length === 0 ? (
         <Empty
@@ -4726,11 +5167,28 @@ function ProjectKnowledgeSources({ sourceEntries, provider }) {
           description="尚未发现项目知识来源"
         />
       ) : (
-        <div className="dashboard-knowledge-source-rows" aria-label="项目知识数据来源列表">
+        <div
+          className="dashboard-knowledge-source-rows"
+          aria-label="项目知识数据来源列表"
+          role="region"
+          tabIndex={0}
+        >
+          <div className="dashboard-knowledge-source-head" aria-hidden="true">
+            <span>来源路径</span>
+            <span>关联记录</span>
+            <span>收录状态</span>
+            <span>最近更新</span>
+          </div>
           {sourceEntries.map((entry) => {
             const needsReview = entry.records.some((record) => record.state === 'trial');
             return (
-              <div key={entry.source} className="dashboard-knowledge-source-row">
+              <button
+                key={entry.source}
+                type="button"
+                className="dashboard-knowledge-source-row"
+                aria-label={`查看来源：${entry.source}`}
+                onClick={() => void onSelectSource(entry)}
+              >
                 <span>
                   <FileTextOutlined aria-hidden="true" />
                   <code>{entry.source}</code>
@@ -4745,11 +5203,19 @@ function ProjectKnowledgeSources({ sourceEntries, provider }) {
                 <time dateTime={entry.latestUpdatedAt}>
                   {formatTimestamp(entry.latestUpdatedAt)}
                 </time>
-              </div>
+              </button>
             );
           })}
         </div>
       )}
+      <ProjectKnowledgeSourcePreviewModal
+        selectedSource={selectedSource}
+        sourceContent={sourceContent}
+        sourceReadPending={sourceReadPending}
+        sourceReadError={sourceReadError}
+        onClose={onCloseSource}
+        onSelectRecord={onSelectRecord}
+      />
     </section>
   );
 }
@@ -4825,17 +5291,42 @@ function ProjectKnowledgeQuery({
   );
 }
 
-function ContextManifestPreview({ items, emptyLabel }) {
+function ContextManifestPreview({
+  items,
+  emptyLabel,
+  onSelectItem,
+  detailMode = 'inline',
+  title = '最近一次任务使用的记忆',
+  description = '这里只展示真正提供给 Agent 的内容，不是全部已保存记忆',
+  labels = {},
+}) {
   const manifest = Array.isArray(items) ? items : [];
+  const [expandedItemId, setExpandedItemId] = useState(null);
+  const [selectedDetailItem, setSelectedDetailItem] = useState(null);
   const latestApplication = manifest[0]?.lastApplication ?? manifest[0];
   const latestAt = latestApplication?.appliedAt;
   const latestTask = latestApplication?.task;
+  const detailLabel = labels.detailLabel ?? '记忆详情';
+  const contentLabel = labels.contentLabel ?? '记忆内容';
+  const typeLabel = labels.typeLabel ?? '记忆类型';
+  const deliveryLabel = labels.deliveryLabel ?? '提供内容';
+  const outcomeLabel = labels.outcomeLabel ?? '结果';
+  const toggleLabel = labels.toggleLabel ?? (() => `查看${detailLabel}`);
+  const toggleItem = (item) => {
+    if (detailMode === 'modal') {
+      setSelectedDetailItem(item);
+      onSelectItem?.(item);
+      return;
+    }
+    setExpandedItemId((currentId) => (currentId === item.id ? null : item.id));
+    onSelectItem?.(item);
+  };
   return (
-    <section className="dashboard-context-manifest" aria-label="最近一次任务使用的记忆">
+    <section className="dashboard-context-manifest" aria-label={title}>
       <header>
         <div>
-          <strong>最近一次任务使用的记忆</strong>
-          <span>这里只展示真正提供给 Agent 的内容，不是全部已保存记忆</span>
+          <strong>{title}</strong>
+          <span>{description}</span>
         </div>
         <span>
           {latestTask ? `任务：${latestTask} · ` : ''}
@@ -4846,31 +5337,96 @@ function ContextManifestPreview({ items, emptyLabel }) {
         <p>{emptyLabel}</p>
       ) : (
         <div className="dashboard-context-manifest-items">
-          {manifest.slice(0, 8).map((item) => (
-            <article key={item.id}>
-              <div>
-                <strong>{item.title}</strong>
-                <span>
-                  {contextMemorySourceLabel(item.memoryType)} · {item.summary}
-                </span>
-              </div>
-              <dl>
-                <div>
-                  <dt>为什么使用</dt>
-                  <dd>{item.whyApplied}</dd>
-                </div>
-                <div>
-                  <dt>提供内容</dt>
-                  <dd>{contextDeliveryLabel(item.lastApplication ?? item)}</dd>
-                </div>
-                <div>
-                  <dt>结果</dt>
-                  <dd>{contextOutcomeLabel(item.outcome ?? item.lastApplication?.outcome)}</dd>
-                </div>
-              </dl>
-            </article>
-          ))}
+          {manifest.slice(0, 8).map((item) => {
+            const expanded = expandedItemId === item.id;
+            const detailId = `context-manifest-detail-${item.id}`;
+            return (
+              <article
+                key={item.id}
+                className={detailMode === 'inline' && expanded ? 'is-expanded' : ''}
+              >
+                <button
+                  type="button"
+                  className="dashboard-context-manifest-item-toggle"
+                  aria-expanded={detailMode === 'inline' ? expanded : undefined}
+                  aria-controls={detailMode === 'inline' ? detailId : undefined}
+                  aria-label={`${toggleLabel(expanded)}：${item.title}`}
+                  onClick={() => toggleItem(item)}
+                >
+                  <span>
+                    <strong>{item.title}</strong>
+                    <span>{contextMemorySourceLabel(item.memoryType)}</span>
+                  </span>
+                  <span>
+                    {detailMode === 'modal' ? '查看详情' : expanded ? '收起详情' : '展开详情'}
+                  </span>
+                </button>
+                <p className="dashboard-context-manifest-item-preview">
+                  {formatContextManifestPreview(item.summary)}
+                </p>
+                <dl>
+                  <div>
+                    <dt>为什么使用</dt>
+                    <dd>{item.whyApplied || '未记录应用原因'}</dd>
+                  </div>
+                  <div>
+                    <dt>{deliveryLabel}</dt>
+                    <dd>{contextDeliveryLabel(item.lastApplication ?? item)}</dd>
+                  </div>
+                  <div>
+                    <dt>{outcomeLabel}</dt>
+                    <dd>{contextOutcomeLabel(item.outcome ?? item.lastApplication?.outcome)}</dd>
+                  </div>
+                </dl>
+                {detailMode === 'inline' && expanded && (
+                  <section
+                    id={detailId}
+                    className="dashboard-context-manifest-item-detail"
+                    aria-label={`${detailLabel}：${item.title}`}
+                  >
+                    <div>
+                      <span>{typeLabel}</span>
+                      <p>{contextMemorySourceLabel(item.memoryType)}</p>
+                    </div>
+                    <div>
+                      <span>{contentLabel}</span>
+                      <p>{item.summary || '暂无可展示内容'}</p>
+                    </div>
+                    <dl>
+                      <div>
+                        <dt>为什么使用</dt>
+                        <dd>{item.whyApplied || '未记录应用原因'}</dd>
+                      </div>
+                      <div>
+                        <dt>{deliveryLabel}</dt>
+                        <dd>{contextDeliveryLabel(item.lastApplication ?? item)}</dd>
+                      </div>
+                      <div>
+                        <dt>{outcomeLabel}</dt>
+                        <dd>
+                          {contextOutcomeLabel(item.outcome ?? item.lastApplication?.outcome)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>最近应用</dt>
+                        <dd>
+                          {formatTimestamp(item.lastApplication?.appliedAt ?? item.appliedAt)}
+                        </dd>
+                      </div>
+                    </dl>
+                  </section>
+                )}
+              </article>
+            );
+          })}
         </div>
+      )}
+      {detailMode === 'modal' && (
+        <ProjectKnowledgeDetailsModal
+          item={selectedDetailItem}
+          open={selectedDetailItem !== null}
+          onClose={() => setSelectedDetailItem(null)}
+        />
       )}
     </section>
   );
@@ -4880,6 +5436,11 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
   const snapshot = data && typeof data === 'object' ? data : {};
   const [workspaceTab, setWorkspaceTab] = useState('model');
   const [recordSearchText, setRecordSearchText] = useState('');
+  const [sourceSearchText, setSourceSearchText] = useState('');
+  const [selectedSource, setSelectedSource] = useState(null);
+  const [sourceContent, setSourceContent] = useState(null);
+  const [sourceReadPending, setSourceReadPending] = useState(false);
+  const [sourceReadError, setSourceReadError] = useState(null);
   const [queryText, setQueryText] = useState('');
   const [queryPending, setQueryPending] = useState(false);
   const [stateFilter, setStateFilter] = useState('proven');
@@ -4940,13 +5501,14 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
   const sourceEntries = useMemo(() => {
     const sourceMap = new Map();
     for (const record of records) {
-      for (const source of projectKnowledgeRecordSources(record)) {
+      for (const sourceReference of projectKnowledgeRecordSources(record)) {
+        const source = projectKnowledgeSourcePath(sourceReference);
         const current = sourceMap.get(source) ?? {
           source,
           records: [],
           latestUpdatedAt: null,
         };
-        current.records.push(record);
+        if (!current.records.some((entry) => entry.id === record.id)) current.records.push(record);
         if (
           !current.latestUpdatedAt ||
           new Date(record.updatedAt ?? 0).getTime() >
@@ -4958,8 +5520,9 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
       }
     }
     for (const source of Array.isArray(snapshot.local?.sources) ? snapshot.local.sources : []) {
-      const current = sourceMap.get(source.source) ?? {
-        source: source.source,
+      const sourcePath = projectKnowledgeSourcePath(source.source);
+      const current = sourceMap.get(sourcePath) ?? {
+        source: sourcePath,
         records: [],
         latestUpdatedAt: null,
       };
@@ -4969,12 +5532,27 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
       ) {
         current.latestUpdatedAt = source.updatedAt;
       }
-      sourceMap.set(source.source, current);
+      sourceMap.set(sourcePath, { ...current, kind: source.kind });
     }
     return Array.from(sourceMap.values()).toSorted((left, right) =>
       left.source.localeCompare(right.source, 'zh-CN'),
     );
   }, [records, snapshot.local?.sources]);
+  const visibleSourceEntries = useMemo(() => {
+    const search = sourceSearchText.trim().toLocaleLowerCase('zh-CN');
+    if (!search) return sourceEntries;
+    return sourceEntries.filter((entry) => {
+      const searchable = [
+        entry.source,
+        entry.kind,
+        ...entry.records.flatMap((record) => [record.title, record.summary]),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLocaleLowerCase('zh-CN');
+      return searchable.includes(search);
+    });
+  }, [sourceEntries, sourceSearchText]);
   useEffect(() => {
     if (selectedRecord?.id && selectedRecord.id !== selectedRecordId) {
       setSelectedRecordId(selectedRecord.id);
@@ -5000,6 +5578,35 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
   };
   const updateQueryText = (value) => {
     setQueryText(value);
+  };
+  const closeSource = () => {
+    setSelectedSource(null);
+    setSourceContent(null);
+    setSourceReadError(null);
+    setSourceReadPending(false);
+  };
+  const selectSource = async (entry) => {
+    setSelectedSource(entry);
+    setSourceContent(null);
+    setSourceReadError(null);
+    setSourceReadPending(true);
+    try {
+      const result = await onInvoke('read-source', { source: entry.source });
+      if (result?.kind !== 'source') {
+        setSourceReadError('来源文件无法读取');
+      } else {
+        setSourceContent(result);
+      }
+    } catch (error) {
+      setSourceReadError(error instanceof Error ? error.message : '来源文件无法读取');
+    } finally {
+      setSourceReadPending(false);
+    }
+  };
+  const selectSourceRecord = (record) => {
+    closeSource();
+    setWorkspaceTab(PROJECT_MODEL_TYPES.has(record.type) ? 'model' : 'policy');
+    setSelectedRecordId(record.id);
   };
   const provider =
     snapshot.provider === 'remote'
@@ -5057,11 +5664,25 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
       <ContextManifestPreview
         items={snapshot.manifestPreview}
         emptyLabel="最近还没有向 Agent 提供项目知识"
+        detailMode="modal"
+        title="最近一次任务使用的项目知识"
+        description="这里只展示本次任务实际提供给 Agent 的项目知识，不是全部已保存项目知识"
+        labels={{
+          detailLabel: '项目知识详情',
+          contentLabel: '项目知识内容',
+          typeLabel: '项目知识类型',
+          deliveryLabel: '提供给 Agent 的内容',
+          outcomeLabel: '应用结果',
+          toggleLabel: () => '查看项目知识详情',
+        }}
+        onSelectItem={(item) => {
+          if (records.some((record) => record.id === item.id)) setSelectedRecordId(item.id);
+        }}
       />
       <nav className="dashboard-knowledge-tabs" role="tablist" aria-label="项目知识视图">
         {[
-          ['model', '项目模型'],
-          ['policy', '项目策略'],
+          ['model', '项目事实'],
+          ['policy', '项目规范'],
           ['sources', '数据来源'],
           ['query', '检索测试'],
         ].map(([key, label]) => (
@@ -5084,7 +5705,7 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
           visibleRecords={visibleRecords}
           selectedRecord={selectedRecord}
           selectedRecordId={selectedRecordId}
-          workspaceLabel={workspaceTab === 'model' ? '项目模型' : '项目策略'}
+          workspaceLabel={workspaceTab === 'model' ? '项目事实' : '项目规范'}
           workspaceDescription={
             workspaceTab === 'model' ? '结构、事实与依赖关系' : '决策、流程、约束与故障处理'
           }
@@ -5102,7 +5723,20 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
           onInvoke={onInvoke}
         />
       ) : workspaceTab === 'sources' ? (
-        <ProjectKnowledgeSources sourceEntries={sourceEntries} provider={provider} />
+        <ProjectKnowledgeSources
+          sourceEntries={visibleSourceEntries}
+          totalSourceCount={sourceEntries.length}
+          provider={provider}
+          searchText={sourceSearchText}
+          onSearchTextChange={setSourceSearchText}
+          selectedSource={selectedSource}
+          sourceContent={sourceContent}
+          sourceReadPending={sourceReadPending}
+          sourceReadError={sourceReadError}
+          onSelectSource={selectSource}
+          onCloseSource={closeSource}
+          onSelectRecord={selectSourceRecord}
+        />
       ) : (
         <ProjectKnowledgeQuery
           queryText={queryText}
@@ -5114,13 +5748,12 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
           retrieval={snapshot.retrieval}
         />
       )}
-      <Modal
+      <DashboardModal
         rootClassName="dashboard-create-modal-root dashboard-project-knowledge-modal-root"
         classNames={{
           mask: 'dashboard-create-modal-mask',
           container: 'dashboard-create-modal-content',
         }}
-        centered
         open={createOpen}
         title="新增项目知识"
         okText="保存"
@@ -5131,7 +5764,7 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
             createDraft.title.trim().length === 0 || createDraft.summary.trim().length === 0,
           loading: createSaving,
         }}
-        onCancel={() => {
+        onClose={() => {
           if (!createSaving) setCreateOpen(false);
         }}
         onOk={async () => {
@@ -5288,7 +5921,7 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
             />
           </Form.Item>
         </Form>
-      </Modal>
+      </DashboardModal>
     </div>
   );
 }
@@ -5542,6 +6175,11 @@ function PersonalMemoryCenter({ data, onInvoke }) {
       <ContextManifestPreview
         items={data?.manifestPreview}
         emptyLabel="最近还没有向 Agent 提供个人记忆"
+        onSelectItem={(item) => {
+          if (managedRecords.some((record) => record.id === item.id)) {
+            setSelectedMemoryId(item.id);
+          }
+        }}
       />
       <div className="dashboard-memory-workspace">
         <aside className="dashboard-memory-filter-rail" aria-label="记忆筛选">
@@ -5785,20 +6423,19 @@ function PersonalMemoryCenter({ data, onInvoke }) {
           )}
         </aside>
       </div>
-      <Modal
+      <DashboardModal
         rootClassName="dashboard-create-modal-root"
         classNames={{
           mask: 'dashboard-create-modal-mask',
           container: 'dashboard-create-modal-content',
         }}
-        centered
         width={560}
         open={showNewProfile}
         title="新增偏好"
         okText="保存"
         cancelText="取消"
         okButtonProps={{ disabled: newProfileText.trim().length === 0 }}
-        onCancel={() => setShowNewProfile(false)}
+        onClose={() => setShowNewProfile(false)}
         onOk={() => {
           if (newProfileText.trim().length === 0) return;
           void onInvoke('remember', {
@@ -5838,21 +6475,20 @@ function PersonalMemoryCenter({ data, onInvoke }) {
             />
           </Form.Item>
         </Form>
-      </Modal>
-      <Modal
+      </DashboardModal>
+      <DashboardModal
         rootClassName="dashboard-create-modal-root"
         classNames={{
           mask: 'dashboard-create-modal-mask',
           container: 'dashboard-create-modal-content',
         }}
-        centered
         width={560}
         open={showNewProjectMemory}
         title="新增项目记忆"
         okText="保存"
         cancelText="取消"
         okButtonProps={{ disabled: newProjectMemoryText.trim().length === 0 }}
-        onCancel={() => setShowNewProjectMemory(false)}
+        onClose={() => setShowNewProjectMemory(false)}
         onOk={() => {
           if (!projectKey || newProjectMemoryText.trim().length === 0) return;
           void onInvoke('remember', {
@@ -5898,8 +6534,8 @@ function PersonalMemoryCenter({ data, onInvoke }) {
             />
           </Form.Item>
         </Form>
-      </Modal>
-      <Modal
+      </DashboardModal>
+      <DashboardModal
         open={editingRecord !== null}
         title="纠正这条记忆"
         okText="保存"
@@ -5908,7 +6544,7 @@ function PersonalMemoryCenter({ data, onInvoke }) {
           disabled: correctionText.trim().length === 0,
           loading: correctionSaving,
         }}
-        onCancel={() => setEditingRecord(null)}
+        onClose={() => setEditingRecord(null)}
         onOk={async () => {
           if (!editingRecord || correctionText.trim().length === 0) return;
           setCorrectionSaving(true);
@@ -5930,7 +6566,7 @@ function PersonalMemoryCenter({ data, onInvoke }) {
           autoSize={{ minRows: 3, maxRows: 8 }}
           placeholder="输入新的记忆内容"
         />
-      </Modal>
+      </DashboardModal>
     </div>
   );
 }
