@@ -1680,6 +1680,24 @@ test('keeps the desktop sidebar transition unified and settings reachable when c
   await expect(page.getByRole('dialog', { name: /Comet 设置/u })).toBeVisible();
 });
 
+test('removes horizontal overflow from the collapsed sidebar on narrow desktop screens', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1024, height: 600 });
+  await page.goto('/?demo');
+
+  await page.getByRole('button', { name: '收起侧边栏' }).click();
+  await page.waitForTimeout(260);
+
+  const navigation = page.locator('.dashboard-sidebar-navigation');
+  await expect(navigation).toHaveCSS('overflow-x', 'hidden');
+  const { clientWidth, scrollWidth } = await navigation.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+  }));
+  expect(scrollWidth).toBeLessThanOrEqual(clientWidth + 1);
+});
+
 test('keeps collapsed sidebar menu icons aligned with their expanded positions', async ({
   page,
 }) => {

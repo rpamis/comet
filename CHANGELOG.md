@@ -38,6 +38,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Windows Native reliability**: Snapshot checks are more reliable when hooks and workspace operations run concurrently on Windows.
 - **Archive delivery choices**: Classic Archive supports completing the archive commit locally without pushing or creating a PR, while Classic and Native show archive and workspace-finish options with their concrete Git impact.
 - **Project Knowledge recovery**: Successful local searches clear stale missing-tool diagnostics, source previews no longer show a completion toast, and collapsed sidebars no longer display an empty footer placeholder.
+- **Collapsed sidebar overflow**: Narrow desktop sidebars no longer show a horizontal scrollbar when navigation labels collapse.
 
 ## What's Changed [0.4.0-beta.19] - 2026-08-21
 

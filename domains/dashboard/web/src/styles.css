@@ -4641,6 +4641,7 @@ body {
 
   .dashboard-sidebar-navigation {
     flex: 1 1 auto;
+    overflow-x: hidden;
     overflow-y: auto;
   }
 
@@ -7576,6 +7577,9 @@ body {
 
   .dashboard-workbench.is-sidebar-collapsed .dashboard-sidebar-label {
     height: 18px;
+    width: 0;
+    margin-inline: 0;
+    overflow: hidden;
     visibility: hidden;
     white-space: nowrap;
   }
