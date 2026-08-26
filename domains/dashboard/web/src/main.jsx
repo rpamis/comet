@@ -1567,19 +1567,27 @@ function SectionHead({ title, hint }) {
   );
 }
 
-function PluginCenterHeader({ meta = [], actions = null }) {
+function PluginCenterHeader({ title, description, meta = [], actions = null }) {
   return (
     <header className="dashboard-plugin-context-bar" aria-label="个人记忆状态与操作">
-      <div className="dashboard-plugin-context-meta">
-        {meta.map((item) => (
-          <span
-            key={`${item.label}-${item.value}`}
-            className={`dashboard-tool-chip dashboard-tool-chip-${item.tone ?? 'neutral'}`}
-          >
-            <span className="dashboard-tool-chip-label">{item.label}</span>
-            {item.value}
-          </span>
-        ))}
+      <div className="dashboard-plugin-center-heading">
+        <div>
+          <h1>{title}</h1>
+          <p>{description}</p>
+        </div>
+        {meta.length > 0 && (
+          <div className="dashboard-plugin-context-meta">
+            {meta.map((item) => (
+              <span
+                key={`${item.label}-${item.value}`}
+                className={`dashboard-tool-chip dashboard-tool-chip-${item.tone ?? 'neutral'}`}
+              >
+                <span className="dashboard-tool-chip-label">{item.label}</span>
+                {item.value}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
       {actions && <div className="dashboard-tool-actions">{actions}</div>}
     </header>
@@ -5331,10 +5339,13 @@ function ContextManifestPreview({
   title = '最近一次任务使用的记忆',
   description = '这里只展示真正提供给 Agent 的内容，不是全部已保存记忆',
   labels = {},
+  variant = 'default',
+  maxVisibleItems = 8,
 }) {
   const manifest = Array.isArray(items) ? items : [];
   const [expandedItemId, setExpandedItemId] = useState(null);
   const [selectedDetailItem, setSelectedDetailItem] = useState(null);
+  const [showAll, setShowAll] = useState(false);
   const latestApplication = manifest[0]?.lastApplication ?? manifest[0];
   const latestAt = latestApplication?.appliedAt;
   const latestTask = latestApplication?.task;
@@ -5353,23 +5364,37 @@ function ContextManifestPreview({
     setExpandedItemId((currentId) => (currentId === item.id ? null : item.id));
     onSelectItem?.(item);
   };
+  const visibleManifest = showAll ? manifest : manifest.slice(0, maxVisibleItems);
+  const variantClassName =
+    variant === 'knowledge'
+      ? 'dashboard-context-manifest--knowledge'
+      : variant === 'memory'
+        ? 'dashboard-context-manifest--memory'
+        : '';
   return (
-    <section className="dashboard-context-manifest" aria-label={title}>
+    <section className={`dashboard-context-manifest ${variantClassName}`} aria-label={title}>
       <header>
         <div>
           <strong>{title}</strong>
           <span>{description}</span>
         </div>
-        <span>
-          {latestTask ? `任务：${latestTask} · ` : ''}
-          {manifest.length} 条{latestAt ? ` · ${formatTimestamp(latestAt)}` : ''}
-        </span>
+        <div className="dashboard-context-manifest-summary">
+          <span>
+            {latestTask ? `任务：${latestTask} · ` : ''}
+            {manifest.length} 条{latestAt ? ` · ${formatTimestamp(latestAt)}` : ''}
+          </span>
+          {manifest.length > maxVisibleItems && (
+            <button type="button" onClick={() => setShowAll((value) => !value)}>
+              {showAll ? '收起' : '查看全部'}
+            </button>
+          )}
+        </div>
       </header>
       {manifest.length === 0 ? (
         <p>{emptyLabel}</p>
       ) : (
         <div className="dashboard-context-manifest-items">
-          {manifest.slice(0, 8).map((item) => {
+          {visibleManifest.map((item) => {
             const expanded = expandedItemId === item.id;
             const detailId = `context-manifest-detail-${item.id}`;
             return (
@@ -5661,21 +5686,29 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
 
   return (
     <div className="dashboard-tool-page dashboard-tool-page-knowledge min-w-0">
-      <header className="dashboard-knowledge-workspace-head" aria-label="项目规则状态与操作">
-        <span
-          className={`dashboard-knowledge-service-state ${serviceHealthy ? 'is-healthy' : 'is-warning'}`}
-        >
-          <span className="dashboard-tool-state-dot" aria-hidden="true" />
-          {disabled ? '服务已暂停' : configured === '需要检查' ? '需要检查' : '服务正常'}
-        </span>
-        <Button
-          className="dashboard-knowledge-create-button dashboard-plugin-primary-action"
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => setCreateOpen(true)}
-        >
-          新增项目知识
-        </Button>
+      <header className="dashboard-knowledge-workspace-head" aria-label="项目知识状态与操作">
+        <div className="dashboard-plugin-center-heading">
+          <div>
+            <h1>项目知识</h1>
+            <p>在证据工作台中浏览、检索与验证项目知识，确保事实可追溯、规范可执行、决策有依据。</p>
+          </div>
+        </div>
+        <div className="dashboard-knowledge-head-actions">
+          <span
+            className={`dashboard-knowledge-service-state ${serviceHealthy ? 'is-healthy' : 'is-warning'}`}
+          >
+            <span className="dashboard-tool-state-dot" aria-hidden="true" />
+            {disabled ? '服务已暂停' : configured === '需要检查' ? '需要检查' : '服务正常'}
+          </span>
+          <Button
+            className="dashboard-knowledge-create-button dashboard-plugin-primary-action"
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => setCreateOpen(true)}
+          >
+            新增项目知识
+          </Button>
+        </div>
       </header>
       {disabled && (
         <Alert
@@ -5697,8 +5730,10 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
         items={snapshot.manifestPreview}
         emptyLabel="最近还没有向 Agent 提供项目知识"
         detailMode="modal"
-        title="最近一次任务使用的项目知识"
+        title="最近一次使用的项目知识"
         description="这里只展示本次任务实际提供给 Agent 的项目知识，不是全部已保存项目知识"
+        variant="knowledge"
+        maxVisibleItems={4}
         labels={{
           detailLabel: '项目知识详情',
           contentLabel: '项目知识内容',
@@ -5999,30 +6034,60 @@ function PersonalMemoryCenter({ data, onInvoke }) {
     [record.text, record.category, record.memoryClass, record.reason]
       .filter(Boolean)
       .some((value) => String(value).toLocaleLowerCase().includes(normalizedMemoryQuery));
-  const memoryGroups = [
+  const memoryCategoryDefinitions = [
     {
       key: 'profile',
       title: '核心画像',
-      records: coreRecords.filter(matchesMemoryQuery),
+      description: '你的角色、经验与目标',
+      icon: UserOutlined,
+      records: coreRecords,
     },
     {
       key: 'policy',
       title: '协作策略',
-      records: policyRecords.filter(matchesMemoryQuery),
+      description: '沟通偏好与协作方式',
+      icon: BulbOutlined,
+      records: policyRecords,
     },
     {
       key: 'episode',
       title: '情景记录',
-      records: episodeRecords.filter(matchesMemoryQuery),
+      description: '项目背景与情境信息',
+      icon: BranchesOutlined,
+      records: episodeRecords,
     },
     {
       key: 'history',
       title: '历史记录',
-      records: historyRecords.filter(matchesMemoryQuery),
+      description: '重要决策与过程记录',
+      icon: DatabaseOutlined,
+      records: historyRecords,
     },
-  ].filter(
-    (group) => group.records.length > 0 && (memoryFilter === 'all' || memoryFilter === group.key),
-  );
+  ];
+  const memoryGroups = memoryCategoryDefinitions
+    .map((group) => ({
+      ...group,
+      records: group.records.filter(matchesMemoryQuery),
+    }))
+    .filter(
+      (group) => group.records.length > 0 && (memoryFilter === 'all' || memoryFilter === group.key),
+    );
+  const memoryFilterOptions = [
+    {
+      key: 'all',
+      title: '全部记忆',
+      description: '个人偏好与任务经验',
+      icon: DatabaseOutlined,
+      count: totalMemoryRecordCount,
+    },
+    ...memoryCategoryDefinitions.map((group) => ({
+      key: group.key,
+      title: group.title,
+      description: group.description,
+      icon: group.icon,
+      count: group.records.length,
+    })),
+  ];
   const visibleMemoryRecords = memoryGroups.flatMap((group) => group.records);
   const selectedRecord =
     visibleMemoryRecords.find((record) => record.id === selectedMemoryId) ??
@@ -6159,6 +6224,8 @@ function PersonalMemoryCenter({ data, onInvoke }) {
   return (
     <div className="dashboard-tool-page dashboard-tool-page-memory min-w-0">
       <PluginCenterHeader
+        title="个人记忆"
+        description="管理 Comet 对你的长期理解与偏好，提升协作个性化与一致性。"
         meta={[
           {
             label: 'Provider',
@@ -6207,6 +6274,10 @@ function PersonalMemoryCenter({ data, onInvoke }) {
       <ContextManifestPreview
         items={data?.manifestPreview}
         emptyLabel="最近还没有向 Agent 提供个人记忆"
+        title="最近一次使用的个人记忆"
+        description="这里只展示本次任务实际提供给 Agent 的个人记忆，不是全部已保存记忆"
+        variant="memory"
+        maxVisibleItems={5}
         onSelectItem={(item) => {
           if (managedRecords.some((record) => record.id === item.id)) {
             setSelectedMemoryId(item.id);
@@ -6226,13 +6297,7 @@ function PersonalMemoryCenter({ data, onInvoke }) {
             />
           </div>
           <nav>
-            {[
-              ['all', '全部记忆', totalMemoryRecordCount],
-              ['profile', '核心画像', coreRecords.length],
-              ['policy', '协作策略', policyRecords.length],
-              ['episode', '情景记录', episodeRecords.length],
-              ['history', '历史记录', historyRecords.length],
-            ].map(([key, label, count]) => (
+            {memoryFilterOptions.map(({ key, title, description, icon: Icon, count }) => (
               <button
                 key={key}
                 type="button"
@@ -6240,8 +6305,14 @@ function PersonalMemoryCenter({ data, onInvoke }) {
                 aria-pressed={memoryFilter === key}
                 onClick={() => setMemoryFilter(key)}
               >
-                <span>{label}</span>
-                <strong>{count}</strong>
+                <span className="dashboard-memory-category-icon" aria-hidden="true">
+                  <Icon />
+                </span>
+                <span className="dashboard-memory-category-copy">
+                  <strong>{title}</strong>
+                  <small>{description}</small>
+                </span>
+                <em>{count}</em>
               </button>
             ))}
           </nav>

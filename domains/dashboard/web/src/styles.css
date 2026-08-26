@@ -7742,3 +7742,540 @@ body {
     transition: none !important;
   }
 }
+
+/* Separate center pages selected from the project-knowledge and personal-memory
+   prototypes. The global sidebar and workspace shell stay outside this scope. */
+.dashboard-plugin-center-heading {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.dashboard-plugin-center-heading > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.dashboard-plugin-center-heading h1 {
+  margin: 0;
+  color: var(--color-fg);
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 680;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+
+.dashboard-plugin-center-heading p {
+  max-width: 760px;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.dashboard-plugin-context-bar {
+  min-height: 84px;
+  align-items: end;
+  padding: 7px 0 16px;
+}
+
+.dashboard-plugin-context-bar > .dashboard-plugin-center-heading {
+  flex: 1 1 auto;
+}
+
+.dashboard-plugin-context-meta {
+  margin-top: 5px;
+}
+
+.dashboard-knowledge-workspace-head {
+  min-height: 84px;
+  align-items: end;
+  padding: 7px 0 16px;
+}
+
+.dashboard-knowledge-head-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.dashboard-context-manifest--knowledge,
+.dashboard-context-manifest--memory {
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 0 0 14px;
+  border-top: 0;
+  border-bottom-color: var(--color-border);
+}
+
+.dashboard-context-manifest--knowledge > header,
+.dashboard-context-manifest--memory > header {
+  align-items: end;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.dashboard-context-manifest--knowledge > header strong,
+.dashboard-context-manifest--memory > header strong {
+  color: var(--color-fg);
+  font-size: 16px;
+  font-weight: 680;
+  line-height: 1.35;
+}
+
+.dashboard-context-manifest--knowledge > header div:first-child span,
+.dashboard-context-manifest--memory > header div:first-child span {
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.dashboard-context-manifest-summary {
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  min-width: 0;
+  text-align: right;
+}
+
+.dashboard-context-manifest-summary > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-context-manifest-summary button {
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-accent);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 620;
+}
+
+.dashboard-context-manifest-summary button:hover,
+.dashboard-context-manifest-summary button:focus-visible {
+  color: var(--color-accent-active);
+  text-decoration: underline;
+}
+
+.dashboard-context-manifest--knowledge .dashboard-context-manifest-items,
+.dashboard-context-manifest--memory .dashboard-context-manifest-items {
+  display: grid;
+  overflow-x: auto;
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: 10px;
+  padding: 1px 1px 4px;
+}
+
+.dashboard-context-manifest--memory .dashboard-context-manifest-items {
+  grid-template-columns: repeat(5, minmax(190px, 1fr));
+}
+
+.dashboard-context-manifest--knowledge .dashboard-context-manifest-items article,
+.dashboard-context-manifest--memory .dashboard-context-manifest-items article {
+  min-width: 0;
+  min-height: 112px;
+  gap: 9px;
+  padding: 14px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 10px;
+  background: var(--color-bg);
+  box-shadow: 0 3px 12px rgba(31, 43, 64, 0.035);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.dashboard-context-manifest--knowledge .dashboard-context-manifest-items article:hover,
+.dashboard-context-manifest--memory .dashboard-context-manifest-items article:hover {
+  border-color: color-mix(in oklab, var(--color-accent) 42%, var(--color-border-soft));
+  box-shadow: 0 8px 20px rgba(31, 43, 64, 0.07);
+  transform: translateY(-1px);
+}
+
+.dashboard-context-manifest--knowledge .dashboard-context-manifest-item-toggle,
+.dashboard-context-manifest--memory .dashboard-context-manifest-item-toggle {
+  align-items: flex-start;
+  padding: 0;
+}
+
+.dashboard-context-manifest--knowledge .dashboard-context-manifest-item-toggle > span:first-child,
+.dashboard-context-manifest--memory .dashboard-context-manifest-item-toggle > span:first-child {
+  gap: 4px;
+}
+
+.dashboard-context-manifest--knowledge
+  .dashboard-context-manifest-item-toggle
+  > span:first-child
+  strong,
+.dashboard-context-manifest--memory
+  .dashboard-context-manifest-item-toggle
+  > span:first-child
+  strong {
+  color: var(--color-fg);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.dashboard-context-manifest--knowledge
+  .dashboard-context-manifest-item-toggle
+  > span:first-child
+  span,
+.dashboard-context-manifest--memory
+  .dashboard-context-manifest-item-toggle
+  > span:first-child
+  span {
+  font-size: 11px;
+}
+
+.dashboard-context-manifest--knowledge .dashboard-context-manifest-item-toggle > span:last-child,
+.dashboard-context-manifest--memory .dashboard-context-manifest-item-toggle > span:last-child {
+  font-size: 11px;
+}
+
+.dashboard-context-manifest--knowledge .dashboard-context-manifest-item-preview,
+.dashboard-context-manifest--memory .dashboard-context-manifest-item-preview {
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.dashboard-context-manifest--knowledge .dashboard-context-manifest-items dl,
+.dashboard-context-manifest--memory .dashboard-context-manifest-items dl {
+  gap: 4px 9px;
+}
+
+.dashboard-context-manifest--knowledge .dashboard-context-manifest-items dl div,
+.dashboard-context-manifest--memory .dashboard-context-manifest-items dl div {
+  font-size: 11px;
+}
+
+.dashboard-memory-workspace {
+  grid-template-columns: minmax(206px, 0.72fr) minmax(500px, 1.85fr) minmax(320px, 1.16fr);
+  min-height: clamp(600px, calc(100dvh - 292px), 780px);
+  border: 1px solid var(--color-border-soft);
+  border-radius: 12px;
+}
+
+.dashboard-memory-filter-rail,
+.dashboard-memory-inspector {
+  background: color-mix(in oklab, var(--color-surface-warm) 32%, var(--color-bg));
+}
+
+.dashboard-memory-filter-search {
+  padding: 14px;
+}
+
+.dashboard-memory-filter-rail nav {
+  gap: 4px;
+  padding: 10px;
+}
+
+.dashboard-memory-filter-rail nav button {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  min-height: 58px;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
+.dashboard-memory-category-icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--color-muted);
+  font-size: 17px;
+}
+
+.dashboard-memory-filter-rail nav button.is-active .dashboard-memory-category-icon {
+  background: color-mix(in oklab, var(--color-accent-soft) 82%, var(--color-bg));
+  color: var(--color-accent-active);
+}
+
+.dashboard-memory-category-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.dashboard-memory-category-copy strong {
+  overflow: hidden;
+  color: var(--color-fg-2);
+  font-size: 13px;
+  font-weight: 640;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-memory-category-copy small {
+  overflow: hidden;
+  color: var(--color-meta);
+  font-size: 11px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-memory-filter-rail nav button > em {
+  color: var(--color-meta);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.dashboard-memory-registry-toolbar {
+  min-height: 60px;
+  padding-inline: 18px;
+}
+
+.dashboard-memory-registry-toolbar strong {
+  font-size: 16px;
+}
+
+.dashboard-memory-table-head,
+.dashboard-memory-table-row {
+  grid-template-columns: minmax(260px, 1fr) 92px 86px 118px auto;
+  gap: 12px;
+}
+
+.dashboard-memory-table-head {
+  min-height: 42px;
+  padding-inline: 18px;
+  font-size: 12px;
+}
+
+.dashboard-memory-group-title {
+  min-height: 40px;
+  padding-inline: 18px;
+}
+
+.dashboard-memory-table-row {
+  min-height: 96px;
+  padding: 12px 18px;
+}
+
+.dashboard-memory-table-title-row strong {
+  font-size: 15px;
+}
+
+.dashboard-memory-table-copy > p {
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.dashboard-memory-why {
+  font-size: 13px;
+}
+
+.dashboard-memory-table-scope,
+.dashboard-memory-table-status,
+.dashboard-memory-table-time {
+  font-size: 13px;
+}
+
+.dashboard-memory-inspector-head,
+.dashboard-memory-inspector section {
+  padding: 18px;
+}
+
+.dashboard-memory-inspector-head strong {
+  font-size: 18px;
+}
+
+.dashboard-memory-inspector h4 {
+  font-size: 14px;
+}
+
+.dashboard-memory-inspector-list span {
+  font-size: 12px;
+}
+
+.dashboard-memory-inspector-list strong {
+  font-size: 13px;
+}
+
+.dashboard-knowledge-registry {
+  grid-template-columns: minmax(218px, 0.72fr) minmax(460px, 2.1fr) minmax(320px, 1fr);
+  min-height: clamp(560px, calc(100dvh - 300px), 780px);
+  border: 1px solid var(--color-border-soft);
+  border-radius: 12px;
+}
+
+.dashboard-knowledge-explorer {
+  background: color-mix(in oklab, var(--color-surface-warm) 32%, var(--color-bg));
+}
+
+.dashboard-knowledge-category {
+  min-height: 40px;
+  font-size: 13px;
+}
+
+.dashboard-knowledge-ledger-toolbar {
+  min-height: 60px;
+  padding-inline: 18px;
+}
+
+.dashboard-knowledge-ledger-toolbar strong {
+  font-size: 16px;
+}
+
+.dashboard-knowledge-ledger-head,
+.dashboard-knowledge-ledger-row {
+  grid-template-columns: minmax(250px, 1.7fr) minmax(150px, 1fr) 98px 124px;
+  gap: 14px;
+}
+
+.dashboard-knowledge-ledger-head {
+  min-height: 42px;
+  padding-inline: 18px;
+  font-size: 12px;
+}
+
+.dashboard-knowledge-ledger-row {
+  min-height: 82px;
+  padding: 12px 18px;
+}
+
+.dashboard-knowledge-record-copy > strong {
+  font-size: 14px;
+}
+
+.dashboard-knowledge-record-copy > span,
+.dashboard-knowledge-record-source,
+.dashboard-knowledge-ledger-row time,
+.dashboard-knowledge-record-state {
+  font-size: 12px;
+}
+
+@media (max-width: 1400px) and (min-width: 1181px) {
+  .dashboard-knowledge-ledger-head,
+  .dashboard-knowledge-ledger-row {
+    grid-template-columns: minmax(220px, 1fr) 100px;
+  }
+
+  .dashboard-knowledge-ledger-head > span:nth-child(2),
+  .dashboard-knowledge-ledger-head > span:last-child,
+  .dashboard-knowledge-record-source,
+  .dashboard-knowledge-ledger-row time {
+    display: none;
+  }
+}
+
+@media (max-width: 1180px) {
+  .dashboard-memory-workspace {
+    grid-template-columns: minmax(180px, 0.58fr) minmax(460px, 1.42fr);
+  }
+
+  .dashboard-memory-inspector {
+    display: none;
+  }
+
+  .dashboard-knowledge-registry {
+    grid-template-columns: 198px minmax(420px, 1fr);
+  }
+
+  .dashboard-knowledge-inspector {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .dashboard-plugin-context-bar,
+  .dashboard-knowledge-workspace-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .dashboard-knowledge-head-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .dashboard-context-manifest--knowledge .dashboard-context-manifest-items,
+  .dashboard-context-manifest--memory .dashboard-context-manifest-items {
+    grid-template-columns: repeat(4, minmax(220px, 1fr));
+  }
+
+  .dashboard-memory-workspace,
+  .dashboard-knowledge-registry {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-memory-filter-rail,
+  .dashboard-knowledge-explorer {
+    max-height: 300px;
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .dashboard-memory-filter-rail nav {
+    display: flex;
+    overflow-x: auto;
+  }
+
+  .dashboard-memory-filter-rail nav button {
+    min-width: 178px;
+  }
+}
+
+@media (max-width: 760px) {
+  .dashboard-plugin-center-heading h1 {
+    font-size: 23px;
+  }
+
+  .dashboard-plugin-center-heading p {
+    font-size: 13px;
+  }
+
+  .dashboard-context-manifest--knowledge > header,
+  .dashboard-context-manifest--memory > header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .dashboard-context-manifest-summary {
+    justify-content: flex-start;
+    text-align: left;
+  }
+
+  .dashboard-memory-table-head,
+  .dashboard-memory-table-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .dashboard-memory-table-head > span:nth-child(2),
+  .dashboard-memory-table-head > span:nth-child(3),
+  .dashboard-memory-table-head > span:nth-child(4),
+  .dashboard-memory-table-row > .dashboard-memory-table-scope,
+  .dashboard-memory-table-row > .dashboard-memory-table-status,
+  .dashboard-memory-table-row > .dashboard-memory-table-time {
+    display: none;
+  }
+
+  .dashboard-memory-table-row {
+    align-items: start;
+  }
+
+  .dashboard-memory-table-copy {
+    grid-column: 1 / -1;
+  }
+
+  .dashboard-memory-record-actions {
+    grid-column: 2;
+    grid-row: 1;
+  }
+}
