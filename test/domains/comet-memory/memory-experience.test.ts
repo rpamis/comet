@@ -155,6 +155,63 @@ describe('personal memory experience projection', () => {
     expect(loaded.operations).toContain('manage');
   });
 
+  it('does not project a permanently deleted memory into the Dashboard manifest', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-memory-dashboard-delete-'));
+    const projectRoot = path.join(root, 'project');
+    await fs.mkdir(projectRoot, { recursive: true });
+    const { createDefaultCometPluginBridge } =
+      await import('../../../domains/comet-plugin/integration.js');
+    const bridge = await createDefaultCometPluginBridge({
+      projectRoot,
+      projectId: 'repo-dashboard-delete',
+      memoryRoot: path.join(root, 'memory'),
+      stateRoot: path.join(root, 'plugins'),
+    });
+    const remembered = await bridge.remember({
+      scope: 'project',
+      projectKey: 'repo-dashboard-delete',
+      category: '偏好',
+      text: '删除后不应继续显示',
+    });
+    await bridge.collectContext({ task: '删除后不应继续显示' });
+
+    const loadPage = async () => {
+      const page = (
+        await bridge.pluginRuntime.dashboardPages({
+          scope: 'project',
+          projectId: bridge.currentProjectId,
+        })
+      ).find((entry) => entry.pluginId === 'comet.personal-memory');
+      return page?.load?.({
+        projectId: bridge.currentProjectId,
+        invoke: (capability, input) =>
+          bridge.pluginRuntime.invoke('comet.personal-memory', capability, input, {
+            scope: 'project',
+            projectId: bridge.currentProjectId,
+          }),
+      });
+    };
+
+    const beforeDelete = (await loadPage()) as {
+      manifestPreview: readonly { id: string }[];
+    };
+    expect(beforeDelete.manifestPreview).toEqual([expect.objectContaining({ id: remembered!.id })]);
+
+    await bridge.pluginRuntime.invoke(
+      'comet.personal-memory',
+      'remove',
+      { id: remembered!.id, permanent: true },
+      { scope: 'project', projectId: bridge.currentProjectId },
+    );
+
+    const afterDelete = (await loadPage()) as {
+      management: { records: readonly { id: string }[] };
+      manifestPreview: readonly { id: string }[];
+    };
+    expect(afterDelete.management.records).toEqual([]);
+    expect(afterDelete.manifestPreview).toEqual([]);
+  });
+
   it('shows global memory application history across projects without leaking project history', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-memory-global-history-'));
     const memoryRoot = path.join(root, 'memory');

@@ -220,7 +220,9 @@ async function createModule(
           PERSONAL_MEMORY_PLUGIN_ID,
         );
         const recordsById = new Map(
-          dashboardManagement.records.map((record) => [record.id, record]),
+          dashboardManagement.records
+            .filter((record) => record.status === 'trial' || record.status === 'proven')
+            .map((record) => [record.id, record]),
         );
         return {
           projectKey: projectId,
@@ -231,37 +233,18 @@ async function createModule(
           management: dashboardManagement,
           manifestPreview: currentManifest.flatMap((application) => {
             const record = recordsById.get(application.candidateId);
-            const history = (applications ?? []).filter(
-              (entry) =>
-                entry.owner === PERSONAL_MEMORY_PLUGIN_ID &&
-                entry.candidateId === application.candidateId,
-            );
-            if (
-              record === undefined &&
-              (application.candidateTitle === undefined ||
-                application.candidateSummary === undefined ||
-                application.candidateState === undefined)
-            ) {
-              return [];
-            }
+            if (record === undefined) return [];
             return [
               {
-                id: record?.id ?? application.candidateId,
-                memoryType: record?.memoryType ?? application.memoryType,
-                state: record?.status ?? application.candidateState!,
-                title: record?.title ?? record?.category ?? application.candidateTitle!,
-                summary: record?.text ?? application.candidateSummary!,
+                id: record.id,
+                memoryType: record.memoryType,
+                state: record.status,
+                title: record.title ?? record.category,
+                summary: record.text,
                 whyApplied: application.whyApplied,
-                applicationCount: record?.applicationCount ?? history.length,
-                successCount:
-                  record?.successCount ??
-                  history.filter((entry) => entry.outcome === 'used-successfully').length,
-                failureCount:
-                  record?.failureCount ??
-                  history.filter(
-                    (entry) =>
-                      entry.outcome === 'corrected' || entry.outcome === 'contributed-to-failure',
-                  ).length,
+                applicationCount: record.applicationCount,
+                successCount: record.successCount,
+                failureCount: record.failureCount,
                 delivery: application.delivery,
                 appliedAt: application.appliedAt,
                 ...(application.outcome === undefined ? {} : { outcome: application.outcome }),
