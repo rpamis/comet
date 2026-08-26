@@ -1,7 +1,6 @@
 ---
 name: comet-verify
 description: "Comet Classic 阶段 4 —— 验证 change、记录证据并驱动修复循环。"
-disable-model-invocation: true
 ---
 
 # Comet 阶段 4：验证（Verify）

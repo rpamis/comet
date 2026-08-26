@@ -1,7 +1,6 @@
 ---
 name: comet-hotfix
 description: "Comet 预设 —— 通过 open-build-verify-archive 短流程修复已有行为 bug。"
-disable-model-invocation: true
 ---
 
 # Comet 预设路径：Hotfix

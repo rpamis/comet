@@ -1,7 +1,6 @@
 ---
 name: comet-tweak
 description: "Comet 预设 —— 处理可收敛为单一 OpenSpec change 的轻量或中等变更。"
-disable-model-invocation: true
 ---
 
 # Comet 预设路径：Tweak

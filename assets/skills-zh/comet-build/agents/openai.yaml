@@ -2,4 +2,4 @@ interface:
   display_name: "Comet Classic 阶段 3:Build"
   short_description: "恢复或创建实施计划并执行其任务"
 policy:
-  allow_implicit_invocation: false
+  allow_implicit_invocation: true

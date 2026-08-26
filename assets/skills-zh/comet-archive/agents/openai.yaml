@@ -2,4 +2,4 @@ interface:
   display_name: "Comet Classic 阶段 5:Archive"
   short_description: "确认归档、合并 delta spec 并完成分支收尾"
 policy:
-  allow_implicit_invocation: false
+  allow_implicit_invocation: true

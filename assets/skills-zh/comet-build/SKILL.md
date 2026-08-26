@@ -1,7 +1,6 @@
 ---
 name: comet-build
 description: "Comet Classic 阶段 3 —— 恢复或创建实施计划并执行其任务。"
-disable-model-invocation: true
 ---
 
 # Comet 阶段 3：计划与构建（Build）
