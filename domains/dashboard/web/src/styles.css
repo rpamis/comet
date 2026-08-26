@@ -4558,33 +4558,33 @@ body {
   transform: translateY(-1px);
 }
 
-/* Align the search affordance to the whole app frame, not only the content
-   area to the right of the sidebar. Keep the compact project context clear of it. */
-@media (min-width: 1200px) {
+@media (min-width: 1024px) {
   .comet-workbench-header {
-    display: flex;
-    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 420px) minmax(0, 1fr);
   }
 
   .comet-header-context {
-    flex: 0 0 180px;
-    width: 180px;
+    grid-column: 1;
+    width: min(292px, 100%);
+    flex: 0 1 auto;
   }
 
   .comet-header-search {
-    position: absolute;
-    left: calc(50% - (var(--rail-w) / 2));
-    width: min(360px, calc(100% - 436px));
-    max-width: none;
-    transform: translateX(-50%);
-  }
-
-  .dashboard-workbench.is-sidebar-collapsed .comet-header-search {
-    left: 50%;
+    grid-column: 2;
+    grid-row: 1;
+    position: static;
+    width: 100%;
+    max-width: 420px;
+    justify-self: center;
+    transform: none;
   }
 
   .comet-header-actions {
-    margin-left: auto;
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+    margin-left: 0;
   }
 }
 
