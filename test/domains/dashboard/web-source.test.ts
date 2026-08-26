@@ -43,6 +43,18 @@ describe('dashboard web source contracts', () => {
     expect(source).not.toContain('xl:grid-cols-[320px_minmax(620px,940px)_320px]');
   });
 
+  it('centers the header search within the main workspace without rail compensation', async () => {
+    const styles = await readDashboardStyles();
+
+    expect(styles).toContain(
+      'grid-template-columns: minmax(0, 1fr) minmax(260px, 420px) minmax(0, 1fr);',
+    );
+    expect(styles).toContain('.comet-header-search {\n    grid-column: 2;');
+    expect(styles).toContain('.comet-header-actions {\n    grid-column: 3;');
+    expect(styles).not.toContain('left: calc(50% - (var(--rail-w) / 2));');
+    expect(styles).not.toContain('.dashboard-workbench.is-sidebar-collapsed .comet-header-search');
+  });
+
   it('keeps personal memory focused on searchable records and application reasons', async () => {
     const [source, styles] = await Promise.all([readDashboardSource(), readDashboardStyles()]);
     const page = source.match(
