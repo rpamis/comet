@@ -155,6 +155,59 @@ describe('personal memory experience projection', () => {
     expect(loaded.operations).toContain('manage');
   });
 
+  it('does not report Dashboard page retrieval as a task memory application', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-memory-dashboard-notice-'));
+    const projectRoot = path.join(root, 'project');
+    await fs.mkdir(projectRoot, { recursive: true });
+    const { createDefaultCometPluginBridge } =
+      await import('../../../domains/comet-plugin/integration.js');
+    const bridge = await createDefaultCometPluginBridge({
+      projectRoot,
+      projectId: 'repo-dashboard-notice',
+      memoryRoot: path.join(root, 'memory'),
+      stateRoot: path.join(root, 'plugins'),
+    });
+    await bridge.pluginRuntime.invoke(
+      'comet.personal-memory',
+      'remember',
+      {
+        scope: 'project',
+        projectKey: 'repo-dashboard-notice',
+        category: '偏好',
+        text: '新增后尚未参与任务的记忆',
+      },
+      { scope: 'project', projectId: bridge.currentProjectId },
+    );
+
+    const page = (
+      await bridge.pluginRuntime.dashboardPages({
+        scope: 'project',
+        projectId: bridge.currentProjectId,
+      })
+    ).find((entry) => entry.pluginId === 'comet.personal-memory');
+    const loadPage = async () =>
+      (await page?.load?.({
+        projectId: bridge.currentProjectId,
+        invoke: (capability, input) =>
+          bridge.pluginRuntime.invoke('comet.personal-memory', capability, input, {
+            scope: 'project',
+            projectId: bridge.currentProjectId,
+          }),
+      })) as { notifications: readonly string[] };
+
+    const loaded = await loadPage();
+
+    expect(loaded.notifications).toEqual(['个人记忆已保存。']);
+
+    await bridge.pluginRuntime.invoke(
+      'comet.personal-memory',
+      'retrieve',
+      { view: 'combined', projectKey: bridge.currentProjectId },
+      { scope: 'project', projectId: bridge.currentProjectId },
+    );
+    expect((await loadPage()).notifications).toEqual(['这次任务已应用一条已保存的协作偏好。']);
+  });
+
   it('does not project a permanently deleted memory into the Dashboard manifest', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-memory-dashboard-delete-'));
     const projectRoot = path.join(root, 'project');

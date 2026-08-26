@@ -398,23 +398,31 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   await page.goto('/');
   await page.getByRole('menuitem', { name: '项目知识' }).click();
   const projectManifest = page.getByRole('region', { name: '最近一次任务使用的项目知识' });
-  await expect(projectManifest).toContainText('Focused tests');
+  await expect(projectManifest).toContainText('最近使用');
   await expect(projectManifest).toContainText('任务：复核项目测试策略');
-  await expect(projectManifest).toContainText('当前任务与验证阶段匹配');
-  await expect(projectManifest).toContainText('应用成功');
+  await expect(projectManifest).toContainText('2 条项目知识');
+  await expect(projectManifest).not.toContainText('Focused tests');
+  await expect(projectManifest).not.toContainText('当前任务与验证阶段匹配');
   await expect(projectManifest).not.toContainText('## 使用建议');
-  const focusedManifestToggle = projectManifest.getByRole('button', {
-    name: '查看项目知识详情：Focused tests',
-  });
-  await focusedManifestToggle.click();
+  await projectManifest.getByRole('button', { name: '查看使用明细' }).click();
   const focusedManifestDetail = projectManifest.getByRole('region', {
     name: '项目知识详情：Focused tests',
   });
   await expect(focusedManifestDetail).toHaveCount(0);
   const focusedManifestDialog = page.getByRole('dialog', {
-    name: /项目知识详情.*Focused tests/u,
+    name: /Focused tests/u,
   });
   await expect(focusedManifestDialog).toBeVisible();
+  const focusedManifestTitle = focusedManifestDialog.locator('.dashboard-settings-modal-title-row');
+  await expect(focusedManifestTitle.locator('strong')).toHaveText('Focused tests');
+  await expect(focusedManifestTitle.locator('span')).toHaveCount(0);
+  await expect(focusedManifestDialog.locator('.dashboard-settings-modal-title p')).toHaveCount(0);
+  await expect(focusedManifestTitle).toHaveCSS('border-left-width', '0px');
+  const manifestDetails = focusedManifestDialog.getByRole('navigation', {
+    name: '本次使用的项目知识',
+  });
+  await expect(manifestDetails).toContainText('Focused tests');
+  await expect(manifestDetails).toContainText('Policy checks');
   await expect(focusedManifestDialog.locator('button[aria-label="Close"]')).toHaveCount(0);
   await expect(focusedManifestDialog.getByRole('button', { name: '全屏展示' })).toBeVisible();
   await expect(
@@ -436,7 +444,7 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   );
   await expect(focusedManifestDialog).toContainText('为什么使用');
   await expect(focusedManifestDialog).toContainText('提供给 Agent 的内容');
-  await expect(focusedManifestDialog).toContainText('项目事实');
+  await expect(focusedManifestDialog).toContainText('项目概况');
   await focusedManifestDialog.getByRole('button', { name: '全屏展示' }).click();
   await expect(focusedManifestDialog.getByRole('button', { name: '退出全屏' })).toBeVisible();
   await page.keyboard.press('Escape');
@@ -446,12 +454,15 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
     .locator('.dashboard-knowledge-preview-modal-root .ant-modal-wrap')
     .click({ position: { x: 5, y: 5 } });
   await expect(focusedManifestDialog).toBeHidden();
-  const policyManifestToggle = projectManifest.getByRole('button', {
-    name: '查看项目知识详情：Policy checks',
+  await projectManifest.getByRole('button', { name: '查看使用明细' }).click();
+  const reopenedManifestDialog = page.getByRole('dialog', {
+    name: /Focused tests/u,
   });
-  await policyManifestToggle.click();
+  await reopenedManifestDialog
+    .getByRole('button', { name: '查看项目知识详情：Policy checks' })
+    .click();
   const policyManifestDialog = page.getByRole('dialog', {
-    name: /项目知识详情.*Policy checks/u,
+    name: /Policy checks/u,
   });
   await expect(policyManifestDialog).toContainText('Run the project checks before delivery.');
   await page
@@ -462,6 +473,30 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   await expect(page.getByRole('tablist', { name: '项目知识视图' })).toBeVisible();
   await expect(page.getByRole('complementary', { name: '知识分类' })).toBeVisible();
   await expect(page.getByRole('complementary', { name: '记录详情' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: '项目概况' })).toBeVisible();
+  const projectKnowledgeHelp = page.getByRole('button', { name: '了解项目知识分类' });
+  await projectKnowledgeHelp.click();
+  const projectKnowledgeGuide = page.locator('.ant-popover:visible');
+  await expect(projectKnowledgeGuide).toContainText('项目概况回答“项目是什么”');
+  await expect(projectKnowledgeGuide).toContainText('项目规范回答“在项目中应该怎么做”');
+  await projectKnowledgeHelp.click();
+  const projectStructureCategory = page.getByRole('button', { name: /项目结构/u });
+  await projectStructureCategory.hover();
+  await expect(
+    page.getByRole('tooltip', { name: '项目由哪些目录、模块和入口组成', exact: true }),
+  ).toBeVisible();
+  await projectStructureCategory.click();
+  const projectStructureHelp = page.getByRole('button', { name: '了解项目结构' });
+  await projectStructureHelp.click();
+  await expect(page.getByText('例如：入口目录、模块边界和运行入口。')).toBeVisible();
+  await projectStructureHelp.click();
+  await page.getByRole('button', { name: /项目事实 0/u }).click();
+  await expect(
+    page
+      .locator('.dashboard-knowledge-ledger .dashboard-knowledge-empty')
+      .getByText('已确认的项目属性、技术信息和运行条件', { exact: true }),
+  ).toBeVisible();
+  await projectStructureCategory.click();
   await expect(page.getByText('内置', { exact: true })).toHaveCount(2);
   await expect(page.getByText('COMET_KNOWLEDGE_TOKEN')).toHaveCount(0);
   await expect(page.getByText('docs/rule.md#rule', { exact: true }).first()).toBeVisible();
@@ -488,9 +523,25 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
     (workbenchBounds?.y ?? 0) + (workbenchBounds?.height ?? 0),
   );
   await expect(page.getByText('知识提供方式', { exact: true })).toBeVisible();
+  const inspectorFooter = page
+    .getByRole('complementary', { name: '记录详情' })
+    .locator(':scope > footer');
+  const correctionAction = inspectorFooter.getByRole('button', { name: '纠正记录' });
+  const supersedeAction = inspectorFooter.getByRole('button', { name: '标记已替代' });
+  const correctionBounds = await correctionAction.boundingBox();
+  const supersedeBounds = await supersedeAction.boundingBox();
+  expect(correctionBounds).not.toBeNull();
+  expect(supersedeBounds).not.toBeNull();
+  expect(
+    (supersedeBounds?.x ?? 0) - ((correctionBounds?.x ?? 0) + (correctionBounds?.width ?? 0)),
+  ).toBeGreaterThanOrEqual(8);
+  expect(
+    (supersedeBounds?.x ?? 0) - ((correctionBounds?.x ?? 0) + (correctionBounds?.width ?? 0)),
+  ).toBeLessThanOrEqual(16);
+  await expect(supersedeAction).toHaveClass(/ant-btn-text/u);
 
-  await page.getByRole('tab', { name: '项目事实' }).click();
-  await page.getByRole('button', { name: /项目拓扑/u }).click();
+  await page.getByRole('tab', { name: '项目概况' }).click();
+  await page.getByRole('button', { name: '项目结构 1' }).click();
   await page.getByRole('tab', { name: '项目规范' }).click();
   await expect(page.getByLabel('项目知识记录列表')).toContainText('Policy checks');
   await expect(page.getByLabel('项目知识记录列表')).not.toContainText('Focused tests');
@@ -500,7 +551,8 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   );
 
   await page.getByRole('tab', { name: '数据来源' }).click();
-  await expect(page.getByRole('heading', { name: '数据来源' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '数据来源' })).toHaveCount(0);
+  await expect(page.locator('.dashboard-knowledge-source-toolbar')).toContainText(/提供器/u);
   await expect(page.getByLabel('项目知识数据来源列表')).toContainText('docs/rule.md');
   await expect(page.getByLabel('搜索项目知识来源')).toBeVisible();
   await expect(page.getByText('共 124 个来源', { exact: true })).toBeVisible();
@@ -596,6 +648,22 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
     .click({ position: { x: 5, y: 5 } });
 
   await page.getByRole('tab', { name: '检索测试' }).click();
+  await expect(page.getByRole('heading', { name: '检索测试' })).toHaveCount(0);
+  await expect(page.locator('.dashboard-knowledge-query-hint')).toHaveText(
+    '输入任务描述，预览匹配的项目知识',
+  );
+  const queryForm = page.locator('.dashboard-knowledge-query-form');
+  const queryInput = page.getByLabel('查询项目知识');
+  const queryAction = page.locator('.dashboard-knowledge-query-action');
+  const queryInputBounds = await queryInput.boundingBox();
+  const queryActionBounds = await queryAction.boundingBox();
+  expect(queryInputBounds).not.toBeNull();
+  expect(queryActionBounds).not.toBeNull();
+  expect(queryActionBounds?.y ?? 0).toBeGreaterThanOrEqual(
+    (queryInputBounds?.y ?? 0) + (queryInputBounds?.height ?? 0) - 1,
+  );
+  expect(queryActionBounds?.width ?? 0).toBeGreaterThan((queryInputBounds?.width ?? 0) * 0.9);
+  await expect(queryForm).toContainText('测试检索');
   await page.getByLabel('查询项目知识').fill('focused tests');
   await page.getByRole('button', { name: '测试检索' }).click();
   await expect(page.getByLabel('项目知识查询结果')).toContainText('Run focused tests first.');
@@ -605,7 +673,7 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   await expect(page.getByLabel('项目知识查询结果')).toContainText(
     '检索已完成，没有找到与当前任务匹配的项目知识',
   );
-  await page.getByRole('tab', { name: '项目事实' }).click();
+  await page.getByRole('tab', { name: '项目概况' }).click();
 
   await page.getByRole('button', { name: '新增项目知识' }).click();
   const createDialog = page.getByRole('dialog');
@@ -637,7 +705,7 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
     .getByRole('button', { name: /未文档化约定/u });
   await expect(manualRecordButton).toBeVisible();
   await manualRecordButton.click();
-  await expect(page.getByText('用户手动添加', { exact: true })).toBeVisible();
+  await expect(page.getByText('用户确认', { exact: true }).last()).toBeVisible();
   await expect(
     page.getByRole('complementary', { name: '记录详情' }).getByRole('status'),
   ).toContainText('缺少来源或验证记录');
@@ -645,7 +713,9 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   const archiveDialog = page.getByRole('dialog');
   await expect(archiveDialog).toContainText('将这条项目知识标记为已替代？');
   await archiveDialog.getByRole('button', { name: /标记已替代/u }).click();
-  await expect(page.getByText('没有符合当前条件的项目知识')).toBeVisible();
+  await expect(
+    page.locator('.dashboard-knowledge-empty').getByText('项目规范回答“在项目中应该怎么做”'),
+  ).toBeVisible();
   await page.getByLabel('项目知识记录状态').click();
   await page.locator('.ant-select-item-option').filter({ hasText: '已替代' }).click();
   await expect(page.getByLabel('项目知识记录列表')).toContainText('未文档化约定');
@@ -658,7 +728,9 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   await restoreDialog.getByRole('textbox').fill('修改后先运行定向测试，并记录验证结果。');
   await restoreDialog.getByRole('button', { name: /保存\s*并\s*恢复/u }).click();
   await expect(page.getByText('项目知识已更新并恢复使用')).toBeVisible();
-  await expect(page.getByText('没有符合当前条件的项目知识')).toBeVisible();
+  await expect(
+    page.locator('.dashboard-knowledge-empty').getByText('项目规范回答“在项目中应该怎么做”'),
+  ).toBeVisible();
   await page.getByLabel('项目知识记录状态').click();
   await page.locator('.ant-select-item-option').filter({ hasText: '强制执行' }).click();
   await expect(page.getByLabel('项目知识记录列表')).toContainText('未文档化约定');
@@ -921,20 +993,70 @@ test('adds global or project memory, explains application, and permanently delet
 
   await page.goto('/');
   await page.getByRole('menuitem', { name: '个人记忆' }).click();
+  await expect(page.getByRole('button', { name: '个人偏好与事实 1' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '协作约定 0' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '任务经验 0' })).toBeVisible();
+  const personalMemoryHelp = page.getByRole('button', { name: '了解个人记忆分类' });
+  await personalMemoryHelp.click();
+  await expect(page.getByText('个人偏好与事实保存长期稳定的信息')).toBeVisible();
+  await expect(page.getByText('任务经验只在相似场景中参考')).toBeVisible();
+  await personalMemoryHelp.click();
+  const collaborationCategory = page.getByRole('button', { name: '协作约定 0' });
+  await collaborationCategory.hover();
+  await expect(
+    page.getByRole('tooltip', { name: '希望 Agent 持续采用的沟通和工作方式', exact: true }),
+  ).toBeVisible();
+  await collaborationCategory.click();
+  await expect(
+    page
+      .getByRole('region', { name: '个人记忆列表' })
+      .getByText('希望 Agent 持续采用的沟通和工作方式', { exact: true }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: '个人偏好与事实 1' }).click();
+  const profileHelp = page.getByRole('button', { name: '了解个人偏好与事实' });
+  await profileHelp.click();
+  await expect(page.getByText('例如：语言、角色和表达方式。')).toBeVisible();
+  await profileHelp.click();
+  await page.getByRole('button', { name: '全部记忆 1' }).click();
+  const memorySort = page.getByRole('combobox', { name: '记忆排序方式' });
+  const memorySortControl = memorySort.locator(
+    "xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' ant-select ')][1]",
+  );
+  await expect(memorySortControl).toHaveCSS('height', '32px');
   const memoryManifest = page.getByRole('region', { name: '最近一次任务使用的记忆' });
-  await expect(memoryManifest).toContainText('默认使用中文回复');
+  await expect(memoryManifest).toContainText('最近使用');
   await expect(memoryManifest).toContainText('任务：撰写发布说明');
-  await expect(memoryManifest).toContainText('用户明确设置');
-  await expect(memoryManifest).toContainText('应用成功');
+  await expect(memoryManifest).toContainText('1 条记忆');
+  await expect(memoryManifest).not.toContainText('默认使用中文回复');
+  await expect(
+    page
+      .getByRole('region', { name: '个人记忆列表' })
+      .locator('.dashboard-memory-table-row')
+      .filter({ hasText: '默认使用中文回复' }),
+  ).toContainText('用户确认');
   const manifestMemoryButton = memoryManifest.getByRole('button', {
-    name: /查看记忆详情：沟通偏好/u,
+    name: '查看使用明细',
   });
   await expect(manifestMemoryButton).toBeVisible();
   await manifestMemoryButton.click();
-  await expect(page.getByText('为什么应用：用户明确设置', { exact: true })).toBeVisible();
-  await expect(page.getByLabel('记忆应用详情')).toContainText('应用成功');
+  const manifestMemoryDialog = page.getByRole('dialog', {
+    name: /沟通偏好/u,
+  });
+  await expect(manifestMemoryDialog).toBeVisible();
+  const manifestMemoryTitle = manifestMemoryDialog.locator('.dashboard-settings-modal-title-row');
+  await expect(manifestMemoryTitle.locator('strong')).toHaveText('沟通偏好');
+  await expect(manifestMemoryTitle.locator('span')).toHaveCount(0);
+  await expect(manifestMemoryDialog.locator('.dashboard-settings-modal-title p')).toHaveCount(0);
+  await expect(manifestMemoryDialog).toContainText('默认使用中文回复');
+  await expect(manifestMemoryDialog).toContainText('为什么使用');
+  await expect(manifestMemoryDialog).toContainText('用户明确设置');
+  await expect(manifestMemoryDialog).toContainText('应用成功');
   await expect(page.getByLabel('记忆应用详情')).toContainText('撰写发布说明');
   await expect(page.getByLabel('记忆应用详情')).toContainText('回答项目问题');
+  await page
+    .locator('.dashboard-knowledge-preview-modal-root .ant-modal-wrap')
+    .click({ position: { x: 5, y: 5 } });
+  await expect(manifestMemoryDialog).toBeHidden();
   await page.getByRole('button', { name: '新增偏好' }).click();
 
   const profileDialog = page.getByRole('dialog').last();
@@ -942,7 +1064,8 @@ test('adds global or project memory, explains application, and permanently delet
   await expect(profileDialog.getByRole('button', { name: '全屏展示' })).toBeVisible();
   const profileInput = profileDialog.getByLabel('偏好内容');
   await expect(profileInput).toBeVisible();
-  await expect(profileDialog.getByLabel('分类（可选）')).toBeVisible();
+  await expect(profileDialog.getByLabel('主题（可选）')).toBeVisible();
+  await expect(profileDialog).toContainText('不会创建新的系统分组');
   await expect(profileInput).toBeFocused();
   await expect(profileDialog.getByRole('button', { name: /保\s*存/u })).toBeDisabled();
 
@@ -971,7 +1094,8 @@ test('adds global or project memory, explains application, and permanently delet
   const projectDialog = page.getByRole('dialog').last();
   const projectInput = projectDialog.getByLabel('记忆内容');
   await expect(projectInput).toBeVisible();
-  await expect(projectDialog.getByLabel('分类（可选）')).toBeVisible();
+  await expect(projectDialog.getByLabel('主题（可选）')).toBeVisible();
+  await expect(projectDialog).toContainText('不会创建新的系统分组');
   await expect(projectInput).toBeFocused();
   await projectInput.fill('这个项目优先使用最小相关测试');
   await projectDialog.getByRole('button', { name: /保\s*存/u }).click();
@@ -1018,7 +1142,7 @@ test('adds global or project memory, explains application, and permanently delet
       .locator('.dashboard-memory-table-row')
       .filter({ hasText: '这个项目优先使用最小相关测试' }),
   ).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '协作策略 0' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '协作约定 0' })).toBeVisible();
   await expect(page.getByRole('button', { name: '历史记录 0' })).toBeVisible();
 
   const profileSection = page.getByRole('region', { name: '个人记忆列表' });
@@ -1441,7 +1565,448 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
   await page.locator('.dashboard-artifact-preview-backdrop').click();
   await expect(page.getByRole('heading', { name: '提案', level: 2 })).toBeHidden();
 
+  const personalMemory = page.getByRole('menuitem', { name: '个人记忆' });
+  await expect(personalMemory).not.toHaveClass(/ant-menu-item-disabled/);
+  await personalMemory.click();
+  const personalMemoryList = page.getByRole('region', { name: '个人记忆列表' });
+  await expect(personalMemoryList).toBeVisible();
+  await expect(personalMemoryList.getByText('默认使用中文回复，并保持结论简洁。')).toBeVisible();
+  const demoMemoryManifest = page.getByRole('region', { name: '最近一次任务使用的记忆' });
+  await expect(demoMemoryManifest).toContainText('任务：查看 Dashboard Demo');
+  await expect(demoMemoryManifest).toContainText('2 条记忆');
+  await expect(demoMemoryManifest).not.toContainText('默认使用中文回复，并保持结论简洁。');
+  await demoMemoryManifest.getByRole('button', { name: '查看使用明细' }).click();
+  const demoMemoryDialog = page.getByRole('dialog', {
+    name: /沟通偏好/u,
+  });
+  await expect(demoMemoryDialog).toBeVisible();
+  const demoMemoryNavigation = demoMemoryDialog.getByRole('navigation', {
+    name: '本次使用的个人记忆',
+  });
+  await expect(demoMemoryNavigation).toContainText('沟通偏好');
+  await expect(demoMemoryNavigation).toContainText('个人偏好');
+  await expect(demoMemoryNavigation).toContainText('验证习惯');
+  await expect(demoMemoryNavigation).toContainText('协作约定');
+  await demoMemoryNavigation.getByRole('button', { name: '查看个人记忆详情：验证习惯' }).click();
+  await expect(page.getByRole('dialog', { name: /验证习惯/u })).toContainText(
+    '修改 Dashboard 后先运行最小相关测试',
+  );
+  await page
+    .locator('.dashboard-knowledge-preview-modal-root .ant-modal-wrap')
+    .click({ position: { x: 5, y: 5 } });
+  await expect(demoMemoryDialog).toBeHidden();
+
+  const projectKnowledge = page.getByRole('menuitem', { name: '项目知识' });
+  await expect(projectKnowledge).not.toHaveClass(/ant-menu-item-disabled/);
+  await projectKnowledge.click();
+  await expect(page.getByRole('tablist', { name: '项目知识视图' })).toBeVisible();
+  await expect(
+    page.locator('[aria-label="项目知识记录列表"]').getByText('Dashboard 交互约定'),
+  ).toBeVisible();
+
   expect(consoleErrors).toEqual([]);
+});
+
+test('keeps personal memory and project knowledge text readable at desktop density', async ({
+  page,
+}) => {
+  const supportingText = /^(1[2-9]|[2-9]\\d)px$/u;
+  const bodyText = /^(1[3-9]|[2-9]\\d)px$/u;
+
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.goto('/?demo');
+
+  await page.getByRole('menuitem', { name: '个人记忆' }).click();
+  const memoryManifest = page.getByRole('region', { name: '最近一次任务使用的记忆' });
+  const memoryInspector = page.getByLabel('记忆应用详情');
+  await expect(memoryManifest.locator('.dashboard-context-manifest-summary-copy span')).toHaveCSS(
+    'font-size',
+    supportingText,
+  );
+  await expect(memoryManifest.locator('.dashboard-context-manifest-summary-meta time')).toHaveCSS(
+    'font-size',
+    supportingText,
+  );
+  await expect(memoryInspector.locator('.dashboard-memory-inspector-list span').first()).toHaveCSS(
+    'font-size',
+    supportingText,
+  );
+  await expect(
+    memoryInspector.locator('.dashboard-memory-inspector-list strong').first(),
+  ).toHaveCSS('font-size', bodyText);
+
+  await page.getByRole('menuitem', { name: '项目知识' }).click();
+  const projectManifest = page.getByRole('region', { name: '最近一次任务使用的项目知识' });
+  const projectInspector = page.getByRole('complementary', { name: '记录详情' });
+  await expect(projectManifest.locator('.dashboard-context-manifest-summary-copy span')).toHaveCSS(
+    'font-size',
+    supportingText,
+  );
+  await expect(projectManifest.locator('.dashboard-context-manifest-summary-meta time')).toHaveCSS(
+    'font-size',
+    supportingText,
+  );
+  await expect(page.locator('.dashboard-knowledge-category').first()).toHaveCSS(
+    'font-size',
+    bodyText,
+  );
+  await expect(page.locator('.dashboard-knowledge-category > span:last-child').first()).toHaveCSS(
+    'font-size',
+    supportingText,
+  );
+  await expect(page.locator('.dashboard-knowledge-ledger-head')).toHaveCSS(
+    'font-size',
+    supportingText,
+  );
+  await expect(
+    page.locator('.dashboard-knowledge-record-copy .dashboard-record-title-line > strong').first(),
+  ).toHaveCSS('font-size', bodyText);
+  await expect(page.locator('.dashboard-knowledge-record-copy > span').first()).toHaveCSS(
+    'font-size',
+    supportingText,
+  );
+  await expect(projectInspector.locator('h4').first()).toHaveCSS('font-size', bodyText);
+  await expect(projectInspector.locator('dt').first()).toHaveCSS('font-size', supportingText);
+  await expect(projectInspector.locator('dd').first()).toHaveCSS('font-size', bodyText);
+
+  await page.getByRole('tab', { name: '数据来源' }).click();
+  await expect(page.locator('.dashboard-knowledge-source-head')).toHaveCSS(
+    'font-size',
+    supportingText,
+  );
+  await expect(page.locator('.dashboard-knowledge-source-row code').first()).toHaveCSS(
+    'font-size',
+    supportingText,
+  );
+
+  await page.getByRole('tab', { name: '检索测试' }).click();
+  await expect(page.locator('.dashboard-knowledge-query-hint')).toHaveCSS(
+    'font-size',
+    supportingText,
+  );
+});
+
+test('keeps context detail previews flat and readable', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.goto('/?demo');
+
+  await page.getByRole('menuitem', { name: '个人记忆' }).click();
+  await page
+    .getByRole('region', { name: '最近一次任务使用的记忆' })
+    .getByRole('button', { name: '查看使用明细' })
+    .click();
+  const memoryDialog = page.getByRole('dialog', { name: /沟通偏好/u });
+  await expect(memoryDialog.locator('.dashboard-settings-modal-title-row')).toHaveCSS(
+    'border-left-width',
+    '0px',
+  );
+  await expect(memoryDialog.locator('.dashboard-settings-modal-title-row > strong')).toHaveCSS(
+    'font-size',
+    '18px',
+  );
+  const memoryField = memoryDialog
+    .locator('.dashboard-project-knowledge-detail > dl > div')
+    .first();
+  await expect(memoryField).toHaveCSS('border-radius', '0px');
+  await expect(memoryField).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(memoryField).toHaveCSS('border-left-width', '0px');
+
+  await page
+    .locator('.dashboard-knowledge-preview-modal-root .ant-modal-wrap')
+    .click({ position: { x: 5, y: 5 } });
+  await expect(memoryDialog).toBeHidden();
+
+  await page.getByRole('menuitem', { name: '项目知识' }).click();
+  await page.getByRole('tab', { name: '数据来源' }).click();
+  await page
+    .getByLabel('项目知识数据来源列表')
+    .getByRole('button', { name: '查看来源：domains/dashboard/web/src/main.jsx' })
+    .click();
+  const sourceDialog = page.getByRole('dialog', { name: /项目知识来源详情/u });
+  await expect(sourceDialog.locator('.dashboard-settings-modal-title-row')).toHaveCSS(
+    'border-left-width',
+    '0px',
+  );
+  await expect(sourceDialog.locator('.dashboard-settings-modal-title-row > strong')).toHaveCSS(
+    'font-size',
+    '18px',
+  );
+  await expect(
+    sourceDialog.getByRole('heading', { name: 'Dashboard 交互', level: 1 }),
+  ).toBeVisible();
+  await expect(
+    sourceDialog.locator('.dashboard-knowledge-source-rendered-content > pre'),
+  ).toHaveCount(0);
+  await expect(sourceDialog).not.toContainText('# Dashboard 交互');
+  await expect(sourceDialog.locator('.dashboard-knowledge-source-detail dt').first()).toHaveCSS(
+    'font-size',
+    '12px',
+  );
+  await expect(sourceDialog.locator('.dashboard-knowledge-source-detail dd').first()).toHaveCSS(
+    'font-size',
+    '14px',
+  );
+  await expect(
+    sourceDialog.locator('.dashboard-knowledge-source-related strong').first(),
+  ).toHaveCSS('font-size', '13px');
+  const sourceMarkdown = sourceDialog.locator('.dashboard-knowledge-source-rendered-content');
+  await expect(sourceMarkdown).toHaveCSS('font-size', '14px');
+  await expect(sourceMarkdown.locator('h1')).toHaveCSS('font-size', '20px');
+  await expect(sourceMarkdown.locator('p').first()).toHaveCSS('font-size', '14px');
+});
+
+test('keeps personal memory and project knowledge three-pane widths aligned on desktop', async ({
+  page,
+}) => {
+  const expectWorkflowHeaderToShareShellGutter = async () => {
+    const [shellBox, headerContextBox, headerActionsBox] = await Promise.all([
+      page.locator('.dashboard-content-shell').boundingBox(),
+      page.locator('.comet-header-context').boundingBox(),
+      page.locator('.comet-header-actions').boundingBox(),
+    ]);
+    expect(shellBox).not.toBeNull();
+    expect(headerContextBox).not.toBeNull();
+    expect(headerActionsBox).not.toBeNull();
+    expect(Math.abs((headerContextBox?.x ?? 0) - (shellBox?.x ?? 0) - 34)).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(
+        (shellBox?.x ?? 0) +
+          (shellBox?.width ?? 0) -
+          ((headerActionsBox?.x ?? 0) + (headerActionsBox?.width ?? 0)) -
+          34,
+      ),
+    ).toBeLessThanOrEqual(1);
+  };
+
+  const expectPluginContentToStartAtShellEdge = async () => {
+    const [shellBox, innerBox] = await Promise.all([
+      page.locator('.dashboard-content-shell-plugin-center').boundingBox(),
+      page.locator('.dashboard-content-inner-plugin-center').boundingBox(),
+    ]);
+    const [headerContextBox, headerActionsBox] = await Promise.all([
+      page.locator('.comet-header-context').boundingBox(),
+      page.locator('.comet-header-actions').boundingBox(),
+    ]);
+    expect(shellBox).not.toBeNull();
+    expect(innerBox).not.toBeNull();
+    expect(headerContextBox).not.toBeNull();
+    expect(headerActionsBox).not.toBeNull();
+    expect(Math.abs((innerBox?.x ?? 0) - (shellBox?.x ?? 0) - 16)).toBeLessThanOrEqual(1);
+    expect(Math.abs((headerContextBox?.x ?? 0) - (shellBox?.x ?? 0) - 34)).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(
+        (shellBox?.x ?? 0) +
+          (shellBox?.width ?? 0) -
+          (innerBox?.x ?? 0) -
+          (innerBox?.width ?? 0) -
+          16,
+      ),
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(
+        (shellBox?.x ?? 0) +
+          (shellBox?.width ?? 0) -
+          ((headerActionsBox?.x ?? 0) + (headerActionsBox?.width ?? 0)) -
+          34,
+      ),
+    ).toBeLessThanOrEqual(1);
+  };
+
+  const paneWidths = async (selectors) =>
+    Promise.all(
+      selectors.map(async (selector) => {
+        const bounds = await page.locator(selector).boundingBox();
+        expect(bounds).not.toBeNull();
+        return Math.round(bounds?.width ?? 0);
+      }),
+    );
+
+  const expectRailSeparatorToStopBeforeDivider = async (selector, pseudo, borderColorProperty) => {
+    const separator = await page.locator(selector).evaluate(
+      (element, { pseudo, borderColorProperty }) => {
+        const styles = getComputedStyle(element);
+        const line = getComputedStyle(element, pseudo);
+        return {
+          content: line.content,
+          left: line.left,
+          right: line.right,
+          borderColor: styles[borderColorProperty],
+        };
+      },
+      { pseudo, borderColorProperty },
+    );
+    expect(separator.content).not.toBe('none');
+    expect(separator.left).toBe('16px');
+    expect(separator.right).toBe('16px');
+    expect(separator.borderColor).toMatch(/rgba\(0, 0, 0, 0\)|transparent/u);
+  };
+
+  const expectRailElementsToShareSeparatorInset = async (
+    railSelector,
+    elementSelectors,
+    footerSelector,
+  ) => {
+    const railBox = await page.locator(railSelector).boundingBox();
+    expect(railBox).not.toBeNull();
+    for (const selector of elementSelectors) {
+      const elementBox = await page.locator(selector).boundingBox();
+      expect(elementBox).not.toBeNull();
+      expect(Math.abs((elementBox?.x ?? 0) - (railBox?.x ?? 0) - 16)).toBeLessThanOrEqual(1);
+      expect(
+        Math.abs(
+          (railBox?.x ?? 0) +
+            (railBox?.width ?? 0) -
+            ((elementBox?.x ?? 0) + (elementBox?.width ?? 0)) -
+            16,
+        ),
+      ).toBeLessThanOrEqual(1);
+    }
+    const footerInsets = await page.locator(footerSelector).evaluate((element) => {
+      const styles = getComputedStyle(element);
+      return { left: styles.paddingLeft, right: styles.paddingRight };
+    });
+    expect(footerInsets).toEqual({ left: '16px', right: '16px' });
+  };
+
+  await page.setViewportSize({ width: 2200, height: 1100 });
+  await page.goto('/?demo');
+
+  await expectWorkflowHeaderToShareShellGutter();
+  await page.getByRole('menuitem', { name: '个人记忆' }).click();
+  await expectPluginContentToStartAtShellEdge();
+  await expectRailSeparatorToStopBeforeDivider(
+    '.dashboard-memory-filter-search',
+    '::after',
+    'borderBottomColor',
+  );
+  await expectRailSeparatorToStopBeforeDivider(
+    '.dashboard-memory-filter-summary',
+    '::before',
+    'borderTopColor',
+  );
+  await expectRailElementsToShareSeparatorInset(
+    '.dashboard-memory-filter-rail',
+    [
+      '.dashboard-memory-filter-search .ant-input-affix-wrapper',
+      '.dashboard-memory-filter-rail nav button.is-active',
+    ],
+    '.dashboard-memory-filter-summary',
+  );
+  const memoryWidths = await paneWidths([
+    '.dashboard-memory-filter-rail',
+    '.dashboard-memory-registry',
+    '.dashboard-memory-inspector',
+  ]);
+
+  await page.getByRole('menuitem', { name: '项目知识' }).click();
+  await expectPluginContentToStartAtShellEdge();
+  await expectRailSeparatorToStopBeforeDivider(
+    '.dashboard-knowledge-explorer-search',
+    '::after',
+    'borderBottomColor',
+  );
+  await expectRailSeparatorToStopBeforeDivider(
+    '.dashboard-knowledge-explorer-foot',
+    '::before',
+    'borderTopColor',
+  );
+  await expectRailElementsToShareSeparatorInset(
+    '.dashboard-knowledge-explorer',
+    [
+      '.dashboard-knowledge-explorer-search .ant-input-affix-wrapper',
+      '.dashboard-knowledge-explorer > .dashboard-knowledge-category.is-active',
+      '.dashboard-knowledge-category-groups section:first-child .dashboard-knowledge-category:first-of-type',
+    ],
+    '.dashboard-knowledge-explorer-foot',
+  );
+  const projectKnowledgeWidths = await paneWidths([
+    '.dashboard-knowledge-explorer',
+    '.dashboard-knowledge-ledger',
+    '.dashboard-knowledge-inspector',
+  ]);
+
+  expect(memoryWidths).toEqual(projectKnowledgeWidths);
+});
+
+test('keeps memory columns aligned and project knowledge timestamps visible', async ({ page }) => {
+  const compareColumnStart = async (header, row) => {
+    const [headerBox, rowBox] = await Promise.all([header.boundingBox(), row.boundingBox()]);
+    expect(headerBox).not.toBeNull();
+    expect(rowBox).not.toBeNull();
+    expect(Math.abs((headerBox?.x ?? 0) - (rowBox?.x ?? 0))).toBeLessThanOrEqual(1);
+  };
+
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.goto('/?demo');
+
+  await page.getByRole('menuitem', { name: '个人记忆' }).click();
+  const memoryHead = page.locator('.dashboard-memory-table-head');
+  const memoryRow = page.locator('.dashboard-memory-table-row').first();
+  await compareColumnStart(
+    memoryHead.locator('span').nth(1),
+    memoryRow.locator('.dashboard-memory-table-scope'),
+  );
+  await compareColumnStart(
+    memoryHead.locator('span').nth(2),
+    memoryRow.locator('.dashboard-memory-table-status'),
+  );
+  await compareColumnStart(
+    memoryHead.locator('span').nth(3),
+    memoryRow.locator('.dashboard-memory-table-time'),
+  );
+
+  await page.getByRole('menuitem', { name: '项目知识' }).click();
+  const knowledgeHead = page.locator('.dashboard-knowledge-ledger-head');
+  const knowledgeRow = page.locator('.dashboard-knowledge-ledger-row').first();
+  const knowledgeTime = knowledgeRow.locator('time');
+  await compareColumnStart(knowledgeHead.locator('span').nth(3), knowledgeTime);
+  await expect(knowledgeTime).toHaveText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/u);
+  await expect
+    .poll(() => knowledgeTime.evaluate((element) => element.scrollWidth <= element.clientWidth + 1))
+    .toBe(true);
+});
+
+test('keeps personal memory context and application history easy to scan', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.goto('/?demo');
+  await page.getByRole('menuitem', { name: '个人记忆' }).click();
+
+  const contextBar = page.getByLabel('个人记忆状态与操作');
+  const contextItems = contextBar.locator('.dashboard-plugin-context-item');
+  await expect(contextItems).toHaveCount(3);
+  await expect(contextBar).toContainText('本地提供器');
+  await expect(contextBar).toContainText('当前项目');
+  await expect(contextBar).toContainText('4 条记忆');
+  await expect(contextItems.first()).toHaveCSS('font-size', '13px');
+  await expect(contextItems.nth(1)).toHaveCSS('border-left-width', '1px');
+
+  const applicationHistory = page
+    .getByLabel('记忆应用详情')
+    .locator('.dashboard-context-application-history');
+  const historyEntry = applicationHistory.locator('article').first();
+  await expect(historyEntry.getByText('优化 Dashboard 页面', { exact: true })).toHaveCSS(
+    'font-size',
+    '13px',
+  );
+  await expect(historyEntry.getByText('需要以中文说明改动结果', { exact: true })).toHaveCSS(
+    'font-size',
+    '12px',
+  );
+  const historyMeta = historyEntry.locator('footer');
+  await expect(historyMeta).toContainText('2026-08-26 00:40');
+  await expect(historyMeta).toContainText('应用成功');
+  await expect(historyMeta.locator('time')).toHaveCSS('font-size', '12px');
+  await expect(historyMeta.locator('span')).toHaveCSS('font-size', '12px');
+
+  const memoryInspector = page.getByLabel('记忆应用详情');
+  await expect(memoryInspector.locator('strong').first()).toHaveText('沟通偏好');
+  await expect(memoryInspector.getByText('这条记忆为什么被应用', { exact: true })).toHaveCount(0);
+  await expect(memoryInspector.getByRole('heading', { name: '适用条件' })).toBeVisible();
+
+  await page.getByRole('menuitem', { name: '项目知识' }).click();
+  const knowledgeInspector = page.getByRole('complementary', { name: '记录详情' });
+  await expect(knowledgeInspector.locator('h3').first()).toHaveText('Dashboard 预览构建');
+  await expect(knowledgeInspector.getByRole('heading', { name: '应用条件' })).toBeVisible();
 });
 
 test('keeps the demo Native detail visible after selecting a child change', async ({ page }) => {
@@ -2906,4 +3471,32 @@ test('keeps Classic and Native side panels within the center panel height', asyn
   await expect
     .poll(() => nativeList.locator('.native-change-row').count())
     .toBeGreaterThan(initiallyRendered);
+});
+
+test('keeps the project selector inset when switching from a workflow to plugin center', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.goto('/?demo');
+
+  const projectSelector = page.locator('.comet-project-select');
+  await expect(projectSelector).toBeVisible();
+  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
+  await expect(page.locator('.native-changes-explorer')).toBeVisible();
+
+  const workflowLeft = (await projectSelector.boundingBox())?.x;
+  if (workflowLeft === undefined) throw new Error('Expected workflow project selector bounds');
+
+  await page.getByRole('menuitem', { name: '个人记忆' }).click();
+  await expect(page.locator('.dashboard-tool-page-memory')).toBeVisible();
+  const memoryLeft = (await projectSelector.boundingBox())?.x;
+  if (memoryLeft === undefined) throw new Error('Expected personal memory project selector bounds');
+  expect(Math.abs(memoryLeft - workflowLeft)).toBeLessThanOrEqual(1);
+
+  await page.getByRole('menuitem', { name: '项目知识' }).click();
+  await expect(page.locator('.dashboard-tool-page-knowledge')).toBeVisible();
+  const knowledgeLeft = (await projectSelector.boundingBox())?.x;
+  if (knowledgeLeft === undefined)
+    throw new Error('Expected project knowledge project selector bounds');
+  expect(Math.abs(knowledgeLeft - workflowLeft)).toBeLessThanOrEqual(1);
 });

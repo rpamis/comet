@@ -76,12 +76,13 @@ describe('dashboard web source contracts', () => {
     expect(page?.[0]).toContain('dashboard-memory-filter-rail');
     expect(page?.[0]).toContain('dashboard-memory-registry');
     expect(page?.[0]).toContain('dashboard-memory-inspector');
-    expect(page?.[0]).toContain('这条记忆为什么被应用');
+    expect(page?.[0]).toContain('适用条件');
+    expect(page?.[0]).toContain("selectedRecord.category || selectedRecord.title || '个人记忆'");
     expect(page?.[0]).toContain('为什么应用：');
     expect(page?.[0]).toContain('items={data?.manifestPreview}');
     expect(page?.[0]).toContain('selectedRecord.applicationHistory');
     expect(page?.[0]).toContain("selectedRecord.memoryType === 'personal-episode'");
-    expect(page?.[0]).toContain('情景摘要');
+    expect(page?.[0]).toContain('任务经验摘要');
     expect(page?.[0]).toContain('selectedRecord.episode.actionSummary');
     expect(source).toContain('最近一次任务使用的记忆');
     expect(source).toContain('这里只展示真正提供给 Agent 的内容');

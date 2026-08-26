@@ -56,6 +56,7 @@
 
 :root {
   --rail-w: 228px;
+  --dashboard-context-registry-columns: 218px minmax(360px, 1fr) clamp(300px, 24vw, 390px);
   --font-ui:
     'Segoe UI Variable Text', 'Segoe UI Variable', Inter, 'SF Pro Text', 'PingFang SC',
     'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
@@ -1515,6 +1516,85 @@ body {
   border-block: 1px solid var(--color-border-soft);
 }
 
+.dashboard-context-manifest.is-summary {
+  gap: 0;
+  padding: 0;
+  border: 0;
+}
+
+.dashboard-context-manifest-summary {
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 8px 2px;
+  border-block: 1px solid var(--color-border-soft);
+}
+
+.dashboard-context-manifest-summary-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.dashboard-context-manifest-summary-copy strong {
+  color: var(--color-fg-2);
+  font-size: 12px;
+  font-weight: 620;
+}
+
+.dashboard-context-manifest-summary-copy span {
+  overflow: hidden;
+  color: var(--color-meta);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-context-manifest-summary-meta {
+  display: flex;
+  min-width: 0;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-meta);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.dashboard-context-manifest-summary-meta time {
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.dashboard-context-manifest-summary-action {
+  min-height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--color-accent);
+  font-size: 12px;
+  font-weight: 620;
+  background: transparent;
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    background 160ms ease;
+}
+
+.dashboard-context-manifest-summary-action:hover,
+.dashboard-context-manifest-summary-action:focus-visible {
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.dashboard-context-manifest-summary-action:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--color-accent) 42%, transparent);
+  outline-offset: -2px;
+}
+
 .dashboard-context-manifest > header {
   display: flex;
   align-items: flex-start;
@@ -2182,7 +2262,7 @@ body {
 
 .dashboard-knowledge-registry {
   display: grid;
-  grid-template-columns: 218px minmax(360px, 1fr) clamp(300px, 24vw, 390px);
+  grid-template-columns: var(--dashboard-context-registry-columns);
   min-height: 520px;
   height: calc(100dvh - 232px);
   overflow: hidden;
@@ -2387,7 +2467,7 @@ body {
 .dashboard-knowledge-ledger-head,
 .dashboard-knowledge-ledger-row {
   display: grid;
-  grid-template-columns: minmax(210px, 1.55fr) minmax(116px, 0.88fr) 88px 104px;
+  grid-template-columns: minmax(210px, 1.55fr) minmax(116px, 0.88fr) 88px minmax(150px, 1fr);
   gap: 12px;
   align-items: center;
 }
@@ -2715,8 +2795,8 @@ body {
   position: sticky;
   bottom: 0;
   display: flex;
+  align-items: center;
   justify-content: flex-end;
-  gap: 8px;
   margin-top: auto;
   padding: 12px 16px;
   border-top: 1px solid var(--color-border-soft);
@@ -2724,10 +2804,21 @@ body {
   backdrop-filter: blur(8px);
 }
 
-.dashboard-knowledge-inspector > footer .ant-btn {
+.dashboard-knowledge-inspector-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dashboard-knowledge-inspector-actions .ant-btn {
   min-height: 32px;
   border-radius: 6px;
   font-size: 11px;
+}
+
+.dashboard-knowledge-inspector-actions .ant-btn-dangerous {
+  margin-left: 0;
+  padding-inline: 8px;
 }
 
 .dashboard-knowledge-inspector.is-empty {
@@ -2742,37 +2833,6 @@ body {
   border: 0;
   border-radius: 0;
   background: var(--color-bg);
-}
-
-.dashboard-knowledge-single-view > header,
-.dashboard-knowledge-query-view > header {
-  display: flex;
-  min-height: 64px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--color-border-soft);
-}
-
-.dashboard-knowledge-single-view > header h3,
-.dashboard-knowledge-query-view > header h3 {
-  margin: 0;
-  color: var(--color-fg);
-  font-size: 14px;
-  font-weight: 650;
-}
-
-.dashboard-knowledge-single-view > header p,
-.dashboard-knowledge-query-view > header p {
-  margin: 3px 0 0;
-  color: var(--color-muted);
-  font-size: 11px;
-}
-
-.dashboard-knowledge-single-view > header > span {
-  color: var(--color-muted);
-  font-size: 11px;
 }
 
 .dashboard-knowledge-source-toolbar {
@@ -2790,8 +2850,15 @@ body {
   box-shadow: none;
 }
 
-.dashboard-knowledge-source-toolbar > span {
+.dashboard-knowledge-source-toolbar-meta {
+  display: flex;
+  min-width: 0;
   flex: 0 0 auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.dashboard-knowledge-source-toolbar-meta > span {
   color: var(--color-muted);
   font-size: 11px;
 }
@@ -2904,6 +2971,87 @@ body {
   overflow: hidden;
 }
 
+.dashboard-project-knowledge-detail-nav {
+  display: grid;
+  width: 224px;
+  min-width: 224px;
+  align-content: start;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px 12px;
+  border-right: 1px solid var(--color-border-soft);
+  background: var(--color-surface-warm);
+}
+
+.dashboard-project-knowledge-detail-nav-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 8px 8px;
+}
+
+.dashboard-project-knowledge-detail-nav-head strong {
+  color: var(--color-fg-2);
+  font-size: 12px;
+  font-weight: 620;
+}
+
+.dashboard-project-knowledge-detail-nav-head span {
+  color: var(--color-muted);
+  font-size: 11px;
+}
+
+.dashboard-project-knowledge-detail-nav-items {
+  display: grid;
+  gap: 2px;
+}
+
+.dashboard-project-knowledge-detail-nav-items button {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  padding: 8px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--color-fg-2);
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    background 160ms ease;
+}
+
+.dashboard-project-knowledge-detail-nav-items button:hover,
+.dashboard-project-knowledge-detail-nav-items button:focus-visible,
+.dashboard-project-knowledge-detail-nav-items button.is-active {
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.dashboard-project-knowledge-detail-nav-items button:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--color-accent) 42%, transparent);
+  outline-offset: -2px;
+}
+
+.dashboard-project-knowledge-detail-nav-items strong,
+.dashboard-project-knowledge-detail-nav-items span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-project-knowledge-detail-nav-items strong {
+  font-size: 12px;
+  font-weight: 620;
+}
+
+.dashboard-project-knowledge-detail-nav-items span {
+  color: var(--color-muted);
+  font-size: 11px;
+}
+
 .dashboard-knowledge-preview-scroll {
   min-width: 0;
   min-height: 0;
@@ -3011,16 +3159,15 @@ body {
 .dashboard-project-knowledge-detail > dl {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 14px;
+  gap: 0 28px;
   margin: 0;
+  border-top: 1px solid var(--color-border-soft);
 }
 
 .dashboard-project-knowledge-detail > dl > div {
   min-width: 0;
-  padding: 12px 14px;
-  border: 1px solid var(--color-border-soft);
-  border-radius: 8px;
-  background: var(--color-bg);
+  padding: 12px 0 13px;
+  border-bottom: 1px solid var(--color-border-soft);
 }
 
 .dashboard-project-knowledge-detail dt {
@@ -3058,32 +3205,32 @@ body {
 .dashboard-knowledge-source-detail-meta,
 .dashboard-knowledge-source-detail-state {
   color: var(--color-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .dashboard-knowledge-source-detail > dl {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 0 28px;
   margin: 0;
+  border-top: 1px solid var(--color-border-soft);
 }
 
 .dashboard-knowledge-source-detail > dl > div {
-  padding: 10px 12px;
-  border: 1px solid var(--color-border-soft);
-  border-radius: 7px;
-  background: var(--color-surface-warm);
+  padding: 12px 0 13px;
+  border-bottom: 1px solid var(--color-border-soft);
 }
 
 .dashboard-knowledge-source-detail dt {
   color: var(--color-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .dashboard-knowledge-source-detail dd {
-  margin: 5px 0 0;
+  margin: 6px 0 0;
   color: var(--color-fg-2);
-  font-size: 12px;
+  font-size: 14px;
+  line-height: 1.55;
 }
 
 .dashboard-knowledge-source-detail section {
@@ -3101,14 +3248,15 @@ body {
 .dashboard-knowledge-source-related {
   display: grid;
   gap: 7px;
+  border-top: 1px solid var(--color-border-soft);
 }
 
 .dashboard-knowledge-source-related button {
   display: grid;
   gap: 3px;
-  padding: 9px 10px;
-  border: 1px solid var(--color-border-soft);
-  border-radius: 7px;
+  padding: 10px 0;
+  border: 0;
+  border-bottom: 1px solid var(--color-border-soft);
   background: transparent;
   color: inherit;
   text-align: left;
@@ -3123,13 +3271,13 @@ body {
 
 .dashboard-knowledge-source-related strong {
   color: var(--color-fg-2);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .dashboard-knowledge-source-related span {
   overflow: hidden;
   color: var(--color-muted);
-  font-size: 10px;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3142,8 +3290,9 @@ body {
 
 .dashboard-knowledge-source-detail-meta {
   display: flex;
-  gap: 12px;
+  gap: 14px;
   margin-bottom: 8px;
+  font-size: 12px;
 }
 
 .dashboard-knowledge-source-detail pre {
@@ -3156,28 +3305,46 @@ body {
   background: var(--color-surface-warm);
   color: var(--color-fg-2);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.65;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
+.dashboard-knowledge-source-rendered-content.md-github pre code {
+  font-size: inherit;
+  line-height: inherit;
+}
+
 .dashboard-knowledge-source-rendered-content {
   max-width: none;
-  padding: 2px 2px 4px;
+  padding: 0 2px 8px;
 }
 
 .dashboard-knowledge-source-rendered-content.md-github {
+  color: var(--color-fg-2);
   font-size: 14px;
+  line-height: 1.7;
 }
 
 .dashboard-knowledge-source-rendered-content.md-github h1 {
-  margin-top: 4px;
+  margin: 0 0 18px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--color-border-soft);
+  color: var(--color-fg);
+  font-size: 20px;
+  font-weight: 650;
+  line-height: 1.35;
 }
 
 .dashboard-knowledge-source-rendered-content.md-github h2,
 .dashboard-knowledge-source-rendered-content.md-github h3 {
   margin-top: 22px;
+  color: var(--color-fg);
+}
+
+.dashboard-knowledge-source-rendered-content.md-github p {
+  color: var(--color-fg-2);
 }
 
 .dashboard-knowledge-query-view {
@@ -3186,8 +3353,8 @@ body {
 
 .dashboard-knowledge-query-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
   padding: 20px 20px 10px;
 }
 
@@ -3198,8 +3365,25 @@ body {
 
 .dashboard-knowledge-query-form .ant-btn {
   min-height: 34px;
-  align-self: end;
   border-radius: 7px;
+}
+
+.dashboard-knowledge-query-action {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 34px;
+}
+
+.dashboard-knowledge-query-hint {
+  min-width: 0;
+  flex: 1 1 auto;
+  color: var(--color-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: left;
 }
 
 .dashboard-knowledge-query-note {
@@ -3330,6 +3514,30 @@ body {
 }
 
 @media (max-width: 640px) {
+  .dashboard-context-manifest-summary {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 2px;
+  }
+
+  .dashboard-context-manifest-summary-meta {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .dashboard-knowledge-preview-content {
+    flex-direction: column;
+  }
+
+  .dashboard-project-knowledge-detail-nav {
+    width: auto;
+    min-width: 0;
+    max-height: 180px;
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
   .dashboard-knowledge-preview-scroll,
   .dashboard-knowledge-preview-scroll.is-fullscreen {
     padding: 18px 16px 24px;
@@ -3384,6 +3592,10 @@ body {
     max-width: none;
   }
 
+  .dashboard-knowledge-source-toolbar-meta {
+    justify-content: space-between;
+  }
+
   .dashboard-knowledge-ledger-head,
   .dashboard-knowledge-ledger-row {
     grid-template-columns: minmax(0, 1fr) 86px;
@@ -3418,6 +3630,19 @@ body {
 
   .dashboard-knowledge-query-form {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-knowledge-query-action {
+    align-items: stretch;
+  }
+
+  .dashboard-knowledge-query-hint {
+    text-align: left;
+  }
+
+  .dashboard-knowledge-query-action {
+    flex-direction: column;
+    gap: 8px;
   }
 
   .dashboard-knowledge-query-results article header {
@@ -5926,9 +6151,7 @@ body {
   font-size: var(--dashboard-plugin-caption-size);
 }
 
-.dashboard-knowledge-inspector h3,
-.dashboard-knowledge-single-view > header h3,
-.dashboard-knowledge-query-view > header h3 {
+.dashboard-knowledge-inspector h3 {
   font-size: var(--dashboard-plugin-section-size);
 }
 
@@ -5937,9 +6160,6 @@ body {
 .dashboard-knowledge-inspector dt,
 .dashboard-knowledge-inspector dd,
 .dashboard-knowledge-inspector-muted,
-.dashboard-knowledge-single-view > header p,
-.dashboard-knowledge-query-view > header p,
-.dashboard-knowledge-single-view > header > span,
 .dashboard-knowledge-source-row,
 .dashboard-knowledge-query-note,
 .dashboard-knowledge-query-results article p {
@@ -6497,7 +6717,7 @@ body {
 /* Personal Memory workspace */
 .dashboard-memory-workspace {
   display: grid;
-  grid-template-columns: minmax(168px, 0.5fr) minmax(480px, 1.75fr) minmax(270px, 0.82fr);
+  grid-template-columns: var(--dashboard-context-registry-columns);
   min-height: clamp(560px, calc(100dvh - 244px), 760px);
   overflow: hidden;
   border: 0;
@@ -6635,7 +6855,7 @@ body {
 .dashboard-memory-table-head,
 .dashboard-memory-table-row {
   display: grid;
-  grid-template-columns: minmax(230px, 1fr) 82px 74px 110px auto;
+  grid-template-columns: minmax(230px, 1fr) 82px 74px 110px 102px;
   align-items: center;
 }
 
@@ -7519,6 +7739,113 @@ body {
   margin: 0;
 }
 
+.dashboard-contextual-title {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 3px;
+}
+
+.dashboard-compact-help-button.ant-btn {
+  display: inline-flex;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 6px;
+  color: var(--color-meta);
+}
+
+.dashboard-compact-help-button.ant-btn:hover,
+.dashboard-compact-help-button.ant-btn:focus-visible {
+  background: color-mix(in oklab, var(--color-fg) 6%, transparent);
+  color: var(--color-fg-2);
+}
+
+.dashboard-compact-help-content {
+  width: min(300px, calc(100vw - 48px));
+  color: var(--color-fg-2);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.dashboard-compact-help-content > p {
+  margin: 0;
+}
+
+.dashboard-compact-help-content > p + p,
+.dashboard-compact-help-content > p + dl {
+  margin-top: 8px;
+}
+
+.dashboard-compact-help-content .dashboard-compact-help-example {
+  color: var(--color-muted);
+}
+
+.dashboard-compact-help-content dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.dashboard-compact-help-content dl > div {
+  display: grid;
+  gap: 1px;
+}
+
+.dashboard-compact-help-content dt {
+  color: var(--color-fg);
+  font-weight: 620;
+}
+
+.dashboard-compact-help-content dd {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.dashboard-record-origin {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--color-accent-soft) 70%, var(--color-bg));
+  color: var(--color-accent-active);
+  font-size: 11px;
+  font-weight: 560;
+  line-height: 1.45;
+  white-space: nowrap;
+}
+
+.dashboard-knowledge-record-copy > .dashboard-record-title-line {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  margin-top: 0;
+  overflow: visible;
+  color: inherit;
+}
+
+.dashboard-record-title-line > strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-fg);
+  font-size: 12px;
+  font-weight: 640;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-record-title-line > .dashboard-record-origin {
+  display: inline-flex;
+  color: var(--knowledge-accent);
+  font-size: 10px;
+}
+
 /* Compact settings typography keeps the modal subordinate to the workspace. */
 .dashboard-settings-modal .dashboard-settings-page {
   --dashboard-plugin-caption-size: 11px;
@@ -7534,6 +7861,19 @@ body {
 
 .dashboard-settings-modal-title p {
   font-size: 12px;
+}
+
+.dashboard-knowledge-preview-modal .dashboard-settings-modal-title-row {
+  min-height: 26px;
+  gap: 0;
+  padding-left: 0;
+  border-left: 0;
+}
+
+.dashboard-knowledge-preview-modal .dashboard-settings-modal-title-row > strong {
+  font-size: 18px;
+  font-weight: 650;
+  line-height: 26px;
 }
 
 .dashboard-settings-modal .dashboard-settings-navigation .ant-menu-item {
@@ -7747,5 +8087,334 @@ body {
   .dashboard-artifact-preview-overlay,
   .dashboard-artifact-preview-panel {
     transition: none !important;
+  }
+}
+
+/* Memory and knowledge centers are dense workspaces, but their supporting
+   context must remain readable at a desktop working distance. */
+.dashboard-tool-page-memory .dashboard-tool-chip,
+.dashboard-tool-page-memory .dashboard-tool-counter,
+.dashboard-tool-page-knowledge .dashboard-tool-chip,
+.dashboard-tool-page-knowledge .dashboard-tool-counter {
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.dashboard-tool-page-memory .dashboard-context-manifest-summary-copy strong,
+.dashboard-tool-page-knowledge .dashboard-context-manifest-summary-copy strong {
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.dashboard-tool-page-memory .dashboard-context-manifest-summary-copy span,
+.dashboard-tool-page-memory .dashboard-context-manifest-summary-meta,
+.dashboard-tool-page-memory .dashboard-context-manifest-summary-meta time,
+.dashboard-tool-page-knowledge .dashboard-context-manifest-summary-copy span,
+.dashboard-tool-page-knowledge .dashboard-context-manifest-summary-meta,
+.dashboard-tool-page-knowledge .dashboard-context-manifest-summary-meta time {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dashboard-tool-page-memory .dashboard-memory-filter-summary {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.dashboard-tool-page-memory .dashboard-memory-group-title span,
+.dashboard-tool-page-memory .dashboard-memory-table-title-row span,
+.dashboard-tool-page-memory .dashboard-memory-inspector-head > span,
+.dashboard-tool-page-memory .dashboard-memory-inspector-list span {
+  font-size: 12px;
+}
+
+.dashboard-tool-page-memory .dashboard-memory-table-title-row .dashboard-record-origin {
+  background: color-mix(in oklab, var(--color-accent-soft) 72%, var(--color-bg));
+  color: var(--color-accent-active);
+  font-size: 11px;
+}
+
+.dashboard-tool-page-memory .dashboard-memory-inspector-list strong {
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.dashboard-tool-page-knowledge .dashboard-knowledge-service-state {
+  font-size: 13px;
+}
+
+.dashboard-tool-page-knowledge .dashboard-knowledge-tabs button {
+  font-size: 14px;
+}
+
+.dashboard-tool-page-knowledge .dashboard-knowledge-category-groups h3,
+.dashboard-tool-page-knowledge .dashboard-knowledge-category-groups h3 small,
+.dashboard-tool-page-knowledge .dashboard-knowledge-category > span:last-child,
+.dashboard-tool-page-knowledge .dashboard-knowledge-explorer-foot {
+  font-size: 12px;
+}
+
+.dashboard-tool-page-knowledge .dashboard-knowledge-category {
+  font-size: 13px;
+}
+
+.dashboard-tool-page-knowledge .dashboard-knowledge-ledger-toolbar strong {
+  font-size: 14px;
+}
+
+.dashboard-tool-page-knowledge .dashboard-knowledge-ledger-toolbar-meta {
+  font-size: 13px;
+}
+
+.dashboard-tool-page-knowledge .dashboard-knowledge-inline-warning,
+.dashboard-tool-page-knowledge .dashboard-knowledge-ledger-head {
+  font-size: 12px;
+}
+
+.dashboard-tool-page-knowledge .dashboard-knowledge-ledger-row {
+  min-height: 76px;
+}
+
+.dashboard-tool-page-knowledge .dashboard-knowledge-record-copy > strong {
+  font-size: 14px;
+}
+
+.dashboard-tool-page-knowledge .dashboard-record-title-line > strong {
+  font-size: 14px;
+}
+
+.dashboard-tool-page-knowledge .dashboard-record-title-line > .dashboard-record-origin {
+  font-size: 11px;
+}
+
+.dashboard-tool-page-knowledge .dashboard-knowledge-record-copy > span,
+.dashboard-tool-page-knowledge .dashboard-knowledge-record-source,
+.dashboard-tool-page-knowledge .dashboard-knowledge-ledger-row time,
+.dashboard-tool-page-knowledge .dashboard-knowledge-record-state {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dashboard-tool-page-knowledge .dashboard-knowledge-inspector h3 {
+  font-size: 16px;
+}
+
+.dashboard-tool-page-knowledge .dashboard-knowledge-inspector > header p,
+.dashboard-tool-page-knowledge .dashboard-knowledge-inspector-muted {
+  font-size: 13px;
+}
+
+.dashboard-tool-page-knowledge .dashboard-knowledge-inspector h4 {
+  font-size: 13px;
+}
+
+.dashboard-tool-page-knowledge .dashboard-knowledge-inspector dt {
+  font-size: 12px;
+}
+
+.dashboard-tool-page-knowledge .dashboard-knowledge-inspector dd {
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.dashboard-tool-page-knowledge
+  :where(
+    .dashboard-context-application-history strong,
+    .dashboard-context-application-history time,
+    .dashboard-context-application-history p,
+    .dashboard-context-application-history span,
+    .dashboard-knowledge-source-list code,
+    .dashboard-knowledge-verification-list code,
+    .dashboard-knowledge-record-id
+  ) {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dashboard-tool-page-knowledge .dashboard-knowledge-inspector > footer .ant-btn {
+  font-size: 13px;
+}
+
+.dashboard-tool-page-knowledge .dashboard-knowledge-source-toolbar-meta > span,
+.dashboard-tool-page-knowledge .dashboard-knowledge-source-head,
+.dashboard-tool-page-knowledge .dashboard-knowledge-source-row code,
+.dashboard-tool-page-knowledge .dashboard-knowledge-source-row time,
+.dashboard-tool-page-knowledge .dashboard-knowledge-query-hint,
+.dashboard-tool-page-knowledge .dashboard-knowledge-query-note {
+  font-size: 12px;
+}
+
+.dashboard-tool-page-knowledge .dashboard-knowledge-source-row {
+  min-height: 64px;
+  font-size: 13px;
+}
+
+.dashboard-tool-page-knowledge .dashboard-knowledge-source-row strong {
+  font-size: 13px;
+}
+
+.dashboard-tool-page-knowledge .dashboard-knowledge-query-results article strong {
+  font-size: 14px;
+}
+
+.dashboard-tool-page-knowledge .dashboard-knowledge-query-results article code {
+  font-size: 12px;
+}
+
+.dashboard-tool-page-knowledge .dashboard-knowledge-query-results article p {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* Memory context is a short status line, not a row of competing chips. */
+.dashboard-tool-page-memory .dashboard-plugin-context-bar {
+  min-height: 54px;
+  padding-block: 8px 10px;
+}
+
+.dashboard-tool-page-memory .dashboard-plugin-context-meta {
+  gap: 0;
+}
+
+.dashboard-tool-page-memory .dashboard-plugin-context-item {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  padding: 0 12px;
+  color: var(--color-fg-2);
+  font-size: 13px;
+  font-weight: 590;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.dashboard-tool-page-memory .dashboard-plugin-context-item:first-child {
+  padding-left: 0;
+}
+
+.dashboard-tool-page-memory .dashboard-plugin-context-item + .dashboard-plugin-context-item {
+  border-left: 1px solid var(--color-border-soft);
+}
+
+.dashboard-tool-page-memory .dashboard-plugin-context-item.is-accent {
+  color: var(--color-accent-active);
+}
+
+.dashboard-tool-page-memory .dashboard-context-application-history {
+  gap: 6px;
+}
+
+.dashboard-tool-page-memory .dashboard-context-application-history article {
+  gap: 6px;
+  padding: 11px 12px;
+  border-radius: 7px;
+  background: color-mix(in oklab, var(--color-surface-warm) 76%, var(--color-bg));
+}
+
+.dashboard-tool-page-memory .dashboard-context-application-history-title strong {
+  color: var(--color-fg-2);
+  font-size: 13px;
+  font-weight: 640;
+  line-height: 1.45;
+}
+
+.dashboard-tool-page-memory .dashboard-context-application-history-reason {
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dashboard-tool-page-memory .dashboard-context-application-history-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 2px;
+}
+
+.dashboard-tool-page-memory .dashboard-context-application-history-meta time,
+.dashboard-tool-page-memory .dashboard-context-application-history-meta span {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dashboard-tool-page-memory .dashboard-context-application-history-meta span {
+  color: var(--color-fg-2);
+  font-weight: 620;
+}
+
+.dashboard-tool-page-memory .dashboard-context-application-history-meta span.is-used-successfully {
+  color: var(--color-success);
+}
+
+/* Plugin workspaces already own their internal three-pane gutters. Keep the
+   content shell flush with the sidebar while the shared header keeps the
+   established workflow inset. */
+@media (min-width: 1024px) {
+  .dashboard-workbench .comet-workbench-header {
+    padding-inline: 34px;
+  }
+
+  .dashboard-memory-filter-search,
+  .dashboard-memory-filter-summary,
+  .dashboard-knowledge-explorer-search,
+  .dashboard-knowledge-explorer-foot {
+    position: relative;
+  }
+
+  .dashboard-memory-filter-search,
+  .dashboard-knowledge-explorer-search {
+    border-bottom-color: transparent;
+  }
+
+  .dashboard-memory-filter-summary,
+  .dashboard-knowledge-explorer-foot {
+    border-top-color: transparent;
+  }
+
+  .dashboard-memory-filter-search::after,
+  .dashboard-knowledge-explorer-search::after,
+  .dashboard-memory-filter-summary::before,
+  .dashboard-knowledge-explorer-foot::before {
+    position: absolute;
+    right: 16px;
+    left: 16px;
+    height: 1px;
+    background: var(--color-border-soft);
+    content: '';
+    pointer-events: none;
+  }
+
+  .dashboard-memory-filter-search::after,
+  .dashboard-knowledge-explorer-search::after {
+    bottom: -1px;
+  }
+
+  .dashboard-memory-filter-summary::before,
+  .dashboard-knowledge-explorer-foot::before {
+    top: -1px;
+  }
+
+  .dashboard-memory-filter-search,
+  .dashboard-knowledge-explorer-search {
+    padding-inline: 16px;
+  }
+
+  .dashboard-memory-filter-rail nav,
+  .dashboard-knowledge-category-groups {
+    padding-inline: 16px;
+  }
+
+  .dashboard-knowledge-explorer > .dashboard-knowledge-category {
+    width: auto;
+    margin-inline: 16px;
+  }
+
+  .dashboard-knowledge-explorer-foot {
+    padding-inline: 16px;
+  }
+
+  .dashboard-content-shell-plugin-center {
+    padding-inline: 16px;
   }
 }

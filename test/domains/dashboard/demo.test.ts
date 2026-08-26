@@ -76,6 +76,37 @@ describe('dashboard demo data', () => {
     );
   });
 
+  it('provides enabled personal memory and project knowledge center pages', async () => {
+    const { DEMO_PLUGIN_PAGES } = await import('../../../domains/dashboard/web/demo.js');
+    const personalMemory = DEMO_PLUGIN_PAGES.find(
+      (page) => page.pluginId === 'comet.personal-memory',
+    );
+    const projectKnowledge = DEMO_PLUGIN_PAGES.find(
+      (page) => page.pluginId === 'comet.project-knowledge',
+    );
+
+    expect(personalMemory).toMatchObject({
+      status: 'enabled',
+      data: {
+        projectKey: 'demo-comet',
+      },
+    });
+    expect(personalMemory?.data.management.records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ text: '默认使用中文回复，并保持结论简洁。' }),
+      ]),
+    );
+    expect(projectKnowledge).toMatchObject({
+      status: 'enabled',
+      data: {
+        provider: 'local',
+      },
+    });
+    expect(projectKnowledge?.data.records).toEqual(
+      expect.arrayContaining([expect.objectContaining({ title: 'Dashboard 交互约定' })]),
+    );
+  });
+
   it('shows the complete beta17 portable artifact set by lifecycle', async () => {
     const { DEMO_SNAPSHOT } = await import('../../../domains/dashboard/web/demo.js');
 

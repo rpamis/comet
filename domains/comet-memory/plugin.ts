@@ -159,16 +159,19 @@ async function createModule(
     return result;
   };
 
-  const retrieveWithNotice = async (query: MemoryQuery): Promise<MemoryRetrieval> => {
-    let retrieval;
+  const retrieveWithoutNotice = async (query: MemoryQuery): Promise<MemoryRetrieval> => {
     try {
-      retrieval = (await provider.query({
+      return (await provider.query({
         view: retrievalView(query.view),
         query,
       })) as MemoryRetrieval;
     } catch {
       return { records: [], text: '', truncated: false, disabled: false };
     }
+  };
+
+  const retrieveWithNotice = async (query: MemoryQuery): Promise<MemoryRetrieval> => {
+    const retrieval = await retrieveWithoutNotice(query);
     const firstUse = retrieval.records.some((record) => !announcedRetrievals.has(record.id));
     retrieval.records.forEach((record) => announcedRetrievals.add(record.id));
     if (firstUse) {
@@ -199,7 +202,7 @@ async function createModule(
         const [status, providerConfig, retrieval, management, applications] = await Promise.all([
           invoke('status'),
           options.getProviderConfig?.(),
-          invoke('retrieve', { view: 'combined', projectKey: projectId }),
+          retrieveWithoutNotice({ view: 'combined', projectKey: projectId }),
           invoke('manage', { projectKey: projectId }),
           options.listContextApplications?.(),
         ]);
