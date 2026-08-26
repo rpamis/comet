@@ -99,6 +99,63 @@ async function search(
 }
 
 describe('project knowledge dashboard status', () => {
+  test('reads a project source as complete text for the Dashboard', async () => {
+    const root = await tempProject();
+    try {
+      const source = path.join(root, 'docs', 'rule.md');
+      await fs.mkdir(path.dirname(source), { recursive: true });
+      await fs.writeFile(source, '# Rule\n\nRun focused tests first.\n');
+      const bridge = await createDefaultCometPluginBridge({
+        projectRoot: root,
+        projectId: 'project-knowledge-source-read',
+        stateRoot: path.join(root, 'plugin-state'),
+        memoryRoot: path.join(root, 'memory'),
+      });
+
+      await expect(
+        bridge.pluginRuntime.invoke(
+          'comet.project-knowledge',
+          'read-source',
+          { source: 'docs/rule.md' },
+          { scope: 'project', projectId: bridge.currentProjectId },
+        ),
+      ).resolves.toMatchObject({
+        kind: 'source',
+        source: 'docs/rule.md',
+        content: '# Rule\n\nRun focused tests first.\n',
+        size: 33,
+        modifiedAt: expect.any(String),
+        truncated: false,
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test('rejects project source reads outside the project root', async () => {
+    const root = await tempProject();
+    try {
+      const storageStore = new MemoryPluginStorageStore();
+      const module = await createProjectKnowledgeModule(
+        {
+          storage: await storageStore.open(
+            'comet.project-knowledge',
+            'project',
+            'project-knowledge-source-boundary',
+          ),
+          reportDiagnostic: () => undefined,
+        } as never,
+        { projectRoot: root, knowledgeConfig: { provider: 'local' } },
+      );
+
+      await expect(module.invoke?.('read-source', { source: '../outside.md' })).rejects.toThrow(
+        '来源文件无法读取',
+      );
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   test('returns a safe Local dashboard snapshot without provider work', () => {
     expect(
       createProjectKnowledgeDashboardSnapshot({

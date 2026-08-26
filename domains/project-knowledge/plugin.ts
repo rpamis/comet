@@ -41,9 +41,12 @@ import type {
 } from './types.js';
 import { resolveProjectKnowledgeStorageLocation } from '../../platform/paths/project-knowledge-storage.js';
 import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
+import { RaceSafeReadError } from '../../platform/fs/race-safe-read.js';
+import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
 
 export const PROJECT_KNOWLEDGE_PLUGIN_ID = 'comet.project-knowledge';
 const MAX_RECENT_DIAGNOSTICS = 3;
+const DASHBOARD_SOURCE_MAX_BYTES = 2 * 1024 * 1024;
 
 const PROJECT_KNOWLEDGE_RECORD_TYPES = new Set<ProjectKnowledgeRecordType>([
   'topology',
@@ -491,6 +494,36 @@ async function createProjectKnowledgeModule(
         const value = rawValue;
         const projectId = resolveStableProjectId(options.projectRoot);
         if (capability === 'status') return dashboardSnapshot();
+        if (capability === 'read-source') {
+          if (typeof value.source !== 'string' || !value.source.trim())
+            throw new Error('read-source requires source');
+          const source = value.source.trim().replaceAll('\\', '/');
+          try {
+            const result = await readProtectedProjectFile(
+              options.projectRoot,
+              source,
+              DASHBOARD_SOURCE_MAX_BYTES,
+              { label: `Project Knowledge source ${source}` },
+            );
+            if (result.bytes.includes(0)) throw new Error('来源文件不是可查看的文本文件');
+            return {
+              kind: 'source',
+              source,
+              content: result.bytes.toString('utf8'),
+              size: Number(result.stat.size),
+              modifiedAt: new Date(Number(result.stat.mtimeMs)).toISOString(),
+              truncated: false,
+            };
+          } catch (error) {
+            if (error instanceof RaceSafeReadError && error.reason === 'too-large') {
+              throw new Error('来源文件过大，无法在 Dashboard 内完整查看', { cause: error });
+            }
+            if (error instanceof Error && error.message.includes('不是可查看的文本文件')) {
+              throw error;
+            }
+            throw new Error('来源文件无法读取', { cause: error });
+          }
+        }
         activeProvider = await createProvider();
         if (capability === 'list') {
           const state = value.state;
