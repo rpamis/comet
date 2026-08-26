@@ -16,9 +16,15 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **Classic Build flow**: Classic Build now lets `writing-plans` own plan creation and self-review, then collects the continue/pause choice, execution method, TDD mode, and code-review mode in one joint decision before execution; Verify remains the owner of the final integrated review.
 - **Native CodeGraph setup**: `comet init` now offers CodeGraph when Native or Both is selected, while keeping OpenSpec and Superpowers limited to Classic-enabled setups.
 - **Native status and verification**: Native status, verification reports, and Dashboard details now show child progress, task bindings, preserved evidence, verification decisions, and actionable recovery guidance in compact user-facing views.
-- **Dashboard memory and knowledge workflow**: Personal Memory and Project Knowledge now use readable registries with explicit application history, stable empty and loading states, dedicated settings, and clear separation between user memory and project evidence. Personal Memory also explains the latest task-used context in plain language, while Project Model and Project Policy are visibly distinct views.
+- **Dashboard memory and knowledge workflow**: Personal Memory and Project Knowledge now use readable registries with explicit application history, stable empty and loading states, dedicated settings, and clear separation between user memory and project evidence. Personal Memory also explains the latest task-used context in plain language, lets users open the matching memory details, and removes permanently deleted memories from that preview, while Project Facts and Project Standards are visibly distinct views.
+- **Dashboard change workspaces**: Native and Classic keep their three-pane explorer, detail, and inspector layout when the selected change view is empty or loading, so tab switches never drop a workspace panel and archived history stays directly reachable.
+- **Project Knowledge source browsing**: Dashboard now lists indexed and referenced sources as searchable file entries and opens settings-style previews that render Markdown, JSON, and YAML project-local files with explicit unreadable states, while keeping the source path in the document body instead of repeating it in the dialog title.
+- **Project Knowledge context preview**: The Project Knowledge page now names recent context correctly and opens each applied project fact or standard in a fullscreen-capable detail card with its application context.
+- **Dashboard modal controls**: Content dialogs now place one consistent fullscreen/restore control at the right side of the title bar instead of a separate close button; clicking the backdrop or pressing Escape closes normal dialogs and restores fullscreen dialogs without losing their current content.
+- **Project Knowledge source list**: Dashboard source rows now align with their column headers and provide an internal scroll area for browsing the complete source set without clipping.
 - **Project Knowledge refresh and lifecycle**: Local retrieval now refreshes changed sources, avoids injecting stale records, preserves user corrections, and recovers safely from index changes while keeping provider diagnostics visible.
 - **Shared project memory files**: Project memory now uses a readable project name while retaining a stable internal identity, so the repository and its Git worktrees share one memory file.
 - **Native worktree lifecycle**: After a successful merge, Comet removes its finished isolated worktree while preserving the branch for normal Git workflows.
@@ -26,7 +32,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Fixed
 
 - **Issue triage fallback**: Issues without a recognized form area now infer a unique repository area from their title and body, while ambiguous reports remain marked for manual triage.
-- **Classic workflow repairs**: Classic Build now creates its implementation plan in the main session, and verification repairs keep ordinary implementation writes in Build while preserving the tracked verification state.
+- **Classic workflow repairs**: Classic Build now delegates implementation-plan creation to `writing-plans`, and verification repairs keep ordinary implementation writes in Build while preserving the tracked verification state.
 - **Native portable compatibility**: `comet status` now reads Native v4 Portable State changes, and valid large Portable or legacy state documents are no longer rejected by an arbitrary size limit.
 - **Windows Native reliability**: Snapshot checks are more reliable when hooks and workspace operations run concurrently on Windows.
 - **Archive delivery choices**: Classic Archive supports completing the archive commit locally without pushing or creating a PR, while Classic and Native show archive and workspace-finish options with their concrete Git impact.
