@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import http from 'http';
 import { promises as fs } from 'fs';
 import os from 'os';
@@ -114,13 +114,20 @@ describe('Dashboard plugin HTTP API', () => {
       currentProjectId: string;
     };
     const base = `/api/dashboard/projects/${directory.currentProjectId}`;
-    const list = await request(server.port, `${base}/plugins`);
-    expect(list.status).toBe(200);
-    expect(JSON.parse(list.body)).toMatchObject({
-      pages: [expect.objectContaining({ pluginId: 'test.dashboard', status: 'enabled' })],
-    });
-    const page = await request(server.port, `${base}/plugins/test.dashboard`);
-    expect(hostFactoryCalls).toBe(1);
+    let list!: ResponsePayload;
+    let page!: ResponsePayload;
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+    try {
+      list = await request(server.port, `${base}/plugins`);
+      expect(list.status).toBe(200);
+      expect(JSON.parse(list.body)).toMatchObject({
+        pages: [expect.objectContaining({ pluginId: 'test.dashboard', status: 'enabled' })],
+      });
+      page = await request(server.port, `${base}/plugins/test.dashboard`);
+      expect(hostFactoryCalls).toBe(1);
+    } finally {
+      clock.mockRestore();
+    }
     expect(page.status).toBe(200);
     expect(JSON.parse(page.body)).toMatchObject({ data: { value: { ok: true } } });
     const invoke = await request(server.port, `${base}/plugins/test.dashboard/invoke`, 'POST', {
