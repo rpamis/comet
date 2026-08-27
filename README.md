@@ -301,6 +301,9 @@ diagnostics. `comet doctor` reports diagnostic status for malformed `.comet.yaml
 for valid changes, and runtime evidence gaps that block safe resume. In a Git secondary worktree, it separately reports
 the current worktree, primary worktree, and global fallback installation state. Ignored assets in the primary worktree
 are inspected only for classification and are never executed across worktrees.
+CodeGraph diagnostics separately report whether the CLI is installed, whether the current project index is current, whether
+MCP is registered with a supported Agent, and whether each Agent has effective capability; a healthy project index does not
+mean that an Agent has CodeGraph MCP registration.
 
 | Option            | Description                                                                                   |
 | ----------------- | --------------------------------------------------------------------------------------------- |

@@ -2,4 +2,4 @@ interface:
   display_name: "Comet Classic 预设:Hotfix"
   short_description: "通过 open-build-verify-archive 短流程修复已有行为 bug"
 policy:
-  allow_implicit_invocation: false
+  allow_implicit_invocation: true

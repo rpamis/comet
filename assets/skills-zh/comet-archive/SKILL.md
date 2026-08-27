@@ -1,7 +1,6 @@
 ---
 name: comet-archive
 description: "Comet Classic 阶段 5 —— 确认归档、合并 delta spec 并完成分支收尾。"
-disable-model-invocation: true
 ---
 
 # Comet 阶段 5：归档（Archive）

@@ -1,7 +1,6 @@
 ---
 name: comet-design
 description: "Phase 2 of Comet Classic — produce the deep technical Design Doc behind a change."
-disable-model-invocation: true
 ---
 
 # Comet Phase 2: Deep Design (Design)

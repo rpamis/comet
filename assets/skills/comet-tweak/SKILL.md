@@ -1,7 +1,6 @@
 ---
 name: comet-tweak
 description: "Comet preset — handle a lightweight or medium change that fits one OpenSpec change."
-disable-model-invocation: true
 ---
 
 # Comet Preset Path: Tweak

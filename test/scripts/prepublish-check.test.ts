@@ -135,6 +135,49 @@ describe('prepublish security check', () => {
     expect(result.stderr).not.toContain('[SECURITY]');
   });
 
+  it('does not traverse directories excluded by nested .npmignore files', async () => {
+    const root = await makePackageFixture();
+    const packageJson = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf-8'));
+    packageJson.files = ['eval/local'];
+    await fs.writeFile(path.join(root, 'package.json'), JSON.stringify(packageJson, null, 2));
+    await writeFile(root, 'eval/local/.npmignore', 'logs/\n');
+    await writeFile(
+      root,
+      'eval/local/logs/pytest-basetemp-final/credentials.txt',
+      'const api_key = "abcdefghijklmnopqrstuvwxyz";\n',
+    );
+    await writeFile(root, 'eval/local/tests/safe.js', 'export const safe = true;\n');
+
+    const result = spawnSync(process.execPath, [prepublishCheck], {
+      cwd: root,
+      encoding: 'utf-8',
+    });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.stdout).toContain('[SECURITY] No secrets detected. Safe to publish.');
+  });
+
+  it('scans explicit package files even when a root .npmignore pattern matches them', async () => {
+    const root = await makePackageFixture();
+    const packageJson = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf-8'));
+    packageJson.files = ['eval/.env.example.md'];
+    await fs.writeFile(path.join(root, 'package.json'), JSON.stringify(packageJson, null, 2));
+    await writeFile(root, '.npmignore', '.env*\n');
+    await writeFile(
+      root,
+      'eval/.env.example.md',
+      'const api_key = "abcdefghijklmnopqrstuvwxyz";\n',
+    );
+
+    const result = spawnSync(process.execPath, [prepublishCheck], {
+      cwd: root,
+      encoding: 'utf-8',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('[SECURITY] Possible API key found in eval/.env.example.md');
+  });
+
   it('does not stat excluded directories while expanding included package paths', async () => {
     const root = await makePackageFixture();
     const packageJson = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf-8'));

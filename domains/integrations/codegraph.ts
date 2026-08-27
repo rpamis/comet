@@ -1,8 +1,10 @@
 import { execFileSync } from 'child_process';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { isCommandAvailable, getNpmExecutable } from './openspec.js';
 import { printCommandErrorDetails } from '../../platform/process/command-error.js';
+import { parse as parseYaml } from 'yaml';
 
 import type { InstallScope } from '../../platform/install/types.js';
 
@@ -20,6 +22,50 @@ interface CodegraphIndexDiagnostic {
   repairable: boolean;
   remediation: string | null;
   detail: string;
+}
+
+type CodegraphCliStatus = 'installed' | 'missing';
+type CodegraphProjectIndexStatus =
+  | 'not_checked'
+  | 'not_initialized'
+  | 'incomplete'
+  | 'stale'
+  | 'current'
+  | 'unavailable'
+  | 'skipped';
+type CodegraphMcpStatus =
+  | 'registered'
+  | 'partially_registered'
+  | 'not_registered'
+  | 'not_detected'
+  | 'unavailable';
+type CodegraphAgentId =
+  | 'claude'
+  | 'cursor'
+  | 'codex'
+  | 'opencode'
+  | 'hermes'
+  | 'gemini'
+  | 'antigravity'
+  | 'kiro';
+
+interface CodegraphAgentDiagnostic {
+  id: CodegraphAgentId;
+  name: string;
+  scope: 'global' | 'project' | 'both';
+  configPath: string | null;
+  registered: boolean;
+  valid: boolean;
+  effective: boolean;
+  detail: string;
+}
+
+interface CodegraphIntegrationDiagnostic extends CodegraphIndexDiagnostic {
+  cliStatus: CodegraphCliStatus;
+  indexStatus: CodegraphProjectIndexStatus;
+  mcpStatus: CodegraphMcpStatus;
+  agents: CodegraphAgentDiagnostic[];
+  effectiveForAgent: Partial<Record<CodegraphAgentId, boolean>>;
 }
 
 function getPnpmExecutable(platform: NodeJS.Platform = process.platform): string {
@@ -65,6 +111,383 @@ function resolvePnpmGlobalCommand(command: string): string | null {
 function resolveCodegraphCommand(): string | null {
   if (isCommandAvailable('codegraph')) return 'codegraph';
   return resolvePnpmGlobalCommand('codegraph');
+}
+
+type CodegraphConfigFormat = 'json' | 'jsonc' | 'toml' | 'yaml';
+
+interface CodegraphConfigCandidate {
+  scope: 'global' | 'project';
+  path: string;
+  format: CodegraphConfigFormat;
+  detectPaths: string[];
+}
+
+interface CodegraphAgentDefinition {
+  id: CodegraphAgentId;
+  name: string;
+  candidates: CodegraphConfigCandidate[];
+}
+
+interface CodegraphMcpEntryInspection {
+  present: boolean;
+  valid: boolean;
+  error?: string;
+}
+
+function codegraphCommandLooksValid(command: unknown): boolean {
+  const text = Array.isArray(command)
+    ? command.filter((part): part is string => typeof part === 'string').join(' ')
+    : typeof command === 'string'
+      ? command
+      : '';
+  return /(?:^|[\\/\s])codegraph(?:\.cmd|\.exe|\.ps1)?(?:$|[\s"'])/iu.test(text);
+}
+
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function parseJsonLike(source: string): unknown {
+  try {
+    return JSON.parse(source) as unknown;
+  } catch {
+    const withoutComments = source
+      .replace(/\/\*[\s\S]*?\*\//gu, '')
+      .replace(/^\s*\/\/.*$/gmu, '')
+      .replace(/,\s*([}\]])/gu, '$1');
+    return JSON.parse(withoutComments) as unknown;
+  }
+}
+
+function inspectJsonMcpEntry(source: string): CodegraphMcpEntryInspection {
+  const config = recordValue(parseJsonLike(source));
+  const servers = recordValue(config?.mcpServers) ?? recordValue(config?.mcp);
+  const entry = servers?.codegraph;
+  if (entry === undefined) return { present: false, valid: false };
+  const entryRecord = recordValue(entry);
+  return {
+    present: true,
+    valid: codegraphCommandLooksValid(entryRecord?.command),
+  };
+}
+
+function inspectTomlMcpEntry(source: string): CodegraphMcpEntryInspection {
+  const match = source.match(
+    /(?:^|\r?\n)\s*\[mcp_servers\.codegraph\]\s*\r?\n?([\s\S]*?)(?=\r?\n\s*\[[^\]]+\]\s*|$)/u,
+  );
+  if (!match) return { present: false, valid: false };
+  const command = match[1].match(/^\s*command\s*=\s*["']([^"']+)["']\s*$/mu)?.[1];
+  return { present: true, valid: codegraphCommandLooksValid(command) };
+}
+
+function inspectYamlMcpEntry(source: string): CodegraphMcpEntryInspection {
+  const config = recordValue(parseYaml(source));
+  const servers = recordValue(config?.mcp_servers);
+  const entry = servers?.codegraph;
+  if (entry === undefined) return { present: false, valid: false };
+  const entryRecord = recordValue(entry);
+  return {
+    present: true,
+    valid: codegraphCommandLooksValid(entryRecord?.command),
+  };
+}
+
+function inspectCodegraphConfigCandidate(
+  candidate: CodegraphConfigCandidate,
+): CodegraphMcpEntryInspection | null {
+  if (!fs.existsSync(candidate.path)) return null;
+  try {
+    const source = fs.readFileSync(candidate.path, 'utf8');
+    if (candidate.format === 'toml') return inspectTomlMcpEntry(source);
+    if (candidate.format === 'yaml') return inspectYamlMcpEntry(source);
+    return inspectJsonMcpEntry(source);
+  } catch (error) {
+    return {
+      present: false,
+      valid: false,
+      error: `unable to read ${candidate.path}: ${(error as Error).message}`,
+    };
+  }
+}
+
+function globalOpencodeConfigDir(homeDir: string, useEnvironment: boolean): string {
+  if (process.platform === 'win32') {
+    const appData = useEnvironment ? process.env.APPDATA : undefined;
+    return appData && appData.trim().length > 0
+      ? path.join(appData, 'opencode')
+      : path.join(homeDir, 'AppData', 'Roaming', 'opencode');
+  }
+  const xdg = useEnvironment ? process.env.XDG_CONFIG_HOME : undefined;
+  return path.join(xdg && xdg.trim().length > 0 ? xdg : path.join(homeDir, '.config'), 'opencode');
+}
+
+function globalHermesHome(homeDir: string, useEnvironment: boolean): string {
+  const configured = useEnvironment ? process.env.HERMES_HOME : undefined;
+  return configured && configured.trim().length > 0
+    ? path.resolve(configured)
+    : path.join(homeDir, '.hermes');
+}
+
+function jsonCandidate(
+  scope: 'global' | 'project',
+  file: string,
+  format: CodegraphConfigFormat = 'json',
+  detectPaths = [file],
+): CodegraphConfigCandidate {
+  return { scope, path: file, format, detectPaths };
+}
+
+function codegraphAgentDefinitions(
+  projectPath: string,
+  homeDir: string | undefined,
+): CodegraphAgentDefinition[] {
+  const useEnvironment = homeDir === undefined;
+  const home = path.resolve(homeDir ?? os.homedir());
+  const project = path.resolve(projectPath);
+  const opencodeDir = globalOpencodeConfigDir(home, useEnvironment);
+  const hermesHome = globalHermesHome(home, useEnvironment);
+  const claudeGlobalDir = path.join(home, '.claude');
+  const cursorGlobalDir = path.join(home, '.cursor');
+  const codexGlobalDir = path.join(home, '.codex');
+  const geminiGlobalDir = path.join(home, '.gemini');
+  const kiroGlobalDir = path.join(home, '.kiro');
+  const antigravityConfigDir = path.join(geminiGlobalDir, 'config');
+  const antigravityLegacyDir = path.join(geminiGlobalDir, 'antigravity');
+
+  return [
+    {
+      id: 'claude',
+      name: 'Claude Code',
+      candidates: [
+        jsonCandidate('global', path.join(home, '.claude.json'), 'json', [
+          path.join(home, '.claude.json'),
+          claudeGlobalDir,
+        ]),
+        jsonCandidate('project', path.join(project, '.mcp.json'), 'json', [
+          path.join(project, '.mcp.json'),
+          path.join(project, '.claude'),
+        ]),
+      ],
+    },
+    {
+      id: 'cursor',
+      name: 'Cursor',
+      candidates: [
+        jsonCandidate('global', path.join(cursorGlobalDir, 'mcp.json'), 'json', [cursorGlobalDir]),
+        jsonCandidate('project', path.join(project, '.cursor', 'mcp.json'), 'json', [
+          path.join(project, '.cursor'),
+        ]),
+      ],
+    },
+    {
+      id: 'codex',
+      name: 'Codex CLI',
+      candidates: [
+        jsonCandidate('global', path.join(codexGlobalDir, 'config.toml'), 'toml', [codexGlobalDir]),
+      ],
+    },
+    {
+      id: 'opencode',
+      name: 'OpenCode',
+      candidates: [
+        jsonCandidate('global', path.join(opencodeDir, 'opencode.jsonc'), 'jsonc', [opencodeDir]),
+        jsonCandidate('global', path.join(opencodeDir, 'opencode.json'), 'json', [opencodeDir]),
+        jsonCandidate('project', path.join(project, 'opencode.jsonc'), 'jsonc', [
+          path.join(project, '.opencode'),
+          path.join(project, 'opencode.jsonc'),
+          path.join(project, 'opencode.json'),
+        ]),
+        jsonCandidate('project', path.join(project, 'opencode.json'), 'json', [
+          path.join(project, '.opencode'),
+          path.join(project, 'opencode.jsonc'),
+          path.join(project, 'opencode.json'),
+        ]),
+      ],
+    },
+    {
+      id: 'hermes',
+      name: 'Hermes Agent',
+      candidates: [
+        jsonCandidate('global', path.join(hermesHome, 'config.yaml'), 'yaml', [hermesHome]),
+      ],
+    },
+    {
+      id: 'gemini',
+      name: 'Gemini CLI',
+      candidates: [
+        jsonCandidate('global', path.join(geminiGlobalDir, 'settings.json'), 'json', [
+          geminiGlobalDir,
+        ]),
+        jsonCandidate('project', path.join(project, '.gemini', 'settings.json'), 'json', [
+          path.join(project, '.gemini'),
+        ]),
+      ],
+    },
+    {
+      id: 'antigravity',
+      name: 'Antigravity IDE',
+      candidates: [
+        jsonCandidate('global', path.join(antigravityConfigDir, 'mcp_config.json'), 'json', [
+          antigravityConfigDir,
+        ]),
+        jsonCandidate('global', path.join(antigravityLegacyDir, 'mcp_config.json'), 'json', [
+          antigravityLegacyDir,
+        ]),
+      ],
+    },
+    {
+      id: 'kiro',
+      name: 'Kiro',
+      candidates: [
+        jsonCandidate('global', path.join(kiroGlobalDir, 'settings', 'mcp.json'), 'json', [
+          kiroGlobalDir,
+        ]),
+        jsonCandidate('project', path.join(project, '.kiro', 'settings', 'mcp.json'), 'json', [
+          path.join(project, '.kiro'),
+        ]),
+      ],
+    },
+  ];
+}
+
+function inspectCodegraphMcp(
+  projectPath: string,
+  scope: InstallScope,
+  homeDir: string | undefined,
+  cliStatus: CodegraphCliStatus,
+  indexStatus: CodegraphProjectIndexStatus,
+): Pick<CodegraphIntegrationDiagnostic, 'mcpStatus' | 'agents' | 'effectiveForAgent'> {
+  const allowedScopes = scope === 'global' ? new Set(['global']) : new Set(['global', 'project']);
+  const agents: CodegraphAgentDiagnostic[] = [];
+  const effectiveForAgent: Partial<Record<CodegraphAgentId, boolean>> = {};
+
+  for (const definition of codegraphAgentDefinitions(projectPath, homeDir)) {
+    const candidates = definition.candidates.filter((candidate) =>
+      allowedScopes.has(candidate.scope),
+    );
+    const existing = candidates.filter((candidate) =>
+      candidate.detectPaths.some((detectPath) => fs.existsSync(detectPath)),
+    );
+    if (existing.length === 0) continue;
+
+    const inspections = candidates
+      .map((candidate) => ({ candidate, inspection: inspectCodegraphConfigCandidate(candidate) }))
+      .filter(
+        (
+          result,
+        ): result is {
+          candidate: CodegraphConfigCandidate;
+          inspection: CodegraphMcpEntryInspection;
+        } => result.inspection !== null,
+      );
+    const registered = inspections.some(({ inspection }) => inspection.present);
+    const valid = inspections.some(({ inspection }) => inspection.valid);
+    const registeredScopes = new Set(
+      inspections
+        .filter(({ inspection }) => inspection.present)
+        .map(({ candidate }) => candidate.scope),
+    );
+    const agentScope =
+      registeredScopes.size > 0
+        ? registeredScopes.size > 1
+          ? 'both'
+          : [...registeredScopes][0]
+        : existing.some((candidate) => candidate.scope === 'project') &&
+            existing.some((candidate) => candidate.scope === 'global')
+          ? 'both'
+          : existing[0].scope;
+    const registeredCandidate = inspections.find(({ inspection }) => inspection.present);
+    const configPath = (registeredCandidate ?? inspections[0])?.candidate.path ?? existing[0].path;
+    const effective = cliStatus === 'installed' && indexStatus === 'current' && valid;
+    const errors = inspections
+      .map(({ inspection }) => inspection.error)
+      .filter((error): error is string => Boolean(error));
+
+    agents.push({
+      id: definition.id,
+      name: definition.name,
+      scope: agentScope,
+      configPath,
+      registered,
+      valid,
+      effective,
+      detail: registered
+        ? valid
+          ? `CodeGraph MCP is registered at ${configPath}`
+          : `CodeGraph MCP entry at ${configPath} does not point to the CodeGraph server`
+        : (errors[0] ?? `CodeGraph MCP is not registered at ${configPath}`),
+    });
+    effectiveForAgent[definition.id] = effective;
+  }
+
+  const registeredCount = agents.filter((agent) => agent.registered).length;
+  const mcpStatus: CodegraphMcpStatus =
+    agents.length === 0
+      ? 'not_detected'
+      : registeredCount === 0
+        ? 'not_registered'
+        : registeredCount === agents.length
+          ? 'registered'
+          : 'partially_registered';
+
+  return { mcpStatus, agents, effectiveForAgent };
+}
+
+function projectIndexStatus(
+  diagnostic: CodegraphIndexDiagnostic,
+  scope: InstallScope,
+): CodegraphProjectIndexStatus {
+  if (scope === 'global') return 'not_checked';
+  switch (diagnostic.status) {
+    case 'project_not_initialized':
+      return 'not_initialized';
+    case 'index_incomplete':
+      return 'incomplete';
+    case 'index_stale':
+      return 'stale';
+    case 'index_ready':
+      return 'current';
+    case 'cli_missing':
+    case 'status_unavailable':
+      return 'unavailable';
+    case 'cli_ready':
+      return 'not_checked';
+  }
+}
+
+function globalCodegraphDiagnostic(): CodegraphIndexDiagnostic {
+  return resolveCodegraphCommand()
+    ? {
+        status: 'cli_ready',
+        repairable: false,
+        remediation: null,
+        detail: 'CodeGraph CLI is installed; project indexes are not part of global scope',
+      }
+    : {
+        status: 'cli_missing',
+        repairable: false,
+        remediation: 'npm install -g @colbymchenry/codegraph',
+        detail: 'CodeGraph CLI is not installed',
+      };
+}
+
+function inspectCodegraphIntegration(
+  projectPath: string,
+  scope: InstallScope = 'project',
+  homeDir?: string,
+): CodegraphIntegrationDiagnostic {
+  const index =
+    scope === 'global' ? globalCodegraphDiagnostic() : inspectCodegraphIndex(projectPath);
+  const cliStatus: CodegraphCliStatus = index.status === 'cli_missing' ? 'missing' : 'installed';
+  const indexStatus = projectIndexStatus(index, scope);
+  return {
+    ...index,
+    cliStatus,
+    indexStatus,
+    ...inspectCodegraphMcp(projectPath, scope, homeDir, cliStatus, indexStatus),
+  };
 }
 
 function numericField(value: unknown): number {
@@ -321,8 +744,18 @@ export {
   installCodegraph,
   initializeCodegraphProject,
   hasCodegraphProjectIndex,
+  inspectCodegraphIntegration,
   inspectCodegraphIndex,
   repairCodegraphIndex,
   resolveCodegraphCommand,
 };
-export type { CodegraphIndexDiagnostic, CodegraphIndexStatus };
+export type {
+  CodegraphAgentDiagnostic,
+  CodegraphAgentId,
+  CodegraphCliStatus,
+  CodegraphIndexDiagnostic,
+  CodegraphIndexStatus,
+  CodegraphIntegrationDiagnostic,
+  CodegraphMcpStatus,
+  CodegraphProjectIndexStatus,
+};

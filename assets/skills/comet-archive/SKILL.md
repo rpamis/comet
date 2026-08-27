@@ -1,7 +1,6 @@
 ---
 name: comet-archive
 description: "Phase 5 of Comet Classic — confirm archive, merge delta specs, and finish the branch."
-disable-model-invocation: true
 ---
 
 # Comet Phase 5: Archive (Archive)

@@ -69,7 +69,7 @@ After every child reaches `integrated`, immediately follow Runtime `parentAdvanc
 When requirements change, classify them first:
 
 - The current requirement was implemented incompletely: use `--revise-implementation` from Verify to keep confirmed requirements and return to Build.
-- User-visible behavior or acceptance criteria changed: use `--revise-requirements` from Verify, update the formal artifacts, and reconfirm Shape.
+- User-visible behavior or acceptance criteria changed: use `--revise-requirements` from Verify or Archive-ready, update the formal artifacts, and reconfirm Shape.
 - The request is unrelated to the current requirement: keep it for another change.
 Apply the same rule when the user explicitly adds to the current scope.
 When the candidate is ready, first start a fresh read-only review execution over this round's code changes, related tests, and current acceptance scope. The Builder fixes necessary findings and repeats the review until it passes, then records a short review summary and that review execution's reference. Use the input template in Runtime `continuation` to submit a concise Builder handoff: what changed in this round, which acceptance items were addressed, which development-time checks were or were not actually run, any known limitations, plus `review.status=passed`, `review.summary`, and `review.reviewer_execution_ref`. The review execution reference must differ from the Builder execution reference. The handoff is stored in `comet-state.yaml`; it does not create a separate file and does not mean verification passed. Runtime gives only the necessary summary to the Verifier, and the Builder submits it once.

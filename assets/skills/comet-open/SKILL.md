@@ -1,7 +1,6 @@
 ---
 name: comet-open
 description: "Phase 1 of Comet Classic — open an OpenSpec change and stand up its proposal/design/tasks/.comet.yaml artifacts."
-disable-model-invocation: true
 ---
 
 # Comet Phase 1: Open

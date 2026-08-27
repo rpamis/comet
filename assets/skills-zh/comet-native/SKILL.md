@@ -69,7 +69,7 @@ Build 和 Verify 组成一个有界验收循环（Loop）：Builder 提交候选
 需求变化时先判断归属：
 
 - 当前需求只是实现有遗漏：从 Verify 使用 `--revise-implementation` 保留已确认需求并回到 Build；
-- 用户可见行为或验收标准发生变化：从 Verify 使用 `--revise-requirements`，更新正式产物并重新确认 Shape；
+- 用户可见行为或验收标准发生变化：从 Verify 或 Archive-ready 使用 `--revise-requirements`，更新正式产物并重新确认 Shape；
 - 与当前需求无关：保留给另一个 change。
 用户明确补充当前范围时，按同一规则处理。
 候选完成后，先启动一个没有写权限的新复核执行，检查本轮代码改动、相关测试和当前验收范围。发现必要问题时由 Builder 修正并重新复核；通过后记录简短复核摘要和该复核的执行标识。然后按 Runtime 在 `continuation` 中提供的输入模板提交一份精简的 Builder 交接摘要，包括：本轮做了什么、处理了哪些验收项、实际运行或没有运行哪些开发期检查、已知限制，以及 `review.status=passed`、`review.summary`、`review.reviewer_execution_ref`。复核执行标识不能与 Builder 执行标识相同。这份交接摘要保存在 `comet-state.yaml` 中，不会生成单独文件，也不代表已经验收通过。Runtime 会把必要摘要交给 Verifier，Builder 提交一次即可。

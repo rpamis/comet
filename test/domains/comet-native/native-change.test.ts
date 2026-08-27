@@ -501,7 +501,7 @@ describe('Native change store', () => {
     expect(await readNativeChange(paths, state.name)).toEqual(state);
   });
 
-  it('reads an oversized change document without an arbitrary size limit', async () => {
+  it('reads an oversized valid change document without an arbitrary size limit', async () => {
     const state = await createNativeChange({
       paths,
       name: 'oversized-change',

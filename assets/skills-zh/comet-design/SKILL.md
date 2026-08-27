@@ -1,7 +1,6 @@
 ---
 name: comet-design
 description: "Comet Classic 阶段 2 —— 为 change 产出深度技术 Design Doc。"
-disable-model-invocation: true
 ---
 
 # Comet 阶段 2：深度设计（Design）

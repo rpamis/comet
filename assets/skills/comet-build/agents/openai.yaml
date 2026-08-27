@@ -2,4 +2,4 @@ interface:
   display_name: "Comet Classic Phase 3: Build"
   short_description: "Recover or create the implementation plan and run its tasks"
 policy:
-  allow_implicit_invocation: false
+  allow_implicit_invocation: true

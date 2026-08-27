@@ -1,7 +1,6 @@
 ---
 name: comet-open
 description: "Comet Classic 阶段 1 —— 开启 OpenSpec change 并建立 proposal/design/tasks/.comet.yaml 产物。"
-disable-model-invocation: true
 ---
 
 # Comet 阶段 1：开启（Open）

@@ -2,4 +2,4 @@ interface:
   display_name: "Comet Classic 预设:Tweak"
   short_description: "处理可收敛为单一 OpenSpec change 的轻量或中等变更"
 policy:
-  allow_implicit_invocation: false
+  allow_implicit_invocation: true
