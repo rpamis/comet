@@ -681,6 +681,126 @@ Run applicable focused checks.
     ).not.toBe(oldCandidateId);
   });
 
+  it('revises requirements from Archive-ready and invalidates the accepted result', async () => {
+    const name = 'archive-ready-revise-requirements';
+    await prepareBuild(name, ['Original behavior works.']);
+    await runnerStep(name, builderHandoff(['A1']));
+    await runnerStep(name, { kind: 'dispatch-verifier', checks: [] });
+    await runnerStep(name, finalResponse(1, 1, ['A1']));
+
+    const accepted = json(
+      await runNativeCli([
+        'next',
+        name,
+        '--summary',
+        'User accepts the current verification result',
+        '--accept-result',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(accepted).toMatchObject({
+      exitCode: 0,
+      data: {
+        state: {
+          phase: 'archive',
+          status: 'active',
+          verification_result: 'pass',
+          loop: { stage: 'archive-ready', next_action: 'archive' },
+        },
+        continuation: { action: 'archive' },
+      },
+    });
+
+    const archiveStateVersion = (accepted.data as { state: { state_version: number } }).state
+      .state_version;
+    const returned = json(
+      await runNativeCli([
+        'next',
+        name,
+        '--summary',
+        'User-visible acceptance criteria changed',
+        '--revise-requirements',
+        '--expected-state-version',
+        String(archiveStateVersion),
+        '--expected-action',
+        'revise-requirements',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(returned).toMatchObject({
+      exitCode: 0,
+      data: {
+        state: {
+          phase: 'shape',
+          status: 'active',
+          acceptance: [],
+          builder_handoff: null,
+          blockers: [],
+          verification: null,
+          verification_result: 'pending',
+          verification_report: null,
+          loop: {
+            stage: 'shape',
+            goal_cycle: 2,
+            iteration: 0,
+            attempt: 0,
+            next_action: 'confirm-shape',
+          },
+        },
+        continuation: { action: 'confirm-shape' },
+      },
+    });
+
+    const archiveContinuation = accepted.data as {
+      continuation: {
+        action: string;
+        commandAlternatives?: Array<{
+          name: string;
+          expectedAction: string;
+          commandArgs: string[];
+        }>;
+      };
+    };
+    expect(archiveContinuation.continuation).toMatchObject({
+      action: 'archive',
+      commandAlternatives: expect.arrayContaining([
+        expect.objectContaining({
+          name: 'revise-requirements',
+          expectedAction: 'revise-requirements',
+          commandArgs: expect.arrayContaining([
+            '--revise-requirements',
+            '--expected-state-version',
+            String(archiveStateVersion),
+            '--expected-action',
+            'revise-requirements',
+          ]),
+        }),
+      ]),
+    });
+
+    const staleRevision = json(
+      await runNativeCli([
+        'next',
+        name,
+        '--summary',
+        'Delayed revision for an obsolete Archive-ready result',
+        '--revise-requirements',
+        '--expected-state-version',
+        String(archiveStateVersion),
+        '--expected-action',
+        'revise-requirements',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(staleRevision).toMatchObject({
+      exitCode: 65,
+      error: { message: expect.stringContaining('stale for state version') },
+    });
+  });
+
   it.each([
     { name: 'verifier-unavailable-empty', withCheck: false },
     { name: 'verifier-unavailable-checked', withCheck: true },
@@ -1126,10 +1246,10 @@ Run applicable focused checks.
       returnNativePortableChangeToShape({
         paths,
         name,
-        reason: 'Attempt explicit Verify-only recovery while Build is current',
+        reason: 'Attempt explicit Verify/Archive recovery while Build is current',
         allowedPhases: ['verify', 'archive'],
       }),
-    ).rejects.toThrow('--revise-requirements is only valid from Verify');
+    ).rejects.toThrow('--revise-requirements is only valid from Verify or Archive');
 
     const shown = json(await runNativeCli(['show', name, '--json', ...projectArgs()]));
     expect(shown).toMatchObject({
