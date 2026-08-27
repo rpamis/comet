@@ -11,7 +11,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Project Knowledge**: `comet task` now retrieves bounded, source-backed project context through Local or optional Remote providers. Project records remain separate from Personal Memory and are stored outside the project repository by default.
 - **Project Knowledge Dashboard**: Dashboard now provides provider health and diagnostics, searchable categorized records, manual additions, correction and forget actions, source and retrieval views, and project-level enable, pause, resume, and uninstall controls.
 - **Configurable Project Knowledge sources**: Projects can add project-relative Markdown glob patterns through `.comet/config.yaml` or Dashboard while retaining Comet's built-in Native, Classic, and Superpowers knowledge corpus.
-- **Native Supervisor coordination**: Large Native changes can use multi-session coordination or single-session progression, with dependency-aware child work, ordered integration, automatic parent advancement, and final verification before delivery.
+- **Native Supervisor coordination**: Large Native changes can use multi-session coordination or single-session progression, with dependency-aware child work, ordered integration, automatic parent advancement, workspace-aware Verifier handoffs, and final integration checks before delivery.
 - **Oh My Pi and DeepSeek Harness support**: `comet init`, `comet update`, and `comet uninstall` now manage Comet's native Skills, Rules, and Hook integrations in both platforms' project and user environments.
 
 ### Changed

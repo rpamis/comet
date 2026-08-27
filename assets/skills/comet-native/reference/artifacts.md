@@ -50,6 +50,27 @@ As soon as a decision is confirmed, write it into Decisions and the complete tar
 
 Acceptance criteria must be specific, observable, and non-duplicative. Use simple sequential IDs such as `A1`, `A2`, and `A3`. IDs map results only; they are not derived from content and do not identify files. On Shape confirmation, the Runtime saves the full acceptance text and its source. For every direct-source unit, the coverage map records the source location, `complete`/`partial`/`unavailable` read status, retained semantics, applicable Spec location and acceptance ID, `covered`/`needs-clarification`/`background`/`non-goal`/`superseded` coverage state, and a reason or replacement relationship. Every currently active executable unit must have both a Spec location and acceptance ID; background, non-goal, and superseded source units do not require a Spec location or acceptance ID. Acceptance criteria cover all currently active executable semantics from the original source; `partial`, `unavailable`, uncovered, or incompletely dual-mapped executable units remain blocked.
 A new `children.yaml` uses `comet.native.children.v2`: `acceptance_index` stores the ID, source, and complete text for brief-derived parent acceptance, and each child contains only `name`, `depends_on`, and `covers` while covering every indexed ID. Runtime's full acceptance matrix continues to own Spec-derived acceptance; only repair adds actual failed Spec IDs to the index. Names are unique, dependencies exist and are acyclic, historical `comet.native.children.v1` remains accepted under its original contract, and any modification returns the Supervisor Change to Shape.
+
+`acceptance_index` is an object keyed by acceptance ID, not an array. In the example below, the two children can run in parallel; when filling it in, copy the `source` and `text` for each ID exactly from the current acceptance catalog rather than rewriting them as summaries:
+
+```yaml
+schema: comet.native.children.v2
+acceptance_index:
+  A1:
+    source: brief.md
+    text: The integration contains feature A.
+  A2:
+    source: brief.md
+    text: The integration contains feature B.
+children:
+  - name: alpha
+    depends_on: []
+    covers: [A1]
+  - name: beta
+    depends_on: []
+    covers: [A2]
+```
+
 ## Complete target specifications
 Each `specs/<capability>/spec.md` describes the complete capability behavior after Archive, rather than only the difference from older text:
 

@@ -431,6 +431,8 @@ export async function inspectNativePortableStatus(options: {
                   '--cursor',
                   detailProjection!.nextCursor,
                   '--json',
+                  '--project-root',
+                  options.paths.projectRoot,
                 ]
               : null,
           },

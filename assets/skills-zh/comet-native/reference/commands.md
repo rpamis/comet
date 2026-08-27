@@ -18,17 +18,19 @@ comet native <group> <command> --help
 - `workspace` / `preparation`：实际工作目录和 change 创建结果；
 - `stateVersion` / `loop`：当前状态版本和验收循环进度；
 - `acceptance` / `childSummary` / `readyChildren` / `supervisor` / `details.nextPageArgs`：验收计数、Supervisor Change 的子任务计数、当前可执行子任务、集成分支与当前任务包摘要，以及详情下一页命令；
-- `verifierDispatch`：启动独立 Verifier 所需的当前 `scopeIds`、数量、正文引用、详情分页参数、复核摘要和检查结果；
+- `verifierDispatch`：启动独立 Verifier 所需的工作区与证据位置、当前 `scopeIds`、数量、正文引用、详情分页参数、复核摘要和检查结果；
 - `workspaceFinishResult` / `recoveryArgs`：归档后的工作区收尾结果和恢复命令。
 
 模板中的尖括号表示需要填写的值。`await-user` 表示先等待用户决定，此时不执行推进命令。若 `commandArgs` 为 `null` 且返回了 `commandAlternatives`，先确认用户决定，再执行对应备选操作的完整 `commandArgs`，保留其中的 `--expected-state-version` 和 `--expected-action`。命令因状态过期或动作不匹配失败时，重新读取最新 `continuation`，按当前状态继续；不要自行拼接不带 guard 的命令。`localExecution: absent` 只表示这台机器当前没有正在运行的执行任务，不代表 change 已损坏。
+
+启动 Verifier 时原样传递 `verifierDispatch` 的定位信息：`projectRoot` 是运行 Native 命令的控制目录；`verificationRoot` 是验收实现的工作区，Supervisor 父级使用集成工作区；`changeDir` 是 `briefRef` 和 `specRefs[].ref` 的相对路径基准；`supervisorStateRef` 指向包含子任务验收与集成证据的本机状态，普通 change 为 `null`。`detailsPageArgs` 已包含 `--project-root`，从任何工作目录查询都应保留它。追加检查后，把返回的检查结果和交接信息交回当前 Verifier，继续等待最终结果。
 
 ## 填写命令输入
 
 把 `inputOptions.template` 复制到系统临时 JSON 文件，只替换模板要求填写的内容，然后执行 `continuation.commandArgs` 或所选 `commandAlternative.commandArgs`。命令结束后删除临时文件。模板中已有的验收轮次、Verifier 尝试次数、状态版本和任务标识都原样保留；只填写模板公开的字段。
 
 - `builder-handoff`：提交本轮实现摘要、处理的验收 ID、Builder 实际做过的开发检查、已知限制，以及新的只读代码复核所产生的 `review.status=passed`、`review.summary` 和 `review.reviewer_execution_ref`。验收结论留给 Verifier。
-- `dispatch-verifier`：列出当前候选需要由 Runtime 执行的检查。确认没有适用的命令检查时提交空列表。
+- `dispatch-verifier`：列出当前候选需要由 Runtime 执行的检查。普通 change 确认没有适用的命令检查时可提交空列表；Supervisor 父级必须填写至少一项集成检查，`cwdRef` 相对于集成工作区。
 - `verifier-response`：Verifier 请求补充检查，或提交恰好覆盖当前 `scopeIds` 的结果。修复范围通过后 Runtime 会再要求一次覆盖全部验收场景的最终验证。
 - Supervisor 任务回报使用 `supervisor-builder-result`、`supervisor-builder-failure`、`supervisor-verifier-result`、`supervisor-reconnect`、`supervisor-cancel` 和 `supervisor-integrate`；Builder、Verifier、重连和取消等操作必须带 Runtime 当前任务包的 `runId`，过期、角色错误或重复的回报会被拒绝；`supervisor-integrate` 使用已通过验证的子任务和检查结果，不携带 `runId`。需要按顺序执行时，可用 `comet native next <change> --max-parallel 1`，默认上限为 2。
 - `verifier-execution-error` / `verifier-unavailable`：报告 Verifier 任务执行出错或无法启动。模板中的任务关联字段必须原样保留，避免旧任务的迟到消息影响新的 Verifier。

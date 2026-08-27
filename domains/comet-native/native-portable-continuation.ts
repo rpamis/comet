@@ -570,8 +570,29 @@ export function nativePortableContinuation(
   }
   if (state.phase === 'verify') {
     const awaiting = state.loop.next_action === 'await-verifier-result';
+    const supervisor = Boolean(state.children_contract_hash);
+    const checkTemplate = {
+      id: '<check-id>',
+      name: '<check-name>',
+      executable: '<executable>',
+      argv: [],
+      cwdRef: '.',
+      timeoutMs: 120000,
+      repeatable: true,
+    };
     return {
       ...base,
+      userCommunication:
+        !awaiting && supervisor
+          ? {
+              ...base.userCommunication,
+              agentInstruction: `${base.userCommunication.agentInstruction} ${localized(
+                state,
+                'Resolve at least one integration check for the Supervisor parent; cwdRef is relative to the integration worktree.',
+                '为 Supervisor 父级解析至少一项集成检查；cwdRef 相对于集成工作区。',
+              )}`,
+            }
+          : base.userCommunication,
       disposition: 'continue',
       action: awaiting ? 'await-verifier' : 'dispatch-verifier',
       commandArgs: [
@@ -599,17 +620,7 @@ export function nativePortableContinuation(
                     kind: 'request-checks',
                     iteration: state.loop.iteration,
                     attempt: state.loop.attempt,
-                    checks: [
-                      {
-                        id: '<check-id>',
-                        name: '<check-name>',
-                        executable: '<executable>',
-                        argv: [],
-                        cwdRef: '.',
-                        timeoutMs: 120000,
-                        repeatable: true,
-                      },
-                    ],
+                    checks: [checkTemplate],
                   },
                 },
                 {
@@ -649,7 +660,7 @@ export function nativePortableContinuation(
                   verifierExecutionRef: '<from verifierDispatch>',
                 },
               ]
-            : { kind: 'dispatch-verifier', checks: [] },
+            : { kind: 'dispatch-verifier', checks: supervisor ? [checkTemplate] : [] },
         },
       ],
       runnerAction: runner(awaiting ? 'await-verifier' : 'dispatch-verifier'),

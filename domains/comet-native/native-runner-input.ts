@@ -12,6 +12,7 @@ import {
   dispatchNativePortableVerifier,
   executeNativePortableCheckPlan,
   nativeLocalExecutionFile,
+  nativePortableChangeDir,
   readNativePortableChange,
   recordNativePortableVerifierFailure,
   recordNativePortableVerifierUnavailable,
@@ -27,11 +28,13 @@ import {
   cancelNativeSupervisorTask,
   createNativeSupervisorTask,
   integrateNativeSupervisorChildWorkspace,
+  nativeSupervisorStateFile,
   recordNativeSupervisorFinalVerification,
   readNativeSupervisorState,
   reconnectNativeSupervisorTaskWithState,
   writeNativeSupervisorState,
   type NativeSupervisorIntegrationCheck,
+  type NativeSupervisorState,
   type NativeSupervisorVerificationEvidence,
 } from './native-supervisor.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
@@ -513,11 +516,14 @@ function assertSkillCoordinatedCandidate(state: NativePortableState): NativeBuil
   return state.builder_handoff;
 }
 
-function verifierDispatch(
-  state: NativePortableState,
-  checks: readonly NativePortableCheckSummary[],
-  verifierExecutionRef: string,
-) {
+function verifierDispatch(options: {
+  paths: NativeProjectPaths;
+  state: NativePortableState;
+  checks: readonly NativePortableCheckSummary[];
+  verifierExecutionRef: string;
+  supervisor: NativeSupervisorState | null;
+}) {
+  const { paths, state, checks, verifierExecutionRef, supervisor } = options;
   const handoff = assertSkillCoordinatedCandidate(state);
   if (!handoff.review) {
     throw new Error('Native Skill coordination requires a passed read-only review');
@@ -533,6 +539,10 @@ function verifierDispatch(
     iteration: state.loop.iteration,
     attempt: state.loop.attempt,
     verifierExecutionRef,
+    projectRoot: paths.projectRoot,
+    verificationRoot: supervisor?.integration.worktree ?? paths.projectRoot,
+    changeDir: nativePortableChangeDir(paths, state.name),
+    supervisorStateRef: supervisor ? nativeSupervisorStateFile(paths, state.name) : null,
     briefRef: state.brief,
     specRefs: state.spec_changes.map(({ capability, operation, source }) => ({
       capability,
@@ -541,7 +551,16 @@ function verifierDispatch(
     })),
     acceptanceCount: state.acceptance.length,
     scopeIds,
-    detailsPageArgs: ['comet', 'native', 'status', state.name, '--details', '--json'],
+    detailsPageArgs: [
+      'comet',
+      'native',
+      'status',
+      state.name,
+      '--details',
+      '--json',
+      '--project-root',
+      paths.projectRoot,
+    ],
     builderReview: {
       status: handoff.review.status,
       summary: handoff.review.summary,
@@ -916,7 +935,13 @@ export async function applyNativeRunnerInput(options: {
       state,
       checks: executedChecks,
       requestChecks: null,
-      verifierDispatch: verifierDispatch(state, executedChecks, verifierExecutionRef),
+      verifierDispatch: verifierDispatch({
+        paths: options.paths,
+        state,
+        checks: executedChecks,
+        verifierExecutionRef,
+        supervisor: supervisorParentVerification ? supervisor : null,
+      }),
       continuation: nativePortableContinuation(state),
     };
   }
@@ -980,7 +1005,7 @@ export async function applyNativeRunnerInput(options: {
       ? { projectRoot: supervisor.integration.worktree }
       : {}),
   });
-  if (supervisorParentVerification) {
+  if (supervisorParentVerification && applied.response.kind === 'final-result') {
     if (
       applied.state.verification_result === 'pass' &&
       (applied.checks.length === 0 || applied.checks.some(({ status }) => status !== 'passed'))
@@ -996,10 +1021,7 @@ export async function applyNativeRunnerInput(options: {
       'rev-parse',
       'HEAD',
     ]);
-    const responseResult =
-      applied.response.kind === 'final-result' ? applied.response.result : null;
-    const parentSummary =
-      responseResult?.summary ?? 'Native Supervisor parent verification completed';
+    const parentSummary = applied.response.result.summary;
     const childVerification = supervisorState.children.every(
       ({ status, verification }) =>
         (status === 'integrated' || status === 'archived') && verification !== null,
@@ -1031,6 +1053,7 @@ export async function applyNativeRunnerInput(options: {
     return {
       ...applied,
       supervisorState: nextSupervisor,
+      verifierDispatch: null,
       continuation: nativePortableContinuation(applied.state),
     };
   }
@@ -1039,11 +1062,16 @@ export async function applyNativeRunnerInput(options: {
     verifierDispatch:
       applied.requestChecks === null
         ? null
-        : verifierDispatch(
-            applied.state,
-            applied.checks,
-            await currentSkillVerifierExecutionRef({ paths: options.paths, state: applied.state }),
-          ),
+        : verifierDispatch({
+            paths: options.paths,
+            state: applied.state,
+            checks: applied.checks,
+            verifierExecutionRef: await currentSkillVerifierExecutionRef({
+              paths: options.paths,
+              state: applied.state,
+            }),
+            supervisor: supervisorParentVerification ? supervisor : null,
+          }),
     continuation: nativePortableContinuation(applied.state),
   };
 }

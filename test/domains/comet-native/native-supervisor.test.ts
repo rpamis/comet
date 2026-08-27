@@ -61,7 +61,7 @@ children:
 `);
 
 describe('Native Supervisor v2 state', () => {
-  it('automatically advances the parent after the final integrated Child', async () => {
+  it('advances a reviewed parent and keeps verification in its integration workspace', async () => {
     const repository = await fs.mkdtemp(path.join(process.cwd(), '.tmp-supervisor-auto-advance-'));
     try {
       const git = (args: string[]) =>
@@ -163,6 +163,126 @@ describe('Native Supervisor v2 state', () => {
       });
       expect(repeated.parentAdvance.advanced).toBe(false);
       expect(repeated.state.state_version).toBe(reviewed.state.state_version);
+
+      const integrationRoot = supervisor!.integration.worktree;
+      const check = {
+        id: 'integration-root',
+        name: 'Check the integrated candidate',
+        executable: process.execPath,
+        argv: [
+          '-e',
+          `require('node:assert/strict').equal(process.cwd(), ${JSON.stringify(integrationRoot)})`,
+        ],
+        cwdRef: '.',
+        timeoutMs: 120000,
+        repeatable: true,
+      };
+      await expect(
+        applyNativeRunnerInput({
+          paths,
+          name: 'parent',
+          maxVerifyFailures: 5,
+          input: { kind: 'dispatch-verifier', checks: [] },
+        }),
+      ).rejects.toThrow('requires at least one check');
+      const dispatched = await applyNativeRunnerInput({
+        paths,
+        name: 'parent',
+        maxVerifyFailures: 5,
+        input: { kind: 'dispatch-verifier', checks: [check] },
+      });
+      const location = {
+        projectRoot: paths.projectRoot,
+        verificationRoot: integrationRoot,
+        changeDir,
+        supervisorStateRef: nativeSupervisorStateFile(paths, 'parent'),
+        detailsPageArgs: [
+          'comet',
+          'native',
+          'status',
+          'parent',
+          '--details',
+          '--json',
+          '--project-root',
+          paths.projectRoot,
+        ],
+      };
+      expect(dispatched.verifierDispatch).toMatchObject(location);
+      expect(dispatched.checks).toMatchObject([{ id: check.id, status: 'passed' }]);
+      expect(
+        await fs.readFile(path.join(changeDir, dispatched.verifierDispatch!.briefRef), 'utf8'),
+      ).toContain('integrated behavior');
+      expect(dispatched.verifierDispatch!.specRefs).toMatchObject([
+        { ref: 'specs/supervisor/spec.md' },
+      ]);
+
+      const requested = await applyNativeRunnerInput({
+        paths,
+        name: 'parent',
+        maxVerifyFailures: 5,
+        input: {
+          kind: 'verifier-response',
+          response: {
+            kind: 'request-checks',
+            iteration: dispatched.state.loop.iteration,
+            attempt: dispatched.state.loop.attempt,
+            checks: [
+              {
+                ...check,
+                id: 'integration-readme',
+                argv: [
+                  '-e',
+                  `${check.argv[1]}; require('node:assert/strict').equal(require('node:fs').readFileSync('README.md', 'utf8').trim(), 'seed')`,
+                ],
+              },
+            ],
+          },
+        },
+      });
+      expect(requested.checks).toMatchObject([
+        { id: 'integration-root', status: 'passed' },
+        { id: 'integration-readme', status: 'passed' },
+      ]);
+      expect(requested.verifierDispatch).toMatchObject({
+        ...location,
+        verifierExecutionRef: dispatched.verifierDispatch!.verifierExecutionRef,
+      });
+      expect((await readNativeSupervisorState(paths, 'parent'))!.finalVerification.status).toBe(
+        'pending',
+      );
+      expect(requested.continuation.action).toBe('await-verifier');
+
+      const verifiedParent = await applyNativeRunnerInput({
+        paths,
+        name: 'parent',
+        maxVerifyFailures: 5,
+        input: {
+          kind: 'verifier-response',
+          response: {
+            kind: 'final-result',
+            result: {
+              iteration: requested.state.loop.iteration,
+              attempt: requested.state.loop.attempt,
+              verdict: 'pass',
+              acceptance: requested.state.acceptance.map(({ id }) => ({
+                id,
+                result: 'passed',
+                reason: 'The integrated behavior was verified.',
+              })),
+              risks: [],
+              summary: 'Parent integration verification passed.',
+            },
+          },
+        },
+      });
+      expect(verifiedParent.state).toMatchObject({
+        status: 'await-user',
+        verification_result: 'pass',
+      });
+      expect((await readNativeSupervisorState(paths, 'parent'))!.finalVerification).toMatchObject({
+        status: 'passed',
+        layers: { childVerification: 'complete', parentIntegration: 'complete' },
+      });
     } finally {
       try {
         execFileSync(

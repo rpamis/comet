@@ -121,9 +121,9 @@ interface ArchivedChildEvidence extends ArchivedChildState {
   committedState: NativePortableState | null;
 }
 
-function record(value: unknown, label: string): Record<string, unknown> {
+function record(value: unknown, label: string, hint = ''): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error(`${label} must be an object`);
+    throw new Error(`${label} must be an object${hint}`);
   }
   return value as Record<string, unknown>;
 }
@@ -136,7 +136,12 @@ function exactKeys(
   const unknown = Object.keys(value).filter((key) => !known.has(key));
   const missing = [...known].filter((key) => !(key in value));
   if (unknown.length > 0 || missing.length > 0) {
-    throw new Error(`${label} fields are invalid`);
+    const details = [
+      ...(missing.length > 0 ? [`missing ${missing.join(', ')}`] : []),
+      ...(unknown.length > 0 ? [`unexpected ${unknown.join(', ')}`] : []),
+      `expected ${[...known].join(', ')}`,
+    ];
+    throw new Error(`${label} fields are invalid: ${details.join('; ')}`);
   }
 }
 
@@ -220,7 +225,11 @@ export function nativeChildrenAcceptanceValidation(
 }
 
 function parseAcceptanceIndex(value: unknown): Record<string, NativeChildAcceptanceIndexEntry> {
-  const index = record(value, 'Native children acceptance_index');
+  const index = record(
+    value,
+    'Native children acceptance_index',
+    ' keyed by acceptance ID, for example A1: { source: brief.md, text: "Full acceptance text" }',
+  );
   const result: Record<string, NativeChildAcceptanceIndexEntry> = {};
   for (const [id, entry] of Object.entries(index)) {
     const item = record(entry, `Native children acceptance_index.${id}`);
@@ -256,8 +265,11 @@ function validateAcceptanceIndex(
     if (!expected) continue;
     const actualEntry = index[id];
     if (actualEntry.source !== expected.source || actualEntry.text !== expected.text) {
+      const mismatched = (['source', 'text'] as const).filter(
+        (key) => actualEntry[key] !== expected[key],
+      );
       throw new Error(
-        `Native children acceptance_index.${id} does not match the acceptance catalog`,
+        `Native children acceptance_index.${id} does not match the acceptance catalog: copy ${mismatched.join(', ')} exactly from the current acceptance catalog`,
       );
     }
   }

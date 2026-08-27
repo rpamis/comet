@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 
 import {
   defaultProjectConfig,
@@ -136,6 +137,8 @@ describe('Native portable status', () => {
       '--cursor',
       first.details?.nextCursor,
       '--json',
+      '--project-root',
+      root,
     ]);
 
     const second = await inspectNativePortableStatus({
@@ -145,6 +148,12 @@ describe('Native portable status', () => {
       cursor: first.details?.nextCursor ?? undefined,
     });
     expect(second.details?.items[0]).toMatchObject({
+      kind: 'acceptance',
+      value: { id: 'A33' },
+    });
+    const nextPage = await runNativeCli(first.details!.nextPageArgs!.slice(2));
+    expect(nextPage.exitCode).toBe(0);
+    expect(JSON.parse(nextPage.stdout!).data.details.items[0]).toMatchObject({
       kind: 'acceptance',
       value: { id: 'A33' },
     });

@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
 import { parseDocument } from 'yaml';
+import { parseNativeChildrenContract } from '../../../domains/comet-native/native-children.js';
 
 const roots = {
   en: path.resolve('assets', 'skills', 'comet-native'),
@@ -59,7 +60,7 @@ describe('Comet Native Skills', () => {
       expect(contents[0].split(/\r?\n/u).length).toBeLessThanOrEqual(130);
       expect(
         contents.reduce((total, source) => total + source.split(/\r?\n/u).length, 0),
-      ).toBeLessThanOrEqual(400);
+      ).toBeLessThanOrEqual(425); // Includes the copyable Supervisor child-plan example.
       expect(headings(contents[0])).toHaveLength(10);
     }
 
@@ -404,6 +405,37 @@ describe('Comet Native Skills', () => {
       expect(commands).not.toContain('comet native checkpoint <change-name>');
     }
   });
+
+  it.each(['en', 'zh'] as const)(
+    'provides an executable indexed Supervisor example and workspace guidance in %s',
+    async (language) => {
+      const artifacts = await read(language, 'reference/artifacts.md');
+      const example = /```yaml\n([\s\S]*?)\n```/u.exec(artifacts)?.[1];
+      expect(example).toBeTruthy();
+      const contract = parseNativeChildrenContract(example!, ['A1', 'A2']);
+      expect(contract.acceptance_index).toEqual({
+        A1: { source: 'brief.md', text: expect.any(String) },
+        A2: { source: 'brief.md', text: expect.any(String) },
+      });
+      expect(contract.children.map(({ name, covers }) => ({ name, covers }))).toEqual([
+        { name: 'alpha', covers: ['A1'] },
+        { name: 'beta', covers: ['A2'] },
+      ]);
+      const commands = await read(language, 'reference/commands.md');
+      for (const field of [
+        'projectRoot',
+        'verificationRoot',
+        'changeDir',
+        'supervisorStateRef',
+        '--project-root',
+      ]) {
+        expect(commands).toContain(`\`${field}\``);
+      }
+      expect(commands).toContain(
+        language === 'zh' ? '至少一项集成检查' : 'at least one integration check',
+      );
+    },
+  );
 
   it('keeps recovery focused on exceptional safety decisions and exact Runtime actions', async () => {
     const variants = [

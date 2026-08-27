@@ -1318,6 +1318,7 @@ interface NativeVerifierRequestedCheckReservation {
 
 async function reserveVerifierRequestedChecks(options: {
   paths: NativeProjectPaths;
+  projectRoot: string;
   state: NativePortableState;
   local: NativeLocalExecutionState;
   envelope: NativeTrustedVerifierEnvelope<unknown>;
@@ -1353,7 +1354,7 @@ async function reserveVerifierRequestedChecks(options: {
   const existingByKeyAll = new Map<string, NativeLocalCheckState>();
   const existingKeyById = new Map<string, string>();
   for (const check of local.checks) {
-    const key = localCheckPlanKey(check, options.paths.projectRoot);
+    const key = localCheckPlanKey(check, options.projectRoot);
     existingByKeyAll.set(key, check);
     if (check.status !== 'interrupted') existingByKey.set(key, check);
     existingKeyById.set(check.id, key);
@@ -1363,7 +1364,7 @@ async function reserveVerifierRequestedChecks(options: {
   const requestedKeyById = new Map<string, string>();
   for (const request of options.response.checks) {
     const plan = requestCheckPlan(request);
-    validateNativeCheckPlan(options.paths.projectRoot, plan);
+    validateNativeCheckPlan(options.projectRoot, plan);
     const key = nativeCheckPlanKey(plan);
     const previousRequestKey = requestedKeyById.get(plan.id);
     if (previousRequestKey !== undefined && previousRequestKey !== key) {
@@ -1402,22 +1403,15 @@ async function reserveVerifierRequestedChecks(options: {
     },
     checks: [
       ...local.checks.map((check) => {
-        const key = localCheckPlanKey(check, options.paths.projectRoot);
+        const key = localCheckPlanKey(check, options.projectRoot);
         const plan = requestedByKey.get(key);
         return plan && check.status === 'interrupted'
-          ? resetInterruptedCheck(
-              check,
-              plan,
-              local.execution!.operationId,
-              options.paths.projectRoot,
-            )
+          ? resetInterruptedCheck(check, plan, local.execution!.operationId, options.projectRoot)
           : check;
       }),
       ...novel
         .filter(([key]) => !existingByKeyAll.has(key))
-        .map(([, plan]) =>
-          localCheck(plan, local.execution!.operationId, options.paths.projectRoot),
-        ),
+        .map(([, plan]) => localCheck(plan, local.execution!.operationId, options.projectRoot)),
     ],
   };
   await writeNativeLocalExecution(file, operation, { containedRoot: options.paths.runtimeDir });
@@ -1477,6 +1471,7 @@ async function updateReservedVerifierRequestedChecks(options: {
 
 async function executeReservedVerifierRequestedChecks(options: {
   paths: NativeProjectPaths;
+  projectRoot: string;
   reservation: NativeVerifierRequestedCheckReservation;
 }): Promise<{
   checks: NativePortableCheckSummary[];
@@ -1504,7 +1499,7 @@ async function executeReservedVerifierRequestedChecks(options: {
         }),
       });
       const result = await executeNativeCheck({
-        projectRoot: options.paths.projectRoot,
+        projectRoot: options.projectRoot,
         runtimeDir: nativePreferredChangeRuntimeDir(options.paths, options.reservation.state.name),
         operationId: options.reservation.local.execution!.operationId,
         plan,
@@ -1566,7 +1561,7 @@ async function executeReservedVerifierRequestedChecks(options: {
   return {
     checks: authoritativePortableChecks({
       local: operation,
-      projectRoot: options.paths.projectRoot,
+      projectRoot: options.projectRoot,
       supplied: options.reservation.suppliedChecks,
       requestedNames: options.reservation.requestedNames,
     }),
@@ -1710,6 +1705,7 @@ export async function submitNativePortableVerifierResult(options: {
           }
           const reservation = await reserveVerifierRequestedChecks({
             paths: options.paths,
+            projectRoot,
             state,
             local,
             envelope: trustedEnvelope,
@@ -1794,6 +1790,7 @@ export async function submitNativePortableVerifierResult(options: {
   try {
     const requested = await executeReservedVerifierRequestedChecks({
       paths: options.paths,
+      projectRoot: options.projectRoot ?? options.paths.projectRoot,
       reservation: prepared.reservation,
     });
     return {

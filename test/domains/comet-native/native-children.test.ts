@@ -380,7 +380,7 @@ children:
       'summary: Owns the first behavior.\n    depends_on: []',
     );
     expect(() => parseNativeChildrenContract(indexedWithSummary, ['A1', 'A2'])).toThrow(
-      /indexed v2 child .*fields are invalid/iu,
+      /indexed v2 child .*fields are invalid: missing covers; unexpected summary; expected name, depends_on, covers/iu,
     );
 
     const summaryWithCovers = `
@@ -392,7 +392,29 @@ children:
     covers: [A1]
     `;
     expect(() => parseNativeChildrenContract(summaryWithCovers)).toThrow(
-      /summary v2 child .*fields are invalid/iu,
+      /summary v2 child .*fields are invalid: unexpected covers; expected name, summary, depends_on/iu,
+    );
+  });
+
+  it('explains the acceptance index mapping and entry fields', () => {
+    expect(() =>
+      parseNativeChildrenContract(
+        READABLE_CHILDREN.replace(
+          /acceptance_index:[\s\S]*?children:/u,
+          'acceptance_index: []\nchildren:',
+        ),
+        ['A1', 'A2'],
+      ),
+    ).toThrow(
+      'acceptance_index must be an object keyed by acceptance ID, for example A1: { source: brief.md, text: "Full acceptance text" }',
+    );
+    expect(() =>
+      parseNativeChildrenContract(READABLE_CHILDREN.replace('source: brief.md', 'file: brief.md'), [
+        'A1',
+        'A2',
+      ]),
+    ).toThrow(
+      'acceptance_index.A1 fields are invalid: missing source; unexpected file; expected source, text',
     );
   });
 
@@ -422,7 +444,9 @@ children:
         acceptance.map(({ id }) => id),
         { acceptanceCatalog: acceptance, requiredAcceptanceIds: ['A1', 'A2'] },
       ),
-    ).toThrow(/does not match the acceptance catalog/iu);
+    ).toThrow(
+      /acceptance_index.A2 does not match the acceptance catalog: copy text exactly from the current acceptance catalog/iu,
+    );
     expect(() =>
       parseNativeChildrenContract(
         READABLE_CHILDREN.replace('covers: [A1]', 'covers: [A1, A3]'),

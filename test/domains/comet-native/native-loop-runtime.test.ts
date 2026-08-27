@@ -291,6 +291,40 @@ describe('Native portable Build/Verify loop', () => {
     });
   });
 
+  it.each(['en', 'zh-CN'] as const)(
+    'provides a non-empty Supervisor integration check template in %s',
+    (language) => {
+      const { state } = buildState();
+      state.language = language;
+      state.loop.stage = 'verify-ready';
+      state.loop.next_action = 'run-required-checks-and-dispatch-verifier';
+      expect(nativePortableContinuation(state).inputOptions[0].template).toEqual({
+        kind: 'dispatch-verifier',
+        checks: [],
+      });
+
+      state.children_contract_hash = 'parent-contract';
+      const continuation = nativePortableContinuation(state);
+      expect(continuation.inputOptions[0].template).toEqual({
+        kind: 'dispatch-verifier',
+        checks: [
+          {
+            id: '<check-id>',
+            name: '<check-name>',
+            executable: '<executable>',
+            argv: [],
+            cwdRef: '.',
+            timeoutMs: 120000,
+            repeatable: true,
+          },
+        ],
+      });
+      expect(continuation.userCommunication.agentInstruction).toContain(
+        language === 'en' ? 'at least one integration check' : '至少一项集成检查',
+      );
+    },
+  );
+
   it('offers requirement revision only before Archive finalizes the change', () => {
     const { state, runner } = buildState();
     const archiveReady = confirmNativeSkillCoordinatedPass(

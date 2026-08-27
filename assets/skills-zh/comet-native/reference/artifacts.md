@@ -50,6 +50,27 @@ Open questions 中只有真实未解决的用户问题使用：
 
 验收标准必须具体、可观察且互不重复。使用简单顺序 ID，例如 `A1`、`A2`、`A3`；ID 只用于结果映射，不从内容计算，也不代表文件身份。Runtime 在 Shape 确认时保存完整验收文字及其来源。直接来源覆盖映射为每个单元记录来源定位、`complete`/`partial`/`unavailable` 读取状态、保留语义、对应的 Spec 位置、对应的验收 ID、`covered`/`needs-clarification`/`background`/`non-goal`/`superseded` 覆盖状态以及理由或替代关系；当前有效可执行单元必须同时具有 Spec 位置和验收 ID，背景、非目标和已废止来源单元不要求 Spec 位置或验收 ID；验收条件至少覆盖原始来源的全部当前有效可执行语义，`partial`、`unavailable`、未覆盖内容或缺少双重映射的可执行单元保持阻塞。
 新版 `children.yaml` 使用 `comet.native.children.v2`：`acceptance_index` 保存 brief 派生的父级验收 ID、来源和完整文字；每个子任务只包含 `name`、`depends_on` 和 `covers`，并覆盖索引中的全部 ID。Spec 派生验收仍由 Runtime 的完整验收矩阵管理，只有修复阶段才把实际失败的 Spec ID 补入索引。名称必须唯一，依赖必须存在且无环；历史 `comet.native.children.v1` 继续按原契约接受，修改后 Supervisor Change 返回 Shape。
+
+`acceptance_index` 是按验收 ID 索引的对象，不是数组。以下示例中两个子任务可以并行；填写时从当前验收目录逐字复制对应 ID 的 `source` 和 `text`，不要改写成摘要：
+
+```yaml
+schema: comet.native.children.v2
+acceptance_index:
+  A1:
+    source: brief.md
+    text: 集成结果包含功能 A。
+  A2:
+    source: brief.md
+    text: 集成结果包含功能 B。
+children:
+  - name: alpha
+    depends_on: []
+    covers: [A1]
+  - name: beta
+    depends_on: []
+    covers: [A2]
+```
+
 ## 完整目标规格
 每个 `specs/<capability>/spec.md` 描述归档后 capability 的完整行为，而不是只写相对旧文本的变化：
 
