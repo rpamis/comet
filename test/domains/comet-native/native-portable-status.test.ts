@@ -238,7 +238,7 @@ describe('Native portable status', () => {
     expect(detailItems.filter(({ kind }) => kind === 'supervisor-history')).toHaveLength(
       state.history.length,
     );
-    expect(JSON.stringify(firstDetails)).not.toContain(root);
+    expect(JSON.stringify(detailItems)).not.toContain(root);
     expect(JSON.stringify(firstDetails)).not.toContain('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
     expect(JSON.stringify(firstDetails)).not.toContain('internal-run-id');
     expect(JSON.stringify(firstDetails)).not.toContain('run-0');
