@@ -662,7 +662,7 @@ async function resolveNpmCliPath(): Promise<string> {
 }
 
 function runCapturedProcess(
-  command: string,
+  executablePath: string,
   args: string[],
   cwd: string,
   limits?: CapturedProcessLimits,
@@ -674,7 +674,7 @@ function runCapturedProcess(
     let spawnError: Error | null = null;
     let limitReason: string | null = null;
     let forceKillTimer: ReturnType<typeof setTimeout> | null = null;
-    const child = spawn(command, args, {
+    const child = spawn(executablePath, args, {
       cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: false,
@@ -727,7 +727,7 @@ function runCapturedProcess(
           ? undefined
           : (limitReason ??
             (spawnError
-              ? `failed to launch ${command}: ${spawnError.message}`
+              ? `failed to launch ${executablePath}: ${spawnError.message}`
               : captured || `${command} exited with code ${exitCode ?? 'unknown'}`)),
       });
     });
