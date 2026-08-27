@@ -63,7 +63,7 @@ When status contains `children`, the current change is a Supervisor Change: do n
 When requirements change, classify them first:
 
 - The current requirement was implemented incompletely: use `--revise-implementation` from Verify to keep confirmed requirements and return to Build.
-- User-visible behavior or acceptance criteria changed: use `--revise-requirements` from Verify, update the formal artifacts, and reconfirm Shape.
+- User-visible behavior or acceptance criteria changed: use `--revise-requirements` from Verify or Archive-ready, update the formal artifacts, and reconfirm Shape.
 - The request is unrelated to the current requirement: keep it for another change.
 
 Apply the same rule when the user explicitly adds to the current scope.

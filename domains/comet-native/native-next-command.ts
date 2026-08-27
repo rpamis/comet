@@ -250,14 +250,14 @@ export async function nativeNextCommand(
       expectedContinuation,
     });
   } else if (reviseRequirements) {
-    if (current.phase !== 'verify') {
-      throw new NativeUsageError('--revise-requirements is only valid from Verify');
+    if (!expectedContinuation && current.phase !== 'verify' && current.phase !== 'archive') {
+      throw new NativeUsageError('--revise-requirements is only valid from Verify or Archive');
     }
     state = await returnNativePortableChangeToShape({
       paths: configured.paths,
       name,
       reason: summary,
-      allowedPhases: ['verify'],
+      allowedPhases: ['verify', 'archive'],
       expectedContinuation,
     });
   } else if (retryVerifier) {

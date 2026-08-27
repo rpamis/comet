@@ -140,6 +140,35 @@ describe('Native portable Build/Verify loop', () => {
     });
   });
 
+  it('offers requirement revision only before Archive finalizes the change', () => {
+    const { state, runner } = buildState();
+    const archiveReady = confirmNativeSkillCoordinatedPass(
+      applyNativeVerifierEnvelope({
+        state,
+        envelope: envelope(runner, state, 'pass'),
+        checks,
+        maxVerifyFailures: 5,
+      }).state,
+    );
+
+    expect(nativePortableContinuation(archiveReady).commandAlternatives).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'revise-requirements',
+          expectedAction: 'revise-requirements',
+        }),
+      ]),
+    );
+
+    const archived = {
+      ...archiveReady,
+      archived: true,
+      status: 'done' as const,
+      loop: { ...archiveReady.loop, stage: 'done' as const },
+    };
+    expect(nativePortableContinuation(archived).commandAlternatives).toBeUndefined();
+  });
+
   it('allows an explicitly empty Runtime check plan when Verifier covers every acceptance ID', () => {
     const { state, runner } = buildState();
     const result = applyNativeVerifierEnvelope({

@@ -522,6 +522,31 @@ export function nativePortableContinuation(
       runnerAction: runner(awaiting ? 'await-verifier' : 'dispatch-verifier'),
     };
   }
+  if (
+    state.phase === 'archive' &&
+    state.status === 'active' &&
+    state.loop.stage === 'archive-ready' &&
+    !state.archived
+  ) {
+    return {
+      ...base,
+      disposition: 'continue',
+      action: 'archive',
+      commandArgs: ['comet', 'native', 'archive', state.name, '--confirmed'],
+      requiredInputs: [],
+      commandAlternatives: [
+        nativeNextDecisionAlternative({
+          name: 'revise-requirements',
+          change: state.name,
+          stateVersion: state.state_version,
+          expectedAction: 'revise-requirements',
+          flag: '--revise-requirements',
+          confirmationInput: 'user-decision',
+        }),
+      ],
+      runnerAction: runner('none'),
+    };
+  }
   return {
     ...base,
     disposition: 'continue',

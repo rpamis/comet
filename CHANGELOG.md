@@ -12,6 +12,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Fixed
 
 - **Native Portable child discovery**: valid Portable v4 change documents larger than 256 KiB are no longer rejected by an arbitrary reader limit during linked-worktree child discovery.
+- **Native Archive-ready requirement revisions**: user-visible requirement changes can now return a Native change from Archive-ready to Shape, invalidating stale verification and Archive authorization while preserving the change workspace.
 
 ## What's Changed [0.4.0-beta.19] - 2026-08-21
 

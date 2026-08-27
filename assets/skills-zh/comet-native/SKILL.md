@@ -63,7 +63,7 @@ Build 和 Verify 组成一个有界验收循环（Loop）：Builder 提交候选
 需求变化时先判断归属：
 
 - 当前需求只是实现有遗漏：从 Verify 使用 `--revise-implementation` 保留已确认需求并回到 Build；
-- 用户可见行为或验收标准发生变化：从 Verify 使用 `--revise-requirements`，更新正式产物并重新确认 Shape；
+- 用户可见行为或验收标准发生变化：从 Verify 或 Archive-ready 使用 `--revise-requirements`，更新正式产物并重新确认 Shape；
 - 与当前需求无关：保留给另一个 change。
 
 用户明确补充当前范围时，按同一规则处理。
