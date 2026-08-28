@@ -76,7 +76,10 @@ def _record_skill_invocation(events: dict[str, Any], skill: str, *, explicit: bo
 def _record_skill_path(events: dict[str, Any], value: object) -> None:
     if not isinstance(value, str):
         return
-    match = re.search(r"\.(?:claude|agents|qoder|codebuddy)/skills/([^/\\]+)", value)
+    match = re.search(
+        r'''\.(?:claude|agents|qoder|codebuddy)/skills/([^/\\\s;|&><"'`{}]+)''',
+        value,
+    )
     if match:
         _record_skill_invocation(events, match.group(1))
 

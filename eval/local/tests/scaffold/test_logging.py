@@ -212,6 +212,52 @@ def test_extract_events_recognizes_codebuddy_runtime_skill_evidence():
     assert events["skills_invoked"] == ["demo"]
 
 
+def test_extract_events_trims_shell_suffix_from_runtime_skill_path():
+    stdout = json.dumps(
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "name": "Bash",
+                        "input": {
+                            "command": 'ls -la /workspace/.claude/skills/demo; echo "---"'
+                        },
+                    }
+                ]
+            },
+        }
+    )
+
+    events = extract_events(parse_output(stdout))
+
+    assert events["skills_invoked"] == ["demo"]
+
+
+def test_extract_events_trims_shell_parameter_expansion_from_runtime_skill_path():
+    stdout = json.dumps(
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "name": "Bash",
+                        "input": {
+                            "command": 'SKILL_DIR="${COMET_NATIVE_SKILL_DIR:-/workspace/.claude/skills/demo}"'
+                        },
+                    }
+                ]
+            },
+        }
+    )
+
+    events = extract_events(parse_output(stdout))
+
+    assert events["skills_invoked"] == ["demo"]
+
+
 def test_custom_agent_requires_explicit_skill_invocation_events():
     path_only = json.dumps(
         {
