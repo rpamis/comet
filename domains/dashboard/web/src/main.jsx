@@ -903,6 +903,9 @@ function DashboardApp({ theme, onToggleTheme }) {
           reconcilePluginInvocationResult(current, requestedPluginId, capability, result, input),
         );
       }
+      if (requestedPluginId === 'comet.project-knowledge' && capability === 'read-source') {
+        return result;
+      }
       const [nextPage] = await Promise.all([
         loadCachedPluginPage(requestedProjectId, pluginId, true),
         reloadPluginPages(),
@@ -5803,6 +5806,7 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
   const [sourceContent, setSourceContent] = useState(null);
   const [sourceReadPending, setSourceReadPending] = useState(false);
   const [sourceReadError, setSourceReadError] = useState(null);
+  const sourceContentCacheRef = useRef(new Map());
   const [queryText, setQueryText] = useState('');
   const [queryPending, setQueryPending] = useState(false);
   const [stateFilter, setStateFilter] = useState('proven');
@@ -5948,15 +5952,22 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
     setSourceReadPending(false);
   };
   const selectSource = async (entry) => {
+    const cachedContent = sourceContentCacheRef.current.get(entry.source);
     setSelectedSource(entry);
-    setSourceContent(null);
     setSourceReadError(null);
+    if (cachedContent) {
+      setSourceContent(cachedContent);
+      setSourceReadPending(false);
+      return;
+    }
+    setSourceContent(null);
     setSourceReadPending(true);
     try {
       const result = await onInvoke('read-source', { source: entry.source });
       if (result?.kind !== 'source') {
         setSourceReadError('来源文件无法读取');
       } else {
+        sourceContentCacheRef.current.set(entry.source, result);
         setSourceContent(result);
       }
     } catch (error) {

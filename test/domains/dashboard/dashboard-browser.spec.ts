@@ -5,6 +5,9 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   await page.setViewportSize({ width: 1600, height: 900 });
   let paused = false;
   let uninstalled = false;
+  let sourceReadCount = 0;
+  let projectKnowledgePageLoadCount = 0;
+  let projectKnowledgeListCount = 0;
   const queryTasks: string[] = [];
   const manualRecords: Array<Record<string, unknown>> = [];
   const baseRecord = {
@@ -244,6 +247,7 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
         input?: Record<string, unknown>;
       };
       if (body.capability === 'read-source') {
+        sourceReadCount += 1;
         const source = body.input?.source;
         expect(['docs/rule.md', 'docs/verification.json']).toContain(source);
         const isJson = source === 'docs/verification.json';
@@ -364,6 +368,7 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
       return;
     }
     if (url.pathname.endsWith('/plugins/comet.project-knowledge')) {
+      projectKnowledgePageLoadCount += 1;
       if (uninstalled) {
         await route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
         return;
@@ -372,6 +377,7 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
       return;
     }
     if (url.pathname.endsWith('/plugins')) {
+      projectKnowledgeListCount += 1;
       const current = projectKnowledgePage();
       await route.fulfill({
         json: {
@@ -600,9 +606,13 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   await page.getByLabel('搜索项目知识来源').fill('rule.md');
   await expect(page.getByLabel('项目知识数据来源列表')).toContainText('docs/rule.md');
   await expect(page.getByLabel('项目知识数据来源列表')).not.toContainText('docs/policy.md');
+  const pageLoadsBeforeSourceRead = projectKnowledgePageLoadCount;
+  const pluginListsBeforeSourceRead = projectKnowledgeListCount;
   await page.getByRole('button', { name: '查看来源：docs/rule.md' }).click();
   const sourcePreview = page.getByRole('dialog', { name: /项目知识来源详情/u });
   await expect(sourcePreview).toContainText('docs/rule.md');
+  expect(projectKnowledgePageLoadCount).toBe(pageLoadsBeforeSourceRead);
+  expect(projectKnowledgeListCount).toBe(pluginListsBeforeSourceRead);
   expect(await page.locator('.ant-message').allTextContents()).not.toContain('操作已完成');
   await expect(sourcePreview.locator('.dashboard-settings-modal-title-row')).not.toContainText(
     'docs/rule.md',
@@ -636,6 +646,14 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
     .locator('.dashboard-knowledge-preview-modal-root .ant-modal-wrap')
     .click({ position: { x: 5, y: 5 } });
   await expect(sourcePreview).toBeHidden();
+  await page.getByRole('button', { name: '查看来源：docs/rule.md' }).click();
+  await expect(page.getByRole('dialog', { name: /项目知识来源详情/u })).toContainText(
+    'Run focused tests first.',
+  );
+  expect(sourceReadCount).toBe(1);
+  await page
+    .locator('.dashboard-knowledge-preview-modal-root .ant-modal-wrap')
+    .click({ position: { x: 5, y: 5 } });
   await page.getByLabel('搜索项目知识来源').fill('verification.json');
   await page.getByRole('button', { name: '查看来源：docs/verification.json' }).click();
   const jsonPreview = page.getByRole('dialog', { name: /项目知识来源详情/u });
@@ -1503,6 +1521,14 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
   await page.goto('/?demo');
 
   await expect(page).toHaveTitle('Comet Dashboard');
+  const sidebarBrandTitle = page.locator('.dashboard-sidebar-brand-copy > strong');
+  await expect(sidebarBrandTitle).toHaveText('Comet Dashboard');
+  await expect(page.locator('.dashboard-sidebar')).toHaveCSS('width', '228px');
+  await expect
+    .poll(() =>
+      sidebarBrandTitle.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+    )
+    .toBe(true);
   await expect(page.getByText('Comet', { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Native 变更工作区' })).toBeHidden();
 

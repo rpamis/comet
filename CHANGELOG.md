@@ -39,7 +39,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Native requirement and Archive recovery**: User-visible requirement changes now return Archive-ready changes to Shape and invalidate stale verification; interrupted workspace/archive operations retain actionable recovery state and do not silently reuse an unverifiable pass.
 - **Windows and cross-platform execution**: Common command shims and concurrent snapshot/workspace operations now behave reliably on Windows, while packaged Dashboard/runtime assets remain stable across platform path and formatting differences.
 - **Classic workflow recovery**: Fixed missing project context in workspace preparation/resolution, Build plan offload fallback, phase-aware Skill/Rule contract drift, and verification repairs that previously left implementation work in the wrong phase.
-- **Dashboard project and UI state**: Fixed monorepo subdirectory discovery, stale worktree/index sources, project selector and header alignment, empty/loading transitions, source preview state, collapsed-sidebar overflow, modal controls, and misleading Personal Memory notices.
+- **Dashboard project and UI state**: Fixed monorepo subdirectory discovery, stale worktree/index sources, project selector and header alignment, empty/loading transitions, repeated Project Knowledge source reads, sidebar brand title clipping, source preview state, collapsed-sidebar overflow, modal controls, and misleading Personal Memory notices.
 - **Issue triage fallback**: Issues without a recognized form area now infer a unique repository area from their title and body; ambiguous reports remain marked for manual triage.
 
 ### Removed
