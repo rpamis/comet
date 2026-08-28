@@ -258,6 +258,29 @@ def test_extract_events_trims_shell_parameter_expansion_from_runtime_skill_path(
     assert events["skills_invoked"] == ["demo"]
 
 
+def test_extract_events_ignores_shell_glob_in_runtime_skill_path():
+    stdout = json.dumps(
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "name": "Bash",
+                        "input": {
+                            "command": "find . -not -path '*/.claude/skills/*'"
+                        },
+                    }
+                ]
+            },
+        }
+    )
+
+    events = extract_events(parse_output(stdout))
+
+    assert events["skills_invoked"] == []
+
+
 def test_custom_agent_requires_explicit_skill_invocation_events():
     path_only = json.dumps(
         {
