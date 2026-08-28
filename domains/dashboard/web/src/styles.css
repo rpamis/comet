@@ -468,6 +468,18 @@ body {
   line-height: 34px !important;
 }
 
+.comet-project-select .ant-select-selection-item {
+  min-width: 0;
+}
+
+.comet-project-selected-label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .comet-header-search {
   width: 100%;
   max-width: 420px;

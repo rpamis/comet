@@ -3526,3 +3526,70 @@ test('keeps the project selector inset when switching from a workflow to plugin 
     throw new Error('Expected project knowledge project selector bounds');
   expect(Math.abs(knowledgeLeft - workflowLeft)).toBeLessThanOrEqual(1);
 });
+
+test('keeps long project names discoverable without widening the selector', async ({ page }) => {
+  const longProjectName = 'comet-supervisor-config-and-runtime-monitoring';
+
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.route('**/api/dashboard/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/dashboard/projects') {
+      await route.fulfill({
+        json: {
+          currentProjectId: 'long-project',
+          projects: [
+            {
+              id: 'long-project',
+              name: longProjectName,
+              path: 'D:/Project/comet-supervisor-config-and-runtime-monitoring',
+              lastSeenAt: null,
+              availability: 'available',
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/overview')) {
+      await route.fulfill({
+        json: {
+          project: {
+            name: longProjectName,
+            path: 'D:/Project/comet-supervisor-config-and-runtime-monitoring',
+            generatedAt: '2026-08-28T00:00:00.000Z',
+          },
+          summary: {
+            activeChanges: 0,
+            archivedChanges: 0,
+            verifyFailed: 0,
+            tasksIncomplete: 0,
+            dirtyFiles: 0,
+          },
+          initialChanges: { status: 'active', items: [], total: 0, nextCursor: null },
+          git: { branch: 'main', dirty: false, dirtyFiles: 0, ahead: 0, behind: 0 },
+          native: null,
+        },
+      });
+      return;
+    }
+    await route.fulfill({ json: {} });
+  });
+
+  await page.goto('/');
+
+  const projectSelector = page.locator('.comet-project-select');
+  const selectedProject = projectSelector.locator('.comet-project-selected-label');
+  await expect(selectedProject).toBeVisible();
+  await expect(selectedProject).toHaveAttribute('title', longProjectName);
+  await expect(selectedProject).toHaveText(longProjectName);
+  await expect(selectedProject).toHaveCSS('text-overflow', 'ellipsis');
+  await expect(selectedProject).toHaveCSS('white-space', 'nowrap');
+  await expect(projectSelector).toHaveCSS('width', '180px');
+
+  await projectSelector.click();
+  const projectOption = page
+    .locator('.comet-project-select-dropdown .comet-project-option-name')
+    .first();
+  await expect(projectOption).toHaveAttribute('title', longProjectName);
+});

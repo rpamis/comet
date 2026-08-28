@@ -1560,7 +1560,15 @@ function Topbar({
         <Select
           className="comet-project-select"
           value={activeProjectId ?? undefined}
-          placeholder={project?.name ?? '选择项目'}
+          placeholder={
+            project?.name ? (
+              <span className="comet-project-selected-label" title={project.name}>
+                {project.name}
+              </span>
+            ) : (
+              '选择项目'
+            )
+          }
           showSearch
           optionFilterProp="searchText"
           optionLabelProp="selectedLabel"
@@ -1570,11 +1578,19 @@ function Topbar({
             value: entry.id,
             disabled: entry.availability !== 'available',
             searchText: `${entry.name} ${entry.path}`,
-            selectedLabel: entry.name,
+            selectedLabel: (
+              <span className="comet-project-selected-label" title={entry.name}>
+                {entry.name}
+              </span>
+            ),
             label: (
               <span className="comet-project-option">
-                <strong className="comet-project-option-name">{entry.name}</strong>
-                <small className="comet-project-option-path">{entry.path}</small>
+                <strong className="comet-project-option-name" title={entry.name}>
+                  {entry.name}
+                </strong>
+                <small className="comet-project-option-path" title={entry.path}>
+                  {entry.path}
+                </small>
               </span>
             ),
           }))}
