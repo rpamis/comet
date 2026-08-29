@@ -978,6 +978,35 @@ describe('skills', () => {
       await selectNativeChange(paths, change.name);
     };
 
+    it('installs the Claude Code Router as an exec-form Node Hook', async () => {
+      const claude = PLATFORMS.find((candidate) => candidate.id === 'claude')!;
+
+      await expect(
+        installCometHooksForPlatform(tmpDir, claude, 'project', 'native'),
+      ).resolves.toEqual({ status: 'installed' });
+
+      const settings = JSON.parse(
+        await fs.readFile(path.join(tmpDir, '.claude', 'settings.local.json'), 'utf8'),
+      ) as {
+        hooks: {
+          PreToolUse: Array<{
+            hooks: Array<{ type: string; command: string; args?: string[] }>;
+          }>;
+        };
+      };
+      expect(settings.hooks.PreToolUse[0].hooks[0]).toEqual({
+        type: 'command',
+        command: 'node',
+        args: [
+          path.join(tmpDir, '.claude', 'skills', 'comet', 'scripts', 'comet-hook-router.mjs'),
+          '--platform',
+          'claude',
+          '--project-root',
+          tmpDir,
+        ],
+      });
+    });
+
     it('installs only the unified Router Hook for a Native project', async () => {
       const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
 
@@ -1643,8 +1672,12 @@ describe('skills', () => {
       await installCometHooksForPlatform(tmpDir, platform);
       const firstInstall = JSON.parse(await fs.readFile(settingsPath, 'utf-8'));
       const cometGroup = firstInstall.hooks.PreToolUse.find(
-        (entry: { hooks?: Array<{ command?: string }> }) =>
-          entry?.hooks?.some((hook) => hook.command?.includes('comet-hook-router.mjs')),
+        (entry: { hooks?: Array<{ command?: string; args?: string[] }> }) =>
+          entry?.hooks?.some(
+            (hook) =>
+              hook.command === 'node' &&
+              hook.args?.some((arg) => arg.endsWith('comet-hook-router.mjs')),
+          ),
       );
 
       expect(firstInstall.model).toBe('sonnet');
@@ -1657,11 +1690,18 @@ describe('skills', () => {
       expect(firstInstall.hooks.PreToolUse[1]).toEqual(initialSettings.hooks.PreToolUse[1]);
       expect(cometGroup.matcher).toBe('Write|Edit');
       expect(cometGroup.hooks).toHaveLength(1);
-      const command = cometGroup.hooks[0].command as string;
-      expect(normalized(command)).toContain(`/.claude/skills/${currentCometScript}`);
-      expect(normalized(command)).toContain(`--project-root "${normalized(tmpDir)}"`);
-      expect(command).not.toContain('node .claude/');
-      expect(cometGroup.hooks).toEqual([{ type: 'command', command }]);
+      const hook = cometGroup.hooks[0] as { type: string; command: string; args: string[] };
+      expect(hook).toEqual({
+        type: 'command',
+        command: 'node',
+        args: [
+          path.join(tmpDir, '.claude', 'skills', 'comet', 'scripts', 'comet-hook-router.mjs'),
+          '--platform',
+          'claude',
+          '--project-root',
+          tmpDir,
+        ],
+      });
 
       await installCometHooksForPlatform(tmpDir, platform);
       const secondInstall = JSON.parse(await fs.readFile(settingsPath, 'utf-8'));

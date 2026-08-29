@@ -33,6 +33,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Windows Claude Code Hook launch**: Claude Code now runs the Comet Hook Router as a direct Node process instead of through a shell, preventing a transient command-window flash on Windows while preserving and migrating existing managed Hooks safely.
 - **Native Supervisor coordination choice**: Comet now requires an explicit multi-session or single-session choice before confirming a Supervisor Change with multiple independent children, so a generic confirmation cannot silently skip the collaboration decision.
 - **Memory and Project Knowledge consistency**: Fixed stale Remote configuration, stale or deleted source injection, local index recovery, WAL handling, provider result merging, correction preservation, permanent-forget tombstones, duplicate management reads, and background Reflection timing.
 - **Native Supervisor recovery**: Fixed ambiguous parent discovery, stale continuation decisions, task-binding protection, integration identity checks, persistent recovery state, portable workspace projection, and final verification evidence handling.

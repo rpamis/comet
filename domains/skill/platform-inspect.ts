@@ -12,6 +12,7 @@ import {
   buildHookCommand,
   computeRuleDestPath,
   isManagedHookCommand,
+  buildHookInvocation,
   OMP_HOOK_MARKER,
   OMP_HOOK_RELATIVE_PATH,
   readManifest,
@@ -103,7 +104,13 @@ async function readHookJson(filePath: string): Promise<JsonReadResult> {
 interface ExpectedHookDescriptor {
   scriptRelPath: string;
   command: string;
+  args?: string[];
   matcher: string;
+}
+
+interface CollectedHookCommand {
+  command: unknown;
+  args?: unknown;
 }
 
 function collectGroupedCommands(config: Record<string, unknown>, groupName: string): unknown[] {
@@ -116,12 +123,22 @@ function collectGroupedCommands(config: Record<string, unknown>, groupName: stri
     if (!group || typeof group !== 'object' || Array.isArray(group)) return [];
     const handlers = (group as Record<string, unknown>).hooks;
     if (!Array.isArray(handlers)) return [];
-    return handlers.map((handler) =>
-      handler && typeof handler === 'object' && !Array.isArray(handler)
-        ? (handler as Record<string, unknown>).command
-        : undefined,
-    );
+    return handlers.map((handler): CollectedHookCommand => {
+      if (!handler || typeof handler !== 'object' || Array.isArray(handler)) {
+        return { command: undefined };
+      }
+      const record = handler as Record<string, unknown>;
+      return { command: record.command, args: record.args };
+    });
   });
+}
+
+function equalStringArray(actual: unknown, expected: readonly string[]): boolean {
+  return (
+    Array.isArray(actual) &&
+    actual.length === expected.length &&
+    actual.every((value, index) => value === expected[index])
+  );
 }
 
 function countGroupedHookMatches(
@@ -133,7 +150,9 @@ function countGroupedHookMatches(
     handler: Record<string, unknown>,
     expected: ExpectedHookDescriptor,
   ) => boolean = (handler, descriptor) =>
-    handler.type === 'command' && handler.command === descriptor.command,
+    handler.type === 'command' &&
+    handler.command === descriptor.command &&
+    (descriptor.args === undefined || equalStringArray(handler.args, descriptor.args)),
 ): number {
   const hooks = config.hooks;
   if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) return 0;
@@ -238,8 +257,17 @@ function containsExtraManagedCommandCopies(
   expectedCopiesPerHook: number,
 ): boolean {
   return expectedHooks.some(
-    ({ command }) =>
-      commands.filter((candidate) => candidate === command).length > expectedCopiesPerHook,
+    (expected) =>
+      commands.filter((candidate) => {
+        const record =
+          candidate && typeof candidate === 'object' && !Array.isArray(candidate)
+            ? (candidate as CollectedHookCommand)
+            : { command: candidate };
+        return (
+          record.command === expected.command &&
+          (expected.args === undefined || equalStringArray(record.args, expected.args))
+        );
+      }).length > expectedCopiesPerHook,
   );
 }
 
@@ -252,12 +280,21 @@ function containsAllManagedHooks(
 }
 
 function containsLegacyManagedCommand(commands: unknown[]): boolean {
-  return commands.some(
-    (command) =>
-      typeof command === 'string' &&
-      isManagedHookCommand(command, [...LEGACY_HOOK_SCRIPT_PATHS]) &&
-      LEGACY_HOOK_SCRIPT_NAMES.some((scriptName) => command.includes(scriptName)),
-  );
+  return commands.some((candidate) => {
+    const record =
+      candidate && typeof candidate === 'object' && !Array.isArray(candidate)
+        ? (candidate as CollectedHookCommand)
+        : { command: candidate };
+    const commandText = [record.command, ...(Array.isArray(record.args) ? record.args : [])].filter(
+      (value): value is string => typeof value === 'string',
+    );
+    return (
+      isManagedHookCommand(record.command, [...LEGACY_HOOK_SCRIPT_PATHS], record.args) &&
+      LEGACY_HOOK_SCRIPT_NAMES.some((scriptName) =>
+        commandText.some((value) => value.includes(scriptName)),
+      )
+    );
+  });
 }
 
 async function inspectSingleHookJson(
@@ -277,9 +314,13 @@ async function inspectSingleHookJson(
       ...LEGACY_HOOK_SCRIPT_PATHS,
     ]),
   ];
-  const managedPresent = managedCommands.some((command) =>
-    isManagedHookCommand(command, managedScriptPaths),
-  );
+  const managedPresent = managedCommands.some((candidate) => {
+    const record =
+      candidate && typeof candidate === 'object' && !Array.isArray(candidate)
+        ? (candidate as CollectedHookCommand)
+        : { command: candidate };
+    return isManagedHookCommand(record.command, managedScriptPaths, record.args);
+  });
   const legacyPresent = containsLegacyManagedCommand(managedCommands);
   const duplicatePresent =
     containsDuplicateManagedHook(result.value, expectedHooks, countMatches) ||
@@ -386,14 +427,20 @@ export async function inspectCometHooksForPlatform(
 
   const skillsDir = getPlatformSkillsDir(platform, scope);
   const expectedHooks: ExpectedHookDescriptor[] = Object.entries(hooksConfig).map(
-    ([scriptRelPath, config]) => ({
-      scriptRelPath,
-      command: buildHookCommand(baseDir, skillsDir, scriptRelPath, {
-        platformId: platform.id,
-        scope,
-      }),
-      matcher: config.matcher,
-    }),
+    ([scriptRelPath, config]) => {
+      const context = { platformId: platform.id, scope };
+      const invocation =
+        platform.id === 'claude'
+          ? buildHookInvocation(baseDir, skillsDir, scriptRelPath, context)
+          : undefined;
+      return {
+        scriptRelPath,
+        command:
+          invocation?.command ?? buildHookCommand(baseDir, skillsDir, scriptRelPath, context),
+        ...(invocation ? { args: invocation.args } : {}),
+        matcher: config.matcher,
+      };
+    },
   );
 
   const platformBase = path.join(baseDir, getPlatformConfigDir(platform, scope));

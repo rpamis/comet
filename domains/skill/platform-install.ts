@@ -81,6 +81,11 @@ interface HookCommandContext {
   hookMatcher?: string;
 }
 
+export interface HookInvocation {
+  command: string;
+  args: string[];
+}
+
 export function renderOmpHookModule(): string {
   return [
     OMP_HOOK_MARKER,
@@ -1391,6 +1396,27 @@ function quoteCommandArg(value: string): string {
 }
 
 /** Build a hook command that is stable even when the hook runner executes from a subdirectory. */
+function buildHookInvocation(
+  baseDir: string,
+  skillsDir: string,
+  scriptRelPath: string,
+  context?: HookCommandContext,
+): HookInvocation {
+  const projectRoot = path.resolve(baseDir);
+  const scriptPath = path.join(projectRoot, skillsDir, 'skills', ...scriptRelPath.split('/'));
+  const args = [scriptPath];
+  if (scriptRelPath === HOOK_ROUTER_SCRIPT && context) {
+    args.push('--platform', context.platformId);
+    if (context.scope === 'project') {
+      args.push('--project-root', projectRoot);
+    }
+    return { command: 'node', args };
+  }
+  args.push('--project-root', projectRoot);
+  return { command: 'node', args };
+}
+
+/** Build a shell-form hook command for platforms whose Hook schema only accepts a string. */
 function buildHookCommand(
   baseDir: string,
   skillsDir: string,
@@ -1460,20 +1486,32 @@ function parseCommandTokens(command: string): string[] | undefined {
   return tokens;
 }
 
-function isManagedHookCommand(command: unknown, scriptRelPaths: string[]): boolean {
+function isManagedHookCommand(command: unknown, scriptRelPaths: string[], args?: unknown): boolean {
   if (typeof command !== 'string') return false;
+
+  const normalize = (value: string): string =>
+    value.replace(/\\/g, '/').replace(/\.(?:sh|mjs)$/u, '');
+  const matchesManagedScript = (scriptPath: string): boolean =>
+    scriptRelPaths.some((scriptRelPath) =>
+      normalize(scriptPath).endsWith(`/skills/${normalize(scriptRelPath.replace(/\\/g, '/'))}`),
+    );
+
+  if (Array.isArray(args)) {
+    const executable = command.replace(/\\/g, '/').split('/').pop()?.toLowerCase();
+    const scriptPath = args[0];
+    return (
+      (executable === 'node' || executable === 'node.exe') &&
+      typeof scriptPath === 'string' &&
+      matchesManagedScript(scriptPath)
+    );
+  }
 
   // Match both the current `node .../comet-hook-guard.mjs` form and the legacy
   // `bash .../comet-hook-guard.sh` form so uninstall also cleans up hooks
   // written by older Comet releases. Compare basenames without extension.
   const tokens = parseCommandTokens(command.trim());
   if (!tokens || tokens.length < 2 || !['node', 'bash', 'sh'].includes(tokens[0])) return false;
-  const commandPath = tokens[1].replace(/\\/g, '/');
-  const normalize = (value: string): string => value.replace(/\.(?:sh|mjs)$/u, '');
-
-  return scriptRelPaths.some((scriptRelPath) =>
-    normalize(commandPath).endsWith(`/skills/${normalize(scriptRelPath.replace(/\\/g, '/'))}`),
-  );
+  return matchesManagedScript(tokens[1].replace(/\\/g, '/'));
 }
 
 const COPILOT_COMMAND_FIELDS = ['command', 'bash', 'powershell'] as const;
@@ -1528,9 +1566,8 @@ function mergeHookGroups<T extends { command: string }>(
     if (!Array.isArray(record.hooks)) return [record];
 
     const hooks = record.hooks.filter((hook) => {
-      const command =
-        hook && typeof hook === 'object' ? (hook as Record<string, unknown>).command : undefined;
-      return !isManagedHookCommand(command, scriptRelPaths);
+      const hookRecord = hook && typeof hook === 'object' ? (hook as Record<string, unknown>) : {};
+      return !isManagedHookCommand(hookRecord.command, scriptRelPaths, hookRecord.args);
     });
     const removedManagedHook = hooks.length !== record.hooks.length;
     const isPlainManagedGroup = Object.keys(record).every(
@@ -1589,11 +1626,13 @@ async function removeManagedHooksFromJsonFile(
     const record = group as Record<string, unknown>;
     if (!Array.isArray(record.hooks)) return record;
     const handlers = record.hooks.filter((handler) => {
-      const command =
-        handler && typeof handler === 'object'
-          ? (handler as Record<string, unknown>).command
-          : undefined;
-      const managed = isManagedHookCommand(command, scriptRelPaths);
+      const handlerRecord =
+        handler && typeof handler === 'object' ? (handler as Record<string, unknown>) : {};
+      const managed = isManagedHookCommand(
+        handlerRecord.command,
+        scriptRelPaths,
+        handlerRecord.args,
+      );
       if (managed) removed++;
       return !managed;
     });
@@ -1644,21 +1683,33 @@ async function installClaudeCodeHooks(
 ): Promise<HookInstallResult> {
   const settingsPath = path.join(platformBase, configFile);
 
-  // Claude Code format: { matcher, hooks: [{ type: "command", command }] }
+  // Claude Code accepts exec-form Hooks with { command, args }, which avoids
+  // starting Git Bash/PowerShell on Windows. Keep the string-only shape for
+  // the other Claude-compatible platforms until their contracts support args.
   interface ClaudeCodeHookEntry {
     matcher: string;
-    hooks: Array<{ type: string; command: string }>;
+    hooks: Array<{ type: string; command: string; args?: string[] }>;
   }
 
   // Group by matcher so hooks sharing the same matcher are merged
-  const matcherGroups: Record<string, Array<{ type: string; command: string }>> = {};
+  const matcherGroups: Record<
+    string,
+    Array<{ type: string; command: string; args?: string[] }>
+  > = {};
   for (const [scriptRelPath, config] of Object.entries(hooksConfig)) {
-    const command = buildHookCommand(baseDir, skillsDir, scriptRelPath, context);
     const matcher = resolveInstalledHookMatcher(context, config.matcher);
     if (!matcherGroups[matcher]) {
       matcherGroups[matcher] = [];
     }
-    matcherGroups[matcher].push({ type: 'command', command });
+    const invocation = buildHookInvocation(baseDir, skillsDir, scriptRelPath, context);
+    matcherGroups[matcher].push(
+      context.platformId === 'claude'
+        ? { type: 'command', command: invocation.command, args: invocation.args }
+        : {
+            type: 'command',
+            command: buildHookCommand(baseDir, skillsDir, scriptRelPath, context),
+          },
+    );
   }
 
   const newEntries: ClaudeCodeHookEntry[] = Object.entries(matcherGroups).map(
@@ -2316,6 +2367,7 @@ export {
   resolveInstalledHookMatcher,
   removeManagedCopilotHookEntries,
   buildHookCommand,
+  buildHookInvocation,
   removeManagedHooksFromJsonFile,
   planSkillDirectoryCopy,
   mergeProjectConfig,

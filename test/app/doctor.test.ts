@@ -1502,14 +1502,23 @@ describe('doctor command', () => {
     const hookPath = path.join(tmpDir, '.claude', 'settings.local.json');
     const settings = JSON.parse(await fs.readFile(hookPath, 'utf8'));
     const router = settings.hooks.PreToolUse[0].hooks[0];
-    settings.hooks.PreToolUse[0].hooks.push(
-      { ...router },
-      {
-        type: 'command',
-        command: router.command.replace('comet-hook-router.mjs', 'comet-hook-guard.mjs'),
-      },
-      { type: 'command', command: 'node user-hook.mjs' },
-    );
+    const legacyGuard = Array.isArray(router.args)
+      ? {
+          type: 'command',
+          command: router.command,
+          args: [
+            router.args[0].replace('comet-hook-router.mjs', 'comet-hook-guard.mjs'),
+            ...router.args.slice(1),
+          ],
+        }
+      : {
+          type: 'command',
+          command: router.command.replace('comet-hook-router.mjs', 'comet-hook-guard.mjs'),
+        };
+    settings.hooks.PreToolUse[0].hooks.push({ ...router }, legacyGuard, {
+      type: 'command',
+      command: 'node user-hook.mjs',
+    });
     await fs.writeFile(hookPath, JSON.stringify(settings), 'utf8');
     const legacyRule = path.join(tmpDir, '.claude', 'rules', 'comet-phase-guard.md');
     await fs.writeFile(legacyRule, '# Legacy\n', 'utf8');
@@ -1522,17 +1531,18 @@ describe('doctor command', () => {
     }
 
     const repaired = JSON.parse(await fs.readFile(hookPath, 'utf8'));
-    const commands = repaired.hooks.PreToolUse.flatMap(
-      (group: { hooks: Array<{ command?: string }> }) =>
-        group.hooks.map((hook: { command?: string }) => hook.command),
+    const hooks = repaired.hooks.PreToolUse.flatMap(
+      (group: { hooks: Array<{ command?: string; args?: unknown }> }) => group.hooks,
     );
-    expect(
-      commands.filter((command: string) => command?.includes('comet-hook-router.mjs')),
-    ).toHaveLength(1);
-    expect(commands.some((command: string) => command?.includes('comet-hook-guard.mjs'))).toBe(
-      false,
-    );
-    expect(commands).toContain('node user-hook.mjs');
+    const includesScript = (hook: { command?: string; args?: unknown }, scriptName: string) =>
+      hook.command?.includes(scriptName) ||
+      (Array.isArray(hook.args) &&
+        hook.args.some(
+          (arg): arg is string => typeof arg === 'string' && arg.includes(scriptName),
+        ));
+    expect(hooks.filter((hook) => includesScript(hook, 'comet-hook-router.mjs'))).toHaveLength(1);
+    expect(hooks.some((hook) => includesScript(hook, 'comet-hook-guard.mjs'))).toBe(false);
+    expect(hooks).toContainEqual({ type: 'command', command: 'node user-hook.mjs' });
     await expect(fs.access(legacyRule)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 

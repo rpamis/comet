@@ -24,6 +24,30 @@ describe('removeCometHooksForPlatform', () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
+  it('removes an exec-form Claude Code Router while preserving user hooks', async () => {
+    const claude = PLATFORMS.find((platform) => platform.id === 'claude')!;
+    const settingsPath = path.join(tmpDir, '.claude', 'settings.local.json');
+
+    await installCometHooksForPlatform(tmpDir, claude, 'project');
+    const settings = JSON.parse(await fs.readFile(settingsPath, 'utf8'));
+    settings.hooks.PreToolUse[0].hooks.unshift({
+      type: 'command',
+      command: 'node',
+      args: ['D:/user-hooks/check.mjs'],
+    });
+    await fs.writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, 'utf8');
+
+    await expect(removeCometHooksForPlatform(tmpDir, claude, 'project')).resolves.toEqual({
+      removed: 1,
+      failed: 0,
+    });
+
+    const updated = JSON.parse(await fs.readFile(settingsPath, 'utf8'));
+    expect(updated.hooks.PreToolUse[0].hooks).toEqual([
+      { type: 'command', command: 'node', args: ['D:/user-hooks/check.mjs'] },
+    ]);
+  });
+
   it('counts malformed historical Codex hooks after canonical cleanup succeeds', async () => {
     const codex = PLATFORMS.find((platform) => platform.id === 'codex')!;
     const canonicalPath = path.join(tmpDir, '.codex', 'hooks.json');
