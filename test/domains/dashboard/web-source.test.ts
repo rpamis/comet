@@ -449,11 +449,12 @@ describe('dashboard web source contracts', () => {
     expect(websiteStyles).toContain('scrollbar-width: none');
   });
 
-  it('positions the website verification badge below the Dashboard refresh action', async () => {
+  it('positions the website verification badge below the usage-detail action', async () => {
     const websiteStyles = await readWebsiteCustomStyles();
 
     expect(websiteStyles).toContain('.comet-home__float--pass {');
-    expect(websiteStyles).toContain('top: clamp(6.25rem, calc(4.25rem + 3vw), 7.25rem);');
+    expect(websiteStyles).toContain('top: clamp(12.25rem, calc(3.6rem + 13.45vw), 15.2rem);');
+    expect(websiteStyles).toContain('right: 1rem;');
   });
 
   it('uses the change-detail width to switch between stacked and two-column panels', async () => {
