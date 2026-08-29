@@ -30,6 +30,7 @@ import {
   BulbOutlined,
   CheckCircleOutlined,
   CheckOutlined,
+  CloseOutlined,
   CopyOutlined,
   DatabaseOutlined,
   DeleteOutlined,
@@ -52,6 +53,7 @@ import {
   UserOutlined,
 } from '@ant-design/icons';
 import 'antd/dist/reset.css';
+import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import {
   extractToc,
@@ -61,7 +63,11 @@ import {
   runMermaid,
 } from './markdown-preview.js';
 import { NativeWorkflowPanel } from './native-workflow-panel.jsx';
-import { DashboardModal, useDashboardModalState } from './dashboard-modal.jsx';
+import {
+  DashboardModal,
+  DashboardPortalProvider,
+  useDashboardModalState,
+} from './dashboard-modal.jsx';
 import { useAnimatedNumber } from './use-animated-number.js';
 import { DashboardWorkspaceRegion } from './workspace-layout.jsx';
 import {
@@ -138,8 +144,9 @@ function projectConfigStorageKey(projectId) {
   return `comet-dashboard-config:${projectId}`;
 }
 
-function useTheme() {
+function useTheme({ embedded = false, themeRoot = null } = {}) {
   const [theme, setTheme] = useState(() => {
+    if (embedded) return 'light';
     const stored = localStorage.getItem('comet-theme');
     const initial =
       stored === 'dark' || stored === 'light'
@@ -153,16 +160,17 @@ function useTheme() {
   });
 
   useLayoutEffect(() => {
-    const root = document.documentElement;
+    const root = embedded ? themeRoot : document.documentElement;
+    if (!root) return undefined;
     root.classList.add('theme-switching');
     root.setAttribute('data-theme', theme);
-    localStorage.setItem('comet-theme', theme);
+    if (!embedded) localStorage.setItem('comet-theme', theme);
 
     const frame = window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => root.classList.remove('theme-switching'));
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [theme]);
+  }, [embedded, theme, themeRoot]);
 
   const toggle = useCallback(() => setTheme((t) => (t === 'dark' ? 'light' : 'dark')), []);
 
@@ -379,11 +387,18 @@ function splitProjectKnowledgeLines(value) {
     .filter(Boolean);
 }
 
-function App() {
-  const { theme, toggle: toggleTheme } = useTheme();
+export function App({
+  forceDemo = false,
+  demoPluginPages = null,
+  embedded = false,
+  themeRoot = null,
+  portalContainer = null,
+}) {
+  const { theme, toggle: toggleTheme } = useTheme({ embedded, themeRoot });
 
   return (
     <ConfigProvider
+      getPopupContainer={portalContainer ? () => portalContainer : undefined}
       theme={{
         token: {
           colorPrimary: theme === 'dark' ? '#7fa8ff' : '#255ed8',
@@ -407,15 +422,31 @@ function App() {
         },
       }}
     >
-      <AntApp>
-        <DashboardApp theme={theme} onToggleTheme={toggleTheme} />
-      </AntApp>
+      <DashboardPortalProvider container={portalContainer}>
+        <AntApp>
+          <DashboardApp
+            theme={theme}
+            onToggleTheme={toggleTheme}
+            forceDemo={forceDemo}
+            demoPluginPages={demoPluginPages}
+            embedded={embedded}
+            portalContainer={portalContainer}
+          />
+        </AntApp>
+      </DashboardPortalProvider>
     </ConfigProvider>
   );
 }
 
-function DashboardApp({ theme, onToggleTheme }) {
-  const useDemo = new URLSearchParams(window.location.search).has('demo');
+function DashboardApp({
+  theme,
+  onToggleTheme,
+  forceDemo = false,
+  demoPluginPages = null,
+  embedded = false,
+  portalContainer = null,
+}) {
+  const useDemo = forceDemo || new URLSearchParams(window.location.search).has('demo');
   const [snapshot, setSnapshot] = useState(null);
   const [activeProjectId, setActiveProjectId] = useState(null);
   const [workflow, setWorkflow] = useState('classic');
@@ -427,7 +458,7 @@ function DashboardApp({ theme, onToggleTheme }) {
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsError, setSettingsError] = useState(null);
   const [pluginPages, setPluginPages] = useState(() =>
-    useDemo ? DASHBOARD_DEMO_PLUGIN_NAV : DASHBOARD_PLUGIN_NAV_PLACEHOLDERS,
+    useDemo ? (demoPluginPages ?? DASHBOARD_DEMO_PLUGIN_NAV) : DASHBOARD_PLUGIN_NAV_PLACEHOLDERS,
   );
   const [pluginPage, setPluginPage] = useState(null);
   const [pluginLoading, setPluginLoading] = useState(false);
@@ -809,8 +840,19 @@ function DashboardApp({ theme, onToggleTheme }) {
 
   useEffect(() => {
     if (!useDemo) return undefined;
+    if (demoPluginPages) {
+      setPluginPages(demoPluginPages);
+      setPluginError(null);
+      if (!pluginSelection) {
+        setPluginPage(null);
+        return undefined;
+      }
+      const nextPage = demoPluginPages.find((page) => page.pluginId === pluginSelection) ?? null;
+      setPluginPage(nextPage);
+      if (!nextPage) setPluginError('未找到对应的插件页面');
+      return undefined;
+    }
     let cancelled = false;
-    setPluginLoading(Boolean(pluginSelection));
     setPluginError(null);
     void loadDemoPluginPages()
       .then((pages) => {
@@ -822,21 +864,54 @@ function DashboardApp({ theme, onToggleTheme }) {
         }
         const nextPage = pages.find((page) => page.pluginId === pluginSelection) ?? null;
         setPluginPage(nextPage);
-        if (!nextPage) setPluginError('未找到对应的 Demo 插件页面');
+        if (!nextPage) setPluginError('未找到对应的插件页面');
       })
       .catch((error) => {
         if (!cancelled) {
           setPluginPage(null);
           setPluginError(error instanceof Error ? error.message : String(error));
         }
-      })
-      .finally(() => {
-        if (!cancelled) setPluginLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [pluginSelection, useDemo]);
+  }, [demoPluginPages, pluginSelection, useDemo]);
+
+  useEffect(() => {
+    if (!useDemo || !settingsOpen || !settingsSection) return undefined;
+    let cancelled = false;
+    setSettingsLoading(true);
+    setSettingsError(null);
+    const request =
+      settingsSection === 'comet.config'
+        ? loadDemoProjectConfig()
+        : loadDemoPluginPages().then(
+            (pages) => pages.find((page) => page.pluginId === settingsSection) ?? null,
+          );
+    void request
+      .then((result) => {
+        if (cancelled) return;
+        if (settingsSection === 'comet.config') {
+          setSettingsConfig(result);
+        } else {
+          setSettingsPage(result);
+          if (!result) setSettingsError('未找到对应的设置页面');
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          if (settingsSection === 'comet.config') setSettingsConfig(null);
+          else setSettingsPage(null);
+          setSettingsError(error instanceof Error ? error.message : String(error));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setSettingsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pluginRefreshToken, settingsOpen, settingsSection, useDemo]);
 
   useEffect(() => {
     if (useDemo || !activeProjectId || !settingsOpen || !settingsSection) return undefined;
@@ -962,7 +1037,7 @@ function DashboardApp({ theme, onToggleTheme }) {
             );
             return result;
           }
-          toast('Demo 模式仅展示示例数据，不会写入本地项目', 'info');
+          toast('当前为只读预览，不会写入本地项目', 'info');
           return undefined;
         }
         let result;
@@ -1276,9 +1351,10 @@ function DashboardApp({ theme, onToggleTheme }) {
     <main
       className={`dashboard-workbench min-h-screen bg-surface text-fg antialiased lg:grid lg:grid-cols-[var(--rail-w)_1fr]${
         sidebarCollapsed ? ' is-sidebar-collapsed' : ''
-      }`}
+      }${embedded ? ' is-embedded' : ''}`}
     >
       <AntSidebar
+        embedded={embedded}
         open={railOpen}
         collapsed={sidebarCollapsed}
         workflow={workflow}
@@ -1297,15 +1373,20 @@ function DashboardApp({ theme, onToggleTheme }) {
               ?.pluginId ??
             pluginPages.find((page) => !page.pending)?.pluginId ??
             'comet.config';
-          const cachedPage =
-            activeProjectId && preferredSection && preferredSection !== 'comet.config'
+          const cachedPage = useDemo
+            ? (pluginPages.find((page) => page.pluginId === preferredSection) ?? null)
+            : activeProjectId && preferredSection && preferredSection !== 'comet.config'
               ? readCachedPluginPage(activeProjectId, preferredSection)
               : null;
           setSettingsSection(preferredSection);
           setSettingsOpen(true);
           setSettingsPage(cachedPage);
           setSettingsConfig(
-            activeProjectId ? (projectConfigCacheRef.current.get(activeProjectId) ?? null) : null,
+            useDemo
+              ? settingsConfig
+              : activeProjectId
+                ? (projectConfigCacheRef.current.get(activeProjectId) ?? null)
+                : null,
           );
           setSettingsError(null);
         }}
@@ -1313,7 +1394,11 @@ function DashboardApp({ theme, onToggleTheme }) {
           setSettingsOpen(false);
           setPluginSelection(pluginId);
           setPluginPage(
-            activeProjectId && pluginId ? readCachedPluginPage(activeProjectId, pluginId) : null,
+            useDemo
+              ? (pluginPages.find((page) => page.pluginId === pluginId) ?? null)
+              : activeProjectId && pluginId
+                ? readCachedPluginPage(activeProjectId, pluginId)
+                : null,
           );
           setPluginError(null);
         }}
@@ -1375,6 +1460,7 @@ function DashboardApp({ theme, onToggleTheme }) {
           }}
           theme={theme}
           onToggleTheme={onToggleTheme}
+          themeToggleDisabled={embedded}
         />
         <div
           className={`dashboard-content-shell${
@@ -1397,6 +1483,7 @@ function DashboardApp({ theme, onToggleTheme }) {
                 page={pluginPage}
                 loading={pluginLoading}
                 error={pluginError}
+                readOnly={embedded}
                 onRetry={() => {
                   setPluginPage(null);
                   setPluginError(null);
@@ -1457,6 +1544,7 @@ function DashboardApp({ theme, onToggleTheme }) {
         </div>
         <DashboardSettingsOverlay
           open={settingsOpen}
+          readOnly={embedded}
           section={settingsSection}
           pages={pluginPages}
           page={settingsPage}
@@ -1467,14 +1555,18 @@ function DashboardApp({ theme, onToggleTheme }) {
           onSection={(pluginId) => {
             setSettingsSection(pluginId);
             setSettingsPage(
-              activeProjectId && pluginId !== 'comet.config'
-                ? readCachedPluginPage(activeProjectId, pluginId)
-                : null,
+              useDemo && pluginId !== 'comet.config'
+                ? (pluginPages.find((page) => page.pluginId === pluginId) ?? null)
+                : activeProjectId && pluginId !== 'comet.config'
+                  ? readCachedPluginPage(activeProjectId, pluginId)
+                  : null,
             );
             setSettingsConfig(
-              activeProjectId && pluginId === 'comet.config'
-                ? (projectConfigCacheRef.current.get(activeProjectId) ?? null)
-                : null,
+              useDemo && pluginId === 'comet.config'
+                ? settingsConfig
+                : activeProjectId && pluginId === 'comet.config'
+                  ? (projectConfigCacheRef.current.get(activeProjectId) ?? null)
+                  : null,
             );
             setSettingsError(null);
           }}
@@ -1492,6 +1584,17 @@ function DashboardApp({ theme, onToggleTheme }) {
             setPluginRefreshToken((value) => value + 1);
           }}
           onSaveConfig={async (config) => {
+            if (embedded) return;
+            if (useDemo) {
+              if (!settingsConfig) return;
+              setSettingsConfig({
+                ...settingsConfig,
+                ...config,
+                revision: `demo-${Date.now()}`,
+              });
+              toast('预览配置已保存，仅在当前页面生效');
+              return;
+            }
             if (!activeProjectId || !settingsConfig) return;
             const previousKnowledge = settingsConfig.knowledge ?? {
               provider: 'local',
@@ -1524,12 +1627,26 @@ function DashboardApp({ theme, onToggleTheme }) {
               throw error;
             }
           }}
-          onInvoke={(capability, input) =>
-            invokeActivePlugin(settingsSection, capability, input, 'settings')
+          onInvoke={
+            embedded
+              ? async () => undefined
+              : (capability, input) =>
+                  invokeActivePlugin(settingsSection, capability, input, 'settings')
           }
         />
       </section>
-      <ArtifactDrawer artifact={artifact} onClose={() => setArtifact(null)} />
+      {portalContainer ? (
+        createPortal(
+          <ArtifactDrawer
+            artifact={artifact}
+            embedded={embedded}
+            onClose={() => setArtifact(null)}
+          />,
+          portalContainer,
+        )
+      ) : (
+        <ArtifactDrawer artifact={artifact} embedded={embedded} onClose={() => setArtifact(null)} />
+      )}
     </main>
   );
 }
@@ -1546,6 +1663,7 @@ function Topbar({
   onRefresh,
   theme,
   onToggleTheme,
+  themeToggleDisabled = false,
 }) {
   return (
     <header className="comet-workbench-header sticky top-0 z-30 border-b border-border-soft bg-surface/90 backdrop-blur-xl">
@@ -1615,11 +1733,20 @@ function Topbar({
             aria-label="立即刷新"
           />
         </Tooltip>
-        <Tooltip title={theme === 'dark' ? '切换到亮色模式' : '切换到暗色模式'}>
+        <Tooltip
+          title={
+            themeToggleDisabled
+              ? '官网预览固定为亮色模式'
+              : theme === 'dark'
+                ? '切换到亮色模式'
+                : '切换到暗色模式'
+          }
+        >
           <Button
             className="hidden sm:inline-flex"
             type="text"
             icon={theme === 'dark' ? <SunOutlined /> : <MoonOutlined />}
+            disabled={themeToggleDisabled}
             onClick={onToggleTheme}
             aria-label={theme === 'dark' ? '切换到亮色模式' : '切换到暗色模式'}
           />
@@ -2226,16 +2353,21 @@ function KeyValue({ k, v }) {
   );
 }
 
-function ArtifactDrawer({ artifact, onClose }) {
+function ArtifactDrawer({ artifact, embedded = false, onClose }) {
   const [loadState, setLoadState] = useState({ status: 'idle' });
-  const { fullscreen, toggleFullscreen, requestClose } = useDashboardModalState(Boolean(artifact));
+  const {
+    fullscreen: requestedFullscreen,
+    toggleFullscreen,
+    requestClose,
+  } = useDashboardModalState(Boolean(artifact));
+  const fullscreen = !embedded && requestedFullscreen;
   const [toc, setToc] = useState([]);
   const [activeTocId, setActiveTocId] = useState('');
   const articleRef = useRef(null);
   const contentScrollRef = useRef(null);
 
   useEffect(() => {
-    if (!artifact) return;
+    if (!artifact || embedded) return undefined;
     const scrollY = window.scrollY;
     const previousBodyStyle = {
       position: document.body.style.position,
@@ -2257,7 +2389,7 @@ function ArtifactDrawer({ artifact, onClose }) {
       document.body.style.width = previousBodyStyle.width;
       window.scrollTo(0, scrollY);
     };
-  }, [artifact]);
+  }, [artifact, embedded]);
 
   useEffect(() => {
     if (!artifact) {
@@ -2373,7 +2505,7 @@ function ArtifactDrawer({ artifact, onClose }) {
       className={
         fullscreen
           ? 'dashboard-artifact-preview-overlay is-fullscreen fixed inset-0 z-[90] flex'
-          : 'dashboard-artifact-preview-overlay fixed inset-0 z-[90] grid grid-cols-[minmax(0,1fr)_minmax(360px,760px)] max-sm:grid-cols-1'
+          : `dashboard-artifact-preview-overlay ${embedded ? 'absolute' : 'fixed'} inset-0 z-[90] grid grid-cols-[minmax(0,1fr)_minmax(360px,760px)] max-sm:grid-cols-1`
       }
     >
       {!fullscreen && (
@@ -2439,47 +2571,59 @@ function ArtifactDrawer({ artifact, onClose }) {
               </div>
             )}
           </div>
-          <button
-            type="button"
-            className="dashboard-artifact-preview-expand grid size-8 shrink-0 place-items-center rounded-lg text-fg-2 hover:bg-surface"
-            onClick={toggleFullscreen}
-            aria-label={fullscreen ? '退出全屏' : '全屏展示'}
-            aria-pressed={fullscreen}
-          >
-            {fullscreen ? (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="size-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-                aria-hidden="true"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25"
-                />
-              </svg>
-            ) : (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="size-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-                aria-hidden="true"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m-4.5 0L15 9m5.25 11.25h-4.5m4.5 0v-4.5m4.5 4.5L15 15"
-                />
-              </svg>
-            )}
-          </button>
+          {!embedded && (
+            <button
+              type="button"
+              className="dashboard-artifact-preview-expand grid size-8 shrink-0 place-items-center rounded-lg text-fg-2 hover:bg-surface"
+              onClick={toggleFullscreen}
+              aria-label={fullscreen ? '退出全屏' : '全屏展示'}
+              aria-pressed={fullscreen}
+            >
+              {fullscreen ? (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="size-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25"
+                  />
+                </svg>
+              ) : (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="size-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m-4.5 0L15 9m5.25 11.25h-4.5m4.5 0v-4.5m4.5 4.5L15 15"
+                  />
+                </svg>
+              )}
+            </button>
+          )}
+          {embedded && (
+            <button
+              type="button"
+              className="dashboard-artifact-preview-expand grid size-8 shrink-0 place-items-center rounded-lg text-fg-2 hover:bg-surface"
+              onClick={() => requestClose(onClose)}
+              aria-label="关闭产物预览"
+            >
+              <CloseOutlined aria-hidden="true" />
+            </button>
+          )}
         </header>
         <div className="flex min-h-0 flex-1 overflow-hidden">
           {fullscreen && toc.length > 0 && (
@@ -3392,20 +3536,29 @@ async function loadDemoPluginPages() {
   return module.DEMO_PLUGIN_PAGES;
 }
 
+async function loadDemoProjectConfig() {
+  const module = await import('../demo.js');
+  return structuredClone(module.DEMO_PROJECT_CONFIG);
+}
+
 function withDemoArtifactPreviews(snapshot) {
   const hydrateChange = (change) => {
     const grouped = change.artifacts?.grouped ?? [];
-    const previews = grouped.map((artifact) => ({
-      key: artifact.key,
-      label: artifact.label,
-      path: artifact.path,
-      exists: artifact.exists,
-      size: artifact.exists ? 1024 + Math.floor(Math.random() * 4096) : undefined,
-      updatedAt: artifact.exists ? '2026-06-25T12:00:00.000Z' : undefined,
-      content: artifact.exists
-        ? `# ${artifact.label}\n\n${artifact.label}：${change.displayName}\n\n- 当前阶段：${phaseLabel(change.phase)}\n- 任务进度：${change.tasks.completed}/${change.tasks.total}\n- Verify：${VERIFY_LABEL[change.verify.result] ?? '未知'}\n`
-        : undefined,
-    }));
+    const previews = grouped.map((artifact) => {
+      const content = artifact.exists
+        ? (artifact.content ??
+          `# ${artifact.label}\n\n${artifact.label}：${change.displayName}\n\n- 当前阶段：${phaseLabel(change.phase)}\n- 任务进度：${change.tasks.completed}/${change.tasks.total}\n- Verify：${VERIFY_LABEL[change.verify.result] ?? '未知'}\n`)
+        : undefined;
+      return {
+        key: artifact.key,
+        label: artifact.label,
+        path: artifact.path,
+        exists: artifact.exists,
+        size: artifact.exists ? (artifact.size ?? content?.length) : undefined,
+        updatedAt: artifact.exists ? (artifact.updatedAt ?? '2026-08-29T12:30:00.000Z') : undefined,
+        content,
+      };
+    });
     return { ...change, artifactPreviews: previews };
   };
 
@@ -3605,8 +3758,11 @@ async function copyText(text) {
   if (!copied) throw new Error('当前浏览器不支持复制');
 }
 
-createRoot(document.getElementById('root')).render(<App />);
+const dashboardRoot = document.getElementById('root');
+const embeddedDashboardBuild = globalThis.__COMET_DASHBOARD_EMBED__ === true;
+if (dashboardRoot && !embeddedDashboardBuild) createRoot(dashboardRoot).render(<App />);
 function AntSidebar({
+  embedded = false,
   open,
   collapsed,
   workflow,
@@ -3713,7 +3869,11 @@ function AntSidebar({
       >
         <div className="dashboard-sidebar-content flex h-full flex-col">
           <div className="dashboard-sidebar-brand flex items-center gap-2">
-            <img src="/favicon.png" alt="Comet" className="size-7 rounded-[7px]" />
+            <img
+              src={embedded ? '/assets/dashboard-website-demo/favicon.png' : '/favicon.png'}
+              alt="Comet"
+              className="size-7 rounded-[7px]"
+            />
             <div className="dashboard-sidebar-brand-copy" aria-hidden={collapsed}>
               <strong>Comet Dashboard</strong>
               <div className="text-xs text-meta">Agent 工作台</div>
@@ -3753,7 +3913,7 @@ function AntSidebar({
   );
 }
 
-function PluginCenterPage({ page, loading, error, onRetry, onInvoke }) {
+function PluginCenterPage({ page, loading, error, readOnly = false, onRetry, onInvoke }) {
   if (loading && !page) return <LoadingState />;
   if (error && !page) {
     return (
@@ -3771,7 +3931,14 @@ function PluginCenterPage({ page, loading, error, onRetry, onInvoke }) {
   }
   if (!page) return <LoadingState />;
   if (page.pluginId === 'comet.project-knowledge') {
-    return <ProjectKnowledgeCenter page={page} data={page.data} onInvoke={onInvoke} />;
+    return (
+      <ProjectKnowledgeCenter
+        page={page}
+        data={page.data}
+        readOnly={readOnly}
+        onInvoke={onInvoke}
+      />
+    );
   }
   if (page.status === 'disabled') {
     return (
@@ -3790,7 +3957,7 @@ function PluginCenterPage({ page, loading, error, onRetry, onInvoke }) {
     );
   }
   if (page.pluginId === 'comet.personal-memory') {
-    return <PersonalMemoryCenter data={page.data} onInvoke={onInvoke} />;
+    return <PersonalMemoryCenter data={page.data} readOnly={readOnly} onInvoke={onInvoke} />;
   }
   return (
     <div className="mx-auto max-w-dashboard">
@@ -3802,6 +3969,7 @@ function PluginCenterPage({ page, loading, error, onRetry, onInvoke }) {
 
 function DashboardSettingsOverlay({
   open,
+  readOnly = false,
   section,
   pages,
   page,
@@ -3821,7 +3989,7 @@ function DashboardSettingsOverlay({
       width={920}
       open={open}
       title="Comet 设置"
-      subtitle="当前项目"
+      subtitle={readOnly ? '只读预览' : '当前项目'}
       description="统一管理个人记忆、项目规则与工作流配置"
       onClose={onClose}
       footer={
@@ -3846,6 +4014,7 @@ function DashboardSettingsOverlay({
         onRetry={onRetry}
         onSaveConfig={onSaveConfig}
         onInvoke={onInvoke}
+        readOnly={readOnly}
       />
     </DashboardModal>
   );
@@ -3862,6 +4031,7 @@ function DashboardSettingsPage({
   onRetry,
   onSaveConfig,
   onInvoke,
+  readOnly = false,
 }) {
   const installedPlugins = new Set(
     pages.filter((item) => !item.pending).map((item) => item.pluginId),
@@ -3894,7 +4064,12 @@ function DashboardSettingsPage({
             onClick={({ key }) => onSection(key)}
           />
         </aside>
-        <section className="dashboard-settings-main" aria-live="polite">
+        <section
+          className={`dashboard-settings-main${readOnly ? ' is-read-only' : ''}`}
+          aria-live="polite"
+          aria-disabled={readOnly || undefined}
+          inert={readOnly}
+        >
           {loading && !currentData ? (
             <LoadingState />
           ) : error && !currentData ? (
@@ -3906,13 +4081,23 @@ function DashboardSettingsPage({
               action={<Button onClick={onRetry}>重试</Button>}
             />
           ) : section === 'comet.config' && config ? (
-            <CometConfigSettings data={config} onSave={onSaveConfig} />
+            <CometConfigSettings data={config} readOnly={readOnly} onSave={onSaveConfig} />
           ) : !page ? (
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前设置不可用" />
           ) : page.pluginId === 'comet.personal-memory' ? (
-            <PersonalMemorySettings page={page} data={page.data} onInvoke={onInvoke} />
+            <PersonalMemorySettings
+              page={page}
+              data={page.data}
+              readOnly={readOnly}
+              onInvoke={onInvoke}
+            />
           ) : page.pluginId === 'comet.project-knowledge' ? (
-            <ProjectKnowledgeSettings page={page} data={page.data} onInvoke={onInvoke} />
+            <ProjectKnowledgeSettings
+              page={page}
+              data={page.data}
+              readOnly={readOnly}
+              onInvoke={onInvoke}
+            />
           ) : (
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该插件暂未提供设置页" />
           )}
@@ -3952,7 +4137,7 @@ function toCometConfigDraft(data) {
   };
 }
 
-function CometConfigSettings({ data, onSave }) {
+function CometConfigSettings({ data, readOnly = false, onSave }) {
   const [draft, setDraft] = useState(() => toCometConfigDraft(data));
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
@@ -4341,7 +4526,7 @@ function CometConfigSettings({ data, onSave }) {
               保存到 <code>{data.path}</code>；未知扩展字段会原样保留
             </p>
           </div>
-          <Button type="primary" loading={saving} onClick={save}>
+          <Button type="primary" loading={saving} disabled={readOnly} onClick={save}>
             保存 Comet 配置
           </Button>
         </div>
@@ -4350,7 +4535,7 @@ function CometConfigSettings({ data, onSave }) {
   );
 }
 
-function PersonalMemorySettings({ page, data, onInvoke }) {
+function PersonalMemorySettings({ page, data, readOnly = false, onInvoke }) {
   const [remoteUrl, setRemoteUrl] = useState('');
   const [providerMode, setProviderMode] = useState('local');
   const [profileCharLimit, setProfileCharLimit] = useState('2000');
@@ -4606,8 +4791,10 @@ function PersonalMemorySettings({ page, data, onInvoke }) {
               <div className="dashboard-memory-sync-row">
                 <span>Provider 切换不会迁移或删除已有数据；保存后重新加载页面即可生效</span>
                 <div className="dashboard-memory-remote-form">
-                  <Button onClick={() => onInvoke('test-provider', {})}>测试连接</Button>
-                  <Button type="primary" onClick={saveProviderConfig}>
+                  <Button disabled={readOnly} onClick={() => onInvoke('test-provider', {})}>
+                    测试连接
+                  </Button>
+                  <Button type="primary" disabled={readOnly} onClick={saveProviderConfig}>
                     保存配置
                   </Button>
                 </div>
@@ -4666,6 +4853,7 @@ function PersonalMemorySettings({ page, data, onInvoke }) {
           </div>
           <Button
             danger
+            disabled={readOnly}
             onClick={() =>
               Modal.confirm({
                 title: '卸载个人记忆插件？',
@@ -4726,7 +4914,7 @@ function PersonalMemorySettings({ page, data, onInvoke }) {
   );
 }
 
-function ProjectKnowledgeSettings({ page, data, onInvoke }) {
+function ProjectKnowledgeSettings({ page, data, readOnly = false, onInvoke }) {
   const snapshot = data && typeof data === 'object' ? data : {};
   const [providerMode, setProviderMode] = useState(snapshot.provider ?? 'local');
   const [endpoint, setEndpoint] = useState(snapshot.remote?.endpoint ?? '');
@@ -4858,7 +5046,7 @@ function ProjectKnowledgeSettings({ page, data, onInvoke }) {
                     ? snapshot.retrieval
                     : 'Provider 切换不会删除现有项目知识；保存后重新加载配置即可生效'}
                 </span>
-                <Button type="primary" onClick={() => void saveProvider()}>
+                <Button type="primary" disabled={readOnly} onClick={() => void saveProvider()}>
                   保存配置
                 </Button>
               </div>
@@ -4987,6 +5175,7 @@ function ProjectKnowledgeSettings({ page, data, onInvoke }) {
           </div>
           <Button
             danger
+            disabled={readOnly}
             onClick={() =>
               Modal.confirm({
                 title: '卸载项目知识插件？',
@@ -5048,6 +5237,7 @@ function ProjectKnowledgeRegistry({
   onSortOrderChange,
   diagnostics,
   provider,
+  readOnly = false,
   onInvoke,
 }) {
   const firstDiagnostic = diagnostics[0];
@@ -5222,7 +5412,7 @@ function ProjectKnowledgeRegistry({
         )}
       </section>
 
-      <ProjectKnowledgeInspector record={selectedRecord} onInvoke={onInvoke} />
+      <ProjectKnowledgeInspector record={selectedRecord} readOnly={readOnly} onInvoke={onInvoke} />
     </div>
   );
 }
@@ -5267,7 +5457,7 @@ function ContextApplicationHistory({ applications = [], recordId }) {
   );
 }
 
-function ProjectKnowledgeInspector({ record, onInvoke }) {
+function ProjectKnowledgeInspector({ record, readOnly = false, onInvoke }) {
   if (!record) {
     return (
       <aside className="dashboard-knowledge-inspector is-empty" aria-label="记录详情">
@@ -5421,6 +5611,7 @@ function ProjectKnowledgeInspector({ record, onInvoke }) {
         <div className="dashboard-knowledge-inspector-actions">
           <Button
             icon={<EditOutlined />}
+            disabled={readOnly}
             onClick={() => openProjectKnowledgeCorrection(record, onInvoke)}
           >
             {record.state === 'superseded' ? '纠正并恢复' : '纠正记录'}
@@ -5428,6 +5619,7 @@ function ProjectKnowledgeInspector({ record, onInvoke }) {
           {record.state === 'trial' && (
             <Button
               icon={<ReloadOutlined />}
+              disabled={readOnly}
               onClick={() => onInvoke('refresh', { id: record.id })}
             >
               重新检查来源
@@ -5438,6 +5630,7 @@ function ProjectKnowledgeInspector({ record, onInvoke }) {
               type="text"
               danger
               icon={<DeleteOutlined />}
+              disabled={readOnly}
               onClick={() =>
                 Modal.confirm({
                   title: '将这条项目知识标记为已替代？',
@@ -5813,7 +6006,7 @@ function ContextManifestPreview({
   );
 }
 
-function ProjectKnowledgeCenter({ page, data, onInvoke }) {
+function ProjectKnowledgeCenter({ page, data, readOnly = false, onInvoke }) {
   const snapshot = data && typeof data === 'object' ? data : {};
   const [workspaceTab, setWorkspaceTab] = useState('model');
   const [recordSearchText, setRecordSearchText] = useState('');
@@ -6046,6 +6239,7 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
           className="dashboard-knowledge-create-button dashboard-plugin-primary-action"
           type="primary"
           icon={<PlusOutlined />}
+          disabled={readOnly}
           onClick={() => setCreateOpen(true)}
         >
           新增项目知识
@@ -6127,6 +6321,7 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
           onSortOrderChange={setSortOrder}
           diagnostics={diagnostics}
           provider={provider}
+          readOnly={readOnly}
           onInvoke={onInvoke}
         />
       ) : workspaceTab === 'sources' ? (
@@ -6333,7 +6528,7 @@ function ProjectKnowledgeCenter({ page, data, onInvoke }) {
   );
 }
 
-function PersonalMemoryCenter({ data, onInvoke }) {
+function PersonalMemoryCenter({ data, readOnly = false, onInvoke }) {
   const [editingRecord, setEditingRecord] = useState(null);
   const [correctionText, setCorrectionText] = useState('');
   const [correctionSaving, setCorrectionSaving] = useState(false);
@@ -6493,6 +6688,7 @@ function PersonalMemoryCenter({ data, onInvoke }) {
               type="text"
               icon={<EditOutlined />}
               aria-label="纠正记忆"
+              disabled={readOnly}
               onClick={(event) => {
                 event.stopPropagation();
                 setEditingRecord(record);
@@ -6507,6 +6703,7 @@ function PersonalMemoryCenter({ data, onInvoke }) {
                 type="text"
                 icon={<UndoOutlined />}
                 aria-label="回滚记忆"
+                disabled={readOnly}
                 onClick={(event) => {
                   event.stopPropagation();
                   onInvoke('rollback', { id: record.id });
@@ -6522,6 +6719,7 @@ function PersonalMemoryCenter({ data, onInvoke }) {
                 danger
                 icon={<DeleteOutlined />}
                 aria-label="删除记忆"
+                disabled={readOnly}
                 onClick={(event) => {
                   event.stopPropagation();
                   onInvoke('remove', { id: record.id, permanent: true });
@@ -6566,7 +6764,7 @@ function PersonalMemoryCenter({ data, onInvoke }) {
             <Button
               className="dashboard-plugin-secondary-action"
               icon={<PlusOutlined />}
-              disabled={!projectKey}
+              disabled={readOnly || !projectKey}
               onClick={() => setShowNewProjectMemory(true)}
             >
               新增项目记忆
@@ -6575,6 +6773,7 @@ function PersonalMemoryCenter({ data, onInvoke }) {
               className="dashboard-plugin-primary-action"
               type="primary"
               icon={<PlusOutlined />}
+              disabled={readOnly}
               onClick={() => setShowNewProfile(true)}
             >
               新增偏好

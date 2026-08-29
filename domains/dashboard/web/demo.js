@@ -1,7 +1,414 @@
 // Demo snapshot for `?demo` mode — mirrors the DashboardSnapshot contract
 // (domains/dashboard/types.ts) exactly. Used when a reviewer wants to see the
-// dashboard populated without a real openspec/changes layout. Field names are
+// dashboard populated without a real docs/openspec/changes layout. Field names are
 // stable; see types.ts before renaming anything.
+
+const CLASSIC_DEMO_SCENARIOS = {
+  'add-auth-rate-limiting': {
+    title: '为认证接口增加分布式限流',
+    background:
+      '登录和令牌刷新接口在活动流量峰值期间出现突发请求，单实例内存计数无法在多副本之间共享，导致上游身份服务被重复请求拖慢。',
+    outcome:
+      '按租户、客户端和接口维度执行滑动窗口限流；命中上限时返回一致的 429 响应和剩余配额信息，同时保留开发环境的内存实现。',
+    files: [
+      'domains/auth/rate-limit-policy.ts',
+      'platform/redis/sliding-window.ts',
+      'test/domains/auth/rate-limit-policy.test.ts',
+    ],
+    decisions: [
+      '使用 Redis Lua 脚本原子更新窗口，避免读写竞态。',
+      '健康检查与内部回调不计入用户配额。',
+      'Redis 不可用时登录接口 fail closed，令牌校验接口继续读取已有会话。',
+    ],
+    checks: [
+      'npx vitest run test/domains/auth/rate-limit-policy.test.ts',
+      'pnpm build',
+      'node scripts/benchmark/rate-limit.mjs --qps 5000',
+    ],
+  },
+  'dashboard-redesign': {
+    title: '统一 Classic、Native 与插件中心工作台',
+    background:
+      '现有 Dashboard 的工作流面板、个人记忆和项目知识采用不同的间距与详情结构，用户切换区域时需要重新理解页面层级，移动端还会把内容整体缩成缩略图。',
+    outcome:
+      '复用同一套侧栏、工具栏、列表和检查器层级；桌面端保持高信息密度，窄屏通过固定画布和受控滚动保持正文可读。',
+    files: [
+      'domains/dashboard/web/src/main.jsx',
+      'domains/dashboard/web/src/native-workflow-panel.jsx',
+      'domains/dashboard/web/src/styles.css',
+    ],
+    decisions: [
+      '列表选择与右侧检查器共享同一个 selected change 状态。',
+      '文件预览限制在 Dashboard 容器内，并提供明确的关闭和全屏切换。',
+      '官网工作台复用产品 UI，但使用独立只读入口和静态数据。',
+    ],
+    checks: [
+      'npx vitest run test/domains/dashboard/web-source.test.ts',
+      'pnpm build:dashboard',
+      'pnpm test:dashboard-e2e -- --workers=1',
+    ],
+  },
+  'fix-webhook-retries': {
+    title: '修复 Webhook 超时后的重复投递',
+    background:
+      '接收方已经处理请求但响应超时时，发送端会立即重试，同一事件可能在一分钟内被重复投递多次，并且旧实现没有保存每次尝试的可审计结果。',
+    outcome:
+      '为每个事件生成稳定幂等键，采用带抖动的指数退避，并在达到上限后进入可人工重放的死信队列。',
+    files: [
+      'domains/webhook/retry-policy.ts',
+      'domains/webhook/delivery-store.ts',
+      'test/domains/webhook/retry-policy.test.ts',
+    ],
+    decisions: [
+      '网络超时与 5xx 可重试，4xx 除 408/429 外直接终止。',
+      '重试调度保存 nextAttemptAt，进程重启后可以恢复。',
+      '幂等键由事件 ID、目标端点和 payload hash 共同组成。',
+    ],
+    checks: [
+      'npx vitest run test/domains/webhook/retry-policy.test.ts',
+      'node scripts/smoke/webhook-replay.mjs',
+      'pnpm lint',
+    ],
+  },
+  'migrate-config-to-yaml': {
+    title: '将分散配置迁移到 .comet/config.yaml',
+    background:
+      '旧项目把 workflow、语言和产物目录配置分散在多个 JSON 文件中，升级时难以判断默认值、用户覆盖项和已经废弃的字段。',
+    outcome:
+      '提供可 dry-run 的幂等迁移命令，保留未知字段与用户注释，并在写入前输出逐字段差异和回滚备份。',
+    files: [
+      'domains/workflow-contract/project-config.ts',
+      'app/commands/doctor.ts',
+      'test/domains/workflow-contract/project-config.test.ts',
+    ],
+    decisions: [
+      '解析、默认值合并和 schema 校验分成独立步骤。',
+      '存在冲突时停止写入，不猜测 Classic 与 Native 的默认 workflow。',
+      '迁移成功后保留一次带时间戳的原配置备份。',
+    ],
+    checks: [
+      'npx vitest run test/domains/workflow-contract/project-config.test.ts',
+      'node bin/comet.js doctor --repair --dry-run',
+      'pnpm build',
+    ],
+  },
+  'add-dark-mode': {
+    title: '为 Dashboard 增加可持久化深色主题',
+    background:
+      '长时间查看任务与验证日志时，固定浅色界面在低光环境下过亮，而且系统主题变化后 Dashboard 不会同步。',
+    outcome:
+      '支持浅色、深色和跟随系统三种模式；主题在首次绘制前恢复，避免页面闪烁，并覆盖图表、弹层和 Markdown 预览。',
+    files: ['domains/dashboard/web/src/main.jsx', 'domains/dashboard/web/src/styles.css'],
+    decisions: [
+      '主题 token 由 Ant Design ConfigProvider 统一提供。',
+      '嵌入 Website 时强制浅色，避免与官网品牌背景冲突。',
+      '用户选择存入 localStorage，系统模式仅在未显式选择时生效。',
+    ],
+    checks: ['pnpm build:dashboard', 'pnpm test:dashboard-e2e -- --grep "theme"'],
+  },
+  'refactor-collector': {
+    title: '拆分 Dashboard 采集器并限制详情读取',
+    background:
+      '旧采集器在列表请求中读取每个 change 的所有产物，大型仓库打开 Dashboard 时会产生大量无关磁盘读取。',
+    outcome:
+      '概览、分页列表和单 change 详情使用独立采集路径；列表只返回轻量投影，用户选中后才加载产物正文。',
+    files: ['domains/dashboard/collector.ts', 'domains/dashboard/native-collector.ts'],
+    decisions: [
+      '分页游标绑定 snapshot，状态变化时返回明确的 stale cursor。',
+      '所有产物路径在读取前验证仍位于项目目录内。',
+      '预览正文使用固定字节预算并报告 truncated 状态。',
+    ],
+    checks: ['npx vitest run test/domains/dashboard/collector.test.ts', 'pnpm lint'],
+  },
+  'init-openspec': {
+    title: '初始化 Classic OpenSpec 工作区',
+    background:
+      '新项目启用 Classic 后缺少稳定目录、模板和状态文件，首次运行经常需要人工补齐 proposal、design 和 tasks 结构。',
+    outcome:
+      '初始化命令一次创建 docs 布局、OpenSpec 模板与 Comet 配置，并且重复运行不会覆盖已有用户文档。',
+    files: ['app/commands/init.ts', 'domains/comet-classic/classic-state-command.ts'],
+    decisions: [
+      '新项目默认使用 docs/openspec 与 docs/superpowers 布局。',
+      '已有项目缺少 layout 字段时保持 legacy 行为。',
+      '初始化只创建缺失文件，不修改已有 change。',
+    ],
+    checks: ['npx vitest run test/app/init.test.ts', 'pnpm build:classic-runtime'],
+  },
+};
+
+function classicDemoScenario(change) {
+  const key = change.demoScenario ?? change.displayName;
+  return (
+    CLASSIC_DEMO_SCENARIOS[key] ?? {
+      title: `交付 ${change.displayName}`,
+      background: '该 change 完整记录了 Classic 工作流从提案到验证的产物链路。',
+      outcome: '在保持现有行为兼容的前提下完成需求、验证关键路径并记录可追溯证据。',
+      files: [
+        'domains/dashboard/collector.ts',
+        'domains/dashboard/web/src/main.jsx',
+        'test/domains/dashboard/web-source.test.ts',
+      ],
+      decisions: ['保持变更范围最小。', '优先运行覆盖当前改动的相关测试。'],
+      checks: ['npx vitest run test/domains/dashboard/web-source.test.ts', 'pnpm lint'],
+    }
+  );
+}
+
+function classicArtifactContent(change, artifact) {
+  const scenario = classicDemoScenario(change);
+  const taskSections = change.tasks?.sections ?? [];
+  const completedLines = taskSections.map(
+    (section) =>
+      `- [${section.status === 'done' ? 'x' : ' '}] ${section.title}（${section.completed}/${section.total}）`,
+  );
+  const pendingLines = (change.tasks?.incomplete ?? []).map((task) => `- [ ] ${task}`);
+  const files = scenario.files.map((file) => `- \`${file}\``).join('\n');
+  const decisions = scenario.decisions.map((decision) => `- ${decision}`).join('\n');
+  const checks = scenario.checks.map((command) => `- \`${command}\``).join('\n');
+  const taskProgress = `${change.tasks?.completed ?? 0}/${change.tasks?.total ?? 0}`;
+  const verifyLabel =
+    change.verify?.result === 'pass'
+      ? '通过'
+      : change.verify?.result === 'fail'
+        ? '失败'
+        : '待验证';
+
+  if (artifact.key === 'proposal') {
+    return `# Proposal: ${scenario.title}
+
+## 背景
+
+${scenario.background}
+
+## 目标
+
+${scenario.outcome}
+
+## 变更范围
+
+${files}
+
+## 非目标
+
+- 不在本 change 中重写无关模块或调整公开 API 命名。
+- 不用静态预览代替真实 Runtime、数据库或网络集成验证。
+- 不自动扩大到未在 proposal 中确认的平台适配。
+
+## 成功标准
+
+- 用户可见行为与 proposal 描述一致，异常路径有明确反馈。
+- 相关单元测试、构建和定向回归均留下可复查结果。
+- 变更完成后没有未归属文件，归档材料可解释关键取舍。
+`;
+  }
+
+  if (artifact.key === 'design') {
+    return `# Design: ${scenario.title}
+
+## 设计目标
+
+${scenario.outcome}
+
+## 数据流
+
+1. 入口层解析用户操作，只负责参数与页面状态编排。
+2. Domain 层执行规则判断并返回可序列化结果，不直接处理平台差异。
+3. Platform 适配层完成文件、进程或外部服务访问，并把失败转换为明确诊断。
+4. Dashboard 读取稳定投影，文件正文只在用户选中时按需加载。
+
+## 关键决策
+
+${decisions}
+
+## 失败与恢复
+
+- 输入不完整时保持原状态并返回可操作错误，不写入半成品文件。
+- 构建或验证失败时停留在当前阶段，保存命令、退出码和失败摘要。
+- 恢复执行前重新读取当前配置与产物，避免沿用过期内存状态。
+
+## 验证策略
+
+${checks}
+`;
+  }
+
+  if (artifact.key === 'tasks') {
+    return `# Tasks: ${scenario.title}
+
+## 当前进度
+
+已完成 ${taskProgress}，当前阶段为 **${change.phase}**。
+
+${[...completedLines, ...pendingLines].join('\n')}
+
+## 实施检查
+
+- [x] 明确 change 边界、用户可见结果与非目标。
+- [x] 将实现拆到现有 app/domain/platform 责任边界内。
+- [ ] 对失败路径、恢复路径和空数据状态补充回归覆盖。
+- [ ] 运行最小相关测试并记录实际命令输出。
+- [ ] 核对最终 diff，只保留本 change 所属文件。
+
+## 完成条件
+
+- 所有任务均有对应实现或明确的取消理由。
+- Verify 阶段能从 proposal、design 与测试证据逐项追溯。
+- 用户文档只描述最终行为，不记录分支内反复修改过程。
+
+## 审阅记录
+
+- 实现前确认当前分支、工作区状态和配置基线。
+- 实现后逐项核对任务勾选与实际 diff，不提前标记完成。
+- 进入 Verify 前确认生成资产已经由源码重新构建。
+`;
+  }
+
+  if (artifact.key === 'designDoc') {
+    return `# Technical Design: ${scenario.title}
+
+## 现状与约束
+
+${scenario.background}
+
+本实现沿用现有模块边界，不引入第二套状态源。所有展示层数据都来自稳定投影；用户可读产物与机器 Runtime 状态保持分离。
+
+## 组件职责
+
+| 组件 | 职责 | 不负责 |
+| --- | --- | --- |
+| 命令入口 | 参数解析、交互和流程编排 | 领域规则 |
+| Domain | 状态转换、校验和结果模型 | 文件系统差异 |
+| Platform | 文件、进程和外部依赖适配 | 产品决策 |
+| Dashboard | 读取投影、按需预览产物 | 修改 workflow 状态 |
+
+## 关键文件
+
+${files}
+
+## 技术决策
+
+${decisions}
+
+## 风险控制
+
+- 所有路径在读取或写入前解析并确认仍位于项目边界内。
+- 对大文件使用固定预览预算，完整原文仍保留在项目中。
+- 运行失败不自动跳过阶段检查，恢复时重新验证当前证据。
+`;
+  }
+
+  if (artifact.key === 'plan') {
+    return `# Implementation Plan: ${scenario.title}
+
+## Step 1：建立契约
+
+更新类型、schema 与最小失败用例，确认现有行为在改动前能够稳定复现。
+
+## Step 2：实现核心路径
+
+按以下文件边界完成实现：
+
+${files}
+
+每个步骤完成后只运行覆盖该步骤的测试，避免在尚未收敛时反复执行全量套件。
+
+## Step 3：补齐失败与恢复
+
+- 覆盖无效输入、外部依赖不可用和状态过期。
+- 确认失败不会留下半写入文件或错误阶段。
+- 验证重新进入任务时能从磁盘产物恢复。
+
+## Step 4：最终验证
+
+${checks}
+
+## 交付检查
+
+- 比较最终 diff 与 proposal 范围。
+- 记录未运行检查和仍存在的外部风险。
+- 仅在用户可见发布行为变化时更新 Changelog。
+`;
+  }
+
+  if (artifact.key === 'verifyReport') {
+    const failed = change.verify?.result === 'fail';
+    return `# Verification Report: ${scenario.title}
+
+## 结论
+
+**${verifyLabel}** — ${change.verify?.summary ?? `任务完成 ${taskProgress}，等待最终验证。`}
+
+## 验收证据
+
+| 检查 | 结果 | 证据 |
+| --- | --- | --- |
+| 需求范围 | ${failed ? '通过' : verifyLabel} | proposal 与最终 diff 范围一致 |
+| 相关测试 | ${failed ? '失败' : verifyLabel} | 定向 Vitest 与浏览器回归日志 |
+| 构建检查 | ${failed ? '通过' : verifyLabel} | 产物可由当前源码重新生成 |
+| 工作区检查 | 通过 | 未修改无关用户文件 |
+
+## ${failed ? '未通过项' : '已验证行为'}
+
+${failed ? '- 重试上限场景仍产生一次重复投递。\n- 幂等键在 payload 顺序变化时不稳定。\n- 修复后必须重新运行完整 Verify。' : '- 主路径与异常路径均返回预期结果。\n- 产物来源、验证命令和最终状态可追溯。\n- 归档前确认没有遗留的未完成任务。'}
+
+## 执行命令
+
+${checks}
+`;
+  }
+
+  if (artifact.key === 'cometYaml') {
+    return `schema: comet.classic.v1
+change: ${change.name}
+workflow: ${change.workflow ?? 'feature'}
+status: ${change.status}
+phase: ${change.phase}
+language: zh-CN
+artifact_layout: docs
+artifacts:
+  proposal: ${change.artifacts?.proposal ?? false}
+  design: ${change.artifacts?.design ?? false}
+  tasks: ${change.artifacts?.tasks ?? false}
+  plan: ${change.artifacts?.plan ?? false}
+  verification: ${change.artifacts?.verifyReport ?? false}
+tasks:
+  completed: ${change.tasks?.completed ?? 0}
+  total: ${change.tasks?.total ?? 0}
+verification:
+  result: ${change.verify?.result ?? 'pending'}
+  report_exists: ${change.verify?.reportExists ?? false}
+handoff:
+  disposition: ${change.phase === 'archive' ? 'complete' : 'continue'}
+  next_command: ${change.next?.command ?? 'none'}
+workspace:
+  relative_path: ${change.path}
+  dirty_files_allowed: false
+updated_at: 2026-08-29T12:30:00.000Z
+`;
+  }
+
+  return `# ${artifact.label}: ${scenario.title}
+
+## 说明
+
+${scenario.outcome}
+
+## 当前状态
+
+- Change：${change.displayName}
+- 阶段：${change.phase}
+- 任务：${taskProgress}
+- Verify：${verifyLabel}
+
+## 相关文件
+
+${files}
+
+## 验证
+
+${checks}
+`;
+}
 
 function addCometArtifacts(change) {
   const dir = change.path;
@@ -56,6 +463,14 @@ function addCometArtifacts(change) {
   ];
   if (change.artifacts?.grouped) {
     change.artifacts.grouped.push(...superpowers, ...comet);
+    for (const artifact of change.artifacts.grouped) {
+      if (!artifact.exists) continue;
+      const content = classicArtifactContent(change, artifact);
+      artifact.content = content;
+      artifact.size = content.length;
+      artifact.truncated = false;
+      artifact.updatedAt = '2026-08-29T12:30:00.000Z';
+    }
   }
   return change;
 }
@@ -88,7 +503,7 @@ export const DEMO_SNAPSHOT = {
       '8f3a2c1 重构 dashboard 采集逻辑',
       '2bd9e0a 新增 phase stepper 组件',
       'c4f1a80 修复 verify 解析空指针',
-      '9a02d7d 初始化 openspec/changes 目录',
+      '9a02d7d 初始化 docs/openspec/changes 目录',
     ],
   },
   risks: [
@@ -118,7 +533,7 @@ export const DEMO_SNAPSHOT = {
         name: 'add-auth-rate-limiting',
         displayName: 'add-auth-rate-limiting',
         status: 'active',
-        path: 'openspec/changes/add-auth-rate-limiting',
+        path: 'docs/openspec/changes/add-auth-rate-limiting',
         workflow: 'feature',
         phase: 'build',
         updatedAt: '2 小时前',
@@ -150,21 +565,21 @@ export const DEMO_SNAPSHOT = {
               label: '提案',
               source: 'openspec',
               exists: true,
-              path: 'openspec/changes/add-auth-rate-limiting/proposal.md',
+              path: 'docs/openspec/changes/add-auth-rate-limiting/proposal.md',
             },
             {
               key: 'design',
               label: '设计文档',
               source: 'openspec',
               exists: true,
-              path: 'openspec/changes/add-auth-rate-limiting/design.md',
+              path: 'docs/openspec/changes/add-auth-rate-limiting/design.md',
             },
             {
               key: 'tasks',
               label: '任务清单',
               source: 'openspec',
               exists: true,
-              path: 'openspec/changes/add-auth-rate-limiting/tasks.md',
+              path: 'docs/openspec/changes/add-auth-rate-limiting/tasks.md',
             },
             {
               key: 'designDoc',
@@ -202,7 +617,7 @@ export const DEMO_SNAPSHOT = {
         name: 'dashboard-redesign',
         displayName: 'dashboard-redesign',
         status: 'active',
-        path: 'openspec/changes/dashboard-redesign',
+        path: 'docs/openspec/changes/dashboard-redesign',
         workflow: 'feature',
         phase: 'design',
         updatedAt: '昨天',
@@ -229,21 +644,21 @@ export const DEMO_SNAPSHOT = {
               label: '提案',
               source: 'openspec',
               exists: true,
-              path: 'openspec/changes/dashboard-redesign/proposal.md',
+              path: 'docs/openspec/changes/dashboard-redesign/proposal.md',
             },
             {
               key: 'design',
               label: '设计文档',
               source: 'openspec',
               exists: true,
-              path: 'openspec/changes/dashboard-redesign/design.md',
+              path: 'docs/openspec/changes/dashboard-redesign/design.md',
             },
             {
               key: 'tasks',
               label: '任务清单',
               source: 'openspec',
               exists: true,
-              path: 'openspec/changes/dashboard-redesign/tasks.md',
+              path: 'docs/openspec/changes/dashboard-redesign/tasks.md',
             },
           ],
         },
@@ -267,7 +682,7 @@ export const DEMO_SNAPSHOT = {
         name: 'fix-webhook-retries',
         displayName: 'fix-webhook-retries',
         status: 'active',
-        path: 'openspec/changes/fix-webhook-retries',
+        path: 'docs/openspec/changes/fix-webhook-retries',
         workflow: 'fix',
         phase: 'verify',
         updatedAt: '3 小时前',
@@ -294,21 +709,21 @@ export const DEMO_SNAPSHOT = {
               label: '提案',
               source: 'openspec',
               exists: true,
-              path: 'openspec/changes/fix-webhook-retries/proposal.md',
+              path: 'docs/openspec/changes/fix-webhook-retries/proposal.md',
             },
             {
               key: 'design',
               label: '设计文档',
               source: 'openspec',
               exists: true,
-              path: 'openspec/changes/fix-webhook-retries/design.md',
+              path: 'docs/openspec/changes/fix-webhook-retries/design.md',
             },
             {
               key: 'tasks',
               label: '任务清单',
               source: 'openspec',
               exists: true,
-              path: 'openspec/changes/fix-webhook-retries/tasks.md',
+              path: 'docs/openspec/changes/fix-webhook-retries/tasks.md',
             },
             {
               key: 'designDoc',
@@ -357,7 +772,7 @@ export const DEMO_SNAPSHOT = {
         name: 'migrate-config-to-yaml',
         displayName: 'migrate-config-to-yaml',
         status: 'active',
-        path: 'openspec/changes/migrate-config-to-yaml',
+        path: 'docs/openspec/changes/migrate-config-to-yaml',
         workflow: 'refactor',
         phase: 'build',
         updatedAt: '2 天前',
@@ -384,21 +799,21 @@ export const DEMO_SNAPSHOT = {
               label: '提案',
               source: 'openspec',
               exists: true,
-              path: 'openspec/changes/migrate-config-to-yaml/proposal.md',
+              path: 'docs/openspec/changes/migrate-config-to-yaml/proposal.md',
             },
             {
               key: 'design',
               label: '设计文档',
               source: 'openspec',
               exists: true,
-              path: 'openspec/changes/migrate-config-to-yaml/design.md',
+              path: 'docs/openspec/changes/migrate-config-to-yaml/design.md',
             },
             {
               key: 'tasks',
               label: '任务清单',
               source: 'openspec',
               exists: true,
-              path: 'openspec/changes/migrate-config-to-yaml/tasks.md',
+              path: 'docs/openspec/changes/migrate-config-to-yaml/tasks.md',
             },
             {
               key: 'plan',
@@ -431,7 +846,7 @@ export const DEMO_SNAPSHOT = {
         name: '2025-11-02-add-dark-mode',
         displayName: 'add-dark-mode',
         status: 'archived',
-        path: 'openspec/changes/archive/2025-11-02-add-dark-mode',
+        path: 'docs/openspec/changes/archive/2025-11-02-add-dark-mode',
         workflow: 'feature',
         phase: 'archive',
         updatedAt: '2025-11-02',
@@ -439,7 +854,7 @@ export const DEMO_SNAPSHOT = {
           archiveName: '2025-11-02-add-dark-mode',
           originalName: 'add-dark-mode',
           archivedAt: '2025-11-02',
-          archivePath: 'openspec/changes/archive/2025-11-02-add-dark-mode',
+          archivePath: 'docs/openspec/changes/archive/2025-11-02-add-dark-mode',
         },
         tasks: {
           completed: 14,
@@ -463,21 +878,21 @@ export const DEMO_SNAPSHOT = {
               label: '提案',
               source: 'openspec',
               exists: true,
-              path: 'openspec/changes/archive/2025-11-02-add-dark-mode/proposal.md',
+              path: 'docs/openspec/changes/archive/2025-11-02-add-dark-mode/proposal.md',
             },
             {
               key: 'design',
               label: '设计文档',
               source: 'openspec',
               exists: true,
-              path: 'openspec/changes/archive/2025-11-02-add-dark-mode/design.md',
+              path: 'docs/openspec/changes/archive/2025-11-02-add-dark-mode/design.md',
             },
             {
               key: 'tasks',
               label: '任务清单',
               source: 'openspec',
               exists: true,
-              path: 'openspec/changes/archive/2025-11-02-add-dark-mode/tasks.md',
+              path: 'docs/openspec/changes/archive/2025-11-02-add-dark-mode/tasks.md',
             },
             {
               key: 'plan',
@@ -502,7 +917,7 @@ export const DEMO_SNAPSHOT = {
         name: '2025-10-18-refactor-collector',
         displayName: 'refactor-collector',
         status: 'archived',
-        path: 'openspec/changes/archive/2025-10-18-refactor-collector',
+        path: 'docs/openspec/changes/archive/2025-10-18-refactor-collector',
         workflow: 'refactor',
         phase: 'archive',
         updatedAt: '2025-10-18',
@@ -510,7 +925,7 @@ export const DEMO_SNAPSHOT = {
           archiveName: '2025-10-18-refactor-collector',
           originalName: 'refactor-collector',
           archivedAt: '2025-10-18',
-          archivePath: 'openspec/changes/archive/2025-10-18-refactor-collector',
+          archivePath: 'docs/openspec/changes/archive/2025-10-18-refactor-collector',
         },
         tasks: {
           completed: 9,
@@ -531,21 +946,21 @@ export const DEMO_SNAPSHOT = {
               label: '提案',
               source: 'openspec',
               exists: true,
-              path: 'openspec/changes/archive/2025-10-18-refactor-collector/proposal.md',
+              path: 'docs/openspec/changes/archive/2025-10-18-refactor-collector/proposal.md',
             },
             {
               key: 'design',
               label: '设计文档',
               source: 'openspec',
               exists: true,
-              path: 'openspec/changes/archive/2025-10-18-refactor-collector/design.md',
+              path: 'docs/openspec/changes/archive/2025-10-18-refactor-collector/design.md',
             },
             {
               key: 'tasks',
               label: '任务清单',
               source: 'openspec',
               exists: true,
-              path: 'openspec/changes/archive/2025-10-18-refactor-collector/tasks.md',
+              path: 'docs/openspec/changes/archive/2025-10-18-refactor-collector/tasks.md',
             },
             {
               key: 'plan',
@@ -570,7 +985,7 @@ export const DEMO_SNAPSHOT = {
         name: '2025-09-30-init-openspec',
         displayName: 'init-openspec',
         status: 'archived',
-        path: 'openspec/changes/archive/2025-09-30-init-openspec',
+        path: 'docs/openspec/changes/archive/2025-09-30-init-openspec',
         workflow: 'chore',
         phase: 'archive',
         updatedAt: '2025-09-30',
@@ -578,7 +993,7 @@ export const DEMO_SNAPSHOT = {
           archiveName: '2025-09-30-init-openspec',
           originalName: 'init-openspec',
           archivedAt: '2025-09-30',
-          archivePath: 'openspec/changes/archive/2025-09-30-init-openspec',
+          archivePath: 'docs/openspec/changes/archive/2025-09-30-init-openspec',
         },
         tasks: {
           completed: 6,
@@ -599,21 +1014,21 @@ export const DEMO_SNAPSHOT = {
               label: '提案',
               source: 'openspec',
               exists: true,
-              path: 'openspec/changes/archive/2025-09-30-init-openspec/proposal.md',
+              path: 'docs/openspec/changes/archive/2025-09-30-init-openspec/proposal.md',
             },
             {
               key: 'design',
               label: '设计文档',
               source: 'openspec',
               exists: true,
-              path: 'openspec/changes/archive/2025-09-30-init-openspec/design.md',
+              path: 'docs/openspec/changes/archive/2025-09-30-init-openspec/design.md',
             },
             {
               key: 'tasks',
               label: '任务清单',
               source: 'openspec',
               exists: true,
-              path: 'openspec/changes/archive/2025-09-30-init-openspec/tasks.md',
+              path: 'docs/openspec/changes/archive/2025-09-30-init-openspec/tasks.md',
             },
             {
               key: 'plan',
@@ -639,6 +1054,318 @@ export const DEMO_SNAPSHOT = {
 
 function demoNativeText(text) {
   return { text, truncated: false };
+}
+
+const NATIVE_DEMO_SCENARIOS = {
+  'ship-native-dashboard': {
+    title: '交付可恢复的 Native Dashboard',
+    background:
+      'Native change 的 Loop、验收项、本地执行和父子任务已经存在于 Runtime 投影中，但旧页面只展示阶段标签，用户无法判断当前由谁执行、失败后从哪里恢复。',
+    outcome:
+      'Dashboard 同时展示 portable state、本地执行、验收矩阵和父子 change；刷新页面或切换设备后仍能从项目产物恢复当前进度。',
+    scope: [
+      'Native 列表展示 stage、iteration、actor 与验证结论。',
+      '详情页展示验收项、checks、blockers、history 和产物预览。',
+      '父 change 可查看子 change 的依赖、工作区和完成状态。',
+    ],
+    risks: ['大历史记录需要截断提示。', '本地 overlay 版本不匹配时必须以 portable state 为准。'],
+  },
+  'align-dashboard-copy': {
+    title: '统一 Native Dashboard 状态文案',
+    background:
+      '同一状态在列表、详情和恢复提示中使用了不同术语，失败、阻塞与等待外部条件之间的差异不清楚，用户难以判断下一步应该由 Builder 还是外部人员处理。',
+    outcome:
+      '所有 Native 状态由同一映射生成，并把失败项、阻塞责任人、恢复动作和降级 assurance 清晰展示。',
+    scope: [
+      '统一 build、verify、repairing、blocked 与 done 的中文文案。',
+      '失败项返回 Builder，外部阻塞保持等待且不消耗重试次数。',
+      '版本不匹配的本地执行状态显示明确恢复说明。',
+    ],
+    risks: ['旧 snapshot 可能缺少 assurance。', '过度简化文案会隐藏责任人与恢复动作。'],
+  },
+  'document-native-resume': {
+    title: '记录 Native 跨设备恢复流程',
+    background:
+      '用户在另一台设备或新会话继续 change 时，需要知道哪些状态来自 portable artifacts，哪些本地进程信息不可迁移，以及何时必须重新运行验证。',
+    outcome:
+      '用 brief、spec 和 verification 给出可操作的恢复契约，并在归档前证明 portable state 能独立重建工作流。',
+    scope: [
+      '从 comet-state.yaml 恢复 phase、Loop 与验收状态。',
+      '忽略过期本地 PID、临时日志和设备专属路径。',
+      '恢复后重新运行与当前源码和配置绑定的验证。',
+    ],
+    risks: ['旧设备未提交的代码不能由 portable state 自动恢复。', '配置漂移需要先修复再继续。'],
+  },
+  'prepare-parent-workspace': {
+    title: '准备 Native 父 change 的独立工作区',
+    background:
+      '父子 change 并行执行前需要为子任务创建可定位的独立工作区，并确保它们都从同一基线开始。',
+    outcome: '创建并验证子工作区，记录分支、基线与父 change 归属，完成后可安全归档。',
+    scope: ['解析父 change 基线。', '创建子工作区与分支。', '写入可恢复的 workspace identity。'],
+    risks: ['工作区已存在但指向错误分支。', '基线变化导致子 change 需要重新同步。'],
+  },
+  'render-parent-child-tree': {
+    title: '展示 Native 父子 change 层级',
+    background:
+      '父 change 的子任务分散在独立工作区中，用户只能看到总状态，无法快速定位哪个子任务正在执行或被依赖阻塞。',
+    outcome: '在同一 Explorer 中展示依赖顺序、工作区、验收覆盖范围和可选中的子 change 详情。',
+    scope: ['渲染父子树。', '切换子 change 详情。', '显示依赖与验收覆盖。'],
+    risks: ['循环依赖必须以诊断代替递归渲染。', '归档子 change 仍需保留可读定位。'],
+  },
+  'verify-parent-child-flow': {
+    title: '验证 Native 子 change 依赖顺序',
+    background:
+      '验证任务不能在其实现依赖完成前启动，否则会把缺失实现误判为产品失败，并污染父 change 的验证记录。',
+    outcome: '只有依赖全部通过并完成交付后才允许启动验证，等待状态在 Dashboard 中保持可见。',
+    scope: ['读取 dependsOn。', '阻止提前验证。', '依赖完成后恢复执行。'],
+    risks: ['依赖状态过期时必须重新读取 portable state。', '外部阻塞不能自动标记失败。'],
+  },
+};
+
+function nativeDemoScenario(change) {
+  const key = change.demoScenario ?? change.name;
+  return (
+    NATIVE_DEMO_SCENARIOS[key] ?? {
+      title: `交付 Native change ${change.name}`,
+      background: '该 change 记录了 Native workflow 的可恢复状态、验收证据和产物预览。',
+      outcome: '完成声明范围内的实现，并用 portable artifacts 记录可跨会话恢复的验证结果。',
+      scope: ['保持 brief 与 spec 一致。', '记录 Builder handoff。', '由 Verifier 独立复核。'],
+      risks: ['本地执行状态可能过期。', '未声明文件会阻塞状态转换。'],
+    }
+  );
+}
+
+function nativeTextValue(value, fallback = '尚无补充说明。') {
+  if (typeof value === 'string') return value;
+  if (typeof value?.text === 'string') return value.text;
+  return fallback;
+}
+
+function nativeArtifactContent(change, artifact) {
+  const scenario = nativeDemoScenario(change);
+  const acceptanceItems = change.acceptanceItems ?? [];
+  const acceptanceLines = acceptanceItems.length
+    ? acceptanceItems
+        .map(
+          (item) =>
+            `- [${item.result === 'passed' ? 'x' : ' '}] **${item.id}** ${item.text}（${item.result}${item.reason ? `：${nativeTextValue(item.reason)}` : ''}）`,
+        )
+        .join('\n')
+    : '- [ ] A1 完成 brief 中声明的用户可见结果。\n- [ ] A2 由 Verifier 独立确认验证证据。';
+  const scopeLines = scenario.scope.map((item) => `- ${item}`).join('\n');
+  const riskLines = scenario.risks.map((item) => `- ${item}`).join('\n');
+  const checkLines = (change.checks ?? []).length
+    ? change.checks
+        .map(
+          (check) =>
+            `- ${nativeTextValue(check.name, check.id)}：${check.status}${check.exitCode == null ? '' : `（exit ${check.exitCode}）`}`,
+        )
+        .join('\n')
+    : '- Dashboard focused tests：待执行\n- Portable artifact validation：待执行';
+
+  if (artifact.key === 'comet-state.yaml') {
+    return `schema: comet.native.v4
+state_version: ${change.stateVersion}
+change: ${change.name}
+workflow: native
+status: ${change.lifecycleStatus}
+phase: ${change.phase}
+loop:
+  stage: ${change.loop?.stage ?? 'building'}
+  goal_cycle: ${change.loop?.goalCycle ?? 1}
+  iteration: ${change.loop?.iteration ?? 1}
+  attempt: ${change.loop?.attempt ?? 1}
+  actor: ${change.loop?.actor ?? 'none'}
+  next_action: ${change.loop?.nextAction ?? 'none'}
+acceptance:
+  total: ${change.acceptance?.total ?? 0}
+  passed: ${change.acceptance?.passed ?? 0}
+  failed: ${change.acceptance?.failed ?? 0}
+  blocked: ${change.acceptance?.blocked ?? 0}
+  pending: ${change.acceptance?.pending ?? 0}
+verification:
+  result: ${change.verificationResult ?? 'pending'}
+  assurance: ${change.verification?.assurance ?? 'pending'}
+local_execution:
+  status: ${change.localExecution?.status ?? 'absent'}
+  reason: ${change.localExecution?.reason ?? 'missing'}
+  recoverable_from_stage: ${change.localExecution?.recoverableFromStage ?? 'none'}
+portable_artifacts:
+  brief: brief.md
+  specs_root: specs
+  verification: ${change.verificationResult === 'pending' ? 'pending' : 'verification.md'}
+integrity:
+  contract_hash: sha256:4f1f6f819d8b17ec4a79
+  scope_hash: sha256:a9d4ef00c12a8e764b35
+updated_at: 2026-08-29T12:32:00.000Z
+`;
+  }
+
+  if (artifact.key === 'brief') {
+    return `# Brief: ${scenario.title}
+
+## Outcome
+
+${scenario.outcome}
+
+## 背景
+
+${scenario.background}
+
+## 范围
+
+${scopeLines}
+
+## 非目标
+
+- 不在本 change 中修改无关 workflow 或迁移其他项目数据。
+- 不把本地 PID、临时日志和设备路径当作 portable state。
+- 不在没有验证证据时自动进入 Archive。
+
+## 验收标准
+
+${acceptanceLines}
+
+## 约束
+
+- 所有实现文件必须属于声明的 implementation scope。
+- Builder 只提交实现与检查结果，最终结论由 Verifier 独立给出。
+- 失败后回到 Build 时保留验收 ID，修复证据必须能对应原失败项。
+
+## 已知风险
+
+${riskLines}
+`;
+  }
+
+  if (artifact.key.startsWith('spec-')) {
+    const capability = artifact.key.slice('spec-'.length);
+    return `# ${scenario.title} Specification
+
+## Capability: ${capability}
+
+系统必须在不依赖当前会话内存的情况下，从 Native portable artifacts 重建该能力的当前状态与下一步动作。
+
+### Requirement: 状态可见且可恢复
+
+Dashboard 必须展示 change 的 phase、Loop stage、iteration、actor、验收统计和验证结论；刷新后这些信息保持一致。
+
+### Scenario: 用户打开进行中的 change
+
+- **Given** 项目中存在有效的 \`comet-state.yaml\`、\`brief.md\` 与 capability spec
+- **When** 用户在 Dashboard 选择该 Native change
+- **Then** 页面显示当前 Builder/Verifier、待处理验收项和下一步动作
+- **And** 产物列表可预览完整正文，不只显示文件名
+
+### Scenario: 本地执行状态已经过期
+
+- **Given** portable state 的版本高于本地 overlay
+- **When** Dashboard 载入详情
+- **Then** portable state 作为事实来源
+- **And** 页面提示可以恢复的 stage，不把旧进程标记为仍在运行
+
+### Scenario: Verifier 返回失败
+
+- **Given** 一个或多个验收项为 failed 或 blocked
+- **When** Verifier 提交 verification
+- **Then** failed 项返回 Builder
+- **And** external blocker 保持等待并显示责任人
+
+## 数据要求
+
+${scopeLines}
+
+## 风险
+
+${riskLines}
+`;
+  }
+
+  if (artifact.key === 'verification') {
+    const failedItems = acceptanceItems.filter((item) => item.result !== 'passed');
+    const failedLines = failedItems.length
+      ? failedItems
+          .map(
+            (item) =>
+              `- **${item.id} · ${item.result}**：${item.text}${item.reason ? `；${nativeTextValue(item.reason)}` : ''}`,
+          )
+          .join('\n')
+      : '- 无。所有验收项均已通过。';
+    return `# Verification: ${scenario.title}
+
+## 结论
+
+**${change.verificationResult === 'pass' ? 'PASS' : change.verificationResult === 'fail' ? 'FAIL' : 'PENDING'}** — ${nativeTextValue(change.verification?.summary, '等待 Verifier 完成独立验证。')}
+
+## 验收矩阵
+
+${acceptanceLines}
+
+## 执行证据
+
+${checkLines}
+
+## 未通过项
+
+${failedLines}
+
+## 风险与限制
+
+${riskLines}
+
+## 证据完整性
+
+- 验证记录绑定当前 brief、spec、源码范围与配置 hash。
+- 本地进程状态不作为 portable 通过证据。
+- 如果任一绑定内容变化，本结论自动失效并要求重新验证。
+
+## 后续动作
+
+${change.verificationResult === 'fail' ? '- 将 failed 验收项返回 Builder，保持原验收 ID。\n- 外部阻塞解除前不增加实现重试次数。\n- 修复完成后重新执行全部相关 checks。' : '- 确认源码、配置和 portable artifacts 的 hash 仍与本次验证一致。\n- 用户确认归档边界后写入 archive receipt。\n- 保留验证命令、退出码和风险说明供后续审计。'}
+`;
+  }
+
+  return `# ${artifact.label}: ${scenario.title}
+
+## 目标
+
+${scenario.outcome}
+
+## 当前 Native 状态
+
+- Phase：${change.phase}
+- Loop：${change.loop?.stage ?? 'unknown'} / iteration ${change.loop?.iteration ?? 1}
+- Verification：${change.verificationResult ?? 'pending'}
+- Acceptance：${change.acceptance?.passed ?? 0}/${change.acceptance?.total ?? 0} passed
+
+## 范围
+
+${scopeLines}
+
+## 风险
+
+${riskLines}
+
+## 验收
+
+${acceptanceLines}
+`;
+}
+
+function enrichNativeDemoArtifacts(change) {
+  change.artifacts = (change.artifacts ?? []).map((artifact) => {
+    if (!artifact.exists) return artifact;
+    const content = nativeArtifactContent(change, artifact);
+    return {
+      ...artifact,
+      content,
+      truncated: false,
+      size: content.length,
+      updatedAt: '2026-08-29T12:32:00.000Z',
+    };
+  });
+  for (const child of change.children ?? []) enrichNativeDemoArtifacts(child);
+  return change;
 }
 
 function createNativeV2Seed(options) {
@@ -814,7 +1541,7 @@ const nativeV2Building = createNativeV2Seed({
     attempt: 1,
     outcome: index % 3 === 0 ? 'recovery' : 'fail',
     unresolvedIds: ['A2'],
-    summary: demoNativeText(`演示循环记录 ${index + 1}`),
+    summary: demoNativeText(`恢复检查记录 ${index + 1}`),
     completedAt: `2026-08-09T${String(index + 4).padStart(2, '0')}:00:00.000Z`,
   })),
   historyOverflow: {
@@ -1039,12 +1766,65 @@ function cloneDemoValue(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+const CLASSIC_ACTIVE_PREVIEW_NAMES = [
+  'harden-api-auth-boundary',
+  'stream-dashboard-events',
+  'add-project-knowledge-filters',
+  'repair-native-resume-probe',
+  'migrate-classic-docs-layout',
+  'improve-artifact-preview',
+  'cache-plugin-center-pages',
+  'add-dashboard-search',
+  'protect-worktree-cleanup',
+  'document-release-evidence',
+  'optimize-native-snapshot',
+  'unify-project-settings',
+];
+
+const CLASSIC_ARCHIVED_PREVIEW_NAMES = [
+  'add-dashboard-project-switcher',
+  'stabilize-memory-provider',
+  'index-project-knowledge',
+  'add-native-parent-child-flow',
+  'migrate-classic-artifacts',
+  'improve-verify-report',
+];
+
+const NATIVE_PREVIEW_NAMES = [
+  'stabilize-workspace-recovery',
+  'add-evidence-pagination',
+  'repair-archive-preflight',
+  'improve-builder-handoff',
+  'validate-runtime-artifacts',
+  'add-parent-change-summary',
+  'harden-project-discovery',
+  'stream-verifier-progress',
+  'reduce-snapshot-latency',
+  'persist-acceptance-results',
+  'repair-portable-state',
+  'add-worktree-diagnostics',
+  'improve-resume-guidance',
+  'validate-child-dependencies',
+  'index-native-artifacts',
+  'add-verification-evidence',
+  'protect-state-transitions',
+  'improve-change-search',
+  'repair-runtime-routing',
+  'document-recovery-contract',
+  'add-scope-drift-check',
+  'improve-archive-summary',
+  'stabilize-hook-router',
+  'validate-workspace-identity',
+];
+
 function createClassicDemoChange(template, index, status) {
   const change = cloneDemoValue(template);
-  const suffix = String(index).padStart(2, '0');
-  const originalName = `demo-${status}-${suffix}`;
+  const names =
+    status === 'archived' ? CLASSIC_ARCHIVED_PREVIEW_NAMES : CLASSIC_ACTIVE_PREVIEW_NAMES;
+  const originalName = names[(index - 1) % names.length];
   const date = `2026-07-${String(10 + (index % 20)).padStart(2, '0')}`;
   const sourcePath = template.path;
+  change.demoScenario = template.demoScenario ?? template.displayName;
 
   if (status === 'archived') {
     const archiveName = `${date}-${originalName}`;
@@ -1053,7 +1833,7 @@ function createClassicDemoChange(template, index, status) {
     change.displayName = originalName;
     change.status = 'archived';
     change.phase = 'archive';
-    change.path = `openspec/changes/archive/${archiveName}`;
+    change.path = `docs/openspec/changes/archive/${archiveName}`;
     change.updatedAt = date;
     change.archive = {
       ...change.archive,
@@ -1073,7 +1853,7 @@ function createClassicDemoChange(template, index, status) {
     change.name = originalName;
     change.displayName = originalName;
     change.status = 'active';
-    change.path = `openspec/changes/${originalName}`;
+    change.path = `docs/openspec/changes/${originalName}`;
     change.updatedAt = `${index + 1} 小时前`;
   }
 
@@ -1091,9 +1871,10 @@ function createClassicDemoChange(template, index, status) {
 
 function createNativeDemoChange(template, index) {
   const change = cloneDemoValue(template);
-  const name = `demo-native-${String(index).padStart(2, '0')}`;
+  const name = NATIVE_PREVIEW_NAMES[(index - 1) % NATIVE_PREVIEW_NAMES.length];
 
   change.name = name;
+  change.demoScenario = template.demoScenario ?? template.name;
   change.stateVersion += index;
   if (change.status === 'archived') {
     const archivedAt = `2026-08-${String(1 + (index % 8)).padStart(2, '0')}`;
@@ -1127,15 +1908,15 @@ DEMO_SNAPSHOT.changes.archived.push(
 DEMO_SNAPSHOT.changes.active[0].risks.push(
   ...Array.from({ length: 9 }, (_, index) => ({
     level: index % 3 === 0 ? 'info' : 'warning',
-    code: `demo-risk-${String(index + 1).padStart(2, '0')}`,
-    message: `演示风险 ${index + 1}：需要补充工作区证据`,
+    code: `workspace-evidence-${String(index + 1).padStart(2, '0')}`,
+    message: `工作区证据 ${index + 1}：需要补充对应的验证记录`,
     suggestion: '补齐对应产物后重新运行 comet verify',
   })),
 );
 DEMO_SNAPSHOT.git.recentCommits.push(
   ...Array.from(
     { length: 8 },
-    (_, index) => `demo${String(index + 1).padStart(2, '0')} 补充 dashboard 演示数据`,
+    (_, index) => `d4e0${String(index + 1).padStart(2, '0')} 更新 Dashboard 工作区投影`,
   ),
 );
 
@@ -1158,7 +1939,7 @@ nativeSidebarDemoChange.children = [
     changeStatus: 'archived',
     archiveName: '2026-08-08-prepare-parent-workspace',
     workspace: {
-      id: 'demo-worktree-prepare',
+      id: 'comet-worktree-prepare',
       label: 'native/prepare-parent-workspace',
       branch: 'native/prepare-parent-workspace',
       current: false,
@@ -1174,7 +1955,7 @@ nativeSidebarDemoChange.children = [
     locator: 'demo-native-child-render',
     changeStatus: 'active',
     workspace: {
-      id: 'demo-worktree-render',
+      id: 'comet-worktree-render',
       label: 'native/render-parent-child-tree',
       branch: 'native/render-parent-child-tree',
       current: false,
@@ -1190,7 +1971,7 @@ nativeSidebarDemoChange.children = [
     locator: 'demo-native-child-verify',
     changeStatus: 'active',
     workspace: {
-      id: 'demo-worktree-verify',
+      id: 'comet-worktree-verify',
       label: 'native/verify-parent-child-flow',
       branch: 'native/verify-parent-child-flow',
       current: false,
@@ -1393,6 +2174,7 @@ nativeSidebarDemoChange.history.push(
     completedAt: `2026-08-09T${String(index + 13).padStart(2, '0')}:00:00.000Z`,
   })),
 );
+DEMO_SNAPSHOT.native.changes.forEach(enrichNativeDemoArtifacts);
 DEMO_SNAPSHOT.summary.activeChanges = DEMO_SNAPSHOT.changes.active.length;
 DEMO_SNAPSHOT.summary.archivedChanges = DEMO_SNAPSHOT.changes.archived.length;
 DEMO_SNAPSHOT.summary.verifyFailed = DEMO_SNAPSHOT.changes.active.filter(
@@ -1415,218 +2197,247 @@ const demoMemoryRecords = [
   {
     id: 'demo-memory-language',
     memoryType: 'core-profile',
-    category: '沟通偏好',
+    category: '交付语言与结构',
     scope: 'global',
     status: 'proven',
     authority: 'explicit',
-    text: '默认使用中文回复，并保持结论简洁。',
-    reason: '用户已明确确认，适用于所有项目与对话。',
-    taskTypes: ['咨询', '实现', '评审'],
-    evidenceCount: 3,
-    applicationCount: 12,
-    successCount: 12,
+    text: '默认使用中文沟通。代码任务的最终回复先给结论，再列出关键改动、验证结果和未覆盖项；避免把实现过程写成流水账。',
+    reason: '用户在多次实现与评审任务中明确确认了语言和交付结构。',
+    taskTypes: ['代码实现', '问题诊断', '独立评审'],
+    evidenceCount: 6,
+    applicationCount: 18,
+    successCount: 18,
     failureCount: 0,
     lastApplication: {
       applicationId: 'demo-memory-language-application',
-      task: '查看 Dashboard Demo',
-      whyApplied: '用户已明确设置回复语言与表达方式',
+      task: '调整官网 Dashboard 数据',
+      whyApplied: '当前任务需要用中文说明内容变化与验证证据',
       delivery: 'manifest',
-      appliedAt: '2026-08-26T09:20:00.000Z',
+      appliedAt: '2026-08-29T11:42:00.000Z',
       outcome: 'used-successfully',
     },
     applicationHistory: [
       {
         applicationId: 'demo-memory-language-history-1',
-        task: '优化 Dashboard 页面',
-        whyApplied: '需要以中文说明改动结果',
+        task: '修复 Dashboard 手机端展示',
+        whyApplied: '需要先给出可见结果，再说明响应式实现和验证范围',
         delivery: 'full',
-        appliedAt: '2026-08-25T16:40:00.000Z',
+        appliedAt: '2026-08-28T18:16:00.000Z',
         outcome: 'used-successfully',
       },
     ],
-    updatedAt: '2026-08-24T10:30:00.000Z',
+    updatedAt: '2026-08-29T11:42:00.000Z',
   },
   {
     id: 'demo-memory-dashboard-verification',
     memoryType: 'collaboration-policy',
-    category: '验证习惯',
+    category: 'Dashboard 验收基线',
     scope: 'project',
+    projectKey: 'comet',
     status: 'proven',
     authority: 'explicit',
-    text: '修改 Dashboard 后先运行最小相关测试，并保留与当前需求无关的工作区改动。',
-    reason: '当前任务涉及 Dashboard 交互与演示数据。',
-    pathPatterns: ['domains/dashboard/**', 'test/domains/dashboard/**'],
-    operations: ['实现', '验证'],
+    text: '桌面端按 1444 × 901 基准检查，移动端按 390 × 844 检查；交互式工作台保持固定桌面画布比例，窄屏允许横向浏览，不整体压缩成难以阅读的缩略图。',
+    reason: '当前改动同时命中 Dashboard 画布、官网嵌入容器和手机端展示。',
+    pathPatterns: ['domains/dashboard/web/**', 'website/**'],
+    operations: ['界面实现', '交互回归'],
     phases: ['Build', 'Verify'],
-    evidenceCount: 2,
-    applicationCount: 7,
-    successCount: 7,
+    evidenceCount: 4,
+    applicationCount: 9,
+    successCount: 9,
     failureCount: 0,
     lastApplication: {
       applicationId: 'demo-memory-dashboard-verification-application',
-      task: '补充 Demo 中心页数据',
-      whyApplied: '变更命中了 Dashboard 与浏览器回归测试路径',
+      task: '调整首页工作台的手机端尺寸',
+      whyApplied: '变更涉及固定画布缩放和窄屏可读性',
       delivery: 'expanded',
-      appliedAt: '2026-08-26T09:18:00.000Z',
+      appliedAt: '2026-08-29T10:58:00.000Z',
       outcome: 'used-successfully',
     },
     applicationHistory: [],
-    updatedAt: '2026-08-26T09:18:00.000Z',
+    updatedAt: '2026-08-29T10:58:00.000Z',
   },
   {
     id: 'demo-memory-dashboard-style',
     memoryType: 'personal-episode',
-    category: '界面偏好',
+    category: '官网工作台迭代',
     scope: 'project',
+    projectKey: 'comet',
     status: 'trial',
     authority: 'inferred',
-    text: 'Dashboard 新界面优先复用现有紧凑工作台样式，避免额外叠加宣传式卡片。',
-    reason: '当前页面属于 Dashboard 管理工作台。',
-    taskTypes: ['设计优化'],
-    pathPatterns: ['domains/dashboard/web/**'],
-    evidenceCount: 1,
-    applicationCount: 3,
-    successCount: 3,
+    text: '当首页工作台与真实 Dashboard 的视觉和交互偏差较大时，先复用现有 Dashboard 组件与数据结构，再为官网单独处理只读边界、弹层范围和响应式缩放。',
+    reason: '当前任务同时修改 Website 嵌入入口和 Dashboard 展示数据。',
+    taskTypes: ['官网展示', 'Dashboard 设计'],
+    pathPatterns: ['website/**', 'domains/dashboard/web/**'],
+    evidenceCount: 2,
+    applicationCount: 4,
+    successCount: 4,
     failureCount: 0,
     lastApplication: {
       applicationId: 'demo-memory-dashboard-style-application',
-      task: '调整项目知识中心页',
-      whyApplied: '修改的是 Dashboard 的内容工作区',
+      task: '将首页截图替换为可交互 Dashboard',
+      whyApplied: '需要保留真实中心 UI，同时避免官网预览获得写权限',
       delivery: 'manifest',
-      appliedAt: '2026-08-25T14:10:00.000Z',
+      appliedAt: '2026-08-29T10:36:00.000Z',
       outcome: 'used-successfully',
     },
     applicationHistory: [],
     episode: {
-      situation: '需要让信息密集的管理页更容易扫描。',
-      actionSummary: '沿用已有侧栏、表格和工具栏的紧凑层级。',
-      outcome: '页面保持一致的工作台节奏。',
-      lesson: '先整理信息层级，再决定是否需要新增视觉元素。',
+      situation: '直接嵌入完整 Dashboard 后，移动端内容被缩成缩略图，文件预览也会占满页面。',
+      actionSummary:
+        '拆出 Website 专用入口，复用中心页 UI，把写操作设为只读，并将窄屏切换为固定画布横向浏览。',
+      outcome: '桌面端和手机端都能读清核心区域，弹层交互保持在当前容器内。',
+      lesson: '官网工作台应复用产品的信息架构，但需要独立的展示边界。',
     },
-    updatedAt: '2026-08-25T14:10:00.000Z',
+    updatedAt: '2026-08-29T10:36:00.000Z',
   },
   {
     id: 'demo-memory-legacy-layout',
     memoryType: 'collaboration-policy',
-    category: '历史记录',
+    category: '旧版首页展示方式',
     scope: 'project',
+    projectKey: 'comet',
     status: 'superseded',
     authority: 'explicit',
-    text: '旧版 Demo 只展示工作流页面。',
-    reason: '已由可进入插件中心的 Demo 体验替代。',
-    evidenceCount: 1,
+    text: '首页只放置一张 Dashboard 截图，不提供工作流切换、中心页浏览或文件预览。',
+    reason: '已由可交互、只读的官网 Dashboard 替代。',
+    evidenceCount: 2,
     applicationCount: 0,
     successCount: 0,
     failureCount: 0,
-    updatedAt: '2026-08-26T09:25:00.000Z',
+    updatedAt: '2026-08-29T09:40:00.000Z',
   },
 ];
 
 const demoProjectKnowledgeRecords = [
   {
-    id: 'demo-knowledge-dashboard-interaction',
-    projectId: 'demo-comet',
+    id: 'demo-knowledge-website-build-chain',
+    projectId: 'comet',
     type: 'topology',
     state: 'proven',
     authority: 'repository',
-    title: 'Dashboard 交互约定',
+    title: 'Dashboard 数据采集与详情读取链路',
     summary:
-      'Demo 应提供可浏览的工作流、个人记忆和项目知识中心页；仅展示示例数据，不改写本地项目。',
-    applicablePaths: ['domains/dashboard/web/**'],
-    operations: ['查看', '演示'],
+      'Dashboard Server 先通过 Collector 返回轻量工作区投影；变更列表使用分页数据，用户选中 change 后才按需读取产物正文和验证证据。',
+    applicablePaths: [
+      'domains/dashboard/collector.ts',
+      'domains/dashboard/server.ts',
+      'domains/dashboard/types.ts',
+    ],
+    operations: ['采集概览', '分页列表', '按需读取详情'],
     phases: ['Build', 'Verify'],
     conclusions: [
       {
-        text: '插件中心入口在 Demo 中也必须可访问。',
-        sources: [{ source: 'domains/dashboard/web/src/main.jsx', anchor: 'DashboardApp' }],
+        text: '概览与详情使用独立采集路径，列表请求不预读所有产物正文。',
+        sources: [{ source: 'domains/dashboard/collector.ts', anchor: 'collectDashboardSnapshot' }],
+      },
+      {
+        text: '分页游标绑定当前 snapshot，工作区状态变化后会要求重新加载。',
+        sources: [
+          { source: 'domains/dashboard/server.ts', anchor: 'snapshotVersion' },
+          { source: 'domains/dashboard/types.ts', anchor: 'DashboardChangePage' },
+        ],
       },
     ],
     relations: [],
-    verification: [{ command: 'pnpm test:dashboard-e2e --grep demo' }],
-    applicationCount: 4,
-    successCount: 4,
+    verification: [
+      { command: 'npx vitest run test/domains/dashboard/collector.test.ts' },
+      { command: 'pnpm build:dashboard' },
+    ],
+    applicationCount: 6,
+    successCount: 6,
     failureCount: 0,
     lastApplication: {
-      task: '补充 Demo 中心页数据',
-      whyApplied: '任务直接修改 Dashboard Demo 体验',
-      delivery: 'manifest',
-      appliedAt: '2026-08-26T09:20:00.000Z',
+      task: '优化 Dashboard 详情加载',
+      whyApplied: '变更涉及概览投影、分页游标与产物按需读取',
+      delivery: 'expanded',
+      appliedAt: '2026-08-29T11:06:00.000Z',
       outcome: 'used-successfully',
     },
     applicationHistory: [],
-    updatedAt: '2026-08-26T09:20:00.000Z',
+    updatedAt: '2026-08-29T11:06:00.000Z',
   },
   {
-    id: 'demo-knowledge-dashboard-build',
-    projectId: 'demo-comet',
+    id: 'demo-knowledge-dashboard-data-boundary',
+    projectId: 'comet',
+    type: 'constraint',
+    state: 'proven',
+    authority: 'repository',
+    title: 'Dashboard 文件预览与写入边界',
+    summary:
+      '产物正文会在 Dashboard 容器内打开，路径读取会重新确认文件仍位于项目边界内；预览界面不直接改写 workflow 状态。',
+    applicablePaths: [
+      'domains/dashboard/web/src/main.jsx',
+      'domains/dashboard/web/src/dashboard-modal.jsx',
+      'domains/dashboard/web/src/markdown-preview.js',
+    ],
+    operations: ['查看', '文件预览', '中心页浏览'],
+    phases: ['Build', 'Verify'],
+    conclusions: [
+      {
+        text: '文件预览、设置和中心页共用 Dashboard 弹层容器，关闭、Esc 和全屏状态由同一层管理。',
+        sources: [
+          { source: 'domains/dashboard/web/src/dashboard-modal.jsx', anchor: 'DashboardModal' },
+          { source: 'domains/dashboard/web/src/main.jsx', anchor: 'ArtifactPreview' },
+        ],
+      },
+    ],
+    relations: [],
+    verification: [
+      { command: 'npx vitest run test/domains/dashboard/web-source.test.ts' },
+      { command: 'pnpm test:dashboard-e2e -- --grep "previews an artifact"' },
+    ],
+    applicationCount: 8,
+    successCount: 8,
+    failureCount: 0,
+    lastApplication: {
+      task: '修复产物预览无法退出全屏',
+      whyApplied: '变更涉及预览容器、关闭行为和项目路径边界',
+      delivery: 'manifest',
+      appliedAt: '2026-08-29T11:18:00.000Z',
+      outcome: 'used-successfully',
+    },
+    applicationHistory: [],
+    updatedAt: '2026-08-29T11:18:00.000Z',
+  },
+  {
+    id: 'demo-knowledge-dashboard-regression',
+    projectId: 'comet',
     type: 'dependency',
     state: 'proven',
     authority: 'repository',
-    title: 'Dashboard 预览构建',
-    summary: '浏览器回归测试读取已构建的 Dashboard 产物；更新前端源码后先执行 Dashboard build。',
-    applicablePaths: ['domains/dashboard/web/**', 'test/domains/dashboard/**'],
-    operations: ['验证'],
+    title: 'Dashboard 前端验证入口',
+    summary:
+      '静态数据先由 Vitest 校验结构，Dashboard 交互由 Playwright 覆盖；修改源码后分别构建产品 Dashboard 与官网专用静态资源，再按风险扩大验证范围。',
+    applicablePaths: ['domains/dashboard/**', 'test/domains/dashboard/**'],
+    operations: ['构建', '回归测试'],
     phases: ['Verify'],
     conclusions: [
       {
-        text: 'Demo 浏览器回归需要与当前前端构建产物一致。',
+        text: '浏览器测试通过独立 Playwright 配置启动 Dashboard 预览服务。',
         sources: [
-          { source: 'package.json', anchor: 'build:dashboard' },
+          { source: 'package.json', anchor: 'test:dashboard-e2e' },
           { source: 'test/domains/dashboard/playwright.config.ts', anchor: 'webServer' },
         ],
       },
     ],
     relations: [],
-    verification: [{ command: 'pnpm build:dashboard' }],
-    applicationCount: 2,
-    successCount: 2,
-    failureCount: 0,
-    lastApplication: {
-      task: '运行 Dashboard Demo 回归',
-      whyApplied: '当前验证范围包含前端构建与浏览器测试',
-      delivery: 'expanded',
-      appliedAt: '2026-08-26T09:22:00.000Z',
-      outcome: 'used-successfully',
-    },
-    applicationHistory: [],
-    updatedAt: '2026-08-26T09:22:00.000Z',
-  },
-  {
-    id: 'demo-knowledge-dashboard-regression',
-    projectId: 'demo-comet',
-    type: 'constraint',
-    state: 'proven',
-    authority: 'repository',
-    title: 'Dashboard 回归范围',
-    summary: '修改单一 Dashboard 交互时，优先执行对应的浏览器用例，再按风险扩大验证范围。',
-    applicablePaths: ['domains/dashboard/**', 'test/domains/dashboard/**'],
-    operations: ['实现', '验证'],
-    phases: ['Verify'],
-    conclusions: [
-      {
-        text: '回归应覆盖用户能否真正点击进入 Demo 插件中心。',
-        sources: [{ source: 'AGENTS.md', anchor: '测试' }],
-      },
-    ],
-    relations: [],
     verification: [
-      {
-        command:
-          'pnpm exec playwright test --config test/domains/dashboard/playwright.config.ts --grep "loads the demo dashboard"',
-      },
+      { command: 'npx vitest run test/domains/dashboard/web-source.test.ts' },
+      { command: 'pnpm build:dashboard' },
+      { command: 'pnpm test:dashboard-e2e' },
     ],
-    applicationCount: 5,
-    successCount: 5,
+    applicationCount: 11,
+    successCount: 11,
     failureCount: 0,
     lastApplication: {
-      task: '检查 Demo 入口是否可点击',
-      whyApplied: '任务涉及 Dashboard 交互可达性',
+      task: '验证官网中心页和文件预览',
+      whyApplied: '变更涉及静态数据、路由切换、弹层和移动端视口',
       delivery: 'manifest',
-      appliedAt: '2026-08-26T09:25:00.000Z',
+      appliedAt: '2026-08-29T11:24:00.000Z',
       outcome: 'used-successfully',
     },
     applicationHistory: [],
-    updatedAt: '2026-08-26T09:25:00.000Z',
+    updatedAt: '2026-08-29T11:24:00.000Z',
   },
 ];
 
@@ -1652,7 +2463,7 @@ export const DEMO_PLUGIN_PAGES = [
       retrieval: { records: demoMemoryRecords, profileRecords: demoMemoryRecords.slice(0, 1) },
       management: { records: demoMemoryRecords, conflicts: [] },
       policy: { learning: true, retrieval: true },
-      projectKey: 'demo-comet',
+      projectKey: 'comet',
       providerConfig: {
         provider: 'local',
         profileCharLimit: 2000,
@@ -1683,32 +2494,37 @@ export const DEMO_PLUGIN_PAGES = [
     data: {
       provider: 'local',
       configured: true,
-      retrieval: 'Demo 使用预置的项目知识，便于查看 Agent 在任务中会获得的上下文。',
+      retrieval: '当前页面使用预置的项目知识，便于查看 Agent 在任务中会获得的上下文。',
       local: {
         available: true,
-        repositoryId: 'demo-comet',
-        workspaceId: 'demo-workspace',
-        sourceCount: 4,
+        repositoryId: 'comet',
+        workspaceId: 'comet-main',
+        sourceCount: 5,
         sources: [
+          {
+            source: 'domains/dashboard/collector.ts',
+            kind: 'source',
+            updatedAt: '2026-08-29T11:06:00.000Z',
+          },
+          {
+            source: 'domains/dashboard/server.ts',
+            kind: 'source',
+            updatedAt: '2026-08-29T11:24:00.000Z',
+          },
           {
             source: 'domains/dashboard/web/src/main.jsx',
             kind: 'source',
-            updatedAt: '2026-08-26T09:20:00.000Z',
+            updatedAt: '2026-08-29T10:54:00.000Z',
           },
           {
-            source: 'domains/dashboard/web/demo.js',
+            source: 'domains/dashboard/web/src/dashboard-modal.jsx',
             kind: 'source',
-            updatedAt: '2026-08-26T09:25:00.000Z',
+            updatedAt: '2026-08-29T11:24:00.000Z',
           },
-          {
-            source: 'test/domains/dashboard/dashboard-browser.spec.ts',
-            kind: 'test',
-            updatedAt: '2026-08-26T09:25:00.000Z',
-          },
-          { source: 'AGENTS.md', kind: 'guide', updatedAt: '2026-08-26T09:00:00.000Z' },
+          { source: 'AGENTS.md', kind: 'guide', updatedAt: '2026-08-29T09:00:00.000Z' },
         ],
-        sectionCount: 6,
-        updatedAt: '2026-08-26T09:25:00.000Z',
+        sectionCount: 9,
+        updatedAt: '2026-08-29T11:24:00.000Z',
         channels: ['records', 'sections'],
       },
       records: demoProjectKnowledgeRecords,
@@ -1735,48 +2551,85 @@ export const DEMO_PLUGIN_PAGES = [
       diagnostics: [],
       sourcePreviews: [
         {
+          source: 'domains/dashboard/collector.ts',
+          format: 'markdown',
+          content:
+            '# Dashboard Collector\n\nCollector 把项目配置、Classic 变更、Git 状态和风险项组合成稳定投影。\n\n## 读取策略\n\n- 概览请求只返回轻量字段\n- 选中 change 后才读取产物正文\n- 每次读取都校验项目路径边界\n',
+          modifiedAt: '2026-08-29T11:06:00.000Z',
+        },
+        {
+          source: 'domains/dashboard/server.ts',
+          format: 'markdown',
+          content:
+            '# Dashboard Server\n\nServer 提供项目列表、snapshot、change 详情和插件页面等稳定路由。\n\n分页游标与 snapshot 版本绑定；当工作区发生变化时，客户端会收到过期诊断并重新加载。\n',
+          modifiedAt: '2026-08-29T11:24:00.000Z',
+        },
+        {
           source: 'domains/dashboard/web/src/main.jsx',
           format: 'markdown',
           content:
-            '# Dashboard 交互\n\nDemo 模式会加载工作流快照，并提供可浏览的插件中心页面。\n\n## 边界\n\nDemo 数据只用于展示，不会调用真实项目的写入接口。\n',
-          modifiedAt: '2026-08-26T09:20:00.000Z',
+            '# Dashboard Web App\n\n主界面管理 Classic、Native、个人记忆、项目知识与设置中心的选中状态。\n\n文件预览在容器内打开，用户可以通过关闭按钮、背景或 Esc 退出。\n',
+          modifiedAt: '2026-08-29T10:54:00.000Z',
         },
         {
-          source: 'domains/dashboard/web/demo.js',
+          source: 'domains/dashboard/web/src/dashboard-modal.jsx',
           format: 'markdown',
           content:
-            '# Demo 数据\n\n个人记忆与项目知识通过独立的演示页面数据提供。\n\n- 个人记忆展示偏好、协作策略和历史记录\n- 项目知识展示事实、规范和来源\n',
-          modifiedAt: '2026-08-26T09:25:00.000Z',
-        },
-        {
-          source: 'test/domains/dashboard/dashboard-browser.spec.ts',
-          format: 'markdown',
-          content:
-            '# Demo 回归\n\n浏览器测试应覆盖 Demo 侧边栏入口，并确认中心页显示代表性数据。\n',
-          modifiedAt: '2026-08-26T09:25:00.000Z',
+            '# Dashboard Modal\n\n弹层统一处理标题、副标题、页脚和 portal 挂载位置。\n\n官网与产品界面复用同一套关闭行为，不会把用户困在全屏预览中。\n',
+          modifiedAt: '2026-08-29T11:24:00.000Z',
         },
         {
           source: 'AGENTS.md',
           format: 'markdown',
-          content: '# 验证\n\n每轮先运行覆盖当前改动的最小相关测试，再按风险扩大范围。\n',
-          modifiedAt: '2026-08-26T09:00:00.000Z',
+          content:
+            '# Dashboard 变更验证\n\n每轮先运行覆盖当前改动的最小相关测试；涉及前端构建和生成资产时再运行 build，最终按风险决定是否扩大到完整回归。\n',
+          modifiedAt: '2026-08-29T09:00:00.000Z',
         },
       ],
       demoQueryResults: [
         {
-          title: 'Dashboard 回归范围',
-          source: 'test/domains/dashboard/dashboard-browser.spec.ts',
-          content: '先运行 Demo 浏览器用例，确认插件入口可点击且中心页有演示数据。',
+          title: 'Dashboard 数据采集与详情读取链路',
+          source: 'domains/dashboard/collector.ts',
+          content: 'Collector 返回轻量工作区投影，用户选中 change 后才读取产物正文。',
         },
         {
-          title: 'Dashboard 预览构建',
-          source: 'package.json',
-          content: '浏览器测试前执行 pnpm build:dashboard，使预览读取最新前端产物。',
+          title: 'Dashboard 文件预览与写入边界',
+          source: 'domains/dashboard/web/src/dashboard-modal.jsx',
+          content:
+            '产物在 Dashboard 容器内打开，读取路径会校验项目边界，预览界面不直接改写 workflow 状态。',
         },
       ],
     },
   },
 ];
+
+export const DEMO_PROJECT_CONFIG = {
+  path: '.comet/config.yaml',
+  revision: '8f3a2c1',
+  schema: 'comet.project.v1',
+  defaultWorkflow: 'classic',
+  workflows: ['classic', 'native'],
+  ambientResume: true,
+  hookAllowPaths: ['docs/generated', 'reports'],
+  knowledge: {
+    provider: 'local',
+    localInclude: ['docs/architecture/**/*.md', 'packages/*/README.md'],
+  },
+  native: {
+    artifactRoot: '.comet/native',
+    language: 'zh-CN',
+    clarificationMode: 'sequential',
+    archiveConfirmation: 'required',
+    maxVerifyFailures: 3,
+  },
+  classic: {
+    artifactLayout: 'docs',
+    language: 'zh-CN',
+    contextCompression: 'beta',
+    reviewMode: 'standard',
+    autoTransition: false,
+  },
+};
 
 // Enrich all changes with comet intermediate artifacts
 DEMO_SNAPSHOT.changes.active.forEach(addCometArtifacts);

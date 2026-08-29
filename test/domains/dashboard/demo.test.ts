@@ -88,12 +88,29 @@ describe('dashboard demo data', () => {
     expect(personalMemory).toMatchObject({
       status: 'enabled',
       data: {
-        projectKey: 'demo-comet',
+        projectKey: 'comet',
       },
     });
     expect(personalMemory?.data.management.records).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ text: '默认使用中文回复，并保持结论简洁。' }),
+        expect.objectContaining({
+          category: '交付语言与结构',
+          scope: 'global',
+          text: expect.stringContaining('先给结论'),
+        }),
+        expect.objectContaining({
+          category: 'Dashboard 验收基线',
+          scope: 'project',
+          projectKey: 'comet',
+          text: expect.stringContaining('390 × 844'),
+        }),
+        expect.objectContaining({
+          category: '官网工作台迭代',
+          memoryType: 'personal-episode',
+          episode: expect.objectContaining({
+            lesson: expect.stringContaining('独立的展示边界'),
+          }),
+        }),
       ]),
     );
     expect(projectKnowledge).toMatchObject({
@@ -103,8 +120,64 @@ describe('dashboard demo data', () => {
       },
     });
     expect(projectKnowledge?.data.records).toEqual(
-      expect.arrayContaining([expect.objectContaining({ title: 'Dashboard 交互约定' })]),
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: 'Dashboard 数据采集与详情读取链路',
+          conclusions: expect.arrayContaining([
+            expect.objectContaining({
+              sources: expect.arrayContaining([
+                expect.objectContaining({
+                  source: 'domains/dashboard/collector.ts',
+                }),
+              ]),
+            }),
+          ]),
+        }),
+        expect.objectContaining({
+          title: 'Dashboard 文件预览与写入边界',
+          summary: expect.stringContaining('项目边界'),
+        }),
+      ]),
     );
+    expect(projectKnowledge?.data.local.sources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: 'domains/dashboard/collector.ts' }),
+      ]),
+    );
+  });
+
+  it('keeps website preview data free from Demo-labelled user copy', async () => {
+    const { DEMO_PLUGIN_PAGES, DEMO_SNAPSHOT } =
+      await import('../../../domains/dashboard/web/demo.js');
+    const userVisibleData = JSON.stringify({
+      pluginPages: DEMO_PLUGIN_PAGES,
+      snapshot: DEMO_SNAPSHOT,
+    });
+
+    expect(userVisibleData).not.toMatch(/\bDemo\b/u);
+  });
+
+  it('provides realistic project settings for the website demo', async () => {
+    const { DEMO_PROJECT_CONFIG } = await import('../../../domains/dashboard/web/demo.js');
+
+    expect(DEMO_PROJECT_CONFIG).toMatchObject({
+      schema: 'comet.project.v1',
+      defaultWorkflow: 'classic',
+      workflows: ['classic', 'native'],
+      ambientResume: true,
+      knowledge: {
+        provider: 'local',
+        localInclude: expect.arrayContaining(['docs/architecture/**/*.md']),
+      },
+      native: {
+        language: 'zh-CN',
+        clarificationMode: 'sequential',
+      },
+      classic: {
+        artifactLayout: 'docs',
+        language: 'zh-CN',
+      },
+    });
   });
 
   it('shows the complete beta17 portable artifact set by lifecycle', async () => {
@@ -121,6 +194,56 @@ describe('dashboard demo data', () => {
         expect(keys).toContain('verification');
       }
     }
+  });
+
+  it('provides substantial Classic and Native artifact previews', async () => {
+    const { DEMO_SNAPSHOT } = await import('../../../domains/dashboard/web/demo.js');
+    const classicChanges = [...DEMO_SNAPSHOT.changes.active, ...DEMO_SNAPSHOT.changes.archived];
+
+    for (const change of classicChanges) {
+      expect(change.path).toMatch(/^docs\/openspec\/changes\//u);
+      for (const artifact of change.artifacts.grouped.filter((item) => item.exists)) {
+        expect(artifact.content?.length, `${change.name}/${artifact.key}`).toBeGreaterThan(360);
+      }
+    }
+
+    const rateLimit = DEMO_SNAPSHOT.changes.active.find(
+      (change) => change.name === 'add-auth-rate-limiting',
+    );
+    expect(
+      rateLimit?.artifacts.grouped.find((artifact) => artifact.key === 'proposal')?.content,
+    ).toContain('## 背景');
+    expect(
+      rateLimit?.artifacts.grouped.find((artifact) => artifact.key === 'design')?.content,
+    ).toContain('## 数据流');
+    expect(
+      rateLimit?.artifacts.grouped.find((artifact) => artifact.key === 'tasks')?.content,
+    ).toContain('- [x]');
+    expect(
+      rateLimit?.artifacts.grouped.find((artifact) => artifact.key === 'cometYaml')?.content,
+    ).toContain('schema: comet.classic.v1');
+
+    for (const change of DEMO_SNAPSHOT.native.changes) {
+      for (const artifact of change.artifacts.filter((item) => item.exists)) {
+        expect(artifact.content?.length, `${change.name}/${artifact.key}`).toBeGreaterThan(360);
+      }
+    }
+
+    const nativeDashboard = DEMO_SNAPSHOT.native.changes.find(
+      (change) => change.name === 'ship-native-dashboard',
+    );
+    expect(
+      nativeDashboard?.artifacts.find((artifact) => artifact.key === 'brief')?.content,
+    ).toContain('## 验收标准');
+    expect(
+      nativeDashboard?.artifacts.find((artifact) => artifact.key === 'spec-dashboard')?.content,
+    ).toContain('### Scenario');
+    const nativeRepair = DEMO_SNAPSHOT.native.changes.find(
+      (change) => change.name === 'align-dashboard-copy',
+    );
+    expect(
+      nativeRepair?.artifacts.find((artifact) => artifact.key === 'verification')?.content,
+    ).toContain('## 未通过项');
   });
 
   it('populates enough changes to demonstrate bounded side-panel scrolling', async () => {

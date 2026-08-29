@@ -1555,10 +1555,16 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
 
   await page.getByRole('button', { name: '需求简报' }).click();
   await expect(page.getByRole('heading', { name: '需求简报' })).toBeVisible();
+  const nativeArtifactPreview = page.locator('.dashboard-artifact-preview-panel');
+  await expect(
+    nativeArtifactPreview.getByRole('heading', {
+      name: 'Brief: 交付可恢复的 Native Dashboard',
+    }),
+  ).toBeVisible();
+  await expect(nativeArtifactPreview).toContainText('验收标准');
   await expect(
     page.locator('.dashboard-artifact-preview-panel > header > .dashboard-artifact-preview-expand'),
   ).toBeVisible();
-  await expect(page.getByText('Ship a fast, recoverable Native dashboard.')).toBeVisible();
   await expect(page.getByRole('button', { name: '关闭产物预览' })).toHaveCount(0);
   await page.getByRole('button', { name: '全屏展示' }).click();
   await expect(page.getByRole('button', { name: '退出全屏' })).toBeVisible();
@@ -1584,6 +1590,13 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
   await proposal.click();
 
   await expect(page.getByRole('heading', { name: '提案', level: 2 })).toBeVisible();
+  const classicArtifactPreview = page.locator('.dashboard-artifact-preview-panel');
+  await expect(
+    classicArtifactPreview.getByRole('heading', {
+      name: 'Proposal: 为认证接口增加分布式限流',
+    }),
+  ).toBeVisible();
+  await expect(classicArtifactPreview).toContainText('登录和令牌刷新接口在活动流量峰值期间');
   await page.getByRole('button', { name: '全屏展示' }).click();
   await expect(page.getByRole('button', { name: '退出全屏' })).toBeVisible();
   await page.keyboard.press('Escape');
@@ -1596,26 +1609,30 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
   await personalMemory.click();
   const personalMemoryList = page.getByRole('region', { name: '个人记忆列表' });
   await expect(personalMemoryList).toBeVisible();
-  await expect(personalMemoryList.getByText('默认使用中文回复，并保持结论简洁。')).toBeVisible();
+  await expect(
+    personalMemoryList.getByText(/默认使用中文沟通。代码任务的最终回复先给结论/u),
+  ).toBeVisible();
   const demoMemoryManifest = page.getByRole('region', { name: '最近一次任务使用的记忆' });
-  await expect(demoMemoryManifest).toContainText('任务：查看 Dashboard Demo');
+  await expect(demoMemoryManifest).toContainText('任务：调整官网 Dashboard 数据');
   await expect(demoMemoryManifest).toContainText('2 条记忆');
-  await expect(demoMemoryManifest).not.toContainText('默认使用中文回复，并保持结论简洁。');
+  await expect(demoMemoryManifest).not.toContainText('默认使用中文沟通');
   await demoMemoryManifest.getByRole('button', { name: '查看使用明细' }).click();
   const demoMemoryDialog = page.getByRole('dialog', {
-    name: /沟通偏好/u,
+    name: /交付语言与结构/u,
   });
   await expect(demoMemoryDialog).toBeVisible();
   const demoMemoryNavigation = demoMemoryDialog.getByRole('navigation', {
     name: '本次使用的个人记忆',
   });
-  await expect(demoMemoryNavigation).toContainText('沟通偏好');
+  await expect(demoMemoryNavigation).toContainText('交付语言与结构');
   await expect(demoMemoryNavigation).toContainText('个人偏好');
-  await expect(demoMemoryNavigation).toContainText('验证习惯');
+  await expect(demoMemoryNavigation).toContainText('Dashboard 验收基线');
   await expect(demoMemoryNavigation).toContainText('协作约定');
-  await demoMemoryNavigation.getByRole('button', { name: '查看个人记忆详情：验证习惯' }).click();
-  await expect(page.getByRole('dialog', { name: /验证习惯/u })).toContainText(
-    '修改 Dashboard 后先运行最小相关测试',
+  await demoMemoryNavigation
+    .getByRole('button', { name: '查看个人记忆详情：Dashboard 验收基线' })
+    .click();
+  await expect(page.getByRole('dialog', { name: /Dashboard 验收基线/u })).toContainText(
+    '移动端按 390 × 844 检查',
   );
   await page
     .locator('.dashboard-knowledge-preview-modal-root .ant-modal-wrap')
@@ -1627,7 +1644,7 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
   await projectKnowledge.click();
   await expect(page.getByRole('tablist', { name: '项目知识视图' })).toBeVisible();
   await expect(
-    page.locator('[aria-label="项目知识记录列表"]').getByText('Dashboard 交互约定'),
+    page.locator('[aria-label="项目知识记录列表"]').getByText('Dashboard 数据采集与详情读取链路'),
   ).toBeVisible();
 
   expect(consoleErrors).toEqual([]);
@@ -1721,7 +1738,7 @@ test('keeps context detail previews flat and readable', async ({ page }) => {
     .getByRole('region', { name: '最近一次任务使用的记忆' })
     .getByRole('button', { name: '查看使用明细' })
     .click();
-  const memoryDialog = page.getByRole('dialog', { name: /沟通偏好/u });
+  const memoryDialog = page.getByRole('dialog', { name: /交付语言与结构/u });
   await expect(memoryDialog.locator('.dashboard-settings-modal-title-row')).toHaveCSS(
     'border-left-width',
     '0px',
@@ -2010,28 +2027,29 @@ test('keeps personal memory context and application history easy to scan', async
     .getByLabel('记忆应用详情')
     .locator('.dashboard-context-application-history');
   const historyEntry = applicationHistory.locator('article').first();
-  await expect(historyEntry.getByText('优化 Dashboard 页面', { exact: true })).toHaveCSS(
+  await expect(historyEntry.getByText('修复 Dashboard 手机端展示', { exact: true })).toHaveCSS(
     'font-size',
     '13px',
   );
-  await expect(historyEntry.getByText('需要以中文说明改动结果', { exact: true })).toHaveCSS(
-    'font-size',
-    '12px',
-  );
+  await expect(
+    historyEntry.getByText('需要先给出可见结果，再说明响应式实现和验证范围', { exact: true }),
+  ).toHaveCSS('font-size', '12px');
   const historyMeta = historyEntry.locator('footer');
-  await expect(historyMeta).toContainText('2026-08-26 00:40');
+  await expect(historyMeta).toContainText('2026-08-29 02:16');
   await expect(historyMeta).toContainText('应用成功');
   await expect(historyMeta.locator('time')).toHaveCSS('font-size', '12px');
   await expect(historyMeta.locator('span')).toHaveCSS('font-size', '12px');
 
   const memoryInspector = page.getByLabel('记忆应用详情');
-  await expect(memoryInspector.locator('strong').first()).toHaveText('沟通偏好');
+  await expect(memoryInspector.locator('strong').first()).toHaveText('交付语言与结构');
   await expect(memoryInspector.getByText('这条记忆为什么被应用', { exact: true })).toHaveCount(0);
   await expect(memoryInspector.getByRole('heading', { name: '适用条件' })).toBeVisible();
 
   await page.getByRole('menuitem', { name: '项目知识' }).click();
   const knowledgeInspector = page.getByRole('complementary', { name: '记录详情' });
-  await expect(knowledgeInspector.locator('h3').first()).toHaveText('Dashboard 预览构建');
+  await expect(knowledgeInspector.locator('h3').first()).toHaveText(
+    'Dashboard 数据采集与详情读取链路',
+  );
   await expect(knowledgeInspector.getByRole('heading', { name: '应用条件' })).toBeVisible();
 });
 

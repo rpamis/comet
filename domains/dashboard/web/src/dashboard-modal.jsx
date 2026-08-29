@@ -1,6 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Button, Modal, Tooltip } from 'antd';
 import { FullscreenExitOutlined, FullscreenOutlined } from '@ant-design/icons';
+
+const DashboardPortalContext = createContext(null);
+
+export function DashboardPortalProvider({ container, children }) {
+  return (
+    <DashboardPortalContext.Provider value={container}>{children}</DashboardPortalContext.Provider>
+  );
+}
 
 export function useDashboardModalState(open) {
   const [fullscreen, setFullscreen] = useState(false);
@@ -72,6 +80,7 @@ export function DashboardModal({
   children,
   ...modalProps
 }) {
+  const portalContainer = useContext(DashboardPortalContext);
   const { fullscreen, toggleFullscreen, requestClose } = useDashboardModalState(open);
   const modalClassName = ['dashboard-modal', className, fullscreen ? 'is-fullscreen' : '']
     .filter(Boolean)
@@ -87,6 +96,7 @@ export function DashboardModal({
   return (
     <Modal
       {...modalProps}
+      getContainer={modalProps.getContainer ?? portalContainer ?? undefined}
       rootClassName={modalRootClassName}
       className={modalClassName}
       centered

@@ -7060,6 +7060,24 @@ body {
   font-weight: 620 !important;
 }
 
+.dashboard-workbench.is-embedded
+  :where(.dashboard-plugin-primary-action, .dashboard-plugin-secondary-action):disabled,
+.dashboard-workbench.is-embedded .dashboard-knowledge-inspector-actions .ant-btn-default:disabled {
+  border-color: var(--color-border) !important;
+  background: var(--color-surface-warm) !important;
+  box-shadow: none !important;
+  color: var(--color-meta) !important;
+  opacity: 0.72;
+}
+
+.dashboard-workbench.is-embedded .dashboard-memory-record-actions .ant-btn:disabled,
+.dashboard-workbench.is-embedded .dashboard-knowledge-inspector-actions .ant-btn-text:disabled {
+  border-color: transparent !important;
+  background: transparent !important;
+  color: var(--color-meta) !important;
+  opacity: 0.46;
+}
+
 .dashboard-memory-record-actions .ant-btn.ant-btn-text,
 .dashboard-knowledge-ledger-toolbar .ant-btn {
   width: 32px;
@@ -7410,6 +7428,13 @@ body {
   overflow: auto;
   padding: 14px 18px 20px;
   overscroll-behavior: contain;
+}
+
+.dashboard-settings-modal
+  .dashboard-settings-main.is-read-only
+  :is(.ant-btn, .ant-switch, .ant-select-selector, .ant-input, .ant-input-affix-wrapper) {
+  cursor: not-allowed !important;
+  opacity: 0.62;
 }
 
 .dashboard-settings-modal .dashboard-settings-stack {

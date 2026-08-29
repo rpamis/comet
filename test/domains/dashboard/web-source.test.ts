@@ -13,6 +13,21 @@ async function readDashboardModalSource(): Promise<string> {
   );
 }
 
+async function readWebsiteDemoEntrySource(): Promise<string> {
+  return fs.readFile(
+    path.resolve('domains', 'dashboard', 'web', 'src', 'website-demo-entry.jsx'),
+    'utf8',
+  );
+}
+
+async function readWebsiteDemoSnippet(): Promise<string> {
+  return fs.readFile(path.resolve('website', 'snippets', 'dashboard-website-demo.jsx'), 'utf8');
+}
+
+async function readWebsiteCustomStyles(): Promise<string> {
+  return fs.readFile(path.resolve('website', 'custom.css'), 'utf8');
+}
+
 async function readDashboardStyles(): Promise<string> {
   return fs.readFile(path.resolve('domains', 'dashboard', 'web', 'src', 'styles.css'), 'utf8');
 }
@@ -231,9 +246,10 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain('className={`dashboard-sidebar-settings${settingsOpen');
     expect(source).toContain('className="dashboard-sidebar-settings-label"');
     expect(source).toContain('function DashboardSettingsOverlay');
-    expect(source).toContain(
-      "import { DashboardModal, useDashboardModalState } from './dashboard-modal.jsx'",
-    );
+    expect(source).toContain("from './dashboard-modal.jsx'");
+    expect(source).toContain('DashboardModal,');
+    expect(source).toContain('DashboardPortalProvider,');
+    expect(source).toContain('useDashboardModalState,');
     expect(source).toContain('<DashboardModal');
     expect(source).toContain("aria-label={fullscreen ? '退出全屏' : '全屏展示'}");
     expect(modal).toContain('mask={{ closable: true }}');
@@ -330,6 +346,116 @@ describe('dashboard web source contracts', () => {
     expect(styles).toContain('--dashboard-plugin-body-size: 13px');
   });
 
+  it('keeps personal memory and project knowledge mutations read-only in the website embed', async () => {
+    const [source, styles] = await Promise.all([readDashboardSource(), readDashboardStyles()]);
+    const pluginPage = source.match(
+      /function PluginCenterPage\([\s\S]*?\n}\n\nfunction DashboardSettingsOverlay/,
+    );
+    const projectKnowledgeInspector = source.match(
+      /function ProjectKnowledgeInspector\([\s\S]*?\n}\n\nfunction ProjectKnowledgeSources/,
+    );
+    const projectKnowledgeCenter = source.match(
+      /function ProjectKnowledgeCenter\([\s\S]*?\n}\n\nfunction PersonalMemoryCenter/,
+    );
+    const personalMemoryCenter = source.match(
+      /function PersonalMemoryCenter\([\s\S]*?\n}\n\nfunction AntSummaryCards/,
+    );
+    const settingsOverlay = source.match(
+      /function DashboardSettingsOverlay\([\s\S]*?\n}\n\nfunction SettingsSectionHead/,
+    );
+    const configSettings = source.match(
+      /function CometConfigSettings\([\s\S]*?\n}\n\nfunction PersonalMemorySettings/,
+    );
+    const personalMemorySettings = source.match(
+      /function PersonalMemorySettings\([\s\S]*?\n}\n\nfunction ProjectKnowledgeSettings/,
+    );
+    const projectKnowledgeSettings = source.match(
+      /function ProjectKnowledgeSettings\([\s\S]*?\n}\n\nfunction openProjectKnowledgeCorrection/,
+    );
+
+    expect(source).toContain('readOnly={embedded}');
+    expect(source).toContain('themeToggleDisabled={embedded}');
+    expect(source).toContain('disabled={themeToggleDisabled}');
+    expect(source).toContain("embedded ? ' is-embedded' : ''");
+    expect(pluginPage?.[0]).toContain('readOnly = false');
+    expect(pluginPage?.[0]).toContain('readOnly={readOnly}');
+    expect(projectKnowledgeInspector?.[0]).toContain('disabled={readOnly}');
+    expect(projectKnowledgeCenter?.[0]).toContain('disabled={readOnly}');
+    expect(personalMemoryCenter?.[0]).toContain('disabled={readOnly || !projectKey}');
+    expect(personalMemoryCenter?.[0]).toContain('disabled={readOnly}');
+    expect(settingsOverlay?.[0]).toContain('readOnly = false');
+    expect(settingsOverlay?.[0]).toContain('inert={readOnly}');
+    expect(configSettings?.[0]).toContain('disabled={readOnly}');
+    expect(personalMemorySettings?.[0]).toContain('disabled={readOnly}');
+    expect(projectKnowledgeSettings?.[0]).toContain('disabled={readOnly}');
+    expect(styles).toContain('.dashboard-workbench.is-embedded');
+    expect(styles).toContain(
+      '.dashboard-plugin-primary-action, .dashboard-plugin-secondary-action',
+    );
+  });
+
+  it('uses product preview wording instead of Demo wording in website-facing feedback', async () => {
+    const [source, snippet] = await Promise.all([readDashboardSource(), readWebsiteDemoSnippet()]);
+
+    for (const copy of [
+      '未找到对应的 Demo 插件页面',
+      '未找到对应的 Demo 设置页面',
+      'Demo 模式仅展示示例数据',
+      'Demo 配置已保存',
+    ]) {
+      expect(source).not.toContain(copy);
+    }
+    expect(snippet).not.toContain('Dashboard Demo 加载');
+    expect(snippet).not.toContain('Comet Dashboard Demo');
+  });
+
+  it('switches static Demo plugin centers without a transient loading state', async () => {
+    const [source, websiteEntry] = await Promise.all([
+      readDashboardSource(),
+      readWebsiteDemoEntrySource(),
+    ]);
+    const demoPluginEffect = source.match(
+      /useEffect\(\(\) => \{\s*if \(!useDemo\) return undefined;[\s\S]*?\}, \[demoPluginPages, pluginSelection, useDemo\]\);/,
+    );
+    const pluginSelectHandler = source.match(
+      /onPluginSelect=\{\(pluginId\) => \{[\s\S]*?\}\}\s*onCollapse=/,
+    );
+
+    expect(pluginSelectHandler?.[0]).toMatch(
+      /useDemo\s*\? \(pluginPages\.find\(\(page\) => page\.pluginId === pluginId\) \?\? null\)/,
+    );
+    expect(demoPluginEffect?.[0]).not.toContain('setPluginLoading(');
+    expect(websiteEntry).toContain("import { DEMO_PLUGIN_PAGES } from '../demo.js'");
+    expect(websiteEntry).toContain('demoPluginPages={DEMO_PLUGIN_PAGES}');
+  });
+
+  it('keeps the website Dashboard readable in a horizontally browsable mobile viewport', async () => {
+    const [snippet, websiteStyles] = await Promise.all([
+      readWebsiteDemoSnippet(),
+      readWebsiteCustomStyles(),
+    ]);
+
+    expect(snippet).toContain('const MOBILE_MIN_SCALE = 0.44');
+    expect(snippet).toContain('Math.max(fitScale, MOBILE_MIN_SCALE)');
+    expect(snippet).toContain("' is-mobile-viewport'");
+    expect(snippet).toContain('comet-dashboard-website-scroll-content');
+    expect(snippet).toContain("event.key !== 'ArrowLeft' && event.key !== 'ArrowRight'");
+    expect(snippet).toContain(
+      "event.currentTarget.scrollLeft += event.key === 'ArrowRight' ? 160 : -160",
+    );
+    expect(websiteStyles).toContain('.comet-dashboard-website-stage.is-mobile-viewport');
+    expect(websiteStyles).toContain('overflow-x: auto');
+    expect(websiteStyles).toContain('touch-action: pan-x pan-y');
+    expect(websiteStyles).toContain('scrollbar-width: none');
+  });
+
+  it('positions the website verification badge below the Dashboard refresh action', async () => {
+    const websiteStyles = await readWebsiteCustomStyles();
+
+    expect(websiteStyles).toContain('.comet-home__float--pass {');
+    expect(websiteStyles).toContain('top: clamp(6.25rem, calc(4.25rem + 3vw), 7.25rem);');
+  });
+
   it('uses the change-detail width to switch between stacked and two-column panels', async () => {
     const [source, styles] = await Promise.all([readDashboardSource(), readDashboardStyles()]);
 
@@ -375,6 +501,8 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain('renderJsonPreview');
     expect(source).toContain("artifact.key === 'cometYaml'");
     expect(source).toContain("artifact.key === 'handoff'");
+    expect(source).toContain('artifact.content ??');
+    expect(source).not.toContain('Math.floor(Math.random() * 4096)');
   });
 
   it('keeps the artifact table of contents behind fullscreen preview only', async () => {
