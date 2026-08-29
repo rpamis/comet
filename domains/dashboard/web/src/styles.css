@@ -7430,6 +7430,11 @@ body {
   overscroll-behavior: contain;
 }
 
+.dashboard-settings-modal .dashboard-settings-content {
+  min-width: 0;
+  min-height: 100%;
+}
+
 .dashboard-settings-modal
   .dashboard-settings-main.is-read-only
   :is(.ant-btn, .ant-switch, .ant-select-selector, .ant-input, .ant-input-affix-wrapper) {

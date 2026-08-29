@@ -384,7 +384,11 @@ describe('dashboard web source contracts', () => {
     expect(personalMemoryCenter?.[0]).toContain('disabled={readOnly || !projectKey}');
     expect(personalMemoryCenter?.[0]).toContain('disabled={readOnly}');
     expect(settingsOverlay?.[0]).toContain('readOnly = false');
-    expect(settingsOverlay?.[0]).toContain('inert={readOnly}');
+    expect(settingsOverlay?.[0]).toContain('<div className="dashboard-settings-content">');
+    expect(settingsOverlay?.[0]).not.toContain('inert={readOnly}');
+    expect(settingsOverlay?.[0]).not.toContain(
+      "className={`dashboard-settings-main${readOnly ? ' is-read-only' : ''}`}\n          aria-live=\"polite\"\n          aria-disabled={readOnly || undefined}\n          inert={readOnly}",
+    );
     expect(configSettings?.[0]).toContain('disabled={readOnly}');
     expect(personalMemorySettings?.[0]).toContain('disabled={readOnly}');
     expect(projectKnowledgeSettings?.[0]).toContain('disabled={readOnly}');
@@ -453,7 +457,7 @@ describe('dashboard web source contracts', () => {
     const websiteStyles = await readWebsiteCustomStyles();
 
     expect(websiteStyles).toContain('.comet-home__float--pass {');
-    expect(websiteStyles).toContain('top: clamp(4.65rem, calc(3.43rem + 1.83vw), 5rem);');
+    expect(websiteStyles).toContain('top: clamp(6.025rem, calc(4.805rem + 1.83vw), 6.375rem);');
     expect(websiteStyles).toContain('right: -0.5rem;');
     expect(websiteStyles).toContain('left: -0.5rem;');
   });

@@ -4068,39 +4068,40 @@ function DashboardSettingsPage({
           className={`dashboard-settings-main${readOnly ? ' is-read-only' : ''}`}
           aria-live="polite"
           aria-disabled={readOnly || undefined}
-          inert={readOnly}
         >
-          {loading && !currentData ? (
-            <LoadingState />
-          ) : error && !currentData ? (
-            <Alert
-              type="error"
-              showIcon
-              message="设置加载失败"
-              description={error}
-              action={<Button onClick={onRetry}>重试</Button>}
-            />
-          ) : section === 'comet.config' && config ? (
-            <CometConfigSettings data={config} readOnly={readOnly} onSave={onSaveConfig} />
-          ) : !page ? (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前设置不可用" />
-          ) : page.pluginId === 'comet.personal-memory' ? (
-            <PersonalMemorySettings
-              page={page}
-              data={page.data}
-              readOnly={readOnly}
-              onInvoke={onInvoke}
-            />
-          ) : page.pluginId === 'comet.project-knowledge' ? (
-            <ProjectKnowledgeSettings
-              page={page}
-              data={page.data}
-              readOnly={readOnly}
-              onInvoke={onInvoke}
-            />
-          ) : (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该插件暂未提供设置页" />
-          )}
+          <div className="dashboard-settings-content">
+            {loading && !currentData ? (
+              <LoadingState />
+            ) : error && !currentData ? (
+              <Alert
+                type="error"
+                showIcon
+                message="设置加载失败"
+                description={error}
+                action={<Button onClick={onRetry}>重试</Button>}
+              />
+            ) : section === 'comet.config' && config ? (
+              <CometConfigSettings data={config} readOnly={readOnly} onSave={onSaveConfig} />
+            ) : !page ? (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前设置不可用" />
+            ) : page.pluginId === 'comet.personal-memory' ? (
+              <PersonalMemorySettings
+                page={page}
+                data={page.data}
+                readOnly={readOnly}
+                onInvoke={onInvoke}
+              />
+            ) : page.pluginId === 'comet.project-knowledge' ? (
+              <ProjectKnowledgeSettings
+                page={page}
+                data={page.data}
+                readOnly={readOnly}
+                onInvoke={onInvoke}
+              />
+            ) : (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该插件暂未提供设置页" />
+            )}
+          </div>
         </section>
       </div>
     </div>
@@ -4619,7 +4620,9 @@ function PersonalMemorySettings({ page, data, readOnly = false, onInvoke }) {
           message="个人记忆插件已停用"
           description="记忆文件和历史仍然保留，重新启用后即可继续使用。"
           action={
-            <Button onClick={() => onInvoke('lifecycle', { action: 'enable' })}>重新启用</Button>
+            <Button disabled={readOnly} onClick={() => onInvoke('lifecycle', { action: 'enable' })}>
+              重新启用
+            </Button>
           }
         />
       )}
@@ -4678,7 +4681,7 @@ function PersonalMemorySettings({ page, data, readOnly = false, onInvoke }) {
               <Switch
                 size="small"
                 checked={Boolean(projectKey && learningAllowed && !learningPaused)}
-                disabled={!projectKey || !learningAllowed}
+                disabled={readOnly || !projectKey || !learningAllowed}
                 aria-label="切换当前项目学习"
                 onChange={(enabled) =>
                   onInvoke('pause-project-learning', { projectKey, paused: !enabled })
@@ -4699,7 +4702,7 @@ function PersonalMemorySettings({ page, data, readOnly = false, onInvoke }) {
               <Switch
                 size="small"
                 checked={Boolean(projectKey && retrievalAllowed && !retrievalPaused)}
-                disabled={!projectKey || !retrievalAllowed}
+                disabled={readOnly || !projectKey || !retrievalAllowed}
                 aria-label="切换当前项目记忆注入"
                 onChange={(enabled) =>
                   onInvoke('pause-project-retrieval', { projectKey, paused: !enabled })
@@ -4822,7 +4825,7 @@ function PersonalMemorySettings({ page, data, readOnly = false, onInvoke }) {
                     aria-label="记忆仓库 Git remote"
                   />
                   <Button
-                    disabled={!remoteUrl.trim()}
+                    disabled={readOnly || !remoteUrl.trim()}
                     onClick={() => {
                       void onInvoke('configure-remote', { url: remoteUrl.trim() });
                       setRemoteUrl('');
@@ -4833,7 +4836,11 @@ function PersonalMemorySettings({ page, data, readOnly = false, onInvoke }) {
                 </div>
                 <div className="dashboard-memory-sync-row">
                   <span>{syncMessage}</span>
-                  <Button icon={<SyncOutlined />} onClick={() => onInvoke('sync', {})}>
+                  <Button
+                    icon={<SyncOutlined />}
+                    disabled={readOnly}
+                    onClick={() => onInvoke('sync', {})}
+                  >
                     立即同步
                   </Button>
                 </div>
@@ -4890,6 +4897,7 @@ function PersonalMemorySettings({ page, data, readOnly = false, onInvoke }) {
                 {record.kind === 'inferred' && record.status === 'trial' && (
                   <Button
                     size="small"
+                    disabled={readOnly}
                     onClick={() =>
                       onInvoke('remember', {
                         scope: record.scope,
@@ -4976,7 +4984,9 @@ function ProjectKnowledgeSettings({ page, data, readOnly = false, onInvoke }) {
           message={page.projectPaused ? '当前项目已暂停项目知识' : '项目知识插件已停用'}
           description="项目文件和插件配置仍然保留。"
           action={
-            <Button onClick={() => onInvoke('lifecycle', { action: 'enable' })}>重新启用</Button>
+            <Button disabled={readOnly} onClick={() => onInvoke('lifecycle', { action: 'enable' })}>
+              重新启用
+            </Button>
           }
         />
       )}
@@ -5150,6 +5160,7 @@ function ProjectKnowledgeSettings({ page, data, readOnly = false, onInvoke }) {
           <Switch
             size="small"
             checked={!disabled}
+            disabled={readOnly}
             aria-label="切换当前项目知识检索"
             onChange={(enabled) =>
               onInvoke('lifecycle', { action: enabled ? 'enable' : 'disable' })
