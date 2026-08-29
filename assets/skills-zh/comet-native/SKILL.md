@@ -47,6 +47,7 @@ comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --sess
 | A | 多会话协作（推荐） | 当前会话只负责统筹；由多个独立会话处理当前可执行的子任务，并持续反馈进度 |
 | B | 单会话推进 | 不创建 Codex 独立会话或 Claude Code Agent Team；全部子任务仍按相同范围、依赖和验收要求，由当前会话依次处理 |
 用户已经明确要求“多个会话”“独立会话”“跨会话协作”或“Agent Team”时，视为选择 A，不重复询问推进方式。确认前不得创建子 change、worktree、Codex 独立会话、Claude Code Agent Team 或分配任务。
+当最终 Shape 已确定为包含两个或更多 Child 的 Supervisor Change 时，必须在 Decisions 中明确记录 Supervisor Change 和每个 Child 条目，并在运行 `--confirmed` 前要求用户在多会话协作和单会话推进中二选一；不得把普通“确认”视为已选择，也不得替用户默认选择。
 确认后，Runtime 先为 Supervisor Change 创建独立的集成分支和 worktree，再基于集成分支的当前提交，为每个子任务生成任务包，其中包含角色、worktree、基线提交和 `runId`。推进方式只决定子任务是在独立会话还是当前会话中完成，不写入 `children.yaml`，也不改变 Runtime 的 `readyChildren`、`runId`、验收或集成规则。Skill 只启动 `readyChildren` 中列出的当前可执行子任务；选择 A 时最多同时启动两个不依赖其他子任务的任务，选择 B 时按顺序执行。每个子任务的范围都必须来自 Supervisor Change 的确认；出现新的用户可见决定时回到 Supervisor Change 的 Shape。
 恢复 `/comet-native` 时以 Runtime 状态为准，不重复创建已有子任务或 worktree。重新打开 Supervisor Change 后，如果原来的 Codex 独立会话或 Claude Code Agent Team 已经不存在，先重新读取 Runtime，再对 `readyChildren` 中剩余的子任务重新询问推进方式；不得根据旧会话或旧团队的状态推断子任务已经完成，也不得自动改用 subagent 或单会话推进。
 未解决问题保持 `[blocking]`；有阻塞项时不修改项目实现。完成标准：所有会影响用户可见结果的选择和未明说的假设均已处理，没有 `[blocking]`，用户明确确认目标、范围、关键决定、验收项和非目标，并且 Runtime 已进入 Build。只有用户明确确认后才使用后续指令中含 `--confirmed` 的命令推进。

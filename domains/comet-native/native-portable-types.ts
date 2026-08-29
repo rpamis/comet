@@ -4,6 +4,9 @@ export const NATIVE_PORTABLE_HISTORY_LIMIT = 50 as const;
 
 export type NativePortablePhase = 'shape' | 'build' | 'verify' | 'archive';
 export type NativePortableStatus = 'active' | 'await-user' | 'blocked' | 'done';
+export const NATIVE_SUPERVISOR_COORDINATION_MODES = ['multi-session', 'single-session'] as const;
+export type NativeSupervisorCoordinationMode =
+  (typeof NATIVE_SUPERVISOR_COORDINATION_MODES)[number];
 export type NativePortableVerificationResult = 'pending' | 'pass' | 'fail' | 'blocked';
 export type NativePortableVerificationAssurance =
   | 'host-attested'

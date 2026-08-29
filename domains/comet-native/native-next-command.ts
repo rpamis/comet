@@ -26,7 +26,11 @@ import {
   type NativePortableExpectedContinuation,
   type NativePortableExpectedContinuationAction,
 } from './native-portable-runtime.js';
-import type { NativePortableState } from './native-portable-types.js';
+import {
+  NATIVE_SUPERVISOR_COORDINATION_MODES,
+  type NativePortableState,
+  type NativeSupervisorCoordinationMode,
+} from './native-portable-types.js';
 import {
   assertNoArguments,
   configuredPaths,
@@ -117,6 +121,17 @@ export async function nativeNextCommand(
   const reviseRequirements = takeFlag(args, '--revise-requirements');
   const retryVerifier = takeFlag(args, '--retry-verifier');
   const resolveVerifierBlocker = takeFlag(args, '--resolve-verifier-blocker');
+  const coordinationModeText = takeOption(args, '--coordination-mode');
+  const coordinationMode = coordinationModeText as NativeSupervisorCoordinationMode | undefined;
+  if (
+    coordinationModeText !== undefined &&
+    !(NATIVE_SUPERVISOR_COORDINATION_MODES as readonly string[]).includes(coordinationModeText)
+  ) {
+    throw new NativeUsageError('--coordination-mode must be multi-session or single-session');
+  }
+  if (coordinationMode !== undefined && !confirmed) {
+    throw new NativeUsageError('--coordination-mode is only valid with --confirmed in Shape');
+  }
   const maxParallelText = takeOption(args, '--max-parallel');
   const maxParallel = maxParallelText === undefined ? 2 : Number(maxParallelText);
   if (!Number.isSafeInteger(maxParallel) || maxParallel < 1) {
@@ -233,6 +248,9 @@ export async function nativeNextCommand(
   }
   const recovery = await recoverNativePortableChange({ paths: configured.paths, name });
   const current = recovery.state;
+  if (coordinationMode !== undefined && current.phase !== 'shape') {
+    throw new NativeUsageError('--coordination-mode is only valid when confirming Shape');
+  }
   if (!summary) throw new NativeUsageError('--summary is required');
   let state;
   let parentAdvance: Awaited<
@@ -243,6 +261,7 @@ export async function nativeNextCommand(
       state = await confirmNativePortableShape({
         paths: configured.paths,
         name,
+        ...(coordinationMode === undefined ? {} : { coordinationMode }),
         expectedContinuation,
       });
     } else if (
@@ -388,12 +407,16 @@ export async function nativeNextCommand(
         ...(await portableParentView(configured.paths, state)),
       });
     }
+    const continuationChildren =
+      current.phase === 'shape'
+        ? await inspectNativeChildren({ paths: configured.paths, state: current })
+        : null;
     return {
       command: 'next',
       exitCode: 65,
       data: {
         state: nativePortableStateSummary(current),
-        continuation: nativePortableContinuation(current),
+        continuation: nativePortableContinuation(current, continuationChildren),
       },
       error: {
         code: 'invalid-data',
@@ -404,6 +427,7 @@ export async function nativeNextCommand(
   }
   return success('next', {
     state: nativePortableStateSummary(state),
+    ...(coordinationMode === undefined ? {} : { coordinationMode }),
     ...(await portableParentView(configured.paths, state)),
   });
 }

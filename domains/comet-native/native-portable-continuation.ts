@@ -1,13 +1,17 @@
 import type { NativeChildrenInspection } from './native-children.js';
 import type { NativePortableExpectedContinuationAction } from './native-portable-runtime.js';
-import type { NativePortableState } from './native-portable-types.js';
+import {
+  NATIVE_SUPERVISOR_COORDINATION_MODES,
+  type NativePortableState,
+} from './native-portable-types.js';
 
 type NativePortableContinuationInputOption = {
   name: string;
   flag: string;
-  valueKind: 'text' | 'confirmation' | 'json-file';
+  valueKind: 'text' | 'confirmation' | 'choice' | 'json-file';
   required: boolean;
   template: unknown | null;
+  choices?: string[];
 };
 
 type NativePortableCommandAlternative = {
@@ -70,6 +74,7 @@ function localized(state: NativePortableState, english: string, chinese: string)
 
 function nativePortableUserCommunication(
   state: NativePortableState,
+  coordinationChoiceRequired: boolean,
 ): NativePortableUserCommunication {
   const noUserUpdate = (agentInstruction: string): NativePortableUserCommunication => ({
     required: false,
@@ -77,6 +82,23 @@ function nativePortableUserCommunication(
     suggestedReply: null,
     agentInstruction,
   });
+
+  if (coordinationChoiceRequired && state.phase === 'shape' && state.status === 'active') {
+    return {
+      required: true,
+      message: localized(
+        state,
+        'This Supervisor Change has multiple independent children. Choose one coordination mode before confirming Shape: A) Multi-session coordination (recommended), or B) Single-session progression.',
+        '当前 Supervisor Change 包含多个可独立执行的 Child。确认 Shape 前请选择推进方式：A）多会话协作（推荐），或 B）单会话推进。',
+      ),
+      suggestedReply: localized(state, 'Reply A or B', '回复 A 或 B'),
+      agentInstruction: localized(
+        state,
+        'Relay the two coordination choices and wait for the user decision. Do not treat a generic confirmation as a mode selection or run --confirmed without --coordination-mode.',
+        '转述这两个推进方式并等待用户选择。不要把普通“确认”视为已选择推进方式，也不要在没有 --coordination-mode 时运行 --confirmed。',
+      ),
+    };
+  }
 
   if (
     state.phase === 'verify' &&
@@ -191,6 +213,42 @@ function confirmationInput(name: string, flag: string): NativePortableContinuati
   return { name, flag, valueKind: 'confirmation', required: true, template: null };
 }
 
+function choiceInput(
+  name: string,
+  flag: string,
+  choices: readonly string[],
+): NativePortableContinuationInputOption {
+  return { name, flag, valueKind: 'choice', required: true, template: null, choices: [...choices] };
+}
+
+function supervisorCoordinationRequired(children?: NativeChildrenInspection | null): boolean {
+  return (
+    children?.coordinationChoiceRequired === true ||
+    (children?.schema === 'comet.native.children.v2' && children.children.length >= 2)
+  );
+}
+
+function boundNativeShapeCommandArgs(options: {
+  change: string;
+  stateVersion: number;
+  coordinationRequired: boolean;
+}): string[] {
+  return [
+    'comet',
+    'native',
+    'next',
+    options.change,
+    '--summary',
+    '<summary>',
+    ...(options.coordinationRequired ? ['--coordination-mode', '<coordination-mode>'] : []),
+    '--confirmed',
+    '--expected-state-version',
+    String(options.stateVersion),
+    '--expected-action',
+    'confirm-shape',
+  ];
+}
+
 function nativeNextDecisionAlternative(options: {
   name: string;
   change: string;
@@ -245,6 +303,7 @@ export function nativePortableContinuation(
   state: NativePortableState,
   children?: NativeChildrenInspection | null,
 ): NativePortableContinuation {
+  const coordinationRequired = supervisorCoordinationRequired(children);
   const base = {
     schema: 'comet.native.continuation.v2' as const,
     skill: 'comet-native' as const,
@@ -253,7 +312,7 @@ export function nativePortableContinuation(
     status: state.status,
     stateVersion: state.state_version,
     inputOptions: [] as NativePortableContinuation['inputOptions'],
-    userCommunication: nativePortableUserCommunication(state),
+    userCommunication: nativePortableUserCommunication(state, coordinationRequired),
   };
   const runner = (kind: NativePortableRunnerAction['kind']): NativePortableRunnerAction => ({
     kind,
@@ -419,15 +478,18 @@ export function nativePortableContinuation(
   if (state.phase === 'shape') {
     return {
       ...base,
-      disposition: 'continue',
+      disposition: coordinationRequired ? 'await-user' : 'continue',
       action: 'confirm-shape',
-      commandArgs: boundNativeNextCommandArgs({
+      commandArgs: boundNativeShapeCommandArgs({
         change: state.name,
         stateVersion: state.state_version,
-        action: 'confirm-shape',
-        flag: '--confirmed',
+        coordinationRequired,
       }),
-      requiredInputs: ['summary', 'shared-understanding-confirmation'],
+      requiredInputs: [
+        'summary',
+        ...(coordinationRequired ? ['coordination-choice'] : []),
+        'shared-understanding-confirmation',
+      ],
       inputOptions: [
         {
           name: 'summary',
@@ -436,13 +498,16 @@ export function nativePortableContinuation(
           required: true,
           template: null,
         },
-        {
-          name: 'confirmed',
-          flag: '--confirmed',
-          valueKind: 'confirmation',
-          required: true,
-          template: null,
-        },
+        ...(coordinationRequired
+          ? [
+              choiceInput(
+                'coordination-mode',
+                '--coordination-mode',
+                NATIVE_SUPERVISOR_COORDINATION_MODES,
+              ),
+            ]
+          : []),
+        confirmationInput('confirmed', '--confirmed'),
       ],
       runnerAction: runner('none'),
     };

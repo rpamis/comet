@@ -12,6 +12,7 @@ import {
   inspectNativeChildren,
   nativeChildrenAcceptanceValidation,
   readNativeChildrenContract,
+  readNativeSupervisorShapeIntent,
 } from './native-children.js';
 import {
   createNativeSupervisorState,
@@ -97,6 +98,7 @@ import {
 } from './native-paths.js';
 import { nativeBriefTemplate } from './native-artifact-language.js';
 import type { CometProjectConfig, NativeProjectPaths } from './native-types.js';
+import type { NativeSupervisorCoordinationMode } from './native-portable-types.js';
 import type { NativeWorkspaceBinding } from './native-workspace.js';
 import { readProjectConfig, writeProjectConfig } from './native-config.js';
 
@@ -390,6 +392,7 @@ async function readNativePortableAcceptance(options: {
 export async function confirmNativePortableShape(options: {
   paths: NativeProjectPaths;
   name: string;
+  coordinationMode?: NativeSupervisorCoordinationMode;
   expectedContinuation?: NativePortableExpectedContinuation;
 }): Promise<NativePortableState> {
   return withNativeMutationLock(
@@ -418,6 +421,25 @@ export async function confirmNativePortableShape(options: {
       });
       if (children && state.workspace.change_branch === null) {
         throw new Error('Native parent changes require a Git integration branch');
+      }
+      const coordinationRequired =
+        (await readNativeSupervisorShapeIntent(
+          nativePortableChangeDir(options.paths, state.name),
+        )) ||
+        (children?.contract.schema === 'comet.native.children.v2' &&
+          children.contract.children.length >= 2);
+      if (coordinationRequired && !children) {
+        throw new Error('Native Supervisor Shape requires children.yaml before confirmation');
+      }
+      if (coordinationRequired && options.coordinationMode === undefined) {
+        throw new Error(
+          'Native Supervisor Shape requires --coordination-mode multi-session or single-session',
+        );
+      }
+      if (!coordinationRequired && options.coordinationMode !== undefined) {
+        throw new Error(
+          '--coordination-mode is only valid for a multi-child Native Supervisor Shape',
+        );
       }
       const next = confirmNativePortableAcceptance({
         state: { ...state, spec_changes: specChanges },

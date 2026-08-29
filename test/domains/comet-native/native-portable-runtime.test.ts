@@ -217,6 +217,48 @@ children:
     expect(state.children_contract_hash).toEqual(expect.any(String));
   });
 
+  it('rejects multi-child Supervisor Shape confirmation without a coordination mode', async () => {
+    await createNativePortableChange({ paths, name: 'coordination-required', language: 'en' });
+    const changeDir = nativePortableChangeDir(paths, 'coordination-required');
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      '# Acceptance examples\n- The first behavior is visible.\n- The second behavior is visible.\n',
+    );
+    await fs.writeFile(
+      path.join(changeDir, 'children.yaml'),
+      `schema: comet.native.children.v2
+acceptance_index:
+  A1:
+    source: brief.md
+    text: The first behavior is visible.
+  A2:
+    source: brief.md
+    text: The second behavior is visible.
+children:
+  - name: first-child
+    depends_on: []
+    covers: [A1]
+  - name: second-child
+    depends_on: []
+    covers: [A2]
+`,
+    );
+    const stateFile = nativePortableStateFile(paths, 'coordination-required');
+    const initialState = await fs.readFile(stateFile, 'utf8');
+    await fs.writeFile(
+      stateFile,
+      initialState
+        .replace('change_branch: null', 'change_branch: parent')
+        .replace('target_branch: null', 'target_branch: parent'),
+    );
+
+    await expect(
+      confirmNativePortableShape({ paths, name: 'coordination-required' }),
+    ).rejects.toThrow(
+      'Native Supervisor Shape requires --coordination-mode multi-session or single-session',
+    );
+  });
+
   it('reruns a repeatable interrupted check instead of reusing its incomplete result', async () => {
     await createNativePortableChange({ paths, name: 'timeout-rerun', language: 'en' });
     const changeDir = nativePortableChangeDir(paths, 'timeout-rerun');

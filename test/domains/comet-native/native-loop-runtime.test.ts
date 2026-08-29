@@ -267,6 +267,61 @@ describe('Native portable Build/Verify loop', () => {
     });
   });
 
+  it('requires an explicit coordination choice before confirming a multi-child Supervisor Shape', () => {
+    const state = createNativePortableState({ name: 'supervisor-shape', language: 'en' });
+    const continuation = nativePortableContinuation(state, {
+      schema: 'comet.native.children.v2',
+      contractHash: null,
+      confirmed: false,
+      parentBranch: 'master',
+      children: [
+        {
+          name: 'first-child',
+          summary: null,
+          dependsOn: [],
+          covers: ['A1'],
+          status: 'pending',
+          phase: 'shape',
+          projectRoot: null,
+          message: null,
+        },
+        {
+          name: 'second-child',
+          summary: null,
+          dependsOn: [],
+          covers: ['A2'],
+          status: 'pending',
+          phase: 'shape',
+          projectRoot: null,
+          message: null,
+        },
+      ],
+      readyChildren: [],
+      allDone: false,
+    });
+
+    expect(continuation).toMatchObject({
+      disposition: 'await-user',
+      action: 'confirm-shape',
+      requiredInputs: ['summary', 'coordination-choice', 'shared-understanding-confirmation'],
+      commandArgs: expect.arrayContaining(['--coordination-mode', '<coordination-mode>']),
+      inputOptions: [
+        expect.objectContaining({ name: 'summary', flag: '--summary' }),
+        expect.objectContaining({
+          name: 'coordination-mode',
+          flag: '--coordination-mode',
+          valueKind: 'choice',
+          choices: ['multi-session', 'single-session'],
+        }),
+        expect.objectContaining({ name: 'confirmed', flag: '--confirmed' }),
+      ],
+      userCommunication: {
+        required: true,
+        message: expect.stringContaining('coordination'),
+      },
+    });
+  });
+
   it('requires user confirmation before a package-local pass becomes archive-ready', () => {
     const { state, runner } = buildState();
     const result = applyNativeVerifierEnvelope({

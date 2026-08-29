@@ -130,12 +130,13 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
   },
   next: {
     usage:
-      'comet native next <change-name> --summary <text> [--confirmed|--accept-result|--revise-implementation|--revise-requirements|--retry-verifier|--resolve-verifier-blocker] [--max-parallel <n>] [--expected-state-version <n>] [--expected-action <action>]\n       comet native next <change-name> --runner-input <json-file>',
+      'comet native next <change-name> --summary <text> [--confirmed] [--coordination-mode multi-session|single-session] [--accept-result|--revise-implementation|--revise-requirements|--retry-verifier|--resolve-verifier-blocker] [--max-parallel <n>] [--expected-state-version <n>] [--expected-action <action>]\n       comet native next <change-name> --runner-input <json-file>',
     purpose:
       'Confirm or recover an Agent boundary, advance parent child changes, handle Supervisor task operations, or use one skill-coordinated JSON bridge for Builder handoff, check-plan dispatch, and Verifier response/error.',
     options: [
       '--summary <text>    Required transition or recovery summary.',
       '--confirmed         Confirm Shape or an explicitly degraded verifier-unavailable fallback before Archive.',
+      '--coordination-mode multi-session|single-session  Required when confirming a multi-child Supervisor Shape.',
       '--accept-result     Accept the current skill-coordinated Verify result and make it archive-ready.',
       '--revise-implementation  Keep confirmed requirements unchanged and return Verify to Build for implementation revision.',
       '--revise-requirements    Return Verify or Archive to Shape when user-visible goals or acceptance criteria must change.',

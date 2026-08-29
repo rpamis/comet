@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { nativeArchiveCommand } from '../../../domains/comet-native/native-archive-command.js';
 import {
   hashNativeParentContract,
+  hasNativeSupervisorShapeIntent,
   findNativeV1SupervisorParents,
   inspectNativeChildren,
   parseNativeChildrenContract,
@@ -311,6 +312,26 @@ children:
         ),
       ).toThrow(invalid.message);
     }
+  });
+
+  it('recognizes an explicit Supervisor split in Decisions before children.yaml exists', () => {
+    expect(
+      hasNativeSupervisorShapeIntent(`# Decisions
+
+- Selected Supervisor Change for two independent outcomes.
+- Child 1 owns the first outcome; Child 2 owns the second outcome.
+
+# Verification expectations
+- Run focused checks.
+`),
+    ).toBe(true);
+    expect(
+      hasNativeSupervisorShapeIntent(`# Decisions
+
+- Keep this as one Native Change.
+- The implementation has two related parts.
+`),
+    ).toBe(false);
   });
 
   it('parses children.v2 summaries without acceptance ownership fields', () => {

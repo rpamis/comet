@@ -170,6 +170,7 @@ Run applicable focused checks.
     expect(next.stdout).toContain('continuation.runnerAction');
     expect(next.stdout).toContain('continuation.userCommunication');
     expect(next.stdout).toContain('--runner-input <file>');
+    expect(next.stdout).toContain('--coordination-mode multi-session|single-session');
     expect(next.stdout).toContain('not trusted identity attestation');
     expect(next.stdout).toContain('Checks completed, but your confirmation is required');
     expect(next.stdout).toContain(
@@ -198,6 +199,31 @@ Run applicable focused checks.
 
     const retiredSpec = json(await runNativeCli(['spec', 'rebase', '--help', '--json']));
     expect(retiredSpec).toMatchObject({ exitCode: 64, error: { code: 'usage' } });
+  });
+
+  it('surfaces the coordination choice from an explicit Supervisor Shape decision', async () => {
+    const name = 'recorded-supervisor';
+    await runNativeCli(['new', name, '--language', 'zh-CN', ...projectArgs()]);
+    await fs.writeFile(
+      path.join(projectRoot, 'docs', 'comet', 'changes', name, 'brief.md'),
+      `# 决策
+
+- 已明确选择 Supervisor Change，因为存在两个独立结果。
+- Child 1 负责第一个结果；Child 2 负责第二个结果。
+
+# 待解决问题
+- [blocking] CONFIRM: 等待用户确认。
+`,
+    );
+
+    const result = json(await runNativeCli(['status', name, '--json', ...projectArgs()]));
+
+    expect(result.data?.continuation).toMatchObject({
+      disposition: 'await-user',
+      action: 'confirm-shape',
+      requiredInputs: ['summary', 'coordination-choice', 'shared-understanding-confirmation'],
+      userCommunication: { required: true, suggestedReply: '回复 A 或 B' },
+    });
   });
 
   it.each([
