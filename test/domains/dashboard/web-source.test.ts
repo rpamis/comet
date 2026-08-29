@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { promises as fs } from 'fs';
 import path from 'path';
+import postcss from 'postcss';
 
 async function readDashboardSource(): Promise<string> {
   return fs.readFile(path.resolve('domains', 'dashboard', 'web', 'src', 'main.jsx'), 'utf8');
@@ -22,6 +23,13 @@ async function readWebsiteDemoEntrySource(): Promise<string> {
 
 async function readWebsiteDemoSnippet(): Promise<string> {
   return fs.readFile(path.resolve('website', 'snippets', 'dashboard-website-demo.jsx'), 'utf8');
+}
+
+async function readWebsiteDemoStyles(): Promise<string> {
+  return fs.readFile(
+    path.resolve('website', 'assets', 'dashboard-website-demo', 'dashboard-website-demo.css'),
+    'utf8',
+  );
 }
 
 async function readWebsiteCustomStyles(): Promise<string> {
@@ -411,6 +419,22 @@ describe('dashboard web source contracts', () => {
     }
     expect(snippet).not.toContain('Dashboard Demo 加载');
     expect(snippet).not.toContain('Comet Dashboard Demo');
+  });
+
+  it('scopes every website Dashboard selector away from Mintlify document pages', async () => {
+    const styles = await readWebsiteDemoStyles();
+    const unscopedSelectors: string[] = [];
+
+    postcss.parse(styles).walkRules((rule) => {
+      if (rule.parent?.type === 'atrule' && /keyframes$/u.test(rule.parent.name)) return;
+      for (const selector of rule.selectors) {
+        if (!/^:host(?=$|\W)/u.test(selector)) unscopedSelectors.push(selector);
+      }
+    });
+
+    expect(unscopedSelectors).toEqual([]);
+    expect(styles).toContain(':host .hidden');
+    expect(styles).not.toMatch(/(?:^|\})\.hidden\{/u);
   });
 
   it('switches static Demo plugin centers without a transient loading state', async () => {

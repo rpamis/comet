@@ -31,15 +31,6 @@ stylesheet.walkAtRules('media', (rule) => {
   }
 });
 
-stylesheet.walkRules((rule) => {
-  rule.selectors = rule.selectors.map((selector) =>
-    selector
-      .replaceAll(':root', ':host')
-      .replace(/^html(?=$|\W)/u, ':host')
-      .replace(/^body(?=$|\W)/u, '#app-root'),
-  );
-});
-
 stylesheet.append(`
 :host {
   position: relative;
@@ -94,6 +85,19 @@ stylesheet.append(`
   pointer-events: auto;
 }
 `);
+
+stylesheet.walkRules((rule) => {
+  if (rule.parent?.type === 'atrule' && /keyframes$/u.test(rule.parent.name)) return;
+  rule.selectors = rule.selectors.map((selector) => {
+    const normalizedSelector = selector
+      .replaceAll(':root', ':host')
+      .replace(/^html(?=$|\W)/u, ':host')
+      .replace(/^body(?=$|\W)/u, '#app-root');
+    return /^:host(?=$|\W)/u.test(normalizedSelector)
+      ? normalizedSelector
+      : `:host ${normalizedSelector}`;
+  });
+});
 
 await fs.writeFile(cssPath, stylesheet.toString());
 await fs.copyFile(
