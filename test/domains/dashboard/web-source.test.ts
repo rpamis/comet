@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { promises as fs } from 'fs';
+import { existsSync, promises as fs } from 'fs';
 import path from 'path';
 import postcss from 'postcss';
+
+const websiteCheckoutAvailable = existsSync(
+  path.resolve('website', 'snippets', 'dashboard-website-demo.jsx'),
+);
 
 async function readDashboardSource(): Promise<string> {
   return fs.readFile(path.resolve('domains', 'dashboard', 'web', 'src', 'main.jsx'), 'utf8');
@@ -407,7 +411,7 @@ describe('dashboard web source contracts', () => {
   });
 
   it('uses product preview wording instead of Demo wording in website-facing feedback', async () => {
-    const [source, snippet] = await Promise.all([readDashboardSource(), readWebsiteDemoSnippet()]);
+    const source = await readDashboardSource();
 
     for (const copy of [
       '未找到对应的 Demo 插件页面',
@@ -417,25 +421,31 @@ describe('dashboard web source contracts', () => {
     ]) {
       expect(source).not.toContain(copy);
     }
-    expect(snippet).not.toContain('Dashboard Demo 加载');
-    expect(snippet).not.toContain('Comet Dashboard Demo');
+    if (websiteCheckoutAvailable) {
+      const snippet = await readWebsiteDemoSnippet();
+      expect(snippet).not.toContain('Dashboard Demo 加载');
+      expect(snippet).not.toContain('Comet Dashboard Demo');
+    }
   });
 
-  it('scopes every website Dashboard selector away from Mintlify document pages', async () => {
-    const styles = await readWebsiteDemoStyles();
-    const unscopedSelectors: string[] = [];
+  it.skipIf(!websiteCheckoutAvailable)(
+    'scopes every website Dashboard selector away from Mintlify document pages',
+    async () => {
+      const styles = await readWebsiteDemoStyles();
+      const unscopedSelectors: string[] = [];
 
-    postcss.parse(styles).walkRules((rule) => {
-      if (rule.parent?.type === 'atrule' && /keyframes$/u.test(rule.parent.name)) return;
-      for (const selector of rule.selectors) {
-        if (!/^:host(?=$|\W)/u.test(selector)) unscopedSelectors.push(selector);
-      }
-    });
+      postcss.parse(styles).walkRules((rule) => {
+        if (rule.parent?.type === 'atrule' && /keyframes$/u.test(rule.parent.name)) return;
+        for (const selector of rule.selectors) {
+          if (!/^:host(?=$|\W)/u.test(selector)) unscopedSelectors.push(selector);
+        }
+      });
 
-    expect(unscopedSelectors).toEqual([]);
-    expect(styles).toContain(':host .hidden');
-    expect(styles).not.toMatch(/(?:^|\})\.hidden\{/u);
-  });
+      expect(unscopedSelectors).toEqual([]);
+      expect(styles).toContain(':host .hidden');
+      expect(styles).not.toMatch(/(?:^|\})\.hidden\{/u);
+    },
+  );
 
   it('switches static Demo plugin centers without a transient loading state', async () => {
     const [source, websiteEntry] = await Promise.all([
@@ -457,34 +467,40 @@ describe('dashboard web source contracts', () => {
     expect(websiteEntry).toContain('demoPluginPages={DEMO_PLUGIN_PAGES}');
   });
 
-  it('keeps the website Dashboard readable in a horizontally browsable mobile viewport', async () => {
-    const [snippet, websiteStyles] = await Promise.all([
-      readWebsiteDemoSnippet(),
-      readWebsiteCustomStyles(),
-    ]);
+  it.skipIf(!websiteCheckoutAvailable)(
+    'keeps the website Dashboard readable in a horizontally browsable mobile viewport',
+    async () => {
+      const [snippet, websiteStyles] = await Promise.all([
+        readWebsiteDemoSnippet(),
+        readWebsiteCustomStyles(),
+      ]);
 
-    expect(snippet).toContain('const MOBILE_MIN_SCALE = 0.44');
-    expect(snippet).toContain('Math.max(fitScale, MOBILE_MIN_SCALE)');
-    expect(snippet).toContain("' is-mobile-viewport'");
-    expect(snippet).toContain('comet-dashboard-website-scroll-content');
-    expect(snippet).toContain("event.key !== 'ArrowLeft' && event.key !== 'ArrowRight'");
-    expect(snippet).toContain(
-      "event.currentTarget.scrollLeft += event.key === 'ArrowRight' ? 160 : -160",
-    );
-    expect(websiteStyles).toContain('.comet-dashboard-website-stage.is-mobile-viewport');
-    expect(websiteStyles).toContain('overflow-x: auto');
-    expect(websiteStyles).toContain('touch-action: pan-x pan-y');
-    expect(websiteStyles).toContain('scrollbar-width: none');
-  });
+      expect(snippet).toContain('const MOBILE_MIN_SCALE = 0.44');
+      expect(snippet).toContain('Math.max(fitScale, MOBILE_MIN_SCALE)');
+      expect(snippet).toContain("' is-mobile-viewport'");
+      expect(snippet).toContain('comet-dashboard-website-scroll-content');
+      expect(snippet).toContain("event.key !== 'ArrowLeft' && event.key !== 'ArrowRight'");
+      expect(snippet).toContain(
+        "event.currentTarget.scrollLeft += event.key === 'ArrowRight' ? 160 : -160",
+      );
+      expect(websiteStyles).toContain('.comet-dashboard-website-stage.is-mobile-viewport');
+      expect(websiteStyles).toContain('overflow-x: auto');
+      expect(websiteStyles).toContain('touch-action: pan-x pan-y');
+      expect(websiteStyles).toContain('scrollbar-width: none');
+    },
+  );
 
-  it('positions the website verification badge symmetrically outside the top-right toolbar', async () => {
-    const websiteStyles = await readWebsiteCustomStyles();
+  it.skipIf(!websiteCheckoutAvailable)(
+    'positions the website verification badge symmetrically outside the top-right toolbar',
+    async () => {
+      const websiteStyles = await readWebsiteCustomStyles();
 
-    expect(websiteStyles).toContain('.comet-home__float--pass {');
-    expect(websiteStyles).toContain('top: clamp(6.025rem, calc(4.805rem + 1.83vw), 6.375rem);');
-    expect(websiteStyles).toContain('right: -0.5rem;');
-    expect(websiteStyles).toContain('left: -0.5rem;');
-  });
+      expect(websiteStyles).toContain('.comet-home__float--pass {');
+      expect(websiteStyles).toContain('top: clamp(6.025rem, calc(4.805rem + 1.83vw), 6.375rem);');
+      expect(websiteStyles).toContain('right: -0.5rem;');
+      expect(websiteStyles).toContain('left: -0.5rem;');
+    },
+  );
 
   it('uses the change-detail width to switch between stacked and two-column panels', async () => {
     const [source, styles] = await Promise.all([readDashboardSource(), readDashboardStyles()]);
