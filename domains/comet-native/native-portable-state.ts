@@ -37,6 +37,7 @@ const ROOT_KEYS = new Set([
   'state_version',
   'brief',
   'children_contract_hash',
+  'coordination_mode',
   'spec_changes',
   'workspace',
   'loop',
@@ -762,6 +763,15 @@ export function parseNativePortableState(value: unknown): NativePortableState {
           children_contract_hash: hashValue(
             root.children_contract_hash,
             'Native children contract hash',
+          ),
+        }),
+    ...(root.coordination_mode === undefined
+      ? {}
+      : {
+          coordination_mode: enumValue(
+            root.coordination_mode,
+            ['multi-session', 'single-session'] as const,
+            'Native coordination mode',
           ),
         }),
     spec_changes,

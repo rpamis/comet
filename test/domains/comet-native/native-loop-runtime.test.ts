@@ -269,7 +269,7 @@ describe('Native portable Build/Verify loop', () => {
 
   it('requires an explicit coordination choice before confirming a multi-child Supervisor Shape', () => {
     const state = createNativePortableState({ name: 'supervisor-shape', language: 'en' });
-    const continuation = nativePortableContinuation(state, {
+    const children = {
       schema: 'comet.native.children.v2',
       contractHash: null,
       confirmed: false,
@@ -298,7 +298,8 @@ describe('Native portable Build/Verify loop', () => {
       ],
       readyChildren: [],
       allDone: false,
-    });
+    } as const;
+    const continuation = nativePortableContinuation(state, children);
 
     expect(continuation).toMatchObject({
       disposition: 'await-user',
@@ -320,6 +321,21 @@ describe('Native portable Build/Verify loop', () => {
         message: expect.stringContaining('coordination'),
       },
     });
+
+    const resumed = nativePortableContinuation(
+      { ...state, coordination_mode: 'multi-session' },
+      children,
+    );
+    expect(resumed).toMatchObject({
+      disposition: 'continue',
+      action: 'confirm-shape',
+      requiredInputs: ['summary', 'shared-understanding-confirmation'],
+      userCommunication: { required: false },
+    });
+    expect(resumed.commandArgs).not.toContain('--coordination-mode');
+    expect(resumed.inputOptions).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: 'coordination-mode' })]),
+    );
   });
 
   it('requires user confirmation before a package-local pass becomes archive-ready', () => {

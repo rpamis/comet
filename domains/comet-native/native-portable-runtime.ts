@@ -428,10 +428,11 @@ export async function confirmNativePortableShape(options: {
         )) ||
         (children?.contract.schema === 'comet.native.children.v2' &&
           children.contract.children.length >= 2);
+      const coordinationMode = options.coordinationMode ?? state.coordination_mode;
       if (coordinationRequired && !children) {
         throw new Error('Native Supervisor Shape requires children.yaml before confirmation');
       }
-      if (coordinationRequired && options.coordinationMode === undefined) {
+      if (coordinationRequired && coordinationMode === undefined) {
         throw new Error(
           'Native Supervisor Shape requires --coordination-mode multi-session or single-session',
         );
@@ -446,11 +447,13 @@ export async function confirmNativePortableShape(options: {
         acceptance: acceptance.map((entry) => ({ ...entry })),
       });
       delete next.children_contract_hash;
+      delete next.coordination_mode;
       if (children) {
         next.children_contract_hash = hashNativeParentContract({
           acceptance: next.acceptance,
           children: children.contract,
         });
+        if (coordinationRequired) next.coordination_mode = coordinationMode;
         const latestDecision = [...state.history]
           .reverse()
           .find(({ outcome }) => outcome === 'pass' || outcome === 'fail');

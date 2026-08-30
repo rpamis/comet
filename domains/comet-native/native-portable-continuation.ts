@@ -303,7 +303,8 @@ export function nativePortableContinuation(
   state: NativePortableState,
   children?: NativeChildrenInspection | null,
 ): NativePortableContinuation {
-  const coordinationRequired = supervisorCoordinationRequired(children);
+  const coordinationRequired =
+    supervisorCoordinationRequired(children) && state.coordination_mode === undefined;
   const base = {
     schema: 'comet.native.continuation.v2' as const,
     skill: 'comet-native' as const,

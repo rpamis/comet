@@ -6,6 +6,7 @@ export interface NativePortableStateSummary {
   phase: NativePortableState['phase'];
   status: NativePortableState['status'];
   state_version: number;
+  coordination_mode?: NativePortableState['coordination_mode'];
   loop: NativePortableState['loop'];
   acceptance: {
     total: number;
@@ -45,6 +46,9 @@ export function nativePortableStateSummary(state: NativePortableState): NativePo
     phase: state.phase,
     status: state.status,
     state_version: state.state_version,
+    ...(state.coordination_mode === undefined
+      ? {}
+      : { coordination_mode: state.coordination_mode }),
     loop: state.loop,
     acceptance,
     unresolved_acceptance_ids: state.acceptance

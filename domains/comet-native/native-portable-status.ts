@@ -25,6 +25,7 @@ export interface NativePortableStatusProjection {
   phase: NativePortableState['phase'];
   status: NativePortableState['status'];
   stateVersion: number;
+  coordinationMode?: NativePortableState['coordination_mode'];
   loop: NativePortableState['loop'];
   acceptance: NativePortableAcceptanceCounts;
   unresolvedAcceptanceIds: string[];
@@ -388,6 +389,9 @@ export async function inspectNativePortableStatus(options: {
     phase: runtime.state.phase,
     status: runtime.state.status,
     stateVersion: runtime.state.state_version,
+    ...(runtime.state.coordination_mode === undefined
+      ? {}
+      : { coordinationMode: runtime.state.coordination_mode }),
     loop: runtime.state.loop,
     acceptance: counts(runtime.state),
     unresolvedAcceptanceIds: stateSummary.unresolved_acceptance_ids,

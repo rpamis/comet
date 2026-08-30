@@ -46,8 +46,11 @@ import {
   confirmNativePortableShape,
   createNativePortableChange,
   nativePortableChangeDir,
+  readNativePortableChange,
   inspectNativeSupervisorParentReviewReadiness,
+  returnNativePortableChangeToShape,
 } from '../../../domains/comet-native/native-portable-runtime.js';
+import { inspectNativePortableStatus } from '../../../domains/comet-native/native-portable-status.js';
 
 const CONTRACT = parseNativeChildrenContract(`
 schema: comet.native.children.v2
@@ -338,6 +341,104 @@ describe('Native Supervisor v2 state', () => {
         reason: '',
       }),
     ).toThrow(/reason/iu);
+  });
+
+  it('persists a multi-child coordination choice for recovery', async () => {
+    const repository = await fs.mkdtemp(path.join(process.cwd(), '.tmp-supervisor-coordination-'));
+    try {
+      const git = (args: string[]) =>
+        execFileSync('git', args, { cwd: repository, encoding: 'utf8' }).trim();
+      git(['init', '-b', 'main']);
+      git(['config', 'user.email', 'native@example.test']);
+      git(['config', 'user.name', 'Native Test']);
+      const config = defaultProjectConfig('docs', 'en');
+      config.workflows = ['native'];
+      config.default_workflow = 'native';
+      await writeProjectConfig(repository, config);
+      await fs.writeFile(path.join(repository, 'README.md'), 'seed\n');
+      git(['add', '.']);
+      git(['commit', '-m', 'seed']);
+
+      const paths = await nativeProjectPaths(repository, 'docs');
+      await ensureNativeDirectories(paths);
+      await createNativePortableChange({
+        paths,
+        name: 'coordinated-parent',
+        language: 'en',
+        workspaceBinding: {
+          isolation: 'current',
+          changeBranch: 'main',
+          targetBranch: 'main',
+        },
+      });
+      const changeDir = nativePortableChangeDir(paths, 'coordinated-parent');
+      await fs.writeFile(
+        path.join(changeDir, 'brief.md'),
+        '# Acceptance examples\n- The coordinated behavior is available.\n',
+      );
+      await fs.writeFile(
+        path.join(changeDir, 'children.yaml'),
+        `schema: comet.native.children.v2
+children:
+  - name: core
+    summary: Core behavior.
+    depends_on: []
+  - name: docs
+    summary: Documentation behavior.
+    depends_on: []
+`,
+      );
+
+      const shaped = await confirmNativePortableShape({
+        paths,
+        name: 'coordinated-parent',
+        coordinationMode: 'multi-session',
+      });
+      expect(shaped).toMatchObject({
+        phase: 'build',
+        coordination_mode: 'multi-session',
+      });
+      await expect(readNativePortableChange(paths, 'coordinated-parent')).resolves.toMatchObject({
+        coordination_mode: 'multi-session',
+      });
+      await expect(
+        inspectNativePortableStatus({ paths, name: 'coordinated-parent' }),
+      ).resolves.toMatchObject({
+        coordinationMode: 'multi-session',
+        continuation: { action: 'advance-children' },
+      });
+
+      const reshaped = await returnNativePortableChangeToShape({
+        paths,
+        name: 'coordinated-parent',
+        reason: 'The confirmed requirements changed.',
+      });
+      expect(reshaped.coordination_mode).toBe('multi-session');
+      const reconfirmed = await confirmNativePortableShape({
+        paths,
+        name: 'coordinated-parent',
+      });
+      expect(reconfirmed).toMatchObject({
+        phase: 'build',
+        coordination_mode: 'multi-session',
+      });
+    } finally {
+      try {
+        execFileSync(
+          'git',
+          [
+            'worktree',
+            'remove',
+            '--force',
+            path.join(repository, '.worktrees', 'coordinated-parent-integration'),
+          ],
+          { cwd: repository, stdio: 'ignore' },
+        );
+      } catch {
+        // Preserve the assertion failure when setup did not reach a worktree.
+      }
+      await fs.rm(repository, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
   });
   it('keeps machine state under the central Native Runtime directory', () => {
     const paths = {
