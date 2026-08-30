@@ -2,39 +2,35 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.4.0-rc.1] - 2026-08-27
+## What's Changed [0.4.0-rc.1] - 2026-08-30
 
 ### Added
 
-- **Personal Memory**: Comet now provides a first-party `comet-memory` Skill and `comet memory` commands for reusable user profiles, collaboration policies, and task episodes. Users can inspect, retrieve, remember, correct, forget, roll back, synchronize, pause, and configure personal memory without storing one-off task output as durable memory.
-- **Agent Learning Loop**: Classic, Native, Hotfix, and Tweak now record structured workflow, verification, review, archive, and context outcomes. Bounded reflection can promote stable preferences and collaboration experience while keeping learning failures out of the critical workflow path.
-- **Project Knowledge and Project Policy**: `comet task` and `comet knowledge` now provide source-backed project topology, facts, dependencies, decisions, procedures, constraints, and failure resolutions. Local and optional Remote providers keep project knowledge separate from Personal Memory and outside the project repository by default.
-- **Configurable project knowledge corpus**: Projects can index project-relative Markdown globs through `knowledge.local.include`, while Comet continues to index its Native, Classic, and explicitly referenced archived workflow artifacts.
-- **Project Knowledge Dashboard and Personal Memory center**: The Dashboard now includes Personal Memory and Project Knowledge workspaces with provider status, searchable records, source previews, application history, correction, forget, refresh, project pause/resume, and plugin lifecycle controls.
-- **Native Supervisor Change v2**: Large Native changes can be decomposed into dependency-aware children, assigned to independent Codex sessions or a Claude Code Agent Team, verified separately, integrated in order, and advanced automatically to final parent verification in a dedicated integration worktree.
-- **Native Portable State and recovery**: Native changes now expose portable phase, acceptance, handoff, check, verification, workspace, and Supervisor summaries through `comet-state.yaml`, `comet status`, and rebuildable `verification.md`; machine-only execution state remains local.
-- **Oh My Pi and DeepSeek Harness support**: `comet init`, `comet update`, `comet doctor`, and `comet uninstall` now manage Comet Skills, Rules, OpenSpec integration, and Hook bridges in both platforms' project and user environments. Oh My Pi accepts the `omp` alias and uses the OpenSpec 1.6-compatible integration path.
+- **Dashboard workspace**: Comet now provides a three-pane Dashboard for Native and Classic changes, Personal Memory, Project Knowledge, plugin settings, archived history, Git worktrees, and interactive website previews.
+- **Personal Memory**: Comet now provides a first-party `comet-memory` Skill and `comet memory` commands for reusable user profiles, collaboration policies, task episodes, retrieval, correction, deletion, rollback, synchronization, and bounded context use.
+- **Agent Learning Loop**: Classic, Native, Hotfix, and Tweak now record structured workflow, verification, review, archive, and context outcomes so bounded reflection can promote stable preferences and collaboration experience.
+- **Project Knowledge and Project Policy**: `comet task` and `comet knowledge` now provide source-backed project topology, facts, dependencies, decisions, procedures, constraints, and failure resolutions through separate Local and optional Remote providers.
+- **Configurable project knowledge corpus**: Projects can index project-relative Markdown globs through `knowledge.local.include`; local indexes, records, provider diagnostics, and corrections are kept outside the project repository by default.
+- **Progressive Agent Context**: Personal Memory and Project Knowledge can now be selected by task, path, operation, and phase, with direct context for core facts and explainable manifests for longer records.
+- **Native Supervisor Change v2**: Large Native changes can be decomposed into dependency-aware children, assigned to independent Codex sessions or a Claude Code Agent Team, verified separately, integrated in order, and advanced automatically to final parent verification.
+- **Native Portable State and recovery**: Native changes now expose portable phase, acceptance, handoff, check, verification, workspace, and Supervisor summaries through `comet-state.yaml`, `comet status`, and rebuildable `verification.md`.
+- **Oh My Pi and DeepSeek Harness support**: `comet init`, `comet update`, `comet doctor`, and `comet uninstall` now manage Comet Skills, Rules, OpenSpec integration, and Hook bridges in both platforms' project and user environments.
 - **Native CodeGraph setup**: `comet init` now offers optional CodeGraph setup when Native or Both is selected, with project indexing and Agent integration kept separate from Classic's OpenSpec and Superpowers dependencies.
 
 ### Changed
 
-- **Progressive Agent Context**: Personal Memory and Project Knowledge are now selected by task, path, operation, and phase. Core context can be injected directly while longer records enter an explainable manifest and are expanded by stable ID; application outcomes feed the learning loop, and the two sources remain distinguishable in the rendered context.
-- **Personal Memory providers and policy**: Local Markdown-backed memory and an optional Remote Provider share one management contract, bounded injection budgets, explicit Git synchronization, conflict-aware correction/rollback, and project-level learning/retrieval switches in `.comet/config.yaml`.
-- **Project Knowledge lifecycle**: Local indexing uses a repository-independent SQLite store shared by a repository and its worktrees, rechecks source freshness before injection, preserves corrections, and records provider and retrieval diagnostics without blocking the current task.
 - **Native verification loop**: Native now reuses completed checks, avoids redundant project scans and Archive checks, streams command output to local logs, and exposes compact paginated status/details with acceptance, evidence, child, integration, and recovery information.
 - **Native workspace and delivery flow**: Native branch/worktree discovery and reuse remain authoritative across commands; completed Supervisor parents continue directly into final Verify, successful merges clean up Comet-created worktrees while preserving branches, and Archive presents concrete local-commit, merge, push, and PR effects.
 - **Native clarification and Classic context settings**: New Native projects now default to batch clarification, while rc1 project templates enable beta Classic context compression; artifact language, review mode, auto-transition, and memory/knowledge policies remain explicit project configuration.
 - **Classic Build and workflow dispatch**: Classic plan creation and self-review stay with `writing-plans`, the main session collects execution, TDD, and review choices together, and `/comet` can load the configured phase and preset Skills when continuing a workflow on a supported host.
 - **Workflow context integration**: Native, Classic, and workflow resolution can request the same bounded Personal Memory and Project Knowledge context, record lifecycle outcomes, and keep context injection best-effort without changing workflow state ownership.
-- **Dashboard change explorer**: Dashboard discovers Native and Classic changes across registered worktrees, groups Supervisor children under their parent, preserves the three-pane workspace during empty/loading states, and keeps archived history directly reachable.
-- **Dashboard memory and knowledge experience**: Records, source files, Markdown/JSON/YAML previews, provider settings, application history, diagnostics, and project controls now use readable tables, compact toolbars, stable loading states, internal scrolling, fullscreen/restore dialogs, and aligned desktop geometry.
+- **Dashboard memory and knowledge experience**: Dashboard records, source files, Markdown/JSON/YAML previews, provider settings, application history, diagnostics, and project controls now use compact toolbars, stable loading states, internal scrolling, fullscreen/restore dialogs, and aligned desktop geometry.
 - **CodeGraph diagnostics**: `comet init` and `comet doctor` now report CLI installation, project index freshness, MCP registration, and effective Agent capability as separate states.
 - **Native status and verification copy**: CLI, reports, and Dashboard explain independent verification, automatic checks, required confirmation, child progress, integration evidence, and next actions in user-facing terms while retaining stable machine status values.
 
 ### Fixed
 
-- **Windows Claude Code Hook launch**: Claude Code now runs the Comet Hook Router as a direct Node process instead of through a shell, preventing a transient command-window flash on Windows while preserving and migrating existing managed Hooks safely.
-- **Windows Classic Hook probes**: Classic branch-binding checks now hide their Git subprocesses as well, preventing a residual command-window flash when a branch-bound change is active.
+- **Windows Hook launch**: Claude Code now runs the Comet Hook Router and Classic branch-binding probes without transient command-window flashes on Windows, while preserving and migrating existing managed Hooks safely.
 - **Native Supervisor coordination choice**: Comet now requires an explicit multi-session or single-session choice before confirming a Supervisor Change with multiple independent children, so a generic confirmation cannot silently skip the collaboration decision.
 - **Memory and Project Knowledge consistency**: Fixed stale Remote configuration, stale or deleted source injection, local index recovery, WAL handling, provider result merging, correction preservation, permanent-forget tombstones, duplicate management reads, and background Reflection timing.
 - **Native Supervisor recovery**: Fixed ambiguous parent discovery, stale continuation decisions, task-binding protection, integration identity checks, persistent recovery state, portable workspace projection, and final verification evidence handling.
