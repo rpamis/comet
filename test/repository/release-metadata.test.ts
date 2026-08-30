@@ -34,7 +34,7 @@ describe('release metadata', () => {
 
     const rcSection = changelog.slice(rcStart, beta19Start);
     const beta19Section = changelog.slice(beta19Start, beta18Start);
-    expect(rcSection).toContain('Project Knowledge Dashboard');
+    expect(rcSection).toContain('Dashboard workspace');
     expect(rcSection).not.toContain('Grok platform support');
     expect(rcSection).not.toContain('Beta20 package metadata');
     expect(beta19Section).toContain('Grok platform support');

@@ -1775,12 +1775,12 @@ test('keeps context detail previews flat and readable', async ({ page }) => {
     '18px',
   );
   await expect(
-    sourceDialog.getByRole('heading', { name: 'Dashboard 交互', level: 1 }),
+    sourceDialog.getByRole('heading', { name: 'Dashboard Web App', level: 1 }),
   ).toBeVisible();
   await expect(
     sourceDialog.locator('.dashboard-knowledge-source-rendered-content > pre'),
   ).toHaveCount(0);
-  await expect(sourceDialog).not.toContainText('# Dashboard 交互');
+  await expect(sourceDialog).not.toContainText('# Dashboard Web App');
   await expect(sourceDialog.locator('.dashboard-knowledge-source-detail dt').first()).toHaveCSS(
     'font-size',
     '12px',
@@ -2047,9 +2047,7 @@ test('keeps personal memory context and application history easy to scan', async
 
   await page.getByRole('menuitem', { name: '项目知识' }).click();
   const knowledgeInspector = page.getByRole('complementary', { name: '记录详情' });
-  await expect(knowledgeInspector.locator('h3').first()).toHaveText(
-    'Dashboard 数据采集与详情读取链路',
-  );
+  await expect(knowledgeInspector.locator('h3').first()).toHaveText('Dashboard 前端验证入口');
   await expect(knowledgeInspector.getByRole('heading', { name: '应用条件' })).toBeVisible();
 });
 
