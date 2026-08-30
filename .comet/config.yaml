@@ -5,7 +5,6 @@ default_workflow: native
 # 此项目启用的工作流，可填写 native、classic 或同时启用两者。
 workflows:
   - native
-  - classic
 # 是否启用只读的环境感知恢复探针，同时作用于 Native 和 Classic；设为 false 可关闭自动工作流恢复。
 # ambient_resume: true | false
 ambient_resume: false
@@ -49,3 +48,8 @@ classic:
   # Classic 阶段通过后是否自动进入下一阶段。
   # 可选值：true | false
   auto_transition: true
+# 普通 Comet 任务使用的项目知识检索 Provider。
+knowledge:
+  # 项目知识 Provider。
+  # 可选值：local | remote
+  provider: local
