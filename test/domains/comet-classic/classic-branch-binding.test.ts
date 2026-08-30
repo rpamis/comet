@@ -2,13 +2,20 @@ import { execFileSync } from 'child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   evaluateBranchBinding,
+  isGitWorkTree,
+  liveGitBranch,
   resolveBranchBinding,
   driftBlockedMessage,
   driftStaleReason,
 } from '../../../domains/comet-classic/classic-branch-binding.js';
+
+vi.mock('child_process', async () => {
+  const actual = await vi.importActual<typeof import('child_process')>('child_process');
+  return { ...actual, execFileSync: vi.fn(actual.execFileSync) };
+});
 
 describe('evaluateBranchBinding', () => {
   it('is not applicable before isolation is selected', () => {
@@ -93,6 +100,7 @@ describe('resolveBranchBinding', () => {
     await fs.writeFile(path.join(root, 'README.md'), '# Test\n');
     git('add', 'README.md');
     git('commit', '-m', 'init');
+    vi.clearAllMocks();
   });
 
   afterEach(async () => {
@@ -162,6 +170,22 @@ describe('resolveBranchBinding', () => {
     const outcome = await resolveBranchBinding(changeDir, { heal: false, cwd: root });
 
     expect(outcome).toMatchObject({ status: 'needs-heal', branch: 'main' });
+  });
+
+  it('hides live git probes from the Windows console', () => {
+    expect(liveGitBranch(root)).toBe('main');
+    expect(isGitWorkTree(root)).toBe(true);
+
+    expect(execFileSync).toHaveBeenCalledWith(
+      'git',
+      ['rev-parse', '--abbrev-ref', 'HEAD'],
+      expect.objectContaining({ windowsHide: true }),
+    );
+    expect(execFileSync).toHaveBeenCalledWith(
+      'git',
+      ['rev-parse', '--is-inside-work-tree'],
+      expect.objectContaining({ windowsHide: true }),
+    );
   });
 });
 
