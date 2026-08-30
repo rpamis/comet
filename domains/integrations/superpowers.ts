@@ -74,7 +74,36 @@ const DSH_PLATFORM_ID = 'dsh';
 const GROK_PLATFORM_ID = 'grok';
 const STAGE_AGENT = 'claude-code';
 const SUPERPOWERS_SOURCE = 'obra/superpowers';
+const EXCLUDED_SUPERPOWERS_SKILL = 'using-superpowers';
+// The Skills CLI accepts an allowlist but has no exclude flag. Keep this list
+// aligned with the public skill directories in obra/superpowers so the
+// bootstrap skill never enters a project or user-scoped installation.
+const SUPERPOWERS_SKILL_NAMES = [
+  'brainstorming',
+  'dispatching-parallel-agents',
+  'executing-plans',
+  'finishing-a-development-branch',
+  'receiving-code-review',
+  'requesting-code-review',
+  'subagent-driven-development',
+  'systematic-debugging',
+  'test-driven-development',
+  'using-git-worktrees',
+  'verification-before-completion',
+  'writing-plans',
+  'writing-skills',
+] as const;
 export const STAGED_SUPERPOWERS_MANIFEST_FILE = '.comet-superpowers.json';
+
+function buildSuperpowersInstallArgs(): string[] {
+  return [
+    'skills',
+    'add',
+    SUPERPOWERS_SOURCE,
+    '-y',
+    ...SUPERPOWERS_SKILL_NAMES.flatMap((skillName) => ['--skill', skillName]),
+  ];
+}
 
 function buildSuperpowersInstallCommand(
   _projectPath: string,
@@ -96,7 +125,7 @@ function buildSuperpowersInstallCommand(
     throw new Error(`No skills CLI agent names resolved for platforms: ${platformIds.join(', ')}`);
   }
 
-  const args = ['skills', 'add', 'obra/superpowers', '-y'];
+  const args = buildSuperpowersInstallArgs();
   if (scope === 'global') {
     args.push('-g');
   }
@@ -109,50 +138,54 @@ function buildSuperpowersInstallCommand(
 function buildLingmaSuperpowersStageCommand(): { command: string; args: string[] } {
   return {
     command: getNpxExecutable(),
-    args: ['skills', 'add', 'obra/superpowers', '-y', '--agent', STAGE_AGENT],
+    args: [...buildSuperpowersInstallArgs(), '--agent', STAGE_AGENT],
   };
 }
 
 function buildZCodeSuperpowersStageCommand(): { command: string; args: string[] } {
   return {
     command: getNpxExecutable(),
-    args: ['skills', 'add', 'obra/superpowers', '-y', '--agent', STAGE_AGENT],
+    args: [...buildSuperpowersInstallArgs(), '--agent', STAGE_AGENT],
   };
 }
 
 function buildMimoCodeSuperpowersStageCommand(): { command: string; args: string[] } {
   return {
     command: getNpxExecutable(),
-    args: ['skills', 'add', 'obra/superpowers', '-y', '--agent', STAGE_AGENT],
+    args: [...buildSuperpowersInstallArgs(), '--agent', STAGE_AGENT],
   };
 }
 
 function buildWorkBuddySuperpowersStageCommand(): { command: string; args: string[] } {
   return {
     command: getNpxExecutable(),
-    args: ['skills', 'add', 'obra/superpowers', '-y', '--agent', STAGE_AGENT],
+    args: [...buildSuperpowersInstallArgs(), '--agent', STAGE_AGENT],
   };
 }
 
 function buildOhMyPiSuperpowersStageCommand(): { command: string; args: string[] } {
   return {
     command: getNpxExecutable(),
-    args: ['skills', 'add', 'obra/superpowers', '-y', '--agent', STAGE_AGENT],
+    args: [...buildSuperpowersInstallArgs(), '--agent', STAGE_AGENT],
   };
 }
 
 function buildDshSuperpowersStageCommand(): { command: string; args: string[] } {
   return {
     command: getNpxExecutable(),
-    args: ['skills', 'add', 'obra/superpowers', '-y', '--agent', STAGE_AGENT],
+    args: [...buildSuperpowersInstallArgs(), '--agent', STAGE_AGENT],
   };
 }
 
 function buildGrokSuperpowersStageCommand(): { command: string; args: string[] } {
   return {
     command: getNpxExecutable(),
-    args: ['skills', 'add', 'obra/superpowers', '-y', '--agent', STAGE_AGENT],
+    args: [...buildSuperpowersInstallArgs(), '--agent', STAGE_AGENT],
   };
+}
+
+function isExcludedSuperpowersSkill(name: string): boolean {
+  return name.toLowerCase() === EXCLUDED_SUPERPOWERS_SKILL;
 }
 
 function getNpxExecutable(platform: NodeJS.Platform = process.platform): string {
@@ -164,6 +197,7 @@ async function copyDirectoryContents(srcDir: string, destDir: string): Promise<s
   const entries = await readdir(srcDir, { withFileTypes: true });
   const skillNames: string[] = [];
   for (const entry of entries) {
+    if (entry.isDirectory() && isExcludedSuperpowersSkill(entry.name)) continue;
     await cp(path.join(srcDir, entry.name), path.join(destDir, entry.name), {
       recursive: true,
       force: true,
@@ -252,6 +286,7 @@ async function copyDshSuperpowersContents(
   const owned = await readDshOwnedPaths(baseDir, platform, scope, 'superpowers');
   const copied: string[] = [];
   for (const entry of await readdir(srcDir, { withFileTypes: true })) {
+    if (entry.isDirectory() && isExcludedSuperpowersSkill(entry.name)) continue;
     const relative = `skills/${entry.name}`;
     const destination = path.join(destDir, entry.name);
     if ((await fileExists(destination)) && !owned.has(relative)) continue;
@@ -499,4 +534,5 @@ export {
   readStagedSuperpowersSkillNames,
   removeStagedSuperpowersManifests,
   SKILLS_AGENT_MAP,
+  SUPERPOWERS_SKILL_NAMES,
 };

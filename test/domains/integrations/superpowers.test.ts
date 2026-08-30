@@ -9,6 +9,38 @@ vi.mock('child_process', () => ({
 }));
 
 const mockedExecFileSync = vi.mocked(execFileSync);
+const SUPERPOWERS_SKILL_ARGS = [
+  '--skill',
+  'brainstorming',
+  '--skill',
+  'dispatching-parallel-agents',
+  '--skill',
+  'executing-plans',
+  '--skill',
+  'finishing-a-development-branch',
+  '--skill',
+  'receiving-code-review',
+  '--skill',
+  'requesting-code-review',
+  '--skill',
+  'subagent-driven-development',
+  '--skill',
+  'systematic-debugging',
+  '--skill',
+  'test-driven-development',
+  '--skill',
+  'using-git-worktrees',
+  '--skill',
+  'verification-before-completion',
+  '--skill',
+  'writing-plans',
+  '--skill',
+  'writing-skills',
+];
+
+function expectedSuperpowersArgs(...suffix: string[]): string[] {
+  return ['skills', 'add', 'obra/superpowers', '-y', ...SUPERPOWERS_SKILL_ARGS, ...suffix];
+}
 
 describe('superpowers', () => {
   beforeEach(() => {
@@ -142,6 +174,23 @@ describe('superpowers', () => {
       expect(mockedExecFileSync.mock.calls[0][2]).toMatchObject({ timeout: 300_000 });
     });
 
+    it('does not select the user-level using-superpowers skill', async () => {
+      const { buildSuperpowersInstallCommand } =
+        await import('../../../domains/integrations/superpowers.js');
+
+      const { args } = buildSuperpowersInstallCommand('/tmp/test', 'global', ['claude']);
+      const selectedSkills = args.flatMap((arg, index) =>
+        arg === '--skill' ? [args[index + 1]] : [],
+      );
+
+      expect(selectedSkills).toEqual(
+        SUPERPOWERS_SKILL_ARGS.filter((arg) => arg !== '--skill').filter(
+          (arg) => arg !== 'using-superpowers',
+        ),
+      );
+      expect(selectedSkills).not.toContain('using-superpowers');
+    });
+
     it('copies staged Grok Superpowers and writes a Comet install manifest', async () => {
       const projectDir = mkdtempSync(path.join(os.tmpdir(), 'comet-superpowers-grok-'));
       mockedExecFileSync.mockImplementation((_command, _args, options) => {
@@ -173,22 +222,74 @@ describe('superpowers', () => {
       }
     });
 
+    it('does not copy using-superpowers from a staged installation', async () => {
+      const projectDir = mkdtempSync(path.join(os.tmpdir(), 'comet-superpowers-filter-'));
+      mockedExecFileSync.mockImplementation((_command, _args, options) => {
+        const cwd = (options as { cwd?: string } | undefined)?.cwd ?? projectDir;
+        for (const skillName of ['brainstorming', 'using-superpowers']) {
+          mkdirSync(path.join(cwd, '.claude', 'skills', skillName), { recursive: true });
+          writeFileSync(path.join(cwd, '.claude', 'skills', skillName, 'SKILL.md'), '# Skill\n');
+        }
+        return Buffer.from('installed');
+      });
+
+      try {
+        const { installSuperpowersForPlatforms } =
+          await import('../../../domains/integrations/superpowers.js');
+
+        await expect(installSuperpowersForPlatforms(projectDir, 'project', ['grok'])).resolves.toBe(
+          'installed',
+        );
+        expect(existsSync(path.join(projectDir, '.grok', 'skills', 'brainstorming'))).toBe(true);
+        expect(existsSync(path.join(projectDir, '.grok', 'skills', 'using-superpowers'))).toBe(
+          false,
+        );
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true });
+      }
+    });
+
+    it('preserves an existing user-owned using-superpowers skill', async () => {
+      const projectDir = mkdtempSync(path.join(os.tmpdir(), 'comet-superpowers-existing-'));
+      const existingUserSkill = path.join(
+        projectDir,
+        '.grok',
+        'skills',
+        'using-superpowers',
+        'SKILL.md',
+      );
+      mkdirSync(path.dirname(existingUserSkill), { recursive: true });
+      writeFileSync(existingUserSkill, '# Existing user skill\n', 'utf8');
+      mockedExecFileSync.mockImplementation((_command, _args, options) => {
+        const cwd = (options as { cwd?: string } | undefined)?.cwd ?? projectDir;
+        mkdirSync(path.join(cwd, '.claude', 'skills', 'using-superpowers'), { recursive: true });
+        writeFileSync(
+          path.join(cwd, '.claude', 'skills', 'using-superpowers', 'SKILL.md'),
+          '# Updated source skill\n',
+        );
+        return Buffer.from('installed');
+      });
+
+      try {
+        const { installSuperpowersForPlatforms } =
+          await import('../../../domains/integrations/superpowers.js');
+
+        await expect(installSuperpowersForPlatforms(projectDir, 'project', ['grok'])).resolves.toBe(
+          'installed',
+        );
+        expect(readFileSync(existingUserSkill, 'utf8')).toBe('# Existing user skill\n');
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true });
+      }
+    });
+
     it('builds command + args for install flags', async () => {
       const { buildSuperpowersInstallCommand } =
         await import('../../../domains/integrations/superpowers.js');
 
       expect(buildSuperpowersInstallCommand('/tmp/test', 'project', ['claude', 'cursor'])).toEqual({
         command: process.platform === 'win32' ? 'npx.cmd' : 'npx',
-        args: [
-          'skills',
-          'add',
-          'obra/superpowers',
-          '-y',
-          '--agent',
-          'claude-code',
-          '--agent',
-          'cursor',
-        ],
+        args: expectedSuperpowersArgs('--agent', 'claude-code', '--agent', 'cursor'),
       });
     });
 
@@ -198,7 +299,7 @@ describe('superpowers', () => {
 
       expect(buildSuperpowersInstallCommand('/tmp/test', 'project', ['claude', 'lingma'])).toEqual({
         command: process.platform === 'win32' ? 'npx.cmd' : 'npx',
-        args: ['skills', 'add', 'obra/superpowers', '-y', '--agent', 'claude-code'],
+        args: expectedSuperpowersArgs('--agent', 'claude-code'),
       });
     });
 
@@ -208,7 +309,7 @@ describe('superpowers', () => {
 
       expect(buildLingmaSuperpowersStageCommand()).toEqual({
         command: process.platform === 'win32' ? 'npx.cmd' : 'npx',
-        args: ['skills', 'add', 'obra/superpowers', '-y', '--agent', 'claude-code'],
+        args: expectedSuperpowersArgs('--agent', 'claude-code'),
       });
     });
 
@@ -218,7 +319,7 @@ describe('superpowers', () => {
 
       expect(buildZCodeSuperpowersStageCommand()).toEqual({
         command: process.platform === 'win32' ? 'npx.cmd' : 'npx',
-        args: ['skills', 'add', 'obra/superpowers', '-y', '--agent', 'claude-code'],
+        args: expectedSuperpowersArgs('--agent', 'claude-code'),
       });
     });
 
@@ -228,7 +329,7 @@ describe('superpowers', () => {
 
       expect(buildMimoCodeSuperpowersStageCommand()).toEqual({
         command: process.platform === 'win32' ? 'npx.cmd' : 'npx',
-        args: ['skills', 'add', 'obra/superpowers', '-y', '--agent', 'claude-code'],
+        args: expectedSuperpowersArgs('--agent', 'claude-code'),
       });
     });
 
@@ -238,7 +339,7 @@ describe('superpowers', () => {
 
       expect(buildOhMyPiSuperpowersStageCommand()).toEqual({
         command: process.platform === 'win32' ? 'npx.cmd' : 'npx',
-        args: ['skills', 'add', 'obra/superpowers', '-y', '--agent', 'claude-code'],
+        args: expectedSuperpowersArgs('--agent', 'claude-code'),
       });
     });
 
@@ -248,7 +349,7 @@ describe('superpowers', () => {
 
       expect(buildDshSuperpowersStageCommand()).toEqual({
         command: process.platform === 'win32' ? 'npx.cmd' : 'npx',
-        args: ['skills', 'add', 'obra/superpowers', '-y', '--agent', 'claude-code'],
+        args: expectedSuperpowersArgs('--agent', 'claude-code'),
       });
     });
 
