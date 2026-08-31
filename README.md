@@ -45,24 +45,48 @@ It provides two independent requirements workflows: Native for strong models, po
 It allows you to use a toolchain to handle everything from requirements to archiving, combine any skill to make it like Comet, evolving your skills based on scientific **Rubric**, **Pass@k**, and **Pass^k** scoring.
 
 > [!IMPORTANT]
-> **0.4.0-beta.7** — A new **high-performance, native and recoverable** Native workflow has been added. Native and Classic work independently through unified configuration, status, Guard, Dashboard, and Eval entry points. Eval alignment of experiments (16 tasks × 48 runs, selecting 41 pairs of samples that both passed) shows that **total Token has decreased by 76.8%**, **Agent rounds have dropped by 57.4%**, **time consumption has shrunk by 47.4%**, **pass^3 reaches 87.5% (+12.5pp) and pass@3 is 100%**. For more details, please refer to [Native vs. 0.4.0 Classic Real Evaluation](https://docs.comet.rpamis.com/zh/eval/comet-native-vs-040-experiment).
+> **0.4.0-rc.1** — Native Supervisor Changes can decompose a complex requirement into dependency-aware child changes, let independent Codex sessions or a Claude Code Agent Team implement and verify them in isolated worktrees, and then have the Runtime integrate them in order before the parent change's final acceptance.
 > 
-> **0.4.0-beta.1** — Upgrades Comet to a pure Node runtime without Bash/WSL and adds three core capabilities: compose **any** Skill through `/comet-any`, evaluate **any** Skill through `comet eval` with LangSmith integration, and visualize every change through `comet dashboard`.
+> RC.1 also adds manageable Personal Memory, Project Knowledge, and progressive context, plus a three-pane Dashboard for workflows, Git worktrees, memory, knowledge, and plugin settings. Native Portable State, recovery paths, and the Windows Hook experience are hardened throughout.
 >
-> **0.3.9** — Review mode (`off|standard|thorough`) controls Build/Verify code review with project defaults; init/update now use optional dependency prompts, broader CLI i18n, stronger phase guards, and macOS executable bits.
->
-> See the website [Changelog](https://docs.comet.rpamis.com/en/changelog) for details.
+> See the website [Changelog](https://docs.comet.rpamis.com/en/changelog) for details and the [Native vs. 0.4.0 Classic baseline](https://docs.comet.rpamis.com/en/eval/comet-native-vs-040-experiment) for the evaluation results.
 
 > Native and Classic are not lightweight and heavyweight tiers, and neither upgrades into the other. Native is for strong models that can plan and verify autonomously; Classic is for scenarios that benefit from a complete phased methodology and stronger constraints.
 
 ## Why Comet
 
-- **Native workflow for strong models** — `/comet-native` uses a detailed brief, complete target specifications, phase checks, and recoverable archive to constrain outcomes while leaving planning, implementation, testing, and review methods to the model. It uses a configurable `comet/` artifact root and remains fully separate from Classic. See the [Native workflow guide](https://docs.comet.rpamis.com/en/native/quickstart).
+- **Native workflow for strong models** — `/comet-native` uses a detailed brief, complete target specifications, phase checks, and recoverable archive to constrain outcomes while leaving planning, implementation, testing, and review methods to the model. User-readable artifacts live under `docs/comet/` by default, fully separate from Classic. See the [Native workflow guide](https://docs.comet.rpamis.com/en/native/quickstart).
+- **Supervisor Changes for complex requirements** — Native can split work along real delivery boundaries, manage dependencies and readiness as a DAG, let multiple agents implement and verify in Runtime-created worktrees, and then integrate the results before the parent change's final acceptance.
 - **The stable core for long-running tasks** — Comet's Classic Spec mode combines OpenSpec and Superpowers into a five-phase flow with a state machine, phase checks, and scripts. It suits work that needs an explicit method and strong constraints; its permanent entry point is `/comet-classic`.
 - **A configuration-driven shared entry point** — `/comet` reads only the project's `.comet/config.yaml` and deterministically forwards to `/comet-native` or `/comet-classic`. It does not guess from task size or mix changes, state, or directories across workflows. `comet resume-probe` uses the same configuration to resume through the correct permanent entry point.
 - **Skill platform** — Comet can author reusable Skill packages and use `/comet-any` to organize them into distributable
   Bundles, so Skills you create can be distributed to coding platforms with one command, much like `comet init`.
 - **Eval platform** — Comet assesses your skills using scientific Rubric, Pass@k, and Pass^k scoring, ensuring skill evolution is based on scientific evidence rather than intuition. It supports integration with LangSmith assessments, bringing evaluation to real-world enterprise production environments. Its dual-agent architecture automates the assessment process in your production environment.
+
+## Supervisor Change: coordinated delivery across multiple agents
+
+When a requirement contains multiple deliverables that can be implemented and verified independently, a Supervisor Change confirms the child changes and their dependencies before coordinating independent Codex sessions or Claude Code Agent Teams. The Runtime remains responsible for worktrees, task identity, verification, ordered integration, and the parent change's final Verify.
+
+`Complex goal → child-change DAG → isolated worktrees → independent implementation and verification → ordered integration → final parent Verify`
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <strong>Codex multi-session execution</strong><br><br>
+      <a href="https://github.com/rpamis/comet/blob/master/img/supervisor-codex.mp4">
+        <img src="https://github.com/rpamis/comet/blob/master/img/supervisor-codex-preview.png" alt="Comet Supervisor coordinating independent Codex sessions" width="100%">
+      </a><br>
+      <a href="https://github.com/rpamis/comet/blob/master/img/supervisor-codex.mp4">▶ Play the full demo</a>
+    </td>
+    <td width="50%" align="center">
+      <strong>Claude Code Agent Teams execution</strong><br><br>
+      <a href="https://github.com/rpamis/comet/blob/master/img/supervisor-claude-code.mp4">
+        <img src="https://github.com/rpamis/comet/blob/master/img/supervisor-claude-code-preview.png" alt="Comet Supervisor coordinating a Claude Code Agent Team" width="100%">
+      </a><br>
+      <a href="https://github.com/rpamis/comet/blob/master/img/supervisor-claude-code.mp4">▶ Play the full demo</a>
+    </td>
+  </tr>
+</table>
 
 ## Extremely low memory threshold
 

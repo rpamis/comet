@@ -74,16 +74,32 @@ describe('README assets', () => {
     expect(contributingZh).toContain(`Node.js \`>=${minimumMajor}\``);
   });
 
-  it('highlights the current beta and links the website changelog', async () => {
+  it('highlights the current release candidate and links the website changelog', async () => {
     const readmeEn = await fs.readFile('README.md', 'utf-8');
     const readmeZh = await fs.readFile('README-zh.md', 'utf-8');
 
-    expect(readmeEn).toContain('**0.4.0-beta.7**');
-    expect(readmeZh).toContain('**0.4.0-beta.7**');
-    expect(readmeEn).toContain('**0.4.0-beta.1**');
-    expect(readmeZh).toContain('**0.4.0-beta.1**');
+    expect(readmeEn).toContain('**0.4.0-rc.1**');
+    expect(readmeZh).toContain('**0.4.0-rc.1**');
     expect(readmeEn).toContain('https://docs.comet.rpamis.com/en/changelog');
     expect(readmeZh).toContain('https://docs.comet.rpamis.com/zh/changelog');
+  });
+
+  it('keeps the bilingual Supervisor showcase backed by repository assets', async () => {
+    const readmeEn = await fs.readFile('README.md', 'utf-8');
+    const readmeZh = await fs.readFile('README-zh.md', 'utf-8');
+    const assets = [
+      'supervisor-codex.mp4',
+      'supervisor-codex-preview.png',
+      'supervisor-claude-code.mp4',
+      'supervisor-claude-code-preview.png',
+    ];
+
+    for (const asset of assets) {
+      await expect(fs.stat(`img/${asset}`)).resolves.toBeDefined();
+      const url = `https://github.com/rpamis/comet/blob/master/img/${asset}`;
+      expect(readmeEn).toContain(url);
+      expect(readmeZh).toContain(url);
+    }
   });
 
   it('documents Native and Classic skills and keeps both project structures folded', async () => {
