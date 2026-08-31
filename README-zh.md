@@ -49,6 +49,12 @@
 >
 > RC.1 同时带来可管理的个人记忆、项目知识与渐进式上下文，以及覆盖工作流、Git worktree、记忆、知识和插件设置的三栏 Dashboard。Native Portable State、恢复路径和 Windows Hook 体验也得到系统加固。
 >
+> **0.4.0-beta.7** — 新增**面向强模型、原生且可恢复**的 Native 工作流，Native 与 Classic 通过统一配置、状态、Guard、Dashboard 及 Eval 入口实现独立协作。Eval 对齐实验（16 任务 × 48 次运行，取双方均通过的 41 组配对样本）显示，**总 Token 锐减 76.8%**、**Agent 轮次降 57.4%**、**耗时缩 47.4%**，**pass^3 达 87.5%（+12.5pp）且 pass@3 均为 100%**。
+>
+> **0.4.0-beta.1** — Comet 升级为纯 Node runtime（不再依赖 Bash/WSL），并带来三大核心能力：用 `/comet-any` 把**任意** Skill 组合成自定义工作流、用 `comet eval` 评估**任意** Skill 并接入 LangSmith、用 `comet dashboard` 在浏览器中查看每一个 change。
+>
+> **0.3.9** — `review_mode: off|standard|thorough` 控制 Build/Verify 自动代码审查并支持项目级默认；init/update 改为可选依赖安装，补齐 CLI 国际化、阶段守护加固和 macOS 可执行权限。
+>
 > 详见官网 [Changelog](https://docs.comet.rpamis.com/zh/changelog)；Native 与 0.4.0 Classic 的真实评估见 [基线对比](https://docs.comet.rpamis.com/zh/eval/comet-native-vs-040-experiment)。
 
 > Native 与 Classic 不是轻重档位，也不会互相升级。Native 服务于能够自主规划和验证的强模型；Classic 服务于需要完整阶段方法与强约束的场景。
@@ -165,25 +171,31 @@ comet init --workflow classic
 comet init --workflow both
 ```
 
-生成的配置会按安装时选择的语言写入用途注释。环境感知恢复是 Native 与 Classic 共用的项目级开关；如需停用只读探针，可以修改：
+### 项目配置
+
+`comet init` 会按所选语言生成带逐字段注释的 `.comet/config.yaml`；`comet update` 补齐新增默认值，同时保留用户取值和未知扩展。下面是同时启用 Native 与 Classic 时的精简配置骨架：
 
 ```yaml
-# 是否启用只读的环境感知恢复探针，同时作用于 Native 和 Classic
-ambient_resume: false
-```
+schema: comet.project.v1
+default_workflow: native
+workflows: [native, classic]
+ambient_resume: true
 
-如果在非编码阶段仍需要写入项目内的共享规则或团队笔记目录，可以在同一份配置中声明 Hook 白名单。路径必须是项目相对目录；项目外路径仍按原有范围规则处理，`.comet` 和工作流产物目录不会被该配置绕过：
-
-```yaml
+memory:
+  learning: true
+  retrieval: true
+knowledge:
+  provider: local
 hook:
-  allow_paths:
-    - .agents/rules
-    - docs/team-notes
-```
+  allow_paths: []
 
-Classic 专属默认值统一收纳在 `classic:` 块中；旧顶层字段会在下次 `comet init` / `comet update` 时迁移：
+native:
+  artifact_root: docs
+  language: zh-CN
+  clarification_mode: batch
+  archive_confirmation: automatic
+  max_verify_failures: 5
 
-```yaml
 classic:
   artifact_layout: docs
   language: zh-CN
@@ -192,11 +204,11 @@ classic:
   auto_transition: true
 ```
 
-Native 默认把用户可读产物放在 `docs/comet/`，机器 Runtime 固定放在项目本地的 `.comet/runtime/native/`。如需使用其他项目内 artifact root，可以显式指定；例如下面会改为 `artifacts/comet/`：
+- `default_workflow` 决定 `/comet` 默认入口，且必须出现在 `workflows` 中；`ambient_resume`、`memory`、`knowledge` 和 `hook` 由两套工作流共享。
+- `memory.learning` / `retrieval` 控制个人记忆学习与注入；`knowledge.local.include` 可追加项目相对 Markdown glob。`hook.allow_paths` 默认为空，仅在受保护阶段确需写入共享目录时添加项目相对路径，不能绕过 `.comet` 或工作流产物保护。
+- Native 用户可读产物默认位于 `docs/comet/`，机器 Runtime 固定在 `.comet/runtime/native/`；可用 `comet init --workflow native --root artifacts` 改为 `artifacts/comet/`。Classic 专属默认值放在 `classic:`，旧顶层字段会由 `comet init` / `comet update` 迁移。
 
-```bash
-comet init --workflow native --root artifacts
-```
+远端知识 Provider、仓库自有 PR Provider 等高级项详见 [Native 配置](https://docs.comet.rpamis.com/zh/native/configuration) 与 [Classic 配置](https://docs.comet.rpamis.com/zh/classic/configuration)。Native v4 不再把旧 `snapshot` 预算持久化到用户配置中。
 
 ## 对OpenClaw和Hermes、或其他AI平台的支持
 

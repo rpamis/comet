@@ -49,6 +49,12 @@ It allows you to use a toolchain to handle everything from requirements to archi
 > 
 > RC.1 also adds manageable Personal Memory, Project Knowledge, and progressive context, plus a three-pane Dashboard for workflows, Git worktrees, memory, knowledge, and plugin settings. Native Portable State, recovery paths, and the Windows Hook experience are hardened throughout.
 >
+> **0.4.0-beta.7** — Added a **native, recoverable workflow for strong models**. Native and Classic operate independently through shared configuration, status, Guard, Dashboard, and Eval entry points. Aligned evaluation (16 tasks × 48 runs, using the 41 paired samples where both treatments passed) showed **76.8% fewer total tokens**, **57.4% fewer Agent rounds**, **47.4% less time**, **87.5% pass^3 (+12.5pp), and 100% pass@3**.
+>
+> **0.4.0-beta.1** — Upgraded Comet to a pure Node runtime without Bash/WSL and added three core capabilities: compose **any** Skill through `/comet-any`, evaluate **any** Skill through `comet eval` with LangSmith integration, and inspect every change through `comet dashboard`.
+>
+> **0.3.9** — Review mode (`off|standard|thorough`) controls Build/Verify code review with project defaults; init/update gained optional dependency prompts, broader CLI i18n, stronger phase guards, and macOS executable bits.
+>
 > See the website [Changelog](https://docs.comet.rpamis.com/en/changelog) for details and the [Native vs. 0.4.0 Classic baseline](https://docs.comet.rpamis.com/en/eval/comet-native-vs-040-experiment) for the evaluation results.
 
 > Native and Classic are not lightweight and heavyweight tiers, and neither upgrades into the other. Native is for strong models that can plan and verify autonomously; Classic is for scenarios that benefit from a complete phased methodology and stronger constraints.
@@ -182,25 +188,31 @@ comet init --workflow classic
 comet init --workflow both
 ```
 
-Generated configuration comments follow the language selected during installation. Ambient Resume is a shared project setting for Native and Classic; disable the read-only probe with:
+### Project configuration
+
+`comet init` generates `.comet/config.yaml` with field-level comments in the selected language. `comet update` fills new managed defaults while preserving user values and unknown extensions. This is the compact shape when Native and Classic are both enabled:
 
 ```yaml
-# Enables the read-only Ambient Resume probe for both Native and Classic
-ambient_resume: false
-```
+schema: comet.project.v1
+default_workflow: native
+workflows: [native, classic]
+ambient_resume: true
 
-If an agent must write project-local shared rules or team notes during a non-coding phase, declare those directories in the same project configuration. Paths are project-relative; paths outside the project retain the existing scope behavior, and this setting cannot bypass `.comet` or workflow artifact directories:
-
-```yaml
+memory:
+  learning: true
+  retrieval: true
+knowledge:
+  provider: local
 hook:
-  allow_paths:
-    - .agents/rules
-    - docs/team-notes
-```
+  allow_paths: []
 
-Classic-specific defaults live under `classic:`. The next `comet init` or `comet update` migrates legacy top-level fields:
+native:
+  artifact_root: docs
+  language: en
+  clarification_mode: batch
+  archive_confirmation: automatic
+  max_verify_failures: 5
 
-```yaml
 classic:
   artifact_layout: docs
   language: en
@@ -209,11 +221,11 @@ classic:
   auto_transition: true
 ```
 
-Native stores user-readable artifacts under `docs/comet/` by default, while machine Runtime is fixed under the project-local `.comet/runtime/native/`. To use another project-relative artifact root, specify it explicitly; for example, this uses `artifacts/comet/`:
+- `default_workflow` selects the default `/comet` entry and must be present in `workflows`. `ambient_resume`, `memory`, `knowledge`, and `hook` are shared by both workflows.
+- `memory.learning` / `retrieval` control personal-memory learning and injection. `knowledge.local.include` can append project-relative Markdown globs. `hook.allow_paths` is empty by default; add project-relative directories only when guarded phases must write shared files. It cannot bypass protection for `.comet` or workflow artifacts.
+- Native stores user-readable artifacts under `docs/comet/` and machine Runtime under `.comet/runtime/native/`. Use `comet init --workflow native --root artifacts` for `artifacts/comet/`. Classic-only defaults stay under `classic:`; `comet init` / `comet update` migrate legacy top-level fields.
 
-```bash
-comet init --workflow native --root artifacts
-```
+Remote knowledge providers and repository-owned pull-request providers remain advanced settings; see [Native configuration](https://docs.comet.rpamis.com/en/native/configuration) and [Classic configuration](https://docs.comet.rpamis.com/en/classic/configuration). Native v4 no longer persists the legacy `snapshot` budgets in user configuration.
 
 ## Support for OpenClaw and Hermes, and other AI platforms
 

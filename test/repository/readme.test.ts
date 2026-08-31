@@ -78,10 +78,51 @@ describe('README assets', () => {
     const readmeEn = await fs.readFile('README.md', 'utf-8');
     const readmeZh = await fs.readFile('README-zh.md', 'utf-8');
 
-    expect(readmeEn).toContain('**0.4.0-rc.1**');
-    expect(readmeZh).toContain('**0.4.0-rc.1**');
+    for (const version of ['0.4.0-rc.1', '0.4.0-beta.7', '0.4.0-beta.1', '0.3.9']) {
+      expect(readmeEn).toContain(`**${version}**`);
+      expect(readmeZh).toContain(`**${version}**`);
+    }
     expect(readmeEn).toContain('https://docs.comet.rpamis.com/en/changelog');
     expect(readmeZh).toContain('https://docs.comet.rpamis.com/zh/changelog');
+  });
+
+  it('documents the compact current project configuration in both languages', async () => {
+    const readmeEn = await fs.readFile('README.md', 'utf-8');
+    const readmeZh = await fs.readFile('README-zh.md', 'utf-8');
+    const configEn = readmeEn.split('### Project configuration')[1]?.split('## Support')[0] ?? '';
+    const configZh = readmeZh.split('### 项目配置')[1]?.split('## 对OpenClaw')[0] ?? '';
+    const managedFields = [
+      'schema: comet.project.v1',
+      'default_workflow: native',
+      'workflows: [native, classic]',
+      'ambient_resume: true',
+      'memory:',
+      'learning: true',
+      'retrieval: true',
+      'knowledge:',
+      'provider: local',
+      'hook:',
+      'allow_paths: []',
+      'native:',
+      'artifact_root: docs',
+      'clarification_mode: batch',
+      'archive_confirmation: automatic',
+      'max_verify_failures: 5',
+      'classic:',
+      'artifact_layout: docs',
+      'context_compression: off',
+      'review_mode: standard',
+      'auto_transition: true',
+    ];
+
+    for (const field of managedFields) {
+      expect(configEn).toContain(field);
+      expect(configZh).toContain(field);
+    }
+    expect(configEn).toContain('language: en');
+    expect(configZh).toContain('language: zh-CN');
+    expect(configEn).not.toContain('snapshot:');
+    expect(configZh).not.toContain('snapshot:');
   });
 
   it('keeps the bilingual Supervisor showcase backed by repository assets', async () => {
