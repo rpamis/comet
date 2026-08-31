@@ -208,7 +208,7 @@ classic:
 - `memory.learning` / `retrieval` 控制个人记忆学习与注入；`knowledge.local.include` 可追加项目相对 Markdown glob。`hook.allow_paths` 默认为空，仅在受保护阶段确需写入共享目录时添加项目相对路径，不能绕过 `.comet` 或工作流产物保护。
 - Native 用户可读产物默认位于 `docs/comet/`，机器 Runtime 固定在 `.comet/runtime/native/`；可用 `comet init --workflow native --root artifacts` 改为 `artifacts/comet/`。Classic 专属默认值放在 `classic:`，旧顶层字段会由 `comet init` / `comet update` 迁移。
 
-远端知识 Provider、仓库自有 PR Provider 等高级项详见 [Native 配置](https://docs.comet.rpamis.com/zh/native/configuration) 与 [Classic 配置](https://docs.comet.rpamis.com/zh/classic/configuration)。Native v4 不再把旧 `snapshot` 预算持久化到用户配置中。
+云端知识、私有化 PR 等高级配置详见 [Native 配置](https://docs.comet.rpamis.com/zh/native/configuration) 与 [Classic 配置](https://docs.comet.rpamis.com/zh/classic/configuration)。Native v4 不再把旧 `snapshot` 预算持久化到用户配置中。
 
 ## 对OpenClaw和Hermes、或其他AI平台的支持
 

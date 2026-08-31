@@ -121,8 +121,12 @@ describe('README assets', () => {
     }
     expect(configEn).toContain('language: en');
     expect(configZh).toContain('language: zh-CN');
+    expect(configEn).toContain('Cloud Knowledge and self-hosted PR');
+    expect(configZh).toContain('云端知识、私有化 PR');
     expect(configEn).not.toContain('snapshot:');
     expect(configZh).not.toContain('snapshot:');
+    expect(configZh).not.toContain('远端知识');
+    expect(configZh).not.toContain('仓库自有 PR');
   });
 
   it('keeps the bilingual Supervisor showcase backed by repository assets', async () => {

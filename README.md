@@ -225,7 +225,7 @@ classic:
 - `memory.learning` / `retrieval` control personal-memory learning and injection. `knowledge.local.include` can append project-relative Markdown globs. `hook.allow_paths` is empty by default; add project-relative directories only when guarded phases must write shared files. It cannot bypass protection for `.comet` or workflow artifacts.
 - Native stores user-readable artifacts under `docs/comet/` and machine Runtime under `.comet/runtime/native/`. Use `comet init --workflow native --root artifacts` for `artifacts/comet/`. Classic-only defaults stay under `classic:`; `comet init` / `comet update` migrate legacy top-level fields.
 
-Remote knowledge providers and repository-owned pull-request providers remain advanced settings; see [Native configuration](https://docs.comet.rpamis.com/en/native/configuration) and [Classic configuration](https://docs.comet.rpamis.com/en/classic/configuration). Native v4 no longer persists the legacy `snapshot` budgets in user configuration.
+Cloud Knowledge and self-hosted PR providers remain advanced settings; see [Native configuration](https://docs.comet.rpamis.com/en/native/configuration) and [Classic configuration](https://docs.comet.rpamis.com/en/classic/configuration). Native v4 no longer persists the legacy `snapshot` budgets in user configuration.
 
 ## Support for OpenClaw and Hermes, and other AI platforms
 
