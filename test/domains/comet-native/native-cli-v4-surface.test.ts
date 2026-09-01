@@ -1347,7 +1347,8 @@ Run applicable focused checks.
 
   it('resolves a semantic Verifier blocker with a new attempt and retained checks', async () => {
     const name = 'resolve-semantic-blocker';
-    await prepareBuild(name);
+    const acceptance = Array.from({ length: 40 }, (_, index) => `Behavior ${index + 1} works.`);
+    await prepareBuild(name, acceptance);
     await runnerStep(name, builderHandoff(['A1']));
     const counter = path.join(projectRoot, 'semantic-blocker-count.txt');
     const plan = {
@@ -1377,9 +1378,14 @@ Run applicable focused checks.
           iteration: 1,
           attempt: 1,
           verdict: 'blocked',
-          acceptance: [
-            { id: 'A1', result: 'blocked', reason: 'A user-visible choice is required.' },
-          ],
+          acceptance: acceptance.map((_, index) => ({
+            id: `A${index + 1}`,
+            result: 'blocked' as const,
+            reason:
+              index === 0
+                ? 'A user-visible choice is required.'
+                : 'Additional user context is required.',
+          })),
           risks: [],
           summary: 'Semantic verification needs a user decision.',
         },
@@ -1463,7 +1469,14 @@ Run applicable focused checks.
       exitCode: 0,
       data: {
         state: { loop: { iteration: 1, attempt: 2, retry_epoch: 1 } },
-        verifierDispatch: { iteration: 1, attempt: 2 },
+        verifierDispatch: {
+          iteration: 1,
+          attempt: 2,
+          recoveryContext: {
+            text: 'Retry semantic verification without implementation changes',
+            truncated: false,
+          },
+        },
       },
     });
     expect(await fs.readFile(counter, 'utf8')).toBe('1');

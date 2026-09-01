@@ -516,6 +516,10 @@ function assertSkillCoordinatedCandidate(state: NativePortableState): NativeBuil
   return state.builder_handoff;
 }
 
+function latestRecoveryContext(state: NativePortableState) {
+  return [...state.history].reverse().find(({ outcome }) => outcome === 'recovery')?.summary;
+}
+
 function verifierDispatch(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
@@ -528,6 +532,7 @@ function verifierDispatch(options: {
   if (!handoff.review) {
     throw new Error('Native Skill coordination requires a passed read-only review');
   }
+  const recoveryContext = latestRecoveryContext(state);
   const scopeIds = state.acceptance
     .filter(({ result }) => result === 'pending')
     .map(({ id }) => id);
@@ -561,6 +566,7 @@ function verifierDispatch(options: {
       '--project-root',
       paths.projectRoot,
     ],
+    ...(recoveryContext === undefined ? {} : { recoveryContext }),
     builderReview: {
       status: handoff.review.status,
       summary: handoff.review.summary,
