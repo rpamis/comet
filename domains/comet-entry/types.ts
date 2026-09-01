@@ -53,12 +53,19 @@ export interface ChangeStatus {
   error?: string;
 }
 
+export interface NativeChangeStatusError {
+  name: string;
+  error: string;
+}
+
 export interface CometProjectStatus {
   schema: 'comet.status.v2';
   defaultEntry: CometEntryResolution | { error: string };
   workflows: {
     native: {
-      changes: Array<NativeStatusProjection | NativePortableStatusProjection>;
+      changes: Array<
+        NativeStatusProjection | NativePortableStatusProjection | NativeChangeStatusError
+      >;
       error?: string;
     };
     classic: { changes: ChangeStatus[]; error?: string };

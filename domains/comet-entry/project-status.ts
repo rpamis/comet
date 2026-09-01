@@ -100,11 +100,20 @@ async function listConfiguredNativeStatus(
 ): Promise<CometProjectStatus['workflows']['native']['changes']> {
   const names = await listNativeChangeNames(paths);
   return Promise.all(
-    names.map(async (name) =>
-      (await isNativePortableChange(paths, name))
-        ? inspectNativePortableStatus({ paths, name })
-        : inspectNativeStatus(paths, name, options),
-    ),
+    names.map(async (name) => {
+      try {
+        return (await isNativePortableChange(paths, name))
+          ? await inspectNativePortableStatus({ paths, name })
+          : await inspectNativeStatus(paths, name, options);
+      } catch (error) {
+        // A single unreadable change (for example a stale worktree copy of a
+        // supervisor parent) must not hide every other change from global status.
+        return {
+          name,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    }),
   );
 }
 

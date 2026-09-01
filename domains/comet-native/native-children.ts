@@ -59,6 +59,7 @@ export interface NativeChildrenContract {
 export interface NativeChildrenDocument {
   contract: NativeChildrenContract;
   size: number;
+  drift: NativeChildrenIndexDrift | null;
 }
 
 export type NativeChildDerivedStatus =
@@ -198,9 +199,84 @@ function validateCoverage(
   }
 }
 
+export function nativeChildrenIndexDrift(
+  contract: NativeChildrenContract,
+  acceptanceIds: readonly string[] | undefined,
+  options: NativeChildrenValidationOptions,
+): NativeChildrenIndexDrift | null {
+  const drift: NativeChildrenIndexDrift = {
+    missing: [],
+    extra: [],
+    mismatched: [],
+    uncovered: [],
+    unknownCovers: [],
+  };
+  if (contract.schema === NATIVE_CHILDREN_SCHEMA_V2 && contract.acceptance_index) {
+    const required = options.requiredAcceptanceIds ?? acceptanceIds ?? [];
+    const indexKeys = Object.keys(contract.acceptance_index);
+    drift.missing = required.filter((id) => !(id in contract.acceptance_index!));
+    drift.extra = indexKeys.filter((id) => !required.includes(id));
+    const catalog = new Map((options.acceptanceCatalog ?? []).map((entry) => [entry.id, entry]));
+    for (const id of required) {
+      const expected = catalog.get(id);
+      const actual = contract.acceptance_index[id];
+      if (
+        expected &&
+        actual &&
+        (actual.source !== expected.source || actual.text !== expected.text)
+      ) {
+        drift.mismatched.push(id);
+      }
+    }
+    const known = new Set(indexKeys);
+    for (const child of contract.children) {
+      drift.unknownCovers.push(...child.covers.filter((id) => !known.has(id)));
+    }
+    drift.uncovered = indexKeys.filter((id) => !coveredBy(contract.children, id));
+    return hasDrift(drift) ? drift : null;
+  }
+  if (contract.schema === NATIVE_CHILDREN_SCHEMA && acceptanceIds) {
+    const known = new Set(acceptanceIds);
+    for (const child of contract.children) {
+      drift.unknownCovers.push(...child.covers.filter((id) => !known.has(id)));
+    }
+    drift.uncovered = acceptanceIds.filter((id) => !coveredBy(contract.children, id));
+    return hasDrift(drift) ? drift : null;
+  }
+  return null;
+}
+
+function coveredBy(children: readonly NativeChildDefinition[], id: string): boolean {
+  return children.some((child) => child.covers.includes(id));
+}
+
+function hasDrift(drift: NativeChildrenIndexDrift): boolean {
+  return (
+    drift.missing.length > 0 ||
+    drift.extra.length > 0 ||
+    drift.mismatched.length > 0 ||
+    drift.uncovered.length > 0 ||
+    drift.unknownCovers.length > 0
+  );
+}
+
 export interface NativeChildrenValidationOptions {
   acceptanceCatalog?: readonly Pick<NativePortableAcceptanceState, 'id' | 'source' | 'text'>[];
   requiredAcceptanceIds?: readonly string[];
+  /**
+   * Advisory parsing keeps the same structural checks but reports acceptance-index
+   * drift through NativeChildrenDocument.drift instead of throwing, so read-only
+   * projections can render a stale contract as "confirmation required".
+   */
+  policy?: 'strict' | 'advisory';
+}
+
+export interface NativeChildrenIndexDrift {
+  missing: string[];
+  extra: string[];
+  mismatched: string[];
+  uncovered: string[];
+  unknownCovers: string[];
 }
 
 type NativeChildrenAcceptanceState = Pick<
@@ -352,17 +428,18 @@ export function parseNativeChildrenContract(
     }
   }
   assertAcyclic(children);
+  const advisory = options.policy === 'advisory';
   if (schema === NATIVE_CHILDREN_SCHEMA_V2) {
     if (variant === 'indexed-v2') {
       const acceptanceIndex = parseAcceptanceIndex(root.acceptance_index);
-      validateAcceptanceIndex(acceptanceIndex, acceptanceIds, options);
+      if (!advisory) validateAcceptanceIndex(acceptanceIndex, acceptanceIds, options);
       const indexedAcceptanceIds = Object.keys(acceptanceIndex);
-      validateCoverage(children, indexedAcceptanceIds, indexedAcceptanceIds);
+      if (!advisory) validateCoverage(children, indexedAcceptanceIds, indexedAcceptanceIds);
       return { schema: NATIVE_CHILDREN_V2_SCHEMA, acceptance_index: acceptanceIndex, children };
     }
     return { schema: NATIVE_CHILDREN_V2_SCHEMA, children };
   }
-  if (acceptanceIds) validateCoverage(children, acceptanceIds);
+  if (acceptanceIds && !advisory) validateCoverage(children, acceptanceIds);
   return { schema: NATIVE_CHILDREN_SCHEMA, children };
 }
 
@@ -370,6 +447,7 @@ export async function readNativeChildrenContract(options: {
   changeDir: string;
   acceptanceIds?: readonly string[];
   validation?: NativeChildrenValidationOptions;
+  policy?: 'strict' | 'advisory';
 }): Promise<NativeChildrenDocument | null> {
   const file = path.join(options.changeDir, NATIVE_CHILDREN_FILE);
   try {
@@ -382,9 +460,17 @@ export async function readNativeChildrenContract(options: {
     root: options.changeDir,
     ref: NATIVE_CHILDREN_FILE,
   });
+  const advisory = options.policy === 'advisory';
+  const validation: NativeChildrenValidationOptions = advisory
+    ? { ...options.validation, policy: 'advisory' }
+    : (options.validation ?? {});
+  const contract = parseNativeChildrenContract(source.text, options.acceptanceIds, validation);
   return {
-    contract: parseNativeChildrenContract(source.text, options.acceptanceIds, options.validation),
+    contract,
     size: source.size,
+    drift: advisory
+      ? nativeChildrenIndexDrift(contract, options.acceptanceIds, options.validation ?? {})
+      : null,
   };
 }
 
@@ -696,6 +782,7 @@ export async function inspectNativeChildren(options: {
     ...(options.state.acceptance.length > 0
       ? { acceptanceIds: options.state.acceptance.map(({ id }) => id) }
       : {}),
+    policy: 'advisory',
   });
   if (!document) {
     return options.state.children_contract_hash
@@ -727,7 +814,9 @@ export async function inspectNativeChildren(options: {
   });
   const parentBranch = options.state.workspace.change_branch;
   const confirmed =
-    options.state.phase !== 'shape' && options.state.children_contract_hash === contractHash;
+    options.state.phase !== 'shape' &&
+    options.state.children_contract_hash === contractHash &&
+    !document.drift;
   if (document.contract.schema === NATIVE_CHILDREN_V2_SCHEMA) {
     let supervisor = await readNativeSupervisorState(options.paths, options.state.name);
     if (!supervisor) {
@@ -748,7 +837,7 @@ export async function inspectNativeChildren(options: {
     }
     if (supervisor) {
       const projected = projectNativeSupervisorChildren(supervisor);
-      if (options.state.children_contract_hash !== contractHash) {
+      if (options.state.children_contract_hash !== contractHash || document.drift) {
         return {
           ...projected,
           schema: document.contract.schema,
@@ -759,7 +848,9 @@ export async function inspectNativeChildren(options: {
           allDone: false,
           children: projected.children.map((child) => ({
             ...child,
-            message: 'Supervisor child plan changed; Shape confirmation is required',
+            message: document.drift
+              ? 'Children acceptance index is stale; Shape confirmation is required'
+              : 'Supervisor child plan changed; Shape confirmation is required',
           })),
         };
       }

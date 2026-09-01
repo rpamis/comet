@@ -118,4 +118,26 @@ describe('Native status discovery pagination', () => {
     });
     expect(missing).toMatchObject({ name: 'not-created' });
   });
+
+  it('reports an unreadable portable copy as a blocked entry instead of failing the page', async () => {
+    const paths = await nativeProjectPaths(projectRoot, '.');
+    const staleDir = path.join(paths.changesDir, 'change-23');
+    await fs.writeFile(
+      path.join(staleDir, 'comet-state.yaml'),
+      'schema: comet.native.v4\nphase: [\n',
+    );
+
+    const page = await listDiscoveredNativeStatusPage({ projectRoot });
+    expect(page.items).toHaveLength(page.limits.maxItems);
+    const stale = page.items.find(({ name }) => name === 'change-23');
+    expect(stale).toMatchObject({
+      name: 'change-23',
+      phase: 'invalid',
+      status: 'blocked',
+      inspectionError: expect.any(String),
+    });
+    expect(
+      page.items.filter(({ name }) => name !== 'change-23' && name.startsWith('change-')),
+    ).not.toContainEqual(expect.objectContaining({ phase: 'invalid' }));
+  });
 });

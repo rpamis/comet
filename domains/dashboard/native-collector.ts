@@ -470,6 +470,7 @@ async function activeParentChildren(
     if (read.kind !== 'portable') return [];
     const document = await readNativeChildrenContract({
       changeDir,
+      policy: 'advisory',
       ...(read.state.acceptance.length > 0
         ? { acceptanceIds: read.state.acceptance.map(({ id }) => id) }
         : {}),
@@ -565,6 +566,7 @@ async function archivedParentChildren(
     if (read.kind !== 'portable' || !read.state.children_contract_hash) return [];
     const document = await readNativeChildrenContract({
       changeDir,
+      policy: 'advisory',
       acceptanceIds: read.state.acceptance.map(({ id }) => id),
     });
     if (!document) return [];

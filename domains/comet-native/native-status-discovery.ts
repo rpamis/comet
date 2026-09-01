@@ -41,12 +41,45 @@ interface NativeStatusCandidate {
   kind: 'portable' | 'legacy';
   workspace: NativeWorkspaceProjection | NativePortableStatusProjection['workspace'];
   portableStatus: NativePortableStatusProjection | null;
+  inspectionError: string | null;
 }
 
 export type NativeDiscoveredStatusProjection =
   | NativeStatusProjection
   | NativePortableStatusProjection
-  | NativeLegacyMigrationStatusProjection;
+  | NativeLegacyMigrationStatusProjection
+  | NativeInspectionErrorStatusProjection;
+
+/**
+ * A portable change copy whose state could not be projected (for example a stale
+ * worktree copy of a supervisor parent). Discovery keeps the entry visible so a
+ * single unreadable copy never blanks the cross-worktree status page.
+ */
+export interface NativeInspectionErrorStatusProjection {
+  schema: 'comet.native.status.v2';
+  name: string;
+  phase: 'invalid';
+  status: 'blocked';
+  inspectionError: string;
+  workspace: NativeWorkspaceProjection | NativePortableStatusProjection['workspace'];
+  continuation: {
+    schema: 'comet.native.continuation.v2';
+    skill: 'comet-native';
+    change: string;
+    phase: 'invalid';
+    status: 'blocked';
+    disposition: 'blocked';
+    action: 'none';
+    commandArgs: string[];
+    requiredInputs: [];
+    runnerAction: {
+      kind: 'none';
+      candidateId: null;
+      iteration: 0;
+      attempt: 0;
+    };
+  };
+}
 
 export interface NativeLegacyMigrationStatusProjection {
   schema: 'comet.native.status.v2';
@@ -193,14 +226,28 @@ async function discoverCandidates(
     const candidates = await Promise.all(
       nameSources.map(async ({ source, kind }): Promise<NativeStatusCandidate> => {
         if (kind === 'portable') {
-          const portableStatus = await inspectNativePortableStatus({ paths: source.paths, name });
-          return {
-            source,
-            name,
-            kind,
-            workspace: portableStatus.workspace,
-            portableStatus,
-          };
+          try {
+            const portableStatus = await inspectNativePortableStatus({ paths: source.paths, name });
+            return {
+              source,
+              name,
+              kind,
+              workspace: portableStatus.workspace,
+              portableStatus,
+              inspectionError: null,
+            };
+          } catch (error) {
+            // A stale or partially synced copy in another worktree must not
+            // blank the whole discovery page; report it as a blocked entry.
+            return {
+              source,
+              name,
+              kind,
+              workspace: await projectNativeWorkspace(source.paths, name),
+              portableStatus: null,
+              inspectionError: error instanceof Error ? error.message : String(error),
+            };
+          }
         }
         return {
           source,
@@ -208,6 +255,7 @@ async function discoverCandidates(
           kind,
           workspace: await projectNativeWorkspace(source.paths, name),
           portableStatus: null,
+          inspectionError: null,
         };
       }),
     );
@@ -341,6 +389,28 @@ async function inspectCandidate(
   acceptanceCursor?: string,
   detailsCursor?: string,
 ): Promise<NativeDiscoveredStatusProjection> {
+  if (candidate.inspectionError) {
+    return {
+      schema: 'comet.native.status.v2',
+      name: candidate.name,
+      phase: 'invalid',
+      status: 'blocked',
+      inspectionError: candidate.inspectionError,
+      workspace: candidate.workspace,
+      continuation: {
+        schema: 'comet.native.continuation.v2',
+        skill: 'comet-native',
+        change: candidate.name,
+        phase: 'invalid',
+        status: 'blocked',
+        disposition: 'blocked',
+        action: 'none',
+        commandArgs: ['comet', 'native', 'doctor', candidate.name, '--repair'],
+        requiredInputs: [],
+        runnerAction: { kind: 'none', candidateId: null, iteration: 0, attempt: 0 },
+      },
+    };
+  }
   if (candidate.kind === 'portable') {
     if (acceptanceCursor) {
       throw new Error('Portable Native status includes the complete acceptance list');

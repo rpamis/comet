@@ -102,6 +102,15 @@ function displayNativeChanges(section: CometProjectStatus['workflows']['native']
   }
   for (let index = 0; index < section.changes.length; index++) {
     const change = section.changes[index];
+    if (!('phase' in change)) {
+      console.log(`  ${index + 1}. ${change.name} [Native] [phase: invalid]`);
+      console.log(`     error: ${change.error}`);
+      console.log(
+        `     next: inspect the change state or rerun comet native doctor ${change.name}`,
+      );
+      console.log();
+      continue;
+    }
     if ('stateVersion' in change) {
       displayPortableNativeChange(change, index + 1);
       continue;

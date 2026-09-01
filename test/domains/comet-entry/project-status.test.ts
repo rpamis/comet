@@ -491,6 +491,26 @@ describe('Comet project status', () => {
     ]);
   });
 
+  it('keeps an unreadable portable change as an error entry instead of failing the Native section', async () => {
+    await writeProjectConfig(projectRoot, bothProjectConfig('.'));
+    const paths = await nativeProjectPaths(projectRoot, '.');
+    await createNativePortableChange({ paths, name: 'native-healthy', language: 'en' });
+    const staleDir = path.join(paths.changesDir, 'native-stale-copy');
+    await fs.mkdir(staleDir, { recursive: true });
+    await fs.writeFile(
+      path.join(staleDir, 'comet-state.yaml'),
+      'schema: comet.native.v4\nphase: [\n',
+    );
+
+    const status = await inspectCometProjectStatus(projectRoot);
+
+    expect(status.workflows.native.error).toBeUndefined();
+    expect(status.workflows.native.changes).toEqual([
+      expect.objectContaining({ name: 'native-healthy' }),
+      expect.objectContaining({ name: 'native-stale-copy', error: expect.any(String) }),
+    ]);
+  });
+
   it('reads mixed Native, Classic, and OpenSpec status without changing project files', async () => {
     await writeProjectConfig(projectRoot, bothProjectConfig('docs'));
     const paths = await nativeProjectPaths(projectRoot, 'docs');
