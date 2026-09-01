@@ -2008,6 +2008,7 @@ export async function confirmNativePortableVerifierUnavailable(options: {
 export async function resolveNativePortableVerifierBlocker(options: {
   paths: NativeProjectPaths;
   name: string;
+  reason?: string;
   expectedContinuation?: NativePortableExpectedContinuation;
 }): Promise<NativePortableState> {
   return withNativeMutationLock(
@@ -2022,7 +2023,7 @@ export async function resolveNativePortableVerifierBlocker(options: {
       });
       await ensureNativePortableAcceptanceCurrentLocked({ paths: options.paths, state });
       const local = await readCurrentLocalExecution({ paths: options.paths, state });
-      const next = resolveNativeVerifierBlocker(state);
+      const next = resolveNativeVerifierBlocker(state, { reason: options.reason });
       const written = await writePortableMutation({ paths: options.paths, previous: state, next });
       await writeNativeLocalExecution(
         nativeLocalExecutionFile(options.paths, state.name),

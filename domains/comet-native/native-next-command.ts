@@ -327,6 +327,7 @@ export async function nativeNextCommand(
     state = await resolveNativePortableVerifierBlocker({
       paths: configured.paths,
       name,
+      reason: summary,
       expectedContinuation,
     });
   } else {

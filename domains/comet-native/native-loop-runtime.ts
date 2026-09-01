@@ -654,7 +654,10 @@ export function confirmNativeVerifierUnavailable(options: {
   });
 }
 
-export function resolveNativeVerifierBlocker(stateInput: NativePortableState): NativePortableState {
+export function resolveNativeVerifierBlocker(
+  stateInput: NativePortableState,
+  options?: { reason?: string; now?: Date },
+): NativePortableState {
   const state = parseNativePortableState(stateInput);
   if (
     state.phase !== 'verify' ||
@@ -670,8 +673,21 @@ export function resolveNativeVerifierBlocker(stateInput: NativePortableState): N
   ) {
     throw new Error('Native change is not awaiting resolution of a semantic Verifier blocker');
   }
+  // The user's resolution context is the only place the next Verifier round
+  // can learn what information unblocked the semantic judgment, so it must be
+  // persisted in history instead of dying with the command invocation.
+  const withHistory = appendNativePortableHistory(
+    state,
+    historyEntry({
+      state,
+      outcome: 'recovery',
+      summary:
+        options?.reason ?? 'Resolved the semantic Verifier blocker and resumed verification.',
+      completedAt: (options?.now ?? new Date()).toISOString(),
+    }),
+  );
   return parseNativePortableState({
-    ...state,
+    ...withHistory,
     status: 'active',
     state_version: nextVersion(state),
     verification_result: 'pending',

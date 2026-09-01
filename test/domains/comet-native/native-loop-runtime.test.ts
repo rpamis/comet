@@ -6,6 +6,7 @@ import {
   confirmNativePortableAcceptance,
   recordNativeVerifierExecutionError,
   reserveNativeVerifierAttempt,
+  resolveNativeVerifierBlocker,
   returnNativeCandidateToBuild,
   retryNativeVerifier,
   submitNativeBuilderCandidate,
@@ -668,6 +669,32 @@ describe('Native portable Build/Verify loop', () => {
     });
   });
 
+  it('explains a budget-exhausted stop without calling it a no-progress loop', () => {
+    const { state, runner } = buildState();
+    const stopped = applyNativeVerifierEnvelope({
+      state,
+      envelope: envelope(runner, state, 'fail', ['A1']),
+      checks,
+      maxVerifyFailures: 1,
+    }).state;
+
+    expect(stopped).toMatchObject({
+      status: 'await-user',
+      loop: { failed_iteration_count: 1, no_progress_count: 0, stage: 'await-user' },
+    });
+    expect(nativePortableContinuation(stopped).userCommunication).toMatchObject({
+      required: true,
+      message: expect.stringContaining('used its configured failure budget'),
+      suggestedReply: 'Continue repairing',
+    });
+    expect(
+      nativePortableContinuation({ ...stopped, language: 'zh-CN' }).userCommunication,
+    ).toMatchObject({
+      required: true,
+      message: expect.stringContaining('已用完配置的预算'),
+    });
+  });
+
   it('keeps a report reference for a semantic blocker', () => {
     const { state, runner } = buildState();
     const result = applyNativeVerifierEnvelope({
@@ -694,6 +721,14 @@ describe('Native portable Build/Verify loop', () => {
     ).toMatchObject({
       required: true,
       message: expect.stringContaining('缺少只有你能提供的信息'),
+    });
+
+    const resumed = resolveNativeVerifierBlocker(result, {
+      reason: 'The external service returns 429 under load; that behavior is expected.',
+    });
+    expect(resumed.history[resumed.history.length - 1]).toMatchObject({
+      outcome: 'recovery',
+      summary: { text: 'The external service returns 429 under load; that behavior is expected.' },
     });
   });
 
