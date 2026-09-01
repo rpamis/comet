@@ -31,13 +31,59 @@ export interface VersionCheckResult {
   checked: boolean;
 }
 
-/**
- * Compare two semver version strings.
- * Returns a positive number if a > b, negative if a < b, 0 if equal.
- */
-export function compareVersions(a: string, b: string): number {
-  const parseParts = (v: string): number[] =>
-    v
+export interface ParsedSemver {
+  major: number;
+  minor: number;
+  patch: number;
+  prerelease: string[];
+}
+
+const SEMVER_PATTERN =
+  /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
+
+export function parseSemver(version: string): ParsedSemver | null {
+  const match = SEMVER_PATTERN.exec(version);
+  if (!match) return null;
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: Number(match[3]),
+    prerelease: match[4]?.split('.') ?? [],
+  };
+}
+
+function comparePrereleaseIdentifiers(left: string[], right: string[]): number {
+  if (left.length === 0 || right.length === 0) {
+    if (left.length === right.length) return 0;
+    return left.length === 0 ? 1 : -1;
+  }
+
+  for (let index = 0; index < Math.max(left.length, right.length); index++) {
+    const leftPart = left[index];
+    const rightPart = right[index];
+    if (leftPart === undefined) return -1;
+    if (rightPart === undefined) return 1;
+    if (leftPart === rightPart) continue;
+
+    const leftNumeric = /^\d+$/u.test(leftPart);
+    const rightNumeric = /^\d+$/u.test(rightPart);
+    if (leftNumeric && rightNumeric) return Number(leftPart) - Number(rightPart);
+    if (leftNumeric !== rightNumeric) return leftNumeric ? -1 : 1;
+    return leftPart < rightPart ? -1 : 1;
+  }
+  return 0;
+}
+
+export function compareSemverVersions(left: ParsedSemver, right: ParsedSemver): number {
+  for (const field of ['major', 'minor', 'patch'] as const) {
+    if (left[field] !== right[field]) return left[field] - right[field];
+  }
+  return comparePrereleaseIdentifiers(left.prerelease, right.prerelease);
+}
+
+function compareLegacyNumericVersions(a: string, b: string): number {
+  const parseParts = (version: string): number[] =>
+    version
       .replace(/^v/, '')
       .split('.')
       .map((part) => {
@@ -52,12 +98,21 @@ export function compareVersions(a: string, b: string): number {
   for (let i = 0; i < len; i++) {
     const numA = partsA[i] ?? 0;
     const numB = partsB[i] ?? 0;
-    if (numA !== numB) {
-      return numA - numB;
-    }
+    if (numA !== numB) return numA - numB;
   }
 
   return 0;
+}
+
+/**
+ * Compare two semver version strings.
+ * Returns a positive number if a > b, negative if a < b, 0 if equal.
+ */
+export function compareVersions(a: string, b: string): number {
+  const parsedA = parseSemver(a);
+  const parsedB = parseSemver(b);
+  if (parsedA && parsedB) return compareSemverVersions(parsedA, parsedB);
+  return compareLegacyNumericVersions(a, b);
 }
 
 /**

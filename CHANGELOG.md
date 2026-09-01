@@ -18,6 +18,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Native verification loop-stop handoff**: When Native verification paused after repeated failures or repeated no-progress results, the Agent received no user-facing message at the pause point, so sessions could keep re-checking the same candidate instead of asking the user whether to continue repairing or adjust the requirements. The Runtime now returns an explicit user decision request with ready-to-relay bilingual messages for the loop stop, and the same applies when a Verifier blocker waits on information only the user can provide.
 - **Native status resilience for stale children indexes**: A stale `children.yaml` acceptance index (for example a partially synced Supervisor copy inside another Git worktree) no longer blocks the whole Native status view. `comet status` and `comet native status` now keep listing every other change, show the drifted copy as needing Shape re-confirmation, and the Dashboard keeps rendering parent-child progress, while strict index validation still guards state-advancing commands such as Shape confirmation and Build.
 
+- **Prerelease update detection**: `comet init` and `comet update` now compare complete SemVer values, so beta-to-RC, RC-to-stable, future patch, and future minor prerelease upgrades are detected correctly.
+
 ## What's Changed [0.4.0-rc.1] - 2026-08-31
 
 ### Added
