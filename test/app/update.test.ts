@@ -51,16 +51,20 @@ vi.mock('child_process', async (importOriginal) => {
   };
 });
 
-vi.mock('../../platform/version/version.js', () => ({
-  getCurrentVersion: vi.fn(() => '0.4.0-beta.7'),
-  getLatestVersion: vi.fn(async () => '0.4.0-beta.8'),
-  printVersionInfo: vi.fn(async () => ({
-    currentVersion: '0.4.0-beta.7',
-    latestVersion: '0.4.0-beta.8',
-    hasUpdate: true,
-    checked: true,
-  })),
-}));
+vi.mock('../../platform/version/version.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../platform/version/version.js')>();
+  return {
+    ...actual,
+    getCurrentVersion: vi.fn(() => '0.4.0-beta.7'),
+    getLatestVersion: vi.fn(async () => '0.4.0-beta.8'),
+    printVersionInfo: vi.fn(async () => ({
+      currentVersion: '0.4.0-beta.7',
+      latestVersion: '0.4.0-beta.8',
+      hasUpdate: true,
+      checked: true,
+    })),
+  };
+});
 
 vi.mock('../../domains/integrations/openspec.js', () => ({
   installOpenSpec: vi.fn(async () => 'installed'),
@@ -1031,6 +1035,10 @@ describe('update command helpers', () => {
     });
     expect(resolveNpmSelfUpdatePlan('0.4.0-alpha.1', '0.4.0-alpha.beta')).toMatchObject({
       action: 'update',
+    });
+    expect(resolveNpmSelfUpdatePlan('0.4.0-beta.20', '0.4.0-rc.1')).toEqual({
+      action: 'update',
+      version: '0.4.0-rc.1',
     });
 
     const project = path.join(tmpDir, 'package-scope');

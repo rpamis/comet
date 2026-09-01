@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-rc.2] - 2026-09-01
+
+### Fixed
+
+- **Prerelease update detection**: `comet init` and `comet update` now compare complete SemVer values, so beta-to-RC, RC-to-stable, future patch, and future minor prerelease upgrades are detected correctly.
+
 ## What's Changed [0.4.0-rc.1] - 2026-08-31
 
 ### Added

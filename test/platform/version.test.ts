@@ -78,6 +78,14 @@ describe('compareVersions', () => {
   it('handles non-numeric parts as zero', () => {
     expect(compareVersions('1.0.beta', '1.0.0')).toBe(0);
   });
+
+  it('orders prerelease and future release versions by SemVer precedence', () => {
+    expect(compareVersions('0.4.0-rc.1', '0.4.0-beta.16')).toBeGreaterThan(0);
+    expect(compareVersions('0.4.0-rc.1', '0.4.0-beta.20')).toBeGreaterThan(0);
+    expect(compareVersions('0.4.1', '0.4.0-rc.1')).toBeGreaterThan(0);
+    expect(compareVersions('0.5.0-beta.1', '0.4.0-rc.1')).toBeGreaterThan(0);
+    expect(compareVersions('0.4.0', '0.4.0-rc.1')).toBeGreaterThan(0);
+  });
 });
 
 describe('getCurrentVersion', () => {

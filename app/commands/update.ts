@@ -74,7 +74,12 @@ import {
 import type { InitWorkflowSelection } from '../../domains/comet-entry/types.js';
 import { migrateLegacyClassicSelection } from '../../domains/comet-entry/current-selection.js';
 import type { InstallScope, InstallMode } from '../../platform/install/types.js';
-import { getLatestVersion, printVersionInfo } from '../../platform/version/version.js';
+import {
+  compareSemverVersions,
+  getLatestVersion,
+  parseSemver,
+  printVersionInfo,
+} from '../../platform/version/version.js';
 import { t, type TranslationKey } from './i18n.js';
 import { assertProjectScopeOptions, resolveProjectScopeMode } from './project-scope-selection.js';
 import type { CommandExecutionResult } from './command-result.js';
@@ -512,56 +517,6 @@ function buildNpmUpdateArgs(scope: InstallScope, version = 'latest'): string[] {
 
 function formatNpmUpdateCommand(scope: InstallScope, version = 'latest'): string {
   return ['npm', ...buildNpmUpdateArgs(scope, version)].join(' ');
-}
-
-interface ParsedSemver {
-  major: number;
-  minor: number;
-  patch: number;
-  prerelease: string[];
-}
-
-function parseSemver(version: string): ParsedSemver | null {
-  const match =
-    /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u.exec(
-      version,
-    );
-  if (!match) return null;
-  return {
-    major: Number(match[1]),
-    minor: Number(match[2]),
-    patch: Number(match[3]),
-    prerelease: match[4]?.split('.') ?? [],
-  };
-}
-
-function comparePrereleaseIdentifiers(left: string[], right: string[]): number {
-  if (left.length === 0 || right.length === 0) {
-    if (left.length === right.length) return 0;
-    return left.length === 0 ? 1 : -1;
-  }
-
-  for (let index = 0; index < Math.max(left.length, right.length); index++) {
-    const leftPart = left[index];
-    const rightPart = right[index];
-    if (leftPart === undefined) return -1;
-    if (rightPart === undefined) return 1;
-    if (leftPart === rightPart) continue;
-
-    const leftNumeric = /^\d+$/u.test(leftPart);
-    const rightNumeric = /^\d+$/u.test(rightPart);
-    if (leftNumeric && rightNumeric) return Number(leftPart) - Number(rightPart);
-    if (leftNumeric !== rightNumeric) return leftNumeric ? -1 : 1;
-    return leftPart < rightPart ? -1 : 1;
-  }
-  return 0;
-}
-
-function compareSemverVersions(left: ParsedSemver, right: ParsedSemver): number {
-  for (const field of ['major', 'minor', 'patch'] as const) {
-    if (left[field] !== right[field]) return left[field] - right[field];
-  }
-  return comparePrereleaseIdentifiers(left.prerelease, right.prerelease);
 }
 
 function resolveNpmSelfUpdatePlan(
