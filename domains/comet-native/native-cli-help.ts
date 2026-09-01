@@ -10,6 +10,7 @@ interface NativeHelpEntry {
 const GLOBAL_OPTIONS = [
   '--project-root <path>  Resolve the Native project from this working directory.',
   '--json                 Emit the stable JSON command envelope.',
+  '--verbose              Append the raw machine projection after the human/agent text.',
   '--help                 Show help without requiring an initialized project.',
 ] as const;
 
@@ -33,7 +34,8 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       'doctor [<change-name>]       Diagnose, migrate, or rebuild local execution state.',
     ],
     options: GLOBAL_OPTIONS,
-    output: 'Human-readable text by default; use --json for a structured command envelope.',
+    output:
+      'A human summary plus a NEXT step by default (RELAY TO USER blocks carry user decisions); use --json for the structured envelope, --verbose to append the raw machine projection.',
     examples: [
       'comet native status --json',
       'comet native status my-change --details --json',

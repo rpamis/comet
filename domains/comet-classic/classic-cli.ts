@@ -1,4 +1,5 @@
 import { pathToFileURL } from 'url';
+import type { CliOutputEnvelope } from '../workflow-contract/output-envelope.js';
 import { classicArchiveCommand } from './classic-archive.js';
 import { classicGuardCommand } from './classic-guard.js';
 import { classicHandoffCommand } from './classic-handoff.js';
@@ -15,6 +16,13 @@ export interface ClassicCommandResult {
   exitCode: number;
   stdout?: string;
   stderr?: string;
+  /**
+   * Audience-split output envelope: `summary`/`user_message` speak user
+   * language, `next` is the agent's single follow-up. Text output keeps its
+   * existing lines and only prepends the human summary; JSON gains the
+   * envelope fields additively.
+   */
+  envelope?: CliOutputEnvelope;
 }
 
 export interface ClassicCommandOptions {
@@ -112,9 +120,19 @@ function jsonResult(
       JSON.stringify({
         command: command ?? null,
         exitCode: result.exitCode,
+        ...(result.envelope === undefined
+          ? {}
+          : {
+              summary: result.envelope.summary,
+              ...(result.envelope.next === undefined ? {} : { next: result.envelope.next }),
+              ...(result.envelope.user_message === undefined
+                ? {}
+                : { user_message: result.envelope.user_message }),
+            }),
         ...(result.stdout === undefined ? {} : { stdout: result.stdout }),
         ...(result.stderr === undefined ? {} : { stderr: result.stderr }),
       }) + '\n',
+    ...(result.envelope === undefined ? {} : { envelope: result.envelope }),
   };
 }
 

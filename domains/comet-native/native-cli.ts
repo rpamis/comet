@@ -77,15 +77,17 @@ export async function runNativeCli(argv: readonly string[]): Promise<NativeComma
   const globalArgs = separator < 0 ? args : args.slice(0, separator);
   const commandTail = separator < 0 ? [] : args.slice(separator);
   const json = globalArgs.includes('--json');
+  const verbose = globalArgs.includes('--verbose');
   let explicitProjectRoot: string | undefined;
   let command: string | null = globalArgs[0] ?? null;
   try {
     takeFlag(globalArgs, '--json');
+    takeFlag(globalArgs, '--verbose');
     explicitProjectRoot = takeOption(globalArgs, '--project-root');
     const dispatchArgs = [...globalArgs, ...commandTail];
     command = dispatchArgs[0] ?? null;
-    return render(await dispatch(dispatchArgs, explicitProjectRoot), json);
+    return render(await dispatch(dispatchArgs, explicitProjectRoot), json, verbose);
   } catch (error) {
-    return render(errorResult(command, error), json);
+    return render(errorResult(command, error), json, verbose);
   }
 }

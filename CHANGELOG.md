@@ -4,6 +4,14 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ## What's Changed [0.4.0-rc.2] - 2026-09-01
 
+### Added
+
+- **CLI output envelope**: Native and Classic CLI `--json` output now carries `summary`, `next`, and `user_message` fields alongside the unchanged machine data. `summary` states what happened in plain user language, `next` names the single follow-up action for the Agent, and `user_message` provides ready-to-relay bilingual text for user decisions, so Agents quote the Runtime's wording instead of paraphrasing internal fields.
+
+### Changed
+
+- **Human-first default CLI text**: Native commands no longer print the raw internal state JSON by default. Text output now leads with a plain-language summary line, a `NEXT:` step, and a `RELAY TO USER:` block for pauses that need a user decision; the full machine projection moved behind the new global `--verbose` flag, and stable error codes (conflicts, snapshot budget, workspace isolation) render as human sentences with the machine detail retained on a `DETAIL:` line. Classic commands (`state next/scale/recover/transition/entry-check`, handoff, archive, manual `guard` checks, and phase-guard write blocks) prepend bilingual summaries that follow the change's language while keeping their existing machine lines — blocked guard checks now say the failing items are the Agent's checklist, not user actions. `comet status` adds one plain-language line per Native and Classic change above its machine details.
+
 ### Fixed
 
 - **Native verification loop-stop handoff**: When Native verification paused after repeated failures or repeated no-progress results, the Agent received no user-facing message at the pause point, so sessions could keep re-checking the same candidate instead of asking the user whether to continue repairing or adjust the requirements. The Runtime now returns an explicit user decision request with ready-to-relay bilingual messages for the loop stop, and the same applies when a Verifier blocker waits on information only the user can provide.

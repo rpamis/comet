@@ -4,6 +4,12 @@ import { realpathSync } from 'fs';
 import { RaceSafeReadError, readFileRaceSafe } from '../../platform/fs/race-safe-read.js';
 import { stripUtf8Bom } from '../../platform/fs/strip-bom.js';
 import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
+import {
+  CLI_OUTPUT_MARKERS,
+  formatCliErrorEnvelope,
+  formatCliOutputEnvelope,
+  type CliOutputEnvelope,
+} from '../workflow-contract/output-envelope.js';
 
 import { NativeArchivePreflightError, NativeSpecConflictError } from './native-archive.js';
 import {
@@ -13,6 +19,7 @@ import {
 } from './native-change.js';
 import { discoverNativeProject, nativeProjectPaths } from './native-paths.js';
 import { readProjectConfig, resolveNativeProject } from './native-config.js';
+import { deriveNativeOutputEnvelope, nativeErrorEnvelope } from './native-output-language.js';
 import { NativeReceiptScopeStaleError } from './native-receipt-errors.js';
 import { NativeVerificationReceiptBindingError } from './native-verification-runtime.js';
 import { NativeWorkspacePreparationError } from './native-workspace-preparation.js';
@@ -45,6 +52,11 @@ export interface DispatchResult {
   data?: unknown;
   text?: string;
   error?: NativeCliErrorShape;
+  /**
+   * Audience-split output envelope. When present it replaces `text` as the
+   * default human/agent story; `data` remains the machine projection.
+   */
+  envelope?: CliOutputEnvelope;
 }
 
 export const NATIVE_SHOW_MAX_SERIALIZED_BYTES = 10 * 1024 * 1024;
@@ -189,8 +201,12 @@ export async function doctorPaths(projectRoot: string): Promise<NativeProjectPat
   return nativeProjectPaths(projectRoot, config?.native.artifact_root ?? 'docs');
 }
 
+function jsonProjection(data: unknown): string {
+  return JSON.stringify(data, null, 2) + '\n';
+}
+
 export function success(command: string, data: unknown, text?: string): DispatchResult {
-  return { command, exitCode: 0, data, text: text ?? JSON.stringify(data, null, 2) + '\n' };
+  return { command, exitCode: 0, data, text: text ?? jsonProjection(data) };
 }
 
 export async function readBoundedEvidenceFile(filePath: string, maxBytes: number): Promise<string> {
@@ -233,7 +249,7 @@ export async function readBoundedEvidenceStdin(maxBytes: number): Promise<string
   return stripUtf8Bom(Buffer.concat(chunks).toString('utf8'));
 }
 
-export function errorResult(command: string | null, error: unknown): DispatchResult {
+function rawErrorResult(command: string | null, error: unknown): DispatchResult {
   if (error instanceof NativeUsageError) {
     return {
       command,
@@ -366,7 +382,24 @@ export function errorResult(command: string | null, error: unknown): DispatchRes
   };
 }
 
-export function render(result: DispatchResult, json: boolean): NativeCommandResult {
+export function errorResult(command: string | null, error: unknown): DispatchResult {
+  const result = rawErrorResult(command, error);
+  const errorShape = result.error;
+  if (!errorShape) return result;
+  const envelope = nativeErrorEnvelope({
+    code: errorShape.code,
+    message: errorShape.message,
+    data: result.data,
+  });
+  return envelope ? { ...result, envelope } : result;
+}
+
+export function render(
+  result: DispatchResult,
+  json: boolean,
+  verbose = false,
+): NativeCommandResult {
+  const envelope = result.envelope ?? deriveNativeOutputEnvelope(result.data);
   if (json) {
     return {
       exitCode: result.exitCode,
@@ -374,13 +407,44 @@ export function render(result: DispatchResult, json: boolean): NativeCommandResu
         JSON.stringify({
           command: result.command,
           exitCode: result.exitCode,
+          ...(envelope === undefined
+            ? {}
+            : {
+                summary: envelope.summary,
+                ...(envelope.next === undefined ? {} : { next: envelope.next }),
+                ...(envelope.user_message === undefined
+                  ? {}
+                  : { user_message: envelope.user_message }),
+              }),
           ...(result.data === undefined ? {} : { data: result.data }),
           ...(result.error === undefined ? {} : { error: result.error }),
         }) + '\n',
     };
   }
   if (result.error) {
-    return { exitCode: result.exitCode, stderr: result.error.message };
+    return {
+      exitCode: result.exitCode,
+      stderr: envelope
+        ? formatCliErrorEnvelope(envelope, result.error.message)
+        : result.error.message,
+    };
+  }
+  if (envelope) {
+    return {
+      exitCode: result.exitCode,
+      stdout: formatCliOutputEnvelope(envelope, verbose ? result.data : undefined),
+    };
+  }
+  if (
+    verbose &&
+    result.text !== undefined &&
+    result.data !== undefined &&
+    result.text !== jsonProjection(result.data)
+  ) {
+    return {
+      exitCode: result.exitCode,
+      stdout: `${result.text}\n${CLI_OUTPUT_MARKERS.details}\n${JSON.stringify(result.data, null, 2)}\n`,
+    };
   }
   return { exitCode: result.exitCode, stdout: result.text };
 }

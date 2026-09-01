@@ -3,6 +3,8 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
 import { executeClassicOpenSpec } from './classic-openspec-command.js';
+import { classicArchiveEnvelope, classicLocale } from './classic-output-language.js';
+import type { CliOutputEnvelope, CliOutputLocale } from '../workflow-contract/output-envelope.js';
 import {
   findClassicArchiveChangeDirectory,
   inspectClassicActiveChangeDirectory,
@@ -70,10 +72,22 @@ class ArchiveOutput {
   readonly openSpecStderr: string[] = [];
   stepsOk = 0;
   stepsTotal = 0;
+  envelope?: CliOutputEnvelope;
 
   captureOpenSpec(result: ClassicCommandResult): void {
     if (result.stdout) this.openSpecStdout.push(result.stdout);
     if (result.stderr) this.openSpecStderr.push(result.stderr);
+  }
+
+  finishEnvelope(options: { name: string; dryRun: boolean; locale: CliOutputLocale }): void {
+    this.envelope = classicArchiveEnvelope({
+      name: options.name,
+      stepsOk: this.stepsOk,
+      stepsTotal: this.stepsTotal,
+      dryRun: options.dryRun,
+      locale: options.locale,
+    });
+    this.stderr.push(this.envelope.summary);
   }
 
   toResult(exitCode = 0): ClassicCommandResult {
@@ -86,6 +100,7 @@ class ArchiveOutput {
       ...(openSpecStderr || diagnostics
         ? { stderr: `${openSpecStderr}${separator}${diagnostics}` }
         : {}),
+      ...(this.envelope === undefined ? {} : { envelope: this.envelope }),
     };
   }
 }
@@ -453,6 +468,7 @@ export const classicArchiveCommand: ClassicCommandHandler = async (args) => {
         output.stderr.push(red('  [FAIL] OpenSpec archive output not found'));
         output.stepsTotal += 1;
         output.stderr.push('');
+        output.finishEnvelope({ name: change, dryRun, locale: classicLocale(classic.language) });
         output.stderr.push(
           green(`Archive complete. ${output.stepsOk}/${output.stepsTotal} steps succeeded.`),
         );
@@ -633,6 +649,7 @@ export const classicArchiveCommand: ClassicCommandHandler = async (args) => {
     if (!dryRun) await clearCurrentChangeIf(layout.projectRoot, change);
 
     output.stderr.push('');
+    output.finishEnvelope({ name: change, dryRun, locale: classicLocale(classic.language) });
     output.stderr.push(
       dryRun
         ? yellow(`Dry run complete. ${output.stepsOk}/${output.stepsTotal} steps would succeed.`)

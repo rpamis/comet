@@ -4,6 +4,8 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { parseDocument } from 'yaml';
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
+import { classicGuardCheckEnvelope, classicLocale } from './classic-output-language.js';
+import type { CliOutputEnvelope } from '../workflow-contract/output-envelope.js';
 import {
   latestCommandCheck,
   type CommandCheckScope,
@@ -101,6 +103,9 @@ class GuardFailure extends Error {
 class GuardOutput {
   readonly stderr: string[] = [];
   diagnostics?: Record<string, unknown>;
+  envelope?: CliOutputEnvelope;
+  checksPassed = 0;
+  checksFailed = 0;
 
   toResult(exitCode = 0): ClassicCommandResult {
     return {
@@ -109,6 +114,7 @@ class GuardOutput {
         ? { stdout: JSON.stringify({ diagnostics: this.diagnostics }) + '\n' }
         : {}),
       ...(this.stderr.length > 0 ? { stderr: this.stderr.join('\n') + '\n' } : {}),
+      ...(this.envelope === undefined ? {} : { envelope: this.envelope }),
     };
   }
 }
@@ -297,11 +303,13 @@ type CheckResult = { passed: true; detail?: string } | { passed: false; detail: 
 
 function pushCheck(output: GuardOutput, outcome: CheckOutcome): void {
   if (outcome.passed) {
+    output.checksPassed += 1;
     output.stderr.push(green(`  [PASS] ${outcome.description}`));
     if (outcome.detail) {
       for (const line of outcome.detail.split('\n')) output.stderr.push(green(`    ${line}`));
     }
   } else {
+    output.checksFailed += 1;
     output.stderr.push(red(`  [FAIL] ${outcome.description}`));
     if (outcome.detail) {
       for (const line of outcome.detail.split('\n')) output.stderr.push(red(`    ${line}`));
@@ -1042,12 +1050,25 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
         blocked = await guardVerifyChecks(output, changeDir, change, runContext.run);
       else blocked = await guardArchiveChecks(output, changeDir, change);
 
+      const envelope = classicGuardCheckEnvelope({
+        name: change,
+        phase,
+        failed: output.checksFailed,
+        total: output.checksPassed + output.checksFailed,
+        locale: classicLocale(runContext.classic.language),
+      });
+      output.envelope = envelope;
+
       if (blocked) {
+        output.stderr.push('');
+        output.stderr.push(envelope.summary);
+        if (envelope.user_message) output.stderr.push(`RELAY TO USER: ${envelope.user_message}`);
         output.stderr.push('');
         output.stderr.push(red('BLOCKED — fix failing checks before proceeding to next phase'));
         return output.toResult(1);
       }
       output.stderr.push('');
+      output.stderr.push(envelope.summary);
       output.stderr.push(green('ALL CHECKS PASSED — ready for next phase'));
       if (flag === '--apply') {
         await applyStateUpdate(output, change, changeDir, phase);

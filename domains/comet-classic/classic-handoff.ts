@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { parseDocument } from 'yaml';
+import type { CliOutputEnvelope } from '../workflow-contract/output-envelope.js';
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
 import { inspectClassicActiveChangeDirectory, openSpecChangeNameError } from './classic-paths.js';
 import { ensureClassicRuntimeRun, transitionClassicRuntimeRun } from './classic-runtime-run.js';
@@ -30,6 +31,7 @@ import {
   writeClassicProjectText,
 } from './classic-protected-path.js';
 import { classicCommandProjectRoot, withProjectContext } from './classic-command-context.js';
+import { classicHandoffEnvelope, classicLocale } from './classic-output-language.js';
 
 const GREEN = '\u001b[32m';
 const RED = '\u001b[31m';
@@ -60,12 +62,14 @@ class HandoffFailure extends Error {
 class HandoffOutput {
   readonly stdout: string[] = [];
   readonly stderr: string[] = [];
+  envelope?: CliOutputEnvelope;
 
   toResult(exitCode = 0): ClassicCommandResult {
     return {
       exitCode,
       ...(this.stdout.length > 0 ? { stdout: this.stdout.join('\n') + '\n' } : {}),
       ...(this.stderr.length > 0 ? { stderr: this.stderr.join('\n') + '\n' } : {}),
+      ...(this.envelope === undefined ? {} : { envelope: this.envelope }),
     };
   }
 }
@@ -711,6 +715,11 @@ export const classicHandoffCommand: ClassicCommandHandler = withProjectContext(a
       // leaving stale context files behind.
       (await handoffMarkdownIsCurrent(layout.projectRoot, changeDir, contextMd, contextHash))
     ) {
+      output.envelope = classicHandoffEnvelope({
+        name: change,
+        locale: classicLocale(runtime.classic.language),
+      });
+      output.stderr.push(output.envelope.summary);
       output.stderr.push(green(`[HANDOFF] wrote ${contextJsonRef}`));
       output.stderr.push(green(`[HANDOFF] wrote ${contextMdRef}`));
       output.stderr.push(green(`[HANDOFF] handoff_hash=${contextHash}`));
@@ -820,6 +829,11 @@ export const classicHandoffCommand: ClassicCommandHandler = withProjectContext(a
     });
     await clearPendingAction(changeDir, completedRun.pendingRef);
 
+    output.envelope = classicHandoffEnvelope({
+      name: change,
+      locale: classicLocale(completedClassic.language),
+    });
+    output.stderr.push(output.envelope.summary);
     output.stderr.push(green(`[SET] handoff_context=${contextJson}`));
     output.stderr.push(green(`[SET] handoff_hash=${contextHash}`));
 

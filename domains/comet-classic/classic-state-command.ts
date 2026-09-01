@@ -2,6 +2,7 @@ import { spawnSync } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { Document, parseDocument } from 'yaml';
+import type { CliOutputEnvelope } from '../workflow-contract/output-envelope.js';
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
 import {
   clearCurrentChange,
@@ -49,6 +50,14 @@ import { readRunState } from '../../domains/engine/state.js';
 import { appendTrajectory, readTrajectory } from '../../domains/engine/run-store.js';
 import { recordCommandCheck, type CommandCheckScope } from './classic-command-checks.js';
 import { readClassicConfigValue } from './classic-project-config.js';
+import {
+  classicEntryCheckEnvelope,
+  classicLocale,
+  classicNextEnvelope,
+  classicRecoveryEnvelope,
+  classicScaleEnvelope,
+  classicTransitionEnvelope,
+} from './classic-output-language.js';
 import {
   classicProjectFileNonempty,
   classicProjectTargetExists,
@@ -131,12 +140,14 @@ class CommandFailure extends Error {
 class CommandOutput {
   stdout: string[] = [];
   stderr: string[] = [];
+  envelope?: CliOutputEnvelope;
 
   result(exitCode = 0): ClassicCommandResult {
     return {
       exitCode,
       ...(this.stdout.length > 0 ? { stdout: this.stdout.join('\n') + '\n' } : {}),
       ...(this.stderr.length > 0 ? { stderr: this.stderr.join('\n') } : {}),
+      ...(this.envelope === undefined ? {} : { envelope: this.envelope }),
     };
   }
 }
@@ -717,7 +728,7 @@ async function applyTransitionEvent(
   output: CommandOutput,
   name: string,
   event: ClassicTransitionEvent,
-): Promise<void> {
+): Promise<{ fromPhase: string; toPhase: string }> {
   const { directory } = await stateFile(name);
   const projection = await readClassicState(directory);
   let classic = projection.classic;
@@ -757,6 +768,7 @@ async function applyTransitionEvent(
     output.stderr.push(green(`[SET] ${wireField(effect.field)}=${wireValue(effect.to)}`));
   }
   output.stderr.push(green(`[TRANSITION] ${event}`));
+  return { fromPhase: classic.phase, toPhase: result.classic.phase };
 }
 
 async function transition(output: CommandOutput, name: string, event: string): Promise<void> {
@@ -819,7 +831,14 @@ async function transition(output: CommandOutput, name: string, event: string): P
       );
     }
   }
-  await applyTransitionEvent(output, name, event as ClassicTransitionEvent);
+  const { fromPhase, toPhase } = await applyTransitionEvent(
+    output,
+    name,
+    event as ClassicTransitionEvent,
+  );
+  const locale = classicLocale(await readField(name, 'language'));
+  output.envelope = classicTransitionEnvelope({ name, fromPhase, toPhase, locale });
+  output.stdout.push(output.envelope.summary);
 }
 
 async function next(output: CommandOutput, name: string): Promise<void> {
@@ -829,7 +848,17 @@ async function next(output: CommandOutput, name: string): Promise<void> {
   const phase = await readField(name, 'phase');
   const workflow = await readField(name, 'workflow');
   const automatic = await readField(name, 'auto_transition');
+  const locale = classicLocale(await readField(name, 'language'));
   if ((await readField(name, 'archived')) === 'true') {
+    const envelope = classicNextEnvelope({
+      name,
+      phase: 'done',
+      skill: '',
+      automatic: true,
+      locale,
+    });
+    output.envelope = envelope;
+    output.stdout.push(envelope.summary);
     output.stdout.push('NEXT: done');
     return;
   }
@@ -852,6 +881,14 @@ async function next(output: CommandOutput, name: string): Promise<void> {
   if (!skill) {
     fail(`ERROR: Cannot resolve next step for '${name}': unknown phase '${phase || 'null'}'`);
   }
+  output.envelope = classicNextEnvelope({
+    name,
+    phase,
+    skill,
+    automatic: automatic !== 'false',
+    locale,
+  });
+  output.stdout.push(output.envelope.summary);
   output.stdout.push(`NEXT: ${automatic === 'false' ? 'manual' : 'auto'}`, `SKILL: ${skill}`);
   if (automatic === 'false') {
     output.stdout.push(`HINT: phase is '${phase}'; run /${skill} manually to continue`);
@@ -892,10 +929,17 @@ async function check(output: CommandOutput, name: string, phase: string): Promis
   output.stdout.push(`=== Entry Check: comet-${phase} ===`);
   if (!(await exists(file))) fail(`ERROR: .comet.yaml not found at ${label}/.comet.yaml`);
   let blocked = false;
-  const pass = (message: string) => output.stdout.push(`  ${green('[PASS]')} ${message}`);
+  let passed = 0;
+  let total = 0;
+  const pass = (message: string) => {
+    output.stdout.push(`  ${green('[PASS]')} ${message}`);
+    passed += 1;
+    total += 1;
+  };
   const reject = (message: string) => {
     output.stdout.push(`  ${red('[FAIL]')} ${message}`);
     blocked = true;
+    total += 1;
   };
   const expectField = async (field: string, expected: string) => {
     const actual = await readField(name, field);
@@ -966,6 +1010,9 @@ async function check(output: CommandOutput, name: string, phase: string): Promis
     }
   }
   output.stdout.push('');
+  const locale = classicLocale(await readField(name, 'language'));
+  output.envelope = classicEntryCheckEnvelope({ name, phase, passed, total, locale });
+  output.stdout.push(output.envelope.summary);
   if (blocked) {
     output.stderr.push(red('BLOCKED — fix failing checks before proceeding'));
     throw new CommandFailure('', 1);
@@ -1296,7 +1343,10 @@ async function recover(output: CommandOutput, name: string): Promise<void> {
   if (!(await exists(file))) fail(`ERROR: .comet.yaml not found at ${label}/.comet.yaml`);
   const phase = await readField(name, 'phase');
   const workflow = await readField(name, 'workflow');
+  const locale = classicLocale(await readField(name, 'language'));
+  output.envelope = classicRecoveryEnvelope({ name, phase, locale });
   output.stdout.push(
+    output.envelope.summary,
     `=== Recovery Context: ${name} ===`,
     `Phase: ${phase}`,
     `Workflow: ${workflow}`,
@@ -1359,7 +1409,10 @@ async function scale(output: CommandOutput, name: string): Promise<void> {
   const changedFiles = changed ? changed.split(/\r?\n/u).filter(Boolean).length : 0;
   const result = taskCount > 3 || deltaSpecs > 1 || changedFiles > 8 ? 'full' : 'light';
   await setField(new CommandOutput(), name, 'verify_mode', result);
+  const locale = classicLocale(await readField(name, 'language'));
+  output.envelope = classicScaleEnvelope({ name, result, locale });
   output.stderr.push(
+    output.envelope.summary,
     `=== Scale Assessment: ${name} ===`,
     `  Tasks: ${taskCount} (threshold: 3)`,
     `  Delta specs: ${deltaSpecs} capabilities (threshold: 1)`,

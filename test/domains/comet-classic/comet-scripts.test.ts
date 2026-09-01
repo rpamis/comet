@@ -3297,7 +3297,7 @@ describe('comet scripts', () => {
     expect(get.status).toBe(0);
     expect(get.stdout.trim()).toBe('true');
     expect(next.status).toBe(0);
-    expect(next.stdout.trim()).toBe('NEXT: done');
+    expect(next.stdout.trim().split('\n').at(-1)).toBe('NEXT: done');
     expect(guard.status).toBe(0);
     expect(guard.stderr).toContain('ALL CHECKS PASSED');
     expect(validate.status, validate.stderr).toBe(0);

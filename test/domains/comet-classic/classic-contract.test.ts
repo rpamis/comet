@@ -247,6 +247,14 @@ interface StateObservation {
   yaml: Record<string, unknown>;
 }
 
+function routingMarkerLines(stdout: string): string[] {
+  return stdout.split('\n').filter((line) => /^(?:NEXT|SKILL|HINT):/.test(line.trim()));
+}
+
+function handoffMarkerLines(stderr: string): string[] {
+  return stderr.split('\n').filter((line) => /^\[(?:SET|HANDOFF)\]/.test(line.trim()));
+}
+
 async function observeState(
   sourceScripts: string,
   profile: 'full' | 'hotfix' | 'tweak',
@@ -469,9 +477,16 @@ describeBash('Classic 0.3.9 differential contract', () => {
     });
 
     it(`preserves ${profile} next-skill routing`, async () => {
-      expect(await observeState(activeScripts, profile, ['next'])).toEqual(
-        await observeState(referenceScripts, profile, ['next']),
-      );
+      // The active runtime prepends a bilingual human summary line to
+      // `state next` beyond what 0.3.9 shipped. The preserved contract is the
+      // routing markers (NEXT/SKILL/HINT), the exit status, and the yaml state.
+      const active = await observeState(activeScripts, profile, ['next']);
+      const reference = await observeState(referenceScripts, profile, ['next']);
+
+      expect(active.status).toBe(reference.status);
+      expect(active.yaml).toEqual(reference.yaml);
+      expect(routingMarkerLines(active.stdout)).toEqual(routingMarkerLines(reference.stdout));
+      expect(active.stderr).toBe(reference.stderr);
     });
   }
 
@@ -496,9 +511,17 @@ describeBash('Classic 0.3.9 differential contract', () => {
   }
 
   it('preserves design handoff generation for the full workflow', async () => {
-    expect(await observeHandoff(activeScripts, 'full')).toEqual(
-      await observeHandoff(referenceScripts, 'full'),
-    );
+    // The active runtime prepends a bilingual human summary line to the
+    // handoff stderr beyond what 0.3.9 shipped. The preserved contract is the
+    // recorded machine lines ([SET]/[HANDOFF]), the exit status, the stdout
+    // hash, and the yaml state.
+    const active = await observeHandoff(activeScripts, 'full');
+    const reference = await observeHandoff(referenceScripts, 'full');
+
+    expect(active.status).toBe(reference.status);
+    expect(active.stdout).toBe(reference.stdout);
+    expect(handoffMarkerLines(active.stderr)).toEqual(handoffMarkerLines(reference.stderr));
+    expect(active.yaml).toEqual(reference.yaml);
   });
 
   // The active runtime updated hook guard messages (English wording, relative
