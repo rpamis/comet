@@ -5,13 +5,14 @@ description: "Comet Native 工作流。当用户明确调用 /comet-native、要
 
 # Comet Native
 
-Native 把需求、完整目标规格、当前进度和验收结论保存在项目中。每完成一个阶段都回到 Runtime 读取下一步，当前只处理 Runtime 指定的阶段。
+Native 把需求、完整目标规格、当前进度和验收结论保存在项目中。每完成一个阶段都回到 Runtime 读取下一步，当前只处理 Runtime 指定的阶段。CLI 文本先给出面向用户的 `summary` 和唯一 `NEXT:`；需要稳定解析时使用 `--json` 读取新增的 `summary`/`next`/`user_message` Envelope，只有排查机器状态才使用 `--verbose`，并在等待用户决定前先转述 `userCommunication`。
 ## 硬性边界
 - 磁盘中的 `.comet/config.yaml`、当前 change、`comet-state.yaml` 和正式产物是工作依据，聊天记忆只作辅助。
 - Runtime 管理工作流状态、本机执行状态、日志、锁和事务；所有阶段推进都通过 PATH 中公开的 `comet native` 命令完成，用户不手工执行这些命令。
 - 命令不可用时报告 Comet 安装不完整并停止。参数和输出以 `comet native <command> --help` 为准。
 - Builder 提交候选，由新的只读 Verifier 作出验收判断；Verifier 的启动方式服从用户选择的推进方式和 Runtime 返回的 `continuation`。
 - Native 主流程由本 Skill 和 Runtime 完成，不依赖任何外部 Skill。
+
 ## 开始或恢复
 1. 已知 change 名称时，先运行紧凑查询 `comet native status <change-name> --json`；名称未知时才运行 `comet native status --json`，确定目标后再查询该 change。
 2. 只有当前动作需要验收文字、Builder 交接、历史或验证详情时才加 `--details`，并按返回的 `nextPageArgs` 逐页读取；只读取覆盖当前 `scopeIds` 的页面，不在同一步重复读取完整状态。需要编辑或核对正式正文时才运行 `show` 或读取对应 brief/Spec。
@@ -103,9 +104,9 @@ Supervisor 最终交付后，Runtime 只自动清理确认没有未提交修改�
 
 ## 后续指令
 
-每次命令后只处理最新的 `continuation`：
+每次命令后只处理最新的 `continuation`，并按 CLI 输出分层规则处理结果：
 - `continue`：执行 `commandArgs`，并按模板填写 `inputOptions`；
-- `await-user`：等待列出的用户决定；如有 `commandAlternatives`，选择匹配项执行完整 `commandArgs`，保留 `--expected-state-version` 和 `--expected-action`。备选操作已经过期时重新读取最新 `continuation`，不得自行拼出不带状态保护参数的命令；
+- `await-user`：先转述 `userCommunication.message` 和 `suggestedReply`（如果存在），等待列出的用户决定；如有 `commandAlternatives`，选择匹配项执行完整 `commandArgs`，保留 `--expected-state-version` 和 `--expected-action`。备选操作已经过期时重新读取最新 `continuation`，不得自行拼出不带状态保护参数的命令；
 - `blocked`：先处理列出的阻塞原因或恢复动作；
 - `done`：结束。
 

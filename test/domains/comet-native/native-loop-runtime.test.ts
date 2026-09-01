@@ -695,6 +695,31 @@ describe('Native portable Build/Verify loop', () => {
     });
   });
 
+  it('persists one stop reason when budget and no-progress thresholds overlap', () => {
+    const prepared = buildState();
+    const primed = {
+      ...prepared.state,
+      loop: {
+        ...prepared.state.loop,
+        failed_iteration_count: 2,
+        no_progress_count: 2,
+        previous_unresolved_ids: ['A1'],
+      },
+    };
+    const stopped = applyNativeVerifierEnvelope({
+      state: primed,
+      envelope: envelope(prepared.runner, primed, 'fail', ['A1']),
+      checks,
+      maxVerifyFailures: 3,
+    }).state;
+
+    expect((stopped.loop as { stop_reason?: string }).stop_reason).toBe('stalled');
+    expect(stopped.blockers[0]?.reason.text).toContain('did not strictly reduce');
+    expect(nativePortableContinuation(stopped).userCommunication.message).toContain(
+      'failed three times in a row',
+    );
+  });
+
   it('keeps a report reference for a semantic blocker', () => {
     const { state, runner } = buildState();
     const result = applyNativeVerifierEnvelope({

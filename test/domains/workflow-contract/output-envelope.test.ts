@@ -66,6 +66,9 @@ describe('output envelope contract', () => {
   it('validates envelope shapes', () => {
     expect(isCliOutputEnvelope({ summary: 'ok' })).toBe(true);
     expect(isCliOutputEnvelope({ summary: 'ok', next: { command: 'x' } })).toBe(true);
+    expect(isCliOutputEnvelope({ summary: 'ok', next: { command: 'x', ask_user: 'ask' } })).toBe(
+      false,
+    );
     expect(isCliOutputEnvelope({ summary: 'ok', user_message: 'm' })).toBe(true);
     expect(isCliOutputEnvelope({})).toBe(false);
     expect(isCliOutputEnvelope({ summary: '' })).toBe(false);

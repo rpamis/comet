@@ -255,6 +255,21 @@ function handoffMarkerLines(stderr: string): string[] {
   return stderr.split('\n').filter((line) => /^\[(?:SET|HANDOFF)\]/.test(line.trim()));
 }
 
+function guardMachineLines(stderr: string): string[] {
+  const stripAnsi = (line: string) => line.replace(/\u001b\[[0-9;]*m/gu, '').trim();
+  return stderr
+    .split('\n')
+    .map(stripAnsi)
+    .filter(
+      (line) =>
+        line.length > 0 &&
+        !/^(?:Change |需求 ).*\b(?:passed every check|is not ready to leave|暂时还不能离开|通过了离开)/u.test(
+          line,
+        ) &&
+        !line.startsWith('RELAY TO USER:'),
+    );
+}
+
 async function observeState(
   sourceScripts: string,
   profile: 'full' | 'hotfix' | 'tweak',
@@ -496,17 +511,21 @@ describeBash('Classic 0.3.9 differential contract', () => {
     );
   });
 
-  it('preserves full open guard block (strict output parity)', async () => {
-    expect(await observeGuard(activeScripts, 'full', 'open')).toEqual(
-      await observeGuard(referenceScripts, 'full', 'open'),
-    );
+  it('preserves the full open guard machine contract while allowing a human summary', async () => {
+    const active = await observeGuard(activeScripts, 'full', 'open');
+    const reference = await observeGuard(referenceScripts, 'full', 'open');
+    expect(active.status).toBe(reference.status);
+    expect(active.stdout).toBe(reference.stdout);
+    expect(guardMachineLines(active.stderr)).toEqual(guardMachineLines(reference.stderr));
   });
 
   for (const profile of ['hotfix', 'tweak'] as const) {
-    it(`preserves ${profile} open guard block (strict output parity)`, async () => {
-      expect(await observeGuard(activeScripts, profile, 'open')).toEqual(
-        await observeGuard(referenceScripts, profile, 'open'),
-      );
+    it(`preserves the ${profile} open guard machine contract while allowing a human summary`, async () => {
+      const active = await observeGuard(activeScripts, profile, 'open');
+      const reference = await observeGuard(referenceScripts, profile, 'open');
+      expect(active.status).toBe(reference.status);
+      expect(active.stdout).toBe(reference.stdout);
+      expect(guardMachineLines(active.stderr)).toEqual(guardMachineLines(reference.stderr));
     });
   }
 

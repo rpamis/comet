@@ -427,6 +427,10 @@ export function applyNativeVerifierEnvelope(options: {
   const limitReached = failedIterationCount >= options.maxVerifyFailures;
   const stalled = noProgressCount >= 3;
   const stop = limitReached || stalled;
+  // A stagnation stop is more specific than a generic failure budget stop.
+  // Persist the decision so continuation text and the durable blocker cannot
+  // disagree when both thresholds are crossed by the same result.
+  const stopReason = stalled ? 'stalled' : limitReached ? 'budget' : undefined;
   const withHistory = appendNativePortableHistory(
     { ...state, acceptance, verification } as NativePortableState,
     historyEntry({
@@ -455,7 +459,7 @@ export function applyNativeVerifierEnvelope(options: {
             {
               owner: 'user',
               reason: toNativePortableText(
-                limitReached
+                stopReason === 'budget'
                   ? 'Native verification reached the configured failed iteration limit.'
                   : 'Native verification did not strictly reduce the unresolved acceptance set three times.',
               ),
@@ -482,6 +486,7 @@ export function applyNativeVerifierEnvelope(options: {
         attempt: stop ? state.loop.attempt : 0,
         failed_iteration_count: failedIterationCount,
         no_progress_count: noProgressCount,
+        ...(stopReason === undefined ? {} : { stop_reason: stopReason }),
         execution_failure_count: 0,
         previous_unresolved_ids: unresolvedIds,
         next_action: stop ? 'await-user' : 'repair-failed-acceptance',
@@ -827,6 +832,7 @@ export function returnNativeCandidateToBuild(options: {
       iteration: state.loop.iteration + 1,
       attempt: 0,
       execution_failure_count: 0,
+      stop_reason: undefined,
       next_action: 'submit-builder-candidate',
     },
   });

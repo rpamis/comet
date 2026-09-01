@@ -238,6 +238,7 @@ function parseLoop(value: unknown): NativePortableLoopState {
       'retry_epoch',
       'failed_iteration_count',
       'no_progress_count',
+      'stop_reason',
       'execution_failure_count',
       'previous_unresolved_ids',
       'next_action',
@@ -249,6 +250,10 @@ function parseLoop(value: unknown): NativePortableLoopState {
     `${label}.previous_unresolved_ids`,
   );
   assertUnique(previous_unresolved_ids, `${label}.previous_unresolved_ids`);
+  const stop_reason =
+    root.stop_reason === undefined
+      ? undefined
+      : enumValue(root.stop_reason, ['budget', 'stalled'] as const, `${label}.stop_reason`);
   return {
     stage: enumValue(
       root.stage,
@@ -273,6 +278,7 @@ function parseLoop(value: unknown): NativePortableLoopState {
       `${label}.failed_iteration_count`,
     ),
     no_progress_count: integerValue(root.no_progress_count, `${label}.no_progress_count`),
+    ...(stop_reason === undefined ? {} : { stop_reason }),
     execution_failure_count: integerValue(
       root.execution_failure_count,
       `${label}.execution_failure_count`,

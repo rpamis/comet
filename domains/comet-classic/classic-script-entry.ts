@@ -14,9 +14,19 @@ function jsonResult(
       JSON.stringify({
         command,
         exitCode: result.exitCode,
+        ...(result.envelope === undefined
+          ? {}
+          : {
+              summary: result.envelope.summary,
+              ...(result.envelope.next === undefined ? {} : { next: result.envelope.next }),
+              ...(result.envelope.user_message === undefined
+                ? {}
+                : { user_message: result.envelope.user_message }),
+            }),
         ...(result.stdout === undefined ? {} : { stdout: result.stdout }),
         ...(result.stderr === undefined ? {} : { stderr: result.stderr }),
       }) + '\n',
+    ...(result.envelope === undefined ? {} : { envelope: result.envelope }),
   };
 }
 

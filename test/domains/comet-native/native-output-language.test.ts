@@ -104,6 +104,26 @@ describe('native output envelope derivation', () => {
     expect(envelope!.next!.ask_user).toContain('转述');
   });
 
+  it('asks the user before exposing a confirmation command', () => {
+    const envelope = deriveNativeOutputEnvelope({
+      continuation: continuation({
+        disposition: 'await-user',
+        phase: 'verify',
+        commandArgs: ['comet', 'native', 'next', 'session-timeout', '--confirmed'],
+        communication: communication({
+          required: true,
+          message: 'The verification result needs your confirmation.',
+          instruction: EN_INSTRUCTION,
+        }),
+      }),
+    });
+
+    expect(envelope!.next).toEqual({
+      ask_user: expect.stringContaining('Relay the message below'),
+    });
+    expect(envelope!.next?.command).toBeUndefined();
+  });
+
   it('renders a done disposition as a report-only next step', () => {
     const envelope = deriveNativeOutputEnvelope({
       continuation: continuation({ disposition: 'done', commandArgs: null }),
@@ -171,7 +191,7 @@ describe('native output envelope derivation', () => {
     expect(unhealthy!.next!.ask_user).toContain('--json');
   });
 
-  it('derives root show but leaves init to its own text', () => {
+  it('derives root show and init envelopes from the same path payload', () => {
     const rootShow = deriveNativeOutputEnvelope({
       projectRoot: '/repo',
       artifactRoot: 'docs',
@@ -180,14 +200,26 @@ describe('native output envelope derivation', () => {
       pendingRootMove: null,
     });
     expect(rootShow!.summary).toContain('docs/comet-native');
-    expect(
-      deriveNativeOutputEnvelope({
-        projectRoot: '/repo',
-        artifactRoot: 'docs',
-        nativeRoot: 'docs/comet-native',
-        language: 'en',
-      }),
-    ).toBeUndefined();
+    const init = deriveNativeOutputEnvelope({
+      projectRoot: '/repo',
+      artifactRoot: 'docs',
+      nativeRoot: 'docs/comet-native',
+      language: 'en',
+    });
+    expect(init!.summary).toContain('Initialized Comet Native');
+    expect(init!.summary).toContain('docs/comet-native');
+  });
+
+  it('localizes root show for a Chinese project', () => {
+    const rootShow = deriveNativeOutputEnvelope({
+      projectRoot: '/repo',
+      artifactRoot: 'docs',
+      nativeRoot: 'docs/comet-native',
+      language: 'zh-CN',
+      pendingRootMove: null,
+    });
+    expect(rootShow!.summary).toContain('产物位于');
+    expect(rootShow!.summary).toContain('状态根目录');
   });
 
   it('returns undefined for shapes without a human story', () => {
@@ -292,6 +324,27 @@ describe('native render audience split', () => {
     );
     expect(output.stderr).toContain('DETAIL: expected revision 7, got 8');
     expect(output.stderr).toContain('NEXT: comet native status session-timeout --json');
+  });
+
+  it('appends structured error data when --verbose is requested', () => {
+    const output = render(
+      {
+        command: 'next',
+        exitCode: 73,
+        data: { change: 'session-timeout', expectedRevision: 7 },
+        error: { code: 'conflict', message: 'expected revision 7, got 8' },
+        envelope: nativeErrorEnvelope({
+          code: 'conflict',
+          message: 'expected revision 7, got 8',
+          data: { change: 'session-timeout', expectedRevision: 7 },
+        }),
+      },
+      false,
+      true,
+    );
+
+    expect(output.stderr).toContain(CLI_OUTPUT_MARKERS.details);
+    expect(output.stderr).toContain('"expectedRevision": 7');
   });
 
   it('falls back to plain text for commands without an envelope', () => {

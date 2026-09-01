@@ -8,6 +8,7 @@ export const NATIVE_SUPERVISOR_COORDINATION_MODES = ['multi-session', 'single-se
 export type NativeSupervisorCoordinationMode =
   (typeof NATIVE_SUPERVISOR_COORDINATION_MODES)[number];
 export type NativePortableVerificationResult = 'pending' | 'pass' | 'fail' | 'blocked';
+export type NativePortableLoopStopReason = 'budget' | 'stalled';
 export type NativePortableVerificationAssurance =
   | 'host-attested'
   | 'skill-coordinated'
@@ -55,6 +56,8 @@ export interface NativePortableLoopState {
   retry_epoch: number;
   failed_iteration_count: number;
   no_progress_count: number;
+  /** Set only when the Runtime pauses the repair loop for a bounded stop. */
+  stop_reason?: NativePortableLoopStopReason;
   execution_failure_count: number;
   previous_unresolved_ids: string[];
   next_action: string | null;

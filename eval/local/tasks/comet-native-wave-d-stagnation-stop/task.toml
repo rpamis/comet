@@ -27,6 +27,7 @@ require_skill_invocation = true
 native_terminal = "active-blocked"
 rubric_criteria = [
   "Stops after repeated unresolved verification through portable v4 Loop counters and a user-readable blocker",
+  "Preserves a plain-language CLI summary, one user-or-command next step, and relayable user communication in the saved JSON envelopes",
   "Accepts exactly one explicit new repair hypothesis and keeps the change active",
   "Reaches the bounded failure ceiling without legacy machine artifacts",
   "Leaves the unresolved change active with passing baseline tests and unchanged acceptance",

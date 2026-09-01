@@ -425,7 +425,7 @@ export function render(
     return {
       exitCode: result.exitCode,
       stderr: envelope
-        ? formatCliErrorEnvelope(envelope, result.error.message)
+        ? formatCliErrorEnvelope(envelope, result.error.message, verbose ? result.data : undefined)
         : result.error.message,
     };
   }

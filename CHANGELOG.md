@@ -11,6 +11,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Changed
 
 - **Human-first default CLI text**: Native commands no longer print the raw internal state JSON by default. Text output now leads with a plain-language summary line, a `NEXT:` step, and a `RELAY TO USER:` block for pauses that need a user decision; the full machine projection moved behind the new global `--verbose` flag, and stable error codes (conflicts, snapshot budget, workspace isolation) render as human sentences with the machine detail retained on a `DETAIL:` line. Classic commands (`state next/scale/recover/transition/entry-check`, handoff, archive, manual `guard` checks, and phase-guard write blocks) prepend bilingual summaries that follow the change's language while keeping their existing machine lines — blocked guard checks now say the failing items are the Agent's checklist, not user actions. `comet status` adds one plain-language line per Native and Classic change above its machine details.
+- **CLI envelope consistency**: Direct Classic command `--json` invocations and verbose Native errors now retain the structured envelope and machine detail, while user-decision relays take precedence over internal confirmation commands so an Agent asks the user before resuming a paused workflow.
 
 ### Fixed
 

@@ -204,10 +204,11 @@ function nativePortableUserCommunication(
     state.status === 'await-user' &&
     state.loop.next_action === 'await-user'
   ) {
-    // The stop path is not persisted separately: no_progress_count >= 3 means
-    // the three-non-progressive-results stop, otherwise the failed-iteration
-    // budget was exhausted even if every round made progress.
-    const stalled = state.loop.no_progress_count >= 3;
+    // New states persist the exact stop reason. Older v4 states did not have
+    // that field, so retain the counter-based fallback for compatibility.
+    const stopReason =
+      state.loop.stop_reason ?? (state.loop.no_progress_count >= 3 ? 'stalled' : 'budget');
+    const stalled = stopReason === 'stalled';
     const zhMessage = stalled
       ? '验证已连续三轮失败且未通过的验收场景一直没有减少，本次修改已暂停，以避免在同一个问题上反复循环。你的代码和已经完成的检查都已安全保留。可以让 Builder 换一种修复思路继续，也可以回到需求阶段调整验收项。'
       : '本次修改的验证失败次数已用完配置的预算，因此暂停等待你的决定，而不是自动重试。你的代码和已经完成的检查都已安全保留。可以让 Builder 换一种修复思路继续，也可以回到需求阶段调整验收项。';

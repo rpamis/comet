@@ -208,6 +208,15 @@ function nextHintFromContinuation(
   locale: CliOutputLocale,
 ): CliNextHint | undefined {
   const communication = continuation.userCommunication;
+  if (continuation.disposition === 'await-user' && communication.required) {
+    return {
+      ask_user: phrase(
+        locale,
+        'Relay the message below, wait for the user decision, then run the matching option (run with --json to see the exact alternative commands).',
+        '先转述下方信息并等待用户选择，再执行对应命令（完整候选命令以 --json 输出为准）。',
+      ),
+    };
+  }
   if (continuation.commandArgs && continuation.commandArgs.length > 0) {
     return { command: continuation.commandArgs.join(' ') };
   }
@@ -217,15 +226,6 @@ function nextHintFromContinuation(
         locale,
         'No further workflow action; report the completed change to the user.',
         '工作流已无后续动作；向用户报告该需求已完成即可。',
-      ),
-    };
-  }
-  if (continuation.disposition === 'await-user' && communication.required) {
-    return {
-      ask_user: phrase(
-        locale,
-        'Relay the message below, wait for the user decision, then run the matching option (run with --json to see the exact alternative commands).',
-        '先转述下方信息并等待用户选择，再执行对应命令（完整候选命令以 --json 输出为准）。',
       ),
     };
   }
@@ -411,13 +411,19 @@ export function deriveNativeOutputEnvelope(data: unknown): CliOutputEnvelope | u
       prefixFromRecord(record, nativeContinuationLocale(continuation)),
     );
   }
-  if (
-    typeof record.artifactRoot === 'string' &&
-    typeof record.nativeRoot === 'string' &&
-    'pendingRootMove' in record
-  ) {
+  if (typeof record.artifactRoot === 'string' && typeof record.nativeRoot === 'string') {
+    const locale: CliOutputLocale = record.language === 'zh-CN' ? 'zh-CN' : 'en';
+    const isRootShow = 'pendingRootMove' in record;
     return {
-      summary: `Comet Native artifacts live under ${record.artifactRoot} (state root: ${record.nativeRoot}).`,
+      summary: phrase(
+        locale,
+        isRootShow
+          ? `Comet Native artifacts live under ${record.artifactRoot} (state root: ${record.nativeRoot}).`
+          : `Initialized Comet Native at ${record.nativeRoot} (artifacts: ${record.artifactRoot}).`,
+        isRootShow
+          ? `Comet Native 产物位于 ${record.artifactRoot}（状态根目录：${record.nativeRoot}）。`
+          : `Comet Native 已初始化于 ${record.nativeRoot}（产物目录：${record.artifactRoot}）。`,
+      ),
     };
   }
   return undefined;

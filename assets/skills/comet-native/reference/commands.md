@@ -1,6 +1,6 @@
 # Native command and exception reference
 
-During the normal flow, execute the command returned in Runtime `continuation`. This file explains returned fields and handles these cases: command input is rejected, the Verifier cannot start, the Verifier task fails, the Verifier cannot decide because external information is missing, or the Runtime asks the user to confirm degraded verification. `continuation.disposition` says whether to continue, wait for the user, resolve a blocker, or finish. Use a follow-up command containing `--confirmed` only after explicit user confirmation.
+During the normal flow, execute the command returned in Runtime `continuation`. This file explains returned fields and handles these cases: command input is rejected, the Verifier cannot start, the Verifier task fails, the Verifier cannot decide because external information is missing, or the Runtime asks the user to confirm degraded verification. `continuation.disposition` says whether to continue, wait for the user, resolve a blocker, or finish. Use a follow-up command containing `--confirmed` only after explicit user confirmation. CLI text is user-first (`summary`, one `NEXT:`, optional `RELAY TO USER:`); use `--json` for the additive envelope and `--verbose` only for structured machine troubleshooting.
 
 Treat CLI help as authoritative for command signatures and current arguments:
 
@@ -12,7 +12,7 @@ comet native <group> <command> --help
 
 ## Next action returned by the Runtime
 
-- `disposition`: whether to continue, wait for the user, resolve a blocker, or finish.
+- `disposition`: whether to continue, wait for the user, resolve a blocker, or finish; when `userCommunication.required` is true, relay its message and wait before executing any confirmation command.
 - `commandArgs` / `commandAlternatives`: complete command arguments from the Runtime. Alternatives are complete commands for mutually exclusive user decisions; execute the matching one and do not combine them.
 - `inputOptions`: fields and a JSON template for this command.
 - `workspace` / `preparation`: the actual working directory and change-creation result.

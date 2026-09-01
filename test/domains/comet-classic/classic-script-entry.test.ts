@@ -27,4 +27,34 @@ describe('Classic direct script entry', () => {
       stderr: 'invalid state arguments',
     });
   });
+
+  it('keeps the audience envelope fields in direct command JSON mode', async () => {
+    let output = '';
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      output += String(chunk);
+      return true;
+    });
+
+    const exitCode = await runClassicScript(
+      'state',
+      async () => ({
+        exitCode: 0,
+        envelope: {
+          summary: 'The change is ready to continue.',
+          next: { command: 'comet state next demo' },
+          user_message: 'No user decision is needed.',
+        },
+      }),
+      ['--json'],
+    );
+
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(output)).toEqual({
+      command: 'state',
+      exitCode: 0,
+      summary: 'The change is ready to continue.',
+      next: { command: 'comet state next demo' },
+      user_message: 'No user decision is needed.',
+    });
+  });
 });

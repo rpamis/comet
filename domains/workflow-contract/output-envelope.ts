@@ -71,7 +71,11 @@ export function formatCliOutputEnvelope(envelope: CliOutputEnvelope, details?: u
  * Render an error envelope: the human story first, then the machine detail so
  * debugging context is never lost when the message is translated.
  */
-export function formatCliErrorEnvelope(envelope: CliOutputEnvelope, message: string): string {
+export function formatCliErrorEnvelope(
+  envelope: CliOutputEnvelope,
+  message: string,
+  details?: unknown,
+): string {
   const lines: string[] = [envelope.summary];
   const nextLine = cliNextHintLine(envelope.next);
   if (nextLine) lines.push(nextLine);
@@ -79,6 +83,9 @@ export function formatCliErrorEnvelope(envelope: CliOutputEnvelope, message: str
     lines.push('', CLI_OUTPUT_MARKERS.relay, envelope.user_message);
   }
   lines.push('', `${CLI_OUTPUT_MARKERS.detail} ${message}`);
+  if (details !== undefined) {
+    lines.push('', CLI_OUTPUT_MARKERS.details, JSON.stringify(details, null, 2));
+  }
   return lines.join('\n');
 }
 
@@ -106,6 +113,13 @@ export function isCliOutputEnvelope(value: unknown): value is CliOutputEnvelope 
       candidate.next === null ||
       (candidate.next.command !== undefined && typeof candidate.next.command !== 'string') ||
       (candidate.next.ask_user !== undefined && typeof candidate.next.ask_user !== 'string'))
+  ) {
+    return false;
+  }
+  if (
+    candidate.next !== undefined &&
+    candidate.next.command !== undefined &&
+    candidate.next.ask_user !== undefined
   ) {
     return false;
   }

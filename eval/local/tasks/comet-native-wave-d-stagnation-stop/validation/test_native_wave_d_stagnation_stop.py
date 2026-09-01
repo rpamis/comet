@@ -45,6 +45,38 @@ def _envelope(path: Path, command: str) -> dict[str, Any]:
     return envelope
 
 
+def _check_user_facing_envelope(envelope: dict[str, Any], label: str) -> str | None:
+    summary = envelope.get("summary")
+    if not isinstance(summary, str) or not summary.strip():
+        return f"{label} has no plain-language summary"
+    forbidden = (
+        "stateVersion",
+        "failed_iteration_count",
+        "no_progress_count",
+        "commandArgs",
+        "continuation",
+    )
+    if any(token in summary for token in forbidden):
+        return f"{label} summary exposes machine fields"
+    next_hint = envelope.get("next")
+    if not isinstance(next_hint, dict):
+        return f"{label} has no next step"
+    has_command = isinstance(next_hint.get("command"), str) and bool(next_hint["command"].strip())
+    has_question = isinstance(next_hint.get("ask_user"), str) and bool(next_hint["ask_user"].strip())
+    if has_command == has_question:
+        return f"{label} must contain exactly one command or ask_user next step"
+    data = envelope.get("data")
+    continuation = data.get("continuation") if isinstance(data, dict) else None
+    communication = continuation.get("userCommunication") if isinstance(continuation, dict) else None
+    if isinstance(communication, dict) and communication.get("required") is True:
+        message = communication.get("message")
+        if not isinstance(message, str) or not message.strip():
+            return f"{label} requires user communication but has no message"
+        if envelope.get("user_message") != message:
+            return f"{label} does not preserve the relayable user message"
+    return None
+
+
 def _has_v4_loop(state: dict[str, Any]) -> str | None:
     if state.get("schema") != "comet.native.v4":
         return f"schema={state.get('schema')!r}"
@@ -102,6 +134,11 @@ def check_stagnation_stop() -> dict[str, str]:
         status = _envelope(evidence / "hard-stop-status.json", "status")
     except Exception as error:
         return failed(check, f"Invalid v4 stop evidence: {error}")
+
+    for envelope, label in ((manual, "manual stop"), (override, "override"), (hard, "hard stop"), (status, "status")):
+        envelope_error = _check_user_facing_envelope(envelope, label)
+        if envelope_error:
+            return failed(check, envelope_error)
 
     manual_state = _state(manual.get("data"))
     manual_loop = manual_state.get("loop") if isinstance(manual_state.get("loop"), dict) else {}
