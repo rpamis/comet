@@ -12,7 +12,7 @@ export interface DashboardOptions {
 }
 
 /**
- * `comet dashboard` — launch the local read-only dashboard server.
+ * `comet dashboard` — launch the local dashboard server.
  *
  * Modes:
  *  - default: start the HTTP server, optionally open the browser, keep the

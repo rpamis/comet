@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-rc.3] - 2026-09-02
+
+### Fixed
+
+- **Dashboard Project Knowledge consistency**: Dashboard now uses the same default Local Project Knowledge cache as `comet task` and `comet knowledge`, so rebuilt records and indexed Markdown sources appear in the plugin center and records created there are available to CLI retrieval. Records from the former `~/.comet/plugins/knowledge-cache` Dashboard location are imported into the canonical cache during upgrade.
+
 ## What's Changed [0.4.0-rc.2] - 2026-09-01
 
 ### Added

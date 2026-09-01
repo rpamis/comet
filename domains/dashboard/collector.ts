@@ -756,7 +756,7 @@ function formatClassicCollectionError(relativePath: string, error: unknown): str
 
 /**
  * Build one change item, swallowing per-change errors so the rest of the
- * sweep continues. The dashboard is read-only and "best effort by design";
+ * sweep continues. This collection path is read-only and "best effort by design";
  * a single malformed yaml or unreadable directory shouldn't blank the page.
  */
 async function tryBuildChangeItem(input: BuildChangeInput): Promise<ChangeDashboardItem | null> {
