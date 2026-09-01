@@ -639,6 +639,12 @@ describe('Native portable Build/Verify loop', () => {
       action: 'resolve-loop-stop',
       commandArgs: null,
       requiredInputs: ['summary', 'user-decision'],
+      userCommunication: {
+        required: true,
+        message: expect.stringContaining('paused to avoid looping on the same problem'),
+        suggestedReply: 'Continue repairing',
+        agentInstruction: expect.stringContaining('revise-implementation'),
+      },
       commandAlternatives: expect.arrayContaining([
         expect.objectContaining({
           name: 'revise-implementation',
@@ -651,6 +657,14 @@ describe('Native portable Build/Verify loop', () => {
           requiredInputs: ['summary', 'user-decision'],
         }),
       ]),
+    });
+    expect(
+      nativePortableContinuation({ ...state, language: 'zh-CN' }).userCommunication,
+    ).toMatchObject({
+      required: true,
+      message: expect.stringContaining('本次修改已暂停'),
+      suggestedReply: '继续修复',
+      agentInstruction: expect.stringContaining('revise-implementation'),
     });
   });
 
@@ -668,6 +682,18 @@ describe('Native portable Build/Verify loop', () => {
       verification_result: 'blocked',
       verification_report: 'verification.md',
       loop: { next_action: 'resolve-verifier-blocker' },
+    });
+    expect(nativePortableContinuation(result).userCommunication).toMatchObject({
+      required: true,
+      message: expect.stringContaining('information only you can provide'),
+      suggestedReply: null,
+      agentInstruction: expect.stringContaining('resolve-verifier-blocker'),
+    });
+    expect(
+      nativePortableContinuation({ ...result, language: 'zh-CN' }).userCommunication,
+    ).toMatchObject({
+      required: true,
+      message: expect.stringContaining('缺少只有你能提供的信息'),
     });
   });
 

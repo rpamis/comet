@@ -175,6 +175,54 @@ function nativePortableUserCommunication(
         };
   }
 
+  if (
+    state.phase === 'verify' &&
+    state.status === 'await-user' &&
+    state.loop.next_action === 'resolve-verifier-blocker'
+  ) {
+    return state.language === 'zh-CN'
+      ? {
+          required: true,
+          message:
+            '验证暂时无法下结论，因为缺少只有你能提供的信息，例如外部系统的真实行为或某个业务决定。你的代码和已经完成的检查都已安全保留。补充所需信息后可继续验证，也可以选择修改实现或调整需求。',
+          suggestedReply: null,
+          agentInstruction:
+            '向用户转述 message，请用户补充缺失的信息，或在继续验证（resolve-verifier-blocker）、修改实现、调整需求之间明确选择，再执行 commandAlternatives 中对应的完整命令。不要把“继续”当作默认选择，也不要展示内部轮次、计数、路径或恢复步骤。',
+        }
+      : {
+          required: true,
+          message:
+            'Verification cannot reach a verdict yet because information only you can provide is missing, such as the real behavior of an external system or a business decision. Your code and completed checks are safely preserved. Supply the missing information to resume verification, or choose to revise the implementation or the requirements.',
+          suggestedReply: null,
+          agentInstruction:
+            'Relay message and ask the user to supply the missing information or explicitly choose between resuming verification (resolve-verifier-blocker), revising the implementation, and revising the requirements; run the matching commandAlternative afterwards. Do not treat “Continue” as a default choice, and do not expose internal rounds, counters, paths, or recovery steps.',
+        };
+  }
+
+  if (
+    state.phase === 'verify' &&
+    state.status === 'await-user' &&
+    state.loop.next_action === 'await-user'
+  ) {
+    return state.language === 'zh-CN'
+      ? {
+          required: true,
+          message:
+            '验证已连续多轮失败且没有接近通过，本次修改已暂停，以避免在同一个问题上反复循环。你的代码和已经完成的检查都已安全保留。可以让 Builder 换一种修复思路继续，也可以回到需求阶段调整验收项。',
+          suggestedReply: '继续修复',
+          agentInstruction:
+            '向用户转述 message 和 suggestedReply，等待用户在“继续修复实现”（revise-implementation）与“调整需求”（revise-requirements）之间明确选择，再执行 commandAlternatives 中对应的完整命令。选择继续修复时，要求 Builder 更换修复思路。不要替用户选择，也不要展示内部轮次、计数、路径或恢复步骤。',
+        }
+      : {
+          required: true,
+          message:
+            'Verification has failed several times in a row without getting closer to passing, so this change is paused to avoid looping on the same problem. Your code and completed checks are safely preserved. You can have the Builder try a different repair approach, or go back and adjust the requirements.',
+          suggestedReply: 'Continue repairing',
+          agentInstruction:
+            'Relay message and suggestedReply, then wait for the user to explicitly choose between continuing the implementation (revise-implementation) and adjusting the requirements (revise-requirements); run the matching commandAlternative afterwards. When continuing, ask the Builder to change its repair approach. Do not choose for the user, and do not expose internal rounds, counters, paths, or recovery steps.',
+        };
+  }
+
   return noUserUpdate(
     localized(
       state,

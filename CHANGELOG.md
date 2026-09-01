@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-rc.2] - 2026-09-01
+
+### Fixed
+
+- **Native verification loop-stop handoff**: When Native verification paused after repeated failures or repeated no-progress results, the Agent received no user-facing message at the pause point, so sessions could keep re-checking the same candidate instead of asking the user whether to continue repairing or adjust the requirements. The Runtime now returns an explicit user decision request with ready-to-relay bilingual messages for the loop stop, and the same applies when a Verifier blocker waits on information only the user can provide.
+
 ## What's Changed [0.4.0-rc.1] - 2026-08-31
 
 ### Added
