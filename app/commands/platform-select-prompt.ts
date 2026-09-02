@@ -44,6 +44,7 @@ const platformSelectTheme: Theme<PlatformSelectTheme> = {
     interval: 80,
     frames: ['-', '\\', '|', '/'],
   },
+  keybindings: [],
   style: {
     answer: (text: string) => styleText('cyan', text),
     message: (text: string) => styleText('bold', text),
