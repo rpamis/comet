@@ -341,7 +341,7 @@ comet-hook-router.mjs    <- 平台唯一 Hook 入口 -> 当前 selection 的一�
 
 Comet 已从单一 `/comet` 工作流 bundle 扩展为工作流 + Skill 创作平台。涉及这些命令时注意：
 
-- **`comet dashboard`**：本地只读浏览器面板，前端代码在 `domains/dashboard/web/`，由 `pnpm build:dashboard` 单独构建。后端 `domains/dashboard/server.ts` 提供 `--json` 与 `GET /api/dashboard`。
+- **`comet dashboard`**：本地浏览器面板，可检查工作流，并管理支持的项目设置、插件生命周期、个人记忆和项目知识记录。前端代码在 `domains/dashboard/web/`，由 `pnpm build:dashboard` 单独构建。后端 `domains/dashboard/server.ts` 提供 `--json` 与 `GET /api/dashboard`。
 - **`comet eval`**：仓库本地评测，profile、manifest、HTML 报告、token/cost 归因、pass@k/pass^k 等。用法见 `docs/operations/EVAL-USAGE.md`。
 - **`comet creator` / `comet publish`**：Skill 创作主流程，详见 `docs/operations/SKILL-CREATION.md`。`domains/bundle/*` 是它们的后端工具。
 - **`comet skill add|show|run|continue|check`**：本地 Skill 包管理，代码在 `domains/skill/`。

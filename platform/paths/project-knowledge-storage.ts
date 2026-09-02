@@ -9,12 +9,17 @@ export interface ProjectKnowledgeStorageLocation {
   readonly databasePath: string;
 }
 
-export function defaultProjectKnowledgeStorageRoot(): string {
+export function defaultProjectKnowledgeStorageRoot(homeDirectory?: string): string {
+  const home = homeDirectory ?? os.homedir();
   if (process.platform === 'win32') {
-    return process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local');
+    return homeDirectory === undefined && process.env.LOCALAPPDATA
+      ? process.env.LOCALAPPDATA
+      : path.join(home, 'AppData', 'Local');
   }
-  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Caches');
-  return process.env.XDG_CACHE_HOME ?? path.join(os.homedir(), '.cache');
+  if (process.platform === 'darwin') return path.join(home, 'Library', 'Caches');
+  return homeDirectory === undefined && process.env.XDG_CACHE_HOME
+    ? process.env.XDG_CACHE_HOME
+    : path.join(home, '.cache');
 }
 
 export function resolveProjectKnowledgeStorageLocation(

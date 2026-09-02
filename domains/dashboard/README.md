@@ -1,8 +1,8 @@
 # Comet Dashboard
 
-本目录包含 `comet dashboard` 的只读本地仪表盘：后端采集当前仓库的
-`openspec/changes`、Git 与验证状态，前端是位于 `web/` 的 React + Tailwind CSS
-应用。
+本目录包含 `comet dashboard` 本地仪表盘：后端采集当前仓库的
+`openspec/changes`、Git 与验证状态，并支持管理项目设置、插件生命周期、个人记忆和
+项目知识记录；前端是位于 `web/` 的 React + Tailwind CSS 应用。
 
 ## 启动
 
