@@ -3,7 +3,10 @@ import { readFile } from 'fs/promises';
 
 import {
   getPlatformConfigDir,
+  getPlatformConfigDirs,
+  getPlatformRuleBaseDirs,
   getPlatformSkillsDir,
+  getPlatformSkillsDirs,
   type Platform,
 } from '../../platform/install/platforms.js';
 import type { InstallScope } from '../../platform/install/types.js';
@@ -48,11 +51,7 @@ type JsonReadResult =
   | { status: 'present'; value: Record<string, unknown> };
 
 function getRulesBaseDir(baseDir: string, platform: Platform, scope: InstallScope): string {
-  if (platform.rulesBaseDir === '') return baseDir;
-  if (platform.rulesBaseDir !== undefined) {
-    return path.join(baseDir, platform.rulesBaseDir);
-  }
-  return path.join(baseDir, getPlatformSkillsDir(platform, scope));
+  return path.join(baseDir, getPlatformRuleBaseDirs(platform, scope)[0]!);
 }
 
 export async function getPlatformRuleDestinations(
@@ -79,17 +78,40 @@ export async function getPlatformRuleDestinations(
   return [...destinations];
 }
 
-export function getLegacyPlatformRuleDestinations(
+export async function getLegacyPlatformRuleDestinations(
   baseDir: string,
   platform: Platform,
   scope: InstallScope,
-): string[] {
+): Promise<string[]> {
   if (platform.rulesFormat === 'dsh') return [];
   if (!platform.rulesDir || !platform.rulesFormat) return [];
-  const rulesDestDir = path.join(getRulesBaseDir(baseDir, platform, scope), platform.rulesDir);
-  return LEGACY_RULE_FILE_NAMES.map((fileName) =>
-    computeRuleDestPath(rulesDestDir, fileName, platform.rulesFormat!),
+
+  const manifest = await readManifest();
+  const managedRuleFileNames = new Set(
+    [...(manifest.rules ?? []), ...(manifest.nativeRules ?? []), ...LEGACY_RULE_FILE_NAMES].map(
+      (rulePath) => path.basename(rulePath).replace(/\.en\.md$/u, '.md'),
+    ),
   );
+  const ruleBaseDirs = [
+    ...new Set(
+      getPlatformRuleBaseDirs(platform, scope).map((rulesBase) => path.resolve(baseDir, rulesBase)),
+    ),
+  ];
+  const [canonicalRulesBase, ...legacyRulesBases] = ruleBaseDirs;
+  const destinations = new Set<string>();
+  if (canonicalRulesBase) {
+    const rulesDestDir = path.join(canonicalRulesBase, platform.rulesDir);
+    for (const fileName of LEGACY_RULE_FILE_NAMES) {
+      destinations.add(computeRuleDestPath(rulesDestDir, fileName, platform.rulesFormat));
+    }
+  }
+  for (const rulesBase of legacyRulesBases) {
+    const rulesDestDir = path.join(rulesBase, platform.rulesDir);
+    for (const fileName of managedRuleFileNames) {
+      destinations.add(computeRuleDestPath(rulesDestDir, fileName, platform.rulesFormat));
+    }
+  }
+  return [...destinations];
 }
 
 async function readHookJson(filePath: string): Promise<JsonReadResult> {
@@ -530,6 +552,38 @@ export async function inspectCometHooksForPlatform(
         (config) => collectCommandArray(config, 'pre_write_code'),
         countWindsurfHookMatches,
       );
+      {
+        const legacyConfigDirs = getPlatformConfigDirs(platform, scope).slice(1);
+        const legacySkillsDirs = getPlatformSkillsDirs(platform, scope).slice(1);
+        for (const [index, configDir] of legacyConfigDirs.entries()) {
+          const legacySkillsDir = legacySkillsDirs[index] ?? skillsDir;
+          const legacyExpectedHooks = expectedHooks.map((expected) => ({
+            ...expected,
+            command: buildHookCommand(baseDir, legacySkillsDir, expected.scriptRelPath, {
+              platformId: platform.id,
+              scope,
+            }),
+          }));
+          const legacy = await inspectSingleHookJson(
+            path.join(baseDir, configDir, 'hooks.json'),
+            legacyExpectedHooks,
+            (config) => collectCommandArray(config, 'pre_write_code'),
+            countWindsurfHookMatches,
+          );
+          if (legacy.error) {
+            inspection = { ...inspection, present: false, error: legacy.error };
+            break;
+          }
+          if (legacy.present || legacy.managedPresent || legacy.legacyPresent) {
+            inspection = {
+              ...inspection,
+              ...(!inspection.present ? { managedPresent: true } : {}),
+              legacyPresent: true,
+              ...(legacy.duplicatePresent ? { duplicatePresent: true } : {}),
+            };
+          }
+        }
+      }
       break;
     case 'trae':
       inspection = await inspectSingleHookJson(

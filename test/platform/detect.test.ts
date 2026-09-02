@@ -11,6 +11,7 @@ import {
 } from '../../platform/install/detect.js';
 import {
   PLATFORMS,
+  getPlatformConfigDirs,
   getPlatformSkillsDir,
   getPlatformSkillsDirs,
   resolveOpenSpecMirrorPlatformIds,
@@ -116,6 +117,8 @@ describe('detect', () => {
       expect(getPlatformSkillsDir(windsurf!, 'global')).toBe('.devin');
       expect(getPlatformSkillsDirs(windsurf!, 'project')).toEqual(['.devin', '.windsurf']);
       expect(getPlatformSkillsDirs(windsurf!, 'global')).toEqual(['.devin', '.windsurf']);
+      expect(getPlatformConfigDirs(windsurf!, 'project')).toEqual(['.devin', '.windsurf']);
+      expect(getPlatformConfigDirs(windsurf!, 'global')).toEqual(['.devin', '.windsurf']);
     });
 
     it('declares Grok Skills, rules, and hooks under the native .grok root', () => {

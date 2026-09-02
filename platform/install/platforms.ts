@@ -20,6 +20,8 @@ export interface Platform {
   configDir?: string;
   /** Global platform configuration and hook root when it differs from the global Skill root. */
   globalConfigDir?: string;
+  /** Historical platform configuration and hook roots checked during migration and uninstall. */
+  legacyConfigDirs?: string[];
   detectionPaths?: string[];
   openspecToolId: string;
   /** OpenSpec's generated tool root when it differs from Comet's canonical Skill root. */
@@ -96,6 +98,17 @@ export function getPlatformConfigDir(platform: Platform, scope: InstallScope): s
   return platform.configDir ?? getPlatformSkillsDir(platform, scope);
 }
 
+export function getPlatformConfigDirs(platform: Platform, scope: InstallScope): string[] {
+  return [
+    ...new Set([getPlatformConfigDir(platform, scope), ...(platform.legacyConfigDirs ?? [])]),
+  ];
+}
+
+export function getPlatformRuleBaseDirs(platform: Platform, scope: InstallScope): string[] {
+  if (platform.rulesBaseDir !== undefined) return [platform.rulesBaseDir];
+  return getPlatformSkillsDirs(platform, scope);
+}
+
 export const PLATFORMS: Platform[] = [
   {
     id: 'claude',
@@ -150,6 +163,7 @@ export const PLATFORMS: Platform[] = [
     skillsDir: '.devin',
     globalSkillsDir: '.devin',
     legacySkillsDirs: ['.windsurf'],
+    legacyConfigDirs: ['.windsurf'],
     openspecToolId: 'windsurf',
     rulesDir: 'rules',
     rulesFormat: 'md',

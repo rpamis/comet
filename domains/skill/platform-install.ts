@@ -6,6 +6,8 @@ import { fileURLToPath } from 'url';
 import { fileExists, readJson, copyFile, ensureDir } from '../../platform/fs/file-system.js';
 import {
   getPlatformConfigDir,
+  getPlatformConfigDirs,
+  getPlatformRuleBaseDirs,
   getPlatformSkillsDir,
   type Platform,
 } from '../../platform/install/platforms.js';
@@ -1114,12 +1116,7 @@ async function copyCometRulesForPlatform(
   const assetsDir = getAssetsDir();
   // Support platforms whose rules live outside the skills config dir
   // (e.g., Cline: rules go to .clinerules/ at project root, not .cline/rules/)
-  const rulesBase =
-    platform.rulesBaseDir !== undefined
-      ? platform.rulesBaseDir === ''
-        ? baseDir
-        : path.join(baseDir, platform.rulesBaseDir)
-      : path.join(baseDir, getPlatformSkillsDir(platform, scope));
+  const rulesBase = path.join(baseDir, getPlatformRuleBaseDirs(platform, scope)[0]!);
   let copied = 0;
   let skippedCount = 0;
   let failed = 0;
@@ -1165,6 +1162,29 @@ async function copyCometRulesForPlatform(
       if (code === 'ENOENT' || code === 'ENOTDIR') continue;
       console.error(`    Failed to remove legacy Rule ${legacyPath}: ${(error as Error).message}`);
       failed++;
+    }
+  }
+
+  const managedRuleFiles = [
+    ...(manifest.rules ?? []),
+    ...(manifest.nativeRules ?? []),
+    ...LEGACY_RULE_FILES,
+  ].map((rulePath) => toRuleBaseName(path.basename(rulePath)));
+  const legacyRulesBases = getPlatformRuleBaseDirs(platform, scope).slice(1);
+  for (const legacyRulesBase of legacyRulesBases) {
+    const legacyRulesDestDir = path.join(baseDir, legacyRulesBase, platform.rulesDir);
+    for (const ruleFile of new Set(managedRuleFiles)) {
+      const legacyPath = computeRuleDestPath(legacyRulesDestDir, ruleFile, platform.rulesFormat);
+      try {
+        await rm(legacyPath, { force: true });
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === 'ENOENT' || code === 'ENOTDIR') continue;
+        console.error(
+          `    Failed to remove legacy Rule ${legacyPath}: ${(error as Error).message}`,
+        );
+        failed++;
+      }
     }
   }
 
@@ -1340,8 +1360,8 @@ async function installCometHooksForPlatform(
           platform.name,
           { platformId: platform.id, scope, hookMatcher: platform.hookMatcher },
         );
-      case 'windsurf':
-        return await installWindsurfHooks(
+      case 'windsurf': {
+        const result = await installWindsurfHooks(
           baseDir,
           platformBase,
           skillsDir,
@@ -1349,6 +1369,29 @@ async function installCometHooksForPlatform(
           platform.name,
           { platformId: platform.id, scope, hookMatcher: platform.hookMatcher },
         );
+        if (result.status !== 'installed') return result;
+
+        const failedLegacyDirs: string[] = [];
+        for (const configDir of getPlatformConfigDirs(platform, scope).slice(1)) {
+          try {
+            const cleanup = await removeManagedWindsurfHooksFromJsonFile(
+              path.join(baseDir, configDir, 'hooks.json'),
+              managedHookScriptPaths(hooksConfig),
+            );
+            if (cleanup.failed > 0) failedLegacyDirs.push(configDir);
+          } catch {
+            failedLegacyDirs.push(configDir);
+          }
+        }
+        if (failedLegacyDirs.length > 0) {
+          return {
+            status: 'failed',
+            reason: `legacy Hook cleanup failed for ${failedLegacyDirs.join(', ')}`,
+            cleanupFailed: failedLegacyDirs.length,
+          };
+        }
+        return result;
+      }
       case 'copilot':
         return await installCopilotHooks(baseDir, platformBase, skillsDir, hooksConfig, {
           platformId: platform.id,
@@ -1643,6 +1686,49 @@ async function removeManagedHooksFromJsonFile(
   existingHooks.PreToolUse = filtered;
   try {
     await writeFile(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
+  } catch {
+    return { removed: 0, failed: 1 };
+  }
+  return { removed, failed: 0 };
+}
+
+async function removeManagedWindsurfHooksFromJsonFile(
+  settingsPath: string,
+  scriptRelPaths: string[],
+): Promise<{ removed: number; failed: number }> {
+  if (!(await fileExists(settingsPath))) return { removed: 0, failed: 0 };
+  const result = await readJsonObjectFile(settingsPath);
+  if (result.status === 'missing') return { removed: 0, failed: 0 };
+  if (result.status === 'error') return { removed: 0, failed: 1 };
+
+  const hooksFile = result.value;
+  const existingHooks = hooksFile.hooks as Record<string, unknown> | undefined;
+  const existingPreWrite = existingHooks?.pre_write_code;
+  if (!existingHooks || !Array.isArray(existingPreWrite)) {
+    return { removed: 0, failed: 0 };
+  }
+
+  let removed = 0;
+  const filtered = existingPreWrite.filter((entry) => {
+    const command =
+      entry && typeof entry === 'object' && !Array.isArray(entry)
+        ? (entry as Record<string, unknown>).command
+        : undefined;
+    if (!isManagedHookCommand(command, scriptRelPaths)) return true;
+    removed++;
+    return false;
+  });
+  if (removed === 0) return { removed: 0, failed: 0 };
+
+  if (filtered.length === 0) {
+    delete existingHooks.pre_write_code;
+  } else {
+    existingHooks.pre_write_code = filtered;
+  }
+  if (Object.keys(existingHooks).length === 0) delete hooksFile.hooks;
+
+  try {
+    await writeFile(settingsPath, JSON.stringify(hooksFile, null, 2) + '\n', 'utf-8');
   } catch {
     return { removed: 0, failed: 1 };
   }
@@ -2369,6 +2455,7 @@ export {
   buildHookCommand,
   buildHookInvocation,
   removeManagedHooksFromJsonFile,
+  removeManagedWindsurfHooksFromJsonFile,
   planSkillDirectoryCopy,
   mergeProjectConfig,
   parseProjectConfigOverrides,

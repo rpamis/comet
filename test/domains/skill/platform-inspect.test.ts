@@ -12,7 +12,10 @@ import {
   copyCometRulesForPlatform,
   installCometHooksForPlatform,
 } from '../../../domains/skill/platform-install.js';
-import { removeCometHooksForPlatform } from '../../../domains/skill/uninstall.js';
+import {
+  removeCometHooksForPlatform,
+  removeCometRulesForPlatform,
+} from '../../../domains/skill/uninstall.js';
 import { PLATFORMS, type Platform } from '../../../platform/install/platforms.js';
 
 function platform(id: string): Platform {
@@ -115,7 +118,7 @@ describe('platform component inspection', () => {
     'replaces both legacy %s Rules with one unified Rule while preserving user files',
     async (id) => {
       const target = platform(id);
-      const legacy = getLegacyPlatformRuleDestinations(tmpDir, target, 'project');
+      const legacy = await getLegacyPlatformRuleDestinations(tmpDir, target, 'project');
       const current = await getPlatformRuleDestinations(tmpDir, target, 'project');
       expect(legacy).toHaveLength(2);
       expect(current).toHaveLength(1);
@@ -135,6 +138,57 @@ describe('platform component inspection', () => {
       await expect(fs.readFile(userRule, 'utf8')).resolves.toBe('# Personal\n');
     },
   );
+
+  it('recognizes and migrates legacy Windsurf Rules under the Devin-compatible platform', async () => {
+    const target = platform('windsurf');
+    const legacyTarget: Platform = {
+      ...target,
+      skillsDir: '.windsurf',
+      globalSkillsDir: '.windsurf',
+      legacySkillsDirs: undefined,
+    };
+
+    await expect(
+      copyCometRulesForPlatform(tmpDir, legacyTarget, true, 'en', 'project', 'classic'),
+    ).resolves.toMatchObject({ failed: 0 });
+    await expect(
+      fs.access(path.join(tmpDir, '.windsurf', 'rules', 'comet-workflow-guard.md')),
+    ).resolves.toBeUndefined();
+
+    const legacyDestinations = await getLegacyPlatformRuleDestinations(tmpDir, target, 'project');
+    expect(legacyDestinations).toContain(
+      path.join(tmpDir, '.windsurf', 'rules', 'comet-workflow-guard.md'),
+    );
+
+    await expect(removeCometRulesForPlatform(tmpDir, target, 'project')).resolves.toMatchObject({
+      removed: 1,
+      failed: 0,
+    });
+    await expect(
+      fs.access(path.join(tmpDir, '.windsurf', 'rules', 'comet-workflow-guard.md')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+
+    await copyCometRulesForPlatform(tmpDir, legacyTarget, true, 'en', 'project', 'classic');
+
+    await expect(
+      copyCometRulesForPlatform(tmpDir, target, true, 'en', 'project', 'classic'),
+    ).resolves.toMatchObject({ failed: 0 });
+    await expect(
+      fs.access(path.join(tmpDir, '.devin', 'rules', 'comet-workflow-guard.md')),
+    ).resolves.toBeUndefined();
+    await expect(
+      fs.access(path.join(tmpDir, '.windsurf', 'rules', 'comet-workflow-guard.md')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+
+    await copyCometRulesForPlatform(tmpDir, target, true, 'en', 'project', 'classic');
+    await expect(removeCometRulesForPlatform(tmpDir, target, 'project')).resolves.toMatchObject({
+      removed: 1,
+      failed: 0,
+    });
+    await expect(
+      fs.access(path.join(tmpDir, '.devin', 'rules', 'comet-workflow-guard.md')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
 
   it.each([
     'claude',
@@ -428,6 +482,54 @@ describe('platform component inspection', () => {
       present: true,
       legacyPresent: true,
     });
+  });
+
+  it('recognizes, migrates, and removes legacy Windsurf Hooks under .windsurf', async () => {
+    const target = platform('windsurf');
+    const legacyTarget: Platform = {
+      ...target,
+      skillsDir: '.windsurf',
+      globalSkillsDir: '.windsurf',
+      legacySkillsDirs: undefined,
+    };
+
+    await expect(installCometHooksForPlatform(tmpDir, legacyTarget, 'project')).resolves.toEqual({
+      status: 'installed',
+    });
+    await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
+      present: false,
+      managedPresent: true,
+      legacyPresent: true,
+    });
+
+    await expect(removeCometHooksForPlatform(tmpDir, target, 'project')).resolves.toMatchObject({
+      removed: 1,
+      failed: 0,
+    });
+    const removedLegacyHooks = JSON.parse(
+      await fs.readFile(path.join(tmpDir, '.windsurf', 'hooks.json'), 'utf8'),
+    ) as { hooks?: { pre_write_code?: Array<{ command?: string }> } };
+    expect(removedLegacyHooks.hooks?.pre_write_code ?? []).toHaveLength(0);
+
+    await installCometHooksForPlatform(tmpDir, legacyTarget, 'project');
+
+    await expect(installCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
+      status: 'installed',
+    });
+    const legacyHooks = JSON.parse(
+      await fs.readFile(path.join(tmpDir, '.windsurf', 'hooks.json'), 'utf8'),
+    ) as { hooks?: { pre_write_code?: Array<{ command?: string }> } };
+    expect(legacyHooks.hooks?.pre_write_code ?? []).toHaveLength(0);
+
+    await expect(removeCometHooksForPlatform(tmpDir, target, 'project')).resolves.toMatchObject({
+      removed: 1,
+      failed: 0,
+    });
+    await expect(fs.access(path.join(tmpDir, '.windsurf', 'hooks.json'))).resolves.toBeUndefined();
+    const remainingLegacyHooks = JSON.parse(
+      await fs.readFile(path.join(tmpDir, '.windsurf', 'hooks.json'), 'utf8'),
+    ) as { hooks?: { pre_write_code?: Array<{ command?: string }> } };
+    expect(remainingLegacyHooks.hooks?.pre_write_code ?? []).toHaveLength(0);
   });
 
   it('reports invalid Codex legacy Hook JSON even when the canonical Router is current', async () => {
