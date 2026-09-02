@@ -18,6 +18,7 @@ import {
   confirmNativePortableVerifierUnavailable,
   inspectNativePortableAcceptanceDrift,
   isNativePortableChange,
+  recoverNativeSupervisorFinalVerificationOnResume,
   resolveNativePortableVerifierBlocker,
   returnNativePortableChangeToBuild,
   returnNativePortableChangeToShape,
@@ -197,6 +198,16 @@ export async function nativeNextCommand(
       preserveRunningExecution: true,
     });
     const current = recovery.state;
+    const supervisorRecovery = await recoverNativeSupervisorFinalVerificationOnResume({
+      paths: configured.paths,
+      name,
+    });
+    if (supervisorRecovery.action === 'rerun-final-verification') {
+      return success('next', {
+        state: nativePortableStateSummary(supervisorRecovery.state),
+        ...(await portableParentView(configured.paths, supervisorRecovery.state)),
+      });
+    }
     if (
       recovery.action === 'await-user' ||
       recovery.action === 'done' ||
@@ -248,6 +259,16 @@ export async function nativeNextCommand(
   }
   const recovery = await recoverNativePortableChange({ paths: configured.paths, name });
   const current = recovery.state;
+  const supervisorRecovery = await recoverNativeSupervisorFinalVerificationOnResume({
+    paths: configured.paths,
+    name,
+  });
+  if (supervisorRecovery.action === 'rerun-final-verification') {
+    return success('next', {
+      state: nativePortableStateSummary(supervisorRecovery.state),
+      ...(await portableParentView(configured.paths, supervisorRecovery.state)),
+    });
+  }
   if (coordinationMode !== undefined && current.phase !== 'shape') {
     throw new NativeUsageError('--coordination-mode is only valid when confirming Shape');
   }

@@ -16,7 +16,9 @@ import {
 } from './native-children.js';
 import {
   createNativeSupervisorState,
+  advanceNativeSupervisorFinalVerificationHead,
   prepareNativeSupervisorIntegrationWorkspace,
+  recordNativeSupervisorPortableFinalVerification,
   rebuildNativeSupervisorStateFromFacts,
   readNativeSupervisorState,
   reconcileNativeSupervisorState,
@@ -1948,6 +1950,22 @@ export async function confirmNativePortableSkillCoordinatedPass(options: {
         action: 'accept-result',
       });
       await ensureNativePortableAcceptanceCurrentLocked({ paths: options.paths, state });
+      const supervisor = await readNativeSupervisorState(options.paths, options.name);
+      if (supervisor?.finalVerification.status === 'pending') {
+        const advanced = advanceNativeSupervisorFinalVerificationHead(supervisor);
+        if (advanced.stateVersion !== supervisor.stateVersion) {
+          return returnNativePortableStateToFinalVerificationLocked({
+            paths: options.paths,
+            state,
+            reason:
+              'Supervisor final verification was not bound to the current integration commit; rerun the final full verification.',
+          });
+        }
+        await writeNativeSupervisorState(
+          options.paths,
+          recordNativeSupervisorPortableFinalVerification(supervisor, state),
+        );
+      }
       const next = confirmNativeSkillCoordinatedPass(state);
       const written = await writePortableMutation({ paths: options.paths, previous: state, next });
       await writeNativeLocalExecution(
@@ -1964,6 +1982,54 @@ export async function confirmNativePortableSkillCoordinatedPass(options: {
         state: written,
       });
       return written;
+    },
+  );
+}
+
+export interface NativeSupervisorFinalVerificationResumeResult {
+  state: NativePortableState;
+  action: 'none' | 'rerun-final-verification' | 'recorded-final-verification';
+}
+
+/**
+ * Repair an interrupted Supervisor final-verification write as part of normal
+ * Native continuation. No recovery flag or direct state edit is required.
+ */
+export async function recoverNativeSupervisorFinalVerificationOnResume(options: {
+  paths: NativeProjectPaths;
+  name: string;
+}): Promise<NativeSupervisorFinalVerificationResumeResult> {
+  return withNativeMutationLock(
+    options.paths,
+    `recover Supervisor final verification ${options.name}`,
+    async () => {
+      const state = await readNativePortableChange(options.paths, options.name);
+      const supervisor = await readNativeSupervisorState(options.paths, options.name);
+      if (
+        state.archived ||
+        state.verification === null ||
+        state.verification_result !== 'pass' ||
+        supervisor?.finalVerification.status !== 'pending'
+      ) {
+        return { state, action: 'none' };
+      }
+
+      const advanced = advanceNativeSupervisorFinalVerificationHead(supervisor);
+      if (advanced.stateVersion !== supervisor.stateVersion) {
+        const recovered = await returnNativePortableStateToFinalVerificationLocked({
+          paths: options.paths,
+          state,
+          reason:
+            'Supervisor final verification was not bound to the current integration commit; the final full verification will resume automatically.',
+        });
+        return { state: recovered, action: 'rerun-final-verification' };
+      }
+
+      await writeNativeSupervisorState(
+        options.paths,
+        recordNativeSupervisorPortableFinalVerification(supervisor, state),
+      );
+      return { state, action: 'recorded-final-verification' };
     },
   );
 }
@@ -2288,6 +2354,57 @@ export async function returnNativePortableStateToShapeLocked(options: {
     },
   };
   delete next.children_contract_hash;
+  const written = await writePortableMutation({ paths: options.paths, previous: state, next });
+  await writeNativeLocalExecution(
+    nativeLocalExecutionFile(options.paths, state.name),
+    rebuildNativeLocalExecution({
+      portableState: written,
+      projectRoot: options.paths.projectRoot,
+      branch: currentBranch(options.paths.projectRoot),
+    }),
+    { containedRoot: options.paths.runtimeDir },
+  );
+  return written;
+}
+
+export async function returnNativePortableStateToFinalVerificationLocked(options: {
+  paths: NativeProjectPaths;
+  state: NativePortableState;
+  reason: string;
+}): Promise<NativePortableState> {
+  const { state } = options;
+  if (state.archived) throw new Error(`Native change ${state.name} is already archived`);
+  if (state.verification === null || state.verification_result !== 'pass') {
+    throw new Error('Native Supervisor recovery requires a persisted final verification pass');
+  }
+  const withHistory = appendNativePortableHistory(state, {
+    goal_cycle: state.loop.goal_cycle,
+    iteration: state.loop.iteration,
+    attempt: state.loop.attempt,
+    outcome: 'recovery',
+    unresolved_ids: [],
+    summary: toNativePortableText(options.reason),
+    completed_at: new Date().toISOString(),
+  });
+  const next: NativePortableState = {
+    ...withHistory,
+    phase: 'verify',
+    status: 'active',
+    state_version: state.state_version + 1,
+    acceptance: state.acceptance.map((entry) => ({ ...entry, result: 'pending', reason: null })),
+    blockers: [],
+    verification: null,
+    verification_result: 'pending',
+    verification_report: null,
+    loop: {
+      ...state.loop,
+      stage: 'verify-ready',
+      execution_failure_count: 0,
+      previous_unresolved_ids: [],
+      no_progress_count: 0,
+      next_action: 'run-final-full-verification',
+    },
+  };
   const written = await writePortableMutation({ paths: options.paths, previous: state, next });
   await writeNativeLocalExecution(
     nativeLocalExecutionFile(options.paths, state.name),

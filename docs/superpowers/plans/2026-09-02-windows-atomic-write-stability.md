@@ -142,4 +142,4 @@ Expected: each command exits zero; investigate any failure before proceeding.
 
 - [ ] **Step 5: Review and deliver**
 
-Inspect `git diff --check`, `git status --short`, and the final generated-asset diff. Commit only this plan, design, code, tests, generated assets, package version, and changelog using `fix: stabilize Windows atomic write metadata`. Push `codex/fix-windows-atomic-write`, then create a PR against `master` using the repository `fix` template with the reproduction, security-preservation, and validation evidence.
+Inspect `git diff --check`, `git status --short`, and the final generated-asset diff. Commit only this plan, design, code, tests, generated assets, package version, and changelog using `fix: stabilize Windows atomic write metadata`. Only after the user explicitly authorizes GitHub operations, push `codex/fix-windows-atomic-write` and create a PR against `master` using the repository `fix` template with the reproduction, security-preservation, and validation evidence.

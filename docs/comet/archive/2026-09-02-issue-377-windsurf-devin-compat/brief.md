@@ -33,7 +33,7 @@
 - 不能静默覆盖或删除已有用户文件。
 - 当前工作区是从最新 `master` 创建的 Native hotfix worktree；原 checkout 中已有的 `website` 改动不属于本 change。
 - 先运行覆盖当前改动的最小相关测试；只有涉及生成物时再构建对应 runtime。
-- 验证通过后提交 hotfix 分支并创建 GitHub pull request，使用仓库的 `fix` 模板；不直接合并 PR。
+- 验证通过后先取得用户对 GitHub 操作的明确授权，再提交并推送 hotfix 分支、使用仓库的 `fix` 模板创建 pull request；不直接合并 PR。
 
 # Decisions
 

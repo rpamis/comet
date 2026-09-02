@@ -1361,16 +1361,19 @@ async function installCometHooksForPlatform(
           { platformId: platform.id, scope, hookMatcher: platform.hookMatcher },
         );
       case 'windsurf': {
-        const result = await installWindsurfHooks(
-          baseDir,
-          platformBase,
-          skillsDir,
-          hooksConfig,
-          platform.name,
-          { platformId: platform.id, scope, hookMatcher: platform.hookMatcher },
-        );
-        if (result.status !== 'installed') return result;
-
+        let result: HookInstallResult;
+        try {
+          result = await installWindsurfHooks(
+            baseDir,
+            platformBase,
+            skillsDir,
+            hooksConfig,
+            platform.name,
+            { platformId: platform.id, scope, hookMatcher: platform.hookMatcher },
+          );
+        } catch (error) {
+          result = { status: 'failed', reason: (error as Error).message };
+        }
         const failedLegacyDirs: string[] = [];
         for (const configDir of getPlatformConfigDirs(platform, scope).slice(1)) {
           try {
@@ -1386,7 +1389,7 @@ async function installCometHooksForPlatform(
         if (failedLegacyDirs.length > 0) {
           return {
             status: 'failed',
-            reason: `legacy Hook cleanup failed for ${failedLegacyDirs.join(', ')}`,
+            reason: `${result.status === 'failed' ? `${result.reason}; ` : ''}legacy Hook cleanup failed for ${failedLegacyDirs.join(', ')}`,
             cleanupFailed: failedLegacyDirs.length,
           };
         }

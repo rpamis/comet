@@ -24,12 +24,13 @@ import {
 import {
   applyNativeSupervisorBuilderResult,
   applyNativeSupervisorVerifierResult,
+  advanceNativeSupervisorFinalVerificationHead,
   blockNativeSupervisorTask,
   cancelNativeSupervisorTask,
   createNativeSupervisorTask,
   integrateNativeSupervisorChildWorkspace,
   nativeSupervisorStateFile,
-  recordNativeSupervisorFinalVerification,
+  recordNativeSupervisorPortableFinalVerification,
   readNativeSupervisorState,
   reconnectNativeSupervisorTaskWithState,
   writeNativeSupervisorState,
@@ -997,6 +998,19 @@ export async function applyNativeRunnerInput(options: {
     identityProvider: NATIVE_SKILL_COORDINATION,
     executionRef,
   });
+  let supervisorForFinalResult: NativeSupervisorState | null = null;
+  if (
+    supervisorParentVerification &&
+    typeof input.response === 'object' &&
+    input.response !== null &&
+    'kind' in input.response &&
+    input.response.kind === 'final-result'
+  ) {
+    const currentSupervisor = await readNativeSupervisorState(options.paths, options.name);
+    if (!currentSupervisor)
+      throw new Error('Native Supervisor state disappeared before final verification');
+    supervisorForFinalResult = advanceNativeSupervisorFinalVerificationHead(currentSupervisor);
+  }
   const applied = await submitNativePortableVerifierResult({
     paths: options.paths,
     name: options.name,
@@ -1020,41 +1034,14 @@ export async function applyNativeRunnerInput(options: {
         'Native Supervisor parent verification cannot pass without completed integration checks',
       );
     }
-    const supervisorState = await readNativeSupervisorState(options.paths, options.name);
+    const supervisorState =
+      supervisorForFinalResult ?? (await readNativeSupervisorState(options.paths, options.name));
     if (!supervisorState)
       throw new Error('Native Supervisor state disappeared during verification');
-    const integrationHead = runGitCommand(supervisorState.integration.worktree, [
-      'rev-parse',
-      'HEAD',
-    ]);
-    const parentSummary = applied.response.result.summary;
-    const childVerification = supervisorState.children.every(
-      ({ status, verification }) =>
-        (status === 'integrated' || status === 'archived') && verification !== null,
+    const nextSupervisor = recordNativeSupervisorPortableFinalVerification(
+      supervisorState,
+      applied.state,
     );
-    const parentIntegration =
-      applied.checks.length > 0 && applied.checks.every(({ status }) => status === 'passed');
-    const nextSupervisor = recordNativeSupervisorFinalVerification(supervisorState, {
-      status:
-        applied.state.verification_result === 'pass'
-          ? 'passed'
-          : applied.state.verification_result === 'blocked'
-            ? 'incomplete'
-            : 'failed',
-      summary: parentSummary,
-      headCommit: integrationHead,
-      layers: {
-        childVerification: childVerification ? 'complete' : 'incomplete',
-        parentIntegration: parentIntegration ? 'complete' : 'incomplete',
-        parentChecks: applied.checks.map(({ name }) => name.text),
-        notRerun: supervisorState.children.flatMap(
-          ({ verification }) => verification?.checks ?? [],
-        ),
-        incomplete: applied.checks
-          .filter(({ status }) => status !== 'passed')
-          .map(({ name }) => name.text),
-      },
-    });
     await writeNativeSupervisorState(options.paths, nextSupervisor);
     return {
       ...applied,

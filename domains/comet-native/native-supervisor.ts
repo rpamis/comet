@@ -19,6 +19,7 @@ import {
   type PreparedNativeWorkspace,
 } from './native-workspace-preparation.js';
 import type { CometProjectConfig } from './native-types.js';
+import type { NativePortableState } from './native-portable-types.js';
 import type {
   NativeChildStatusProjection,
   NativeChildrenContract,
@@ -67,6 +68,7 @@ export interface NativeSupervisorEvent {
     | 'verifier-result'
     | 'child-integrated'
     | 'child-verified'
+    | 'integration-head-reconciled'
     | 'target-refreshed'
     | 'delivery-reconciled';
   child: string | null;
@@ -1248,6 +1250,81 @@ export function recordNativeSupervisorFinalVerification(
   };
   next.stateVersion += 1;
   return next;
+}
+
+/**
+ * Record a final verification against the actual integration workspace HEAD.
+ * Parent-level review fixes may legitimately advance that branch after the
+ * final Child integration, but only a clean forward descendant can become the
+ * verified delivery commit.
+ */
+export function advanceNativeSupervisorFinalVerificationHead(
+  state: NativeSupervisorState,
+): NativeSupervisorState {
+  const workspaceHead = assertNativeSupervisorIntegrationWorkspace(state);
+  if (workspaceHead === state.integration.headCommit) return state;
+  try {
+    runGitCommand(state.integration.worktree, [
+      'merge-base',
+      '--is-ancestor',
+      state.integration.headCommit,
+      workspaceHead,
+    ]);
+  } catch {
+    throw new Error(
+      'Native Supervisor integration head is not a descendant of the recorded integration head',
+    );
+  }
+  const reconciled = cloneState(state);
+  reconciled.integration.headCommit = workspaceHead;
+  recordEvent(reconciled, {
+    kind: 'integration-head-reconciled',
+    child: null,
+    runId: null,
+    summary: 'Parent-level commits were included in final verification',
+  });
+  reconciled.stateVersion += 1;
+  return reconciled;
+}
+
+/** Recover the Supervisor half of a final result already persisted in Portable State. */
+export function recordNativeSupervisorPortableFinalVerification(
+  state: NativeSupervisorState,
+  portable: NativePortableState,
+): NativeSupervisorState {
+  const verification = portable.verification;
+  if (verification === null || portable.verification_result === 'pending') {
+    throw new Error('Native Supervisor final verification has no persisted Portable result');
+  }
+  const headCommit = assertNativeSupervisorIntegrationWorkspace(state);
+  const childVerification = state.children.every(
+    ({ status, verification: childEvidence }) =>
+      (status === 'integrated' || status === 'archived') && childEvidence !== null,
+  );
+  const parentIntegration =
+    verification.checks.length > 0 &&
+    verification.checks.every(({ status }) => status === 'passed');
+  return recordNativeSupervisorFinalVerification(state, {
+    status:
+      portable.verification_result === 'pass'
+        ? 'passed'
+        : portable.verification_result === 'blocked'
+          ? 'incomplete'
+          : 'failed',
+    summary: verification.summary.text,
+    headCommit,
+    layers: {
+      childVerification: childVerification ? 'complete' : 'incomplete',
+      parentIntegration: parentIntegration ? 'complete' : 'incomplete',
+      parentChecks: verification.checks.map(({ name }) => name.text),
+      notRerun: state.children.flatMap(
+        ({ verification: childEvidence }) => childEvidence?.checks ?? [],
+      ),
+      incomplete: verification.checks
+        .filter(({ status }) => status !== 'passed')
+        .map(({ name }) => name.text),
+    },
+  });
 }
 
 async function finalizeNativeSupervisorDeliveryLocked(options: {

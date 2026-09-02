@@ -51,6 +51,7 @@ import {
   returnNativePortableChangeToShape,
 } from '../../../domains/comet-native/native-portable-runtime.js';
 import { inspectNativePortableStatus } from '../../../domains/comet-native/native-portable-status.js';
+import { nativeNextCommand } from '../../../domains/comet-native/native-next-command.js';
 
 const CONTRACT = parseNativeChildrenContract(`
 schema: comet.native.children.v2
@@ -123,6 +124,17 @@ describe('Native Supervisor v2 state', () => {
           checks: [{ name: 'integration test', status: 'passed' }],
         }),
       );
+      const integrationRoot = supervisor!.integration.worktree;
+      await fs.writeFile(path.join(integrationRoot, 'parent-fix.txt'), 'parent fix\n');
+      execFileSync('git', ['add', 'parent-fix.txt'], { cwd: integrationRoot });
+      execFileSync('git', ['commit', '-m', 'fix parent candidate'], { cwd: integrationRoot });
+      await fs.writeFile(path.join(integrationRoot, 'parent-follow-up.txt'), 'follow-up\n');
+      execFileSync('git', ['add', 'parent-follow-up.txt'], { cwd: integrationRoot });
+      execFileSync('git', ['commit', '-m', 'fix parent follow-up'], { cwd: integrationRoot });
+      const verifiedIntegrationHead = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: integrationRoot,
+        encoding: 'utf8',
+      }).trim();
 
       const advanced = await inspectNativeSupervisorParentReviewReadiness({
         paths,
@@ -167,7 +179,6 @@ describe('Native Supervisor v2 state', () => {
       expect(repeated.parentAdvance.advanced).toBe(false);
       expect(repeated.state.state_version).toBe(reviewed.state.state_version);
 
-      const integrationRoot = supervisor!.integration.worktree;
       const check = {
         id: 'integration-root',
         name: 'Check the integrated candidate',
@@ -250,9 +261,10 @@ describe('Native Supervisor v2 state', () => {
         ...location,
         verifierExecutionRef: dispatched.verifierDispatch!.verifierExecutionRef,
       });
-      expect((await readNativeSupervisorState(paths, 'parent'))!.finalVerification.status).toBe(
-        'pending',
-      );
+      expect(await readNativeSupervisorState(paths, 'parent')).toMatchObject({
+        integration: { headCommit: targetCommit },
+        finalVerification: { status: 'pending' },
+      });
       expect(requested.continuation.action).toBe('await-verifier');
 
       const verifiedParent = await applyNativeRunnerInput({
@@ -282,9 +294,69 @@ describe('Native Supervisor v2 state', () => {
         status: 'await-user',
         verification_result: 'pass',
       });
-      expect((await readNativeSupervisorState(paths, 'parent'))!.finalVerification).toMatchObject({
-        status: 'passed',
-        layers: { childVerification: 'complete', parentIntegration: 'complete' },
+      expect(await readNativeSupervisorState(paths, 'parent')).toMatchObject({
+        integration: { headCommit: verifiedIntegrationHead },
+        finalVerification: {
+          status: 'passed',
+          layers: { childVerification: 'complete', parentIntegration: 'complete' },
+        },
+      });
+      const interruptedSupervisor = (await readNativeSupervisorState(paths, 'parent'))!;
+      interruptedSupervisor.integration.headCommit = targetCommit;
+      interruptedSupervisor.finalVerification = { status: 'pending', summary: null };
+      await writeNativeSupervisorState(paths, interruptedSupervisor);
+      const resumed = await nativeNextCommand(
+        ['parent', '--summary', 'Continue the interrupted workflow.'],
+        repository,
+      );
+      expect(resumed).toMatchObject({
+        exitCode: 0,
+        data: {
+          state: {
+            phase: 'verify',
+            status: 'active',
+            verification_result: 'pending',
+            loop: { stage: 'verify-ready', next_action: 'run-final-full-verification' },
+          },
+          continuation: { action: 'dispatch-verifier' },
+        },
+      });
+      expect(await readNativeSupervisorState(paths, 'parent')).toMatchObject({
+        integration: { headCommit: targetCommit },
+        finalVerification: { status: 'pending' },
+      });
+      const redispatched = await applyNativeRunnerInput({
+        paths,
+        name: 'parent',
+        maxVerifyFailures: 5,
+        input: { kind: 'dispatch-verifier', checks: [check] },
+      });
+      await applyNativeRunnerInput({
+        paths,
+        name: 'parent',
+        maxVerifyFailures: 5,
+        input: {
+          kind: 'verifier-response',
+          response: {
+            kind: 'final-result',
+            result: {
+              iteration: redispatched.state.loop.iteration,
+              attempt: redispatched.state.loop.attempt,
+              verdict: 'pass',
+              acceptance: redispatched.state.acceptance.map(({ id }) => ({
+                id,
+                result: 'passed',
+                reason: 'The integrated behavior was reverified.',
+              })),
+              risks: [],
+              summary: 'Recovered parent integration verification passed.',
+            },
+          },
+        },
+      });
+      expect(await readNativeSupervisorState(paths, 'parent')).toMatchObject({
+        integration: { headCommit: verifiedIntegrationHead },
+        finalVerification: { status: 'passed' },
       });
     } finally {
       try {
