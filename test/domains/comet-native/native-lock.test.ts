@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   acquireNativeLock,
@@ -44,6 +44,41 @@ describe('Native operation locks', () => {
     );
     await releaseNativeLock(lock);
     expect(await readNativeLock(lock.file)).toBeNull();
+  });
+
+  it('releases a lock when close finalizes its ctime', async () => {
+    const originalOpen = fs.open.bind(fs);
+    const open = vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+      const handle = await originalOpen(...args);
+      if (args[1] !== 'wx') return handle;
+
+      const stat = handle.stat.bind(handle);
+      return new Proxy(handle, {
+        get(target, property) {
+          if (property === 'stat') {
+            return async (options?: { bigint?: boolean }) => {
+              const result = await stat(options as { bigint: true });
+              if (!options?.bigint) return result;
+              return new Proxy(result, {
+                get(statTarget, statProperty) {
+                  if (statProperty === 'ctimeNs') return statTarget.ctimeNs - 1n;
+                  return Reflect.get(statTarget, statProperty, statTarget);
+                },
+              });
+            };
+          }
+          const value = Reflect.get(target, property, target);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+    });
+
+    try {
+      const lock = await acquireNativeLock(paths, 'archive', 'archive example');
+      await expect(releaseNativeLock(lock)).resolves.toBeUndefined();
+    } finally {
+      open.mockRestore();
+    }
   });
 
   it('validates lock names, tolerates a missing release target, and reuses nested coordinators', async () => {

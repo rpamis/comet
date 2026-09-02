@@ -259,13 +259,24 @@ async function writeNativeLockFile(
     }
     throw error;
   }
+  let writtenIdentity: NativeLockFileIdentity | undefined;
   try {
     await handle.writeFile(JSON.stringify(owner, null, 2) + '\n', 'utf8');
     await handle.sync();
-    return nativeLockFileIdentity(await handle.stat({ bigint: true }));
+    writtenIdentity = nativeLockFileIdentity(await handle.stat({ bigint: true }));
   } finally {
     await handle.close();
   }
+  const snapshot = await readNativeLockSnapshot(file);
+  if (
+    !writtenIdentity ||
+    !snapshot ||
+    snapshot.owner.id !== owner.id ||
+    !sameNativeLockObject(snapshot.identity, writtenIdentity)
+  ) {
+    throw new Error(`Native lock changed after write: ${file}`);
+  }
+  return snapshot.identity;
 }
 
 async function publishNativeCoordinatorClaim(

@@ -42,6 +42,27 @@ describe('contained atomic write', () => {
     expect(await temporaryFiles(root)).toEqual([]);
   });
 
+  it('uses a post-close snapshot after filesystem metadata finalization', async () => {
+    const target = path.join(root, 'state.yaml');
+    let finalized = false;
+
+    await atomicWriteContainedText(target, 'schema: comet.project.v1\n', {
+      containedRoot: root,
+      afterTemporaryClose: async () => {
+        finalized = true;
+        const temporary = (await temporaryFiles(root))[0];
+        if (!temporary) throw new Error('temporary file not found after close');
+        const temporaryPath = path.join(root, temporary);
+        const stat = await fs.stat(temporaryPath);
+        await fs.utimes(temporaryPath, stat.atime, new Date(stat.mtimeMs + 2_000));
+      },
+    });
+
+    expect(finalized).toBe(true);
+    expect(await fs.readFile(target, 'utf8')).toBe('schema: comet.project.v1\n');
+    expect(await temporaryFiles(root)).toEqual([]);
+  });
+
   it('rejects a temporary file replaced before commit and cleans it up', async () => {
     const target = path.join(root, 'state.yaml');
     await expect(

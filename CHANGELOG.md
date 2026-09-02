@@ -7,6 +7,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Fixed
 
 - **Dashboard Project Knowledge consistency**: Dashboard now uses the same default Local Project Knowledge cache as `comet task` and `comet knowledge`, so rebuilt records and indexed Markdown sources appear in the plugin center and records created there are available to CLI retrieval. Records from the former `~/.comet/plugins/knowledge-cache` Dashboard location are imported into the canonical cache during upgrade.
+- **Windows atomic writes**: Comet now refreshes temporary-file and Native lock metadata after a successful close, so NTFS close-time metadata finalization no longer makes Comet treat its own files as externally changed. Identity and post-close mutation checks remain enforced before publish or release.
 
 ## What's Changed [0.4.0-rc.2] - 2026-09-01
 

@@ -7,6 +7,7 @@ import { sameNativeFileObject } from './native-file-identity.js';
 export interface NativeAtomicWriteOptions {
   containedRoot?: string;
   beforeTemporaryOpen?: () => void | Promise<void>;
+  afterTemporaryClose?: () => void | Promise<void>;
   beforeCommit?: () => void | Promise<void>;
   exclusive?: boolean;
 }
@@ -86,6 +87,27 @@ async function verifyDirectoryChain(chain: readonly DirectoryIdentity[]): Promis
       throw new Error(`Native atomic write parent changed before commit: ${identity.path}`);
     }
   }
+}
+
+async function captureClosedTemporaryFile(
+  temporary: string,
+  writtenIdentity: import('fs').Stats,
+  directoryChain: readonly DirectoryIdentity[] | null,
+): Promise<import('fs').Stats> {
+  const [temporaryStat, temporaryRealPath] = await Promise.all([
+    fs.lstat(temporary),
+    fs.realpath(temporary),
+    directoryChain ? verifyDirectoryChain(directoryChain) : Promise.resolve(),
+  ]);
+  if (
+    !temporaryStat.isFile() ||
+    temporaryStat.isSymbolicLink() ||
+    !sameFileIdentity(temporaryStat, writtenIdentity) ||
+    (directoryChain && !isInside(directoryChain[0].realPath, temporaryRealPath))
+  ) {
+    throw new Error('Native atomic write temporary file changed after close');
+  }
+  return temporaryStat;
 }
 
 async function prepareContainedDirectoryChain(
@@ -176,6 +198,11 @@ async function atomicWrite(
     }
     await handle.close();
     handle = undefined;
+    await options.afterTemporaryClose?.();
+    if (!writtenIdentity) {
+      throw new Error('Native atomic write temporary file was not written');
+    }
+    writtenIdentity = await captureClosedTemporaryFile(temporary, writtenIdentity, directoryChain);
     await options.beforeCommit?.();
     if (directoryChain) {
       await verifyDirectoryChain(directoryChain);
