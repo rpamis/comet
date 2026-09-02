@@ -1378,7 +1378,7 @@ async function installCometHooksForPlatform(
             { platformId: platform.id, scope, hookMatcher: platform.hookMatcher },
           );
         } catch (error) {
-          result = { status: 'failed', reason: (error as Error).message };
+          return { status: 'failed', reason: (error as Error).message };
         }
         const failedLegacyDirs: string[] = [];
         for (const configDir of getPlatformConfigDirs(platform, scope).slice(1)) {

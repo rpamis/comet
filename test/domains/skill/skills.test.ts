@@ -2000,7 +2000,7 @@ describe('skills', () => {
       await expect(fs.readFile(settingsPath, 'utf-8')).resolves.toBe(malformedSettings);
     });
 
-    it('cleans managed legacy Windsurf hooks when canonical Devin hooks are malformed', async () => {
+    it('preserves working legacy Windsurf hooks when canonical Devin hooks are malformed', async () => {
       const platform = PLATFORMS.find((candidate) => candidate.id === 'windsurf')!;
       const canonicalPath = path.join(tmpDir, '.devin', 'hooks.json');
       const legacyPath = path.join(tmpDir, '.windsurf', 'hooks.json');
@@ -2028,7 +2028,12 @@ describe('skills', () => {
       expect(result.reason).toContain(`Invalid ${platform.name} settings`);
       await expect(fs.readFile(canonicalPath, 'utf-8')).resolves.toBe(malformedCanonical);
       await expect(fs.readFile(legacyPath, 'utf-8').then(JSON.parse)).resolves.toMatchObject({
-        hooks: { pre_write_code: [userHook] },
+        hooks: {
+          pre_write_code: [
+            userHook,
+            { command: expectedHookCommand('.windsurf', 'windsurf'), show_output: true },
+          ],
+        },
       });
     });
 

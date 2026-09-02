@@ -70,6 +70,7 @@ import {
   readNativePortableState,
   writeNativePortableState,
 } from './native-portable-state.js';
+import { readNativePortableTransaction } from './native-portable-transactions.js';
 import { toNativePortableText } from './native-portable-text.js';
 import type {
   NativeLocalCheckState,
@@ -1991,6 +1992,67 @@ export interface NativeSupervisorFinalVerificationResumeResult {
   action: 'none' | 'rerun-final-verification' | 'recorded-final-verification';
 }
 
+export async function recoverNativeSupervisorFinalVerificationLocked(options: {
+  paths: NativeProjectPaths;
+  name: string;
+}): Promise<NativeSupervisorFinalVerificationResumeResult> {
+  const state = await readNativePortableChange(options.paths, options.name);
+  const supervisor = await readNativeSupervisorState(options.paths, options.name);
+  const transaction = await readNativePortableTransaction(options.paths, {
+    kind: 'archive',
+    change: options.name,
+  });
+  const archiveTransaction = transaction?.kind === 'archive' ? transaction : null;
+  if (archiveTransaction && supervisor?.finalVerification.status === 'pending') {
+    if (
+      archiveTransaction.journal.status !== 'prepared' ||
+      archiveTransaction.journal.next_spec_index !== 0
+    ) {
+      throw new Error(
+        'Native Supervisor final verification changed after Archive applied side effects; doctor intervention is required',
+      );
+    }
+    if (
+      state.phase === 'verify' &&
+      state.status === 'active' &&
+      state.verification === null &&
+      state.verification_result === 'pending' &&
+      state.loop.stage === 'verify-ready'
+    ) {
+      await fs.rm(archiveTransaction.file, { force: true });
+      return { state, action: 'rerun-final-verification' };
+    }
+  }
+  if (
+    state.archived ||
+    state.verification === null ||
+    state.verification_result !== 'pass' ||
+    supervisor?.finalVerification.status !== 'pending'
+  ) {
+    return { state, action: 'none' };
+  }
+
+  const advanced = advanceNativeSupervisorFinalVerificationHead(supervisor);
+  if (archiveTransaction || advanced.stateVersion !== supervisor.stateVersion) {
+    const recovered = await returnNativePortableStateToFinalVerificationLocked({
+      paths: options.paths,
+      state,
+      reason:
+        'Supervisor final verification was not bound to the current integration commit; the final full verification will resume automatically.',
+    });
+    if (archiveTransaction) {
+      await fs.rm(archiveTransaction.file, { force: true });
+    }
+    return { state: recovered, action: 'rerun-final-verification' };
+  }
+
+  await writeNativeSupervisorState(
+    options.paths,
+    recordNativeSupervisorPortableFinalVerification(supervisor, state),
+  );
+  return { state, action: 'recorded-final-verification' };
+}
+
 /**
  * Repair an interrupted Supervisor final-verification write as part of normal
  * Native continuation. No recovery flag or direct state edit is required.
@@ -2002,35 +2064,8 @@ export async function recoverNativeSupervisorFinalVerificationOnResume(options: 
   return withNativeMutationLock(
     options.paths,
     `recover Supervisor final verification ${options.name}`,
-    async () => {
-      const state = await readNativePortableChange(options.paths, options.name);
-      const supervisor = await readNativeSupervisorState(options.paths, options.name);
-      if (
-        state.archived ||
-        state.verification === null ||
-        state.verification_result !== 'pass' ||
-        supervisor?.finalVerification.status !== 'pending'
-      ) {
-        return { state, action: 'none' };
-      }
-
-      const advanced = advanceNativeSupervisorFinalVerificationHead(supervisor);
-      if (advanced.stateVersion !== supervisor.stateVersion) {
-        const recovered = await returnNativePortableStateToFinalVerificationLocked({
-          paths: options.paths,
-          state,
-          reason:
-            'Supervisor final verification was not bound to the current integration commit; the final full verification will resume automatically.',
-        });
-        return { state: recovered, action: 'rerun-final-verification' };
-      }
-
-      await writeNativeSupervisorState(
-        options.paths,
-        recordNativeSupervisorPortableFinalVerification(supervisor, state),
-      );
-      return { state, action: 'recorded-final-verification' };
-    },
+    () => recoverNativeSupervisorFinalVerificationLocked(options),
+    { allowedPortableTransaction: { kind: 'archive', change: options.name } },
   );
 }
 

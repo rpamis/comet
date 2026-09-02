@@ -2,6 +2,7 @@ import { inspectNativeChildren } from './native-children.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
 import { migrateNativeLegacyChangeToPortable } from './native-portable-migration-runtime.js';
 import {
+  nativePortableWorkspaceMismatch,
   recoverNativePortableChange,
   type NativePortableRecoveryResult,
 } from './native-portable-recovery.js';
@@ -18,6 +19,7 @@ import {
   confirmNativePortableVerifierUnavailable,
   inspectNativePortableAcceptanceDrift,
   isNativePortableChange,
+  readNativePortableChange,
   recoverNativeSupervisorFinalVerificationOnResume,
   resolveNativePortableVerifierBlocker,
   returnNativePortableChangeToBuild,
@@ -177,6 +179,20 @@ export async function nativeNextCommand(
     });
   }
 
+  const initialState = await readNativePortableChange(configured.paths, name);
+  const initialWorkspaceMismatch = nativePortableWorkspaceMismatch(configured.paths, initialState);
+  if (initialWorkspaceMismatch) {
+    return success('next', {
+      state: nativePortableStateSummary(initialState),
+      recovery: {
+        action: 'await-user',
+        reason: 'workspace-mismatch',
+        message: initialWorkspaceMismatch,
+      },
+      ...(await portableParentView(configured.paths, initialState)),
+    });
+  }
+
   if (runnerInputFile) {
     if (
       summary ||
@@ -192,12 +208,6 @@ export async function nativeNextCommand(
         '--runner-input cannot be combined with --summary, continuation expectations, or Agent transition flags',
       );
     }
-    const recovery = await recoverNativePortableChange({
-      paths: configured.paths,
-      name,
-      preserveRunningExecution: true,
-    });
-    const current = recovery.state;
     const supervisorRecovery = await recoverNativeSupervisorFinalVerificationOnResume({
       paths: configured.paths,
       name,
@@ -208,6 +218,12 @@ export async function nativeNextCommand(
         ...(await portableParentView(configured.paths, supervisorRecovery.state)),
       });
     }
+    const recovery = await recoverNativePortableChange({
+      paths: configured.paths,
+      name,
+      preserveRunningExecution: true,
+    });
+    const current = recovery.state;
     if (
       recovery.action === 'await-user' ||
       recovery.action === 'done' ||
@@ -257,8 +273,6 @@ export async function nativeNextCommand(
       coordination: NATIVE_SKILL_COORDINATION,
     });
   }
-  const recovery = await recoverNativePortableChange({ paths: configured.paths, name });
-  const current = recovery.state;
   const supervisorRecovery = await recoverNativeSupervisorFinalVerificationOnResume({
     paths: configured.paths,
     name,
@@ -269,6 +283,8 @@ export async function nativeNextCommand(
       ...(await portableParentView(configured.paths, supervisorRecovery.state)),
     });
   }
+  const recovery = await recoverNativePortableChange({ paths: configured.paths, name });
+  const current = recovery.state;
   if (coordinationMode !== undefined && current.phase !== 'shape') {
     throw new NativeUsageError('--coordination-mode is only valid when confirming Shape');
   }

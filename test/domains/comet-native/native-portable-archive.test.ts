@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { nativeArchiveCommand } from '../../../domains/comet-native/native-archive-command.js';
 import {
@@ -22,6 +22,8 @@ import {
   archiveNativePortableChange,
   inspectNativePortableArchive,
 } from '../../../domains/comet-native/native-portable-archive.js';
+import { parseNativeChildrenContract } from '../../../domains/comet-native/native-children.js';
+import { nativeNextCommand } from '../../../domains/comet-native/native-next-command.js';
 import {
   confirmNativePortableShape,
   confirmNativePortableSkillCoordinatedPass,
@@ -37,6 +39,19 @@ import {
 } from '../../../domains/comet-native/native-portable-runtime.js';
 import { createNativeRunnerChannel } from '../../../domains/comet-native/native-runner-protocol.js';
 import { writeNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
+import {
+  createNativeSupervisorState,
+  integrateNativeSupervisorChild,
+  markNativeSupervisorChildVerified,
+  prepareNativeSupervisorIntegrationWorkspace,
+  readNativeSupervisorState,
+  recordNativeSupervisorFinalVerification,
+  writeNativeSupervisorState,
+} from '../../../domains/comet-native/native-supervisor.js';
+import {
+  nativePortableTransactionFile,
+  readNativePortableTransaction,
+} from '../../../domains/comet-native/native-portable-transactions.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
 
 function passedReview(reviewerExecutionRef: string) {
@@ -179,6 +194,171 @@ describe('Native portable Archive', () => {
     await expect(fs.stat(path.join(paths.changesRuntimeDir, state.name))).rejects.toMatchObject({
       code: 'ENOENT',
     });
+  });
+
+  it('continues normally after target refresh interrupts a prepared Supervisor archive', async () => {
+    const git = (args: string[], cwd = root) =>
+      execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
+    git(['init', '-b', 'main']);
+    git(['config', 'user.email', 'native@example.test']);
+    git(['config', 'user.name', 'Native Test']);
+    await fs.writeFile(path.join(root, '.gitignore'), '.comet/runtime/\n');
+    const portable = await archiveReady('archive-target-refresh');
+    await writeNativePortableState(
+      path.join(nativePortableChangeDir(paths, portable.name), 'comet-state.yaml'),
+      {
+        ...portable,
+        workspace: {
+          isolation: 'current',
+          change_branch: 'main',
+          target_branch: 'main',
+          finish: null,
+        },
+      },
+    );
+    git(['add', '.']);
+    git(['commit', '-m', 'prepare archive']);
+    const targetCommit = git(['rev-parse', 'HEAD']);
+    const prepared = await prepareNativeSupervisorIntegrationWorkspace({
+      projectRoot: root,
+      parent: portable.name,
+      targetBranch: 'main',
+      sourceConfig: defaultProjectConfig('docs', 'en'),
+    });
+
+    try {
+      const contract = parseNativeChildrenContract(`
+schema: comet.native.children.v2
+children:
+  - name: implementation
+    summary: Implements the change.
+    depends_on: []
+`);
+      let supervisor =
+        (await readNativeSupervisorState(paths, portable.name)) ??
+        createNativeSupervisorState({
+          parent: portable.name,
+          targetBranch: 'main',
+          targetCommit,
+          integrationBranch: prepared.binding.changeBranch!,
+          integrationWorktree: prepared.projectRoot,
+          contract,
+        });
+      supervisor = markNativeSupervisorChildVerified(supervisor, {
+        name: 'implementation',
+        baseCommit: targetCommit,
+        verifiedCommit: targetCommit,
+        evidence: { summary: 'verified', checks: ['child test'] },
+      });
+      await fs.writeFile(path.join(prepared.projectRoot, 'integration.txt'), 'integrated change\n');
+      git(['add', 'integration.txt'], prepared.projectRoot);
+      git(['commit', '-m', 'integrate change'], prepared.projectRoot);
+      const integrationCommit = git(['rev-parse', 'HEAD'], prepared.projectRoot);
+      supervisor = integrateNativeSupervisorChild(supervisor, {
+        name: 'implementation',
+        integrationCommit,
+        checks: [{ name: 'integration test', status: 'passed' }],
+      });
+      supervisor = recordNativeSupervisorFinalVerification(supervisor, {
+        status: 'passed',
+        summary: 'parent checks passed',
+        headCommit: integrationCommit,
+        layers: {
+          childVerification: 'complete',
+          parentIntegration: 'complete',
+          parentChecks: ['parent test'],
+          notRerun: ['child test'],
+          incomplete: [],
+        },
+      });
+      await writeNativeSupervisorState(paths, supervisor);
+
+      await fs.writeFile(path.join(root, 'target-update.txt'), 'target moved\n');
+      git(['add', 'target-update.txt']);
+      git(['commit', '-m', 'move target']);
+
+      await expect(archiveNativePortableChange({ paths, name: portable.name })).rejects.toThrow(
+        /target changed|rerun/iu,
+      );
+      await expect(
+        readNativePortableTransaction(paths, { kind: 'archive', change: portable.name }),
+      ).resolves.toMatchObject({
+        kind: 'archive',
+        journal: { status: 'prepared', next_spec_index: 0 },
+      });
+
+      git(['switch', '-c', 'wrong-caller-branch']);
+      const wrongWorkspace = await nativeNextCommand(
+        [portable.name, '--summary', 'Continue from the wrong branch.'],
+        root,
+      );
+      expect(wrongWorkspace).toMatchObject({
+        exitCode: 0,
+        data: {
+          state: { phase: 'archive', verification_result: 'pass' },
+          recovery: { action: 'await-user', reason: 'workspace-mismatch' },
+        },
+      });
+      await expect(
+        readNativePortableTransaction(paths, { kind: 'archive', change: portable.name }),
+      ).resolves.toMatchObject({
+        kind: 'archive',
+        journal: { status: 'prepared', next_spec_index: 0 },
+      });
+      git(['switch', 'main']);
+
+      const transactionFile = nativePortableTransactionFile(paths, {
+        kind: 'archive',
+        change: portable.name,
+      });
+      const remove = fs.rm.bind(fs);
+      const removeSpy = vi.spyOn(fs, 'rm').mockImplementation(async (target, options) => {
+        if (path.resolve(String(target)) === path.resolve(transactionFile)) {
+          throw new Error('simulated interruption after portable recovery');
+        }
+        return remove(target, options);
+      });
+      try {
+        await expect(
+          nativeNextCommand(
+            [portable.name, '--summary', 'Continue after the interrupted archive.'],
+            root,
+          ),
+        ).rejects.toThrow('simulated interruption after portable recovery');
+      } finally {
+        removeSpy.mockRestore();
+      }
+      await expect(readNativePortableChange(paths, portable.name)).resolves.toMatchObject({
+        phase: 'verify',
+        status: 'active',
+        verification_result: 'pending',
+        loop: { stage: 'verify-ready', next_action: 'run-final-full-verification' },
+      });
+      await expect(fs.stat(transactionFile)).resolves.toBeDefined();
+
+      const continued = await nativeNextCommand(
+        [portable.name, '--summary', 'Continue once more after interruption.'],
+        root,
+      );
+      expect(continued).toMatchObject({
+        exitCode: 0,
+        data: {
+          state: {
+            phase: 'verify',
+            status: 'active',
+            verification_result: 'pending',
+            loop: { stage: 'verify-ready', next_action: 'run-final-full-verification' },
+          },
+        },
+      });
+      await expect(fs.stat(transactionFile)).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      try {
+        git(['worktree', 'remove', '--force', prepared.projectRoot]);
+      } catch {
+        // Preserve the assertion failure if setup did not finish cleanly.
+      }
+    }
   });
 
   it('applies complete create, modify, and remove Spec operations', async () => {

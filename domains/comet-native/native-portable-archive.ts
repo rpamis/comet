@@ -14,15 +14,12 @@ import {
   nativePortableChangeDir,
   nativePortableStateFile,
   readNativePortableChange,
-  returnNativePortableStateToFinalVerificationLocked,
+  recoverNativeSupervisorFinalVerificationLocked,
   returnNativePortableStateToShapeLocked,
 } from './native-portable-runtime.js';
 import {
-  advanceNativeSupervisorFinalVerificationHead,
   finalizeNativeSupervisorDeliveryLocked,
-  recordNativeSupervisorPortableFinalVerification,
   readNativeSupervisorState,
-  writeNativeSupervisorState,
 } from './native-supervisor.js';
 import {
   compareAndSwapNativePortableState,
@@ -465,23 +462,24 @@ export async function archiveNativePortableChange(options: {
         }
       }
       if (
+        activeExists &&
+        !state.archived &&
         supervisor?.finalVerification.status === 'pending' &&
         state.verification_result === 'pass'
       ) {
-        const advanced = advanceNativeSupervisorFinalVerificationHead(supervisor);
-        if (advanced.stateVersion !== supervisor.stateVersion) {
-          await returnNativePortableStateToFinalVerificationLocked({
-            paths: options.paths,
-            state,
-            reason:
-              'Supervisor final verification was not bound to the current integration commit; rerun the final full verification.',
-          });
+        const supervisorRecovery = await recoverNativeSupervisorFinalVerificationLocked({
+          paths: options.paths,
+          name: options.name,
+        });
+        state = supervisorRecovery.state;
+        if (supervisorRecovery.action === 'rerun-final-verification') {
           throw new Error(
             'Native Supervisor final verification must be rerun for the current integration commit',
           );
         }
-        supervisor = recordNativeSupervisorPortableFinalVerification(supervisor, state);
-        await writeNativeSupervisorState(options.paths, supervisor);
+        if (supervisorRecovery.action === 'recorded-final-verification') {
+          supervisor = await readNativeSupervisorState(options.paths, options.name);
+        }
       }
       const target = archiveDirectory(options.paths, transaction?.archive_ref ?? archiveRef(state));
       const targetExists = await exists(target);
