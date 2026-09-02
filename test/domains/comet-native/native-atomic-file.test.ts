@@ -34,6 +34,28 @@ describe('Native atomic file containment', () => {
     expect(leftovers).toEqual([]);
   });
 
+  it('uses a post-close snapshot after filesystem metadata finalization', async () => {
+    const target = path.join(root, 'state.json');
+    let finalized = false;
+
+    await atomicWriteText(target, '{"ok":true}\n', {
+      containedRoot: root,
+      afterTemporaryClose: async () => {
+        finalized = true;
+        const temporary = (await fs.readdir(root)).find((entry) => entry.endsWith('.tmp'));
+        if (!temporary) throw new Error('temporary file not found after close');
+        const temporaryPath = path.join(root, temporary);
+        const stat = await fs.stat(temporaryPath);
+        await fs.utimes(temporaryPath, stat.atime, new Date(stat.mtimeMs + 2_000));
+      },
+    });
+
+    expect(finalized).toBe(true);
+    expect(await fs.readFile(target, 'utf8')).toBe('{"ok":true}\n');
+    const leftovers = (await fs.readdir(root)).filter((entry) => entry.endsWith('.tmp'));
+    expect(leftovers).toEqual([]);
+  });
+
   it('rejects a temporary file replaced before commit', async () => {
     const target = path.join(root, 'state.json');
     await expect(

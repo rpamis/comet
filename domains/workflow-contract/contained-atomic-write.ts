@@ -7,6 +7,7 @@ import { sameFileObject, type FileObjectIdentity } from '../../platform/fs/file-
 export interface ContainedAtomicWriteOptions {
   containedRoot: string;
   beforeTemporaryOpen?: () => void | Promise<void>;
+  afterTemporaryClose?: () => void | Promise<void>;
   beforeCommit?: () => void | Promise<void>;
   exclusive?: boolean;
 }
@@ -101,6 +102,27 @@ async function verifyDirectoryChain(chain: readonly DirectoryIdentity[]): Promis
       throw new Error(`Contained atomic write parent changed before commit: ${identity.path}`);
     }
   }
+}
+
+async function captureClosedTemporaryFile(
+  temporary: string,
+  writtenIdentity: import('fs').Stats,
+  directoryChain: readonly DirectoryIdentity[],
+): Promise<import('fs').Stats> {
+  const [temporaryStat, temporaryRealPath] = await Promise.all([
+    fs.lstat(temporary),
+    fs.realpath(temporary),
+    verifyDirectoryChain(directoryChain),
+  ]);
+  if (
+    !temporaryStat.isFile() ||
+    temporaryStat.isSymbolicLink() ||
+    !sameFileIdentity(temporaryStat, writtenIdentity) ||
+    !isInside(directoryChain[0].realPath, temporaryRealPath)
+  ) {
+    throw new Error('Contained atomic write temporary file changed after close');
+  }
+  return temporaryStat;
 }
 
 async function prepareContainedDirectoryChain(
@@ -216,6 +238,11 @@ async function atomicWriteContained(
     }
     await handle.close();
     handle = undefined;
+    await options.afterTemporaryClose?.();
+    if (!writtenIdentity) {
+      throw new Error('Contained atomic write temporary file was not written');
+    }
+    writtenIdentity = await captureClosedTemporaryFile(temporary, writtenIdentity, directoryChain);
 
     await options.beforeCommit?.();
     await verifyDirectoryChain(directoryChain);

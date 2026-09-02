@@ -72,7 +72,7 @@ describe('Native bounded artifact reader', () => {
         hooks: {
           afterOpen: async () => {
             await fs.rename(path.join(root, 'report.md'), path.join(root, 'old-report.md'));
-            await fs.writeFile(path.join(root, 'report.md'), 'new');
+            await fs.writeFile(path.join(root, 'report.md'), 'replacement');
           },
         },
       }),
