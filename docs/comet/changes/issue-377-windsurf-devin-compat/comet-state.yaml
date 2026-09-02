@@ -1,0 +1,383 @@
+schema: comet.native.v4
+name: issue-377-windsurf-devin-compat
+language: zh-CN
+phase: archive
+status: active
+state_version: 7
+brief: brief.md
+spec_changes:
+  - capability: windsurf-devin-compat
+    operation: create
+    source: specs/windsurf-devin-compat/spec.md
+workspace:
+  isolation: worktree
+  change_branch: hotfix/issue-377-windsurf-devin-compat
+  target_branch: master
+  finish: pull-request
+loop:
+  stage: archive-ready
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: archive
+acceptance:
+  - id: A1
+    source: brief.md
+    text: "A1: OpenSpec 1.11 通过 `--tools windsurf` 生成 `.devin/` 时，Comet project
+      init/update 成功，并把 OpenSpec 文件写入 `<project>/.devin/`。"
+    result: passed
+    reason:
+      text: OpenSpec current .devin output is accepted and project install/update
+        regression coverage passes.
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: "A2: 旧版 OpenSpec 生成 `.windsurf/` 时，Comet project/global init/update
+      仍成功；project staged output 会写入 canonical `.devin/`，global 旧目录仍能被识别和更新。"
+    result: passed
+    reason:
+      text: Legacy .windsurf OpenSpec output remains supported; project staging
+        normalizes to .devin and global legacy output remains usable.
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: "A3: 已有 `.windsurf/` 的项目仍能被识别为 `windsurf`，Comet 可以读取其中的 managed
+      Skills；卸载可以清理 Comet-managed files，但不删除用户文件。"
+    result: passed
+    reason:
+      text: Legacy .windsurf detection, managed Skill inspection, update, uninstall,
+        and user-file preservation are covered by the existing and added tests.
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: "A4: `comet init` 默认创建 `.devin/`；Native snapshot 默认排除
+      `.devin/skills/**`，同时保留 `.windsurf/skills/**` 对旧安装的兼容。"
+    result: passed
+    reason:
+      text: New init output uses .devin and Native defaults exclude both current and
+        legacy Skill roots.
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: "A5: `--platform windsurf`、已有 Superpowers 映射和 Windsurf Hook 映射继续有效，不需要新的
+      `devin` 平台参数。"
+    result: passed
+    reason:
+      text: The windsurf platform and existing Superpowers/Hook mappings remain stable
+        without a devin selector.
+      truncated: false
+  - id: A6
+    source: specs/windsurf-devin-compat/spec.md
+    text: Existing Windsurf selection remains valid - **Given** a user selects
+      `--platform windsurf` - **When** Comet resolves platform, Superpowers, or
+      Hook mappings - **Then** the selection resolves to the existing Windsurf
+      platform - **And** no `devin` platform ID is required
+    result: passed
+    reason:
+      text: The existing windsurf platform identity and selector remain unchanged.
+      truncated: false
+  - id: A7
+    source: specs/windsurf-devin-compat/spec.md
+    text: Current OpenSpec output is installed - **Given** OpenSpec generates the
+      Windsurf-compatible tool output under `.devin/` - **When** Comet installs
+      OpenSpec tools for a project or globally - **Then** the generated files
+      are available under the canonical `.devin/` root - **And** a second
+      canonical copy is not required under `.windsurf/`
+    result: passed
+    reason:
+      text: Current OpenSpec output is copied to canonical .devin without requiring a
+        duplicate .windsurf copy.
+      truncated: false
+  - id: A8
+    source: specs/windsurf-devin-compat/spec.md
+    text: Legacy installation is detected and maintained - **Given** a project has
+      Comet-managed Skills under `.windsurf/` and no `.devin/` root - **When**
+      Comet detects, updates, or uninstalls the Windsurf installation - **Then**
+      it recognizes the installation as `windsurf` - **And** it can operate on
+      Comet-managed files under `.windsurf/` - **And** it does not delete
+      unrelated user files
+    result: passed
+    reason:
+      text: Legacy .windsurf installations are detected and managed without deleting
+        unrelated files.
+      truncated: false
+  - id: A9
+    source: specs/windsurf-devin-compat/spec.md
+    text: Legacy staged output is normalized for a project - **Given** an older
+      OpenSpec CLI stages Windsurf output under `.windsurf/` - **When** Comet
+      installs OpenSpec tools for a project - **Then** the install succeeds -
+      **And** the staged files are copied to `<project>/.devin/` - **And** no
+      generated file is required to remain under `<project>/.windsurf/`
+    result: passed
+    reason:
+      text: Legacy staged OpenSpec output is accepted and normalized to the project
+        .devin root.
+      truncated: false
+  - id: A10
+    source: specs/windsurf-devin-compat/spec.md
+    text: Both staged layouts exist - **Given** a staged project contains non-empty
+      output under both `.devin/` and `.windsurf/` - **When** Comet resolves the
+      generated Windsurf output - **Then** it chooses `.devin/` as the current
+      output - **And** it does not silently merge an ambiguous legacy tree over
+      the current output
+    result: passed
+    reason:
+      text: When both staged layouts exist, .devin is preferred and the legacy tree is
+        not silently merged.
+      truncated: false
+  - id: A11
+    source: specs/windsurf-devin-compat/spec.md
+    text: Snapshot excludes current and legacy Skill roots - **Given** a project
+      contains managed Skills in either Windsurf root - **When** Comet creates
+      the default Native snapshot configuration - **Then** both
+      `.devin/skills/**` and `.windsurf/skills/**` are excluded
+    result: passed
+    reason:
+      text: Native snapshot defaults exclude both .devin/skills/** and
+        .windsurf/skills/**.
+      truncated: false
+builder_handoff:
+  candidate_id: 8163f470-319e-4292-a7a2-276d728cc6d7
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:5735ac77-34c6-41a8-b72c-9665f17992d1
+  iteration: 1
+  summary:
+    text: 将 Windsurf/Devin Desktop 平台的 canonical Skill root 从 .windsurf 更新为
+      .devin，保留 windsurf 平台和 OpenSpec ID，并让 OpenSpec project staging 兼容
+      .devin/.windsurf；同时保留旧目录检测、管理和 Native snapshot 排除。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    - A8
+    - A9
+    - A10
+    - A11
+  checks:
+    - name:
+        text: Focused Vitest compatibility suite (8 files, 516 tests)
+        truncated: false
+      result: passed
+      note:
+        text: Platform/OpenSpec/Native config/init/Hook/Skill/release metadata
+          regressions passed.
+        truncated: false
+    - name:
+        text: pnpm test
+        truncated: false
+      result: failed
+      note:
+        text: 352 files passed; 1 pre-existing native-evidence-storage timing-sensitive
+          test failed in the full run. The failing file passes when run alone
+          (18/18).
+        truncated: false
+    - name:
+        text: pnpm lint
+        truncated: false
+      result: passed
+      note:
+        text: Includes architecture lint.
+        truncated: false
+    - name:
+        text: pnpm format:check
+        truncated: false
+      result: passed
+      note:
+        text: All matched files use Prettier code style.
+        truncated: false
+    - name:
+        text: pnpm exec tsc --noEmit
+        truncated: false
+      result: passed
+      note:
+        text: TypeScript check passed.
+        truncated: false
+    - name:
+        text: pnpm build
+        truncated: false
+      result: passed
+      note:
+        text: Classic, Native, Entry, TypeScript and Dashboard build passed.
+        truncated: false
+    - name:
+        text: pnpm run check:generated
+        truncated: false
+      result: passed
+      note:
+        text: Generated runtime assets are fresh.
+        truncated: false
+    - name:
+        text: git diff --check
+        truncated: false
+      result: passed
+      note:
+        text: No whitespace errors.
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: Full pnpm test had one unrelated timing-sensitive failure in
+        native-evidence-storage.test.ts; rerunning that file alone passed 18/18.
+        No source change was made outside the Issue 377 compatibility scope.
+      truncated: false
+  known_limits_truncated: false
+  review:
+    status: passed
+    summary:
+      text: 独立只读 review 未发现代码级 Critical/Important 问题；全量测试中的唯一失败项已单独复现通过，属于并发时序波动。
+      truncated: false
+    reviewer_execution_ref: 01a0611e-8aaa-7d20-ae9d-8e2d11788f5c
+  submitted_at: 2026-09-02T08:14:37.646Z
+blockers: []
+verification:
+  candidate_id: 8163f470-319e-4292-a7a2-276d728cc6d7
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:d345b778-c86b-42dc-85e6-37efdaa9a991
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: focused-compatibility
+      name:
+        text: Focused Devin Desktop compatibility regression suite
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: vitest
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/platform/detect.test.ts
+          truncated: false
+        - text: test/domains/integrations/openspec.test.ts
+          truncated: false
+        - text: test/domains/comet-native/native-config.test.ts
+          truncated: false
+        - text: test/app/init-e2e.test.ts
+          truncated: false
+        - text: test/domains/skill/platform-inspect.test.ts
+          truncated: false
+        - text: test/domains/skill/uninstall.test.ts
+          truncated: false
+        - text: test/domains/skill/skills.test.ts
+          truncated: false
+        - text: test/repository/release-metadata.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 61281
+    - id: lint
+      name:
+        text: Repository lint
+        truncated: false
+      argv_display:
+        - text: lint
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 10809
+    - id: format-check
+      name:
+        text: Repository format check
+        truncated: false
+      argv_display:
+        - text: format:check
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 17705
+    - id: typecheck
+      name:
+        text: TypeScript check
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: tsc
+          truncated: false
+        - text: --noEmit
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 9149
+    - id: generated-assets
+      name:
+        text: Generated runtime asset check
+        truncated: false
+      argv_display:
+        - text: run
+          truncated: false
+        - text: check:generated
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 3243
+    - id: build
+      name:
+        text: Full project build
+        truncated: false
+      argv_display:
+        - text: build
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 34522
+  summary:
+    text: 独立只读审阅未发现本次 diff 引入的代码级问题；A1-A11 均有实现和回归测试证据。Runtime
+      检查计划全部通过，唯一风险是全量测试中的一个与本改动无关的并发时序波动项。
+    truncated: false
+  risks:
+    - text: The final full pnpm test run had one timing-sensitive failure in
+        native-evidence-storage.test.ts; that file passed independently with
+        18/18 tests, and the failure is outside this diff's scope.
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-09-02T08:21:25.030Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 独立只读审阅未发现本次 diff 引入的代码级问题；A1-A11 均有实现和回归测试证据。Runtime
+        检查计划全部通过，唯一风险是全量测试中的一个与本改动无关的并发时序波动项。
+      truncated: false
+    completed_at: 2026-09-02T08:21:25.030Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: false
+created_at: 2026-09-02T06:19:18.792Z

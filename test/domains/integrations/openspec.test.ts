@@ -456,6 +456,192 @@ describe('openspec', () => {
       }
     });
 
+    it('installs current Devin Desktop OpenSpec output from .devin for project and global scopes', async () => {
+      const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-devin-project-'));
+      const globalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-devin-global-'));
+      const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(globalDir);
+      try {
+        mockedExecFileSync.mockImplementation((command, args) => {
+          if (command === 'where' || command === 'which') return Buffer.from('/usr/bin/openspec');
+          if (command === 'openspec' && Array.isArray(args) && args[0] === '--version') {
+            return Buffer.from('1.11.0');
+          }
+          if (command === 'openspec' && Array.isArray(args) && args[0] === 'init') {
+            const target = unquoteWindowsArg(args[1]);
+            const tools = args[args.indexOf('--tools') + 1];
+            if (tools === 'windsurf') {
+              const generated = path.join(target, '.devin', 'skills', 'openspec-new-change');
+              fs.mkdirSync(generated, { recursive: true });
+              fs.writeFileSync(path.join(generated, 'SKILL.md'), '# Devin Desktop OpenSpec\n');
+            } else if (tools === 'none') {
+              fs.mkdirSync(path.join(target, 'openspec', 'changes', 'archive'), {
+                recursive: true,
+              });
+            }
+            return Buffer.from('ok');
+          }
+          return Buffer.from('ok');
+        });
+
+        const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
+
+        await expect(
+          installOpenSpec(projectDir, ['windsurf'], 'project', { shouldInstallCli: false }),
+        ).resolves.toBe('installed');
+        await expect(
+          installOpenSpec(globalDir, ['windsurf'], 'global', { shouldInstallCli: false }),
+        ).resolves.toBe('installed');
+
+        await expect(
+          fs.promises.readFile(
+            path.join(projectDir, '.devin', 'skills', 'openspec-new-change', 'SKILL.md'),
+            'utf8',
+          ),
+        ).resolves.toBe('# Devin Desktop OpenSpec\n');
+        await expect(
+          fs.promises.readFile(
+            path.join(globalDir, '.devin', 'skills', 'openspec-new-change', 'SKILL.md'),
+            'utf8',
+          ),
+        ).resolves.toBe('# Devin Desktop OpenSpec\n');
+        expect(fs.existsSync(path.join(projectDir, '.windsurf'))).toBe(false);
+        expect(fs.existsSync(path.join(globalDir, '.windsurf'))).toBe(false);
+      } finally {
+        homedirSpy.mockRestore();
+        fs.rmSync(projectDir, { recursive: true, force: true });
+        fs.rmSync(globalDir, { recursive: true, force: true });
+      }
+    });
+
+    it('normalizes legacy .windsurf OpenSpec output into the canonical .devin project root', async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-windsurf-legacy-'));
+      try {
+        mockedExecFileSync.mockImplementation((command, args) => {
+          if (command === 'where' || command === 'which') return Buffer.from('/usr/bin/openspec');
+          if (command === 'openspec' && Array.isArray(args) && args[0] === '--version') {
+            return Buffer.from('1.7.0');
+          }
+          if (command === 'openspec' && Array.isArray(args) && args[0] === 'init') {
+            const target = unquoteWindowsArg(args[1]);
+            const tools = args[args.indexOf('--tools') + 1];
+            if (tools === 'windsurf') {
+              const generated = path.join(target, '.windsurf', 'skills', 'openspec-new-change');
+              fs.mkdirSync(generated, { recursive: true });
+              fs.writeFileSync(path.join(generated, 'SKILL.md'), '# Legacy Windsurf OpenSpec\n');
+            } else if (tools === 'none') {
+              fs.mkdirSync(path.join(target, 'openspec', 'changes', 'archive'), {
+                recursive: true,
+              });
+            }
+            return Buffer.from('ok');
+          }
+          return Buffer.from('ok');
+        });
+
+        const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
+        await expect(
+          installOpenSpec(tmpDir, ['windsurf'], 'project', { shouldInstallCli: false }),
+        ).resolves.toBe('installed');
+
+        await expect(
+          fs.promises.readFile(
+            path.join(tmpDir, '.devin', 'skills', 'openspec-new-change', 'SKILL.md'),
+            'utf8',
+          ),
+        ).resolves.toBe('# Legacy Windsurf OpenSpec\n');
+        expect(fs.existsSync(path.join(tmpDir, '.windsurf'))).toBe(false);
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it('prefers current .devin output when a legacy .windsurf output is also staged', async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-windsurf-both-'));
+      try {
+        mockedExecFileSync.mockImplementation((command, args) => {
+          if (command === 'where' || command === 'which') return Buffer.from('/usr/bin/openspec');
+          if (command === 'openspec' && Array.isArray(args) && args[0] === '--version') {
+            return Buffer.from('1.11.0');
+          }
+          if (command === 'openspec' && Array.isArray(args) && args[0] === 'init') {
+            const target = unquoteWindowsArg(args[1]);
+            const tools = args[args.indexOf('--tools') + 1];
+            if (tools === 'windsurf') {
+              for (const [root, content] of [
+                ['.devin', '# Current Devin OpenSpec\n'],
+                ['.windsurf', '# Legacy Windsurf OpenSpec\n'],
+              ] as const) {
+                const generated = path.join(target, root, 'skills', 'openspec-new-change');
+                fs.mkdirSync(generated, { recursive: true });
+                fs.writeFileSync(path.join(generated, 'SKILL.md'), content);
+              }
+            } else if (tools === 'none') {
+              fs.mkdirSync(path.join(target, 'openspec', 'changes', 'archive'), {
+                recursive: true,
+              });
+            }
+            return Buffer.from('ok');
+          }
+          return Buffer.from('ok');
+        });
+
+        const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
+        await expect(
+          installOpenSpec(tmpDir, ['windsurf'], 'project', { shouldInstallCli: false }),
+        ).resolves.toBe('installed');
+
+        await expect(
+          fs.promises.readFile(
+            path.join(tmpDir, '.devin', 'skills', 'openspec-new-change', 'SKILL.md'),
+            'utf8',
+          ),
+        ).resolves.toBe('# Current Devin OpenSpec\n');
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it('keeps global legacy OpenSpec output usable for older CLIs', async () => {
+      const globalDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), 'comet-openspec-windsurf-global-legacy-'),
+      );
+      const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(globalDir);
+      try {
+        mockedExecFileSync.mockImplementation((command, args) => {
+          if (command === 'where' || command === 'which') return Buffer.from('/usr/bin/openspec');
+          if (command === 'openspec' && Array.isArray(args) && args[0] === '--version') {
+            return Buffer.from('1.7.0');
+          }
+          if (command === 'openspec' && Array.isArray(args) && args[0] === 'init') {
+            const target = unquoteWindowsArg(args[1]);
+            const tools = args[args.indexOf('--tools') + 1];
+            if (tools === 'windsurf') {
+              const generated = path.join(target, '.windsurf', 'skills', 'openspec-new-change');
+              fs.mkdirSync(generated, { recursive: true });
+              fs.writeFileSync(path.join(generated, 'SKILL.md'), '# Legacy global OpenSpec\n');
+            }
+            return Buffer.from('ok');
+          }
+          return Buffer.from('ok');
+        });
+
+        const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
+        await expect(
+          installOpenSpec(globalDir, ['windsurf'], 'global', { shouldInstallCli: false }),
+        ).resolves.toBe('installed');
+
+        await expect(
+          fs.promises.readFile(
+            path.join(globalDir, '.windsurf', 'skills', 'openspec-new-change', 'SKILL.md'),
+            'utf8',
+          ),
+        ).resolves.toBe('# Legacy global OpenSpec\n');
+      } finally {
+        homedirSpy.mockRestore();
+        fs.rmSync(globalDir, { recursive: true, force: true });
+      }
+    });
+
     it('fails when OpenSpec stages no tool output for a requested platform', async () => {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-missing-tools-'));
       try {

@@ -261,7 +261,7 @@ Comet Eval's automated dual-agent architecture can integrate online with LangSmi
 | ------------------ | ------------- | ------------- | ------------ |
 | Claude Code        | `.claude/`    | Cursor        | `.cursor/`   |
 | Codex              | `.codex/`     | OpenCode      | `.opencode/` |
-| Windsurf           | `.windsurf/`  | Cline         | `.cline/`    |
+| Devin Desktop (formerly Windsurf) | `.devin/`     | Cline         | `.cline/`    |
 | RooCode            | `.roo/`       | Continue      | `.continue/` |
 | GitHub Copilot     | `.github/`    | Gemini CLI    | `.gemini/`   |
 | Amazon Q Developer | `.amazonq/`   | Qwen Code     | `.qwen/`     |

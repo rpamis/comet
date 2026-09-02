@@ -54,6 +54,7 @@ const DEFAULT_WORKFLOW_NATIVE_MANAGED_SKILL_EXCLUDES = [
   '.cospec/skills/**',
   '.crush/skills/**',
   '.cursor/skills/**',
+  '.devin/skills/**',
   '.dsh/skills/**',
   '.factory/skills/**',
   '.forge/skills/**',

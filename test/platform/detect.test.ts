@@ -103,6 +103,21 @@ describe('detect', () => {
       expect(getPlatformSkillsDirs(codex!, 'global')).toEqual(['.agents', '.codex']);
     });
 
+    it('declares Devin Desktop as the canonical Windsurf-compatible root', () => {
+      const windsurf = PLATFORMS.find((platform) => platform.id === 'windsurf');
+
+      expect(windsurf).toBeDefined();
+      expect(windsurf?.name).toBe('Devin Desktop (formerly Windsurf)');
+      expect(windsurf?.skillsDir).toBe('.devin');
+      expect(windsurf?.globalSkillsDir).toBe('.devin');
+      expect(windsurf?.legacySkillsDirs).toEqual(['.windsurf']);
+      expect(windsurf?.openspecToolId).toBe('windsurf');
+      expect(getPlatformSkillsDir(windsurf!, 'project')).toBe('.devin');
+      expect(getPlatformSkillsDir(windsurf!, 'global')).toBe('.devin');
+      expect(getPlatformSkillsDirs(windsurf!, 'project')).toEqual(['.devin', '.windsurf']);
+      expect(getPlatformSkillsDirs(windsurf!, 'global')).toEqual(['.devin', '.windsurf']);
+    });
+
     it('declares Grok Skills, rules, and hooks under the native .grok root', () => {
       const grok = PLATFORMS.find((platform) => platform.id === 'grok');
 
@@ -229,6 +244,17 @@ describe('detect', () => {
       const detected = await detectPlatforms(tmpDir);
       expect(detected.has('claude')).toBe(true);
     });
+
+    it.each(['.devin', '.windsurf'])(
+      'detects Windsurf-compatible platform from %s',
+      async (root) => {
+        await fs.mkdir(path.join(tmpDir, root));
+
+        const detected = await detectPlatforms(tmpDir);
+
+        expect(detected.has('windsurf')).toBe(true);
+      },
+    );
 
     it('detects Oh My Pi from the native .omp directory', async () => {
       await fs.mkdir(path.join(tmpDir, '.omp'));

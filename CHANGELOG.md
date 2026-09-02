@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-rc.3] - 2026-09-02
+
+### Fixed
+
+- **Devin Desktop OpenSpec compatibility**: `comet init`, `comet update`, and OpenSpec integration now use Devin Desktop's `.devin/` Skill root while keeping `windsurf` as the stable platform selector and recognizing legacy `.windsurf/` installations.
+
 ## What's Changed [0.4.0-rc.2] - 2026-09-01
 
 ### Added

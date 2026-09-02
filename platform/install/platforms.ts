@@ -146,9 +146,10 @@ export const PLATFORMS: Platform[] = [
   },
   {
     id: 'windsurf',
-    name: 'Windsurf',
-    skillsDir: '.windsurf',
-    globalSkillsDir: '.windsurf',
+    name: 'Devin Desktop (formerly Windsurf)',
+    skillsDir: '.devin',
+    globalSkillsDir: '.devin',
+    legacySkillsDirs: ['.windsurf'],
     openspecToolId: 'windsurf',
     rulesDir: 'rules',
     rulesFormat: 'md',

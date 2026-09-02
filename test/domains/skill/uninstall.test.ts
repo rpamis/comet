@@ -111,7 +111,7 @@ describe('removeCometHooksForPlatform', () => {
   it.each([
     { id: 'qwen', configPath: ['.qwen', 'settings.json'] },
     { id: 'gemini', configPath: ['.gemini', 'settings.json'] },
-    { id: 'windsurf', configPath: ['.windsurf', 'hooks.json'] },
+    { id: 'windsurf', configPath: ['.devin', 'hooks.json'] },
     { id: 'trae', configPath: ['.trae', 'hooks.json'] },
     { id: 'trae-cn', configPath: ['.trae', 'hooks.json'] },
   ])('fails closed when canonical $id Hook JSON is malformed', async ({ id, configPath }) => {
@@ -131,7 +131,7 @@ describe('removeCometHooksForPlatform', () => {
   it.each([
     { id: 'qwen', configPath: ['.qwen', 'settings.json'] },
     { id: 'gemini', configPath: ['.gemini', 'settings.json'] },
-    { id: 'windsurf', configPath: ['.windsurf', 'hooks.json'] },
+    { id: 'windsurf', configPath: ['.devin', 'hooks.json'] },
     { id: 'trae', configPath: ['.trae', 'hooks.json'] },
     { id: 'trae-cn', configPath: ['.trae', 'hooks.json'] },
   ])('fails closed when canonical $id Hook JSON is an array', async ({ id, configPath }) => {
@@ -195,8 +195,8 @@ describe('removeCometHooksForPlatform', () => {
     },
     {
       id: 'windsurf',
-      accessPath: ['.windsurf', 'hooks.json'],
-      snapshotPath: ['.windsurf', 'hooks.json'],
+      accessPath: ['.devin', 'hooks.json'],
+      snapshotPath: ['.devin', 'hooks.json'],
     },
     {
       id: 'trae',

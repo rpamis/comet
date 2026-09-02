@@ -42,7 +42,7 @@ function hookConfigPath(baseDir: string, platformId: string): string {
     case 'gemini':
       return path.join(baseDir, '.gemini', 'settings.json');
     case 'windsurf':
-      return path.join(baseDir, '.windsurf', 'hooks.json');
+      return path.join(baseDir, '.devin', 'hooks.json');
     case 'trae':
     case 'trae-cn':
       return path.join(baseDir, '.trae', 'hooks.json');

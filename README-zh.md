@@ -243,7 +243,7 @@ Comet Eval的自动化双Agent架构能够在线上与LangSmith/LangFuse环境�
 | ------------------ | ------------- | ------------- | ------------ |
 | Claude Code        | `.claude/`    | Cursor        | `.cursor/`   |
 | Codex              | `.codex/`     | OpenCode      | `.opencode/` |
-| Windsurf           | `.windsurf/`  | Cline         | `.cline/`    |
+| Devin Desktop（原 Windsurf） | `.devin/`     | Cline         | `.cline/`    |
 | RooCode            | `.roo/`       | Continue      | `.continue/` |
 | GitHub Copilot     | `.github/`    | Gemini CLI    | `.gemini/`   |
 | Amazon Q Developer | `.amazonq/`   | Qwen Code     | `.qwen/`     |

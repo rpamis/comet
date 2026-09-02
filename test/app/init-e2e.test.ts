@@ -2549,7 +2549,7 @@ describe('comet init E2E', () => {
           '.claude',
           '.cursor',
           '.opencode',
-          '.windsurf',
+          '.devin',
           '.cline',
           '.roo',
           '.continue',

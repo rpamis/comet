@@ -1827,8 +1827,8 @@ async function installGeminiHooks(
 }
 
 /**
- * Windsurf format:
- * Writes to .windsurf/hooks.json with { hooks: { pre_write_code: [{ command }] } }
+ * Devin Desktop (formerly Windsurf) format:
+ * Writes to .devin/hooks.json with { hooks: { pre_write_code: [{ command }] } }
  */
 async function installWindsurfHooks(
   baseDir: string,

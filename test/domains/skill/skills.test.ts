@@ -1984,7 +1984,7 @@ describe('skills', () => {
       },
       {
         id: 'windsurf',
-        configPath: ['.windsurf', 'hooks.json'],
+        configPath: ['.devin', 'hooks.json'],
       },
     ])('leaves malformed $id Hook JSON byte-for-byte unchanged', async ({ id, configPath }) => {
       const platform = PLATFORMS.find((candidate) => candidate.id === id)!;

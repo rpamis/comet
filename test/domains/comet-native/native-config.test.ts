@@ -52,6 +52,8 @@ describe('Native project configuration', () => {
         '**/.idea/**',
         '**/.vscode/**',
         '.codex/skills/**',
+        '.devin/skills/**',
+        '.windsurf/skills/**',
         '**/node_modules/**',
         '**/dist/**',
         '**/target/**',
