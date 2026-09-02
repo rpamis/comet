@@ -203,14 +203,12 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
       const current = state.records.find((entry) => entry.id === id) as StoredRecord | undefined;
       if (current === undefined) throw new Error(`Unknown memory: ${id}`);
       let removalProjection:
-        | { readonly file: string; readonly projection: MemoryFileProjection }
-        | undefined;
+        { readonly file: string; readonly projection: MemoryFileProjection } | undefined;
       if (current.state !== 'superseded') {
         const path = this.resolveMemoryFilePath(state, current.scope, current.projectKey);
         const content = await this.readStableFile(state, path, current.scope, current.projectKey);
         const refreshed = state.records.find((entry) => entry.id === id) as
-          | StoredRecord
-          | undefined;
+          StoredRecord | undefined;
         if (refreshed !== undefined && refreshed.state !== 'superseded') {
           pushHistory(state, refreshed);
           if (content !== null) {
@@ -388,8 +386,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
         );
       }
       let removalProjection:
-        | { readonly file: string; readonly projection: MemoryFileProjection }
-        | undefined;
+        { readonly file: string; readonly projection: MemoryFileProjection } | undefined;
       if (current.kind === 'inferred' && failed && feedbackState === undefined) {
         state.feedbackState[id] = {
           baseState: current.state === 'trial' ? 'trial' : 'proven',

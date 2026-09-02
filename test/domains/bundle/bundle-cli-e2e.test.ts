@@ -173,8 +173,7 @@ function passingResult(
 
 async function generatedEvalManifestHash(status: Record<string, unknown>): Promise<string> {
   const factory = status.factory as
-    | { generatedSkillPackage?: { packageRoot?: unknown } }
-    | undefined;
+    { generatedSkillPackage?: { packageRoot?: unknown } } | undefined;
   const packageRoot = factory?.generatedSkillPackage?.packageRoot;
   if (typeof packageRoot !== 'string') {
     throw new Error('Generated Skill package root is missing from status fixture');

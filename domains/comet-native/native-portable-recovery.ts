@@ -30,13 +30,7 @@ export interface NativePortableRecoveryResult {
   local: NativeLocalExecutionState | null;
   action: 'resume-stable-boundary' | 'reverify' | 'await-user' | 'done';
   reason:
-    | 'available'
-    | 'missing'
-    | 'invalid'
-    | 'stale'
-    | 'interrupted'
-    | 'workspace-mismatch'
-    | 'done';
+    'available' | 'missing' | 'invalid' | 'stale' | 'interrupted' | 'workspace-mismatch' | 'done';
   message: string;
 }
 

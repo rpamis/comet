@@ -441,8 +441,7 @@ function parseMigrationJournal(value: unknown, expectedName: string): NativeSche
       sourceHash: transitionValue.sourceHash,
       targetHash: transitionValue.targetHash,
       nextJournal: transitionValue.nextJournal as
-        | NativeV2TransitionJournal
-        | NativeTransitionJournal,
+        NativeV2TransitionJournal | NativeTransitionJournal,
     };
   }
   if (

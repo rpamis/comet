@@ -19,10 +19,7 @@ import {
 import type { CometWorkflow } from './types.js';
 
 export type InitWorkflowSource =
-  | 'project-config'
-  | 'explicit-option'
-  | 'legacy-project'
-  | 'new-project-default';
+  'project-config' | 'explicit-option' | 'legacy-project' | 'new-project-default';
 
 export interface InitWorkflowDecision {
   workflow: CometWorkflow;

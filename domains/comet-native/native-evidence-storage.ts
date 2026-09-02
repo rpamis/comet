@@ -39,12 +39,7 @@ export const MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES = MAX_NATIVE_IMPLEMENTATION_EVID
 export const MAX_NATIVE_IMPLEMENTATION_SCOPE_BUNDLE_BYTES = 3 * MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES;
 
 export type NativeEvidenceKind =
-  | 'snapshots'
-  | 'scopes'
-  | 'allowances'
-  | 'verifications'
-  | 'reports'
-  | 'receipts';
+  'snapshots' | 'scopes' | 'allowances' | 'verifications' | 'reports' | 'receipts';
 
 export interface NativeEvidenceReadHooks {
   afterParentChainCaptured?: () => void | Promise<void>;

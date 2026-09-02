@@ -23,8 +23,7 @@ export interface LegacyClassicSelection {
 }
 
 export type CometCurrentSelectionRead =
-  | { status: 'missing' }
-  | { status: 'selected'; selection: CometCurrentSelection; legacy: boolean };
+  { status: 'missing' } | { status: 'selected'; selection: CometCurrentSelection; legacy: boolean };
 
 export function cometCurrentSelectionFile(projectRoot: string): string {
   return path.join(projectRoot, '.comet', 'current-change.json');

@@ -863,26 +863,24 @@ export async function inspectNativeChildren(options: {
       };
     }
     const definitions = new Map(document.contract.children.map((child) => [child.name, child]));
-    const projections = document.contract.children.map(
-      (child): NativeChildStatusProjection => ({
-        name: child.name,
-        summary: child.summary,
-        dependsOn: [...child.depends_on],
-        covers: [],
-        status:
-          confirmed &&
-          child.depends_on.every((dependency) =>
-            document.contract.children
-              .filter(({ name }) => name !== child.name)
-              .every(({ name }) => name !== dependency),
-          )
-            ? 'ready'
-            : 'pending',
-        phase: null,
-        projectRoot: null,
-        message: confirmed ? null : 'Parent Shape confirmation is required',
-      }),
-    );
+    const projections = document.contract.children.map((child): NativeChildStatusProjection => ({
+      name: child.name,
+      summary: child.summary,
+      dependsOn: [...child.depends_on],
+      covers: [],
+      status:
+        confirmed &&
+        child.depends_on.every((dependency) =>
+          document.contract.children
+            .filter(({ name }) => name !== child.name)
+            .every(({ name }) => name !== dependency),
+        )
+          ? 'ready'
+          : 'pending',
+      phase: null,
+      projectRoot: null,
+      message: confirmed ? null : 'Parent Shape confirmation is required',
+    }));
     // The fallback only applies before the machine state is first written. A dependency
     // is ready only when all of its declared ancestors are represented in the plan;
     // the persisted Supervisor state becomes authoritative as soon as Build starts.

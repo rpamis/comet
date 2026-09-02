@@ -19,10 +19,7 @@ import {
 
 interface WorkflowExperienceFixture {
   readonly name:
-    | 'change.completed'
-    | 'task.completed'
-    | 'review.completed'
-    | 'verification.completed';
+    'change.completed' | 'task.completed' | 'review.completed' | 'verification.completed';
   readonly workflow: string;
   readonly changeId: string;
   readonly success: boolean;

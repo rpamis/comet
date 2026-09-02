@@ -30,10 +30,7 @@ export const NATIVE_PORTABLE_MIGRATION_TRANSACTION_SCHEMA =
   'comet.native.portable-migration.v1' as const;
 
 export type NativePortableMigrationTransactionStatus =
-  | 'prepared'
-  | 'yaml-committed'
-  | 'legacy-cleanup'
-  | 'committed';
+  'prepared' | 'yaml-committed' | 'legacy-cleanup' | 'committed';
 
 export interface NativePortableMigrationTransaction {
   schema: typeof NATIVE_PORTABLE_MIGRATION_TRANSACTION_SCHEMA;
@@ -48,10 +45,7 @@ export interface NativePortableMigrationTransaction {
 }
 
 export type NativePortableMigrationAction =
-  | 'commit-portable-yaml'
-  | 'cleanup-legacy-runtime'
-  | 'commit-transaction'
-  | 'done';
+  'commit-portable-yaml' | 'cleanup-legacy-runtime' | 'commit-transaction' | 'done';
 
 export interface NativePortableMigrationNextStep {
   action: NativePortableMigrationAction;

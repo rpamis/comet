@@ -9,13 +9,7 @@ import type { SkillCreatorIntent } from './user-facing.js';
 
 export type BundleSkillVisibility = 'entry' | 'internal';
 export type BundleCapability =
-  | 'skills'
-  | 'rules'
-  | 'hooks'
-  | 'scripts'
-  | 'references'
-  | 'assets'
-  | 'agents';
+  'skills' | 'rules' | 'hooks' | 'scripts' | 'references' | 'assets' | 'agents';
 export type BundleSideEffect = 'none' | 'read' | 'write' | 'external';
 
 export interface BundleSkillDefinition {
@@ -252,10 +246,7 @@ export interface BundleGeneratedPlatformAgent {
 }
 
 export type GeneratedWrapperClassification =
-  | 'delegate-complete'
-  | 'delegate-advisory'
-  | 'scaffold-blocked'
-  | 'kernel-authored';
+  'delegate-complete' | 'delegate-advisory' | 'scaffold-blocked' | 'kernel-authored';
 
 export interface BundleGeneratedSkillPackage {
   entrySkill: string;
@@ -346,11 +337,7 @@ export interface PlatformInstallFile {
 }
 
 export type BundleAuthoringStatus =
-  | 'draft'
-  | 'eval-passed'
-  | 'review-approved'
-  | 'ready'
-  | 'drift-conflict';
+  'draft' | 'eval-passed' | 'review-approved' | 'ready' | 'drift-conflict';
 
 export interface BundleAuthoringState {
   schemaVersion: 1;

@@ -272,14 +272,12 @@ function parseOwnershipJournal(value: unknown): ClassicInitOwnershipJournal {
   if (raw.root !== expectedRoot) {
     throw new Error('Invalid Classic init ownership journal: root does not match layout');
   }
-  if (
-    !(
-      (raw.stage === 'initializing' && raw.quarantine === null) ||
-      ((raw.stage === 'quarantining' || raw.stage === 'quarantined') &&
-        typeof raw.quarantine === 'string' &&
-        raw.quarantine.startsWith('.comet/transactions/classic-init/'))
-    )
-  ) {
+  if (!(
+    (raw.stage === 'initializing' && raw.quarantine === null) ||
+    ((raw.stage === 'quarantining' || raw.stage === 'quarantined') &&
+      typeof raw.quarantine === 'string' &&
+      raw.quarantine.startsWith('.comet/transactions/classic-init/'))
+  )) {
     throw new Error('Invalid Classic init ownership journal: quarantine does not match stage');
   }
   if (typeof raw.quarantine === 'string') {

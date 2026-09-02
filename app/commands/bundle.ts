@@ -88,8 +88,7 @@ function formatOptionalSection(title: string, lines: string[]): string[] {
 
 function formatStateEval(
   evalState:
-    | NonNullable<Awaited<ReturnType<typeof reconcileBundleAuthoringState>>['eval']>
-    | undefined,
+    NonNullable<Awaited<ReturnType<typeof reconcileBundleAuthoringState>>['eval']> | undefined,
 ): string {
   if (!evalState)
     return 'Eval: missing; run comet eval <generated-skill>/comet/eval.yaml --quick --html';
@@ -98,8 +97,7 @@ function formatStateEval(
 
 function formatStateReview(
   reviewState:
-    | NonNullable<Awaited<ReturnType<typeof reconcileBundleAuthoringState>>['review']>
-    | undefined,
+    NonNullable<Awaited<ReturnType<typeof reconcileBundleAuthoringState>>['review']> | undefined,
 ): string {
   if (!reviewState) return 'Review: missing; run comet publish review before approval';
   return `Review: ${reviewState.decision} by ${reviewState.reviewer} @ ${reviewState.hash}`;

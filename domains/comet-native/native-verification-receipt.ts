@@ -15,9 +15,7 @@ const MAX_LIST = 256;
 const MAX_ACCEPTANCE_IDS = 1_024;
 
 export type NativeVerificationReceiptKind =
-  | 'automated-check'
-  | 'static-inspection'
-  | 'manual-evidence';
+  'automated-check' | 'static-inspection' | 'manual-evidence';
 
 export type NativeVerificationReceiptStatus = 'passed' | 'failed' | 'skipped' | 'blocked';
 

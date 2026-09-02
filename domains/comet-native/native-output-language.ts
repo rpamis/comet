@@ -308,8 +308,7 @@ function pageItemLine(item: Record<string, unknown>, locale: CliOutputLocale): s
 function pageLocale(items: ReadonlyArray<Record<string, unknown>>): CliOutputLocale {
   for (const item of items) {
     const communication = item.continuation as
-      | { userCommunication?: { agentInstruction?: unknown } }
-      | undefined;
+      { userCommunication?: { agentInstruction?: unknown } } | undefined;
     if (
       communication?.userCommunication &&
       typeof communication.userCommunication.agentInstruction === 'string' &&

@@ -1,10 +1,7 @@
 import type { BundleReviewReadiness } from './review-summary.js';
 
 export type BundleReadinessConclusion =
-  | 'blocked'
-  | 'needs-confirmation'
-  | 'can-publish'
-  | 'published';
+  'blocked' | 'needs-confirmation' | 'can-publish' | 'published';
 
 export interface BundleReadinessUserSummaryItem {
   code:

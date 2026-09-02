@@ -16,11 +16,7 @@ export type AgentExperienceScope = 'user' | 'project';
 export type AgentLearningState = 'trial' | 'proven' | 'enforced' | 'superseded';
 export type AgentLearningOwner = 'personal-memory' | 'project-knowledge' | string;
 export type AgentMemoryType =
-  | 'core-profile'
-  | 'collaboration-policy'
-  | 'personal-episode'
-  | 'project-model'
-  | 'project-policy';
+  'core-profile' | 'collaboration-policy' | 'personal-episode' | 'project-model' | 'project-policy';
 
 export interface AgentExperienceSource {
   readonly kind: 'user' | 'workflow' | 'tool' | 'repository' | 'system';
@@ -61,11 +57,7 @@ export interface AgentExperienceEvidence {
 }
 
 export type AgentContextOutcomeStatus =
-  | 'used-successfully'
-  | 'ignored'
-  | 'overridden'
-  | 'corrected'
-  | 'contributed-to-failure';
+  'used-successfully' | 'ignored' | 'overridden' | 'corrected' | 'contributed-to-failure';
 
 export interface AgentExperienceOutcome {
   readonly status: AgentContextOutcomeStatus;

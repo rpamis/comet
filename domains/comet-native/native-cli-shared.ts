@@ -86,7 +86,7 @@ export function takeOption(args: string[], name: string): string | undefined {
 
 export function takeMany(args: string[], name: string): string[] {
   const values: string[] = [];
-  for (let index = 0; index < args.length; ) {
+  for (let index = 0; index < args.length;) {
     if (args[index] !== name) {
       index += 1;
       continue;

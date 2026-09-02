@@ -27,19 +27,10 @@ export const NATIVE_DASHBOARD_LIMITS = Object.freeze({
 });
 
 export type NativeDashboardMigrationStatus =
-  | 'none'
-  | 'required'
-  | 'failed'
-  | 'legacy-read-only'
-  | 'invalid';
+  'none' | 'required' | 'failed' | 'legacy-read-only' | 'invalid';
 
 export type NativeDashboardLocalExecutionReason =
-  | 'current'
-  | 'idle'
-  | 'missing'
-  | 'version-mismatch'
-  | 'invalid'
-  | 'archived';
+  'current' | 'idle' | 'missing' | 'version-mismatch' | 'invalid' | 'archived';
 
 export interface NativeDashboardArtifactPreview {
   key: string;

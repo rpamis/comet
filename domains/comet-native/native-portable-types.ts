@@ -16,11 +16,7 @@ export type NativePortableVerificationAssurance =
   | 'user-confirmed-degraded';
 export type NativePortableAcceptanceResult = 'pending' | 'passed' | 'failed' | 'blocked';
 export type NativePortableHistoryOutcome =
-  | 'pass'
-  | 'fail'
-  | 'blocked'
-  | 'execution-error'
-  | 'recovery';
+  'pass' | 'fail' | 'blocked' | 'execution-error' | 'recovery';
 
 export interface NativePortableText {
   text: string;

@@ -16,13 +16,7 @@ export type FactoryPackageArtifactKind = 'skill' | 'script' | 'reference' | 'eng
 export type FactoryArtifactAuthorKind = 'deterministic-adapter' | 'subagent';
 
 export type FactoryArtifactClaimKind =
-  | 'workflow-entry'
-  | 'node-skill'
-  | 'script'
-  | 'reference'
-  | 'pause-point'
-  | 'eval'
-  | 'review';
+  'workflow-entry' | 'node-skill' | 'script' | 'reference' | 'pause-point' | 'eval' | 'review';
 
 export interface FactoryPackageArtifact {
   path: string;
