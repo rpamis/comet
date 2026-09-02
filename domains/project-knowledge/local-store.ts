@@ -26,6 +26,7 @@ import {
 import type { ProjectKnowledgeDocument } from './types.js';
 import { projectKnowledgeSourceReferenceMatchesText } from './source-validity.js';
 import { openProjectKnowledgeDatabase, type ProjectKnowledgeDatabase } from './sqlite.js';
+import type { AgentContextOutcomeStatus } from '../agent-learning/index.js';
 
 export interface ProjectKnowledgeLocalStoreOptions extends Omit<
   ProjectKnowledgeIndexOptions,
@@ -45,6 +46,41 @@ export interface ProjectKnowledgeRecordListOptions {
 
 interface StoredRecordRow {
   readonly payload_json: string;
+}
+
+interface StoredAppliedMutationRow {
+  readonly mutation_key: string;
+  readonly applied_at: string;
+}
+
+interface StoredApplicationOutcomeRow {
+  readonly record_id: string;
+  readonly application_id: string;
+  readonly status: AgentContextOutcomeStatus;
+  readonly revision: number;
+}
+
+interface StoredFeedbackStateRow {
+  readonly record_id: string;
+  readonly base_state: ProjectKnowledgeRecord['state'];
+}
+
+export interface ProjectKnowledgeStoreSnapshot {
+  readonly records: readonly ProjectKnowledgeRecord[];
+  readonly appliedMutations: readonly {
+    readonly mutationKey: string;
+    readonly appliedAt: string;
+  }[];
+  readonly applicationOutcomes: readonly {
+    readonly recordId: string;
+    readonly applicationId: string;
+    readonly status: AgentContextOutcomeStatus;
+    readonly revision: number;
+  }[];
+  readonly feedbackStates: readonly {
+    readonly recordId: string;
+    readonly baseState: ProjectKnowledgeRecord['state'];
+  }[];
 }
 
 interface SharedDatabaseEntry {
@@ -468,6 +504,91 @@ export class ProjectKnowledgeLocalStore {
       .prepare('SELECT payload_json FROM pk_records WHERE id = ?')
       .get(id) as StoredRecordRow | undefined;
     return row ? parseProjectKnowledgeRecord(JSON.parse(row.payload_json)) : null;
+  }
+
+  importNewerRecords(records: readonly ProjectKnowledgeRecord[]): number {
+    const statement = this.requireDatabase().prepare(
+      'INSERT INTO pk_records(id, project_id, type, state, authority, payload_json, source_versions_json, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET project_id = excluded.project_id, type = excluded.type, state = excluded.state, authority = excluded.authority, payload_json = excluded.payload_json, source_versions_json = excluded.source_versions_json, updated_at = excluded.updated_at WHERE pk_records.updated_at < excluded.updated_at',
+    );
+    let imported = 0;
+    for (const incoming of records) {
+      const result = statement.run(
+        incoming.id,
+        incoming.projectId,
+        incoming.type,
+        incoming.state,
+        incoming.authority,
+        JSON.stringify(incoming),
+        JSON.stringify(incoming.sourceVersions),
+        incoming.updatedAt,
+      );
+      imported += Number(result.changes);
+    }
+    return imported;
+  }
+
+  importSnapshot(snapshot: ProjectKnowledgeStoreSnapshot, migrationKey?: string): boolean {
+    const records = snapshot.records.map((incoming) => [
+      incoming.id,
+      incoming.projectId,
+      incoming.type,
+      incoming.state,
+      incoming.authority,
+      JSON.stringify(incoming),
+      JSON.stringify(incoming.sourceVersions),
+      incoming.updatedAt,
+    ]);
+    const database = this.requireDatabase();
+    database.exec('BEGIN IMMEDIATE;');
+    try {
+      if (
+        migrationKey !== undefined &&
+        database.prepare('SELECT value FROM pk_meta WHERE key = ?').get(migrationKey)
+      ) {
+        database.exec('COMMIT;');
+        return false;
+      }
+      const recordStatement = database.prepare(
+        'INSERT INTO pk_records(id, project_id, type, state, authority, payload_json, source_versions_json, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET project_id = excluded.project_id, type = excluded.type, state = excluded.state, authority = excluded.authority, payload_json = excluded.payload_json, source_versions_json = excluded.source_versions_json, updated_at = excluded.updated_at WHERE pk_records.updated_at < excluded.updated_at',
+      );
+      for (const values of records) recordStatement.run(...values);
+
+      const mutationStatement = database.prepare(
+        'INSERT OR IGNORE INTO pk_applied_mutations(mutation_key, applied_at) VALUES (?, ?)',
+      );
+      for (const mutation of snapshot.appliedMutations) {
+        mutationStatement.run(mutation.mutationKey, mutation.appliedAt);
+      }
+
+      const outcomeStatement = database.prepare(
+        'INSERT INTO pk_application_outcomes(record_id, application_id, status, revision) VALUES (?, ?, ?, ?) ON CONFLICT(record_id, application_id) DO UPDATE SET status = excluded.status, revision = excluded.revision WHERE pk_application_outcomes.revision < excluded.revision',
+      );
+      for (const outcome of snapshot.applicationOutcomes) {
+        outcomeStatement.run(
+          outcome.recordId,
+          outcome.applicationId,
+          outcome.status,
+          outcome.revision,
+        );
+      }
+
+      const feedbackStatement = database.prepare(
+        'INSERT OR IGNORE INTO pk_feedback_state(record_id, base_state) VALUES (?, ?)',
+      );
+      for (const feedback of snapshot.feedbackStates) {
+        feedbackStatement.run(feedback.recordId, feedback.baseState);
+      }
+      if (migrationKey !== undefined) {
+        database
+          .prepare('INSERT INTO pk_meta(key, value) VALUES (?, ?)')
+          .run(migrationKey, 'complete');
+      }
+      database.exec('COMMIT;');
+      return true;
+    } catch (error) {
+      database.exec('ROLLBACK;');
+      throw error;
+    }
   }
 
   searchRecords(query: ProjectKnowledgeQuery): readonly ProjectKnowledgeResult[] {
@@ -991,6 +1112,57 @@ export class ProjectKnowledgeLocalStore {
   private requireDatabase(): ProjectKnowledgeDatabase {
     if (!this.database) throw new Error('Project knowledge local store is closed');
     return this.database;
+  }
+}
+
+export function readProjectKnowledgeStoreSnapshot(
+  databasePath: string,
+): ProjectKnowledgeStoreSnapshot {
+  const database = openProjectKnowledgeDatabase(databasePath, { readOnly: true });
+  try {
+    database.exec('BEGIN;');
+    try {
+      const records = (
+        database
+          .prepare('SELECT payload_json FROM pk_records')
+          .all() as unknown as StoredRecordRow[]
+      ).flatMap((row) => {
+        try {
+          return [parseProjectKnowledgeRecord(JSON.parse(row.payload_json))];
+        } catch {
+          return [];
+        }
+      });
+      const appliedMutations = (
+        database
+          .prepare('SELECT mutation_key, applied_at FROM pk_applied_mutations')
+          .all() as unknown as StoredAppliedMutationRow[]
+      ).map((row) => ({ mutationKey: row.mutation_key, appliedAt: row.applied_at }));
+      const applicationOutcomes = (
+        database
+          .prepare(
+            'SELECT record_id, application_id, status, revision FROM pk_application_outcomes',
+          )
+          .all() as unknown as StoredApplicationOutcomeRow[]
+      ).map((row) => ({
+        recordId: row.record_id,
+        applicationId: row.application_id,
+        status: row.status,
+        revision: row.revision,
+      }));
+      const feedbackStates = (
+        database
+          .prepare('SELECT record_id, base_state FROM pk_feedback_state')
+          .all() as unknown as StoredFeedbackStateRow[]
+      ).map((row) => ({ recordId: row.record_id, baseState: row.base_state }));
+      database.exec('COMMIT;');
+      return { records, appliedMutations, applicationOutcomes, feedbackStates };
+    } catch (error) {
+      database.exec('ROLLBACK;');
+      throw error;
+    }
+  } finally {
+    database.close();
   }
 }
 

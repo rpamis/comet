@@ -2,9 +2,69 @@ import { describe, expect, it } from 'vitest';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import { createDefaultCometPluginBridge } from '../../../domains/comet-plugin/index.js';
 import { createDefaultDashboardPluginHostFactory } from '../../../domains/dashboard/default-plugin-host.js';
 
 describe('default dashboard plugin host', () => {
+  it('shares an isolated project knowledge cache with CLI plugin bridges', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-default-plugin-host-cache-'));
+    const projectRoot = path.join(root, 'project');
+    const knowledgeCacheRoot = path.join(root, 'knowledge-cache');
+    await fs.mkdir(projectRoot, { recursive: true });
+    try {
+      const cliBridge = await createDefaultCometPluginBridge({
+        projectRoot,
+        projectId: 'project-1',
+        stateRoot: path.join(root, 'cli-state'),
+        memoryRoot: path.join(root, 'cli-memory'),
+        knowledgeCacheRoot,
+      });
+      await cliBridge.pluginRuntime.invoke(
+        'comet.project-knowledge',
+        'create',
+        {
+          type: 'constraint',
+          title: 'Shared cache rule',
+          summary: 'Dashboard and CLI use the same project knowledge records.',
+        },
+        { scope: 'project', projectId: 'project-1' },
+      );
+
+      const host = await createDefaultDashboardPluginHostFactory({
+        stateRoot: path.join(root, 'dashboard-state'),
+        memoryRoot: path.join(root, 'dashboard-memory'),
+        knowledgeCacheRoot,
+      })('project-1', projectRoot);
+
+      await expect(host.get('comet.project-knowledge')).resolves.toMatchObject({
+        data: {
+          records: [expect.objectContaining({ title: 'Shared cache rule' })],
+        },
+      });
+
+      await host.invoke('comet.project-knowledge', 'create', {
+        type: 'procedure',
+        title: 'Dashboard cache rule',
+        summary: 'CLI retrieval reads project knowledge created in the Dashboard.',
+      });
+      await expect(
+        cliBridge.pluginRuntime.invoke(
+          'comet.project-knowledge',
+          'list',
+          { state: 'all' },
+          { scope: 'project', projectId: 'project-1' },
+        ),
+      ).resolves.toMatchObject({
+        records: expect.arrayContaining([
+          expect.objectContaining({ title: 'Shared cache rule' }),
+          expect.objectContaining({ title: 'Dashboard cache rule' }),
+        ]),
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('registers the personal memory page against the shared plugin runtime', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-default-plugin-host-'));
     const projectRoot = path.join(root, 'project');

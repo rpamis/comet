@@ -438,10 +438,12 @@ check in `classic-runtime.test.ts` will fail.
 Comet has grown from a single `/comet` workflow bundle into a workflow + skill
 authoring platform. When working on these commands, note:
 
-- **`comet dashboard`**: A local read-only browser dashboard. Frontend code
-  lives in `domains/dashboard/web/` and is built separately via
-  `pnpm build:dashboard`. The backend `domains/dashboard/server.ts` exposes
-  `--json` and `GET /api/dashboard`.
+- **`comet dashboard`**: A local browser dashboard for inspecting workflows and
+  managing supported project settings, plugin lifecycle, Personal Memory, and
+  Project Knowledge records. Frontend code lives in `domains/dashboard/web/`
+  and is built separately via `pnpm build:dashboard`. The backend
+  `domains/dashboard/server.ts` exposes `--json`, read APIs, and the scoped
+  mutation routes used by those controls.
 - **`comet eval`**: Repository-local evaluation, including profiles,
   manifests, HTML reports, token/cost attribution, pass@k/pass^k. See
   `docs/operations/EVAL-USAGE.md`.
