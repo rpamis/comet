@@ -68,7 +68,7 @@ import { defaultProjectConfig } from '../../domains/comet-native/native-config.j
 import { readWorkflowProjectConfigSnapshot } from '../../domains/workflow-contract/project-config-reader.js';
 import { ensureCometProjectGitignore } from '../../domains/workflow-contract/project-gitignore.js';
 import {
-  readWorkflowGlobalConfig,
+  readWorkflowGlobalConfigForLifecycle,
   writeWorkflowGlobalConfig,
 } from '../../domains/workflow-contract/global-config.js';
 import type { InitWorkflowSelection } from '../../domains/comet-entry/types.js';
@@ -110,7 +110,7 @@ async function refreshGlobalWorkflowConfig(
   homeDir: string,
   language: 'en' | 'zh-CN' | null,
 ): Promise<void> {
-  const existing = await readWorkflowGlobalConfig(homeDir);
+  const existing = await readWorkflowGlobalConfigForLifecycle(homeDir);
   const defaults = defaultProjectConfig('docs', language ?? 'en');
   const config = existing ?? { ...defaults, schema: 'comet.global.v1' as const };
   if (config.native) {
@@ -2335,6 +2335,10 @@ export async function updateCommand(
     throw new Error('--platform cannot be combined with --all-projects');
   }
   const registryProjects = await listProjectRegistryEntries({ strict: true });
+  const startsAtHome = projectPath === path.resolve(os.homedir());
+  const homeGlobalConfig = startsAtHome
+    ? await readWorkflowGlobalConfigForLifecycle(os.homedir())
+    : null;
 
   log(`\n  ${t(lang, 'updateTitle')}`);
   if (!options.json) {
@@ -2348,33 +2352,37 @@ export async function updateCommand(
     options.platform === undefined &&
     options.targetScopes === undefined;
   if (registryProjects.length === 0 && usesImplicitIndexedProjectUpdate) {
-    const currentProjectPath = await discoverNativeProject(projectPath);
-    const currentProjectTargets = await detectInstalledCometTargets(currentProjectPath, {
-      scopes: ['project'],
-      respectDetectionPaths: true,
-    });
-    if (currentProjectTargets.length > 0) {
-      options = { ...options, targetScopes: ['project'] };
+    if (homeGlobalConfig) {
+      options = { ...options, scope: 'global' };
     } else {
-      if (options.json) {
-        console.log(
-          JSON.stringify(
-            {
-              mode: 'all-projects',
-              status: 'complete',
-              registry: { projectsFound: 0, staleRemoved: 0 },
-              projects: [],
-              reason: 'no indexed Comet projects found',
-            },
-            null,
-            2,
-          ),
-        );
+      const currentProjectPath = await discoverNativeProject(projectPath);
+      const currentProjectTargets = await detectInstalledCometTargets(currentProjectPath, {
+        scopes: ['project'],
+        respectDetectionPaths: true,
+      });
+      if (currentProjectTargets.length > 0) {
+        options = { ...options, targetScopes: ['project'] };
       } else {
-        log('  No indexed Comet projects found. Nothing to update.');
-        log('  Run `comet init` in a project first, or use `comet update --scope global`.\n');
+        if (options.json) {
+          console.log(
+            JSON.stringify(
+              {
+                mode: 'all-projects',
+                status: 'complete',
+                registry: { projectsFound: 0, staleRemoved: 0 },
+                projects: [],
+                reason: 'no indexed Comet projects found',
+              },
+              null,
+              2,
+            ),
+          );
+        } else {
+          log('  No indexed Comet projects found. Nothing to update.');
+          log('  Run `comet init` in a project first, or use `comet update --scope global`.\n');
+        }
+        return { status: 'complete' };
       }
-      return { status: 'complete' };
     }
   }
 

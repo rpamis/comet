@@ -2005,6 +2005,38 @@ describe('update command helpers', () => {
     expect(output!).toContain('No indexed Comet projects found');
   });
 
+  it('updates global targets when bare update starts from Home', async () => {
+    const fakeHome = path.join(tmpDir, 'fake-home-bare-global');
+    const projectConfig = defaultProjectConfig('docs', 'en');
+    await fs.mkdir(path.join(fakeHome, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(fakeHome, '.comet', 'config.yaml'),
+      JSON.stringify({ ...projectConfig, schema: 'comet.global.v1' }),
+      'utf8',
+    );
+    await fs.mkdir(path.join(fakeHome, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(fakeHome, '.claude', 'skills', 'comet', 'SKILL.md'),
+      '# Stale global Comet\n',
+      'utf8',
+    );
+
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await expect(
+        updateCommand(fakeHome, { json: true, skipNpm: true, installMode: 'copy' }),
+      ).resolves.toMatchObject({ status: 'complete' });
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    await expect(
+      fs.readFile(path.join(fakeHome, '.claude', 'skills', 'comet', 'SKILL.md'), 'utf8'),
+    ).resolves.toContain('comet workflow resolve');
+  });
+
   it('refreshes the project registry after a successful current-project update', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home-current-refresh');
     const projectA = path.join(tmpDir, 'project-current-refresh');

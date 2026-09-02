@@ -1,0 +1,186 @@
+schema: comet.native.v4
+name: issue-377-config-schema-compat
+language: zh-CN
+phase: archive
+status: done
+state_version: 7
+brief: brief.md
+spec_changes: []
+workspace:
+  isolation: current
+  change_branch: hotfix/issue-377-windsurf-devin-compat
+  target_branch: hotfix/issue-377-windsurf-devin-compat
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: "Scenario: Home 下已有 project schema 配置时执行 global init，命令成功完成并写出 global
+      schema。"
+    result: passed
+    reason:
+      text: Global init reads a known project-schema Home config through the lifecycle
+        migration path and writes the normalized comet.global.v1 config.
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: "Scenario: Home 下已有 global schema 配置时执行 update，不再报 Unsupported Comet
+      project schema。"
+    result: passed
+    reason:
+      text: Bare update from Home recognizes the lifecycle global config and selects
+        global scope before project discovery.
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: "Scenario: 新用户无配置执行 init，仍按现有默认行为成功。"
+    result: passed
+    reason:
+      text: Missing global config remains a supported null read, so existing default
+        initialization behavior is preserved.
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: "Scenario: 合法已有全局偏好在迁移后保留。"
+    result: passed
+    reason:
+      text: The normalized config is built from the validated existing config,
+        preserving valid ambient_resume and workflow preferences.
+      truncated: false
+builder_handoff:
+  candidate_id: c2d0f9e4-8a5d-4c27-b1b8-a84bc246fb0a
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:d39cc1d7-ee01-4b5b-bba9-26758310bc58
+  iteration: 1
+  summary:
+    text: 已实现全局配置生命周期兼容迁移和 Home 目录 update 路由修复。global init 及刷新现在可识别并规范化已知 project
+      schema/legacy 配置；从 Home 直接 update 时识别全局配置并按 global scope 更新，避免再次进入 project
+      parser。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+  checks:
+    - name:
+        text: focused workflow-contract/init/update regressions
+        truncated: false
+      result: passed
+      note:
+        text: workflow-contract 全量 5 tests passed；新增 init/update 场景均 passed。
+        truncated: false
+    - name:
+        text: pnpm lint
+        truncated: false
+      result: passed
+      note:
+        text: ESLint and architecture lint passed.
+        truncated: false
+    - name:
+        text: pnpm build
+        truncated: false
+      result: passed
+      note:
+        text: Classic, Native, Entry, TypeScript, and Dashboard builds completed
+          successfully.
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: 未知或不可安全解析的 schema 仍按严格校验报错，不自动猜测或删除用户配置。
+      truncated: false
+    - text: 仓库全量 vitest 已按用户要求停止，未以其结果作为本次通过依据。
+      truncated: false
+  known_limits_truncated: false
+  review:
+    status: passed
+    summary:
+      text: 独立只读审查确认实现只修改 global lifecycle reader、init global read、Home bare update
+        routing 及对应回归测试；严格 global reader、原子 writer、project scope 和 Classic
+        语义保持不变。
+      truncated: false
+    reviewer_execution_ref: read-only-review-issue-377-config-schema-compat-20260902-01
+  submitted_at: 2026-09-02T14:59:12.522Z
+blockers: []
+verification:
+  candidate_id: c2d0f9e4-8a5d-4c27-b1b8-a84bc246fb0a
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:7360a741-f12c-484a-91ef-7642d6a35f3a
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: config-scope-source-contract
+      name:
+        text: Read-only configuration scope contract inspection
+        truncated: false
+      argv_display:
+        - text: -e
+          truncated: false
+        - text: "const fs=require('node:fs'); const
+            init=fs.readFileSync('app/commands/init.ts','utf8'); const
+            update=fs.readFileSync('app/commands/update.ts','utf8'); const
+            global=fs.readFileSync('domains/workflow-contract/global-config.ts'\
+            ,'utf8'); if (!init.includes('readWorkflowGlobalConfigForLifecycle')
+            || !update.includes('readWorkflowGlobalConfigForLifecycle') ||
+            !update.includes(\"options = { ...options, scope: 'global' }\") ||
+            !global.includes('parseWorkflowGlobalConfigForLifecycle'))
+            process.exit(1);"
+          truncated: false
+        - text: .
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 92
+  summary:
+    text: Independent read-only review and the executable source-contract check
+      confirm the requested global lifecycle migration and Home update routing
+      without changing strict ordinary reads, atomic writes, project scope, or
+      Classic behavior.
+    truncated: false
+  risks:
+    - text: Full vitest was stopped at the user's request; focused regressions, lint,
+        and build were completed.
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-09-02T15:01:18.086Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: Independent read-only review and the executable source-contract check
+        confirm the requested global lifecycle migration and Home update routing
+        without changing strict ordinary reads, atomic writes, project scope, or
+        Classic behavior.
+      truncated: false
+    completed_at: 2026-09-02T15:01:18.086Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-09-02T14:26:47.695Z

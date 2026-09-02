@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { defaultProjectConfig } from '../../../domains/comet-native/native-config.js';
 import {
   readWorkflowGlobalConfig,
+  readWorkflowGlobalConfigForLifecycle,
   writeWorkflowGlobalConfig,
 } from '../../../domains/workflow-contract/global-config.js';
 
@@ -93,6 +94,25 @@ describe('global workflow configuration', () => {
         artifact_layout: 'legacy',
         review_mode: 'thorough',
       },
+    });
+  });
+
+  it('migrates a project-schema file only for global lifecycle reads', async () => {
+    const project = defaultProjectConfig('artifacts', 'zh-CN');
+    await fs.mkdir(path.join(homeDir, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(homeDir, '.comet', 'config.yaml'),
+      JSON.stringify({ ...project, schema: 'comet.project.v1', ambient_resume: false }),
+      'utf8',
+    );
+
+    await expect(readWorkflowGlobalConfig(homeDir)).rejects.toThrow(
+      'Unsupported Comet global schema',
+    );
+    await expect(readWorkflowGlobalConfigForLifecycle(homeDir)).resolves.toMatchObject({
+      schema: 'comet.global.v1',
+      ambient_resume: false,
+      native: { artifact_root: 'artifacts', language: 'zh-CN' },
     });
   });
 });

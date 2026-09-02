@@ -101,6 +101,19 @@ export function parseWorkflowGlobalConfig(source: string): WorkflowGlobalConfig 
   return parseCompleteGlobalConfig(value);
 }
 
+/**
+ * Read the user-level config at a lifecycle boundary where known historical
+ * project configs can be migrated in place by the caller's write operation.
+ * Ordinary global reads stay strict so a project config is never silently
+ * treated as global outside init/update lifecycle handling.
+ */
+export function parseWorkflowGlobalConfigForLifecycle(source: string): WorkflowGlobalConfig | null {
+  const value = parseRoot(source);
+  if (Object.keys(value).length === 0) return null;
+  if (value.schema === 'comet.project.v1') return parseCompleteGlobalConfig(value);
+  return parseWorkflowGlobalConfig(source);
+}
+
 export async function readWorkflowGlobalConfig(
   homeDir: string,
 ): Promise<WorkflowGlobalConfig | null> {
@@ -112,6 +125,23 @@ export async function readWorkflowGlobalConfig(
       { label: 'global Comet config' },
     );
     return parseWorkflowGlobalConfig(source.bytes.toString('utf8'));
+  } catch (error) {
+    if (isMissing(error)) return null;
+    throw error;
+  }
+}
+
+export async function readWorkflowGlobalConfigForLifecycle(
+  homeDir: string,
+): Promise<WorkflowGlobalConfig | null> {
+  try {
+    const source = await readProtectedProjectFile(
+      homeDir,
+      WORKFLOW_GLOBAL_CONFIG_PATH,
+      WORKFLOW_PROJECT_CONFIG_MAX_BYTES,
+      { label: 'global Comet config' },
+    );
+    return parseWorkflowGlobalConfigForLifecycle(source.bytes.toString('utf8'));
   } catch (error) {
     if (isMissing(error)) return null;
     throw error;

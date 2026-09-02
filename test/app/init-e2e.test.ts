@@ -6,6 +6,7 @@ import os from 'os';
 import path from 'path';
 import { parse } from 'yaml';
 import { getProjectRegistryPath } from '../../platform/install/project-registry.js';
+import { defaultProjectConfig } from '../../domains/comet-native/native-config.js';
 import { stageOpenSpecSkills, unquoteWindowsArg } from '../helpers/openspec-test-utils.js';
 
 vi.mock('child_process', () => ({
@@ -1652,6 +1653,42 @@ describe('comet init E2E', () => {
       await fs.readFile(path.join(fakeHome, '.comet', 'config.yaml'), 'utf8'),
     ) as { native: { snapshot?: unknown } };
     expect(globalConfig.native.snapshot).toBeUndefined();
+  });
+
+  it('migrates a project-schema Home config during global initialization', async () => {
+    mockExternalSuccess();
+    const projectConfig = defaultProjectConfig('artifacts', 'zh-CN');
+    await fs.mkdir(path.join(os.homedir(), '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(os.homedir(), '.comet', 'config.yaml'),
+      JSON.stringify({ ...projectConfig, schema: 'comet.project.v1', ambient_resume: false }),
+      'utf8',
+    );
+
+    const { initCommand } = await import('../../app/commands/init.js');
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, {
+        yes: true,
+        json: true,
+        scope: 'global',
+        workflow: 'native',
+        codegraph: 'skip',
+      }),
+    );
+
+    expect(result).toMatchObject({ status: 'complete', scope: 'global' });
+    const globalConfig = parse(
+      await fs.readFile(path.join(os.homedir(), '.comet', 'config.yaml'), 'utf8'),
+    ) as {
+      schema: string;
+      ambient_resume: boolean;
+      native: { artifact_root: string; language: string };
+    };
+    expect(globalConfig).toMatchObject({
+      schema: 'comet.global.v1',
+      ambient_resume: false,
+      native: { artifact_root: 'artifacts', language: 'zh-CN' },
+    });
   });
 
   it('does not publish a global Classic default when OpenSpec initialization fails', async () => {

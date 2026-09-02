@@ -64,7 +64,7 @@ import {
 import { writeWorkflowProjectConfig } from '../../domains/workflow-contract/project-config-writer.js';
 import { ensureCometProjectGitignore } from '../../domains/workflow-contract/project-gitignore.js';
 import {
-  readWorkflowGlobalConfig,
+  readWorkflowGlobalConfigForLifecycle,
   writeWorkflowGlobalConfig,
 } from '../../domains/workflow-contract/global-config.js';
 import type {
@@ -1273,7 +1273,7 @@ export async function initCommand(
         options.artifactRoot ?? 'docs',
         language.artifactLanguage,
       );
-      const existingGlobalConfig = await readWorkflowGlobalConfig(baseDir);
+      const existingGlobalConfig = await readWorkflowGlobalConfigForLifecycle(baseDir);
       const selectedWorkflows =
         workflowSelection === 'both' ? (['native', 'classic'] as const) : [workflowSelection];
       const config: WorkflowGlobalConfig = {

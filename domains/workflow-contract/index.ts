@@ -31,7 +31,9 @@ export {
 } from './project-config.js';
 export {
   parseWorkflowGlobalConfig,
+  parseWorkflowGlobalConfigForLifecycle,
   readWorkflowGlobalConfig,
+  readWorkflowGlobalConfigForLifecycle,
   workflowGlobalConfigFromProjectConfig,
   workflowProjectConfigFromGlobalConfig,
   writeWorkflowGlobalConfig,
