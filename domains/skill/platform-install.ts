@@ -247,17 +247,23 @@ export function isManagedSkillPathForSelection(
  *   neither / classic only -> 'classic'  (no Native added)
  *   native only            -> 'native'   (no Classic added)
  *   both                   -> 'both'
- * The caller is responsible for computing `skillsRoot` (e.g. base dir +
- * platform skills dir + 'skills'); this function only performs the marker
- * check and mapping.
+ * The caller is responsible for computing `skillsRoots` (e.g. base dir +
+ * platform skills dirs + 'skills'); this function only performs the marker
+ * check and mapping. Multiple roots are treated as one installation so a
+ * legacy-to-canonical migration preserves the user's workflow selection.
  */
 export async function detectInstalledWorkflowSelection(
-  skillsRoot: string,
+  skillsRoots: string | string[],
 ): Promise<InitWorkflowSelection> {
-  const [hasNative, hasClassic] = await Promise.all([
-    fileExists(path.join(skillsRoot, 'comet-native', 'SKILL.md')),
-    fileExists(path.join(skillsRoot, 'comet-classic', 'SKILL.md')),
-  ]);
+  const roots = Array.isArray(skillsRoots) ? skillsRoots : [skillsRoots];
+  const markers = await Promise.all(
+    roots.flatMap((skillsRoot) => [
+      fileExists(path.join(skillsRoot, 'comet-native', 'SKILL.md')),
+      fileExists(path.join(skillsRoot, 'comet-classic', 'SKILL.md')),
+    ]),
+  );
+  const hasNative = markers.some((exists, index) => index % 2 === 0 && exists);
+  const hasClassic = markers.some((exists, index) => index % 2 === 1 && exists);
   if (hasNative && hasClassic) return 'both';
   if (hasNative) return 'native';
   return 'classic';

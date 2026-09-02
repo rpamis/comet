@@ -305,6 +305,38 @@ describe('Native Supervisor v2 state', () => {
       interruptedSupervisor.integration.headCommit = targetCommit;
       interruptedSupervisor.finalVerification = { status: 'pending', summary: null };
       await writeNativeSupervisorState(paths, interruptedSupervisor);
+
+      await fs.writeFile(path.join(integrationRoot, 'uncommitted-recovery.txt'), 'dirty\n');
+      await expect(
+        nativeNextCommand(['parent', '--summary', 'Resume with a dirty workspace.'], repository),
+      ).rejects.toThrow('integration worktree must be clean');
+      await fs.rm(path.join(integrationRoot, 'uncommitted-recovery.txt'));
+
+      const integrationBranch = execFileSync('git', ['branch', '--show-current'], {
+        cwd: integrationRoot,
+        encoding: 'utf8',
+      }).trim();
+      execFileSync('git', ['switch', '-c', 'recovery-wrong-branch'], { cwd: integrationRoot });
+      await expect(
+        nativeNextCommand(['parent', '--summary', 'Resume from the wrong branch.'], repository),
+      ).rejects.toThrow('integration branch mismatch');
+      execFileSync('git', ['switch', integrationBranch], { cwd: integrationRoot });
+
+      const divergentSupervisor = (await readNativeSupervisorState(paths, 'parent'))!;
+      divergentSupervisor.integration.headCommit = verifiedIntegrationHead;
+      await writeNativeSupervisorState(paths, divergentSupervisor);
+      execFileSync('git', ['reset', '--hard', targetCommit], { cwd: integrationRoot });
+      await fs.writeFile(path.join(integrationRoot, 'divergent-recovery.txt'), 'divergent\n');
+      execFileSync('git', ['add', 'divergent-recovery.txt'], { cwd: integrationRoot });
+      execFileSync('git', ['commit', '-m', 'create divergent recovery candidate'], {
+        cwd: integrationRoot,
+      });
+      await expect(
+        nativeNextCommand(['parent', '--summary', 'Resume a divergent workspace.'], repository),
+      ).rejects.toThrow('is not a descendant of the recorded integration head');
+      execFileSync('git', ['reset', '--hard', verifiedIntegrationHead], { cwd: integrationRoot });
+
+      await writeNativeSupervisorState(paths, interruptedSupervisor);
       const resumed = await nativeNextCommand(
         ['parent', '--summary', 'Continue the interrupted workflow.'],
         repository,

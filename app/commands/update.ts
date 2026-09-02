@@ -1533,12 +1533,10 @@ async function updateSingleProject(
     target: InstalledCometTarget,
   ): Promise<InitWorkflowSelection> => {
     if (target.scope !== 'global') return projectWorkflowSelection;
-    const skillsRoot = path.join(
-      getBaseDir('global', projectPath),
-      getPlatformSkillsDir(target.platform, 'global'),
-      'skills',
+    const skillsRoots = getPlatformSkillsDirs(target.platform, 'global').map((skillsDir) =>
+      path.join(getBaseDir('global', projectPath), skillsDir, 'skills'),
     );
-    return detectInstalledWorkflowSelection(skillsRoot);
+    return detectInstalledWorkflowSelection(skillsRoots);
   };
   const targetWorkflowSelections = await Promise.all(targets.map(skillWorkflowSelectionFor));
   const updateSkillPaths = new Set(
@@ -2351,38 +2349,36 @@ export async function updateCommand(
     options.currentProject !== true &&
     options.platform === undefined &&
     options.targetScopes === undefined;
-  if (registryProjects.length === 0 && usesImplicitIndexedProjectUpdate) {
-    if (homeGlobalConfig) {
-      options = { ...options, scope: 'global' };
+  if (usesImplicitIndexedProjectUpdate && homeGlobalConfig) {
+    options = { ...options, scope: 'global' };
+  } else if (registryProjects.length === 0 && usesImplicitIndexedProjectUpdate) {
+    const currentProjectPath = await discoverNativeProject(projectPath);
+    const currentProjectTargets = await detectInstalledCometTargets(currentProjectPath, {
+      scopes: ['project'],
+      respectDetectionPaths: true,
+    });
+    if (currentProjectTargets.length > 0) {
+      options = { ...options, targetScopes: ['project'] };
     } else {
-      const currentProjectPath = await discoverNativeProject(projectPath);
-      const currentProjectTargets = await detectInstalledCometTargets(currentProjectPath, {
-        scopes: ['project'],
-        respectDetectionPaths: true,
-      });
-      if (currentProjectTargets.length > 0) {
-        options = { ...options, targetScopes: ['project'] };
+      if (options.json) {
+        console.log(
+          JSON.stringify(
+            {
+              mode: 'all-projects',
+              status: 'complete',
+              registry: { projectsFound: 0, staleRemoved: 0 },
+              projects: [],
+              reason: 'no indexed Comet projects found',
+            },
+            null,
+            2,
+          ),
+        );
       } else {
-        if (options.json) {
-          console.log(
-            JSON.stringify(
-              {
-                mode: 'all-projects',
-                status: 'complete',
-                registry: { projectsFound: 0, staleRemoved: 0 },
-                projects: [],
-                reason: 'no indexed Comet projects found',
-              },
-              null,
-              2,
-            ),
-          );
-        } else {
-          log('  No indexed Comet projects found. Nothing to update.');
-          log('  Run `comet init` in a project first, or use `comet update --scope global`.\n');
-        }
-        return { status: 'complete' };
+        log('  No indexed Comet projects found. Nothing to update.');
+        log('  Run `comet init` in a project first, or use `comet update --scope global`.\n');
       }
+      return { status: 'complete' };
     }
   }
 
