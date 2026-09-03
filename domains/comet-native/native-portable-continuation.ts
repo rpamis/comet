@@ -103,7 +103,8 @@ function nativePortableUserCommunication(
   if (
     state.phase === 'verify' &&
     state.status === 'active' &&
-    state.loop.stage === 'verify-ready'
+    state.loop.stage === 'verify-ready' &&
+    state.loop.next_action !== 'await-verifier-result'
   ) {
     return noUserUpdate(
       localized(
@@ -122,8 +123,8 @@ function nativePortableUserCommunication(
     return noUserUpdate(
       localized(
         state,
-        'Wait only while the dispatched Verifier task is still active. If it did not start, ended without a response, or is no longer available, immediately submit the matching verifier-unavailable or verifier-execution-error input. Do not ask the user to recover files or processes, and do not expose attempt or requestCheckRounds.',
-        '仅在已派发的独立验收任务仍在运行时等待。如果任务未启动、结束后没有返回结果或已经丢失，立即提交匹配的 verifier-unavailable 或 verifier-execution-error 输入。不要让用户恢复文件或进程，也不要向用户展示 attempt、requestCheckRounds 等机器状态。',
+        'Wait only while the dispatched Verifier task is still active. If the task did not start, failed, timed out, ended without a response, or was lost, immediately submit verifier-execution-error. Submit verifier-unavailable only when the current platform truly has no usable subagent capability. Do not ask the user to recover files or processes, and do not expose attempt or requestCheckRounds.',
+        '仅在已派发的独立验收任务仍在运行时等待。如果任务未启动、执行失败、超时、结束后没有返回结果或已经丢失，立即提交 verifier-execution-error；只有当前平台确实没有可用的 subagent 能力时才提交 verifier-unavailable。不要让用户恢复文件或进程，也不要向用户展示 attempt、requestCheckRounds 等机器状态。',
       ),
     );
   }
@@ -160,18 +161,18 @@ function nativePortableUserCommunication(
       ? {
           required: true,
           message:
-            '由于独立验收服务暂时不可用，目前只能完成自动检查。你可以选择接受当前检查结果，或者等验收服务恢复后再重试。',
-          suggestedReply: null,
+            '独立验收当前不可用，但你的代码和已经完成的检查都已安全保留。你可以直接重新尝试独立验收，也可以明确接受只有自动检查的结果。',
+          suggestedReply: '重新尝试独立验收',
           agentInstruction:
-            '向用户转述 message，并请用户明确选择是否接受只有自动检查的结果。不要把“继续”当作默认接受。',
+            '只向用户转述 message 和 suggestedReply，并等待用户选择。用户要求重试时执行 commandAlternatives 中的 retry-verifier；只有用户明确接受降级结果时才执行 confirm-verifier-unavailable。不要把“继续”视为接受降级结果，也不要要求用户处理文件、进程、服务或回调。',
         }
       : {
           required: true,
           message:
-            'Because independent verification is temporarily unavailable, only the automatic checks could be completed. You can accept the current check results or wait and retry when verification is available.',
-          suggestedReply: null,
+            'Independent verification is currently unavailable, but your code and completed checks are safely preserved. You can retry independent verification directly or explicitly accept the automatic-check-only result.',
+          suggestedReply: 'Retry independent verification',
           agentInstruction:
-            'Relay message and ask the user to explicitly choose whether to accept automatic checks only. Do not treat “Continue” as implicit acceptance.',
+            'Relay only message and suggestedReply, then wait for the user choice. If the user asks to retry, run retry-verifier from commandAlternatives; run confirm-verifier-unavailable only when the user explicitly accepts the degraded result. Do not treat “Continue” as accepting the degraded result, and do not ask the user to manage files, processes, services, or callbacks.',
         };
   }
 
@@ -427,28 +428,26 @@ export function nativePortableContinuation(
         ...base,
         disposition: 'await-user',
         action: 'confirm-verifier-unavailable',
-        commandArgs: boundNativeNextCommandArgs({
-          change: state.name,
-          stateVersion: state.state_version,
-          action: 'confirm-verifier-unavailable',
-          flag: '--confirmed',
-        }),
-        requiredInputs: ['summary', 'user-confirmation'],
-        inputOptions: [
-          {
-            name: 'summary',
-            flag: '--summary',
-            valueKind: 'text',
-            required: true,
-            template: null,
-          },
-          {
-            name: 'confirmed',
+        commandArgs: null,
+        requiredInputs: ['summary', 'user-decision'],
+        inputOptions: [textInput('summary', '--summary')],
+        commandAlternatives: [
+          nativeNextDecisionAlternative({
+            name: 'retry-verifier',
+            change: state.name,
+            stateVersion: state.state_version,
+            expectedAction: 'retry-verifier',
+            flag: '--retry-verifier',
+            confirmationInput: 'user-decision',
+          }),
+          nativeNextDecisionAlternative({
+            name: 'confirm-verifier-unavailable',
+            change: state.name,
+            stateVersion: state.state_version,
+            expectedAction: 'confirm-verifier-unavailable',
             flag: '--confirmed',
-            valueKind: 'confirmation',
-            required: true,
-            template: null,
-          },
+            confirmationInput: 'user-decision',
+          }),
         ],
         runnerAction: runner('none'),
       };

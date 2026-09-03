@@ -765,23 +765,43 @@ export function recordNativeVerifierExecutionError(options: {
 
 export function retryNativeVerifier(stateInput: NativePortableState): NativePortableState {
   const state = parseNativePortableState(stateInput);
-  if (
-    state.phase !== 'verify' ||
-    state.status !== 'blocked' ||
-    !state.blockers.some(({ resolution_action }) => resolution_action === 'retry-verifier')
-  ) {
+  const executionBlocked =
+    state.status === 'blocked' &&
+    state.blockers.some(({ resolution_action }) => resolution_action === 'retry-verifier');
+  const verifierUnavailable =
+    state.status === 'await-user' &&
+    state.verification_result === 'blocked' &&
+    state.verification?.assurance === 'semantic-verification-unavailable' &&
+    state.loop.stage === 'await-user' &&
+    state.loop.next_action === 'confirm-verifier-unavailable' &&
+    state.blockers.some(
+      ({ resolution_action }) => resolution_action === 'confirm-verifier-unavailable',
+    );
+  if (state.phase !== 'verify' || (!executionBlocked && !verifierUnavailable)) {
     throw new Error('Native change is not blocked on Verifier infrastructure');
   }
+  const unresolvedIds = pendingAcceptanceIds(state);
+  const hasCompletedAcceptance = state.acceptance.some(({ result }) => result === 'passed');
   return parseNativePortableState({
     ...state,
     status: 'active',
     state_version: nextVersion(state),
+    ...(verifierUnavailable
+      ? {
+          verification_result: 'pending' as const,
+          verification_report: null,
+          verification: null,
+        }
+      : {}),
     blockers: [],
     loop: {
       ...state.loop,
       stage: 'verify-ready',
       retry_epoch: state.loop.retry_epoch + 1,
       execution_failure_count: 0,
+      ...(verifierUnavailable
+        ? { previous_unresolved_ids: hasCompletedAcceptance ? unresolvedIds : [] }
+        : {}),
       next_action: 'dispatch-new-verifier',
     },
   });

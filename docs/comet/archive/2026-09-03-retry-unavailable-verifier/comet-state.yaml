@@ -1,0 +1,367 @@
+schema: comet.native.v4
+name: retry-unavailable-verifier
+language: zh-CN
+phase: archive
+status: done
+state_version: 12
+brief: brief.md
+spec_changes:
+  - capability: native-completion-loop
+    operation: modify
+    source: specs/native-completion-loop/spec.md
+workspace:
+  isolation: current
+  change_branch: hotfix/issue-377-windsurf-devin-compat
+  target_branch: hotfix/issue-377-windsurf-devin-compat
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 2
+  attempt: 2
+  retry_epoch: 0
+  failed_iteration_count: 1
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: A1：平台报告独立 Verifier 不可用且 Runtime 检查均通过后，continuation
+      同时提供“重新尝试独立验收”和“接受降级结果”，用户不需要处理文件、进程或回调配置。
+    result: passed
+    reason:
+      text: Unavailable continuation offers retry and explicit degraded confirmation
+        without manual recovery steps.
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: A2：用户选择重新尝试后，Runtime 保留同一候选与已通过检查，清除不可用结论和降级阻塞，并返回新的 `dispatch-verifier`
+      动作。
+    result: passed
+    reason:
+      text: Retry preserves the Builder candidate and completed checks, clears
+        unavailable verification and blockers, and restores dispatch.
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: A3：首次全量 Verify 在不可用后重试并通过时，只完成一次全量验收；修复范围 Verify 在不可用后重试并通过时，仍继续要求最终全量
+      Verify。
+    result: passed
+    reason:
+      text: Full and partial retries preserve their distinct final-verification
+        behavior with regression coverage.
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: A4：subagent 启动失败、超时、丢失或无返回继续按 `verifier-execution-error`
+      处理；只有平台确实无法启动独立执行时才使用 `verifier-unavailable`。
+    result: passed
+    reason:
+      text: Runtime and bilingual Skills classify task execution failures separately
+        from true platform unavailability.
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: A5：重试仍校验当前 state version、expected action 和 attempt，旧结果或错误动作不能推进状态。
+    result: passed
+    reason:
+      text: Retry and Verifier results remain bound to current state, action,
+        candidate, iteration, attempt, and execution identity.
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: A6：公开 CLI、默认状态输出和中英文 Skill 使用一致的恢复语义，生成的 Native Runtime bundle 与源码一致。
+    result: passed
+    reason:
+      text: CLI, continuation, bilingual Skills and references, source, and generated
+        Native bundles are consistent; clean checks passed.
+      truncated: false
+  - id: A7
+    source: specs/native-completion-loop/spec.md
+    text: 首个候选进入全量 Verify - **Given** Shape 已确认且 Builder 完成首轮实现 - **When** 通过代码审查的
+      handoff 被 Runtime 接受 - **Then** iteration 为 1，verification scope 包含全部验收项 -
+      **And** Runtime 执行必要检查后分派新的只读 Verifier
+    result: passed
+    reason:
+      text: A reviewed first candidate still enters full Verify through a fresh
+        independent attempt.
+      truncated: false
+  - id: A8
+    source: specs/native-completion-loop/spec.md
+    text: Verify 失败返回有界修复范围 - **Given** Verifier 对当前 scope 返回 failed 或 blocked 项 -
+      **When** Runtime 返回 Build - **Then** portable 状态保留上一轮未解决 ID、对应原因和其余已通过结果 -
+      **And** iteration 增加，attempt 重置，下一动作说明修复这些项并标记其他受影响项 - **And** 只有有效 Verify
+      fail 消耗失败轮次预算
+    result: passed
+    reason:
+      text: Failed results retain actionable unresolved scope and return to the
+        bounded Build loop.
+      truncated: false
+  - id: A9
+    source: specs/native-completion-loop/spec.md
+    text: Builder 声明本轮受影响项 - **Given** change 处于 repairing - **When** Builder 提交新的
+      handoff - **Then** `addressed_acceptance_ids` 可以包含本轮修复项及可能受修改影响的已通过项 -
+      **And** Runtime 自动加入全部上一轮未解决项 - **And** 未列入并集的 passed 项不进入本轮修复 Verifier
+    result: passed
+    reason:
+      text: Repair scope combines prior unresolved and Builder-addressed acceptance
+        IDs.
+      truncated: false
+  - id: A10
+    source: specs/native-completion-loop/spec.md
+    text: 修复范围未通过继续收敛 - **Given** 新 Verifier 只判断当前修复 scope - **When** scope 仍有
+      failed 或 blocked - **Then** Runtime 更新这些结果并再次返回 Build - **And**
+      进展判断只比较新的未解决集合 - **And** 连续无进展和总失败轮次继续使用现有停止上限
+    result: passed
+    reason:
+      text: Partial failures retain existing progress and failure budget enforcement.
+      truncated: false
+  - id: A11
+    source: specs/native-completion-loop/spec.md
+    text: 修复范围通过后自动进入最终全量 Verify - **Given** 当前候选的修复 scope 小于全部验收且已经全部 passed -
+      **When** Runtime 接受结果 - **Then** 不进入 Archive，也不要求用户重复确认 - **And** Runtime
+      将全部验收准备为 pending，增加 attempt，并分派新的独立 Verifier - **And** 同一候选的已成功检查可以复用
+    result: passed
+    reason:
+      text: A passing repair scope resets all acceptance to pending and dispatches
+        final full verification while preserving checks.
+      truncated: false
+  - id: A12
+    source: specs/native-completion-loop/spec.md
+    text: 最终全量结果决定 Archive - **Given** 最终 Verifier 的 scope 等于全部验收项 - **When**
+      全部验收和必要检查均 passed - **Then** Runtime 形成最终 pass 并按
+      `native.archive_confirmation` 进入 Archive 或一次用户确认 - **And**
+      任一项失败、阻塞或缺失都不能归档 - **And** Archive 本身不增加 iteration 或重新验收
+    result: passed
+    reason:
+      text: Only complete full-scope acceptance with passed Runtime checks can enter
+        Archive.
+      truncated: false
+  - id: A13
+    source: specs/native-completion-loop/spec.md
+    text: 恢复保持当前验证范围 - **Given** 本机进程在修复范围 Verify 或最终全量 Verify 中断 - **When** Runtime
+      从 portable 状态恢复 - **Then** 保留当前 iteration、候选和待验证范围 - **And** 重新分派新的
+      attempt，不把中断计为实现失败 - **And** 不恢复已经失效的 Builder 审查或旧候选结果
+    result: passed
+    reason:
+      text: Recovery preserves the candidate and scope while requiring a new attempt
+        and rejecting stale results.
+      truncated: false
+  - id: A14
+    source: specs/native-completion-loop/spec.md
+    text: Verifier 不可用后可以重新派发 - **Given** 当前平台暂时无法启动独立 Verifier，且已解析的 Runtime 检查全部通过
+      - **When** Runtime 记录 `verifier-unavailable` - **Then** continuation
+      同时提供重新尝试独立验收和接受降级结果 - **And** 不要求用户恢复文件、进程、服务地址或回调
+    result: passed
+    reason:
+      text: Verifier unavailable state exposes retry and explicit degraded acceptance
+        without service or callback recovery.
+      truncated: false
+  - id: A15
+    source: specs/native-completion-loop/spec.md
+    text: 不可用状态重试保留候选和检查 - **Given** change 正在等待用户决定是否接受降级验证 - **When** 用户选择重新尝试独立验收
+      - **Then** Runtime 保留当前候选和已通过检查，清除不可用验证结论与降级阻塞 - **And** state version 和
+      retry epoch 增加，下一动作重新分派新的只读 Verifier - **And** 旧 attempt 的迟到结果继续被拒绝
+    result: passed
+    reason:
+      text: Unavailable retry advances state and retry epoch, preserves valid
+        evidence, and isolates old attempts.
+      truncated: false
+  - id: A16
+    source: specs/native-completion-loop/spec.md
+    text: 不可用重试保持完整验收规则 - **Given** 首次全量 Verify 或局部修复 Verify 因 Verifier 不可用而等待用户 -
+      **When** 用户重试且新 Verifier 返回通过 - **Then** 首次全量 Verify 直接形成当前候选的完整结果 -
+      **And** 局部修复 Verify 通过后仍自动进入最终全量 Verify - **And** 任一验收项未通过、阻塞或缺失时仍返回
+      Build，不能归档
+    result: passed
+    reason:
+      text: Full retry may complete directly, while partial retry still requires final
+        full Verify.
+      truncated: false
+  - id: A17
+    source: specs/native-completion-loop/spec.md
+    text: Verifier 执行结果按真实失败类型记录 - **Given** 平台提供原生 subagent，且 Runtime 已返回 Verifier
+      任务包 - **When** subagent 启动失败、超时、丢失或结束后没有结果 - **Then** Agent 提交
+      `verifier-execution-error` 并按最新 continuation 重新派发或等待用户重试 - **And**
+      只有平台确实无法启动独立执行时才提交 `verifier-unavailable` - **And** 整个流程不依赖常驻 Verifier
+      进程、服务地址或外部回调
+    result: passed
+    reason:
+      text: dispatch-verifier is documented as a task packet for a platform-native
+        read-only subagent, not a service, endpoint, or callback.
+      truncated: false
+  - id: A18
+    source: specs/native-completion-loop/spec.md
+    text: Dashboard 与 Runner 显示真实阶段 - **Given** change 处于代码审查、修复范围 Verify、最终全量
+      Verify 或 Verifier 不可用后的恢复选择 - **When** Dashboard 或 Runner 读取紧凑状态 -
+      **Then** 使用 Build/Verify 既有 phase 和明确 next action 表达当前工作 - **And**
+      不可用状态显示可重试与接受降级结果的合法选择 - **And** 修复范围通过不显示为最终验收通过或可归档
+    result: passed
+    reason:
+      text: Build and Verify phases expose the real retry and final-full-verification
+        next actions.
+      truncated: false
+builder_handoff:
+  candidate_id: 27d01e70-f6ed-4097-8530-94c383ab3c15
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:3bc915d1-3be9-4a4b-b1e4-f8aa756a7328
+  iteration: 2
+  summary:
+    text: 清除仓库根目录中的临时 runner-input 文件，源码实现保持不变；已在干净工作区重新确认 lint、A6 定向回归和 Native
+      Runtime 生成物一致性。
+    truncated: false
+  addressed_acceptance_ids:
+    - A6
+  checks:
+    - name:
+        text: Clean Runtime lint
+        truncated: false
+      result: passed
+      note:
+        text: Runtime pnpm run lint passed after temporary runner input removal
+        truncated: false
+    - name:
+        text: A6 focused regressions
+        truncated: false
+      result: passed
+      note:
+        text: Independent reviewer reran loop, CLI unavailable/retry, and bilingual
+          Skill contracts
+        truncated: false
+    - name:
+        text: Native Runtime generated consistency
+        truncated: false
+      result: passed
+      note:
+        text: node scripts/build/build-native-runtime.mjs --check
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: 线上 PR CI 尚需针对最终提交 HEAD 验证。
+      truncated: false
+  known_limits_truncated: false
+  review:
+    status: passed
+    summary:
+      text: 第一次 lint 失败确认为已清理的编排临时文件污染；当前产物与源码一致，A6 已满足，无 P0/P1/P2。
+      truncated: false
+    reviewer_execution_ref: builder-repair-review-agent-v2
+  submitted_at: 2026-09-03T02:35:21.462Z
+blockers: []
+verification:
+  candidate_id: 27d01e70-f6ed-4097-8530-94c383ab3c15
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:e46c5f60-d43d-47bb-8add-c5c226a06cf0
+  iteration: 2
+  attempt: 2
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: lint-clean
+      name:
+        text: Clean repository lint
+        truncated: false
+      argv_display:
+        - text: run
+          truncated: false
+        - text: lint
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 12655
+    - id: native-generated
+      name:
+        text: Native Runtime generated consistency
+        truncated: false
+      argv_display:
+        - text: scripts/build/build-native-runtime.mjs
+          truncated: false
+        - text: --check
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 667
+    - id: a6-regressions
+      name:
+        text: Native unavailable retry and bilingual Skill regressions
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: vitest
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/comet-native/native-loop-runtime.test.ts
+          truncated: false
+        - text: test/domains/comet-native/native-cli-v4-surface.test.ts
+          truncated: false
+        - text: test/domains/comet-native/native-skill.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 188934
+  summary:
+    text: Final independent semantic verification passed. Standards and Spec axes
+      found no P0, P1, or P2 issues, and A1-A18 are all satisfied.
+    truncated: false
+  risks:
+    - text: Final online pull request CI must still validate the pushed HEAD.
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-09-03T02:58:15.128Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A6
+    summary:
+      text: Implementation semantics passed independent review, but this Runtime
+        attempt retains a lint failure caused solely by the now-deleted
+        temporary runner-input file. Return A6 to Build and dispatch a clean
+        candidate before final acceptance.
+      truncated: false
+    completed_at: 2026-09-03T02:33:14.775Z
+  - goal_cycle: 1
+    iteration: 2
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Repair verification passed for A6; final full verification is required.
+      truncated: false
+    completed_at: 2026-09-03T02:45:53.797Z
+  - goal_cycle: 1
+    iteration: 2
+    attempt: 2
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: Final independent semantic verification passed. Standards and Spec axes
+        found no P0, P1, or P2 issues, and A1-A18 are all satisfied.
+      truncated: false
+    completed_at: 2026-09-03T02:58:15.128Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-09-03T01:36:33.899Z

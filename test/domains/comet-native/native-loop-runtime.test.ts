@@ -4,6 +4,7 @@ import {
   applyNativeVerifierEnvelope,
   confirmNativeSkillCoordinatedPass,
   confirmNativePortableAcceptance,
+  recordNativeVerifierUnavailable,
   recordNativeVerifierExecutionError,
   reserveNativeVerifierAttempt,
   resolveNativeVerifierBlocker,
@@ -811,6 +812,144 @@ describe('Native portable Build/Verify loop', () => {
       execution_failure_count: 0,
       attempt: 3,
     });
+  });
+
+  it.each([
+    {
+      language: 'en' as const,
+      executionError: 'immediately submit verifier-execution-error',
+      unavailable: 'only when the current platform truly has no usable subagent capability',
+    },
+    {
+      language: 'zh-CN' as const,
+      executionError: '立即提交 verifier-execution-error',
+      unavailable: '只有当前平台确实没有可用的 subagent 能力时才提交 verifier-unavailable',
+    },
+  ])(
+    'classifies dispatched Verifier failures separately from platform unavailability in $language',
+    ({ language, executionError, unavailable }) => {
+      const { state } = buildState();
+      const communication = nativePortableContinuation({ ...state, language }).userCommunication;
+      expect(communication).toMatchObject({ required: false });
+      expect(communication.agentInstruction).toContain(executionError);
+      expect(communication.agentInstruction).toContain(unavailable);
+    },
+  );
+
+  it('retries unavailable semantic verification without degrading or reopening the full scope', () => {
+    const { state } = buildState();
+    const unavailable = recordNativeVerifierUnavailable({
+      state,
+      checks,
+      verifierExecutionRef: 'verifier-1-1',
+      summary: 'The platform could not start an independent Verifier.',
+    });
+
+    expect(nativePortableContinuation(unavailable)).toMatchObject({
+      disposition: 'await-user',
+      action: 'confirm-verifier-unavailable',
+      commandArgs: null,
+      requiredInputs: ['summary', 'user-decision'],
+      commandAlternatives: expect.arrayContaining([
+        expect.objectContaining({
+          name: 'retry-verifier',
+          expectedAction: 'retry-verifier',
+          commandArgs: expect.arrayContaining(['--retry-verifier']),
+        }),
+        expect.objectContaining({
+          name: 'confirm-verifier-unavailable',
+          expectedAction: 'confirm-verifier-unavailable',
+          commandArgs: expect.arrayContaining(['--confirmed']),
+        }),
+      ]),
+      userCommunication: {
+        required: true,
+        suggestedReply: 'Retry independent verification',
+        agentInstruction: expect.stringContaining('commandAlternatives'),
+      },
+    });
+
+    const retried = retryNativeVerifier(unavailable);
+    expect(retried).toMatchObject({
+      phase: 'verify',
+      status: 'active',
+      verification_result: 'pending',
+      verification_report: null,
+      verification: null,
+      blockers: [],
+      loop: {
+        stage: 'verify-ready',
+        retry_epoch: 1,
+        execution_failure_count: 0,
+        previous_unresolved_ids: [],
+        next_action: 'dispatch-new-verifier',
+      },
+    });
+    expect(retried.acceptance.every(({ result }) => result === 'pending')).toBe(true);
+  });
+
+  it('keeps a partial repair scope when unavailable semantic verification is retried', () => {
+    const prepared = buildState();
+    let state = applyNativeVerifierEnvelope({
+      state: prepared.state,
+      envelope: envelope(prepared.runner, prepared.state, 'fail', ['A2']),
+      checks,
+      maxVerifyFailures: 5,
+    }).state;
+    state = submitNativeBuilderCandidate({
+      state,
+      input: {
+        identity: prepared.runner.captureExecutionIdentity({
+          identityProvider: state.builder_handoff!.identity_provider,
+          executionRef: 'builder-repair-unavailable',
+        }),
+        candidateId: 'candidate-repair-unavailable',
+        summary: 'Repaired A2.',
+        addressedAcceptanceIds: ['A2'],
+        review: {
+          status: 'passed',
+          summary: 'The A2 repair passed review.',
+          reviewerExecutionRef: 'reviewer-repair-unavailable',
+        },
+      },
+    });
+    state = reserveNativeVerifierAttempt(state);
+    state = recordNativeVerifierUnavailable({
+      state,
+      checks,
+      verifierExecutionRef: 'verifier-repair-unavailable',
+      summary: 'The platform temporarily lost independent verification.',
+    });
+
+    let retried = retryNativeVerifier(state);
+    expect(retried.acceptance).toMatchObject([
+      { id: 'A1', result: 'passed' },
+      { id: 'A2', result: 'pending' },
+    ]);
+    expect(retried.loop).toMatchObject({
+      stage: 'verify-ready',
+      previous_unresolved_ids: ['A2'],
+      next_action: 'dispatch-new-verifier',
+    });
+
+    retried = reserveNativeVerifierAttempt(retried);
+    const repairPassed = applyNativeVerifierEnvelope({
+      state: retried,
+      envelope: envelope(prepared.runner, retried, 'pass', [], ['A2']),
+      checks,
+      maxVerifyFailures: 5,
+    }).state;
+    expect(repairPassed).toMatchObject({
+      phase: 'verify',
+      status: 'active',
+      verification_result: 'pending',
+      loop: {
+        stage: 'verify-ready',
+        previous_unresolved_ids: [],
+        next_action: 'run-final-full-verification',
+      },
+    });
+    expect(repairPassed.acceptance.every(({ result }) => result === 'pending')).toBe(true);
   });
 
   it('rejects a stale execution error after a Skill-coordinated pass', () => {

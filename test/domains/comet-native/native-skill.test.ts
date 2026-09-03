@@ -400,7 +400,20 @@ describe('Comet Native Skills', () => {
       expect(commands).toContain('dispatch-verifier');
       expect(commands).toContain('verifier-response');
       expect(commands).toContain('verifier-execution-error');
+      expect(commands).toContain('verifier-unavailable');
+      expect(commands).toContain('retry-verifier');
+      expect(commands).toContain('confirm-verifier-unavailable');
       expect(commands).toContain('skill-coordinated');
+      expect(commands).toContain(
+        language === 'zh'
+          ? '不存在需要另行启动或配置的 Verifier 服务、进程、地址或回调'
+          : 'There is no separate Verifier service, process, endpoint, or callback',
+      );
+      expect(commands).toContain(
+        language === 'zh'
+          ? '本次任务未启动、执行失败、超时或结束后没有返回'
+          : 'this task does not start, fails, times out, or ends without returning a result',
+      );
       expect(commands.match(/comet native/gu)?.length ?? 0).toBeLessThanOrEqual(4);
       expect(commands).not.toContain('```json');
       expect(commands).not.toContain('| Exit code |');

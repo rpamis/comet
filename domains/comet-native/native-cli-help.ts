@@ -142,7 +142,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       '--accept-result     Accept the current skill-coordinated Verify result and make it archive-ready.',
       '--revise-implementation  Keep confirmed requirements unchanged and return Verify to Build for implementation revision.',
       '--revise-requirements    Return Verify or Archive to Shape when user-visible goals or acceptance criteria must change.',
-      '--retry-verifier    Retry a blocked Verifier execution when the continuation allows it.',
+      '--retry-verifier    Retry a failed or unavailable Verifier when the continuation allows it.',
       '--resolve-verifier-blocker  Resolve a semantic Verifier blocker without changing the candidate, then dispatch a new attempt.',
       '--max-parallel <n>  Supervisor task concurrency cap; defaults to 2, use 1 for serial fallback.',
       '--expected-state-version <n>  Continuation-issued guard that rejects stale public transition decisions.',

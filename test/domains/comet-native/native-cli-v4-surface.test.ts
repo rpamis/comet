@@ -1047,13 +1047,27 @@ Run applicable focused checks.
           continuation: {
             disposition: 'await-user',
             action: 'confirm-verifier-unavailable',
+            commandArgs: null,
+            requiredInputs: ['summary', 'user-decision'],
+            commandAlternatives: expect.arrayContaining([
+              expect.objectContaining({
+                name: 'retry-verifier',
+                expectedAction: 'retry-verifier',
+                commandArgs: expect.arrayContaining(['--retry-verifier']),
+              }),
+              expect.objectContaining({
+                name: 'confirm-verifier-unavailable',
+                expectedAction: 'confirm-verifier-unavailable',
+                commandArgs: expect.arrayContaining(['--confirmed']),
+              }),
+            ]),
             userCommunication: {
               required: true,
               message:
-                '由于独立验收服务暂时不可用，目前只能完成自动检查。你可以选择接受当前检查结果，或者等验收服务恢复后再重试。',
-              suggestedReply: null,
+                '独立验收当前不可用，但你的代码和已经完成的检查都已安全保留。你可以直接重新尝试独立验收，也可以明确接受只有自动检查的结果。',
+              suggestedReply: '重新尝试独立验收',
               agentInstruction:
-                '向用户转述 message，并请用户明确选择是否接受只有自动检查的结果。不要把“继续”当作默认接受。',
+                '只向用户转述 message 和 suggestedReply，并等待用户选择。用户要求重试时执行 commandAlternatives 中的 retry-verifier；只有用户明确接受降级结果时才执行 confirm-verifier-unavailable。不要把“继续”视为接受降级结果，也不要要求用户处理文件、进程、服务或回调。',
             },
           },
         },
@@ -1100,6 +1114,73 @@ Run applicable focused checks.
       expect(confirmedReport).not.toContain('验证情况: **已完成独立验证**');
     },
   );
+
+  it('retries an unavailable Verifier with the same candidate and completed checks', async () => {
+    const name = 'retry-unavailable-verifier';
+    const counter = path.join(projectRoot, 'unavailable-retry-check-count.txt');
+    const check = {
+      id: 'runtime-pass',
+      name: 'Runtime pass',
+      executable: process.execPath,
+      argv: ['-e', `require('fs').appendFileSync(${JSON.stringify(counter)}, 'run\\n')`],
+      cwdRef: '.',
+      timeoutMs: 10_000,
+      repeatable: true,
+    };
+    await prepareBuild(name, ['First behavior works.'], 'zh-CN');
+    await runnerStep(name, builderHandoff(['A1']));
+    const firstDispatch = await runnerStep(name, { kind: 'dispatch-verifier', checks: [check] });
+    const firstCandidate = (firstDispatch.data as { verifierDispatch: { candidateId: string } })
+      .verifierDispatch.candidateId;
+    const unavailable = await runnerStep(name, {
+      kind: 'verifier-unavailable',
+      summary: 'The platform temporarily could not start an independent Agent.',
+    });
+    const unavailableStateVersion = (unavailable.data?.state as { state_version: number })
+      .state_version;
+
+    const retried = json(
+      await runNativeCli([
+        'next',
+        name,
+        '--summary',
+        'Retry independent verification',
+        '--retry-verifier',
+        '--expected-state-version',
+        String(unavailableStateVersion),
+        '--expected-action',
+        'retry-verifier',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(retried).toMatchObject({
+      exitCode: 0,
+      data: {
+        state: {
+          phase: 'verify',
+          status: 'active',
+          verification_result: 'pending',
+          loop: {
+            stage: 'verify-ready',
+            retry_epoch: 1,
+            next_action: 'dispatch-new-verifier',
+          },
+        },
+        continuation: { action: 'dispatch-verifier' },
+      },
+    });
+
+    const secondDispatch = await runnerStep(name, { kind: 'dispatch-verifier', checks: [check] });
+    expect(secondDispatch).toMatchObject({
+      exitCode: 0,
+      data: {
+        checks: [expect.objectContaining({ id: 'runtime-pass', status: 'passed' })],
+        verifierDispatch: { candidateId: firstCandidate, attempt: 2 },
+      },
+    });
+    await expect(fs.readFile(counter, 'utf8')).resolves.toBe('run\n');
+  });
 
   it('rejects delayed generic Verifier errors and unavailable messages from an older attempt', async () => {
     const name = 'stale-generic-verifier-message';
