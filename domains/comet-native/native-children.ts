@@ -213,11 +213,12 @@ export function nativeChildrenIndexDrift(
   };
   if (contract.schema === NATIVE_CHILDREN_SCHEMA_V2 && contract.acceptance_index) {
     const required = options.requiredAcceptanceIds ?? acceptanceIds ?? [];
+    const allowed = options.allowedAcceptanceIds ?? required;
     const indexKeys = Object.keys(contract.acceptance_index);
     drift.missing = required.filter((id) => !(id in contract.acceptance_index!));
-    drift.extra = indexKeys.filter((id) => !required.includes(id));
+    drift.extra = indexKeys.filter((id) => !allowed.includes(id));
     const catalog = new Map((options.acceptanceCatalog ?? []).map((entry) => [entry.id, entry]));
-    for (const id of required) {
+    for (const id of indexKeys) {
       const expected = catalog.get(id);
       const actual = contract.acceptance_index[id];
       if (
@@ -263,6 +264,7 @@ function hasDrift(drift: NativeChildrenIndexDrift): boolean {
 export interface NativeChildrenValidationOptions {
   acceptanceCatalog?: readonly Pick<NativePortableAcceptanceState, 'id' | 'source' | 'text'>[];
   requiredAcceptanceIds?: readonly string[];
+  allowedAcceptanceIds?: readonly string[];
   /**
    * Advisory parsing keeps the same structural checks but reports acceptance-index
    * drift through NativeChildrenDocument.drift instead of throwing, so read-only
@@ -289,9 +291,16 @@ type NativeChildrenAcceptanceState = Pick<
 export function nativeChildrenAcceptanceValidation(
   state: NativeChildrenAcceptanceState,
 ): NativeChildrenValidationOptions {
+  const currentAcceptanceIds = new Set(state.acceptance.map(({ id }) => id));
   const requiredAcceptanceIds = new Set(
     state.acceptance.filter(({ source }) => source === state.brief).map(({ id }) => id),
   );
+  const allowedAcceptanceIds = new Set(requiredAcceptanceIds);
+  for (const failure of state.history.filter(({ outcome }) => outcome === 'fail')) {
+    for (const id of failure.unresolved_ids) {
+      if (currentAcceptanceIds.has(id)) allowedAcceptanceIds.add(id);
+    }
+  }
   if (state.loop.stage === 'repairing' && state.verification_result === 'fail') {
     const latestFailure = [...state.history].reverse().find(({ outcome }) => outcome === 'fail');
     for (const id of latestFailure?.unresolved_ids ?? []) requiredAcceptanceIds.add(id);
@@ -299,6 +308,7 @@ export function nativeChildrenAcceptanceValidation(
   return {
     acceptanceCatalog: state.acceptance,
     requiredAcceptanceIds: [...requiredAcceptanceIds],
+    allowedAcceptanceIds: [...allowedAcceptanceIds],
   };
 }
 
@@ -329,16 +339,17 @@ function validateAcceptanceIndex(
   options: NativeChildrenValidationOptions,
 ): void {
   const required = options.requiredAcceptanceIds ?? acceptanceIds ?? [];
+  const allowed = options.allowedAcceptanceIds ?? required;
   const actual = Object.keys(index);
   const missing = required.filter((id) => !(id in index));
-  const extra = actual.filter((id) => !required.includes(id));
+  const extra = actual.filter((id) => !allowed.includes(id));
   if (missing.length > 0 || extra.length > 0) {
     throw new Error(
       `Native children acceptance_index must match the required acceptance: missing ${missing.join(', ') || 'none'}; extra ${extra.join(', ') || 'none'}`,
     );
   }
   const catalog = new Map((options.acceptanceCatalog ?? []).map((entry) => [entry.id, entry]));
-  for (const id of required) {
+  for (const id of actual) {
     const expected = catalog.get(id);
     if (!expected) continue;
     const actualEntry = index[id];

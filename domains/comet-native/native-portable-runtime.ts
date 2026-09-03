@@ -462,9 +462,12 @@ export async function confirmNativePortableShape(options: {
           .find(({ outcome }) => outcome === 'pass' || outcome === 'fail');
         if (latestDecision?.outcome === 'fail' && latestDecision.unresolved_ids.length > 0) {
           const inspection = await inspectNativeChildren({ paths: options.paths, state: next });
+          const statusByChild = new Map(
+            (inspection?.children ?? []).map(({ name, status }) => [name, status]),
+          );
           const repairCoverage = new Set(
-            (inspection?.children ?? [])
-              .filter(({ status }) => status !== 'done')
+            children.contract.children
+              .filter(({ name }) => statusByChild.get(name) !== 'done')
               .flatMap(({ covers }) => covers),
           );
           const missing = latestDecision.unresolved_ids.filter((id) => !repairCoverage.has(id));

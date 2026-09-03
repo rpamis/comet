@@ -440,7 +440,7 @@ children:
     );
   });
 
-  it('validates v2 index text against the full catalog while requiring only the child-facing subset', () => {
+  it('validates v2 index text while allowing only failed Spec acceptance into repair children', () => {
     const acceptance = [
       { id: 'A1', source: 'brief.md', text: 'The integrated result contains the first behavior.' },
       { id: 'A2', source: 'brief.md', text: 'The integrated result contains the second behavior.' },
@@ -476,6 +476,45 @@ children:
         { acceptanceCatalog: acceptance, requiredAcceptanceIds: ['A1', 'A2'] },
       ),
     ).toThrow(/unknown acceptance/iu);
+
+    const childFacingSpec = READABLE_CHILDREN.replace(
+      'children:',
+      `  A3:
+    source: specs/demo/spec.md
+    text: The formal requirement is retained.
+children:`,
+    ).replace('covers: [A1]', 'covers: [A1, A3]');
+    expect(() =>
+      parseNativeChildrenContract(
+        childFacingSpec,
+        acceptance.map(({ id }) => id),
+        { acceptanceCatalog: acceptance, requiredAcceptanceIds: ['A1', 'A2'] },
+      ),
+    ).toThrow(/extra A3/iu);
+    const repairValidation = {
+      acceptanceCatalog: acceptance,
+      requiredAcceptanceIds: ['A1', 'A2'],
+      allowedAcceptanceIds: ['A1', 'A2', 'A3'],
+    };
+    expect(() =>
+      parseNativeChildrenContract(
+        childFacingSpec,
+        acceptance.map(({ id }) => id),
+        repairValidation,
+      ),
+    ).not.toThrow();
+    expect(() =>
+      parseNativeChildrenContract(
+        childFacingSpec.replace(
+          'The formal requirement is retained.',
+          'A stale formal requirement.',
+        ),
+        acceptance.map(({ id }) => id),
+        repairValidation,
+      ),
+    ).toThrow(
+      /acceptance_index.A3 does not match the acceptance catalog: copy text exactly from the current acceptance catalog/iu,
+    );
   });
 
   it('reports stale acceptance-index drift under the advisory policy instead of throwing', () => {
