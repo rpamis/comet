@@ -17,10 +17,11 @@ type NativePortableContinuationInputOption = {
 type NativePortableCommandAlternative = {
   name: string;
   stateVersion: number;
-  expectedAction: NativePortableExpectedContinuationAction;
-  commandArgs: string[];
+  expectedAction: NativePortableExpectedContinuationAction | 'archive-preview';
+  commandArgs: string[] | null;
   requiredInputs: string[];
   inputOptions: NativePortableContinuationInputOption[];
+  description?: string;
 };
 
 export interface NativePortableRunnerAction {
@@ -66,6 +67,13 @@ export interface NativePortableContinuation {
   commandAlternatives?: NativePortableCommandAlternative[];
   runnerAction: NativePortableRunnerAction;
   userCommunication: NativePortableUserCommunication;
+}
+
+export type NativePortableArchiveContinuationMode = 'archive-ready' | 'preview' | 'blocked';
+
+export interface NativePortableContinuationOptions {
+  archiveMode?: NativePortableArchiveContinuationMode;
+  archiveBlockers?: readonly string[];
 }
 
 function localized(state: NativePortableState, english: string, chinese: string): string {
@@ -242,6 +250,98 @@ function nativePortableUserCommunication(
   );
 }
 
+function nativePortableArchiveFinishCommunication(
+  state: NativePortableState,
+): NativePortableUserCommunication {
+  const branch = state.workspace.change_branch ?? '<change-branch>';
+  const target = state.workspace.target_branch ?? '<target-branch>';
+  return state.language === 'zh-CN'
+    ? {
+        required: true,
+        message: `当前 change 位于 ${branch}，目标分支为 ${target}。请选择一次工作区收尾方式：A) 保留工作区；B) 本地合并；C) 推送分支；D) 推送并创建 PR；E) 暂不归档。选择 A-D 后 Runtime 会先执行完整 dry-run，再给出唯一的 confirmed 命令；选择 E 将保留当前 change 等待稍后继续。`,
+        suggestedReply: '回复 A、B、C、D 或 E',
+        agentInstruction:
+          '只向用户展示五种收尾方式及实际影响，等待用户选择。选择 A-D 时执行对应 commandAlternatives 中包含 --dry-run --finish 的完整命令；选择 E 时停止，不运行任何 Archive 命令。不要直接运行 --confirmed，也不要自行猜测 finish。',
+      }
+    : {
+        required: true,
+        message: `This change is on ${branch} and targets ${target}. Choose one workspace finish: A) keep the workspace; B) merge locally; C) push the branch; D) push and create a PR; or E) defer Archive. For A-D, Runtime will run a complete dry-run first, then return one confirmed command; E keeps the current change for later.`,
+        suggestedReply: 'Reply A, B, C, D, or E',
+        agentInstruction:
+          'Show all five finish choices and their actual effects, then wait. For A-D, execute the matching complete commandAlternative containing --dry-run --finish; for E, stop without running an Archive command. Do not run --confirmed directly or guess a finish mode.',
+      };
+}
+
+function nativePortableArchiveFinishAlternatives(
+  state: NativePortableState,
+): NativePortableCommandAlternative[] {
+  const choices: Array<{
+    finish: 'keep' | 'merge' | 'push' | 'pull-request';
+    name: string;
+    description: [string, string];
+  }> = [
+    {
+      finish: 'keep',
+      name: 'keep-workspace',
+      description: [
+        '保留当前分支和目录；完成归档提交，不合并、不推送、不创建 PR。',
+        'Keep the current branch and directory; create the archive commit without merging, pushing, or creating a PR.',
+      ],
+    },
+    {
+      finish: 'merge',
+      name: 'merge-locally',
+      description: [
+        '完成归档提交，并把 change 分支本地合并到目标分支；不推送、不创建 PR。',
+        'Create the archive commit and merge the change branch locally into the target branch without pushing or creating a PR.',
+      ],
+    },
+    {
+      finish: 'push',
+      name: 'push-branch',
+      description: [
+        '完成归档提交并推送 change 分支；不合并到目标分支、不创建 PR。',
+        'Create the archive commit and push the change branch without merging into the target branch or creating a PR.',
+      ],
+    },
+    {
+      finish: 'pull-request',
+      name: 'push-pull-request',
+      description: [
+        '完成归档提交、推送 change 分支，并以目标分支为基础创建 PR。',
+        'Create the archive commit, push the change branch, and create a PR against the target branch.',
+      ],
+    },
+  ];
+  const finishAlternatives: NativePortableCommandAlternative[] = choices.map(
+    ({ finish, name, description }) => ({
+      name,
+      stateVersion: state.state_version,
+      expectedAction: 'archive-preview' as const,
+      commandArgs: ['comet', 'native', 'archive', state.name, '--dry-run', '--finish', finish],
+      requiredInputs: [],
+      inputOptions: [],
+      description: localized(state, description[1], description[0]),
+    }),
+  );
+  return [
+    ...finishAlternatives,
+    {
+      name: 'defer-archive',
+      stateVersion: state.state_version,
+      expectedAction: 'archive-preview' as const,
+      commandArgs: null,
+      requiredInputs: [],
+      inputOptions: [],
+      description: localized(
+        state,
+        'Keep the current change and workspace without archiving; stop and resume later.',
+        '保留当前 change 和工作区，不执行归档；停止本次流程，稍后再继续。',
+      ),
+    },
+  ];
+}
+
 function boundNativeNextCommandArgs(options: {
   change: string;
   stateVersion: number;
@@ -360,6 +460,7 @@ function nativeNextRevisionAlternatives(options: {
 export function nativePortableContinuation(
   state: NativePortableState,
   children?: NativeChildrenInspection | null,
+  options: NativePortableContinuationOptions = {},
 ): NativePortableContinuation {
   const coordinationRequired =
     supervisorCoordinationRequired(children) && state.coordination_mode === undefined;
@@ -794,11 +895,61 @@ export function nativePortableContinuation(
     state.loop.stage === 'archive-ready' &&
     !state.archived
   ) {
+    const archiveMode = options.archiveMode ?? 'archive-ready';
+    const isolated = state.workspace.isolation !== 'current';
+    const finishRequired = isolated && state.workspace.finish === null;
+    if (archiveMode === 'blocked') {
+      return {
+        ...base,
+        disposition: 'blocked',
+        action: 'archive',
+        commandArgs: null,
+        requiredInputs: ['archive-blocker-resolution'],
+        inputOptions: [],
+        runnerAction: runner('none'),
+      };
+    }
+    if (archiveMode === 'preview') {
+      if (options.archiveBlockers && options.archiveBlockers.length > 0) {
+        return {
+          ...base,
+          disposition: 'blocked',
+          action: 'archive',
+          commandArgs: null,
+          requiredInputs: ['archive-blocker-resolution'],
+          inputOptions: [],
+          runnerAction: runner('none'),
+        };
+      }
+      return {
+        ...base,
+        disposition: 'continue',
+        action: 'archive',
+        commandArgs: ['comet', 'native', 'archive', state.name, '--confirmed'],
+        requiredInputs: [],
+        runnerAction: runner('none'),
+      };
+    }
+    if (finishRequired) {
+      return {
+        ...base,
+        disposition: 'await-user',
+        action: 'archive',
+        commandArgs: null,
+        requiredInputs: ['workspace-finish'],
+        inputOptions: [
+          choiceInput('finish', '--finish', ['keep', 'merge', 'push', 'pull-request']),
+        ],
+        commandAlternatives: [...nativePortableArchiveFinishAlternatives(state)],
+        userCommunication: nativePortableArchiveFinishCommunication(state),
+        runnerAction: runner('none'),
+      };
+    }
     return {
       ...base,
       disposition: 'continue',
       action: 'archive',
-      commandArgs: ['comet', 'native', 'archive', state.name, '--confirmed'],
+      commandArgs: ['comet', 'native', 'archive', state.name, '--dry-run'],
       requiredInputs: [],
       commandAlternatives: [
         nativeNextDecisionAlternative({

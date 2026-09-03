@@ -32,7 +32,7 @@ export interface NativeWorkspaceFinishPlan {
   targetBranch: string;
   targetRoot: string | null;
   remote: string | null;
-  isolation: 'branch' | 'worktree';
+  isolation: 'current' | 'branch' | 'worktree';
   pullRequestFinish: WorkflowNativePullRequestFinishConfig | null;
 }
 
@@ -50,6 +50,7 @@ export interface NativeWorkspaceFinishResult {
     performed: boolean;
     reason: string | null;
   };
+  blockedPaths: string[];
   message: string | null;
   recoveryArgs: string[] | null;
 }
@@ -58,6 +59,22 @@ export class NativeWorkspaceFinishError extends Error {
   constructor(readonly result: NativeWorkspaceFinishResult) {
     super(result.message ?? 'Native workspace finish is blocked');
     this.name = 'NativeWorkspaceFinishError';
+  }
+}
+
+/**
+ * Raised before Archive mutates anything when the Git working tree contains
+ * paths outside the change-owned finish scope. Keeping the paths on the
+ * error lets the CLI return a complete, machine-readable blocker list.
+ */
+export class NativeWorkspaceFinishPreparationError extends Error {
+  constructor(
+    readonly paths: string[],
+    readonly workspaceRoot: string,
+    messagePrefix = 'Native workspace finish is blocked',
+  ) {
+    super(`${messagePrefix}; remaining paths: ${paths.join(', ')}`);
+    this.name = 'NativeWorkspaceFinishPreparationError';
   }
 }
 
@@ -83,6 +100,43 @@ function portableRelative(projectRoot: string, target: string): string {
 
 function pathCovered(candidate: string, allowed: readonly string[]): boolean {
   return allowed.some((entry) => candidate === entry || candidate.startsWith(`${entry}/`));
+}
+
+function portableArchiveOwnedPaths(
+  paths: NativeProjectPaths,
+  state: NativePortableState,
+  archiveDir?: string,
+): string[] {
+  const allowed = [
+    portableRelative(paths.projectRoot, nativeChangeDir(paths, state.name)),
+    portableRelative(paths.projectRoot, nativeSelectionFile(paths)),
+  ];
+  if (archiveDir) allowed.push(portableRelative(paths.projectRoot, archiveDir));
+  return allowed;
+}
+
+function assertFinishScopeClean(projectRoot: string, allowed: readonly string[]): void {
+  const unrelated = gitStatusPaths(projectRoot).filter(
+    (candidate) => !pathCovered(candidate, allowed),
+  );
+  if (unrelated.length > 0) {
+    throw new NativeWorkspaceFinishPreparationError(unrelated, projectRoot);
+  }
+}
+
+function absoluteGitPaths(projectRoot: string, candidates: readonly string[]): string[] {
+  return candidates.map((candidate) => path.resolve(projectRoot, ...candidate.split('/')));
+}
+
+function assertTargetWorktreeClean(targetRoot: string): void {
+  const targetBlockers = gitStatusPaths(targetRoot);
+  if (targetBlockers.length > 0) {
+    throw new NativeWorkspaceFinishPreparationError(
+      absoluteGitPaths(targetRoot, targetBlockers),
+      targetRoot,
+      `Native merge target worktree is not clean: ${targetRoot}`,
+    );
+  }
 }
 
 function gitPathList(output: string): string[] {
@@ -193,14 +247,7 @@ export async function prepareNativeWorkspaceFinish(options: {
   }
   assertGitIdentity(paths.projectRoot);
   const allowedBeforeArchive = [portableRelative(paths.projectRoot, nativeSelectionFile(paths))];
-  const unrelated = gitStatusPaths(paths.projectRoot).filter(
-    (candidate) => !pathCovered(candidate, allowedBeforeArchive),
-  );
-  if (unrelated.length > 0) {
-    throw new Error(
-      `Native workspace finish is blocked until change-owned implementation and artifacts are committed; remaining paths: ${unrelated.slice(0, 20).join(', ')}${unrelated.length > 20 ? ', ...' : ''}`,
-    );
-  }
+  assertFinishScopeClean(paths.projectRoot, allowedBeforeArchive);
   const targetRoot =
     workspace.isolation === 'branch'
       ? paths.projectRoot
@@ -211,9 +258,7 @@ export async function prepareNativeWorkspaceFinish(options: {
         `Native merge finish requires a registered worktree on target branch ${workspace.targetBranch}`,
       );
     }
-    if (!gitWorktreeIsClean(targetRoot)) {
-      throw new Error(`Native merge target worktree is not clean: ${targetRoot}`);
-    }
+    assertTargetWorktreeClean(targetRoot);
   }
   const remote =
     workspace.finish === 'push' || workspace.finish === 'pull-request'
@@ -251,35 +296,49 @@ export async function prepareNativePortableWorkspaceFinish(options: {
 }): Promise<NativeWorkspaceFinishPlan | null> {
   const { paths, state } = options;
   const workspace = state.workspace;
-  if (workspace.isolation === 'current') return null;
+  const context = inspectGitWorktree(paths.projectRoot);
+  if (workspace.isolation === 'current') {
+    // A current-workspace change has no user-selected finish action, but a
+    // Git repository can still safely absorb its change-owned Archive files
+    // in the same commit. Non-Git projects retain the historical no-op.
+    if (!context.isGitWorktree) return null;
+    if (!context.primaryWorktreeRoot || !context.currentBranch) {
+      throw new Error('Native current workspace finish requires a registered Git branch');
+    }
+    assertGitIdentity(paths.projectRoot);
+    const allowedBeforeArchive = portableArchiveOwnedPaths(paths, state, options.archiveDir);
+    assertFinishScopeClean(paths.projectRoot, allowedBeforeArchive);
+    return {
+      finish: 'keep',
+      changeRoot: paths.projectRoot,
+      primaryRoot: context.primaryWorktreeRoot,
+      changeBranch: context.currentBranch,
+      targetBranch: context.currentBranch,
+      targetRoot: paths.projectRoot,
+      remote: null,
+      isolation: 'current',
+      pullRequestFinish: null,
+    };
+  }
   if (!workspace.finish || !workspace.change_branch || !workspace.target_branch) {
     throw new Error('Native isolated workspace finish is not persisted');
   }
   if (workspace.change_branch === workspace.target_branch) {
     throw new Error('Native change and target branches must be different for workspace finish');
   }
-  const context = inspectGitWorktree(paths.projectRoot);
   if (!context.primaryWorktreeRoot || context.currentBranch !== workspace.change_branch) {
     throw new Error(
       `Native workspace finish requires branch ${workspace.change_branch} in the current registered worktree`,
     );
   }
   assertGitIdentity(paths.projectRoot);
-  const allowedBeforeArchive = [portableRelative(paths.projectRoot, nativeSelectionFile(paths))];
-  if (options.archiveDir) {
-    allowedBeforeArchive.push(
-      portableRelative(paths.projectRoot, nativeChangeDir(paths, state.name)),
-      portableRelative(paths.projectRoot, options.archiveDir),
-    );
-  }
-  const unrelated = gitStatusPaths(paths.projectRoot).filter(
-    (candidate) => !pathCovered(candidate, allowedBeforeArchive),
-  );
-  if (unrelated.length > 0) {
-    throw new Error(
-      `Native workspace finish is blocked until change-owned implementation and artifacts are committed; remaining paths: ${unrelated.slice(0, 20).join(', ')}${unrelated.length > 20 ? ', ...' : ''}`,
-    );
-  }
+  // The active change directory is deliberately part of the archive-owned
+  // scope before the move. Archive finalization updates its state/report and
+  // then stages those files in the single archive commit; treating them as
+  // unrelated here forces an unnecessary manual commit and makes a dry-run
+  // disagree with the confirmed path.
+  const allowedBeforeArchive = portableArchiveOwnedPaths(paths, state, options.archiveDir);
+  assertFinishScopeClean(paths.projectRoot, allowedBeforeArchive);
   const targetRoot =
     workspace.isolation === 'branch'
       ? paths.projectRoot
@@ -290,9 +349,7 @@ export async function prepareNativePortableWorkspaceFinish(options: {
         `Native merge finish requires a registered worktree on target branch ${workspace.target_branch}`,
       );
     }
-    if (!gitWorktreeIsClean(targetRoot)) {
-      throw new Error(`Native merge target worktree is not clean: ${targetRoot}`);
-    }
+    assertTargetWorktreeClean(targetRoot);
   }
   const remote =
     workspace.finish === 'push' || workspace.finish === 'pull-request'
@@ -337,6 +394,7 @@ function baseResult(plan: NativeWorkspaceFinishPlan): NativeWorkspaceFinishResul
     merged: false,
     targetRoot: plan.targetRoot,
     cleanup: { performed: false, reason: null },
+    blockedPaths: [],
     message: null,
     recoveryArgs: null,
   };
@@ -390,8 +448,9 @@ export async function finishArchivedNativeWorkspace(options: {
       (candidate) => !pathCovered(candidate, allowedPaths),
     );
     if (unexpected.length > 0) {
+      result.blockedPaths = unexpected;
       throw new Error(
-        `Native Archive produced or encountered paths outside the authorized finish scope: ${unexpected.slice(0, 20).join(', ')}${unexpected.length > 20 ? ', ...' : ''}`,
+        `Native Archive produced or encountered paths outside the authorized finish scope: ${unexpected.join(', ')}`,
       );
     }
     const trackedCandidates: string[] = [];

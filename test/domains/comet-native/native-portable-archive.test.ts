@@ -719,6 +719,131 @@ children:
     ).resolves.toMatchObject({ exitCode: 0, data: { state: { status: 'done' } } });
   });
 
+  it('reports isolated workspace blockers during dry-run and lets Archive commit change-owned files', async () => {
+    execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.email', 'native-test@example.com'], { cwd: root });
+    execFileSync('git', ['config', 'user.name', 'Native Test'], { cwd: root });
+    await fs.writeFile(path.join(root, '.gitignore'), '.comet/runtime/\n');
+    execFileSync('git', ['add', '.'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', 'seed native archive preflight'], {
+      cwd: root,
+      stdio: 'ignore',
+    });
+    execFileSync('git', ['switch', '-c', 'comet/archive-preflight'], {
+      cwd: root,
+      stdio: 'ignore',
+    });
+
+    const state = await archiveReady('archive-preflight');
+    await writeNativePortableState(
+      path.join(nativePortableChangeDir(paths, state.name), 'comet-state.yaml'),
+      {
+        ...state,
+        workspace: {
+          isolation: 'branch',
+          change_branch: 'comet/archive-preflight',
+          target_branch: 'main',
+          finish: null,
+        },
+      },
+    );
+    await fs.writeFile(path.join(root, 'generated-output.txt'), 'created by a build\n');
+
+    const blocked = await nativeArchiveCommand([state.name, '--dry-run', '--finish', 'keep'], root);
+    expect(blocked).toMatchObject({
+      exitCode: 0,
+      data: {
+        ready: false,
+        blockers: [expect.stringContaining('generated-output.txt')],
+        continuation: {
+          disposition: 'blocked',
+          action: 'archive',
+          commandArgs: null,
+          requiredInputs: ['archive-blocker-resolution'],
+        },
+      },
+    });
+    expect(await fs.readFile(path.join(root, 'generated-output.txt'), 'utf8')).toContain('build');
+
+    await fs.rm(path.join(root, 'generated-output.txt'));
+    const ready = await nativeArchiveCommand([state.name, '--dry-run'], root);
+    expect(ready).toMatchObject({
+      exitCode: 0,
+      data: {
+        ready: true,
+        blockers: [],
+        continuation: {
+          disposition: 'continue',
+          commandArgs: ['comet', 'native', 'archive', state.name, '--confirmed'],
+        },
+      },
+    });
+
+    const archived = await nativeArchiveCommand([state.name, '--confirmed'], root);
+    expect(archived).toMatchObject({
+      exitCode: 0,
+      data: {
+        state: { status: 'done', archived: true },
+        workspaceFinishResult: { status: 'kept', commit: expect.any(String) },
+      },
+    });
+    expect(execFileSync('git', ['status', '--short'], { cwd: root, encoding: 'utf8' })).toBe('');
+  });
+
+  it('reports current workspace blockers during dry-run and commits change-owned files', async () => {
+    execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.email', 'native-test@example.com'], { cwd: root });
+    execFileSync('git', ['config', 'user.name', 'Native Test'], { cwd: root });
+    await fs.writeFile(path.join(root, '.gitignore'), '.comet/runtime/\n');
+    execFileSync('git', ['add', '.'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', 'seed current Native archive'], {
+      cwd: root,
+      stdio: 'ignore',
+    });
+
+    const state = await archiveReady('current-archive');
+    await fs.writeFile(path.join(root, 'generated-output.txt'), 'created by a build\n');
+
+    const blocked = await nativeArchiveCommand([state.name, '--dry-run'], root);
+    expect(blocked).toMatchObject({
+      exitCode: 0,
+      data: {
+        ready: false,
+        blockers: [expect.stringContaining('generated-output.txt')],
+        workspaceFinishBlockers: [{ paths: [expect.stringContaining('generated-output.txt')] }],
+        continuation: {
+          disposition: 'blocked',
+          action: 'archive',
+          commandArgs: null,
+        },
+      },
+    });
+
+    await fs.rm(path.join(root, 'generated-output.txt'));
+    const ready = await nativeArchiveCommand([state.name, '--dry-run'], root);
+    expect(ready).toMatchObject({
+      exitCode: 0,
+      data: {
+        ready: true,
+        blockers: [],
+        continuation: {
+          disposition: 'continue',
+          commandArgs: ['comet', 'native', 'archive', state.name, '--confirmed'],
+        },
+      },
+    });
+
+    const archived = await nativeArchiveCommand([state.name, '--confirmed'], root);
+    expect(archived).toMatchObject({
+      exitCode: 0,
+      data: {
+        state: { status: 'done', archived: true },
+        workspaceFinishResult: { status: 'kept', commit: expect.any(String) },
+      },
+    });
+    expect(execFileSync('git', ['status', '--short'], { cwd: root, encoding: 'utf8' })).toBe('');
+  });
+
   it('detects capability owners in another registered Git worktree', async () => {
     const first = await archiveReady('primary-owner');
     execFileSync('git', ['init'], { cwd: root, stdio: 'ignore' });

@@ -18,6 +18,7 @@ import type { NativeWorkspaceFinish } from './native-workspace.js';
 import {
   finishArchivedNativeWorkspace,
   NativeWorkspaceFinishError,
+  NativeWorkspaceFinishPreparationError,
   prepareNativePortableWorkspaceFinish,
 } from './native-workspace-finish.js';
 import {
@@ -123,32 +124,78 @@ export async function nativeArchiveCommand(
           name,
           finish,
         });
-      } else if (state.workspace.isolation !== 'current' && state.workspace.finish === null) {
-        throw new NativeUsageError(
-          'Native branch and worktree isolation require --finish with --dry-run',
-        );
       }
       const preview = await inspectNativePortableArchive({ paths: configured.paths, name });
-      const baseContinuation = nativePortableContinuation(state);
-      const continuation =
-        preview.capabilityPeers.length > 0
-          ? {
-              ...baseContinuation,
-              disposition: 'await-user' as const,
-              action: 'none' as const,
-              commandArgs: null,
-              requiredInputs: ['choose-first-archive'],
-              runnerAction: { ...baseContinuation.runnerAction, kind: 'none' as const },
-            }
-          : baseContinuation;
+      const capabilityBlockerPrefix = 'capabilities are also declared by:';
+      const blockers = preview.blockers.filter(
+        (blocker) => !blocker.startsWith(capabilityBlockerPrefix),
+      );
+      const workspaceFinishBlockers: Array<{
+        message: string;
+        paths: string[];
+        workspaceRoot: string;
+      }> = [];
+      const finishRequired =
+        state.workspace.isolation !== 'current' && state.workspace.finish === null;
+      if (finishRequired) {
+        blockers.push('Native branch and worktree isolation require a workspace finish choice');
+      }
+      if (!finishRequired) {
+        try {
+          await prepareNativePortableWorkspaceFinish({
+            paths: configured.paths,
+            state,
+            pullRequestFinish: configured.config.native.finish?.pull_request,
+          });
+        } catch (error) {
+          const message = (error as Error).message;
+          blockers.push(message);
+          workspaceFinishBlockers.push({
+            message,
+            paths: error instanceof NativeWorkspaceFinishPreparationError ? error.paths : [],
+            workspaceRoot:
+              error instanceof NativeWorkspaceFinishPreparationError
+                ? error.workspaceRoot
+                : configured.paths.projectRoot,
+          });
+        }
+      }
+      const previewContinuation =
+        preview.capabilityPeers.length > 0 && blockers.length === 0
+          ? nativePortableContinuation(state, null, { archiveMode: 'preview' })
+          : null;
+      const continuation = previewContinuation
+        ? {
+            ...previewContinuation,
+            disposition: 'await-user' as const,
+            action: 'none' as const,
+            commandArgs: null,
+            requiredInputs: ['choose-first-archive'],
+            runnerAction: { ...previewContinuation.runnerAction, kind: 'none' as const },
+          }
+        : finishRequired
+          ? nativePortableContinuation(state)
+          : nativePortableContinuation(state, null, {
+              archiveMode: 'preview',
+              archiveBlockers: blockers,
+            });
+      const allBlockers = [
+        ...blockers,
+        ...(preview.capabilityPeers.length > 0
+          ? [`${capabilityBlockerPrefix} ${preview.capabilityPeers.join(', ')}`]
+          : []),
+      ];
       return success(
         'archive --dry-run',
         {
           ...preview,
+          ready: allBlockers.length === 0,
+          blockers: allBlockers,
+          ...(workspaceFinishBlockers.length > 0 ? { workspaceFinishBlockers } : {}),
           workspaceFinish: state.workspace.finish,
           continuation,
         },
-        `Native Archive preview: ${preview.ready ? 'ready' : 'blocked'}\n`,
+        `Native Archive preview: ${allBlockers.length === 0 ? 'ready' : 'blocked'}\n`,
       );
     }
     if (configured.config.native.archive_confirmation === 'required' && !confirmed) {
@@ -157,17 +204,72 @@ export async function nativeArchiveCommand(
       );
     }
     if (state && state.workspace.isolation !== 'current' && state.workspace.finish === null) {
-      throw new NativeUsageError(
-        'Native branch and worktree isolation require a persisted --finish preview',
-      );
+      const continuation = nativePortableContinuation(state);
+      return {
+        command: 'archive',
+        exitCode: 65,
+        data: {
+          change: name,
+          archived: false,
+          workspaceFinish: null,
+          continuation,
+        },
+        error: {
+          code: 'usage',
+          message:
+            'Native branch and worktree isolation require a workspace finish choice; follow continuation.commandAlternatives and run its dry-run command',
+        },
+      };
     }
-    let finishPlan = state
-      ? await prepareNativePortableWorkspaceFinish({
+    let finishPlan = null;
+    if (state) {
+      try {
+        finishPlan = await prepareNativePortableWorkspaceFinish({
           paths: configured.paths,
           state,
           pullRequestFinish: configured.config.native.finish?.pull_request,
-        })
-      : null;
+        });
+      } catch (error) {
+        const message = (error as Error).message;
+        const blockedPaths =
+          error instanceof NativeWorkspaceFinishPreparationError ? error.paths : [];
+        const workspaceRoot =
+          error instanceof NativeWorkspaceFinishPreparationError
+            ? error.workspaceRoot
+            : configured.paths.projectRoot;
+        const workspaceFinishResult = {
+          action: state.workspace.finish ?? 'keep',
+          status: 'blocked' as const,
+          commit: null,
+          remote: null,
+          pushed: false,
+          pullRequestUrl: null,
+          pullRequest: null,
+          merged: false,
+          targetRoot: workspaceRoot,
+          cleanup: { performed: false, reason: null },
+          blockedPaths,
+          message,
+          recoveryArgs: ['git', '-C', workspaceRoot, 'status', '--short'],
+        };
+        return {
+          command: 'archive',
+          exitCode: 73,
+          data: {
+            change: name,
+            archived: false,
+            state,
+            workspaceFinish: state.workspace.finish,
+            workspaceFinishResult,
+            continuation: nativePortableContinuation(state, null, {
+              archiveMode: 'blocked',
+              archiveBlockers: [message],
+            }),
+          },
+          error: { code: 'conflict', message },
+        };
+      }
+    }
     let result;
     try {
       result = await archiveNativePortableChange({
@@ -202,7 +304,7 @@ export async function nativeArchiveCommand(
       };
     }
     state = result.state;
-    if (!finishPlan && state.workspace.isolation !== 'current') {
+    if (!finishPlan && state) {
       finishPlan = await prepareNativePortableWorkspaceFinish({
         paths: configured.paths,
         state,

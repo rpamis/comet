@@ -173,13 +173,13 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
     purpose:
       'Preview or execute deterministic Archive after the portable state reaches archive-ready.',
     options: [
-      '--dry-run          Inspect readiness without rerunning verification.',
+      '--dry-run          Run the complete read-only Archive and workspace-finish readiness check; it persists only an explicit --finish choice.',
       '--finish <action>  Persist merge, push, pull-request, or keep for an isolated workspace.',
       '--serial-first <current-change>  During execution only, confirm that this change archives before detected capability peers; the value must equal <change-name>.',
       '--confirmed        Confirm Archive when project policy requires it.',
     ],
     output:
-      'Readiness plus continuation, or the completed Archive transaction and workspace finish result; Archive does not repeat verification.',
+      'Readiness, every blocker, and the exact next continuation, or the completed Archive transaction and workspace finish result. Execute the returned confirmed command only after ready is true; Archive does not repeat verification.',
   },
   doctor: {
     usage: 'comet native doctor [<change-name>] [--repair]',

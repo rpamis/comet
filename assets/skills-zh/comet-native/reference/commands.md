@@ -21,6 +21,8 @@ comet native <group> <command> --help
 - `verifierDispatch`：启动独立 Verifier 所需的工作区与证据位置、当前 `scopeIds`、数量、正文引用、详情分页参数、复核摘要和检查结果；如果存在 `recoveryContext`，也要把它作为最近一次恢复或用户补充的信息直接传给 Verifier；
 - `workspaceFinishResult` / `recoveryArgs`：归档后的工作区收尾结果和恢复命令。
 
+Archive-ready 时先执行 continuation 给出的 `archive --dry-run`。隔离 workspace 尚未选择 finish 时，使用 `commandAlternatives` 中对应的完整 `--dry-run --finish` 命令；不要自行补 `--finish`，也不要直接执行 `--confirmed`。dry-run 会同时检查归档内容和 Git 收尾范围；`ready: false` 时在同一响应中处理 `blockers` 和 `workspaceFinishBlockers[].paths` 的完整路径清单，不要额外运行 `status` 或手工提交 change 的状态/verification 文件。只有 `ready: true` 才执行返回的唯一 `archive --confirmed` 命令。
+
 模板中的尖括号表示需要填写的值。`await-user` 表示先等待用户决定，此时不执行推进命令。若 `commandArgs` 为 `null` 且返回了 `commandAlternatives`，先确认用户决定，再执行对应备选操作的完整 `commandArgs`，保留其中的 `--expected-state-version` 和 `--expected-action`。命令因状态过期或动作不匹配失败时，重新读取最新 `continuation`，按当前状态继续；不要自行拼接不带 guard 的命令。`localExecution: absent` 只表示这台机器当前没有正在运行的执行任务，不代表 change 已损坏。
 
 启动 Verifier 时原样传递 `verifierDispatch` 的定位信息：`projectRoot` 是运行 Native 命令的控制目录；`verificationRoot` 是验收实现的工作区，Supervisor 父级使用集成工作区；`changeDir` 是 `briefRef` 和 `specRefs[].ref` 的相对路径基准；`supervisorStateRef` 指向包含子任务验收与集成证据的本机状态，普通 change 为 `null`。如果存在 `recoveryContext`，也要原样交给 Verifier，作为最近一次恢复或用户补充的上下文。`detailsPageArgs` 已包含 `--project-root`，从任何工作目录查询都应保留它。追加检查后，把返回的检查结果和交接信息交回当前 Verifier，继续等待最终结果。

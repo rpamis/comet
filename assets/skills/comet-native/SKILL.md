@@ -87,7 +87,7 @@ Completion criterion: Runtime has accepted the complete Verifier result and expl
 ## Archive
 
 Continue only when `continuation` permits Archive. Archive uses the accepted verification result directly. `current` does not require a workspace finish choice: show the current branch and directory, explain that no merge, push, or PR creation will run, then follow the latest `continuation`.
-When `branch` or `worktree` requires a finish decision, show the actual change branch, target branch, and directory together, then present every option below as a single choice. Text fallback must use this table. A structured question must use Method as its short label and Actual effect as its description; do not show only `merge`, `push`, `pull-request`, or `keep`:
+When `branch` or `worktree` requires a finish decision, show the actual change branch, target branch, and directory together, then present every option below as a single choice. Text fallback must use this table. A structured question must use Method as its short label and Actual effect as its description; do not show only `merge`, `push`, `pull-request`, or `keep`. The Archive-ready next step must first execute Runtime's complete `archive --dry-run` command. When an isolated workspace has no finish choice yet, wait for the user to select a commandAlternative containing `--dry-run --finish`; never add parameters yourself or run `--confirmed` directly. When dry-run returns `ready: false`, handle only the blockers listed in that same response; do not first run another `status`, repeat Archive, or manually commit Native state/verification files. Execute the one `archive --confirmed` command returned only after dry-run reports `ready: true`. If dry-run or confirmed execution is blocked, follow the latest structured `continuation` and `workspaceFinishResult.recoveryArgs` rather than inferring a next step from error text:
 
 | Option | Method | Actual effect |
 | --- | --- | --- |
@@ -100,8 +100,7 @@ When `branch` or `worktree` requires a finish decision, show the actual change b
 After A, B, C, or D, map the choice to `keep`, `merge`, `push`, or `pull-request` and execute Runtime's complete command; after E, stop. A preserves the current branch and directory, so do not remove that worktree during the same Archive. For other ordinary changes, offer cleanup for an archived worktree with no uncommitted changes; do not ask again if Runtime already removed it. Run `git worktree remove` only after user confirmation, and keep any worktree with uncommitted changes or active use.
 After Supervisor final delivery, Runtime automatically cleans only child and integration worktrees and branches confirmed to have no uncommitted changes and no remaining use. If files are uncommitted, a process is still inside, or a Git step is incomplete, preserve the workspace, return the blocker, and never force removal.
 Commit only the implementation and formal artifacts that belong to the current change, preserving other user changes. Execute the returned `commandArgs`, then inspect `workspaceFinishResult`. If it is `blocked`, preserve the workspace and run the recovery command in `recoveryArgs`.
-Completion criterion: state is `done`, and the user-authorized workspace finish result is `completed` or `kept`. Follow `continuation` for any other result.
-
+Completion criterion: state is `done`, and the user-authorized workspace finish result is `completed` or `kept`. Follow `continuation` for any other result. At task end, reuse the original request, workflow, change, and stable session captured at startup when calling `comet task --complete`; do not run `printenv COMET_TASK` or another undeclared environment lookup to reconstruct the task.
 ## Follow-up actions
 
 After every command, handle only the latest `continuation` and apply the CLI audience split:
@@ -110,4 +109,4 @@ After every command, handle only the latest `continuation` and apply the CLI aud
 - `blocked`: resolve the listed blocker or recovery action first.
 - `done`: finish.
 
-After a state-changing command, run the compact status query again and confirm the current phase, acceptance Loop, state version, and working directory. Read paged details only when the current action needs long fields, and run `show` only when formal content is needed.
+After a state-changing command, normally run the compact status query again and confirm the current phase, acceptance Loop, state version, and working directory. For Archive dry-run or confirmed, consume only the latest `continuation` in that same response and do not insert another `status` query. Read paged details only when the current action needs long fields, and run `show` only when formal content is needed.

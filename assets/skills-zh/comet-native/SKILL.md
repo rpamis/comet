@@ -87,7 +87,7 @@ Verifier 必须把当前 `scopeIds` 中的每个场景恰好标记一次为通�
 ## Archive
 
 只有 `continuation` 允许 Archive 时才继续。Archive 直接使用已经接受的验收结果。`current` 不需要选择工作区收尾方式：展示当前分支和目录，说明不会执行 merge、push 或创建 PR，再按最新 `continuation` 继续。
-使用 `branch` 或 `worktree` 时如果需要选择收尾方式，一次展示实际 change 分支、目标分支和目录，并以单选题提供以下全部选项。文本提问必须使用下表；结构化提问必须将“方式”作为短标签、“实际影响”作为说明，不得只显示 `merge`、`push`、`pull-request` 或 `keep`：
+使用 `branch` 或 `worktree` 时如果需要选择收尾方式，一次展示实际 change 分支、目标分支和目录，并以单选题提供以下全部选项。文本提问必须使用下表；结构化提问必须将“方式”作为短标签、“实际影响”作为说明，不得只显示 `merge`、`push`、`pull-request` 或 `keep`。Archive-ready 的下一步必须先执行 Runtime 返回的完整 `archive --dry-run` 命令；隔离工作区尚未选择 finish 时，等待用户从 `commandAlternatives` 选择带有 `--dry-run --finish` 的命令，不得自行补参数或直接执行 `--confirmed`。dry-run 返回 `ready: false` 时，只处理同一响应列出的阻塞；不要先额外运行 `status`、重复 Archive 或手工提交 Native 的状态/verification 文件。只有 dry-run 返回 `ready: true` 后，才执行它返回的唯一 `archive --confirmed` 命令。dry-run 和 confirmed 都失败时，只按最新结构化 `continuation` 与 `workspaceFinishResult.recoveryArgs` 继续，不从错误文本猜下一步：
 
 | 选项 | 方式 | 实际影响 |
 | --- | --- | --- |
@@ -100,8 +100,7 @@ Verifier 必须把当前 `scopeIds` 中的每个场景恰好标记一次为通�
 用户选择 A、B、C 或 D 后，按 `keep`、`merge`、`push` 或 `pull-request` 的映射执行 Runtime 返回的完整命令；选择 E 后停止。选择 A 表示保留当前分支和目录，同一次归档不得删除该 worktree。其他普通 change 归档后，如有已经归档且没有未提交修改的 change worktree，向用户提供清理选项；Runtime 已清理的无需再次询问。只有用户确认后才执行 `git worktree remove`，存在未提交修改或仍在使用的 worktree 必须保留。
 Supervisor 最终交付后，Runtime 只自动清理确认没有未提交修改且不再使用的子任务 worktree、集成 worktree 及其分支；发现未提交文件、当前进程仍在其中或 Git 步骤未完成时保留现场并返回阻塞原因，绝不强制删除。
 只提交属于当前 change 的实现和正式产物，保留其他用户改动。执行 Runtime 返回的 `commandArgs`，再检查工作区收尾结果 `workspaceFinishResult`；结果为阻塞（`blocked`）时保留现场，并执行 `recoveryArgs` 中的恢复命令。
-完成标准：状态为 `done`，并且用户授权的工作区收尾结果为已完成（`completed`）或已保留（`kept`）；其他结果按 `continuation` 继续。
-
+完成标准：状态为 `done`，并且用户授权的工作区收尾结果为已完成（`completed`）或已保留（`kept`）；其他结果按 `continuation` 继续。任务结束时复用启动时保存的原始请求、workflow、change 和稳定 session 调用 `comet task --complete`；不要运行 `printenv COMET_TASK` 或其他未声明环境变量来猜测任务内容。
 ## 后续指令
 
 每次命令后只处理最新的 `continuation`，并按 CLI 输出分层规则处理结果：
@@ -110,4 +109,4 @@ Supervisor 最终交付后，Runtime 只自动清理确认没有未提交修改�
 - `blocked`：先处理列出的阻塞原因或恢复动作；
 - `done`：结束。
 
-执行会修改状态的命令后，重新运行紧凑状态查询，确认当前阶段、验收循环、状态版本和工作目录；只有当前动作确实需要长字段时才分页读取详情，只有需要正式正文时才运行 `show`。
+执行会修改状态的命令后，通常重新运行紧凑状态查询，确认当前阶段、验收循环、状态版本和工作目录；但 Archive dry-run 或 confirmed 必须只消费同一响应里的最新 `continuation`，不得插入额外 `status` 查询。只有当前动作确实需要长字段时才分页读取详情，只有需要正式正文时才运行 `show`。

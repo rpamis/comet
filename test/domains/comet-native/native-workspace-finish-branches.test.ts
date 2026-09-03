@@ -227,10 +227,13 @@ describe('Native workspace finish preparation', () => {
       primaryWorktreeRoot: projectRoot,
       isSecondaryWorktree: false,
     });
-    git.gitWorktreeIsClean.mockReturnValueOnce(false);
+    git.gitStatusPaths.mockReturnValueOnce([]).mockReturnValueOnce(['target-update.txt']);
     await expect(
       prepareNativeWorkspaceFinish({ paths, state, workspace: worktreeIdentity }),
-    ).rejects.toThrow(/not clean/u);
+    ).rejects.toMatchObject({
+      name: 'NativeWorkspaceFinishPreparationError',
+      paths: [path.join(projectRoot, 'target-update.txt')],
+    });
   });
 
   it('prepares the portable schema with archive-owned paths allowed', async () => {
@@ -256,13 +259,55 @@ describe('Native workspace finish preparation', () => {
         paths,
         state: { ...portable, workspace: { ...portable.workspace, isolation: 'current' } },
       }),
-    ).resolves.toBeNull();
+    ).resolves.toMatchObject({ finish: 'keep', isolation: 'current' });
     await expect(
       prepareNativePortableWorkspaceFinish({
         paths,
         state: { ...portable, workspace: { ...portable.workspace, finish: null } },
       }),
     ).rejects.toThrow(/not persisted/u);
+  });
+
+  it('reports the portable merge target root and complete absolute blockers', async () => {
+    const targetRoot = path.join(os.tmpdir(), 'native-workspace-finish-target-test');
+    const portable = {
+      name: 'example',
+      workspace: {
+        isolation: 'worktree',
+        change_branch: 'comet/change',
+        target_branch: 'main',
+        finish: 'merge',
+      },
+    } as NativePortableState;
+    worktree.listGitWorktreeRoots.mockReturnValue([projectRoot, targetRoot]);
+    worktree.inspectGitWorktree
+      .mockReturnValueOnce({
+        isGitWorktree: true,
+        currentBranch: 'comet/change',
+        primaryWorktreeRoot: projectRoot,
+        isSecondaryWorktree: false,
+      })
+      .mockReturnValueOnce({
+        isGitWorktree: true,
+        currentBranch: 'comet/change',
+        primaryWorktreeRoot: projectRoot,
+        isSecondaryWorktree: false,
+      })
+      .mockReturnValueOnce({
+        isGitWorktree: true,
+        currentBranch: 'main',
+        primaryWorktreeRoot: projectRoot,
+        isSecondaryWorktree: true,
+      });
+    git.gitStatusPaths.mockReturnValueOnce([]).mockReturnValueOnce(['target-output.txt']);
+
+    await expect(
+      prepareNativePortableWorkspaceFinish({ paths, state: portable }),
+    ).rejects.toMatchObject({
+      name: 'NativeWorkspaceFinishPreparationError',
+      workspaceRoot: targetRoot,
+      paths: [path.join(targetRoot, 'target-output.txt')],
+    });
   });
 });
 

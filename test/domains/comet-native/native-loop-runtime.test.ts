@@ -427,6 +427,117 @@ describe('Native portable Build/Verify loop', () => {
     expect(nativePortableContinuation(archived).commandAlternatives).toBeUndefined();
   });
 
+  it('requires an explicit workspace finish choice before an isolated Archive preview', () => {
+    const { state, runner } = buildState();
+    const archiveReady = confirmNativeSkillCoordinatedPass(
+      applyNativeVerifierEnvelope({
+        state,
+        envelope: envelope(runner, state, 'pass'),
+        checks,
+        maxVerifyFailures: 5,
+      }).state,
+    );
+    const isolated = {
+      ...archiveReady,
+      workspace: {
+        isolation: 'worktree' as const,
+        change_branch: 'comet/change',
+        target_branch: 'main',
+        finish: null,
+      },
+    };
+
+    const continuation = nativePortableContinuation(isolated);
+
+    expect(continuation).toMatchObject({
+      disposition: 'await-user',
+      action: 'archive',
+      commandArgs: null,
+      requiredInputs: ['workspace-finish'],
+      inputOptions: [
+        expect.objectContaining({
+          name: 'finish',
+          flag: '--finish',
+          choices: ['keep', 'merge', 'push', 'pull-request'],
+        }),
+      ],
+      userCommunication: {
+        required: true,
+        suggestedReply: 'Reply A, B, C, D, or E',
+      },
+    });
+    expect(continuation.commandAlternatives).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'keep-workspace',
+          expectedAction: 'archive-preview',
+          commandArgs: [
+            'comet',
+            'native',
+            'archive',
+            'loop-change',
+            '--dry-run',
+            '--finish',
+            'keep',
+          ],
+          description: expect.stringContaining('Keep the current branch'),
+        }),
+        expect.objectContaining({
+          name: 'push-pull-request',
+          commandArgs: expect.arrayContaining(['--dry-run', '--finish', 'pull-request']),
+          description: expect.stringContaining('create a PR'),
+        }),
+        expect.objectContaining({
+          name: 'defer-archive',
+          commandArgs: null,
+          description: expect.stringContaining('Keep the current change'),
+        }),
+      ]),
+    );
+  });
+
+  it('returns confirmed Archive only from a successful preview continuation', () => {
+    const { state, runner } = buildState();
+    const archiveReady = confirmNativeSkillCoordinatedPass(
+      applyNativeVerifierEnvelope({
+        state,
+        envelope: envelope(runner, state, 'pass'),
+        checks,
+        maxVerifyFailures: 5,
+      }).state,
+    );
+    const isolated = {
+      ...archiveReady,
+      workspace: {
+        isolation: 'branch' as const,
+        change_branch: 'comet/change',
+        target_branch: 'main',
+        finish: 'keep' as const,
+      },
+    };
+
+    expect(
+      nativePortableContinuation(isolated, null, {
+        archiveMode: 'preview',
+      }),
+    ).toMatchObject({
+      disposition: 'continue',
+      action: 'archive',
+      commandArgs: ['comet', 'native', 'archive', 'loop-change', '--confirmed'],
+    });
+    expect(
+      nativePortableContinuation(isolated, null, {
+        archiveMode: 'preview',
+        archiveBlockers: ['unrelated generated output'],
+      }),
+    ).toMatchObject({
+      disposition: 'blocked',
+      action: 'archive',
+      commandArgs: null,
+      requiredInputs: ['archive-blocker-resolution'],
+    });
+  });
+
   it('allows an explicitly empty Runtime check plan when Verifier covers every acceptance ID', () => {
     const { state, runner } = buildState();
     const result = applyNativeVerifierEnvelope({
