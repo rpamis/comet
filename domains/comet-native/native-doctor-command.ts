@@ -10,7 +10,8 @@ import {
   migrateNativeLegacyChangeToPortable,
 } from './native-portable-migration-runtime.js';
 import { recoverNativePortableChange } from './native-portable-recovery.js';
-import { isNativePortableChange } from './native-portable-runtime.js';
+import { inspectNativeSupervisorOverlay } from './native-supervisor-overlay.js';
+import { isNativePortableChange, readNativePortableChange } from './native-portable-runtime.js';
 import type { NativePortableState } from './native-portable-types.js';
 import {
   inspectNativePortableStatus,
@@ -106,6 +107,31 @@ function incompleteMigrationFinding(paths: NativeProjectPaths, name: string): Na
     path: path.join(paths.changesDir, name, 'comet-state.yaml'),
     repair: 'migrate',
   };
+}
+
+function portableSupervisorOverlayFinding(
+  name: string,
+  inspection: Awaited<ReturnType<typeof inspectNativeSupervisorOverlay>>,
+): NativeDoctorFinding | null {
+  if (inspection.status === 'repairable-legacy-overlay') {
+    return {
+      severity: 'error',
+      code: 'portable-supervisor-overlay-stale',
+      message: inspection.message,
+      path: inspection.file,
+      repair: 'continue',
+      repairCommand: `comet native doctor ${name} --repair`,
+    };
+  }
+  if (inspection.status === 'incompatible') {
+    return {
+      severity: 'error',
+      code: 'portable-supervisor-overlay-incompatible',
+      message: inspection.message,
+      path: inspection.file,
+    };
+  }
+  return null;
 }
 
 async function inspectPortableTransactions(
@@ -249,6 +275,24 @@ export async function nativeDoctorCommand(
         repaired: false,
         result,
         findings: [incompleteMigrationFinding(paths, name)],
+        continuation: result.continuation,
+      });
+    }
+    const portableState = await readNativePortableChange(paths, name);
+    const supervisorOverlay = await inspectNativeSupervisorOverlay({
+      paths,
+      state: portableState,
+    });
+    const supervisorFinding = portableSupervisorOverlayFinding(name, supervisorOverlay);
+    if (supervisorFinding && (supervisorOverlay.status === 'incompatible' || !repair)) {
+      const result = await inspectNativePortableStatus({ paths, name, details: true });
+      return unhealthyDoctor({
+        healthy: false,
+        workflow: 'native-portable',
+        change: name,
+        repaired: false,
+        result,
+        findings: [supervisorFinding],
         continuation: result.continuation,
       });
     }

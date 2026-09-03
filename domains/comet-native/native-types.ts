@@ -598,6 +598,7 @@ export interface NativeDoctorFinding {
   message: string;
   path?: string;
   repair?: 'continue' | 'rollback' | 'migrate' | 'truncate-tail';
+  repairCommand?: string;
 }
 
 export interface NativeSchemaMigrationJournal {

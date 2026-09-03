@@ -39,6 +39,7 @@ import {
   type NativeSupervisorVerificationEvidence,
 } from './native-supervisor.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
+import { inspectNativeSupervisorOverlay } from './native-supervisor-overlay.js';
 import { createNativeRunnerChannel, NATIVE_SKILL_COORDINATION } from './native-runner-protocol.js';
 import type {
   NativeBuilderHandoff,
@@ -605,11 +606,19 @@ export async function applyNativeRunnerInput(options: {
   input: NativeRunnerInput;
   maxVerifyFailures: number;
 }) {
-  const supervisor = await readNativeSupervisorState(options.paths, options.name);
   const input = options.input;
-  const portableBeforeInput = supervisor
-    ? await readNativePortableChange(options.paths, options.name)
-    : null;
+  const portableBeforeInput = await readNativePortableChange(options.paths, options.name);
+  const supervisorOverlay = await inspectNativeSupervisorOverlay({
+    paths: options.paths,
+    state: portableBeforeInput,
+  });
+  if (supervisorOverlay.status === 'incompatible') {
+    throw new Error(supervisorOverlay.message);
+  }
+  const supervisor =
+    supervisorOverlay.status === 'repairable-legacy-overlay'
+      ? null
+      : await readNativeSupervisorState(options.paths, options.name);
   const supervisorParentVerification =
     supervisor !== null &&
     portableBeforeInput?.phase === 'verify' &&

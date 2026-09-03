@@ -11,12 +11,32 @@ import {
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
 import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
+import { nativeNextCommand } from '../../../domains/comet-native/native-next-command.js';
 import {
   ensureNativeDirectories,
   nativeProjectPaths,
 } from '../../../domains/comet-native/native-paths.js';
 import { migrateNativeLegacyChangeToPortable } from '../../../domains/comet-native/native-portable-migration-runtime.js';
-import { createNativePortableChange } from '../../../domains/comet-native/native-portable-runtime.js';
+import {
+  confirmNativePortableShape,
+  createNativePortableChange,
+  nativePortableChangeDir,
+  nativePortableStateFile,
+  readNativePortableChange,
+} from '../../../domains/comet-native/native-portable-runtime.js';
+import { parseNativeChildrenContract } from '../../../domains/comet-native/native-children.js';
+import {
+  createNativeSupervisorState,
+  nativeSupervisorStateFile,
+  writeNativeSupervisorState,
+} from '../../../domains/comet-native/native-supervisor.js';
+import { applyNativeRunnerInput } from '../../../domains/comet-native/native-runner-input.js';
+import {
+  parseNativePortableState,
+  writeNativePortableState,
+} from '../../../domains/comet-native/native-portable-state.js';
+import { inspectNativePortableStatus } from '../../../domains/comet-native/native-portable-status.js';
+import { runGitCommand } from '../../../platform/process/git.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
 
 describe('Native portable Doctor', () => {
@@ -36,6 +56,88 @@ describe('Native portable Doctor', () => {
 
   async function createPortable(name: string): Promise<void> {
     await createNativePortableChange({ paths, name, language: 'en' });
+  }
+
+  async function createLegacySupervisorFixture(name: string) {
+    await fs.writeFile(path.join(projectRoot, '.gitignore'), '.comet/runtime/\n');
+    runGitCommand(projectRoot, ['init', '-b', 'main']);
+    runGitCommand(projectRoot, ['config', 'user.email', 'native@example.test']);
+    runGitCommand(projectRoot, ['config', 'user.name', 'Native Test']);
+    runGitCommand(projectRoot, ['add', '.']);
+    runGitCommand(projectRoot, ['commit', '--allow-empty', '-m', 'seed test repository']);
+    const childrenSource = `schema: comet.native.children.v1
+children:
+  - name: foundation
+    depends_on: []
+    covers: [A1]
+`;
+    await createPortable(name);
+    const changeDir = nativePortableChangeDir(paths, name);
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      '# Acceptance examples\n- The legacy child is complete.\n',
+    );
+    await fs.writeFile(path.join(changeDir, 'children.yaml'), childrenSource);
+
+    const shapeState = await readNativePortableChange(paths, name);
+    await writeNativePortableState(
+      nativePortableStateFile(paths, name),
+      {
+        ...shapeState,
+        workspace: {
+          ...shapeState.workspace,
+          change_branch: 'main',
+          target_branch: 'main',
+        },
+      },
+      { containedRoot: paths.nativeRoot },
+    );
+    const buildState = await confirmNativePortableShape({ paths, name });
+    const contract = parseNativeChildrenContract(
+      childrenSource,
+      buildState.acceptance.map(({ id }) => id),
+    );
+    const overlay = createNativeSupervisorState({
+      parent: name,
+      targetBranch: 'main',
+      targetCommit: 'a'.repeat(40),
+      integrationBranch: 'main',
+      integrationWorktree: projectRoot,
+      contract,
+    });
+    await writeNativeSupervisorState(paths, overlay);
+    return {
+      buildState,
+      overlay,
+      file: nativeSupervisorStateFile(paths, name),
+    };
+  }
+
+  async function archiveLegacyChild(state: Awaited<ReturnType<typeof confirmNativePortableShape>>) {
+    const archivedChild = parseNativePortableState({
+      ...state,
+      name: 'foundation',
+      phase: 'archive',
+      status: 'done',
+      workspace: {
+        isolation: 'worktree',
+        change_branch: 'comet/foundation',
+        target_branch: 'main',
+        finish: 'merge',
+      },
+      loop: { ...state.loop, stage: 'done', next_action: 'done' },
+      archived: true,
+    });
+    const archivedChildFile = path.join(
+      paths.archiveDir,
+      '2026-09-03-foundation',
+      'comet-state.yaml',
+    );
+    await writeNativePortableState(archivedChildFile, archivedChild, {
+      containedRoot: paths.nativeRoot,
+    });
+    runGitCommand(projectRoot, ['add', 'docs/comet/archive']);
+    runGitCommand(projectRoot, ['commit', '-m', 'record merged test child']);
   }
 
   async function createLegacy(name: string): Promise<void> {
@@ -87,6 +189,210 @@ describe('Native portable Doctor', () => {
         findings: [],
       },
     });
+  });
+
+  it('repairs an exact empty v2 overlay left beside a legacy v1 child contract', async () => {
+    const name = 'stale-v1-overlay';
+    const { buildState, file } = await createLegacySupervisorFixture(name);
+
+    await expect(nativeDoctorCommand([name], projectRoot)).resolves.toMatchObject({
+      exitCode: 65,
+      data: {
+        healthy: false,
+        findings: [
+          expect.objectContaining({
+            code: 'portable-supervisor-overlay-stale',
+            repairCommand: `comet native doctor ${name} --repair`,
+          }),
+        ],
+      },
+    });
+
+    await expect(nativeDoctorCommand([name, '--repair'], projectRoot)).resolves.toMatchObject({
+      exitCode: 0,
+      data: { healthy: true, repaired: true },
+    });
+    await expect(fs.stat(file)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readNativePortableChange(paths, name)).resolves.toMatchObject({
+      name,
+      phase: 'build',
+      state_version: buildState.state_version,
+    });
+
+    await archiveLegacyChild(buildState);
+
+    const applied = await applyNativeRunnerInput({
+      paths,
+      name,
+      input: {
+        kind: 'builder-handoff',
+        summary: 'The legacy child result is ready for verification.',
+        addressed_acceptance_ids: buildState.acceptance.map(({ id }) => id),
+        checks: [],
+        known_limits: [],
+        review: {
+          status: 'passed',
+          summary: 'Read-only review passed.',
+          reviewer_execution_ref: 'reviewer',
+        },
+      },
+      maxVerifyFailures: 3,
+    });
+    expect(applied.state.phase).toBe('verify');
+  });
+
+  it('auto-recovers the stale overlay before accepting a public runner handoff', async () => {
+    const name = 'auto-recover-v1-overlay';
+    const { buildState, file } = await createLegacySupervisorFixture(name);
+    await archiveLegacyChild(buildState);
+    const status = await inspectNativePortableStatus({ paths, name });
+    expect(status).toMatchObject({
+      childSummary: { total: 1, done: 1 },
+      supervisorOverlay: {
+        status: 'repairable-legacy-overlay',
+        repairCommand: `comet native doctor ${name} --repair`,
+      },
+      continuation: { action: 'builder-handoff' },
+    });
+    expect(status).not.toHaveProperty('supervisor');
+    const runnerInputFile = path.join(projectRoot, 'builder-handoff.json');
+    await fs.writeFile(
+      runnerInputFile,
+      JSON.stringify({
+        kind: 'builder-handoff',
+        summary: 'The legacy child result is ready for verification.',
+        addressed_acceptance_ids: buildState.acceptance.map(({ id }) => id),
+        checks: [],
+        known_limits: [],
+        review: {
+          status: 'passed',
+          summary: 'Read-only review passed.',
+          reviewer_execution_ref: 'reviewer',
+        },
+      }),
+    );
+
+    await expect(
+      nativeNextCommand([name, '--runner-input', runnerInputFile], projectRoot),
+    ).resolves.toMatchObject({
+      exitCode: 0,
+      data: { state: { phase: 'verify' } },
+    });
+    await expect(fs.stat(file)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('fails closed for Supervisor overlay progress, parent drift, and unknown fields', async () => {
+    const name = 'incompatible-v1-overlay';
+    const { file, overlay } = await createLegacySupervisorFixture(name);
+    const base = JSON.stringify(overlay);
+    const cases: Array<[string, (value: Record<string, unknown>) => void]> = [
+      [
+        'advanced integration head',
+        (value) => {
+          (value.integration as Record<string, unknown>).headCommit = 'b'.repeat(40);
+        },
+      ],
+      [
+        'parent mismatch',
+        (value) => {
+          value.parent = 'different-parent';
+        },
+      ],
+      [
+        'history',
+        (value) => {
+          value.history = [
+            {
+              kind: 'target-refreshed',
+              child: null,
+              runId: null,
+              summary: 'Already started.',
+              at: new Date().toISOString(),
+            },
+          ];
+        },
+      ],
+      [
+        'final verification layers',
+        (value) => {
+          (value.finalVerification as Record<string, unknown>).layers = {};
+        },
+      ],
+      [
+        'child progress',
+        (value) => {
+          const child = (value.children as Array<Record<string, unknown>>)[0];
+          child.baseCommit = 'c'.repeat(40);
+        },
+      ],
+      [
+        'unknown child field',
+        (value) => {
+          const child = (value.children as Array<Record<string, unknown>>)[0];
+          child.futureProgress = 'keep me';
+        },
+      ],
+      [
+        'unknown top-level field',
+        (value) => {
+          value.futureProgress = 'keep me';
+        },
+      ],
+      [
+        'unknown integration field',
+        (value) => {
+          (value.integration as Record<string, unknown>).futureProgress = 'keep me';
+        },
+      ],
+    ];
+
+    for (const [label, mutate] of cases) {
+      const value = JSON.parse(base) as Record<string, unknown>;
+      mutate(value);
+      await fs.writeFile(file, JSON.stringify(value));
+      await expect(nativeDoctorCommand([name, '--repair'], projectRoot)).resolves.toMatchObject({
+        exitCode: 65,
+        data: {
+          healthy: false,
+          findings: [
+            expect.objectContaining({
+              code: 'portable-supervisor-overlay-incompatible',
+            }),
+          ],
+        },
+      });
+      await expect(fs.stat(file), label).resolves.toBeTruthy();
+      await fs.writeFile(file, base);
+    }
+  });
+
+  it('leaves a valid v2 Supervisor overlay on the normal path', async () => {
+    const name = 'current-v2-overlay';
+    await createPortable(name);
+    const changeDir = nativePortableChangeDir(paths, name);
+    const childrenSource = `schema: comet.native.children.v2
+children:
+  - name: foundation
+    summary: Implement the foundation.
+    depends_on: []
+`;
+    await fs.writeFile(path.join(changeDir, 'children.yaml'), childrenSource);
+    const contract = parseNativeChildrenContract(childrenSource);
+    const overlay = createNativeSupervisorState({
+      parent: name,
+      targetBranch: 'main',
+      targetCommit: 'a'.repeat(40),
+      integrationBranch: 'main',
+      integrationWorktree: projectRoot,
+      contract,
+    });
+    await writeNativeSupervisorState(paths, overlay);
+
+    await expect(nativeDoctorCommand([name, '--repair'], projectRoot)).resolves.toMatchObject({
+      exitCode: 0,
+      data: { healthy: true, repaired: true },
+    });
+    await expect(fs.stat(nativeSupervisorStateFile(paths, name))).resolves.toBeTruthy();
   });
 
   it('keeps a generated portable verification report out of migration findings', async () => {

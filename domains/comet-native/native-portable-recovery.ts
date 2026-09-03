@@ -10,6 +10,10 @@ import {
 } from './native-local-execution.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
 import {
+  inspectNativeSupervisorOverlay,
+  removeNativeSupervisorOverlayIfUnchanged,
+} from './native-supervisor-overlay.js';
+import {
   nativeLocalExecutionFile,
   nativePortableStateFile,
   ensureNativePortableReport,
@@ -30,7 +34,14 @@ export interface NativePortableRecoveryResult {
   local: NativeLocalExecutionState | null;
   action: 'resume-stable-boundary' | 'reverify' | 'await-user' | 'done';
   reason:
-    'available' | 'missing' | 'invalid' | 'stale' | 'interrupted' | 'workspace-mismatch' | 'done';
+    | 'available'
+    | 'missing'
+    | 'invalid'
+    | 'stale'
+    | 'interrupted'
+    | 'workspace-mismatch'
+    | 'overlay-incompatible'
+    | 'done';
   message: string;
 }
 
@@ -142,6 +153,29 @@ export async function recoverNativePortableChange(options: {
         };
       }
 
+      const supervisorOverlay = await inspectNativeSupervisorOverlay({
+        paths: options.paths,
+        state,
+      });
+      if (supervisorOverlay.status === 'incompatible') {
+        return {
+          state,
+          local: null,
+          action: 'await-user',
+          reason: 'overlay-incompatible',
+          message: supervisorOverlay.message,
+        };
+      }
+      let repairedSupervisorOverlay = false;
+      if (supervisorOverlay.status === 'repairable-legacy-overlay') {
+        await removeNativeSupervisorOverlayIfUnchanged({
+          paths: options.paths,
+          state,
+          expected: supervisorOverlay,
+        });
+        repairedSupervisorOverlay = true;
+      }
+
       const file = nativeLocalExecutionFile(options.paths, options.name);
       const inspected = await inspectLocal(file);
       let reason: NativePortableRecoveryResult['reason'] =
@@ -179,7 +213,9 @@ export async function recoverNativePortableChange(options: {
           local: inspected.local,
           action: 'resume-stable-boundary',
           reason,
-          message: 'Native local execution overlay matches the portable state.',
+          message: repairedSupervisorOverlay
+            ? 'Removed a stale legacy Supervisor overlay and resumed the portable state.'
+            : 'Native local execution overlay matches the portable state.',
         };
       }
 

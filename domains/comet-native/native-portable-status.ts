@@ -5,6 +5,7 @@ import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
 
 import { inspectNativeChildren } from './native-children.js';
 import { readNativeSupervisorState, type NativeSupervisorState } from './native-supervisor.js';
+import { inspectNativeSupervisorOverlay } from './native-supervisor-overlay.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
 import { nativePortableChangeDir, readNativePortableRuntime } from './native-portable-runtime.js';
 import { nativePortableStateSummary } from './native-portable-summary.js';
@@ -46,6 +47,11 @@ export interface NativePortableStatusProjection {
   };
   childSummary?: Record<string, number>;
   readyChildren?: string[];
+  supervisorOverlay?: {
+    status: 'repairable-legacy-overlay' | 'incompatible';
+    message: string;
+    repairCommand: string | null;
+  };
   supervisor?: NativeSupervisorStatusProjection;
   continuation: ReturnType<typeof nativePortableContinuation>;
   details?: {
@@ -268,7 +274,15 @@ export async function inspectNativePortableStatus(options: {
   const stateSummary = nativePortableStateSummary(runtime.state);
   const localExpected = runtime.state.status === 'active' && runtime.state.loop.stage !== 'done';
   const children = await inspectNativeChildren({ paths: options.paths, state: runtime.state });
-  const supervisor = await readNativeSupervisorState(options.paths, options.name);
+  const supervisorOverlay = await inspectNativeSupervisorOverlay({
+    paths: options.paths,
+    state: runtime.state,
+  });
+  const supervisor =
+    supervisorOverlay.status === 'repairable-legacy-overlay' ||
+    supervisorOverlay.status === 'incompatible'
+      ? null
+      : await readNativeSupervisorState(options.paths, options.name);
   const workspace = supervisor
     ? { ...workspaceProjection(options.paths, runtime.state), projectRoot: '.' }
     : workspaceProjection(options.paths, runtime.state);
@@ -415,6 +429,19 @@ export async function inspectNativePortableStatus(options: {
         }
       : {}),
     ...(supervisorProjection ? { supervisor: supervisorProjection } : {}),
+    ...(supervisorOverlay.status === 'repairable-legacy-overlay' ||
+    supervisorOverlay.status === 'incompatible'
+      ? {
+          supervisorOverlay: {
+            status: supervisorOverlay.status,
+            message: supervisorOverlay.message,
+            repairCommand:
+              supervisorOverlay.status === 'repairable-legacy-overlay'
+                ? `comet native doctor ${options.name} --repair`
+                : null,
+          },
+        }
+      : {}),
     continuation: effectiveContinuation,
     ...(options.details
       ? {
