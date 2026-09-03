@@ -155,6 +155,7 @@ function sourceReferenceIsCurrent(
 
 interface SourceInspection {
   readonly current: boolean;
+  readonly complete: boolean;
   readonly sourceVersions: readonly ProjectKnowledgeRecordSourceVersion[];
 }
 
@@ -181,18 +182,25 @@ async function inspectRecordSources(
       .map((version) => version.source)
       .filter((source) => !referenceSources.has(source)),
   ];
-  if (sources.length === 0) return { current: false, sourceVersions: record.sourceVersions };
+  if (sources.length === 0) {
+    return { current: false, complete: true, sourceVersions: record.sourceVersions };
+  }
   const storedVersions = new Map(record.sourceVersions.map((version) => [version.source, version]));
   const sourceVersions: ProjectKnowledgeRecordSourceVersion[] = [];
+  let isCurrent = true;
+  let complete = true;
   for (const source of sources) {
     try {
       const absolutePath = path.join(projectRoot, ...source.split('/'));
-      const current = statSync(absolutePath);
-      if (!current.isFile()) return { current: false, sourceVersions: record.sourceVersions };
+      const fileStat = statSync(absolutePath);
+      if (!fileStat.isFile()) {
+        complete = false;
+        continue;
+      }
       const version = {
         source,
-        size: current.size,
-        modifiedAt: Math.trunc(current.mtimeMs),
+        size: fileStat.size,
+        modifiedAt: Math.trunc(fileStat.mtimeMs),
         digest: await sourceContentDigest(projectRoot, source),
       };
       sourceVersions.push(version);
@@ -201,20 +209,25 @@ async function inspectRecordSources(
           .filter((reference) => reference.source === source)
           .every((reference) => sourceReferenceIsCurrent(absolutePath, reference))
       ) {
-        return { current: false, sourceVersions: record.sourceVersions };
+        isCurrent = false;
       }
       const stored = storedVersions.get(source);
       if (
         !acceptCurrentVersions &&
         (stored === undefined || stored.digest === undefined || stored.digest !== version.digest)
       ) {
-        return { current: false, sourceVersions };
+        isCurrent = false;
       }
     } catch {
-      return { current: false, sourceVersions: record.sourceVersions };
+      isCurrent = false;
+      complete = false;
     }
   }
-  return { current: true, sourceVersions };
+  return {
+    current: isCurrent,
+    complete,
+    sourceVersions: complete ? sourceVersions : record.sourceVersions,
+  };
 }
 
 function recordUsesSourceEvidence(record: ProjectKnowledgeRecord): boolean {
@@ -721,7 +734,7 @@ export class ProjectKnowledgeLocalStore {
             (version) => version.digest === undefined,
           );
           const nextSourceVersions =
-            inspection.current || hasLegacySourceVersion
+            inspection.complete && (inspection.current || hasLegacySourceVersion)
               ? inspection.sourceVersions
               : candidate.sourceVersions;
           this.write({

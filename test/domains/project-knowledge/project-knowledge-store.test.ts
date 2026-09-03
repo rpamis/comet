@@ -331,6 +331,9 @@ describe('project knowledge local store', () => {
     await fs.writeFile(sourceFile, '# Build\n\nRun build before test.\n');
     try {
       const initialStat = await fs.stat(sourceFile);
+      const sourceDigest = createHash('sha256')
+        .update(await fs.readFile(sourceFile))
+        .digest('hex');
       store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
       const initial = record({
         sourceVersions: [
@@ -357,12 +360,77 @@ describe('project knowledge local store', () => {
             sourceVersions: [
               expect.objectContaining({
                 source: 'docs/process.md',
-                digest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+                digest: sourceDigest,
               }),
             ],
           }),
         ],
       });
+    } finally {
+      store?.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('preserves every refreshed source version when migrating a legacy record', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-store-legacy-sources-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-storage-legacy-sources-');
+    const sources = ['docs/process.md', 'docs/testing.md'];
+    let store: ProjectKnowledgeLocalStore | undefined;
+    try {
+      await Promise.all(
+        sources.map(async (source) => {
+          const absolutePath = path.join(root, ...source.split('/'));
+          await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+          await fs.writeFile(
+            absolutePath,
+            `# ${path.basename(source, '.md')}\n\nKeep it current.\n`,
+          );
+        }),
+      );
+      const stats = await Promise.all(
+        sources.map(async (source) => ({
+          source,
+          stat: await fs.stat(path.join(root, ...source.split('/'))),
+        })),
+      );
+      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      const initial = record({
+        sourceVersions: stats.map(({ source, stat }) => ({
+          source,
+          size: stat.size,
+          modifiedAt: Math.trunc(stat.mtimeMs),
+        })),
+      });
+      await store.apply({ kind: 'upsert', record: initial });
+
+      const refreshed = await store.apply({
+        kind: 'refresh',
+        projectId: initial.projectId,
+        id: initial.id,
+      });
+      expect(refreshed).toMatchObject({
+        changed: true,
+        records: [
+          expect.objectContaining({
+            id: initial.id,
+            state: 'superseded',
+            sourceVersions: expect.arrayContaining(
+              sources.map((source) =>
+                expect.objectContaining({
+                  source,
+                  digest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+                }),
+              ),
+            ),
+          }),
+        ],
+      });
+      expect(
+        (refreshed.records?.[0]?.sourceVersions ?? []).map((version) => version.source),
+      ).toEqual(expect.arrayContaining(sources));
+      expect(refreshed.records?.[0]?.sourceVersions).toHaveLength(sources.length);
     } finally {
       store?.close();
       await fs.rm(root, { recursive: true, force: true });
