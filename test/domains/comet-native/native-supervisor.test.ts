@@ -2047,6 +2047,38 @@ acceptance_index:
 children:
   - name: core
     depends_on: []
+    covers: [A1, ${specAcceptance!.id}]
+  - name: support
+    depends_on: []
+    covers: []
+`,
+      );
+      await nativeNextCommand(['parent', '--summary', 'Prepare the repair child.'], repository);
+      await expect(readNativePortableChange(paths, 'parent')).resolves.toMatchObject({
+        phase: 'shape',
+        acceptance: [],
+      });
+
+      await expect(
+        nativeNextCommand(
+          ['parent', '--summary', 'Confirm an invalid completed-child repair plan.', '--confirmed'],
+          repository,
+        ),
+      ).rejects.toThrow(/requires an unfinished child covering: A2/iu);
+
+      await fs.writeFile(
+        path.join(changeDir, 'children.yaml'),
+        `schema: comet.native.children.v2
+acceptance_index:
+  A1:
+    source: brief.md
+    text: The parent integration is complete.
+  ${specAcceptance!.id}:
+    source: ${specAcceptance!.source}
+    text: ${JSON.stringify(specAcceptance!.text)}
+children:
+  - name: core
+    depends_on: []
     covers: [A1]
   - name: support
     depends_on: []
@@ -2056,12 +2088,6 @@ children:
     covers: [${specAcceptance!.id}]
 `,
       );
-      await nativeNextCommand(['parent', '--summary', 'Prepare the repair child.'], repository);
-      await expect(readNativePortableChange(paths, 'parent')).resolves.toMatchObject({
-        phase: 'shape',
-        acceptance: [],
-      });
-
       await expect(
         nativeNextCommand(
           ['parent', '--summary', 'Confirm the repair child plan.', '--confirmed'],

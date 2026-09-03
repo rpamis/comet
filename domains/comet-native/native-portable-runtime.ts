@@ -467,7 +467,10 @@ export async function confirmNativePortableShape(options: {
           );
           const repairCoverage = new Set(
             children.contract.children
-              .filter(({ name }) => statusByChild.get(name) !== 'done')
+              .filter(({ name }) => {
+                const status = statusByChild.get(name);
+                return status !== 'done' && status !== 'integrated' && status !== 'archived';
+              })
               .flatMap(({ covers }) => covers),
           );
           const missing = latestDecision.unresolved_ids.filter((id) => !repairCoverage.has(id));
