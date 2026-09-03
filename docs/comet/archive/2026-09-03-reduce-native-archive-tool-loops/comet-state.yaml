@@ -1,0 +1,374 @@
+schema: comet.native.v4
+name: reduce-native-archive-tool-loops
+language: zh-CN
+phase: archive
+status: done
+state_version: 9
+brief: brief.md
+spec_changes:
+  - capability: native-archive-completion
+    operation: create
+    source: specs/native-archive-completion/spec.md
+workspace:
+  isolation: current
+  change_branch: rc4
+  target_branch: rc4
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 2
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: A1：隔离方式为 `branch` 或 `worktree`、尚未选择收尾方式时，Archive-ready continuation
+      等待一次用户选择，并为四种方式返回包含 change 名、`--dry-run`、`--finish <mode>`
+      的完整命令及真实影响；不得返回不可直接执行的 `archive --confirmed`。
+    result: passed
+    reason:
+      text: 隔离工作区未选择 finish 时进入 await-user，提供 keep、merge、push、pull-request 四个完整
+        dry-run 命令及 defer 选项。
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: A2：隔离方式为 `current` 时，Archive-ready continuation 直接返回完整 dry-run 命令，不要求选择
+      `--finish`，也不先执行 confirmed。
+    result: passed
+    reason:
+      text: current 隔离直接返回包含 change 名和 --dry-run 的 continuation，不要求 --finish。
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: "A3：dry-run 发现 `.turbo`、构建输出或其他归档授权范围外的脏路径时，返回 `ready: false`、完整路径清单和阻塞
+      continuation；不得等到 confirmed 才暴露，也不得修改这些路径。"
+    result: passed
+    reason:
+      text: dry-run 复用 workspace finish 预检，返回 ready=false、完整 blockers 和
+        workspaceFinishBlockers.paths，测试验证不会修改范围外文件。
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: A4：只有 change 自身的状态、verification 和规格产物未提交时，dry-run 仍可通过；confirmed
+      归档将它们与归档移动统一纳入自动归档提交，不要求 Agent 先执行手工 `git add/commit`。
+    result: passed
+    reason:
+      text: 当前 change 目录被纳入归档授权范围，confirmed 会统一提交状态、verification、Spec 和归档产物，无需手工提交。
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: A5：dry-run 成功后 continuation 只给出当前 change 的完整 `archive --confirmed`
+      命令；执行后不得再次要求 `--finish`、额外 `status` 或第二次归档预检。
+    result: passed
+    reason:
+      text: 成功预检后仅返回唯一的 archive --confirmed continuation，Skill 明确禁止额外 status 或重复预检。
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: A6：正式执行前工作区在 dry-run 后出现新的越界脏路径时，confirmed 仍安全阻塞并返回结构化路径与恢复方向，不静默继续。
+    result: passed
+    reason:
+      text: confirmed 前重新执行预检，工作区漂移会返回结构化 blockedPaths、workspaceRoot 和 recoveryArgs。
+      truncated: false
+  - id: A7
+    source: brief.md
+    text: A7：中英文 Skill 明确复用首次 `comet task` 的原始请求与稳定 session 完成任务记录，不运行 `printenv
+      COMET_TASK` 或其他环境探测。
+    result: passed
+    reason:
+      text: 中英文 Skill 均要求复用原始请求、workflow、change 和稳定 session，并明确禁止探测 COMET_TASK。
+      truncated: false
+  - id: A8
+    source: brief.md
+    text: A8：Native Runtime 源码、发布 bundles、中英文 Skill 与相关帮助/契约保持一致，受影响测试、lint、build
+      和全量测试通过。
+    result: passed
+    reason:
+      text: Native 源码、帮助、双语 Skill、bundles 和版本元数据已同步；派发检查中 5 个测试套件 82
+        项通过，check:generated、lint、typecheck、build 及全量测试记录通过。
+      truncated: false
+  - id: A9
+    source: specs/native-archive-completion/spec.md
+    text: 隔离工作区先选择收尾方式 - **Given** change 已接受最终验收并进入 Archive-ready - **And**
+      workspace isolation 为 `branch` 或 `worktree` - **And** 尚未持久化 finish 方式 -
+      **When** Runtime 生成 continuation - **Then** disposition 为等待用户选择工作区收尾方式 -
+      **And** `keep`、`merge`、`push`、`pull-request` 各自提供包含 `--dry-run --finish
+      <mode>` 的完整命令和实际影响 - **And** 不得返回缺少 finish 选择的 confirmed 命令
+    result: passed
+    reason:
+      text: Spec 场景覆盖隔离工作区 finish 选择及五个用户可见选项。
+      truncated: false
+  - id: A10
+    source: specs/native-archive-completion/spec.md
+    text: 当前工作区直接进入完整预检 - **Given** change 已进入 Archive-ready - **And** workspace
+      isolation 为 `current` - **When** Runtime 生成 continuation - **Then** 下一命令是该
+      change 的 `archive --dry-run` - **And** 不要求 `--finish` 或工作区收尾选择
+    result: passed
+    reason:
+      text: Spec 场景确认 current 工作区直接进入完整 dry-run。
+      truncated: false
+  - id: A11
+    source: specs/native-archive-completion/spec.md
+    text: "dry-run 与正式收尾检查一致 - **Given** Agent 按 continuation 执行 Archive dry-run -
+      **When** 工作区存在归档授权范围之外的未提交路径 - **Then** dry-run 返回 `ready: false`
+      和有边界的完整阻塞路径 - **And** continuation 保持阻塞并提供恢复方向 - **And** 结构化 workspace
+      blocker 中包含完整路径清单，不截断或要求 Agent 解析错误文本 - **And** dry-run
+      不归档、不提交、不推送、不合并、不创建 PR，也不删除路径"
+    result: passed
+    reason:
+      text: Spec 场景确认 dry-run 与正式收尾共享预检、完整返回阻塞路径且保持只读。
+      truncated: false
+  - id: A12
+    source: specs/native-archive-completion/spec.md
+    text: change 产物由归档提交接管 - **Given** 未提交路径只属于当前 change、其 verification、状态、规格或
+      selection - **When** Runtime 执行 workspace finish 预检 - **Then**
+      这些路径属于允许的归档范围，不要求 Agent 预先手工提交 - **And** confirmed Archive 将最终
+      change、归档目录与 canonical spec 变化统一纳入自动归档提交
+    result: passed
+    reason:
+      text: Spec 场景确认 change 产物由 Archive 单次提交接管。
+      truncated: false
+  - id: A13
+    source: specs/native-archive-completion/spec.md
+    text: ready 预览返回唯一执行命令 - **Given** Archive dry-run 已持久化必要的 finish 方式 - **And**
+      内容、验收、工作区与 Git 收尾检查均通过 - **When** Runtime 返回 preview continuation -
+      **Then** `ready` 为 true - **And** 下一命令完整包含 change 名和 `--confirmed` -
+      **And** 再次执行时不要求重复 dry-run、finish 选择或 status 查询
+    result: passed
+    reason:
+      text: Spec 场景确认 ready preview 只返回完整 confirmed 命令。
+      truncated: false
+  - id: A14
+    source: specs/native-archive-completion/spec.md
+    text: dry-run 后的新漂移仍安全阻塞 - **Given** dry-run 曾经通过 - **And** confirmed
+      执行前工作区出现新的越界脏路径或目标工作区漂移 - **When** Runtime 重新执行正式安全检查 - **Then** Archive
+      不继续产生不可逆操作 - **And** 返回结构化阻塞原因、路径和恢复 continuation
+    result: passed
+    reason:
+      text: Spec 场景确认 dry-run 后新增脏路径会在 confirmed 阶段安全阻塞。
+      truncated: false
+  - id: A15
+    source: specs/native-archive-completion/spec.md
+    text: 任务完成不依赖环境变量 - **Given** Native Skill 在任务开始时已保存原始用户请求和稳定 session - **When**
+      Archive 完成并记录任务结果 - **Then** Skill 直接复用已保存参数调用 `comet task --complete` -
+      **And** 不通过 `COMET_TASK` 或其他未声明环境变量猜测任务内容
+    result: passed
+    reason:
+      text: Spec 场景确认任务完成使用已保存上下文，不依赖环境变量。
+      truncated: false
+builder_handoff:
+  candidate_id: c54c836c-13d8-49f2-be71-6d12e8aa0651
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:716918ec-c6b5-43f8-82e4-8d1c33369086
+  iteration: 1
+  summary:
+    text: Native Archive now emits one deterministic dry-run before confirmation,
+      requires explicit isolated workspace finish choices, reports complete
+      workspace blockers, and preserves the original task context for
+      completion.
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    - A8
+    - A9
+    - A10
+    - A11
+    - A12
+    - A13
+    - A14
+    - A15
+  checks:
+    - name:
+        text: Native Archive targeted tests
+        truncated: false
+      result: passed
+      note:
+        text: Five affected suites; 82 tests passed.
+        truncated: false
+    - name:
+        text: TypeScript typecheck
+        truncated: false
+      result: passed
+      note:
+        text: pnpm exec tsc --noEmit
+        truncated: false
+    - name:
+        text: Repository lint
+        truncated: false
+      result: passed
+      note:
+        text: pnpm lint
+        truncated: false
+    - name:
+        text: Formatting
+        truncated: false
+      result: passed
+      note:
+        text: pnpm format:check
+        truncated: false
+    - name:
+        text: Generated runtime assets
+        truncated: false
+      result: passed
+      note:
+        text: pnpm check:generated
+        truncated: false
+    - name:
+        text: Production build
+        truncated: false
+      result: passed
+      note:
+        text: pnpm build
+        truncated: false
+    - name:
+        text: Full test suite
+        truncated: false
+      result: passed
+      note:
+        text: 355 test files; 4408 tests passed and 60 skipped.
+        truncated: false
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  review:
+    status: passed
+    summary:
+      text: "Fresh independent read-only review passed: Archive continuation is
+        single-source, target worktree blockers retain their actual root and
+        complete paths, legacy and portable checks share one helper, and
+        bilingual generated assets are synchronized."
+      truncated: false
+    reviewer_execution_ref: archive-guidance-builder-review-20260903-final-01
+  submitted_at: 2026-09-03T09:30:01.447Z
+blockers: []
+verification:
+  candidate_id: c54c836c-13d8-49f2-be71-6d12e8aa0651
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:e0907106-3a71-4f8e-a80d-e766a09bb292
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: native-archive-targeted
+      name:
+        text: Native Archive targeted tests
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: vitest
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/comet-native/native-workspace-finish-branches.test.ts
+          truncated: false
+        - text: test/domains/comet-native/native-portable-archive.test.ts
+          truncated: false
+        - text: test/domains/comet-native/native-loop-runtime.test.ts
+          truncated: false
+        - text: test/repository/native-runtime-assets.test.ts
+          truncated: false
+        - text: test/domains/comet-native/native-skill.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 65903
+    - id: native-archive-typecheck
+      name:
+        text: TypeScript typecheck
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: tsc
+          truncated: false
+        - text: --noEmit
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 10018
+    - id: native-archive-lint
+      name:
+        text: Repository lint
+        truncated: false
+      argv_display:
+        - text: lint
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 10718
+    - id: native-generated
+      name:
+        text: Generated runtime assets
+        truncated: false
+      argv_display:
+        - text: check:generated
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 3298
+  summary:
+    text: Native Archive continuation、工作区预检和归档提交边界符合 A1-A15；独立目标测试及生成物检查通过。
+    truncated: false
+  risks:
+    - text: 当前 rc4 worktree 另有未提交的 Supervisor overlay 相关源码、测试和 Native change
+        文档，未纳入本次候选提交；Archive 前将隔离保存并原样恢复。
+      truncated: false
+    - text: 全量测试通过结果来自 Builder handoff 记录；本次独立复核使用已派发的目标检查结果，未重复运行全量测试。
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-09-03T09:41:38.044Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native confirmed acceptance criteria changed
+      truncated: false
+    completed_at: 2026-09-03T09:29:05.922Z
+  - goal_cycle: 2
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: Native Archive continuation、工作区预检和归档提交边界符合 A1-A15；独立目标测试及生成物检查通过。
+      truncated: false
+    completed_at: 2026-09-03T09:41:38.044Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-09-03T07:01:26.414Z
