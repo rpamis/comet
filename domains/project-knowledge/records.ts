@@ -35,6 +35,8 @@ export interface ProjectKnowledgeRecordSourceVersion {
   readonly source: string;
   readonly size: number;
   readonly modifiedAt: number;
+  /** Full source content digest used for freshness, independent of mtime. */
+  readonly digest?: string;
 }
 
 export interface ProjectKnowledgeRecordConclusion {
@@ -297,10 +299,15 @@ function parseVerification(value: unknown, index: number): ProjectKnowledgeRecor
 
 function parseSourceVersion(value: unknown, index: number): ProjectKnowledgeRecordSourceVersion {
   const record = objectRecord(value, `sourceVersions[${index}]`);
+  const digest = record.digest;
+  if (digest !== undefined && (typeof digest !== 'string' || !/^[a-f0-9]{64}$/u.test(digest))) {
+    throw new Error(`sourceVersions[${index}].digest must be a SHA-256 hash`);
+  }
   return {
     source: safeProjectPath(record.source, `sourceVersions[${index}].source`),
     size: nonNegativeInteger(record.size, `sourceVersions[${index}].size`),
     modifiedAt: nonNegativeInteger(record.modifiedAt, `sourceVersions[${index}].modifiedAt`),
+    ...(digest === undefined ? {} : { digest }),
   };
 }
 

@@ -1196,6 +1196,17 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
           .sort(),
         provider: { provider: 'local' as const, configured: true },
         profile: { usedChars: profileUsedChars(state), maxChars: this.profileMaxChars },
+        counts: {
+          active: state.records.filter((record) => isVisibleMemoryRecord(state, record)).length,
+          trial: state.records.filter(
+            (record) => isVisibleMemoryRecord(state, record) && record.state === 'trial',
+          ).length,
+          proven: state.records.filter(
+            (record) => isVisibleMemoryRecord(state, record) && record.state === 'proven',
+          ).length,
+          history: state.records.filter((record) => record.state === 'superseded').length,
+          tombstones: state.tombstones.length,
+        },
       };
     });
     return {
@@ -1674,6 +1685,13 @@ function projectManagementRecord(
     updatedAt: record.updatedAt,
     canRollback: (state.history[record.id]?.length ?? 0) > 0,
   };
+}
+
+function isVisibleMemoryRecord(state: MutableMemoryState, record: StoredRecord): boolean {
+  if (record.state === 'superseded' || isConflictedInferred(state.conflicts, record)) return false;
+  return !state.tombstones.some(
+    (entry) => entry.recordId === record.id || entry.identity === record.identity,
+  );
 }
 
 function projectManagementConflict(

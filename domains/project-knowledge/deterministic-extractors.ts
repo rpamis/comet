@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 
 import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
@@ -495,10 +496,12 @@ async function sourceVersions(
     try {
       const inspected = await fs.lstat(path.join(root, ...relativePath.split('/')));
       if (!inspected.isFile() || inspected.isSymbolicLink()) continue;
+      const content = await fs.readFile(path.join(root, ...relativePath.split('/')));
       versions.push({
         source: relativePath,
         size: inspected.size,
         modifiedAt: Math.trunc(inspected.mtimeMs),
+        digest: createHash('sha256').update(content).digest('hex'),
       });
     } catch {
       // The candidate is still bounded; current-source validation will reject

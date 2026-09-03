@@ -92,7 +92,16 @@ const MAX_SOURCE_VALIDATION_BYTES = 1024 * 1024;
 const PROJECT_KNOWLEDGE_SCHEMA_VERSION = '4';
 
 function equalSourceVersions(left: ProjectKnowledgeRecord, right: ProjectKnowledgeRecord): boolean {
-  return JSON.stringify(left.sourceVersions) === JSON.stringify(right.sourceVersions);
+  if (left.sourceVersions.length !== right.sourceVersions.length) return false;
+  const rightVersions = new Map(right.sourceVersions.map((version) => [version.source, version]));
+  return left.sourceVersions.every((version) => {
+    const other = rightVersions.get(version.source);
+    if (!other || version.size !== other.size || version.modifiedAt !== other.modifiedAt)
+      return false;
+    return (
+      version.digest === undefined || other.digest === undefined || version.digest === other.digest
+    );
+  });
 }
 
 function recordSourceReferences(
@@ -133,6 +142,10 @@ interface SourceInspection {
   readonly sourceVersions: readonly ProjectKnowledgeRecordSourceVersion[];
 }
 
+function sourceContentDigest(absolutePath: string): string {
+  return createHash('sha256').update(readFileSync(absolutePath)).digest('hex');
+}
+
 function inspectRecordSources(
   projectRoot: string,
   record: ProjectKnowledgeRecord,
@@ -158,6 +171,7 @@ function inspectRecordSources(
         source,
         size: current.size,
         modifiedAt: Math.trunc(current.mtimeMs),
+        digest: sourceContentDigest(absolutePath),
       };
       sourceVersions.push(version);
       if (
@@ -171,8 +185,9 @@ function inspectRecordSources(
       if (
         !acceptCurrentVersions &&
         (stored === undefined ||
-          stored.size !== version.size ||
-          stored.modifiedAt !== version.modifiedAt)
+          (stored.digest !== undefined
+            ? stored.digest !== version.digest
+            : stored.size !== version.size || stored.modifiedAt !== version.modifiedAt))
       ) {
         return { current: false, sourceVersions: record.sourceVersions };
       }
@@ -683,15 +698,20 @@ export class ProjectKnowledgeLocalStore {
           (inspection.current &&
             JSON.stringify(inspection.sourceVersions) !== JSON.stringify(candidate.sourceVersions))
         ) {
+          const nextSourceVersions =
+            candidate.sourceVersions.some((version) => version.digest !== undefined) &&
+            inspection.current
+              ? inspection.sourceVersions
+              : candidate.sourceVersions;
           this.write({
             ...candidate,
             state,
-            sourceVersions: inspection.current
-              ? inspection.sourceVersions
-              : candidate.sourceVersions,
+            sourceVersions: nextSourceVersions,
             updatedAt: new Date().toISOString(),
           });
-          changed = true;
+          changed ||=
+            state !== candidate.state ||
+            JSON.stringify(nextSourceVersions) !== JSON.stringify(candidate.sourceVersions);
         }
       }
       const records = this.list({ projectId: mutation.projectId });

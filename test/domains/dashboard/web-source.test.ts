@@ -200,7 +200,8 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain('项目验证命令约束');
     expect(page?.[0]).toContain('标记已替代');
     expect(page?.[0]).toContain('仍会保留在历史记录中');
-    expect(page?.[0]).toContain("const [stateFilter, setStateFilter] = useState('proven')");
+    expect(page?.[0]).toContain("const [stateFilter, setStateFilter] = useState('active')");
+    expect(page?.[0]).toContain("['history', '历史版本']");
     expect(page?.[0]).toContain('纠正并恢复');
     expect(page?.[0]).toContain('重新检查来源');
     expect(page?.[0]).toContain('建议补充证据，方便后续维护');

@@ -47,6 +47,7 @@ export interface ProjectKnowledgeReviewSource {
   readonly text: string;
   readonly size: number;
   readonly modifiedAt: number;
+  readonly digest: string;
 }
 
 export interface ProjectKnowledgeReviewPacket {
@@ -264,6 +265,7 @@ export async function createProjectKnowledgeReviewPacket(
         text,
         size: Number(read.stat.size),
         modifiedAt: Number(read.stat.mtimeMs),
+        digest: createHash('sha256').update(read.bytes).digest('hex'),
       });
     } catch {
       // A single unreadable source does not stop the other sources from being reviewed.
@@ -383,6 +385,7 @@ function experiencePolicyRecord(
       source: source.source,
       size: source.size,
       modifiedAt: Math.trunc(source.modifiedAt),
+      digest: source.digest,
     })),
     applicationCount: 0,
     successCount: 0,
@@ -403,7 +406,16 @@ async function reviewSourcesStillCurrent(
       });
       if (!inspected.exists) return source.source;
       const stat = await fs.stat(inspected.target);
-      if (Number(stat.size) !== source.size || Number(stat.mtimeMs) !== source.modifiedAt) {
+      const current = await readProtectedProjectFile(
+        projectRoot,
+        source.source,
+        MAX_SOURCE_VALIDATION_BYTES,
+        { label: source.source },
+      );
+      if (
+        Number(stat.size) !== source.size ||
+        createHash('sha256').update(current.bytes).digest('hex') !== source.digest
+      ) {
         return source.source;
       }
     } catch {
@@ -425,7 +437,20 @@ async function recordSourcesStillCurrent(
       });
       if (!inspected.exists) return version.source;
       const stat = await fs.stat(inspected.target);
-      if (
+      if (version.digest !== undefined) {
+        const current = await readProtectedProjectFile(
+          projectRoot,
+          version.source,
+          MAX_SOURCE_VALIDATION_BYTES,
+          { label: version.source },
+        );
+        if (
+          Number(stat.size) !== version.size ||
+          createHash('sha256').update(current.bytes).digest('hex') !== version.digest
+        ) {
+          return version.source;
+        }
+      } else if (
         Number(stat.size) !== version.size ||
         Math.trunc(Number(stat.mtimeMs)) !== version.modifiedAt
       ) {

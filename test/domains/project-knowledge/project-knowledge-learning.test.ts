@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { createHash } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -511,6 +512,11 @@ describe('project knowledge learning', () => {
       expect(listed.records.find((record) => record.type === 'constraint')).toMatchObject({
         state: 'enforced',
         verification: [{ command: 'pnpm test', expected: 'pass' }],
+        sourceVersions: [
+          expect.objectContaining({
+            digest: createHash('sha256').update('export const main = true;\n').digest('hex'),
+          }),
+        ],
       });
     } finally {
       provider.close();

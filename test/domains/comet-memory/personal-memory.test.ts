@@ -507,6 +507,29 @@ describe('PersonalMemoryService', () => {
     });
   });
 
+  it('does not count forgotten records as active memory', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const record = await memories.remember({
+        scope: 'global',
+        category: '输出偏好',
+        text: '回答使用中文',
+      });
+
+      await memories.remove(record.id);
+
+      await expect(memories.status()).resolves.toMatchObject({
+        counts: {
+          active: 0,
+          trial: 0,
+          proven: 0,
+          history: 1,
+          tombstones: 1,
+        },
+      });
+    });
+  });
+
   it('restores inferred memory when a newer outcome revision replaces negative feedback', async () => {
     await withTempRepository(async (root) => {
       const memories = service(root);

@@ -571,6 +571,13 @@ export interface PersonalMemoryStatus {
   readonly sync: MemorySyncResult | null;
   readonly provider?: MemoryProviderStatus;
   readonly profile?: MemoryProfileStatus;
+  readonly counts?: {
+    readonly active: number;
+    readonly trial: number;
+    readonly proven: number;
+    readonly history: number;
+    readonly tombstones: number;
+  };
 }
 
 export interface MemoryProfileStatus {

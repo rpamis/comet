@@ -197,6 +197,21 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
     }
   }
 
+  public async refreshIndex(): Promise<ProjectKnowledgeIndexStatus | null> {
+    const store = this.recordStore();
+    if (!store) return null;
+    try {
+      await store.syncCorpus(this.options.corpus);
+      return await store.indexStatus();
+    } catch {
+      this.reportDiagnostic?.({
+        code: 'index-unavailable',
+        message: 'Local project knowledge section index is unavailable.',
+      });
+      return null;
+    }
+  }
+
   public async query(request: ProjectKnowledgeQueryRequest): Promise<ProjectKnowledgeQueryResult> {
     const store = this.recordStore();
     if (request.kind === 'manifest') {
