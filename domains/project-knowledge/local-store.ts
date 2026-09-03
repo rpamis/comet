@@ -98,8 +98,23 @@ function equalSourceVersions(left: ProjectKnowledgeRecord, right: ProjectKnowled
     const other = rightVersions.get(version.source);
     if (!other || version.size !== other.size || version.modifiedAt !== other.modifiedAt)
       return false;
+    if (version.digest === undefined || other.digest === undefined) {
+      return version.digest === undefined && other.digest === undefined;
+    }
+    return version.digest === other.digest;
+  });
+}
+
+function equalSourceVersionMetadata(
+  left: ProjectKnowledgeRecord,
+  right: ProjectKnowledgeRecord,
+): boolean {
+  if (left.sourceVersions.length !== right.sourceVersions.length) return false;
+  const rightVersions = new Map(right.sourceVersions.map((version) => [version.source, version]));
+  return left.sourceVersions.every((version) => {
+    const other = rightVersions.get(version.source);
     return (
-      version.digest === undefined || other.digest === undefined || version.digest === other.digest
+      other !== undefined && version.size === other.size && version.modifiedAt === other.modifiedAt
     );
   });
 }
@@ -184,12 +199,9 @@ function inspectRecordSources(
       const stored = storedVersions.get(source);
       if (
         !acceptCurrentVersions &&
-        (stored === undefined ||
-          (stored.digest !== undefined
-            ? stored.digest !== version.digest
-            : stored.size !== version.size || stored.modifiedAt !== version.modifiedAt))
+        (stored === undefined || stored.digest === undefined || stored.digest !== version.digest)
       ) {
-        return { current: false, sourceVersions: record.sourceVersions };
+        return { current: false, sourceVersions };
       }
     } catch {
       return { current: false, sourceVersions: record.sourceVersions };
@@ -698,9 +710,11 @@ export class ProjectKnowledgeLocalStore {
           (inspection.current &&
             JSON.stringify(inspection.sourceVersions) !== JSON.stringify(candidate.sourceVersions))
         ) {
+          const hasLegacySourceVersion = candidate.sourceVersions.some(
+            (version) => version.digest === undefined,
+          );
           const nextSourceVersions =
-            candidate.sourceVersions.some((version) => version.digest !== undefined) &&
-            inspection.current
+            inspection.current || hasLegacySourceVersion
               ? inspection.sourceVersions
               : candidate.sourceVersions;
           this.write({
@@ -753,6 +767,14 @@ export class ProjectKnowledgeLocalStore {
         !verificationCommandsAreConfirmed(this.projectRoot, parsedIncoming)
           ? parseProjectKnowledgeRecord({ ...parsedIncoming, state: 'proven' })
           : parsedIncoming;
+      if (
+        current?.state === 'superseded' &&
+        current.authority === 'user' &&
+        incoming.authority !== 'user' &&
+        equalSourceVersionMetadata(current, incoming)
+      ) {
+        return { kind: mutation.kind, changed: false, record: current, diagnostics: [] };
+      }
       if (
         current?.state === 'superseded' &&
         incoming.authority !== 'user' &&

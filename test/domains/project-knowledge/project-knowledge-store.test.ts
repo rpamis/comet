@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -321,6 +322,54 @@ describe('project knowledge local store', () => {
     }
   });
 
+  test('does not keep legacy records active before their source digest is trusted', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-store-legacy-digest-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-storage-legacy-digest-');
+    const sourceFile = path.join(root, 'docs', 'process.md');
+    let store: ProjectKnowledgeLocalStore | undefined;
+    await fs.mkdir(path.dirname(sourceFile), { recursive: true });
+    await fs.writeFile(sourceFile, '# Build\n\nRun build before test.\n');
+    try {
+      const initialStat = await fs.stat(sourceFile);
+      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      const initial = record({
+        sourceVersions: [
+          {
+            source: 'docs/process.md',
+            size: initialStat.size,
+            modifiedAt: Math.trunc(initialStat.mtimeMs),
+          },
+        ],
+      });
+      await store.apply({ kind: 'upsert', record: initial });
+
+      const refreshed = await store.apply({
+        kind: 'refresh',
+        projectId: initial.projectId,
+        id: initial.id,
+      });
+      expect(refreshed).toMatchObject({
+        changed: true,
+        records: [
+          expect.objectContaining({
+            id: initial.id,
+            state: 'superseded',
+            sourceVersions: [
+              expect.objectContaining({
+                source: 'docs/process.md',
+                digest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+              }),
+            ],
+          }),
+        ],
+      });
+    } finally {
+      store?.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
   test('keeps version lineage within the relation bound when relearning a dense record', async () => {
     const root = await temporaryRoot('comet-project-knowledge-version-relations-');
     const storageRoot = await temporaryRoot('comet-project-knowledge-version-relations-storage-');
@@ -451,6 +500,9 @@ describe('project knowledge local store', () => {
       await fs.writeFile(sourcePath, '# Build\n\nRun Maven tests.\n');
       await fs.writeFile(path.join(root, 'pom.xml'), '<project />\n');
       const sourceStat = await fs.stat(sourcePath);
+      const sourceDigest = createHash('sha256')
+        .update(await fs.readFile(sourcePath))
+        .digest('hex');
       store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
       const constraint = record({
         id: 'maven-constraint',
@@ -468,6 +520,7 @@ describe('project knowledge local store', () => {
             source: 'docs/build.md',
             size: sourceStat.size,
             modifiedAt: Math.trunc(sourceStat.mtimeMs),
+            digest: sourceDigest,
           },
         ],
       });
