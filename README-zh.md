@@ -62,6 +62,7 @@
 ## 为什么需要 Comet
 
 - **面向强模型的 Native 工作流** — `/comet-native` 用详细 brief、完整目标规格、状态检查和可恢复归档约束结果，同时把计划、实现、测试与审查方法交给模型自主判断；用户可读产物默认位于 `docs/comet/`，并与 Classic 完全分离。详见 [Native 工作流](https://docs.comet.rpamis.com/zh/native/quickstart)。
+- **单向可恢复的 Native 归档** — Archive 会先给出唯一的 dry-run 续接命令，隔离工作区的完成选项和阻塞路径会明确展示；用户继续流程即可由 Runtime 接管归档提交，无需重复查询状态或手工提交运行时文件。
 - **复杂需求的 Supervisor Change** — Native 可以按真实交付边界拆分子 Change，用 DAG 管理依赖与就绪顺序，让多个 Agent 在 Runtime 创建的独立 worktree 中实现和验证，再统一集成并对父 Change 做最终验收。
 - **长程任务稳定的核心**— Comet 的 Classic Spec 模式结合 OpenSpec 和 Superpowers，用状态机、阶段检查与脚本串联五阶段流程，适合需要明确方法和强约束的任务；永久入口是 `/comet-classic`。
 - **配置驱动的统一入口** — `/comet` 只读取项目的 `.comet/config.yaml`，确定性转发到 `/comet-native` 或 `/comet-classic`。它不按任务大小猜工作流，也不混用两边的 change、状态和目录。`comet resume-probe` 使用同一配置恢复正确的永久入口。
