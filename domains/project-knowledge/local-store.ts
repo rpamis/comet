@@ -27,6 +27,7 @@ import type { ProjectKnowledgeDocument } from './types.js';
 import { projectKnowledgeSourceReferenceMatchesText } from './source-validity.js';
 import { openProjectKnowledgeDatabase, type ProjectKnowledgeDatabase } from './sqlite.js';
 import type { AgentContextOutcomeStatus } from '../agent-learning/index.js';
+import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
 
 export interface ProjectKnowledgeLocalStoreOptions extends Omit<
   ProjectKnowledgeIndexOptions,
@@ -157,15 +158,21 @@ interface SourceInspection {
   readonly sourceVersions: readonly ProjectKnowledgeRecordSourceVersion[];
 }
 
-function sourceContentDigest(absolutePath: string): string {
-  return createHash('sha256').update(readFileSync(absolutePath)).digest('hex');
+async function sourceContentDigest(projectRoot: string, source: string): Promise<string> {
+  const { bytes } = await readProtectedProjectFile(
+    projectRoot,
+    source,
+    MAX_SOURCE_VALIDATION_BYTES,
+    { label: `Project Knowledge source ${source}` },
+  );
+  return createHash('sha256').update(bytes).digest('hex');
 }
 
-function inspectRecordSources(
+async function inspectRecordSources(
   projectRoot: string,
   record: ProjectKnowledgeRecord,
   acceptCurrentVersions: boolean,
-): SourceInspection {
+): Promise<SourceInspection> {
   const references = recordSourceReferences(record);
   const referenceSources = new Set(references.map((reference) => reference.source));
   const sources = [
@@ -186,7 +193,7 @@ function inspectRecordSources(
         source,
         size: current.size,
         modifiedAt: Math.trunc(current.mtimeMs),
-        digest: sourceContentDigest(absolutePath),
+        digest: await sourceContentDigest(projectRoot, source),
       };
       sourceVersions.push(version);
       if (
@@ -692,7 +699,7 @@ export class ProjectKnowledgeLocalStore {
       for (const candidate of candidates) {
         if (candidate.state === 'superseded' || (mutation.id && mutation.id !== candidate.id))
           continue;
-        const inspection = inspectRecordSources(this.projectRoot, candidate, false);
+        const inspection = await inspectRecordSources(this.projectRoot, candidate, false);
         const verificationCurrent = verificationCommandsAreAvailable(this.projectRoot, candidate);
         const state: ProjectKnowledgeRecord['state'] = !verificationCurrent
           ? 'superseded'
@@ -844,7 +851,7 @@ export class ProjectKnowledgeLocalStore {
       updatedAt: mutation.updatedAt,
     });
     const corrected = parseProjectKnowledgeRecord({ ...correctedBase, state: 'proven' });
-    const inspection = inspectRecordSources(this.projectRoot, corrected, true);
+    const inspection = await inspectRecordSources(this.projectRoot, corrected, true);
     const next = parseProjectKnowledgeRecord({
       ...corrected,
       state:
