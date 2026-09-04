@@ -58,6 +58,7 @@ export interface NativeChildrenContract {
 
 export interface NativeChildrenDocument {
   contract: NativeChildrenContract;
+  hash: string;
   size: number;
   drift: NativeChildrenIndexDrift | null;
 }
@@ -478,6 +479,7 @@ export async function readNativeChildrenContract(options: {
   const contract = parseNativeChildrenContract(source.text, options.acceptanceIds, validation);
   return {
     contract,
+    hash: source.hash,
     size: source.size,
     drift: advisory
       ? nativeChildrenIndexDrift(contract, options.acceptanceIds, options.validation ?? {})

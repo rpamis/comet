@@ -11,7 +11,7 @@ interface NativeEnvelope {
     phase?: string;
     preparation?: { projectRoot?: string };
     change?: { phase?: string };
-    state?: { phase?: string; loop?: { iteration?: number } };
+    state?: { phase?: string; state_version?: number; loop?: { iteration?: number } };
     findingSummary?: { codes?: string[] };
     continuation?: { disposition?: string };
   };
@@ -262,9 +262,25 @@ describe('Native parallel linked-worktree Runtime', () => {
         await fs.mkdir(path.join(changeDir, 'specs', 'parallel-probe'), { recursive: true });
         await fs.writeFile(path.join(changeDir, 'specs', 'parallel-probe', 'spec.md'), SPEC);
 
+        const prepared = await runNativeCommand(
+          'next',
+          [name, '--summary', 'Prepare the parallel worktree contract confirmation'],
+          root,
+        );
+        assertCompleted(prepared, `prepare shape ${name}`);
+        expect(prepared.data?.state).toMatchObject({ phase: 'shape', status: 'await-user' });
         const shaped = await runNativeCommand(
           'next',
-          [name, '--summary', 'Confirm the parallel worktree contract', '--confirmed'],
+          [
+            name,
+            '--summary',
+            'Confirm the parallel worktree contract',
+            '--confirmed',
+            '--expected-state-version',
+            String(prepared.data?.state?.state_version),
+            '--expected-action',
+            'confirm-shape',
+          ],
           root,
         );
         assertCompleted(shaped, `shape ${name}`);

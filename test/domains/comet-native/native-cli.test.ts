@@ -99,6 +99,31 @@ describe('Comet Native CLI dispatcher', () => {
     return currentBranch();
   }
 
+  async function prepareShape(name: string, summary = 'Shape is ready for confirmation') {
+    return json(
+      await runNativeCli(['next', name, '--summary', summary, '--json', ...projectArgs()]),
+    );
+  }
+
+  async function confirmShape(name: string, summary: string) {
+    const status = json(await runNativeCli(['status', name, '--json', ...projectArgs()])).data as {
+      stateVersion: number;
+    };
+    return runNativeCli([
+      'next',
+      name,
+      '--summary',
+      summary,
+      '--confirmed',
+      '--expected-state-version',
+      String(status.stateVersion),
+      '--expected-action',
+      'confirm-shape',
+      '--json',
+      ...projectArgs(),
+    ]);
+  }
+
   it('initializes docs as the default Native artifact root and allowlists only project config', async () => {
     const initialized = json(await runNativeCli(['init', '--json', ...projectArgs()]));
 
@@ -160,7 +185,7 @@ describe('Comet Native CLI dispatcher', () => {
         },
         continuation: {
           schema: 'comet.native.continuation.v2',
-          action: 'confirm-shape',
+          action: 'prepare-shape-confirmation',
           disposition: 'continue',
           runnerAction: { kind: 'none' },
         },
@@ -562,7 +587,7 @@ describe('Comet Native CLI dispatcher', () => {
       exitCode: 0,
       data: {
         schema: 'comet.native.v4',
-        continuation: { action: 'confirm-shape', runnerAction: { kind: 'none' } },
+        continuation: { action: 'prepare-shape-confirmation', runnerAction: { kind: 'none' } },
       },
     });
     const paths = await nativeProjectPaths(projectRoot, 'artifacts/native');
@@ -593,27 +618,36 @@ describe('Comet Native CLI dispatcher', () => {
     ).toMatchObject({
       state: { schema: 'comet.native.v4', language: 'zh-CN', phase: 'shape' },
       brief,
-      continuation: { action: 'confirm-shape' },
+      continuation: { action: 'prepare-shape-confirmation' },
     });
 
-    const shaped = json(
-      await runNativeCli([
-        'next',
-        'sentence-counting',
-        '--summary',
-        'Requirements are clear',
-        '--confirmed',
-        '--json',
-        ...projectArgs(),
-      ]),
-    );
+    const prepared = await prepareShape('sentence-counting', 'Requirements are ready for review');
+    expect(prepared).toMatchObject({
+      exitCode: 0,
+      data: {
+        state: {
+          phase: 'shape',
+          status: 'await-user',
+          state_version: 2,
+          loop: { stage: 'await-user', next_action: 'confirm-shape' },
+        },
+        continuation: {
+          disposition: 'await-user',
+          requiresUserDecision: true,
+          action: 'confirm-shape',
+          commandArgs: null,
+          userCommunication: { required: true },
+        },
+      },
+    });
+    const shaped = json(await confirmShape('sentence-counting', 'Requirements are clear'));
     expect(shaped).toMatchObject({
       exitCode: 0,
       data: {
         state: {
           schema: 'comet.native.state-summary.v1',
           phase: 'build',
-          state_version: 2,
+          state_version: 3,
           acceptance: { total: 1, pending: 1, passed: 0, failed: 0, blocked: 0 },
         },
         continuation: {
@@ -695,17 +729,9 @@ describe('Comet Native CLI dispatcher', () => {
       path.join(changeDir, 'brief.md'),
       brief.replace('- Two sentences return two.', acceptanceExamples),
     );
+    expect((await prepareShape('complete-acceptance')).exitCode).toBe(0);
     expect(
-      (
-        await runNativeCli([
-          'next',
-          'complete-acceptance',
-          '--summary',
-          'The acceptance contract is executable',
-          '--confirmed',
-          ...projectArgs(),
-        ])
-      ).exitCode,
+      (await confirmShape('complete-acceptance', 'The acceptance contract is executable')).exitCode,
     ).toBe(0);
 
     const status = json(
@@ -785,7 +811,10 @@ describe('Comet Native CLI dispatcher', () => {
     expect(nextHelp.stdout).toContain('--confirmed');
     expect(nextHelp.stdout).toContain('--runner-input <file>');
     expect(nextHelp.stdout).toContain(
-      '--max-parallel <n>] [--expected-state-version <n>] [--expected-action <action>]',
+      '--confirmed|--accept-result|--revise-implementation|--revise-requirements|--retry-verifier|--resolve-verifier-blocker',
+    );
+    expect(nextHelp.stdout).toContain(
+      '--confirmed --expected-state-version <n> --expected-action confirm-shape',
     );
     expect(nextHelp.stdout).toContain('Supervisor task operations');
     expect(nextHelp.stdout).toContain('skill-coordinated JSON');
@@ -823,36 +852,37 @@ describe('Comet Native CLI dispatcher', () => {
 
   it('returns the v2 confirmation continuation when Shape has not been confirmed', async () => {
     await runNativeCli(['new', 'blocked-shape', ...projectArgs()]);
-    const result = json(
-      await runNativeCli([
-        'next',
-        'blocked-shape',
-        '--summary',
-        'Not actually ready',
-        '--json',
-        ...projectArgs(),
-      ]),
-    );
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    await fs.writeFile(path.join(paths.changesDir, 'blocked-shape', 'brief.md'), brief);
+    const result = await prepareShape('blocked-shape', 'Ready for the user to review');
 
     expect(result).toMatchObject({
       command: 'next',
-      exitCode: 65,
-      error: { code: 'invalid-data' },
+      exitCode: 0,
       data: {
-        state: { schema: 'comet.native.state-summary.v1', phase: 'shape' },
+        state: {
+          schema: 'comet.native.state-summary.v1',
+          phase: 'shape',
+          status: 'await-user',
+          state_version: 2,
+          loop: { stage: 'await-user', next_action: 'confirm-shape' },
+        },
         continuation: {
           schema: 'comet.native.continuation.v2',
-          disposition: 'continue',
+          disposition: 'await-user',
+          requiresUserDecision: true,
           action: 'confirm-shape',
-          stateVersion: 1,
-          commandArgs: expect.arrayContaining([
-            '--confirmed',
-            '--expected-state-version',
-            '1',
-            '--expected-action',
-            'confirm-shape',
-          ]),
+          stateVersion: 2,
+          commandArgs: null,
           requiredInputs: ['summary', 'shared-understanding-confirmation'],
+          userCommunication: { required: true },
+          commandAlternatives: [
+            expect.objectContaining({
+              name: 'confirm-shape',
+              stateVersion: 2,
+              commandArgs: expect.arrayContaining(['--confirmed']),
+            }),
+          ],
         },
       },
     });
@@ -863,6 +893,55 @@ describe('Comet Native CLI dispatcher', () => {
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     await fs.writeFile(path.join(paths.changesDir, 'confirmed-shape', 'brief.md'), brief);
 
+    const early = json(
+      await runNativeCli([
+        'next',
+        'confirmed-shape',
+        '--summary',
+        'The user confirmed too early',
+        '--confirmed',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(early).toMatchObject({
+      exitCode: 64,
+      error: { message: expect.stringContaining('persisted Shape user confirmation boundary') },
+    });
+    await expect(readNativePortableChange(paths, 'confirmed-shape')).resolves.toMatchObject({
+      phase: 'shape',
+      status: 'active',
+      state_version: 1,
+    });
+
+    expect((await prepareShape('confirmed-shape')).exitCode).toBe(0);
+
+    const unguarded = json(
+      await runNativeCli([
+        'next',
+        'confirmed-shape',
+        '--summary',
+        'The user confirmed without continuation guards',
+        '--confirmed',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(unguarded).toMatchObject({
+      exitCode: 64,
+      error: {
+        message: expect.stringContaining(
+          '--expected-state-version and --expected-action are required for Shape confirmation',
+        ),
+      },
+    });
+    await expect(readNativePortableChange(paths, 'confirmed-shape')).resolves.toMatchObject({
+      phase: 'shape',
+      status: 'await-user',
+      state_version: 2,
+      loop: { next_action: 'confirm-shape' },
+    });
+
     const result = json(
       await runNativeCli([
         'next',
@@ -870,6 +949,10 @@ describe('Comet Native CLI dispatcher', () => {
         '--summary',
         'The user confirmed the product decision',
         '--confirmed',
+        '--expected-state-version',
+        '2',
+        '--expected-action',
+        'confirm-shape',
         '--json',
         ...projectArgs(),
       ]),
@@ -880,6 +963,7 @@ describe('Comet Native CLI dispatcher', () => {
       data: {
         state: {
           phase: 'build',
+          state_version: 3,
           loop: { stage: 'building', iteration: 1, next_action: 'submit-builder-candidate' },
           acceptance: { total: 1, pending: 1 },
         },
@@ -908,17 +992,9 @@ describe('Comet Native CLI dispatcher', () => {
     expect(invalidPhase).toMatchObject({ exitCode: 64, error: { code: 'usage' } });
 
     expect(
-      (
-        await runNativeCli([
-          'next',
-          'revise-implementation',
-          '--summary',
-          'Shape is confirmed',
-          '--confirmed',
-          ...projectArgs(),
-        ])
-      ).exitCode,
+      (await prepareShape('revise-implementation', 'Shape is ready for confirmation')).exitCode,
     ).toBe(0);
+    expect((await confirmShape('revise-implementation', 'Shape is confirmed')).exitCode).toBe(0);
     const runner = createNativeRunnerChannel();
     await submitNativePortableBuilderCandidate({
       paths,
@@ -990,76 +1066,59 @@ describe('Comet Native CLI dispatcher', () => {
     expect(mixed).toMatchObject({ exitCode: 64, error: { code: 'usage' } });
   });
 
-  it('keeps the same explicit Shape confirmation boundary in Sequential and Batch modes', async () => {
-    await runNativeCli(['init', '--root', 'docs', ...projectArgs()]);
-    const initialConfig = await readProjectConfig(projectRoot);
-    expect(initialConfig).not.toBeNull();
-    await writeProjectConfig(projectRoot, {
-      ...initialConfig!,
-      native: { ...initialConfig!.native, clarification_mode: 'sequential' },
-    });
-    await runNativeCli(['new', 'mode-boundary', ...projectArgs()]);
-    const paths = await nativeProjectPaths(projectRoot, 'docs');
-    await fs.writeFile(path.join(paths.changesDir, 'mode-boundary', 'brief.md'), brief);
+  it.each(['sequential', 'batch'] as const)(
+    'keeps the same explicit Shape confirmation boundary in %s mode',
+    async (clarificationMode) => {
+      await runNativeCli(['init', '--root', 'docs', ...projectArgs()]);
+      const initialConfig = await readProjectConfig(projectRoot);
+      expect(initialConfig).not.toBeNull();
+      await writeProjectConfig(projectRoot, {
+        ...initialConfig!,
+        native: { ...initialConfig!.native, clarification_mode: clarificationMode },
+      });
+      await runNativeCli(['new', 'mode-boundary', ...projectArgs()]);
+      const paths = await nativeProjectPaths(projectRoot, 'docs');
+      await fs.writeFile(path.join(paths.changesDir, 'mode-boundary', 'brief.md'), brief);
 
-    const sequential = json(
-      await runNativeCli([
-        'next',
+      const prepared = await prepareShape(
         'mode-boundary',
-        '--summary',
-        'Sequential clarification is complete',
-        '--json',
-        ...projectArgs(),
-      ]),
-    );
-    expect(sequential).toMatchObject({
-      exitCode: 65,
-      data: {
-        state: { phase: 'shape' },
-        continuation: {
-          action: 'confirm-shape',
-          requiredInputs: ['summary', 'shared-understanding-confirmation'],
+        `${clarificationMode} clarification is complete`,
+      );
+      expect(prepared).toMatchObject({
+        exitCode: 0,
+        data: {
+          state: { phase: 'shape', status: 'await-user' },
+          continuation: {
+            disposition: 'await-user',
+            requiresUserDecision: true,
+            action: 'confirm-shape',
+            requiredInputs: ['summary', 'shared-understanding-confirmation'],
+            userCommunication: { required: true },
+          },
         },
-      },
-    });
+      });
 
-    const config = await readProjectConfig(projectRoot);
-    expect(config).not.toBeNull();
-    await writeProjectConfig(projectRoot, {
-      ...config!,
-      native: { ...config!.native, clarification_mode: 'batch' },
-    });
-    const batch = json(
-      await runNativeCli([
-        'next',
-        'mode-boundary',
-        '--summary',
-        'Batch clarification is complete',
-        '--json',
-        ...projectArgs(),
-      ]),
-    );
-    expect(batch).toMatchObject({
-      exitCode: 65,
-      data: { state: { phase: 'shape' }, continuation: { action: 'confirm-shape' } },
-    });
-
-    const advanced = json(
-      await runNativeCli([
-        'next',
-        'mode-boundary',
-        '--summary',
-        'Batch shared understanding is confirmed',
-        '--confirmed',
-        '--json',
-        ...projectArgs(),
-      ]),
-    );
-    expect(advanced).toMatchObject({
-      exitCode: 0,
-      data: { state: { phase: 'build' }, continuation: { action: 'builder-handoff' } },
-    });
-  });
+      const advanced = json(
+        await runNativeCli([
+          'next',
+          'mode-boundary',
+          '--summary',
+          'Batch shared understanding is confirmed',
+          '--confirmed',
+          '--expected-state-version',
+          '2',
+          '--expected-action',
+          'confirm-shape',
+          '--json',
+          ...projectArgs(),
+        ]),
+      );
+      expect(advanced).toMatchObject({
+        exitCode: 0,
+        data: { state: { phase: 'build' }, continuation: { action: 'builder-handoff' } },
+      });
+    },
+  );
 
   it('records a complete remove intent without a canonical hash', async () => {
     await runNativeCli(['new', 'remove-capability', ...projectArgs()]);
@@ -1086,7 +1145,7 @@ describe('Comet Native CLI dispatcher', () => {
         schema: 'comet.native.v4',
         phase: 'shape',
         spec_changes: [{ capability: 'legacy-capability', operation: 'remove', source: null }],
-        continuation: { action: 'confirm-shape' },
+        continuation: { action: 'prepare-shape-confirmation' },
       },
     });
     expect(JSON.stringify(result.data)).not.toMatch(/hash|snapshot/iu);
@@ -1117,17 +1176,10 @@ describe('Comet Native CLI dispatcher', () => {
         await fs.writeFile(path.join(directory, 'spec.md'), `# Capability ${index}\n${padding}\n`);
       }),
     );
+    expect((await prepareShape('large-spec-set')).exitCode).toBe(0);
     expect(
-      (
-        await runNativeCli([
-          'next',
-          'large-spec-set',
-          '--summary',
-          'The complete target specification is confirmed',
-          '--confirmed',
-          ...projectArgs(),
-        ])
-      ).exitCode,
+      (await confirmShape('large-spec-set', 'The complete target specification is confirmed'))
+        .exitCode,
     ).toBe(0);
 
     const result = json(await runNativeCli(['show', 'large-spec-set', '--json', ...projectArgs()]));

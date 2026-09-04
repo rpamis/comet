@@ -1196,6 +1196,17 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
           .sort(),
         provider: { provider: 'local' as const, configured: true },
         profile: { usedChars: profileUsedChars(state), maxChars: this.profileMaxChars },
+        counts: {
+          active: state.records.filter((record) => isVisibleMemoryRecord(state, record)).length,
+          trial: state.records.filter(
+            (record) => isVisibleMemoryRecord(state, record) && record.state === 'trial',
+          ).length,
+          proven: state.records.filter(
+            (record) => isVisibleMemoryRecord(state, record) && record.state === 'proven',
+          ).length,
+          history: state.records.filter((record) => !isVisibleMemoryRecord(state, record)).length,
+          tombstones: state.tombstones.length,
+        },
       };
     });
     return {
@@ -1318,6 +1329,23 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
       const file = this.resolveMemoryFilePath(state, target.scope, target.projectKey);
       const content = await this.repository.readText(file);
       reconcileMarkdown(state, file, target.scope, target.projectKey, content, this.timestamp());
+      if (content !== null) {
+        const canonical = removeTombstonedMarkdownBullets(
+          content,
+          state,
+          target.scope,
+          target.projectKey,
+        );
+        if (canonical !== content) {
+          await this.persistWithFileProjection(state, file, {
+            content: canonical,
+            baseHash: memoryFileHash(content),
+            scope: target.scope,
+            ...(target.projectKey === undefined ? {} : { projectKey: target.projectKey }),
+            queuedAt: this.timestamp(),
+          });
+        }
+      }
     }
     return state;
   }
@@ -1674,6 +1702,13 @@ function projectManagementRecord(
     updatedAt: record.updatedAt,
     canRollback: (state.history[record.id]?.length ?? 0) > 0,
   };
+}
+
+function isVisibleMemoryRecord(state: MutableMemoryState, record: StoredRecord): boolean {
+  if (record.state === 'superseded' || isConflictedInferred(state.conflicts, record)) return false;
+  return !state.tombstones.some(
+    (entry) => entry.recordId === record.id || entry.identity === record.identity,
+  );
 }
 
 function projectManagementConflict(
@@ -2043,6 +2078,36 @@ function reconcileMarkdown(
     state.records.push(record);
   }
   state.files[file] = { hash, observedAt: timestamp };
+}
+
+function removeTombstonedMarkdownBullets(
+  content: string,
+  state: MutableMemoryState,
+  scope: 'global' | 'project',
+  projectKey: string | undefined,
+): string {
+  const removedLines = new Set(
+    parseMarkdown(content)
+      .filter(
+        (bullet) =>
+          isTombstonedMarkdownText(state.tombstones, scope, projectKey, bullet.text) &&
+          !state.records.some(
+            (record) =>
+              isVisibleMemoryRecord(state, record) &&
+              record.scope === scope &&
+              record.projectKey === projectKey &&
+              normalizeText(record.category) === normalizeText(bullet.category) &&
+              normalizeText(record.text) === normalizeText(bullet.text),
+          ),
+      )
+      .map((bullet) => bullet.line),
+  );
+  if (removedLines.size === 0) return content;
+  return content
+    .replace(/\r\n?/gu, '\n')
+    .split('\n')
+    .filter((_line, index) => !removedLines.has(index))
+    .join('\n');
 }
 
 function appendMarkdownBullet(

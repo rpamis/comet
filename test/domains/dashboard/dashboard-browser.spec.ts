@@ -764,7 +764,7 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   await expect(settingsDialog.getByRole('button', { name: '退出全屏' })).toBeVisible();
   await settingsDialog.getByRole('button', { name: '退出全屏' }).click();
   await expect(settingsDialog.getByRole('button', { name: '全屏展示' })).toBeVisible();
-  await expect(settingsDialog.getByLabel('项目规则设置')).toBeVisible();
+  await expect(settingsDialog.getByLabel('项目知识设置')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Provider 与检索' })).toBeVisible();
   await expect(page.getByText('COMET_KNOWLEDGE_TOKEN')).toBeVisible();
   await expect(page.getByRole('button', { name: '保存配置' })).toBeVisible();
@@ -2016,10 +2016,11 @@ test('keeps personal memory context and application history easy to scan', async
 
   const contextBar = page.getByLabel('个人记忆状态与操作');
   const contextItems = contextBar.locator('.dashboard-plugin-context-item');
-  await expect(contextItems).toHaveCount(3);
+  await expect(contextItems).toHaveCount(4);
   await expect(contextBar).toContainText('本地提供器');
   await expect(contextBar).toContainText('当前项目');
-  await expect(contextBar).toContainText('4 条记忆');
+  await expect(contextBar).toContainText('3 条记忆');
+  await expect(contextBar).toContainText('历史：1 条');
   await expect(contextItems.first()).toHaveCSS('font-size', '13px');
   await expect(contextItems.nth(1)).toHaveCSS('border-left-width', '1px');
 

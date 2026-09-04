@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 
 import { resolveProjectKnowledgeStorageLocation } from '../../platform/paths/project-knowledge-storage.js';
@@ -11,7 +12,7 @@ import type {
   ProjectKnowledgeResult,
 } from './types.js';
 
-const INDEX_SCHEMA = 'comet.project-knowledge.index.v2';
+const INDEX_SCHEMA = 'comet.project-knowledge.index.v3';
 const MAX_SOURCE_BYTES = 256 * 1024;
 const MAX_SECTION_CHARS = 16_000;
 const MAX_LEXICAL_TERMS = 256;
@@ -80,6 +81,10 @@ interface SearchRow {
   readonly heading_path: string;
   readonly body: string;
   readonly rank: number;
+}
+
+function contentDigest(bytes: Buffer): string {
+  return createHash('sha256').update(bytes).digest('hex');
 }
 
 function countValue(value: unknown): number {
@@ -252,7 +257,7 @@ export class ProjectKnowledgeIndexStore {
       }
       database.exec(
         [
-          'CREATE TABLE IF NOT EXISTS pk_sources (workspace_id TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, archived_at TEXT, size INTEGER NOT NULL, modified_at REAL NOT NULL, indexed_at TEXT NOT NULL, PRIMARY KEY(workspace_id, source));',
+          'CREATE TABLE IF NOT EXISTS pk_sources (workspace_id TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, archived_at TEXT, size INTEGER NOT NULL, modified_at REAL NOT NULL, digest TEXT NOT NULL, indexed_at TEXT NOT NULL, PRIMARY KEY(workspace_id, source));',
           'CREATE TABLE IF NOT EXISTS pk_sections (id INTEGER PRIMARY KEY, workspace_id TEXT NOT NULL, source TEXT NOT NULL, anchor TEXT NOT NULL, title TEXT NOT NULL, heading_path TEXT NOT NULL, body TEXT NOT NULL, lexical_terms TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(workspace_id, source, anchor));',
           'CREATE INDEX IF NOT EXISTS pk_sections_workspace_source ON pk_sections(workspace_id, source);',
           "CREATE VIRTUAL TABLE IF NOT EXISTS pk_fts_terms USING fts5(workspace_id UNINDEXED, source UNINDEXED, title, heading_path, body, lexical_terms, tokenize='unicode61');",
@@ -278,7 +283,7 @@ export class ProjectKnowledgeIndexStore {
               'DROP TABLE IF EXISTS pk_fts_trigram;',
               'DROP TABLE IF EXISTS pk_sections;',
               'DROP TABLE IF EXISTS pk_sources;',
-              'CREATE TABLE pk_sources (workspace_id TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, archived_at TEXT, size INTEGER NOT NULL, modified_at REAL NOT NULL, indexed_at TEXT NOT NULL, PRIMARY KEY(workspace_id, source));',
+              'CREATE TABLE pk_sources (workspace_id TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, archived_at TEXT, size INTEGER NOT NULL, modified_at REAL NOT NULL, digest TEXT NOT NULL, indexed_at TEXT NOT NULL, PRIMARY KEY(workspace_id, source));',
               'CREATE TABLE pk_sections (id INTEGER PRIMARY KEY, workspace_id TEXT NOT NULL, source TEXT NOT NULL, anchor TEXT NOT NULL, title TEXT NOT NULL, heading_path TEXT NOT NULL, body TEXT NOT NULL, lexical_terms TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(workspace_id, source, anchor));',
               'CREATE INDEX pk_sections_workspace_source ON pk_sections(workspace_id, source);',
               "CREATE VIRTUAL TABLE pk_fts_terms USING fts5(workspace_id UNINDEXED, source UNINDEXED, title, heading_path, body, lexical_terms, tokenize='unicode61');",
@@ -325,11 +330,14 @@ export class ProjectKnowledgeIndexStore {
     const known = new Map(
       (
         database
-          .prepare('SELECT source, size, modified_at FROM pk_sources WHERE workspace_id = ?')
+          .prepare(
+            'SELECT source, size, modified_at, digest FROM pk_sources WHERE workspace_id = ?',
+          )
           .all(this.workspaceId) as Array<{
           source: string;
           size: number;
           modified_at: number;
+          digest: string;
         }>
       ).map((entry) => [entry.source, entry]),
     );
@@ -360,8 +368,6 @@ export class ProjectKnowledgeIndexStore {
         continue;
       }
       const previous = known.get(document.source);
-      if (previous && previous.size === stat.size && previous.modified_at === stat.mtimeMs)
-        continue;
       try {
         const read = await readProtectedProjectFile(
           this.projectRoot,
@@ -375,6 +381,15 @@ export class ProjectKnowledgeIndexStore {
         if (afterRead.size !== read.stat.size || afterRead.mtimeMs !== read.stat.mtimeMs) {
           throw new Error('source changed while it was being indexed');
         }
+        const digest = contentDigest(read.bytes);
+        if (
+          previous &&
+          previous.size === stat.size &&
+          previous.modified_at === stat.mtimeMs &&
+          previous.digest === digest
+        ) {
+          continue;
+        }
         const sections = parseProjectKnowledgeSections(
           document.source,
           read.bytes.toString('utf8'),
@@ -385,6 +400,7 @@ export class ProjectKnowledgeIndexStore {
           document,
           Number(read.stat.size),
           Number(read.stat.mtimeMs),
+          digest,
           sections,
         );
         refreshedSources.push(document);
@@ -559,6 +575,7 @@ export class ProjectKnowledgeIndexStore {
     document: ProjectKnowledgeDocument,
     size: number,
     modifiedAt: number,
+    digest: string,
     sections: readonly ParsedSection[],
   ): void {
     const now = new Date().toISOString();
@@ -566,7 +583,7 @@ export class ProjectKnowledgeIndexStore {
     try {
       database
         .prepare(
-          'INSERT INTO pk_sources(workspace_id, source, kind, archived_at, size, modified_at, indexed_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(workspace_id, source) DO UPDATE SET kind = excluded.kind, archived_at = excluded.archived_at, size = excluded.size, modified_at = excluded.modified_at, indexed_at = excluded.indexed_at',
+          'INSERT INTO pk_sources(workspace_id, source, kind, archived_at, size, modified_at, digest, indexed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(workspace_id, source) DO UPDATE SET kind = excluded.kind, archived_at = excluded.archived_at, size = excluded.size, modified_at = excluded.modified_at, digest = excluded.digest, indexed_at = excluded.indexed_at',
         )
         .run(
           this.workspaceId,
@@ -575,6 +592,7 @@ export class ProjectKnowledgeIndexStore {
           document.archivedAt ?? null,
           size,
           modifiedAt,
+          digest,
           now,
         );
       const existing = new Map(

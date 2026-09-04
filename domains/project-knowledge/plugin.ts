@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 
 import type {
   PluginContext,
@@ -222,6 +222,11 @@ async function createProjectKnowledgeModule(
     }
   };
   const ensureProjectModel = async (provider: ProjectKnowledgeProvider): Promise<void> => {
+    try {
+      await access(options.projectRoot);
+    } catch {
+      return;
+    }
     const projectId = resolveStableProjectId(options.projectRoot);
     const listed = await provider.query({ kind: 'list', projectId, state: 'all', limit: 500 });
     if (
@@ -240,6 +245,7 @@ async function createProjectKnowledgeModule(
             reportDiagnostic,
           })
         : [];
+    if (corpus.length === 0) return;
     const learning = new ProjectKnowledgeLearningService({
       projectRoot: options.projectRoot,
       provider,
@@ -263,10 +269,23 @@ async function createProjectKnowledgeModule(
         config: options.knowledgeConfig,
         language: options.language,
       });
-      snapshotProvider = await createProvider({ discoverCorpus: false });
+      snapshotProvider = await createProvider();
       const activeProvider = snapshotProvider;
+      const projectId = resolveStableProjectId(options.projectRoot);
+      if (activeProvider instanceof LocalProjectKnowledgeProvider) {
+        await activeProvider.apply({ kind: 'refresh', projectId });
+        await ensureProjectModel(activeProvider);
+        await activeProvider.refreshIndex();
+      } else {
+        await ensureProjectModel(activeProvider);
+      }
       const status = await activeProvider.status();
-      const recordsResult = await activeProvider.query({ kind: 'list', state: 'all', limit: 100 });
+      const recordsResult = await activeProvider.query({
+        kind: 'list',
+        projectId,
+        state: 'all',
+        limit: 100,
+      });
       const records = recordsResult.kind === 'list' ? recordsResult.records : [];
       const applications = (await options.listContextApplications?.()) ?? [];
       const dashboardRecords = records.map((record) => ({
@@ -305,11 +324,33 @@ async function createProjectKnowledgeModule(
         status,
         records: dashboardRecords,
         counts: {
-          trial: records.filter((record) => record.state === 'trial').length,
-          proven: records.filter((record) => record.state === 'proven').length,
-          enforced: records.filter((record) => record.state === 'enforced').length,
-          superseded: records.filter((record) => record.state === 'superseded').length,
+          active:
+            recordsResult.kind === 'list' && recordsResult.counts
+              ? recordsResult.counts.active
+              : records.filter((record) => record.state !== 'superseded').length,
+          trial:
+            recordsResult.kind === 'list' && recordsResult.counts
+              ? recordsResult.counts.trial
+              : records.filter((record) => record.state === 'trial').length,
+          proven:
+            recordsResult.kind === 'list' && recordsResult.counts
+              ? recordsResult.counts.proven
+              : records.filter((record) => record.state === 'proven').length,
+          enforced:
+            recordsResult.kind === 'list' && recordsResult.counts
+              ? recordsResult.counts.enforced
+              : records.filter((record) => record.state === 'enforced').length,
+          superseded:
+            recordsResult.kind === 'list' && recordsResult.counts
+              ? recordsResult.counts.superseded
+              : records.filter((record) => record.state === 'superseded').length,
+          total:
+            recordsResult.kind === 'list' && recordsResult.counts
+              ? recordsResult.counts.total
+              : records.length,
+          displayed: records.length,
         },
+        truncated: recordsResult.kind === 'list' ? recordsResult.truncated : false,
         manifestPreview: currentManifest.flatMap((application) => {
           const record = recordsById.get(application.candidateId);
           const history = applications.filter(
@@ -361,16 +402,23 @@ async function createProjectKnowledgeModule(
         local:
           options.knowledgeConfig.provider === 'local'
             ? {
-                available: status.healthy,
+                available: status.healthy && localIndexStatus?.available === true,
                 repositoryId: location.repositoryId,
                 workspaceId: location.workspaceId,
                 sourceCount: localIndexStatus?.sourceCount ?? 0,
                 sources: localIndexStatus?.sources ?? [],
                 sectionCount: localIndexStatus?.sectionCount ?? 0,
+                ...(localIndexStatus?.lastQueryMs === undefined
+                  ? {}
+                  : { lastQueryMs: localIndexStatus.lastQueryMs }),
+                ...(localIndexStatus?.lastCandidateCount === undefined
+                  ? {}
+                  : { lastCandidateCount: localIndexStatus.lastCandidateCount }),
                 ...((localIndexStatus?.updatedAt ?? status.updatedAt)
                   ? { updatedAt: localIndexStatus?.updatedAt ?? status.updatedAt }
                   : {}),
                 channels: localIndexStatus?.channels ?? ['records', 'sections'],
+                truncated: recordsResult.kind === 'list' ? recordsResult.truncated : false,
               }
             : undefined,
         diagnostics: diagnostics.slice(-MAX_RECENT_DIAGNOSTICS),
@@ -537,6 +585,8 @@ async function createProjectKnowledgeModule(
           }
         }
         activeProvider = await createProvider();
+        if (capability === 'list' || capability === 'query')
+          await ensureProjectModel(activeProvider);
         if (capability === 'list') {
           const state = value.state;
           return await activeProvider.query({

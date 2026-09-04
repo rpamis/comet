@@ -15,7 +15,6 @@ import {
 } from '../../../domains/comet-native/native-paths.js';
 import { archiveNativePortableChange } from '../../../domains/comet-native/native-portable-archive.js';
 import {
-  confirmNativePortableShape,
   confirmNativePortableSkillCoordinatedPass,
   createNativePortableChange,
   dispatchNativePortableVerifier,
@@ -26,6 +25,7 @@ import {
   submitNativePortableBuilderCandidate,
   submitNativePortableVerifierResult,
 } from '../../../domains/comet-native/native-portable-runtime.js';
+import { confirmNativePortableShape } from '../../helpers/native-portable-confirmed-transition.js';
 import { createNativeRunnerChannel } from '../../../domains/comet-native/native-runner-protocol.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
 

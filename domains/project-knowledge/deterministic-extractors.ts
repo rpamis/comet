@@ -1,7 +1,10 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
-import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
+import {
+  hashProtectedProjectFile,
+  readProtectedProjectFile,
+} from '../workflow-contract/protected-project-path.js';
 import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
 import type { MemoryLanguage } from '../comet-memory/types.js';
 import type {
@@ -493,12 +496,14 @@ async function sourceVersions(
   const versions: ProjectKnowledgeRecord['sourceVersions'][number][] = [];
   for (const relativePath of unique.slice(0, 32)) {
     try {
-      const inspected = await fs.lstat(path.join(root, ...relativePath.split('/')));
-      if (!inspected.isFile() || inspected.isSymbolicLink()) continue;
+      const hashed = await hashProtectedProjectFile(root, relativePath, {
+        label: `Project Knowledge source ${relativePath}`,
+      });
       versions.push({
         source: relativePath,
-        size: inspected.size,
-        modifiedAt: Math.trunc(inspected.mtimeMs),
+        size: Number(hashed.stat.size),
+        modifiedAt: Math.trunc(Number(hashed.stat.mtimeMs)),
+        digest: hashed.digest,
       });
     } catch {
       // The candidate is still bounded; current-source validation will reject

@@ -504,6 +504,63 @@ describe('PersonalMemoryService', () => {
       expect(
         (await memories.retrieve({ projectKey: 'project-a' })).records.map((record) => record.id),
       ).not.toContain(promoted.record!.id);
+      await writeFile(file, `${await readFile(file, 'utf8')}\n- ${observation.text}\n`);
+      await memories.manage({ projectKey: 'project-a' });
+      const reconciled = await readFile(file, 'utf8');
+      expect(reconciled).not.toContain(observation.text);
+      expect(reconciled).toContain('保留无关内容');
+    });
+  });
+
+  it('does not count forgotten records as active memory', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const record = await memories.remember({
+        scope: 'global',
+        category: '输出偏好',
+        text: '回答使用中文',
+      });
+
+      await memories.remove(record.id);
+
+      await expect(memories.status()).resolves.toMatchObject({
+        counts: {
+          active: 0,
+          trial: 0,
+          proven: 0,
+          history: 1,
+          tombstones: 1,
+        },
+      });
+    });
+  });
+
+  it('keeps an explicitly re-added memory when an older category tombstone has the same text', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const text = '提交前运行聚焦测试';
+      const forgotten = await memories.remember({
+        scope: 'global',
+        category: '旧习惯',
+        text,
+      });
+      await memories.remove(forgotten.id);
+      const replacement = await memories.remember({
+        scope: 'global',
+        category: '当前习惯',
+        text,
+      });
+      const file = path.join(root, 'profile.md');
+      await writeFile(file, `${await readFile(file, 'utf8')}\n## 其他\n\n- 保留无关内容\n`);
+
+      await memories.manage({ scope: 'global' });
+
+      expect(await readFile(file, 'utf8')).toContain(`## 当前习惯\n\n- ${text}`);
+      expect((await memories.retrieve({ scope: 'global' })).records).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: replacement.id, category: '当前习惯', text }),
+        ]),
+      );
     });
   });
 
@@ -963,6 +1020,9 @@ describe('PersonalMemoryService', () => {
       expect(
         (await memories.retrieve({ projectKey: 'project-a', task: 'build' })).records,
       ).toHaveLength(0);
+      await expect(memories.status()).resolves.toMatchObject({
+        counts: { active: 0, history: 2 },
+      });
     });
   });
 

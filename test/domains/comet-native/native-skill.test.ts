@@ -315,7 +315,8 @@ describe('Comet Native Skills', () => {
           '优先使用结构化提问',
           'Sequential 模式一次提交一个单选或多选问题',
           'Batch 模式在一次请求中提交本轮完整的问题集合',
-          '- [blocking] CONFIRM: <确认内容>',
+          '`prepare-shape-confirmation`',
+          '不要为最终确认再写一条 `[blocking]`',
         ],
       },
       {
@@ -329,7 +330,8 @@ describe('Comet Native Skills', () => {
           'prefer a structured question',
           'Sequential mode submits one single-choice or multiple-choice question',
           'Batch mode submits the complete current question set',
-          '- [blocking] CONFIRM: <confirmation>',
+          '`prepare-shape-confirmation`',
+          'do not create another confirmation blocker',
         ],
       },
     ];
@@ -339,6 +341,7 @@ describe('Comet Native Skills', () => {
       for (const term of variant.required) {
         expect(reference, `${variant.language}: ${term}`).toContain(term);
       }
+      expect(reference).not.toContain('[blocking] CONFIRM');
     }
   });
 

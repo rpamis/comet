@@ -5,6 +5,7 @@ import path from 'node:path';
 import type { AgentExperienceEvent, AgentLearningDelta } from '../agent-learning/index.js';
 import type { MemoryLanguage } from '../comet-memory/types.js';
 import {
+  hashProtectedProjectFile,
   inspectProtectedProjectPath,
   readProtectedProjectFile,
 } from '../workflow-contract/protected-project-path.js';
@@ -47,6 +48,7 @@ export interface ProjectKnowledgeReviewSource {
   readonly text: string;
   readonly size: number;
   readonly modifiedAt: number;
+  readonly digest: string;
 }
 
 export interface ProjectKnowledgeReviewPacket {
@@ -264,6 +266,7 @@ export async function createProjectKnowledgeReviewPacket(
         text,
         size: Number(read.stat.size),
         modifiedAt: Number(read.stat.mtimeMs),
+        digest: createHash('sha256').update(read.bytes).digest('hex'),
       });
     } catch {
       // A single unreadable source does not stop the other sources from being reviewed.
@@ -383,6 +386,7 @@ function experiencePolicyRecord(
       source: source.source,
       size: source.size,
       modifiedAt: Math.trunc(source.modifiedAt),
+      digest: source.digest,
     })),
     applicationCount: 0,
     successCount: 0,
@@ -402,8 +406,10 @@ async function reviewSourcesStillCurrent(
         expected: 'file',
       });
       if (!inspected.exists) return source.source;
-      const stat = await fs.stat(inspected.target);
-      if (Number(stat.size) !== source.size || Number(stat.mtimeMs) !== source.modifiedAt) {
+      const current = await hashProtectedProjectFile(projectRoot, source.source, {
+        label: source.source,
+      });
+      if (Number(current.stat.size) !== source.size || current.digest !== source.digest) {
         return source.source;
       }
     } catch {
@@ -424,12 +430,21 @@ async function recordSourcesStillCurrent(
         expected: 'file',
       });
       if (!inspected.exists) return version.source;
-      const stat = await fs.stat(inspected.target);
-      if (
-        Number(stat.size) !== version.size ||
-        Math.trunc(Number(stat.mtimeMs)) !== version.modifiedAt
-      ) {
-        return version.source;
+      if (version.digest !== undefined) {
+        const current = await hashProtectedProjectFile(projectRoot, version.source, {
+          label: version.source,
+        });
+        if (Number(current.stat.size) !== version.size || current.digest !== version.digest) {
+          return version.source;
+        }
+      } else {
+        const stat = await fs.stat(inspected.target);
+        if (
+          Number(stat.size) !== version.size ||
+          Math.trunc(Number(stat.mtimeMs)) !== version.modifiedAt
+        ) {
+          return version.source;
+        }
       }
     } catch {
       return version.source;
@@ -447,6 +462,13 @@ async function recordSourcesStillCurrent(
     referencesBySource.set(reference.source, [...current, reference]);
   }
   for (const [source, sourceReferences] of referencesBySource) {
+    const preciseReferences = sourceReferences.filter(
+      (reference) =>
+        reference.anchor !== undefined ||
+        reference.lineStart !== undefined ||
+        reference.lineEnd !== undefined,
+    );
+    if (preciseReferences.length === 0) continue;
     try {
       const text = (
         await readProtectedProjectFile(projectRoot, source, MAX_SOURCE_VALIDATION_BYTES, {
@@ -454,7 +476,7 @@ async function recordSourcesStillCurrent(
         })
       ).bytes.toString('utf8');
       if (
-        !sourceReferences.every((reference) =>
+        !preciseReferences.every((reference) =>
           projectKnowledgeSourceReferenceMatchesText(text, reference),
         )
       ) {

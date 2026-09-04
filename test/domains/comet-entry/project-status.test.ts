@@ -165,7 +165,7 @@ describe('Comet project status', () => {
         status: 'active',
         stateVersion: 1,
         verificationResult: 'pending',
-        continuation: expect.objectContaining({ action: 'confirm-shape' }),
+        continuation: expect.objectContaining({ action: 'prepare-shape-confirmation' }),
       }),
     ]);
   });

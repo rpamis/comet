@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -42,6 +43,38 @@ function record(overrides: Partial<ProjectKnowledgeRecord> = {}): ProjectKnowled
 }
 
 describe('project knowledge local store', () => {
+  test('counts records within the current project independently of list limits', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-counts-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-counts-storage-');
+    let store: ProjectKnowledgeLocalStore | undefined;
+    try {
+      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      await store.apply({ kind: 'upsert', record: record({ id: 'trial', state: 'trial' }) });
+      await store.apply({ kind: 'upsert', record: record({ id: 'proven', state: 'proven' }) });
+      await store.apply({
+        kind: 'upsert',
+        record: record({ id: 'history', state: 'superseded' }),
+      });
+      await store.apply({
+        kind: 'upsert',
+        record: record({ id: 'foreign', projectId: 'another-project', state: 'enforced' }),
+      });
+
+      expect(store.projectCounts('project-comet')).toEqual({
+        active: 2,
+        trial: 1,
+        proven: 1,
+        enforced: 0,
+        superseded: 1,
+        total: 3,
+      });
+    } finally {
+      store?.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
   test('rebuilds the derived record table when its machine schema is obsolete', async () => {
     const root = await temporaryRoot('comet-project-knowledge-schema-');
     const storageRoot = await temporaryRoot('comet-project-knowledge-schema-storage-');
@@ -321,6 +354,159 @@ describe('project knowledge local store', () => {
     }
   });
 
+  test('does not keep legacy records active before their source digest is trusted', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-store-legacy-digest-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-storage-legacy-digest-');
+    const sourceFile = path.join(root, 'docs', 'process.md');
+    let store: ProjectKnowledgeLocalStore | undefined;
+    await fs.mkdir(path.dirname(sourceFile), { recursive: true });
+    await fs.writeFile(sourceFile, '# Build\n\nRun build before test.\n');
+    try {
+      const initialStat = await fs.stat(sourceFile);
+      const sourceDigest = createHash('sha256')
+        .update(await fs.readFile(sourceFile))
+        .digest('hex');
+      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      const initial = record({
+        sourceVersions: [
+          {
+            source: 'docs/process.md',
+            size: initialStat.size,
+            modifiedAt: Math.trunc(initialStat.mtimeMs),
+          },
+        ],
+      });
+      await store.apply({ kind: 'upsert', record: initial });
+
+      const refreshed = await store.apply({
+        kind: 'refresh',
+        projectId: initial.projectId,
+        id: initial.id,
+      });
+      expect(refreshed).toMatchObject({
+        changed: true,
+        records: [
+          expect.objectContaining({
+            id: initial.id,
+            state: 'superseded',
+            sourceVersions: [
+              expect.objectContaining({
+                source: 'docs/process.md',
+                digest: sourceDigest,
+              }),
+            ],
+          }),
+        ],
+      });
+    } finally {
+      store?.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('preserves every refreshed source version when migrating a legacy record', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-store-legacy-sources-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-storage-legacy-sources-');
+    const sources = ['docs/process.md', 'docs/testing.md'];
+    let store: ProjectKnowledgeLocalStore | undefined;
+    try {
+      await Promise.all(
+        sources.map(async (source) => {
+          const absolutePath = path.join(root, ...source.split('/'));
+          await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+          await fs.writeFile(
+            absolutePath,
+            `# ${path.basename(source, '.md')}\n\nKeep it current.\n`,
+          );
+        }),
+      );
+      const stats = await Promise.all(
+        sources.map(async (source) => ({
+          source,
+          stat: await fs.stat(path.join(root, ...source.split('/'))),
+        })),
+      );
+      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      const initial = record({
+        sourceVersions: stats.map(({ source, stat }) => ({
+          source,
+          size: stat.size,
+          modifiedAt: Math.trunc(stat.mtimeMs),
+        })),
+      });
+      await store.apply({ kind: 'upsert', record: initial });
+
+      const refreshed = await store.apply({
+        kind: 'refresh',
+        projectId: initial.projectId,
+        id: initial.id,
+      });
+      expect(refreshed).toMatchObject({
+        changed: true,
+        records: [
+          expect.objectContaining({
+            id: initial.id,
+            state: 'superseded',
+            sourceVersions: expect.arrayContaining(
+              sources.map((source) =>
+                expect.objectContaining({
+                  source,
+                  digest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+                }),
+              ),
+            ),
+          }),
+        ],
+      });
+      expect(
+        (refreshed.records?.[0]?.sourceVersions ?? []).map((version) => version.source),
+      ).toEqual(expect.arrayContaining(sources));
+      expect(refreshed.records?.[0]?.sourceVersions).toHaveLength(sources.length);
+    } finally {
+      store?.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps records backed by source files larger than one MiB current', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-large-source-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-large-source-storage-');
+    const sourceFile = path.join(root, 'docs', 'process.md');
+    let store: ProjectKnowledgeLocalStore | undefined;
+    try {
+      await fs.mkdir(path.dirname(sourceFile), { recursive: true });
+      await fs.writeFile(sourceFile, `# Build\n\n${'Keep this source current.\n'.repeat(50_000)}`);
+      const sourceBytes = await fs.readFile(sourceFile);
+      const sourceStat = await fs.stat(sourceFile);
+      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      const initial = record({
+        verification: [],
+        sourceVersions: [
+          {
+            source: 'docs/process.md',
+            size: sourceStat.size,
+            modifiedAt: Math.trunc(sourceStat.mtimeMs),
+            digest: createHash('sha256').update(sourceBytes).digest('hex'),
+          },
+        ],
+      });
+      await store.apply({ kind: 'upsert', record: initial });
+
+      await expect(
+        store.apply({ kind: 'refresh', projectId: initial.projectId, id: initial.id }),
+      ).resolves.toMatchObject({
+        changed: false,
+        records: [expect.objectContaining({ id: initial.id, state: 'proven' })],
+      });
+    } finally {
+      store?.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
   test('keeps version lineage within the relation bound when relearning a dense record', async () => {
     const root = await temporaryRoot('comet-project-knowledge-version-relations-');
     const storageRoot = await temporaryRoot('comet-project-knowledge-version-relations-storage-');
@@ -451,6 +637,9 @@ describe('project knowledge local store', () => {
       await fs.writeFile(sourcePath, '# Build\n\nRun Maven tests.\n');
       await fs.writeFile(path.join(root, 'pom.xml'), '<project />\n');
       const sourceStat = await fs.stat(sourcePath);
+      const sourceDigest = createHash('sha256')
+        .update(await fs.readFile(sourcePath))
+        .digest('hex');
       store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
       const constraint = record({
         id: 'maven-constraint',
@@ -468,6 +657,7 @@ describe('project knowledge local store', () => {
             source: 'docs/build.md',
             size: sourceStat.size,
             modifiedAt: Math.trunc(sourceStat.mtimeMs),
+            digest: sourceDigest,
           },
         ],
       });

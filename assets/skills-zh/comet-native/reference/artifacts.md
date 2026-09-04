@@ -43,10 +43,9 @@ Open questions 中只有真实未解决的用户问题使用：
 ```text
 - [blocking] <Sequential 当前问题>
 - [blocking] Q1: <Batch 问题>
-- [blocking] CONFIRM: <最终确认内容>
 ```
 
-每个决定确认后立即写入 Decisions 和完整目标规格，再移除对应阻塞项。正式产物只记录结论和理由，不记录模型的隐藏推理过程。`brief.md` 是 Native 的持久化澄清产物；用户直接提供文件、附件、链接或本地路径作为需求来源时，在 `brief.md` 的 `# Scope` 下建立 `## Source coverage` 作为唯一来源覆盖映射，完整目标 Spec 不重复来源表，只完整表达所有当前有效可执行语义。
+每个决定确认后立即写入 Decisions 和完整目标规格，再移除对应阻塞项。最终 Shape 确认由 Runtime 的 `await-user` 边界持久化，不在 brief 中新增确认 blocker。正式产物只记录结论和理由，不记录模型的隐藏推理过程。`brief.md` 是 Native 的持久化澄清产物；用户直接提供文件、附件、链接或本地路径作为需求来源时，在 `brief.md` 的 `# Scope` 下建立 `## Source coverage` 作为唯一来源覆盖映射，完整目标 Spec 不重复来源表，只完整表达所有当前有效可执行语义。
 
 验收标准必须具体、可观察且互不重复。使用简单顺序 ID，例如 `A1`、`A2`、`A3`；ID 只用于结果映射，不从内容计算，也不代表文件身份。Runtime 在 Shape 确认时保存完整验收文字及其来源。直接来源覆盖映射为每个单元记录来源定位、`complete`/`partial`/`unavailable` 读取状态、保留语义、对应的 Spec 位置、对应的验收 ID、`covered`/`needs-clarification`/`background`/`non-goal`/`superseded` 覆盖状态以及理由或替代关系；当前有效可执行单元必须同时具有 Spec 位置和验收 ID，背景、非目标和已废止来源单元不要求 Spec 位置或验收 ID；验收条件至少覆盖原始来源的全部当前有效可执行语义，`partial`、`unavailable`、未覆盖内容或缺少双重映射的可执行单元保持阻塞。
 新版 `children.yaml` 使用 `comet.native.children.v2`：`acceptance_index` 保存 brief 派生的父级验收 ID、来源和完整文字；每个子任务只包含 `name`、`depends_on` 和 `covers`，并覆盖索引中的全部 ID。Spec 派生验收仍由 Runtime 的完整验收矩阵管理，只有修复阶段才把实际失败的 Spec ID 补入索引。名称必须唯一，依赖必须存在且无环；历史 `comet.native.children.v1` 继续按原契约接受，修改后 Supervisor Change 返回 Shape。

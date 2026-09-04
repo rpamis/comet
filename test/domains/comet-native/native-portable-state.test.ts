@@ -106,21 +106,29 @@ describe('Native portable state', () => {
     await expect(readNativePortableState(file)).resolves.not.toHaveProperty(
       'children_contract_hash',
     );
+    await expect(readNativePortableState(file)).resolves.not.toHaveProperty(
+      'shape_confirmation_hash',
+    );
     await expect(readNativePortableState(file)).resolves.not.toHaveProperty('coordination_mode');
 
     const parent = parseNativePortableState({
       ...ordinary,
+      shape_confirmation_hash: 'b'.repeat(64),
       children_contract_hash: 'a'.repeat(64),
       coordination_mode: 'multi-session',
     });
     await writeNativePortableState(file, parent, { containedRoot: root });
     await expect(readNativePortableState(file)).resolves.toMatchObject({
+      shape_confirmation_hash: 'b'.repeat(64),
       children_contract_hash: 'a'.repeat(64),
       coordination_mode: 'multi-session',
     });
     expect(() =>
       parseNativePortableState({ ...ordinary, children_contract_hash: 'not-a-hash' }),
     ).toThrow(/children contract hash/iu);
+    expect(() =>
+      parseNativePortableState({ ...ordinary, shape_confirmation_hash: 'not-a-hash' }),
+    ).toThrow(/Shape confirmation hash/iu);
     expect(() => parseNativePortableState({ ...ordinary, coordination_mode: 'automatic' })).toThrow(
       /coordination mode/iu,
     );

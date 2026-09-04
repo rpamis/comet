@@ -76,6 +76,58 @@ function result(findings: NativeFinding[]): NativeArtifactValidation {
   return { valid: findings.length === 0, findings };
 }
 
+export function nativeBriefHasBlockingQuestion(source: string): boolean {
+  const mappingKeys = new Set([
+    'blocker',
+    'blocking',
+    'coverage',
+    'decision',
+    'open_question',
+    'question',
+    'requirement',
+    'requirements',
+    'source',
+    'source_coverage',
+    'state',
+    'status',
+    '决策',
+    '来源',
+    '覆盖',
+    '问题',
+    '状态',
+    '需求',
+    '阻塞',
+  ]);
+  let fence: '`' | '~' | null = null;
+  for (const line of source.split(/\r?\n/u)) {
+    const fenceMatch = line.match(/^\s*(`{3,}|~{3,})/u);
+    if (fenceMatch) {
+      const marker = fenceMatch[1]?.[0] as '`' | '~';
+      if (fence === null) fence = marker;
+      else if (fence === marker) fence = null;
+      continue;
+    }
+    if (fence !== null) continue;
+
+    const value = line.trim();
+    if (/^(?:[-*+]\s+|\d+[.)]\s+)(?:\[[ xX]\]\s+)?\[blocking\](?=$|[\s:：—-])/iu.test(value)) {
+      return true;
+    }
+    if (
+      value.includes('|') &&
+      value.split('|').some((cell) => /^\s*\[blocking\](?=$|[\s:：—-])/iu.test(cell))
+    ) {
+      return true;
+    }
+    const mapping = value.match(/^([\p{L}\p{N}_./-]+)\s*[:：]\s*\[blocking\](?=$|[\s:：—-])/iu);
+    if (mapping) {
+      const key = mapping[1]?.toLocaleLowerCase('en-US') ?? '';
+      if (mappingKeys.has(key) || /[./_-]/u.test(key)) return true;
+    }
+  }
+  return false;
+}
+
 export async function validateNativeBrief(
   changeDir: string,
   briefRef: string,
@@ -115,8 +167,7 @@ export async function validateNativeBrief(
       });
     }
   }
-  const openQuestions = sections.get('openQuestions') ?? '';
-  if (/^\s*-\s*\[blocking\]/imu.test(openQuestions)) {
+  if (nativeBriefHasBlockingQuestion(source)) {
     findings.push({
       code: 'brief-blocking-question',
       message: 'Brief has a blocking open question',

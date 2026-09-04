@@ -2,7 +2,9 @@ import { promises as fs } from 'fs';
 import path from 'path';
 
 import {
+  hashFileRaceSafe,
   readFileRaceSafe,
+  type RaceSafeHashResult,
   type RaceSafeReadOptions,
   type RaceSafeReadResult,
 } from '../../platform/fs/race-safe-read.js';
@@ -16,6 +18,35 @@ export interface ProtectedProjectPathInspection {
   relative: string;
   exists: boolean;
   kind: ProtectedProjectPathKind;
+}
+
+export async function hashProtectedProjectFile(
+  projectRoot: string,
+  relativePath: string,
+  options: Omit<RaceSafeReadOptions, 'verify'> & { label: string },
+): Promise<RaceSafeHashResult> {
+  const inspection = await inspectProtectedProjectPath(projectRoot, relativePath, {
+    label: options.label,
+    expected: 'file',
+  });
+  if (!inspection.exists) {
+    const error = new Error(`${options.label} does not exist`) as NodeJS.ErrnoException;
+    error.code = 'ENOENT';
+    throw error;
+  }
+  const realRoot = await assertRealProjectRoot(inspection.projectRoot, options.label);
+  return hashFileRaceSafe(inspection.target, {
+    ...options,
+    verify: async (_checkpoint, context) => {
+      if (!isInside(realRoot, context.realPath)) {
+        throw new Error(`${options.label} resolves outside the project root`);
+      }
+      await inspectExistingChain(inspection.projectRoot, realRoot, inspection.relative.split('/'), {
+        label: options.label,
+        expected: 'file',
+      });
+    },
+  });
 }
 
 export interface ProtectedProjectPathOptions {

@@ -2216,6 +2216,12 @@ body {
   background: var(--knowledge-warning);
 }
 
+.dashboard-knowledge-workspace-meta {
+  color: var(--color-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .dashboard-knowledge-create-button {
   min-height: 34px;
   margin-left: auto;
@@ -2786,6 +2792,22 @@ body {
   font-size: 10px;
 }
 
+.dashboard-knowledge-source-list li > span {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.dashboard-knowledge-source-list li small,
+.dashboard-knowledge-source-list li em,
+.dashboard-knowledge-verification-list li span {
+  color: var(--color-muted);
+  font-size: 10px;
+  font-style: normal;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .dashboard-knowledge-source-list svg,
 .dashboard-knowledge-verification-list svg {
   flex: 0 0 auto;
@@ -3261,6 +3283,61 @@ body {
   display: grid;
   gap: 7px;
   border-top: 1px solid var(--color-border-soft);
+}
+
+.dashboard-knowledge-source-related > article {
+  border-bottom: 1px solid var(--color-border-soft);
+}
+
+.dashboard-knowledge-source-related > article > button {
+  width: 100%;
+  border-bottom: 0;
+}
+
+.dashboard-knowledge-source-related-versions {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 10px 12px;
+  padding-left: 12px;
+  border-left: 1px solid var(--color-border-soft);
+}
+
+.dashboard-knowledge-source-related-versions > div {
+  display: grid;
+  gap: 4px;
+  color: var(--color-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.dashboard-knowledge-source-related-versions > div > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dashboard-knowledge-source-related-versions p,
+.dashboard-knowledge-source-related-versions ul {
+  margin: 0;
+}
+
+.dashboard-knowledge-source-related-versions ul {
+  display: grid;
+  gap: 3px;
+  padding-left: 16px;
+}
+
+.dashboard-knowledge-source-related-versions li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dashboard-knowledge-source-related-versions small,
+.dashboard-knowledge-source-related-versions em {
+  color: var(--color-muted);
+  font-size: 10px;
+  font-style: normal;
 }
 
 .dashboard-knowledge-source-related button {

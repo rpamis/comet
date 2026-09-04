@@ -27,7 +27,6 @@ import {
   nativeProjectPaths,
 } from '../../../domains/comet-native/native-paths.js';
 import {
-  confirmNativePortableShape,
   confirmNativePortableSkillCoordinatedPass,
   dispatchNativePortableVerifier,
   executeNativePortableCheckPlan,
@@ -36,6 +35,7 @@ import {
   submitNativePortableBuilderCandidate,
   submitNativePortableVerifierResult,
 } from '../../../domains/comet-native/native-portable-runtime.js';
+import { confirmNativePortableShape } from '../../helpers/native-portable-confirmed-transition.js';
 import { createNativeRunnerChannel } from '../../../domains/comet-native/native-runner-protocol.js';
 import {
   readNativePortableState,
@@ -48,6 +48,24 @@ import type {
   NativePortableState,
 } from '../../../domains/comet-native/native-portable-types.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
+
+async function guardedShapeConfirmationArgs(
+  paths: NativeProjectPaths,
+  name: string,
+  summary: string,
+): Promise<string[]> {
+  const state = await readNativePortableChange(paths, name);
+  return [
+    name,
+    '--summary',
+    summary,
+    '--confirmed',
+    '--expected-state-version',
+    String(state.state_version),
+    '--expected-action',
+    'confirm-shape',
+  ];
+}
 
 const PARENT_BRIEF = `# Outcome
 Integrate the child changes into one verified result.
@@ -585,8 +603,13 @@ children:`,
     const parentDir = nativePortableChangeDir(parentPaths, 'parent');
     await fs.writeFile(path.join(parentDir, 'brief.md'), PARENT_BRIEF);
     await fs.writeFile(path.join(parentDir, 'children.yaml'), CHILDREN);
+    const parentPrepared = await nativeNextCommand(
+      ['parent', '--summary', 'Prepare the parent contract confirmation'],
+      repository,
+    );
+    expect(data(parentPrepared).state).toMatchObject({ phase: 'shape', status: 'await-user' });
     const parentConfirmed = await nativeNextCommand(
-      ['parent', '--summary', 'Confirm the parent contract', '--confirmed'],
+      await guardedShapeConfirmationArgs(parentPaths, 'parent', 'Confirm the parent contract'),
       repository,
     );
     expect(data(parentConfirmed).state).toMatchObject({ phase: 'build' });
@@ -647,8 +670,13 @@ children:`,
     const parentDir = nativePortableChangeDir(parentPaths, 'parent');
     await fs.writeFile(path.join(parentDir, 'brief.md'), PARENT_BRIEF);
     await fs.writeFile(path.join(parentDir, 'children.yaml'), CHILDREN);
+    const parentPrepared = await nativeNextCommand(
+      ['parent', '--summary', 'Prepare the parent contract confirmation'],
+      repository,
+    );
+    expect(data(parentPrepared).state).toMatchObject({ phase: 'shape', status: 'await-user' });
     const parentConfirmed = await nativeNextCommand(
-      ['parent', '--summary', 'Confirm the parent contract', '--confirmed'],
+      await guardedShapeConfirmationArgs(parentPaths, 'parent', 'Confirm the parent contract'),
       repository,
     );
     expect(data(parentConfirmed).state).toMatchObject({ phase: 'build' });
@@ -1014,7 +1042,20 @@ children:`,
     });
     await expect(
       nativeNextCommand(
-        ['parent', '--summary', 'Try to reconfirm without a repair child', '--confirmed'],
+        ['parent', '--summary', 'Prepare the incomplete repair plan for confirmation'],
+        repository,
+      ),
+    ).resolves.toMatchObject({
+      exitCode: 0,
+      data: { state: { phase: 'shape', status: 'await-user' } },
+    });
+    await expect(
+      nativeNextCommand(
+        await guardedShapeConfirmationArgs(
+          parentPaths,
+          'parent',
+          'Try to reconfirm without a repair child',
+        ),
         repository,
       ),
     ).rejects.toThrow(/repair plan requires an unfinished child covering: A1/iu);
@@ -1025,8 +1066,27 @@ children:`,
     covers: [A1]
 `,
     );
+    await expect(
+      nativeNextCommand(
+        await guardedShapeConfirmationArgs(
+          parentPaths,
+          'parent',
+          'Try the changed repair child plan',
+        ),
+        repository,
+      ),
+    ).rejects.toThrow(/Shape artifacts changed/iu);
+    await expect(
+      nativeNextCommand(
+        ['parent', '--summary', 'Prepare the changed repair child plan'],
+        repository,
+      ),
+    ).resolves.toMatchObject({
+      exitCode: 0,
+      data: { state: { phase: 'shape', status: 'await-user' } },
+    });
     const replanned = await nativeNextCommand(
-      ['parent', '--summary', 'Confirm the repair child plan', '--confirmed'],
+      await guardedShapeConfirmationArgs(parentPaths, 'parent', 'Confirm the repair child plan'),
       repository,
     );
     expect(data(replanned)).toMatchObject({

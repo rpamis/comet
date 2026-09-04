@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -406,6 +407,9 @@ describe('local record provider contract', () => {
     await fs.mkdir(path.dirname(source), { recursive: true });
     await fs.writeFile(source, '# Rule\n\nPrefer focused tests.\n');
     const stat = await fs.stat(source);
+    const sourceDigest = createHash('sha256')
+      .update(await fs.readFile(source))
+      .digest('hex');
     const provider = new LocalProjectKnowledgeProvider({
       projectRoot: root,
       cacheRoot: storageRoot,
@@ -434,7 +438,12 @@ describe('local record provider contract', () => {
             relations: [],
             verification: [],
             sourceVersions: [
-              { source: 'docs/rule.md', size: stat.size, modifiedAt: Math.trunc(stat.mtimeMs) },
+              {
+                source: 'docs/rule.md',
+                size: stat.size,
+                modifiedAt: Math.trunc(stat.mtimeMs),
+                digest: sourceDigest,
+              },
             ],
             applicationCount: 0,
             successCount: 0,

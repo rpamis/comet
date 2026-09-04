@@ -1,0 +1,626 @@
+schema: comet.native.v4
+name: improve-agent-learning-experience-hotfix0903
+language: zh-CN
+phase: archive
+status: done
+state_version: 7
+brief: brief.md
+spec_changes:
+  - capability: agent-learning
+    operation: modify
+    source: specs/agent-learning/spec.md
+  - capability: memory-dashboard
+    operation: modify
+    source: specs/memory-dashboard/spec.md
+  - capability: personal-memory
+    operation: modify
+    source: specs/personal-memory/spec.md
+  - capability: project-knowledge
+    operation: modify
+    source: specs/project-knowledge/spec.md
+workspace:
+  isolation: current
+  change_branch: hotfix0903
+  target_branch: hotfix0903
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: A1：用户明确表达长期偏好或要求记住时，该内容通过正常 Comet 入口形成一条 proven
+      个人记忆并在下一相关任务生效；明确仅限当前任务的要求不持久化。
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: A2：一次可信但未明确要求长期保存的稳定协作习惯形成 trial；实际成功使用后晋升 proven，被用户纠正后旧版本立即停止注入且新版本可追溯。
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: A3：Review 决策、已闭环的失败解决、成功验证和 Change
+      归档能在生产链路形成或更新对应的项目策略；语义审查暂不可用时确定性知识继续工作，待处理内容和原因可见且可重试。
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: A4：首次进入任务、执行 CLI 查询或打开 Dashboard 时使用同一套项目模型就绪与刷新逻辑，三个入口对有效记录数量和来源新鲜度给出一致结果。
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: A5：内容未变化但文件修改时间、检出分支或 worktree 改变时，不新增知识版本；内容真正变化时生成一个当前版本并把旧版本放入历史。
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: A6：同一语义身份的知识在有效列表中只出现一次；`trial`、`proven`、`enforced` 可正常浏览，`superseded`
+      不参与注入并只在历史中出现。
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A7
+    source: brief.md
+    text: A7：任务实际采用上下文后记录准确 application outcome；未实际采用的候选保持未反馈，不能被统计为成功或用于晋升。
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A8
+    source: brief.md
+    text: A8：当前用户要求、源码、配置或测试与记忆/知识冲突时，当前事实获胜，冲突记录被覆盖、纠正或失效且原因可追溯。
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A9
+    source: brief.md
+    text: A9：个人记忆中心分别展示 Core Profile、协作策略、个人经历和历史；记录数只统计权威记录，投影文件、tombstone
+      和历史项均有独立含义。
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A10
+    source: brief.md
+    text: A10：项目知识中心分别展示项目模型、项目策略、索引来源和历史；首屏准确显示有效数、候选数、历史数、最近学习、跳过/延迟原因和反馈覆盖情况。
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A11
+    source: brief.md
+    text: A11：来源详情明确显示关联知识的类型、状态、结论、关系、版本和精确引用位置；同一知识的多个历史版本不会伪装成多条无差别的关联结论。
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A12
+    source: brief.md
+    text: A12：服务状态、索引诊断、最近查询耗时、候选数量、结果截断和刷新状态来自真实领域快照；错误或数据不完整时不得显示“服务正常”。
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A13
+    source: brief.md
+    text: A13：从关联来源跳转到被筛选隐藏的记录时，页面自动切换到可见范围并选中目标；筛选、刷新和页面切换不会造成错误选择或跨项目串数据。
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A14
+    source: brief.md
+    text: A14：零记录、未形成学习、等待验证、来源失效和审查延迟分别显示简短、具体的原因和下一步，不用“自动学习已开启”代替实际结果。
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A15
+    source: brief.md
+    text: A15：界面沿用现有 Dashboard 的紧凑表格、列表、标签、描述区和抽屉/弹窗，不使用大面积宣传卡片、渐变装饰、拟人化文案、重复总结或模板化
+      AI 话术。
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A16
+    source: brief.md
+    text: A16：迁移或重建现有异常数据后，重复的 superseded 版本被整理，当前有效模型可重新生成；个人记忆的状态、遗忘保护和 Markdown
+      投影一致，操作可重复执行且不破坏用户纠正。
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A17
+    source: brief.md
+    text: A17：自动学习、索引或语义审查失败不阻塞当前工作流；Dashboard 和诊断能说明失败发生在哪一层，显式管理操作失败则保持原状态并返回真实错误。
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A18
+    source: brief.md
+    text: A18：真实检索评估会执行 Provider 查询并输出可核对指标，多任务集成验证覆盖“信号 → 形成 → 召回 → 使用结果 →
+      晋升/纠正/失效”，测试不能只检查数据集存在或使用硬编码结果。
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A19
+    source: specs/agent-learning/spec.md
+    text: 生产入口保留真实事件语义 - **Given** 一个任务包含明确长期用户偏好、已接受 Review 和成功验证 - **When** 正常
+      Comet 入口完成任务 - **Then** Journal 分别收到 user actor 的
+      `user.signal`、`review.resolved` 和 `verification.completed` - **And**
+      不得仅写一条 workflow actor 的泛化 `episode.completed` 代替这些事件
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A20
+    source: specs/agent-learning/spec.md
+    text: 已处理与已学习分开统计 - **Given** 一个事件因一次性指令、证据不足或内容重复而产生 noop - **When** Learner
+      完成处理 - **Then** 事件可以标记 completed，但新增/更新 Unit 数量为零 - **And** Dashboard
+      显示真实跳过原因，不把它计入“学到了”
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A21
+    source: specs/agent-learning/spec.md
+    text: reviewer 恢复后重放延迟学习 - **Given** 语义 reviewer 不可用期间积累了 deferred episode -
+      **When** reviewer 恢复并触发重试 - **Then** 系统按原 eventId/episodeId 幂等反思并
+      Consolidate - **And** 每个 episode 形成 Delta 或明确 noop - **And** 重试不会重复创建同一
+      Learning Unit
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A22
+    source: specs/agent-learning/spec.md
+    text: 任务只反馈实际采用的上下文 - **Given** Context Director 为任务选择六条候选，但 Agent 只展开并采用两条 -
+      **When** 任务完成并提交 outcome - **Then** 只有两条实际采用记录获得对应结果 - **And** 其他四条保持
+      unset - **And** 统计同时显示总应用、已反馈和未反馈，不把未反馈算作成功
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A23
+    source: specs/agent-learning/spec.md
+    text: 负面反馈改变生命周期 - **Given** 一条 trial 或 proven Unit 被用户纠正或导致失败 - **When** 系统收到
+      `corrected` 或 `contributed-to-failure` - **Then** Reflection 更新、降权或
+      supersede 原 Unit - **And** 后续检索不再以原强度提供冲突内容
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A24
+    source: specs/agent-learning/spec.md
+    text: 真实端到端评估能发现断链 - **Given** 固定学习与检索案例包含明确预期 Unit、相关来源和结果 - **When**
+      评估从公共生产入口执行完整任务序列 - **Then** 报告来自实际 Journal、Provider、Context Director 和
+      outcome 记录 - **And** 任一 capture、formation、retrieval、feedback 或 lifecycle
+      断链都会使对应场景失败
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A25
+    source: specs/memory-dashboard/spec.md
+    text: Dashboard 不自行推导领域状态 - **Given** 插件已启用但 Provider 不健康或有效记录为零 - **When**
+      Dashboard 渲染中心页 - **Then** 页面使用领域快照显示真实错误或零记录 - **And** 不得仅根据
+      configured/disabled、文件数量或事件数量显示“服务正常”或“已学习”
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A26
+    source: specs/memory-dashboard/spec.md
+    text: 页面错误不会污染其他中心 - **Given** 项目知识快照加载失败 - **When** 用户打开个人记忆或 workflow 页面 -
+      **Then** 其他页面继续显示各自数据 - **And** 项目知识页面单独显示可重试诊断
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A27
+    source: specs/memory-dashboard/spec.md
+    text: 零个人记忆有明确解释 - **Given** 学习和检索配置均开启、投影文件存在，但权威状态没有有效 Record - **When**
+      用户打开个人记忆中心 - **Then** 概览显示有效记忆为零 - **And** 投影文件只出现在数据详情 - **And**
+      空状态显示最近没有合格信号、等待复用、延迟或失败中的真实原因及可用操作
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A28
+    source: specs/memory-dashboard/spec.md
+    text: 个人记忆详情可解释应用 - **Given** 一条 Collaboration Policy 曾被选择并得到 application
+      outcome - **When** 用户查看详情 - **Then**
+      页面显示正文、作用范围、authority、生命周期、证据摘要、whyApplied 和最近结果 - **And** 纠正前后的版本关系清楚可追溯
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A29
+    source: specs/memory-dashboard/spec.md
+    text: 有效记录与历史记录不会混淆 - **Given** Store 中有 0 条有效 Record 和 24 条 superseded Record -
+      **When** 用户打开项目知识中心 - **Then** 概览显示“有效 0、历史 24” - **And** 当前知识列表为空，历史列表显示
+      24 条或明确的分页/截断信息 - **And** 页面不把 24 条历史描述为已收录的当前知识
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A30
+    source: specs/memory-dashboard/spec.md
+    text: 所有有效生命周期默认可见 - **Given** 当前记录同时包含 trial、proven 和 enforced - **When**
+      用户打开默认有效视图 - **Then** 三种状态都可浏览并有明确标签 - **And** 用户可按单一状态缩小范围
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A31
+    source: specs/memory-dashboard/spec.md
+    text: 六个历史版本显示为一条版本链 - **Given** 同一逻辑知识存在一个当前版本和五个 superseded 版本，全部引用同一文件 -
+      **When** 用户打开该来源详情 - **Then** 页面显示一个关联知识及其六个版本的版本链 - **And** 默认突出当前结论和精确引用
+      - **And** 不显示六条无法区分的相同标题摘要
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A32
+    source: specs/memory-dashboard/spec.md
+    text: 文件原文截断可见 - **Given** 来源文件超过预览上限 - **When** 用户展开文件原文 - **Then**
+      页面显示有界内容并明确标记已截断 - **And** 关联结论和引用片段不因整文件截断而消失
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A33
+    source: specs/memory-dashboard/spec.md
+    text: 健康状态反映真实故障 - **Given** 插件已启用但 Local Index 损坏或 Provider 查询失败 - **When**
+      用户打开项目知识中心 - **Then** 顶部显示“需要处理”及对应层级的简短诊断 - **And** 不显示“服务正常” - **And**
+      不受影响的缓存内容仍可按领域允许的方式查看
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A34
+    source: specs/memory-dashboard/spec.md
+    text: 查询统计来自真实快照 - **Given** Provider 已执行一次查询并返回耗时、候选数和截断状态 - **When** Dashboard
+      刷新 - **Then** 页面显示同一快照中的真实统计 - **And** 不因前后端字段未接通而继续显示“尚无查询统计”
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A35
+    source: specs/memory-dashboard/spec.md
+    text: 页面保持克制且可扫描 - **Given** 用户在桌面宽度和窄屏宽度打开两个中心 - **When** 浏览概览、列表和详情 - **Then**
+      关键信息使用现有紧凑布局在首屏可扫描 - **And** 没有宣传式卡片墙、渐变装饰、拟人化文案或重复大标题 - **And**
+      交互控件保持可访问标签、键盘焦点和响应式可用性
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A36
+    source: specs/personal-memory/spec.md
+    text: 显式长期偏好进入下一任务 - **Given** 用户通过任一正常 Comet 入口明确要求以后都使用中文 - **When**
+      入口完成当前任务的信号捕获 - **Then** Personal Memory 形成一条 proven Core Profile 或
+      Collaboration Policy - **And** 下一相关任务加载该记录并能说明应用原因 - **And** Journal
+      中保留结构化 user actor 与最小用户证据，而不是泛化 workflow episode
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A37
+    source: specs/personal-memory/spec.md
+    text: 一次性要求不被持久化 - **Given** 用户明确要求只在当前任务输出三条结果 - **When** 当前任务结束 - **Then**
+      该要求不会形成长期 Record、trial 候选或下次任务上下文
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A38
+    source: specs/personal-memory/spec.md
+    text: 稳定协作习惯经使用后晋升 - **Given** 系统从有用户证据的协作过程识别出一个可复用习惯，但用户没有明确要求长期保存 - **When**
+      Learner 接受该 observation - **Then** 先形成一条有作用域和证据的 trial Collaboration
+      Policy - **And** 只有下一相关任务实际采用并回写 `used-successfully` 后才晋升 proven
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A39
+    source: specs/personal-memory/spec.md
+    text: 用户纠正立即替代旧记忆 - **Given** 已有一条与用户新纠正冲突的个人记忆 - **When** 用户明确纠正或遗忘 - **Then**
+      新记录成为当前版本或 tombstone 生效 - **And** 旧版本立即停止注入并保留可追溯关系
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A40
+    source: specs/personal-memory/spec.md
+    text: 权威状态与 Markdown 投影一致 - **Given** 权威状态中没有有效个人记忆，但磁盘存在旧投影文件和 tombstone -
+      **When** 用户刷新、同步或执行修复 - **Then** 有效记忆数仍为零，投影按当前记录重建且遗忘保护保留 - **And**
+      重复执行不会恢复已遗忘正文或新增重复记录
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A41
+    source: specs/personal-memory/spec.md
+    text: 当前请求覆盖历史偏好 - **Given** proven 个人偏好与当前用户请求冲突 - **When** 当前任务选择上下文 -
+      **Then** 当前请求获胜 - **And** 系统不得把被覆盖的旧偏好当作本次成功应用
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A42
+    source: specs/personal-memory/spec.md
+    text: 空状态说明为什么没有学到 - **Given** 学习配置已开启但当前没有有效记录 - **When** 用户打开个人记忆中心 - **Then**
+      页面显示有效记忆为零 - **And** 分别说明最近没有合格信号、等待复用验证、学习延迟或发生错误中的真实原因 - **And**
+      不以投影文件数或已处理事件数替代学习结果
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A43
+    source: specs/project-knowledge/spec.md
+    text: 相同内容不会产生版本风暴 - **Given** 一个来源文件内容和定位未变化 - **When** 文件 mtime、当前分支或 worktree
+      发生变化并触发刷新 - **Then** 同一逻辑知识仍只有一个当前版本 - **And** 不新增仅 ID 或更新时间不同的重复 Record
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A44
+    source: specs/project-knowledge/spec.md
+    text: 内容变化形成可追溯的新版本 - **Given** 当前知识的来源内容或适用范围真实变化 - **When** 刷新重新验证该来源 -
+      **Then** 一个新版本成为当前有效 Record - **And** 旧版本 superseded、停止注入并能从历史查看替代关系
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A45
+    source: specs/project-knowledge/spec.md
+    text: 生产 Review 形成项目策略 - **Given** Review 接受了一条有来源、有适用范围的项目约束 - **When** 正常
+      Comet 生产入口完成该 Review episode - **Then** Project Policy Learner 收到事件并通过语义
+      reviewer 形成 trial constraint - **And** 后续实际成功使用后可晋升 proven
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A46
+    source: specs/project-knowledge/spec.md
+    text: 语义审查不可用时延迟而不伪造 - **Given** 一个需要语义判断的 Review、失败解决或 Archive episode 已进入
+      Journal - **When** 生产 reviewer 暂不可用 - **Then** 确定性 Project Model 仍可刷新 -
+      **And** 语义 episode 保留为可重试的延迟学习并暴露原因 - **And** 系统不生成无关泛化策略或将事件标记成已学习
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A47
+    source: specs/project-knowledge/spec.md
+    text: 三个入口看到一致的项目模型 - **Given** 一个从未建立当前 Project Model 的项目 - **When** 用户依次打开
+      Dashboard、执行 CLI 查询并启动任务 - **Then** 三个入口通过同一 readiness 服务建立或读取模型 - **And**
+      有效记录数量、来源版本和诊断一致 - **And** 同一来源不会被重复构建三次
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A48
+    source: specs/project-knowledge/spec.md
+    text: 异常历史可安全整理 - **Given** Store 中存在同一逻辑知识的多个 superseded 版本且当前有效模型为空 - **When**
+      用户执行维护或刷新 - **Then** 重复版本链被幂等整理并保留必要审计信息 - **And** 当前项目模型从现有真实来源重建 -
+      **And** 第二次执行不继续新增或删除记录
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A49
+    source: specs/project-knowledge/spec.md
+    text: 过期来源停止注入 - **Given** 一个 proven/enforced Record 的来源已改变、删除或验证命令已消失 -
+      **When** 任务选择上下文或显式刷新 - **Then** 旧 Record 在注入前被判定失效并 superseded - **And**
+      Context Manifest 不包含该旧结论
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A50
+    source: specs/project-knowledge/spec.md
+    text: 未使用候选不会被误判成功 - **Given** Context Manifest 提供多条候选，但 Agent 只实际采用其中一条 -
+      **When** 任务完成并回写结果 - **Then** 只有已采用记录收到真实 outcome - **And**
+      其余候选保持未反馈且不能晋升或增加成功强度
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+  - id: A51
+    source: specs/project-knowledge/spec.md
+    text: 来源详情说明关联的具体内容 - **Given** 一个源码文件既是索引来源，也是多条知识版本的证据 - **When** 用户打开来源详情 -
+      **Then** 页面按逻辑知识分组显示当前结论和历史版本 - **And** 每项显示关系、类型、状态、精确 anchor、引用片段和替代关系 -
+      **And** 不把相同标题的多个旧版本渲染成无法区分的并列结论
+    result: passed
+    reason:
+      text: 独立验收确认该验收项通过；相关 focused checks 与完整 Dashboard E2E 均通过。
+      truncated: false
+builder_handoff:
+  candidate_id: 3b5c06f6-ea88-49e2-a3bb-0cda27061bc1
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:8721e6a5-17f7-4dba-8d56-ba78635696be
+  iteration: 1
+  summary:
+    text: 完成个人记忆、项目知识与 Dashboard
+      的可解释性修复：有效记录、历史、tombstone、索引来源和结论证据分开统计与展示；项目知识首次进入任务、CLI 和 Dashboard
+      共用就绪/刷新逻辑；来源版本使用内容摘要检测真实变化；来源详情按逻辑知识展示结论、关系、引用、版本链和有界原文；查询快照展示真实耗时、候选数和截断状态；空状态与健康状态不再把投影文件或插件启用误报为已学习或服务正常。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    - A8
+    - A9
+    - A10
+    - A11
+    - A12
+    - A13
+    - A14
+    - A15
+    - A16
+    - A17
+    - A18
+    - A19
+    - A20
+    - A21
+    - A22
+    - A23
+    - A24
+    - A25
+    - A26
+    - A27
+    - A28
+    - A29
+    - A30
+    - A31
+    - A32
+    - A33
+    - A34
+    - A35
+    - A36
+    - A37
+    - A38
+    - A39
+    - A40
+    - A41
+    - A42
+    - A43
+    - A44
+    - A45
+    - A46
+    - A47
+    - A48
+    - A49
+    - A50
+    - A51
+  checks:
+    - name:
+        text: focused memory/project-knowledge/dashboard Vitest
+        truncated: false
+      result: passed
+      note:
+        text: 6 files, 168 passed, 3 skipped
+        truncated: false
+    - name:
+        text: Dashboard browser regression
+        truncated: false
+      result: passed
+      note:
+        text: 39 passed
+        truncated: false
+    - name:
+        text: Dashboard build
+        truncated: false
+      result: passed
+      note:
+        text: pnpm run build:dashboard
+        truncated: false
+    - name:
+        text: lint and architecture
+        truncated: false
+      result: passed
+      note:
+        text: pnpm lint
+        truncated: false
+    - name:
+        text: changed files format
+        truncated: false
+      result: passed
+      note:
+        text: Prettier check passed
+        truncated: false
+    - name:
+        text: diff check
+        truncated: false
+      result: passed
+      note:
+        text: git diff --check
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: 最终全量 pnpm test、pnpm build 及远程 CI 尚待交付前验证。
+      truncated: false
+  known_limits_truncated: false
+  review:
+    status: passed
+    summary:
+      text: 独立只读审查发现的索引摘要、遗忘记录计数、学习策略摘要、来源跳转、摘要展示和 Changelog 问题均已修复并补充回归验证；未发现未处理的
+        P0/P1。
+      truncated: false
+    reviewer_execution_ref: multi-agent:01a067e4-08ab-7863-a8b0-7dc0c0445bcc
+  submitted_at: 2026-09-03T15:44:45.239Z
+blockers: []
+verification:
+  candidate_id: 3b5c06f6-ea88-49e2-a3bb-0cda27061bc1
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:f4929d4a-4e0c-4b59-84e1-d392c48bc3e0
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks: []
+  summary:
+    text: 独立 Verifier 已确认 A1-A51 全部通过；相关 focused checks、构建、lint、生成物检查与完整 Dashboard
+      E2E 均有通过证据，没有可执行的 P0/P1/P2 问题。
+    truncated: false
+  risks:
+    - text: 完整 pnpm test 未在本轮独立验收中重复运行；此前全量结果中的环境性 Windows EBUSY 与生成物问题均已单独复核通过。
+      truncated: false
+    - text: Dashboard E2E 期间出现 Vite proxy warning，但 39 条用例全部通过。
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-09-03T16:29:34.166Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 独立 Verifier 已确认 A1-A51 全部通过；相关 focused checks、构建、lint、生成物检查与完整 Dashboard
+        E2E 均有通过证据，没有可执行的 P0/P1/P2 问题。
+      truncated: false
+    completed_at: 2026-09-03T16:29:34.166Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-09-03T14:13:23.665Z

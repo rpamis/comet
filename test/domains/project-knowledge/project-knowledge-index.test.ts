@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -87,6 +88,64 @@ describe('project knowledge section index', () => {
       after.close();
       expect(stableAfter).toEqual(stable);
       expect(updated.body).toContain('New details');
+    } finally {
+      store.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('stores a content digest and refreshes metadata without treating an mtime-only change as new content', async () => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const source = 'docs/comet/specs/digest.md';
+    const file = path.join(root, ...source.split('/'));
+    const content = '# Digest\n\nContent stays the same.\n';
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, content);
+    const store = new ProjectKnowledgeIndexStore({ projectRoot: root, cacheRoot });
+    try {
+      await store.syncCorpus([{ absolutePath: file, source, kind: 'native-spec' }]);
+      const firstDigest = new DatabaseSync(store.databasePath, { readOnly: true });
+      const firstRow = firstDigest
+        .prepare('SELECT digest FROM pk_sources WHERE source = ?')
+        .get(source) as { digest: string };
+      firstDigest.close();
+
+      await fs.utimes(file, new Date(), new Date(Date.now() + 2000));
+      const refreshed = await store.syncCorpus([
+        { absolutePath: file, source, kind: 'native-spec' },
+      ]);
+      const secondDigest = new DatabaseSync(store.databasePath, { readOnly: true });
+      const secondRow = secondDigest
+        .prepare('SELECT digest FROM pk_sources WHERE source = ?')
+        .get(source) as { digest: string };
+      secondDigest.close();
+
+      expect(firstRow.digest).toBe(createHash('sha256').update(content).digest('hex'));
+      expect(secondRow.digest).toBe(firstRow.digest);
+      expect(refreshed.changedSources).toEqual([]);
+      expect(refreshed.refreshedSources).toEqual([
+        { absolutePath: file, source, kind: 'native-spec' },
+      ]);
+
+      const stableStat = await fs.stat(file);
+      const changedContent = content.replace('stays', 'holds');
+      expect(Buffer.byteLength(changedContent)).toBe(Buffer.byteLength(content));
+      await fs.writeFile(file, changedContent);
+      await fs.utimes(file, stableStat.atime, stableStat.mtime);
+      const changed = await store.syncCorpus([{ absolutePath: file, source, kind: 'native-spec' }]);
+      const changedDigest = new DatabaseSync(store.databasePath, { readOnly: true });
+      const changedRow = changedDigest
+        .prepare('SELECT digest FROM pk_sources WHERE source = ?')
+        .get(source) as { digest: string };
+      changedDigest.close();
+
+      expect(changedRow.digest).not.toBe(secondRow.digest);
+      expect(changed.changedSources).toEqual([]);
+      expect(changed.refreshedSources).toEqual([
+        { absolutePath: file, source, kind: 'native-spec' },
+      ]);
     } finally {
       store.close();
       await fs.rm(root, { recursive: true, force: true });

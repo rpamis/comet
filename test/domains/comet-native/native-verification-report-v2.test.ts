@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   applyNativeVerifierEnvelope,
   confirmNativePortableAcceptance,
+  prepareNativePortableShapeConfirmation,
   reserveNativeVerifierAttempt,
   submitNativeBuilderCandidate,
 } from '../../../domains/comet-native/native-loop-runtime.js';
@@ -29,7 +30,10 @@ describe('Native verification report projection', () => {
   function passedState() {
     const runner = createNativeRunnerChannel();
     let state = confirmNativePortableAcceptance({
-      state: createNativePortableState({ name: 'report-change', language: 'en' }),
+      state: prepareNativePortableShapeConfirmation({
+        state: createNativePortableState({ name: 'report-change', language: 'en' }),
+        acceptance: [{ id: 'A1', source: 'brief.md', text: 'The report is readable.' }],
+      }),
       acceptance: [{ id: 'A1', source: 'brief.md', text: 'The report is readable.' }],
     });
     state = submitNativeBuilderCandidate({

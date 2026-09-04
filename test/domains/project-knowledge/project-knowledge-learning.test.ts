@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { createHash } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -155,6 +156,44 @@ describe('project knowledge learning', () => {
           }),
         ],
       });
+    } finally {
+      provider.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('bootstraps source-backed project records when a source exceeds one MiB', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-bootstrap-large-source-');
+    const storageRoot = await temporaryRoot(
+      'comet-project-knowledge-bootstrap-large-source-storage-',
+    );
+    const provider = await createProvider(root, storageRoot);
+    try {
+      await fs.mkdir(path.join(root, 'src'), { recursive: true });
+      await fs.writeFile(
+        path.join(root, 'src', 'large.ts'),
+        `// source\n${'x'.repeat(1024 * 1024)}`,
+      );
+      await fs.writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ scripts: { test: 'vitest run' } }),
+      );
+
+      const result = await new ProjectKnowledgeLearningService({
+        projectRoot: root,
+        provider,
+      }).bootstrapProjectModel();
+      const listed = await provider.query({ kind: 'list', state: 'all', limit: 100 });
+      const records = listed.kind === 'list' ? listed.records : [];
+
+      expect(result.skipped).toBe(false);
+      expect(records).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'generated-project-map', state: 'proven' }),
+          expect.objectContaining({ id: 'generated-module-overview', state: 'proven' }),
+        ]),
+      );
     } finally {
       provider.close();
       await fs.rm(root, { recursive: true, force: true });
@@ -511,6 +550,11 @@ describe('project knowledge learning', () => {
       expect(listed.records.find((record) => record.type === 'constraint')).toMatchObject({
         state: 'enforced',
         verification: [{ command: 'pnpm test', expected: 'pass' }],
+        sourceVersions: [
+          expect.objectContaining({
+            digest: createHash('sha256').update('export const main = true;\n').digest('hex'),
+          }),
+        ],
       });
     } finally {
       provider.close();

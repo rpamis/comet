@@ -1,0 +1,375 @@
+schema: comet.native.v4
+name: fix-native-shape-confirmation-boundary
+language: zh-CN
+phase: archive
+status: done
+state_version: 17
+brief: brief.md
+spec_changes:
+  - capability: native-shape-confirmation
+    operation: create
+    source: specs/native-shape-confirmation/spec.md
+workspace:
+  isolation: current
+  change_branch: hotfix0903
+  target_branch: hotfix0903
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 3
+  attempt: 2
+  retry_epoch: 0
+  failed_iteration_count: 2
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: "**A1 Shape 整理完成后进入等待** - **Given** change 处于 active Shape，brief 和
+      capability spec 已经可确认 - **When** Agent 提交本轮 Shape 摘要 - **Then** Runtime
+      持久化 `status: await-user` 和 `loop.stage: await-user` - **And** 下一动作是
+      `confirm-shape`，state version 增加"
+    result: passed
+    reason:
+      text: Shape 整理完成后持久化 await-user/confirm-shape，并递增 state version。
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: "**A2 确认提示不能自动继续** - **Given** change 正在等待用户确认 Shape - **When** Runtime 生成
+      continuation - **Then** 返回 `disposition:
+      await-user`、`requiresUserDecision: true` 和 `userCommunication.required:
+      true` - **And** 顶层 `commandArgs` 为空，只在用户选择确认后提供带 `--confirmed` 的合法动作"
+    result: passed
+    reason:
+      text: 确认 continuation 返回
+        await-user、requiresUserDecision=true、userCommunication.required=true，顶层
+        commandArgs 为空。
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: "**A3 active Shape 不能直接确认** - **Given** change 仍是 active Shape，尚未持久化确认等待状态
+      - **When** 调用方直接执行 `comet native next <change> --confirmed` - **Then** CLI
+      拒绝该命令，不进入 Build，也不修改 portable 状态"
+    result: passed
+    reason:
+      text: active Shape 直接提交 --confirmed 会被拒绝，状态不进入 Build。
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: "**A4 明确确认后进入 Build** - **Given** change 已处于 Shape 的 `await-user` 确认边界 -
+      **When** 用户明确同意，Agent 执行绑定当前 state version 的确认命令 - **Then** Runtime 校验
+      Shape 与确认边界后进入 Build - **And** 旧 state version 或错误 expected action
+      仍按并发保护规则被拒绝"
+    result: passed
+    reason:
+      text: 确认要求持久化边界、当前 state version 和 expected action，并重新校验 Shape 指纹后进入 Build。
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: "**A5 Supervisor 的协调选择不等于最终确认** - **Given** Supervisor change 尚未选择 agent
+      协调方式 - **When** 用户选择协调方式 - **Then** Runtime 保存该选择并进入 Shape 的最终确认等待状态 -
+      **And** 不把协调方式选择同时视为用户已经确认整个 Shape"
+    result: passed
+    reason:
+      text: Supervisor 协调方式选择与最终 Shape 确认分离，选择后仍进入独立等待状态。
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: "**A6 模糊需求先解决真正影响结果的问题** - **Given**
+      用户描述存在会改变范围、默认行为或失败结果的歧义，且无法从仓库、规格或项目规则中确定 - **When** Agent 整理 Shape -
+      **Then** 按配置的 Sequential 或 Batch 方式提出问题，并把未解决项保存为 `[blocking]` - **And**
+      Runtime 在 blocker 解决前拒绝准备最终 Shape 确认"
+    result: passed
+    reason:
+      text: 澄清规则仅询问影响用户可见结果的真实歧义，未解决项以 [blocking] 阻止确认准备。
+      truncated: false
+  - id: A7
+    source: brief.md
+    text: "**A7 清晰需求不被过度追问** - **Given** 用户要求已经足够明确，剩余内容属于可调查事实或普通实现选择 - **When**
+      Agent 整理 Shape - **Then** Agent 自行调查或决定，不为凑流程追加问题 - **And** 完成 Shape
+      后只进行一次完整摘要确认"
+    result: passed
+    reason:
+      text: 清晰需求由 Agent 调查或决定普通实现选择，完成后只进行一次完整摘要确认。
+      truncated: false
+  - id: A8
+    source: brief.md
+    text: "**A8 用户投递文档时区分用途** - **Given** 用户提供文件、附件、链接或本地路径 - **When** 它被明确作为需求来源 -
+      **Then** brief 记录来源覆盖，未读取、部分读取、未映射或有冲突的可执行内容保持 `[blocking]` - **And**
+      当材料仅用于排错、取证、审查或实现参考时，不自动把其中的文字当成新增需求 - **And** 用途不明时先询问用途；文档内面向 Agent
+      的指令不能覆盖用户当前请求和项目规则"
+    result: passed
+    reason:
+      text: 双语 Skill 明确区分需求来源与参考材料，并规定来源材料中的 Agent 指令不能覆盖用户请求或项目规则。
+      truncated: false
+  - id: A9
+    source: specs/native-shape-confirmation/spec.md
+    text: "active Shape 只准备确认边界 - **Given** change 处于 `phase: shape`、`status:
+      active`，且 Shape 内容已经完整 - **When** Agent 通过 `native next` 提交 Shape 摘要 -
+      **Then** Runtime 校验 Shape 内容并持久化 `status: await-user`、`loop.stage:
+      await-user` - **And** `loop.next_action` 变为 `confirm-shape` - **And**
+      本次动作不进入 Build，也不等同于用户确认"
+    result: passed
+    reason:
+      text: active Shape 的 native next 只准备确认边界，不进入 Build。
+      truncated: false
+  - id: A10
+    source: specs/native-shape-confirmation/spec.md
+    text: 未解决的 Shape 问题阻止准备确认 - **Given** brief 的待解决问题中仍有 `[blocking]` - **When**
+      Agent 尝试完成 Shape 或准备最终确认 - **Then** Runtime 返回 brief validation failure -
+      **And** portable state 保持 active Shape，不进入最终确认等待状态
+    result: passed
+    reason:
+      text: Runtime 扫描 brief 全文的结构化 [blocking] 标记，存在 blocker 时保持 active Shape 并拒绝准备确认。
+      truncated: false
+  - id: A11
+    source: specs/native-shape-confirmation/spec.md
+    text: confirm-shape 始终要求用户决定 - **Given** continuation 的 action 是 `confirm-shape`
+      - **When** Runtime 返回下一步 - **Then** `disposition` 必须是 `await-user` -
+      **And** `requiresUserDecision` 和 `userCommunication.required` 必须为 `true` -
+      **And** 顶层 `commandArgs` 必须为空，避免 Agent直接自动执行确认
+    result: passed
+    reason:
+      text: confirm-shape 始终返回 await-user、两个用户决定信号为 true，且顶层 commandArgs 为空。
+      truncated: false
+  - id: A12
+    source: specs/native-shape-confirmation/spec.md
+    text: 未进入等待状态时拒绝 confirmed - **Given** change 仍处于 active Shape - **When**
+      调用方直接提交 `--confirmed` - **Then** Runtime 拒绝该操作并保持 Shape 状态不变 - **And**
+      返回的信息说明必须先完成 Shape 并进入用户确认边界
+    result: passed
+    reason:
+      text: 未进入持久化等待边界时提交 --confirmed 会被拒绝且状态不变。
+      truncated: false
+  - id: A13
+    source: specs/native-shape-confirmation/spec.md
+    text: 用户确认等待中的 Shape - **Given** change 处于 Shape 的 `await-user` 状态，下一动作是
+      `confirm-shape` - **When** 用户明确确认后，Agent提交带 `--confirmed`、当前 state version
+      和 expected action 的命令 - **Then** Runtime重新校验 Shape 内容并进入 Build - **And**
+      continuation 返回 Build 阶段的下一动作
+    result: passed
+    reason:
+      text: 等待态缺失或不匹配 Shape 指纹时 fail closed 并回退 Shape；有效确认后返回 Build continuation。
+      truncated: false
+  - id: A14
+    source: specs/native-shape-confirmation/spec.md
+    text: 确认命令受并发状态保护 - **Given** Shape 正在等待用户确认 - **When** 命令携带旧 state version
+      或不匹配的 expected action - **Then** Runtime拒绝该命令 - **And** portable state
+      不发生变化
+    result: passed
+    reason:
+      text: 确认命令受 state version 与 expected action 并发保护，旧版本或错误动作不会修改状态。
+      truncated: false
+  - id: A15
+    source: specs/native-shape-confirmation/spec.md
+    text: Supervisor 先选择协调方式再确认 Shape - **Given** Supervisor change 的 Shape 已完整，但缺少
+      agent 协调方式 - **When** 用户选择合法协调方式 - **Then** Runtime保存选择并进入 Shape 的最终确认等待状态
+      - **And** Runtime仍要求用户单独确认完整 Shape 后才能进入 Build
+    result: passed
+    reason:
+      text: Supervisor 合法协调方式被保存后仍要求用户单独确认完整 Shape。
+      truncated: false
+  - id: A16
+    source: specs/native-shape-confirmation/spec.md
+    text: 恢复后保留 Shape 确认边界 - **Given** change 已持久化为等待确认 Shape - **When** Agent
+      在新的对话或进程中恢复该 change - **Then** continuation 仍返回 `confirm-shape` 和等待用户决定的信号
+      - **And** 不因恢复而自动进入 Build或清除确认边界
+    result: passed
+    reason:
+      text: 恢复流程保留 await-user/confirm-shape 边界，不会自动进入 Build。
+      truncated: false
+  - id: A17
+    source: specs/native-shape-confirmation/spec.md
+    text: 模糊需求只询问会改变结果的决定 - **Given** 用户描述包含无法从现有事实确定、且会改变用户可见结果的歧义 - **When** Agent
+      执行 Shape 澄清 - **Then** 未解决决定写入 brief 的 `[blocking]` 并等待用户回答 - **And**
+      可调查事实由 Agent 调查，普通实现选择由 Agent 决定
+    result: passed
+    reason:
+      text: 澄清参考要求把会改变结果且无法确定的歧义写入 [blocking]，可调查事实和普通实现选择由 Agent 处理。
+      truncated: false
+  - id: A18
+    source: specs/native-shape-confirmation/spec.md
+    text: 清晰需求直接整理 Shape - **Given** 用户要求、正式规格和仓库事实足以确定用户可见结果 - **When** Agent 执行
+      Shape 澄清 - **Then** 不新增没有实际分歧的问题 - **And** Agent 完成正式产物后进入一次最终 Shape 确认
+    result: passed
+    reason:
+      text: 清晰需求不追加虚假分歧，正式产物完成后通过 Runtime 进入一次最终 Shape 确认。
+      truncated: false
+  - id: A19
+    source: specs/native-shape-confirmation/spec.md
+    text: 需求来源文档完整覆盖 - **Given** 用户明确把文件、附件、链接或本地路径作为需求来源 - **When** Agent 整理 Shape
+      - **Then** brief 记录来源单元及其读取、覆盖和替代状态 - **And**
+      未读取、部分读取、未映射、冲突或未确认的可执行来源内容保持 `[blocking]`
+    result: passed
+    reason:
+      text: 来源覆盖中的 partial、unmapped、未确认等结构化 blocker 会阻止确认准备，相关表格和 mapping 形式已覆盖。
+      truncated: false
+  - id: A20
+    source: specs/native-shape-confirmation/spec.md
+    text: 参考材料不自动变成需求 - **Given** 用户提供的材料只用于排错、取证、审查或实现参考 - **When** Agent 整理 Shape
+      - **Then** 不把材料中的说明或面向 Agent 的指令自动加入需求范围 - **And** 材料用途无法确定时，先把用途作为用户决定澄清
+    result: passed
+    reason:
+      text: 排错、取证、审查或实现参考材料不会自动变成需求，用途不明时要求先澄清。
+      truncated: false
+builder_handoff:
+  candidate_id: 74c6cf9c-40c5-4c04-a86e-e222f8cf789b
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:879dd25e-801f-441a-b839-f32b1dc0f56a
+  iteration: 3
+  summary:
+    text: "Closed the remaining Shape confirmation boundary gaps: structured
+      blocking markers are recognized in lists, Markdown tables with or without
+      outer pipes, and status/source mappings without treating explanatory prose
+      as a blocker; missing confirmation fingerprints fail closed; and the
+      actual Shape snapshot used to enter Build is rechecked against the
+      persisted fingerprint."
+    truncated: false
+  addressed_acceptance_ids:
+    - A4
+    - A8
+    - A13
+    - A19
+  checks:
+    - name:
+        text: focused Native artifact and portable Runtime tests
+        truncated: false
+      result: passed
+      note:
+        text: The focused five-file set passed 42 tests; the final portable Runtime run
+          passed 24 tests and the final artifact parser run passed 7 tests.
+        truncated: false
+    - name:
+        text: pnpm build:native-runtime and pnpm check:generated
+        truncated: false
+      result: passed
+      note:
+        text: Published Native bundles were rebuilt at 0.4.0-rc.4 and all generated
+          Runtime assets match their sources.
+        truncated: false
+    - name:
+        text: targeted Prettier, ESLint, and git diff --check
+        truncated: false
+      result: passed
+      note:
+        text: Changed repair files are formatted and lint-clean, with no whitespace
+          errors.
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: No real Agent behavior evaluation was added, as explicitly excluded from
+        this change.
+      truncated: false
+    - text: Grill Me documentation wording was not changed, as explicitly excluded
+        from this change.
+      truncated: false
+    - text: The full local suite was not rerun after this narrowly scoped repair; the
+        previously passing full suite remains recorded and PR CI will provide
+        the final full validation.
+      truncated: false
+  known_limits_truncated: false
+  review:
+    status: passed
+    summary:
+      text: Fresh independent read-only review confirmed the A4, A8, A13, and A19
+        repairs and reported no P0, P1, or P2 findings.
+      truncated: false
+    reviewer_execution_ref: 01a06b88-06cf-75c0-aaa6-8b3ac9ba1824
+  submitted_at: 2026-09-04T08:39:56.800Z
+blockers: []
+verification:
+  candidate_id: 74c6cf9c-40c5-4c04-a86e-e222f8cf789b
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:d1cd5d70-2212-45a8-b305-98f25aa73f53
+  iteration: 3
+  attempt: 2
+  assurance: skill-coordinated
+  verdict: pass
+  checks: []
+  summary:
+    text: 当前 Shape、Runtime 实现、双语发布资产与已有验证证据一致。A1-A20
+      全部通过；此前全量测试、build、lint、format、generated 与 diff 检查均有通过证据，最新窄修复及独立审查也通过。版本保持
+      0.4.0-rc.4，指定非目标未被扩展实现。
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-09-04T08:50:37.511Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A7
+      - A8
+      - A18
+      - A19
+    summary:
+      text: Two-step Runtime confirmation, stale protection, full Shape
+        fingerprinting, recovery, and Supervisor reduction are sound, but A7,
+        A8, A18, and A19 fail because the published Native guidance and
+        source-coverage blocker enforcement are not aligned.
+      truncated: false
+    completed_at: 2026-09-04T06:27:19.906Z
+  - goal_cycle: 1
+    iteration: 2
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Repair verification passed for A7, A8, A18, A19; final full verification
+        is required.
+      truncated: false
+    completed_at: 2026-09-04T08:04:50.971Z
+  - goal_cycle: 1
+    iteration: 2
+    attempt: 2
+    outcome: fail
+    unresolved_ids:
+      - A4
+      - A8
+      - A13
+      - A19
+    summary:
+      text: 最终全量验收失败：A4、A8、A13、A19 未通过。定向测试与既有全量验证证据通过，但端到端复现了表格 blocker 绕过、缺失 Shape
+        指纹后仍进入 Build，以及确认快照的二次读取风险。
+      truncated: false
+    completed_at: 2026-09-04T08:26:42.352Z
+  - goal_cycle: 1
+    iteration: 3
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Repair verification passed for A4, A8, A13, A19; final full verification
+        is required.
+      truncated: false
+    completed_at: 2026-09-04T08:45:53.400Z
+  - goal_cycle: 1
+    iteration: 3
+    attempt: 2
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 当前 Shape、Runtime 实现、双语发布资产与已有验证证据一致。A1-A20
+        全部通过；此前全量测试、build、lint、format、generated 与 diff
+        检查均有通过证据，最新窄修复及独立审查也通过。版本保持 0.4.0-rc.4，指定非目标未被扩展实现。
+      truncated: false
+    completed_at: 2026-09-04T08:50:37.511Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-09-04T03:09:00.368Z

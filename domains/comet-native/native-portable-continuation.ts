@@ -46,7 +46,9 @@ export interface NativePortableContinuation {
   status: NativePortableState['status'];
   stateVersion: number;
   disposition: 'continue' | 'await-user' | 'blocked' | 'done';
+  requiresUserDecision: boolean;
   action:
+    | 'prepare-shape-confirmation'
     | 'confirm-shape'
     | 'confirm-skill-coordinated-pass'
     | 'confirm-verifier-unavailable'
@@ -91,6 +93,30 @@ function nativePortableUserCommunication(
     agentInstruction,
   });
 
+  if (
+    state.phase === 'shape' &&
+    state.status === 'await-user' &&
+    state.loop.next_action === 'confirm-shape'
+  ) {
+    return state.language === 'zh-CN'
+      ? {
+          required: true,
+          message:
+            'Shape 已整理完成。请确认目标、范围、关键决定、验收标准和非目标是否准确；明确确认后才会进入 Build。',
+          suggestedReply: '确认进入 Build',
+          agentInstruction:
+            '先用自然语言简要展示目标、范围、关键决定、验收标准和非目标，再转述 message 并等待用户明确确认。只有用户明确同意当前完整 Shape 时，才执行 commandAlternatives 中的 confirm-shape；补充或修改要求不算确认。不要展示机器状态或提前运行 --confirmed。',
+        }
+      : {
+          required: true,
+          message:
+            'Shape is ready. Confirm that the target, scope, key decisions, acceptance criteria, and non-goals are accurate; Build starts only after explicit confirmation.',
+          suggestedReply: 'Confirm and enter Build',
+          agentInstruction:
+            'First present a concise natural-language summary of the target, scope, key decisions, acceptance criteria, and non-goals. Then relay message and wait for explicit user confirmation. Run confirm-shape from commandAlternatives only when the user explicitly accepts the complete current Shape; additions or corrections are not confirmation. Do not expose machine state or run --confirmed early.',
+        };
+  }
+
   if (coordinationChoiceRequired && state.phase === 'shape' && state.status === 'active') {
     return {
       required: true,
@@ -102,8 +128,8 @@ function nativePortableUserCommunication(
       suggestedReply: localized(state, 'Reply A or B', '回复 A 或 B'),
       agentInstruction: localized(
         state,
-        'Relay the two coordination choices and wait for the user decision. Do not treat a generic confirmation as a mode selection or run --confirmed without --coordination-mode.',
-        '转述这两个推进方式并等待用户选择。不要把普通“确认”视为已选择推进方式，也不要在没有 --coordination-mode 时运行 --confirmed。',
+        'Relay the two coordination choices and wait for the user decision. After the user chooses, execute the prepare-shape-confirmation commandArgs with the selected --coordination-mode. Do not combine mode selection with final confirmation; confirmation of the complete Shape is a separate await-user step.',
+        '转述这两个推进方式并等待用户选择。用户选择后，使用对应的 --coordination-mode 执行 prepare-shape-confirmation 的完整 commandArgs；不要把推进方式选择和最终确认合并执行，完整 Shape 的确认是后续单独的 await-user 步骤。',
       ),
     };
   }
@@ -386,7 +412,7 @@ function supervisorCoordinationRequired(children?: NativeChildrenInspection | nu
   );
 }
 
-function boundNativeShapeCommandArgs(options: {
+function boundNativeShapePreparationCommandArgs(options: {
   change: string;
   stateVersion: number;
   coordinationRequired: boolean;
@@ -399,11 +425,10 @@ function boundNativeShapeCommandArgs(options: {
     '--summary',
     '<summary>',
     ...(options.coordinationRequired ? ['--coordination-mode', '<coordination-mode>'] : []),
-    '--confirmed',
     '--expected-state-version',
     String(options.stateVersion),
     '--expected-action',
-    'confirm-shape',
+    'prepare-shape-confirmation',
   ];
 }
 
@@ -464,6 +489,7 @@ export function nativePortableContinuation(
 ): NativePortableContinuation {
   const coordinationRequired =
     supervisorCoordinationRequired(children) && state.coordination_mode === undefined;
+  const userCommunication = nativePortableUserCommunication(state, coordinationRequired);
   const base = {
     schema: 'comet.native.continuation.v2' as const,
     skill: 'comet-native' as const,
@@ -472,7 +498,8 @@ export function nativePortableContinuation(
     status: state.status,
     stateVersion: state.state_version,
     inputOptions: [] as NativePortableContinuation['inputOptions'],
-    userCommunication: nativePortableUserCommunication(state, coordinationRequired),
+    requiresUserDecision: userCommunication.required,
+    userCommunication,
   };
   const runner = (kind: NativePortableRunnerAction['kind']): NativePortableRunnerAction => ({
     kind,
@@ -491,6 +518,27 @@ export function nativePortableContinuation(
     };
   }
   if (state.status === 'await-user') {
+    if (state.phase === 'shape' && state.loop.next_action === 'confirm-shape') {
+      return {
+        ...base,
+        disposition: 'await-user',
+        action: 'confirm-shape',
+        commandArgs: null,
+        requiredInputs: ['summary', 'shared-understanding-confirmation'],
+        inputOptions: [textInput('summary', '--summary')],
+        commandAlternatives: [
+          nativeNextDecisionAlternative({
+            name: 'confirm-shape',
+            change: state.name,
+            stateVersion: state.state_version,
+            expectedAction: 'confirm-shape',
+            flag: '--confirmed',
+            confirmationInput: 'shared-understanding-confirmation',
+          }),
+        ],
+        runnerAction: runner('none'),
+      };
+    }
     if (
       state.phase === 'verify' &&
       state.verification_result === 'pass' &&
@@ -637,17 +685,13 @@ export function nativePortableContinuation(
     return {
       ...base,
       disposition: coordinationRequired ? 'await-user' : 'continue',
-      action: 'confirm-shape',
-      commandArgs: boundNativeShapeCommandArgs({
+      action: 'prepare-shape-confirmation',
+      commandArgs: boundNativeShapePreparationCommandArgs({
         change: state.name,
         stateVersion: state.state_version,
         coordinationRequired,
       }),
-      requiredInputs: [
-        'summary',
-        ...(coordinationRequired ? ['coordination-choice'] : []),
-        'shared-understanding-confirmation',
-      ],
+      requiredInputs: ['summary', ...(coordinationRequired ? ['coordination-choice'] : [])],
       inputOptions: [
         {
           name: 'summary',
@@ -665,7 +709,6 @@ export function nativePortableContinuation(
               ),
             ]
           : []),
-        confirmationInput('confirmed', '--confirmed'),
       ],
       runnerAction: runner('none'),
     };

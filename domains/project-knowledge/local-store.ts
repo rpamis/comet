@@ -9,6 +9,7 @@ import type {
   ProjectKnowledgeResult,
   ProjectKnowledgeStatus,
   ProjectKnowledgeMutation,
+  ProjectKnowledgeRecordCounts,
 } from './types.js';
 import {
   mergeProjectKnowledgeRecord,
@@ -27,6 +28,7 @@ import type { ProjectKnowledgeDocument } from './types.js';
 import { projectKnowledgeSourceReferenceMatchesText } from './source-validity.js';
 import { openProjectKnowledgeDatabase, type ProjectKnowledgeDatabase } from './sqlite.js';
 import type { AgentContextOutcomeStatus } from '../agent-learning/index.js';
+import { hashProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
 
 export interface ProjectKnowledgeLocalStoreOptions extends Omit<
   ProjectKnowledgeIndexOptions,
@@ -92,7 +94,31 @@ const MAX_SOURCE_VALIDATION_BYTES = 1024 * 1024;
 const PROJECT_KNOWLEDGE_SCHEMA_VERSION = '4';
 
 function equalSourceVersions(left: ProjectKnowledgeRecord, right: ProjectKnowledgeRecord): boolean {
-  return JSON.stringify(left.sourceVersions) === JSON.stringify(right.sourceVersions);
+  if (left.sourceVersions.length !== right.sourceVersions.length) return false;
+  const rightVersions = new Map(right.sourceVersions.map((version) => [version.source, version]));
+  return left.sourceVersions.every((version) => {
+    const other = rightVersions.get(version.source);
+    if (!other || version.size !== other.size || version.modifiedAt !== other.modifiedAt)
+      return false;
+    if (version.digest === undefined || other.digest === undefined) {
+      return version.digest === undefined && other.digest === undefined;
+    }
+    return version.digest === other.digest;
+  });
+}
+
+function equalSourceVersionMetadata(
+  left: ProjectKnowledgeRecord,
+  right: ProjectKnowledgeRecord,
+): boolean {
+  if (left.sourceVersions.length !== right.sourceVersions.length) return false;
+  const rightVersions = new Map(right.sourceVersions.map((version) => [version.source, version]));
+  return left.sourceVersions.every((version) => {
+    const other = rightVersions.get(version.source);
+    return (
+      other !== undefined && version.size === other.size && version.modifiedAt === other.modifiedAt
+    );
+  });
 }
 
 function recordSourceReferences(
@@ -130,14 +156,22 @@ function sourceReferenceIsCurrent(
 
 interface SourceInspection {
   readonly current: boolean;
+  readonly complete: boolean;
   readonly sourceVersions: readonly ProjectKnowledgeRecordSourceVersion[];
 }
 
-function inspectRecordSources(
+async function sourceContentDigest(projectRoot: string, source: string): Promise<string> {
+  const { digest } = await hashProtectedProjectFile(projectRoot, source, {
+    label: `Project Knowledge source ${source}`,
+  });
+  return digest;
+}
+
+async function inspectRecordSources(
   projectRoot: string,
   record: ProjectKnowledgeRecord,
   acceptCurrentVersions: boolean,
-): SourceInspection {
+): Promise<SourceInspection> {
   const references = recordSourceReferences(record);
   const referenceSources = new Set(references.map((reference) => reference.source));
   const sources = [
@@ -146,18 +180,26 @@ function inspectRecordSources(
       .map((version) => version.source)
       .filter((source) => !referenceSources.has(source)),
   ];
-  if (sources.length === 0) return { current: false, sourceVersions: record.sourceVersions };
+  if (sources.length === 0) {
+    return { current: false, complete: true, sourceVersions: record.sourceVersions };
+  }
   const storedVersions = new Map(record.sourceVersions.map((version) => [version.source, version]));
   const sourceVersions: ProjectKnowledgeRecordSourceVersion[] = [];
+  let isCurrent = true;
+  let complete = true;
   for (const source of sources) {
     try {
       const absolutePath = path.join(projectRoot, ...source.split('/'));
-      const current = statSync(absolutePath);
-      if (!current.isFile()) return { current: false, sourceVersions: record.sourceVersions };
+      const fileStat = statSync(absolutePath);
+      if (!fileStat.isFile()) {
+        complete = false;
+        continue;
+      }
       const version = {
         source,
-        size: current.size,
-        modifiedAt: Math.trunc(current.mtimeMs),
+        size: fileStat.size,
+        modifiedAt: Math.trunc(fileStat.mtimeMs),
+        digest: await sourceContentDigest(projectRoot, source),
       };
       sourceVersions.push(version);
       if (
@@ -165,22 +207,25 @@ function inspectRecordSources(
           .filter((reference) => reference.source === source)
           .every((reference) => sourceReferenceIsCurrent(absolutePath, reference))
       ) {
-        return { current: false, sourceVersions: record.sourceVersions };
+        isCurrent = false;
       }
       const stored = storedVersions.get(source);
       if (
         !acceptCurrentVersions &&
-        (stored === undefined ||
-          stored.size !== version.size ||
-          stored.modifiedAt !== version.modifiedAt)
+        (stored === undefined || stored.digest === undefined || stored.digest !== version.digest)
       ) {
-        return { current: false, sourceVersions: record.sourceVersions };
+        isCurrent = false;
       }
     } catch {
-      return { current: false, sourceVersions: record.sourceVersions };
+      isCurrent = false;
+      complete = false;
     }
   }
-  return { current: true, sourceVersions };
+  return {
+    current: isCurrent,
+    complete,
+    sourceVersions: complete ? sourceVersions : record.sourceVersions,
+  };
 }
 
 function recordUsesSourceEvidence(record: ProjectKnowledgeRecord): boolean {
@@ -499,6 +544,25 @@ export class ProjectKnowledgeLocalStore {
     return rows.map((row) => parseProjectKnowledgeRecord(JSON.parse(row.payload_json)));
   }
 
+  projectCounts(projectId: string): ProjectKnowledgeRecordCounts {
+    const rows = this.requireDatabase()
+      .prepare(
+        'SELECT state, COUNT(*) AS count FROM pk_records WHERE project_id = ? GROUP BY state',
+      )
+      .all(projectId) as unknown as Array<{
+      state: ProjectKnowledgeRecord['state'];
+      count: number | bigint;
+    }>;
+    const counts = { active: 0, trial: 0, proven: 0, enforced: 0, superseded: 0, total: 0 };
+    for (const row of rows) {
+      const count = typeof row.count === 'bigint' ? Number(row.count) : row.count;
+      counts[row.state] = count;
+      counts.total += count;
+      if (row.state !== 'superseded') counts.active += count;
+    }
+    return counts;
+  }
+
   read(id: string): ProjectKnowledgeRecord | null {
     const row = this.requireDatabase()
       .prepare('SELECT payload_json FROM pk_records WHERE id = ?')
@@ -665,7 +729,7 @@ export class ProjectKnowledgeLocalStore {
       for (const candidate of candidates) {
         if (candidate.state === 'superseded' || (mutation.id && mutation.id !== candidate.id))
           continue;
-        const inspection = inspectRecordSources(this.projectRoot, candidate, false);
+        const inspection = await inspectRecordSources(this.projectRoot, candidate, false);
         const verificationCurrent = verificationCommandsAreAvailable(this.projectRoot, candidate);
         const state: ProjectKnowledgeRecord['state'] = !verificationCurrent
           ? 'superseded'
@@ -683,15 +747,22 @@ export class ProjectKnowledgeLocalStore {
           (inspection.current &&
             JSON.stringify(inspection.sourceVersions) !== JSON.stringify(candidate.sourceVersions))
         ) {
+          const hasLegacySourceVersion = candidate.sourceVersions.some(
+            (version) => version.digest === undefined,
+          );
+          const nextSourceVersions =
+            inspection.complete && (inspection.current || hasLegacySourceVersion)
+              ? inspection.sourceVersions
+              : candidate.sourceVersions;
           this.write({
             ...candidate,
             state,
-            sourceVersions: inspection.current
-              ? inspection.sourceVersions
-              : candidate.sourceVersions,
+            sourceVersions: nextSourceVersions,
             updatedAt: new Date().toISOString(),
           });
-          changed = true;
+          changed ||=
+            state !== candidate.state ||
+            JSON.stringify(nextSourceVersions) !== JSON.stringify(candidate.sourceVersions);
         }
       }
       const records = this.list({ projectId: mutation.projectId });
@@ -733,6 +804,14 @@ export class ProjectKnowledgeLocalStore {
         !verificationCommandsAreConfirmed(this.projectRoot, parsedIncoming)
           ? parseProjectKnowledgeRecord({ ...parsedIncoming, state: 'proven' })
           : parsedIncoming;
+      if (
+        current?.state === 'superseded' &&
+        current.authority === 'user' &&
+        incoming.authority !== 'user' &&
+        equalSourceVersionMetadata(current, incoming)
+      ) {
+        return { kind: mutation.kind, changed: false, record: current, diagnostics: [] };
+      }
       if (
         current?.state === 'superseded' &&
         incoming.authority !== 'user' &&
@@ -802,7 +881,7 @@ export class ProjectKnowledgeLocalStore {
       updatedAt: mutation.updatedAt,
     });
     const corrected = parseProjectKnowledgeRecord({ ...correctedBase, state: 'proven' });
-    const inspection = inspectRecordSources(this.projectRoot, corrected, true);
+    const inspection = await inspectRecordSources(this.projectRoot, corrected, true);
     const next = parseProjectKnowledgeRecord({
       ...corrected,
       state:

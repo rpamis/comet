@@ -74,7 +74,7 @@ describe('Native artifact validation', () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
-  it('accepts a complete brief and blocks multiple explicit blocking questions', async () => {
+  it('accepts a complete brief and blocks explicit unresolved items in any section', async () => {
     await fs.writeFile(path.join(changeDir, 'brief.md'), brief);
     expect(await validateNativeBrief(changeDir, 'brief.md')).toEqual({ valid: true, findings: [] });
 
@@ -88,6 +88,42 @@ describe('Native artifact validation', () => {
     expect((await validateNativeBrief(changeDir, 'brief.md')).findings).toEqual(
       expect.arrayContaining([expect.objectContaining({ code: 'brief-blocking-question' })]),
     );
+
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      brief.replace(
+        '# Scope\nLogin only.\n',
+        '# Scope\nLogin only.\n## Source coverage\n- [blocking] The source is only partially read.\n',
+      ),
+    );
+    expect((await validateNativeBrief(changeDir, 'brief.md')).findings).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'brief-blocking-question' })]),
+    );
+
+    for (const sourceCoverage of [
+      '| Source | Coverage | Decision |\n| --- | --- | --- |\n| requirements.md | partial | [blocking] Map the remaining requirements. |',
+      'Source | Coverage | Decision\n--- | --- | ---\nrequirements.md | partial | [blocking] Map the remaining requirements.',
+      'source_coverage: [blocking] requirements.md is only partially mapped.',
+    ]) {
+      await fs.writeFile(
+        path.join(changeDir, 'brief.md'),
+        brief.replace('# Scope\nLogin only.\n', `# Scope\nLogin only.\n${sourceCoverage}\n`),
+      );
+      expect((await validateNativeBrief(changeDir, 'brief.md')).findings).toEqual(
+        expect.arrayContaining([expect.objectContaining({ code: 'brief-blocking-question' })]),
+      );
+    }
+  });
+
+  it('does not treat explanatory marker prose as an unresolved blocker', async () => {
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      brief.replace(
+        'Use existing sessions.',
+        'Note: [blocking] is only the marker description; `status: [blocking]` is a structured blocker.',
+      ),
+    );
+    expect(await validateNativeBrief(changeDir, 'brief.md')).toEqual({ valid: true, findings: [] });
   });
 
   it('requires every verification section to be non-empty', async () => {

@@ -130,8 +130,18 @@ export interface ProjectKnowledgeSearchResult {
 export interface ProjectKnowledgeListResult {
   readonly kind: 'list';
   readonly records: readonly ProjectKnowledgeRecord[];
+  readonly counts?: ProjectKnowledgeRecordCounts;
   readonly truncated: boolean;
   readonly diagnostics: readonly ProjectKnowledgeDiagnostic[];
+}
+
+export interface ProjectKnowledgeRecordCounts {
+  readonly active: number;
+  readonly trial: number;
+  readonly proven: number;
+  readonly enforced: number;
+  readonly superseded: number;
+  readonly total: number;
 }
 
 export interface ProjectKnowledgeGetResult {
@@ -311,7 +321,10 @@ export interface ProjectKnowledgeDashboardSnapshot {
     }[];
     readonly sectionCount: number;
     readonly updatedAt?: string;
+    readonly lastQueryMs?: number;
+    readonly lastCandidateCount?: number;
     readonly channels: readonly string[];
+    readonly truncated?: boolean;
   };
   readonly retrieval: string;
   readonly status?: ProjectKnowledgeStatus;
@@ -321,11 +334,15 @@ export interface ProjectKnowledgeDashboardSnapshot {
     readonly applicationHistory?: readonly AgentContextApplicationRecord[];
   })[];
   readonly counts?: {
+    readonly active: number;
     readonly trial: number;
     readonly proven: number;
     readonly enforced: number;
     readonly superseded: number;
+    readonly total?: number;
+    readonly displayed?: number;
   };
+  readonly truncated?: boolean;
   readonly manifestPreview?: readonly {
     readonly id: string;
     readonly memoryType: 'project-model' | 'project-policy';

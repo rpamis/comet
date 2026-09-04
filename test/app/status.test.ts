@@ -612,7 +612,7 @@ describe('status command', () => {
     expect(output).toContain('portable-text [Native] [phase: shape]');
     expect(output).toContain('status: active | verification: pending | acceptance: 0/0');
     expect(output).toContain(
-      'next: comet native next portable-text --summary "<summary>" --confirmed --expected-state-version 1 --expected-action confirm-shape',
+      'next: comet native next portable-text --summary "<summary>" --expected-state-version 1 --expected-action prepare-shape-confirmation',
     );
   });
 });

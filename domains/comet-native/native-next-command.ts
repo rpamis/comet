@@ -19,6 +19,7 @@ import {
   confirmNativePortableVerifierUnavailable,
   inspectNativePortableAcceptanceDrift,
   isNativePortableChange,
+  prepareNativePortableShapeConfirmation,
   readNativePortableChange,
   recoverNativeSupervisorFinalVerificationOnResume,
   resolveNativePortableVerifierBlocker,
@@ -47,6 +48,7 @@ import {
 import type { NativeProjectPaths } from './native-types.js';
 
 const EXPECTED_CONTINUATION_ACTIONS = new Set<NativePortableExpectedContinuationAction>([
+  'prepare-shape-confirmation',
   'confirm-shape',
   'accept-result',
   'confirm-verifier-unavailable',
@@ -132,9 +134,6 @@ export async function nativeNextCommand(
   ) {
     throw new NativeUsageError('--coordination-mode must be multi-session or single-session');
   }
-  if (coordinationMode !== undefined && !confirmed) {
-    throw new NativeUsageError('--coordination-mode is only valid with --confirmed in Shape');
-  }
   const maxParallelText = takeOption(args, '--max-parallel');
   const maxParallel = maxParallelText === undefined ? 2 : Number(maxParallelText);
   if (!Number.isSafeInteger(maxParallel) || maxParallel < 1) {
@@ -153,6 +152,20 @@ export async function nativeNextCommand(
   ) {
     throw new NativeUsageError(
       '--confirmed, --accept-result, --revise-implementation, --revise-requirements, --retry-verifier, and --resolve-verifier-blocker are mutually exclusive',
+    );
+  }
+  if (
+    coordinationMode !== undefined &&
+    (confirmed ||
+      acceptResult ||
+      reviseImplementation ||
+      reviseRequirements ||
+      retryVerifier ||
+      resolveVerifierBlocker ||
+      runnerInputFile !== undefined)
+  ) {
+    throw new NativeUsageError(
+      '--coordination-mode is only valid when preparing a Supervisor Shape confirmation',
     );
   }
   // Agent-authored Build/Verify completion fields retired with Native v4.
@@ -202,6 +215,7 @@ export async function nativeNextCommand(
       reviseRequirements ||
       retryVerifier ||
       resolveVerifierBlocker ||
+      coordinationMode !== undefined ||
       expectedContinuation
     ) {
       throw new NativeUsageError(
@@ -294,13 +308,25 @@ export async function nativeNextCommand(
     ReturnType<typeof inspectNativeSupervisorParentReviewReadiness>
   > | null = null;
   if (confirmed) {
-    if (current.phase === 'shape') {
+    if (
+      current.phase === 'shape' &&
+      current.status === 'await-user' &&
+      current.loop.next_action === 'confirm-shape'
+    ) {
+      if (!expectedContinuation) {
+        throw new NativeUsageError(
+          '--expected-state-version and --expected-action are required for Shape confirmation',
+        );
+      }
       state = await confirmNativePortableShape({
         paths: configured.paths,
         name,
-        ...(coordinationMode === undefined ? {} : { coordinationMode }),
         expectedContinuation,
       });
+    } else if (current.phase === 'shape') {
+      throw new NativeUsageError(
+        '--confirmed is only valid from the persisted Shape user confirmation boundary',
+      );
     } else if (
       current.phase === 'verify' &&
       current.status === 'await-user' &&
@@ -437,6 +463,14 @@ export async function nativeNextCommand(
           }
         }
       }
+    }
+    if (current.phase === 'shape') {
+      state = await prepareNativePortableShapeConfirmation({
+        paths: configured.paths,
+        name,
+        ...(coordinationMode === undefined ? {} : { coordinationMode }),
+        expectedContinuation,
+      });
     }
     if (state) {
       return success('next', {

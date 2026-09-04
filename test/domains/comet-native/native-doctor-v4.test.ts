@@ -18,12 +18,12 @@ import {
 } from '../../../domains/comet-native/native-paths.js';
 import { migrateNativeLegacyChangeToPortable } from '../../../domains/comet-native/native-portable-migration-runtime.js';
 import {
-  confirmNativePortableShape,
   createNativePortableChange,
   nativePortableChangeDir,
   nativePortableStateFile,
   readNativePortableChange,
 } from '../../../domains/comet-native/native-portable-runtime.js';
+import { confirmNativePortableShape } from '../../helpers/native-portable-confirmed-transition.js';
 import { parseNativeChildrenContract } from '../../../domains/comet-native/native-children.js';
 import {
   createNativeSupervisorState,
