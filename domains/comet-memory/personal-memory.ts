@@ -1204,7 +1204,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
           proven: state.records.filter(
             (record) => isVisibleMemoryRecord(state, record) && record.state === 'proven',
           ).length,
-          history: state.records.filter((record) => record.state === 'superseded').length,
+          history: state.records.filter((record) => !isVisibleMemoryRecord(state, record)).length,
           tombstones: state.tombstones.length,
         },
       };

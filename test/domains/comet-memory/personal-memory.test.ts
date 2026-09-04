@@ -1020,6 +1020,9 @@ describe('PersonalMemoryService', () => {
       expect(
         (await memories.retrieve({ projectKey: 'project-a', task: 'build' })).records,
       ).toHaveLength(0);
+      await expect(memories.status()).resolves.toMatchObject({
+        counts: { active: 0, history: 2 },
+      });
     });
   });
 
