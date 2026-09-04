@@ -2201,6 +2201,7 @@ test('fully applies dark surfaces without page-wide color-transition jank', asyn
     'color',
     'rgb(213, 224, 240)',
   );
+
   await expect(page.locator('.ant-card').first()).toHaveCSS('background-color', 'rgb(21, 25, 35)');
   await expect(page.locator('.ant-steps-item-wait .ant-steps-item-title').first()).toHaveCSS(
     'color',
@@ -2231,6 +2232,21 @@ test('fully applies dark surfaces without page-wide color-transition jank', asyn
   const nativeSelectedItem = page.locator('.native-change-list-item.selected');
   await expect(nativeSelectedItem).toHaveCSS('background-color', 'rgb(27, 45, 72)');
   await expect(nativeSelectedItem).toHaveCSS('color', 'rgb(237, 242, 251)');
+  const nativeSummaryStatuses = page.locator(
+    '.dashboard-overview-summary-card .dashboard-summary-status',
+  );
+  await expect(nativeSummaryStatuses.nth(0)).toHaveCSS('color', 'rgb(23, 78, 166)');
+  await expect(nativeSummaryStatuses.nth(0)).toHaveCSS('background-color', 'rgb(219, 234, 254)');
+  await expect(nativeSummaryStatuses.nth(1)).toHaveCSS('color', 'rgb(183, 192, 206)');
+  await expect(nativeSummaryStatuses.nth(2)).toHaveCSS('color', 'rgb(255, 154, 174)');
+  await expect(nativeSummaryStatuses.nth(3)).toHaveCSS('color', 'rgb(121, 217, 155)');
+  await expect(nativeSummaryStatuses.nth(4)).toHaveCSS('color', 'rgb(243, 200, 102)');
+  await page.locator('.dashboard-overview-summary-card').nth(2).click();
+  await expect(nativeSummaryStatuses.nth(2)).toHaveCSS('color', 'rgb(255, 154, 174)');
+  await expect(nativeSummaryStatuses.nth(2)).toHaveCSS(
+    'background-color',
+    'rgba(240, 113, 142, 0.14)',
+  );
 
   await page.locator('.comet-project-select').click();
   await expect(page.locator('.comet-project-select-dropdown')).toHaveCSS(
@@ -2245,6 +2261,20 @@ test('fully applies dark surfaces without page-wide color-transition jank', asyn
     'color',
     'rgb(165, 180, 200)',
   );
+
+  await page.keyboard.press('Escape');
+  await page.getByRole('menuitem', { name: '项目知识' }).click();
+  await page.getByRole('button', { name: '新增项目知识' }).click();
+  const createDialog = page.getByRole('dialog');
+  const titleInput = createDialog.getByLabel('项目知识标题');
+  await expect(titleInput).toHaveCSS('color', 'rgb(237, 242, 251)');
+  await expect
+    .poll(() => titleInput.evaluate((element) => getComputedStyle(element, '::placeholder').color))
+    .toBe('rgb(135, 145, 162)');
+  const disabledSave = createDialog.getByRole('button', { name: /保\s*存/u });
+  await expect(disabledSave).toBeDisabled();
+  await expect(disabledSave).toHaveCSS('color', 'rgb(135, 145, 162)');
+  await expect(disabledSave).not.toHaveCSS('background-color', 'rgb(47, 131, 232)');
 });
 
 test('uses the reference surface hierarchy across the workbench shell', async ({ page }) => {
@@ -2263,6 +2293,25 @@ test('uses the reference surface hierarchy across the workbench shell', async ({
     'rgb(231, 242, 255)',
   );
   await expect(page.locator('.ant-card').first()).toHaveCSS('box-shadow', /rgba\(31, 43, 64/);
+
+  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
+  const summaryStatuses = page.locator(
+    '.dashboard-overview-summary-card .dashboard-summary-status',
+  );
+  await expect(summaryStatuses.nth(0)).toHaveCSS('color', 'rgb(23, 78, 166)');
+  await expect(summaryStatuses.nth(0)).toHaveCSS('background-color', 'rgb(219, 234, 254)');
+  await expect(summaryStatuses.nth(1)).toHaveCSS('color', 'rgb(102, 112, 133)');
+  await expect(summaryStatuses.nth(2)).toHaveCSS('color', 'rgb(201, 68, 98)');
+  await expect(summaryStatuses.nth(3)).toHaveCSS('color', 'rgb(35, 131, 75)');
+  await expect(summaryStatuses.nth(4)).toHaveCSS('color', 'rgb(154, 101, 14)');
+  await page.locator('.dashboard-overview-summary-card').nth(2).click();
+  await expect(summaryStatuses.nth(2)).toHaveCSS('color', 'rgb(201, 68, 98)');
+  await expect(summaryStatuses.nth(2)).toHaveCSS('background-color', 'rgb(253, 236, 239)');
+  const archivedIcon = page.locator(
+    '.dashboard-overview-summary-card.dashboard-summary-tone-2 .dashboard-summary-icon',
+  );
+  await expect(archivedIcon).toHaveCSS('color', 'rgb(111, 122, 138)');
+  await expect(archivedIcon).toHaveCSS('background-color', 'rgb(238, 241, 245)');
 });
 
 test('keeps the desktop sidebar transition unified and settings reachable when collapsed', async ({

@@ -10,6 +10,7 @@ import {
   Skeleton,
   Switch,
   Tag,
+  theme as antdTheme,
   Tooltip,
 } from 'antd';
 import {
@@ -406,6 +407,7 @@ export function App({
     <ConfigProvider
       getPopupContainer={portalContainer ? () => portalContainer : undefined}
       theme={{
+        algorithm: theme === 'dark' ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
         token: {
           colorPrimary: theme === 'dark' ? '#7fa8ff' : '#255ed8',
           colorBgContainer: theme === 'dark' ? '#151923' : '#ffffff',
@@ -413,6 +415,8 @@ export function App({
           colorBgLayout: theme === 'dark' ? '#0e1420' : '#eef1f5',
           colorText: theme === 'dark' ? '#edf2fb' : '#101827',
           colorTextSecondary: theme === 'dark' ? '#aab5c8' : '#5f6979',
+          colorTextPlaceholder: theme === 'dark' ? '#8791a2' : '#6f7a8a',
+          colorTextDisabled: theme === 'dark' ? '#8791a2' : '#929baa',
           colorBorder: theme === 'dark' ? '#293345' : '#e3e8ef',
           colorSplit: theme === 'dark' ? '#293345' : '#edf0f4',
           colorFillAlter: theme === 'dark' ? '#182131' : '#f6f8fb',

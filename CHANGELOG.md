@@ -6,6 +6,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **Dashboard theme text contrast**: Dashboard form placeholders, disabled text, workflow summary status badges, and Ant Design component states now use readable light- and dark-theme colors, with active and archived workflow states remaining visually distinct.
 - **Native Archive continuation**: Archive-ready changes now start with one complete `--dry-run`; isolated branches receive explicit finish choices and exact follow-up commands, so Agents do not guess flags or repeat status probes.
 - **Archive preflight guidance**: Dry-run now reports workspace and generated-file blockers together with the next confirmed command, preserving user-owned files and keeping dry-run and confirmed behavior aligned.
 - **Memory and Project Knowledge Dashboard**: Current records, history, tombstones, indexed sources, evidence, version chains, empty states, and real query statistics are now shown separately so users can tell what was learned, what is only searchable, and what is no longer active.
