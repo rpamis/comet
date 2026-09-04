@@ -23,7 +23,10 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
     conclusions: [
       {
         text: 'Run focused tests first.',
-        sources: [{ source: 'docs/rule.md', anchor: 'rule' }],
+        sources: [
+          { source: 'docs/rule.md', anchor: 'rule' },
+          { source: 'domains/project-knowledge/local-provider.ts', anchor: 'query' },
+        ],
       },
     ],
     relations: [],
@@ -122,7 +125,7 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
                 updatedAt: '2026-08-21T12:00:00.000Z',
               },
               {
-                source: 'docs/verification.json',
+                source: 'docs/verify-result.md',
                 kind: 'native-archive',
                 updatedAt: '2026-08-20T12:00:00.000Z',
               },
@@ -249,17 +252,17 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
       if (body.capability === 'read-source') {
         sourceReadCount += 1;
         const source = body.input?.source;
-        expect(['docs/rule.md', 'docs/verification.json']).toContain(source);
-        const isJson = source === 'docs/verification.json';
+        expect(['docs/rule.md', 'docs/verify-result.md']).toContain(source);
+        const isVerifyResult = source === 'docs/verify-result.md';
         await route.fulfill({
           json: {
             result: {
               kind: 'source',
               source,
-              content: isJson
-                ? '{\n  "status": "passed",\n  "acceptance_id": "acceptance-1"\n}\n'
+              content: isVerifyResult
+                ? '# Verification result\n\n- Status: passed\n- Acceptance: acceptance-1\n'
                 : '# Rule\n\nRun focused tests first.\n',
-              size: isJson ? 67 : 33,
+              size: isVerifyResult ? 70 : 33,
               modifiedAt: '2026-08-23T12:00:00.000Z',
               truncated: false,
             },
@@ -529,6 +532,12 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
     (workbenchBounds?.y ?? 0) + (workbenchBounds?.height ?? 0),
   );
   await expect(page.getByText('知识提供方式', { exact: true })).toBeVisible();
+  await expect(page.getByRole('complementary', { name: '记录详情' })).toContainText(
+    '同时参与文档检索',
+  );
+  await expect(page.getByRole('complementary', { name: '记录详情' })).toContainText(
+    '仅支持此结论，不参与全文检索',
+  );
   const inspectorFooter = page
     .getByRole('complementary', { name: '记录详情' })
     .locator(':scope > footer');
@@ -556,14 +565,20 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
     'true',
   );
 
-  await page.getByRole('tab', { name: '数据来源' }).click();
-  await expect(page.getByRole('heading', { name: '数据来源' })).toHaveCount(0);
+  await page.getByRole('tab', { name: '检索语料' }).click();
+  await expect(page.getByRole('heading', { name: '检索语料' })).toHaveCount(0);
   await expect(page.locator('.dashboard-knowledge-source-toolbar')).toContainText(/提供器/u);
-  await expect(page.getByLabel('项目知识数据来源列表')).toContainText('docs/rule.md');
-  await expect(page.getByLabel('搜索项目知识来源')).toBeVisible();
-  await expect(page.getByText('共 124 个来源', { exact: true })).toBeVisible();
-  const sourceList = page.getByLabel('项目知识数据来源列表');
+  await expect(page.getByLabel('项目知识检索语料列表')).toContainText('docs/rule.md');
+  await expect(page.getByLabel('项目知识检索语料列表')).not.toContainText(
+    'domains/project-knowledge/local-provider.ts',
+  );
+  await expect(page.getByLabel('搜索项目知识检索语料')).toBeVisible();
+  await expect(page.getByText('共 124 个语料文件', { exact: true })).toBeVisible();
+  const sourceList = page.getByLabel('项目知识检索语料列表');
   await expect(sourceList.getByRole('button')).toHaveCount(124);
+  await expect(sourceList.getByRole('button', { name: '查看来源：docs/rule.md' })).toContainText(
+    '1 条',
+  );
   const sourceRows = page.locator('.dashboard-knowledge-source-rows');
   await expect
     .poll(() => sourceRows.evaluate((element) => element.scrollHeight > element.clientHeight))
@@ -585,7 +600,7 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   ).toBeLessThanOrEqual(1);
   const sourceHeaderRelatedColumn = await page
     .locator('.dashboard-knowledge-source-head > span')
-    .nth(1)
+    .nth(2)
     .boundingBox();
   const sourceRowRelatedColumn = await sourceList
     .getByRole('button')
@@ -603,13 +618,13 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   await expect(
     sourceList.getByRole('button', { name: '查看来源：docs/generated/source-124.md' }),
   ).toBeVisible();
-  await page.getByLabel('搜索项目知识来源').fill('rule.md');
-  await expect(page.getByLabel('项目知识数据来源列表')).toContainText('docs/rule.md');
-  await expect(page.getByLabel('项目知识数据来源列表')).not.toContainText('docs/policy.md');
+  await page.getByLabel('搜索项目知识检索语料').fill('rule.md');
+  await expect(page.getByLabel('项目知识检索语料列表')).toContainText('docs/rule.md');
+  await expect(page.getByLabel('项目知识检索语料列表')).not.toContainText('docs/policy.md');
   const pageLoadsBeforeSourceRead = projectKnowledgePageLoadCount;
   const pluginListsBeforeSourceRead = projectKnowledgeListCount;
   await page.getByRole('button', { name: '查看来源：docs/rule.md' }).click();
-  const sourcePreview = page.getByRole('dialog', { name: /项目知识来源详情/u });
+  const sourcePreview = page.getByRole('dialog', { name: /检索语料详情/u });
   await expect(sourcePreview).toContainText('docs/rule.md');
   expect(projectKnowledgePageLoadCount).toBe(pageLoadsBeforeSourceRead);
   expect(projectKnowledgeListCount).toBe(pluginListsBeforeSourceRead);
@@ -647,20 +662,19 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
     .click({ position: { x: 5, y: 5 } });
   await expect(sourcePreview).toBeHidden();
   await page.getByRole('button', { name: '查看来源：docs/rule.md' }).click();
-  await expect(page.getByRole('dialog', { name: /项目知识来源详情/u })).toContainText(
+  await expect(page.getByRole('dialog', { name: /检索语料详情/u })).toContainText(
     'Run focused tests first.',
   );
   expect(sourceReadCount).toBe(1);
   await page
     .locator('.dashboard-knowledge-preview-modal-root .ant-modal-wrap')
     .click({ position: { x: 5, y: 5 } });
-  await page.getByLabel('搜索项目知识来源').fill('verification.json');
-  await page.getByRole('button', { name: '查看来源：docs/verification.json' }).click();
-  const jsonPreview = page.getByRole('dialog', { name: /项目知识来源详情/u });
-  await expect(jsonPreview.getByRole('table')).toBeVisible();
-  await expect(jsonPreview.getByText('acceptance_id', { exact: true })).toBeVisible();
-  await expect(jsonPreview.getByText('acceptance-1', { exact: true })).toBeVisible();
-  await expect(jsonPreview.locator('button[aria-label="Close"]')).toHaveCount(0);
+  await page.getByLabel('搜索项目知识检索语料').fill('verify-result.md');
+  await page.getByRole('button', { name: '查看来源：docs/verify-result.md' }).click();
+  const verifyPreview = page.getByRole('dialog', { name: /检索语料详情/u });
+  await expect(verifyPreview.getByRole('heading', { name: 'Verification result' })).toBeVisible();
+  await expect(verifyPreview.getByText('Acceptance: acceptance-1', { exact: true })).toBeVisible();
+  await expect(verifyPreview.locator('button[aria-label="Close"]')).toHaveCount(0);
   await page
     .locator('.dashboard-knowledge-preview-modal-root .ant-modal-wrap')
     .click({ position: { x: 5, y: 5 } });
@@ -1712,7 +1726,7 @@ test('keeps personal memory and project knowledge text readable at desktop densi
   await expect(projectInspector.locator('dt').first()).toHaveCSS('font-size', supportingText);
   await expect(projectInspector.locator('dd').first()).toHaveCSS('font-size', bodyText);
 
-  await page.getByRole('tab', { name: '数据来源' }).click();
+  await page.getByRole('tab', { name: '检索语料' }).click();
   await expect(page.locator('.dashboard-knowledge-source-head')).toHaveCSS(
     'font-size',
     supportingText,
@@ -1760,12 +1774,12 @@ test('keeps context detail previews flat and readable', async ({ page }) => {
   await expect(memoryDialog).toBeHidden();
 
   await page.getByRole('menuitem', { name: '项目知识' }).click();
-  await page.getByRole('tab', { name: '数据来源' }).click();
+  await page.getByRole('tab', { name: '检索语料' }).click();
   await page
-    .getByLabel('项目知识数据来源列表')
-    .getByRole('button', { name: '查看来源：domains/dashboard/web/src/main.jsx' })
+    .getByLabel('项目知识检索语料列表')
+    .getByRole('button', { name: '查看来源：docs/comet/specs/dashboard.md' })
     .click();
-  const sourceDialog = page.getByRole('dialog', { name: /项目知识来源详情/u });
+  const sourceDialog = page.getByRole('dialog', { name: /检索语料详情/u });
   await expect(sourceDialog.locator('.dashboard-settings-modal-title-row')).toHaveCSS(
     'border-left-width',
     '0px',
@@ -1775,7 +1789,7 @@ test('keeps context detail previews flat and readable', async ({ page }) => {
     '18px',
   );
   await expect(
-    sourceDialog.getByRole('heading', { name: 'Dashboard Web App', level: 1 }),
+    sourceDialog.getByRole('heading', { name: 'Dashboard 检索语料', level: 1 }),
   ).toBeVisible();
   await expect(
     sourceDialog.locator('.dashboard-knowledge-source-rendered-content > pre'),
@@ -1789,9 +1803,6 @@ test('keeps context detail previews flat and readable', async ({ page }) => {
     'font-size',
     '14px',
   );
-  await expect(
-    sourceDialog.locator('.dashboard-knowledge-source-related strong').first(),
-  ).toHaveCSS('font-size', '13px');
   const sourceMarkdown = sourceDialog.locator('.dashboard-knowledge-source-rendered-content');
   await expect(sourceMarkdown).toHaveCSS('font-size', '14px');
   await expect(sourceMarkdown.locator('h1')).toHaveCSS('font-size', '20px');

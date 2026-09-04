@@ -128,7 +128,7 @@ describe('comet knowledge commands', () => {
       await expect(
         projectKnowledgeListCommand(root, { json: true, cacheRoot, state: 'all' }),
       ).resolves.toMatchObject({
-        result: { records: [expect.objectContaining({ id: record.id })] },
+        result: { records: expect.arrayContaining([expect.objectContaining({ id: record.id })]) },
       });
       await expect(
         projectKnowledgeGetCommand(root, { json: true, cacheRoot, id: record.id }),

@@ -5,6 +5,7 @@ import {
   LocalProjectKnowledgeProvider,
   RemoteProjectKnowledgeProvider,
   createProjectKnowledgeQuery,
+  ensureProjectKnowledgeReady,
   type ProjectKnowledgeDiagnostic,
   type ProjectKnowledgeProvider,
 } from '../../domains/project-knowledge/index.js';
@@ -35,6 +36,7 @@ export async function projectKnowledgeStatusCommand(
   const diagnostics: ProjectKnowledgeDiagnostic[] = [];
   const provider = await createProvider(projectRoot, options, diagnostics);
   try {
+    await readyProjectKnowledge(projectRoot, provider, diagnostics);
     const status = await provider.status();
     const result = {
       provider: status.provider,
@@ -56,6 +58,7 @@ export async function projectKnowledgeQueryCommand(
   const diagnostics: ProjectKnowledgeDiagnostic[] = [];
   const provider = await createProvider(projectRoot, options, diagnostics);
   try {
+    await readyProjectKnowledge(projectRoot, provider, diagnostics);
     const result = await provider.query({
       kind: 'search',
       query: createProjectKnowledgeQuery({
@@ -86,6 +89,7 @@ export async function projectKnowledgeListCommand(
   const diagnostics: ProjectKnowledgeDiagnostic[] = [];
   const provider = await createProvider(projectRoot, options, diagnostics);
   try {
+    await readyProjectKnowledge(projectRoot, provider, diagnostics);
     const result = await provider.query({
       kind: 'list',
       state: options.state ?? 'proven',
@@ -107,6 +111,7 @@ export async function projectKnowledgeGetCommand(
   const diagnostics: ProjectKnowledgeDiagnostic[] = [];
   const provider = await createProvider(projectRoot, options, diagnostics);
   try {
+    await readyProjectKnowledge(projectRoot, provider, diagnostics);
     const result = await provider.query({ kind: 'get', id: required(options.id, '--id') });
     const output = { provider: providerName(provider), result, diagnostics };
     print(output, options);
@@ -169,6 +174,7 @@ export async function projectKnowledgeRebuildCommand(
   const diagnostics: ProjectKnowledgeDiagnostic[] = [];
   const provider = await createProvider(projectRoot, options, diagnostics);
   try {
+    await readyProjectKnowledge(projectRoot, provider, diagnostics);
     const result = await provider.apply({ kind: 'refresh' });
     const output = { provider: providerName(provider), result, diagnostics };
     print(output, options);
@@ -221,6 +227,18 @@ async function createProvider(
       reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
     }),
     ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
+    reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+  });
+}
+
+async function readyProjectKnowledge(
+  projectRoot: string,
+  provider: ProjectKnowledgeProvider,
+  diagnostics: ProjectKnowledgeDiagnostic[],
+): Promise<void> {
+  await ensureProjectKnowledgeReady({
+    projectRoot,
+    provider,
     reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
   });
 }

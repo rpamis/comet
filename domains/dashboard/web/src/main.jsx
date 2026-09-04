@@ -2887,6 +2887,19 @@ function projectKnowledgeSourcePreviewKind(source, format) {
   return 'text';
 }
 
+function projectKnowledgeCorpusKindLabel(kind) {
+  return (
+    {
+      'native-spec': 'Native Spec',
+      'classic-spec': 'Classic Spec',
+      'native-archive': 'Native 归档',
+      'classic-archive': 'Classic 归档',
+      superpowers: '归档引用',
+      custom: '自定义 Markdown',
+    }[kind] ?? 'Markdown'
+  );
+}
+
 async function renderProjectKnowledgeSource(content, kind) {
   const raw = String(content ?? '');
   if (!raw.trim()) return '';
@@ -3004,9 +3017,9 @@ function ProjectKnowledgeSourcePreviewModal({
   return (
     <ProjectKnowledgePreviewModal
       open
-      title="项目知识来源详情"
-      description="查看项目知识关联文件的渲染结果和来源上下文"
-      ariaLabel="项目知识来源详情"
+      title="检索语料详情"
+      description="查看实际参与项目知识召回的 Markdown 内容和关联知识"
+      ariaLabel="检索语料详情"
       onClose={onClose}
     >
       {({ fullscreen }) => (
@@ -5425,6 +5438,7 @@ function ProjectKnowledgeRegistry({
   sortOrder,
   onSortOrderChange,
   diagnostics,
+  indexedSourcePaths,
   provider,
   readOnly = false,
   onInvoke,
@@ -5604,7 +5618,12 @@ function ProjectKnowledgeRegistry({
         )}
       </section>
 
-      <ProjectKnowledgeInspector record={selectedRecord} readOnly={readOnly} onInvoke={onInvoke} />
+      <ProjectKnowledgeInspector
+        record={selectedRecord}
+        indexedSourcePaths={indexedSourcePaths}
+        readOnly={readOnly}
+        onInvoke={onInvoke}
+      />
     </div>
   );
 }
@@ -5649,7 +5668,12 @@ function ContextApplicationHistory({ applications = [], recordId }) {
   );
 }
 
-function ProjectKnowledgeInspector({ record, readOnly = false, onInvoke }) {
+function ProjectKnowledgeInspector({
+  record,
+  indexedSourcePaths = new Set(),
+  readOnly = false,
+  onInvoke,
+}) {
   if (!record) {
     return (
       <aside className="dashboard-knowledge-inspector is-empty" aria-label="记录详情">
@@ -5758,7 +5782,7 @@ function ProjectKnowledgeInspector({ record, readOnly = false, onInvoke }) {
         recordId={record.id}
       />
       <section>
-        <h4>来源与证据</h4>
+        <h4>结论证据</h4>
         {sources.length === 0 ? (
           <p className="dashboard-knowledge-inspector-muted">尚未关联来源文件</p>
         ) : (
@@ -5774,7 +5798,12 @@ function ProjectKnowledgeInspector({ record, readOnly = false, onInvoke }) {
                       ? `#L${reference.lineStart}${reference.lineEnd ? `-L${reference.lineEnd}` : ''}`
                       : ''}
                   </code>
-                  <small>{reference.role}</small>
+                  <small>
+                    {reference.role} ·{' '}
+                    {indexedSourcePaths.has(projectKnowledgeSourcePath(reference.source))
+                      ? '同时参与文档检索'
+                      : '仅支持此结论，不参与全文检索'}
+                  </small>
                   {reference.evidence && <em>{reference.evidence}</em>}
                 </span>
               </li>
@@ -5902,21 +5931,21 @@ function ProjectKnowledgeSources({
   return (
     <section
       className="dashboard-knowledge-single-view dashboard-knowledge-source-view"
-      aria-label="数据来源"
+      aria-label="检索语料"
     >
       <div className="dashboard-knowledge-source-toolbar">
         <Input
           value={searchText}
           prefix={<SearchOutlined />}
           allowClear
-          placeholder="搜索来源路径、类型或关联知识…"
-          aria-label="搜索项目知识来源"
+          placeholder="搜索语料路径、类型或关联知识…"
+          aria-label="搜索项目知识检索语料"
           onChange={(event) => onSearchTextChange(event.target.value)}
         />
         <div className="dashboard-knowledge-source-toolbar-meta">
           <span>{provider}</span>
           <span>
-            共 {totalSourceCount} 个来源
+            共 {totalSourceCount} 个语料文件
             {searchText.trim() ? ` · 匹配 ${sourceEntries.length} 个` : ''}
           </span>
         </div>
@@ -5925,24 +5954,23 @@ function ProjectKnowledgeSources({
         <Empty
           className="dashboard-knowledge-empty"
           image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="尚未发现项目知识来源"
+          description="尚未发现可召回的 Markdown 语料"
         />
       ) : (
         <div
           className="dashboard-knowledge-source-rows"
-          aria-label="项目知识数据来源列表"
+          aria-label="项目知识检索语料列表"
           role="region"
           tabIndex={0}
         >
           <div className="dashboard-knowledge-source-head" aria-hidden="true">
-            <span>来源路径</span>
-            <span>关联记录</span>
-            <span>收录状态</span>
-            <span>最近更新</span>
+            <span>语料路径</span>
+            <span>来源类型</span>
+            <span>当前知识</span>
+            <span>索引状态</span>
+            <span>索引时间</span>
           </div>
           {sourceEntries.map((entry) => {
-            const needsReview = entry.records.some((record) => record.state === 'trial');
-            const hasEvidence = entry.records.length > 0;
             return (
               <button
                 key={entry.source}
@@ -5955,18 +5983,11 @@ function ProjectKnowledgeSources({
                   <FileTextOutlined aria-hidden="true" />
                   <code>{entry.source}</code>
                 </span>
+                <span>{projectKnowledgeCorpusKindLabel(entry.kind)}</span>
                 <strong>{entry.records.length} 条</strong>
-                <span
-                  className={`dashboard-knowledge-record-state ${needsReview ? 'is-trial' : hasEvidence ? 'is-proven' : 'is-neutral'}`}
-                >
+                <span className="dashboard-knowledge-record-state is-proven">
                   <span aria-hidden="true" />
-                  {!entry.indexed
-                    ? '仅作结论证据'
-                    : needsReview
-                      ? '有待验证记录'
-                      : hasEvidence
-                        ? '有结论关联'
-                        : '仅已索引'}
+                  已索引
                 </span>
                 <time dateTime={entry.latestUpdatedAt}>
                   {formatTimestamp(entry.latestUpdatedAt)}
@@ -6326,43 +6347,34 @@ function ProjectKnowledgeCenter({ page, data, readOnly = false, onInvoke }) {
   }, [categoryFilter, recordSearchText, sortOrder, stateFilter, workspaceRecords]);
   const selectedRecord =
     visibleRecords.find((record) => record.id === selectedRecordId) ?? visibleRecords[0] ?? null;
+  const indexedSourcePaths = useMemo(
+    () =>
+      new Set(
+        (Array.isArray(snapshot.local?.sources) ? snapshot.local.sources : []).map((source) =>
+          projectKnowledgeSourcePath(source.source),
+        ),
+      ),
+    [snapshot.local?.sources],
+  );
   const sourceEntries = useMemo(() => {
     const sourceMap = new Map();
-    for (const record of records) {
-      for (const sourceReference of projectKnowledgeRecordSources(record)) {
-        const source = projectKnowledgeSourcePath(sourceReference);
-        const current = sourceMap.get(source) ?? {
-          source,
-          records: [],
-          latestUpdatedAt: null,
-          indexed: false,
-        };
-        if (!current.records.some((entry) => entry.id === record.id)) current.records.push(record);
-        if (
-          !current.latestUpdatedAt ||
-          new Date(record.updatedAt ?? 0).getTime() >
-            new Date(current.latestUpdatedAt ?? 0).getTime()
-        ) {
-          current.latestUpdatedAt = record.updatedAt;
-        }
-        sourceMap.set(source, current);
-      }
-    }
     for (const source of Array.isArray(snapshot.local?.sources) ? snapshot.local.sources : []) {
       const sourcePath = projectKnowledgeSourcePath(source.source);
-      const current = sourceMap.get(sourcePath) ?? {
+      sourceMap.set(sourcePath, {
         source: sourcePath,
         records: [],
-        latestUpdatedAt: null,
-        indexed: false,
-      };
-      if (
-        !current.latestUpdatedAt ||
-        new Date(source.updatedAt ?? 0).getTime() > new Date(current.latestUpdatedAt ?? 0).getTime()
-      ) {
-        current.latestUpdatedAt = source.updatedAt;
+        latestUpdatedAt: source.updatedAt,
+        indexed: true,
+        kind: source.kind,
+      });
+    }
+    for (const record of records.filter((record) => record.state !== 'superseded')) {
+      for (const sourceReference of projectKnowledgeRecordSources(record)) {
+        const sourcePath = projectKnowledgeSourcePath(sourceReference);
+        const current = sourceMap.get(sourcePath);
+        if (!current) continue;
+        if (!current.records.some((entry) => entry.id === record.id)) current.records.push(record);
       }
-      sourceMap.set(sourcePath, { ...current, indexed: true, kind: source.kind });
     }
     return Array.from(sourceMap.values()).toSorted((left, right) =>
       left.source.localeCompare(right.source, 'zh-CN'),
@@ -6570,7 +6582,7 @@ function ProjectKnowledgeCenter({ page, data, readOnly = false, onInvoke }) {
           ['model', '项目概况'],
           ['policy', '项目规范'],
           ['history', '历史版本'],
-          ['sources', '数据来源'],
+          ['sources', '检索语料'],
           ['query', '检索测试'],
         ].map(([key, label]) => (
           <button
@@ -6607,6 +6619,7 @@ function ProjectKnowledgeCenter({ page, data, readOnly = false, onInvoke }) {
           sortOrder={sortOrder}
           onSortOrderChange={setSortOrder}
           diagnostics={diagnostics}
+          indexedSourcePaths={indexedSourcePaths}
           provider={provider}
           readOnly={readOnly}
           onInvoke={onInvoke}

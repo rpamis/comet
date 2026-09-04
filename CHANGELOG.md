@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-rc.5] - 2026-09-05
+
+### Fixed
+
+- **Project Knowledge models and retrieval corpus**: Project models now describe each source module through stable, readable entry, dependency, caller, registration, and test evidence; the Dashboard lists only Markdown that actually participates in retrieval, keeps code evidence in record details, automatically compacts duplicate generated history, and restores missing or stale model records through one shared readiness flow.
+
 ## What's Changed [0.4.0-rc.4] - 2026-09-04
 
 ### Changed

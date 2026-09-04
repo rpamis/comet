@@ -353,8 +353,7 @@ export class ProjectKnowledgeIndexStore {
       if (Date.now() > deadline) {
         this.reportDiagnostic?.({
           code: 'index-budget',
-          message:
-            'Project knowledge index refresh reached its time budget; remaining sources were deferred.',
+          message: '未进入检索：索引刷新超过时间预算，尚未处理的语料当前不会参与召回。',
         });
         changedSources.push(...corpus.slice(index));
         break;
@@ -416,7 +415,7 @@ export class ProjectKnowledgeIndexStore {
         changedSources.push(document);
         this.reportDiagnostic?.({
           code: 'index-source',
-          message: `Project knowledge index skipped a changing or unreadable source: ${document.source}`,
+          message: `未进入检索：${document.source} 在索引时发生变化或无法读取，当前不会参与召回。`,
         });
       }
     }

@@ -11,6 +11,8 @@ import {
   createProjectKnowledgeDashboardSnapshot,
   createProjectKnowledgeModule,
   createProjectKnowledgeQuery,
+  ensureProjectKnowledgeReady,
+  extractDeterministicProjectRecords,
   renderProjectKnowledgeContext,
   type ProjectKnowledgeProvider,
   type ProjectKnowledgeQuery,
@@ -268,6 +270,15 @@ describe('project knowledge dashboard status', () => {
   test('creates and lists a manually added user project knowledge record', async () => {
     const root = await tempProject();
     const storageRoot = await tempProject();
+    await fs.mkdir(path.join(root, 'docs'), { recursive: true });
+    await fs.writeFile(
+      path.join(root, 'docs', 'rules.md'),
+      '# Focused tests\n\nRun focused tests.\n',
+    );
+    await fs.writeFile(
+      path.join(root, 'package.json'),
+      JSON.stringify({ packageManager: 'pnpm@10.0.0', scripts: { test: 'vitest' } }),
+    );
     const storageStore = new MemoryPluginStorageStore();
     const module = await createProjectKnowledgeModule(
       {
@@ -300,13 +311,13 @@ describe('project knowledge dashboard status', () => {
       const listed = await module.invoke?.('list', { state: 'proven' });
       expect(listed).toMatchObject({
         kind: 'list',
-        records: [
+        records: expect.arrayContaining([
           expect.objectContaining({
             authority: 'user',
             title: '构建约定',
             summary: '修改后先运行定向测试。',
           }),
-        ],
+        ]),
       });
     } finally {
       await module.dispose?.();
@@ -365,6 +376,108 @@ describe('local record provider contract', () => {
 
       expect(response.kind).toBe('search');
       expect(response.results.some((result) => result.source === 'docs/current.md')).toBe(true);
+    } finally {
+      provider.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('prioritizes path-matched model records, caps them at two, and searches only corpus paths', async () => {
+    const root = await tempProject();
+    const storageRoot = await tempProject();
+    const documents = await Promise.all(
+      ['spec.md', 'archive.md', 'custom.md'].map(async (name, index) => {
+        const absolutePath = path.join(root, 'docs', name);
+        await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+        await fs.writeFile(
+          absolutePath,
+          `# Engine ${index}\n\nEngine module retrieval guidance.\n`,
+        );
+        return {
+          absolutePath,
+          source: `docs/${name}`,
+          kind: (index === 0 ? 'native-spec' : index === 1 ? 'native-archive' : 'custom') as
+            'native-spec' | 'native-archive' | 'custom',
+        };
+      }),
+    );
+    let ripgrepArgs: readonly string[] = [];
+    const provider = new LocalProjectKnowledgeProvider({
+      projectRoot: root,
+      cacheRoot: storageRoot,
+      corpus: documents,
+      runRipgrep: async (args) => {
+        ripgrepArgs = args;
+        return {
+          stdout: '',
+          stderr: '',
+          exitCode: 1,
+          timedOut: false,
+          truncated: false,
+          matchLimitReached: false,
+        };
+      },
+    });
+    try {
+      for (let index = 0; index < 3; index += 1) {
+        const evidenceSource = `src/hidden-${index}.ts`;
+        const evidencePath = path.join(root, ...evidenceSource.split('/'));
+        await fs.mkdir(path.dirname(evidencePath), { recursive: true });
+        await fs.writeFile(evidencePath, `export const engine${index} = true;\n`);
+        const evidenceBytes = await fs.readFile(evidencePath);
+        const evidenceStat = await fs.stat(evidencePath);
+        await provider.apply({
+          kind: 'upsert',
+          record: {
+            id: `generated-module-domains-engine-${index}`,
+            projectId: 'project-local-provider',
+            type: 'dependency',
+            state: 'proven',
+            authority: 'repository',
+            title: `Engine module ${index}`,
+            summary: 'Engine module structure.',
+            applicablePaths: ['domains/engine/'],
+            operations: [],
+            conclusions: [
+              {
+                text: 'Engine module entry.',
+                sources: [{ source: evidenceSource }],
+              },
+            ],
+            relations: [],
+            verification: [],
+            sourceVersions: [
+              {
+                source: evidenceSource,
+                size: evidenceStat.size,
+                modifiedAt: Math.trunc(evidenceStat.mtimeMs),
+                digest: createHash('sha256').update(evidenceBytes).digest('hex'),
+              },
+            ],
+            applicationCount: 0,
+            successCount: 0,
+            failureCount: 0,
+            updatedAt: `2026-08-24T00:00:0${index}.000Z`,
+          },
+        });
+      }
+
+      const response = await provider.query({
+        kind: 'search',
+        query: createProjectKnowledgeQuery({
+          task: 'engine module retrieval',
+          path: 'domains/engine/service.ts',
+        }),
+        limit: 4,
+      });
+
+      expect(response.kind).toBe('search');
+      expect(response.records).toHaveLength(2);
+      expect(response.results.slice(0, 2).every((result) => result.record)).toBe(true);
+      expect(response.results.some((result) => result.document)).toBe(true);
+      expect(ripgrepArgs.join('\n')).not.toContain('src/hidden-');
+      for (const document of documents) expect(ripgrepArgs).toContain(document.absolutePath);
     } finally {
       provider.close();
       await fs.rm(root, { recursive: true, force: true });
@@ -1253,6 +1366,52 @@ test('persists deterministic project knowledge after an Agent Experience hint', 
     expect(records.some((record) => record.id === 'generated-project-map')).toBe(true);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('readiness fills a partial project model and restores stale stable module records', async () => {
+  const root = await tempProject();
+  const storageRoot = await tempProject();
+  await fs.mkdir(path.join(root, 'src'), { recursive: true });
+  await fs.writeFile(path.join(root, 'src', 'main.ts'), 'export const projectKnowledge = true;\n');
+  await fs.writeFile(
+    path.join(root, 'package.json'),
+    JSON.stringify({ packageManager: 'pnpm@10.0.0', scripts: { test: 'vitest' } }),
+  );
+  const provider = new LocalProjectKnowledgeProvider({
+    projectRoot: root,
+    cacheRoot: storageRoot,
+    corpus: [],
+  });
+  try {
+    const candidates = await extractDeterministicProjectRecords({ projectRoot: root });
+    const projectMap = candidates.find((record) => record.id === 'generated-project-map')!;
+    await provider.apply({ kind: 'upsert', record: projectMap });
+
+    await ensureProjectKnowledgeReady({ projectRoot: root, provider });
+    const complete = await provider.query({ kind: 'list', state: 'all', limit: 100 });
+    expect(complete.records.map((record) => record.id)).toEqual(
+      expect.arrayContaining([
+        'generated-project-map',
+        'generated-module-src',
+        'generated-build-test',
+      ]),
+    );
+
+    await fs.writeFile(
+      path.join(root, 'src', 'main.ts'),
+      'export const projectKnowledge = true; // refreshed\n',
+    );
+    await ensureProjectKnowledgeReady({ projectRoot: root, provider });
+    await expect(
+      provider.query({ kind: 'get', id: 'generated-module-src' }),
+    ).resolves.toMatchObject({
+      record: expect.objectContaining({ id: 'generated-module-src', state: 'proven' }),
+    });
+  } finally {
+    provider.close();
+    await fs.rm(root, { recursive: true, force: true });
+    await fs.rm(storageRoot, { recursive: true, force: true });
   }
 });
 

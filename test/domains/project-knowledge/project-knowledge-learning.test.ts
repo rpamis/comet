@@ -147,15 +147,15 @@ describe('project knowledge learning', () => {
 
       expect(result.skipped).toBe(false);
       expect(records.map((record) => record.type)).toEqual(
-        expect.arrayContaining(['topology', 'fact', 'dependency']),
+        expect.arrayContaining(['topology', 'dependency', 'procedure']),
       );
-      expect(records.find((record) => record.id === 'generated-knowledge-corpus')).toMatchObject({
-        conclusions: [
-          expect.objectContaining({
-            sources: [expect.objectContaining({ source: 'docs/custom/architecture.md' })],
-          }),
-        ],
+      expect(records.find((record) => record.id === 'generated-module-src')).toMatchObject({
+        title: '模块入口与依赖：src',
+        applicablePaths: ['src/'],
       });
+      expect(records.some((record) => record.id.startsWith('generated-knowledge-corpus'))).toBe(
+        false,
+      );
     } finally {
       provider.close();
       await fs.rm(root, { recursive: true, force: true });
@@ -191,9 +191,10 @@ describe('project knowledge learning', () => {
       expect(records).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ id: 'generated-project-map', state: 'proven' }),
-          expect.objectContaining({ id: 'generated-module-overview', state: 'proven' }),
+          expect.objectContaining({ id: 'generated-build-test', state: 'proven' }),
         ]),
       );
+      expect(records.some((record) => record.id.startsWith('generated-module-'))).toBe(false);
     } finally {
       provider.close();
       await fs.rm(root, { recursive: true, force: true });
@@ -252,7 +253,7 @@ describe('project knowledge learning', () => {
         query: createProjectKnowledgeQuery({ task: 'module' }),
       });
       await expect(
-        provider.query({ kind: 'get', id: 'generated-module-overview' }),
+        provider.query({ kind: 'get', id: 'generated-module-src' }),
       ).resolves.toMatchObject({
         record: expect.objectContaining({
           state: 'proven',
@@ -267,6 +268,109 @@ describe('project knowledge learning', () => {
       provider.close();
       await fs.rm(root, { recursive: true, force: true });
       await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('generates readable stable records per module from reliable structure signals', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-module-model-');
+    try {
+      await fs.mkdir(path.join(root, 'app', 'cli'), { recursive: true });
+      await fs.mkdir(path.join(root, 'domains', 'engine'), { recursive: true });
+      await fs.mkdir(path.join(root, 'packages', 'analyzer'), { recursive: true });
+      await fs.mkdir(path.join(root, 'packages', 'quiet'), { recursive: true });
+      await fs.mkdir(path.join(root, 'test', 'app', 'cli'), { recursive: true });
+      await fs.writeFile(path.join(root, 'AGENTS.md'), '# Instructions\n');
+      await fs.writeFile(path.join(root, 'build.js'), 'console.log("build")\n');
+      await fs.writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ packageManager: 'npm@11.0.0', scripts: { build: 'tsc', test: 'vitest' } }),
+      );
+      await fs.writeFile(
+        path.join(root, 'app', 'cli', 'index.ts'),
+        "import { run } from '../../domains/engine/index.js';\nexport const main = run;\n",
+      );
+      await fs.writeFile(
+        path.join(root, 'domains', 'engine', 'index.ts'),
+        'export const run = true;\n',
+      );
+      await fs.writeFile(path.join(root, 'packages', 'analyzer', 'main.py'), 'print("ok")\n');
+      await fs.writeFile(path.join(root, 'packages', 'quiet', 'helper.py'), 'VALUE = 1\n');
+      await fs.writeFile(path.join(root, 'test', 'app', 'cli', 'cli.test.ts'), 'export {};\n');
+
+      const first = await extractDeterministicProjectRecords({ projectRoot: root });
+      const second = await extractDeterministicProjectRecords({ projectRoot: root });
+      const cli = first.find((record) => record.id === 'generated-module-app-cli');
+      const engine = first.find((record) => record.id === 'generated-module-domains-engine');
+      const python = first.find((record) => record.id === 'generated-module-packages-analyzer');
+      const projectMap = first.find((record) => record.id === 'generated-project-map');
+      const build = first.find((record) => record.id === 'generated-build-test');
+
+      expect(cli).toMatchObject({
+        title: '模块入口与依赖：app/cli',
+        applicablePaths: ['app/cli/', 'test/app/cli/'],
+        relations: [
+          expect.objectContaining({
+            type: 'depends-on',
+            targetId: 'generated-module-domains-engine',
+          }),
+        ],
+      });
+      expect(cli?.summary).toContain('跨模块依赖：domains/engine');
+      expect(engine?.summary).toContain('外部调用方：app/cli');
+      expect(python?.summary).toContain('可确认入口：packages/analyzer/main.py');
+      expect(first.some((record) => record.id === 'generated-module-packages-quiet')).toBe(false);
+      expect(projectMap?.applicablePaths).not.toEqual(
+        expect.arrayContaining(['AGENTS.md/', 'build.js/']),
+      );
+      expect(build?.verification.map((entry) => entry.command)).toEqual([
+        'npm run build',
+        'npm run test',
+      ]);
+      expect(second.map((record) => record.id)).toEqual(first.map((record) => record.id));
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test('prioritizes a missing module before the bounded source scan', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-module-priority-');
+    try {
+      const heavyModule = path.join(root, 'domains', 'a-heavy');
+      const targetModule = path.join(root, 'domains', 'z-target');
+      await fs.mkdir(heavyModule, { recursive: true });
+      await fs.mkdir(targetModule, { recursive: true });
+      await Promise.all(
+        Array.from({ length: 513 }, (_, index) =>
+          fs.writeFile(
+            path.join(heavyModule, `file-${String(index).padStart(3, '0')}.ts`),
+            'export const value = true;\n',
+          ),
+        ),
+      );
+      await fs.writeFile(path.join(targetModule, 'main.ts'), 'export const target = true;\n');
+
+      const ordinary = await extractDeterministicProjectRecords({ projectRoot: root });
+      const diagnostics: string[] = [];
+      const prioritized = await extractDeterministicProjectRecords({
+        projectRoot: root,
+        preferredRecordIds: ['generated-module-domains-z-target'],
+        reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic.code),
+      });
+
+      expect(ordinary.some((record) => record.id === 'generated-module-domains-z-target')).toBe(
+        false,
+      );
+      expect(prioritized).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: 'generated-module-domains-z-target',
+            title: '模块入口与依赖：domains/z-target',
+          }),
+        ]),
+      );
+      expect(diagnostics).toContain('project-model-source-limit');
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
     }
   });
 

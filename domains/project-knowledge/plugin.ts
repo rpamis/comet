@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { access, readFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 
 import type {
   PluginContext,
@@ -28,6 +28,7 @@ import {
   type ProjectKnowledgeRecordVerification,
 } from './records.js';
 import { RemoteProjectKnowledgeProvider } from './remote-provider.js';
+import { ensureProjectKnowledgeReady } from './readiness.js';
 import {
   createProjectKnowledgeChangedHint,
   ProjectKnowledgeLearningService,
@@ -222,37 +223,12 @@ async function createProjectKnowledgeModule(
     }
   };
   const ensureProjectModel = async (provider: ProjectKnowledgeProvider): Promise<void> => {
-    try {
-      await access(options.projectRoot);
-    } catch {
-      return;
-    }
-    const projectId = resolveStableProjectId(options.projectRoot);
-    const listed = await provider.query({ kind: 'list', projectId, state: 'all', limit: 500 });
-    if (
-      listed.kind === 'list' &&
-      listed.records.some(
-        (record) =>
-          record.state !== 'superseded' && ['topology', 'fact', 'dependency'].includes(record.type),
-      )
-    ) {
-      return;
-    }
-    const corpus =
-      options.knowledgeConfig.provider === 'local'
-        ? await discoverProjectKnowledgeCorpus({
-            projectRoot: options.projectRoot,
-            reportDiagnostic,
-          })
-        : [];
-    if (corpus.length === 0) return;
-    const learning = new ProjectKnowledgeLearningService({
+    await ensureProjectKnowledgeReady({
       projectRoot: options.projectRoot,
       provider,
       language: options.language,
       reportDiagnostic,
     });
-    await learning.bootstrapProjectModel(corpus.map((document) => document.source));
   };
   const persistChangedHint = async (hint: ProjectKnowledgeChangedHint): Promise<void> => {
     recentChangedHints.push(hint);
@@ -273,9 +249,7 @@ async function createProjectKnowledgeModule(
       const activeProvider = snapshotProvider;
       const projectId = resolveStableProjectId(options.projectRoot);
       if (activeProvider instanceof LocalProjectKnowledgeProvider) {
-        await activeProvider.apply({ kind: 'refresh', projectId });
         await ensureProjectModel(activeProvider);
-        await activeProvider.refreshIndex();
       } else {
         await ensureProjectModel(activeProvider);
       }

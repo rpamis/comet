@@ -2328,7 +2328,10 @@ const demoProjectKnowledgeRecords = [
     conclusions: [
       {
         text: '概览与详情使用独立采集路径，列表请求不预读所有产物正文。',
-        sources: [{ source: 'domains/dashboard/collector.ts', anchor: 'collectDashboardSnapshot' }],
+        sources: [
+          { source: 'domains/dashboard/collector.ts', anchor: 'collectDashboardSnapshot' },
+          { source: 'docs/comet/specs/dashboard.md', anchor: '读取策略' },
+        ],
       },
       {
         text: '分页游标绑定当前 snapshot，工作区状态变化后会要求重新加载。',
@@ -2502,26 +2505,30 @@ export const DEMO_PLUGIN_PAGES = [
         sourceCount: 5,
         sources: [
           {
-            source: 'domains/dashboard/collector.ts',
-            kind: 'source',
+            source: 'docs/comet/specs/dashboard.md',
+            kind: 'native-spec',
             updatedAt: '2026-08-29T11:06:00.000Z',
           },
           {
-            source: 'domains/dashboard/server.ts',
-            kind: 'source',
+            source: 'docs/comet/specs/project-knowledge.md',
+            kind: 'native-spec',
             updatedAt: '2026-08-29T11:24:00.000Z',
           },
           {
-            source: 'domains/dashboard/web/src/main.jsx',
-            kind: 'source',
+            source: 'docs/comet/archive/2026-08-29-dashboard/verify-result.md',
+            kind: 'native-archive',
             updatedAt: '2026-08-29T10:54:00.000Z',
           },
           {
-            source: 'domains/dashboard/web/src/dashboard-modal.jsx',
-            kind: 'source',
+            source: 'docs/comet/archive/2026-08-29-dashboard/design.md',
+            kind: 'native-archive',
             updatedAt: '2026-08-29T11:24:00.000Z',
           },
-          { source: 'AGENTS.md', kind: 'guide', updatedAt: '2026-08-29T09:00:00.000Z' },
+          {
+            source: 'docs/knowledge/dashboard.md',
+            kind: 'custom',
+            updatedAt: '2026-08-29T09:00:00.000Z',
+          },
         ],
         sectionCount: 9,
         updatedAt: '2026-08-29T11:24:00.000Z',
@@ -2551,35 +2558,35 @@ export const DEMO_PLUGIN_PAGES = [
       diagnostics: [],
       sourcePreviews: [
         {
-          source: 'domains/dashboard/collector.ts',
+          source: 'docs/comet/specs/dashboard.md',
           format: 'markdown',
           content:
-            '# Dashboard Collector\n\nCollector 把项目配置、Classic 变更、Git 状态和风险项组合成稳定投影。\n\n## 读取策略\n\n- 概览请求只返回轻量字段\n- 选中 change 后才读取产物正文\n- 每次读取都校验项目路径边界\n',
+            '# Dashboard 检索语料\n\nDashboard Spec 说明项目配置、工作流状态与详情读取边界。\n\n## 读取策略\n\n- 概览请求只返回轻量字段\n- 选中 change 后才读取产物正文\n- 每次读取都校验项目路径边界\n',
           modifiedAt: '2026-08-29T11:06:00.000Z',
         },
         {
-          source: 'domains/dashboard/server.ts',
+          source: 'docs/comet/specs/project-knowledge.md',
           format: 'markdown',
           content:
             '# Dashboard Server\n\nServer 提供项目列表、snapshot、change 详情和插件页面等稳定路由。\n\n分页游标与 snapshot 版本绑定；当工作区发生变化时，客户端会收到过期诊断并重新加载。\n',
           modifiedAt: '2026-08-29T11:24:00.000Z',
         },
         {
-          source: 'domains/dashboard/web/src/main.jsx',
+          source: 'docs/comet/archive/2026-08-29-dashboard/verify-result.md',
           format: 'markdown',
           content:
-            '# Dashboard Web App\n\n主界面管理 Classic、Native、个人记忆、项目知识与设置中心的选中状态。\n\n文件预览在容器内打开，用户可以通过关闭按钮、背景或 Esc 退出。\n',
+            '# Dashboard 验证结果\n\n主界面能够切换项目知识和检索语料，并在容器内预览 Markdown。\n\n文件预览支持关闭按钮、背景和 Esc 退出。\n',
           modifiedAt: '2026-08-29T10:54:00.000Z',
         },
         {
-          source: 'domains/dashboard/web/src/dashboard-modal.jsx',
+          source: 'docs/comet/archive/2026-08-29-dashboard/design.md',
           format: 'markdown',
           content:
             '# Dashboard Modal\n\n弹层统一处理标题、副标题、页脚和 portal 挂载位置。\n\n官网与产品界面复用同一套关闭行为，不会把用户困在全屏预览中。\n',
           modifiedAt: '2026-08-29T11:24:00.000Z',
         },
         {
-          source: 'AGENTS.md',
+          source: 'docs/knowledge/dashboard.md',
           format: 'markdown',
           content:
             '# Dashboard 变更验证\n\n每轮先运行覆盖当前改动的最小相关测试；涉及前端构建和生成资产时再运行 build，最终按风险决定是否扩大到完整回归。\n',

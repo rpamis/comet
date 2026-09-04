@@ -507,6 +507,7 @@ export class ProjectKnowledgeLearningService {
   public async bootstrapProjectModel(
     knowledgeSources: readonly string[] = [],
   ): Promise<ProjectKnowledgeLearningResult> {
+    void knowledgeSources;
     const diagnostics: ProjectKnowledgeLearningDiagnostic[] = [];
     const report = (diagnostic: ProjectKnowledgeLearningDiagnostic): void => {
       diagnostics.push(diagnostic);
@@ -516,8 +517,8 @@ export class ProjectKnowledgeLearningService {
     try {
       candidates = await extractDeterministicProjectRecords({
         projectRoot: this.projectRoot,
-        knowledgeSources,
         language: this.language,
+        reportDiagnostic: report,
       });
     } catch {
       report({
@@ -527,7 +528,7 @@ export class ProjectKnowledgeLearningService {
     }
     const persisted: string[] = [];
     const proven: string[] = [];
-    for (const candidate of candidates.slice(0, 16)) {
+    for (const candidate of candidates.slice(0, 66)) {
       try {
         const record = validateProjectKnowledgeRecordShape(candidate);
         const changedSource = await recordSourcesStillCurrent(record, this.projectRoot);
@@ -617,6 +618,7 @@ export class ProjectKnowledgeLearningService {
         projectRoot: this.projectRoot,
         changedPaths: packet.changedHint.changedPaths,
         language: this.language,
+        reportDiagnostic: report,
       });
     } catch {
       report({
@@ -626,7 +628,7 @@ export class ProjectKnowledgeLearningService {
     }
     const learnedPolicy = experiencePolicyRecord(packet, this.projectRoot, this.language);
     if (learnedPolicy !== null) candidates = [...candidates, learnedPolicy];
-    for (const candidate of candidates.slice(0, 16)) {
+    for (const candidate of candidates.slice(0, 67)) {
       try {
         const record = validateProjectKnowledgeRecordShape({
           ...candidate,

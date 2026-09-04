@@ -42,6 +42,32 @@ function record(overrides: Partial<ProjectKnowledgeRecord> = {}): ProjectKnowled
   };
 }
 
+function insertLegacyRecords(
+  databasePath: string,
+  records: readonly ProjectKnowledgeRecord[],
+): void {
+  const database = openProjectKnowledgeDatabase(databasePath);
+  try {
+    const statement = database.prepare(
+      'INSERT OR REPLACE INTO pk_records(id, project_id, type, state, authority, payload_json, source_versions_json, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    );
+    for (const candidate of records) {
+      statement.run(
+        candidate.id,
+        candidate.projectId,
+        candidate.type,
+        candidate.state,
+        candidate.authority,
+        JSON.stringify(candidate),
+        JSON.stringify(candidate.sourceVersions),
+        candidate.updatedAt,
+      );
+    }
+  } finally {
+    database.close();
+  }
+}
+
 describe('project knowledge local store', () => {
   test('counts records within the current project independently of list limits', async () => {
     const root = await temporaryRoot('comet-project-knowledge-counts-');
@@ -75,7 +101,7 @@ describe('project knowledge local store', () => {
     }
   });
 
-  test('rebuilds the derived record table when its machine schema is obsolete', async () => {
+  test('upgrades machine metadata without clearing existing records', async () => {
     const root = await temporaryRoot('comet-project-knowledge-schema-');
     const storageRoot = await temporaryRoot('comet-project-knowledge-schema-storage-');
     let store: ProjectKnowledgeLocalStore | undefined;
@@ -91,8 +117,8 @@ describe('project knowledge local store', () => {
       database.close();
 
       store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
-      expect(store.list()).toEqual([]);
-      expect(store.status()).toMatchObject({ recordCount: 0 });
+      expect(store.list()).toEqual([expect.objectContaining({ id: 'record-build-test' })]);
+      expect(store.status()).toMatchObject({ recordCount: 1 });
     } finally {
       store?.close();
       await fs.rm(root, { recursive: true, force: true });
@@ -176,18 +202,15 @@ describe('project knowledge local store', () => {
         sourceVersions: [{ source: 'docs/process.md', size: 101, modifiedAt: 2 }],
         updatedAt: '2026-08-22T00:03:00.000Z',
       });
-      const versioned = await reopened.apply({ kind: 'upsert', record: refreshed });
-      expect(versioned).toMatchObject({
-        changed: true,
+      const preserved = await reopened.apply({ kind: 'upsert', record: refreshed });
+      expect(preserved).toMatchObject({
+        changed: false,
         record: expect.objectContaining({
-          state: 'proven',
-          authority: 'automatic',
-          summary: refreshed.summary,
-          relations: [expect.objectContaining({ type: 'supersedes', targetId: initial.id })],
+          id: initial.id,
+          state: 'superseded',
+          authority: 'user',
         }),
       });
-      expect(versioned.record?.id).toMatch(/^record-build-test-v-/u);
-      expect(reopened.read(initial.id)).toMatchObject({ state: 'superseded' });
     } finally {
       reopened?.close();
       first?.close();
@@ -341,12 +364,242 @@ describe('project knowledge local store', () => {
       expect(versioned).toMatchObject({
         changed: true,
         record: expect.objectContaining({
+          id: initial.id,
           state: 'proven',
-          relations: [expect.objectContaining({ type: 'supersedes', targetId: initial.id })],
+          relations: [
+            expect.objectContaining({
+              type: 'supersedes',
+              targetId: expect.stringMatching(/-v-/u),
+            }),
+          ],
         }),
       });
-      expect(versioned.record?.id).not.toBe(initial.id);
-      expect(store.read(initial.id)).toMatchObject({ state: 'superseded' });
+      expect(versioned.record?.id).toBe(initial.id);
+      const history = store
+        .list({ state: 'superseded' })
+        .filter((candidate) => candidate.id.startsWith(`${initial.id}-v-`));
+      expect(history).toHaveLength(1);
+      expect(history[0]).toMatchObject({ summary: initial.summary, state: 'superseded' });
+    } finally {
+      store?.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('updates source versions without creating history when record semantics are unchanged', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-semantic-source-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-semantic-source-storage-');
+    let store: ProjectKnowledgeLocalStore | undefined;
+    try {
+      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      const initial = record({
+        id: 'generated-project-map',
+        type: 'topology',
+        authority: 'repository',
+      });
+      await store.apply({ kind: 'upsert', record: initial });
+      const refreshed = record({
+        ...initial,
+        sourceVersions: [{ source: 'docs/process.md', size: 200, modifiedAt: 99 }],
+        updatedAt: '2026-08-22T00:10:00.000Z',
+      });
+
+      await expect(store.apply({ kind: 'upsert', record: refreshed })).resolves.toMatchObject({
+        changed: true,
+        record: expect.objectContaining({
+          id: 'generated-project-map',
+          sourceVersions: refreshed.sourceVersions,
+        }),
+      });
+      expect(
+        store.list().filter((candidate) => candidate.id.startsWith('generated-project-map')),
+      ).toEqual([expect.objectContaining({ id: 'generated-project-map', state: 'proven' })]);
+    } finally {
+      store?.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('does not version generated modules when only discovered list order changes', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-semantic-order-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-semantic-order-storage-');
+    let store: ProjectKnowledgeLocalStore | undefined;
+    try {
+      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      const initial = record({
+        id: 'generated-module-domains-example',
+        type: 'dependency',
+        authority: 'repository',
+        summary: '外部调用方：domains/zeta、app/alpha。',
+        conclusions: [
+          {
+            text: '外部调用方：domains/zeta、app/alpha。',
+            sources: [{ source: 'domains/zeta/index.ts' }, { source: 'app/alpha/index.ts' }],
+          },
+        ],
+      });
+      await store.apply({ kind: 'upsert', record: initial });
+      const reordered = record({
+        ...initial,
+        summary: '外部调用方：app/alpha、domains/zeta。',
+        conclusions: [
+          {
+            text: '外部调用方：app/alpha、domains/zeta。',
+            sources: [{ source: 'app/alpha/main.ts' }, { source: 'domains/zeta/caller.ts' }],
+          },
+        ],
+        updatedAt: '2026-08-22T00:10:00.000Z',
+      });
+
+      await expect(store.apply({ kind: 'upsert', record: reordered })).resolves.toMatchObject({
+        changed: false,
+        record: expect.objectContaining({ id: initial.id }),
+      });
+      expect(
+        store.list().filter((candidate) => candidate.id.startsWith(`${initial.id}-v-`)),
+      ).toEqual([]);
+    } finally {
+      store?.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('transactionally compacts duplicate generated history while preserving user and feedback records', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-maintenance-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-maintenance-storage-');
+    let store: ProjectKnowledgeLocalStore | undefined;
+    try {
+      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      const databasePath = store.databasePath;
+      store.close();
+      store = undefined;
+      const projectMap = record({
+        id: 'generated-project-map',
+        type: 'topology',
+        authority: 'repository',
+        state: 'superseded',
+        updatedAt: '2026-08-22T00:00:00.000Z',
+      });
+      insertLegacyRecords(databasePath, [
+        record({ id: 'generated-knowledge-corpus-v-aaaaaaaaaaaa' }),
+        record({ id: 'generated-module-overview-v-bbbbbbbbbbbb' }),
+        record({
+          id: 'generated-module-domains-example',
+          type: 'dependency',
+          authority: 'repository',
+        }),
+        record({
+          id: 'generated-knowledge-corpus-user',
+          authority: 'user',
+          state: 'superseded',
+        }),
+        record({
+          id: 'generated-module-domains-custom',
+          type: 'dependency',
+          authority: 'user',
+        }),
+        record({
+          id: 'generated-module-overview-feedback',
+          applicationCount: 1,
+          lastAppliedAt: '2026-08-22T00:04:00.000Z',
+          state: 'superseded',
+        }),
+        projectMap,
+        { ...projectMap, id: 'generated-project-map-v-111111111111', state: 'proven' },
+        {
+          ...projectMap,
+          id: 'generated-project-map-v-222222222222',
+          updatedAt: '2026-08-22T00:02:00.000Z',
+        },
+      ]);
+      const legacyMetadata = openProjectKnowledgeDatabase(databasePath);
+      legacyMetadata
+        .prepare("DELETE FROM pk_meta WHERE key = 'generated-record-maintenance-v2'")
+        .run();
+      legacyMetadata.close();
+
+      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      const once = store.list();
+      expect(once.map((candidate) => candidate.id)).not.toEqual(
+        expect.arrayContaining([
+          'generated-knowledge-corpus-v-aaaaaaaaaaaa',
+          'generated-module-overview-v-bbbbbbbbbbbb',
+          'generated-module-domains-example',
+        ]),
+      );
+      expect(once).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'generated-project-map', state: 'proven' }),
+          expect.objectContaining({ id: 'generated-knowledge-corpus-user', authority: 'user' }),
+          expect.objectContaining({ id: 'generated-module-domains-custom', authority: 'user' }),
+          expect.objectContaining({
+            id: 'generated-module-overview-feedback',
+            applicationCount: 1,
+          }),
+        ]),
+      );
+      expect(
+        once.filter((candidate) => candidate.id.startsWith('generated-project-map')),
+      ).toHaveLength(1);
+      store.close();
+      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      expect(store.list()).toEqual(once);
+    } finally {
+      store?.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('rolls back generated history maintenance when legacy payloads are invalid', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-maintenance-rollback-');
+    const storageRoot = await temporaryRoot(
+      'comet-project-knowledge-maintenance-rollback-storage-',
+    );
+    const diagnostics: Array<{ code: string; message: string }> = [];
+    let store: ProjectKnowledgeLocalStore | undefined;
+    let databasePath = '';
+    try {
+      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      databasePath = store.databasePath;
+      store.close();
+      store = undefined;
+      const database = openProjectKnowledgeDatabase(databasePath);
+      database
+        .prepare(
+          'INSERT INTO pk_records(id, project_id, type, state, authority, payload_json, source_versions_json, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        )
+        .run(
+          'generated-project-map',
+          'project-comet',
+          'topology',
+          'proven',
+          'repository',
+          '{invalid',
+          '[]',
+          '2026-08-22T00:00:00.000Z',
+        );
+      database.close();
+
+      store = new ProjectKnowledgeLocalStore({
+        projectRoot: root,
+        storageRoot,
+        reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+      });
+      expect(diagnostics).toContainEqual({
+        code: 'record-maintenance-failed',
+        message: '项目知识历史整理失败，已回滚并保留原有记录。',
+      });
+      store.close();
+      store = undefined;
+      const check = openProjectKnowledgeDatabase(databasePath, { readOnly: true });
+      expect(
+        check.prepare('SELECT COUNT(*) AS count FROM pk_records').get() as { count: number },
+      ).toMatchObject({ count: 1 });
+      check.close();
     } finally {
       store?.close();
       await fs.rm(root, { recursive: true, force: true });
@@ -530,7 +783,10 @@ describe('project knowledge local store', () => {
         changed: true,
         record: expect.objectContaining({
           relations: expect.arrayContaining([
-            expect.objectContaining({ type: 'supersedes', targetId: initial.id }),
+            expect.objectContaining({
+              type: 'supersedes',
+              targetId: expect.stringMatching(/-v-/u),
+            }),
           ]),
         }),
       });
