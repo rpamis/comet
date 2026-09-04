@@ -504,6 +504,11 @@ describe('PersonalMemoryService', () => {
       expect(
         (await memories.retrieve({ projectKey: 'project-a' })).records.map((record) => record.id),
       ).not.toContain(promoted.record!.id);
+      await writeFile(file, `${await readFile(file, 'utf8')}\n- ${observation.text}\n`);
+      await memories.manage({ projectKey: 'project-a' });
+      const reconciled = await readFile(file, 'utf8');
+      expect(reconciled).not.toContain(observation.text);
+      expect(reconciled).toContain('保留无关内容');
     });
   });
 

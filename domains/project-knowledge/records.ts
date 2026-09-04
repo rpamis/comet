@@ -363,6 +363,9 @@ export function validateProjectKnowledgeRecordShape(value: unknown): ProjectKnow
     MAX_SOURCE_VERSIONS,
     parseSourceVersion,
   );
+  if (new Set(sourceVersions.map((version) => version.source)).size !== sourceVersions.length) {
+    throw new Error('sourceVersions must not contain duplicate sources');
+  }
   return {
     id: stableId(record.id, 'id'),
     projectId: stableId(record.projectId, 'projectId'),

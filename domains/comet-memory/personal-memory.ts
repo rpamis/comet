@@ -1329,6 +1329,23 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
       const file = this.resolveMemoryFilePath(state, target.scope, target.projectKey);
       const content = await this.repository.readText(file);
       reconcileMarkdown(state, file, target.scope, target.projectKey, content, this.timestamp());
+      if (content !== null) {
+        const canonical = removeTombstonedMarkdownBullets(
+          content,
+          state.tombstones,
+          target.scope,
+          target.projectKey,
+        );
+        if (canonical !== content) {
+          await this.persistWithFileProjection(state, file, {
+            content: canonical,
+            baseHash: memoryFileHash(content),
+            scope: target.scope,
+            ...(target.projectKey === undefined ? {} : { projectKey: target.projectKey }),
+            queuedAt: this.timestamp(),
+          });
+        }
+      }
     }
     return state;
   }
@@ -2061,6 +2078,25 @@ function reconcileMarkdown(
     state.records.push(record);
   }
   state.files[file] = { hash, observedAt: timestamp };
+}
+
+function removeTombstonedMarkdownBullets(
+  content: string,
+  tombstones: readonly MemoryTombstone[],
+  scope: 'global' | 'project',
+  projectKey: string | undefined,
+): string {
+  const removedLines = new Set(
+    parseMarkdown(content)
+      .filter((bullet) => isTombstonedMarkdownText(tombstones, scope, projectKey, bullet.text))
+      .map((bullet) => bullet.line),
+  );
+  if (removedLines.size === 0) return content;
+  return content
+    .replace(/\r\n?/gu, '\n')
+    .split('\n')
+    .filter((_line, index) => !removedLines.has(index))
+    .join('\n');
 }
 
 function appendMarkdownBullet(

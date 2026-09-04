@@ -3368,6 +3368,45 @@ function LoadingState() {
   );
 }
 
+function projectKnowledgeCountsFromRecords(records) {
+  return {
+    active: records.filter((record) => record?.state !== 'superseded').length,
+    trial: records.filter((record) => record?.state === 'trial').length,
+    proven: records.filter((record) => record?.state === 'proven').length,
+    enforced: records.filter((record) => record?.state === 'enforced').length,
+    superseded: records.filter((record) => record?.state === 'superseded').length,
+    total: records.length,
+    displayed: records.length,
+  };
+}
+
+function reconcileProjectKnowledgeCounts(previous, beforeRecords, nextRecords, changedRecords) {
+  if (
+    !isDashboardRecord(previous) ||
+    !['active', 'trial', 'proven', 'enforced', 'superseded', 'total'].every(
+      (key) => typeof previous[key] === 'number',
+    )
+  ) {
+    return projectKnowledgeCountsFromRecords(nextRecords);
+  }
+  const next = { ...previous, displayed: nextRecords.length };
+  const beforeById = new Map(beforeRecords.map((record) => [record?.id, record]));
+  for (const changed of changedRecords) {
+    const before = beforeById.get(changed?.id);
+    if (before?.state === changed?.state) continue;
+    if (before === undefined) next.total += 1;
+    if (before?.state) {
+      next[before.state] = Math.max(0, next[before.state] - 1);
+      if (before.state !== 'superseded') next.active = Math.max(0, next.active - 1);
+    }
+    if (changed?.state) {
+      next[changed.state] += 1;
+      if (changed.state !== 'superseded') next.active += 1;
+    }
+  }
+  return next;
+}
+
 function reconcilePluginInvocationResult(page, pluginId, capability, result, input) {
   if (
     pluginId === 'comet.personal-memory' &&
@@ -3422,12 +3461,9 @@ function reconcilePluginInvocationResult(page, pluginId, capability, result, inp
         data: {
           ...page.data,
           records: nextRecords,
-          counts: {
-            trial: nextRecords.filter((record) => record?.state === 'trial').length,
-            proven: nextRecords.filter((record) => record?.state === 'proven').length,
-            enforced: nextRecords.filter((record) => record?.state === 'enforced').length,
-            superseded: nextRecords.filter((record) => record?.state === 'superseded').length,
-          },
+          counts: reconcileProjectKnowledgeCounts(page.data.counts, records, nextRecords, [
+            result.record,
+          ]),
         },
       };
     }
@@ -3452,12 +3488,12 @@ function reconcilePluginInvocationResult(page, pluginId, capability, result, inp
         data: {
           ...page.data,
           records: nextRecords,
-          counts: {
-            trial: nextRecords.filter((record) => record?.state === 'trial').length,
-            proven: nextRecords.filter((record) => record?.state === 'proven').length,
-            enforced: nextRecords.filter((record) => record?.state === 'enforced').length,
-            superseded: nextRecords.filter((record) => record?.state === 'superseded').length,
-          },
+          counts: reconcileProjectKnowledgeCounts(
+            page.data.counts,
+            records,
+            nextRecords,
+            refreshedRecords,
+          ),
         },
       };
     }

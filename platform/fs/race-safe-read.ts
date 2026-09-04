@@ -1,5 +1,6 @@
 import { constants as fsConstants, promises as fs } from 'fs';
 import type { BigIntStats, Stats } from 'fs';
+import { createHash } from 'node:crypto';
 
 import {
   hasComparableFileObject,
@@ -50,6 +51,12 @@ export interface RaceSafeReadOptions {
 
 export interface RaceSafeReadResult {
   bytes: Buffer;
+  stat: Stats | BigIntStats;
+  realPath: string;
+}
+
+export interface RaceSafeHashResult {
+  digest: string;
   stat: Stats | BigIntStats;
   realPath: string;
 }
@@ -189,6 +196,95 @@ export async function readFileRaceSafe(
       identity: identityOf(afterHandle),
     });
     return { bytes: Buffer.concat(chunks, total), stat: afterHandle, realPath: afterRealPath };
+  } finally {
+    await handle.close();
+  }
+}
+
+/**
+ * Hash a regular file through one descriptor while applying the same identity
+ * checks as readFileRaceSafe. Chunks are fed directly into the digest so large
+ * files do not need to be retained in memory or rejected by an arbitrary size
+ * limit.
+ */
+export async function hashFileRaceSafe(
+  file: string,
+  options: RaceSafeReadOptions & { algorithm?: string } = {},
+): Promise<RaceSafeHashResult> {
+  const label = options.label ?? 'file';
+  const bigint = options.bigint === true;
+  const before = await fs.lstat(file, { bigint });
+  if (!before.isFile() || before.isSymbolicLink()) {
+    throw new RaceSafeReadError('not-regular-file', `${label} must be a regular file`);
+  }
+  const beforeRealPath = await fs.realpath(file);
+  await options.verify?.('pre-open', { realPath: beforeRealPath, identity: identityOf(before) });
+
+  const flags =
+    process.platform === 'win32'
+      ? fsConstants.O_RDONLY
+      : fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK;
+  let handle: Awaited<ReturnType<typeof fs.open>>;
+  try {
+    handle = await fs.open(file, flags);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ELOOP') {
+      throw new RaceSafeReadError('not-regular-file', `${label} must be a regular file`, {
+        cause: error,
+      });
+    }
+    throw error;
+  }
+  try {
+    const [opened, pathAfterOpen, realPathAfterOpen] = await Promise.all([
+      handle.stat({ bigint }),
+      fs.lstat(file, { bigint }),
+      fs.realpath(file),
+    ]);
+    if (
+      !opened.isFile() ||
+      !pathAfterOpen.isFile() ||
+      pathAfterOpen.isSymbolicLink() ||
+      realPathAfterOpen !== beforeRealPath ||
+      !sameStatIdentity(before, opened) ||
+      !sameStatIdentity(before, pathAfterOpen)
+    ) {
+      throw new RaceSafeReadError('changed', `${label} changed while opening`);
+    }
+    await options.verify?.('post-open', {
+      realPath: realPathAfterOpen,
+      identity: identityOf(opened),
+    });
+    await options.hooks?.afterOpen?.();
+
+    const hash = createHash(options.algorithm ?? 'sha256');
+    const buffer = Buffer.allocUnsafe(64 * 1024);
+    for (;;) {
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
+      if (bytesRead === 0) break;
+      hash.update(buffer.subarray(0, bytesRead));
+    }
+    await options.hooks?.beforeFinalCheck?.();
+
+    const [afterHandle, afterPath, afterRealPath] = await Promise.all([
+      handle.stat({ bigint }),
+      fs.lstat(file, { bigint }),
+      fs.realpath(file),
+    ]);
+    if (
+      !afterPath.isFile() ||
+      afterPath.isSymbolicLink() ||
+      afterRealPath !== beforeRealPath ||
+      !sameStatIdentity(before, afterHandle) ||
+      !sameStatIdentity(before, afterPath)
+    ) {
+      throw new RaceSafeReadError('changed', `${label} changed while reading`);
+    }
+    await options.verify?.('post-read', {
+      realPath: afterRealPath,
+      identity: identityOf(afterHandle),
+    });
+    return { digest: hash.digest('hex'), stat: afterHandle, realPath: afterRealPath };
   } finally {
     await handle.close();
   }

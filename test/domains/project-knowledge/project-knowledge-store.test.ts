@@ -43,6 +43,38 @@ function record(overrides: Partial<ProjectKnowledgeRecord> = {}): ProjectKnowled
 }
 
 describe('project knowledge local store', () => {
+  test('counts records within the current project independently of list limits', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-counts-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-counts-storage-');
+    let store: ProjectKnowledgeLocalStore | undefined;
+    try {
+      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      await store.apply({ kind: 'upsert', record: record({ id: 'trial', state: 'trial' }) });
+      await store.apply({ kind: 'upsert', record: record({ id: 'proven', state: 'proven' }) });
+      await store.apply({
+        kind: 'upsert',
+        record: record({ id: 'history', state: 'superseded' }),
+      });
+      await store.apply({
+        kind: 'upsert',
+        record: record({ id: 'foreign', projectId: 'another-project', state: 'enforced' }),
+      });
+
+      expect(store.projectCounts('project-comet')).toEqual({
+        active: 2,
+        trial: 1,
+        proven: 1,
+        enforced: 0,
+        superseded: 1,
+        total: 3,
+      });
+    } finally {
+      store?.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
   test('rebuilds the derived record table when its machine schema is obsolete', async () => {
     const root = await temporaryRoot('comet-project-knowledge-schema-');
     const storageRoot = await temporaryRoot('comet-project-knowledge-schema-storage-');
@@ -431,6 +463,43 @@ describe('project knowledge local store', () => {
         (refreshed.records?.[0]?.sourceVersions ?? []).map((version) => version.source),
       ).toEqual(expect.arrayContaining(sources));
       expect(refreshed.records?.[0]?.sourceVersions).toHaveLength(sources.length);
+    } finally {
+      store?.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps records backed by source files larger than one MiB current', async () => {
+    const root = await temporaryRoot('comet-project-knowledge-large-source-');
+    const storageRoot = await temporaryRoot('comet-project-knowledge-large-source-storage-');
+    const sourceFile = path.join(root, 'docs', 'process.md');
+    let store: ProjectKnowledgeLocalStore | undefined;
+    try {
+      await fs.mkdir(path.dirname(sourceFile), { recursive: true });
+      await fs.writeFile(sourceFile, `# Build\n\n${'Keep this source current.\n'.repeat(50_000)}`);
+      const sourceBytes = await fs.readFile(sourceFile);
+      const sourceStat = await fs.stat(sourceFile);
+      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      const initial = record({
+        verification: [],
+        sourceVersions: [
+          {
+            source: 'docs/process.md',
+            size: sourceStat.size,
+            modifiedAt: Math.trunc(sourceStat.mtimeMs),
+            digest: createHash('sha256').update(sourceBytes).digest('hex'),
+          },
+        ],
+      });
+      await store.apply({ kind: 'upsert', record: initial });
+
+      await expect(
+        store.apply({ kind: 'refresh', projectId: initial.projectId, id: initial.id }),
+      ).resolves.toMatchObject({
+        changed: false,
+        records: [expect.objectContaining({ id: initial.id, state: 'proven' })],
+      });
     } finally {
       store?.close();
       await fs.rm(root, { recursive: true, force: true });

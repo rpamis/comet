@@ -9,6 +9,7 @@ import type {
   ProjectKnowledgeResult,
   ProjectKnowledgeStatus,
   ProjectKnowledgeMutation,
+  ProjectKnowledgeRecordCounts,
 } from './types.js';
 import {
   mergeProjectKnowledgeRecord,
@@ -27,7 +28,7 @@ import type { ProjectKnowledgeDocument } from './types.js';
 import { projectKnowledgeSourceReferenceMatchesText } from './source-validity.js';
 import { openProjectKnowledgeDatabase, type ProjectKnowledgeDatabase } from './sqlite.js';
 import type { AgentContextOutcomeStatus } from '../agent-learning/index.js';
-import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
+import { hashProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
 
 export interface ProjectKnowledgeLocalStoreOptions extends Omit<
   ProjectKnowledgeIndexOptions,
@@ -160,13 +161,10 @@ interface SourceInspection {
 }
 
 async function sourceContentDigest(projectRoot: string, source: string): Promise<string> {
-  const { bytes } = await readProtectedProjectFile(
-    projectRoot,
-    source,
-    MAX_SOURCE_VALIDATION_BYTES,
-    { label: `Project Knowledge source ${source}` },
-  );
-  return createHash('sha256').update(bytes).digest('hex');
+  const { digest } = await hashProtectedProjectFile(projectRoot, source, {
+    label: `Project Knowledge source ${source}`,
+  });
+  return digest;
 }
 
 async function inspectRecordSources(
@@ -544,6 +542,25 @@ export class ProjectKnowledgeLocalStore {
       )
       .all(...values, limit) as unknown as StoredRecordRow[];
     return rows.map((row) => parseProjectKnowledgeRecord(JSON.parse(row.payload_json)));
+  }
+
+  projectCounts(projectId: string): ProjectKnowledgeRecordCounts {
+    const rows = this.requireDatabase()
+      .prepare(
+        'SELECT state, COUNT(*) AS count FROM pk_records WHERE project_id = ? GROUP BY state',
+      )
+      .all(projectId) as unknown as Array<{
+      state: ProjectKnowledgeRecord['state'];
+      count: number | bigint;
+    }>;
+    const counts = { active: 0, trial: 0, proven: 0, enforced: 0, superseded: 0, total: 0 };
+    for (const row of rows) {
+      const count = typeof row.count === 'bigint' ? Number(row.count) : row.count;
+      counts[row.state] = count;
+      counts.total += count;
+      if (row.state !== 'superseded') counts.active += count;
+    }
+    return counts;
   }
 
   read(id: string): ProjectKnowledgeRecord | null {

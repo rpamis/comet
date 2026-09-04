@@ -13,8 +13,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Fixed
 
 - **Dependency security updates**: Updated the transitive `fast-uri` dependency to `3.1.7` and synchronized npm and pnpm lockfiles to remove vulnerable `browserslist` and `fast-uri` resolutions, addressing the reported URL normalization, SSRF, and Browserslist stats-processing risks.
-- **Project Knowledge freshness**: Content digests now detect source changes even when file size and modification time are unchanged, preventing stale indexed sections and learned policies from remaining active.
-- **Memory status counts**: Forgotten and conflicted records are no longer reported as active personal memory when the underlying record remains for history or audit purposes.
+- **Project Knowledge freshness**: Streamed content digests now validate sources of any size and detect changes even when file size and modification time are unchanged; Dashboard refreshes invalidate stale records before rebuilding models and reports project-wide totals independently of its display limit.
+- **Memory deletion and status**: Forgotten content is removed from Markdown projections during reconciliation, and forgotten or conflicted records are no longer reported as active personal memory when retained for history or audit purposes.
 - **Native legacy Supervisor recovery**: A stale, never-started v2 execution overlay no longer overrides completed `children.v1` portable history; Native detects the conflict, removes only the exact empty overlay, and accepts the portable parent handoff without manual file deletion.
 - **Native Supervisor cleanup**: Supervisor Change Archive now deletes integrated Child and integration branches against the delivered target branch, so cleanup completes from a separate change worktree without manual branch removal.
 - **Archive-owned state finalization**: Native Archive now includes the active change's state and verification artifacts in its authorized archive commit, avoiding manual commits and retry loops.

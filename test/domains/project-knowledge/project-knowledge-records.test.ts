@@ -48,6 +48,18 @@ function sampleRecord(): ProjectKnowledgeRecord {
 }
 
 describe('project knowledge records', () => {
+  test('rejects duplicate source versions', () => {
+    expect(() =>
+      parseProjectKnowledgeRecord({
+        ...sampleRecord(),
+        sourceVersions: [
+          { source: 'docs/process.md', size: 10, modifiedAt: 1 },
+          { source: 'docs/process.md', size: 10, modifiedAt: 1 },
+        ],
+      }),
+    ).toThrow(/duplicate sources/u);
+  });
+
   test('creates a user record from structured input and preserves optional evidence', () => {
     const record = createUserProjectKnowledgeRecord(
       {

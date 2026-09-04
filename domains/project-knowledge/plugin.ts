@@ -271,12 +271,15 @@ async function createProjectKnowledgeModule(
       });
       snapshotProvider = await createProvider();
       const activeProvider = snapshotProvider;
-      await ensureProjectModel(activeProvider);
+      const projectId = resolveStableProjectId(options.projectRoot);
       if (activeProvider instanceof LocalProjectKnowledgeProvider) {
+        await activeProvider.apply({ kind: 'refresh', projectId });
+        await ensureProjectModel(activeProvider);
         await activeProvider.refreshIndex();
+      } else {
+        await ensureProjectModel(activeProvider);
       }
       const status = await activeProvider.status();
-      const projectId = resolveStableProjectId(options.projectRoot);
       const recordsResult = await activeProvider.query({
         kind: 'list',
         projectId,
@@ -321,11 +324,31 @@ async function createProjectKnowledgeModule(
         status,
         records: dashboardRecords,
         counts: {
-          active: records.filter((record) => record.state !== 'superseded').length,
-          trial: records.filter((record) => record.state === 'trial').length,
-          proven: records.filter((record) => record.state === 'proven').length,
-          enforced: records.filter((record) => record.state === 'enforced').length,
-          superseded: records.filter((record) => record.state === 'superseded').length,
+          active:
+            recordsResult.kind === 'list' && recordsResult.counts
+              ? recordsResult.counts.active
+              : records.filter((record) => record.state !== 'superseded').length,
+          trial:
+            recordsResult.kind === 'list' && recordsResult.counts
+              ? recordsResult.counts.trial
+              : records.filter((record) => record.state === 'trial').length,
+          proven:
+            recordsResult.kind === 'list' && recordsResult.counts
+              ? recordsResult.counts.proven
+              : records.filter((record) => record.state === 'proven').length,
+          enforced:
+            recordsResult.kind === 'list' && recordsResult.counts
+              ? recordsResult.counts.enforced
+              : records.filter((record) => record.state === 'enforced').length,
+          superseded:
+            recordsResult.kind === 'list' && recordsResult.counts
+              ? recordsResult.counts.superseded
+              : records.filter((record) => record.state === 'superseded').length,
+          total:
+            recordsResult.kind === 'list' && recordsResult.counts
+              ? recordsResult.counts.total
+              : records.length,
+          displayed: records.length,
         },
         truncated: recordsResult.kind === 'list' ? recordsResult.truncated : false,
         manifestPreview: currentManifest.flatMap((application) => {

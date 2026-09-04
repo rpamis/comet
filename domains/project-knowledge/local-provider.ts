@@ -280,10 +280,21 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
           ...(request.authority ? { authority: request.authority } : {}),
           ...(request.limit ? { limit: request.limit } : {}),
         }) ?? [];
+      const counts =
+        store &&
+        request.projectId &&
+        (request.state === undefined || request.state === 'all') &&
+        request.type === undefined &&
+        request.authority === undefined
+          ? store.projectCounts(request.projectId)
+          : undefined;
       return {
         kind: 'list',
         records,
-        truncated: request.limit !== undefined && records.length >= request.limit,
+        ...(counts === undefined ? {} : { counts }),
+        truncated:
+          request.limit !== undefined &&
+          (counts === undefined ? records.length >= request.limit : counts.total > records.length),
         diagnostics: store ? [] : [this.recordStoreError!],
       };
     }
