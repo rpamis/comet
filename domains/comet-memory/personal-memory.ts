@@ -1332,7 +1332,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
       if (content !== null) {
         const canonical = removeTombstonedMarkdownBullets(
           content,
-          state.tombstones,
+          state,
           target.scope,
           target.projectKey,
         );
@@ -2082,13 +2082,24 @@ function reconcileMarkdown(
 
 function removeTombstonedMarkdownBullets(
   content: string,
-  tombstones: readonly MemoryTombstone[],
+  state: MutableMemoryState,
   scope: 'global' | 'project',
   projectKey: string | undefined,
 ): string {
   const removedLines = new Set(
     parseMarkdown(content)
-      .filter((bullet) => isTombstonedMarkdownText(tombstones, scope, projectKey, bullet.text))
+      .filter(
+        (bullet) =>
+          isTombstonedMarkdownText(state.tombstones, scope, projectKey, bullet.text) &&
+          !state.records.some(
+            (record) =>
+              isVisibleMemoryRecord(state, record) &&
+              record.scope === scope &&
+              record.projectKey === projectKey &&
+              normalizeText(record.category) === normalizeText(bullet.category) &&
+              normalizeText(record.text) === normalizeText(bullet.text),
+          ),
+      )
       .map((bullet) => bullet.line),
   );
   if (removedLines.size === 0) return content;

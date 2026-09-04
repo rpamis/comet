@@ -5,6 +5,7 @@ import path from 'node:path';
 import type { AgentExperienceEvent, AgentLearningDelta } from '../agent-learning/index.js';
 import type { MemoryLanguage } from '../comet-memory/types.js';
 import {
+  hashProtectedProjectFile,
   inspectProtectedProjectPath,
   readProtectedProjectFile,
 } from '../workflow-contract/protected-project-path.js';
@@ -405,17 +406,10 @@ async function reviewSourcesStillCurrent(
         expected: 'file',
       });
       if (!inspected.exists) return source.source;
-      const stat = await fs.stat(inspected.target);
-      const current = await readProtectedProjectFile(
-        projectRoot,
-        source.source,
-        MAX_SOURCE_VALIDATION_BYTES,
-        { label: source.source },
-      );
-      if (
-        Number(stat.size) !== source.size ||
-        createHash('sha256').update(current.bytes).digest('hex') !== source.digest
-      ) {
+      const current = await hashProtectedProjectFile(projectRoot, source.source, {
+        label: source.source,
+      });
+      if (Number(current.stat.size) !== source.size || current.digest !== source.digest) {
         return source.source;
       }
     } catch {
@@ -436,25 +430,21 @@ async function recordSourcesStillCurrent(
         expected: 'file',
       });
       if (!inspected.exists) return version.source;
-      const stat = await fs.stat(inspected.target);
       if (version.digest !== undefined) {
-        const current = await readProtectedProjectFile(
-          projectRoot,
-          version.source,
-          MAX_SOURCE_VALIDATION_BYTES,
-          { label: version.source },
-        );
+        const current = await hashProtectedProjectFile(projectRoot, version.source, {
+          label: version.source,
+        });
+        if (Number(current.stat.size) !== version.size || current.digest !== version.digest) {
+          return version.source;
+        }
+      } else {
+        const stat = await fs.stat(inspected.target);
         if (
           Number(stat.size) !== version.size ||
-          createHash('sha256').update(current.bytes).digest('hex') !== version.digest
+          Math.trunc(Number(stat.mtimeMs)) !== version.modifiedAt
         ) {
           return version.source;
         }
-      } else if (
-        Number(stat.size) !== version.size ||
-        Math.trunc(Number(stat.mtimeMs)) !== version.modifiedAt
-      ) {
-        return version.source;
       }
     } catch {
       return version.source;
@@ -472,6 +462,13 @@ async function recordSourcesStillCurrent(
     referencesBySource.set(reference.source, [...current, reference]);
   }
   for (const [source, sourceReferences] of referencesBySource) {
+    const preciseReferences = sourceReferences.filter(
+      (reference) =>
+        reference.anchor !== undefined ||
+        reference.lineStart !== undefined ||
+        reference.lineEnd !== undefined,
+    );
+    if (preciseReferences.length === 0) continue;
     try {
       const text = (
         await readProtectedProjectFile(projectRoot, source, MAX_SOURCE_VALIDATION_BYTES, {
@@ -479,7 +476,7 @@ async function recordSourcesStillCurrent(
         })
       ).bytes.toString('utf8');
       if (
-        !sourceReferences.every((reference) =>
+        !preciseReferences.every((reference) =>
           projectKnowledgeSourceReferenceMatchesText(text, reference),
         )
       ) {

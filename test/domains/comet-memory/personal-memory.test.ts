@@ -535,6 +535,35 @@ describe('PersonalMemoryService', () => {
     });
   });
 
+  it('keeps an explicitly re-added memory when an older category tombstone has the same text', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const text = '提交前运行聚焦测试';
+      const forgotten = await memories.remember({
+        scope: 'global',
+        category: '旧习惯',
+        text,
+      });
+      await memories.remove(forgotten.id);
+      const replacement = await memories.remember({
+        scope: 'global',
+        category: '当前习惯',
+        text,
+      });
+      const file = path.join(root, 'profile.md');
+      await writeFile(file, `${await readFile(file, 'utf8')}\n## 其他\n\n- 保留无关内容\n`);
+
+      await memories.manage({ scope: 'global' });
+
+      expect(await readFile(file, 'utf8')).toContain(`## 当前习惯\n\n- ${text}`);
+      expect((await memories.retrieve({ scope: 'global' })).records).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: replacement.id, category: '当前习惯', text }),
+        ]),
+      );
+    });
+  });
+
   it('restores inferred memory when a newer outcome revision replaces negative feedback', async () => {
     await withTempRepository(async (root) => {
       const memories = service(root);
