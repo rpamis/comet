@@ -16,6 +16,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Project Knowledge freshness**: Content digests now detect source changes even when file size and modification time are unchanged, preventing stale indexed sections and learned policies from remaining active.
 - **Memory status counts**: Forgotten and conflicted records are no longer reported as active personal memory when the underlying record remains for history or audit purposes.
 - **Native legacy Supervisor recovery**: A stale, never-started v2 execution overlay no longer overrides completed `children.v1` portable history; Native detects the conflict, removes only the exact empty overlay, and accepts the portable parent handoff without manual file deletion.
+- **Native Supervisor cleanup**: Supervisor Change Archive now deletes integrated Child and integration branches against the delivered target branch, so cleanup completes from a separate change worktree without manual branch removal.
 - **Archive-owned state finalization**: Native Archive now includes the active change's state and verification artifacts in its authorized archive commit, avoiding manual commits and retry loops.
 - **Task completion handoff**: Native continuation guidance reuses the original task context instead of probing undeclared environment variables.
 

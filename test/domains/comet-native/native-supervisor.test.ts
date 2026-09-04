@@ -1333,6 +1333,9 @@ children:
       git(['add', '.']);
       git(['commit', '-m', 'seed']);
       const targetCommit = git(['rev-parse', 'main']);
+      const targetRoot = path.join(repository, '.worktrees', 'main-target');
+      git(['switch', '-c', 'comet/parent']);
+      git(['worktree', 'add', targetRoot, 'main']);
       const prepared = await prepareNativeSupervisorIntegrationWorkspace({
         projectRoot: repository,
         parent: 'parent',
@@ -1394,9 +1397,9 @@ children:
         },
       });
       const paths = await nativeProjectPaths(repository, 'docs');
-      await fs.writeFile(path.join(repository, 'target-update.txt'), 'target moved\n');
-      execFileSync('git', ['add', '.'], { cwd: repository });
-      execFileSync('git', ['commit', '-m', 'target moved'], { cwd: repository });
+      await fs.writeFile(path.join(targetRoot, 'target-update.txt'), 'target moved\n');
+      execFileSync('git', ['add', '.'], { cwd: targetRoot });
+      execFileSync('git', ['commit', '-m', 'target moved'], { cwd: targetRoot });
       await expect(
         finalizeNativeSupervisorDelivery({ paths, state: finalVerified }),
       ).rejects.toThrow(/target changed|rerun/i);
@@ -1435,6 +1438,8 @@ children:
       expect(delivered.state.children[0]).toMatchObject({ status: 'archived' });
       expect(delivered.state.integration.headCommit).toBe(reverified.integration.headCommit);
       expect(git(['rev-parse', 'main'])).toBe(reverified.integration.headCommit);
+      expect(git(['branch', '--list', reverified.integration.branch])).toBe('');
+      expect(git(['branch', '--list', expectedChildBranch])).toBe('');
       const redelivered = await finalizeNativeSupervisorDelivery({
         paths,
         state: delivered.state,
@@ -1446,6 +1451,7 @@ children:
         for (const worktree of [
           path.join(repository, '.worktrees', 'parent-integration'),
           path.join(repository, '.worktrees', 'parent-integration-core'),
+          path.join(repository, '.worktrees', 'main-target'),
         ]) {
           try {
             execFileSync('git', ['worktree', 'remove', '--force', worktree], {

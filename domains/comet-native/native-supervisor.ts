@@ -1377,7 +1377,7 @@ async function finalizeNativeSupervisorDeliveryLocked(options: {
       state,
       targetCommit: targetHeadBeforeDelivery,
     });
-    await executeNativeSupervisorCleanup({ paths: options.paths, plan });
+    await executeNativeSupervisorCleanup({ paths: options.paths, plan, targetRoot });
     if (state.children.every(({ status }) => status === 'archived')) {
       await clearNativeSupervisorCleanupJournal(options.paths, state.parent);
       return { state, targetRoot, targetCommit: targetHeadBeforeDelivery };
@@ -1436,7 +1436,11 @@ async function finalizeNativeSupervisorDeliveryLocked(options: {
   }
   const next = cloneState(state);
   for (const child of next.children) child.status = 'archived';
-  await executeNativeSupervisorCleanup({ paths: options.paths, plan: cleanupPlan });
+  await executeNativeSupervisorCleanup({
+    paths: options.paths,
+    plan: cleanupPlan,
+    targetRoot,
+  });
   next.stateVersion += 1;
   await writeNativeSupervisorState(options.paths, next);
   await clearNativeSupervisorCleanupJournal(options.paths, state.parent);
@@ -1581,6 +1585,7 @@ async function loadOrPreflightNativeSupervisorCleanup(options: {
 async function executeNativeSupervisorCleanup(options: {
   paths: NativeProjectPaths;
   plan: NativeSupervisorCleanupPlan;
+  targetRoot: string;
 }): Promise<void> {
   for (const worktree of options.plan.worktrees) {
     const registered = listGitWorktreeRoots(options.paths.projectRoot)
@@ -1601,7 +1606,7 @@ async function executeNativeSupervisorCleanup(options: {
   }
   for (const branch of options.plan.branches) {
     if (!isLocalGitBranch(options.paths.projectRoot, branch)) continue;
-    runGitCommand(options.paths.projectRoot, ['branch', '-d', branch]);
+    runGitCommand(options.targetRoot, ['branch', '-d', branch]);
   }
 }
 
