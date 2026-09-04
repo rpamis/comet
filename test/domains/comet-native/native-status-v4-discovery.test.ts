@@ -94,7 +94,7 @@ describe('Native v4 registered-worktree status discovery', () => {
       },
       continuation: {
         disposition: 'continue',
-        action: 'confirm-shape',
+        action: 'prepare-shape-confirmation',
       },
     });
 
@@ -151,7 +151,7 @@ describe('Native v4 registered-worktree status discovery', () => {
         projectRoot: path.resolve(repository.root),
         bindingState: 'aligned',
       },
-      continuation: { action: 'confirm-shape' },
+      continuation: { action: 'prepare-shape-confirmation' },
     });
   });
 });

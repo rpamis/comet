@@ -13,10 +13,10 @@ import {
   nativeProjectPaths,
 } from '../../../domains/comet-native/native-paths.js';
 import {
-  confirmNativePortableShape,
   createNativePortableChange,
   nativePortableChangeDir,
 } from '../../../domains/comet-native/native-portable-runtime.js';
+import { confirmNativePortableShape } from '../../helpers/native-portable-confirmed-transition.js';
 import {
   createNativeSupervisorState,
   createNativeSupervisorTask,
@@ -58,14 +58,17 @@ describe('Native portable status', () => {
       phase: 'shape',
       loop: { stage: 'shape', iteration: 0, attempt: 0 },
       localExecution: { status: 'missing', operation: null },
-      continuation: { action: 'confirm-shape' },
+      continuation: { action: 'prepare-shape-confirmation' },
     });
     expect((await listNativePortableStatus({ paths })).items).toHaveLength(1);
     await expect(nativeSelectCommand(['portable-status'], root)).resolves.toMatchObject({
       exitCode: 0,
       data: {
         selected: 'portable-status',
-        continuation: { schema: 'comet.native.continuation.v2', action: 'confirm-shape' },
+        continuation: {
+          schema: 'comet.native.continuation.v2',
+          action: 'prepare-shape-confirmation',
+        },
       },
     });
   });

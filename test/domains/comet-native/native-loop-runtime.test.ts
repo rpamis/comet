@@ -4,6 +4,7 @@ import {
   applyNativeVerifierEnvelope,
   confirmNativeSkillCoordinatedPass,
   confirmNativePortableAcceptance,
+  prepareNativePortableShapeConfirmation,
   recordNativeVerifierUnavailable,
   recordNativeVerifierExecutionError,
   reserveNativeVerifierAttempt,
@@ -37,18 +38,28 @@ const checks: NativePortableCheckSummary[] = [
   },
 ];
 
+function confirmAcceptance(
+  state: NativePortableState,
+  acceptance: Array<{ id: string; source: string; text: string }>,
+): NativePortableState {
+  return confirmNativePortableAcceptance({
+    state: prepareNativePortableShapeConfirmation({ state, acceptance }),
+    acceptance,
+  });
+}
+
 function buildState(identityProvider = 'test-host'): {
   state: NativePortableState;
   runner: ReturnType<typeof createNativeRunnerChannel>;
 } {
   const runner = createNativeRunnerChannel();
-  let state = confirmNativePortableAcceptance({
-    state: createNativePortableState({ name: 'loop-change', language: 'en' }),
-    acceptance: [
+  let state = confirmAcceptance(
+    createNativePortableState({ name: 'loop-change', language: 'en' }),
+    [
       { id: 'A1', source: 'brief.md', text: 'First behavior works.' },
       { id: 'A2', source: 'brief.md', text: 'Second behavior works.' },
     ],
-  });
+  );
   state = submitNativeBuilderCandidate({
     state,
     input: {
@@ -132,10 +143,10 @@ function resubmitRepair(
 describe('Native portable Build/Verify loop', () => {
   it('requires a passed read-only review from a different execution before Verify', () => {
     const runner = createNativeRunnerChannel();
-    const state = confirmNativePortableAcceptance({
-      state: createNativePortableState({ name: 'reviewed-change', language: 'en' }),
-      acceptance: [{ id: 'A1', source: 'brief.md', text: 'Reviewed behavior works.' }],
-    });
+    const state = confirmAcceptance(
+      createNativePortableState({ name: 'reviewed-change', language: 'en' }),
+      [{ id: 'A1', source: 'brief.md', text: 'Reviewed behavior works.' }],
+    );
     const identity = runner.captureExecutionIdentity({
       identityProvider: 'test-host',
       executionRef: 'builder-review-gate',
@@ -241,10 +252,10 @@ describe('Native portable Build/Verify loop', () => {
   });
 
   it('requires a reviewed parent handoff when every child is done', () => {
-    const state = confirmNativePortableAcceptance({
-      state: createNativePortableState({ name: 'parent-change', language: 'en' }),
-      acceptance: [{ id: 'A1', source: 'brief.md', text: 'Parent behavior works.' }],
-    });
+    const state = confirmAcceptance(
+      createNativePortableState({ name: 'parent-change', language: 'en' }),
+      [{ id: 'A1', source: 'brief.md', text: 'Parent behavior works.' }],
+    );
     const continuation = nativePortableContinuation(state, {
       contractHash: 'contract',
       confirmed: true,
@@ -305,8 +316,9 @@ describe('Native portable Build/Verify loop', () => {
 
     expect(continuation).toMatchObject({
       disposition: 'await-user',
-      action: 'confirm-shape',
-      requiredInputs: ['summary', 'coordination-choice', 'shared-understanding-confirmation'],
+      requiresUserDecision: true,
+      action: 'prepare-shape-confirmation',
+      requiredInputs: ['summary', 'coordination-choice'],
       commandArgs: expect.arrayContaining(['--coordination-mode', '<coordination-mode>']),
       inputOptions: [
         expect.objectContaining({ name: 'summary', flag: '--summary' }),
@@ -316,7 +328,6 @@ describe('Native portable Build/Verify loop', () => {
           valueKind: 'choice',
           choices: ['multi-session', 'single-session'],
         }),
-        expect.objectContaining({ name: 'confirmed', flag: '--confirmed' }),
       ],
       userCommunication: {
         required: true,
@@ -330,14 +341,38 @@ describe('Native portable Build/Verify loop', () => {
     );
     expect(resumed).toMatchObject({
       disposition: 'continue',
-      action: 'confirm-shape',
-      requiredInputs: ['summary', 'shared-understanding-confirmation'],
+      requiresUserDecision: false,
+      action: 'prepare-shape-confirmation',
+      requiredInputs: ['summary'],
       userCommunication: { required: false },
     });
     expect(resumed.commandArgs).not.toContain('--coordination-mode');
     expect(resumed.inputOptions).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ name: 'coordination-mode' })]),
     );
+    expect(resumed.commandArgs).not.toContain('--confirmed');
+
+    const awaitingConfirmation = prepareNativePortableShapeConfirmation({
+      state,
+      acceptance: [{ id: 'A1', source: 'brief.md', text: 'The Shape is ready.' }],
+    });
+    const confirmation = nativePortableContinuation(awaitingConfirmation);
+    expect(confirmation).toMatchObject({
+      disposition: 'await-user',
+      requiresUserDecision: true,
+      action: 'confirm-shape',
+      commandArgs: null,
+      requiredInputs: ['summary', 'shared-understanding-confirmation'],
+      userCommunication: { required: true, suggestedReply: 'Confirm and enter Build' },
+      commandAlternatives: [
+        expect.objectContaining({
+          name: 'confirm-shape',
+          stateVersion: 2,
+          expectedAction: 'confirm-shape',
+          commandArgs: expect.arrayContaining(['--confirmed']),
+        }),
+      ],
+    });
   });
 
   it('requires user confirmation before a package-local pass becomes archive-ready', () => {

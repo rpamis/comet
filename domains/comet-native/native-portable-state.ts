@@ -36,6 +36,7 @@ const ROOT_KEYS = new Set([
   'status',
   'state_version',
   'brief',
+  'shape_confirmation_hash',
   'children_contract_hash',
   'coordination_mode',
   'spec_changes',
@@ -763,6 +764,14 @@ export function parseNativePortableState(value: unknown): NativePortableState {
     ),
     state_version: integerValue(root.state_version, 'Native state_version', 1),
     brief: 'brief.md',
+    ...(root.shape_confirmation_hash === undefined
+      ? {}
+      : {
+          shape_confirmation_hash: hashValue(
+            root.shape_confirmation_hash,
+            'Native Shape confirmation hash',
+          ),
+        }),
     ...(root.children_contract_hash === undefined
       ? {}
       : {

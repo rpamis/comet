@@ -97,8 +97,15 @@ export function confirmNativePortableAcceptance(options: {
   acceptance: Array<Pick<NativePortableAcceptanceState, 'id' | 'source' | 'text'>>;
 }): NativePortableState {
   const state = parseNativePortableState(options.state);
-  if (state.phase !== 'shape' || state.status !== 'active') {
-    throw new Error('Native acceptance can only be confirmed from active Shape');
+  if (
+    state.phase !== 'shape' ||
+    state.status !== 'await-user' ||
+    state.loop.stage !== 'await-user' ||
+    state.loop.next_action !== 'confirm-shape'
+  ) {
+    throw new Error(
+      'Native acceptance can only be confirmed from the persisted Shape confirmation boundary',
+    );
   }
   if (options.acceptance.length === 0) {
     throw new Error('Native acceptance cannot be empty');
@@ -108,6 +115,7 @@ export function confirmNativePortableAcceptance(options: {
   return parseNativePortableState({
     ...state,
     phase: 'build',
+    status: 'active',
     state_version: nextVersion(state),
     loop: {
       ...state.loop,
@@ -115,6 +123,32 @@ export function confirmNativePortableAcceptance(options: {
       iteration: 1,
       attempt: 0,
       next_action: 'submit-builder-candidate',
+    },
+    acceptance: options.acceptance.map((entry) => ({ ...entry, result: 'pending', reason: null })),
+  });
+}
+
+export function prepareNativePortableShapeConfirmation(options: {
+  state: NativePortableState;
+  acceptance: Array<Pick<NativePortableAcceptanceState, 'id' | 'source' | 'text'>>;
+}): NativePortableState {
+  const state = parseNativePortableState(options.state);
+  if (state.phase !== 'shape' || state.status !== 'active' || state.loop.stage !== 'shape') {
+    throw new Error('Native Shape confirmation can only be prepared from active Shape');
+  }
+  if (options.acceptance.length === 0) {
+    throw new Error('Native acceptance cannot be empty');
+  }
+  const ids = options.acceptance.map(({ id }) => id);
+  if (new Set(ids).size !== ids.length) throw new Error('Native acceptance IDs must be unique');
+  return parseNativePortableState({
+    ...state,
+    status: 'await-user',
+    state_version: nextVersion(state),
+    loop: {
+      ...state.loop,
+      stage: 'await-user',
+      next_action: 'confirm-shape',
     },
     acceptance: options.acceptance.map((entry) => ({ ...entry, result: 'pending', reason: null })),
   });

@@ -15,21 +15,24 @@ import {
   nativeProjectPaths,
 } from '../../../domains/comet-native/native-paths.js';
 import {
-  confirmNativePortableShape,
+  confirmNativePortableShape as confirmNativePortableShapeAtBoundary,
   confirmNativePortableSkillCoordinatedPass,
   createNativePortableChange,
   dispatchNativePortableVerifier,
+  ensureNativePortableAcceptanceCurrentLocked,
   executeNativePortableCheckPlan,
   isNativePortableChange,
   nativeLocalExecutionFile,
   nativePortableChangeDir,
   nativePortableStateFile,
+  prepareNativePortableShapeConfirmation,
   readNativePortableChange,
   recordNativePortableVerifierFailure,
   retryNativePortableVerifier,
   submitNativePortableBuilderCandidate,
   submitNativePortableVerifierResult,
 } from '../../../domains/comet-native/native-portable-runtime.js';
+import { confirmNativePortableShape } from '../../helpers/native-portable-confirmed-transition.js';
 import { createNativeRunnerChannel } from '../../../domains/comet-native/native-runner-protocol.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
 
@@ -113,11 +116,285 @@ describe('Native portable Runtime vertical path', () => {
         { capability: 'new-capability', operation: 'create' },
       ],
     });
+  });
 
-    await fs.mkdir(path.join(changeDir, 'specs', 'bad_name'));
-    await expect(confirmNativePortableShape({ paths, name: 'discovery' })).rejects.toThrow(
-      'Invalid Native capability',
+  it('rejects an invalid proposed capability while preparing Shape confirmation', async () => {
+    await createNativePortableChange({ paths, name: 'invalid-capability', language: 'en' });
+    const invalidDir = nativePortableChangeDir(paths, 'invalid-capability');
+    await fs.writeFile(
+      path.join(invalidDir, 'brief.md'),
+      '# Acceptance examples\n- The invalid capability is rejected.\n',
     );
+    await fs.mkdir(path.join(invalidDir, 'specs', 'bad_name'));
+    await expect(
+      prepareNativePortableShapeConfirmation({ paths, name: 'invalid-capability' }),
+    ).rejects.toThrow('Invalid Native capability');
+  });
+
+  it('persists the Shape confirmation boundary and rejects blockers or early confirmation', async () => {
+    await createNativePortableChange({ paths, name: 'shape-boundary', language: 'en' });
+    const changeDir = nativePortableChangeDir(paths, 'shape-boundary');
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      '# Acceptance examples\n- The confirmation boundary is persisted.\n',
+    );
+
+    await expect(
+      confirmNativePortableShapeAtBoundary({ paths, name: 'shape-boundary' }),
+    ).rejects.toThrow('persisted user confirmation boundary');
+
+    const waiting = await prepareNativePortableShapeConfirmation({
+      paths,
+      name: 'shape-boundary',
+      expectedContinuation: { stateVersion: 1, action: 'prepare-shape-confirmation' },
+    });
+    expect(waiting).toMatchObject({
+      phase: 'shape',
+      status: 'await-user',
+      state_version: 2,
+      loop: { stage: 'await-user', next_action: 'confirm-shape' },
+      acceptance: [{ id: 'A1', result: 'pending' }],
+    });
+
+    await expect(
+      confirmNativePortableShapeAtBoundary({
+        paths,
+        name: 'shape-boundary',
+        expectedContinuation: { stateVersion: 1, action: 'confirm-shape' },
+      }),
+    ).rejects.toThrow('stale for state version 1');
+
+    await expect(
+      confirmNativePortableShapeAtBoundary({
+        paths,
+        name: 'shape-boundary',
+        expectedContinuation: { stateVersion: 2, action: 'confirm-shape' },
+      }),
+    ).resolves.toMatchObject({ phase: 'build', status: 'active', state_version: 3 });
+  });
+
+  it('keeps a Shape blocker active instead of preparing confirmation', async () => {
+    await createNativePortableChange({ paths, name: 'blocked-shape', language: 'en' });
+    await fs.writeFile(
+      path.join(nativePortableChangeDir(paths, 'blocked-shape'), 'brief.md'),
+      '# Acceptance examples\n- The blocker remains visible.\n\n# Open questions\n- [blocking] Choose the public behavior.\n',
+    );
+    await expect(
+      prepareNativePortableShapeConfirmation({ paths, name: 'blocked-shape' }),
+    ).rejects.toThrow('blocking open question');
+    await expect(readNativePortableChange(paths, 'blocked-shape')).resolves.toMatchObject({
+      phase: 'shape',
+      status: 'active',
+      state_version: 1,
+    });
+  });
+
+  it('keeps a source coverage blocker active instead of preparing confirmation', async () => {
+    await createNativePortableChange({ paths, name: 'blocked-source-coverage', language: 'en' });
+    await fs.writeFile(
+      path.join(nativePortableChangeDir(paths, 'blocked-source-coverage'), 'brief.md'),
+      '# Scope\n## Source coverage\n| Source | Coverage | Decision |\n| --- | --- | --- |\n| requirements.md | partial | [blocking] Map the remaining requirements. |\n\n# Acceptance examples\n- Source coverage remains incomplete.\n\n# Open questions\n- None.\n',
+    );
+    await expect(
+      prepareNativePortableShapeConfirmation({ paths, name: 'blocked-source-coverage' }),
+    ).rejects.toThrow('blocking open question');
+    await expect(readNativePortableChange(paths, 'blocked-source-coverage')).resolves.toMatchObject(
+      {
+        phase: 'shape',
+        status: 'active',
+        state_version: 1,
+      },
+    );
+  });
+
+  it('fails closed when a persisted Shape confirmation boundary has no fingerprint', async () => {
+    await createNativePortableChange({ paths, name: 'missing-shape-fingerprint', language: 'en' });
+    const changeDir = nativePortableChangeDir(paths, 'missing-shape-fingerprint');
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      '# Acceptance examples\n- A missing confirmation fingerprint cannot enter Build.\n',
+    );
+    await prepareNativePortableShapeConfirmation({
+      paths,
+      name: 'missing-shape-fingerprint',
+    });
+    const stateFile = nativePortableStateFile(paths, 'missing-shape-fingerprint');
+    const waitingState = await fs.readFile(stateFile, 'utf8');
+    await fs.writeFile(stateFile, waitingState.replace(/^shape_confirmation_hash:.*\r?\n/mu, ''));
+
+    await expect(
+      confirmNativePortableShapeAtBoundary({
+        paths,
+        name: 'missing-shape-fingerprint',
+      }),
+    ).rejects.toThrow('Native Shape confirmation fingerprint is missing');
+    await expect(
+      readNativePortableChange(paths, 'missing-shape-fingerprint'),
+    ).resolves.toMatchObject({
+      phase: 'shape',
+      status: 'active',
+      state_version: 3,
+      loop: { stage: 'shape', next_action: 'prepare-shape-confirmation' },
+    });
+  });
+
+  it('invalidates the confirmation boundary when Shape changes before confirmation', async () => {
+    await createNativePortableChange({ paths, name: 'changed-shape-boundary', language: 'en' });
+    const changeDir = nativePortableChangeDir(paths, 'changed-shape-boundary');
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      '# Acceptance examples\n- The original Shape is confirmed.\n',
+    );
+    await prepareNativePortableShapeConfirmation({
+      paths,
+      name: 'changed-shape-boundary',
+    });
+
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      '# Acceptance examples\n- A changed Shape must be confirmed again.\n',
+    );
+    await expect(
+      confirmNativePortableShapeAtBoundary({ paths, name: 'changed-shape-boundary' }),
+    ).rejects.toThrow('confirmed acceptance criteria changed');
+    await expect(readNativePortableChange(paths, 'changed-shape-boundary')).resolves.toMatchObject({
+      phase: 'shape',
+      status: 'active',
+      state_version: 3,
+      loop: { stage: 'shape', next_action: 'prepare-shape-confirmation' },
+    });
+  });
+
+  it('invalidates the confirmation boundary when non-acceptance Shape text changes', async () => {
+    await createNativePortableChange({ paths, name: 'changed-shape-context', language: 'en' });
+    const changeDir = nativePortableChangeDir(paths, 'changed-shape-context');
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      '# Scope\n- Original scope.\n\n# Acceptance examples\n- The behavior is accepted.\n',
+    );
+    await prepareNativePortableShapeConfirmation({ paths, name: 'changed-shape-context' });
+
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      '# Scope\n- Changed scope.\n\n# Acceptance examples\n- The behavior is accepted.\n',
+    );
+    await expect(
+      confirmNativePortableShapeAtBoundary({ paths, name: 'changed-shape-context' }),
+    ).rejects.toThrow('Native Shape artifacts changed');
+    await expect(readNativePortableChange(paths, 'changed-shape-context')).resolves.toMatchObject({
+      phase: 'shape',
+      status: 'active',
+      state_version: 3,
+      loop: { stage: 'shape', next_action: 'prepare-shape-confirmation' },
+    });
+  });
+
+  it('returns to active Shape when a blocker is added while confirmation is waiting', async () => {
+    await createNativePortableChange({ paths, name: 'late-shape-blocker', language: 'en' });
+    const changeDir = nativePortableChangeDir(paths, 'late-shape-blocker');
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      '# Acceptance examples\n- The behavior is accepted.\n\n# Open questions\n- None.\n',
+    );
+    await prepareNativePortableShapeConfirmation({ paths, name: 'late-shape-blocker' });
+
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      '# Acceptance examples\n- The behavior is accepted.\n\n# Open questions\n- [blocking] Choose the public behavior.\n',
+    );
+    await expect(
+      confirmNativePortableShapeAtBoundary({ paths, name: 'late-shape-blocker' }),
+    ).rejects.toThrow('Native Shape artifacts changed or became invalid');
+    await expect(readNativePortableChange(paths, 'late-shape-blocker')).resolves.toMatchObject({
+      phase: 'shape',
+      status: 'active',
+      state_version: 3,
+      loop: { stage: 'shape', next_action: 'prepare-shape-confirmation' },
+    });
+  });
+
+  it('clears stale Supervisor coordination before confirming an ordinary Shape', async () => {
+    execFileSync('git', ['-C', root, 'init', '-b', 'master'], { stdio: 'ignore' });
+    await fs.writeFile(path.join(root, 'baseline.txt'), 'baseline\n');
+    execFileSync('git', ['-C', root, 'add', 'baseline.txt'], { stdio: 'ignore' });
+    execFileSync(
+      'git',
+      [
+        '-C',
+        root,
+        '-c',
+        'user.name=Comet Test',
+        '-c',
+        'user.email=comet-test@example.com',
+        'commit',
+        '-m',
+        'baseline',
+      ],
+      { stdio: 'ignore' },
+    );
+    await createNativePortableChange({ paths, name: 'reduced-supervisor', language: 'en' });
+    const changeDir = nativePortableChangeDir(paths, 'reduced-supervisor');
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      '# Scope\n- Original scope.\n\n# Acceptance examples\n- The first behavior is visible.\n- The second behavior is visible.\n',
+    );
+    await fs.writeFile(
+      path.join(changeDir, 'children.yaml'),
+      `schema: comet.native.children.v2
+acceptance_index:
+  A1:
+    source: brief.md
+    text: The first behavior is visible.
+  A2:
+    source: brief.md
+    text: The second behavior is visible.
+children:
+  - name: first-child
+    depends_on: []
+    covers: [A1]
+  - name: second-child
+    depends_on: []
+    covers: [A2]
+`,
+    );
+    const stateFile = nativePortableStateFile(paths, 'reduced-supervisor');
+    const initialState = await fs.readFile(stateFile, 'utf8');
+    await fs.writeFile(
+      stateFile,
+      initialState
+        .replace("isolation: 'current'", "isolation: 'branch'")
+        .replace('change_branch: null', 'change_branch: parent')
+        .replace('target_branch: null', 'target_branch: master'),
+    );
+
+    await prepareNativePortableShapeConfirmation({
+      paths,
+      name: 'reduced-supervisor',
+      coordinationMode: 'multi-session',
+    });
+    const building = await confirmNativePortableShapeAtBoundary({
+      paths,
+      name: 'reduced-supervisor',
+    });
+    expect(building.coordination_mode).toBe('multi-session');
+
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      '# Scope\n- Reduced to an ordinary change.\n\n# Acceptance examples\n- The first behavior is visible.\n- The second behavior is visible.\n',
+    );
+    await fs.rm(path.join(changeDir, 'children.yaml'));
+    await expect(
+      ensureNativePortableAcceptanceCurrentLocked({ paths, state: building }),
+    ).rejects.toThrow('Native Shape artifacts changed');
+
+    const waiting = await prepareNativePortableShapeConfirmation({
+      paths,
+      name: 'reduced-supervisor',
+    });
+    expect(waiting.coordination_mode).toBeUndefined();
+    await expect(
+      confirmNativePortableShapeAtBoundary({ paths, name: 'reduced-supervisor' }),
+    ).resolves.toMatchObject({ phase: 'build', status: 'active' });
   });
 
   it('creates only portable user artifacts and one local execution overlay', async () => {

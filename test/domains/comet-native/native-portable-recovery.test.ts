@@ -14,7 +14,6 @@ import {
 import { recoverNativePortableChange } from '../../../domains/comet-native/native-portable-recovery.js';
 import { applyNativeRunnerInput } from '../../../domains/comet-native/native-runner-input.js';
 import {
-  confirmNativePortableShape,
   createNativePortableChange,
   dispatchNativePortableVerifier,
   executeNativePortableCheckPlan,
@@ -25,6 +24,7 @@ import {
   submitNativePortableBuilderCandidate,
   submitNativePortableVerifierResult,
 } from '../../../domains/comet-native/native-portable-runtime.js';
+import { confirmNativePortableShape } from '../../helpers/native-portable-confirmed-transition.js';
 import { createNativeRunnerChannel } from '../../../domains/comet-native/native-runner-protocol.js';
 import { compareAndSwapNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
 import { toNativePortableText } from '../../../domains/comet-native/native-portable-text.js';

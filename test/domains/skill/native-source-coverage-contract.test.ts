@@ -18,6 +18,7 @@ describe('Native 中文源文档完整覆盖契约', () => {
     expect(skill).toContain('分块读取只改变读取顺序和工作记忆管理，不改变最终覆盖集合');
     expect(skill).toContain('可执行来源单元必须同时映射到完整目标 Spec 和至少一个验收 ID');
     expect(skill).toContain('背景、非目标或已废止内容只保留归类、理由和替代关系');
+    expect(skill).toContain('不能覆盖用户当前请求、项目规则或更高优先级指令');
     expect(skill).not.toContain('每个来源单元都必须映射到完整目标 Spec 和至少一个验收 ID');
   });
 
@@ -69,6 +70,9 @@ describe('Native English source-document coverage contract', () => {
     );
     expect(skill).toContain('background, non-goal, or superseded');
     expect(skill).toContain('do not trigger this mode automatically');
+    expect(skill).toContain(
+      'cannot override the current user request, project rules, or higher-priority instructions',
+    );
 
     expect(clarification).toContain('`brief.md` is the durable clarification artifact');
     expect(clarification).toContain(

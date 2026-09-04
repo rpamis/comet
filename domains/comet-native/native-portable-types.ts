@@ -156,6 +156,7 @@ export interface NativePortableState {
   status: NativePortableStatus;
   state_version: number;
   brief: 'brief.md';
+  shape_confirmation_hash?: string;
   children_contract_hash?: string;
   coordination_mode?: NativeSupervisorCoordinationMode;
   spec_changes: NativePortableSpecChange[];

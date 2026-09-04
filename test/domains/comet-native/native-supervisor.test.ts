@@ -43,13 +43,13 @@ import {
   parseNativeRunnerInput,
 } from '../../../domains/comet-native/native-runner-input.js';
 import {
-  confirmNativePortableShape,
   createNativePortableChange,
   nativePortableChangeDir,
   readNativePortableChange,
   inspectNativeSupervisorParentReviewReadiness,
   returnNativePortableChangeToShape,
 } from '../../../domains/comet-native/native-portable-runtime.js';
+import { confirmNativePortableShape } from '../../helpers/native-portable-confirmed-transition.js';
 import { inspectNativePortableStatus } from '../../../domains/comet-native/native-portable-status.js';
 import { nativeNextCommand } from '../../../domains/comet-native/native-next-command.js';
 
@@ -2067,7 +2067,31 @@ children:
 
       await expect(
         nativeNextCommand(
-          ['parent', '--summary', 'Confirm an invalid completed-child repair plan.', '--confirmed'],
+          [
+            'parent',
+            '--summary',
+            'Prepare the invalid completed-child repair plan for confirmation.',
+          ],
+          repository,
+        ),
+      ).resolves.toMatchObject({
+        exitCode: 0,
+        data: { state: { phase: 'shape', status: 'await-user' } },
+      });
+      const invalidConfirmationState = await readNativePortableChange(paths, 'parent');
+
+      await expect(
+        nativeNextCommand(
+          [
+            'parent',
+            '--summary',
+            'Confirm an invalid completed-child repair plan.',
+            '--confirmed',
+            '--expected-state-version',
+            String(invalidConfirmationState.state_version),
+            '--expected-action',
+            'confirm-shape',
+          ],
           repository,
         ),
       ).rejects.toThrow(/requires an unfinished child covering: A2/iu);
@@ -2096,7 +2120,41 @@ children:
       );
       await expect(
         nativeNextCommand(
-          ['parent', '--summary', 'Confirm the repair child plan.', '--confirmed'],
+          [
+            'parent',
+            '--summary',
+            'Try the changed repair child plan.',
+            '--confirmed',
+            '--expected-state-version',
+            String(invalidConfirmationState.state_version),
+            '--expected-action',
+            'confirm-shape',
+          ],
+          repository,
+        ),
+      ).rejects.toThrow(/Shape artifacts changed/iu);
+      await expect(
+        nativeNextCommand(
+          ['parent', '--summary', 'Prepare the changed repair child plan.'],
+          repository,
+        ),
+      ).resolves.toMatchObject({
+        exitCode: 0,
+        data: { state: { phase: 'shape', status: 'await-user' } },
+      });
+      const repairedConfirmationState = await readNativePortableChange(paths, 'parent');
+      await expect(
+        nativeNextCommand(
+          [
+            'parent',
+            '--summary',
+            'Confirm the repair child plan.',
+            '--confirmed',
+            '--expected-state-version',
+            String(repairedConfirmationState.state_version),
+            '--expected-action',
+            'confirm-shape',
+          ],
           repository,
         ),
       ).resolves.toMatchObject({

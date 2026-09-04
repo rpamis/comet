@@ -24,12 +24,12 @@ import {
 } from '../../../domains/comet-native/native-paths.js';
 import { selectNativeChange } from '../../../domains/comet-native/native-selection.js';
 import {
-  confirmNativePortableShape,
   createNativePortableChange,
   nativePortableChangeDir,
   readNativePortableChange,
   submitNativePortableBuilderCandidate,
 } from '../../../domains/comet-native/native-portable-runtime.js';
+import { confirmNativePortableShape } from '../../helpers/native-portable-confirmed-transition.js';
 import { createNativeRunnerChannel } from '../../../domains/comet-native/native-runner-protocol.js';
 
 function passedReview(reviewerExecutionRef: string) {

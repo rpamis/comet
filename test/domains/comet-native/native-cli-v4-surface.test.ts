@@ -103,6 +103,30 @@ None.
 Run applicable focused checks.
 `;
     await fs.writeFile(path.join(projectRoot, 'docs', 'comet', 'changes', name, 'brief.md'), brief);
+    const prepared = json(
+      await runNativeCli([
+        'next',
+        name,
+        '--summary',
+        'Shape is ready for confirmation',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(prepared).toMatchObject({
+      exitCode: 0,
+      data: {
+        state: { phase: 'shape', status: 'await-user' },
+        continuation: {
+          disposition: 'await-user',
+          requiresUserDecision: true,
+          action: 'confirm-shape',
+          commandArgs: null,
+          userCommunication: { required: true },
+        },
+      },
+    });
+    const preparedState = prepared.data?.state as { state_version: number };
     const confirmed = json(
       await runNativeCli([
         'next',
@@ -110,6 +134,10 @@ Run applicable focused checks.
         '--summary',
         'Shared understanding confirmed',
         '--confirmed',
+        '--expected-state-version',
+        String(preparedState.state_version),
+        '--expected-action',
+        'confirm-shape',
         '--json',
         ...projectArgs(),
       ]),
@@ -220,10 +248,17 @@ Run applicable focused checks.
 
     expect(result.data?.continuation).toMatchObject({
       disposition: 'await-user',
-      action: 'confirm-shape',
-      requiredInputs: ['summary', 'coordination-choice', 'shared-understanding-confirmation'],
+      requiresUserDecision: true,
+      action: 'prepare-shape-confirmation',
+      requiredInputs: ['summary', 'coordination-choice'],
       userCommunication: { required: true, suggestedReply: '回复 A 或 B' },
     });
+    expect(result.data?.continuation.userCommunication.agentInstruction).toContain(
+      'prepare-shape-confirmation',
+    );
+    expect(result.data?.continuation.userCommunication.agentInstruction).not.toContain(
+      '--confirmed',
+    );
   });
 
   it.each([
@@ -271,7 +306,7 @@ Run applicable focused checks.
         schema: 'comet.native.v4',
         continuation: {
           schema: 'comet.native.continuation.v2',
-          action: 'confirm-shape',
+          action: 'prepare-shape-confirmation',
           runnerAction: { kind: 'none' },
         },
       },
@@ -285,7 +320,7 @@ Run applicable focused checks.
       expect(result.data).toMatchObject({
         continuation: {
           schema: 'comet.native.continuation.v2',
-          action: 'confirm-shape',
+          action: 'prepare-shape-confirmation',
           runnerAction: { kind: 'none' },
         },
       });
@@ -306,7 +341,7 @@ Run applicable focused checks.
       data: {
         continuation: {
           schema: 'comet.native.continuation.v2',
-          action: 'confirm-shape',
+          action: 'prepare-shape-confirmation',
           runnerAction: { kind: 'none' },
         },
       },
@@ -771,10 +806,10 @@ Run applicable focused checks.
             goal_cycle: 2,
             iteration: 0,
             attempt: 0,
-            next_action: 'confirm-shape',
+            next_action: 'prepare-shape-confirmation',
           },
         },
-        continuation: { action: 'confirm-shape' },
+        continuation: { action: 'prepare-shape-confirmation' },
       },
     });
 
@@ -800,7 +835,7 @@ Run applicable focused checks.
           status: 'active',
           acceptance: [],
           builder_handoff: null,
-          loop: { next_action: 'confirm-shape' },
+          loop: { next_action: 'prepare-shape-confirmation' },
         },
       },
     );
@@ -812,7 +847,7 @@ Run applicable focused checks.
       exitCode: 0,
       data: {
         ready: false,
-        continuation: { action: 'confirm-shape' },
+        continuation: { action: 'prepare-shape-confirmation' },
       },
     });
 
@@ -834,6 +869,21 @@ None.
 Run applicable focused checks.
 `;
     await fs.writeFile(path.join(projectRoot, 'docs', 'comet', 'changes', name, 'brief.md'), brief);
+    const updatedPrepared = json(
+      await runNativeCli([
+        'next',
+        name,
+        '--summary',
+        'Updated Shape is ready for confirmation',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(updatedPrepared).toMatchObject({
+      exitCode: 0,
+      data: { state: { phase: 'shape', status: 'await-user' } },
+    });
+    const updatedPreparedState = updatedPrepared.data?.state as { state_version: number };
     const reconfirmed = json(
       await runNativeCli([
         'next',
@@ -841,6 +891,10 @@ Run applicable focused checks.
         '--summary',
         'Updated Shape confirmed',
         '--confirmed',
+        '--expected-state-version',
+        String(updatedPreparedState.state_version),
+        '--expected-action',
+        'confirm-shape',
         '--json',
         ...projectArgs(),
       ]),
@@ -936,10 +990,10 @@ Run applicable focused checks.
             goal_cycle: 2,
             iteration: 0,
             attempt: 0,
-            next_action: 'confirm-shape',
+            next_action: 'prepare-shape-confirmation',
           },
         },
-        continuation: { action: 'confirm-shape' },
+        continuation: { action: 'prepare-shape-confirmation' },
       },
     });
 

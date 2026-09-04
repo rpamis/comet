@@ -25,7 +25,6 @@ import {
 import { parseNativeChildrenContract } from '../../../domains/comet-native/native-children.js';
 import { nativeNextCommand } from '../../../domains/comet-native/native-next-command.js';
 import {
-  confirmNativePortableShape,
   confirmNativePortableSkillCoordinatedPass,
   createNativePortableChange,
   dispatchNativePortableVerifier,
@@ -37,6 +36,7 @@ import {
   submitNativePortableBuilderCandidate,
   submitNativePortableVerifierResult,
 } from '../../../domains/comet-native/native-portable-runtime.js';
+import { confirmNativePortableShape } from '../../helpers/native-portable-confirmed-transition.js';
 import { createNativeRunnerChannel } from '../../../domains/comet-native/native-runner-protocol.js';
 import { writeNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
 import {
