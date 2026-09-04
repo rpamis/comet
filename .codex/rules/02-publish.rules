@@ -1,0 +1,32 @@
+# Project-local Codex execution policy for release publication.
+
+prefix_rule(
+    pattern = [["npm", "pnpm"], "publish"],
+    decision = "prompt",
+    justification = "Publishing Comet is an external release action and requires explicit authorization for the current version and tag.",
+    match = [
+        "npm publish",
+        "npm publish --tag next",
+        "pnpm publish",
+        "pnpm publish --tag latest",
+    ],
+    not_match = [
+        "npm pack",
+        "pnpm test",
+    ],
+)
+
+prefix_rule(
+    pattern = ["gh", "release", ["create", "delete", "edit"]],
+    decision = "prompt",
+    justification = "GitHub release mutation requires explicit authorization and verified release metadata.",
+    match = [
+        "gh release create v0.4.0",
+        "gh release delete v0.4.0",
+        "gh release edit v0.4.0 --draft=false",
+    ],
+    not_match = [
+        "gh release view v0.4.0",
+        "gh release list",
+    ],
+)

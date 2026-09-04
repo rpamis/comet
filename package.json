@@ -28,6 +28,7 @@
     "dist",
     "bin",
     "assets",
+    "!assets/AGENTS.md",
     "!assets/skills-maintainer",
     "!assets/skills-maintainer/**",
     "eval/.env.example",

@@ -1,0 +1,38 @@
+# Project-local Codex execution policy for destructive Git commands.
+
+prefix_rule(
+    pattern = ["git", "reset", "--hard"],
+    decision = "prompt",
+    justification = "Hard reset can discard unrelated Comet workspace changes; inspect and preserve them first.",
+    match = [
+        "git reset --hard",
+        "git reset --hard HEAD~1",
+    ],
+    not_match = [
+        "git reset --soft HEAD~1",
+    ],
+)
+
+prefix_rule(
+    pattern = ["git", "clean"],
+    decision = "prompt",
+    justification = "Git clean can delete local fixtures, attachments, worktrees, or other untracked user files.",
+    match = [
+        "git clean -fd",
+        "git clean -fdx",
+    ],
+)
+
+prefix_rule(
+    pattern = ["git", "push", ["--force", "-f", "--force-with-lease"]],
+    decision = "prompt",
+    justification = "Force push can rewrite a shared Comet branch; verify the target branch and authorization first.",
+    match = [
+        "git push --force origin rc5",
+        "git push -f origin feature",
+        "git push --force-with-lease origin hotfix",
+    ],
+    not_match = [
+        "git push origin rc5",
+    ],
+)
