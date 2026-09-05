@@ -176,7 +176,7 @@ history_overflow:
   first_dropped_at: null
   last_dropped_at: null
   outcome_counts:
-    pass: 1
+    pass: 0
     fail: 0
     blocked: 0
     execution-error: 0
