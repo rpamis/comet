@@ -29,11 +29,119 @@ describe('project installation registry', () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
+  it('does not overwrite an addition made while cleanup checks an old snapshot', async () => {
+    const ghost = path.join(os.tmpdir(), 'comet-update-1788423121870-race', 'workbuddy-project');
+    await upsertProjectInstallation(ghost, [{ platform: 'workbuddy', language: 'en' }], 'update', {
+      homeDir,
+    });
+    const originalStat = fs.stat.bind(fs);
+    let signal!: () => void;
+    let resume!: () => void;
+    const reached = new Promise<void>((resolve) => {
+      signal = resolve;
+    });
+    const paused = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    let intercepted = false;
+    const stat = vi.spyOn(fs, 'stat').mockImplementation(async (...args) => {
+      if (args[0] === ghost && !intercepted) {
+        intercepted = true;
+        signal();
+        await paused;
+      }
+      return originalStat(...args);
+    });
+    const reading = readProjectRegistry({ homeDir });
+    try {
+      await reached;
+      const added = path.join(tmpDir, 'new-project');
+      await upsertProjectInstallation(added, [], 'init', { homeDir });
+      resume();
+      expect((await reading).projects.map((entry) => entry.path)).toEqual([added]);
+      expect((await readProjectRegistry({ homeDir })).projects.map((entry) => entry.path)).toEqual([
+        added,
+      ]);
+    } finally {
+      resume();
+      await reading;
+      stat.mockRestore();
+    }
+  });
+
+  it('returns readable projects if cleanup cannot be persisted', async () => {
+    const ghost = path.join(
+      os.tmpdir(),
+      'comet-update-1788423121870-readonly',
+      'workbuddy-project',
+    );
+    await upsertProjectInstallation(ghost, [{ platform: 'workbuddy', language: 'en' }], 'update', {
+      homeDir,
+    });
+    const rename = vi
+      .spyOn(fs, 'rename')
+      .mockRejectedValue(Object.assign(new Error('read only'), { code: 'EROFS' }));
+    try {
+      expect((await readProjectRegistry({ homeDir, strict: true })).projects).toHaveLength(1);
+      expect(await fs.readdir(path.dirname(getProjectRegistryPath(homeDir)))).toEqual([
+        'installations.json',
+      ]);
+    } finally {
+      rename.mockRestore();
+    }
+  });
+
   it('returns an empty registry when the file does not exist', async () => {
     await expect(readProjectRegistry({ homeDir })).resolves.toMatchObject({
       schemaVersion: 1,
       projects: [],
     });
+  });
+
+  it.each(['workbuddy', 'oh-my-pi'])(
+    'automatically persists cleanup of missing %s update test projects only',
+    async (platform) => {
+      const ghost = path.join(
+        os.tmpdir(),
+        'comet-update-1788423121870-zyhmonod23k',
+        `${platform}-project`,
+      );
+      const live = path.join(tmpDir, 'comet-update-1788423121870-live', 'oh-my-pi-project');
+      await fs.mkdir(live, { recursive: true });
+      const paths = [ghost, live, path.join(tmpDir, 'missing-project')];
+      for (const project of paths) {
+        await upsertProjectInstallation(project, [{ platform, language: 'en' }], 'update', {
+          homeDir,
+        });
+      }
+      const registry = await readProjectRegistry({ homeDir });
+      expect(registry.projects.map((entry) => entry.path).sort()).toEqual(paths.slice(1).sort());
+      const persisted = JSON.parse(await fs.readFile(getProjectRegistryPath(homeDir), 'utf-8'));
+      expect(persisted).toEqual(registry);
+      expect(await readProjectRegistry({ homeDir })).toEqual(registry);
+    },
+  );
+
+  it('preserves matching projects when existence checks are denied', async () => {
+    const project = path.join(
+      os.tmpdir(),
+      'comet-update-1788423121870-denied',
+      'workbuddy-project',
+    );
+    await upsertProjectInstallation(
+      project,
+      [{ platform: 'workbuddy', language: 'en' }],
+      'update',
+      { homeDir },
+    );
+    const stat = vi
+      .spyOn(fs, 'stat')
+      .mockRejectedValue(Object.assign(new Error('denied'), { code: 'EACCES' }));
+    try {
+      expect((await readProjectRegistry({ homeDir })).projects).toHaveLength(1);
+    } finally {
+      stat.mockRestore();
+    }
   });
 
   it('upserts a project and preserves addedAt on later writes', async () => {

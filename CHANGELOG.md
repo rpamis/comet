@@ -2,6 +2,23 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-rc.5] - 2026-09-05
+
+### Added
+
+- **Host Agent knowledge review**: Agents can review queued project experience with `comet knowledge review` and submit reusable lessons without configuring another model or API key; new lessons remain trial records until successful use.
+- **Task knowledge adoption evidence**: Agents can attach the concrete decision and actual verification result to context feedback; the Dashboard shows this evidence separately from delivery, and feedback survives retries and restarts without counting repeated submissions twice.
+
+### Fixed
+
+- **Project registry recovery**: Automatically removes missing temporary projects leaked by older update tests when the upgraded CLI or Dashboard reads the registry, while preserving ordinary missing projects and inaccessible directories.
+- **Native Supervisor child status**: Dashboard child rows show localized verification, integration, archive, and re-verification states with consistent colors and no longer mistake a missing workflow phase for an uncreated child.
+- **Personal Memory lifecycle**: Independent observations retain their own candidate identities, repeated evidence no longer creates duplicate trial records, phase-specific memories remain manageable, and permanent removal clears retained observation text.
+- **Project Knowledge learning and discovery**: Tasks can discover relevant scoped references before their target file is known and expand their conclusions, applicability, sources, and verification commands. Chinese task queries preserve technical words and mixed-language identifiers. Explicit scope mismatches remain excluded. Source refresh no longer promotes untested lessons, and workflow checkpoints no longer create generic proven policies. Native learning excludes archive previews and preserves current verification evidence.
+- **Memory and knowledge Dashboard**: Failed saves preserve drafts, knowledge categories match the selected view, keyboard navigation works across knowledge tabs, and memory actions remain visible at desktop widths. Retrieval results can be scrolled and opened in readable detail previews, knowledge corrections use a wider centered editor, and personal memory uses clearer empty-state and file labels.
+
+- **Project Knowledge models and retrieval corpus**: Project models now describe each source module through stable, readable entry, dependency, caller, registration, and test evidence; the Dashboard lists only Markdown that actually participates in retrieval, keeps code evidence in record details, automatically compacts duplicate generated history, and restores missing or stale model records through one shared readiness flow.
+
 ## What's Changed [0.4.0-rc.4] - 2026-09-04
 
 ### Changed

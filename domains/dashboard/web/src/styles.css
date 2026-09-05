@@ -2898,7 +2898,7 @@ body {
 }
 
 .dashboard-knowledge-source-view {
-  --knowledge-source-columns: minmax(280px, 1fr) 100px 110px 150px;
+  --knowledge-source-columns: minmax(260px, 1fr) 120px 90px 100px 150px;
 }
 
 .dashboard-knowledge-source-rows {
@@ -3438,6 +3438,8 @@ body {
 
 .dashboard-knowledge-query-view {
   padding-bottom: 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .dashboard-knowledge-query-form {
@@ -3508,9 +3510,19 @@ body {
   color: var(--color-meta);
   font-family: var(--font-mono);
   font-size: 10px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-knowledge-query-results article .ant-btn {
+  flex-shrink: 0;
 }
 
 .dashboard-knowledge-query-results article p {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
   margin: 6px 0 0;
   color: var(--color-fg-2);
   font-size: 11px;
@@ -3593,7 +3605,7 @@ body {
   }
 
   .dashboard-knowledge-source-view {
-    --knowledge-source-columns: minmax(220px, 1fr) 90px 100px;
+    --knowledge-source-columns: minmax(220px, 1fr) 110px 90px 100px;
   }
 
   .dashboard-knowledge-source-head > span:last-child,
@@ -3711,8 +3723,10 @@ body {
   }
 
   .dashboard-knowledge-source-head > span:nth-child(2),
+  .dashboard-knowledge-source-head > span:nth-child(4),
   .dashboard-knowledge-source-head > span:last-child,
-  .dashboard-knowledge-source-row > strong,
+  .dashboard-knowledge-source-row > span:nth-child(2),
+  .dashboard-knowledge-source-row > span:nth-child(4),
   .dashboard-knowledge-source-row > time {
     display: none;
   }
@@ -5851,11 +5865,14 @@ body {
   background: var(--color-accent);
 }
 
-.native-child-status-active {
+.native-child-status-active,
+.native-child-status-needs-reverify {
   background: var(--color-warn);
 }
 
-.native-child-status-done {
+.native-child-status-done,
+.native-child-status-verified,
+.native-child-status-integrated {
   background: var(--color-success);
 }
 
@@ -6959,7 +6976,7 @@ body {
 .dashboard-memory-table-head,
 .dashboard-memory-table-row {
   display: grid;
-  grid-template-columns: minmax(230px, 1fr) 82px 74px 110px 102px;
+  grid-template-columns: minmax(0, 1fr) 72px 64px 90px 102px;
   align-items: center;
 }
 

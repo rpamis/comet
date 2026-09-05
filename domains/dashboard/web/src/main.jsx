@@ -2887,6 +2887,19 @@ function projectKnowledgeSourcePreviewKind(source, format) {
   return 'text';
 }
 
+function projectKnowledgeCorpusKindLabel(kind) {
+  return (
+    {
+      'native-spec': 'Native Spec',
+      'classic-spec': 'Classic Spec',
+      'native-archive': 'Native 归档',
+      'classic-archive': 'Classic 归档',
+      superpowers: '归档引用',
+      custom: '自定义 Markdown',
+    }[kind] ?? 'Markdown'
+  );
+}
+
 async function renderProjectKnowledgeSource(content, kind) {
   const raw = String(content ?? '');
   if (!raw.trim()) return '';
@@ -3004,9 +3017,9 @@ function ProjectKnowledgeSourcePreviewModal({
   return (
     <ProjectKnowledgePreviewModal
       open
-      title="项目知识来源详情"
-      description="查看项目知识关联文件的渲染结果和来源上下文"
-      ariaLabel="项目知识来源详情"
+      title="检索语料详情"
+      description="查看实际参与项目知识召回的 Markdown 内容和关联知识"
+      ariaLabel="检索语料详情"
       onClose={onClose}
     >
       {({ fullscreen }) => (
@@ -5386,13 +5399,17 @@ function ProjectKnowledgeSettings({ page, data, readOnly = false, onInvoke }) {
 function openProjectKnowledgeCorrection(record, onInvoke) {
   const restoring = record.state === 'superseded';
   Modal.confirm({
+    centered: true,
+    width: 'min(800px, calc(100vw - 32px))',
+    icon: null,
     title: restoring ? '纠正并恢复项目知识' : '纠正项目知识记录',
     content: (
       <Input.TextArea
         id="project-knowledge-correction"
         defaultValue={record.summary}
         placeholder="说明需要如何修正这条项目知识"
-        autoSize={{ minRows: 4, maxRows: 8 }}
+        rows={14}
+        style={{ height: 'min(360px, 50dvh)', maxHeight: '50dvh', resize: 'vertical' }}
       />
     ),
     okText: restoring ? '保存并恢复' : '保存纠正',
@@ -5410,6 +5427,7 @@ function openProjectKnowledgeCorrection(record, onInvoke) {
 
 function ProjectKnowledgeRegistry({
   records,
+  workspaceTab,
   visibleRecords,
   selectedRecord,
   selectedRecordId,
@@ -5425,6 +5443,7 @@ function ProjectKnowledgeRegistry({
   sortOrder,
   onSortOrderChange,
   diagnostics,
+  indexedSourcePaths,
   provider,
   readOnly = false,
   onInvoke,
@@ -5459,7 +5478,9 @@ function ProjectKnowledgeRegistry({
           <span>{countedRecords.length}</span>
         </button>
         <div className="dashboard-knowledge-category-groups">
-          {PROJECT_KNOWLEDGE_CATEGORY_GROUPS.map((group) => (
+          {PROJECT_KNOWLEDGE_CATEGORY_GROUPS.filter(
+            (group) => workspaceTab === 'history' || group.key === workspaceTab,
+          ).map((group) => (
             <section key={group.key} aria-labelledby={`knowledge-category-${group.key}`}>
               <h3 id={`knowledge-category-${group.key}`}>
                 <span>{group.label}</span>
@@ -5604,7 +5625,12 @@ function ProjectKnowledgeRegistry({
         )}
       </section>
 
-      <ProjectKnowledgeInspector record={selectedRecord} readOnly={readOnly} onInvoke={onInvoke} />
+      <ProjectKnowledgeInspector
+        record={selectedRecord}
+        indexedSourcePaths={indexedSourcePaths}
+        readOnly={readOnly}
+        onInvoke={onInvoke}
+      />
     </div>
   );
 }
@@ -5649,7 +5675,12 @@ function ContextApplicationHistory({ applications = [], recordId }) {
   );
 }
 
-function ProjectKnowledgeInspector({ record, readOnly = false, onInvoke }) {
+function ProjectKnowledgeInspector({
+  record,
+  indexedSourcePaths = new Set(),
+  readOnly = false,
+  onInvoke,
+}) {
   if (!record) {
     return (
       <aside className="dashboard-knowledge-inspector is-empty" aria-label="记录详情">
@@ -5702,7 +5733,7 @@ function ProjectKnowledgeInspector({ record, readOnly = false, onInvoke }) {
         </div>
       )}
       <section>
-        <h4>最近一次应用</h4>
+        <h4>最近一次提供与反馈</h4>
         <dl>
           <div>
             <dt>为什么匹配</dt>
@@ -5715,13 +5746,32 @@ function ProjectKnowledgeInspector({ record, readOnly = false, onInvoke }) {
           {record.lastApplication && (
             <>
               <div>
-                <dt>最近应用</dt>
+                <dt>提供时间</dt>
                 <dd>{formatTimestamp(record.lastApplication.appliedAt)}</dd>
               </div>
               <div>
                 <dt>应用结果</dt>
                 <dd>{contextOutcomeLabel(record.lastApplication.outcome)}</dd>
               </div>
+              <div>
+                <dt>采用依据</dt>
+                <dd>
+                  {record.lastApplication.outcomeEvents?.at(-1)?.evidence?.decision ??
+                    '尚未记录具体采用决定'}
+                </dd>
+              </div>
+              {record.lastApplication.outcomeEvents?.at(-1)?.evidence?.verification && (
+                <div>
+                  <dt>宿主验证结果</dt>
+                  <dd>
+                    {record.lastApplication.outcomeEvents.at(-1).evidence.verification.command}
+                    {' · '}
+                    {record.lastApplication.outcomeEvents.at(-1).evidence.verification.success
+                      ? '通过'
+                      : '失败'}
+                  </dd>
+                </div>
+              )}
             </>
           )}
           {projectPolicyActivationLabel(record.activation) && (
@@ -5758,7 +5808,7 @@ function ProjectKnowledgeInspector({ record, readOnly = false, onInvoke }) {
         recordId={record.id}
       />
       <section>
-        <h4>来源与证据</h4>
+        <h4>结论证据</h4>
         {sources.length === 0 ? (
           <p className="dashboard-knowledge-inspector-muted">尚未关联来源文件</p>
         ) : (
@@ -5774,7 +5824,12 @@ function ProjectKnowledgeInspector({ record, readOnly = false, onInvoke }) {
                       ? `#L${reference.lineStart}${reference.lineEnd ? `-L${reference.lineEnd}` : ''}`
                       : ''}
                   </code>
-                  <small>{reference.role}</small>
+                  <small>
+                    {reference.role} ·{' '}
+                    {indexedSourcePaths.has(projectKnowledgeSourcePath(reference.source))
+                      ? '同时参与文档检索'
+                      : '仅支持此结论，不参与全文检索'}
+                  </small>
                   {reference.evidence && <em>{reference.evidence}</em>}
                 </span>
               </li>
@@ -5902,21 +5957,21 @@ function ProjectKnowledgeSources({
   return (
     <section
       className="dashboard-knowledge-single-view dashboard-knowledge-source-view"
-      aria-label="数据来源"
+      aria-label="检索语料"
     >
       <div className="dashboard-knowledge-source-toolbar">
         <Input
           value={searchText}
           prefix={<SearchOutlined />}
           allowClear
-          placeholder="搜索来源路径、类型或关联知识…"
-          aria-label="搜索项目知识来源"
+          placeholder="搜索语料路径、类型或关联知识…"
+          aria-label="搜索项目知识检索语料"
           onChange={(event) => onSearchTextChange(event.target.value)}
         />
         <div className="dashboard-knowledge-source-toolbar-meta">
           <span>{provider}</span>
           <span>
-            共 {totalSourceCount} 个来源
+            共 {totalSourceCount} 个语料文件
             {searchText.trim() ? ` · 匹配 ${sourceEntries.length} 个` : ''}
           </span>
         </div>
@@ -5925,24 +5980,23 @@ function ProjectKnowledgeSources({
         <Empty
           className="dashboard-knowledge-empty"
           image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="尚未发现项目知识来源"
+          description="尚未发现可召回的 Markdown 语料"
         />
       ) : (
         <div
           className="dashboard-knowledge-source-rows"
-          aria-label="项目知识数据来源列表"
+          aria-label="项目知识检索语料列表"
           role="region"
           tabIndex={0}
         >
           <div className="dashboard-knowledge-source-head" aria-hidden="true">
-            <span>来源路径</span>
-            <span>关联记录</span>
-            <span>收录状态</span>
-            <span>最近更新</span>
+            <span>语料路径</span>
+            <span>来源类型</span>
+            <span>当前知识</span>
+            <span>索引状态</span>
+            <span>索引时间</span>
           </div>
           {sourceEntries.map((entry) => {
-            const needsReview = entry.records.some((record) => record.state === 'trial');
-            const hasEvidence = entry.records.length > 0;
             return (
               <button
                 key={entry.source}
@@ -5955,18 +6009,11 @@ function ProjectKnowledgeSources({
                   <FileTextOutlined aria-hidden="true" />
                   <code>{entry.source}</code>
                 </span>
+                <span>{projectKnowledgeCorpusKindLabel(entry.kind)}</span>
                 <strong>{entry.records.length} 条</strong>
-                <span
-                  className={`dashboard-knowledge-record-state ${needsReview ? 'is-trial' : hasEvidence ? 'is-proven' : 'is-neutral'}`}
-                >
+                <span className="dashboard-knowledge-record-state is-proven">
                   <span aria-hidden="true" />
-                  {!entry.indexed
-                    ? '仅作结论证据'
-                    : needsReview
-                      ? '有待验证记录'
-                      : hasEvidence
-                        ? '有结论关联'
-                        : '仅已索引'}
+                  已索引
                 </span>
                 <time dateTime={entry.latestUpdatedAt}>
                   {formatTimestamp(entry.latestUpdatedAt)}
@@ -6000,6 +6047,23 @@ function ProjectKnowledgeQuery({
   queryLatency,
   queryCandidateCount,
 }) {
+  const [selectedResult, setSelectedResult] = useState(null);
+  const [resultPreview, setResultPreview] = useState({ status: 'idle' });
+  useEffect(() => {
+    if (!selectedResult) return undefined;
+    let cancelled = false;
+    setResultPreview({ status: 'loading' });
+    void renderMarkdown(selectedResult.content ?? '')
+      .then((html) => {
+        if (!cancelled) setResultPreview({ status: 'success', html });
+      })
+      .catch(() => {
+        if (!cancelled) setResultPreview({ status: 'error' });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedResult]);
   return (
     <section className="dashboard-knowledge-query-view" aria-label="检索测试">
       <div className="dashboard-knowledge-query-form">
@@ -6056,12 +6120,45 @@ function ProjectKnowledgeQuery({
               <header>
                 <strong>{result.title ?? '项目知识结果'}</strong>
                 <code>{result.source}</code>
+                <Button
+                  type="link"
+                  aria-label={`查看检索结果：${result.title ?? '项目知识结果'}`}
+                  onClick={() => setSelectedResult(result)}
+                >
+                  查看详情
+                </Button>
               </header>
               <p>{result.content}</p>
             </article>
           ))
         )}
       </div>
+      <ProjectKnowledgePreviewModal
+        open={selectedResult !== null}
+        title="检索结果详情"
+        subtitle={selectedResult?.title}
+        description="查看本次检索返回的内容片段"
+        ariaLabel="检索结果详情"
+        onClose={() => setSelectedResult(null)}
+      >
+        {() => (
+          <div className="dashboard-knowledge-preview-content">
+            <div className="dashboard-knowledge-preview-scroll">
+              <code>{selectedResult?.source}</code>
+              {resultPreview.status === 'success' ? (
+                <article
+                  className="md-github"
+                  dangerouslySetInnerHTML={{ __html: resultPreview.html }}
+                />
+              ) : resultPreview.status === 'error' ? (
+                <p>内容预览失败，请关闭后重试。</p>
+              ) : (
+                <Skeleton active />
+              )}
+            </div>
+          </div>
+        )}
+      </ProjectKnowledgePreviewModal>
     </section>
   );
 }
@@ -6326,43 +6423,34 @@ function ProjectKnowledgeCenter({ page, data, readOnly = false, onInvoke }) {
   }, [categoryFilter, recordSearchText, sortOrder, stateFilter, workspaceRecords]);
   const selectedRecord =
     visibleRecords.find((record) => record.id === selectedRecordId) ?? visibleRecords[0] ?? null;
+  const indexedSourcePaths = useMemo(
+    () =>
+      new Set(
+        (Array.isArray(snapshot.local?.sources) ? snapshot.local.sources : []).map((source) =>
+          projectKnowledgeSourcePath(source.source),
+        ),
+      ),
+    [snapshot.local?.sources],
+  );
   const sourceEntries = useMemo(() => {
     const sourceMap = new Map();
-    for (const record of records) {
-      for (const sourceReference of projectKnowledgeRecordSources(record)) {
-        const source = projectKnowledgeSourcePath(sourceReference);
-        const current = sourceMap.get(source) ?? {
-          source,
-          records: [],
-          latestUpdatedAt: null,
-          indexed: false,
-        };
-        if (!current.records.some((entry) => entry.id === record.id)) current.records.push(record);
-        if (
-          !current.latestUpdatedAt ||
-          new Date(record.updatedAt ?? 0).getTime() >
-            new Date(current.latestUpdatedAt ?? 0).getTime()
-        ) {
-          current.latestUpdatedAt = record.updatedAt;
-        }
-        sourceMap.set(source, current);
-      }
-    }
     for (const source of Array.isArray(snapshot.local?.sources) ? snapshot.local.sources : []) {
       const sourcePath = projectKnowledgeSourcePath(source.source);
-      const current = sourceMap.get(sourcePath) ?? {
+      sourceMap.set(sourcePath, {
         source: sourcePath,
         records: [],
-        latestUpdatedAt: null,
-        indexed: false,
-      };
-      if (
-        !current.latestUpdatedAt ||
-        new Date(source.updatedAt ?? 0).getTime() > new Date(current.latestUpdatedAt ?? 0).getTime()
-      ) {
-        current.latestUpdatedAt = source.updatedAt;
+        latestUpdatedAt: source.updatedAt,
+        indexed: true,
+        kind: source.kind,
+      });
+    }
+    for (const record of records.filter((record) => record.state !== 'superseded')) {
+      for (const sourceReference of projectKnowledgeRecordSources(record)) {
+        const sourcePath = projectKnowledgeSourcePath(sourceReference);
+        const current = sourceMap.get(sourcePath);
+        if (!current) continue;
+        if (!current.records.some((entry) => entry.id === record.id)) current.records.push(record);
       }
-      sourceMap.set(sourcePath, { ...current, indexed: true, kind: source.kind });
     }
     return Array.from(sourceMap.values()).toSorted((left, right) =>
       left.source.localeCompare(right.source, 'zh-CN'),
@@ -6516,6 +6604,9 @@ function ProjectKnowledgeCenter({ page, data, readOnly = false, onInvoke }) {
           <span className="dashboard-knowledge-workspace-meta">
             当前有效 {knowledgeCounts.active} 条 · 历史 {knowledgeCounts.superseded} 条
             {snapshot.truncated ? ' · 列表已截断' : ''}
+            {snapshot.pendingHostReviewCount > 0
+              ? ` · ${snapshot.pendingHostReviewCount} 条经验待 Agent 评审`
+              : ''}
           </span>
         </div>
         <Button
@@ -6570,7 +6661,7 @@ function ProjectKnowledgeCenter({ page, data, readOnly = false, onInvoke }) {
           ['model', '项目概况'],
           ['policy', '项目规范'],
           ['history', '历史版本'],
-          ['sources', '数据来源'],
+          ['sources', '检索语料'],
           ['query', '检索测试'],
         ].map(([key, label]) => (
           <button
@@ -6579,6 +6670,24 @@ function ProjectKnowledgeCenter({ page, data, readOnly = false, onInvoke }) {
             role="tab"
             aria-selected={workspaceTab === key}
             tabIndex={workspaceTab === key ? 0 : -1}
+            onKeyDown={(event) => {
+              const tabs = [...event.currentTarget.parentElement.querySelectorAll('[role="tab"]')];
+              const index = tabs.indexOf(event.currentTarget);
+              const target =
+                event.key === 'ArrowRight'
+                  ? (index + 1) % tabs.length
+                  : event.key === 'ArrowLeft'
+                    ? (index + tabs.length - 1) % tabs.length
+                    : event.key === 'Home'
+                      ? 0
+                      : event.key === 'End'
+                        ? tabs.length - 1
+                        : -1;
+              if (target < 0) return;
+              event.preventDefault();
+              tabs[target].focus();
+              tabs[target].click();
+            }}
             className={workspaceTab === key ? 'is-active' : ''}
             onClick={() => {
               setWorkspaceTab(key);
@@ -6591,6 +6700,7 @@ function ProjectKnowledgeCenter({ page, data, readOnly = false, onInvoke }) {
       </nav>
       {workspaceTab === 'model' || workspaceTab === 'policy' || workspaceTab === 'history' ? (
         <ProjectKnowledgeRegistry
+          workspaceTab={workspaceTab}
           records={workspaceRecords}
           visibleRecords={visibleRecords}
           selectedRecord={selectedRecord}
@@ -6607,6 +6717,7 @@ function ProjectKnowledgeCenter({ page, data, readOnly = false, onInvoke }) {
           sortOrder={sortOrder}
           onSortOrderChange={setSortOrder}
           diagnostics={diagnostics}
+          indexedSourcePaths={indexedSourcePaths}
           provider={provider}
           readOnly={readOnly}
           onInvoke={onInvoke}
@@ -6823,9 +6934,11 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke }) {
   const [correctionText, setCorrectionText] = useState('');
   const [correctionSaving, setCorrectionSaving] = useState(false);
   const [showNewProfile, setShowNewProfile] = useState(false);
+  const [newProfileSaving, setNewProfileSaving] = useState(false);
   const [newProfileText, setNewProfileText] = useState('');
   const [newProfileCategory, setNewProfileCategory] = useState('沟通偏好');
   const [showNewProjectMemory, setShowNewProjectMemory] = useState(false);
+  const [newProjectMemorySaving, setNewProjectMemorySaving] = useState(false);
   const [newProjectMemoryText, setNewProjectMemoryText] = useState('');
   const [newProjectMemoryCategory, setNewProjectMemoryCategory] = useState('项目约定');
   const [expandedRecordIds, setExpandedRecordIds] = useState(() => new Set());
@@ -6905,7 +7018,7 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke }) {
         ? memoryCounts.history > 0
           ? `当前没有有效个人记忆；已有 ${memoryCounts.history} 条历史记录`
           : memoryFileCount > 0
-            ? '当前没有有效个人记忆；记忆文件只是可读投影，不代表已经学到内容'
+            ? '当前没有有效个人记忆；已有记忆文件中暂无可复用的内容'
             : '当前还没有形成可复用的个人记忆'
         : activeMemoryFilter.description;
 
@@ -7176,7 +7289,7 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke }) {
             </div>
             <span>{profileUsage}</span>
             <span>
-              {memoryFileCount} 个投影文件 · {memoryCounts.tombstones} 个遗忘保护
+              {memoryFileCount} 个记忆文件 · {memoryCounts.tombstones} 个遗忘保护
             </span>
           </div>
         </aside>
@@ -7379,17 +7492,27 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke }) {
         okText="保存"
         cancelText="取消"
         okButtonProps={{ disabled: newProfileText.trim().length === 0 }}
-        onClose={() => setShowNewProfile(false)}
-        onOk={() => {
+        confirmLoading={newProfileSaving}
+        onClose={() => {
+          if (!newProfileSaving) setShowNewProfile(false);
+        }}
+        onOk={async () => {
           if (newProfileText.trim().length === 0) return;
-          void onInvoke('remember', {
-            scope: 'global',
-            memoryClass: 'user-preference',
-            category: newProfileCategory.trim() || '沟通偏好',
-            text: newProfileText.trim(),
-          });
-          setNewProfileText('');
-          setShowNewProfile(false);
+          if (newProfileSaving) return;
+          setNewProfileSaving(true);
+          try {
+            const result = await onInvoke('remember', {
+              scope: 'global',
+              memoryClass: 'user-preference',
+              category: newProfileCategory.trim() || '沟通偏好',
+              text: newProfileText.trim(),
+            });
+            if (result === undefined) return;
+            setNewProfileText('');
+            setShowNewProfile(false);
+          } finally {
+            setNewProfileSaving(false);
+          }
         }}
       >
         <Form layout="vertical" component="div">
@@ -7437,19 +7560,29 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke }) {
         okText="保存"
         cancelText="取消"
         okButtonProps={{ disabled: newProjectMemoryText.trim().length === 0 }}
-        onClose={() => setShowNewProjectMemory(false)}
-        onOk={() => {
+        confirmLoading={newProjectMemorySaving}
+        onClose={() => {
+          if (!newProjectMemorySaving) setShowNewProjectMemory(false);
+        }}
+        onOk={async () => {
           if (!projectKey || newProjectMemoryText.trim().length === 0) return;
-          void onInvoke('remember', {
-            scope: 'project',
-            projectKey,
-            memoryClass: 'project-convention',
-            category: newProjectMemoryCategory.trim() || '项目约定',
-            text: newProjectMemoryText.trim(),
-          });
-          setNewProjectMemoryText('');
-          setNewProjectMemoryCategory('项目约定');
-          setShowNewProjectMemory(false);
+          if (newProjectMemorySaving) return;
+          setNewProjectMemorySaving(true);
+          try {
+            const result = await onInvoke('remember', {
+              scope: 'project',
+              projectKey,
+              memoryClass: 'project-convention',
+              category: newProjectMemoryCategory.trim() || '项目约定',
+              text: newProjectMemoryText.trim(),
+            });
+            if (result === undefined) return;
+            setNewProjectMemoryText('');
+            setNewProjectMemoryCategory('项目约定');
+            setShowNewProjectMemory(false);
+          } finally {
+            setNewProjectMemorySaving(false);
+          }
         }}
       >
         <Form layout="vertical" component="div">

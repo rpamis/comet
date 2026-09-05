@@ -42,8 +42,8 @@ function sampleRecord(id, projectId, title, summary, source, relations = []) {
   return {
     id,
     projectId,
-    type: 'behavior-note',
-    state: 'active',
+    type: 'pattern',
+    state: 'proven',
     authority: 'automatic',
     title,
     summary,
@@ -53,6 +53,9 @@ function sampleRecord(id, projectId, title, summary, source, relations = []) {
     relations,
     verification: [],
     sourceVersions: [],
+    applicationCount: 0,
+    successCount: 0,
+    failureCount: 0,
     updatedAt: new Date().toISOString(),
   };
 }
@@ -136,7 +139,7 @@ async function runFixtureChecks() {
     const deletionDetected = !deleted.some((result) => result.record?.id === 'fixture-primary');
     const staleRecords = await list(providers[0], 'fixture-project', 'all');
     const staleRecordDetected = staleRecords.some(
-      (record) => record.id === 'fixture-primary' && record.state === 'needs-review',
+      (record) => record.id === 'fixture-primary' && record.state === 'superseded',
     );
 
     return { isolated, mutationDetected, deletionDetected, recordManagement, staleRecordDetected };

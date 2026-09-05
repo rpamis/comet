@@ -168,7 +168,9 @@ describe('dashboard web source contracts', () => {
     expect(page?.[0]).toContain('items={snapshot.manifestPreview}');
     expect(page?.[0]).toContain('dashboard-tool-page-knowledge');
     expect(page?.[0]).toContain('知识记录');
-    expect(page?.[0]).toContain('数据来源');
+    expect(page?.[0]).toContain('检索语料');
+    expect(page?.[0]).toContain('仅支持此结论，不参与全文检索');
+    expect(page?.[0]).toContain('同时参与文档检索');
     expect(page?.[0]).toContain('检索测试');
     expect(page?.[0]).toContain("onInvoke('query'");
     expect(page?.[0]).toContain("onInvoke('correct'");
@@ -233,6 +235,24 @@ describe('dashboard web source contracts', () => {
     expect(styles).toContain('.dashboard-create-modal-content');
     expect(styles).toContain('.dashboard-context-manifest');
     expect(styles).toContain('.dashboard-context-manifest-item');
+  });
+
+  it('builds retrieval corpus rows only from the local index and keeps record evidence in details', async () => {
+    const source = await readDashboardSource();
+    const sourceProjection = source.match(
+      /const indexedSourcePaths = useMemo\([\s\S]*?const visibleSourceEntries = useMemo/,
+    );
+    const inspector = source.match(
+      /function ProjectKnowledgeInspector\([\s\S]*?\n}\n\nfunction ProjectKnowledgeSources/,
+    );
+
+    expect(sourceProjection?.[0]).toContain('snapshot.local?.sources');
+    expect(sourceProjection?.[0]).toContain("record.state !== 'superseded'");
+    expect(sourceProjection?.[0]).toContain('if (!current) continue');
+    expect(sourceProjection?.[0]).not.toContain('sourceMap.get(source) ??');
+    expect(inspector?.[0]).toContain('结论证据');
+    expect(inspector?.[0]).toContain('仅支持此结论，不参与全文检索');
+    expect(inspector?.[0]).toContain('同时参与文档检索');
   });
 
   it('opens centralized plugin settings from the bottom of the sidebar', async () => {

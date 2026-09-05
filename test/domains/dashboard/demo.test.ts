@@ -141,6 +141,18 @@ describe('dashboard demo data', () => {
     );
     expect(projectKnowledge?.data.local.sources).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({
+          source: 'docs/comet/specs/dashboard.md',
+          kind: 'native-spec',
+        }),
+        expect.objectContaining({
+          source: 'docs/knowledge/dashboard.md',
+          kind: 'custom',
+        }),
+      ]),
+    );
+    expect(projectKnowledge?.data.local.sources).not.toEqual(
+      expect.arrayContaining([
         expect.objectContaining({ source: 'domains/dashboard/collector.ts' }),
       ]),
     );

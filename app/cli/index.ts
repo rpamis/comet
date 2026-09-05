@@ -68,6 +68,14 @@ program
   .option('--context-budget <characters>', '本次注入的字符预算')
   .option('--expand-context <id>', '按 Context Manifest 标识渐进加载完整内容')
   .option('--application <id>', '记录一次上下文应用结果')
+  .option('--decision <text>', '说明采用这条知识后作出的具体决定')
+  .option('--verification <command>', '与采用决定关联的实际验证命令（记录结果，不执行命令）')
+  .addOption(
+    new Option('--verification-result <result>', '宿主实际执行的验证结果').choices([
+      'passed',
+      'failed',
+    ]),
+  )
   .addOption(
     new Option('--outcome <outcome>', '上下文应用结果').choices([
       'used-successfully',
@@ -251,6 +259,16 @@ memory
   });
 
 const knowledge = program.command('knowledge').description('查看和查询当前项目的项目知识');
+knowledge
+  .command('review [path]')
+  .description('读取宿主 Agent 待评审经验或提交评审结果')
+  .option('--id <id>', '待评审经验 ID')
+  .option('--file <file>', '评审动作 JSON 文件')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { projectKnowledgeReviewCommand } = await import('../commands/project-knowledge.js');
+    await projectKnowledgeReviewCommand(targetPath, options);
+  });
 
 knowledge
   .command('status [path]')

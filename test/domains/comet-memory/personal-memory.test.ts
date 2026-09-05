@@ -69,6 +69,138 @@ function service(root: string, git?: MemoryGitSync): PersonalMemoryService {
 }
 
 describe('PersonalMemoryService', () => {
+  it('preserves surviving conflicts after permanently removing one of three inferred memories', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const input = {
+        scope: 'project' as const,
+        projectKey: 'project-a',
+        category: '工作习惯',
+        workflow: 'native',
+        success: true,
+        source: { kind: 'user' as const },
+      };
+      for (const [index, text] of [
+        '先执行单元测试',
+        '先执行集成测试',
+        '先执行端到端测试',
+      ].entries()) {
+        await memories.observe({ ...input, text, changeId: `conflict-${index}` });
+      }
+      const repository = new FileMemoryRepository(root);
+      const before = await repository.readState();
+      const [removed, second, third] = before.records;
+      expect(before.conflicts[0]?.recordIds).toHaveLength(3);
+      await memories.remove(removed!.id, { permanent: true });
+      const after = await repository.readState();
+      expect(after.conflicts).toEqual([
+        expect.objectContaining({
+          recordIds: [second!.id, third!.id].sort(),
+          texts: [second!.text, third!.text].sort(),
+        }),
+      ]);
+      expect((await memories.manage({ projectKey: 'project-a' })).records).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: second!.id, status: 'conflict' }),
+          expect.objectContaining({ id: third!.id, status: 'conflict' }),
+        ]),
+      );
+      expect(JSON.stringify(after)).not.toContain(removed!.text);
+      await expect(memories.status()).resolves.toMatchObject({ counts: { active: 0 } });
+      await memories.remove(second!.id, { permanent: true });
+      expect((await repository.readState()).conflicts).toEqual([]);
+    });
+  });
+  it('permanently removes only the selected text while preserving same-identity siblings', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const input = { scope: 'project' as const, projectKey: 'project-a', category: '工作习惯' };
+      const first = await memories.remember({ ...input, text: '先运行相关测试' });
+      const sibling = await memories.remember({ ...input, text: '提交时说明验证结果' });
+      await memories.remove(first.id, { permanent: true });
+      expect(
+        (await memories.retrieve({ projectKey: 'project-a' })).records.map((record) => record.id),
+      ).toContain(sibling.id);
+      const observation = await memories.observe({
+        ...input,
+        text: '评审时检查事实',
+        source: { kind: 'user' },
+        changeId: 'new',
+        workflow: 'native',
+        success: true,
+      });
+      expect(observation.ignored).toBe(false);
+      const state = await new FileMemoryRepository(root).readState();
+      expect(state.records.some((record) => record.id === sibling.id)).toBe(true);
+      expect(JSON.stringify(state)).not.toContain(first.text);
+    });
+  });
+  it('keeps repeated successful observations in one proven record and purges their plaintext on permanent removal', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const observation = {
+        scope: 'project' as const,
+        projectKey: 'project-a',
+        category: '工作习惯',
+        text: '先运行相关测试',
+        language: 'zh-CN' as const,
+        workflow: 'native',
+        success: true,
+        candidateKey: 'tests',
+      };
+      for (const changeId of ['one', 'two', 'three', 'four']) {
+        await memories.observe({ ...observation, changeId });
+      }
+      const records = (await memories.retrieve({ projectKey: 'project-a' })).records;
+      expect(records).toEqual([
+        expect.objectContaining({ text: observation.text, state: 'proven' }),
+      ]);
+      const repository = new FileMemoryRepository(root);
+      const legacy = await repository.readState();
+      legacy.records.push({ ...legacy.records[0]!, id: 'legacy-duplicate', state: 'trial' });
+      await repository.writeState({
+        ...legacy,
+        applicationOutcomes: {
+          'old-application': { recordId: records[0]!.id, status: 'used-successfully', revision: 1 },
+        },
+        feedbackState: { [records[0]!.id]: { baseState: 'trial' } },
+      });
+      await memories.remove(records[0]!.id, { permanent: true });
+      const state = await new FileMemoryRepository(root).readState();
+      expect(JSON.stringify(state)).not.toContain(observation.text);
+      expect(state.tombstones).toHaveLength(1);
+      expect(state.applicationOutcomes).toEqual({});
+      expect(state.feedbackState).toEqual({});
+      expect((await memories.observe({ ...observation, changeId: 'five' })).ignored).toBe(true);
+      await memories.observe({ ...observation, changeId: 'six', success: false });
+      expect(JSON.stringify(await new FileMemoryRepository(root).readState())).not.toContain(
+        observation.text,
+      );
+    });
+  });
+
+  it('manages phase-specific records without weakening task retrieval', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const record = await memories.remember({
+        scope: 'project',
+        projectKey: 'project-a',
+        category: '评审约定',
+        text: '评审时提供证据',
+        phases: ['Review'],
+      });
+      expect(
+        (await memories.manage({ projectKey: 'project-a' })).records.map((entry) => entry.id),
+      ).toContain(record.id);
+      expect(
+        (await memories.retrieve({ projectKey: 'project-a', phase: 'Build' })).records,
+      ).toHaveLength(0);
+      expect(
+        (await memories.retrieve({ projectKey: 'project-a', phase: 'Review' })).records,
+      ).toHaveLength(1);
+    });
+  });
+
   it('stores project memory under a readable project name while retaining the internal project key', async () => {
     await withTempRepository(async (root) => {
       const repository = new FileMemoryRepository(root, {

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { access, readFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 
 import type {
   PluginContext,
@@ -28,6 +28,7 @@ import {
   type ProjectKnowledgeRecordVerification,
 } from './records.js';
 import { RemoteProjectKnowledgeProvider } from './remote-provider.js';
+import { ensureProjectKnowledgeReady } from './readiness.js';
 import {
   createProjectKnowledgeChangedHint,
   ProjectKnowledgeLearningService,
@@ -40,6 +41,7 @@ import type {
   ProjectKnowledgeQueryResult,
   ProjectKnowledgeResult,
 } from './types.js';
+import { ProjectKnowledgeHostReview } from './host-review.js';
 import { resolveProjectKnowledgeStorageLocation } from '../../platform/paths/project-knowledge-storage.js';
 import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
 import { RaceSafeReadError } from '../../platform/fs/race-safe-read.js';
@@ -213,7 +215,9 @@ async function createProjectKnowledgeModule(
         projectRoot: options.projectRoot,
         provider: learningProvider,
         language: options.language,
-        ...(options.semanticReviewer ? { reviewer: options.semanticReviewer } : {}),
+        reviewer:
+          options.semanticReviewer ??
+          new ProjectKnowledgeHostReview(options.projectRoot, options.cacheRoot),
         reportDiagnostic,
       });
       return await learning.reflectEvent(event);
@@ -222,37 +226,12 @@ async function createProjectKnowledgeModule(
     }
   };
   const ensureProjectModel = async (provider: ProjectKnowledgeProvider): Promise<void> => {
-    try {
-      await access(options.projectRoot);
-    } catch {
-      return;
-    }
-    const projectId = resolveStableProjectId(options.projectRoot);
-    const listed = await provider.query({ kind: 'list', projectId, state: 'all', limit: 500 });
-    if (
-      listed.kind === 'list' &&
-      listed.records.some(
-        (record) =>
-          record.state !== 'superseded' && ['topology', 'fact', 'dependency'].includes(record.type),
-      )
-    ) {
-      return;
-    }
-    const corpus =
-      options.knowledgeConfig.provider === 'local'
-        ? await discoverProjectKnowledgeCorpus({
-            projectRoot: options.projectRoot,
-            reportDiagnostic,
-          })
-        : [];
-    if (corpus.length === 0) return;
-    const learning = new ProjectKnowledgeLearningService({
+    await ensureProjectKnowledgeReady({
       projectRoot: options.projectRoot,
       provider,
       language: options.language,
       reportDiagnostic,
     });
-    await learning.bootstrapProjectModel(corpus.map((document) => document.source));
   };
   const persistChangedHint = async (hint: ProjectKnowledgeChangedHint): Promise<void> => {
     recentChangedHints.push(hint);
@@ -272,13 +251,7 @@ async function createProjectKnowledgeModule(
       snapshotProvider = await createProvider();
       const activeProvider = snapshotProvider;
       const projectId = resolveStableProjectId(options.projectRoot);
-      if (activeProvider instanceof LocalProjectKnowledgeProvider) {
-        await activeProvider.apply({ kind: 'refresh', projectId });
-        await ensureProjectModel(activeProvider);
-        await activeProvider.refreshIndex();
-      } else {
-        await ensureProjectModel(activeProvider);
-      }
+      await ensureProjectModel(activeProvider);
       const status = await activeProvider.status();
       const recordsResult = await activeProvider.query({
         kind: 'list',
@@ -319,8 +292,24 @@ async function createProjectKnowledgeModule(
           ) === index
         );
       });
+      let pendingHostReviewCount = 0;
+      if (!options.semanticReviewer) {
+        try {
+          pendingHostReviewCount = (
+            await new ProjectKnowledgeHostReview(options.projectRoot, options.cacheRoot).pending()
+          ).length;
+        } catch (error) {
+          const diagnostic = {
+            code: 'host-review-unavailable',
+            message: `待评审知识暂不可用：${error instanceof Error ? error.message : String(error)}`,
+          };
+          reportDiagnostic(diagnostic);
+          diagnostics.push(diagnostic);
+        }
+      }
       const result = {
         ...snapshot,
+        pendingHostReviewCount,
         status,
         records: dashboardRecords,
         counts: {
@@ -843,7 +832,18 @@ function projectKnowledgeContextCandidate(
       authority: record.authority === 'automatic' ? 'inferred' : record.authority,
       title: record.title,
       summary: record.summary,
-      content: record.summary,
+      content: [
+        record.summary,
+        `Applicable paths: ${record.applicablePaths.join(', ') || '*'}`,
+        `Operations: ${record.operations.join(', ') || '*'}`,
+        `Phases: ${(record.phases ?? []).join(', ') || '*'}`,
+        ...record.conclusions.map(
+          (conclusion) =>
+            `- ${conclusion.text}\n  Sources: ${conclusion.sources
+              .map((source) => [source.source, source.anchor].filter(Boolean).join('#'))
+              .join(', ')}`,
+        ),
+      ].join('\n'),
       selectors: {
         projectId: record.projectId,
         paths: record.applicablePaths,

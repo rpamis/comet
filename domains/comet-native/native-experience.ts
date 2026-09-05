@@ -14,7 +14,8 @@ export function parseNativeOutcomeEvidence(stdout: string | undefined): NativeOu
   try {
     const data = nativeResultData(stdout);
     if (data === null) return { reviewResolved: false, failureResolved: false };
-    const raw = data.change ?? data.state ?? data;
+    const raw =
+      typeof data.change === 'object' && data.change !== null ? data.change : (data.state ?? data);
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
       return { reviewResolved: false, failureResolved: false };
     }
@@ -28,22 +29,33 @@ export function parseNativeOutcomeEvidence(stdout: string | undefined): NativeOu
     const verdict = verification.verdict ?? change.verification_result;
     const reviewResolved = change.phase === 'archive' && verdict === 'pass';
     const history = Array.isArray(change.history) ? change.history : [];
+    const learning =
+      change.learning && typeof change.learning === 'object'
+        ? (change.learning as Record<string, unknown>)
+        : {};
     const failureResolved =
       reviewResolved &&
-      history.some(
-        (entry) =>
-          entry !== null &&
-          typeof entry === 'object' &&
-          !Array.isArray(entry) &&
-          ((entry as Record<string, unknown>).outcome === 'fail' ||
-            (entry as Record<string, unknown>).verdict === 'fail'),
-      );
+      (learning.failureResolved === true ||
+        history.some(
+          (entry) =>
+            entry !== null &&
+            typeof entry === 'object' &&
+            !Array.isArray(entry) &&
+            ((entry as Record<string, unknown>).outcome === 'fail' ||
+              (entry as Record<string, unknown>).verdict === 'fail'),
+        ));
     const summary =
       typeof verification.summary === 'string'
         ? verification.summary.trim()
-        : typeof change.summary === 'string'
-          ? change.summary.trim()
-          : undefined;
+        : verification.summary &&
+            typeof verification.summary === 'object' &&
+            typeof (verification.summary as { text?: unknown }).text === 'string'
+          ? (verification.summary as { text: string }).text.trim()
+          : typeof learning.summary === 'string'
+            ? learning.summary.trim()
+            : typeof change.summary === 'string'
+              ? change.summary.trim()
+              : undefined;
     return {
       reviewResolved,
       failureResolved,
@@ -63,9 +75,15 @@ export function parseNativeLifecycleEvidence(stdout: string | undefined): Native
       Array.isArray(candidate)
         ? candidate.filter((entry): entry is string => typeof entry === 'string').slice(0, 24)
         : [];
+    const state =
+      typeof data.change === 'object' && data.change !== null ? data.change : (data.state ?? data);
     return {
       changedPaths: list(data.changedPaths),
-      artifactRefs: list(data.artifactRefs ?? data.artifacts),
+      artifactRefs: list(
+        data.artifactRefs ??
+          data.artifacts ??
+          (state as Record<string, { artifactRefs?: unknown }>).learning?.artifactRefs,
+      ),
     };
   } catch {
     return { changedPaths: [], artifactRefs: [] };

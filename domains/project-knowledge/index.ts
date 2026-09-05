@@ -10,4 +10,5 @@ export * from './renderer.js';
 export * from './dashboard.js';
 export * from './plugin.js';
 export * from './deterministic-extractors.js';
+export * from './readiness.js';
 export * from './learning.js';

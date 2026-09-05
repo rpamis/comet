@@ -1,3 +1,4 @@
+import { projectPathSelectorMatches } from '../../platform/paths/project-path-selector.js';
 import { closeSync, mkdirSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
@@ -92,6 +93,7 @@ interface SharedDatabaseEntry {
 
 const MAX_SOURCE_VALIDATION_BYTES = 1024 * 1024;
 const PROJECT_KNOWLEDGE_SCHEMA_VERSION = '4';
+const GENERATED_RECORD_MAINTENANCE = 'generated-record-maintenance-v2';
 
 function equalSourceVersions(left: ProjectKnowledgeRecord, right: ProjectKnowledgeRecord): boolean {
   if (left.sourceVersions.length !== right.sourceVersions.length) return false;
@@ -107,20 +109,6 @@ function equalSourceVersions(left: ProjectKnowledgeRecord, right: ProjectKnowled
   });
 }
 
-function equalSourceVersionMetadata(
-  left: ProjectKnowledgeRecord,
-  right: ProjectKnowledgeRecord,
-): boolean {
-  if (left.sourceVersions.length !== right.sourceVersions.length) return false;
-  const rightVersions = new Map(right.sourceVersions.map((version) => [version.source, version]));
-  return left.sourceVersions.every((version) => {
-    const other = rightVersions.get(version.source);
-    return (
-      other !== undefined && version.size === other.size && version.modifiedAt === other.modifiedAt
-    );
-  });
-}
-
 function recordSourceReferences(
   record: ProjectKnowledgeRecord,
 ): readonly ProjectKnowledgeRecordSource[] {
@@ -128,6 +116,136 @@ function recordSourceReferences(
     ...record.conclusions.flatMap((conclusion) => conclusion.sources),
     ...record.relations.flatMap((relation) => relation.sources),
   ];
+}
+
+function normalizedSemanticText(value: string): string {
+  return value.trim().replace(/\s+/gu, ' ');
+}
+
+function isGeneratedModuleRecord(record: ProjectKnowledgeRecord): boolean {
+  return (
+    record.id.startsWith('generated-module-') && !record.id.startsWith('generated-module-overview')
+  );
+}
+
+function normalizedGeneratedModuleConclusion(value: string): string {
+  const normalized = normalizedSemanticText(value);
+  const separator = normalized.search(/[:：]/u);
+  if (separator < 0) return normalized;
+  const label = normalized.slice(0, separator);
+  const content = normalized.slice(separator + 1).replace(/[。.]+$/u, '');
+  const registration = /registration points|注册点/iu.test(label);
+  const items = content
+    .split(registration ? /\s*；\s*|\s*;\s*/u : /\s*、\s*|\s*,\s*/u)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .sort((left, right) => left.localeCompare(right));
+  return `${label}:${items.join('|')}`;
+}
+
+function stableSemanticSource(source: ProjectKnowledgeRecordSource): object {
+  return {
+    source: normalizedProjectPath(source.source),
+    ...(source.anchor === undefined ? {} : { anchor: normalizedSemanticText(source.anchor) }),
+  };
+}
+
+function stableGeneratedModuleSource(source: ProjectKnowledgeRecordSource): object {
+  const normalized = normalizedProjectPath(source.source);
+  const parts = normalized.split('/').filter(Boolean);
+  const moduleRoots = new Set(['app', 'domains', 'platform', 'src', 'packages']);
+  const stablePath =
+    parts[0] === 'test' && parts[1] && moduleRoots.has(parts[1])
+      ? parts.slice(0, 3).join('/')
+      : parts[0] && moduleRoots.has(parts[0])
+        ? parts.slice(0, Math.min(2, parts.length)).join('/')
+        : normalized;
+  return {
+    source: stablePath,
+    ...(source.anchor === undefined ? {} : { anchor: normalizedSemanticText(source.anchor) }),
+  };
+}
+
+export function projectKnowledgeRecordSemanticFingerprint(record: ProjectKnowledgeRecord): string {
+  const generatedModule = isGeneratedModuleRecord(record);
+  const semanticSource = generatedModule ? stableGeneratedModuleSource : stableSemanticSource;
+  const conclusions = record.conclusions
+    .map((conclusion) => ({
+      text: generatedModule
+        ? normalizedGeneratedModuleConclusion(conclusion.text)
+        : normalizedSemanticText(conclusion.text),
+      sources: [
+        ...new Map(
+          conclusion.sources.map((source) => {
+            const normalized = semanticSource(source);
+            return [JSON.stringify(normalized), normalized] as const;
+          }),
+        ).values(),
+      ].sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
+    }))
+    .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+  const semantic = {
+    type: record.type,
+    title: normalizedSemanticText(record.title),
+    summary: generatedModule
+      ? conclusions.map((conclusion) => conclusion.text).join(' ')
+      : normalizedSemanticText(record.summary),
+    applicablePaths: [...record.applicablePaths].map(normalizedProjectPath).sort(),
+    operations: [...record.operations].map(normalizedSemanticText).sort(),
+    phases: [...(record.phases ?? [])].map(normalizedSemanticText).sort(),
+    conclusions,
+    relations: record.relations
+      .filter((relation) => relation.type !== 'supersedes')
+      .map((relation) => ({
+        type: relation.type,
+        targetId: relation.targetId,
+        sources: [
+          ...new Map(
+            relation.sources.map((source) => {
+              const normalized = semanticSource(source);
+              return [JSON.stringify(normalized), normalized] as const;
+            }),
+          ).values(),
+        ].sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
+      }))
+      .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
+    verification: record.verification
+      .map((entry) => ({
+        command: normalizedSemanticText(entry.command),
+        ...(entry.expected === undefined
+          ? {}
+          : { expected: normalizedSemanticText(entry.expected) }),
+      }))
+      .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
+  };
+  return createHash('sha256').update(JSON.stringify(semantic)).digest('hex').slice(0, 12);
+}
+
+function generatedRecordBaseId(id: string): string {
+  return id.replace(/-v-[a-f0-9]{12}$/u, '');
+}
+
+function generatedRecordHasFeedback(record: ProjectKnowledgeRecord): boolean {
+  return (
+    record.authority === 'user' ||
+    record.applicationCount > 0 ||
+    record.successCount > 0 ||
+    record.failureCount > 0 ||
+    record.lastAppliedAt !== undefined
+  );
+}
+
+function archivedGeneratedRecord(
+  baseId: string,
+  record: ProjectKnowledgeRecord,
+): ProjectKnowledgeRecord {
+  const fingerprint = projectKnowledgeRecordSemanticFingerprint(record);
+  return parseProjectKnowledgeRecord({
+    ...record,
+    id: `${baseId.slice(0, 112)}-v-${fingerprint}`,
+    state: 'superseded',
+    relations: record.relations.filter((relation) => relation.type !== 'supersedes'),
+  });
 }
 
 function sourceReferenceIsCurrent(
@@ -368,10 +486,7 @@ function recordHasPathAssociation(
 ): boolean {
   if (!query.path) return false;
   const queryPath = normalizedProjectPath(query.path);
-  return [
-    ...record.applicablePaths,
-    ...recordSourceReferences(record).map((source) => source.source),
-  ]
+  return record.applicablePaths
     .map(normalizedProjectPath)
     .some(
       (candidate) =>
@@ -392,32 +507,6 @@ function recordMatchesApplicablePath(
     .some((candidate) => projectPathSelectorMatches(candidate, queryPath));
 }
 
-function projectPathSelectorMatches(selector: string, projectPath: string): boolean {
-  if (!/[?*]/u.test(selector)) {
-    return (
-      selector === projectPath ||
-      projectPath.startsWith(selector.endsWith('/') ? selector : `${selector}/`)
-    );
-  }
-  let pattern = '^';
-  for (let index = 0; index < selector.length; index += 1) {
-    const character = selector[index]!;
-    const next = selector[index + 1];
-    if (character === '*' && next === '*') {
-      if (selector[index + 2] === '/') {
-        pattern += '(?:.*/)?';
-        index += 2;
-      } else {
-        pattern += '.*';
-        index += 1;
-      }
-    } else if (character === '*') pattern += '[^/]*';
-    else if (character === '?') pattern += '[^/]';
-    else pattern += character.replace(/[\\^$.*+?()[\]{}|]/gu, '\\$&');
-  }
-  return new RegExp(`${pattern}$`, 'u').test(projectPath);
-}
-
 function recordHasOperationAssociation(
   record: ProjectKnowledgeRecord,
   query: ProjectKnowledgeQuery,
@@ -432,14 +521,13 @@ function recordMatchesSelectors(
   query: ProjectKnowledgeQuery,
 ): boolean {
   if (record.applicablePaths.length > 0) {
-    if (!query.path || !recordMatchesApplicablePath(record, query)) return false;
+    if (query.path && !recordMatchesApplicablePath(record, query)) return false;
   }
   if (record.operations.length > 0) {
-    if (!query.operation || !recordHasOperationAssociation(record, query)) return false;
+    if (query.operation && !recordHasOperationAssociation(record, query)) return false;
   }
   const phases = record.phases ?? [];
-  if (phases.length > 0) {
-    if (!query.phase) return false;
+  if (phases.length > 0 && query.phase) {
     const phase = query.phase.toLocaleLowerCase();
     if (!phases.some((candidate) => candidate.toLocaleLowerCase() === phase)) return false;
   }
@@ -478,12 +566,14 @@ export class ProjectKnowledgeLocalStore {
   readonly workspaceId: string;
 
   private readonly projectRoot: string;
+  private readonly reportDiagnostic: ProjectKnowledgeLocalStoreOptions['reportDiagnostic'];
   private database: ProjectKnowledgeDatabase | null;
   private readonly indexStore: ProjectKnowledgeIndexStore;
   private closed = false;
 
   constructor(options: ProjectKnowledgeLocalStoreOptions) {
     this.projectRoot = path.resolve(options.projectRoot);
+    this.reportDiagnostic = options.reportDiagnostic;
     const location = resolveProjectKnowledgeStorageLocation(
       this.projectRoot,
       options.storageRoot ?? options.cacheRoot,
@@ -494,6 +584,7 @@ export class ProjectKnowledgeLocalStore {
     mkdirSync(path.dirname(this.databasePath), { recursive: true });
     this.database = this.acquireDatabase();
     this.initializeSchema();
+    this.maintainGeneratedRecords();
     this.indexStore = new ProjectKnowledgeIndexStore({
       projectRoot: options.projectRoot,
       ...(options.storageRoot ? { cacheRoot: options.storageRoot } : {}),
@@ -656,9 +747,15 @@ export class ProjectKnowledgeLocalStore {
   }
 
   searchRecords(query: ProjectKnowledgeQuery): readonly ProjectKnowledgeResult[] {
-    const terms = [...query.terms, ...query.strongTerms, ...query.phraseTerms]
-      .map((term) => term.toLocaleLowerCase())
-      .filter(Boolean);
+    const terms = [
+      ...new Set(
+        [...query.terms, ...query.strongTerms, ...query.phraseTerms]
+          .map((term) => term.toLocaleLowerCase())
+          .filter(Boolean),
+      ),
+    ];
+    const discovery =
+      query.path === undefined && query.operation === undefined && query.phase === undefined;
     const applicableRecords = this.list().filter(
       (record) => record.state !== 'superseded' && recordMatchesSelectors(record, query),
     );
@@ -673,8 +770,16 @@ export class ProjectKnowledgeLocalStore {
           operationAssociation: recordHasOperationAssociation(record, query),
         };
       })
-      .filter(({ matches }) => terms.length === 0 || matches > 0)
+      .filter(({ matches, pathAssociation }) =>
+        terms.length === 0
+          ? pathAssociation || query.path === undefined
+          : matches > 0 || pathAssociation,
+      )
       .sort((left, right) => {
+        // During task discovery, a directly relevant trial lesson must remain
+        // discoverable among broad generated models. Known-scope activation
+        // retains the established authority/lifecycle ordering below.
+        if (discovery && left.matches !== right.matches) return right.matches - left.matches;
         const lifecycle = recordLifecycleRank(right.record) - recordLifecycleRank(left.record);
         if (lifecycle !== 0) return lifecycle;
         const authority = recordAuthorityRank(right.record) - recordAuthorityRank(left.record);
@@ -687,27 +792,34 @@ export class ProjectKnowledgeLocalStore {
         if (left.matches !== right.matches) return right.matches - left.matches;
         const type = RECORD_TYPE_RANK[left.record.type] - RECORD_TYPE_RANK[right.record.type];
         if (type !== 0) return type;
-        const source = recordResultSource(left.record).localeCompare(
-          recordResultSource(right.record),
-        );
-        return source !== 0 ? source : left.record.id.localeCompare(right.record.id);
+        return left.record.id.localeCompare(right.record.id);
       });
     const recordsById = new Map(applicableRecords.map((record) => [record.id, record]));
     const ranked: Array<{
       record: ProjectKnowledgeRecord;
       matches: number;
+      pathAssociation: boolean;
       relationSource?: ProjectKnowledgeRecordSource;
-    }> = direct.map(({ record, matches }) => ({ record, matches }));
+    }> = direct.map(({ record, matches, pathAssociation }) => ({
+      record,
+      matches,
+      pathAssociation,
+    }));
     const seen = new Set(ranked.map(({ record }) => record.id));
     for (const { record } of direct) {
       for (const relation of record.relations) {
         const related = recordsById.get(relation.targetId);
         if (!related || seen.has(related.id)) continue;
-        ranked.push({ record: related, matches: 0, relationSource: relation.sources[0] });
+        ranked.push({
+          record: related,
+          matches: 0,
+          pathAssociation: false,
+          relationSource: relation.sources[0],
+        });
         seen.add(related.id);
       }
     }
-    return ranked.slice(0, 40).map(({ record, matches, relationSource }) => ({
+    return ranked.slice(0, 40).map(({ record, matches, pathAssociation, relationSource }) => ({
       source: relationSource ? sourceReferenceLabel(relationSource) : recordResultSource(record),
       title: record.title,
       record,
@@ -716,7 +828,7 @@ export class ProjectKnowledgeLocalStore {
           0,
           1600,
         ),
-      score: matches,
+      score: matches + (pathAssociation ? 100 : 0),
     }));
   }
 
@@ -729,7 +841,11 @@ export class ProjectKnowledgeLocalStore {
       for (const candidate of candidates) {
         if (candidate.state === 'superseded' || (mutation.id && mutation.id !== candidate.id))
           continue;
-        const inspection = await inspectRecordSources(this.projectRoot, candidate, false);
+        const inspection = await inspectRecordSources(
+          this.projectRoot,
+          candidate,
+          candidate.authority === 'user' && candidate.sourceVersions.length === 0,
+        );
         const verificationCurrent = verificationCommandsAreAvailable(this.projectRoot, candidate);
         const state: ProjectKnowledgeRecord['state'] = !verificationCurrent
           ? 'superseded'
@@ -738,9 +854,7 @@ export class ProjectKnowledgeLocalStore {
               ? 'enforced'
               : 'proven'
             : inspection.current
-              ? candidate.state === 'enforced'
-                ? 'enforced'
-                : 'proven'
+              ? candidate.state
               : 'superseded';
         if (
           state !== candidate.state ||
@@ -804,12 +918,7 @@ export class ProjectKnowledgeLocalStore {
         !verificationCommandsAreConfirmed(this.projectRoot, parsedIncoming)
           ? parseProjectKnowledgeRecord({ ...parsedIncoming, state: 'proven' })
           : parsedIncoming;
-      if (
-        current?.state === 'superseded' &&
-        current.authority === 'user' &&
-        incoming.authority !== 'user' &&
-        equalSourceVersionMetadata(current, incoming)
-      ) {
+      if (current && current.authority === 'user' && incoming.authority !== 'user') {
         return { kind: mutation.kind, changed: false, record: current, diagnostics: [] };
       }
       if (
@@ -819,16 +928,57 @@ export class ProjectKnowledgeLocalStore {
       ) {
         return { kind: mutation.kind, changed: false, record: current, diagnostics: [] };
       }
-      if (current?.state === 'superseded' && incoming.authority !== 'user') {
-        const versioned = versionProjectKnowledgeRecord(current, incoming);
-        const existingVersion = this.read(versioned.id);
-        const next = existingVersion
-          ? mergeProjectKnowledgeRecord(existingVersion, versioned)
-          : versioned;
+      if (current && incoming.authority !== 'user') {
+        const currentSemantic = projectKnowledgeRecordSemanticFingerprint(current);
+        const incomingSemantic = projectKnowledgeRecordSemanticFingerprint(incoming);
+        if (
+          current.state !== 'superseded' &&
+          currentSemantic === incomingSemantic &&
+          equalSourceVersions(current, incoming)
+        ) {
+          return { kind: mutation.kind, changed: false, record: current, diagnostics: [] };
+        }
+        if (currentSemantic === incomingSemantic) {
+          const next = parseProjectKnowledgeRecord({
+            ...incoming,
+            state: current.state === 'enforced' ? 'enforced' : incoming.state,
+            applicationCount: current.applicationCount,
+            successCount: current.successCount,
+            failureCount: current.failureCount,
+            ...(current.lastAppliedAt === undefined
+              ? {}
+              : { lastAppliedAt: current.lastAppliedAt }),
+          });
+          this.write(next);
+          return {
+            kind: mutation.kind,
+            changed: JSON.stringify(current) !== JSON.stringify(next),
+            record: next,
+            diagnostics: [],
+          };
+        }
+        const archived = archivedGeneratedRecord(incoming.id, current);
+        const existingArchive = this.read(archived.id);
+        if (!existingArchive || !generatedRecordHasFeedback(existingArchive)) this.write(archived);
+        const relationSource =
+          recordSourceReferences(incoming)[0] ??
+          (incoming.sourceVersions[0] ? { source: incoming.sourceVersions[0].source } : undefined);
+        const next = parseProjectKnowledgeRecord({
+          ...incoming,
+          relations:
+            relationSource === undefined
+              ? incoming.relations
+              : [
+                  ...incoming.relations
+                    .filter((relation) => relation.type !== 'supersedes')
+                    .slice(0, 15),
+                  { type: 'supersedes', targetId: archived.id, sources: [relationSource] },
+                ],
+        });
         this.write(next);
         return {
           kind: mutation.kind,
-          changed: !existingVersion || JSON.stringify(existingVersion) !== JSON.stringify(next),
+          changed: true,
           record: next,
           diagnostics: [],
         };
@@ -1131,23 +1281,134 @@ export class ProjectKnowledgeLocalStore {
     }
     database.exec('BEGIN IMMEDIATE;');
     try {
-      database.exec(
-        [
-          'DROP TABLE IF EXISTS pk_records;',
-          'DROP TABLE IF EXISTS pk_applied_mutations;',
-          'DROP TABLE IF EXISTS pk_application_outcomes;',
-          'DROP TABLE IF EXISTS pk_feedback_state;',
-          'DELETE FROM pk_meta;',
-        ].join('\n'),
-      );
       this.createRecordSchema(database);
       database
-        .prepare("INSERT INTO pk_meta(key, value) VALUES ('schema_version', ?)")
+        .prepare(
+          "INSERT INTO pk_meta(key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        )
         .run(PROJECT_KNOWLEDGE_SCHEMA_VERSION);
       database.exec('COMMIT;');
     } catch (error) {
       database.exec('ROLLBACK;');
+      this.reportDiagnostic?.({
+        code: 'record-migration-failed',
+        message: '项目知识存储升级失败，已回滚并保留原有记录。',
+      });
       throw error;
+    }
+  }
+
+  private maintainGeneratedRecords(): void {
+    const database = this.requireDatabase();
+    database.exec('BEGIN IMMEDIATE;');
+    try {
+      const maintenanceComplete =
+        (
+          database
+            .prepare('SELECT value FROM pk_meta WHERE key = ?')
+            .get(GENERATED_RECORD_MAINTENANCE) as { value?: unknown } | undefined
+        )?.value === 'complete';
+      const rows = database
+        .prepare('SELECT payload_json FROM pk_records')
+        .all() as unknown as StoredRecordRow[];
+      const records = rows.map((row) => parseProjectKnowledgeRecord(JSON.parse(row.payload_json)));
+      const protectedIds = new Set<string>();
+      for (const row of database
+        .prepare(
+          'SELECT record_id FROM pk_application_outcomes UNION SELECT record_id FROM pk_feedback_state',
+        )
+        .all() as unknown as Array<{ record_id: string }>)
+        protectedIds.add(row.record_id);
+      const hasFeedback = (record: ProjectKnowledgeRecord): boolean =>
+        protectedIds.has(record.id) || generatedRecordHasFeedback(record);
+      const deleteRecord = database.prepare('DELETE FROM pk_records WHERE id = ?');
+
+      const obsolete = records.filter(
+        (record) =>
+          (record.id.startsWith('generated-knowledge-corpus') ||
+            record.id.startsWith('generated-module-overview') ||
+            // The first module-level maintenance rebuilds unreviewed rows into one canonical set.
+            (!maintenanceComplete && isGeneratedModuleRecord(record))) &&
+          !hasFeedback(record),
+      );
+      for (const record of obsolete) deleteRecord.run(record.id);
+
+      const candidates = records.filter(
+        (record) =>
+          !obsolete.some((entry) => entry.id === record.id) &&
+          (record.id.startsWith('generated-project-map') ||
+            record.id.startsWith('generated-build-test') ||
+            (record.id.startsWith('generated-module-') &&
+              !record.id.startsWith('generated-module-overview'))),
+      );
+      const groups = new Map<string, ProjectKnowledgeRecord[]>();
+      for (const record of candidates) {
+        const baseId = generatedRecordBaseId(record.id);
+        const group = groups.get(baseId) ?? [];
+        group.push(record);
+        groups.set(baseId, group);
+      }
+      for (const [baseId, group] of groups) {
+        const protectedRecords = group.filter(hasFeedback);
+        const disposable = group.filter((record) => !hasFeedback(record));
+        const bySemantic = new Map<string, ProjectKnowledgeRecord[]>();
+        for (const record of disposable) {
+          const fingerprint = projectKnowledgeRecordSemanticFingerprint(record);
+          const versions = bySemantic.get(fingerprint) ?? [];
+          versions.push(record);
+          bySemantic.set(fingerprint, versions);
+        }
+        if (protectedRecords.length > 0) {
+          for (const versions of bySemantic.values()) {
+            versions.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+            for (const duplicate of versions.slice(1)) deleteRecord.run(duplicate.id);
+          }
+          continue;
+        }
+        if (disposable.length === 0) continue;
+        const active = disposable
+          .filter((record) => record.state !== 'superseded')
+          .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+        const canonical: ProjectKnowledgeRecord[] = [];
+        const activeSemantic = active
+          ? projectKnowledgeRecordSemanticFingerprint(active)
+          : undefined;
+        if (active) {
+          canonical.push(
+            parseProjectKnowledgeRecord({
+              ...active,
+              id: baseId,
+              relations: active.relations.filter((relation) => relation.type !== 'supersedes'),
+            }),
+          );
+        }
+        for (const [semantic, versions] of bySemantic) {
+          if (semantic === activeSemantic) continue;
+          versions.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+          canonical.push(archivedGeneratedRecord(baseId, versions[0]!));
+        }
+        if (
+          canonical.length === disposable.length &&
+          canonical.every((record) =>
+            disposable.some((existing) => JSON.stringify(existing) === JSON.stringify(record)),
+          )
+        )
+          continue;
+        for (const record of disposable) deleteRecord.run(record.id);
+        for (const record of canonical) this.writeRecord(database, record);
+      }
+      database
+        .prepare(
+          'INSERT INTO pk_meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+        )
+        .run(GENERATED_RECORD_MAINTENANCE, 'complete');
+      database.exec('COMMIT;');
+    } catch {
+      database.exec('ROLLBACK;');
+      this.reportDiagnostic?.({
+        code: 'record-maintenance-failed',
+        message: '项目知识历史整理失败，已回滚并保留原有记录。',
+      });
     }
   }
 
@@ -1243,43 +1504,4 @@ export function readProjectKnowledgeStoreSnapshot(
   } finally {
     database.close();
   }
-}
-
-function versionProjectKnowledgeRecord(
-  superseded: ProjectKnowledgeRecord,
-  incoming: ProjectKnowledgeRecord,
-): ProjectKnowledgeRecord {
-  const signature = createHash('sha256')
-    .update(
-      JSON.stringify({
-        type: incoming.type,
-        title: incoming.title,
-        summary: incoming.summary,
-        conclusions: incoming.conclusions,
-        verification: incoming.verification,
-        sourceVersions: incoming.sourceVersions,
-      }),
-    )
-    .digest('hex')
-    .slice(0, 12);
-  const id = `${incoming.id.slice(0, 112)}-v-${signature}`;
-  const source =
-    recordSourceReferences(incoming)[0] ??
-    (incoming.sourceVersions[0] === undefined
-      ? undefined
-      : { source: incoming.sourceVersions[0].source });
-  const retainedRelations = incoming.relations.filter(
-    (relation) => relation.type !== 'supersedes' || relation.targetId !== superseded.id,
-  );
-  return parseProjectKnowledgeRecord({
-    ...incoming,
-    id,
-    relations:
-      source === undefined
-        ? incoming.relations
-        : [
-            ...retainedRelations.slice(0, 15),
-            { type: 'supersedes', targetId: superseded.id, sources: [source] },
-          ],
-  });
 }

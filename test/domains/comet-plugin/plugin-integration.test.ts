@@ -155,7 +155,11 @@ describe('Comet plugin integration bridge', () => {
     });
     await applications.markAppliedEventDispatched('application-outbox', '2026-08-24T12:00:01.000Z');
 
-    await bridge.recordContextOutcome('application-outbox', 'corrected');
+    const adoptionEvidence = {
+      decision: 'The current router contradicts this reference',
+      verification: { command: 'pnpm test router', success: false },
+    };
+    await bridge.recordContextOutcome('application-outbox', 'corrected', adoptionEvidence);
     expect((await applications.list())[0]?.outcomeEvents?.[0]?.dispatchedAt).toBeUndefined();
 
     await bridge.recordContextOutcome('application-outbox', 'corrected');
@@ -166,6 +170,15 @@ describe('Comet plugin integration bridge', () => {
       expect.objectContaining({
         type: 'context.outcome',
         eventId: expect.stringMatching(/^context-outcome:/u),
+        context: { task: 'Verify durable feedback' },
+        evidence: expect.arrayContaining([
+          expect.objectContaining({ kind: 'outcome', summary: adoptionEvidence.decision }),
+          expect.objectContaining({
+            kind: 'verification',
+            command: 'pnpm test router',
+            success: false,
+          }),
+        ]),
       }),
     ]);
   });

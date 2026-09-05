@@ -201,6 +201,7 @@ async function arrangeComponentFailure(
 
 describe('update command helpers', () => {
   let tmpDir: string;
+  let defaultHomedirSpy: ReturnType<typeof vi.spyOn>;
   let fakeGlobalNpmRoot: string;
   let candidateVersionOverride: string | null;
   let candidateCommandFailure: string | null;
@@ -221,6 +222,9 @@ describe('update command helpers', () => {
       `comet-update-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     await fs.mkdir(tmpDir, { recursive: true });
+    const defaultHome = path.join(tmpDir, 'default-home');
+    await fs.mkdir(defaultHome, { recursive: true });
+    defaultHomedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(defaultHome);
     fakeGlobalNpmRoot = path.join(tmpDir, 'global node_modules & safe');
     await writeFakeCometPackage(path.join(fakeGlobalNpmRoot, '@rpamis', 'comet'), '0.4.0-beta.7');
     candidateVersionOverride = null;
@@ -383,7 +387,12 @@ describe('update command helpers', () => {
   });
 
   afterEach(async () => {
+    defaultHomedirSpy.mockRestore();
     await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('isolates the default installation registry in the test home', () => {
+    expect(os.homedir()).toBe(path.join(tmpDir, 'default-home'));
   });
 
   it('detects Chinese installed comet skills from existing skill content', async () => {

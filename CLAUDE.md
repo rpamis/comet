@@ -2,6 +2,26 @@
 
 必须采用中文回答用户
 
+## 开发工作区保护
+
+开始修改前检查当前分支、比较基线、未提交文件和子模块状态。保留所有无关修改，不得通过 `reset`、`clean`、删除或格式化无关文件来换取检查通过。提交时只显式暂存本任务文件。
+
+`website` 是独立 Git 子模块；只有任务明确涉及网站时才能修改其内容或引用状态。
+
+`.agents/skills/comet*`、`.claude/skills/comet*`、平台安装目录和测试生成目录是本地安装或 dogfood 副本，不是产品源码。产品行为应修改 `app/`、`domains/`、`platform/`、`assets/` 或对应构建脚本。
+
+## 分层开发规则
+
+修改目标文件前，读取从仓库根到该文件目录沿途的 `AGENTS.md`；路径更深的文件补充或覆盖上层规则。`.claude/rules/*.md` 是 Claude Code 的对应路径规则，`.codex/rules/*.rules` 只用于 Codex 命令执行策略，不承载开发行为说明。
+
+规则文件的数字前缀只用于分组和稳定排序，不表示优先级。发生冲突时按平台自身的作用域规则处理，不根据编号判断覆盖关系。
+
+## 问题证据与验证结论
+
+Issue、Review 意见、Project Knowledge、Memory 和历史记录只提供调查线索。可能变化的事实必须在当前分支重新核对；行为缺陷应先在最小临时项目、对应发布包或真实 Runtime 中复现。
+
+单元测试、生成 Runtime、npm 打包产物、真实平台 Hook 和真实模型 Eval 是不同证据层级，前一层通过不能证明后一层通过。完成报告必须列出实际执行的检查、真实结果、未执行项及原因；超时、依赖缺失和环境不可用均视为未完成。
+
 ## 测试
 
 验证范围必须与改动风险相匹配，不要在每次编辑后默认运行全量测试。
@@ -68,40 +88,51 @@ pnpm test           # 高风险修改或最终交付前需要本地全量验证�
 
 架构约束由 `pnpm run lint:architecture` 校验，并已接入 `pnpm lint`。它会检查顶层目录白名单、活跃源码根、app/domain/platform 子模块、脚本模块、Classic/Native/Entry runtime 入口与生成物、内置 Skill 根目录、测试归属和禁止旧目录回归。如果确实需要新增顶层目录、源码模块、测试根目录或例外，必须先更新 `config/repository-layout.json`、架构 linter 和本节说明。
 
-## Workflow runtime 与 Hook 路由规范
+## Classic runtime 脚本规范
 
-脚本是 **Node.js 启动器或生成 bundle（`.mjs`）**，只依赖 Node.js，**不依赖 bash / Git Bash / WSL**。
+脚本位于 `assets/skills/comet/scripts/`，当前发布形态是 CLI 聚合 runtime + 每命令独立的自包含 `.mjs` bundle：
 
-- Classic 真实逻辑位于 `domains/comet-classic/`，由 `pnpm build:classic-runtime` 生成 `assets/skills/comet/scripts/comet-runtime.mjs`；同目录其他 Classic launcher 保持薄封装。
-- Native 真实逻辑位于 `domains/comet-native/`，由 `pnpm build:native-runtime` 生成 `assets/skills/comet-native/scripts/comet-native-runtime.mjs`；Native 主流程和 Guard 不得依赖外部 Skill。
-- 共享入口、selection 与 Hook Router 位于 `domains/comet-entry/`，由 `pnpm build:entry-runtime` 生成 `comet-entry-runtime.mjs` 与 `comet-hook-router.mjs`。
-- 每个平台只安装一份 `comet-workflow-guard` Rule；支持 Hook 的平台只安装一个 `comet-hook-router.mjs`。Router 根据 `.comet/current-change.json` 一次只调用当前 Native 或 Classic Guard，两边的阶段、目录、schema 与 Guard 逻辑保持独立。
-- `comet-hook-guard.mjs` 与 `comet-native-hook-guard.mjs` 是各自 runtime 的薄 Guard launcher，不直接作为平台 Hook 安装。
-- `comet-env.mjs` 打印自身所在目录（scripts dir），供 skill 样板代码解析同级启动器路径。
-- 跨平台由 Node 保证：hash 用 `node:crypto`，YAML 用 `yaml` 包，子进程用 `child_process`（构建/校验命令走 `spawnSync(cmd, { shell: true })`）。不再有 `sed -i` / `sha256sum` vs `shasum` / `pipefail` 等 shell 可移植性问题。
-- 新增/重命名 runtime 入口或生成物必须同步 `assets/manifest.json`、`config/repository-layout.json` 的对应 runtime 映射与 `test/repository/*-runtime-assets.test.ts`；Classic launcher 还需同步 `test/domains/comet-classic/comet-scripts.test.ts` 的 fixture 列表。
-- skill 样板（boilerplate，当前版本 `v3`）在所有 SKILL.md / reference 中重复，改动需全量同步；样板通过 `find` 定位 `comet-env.mjs`，再用 `node "$COMET_ENV"` 解析路径，命令统一为 `node "$COMET_STATE" ...` 形式。
+- 运行时源码与每命令 entry 位于 `domains/comet-classic/`，修改后必须运行 `pnpm build:classic-runtime` 同步 `comet-runtime.mjs` 和所有 `comet-*.mjs` 命令 bundle
+- 命令 bundle 必须由对应 entry 构建为自包含产物；不要在生成物中直接编写业务逻辑，也不要恢复对 `comet-runtime.mjs` 的运行时 import
+- 不再新增 `.sh` runtime；测试 fixture `test/fixtures/classic-0.3.9/` 是冻结参考实现，只用于差分兼容
+- 新增命令 bundle 或 runtime 文件必须加入 `test/domains/comet-classic/comet-scripts.test.ts` 的 `beforeEach` 拷贝列表、`config/repository-layout.json` 和 `assets/manifest.json`
+- `comet-hook-guard.mjs` 是 Classic Guard 的自包含命令 bundle，不作为平台 Hook 直接安装；平台统一安装的 Hook 入口是 `comet-hook-router.mjs`
+
+## Native 与 Entry runtime 规范
+
+- Native 运行时源码与每命令 entry 位于 `domains/comet-native/`，修改后必须运行 `pnpm build:native-runtime` 同步 `comet-native-runtime.mjs` 和所有 `comet-native-*.mjs` 命令 bundle
+- `comet-native-hook-guard.mjs` 是 Native Guard 的自包含命令 bundle，不作为平台 Hook 直接安装；Native 主流程与 Guard 都不得依赖外部 Skill
+- 共享入口与 Hook Router 源码位于 `domains/comet-entry/`，修改后必须运行 `pnpm build:entry-runtime`，同步 `comet-entry-runtime.mjs` 与 `comet-hook-router.mjs`
+- 每个平台只安装一份 `comet-workflow-guard` Rule；支持 Hook 的平台只安装一个 `comet-hook-router.mjs`
+- Router 通过 `.comet/current-change.json` 的 `workflow + change` 确定当前需求归属，一次写入最多调用一个 workflow Guard；Native 与 Classic 的 phase、目录、schema 和 Guard 逻辑保持独立
+- 新增或重命名 runtime 入口/生成物时，同步 `config/repository-layout.json`、`assets/manifest.json` 和对应的 `test/repository/*-runtime-assets.test.ts`
 
 ## 脚本依赖关系
 
 ```
-comet-runtime.mjs        ← domains/comet-classic/*
+comet-runtime.mjs ← domains/comet-classic/*
+comet-state.mjs ← domains/comet-classic/classic-state-entry.ts
+comet-guard.mjs ← domains/comet-classic/classic-guard-entry.ts
+comet-handoff.mjs ← domains/comet-classic/classic-handoff-entry.ts (写入 handoff_context/handoff_hash)
+comet-archive.mjs ← domains/comet-classic/classic-archive-entry.ts
+comet-yaml-validate.mjs ← domains/comet-classic/classic-validate-entry.ts
+comet-hook-guard.mjs ← domains/comet-classic/classic-hook-guard-entry.ts (不直接安装为平台 Hook)
 comet-native-runtime.mjs ← domains/comet-native/*
-comet-entry-runtime.mjs  ← domains/comet-entry/*
-comet-hook-router.mjs    ← 平台唯一 Hook 入口 → 当前 selection 的一个 workflow Guard
+comet-native-<command>.mjs ← domains/comet-native/native-<command>-entry.ts
+comet-native-hook-guard.mjs ← domains/comet-native/native-hook-guard-entry.ts (不直接安装为平台 Hook)
+comet-entry-runtime.mjs ← domains/comet-entry/*
+comet-hook-router.mjs ← domains/comet-entry/* (平台唯一 Hook 入口，路由一个 workflow Guard)
 ```
 
-Classic 打包入口 `domains/comet-classic/classic-cli.ts` 导出 `main` / `runClassicCli` / `CLASSIC_COMMANDS`；Native 与 Entry 的入口由 `config/repository-layout.json` 分别声明。esbuild ESM bundle 保留所需 export，启动器直接 import 调用，单进程、无 bash、无二次 node 派生。跨 workflow 的稳定契约放在 `domains/workflow-contract/`，入口归属与路由放在 `domains/comet-entry/`；不要为了复用而合并 Native 与 Classic 的状态机或 Guard。
+Classic 命令之间新增共享工具函数时（如 archive 目录解析、change name 校验、hash、yaml 解析），优先放在 `domains/comet-classic/` 的共享模块中，再重新生成全部 bundle，避免多个命令漂移。跨 workflow 的稳定契约放在 `domains/workflow-contract/`，入口归属与路由放在 `domains/comet-entry/`；不要为了复用而合并 Native 与 Classic 的状态机或 Guard。
 
 ## .comet.yaml 状态机
 
-每个 change 的状态文件，字段变更需要同步三处（全在 TypeScript 中）：
+每个 change 的状态文件，字段变更需要同步三处：
 
-1. `domains/comet-classic/classic-state-command.ts` — `set` 白名单 + enum 验证（`SETTABLE_FIELDS` / `MACHINE_OWNED_FIELDS`）
-2. `domains/comet-classic/classic-validate-command.ts` — schema 校验 + 已知字段
+1. `domains/comet-classic/classic-state-command.ts` — `set` 白名单 + enum 验证
+2. `domains/comet-classic/classic-validate-command.ts` — schema 校验 + KNOWN_KEYS
 3. `test/domains/comet-classic/comet-scripts.test.ts` — 测试中的 yaml 字符串
-
-改完 1/2 后 `pnpm build` 重新生成 `comet-runtime.mjs`，否则 `classic-runtime.test.ts` 的新鲜度检查会失败。
 
 ## 双语言 Skill
 

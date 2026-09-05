@@ -305,7 +305,7 @@ async function runRetrievalEval(): Promise<AgentLearningRetrievalEvalMetrics> {
       title: '项目拓扑',
       summary: '领域代码位于 domains 目录',
       content: '领域代码位于 domains 目录。'.repeat(120),
-      selectors: { projectId: 'eval-project', paths: ['domains/*'] },
+      selectors: { projectId: 'eval-project', paths: ['domains/**'] },
     }),
   ];
   const decoys = [

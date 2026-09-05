@@ -61,6 +61,7 @@ async function safeDirectory(
   root: string,
   projectRoot: string,
   budget?: DiscoveryBudget,
+  reporter?: ProjectKnowledgeDiagnosticReporter,
 ): Promise<boolean> {
   if (budget && budgetExpired(budget)) return false;
   if (!isInside(projectRoot, root)) return false;
@@ -71,7 +72,11 @@ async function safeDirectory(
     return isInside(projectRoot, realRoot);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-      report(undefined, 'corpus-root', `Unable to inspect ${relativeSource(projectRoot, root)}`);
+      report(
+        reporter,
+        'corpus-root',
+        `未进入检索：无法读取目录 ${relativeSource(projectRoot, root)}。`,
+      );
     }
     return false;
   }
@@ -86,7 +91,7 @@ async function walkMarkdown(
   budget?: DiscoveryBudget,
   matcher?: MarkdownMatcher,
 ): Promise<ProjectKnowledgeDocument[]> {
-  if (!(await safeDirectory(root, projectRoot, budget))) return [];
+  if (!(await safeDirectory(root, projectRoot, budget, reporter))) return [];
   const result: ProjectKnowledgeDocument[] = [];
   const visit = async (directory: string): Promise<void> => {
     if (budget && budgetExpired(budget)) return;
@@ -97,7 +102,7 @@ async function walkMarkdown(
       report(
         reporter,
         'corpus-read',
-        `Unable to inspect ${relativeSource(projectRoot, directory)}`,
+        `未进入检索：无法读取目录 ${relativeSource(projectRoot, directory)}`,
       );
       return;
     }
@@ -224,7 +229,7 @@ async function discoverSuperpowers(
   reporter?: ProjectKnowledgeDiagnosticReporter,
   budget?: DiscoveryBudget,
 ): Promise<ProjectKnowledgeDocument[]> {
-  const changes = await walkDirectories(archiveRoot, projectRoot, budget);
+  const changes = await walkDirectories(archiveRoot, projectRoot, budget, reporter);
   const references = new Set<string>();
   for (const change of changes) {
     if (budget && budgetExpired(budget)) break;
@@ -246,7 +251,7 @@ async function discoverSuperpowers(
         report(
           reporter,
           'superpowers-state',
-          `Unable to read archived Classic state ${relativeSource(projectRoot, state)}`,
+          `未进入检索：无法读取 Classic 归档状态 ${relativeSource(projectRoot, state)}，其引用文档当前不会参与召回。`,
         );
       }
     }
@@ -260,7 +265,7 @@ async function discoverSuperpowers(
       documents.push({ absolutePath, source: relative, kind: 'superpowers' });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
-        report(reporter, 'superpowers-file', `Unable to inspect ${relative}`);
+        report(reporter, 'superpowers-file', `未进入检索：无法读取归档引用的文档 ${relative}。`);
     }
   }
   return documents;
@@ -270,8 +275,9 @@ async function walkDirectories(
   root: string,
   projectRoot: string,
   budget?: DiscoveryBudget,
+  reporter?: ProjectKnowledgeDiagnosticReporter,
 ): Promise<string[]> {
-  if (!(await safeDirectory(root, projectRoot, budget))) return [];
+  if (!(await safeDirectory(root, projectRoot, budget, reporter))) return [];
   const result: string[] = [];
   const visit = async (directory: string): Promise<void> => {
     if (budget && budgetExpired(budget)) return;
@@ -395,7 +401,7 @@ export async function discoverProjectKnowledgeCorpus(
       report(
         options.reportDiagnostic,
         'corpus-limit',
-        `Project knowledge corpus is limited to ${MAX_CORPUS_FILES} files`,
+        `未进入检索：语料文件数量超过 ${MAX_CORPUS_FILES} 个，其余文件当前不会参与召回。`,
       );
       break;
     }
@@ -405,21 +411,25 @@ export async function discoverProjectKnowledgeCorpus(
         report(
           options.reportDiagnostic,
           'corpus-bytes',
-          `Project knowledge corpus byte budget skipped ${document.source}`,
+          `未进入检索：超过单文件或语料总预算，${document.source} 当前不会参与召回。`,
         );
         continue;
       }
       totalBytes += size;
       bounded.push(document);
     } catch {
-      report(options.reportDiagnostic, 'corpus-read', `Unable to inspect ${document.source}`);
+      report(
+        options.reportDiagnostic,
+        'corpus-read',
+        `未进入检索：无法读取 ${document.source}，该文件当前不会参与召回。`,
+      );
     }
   }
   if (budget.timedOut) {
     report(
       options.reportDiagnostic,
       'corpus-timeout',
-      'Project knowledge corpus discovery exceeded its time budget',
+      '未进入检索：语料发现超过时间预算，尚未发现的文件当前不会参与召回。',
     );
   }
   return bounded;

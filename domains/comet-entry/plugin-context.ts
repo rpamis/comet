@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { ProjectKnowledgeHostReview } from '../project-knowledge/host-review.js';
 import { createHash } from 'node:crypto';
 
 import {
@@ -10,6 +11,7 @@ import {
   AGENT_EXPERIENCE_SCHEMA,
   type AgentContextExpansion,
   type AgentContextOutcomeStatus,
+  type AgentContextOutcomeEvidence,
   type AgentExperienceEventType,
 } from '../agent-learning/index.js';
 import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
@@ -21,6 +23,15 @@ export async function collectCometPluginContext(
   const notices: string[] = [];
   const bridge = await createBridge(projectRoot, (notice) => notices.push(notice));
   const contributions = await bridge.collectContext(request);
+  try {
+    if ((await new ProjectKnowledgeHostReview(projectRoot).pending()).length > 0) {
+      process.stderr.write(
+        'Project knowledge: host Agent review pending. Run comet knowledge review --json, inspect the evidence, and submit supported lessons with --id and --file.\n',
+      );
+    }
+  } catch {
+    process.stderr.write('Project knowledge: pending review status is unavailable.\n');
+  }
   for (const notice of notices) process.stderr.write(`${notice}\n`);
   for (const diagnostic of await bridge.diagnostics()) {
     if (diagnostic.pluginId !== 'comet.project-knowledge' || diagnostic.phase !== 'context')
@@ -43,9 +54,10 @@ export async function recordCometContextOutcome(options: {
   readonly projectRoot: string;
   readonly applicationId: string;
   readonly outcome: AgentContextOutcomeStatus;
+  readonly evidence?: AgentContextOutcomeEvidence;
 }): Promise<void> {
   const bridge = await createBridge(options.projectRoot);
-  await bridge.recordContextOutcome(options.applicationId, options.outcome);
+  await bridge.recordContextOutcome(options.applicationId, options.outcome, options.evidence);
 }
 
 export async function recordCometWorkflowResult(options: {

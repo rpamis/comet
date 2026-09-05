@@ -1,0 +1,115 @@
+[
+  {
+    "id": "comet-reference-progressive-context",
+    "type": "pattern",
+    "title": "项目知识检索与上下文：候选召回、按需展开和适用范围",
+    "summary": "检索命中还要经过 ContextDirector 才会提供给 Agent。项目知识在任务尚未定位文件时可以作为候选，但明确的路径、操作、阶段不匹配仍须排除；采用前复核当前源码。Personal Memory 的范围匹配独立保留。",
+    "applicablePaths": [
+      "domains/project-knowledge/",
+      "domains/agent-learning/",
+      "domains/comet-plugin/"
+    ],
+    "operations": [],
+    "sources": [
+      "domains/project-knowledge/plugin.ts",
+      "domains/agent-learning/context-director.ts",
+      "domains/comet-plugin/integration.ts"
+    ],
+    "verification": [
+      "npx vitest run test/domains/agent-learning/agent-learning.test.ts test/domains/project-knowledge/project-knowledge.test.ts"
+    ]
+  },
+  {
+    "id": "comet-reference-feedback-outbox",
+    "type": "pattern",
+    "title": "上下文反馈持久化、重启重放与重复计数",
+    "summary": "应用账本先保存 outcomeEvents 和递增 revision，再由插件桥把事件投递给经验日志并标记已投递；投递失败可以重放。反馈扩展字段须贯穿存储读写、重放事件、领域合并和 Dashboard。重复提交同一结果不能重复增加成功次数；任务完成不等于每条候选都有效。",
+    "applicablePaths": [
+      "domains/agent-learning/",
+      "domains/comet-plugin/",
+      "domains/project-knowledge/",
+      "domains/dashboard/"
+    ],
+    "operations": [],
+    "sources": [
+      "domains/agent-learning/context-director.ts",
+      "domains/comet-plugin/integration.ts",
+      "domains/project-knowledge/local-store.ts"
+    ],
+    "verification": [
+      "npx vitest run test/domains/comet-plugin/plugin-integration.test.ts test/domains/agent-learning/agent-learning.test.ts"
+    ]
+  },
+  {
+    "id": "comet-reference-worktree-knowledge",
+    "type": "dependency",
+    "title": "Project Knowledge 多 worktree 的仓库身份与工作区索引隔离",
+    "summary": "repository identity 用于关联同一仓库，workspace identity 用于区分不同工作树的索引和来源状态。诊断旧知识时一起核对缓存位置解析、local-store、index-store 与 readiness；应以当前工作树内容摘要检验来源，不能只比较文件大小和修改时间。",
+    "applicablePaths": ["domains/project-knowledge/", "platform/paths/"],
+    "operations": [],
+    "sources": [
+      "platform/paths/project-knowledge-storage.ts",
+      "domains/project-knowledge/index-store.ts",
+      "domains/project-knowledge/local-store.ts",
+      "domains/project-knowledge/readiness.ts"
+    ],
+    "verification": [
+      "npx vitest run test/domains/project-knowledge/project-knowledge-store.test.ts"
+    ]
+  },
+  {
+    "id": "comet-reference-corpus-evidence",
+    "type": "decision",
+    "title": "知识数据来源：Markdown 检索语料与代码证据的区别",
+    "summary": "索引中的 Markdown 才是全文检索语料。生成模型或语义经验可以引用代码、配置与测试作为结论依据；这些引用不能直接变成 FTS/ripgrep 语料或被 Dashboard 宣称为已索引数据来源。排查召回时分别检查 corpus、索引、记录结论和上下文映射。",
+    "applicablePaths": ["domains/project-knowledge/", "domains/dashboard/"],
+    "operations": [],
+    "sources": [
+      "domains/project-knowledge/corpus.ts",
+      "domains/project-knowledge/index-store.ts",
+      "domains/project-knowledge/plugin.ts"
+    ],
+    "verification": ["npx vitest run test/domains/project-knowledge/project-knowledge.test.ts"]
+  },
+  {
+    "id": "comet-reference-classic-state",
+    "type": "procedure",
+    "title": "Classic change 状态字段跨写入器、校验器和 Runtime 的一致性",
+    "summary": "Classic .comet.yaml 字段变更涉及 classic-state-command 的 set 白名单和枚举、classic-validate-command 的 schema 与 KNOWN_KEYS，以及 comet-scripts 测试中的状态样本。运行时发布为每命令自包含 bundle，源码修改后还须重新构建 Classic Runtime 并检查生成资产。",
+    "applicablePaths": ["domains/comet-classic/", "assets/skills/comet/scripts/"],
+    "operations": [],
+    "sources": [
+      "domains/comet-classic/classic-state-command.ts",
+      "domains/comet-classic/classic-validate-command.ts",
+      "scripts/build/build-classic-runtime.mjs"
+    ],
+    "verification": [
+      "npx vitest run test/domains/comet-classic/comet-scripts.test.ts",
+      "pnpm build:classic-runtime"
+    ]
+  },
+  {
+    "id": "comet-reference-runtime-delivery",
+    "type": "procedure",
+    "title": "Native Classic Entry Runtime 修改后的发布资产同步",
+    "summary": "产品源码位于 domains，平台安装和本地 Skill 是分发副本。Classic、Native 与 Entry 各有构建脚本和独立输出；新增入口还涉及 config/repository-layout.json、assets/manifest.json 与资产契约测试。仅通过源码单测不能证明安装后的命令 bundle 已包含变更。",
+    "applicablePaths": [
+      "domains/comet-classic/",
+      "domains/comet-native/",
+      "domains/comet-entry/",
+      "scripts/build/"
+    ],
+    "operations": [],
+    "sources": [
+      "scripts/build/build-classic-runtime.mjs",
+      "scripts/build/build-native-runtime.mjs",
+      "scripts/build/build-entry-runtime.mjs",
+      "config/repository-layout.json",
+      "assets/manifest.json"
+    ],
+    "verification": [
+      "pnpm check:generated",
+      "npx vitest run test/repository/native-runtime-assets.test.ts test/repository/comet-entry-runtime-assets.test.ts"
+    ]
+  }
+]

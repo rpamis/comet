@@ -24,6 +24,45 @@ describe('Native workflow experience evidence', () => {
     });
   });
 
+  it('reads v4 state even when change is a name and retains structured verifier evidence', () => {
+    const stdout = JSON.stringify({
+      data: {
+        change: 'demo',
+        state: {
+          phase: 'archive',
+          verification_result: 'pass',
+          verification: {
+            verdict: 'pass',
+            summary: { text: 'Fixed retry handling.', truncated: false },
+          },
+          history: [{ goal_cycle: 1, outcome: 'fail' }],
+        },
+        artifactRefs: ['docs/comet/native/archive/demo/verification.md'],
+      },
+    });
+    expect(parseNativeOutcomeEvidence(stdout)).toEqual({
+      reviewResolved: true,
+      failureResolved: true,
+      summary: 'Fixed retry handling.',
+    });
+    expect(parseNativeLifecycleEvidence(stdout).artifactRefs).toEqual([
+      'docs/comet/native/archive/demo/verification.md',
+    ]);
+    expect(
+      parseNativeOutcomeEvidence(
+        JSON.stringify({
+          data: {
+            state: {
+              phase: 'archive',
+              verification_result: 'pass',
+              learning: { failureResolved: true, summary: 'Recovered' },
+            },
+          },
+        }),
+      ),
+    ).toEqual({ reviewResolved: true, failureResolved: true, summary: 'Recovered' });
+  });
+
   it('extracts only bounded string lifecycle evidence', () => {
     const stdout = JSON.stringify({
       data: {

@@ -210,6 +210,7 @@ export async function personalMemoryObserveCommand(
     context: { workflow, changeId },
     signal: {
       kind: 'acceptance',
+      targetId: candidateKey,
       explicit: false,
       longTerm: true,
       text,

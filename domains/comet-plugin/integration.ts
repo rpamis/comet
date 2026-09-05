@@ -40,6 +40,7 @@ import {
   type AgentContextExpansion,
   type AgentContextManifestItem,
   type AgentContextOutcomeStatus,
+  type AgentContextOutcomeEvidence,
   type AgentExperienceEvent,
 } from '../agent-learning/index.js';
 import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
@@ -172,8 +173,14 @@ export class CometPluginBridge {
   public async recordContextOutcome(
     applicationId: string,
     outcome: AgentContextOutcomeStatus,
+    evidence?: AgentContextOutcomeEvidence,
   ): Promise<void> {
-    const update = await this.contextDirector.recordOutcome(applicationId, outcome, this.projectId);
+    const update = await this.contextDirector.recordOutcome(
+      applicationId,
+      outcome,
+      this.projectId,
+      evidence,
+    );
     if (update === null) throw new Error(`Unknown context application: ${applicationId}`);
     await this.flushContextApplicationOutbox();
   }
@@ -533,10 +540,29 @@ function contextOutcomeEvent(
       ? { projectId: application.projectId ?? fallbackProjectId }
       : {}),
     source: { kind: 'system', name: 'context-director' },
-    context: {},
-    evidence: [],
+    context: {
+      task: application.task,
+      ...(application.path === undefined ? {} : { paths: [application.path] }),
+      ...(application.operation === undefined ? {} : { operation: application.operation }),
+      ...(application.phase === undefined ? {} : { phase: application.phase }),
+    },
+    evidence:
+      outcomeEvent.evidence === undefined
+        ? []
+        : [
+            { id: 'adoption', kind: 'outcome', summary: outcomeEvent.evidence.decision },
+            {
+              id: 'adoption-verification',
+              kind: 'verification',
+              summary: outcomeEvent.evidence.verification.success
+                ? 'Host reported verification passed'
+                : 'Host reported verification failed',
+              ...outcomeEvent.evidence.verification,
+            },
+          ],
     outcome: {
       status: outcomeEvent.status,
+      ...(outcomeEvent.evidence === undefined ? {} : { summary: outcomeEvent.evidence.decision }),
       ...(outcomeEvent.previousStatus === undefined
         ? {}
         : { previousStatus: outcomeEvent.previousStatus }),
