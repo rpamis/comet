@@ -91,6 +91,13 @@ describe('personal memory commands', () => {
       change: 'change-b',
       json: true,
     });
+    await personalMemoryObserveCommand(root, {
+      ...options,
+      change: 'change-c',
+      candidateKey: 'language',
+      text: '默认使用中文解释结果',
+      json: true,
+    });
     const retrieved = (await personalMemoryRetrieveCommand(root, {
       memoryRoot: options.memoryRoot,
       stateRoot: options.stateRoot,

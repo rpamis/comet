@@ -52,17 +52,32 @@ function addTerm(terms: string[], value: string): void {
 }
 
 function addChineseTerms(phrases: string[], weak: string[], text: string): void {
+  const fallback: string[] = [];
+  const technicalPairs: string[] = [];
+  const segmenter = new Intl.Segmenter('zh', { granularity: 'word' });
   for (const match of text.matchAll(/[\u3400-\u9fff]{2,}/gu)) {
     const value = match[0];
     if (ZH_STOP_WORDS.has(value)) continue;
     addTerm(phrases, value);
+    let previousSingle = '';
+    for (const { segment, isWordLike } of segmenter.segment(value)) {
+      if (isWordLike && !ZH_STOP_WORDS.has(segment)) addTerm(weak, segment);
+      // ICU can split technical words such as 源码 and 重启 into single
+      // characters. Retain adjacent pairs without joining across particles.
+      if (isWordLike && segment.length === 1 && !'的和与给为在对及'.includes(segment)) {
+        if (previousSingle) addTerm(technicalPairs, previousSingle + segment);
+        previousSingle = segment;
+      } else previousSingle = '';
+    }
     for (let width = Math.min(4, value.length); width >= 2; width -= 1) {
       for (let index = 0; index + width <= value.length; index += width) {
         const chunk = value.slice(index, index + width);
-        if (!ZH_STOP_WORDS.has(chunk) && chunk !== value) addTerm(weak, chunk);
+        if (!ZH_STOP_WORDS.has(chunk) && chunk !== value) addTerm(fallback, chunk);
       }
     }
   }
+  for (const pair of technicalPairs) addTerm(weak, pair);
+  for (const chunk of fallback) addTerm(weak, chunk);
 }
 
 function addLatinTerms(strong: string[], weak: string[], text: string): void {
@@ -115,8 +130,14 @@ export function createProjectKnowledgeQuery(input: {
   const strong: string[] = [];
   const phrases: string[] = [];
   const weak: string[] = [];
-  addChineseTerms(phrases, weak, task);
-  addLatinTerms(strong, weak, task);
+  const latinWeak: string[] = [];
+  const chineseWeak: string[] = [];
+  addLatinTerms(strong, latinWeak, task);
+  addChineseTerms(phrases, chineseWeak, task);
+  for (let index = 0; index < Math.max(latinWeak.length, chineseWeak.length); index++) {
+    if (latinWeak[index]) addTerm(weak, latinWeak[index]!);
+    if (chineseWeak[index]) addTerm(weak, chineseWeak[index]!);
+  }
   if (targetPath) {
     addTerm(strong, targetPath);
     addLatinTerms(strong, weak, targetPath);

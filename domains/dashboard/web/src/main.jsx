@@ -5423,6 +5423,7 @@ function openProjectKnowledgeCorrection(record, onInvoke) {
 
 function ProjectKnowledgeRegistry({
   records,
+  workspaceTab,
   visibleRecords,
   selectedRecord,
   selectedRecordId,
@@ -5473,7 +5474,9 @@ function ProjectKnowledgeRegistry({
           <span>{countedRecords.length}</span>
         </button>
         <div className="dashboard-knowledge-category-groups">
-          {PROJECT_KNOWLEDGE_CATEGORY_GROUPS.map((group) => (
+          {PROJECT_KNOWLEDGE_CATEGORY_GROUPS.filter(
+            (group) => workspaceTab === 'history' || group.key === workspaceTab,
+          ).map((group) => (
             <section key={group.key} aria-labelledby={`knowledge-category-${group.key}`}>
               <h3 id={`knowledge-category-${group.key}`}>
                 <span>{group.label}</span>
@@ -5726,7 +5729,7 @@ function ProjectKnowledgeInspector({
         </div>
       )}
       <section>
-        <h4>最近一次应用</h4>
+        <h4>最近一次提供与反馈</h4>
         <dl>
           <div>
             <dt>为什么匹配</dt>
@@ -5739,13 +5742,32 @@ function ProjectKnowledgeInspector({
           {record.lastApplication && (
             <>
               <div>
-                <dt>最近应用</dt>
+                <dt>提供时间</dt>
                 <dd>{formatTimestamp(record.lastApplication.appliedAt)}</dd>
               </div>
               <div>
                 <dt>应用结果</dt>
                 <dd>{contextOutcomeLabel(record.lastApplication.outcome)}</dd>
               </div>
+              <div>
+                <dt>采用依据</dt>
+                <dd>
+                  {record.lastApplication.outcomeEvents?.at(-1)?.evidence?.decision ??
+                    '尚未记录具体采用决定'}
+                </dd>
+              </div>
+              {record.lastApplication.outcomeEvents?.at(-1)?.evidence?.verification && (
+                <div>
+                  <dt>宿主验证结果</dt>
+                  <dd>
+                    {record.lastApplication.outcomeEvents.at(-1).evidence.verification.command}
+                    {' · '}
+                    {record.lastApplication.outcomeEvents.at(-1).evidence.verification.success
+                      ? '通过'
+                      : '失败'}
+                  </dd>
+                </div>
+              )}
             </>
           )}
           {projectPolicyActivationLabel(record.activation) && (
@@ -6528,6 +6550,9 @@ function ProjectKnowledgeCenter({ page, data, readOnly = false, onInvoke }) {
           <span className="dashboard-knowledge-workspace-meta">
             当前有效 {knowledgeCounts.active} 条 · 历史 {knowledgeCounts.superseded} 条
             {snapshot.truncated ? ' · 列表已截断' : ''}
+            {snapshot.pendingHostReviewCount > 0
+              ? ` · ${snapshot.pendingHostReviewCount} 条经验待 Agent 评审`
+              : ''}
           </span>
         </div>
         <Button
@@ -6591,6 +6616,24 @@ function ProjectKnowledgeCenter({ page, data, readOnly = false, onInvoke }) {
             role="tab"
             aria-selected={workspaceTab === key}
             tabIndex={workspaceTab === key ? 0 : -1}
+            onKeyDown={(event) => {
+              const tabs = [...event.currentTarget.parentElement.querySelectorAll('[role="tab"]')];
+              const index = tabs.indexOf(event.currentTarget);
+              const target =
+                event.key === 'ArrowRight'
+                  ? (index + 1) % tabs.length
+                  : event.key === 'ArrowLeft'
+                    ? (index + tabs.length - 1) % tabs.length
+                    : event.key === 'Home'
+                      ? 0
+                      : event.key === 'End'
+                        ? tabs.length - 1
+                        : -1;
+              if (target < 0) return;
+              event.preventDefault();
+              tabs[target].focus();
+              tabs[target].click();
+            }}
             className={workspaceTab === key ? 'is-active' : ''}
             onClick={() => {
               setWorkspaceTab(key);
@@ -6603,6 +6646,7 @@ function ProjectKnowledgeCenter({ page, data, readOnly = false, onInvoke }) {
       </nav>
       {workspaceTab === 'model' || workspaceTab === 'policy' || workspaceTab === 'history' ? (
         <ProjectKnowledgeRegistry
+          workspaceTab={workspaceTab}
           records={workspaceRecords}
           visibleRecords={visibleRecords}
           selectedRecord={selectedRecord}
@@ -6836,9 +6880,11 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke }) {
   const [correctionText, setCorrectionText] = useState('');
   const [correctionSaving, setCorrectionSaving] = useState(false);
   const [showNewProfile, setShowNewProfile] = useState(false);
+  const [newProfileSaving, setNewProfileSaving] = useState(false);
   const [newProfileText, setNewProfileText] = useState('');
   const [newProfileCategory, setNewProfileCategory] = useState('沟通偏好');
   const [showNewProjectMemory, setShowNewProjectMemory] = useState(false);
+  const [newProjectMemorySaving, setNewProjectMemorySaving] = useState(false);
   const [newProjectMemoryText, setNewProjectMemoryText] = useState('');
   const [newProjectMemoryCategory, setNewProjectMemoryCategory] = useState('项目约定');
   const [expandedRecordIds, setExpandedRecordIds] = useState(() => new Set());
@@ -7392,17 +7438,27 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke }) {
         okText="保存"
         cancelText="取消"
         okButtonProps={{ disabled: newProfileText.trim().length === 0 }}
-        onClose={() => setShowNewProfile(false)}
-        onOk={() => {
+        confirmLoading={newProfileSaving}
+        onClose={() => {
+          if (!newProfileSaving) setShowNewProfile(false);
+        }}
+        onOk={async () => {
           if (newProfileText.trim().length === 0) return;
-          void onInvoke('remember', {
-            scope: 'global',
-            memoryClass: 'user-preference',
-            category: newProfileCategory.trim() || '沟通偏好',
-            text: newProfileText.trim(),
-          });
-          setNewProfileText('');
-          setShowNewProfile(false);
+          if (newProfileSaving) return;
+          setNewProfileSaving(true);
+          try {
+            const result = await onInvoke('remember', {
+              scope: 'global',
+              memoryClass: 'user-preference',
+              category: newProfileCategory.trim() || '沟通偏好',
+              text: newProfileText.trim(),
+            });
+            if (result === undefined) return;
+            setNewProfileText('');
+            setShowNewProfile(false);
+          } finally {
+            setNewProfileSaving(false);
+          }
         }}
       >
         <Form layout="vertical" component="div">
@@ -7450,19 +7506,29 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke }) {
         okText="保存"
         cancelText="取消"
         okButtonProps={{ disabled: newProjectMemoryText.trim().length === 0 }}
-        onClose={() => setShowNewProjectMemory(false)}
-        onOk={() => {
+        confirmLoading={newProjectMemorySaving}
+        onClose={() => {
+          if (!newProjectMemorySaving) setShowNewProjectMemory(false);
+        }}
+        onOk={async () => {
           if (!projectKey || newProjectMemoryText.trim().length === 0) return;
-          void onInvoke('remember', {
-            scope: 'project',
-            projectKey,
-            memoryClass: 'project-convention',
-            category: newProjectMemoryCategory.trim() || '项目约定',
-            text: newProjectMemoryText.trim(),
-          });
-          setNewProjectMemoryText('');
-          setNewProjectMemoryCategory('项目约定');
-          setShowNewProjectMemory(false);
+          if (newProjectMemorySaving) return;
+          setNewProjectMemorySaving(true);
+          try {
+            const result = await onInvoke('remember', {
+              scope: 'project',
+              projectKey,
+              memoryClass: 'project-convention',
+              category: newProjectMemoryCategory.trim() || '项目约定',
+              text: newProjectMemoryText.trim(),
+            });
+            if (result === undefined) return;
+            setNewProjectMemoryText('');
+            setNewProjectMemoryCategory('项目约定');
+            setShowNewProjectMemory(false);
+          } finally {
+            setNewProjectMemorySaving(false);
+          }
         }}
       >
         <Form layout="vertical" component="div">

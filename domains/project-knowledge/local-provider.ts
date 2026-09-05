@@ -343,6 +343,9 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
     sections = await this.readCurrentSections(sections, diagnostics);
     const recordResults = store?.searchRecords(request.query) ?? [];
     const channels = [recordResults, sections, exact];
+    const queryTerms = [
+      ...new Set(request.query.terms.map((term) => term.toLocaleLowerCase()).filter(Boolean)),
+    ];
     const fused = new Map<string, { result: ProjectKnowledgeResult; score: number }>();
     for (const [channel, channelResults] of channels.entries()) {
       channelResults.forEach((result, rank) => {
@@ -356,7 +359,7 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
           (channel === 0
             ? (result.score ?? 0) >= 100
               ? 0.08
-              : 0.01
+              : 0.01 + 0.08 * Math.min(1, (result.score ?? 0) / Math.max(1, queryTerms.length))
             : channel === 1
               ? 0.025
               : 0.03);

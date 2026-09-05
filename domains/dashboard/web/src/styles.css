@@ -6961,7 +6961,7 @@ body {
 .dashboard-memory-table-head,
 .dashboard-memory-table-row {
   display: grid;
-  grid-template-columns: minmax(230px, 1fr) 82px 74px 110px 102px;
+  grid-template-columns: minmax(0, 1fr) 72px 64px 90px 102px;
   align-items: center;
 }
 

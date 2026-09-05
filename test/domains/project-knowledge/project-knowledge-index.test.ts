@@ -20,6 +20,27 @@ async function temporaryRoot(): Promise<string> {
 }
 
 describe('project knowledge query planning', () => {
+  test('keeps mixed-language identifiers and complete Chinese words in task queries', () => {
+    const worktree = createProjectKnowledgeQuery({
+      task: '排查两个 worktree 的项目知识索引与源码状态互相覆盖',
+    });
+    expect(worktree.terms).toEqual(
+      expect.arrayContaining(['worktree', '项目', '知识', '索引', '源码', '状态']),
+    );
+    const feedback = createProjectKnowledgeQuery({
+      task: '给上下文反馈新增 sourceNote，保证重启重放和重复计数正确',
+    });
+    expect(feedback.terms).toEqual(
+      expect.arrayContaining(['sourceNote', '反馈', '重启', '重放', '重复', '计数']),
+    );
+    expect(worktree.weakTerms.length).toBeLessThanOrEqual(PROJECT_KNOWLEDGE_QUERY_BUDGETS.weak);
+    expect(feedback.weakTerms.length).toBeLessThanOrEqual(PROJECT_KNOWLEDGE_QUERY_BUDGETS.weak);
+    const bilingual = createProjectKnowledgeQuery({
+      task: 'update command output response behavior context storage service module entry 索引知识查询',
+    });
+    expect(bilingual.weakTerms).toEqual(expect.arrayContaining(['update', '索引', '知识', '查询']));
+  });
+
   test('reserves strong, phrase, and weak budgets independently', () => {
     const query = createProjectKnowledgeQuery({
       task: [

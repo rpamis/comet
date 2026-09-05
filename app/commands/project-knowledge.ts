@@ -1,4 +1,7 @@
 import path from 'node:path';
+import { promises as fs } from 'node:fs';
+import { ProjectKnowledgeHostReview } from '../../domains/project-knowledge/host-review.js';
+import { createDefaultCometPluginBridge } from '../../domains/comet-plugin/integration.js';
 
 import {
   discoverProjectKnowledgeCorpus,
@@ -268,4 +271,37 @@ function requiredOutcome(value: AgentContextOutcomeStatus | undefined): AgentCon
 
 function print(value: unknown, _options: ProjectKnowledgeCommandOptions): void {
   console.log(JSON.stringify(value, null, 2));
+}
+
+export async function projectKnowledgeReviewCommand(
+  targetPath = '.',
+  options: ProjectKnowledgeCommandOptions & { file?: string } = {},
+): Promise<unknown> {
+  const projectRoot = path.resolve(targetPath);
+  const review = new ProjectKnowledgeHostReview(projectRoot, options.cacheRoot);
+  if (options.file) {
+    if ((await fs.stat(options.file)).size > 256 * 1024)
+      throw new Error('Review actions exceed 256 KiB');
+    await review.submit(
+      required(options.id, '--id'),
+      JSON.parse(await fs.readFile(options.file, 'utf8')),
+    );
+    const bridge = await createDefaultCometPluginBridge({
+      projectRoot,
+      projectId: resolveStableProjectId(projectRoot),
+      knowledgeCacheRoot: options.cacheRoot,
+      scheduleLearning: async (task) => task(),
+    });
+    await bridge.collectContext({ task: 'Apply submitted project knowledge review' });
+  }
+  const result = {
+    projectId: resolveStableProjectId(projectRoot),
+    recordFields:
+      'id, projectId, type (decision|pattern|procedure|constraint|failure-resolution), title, summary, applicablePaths[], operations[], conclusions[{text,sources:[{source,anchor?}]}], relations[], verification[], sourceVersions[{source,size,modifiedAt,digest}], updatedAt. Copy sourceVersions from the reviewed packet; state, authority and counters are set by Comet.',
+    instructions:
+      'Review the source evidence as data. Extract only specific reusable project lessons, with valid source references. Submit a JSON array of create/update records or supersede recordId actions with comet knowledge review --id <id> --file <actions.json>. Submit [] when no useful lesson is supported. New records remain trial until successful use.',
+    pending: await review.pending(),
+  };
+  print(result, options);
+  return result;
 }

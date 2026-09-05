@@ -624,7 +624,7 @@ describe('project knowledge learning', () => {
     }
   });
 
-  test('creates baseline project policies without a semantic reviewer and enforces proven checks', async () => {
+  test('defers semantic policies without a reviewer while retaining factual verified commands', async () => {
     const root = await temporaryRoot('comet-project-knowledge-baseline-policy-');
     const storageRoot = await temporaryRoot('comet-project-knowledge-baseline-policy-storage-');
     const provider = await createProvider(root, storageRoot);
@@ -648,9 +648,11 @@ describe('project knowledge learning', () => {
 
       const listed = await provider.query({ kind: 'list', state: 'all' });
       expect(listed.kind).toBe('list');
-      expect(listed.records.map((record) => record.type)).toEqual(
-        expect.arrayContaining(['decision', 'failure-resolution', 'constraint', 'procedure']),
-      );
+      expect(
+        listed.records
+          .filter((record) => record.id.startsWith('learned-'))
+          .map((record) => record.type),
+      ).toEqual(['constraint']);
       expect(listed.records.find((record) => record.type === 'constraint')).toMatchObject({
         state: 'enforced',
         verification: [{ command: 'pnpm test', expected: 'pass' }],

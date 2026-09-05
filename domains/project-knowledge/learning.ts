@@ -265,7 +265,7 @@ export async function createProjectKnowledgeReviewPacket(
         source,
         text,
         size: Number(read.stat.size),
-        modifiedAt: Number(read.stat.mtimeMs),
+        modifiedAt: Math.trunc(Number(read.stat.mtimeMs)),
         digest: createHash('sha256').update(read.bytes).digest('hex'),
       });
     } catch {
@@ -338,7 +338,7 @@ function experiencePolicyRecord(
           : language === 'en'
             ? 'This archived change provides a reusable completion and verification workflow.'
             : '本次变更已经归档，可复用其完成与验证流程。';
-  const summary = packet.summary ?? defaultSummary;
+  const summary = type === 'constraint' ? defaultSummary : (packet.summary ?? defaultSummary);
   const sourceRefs = packet.sources.slice(0, 8).map((source) => ({ source: source.source }));
   const signature = createHash('sha256')
     .update(
@@ -583,16 +583,19 @@ export class ProjectKnowledgeLearningService {
       };
     }
     let reviewActions: readonly ProjectKnowledgeReviewAction[] = [];
-    let deferred = false;
+    let deferred = this.reviewer === undefined;
     if (this.reviewer !== undefined) {
       try {
         const reviewed = await this.reviewer.review(packet);
         reviewActions = Array.isArray(reviewed) ? reviewed.slice(0, MAX_REVIEW_ACTIONS) : [];
-      } catch {
+      } catch (error) {
         deferred = true;
         report({
           code: 'reviewer-unavailable',
-          message: '项目知识语义评审暂不可用，已继续确定性学习并延后语义策略。',
+          message:
+            error instanceof Error && error.message.startsWith('Host Agent review pending')
+              ? '经验已保存，等待宿主 Agent 使用 comet knowledge review 完成评审。'
+              : '项目知识语义评审暂不可用，已继续确定性学习并延后语义策略。',
         });
       }
     }
@@ -626,7 +629,10 @@ export class ProjectKnowledgeLearningService {
         message: '确定性项目知识提取暂不可用，已跳过本次写入。',
       });
     }
-    const learnedPolicy = experiencePolicyRecord(packet, this.projectRoot, this.language);
+    const learnedPolicy =
+      packet.eventName === 'verification.completed'
+        ? experiencePolicyRecord(packet, this.projectRoot, this.language)
+        : null;
     if (learnedPolicy !== null) candidates = [...candidates, learnedPolicy];
     for (const candidate of candidates.slice(0, 67)) {
       try {

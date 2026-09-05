@@ -11,6 +11,7 @@ import {
   createProjectKnowledgeDashboardSnapshot,
   createProjectKnowledgeModule,
   createProjectKnowledgeQuery,
+  createUserProjectKnowledgeRecord,
   ensureProjectKnowledgeReady,
   extractDeterministicProjectRecords,
   renderProjectKnowledgeContext,
@@ -28,6 +29,7 @@ import {
 } from '../../../domains/agent-learning/index.js';
 import { MemoryPluginStorageStore } from '../../../domains/comet-plugin/plugin-runtime.js';
 import { runBoundedRipgrep } from '../../../platform/process/ripgrep.js';
+import { resolveStableProjectId } from '../../../platform/paths/project-identity.js';
 
 function createDefaultCometPluginBridge(
   options: Parameters<typeof createProductionCometPluginBridge>[0],
@@ -102,6 +104,118 @@ async function search(
 }
 
 describe('project knowledge dashboard status', () => {
+  test('discovers, expands and records actual use of task-only project knowledge through the production bridge', async () => {
+    const root = await tempProject();
+    const storageRoot = await tempProject();
+    const projectId = resolveStableProjectId(root);
+    const provider = new LocalProjectKnowledgeProvider({
+      projectRoot: root,
+      cacheRoot: storageRoot,
+      corpus: [],
+    });
+    try {
+      await fs.mkdir(path.join(root, 'src'));
+      await fs.writeFile(
+        path.join(root, 'src/router.ts'),
+        'export const routes = ["native", "classic"];\n',
+      );
+      await fs.mkdir(path.join(root, '.comet'));
+      await fs.mkdir(path.join(root, 'docs'));
+      await fs.writeFile(
+        path.join(root, '.comet/config.yaml'),
+        JSON.stringify({
+          ...defaultWorkflowProjectConfig(),
+          knowledge: { provider: 'local', local: { include: ['docs/*.md'] } },
+        }),
+      );
+      for (let index = 0; index < 12; index++) {
+        await fs.writeFile(
+          path.join(root, 'docs', `reference-${index}.md`),
+          `# Router background ${index}\n\nRouter integration overview and unrelated notes.\n`,
+        );
+      }
+      const record = createUserProjectKnowledgeRecord(
+        {
+          type: 'pattern',
+          title: 'Router dispatch invariants',
+          summary: 'Router dispatch must preserve workflow isolation.',
+          applicablePaths: ['src/'],
+          operations: ['edit'],
+          phases: ['build'],
+          sources: [{ source: 'src/router.ts' }],
+          verification: [{ command: 'node --test', expected: 'pass' }],
+        },
+        projectId,
+      );
+      await provider.apply({
+        kind: 'upsert',
+        record: {
+          ...record,
+          state: 'trial',
+          authority: 'automatic',
+          sourceVersions: [
+            {
+              source: 'src/router.ts',
+              size: (await fs.stat(path.join(root, 'src/router.ts'))).size,
+              modifiedAt: Math.trunc((await fs.stat(path.join(root, 'src/router.ts'))).mtimeMs),
+              digest: createHash('sha256')
+                .update(await fs.readFile(path.join(root, 'src/router.ts')))
+                .digest('hex'),
+            },
+          ],
+          conclusions: [
+            {
+              text: 'Only the selected workflow receives a write event; inspect both native and classic routes.',
+              sources: [{ source: 'src/router.ts' }],
+            },
+          ],
+        },
+      });
+      const bridge = await createDefaultCometPluginBridge({
+        projectRoot: root,
+        projectId,
+        stateRoot: path.join(storageRoot, 'state'),
+        memoryRoot: path.join(storageRoot, 'memory'),
+        knowledgeCacheRoot: storageRoot,
+      });
+      const context = await bridge.collectContext({
+        task: 'Router dispatch invariants',
+        sessionId: 'task-only',
+      });
+      const application = context
+        .flatMap((item) => item.applications ?? [])
+        .find((item) => item.candidateId === record.id)!;
+      expect(application).toMatchObject({ delivery: 'manifest' });
+      expect(application.outcome).toBeUndefined();
+      const expansion = await bridge.expandContext(`comet.project-knowledge::${record.id}`, {
+        task: 'Router dispatch invariants',
+      });
+      expect(expansion?.content).toContain('Only the selected workflow receives a write event');
+      expect(expansion?.content).toContain('Applicable paths: src/');
+      expect(expansion?.sources).toEqual(
+        expect.arrayContaining([expect.objectContaining({ source: 'src/router.ts' })]),
+      );
+      expect(expansion?.verification).toEqual([{ command: 'node --test', expected: 'pass' }]);
+      const before = await provider.query({ kind: 'get', id: record.id, projectId });
+      expect(before).toMatchObject({ kind: 'get', record: { state: 'trial', successCount: 0 } });
+      const evidence = {
+        decision: 'Kept dispatch exclusive to the selected workflow',
+        verification: { command: 'node --test', success: true },
+      };
+      await bridge.recordContextOutcome(application.applicationId, 'used-successfully', evidence);
+      const after = await provider.query({ kind: 'get', id: record.id, projectId });
+      expect(after).toMatchObject({ kind: 'get', record: { state: 'proven', successCount: 1 } });
+      await bridge.recordContextOutcome(application.applicationId, 'used-successfully', evidence);
+      expect(await provider.query({ kind: 'get', id: record.id, projectId })).toMatchObject({
+        record: { successCount: 1 },
+      });
+    } finally {
+      provider.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
   test('reads a project source as complete text for the Dashboard', async () => {
     const root = await tempProject();
     try {
@@ -1440,13 +1554,20 @@ describe('project knowledge failure and bounded retrieval contracts', () => {
     expect(result.stdout.match(/"type":"match"/gu)).toHaveLength(500);
   });
 
-  test('returns empty local results and one diagnostic for corrupt JSON', async () => {
+  test('returns empty local results and one diagnostic for corrupt JSON', async ({
+    onTestFinished,
+  }) => {
+    const root = await tempProject();
+    onTestFinished(async () => {
+      provider.close();
+      await fs.rm(root, { recursive: true, force: true });
+    });
     const diagnostics: { code: string; message: string }[] = [];
     const provider = new LocalProjectKnowledgeProvider({
-      projectRoot: process.cwd(),
+      projectRoot: root,
       corpus: [
         {
-          absolutePath: path.resolve('docs/comet/changes/project-knowledge-retrieval/brief.md'),
+          absolutePath: path.join(root, 'docs/comet/changes/project-knowledge-retrieval/brief.md'),
           source: 'docs/comet/changes/project-knowledge-retrieval/brief.md',
           kind: 'native-spec',
         },
@@ -1510,13 +1631,20 @@ describe('project knowledge failure and bounded retrieval contracts', () => {
     }
   });
 
-  test('reports a nonzero ripgrep exit instead of treating it as no results', async () => {
+  test('reports a nonzero ripgrep exit instead of treating it as no results', async ({
+    onTestFinished,
+  }) => {
+    const root = await tempProject();
+    onTestFinished(async () => {
+      provider.close();
+      await fs.rm(root, { recursive: true, force: true });
+    });
     const diagnostics: { code: string; message: string }[] = [];
     const provider = new LocalProjectKnowledgeProvider({
-      projectRoot: process.cwd(),
+      projectRoot: root,
       corpus: [
         {
-          absolutePath: path.resolve('docs/comet/changes/project-knowledge-retrieval/brief.md'),
+          absolutePath: path.join(root, 'docs/comet/changes/project-knowledge-retrieval/brief.md'),
           source: 'docs/comet/changes/project-knowledge-retrieval/brief.md',
           kind: 'native-spec',
         },
@@ -1595,15 +1723,22 @@ describe('project knowledge failure and bounded retrieval contracts', () => {
     }
   });
 
-  test('reports a bounded local timeout without blocking the provider', async () => {
+  test('reports a bounded local timeout without blocking the provider', async ({
+    onTestFinished,
+  }) => {
+    const root = await tempProject();
+    onTestFinished(async () => {
+      provider.close();
+      await fs.rm(root, { recursive: true, force: true });
+    });
     const diagnostics: { code: string; message: string }[] = [];
     const document = {
-      absolutePath: path.resolve('docs/comet/changes/project-knowledge-retrieval/brief.md'),
+      absolutePath: path.join(root, 'docs/comet/changes/project-knowledge-retrieval/brief.md'),
       source: 'docs/comet/changes/project-knowledge-retrieval/brief.md',
       kind: 'native-spec' as const,
     };
     const provider = new LocalProjectKnowledgeProvider({
-      projectRoot: process.cwd(),
+      projectRoot: root,
       corpus: [document],
       reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
       runRipgrep: async () => ({
@@ -1690,13 +1825,18 @@ describe('project knowledge failure and bounded retrieval contracts', () => {
     }
   });
 
-  test('reports a missing local search tool once', async () => {
+  test('reports a missing local search tool once', async ({ onTestFinished }) => {
+    const root = await tempProject();
+    onTestFinished(async () => {
+      provider.close();
+      await fs.rm(root, { recursive: true, force: true });
+    });
     const diagnostics: { code: string; message: string }[] = [];
     const provider = new LocalProjectKnowledgeProvider({
-      projectRoot: process.cwd(),
+      projectRoot: root,
       corpus: [
         {
-          absolutePath: path.resolve('docs/comet/changes/project-knowledge-retrieval/brief.md'),
+          absolutePath: path.join(root, 'docs/comet/changes/project-knowledge-retrieval/brief.md'),
           source: 'docs/comet/changes/project-knowledge-retrieval/brief.md',
           kind: 'native-spec',
         },

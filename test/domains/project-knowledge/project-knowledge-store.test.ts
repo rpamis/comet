@@ -7,6 +7,7 @@ import path from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 import { ProjectKnowledgeLocalStore } from '../../../domains/project-knowledge/local-store.js';
+import { createProjectKnowledgeQuery } from '../../../domains/project-knowledge/query.js';
 import type { ProjectKnowledgeRecord } from '../../../domains/project-knowledge/records.js';
 import { openProjectKnowledgeDatabase } from '../../../domains/project-knowledge/sqlite.js';
 
@@ -69,6 +70,106 @@ function insertLegacyRecords(
 }
 
 describe('project knowledge local store', () => {
+  test('ranks task-relevant trial knowledge above broad proven records during discovery', async () => {
+    const root = await temporaryRoot('comet-knowledge-task-ranking-');
+    const storageRoot = await temporaryRoot('comet-knowledge-task-ranking-cache-');
+    const store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+    try {
+      const common = { applicablePaths: [], operations: [], conclusions: [], sourceVersions: [] };
+      await store.apply({
+        kind: 'upsert',
+        record: record({
+          ...common,
+          id: 'broad-proven',
+          title: 'Router background',
+          summary: 'Router modules',
+          state: 'proven',
+        }),
+      });
+      await store.apply({
+        kind: 'upsert',
+        record: record({
+          ...common,
+          id: 'specific-trial',
+          title: 'Router dispatch invariants',
+          summary: 'Only the selected workflow receives events',
+          state: 'trial',
+        }),
+      });
+      expect(
+        store.searchRecords(createProjectKnowledgeQuery({ task: 'Router dispatch invariants' }))[0]
+          ?.record?.id,
+      ).toBe('specific-trial');
+    } finally {
+      store.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('discovers scoped knowledge from task text while respecting explicit selectors', async () => {
+    const root = await temporaryRoot('comet-knowledge-discovery-');
+    const storageRoot = await temporaryRoot('comet-knowledge-discovery-storage-');
+    const store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+    try {
+      await store.apply({
+        kind: 'upsert',
+        record: record({
+          authority: 'user',
+          verification: [],
+          conclusions: [],
+          sourceVersions: [],
+        }),
+      });
+      const query = { task: 'Build and test contract', projectId: 'project-comet' };
+      expect(
+        store.searchRecords(createProjectKnowledgeQuery(query)).map((entry) => entry.record?.id),
+      ).toContain('record-build-test');
+      expect(
+        store.searchRecords(createProjectKnowledgeQuery({ ...query, path: 'unrelated/file.ts' })),
+      ).toHaveLength(0);
+      expect(
+        store.searchRecords(createProjectKnowledgeQuery({ ...query, operation: 'publish' })),
+      ).toHaveLength(0);
+    } finally {
+      store.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps source-current trial knowledge unproven until successful use', async () => {
+    const root = await temporaryRoot('comet-knowledge-trial-');
+    const storageRoot = await temporaryRoot('comet-knowledge-trial-storage-');
+    const store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+    try {
+      await fs.mkdir(path.join(root, 'docs'));
+      const text = '# build\n\nBuild before test for runtime changes.\n';
+      await fs.writeFile(path.join(root, 'docs/process.md'), text);
+      const stat = await fs.stat(path.join(root, 'docs/process.md'));
+      const trial = record({
+        state: 'trial',
+        verification: [],
+        sourceVersions: [
+          {
+            source: 'docs/process.md',
+            size: stat.size,
+            modifiedAt: Math.floor(stat.mtimeMs),
+            digest: createHash('sha256').update(text).digest('hex'),
+          },
+        ],
+      });
+      await store.apply({ kind: 'upsert', record: trial });
+      expect(
+        await store.apply({ kind: 'refresh', projectId: trial.projectId, id: trial.id }),
+      ).toMatchObject({ records: [expect.objectContaining({ state: 'trial', successCount: 0 })] });
+    } finally {
+      store.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(storageRoot, { recursive: true, force: true });
+    }
+  });
+
   test('counts records within the current project independently of list limits', async () => {
     const root = await temporaryRoot('comet-project-knowledge-counts-');
     const storageRoot = await temporaryRoot('comet-project-knowledge-counts-storage-');

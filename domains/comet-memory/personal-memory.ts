@@ -238,9 +238,18 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
         }
       }
       if (options.permanent) {
-        state.records = state.records.filter((entry) => entry.id !== id);
-        delete state.history[id];
-        delete state.evidence[id];
+        const removedIds = state.records
+          .filter((entry) => entry.identity === current.identity)
+          .map((entry) => entry.id);
+        state.records = state.records.filter((entry) => entry.identity !== current.identity);
+        for (const removedId of removedIds) {
+          delete state.history[removedId];
+          delete state.evidence[removedId];
+        }
+        state.observations = state.observations.filter(
+          (entry) => entry.identity !== current.identity,
+        );
+        state.conflicts = state.conflicts.filter((entry) => entry.identity !== current.identity);
       } else {
         state.records = replaceRecord(state.records, {
           ...current,
@@ -502,21 +511,6 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
         previous === undefined
           ? [...state.observations, stored]
           : state.observations.map((entry) => (entry.key === key ? stored : entry));
-      const paused =
-        observation.scope === 'project' &&
-        observation.projectKey !== undefined &&
-        state.settings.pausedLearningProjects.includes(observation.projectKey);
-      if (!state.settings.learningEnabled || paused || !observation.success) {
-        await this.persist(state);
-        return {
-          deduplicated: false,
-          ignored: !state.settings.learningEnabled || paused,
-          candidate: false,
-          promoted: false,
-          record: null,
-        };
-      }
-
       const identity = stored.identity;
       const normalized = stored.normalizedText;
       const normalizedTextHash = normalizedMemoryTextHash(stored.text);
@@ -533,6 +527,9 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
         tombstone?.permanent === true ||
         (tombstone !== undefined && stored.observedAt <= tombstone.removedAt)
       ) {
+        if (tombstone?.permanent === true) {
+          state.observations = state.observations.filter((entry) => entry.key !== stored.key);
+        }
         await this.persist(state);
         return {
           deduplicated: false,
@@ -542,6 +539,21 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
           record: null,
         };
       }
+      const paused =
+        observation.scope === 'project' &&
+        observation.projectKey !== undefined &&
+        state.settings.pausedLearningProjects.includes(observation.projectKey);
+      if (!state.settings.learningEnabled || paused || !observation.success) {
+        await this.persist(state);
+        return {
+          deduplicated: false,
+          ignored: !state.settings.learningEnabled || paused,
+          candidate: false,
+          promoted: false,
+          record: null,
+        };
+      }
+
       const candidate = state.records.find(
         (entry) =>
           (tombstone === undefined || entry.createdAt > tombstone.removedAt) &&
@@ -630,7 +642,14 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
       }
       if (active !== undefined && normalizeText(active.text) === normalized) {
         const refreshed = addSource(active, source, this.timestamp());
-        state.records = replaceRecord(state.records, refreshed);
+        state.records = replaceRecord(
+          state.records.filter((entry) => entry.id !== record.id),
+          refreshed,
+        );
+        state.evidence[active.id] = [
+          ...new Set([...(state.evidence[active.id] ?? []), ...evidence]),
+        ];
+        if (record.id !== active.id) delete state.evidence[record.id];
         await this.persist(state);
         return {
           deduplicated: false,
@@ -1126,7 +1145,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
 
       const candidates = state.records
         .filter((entry) => scopeMatches(entry, query))
-        .filter((entry) => attributesMatch(entry, query))
+        .filter((entry) => attributesMatch(entry, query, true))
         .sort(
           (left, right) =>
             right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id),
@@ -2398,7 +2417,7 @@ function scopeMatches(record: StoredRecord, query: MemoryQuery): boolean {
   return true;
 }
 
-function attributesMatch(record: StoredRecord, query: MemoryQuery): boolean {
+function attributesMatch(record: StoredRecord, query: MemoryQuery, management = false): boolean {
   if (
     query.task !== undefined &&
     record.taskTypes.length > 0 &&
@@ -2419,7 +2438,7 @@ function attributesMatch(record: StoredRecord, query: MemoryQuery): boolean {
     return false;
   if (
     record.phases.length > 0 &&
-    (query.phase === undefined || !matchesAny(record.phases, query.phase))
+    (query.phase === undefined ? !management : !matchesAny(record.phases, query.phase))
   )
     return false;
   if (query.category !== undefined && !matchesAny([record.category], query.category)) return false;

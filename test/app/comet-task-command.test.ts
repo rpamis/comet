@@ -105,6 +105,35 @@ describe('ordinary Comet task host', () => {
     ).rejects.toThrow('--application and --outcome');
   });
 
+  it('records the concrete adoption decision and actual verification without running a command', async () => {
+    const { cometTaskCommand } = await import('../../app/commands/comet-task.js');
+    await cometTaskCommand('D:/repo', {
+      task: 'Fix router',
+      application: 'application-1',
+      outcome: 'used-successfully',
+      decision: 'Rebuild the entry bundle',
+      verification: 'pnpm check:generated',
+      verificationResult: 'passed',
+      json: true,
+    });
+    expect(recordCometContextOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({
+        evidence: {
+          decision: 'Rebuild the entry bundle',
+          verification: { command: 'pnpm check:generated', success: true },
+        },
+      }),
+    );
+    await expect(
+      cometTaskCommand('D:/repo', {
+        task: 'Fix router',
+        application: 'application-1',
+        outcome: 'used-successfully',
+        decision: 'Rebuild',
+      }),
+    ).rejects.toThrow('Adoption evidence requires');
+  });
+
   it('reports an unavailable explicit context expansion', async () => {
     expandCometPluginContext.mockResolvedValue(null);
     const { cometTaskCommand } = await import('../../app/commands/comet-task.js');

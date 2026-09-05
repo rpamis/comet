@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { projectPathSelectorMatches } from '../../platform/paths/project-path-selector.js';
 
 import type {
   AgentContextCandidate,
@@ -63,6 +64,13 @@ export interface AgentContextOutcomeEvent {
   readonly previousStatus?: AgentContextOutcomeStatus;
   readonly occurredAt: string;
   readonly dispatchedAt?: string;
+  readonly evidence?: AgentContextOutcomeEvidence;
+}
+
+/** Host-reported adoption evidence; a passing task alone does not establish use. */
+export interface AgentContextOutcomeEvidence {
+  readonly decision: string;
+  readonly verification: { readonly command: string; readonly success: boolean };
 }
 
 export interface AgentContextOutcomeUpdate {
@@ -78,6 +86,7 @@ export interface AgentContextApplicationStore {
     applicationId: string,
     outcome: AgentContextOutcomeStatus,
     expectedProjectId?: string,
+    evidence?: AgentContextOutcomeEvidence,
   ): Promise<AgentContextOutcomeUpdate | null>;
   markAppliedEventDispatched(applicationId: string, dispatchedAt?: string): Promise<void>;
   markOutcomeEventDispatched(
@@ -111,18 +120,22 @@ export class MemoryAgentContextApplicationStore implements AgentContextApplicati
     applicationId: string,
     outcome: AgentContextOutcomeStatus,
     expectedProjectId?: string,
+    evidence?: AgentContextOutcomeEvidence,
   ): Promise<AgentContextOutcomeUpdate | null> {
     const index = this.records.findIndex((record) => record.applicationId === applicationId);
     if (index < 0) return null;
     const current = this.records[index]!;
     if (!applicationIsVisibleFromProject(current, expectedProjectId)) return null;
-    if (current.outcome === outcome)
+    if (sameOutcome(current, outcome, evidence))
       return { changed: false, record: cloneApplicationRecord(current) };
     const next = {
       ...current,
       outcome,
       outcomeRevision: (current.outcomeRevision ?? 0) + 1,
-      outcomeEvents: [...(current.outcomeEvents ?? []), contextOutcomeEvent(current, outcome)],
+      outcomeEvents: [
+        ...(current.outcomeEvents ?? []),
+        contextOutcomeEvent(current, outcome, evidence),
+      ],
     };
     this.records = this.records.map((record, currentIndex) =>
       currentIndex === index ? next : record,
@@ -189,6 +202,7 @@ export class StorageAgentContextApplicationStore implements AgentContextApplicat
     applicationId: string,
     outcome: AgentContextOutcomeStatus,
     expectedProjectId?: string,
+    evidence?: AgentContextOutcomeEvidence,
   ): Promise<AgentContextOutcomeUpdate | null> {
     return this.serialized(async () => {
       const records = await this.read();
@@ -196,12 +210,16 @@ export class StorageAgentContextApplicationStore implements AgentContextApplicat
       if (index < 0) return null;
       const current = records[index]!;
       if (!applicationIsVisibleFromProject(current, expectedProjectId)) return null;
-      if (current.outcome === outcome) return { changed: false, record: { ...current } };
+      if (sameOutcome(current, outcome, evidence))
+        return { changed: false, record: cloneApplicationRecord(current) };
       const next = {
         ...current,
         outcome,
         outcomeRevision: (current.outcomeRevision ?? 0) + 1,
-        outcomeEvents: [...(current.outcomeEvents ?? []), contextOutcomeEvent(current, outcome)],
+        outcomeEvents: [
+          ...(current.outcomeEvents ?? []),
+          contextOutcomeEvent(current, outcome, evidence),
+        ],
       };
       await this.storage.write({
         version: 5,
@@ -373,7 +391,7 @@ export class ContextDirector {
       score: number;
     }[] = [];
     for (const candidate of candidates) {
-      if (candidate.state === 'superseded' || !selectorsMatch(candidate.selectors, request))
+      if (candidate.state === 'superseded' || !candidateCanBeConsidered(candidate, request))
         continue;
       const digest = candidate.digest ?? digestCandidate(candidate);
       if (delivered.get(applicationKey(candidate.owner, candidate.id)) === digest) continue;
@@ -408,7 +426,8 @@ export class ContextDirector {
         candidate.memoryType === 'core-profile' ||
         ((candidate.memoryType === 'collaboration-policy' ||
           candidate.memoryType === 'project-policy') &&
-          (candidate.state === 'proven' || candidate.state === 'enforced'));
+          (candidate.state === 'proven' || candidate.state === 'enforced') &&
+          candidateSelectorsMatch(candidate, request));
       const candidateDigest = candidate.digest ?? digestCandidate(candidate);
       const attempt = (delivery: 'full' | 'manifest', summaryLimit = 320): boolean => {
         const application = contextApplication({
@@ -435,6 +454,7 @@ export class ContextDirector {
           nextManifest,
           'comet task --expand-context <id>',
           [...applications, application],
+          budget >= 1500,
         );
         if (text.length > budget) return false;
         coreMemory.splice(0, coreMemory.length, ...nextCore);
@@ -460,7 +480,14 @@ export class ContextDirector {
       activePolicies,
       manifest,
       applications,
-      text: renderAgentContext(coreMemory, activePolicies, manifest, expandHint, applications),
+      text: renderAgentContext(
+        coreMemory,
+        activePolicies,
+        manifest,
+        expandHint,
+        applications,
+        budget >= 1500,
+      ),
       expandHint,
     };
   }
@@ -482,7 +509,7 @@ export class ContextDirector {
     if (
       candidate === undefined ||
       candidate.state === 'superseded' ||
-      !selectorsMatch(candidate.selectors, request)
+      !candidateCanBeConsidered(candidate, request)
     )
       return null;
     return {
@@ -499,8 +526,13 @@ export class ContextDirector {
     applicationId: string,
     outcome: AgentContextOutcomeStatus,
     expectedProjectId?: string,
+    evidence?: AgentContextOutcomeEvidence,
   ): Promise<AgentContextOutcomeUpdate | null> {
-    return this.applications.setOutcome(applicationId, outcome, expectedProjectId);
+    if (evidence !== undefined && !isOutcomeEvidence(evidence))
+      throw new Error('Context outcome evidence requires a decision and a verification result');
+    if (outcome === 'used-successfully' && evidence?.verification.success === false)
+      throw new Error('Successful use cannot reference failed verification');
+    return this.applications.setOutcome(applicationId, outcome, expectedProjectId, evidence);
   }
 
   public async applicationHistory(
@@ -536,6 +568,7 @@ export function renderAgentContext(
   manifest: readonly AgentContextManifestItem[],
   expandHint: string,
   applications: readonly AgentContextApplicationRecord[] = [],
+  includeUsageHint = true,
 ): string {
   if (coreMemory.length === 0 && activePolicies.length === 0 && manifest.length === 0) return '';
   const applicationIds = new Map(
@@ -577,6 +610,18 @@ export function renderAgentContext(
     );
   }
   sections.push(`<expand_hint>${escapeXml(expandHint)}</expand_hint>`);
+  if (
+    includeUsageHint &&
+    applications.some(
+      (entry) =>
+        entry.scope === 'project' &&
+        (entry.memoryType === 'project-model' || entry.memoryType === 'project-policy'),
+    )
+  ) {
+    sections.push(
+      '<knowledge_usage>Project knowledge is reference. Expand relevant candidates and check current sources before using them. Delivery is not adoption. Report used-successfully only for knowledge actually used and verified, with --application, --decision, --verification and --verification-result passed. Task completion alone is not evidence of benefit.</knowledge_usage>',
+    );
+  }
   return `<agent_context>\n${sections.join('\n')}\n</agent_context>`;
 }
 
@@ -588,12 +633,19 @@ export function whyCandidateApplied(
   const english = request.language === 'en';
   const separator = english ? '; ' : '；';
   const reasons: string[] = [...(candidate.matchReasons ?? [])];
+  if (!candidateSelectorsMatch(candidate, request)) {
+    reasons.push(
+      english
+        ? 'Candidate only: confirm applicability against current sources before use'
+        : '候选参考：使用前须结合当前源码确认适用范围',
+    );
+  }
   if (candidate.authority === 'explicit' || candidate.authority === 'user')
     reasons.push(english ? 'Explicitly set by the user' : '用户明确设置');
   if (candidate.selectors.projectId && candidate.selectors.projectId === request.projectId) {
     reasons.push(english ? 'Current project matches' : '当前项目匹配');
   }
-  if (request.path && matchesAny(candidate.selectors.paths, request.path))
+  if (request.path && candidatePathMatches(candidate, request.path))
     reasons.push(english ? 'Current path matches' : '当前路径匹配');
   if (request.operation && includesNormalized(candidate.selectors.operations, request.operation)) {
     reasons.push(english ? 'Current operation matches' : '当前操作匹配');
@@ -643,22 +695,51 @@ export function contextOutcomeTargetIds(
   });
 }
 
-function selectorsMatch(selectors: AgentContextSelectors, request: AgentContextRequest): boolean {
+function candidateCanBeConsidered(
+  candidate: AgentContextCandidate,
+  request: AgentContextRequest,
+): boolean {
+  // The provider has already retrieved project knowledge for this task. Unknown
+  // selectors should not prevent discovery, but explicit mismatches still do.
+  const allowUnknown =
+    candidate.scope === 'project' &&
+    (candidate.memoryType === 'project-model' || candidate.memoryType === 'project-policy');
+  return candidateSelectorsMatch(candidate, request, allowUnknown);
+}
+
+function candidatePathMatches(candidate: AgentContextCandidate, path: string): boolean {
+  return candidate.scope === 'project' &&
+    (candidate.memoryType === 'project-model' || candidate.memoryType === 'project-policy')
+    ? (candidate.selectors.paths ?? []).some((selector) =>
+        projectPathSelectorMatches(selector, path),
+      )
+    : matchesAny(candidate.selectors.paths, path);
+}
+
+function candidateSelectorsMatch(
+  candidate: AgentContextCandidate,
+  request: AgentContextRequest,
+  allowUnknown = false,
+): boolean {
+  const selectors = candidate.selectors;
   if (selectors.projectId !== undefined && selectors.projectId !== request.projectId) return false;
   if (
     (selectors.paths?.length ?? 0) > 0 &&
-    (request.path === undefined || !matchesAny(selectors.paths, request.path))
+    (request.path === undefined ? !allowUnknown : !candidatePathMatches(candidate, request.path))
   )
     return false;
   if (
     (selectors.operations?.length ?? 0) > 0 &&
-    (request.operation === undefined ||
-      !includesNormalized(selectors.operations, request.operation))
+    (request.operation === undefined
+      ? !allowUnknown
+      : !includesNormalized(selectors.operations, request.operation))
   )
     return false;
   if (
     (selectors.phases?.length ?? 0) > 0 &&
-    (request.phase === undefined || !includesNormalized(selectors.phases, request.phase))
+    (request.phase === undefined
+      ? !allowUnknown
+      : !includesNormalized(selectors.phases, request.phase))
   )
     return false;
   if ((selectors.tasks?.length ?? 0) > 0 && !matchesTask(selectors.tasks, request.task))
@@ -887,19 +968,34 @@ function cloneApplicationRecord(
     ...record,
     ...(record.outcomeEvents === undefined
       ? {}
-      : { outcomeEvents: record.outcomeEvents.map((event) => ({ ...event })) }),
+      : {
+          outcomeEvents: record.outcomeEvents.map((event) => ({
+            ...event,
+            ...(event.evidence === undefined
+              ? {}
+              : {
+                  evidence: { ...event.evidence, verification: { ...event.evidence.verification } },
+                }),
+          })),
+        }),
   };
 }
 
 function contextOutcomeEvent(
   current: AgentContextApplicationRecord,
   outcome: AgentContextOutcomeStatus,
+  evidence?: AgentContextOutcomeEvidence,
 ): AgentContextOutcomeEvent {
   return {
     revision: (current.outcomeRevision ?? 0) + 1,
     status: outcome,
     ...(current.outcome === undefined ? {} : { previousStatus: current.outcome }),
     occurredAt: new Date().toISOString(),
+    ...(evidence === undefined
+      ? {}
+      : {
+          evidence: { ...evidence, verification: { ...evidence.verification } },
+        }),
   };
 }
 
@@ -910,11 +1006,44 @@ function isOutcomeEvent(value: unknown): value is AgentContextOutcomeEvent {
     Number.isSafeInteger(event.revision) &&
     Number(event.revision) >= 1 &&
     isOutcomeStatus(event.status) &&
+    (event.evidence === undefined || isOutcomeEvidence(event.evidence)) &&
     (event.previousStatus === undefined || isOutcomeStatus(event.previousStatus)) &&
     typeof event.occurredAt === 'string' &&
     !Number.isNaN(Date.parse(event.occurredAt)) &&
     (event.dispatchedAt === undefined ||
       (typeof event.dispatchedAt === 'string' && !Number.isNaN(Date.parse(event.dispatchedAt))))
+  );
+}
+
+function isOutcomeEvidence(value: unknown): value is AgentContextOutcomeEvidence {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const evidence = value as Record<string, unknown>;
+  const verification = evidence.verification as Record<string, unknown> | undefined;
+  return (
+    typeof evidence.decision === 'string' &&
+    evidence.decision.trim().length > 0 &&
+    evidence.decision.length <= 4000 &&
+    verification !== null &&
+    typeof verification === 'object' &&
+    typeof verification.command === 'string' &&
+    verification.command.trim().length > 0 &&
+    verification.command.length <= 2000 &&
+    typeof verification.success === 'boolean'
+  );
+}
+
+function sameOutcome(
+  current: AgentContextApplicationRecord,
+  outcome: AgentContextOutcomeStatus,
+  evidence?: AgentContextOutcomeEvidence,
+): boolean {
+  if (current.outcome !== outcome) return false;
+  if (evidence === undefined) return true;
+  const previous = current.outcomeEvents?.at(-1)?.evidence;
+  return (
+    previous?.decision === evidence.decision &&
+    previous.verification.command === evidence.verification.command &&
+    previous.verification.success === evidence.verification.success
   );
 }
 

@@ -58,8 +58,27 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
         outcome: index % 2 === 0 ? 'used-successfully' : 'ignored',
       })),
     ],
+    lastApplication: {
+      task: '复核项目测试策略',
+      whyApplied: '当前任务与验证阶段匹配',
+      delivery: 'manifest',
+      appliedAt: '2026-08-23T08:00:00.000Z',
+      outcome: 'used-successfully',
+      outcomeEvents: [
+        {
+          revision: 1,
+          status: 'used-successfully',
+          occurredAt: '2026-08-23T08:10:00.000Z',
+          evidence: {
+            decision: '先验证检索与上下文衔接，再扩大测试范围',
+            verification: { command: 'pnpm test --filter project-knowledge', success: true },
+          },
+        },
+      ],
+    },
     updatedAt: '2026-08-22T12:00:00.000Z',
   };
+
   const policyRecord = {
     id: 'record-policy-checks',
     projectId: 'fixture-project',
@@ -156,6 +175,20 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
                 delivery: 'manifest',
                 appliedAt: '2026-08-23T08:00:00.000Z',
                 outcome: 'used-successfully',
+                outcomeEvents: [
+                  {
+                    revision: 1,
+                    status: 'used-successfully',
+                    occurredAt: '2026-08-23T08:10:00.000Z',
+                    evidence: {
+                      decision: '先验证检索与上下文衔接，再扩大测试范围',
+                      verification: {
+                        command: 'pnpm test --filter project-knowledge',
+                        success: true,
+                      },
+                    },
+                  },
+                ],
               },
             },
             {
@@ -480,6 +513,20 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   await expect(policyManifestDialog).toBeHidden();
   await expect(page.getByLabel('项目规则状态与操作')).toBeVisible();
   await expect(page.getByRole('tablist', { name: '项目知识视图' })).toBeVisible();
+  await page.getByRole('tab', { name: '项目概况' }).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('tab', { name: '项目规范' })).toBeFocused();
+  await expect(page.getByRole('tab', { name: '项目规范' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(
+    page
+      .getByRole('complementary', { name: '知识分类' })
+      .getByRole('button', { name: /项目结构/u }),
+  ).toHaveCount(0);
+  await page.keyboard.press('Home');
+  await expect(page.getByRole('tab', { name: '项目概况' })).toBeFocused();
   await expect(page.getByRole('complementary', { name: '知识分类' })).toBeVisible();
   await expect(page.getByRole('complementary', { name: '记录详情' })).toBeVisible();
   await expect(page.getByRole('tab', { name: '项目概况' })).toBeVisible();
@@ -506,7 +553,7 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
       .getByText('已确认的项目属性、技术信息和运行条件', { exact: true }),
   ).toBeVisible();
   await projectStructureCategory.click();
-  await expect(page.getByText('内置', { exact: true })).toHaveCount(2);
+  await expect(page.getByText('内置', { exact: true })).toHaveCount(1);
   await expect(page.getByText('COMET_KNOWLEDGE_TOKEN')).toHaveCount(0);
   await expect(page.getByText('docs/rule.md#rule', { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('complementary', { name: '记录详情' })).toContainText(
@@ -541,6 +588,10 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   const inspectorFooter = page
     .getByRole('complementary', { name: '记录详情' })
     .locator(':scope > footer');
+  await expect(page.getByRole('complementary', { name: '记录详情' })).toContainText(
+    '先验证检索与上下文衔接，再扩大测试范围',
+  );
+  await expect(page.getByRole('complementary', { name: '记录详情' })).toContainText('宿主验证结果');
   const correctionAction = inspectorFooter.getByRole('button', { name: '纠正记录' });
   const supersedeAction = inspectorFooter.getByRole('button', { name: '标记已替代' });
   const correctionBounds = await correctionAction.boundingBox();
@@ -1102,6 +1153,16 @@ test('adds global or project memory, explains application, and permanently delet
   await expect(profileDialog.getByRole('button', { name: /保\s*存/u })).toBeDisabled();
 
   await profileInput.fill('提交前先运行最小相关测试');
+  await page.route(
+    '**/api/dashboard/**/invoke',
+    async (route) => {
+      await route.fulfill({ status: 500, json: { error: 'Save unavailable' } });
+    },
+    { times: 1 },
+  );
+  await profileDialog.getByRole('button', { name: /保\s*存/u }).click();
+  await expect(profileDialog).toBeVisible();
+  await expect(profileInput).toHaveValue('提交前先运行最小相关测试');
   await profileDialog.getByRole('button', { name: /保\s*存/u }).click();
 
   await expect(profileDialog).toBeHidden();
@@ -2009,6 +2070,15 @@ test('keeps memory columns aligned and project knowledge timestamps visible', as
     memoryRow.locator('.dashboard-memory-table-time'),
   );
 
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await expect
+    .poll(() =>
+      page
+        .locator('.dashboard-memory-table-body')
+        .evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+    )
+    .toBe(true);
+  await page.setViewportSize({ width: 1600, height: 1000 });
   await page.getByRole('menuitem', { name: '项目知识' }).click();
   const knowledgeHead = page.locator('.dashboard-knowledge-ledger-head');
   const knowledgeRow = page.locator('.dashboard-knowledge-ledger-row').first();

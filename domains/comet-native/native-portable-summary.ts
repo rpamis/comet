@@ -1,3 +1,5 @@
+import path from 'node:path';
+import type { NativeProjectPaths } from './native-types.js';
 import type { NativePortableState } from './native-portable-types.js';
 
 export interface NativePortableStateSummary {
@@ -27,6 +29,7 @@ export interface NativePortableStateSummary {
     NativePortableState['workspace'],
     'isolation' | 'change_branch' | 'target_branch' | 'finish'
   >;
+  learning: { failureResolved: boolean; summary?: string; artifactRefs: string[] };
   archived: boolean;
 }
 
@@ -35,7 +38,10 @@ function compactReason(value: string): string {
   return normalized.length <= 240 ? normalized : `${normalized.slice(0, 237)}...`;
 }
 
-export function nativePortableStateSummary(state: NativePortableState): NativePortableStateSummary {
+export function nativePortableStateSummary(
+  state: NativePortableState,
+  paths?: NativeProjectPaths,
+): NativePortableStateSummary {
   const acceptance = state.acceptance.reduce<NativePortableStateSummary['acceptance']>(
     (result, entry) => ({ ...result, [entry.result]: result[entry.result] + 1 }),
     { total: state.acceptance.length, passed: 0, failed: 0, blocked: 0, pending: 0 },
@@ -66,6 +72,29 @@ export function nativePortableStateSummary(state: NativePortableState): NativePo
       change_branch: state.workspace.change_branch,
       target_branch: state.workspace.target_branch,
       finish: state.workspace.finish,
+    },
+    learning: {
+      failureResolved:
+        state.verification_result === 'pass' &&
+        state.history.some(
+          (entry) => entry.outcome === 'fail' && entry.goal_cycle === state.loop.goal_cycle,
+        ),
+      ...(state.verification ? { summary: compactReason(state.verification.summary.text) } : {}),
+      artifactRefs: paths
+        ? [
+            'brief.md',
+            ...(state.verification_report ? [state.verification_report] : []),
+            ...state.spec_changes
+              .map((entry) => entry.source)
+              .filter((source): source is string => source !== null),
+          ]
+            .slice(0, 16)
+            .map((source) =>
+              path
+                .relative(paths.projectRoot, path.join(paths.changesDir, state.name, source))
+                .replaceAll('\\', '/'),
+            )
+        : [],
     },
     archived: state.archived,
   };

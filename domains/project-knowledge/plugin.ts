@@ -41,6 +41,7 @@ import type {
   ProjectKnowledgeQueryResult,
   ProjectKnowledgeResult,
 } from './types.js';
+import { ProjectKnowledgeHostReview } from './host-review.js';
 import { resolveProjectKnowledgeStorageLocation } from '../../platform/paths/project-knowledge-storage.js';
 import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
 import { RaceSafeReadError } from '../../platform/fs/race-safe-read.js';
@@ -214,7 +215,9 @@ async function createProjectKnowledgeModule(
         projectRoot: options.projectRoot,
         provider: learningProvider,
         language: options.language,
-        ...(options.semanticReviewer ? { reviewer: options.semanticReviewer } : {}),
+        reviewer:
+          options.semanticReviewer ??
+          new ProjectKnowledgeHostReview(options.projectRoot, options.cacheRoot),
         reportDiagnostic,
       });
       return await learning.reflectEvent(event);
@@ -293,8 +296,12 @@ async function createProjectKnowledgeModule(
           ) === index
         );
       });
+      const pendingHostReviews = options.semanticReviewer
+        ? []
+        : await new ProjectKnowledgeHostReview(options.projectRoot, options.cacheRoot).pending();
       const result = {
         ...snapshot,
+        pendingHostReviewCount: pendingHostReviews.length,
         status,
         records: dashboardRecords,
         counts: {
@@ -817,7 +824,18 @@ function projectKnowledgeContextCandidate(
       authority: record.authority === 'automatic' ? 'inferred' : record.authority,
       title: record.title,
       summary: record.summary,
-      content: record.summary,
+      content: [
+        record.summary,
+        `Applicable paths: ${record.applicablePaths.join(', ') || '*'}`,
+        `Operations: ${record.operations.join(', ') || '*'}`,
+        `Phases: ${(record.phases ?? []).join(', ') || '*'}`,
+        ...record.conclusions.map(
+          (conclusion) =>
+            `- ${conclusion.text}\n  Sources: ${conclusion.sources
+              .map((source) => [source.source, source.anchor].filter(Boolean).join('#'))
+              .join(', ')}`,
+        ),
+      ].join('\n'),
       selectors: {
         projectId: record.projectId,
         paths: record.applicablePaths,

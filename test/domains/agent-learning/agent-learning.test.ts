@@ -644,6 +644,128 @@ describe('Agent Learning Coordinator', () => {
 });
 
 describe('Context Director', () => {
+  it('discovers scoped project references before file selection without activating policies', async () => {
+    const director = new ContextDirector();
+    const knowledge = candidate({
+      id: 'runtime-policy',
+      owner: 'comet.project-knowledge',
+      scope: 'project',
+      memoryType: 'project-policy',
+      authority: 'repository',
+      selectors: {
+        projectId: 'project-1',
+        paths: ['domains/runtime/'],
+        operations: ['edit'],
+        phases: ['build'],
+      },
+    });
+    const request = { task: '修复运行时', projectId: 'project-1', sessionId: 'task-1' };
+    const selection = await director.select(
+      [knowledge, candidate({ selectors: knowledge.selectors })],
+      request,
+    );
+    expect(selection.activePolicies).toEqual([]);
+    expect(selection.coreMemory).toEqual([]);
+    expect(selection.manifest.map((item) => item.id)).toEqual(['runtime-policy']);
+    expect(selection.manifest[0]?.whyApplied).toContain('候选参考');
+    expect(selection.applications[0]?.outcome).toBeUndefined();
+    expect(director.expand([knowledge], 'runtime-policy', request)).not.toBeNull();
+    for (const mismatch of [
+      { projectId: 'other-project' },
+      { path: 'domains/dashboard/view.ts' },
+      { operation: 'delete' },
+      { phase: 'archive' },
+    ]) {
+      expect((await director.select([knowledge], { ...request, ...mismatch })).text).toBe('');
+      expect(
+        director.expand([knowledge], 'runtime-policy', { ...request, ...mismatch }),
+      ).toBeNull();
+    }
+    // Knowing the path later must not make an earlier manifest impossible to expand.
+    expect(
+      director.expand([knowledge], 'runtime-policy', {
+        ...request,
+        path: 'domains/runtime/entry.ts',
+        operation: 'edit',
+        phase: 'build',
+      })?.whyApplied,
+    ).toContain('当前路径匹配');
+  });
+
+  it('matches project directory and glob selectors consistently during expansion', () => {
+    const director = new ContextDirector();
+    for (const selector of ['domains/runtime', 'domains/runtime/', 'domains/**/entry.ts']) {
+      const knowledge = candidate({
+        scope: 'project',
+        memoryType: 'project-model',
+        selectors: { paths: [selector] },
+      });
+      expect(
+        director.expand([knowledge], knowledge.id, {
+          task: 'runtime',
+          path: 'domains/runtime/entry.ts',
+        }),
+      ).not.toBeNull();
+      expect(
+        director.expand([knowledge], knowledge.id, { task: 'runtime', path: 'other/file.ts' }),
+      ).toBeNull();
+    }
+    const shallow = candidate({
+      scope: 'project',
+      memoryType: 'project-model',
+      selectors: { paths: ['domains/*'] },
+    });
+    expect(
+      director.expand([shallow], shallow.id, { task: 'runtime', path: 'domains/runtime/entry.ts' }),
+    ).toBeNull();
+  });
+
+  it('persists adoption evidence through reload and treats repeat reports idempotently', async () => {
+    let saved: unknown = null;
+    const storage = {
+      read: async () => saved,
+      write: async (value: unknown) => {
+        saved = structuredClone(value);
+      },
+    };
+    const director = new ContextDirector({
+      applications: new StorageAgentContextApplicationStore(storage),
+    });
+    const selection = await director.select([candidate()], { task: 'Fix runtime' });
+    const id = selection.applications[0]!.applicationId;
+    const evidence = {
+      decision: 'Rebuilt the entry bundle after updating the router',
+      verification: { command: 'pnpm check:generated', success: true },
+    };
+    await director.recordOutcome(id, 'used-successfully', undefined, evidence);
+    const reloaded = new ContextDirector({
+      applications: new StorageAgentContextApplicationStore(storage),
+    });
+    expect((await reloaded.applicationHistory())[0]?.outcomeEvents?.[0]?.evidence).toEqual(
+      evidence,
+    );
+    expect(
+      (await reloaded.recordOutcome(id, 'used-successfully', undefined, evidence))?.changed,
+    ).toBe(false);
+    expect(
+      (
+        await reloaded.recordOutcome(id, 'used-successfully', undefined, {
+          ...evidence,
+          decision: 'Checked both source and bundle',
+        })
+      )?.record.outcomeRevision,
+    ).toBe(2);
+    await expect(
+      reloaded.recordOutcome(id, 'used-successfully', undefined, {
+        ...evidence,
+        verification: { command: 'pnpm test', success: false },
+      }),
+    ).rejects.toThrow('failed verification');
+    await expect(
+      reloaded.recordOutcome(id, 'ignored', undefined, { ...evidence, decision: '' }),
+    ).rejects.toThrow('requires a decision');
+  });
+
   it('localizes generated application reasons for English workflows', async () => {
     const director = new ContextDirector();
     const selection = await director.select(

@@ -1,3 +1,4 @@
+import path from 'node:path';
 import {
   archiveNativePortableChange,
   hasNativePortableArchiveRecovery,
@@ -355,6 +356,12 @@ export async function nativeArchiveCommand(
       'archive',
       {
         ...result,
+        artifactRefs: [
+          'brief.md',
+          ...(result.state.verification_report ? [result.state.verification_report] : []),
+        ].map((source) =>
+          path.relative(projectRoot, path.join(result.archiveDir, source)).replaceAll('\\', '/'),
+        ),
         workspaceFinish: result.state.workspace.finish,
         workspaceFinishResult,
         ...(parentAdvance ? { parentAdvance: parentAdvance.parentAdvance } : {}),

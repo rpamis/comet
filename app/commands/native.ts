@@ -28,6 +28,7 @@ async function recordNativeResult(
 ): Promise<void> {
   const command = args.find((value) => ['next', 'archive', 'handoff', 'check'].includes(value));
   if (!command || !['next', 'archive', 'handoff', 'check'].includes(command)) return;
+  if (args.includes('--dry-run')) return;
   if (result.exitCode !== 0 && command !== 'check') return;
   const commandIndex = args.indexOf(command);
   const projectIndex = args.indexOf('--project-root');

@@ -842,7 +842,9 @@ function reviewHasCandidate(result: MemoryReviewResult): boolean {
 
 function experienceApplicability(event: AgentExperienceEvent) {
   return {
-    ...(event.projectId === undefined ? {} : { projectId: event.projectId }),
+    ...(event.scope !== 'project' || event.projectId === undefined
+      ? {}
+      : { projectId: event.projectId }),
     ...(event.context.paths === undefined ? {} : { paths: event.context.paths }),
     ...(event.context.operation === undefined ? {} : { operations: [event.context.operation] }),
     ...(event.context.phase === undefined ? {} : { phases: [event.context.phase] }),

@@ -18,6 +18,9 @@ export interface CometTaskCommandOptions {
   readonly expandContext?: string;
   readonly application?: string;
   readonly outcome?: AgentContextOutcomeStatus;
+  readonly decision?: string;
+  readonly verification?: string;
+  readonly verificationResult?: 'passed' | 'failed';
   readonly complete?: boolean;
   readonly workflow?: string;
   readonly change?: string;
@@ -53,11 +56,37 @@ export async function cometTaskCommand(
   if ((options.application === undefined) !== (options.outcome === undefined)) {
     throw new Error('--application and --outcome must be used together');
   }
+  const hasEvidence =
+    options.decision !== undefined ||
+    options.verification !== undefined ||
+    options.verificationResult !== undefined;
+  if (
+    hasEvidence &&
+    (!options.application ||
+      !options.decision?.trim() ||
+      !options.verification?.trim() ||
+      !['passed', 'failed'].includes(options.verificationResult ?? ''))
+  ) {
+    throw new Error(
+      'Adoption evidence requires --application, --decision, --verification and --verification-result',
+    );
+  }
   if (options.application && options.outcome) {
     await recordCometContextOutcome({
       projectRoot,
       applicationId: options.application,
       outcome: options.outcome,
+      ...(hasEvidence
+        ? {
+            evidence: {
+              decision: options.decision!.trim(),
+              verification: {
+                command: options.verification!.trim(),
+                success: options.verificationResult === 'passed',
+              },
+            },
+          }
+        : {}),
     });
   }
   const expansion = options.expandContext

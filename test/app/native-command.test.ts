@@ -11,6 +11,13 @@ vi.mock('../../domains/comet-entry/plugin-context.js', () => ({
 }));
 
 describe('Native command facade', () => {
+  it('does not learn a successful archive from a dry-run preview', async () => {
+    runNativeCli.mockResolvedValue({ exitCode: 0, stdout: JSON.stringify({ ready: false }) });
+    const { runNativeFacade } = await import('../../app/commands/native.js');
+    await runNativeFacade(['archive', 'change-name', '--dry-run', '--project-root', 'D:/repo']);
+    expect(recordCometWorkflowResult).not.toHaveBeenCalled();
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
     runNativeCli.mockReset();

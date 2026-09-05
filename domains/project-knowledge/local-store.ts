@@ -1,3 +1,4 @@
+import { projectPathSelectorMatches } from '../../platform/paths/project-path-selector.js';
 import { closeSync, mkdirSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
@@ -506,32 +507,6 @@ function recordMatchesApplicablePath(
     .some((candidate) => projectPathSelectorMatches(candidate, queryPath));
 }
 
-function projectPathSelectorMatches(selector: string, projectPath: string): boolean {
-  if (!/[?*]/u.test(selector)) {
-    return (
-      selector === projectPath ||
-      projectPath.startsWith(selector.endsWith('/') ? selector : `${selector}/`)
-    );
-  }
-  let pattern = '^';
-  for (let index = 0; index < selector.length; index += 1) {
-    const character = selector[index]!;
-    const next = selector[index + 1];
-    if (character === '*' && next === '*') {
-      if (selector[index + 2] === '/') {
-        pattern += '(?:.*/)?';
-        index += 2;
-      } else {
-        pattern += '.*';
-        index += 1;
-      }
-    } else if (character === '*') pattern += '[^/]*';
-    else if (character === '?') pattern += '[^/]';
-    else pattern += character.replace(/[\\^$.*+?()[\]{}|]/gu, '\\$&');
-  }
-  return new RegExp(`${pattern}$`, 'u').test(projectPath);
-}
-
 function recordHasOperationAssociation(
   record: ProjectKnowledgeRecord,
   query: ProjectKnowledgeQuery,
@@ -546,14 +521,13 @@ function recordMatchesSelectors(
   query: ProjectKnowledgeQuery,
 ): boolean {
   if (record.applicablePaths.length > 0) {
-    if (!query.path || !recordMatchesApplicablePath(record, query)) return false;
+    if (query.path && !recordMatchesApplicablePath(record, query)) return false;
   }
   if (record.operations.length > 0) {
-    if (!query.operation || !recordHasOperationAssociation(record, query)) return false;
+    if (query.operation && !recordHasOperationAssociation(record, query)) return false;
   }
   const phases = record.phases ?? [];
-  if (phases.length > 0) {
-    if (!query.phase) return false;
+  if (phases.length > 0 && query.phase) {
     const phase = query.phase.toLocaleLowerCase();
     if (!phases.some((candidate) => candidate.toLocaleLowerCase() === phase)) return false;
   }
@@ -773,9 +747,15 @@ export class ProjectKnowledgeLocalStore {
   }
 
   searchRecords(query: ProjectKnowledgeQuery): readonly ProjectKnowledgeResult[] {
-    const terms = [...query.terms, ...query.strongTerms, ...query.phraseTerms]
-      .map((term) => term.toLocaleLowerCase())
-      .filter(Boolean);
+    const terms = [
+      ...new Set(
+        [...query.terms, ...query.strongTerms, ...query.phraseTerms]
+          .map((term) => term.toLocaleLowerCase())
+          .filter(Boolean),
+      ),
+    ];
+    const discovery =
+      query.path === undefined && query.operation === undefined && query.phase === undefined;
     const applicableRecords = this.list().filter(
       (record) => record.state !== 'superseded' && recordMatchesSelectors(record, query),
     );
@@ -796,6 +776,10 @@ export class ProjectKnowledgeLocalStore {
           : matches > 0 || pathAssociation,
       )
       .sort((left, right) => {
+        // During task discovery, a directly relevant trial lesson must remain
+        // discoverable among broad generated models. Known-scope activation
+        // retains the established authority/lifecycle ordering below.
+        if (discovery && left.matches !== right.matches) return right.matches - left.matches;
         const lifecycle = recordLifecycleRank(right.record) - recordLifecycleRank(left.record);
         if (lifecycle !== 0) return lifecycle;
         const authority = recordAuthorityRank(right.record) - recordAuthorityRank(left.record);
@@ -870,9 +854,7 @@ export class ProjectKnowledgeLocalStore {
               ? 'enforced'
               : 'proven'
             : inspection.current
-              ? candidate.state === 'enforced'
-                ? 'enforced'
-                : 'proven'
+              ? candidate.state
               : 'superseded';
         if (
           state !== candidate.state ||

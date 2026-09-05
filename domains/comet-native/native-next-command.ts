@@ -186,7 +186,7 @@ export async function nativeNextCommand(
       name,
     });
     return success('next', {
-      state: nativePortableStateSummary(state),
+      state: nativePortableStateSummary(state, configured.paths),
       migration: { completed: true, summary },
       continuation: nativePortableContinuation(state),
     });
@@ -196,7 +196,7 @@ export async function nativeNextCommand(
   const initialWorkspaceMismatch = nativePortableWorkspaceMismatch(configured.paths, initialState);
   if (initialWorkspaceMismatch) {
     return success('next', {
-      state: nativePortableStateSummary(initialState),
+      state: nativePortableStateSummary(initialState, configured.paths),
       recovery: {
         action: 'await-user',
         reason: 'workspace-mismatch',
@@ -228,7 +228,7 @@ export async function nativeNextCommand(
     });
     if (supervisorRecovery.action === 'rerun-final-verification') {
       return success('next', {
-        state: nativePortableStateSummary(supervisorRecovery.state),
+        state: nativePortableStateSummary(supervisorRecovery.state, configured.paths),
         ...(await portableParentView(configured.paths, supervisorRecovery.state)),
       });
     }
@@ -244,7 +244,7 @@ export async function nativeNextCommand(
       recovery.reason !== 'available'
     ) {
       return success('next', {
-        state: nativePortableStateSummary(current),
+        state: nativePortableStateSummary(current, configured.paths),
         recovery: compactRecoveryResult(recovery),
         ...(await portableParentView(configured.paths, current)),
       });
@@ -261,7 +261,7 @@ export async function nativeNextCommand(
           reason: drift.reason ?? 'Native confirmed requirements changed',
         });
         return success('next', {
-          state: nativePortableStateSummary(state),
+          state: nativePortableStateSummary(state, configured.paths),
           ...(await portableParentView(configured.paths, state)),
         });
       }
@@ -282,7 +282,7 @@ export async function nativeNextCommand(
     });
     return success('next', {
       ...compactRunnerResult(result),
-      state: nativePortableStateSummary(result.state),
+      state: nativePortableStateSummary(result.state, configured.paths),
       ...(await portableParentView(configured.paths, result.state)),
       coordination: NATIVE_SKILL_COORDINATION,
     });
@@ -293,7 +293,7 @@ export async function nativeNextCommand(
   });
   if (supervisorRecovery.action === 'rerun-final-verification') {
     return success('next', {
-      state: nativePortableStateSummary(supervisorRecovery.state),
+      state: nativePortableStateSummary(supervisorRecovery.state, configured.paths),
       ...(await portableParentView(configured.paths, supervisorRecovery.state)),
     });
   }
@@ -396,7 +396,7 @@ export async function nativeNextCommand(
   } else {
     if (recovery.reason !== 'available') {
       return success('next', {
-        state: nativePortableStateSummary(current),
+        state: nativePortableStateSummary(current, configured.paths),
         recovery: compactRecoveryResult(recovery),
         ...(await portableParentView(configured.paths, current)),
       });
@@ -448,7 +448,7 @@ export async function nativeNextCommand(
             state = parentAdvance.state;
           } else {
             return success('next', {
-              state: nativePortableStateSummary(current),
+              state: nativePortableStateSummary(current, configured.paths),
               childSummary: effectiveChildren.children.reduce<Record<string, number>>(
                 (childSummary, child) => ({
                   ...childSummary,
@@ -474,7 +474,7 @@ export async function nativeNextCommand(
     }
     if (state) {
       return success('next', {
-        state: nativePortableStateSummary(state),
+        state: nativePortableStateSummary(state, configured.paths),
         ...(parentAdvance ? { parentAdvance: parentAdvance.parentAdvance } : {}),
         ...(await portableParentView(configured.paths, state)),
       });
@@ -487,7 +487,7 @@ export async function nativeNextCommand(
       command: 'next',
       exitCode: 65,
       data: {
-        state: nativePortableStateSummary(current),
+        state: nativePortableStateSummary(current, configured.paths),
         continuation: nativePortableContinuation(current, continuationChildren),
       },
       error: {
@@ -498,7 +498,7 @@ export async function nativeNextCommand(
     };
   }
   return success('next', {
-    state: nativePortableStateSummary(state),
+    state: nativePortableStateSummary(state, configured.paths),
     ...(coordinationMode === undefined ? {} : { coordinationMode }),
     ...(await portableParentView(configured.paths, state)),
   });
