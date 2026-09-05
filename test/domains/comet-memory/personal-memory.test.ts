@@ -69,6 +69,48 @@ function service(root: string, git?: MemoryGitSync): PersonalMemoryService {
 }
 
 describe('PersonalMemoryService', () => {
+  it('preserves surviving conflicts after permanently removing one of three inferred memories', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const input = {
+        scope: 'project' as const,
+        projectKey: 'project-a',
+        category: '工作习惯',
+        workflow: 'native',
+        success: true,
+        source: { kind: 'user' as const },
+      };
+      for (const [index, text] of [
+        '先执行单元测试',
+        '先执行集成测试',
+        '先执行端到端测试',
+      ].entries()) {
+        await memories.observe({ ...input, text, changeId: `conflict-${index}` });
+      }
+      const repository = new FileMemoryRepository(root);
+      const before = await repository.readState();
+      const [removed, second, third] = before.records;
+      expect(before.conflicts[0]?.recordIds).toHaveLength(3);
+      await memories.remove(removed!.id, { permanent: true });
+      const after = await repository.readState();
+      expect(after.conflicts).toEqual([
+        expect.objectContaining({
+          recordIds: [second!.id, third!.id].sort(),
+          texts: [second!.text, third!.text].sort(),
+        }),
+      ]);
+      expect((await memories.manage({ projectKey: 'project-a' })).records).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: second!.id, status: 'conflict' }),
+          expect.objectContaining({ id: third!.id, status: 'conflict' }),
+        ]),
+      );
+      expect(JSON.stringify(after)).not.toContain(removed!.text);
+      await expect(memories.status()).resolves.toMatchObject({ counts: { active: 0 } });
+      await memories.remove(second!.id, { permanent: true });
+      expect((await repository.readState()).conflicts).toEqual([]);
+    });
+  });
   it('permanently removes only the selected text while preserving same-identity siblings', async () => {
     await withTempRepository(async (root) => {
       const memories = service(root);

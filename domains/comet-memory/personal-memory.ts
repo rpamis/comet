@@ -260,7 +260,27 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
             entry.identity !== current.identity ||
             normalizedMemoryTextHash(entry.text) !== normalizedMemoryTextHash(current.text),
         );
-        state.conflicts = state.conflicts.filter((entry) => entry.identity !== current.identity);
+        state.conflicts = state.conflicts.flatMap((conflict) => {
+          if (
+            conflict.identity !== current.identity &&
+            !conflict.recordIds?.some((recordId) => removedIds.includes(recordId))
+          )
+            return [conflict];
+          const remaining = state.records.filter((record) =>
+            conflict.recordIds === undefined
+              ? record.identity === conflict.identity
+              : conflict.recordIds.includes(record.id),
+          );
+          if (new Set(remaining.map((record) => normalizeText(record.text))).size < 2) return [];
+          return [
+            {
+              ...conflict,
+              recordIds: remaining.map((record) => record.id).sort(),
+              texts: [...new Set(remaining.map((record) => record.text))].sort(),
+              updatedAt: this.timestamp(),
+            },
+          ];
+        });
       } else {
         state.records = replaceRecord(state.records, {
           ...current,
