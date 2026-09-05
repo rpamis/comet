@@ -36,6 +36,52 @@ describe('project installation registry', () => {
     });
   });
 
+  it.each(['workbuddy', 'oh-my-pi'])(
+    'automatically persists cleanup of missing %s update test projects only',
+    async (platform) => {
+      const ghost = path.join(
+        os.tmpdir(),
+        'comet-update-1788423121870-zyhmonod23k',
+        `${platform}-project`,
+      );
+      const live = path.join(tmpDir, 'comet-update-1788423121870-live', 'oh-my-pi-project');
+      await fs.mkdir(live, { recursive: true });
+      const paths = [ghost, live, path.join(tmpDir, 'missing-project')];
+      for (const project of paths) {
+        await upsertProjectInstallation(project, [{ platform, language: 'en' }], 'update', {
+          homeDir,
+        });
+      }
+      const registry = await readProjectRegistry({ homeDir });
+      expect(registry.projects.map((entry) => entry.path).sort()).toEqual(paths.slice(1).sort());
+      const persisted = JSON.parse(await fs.readFile(getProjectRegistryPath(homeDir), 'utf-8'));
+      expect(persisted).toEqual(registry);
+      expect(await readProjectRegistry({ homeDir })).toEqual(registry);
+    },
+  );
+
+  it('preserves matching projects when existence checks are denied', async () => {
+    const project = path.join(
+      os.tmpdir(),
+      'comet-update-1788423121870-denied',
+      'workbuddy-project',
+    );
+    await upsertProjectInstallation(
+      project,
+      [{ platform: 'workbuddy', language: 'en' }],
+      'update',
+      { homeDir },
+    );
+    const stat = vi
+      .spyOn(fs, 'stat')
+      .mockRejectedValue(Object.assign(new Error('denied'), { code: 'EACCES' }));
+    try {
+      expect((await readProjectRegistry({ homeDir })).projects).toHaveLength(1);
+    } finally {
+      stat.mockRestore();
+    }
+  });
+
   it('upserts a project and preserves addedAt on later writes', async () => {
     const projectDir = path.join(tmpDir, 'Project');
     await fs.mkdir(projectDir, { recursive: true });

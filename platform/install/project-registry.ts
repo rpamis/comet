@@ -250,12 +250,60 @@ export async function readProjectRegistry(
     return emptyRegistry(updatedAt);
   }
 
+  let registry: ProjectRegistry;
   try {
-    return assertProjectRegistry(parsed, registryPath);
+    registry = assertProjectRegistry(parsed, registryPath);
   } catch (error) {
     if (options.strict) throw error;
     return emptyRegistry(updatedAt);
   }
+
+  const projects: ProjectRegistryEntry[] = [];
+  for (const entry of registry.projects) {
+    if (!(await isMissingUpdateTestProject(entry))) projects.push(entry);
+  }
+  if (projects.length !== registry.projects.length) {
+    registry = { ...registry, updatedAt, projects };
+    await writeProjectRegistry(registry, registryPath);
+  }
+  return registry;
+}
+
+// Narrow migration for projects leaked by the historical update test suite.
+// Ordinary missing projects may live on disconnected drives and must survive.
+async function isMissingUpdateTestProject(entry: ProjectRegistryEntry): Promise<boolean> {
+  const fixture = /\/comet-update-\d{13}-[a-z0-9]+\/(workbuddy-project|oh-my-pi-project)$/;
+  const paths = [entry.path, entry.canonicalPath];
+  if (
+    entry.lastSource !== 'update' ||
+    entry.lastTargets.length !== 1 ||
+    !paths.every((value) => {
+      const normalized = value.replace(/\\/g, '/');
+      const match = fixture.exec(normalized);
+      const temporaryRoot =
+        normalized.startsWith('/var/folders/') ||
+        normalized.startsWith('/private/var/folders/') ||
+        normalized.startsWith('/tmp/') ||
+        normalized.startsWith('/private/tmp/') ||
+        normalized.toLowerCase().startsWith(`${os.tmpdir().replace(/\\/g, '/').toLowerCase()}/`);
+      return (
+        temporaryRoot &&
+        match &&
+        entry.lastTargets[0].platform ===
+          (match[1] === 'workbuddy-project' ? 'workbuddy' : 'oh-my-pi')
+      );
+    })
+  )
+    return false;
+  for (const projectPath of paths) {
+    try {
+      await fs.stat(projectPath);
+      return false;
+    } catch (error) {
+      if (!isMissingRegistryFile(error)) return false;
+    }
+  }
+  return true;
 }
 
 export async function listProjectRegistryEntries(

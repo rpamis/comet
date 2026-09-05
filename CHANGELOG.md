@@ -11,6 +11,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Project registry recovery**: Automatically removes missing temporary projects leaked by older update tests when the upgraded CLI or Dashboard reads the registry, while preserving ordinary missing projects and inaccessible directories.
 - **Native Supervisor child status**: Dashboard child rows show localized verification, integration, archive, and re-verification states with consistent colors and no longer mistake a missing workflow phase for an uncreated child.
 - **Personal Memory lifecycle**: Independent observations retain their own candidate identities, repeated evidence no longer creates duplicate trial records, phase-specific memories remain manageable, and permanent removal clears retained observation text.
 - **Project Knowledge learning and discovery**: Tasks can discover relevant scoped references before their target file is known and expand their conclusions, applicability, sources, and verification commands. Chinese task queries preserve technical words and mixed-language identifiers. Explicit scope mismatches remain excluded. Source refresh no longer promotes untested lessons, and workflow checkpoints no longer create generic proven policies. Native learning excludes archive previews and preserves current verification evidence.
