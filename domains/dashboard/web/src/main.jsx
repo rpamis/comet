@@ -6043,6 +6043,23 @@ function ProjectKnowledgeQuery({
   queryLatency,
   queryCandidateCount,
 }) {
+  const [selectedResult, setSelectedResult] = useState(null);
+  const [resultPreview, setResultPreview] = useState({ status: 'idle' });
+  useEffect(() => {
+    if (!selectedResult) return undefined;
+    let cancelled = false;
+    setResultPreview({ status: 'loading' });
+    void renderMarkdown(selectedResult.content ?? '')
+      .then((html) => {
+        if (!cancelled) setResultPreview({ status: 'success', html });
+      })
+      .catch(() => {
+        if (!cancelled) setResultPreview({ status: 'error' });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedResult]);
   return (
     <section className="dashboard-knowledge-query-view" aria-label="检索测试">
       <div className="dashboard-knowledge-query-form">
@@ -6099,12 +6116,45 @@ function ProjectKnowledgeQuery({
               <header>
                 <strong>{result.title ?? '项目知识结果'}</strong>
                 <code>{result.source}</code>
+                <Button
+                  type="link"
+                  aria-label={`查看检索结果：${result.title ?? '项目知识结果'}`}
+                  onClick={() => setSelectedResult(result)}
+                >
+                  查看详情
+                </Button>
               </header>
               <p>{result.content}</p>
             </article>
           ))
         )}
       </div>
+      <ProjectKnowledgePreviewModal
+        open={selectedResult !== null}
+        title="检索结果详情"
+        subtitle={selectedResult?.title}
+        description="查看本次检索返回的内容片段"
+        ariaLabel="检索结果详情"
+        onClose={() => setSelectedResult(null)}
+      >
+        {() => (
+          <div className="dashboard-knowledge-preview-content">
+            <div className="dashboard-knowledge-preview-scroll">
+              <code>{selectedResult?.source}</code>
+              {resultPreview.status === 'success' ? (
+                <article
+                  className="md-github"
+                  dangerouslySetInnerHTML={{ __html: resultPreview.html }}
+                />
+              ) : resultPreview.status === 'error' ? (
+                <p>内容预览失败，请关闭后重试。</p>
+              ) : (
+                <Skeleton active />
+              )}
+            </div>
+          </div>
+        )}
+      </ProjectKnowledgePreviewModal>
     </section>
   );
 }
@@ -6964,7 +7014,7 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke }) {
         ? memoryCounts.history > 0
           ? `当前没有有效个人记忆；已有 ${memoryCounts.history} 条历史记录`
           : memoryFileCount > 0
-            ? '当前没有有效个人记忆；记忆文件只是可读投影，不代表已经学到内容'
+            ? '当前没有有效个人记忆；已有记忆文件中暂无可复用的内容'
             : '当前还没有形成可复用的个人记忆'
         : activeMemoryFilter.description;
 
@@ -7235,7 +7285,7 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke }) {
             </div>
             <span>{profileUsage}</span>
             <span>
-              {memoryFileCount} 个投影文件 · {memoryCounts.tombstones} 个遗忘保护
+              {memoryFileCount} 个记忆文件 · {memoryCounts.tombstones} 个遗忘保护
             </span>
           </div>
         </aside>

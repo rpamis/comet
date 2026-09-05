@@ -382,13 +382,13 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
       const results =
         body.input?.task === '1231'
           ? []
-          : [
-              {
-                source: 'docs/rule.md#rule',
-                title: 'Focused tests',
-                content: 'Run focused tests first.',
-              },
-            ];
+          : Array.from({ length: 8 }, (_, index) => ({
+              source: 'docs/rule.md#rule',
+              title: `Focused tests ${index + 1}`,
+              content:
+                '# Focused tests\n\nRun focused tests first.\n\n' +
+                'Long retrieval evidence.\n\n'.repeat(80),
+            }));
       await route.fulfill({
         json: {
           result: {
@@ -750,6 +750,30 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   await page.getByLabel('查询项目知识').fill('focused tests');
   await page.getByRole('button', { name: '测试检索' }).click();
   await expect(page.getByLabel('项目知识查询结果')).toContainText('Run focused tests first.');
+  const queryView = page.getByRole('region', { name: '检索测试', exact: true });
+  for (const viewport of [
+    { width: 1600, height: 900 },
+    { width: 1280, height: 720 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await queryView.hover();
+    await page.mouse.wheel(0, 10000);
+    await expect.poll(() => queryView.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    await page.getByRole('button', { name: '查看检索结果：Focused tests 8' }).click();
+    const resultDialog = page.getByRole('dialog', { name: /检索结果详情/u });
+    await expect(
+      resultDialog.getByRole('heading', { name: 'Focused tests', exact: true }),
+    ).toBeVisible();
+    const resultScroll = resultDialog.locator('.dashboard-knowledge-preview-scroll');
+    await resultScroll.hover();
+    await page.mouse.wheel(0, 1000);
+    await expect
+      .poll(() => resultScroll.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0);
+    await page.keyboard.press('Escape');
+    await expect(resultDialog).toBeHidden();
+  }
+  await page.setViewportSize({ width: 1600, height: 900 });
   await page.getByLabel('查询项目知识').fill('1231');
   await page.getByRole('button', { name: '测试检索' }).click();
   await expect.poll(() => queryTasks).toEqual(['focused tests', '1231']);
@@ -918,7 +942,7 @@ test('adds global or project memory, explains application, and permanently delet
       status: {
         learningEnabled: true,
         retrievalEnabled: true,
-        files: [],
+        files: ['MEMORY.md'],
         pausedLearningProjects: [],
         pausedRetrievalProjects: [],
         profile: { usedChars: 18, maxChars: 2000 },
@@ -1251,6 +1275,15 @@ test('adds global or project memory, explains application, and permanently delet
       input: expect.objectContaining({ id: 'profile-memory', permanent: true }),
     });
   await expect(memoryManifest).not.toContainText('默认使用中文回复');
+  await profileSection
+    .locator('.dashboard-memory-table-row')
+    .filter({ hasText: '提交前先运行最小相关测试' })
+    .getByLabel('删除记忆')
+    .click();
+  await expect(page.getByRole('region', { name: '个人记忆列表' })).toContainText(
+    '当前没有有效个人记忆；已有记忆文件中暂无可复用的内容',
+  );
+  await expect(page.locator('.dashboard-tool-page-memory')).not.toContainText('投影');
 });
 
 test('collapses long personal memory records until the user expands them', async ({ page }) => {

@@ -3438,6 +3438,8 @@ body {
 
 .dashboard-knowledge-query-view {
   padding-bottom: 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .dashboard-knowledge-query-form {
@@ -3508,9 +3510,19 @@ body {
   color: var(--color-meta);
   font-family: var(--font-mono);
   font-size: 10px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-knowledge-query-results article .ant-btn {
+  flex-shrink: 0;
 }
 
 .dashboard-knowledge-query-results article p {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
   margin: 6px 0 0;
   color: var(--color-fg-2);
   font-size: 11px;
