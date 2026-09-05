@@ -5853,11 +5853,14 @@ body {
   background: var(--color-accent);
 }
 
-.native-child-status-active {
+.native-child-status-active,
+.native-child-status-needs-reverify {
   background: var(--color-warn);
 }
 
-.native-child-status-done {
+.native-child-status-done,
+.native-child-status-verified,
+.native-child-status-integrated {
   background: var(--color-success);
 }
 

@@ -116,6 +116,10 @@ const CHILD_STATUS_LABELS = {
   ready: '可开始',
   active: '进行中',
   done: '已完成',
+  verified: '已验收',
+  integrated: '已集成',
+  archived: '已归档',
+  'needs-reverify': '需要重新验收',
   blocked: '已阻塞',
 };
 const CHILD_STATUS_TONES = {
@@ -123,7 +127,22 @@ const CHILD_STATUS_TONES = {
   ready: 'info',
   active: 'warn',
   done: 'ok',
+  verified: 'ok',
+  integrated: 'ok',
+  archived: 'neutral',
+  'needs-reverify': 'warn',
   blocked: 'danger',
+};
+const CHILD_STATUS_DESCRIPTIONS = {
+  pending: '等待前置子任务完成',
+  ready: '等待开始执行',
+  active: '正在执行',
+  done: '执行完成',
+  verified: '验收通过',
+  integrated: '已合入集成分支',
+  archived: '归档完成',
+  'needs-reverify': '等待重新验收',
+  blocked: '等待解除阻塞',
 };
 const NATIVE_CHANGE_PAGE_SIZE = 5;
 
@@ -768,7 +787,7 @@ function NativeChangesExplorer({
                               <span className="mt-0.5 block truncate text-[11px] text-meta">
                                 {child.phase
                                   ? (PHASE_LABELS[child.phase] ?? child.phase)
-                                  : '尚未创建'}
+                                  : (CHILD_STATUS_DESCRIPTIONS[child.status] ?? '阶段信息不可用')}
                                 {child.workspace?.label ? ` · ${child.workspace.label}` : ''}
                               </span>
                             </span>

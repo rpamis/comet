@@ -3194,7 +3194,28 @@ test('expands a Native parent and keeps child selection in the existing detail c
     changeStatus: 'active',
     workspace: childWorkspace,
   };
-  const parent = nativeDetail('parent-change', 'parent-locator', parentWorkspace, [childSummary]);
+  const supervisorStates = [
+    ['verified', '已验收', '验收通过', 'ok'],
+    ['integrated', '已集成', '已合入集成分支', 'ok'],
+    ['archived', '已归档', '归档完成', 'neutral'],
+    ['needs-reverify', '需要重新验收', '等待重新验收', 'warn'],
+    ['pending', '等待依赖', '等待前置子任务完成', 'neutral'],
+    ['ready', '可开始', '等待开始执行', 'info'],
+    ['active', '进行中', '正在执行', 'warn'],
+    ['blocked', '已阻塞', '等待解除阻塞', 'danger'],
+  ];
+  const parent = nativeDetail('parent-change', 'parent-locator', parentWorkspace, [
+    childSummary,
+    ...supervisorStates.map(([status]) => ({
+      ...childSummary,
+      name: `supervisor-${status}`,
+      status,
+      phase: null,
+      locator: null,
+      changeStatus: null,
+      workspace: null,
+    })),
+  ]);
   const child = nativeDetail('child-a', 'child-locator', childWorkspace);
   const detailRequests: string[] = [];
 
@@ -3277,6 +3298,40 @@ test('expands a Native parent and keeps child selection in the existing detail c
   const childRow = page.locator('.native-child-change-row').filter({ hasText: 'child-a' });
   await expect(childRow).toBeVisible();
   await expect(childRow).toContainText('native/child-a');
+  await expect(childRow).toContainText('Build');
+  for (const [status, label, description, tone] of supervisorStates) {
+    const row = page
+      .locator('.native-child-change-row')
+      .filter({ hasText: `supervisor-${status}` });
+    await expect(row).toContainText(label);
+    await expect(row).toContainText(description);
+    await expect(row).not.toContainText('尚未创建');
+    const toneClass = {
+      ok: 'text-success',
+      neutral: 'text-fg-2',
+      warn: 'text-warn',
+      info: 'text-info',
+      danger: 'text-danger',
+    }[tone]!;
+    await expect(row.locator(`.${toneClass}`)).toHaveText(label);
+    const dot = row.locator('.native-child-status-dot');
+    const token = {
+      ok: 'success',
+      neutral: 'meta',
+      warn: 'warn',
+      info: 'accent',
+      danger: 'danger',
+    }[tone]!;
+    const colors = await dot.evaluate((element, token) => {
+      const probe = document.createElement('span');
+      probe.style.backgroundColor = `var(--color-${token})`;
+      element.append(probe);
+      const expected = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return [getComputedStyle(element).backgroundColor, expected];
+    }, token);
+    expect(colors[0]).toBe(colors[1]);
+  }
   await childRow.click();
   await expect.poll(() => detailRequests).toContain('child-locator');
   await expect(page.locator('.native-change-detail h3')).toHaveText('child-a');
