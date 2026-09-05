@@ -61,6 +61,7 @@ async function safeDirectory(
   root: string,
   projectRoot: string,
   budget?: DiscoveryBudget,
+  reporter?: ProjectKnowledgeDiagnosticReporter,
 ): Promise<boolean> {
   if (budget && budgetExpired(budget)) return false;
   if (!isInside(projectRoot, root)) return false;
@@ -72,7 +73,7 @@ async function safeDirectory(
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
       report(
-        undefined,
+        reporter,
         'corpus-root',
         `未进入检索：无法读取目录 ${relativeSource(projectRoot, root)}。`,
       );
@@ -90,7 +91,7 @@ async function walkMarkdown(
   budget?: DiscoveryBudget,
   matcher?: MarkdownMatcher,
 ): Promise<ProjectKnowledgeDocument[]> {
-  if (!(await safeDirectory(root, projectRoot, budget))) return [];
+  if (!(await safeDirectory(root, projectRoot, budget, reporter))) return [];
   const result: ProjectKnowledgeDocument[] = [];
   const visit = async (directory: string): Promise<void> => {
     if (budget && budgetExpired(budget)) return;
@@ -228,7 +229,7 @@ async function discoverSuperpowers(
   reporter?: ProjectKnowledgeDiagnosticReporter,
   budget?: DiscoveryBudget,
 ): Promise<ProjectKnowledgeDocument[]> {
-  const changes = await walkDirectories(archiveRoot, projectRoot, budget);
+  const changes = await walkDirectories(archiveRoot, projectRoot, budget, reporter);
   const references = new Set<string>();
   for (const change of changes) {
     if (budget && budgetExpired(budget)) break;
@@ -274,8 +275,9 @@ async function walkDirectories(
   root: string,
   projectRoot: string,
   budget?: DiscoveryBudget,
+  reporter?: ProjectKnowledgeDiagnosticReporter,
 ): Promise<string[]> {
-  if (!(await safeDirectory(root, projectRoot, budget))) return [];
+  if (!(await safeDirectory(root, projectRoot, budget, reporter))) return [];
   const result: string[] = [];
   const visit = async (directory: string): Promise<void> => {
     if (budget && budgetExpired(budget)) return;

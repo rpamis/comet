@@ -295,7 +295,7 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
               content: isVerifyResult
                 ? '# Verification result\n\n- Status: passed\n- Acceptance: acceptance-1\n'
                 : '# Rule\n\nRun focused tests first.\n',
-              size: isVerifyResult ? 70 : 33,
+              size: isVerifyResult ? 67 : 33,
               modifiedAt: '2026-08-23T12:00:00.000Z',
               truncated: false,
             },
@@ -3357,6 +3357,9 @@ test('expands a Native parent and keeps child selection in the existing detail c
   const disclosure = page.locator('.native-change-disclosure');
   await expect(disclosure).toHaveAccessibleName('收起 parent-change 的子变更');
   await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+  await expect(
+    page.locator('.native-change-row-shell').filter({ hasText: 'parent-change' }),
+  ).toContainText('3/9 子变更');
   const childRow = page.locator('.native-child-change-row').filter({ hasText: 'child-a' });
   await expect(childRow).toBeVisible();
   await expect(childRow).toContainText('native/child-a');

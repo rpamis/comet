@@ -634,7 +634,9 @@ function NativeChangesExplorer({
         if (
           selectedChild ||
           matchingChild ||
-          (isNew && change.status === 'active' && children.some(({ status }) => status !== 'done'))
+          (isNew &&
+            change.status === 'active' &&
+            children.some(({ status }) => !RESOLVED_CHILD_STATUSES.has(status)))
         ) {
           next.add(key);
         }
@@ -1480,10 +1482,12 @@ function formatTimestamp(value) {
   }).format(date);
 }
 
+const RESOLVED_CHILD_STATUSES = new Set(['done', 'verified', 'integrated', 'archived']);
+
 function childrenProgress(change) {
   const children = change.children ?? [];
   if (children.length === 0) return null;
-  const resolved = children.filter(({ status }) => status === 'done').length;
+  const resolved = children.filter(({ status }) => RESOLVED_CHILD_STATUSES.has(status)).length;
   return {
     resolved,
     total: children.length,

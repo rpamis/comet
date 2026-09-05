@@ -334,7 +334,9 @@ async function discoverProjectModules(
       .map((entry) => `${moduleRoot}/${entry.name}`);
     if (children.length > 0) paths.push(...children);
     else if (
-      entries.some((entry) => entry.isFile() && CODE_EXTENSIONS.has(path.extname(entry.name)))
+      entries.some(
+        (entry) => entry.isFile() && CODE_EXTENSIONS.has(path.extname(entry.name).toLowerCase()),
+      )
     )
       paths.push(moduleRoot);
   }
@@ -587,7 +589,9 @@ async function moduleRecords(
       const testFiles = await realProjectFiles(
         path.join(root, ...testPath.split('/')),
         4,
-        Number.POSITIVE_INFINITY,
+        deadline,
+        () => true,
+        true,
       );
       conclusions.push({
         text:

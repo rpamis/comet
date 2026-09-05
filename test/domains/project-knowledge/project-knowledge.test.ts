@@ -30,6 +30,8 @@ import {
 import { MemoryPluginStorageStore } from '../../../domains/comet-plugin/plugin-runtime.js';
 import { runBoundedRipgrep } from '../../../platform/process/ripgrep.js';
 import { resolveStableProjectId } from '../../../platform/paths/project-identity.js';
+import { resolveProjectKnowledgeStorageLocation } from '../../../platform/paths/project-knowledge-storage.js';
+import { ProjectKnowledgeLocalStore } from '../../../domains/project-knowledge/local-store.js';
 
 function createDefaultCometPluginBridge(
   options: Parameters<typeof createProductionCometPluginBridge>[0],
@@ -104,6 +106,79 @@ async function search(
 }
 
 describe('project knowledge dashboard status', () => {
+  test('reports truncation when the record cap drops a third matching result', async () => {
+    const root = await tempProject();
+    const provider = new LocalProjectKnowledgeProvider({
+      projectRoot: root,
+      cacheRoot: root,
+      corpus: [],
+    });
+    const records = [1, 2, 3].map((index) =>
+      createUserProjectKnowledgeRecord(
+        {
+          type: 'pattern',
+          title: `Retrieval ${index}`,
+          summary: 'Retrieval rule',
+          applicablePaths: [],
+          operations: [],
+          phases: [],
+          sources: [],
+          verification: [],
+        },
+        resolveStableProjectId(root),
+      ),
+    );
+    const searchRecords = vi
+      .spyOn(ProjectKnowledgeLocalStore.prototype, 'searchRecords')
+      .mockReturnValue(
+        records.map((record) => ({ record, source: record.id, content: record.summary, score: 1 })),
+      );
+    try {
+      await expect(
+        provider.query({
+          kind: 'search',
+          query: createProjectKnowledgeQuery({ task: 'retrieval' }),
+          limit: 8,
+        }),
+      ).resolves.toMatchObject({ records: expect.any(Array), truncated: true });
+    } finally {
+      searchRecords.mockRestore();
+      provider.close();
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+  test('keeps Dashboard status available when the host review queue is corrupt', async () => {
+    const root = await tempProject();
+    const cacheRoot = await tempProject();
+    const location = resolveProjectKnowledgeStorageLocation(root, cacheRoot);
+    const queue = path.join(
+      path.dirname(location.databasePath),
+      location.workspaceId,
+      'host-review.json',
+    );
+    await fs.mkdir(path.dirname(queue), { recursive: true });
+    await fs.writeFile(queue, '{broken');
+    try {
+      const storage = new MemoryPluginStorageStore();
+      const module = await createProjectKnowledgeModule(
+        {
+          storage: await storage.open('comet.project-knowledge', 'project', 'corrupt-review'),
+          reportDiagnostic: () => undefined,
+        } as never,
+        { projectRoot: root, cacheRoot, knowledgeConfig: { provider: 'local' } },
+      );
+      await expect(module.invoke?.('status', {})).resolves.toMatchObject({
+        pendingHostReviewCount: 0,
+        diagnostics: expect.arrayContaining([
+          expect.objectContaining({ code: 'host-review-unavailable' }),
+        ]),
+      });
+      expect(await fs.readFile(queue, 'utf8')).toBe('{broken');
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
   test('discovers, expands and records actual use of task-only project knowledge through the production bridge', async () => {
     const root = await tempProject();
     const storageRoot = await tempProject();
@@ -1483,6 +1558,48 @@ test('persists deterministic project knowledge after an Agent Experience hint', 
   }
 });
 
+test('readiness never uploads local extraction to a remote provider', async () => {
+  const root = await tempProject();
+  const fetch = vi.fn();
+  const provider = new RemoteProjectKnowledgeProvider({
+    config: {
+      endpoint: 'https://example.test/knowledge',
+      token_env: 'TEST_TOKEN',
+      scope: 'demo',
+      timeout_ms: 100,
+    },
+    env: { TEST_TOKEN: 'test' },
+    fetch,
+  });
+  try {
+    await ensureProjectKnowledgeReady({ projectRoot: root, provider });
+    expect(fetch).not.toHaveBeenCalled();
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('readiness reports provider failures without rejecting context callers', async () => {
+  const root = await tempProject();
+  const reportDiagnostic = vi.fn();
+  const provider = {
+    apply: vi.fn().mockRejectedValue(new Error('offline')),
+    query: vi.fn(),
+    status: vi.fn(),
+  };
+  try {
+    await expect(
+      ensureProjectKnowledgeReady({ projectRoot: root, provider, reportDiagnostic }),
+    ).resolves.toBeUndefined();
+    expect(reportDiagnostic).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 'readiness-failed' }),
+    );
+    expect(provider.query).not.toHaveBeenCalled();
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('readiness fills a partial project model and restores stale stable module records', async () => {
   const root = await tempProject();
   const storageRoot = await tempProject();
@@ -1558,12 +1675,13 @@ describe('project knowledge failure and bounded retrieval contracts', () => {
     onTestFinished,
   }) => {
     const root = await tempProject();
+    let provider: LocalProjectKnowledgeProvider | undefined;
     onTestFinished(async () => {
-      provider.close();
+      provider?.close();
       await fs.rm(root, { recursive: true, force: true });
     });
     const diagnostics: { code: string; message: string }[] = [];
-    const provider = new LocalProjectKnowledgeProvider({
+    provider = new LocalProjectKnowledgeProvider({
       projectRoot: root,
       corpus: [
         {
@@ -1635,12 +1753,13 @@ describe('project knowledge failure and bounded retrieval contracts', () => {
     onTestFinished,
   }) => {
     const root = await tempProject();
+    let provider: LocalProjectKnowledgeProvider | undefined;
     onTestFinished(async () => {
-      provider.close();
+      provider?.close();
       await fs.rm(root, { recursive: true, force: true });
     });
     const diagnostics: { code: string; message: string }[] = [];
-    const provider = new LocalProjectKnowledgeProvider({
+    provider = new LocalProjectKnowledgeProvider({
       projectRoot: root,
       corpus: [
         {
@@ -1727,8 +1846,9 @@ describe('project knowledge failure and bounded retrieval contracts', () => {
     onTestFinished,
   }) => {
     const root = await tempProject();
+    let provider: LocalProjectKnowledgeProvider | undefined;
     onTestFinished(async () => {
-      provider.close();
+      provider?.close();
       await fs.rm(root, { recursive: true, force: true });
     });
     const diagnostics: { code: string; message: string }[] = [];
@@ -1737,7 +1857,7 @@ describe('project knowledge failure and bounded retrieval contracts', () => {
       source: 'docs/comet/changes/project-knowledge-retrieval/brief.md',
       kind: 'native-spec' as const,
     };
-    const provider = new LocalProjectKnowledgeProvider({
+    provider = new LocalProjectKnowledgeProvider({
       projectRoot: root,
       corpus: [document],
       reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
@@ -1827,12 +1947,13 @@ describe('project knowledge failure and bounded retrieval contracts', () => {
 
   test('reports a missing local search tool once', async ({ onTestFinished }) => {
     const root = await tempProject();
+    let provider: LocalProjectKnowledgeProvider | undefined;
     onTestFinished(async () => {
-      provider.close();
+      provider?.close();
       await fs.rm(root, { recursive: true, force: true });
     });
     const diagnostics: { code: string; message: string }[] = [];
-    const provider = new LocalProjectKnowledgeProvider({
+    provider = new LocalProjectKnowledgeProvider({
       projectRoot: root,
       corpus: [
         {

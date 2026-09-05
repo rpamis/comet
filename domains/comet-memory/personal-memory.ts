@@ -121,14 +121,14 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
         };
         state.records = replaceRecord(state.records, refreshed);
         clearInferredCandidates(state, identity);
-        clearTombstone(state, identity);
+        clearTombstone(state, identity, input.text);
         await this.persist(state);
         return cloneRecord(refreshed);
       }
 
       const record = createRecord(normalizedInput, 'explicit', source, this.timestamp(), identity);
       clearInferredCandidates(state, identity);
-      clearTombstone(state, identity);
+      clearTombstone(state, identity, input.text);
       state.records = replaceRecord(state.records, record);
       await this.writeRecordMarkdown(state, record);
       return cloneRecord(record);
@@ -177,7 +177,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
         'explicit',
       );
       state.records = replaceRecord(state.records, next);
-      clearTombstone(state, current.identity);
+      clearTombstone(state, current.identity, current.text);
       if (options.idempotencyKey !== undefined) {
         state.appliedMutationIds = appendBoundedMutationId(
           state.appliedMutationIds,
@@ -239,15 +239,26 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
       }
       if (options.permanent) {
         const removedIds = state.records
-          .filter((entry) => entry.identity === current.identity)
+          .filter(
+            (entry) =>
+              entry.identity === current.identity &&
+              normalizedMemoryTextHash(entry.text) === normalizedMemoryTextHash(current.text),
+          )
           .map((entry) => entry.id);
-        state.records = state.records.filter((entry) => entry.identity !== current.identity);
+        state.records = state.records.filter((entry) => !removedIds.includes(entry.id));
         for (const removedId of removedIds) {
           delete state.history[removedId];
           delete state.evidence[removedId];
+          delete state.feedbackState[removedId];
+        }
+        for (const [applicationId, outcome] of Object.entries(state.applicationOutcomes)) {
+          if (removedIds.includes(outcome.recordId))
+            delete state.applicationOutcomes[applicationId];
         }
         state.observations = state.observations.filter(
-          (entry) => entry.identity !== current.identity,
+          (entry) =>
+            entry.identity !== current.identity ||
+            normalizedMemoryTextHash(entry.text) !== normalizedMemoryTextHash(current.text),
         );
         state.conflicts = state.conflicts.filter((entry) => entry.identity !== current.identity);
       } else {
@@ -302,7 +313,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
         updatedAt: this.timestamp(),
       } as StoredRecord;
       state.records = replaceRecord(state.records, next);
-      clearTombstone(state, next.identity);
+      clearTombstone(state, next.identity, next.text);
       await this.writeRecordMarkdown(
         state,
         next,
@@ -517,7 +528,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
       const rawTextHash = hashMemoryText(stored.text);
       const tombstone = state.tombstones.find(
         (entry) =>
-          entry.identity === identity ||
+          (entry.identity === identity && entry.textHash === undefined) ||
           (entry.scope === stored.scope &&
             entry.projectKey === stored.projectKey &&
             entry.textHash !== undefined &&
@@ -702,7 +713,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
         updatedAt: this.timestamp(),
       } as StoredRecord;
       state.records = replaceRecord(state.records, promoted);
-      clearTombstone(state, identity);
+      clearTombstone(state, identity, promoted.text);
       await this.writeRecordMarkdown(state, promoted);
       return {
         deduplicated: false,
@@ -1681,9 +1692,7 @@ function projectManagementRecord(
   const evidenceDates = state.observations
     .filter((entry) => evidenceKeys.includes(entry.key))
     .map((entry) => entry.observedAt);
-  const tombstoned = state.tombstones.some(
-    (entry) => entry.recordId === record.id || entry.identity === record.identity,
-  );
+  const tombstoned = state.tombstones.some((entry) => tombstoneMatchesRecord(entry, record));
   const conflicted = isConflictedInferred(state.conflicts, record);
   const status = tombstoned
     ? ('tombstoned' as const)
@@ -1725,9 +1734,7 @@ function projectManagementRecord(
 
 function isVisibleMemoryRecord(state: MutableMemoryState, record: StoredRecord): boolean {
   if (record.state === 'superseded' || isConflictedInferred(state.conflicts, record)) return false;
-  return !state.tombstones.some(
-    (entry) => entry.recordId === record.id || entry.identity === record.identity,
-  );
+  return !state.tombstones.some((entry) => tombstoneMatchesRecord(entry, record));
 }
 
 function projectManagementConflict(
@@ -2074,7 +2081,7 @@ function reconcileMarkdown(
           sources: mergeSources(matched.sources, [{ kind: 'user' }]),
           updatedAt: timestamp,
         });
-        clearTombstone(state, matched.identity);
+        clearTombstone(state, matched.identity, matched.text);
       }
       continue;
     }
@@ -2086,7 +2093,7 @@ function reconcileMarkdown(
       text: bullet.text,
     };
     const identity = memoryIdentity(input);
-    clearTombstone(state, identity);
+    clearTombstone(state, identity, input.text);
     const record = createRecord(
       input,
       'explicit',
@@ -2606,11 +2613,32 @@ function upsertTombstone(
   tombstones: readonly MemoryTombstone[],
   next: MemoryTombstone,
 ): MemoryTombstone[] {
-  return [...tombstones.filter((entry) => entry.identity !== next.identity), next];
+  return [
+    ...tombstones.filter(
+      (entry) => entry.identity !== next.identity || entry.textHash !== next.textHash,
+    ),
+    next,
+  ];
 }
 
-function clearTombstone(state: MutableMemoryState, identity: string): void {
-  state.tombstones = state.tombstones.filter((entry) => entry.identity !== identity);
+function tombstoneMatchesRecord(entry: MemoryTombstone, record: StoredRecord): boolean {
+  return (
+    entry.recordId === record.id ||
+    (entry.identity === record.identity &&
+      (entry.textHash === undefined ||
+        entry.textHash === normalizedMemoryTextHash(record.text) ||
+        entry.textHash === hashMemoryText(record.text)))
+  );
+}
+
+function clearTombstone(state: MutableMemoryState, identity: string, text: string): void {
+  state.tombstones = state.tombstones.filter(
+    (entry) =>
+      entry.identity !== identity ||
+      (entry.textHash !== undefined &&
+        entry.textHash !== normalizedMemoryTextHash(text) &&
+        entry.textHash !== hashMemoryText(text)),
+  );
 }
 
 function isTombstonedMarkdownText(

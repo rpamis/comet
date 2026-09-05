@@ -7,6 +7,7 @@ import {
   extractDeterministicProjectRecords,
 } from './deterministic-extractors.js';
 import type { ProjectKnowledgeDiagnosticReporter, ProjectKnowledgeProvider } from './types.js';
+import { RemoteProjectKnowledgeProvider } from './remote-provider.js';
 
 export interface ProjectKnowledgeReadinessOptions {
   readonly projectRoot: string;
@@ -18,6 +19,19 @@ export interface ProjectKnowledgeReadinessOptions {
 export async function ensureProjectKnowledgeReady(
   options: ProjectKnowledgeReadinessOptions,
 ): Promise<void> {
+  // Local model maintenance must not turn Remote inspection into uploads.
+  if (options.provider instanceof RemoteProjectKnowledgeProvider) return;
+  try {
+    await prepareProjectKnowledge(options);
+  } catch (error) {
+    options.reportDiagnostic?.({
+      code: 'readiness-failed',
+      message: `项目知识准备未完成：${error instanceof Error ? error.message : String(error)}`,
+    });
+  }
+}
+
+async function prepareProjectKnowledge(options: ProjectKnowledgeReadinessOptions): Promise<void> {
   try {
     await fs.access(options.projectRoot);
   } catch {
@@ -49,7 +63,14 @@ export async function ensureProjectKnowledgeReady(
     reportDiagnostic: options.reportDiagnostic,
   });
   for (const record of candidates.slice(0, 66)) {
-    const result = await options.provider.apply({ kind: 'upsert', record });
-    for (const diagnostic of result.diagnostics) options.reportDiagnostic?.(diagnostic);
+    try {
+      const result = await options.provider.apply({ kind: 'upsert', record });
+      for (const diagnostic of result.diagnostics) options.reportDiagnostic?.(diagnostic);
+    } catch (error) {
+      options.reportDiagnostic?.({
+        code: 'readiness-upsert-failed',
+        message: `项目知识记录准备失败：${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
   }
 }

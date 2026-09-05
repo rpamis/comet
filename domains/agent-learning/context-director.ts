@@ -1,11 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { projectPathSelectorMatches } from '../../platform/paths/project-path-selector.js';
 
-import type {
-  AgentContextCandidate,
-  AgentContextOutcomeStatus,
-  AgentContextSelectors,
-} from './types.js';
+import type { AgentContextCandidate, AgentContextOutcomeStatus } from './types.js';
 import { validateAgentContextCandidate } from './types.js';
 
 export interface AgentContextRequest {
@@ -549,7 +545,7 @@ export class ContextDirector {
     let score = candidate.priority ?? 0;
     score += candidate.state === 'enforced' ? 500 : candidate.state === 'proven' ? 300 : 100;
     score += candidate.authority === 'explicit' || candidate.authority === 'user' ? 160 : 0;
-    score += selectorSpecificity(candidate.selectors, request) * 25;
+    score += selectorSpecificity(candidate, request) * 25;
     for (const application of history) {
       score += application.outcome === 'used-successfully' ? 20 : 0;
       score -= application.outcome === 'ignored' ? 2 : 0;
@@ -748,12 +744,13 @@ function candidateSelectorsMatch(
 }
 
 function selectorSpecificity(
-  selectors: AgentContextSelectors,
+  candidate: AgentContextCandidate,
   request: AgentContextRequest,
 ): number {
+  const selectors = candidate.selectors;
   return [
     selectors.projectId !== undefined && selectors.projectId === request.projectId,
-    request.path !== undefined && matchesAny(selectors.paths, request.path),
+    request.path !== undefined && candidatePathMatches(candidate, request.path),
     request.operation !== undefined && includesNormalized(selectors.operations, request.operation),
     request.phase !== undefined && includesNormalized(selectors.phases, request.phase),
     matchesTask(selectors.tasks, request.task),

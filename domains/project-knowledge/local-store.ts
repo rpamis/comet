@@ -1369,13 +1369,12 @@ export class ProjectKnowledgeLocalStore {
         const active = disposable
           .filter((record) => record.state !== 'superseded')
           .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
-        for (const record of disposable) deleteRecord.run(record.id);
+        const canonical: ProjectKnowledgeRecord[] = [];
         const activeSemantic = active
           ? projectKnowledgeRecordSemanticFingerprint(active)
           : undefined;
         if (active) {
-          this.writeRecord(
-            database,
+          canonical.push(
             parseProjectKnowledgeRecord({
               ...active,
               id: baseId,
@@ -1386,8 +1385,17 @@ export class ProjectKnowledgeLocalStore {
         for (const [semantic, versions] of bySemantic) {
           if (semantic === activeSemantic) continue;
           versions.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
-          this.writeRecord(database, archivedGeneratedRecord(baseId, versions[0]!));
+          canonical.push(archivedGeneratedRecord(baseId, versions[0]!));
         }
+        if (
+          canonical.length === disposable.length &&
+          canonical.every((record) =>
+            disposable.some((existing) => JSON.stringify(existing) === JSON.stringify(record)),
+          )
+        )
+          continue;
+        for (const record of disposable) deleteRecord.run(record.id);
+        for (const record of canonical) this.writeRecord(database, record);
       }
       database
         .prepare(

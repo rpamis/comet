@@ -646,8 +646,19 @@ describe('project knowledge local store', () => {
         once.filter((candidate) => candidate.id.startsWith('generated-project-map')),
       ).toHaveLength(1);
       store.close();
-      store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
+      const observer = openProjectKnowledgeDatabase(databasePath);
+      observer.exec(
+        "CREATE TRIGGER reject_redundant_delete BEFORE DELETE ON pk_records BEGIN SELECT RAISE(ABORT, 'redundant rewrite'); END;",
+      );
+      observer.close();
+      const diagnostics: Array<{ code: string; message: string }> = [];
+      store = new ProjectKnowledgeLocalStore({
+        projectRoot: root,
+        storageRoot,
+        reportDiagnostic: (entry) => diagnostics.push(entry),
+      });
       expect(store.list()).toEqual(once);
+      expect(diagnostics).toEqual([]);
     } finally {
       store?.close();
       await fs.rm(root, { recursive: true, force: true });
@@ -662,7 +673,7 @@ describe('project knowledge local store', () => {
     );
     const diagnostics: Array<{ code: string; message: string }> = [];
     let store: ProjectKnowledgeLocalStore | undefined;
-    let databasePath = '';
+    let databasePath: string;
     try {
       store = new ProjectKnowledgeLocalStore({ projectRoot: root, storageRoot });
       databasePath = store.databasePath;

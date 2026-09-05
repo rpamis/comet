@@ -177,7 +177,6 @@ async function createBridge(projectRoot: string, onMemoryReviewNotice?: (notice:
   const resolved = path.resolve(projectRoot);
   return createDefaultCometPluginBridge({
     projectRoot: resolved,
-    scheduleLearning: async (task) => task(),
     projectId: resolveStableProjectId(resolved),
     ...(onMemoryReviewNotice === undefined ? {} : { onMemoryReviewNotice }),
   });

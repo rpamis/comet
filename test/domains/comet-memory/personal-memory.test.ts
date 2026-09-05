@@ -69,6 +69,30 @@ function service(root: string, git?: MemoryGitSync): PersonalMemoryService {
 }
 
 describe('PersonalMemoryService', () => {
+  it('permanently removes only the selected text while preserving same-identity siblings', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      const input = { scope: 'project' as const, projectKey: 'project-a', category: '工作习惯' };
+      const first = await memories.remember({ ...input, text: '先运行相关测试' });
+      const sibling = await memories.remember({ ...input, text: '提交时说明验证结果' });
+      await memories.remove(first.id, { permanent: true });
+      expect(
+        (await memories.retrieve({ projectKey: 'project-a' })).records.map((record) => record.id),
+      ).toContain(sibling.id);
+      const observation = await memories.observe({
+        ...input,
+        text: '评审时检查事实',
+        source: { kind: 'user' },
+        changeId: 'new',
+        workflow: 'native',
+        success: true,
+      });
+      expect(observation.ignored).toBe(false);
+      const state = await new FileMemoryRepository(root).readState();
+      expect(state.records.some((record) => record.id === sibling.id)).toBe(true);
+      expect(JSON.stringify(state)).not.toContain(first.text);
+    });
+  });
   it('keeps repeated successful observations in one proven record and purges their plaintext on permanent removal', async () => {
     await withTempRepository(async (root) => {
       const memories = service(root);
@@ -92,11 +116,19 @@ describe('PersonalMemoryService', () => {
       const repository = new FileMemoryRepository(root);
       const legacy = await repository.readState();
       legacy.records.push({ ...legacy.records[0]!, id: 'legacy-duplicate', state: 'trial' });
-      await repository.writeState(legacy);
+      await repository.writeState({
+        ...legacy,
+        applicationOutcomes: {
+          'old-application': { recordId: records[0]!.id, status: 'used-successfully', revision: 1 },
+        },
+        feedbackState: { [records[0]!.id]: { baseState: 'trial' } },
+      });
       await memories.remove(records[0]!.id, { permanent: true });
       const state = await new FileMemoryRepository(root).readState();
       expect(JSON.stringify(state)).not.toContain(observation.text);
       expect(state.tombstones).toHaveLength(1);
+      expect(state.applicationOutcomes).toEqual({});
+      expect(state.feedbackState).toEqual({});
       expect((await memories.observe({ ...observation, changeId: 'five' })).ignored).toBe(true);
       await memories.observe({ ...observation, changeId: 'six', success: false });
       expect(JSON.stringify(await new FileMemoryRepository(root).readState())).not.toContain(

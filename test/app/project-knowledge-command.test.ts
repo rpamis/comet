@@ -13,6 +13,7 @@ import {
   projectKnowledgeQueryCommand,
   projectKnowledgeRebuildCommand,
   projectKnowledgeStatusCommand,
+  projectKnowledgeReviewCommand,
 } from '../../app/commands/project-knowledge.js';
 import {
   LocalProjectKnowledgeProvider,
@@ -46,6 +47,21 @@ async function projectFixture(): Promise<{ root: string; cacheRoot: string; sour
 afterEach(() => vi.restoreAllMocks());
 
 describe('comet knowledge commands', () => {
+  test('rejects oversized and non-regular review action inputs before submission', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-review-input-'));
+    try {
+      const file = path.join(root, 'actions.json');
+      await fs.writeFile(file, Buffer.alloc(256 * 1024 + 1));
+      await expect(
+        projectKnowledgeReviewCommand(root, { cacheRoot: root, file, id: 'review' }),
+      ).rejects.toThrow('exceeds');
+      await expect(
+        projectKnowledgeReviewCommand(root, { cacheRoot: root, file: root, id: 'review' }),
+      ).rejects.toThrow('regular file');
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
   test('reports status, refreshes, and queries through the Local Provider', async () => {
     const { root, cacheRoot } = await projectFixture();
     vi.spyOn(console, 'log').mockImplementation(() => undefined);

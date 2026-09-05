@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { promises as fs } from 'node:fs';
+import { readFileRaceSafe } from '../../platform/fs/race-safe-read.js';
 import { ProjectKnowledgeHostReview } from '../../domains/project-knowledge/host-review.js';
 import { createDefaultCometPluginBridge } from '../../domains/comet-plugin/integration.js';
 
@@ -280,12 +280,8 @@ export async function projectKnowledgeReviewCommand(
   const projectRoot = path.resolve(targetPath);
   const review = new ProjectKnowledgeHostReview(projectRoot, options.cacheRoot);
   if (options.file) {
-    if ((await fs.stat(options.file)).size > 256 * 1024)
-      throw new Error('Review actions exceed 256 KiB');
-    await review.submit(
-      required(options.id, '--id'),
-      JSON.parse(await fs.readFile(options.file, 'utf8')),
-    );
+    const actions = await readFileRaceSafe(options.file, 256 * 1024, { label: 'Review actions' });
+    await review.submit(required(options.id, '--id'), JSON.parse(actions.bytes.toString('utf8')));
     const bridge = await createDefaultCometPluginBridge({
       projectRoot,
       projectId: resolveStableProjectId(projectRoot),

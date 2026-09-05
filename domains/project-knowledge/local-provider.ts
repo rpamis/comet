@@ -368,6 +368,7 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
     }
     const results = new Map<string, ProjectKnowledgeResult>();
     let recordCount = 0;
+    let droppedRecords = false;
     for (const { result } of [...fused.values()]
       .sort(
         (left, right) =>
@@ -382,7 +383,10 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
         : `${result.source}\u0000${result.title ?? ''}`;
       if (results.has(key)) continue;
       if (result.record) {
-        if (recordCount >= 2) continue;
+        if (recordCount >= 2) {
+          droppedRecords = true;
+          continue;
+        }
         recordCount += 1;
       }
       results.set(key, result);
@@ -395,7 +399,7 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
       hits: records.map((record) => ({ record })),
       results: bounded,
       records,
-      truncated: results.size > bounded.length,
+      truncated: droppedRecords || results.size > bounded.length,
       diagnostics,
     };
   }

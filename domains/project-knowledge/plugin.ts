@@ -251,11 +251,7 @@ async function createProjectKnowledgeModule(
       snapshotProvider = await createProvider();
       const activeProvider = snapshotProvider;
       const projectId = resolveStableProjectId(options.projectRoot);
-      if (activeProvider instanceof LocalProjectKnowledgeProvider) {
-        await ensureProjectModel(activeProvider);
-      } else {
-        await ensureProjectModel(activeProvider);
-      }
+      await ensureProjectModel(activeProvider);
       const status = await activeProvider.status();
       const recordsResult = await activeProvider.query({
         kind: 'list',
@@ -296,12 +292,24 @@ async function createProjectKnowledgeModule(
           ) === index
         );
       });
-      const pendingHostReviews = options.semanticReviewer
-        ? []
-        : await new ProjectKnowledgeHostReview(options.projectRoot, options.cacheRoot).pending();
+      let pendingHostReviewCount = 0;
+      if (!options.semanticReviewer) {
+        try {
+          pendingHostReviewCount = (
+            await new ProjectKnowledgeHostReview(options.projectRoot, options.cacheRoot).pending()
+          ).length;
+        } catch (error) {
+          const diagnostic = {
+            code: 'host-review-unavailable',
+            message: `待评审知识暂不可用：${error instanceof Error ? error.message : String(error)}`,
+          };
+          reportDiagnostic(diagnostic);
+          diagnostics.push(diagnostic);
+        }
+      }
       const result = {
         ...snapshot,
-        pendingHostReviewCount: pendingHostReviews.length,
+        pendingHostReviewCount,
         status,
         records: dashboardRecords,
         counts: {

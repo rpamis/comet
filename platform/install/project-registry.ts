@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 
 import { ensureDir } from '../fs/file-system.js';
+import { withRecoverableFileLock } from '../fs/plugin-store.js';
 
 export const PROJECT_REGISTRY_SCHEMA_VERSION = 1;
 
@@ -217,11 +218,43 @@ async function writeProjectRegistry(
 ): Promise<void> {
   await ensureDir(path.dirname(registryPath));
   const temporary = path.join(path.dirname(registryPath), `installations.${randomUUID()}.tmp`);
-  await fs.writeFile(temporary, `${JSON.stringify(registry, null, 2)}\n`, 'utf-8');
-  await fs.rename(temporary, registryPath);
+  try {
+    await fs.writeFile(temporary, `${JSON.stringify(registry, null, 2)}\n`, 'utf-8');
+    await fs.rename(temporary, registryPath);
+  } finally {
+    await fs.rm(temporary, { force: true }).catch(() => undefined);
+  }
 }
 
 export async function readProjectRegistry(
+  options: ProjectRegistryOptions = {},
+): Promise<ProjectRegistry> {
+  const registry = await readProjectRegistrySnapshot(options);
+  if (!(await Promise.all(registry.projects.map(isMissingUpdateTestProject))).some(Boolean))
+    return registry;
+  try {
+    return await withRecoverableFileLock(
+      `${getProjectRegistryPath(options.homeDir)}.lock`,
+      async () => {
+        const current = await readProjectRegistrySnapshot({ ...options, strict: true });
+        const projects: ProjectRegistryEntry[] = [];
+        for (const entry of current.projects) {
+          if (!(await isMissingUpdateTestProject(entry))) projects.push(entry);
+        }
+        if (projects.length === current.projects.length) return current;
+        const cleaned = { ...current, updatedAt: nowIso(options), projects };
+        await writeProjectRegistry(cleaned, getProjectRegistryPath(options.homeDir));
+        return cleaned;
+      },
+      { timeoutMs: 100 },
+    );
+  } catch {
+    // Opportunistic migration must not make an otherwise readable registry unavailable.
+    return registry;
+  }
+}
+
+async function readProjectRegistrySnapshot(
   options: ProjectRegistryOptions = {},
 ): Promise<ProjectRegistry> {
   const registryPath = getProjectRegistryPath(options.homeDir);
@@ -258,14 +291,6 @@ export async function readProjectRegistry(
     return emptyRegistry(updatedAt);
   }
 
-  const projects: ProjectRegistryEntry[] = [];
-  for (const entry of registry.projects) {
-    if (!(await isMissingUpdateTestProject(entry))) projects.push(entry);
-  }
-  if (projects.length !== registry.projects.length) {
-    registry = { ...registry, updatedAt, projects };
-    await writeProjectRegistry(registry, registryPath);
-  }
   return registry;
 }
 
@@ -318,9 +343,20 @@ export async function upsertProjectInstallation(
   source: ProjectRegistrySource,
   options: ProjectRegistryOptions = {},
 ): Promise<ProjectRegistryEntry> {
+  return withRecoverableFileLock(`${getProjectRegistryPath(options.homeDir)}.lock`, () =>
+    upsertProjectInstallationUnlocked(projectPath, targets, source, options),
+  );
+}
+
+async function upsertProjectInstallationUnlocked(
+  projectPath: string,
+  targets: ProjectRegistryTarget[],
+  source: ProjectRegistrySource,
+  options: ProjectRegistryOptions = {},
+): Promise<ProjectRegistryEntry> {
   const registryPath = getProjectRegistryPath(options.homeDir);
   const timestamp = nowIso(options);
-  const registry = await readProjectRegistry({ ...options, strict: true });
+  const registry = await readProjectRegistrySnapshot({ ...options, strict: true });
   const resolved = await resolveProjectPath(projectPath);
   const existing = findProjectRegistryEntryByCanonicalPath(
     registry.projects,
@@ -358,8 +394,17 @@ export async function removeProjectInstallation(
   projectPath: string,
   options: ProjectRegistryOptions = {},
 ): Promise<boolean> {
+  return withRecoverableFileLock(`${getProjectRegistryPath(options.homeDir)}.lock`, () =>
+    removeProjectInstallationUnlocked(projectPath, options),
+  );
+}
+
+async function removeProjectInstallationUnlocked(
+  projectPath: string,
+  options: ProjectRegistryOptions = {},
+): Promise<boolean> {
   const registryPath = getProjectRegistryPath(options.homeDir);
-  const registry = await readProjectRegistry({ ...options, strict: true });
+  const registry = await readProjectRegistrySnapshot({ ...options, strict: true });
   const resolved = await resolveProjectPath(projectPath);
   const key = canonicalKey(resolved.canonicalPath);
   const projects = registry.projects.filter(
