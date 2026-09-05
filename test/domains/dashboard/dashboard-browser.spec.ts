@@ -593,6 +593,33 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   );
   await expect(page.getByRole('complementary', { name: '记录详情' })).toContainText('宿主验证结果');
   const correctionAction = inspectorFooter.getByRole('button', { name: '纠正记录' });
+  await correctionAction.click();
+  const correctionDialog = page.getByRole('dialog', { name: /纠正项目知识记录/u });
+  for (const viewport of [
+    { width: 1600, height: 900 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(viewport);
+    const expectedWidth = Math.min(800, viewport.width - 32);
+    await expect
+      .poll(async () => {
+        const box = await correctionDialog.locator('.ant-modal-container').boundingBox();
+        if (!box) return false;
+        return (
+          Math.abs(box.width - expectedWidth) < 3 &&
+          Math.abs(box.x + box.width / 2 - viewport.width / 2) < 3 &&
+          Math.abs(box.y + box.height / 2 - viewport.height / 2) < 3
+        );
+      })
+      .toBe(true);
+    const editor = correctionDialog.getByRole('textbox');
+    await expect.poll(async () => (await editor.boundingBox())?.height ?? 0).toBeGreaterThan(250);
+    await editor.fill('长篇纠正内容\n'.repeat(80));
+    await editor.press('Control+End');
+    await expect.poll(() => editor.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  }
+  await correctionDialog.getByRole('button', { name: /取\s*消/u }).click();
+  await page.setViewportSize({ width: 1600, height: 900 });
   const supersedeAction = inspectorFooter.getByRole('button', { name: '标记已替代' });
   const correctionBounds = await correctionAction.boundingBox();
   const supersedeBounds = await supersedeAction.boundingBox();
@@ -765,10 +792,12 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
       resultDialog.getByRole('heading', { name: 'Focused tests', exact: true }),
     ).toBeVisible();
     const resultScroll = resultDialog.locator('.dashboard-knowledge-preview-scroll');
-    await resultScroll.hover();
-    await page.mouse.wheel(0, 1000);
     await expect
-      .poll(() => resultScroll.evaluate((element) => element.scrollTop))
+      .poll(async () => {
+        await resultScroll.hover();
+        await page.mouse.wheel(0, 1000);
+        return resultScroll.evaluate((element) => element.scrollTop);
+      })
       .toBeGreaterThan(0);
     await page.keyboard.press('Escape');
     await expect(resultDialog).toBeHidden();

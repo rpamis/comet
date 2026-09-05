@@ -5399,13 +5399,17 @@ function ProjectKnowledgeSettings({ page, data, readOnly = false, onInvoke }) {
 function openProjectKnowledgeCorrection(record, onInvoke) {
   const restoring = record.state === 'superseded';
   Modal.confirm({
+    centered: true,
+    width: 'min(800px, calc(100vw - 32px))',
+    icon: null,
     title: restoring ? '纠正并恢复项目知识' : '纠正项目知识记录',
     content: (
       <Input.TextArea
         id="project-knowledge-correction"
         defaultValue={record.summary}
         placeholder="说明需要如何修正这条项目知识"
-        autoSize={{ minRows: 4, maxRows: 8 }}
+        rows={14}
+        style={{ height: 'min(360px, 50dvh)', maxHeight: '50dvh', resize: 'vertical' }}
       />
     ),
     okText: restoring ? '保存并恢复' : '保存纠正',
