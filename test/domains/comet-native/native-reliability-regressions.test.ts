@@ -273,6 +273,82 @@ describe('Native reliability issue regressions', () => {
     expect(result.error.message).toContain('protocol');
   }, 120000);
 
+  it.each(['fail', 'blocked'] as const)(
+    'records %s without a check receipt and rejects unsafe check plans',
+    async (verdict) => {
+      const { root, paths, changeDir } = await project();
+      await fs.writeFile(
+        path.join(changeDir, 'children.yaml'),
+        'schema: comet.native.children.v2\nacceptance_index:\n  A1:\n    source: brief.md\n    text: The first behavior works.\n  A2:\n    source: brief.md\n    text: The second behavior works.\nchildren:\n  - name: core\n    depends_on: []\n    covers: [A1, A2]\n',
+      );
+      await shape(paths);
+      const dispatch = await dispatchNativeSupervisorReadyTasks({ paths, parent: 'change' });
+      const builder = dispatch.tasks[0];
+      expect(builder.acceptance?.map(({ id }) => id)).toEqual(['A1', 'A2']);
+      expect(builder.checksReason).toBe('not-run');
+      await fs.writeFile(path.join(builder.projectRoot, 'feature.txt'), 'implemented');
+      git(builder.projectRoot, 'add', 'feature.txt');
+      git(builder.projectRoot, 'commit', '-m', 'implement');
+      const candidateCommit = git(builder.projectRoot, 'rev-parse', 'HEAD');
+      const buildResult = await applyNativeRunnerInput({
+        paths,
+        name: 'change',
+        maxVerifyFailures: 5,
+        input: {
+          kind: 'supervisor-builder-result',
+          child: 'core',
+          runId: builder.runId,
+          candidateCommit,
+        },
+      });
+      const task = buildResult.supervisorTask!;
+
+      const before = await readNativeSupervisorState(paths, 'change');
+      await expect(
+        executeNativeSupervisorChecks({
+          paths,
+          parent: 'change',
+          child: 'core',
+          runId: task.runId,
+          plans: [{ ...plan(), repeatable: false }],
+          materials: [],
+        }),
+      ).rejects.toThrow('repeatable');
+      expect(await readNativeSupervisorState(paths, 'change')).toEqual(before);
+      const failed = await applyNativeRunnerInput({
+        paths,
+        name: 'change',
+        maxVerifyFailures: 5,
+        input: parseNativeRunnerInput({
+          kind: 'supervisor-verifier-result',
+          child: 'core',
+          runId: task.runId,
+          verdict,
+          evidence: {
+            summary: 'Cannot confirm behavior.',
+            checks: [],
+            receiptRef: null,
+            acceptance: [
+              {
+                id: 'A1',
+                result: verdict === 'fail' ? 'failed' : 'blocked',
+                reason: 'Behavior unavailable.',
+              },
+              { id: 'A2', result: 'passed', reason: 'Inspected.' },
+            ],
+          },
+        }),
+      });
+      expect(failed.supervisorState!.children[0]).toMatchObject({
+        status: 'needs-reverify',
+        task: null,
+        verifiedCommit: null,
+      });
+      expect(failed.supervisorState!.children[0].verification?.checks).toEqual([]);
+    },
+    120000,
+  );
+
   it('requires Runtime checks and complete child acceptance, binds immutable material and integrates with executed checks', async () => {
     const { root, paths, changeDir } = await project();
     await fs.writeFile(
@@ -387,6 +463,21 @@ describe('Native reliability issue regressions', () => {
     await expect(
       applyNativeRunnerInput({ paths, name: 'change', maxVerifyFailures: 5, input: input() }),
     ).rejects.toThrow('not active');
+    const integrationState = await readNativeSupervisorState(paths, 'change');
+    const integrationHead = git(integrationState!.integration.worktree, 'rev-parse', 'HEAD');
+    await expect(
+      applyNativeRunnerInput({
+        paths,
+        name: 'change',
+        maxVerifyFailures: 5,
+        input: parseNativeRunnerInput({
+          kind: 'supervisor-integrate',
+          child: 'core',
+          checks: [{ ...plan('unsafe-integration'), repeatable: false }],
+        }),
+      }),
+    ).rejects.toThrow('repeatable');
+    expect(git(integrationState!.integration.worktree, 'rev-parse', 'HEAD')).toBe(integrationHead);
     const integrated = await applyNativeRunnerInput({
       paths,
       name: 'change',

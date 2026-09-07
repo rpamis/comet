@@ -10,7 +10,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
-- **Native Supervisor verification**: Child tasks carry explicit acceptance scopes and use the same coverage and verdict checks as ordinary verification. Runtime executes child and integration checks, binds registered reports to the tested candidate and execution, and rejects stale or altered evidence. Child verifier results now use `pass`, `fail`, or `blocked` with per-criterion results and a Runtime receipt.
+- **Native Supervisor verification**: Child tasks carry explicit acceptance scopes and use the same coverage and verdict checks as ordinary verification. Runtime executes repeatable child and integration checks, binds registered reports to the tested candidate and execution, and rejects stale or altered evidence. Child verifier results now use `pass`, `fail`, or `blocked` with per-criterion results; passing results require a Runtime receipt.
 
 ### Fixed
 

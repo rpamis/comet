@@ -1,9 +1,9 @@
 schema: comet.native.v4
 name: rc6-native-389-390-391
 language: zh-CN
-phase: verify
+phase: build
 status: active
-state_version: 4
+state_version: 6
 brief: brief.md
 shape_confirmation_hash: 3094cba664fa99516899b4c2e95bd96519c54dda00080bf01dc8d2edec7a3531
 spec_changes:
@@ -16,57 +16,74 @@ workspace:
   target_branch: rc6
   finish: null
 loop:
-  stage: verify-ready
+  stage: repairing
   goal_cycle: 1
-  iteration: 1
+  iteration: 2
   attempt: 0
   retry_epoch: 0
-  failed_iteration_count: 0
+  failed_iteration_count: 1
   no_progress_count: 0
   execution_failure_count: 0
-  previous_unresolved_ids: []
-  next_action: run-required-checks-and-dispatch-verifier
+  previous_unresolved_ids:
+    - A1
+    - A2
+    - A7
+  next_action: repair-failed-acceptance
 acceptance:
   - id: A1
     source: brief.md
     text: A1：Supervisor 子任务按已确认范围逐项验收，遗漏、重复、未知 ID、结论矛盾及缺少实际通过检查的 pass
       均被拒绝；单会话与多会话使用同一规则。
-    result: pending
-    reason: null
+    result: failed
+    reason:
+      text: 公开 Supervisor 对 fail/blocked 强制有效 receiptRef，无法执行检查时不能如实回报。
+      truncated: false
   - id: A2
     source: brief.md
     text: A2：子任务正式检查由 Runtime
       执行并保存可校验的候选、执行身份和内容引用；外部材料登记后校验哈希与绑定，旧候选或篡改材料不能被消费为有效证据；任务包明确范围和未执行检查的原因。
-    result: pending
-    reason: null
+    result: failed
+    reason:
+      text: Supervisor 未保证非重复检查的恢复边界，repeatable:false 可能重放。
+      truncated: false
   - id: A3
     source: brief.md
     text: A3：主工作区归档后，旧 linked worktree 的活跃副本不能覆盖最终完成状态；只有身份和 Git
       历史证明替代关系才自动选归档，无法确认时报告冲突。
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: 创建身份、已提交状态和 Git 祖先关系及冲突回归通过。
+      truncated: false
   - id: A4
     source: brief.md
     text: A4：当前 change 通过受控入口同步规格交叉引用，记录原因、操作者、内容变更和影响范围；需求变化仍回 Shape，正式项目规格通过当前
       change 和 Archive 更新，Runtime 状态及归档证据保持保护。
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: 受控 Markdown 引用同步、审计和语义/过期/归档保护回归通过。
+      truncated: false
   - id: A5
     source: brief.md
     text: A5：需求修订后 brief/spec 可编辑并重新确认；局部修复保留未受影响结果，受影响项重新验收，归档前全量验收不复用为新结果。
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: Runtime recovery/loop 检查通过，保留局部结论并要求最终全量验收。
+      truncated: false
   - id: A6
     source: brief.md
     text: A6：Verifier 失联在恢复入口转为明确执行错误或中断并提供可执行恢复动作；不兼容 schema 在入口拒绝且不写入当前选择或创建无法完成的
       change。
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: 失联恢复和未知 schema 写入前拒绝检查通过。
+      truncated: false
   - id: A7
     source: brief.md
     text: A7：源码、生成 Runtime、双语操作说明、rc.6 版本和英文 changelog 一致；相关回归、构建、生成检查及最终 PR 线上检查通过。
-    result: pending
-    reason: null
+    result: blocked
+    reason:
+      text: 线上完整检查未结束且修复后需核对新最终 head。
+      truncated: false
 builder_handoff:
   candidate_id: 94b3b8d5-3be7-4de4-8e6b-55685ad210d2
   identity_provider: skill-coordinated
@@ -135,8 +152,104 @@ builder_handoff:
     reviewer_execution_ref: /root/final_build_review
   submitted_at: 2026-09-07T03:29:44.847Z
 blockers: []
-verification: null
-history: []
+verification:
+  candidate_id: 94b3b8d5-3be7-4de4-8e6b-55685ad210d2
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:0c94ecd7-23dc-4998-89f8-e2cd6f14ed8a
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: fail
+  checks:
+    - id: native-regressions
+      name:
+        text: native-regressions
+        truncated: false
+      argv_display:
+        - text: node_modules/vitest/vitest.mjs
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/comet-native/native-reliability-regressions.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 30064
+    - id: native-assets
+      name:
+        text: native-assets
+        truncated: false
+      argv_display:
+        - text: scripts/build/build-native-runtime.mjs
+          truncated: false
+        - text: --check
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 629
+    - id: typescript
+      name:
+        text: typescript
+        truncated: false
+      argv_display:
+        - text: node_modules/typescript/bin/tsc
+          truncated: false
+        - text: --noEmit
+          truncated: false
+        - text: --pretty
+          truncated: false
+        - text: "false"
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 7561
+    - id: native-recovery-loop
+      name:
+        text: Native recovery and scoped-final verification
+        truncated: false
+      argv_display:
+        - text: node_modules/vitest/vitest.mjs
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/comet-native/native-portable-recovery.test.ts
+          truncated: false
+        - text: test/domains/comet-native/native-loop-runtime.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 11162
+  summary:
+    text: 独立 Verifier 确认 A1/A2 缺口，修复后重验 A1/A2/A7 并执行最终全量验收。
+    truncated: false
+  risks:
+    - text: 失败/阻塞报告被回执约束拒绝。
+      truncated: false
+    - text: 非重复 Supervisor 检查可能重放。
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-09-07T03:36:50.931Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A1
+      - A2
+      - A7
+    summary:
+      text: 独立 Verifier 确认 A1/A2 缺口，修复后重验 A1/A2/A7 并执行最终全量验收。
+      truncated: false
+    completed_at: 2026-09-07T03:36:50.931Z
 history_overflow:
   dropped_entries: 0
   first_dropped_at: null
@@ -147,7 +260,7 @@ history_overflow:
     blocked: 0
     execution-error: 0
     recovery: 0
-verification_result: pending
-verification_report: null
+verification_result: fail
+verification_report: verification.md
 archived: false
 created_at: 2026-09-07T02:50:46.418Z

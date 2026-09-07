@@ -83,6 +83,8 @@ export async function executeNativeSupervisorChecks(options: {
     new Set(options.plans.map(({ id }) => id)).size !== options.plans.length
   )
     throw new Error('Native Supervisor checks require a non-empty plan with unique IDs');
+  if (options.plans.some(({ repeatable }) => !repeatable))
+    throw new Error('Native Supervisor checks must be repeatable for safe recovery');
   if (
     options.materials.some(
       ({ name, content }) => !name.trim() || Buffer.byteLength(content) > 1024 * 1024,

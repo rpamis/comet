@@ -1194,6 +1194,10 @@ export async function integrateNativeSupervisorChildWorkspace(options: {
         );
       }
       if (options.checkPlans) {
+        if (options.checkPlans.some(({ repeatable }) => !repeatable))
+          throw new Error(
+            'Native Supervisor integration checks must be repeatable for safe recovery',
+          );
         if (
           options.checkPlans.length === 0 ||
           new Set(options.checkPlans.map(({ id }) => id)).size !== options.checkPlans.length

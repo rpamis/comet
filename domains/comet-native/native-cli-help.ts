@@ -168,8 +168,8 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       '  verifier-execution-error fields: kind, summary, stateVersion, iteration, attempt, verifierExecutionRef copied from verifierDispatch.',
       '  verifier-unavailable fields: kind, summary, stateVersion, iteration, attempt, verifierExecutionRef copied from verifierDispatch; accepted only after the explicit Runtime check plan completed and passed.',
       '  Supervisor task fields: supervisor-builder-result (child, runId, candidateCommit), supervisor-builder-failure (child, runId, reason), supervisor-verifier-result (child, runId, verdict, verification data), supervisor-reconnect (child, runId), supervisor-cancel (child, runId, reason), or supervisor-integrate (child, checks).',
-      '  supervisor-checks fields: kind, child, runId, checks (non-empty Runtime check plans), materials [{name,content}]. Returns checkExecution with operationId, status and receiptRef. Repeated running plans return the same handle.',
-      '  supervisor-verifier-result evidence fields: summary, checks (informal notes), acceptance [{id,result,reason}], receiptRef. verdict is pass, fail or blocked; every task acceptance ID must appear exactly once. Runtime receipts determine formal check status.',
+      '  supervisor-checks fields: kind, child, runId, checks (non-empty repeatable Runtime check plans), materials [{name,content}]. Returns checkExecution with operationId, status and receiptRef. Repeated running plans return the same handle.',
+      '  supervisor-verifier-result evidence fields: summary, checks (informal notes), acceptance [{id,result,reason}], receiptRef. verdict is pass, fail or blocked; every task acceptance ID must appear exactly once. Runtime receipts determine formal check status; receiptRef may be null for fail or blocked.',
       '  supervisor-integrate checks are non-empty Runtime check plans executed after the merge in the integration worktree, not declared statuses.',
     ],
     output:

@@ -271,7 +271,9 @@ function supervisorEvidence(value: unknown): NativeSupervisorVerificationEvidenc
     summary: text(input.summary, 'Native Supervisor evidence summary'),
     checks: strings(input.checks, 'Native Supervisor evidence checks'),
     acceptance: parseNativeVerifierAcceptance(input.acceptance),
-    receiptRef: text(input.receiptRef, 'Native Supervisor receipt ref'),
+    ...(input.receiptRef === null
+      ? {}
+      : { receiptRef: text(input.receiptRef, 'Native Supervisor receipt ref') }),
   };
 }
 
@@ -836,15 +838,19 @@ export async function applyNativeRunnerInput(options: {
           );
           throw error;
         }
-        const evidence = await readNativeSupervisorCheckEvidence({
-          paths: options.paths,
-          parent: options.name,
-          task: child.task,
-          receiptRef: input.evidence.receiptRef ?? '',
-        });
+        const evidence =
+          input.evidence.receiptRef || input.verdict === 'pass'
+            ? await readNativeSupervisorCheckEvidence({
+                paths: options.paths,
+                parent: options.name,
+                task: child.task,
+                receiptRef: input.evidence.receiptRef ?? '',
+              })
+            : null;
         if (
           input.verdict === 'pass' &&
-          evidence.checks.some(({ status, exitCode }) => status !== 'passed' || exitCode !== 0)
+          (!evidence ||
+            evidence.checks.some(({ status, exitCode }) => status !== 'passed' || exitCode !== 0))
         )
           throw new Error(
             'Native Supervisor verification cannot pass before every Runtime check succeeds',
@@ -853,7 +859,7 @@ export async function applyNativeRunnerInput(options: {
           ...input,
           evidence: {
             ...input.evidence,
-            checks: evidence.checks.map(({ name, status }) => `${name}: ${status}`),
+            checks: evidence?.checks.map(({ name, status }) => `${name}: ${status}`) ?? [],
             execution: structuredClone(child.task),
           },
         });
