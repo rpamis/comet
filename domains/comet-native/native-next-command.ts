@@ -83,7 +83,9 @@ function expectedContinuationOption(
 
 async function portableParentView(paths: NativeProjectPaths, state: NativePortableState) {
   const children = await inspectNativeChildren({ paths, state });
-  const supervisor = children ? await readNativeSupervisorState(paths, state.name) : null;
+  const supervisor = children?.confirmed
+    ? await readNativeSupervisorState(paths, state.name, { diagnostics: true })
+    : null;
   const activeTasks = supervisor?.children.flatMap(({ task }) => (task ? [task.child] : [])) ?? [];
   return {
     ...(children
