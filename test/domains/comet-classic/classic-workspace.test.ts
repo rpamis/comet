@@ -206,6 +206,22 @@ describe('Classic workspace preparation and routing', () => {
     expect(await fs.readFile(file, 'utf8')).toBe('schema: custom\n');
   });
 
+  it('accepts tracked OpenSpec configuration after Git converts its line endings', async () => {
+    git(root, 'config', 'core.autocrlf', 'true');
+    await fs.writeFile(path.join(root, 'openspec/config.yaml'), 'schema: spec-driven\n');
+    git(root, 'add', 'openspec/config.yaml');
+    git(root, 'commit', '-m', 'track OpenSpec configuration');
+    worktrees.push(path.join(root, '.worktrees', 'tracked-config'));
+    const prepared = await prepareClassicWorkspace({
+      projectRoot: root,
+      name: 'tracked-config',
+      isolation: 'worktree',
+    });
+    expect((await assertClassicOpenSpecRootHealthy(prepared.projectRoot)).schema).toBe(
+      'spec-driven',
+    );
+  });
+
   it('retries configuration setup after worktree recreation fails', async () => {
     const prepared = await prepareClassicWorkspace({
       projectRoot: root,

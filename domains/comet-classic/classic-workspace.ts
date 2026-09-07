@@ -68,7 +68,10 @@ async function ensureWorkspaceConfig(sourceRoot: string, targetRoot: string): Pr
     const targetContent = await readProtectedProjectFile(targetRoot, relativeConfig, 1024 * 1024, {
       label: 'Classic OpenSpec workspace configuration',
     });
-    if (!openSpecContent.bytes.equals(targetContent.bytes)) {
+    if (
+      openSpecContent.bytes.toString('utf8').replaceAll('\r\n', '\n') !==
+      targetContent.bytes.toString('utf8').replaceAll('\r\n', '\n')
+    ) {
       throw new Error(
         `Classic OpenSpec configuration differs from the source project: ${targetRoot}`,
       );
