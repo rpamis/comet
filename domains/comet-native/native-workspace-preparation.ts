@@ -14,6 +14,7 @@ import {
 } from '../../platform/paths/git-worktree.js';
 
 import { readProjectConfig, writeProjectConfig } from './native-config.js';
+import { recordNativeWorkspaceConfig } from './native-workspace-config.js';
 import { withNativeLockRecovery } from './native-lock.js';
 import { nativeProjectPaths } from './native-paths.js';
 import type { CometProjectConfig } from './native-types.js';
@@ -83,6 +84,7 @@ async function ensureConfig(
   }
   if (!targetConfig && sourceConfig) {
     await writeProjectConfig(targetRoot, sourceConfig);
+    await recordNativeWorkspaceConfig(targetRoot);
     return true;
   }
   return false;

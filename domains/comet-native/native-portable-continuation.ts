@@ -782,6 +782,47 @@ export function nativePortableContinuation(
           runnerAction: runner('builder-handoff'),
         };
       }
+      const verified = children.children.find(({ status }) => status === 'verified');
+      if (verified) {
+        return {
+          ...base,
+          disposition: 'continue',
+          action: 'advance-children',
+          commandArgs: [
+            'comet',
+            'native',
+            'next',
+            state.name,
+            '--runner-input',
+            '<temporary-json-file>',
+          ],
+          requiredInputs: ['supervisor-integration-checks'],
+          inputOptions: [
+            {
+              name: 'runner-input',
+              flag: '--runner-input',
+              valueKind: 'json-file',
+              required: true,
+              template: {
+                kind: 'supervisor-integrate',
+                child: verified.name,
+                checks: [
+                  {
+                    id: '<check-id>',
+                    name: '<check-name>',
+                    executable: '<executable>',
+                    argv: [],
+                    cwdRef: '.',
+                    timeoutMs: 120000,
+                    repeatable: true,
+                  },
+                ],
+              },
+            },
+          ],
+          runnerAction: runner('none'),
+        };
+      }
       const blocked = children.children.some(
         ({ status }) => status === 'blocked' || status === 'needs-reverify',
       );
@@ -792,9 +833,17 @@ export function nativePortableContinuation(
         ...base,
         disposition: blocked && !progressing ? 'blocked' : 'continue',
         action: 'advance-children',
-        commandArgs: null,
+        commandArgs: [
+          'comet',
+          'native',
+          'next',
+          state.name,
+          '--summary',
+          '<summary>',
+          ...(state.coordination_mode === 'single-session' ? ['--max-parallel', '1'] : []),
+        ],
         requiredInputs: blocked && !progressing ? ['resolve-child-blocker'] : ['ready-children'],
-        inputOptions: [],
+        inputOptions: [textInput('summary', '--summary')],
         runnerAction: runner('none'),
       };
     }

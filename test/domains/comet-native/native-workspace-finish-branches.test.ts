@@ -239,6 +239,7 @@ describe('Native workspace finish preparation', () => {
   it('prepares the portable schema with archive-owned paths allowed', async () => {
     const portable = {
       name: 'example',
+      spec_changes: [],
       workspace: {
         isolation: 'branch',
         change_branch: 'comet/change',

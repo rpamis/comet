@@ -332,7 +332,13 @@ describe('Native portable Runtime vertical path', () => {
       ],
       { stdio: 'ignore' },
     );
-    await createNativePortableChange({ paths, name: 'reduced-supervisor', language: 'en' });
+    execFileSync('git', ['-C', root, 'switch', '-c', 'parent'], { stdio: 'ignore' });
+    await createNativePortableChange({
+      paths,
+      name: 'reduced-supervisor',
+      language: 'en',
+      workspaceBinding: { isolation: 'branch', changeBranch: 'parent', targetBranch: 'master' },
+    });
     const changeDir = nativePortableChangeDir(paths, 'reduced-supervisor');
     await fs.writeFile(
       path.join(changeDir, 'brief.md'),
@@ -357,16 +363,6 @@ children:
     covers: [A2]
 `,
     );
-    const stateFile = nativePortableStateFile(paths, 'reduced-supervisor');
-    const initialState = await fs.readFile(stateFile, 'utf8');
-    await fs.writeFile(
-      stateFile,
-      initialState
-        .replace("isolation: 'current'", "isolation: 'branch'")
-        .replace('change_branch: null', 'change_branch: parent')
-        .replace('target_branch: null', 'target_branch: master'),
-    );
-
     await prepareNativePortableShapeConfirmation({
       paths,
       name: 'reduced-supervisor',
@@ -450,7 +446,13 @@ children:
       ],
       { stdio: 'ignore' },
     );
-    await createNativePortableChange({ paths, name: 'readable-child-plan', language: 'en' });
+    execFileSync('git', ['-C', root, 'switch', '-c', 'parent'], { stdio: 'ignore' });
+    await createNativePortableChange({
+      paths,
+      name: 'readable-child-plan',
+      language: 'en',
+      workspaceBinding: { isolation: 'branch', changeBranch: 'parent', targetBranch: 'master' },
+    });
     const changeDir = nativePortableChangeDir(paths, 'readable-child-plan');
     await fs.writeFile(
       path.join(changeDir, 'brief.md'),
@@ -477,16 +479,6 @@ children:
     covers: [A1, A2]
 `,
     );
-    const stateFile = nativePortableStateFile(paths, 'readable-child-plan');
-    const initialState = await fs.readFile(stateFile, 'utf8');
-    await fs.writeFile(
-      stateFile,
-      initialState
-        .replace("isolation: 'current'", "isolation: 'branch'")
-        .replace('change_branch: null', 'change_branch: parent')
-        .replace('target_branch: null', 'target_branch: master'),
-    );
-
     const state = await confirmNativePortableShape({ paths, name: 'readable-child-plan' });
 
     expect(state.acceptance.length).toBeGreaterThan(2);

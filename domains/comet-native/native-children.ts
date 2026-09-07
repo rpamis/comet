@@ -863,7 +863,7 @@ export async function inspectNativeChildren(options: {
     });
     if (!supervisor) {
       const targetBranch =
-        options.state.workspace.target_branch ?? options.state.workspace.change_branch;
+        options.state.workspace.change_branch ?? options.state.workspace.target_branch;
       if (targetBranch) {
         const rebuilt = await rebuildNativeSupervisorStateFromFacts({
           paths: options.paths,

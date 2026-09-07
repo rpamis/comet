@@ -64,6 +64,13 @@ export async function nativeArchiveCommand(
   const activeArchiveTransaction = portableActive
     ? await readNativePortableTransaction(configured.paths, { kind: 'archive', change: name })
     : null;
+  const appliedSpecChanges =
+    activeArchiveTransaction?.kind === 'archive'
+      ? activeArchiveTransaction.journal.spec_changes.slice(
+          0,
+          activeArchiveTransaction.journal.next_spec_index,
+        )
+      : [];
   const portableRecoveryAvailable = portableActive
     ? false
     : await hasNativePortableArchiveRecovery(configured.paths, name);
@@ -74,8 +81,8 @@ export async function nativeArchiveCommand(
     if (dryRun && confirmed) {
       throw new NativeUsageError('--confirmed is only valid when executing Archive');
     }
-    if (dryRun && serialFirstOption) {
-      throw new NativeUsageError('--serial-first is only valid when executing Archive');
+    if (serialFirstOption && serialFirstOption !== name) {
+      throw new NativeUsageError('--serial-first must name the change being archived');
     }
     if (!dryRun && finish) {
       throw new NativeUsageError('--finish is only valid with --dry-run');
@@ -146,6 +153,7 @@ export async function nativeArchiveCommand(
           await prepareNativePortableWorkspaceFinish({
             paths: configured.paths,
             state,
+            appliedSpecChanges,
             pullRequestFinish: configured.config.native.finish?.pull_request,
           });
         } catch (error) {
@@ -161,8 +169,9 @@ export async function nativeArchiveCommand(
           });
         }
       }
+      const orderRequired = preview.capabilityPeers.length > 0 && serialFirstOption !== name;
       const previewContinuation =
-        preview.capabilityPeers.length > 0 && blockers.length === 0
+        orderRequired && blockers.length === 0
           ? nativePortableContinuation(state, null, { archiveMode: 'preview' })
           : null;
       const continuation = previewContinuation
@@ -172,6 +181,35 @@ export async function nativeArchiveCommand(
             action: 'none' as const,
             commandArgs: null,
             requiredInputs: ['choose-first-archive'],
+            requiresUserDecision: true,
+            userCommunication: {
+              required: true,
+              message:
+                state.language === 'zh-CN'
+                  ? `当前规格也由 ${preview.capabilityPeers.join(', ')} 修改。是否先归档 ${name}？其他 change 随后需要对齐最新规格。`
+                  : `The same specifications are changed by ${preview.capabilityPeers.join(', ')}. Archive ${name} first? The other changes must then align with the latest specifications.`,
+              suggestedReply:
+                state.language === 'zh-CN' ? `先归档 ${name}` : `Archive ${name} first`,
+              agentInstruction:
+                'Wait for the ordering decision, then execute the matching dry-run commandAlternative.',
+            },
+            commandAlternatives: [
+              {
+                name: 'archive-this-change-first',
+                commandArgs: [
+                  'comet',
+                  'native',
+                  'archive',
+                  name,
+                  '--dry-run',
+                  '--serial-first',
+                  name,
+                ],
+                description: `Archive ${name} before ${preview.capabilityPeers.join(', ')}`,
+                inputOptions: [],
+                requiredInputs: [],
+              },
+            ],
             runnerAction: { ...previewContinuation.runnerAction, kind: 'none' as const },
           }
         : finishRequired
@@ -182,7 +220,7 @@ export async function nativeArchiveCommand(
             });
       const allBlockers = [
         ...blockers,
-        ...(preview.capabilityPeers.length > 0
+        ...(orderRequired
           ? [`${capabilityBlockerPrefix} ${preview.capabilityPeers.join(', ')}`]
           : []),
       ];
@@ -194,7 +232,13 @@ export async function nativeArchiveCommand(
           blockers: allBlockers,
           ...(workspaceFinishBlockers.length > 0 ? { workspaceFinishBlockers } : {}),
           workspaceFinish: state.workspace.finish,
-          continuation,
+          continuation:
+            serialFirstOption === name && continuation.commandArgs
+              ? {
+                  ...continuation,
+                  commandArgs: [...continuation.commandArgs, '--serial-first', name],
+                }
+              : continuation,
         },
         `Native Archive preview: ${allBlockers.length === 0 ? 'ready' : 'blocked'}\n`,
       );
@@ -228,6 +272,7 @@ export async function nativeArchiveCommand(
         finishPlan = await prepareNativePortableWorkspaceFinish({
           paths: configured.paths,
           state,
+          appliedSpecChanges,
           pullRequestFinish: configured.config.native.finish?.pull_request,
         });
       } catch (error) {

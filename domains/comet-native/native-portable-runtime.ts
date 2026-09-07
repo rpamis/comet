@@ -657,7 +657,7 @@ export async function confirmNativePortableShape(options: {
       let supervisorTargetBranch: string | null = null;
       let supervisorTargetCommit: string | null = null;
       if (children?.contract.schema === 'comet.native.children.v2') {
-        supervisorTargetBranch = state.workspace.target_branch ?? state.workspace.change_branch;
+        supervisorTargetBranch = state.workspace.change_branch ?? state.workspace.target_branch;
         if (!supervisorTargetBranch) {
           throw new Error('Native Supervisor v2 requires a target branch');
         }

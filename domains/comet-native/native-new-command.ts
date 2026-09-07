@@ -4,6 +4,7 @@ import { nativePortableContinuation } from './native-portable-continuation.js';
 import { createNativePortableChange } from './native-portable-runtime.js';
 import { selectNativeChange } from './native-selection.js';
 import { prepareNativeWorkspace } from './native-workspace-preparation.js';
+import { recordNativeWorkspaceConfig } from './native-workspace-config.js';
 import { type NativeWorkspaceIsolation } from './native-workspace.js';
 import {
   assertNoArguments,
@@ -60,6 +61,7 @@ export async function nativeNewCommand(
     ...(initialProjectConfig ? { initialProjectConfig } : {}),
   });
   await selectNativeChange(paths, state.name);
+  if (initialProjectConfig) await recordNativeWorkspaceConfig(projectRoot);
   return success(
     'new',
     {

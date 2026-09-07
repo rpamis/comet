@@ -1,8 +1,9 @@
+import { nativeWorkspaceIsClean } from './native-workspace-config.js';
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
-import { gitWorktreeIsClean, runGitCommand } from '../../platform/process/git.js';
+import { runGitCommand } from '../../platform/process/git.js';
 import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
 
 import type { NativeCheckPlan } from './native-check-executor.js';
@@ -470,7 +471,7 @@ function assertSupervisorTaskCommit(
   if (branch !== expectedBranch) {
     throw new Error(`Native Supervisor ${role} result came from the wrong Child worktree branch`);
   }
-  if (!gitWorktreeIsClean(task.projectRoot)) {
+  if (!nativeWorkspaceIsClean(task.projectRoot)) {
     throw new Error(`Native Supervisor ${role} worktree must be clean before returning a commit`);
   }
   const head = runGitCommand(task.projectRoot, ['rev-parse', 'HEAD']);
@@ -500,7 +501,7 @@ function assertSupervisorTaskWorkspaceIdentity(
   }
   const head = runGitCommand(task.projectRoot, ['rev-parse', 'HEAD']);
   if (task.role === 'verifier') {
-    if (!gitWorktreeIsClean(task.projectRoot) || head !== task.baseCommit) {
+    if (!nativeWorkspaceIsClean(task.projectRoot) || head !== task.baseCommit) {
       throw new Error('Native Supervisor Verifier task worktree is not at its candidate commit');
     }
     return;

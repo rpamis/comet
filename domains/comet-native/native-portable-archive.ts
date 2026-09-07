@@ -538,6 +538,16 @@ export async function archiveNativePortableChange(options: {
         );
       }
 
+      const archiveOwnedPaths = transaction.spec_changes
+        .slice(0, transaction.next_spec_index)
+        .map(({ capability }) =>
+          path
+            .relative(
+              options.paths.projectRoot,
+              path.join(options.paths.specsDir, capability, 'spec.md'),
+            )
+            .replaceAll('\\', '/'),
+        );
       let supervisorDelivered = false;
       if (transaction.status === 'prepared' && supervisor && !state.archived) {
         // Do not publish the parent's canonical Specs before Supervisor has
@@ -545,6 +555,7 @@ export async function archiveNativePortableChange(options: {
         const delivered = await finalizeNativeSupervisorDeliveryLocked({
           paths: options.paths,
           state: supervisor,
+          archiveOwnedPaths,
         });
         supervisor = delivered.state;
         supervisorDelivered = true;
@@ -576,6 +587,7 @@ export async function archiveNativePortableChange(options: {
           const delivered = await finalizeNativeSupervisorDeliveryLocked({
             paths: options.paths,
             state: supervisor,
+            archiveOwnedPaths,
           });
           supervisor = delivered.state;
           supervisorDelivered = true;
@@ -621,6 +633,7 @@ export async function archiveNativePortableChange(options: {
           await finalizeNativeSupervisorDeliveryLocked({
             paths: options.paths,
             state: supervisor,
+            archiveOwnedPaths,
           });
           supervisorDelivered = true;
         }
@@ -632,6 +645,7 @@ export async function archiveNativePortableChange(options: {
           await finalizeNativeSupervisorDeliveryLocked({
             paths: options.paths,
             state: supervisor,
+            archiveOwnedPaths,
           });
         }
         await fs.mkdir(options.paths.archiveDir, { recursive: true });

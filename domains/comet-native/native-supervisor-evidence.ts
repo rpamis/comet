@@ -1,8 +1,9 @@
+import { nativeWorkspaceIsClean } from './native-workspace-config.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
-import { gitWorktreeIsClean, runGitCommand } from '../../platform/process/git.js';
+import { runGitCommand } from '../../platform/process/git.js';
 import {
   processInstanceMayBeAlive,
   readProcessIdentity,
@@ -54,7 +55,7 @@ function assertCandidate(parent: string, task: NativeSupervisorTask): void {
     runGitCommand(task.projectRoot, ['branch', '--show-current']) !==
       `comet/supervisor/${parent}/${task.child}` ||
     runGitCommand(task.projectRoot, ['rev-parse', 'HEAD']) !== task.baseCommit ||
-    !gitWorktreeIsClean(task.projectRoot)
+    !nativeWorkspaceIsClean(task.projectRoot)
   ) {
     throw new Error(
       'Native Supervisor checks require the clean current candidate in its bound worktree',

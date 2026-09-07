@@ -2,18 +2,18 @@ import { accessSync, constants as fsConstants, promises as fs } from 'node:fs';
 import path from 'node:path';
 
 import { runExternalCommand } from '../../platform/process/external-command.js';
-import {
-  gitBranchRemote,
-  gitStatusPaths,
-  gitWorktreeIsClean,
-  runGitCommand,
-} from '../../platform/process/git.js';
+import { gitBranchRemote, gitStatusPaths, runGitCommand } from '../../platform/process/git.js';
 import { inspectGitWorktree, listGitWorktreeRoots } from '../../platform/paths/git-worktree.js';
 
 import { canonicalSpecPath } from './native-artifacts.js';
 import { nativeChangeDir } from './native-change.js';
 import type { NativePortableState } from './native-portable-types.js';
 import { nativeSelectionFile } from './native-selection.js';
+import {
+  managedConfigMatches,
+  nativeWorkspaceIsClean,
+  removeNativeWorkspaceConfig,
+} from './native-workspace-config.js';
 import type { NativeChangeState, NativeProjectPaths } from './native-types.js';
 import type { NativeWorkspaceFinish, NativeWorkspaceIdentityV3 } from './native-workspace.js';
 import { inspectNativeWorkspaceBinding } from './native-workspace.js';
@@ -106,12 +106,17 @@ function portableArchiveOwnedPaths(
   paths: NativeProjectPaths,
   state: NativePortableState,
   archiveDir?: string,
+  appliedSpecChanges: readonly { capability: string }[] = [],
 ): string[] {
   const allowed = [
+    ...(managedConfigMatches(paths.projectRoot) ? ['.comet/config.yaml'] : []),
     portableRelative(paths.projectRoot, nativeChangeDir(paths, state.name)),
     portableRelative(paths.projectRoot, nativeSelectionFile(paths)),
   ];
   if (archiveDir) allowed.push(portableRelative(paths.projectRoot, archiveDir));
+  for (const change of archiveDir ? state.spec_changes : appliedSpecChanges) {
+    allowed.push(portableRelative(paths.projectRoot, canonicalSpecPath(paths, change.capability)));
+  }
   return allowed;
 }
 
@@ -129,7 +134,9 @@ function absoluteGitPaths(projectRoot: string, candidates: readonly string[]): s
 }
 
 function assertTargetWorktreeClean(targetRoot: string): void {
-  const targetBlockers = gitStatusPaths(targetRoot);
+  const targetBlockers = gitStatusPaths(targetRoot).filter(
+    (candidate) => !(candidate === '.comet/config.yaml' && managedConfigMatches(targetRoot)),
+  );
   if (targetBlockers.length > 0) {
     throw new NativeWorkspaceFinishPreparationError(
       absoluteGitPaths(targetRoot, targetBlockers),
@@ -292,6 +299,7 @@ export async function prepareNativePortableWorkspaceFinish(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
   archiveDir?: string;
+  appliedSpecChanges?: readonly { capability: string }[];
   pullRequestFinish?: WorkflowNativePullRequestFinishConfig;
 }): Promise<NativeWorkspaceFinishPlan | null> {
   const { paths, state } = options;
@@ -306,7 +314,12 @@ export async function prepareNativePortableWorkspaceFinish(options: {
       throw new Error('Native current workspace finish requires a registered Git branch');
     }
     assertGitIdentity(paths.projectRoot);
-    const allowedBeforeArchive = portableArchiveOwnedPaths(paths, state, options.archiveDir);
+    const allowedBeforeArchive = portableArchiveOwnedPaths(
+      paths,
+      state,
+      options.archiveDir,
+      options.appliedSpecChanges,
+    );
     assertFinishScopeClean(paths.projectRoot, allowedBeforeArchive);
     return {
       finish: 'keep',
@@ -337,7 +350,12 @@ export async function prepareNativePortableWorkspaceFinish(options: {
   // then stages those files in the single archive commit; treating them as
   // unrelated here forces an unnecessary manual commit and makes a dry-run
   // disagree with the confirmed path.
-  const allowedBeforeArchive = portableArchiveOwnedPaths(paths, state, options.archiveDir);
+  const allowedBeforeArchive = portableArchiveOwnedPaths(
+    paths,
+    state,
+    options.archiveDir,
+    options.appliedSpecChanges,
+  );
   assertFinishScopeClean(paths.projectRoot, allowedBeforeArchive);
   const targetRoot =
     workspace.isolation === 'branch'
@@ -400,10 +418,10 @@ function baseResult(plan: NativeWorkspaceFinishPlan): NativeWorkspaceFinishResul
   };
 }
 
-function cleanupMergedWorktree(plan: NativeWorkspaceFinishPlan): {
+async function cleanupMergedWorktree(plan: NativeWorkspaceFinishPlan): Promise<{
   performed: boolean;
   reason: string | null;
-} {
+}> {
   if (plan.isolation !== 'worktree') return { performed: false, reason: null };
   if (pathContains(plan.changeRoot, process.cwd())) {
     return {
@@ -412,6 +430,7 @@ function cleanupMergedWorktree(plan: NativeWorkspaceFinishPlan): {
     };
   }
   try {
+    await removeNativeWorkspaceConfig(plan.changeRoot);
     runGitCommand(plan.primaryRoot, ['worktree', 'remove', plan.changeRoot]);
     return { performed: true, reason: null };
   } catch (error) {
@@ -445,7 +464,9 @@ export async function finishArchivedNativeWorkspace(options: {
       portableRelative(options.paths.projectRoot, nativeSelectionFile(options.paths)),
     ];
     const unexpected = gitStatusPaths(options.plan.changeRoot).filter(
-      (candidate) => !pathCovered(candidate, allowedPaths),
+      (candidate) =>
+        !pathCovered(candidate, allowedPaths) &&
+        !(candidate === '.comet/config.yaml' && managedConfigMatches(options.plan.changeRoot)),
     );
     if (unexpected.length > 0) {
       result.blockedPaths = unexpected;
@@ -485,7 +506,7 @@ export async function finishArchivedNativeWorkspace(options: {
       ]);
     }
     result.commit = runGitCommand(options.plan.changeRoot, ['rev-parse', 'HEAD']);
-    if (!gitWorktreeIsClean(options.plan.changeRoot)) {
+    if (!nativeWorkspaceIsClean(options.plan.changeRoot)) {
       throw new Error('Native archive commit left unexpected working-tree changes');
     }
 
@@ -513,6 +534,7 @@ export async function finishArchivedNativeWorkspace(options: {
       }
       const cwdInsideChangeRoot = pathContains(options.plan.changeRoot, process.cwd());
       if (options.plan.isolation === 'worktree' && !cwdInsideChangeRoot) {
+        await removeNativeWorkspaceConfig(options.plan.changeRoot);
         runGitCommand(options.plan.primaryRoot, ['worktree', 'remove', options.plan.changeRoot]);
         result.cleanup = { performed: true, reason: null };
       } else if (options.plan.isolation === 'worktree') {
@@ -532,7 +554,7 @@ export async function finishArchivedNativeWorkspace(options: {
     runGitCommand(mergeRoot, ['merge', '--no-ff', '--no-edit', options.plan.changeBranch]);
     result.merged = true;
     result.targetRoot = mergeRoot;
-    result.cleanup = cleanupMergedWorktree(options.plan);
+    result.cleanup = await cleanupMergedWorktree(options.plan);
     return result;
   } catch (error) {
     if (error instanceof NativePullRequestFinishError && error.pullRequest) {

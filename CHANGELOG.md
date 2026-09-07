@@ -14,6 +14,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Native Supervisor workspace delivery**: Keep, push, and pull-request finishes preserve the chosen delivery boundary by collecting implementation on the parent change branch first. Archive cleans child worktrees using their registered locations, including when the parent runs in a linked worktree.
+- **Native continuation and recovery**: Supervisor progression returns executable dispatch commands and recoverable task packages, honors single-session scheduling, and tolerates unchanged configuration copies created by Runtime. Concurrent changes sharing a specification receive an executable Archive ordering choice before confirmation.
 - **Native archived status discovery**: Completed changes are no longer hidden by stale active copies in linked worktrees when creation identity and committed Git history prove the archive supersedes them; ambiguous records are reported as conflicts.
 - **Native revision recovery guidance**: Published-spec write rejections point to the current change's supported revision path, and recovery preserves actionable protocol diagnostics for incompatible state schemas.
 - **Native verification reports**: Failed and blocked verification results direct users to repair or resolve blockers before verification resumes, instead of asking them to confirm an unsuccessful result.
