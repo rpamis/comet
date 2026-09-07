@@ -93,16 +93,30 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
     ],
   },
   spec: {
-    usage: 'comet native spec remove <change-name> <capability>',
+    usage:
+      'comet native spec remove <change-name> <capability>\n       comet native spec sync <change-name> <capability> --input <json-file>',
     purpose:
       'Record a capability removal; create and modify intents use complete proposed Spec files.',
-    subcommands: ['remove <change-name> <capability>  Record a capability removal.'],
+    subcommands: [
+      'remove <change-name> <capability>  Record a capability removal.',
+      'sync <change-name> <capability> --input <json-file>  Audit local Markdown reference corrections without changing prose or acceptance.',
+    ],
     output: 'The updated portable state and continuation.',
   },
   'spec remove': {
     usage: 'comet native spec remove <change-name> <capability>',
     purpose: 'Record removal of a capability in the complete target specification.',
     output: 'The updated portable state and continuation with the next Runner action.',
+  },
+  'spec sync': {
+    usage: 'comet native spec sync <change-name> <capability> --input <json-file>',
+    purpose:
+      'Sync local Markdown link destinations in an already confirmed target spec; semantic edits require Shape.',
+    options: [
+      '--input <json-file>  Fields: expectedStateVersion, actor, reason, affectedAcceptanceIds, replacements [{from,to}]. Include all acceptance IDs from the affected spec.',
+    ],
+    output:
+      'The audited portable state, preserved unaffected acceptance results and Build continuation for re-verification.',
   },
   show: {
     usage: 'comet native show <change-name>',
@@ -154,6 +168,9 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       '  verifier-execution-error fields: kind, summary, stateVersion, iteration, attempt, verifierExecutionRef copied from verifierDispatch.',
       '  verifier-unavailable fields: kind, summary, stateVersion, iteration, attempt, verifierExecutionRef copied from verifierDispatch; accepted only after the explicit Runtime check plan completed and passed.',
       '  Supervisor task fields: supervisor-builder-result (child, runId, candidateCommit), supervisor-builder-failure (child, runId, reason), supervisor-verifier-result (child, runId, verdict, verification data), supervisor-reconnect (child, runId), supervisor-cancel (child, runId, reason), or supervisor-integrate (child, checks).',
+      '  supervisor-checks fields: kind, child, runId, checks (non-empty Runtime check plans), materials [{name,content}]. Returns checkExecution with operationId, status and receiptRef. Repeated running plans return the same handle.',
+      '  supervisor-verifier-result evidence fields: summary, checks (informal notes), acceptance [{id,result,reason}], receiptRef. verdict is pass, fail or blocked; every task acceptance ID must appear exactly once. Runtime receipts determine formal check status.',
+      '  supervisor-integrate checks are non-empty Runtime check plans executed after the merge in the integration worktree, not declared statuses.',
     ],
     output:
       'A compact portable state summary, explicit skill-coordinated label, Runtime-owned check results, scoped verifierDispatch, bounded request-check response, continuation.runnerAction, machine-readable continuation.inputOptions, and continuation.userCommunication with a user-ready message and Agent relay guidance. Read acceptance text and other long fields from paged status --details output. Human-readable verification statuses include "Host independently verified", "Checks completed, but your confirmation is required", "Full verification was unavailable; only automatic checks completed", and "You accepted the incomplete verification result". This generic bridge is not trusted identity attestation: a passing result waits for explicit user confirmation before Archive.',

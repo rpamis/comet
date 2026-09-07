@@ -216,9 +216,12 @@ Run applicable focused checks.
     expect(status.stdout).toContain('local execution availability');
     expect(status.stdout).toContain('readyChildren');
     expect(next.stdout).toContain('advance parent child changes');
+    expect(next.stdout).toContain('supervisor-checks');
+    expect(next.stdout).toContain('receiptRef');
+    expect(next.stdout).toContain('every task acceptance ID must appear exactly once');
     for (const output of [root.stdout!, next.stdout!, archive.stdout!, status.stdout!]) {
       expect(output).not.toMatch(
-        /checkpoint|receipt|evidence|preflight|sha256|--result|--report|--acceptance-cursor/iu,
+        /checkpoint|preflight|sha256|--result|--report|--acceptance-cursor|comet native (?:receipt|evidence)\b/iu,
       );
     }
     expect([root.stdout!, next.stdout!].join('\n')).not.toMatch(

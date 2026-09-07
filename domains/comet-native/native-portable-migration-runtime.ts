@@ -6,7 +6,11 @@ import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
 
 import { atomicWriteJson } from './native-atomic-file.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
-import { inspectNativeChangeStateDocument, nativeChangeDir } from './native-change.js';
+import {
+  inspectNativeChangeStateDocument,
+  nativeChangeDir,
+  NativeRuntimeCompatibilityError,
+} from './native-change.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
 import {
   migrateNativeLegacyStateToPortable,
@@ -210,6 +214,9 @@ async function inspectLegacyState(
   name: string,
 ): Promise<NativeReadableChangeState> {
   const inspection = await inspectNativeChangeStateDocument(paths, name);
+  if (inspection.status === 'runtime-incompatible') {
+    throw new NativeRuntimeCompatibilityError(inspection.schema, inspection.minimumRuntimeVersion);
+  }
   if (!inspection.state) throw new Error(`Native legacy change ${name} is unreadable`);
   return inspection.state;
 }

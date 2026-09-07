@@ -1,0 +1,153 @@
+schema: comet.native.v4
+name: rc6-native-389-390-391
+language: zh-CN
+phase: verify
+status: active
+state_version: 4
+brief: brief.md
+shape_confirmation_hash: 3094cba664fa99516899b4c2e95bd96519c54dda00080bf01dc8d2edec7a3531
+spec_changes:
+  - capability: native-reliability
+    operation: create
+    source: specs/native-reliability/spec.md
+workspace:
+  isolation: current
+  change_branch: rc6
+  target_branch: rc6
+  finish: null
+loop:
+  stage: verify-ready
+  goal_cycle: 1
+  iteration: 1
+  attempt: 0
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: run-required-checks-and-dispatch-verifier
+acceptance:
+  - id: A1
+    source: brief.md
+    text: A1：Supervisor 子任务按已确认范围逐项验收，遗漏、重复、未知 ID、结论矛盾及缺少实际通过检查的 pass
+      均被拒绝；单会话与多会话使用同一规则。
+    result: pending
+    reason: null
+  - id: A2
+    source: brief.md
+    text: A2：子任务正式检查由 Runtime
+      执行并保存可校验的候选、执行身份和内容引用；外部材料登记后校验哈希与绑定，旧候选或篡改材料不能被消费为有效证据；任务包明确范围和未执行检查的原因。
+    result: pending
+    reason: null
+  - id: A3
+    source: brief.md
+    text: A3：主工作区归档后，旧 linked worktree 的活跃副本不能覆盖最终完成状态；只有身份和 Git
+      历史证明替代关系才自动选归档，无法确认时报告冲突。
+    result: pending
+    reason: null
+  - id: A4
+    source: brief.md
+    text: A4：当前 change 通过受控入口同步规格交叉引用，记录原因、操作者、内容变更和影响范围；需求变化仍回 Shape，正式项目规格通过当前
+      change 和 Archive 更新，Runtime 状态及归档证据保持保护。
+    result: pending
+    reason: null
+  - id: A5
+    source: brief.md
+    text: A5：需求修订后 brief/spec 可编辑并重新确认；局部修复保留未受影响结果，受影响项重新验收，归档前全量验收不复用为新结果。
+    result: pending
+    reason: null
+  - id: A6
+    source: brief.md
+    text: A6：Verifier 失联在恢复入口转为明确执行错误或中断并提供可执行恢复动作；不兼容 schema 在入口拒绝且不写入当前选择或创建无法完成的
+      change。
+    result: pending
+    reason: null
+  - id: A7
+    source: brief.md
+    text: A7：源码、生成 Runtime、双语操作说明、rc.6 版本和英文 changelog 一致；相关回归、构建、生成检查及最终 PR 线上检查通过。
+    result: pending
+    reason: null
+builder_handoff:
+  candidate_id: 94b3b8d5-3be7-4de4-8e6b-55685ad210d2
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:915646ba-02b3-4643-98dc-6885fbc963e5
+  iteration: 1
+  summary:
+    text: "修复 #389 子任务验收与 Runtime 检查证据、#390 归档状态发现、#391 受控规格引用同步与恢复诊断；同步 rc.6
+      双语说明及发布资产。"
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+  checks:
+    - name:
+        text: pnpm build / tsc / check:generated / affected Prettier
+        truncated: false
+      result: passed
+      note:
+        text: 源码编译与生成物一致性通过
+        truncated: false
+    - name:
+        text: Native reliability + Supervisor + Doctor targeted regressions
+        truncated: false
+      result: passed
+      note:
+        text: 29 项与修正后的 Doctor 11 项通过；最终 Skill/CLI/asset 契约正在重检
+        truncated: false
+    - name:
+        text: Native suite
+        truncated: false
+      result: failed
+      note:
+        text: 1239 passed / 9 failed / 36 skipped；已按原因修正并定向重检，不声称初次全绿
+        truncated: false
+    - name:
+        text: pnpm lint
+        truncated: false
+      result: failed
+      note:
+        text: ESLint 通过；已有 .codex-remote-attachments 触发架构约束，隔离源码快照架构检查通过
+        truncated: false
+    - name:
+        text: final PR CI
+        truncated: false
+      result: not-run
+      note:
+        text: 提交 PR 后执行完整检查，A7 通过必须使用线上结果
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: 未执行真实外部多会话模型 Eval；平台负责外部材料写权限隔离。
+      truncated: false
+    - text: 引用同步进程在写规格后状态提交前中断时，恢复检测漂移并回 Shape。
+      truncated: false
+  known_limits_truncated: false
+  review:
+    status: passed
+    summary:
+      text: 独立复核与最后兼容/文档/CLI 契约复核均未发现必要阻塞。
+      truncated: false
+    reviewer_execution_ref: /root/final_build_review
+  submitted_at: 2026-09-07T03:29:44.847Z
+blockers: []
+verification: null
+history: []
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pending
+verification_report: null
+archived: false
+created_at: 2026-09-07T02:50:46.418Z

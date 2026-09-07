@@ -1,3 +1,4 @@
+import { markNativeSupervisorChildVerified } from '../../helpers/native-supervisor-results.js';
 import { promises as fs } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import os from 'node:os';
@@ -42,7 +43,6 @@ import { writeNativePortableState } from '../../../domains/comet-native/native-p
 import {
   createNativeSupervisorState,
   integrateNativeSupervisorChild,
-  markNativeSupervisorChildVerified,
   prepareNativeSupervisorIntegrationWorkspace,
   readNativeSupervisorState,
   recordNativeSupervisorFinalVerification,

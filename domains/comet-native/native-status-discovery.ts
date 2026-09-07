@@ -13,7 +13,15 @@ import {
 } from './native-diagnostics.js';
 import { nativeProjectPaths } from './native-paths.js';
 import {
+  listNativeArchivedStatusRecords,
+  nativeArchiveSupersedes,
+  readNativeStatusRecord,
+  sameNativeArchivedRecord,
+  type NativeStatusRecord,
+} from './native-archived-status.js';
+import {
   inspectNativePortableStatus,
+  projectNativeArchivedStatus,
   type NativePortableStatusProjection,
 } from './native-portable-status.js';
 import { isNativePortableChange } from './native-portable-runtime.js';
@@ -33,6 +41,8 @@ interface NativeWorkspaceSource {
   config: CometProjectConfig;
   paths: NativeProjectPaths;
   changes: Array<{ name: string; kind: 'portable' | 'legacy' }>;
+  archives?: NativeStatusRecord[];
+  archiveErrors?: Array<{ name: string; message: string }>;
 }
 
 interface NativeStatusCandidate {
@@ -42,6 +52,7 @@ interface NativeStatusCandidate {
   workspace: NativeWorkspaceProjection | NativePortableStatusProjection['workspace'];
   portableStatus: NativePortableStatusProjection | null;
   inspectionError: string | null;
+  record?: NativeStatusRecord;
 }
 
 export type NativeDiscoveredStatusProjection =
@@ -191,6 +202,12 @@ async function discoverSources(projectRoot: string): Promise<NativeWorkspaceSour
       changes: await discoverChanges(paths),
     });
   }
+  for (const source of sources) {
+    source.archiveErrors = [];
+    source.archives = await listNativeArchivedStatusRecords(source.paths, (name, message) =>
+      source.archiveErrors!.push({ name, message }),
+    );
+  }
   return sources;
 }
 
@@ -217,6 +234,12 @@ async function discoverCandidates(
         ...(grouped.get(change.name) ?? []),
         { source, kind: change.kind },
       ]);
+    }
+    for (const archive of source.archives ?? []) {
+      if (!grouped.has(archive.state.name)) grouped.set(archive.state.name, []);
+    }
+    for (const error of source.archiveErrors ?? []) {
+      if (!grouped.has(error.name)) grouped.set(error.name, []);
     }
   }
   const selected: NativeStatusCandidate[] = [];
@@ -259,6 +282,78 @@ async function discoverCandidates(
         };
       }),
     );
+    const archives: NativeStatusCandidate[] = sources.flatMap((source) =>
+      (source.archives ?? [])
+        .filter(({ state }) => state.name === name)
+        .map((record) => {
+          const portableStatus = projectNativeArchivedStatus({ paths: source.paths, ...record });
+          return {
+            source,
+            name,
+            kind: 'portable' as const,
+            workspace: portableStatus.workspace,
+            portableStatus,
+            inspectionError: null,
+            record,
+          };
+        }),
+    );
+    const archiveError = sources.flatMap((source) =>
+      (source.archiveErrors ?? [])
+        .filter((error) => error.name === name)
+        .map((error) => ({ source, error })),
+    )[0];
+    if (archiveError) {
+      selected.push({
+        source: archiveError.source,
+        name,
+        kind: 'portable',
+        portableStatus: null,
+        inspectionError: archiveError.error.message,
+        workspace: {
+          projectRoot: archiveError.source.projectRoot,
+          isolation: 'current',
+          bindingState: 'mismatch',
+          changeBranch: null,
+          targetBranch: null,
+          finish: null,
+          message: archiveError.error.message,
+        },
+      });
+      continue;
+    }
+    if (archives.length > 0) {
+      for (const candidate of candidates) {
+        if (candidate.kind === 'portable') {
+          try {
+            candidate.record = await readNativeStatusRecord(
+              candidate.source.paths,
+              path.join(candidate.source.paths.changesDir, name, 'comet-state.yaml'),
+            );
+          } catch {
+            /* An unreadable active copy cannot establish a predecessor. */
+          }
+        }
+      }
+      const final = archives.find((archive) =>
+        [
+          ...candidates,
+          ...archives.filter((other) => !sameNativeArchivedRecord(archive.record!, other.record!)),
+        ].every(
+          (previous) =>
+            previous.record && nativeArchiveSupersedes(archive.record!, previous.record),
+        ),
+      );
+      if (final) {
+        selected.push(final);
+        continue;
+      }
+      selected.push({
+        ...archives[0],
+        inspectionError: `Native change ${name} has conflicting active/archive records; identity and committed Git ancestry do not prove supersession. Resolve the records explicitly.`,
+      });
+      continue;
+    }
     candidates.sort((left, right) => {
       const rank = candidateRank(left, projectRoot) - candidateRank(right, projectRoot);
       return rank || left.source.projectRoot.localeCompare(right.source.projectRoot);
@@ -269,7 +364,12 @@ async function discoverCandidates(
     if (aligned.length > 1) {
       selected.push(...aligned);
     } else {
-      selected.push(aligned[0] ?? candidates[0]);
+      if (aligned.length === 0 && candidates.length > 1) {
+        selected.push({
+          ...candidates[0],
+          inspectionError: `Native change ${name} has conflicting workspace records and no aligned binding`,
+        });
+      } else selected.push(aligned[0] ?? candidates[0]);
     }
   }
   if (selected.length > NATIVE_STATUS_PAGE_LIMITS.maxChanges) {
@@ -416,6 +516,13 @@ async function inspectCandidate(
       throw new Error('Portable Native status includes the complete acceptance list');
     }
     if (!details && candidate.portableStatus) return candidate.portableStatus;
+    if (candidate.record?.state.archived)
+      return projectNativeArchivedStatus({
+        paths: candidate.source.paths,
+        ...candidate.record,
+        details,
+        cursor: detailsCursor,
+      });
     return inspectNativePortableStatus({
       paths: candidate.source.paths,
       name: candidate.name,

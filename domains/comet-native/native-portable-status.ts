@@ -26,6 +26,8 @@ export interface NativePortableStatusProjection {
   phase: NativePortableState['phase'];
   status: NativePortableState['status'];
   stateVersion: number;
+  archived?: boolean;
+  archiveRef?: string;
   coordinationMode?: NativePortableState['coordination_mode'];
   loop: NativePortableState['loop'];
   acceptance: NativePortableAcceptanceCounts;
@@ -207,6 +209,72 @@ function workspaceProjection(paths: NativeProjectPaths, state: NativePortableSta
     targetBranch: state.workspace.target_branch,
     finish: state.workspace.finish,
     message,
+  };
+}
+
+export function projectNativeArchivedStatus(options: {
+  paths: NativeProjectPaths;
+  state: NativePortableState;
+  file: string;
+  details?: boolean;
+  cursor?: string;
+}): NativePortableStatusProjection {
+  const { state, paths } = options;
+  const summary = nativePortableStateSummary(state);
+  const all = options.details ? detailItems(state, null, []) : [];
+  const offset = detailsOffset(options.cursor, state.state_version, 0);
+  const items = all.slice(offset, offset + 32);
+  const nextCursor =
+    offset + items.length < all.length
+      ? detailsCursor(state.state_version, 0, offset + items.length)
+      : null;
+  return {
+    schema: 'comet.native.status.v2',
+    name: state.name,
+    phase: state.phase,
+    status: state.status,
+    stateVersion: state.state_version,
+    archived: true,
+    archiveRef: path.relative(paths.projectRoot, options.file).replaceAll('\\', '/'),
+    loop: state.loop,
+    acceptance: counts(state),
+    unresolvedAcceptanceIds: summary.unresolved_acceptance_ids,
+    verificationResult: state.verification_result,
+    blockers: summary.blockers,
+    workspace: {
+      projectRoot: paths.projectRoot,
+      isolation: state.workspace.isolation,
+      bindingState: 'aligned',
+      changeBranch: state.workspace.change_branch,
+      targetBranch: state.workspace.target_branch,
+      finish: state.workspace.finish,
+      message: null,
+    },
+    localExecution: { status: 'not-expected', operation: null },
+    continuation: nativePortableContinuation(state),
+    ...(options.details
+      ? {
+          details: {
+            stateVersion: state.state_version,
+            items,
+            nextCursor,
+            nextPageArgs: nextCursor
+              ? [
+                  'comet',
+                  'native',
+                  'status',
+                  state.name,
+                  '--details',
+                  '--cursor',
+                  nextCursor,
+                  '--project-root',
+                  paths.projectRoot,
+                  '--json',
+                ]
+              : null,
+          },
+        }
+      : {}),
   };
 }
 

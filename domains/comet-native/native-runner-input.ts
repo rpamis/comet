@@ -6,6 +6,12 @@ import { gitWorktreeIsClean, runGitCommand } from '../../platform/process/git.js
 import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
 
 import type { NativeCheckPlan } from './native-check-executor.js';
+import {
+  executeNativeSupervisorChecks,
+  readNativeSupervisorCheckEvidence,
+  type NativeSupervisorMaterial,
+} from './native-supervisor-evidence.js';
+import { parseNativeVerifierAcceptance } from './native-verifier-protocol.js';
 import { readNativeLocalExecution } from './native-local-execution.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
 import {
@@ -34,7 +40,6 @@ import {
   readNativeSupervisorState,
   reconnectNativeSupervisorTaskWithState,
   writeNativeSupervisorState,
-  type NativeSupervisorIntegrationCheck,
   type NativeSupervisorState,
   type NativeSupervisorVerificationEvidence,
 } from './native-supervisor.js';
@@ -124,14 +129,22 @@ interface RunnerSupervisorVerifierInput {
   kind: 'supervisor-verifier-result';
   child: string;
   runId: string;
-  verdict: 'pass' | 'fail' | 'incomplete';
+  verdict: 'pass' | 'fail' | 'blocked';
   evidence: NativeSupervisorVerificationEvidence;
+}
+
+interface RunnerSupervisorChecksInput {
+  kind: 'supervisor-checks';
+  child: string;
+  runId: string;
+  checks: NativeCheckPlan[];
+  materials: NativeSupervisorMaterial[];
 }
 
 interface RunnerSupervisorIntegrateInput {
   kind: 'supervisor-integrate';
   child: string;
-  checks: NativeSupervisorIntegrationCheck[];
+  checks: NativeCheckPlan[];
 }
 
 export type NativeRunnerInput =
@@ -145,6 +158,7 @@ export type NativeRunnerInput =
   | RunnerSupervisorReconnectInput
   | RunnerSupervisorCancelInput
   | RunnerSupervisorVerifierInput
+  | RunnerSupervisorChecksInput
   | RunnerSupervisorIntegrateInput;
 
 function record(value: unknown, label: string): Record<string, unknown> {
@@ -252,37 +266,13 @@ function verifierAttemptBinding(
 
 function supervisorEvidence(value: unknown): NativeSupervisorVerificationEvidence {
   const input = record(value, 'Native Supervisor evidence');
-  exactKeys(input, ['summary', 'checks'], 'Native Supervisor evidence');
+  exactKeys(input, ['summary', 'checks', 'acceptance', 'receiptRef'], 'Native Supervisor evidence');
   return {
     summary: text(input.summary, 'Native Supervisor evidence summary'),
     checks: strings(input.checks, 'Native Supervisor evidence checks'),
+    acceptance: parseNativeVerifierAcceptance(input.acceptance),
+    receiptRef: text(input.receiptRef, 'Native Supervisor receipt ref'),
   };
-}
-
-function supervisorIntegrationChecks(value: unknown): NativeSupervisorIntegrationCheck[] {
-  if (!Array.isArray(value))
-    throw new Error('Native Supervisor integration checks must be an array');
-  return value.map((entry, index) => {
-    const input = record(entry, `Native Supervisor integration check ${index}`);
-    const allowed = new Set(['name', 'status', 'reason']);
-    if (Object.keys(input).some((key) => !allowed.has(key))) {
-      throw new Error(`Native Supervisor integration check ${index} fields are invalid`);
-    }
-    if (!Object.hasOwn(input, 'name') || !Object.hasOwn(input, 'status')) {
-      throw new Error(`Native Supervisor integration check ${index} fields are invalid`);
-    }
-    if (!['passed', 'failed', 'incomplete'].includes(String(input.status))) {
-      throw new Error(`Native Supervisor integration check ${index} status is invalid`);
-    }
-    if (input.reason !== undefined && input.reason !== null && typeof input.reason !== 'string') {
-      throw new Error(`Native Supervisor integration check ${index} reason is invalid`);
-    }
-    return {
-      name: text(input.name, `Native Supervisor integration check ${index} name`),
-      status: input.status as NativeSupervisorIntegrationCheck['status'],
-      reason: (input.reason as string | null | undefined) ?? null,
-    };
-  });
 }
 
 export function parseNativeRunnerInput(value: unknown): NativeRunnerInput {
@@ -401,7 +391,7 @@ export function parseNativeRunnerInput(value: unknown): NativeRunnerInput {
       ['kind', 'child', 'runId', 'verdict', 'evidence'],
       'Native Supervisor Verifier input',
     );
-    if (!['pass', 'fail', 'incomplete'].includes(String(input.verdict))) {
+    if (!['pass', 'fail', 'blocked'].includes(String(input.verdict))) {
       throw new Error('Native Supervisor Verifier verdict is invalid');
     }
     return {
@@ -412,12 +402,31 @@ export function parseNativeRunnerInput(value: unknown): NativeRunnerInput {
       evidence: supervisorEvidence(input.evidence),
     };
   }
+  if (input.kind === 'supervisor-checks') {
+    exactKeys(input, ['kind', 'child', 'runId', 'checks', 'materials'], 'Native Supervisor checks');
+    if (!Array.isArray(input.materials))
+      throw new Error('Native Supervisor materials must be an array');
+    return {
+      kind: 'supervisor-checks',
+      child: text(input.child, 'Native Supervisor child'),
+      runId: text(input.runId, 'Native Supervisor runId'),
+      checks: checkPlans(input.checks),
+      materials: input.materials.map((value) => {
+        const material = record(value, 'Native Supervisor material');
+        exactKeys(material, ['name', 'content'], 'Native Supervisor material');
+        return {
+          name: text(material.name, 'Native Supervisor material name'),
+          content: text(material.content, 'Native Supervisor material content'),
+        };
+      }),
+    };
+  }
   if (input.kind === 'supervisor-integrate') {
     exactKeys(input, ['kind', 'child', 'checks'], 'Native Supervisor integration input');
     return {
       kind: 'supervisor-integrate',
       child: text(input.child, 'Native Supervisor child'),
-      checks: supervisorIntegrationChecks(input.checks),
+      checks: checkPlans(input.checks),
     };
   }
   throw new Error('Native Runner input kind is invalid');
@@ -627,6 +636,26 @@ export async function applyNativeRunnerInput(options: {
     supervisor !== null &&
     portableBeforeInput?.phase === 'build' &&
     supervisor.children.every(({ status }) => status === 'integrated' || status === 'archived');
+  if (supervisor && input.kind === 'supervisor-checks') {
+    const execution = await executeNativeSupervisorChecks({
+      paths: options.paths,
+      parent: options.name,
+      child: input.child,
+      runId: input.runId,
+      plans: input.checks,
+      materials: input.materials,
+    });
+    return {
+      state: portableBeforeInput,
+      supervisorState: await readNativeSupervisorState(options.paths, options.name),
+      supervisorTask: null,
+      checks: [],
+      checkExecution: execution,
+      requestChecks: null,
+      verifierDispatch: null,
+      continuation: nativePortableContinuation(portableBeforeInput),
+    };
+  }
   if (supervisor && input.kind === 'supervisor-builder-result') {
     return withNativeMutationLock(
       options.paths,
@@ -807,7 +836,27 @@ export async function applyNativeRunnerInput(options: {
           );
           throw error;
         }
-        const state = applyNativeSupervisorVerifierResult(current, input);
+        const evidence = await readNativeSupervisorCheckEvidence({
+          paths: options.paths,
+          parent: options.name,
+          task: child.task,
+          receiptRef: input.evidence.receiptRef ?? '',
+        });
+        if (
+          input.verdict === 'pass' &&
+          evidence.checks.some(({ status, exitCode }) => status !== 'passed' || exitCode !== 0)
+        )
+          throw new Error(
+            'Native Supervisor verification cannot pass before every Runtime check succeeds',
+          );
+        const state = applyNativeSupervisorVerifierResult(current, {
+          ...input,
+          evidence: {
+            ...input.evidence,
+            checks: evidence.checks.map(({ name, status }) => `${name}: ${status}`),
+            execution: structuredClone(child.task),
+          },
+        });
         await writeNativeSupervisorState(options.paths, state);
         const portableState = await readNativePortableChange(options.paths, options.name);
         return {
@@ -827,7 +876,8 @@ export async function applyNativeRunnerInput(options: {
       paths: options.paths,
       state: supervisor,
       name: input.child,
-      checks: input.checks,
+      checks: [],
+      checkPlans: input.checks,
     });
     const parentAdvance = await inspectNativeSupervisorParentReviewReadiness({
       paths: options.paths,

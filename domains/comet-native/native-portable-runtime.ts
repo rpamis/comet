@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
@@ -103,6 +103,7 @@ import {
   resolveContainedNativePath,
 } from './native-paths.js';
 import { nativeBriefTemplate } from './native-artifact-language.js';
+import { writeNativeVerificationReportSnapshot } from './native-evidence-storage.js';
 import type { CometProjectConfig, NativeProjectPaths } from './native-types.js';
 import type { NativeSupervisorCoordinationMode } from './native-portable-types.js';
 import type { NativeWorkspaceBinding } from './native-workspace.js';
@@ -2395,6 +2396,200 @@ export async function returnNativePortableChangeToBuild(options: {
       return written;
     },
   );
+}
+
+/** Only link destinations may change; prose, examples and acceptance remain confirmed. */
+export async function syncNativePortableSpecReferences(options: {
+  paths: NativeProjectPaths;
+  name: string;
+  capability: string;
+  reason: string;
+  actor: string;
+  expectedStateVersion: number;
+  affectedAcceptanceIds: string[];
+  replacements: Array<{ from: string; to: string }>;
+}): Promise<NativePortableState> {
+  return withNativeMutationLock(options.paths, `sync spec references ${options.name}`, async () => {
+    const state = await readNativePortableChange(options.paths, options.name);
+    if (state.state_version !== options.expectedStateVersion)
+      throw new Error('Native spec sync state version is stale');
+    if (
+      state.archived ||
+      !['build', 'verify', 'archive'].includes(state.phase) ||
+      state.children_contract_hash
+    )
+      throw new Error(
+        'Native spec sync requires a confirmed ordinary active change; revise requirements in Shape otherwise',
+      );
+    if (!NAME_PATTERN.test(options.capability) || !options.reason.trim() || !options.actor.trim())
+      throw new Error('Native spec sync requires capability, actor and reason');
+    await ensureNativePortableAcceptanceCurrentLocked({ paths: options.paths, state });
+    const spec = state.spec_changes.find(
+      ({ capability, operation }) => capability === options.capability && operation !== 'remove',
+    );
+    if (!spec?.source)
+      throw new Error(
+        'Stage this capability in the current change and confirm Shape before syncing references',
+      );
+    const affected = new Set(options.affectedAcceptanceIds);
+    if (
+      affected.size === 0 ||
+      [...affected].some((id) => !state.acceptance.some((entry) => entry.id === id)) ||
+      state.acceptance.some(({ source, id }) => source === spec.source && !affected.has(id))
+    )
+      throw new Error('Native spec sync must cover the affected spec acceptance IDs');
+    if (
+      options.replacements.length === 0 ||
+      options.replacements.some(
+        ({ from, to }) =>
+          !/^[A-Za-z0-9_./#%-]+$/u.test(from) || !/^[A-Za-z0-9_./#%-]+$/u.test(to) || from === to,
+      ) ||
+      new Set(options.replacements.map(({ from }) => from)).size !== options.replacements.length
+    )
+      throw new Error('Native spec sync only accepts unique local Markdown reference replacements');
+    const changeDir = nativePortableChangeDir(options.paths, state.name);
+    const original = await readNativeBoundedTextFile({
+      root: changeDir,
+      ref: spec.source,
+      maxBytes: 4 * 1024 * 1024,
+      includeHash: false,
+    });
+    const replacements = new Map(options.replacements.map(({ from, to }) => [from, to]));
+    const used = new Set<string>();
+    let fence: { marker: string; length: number } | null = null;
+    let comment = false;
+    const updated = original.text
+      .split(/(?<=\n)/u)
+      .map((line) => {
+        const delimiter = /^ {0,3}(`{3,}|~{3,})(.*)$/u.exec(line.trimEnd());
+        if (delimiter) {
+          if (!fence) fence = { marker: delimiter[1][0], length: delimiter[1].length };
+          else if (
+            delimiter[1][0] === fence.marker &&
+            delimiter[1].length >= fence.length &&
+            !delimiter[2].trim()
+          )
+            fence = null;
+          return line;
+        }
+        // Container Markdown can contain its own code fences. Conservatively
+        // leave quotes, lists and indented content to the Shape revision path.
+        if (/^(?:\s|>|[-+*]\s|\d+[.)]\s)/u.test(line)) return line;
+        if (line.includes('<!--')) comment = true;
+        if (comment) {
+          if (line.includes('-->')) comment = false;
+          return line;
+        }
+        if (fence || /^(?: {4}|\t)/u.test(line) || line.includes('`')) return line;
+        return line.replace(
+          /(?<!!)\[([^\]\n]+)\]\(([^()\s]+)\)/gu,
+          (link, label: string, target: string) => {
+            const replacement = replacements.get(target);
+            if (!replacement) return link;
+            used.add(target);
+            return `[${label}](${replacement})`;
+          },
+        );
+      })
+      .join('');
+    if (used.size !== replacements.size)
+      throw new Error(
+        'Native spec sync replacement is not an existing prose Markdown reference; use revise-requirements for semantic changes',
+      );
+    const file = path.join(changeDir, spec.source);
+    await atomicWriteText(file, updated, { containedRoot: options.paths.nativeRoot });
+    let committed = false;
+    try {
+      const shape = await readNativePortableAcceptance({
+        paths: options.paths,
+        state,
+        specChanges: state.spec_changes,
+      });
+      if (!sameNativePortableAcceptance(state.acceptance, shape.acceptance))
+        throw new Error('Reference change affects acceptance; revise requirements in Shape');
+      const digest = (text: string) => createHash('sha256').update(text).digest('hex');
+      const audit = JSON.stringify({
+        schema: 'comet.native.spec-sync.v1',
+        change: state.name,
+        actor: options.actor,
+        reason: options.reason,
+        source: spec.source,
+        before: original.text,
+        after: updated,
+        beforeHash: digest(original.text),
+        afterHash: digest(updated),
+        affectedAcceptanceIds: [...affected],
+        requiresConfirmation: false,
+        at: new Date().toISOString(),
+      });
+      const auditRef = await writeNativeVerificationReportSnapshot({
+        paths: options.paths,
+        name: state.name,
+        hash: digest(audit),
+        text: audit,
+      });
+      const scoped = {
+        ...state,
+        loop: {
+          ...state.loop,
+          previous_unresolved_ids: [
+            ...new Set([...state.loop.previous_unresolved_ids, ...affected]),
+          ],
+        },
+      };
+      let next =
+        state.phase === 'build'
+          ? {
+              ...scoped,
+              state_version: state.state_version + 1,
+              acceptance: state.acceptance.map((entry) =>
+                affected.has(entry.id)
+                  ? { ...entry, result: 'pending' as const, reason: null }
+                  : entry,
+              ),
+            }
+          : returnNativeCandidateToBuild({
+              state: scoped,
+              reason: `Spec reference sync: ${options.reason}`,
+            });
+      next = appendNativePortableHistory(next, {
+        goal_cycle: state.loop.goal_cycle,
+        iteration: state.loop.iteration,
+        attempt: state.loop.attempt,
+        outcome: 'recovery',
+        unresolved_ids: [...affected],
+        summary: toNativePortableText(
+          `Spec reference sync by ${options.actor}: ${options.reason}; ${auditRef}`,
+        ),
+        completed_at: new Date().toISOString(),
+      });
+      next.shape_confirmation_hash = nativePortableShapeConfirmationHash({
+        formalHash: shape.formalHash,
+        childrenHash: null,
+        coordinationMode: state.coordination_mode,
+      });
+      const written = await writePortableMutation({ paths: options.paths, previous: state, next });
+      committed = true;
+      await writeNativeLocalExecution(
+        nativeLocalExecutionFile(options.paths, state.name),
+        rebuildNativeLocalExecution({
+          portableState: written,
+          projectRoot: options.paths.projectRoot,
+          branch: currentBranch(options.paths.projectRoot),
+        }),
+        { containedRoot: options.paths.runtimeDir },
+      );
+      return written;
+    } finally {
+      if (!committed) {
+        // State CAS may succeed before report cleanup fails. Never roll formal content
+        // back across an already committed state version; recovery can rebuild local data.
+        const current = await readNativePortableChange(options.paths, state.name);
+        if (current.state_version === state.state_version)
+          await atomicWriteText(file, original.text, { containedRoot: options.paths.nativeRoot });
+      }
+    }
+  });
 }
 
 export async function markNativePortableSpecRemoval(options: {

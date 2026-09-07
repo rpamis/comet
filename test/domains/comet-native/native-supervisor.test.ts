@@ -1,3 +1,7 @@
+import {
+  markNativeSupervisorChildVerified,
+  applyNativeSupervisorVerifierResult,
+} from '../../helpers/native-supervisor-results.js';
 import { describe, expect, it } from 'vitest';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
@@ -11,9 +15,7 @@ import {
   createNativeSupervisorState,
   createNativeSupervisorTask,
   applyNativeSupervisorBuilderResult,
-  applyNativeSupervisorVerifierResult,
   integrateNativeSupervisorChild,
-  markNativeSupervisorChildVerified,
   nativeSupervisorRuntimeDir,
   nativeSupervisorStateFile,
   integrateNativeSupervisorChildWorkspace,
@@ -789,7 +791,7 @@ children:
     expect(integrated.integration.headCommit).toBe('c'.repeat(40));
   });
 
-  it('projects compact child status without exposing acceptance ownership', () => {
+  it('projects compact child status with explicit acceptance ownership', () => {
     const state = createNativeSupervisorState({
       parent: 'parent',
       targetBranch: 'beta20',
@@ -807,9 +809,9 @@ children:
           name: 'integration-core',
           summary: 'Owns the parent integration branch.',
           status: 'ready',
-          covers: [],
+          covers: ['child:integration-core'],
         },
-        { name: 'dashboard', status: 'pending', covers: [] },
+        { name: 'dashboard', status: 'pending', covers: ['child:dashboard'] },
       ],
     });
   });
@@ -831,7 +833,7 @@ children:
       runId: 'run-1',
     });
 
-    expect(dispatched.task).toEqual({
+    expect(dispatched.task).toMatchObject({
       role: 'builder',
       child: 'integration-core',
       projectRoot: 'D:/worktrees/integration-core',

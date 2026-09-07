@@ -81,7 +81,7 @@ function text(value: unknown, label: string): string {
   return value;
 }
 
-function parseAcceptance(value: unknown): NativeVerifierAcceptanceResult[] {
+export function parseNativeVerifierAcceptance(value: unknown): NativeVerifierAcceptanceResult[] {
   if (!Array.isArray(value)) throw new Error('Native Verifier acceptance must be an array');
   return value.map((entry, index) => {
     const item = plainRecord(entry, `Native Verifier acceptance ${index}`);
@@ -115,7 +115,7 @@ function parseFinalResult(value: unknown): NativeVerifierFinalResult {
     iteration: integer(input.iteration, 'Native Verifier iteration'),
     attempt: integer(input.attempt, 'Native Verifier attempt'),
     verdict: input.verdict as NativeVerifierFinalResult['verdict'],
-    acceptance: parseAcceptance(input.acceptance),
+    acceptance: parseNativeVerifierAcceptance(input.acceptance),
     risks: input.risks as string[],
     summary: text(input.summary, 'Native Verifier summary'),
   };
@@ -203,8 +203,17 @@ export function validateNativeTrustedVerifierEnvelope(options: {
   }
   if (response.kind === 'request-checks') return response;
 
+  validateNativeVerifierFinalResultConsistency(response.result, binding);
+  return response;
+}
+
+export function validateNativeVerifierFinalResultConsistency(
+  result: Pick<NativeVerifierFinalResult, 'verdict' | 'acceptance'>,
+  binding: Pick<NativeVerifierBinding, 'acceptanceIds' | 'requiredChecksPassed'>,
+): void {
+  parseNativeVerifierAcceptance(result.acceptance);
   const expected = [...binding.acceptanceIds];
-  const actual = response.result.acceptance.map(({ id }) => id);
+  const actual = result.acceptance.map(({ id }) => id);
   const duplicates = actual.filter((id, index) => actual.indexOf(id) !== index);
   const unknown = actual.filter((id) => !expected.includes(id));
   const missing = expected.filter((id) => !actual.includes(id));
@@ -213,18 +222,17 @@ export function validateNativeTrustedVerifierEnvelope(options: {
       `Native Verifier acceptance coverage is invalid (duplicate: ${[...new Set(duplicates)].join(', ') || 'none'}; unknown: ${unknown.join(', ') || 'none'}; missing: ${missing.join(', ') || 'none'})`,
     );
   }
-  if (!binding.requiredChecksPassed && response.result.verdict === 'pass') {
+  if (!binding.requiredChecksPassed && result.verdict === 'pass') {
     throw new Error('Native verification cannot pass before every required check succeeds');
   }
-  const results = response.result.acceptance.map(({ result }) => result);
-  if (response.result.verdict === 'pass' && results.some((result) => result !== 'passed')) {
+  const results = result.acceptance.map(({ result }) => result);
+  if (result.verdict === 'pass' && results.some((result) => result !== 'passed')) {
     throw new Error('Native pass requires every acceptance criterion to pass');
   }
-  if (response.result.verdict === 'fail' && !results.includes('failed')) {
+  if (result.verdict === 'fail' && !results.includes('failed')) {
     throw new Error('Native fail requires at least one failed acceptance criterion');
   }
-  if (response.result.verdict === 'blocked' && !results.includes('blocked')) {
+  if (result.verdict === 'blocked' && !results.includes('blocked')) {
     throw new Error('Native blocked verdict requires at least one blocked acceptance criterion');
   }
-  return response;
 }

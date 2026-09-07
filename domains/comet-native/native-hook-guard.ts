@@ -101,7 +101,9 @@ async function inspectPortableWriteTargets(options: {
     if (!isWithin(changeDir, target)) {
       return {
         allowed: false,
-        reason: 'Portable Native control state is Runtime-owned',
+        reason: isWithin(paths.specsDir, target)
+          ? `Published Native specs are updated through Archive. Stage the complete target spec in ${path.join(changeDir, 'specs', path.relative(paths.specsDir, target))}; use comet native spec sync for reference-only corrections, or revise-requirements for requirement changes.`
+          : 'Portable Native control state is Runtime-owned',
         workflow: 'native',
         phase: state.phase,
         change: state.name,

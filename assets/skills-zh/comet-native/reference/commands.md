@@ -34,7 +34,8 @@ Archive-ready 时先执行 continuation 给出的 `archive --dry-run`。隔离 w
 - `builder-handoff`：提交本轮实现摘要、处理的验收 ID、Builder 实际做过的开发检查、已知限制，以及新的只读代码复核所产生的 `review.status=passed`、`review.summary` 和 `review.reviewer_execution_ref`。验收结论留给 Verifier。
 - `dispatch-verifier`：列出当前候选需要由 Runtime 执行的检查。普通 change 确认没有适用的命令检查时可提交空列表；Supervisor 父级必须填写至少一项集成检查，`cwdRef` 相对于集成工作区。返回的是任务包和 attempt 标识，必须由 Agent 立即启动平台原生的只读 Verifier subagent；不存在需要另行启动或配置的 Verifier 服务、进程、地址或回调。
 - `verifier-response`：Verifier 请求补充检查，或提交恰好覆盖当前 `scopeIds` 的结果。修复范围通过后 Runtime 会再要求一次覆盖全部验收场景的最终验证。
-- Supervisor 任务回报使用 `supervisor-builder-result`、`supervisor-builder-failure`、`supervisor-verifier-result`、`supervisor-reconnect`、`supervisor-cancel` 和 `supervisor-integrate`；Builder、Verifier、重连和取消等操作必须带 Runtime 当前任务包的 `runId`，过期、角色错误或重复的回报会被拒绝；`supervisor-integrate` 使用已通过验证的子任务和检查结果，不携带 `runId`。需要按顺序执行时，可用 `comet native next <change> --max-parallel 1`，默认上限为 2。
+- Supervisor 任务回报使用 `supervisor-builder-result`、`supervisor-builder-failure`、`supervisor-checks`、`supervisor-verifier-result`、`supervisor-reconnect`、`supervisor-cancel` 和 `supervisor-integrate`；Builder、Verifier、检查、重连和取消操作保留当前任务包的 `runId`。需要按顺序执行时，可用 `comet native next <change> --max-parallel 1`，默认上限为 2。
+- 子任务 Verifier 先读取任务包的 `acceptance`、`contractHash` 和 `verificationBoundary`，再提交 `supervisor-checks`：字段为 `kind`、`child`、`runId`、`checks`（非空，与普通 Runtime 检查相同的计划）、`materials`（可为空，每份材料为 `{name, content}`）。检查在干净的子任务候选工作区执行，Runtime 返回 `checkExecution.status`、`operationId` 和完成后的 `receiptRef`。相同运行中的计划复用执行句柄，重复的可重复检查复用已登记回执；失败或中断不算通过。外部报告通过 `materials` 登记内容快照，普通路径和口头报告仅是调查线索。 `supervisor-verifier-result` 的 `verdict` 为 `pass`、`fail` 或 `blocked`；`evidence` 包含 `summary`、`checks`（非正式备注）、`receiptRef`、`acceptance`（每项 `{id, result, reason}`）。任务包中每个验收 ID 必须恰好出现一次；总判定必须与逐项结论一致，正式检查以 Runtime 回执为准。报告遗漏或矛盾时按具体错误修正，不能自行补造通过项。子任务通过后父级仍执行最终全量验收。 `supervisor-integrate` 不携带 `runId`，其 `checks` 必须是非空的可执行 Runtime 检查计划，不能提交自行声明的通过状态。Runtime 在集成工作区合入候选后执行检查，只有全部通过才记录 integrated。已登记证据可校验内容和候选绑定；普通外部文件的写权限隔离仍由运行平台负责。
 - `verifier-execution-error` / `verifier-unavailable`：平台支持 subagent，但本次任务未启动、执行失败、超时或结束后没有返回时使用前者；只有当前平台确实没有可用的 subagent 能力时才使用后者。模板中的任务关联字段必须原样保留，避免旧任务的迟到消息影响新的 Verifier。
 - `retry-verifier` / `confirm-verifier-unavailable`：Runtime 在 Verifier 不可用状态返回这两个 `commandAlternatives`。用户要求重试时选择前者，候选代码和已完成检查会保留；只有用户明确接受只有自动检查的降级结果时才选择后者。
 
@@ -51,4 +52,4 @@ Runtime 负责执行并记录验收检查。Builder 在 handoff 中列出的开�
 
 ## 诊断
 
-先运行只读 `doctor`。只有 `doctor` 明确给出修复命令时才执行；锁、跨设备状态和事务仍由 Runtime 管理。
+正式项目规格通过当前 change 的完整目标规格及 Archive 更新，不能直接修改已发布的规格。仅修正已确认目标规格的本地 Markdown 链接目标时，可执行 `spec sync`；输入包含 `expectedStateVersion`、`actor`、`reason`、`affectedAcceptanceIds` 和 `replacements: [{from, to}]`。覆盖受影响 Spec 的全部验收项；正文、示例和验收语义变化继续回 Shape。Runtime 保存修改前后内容及原因，保留未受影响结论并回 Build 重验。同步中进程突然中断而未提交状态时，恢复会检测规格漂移并回 Shape，不把未提交的修正当作已确认结果。 Verifier 失联时，使用普通 `next --summary` 恢复，Runtime 将中断执行转为可重验状态；不要无限等待旧执行引用。跨 worktree 状态发现会核对活跃记录和归档记录，只有创建身份与已提交 Git 历史证明替代关系时才选择归档；冲突需按真实记录处理，不能按同名或版本大小推断完成。 先运行只读 `doctor`。只有 `doctor` 明确给出修复命令时才执行；锁、跨设备状态和事务仍由 Runtime 管理。

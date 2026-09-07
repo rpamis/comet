@@ -2,6 +2,21 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-rc.6] - 2026-09-07
+
+### Added
+
+- **Native specification reference sync**: Correct local Markdown cross-references in confirmed target specs with an audited `comet native spec sync` operation that preserves unaffected acceptance results and schedules affected behavior for verification.
+
+### Changed
+
+- **Native Supervisor verification**: Child tasks carry explicit acceptance scopes and use the same coverage and verdict checks as ordinary verification. Runtime executes child and integration checks, binds registered reports to the tested candidate and execution, and rejects stale or altered evidence. Child verifier results now use `pass`, `fail`, or `blocked` with per-criterion results and a Runtime receipt.
+
+### Fixed
+
+- **Native archived status discovery**: Completed changes are no longer hidden by stale active copies in linked worktrees when creation identity and committed Git history prove the archive supersedes them; ambiguous records are reported as conflicts.
+- **Native revision recovery guidance**: Published-spec write rejections point to the current change's supported revision path, and recovery preserves actionable protocol diagnostics for incompatible state schemas.
+
 ## What's Changed [0.4.0-rc.5] - 2026-09-05
 
 ### Added
