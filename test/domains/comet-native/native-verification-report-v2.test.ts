@@ -27,7 +27,7 @@ describe('Native verification report projection', () => {
     await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
   });
 
-  function passedState() {
+  function passedState(verdict: 'pass' | 'fail' | 'blocked' = 'pass') {
     const runner = createNativeRunnerChannel();
     let state = confirmNativePortableAcceptance({
       state: prepareNativePortableShapeConfirmation({
@@ -80,10 +80,16 @@ describe('Native verification report projection', () => {
           result: {
             iteration: 1,
             attempt: 1,
-            verdict: 'pass',
-            acceptance: [{ id: 'A1', result: 'passed', reason: 'Read the generated report.' }],
+            verdict,
+            acceptance: [
+              {
+                id: 'A1',
+                result: verdict === 'pass' ? 'passed' : verdict === 'fail' ? 'failed' : 'blocked',
+                reason: 'Read the generated report.',
+              },
+            ],
             risks: [],
-            summary: 'Verification passed.',
+            summary: verdict === 'pass' ? 'Verification passed.' : 'The report needs correction.',
           },
         },
       }),
@@ -101,6 +107,25 @@ describe('Native verification report projection', () => {
     );
     expect(report).not.toMatch(/sha-?256|receipt|snapshot|evidence hash/iu);
   });
+
+  it.each(['fail', 'blocked'] as const)(
+    'guides %s results to repair instead of confirmation',
+    (verdict) => {
+      const state = passedState(verdict);
+      const report = renderNativeVerificationReport(state);
+      expect(report).not.toContain('your confirmation is required');
+      expect(report).toContain(
+        verdict === 'fail'
+          ? 'Fix unresolved acceptance criteria and verify again'
+          : 'Resolve the reported blockers and resume verification',
+      );
+      state.language = 'zh-CN';
+      expect(renderNativeVerificationReport(state)).toContain(
+        verdict === 'fail' ? '修复未通过的验收项后重新验证' : '解决报告中的阻塞项后恢复验证',
+      );
+      expect(renderNativeVerificationReport(state)).not.toContain('需要你确认验证结果');
+    },
+  );
 
   it.each([
     ['host-attested', 'Host independently verified'],

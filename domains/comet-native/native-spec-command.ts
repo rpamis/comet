@@ -29,10 +29,17 @@ export async function nativeSpecCommand(
     assertNoArguments(args);
     if (!inputFile) throw new NativeUsageError('spec sync requires --input <json-file>');
     const file = path.resolve(projectRoot, inputFile);
-    const stat = await fs.lstat(file);
+    const stat = await fs.lstat(file).catch(() => {
+      throw new NativeUsageError(`Spec sync input file is unreadable: ${inputFile}`);
+    });
     if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 1024 * 1024)
       throw new NativeUsageError('Spec sync input must be a bounded regular JSON file');
-    const input = JSON.parse(await fs.readFile(file, 'utf8'));
+    let input;
+    try {
+      input = JSON.parse(await fs.readFile(file, 'utf8'));
+    } catch {
+      throw new NativeUsageError('Spec sync input must contain readable valid JSON');
+    }
     if (
       !input ||
       typeof input !== 'object' ||

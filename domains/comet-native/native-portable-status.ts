@@ -350,7 +350,7 @@ export async function inspectNativePortableStatus(options: {
     supervisorOverlay.status === 'repairable-legacy-overlay' ||
     supervisorOverlay.status === 'incompatible'
       ? null
-      : await readNativeSupervisorState(options.paths, options.name);
+      : await readNativeSupervisorState(options.paths, options.name, { diagnostics: true });
   const workspace = supervisor
     ? { ...workspaceProjection(options.paths, runtime.state), projectRoot: '.' }
     : workspaceProjection(options.paths, runtime.state);

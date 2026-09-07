@@ -59,6 +59,20 @@ function verdictLabel(state: NativePortableState): string {
 }
 
 function verificationStatusLabel(state: NativePortableState): string {
+  if (state.verification_result === 'fail') {
+    return nativeLocalizedText(
+      state.language,
+      'Fix unresolved acceptance criteria and verify again',
+      '修复未通过的验收项后重新验证',
+    );
+  }
+  if (state.verification_result === 'blocked') {
+    return nativeLocalizedText(
+      state.language,
+      'Resolve the reported blockers and resume verification',
+      '解决报告中的阻塞项后恢复验证',
+    );
+  }
   const assurance =
     state.verification?.assurance ??
     (state.builder_handoff?.identity_provider === NATIVE_SKILL_COORDINATION

@@ -29,7 +29,8 @@ loop:
 acceptance:
   - id: A1
     source: brief.md
-    text: A1：Supervisor 子任务按已确认范围逐项验收，遗漏、重复、未知 ID、结论矛盾及缺少实际通过检查的 pass
+    text:
+      A1：Supervisor 子任务按已确认范围逐项验收，遗漏、重复、未知 ID、结论矛盾及缺少实际通过检查的 pass
       均被拒绝；单会话与多会话使用同一规则。
     result: passed
     reason:
@@ -53,7 +54,8 @@ acceptance:
       truncated: false
   - id: A4
     source: brief.md
-    text: A4：当前 change 通过受控入口同步规格交叉引用，记录原因、操作者、内容变更和影响范围；需求变化仍回 Shape，正式项目规格通过当前
+    text:
+      A4：当前 change 通过受控入口同步规格交叉引用，记录原因、操作者、内容变更和影响范围；需求变化仍回 Shape，正式项目规格通过当前
       change 和 Archive 更新，Runtime 状态及归档证据保持保护。
     result: passed
     reason:
@@ -68,7 +70,8 @@ acceptance:
       truncated: false
   - id: A6
     source: brief.md
-    text: A6：Verifier 失联在恢复入口转为明确执行错误或中断并提供可执行恢复动作；不兼容 schema 在入口拒绝且不写入当前选择或创建无法完成的
+    text:
+      A6：Verifier 失联在恢复入口转为明确执行错误或中断并提供可执行恢复动作；不兼容 schema 在入口拒绝且不写入当前选择或创建无法完成的
       change。
     result: passed
     reason:
@@ -79,7 +82,7 @@ acceptance:
     text: A7：源码、生成 Runtime、双语操作说明、rc.6 版本和英文 changelog 一致；相关回归、构建、生成检查及最终 PR 线上检查通过。
     result: passed
     reason:
-      text: rc.6源码/生成资产/双语/Changelog一致；5项Runtime checks通过，PR392
+      text: rc.6源码/生成资产/双语/Changelog一致；4项本地检查及1项GitHub CI检查通过，PR392
         head6f47d0845c74f467c5ea4f4e7f1e92912676b0aa全部可执行CI SUCCESS，Sourcery
         SKIPPED，MERGEABLE/CLEAN。
       truncated: false
@@ -182,7 +185,7 @@ verification:
           truncated: false
         - text: --pretty
           truncated: false
-        - text: "false"
+        - text: 'false'
           truncated: false
       argv_truncated: false
       cwd_ref: .
@@ -216,7 +219,7 @@ verification:
           truncated: false
         - text: checks
           truncated: false
-        - text: "392"
+        - text: '392'
           truncated: false
       argv_truncated: false
       cwd_ref: .
@@ -224,7 +227,7 @@ verification:
       exit_code: 0
       duration_ms: 1755
   summary:
-    text: 新的只读Verifier完成A1-A7最终全量验收；5项Runtime检查及当前候选CI通过，可归档。
+    text: 新的只读Verifier完成A1-A7最终全量验收；4项本地检查及当前候选CI通过，可归档。
     truncated: false
   risks:
     - text: 存活或身份不明owner过期时安全阻塞，不自动终止或接管。
@@ -275,7 +278,7 @@ history:
     outcome: pass
     unresolved_ids: []
     summary:
-      text: 新的只读Verifier完成A1-A7最终全量验收；5项Runtime检查及当前候选CI通过，可归档。
+      text: 新的只读Verifier完成A1-A7最终全量验收；4项本地检查及当前候选CI通过，可归档。
       truncated: false
     completed_at: 2026-09-07T04:10:16.224Z
 history_overflow:

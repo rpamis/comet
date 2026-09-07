@@ -251,7 +251,7 @@ export async function inspectNativeSupervisorOverlay(options: {
     return incompatible(
       file,
       snapshot,
-      `Native children contract cannot be validated: ${(error as Error).message}`,
+      `Native children contract cannot be validated; restore children.yaml and retry next: ${(error as Error).message}`,
     );
   }
   if (!children || children.contract.schema !== 'comet.native.children.v1') {

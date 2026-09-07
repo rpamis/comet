@@ -789,15 +789,42 @@ export async function inspectNativeChildren(options: {
 }): Promise<NativeChildrenInspection | null> {
   const changeDir = path.join(options.paths.changesDir, options.state.name);
   const coordinationChoiceRequired = await readNativeSupervisorShapeIntent(changeDir);
-  const document = await readNativeChildrenContract({
-    changeDir,
-    validation: nativeChildrenAcceptanceValidation(options.state),
-    ...(options.state.acceptance.length > 0
-      ? { acceptanceIds: options.state.acceptance.map(({ id }) => id) }
-      : {}),
-    policy: 'advisory',
-  });
+  let contractError: string | null = null;
+  let document: NativeChildrenDocument | null;
+  try {
+    document = await readNativeChildrenContract({
+      changeDir,
+      validation: nativeChildrenAcceptanceValidation(options.state),
+      ...(options.state.acceptance.length > 0
+        ? { acceptanceIds: options.state.acceptance.map(({ id }) => id) }
+        : {}),
+      policy: 'advisory',
+    });
+  } catch (error) {
+    contractError = `Children contract cannot be read; restore children.yaml and confirm Shape: ${(error as Error).message}`;
+    document = null;
+  }
   if (!document) {
+    const supervisor = await readNativeSupervisorState(options.paths, options.state.name, {
+      diagnostics: true,
+    });
+    if (supervisor) {
+      const projected = projectNativeSupervisorChildren(supervisor);
+      return {
+        ...projected,
+        ...(coordinationChoiceRequired ? { coordinationChoiceRequired: true } : {}),
+        confirmed: false,
+        readyChildren: [],
+        allDone: false,
+        children: projected.children.map((child) => ({
+          ...child,
+          message:
+            contractError ??
+            'Children contract is missing; restore children.yaml and confirm Shape before continuing',
+        })),
+      };
+    }
+    if (contractError) throw new Error(contractError);
     return options.state.children_contract_hash
       ? {
           ...(coordinationChoiceRequired ? { coordinationChoiceRequired: true } : {}),
@@ -831,7 +858,9 @@ export async function inspectNativeChildren(options: {
     options.state.children_contract_hash === contractHash &&
     !document.drift;
   if (document.contract.schema === NATIVE_CHILDREN_V2_SCHEMA) {
-    let supervisor = await readNativeSupervisorState(options.paths, options.state.name);
+    let supervisor = await readNativeSupervisorState(options.paths, options.state.name, {
+      diagnostics: true,
+    });
     if (!supervisor) {
       const targetBranch =
         options.state.workspace.target_branch ?? options.state.workspace.change_branch;
@@ -872,7 +901,7 @@ export async function inspectNativeChildren(options: {
         schema: document.contract.schema,
         ...(coordinationChoiceRequired ? { coordinationChoiceRequired: true } : {}),
         contractHash,
-        confirmed,
+        confirmed: confirmed && projected.confirmed,
       };
     }
     const definitions = new Map(document.contract.children.map((child) => [child.name, child]));

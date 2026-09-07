@@ -106,6 +106,7 @@ export async function executeNativeCheck(options: {
   operationId: string;
   plan: NativeCheckPlan;
   now?: () => Date;
+  onSpawn?: (child: { pid: number }) => Promise<void>;
 }): Promise<NativeExecutedCheck> {
   const { plan } = options;
   safeSegment(options.operationId, 'Native check operation ID');
@@ -134,6 +135,9 @@ export async function executeNativeCheck(options: {
 
     let timedOut = false;
     let spawnError: Error | null = null;
+    let registrationError: unknown = null;
+    let registration = Promise.resolve();
+    let closed = false;
     const timer = setTimeout(() => {
       timedOut = true;
       void terminateProcessTree(child).catch(() => child.kill('SIGKILL'));
@@ -149,31 +153,54 @@ export async function executeNativeCheck(options: {
       );
     });
     child.once('close', (exitCode, signal) => {
+      closed = true;
       clearTimeout(timer);
       const completed = (options.now ?? (() => new Date()))();
-      stream.end(() => {
-        const interrupted = timedOut || spawnError !== null || signal !== null;
-        resolve({
-          id: plan.id,
-          name: plan.name,
-          argvDisplay: nativePortableArgvDisplay(plan.argv),
-          cwdRef: plan.cwdRef,
-          status: interrupted ? 'interrupted' : exitCode === 0 ? 'passed' : 'failed',
-          exitCode,
-          signal,
-          timedOut,
-          durationMs: Math.max(0, completed.getTime() - started.getTime()),
-          startedAt: started.toISOString(),
-          completedAt: completed.toISOString(),
-          repeatable: plan.repeatable,
-          logRef: path.relative(options.runtimeDir, logFile).split(path.sep).join('/'),
+      void registration.then(() => {
+        if (registrationError !== null) {
+          stream.destroy();
+          reject(registrationError);
+          return;
+        }
+        stream.end(() => {
+          const interrupted = timedOut || spawnError !== null || signal !== null;
+          resolve({
+            id: plan.id,
+            name: plan.name,
+            argvDisplay: nativePortableArgvDisplay(plan.argv),
+            cwdRef: plan.cwdRef,
+            status: interrupted ? 'interrupted' : exitCode === 0 ? 'passed' : 'failed',
+            exitCode,
+            signal,
+            timedOut,
+            durationMs: Math.max(0, completed.getTime() - started.getTime()),
+            startedAt: started.toISOString(),
+            completedAt: completed.toISOString(),
+            repeatable: plan.repeatable,
+            logRef: path.relative(options.runtimeDir, logFile).split(path.sep).join('/'),
+          });
         });
       });
     });
     stream.once('error', (error) => {
       clearTimeout(timer);
-      void terminateProcessTree(child).catch(() => child.kill('SIGKILL'));
-      reject(error);
+      registrationError ??= error;
+      if (closed) void registration.then(() => reject(registrationError));
+      else void terminateProcessTree(child).catch(() => child.kill('SIGKILL'));
+      // The close listener rejects only once the process is gone and any pending
+      // registration has settled, even though this log stream is already destroyed.
     });
+    // Register after all lifecycle listeners are installed. A fast child can close
+    // while its identity is being persisted; a failed registration must not orphan it.
+    if (child.pid !== undefined && options.onSpawn) {
+      const pid = child.pid;
+      registration = Promise.resolve()
+        .then(() => options.onSpawn!({ pid }))
+        .catch(async (error) => {
+          registrationError = error;
+          if (child.exitCode === null && child.signalCode === null)
+            await terminateProcessTree(child).catch(() => child.kill('SIGKILL'));
+        });
+    }
   });
 }

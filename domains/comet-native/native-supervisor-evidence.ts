@@ -3,6 +3,10 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
 import { gitWorktreeIsClean, runGitCommand } from '../../platform/process/git.js';
+import {
+  processInstanceMayBeAlive,
+  readProcessIdentity,
+} from '../../platform/process/process-identity.js';
 import { canonicalHash } from './native-canonical-hash.js';
 import {
   executeNativeCheck,
@@ -105,12 +109,7 @@ export async function executeNativeSupervisorChecks(options: {
       options.plans.forEach((plan) => validateNativeCheckPlan(task.projectRoot, plan));
       const previous = task.checkExecution;
       if (previous?.status === 'running') {
-        let alive = true;
-        try {
-          process.kill(previous.ownerPid, 0);
-        } catch (error) {
-          alive = (error as NodeJS.ErrnoException).code !== 'ESRCH';
-        }
+        const alive = await processInstanceMayBeAlive(previous.ownerPid, previous.ownerIdentity);
         // An expired lease cannot prove a live owner stopped; never start overlapping checks.
         const expiresAt =
           Date.parse(previous.expiresAt ?? '') || Date.parse(previous.startedAt) + 30000;
@@ -123,6 +122,20 @@ export async function executeNativeSupervisorChecks(options: {
             throw new Error(
               'Native Supervisor check plan is already running with different inputs',
             );
+          return { task: structuredClone(task), execute: false };
+        }
+        const active = previous.activeProcess;
+        if (active === undefined || active?.status === 'starting') {
+          throw new Error(
+            `Native Supervisor check process registration is incomplete. Check logs in ${path.join(nativePreferredChangeRuntimeDir(options.paths, options.parent), 'logs', 'checks')} for operation ${previous.operationId}; stop any remaining check process in ${task.projectRoot}, then submit supervisor-cancel for child ${options.child} and runId ${task.runId}, and dispatch a new Verifier for the preserved candidate.`,
+          );
+        }
+        if (active && (await processInstanceMayBeAlive(active.pid, active.identity))) {
+          if (!(Date.now() < expiresAt)) {
+            throw new Error(
+              `Native Supervisor check ${active.checkId} is still running as PID ${active.pid} after its owner exited and lease expired; stop that original check process, then retry supervisor-checks for ${options.child}.`,
+            );
+          }
           return { task: structuredClone(task), execute: false };
         }
         previous.status = 'interrupted';
@@ -138,6 +151,8 @@ export async function executeNativeSupervisorChecks(options: {
         key,
         status: 'running',
         ownerPid: process.pid,
+        ownerIdentity: (await readProcessIdentity(process.pid)) ?? undefined,
+        activeProcess: null,
         startedAt: new Date().toISOString(),
         expiresAt: new Date(
           Date.now() + options.plans.reduce((total, plan) => total + plan.timeoutMs, 0) + 30000,
@@ -165,15 +180,41 @@ export async function executeNativeSupervisorChecks(options: {
     };
   }
   const runtimeDir = nativePreferredChangeRuntimeDir(options.paths, options.parent);
+  const updateProcess = async (
+    activeProcess: NonNullable<NativeSupervisorTask['checkExecution']>['activeProcess'],
+  ) => {
+    await withNativeMutationLock(options.paths, 'register Supervisor check process', async () => {
+      const currentState = await readNativeSupervisorState(options.paths, options.parent);
+      const current = currentTask(currentState, options.child, options.runId);
+      if (
+        current.checkExecution?.operationId !== operationId ||
+        current.checkExecution.status !== 'running'
+      )
+        throw new Error('Native Supervisor check operation is stale');
+      current.checkExecution.activeProcess = activeProcess;
+      currentState!.stateVersion += 1;
+      await writeNativeSupervisorState(options.paths, currentState!);
+    });
+  };
   try {
     const checks: SupervisorCheckRecord['checks'] = [];
     for (const plan of options.plans) {
+      await updateProcess({ status: 'starting', checkId: plan.id });
       const result = await executeNativeCheck({
         projectRoot: task.projectRoot,
         runtimeDir,
         operationId,
         plan,
+        onSpawn: async ({ pid }) => {
+          await updateProcess({
+            status: 'running',
+            checkId: plan.id,
+            pid,
+            identity: (await readProcessIdentity(pid)) ?? undefined,
+          });
+        },
       });
+      await updateProcess(null);
       const logFile = path.join(runtimeDir, result.logRef);
       const log = await fs.readFile(logFile, 'utf8');
       checks.push({ ...result, logContent: redactNativeCredentialText(log).slice(0, 128 * 1024) });

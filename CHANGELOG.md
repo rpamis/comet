@@ -10,12 +10,13 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
-- **Native Supervisor verification**: Child tasks carry explicit acceptance scopes and use the same coverage and verdict checks as ordinary verification. Runtime executes repeatable child and integration checks, binds registered reports to the tested candidate and execution, and rejects stale or altered evidence. Child verifier results now use `pass`, `fail`, or `blocked` with per-criterion results; passing results require a Runtime receipt.
+- **Native Supervisor verification**: Child tasks carry explicit acceptance scopes and use the same coverage and verdict checks as ordinary verification. Runtime executes repeatable checks, serializes checks in the integration worktree, binds registered reports to the tested candidate and execution, and rejects stale or altered evidence. Interrupted checks distinguish process instances when recovering, and incomplete legacy contracts remain inspectable with recovery guidance. Child verifier results now use `pass`, `fail`, or `blocked` with per-criterion results; passing results require a Runtime receipt.
 
 ### Fixed
 
 - **Native archived status discovery**: Completed changes are no longer hidden by stale active copies in linked worktrees when creation identity and committed Git history prove the archive supersedes them; ambiguous records are reported as conflicts.
 - **Native revision recovery guidance**: Published-spec write rejections point to the current change's supported revision path, and recovery preserves actionable protocol diagnostics for incompatible state schemas.
+- **Native verification reports**: Failed and blocked verification results direct users to repair or resolve blockers before verification resumes, instead of asking them to confirm an unsuccessful result.
 
 ## What's Changed [0.4.0-rc.5] - 2026-09-05
 

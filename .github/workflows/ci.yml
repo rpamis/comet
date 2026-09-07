@@ -101,6 +101,14 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm test:native-parallel
+      - name: Native check process and recovery regressions
+        run: >-
+          pnpm exec vitest run
+          test/platform/process/process-identity.test.ts
+          test/domains/comet-native/native-check-registration.test.ts
+          test/domains/comet-native/native-supervisor-check-process.test.ts
+          test/domains/comet-native/native-supervisor-integration-execution.test.ts
+          test/domains/comet-native/native-supervisor-legacy-diagnostics.test.ts
       - run: pnpm test:runtime-smoke
 
   package-e2e:

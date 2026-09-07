@@ -267,6 +267,9 @@ describe('Native reliability issue regressions', () => {
           ])
         ).stdout!,
       );
+    expect(await syncCli()).toMatchObject({ exitCode: 64 });
+    await fs.writeFile(syncFile, '{invalid json');
+    expect(await syncCli()).toMatchObject({ exitCode: 64 });
     for (const invalid of [
       { ...commandInput, unexpected: true },
       { ...commandInput, expectedStateVersion: 'old' },
@@ -535,6 +538,13 @@ describe('Native reliability issue regressions', () => {
     await fs.writeFile(legacyFile, JSON.stringify(expired));
     await expect(executeNativeSupervisorChecks(options)).rejects.toThrow('owner PID is alive');
     expect(JSON.parse(await fs.readFile(legacyFile, 'utf8'))).toEqual(expired);
+    // A reused PID belongs to a different process instance, even while that PID is alive.
+    expired.children[0].task.checkExecution.ownerIdentity = 'exited-process-instance';
+    await fs.writeFile(legacyFile, JSON.stringify(expired));
+    const reused = await executeNativeSupervisorChecks(options);
+    expect(reused.status).toBe('completed');
+    expect(reused.operationId).not.toBe(receipt.operationId);
+    receipt = reused;
     const stopped = requireStoppedPid();
     expired.children[0].task.checkExecution.ownerPid = stopped;
     await fs.writeFile(legacyFile, JSON.stringify(expired));

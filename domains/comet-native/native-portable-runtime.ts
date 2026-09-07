@@ -103,7 +103,10 @@ import {
   resolveContainedNativePath,
 } from './native-paths.js';
 import { nativeBriefTemplate } from './native-artifact-language.js';
-import { writeNativeVerificationReportSnapshot } from './native-evidence-storage.js';
+import {
+  removeNativeVerificationReportSnapshot,
+  writeNativeVerificationReportSnapshot,
+} from './native-evidence-storage.js';
 import type { CometProjectConfig, NativeProjectPaths } from './native-types.js';
 import type { NativeSupervisorCoordinationMode } from './native-portable-types.js';
 import type { NativeWorkspaceBinding } from './native-workspace.js';
@@ -2190,12 +2193,20 @@ export async function recoverNativeSupervisorFinalVerificationLocked(options: {
   name: string;
 }): Promise<NativeSupervisorFinalVerificationResumeResult> {
   const state = await readNativePortableChange(options.paths, options.name);
-  const supervisor = await readNativeSupervisorState(options.paths, options.name);
   const transaction = await readNativePortableTransaction(options.paths, {
     kind: 'archive',
     change: options.name,
   });
   const archiveTransaction = transaction?.kind === 'archive' ? transaction : null;
+  if (
+    !archiveTransaction &&
+    (state.archived || state.verification === null || state.verification_result !== 'pass')
+  ) {
+    // There is no final result to replay. In particular, Build must still reach
+    // requirements recovery when a legacy Supervisor contract is unavailable.
+    return { state, action: 'none' };
+  }
+  const supervisor = await readNativeSupervisorState(options.paths, options.name);
   if (archiveTransaction && supervisor?.finalVerification.status === 'pending') {
     if (
       archiveTransaction.journal.status !== 'prepared' ||
@@ -2499,6 +2510,7 @@ export async function syncNativePortableSpecReferences(options: {
     const file = path.join(changeDir, spec.source);
     await atomicWriteText(file, updated, { containedRoot: options.paths.nativeRoot });
     let committed = false;
+    let createdAuditHash: string | null = null;
     try {
       const shape = await readNativePortableAcceptance({
         paths: options.paths,
@@ -2514,19 +2526,22 @@ export async function syncNativePortableSpecReferences(options: {
         actor: options.actor,
         reason: options.reason,
         source: spec.source,
-        before: original.text,
-        after: updated,
         beforeHash: digest(original.text),
         afterHash: digest(updated),
+        replacements: options.replacements,
         affectedAcceptanceIds: [...affected],
         requiresConfirmation: false,
         at: new Date().toISOString(),
       });
+      const auditHash = digest(audit);
       const auditRef = await writeNativeVerificationReportSnapshot({
         paths: options.paths,
         name: state.name,
-        hash: digest(audit),
+        hash: auditHash,
         text: audit,
+        onCreated: () => {
+          createdAuditHash = auditHash;
+        },
       });
       const scoped = {
         ...state,
@@ -2580,14 +2595,28 @@ export async function syncNativePortableSpecReferences(options: {
         { containedRoot: options.paths.runtimeDir },
       );
       return written;
-    } finally {
+    } catch (error) {
       if (!committed) {
         // State CAS may succeed before report cleanup fails. Never roll formal content
         // back across an already committed state version; recovery can rebuild local data.
-        const current = await readNativePortableChange(options.paths, state.name);
-        if (current.state_version === state.state_version)
-          await atomicWriteText(file, original.text, { containedRoot: options.paths.nativeRoot });
+        try {
+          const current = await readNativePortableChange(options.paths, state.name);
+          if (current.state_version === state.state_version) {
+            await atomicWriteText(file, original.text, { containedRoot: options.paths.nativeRoot });
+            if (createdAuditHash) {
+              await removeNativeVerificationReportSnapshot({
+                paths: options.paths,
+                name: state.name,
+                hash: createdAuditHash,
+              });
+            }
+          }
+        } catch {
+          // An unknown commit outcome must retain evidence. Preserve the triggering
+          // failure when rollback itself cannot safely inspect or restore storage.
+        }
       }
+      throw error;
     }
   });
 }

@@ -239,6 +239,7 @@ export async function writeNativeVerificationReportSnapshot(options: {
   name: string;
   hash: string;
   text: string;
+  onCreated?: () => void;
 }): Promise<string> {
   const encoded = Buffer.from(options.text, 'utf8');
   if (
@@ -252,12 +253,31 @@ export async function writeNativeVerificationReportSnapshot(options: {
     name: options.name,
     kind: 'reports',
     hash: options.hash,
+    onCreated: options.onCreated,
     value: {
       schema: 'comet.native.verification-report.v1',
       reportHash: options.hash,
       content: options.text,
     },
   });
+}
+
+/** Roll back only a newly created snapshot while its owner holds the mutation lock. */
+export async function removeNativeVerificationReportSnapshot(options: {
+  paths: NativeProjectPaths;
+  name: string;
+  hash: string;
+}): Promise<void> {
+  const file = evidenceFile(options.paths, options.name, 'reports', options.hash);
+  const storageRoot = nativeStorageRoot(options.paths, file);
+  await resolveContainedNativePath(storageRoot, file);
+  const before = await fs.lstat(file);
+  await readNativeVerificationReportSnapshot(options.paths, options.name, options.hash);
+  await resolveContainedNativePath(storageRoot, file);
+  if (!sameFileIdentity(before, await fs.lstat(file))) {
+    throw new Error('Native report evidence changed before rollback');
+  }
+  await fs.unlink(file);
 }
 
 export async function readNativeVerificationReportSnapshot(
@@ -342,6 +362,7 @@ async function writeEvidenceDocument(options: {
   kind: NativeEvidenceKind;
   hash: string;
   value: unknown;
+  onCreated?: () => void;
 }): Promise<string> {
   assertEvidenceDocumentBudget(options.value);
   const file = evidenceFile(options.paths, options.name, options.kind, options.hash);
@@ -357,6 +378,7 @@ async function writeEvidenceDocument(options: {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
   await atomicWriteJson(file, options.value, { containedRoot: storageRoot });
+  options.onCreated?.();
   const persisted = await readEvidenceDocument(options);
   if (JSON.stringify(persisted) !== JSON.stringify(options.value)) {
     throw new Error(`Native evidence changed during commit for ${options.hash}`);
